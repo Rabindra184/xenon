@@ -111,7 +111,7 @@ appium server --use-plugins=xenon \
 Access the dashboard at `http://localhost:4723/xenon/`
 
 <p align="center">
-  <img src="assets/demo.gif" alt="Xenon Dashboard Demo" width="100%">
+  <img src="assets/dashboard.png" alt="Xenon Dashboard" width="100%">
 </p>
 
 ### Views
