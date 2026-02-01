@@ -1,0 +1,93 @@
+.button-base {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-sm);
+  white-space: nowrap;
+  border-radius: var(--radius-md);
+  font-weight: 600;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  border: 1px solid transparent;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.button-base:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--secondary-hover);
+}
+
+.button-base:disabled {
+  pointer-events: none;
+  opacity: 0.5;
+}
+
+/* Size variants */
+.button-sm {
+  height: 32px;
+  padding: 0 var(--space-md);
+  font-size: 12px;
+}
+
+.button-default {
+  height: 40px;
+  padding: var(--space-sm) var(--space-lg);
+  font-size: 14px;
+}
+
+.button-lg {
+  height: 48px;
+  padding: var(--space-md) var(--space-xl);
+  font-size: 16px;
+}
+
+.button-icon {
+  height: 40px;
+  width: 40px;
+  padding: 0;
+}
+
+/* Color variants */
+.button-variant-default {
+  background: linear-gradient(135deg, var(--primary) 0%, var(--primary-hover) 100%);
+  color: var(--text-inverse);
+  box-shadow: var(--shadow-sm);
+}
+
+.button-variant-default:hover {
+  box-shadow: var(--shadow-md);
+  transform: translateY(-1px);
+}
+
+.button-variant-default:active {
+  transform: scale(0.98);
+}
+
+.button-variant-outline {
+  border-color: var(--border-medium);
+  background: var(--bg-surface);
+  color: var(--text-main);
+}
+
+.button-variant-outline:hover {
+  background: var(--bg-app);
+  border-color: var(--text-muted);
+}
+
+.button-variant-ghost {
+  background: transparent;
+  color: var(--text-main);
+}
+
+.button-variant-ghost:hover {
+  background: var(--border-light);
+}
+
+.button-variant-destructive {
+  background: var(--status-error);
+  color: var(--text-inverse);
+}
+
+.button-variant-destructive:hover {
+  filter: brightness(0.9);
+}

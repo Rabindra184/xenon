@@ -1,0 +1,16 @@
+{
+  "$schema": "https://typedoc.org/schema.json",
+  "cleanOutputDir": true,
+  "entryPointStrategy": "packages",
+  "theme": "appium",
+  "name": "appium-xenon",
+  "out": "docs/reference",
+  "packageTitles": [
+    {
+      "name": "appium-xenon",
+      "title": "Command Reference"
+    }
+  ],
+  "readme": "./README.md"
+}
+

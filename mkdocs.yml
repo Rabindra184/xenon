@@ -1,0 +1,39 @@
+INHERIT: ./node_modules/@appium/docutils/base-mkdocs.yml
+site_name: Appium Xenon
+repo_url: https://github.com/AppiumTestDistribution/appium-xenon
+repo_name: AppiumTestDistribution/appium-xenon
+site_url: https://appium-xenon-eight.vercel.app/
+edit_uri: edit/master/docs
+site_description: Documentation for the Appium Xenon plugin
+docs_dir: docs
+site_dir: site
+theme:
+  logo: assets/images/appium-logo-white.png
+  favicon: assets/images/appium-logo.png
+  custom_dir: docs/overrides
+  features:
+    - navigation.tabs
+markdown_extensions:
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+extra_css:
+  - assets/stylesheets/extra.css
+extra:
+  homepage: /
+  version:
+    provider: mike
+  social:
+    - icon: fontawesome/brands/twitter
+nav:
+  - index.md
+  - setup.md
+  - troubleshooting.md
+  - cloud.md
+  - remote-execution.md
+  - Reference:
+      - server-args.md
+      - capabilities.md
+      - reference/commands/sample.md

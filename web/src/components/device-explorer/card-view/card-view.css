@@ -1,0 +1,16 @@
+.device-explorer-card-container {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: var(--space-xl);
+  padding: var(--space-xl) var(--space-lg) var(--space-lg);
+  flex: 1;
+}
+
+.device-explorer-card-container::-webkit-scrollbar {
+  width: 6px;
+}
+
+.device-explorer-card-container::-webkit-scrollbar-thumb {
+  background: var(--border-medium);
+  border-radius: 10px;
+}

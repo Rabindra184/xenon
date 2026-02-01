@@ -1,0 +1,174 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Build {
+  id        String    @id @default(uuid())
+  name      String?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  sessions  Session[]
+}
+
+model Session {
+  id                      String       @id
+  build_id                String?
+  name                    String?
+  status                  String       @default("running")
+  desired_capabilities    String
+  session_capabilities    String
+  node_id                 String
+  has_live_video          Boolean
+  video_recording_enabled Boolean      @default(true)
+  video_recording         String?
+  startTime               DateTime     @default(now())
+  endTime                 DateTime?
+  failure_reason          String?
+  is_profiling_available  Boolean      @default(false)
+  device_info             String?
+  device_udid             String
+  device_platform         String
+  device_version          String
+  device_name             String?
+  createdAt               DateTime     @default(now())
+  updatedAt               DateTime     @updatedAt
+  performance_trace       String?      @map("performance_trace")
+  failure_category        String?
+  Log                     Log[]
+  Profiling               Profiling[]
+  build                   Build?       @relation(fields: [build_id], references: [id])
+  SessionLog              SessionLog[]
+}
+
+model SessionLog {
+  id           String   @id @default(uuid())
+  session_id   String
+  command_name String?
+  url          String
+  method       String
+  title        String
+  subtitle     String?
+  body         String?
+  response     String
+  screenshot   String?
+  is_success   Boolean?
+  is_error     Boolean  @default(false)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  session      Session  @relation(fields: [session_id], references: [id])
+}
+
+model Log {
+  id         String   @id @default(uuid())
+  session_id String
+  log_type   String
+  message    String
+  timestamp  DateTime @default(now())
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  session    Session  @relation(fields: [session_id], references: [id])
+}
+
+model Profiling {
+  id                Int      @id @default(autoincrement())
+  session_id        String
+  cpu               String?
+  memory            String?
+  total_cpu_used    String?
+  total_memory_used String?
+  raw_cpu_log       String?
+  raw_memory_log    String?
+  timestamp         DateTime
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  session           Session  @relation(fields: [session_id], references: [id])
+}
+
+model App {
+  id          String   @id @default(uuid())
+  name        String
+  filename    String
+  filepath    String
+  mimetype    String
+  size        Int
+  packageName String?
+  version     String?
+  platform    String?
+  md5         String?  @unique
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model Device {
+  udid                         String
+  host                         String
+  systemPort                   Int?
+  proxyPort                    Int?
+  proxyHost                    String?
+  wdaLocalPort                 Int?
+  name                         String?  @default("unknown")
+  state                        String?  @default("available")
+  sdk                          String?  @default("unknown")
+  platform                     String?  @default("unknown")
+  deviceType                   String?  @default("real")
+  busy                         Boolean? @default(false)
+  userBlocked                  Boolean? @default(false)
+  realDevice                   Boolean? @default(true)
+  session_id                   String?
+  offline                      Boolean? @default(false)
+  mjpegServerPort              Int?
+  lastCmdExecutedAt            Float?
+  totalUtilizationTimeMilliSec Float    @default(0)
+  sessionStartTime             Float    @default(0)
+  newCommandTimeout            Int?
+  cloud                        String?
+  derivedDataPath              String?
+  chromeDriverPath             String?
+  capability                   String?
+  adbRemoteHost                String?
+  adbPort                      Int?
+  nodeId                       String?
+  screenWidth                  String?
+  screenHeight                 String?
+  dashboard_link               String?
+  total_session_count          Int?     @default(0)
+  createdAt                    DateTime @default(now())
+  updatedAt                    DateTime @updatedAt
+  healthCheckError             String?
+  healthStatus                 String?  @default("Healthy")
+  lastHealthCheckAt            Float?
+  reservationReason            String?
+  reservedBy                   String?
+  reservedUntil                Float?
+
+  @@id([udid, host])
+}
+
+model PendingSession {
+  id            Int    @id @default(autoincrement())
+  capability_id String @unique
+  capability    String
+  createdAt     Float
+}
+
+model CLIArgs {
+  id        Int      @id @default(autoincrement())
+  args      String
+  createdAt DateTime @default(now())
+}
+
+model WebhookConfig {
+  id              String   @id @default(uuid())
+  url             String
+  type            String   @default("slack")
+  events          String
+  active          Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  payloadTemplate String?
+}

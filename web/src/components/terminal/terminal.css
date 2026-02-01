@@ -1,0 +1,228 @@
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&display=swap');
+
+.terminal-container {
+    display: flex;
+    flex-direction: column;
+    background-color: #020617;
+    /* Slate 950 - deeper OLED */
+    color: #F8FAFC;
+    font-family: 'JetBrains Mono', 'Fira Code', monospace;
+    border-radius: 16px;
+    overflow: hidden;
+    height: 100%;
+    max-height: 100%;
+    width: 100%;
+    min-height: 0;
+    /* Allow shrinking in flex */
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.5), 0 10px 10px -5px rgba(0, 0, 0, 0.4);
+}
+
+.terminal-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 20px;
+    background-color: #1E293B;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.terminal-controls {
+    display: flex;
+    gap: 8px;
+    width: 60px;
+}
+
+.dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+}
+
+.dot.red {
+    background-color: #ef4444;
+}
+
+.dot.yellow {
+    background-color: #f59e0b;
+}
+
+.dot.green {
+    background-color: #22c55e;
+}
+
+.terminal-title {
+    font-size: 11px;
+    font-weight: 700;
+    color: #94A3B8;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+}
+
+.terminal-actions {
+    display: flex;
+    justify-content: flex-end;
+    width: 60px;
+}
+
+.terminal-action-btn {
+    background: transparent;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    color: #94A3B8;
+    font-size: 9px;
+    font-weight: 700;
+    padding: 4px 8px;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.terminal-action-btn:hover {
+    color: white;
+    background: rgba(255, 255, 255, 0.05);
+    border-color: rgba(255, 255, 255, 0.2);
+}
+
+
+.terminal-history {
+    flex: 1;
+    overflow-y: auto;
+    overflow-x: hidden;
+    padding: 16px;
+    /* More breathing room */
+    padding-bottom: 24px;
+    font-size: 13px;
+    line-height: 1.6;
+    /* Better readability */
+    scrollbar-width: thin;
+    scrollbar-color: var(--primary, #22C55E) #0F172A;
+    min-height: 0;
+    /* Allow flex to shrink this child if parent is constrained */
+}
+
+.terminal-history::-webkit-scrollbar {
+    width: 8px;
+}
+
+.terminal-history::-webkit-scrollbar-track {
+    background: #0F172A;
+}
+
+.terminal-history::-webkit-scrollbar-thumb {
+    background-color: #334155;
+    border-radius: 4px;
+    border: 2px solid #0F172A;
+    /* Create a gap effect */
+}
+
+.terminal-history::-webkit-scrollbar-thumb:hover {
+    background-color: var(--primary, #22C55E);
+}
+
+.terminal-line {
+    margin-bottom: 8px;
+    white-space: pre-wrap;
+    /* Preserve formatting */
+    word-break: normal;
+    /* Prevent breaking words mid-word */
+    overflow-wrap: anywhere;
+    /* Break long strings (URLs/JSON) only if needed */
+}
+
+.terminal-line.command {
+    color: #22C55E;
+    /* Vibrant Green for commands */
+    font-weight: 600;
+}
+
+.terminal-line.output {
+    color: #E2E8F0;
+    /* Slate 200 - High contrast text */
+}
+
+.terminal-line.error {
+    color: #EF4444;
+    /* Red 500 */
+}
+
+.terminal-line.system {
+    color: #94A3B8;
+    /* Slate 400 */
+    font-style: italic;
+    border-bottom: 1px dashed #334155;
+    padding-bottom: 4px;
+    margin-bottom: 12px;
+}
+
+.terminal-input-area {
+    display: flex;
+    align-items: center;
+    padding: 16px 20px;
+    background-color: #1E293B;
+    /* Slate 800 input area */
+    border-top: 1px solid #334155;
+    box-shadow: 0 -4px 6px -1px rgba(0, 0, 0, 0.1);
+}
+
+.terminal-prompt {
+    color: #38BDF8;
+    /* Sky 400 - Distinct prompt color */
+    margin-right: 12px;
+    font-weight: bold;
+    user-select: none;
+}
+
+.terminal-input {
+    flex: 1;
+    background: transparent;
+    border: none;
+    color: #F8FAFC;
+    font-family: inherit;
+    font-size: 14px;
+    /* Slightly larger input */
+    outline: none;
+    font-weight: 500;
+}
+
+.terminal-input::placeholder {
+    color: rgba(255, 255, 255, 0.2);
+}
+
+.animate-pulse {
+    animation: pulse-op 1.5s infinite;
+}
+
+@keyframes pulse-op {
+
+    0%,
+    100% {
+        opacity: 1;
+    }
+
+    50% {
+        opacity: 0.4;
+    }
+}
+
+
+.terminal-loading-indicator {
+    display: inline-block;
+    width: 8px;
+    height: 16px;
+    background-color: #22C55E;
+    animation: blink 1s step-end infinite;
+    vertical-align: middle;
+    margin-left: 8px;
+}
+
+@keyframes blink {
+
+    0%,
+    100% {
+        opacity: 1;
+    }
+
+    50% {
+        opacity: 0;
+    }
+}

@@ -1,0 +1,287 @@
+{
+  "name": "xenon",
+  "version": "1.0.0",
+  "description": "Xenon - Intelligent Mobile Infrastructure. A self-healing device orchestration platform for Appium.",
+  "main": "./lib/src/index.js",
+  "scripts": {
+    "build:docs": "appium-docs build --reference=false",
+    "publish:docs": "appium-docs build --deploy --push -b docs-site -m 'docs: auto-build docs for xenon@%s' --alias latest",
+    "install-docs-deps": "appium-docs init --no-mkdocs -e lib/src/index.js",
+    "coverage": "nyc npm run test",
+    "test-remote": "mocha --require ts-node/register ./test/e2e/remote.spec.js --timeout 60000 --exit",
+    "test": "mocha -r ts-node/register ./test/unit/*.spec.{j,t}s --plugin-xenon-platform=both --exit --timeout=20000",
+    "test-jest": "NODE_OPTIONS=--experimental-vm-modules npx jest ./test/unit/AndroidDeviceManager.spec.js",
+    "test-parallel-android": "mocha --require ts-node/register -p ./test/e2e/android/conf.spec.js --exit --timeout 260000",
+    "test-parallel-bs": "mocha --require ts-node/register -p ./test/e2e/android/cloud/bs.spec.ts --exit --timeout 260000",
+    "test-parallel-pcloudy": "mocha --require ts-node/register -p ./test/e2e/android/cloud/pcloudy.spec.ts --exit --timeout 260000",
+    "test-parallel-sauce": "wait-on http://localhost:31337/xenon/ && mocha --require ts-node/register -p ./test/e2e/android/cloud/sauce.spec.js --exit --timeout 260000",
+    "test-parallel-lt": "mocha --require ts-node/register -p ./test/e2e/android/cloud/lambdaTest.spec.ts --exit --timeout 260000",
+    "test-parallel-ios-bs": "mocha --require ts-node/register -p ./test/e2e/android/cloud/confIOS.ts --exit --timeout 260000",
+    "test-e2e": "mocha --require ts-node/register ./test/e2e/plugin.spec.* --exit --timeout=999999",
+    "test-e2e-hubnode": "mocha -r ts-node/register ./test/e2e/hubnode/*.spec.ts --plugin-xenon-platform=both --exit --timeout=999999",
+    "test-e2e-browserstack": "mocha --require ts-node/register ./test/e2e/browserstack.spec.ts --exit --timeout 999999",
+    "test-e2e-pcloudy": "mocha --require ts-node/register ./test/e2e/pcloudy.spec.ts --exit --timeout 999999",
+    "integration-android": "mocha -r ts-node/register ./test/integration/androidDevices.spec.ts --timeout 90000 --exit",
+    "integration-ios": "mocha -r ts-node/register ./test/integration/ios/*.spec.ts --timeout 260000 --exit",
+    "integration-ios2": "mocha -r ts-node/register ./test/integration/ios/02iOSDevices.spec.ts --timeout 260000 --exit",
+    "build": "npx tsc -b && npm run copy-files",
+    "build-web-and-plugin": "npx tsc -b && npm run buildXenon && npm run copy-files",
+    "copy-files": "cp -R src/public lib",
+    "buildXenon": "sh build-xenon.sh",
+    "prepublish": "npx tsc && npm run buildXenon && npm run copy-files",
+    "lint": "eslint . --ext .ts,.tsx --fix",
+    "prettier-check": "prettier 'src/**/*.ts' 'web/**/*.ts' 'web/**/*.tsx' --check --verbose",
+    "prettier": "prettier 'src/**/*.ts' 'web/**/*.ts' 'web/**/*.tsx' 'test/**/*.ts' --write --single-quote",
+    "appium-home": "rm -rf rm -rf /tmp/some-temp-dir && export APPIUM_HOME=/tmp/some-temp-dir",
+    "install-plugin": "npm run build && appium plugin install --source=local $(pwd)",
+    "clear-cache": "rm -rf $HOME/.cache/xenon",
+    "install-driver": "export APPIUM_HOME=/tmp/some-temp-dir && node ./scripts/install-compatible-driver.js",
+    "reinstall-plugin": "export APPIUM_HOME=/tmp/some-temp-dir && npm run appium-home && (appium plugin uninstall xenon || exit 0) && npm run install-plugin",
+    "run-server": "export APPIUM_HOME=/tmp/some-temp-dir && npx appium server -ka 800 --use-plugins=xenon -pa /wd/hub --plugin-xenon-platform=ios --plugin-xenon-max-sessions=8 --plugin-xenon-enable-dashboard",
+    "run-db-migration": "path-exists lib/src/scripts/initialize-database.js && node lib/src/scripts/initialize-database.js || ts-node src/scripts/initialize-database.ts",
+    "generate-migration": "ts-node src/scripts/generate-database-migration.ts",
+    "postinstall": "npm run run-db-migration"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/xenon-platform/xenon"
+  },
+  "contributors": [
+    {
+      "name": "Saikrishna",
+      "email": "saikrishna321@yahoo.com"
+    },
+    {
+      "name": "Srinivasan Sekar",
+      "email": "srinivasan.sekar1990@gmail.com"
+    },
+    {
+      "name": "Sudharsan Selvaraj",
+      "email": "sudharsanselvaraj.c@gmail.com"
+    },
+    {
+      "name": "Anand Bagmar",
+      "email": "abagmar@gmail.com"
+    }
+  ],
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/xenon-platform/xenon/issues"
+  },
+  "homepage": "https://github.com/xenon-platform/xenon#readme",
+  "dependencies": {
+    "@appium/base-plugin": "^2.2.22",
+    "@appium/types": "^0.14.1",
+    "@devicefarmer/adbkit": "^3.2.5",
+    "@ffmpeg-installer/ffmpeg": "^1.1.0",
+    "@fortawesome/fontawesome-svg-core": "^7.1.0",
+    "@fortawesome/free-brands-svg-icons": "^7.1.0",
+    "@fortawesome/react-fontawesome": "^3.1.1",
+    "@prisma/client": "^5.4.1",
+    "@types/appium-adb": "^9.10.4",
+    "@types/express-fileupload": "^1.5.1",
+    "@types/node-persist": "^3.1.5",
+    "appium-adb": "^11.0.3",
+    "appium-chromedriver": "^5.6.19",
+    "appium-ios-device": "^2.7.6",
+    "async-lock": "^1.2.8",
+    "async-wait-until": "^2.0.12",
+    "axios": "^0.27.2",
+    "cors": "^2.8.5",
+    "download": "^8.0.0",
+    "express": "^4.17.3",
+    "express-fileupload": "^1.5.2",
+    "fs-extra": "^11.1.1",
+    "get-port": "^5.1.1",
+    "http-proxy-agent": "7.0.0",
+    "http-proxy-middleware": "^3.0.0-beta.1",
+    "https-proxy-agent": "7.0.2",
+    "ip": "^1.1.8",
+    "jsonschema": "1.4.1",
+    "lodash": "^4.17.21",
+    "lokijs": "^1.5.12",
+    "mjpeg-proxy": "^0.3.0",
+    "node-abort-controller": "^3.1.1",
+    "node-cache": "^5.1.2",
+    "node-persist": "^3.1.3",
+    "node-schedule": "^2.1.1",
+    "node-simctl": "^7.3.13",
+    "normalize-url": "6.1.0",
+    "nyc": "^15.1.0",
+    "ora": "5.4.1",
+    "path-exists-cli": "^2.0.0",
+    "prisma": "^5.4.1",
+    "ramda": "^0.28.0",
+    "reflect-metadata": "^0.1.13",
+    "semver": "^7.5.4",
+    "tcp-port-used": "^1.0.2",
+    "typedi": "^0.10.0",
+    "unzipper": "^0.10.14",
+    "usbmux": "^0.1.0",
+    "uuid": "^8.3.2",
+    "yargs": "^17.7.2"
+  },
+  "peerDependencies": {
+    "appium": "^3.1.1"
+  },
+  "devDependencies": {
+    "@appium/docutils": "^0.4.11",
+    "@appium/fake-driver": "^6.0.1",
+    "@appium/plugin-test-support": "^1.0.3",
+    "@babel/core": "7.23.9",
+    "@babel/plugin-proposal-class-properties": "7.18.6",
+    "@types/async-lock": "1.4.2",
+    "@types/bluebird": "^3.5.42",
+    "@types/chai": "4.3.10",
+    "@types/chai-as-promised": "^7.1.8",
+    "@types/express": "4.17.21",
+    "@types/fs-extra": "^11.0.0",
+    "@types/ip": "^1.1.2",
+    "@types/js-yaml": "^4.0.9",
+    "@types/lodash": "4.14.202",
+    "@types/lokijs": "1.5.14",
+    "@types/mocha": "9.1.1",
+    "@types/node-schedule": "1.3.2",
+    "@types/sinon": "^17.0.2",
+    "@types/sinon-chai": "^3.2.12",
+    "@types/tcp-port-used": "1.0.4",
+    "@types/uuid": "8.3.4",
+    "@types/yargs": "17.0.32",
+    "@typescript-eslint/eslint-plugin": "5.62.0",
+    "@typescript-eslint/parser": "5.62.0",
+    "@wdio/types": "^8.24.2",
+    "appium": "3.1.1",
+    "appium-uiautomator2-driver": "^5.0.3",
+    "appium-xcuitest-driver": "^10.1.2",
+    "babel-eslint": "10.1.0",
+    "chai": "4.3.10",
+    "chai-as-promised": "^7.1.1",
+    "chai-exclude": "^2.1.0",
+    "dotenv": "^16.3.1",
+    "eslint": "8.52.0",
+    "eslint-config-prettier": "9.0.0",
+    "eslint-plugin-import": "2.29.1",
+    "eslint-plugin-prettier": "^5.0.0",
+    "husky": "7.0.4",
+    "js-yaml": "^4.1.0",
+    "lint-staged": "15.0.2",
+    "mocha": "9.2.2",
+    "prettier": "^3.0.3",
+    "ramda": "0.29.1",
+    "sinon": "17.0.0",
+    "sinon-chai": "^3.7.0",
+    "ts-node": "10.9.1",
+    "typescript": "^5.5.4",
+    "vite": "^4.5.0",
+    "wait-on": "7.0.1",
+    "webdriverio": "^8.20.4"
+  },
+  "appium": {
+    "pluginName": "xenon",
+    "mainClass": "XenonPlugin",
+    "schema": {
+      "$schema": "http://json-schema.org/draft-07/schema",
+      "additionalProperties": false,
+      "description": "Appium configuration schema for the Xenon plugin.",
+      "properties": {
+        "platform": {
+          "type": "string"
+        },
+        "androidDeviceType": {
+          "type": "string",
+          "default": "both"
+        },
+        "simulators": {
+          "type": "array"
+        },
+        "iosDeviceType": {
+          "type": "string",
+          "default": "both"
+        },
+        "hub": {
+          "type": "string"
+        },
+        "remoteMachineProxyIP": {
+          "type": "string"
+        },
+        "adbRemote": {
+          "type": "array"
+        },
+        "skipChromeDownload": {
+          "type": "boolean"
+        },
+        "maxSessions": {
+          "type": "number"
+        },
+        "cloud": {
+          "type": "object"
+        },
+        "derivedDataPath": {
+          "type": "object"
+        },
+        "emulators": {
+          "type": "array"
+        },
+        "proxy": {
+          "type": "object"
+        },
+        "deviceAvailabilityTimeoutMs": {
+          "type": "number"
+        },
+        "deviceAvailabilityQueryIntervalMs": {
+          "type": "number"
+        },
+        "sendNodeDevicesToHubIntervalMs": {
+          "type": "number"
+        },
+        "checkStaleDevicesIntervalMs": {
+          "type": "number"
+        },
+        "checkBlockedDevicesIntervalMs": {
+          "type": "number"
+        },
+        "newCommandTimeoutSec": {
+          "type": "number"
+        },
+        "bindHostOrIp": {
+          "type": "string"
+        },
+        "enableDashboard": {
+          "type": "boolean"
+        },
+        "bootedSimulators": {
+          "type": "boolean"
+        },
+        "removeDevicesFromDatabaseBeforeRunningThePlugin": {
+          "type": "boolean"
+        }
+      },
+      "title": "Appium device farm plugin",
+      "type": "object"
+    }
+  },
+  "engines": {
+    "node": "^14.17.0 || ^16.13.0 || >=18.0.0",
+    "npm": ">=8"
+  },
+  "lint-staged": {
+    "src/*.{js,jsx,ts,tsx,json,css,scss,md}": [
+      "npm run prettier",
+      "git add"
+    ]
+  },
+  "husky": {
+    "hooks": {
+      "pre-commit": "lint-staged",
+      "pre-push": "npm run test"
+    }
+  },
+  "files": [
+    "lib",
+    "scripts",
+    "prisma"
+  ],
+  "typedoc": {
+    "entryPoint": "lib/src/index.js"
+  }
+}

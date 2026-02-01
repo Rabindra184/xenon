@@ -1,0 +1,12 @@
+{
+  "server": {
+    "port": 31337,
+    "plugin": {
+      "xenon": {
+        "platform": "android",
+        "skipChromeDownload": true,
+        "enableDashboard": true
+      }
+    }
+  }
+}

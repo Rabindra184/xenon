@@ -1,0 +1,362 @@
+.device-info-card-container {
+  background: var(--bg-surface);
+  height: 100%;
+  min-height: 440px;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  padding: var(--space-lg);
+  border-radius: var(--radius-xl);
+  position: relative;
+  box-shadow: var(--shadow-md);
+  border: 1px solid var(--border-light);
+  transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+  backdrop-filter: var(--glass-blur);
+  overflow: hidden;
+}
+
+
+
+.device-info-card-container:hover {
+  box-shadow: var(--shadow-lg);
+  transform: translateY(-4px);
+  border-color: var(--primary-glow);
+}
+
+.device-info-card-container.controlling {
+  transform: none !important;
+  backdrop-filter: none !important;
+  z-index: 10000;
+}
+
+/* Status Modes */
+.device-info-card-container.disabled {
+  opacity: 0.6;
+  filter: grayscale(0.5);
+}
+
+.device-info-card-container.busy {
+  border-color: var(--status-busy);
+  animation: pulse-busy 2s infinite ease-in-out;
+}
+
+.device-info-card-container.reserved {
+  border-color: #38BDF8;
+  animation: pulse-reserved 2s infinite ease-in-out;
+}
+
+@keyframes pulse-reserved {
+  0% {
+    box-shadow: 0 0 0 0 rgba(56, 189, 248, 0.2);
+  }
+
+  50% {
+    box-shadow: 0 0 0 8px rgba(56, 189, 248, 0);
+  }
+
+  100% {
+    box-shadow: 0 0 0 0 rgba(56, 189, 248, 0);
+  }
+}
+
+@keyframes pulse-busy {
+  0% {
+    box-shadow: 0 0 0 0 rgba(245, 158, 11, 0.2);
+  }
+
+  50% {
+    box-shadow: 0 0 0 8px rgba(245, 158, 11, 0);
+  }
+
+  100% {
+    box-shadow: 0 0 0 0 rgba(245, 158, 11, 0);
+  }
+}
+
+/* Device Status Badge */
+.device-state {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 4px 10px;
+  border-radius: 20px;
+  width: fit-content;
+  margin-top: 4px;
+  /* Added internal buffer */
+  margin-bottom: var(--space-md);
+}
+
+.device-state.ready {
+  color: var(--status-ready);
+  background: rgba(16, 185, 129, 0.1);
+}
+
+.device-state.busy {
+  color: var(--status-busy);
+  background: rgba(245, 158, 11, 0.1);
+}
+
+.device-state.offline {
+  color: var(--status-offline);
+  background: rgba(148, 163, 184, 0.1);
+}
+
+.device-state.reserved {
+  color: #38BDF8;
+  background: rgba(56, 189, 248, 0.1);
+}
+
+/* Title Wrapper */
+.device-info-card-container__title_wrapper {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-bottom: var(--space-sm);
+  margin-bottom: var(--space-sm);
+  border-bottom: 1px solid var(--border-light);
+}
+
+.device-info-card-container__device-title {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-main);
+  max-width: 190px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  /* Prevent wrapping */
+}
+
+
+/* Body Content */
+.device-info-card-container__body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+  padding: var(--space-sm) 0;
+}
+
+.device-info-card-container__body_row {
+  display: grid;
+  grid-template-columns: 120px 1fr;
+  align-items: baseline;
+  font-size: 13px;
+  gap: 12px;
+  padding-bottom: 2px;
+}
+
+.device-info-card-container__body_row_label {
+  color: var(--text-muted);
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.device-info-card-container__body_row_value {
+  color: var(--text-main);
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-align: right;
+  white-space: nowrap;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 12px;
+}
+
+.health-status {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.health-status-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.health-status.healthy {
+  color: #10b981;
+}
+
+.health-status.healthy .health-status-dot {
+  box-shadow: 0 0 8px #10b981;
+}
+
+.health-status.unhealthy {
+  color: #ef4444;
+  text-decoration: underline dotted;
+  cursor: help;
+}
+
+.health-status.unhealthy .health-status-dot {
+  box-shadow: 0 0 8px #ef4444;
+}
+
+
+
+/* Reservation Details */
+.reservation-details-section {
+  margin-top: var(--space-xs);
+  padding: var(--space-xs) var(--space-sm);
+  background: rgba(56, 189, 248, 0.05);
+  border-radius: var(--radius-md);
+  border: 1px dashed rgba(56, 189, 248, 0.3);
+}
+
+.reservation-row {
+  margin-bottom: 2px !important;
+}
+
+.reservation-row .device-info-card-container__body_row_label {
+  color: #38bdf8 !important;
+  font-size: 11px;
+}
+
+.highlight-value {
+  color: #38bdf8 !important;
+  font-weight: 700 !important;
+}
+
+/* Interactive Elements */
+.dashboard-link-wrapper {
+  margin-top: var(--space-sm);
+  padding-top: var(--space-sm);
+  border-top: 1px solid var(--border-light);
+}
+
+.footer-deeplink {
+  font-size: 12px;
+  color: var(--secondary);
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.footer-deeplink:hover {
+  text-decoration: underline;
+}
+
+/* Action Buttons */
+.device-info-card-container__footer_wrapper {
+  margin-top: auto;
+  padding-top: var(--space-md);
+}
+
+
+.device-info-card__body_block-device,
+.device-info-card__body_unblock-device {
+  width: 100%;
+  padding: var(--space-sm);
+  border-radius: var(--radius-md);
+  font-size: 12px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-xs);
+  border: 1px solid transparent;
+}
+
+.device-info-card__body_block-device {
+  background: rgba(16, 185, 129, 0.05);
+  color: var(--status-ready);
+  border-color: rgba(16, 185, 129, 0.2);
+}
+
+.device-info-card__body_block-device:hover {
+  background: var(--status-ready);
+  color: var(--text-inverse);
+}
+
+.device-info-card__body_unblock-device {
+  background: rgba(239, 68, 68, 0.05);
+  color: var(--status-error);
+  border-color: rgba(239, 68, 68, 0.2);
+}
+
+.device-info-card__body_unblock-device:hover {
+  background: var(--status-error);
+  color: var(--text-inverse);
+}
+
+/* Override for reservation release button to be sky blue instead of red */
+.device-info-card__body_unblock-device[title*="Reserved"] {
+  background: rgba(56, 189, 248, 0.1);
+  color: #38BDF8;
+  border-color: rgba(56, 189, 248, 0.2);
+}
+
+.device-info-card__body_unblock-device[title*="Reserved"]:hover {
+  background: #38BDF8;
+  color: #0F172A;
+}
+
+.device-info-card__body_control-device {
+  width: 100%;
+  padding: 10px;
+  margin-top: 10px;
+  border-radius: var(--radius-md);
+  font-size: 13px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-sm);
+  border: 1px solid rgba(56, 189, 248, 0.3);
+  background: rgba(56, 189, 248, 0.1);
+  color: #38bdf8;
+  cursor: pointer;
+  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+}
+
+.device-info-card__body_control-device:hover:not(.disabled) {
+  background: #38bdf8;
+  color: #0f172a;
+  transform: translateY(-2px);
+  box-shadow: 0 10px 15px -3px rgba(34, 197, 94, 0.1);
+}
+
+.device-info-card__body_control-device.disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  filter: grayscale(1);
+  border-color: var(--border-medium);
+}
+
+/* Modal Overlay */
+.device-control-modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: var(--bg-app);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 99999;
+  animation: modalFadeIn 0.3s ease-out;
+}
+
+@keyframes modalFadeIn {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+.device-control-modal {
+  width: 100vw;
+  height: 100vh;
+  background: var(--bg-app);
+  overflow: hidden;
+}
