@@ -2,10 +2,11 @@ import { Request, Response, Router, NextFunction } from 'express';
 import { prisma } from '../../prisma';
 import { SESSION_MANAGER } from '../../sessions/SessionManager';
 import { MjpegProxy } from 'mjpeg-proxy';
+import { WebConfigService } from '../../data-service/web-config-service';
 
 const MJPEG_PROXY_CACHE: Map<string, any> = new Map();
 
-//session gaurd
+//session guard
 async function isValidSession(request: Request, response: Response, next: NextFunction) {
   const sessionId = request.params.sessionId;
   const session = await prisma.session.findFirst({
@@ -16,23 +17,48 @@ async function isValidSession(request: Request, response: Response, next: NextFu
   if (!session) {
     return response.status(404).send({
       error: true,
-      message: `Sesssion with id ${sessionId} not found`,
+      message: `Session with id ${sessionId} not found`,
     });
   } else {
     return next();
   }
 }
 
+
+
 async function getSessions(request: Request, response: Response) {
-  const buildId = request.query.buildId || undefined;
+  const { buildId, query, status, platform } = request.query;
+
+  const where: any = {};
+
+  if (buildId) {
+    where.build_id = buildId as string;
+  }
+
+  if (status) {
+    where.status = status as string;
+  }
+
+  if (platform) {
+    where.device_platform = platform as string;
+  }
+
+  if (query) {
+    where.OR = [
+      { id: { contains: query as string } },
+      { name: { contains: query as string } },
+      { device_udid: { contains: query as string } },
+      { device_name: { contains: query as string } },
+      { failure_category: { contains: query as string } },
+    ];
+  }
+
   const sessions = await prisma.session.findMany({
     orderBy: {
       createdAt: 'desc',
     },
-    where: {
-      build: buildId ? { id: buildId as any } : undefined,
-    },
-    take: 500, // Principal Fix: Do not crash the UI with 10k rows
+    where,
+    take: 500,
   });
   return response.status(200).json(sessions);
 }
@@ -144,6 +170,35 @@ async function streamLiveSessionVideo(request: Request, response: Response) {
   }
 }
 
+async function getGlobalConfig(request: Request, response: Response) {
+  try {
+    const config = await WebConfigService.getConfig();
+    return response.status(200).json(config);
+  } catch (err: any) {
+    return response.status(500).json({ error: true, message: err.message });
+  }
+}
+
+async function updateGlobalConfig(request: Request, response: Response) {
+  try {
+    await WebConfigService.setConfig(request.body);
+    return response.status(200).json({ success: true });
+  } catch (err: any) {
+    return response.status(500).json({ error: true, message: err.message });
+  }
+}
+
+async function resetMetrics(request: Request, response: Response) {
+  try {
+    const { DeviceStoreFactory } = await import('../../data-service/device-store');
+    const store = DeviceStoreFactory.getStore();
+    await store.resetMetrics();
+    return response.status(200).json({ success: true });
+  } catch (err: any) {
+    return response.status(500).json({ error: true, message: err.message });
+  }
+}
+
 function register(router: Router) {
   router.use('/session/:sessionId', isValidSession);
 
@@ -154,6 +209,9 @@ function register(router: Router) {
   router.get('/session/:sessionId/logs/device', getDeviceLogs);
   router.get('/session/:sessionId/logs/debug', getDebugLogs);
   router.get('/session/:sessionId/profiling', getProfilingData);
+  router.get('/config', getGlobalConfig);
+  router.post('/config', updateGlobalConfig);
+  router.post('/config/reset-metrics', resetMetrics);
 }
 
 export default {

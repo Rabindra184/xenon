@@ -25,7 +25,7 @@ class NotificationService {
   async saveConfig(
     url: string,
     events: string[],
-    type: string = 'slack',
+    type = 'slack',
     payloadTemplate?: string,
   ): Promise<WebhookConfig> {
     return this.prisma.webhookConfig.create({

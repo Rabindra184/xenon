@@ -22,10 +22,16 @@ import { DeviceUpdate } from '../types/DeviceUpdate';
 import Tracker from '@devicefarmer/adbkit/dist/src/adb/tracker';
 import { deviceLock } from './android/DeviceLockManager';
 import AndroidStreamService from './android/AndroidStreamService';
+interface ExtendedADB extends ADB {
+  adbHost?: string;
+  adbPort?: number;
+  adbRemoteHost?: string | null;
+  executable: { path: string; defaultArgs: string[];[key: string]: any };
+}
 
 export default class AndroidDeviceManager implements IDeviceManager {
   private log = log.scope('AndroidManager');
-  private adb: ADB | undefined;
+  private adb: ExtendedADB | undefined;
   private adbAvailable = true;
   private abortControl: Map<string, AbortController> = new Map();
   private tracker?: Tracker = undefined;
@@ -34,7 +40,7 @@ export default class AndroidDeviceManager implements IDeviceManager {
     private pluginArgs: IPluginArgs,
     private hostPort: number,
     private nodeId: string,
-  ) {}
+  ) { }
 
   private initiateAbortControl(deviceUdid: string) {
     const control = new AbortController();
@@ -82,8 +88,8 @@ export default class AndroidDeviceManager implements IDeviceManager {
       } else {
         return devices;
       }
-    } catch (e) {
-      log.error(`Error while getting android devices. Error: ${e}`);
+    } catch (e: unknown) {
+      log.error(`Error while getting android devices. Error: ${e instanceof Error ? e.message : e}`);
     }
     return [];
   }
@@ -96,7 +102,8 @@ export default class AndroidDeviceManager implements IDeviceManager {
 
     for (const [adbInstance, devices] of connectedDevices) {
       log.debug(
-        `fetchAndroidDevices from host: ${adbInstance.adbHost}. Found ${devices.length} android devices`,
+        `fetchAndroidDevices from host: ${adbInstance.adbRemoteHost || 'Local'}. Found ${devices.length
+        } android devices`,
       );
       for (const device of devices) {
         deviceProcessingPromises.push(
@@ -147,7 +154,7 @@ export default class AndroidDeviceManager implements IDeviceManager {
 
   private async deviceInfo(
     device: { udid: string; state: string },
-    adbInstance: any,
+    adbInstance: ExtendedADB,
     pluginArgs: IPluginArgs,
     hostPort: number,
   ): Promise<IDevice | undefined> {
@@ -183,7 +190,7 @@ export default class AndroidDeviceManager implements IDeviceManager {
       host = `http://${pluginArgs.bindHostOrIp}:${hostPort}`;
     }
     return {
-      adbRemoteHost: adbInstance.adbHost,
+      adbRemoteHost: adbInstance.adbRemoteHost ?? undefined,
       adbPort: adbInstance.adbPort,
       systemPort,
       sdk: sdk ?? 'unknown',
@@ -204,8 +211,9 @@ export default class AndroidDeviceManager implements IDeviceManager {
   async getAdditionalDeviceInfo(device: IDevice): Promise<Partial<IDevice>> {
     log.info(`Fetching additional device info for ${device.udid} (Lazy Loading)`);
     const { adbInstance } = await this.getAdb();
+    if (!adbInstance) return {};
     const adb = device.adbRemoteHost
-      ? adbInstance.clone({ remoteAdbHost: device.adbRemoteHost, adbPort: device.adbPort })
+      ? (adbInstance.clone({ remoteAdbHost: device.adbRemoteHost, adbPort: device.adbPort }) as ExtendedADB)
       : adbInstance;
 
     try {
@@ -226,7 +234,7 @@ export default class AndroidDeviceManager implements IDeviceManager {
   }
 
   private async getScreenSize(
-    adbInstance: any,
+    adbInstance: ExtendedADB,
     udid: string,
   ): Promise<{ width: string; height: string } | undefined> {
     try {
@@ -270,7 +278,7 @@ export default class AndroidDeviceManager implements IDeviceManager {
     return undefined;
   }
 
-  private async getAdb(): Promise<any> {
+  private async getAdb(): Promise<{ adbInstance: ExtendedADB | undefined; adbTracker: Tracker | undefined }> {
     try {
       if (!this.adb) {
         try {
@@ -281,7 +289,7 @@ export default class AndroidDeviceManager implements IDeviceManager {
         }
         const client = Adb.createClient();
         this.tracker = await client.trackDevices();
-        if (this.tracker) {
+        if (this.tracker && this.adb) {
           const originalADBTracking = this.createLocalAdbTracker(this.tracker, this.adb);
           await originalADBTracking();
         }
@@ -290,11 +298,12 @@ export default class AndroidDeviceManager implements IDeviceManager {
       log.error(`Failed to initialize ADB: ${e}`);
       this.adbAvailable = false;
     }
-    return { adbInstance: this.adb, adbTracker: this.tracker };
+    return { adbInstance: this.adb as ExtendedADB, adbTracker: this.tracker };
   }
 
-  public async getAdbForDevice(udid: string): Promise<ADB> {
+  public async getAdbForDevice(udid: string): Promise<ExtendedADB> {
     const { adbInstance } = await this.getAdb();
+    if (!adbInstance) throw new Error('ADB is not available');
     const device = await DeviceStoreFactory.getStore().findDevice({ udid });
     if (device && device.adbRemoteHost) {
       log.debug(
@@ -303,12 +312,12 @@ export default class AndroidDeviceManager implements IDeviceManager {
       return adbInstance.clone({
         remoteAdbHost: device.adbRemoteHost,
         adbPort: device.adbPort,
-      });
+      }) as ExtendedADB;
     }
     return adbInstance;
   }
 
-  async waitBootComplete(originalADB: any, udid: string): Promise<boolean | undefined> {
+  async waitBootComplete(originalADB: ExtendedADB, udid: string): Promise<boolean | undefined> {
     return await asyncWait(
       async () => {
         try {
@@ -335,17 +344,18 @@ export default class AndroidDeviceManager implements IDeviceManager {
   public async getConnectedDevices(pluginArgs: IPluginArgs) {
     const deviceList = new Map();
     const { adbInstance: originalADB } = await this.getAdb();
+    if (!originalADB) return deviceList;
     deviceList.set(originalADB, await originalADB.getConnectedDevices());
     const adbRemote = pluginArgs.adbRemote;
     if (adbRemote !== undefined && adbRemote.length > 0) {
-      const promises = adbRemote.map(async (value: any) => {
+      const promises = adbRemote.map(async (value: string) => {
         const adbRemoteValue = value.split(':');
         const adbHost = adbRemoteValue[0];
-        const adbPort = adbRemoteValue[1] || 5037;
+        const adbPort = parseInt(adbRemoteValue[1]) || 5037;
         const cloneAdb = originalADB.clone({
           remoteAdbHost: adbHost,
           adbPort,
-        });
+        }) as ExtendedADB;
         const devices = await cloneAdb.getConnectedDevices();
         deviceList.set(cloneAdb, devices);
         const remoteAdb = Adb.createClient({
@@ -355,7 +365,7 @@ export default class AndroidDeviceManager implements IDeviceManager {
         const remoteAdbTracking = await this.createRemoteAdbTracker(
           remoteAdb,
           originalADB,
-          adbRemoteValue,
+          value,
         );
         await remoteAdbTracking();
       });
@@ -364,7 +374,7 @@ export default class AndroidDeviceManager implements IDeviceManager {
     return deviceList;
   }
 
-  public async onDeviceAdded(originalADB: any, device: DeviceWithPath) {
+  public async onDeviceAdded(originalADB: ExtendedADB, device: DeviceWithPath) {
     const newDevice = { udid: device.id, state: device.type };
     log.info(`Device ${newDevice.udid} was plugged. Detail: ${JSON.stringify(newDevice)}`);
     if (newDevice.state != 'offline') {
@@ -412,7 +422,7 @@ export default class AndroidDeviceManager implements IDeviceManager {
     }
   }
 
-  public createLocalAdbTracker(tracker: Tracker, originalADB: any) {
+  public createLocalAdbTracker(tracker: Tracker, originalADB: ExtendedADB) {
     const pluginArgs = this.pluginArgs;
     const adbTracker = async () => {
       try {
@@ -432,8 +442,8 @@ export default class AndroidDeviceManager implements IDeviceManager {
         tracker.on('end', () => {
           log.info('Tracking stopped');
         });
-      } catch (err: any) {
-        log.error('Something went wrong:', err.stack);
+      } catch (err: unknown) {
+        log.error('Something went wrong:', err instanceof Error ? err.stack : err);
       }
     };
 
@@ -463,7 +473,7 @@ export default class AndroidDeviceManager implements IDeviceManager {
    * @param id
    * @returns
    */
-  private async createRemoteAdbTracker(adbClient: Client, originalADB: Client, id: string) {
+  private async createRemoteAdbTracker(adbClient: Client, originalADB: ExtendedADB, id: string) {
     let remoteTracker: Tracker;
     // get tracker from remoteTracker list if already exists
     const existingTracker = this.remoteTrackers.find((tracker) => tracker.id === id);
@@ -492,15 +502,15 @@ export default class AndroidDeviceManager implements IDeviceManager {
           }
         });
         remoteTracker.on('end', () => console.log('Tracking stopped'));
-      } catch (err: any) {
-        console.error('Something went wrong:', err.stack);
+      } catch (err: unknown) {
+        console.error('Something went wrong:', err instanceof Error ? err.stack : err);
       }
     };
 
     return adbTracking;
   }
 
-  public async getChromeVersion(adbInstance: any, udid: string, pluginArgs: IPluginArgs) {
+  public async getChromeVersion(adbInstance: ExtendedADB, udid: string, pluginArgs: IPluginArgs) {
     if (pluginArgs.skipChromeDownload) {
       log.warn('skipChromeDownload server arg is set; skipping Chromedriver installation.');
       log.warn('Android web/hybrid testing will not be possible without Chromedriver.');
@@ -519,12 +529,12 @@ export default class AndroidDeviceManager implements IDeviceManager {
         versionName = versionName.split('.')[0];
         return await chromeDriverManager.downloadChromeDriver(versionName);
       }
-    } catch (err: any) {
-      log.warn(`Error '${err.message}' while dumping package info`);
+    } catch (err: unknown) {
+      log.warn(`Error '${err instanceof Error ? err.message : err}' while dumping package info`);
     }
   }
 
-  public async downloadChromeDriver(version: any) {
+  public async downloadChromeDriver(version: string) {
     const instance = await ChromeDriverManager.getInstance();
     return await instance.downloadChromeDriver(version);
   }
@@ -534,7 +544,7 @@ export default class AndroidDeviceManager implements IDeviceManager {
   }
 
   private async getDeviceProperty(
-    adbInstance: any,
+    adbInstance: ExtendedADB,
     udid: string,
     prop: string,
   ): Promise<string | undefined> {
@@ -545,7 +555,7 @@ export default class AndroidDeviceManager implements IDeviceManager {
     }
   }
 
-  private async isRealDevice(adbInstance: any, udid: string): Promise<boolean> {
+  private async isRealDevice(adbInstance: ExtendedADB, udid: string): Promise<boolean> {
     const character = await this.getDeviceProperty(adbInstance, udid, 'ro.build.characteristics');
     return character !== 'emulator';
   }
@@ -573,7 +583,7 @@ export default class AndroidDeviceManager implements IDeviceManager {
     return sdkRoot;
   }
 
-  private getDeviceName = async (adbInstance: any, udid: string): Promise<string | undefined> => {
+  private getDeviceName = async (adbInstance: ExtendedADB, udid: string): Promise<string | undefined> => {
     let deviceName = await this.getDeviceProperty(await adbInstance, udid, 'ro.product.name');
 
     if (!deviceName || (deviceName && deviceName.trim() === '')) {
@@ -659,16 +669,19 @@ export default class AndroidDeviceManager implements IDeviceManager {
 
   async installApp(udid: string, appPath: string): Promise<void> {
     const { adbInstance } = await this.getAdb();
+    if (!adbInstance) throw new Error('ADB is not available');
     await adbInstance.adbExec(['-s', udid, 'install', '-r', appPath]);
   }
 
   async uninstallApp(udid: string, bundleId: string): Promise<void> {
     const { adbInstance } = await this.getAdb();
+    if (!adbInstance) throw new Error('ADB is not available');
     await adbInstance.adbExec(['-s', udid, 'uninstall', bundleId]);
   }
 
   async getClipboard(udid: string): Promise<string> {
     const { adbInstance } = await this.getAdb();
+    if (!adbInstance) return '';
     try {
       // 1. Try Targeted Broadcast method (Reliable for modern Android)
       const result = await adbInstance.adbExec([
@@ -725,14 +738,15 @@ export default class AndroidDeviceManager implements IDeviceManager {
           return val;
         }
       }
-    } catch (err: any) {
-      log.warn(`Failed to fetch Android clipboard for ${udid}: ${err.message}`);
+    } catch (err: unknown) {
+      log.warn(`Failed to fetch Android clipboard for ${udid}: ${err instanceof Error ? err.message : err}`);
     }
     return '';
   }
 
   async setClipboard(udid: string, content: string): Promise<void> {
     const { adbInstance } = await this.getAdb();
+    if (!adbInstance) return;
     try {
       await adbInstance.adbExec([
         '-s',
@@ -751,13 +765,14 @@ export default class AndroidDeviceManager implements IDeviceManager {
         'content',
         Buffer.from(content).toString('base64'), // Send as Base64 for safety
       ]);
-    } catch (err: any) {
-      log.warn(`Failed to set Android clipboard for ${udid}: ${err.message}`);
+    } catch (err: unknown) {
+      log.warn(`Failed to set Android clipboard for ${udid}: ${err instanceof Error ? err.message : err}`);
     }
   }
 
   async touchAndHold(udid: string, x: number, y: number, duration: number): Promise<void> {
     const { adbInstance } = await this.getAdb();
+    if (!adbInstance) return;
     await deviceLock.acquire(udid, async () => {
       await adbInstance.adbExec(
         [
@@ -779,12 +794,14 @@ export default class AndroidDeviceManager implements IDeviceManager {
 
   async lock(udid: string): Promise<void> {
     const { adbInstance } = await this.getAdb();
+    if (!adbInstance) return;
     // 26 is POWER button, usually locks if screen is on
     await adbInstance.adbExec(['-s', udid, 'shell', 'input', 'keyevent', '26']);
   }
 
   async unlock(udid: string): Promise<void> {
     const { adbInstance } = await this.getAdb();
+    if (!adbInstance) return;
     // Wake up the device and potentially unlock
     await adbInstance.adbExec(['-s', udid, 'shell', 'input', 'keyevent', '224']); // WAKEUP
     await adbInstance.adbExec(['-s', udid, 'shell', 'input', 'keyevent', '82']); // MENU (locks/unlocks some devices)
@@ -792,6 +809,7 @@ export default class AndroidDeviceManager implements IDeviceManager {
 
   async listApps(udid: string): Promise<string[]> {
     const { adbInstance } = await this.getAdb();
+    if (!adbInstance) return [];
     // List all third-party apps
     const stdout = await adbInstance.adbExec(['-s', udid, 'shell', 'pm', 'list', 'packages', '-3']);
     return stdout
@@ -851,15 +869,15 @@ export default class AndroidDeviceManager implements IDeviceManager {
         });
       });
       return screenshot;
-    } catch (err: any) {
-      log.error(`Failed to take screenshot for ${udid}: ${err.message}`);
+    } catch (err: unknown) {
+      log.error(`Failed to take screenshot for ${udid}: ${err instanceof Error ? err.message : err}`);
       // Fallback: Try shell method with base64 conversion on device
       try {
         log.info(`Attempting fallback screenshot for ${udid}...`);
         const base64 = await adb.adbExec(['-s', udid, 'shell', 'screencap', '-p', '|', 'base64']);
         return base64.replace(/\r?\n/g, '');
-      } catch (fallbackErr: any) {
-        log.error(`Fallback screenshot also failed for ${udid}: ${fallbackErr.message}`);
+      } catch (fallbackErr: unknown) {
+        log.error(`Fallback screenshot also failed for ${udid}: ${fallbackErr instanceof Error ? fallbackErr.message : fallbackErr}`);
       }
       return '';
     }
@@ -867,6 +885,7 @@ export default class AndroidDeviceManager implements IDeviceManager {
 
   async getLogs(udid: string): Promise<string> {
     const { adbInstance } = await this.getAdb();
+    if (!adbInstance) return 'ADB is not available';
     try {
       // Get last 500 lines of logcat
       return await adbInstance.adbExec([
@@ -880,34 +899,79 @@ export default class AndroidDeviceManager implements IDeviceManager {
         '-v',
         'threadtime',
       ]);
-    } catch (err: any) {
-      log.warn(`Failed to fetch Android logs for ${udid}: ${err.message}`);
-      return `Failed to fetch logs: ${err.message}`;
+    } catch (err: unknown) {
+      log.warn(`Failed to fetch Android logs for ${udid}: ${err instanceof Error ? err.message : err}`);
+      return `Failed to fetch logs: ${err instanceof Error ? err.message : err}`;
     }
   }
 
-  async checkHealth(device: IDevice): Promise<{ healthStatus: string; healthCheckError?: string }> {
+  async checkHealth(device: IDevice): Promise<Partial<IDevice>> {
     if (device.cloud) return { healthStatus: 'Healthy' };
 
     try {
       const adb = await this.getAdbForDevice(device.udid);
-      const bootCompleted = await adb.adbExec([
-        '-s',
-        device.udid,
-        'shell',
-        'getprop',
-        'sys.boot_completed',
+      const [bootCompleted, batteryInfo, storageInfo] = await Promise.all([
+        adb.adbExec(['-s', device.udid, 'shell', 'getprop', 'sys.boot_completed']),
+        adb.adbExec(['-s', device.udid, 'shell', 'dumpsys', 'battery']),
+        adb.adbExec(['-s', device.udid, 'shell', 'df', '-h', '/data']),
       ]);
-      if (bootCompleted && bootCompleted.trim() === '1') {
-        return { healthStatus: 'Healthy' };
-      } else {
+
+      const isBooted = bootCompleted && bootCompleted.trim() === '1';
+
+      // Parse battery
+      const batteryLevelMatch = /level: (\d+)/.exec(batteryInfo);
+      const batteryLevel = batteryLevelMatch ? parseInt(batteryLevelMatch[1]) : undefined;
+      const batteryTempMatch = /temperature: (\d+)/.exec(batteryInfo);
+      const batteryTemp = batteryTempMatch ? parseInt(batteryTempMatch[1]) / 10 : undefined;
+
+      let thermalStatus = 'Normal';
+      if (batteryTemp && batteryTemp > 45) thermalStatus = 'Hot';
+      if (batteryTemp && batteryTemp > 55) thermalStatus = 'Critical';
+
+      // Parse storage
+      const storageLines = storageInfo.split(/\r?\n/);
+      let storageFree = 'Unknown';
+      if (storageLines.length > 1) {
+        const fields = storageLines[1].trim().split(/\s+/);
+        if (fields.length >= 4) storageFree = fields[3];
+      }
+
+      const healthData: Partial<IDevice> = {
+        batteryLevel,
+        thermalStatus,
+        storageFree,
+      };
+
+      if (!isBooted) {
         return {
+          ...healthData,
           healthStatus: 'Unhealthy',
           healthCheckError: `Device boot not completed. sys.boot_completed: ${bootCompleted}`,
         };
       }
-    } catch (err: any) {
-      return { healthStatus: 'Unhealthy', healthCheckError: err.message };
+
+      if (batteryLevel !== undefined && batteryLevel < 10) {
+        return {
+          ...healthData,
+          healthStatus: 'Unhealthy',
+          healthCheckError: `Low battery: ${batteryLevel}%`,
+        };
+      }
+
+      if (thermalStatus === 'Critical') {
+        return {
+          ...healthData,
+          healthStatus: 'Unhealthy',
+          healthCheckError: `Critical thermal state: ${batteryTemp}°C`,
+        };
+      }
+
+      return {
+        ...healthData,
+        healthStatus: 'Healthy',
+      };
+    } catch (err: unknown) {
+      return { healthStatus: 'Unhealthy', healthCheckError: err instanceof Error ? err.message : String(err) };
     }
   }
 
@@ -916,12 +980,22 @@ export default class AndroidDeviceManager implements IDeviceManager {
 
     try {
       log.info(`🛡️ Attempting auto-recovery for Android device ${device.udid}...`);
-      // For Android, if boot is not completed, we mainly wait.
-      // But we could potentially restart ADB server if multiple devices are failing.
-      // For now, we'll just return true to indicate we acknowledged it.
+      const adb = await this.getAdbForDevice(device.udid);
+
+      // Tier 1: Just log and hope it clears (for now)
+      // Tier 2: If low battery and not charging, or critical thermal, we can't do much but alert.
+      // Tier 3: If stuck booting or unresponsive, reboot.
+      if (device.healthStatus === 'Unhealthy') {
+        if (device.healthCheckError?.includes('boot not completed')) {
+          log.info(`Device ${device.udid} is stuck booting. Attempting hard reboot...`);
+          await adb.adbExec(['-s', device.udid, 'reboot']);
+          return true;
+        }
+      }
+
       return true;
-    } catch (err: any) {
-      log.error(`Auto-recovery failed for ${device.udid}: ${err.message}`);
+    } catch (err: unknown) {
+      log.error(`Auto-recovery failed for ${device.udid}: ${err instanceof Error ? err.message : err}`);
       return false;
     }
   }
@@ -962,6 +1036,7 @@ export default class AndroidDeviceManager implements IDeviceManager {
 
     log.info(`Executing shell command on ${udid}: ${safeCommand}`);
     const { adbInstance } = await this.getAdb();
+    if (!adbInstance) throw new Error('ADB is not available');
 
     // Use device lock to ensure thread safety
     return await deviceLock.acquire(udid, async () => {

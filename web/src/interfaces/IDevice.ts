@@ -22,4 +22,10 @@ export interface IDevice {
   reservedBy?: string;
   reservedUntil?: number;
   reservationReason?: string;
+  batteryLevel?: number;
+  thermalStatus?: string;
+  storageFree?: string;
+  tags?: string[];
+  sessionProgress?: string;
+  totalHealedCount?: number;
 }

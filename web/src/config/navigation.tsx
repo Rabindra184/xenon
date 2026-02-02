@@ -1,5 +1,5 @@
 import React from 'react';
-import { Smartphone, Hammer, AppWindow, Bell } from 'lucide-react';
+import { Smartphone, Hammer, AppWindow, Bell, Settings } from 'lucide-react';
 
 export interface NavItem {
   id: string;
@@ -49,13 +49,13 @@ export const navigationConfig: NavItem[] = [
   //   path: '/stats',
   //   enabled: false,
   // },
-  // {
-  //   id: 'settings',
-  //   label: 'Settings',
-  //   icon: <Settings size={18} />,
-  //   path: '/settings',
-  //   enabled: false,
-  // },
+  {
+    id: 'settings',
+    label: 'Settings',
+    icon: <Settings size={18} color="currentColor" />,
+    path: '/settings',
+    enabled: true,
+  },
 ];
 
 /**

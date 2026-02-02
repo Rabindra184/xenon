@@ -4,6 +4,7 @@ import DeviceExplorer from '../components/device-explorer/device-explorer';
 import SessionDashboard from '../components/session-dashboard/session-dashboard';
 import Apps from '../components/apps/apps';
 import { WebhookSettings } from '../components/webhook-settings/webhook-settings';
+import { Settings } from '../components/settings/settings';
 
 /**
  * Application routes configuration
@@ -69,6 +70,15 @@ export const AppRoutes: React.FC = () => {
        * - /builds/:id - Individual build details
        * - /devices/:id - Individual device details
        */}
+
+      <Route
+        path="/settings"
+        element={
+          <div className="app-body-container settings-view">
+            <Settings />
+          </div>
+        }
+      />
 
       {/* Catch-all redirect for unknown routes */}
       <Route path="*" element={<Navigate to="/devices" replace />} />

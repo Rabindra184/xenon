@@ -1,10 +1,10 @@
 INHERIT: ./node_modules/@appium/docutils/base-mkdocs.yml
-site_name: Appium Xenon
+site_name: Xenon
 repo_url: https://github.com/AppiumTestDistribution/appium-xenon
 repo_name: AppiumTestDistribution/appium-xenon
 site_url: https://appium-xenon-eight.vercel.app/
 edit_uri: edit/master/docs
-site_description: Documentation for the Appium Xenon plugin
+site_description: Documentation for the Xenon Appium plugin
 docs_dir: docs
 site_dir: site
 theme:
@@ -28,12 +28,13 @@ extra:
   social:
     - icon: fontawesome/brands/twitter
 nav:
-  - index.md
-  - setup.md
-  - troubleshooting.md
-  - cloud.md
-  - remote-execution.md
+  - Overview: index.md
+  - Installation: setup.md
+  - Configuration: server-args.md
+  - Capabilities: capabilities.md
+  - Troubleshooting: troubleshooting.md
+  - Advanced:
+      - Cloud Execution: cloud.md
+      - Remote Execution: remote-execution.md
   - Reference:
-      - server-args.md
-      - capabilities.md
       - reference/commands/sample.md

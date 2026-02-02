@@ -1,0 +1,17 @@
+{
+    "server": {
+        "keepAliveTimeout": 800,
+        "basePath": "/wd/hub",
+        "usePlugins": [
+            "xenon"
+        ],
+        "plugin": {
+            "xenon": {
+                "platform": "both",
+                "maxSessions": 8,
+                "enableDashboard": true,
+                "bootedSimulators": true
+            }
+        }
+    }
+}

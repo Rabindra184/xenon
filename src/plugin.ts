@@ -16,11 +16,13 @@ import {
   unblockDevice,
   unblockDeviceMatchingFilter,
   updatedAllocatedDevice,
+  updateDeviceProgress,
 } from './data-service/device-service';
 import {
   addNewPendingSession,
   removePendingSession,
 } from './data-service/pending-sessions-service';
+import { ConfigService } from './data-service/config-service';
 import {
   allocateDeviceForSession,
   setupCronReleaseBlockedDevices,
@@ -36,7 +38,6 @@ import {
   removeStaleDevices,
 } from './device-utils';
 import { XenonManager } from './device-managers';
-import IOSDeviceManager from './device-managers/IOSDeviceManager';
 import { Container } from 'typedi';
 import log from './logger';
 import { v4 as uuidv4 } from 'uuid';
@@ -222,14 +223,13 @@ class XenonPlugin extends BasePlugin {
 
     if (XenonPlugin.IS_HUB && this.pluginArgs.enableDashboard && sessionId) {
       const sessionLog = this.xenonLog.withSession(sessionId, driver.caps?.udid);
-      sessionLog.info(`Unexpected shutdown for session, updating dashboard...`);
+      sessionLog.info('Unexpected shutdown for session, updating dashboard...');
 
       // Attempt to rescue video recording if in progress
       const session = SESSION_MANAGER.getSession(sessionId);
       if (session && session.isVideoRecordingInProgress()) {
         log.info(
-          `[${sessionId}][xenon] rescue-video: Attempting to save video for crashed session (UDID: ${
-            driver.caps?.udid || 'unknown'
+          `[${sessionId}][xenon] rescue-video: Attempting to save video for crashed session (UDID: ${driver.caps?.udid || 'unknown'
           })...`,
         );
         try {
@@ -271,6 +271,17 @@ class XenonPlugin extends BasePlugin {
       );
     } else {
       pluginArgs = Object.assign({}, DefaultPluginArgs);
+    }
+
+    // Load persisted configuration overrides
+    try {
+      const persistedConfig = await ConfigService.getInstance().loadConfig();
+      if (persistedConfig && Object.keys(persistedConfig).length > 0) {
+        log.info(`Loading persisted configuration: ${JSON.stringify(persistedConfig)}`);
+        Object.assign(pluginArgs, persistedConfig);
+      }
+    } catch (err) {
+      log.warn(`Failed to load persisted config: ${err}`);
     }
     XenonPlugin.NODE_ID = uuidv4();
     const { version } = await import('../package.json');
@@ -387,7 +398,7 @@ class XenonPlugin extends BasePlugin {
 
       // Start Health Monitor Service
       const { HealthMonitorService } = await import('./device-managers/HealthMonitorService');
-      HealthMonitorService.getInstance().start();
+      HealthMonitorService.getInstance().start(pluginArgs);
 
       // Principal Cleaning: Mark all pre-existing "running" sessions as Interrupted
 
@@ -494,6 +505,8 @@ class XenonPlugin extends BasePlugin {
       }
     });
 
+    await updateDeviceProgress(device.udid, device.host, 'Allocating node resources...');
+
     let session: CreateSessionResponseInternal | W3CNewSessionResponseError | Error;
     const isRemoteOrCloudSession = !device.nodeId || device.nodeId !== XenonPlugin.NODE_ID;
 
@@ -503,39 +516,120 @@ class XenonPlugin extends BasePlugin {
     // if device is not on the same node, forward the session request. Unless hub is not defined then create session on the same node
     if (isRemoteOrCloudSession) {
       log.debug(`📱 Forwarding session request to ${device.host}`);
+      await updateDeviceProgress(device.udid, device.host, 'Forwarding to remote node...');
       session = await this.forwardSessionRequest(device, caps);
     } else {
       log.debug('📱 Creating session on the same node');
 
-      // Technical Optimization: If real iOS device and WDA IPA exists in repository (e.g. wda-resign.ipa), use it as priority
+      // Technical Optimization: Conditional WDA Provisioning
       if (device.platform === 'ios' && device.realDevice) {
         const { APP_SERVICE } = await import('./dashboard/services/app-service');
         const wdaApp = await APP_SERVICE.getWDAApp();
-        if (wdaApp && (await import('fs-extra')).existsSync(wdaApp.filepath)) {
+        const streamService = (
+          await import('./device-managers/ios/IOSStreamService')
+        ).default.getInstance();
+        const streamStatus = streamService.getStreamStatus(device.udid);
+        const isWdaActive =
+          streamStatus && (streamStatus.status === 'running' || streamStatus.status === 'starting');
+
+        // If WDA is NOT active but we have a signed artifact, or if we want to ensure WDA is running
+        // We trigger startStream which handles installation and WDA boot via go-ios (bypassing xcodebuild)
+        if (!isWdaActive && wdaApp && (await import('fs-extra')).existsSync(wdaApp.filepath)) {
           log.info(
-            `📱 Artisan WDA: Found pre-signed artifact "${wdaApp.name}" at ${wdaApp.filepath}. Provisioning ${device.udid}...`,
+            `📱 Artisan WDA: Signed artifact found. Triggering pre-session WDA boot for ${device.udid}...`,
           );
+          await updateDeviceProgress(device.udid, device.host, 'Provisioning WDA artifact...');
+
+          // Technical Optimization: Infrastructure Auto-Heal (DerivedData)
+          // Clear the local DerivedData cache to prevent Appium from using stale, expired builds
+          if (device.derivedDataPath) {
+            try {
+              const fs = await import('fs-extra');
+              if (fs.existsSync(device.derivedDataPath)) {
+                log.info(`🧹 Artisan WDA: Clearing stale cache at ${device.derivedDataPath}`);
+                await fs.remove(device.derivedDataPath);
+              }
+            } catch (e: any) {
+              log.warn(
+                `⚠️ Artisan WDA: Failed to clear cache at ${device.derivedDataPath}: ${e.message}`,
+              );
+            }
+          }
+
           try {
-            const deviceManager = Container.get(XenonManager);
-            const manager = (await deviceManager.deviceInstances()).find(
-              (m) => m instanceof IOSDeviceManager,
-            ) as IOSDeviceManager;
-            if (manager) {
-              await manager.installApp(device.udid, wdaApp.filepath);
-              log.info(`📱 Artisan WDA: Artifact provisioned successfully to ${device.udid}`);
-              // Reinforce capability to bypass Appium's WDA building logic
-              if (caps.alwaysMatch) caps.alwaysMatch['appium:usePrebuiltWDA'] = true;
-              if (caps.firstMatch && caps.firstMatch[0])
-                caps.firstMatch[0]['appium:usePrebuiltWDA'] = true;
+            // This will install the IPA and start WDA/iproxy
+            const streamInfo = await streamService.startStream(device.udid);
+            const wdaUrl = `http://127.0.0.1:${streamInfo.wdaPort}`;
+            log.info(`📱 Artisan WDA: WDA is active at ${wdaUrl}. Injecting webDriverAgentUrl.`);
+            await updateDeviceProgress(
+              device.udid,
+              device.host,
+              'WDA active, finalizing session...',
+            );
+
+            // Senior Resiliency: Add a small settling delay (2s) to ensure the tunnel and WDA
+            // are fully stabilized and ready for the incoming Appium connection hammer
+            await new Promise((resolve) => setTimeout(resolve, 2000));
+
+            // Alignment with appium-device-farm: Detect Bundle ID and set pre-installed caps
+            const bundleId = await streamService.detectWDABundleId(device.udid);
+
+            // Inject webDriverAgentUrl and remove build-related caps to force Appium to skip build/launch
+            // Also inject usePreinstalledWDA and updatedWDABundleId for official alignment
+            // CRITICAL: Remove port capabilities to avoid conflicts with our active iproxy/streamer
+            if (caps.alwaysMatch) {
+              caps.alwaysMatch['appium:webDriverAgentUrl'] = wdaUrl;
+              caps.alwaysMatch['appium:usePreinstalledWDA'] = true;
+              if (bundleId) caps.alwaysMatch['appium:updatedWDABundleId'] = bundleId;
+              delete caps.alwaysMatch['appium:derivedDataPath'];
+              delete caps.alwaysMatch['appium:usePrebuiltWDA'];
+              delete caps.alwaysMatch['appium:wdaLocalPort'];
+              delete caps.alwaysMatch['appium:mjpegServerPort'];
+            }
+            if (caps.firstMatch && caps.firstMatch[0]) {
+              caps.firstMatch[0]['appium:webDriverAgentUrl'] = wdaUrl;
+              caps.firstMatch[0]['appium:usePreinstalledWDA'] = true;
+              if (bundleId) caps.firstMatch[0]['appium:updatedWDABundleId'] = bundleId;
+              delete caps.firstMatch[0]['appium:derivedDataPath'];
+              delete caps.firstMatch[0]['appium:usePrebuiltWDA'];
+              delete caps.firstMatch[0]['appium:wdaLocalPort'];
+              delete caps.firstMatch[0]['appium:mjpegServerPort'];
             }
           } catch (err: any) {
-            log.warn(
-              `⚠️ Artisan WDA: Provisioning failed: ${err.message}. Proceeding with standard XCUITest boot.`,
+            log.warn(`⚠️ Artisan WDA: Pre-session boot failed: ${err.message}. Fallback to Xcode.`);
+            await updateDeviceProgress(
+              device.udid,
+              device.host,
+              'Provisioning failed, falling back to Xcode...',
             );
           }
+        } else if (isWdaActive) {
+          log.info(`📱 Artisan WDA: WDA already active for ${device.udid}. Reusing tunnel.`);
+          await updateDeviceProgress(device.udid, device.host, 'Reusing active WDA tunnel...');
+          const wdaUrl = `http://127.0.0.1:${streamStatus!.wdaPort}`;
+          if (caps.alwaysMatch) caps.alwaysMatch['appium:webDriverAgentUrl'] = wdaUrl;
+          if (caps.firstMatch && caps.firstMatch[0])
+            caps.firstMatch[0]['appium:webDriverAgentUrl'] = wdaUrl;
         }
       }
 
+      // Final fallback/generic progress labels for devices that don't have webDriverAgentUrl yet
+      if (device.platform === 'ios' && device.realDevice) {
+        const hasWdaUrl =
+          _.has(caps.alwaysMatch, 'appium:webDriverAgentUrl') ||
+          _.has(caps.firstMatch[0], 'appium:webDriverAgentUrl');
+        if (!hasWdaUrl) {
+          await updateDeviceProgress(
+            device.udid,
+            device.host,
+            'Initializing WebDriverAgent (Xcode)...',
+          );
+        }
+      } else if (device.platform === 'android') {
+        await updateDeviceProgress(device.udid, device.host, 'Initializing UIAutomator2...');
+      }
+
+      await updateDeviceProgress(device.udid, device.host, 'Finalizing session bootstrap...');
       session = await next();
     }
 
@@ -565,6 +659,7 @@ class XenonPlugin extends BasePlugin {
         session_id: sessionId,
         lastCmdExecutedAt: new Date().getTime(),
         sessionStartTime: new Date().getTime(),
+        sessionProgress: 'Session Active',
       });
       if (isRemoteOrCloudSession) {
         addProxyHandler(sessionId, device.host);
@@ -605,11 +700,11 @@ class XenonPlugin extends BasePlugin {
       if (isVideoRecordingEnabled) {
         const resolution = xenonCapabilities[XENON_CAPABILITIES.VIDEO_RESOLUTION] || undefined;
         try {
-          sessionLog.info(`📹 Starting video recording`);
+          sessionLog.info('📹 Starting video recording');
           await sessionInstance.startVideoRecording({ resolution });
-          sessionLog.info(`✅ Video recording started`);
+          sessionLog.info('✅ Video recording started');
         } catch (err) {
-          sessionLog.warn(`⚠️ Failed to start video recording:`, err);
+          sessionLog.warn('⚠️ Failed to start video recording:', err);
         }
       }
 
@@ -632,13 +727,14 @@ class XenonPlugin extends BasePlugin {
         );
       }
 
-      sessionLog.info(`📱 Session established on device`);
+      sessionLog.info('📱 Session established on device');
     } else {
       // assume session is an error
       await unblockDevice(device.udid, device.host);
       this.xenonLog.info(
         `📱 Device UDID ${device.udid} unblocked. Reason: Failed to create session`,
       );
+      await updateDeviceProgress(device.udid, device.host, '');
 
       this.throwProperError(session, device.host);
     }
@@ -649,15 +745,18 @@ class XenonPlugin extends BasePlugin {
   throwProperError(session: any, host: string) {
     if (session instanceof Error) {
       throw session;
-    } else if (session.hasOwnProperty('error')) {
-      const errorMessage = (session as W3CNewSessionResponseError).error;
-      if (errorMessage) {
+    } else if (session && typeof session === 'object' && session.hasOwnProperty('error')) {
+      let errorMessage = (session as W3CNewSessionResponseError).error;
+      if (typeof errorMessage === 'object') {
+        errorMessage = JSON.stringify(errorMessage);
+      }
+      if (errorMessage && errorMessage !== '{}') {
         throw new Error(errorMessage);
       } else {
         throw new Error(
-          `Unknown error while creating session: ${JSON.stringify(
+          `Empty error response from node ${host}: ${JSON.stringify(
             session,
-          )}. \nBetter look at appium log on the node: ${host}`,
+          )}. This usually indicates WDA crashed or failed to return a proper W3C error. Check Appium logs on the node.`,
         );
       }
     } else {
@@ -763,8 +862,7 @@ class XenonPlugin extends BasePlugin {
         }
       } catch (error: AxiosError<any> | any) {
         log.warn(
-          `Received error from remote node (Attempt ${attempt + 1}/${maxRetries + 1}): ${
-            error.message || error
+          `Received error from remote node (Attempt ${attempt + 1}/${maxRetries + 1}): ${error.message || error
           }`,
         );
         if (error instanceof AxiosError) {
@@ -821,7 +919,7 @@ class XenonPlugin extends BasePlugin {
   async deleteSession(next: () => any, driver: any, sessionId: any) {
     await unblockDeviceMatchingFilter({ session_id: sessionId });
     const sessionLog = this.xenonLog.withSession(sessionId);
-    sessionLog.info(`📱 Unblocking the device that is blocked for session`);
+    sessionLog.info('📱 Unblocking the device that is blocked for session');
 
     // Stop video recording BEFORE session is deleted and save it immediately
     const session = SESSION_MANAGER.getSession(sessionId);
@@ -830,7 +928,7 @@ class XenonPlugin extends BasePlugin {
     if (session) {
       const device = session.getDevice();
       if (device && device.platform?.toLowerCase() === 'ios') {
-        sessionLog.info(`Stopping iOS profiling before session deletion`);
+        sessionLog.info('Stopping iOS profiling before session deletion');
         try {
           const traceBase64 = await session.stopPerformanceRecording();
           if (traceBase64) {
@@ -846,7 +944,7 @@ class XenonPlugin extends BasePlugin {
     }
 
     if (session && session.isVideoRecordingInProgress()) {
-      sessionLog.info(`Stopping video recording before session deletion`);
+      sessionLog.info('Stopping video recording before session deletion');
       try {
         const videoBase64 = await session.stopVideoRecording();
         sessionLog.info(
@@ -858,12 +956,12 @@ class XenonPlugin extends BasePlugin {
             const videoPath = saveVideoRecording(sessionId, videoBase64);
             sessionLog.info(`✅ Video saved at ${videoPath}`);
             await updateSessionDetails(sessionId, { video_recording: videoPath });
-            sessionLog.info(`✅ Database updated with video path`);
+            sessionLog.info('✅ Database updated with video path');
           } catch (saveErr: any) {
             sessionLog.error(`❌ Failed to save video: ${saveErr.message}`);
           }
         } else {
-          sessionLog.warn(`⚠️ Video recording returned empty`);
+          sessionLog.warn('⚠️ Video recording returned empty');
         }
       } catch (error: any) {
         sessionLog.warn(`Failed to stop video recording: ${error.message}`);

@@ -81,6 +81,25 @@ Device:
   userBlocked: false,
   nodeId: "aa920192-dea4-402f-8adf-d517c715a684",
   offline: false,
+
+  // --- Enterprise & Health Fields (v1.0.0+) ---
+  healthStatus: "Healthy",
+  batteryLevel: 98,
+  thermalStatus: "Normal",
+  storageFree: "12.4 GB",
+  totalHealedCount: 4,
+  lastHealthCheckAt: 1696916407141,
+  
+  // --- Reservation System ---
+  reservedBy: "Rabindra",
+  reservedUntil: 1696920007141,
+  reservationReason: "Manual Debugging",
+
+  // --- Metadata & UI ---
+  tags: ["production", "pixel-xl"],
+  dashboard_link: "http://10.218.170.98:4723/xenon/session/7ff721e7",
+  sessionProgress: "Running",
+
   meta: {
     revision: 6,
     created: 1696916346503,

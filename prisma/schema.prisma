@@ -137,14 +137,20 @@ model Device {
   screenHeight                 String?
   dashboard_link               String?
   total_session_count          Int?     @default(0)
+  sessionProgress              String?  @default("")
   createdAt                    DateTime @default(now())
   updatedAt                    DateTime @updatedAt
   healthCheckError             String?
   healthStatus                 String?  @default("Healthy")
   lastHealthCheckAt            Float?
+  batteryLevel                 Int?
+  thermalStatus                String?
+  storageFree                  String?
   reservationReason            String?
   reservedBy                   String?
   reservedUntil                Float?
+  tags                         String?
+  totalHealedCount             Int?     @default(0)
 
   @@id([udid, host])
 }
@@ -171,4 +177,12 @@ model WebhookConfig {
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
   payloadTemplate String?
+}
+
+model WebConfig {
+  id        String   @id @default("global")
+  name      String   @unique
+  value     String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }

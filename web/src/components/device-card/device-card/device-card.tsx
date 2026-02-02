@@ -8,12 +8,18 @@ import {
   Monitor,
   Unlock,
   Clock,
+  Plus,
+  ShieldCheck,
+  Battery,
+  Thermometer,
+  HardDrive,
 } from 'lucide-react';
 import { IDevice } from '../../../interfaces/IDevice';
 import prettyMilliseconds from 'pretty-ms';
 import XenonApiService from '../../../api-service';
 import DeviceControl from '../../device-control/device-control';
 import ReservationModal from '../../reservation-modal/reservation-modal';
+import TagManagerModal from '../../tag-manager-modal/tag-manager-modal';
 
 interface IDeviceCardProps {
   device: IDevice;
@@ -23,12 +29,17 @@ interface IDeviceCardProps {
 interface IDeviceCardState {
   showControl: boolean;
   showReservation: boolean;
+  showTagManager: boolean;
 }
 
 export default class DeviceCard extends React.Component<IDeviceCardProps, IDeviceCardState> {
   constructor(props: IDeviceCardProps) {
     super(props);
-    this.state = { showControl: false, showReservation: false };
+    this.state = {
+      showControl: false,
+      showReservation: false,
+      showTagManager: false,
+    };
   }
   getStatusClassName() {
     if (this.props.device.offline) {
@@ -85,6 +96,10 @@ export default class DeviceCard extends React.Component<IDeviceCardProps, IDevic
     this.props.reloadDevices();
   }
 
+  async manageTags() {
+    this.setState({ showTagManager: true });
+  }
+
   render() {
     const {
       name,
@@ -102,6 +117,12 @@ export default class DeviceCard extends React.Component<IDeviceCardProps, IDevic
       reservedBy,
       reservedUntil,
       reservationReason,
+      batteryLevel,
+      thermalStatus,
+      storageFree,
+      tags,
+      sessionProgress,
+      totalHealedCount,
     } = this.props.device;
 
     const deviceState = this.getDeviceState();
@@ -124,14 +145,13 @@ export default class DeviceCard extends React.Component<IDeviceCardProps, IDevic
           <button
             className="device-info-card__body_unblock-device"
             onClick={() => this.releaseReservation(udid, host)}
-            title={`Reserved by ${reservedBy}${
-              reservationReason ? `: ${reservationReason}` : ''
-            }. Expires: ${reservedUntil ? new Date(reservedUntil).toLocaleString() : 'Never'}`}
+            title={`Reserved by ${reservedBy}${reservationReason ? `: ${reservationReason}` : ''
+              }. Expires: ${reservedUntil ? new Date(reservedUntil).toLocaleString() : 'Never'}`}
           >
             <Unlock
               size={16}
               className="device-info-card__body_block-device-icon"
-              color="#38BDF8"
+              color="var(--accent-blue)"
             />
             {this.getRemainingReservationTime()
               ? `Release (${this.getRemainingReservationTime()})`
@@ -151,7 +171,7 @@ export default class DeviceCard extends React.Component<IDeviceCardProps, IDevic
               <Clock
                 size={16}
                 className="device-info-card__body_block-device-icon"
-                color="#38BDF8"
+                color="var(--accent-blue)"
               />
               Reserve
             </button>
@@ -163,7 +183,7 @@ export default class DeviceCard extends React.Component<IDeviceCardProps, IDevic
               <XCircle
                 size={16}
                 className="device-info-card__body_block-device-icon"
-                color="#10b981"
+                color="var(--primary)"
               />
               Maintenance
             </button>
@@ -178,7 +198,7 @@ export default class DeviceCard extends React.Component<IDeviceCardProps, IDevic
             <XCircle
               size={16}
               className="device-info-card__body_block-device-icon"
-              color="#ef4444"
+              color="var(--status-error)"
             />
             Exit Maintenance
           </button>
@@ -188,11 +208,19 @@ export default class DeviceCard extends React.Component<IDeviceCardProps, IDevic
 
     return (
       <div
-        className={`device-info-card-container ${this.getStatusClassName()} ${
-          this.state.showControl ? 'controlling' : ''
-        }`}
+        className={`device-info-card-container ${this.getStatusClassName()} ${this.state.showControl ? 'controlling' : ''
+          }`}
       >
-        <div className={`device-state ${deviceState}`}>{deviceState}</div>
+        <div
+          className={`device-state ${deviceState} ${deviceState === 'busy' && sessionProgress && sessionProgress !== 'Session Active'
+            ? 'progress-active'
+            : ''
+            }`}
+        >
+          {deviceState === 'busy' && sessionProgress && sessionProgress !== 'Session Active'
+            ? sessionProgress
+            : deviceState}
+        </div>
         <div className="device-info-card-container__title_wrapper">
           <div className="code device-info-card-container__device-title" title={udid}>
             {udid}
@@ -200,13 +228,13 @@ export default class DeviceCard extends React.Component<IDeviceCardProps, IDevic
           {['ios', 'tvos'].includes(platform) ? (
             <AppleIcon
               size={18}
-              color="#64748b"
+              color="var(--status-offline)"
               className="device-info-card-container__device-icon"
             />
           ) : (
             <AndroidIcon
               size={18}
-              color="#64748b"
+              color="var(--status-offline)"
               className="device-info-card-container__device-icon"
             />
           )}
@@ -239,14 +267,67 @@ export default class DeviceCard extends React.Component<IDeviceCardProps, IDevic
           <div className="device-info-card-container__body_row">
             <div className="device-info-card-container__body_row_label">Health:</div>
             <div
-              className={`device-info-card-container__body_row_value health-status ${
-                this.props.device.healthStatus?.toLowerCase() || 'healthy'
-              }`}
+              className={`device-info-card-container__body_row_value health-status ${this.props.device.healthStatus?.toLowerCase() || 'healthy'
+                }`}
               title={this.props.device.healthCheckError || 'Device is healthy'}
             >
               <span className="health-status-dot"></span>
               {this.props.device.healthStatus || 'Healthy'}
+              {totalHealedCount && totalHealedCount > 0 ? (
+                <span
+                  className="healed-count-badge"
+                  title={`Autonomous Watchdog healed this device ${totalHealedCount} times`}
+                >
+                  <ShieldCheck size={10} style={{ marginRight: '2px' }} />
+                  {totalHealedCount > 99 ? '99+' : totalHealedCount}
+                </span>
+              ) : null}
             </div>
+          </div>
+
+          <div className="device-info-card-container__body_row">
+            <div className="device-info-card-container__body_row_label">Tags:</div>
+            <div className="device-tags-container">
+              {tags && tags.length > 0 ? (
+                tags.map((tag: string) => (
+                  <span key={tag} className="device-tag-pill" onClick={() => this.manageTags()}>
+                    {tag}
+                  </span>
+                ))
+              ) : (
+                <span className="no-tags">No tags</span>
+              )}
+              <button className="add-tag-btn" onClick={() => this.manageTags()}>
+                <Plus size={10} />
+              </button>
+            </div>
+          </div>
+
+          <div className="device-health-metrics">
+            {batteryLevel !== undefined && (
+              <div className="health-metric" title={`Battery: ${batteryLevel}%`}>
+                <div className={`battery-level-indicator ${batteryLevel < 20 ? 'low' : ''}`}>
+                  <div className="battery-level-fill" style={{ width: `${batteryLevel}%` }}></div>
+                </div>
+                <Battery size={12} />
+                <span>{batteryLevel}%</span>
+              </div>
+            )}
+            {thermalStatus && thermalStatus !== 'Normal' && (
+              <div
+                className={`health-metric thermal-metric ${thermalStatus.toLowerCase()}`}
+                title={`Thermal: ${thermalStatus}`}
+              >
+                <Thermometer size={12} />
+                <span>{thermalStatus.toUpperCase()}</span>
+              </div>
+            )}
+            {storageFree && storageFree !== 'Unknown' && (
+              <div className="health-metric storage-metric" title={`Free Space: ${storageFree}`}>
+                <HardDrive size={12} />
+                <span>{storageFree}</span>
+              </div>
+            )}
           </div>
 
           {totalUtilizationTimeMilliSec != null && (
@@ -313,9 +394,8 @@ export default class DeviceCard extends React.Component<IDeviceCardProps, IDevic
         <div className="device-info-card-container__footer_wrapper">
           {blockButton()}
           <button
-            className={`device-info-card__body_control-device ${
-              busy && !!session_id ? 'disabled' : ''
-            }`}
+            className={`device-info-card__body_control-device ${busy && !!session_id ? 'disabled' : ''
+              }`}
             onClick={() => !(busy && !!session_id) && this.setState({ showControl: true })}
             disabled={busy && !!session_id}
             title={
@@ -343,6 +423,13 @@ export default class DeviceCard extends React.Component<IDeviceCardProps, IDevic
             device={this.props.device}
             onClose={() => this.setState({ showReservation: false })}
             onReserved={() => this.props.reloadDevices()}
+          />
+        )}
+        {this.state.showTagManager && (
+          <TagManagerModal
+            device={this.props.device}
+            onClose={() => this.setState({ showTagManager: false })}
+            onUpdated={() => this.props.reloadDevices()}
           />
         )}
       </div>

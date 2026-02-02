@@ -78,8 +78,8 @@
 
 .reservation-input:focus {
     outline: none;
-    border-color: var(--accent-blue);
-    box-shadow: 0 0 0 4px rgba(56, 189, 248, 0.15);
+    border-color: var(--primary);
+    box-shadow: 0 0 0 4px var(--primary-glow);
 }
 
 .duration-selector {
@@ -108,11 +108,11 @@
 }
 
 .duration-option.active {
-    background-color: rgba(56, 189, 248, 0.1);
-    border-color: var(--accent-blue);
-    color: var(--accent-blue);
+    background-color: var(--primary-soft);
+    border-color: var(--primary);
+    color: var(--primary);
     font-weight: 700;
-    box-shadow: 0 0 10px rgba(56, 189, 248, 0.1);
+    box-shadow: 0 0 10px var(--primary-glow);
 }
 
 .reservation-actions {
@@ -141,8 +141,8 @@
 }
 
 .btn-reserve {
-    background: var(--accent-blue);
-    color: var(--secondary);
+    background: var(--primary);
+    color: var(--text-inverse);
     border: none;
     padding: 10px 24px;
     border-radius: var(--radius-md);
@@ -150,13 +150,13 @@
     font-weight: 700;
     cursor: pointer;
     transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
-    box-shadow: 0 4px 14px rgba(56, 189, 248, 0.3);
+    box-shadow: 0 4px 14px var(--primary-glow);
 }
 
 .btn-reserve:hover:not(:disabled) {
-    filter: brightness(1.1);
+    background: var(--primary-hover);
     transform: translateY(-2px);
-    box-shadow: 0 8px 20px rgba(56, 189, 248, 0.4);
+    box-shadow: 0 8px 20px var(--primary-glow);
 }
 
 .btn-reserve:disabled {
@@ -169,11 +169,11 @@
 }
 
 .error-message {
-    color: #EF4444;
+    color: var(--status-error);
     font-size: 12px;
     margin-top: 8px;
-    background-color: rgba(239, 68, 68, 0.1);
+    background-color: var(--accent-red-soft);
     padding: 8px 12px;
     border-radius: 6px;
-    border: 1px solid rgba(239, 68, 68, 0.2);
+    border: 1px solid rgba(244, 63, 94, 0.2);
 }

@@ -1,56 +1,111 @@
 ---
-title: Server Arguments
+title: Configuration
 ---
 
-These arguments are set when you launch the Appium server with xenon plugin.
+# Configuration & Server Arguments
 
-| Argument                                    | Required | Description                                                                                                                                                                                                                                                     | Default | Options                                                                                                                                                  |
-| ------------------------------------------- | -------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `--plugin-xenon-platform`             | Yes      | Platform to run tests against for parallel execution                                                                                                                                                                                                            | None    | `both`,`ios`,`android`                                                                                                                                   |
-| `--plugin-xenon-ios-device-type`      | No       | Types of ios devices to include                                                                                                                                                                                                                                 | `both`  | `both`,`simulated`,`real`, For example: If you want to run only against iOS simulator then specify --plugin-xenon-ios-device-type=simulated        |
-| `--plugin-xenon-android-device-type`  | No       | Types of android devices to include                                                                                                                                                                                                                             | `both`  | `both`,`simulated`,`real`, For example: If you want to run only against android emulator then specify --plugin-xenon-android-device-type=simulated |
-| `--plugin-xenon-skip-chrome-download` | No       | Downloads require chromedriver for web testing                                                                                                                                                                                                                  | `true`  | `false` <br/>Setting to false will download required chromedriver for web testing on chrome                                                              |
-| `--plugin-xenon-hub`                  | No       | HUB IP address and port the node should register                                                                                                                                                                                                                | None    | `hub: "http://hubhost:hubport"`, If you want to run tests distributed across remote and local machine                                                    |
-| `--plugin-xenon-max-sessions`         | No       | Limit how many sessions can be active at a time. This is useful when you need limit sessions based on host machine resource availability.                                                                                                                       | None    | `<number>` e.g. `8`                                                                                                                                      |
-| `--plugin-xenon-derived-data-path`    | No       | DriveDataPath of WDA to speed iOS test run.                                                                                                                                                                                                                     | None    | `{'simulator': 'PathtoDrivedDataPath', 'device': 'PathtoDrivedDataPath'}`                                                                                |
-| `--plugin-xenon-adb-remote`           | No       | ADB Remote host and port as array                                                                                                                                                                                                                               | None    | `["remoteMachine1IP:adbPort", "remoteMachine2IP:adbPort"]`                                                                                               |
-| `--plugin-xenon-proxy-ip`             | No       | For remote execution if the node machine is behing proxy                                                                                                                                                                                                        | None    | `http://remoteMachineProxyIP:proxyPort`, For example: 'https://10.x.x.x:3333'                                                                            |
-| `--plugin-xenon-emulators`            | No       | The name of Android emulator to run the test on. The names of currently installed emulators could be listed using avdmanager list avd command. If the emulator with the given name is not running then it is going to be launched on automated session startup. | None    | `[{"avdName": "device1, launchTimeout: 200000 }]` [Refer to Emulator (Android Virtual Device)]()                                                           |
-| `--plugin-device-availability-timeout-ms`   | No        | Hub only. How long to wait for free device before giving up (in milliseconds) | `300000` | e.g.: `300000` ms (5 minutes) |
-| `--plugin-device-availability-query-interval-ms`   | No        | Hub only. How often to check for free device (in milliseconds) | `10000`  | e.g.: `10000` ms|
-| `--plugin-send-node-devices-to-hub-interval-ms`   | No        | Node only. How often to send list of local device to hub (in milliseconds). This event is an addition to real-time event when device get plugged or unplugged (in milliseconds)| `10000`  | e.g.:  `10000` ms |
-| `--plugin-check-stale-devices-interval-ms`   | No        | Hub only. How often to check device staleness (in milliseconds). Node(s) may go down without notice. | `10000`  | e.g.: `10000` ms |
-| `--plugin-check-blocked-devices-interval-ms`   | No        | Hub only. How often to check device block status (in milliseconds). Sessions may be terminated without notice. | `10000`  | e.g.: `10000` ms|
-| `--plugin-new-command-timeout-sec`   | No        | Hub only. When last received command is older than this value (in seconds), device is considered no longer in session and will be unblocked.  | `60`  | e.g.: `60` seconds |
+Xenon is highly configurable to suit single-node, hub-node, or cloud deployments. You can configure Xenon using:
 
-### Emulator (Android Virtual Device)
+1.  **Configuration File** (Recommended for production)
+2.  **Runtime API** (For dynamic updates)
+3.  **CLI Arguments** (Good for quick testing)
 
-| Capability Name | Description                                                                                                                                                                                                                                                                |
-| --------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| avdName         | The name of Android emulator to run the test on. The names of currently installed emulators could be listed using `avdmanager list avd` command. If the emulator with the given name is not running then it is going to be launched on automated session startup.          |
-| launchTimeout   | Maximum number of milliseconds to wait until Android Emulator is started. `60000` ms by default                                                                                                                                                                            |
-| readyTimeout    | Maximum number of milliseconds to wait until Android Emulator is fully booted and is ready for usage. `60000` ms by default                                                                                                                                                |
-| args            | Either a string or an array of emulator [command line arguments](https://developer.android.com/studio/run/emulator-commandline). If arguments contain the `-wipe-data` one then the emulator is going to be killed on automated session startup in order to wipe its data. |
-| env             | Mapping of emulator [environment variables](https://developer.android.com/studio/command-line/variables).                                                                                                                                                                  |
+---
 
-Above cli arguments can also be set from config.json file Refer [here](https://github.com/AppiumTestDistribution/appium-xenon/blob/main/sample-config.json)
+## 1. Using Configuration File
 
-### Proxy configuration for axios
+We recommend using an Appium configuration file (`json` or `yaml`) to manage settings.
 
-If you need to set proxy for remote and cloud execution, appium-xenon will use the proxy provided and pass that to HttpAgent and HttpsAgent.
+### Example `xenon-config.yaml`
 
-The proxy object definition will be as per the axios documentation available here - https://axios-http.com/docs/req_config
-
-Example:
-
+```yaml
+server:
+  keepAliveTimeout: 800
+  basePath: /wd/hub
+  usePlugins:
+    - xenon
+  plugin:
+    xenon:
+      # PLATFORM & DEVICES
+      platform: both  # options: ios, android, both
+      iosDeviceType: both # options: real, simulated, both
+      androidDeviceType: both
+      
+      # INFRASTRUCTURE
+      # hub: "http://hub-ip:port" # Uncomment for Node configuration
+      maxSessions: 8
+      # proxy: 
+      #   host: "proxy.example.com"
+      #   port: 8080
+      
+      # FEATURES
+      enableDashboard: true
+      bootedSimulators: true
+      skipChromeDownload: true
+      
+      # TIMEOUTS (ms)
+      deviceAvailabilityTimeoutMs: 180000
+      deviceAvailabilityQueryIntervalMs: 10000
+      newCommandTimeoutSec: 60
 ```
-  proxy: {
-    protocol: 'https',
-    host: '127.0.0.1',
-    port: 9000,
-    auth: {
-      username: 'mikeymike',
-      password: 'rapunz3l'
-    }
-  },
+
+To run:
+```bash
+appium server --config xenon-config.yaml
 ```
+
+---
+
+## 2. Runtime Configuration (API)
+
+Xenon exposes a REST API to update configuration at runtime. This is useful for adjusting timeouts or concurrency limits without downtime.
+
+**Endpoint**: `PUT /xenon/api/config`
+
+**Example Request**:
+```bash
+curl -X PUT http://localhost:4723/xenon/api/config \
+  -H "Content-Type: application/json" \
+  -d '{ "maxSessions": 12, "newCommandTimeoutSec": 120 }'
+```
+
+**Response**:
+```json
+{
+  "success": true,
+  "config": { ... },
+  "restartRequired": false,
+  "message": "Configuration updated..."
+}
+```
+
+> ⚠️ **Restart Required**: Changing these properties via API will **NOT** take effect until a server restart:
+> - `hub`
+> - `platform`
+> - `bindHostOrIp`
+> - `proxy`
+> - `cloud`
+> - `iosDeviceType` / `androidDeviceType`
+
+---
+
+## 3. CLI Arguments Reference
+
+These arguments can be passed via command line flags (e.g., `--plugin-xenon-platform=ios`).
+
+| Configuration Key | CLI Flag | Description | Default | Options |
+| ----------------- | -------- | ----------- | ------- | ------- |
+| `platform` | `--plugin-xenon-platform` | Platform to run tests against | `both` | `both`,`ios`,`android` |
+| `iosDeviceType` | `--plugin-xenon-ios-device-type` | Types of iOS devices to include | `both` | `both`,`simulated`,`real` |
+| `androidDeviceType` | `--plugin-xenon-android-device-type` | Types of Android devices to include | `both` | `both`,`simulated`,`real` |
+| `skipChromeDownload` | `--plugin-xenon-skip-chrome-download` | Skip automatic chromedriver download | `true` | `true`, `false` |
+| `hub` | `--plugin-xenon-hub` | HUB IP address (if running as node) | None | `http://host:port` |
+| `maxSessions` | `--plugin-xenon-max-sessions` | Limit concurrent sessions | `8` | Number |
+| `enableDashboard` | `--plugin-xenon-enable-dashboard` | Enable the web dashboard | `false` | `true`, `false` |
+| `bootedSimulators` | `--plugin-xenon-booted-simulators` | Use already booted simulators | `false` | `true`, `false` |
+| `deviceAvailabilityTimeoutMs` | `--plugin-device-availability-timeout-ms` | Wait time for free device (ms) | `300000` | Number |
+| `newCommandTimeoutSec` | `--plugin-new-command-timeout-sec` | Auto-release session timeout (sec) | `60` | Number |
+
+### Cloud & Proxy
+
+Xenon also supports `cloud` and `proxy` configurations. See the configuration file example above for structure.

@@ -16,6 +16,8 @@
 <p align="center">
   <a href="#features">Features</a> •
   <a href="#quick-start">Quick Start</a> •
+  <a href="#capabilities">Capabilities</a> •
+  <a href="#api-documentation">API Docs</a> •
   <a href="#documentation">Documentation</a> •
   <a href="#contributing">Contributing</a>
 </p>
@@ -50,6 +52,7 @@
 - ✅ **Live streaming** - Real-time device screen in browser
 - ✅ **Touch interaction** - Tap, swipe, scroll remotely
 - ✅ **App management** - Install, uninstall, clear data
+- ✅ **Interactive Shell** - Execute ADB/iOS commands directly
 - ✅ **Device information** - Battery, storage, network status
 
 ### Recording & Artifacts
@@ -75,7 +78,7 @@
 appium plugin install xenon
 
 # Or install from source
-git clone https://github.com/your-org/xenon.git
+git clone https://github.com/xenon-platform/xenon.git
 cd xenon
 npm install
 npm run build
@@ -91,17 +94,190 @@ appium server --use-plugins=xenon \
   --plugin-xenon-enable-dashboard
 ```
 
-### Configuration
+## 🔧 Configuration
+
+Xenon supports configuration via CLI arguments or a configuration file (YAML/JSON). We recommend using a configuration file for production deployments.
+
+### Using Configuration File (Recommended)
+
+Create a `xenon-config.yaml` file:
+```yaml
+server:
+  usePlugins: ["xenon"]
+  plugin:
+    xenon:
+      platform: both
+      maxSessions: 8
+      enableDashboard: true
+```
+
+Run Appium with the config:
+```bash
+appium server --config xenon-config.yaml
+```
+
+### Runtime Configuration ⚡️
+
+You can update configuration options at runtime without restarting the server using the API:
 
 ```bash
-# Platform options: android, ios, both
---plugin-xenon-platform=both
+# Get current config
+GET /xenon/api/config
 
-# Enable web dashboard
---plugin-xenon-enable-dashboard
+# Update config (e.g. change max sessions)
+PUT /xenon/api/config
+{ "maxSessions": 10 }
+```
 
-# Max concurrent sessions
---plugin-xenon-max-sessions=4
+> **Note:** Some changes (like `platform` or `hub` URL) require a server restart to take full effect. The API response will indicate if a restart is required.
+
+See [docs/server-args.md](docs/server-args.md) for all available options.
+
+---
+
+## 📋 Capabilities
+
+Xenon uses the `xe:` prefix for its custom capabilities. You can also use `xenon:` as an alternative.
+
+### Session & Build Tracking
+
+| Capability | Description | Example |
+|------------|-------------|---------|
+| `xe:build` | Build name for grouping sessions | `"xe:build": "Release-v2.0"` |
+| `xe:name` | Session name for identification | `"xe:name": "Login Test Suite"` |
+
+### Recording & Screenshots
+
+| Capability | Description | Default |
+|------------|-------------|---------|
+| `xe:record_video` | Enable video recording | `true` |
+| `xe:screenshot_on_failure` | Capture screenshot on test failure | `true` |
+| `xe:screenshot_on_every_command` | Capture screenshot after each command | `false` |
+| `xe:save_device_logs` | Save device logs (logcat/syslog) | `false` |
+
+### Device Filtering
+
+| Capability | Description | Example |
+|------------|-------------|---------|
+| `appium:udids` | Comma-separated list of allowed UDIDs | `"device1,device2"` |
+| `appium:minSDK` | Minimum OS version | `"15"` |
+| `appium:maxSDK` | Maximum OS version | `"17"` |
+| `appium:iPhoneOnly` | Use only iPhone simulators | `true` |
+| `appium:iPadOnly` | Use only iPad simulators | `true` |
+| `appium:filterByHost` | Filter by node IP address | `"192.168.0.100"` |
+
+### Timeouts
+
+| Capability | Description | Default |
+|------------|-------------|---------|
+| `appium:deviceAvailabilityTimeout` | Wait time for device availability (ms) | `180000` |
+| `appium:deviceRetryInterval` | Polling interval for device check (ms) | `10000` |
+
+### Example Configuration
+
+```javascript
+const capabilities = {
+  platformName: 'iOS',
+  'appium:automationName': 'XCUITest',
+  'appium:app': '/path/to/app.ipa',
+  
+  // Xenon capabilities
+  'xe:build': 'Sprint-42',
+  'xe:name': 'Login Flow Test',
+  'xe:record_video': true,
+  'xe:screenshot_on_failure': true,
+  'xe:save_device_logs': true,
+  
+  // Device filtering
+  'appium:minSDK': '16',
+  'appium:iPhoneOnly': true
+};
+```
+
+---
+
+## 📖 API Documentation
+
+Xenon provides a comprehensive REST API for device management, session control, and more.
+
+### Swagger UI
+
+Access interactive API documentation at:
+```
+http://localhost:4723/xenon/api-docs
+```
+
+### OpenAPI Spec
+
+Get the raw OpenAPI specification:
+```
+http://localhost:4723/xenon/api-docs.json
+```
+
+### API Categories
+
+| Category | Base Path | Description |
+|----------|-----------|-------------|
+| **Devices** | `/xenon/api/devices` | Device discovery and management |
+| **Sessions** | `/xenon/api/session` | Session management and logs |
+| **Builds** | `/xenon/api/build` | Build and test execution tracking |
+| **Control** | `/xenon/api/control` | Interactive device control |
+| **Reservations** | `/xenon/api/reservation` | Device reservation for exclusive use |
+| **Applications** | `/xenon/api/apps` | App repository and installation |
+| **Webhooks** | `/xenon/api/webhook` | Notification webhook configuration |
+
+### Key Endpoints
+
+#### Devices
+```bash
+# Get all devices
+GET /xenon/api/devices
+
+# Get device by platform
+GET /xenon/api/device/{platform}
+
+# Block/Unblock device
+POST /xenon/api/device/{udid}/block
+POST /xenon/api/device/{udid}/unblock
+```
+
+#### Control API
+```bash
+# Take screenshot
+GET /xenon/api/control/{udid}/screenshot
+
+# Tap at coordinates
+POST /xenon/api/control/{udid}/tap
+{ "x": 100, "y": 200 }
+
+# Swipe gesture
+POST /xenon/api/control/{udid}/swipe
+{ "x": 100, "y": 500, "endX": 100, "endY": 100, "duration": 1000 }
+
+# Type text
+POST /xenon/api/control/{udid}/text
+{ "text": "Hello World" }
+
+# Execute shell command (Android)
+POST /xenon/api/control/{udid}/shell
+{ "command": "pm list packages" }
+
+# Live stream
+GET /xenon/api/control/{udid}/stream
+```
+
+#### Reservations
+```bash
+# Reserve a device
+POST /xenon/api/reservation
+{ "udid": "...", "host": "...", "reservedBy": "John", "duration": "2h" }
+
+# Release reservation
+DELETE /xenon/api/reservation/{udid}/{host}
+
+# Extend reservation
+POST /xenon/api/reservation/{udid}/{host}/extend
+{ "duration": "1h" }
 ```
 
 ---
@@ -142,20 +318,20 @@ The full documentation is available at:
 
 ```bash
 # Clone and install
-git clone https://github.com/your-org/xenon.git
+git clone https://github.com/xenon-platform/xenon.git
 cd xenon
 npm install
 
 # Build
 npm run build
 
+# Build with web dashboard
+npm run build-web-and-plugin
+
 # Run tests
 npm test                      # Unit tests
 npm run integration-android   # Android integration
 npm run integration-ios       # iOS integration
-
-# Build web dashboard
-npm run buildAndCopyWeb
 ```
 
 ---
@@ -166,8 +342,8 @@ We welcome contributions! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for guid
 
 ### Contributors
 
-<a href="https://github.com/your-org/xenon/graphs/contributors">
-  <img src="https://contrib.rocks/image?repo=AppiumTestDistribution/appium-xenon" />
+<a href="https://github.com/xenon-platform/xenon/graphs/contributors">
+  <img src="https://contrib.rocks/image?repo=xenon-platform/xenon" />
 </a>
 
 ---

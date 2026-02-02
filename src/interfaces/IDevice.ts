@@ -42,4 +42,12 @@ export interface IDevice {
   reservedBy?: string;
   reservedUntil?: number;
   reservationReason?: string;
+
+  // Health metric fields
+  batteryLevel?: number;
+  thermalStatus?: string;
+  storageFree?: string;
+  tags?: string[];
+  sessionProgress?: string;
+  totalHealedCount?: number;
 }

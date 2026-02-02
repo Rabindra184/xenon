@@ -11,6 +11,7 @@ import {
   removeDevice,
   removeDevicesByHost,
   userUnblockDevice,
+  updateDeviceTags,
 } from '../../data-service/device-service';
 import log from '../../logger';
 import { XenonManager } from '../../device-managers';
@@ -231,12 +232,22 @@ async function getDevicesFromDeviceManager() {
   return devices;
 }
 
+async function updateTags(request: Request, response: Response) {
+  const { udid, host, tags } = request.body;
+  if (!udid || !host || !Array.isArray(tags)) {
+    return response.status(400).json({ error: 'Missing udid, host, or tags array' });
+  }
+  await updateDeviceTags(udid, host, tags);
+  response.status(200).json({ success: true });
+}
+
 function register(router: Router, pluginArgs: IPluginArgs) {
   router.get('/device', getDevices);
   router.get('/device/:platform', getDeviceByPlatform);
   router.post('/register', registerNode);
   router.post('/block', blockDevice);
   router.post('/unblock', unBlockDevice);
+  router.post('/device/tags', updateTags);
 
   // session related
   router.get('/queue/length', getQueuedSessionLength);

@@ -15,6 +15,7 @@ export interface IDeviceStore {
   clearStorage(): Promise<void>;
   findDevice(filter: Partial<IDevice>): Promise<IDevice | null>;
   findDevices(filter: Partial<IDevice>): Promise<IDevice[]>;
+  resetMetrics(): Promise<void>;
 }
 
 export interface IPendingSessionStore {

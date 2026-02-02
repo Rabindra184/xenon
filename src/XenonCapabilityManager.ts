@@ -71,6 +71,39 @@ export async function iOSCapabilities(
   caps.firstMatch[0]['appium:mjpegServerPort'] = freeDevice.mjpegServerPort;
   caps.firstMatch[0]['appium:derivedDataPath'] = freeDevice.derivedDataPath;
 
+  // Technical Optimization: Reuse existing WDA tunnel if Stream Service is active
+  // This prevents "Port Occupied" errors when the dashboard is open and speeds up startup by 15-30s
+  try {
+    const streamService = (
+      await import('./device-managers/ios/IOSStreamService')
+    ).default.getInstance();
+    const streamStatus = streamService.getStreamStatus(freeDevice.udid);
+
+    console.log(
+      `[Xenon] 🔍 Checking Stream Status for ${freeDevice.udid}: ${streamStatus?.status || 'None'}`,
+    );
+
+    if (streamStatus && (streamStatus.status === 'running' || streamStatus.status === 'starting')) {
+      const wdaUrl = `http://127.0.0.1:${streamStatus.wdaPort}`;
+      caps.firstMatch[0]['appium:webDriverAgentUrl'] = wdaUrl;
+
+      // If we are reusing the WDA, we MUST NOT pass wdaLocalPort or mjpegServerPort
+      // as XCUITestDriver will still try to verify they are free and fail if busy.
+      delete caps.firstMatch[0]['appium:wdaLocalPort'];
+      delete caps.firstMatch[0]['appium:mjpegServerPort'];
+      if (caps.alwaysMatch) {
+        delete caps.alwaysMatch['appium:wdaLocalPort'];
+        delete caps.alwaysMatch['appium:mjpegServerPort'];
+      }
+
+      console.log(
+        `[Xenon] 🚀 Optimization: Reusing active WDA tunnel at ${wdaUrl} for ${freeDevice.udid}. Port check bypassed.`,
+      );
+    }
+  } catch (e: any) {
+    console.warn(`[Xenon] ⚠️ Failed to check Stream Service: ${e.message}`);
+  }
+
   // Senior Resiliency: Inject higher defaults for WebDriverAgent in enterprise environments
   if (!isCapabilityAlreadyPresent(caps, 'appium:wdaLaunchTimeout')) {
     // 180s is safer for physical devices that might need WDA signing/installation
@@ -79,11 +112,6 @@ export async function iOSCapabilities(
   if (!isCapabilityAlreadyPresent(caps, 'appium:wdaConnectionTimeout')) {
     // 120s is safer for remote devices
     caps.firstMatch[0]['appium:wdaConnectionTimeout'] = 120000;
-  }
-
-  // Optimization: Keep WDA alive between sessions if possible
-  if (!isCapabilityAlreadyPresent(caps, 'appium:usePrebuiltWDA')) {
-    caps.firstMatch[0]['appium:usePrebuiltWDA'] = true;
   }
 
   const deleteMatch = [
@@ -100,18 +128,21 @@ export function getXenonCapabilities(caps: ISessionCapability) {
   const mergedCapabilites = Object.assign({}, caps.firstMatch[0], caps.alwaysMatch);
 
   // Helper to extract capability regardless of prefix or casing
+  // Priority: xe: (Xenon) > xenon: > appium: > plain
   const getAnyCap = (snake: string, camel: string) => {
     const keys = [
-      snake,
-      camel,
-      `appium:${snake}`,
-      `appium:${camel}`,
-      `xenon:${snake}`,
-      `xenon:${camel}`,
+      // Primary: xe: prefix (Xenon short form)
       `xe:${snake}`,
       `xe:${camel}`,
-      `df:${snake}`,
-      `df:${camel}`,
+      // Secondary: xenon: prefix (Xenon full form)
+      `xenon:${snake}`,
+      `xenon:${camel}`,
+      // Tertiary: appium: prefix
+      `appium:${snake}`,
+      `appium:${camel}`,
+      // Plain capability names
+      snake,
+      camel,
     ];
     for (const key of keys) {
       if (mergedCapabilites[key] !== undefined) return mergedCapabilites[key];
@@ -158,11 +189,11 @@ export function getXenonCapabilities(caps: ISessionCapability) {
   );
 
   console.log(
-    `[CapabilityManager] Resolved Capabilities: ` +
-      `Video=${capabilities[XENON_CAPABILITIES.VIDEO_RECORDING]}, ` +
-      `EveryScreenshot=${capabilities[XENON_CAPABILITIES.SCREENSHOT_ON_EVERY_COMMAND]}, ` +
-      `FailScreenshot=${capabilities[XENON_CAPABILITIES.SCREENSHOT_ON_FAILURE]}, ` +
-      `SaveLogs=${capabilities[XENON_CAPABILITIES.SAVE_DEVICE_LOGS]}`,
+    '[CapabilityManager] Resolved Capabilities: ' +
+    `Video=${capabilities[XENON_CAPABILITIES.VIDEO_RECORDING]}, ` +
+    `EveryScreenshot=${capabilities[XENON_CAPABILITIES.SCREENSHOT_ON_EVERY_COMMAND]}, ` +
+    `FailScreenshot=${capabilities[XENON_CAPABILITIES.SCREENSHOT_ON_FAILURE]}, ` +
+    `SaveLogs=${capabilities[XENON_CAPABILITIES.SAVE_DEVICE_LOGS]}`,
   );
 
   return capabilities;

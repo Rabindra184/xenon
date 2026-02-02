@@ -14,6 +14,7 @@ export class SQLiteDeviceStore implements IDeviceStore {
       cloud: device.cloud ? JSON.parse(device.cloud) : undefined,
       capability: device.capability ? JSON.parse(device.capability) : undefined,
       chromeDriverPath: device.chromeDriverPath ? JSON.parse(device.chromeDriverPath) : undefined,
+      tags: device.tags ? JSON.parse(device.tags) : undefined,
       platform: (device.platform || 'android') as any,
       name: device.name || 'unknown',
       state: device.state || 'available',
@@ -25,6 +26,11 @@ export class SQLiteDeviceStore implements IDeviceStore {
       lastHealthCheckAt: device.lastHealthCheckAt ?? undefined,
       healthStatus: device.healthStatus ?? 'Healthy',
       healthCheckError: device.healthCheckError ?? undefined,
+      batteryLevel: device.batteryLevel ?? undefined,
+      thermalStatus: device.thermalStatus ?? undefined,
+      storageFree: device.storageFree ?? undefined,
+      sessionProgress: device.sessionProgress ?? '',
+      totalHealedCount: device.totalHealedCount ?? 0,
     } as IDevice;
   }
 
@@ -35,6 +41,7 @@ export class SQLiteDeviceStore implements IDeviceStore {
       data.capability = JSON.stringify(data.capability);
     if (data.chromeDriverPath && typeof data.chromeDriverPath === 'object')
       data.chromeDriverPath = JSON.stringify(data.chromeDriverPath);
+    if (data.tags && Array.isArray(data.tags)) data.tags = JSON.stringify(data.tags);
     return data;
   }
 
@@ -113,6 +120,13 @@ export class SQLiteDeviceStore implements IDeviceStore {
           return !!(coercedSDK && semver.lte(coercedSDK, coercedMaxSDK));
         });
       }
+    }
+
+    if (filterOptions.tags && filterOptions.tags.length > 0) {
+      results = results.filter((d) => {
+        if (!d.tags) return false;
+        return filterOptions.tags!.every((tag) => d.tags!.includes(tag));
+      });
     }
 
     return results;
@@ -194,6 +208,14 @@ export class SQLiteDeviceStore implements IDeviceStore {
   async findDevices(filter: Partial<IDevice>): Promise<IDevice[]> {
     const devices = await this.prisma.device.findMany({ where: filter as any });
     return devices.map((d) => this.toIDevice(d));
+  }
+
+  async resetMetrics(): Promise<void> {
+    await this.prisma.device.updateMany({
+      data: {
+        totalHealedCount: 0,
+      },
+    });
   }
 }
 

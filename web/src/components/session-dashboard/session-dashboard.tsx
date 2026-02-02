@@ -164,6 +164,7 @@ const SessionDashboard: React.FC = () => {
     running: true,
   });
   const [selectedCapTab, setSelectedCapTab] = React.useState<'desired' | 'session'>('desired');
+  const [sessionSearch, setSessionSearch] = React.useState('');
 
   const selectedBuild = React.useMemo(
     () => builds.find((b) => b.id === selectedBuildId),
@@ -185,7 +186,10 @@ const SessionDashboard: React.FC = () => {
       }
 
       if (selectedBuildId) {
-        const sessionsData = await XenonApiService.getSessions(selectedBuildId);
+        const sessionsData = await XenonApiService.getSessions({
+          buildId: selectedBuildId,
+          query: sessionSearch,
+        });
         setSessions(sessionsData);
       }
     } catch (error) {
@@ -193,7 +197,7 @@ const SessionDashboard: React.FC = () => {
     } finally {
       setIsLoading(false);
     }
-  }, [selectedBuildId]);
+  }, [selectedBuildId, sessionSearch]);
 
   const fetchLogs = async (sessionId: string) => {
     if (abortControllerRef.current) abortControllerRef.current.abort();
@@ -296,6 +300,18 @@ const SessionDashboard: React.FC = () => {
       </div>
 
       <div className="sessions-table-wrapper">
+        <div className="sessions-table-actions">
+          <div className="search-container session-search">
+            <Search size={14} className="search-icon" />
+            <Input
+              placeholder="Search sessions by ID, name, or device..."
+              value={sessionSearch}
+              onChange={(e) => setSessionSearch(e.target.value)}
+              className="compact-search"
+            />
+          </div>
+          <div className="table-stats">{sessions.length} sessions found</div>
+        </div>
         <table className="sessions-table">
           <thead>
             <tr>

@@ -10,18 +10,23 @@ hide:
 </div>
 
 
-This is an Appium plugin designed to manage and create driver session on connected android devices and iOS Simulators.
+This is **Xenon**, an intelligent Appium plugin designed to orchestrate, manage, and self-heal driver sessions on connected Android devices and iOS Simulators.
 
-**Why Appium Xenon?**
+**Why Xenon?**
 
-- Automatically detects connected Android, iOS Simulators and Real devices before session creation and maintains it in device pool.
-- Dynamically allocates a free device from device pool while creating driver session.
-- Updates the device pool with a new device during test execution.
-- Allocates random ports for parallel execution.
-- Remote execution
-- Async lockup for device changes.
+- **Auto-Discovery**: Automatically detects connected Android devices, iOS Simulators, and Real devices.
+- **Smart Allocation**: Dynamically allocates free devices from the pool.
+- **Self-Healing**: Updates the device pool with new devices during test execution.
+- **Parallelization**: Allocates random ports for parallel execution.
+- **Remote Execution**: Supports distributed testing.
+- **Runtime Config**: Update settings on the fly without restarts.
 
-Use the navigation on the left or proceed to [Setup](setup.md)!
+## Getting Started
+
+1.  **[Setup Guide](setup.md)** - Install Xenon
+2.  **[Configuration](server-args.md)** - Configure via File, CLI, or API
+3.  **[Capabilities](capabilities.md)** - Usage in tests
+4.  **[API Documentation](capabilities.md#api-documentation)** - Integrate programmatically
 
 **Big thanks to the following organizations for their support to the project with their open source licenses:**
 <h3>

@@ -52,6 +52,7 @@ const customCapability = {
   minSDK: 'appium:minSDK',
   maxSDK: 'appium:maxSDK',
   filterByHost: 'appium:filterByHost',
+  tags: 'appium:tags',
 };
 
 let timer: any;
@@ -336,6 +337,9 @@ export function getDeviceFiltersFromCapability(
     filterByHost: capability[customCapability.filterByHost],
     minSDK: capability[customCapability.minSDK] ? capability[customCapability.minSDK] : undefined,
     maxSDK: capability[customCapability.maxSDK] ? capability[customCapability.maxSDK] : undefined,
+    tags: capability[customCapability.tags]
+      ? capability[customCapability.tags].split(',').map(_.trim)
+      : undefined,
   };
 
   if (name !== undefined) {

@@ -70,6 +70,10 @@ export interface IPluginArgs {
   bindHostOrIp: string;
   enableDashboard: boolean;
   bootedSimulators: boolean;
+  /** How often to run device health checks in milliseconds */
+  healthCheckIntervalMs: number;
+  /** Cron schedule for health checks (e.g. "0 * * * *" for every hour) */
+  healthCheckSchedule?: string;
 
   // development purposes
   removeDevicesFromDatabaseBeforeRunningThePlugin?: boolean;
@@ -98,5 +102,7 @@ export const DefaultPluginArgs: IPluginArgs = {
   bindHostOrIp: ip.address(),
   enableDashboard: false,
   bootedSimulators: false,
+  healthCheckIntervalMs: 30000,
+  healthCheckSchedule: undefined,
   removeDevicesFromDatabaseBeforeRunningThePlugin: false,
 };

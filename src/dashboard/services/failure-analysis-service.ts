@@ -59,9 +59,9 @@ export async function analyzeSessionFailure(sessionId: string): Promise<void> {
 
     if (!session) return;
 
-    let reason = session.failure_reason || '';
-    let logs_text = session.SessionLog.map((l) => `${l.title} ${l.response}`).join(' ');
-    let combined_text = (reason + ' ' + logs_text).toLowerCase();
+    const reason = session.failure_reason || '';
+    const logs_text = session.SessionLog.map((l) => `${l.title} ${l.response}`).join(' ');
+    const combined_text = (reason + ' ' + logs_text).toLowerCase();
 
     let identifiedCategory = 'UNKNOWN';
 

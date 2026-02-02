@@ -62,26 +62,38 @@ class IOSStreamService {
         if (session.status === 'running') {
           // Check for inactivity
           if (now - session.lastViewerAt > 30000 && session.viewerCount === 0) {
-            log.info(
-              `Auto-stopping idle iOS stream for ${udid} (No viewers) - SKIPPED for Health Monitor stability`,
-            );
-            // await this.stopStream(udid);
             continue;
           }
 
-          // 2. Health check
-          const isAlive = await this.isWDARunning(session.wdaPort);
+          // 2. Health check & Self-Healing
+          // We use elased autonomous methodology to ensure devices are always warm
+          const isAlive = await this.isStreamResponsive(udid);
           if (!isAlive) {
-            log.warn(`Stream watchdog detected failure for ${udid}. Attempting recovery...`);
+            log.warn(
+              `Stream watchdog detected failure for ${udid}. Attempting autonomous healing...`,
+            );
             try {
+              // Get device state to check for Session Shield
+              const device = await DeviceStoreFactory.getStore().findDevice({ udid });
+              if (device && device.busy) {
+                log.info(`🛡️ [Watchdog] Skipping heal for ${udid} as it has an active session.`);
+                continue;
+              }
               await this.startStream(udid);
+
+              // Increment healed count for visual feedback
+              if (device) {
+                await DeviceStoreFactory.getStore().updateDevice(udid, device.host, {
+                  totalHealedCount: (device.totalHealedCount || 0) + 1,
+                });
+              }
             } catch (e) {
-              log.error(`Watchdog recovery failed for ${udid}: ${e}`);
+              log.error(`Watchdog healing failed for ${udid}: ${e}`);
             }
           }
         }
       }
-    }, 10000);
+    }, 30000); // 30s interval for background stability
   }
 
   public static getInstance(): IOSStreamService {
@@ -133,7 +145,7 @@ class IOSStreamService {
   /**
    * Check if tunnel is needed (iOS 17+) and ensure it's running
    */
-  private async ensureTunnel(udid: string): Promise<ChildProcess | null> {
+  public async ensureTunnel(udid: string): Promise<ChildProcess | null> {
     try {
       const { stdout } = await execPromise(`"${this.goIOSPath}" info --udid ${udid}`);
       const info = JSON.parse(stdout);
@@ -183,7 +195,7 @@ class IOSStreamService {
     for (const host of hosts) {
       try {
         await axios.get(`http://${host}:${wdaPort}/status`, {
-          timeout: 1000,
+          timeout: 2000, // 2s for consistency
           httpAgent: new http.Agent({ keepAlive: false }),
         });
         return true;
@@ -192,6 +204,37 @@ class IOSStreamService {
       }
     }
     return false;
+  }
+
+  /**
+   * Comprehensive process-level and endpoint-level health check
+   */
+  public async isStreamResponsive(udid: string): Promise<boolean> {
+    const session = this.sessions.get(udid);
+    if (!session || session.status !== 'running') return false;
+
+    // 1. Process Check: verify child processes haven't exited
+    const processes = [
+      { name: 'wda', p: session.wdaProcess },
+      { name: 'iproxy-wda', p: session.forwardWDAProcess },
+      { name: 'iproxy-mjpeg', p: session.forwardMJPEGProcess },
+    ];
+
+    for (const item of processes) {
+      if (!item.p || item.p.exitCode !== null) {
+        log.warn(`[Watchdog] Process ${item.name} for ${udid} is dead (code: ${item.p?.exitCode})`);
+        return false;
+      }
+    }
+
+    // 2. Network Check: verify endpoint is responding
+    const isResponding = await this.isWDARunning(session.wdaPort);
+    if (!isResponding) {
+      log.warn(`[Watchdog] WDA endpoint for ${udid} on port ${session.wdaPort} is unresponsive`);
+      return false;
+    }
+
+    return true;
   }
 
   /**

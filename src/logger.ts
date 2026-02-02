@@ -6,9 +6,9 @@ import { logger } from '@appium/support';
  */
 class XenonLogger {
   private baseLogger: any;
-  private context: string = '';
+  private context = '';
 
-  constructor(prefix: string = 'xenon') {
+  constructor(prefix = 'xenon') {
     this.baseLogger = logger.getLogger(prefix);
   }
 
@@ -54,7 +54,7 @@ class XenonLogger {
   /**
    * Enterprise Audit entry.
    */
-  public audit(action: string, actor: string = 'system', details: any = {}) {
+  public audit(action: string, actor = 'system', details: any = {}) {
     const detailStr = Object.keys(details).length ? ` | Details: ${JSON.stringify(details)}` : '';
     this.baseLogger.info(`[AUDIT] ${this.context}${action} | Actor: ${actor}${detailStr}`);
   }

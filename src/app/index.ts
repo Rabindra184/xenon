@@ -13,8 +13,10 @@ import ControlRouter from './routers/control';
 import AppsRouter from './routers/apps';
 import webhookRouter from './routers/webhook';
 import reservationRouter from './routers/reservation';
+import ConfigRouter from './routers/config';
 import { IPluginArgs } from '../interfaces/IPluginArgs';
 import fileUpload from 'express-fileupload';
+import { setupSwagger } from './swagger';
 
 let dashboardPluginUrl: any = null;
 
@@ -72,10 +74,7 @@ router.use('/api', apiRouter);
 router.use('/assets', express.static(config.sessionAssetsPath));
 router.use(staticFilesRouter);
 
-// Fallback route for client-side routing - serve index.html for all non-API routes
-router.get('*', (req, res) => {
-  res.sendFile(path.join(__dirname, '..', '..', 'public', 'index.html'));
-});
+
 
 function createRouter(pluginArgs: IPluginArgs) {
   DashboardRouter.register(apiRouter);
@@ -83,8 +82,24 @@ function createRouter(pluginArgs: IPluginArgs) {
   ControlRouter.register(apiRouter);
   AppsRouter.register(apiRouter);
   webhookRouter.register(apiRouter);
+  ConfigRouter.register(apiRouter, pluginArgs);
   apiRouter.use('/reservation', reservationRouter);
+
+  // Setup Swagger API documentation at /xenon/api-docs
+  try {
+    setupSwagger(router, '/xenon');
+  } catch (err) {
+    console.warn('Swagger documentation not available. Install swagger-jsdoc and swagger-ui-express to enable.');
+  }
+
+  // Fallback route for client-side routing - serve index.html for all non-API routes
+  // MUST be registered after Swagger to avoid interception
+  router.get('*', (req, res) => {
+    res.sendFile(path.join(__dirname, '..', '..', 'public', 'index.html'));
+  });
+
   return router;
 }
 
 export { createRouter };
+

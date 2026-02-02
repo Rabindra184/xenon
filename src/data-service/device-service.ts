@@ -85,6 +85,18 @@ export async function updatedAllocatedDevice(device: IDevice, updateData: Partia
   await store.updateDevice(device.udid, device.host, updateData);
 }
 
+export async function updateDeviceProgress(
+  udid: string,
+  host: string,
+  progress: string,
+  extra: Partial<IDevice> = {},
+) {
+  log.debug(`[${udid}] progress: ${progress}`);
+  await store.updateDevice(udid, host, { sessionProgress: progress, ...extra });
+  // We don't dispatch an event for every progress update to avoid flooding the socket,
+  // but the dashboard poller/refresh will pick it up.
+}
+
 export async function updateCmdExecutedTime(sessionId: string) {
   await store.updateDevices({ session_id: sessionId }, (device: IDevice) => {
     device.lastCmdExecutedAt = new Date().getTime();
@@ -110,7 +122,11 @@ export async function userUnblockDevice(udid: string, host: string) {
  * @param host
  */
 export async function blockDevice(udid: string, host: string) {
-  await store.updateDevice(udid, host, { busy: true, lastCmdExecutedAt: undefined });
+  await store.updateDevice(udid, host, {
+    busy: true,
+    lastCmdExecutedAt: undefined,
+    sessionProgress: '',
+  });
 }
 
 export async function unblockDevice(udid: string, host: string) {
@@ -138,6 +154,7 @@ export async function unblockDeviceMatchingFilter(filter: object) {
           sessionStartTime: 0,
           totalUtilizationTimeMilliSec: totalUtilization,
           newCommandTimeout: null as any,
+          sessionProgress: '',
         } as Partial<IDevice>);
 
         log.debug(`Unblocked device ${device.udid}`);
@@ -224,4 +241,14 @@ export async function cleanExpiredReservations() {
   if (expiredReservations.length > 0) {
     log.info(`Cleaned ${expiredReservations.length} expired reservations`);
   }
+}
+/**
+ * Update tags for a device
+ * @param udid string
+ * @param host string
+ * @param tags string[]
+ */
+export async function updateDeviceTags(udid: string, host: string, tags: string[]) {
+  log.info(`Updating tags for device ${udid}: ${tags.join(', ')}`);
+  await store.updateDevice(udid, host, { tags });
 }

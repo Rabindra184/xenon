@@ -1,22 +1,19 @@
-import { spawn, ChildProcess, exec, execSync } from 'child_process';
-import { promisify } from 'util';
+import { spawn } from 'child_process';
 import http from 'http';
 import log from '../../logger';
 import { getFreePort } from '../../helpers';
 import { DeviceStoreFactory } from '../../data-service/device-store';
-
-import { ADB } from 'appium-adb';
 import { unblockDevice } from '../../data-service/device-service';
-import { IDevice } from '../../interfaces/IDevice';
-import path from 'path';
 import { deviceLock } from './DeviceLockManager';
 
-const execPromise = promisify(exec);
+// FFmpeg is optional - only used for raw-to-JPEG conversion
 let FFMPEG_PATH: string | null = null;
 try {
+  // Dynamic require for optional dependency
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
   FFMPEG_PATH = require('@ffmpeg-installer/ffmpeg').path;
-} catch (e) {
-  // ffmpeg not found
+} catch {
+  // ffmpeg not installed - streaming will be unavailable
 }
 
 interface AndroidStreamSession {
@@ -168,7 +165,7 @@ class AndroidStreamService {
             Pragma: 'no-cache',
           });
 
-          let lastFrameTime = 0;
+          const lastFrameTime = 0;
           const writeFrame = async () => {
             // Principle: Handle both starting and running states to avoid race conditions
             if (
@@ -182,7 +179,7 @@ class AndroidStreamService {
             if (session.latestFrame) {
               try {
                 res.write('--myboundary\n');
-                res.write(`Content-Type: image/jpeg\n`);
+                res.write('Content-Type: image/jpeg\n');
                 res.write(`Content-Length: ${session.latestFrame.length}\n\n`);
                 res.write(session.latestFrame);
                 res.write('\n');
@@ -243,7 +240,9 @@ class AndroidStreamService {
       try {
         const device = await DeviceStoreFactory.getStore().findDevice({ udid });
         if (device) await unblockDevice(udid, device.host);
-      } catch (e) {}
+      } catch (e) {
+        /* Ignore unblocking failure on stop */
+      }
       this.sessions.delete(udid);
       log.info(`[${udid}] Stream terminated and device unblocked.`);
     }
@@ -258,6 +257,12 @@ class AndroidStreamService {
     if (session) {
       session.viewerCount = Math.max(0, session.viewerCount + delta);
       session.lastViewerAt = Date.now();
+    }
+  }
+
+  public async cleanup(): Promise<void> {
+    for (const udid of this.sessions.keys()) {
+      await this.stopStream(udid);
     }
   }
 

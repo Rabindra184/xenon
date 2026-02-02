@@ -28,7 +28,7 @@ export interface IDeviceManager {
   listApps?(udid: string): Promise<string[]>;
   getLogs?(udid: string): Promise<string>;
   getAdditionalDeviceInfo?(device: IDevice): Promise<Partial<IDevice>>;
-  checkHealth?(device: IDevice): Promise<{ healthStatus: string; healthCheckError?: string }>;
+  checkHealth?(device: IDevice): Promise<Partial<IDevice>>;
   recoverHealth?(device: IDevice): Promise<boolean>;
   executeShell?(udid: string, command: string): Promise<string>;
 }

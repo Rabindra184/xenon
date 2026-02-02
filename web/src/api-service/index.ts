@@ -25,10 +25,21 @@ export default class XenonApiService {
     return apiClient.makeGETRequest('/build');
   }
 
-  public static getSessions(buildId?: string) {
+  public static getSessions(
+    options: {
+      buildId?: string;
+      query?: string;
+      status?: string;
+      platform?: string;
+    } = {},
+  ) {
     const ts = Date.now();
-    const query = buildId ? `&buildId=${encodeURIComponent(buildId)}` : '';
-    return apiClient.makeGETRequest(`/session?t=${ts}${query}`);
+    let url = `/session?t=${ts}`;
+    if (options.buildId) url += `&buildId=${encodeURIComponent(options.buildId)}`;
+    if (options.query) url += `&query=${encodeURIComponent(options.query)}`;
+    if (options.status) url += `&status=${encodeURIComponent(options.status)}`;
+    if (options.platform) url += `&platform=${encodeURIComponent(options.platform)}`;
+    return apiClient.makeGETRequest(url);
   }
 
   public static getSessionLogs(sessionId: string) {
@@ -53,6 +64,10 @@ export default class XenonApiService {
 
   public static unblockDevice(udid: string, host: string) {
     return apiClient.makePOSTRequest('/unblock', {}, { udid, host });
+  }
+
+  public static updateDeviceTags(udid: string, host: string, tags: string[]) {
+    return apiClient.makePOSTRequest('/device/tags', {}, { udid, host, tags });
   }
 
   public static getSessionLiveVideoUrl(sessionId: string) {
@@ -217,5 +232,18 @@ export default class XenonApiService {
 
   public static testWebhook(url: string, type: string) {
     return apiClient.makePOSTRequest('/webhook/test', {}, { url, type });
+  }
+
+  /* Global Config Endpoints */
+  public static getGlobalConfig() {
+    return apiClient.makeGETRequest('/config');
+  }
+
+  public static updateGlobalConfig(config: any) {
+    return apiClient.makePOSTRequest('/config', {}, config);
+  }
+
+  public static resetMetrics() {
+    return apiClient.makePOSTRequest('/config/reset-metrics', {}, {});
   }
 }

@@ -117,9 +117,9 @@ class LokiDeviceStore implements IDeviceStore {
       const existing = deviceModel.findOne({ udid: device.udid, host: device.host });
       if (!existing) {
         const cleanDevice = { ...device };
-        // @ts-ignore
+        // @ts-expect-error - LokiJS adds $loki metadata that we need to strip before insert
         delete cleanDevice['$loki'];
-        // @ts-ignore
+        // @ts-expect-error - LokiJS adds meta metadata that we need to strip before insert
         delete cleanDevice['meta'];
         deviceModel.insert(cleanDevice);
         added.push(cleanDevice);
@@ -142,6 +142,15 @@ class LokiDeviceStore implements IDeviceStore {
 
   async findDevices(filter: Partial<IDevice>): Promise<IDevice[]> {
     return (await XenonDatabase.DeviceModel).find(filter);
+  }
+
+  async resetMetrics(): Promise<void> {
+    (await XenonDatabase.DeviceModel)
+      .chain()
+      .find()
+      .update((device: IDevice) => {
+        device.totalHealedCount = 0;
+      });
   }
 }
 

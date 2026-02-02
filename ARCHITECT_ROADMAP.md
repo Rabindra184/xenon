@@ -24,6 +24,9 @@ To build the most resilient, intelligent, and developer-centric mobile laborator
 | Device Control | Remote touch interaction | ✅ Complete |
 | Dashboard | Session history | ✅ Complete |
 | Dashboard | Build grouping | ✅ Complete |
+| Health Monitoring | Battery/Storage Metrics | ✅ Complete |
+| Health Monitoring | Autonomous Recovery | ✅ Complete |
+| Device Management | Hardware Tagging | ✅ Complete |
 
 ---
 
@@ -68,7 +71,7 @@ To build the most resilient, intelligent, and developer-centric mobile laborator
 - [ ] Real-time queue position: "Your test is #5 in queue"
 - [ ] ETA calculation based on average session duration
 - [ ] Queue visualization in dashboard (who's waiting for what)
-- [ ] Priority lanes for critical tests (`df:priority: high`)
+- [ ] Priority lanes for critical tests (`xe:priority: high`)
 - [ ] Notification when device becomes available
 
 **Effort**: Low (1 week)
@@ -148,7 +151,7 @@ To build the most resilient, intelligent, and developer-centric mobile laborator
 - **Impact**: Developers can "park" a difficult-to-catch bug on a specific device for hours without CI jobs stealing it.
 
 ### 2. Team-Based Isolation (Quota Management)
-- **Technicality**: Filter `allocateDeviceForSession` calls based on a `df:teamId` capability.
+- **Technicality**: Filter `allocateDeviceForSession` calls based on a `xe:teamId` capability.
 - **Impact**: Ensures "Team A" (iOS Devs) always has at least 3 devices available, even if "Team B" (QA) is running a massive regression.
 
 ### 3. Real-time Notifications (Slack/Teams Webhooks)
@@ -317,9 +320,9 @@ To build the most resilient, intelligent, and developer-centric mobile laborator
 | P1 | Device Health Monitoring | Critical | 2 weeks | � |
 | P1 | Flaky Test Detection | Critical | 2 weeks | 🔲 |
 | P1 | Queue Visibility | High | 1 week | ✅ |
-| P2 | Error Categorization | High | 3 weeks | 🔲 |
-| P2 | Slack/Webhook Integration | High | 2 weeks | 🔲 |
-| P2 | Session Search | Medium | 1 week | 🔲 |
+| P2 | Error Categorization | High | 3 weeks | ✅ |
+| P2 | Slack/Webhook Integration | High | 2 weeks | ✅ |
+| P2 | Session Search | Medium | 1 week | ✅ |
 | P3 | Executive Dashboard | Medium | 2 weeks | 🔲 |
 | P3 | Device Reservation | Medium | 1 week | 🔲 |
 | P3 | Visual Regression | Medium | 3 weeks | 🔲 |
@@ -345,8 +348,8 @@ To build the most resilient, intelligent, and developer-centric mobile laborator
 
 ### Next Up 📋
 9.  [x] **Queue Position API**: Endpoint to return position and ETA.
-10. [ ] **Error Classification**: Categorize failures by type (crash/timeout/element/permission).
-11. [ ] **Webhook Service**: Generic webhook dispatch on session events.
+10. [x] **Error Classification**: Categorize failures by type (crash/timeout/element/permission).
+11. [x] **Webhook Service**: Generic webhook dispatch on session events.
 12. [ ] **Auth Middleware**: Initial implementation of API key authentication.
 
 ---

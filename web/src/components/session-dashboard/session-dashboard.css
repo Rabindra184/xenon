@@ -1455,3 +1455,29 @@
   opacity: 0.8;
   text-decoration: underline;
 }
+
+/* ============================================
+   SESSION SEARCH & TABLE ACTIONS
+   ============================================ */
+.sessions-table-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-md) var(--space-lg);
+  background: var(--bg-surface);
+  border-bottom: 1px solid var(--border-subtle);
+  flex-shrink: 0;
+}
+
+.session-search {
+  width: 350px;
+}
+
+.table-stats {
+  font-size: 11px;
+  color: var(--text-muted);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  opacity: 0.8;
+}

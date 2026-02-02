@@ -13,14 +13,14 @@
 - **Stable** - Rock-solid infrastructure that doesn't fail
 - **Reliable** - Consistent device orchestration you can trust
 - **Intelligent** - AI-powered self-healing and diagnostics
-- **Luminous** - Clear visibility into your entire device lab
+- **Luminous** - Clear visibility into your entire device lab (Green glow of efficiency)
 
 ---
 
 ## Logo
 
 ### Primary Logo
-The Xenon logo features a stylized "X" with orbital electron paths, referencing the atomic structure of Xenon gas. The blue glow represents the characteristic luminescence of ionized Xenon.
+The Xenon logo features a stylized "X" with orbital electron paths, referencing the atomic structure of Xenon gas. The green glow represents the characteristic stability and efficiency of our platform.
 
 ### Usage Guidelines
 | ✅ Do | ❌ Don't |
@@ -37,9 +37,9 @@ The Xenon logo features a stylized "X" with orbital electron paths, referencing 
 
 | Name | Hex | Use |
 |------|-----|-----|
-| **Xenon Blue** | `#3B82F6` | Primary brand color, CTAs, links |
-| **Xenon Glow** | `#60A5FA` | Hover states, active elements |
-| **Xenon Deep** | `#1E40AF` | Headers, emphasis |
+| **Xenon Green** | `#22C55E` | Primary brand color, CTAs, links |
+| **Xenon Glow** | `#4ADE80` | Hover states, active elements |
+| **Xenon Emerald** | `#15803D` | Headers, emphasis |
 
 ### Background Colors
 
@@ -120,9 +120,9 @@ font-family: 'JetBrains Mono', 'Fira Code', monospace;
 ```css
 :root {
   /* --- Xenon Brand Palette --- */
-  --xenon-blue: #3B82F6;
-  --xenon-glow: #60A5FA;
-  --xenon-deep: #1E40AF;
+  --xenon-green: #22C55E;
+  --xenon-glow: #4ADE80;
+  --xenon-emerald: #15803D;
   
   /* --- Backgrounds --- */
   --bg-void: #020617;
@@ -167,7 +167,7 @@ font-family: 'JetBrains Mono', 'Fira Code', monospace;
 ### Dashboard Header
 - Logo: Atom icon (Lucide) with blue gradient
 - Brand name: "Xenon" in Outfit font
-- Colors: Blue gradient on dark background
+- Colors: Green gradient on dark background
 
 ### Marketing
 - Lead with "Intelligent Mobile Infrastructure"

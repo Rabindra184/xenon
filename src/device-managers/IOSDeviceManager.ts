@@ -215,8 +215,35 @@ export default class IOSDeviceManager implements IDeviceManager {
     } else {
       host = `http://${pluginArgs.bindHostOrIp}:${hostPort}`;
     }
-    const wdaLocalPort = storeDevice?.wdaLocalPort || (await getFreePort());
-    const mjpegServerPort = storeDevice?.mjpegServerPort || (await getFreePort());
+    let wdaLocalPort = storeDevice?.wdaLocalPort;
+    let mjpegServerPort = storeDevice?.mjpegServerPort;
+
+    // Principal Port Health Check: If ports are stored but occupied, verify they are responsive
+    const { isPortBusy } = await import('../helpers');
+    const streamService = (await import('./ios/IOSStreamService')).default.getInstance();
+    const streamStatus = streamService.getStreamStatus(udid);
+
+    // If port is busy but stream service isn't actively managing it, it's a "Zombie" or Collision
+    if (wdaLocalPort && (await isPortBusy(wdaLocalPort)) && streamStatus?.status !== 'running') {
+      log.warn(
+        `[${udid}] WDA Port ${wdaLocalPort} is occupied but stream is inactive. Reclaiming...`,
+      );
+      try {
+        const { exec } = await import('child_process');
+        const { promisify } = await import('util');
+        const execPromise = promisify(exec);
+        await execPromise(`lsof -ti :${wdaLocalPort} | xargs kill -9`).catch(() => {});
+        // Wait for OS to release
+        await new Promise((r) => setTimeout(r, 500));
+      } catch (e) {
+        log.error(`Failed to reclaim port ${wdaLocalPort}, will select a new one.`);
+        wdaLocalPort = undefined;
+      }
+    }
+
+    if (!wdaLocalPort) wdaLocalPort = await getFreePort();
+    if (!mjpegServerPort || (await isPortBusy(mjpegServerPort)))
+      mjpegServerPort = await getFreePort();
     const totalUtilizationTimeMilliSec = await getUtilizationTime(udid);
     const [sdk, name] = await Promise.all([this.getOSVersion(udid), this.getDeviceName(udid)]);
 
@@ -475,7 +502,7 @@ export default class IOSDeviceManager implements IDeviceManager {
 
     // Higher-level retry loop for network-level failures (ECONNRESET, etc)
     const MAX_NETWORK_RETRIES = 3;
-    let networkRetryCount = 0;
+    const networkRetryCount = 0;
 
     while (networkRetryCount < MAX_NETWORK_RETRIES) {
       for (const host of hosts) {
@@ -965,10 +992,14 @@ export default class IOSDeviceManager implements IDeviceManager {
     const goIOS = IOSStreamService.getInstance();
     if (await goIOS.isGoIOSAvailable()) {
       try {
+        // iOS 17+ requires a tunnel for go-ios apps command
+        await goIOS.ensureTunnel(udid);
+
         // Use the public goIOSPath
         await execPromise(`"${goIOS.goIOSPath}" install --path="${appPath}" --udid ${udid}`);
       } catch (err: any) {
         log.error(`Installation via go-ios failed: ${err.message}`);
+        throw err;
       }
     } else {
       // Fallback to ideviceinstaller
@@ -976,6 +1007,7 @@ export default class IOSDeviceManager implements IDeviceManager {
         await execPromise(`ideviceinstaller -u ${udid} -i "${appPath}"`);
       } catch (err: any) {
         log.error(`Installation via ideviceinstaller failed: ${err.message}`);
+        throw err;
       }
     }
   }
@@ -1257,35 +1289,162 @@ export default class IOSDeviceManager implements IDeviceManager {
     }
   }
 
-  async checkHealth(device: IDevice): Promise<{ healthStatus: string; healthCheckError?: string }> {
+  async checkHealth(device: IDevice): Promise<Partial<IDevice>> {
     if (device.cloud) return { healthStatus: 'Healthy' };
 
     try {
       if (device.realDevice) {
-        // 1. Check if WDA is responsive
-        try {
-          const status = await (this as any).sendWDACommand(device.udid, 'get', '/status');
-          if (status && status.data && status.data.value) {
-            return { healthStatus: 'Healthy' };
-          }
-          return {
-            healthStatus: 'Unhealthy',
-            healthCheckError: 'WebDriverAgent returned invalid status response',
+        let batteryLevel: number | undefined;
+        let storageFree: string | undefined;
+        let thermalStatus: string | undefined = 'Normal';
+
+        // 1. Try to get hardware info via go-ios (Lockdown Baseline)
+        const streamService = IOSStreamService.getInstance();
+        if (await streamService.isGoIOSAvailable()) {
+          const runCmd = async (subCmd: string) => {
+            try {
+              const { stdout } = await execPromise(
+                `"${streamService.goIOSPath}" ${subCmd} --udid ${device.udid}`,
+              );
+              const jsonStartIndex = stdout.indexOf('{');
+              const jsonEndIndex = stdout.lastIndexOf('}');
+              if (jsonStartIndex !== -1) {
+                return JSON.parse(stdout.slice(jsonStartIndex, jsonEndIndex + 1));
+              }
+              // Return raw if it's not JSON (as we saw with diskspace)
+              return { raw: stdout };
+            } catch (e) {
+              return null;
+            }
           };
+
+          const findDeepKey = (obj: any, target: string): any => {
+            if (!obj || typeof obj !== 'object') return undefined;
+            const foundKey = Object.keys(obj).find((k) => k.toLowerCase() === target.toLowerCase());
+            if (foundKey !== undefined && obj[foundKey] !== null) return obj[foundKey];
+            for (const k of Object.keys(obj)) {
+              const res = findDeepKey(obj[k], target);
+              if (res !== undefined) return res;
+            }
+            return undefined;
+          };
+
+          // Step 1: Lockdown Info (Baseline)
+          const info = await runCmd('info');
+          if (info) {
+            batteryLevel =
+              findDeepKey(info, 'BatteryCurrentCapacity') ?? findDeepKey(info, 'BatteryLevel');
+            const tState = findDeepKey(info, 'ThermalState') ?? findDeepKey(info, 'thermal_status');
+            if (tState && tState !== 'Nominal' && tState !== 'Normal')
+              thermalStatus = String(tState);
+            const disk =
+              findDeepKey(info, 'TotalDataAvailable') ??
+              findDeepKey(info, 'DataAvailable') ??
+              findDeepKey(info, 'AvailableCapacity');
+            if (disk) storageFree = `${(Number(disk) / 1024 / 1024 / 1024).toFixed(1)}GB`;
+          }
+
+          // Step 2: Dedicated Battery Check (Highly Reliable)
+          if (batteryLevel === undefined) {
+            const bInfo = await runCmd('batterycheck');
+            batteryLevel =
+              findDeepKey(bInfo, 'BatteryCurrentCapacity') ?? findDeepKey(bInfo, 'BatteryLevel');
+            if (batteryLevel === undefined && bInfo?.raw) {
+              const match =
+                bInfo.raw.match(/BatteryCurrentCapacity[:\s]*(\d+)/i) ??
+                bInfo.raw.match(/Level[:\s]*(\d+)/i);
+              if (match) batteryLevel = parseInt(match[1]);
+            }
+          }
+
+          // Step 3: Dedicated Disk Space (AFC Service)
+          if (storageFree === undefined) {
+            const dInfo = await runCmd('diskspace');
+            const freeBytes =
+              findDeepKey(dInfo, 'FreeBytes') ??
+              findDeepKey(dInfo, 'FSFreeBytes') ??
+              findDeepKey(dInfo, 'FreeSpace');
+            if (freeBytes) {
+              storageFree = `${(Number(freeBytes) / 1024 / 1024 / 1024).toFixed(1)}GB`;
+            } else if (dInfo?.raw) {
+              // Handle text output: "FreeSpace: 93.6GB"
+              const match = dInfo.raw.match(/FreeSpace[:\s]*([\d.]+G?B?)/i);
+              if (match) storageFree = match[1].includes('B') ? match[1] : `${match[1]}GB`;
+            }
+          }
+
+          log.info(
+            `[HealthCheck] [${device.udid}] Stats Collected -> Battery: ${batteryLevel}%, Storage: ${storageFree}`,
+          );
+        }
+
+        const healthData: Partial<IDevice> = {
+          batteryLevel:
+            typeof batteryLevel === 'number'
+              ? batteryLevel
+              : batteryLevel
+              ? parseInt(String(batteryLevel))
+              : undefined,
+          storageFree,
+          thermalStatus,
+        };
+
+        // 2. Check WDA responsiveness (via Stream Service Diagnostic)
+        try {
+          const streamService = IOSStreamService.getInstance();
+          const isResponsive = await streamService.isStreamResponsive(device.udid);
+
+          if (isResponsive) {
+            if (
+              healthData.batteryLevel !== undefined &&
+              healthData.batteryLevel > 0 &&
+              healthData.batteryLevel < 15
+            ) {
+              return {
+                ...healthData,
+                healthStatus: 'Unhealthy',
+                healthCheckError: `Low battery warning: ${healthData.batteryLevel}%`,
+              };
+            }
+            return { ...healthData, healthStatus: 'Healthy' };
+          } else {
+            // If stream is not responsive, double check via direct command
+            const status = await (this as any).sendWDACommand(device.udid, 'get', '/status');
+            if (status && (status.status === 200 || status.data)) {
+              return { ...healthData, healthStatus: 'Healthy' };
+            }
+            throw new Error('WebDriverAgent stream and endpoint are unresponsive');
+          }
         } catch (e: any) {
-          // WDA not responding
+          log.warn(`[HealthCheck] WDA Status fail for ${device.udid}: ${e.message}`);
           return {
+            ...healthData,
             healthStatus: 'Unhealthy',
-            healthCheckError: `WebDriverAgent not responding on port ${device.wdaLocalPort}: ${e.message}`,
+            healthCheckError: `WebDriverAgent not responding: ${e.message}`,
           };
         }
+
+        // Final fallback for real devices
+        return { ...healthData, healthStatus: 'Healthy' };
       } else {
-        // Simulator health check - usually fine if it shows up in list
-        return { healthStatus: 'Healthy' };
+        // Simulator health check
+        const simctl = new Simctl();
+        const list = await simctl.list();
+        const devices: any[] = flatten(Object.values(list.devices));
+        const sim = devices.find((s: any) => s.udid === device.udid);
+
+        if (sim && (sim.state === 'Booted' || sim.state === 'Shutdown')) {
+          return { healthStatus: 'Healthy' };
+        }
+        return {
+          healthStatus: 'Unhealthy',
+          healthCheckError: `Simulator in unexpected state: ${sim?.state || 'Not found'}`,
+        };
       }
     } catch (err: any) {
       return { healthStatus: 'Unhealthy', healthCheckError: err.message };
     }
+    return { healthStatus: 'Healthy' };
   }
 
   async recoverHealth(device: IDevice): Promise<boolean> {
@@ -1300,12 +1459,46 @@ export default class IOSDeviceManager implements IDeviceManager {
           return false;
         }
 
-        log.info(`Attempting auto-recovery for iOS device ${device.udid}...`);
+        log.info(
+          `🛡️ [Autonomous Watchdog] Attempting auto-recovery for iOS device ${device.udid}...`,
+        );
         const streamService = IOSStreamService.getInstance();
+
+        // Final Session Shield check immediately before recovery
+        const store = DeviceStoreFactory.getStore();
+        const latestDevice = await store.findDevice({ udid: device.udid });
+        if (latestDevice && latestDevice.busy) {
+          log.info(
+            `🛡️ [Autonomous Watchdog] Recovery aborted for ${device.udid}: Device is now BUSY.`,
+          );
+          return false;
+        }
+
+        // Restarting the stream will effectively restart WDA and proxying
         await streamService.startStream(device.udid);
+
+        // Record the healing event
+        if (latestDevice) {
+          await store.updateDevice(device.udid, device.host, {
+            totalHealedCount: (latestDevice.totalHealedCount || 0) + 1,
+          });
+        }
+        return true;
+      } else {
+        // Simulator recovery
+        log.info(`🛡️ Attempting auto-recovery for Simulator ${device.udid}...`);
+        const simctl = new Simctl();
+        simctl.udid = device.udid;
+        try {
+          await simctl.shutdownDevice();
+          // Small delay for clean shutdown
+          await new Promise((r) => setTimeout(r, 2000));
+        } catch (e) {
+          /* ignore if already shutdown */
+        }
+        await simctl.bootDevice();
         return true;
       }
-      return false;
     } catch (err: any) {
       log.error(`Auto-recovery failed for ${device.udid}: ${err.message}`);
       return false;
