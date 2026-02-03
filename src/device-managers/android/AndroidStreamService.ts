@@ -5,6 +5,8 @@ import { getFreePort } from '../../helpers';
 import { DeviceStoreFactory } from '../../data-service/device-store';
 import { unblockDevice } from '../../data-service/device-service';
 import { deviceLock } from './DeviceLockManager';
+import { Service, Container } from 'typedi';
+import { ResourceIsolationService } from '../../services/ResourceIsolationService';
 
 // FFmpeg is optional - only used for raw-to-JPEG conversion
 let FFMPEG_PATH: string | null = null;
@@ -26,21 +28,15 @@ interface AndroidStreamSession {
   latestFrame?: Buffer;
 }
 
+@Service()
 class AndroidStreamService {
-  private static instance: AndroidStreamService;
   private sessions: Map<string, AndroidStreamSession> = new Map();
   private startPromises: Map<string, Promise<{ mjpegPort: number }>> = new Map();
 
-  private constructor() {
+  constructor() {
     this.startWatchdog();
   }
 
-  public static getInstance(): AndroidStreamService {
-    if (!AndroidStreamService.instance) {
-      AndroidStreamService.instance = new AndroidStreamService();
-    }
-    return AndroidStreamService.instance;
-  }
 
   private startWatchdog() {
     setInterval(async () => {
@@ -75,7 +71,9 @@ class AndroidStreamService {
         // High-Speed Binary Snapshot
         const screenshot = await deviceLock.acquire(udid, async () => {
           return await new Promise<Buffer>((resolve, reject) => {
-            const proc = spawn('adb', ['-s', udid, 'exec-out', 'screencap']);
+            const isolationService = Container.get(ResourceIsolationService);
+            const { command, args } = isolationService.wrapSpawn('adb', ['-s', udid, 'exec-out', 'screencap'], 'Economy');
+            const proc = spawn(command, args);
             const chunks: Uint8Array[] = [];
             proc.stdout.on('data', (c) => chunks.push(c));
             proc.on('close', (code) => {
@@ -276,7 +274,8 @@ class AndroidStreamService {
   ): Promise<Buffer> {
     return new Promise((resolve, reject) => {
       if (!FFMPEG_PATH) return reject(new Error('No FFmpeg on path'));
-      const ff = spawn(FFMPEG_PATH, [
+      const isolationService = Container.get(ResourceIsolationService);
+      const { command, args } = isolationService.wrapSpawn(FFMPEG_PATH, [
         '-f',
         'rawvideo',
         '-pixel_format',
@@ -294,7 +293,9 @@ class AndroidStreamService {
         '-frames:v',
         '1',
         'pipe:1',
-      ]);
+      ], 'Economy');
+
+      const ff = spawn(command, args);
       const output: Uint8Array[] = [];
       ff.stdout.on('data', (d) => output.push(d));
       ff.on('close', (code) => {

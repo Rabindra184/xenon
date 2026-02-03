@@ -2,21 +2,13 @@ import axios from 'axios';
 import log from '../logger';
 import { PrismaService } from '../data-service/prisma-service';
 import { WebhookConfig } from '@prisma/client';
+import { Service } from 'typedi';
 
 export type EventType = 'device_offline' | 'session_failed' | 'device_new';
 
-class NotificationService {
-  private prisma = PrismaService.instance;
-  private static instance: NotificationService;
-
-  private constructor() {}
-
-  public static getInstance(): NotificationService {
-    if (!NotificationService.instance) {
-      NotificationService.instance = new NotificationService();
-    }
-    return NotificationService.instance;
-  }
+@Service()
+export class NotificationService {
+  constructor(private prisma: PrismaService) { }
 
   async getConfigs(): Promise<WebhookConfig[]> {
     return this.prisma.webhookConfig.findMany();
@@ -147,5 +139,3 @@ class NotificationService {
     }
   }
 }
-
-export default NotificationService.getInstance();

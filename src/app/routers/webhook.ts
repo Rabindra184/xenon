@@ -1,10 +1,11 @@
 import { Router, Request, Response } from 'express';
-import NotificationService from '../../services/NotificationService';
+import { NotificationService } from '../../services/NotificationService';
+import { Container } from 'typedi';
 import log from '../../logger';
 
 async function getConfigs(req: Request, res: Response) {
   try {
-    const configs = await NotificationService.getConfigs();
+    const configs = await Container.get(NotificationService).getConfigs();
     res.json(configs);
   } catch (err) {
     log.error(`Failed to get webhook configs: ${err}`);
@@ -20,7 +21,7 @@ async function addConfig(req: Request, res: Response) {
   }
 
   try {
-    const config = await NotificationService.saveConfig(
+    const config = await Container.get(NotificationService).saveConfig(
       url,
       events,
       type || 'slack',
@@ -36,7 +37,7 @@ async function addConfig(req: Request, res: Response) {
 async function deleteConfig(req: Request, res: Response) {
   const { id } = req.params;
   try {
-    await NotificationService.deleteConfig(id);
+    await Container.get(NotificationService).deleteConfig(id);
     res.json({ success: true });
   } catch (err) {
     log.error(`Failed to delete webhook config: ${err}`);
@@ -47,7 +48,7 @@ async function deleteConfig(req: Request, res: Response) {
 async function testWebhook(req: Request, res: Response) {
   const { url, type } = req.body;
   try {
-    await NotificationService['sendSlackMessage'](url, 'device_new', {
+    await (Container.get(NotificationService) as any).sendSlackMessage(url, 'device_new', {
       udid: 'test-device-udid',
       name: 'Test Device',
       host: '127.0.0.1',

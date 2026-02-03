@@ -1,19 +1,16 @@
 import { PrismaClient } from '@prisma/client';
 import { config } from '../config';
+import { Service } from 'typedi';
 
-export class PrismaService {
-  private static _instance: PrismaClient;
-
-  static get instance() {
-    if (!this._instance) {
-      this._instance = new PrismaClient({
-        datasources: {
-          db: {
-            url: `file:${config.databasePath}`,
-          },
+@Service()
+export class PrismaService extends PrismaClient {
+  constructor() {
+    super({
+      datasources: {
+        db: {
+          url: config.databaseUrl,
         },
-      });
-    }
-    return this._instance;
+      },
+    });
   }
 }

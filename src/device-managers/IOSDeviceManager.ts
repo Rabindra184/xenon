@@ -21,18 +21,24 @@ const execPromise = promisify(exec);
 import Devices from './cloud/Devices';
 import NodeDevices from './NodeDevices';
 import { IosTracker } from './iOSTracker';
+import { Container } from 'typedi';
 import { DeviceStoreFactory } from '../data-service/device-store';
 
 import { addNewDevice, removeDevice } from '../data-service/device-service';
 import { DeviceTypeToInclude, IDerivedDataPath, IPluginArgs } from '../interfaces/IPluginArgs';
 
+import { PluginContext } from '../PluginContext';
+import { Service } from 'typedi';
+
+@Service()
 export default class IOSDeviceManager implements IDeviceManager {
   private log = log.scope('IOSManager');
-  constructor(
-    private pluginArgs: IPluginArgs,
-    private hostPort: number,
-    private nodeId: string,
-  ) {}
+
+  constructor(private context: PluginContext) { }
+
+  private get pluginArgs() { return this.context.pluginArgs; }
+  private get hostPort() { return this.context.port; }
+  private get nodeId() { return this.context.nodeId; }
   /**
    * Method to get all ios devices and simulators
    *
@@ -171,7 +177,7 @@ export default class IOSDeviceManager implements IDeviceManager {
   }
 
   async trackIOSDevices(pluginArgs: IPluginArgs) {
-    const iosTracker = IosTracker.getInstance();
+    const iosTracker = Container.get(IosTracker).getListener();
     iosTracker.on('attached', async (udid: string) => {
       const deviceAttached = await this.getDeviceInfo(udid, pluginArgs, this.hostPort);
       const deviceTracked: IDevice = {
@@ -220,7 +226,8 @@ export default class IOSDeviceManager implements IDeviceManager {
 
     // Principal Port Health Check: If ports are stored but occupied, verify they are responsive
     const { isPortBusy } = await import('../helpers');
-    const streamService = (await import('./ios/IOSStreamService')).default.getInstance();
+    const { default: IOSStreamService } = await import('./ios/IOSStreamService');
+    const streamService = Container.get(IOSStreamService);
     const streamStatus = streamService.getStreamStatus(udid);
 
     // If port is busy but stream service isn't actively managing it, it's a "Zombie" or Collision
@@ -232,7 +239,7 @@ export default class IOSDeviceManager implements IDeviceManager {
         const { exec } = await import('child_process');
         const { promisify } = await import('util');
         const execPromise = promisify(exec);
-        await execPromise(`lsof -ti :${wdaLocalPort} | xargs kill -9`).catch(() => {});
+        await execPromise(`lsof -ti :${wdaLocalPort} | xargs kill -9`).catch(() => { });
         // Wait for OS to release
         await new Promise((r) => setTimeout(r, 500));
       } catch (e) {
@@ -281,7 +288,7 @@ export default class IOSDeviceManager implements IDeviceManager {
     };
 
     // Try to get screen dimensions from cache/store
-    const streamStatus = IOSStreamService.getInstance().getStreamStatus(device.udid);
+    const streamStatus = Container.get(IOSStreamService).getStreamStatus(device.udid);
     if (streamStatus?.screenWidth && streamStatus?.screenHeight) {
       result.screenWidth = String(streamStatus.screenWidth);
       result.screenHeight = String(streamStatus.screenHeight);
@@ -415,7 +422,7 @@ export default class IOSDeviceManager implements IDeviceManager {
     const currentQueue = this.commandQueues.get(udid) || Promise.resolve();
 
     const nextInQueue = currentQueue
-      .catch(() => {}) // Ensure we always continue even if previous command failed
+      .catch(() => { }) // Ensure we always continue even if previous command failed
       .then(async () => {
         try {
           return await action();
@@ -464,7 +471,7 @@ export default class IOSDeviceManager implements IDeviceManager {
     const device = await this.getDeviceOrSimulator(udid);
     if (!device) return null;
 
-    const streamStatus = IOSStreamService.getInstance().getStreamStatus(udid);
+    const streamStatus = Container.get(IOSStreamService).getStreamStatus(udid);
     const port =
       streamStatus?.status === 'running' || streamStatus?.status === 'starting'
         ? streamStatus.wdaPort
@@ -477,7 +484,7 @@ export default class IOSDeviceManager implements IDeviceManager {
 
     // If no cached session, try to get session from the stream service
     if (!cached?.sessionId) {
-      const streamSessionId = IOSStreamService.getInstance().getWDASessionId(udid);
+      const streamSessionId = Container.get(IOSStreamService).getWDASessionId(udid);
       if (streamSessionId) {
         log.debug(`Using shared WDA session ${streamSessionId} from stream service for ${udid}`);
         cached = {
@@ -536,7 +543,7 @@ export default class IOSDeviceManager implements IDeviceManager {
                   sessionId: sid,
                 });
                 // Share with stream service
-                IOSStreamService.getInstance().setWDASessionId(udid, sid);
+                Container.get(IOSStreamService).setWDASessionId(udid, sid);
               }
             }
             log.debug(`[WDA] ${method.toUpperCase()} ${endpoint} -> ${response.status}`);
@@ -549,7 +556,7 @@ export default class IOSDeviceManager implements IDeviceManager {
               log.warn(`WDA Session ${cached.sessionId} invalid for ${udid}, clearing all caches.`);
               this.wdaConnectionCache.delete(cacheKey);
               // ALSO clear from stream service to avoid getting the same ID on retry
-              IOSStreamService.getInstance().setWDASessionId(udid, undefined);
+              Container.get(IOSStreamService).setWDASessionId(udid, undefined);
 
               cached = undefined;
               // Immediate retry with discovery path - only once per logical command
@@ -665,7 +672,7 @@ export default class IOSDeviceManager implements IDeviceManager {
             sessionId: sid,
           });
           // Share session with stream service
-          IOSStreamService.getInstance().setWDASessionId(udid, sid);
+          Container.get(IOSStreamService).setWDASessionId(udid, sid);
           return sid;
         }
       } catch (err: any) {
@@ -698,7 +705,7 @@ export default class IOSDeviceManager implements IDeviceManager {
             sessionId: sid,
           });
           // Share session with stream service
-          IOSStreamService.getInstance().setWDASessionId(udid, sid);
+          Container.get(IOSStreamService).setWDASessionId(udid, sid);
           return sid;
         }
       }
@@ -989,7 +996,7 @@ export default class IOSDeviceManager implements IDeviceManager {
 
   async installApp(udid: string, appPath: string): Promise<void> {
     // Use go-ios for installation if available
-    const goIOS = IOSStreamService.getInstance();
+    const goIOS = Container.get(IOSStreamService);
     if (await goIOS.isGoIOSAvailable()) {
       try {
         // iOS 17+ requires a tunnel for go-ios apps command
@@ -1013,7 +1020,7 @@ export default class IOSDeviceManager implements IDeviceManager {
   }
 
   async uninstallApp(udid: string, bundleId: string): Promise<void> {
-    const goIOS = IOSStreamService.getInstance();
+    const goIOS = Container.get(IOSStreamService);
     if (await goIOS.isGoIOSAvailable()) {
       try {
         await execPromise(`"${goIOS.goIOSPath}" uninstall "${bundleId}" --udid ${udid}`);
@@ -1038,7 +1045,7 @@ export default class IOSDeviceManager implements IDeviceManager {
     log.info(`iOS Get Screenshot on ${udid}`);
 
     // Try go-ios first as it's faster and works even if WDA is unresponsive
-    const goIOS = IOSStreamService.getInstance();
+    const goIOS = Container.get(IOSStreamService);
     if (await goIOS.isGoIOSAvailable()) {
       try {
         const localPath = path.join(os.tmpdir(), `screenshot-${udid}.png`);
@@ -1079,7 +1086,7 @@ export default class IOSDeviceManager implements IDeviceManager {
   }
 
   private async getWDABundleId(udid: string): Promise<string> {
-    const goIOS = IOSStreamService.getInstance();
+    const goIOS = Container.get(IOSStreamService);
     if (await goIOS.isGoIOSAvailable()) {
       try {
         const { stdout } = await execPromise(`"${goIOS.goIOSPath}" apps --udid ${udid}`);
@@ -1113,7 +1120,7 @@ export default class IOSDeviceManager implements IDeviceManager {
         await this.sendWDACommand(udid, 'post', '/wda/apps/activate', { bundleId: wdaBundleId });
       } catch (e) {
         // Fallback: Use go-ios to force launch if WDA API is restricted (400/403)
-        const goIOS = IOSStreamService.getInstance();
+        const goIOS = Container.get(IOSStreamService);
         if (await goIOS.isGoIOSAvailable()) {
           log.info(`WDA activate failed, trying go-ios launch for ${udid}`);
           await execPromise(`"${goIOS.goIOSPath}" launch ${wdaBundleId} --udid ${udid}`);
@@ -1137,7 +1144,7 @@ export default class IOSDeviceManager implements IDeviceManager {
           const alertText = alertTextRes?.data?.value || '';
           if (alertText.toLowerCase().includes('paste')) {
             log.info(`Detected Paste Permission alert on ${udid}. Accepting...`);
-            await this.sendWDACommand(udid, 'post', '/alert/accept', {}).catch(() => {});
+            await this.sendWDACommand(udid, 'post', '/alert/accept', {}).catch(() => { });
             await new Promise((r) => setTimeout(r, 1000));
             // Retry fetch after accepting
             response = await this.sendWDACommand(udid, 'post', ep, { contentType: 'plaintext' });
@@ -1210,7 +1217,7 @@ export default class IOSDeviceManager implements IDeviceManager {
     if (!device) return [];
 
     if (device.realDevice) {
-      const goIOS = IOSStreamService.getInstance();
+      const goIOS = Container.get(IOSStreamService);
       if (await goIOS.isGoIOSAvailable()) {
         try {
           const { stdout } = await execPromise(`"${goIOS.goIOSPath}" apps --udid ${udid}`);
@@ -1274,7 +1281,7 @@ export default class IOSDeviceManager implements IDeviceManager {
       }
     } else {
       // Real device logs via go-ios
-      const goIOS = IOSStreamService.getInstance();
+      const goIOS = Container.get(IOSStreamService);
       if (await goIOS.isGoIOSAvailable()) {
         try {
           // Capture syslog for 2 seconds
@@ -1299,7 +1306,7 @@ export default class IOSDeviceManager implements IDeviceManager {
         let thermalStatus: string | undefined = 'Normal';
 
         // 1. Try to get hardware info via go-ios (Lockdown Baseline)
-        const streamService = IOSStreamService.getInstance();
+        const streamService = Container.get(IOSStreamService);
         if (await streamService.isGoIOSAvailable()) {
           const runCmd = async (subCmd: string) => {
             try {
@@ -1383,15 +1390,15 @@ export default class IOSDeviceManager implements IDeviceManager {
             typeof batteryLevel === 'number'
               ? batteryLevel
               : batteryLevel
-              ? parseInt(String(batteryLevel))
-              : undefined,
+                ? parseInt(String(batteryLevel))
+                : undefined,
           storageFree,
           thermalStatus,
         };
 
         // 2. Check WDA responsiveness (via Stream Service Diagnostic)
         try {
-          const streamService = IOSStreamService.getInstance();
+          const streamService = Container.get(IOSStreamService);
           const isResponsive = await streamService.isStreamResponsive(device.udid);
 
           if (isResponsive) {
@@ -1462,7 +1469,7 @@ export default class IOSDeviceManager implements IDeviceManager {
         log.info(
           `🛡️ [Autonomous Watchdog] Attempting auto-recovery for iOS device ${device.udid}...`,
         );
-        const streamService = IOSStreamService.getInstance();
+        const streamService = Container.get(IOSStreamService);
 
         // Final Session Shield check immediately before recovery
         const store = DeviceStoreFactory.getStore();
@@ -1526,7 +1533,7 @@ export default class IOSDeviceManager implements IDeviceManager {
         throw new Error(`Command '${mainCmd}' is not allowed for real iOS devices.`);
       }
 
-      const streamService = IOSStreamService.getInstance();
+      const streamService = Container.get(IOSStreamService);
       if (!(await streamService.isGoIOSAvailable())) {
         throw new Error('go-ios is not available');
       }

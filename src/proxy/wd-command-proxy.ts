@@ -9,6 +9,7 @@ import { hasHubArgument } from '../helpers';
 import { SESSION_MANAGER } from '../sessions/SessionManager';
 import { DASHBORD_EVENT_MANAGER } from '../dashboard/event-manager';
 import { routeToCommandName } from '@appium/base-driver';
+import { Container } from 'typedi';
 
 const remoteProxyMap: Map<string, any> = new Map();
 const remoteHostMap: Map<string, any> = new Map();
@@ -109,6 +110,16 @@ function handler(cliArgs: Record<string, any>) {
       }
       interceptResponse(sessionId, commandName, req, res);
     }
+
+    // Principal Intelligence: Virtualized Network Conditioning (Latency Injection)
+    try {
+      const { NetworkConditioningService } = await import('../services/NetworkConditioningService');
+      const latency = Container.get(NetworkConditioningService).getLatency(sessionId);
+      if (latency > 0) {
+        log.debug(`⏳ Network Conditioning: Delaying command by ${latency}ms for session ${sessionId}`);
+        await new Promise(resolve => setTimeout(resolve, latency));
+      }
+    } catch (e) { /* ignore */ }
 
     if (remoteProxyMap.has(sessionId)) {
       if (proxyServer) {

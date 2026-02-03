@@ -29,6 +29,7 @@ extra:
     - icon: fontawesome/brands/twitter
 nav:
   - Overview: index.md
+  - Architecture: architecture.md
   - Installation: setup.md
   - Configuration: server-args.md
   - Capabilities: capabilities.md

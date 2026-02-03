@@ -3,8 +3,10 @@ import { IDeviceFilterOptions } from '../interfaces/IDeviceFilterOptions';
 import log from '../logger';
 import { setUtilizationTime } from '../device-utils';
 import { DeviceStoreFactory } from './device-store';
+import { Container } from 'typedi';
+import { CircuitBreaker } from './CircuitBreaker';
 
-import NotificationService from '../services/NotificationService';
+import { NotificationService } from '../services/NotificationService';
 
 const store = DeviceStoreFactory.getStore();
 
@@ -12,7 +14,7 @@ export async function removeDevice(devices: { udid: string; host: string }[]) {
   for (const device of devices) {
     log.info(`Removing device ${device.udid} from host ${device.host}`);
     await store.removeDevices({ udid: device.udid, host: device.host });
-    NotificationService.dispatchEvent('device_offline', device);
+    Container.get(NotificationService).dispatchEvent('device_offline', device);
   }
 }
 
@@ -34,7 +36,7 @@ export async function addNewDevice(devices: IDevice[], host?: string): Promise<I
 
   // Notify for new devices
   for (const device of added) {
-    NotificationService.dispatchEvent('device_new', device);
+    Container.get(NotificationService).dispatchEvent('device_new', device);
   }
 
   log.debug(`Sync: Added ${added.length} new devices to store`);
@@ -62,7 +64,23 @@ export async function getAllDevices(): Promise<IDevice[]> {
 }
 
 export async function getDevices(filterOptions: IDeviceFilterOptions): Promise<IDevice[]> {
-  return await store.getDevices(filterOptions);
+  const devices = await store.getDevices(filterOptions);
+
+  // Principal Intelligence: Multi-layered Reliability Filter
+  const breaker = Container.get(CircuitBreaker);
+  return devices.filter(device => {
+    // 1. Host Stability (Circuit Breaker)
+    if (breaker.isOpen(device.host)) return false;
+
+    // 2. Device Health (Proactive Status)
+    // Only exclude if healthStatus is explicitly defined and not 'Healthy'
+    if (device.healthStatus && device.healthStatus !== 'Healthy') {
+      log.debug(`[DeviceService] Skipping unhealthy device ${device.udid}: ${device.healthCheckError}`);
+      return false;
+    }
+
+    return true;
+  });
 }
 
 /**

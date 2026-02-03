@@ -1,3 +1,4 @@
+import 'reflect-metadata';
 import sinon from 'sinon';
 import chai, { expect } from 'chai';
 import AndroidDeviceManager from '../../src/device-managers/AndroidDeviceManager';
@@ -10,7 +11,7 @@ import { DefaultPluginArgs } from '../../src/interfaces/IPluginArgs';
 import { XenonDatabase } from '../../src/data-service/db';
 import { DeviceWithPath } from '@devicefarmer/adbkit';
 import chaiAsPromised from 'chai-as-promised';
-import { v4 as uuidv4 } from 'uuid';
+import { createTestAndroidManager } from '../helpers/test-container';
 
 chai.use(chaiAsPromised);
 
@@ -52,18 +53,12 @@ describe('Android Device Manager', function () {
   }
 
   it('Android Device List to have added state', async () => {
-    const androidDevices = new AndroidDeviceManager(
-      Object.assign({}, DefaultPluginArgs, { platform: 'android' }),
-      4723,
-      uuidv4(),
-    );
+    const androidDevices = createTestAndroidManager({ platform: 'android' });
     const deviceList = new Map();
     adb = await getAdbOriginal();
     cloneAdb = await getCloneAdb();
     deviceList.set(adb, [{ udid: 'emulator-5554', state: 'device' }]);
     deviceList.set(cloneAdb, [{ udid: 'emulator-5555', state: 'device' }]);
-
-    // console.log('deviceList', deviceList);
 
     const getConnectedDevicesStub = sandbox
       .stub(androidDevices, 'getConnectedDevices')
@@ -131,11 +126,7 @@ describe('Android Device Manager', function () {
   });
 
   it('Android Device List to have added state - Only emulators', async () => {
-    const androidDevices = new AndroidDeviceManager(
-      Object.assign({}, DefaultPluginArgs, { platform: 'android' }),
-      4723,
-      uuidv4(),
-    );
+    const androidDevices = createTestAndroidManager({ platform: 'android' });
     const deviceList = new Map();
     adb = await getAdbOriginal();
     deviceList.set(adb, [
@@ -177,11 +168,7 @@ describe('Android Device Manager', function () {
   });
 
   it('Android Device List to have added state - Only real devices', async () => {
-    const androidDevices = new AndroidDeviceManager(
-      Object.assign({}, DefaultPluginArgs, { platform: 'android' }),
-      4723,
-      uuidv4(),
-    );
+    const androidDevices = createTestAndroidManager({ platform: 'android' });
     const deviceList = new Map();
     adb = await getAdbOriginal();
     deviceList.set(adb, [
@@ -223,13 +210,11 @@ describe('Android Device Manager', function () {
   });
   it('Android Device List to have host as remoteMachineProxyIP if provided', async () => {
     (await XenonDatabase.DeviceModel).removeDataOnly();
-    const pluginArgs = Object.assign({}, DefaultPluginArgs, {
+    const androidDevices = createTestAndroidManager({
       platform: 'android',
-      'device-types': 'both',
       skipChromeDownload: true,
       remoteMachineProxyIP: 'http://10.1.1.1:3333',
     });
-    const androidDevices = new AndroidDeviceManager(pluginArgs, 4723, uuidv4());
     const deviceList = new Map();
     adb = await getAdbOriginal();
     deviceList.set(adb, [
@@ -271,12 +256,7 @@ describe('Android Device Manager', function () {
   });
 
   it("Should handle error when adb doesn't respond", async () => {
-    // mock getDeviceProperty
-    const androidDevices = new AndroidDeviceManager(
-      Object.assign({}, DefaultPluginArgs, { platform: 'android' }),
-      4723,
-      uuidv4(),
-    );
+    const androidDevices = createTestAndroidManager({ platform: 'android' });
     const deviceList = new Map();
     adb = await getAdbOriginal();
     deviceList.set(adb, [
@@ -316,12 +296,7 @@ describe('Android Device Manager', function () {
   });
 
   it('should handle device never completing boot', async () => {
-    // mock getDeviceProperty
-    const androidDevices = new AndroidDeviceManager(
-      Object.assign({}, DefaultPluginArgs, { platform: 'android' }),
-      4723,
-      uuidv4(),
-    );
+    const androidDevices = createTestAndroidManager({ platform: 'android' });
     adb = await getAdbOriginal();
     sandbox.stub(androidDevices, <any>'waitBootComplete').throwsException(new Error('Adb timeout'));
 

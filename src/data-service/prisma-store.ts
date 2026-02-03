@@ -3,10 +3,11 @@ import { IDeviceFilterOptions } from '../interfaces/IDeviceFilterOptions';
 import { IDeviceStore, IPendingSessionStore, ICLIArgsStore } from './device-store.interface';
 import { PrismaService } from './prisma-service';
 import { Device, PendingSession, CLIArgs, PrismaClient } from '@prisma/client';
+import { Container } from 'typedi';
 import * as semver from 'semver';
 
-export class SQLiteDeviceStore implements IDeviceStore {
-  private prisma: PrismaClient = PrismaService.instance;
+export class PrismaDeviceStore implements IDeviceStore {
+  private prisma: PrismaClient = Container.get(PrismaService);
 
   private toIDevice(device: Device): IDevice {
     return {
@@ -142,7 +143,7 @@ export class SQLiteDeviceStore implements IDeviceStore {
       where: { udid, host },
       data,
     });
-    console.log(`[SQLiteStore] Update device ${udid} at ${host}: ${result.count} records affected`);
+    console.log(`[PrismaStore] Update device ${udid} at ${host}: ${result.count} records affected`);
   }
 
   async updateDevices(
@@ -219,8 +220,8 @@ export class SQLiteDeviceStore implements IDeviceStore {
   }
 }
 
-export class SQLitePendingSessionStore implements IPendingSessionStore {
-  private prisma = PrismaService.instance;
+export class PrismaPendingSessionStore implements IPendingSessionStore {
+  private prisma = Container.get(PrismaService);
 
   async addPendingSession(capability: any): Promise<void> {
     await this.prisma.pendingSession.upsert({
@@ -263,8 +264,8 @@ export class SQLitePendingSessionStore implements IPendingSessionStore {
   }
 }
 
-export class SQLiteCLIArgsStore implements ICLIArgsStore {
-  private prisma = PrismaService.instance;
+export class PrismaCLIArgsStore implements ICLIArgsStore {
+  private prisma = Container.get(PrismaService);
 
   async addCLIArgs(args: any): Promise<void> {
     await this.prisma.cLIArgs.create({

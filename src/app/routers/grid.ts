@@ -15,7 +15,7 @@ import {
 } from '../../data-service/device-service';
 import log from '../../logger';
 import { XenonManager } from '../../device-managers';
-import Container from 'typedi';
+import { Container } from 'typedi';
 import { IPluginArgs } from '../../interfaces/IPluginArgs';
 import { IDevice } from '../../interfaces/IDevice';
 
@@ -136,7 +136,7 @@ async function getNodes(request: Request, response: Response<string[]>) {
 }
 
 async function getQueueStatusById(request: Request<{ capability_id: string }>, response: Response) {
-  const status = await QueueService.getQueueStatus(request.params.capability_id);
+  const status = await Container.get(QueueService).getQueueStatus(request.params.capability_id);
   if (!status) {
     return response.status(404).json({ error: 'Pending session not found' });
   }
@@ -144,7 +144,7 @@ async function getQueueStatusById(request: Request<{ capability_id: string }>, r
 }
 
 async function getQueueSummary(request: Request, response: Response) {
-  const summary = await QueueService.getQueueSummary();
+  const summary = await Container.get(QueueService).getQueueSummary();
   response.json(summary);
 }
 
@@ -241,6 +241,54 @@ async function updateTags(request: Request, response: Response) {
   response.status(200).json({ success: true });
 }
 
+/**
+ * Returns active session statistics
+ */
+async function getActiveSessions(request: Request, response: Response) {
+  const { SessionManager } = await import('../../sessions/SessionManager');
+  const sessionManager = Container.get(SessionManager);
+  const stats = sessionManager.getStats();
+  const sessions = sessionManager.getAllSessions().map(s => ({
+    id: s.getId(),
+    type: s.getType(),
+    deviceUdid: s.getDevice()?.udid,
+    deviceName: s.getDevice()?.name,
+    platform: s.getDevice()?.platform,
+  }));
+
+  response.json({
+    stats,
+    sessions,
+  });
+}
+
+/**
+ * Returns HTTP request logs for debugging
+ */
+async function getRequestLogs(request: Request, response: Response) {
+  const { RequestLogService } = await import('../../services/RequestLogService');
+  const logService = Container.get(RequestLogService);
+
+  const limit = parseInt(request.query.limit as string) || 50;
+  const method = request.query.method as string;
+  const urlPattern = request.query.url as string;
+  const hasError = request.query.hasError === 'true' ? true :
+    request.query.hasError === 'false' ? false : undefined;
+
+  const logs = logService.getRecentLogs(limit, {
+    method,
+    urlPattern,
+    hasError,
+  });
+
+  const stats = logService.getStats();
+
+  response.json({
+    stats,
+    logs,
+  });
+}
+
 function register(router: Router, pluginArgs: IPluginArgs) {
   router.get('/device', getDevices);
   router.get('/device/:platform', getDeviceByPlatform);
@@ -254,6 +302,10 @@ function register(router: Router, pluginArgs: IPluginArgs) {
   router.get('/queue', getQueuedSessionRequests);
   router.get('/queue/status/:capability_id', getQueueStatusById);
   router.get('/queue/summary', getQueueSummary);
+  router.get('/sessions/active', getActiveSessions);
+
+  // debugging / observability
+  router.get('/logs/requests', getRequestLogs);
 
   // node related routes
   router.get('/node', getNodes);

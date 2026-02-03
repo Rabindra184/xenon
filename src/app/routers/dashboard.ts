@@ -3,6 +3,7 @@ import { prisma } from '../../prisma';
 import { SESSION_MANAGER } from '../../sessions/SessionManager';
 import { MjpegProxy } from 'mjpeg-proxy';
 import { WebConfigService } from '../../data-service/web-config-service';
+import { Container } from 'typedi';
 
 const MJPEG_PROXY_CACHE: Map<string, any> = new Map();
 
@@ -172,7 +173,7 @@ async function streamLiveSessionVideo(request: Request, response: Response) {
 
 async function getGlobalConfig(request: Request, response: Response) {
   try {
-    const config = await WebConfigService.getConfig();
+    const config = await Container.get(WebConfigService).getConfig();
     return response.status(200).json(config);
   } catch (err: any) {
     return response.status(500).json({ error: true, message: err.message });
@@ -181,7 +182,7 @@ async function getGlobalConfig(request: Request, response: Response) {
 
 async function updateGlobalConfig(request: Request, response: Response) {
   try {
-    await WebConfigService.setConfig(request.body);
+    await Container.get(WebConfigService).setConfig(request.body);
     return response.status(200).json({ success: true });
   } catch (err: any) {
     return response.status(500).json({ error: true, message: err.message });

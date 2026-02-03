@@ -7,6 +7,7 @@
  * Based on GADS implementation approach.
  */
 
+import { Service } from 'typedi';
 import { spawn, ChildProcess, exec } from 'child_process';
 import { promisify } from 'util';
 import path from 'path';
@@ -22,6 +23,8 @@ import { DeviceStoreFactory } from '../../data-service/device-store';
 import { unblockDevice } from '../../data-service/device-service';
 
 const execPromise = promisify(exec);
+import { Container } from 'typedi';
+import { ResourceIsolationService, IsolationProfile } from '../../services/ResourceIsolationService';
 
 interface StreamSession {
   udid: string;
@@ -41,13 +44,13 @@ interface StreamSession {
   screenHeight?: number;
 }
 
+@Service()
 class IOSStreamService {
-  private static instance: IOSStreamService;
   private sessions: Map<string, StreamSession> = new Map();
   private startPromises: Map<string, Promise<{ wdaPort: number; mjpegPort: number }>> = new Map();
   public goIOSPath: string;
 
-  private constructor() {
+  constructor() {
     this.goIOSPath = this.getGoIOSPath();
     this.startWatchdog();
   }
@@ -96,12 +99,6 @@ class IOSStreamService {
     }, 30000); // 30s interval for background stability
   }
 
-  public static getInstance(): IOSStreamService {
-    if (!IOSStreamService.instance) {
-      IOSStreamService.instance = new IOSStreamService();
-    }
-    return IOSStreamService.instance;
-  }
 
   private getGoIOSPath(): string {
     const goIOSDir = cachePath('goIOS');
@@ -163,9 +160,16 @@ class IOSStreamService {
         );
         if (existing && existing.tunnelProcess) return existing.tunnelProcess;
 
-        const tunnelProcess = spawn(
+        const isolationService = Container.get(ResourceIsolationService);
+        const { command, args } = isolationService.wrapSpawn(
           this.goIOSPath,
           ['tunnel', 'start', '--udid', udid, '--userspace'],
+          'Economy' // Run tunnel in Economy mode
+        );
+
+        const tunnelProcess = spawn(
+          command,
+          args,
           {
             stdio: ['pipe', 'pipe', 'pipe'],
             env: { ...process.env, ENABLE_GO_IOS_AGENT: 'yes' },
@@ -315,8 +319,13 @@ class IOSStreamService {
 
         // 2. Start Port Forwarding using iproxy (more reliable on Mac)
         log.info(`Forwarding ${udid}: ${wdaPort}->8100, ${mjpegPort}->9100 using iproxy`);
-        session.forwardWDAProcess = spawn('iproxy', ['-u', udid, `${wdaPort}:8100`]);
-        session.forwardMJPEGProcess = spawn('iproxy', ['-u', udid, `${mjpegPort}:9100`]);
+        const isolationService = Container.get(ResourceIsolationService);
+
+        const wdaIproxy = isolationService.wrapSpawn('iproxy', ['-u', udid, `${wdaPort}:8100`], 'Economy');
+        const mjpegIproxy = isolationService.wrapSpawn('iproxy', ['-u', udid, `${mjpegPort}:9100`], 'Economy');
+
+        session.forwardWDAProcess = spawn(wdaIproxy.command, wdaIproxy.args);
+        session.forwardMJPEGProcess = spawn(mjpegIproxy.command, mjpegIproxy.args);
 
         const handleIproxyProcess = (p: ChildProcess, name: string) => {
           p.on('error', (err) => log.error(`${name} [${udid}] error: ${err.message}`));
@@ -335,7 +344,7 @@ class IOSStreamService {
           (await this.detectWDABundleId(udid)) || 'com.qasecret.WebDriverAgentRunner.xctrunner';
         log.info(`Starting WDA ${bundleId} on ${udid}`);
 
-        session.wdaProcess = spawn(this.goIOSPath, [
+        const wdaSpawn = isolationService.wrapSpawn(this.goIOSPath, [
           'runwda',
           '--bundleid',
           bundleId,
@@ -345,7 +354,9 @@ class IOSStreamService {
           'WebDriverAgentRunner.xctest',
           '--udid',
           udid,
-        ]);
+        ], 'Performance'); // WDA deserves Performance mode
+
+        session.wdaProcess = spawn(wdaSpawn.command, wdaSpawn.args);
 
         const logDir = path.join(os.tmpdir(), 'xenon-logs');
         if (!fs.existsSync(logDir)) fs.mkdirSync(logDir);

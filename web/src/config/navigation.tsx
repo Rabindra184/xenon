@@ -54,7 +54,7 @@ export const navigationConfig: NavItem[] = [
     label: 'Settings',
     icon: <Settings size={18} color="currentColor" />,
     path: '/settings',
-    enabled: true,
+    enabled: false,
   },
 ];
 

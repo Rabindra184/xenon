@@ -1212,3 +1212,146 @@ export { };
  *                 message:
  *                   type: string
  */
+
+/**
+ * @swagger
+ * /api/sessions/active:
+ *   get:
+ *     summary: Get active sessions
+ *     description: Get statistics and list of currently active sessions in memory
+ *     tags: [Sessions]
+ *     responses:
+ *       200:
+ *         description: Active session information
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 stats:
+ *                   type: object
+ *                   properties:
+ *                     total:
+ *                       type: number
+ *                       description: Total number of active sessions
+ *                     byType:
+ *                       type: object
+ *                       properties:
+ *                         local:
+ *                           type: number
+ *                         remote:
+ *                           type: number
+ *                         cloud:
+ *                           type: number
+ *                 sessions:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       id:
+ *                         type: string
+ *                       type:
+ *                         type: string
+ *                         enum: [local, remote, cloud]
+ *                       deviceUdid:
+ *                         type: string
+ *                       deviceName:
+ *                         type: string
+ *                       platform:
+ *                         type: string
+ */
+
+/**
+ * @swagger
+ * /api/logs/requests:
+ *   get:
+ *     summary: Get HTTP request logs
+ *     description: Retrieve recent HTTP request logs for debugging hub-node communication
+ *     tags: [Observability]
+ *     parameters:
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           default: 50
+ *         description: Maximum number of logs to return
+ *       - in: query
+ *         name: method
+ *         schema:
+ *           type: string
+ *           enum: [GET, POST, PUT, DELETE]
+ *         description: Filter by HTTP method
+ *       - in: query
+ *         name: url
+ *         schema:
+ *           type: string
+ *         description: Filter by URL pattern (substring match)
+ *       - in: query
+ *         name: hasError
+ *         schema:
+ *           type: boolean
+ *         description: Filter by error status (true = only errors, false = only success)
+ *     responses:
+ *       200:
+ *         description: Request logs and statistics
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 stats:
+ *                   type: object
+ *                   properties:
+ *                     totalLogged:
+ *                       type: number
+ *                       description: Total requests in buffer
+ *                     errorCount:
+ *                       type: number
+ *                       description: Number of failed requests
+ *                     avgDurationMs:
+ *                       type: number
+ *                       description: Average request duration in milliseconds
+ *                     byMethod:
+ *                       type: object
+ *                       additionalProperties:
+ *                         type: number
+ *                     byStatusCode:
+ *                       type: object
+ *                       additionalProperties:
+ *                         type: number
+ *                 logs:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       timestamp:
+ *                         type: string
+ *                         format: date-time
+ *                       direction:
+ *                         type: string
+ *                         enum: [outgoing, incoming]
+ *                       method:
+ *                         type: string
+ *                       url:
+ *                         type: string
+ *                       statusCode:
+ *                         type: number
+ *                       durationMs:
+ *                         type: number
+ *                       error:
+ *                         type: string
+ *                         nullable: true
+ *                       requestBody:
+ *                         type: string
+ *                         description: Sanitized request body (sensitive data redacted)
+ *                       responseBody:
+ *                         type: string
+ *                         description: Truncated response body
+ */
+
+/**
+ * @swagger
+ * tags:
+ *   - name: Observability
+ *     description: Debugging and monitoring endpoints
+ */

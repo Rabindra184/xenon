@@ -77,6 +77,18 @@ export interface IPluginArgs {
 
   // development purposes
   removeDevicesFromDatabaseBeforeRunningThePlugin?: boolean;
+
+  /** Database configuration */
+  databaseProvider?: 'sqlite' | 'postgresql';
+  databaseUrl?: string;
+
+  /** AI Configuration */
+  aiProvider?: 'gemini' | 'openai' | 'anthropic' | 'ollama';
+  aiModel?: string;
+  aiBaseUrl?: string;
+  geminiApiKey?: string;
+  openaiApiKey?: string;
+  anthropicApiKey?: string;
 }
 
 export const DefaultPluginArgs: IPluginArgs = {
@@ -105,4 +117,12 @@ export const DefaultPluginArgs: IPluginArgs = {
   healthCheckIntervalMs: 30000,
   healthCheckSchedule: undefined,
   removeDevicesFromDatabaseBeforeRunningThePlugin: false,
+  databaseProvider: undefined,
+  databaseUrl: undefined,
+  aiProvider: undefined,
+  aiModel: undefined,
+  aiBaseUrl: undefined,
+  geminiApiKey: undefined,
+  openaiApiKey: undefined,
+  anthropicApiKey: undefined,
 };

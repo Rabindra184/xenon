@@ -17,6 +17,18 @@ Xenon uses the `xe:` prefix for its custom capabilities. `xenon:` and `appium:` 
 | `xe:save_device_logs` | Save device logs (logcat/syslog) to session artifacts | `false` |
 | `xe:priority` | Session priority (low/medium/high) for queue management | `medium` |
 | `xe:teamId` | Team identifier for quota management | - |
+| `xe:network_profile` | Network profile to simulate (`4G`, `3G`, `Edge`, `Offline`) | `Normal` |
+| `xe:max_thermal_status` | Maximum allowed thermal status (`Normal`, `Fair`, `Serious`, `Critical`) | - |
+
+> [!TIP]
+> **AI Analysis Tip**: For the most accurate AI diagnoses, ensure `xe:screenshot_on_failure` and `xe:save_device_logs` are set to `true`. This provides the multimodal context (visuals + logs) the AI needs to identify the root cause.
+
+### Strict Capability Validation
+
+Xenon uses a strict validation system powered by Zod. Every session request is validated against a schema before a device is even considered for allocation. This ensures:
+- **Fail-Fast**: Invalid capabilities trigger an immediate 400 error.
+- **Data Integrity**: Capabilities are sanitized and normalized to the correct types.
+- **Platform Specifics**: Ensuring things like `bundleId` are present for iOS and `appPackage` for Android.
 
 ### Device Filtering
 
@@ -35,4 +47,4 @@ Xenon uses the `xe:` prefix for its custom capabilities. `xenon:` and `appium:` 
 
 ### API Documentation
 
-For full API documentation, visit the [Swagger UI](/docs/api-docs) or the raw [OpenAPI Spec](/docs/api-docs.json) on your running server.
+For full API documentation, visit the [Swagger UI](/xenon/api-docs) or the raw [OpenAPI Spec](/xenon/api-docs.json) on your running server.

@@ -5,10 +5,10 @@ import {
   getOsInfo,
 } from '../chromeUtils';
 import { ChromedriverStorageClient } from 'appium-chromedriver';
+import { Service } from 'typedi';
 
+@Service()
 export default class ChromeDriverManager {
-  private static instance: ChromeDriverManager;
-
   private readonly client: any;
   private readonly osInfo: any;
   private readonly mapping: any;
@@ -21,18 +21,15 @@ export default class ChromeDriverManager {
     this.tempDirectory = tempDirectory;
   }
 
-  public static async getInstance() {
+  public static async create() {
     const shouldParseNotes = true;
-    if (!ChromeDriverManager.instance) {
-      const tmpRoot = getModuleRoot();
-      const osInfo = await getOsInfo();
-      const client = new ChromedriverStorageClient({
-        chromedriverDir: await getChromedriverBinaryPath(tmpRoot),
-      });
-      const mapping = await client.retrieveMapping(shouldParseNotes);
-      return new ChromeDriverManager(client, osInfo, mapping, tmpRoot);
-    }
-    return Promise.resolve(ChromeDriverManager.instance);
+    const tmpRoot = getModuleRoot();
+    const osInfo = await getOsInfo();
+    const client = new ChromedriverStorageClient({
+      chromedriverDir: await getChromedriverBinaryPath(tmpRoot),
+    });
+    const mapping = await client.retrieveMapping(shouldParseNotes);
+    return new ChromeDriverManager(client, osInfo, mapping, tmpRoot);
   }
 
   public async downloadChromeDriver(version: any) {
@@ -53,8 +50,7 @@ export default class ChromeDriverManager {
     );
     const latestVersion =
       newVersion !== null && newVersion !== undefined ? `v${newVersion}` : `v${fallBackVersion}`;
-    return `${await getChromedriverBinaryPath(this.tempDirectory)}/chromedriver_${
-      this.osInfo.name
-    }${this.osInfo.arch}_${latestVersion}`;
+    return `${await getChromedriverBinaryPath(this.tempDirectory)}/chromedriver_${this.osInfo.name
+      }${this.osInfo.arch}_${latestVersion}`;
   }
 }

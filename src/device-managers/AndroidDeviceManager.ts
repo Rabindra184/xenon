@@ -29,6 +29,10 @@ interface ExtendedADB extends ADB {
   executable: { path: string; defaultArgs: string[];[key: string]: any };
 }
 
+import { PluginContext } from '../PluginContext';
+import { Service } from 'typedi';
+
+@Service()
 export default class AndroidDeviceManager implements IDeviceManager {
   private log = log.scope('AndroidManager');
   private adb: ExtendedADB | undefined;
@@ -36,11 +40,12 @@ export default class AndroidDeviceManager implements IDeviceManager {
   private abortControl: Map<string, AbortController> = new Map();
   private tracker?: Tracker = undefined;
   private remoteTrackers: { id: string; tracker: Tracker }[] = [];
-  constructor(
-    private pluginArgs: IPluginArgs,
-    private hostPort: number,
-    private nodeId: string,
-  ) { }
+
+  constructor(private context: PluginContext) { }
+
+  private get pluginArgs() { return this.context.pluginArgs; }
+  private get hostPort() { return this.context.port; }
+  private get nodeId() { return this.context.nodeId; }
 
   private initiateAbortControl(deviceUdid: string) {
     const control = new AbortController();
@@ -535,7 +540,7 @@ export default class AndroidDeviceManager implements IDeviceManager {
   }
 
   public async downloadChromeDriver(version: string) {
-    const instance = await ChromeDriverManager.getInstance();
+    const instance = Container.get(ChromeDriverManager);
     return await instance.downloadChromeDriver(version);
   }
 
@@ -824,7 +829,7 @@ export default class AndroidDeviceManager implements IDeviceManager {
 
     // Principal Optimization: Try to use the latest frame from the active stream if available
     try {
-      const streamSession = AndroidStreamService.getInstance().getStreamStatus(udid);
+      const streamSession = Container.get(AndroidStreamService).getStreamStatus(udid);
       if (streamSession?.status === 'running' && streamSession.latestFrame) {
         log.info(`[AndroidDeviceManager] Using cached stream frame for ${udid} screenshot.`);
         return streamSession.latestFrame.toString('base64');

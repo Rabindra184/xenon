@@ -77,10 +77,47 @@ export async function analyzeSessionFailure(sessionId: string): Promise<void> {
 
     log.info(`[FailureAnalysis] Session ${sessionId} identified as ${identifiedCategory}`);
 
+    // AI Root-Cause Analysis (Elite Tier)
+    let aiAnalysis = null;
+    try {
+      const { AI_SERVICE } = await import('../../services/AIService');
+      if (AI_SERVICE.isEnabled()) {
+        const lastLogs = await prisma.log.findMany({
+          where: { session_id: sessionId, log_type: 'DEVICE' },
+          take: 50,
+          orderBy: { timestamp: 'desc' },
+        });
+
+        const lastCommands = await prisma.sessionLog.findMany({
+          where: { session_id: sessionId },
+          take: 10,
+          orderBy: { createdAt: 'desc' },
+        });
+
+        // Find the last screenshot in logs
+        const lastScreenshotLog = lastCommands.find(l => l.screenshot !== null);
+
+        aiAnalysis = await AI_SERVICE.analyzeFailure({
+          sessionId,
+          failureReason: reason,
+          commandLogs: lastCommands.map(c => ({
+            command: c.command_name,
+            success: c.is_success,
+            response: c.response?.slice(0, 500) // Truncate long responses
+          })),
+          deviceLogs: lastLogs.map(l => l.message),
+          screenshotPath: lastScreenshotLog?.screenshot || undefined
+        });
+      }
+    } catch (aiErr: any) {
+      log.warn(`[FailureAnalysis] AI Analysis failed for ${sessionId}: ${aiErr.message}`);
+    }
+
     await prisma.session.update({
       where: { id: sessionId },
       data: {
         failure_category: identifiedCategory,
+        ai_analysis: aiAnalysis,
       },
     });
   } catch (err: any) {

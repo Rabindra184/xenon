@@ -1,14 +1,16 @@
 import { prisma } from '../prisma';
+import { Service } from 'typedi';
 
 export interface IWebConfig {
   healthCheckIntervalMs?: number;
   healthCheckSchedule?: string;
 }
 
+@Service()
 export class WebConfigService {
-  private static readonly CONFIG_ID = 'global';
+  private readonly CONFIG_ID = 'global';
 
-  public static async getConfig(): Promise<IWebConfig> {
+  public async getConfig(): Promise<IWebConfig> {
     const configs = await prisma.webConfig.findMany({
       where: { id: this.CONFIG_ID },
     });
@@ -24,7 +26,7 @@ export class WebConfigService {
     return result;
   }
 
-  public static async setConfig(config: IWebConfig): Promise<void> {
+  public async setConfig(config: IWebConfig): Promise<void> {
     const promises = [];
 
     if (config.healthCheckIntervalMs !== undefined) {

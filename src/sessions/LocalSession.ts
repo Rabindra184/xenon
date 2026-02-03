@@ -1,11 +1,15 @@
+import AndroidDeviceManager from '../device-managers/AndroidDeviceManager';
+import log from '../logger';
+import { exec } from 'teen_process';
 import SessionType from '../enums/SessionType';
 import { XenonSessionOptions } from './XenonSession';
 import { RemoteSession } from './RemoteSession';
 import { Container } from 'typedi';
 import { XenonManager } from '../device-managers';
-import AndroidDeviceManager from '../device-managers/AndroidDeviceManager';
-import log from '../logger';
-import { exec } from 'teen_process';
+import { XENON_CAPABILITIES } from '../XenonCapabilityManager';
+import { VideoPipelineService } from '../services/VideoPipelineService';
+import AndroidStreamService from '../device-managers/android/AndroidStreamService';
+import IOSStreamService from '../device-managers/ios/IOSStreamService';
 
 function constructBasePath(path: string) {
   if (!path || path == '') {
@@ -187,82 +191,49 @@ export class LocalSession extends RemoteSession {
       size = '720x1280';
     }
 
+    const isolationService = Container.get((await import('../services/ResourceIsolationService')).ResourceIsolationService);
+    const isolationProfile = (this.getCapabilities() as any)[XENON_CAPABILITIES.ISOLATION_PROFILE] || 'Performance';
+    const videoPipeline = Container.get(VideoPipelineService);
+
     try {
-      if (targetDriver && typeof targetDriver.startRecordingScreen === 'function') {
-        log.info(
-          `[LocalSession] Using direct driver.startRecordingScreen for ${this.sessionId} with resolution ${resolution}`,
-        );
+      // Intelligent Video Pipeline: Hardware Accelerated & Zero-Copy
+      log.info(`[LocalSession] Triggering Intelligent Video Pipeline for ${this.sessionId}`);
 
-        // Senior Resiliency: Pre-emptively try to clean up screenrecord via ADB ourselves.
-        // If this succeeds, Appium's later internal killall might still fail,
-        // but we've increased our chances of a clean slate.
-        if (device.platform === 'android') {
-          try {
-            await exec(this.driver.opts?.adbExecutablePath || 'adb', [
-              '-s',
-              device.udid,
-              'shell',
-              'killall',
-              '-2',
-              'screenrecord',
-            ]);
-          } catch (e) {
-            // Ignore killall failures
-          }
-        }
-
-        try {
-          await targetDriver.startRecordingScreen({
-            videoType: 'libx264',
-            videoFps: 10,
-            videoScale: resolution,
-            videoSize: size,
-            timeLimit: 1800,
-          });
-        } catch (innerErr: any) {
-          if (innerErr.message.includes('screenrecord')) {
-            log.warn(
-              `[LocalSession] Retrying startRecordingScreen without complex options for ${this.sessionId}`,
-            );
-            await targetDriver.startRecordingScreen({
-              timeLimit: 1800,
-            });
-          } else {
-            throw innerErr;
-          }
-        }
-
-        // Manually update the flag in parent class logic
-        (this as any).isVideoAvailable = true;
-        return;
+      // 1. Ensure MJPEG Stream is active for the device
+      if (device.platform === 'android') {
+        await Container.get(AndroidStreamService).startStream(device.udid);
+      } else if (device.platform === 'ios') {
+        await Container.get(IOSStreamService).startStream(device.udid);
       }
-    } catch (err: any) {
-      log.warn(
-        `[LocalSession] Direct startRecordingScreen failed: ${err.message}. Falling back to HTTP.`,
-      );
-    }
 
-    const originalBaseUrl = (this as any).baseUrl;
-    (this as any).baseUrl = this.appiumBaseUrl;
-    try {
-      return await super.startVideoRecording(options);
-    } finally {
-      (this as any).baseUrl = originalBaseUrl;
+      // 2. Start HW-Accelerated Recording
+      await videoPipeline.startRecording({
+        sessionId: this.sessionId,
+        udid: device.udid,
+        resolution
+      });
+    } catch (err: any) {
+      log.warn('[LocalSession] Failed to start Intelligent Video Pipeline:', err);
     }
   }
 
+  isVideoRecordingInProgress(): boolean {
+    return Container.get(VideoPipelineService).isRecording(this.sessionId);
+  }
+
   // Override to use proper Appium URL for video commands
-  async stopVideoRecording(driverOverride?: any) {
-    log.info(`[LocalSession] Stopping video recording for session ${this.sessionId}`);
+  async stopVideoRecording(driver?: any): Promise<string | null> {
+    const videoPipeline = Container.get(VideoPipelineService);
+    if (videoPipeline.isRecording(this.sessionId)) {
+      try {
+        log.info(`[LocalSession] Stopping Intelligent Video Pipeline for ${this.sessionId}`);
+        return await videoPipeline.stopRecording(this.sessionId);
+      } catch (err: any) {
+        log.warn('[LocalSession] Failed to stop Intelligent Video Pipeline:', err);
+      }
+    }
 
-    // Principal Intelligence: Try direct driver call first.
-    // Unpack actual driver if this.driver is the Appium umbrella driver.
-    const sessionDriver =
-      driverOverride ||
-      this.driver.sessions?.[this.sessionId]?.proxydriver ||
-      this.driver.sessions?.[this.sessionId];
-    const targetDriver = sessionDriver || this.driver;
-
+    const targetDriver = driver || this.driver;
     try {
       if (targetDriver && typeof targetDriver.stopRecordingScreen === 'function') {
         log.info(`[LocalSession] Using direct driver.stopRecordingScreen for ${this.sessionId}`);
@@ -275,8 +246,7 @@ export class LocalSession extends RemoteSession {
         }
       } else {
         log.warn(
-          `[LocalSession] Direct stopRecordingScreen not found on target driver. Function exists: ${
-            typeof targetDriver?.stopRecordingScreen === 'function'
+          `[LocalSession] Direct stopRecordingScreen not found on target driver. Function exists: ${typeof targetDriver?.stopRecordingScreen === 'function'
           }`,
         );
       }
@@ -297,9 +267,20 @@ export class LocalSession extends RemoteSession {
 
   getLiveVideoUrl() {
     const { address } = this.driver.opts || this.driver;
-    const mjpegServerPort = this.getCapabilities()['mjpegServerPort'];
+    const safeAddress = address === '0.0.0.0' ? '127.0.0.1' : address;
+
+    // First, check the session capability (standard Appium flow)
+    let mjpegServerPort = this.getCapabilities()['mjpegServerPort'];
+
+    // Fallback: For Artisan WDA flow (go-ios), the mjpegServerPort is on the device object
+    // because we delete the capability to avoid Appium/WDA conflicts
+    if (!mjpegServerPort || isNaN(mjpegServerPort)) {
+      const device = this.getDevice();
+      mjpegServerPort = device?.mjpegServerPort;
+    }
+
     if (mjpegServerPort && !isNaN(mjpegServerPort)) {
-      return `http://${address}:${mjpegServerPort}`;
+      return `http://${safeAddress}:${mjpegServerPort}`;
     } else {
       return null;
     }

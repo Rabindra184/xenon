@@ -43,3 +43,21 @@ User can block/unblock devices from Dashboard manually. These devices will not b
 
 Once automation picks the device user cannot manually unblock, it's responsible for the automation script.
 
+## Database Setup (Optional)
+
+By default, Xenon uses a local **SQLite** database to store device states and session history. For large-scale distributed deployments, you can switch to **PostgreSQL**.
+
+### PostgreSQL Configuration
+
+To use PostgreSQL, pass the provider and connection URL via Appium's plugin arguments:
+
+```bash
+appium server ... \
+  --plugin-xenon-database-provider=postgresql \
+  --plugin-xenon-database-url="postgresql://user:password@localhost:5432/xenon"
+```
+
+Alternatively, use environment variables:
+- `XENON_DB_PROVIDER=postgresql`
+- `DATABASE_URL=postgresql://user:password@localhost:5432/xenon`
+

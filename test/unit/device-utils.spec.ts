@@ -1,3 +1,4 @@
+import 'reflect-metadata';
 import sinon from 'sinon';
 import * as DeviceUtils from '../../src/device-utils';
 import * as DeviceService from '../../src/data-service/device-service';
@@ -11,13 +12,12 @@ import { Container } from 'typedi';
 import { allocateDeviceForSession } from '../../src/device-utils';
 import { DefaultPluginArgs } from '../../src/interfaces/IPluginArgs';
 import { IDevice } from '../../src/interfaces/IDevice';
-import { v4 as uuidv4 } from 'uuid';
+import { createTestXenonManager, setupTestContainer } from '../helpers/test-container';
 
 chai.should();
 chai.use(sinonChai);
 const expect = chai.expect;
 const sandbox = sinon.createSandbox();
-const NODE_ID = uuidv4();
 
 describe('Device Utils', () => {
   const hub1Device = {
@@ -100,14 +100,7 @@ describe('Device Utils', () => {
 
   it('Allocate devices for session with host filter', async () => {
     (await XenonDatabase.DeviceModel).removeDataOnly();
-    const deviceManager = new XenonManager(
-      'android',
-      { androidDeviceType: 'both', iosDeviceType: 'both' },
-      4723,
-      Object.assign(pluginArgs, { maxSessions: 3 }),
-      NODE_ID,
-    );
-    Container.set(XenonManager, deviceManager);
+    const deviceManager = createTestXenonManager(Object.assign({}, pluginArgs, { maxSessions: 3, platform: 'android' }));
     await addNewDevice(devices);
     const capabilities = {
       alwaysMatch: {
@@ -149,14 +142,7 @@ describe('Device Utils', () => {
   });
   it('Allocating device should set device to be busy', async function () {
     (await XenonDatabase.DeviceModel).removeDataOnly();
-    const deviceManager = new XenonManager(
-      'android',
-      { androidDeviceType: 'both', iosDeviceType: 'both' },
-      4723,
-      Object.assign(pluginArgs, { maxSessions: 3 }),
-      NODE_ID,
-    );
-    Container.set(XenonManager, deviceManager);
+    const deviceManager = createTestXenonManager(Object.assign({}, pluginArgs, { maxSessions: 3, platform: 'android' }));
     await addNewDevice(devices);
     const capabilities = {
       alwaysMatch: {
@@ -360,14 +346,7 @@ describe('Device Utils', () => {
 
   it('should remove stale devices', async () => {
     (await XenonDatabase.DeviceModel).removeDataOnly();
-    const deviceManager = new XenonManager(
-      'android',
-      { androidDeviceType: 'both', iosDeviceType: 'both' },
-      4723,
-      Object.assign(pluginArgs, { maxSessions: 3 }),
-      NODE_ID,
-    );
-    Container.set(XenonManager, deviceManager);
+    const deviceManager = createTestXenonManager(Object.assign({}, pluginArgs, { maxSessions: 3, platform: 'android' }));
     addNewDevice(devices);
 
     DeviceUtils.removeStaleDevices(pluginArgs.bindHostOrIp);

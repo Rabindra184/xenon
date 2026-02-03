@@ -13,6 +13,8 @@ import asyncWait from 'async-wait-until';
 import { InternalHttpClient } from './InternalHttpClient';
 
 const APPIUM_VENDOR_PREFIX = 'appium:';
+const XENON_PREFIXES = ['xe:'];
+
 export async function asyncForEach(
   array: string | any[],
   callback: {
@@ -30,7 +32,7 @@ export async function asyncForEach(
 export async function spinWith(
   msg: string,
   fn: () => Promise<boolean>,
-  callback = (_msg: string) => {},
+  callback = (_msg: string) => { },
 ) {
   const spinner = ora(msg).start();
   await asyncWait(
@@ -79,9 +81,8 @@ export function nodeUrl(device: IDevice, basePath = ''): string {
     } else if (device.cloud.toLowerCase() === Cloud.HEADSPIN) {
       return `${host}`;
     } else {
-      return `https://${process.env.CLOUD_USERNAME}:${process.env.CLOUD_KEY}@${
-        new URL(device.host).host
-      }/wd/hub`;
+      return `https://${process.env.CLOUD_USERNAME}:${process.env.CLOUD_KEY}@${new URL(device.host).host
+        }/wd/hub`;
     }
   }
   // hardcoded the `/wd/hub` for now. This can be fetch from serverArgs.basePath
@@ -126,14 +127,16 @@ function isStandardCap(cap: any) {
   );
 }
 
-// If the 'appium:' prefix was provided and it's a valid capability, strip out the prefix (see https://www.w3.org/TR/webdriver/#dfn-extension-capabilities)
+// If the 'appium:' or Xenon prefixes were provided, strip them out (W3C Extension Capabilities)
 // (NOTE: Method is destructive and mutates contents of caps)
 export function stripAppiumPrefixes(caps: any) {
-  // split into prefixed and non-prefixed.
-  // non-prefixed should be standard caps at this point
-  const [prefixedCaps, nonPrefixedCaps] = _.partition(_.keys(caps), (cap) =>
-    String(cap).startsWith(APPIUM_VENDOR_PREFIX),
+  const allPrefixes = [APPIUM_VENDOR_PREFIX, ...XENON_PREFIXES];
+  const keys = _.keys(caps);
+
+  const prefixedCaps = keys.filter(cap =>
+    allPrefixes.some(prefix => cap.startsWith(prefix))
   );
+  const nonPrefixedCaps = _.difference(keys, prefixedCaps);
 
   // initialize this with the k/v pairs of the non-prefixed caps
   const strippedCaps = /** @type {import('@appium/types').Capabilities<C>} */ _.pick(
@@ -142,22 +145,20 @@ export function stripAppiumPrefixes(caps: any) {
   );
   const badPrefixedCaps: string[] = [];
 
-  // Strip out the 'appium:' prefix
+  // Strip prefixes
   for (const prefixedCap of prefixedCaps) {
-    const strippedCapName =
-      /** @type {import('type-fest').StringKeyOf<import('@appium/types').Capabilities<C>>} */ prefixedCap.substring(
-        APPIUM_VENDOR_PREFIX.length,
-      ) as string;
+    const activePrefix = allPrefixes.find(p => prefixedCap.startsWith(p))!;
+    const strippedCapName = prefixedCap.substring(activePrefix.length) as string;
 
     // If it's standard capability that was prefixed, add it to an array of incorrectly prefixed capabilities
-    if (isStandardCap(strippedCapName)) {
+    if (activePrefix === APPIUM_VENDOR_PREFIX && isStandardCap(strippedCapName)) {
       badPrefixedCaps.push(strippedCapName);
       if (_.isNil(strippedCaps[strippedCapName])) {
         strippedCaps[strippedCapName] = caps[prefixedCap];
       } else {
         log.warn(
           `Ignoring capability '${prefixedCap}=${caps[prefixedCap]}' and ` +
-            `using capability '${strippedCapName}=${strippedCaps[strippedCapName]}'`,
+          `using capability '${strippedCapName}=${strippedCaps[strippedCapName]}'`,
         );
       }
     } else {

@@ -2,6 +2,7 @@ import { DeviceStoreFactory } from './device-store';
 import { PrismaService } from './prisma-service';
 import { IDeviceStore, IPendingSessionStore } from './device-store.interface';
 import log from '../logger';
+import { Service, Container } from 'typedi';
 
 export interface QueueStatus {
   position: number;
@@ -12,16 +13,18 @@ export interface QueueStatus {
   availableDevicesCount: number;
 }
 
+@Service()
 export class QueueService {
-  private static deviceStore: IDeviceStore = DeviceStoreFactory.getStore();
-  private static pendingStore: IPendingSessionStore = DeviceStoreFactory.getPendingSessionStore();
-  private static prisma = PrismaService.instance;
+  private deviceStore: IDeviceStore = DeviceStoreFactory.getStore();
+  private pendingStore: IPendingSessionStore = DeviceStoreFactory.getPendingSessionStore();
+
+  constructor(private prisma: PrismaService) { }
 
   /**
    * Calculates the average session duration for a platform in milliseconds
    * Defaults to 5 minutes (300,000 ms) if no history exists
    */
-  private static async getAverageSessionDuration(platform: string): Promise<number> {
+  private async getAverageSessionDuration(platform: string): Promise<number> {
     try {
       const recentSessions = await this.prisma.session.findMany({
         where: {
@@ -42,7 +45,7 @@ export class QueueService {
         return 300000; // 5 minutes default
       }
 
-      const totalDuration = recentSessions.reduce((acc, session) => {
+      const totalDuration = recentSessions.reduce((acc: number, session: any) => {
         const duration = session.endTime!.getTime() - session.startTime.getTime();
         return acc + duration;
       }, 0);
@@ -57,7 +60,7 @@ export class QueueService {
   /**
    * Returns queue status for a specific pending capability
    */
-  static async getQueueStatus(capabilityId: string): Promise<QueueStatus | null> {
+  async getQueueStatus(capabilityId: string): Promise<QueueStatus | null> {
     log.info(`[QueueService] Fetching queue status for capability ID: ${capabilityId}`);
     const allPending = await this.pendingStore.getAllPendingSessions();
     const sortedPending = allPending.sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
@@ -116,7 +119,7 @@ export class QueueService {
   /**
    * Returns a high-level summary of the entire queue
    */
-  static async getQueueSummary() {
+  async getQueueSummary() {
     log.info('[QueueService] Calculating global queue summary');
     const allPending = await this.pendingStore.getAllPendingSessions();
     const platforms = [

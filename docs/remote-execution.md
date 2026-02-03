@@ -65,6 +65,17 @@ Node is a remote machine that consists of devices and appium server running with
 appium server -ka 800 --use-plugins=xenon --config ./node-config.json -pa /wd/hub
 ```
 
+### Cellular Architecture & Shared State
+
+In a standard Hub-Node setup, each Hub manages its own local database. For true horizontal scaling (Cellular Architecture), you can point multiple Hubs to a shared **PostgreSQL** instance.
+
+This allows:
+- **Unified Device Registry**: Any Hub can see any device across the entire network.
+- **Failover**: If one Hub goes down, another can pick up the session history and device state.
+- **Global Dashboard**: A single view of all tests running across multiple data centers.
+
+To enable this, configure the `databaseProvider` and `databaseUrl` on all your Hub servers.
+
 ### Dashboard
 * Navigate to the host and port of Hub server from the above example it will be http://localhost:31137/xenon
 * Dashboard should have device list based on the hub configuration.

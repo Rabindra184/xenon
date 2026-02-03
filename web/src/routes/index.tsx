@@ -5,6 +5,7 @@ import SessionDashboard from '../components/session-dashboard/session-dashboard'
 import Apps from '../components/apps/apps';
 import { WebhookSettings } from '../components/webhook-settings/webhook-settings';
 import { Settings } from '../components/settings/settings';
+import { AISettings } from '../components/settings/ai-settings';
 
 /**
  * Application routes configuration
@@ -76,6 +77,15 @@ export const AppRoutes: React.FC = () => {
         element={
           <div className="app-body-container settings-view">
             <Settings />
+          </div>
+        }
+      />
+
+      <Route
+        path="/ai-settings"
+        element={
+          <div className="app-body-container settings-view">
+            <AISettings />
           </div>
         }
       />

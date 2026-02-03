@@ -1,18 +1,12 @@
 import AsyncLock from 'async-lock';
+import { Service, Container } from 'typedi';
 
-class DeviceLockManager {
-  private static instance: DeviceLockManager;
+@Service()
+export class DeviceLockManager {
   private lock: AsyncLock;
 
-  private constructor() {
+  constructor() {
     this.lock = new AsyncLock();
-  }
-
-  public static getInstance(): DeviceLockManager {
-    if (!DeviceLockManager.instance) {
-      DeviceLockManager.instance = new DeviceLockManager();
-    }
-    return DeviceLockManager.instance;
   }
 
   public async acquire(udid: string, fn: () => Promise<any>): Promise<any> {
@@ -24,4 +18,4 @@ class DeviceLockManager {
   }
 }
 
-export const deviceLock = DeviceLockManager.getInstance();
+export const deviceLock = Container.get(DeviceLockManager);

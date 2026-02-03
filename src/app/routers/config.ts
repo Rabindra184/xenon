@@ -1,7 +1,10 @@
 import { Router } from 'express';
 import { IPluginArgs } from '../../interfaces/IPluginArgs';
 import { ConfigService } from '../../data-service/config-service';
+import { Container } from 'typedi';
 import log from '../../logger';
+
+import { AI_SERVICE } from '../../services/AIService';
 
 export default class ConfigRouter {
     public static register(router: Router, pluginArgs: IPluginArgs) {
@@ -12,6 +15,16 @@ export default class ConfigRouter {
             res.json(pluginArgs);
         });
 
+        configRouter.post('/test-ai', async (req, res) => {
+            const testConfig = req.body;
+            try {
+                const result = await AI_SERVICE.testConnection(testConfig);
+                res.json(result);
+            } catch (err: any) {
+                res.status(500).json({ success: false, message: err.message });
+            }
+        });
+
         configRouter.put('/', async (req, res) => {
             const newConfig = req.body as Partial<IPluginArgs>;
             if (!newConfig || Object.keys(newConfig).length === 0) {
@@ -20,7 +33,7 @@ export default class ConfigRouter {
 
             try {
                 // 1. Persist
-                await ConfigService.getInstance().updateConfig(newConfig);
+                await Container.get(ConfigService).updateConfig(newConfig);
 
                 // 2. Update Runtime Object
                 Object.assign(pluginArgs, newConfig);

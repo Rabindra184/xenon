@@ -39,6 +39,7 @@ model Session {
   updatedAt               DateTime     @updatedAt
   performance_trace       String?      @map("performance_trace")
   failure_category        String?
+  ai_analysis             String?
   Log                     Log[]
   Profiling               Profiling[]
   build                   Build?       @relation(fields: [build_id], references: [id])

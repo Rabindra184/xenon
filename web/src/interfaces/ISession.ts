@@ -13,6 +13,7 @@ export interface ISession {
   endTime?: string | null;
   failure_reason?: string | null;
   failure_category?: string | null;
+  ai_analysis?: string | null;
 
   device_udid: string;
   device_platform: string;

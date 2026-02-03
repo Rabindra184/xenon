@@ -2,16 +2,16 @@ import React, { useState, useEffect } from 'react';
 import XenonApiService from '../../api-service';
 import './settings.css';
 import {
-  Settings as SettingsIcon,
+  Shield as InfrastructureIcon,
   Save,
   RefreshCw,
   Clock,
   Calendar,
   CheckCircle,
   AlertTriangle,
-  Zap,
   MousePointer2,
   RotateCcw,
+  Info,
 } from 'lucide-react';
 
 export const Settings: React.FC = () => {
@@ -40,7 +40,7 @@ export const Settings: React.FC = () => {
       });
     } catch (error) {
       console.error('Failed to load settings', error);
-      setStatus({ type: 'error', message: 'Failed to access infrastructure configuration.' });
+      setStatus({ type: 'error', message: 'Failed to access infrastructure parameters.' });
     } finally {
       setLoading(false);
     }
@@ -51,11 +51,11 @@ export const Settings: React.FC = () => {
     setStatus(null);
     try {
       await XenonApiService.updateGlobalConfig(configToSave);
-      setStatus({ type: 'success', message: 'Infrastructure parameters updated successfully!' });
+      setStatus({ type: 'success', message: 'Infrastructure parameters synchronized across fleet.' });
       setTimeout(() => setStatus(null), 5000);
     } catch (error) {
       console.error('Failed to save settings', error);
-      setStatus({ type: 'error', message: 'Failed to persist configuration changes.' });
+      setStatus({ type: 'error', message: 'Synchronization failed. Check network integrity.' });
     } finally {
       setSaving(false);
     }
@@ -68,7 +68,6 @@ export const Settings: React.FC = () => {
     };
     setConfig(defaultWebConfig);
     await handleSave(defaultWebConfig);
-    // Also reset healing metrics
     try {
       await XenonApiService.resetMetrics();
     } catch (e) {
@@ -77,83 +76,56 @@ export const Settings: React.FC = () => {
   };
 
   const presets = [
-    { label: 'Off-Peak (2 AM)', value: '0 2 * * *' },
-    { label: 'Hourly', value: '0 * * * *' },
-    { label: 'Every 30m', value: '*/30 * * * *' },
-    { label: 'Fast (10m)', value: '*/10 * * * *' },
+    { label: 'Battery Saver (2 AM)', value: '0 2 * * *' },
+    { label: 'Standard (Hourly)', value: '0 * * * *' },
+    { label: 'Operational Coverage (30m)', value: '*/30 * * * *' },
+    { label: 'High Performance (10m)', value: '*/10 * * * *' },
     { label: 'Disable Schedule', value: '' },
   ];
 
   const getSchedulePreview = (cron: string) => {
-    if (!cron) return 'Using Pulse Interval only.';
+    if (!cron) return 'Using Idle Health Frequency (Continuous/Passive mode).';
     const parts = cron.split(' ').filter((p) => p !== '');
     if (parts.length !== 5) return 'Invalid Cron format (needs 5 parts)';
 
-    if (cron === '0 2 * * *') return 'Daily at 2:00 AM';
-    if (cron === '0 * * * *') return 'At the start of every hour';
-    if (cron === '*/30 * * * *') return 'Every 30 minutes';
-    if (cron === '*/10 * * * *') return 'Every 10 minutes';
-    if (cron.startsWith('0') && parts[1] === '*') return 'At minute 0 of every hour';
+    if (cron === '0 2 * * *') return 'Quiet hours: Daily at 2:00 AM';
+    if (cron === '0 * * * *') return 'Standard rotation: Start of every hour';
+    if (cron === '*/30 * * * *') return 'Balanced: Every 30 minutes';
+    if (cron === '*/10 * * * *') return 'Intensive: Every 10 minutes';
 
-    return `Active expression: ${cron}`;
+    return `Custom orchestration: ${cron}`;
   };
 
   if (loading) {
     return (
       <div className="settings-loading">
         <RefreshCw className="animate-spin" size={32} />
-        <span>Synchronizing infrastructure state...</span>
+        <span>Synchronizing Global Infrastructure...</span>
       </div>
     );
   }
 
   return (
-    <div className="settings-container">
+    <div className="settings-container mesh-gradient-infra">
       <div className="settings-header">
         <div className="settings-title-group">
-          <SettingsIcon className="settings-icon" size={28} />
-          <h2>Infrastructure Settings</h2>
-          <div
-            className="brand-font"
-            style={{
-              fontSize: '10px',
-              padding: '2px 8px',
-              background: 'var(--primary-soft)',
-              color: 'var(--primary)',
-              borderRadius: '20px',
-              border: '1px solid var(--primary-glow)',
-              marginLeft: '12px',
-              textTransform: 'uppercase',
-              letterSpacing: '1px',
-              fontWeight: 800,
-            }}
-          >
-            Enterprise
-          </div>
+          <InfrastructureIcon className="settings-icon infra-icon" size={28} />
+          <h2>Infrastructure Control</h2>
         </div>
         <p className="settings-subtitle">
-          Manage global farm parameters. Configurations are synchronized across all nodes in
-          real-time.
+          Manage core farm parameters, heartbeat frequency, and maintenance orchestrations across the global registry.
         </p>
       </div>
 
       <div className="settings-content">
         <section className="settings-section">
-          <h3>
-            <Zap size={20} className="text-primary" />
-            Health & Monitoring
-          </h3>
-          <p className="section-description">
-            Define the heartbeat frequency and maintenance windows for the device ecosystem.
-          </p>
-
           <div className="settings-grid">
-            <div className="setting-card">
+            <div className="setting-card stagger-1">
               <div className="setting-card-header">
                 <Clock size={16} />
-                <h4>Pulse Interval</h4>
+                <h4>Idle Health Frequency</h4>
               </div>
-              <p>Frequency of health checks when no specific schedule is active.</p>
+              <p>Frequency of passive health pings when the system is in idle state.</p>
               <div className="input-group">
                 <input
                   type="number"
@@ -166,27 +138,27 @@ export const Settings: React.FC = () => {
                 />
                 <span className="code-font">MS</span>
               </div>
-              <div className="setting-hint">Optimized for stability. Minimum 5000ms.</div>
+              <div className="setting-hint-clean">Minimum safe value: 5000ms. Note: This frequency is overridden when a schedule is active.</div>
             </div>
 
-            <div className="setting-card">
+            <div className="setting-card stagger-2">
               <div className="setting-card-header">
                 <Calendar size={16} />
-                <h4>Maintenance Window</h4>
+                <h4>Deep Diagnostic Schedule</h4>
               </div>
-              <p>Execute intensive diagnostic bursts using standardized Cron syntax.</p>
+              <p>Execute intensive reliability bursts (WDA restarts, Cache purges) using standardized Cron syntax.</p>
 
               <div className="input-group">
                 <input
                   type="text"
-                  placeholder="e.g. 0 * * * * (Hourly)"
+                  placeholder="e.g. 0 * * * * (At internal min 0)"
                   value={config.healthCheckSchedule}
                   onChange={(e) => setConfig({ ...config, healthCheckSchedule: e.target.value })}
                 />
               </div>
 
               <div className="cron-preview">
-                <span className="preview-label">Schedule Summary:</span>
+                <span className="preview-label">Active Logic:</span>
                 <span className="preview-value">
                   {getSchedulePreview(config.healthCheckSchedule)}
                 </span>
@@ -195,7 +167,7 @@ export const Settings: React.FC = () => {
               <div className="cron-presets">
                 <div className="presets-label">
                   <MousePointer2 size={12} />
-                  <span>Quick Presets:</span>
+                  <span>Intent-Based Presets:</span>
                 </div>
                 <div className="presets-grid">
                   {presets.map((p) => (
@@ -213,11 +185,10 @@ export const Settings: React.FC = () => {
             </div>
           </div>
 
-          <div className="health-monitor-alert">
-            <AlertTriangle size={18} />
+          <div className="health-monitor-alert stagger-3" style={{ background: 'rgba(59, 130, 246, 0.05)', borderColor: 'rgba(59, 130, 246, 0.2)', color: '#60a5fa' }}>
+            <Info size={18} />
             <span>
-              <strong>Technical Override:</strong> Health checks are automatically deferred during
-              active CI sessions to prevent performance jitter.
+              <strong>Orchestration Rule:</strong> Diagnostic schedules carry higher priority than idle pings. During active CI jobs, all maintenance is automatically deferred to isolate performance variables.
             </span>
           </div>
         </section>
@@ -229,24 +200,25 @@ export const Settings: React.FC = () => {
           </div>
         )}
 
-        <div className="settings-footer">
+        <div className="settings-footer stagger-4">
           <div className="footer-left">
             <button
               className="reset-to-defaults-btn"
               onClick={handleResetToDefaults}
               disabled={saving}
+              style={{ padding: '12px 20px', fontSize: '0.875rem' }}
             >
               <RotateCcw size={16} />
-              Reset All to Factory Defaults
+              Revert to Stable Baseline
             </button>
           </div>
           <div className="footer-right">
             <button className="reset-btn" onClick={loadConfig} disabled={saving}>
               Discard Changes
             </button>
-            <button className="save-btn" onClick={handleSave as any} disabled={saving}>
+            <button className="save-btn" onClick={() => handleSave()} disabled={saving}>
               {saving ? <RefreshCw className="animate-spin" size={18} /> : <Save size={18} />}
-              {saving ? 'Synchronizing...' : 'Save & Propagate Settings'}
+              {saving ? 'Synchronizing...' : 'Broadcast Fleet Configuration'}
             </button>
           </div>
         </div>

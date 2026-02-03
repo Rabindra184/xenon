@@ -1,16 +1,18 @@
 import usbmux from 'usbmux';
+import { Service } from 'typedi';
+@Service()
 export class IosTracker {
-  private static instance: any;
+  private listener: any;
 
-  public static getInstance(): any {
-    if (!IosTracker.instance) {
-      IosTracker.instance = new usbmux.createListener();
-    }
+  constructor() {
+    this.listener = new usbmux.createListener();
+  }
 
-    return IosTracker.instance;
+  public getListener(): any {
+    return this.listener;
   }
 
   async stop() {
-    IosTracker.instance.end();
+    this.listener.end();
   }
 }

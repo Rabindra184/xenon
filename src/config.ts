@@ -4,16 +4,22 @@ const basePath = path.join(os.homedir(), '.cache', 'xenon');
 
 export interface Config {
   cacheDir: string;
+  databaseProvider: 'sqlite' | 'postgresql';
+  databaseUrl: string;
   databasePath: string;
-  videoSavePath: string;
-  screenshotSavePath: string;
-  logFilePath: string;
+  sessionAssetsPath: string;
+  appsPath: string;
   takeScreenshotsFor: Array<string>;
+  aiProvider: 'gemini' | 'openai' | 'anthropic' | 'ollama';
+  aiModel?: string;
+  aiBaseUrl?: string;
 }
 
-export const config = {
+export const config: Config = {
   cacheDir: basePath,
-  databasePath: `${basePath}/xenon.db`,
+  databaseProvider: (process.env.XENON_DB_PROVIDER as any) || 'sqlite',
+  databaseUrl: process.env.DATABASE_URL || `file:${path.join(basePath, 'xenon.db')}`,
+  databasePath: path.join(basePath, 'xenon.db'),
   sessionAssetsPath: path.join(basePath, 'assets', 'sessions'),
   appsPath: path.join(basePath, 'apps'),
   takeScreenshotsFor: [
@@ -28,4 +34,11 @@ export const config = {
     'back',
     'forward',
   ],
+  aiProvider: (process.env.XENON_AI_PROVIDER as any) || 'gemini',
+  aiModel: process.env.XENON_AI_MODEL,
+  aiBaseUrl: process.env.XENON_AI_BASE_URL,
 };
+
+export function updateConfig(newConfig: Partial<Config>) {
+  Object.assign(config, newConfig);
+}

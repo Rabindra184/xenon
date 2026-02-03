@@ -1,4 +1,5 @@
 import storage from 'node-persist';
+import { Service } from 'typedi';
 import { cachePath } from '../helpers';
 import { IPluginArgs } from '../interfaces/IPluginArgs';
 import log from '../logger';
@@ -7,18 +8,11 @@ import fs from 'fs';
 
 const CONFIG_DIR = cachePath('config');
 
+@Service()
 export class ConfigService {
-    private static instance: ConfigService;
     private storage?: storage.LocalStorage;
 
-    private constructor() { }
-
-    public static getInstance(): ConfigService {
-        if (!ConfigService.instance) {
-            ConfigService.instance = new ConfigService();
-        }
-        return ConfigService.instance;
-    }
+    constructor() { }
 
     public async init() {
         if (!this.storage) {

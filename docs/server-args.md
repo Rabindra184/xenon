@@ -47,6 +47,10 @@ server:
       deviceAvailabilityTimeoutMs: 180000
       deviceAvailabilityQueryIntervalMs: 10000
       newCommandTimeoutSec: 60
+
+      # DATABASE (Optional - defaults to SQLite)
+      # databaseProvider: postgresql
+      # databaseUrl: "postgresql://user:password@localhost:5432/xenon"
 ```
 
 To run:
@@ -105,6 +109,11 @@ These arguments can be passed via command line flags (e.g., `--plugin-xenon-plat
 | `bootedSimulators` | `--plugin-xenon-booted-simulators` | Use already booted simulators | `false` | `true`, `false` |
 | `deviceAvailabilityTimeoutMs` | `--plugin-device-availability-timeout-ms` | Wait time for free device (ms) | `300000` | Number |
 | `newCommandTimeoutSec` | `--plugin-new-command-timeout-sec` | Auto-release session timeout (sec) | `60` | Number |
+| `databaseProvider` | `--plugin-xenon-database-provider` | Database type for state storage | `sqlite` | `sqlite`, `postgresql` |
+| `databaseUrl` | `--plugin-xenon-database-url` | Connection string for the database | Local path | Connection URL |
+| `aiProvider` | `--plugin-xenon-ai-provider` | AI provider for Xenon | `gemini` | `gemini`, `openai`, `anthropic`, `ollama` |
+| `aiModel` | `--plugin-xenon-ai-model` | AI model name to use | - | e.g., `gpt-4o`, `llama3` |
+| `aiBaseUrl` | `--plugin-xenon-ai-base-url` | Custom base URL for AI provider | - | e.g., for Ollama |
 
 ### Cloud & Proxy
 

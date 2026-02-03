@@ -1,6 +1,8 @@
+import 'reflect-metadata';
 import { XenonPlugin } from './plugin';
 import { path as ffmpeg } from '@ffmpeg-installer/ffmpeg';
 import log from './logger';
+import { Container } from 'typedi';
 
 // Add FFMPEG to path for appium to record video of the session
 process.env.PATH = process.env.PATH + ':' + ffmpeg.replace(/ffmpeg$/g, '');
@@ -18,10 +20,12 @@ const cleanup = async () => {
     const { default: AndroidStreamService } = await import(
       './device-managers/android/AndroidStreamService'
     );
+    const { VideoPipelineService } = await import('./services/VideoPipelineService');
 
-    // Shutdown all independent MJPEG streams and tunnels
-    await IOSStreamService.getInstance().cleanup();
-    await AndroidStreamService.getInstance().cleanup();
+    // Shutdown all independent MJPEG streams, tunnels, and video recordings
+    await Container.get(IOSStreamService).cleanup();
+    await Container.get(AndroidStreamService).cleanup();
+    await Container.get(VideoPipelineService).cleanup();
 
     log.info('✅ [Xenon] Infrastructure components sanitized. Safe to exit.');
   } catch (err: any) {

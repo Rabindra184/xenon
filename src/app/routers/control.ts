@@ -2,7 +2,7 @@ import { Request, Response, Router } from 'express';
 import { DeviceStoreFactory } from '../../data-service/device-store';
 
 import { XenonManager } from '../../device-managers';
-import Container from 'typedi';
+import { Container } from 'typedi';
 import log from '../../logger';
 import { InternalHttpClient } from '../../InternalHttpClient';
 import { blockDevice, unblockDevice } from '../../data-service/device-service';
@@ -159,7 +159,7 @@ router.get('/:udid/screenshot', async (req: Request, res: Response) => {
   // Principal Engineer Optimization: If a high-speed stream is already running for Android,
   // we should grab the latest frame instead of triggering a heavy ADB screencap.
   if (device.platform === 'android') {
-    const streamSession = AndroidStreamService.getInstance().getStreamStatus(udid);
+    const streamSession = Container.get(AndroidStreamService).getStreamStatus(udid);
     if (streamSession?.status === 'running' && streamSession.latestFrame) {
       log.info(`Manual Control: Using cached stream frame for ${udid} screenshot.`);
       return res.status(200).send({ screenshot: streamSession.latestFrame.toString('base64') });
@@ -320,7 +320,7 @@ router.post('/:udid/upload-install', async (req: Request, res: Response) => {
     if (manager && manager.installApp) {
       await manager.installApp(udid, appPath);
       // Clean up after installation
-      setTimeout(() => fs.remove(appPath).catch(() => {}), 10000);
+      setTimeout(() => fs.remove(appPath).catch(() => { }), 10000);
       return res
         .status(200)
         .send({ success: true, message: `App ${appFile.name} installed successfully` });
@@ -398,8 +398,8 @@ router.post('/:udid/stream/start', async (req: Request, res: Response) => {
   // we must block new manual control requests.
   const isCurrentlyControlledManually =
     (device.platform === 'ios' || device.platform === 'tvos'
-      ? IOSStreamService.getInstance().getStreamStatus(udid)
-      : AndroidStreamService.getInstance().getStreamStatus(udid)) !== undefined;
+      ? Container.get(IOSStreamService).getStreamStatus(udid)
+      : Container.get(AndroidStreamService).getStreamStatus(udid)) !== undefined;
 
   if (device.busy && !isCurrentlyControlledManually) {
     log.warn(`Manual Control refused for ${udid}: Device is already busy.`);
@@ -412,10 +412,10 @@ router.post('/:udid/stream/start', async (req: Request, res: Response) => {
   try {
     let result;
     if (device.platform === 'ios' || device.platform === 'tvos') {
-      const iosStreamService = IOSStreamService.getInstance();
+      const iosStreamService = Container.get(IOSStreamService);
       result = await iosStreamService.startStream(udid);
     } else {
-      const androidStreamService = AndroidStreamService.getInstance();
+      const androidStreamService = Container.get(AndroidStreamService);
       result = await androidStreamService.startStream(udid);
     }
 
@@ -468,9 +468,9 @@ router.post('/:udid/stream/stop', async (req: Request, res: Response) => {
 
   try {
     if (device.platform === 'ios' || device.platform === 'tvos') {
-      await IOSStreamService.getInstance().stopStream(udid);
+      await Container.get(IOSStreamService).stopStream(udid);
     } else {
-      await AndroidStreamService.getInstance().stopStream(udid);
+      await Container.get(AndroidStreamService).stopStream(udid);
     }
 
     // Clear MJPEG proxy cache
@@ -493,7 +493,7 @@ router.get('/:udid/stream/status', async (req: Request, res: Response) => {
   if (!device) return res.status(404).send('Device not found');
 
   if (device.platform === 'ios' || device.platform === 'tvos') {
-    const iosStreamService = IOSStreamService.getInstance();
+    const iosStreamService = Container.get(IOSStreamService);
     const session = iosStreamService.getStreamStatus(udid);
 
     if (session) {
@@ -507,7 +507,7 @@ router.get('/:udid/stream/status', async (req: Request, res: Response) => {
       });
     }
   } else {
-    const androidStreamService = AndroidStreamService.getInstance();
+    const androidStreamService = Container.get(AndroidStreamService);
     const session = androidStreamService.getStreamStatus(udid);
     if (session) {
       return res.status(200).send({
@@ -538,7 +538,7 @@ router.get('/:udid/stream', async (req: Request, res: Response) => {
 
   // For iOS devices, try to auto-start the stream if not available
   if (device.platform === 'ios' || device.platform === 'tvos') {
-    const iosStreamService = IOSStreamService.getInstance();
+    const iosStreamService = Container.get(IOSStreamService);
     const session = iosStreamService.getStreamStatus(udid);
 
     if (session && session.status === 'running') {
@@ -560,7 +560,7 @@ router.get('/:udid/stream', async (req: Request, res: Response) => {
     }
   } else {
     // Android auto-start
-    const androidStreamService = AndroidStreamService.getInstance();
+    const androidStreamService = Container.get(AndroidStreamService);
     const session = androidStreamService.getStreamStatus(udid);
     if (session && session.status === 'running') {
       mjpegPort = session.mjpegPort;
@@ -599,8 +599,8 @@ router.get('/:udid/stream', async (req: Request, res: Response) => {
     if (proxy) {
       const streamService =
         device.platform === 'ios' || device.platform === 'tvos'
-          ? IOSStreamService.getInstance()
-          : AndroidStreamService.getInstance();
+          ? Container.get(IOSStreamService)
+          : Container.get(AndroidStreamService);
 
       // Register this specific browser connection
       streamService.updateViewerCount(udid, 1);

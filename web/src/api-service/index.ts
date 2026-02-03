@@ -243,6 +243,10 @@ export default class XenonApiService {
     return apiClient.makePOSTRequest('/config', {}, config);
   }
 
+  public static testAIConfig(config: any) {
+    return apiClient.makePOSTRequest('/config/test-ai', {}, config);
+  }
+
   public static resetMetrics() {
     return apiClient.makePOSTRequest('/config/reset-metrics', {}, {});
   }

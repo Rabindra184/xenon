@@ -1,4 +1,4 @@
-import { Container } from 'typedi';
+import { Container, Service } from 'typedi';
 import { XenonManager } from './index';
 import { DeviceStoreFactory } from '../data-service/device-store';
 import log from '../logger';
@@ -6,9 +6,11 @@ import { IDevice } from '../interfaces/IDevice';
 import * as schedule from 'node-schedule';
 import { IPluginArgs } from '../interfaces/IPluginArgs';
 import { WebConfigService } from '../data-service/web-config-service';
+import { SESSION_MANAGER } from '../sessions/SessionManager';
+import { EVENT_BUS } from '../services/EventBus';
 
+@Service()
 export class HealthMonitorService {
-  private static instance: HealthMonitorService;
   private log = log.scope('HealthMonitor');
   private interval: NodeJS.Timeout | undefined;
   private job: schedule.Job | undefined;
@@ -16,13 +18,9 @@ export class HealthMonitorService {
   private recoveringDevices: Set<string> = new Set();
   private pluginArgs: IPluginArgs | undefined;
   private lastWebConfig: any = {};
+  private healthHistory: Map<string, Array<{ time: number, battery?: number, thermal?: string }>> = new Map();
 
-  public static getInstance(): HealthMonitorService {
-    if (!HealthMonitorService.instance) {
-      HealthMonitorService.instance = new HealthMonitorService();
-    }
-    return HealthMonitorService.instance;
-  }
+  constructor(private webConfigService: WebConfigService) { }
 
   public start(pluginArgs: IPluginArgs) {
     this.pluginArgs = pluginArgs;
@@ -37,7 +35,7 @@ export class HealthMonitorService {
 
   private async pollWebConfig() {
     try {
-      const webConfig = await WebConfigService.getConfig();
+      const webConfig = await this.webConfigService.getConfig();
       if (JSON.stringify(webConfig) !== JSON.stringify(this.lastWebConfig)) {
         this.log.info('Detected web configuration changes, restarting monitor...');
         this.lastWebConfig = webConfig;
@@ -98,14 +96,21 @@ export class HealthMonitorService {
         // Only check devices managed by this node
         if (device.cloud) continue;
 
-        // TECHNICAL OPTIMIZATION: Skip health checking for devices with an active session
-        // This prevents resource contention (ADB/XCUITest lockups) and accidental recovery-kills
-        // during CI execution.
+        // Principal Intelligence: Health monitor must detect "Zombie Busy" devices.
+        // A device is a Zombie if it's marked busy in DB but NOT found in Hub's session map.
         if (device.busy) {
-          log.debug(
-            `[HealthMonitor] Skipping check for busy device ${device.udid} (Active Session)`,
-          );
-          continue;
+          const hasActiveSession = SESSION_MANAGER.isValidSession(device.session_id || '');
+
+          if (hasActiveSession) {
+            log.debug(
+              `[HealthMonitor] Skipping check for busy device ${device.udid} (Active Hub Session ${device.session_id})`,
+            );
+            continue;
+          } else {
+            this.log.info(
+              `[HealthMonitor] 🧟 Zombie busy device detected ${device.udid}. Last session ${device.session_id} is not in memory. Proceeding with health check.`
+            );
+          }
         }
 
         const deviceManager = instances.find((inst) => {
@@ -119,10 +124,24 @@ export class HealthMonitorService {
         if (deviceManager && deviceManager.checkHealth) {
           try {
             const health = await deviceManager.checkHealth(device);
-            await store.updateDevice(device.udid, device.host, {
+            const updateData: Partial<IDevice> = {
               ...health,
               lastHealthCheckAt: Date.now(),
-            });
+            };
+
+            // Principal Fix: If this was a zombie busy device, reset its busy status
+            // so it can be recovered and utilized again.
+            if (device.busy && !SESSION_MANAGER.isValidSession(device.session_id || '')) {
+              this.log.info(`[HealthMonitor] Reclaiming zombie device ${device.udid}`);
+              updateData.busy = false;
+              updateData.session_id = undefined;
+            }
+
+            await store.updateDevice(device.udid, device.host, updateData);
+
+            // Principal Intelligence: Predictive Failure Analysis
+            // Track trends and emit anomalies before they become critical failures.
+            this.trackAndAnalyzeAnomaly(device, health);
 
             if (health.healthStatus !== 'Healthy') {
               this.log.warn(`Device ${device.udid} is UNHEALTHY: ${health.healthCheckError}`);
@@ -163,6 +182,60 @@ export class HealthMonitorService {
       }
     } catch (err: any) {
       this.log.error(`Global health check loop failed: ${err.message}`);
+    }
+  }
+
+  /**
+   * Predictive Intelligence: Analyzes health trends to detect anomalies.
+   * Emits 'device:anomaly' event if a potential failure is predicted.
+   */
+  private trackAndAnalyzeAnomaly(device: IDevice, currentHealth: Partial<IDevice>) {
+    const key = `${device.udid}-${device.host}`;
+    const history = this.healthHistory.get(key) || [];
+
+    // Add current entry to history
+    history.push({
+      time: Date.now(),
+      battery: currentHealth.batteryLevel,
+      thermal: currentHealth.thermalStatus
+    });
+
+    // Keep last 10 entries (~5 minutes if checking every 30s)
+    if (history.length > 10) history.shift();
+    this.healthHistory.set(key, history);
+
+    if (history.length < 2) return;
+
+    const previous = history[history.length - 2];
+    const current = history[history.length - 1];
+
+    // 1. Thermal Anomaly: Normal -> Hot or Hot -> Critical
+    if (previous.thermal !== current.thermal && current.thermal !== 'Normal') {
+      this.log.warn(`⚠️ [Anomaly] Thermal spike detected on ${device.udid}: ${previous.thermal} -> ${current.thermal}`);
+      EVENT_BUS.emit('device:anomaly', {
+        udid: device.udid,
+        host: device.host,
+        type: 'thermal_spike',
+        previous: previous.thermal,
+        current: current.thermal,
+        severity: current.thermal === 'Critical' ? 'high' : 'medium'
+      });
+    }
+
+    // 2. Battery Anomaly: Rapid drain (>5% since last check)
+    if (previous.battery !== undefined && current.battery !== undefined) {
+      const drain = previous.battery - current.battery;
+      if (drain >= 5) {
+        this.log.warn(`⚠️ [Anomaly] Rapid battery drain on ${device.udid}: -${drain}% since last check`);
+        EVENT_BUS.emit('device:anomaly', {
+          udid: device.udid,
+          host: device.host,
+          type: 'battery_drain',
+          drainValue: drain,
+          currentLevel: current.battery,
+          severity: current.battery < 20 ? 'high' : 'medium'
+        });
+      }
     }
   }
 }

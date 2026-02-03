@@ -4,7 +4,7 @@ import { config } from './config';
 export const prisma = new PrismaClient({
   datasources: {
     db: {
-      url: `file:${config.databasePath}`,
+      url: config.databaseUrl,
     },
   },
 });

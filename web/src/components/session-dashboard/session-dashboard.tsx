@@ -10,7 +10,9 @@ import {
   Activity,
   ArrowLeft,
   Clock,
+  Brain,
 } from 'lucide-react';
+import ReactMarkdown from 'react-markdown';
 import XenonApiService from '../../api-service';
 import { ISession } from '../../interfaces/ISession';
 import { IBuild } from '../../interfaces/IBuild';
@@ -115,8 +117,8 @@ const SessionTableRow = React.memo(
               session.status === 'success'
                 ? 'success'
                 : session.status === 'failed'
-                ? 'error'
-                : 'warning'
+                  ? 'error'
+                  : 'warning'
             }
           >
             {session.status.toUpperCase()}
@@ -380,8 +382,8 @@ const SessionDashboard: React.FC = () => {
                 selectedSession.status === 'success'
                   ? 'success'
                   : selectedSession.status === 'failed'
-                  ? 'error'
-                  : 'warning'
+                    ? 'error'
+                    : 'warning'
               }
             >
               {selectedSession.status.toUpperCase()}
@@ -408,6 +410,22 @@ const SessionDashboard: React.FC = () => {
           </div>
         </div>
 
+        {/* AI Root-Cause Analysis (Elite Tier) */}
+        {selectedSession.ai_analysis && (
+          <div className="ai-analysis-hero animate-fade-in">
+            <div className="ai-header">
+              <div className="ai-title">
+                <Brain size={20} className="ai-icon" />
+                <h2>AI Root-Cause Diagnosis</h2>
+              </div>
+              <Badge variant="outline" className="ai-badge">Elite Tier</Badge>
+            </div>
+            <div className="ai-content">
+              <ReactMarkdown>{selectedSession.ai_analysis}</ReactMarkdown>
+            </div>
+          </div>
+        )}
+
         {/* Two-Panel Layout */}
         <div className="session-detail-main">
           {/* Left Panel: Tabs & Logs */}
@@ -428,12 +446,12 @@ const SessionDashboard: React.FC = () => {
                     {tab === 'command'
                       ? 'Text Logs'
                       : tab === 'screenshots'
-                      ? 'Evidence'
-                      : tab === 'device'
-                      ? 'Device Logs'
-                      : tab === 'debug'
-                      ? 'Debug Logs'
-                      : 'Profiling'}
+                        ? 'Evidence'
+                        : tab === 'device'
+                          ? 'Device Logs'
+                          : tab === 'debug'
+                            ? 'Debug Logs'
+                            : 'Profiling'}
                   </button>
                 );
               })}

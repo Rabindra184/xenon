@@ -2,6 +2,7 @@ import getPort from 'get-port';
 import { ISessionCapability } from './interfaces/ISessionCapability';
 import _ from 'lodash';
 import { IDevice } from './interfaces/IDevice';
+import { Container } from 'typedi';
 
 export enum XENON_CAPABILITIES {
   BUILD_NAME = 'build',
@@ -20,6 +21,9 @@ export enum XENON_CAPABILITIES {
 
   SCREENSHOT_ON_EVERY_COMMAND = 'screenshot_on_every_command',
   SCREENSHOT_EVERY_COMMAND = 'screenshotOnEveryCommand',
+
+  NETWORK_PROFILE = 'network_profile',
+  ISOLATION_PROFILE = 'isolation_profile',
 }
 
 function isCapabilityAlreadyPresent(caps: ISessionCapability, capabilityName: string) {
@@ -74,9 +78,8 @@ export async function iOSCapabilities(
   // Technical Optimization: Reuse existing WDA tunnel if Stream Service is active
   // This prevents "Port Occupied" errors when the dashboard is open and speeds up startup by 15-30s
   try {
-    const streamService = (
-      await import('./device-managers/ios/IOSStreamService')
-    ).default.getInstance();
+    const { default: IOSStreamService } = await import('./device-managers/ios/IOSStreamService');
+    const streamService = Container.get(IOSStreamService);
     const streamStatus = streamService.getStreamStatus(freeDevice.udid);
 
     console.log(
@@ -127,25 +130,17 @@ export async function iOSCapabilities(
 export function getXenonCapabilities(caps: ISessionCapability) {
   const mergedCapabilites = Object.assign({}, caps.firstMatch[0], caps.alwaysMatch);
 
-  // Helper to extract capability regardless of prefix or casing
-  // Priority: xe: (Xenon) > xenon: > appium: > plain
   const getAnyCap = (snake: string, camel: string) => {
-    const keys = [
-      // Primary: xe: prefix (Xenon short form)
-      `xe:${snake}`,
-      `xe:${camel}`,
-      // Secondary: xenon: prefix (Xenon full form)
-      `xenon:${snake}`,
-      `xenon:${camel}`,
-      // Tertiary: appium: prefix
-      `appium:${snake}`,
-      `appium:${camel}`,
-      // Plain capability names
-      snake,
-      camel,
-    ];
-    for (const key of keys) {
-      if (mergedCapabilites[key] !== undefined) return mergedCapabilites[key];
+    // Principal Intelligence: Strict Prefix Resolution
+    // Supports only xe:, appium: and no-prefix, with snake_case and camelCase fallbacks.
+    const prefixes = ['xe:', 'appium:', ''];
+    const names = [snake, camel];
+
+    for (const prefix of prefixes) {
+      for (const name of names) {
+        const key = prefix ? `${prefix}${name}` : name;
+        if (mergedCapabilites[key] !== undefined) return mergedCapabilites[key];
+      }
     }
     return undefined;
   };
@@ -186,6 +181,18 @@ export function getXenonCapabilities(caps: ISessionCapability) {
   capabilities[XENON_CAPABILITIES.SESSION_NAME] = getAnyCap(
     XENON_CAPABILITIES.SESSION_NAME,
     'sessionName',
+  );
+
+  // 6. Network Profile
+  capabilities[XENON_CAPABILITIES.NETWORK_PROFILE] = getAnyCap(
+    XENON_CAPABILITIES.NETWORK_PROFILE,
+    'networkProfile',
+  );
+
+  // 7. Isolation Profile
+  capabilities[XENON_CAPABILITIES.ISOLATION_PROFILE] = getAnyCap(
+    XENON_CAPABILITIES.ISOLATION_PROFILE,
+    'isolationProfile',
   );
 
   console.log(

@@ -395,7 +395,8 @@ export async function refreshSimulatorState(pluginArgs: IPluginArgs, hostPort: n
     clearInterval(timer);
   }
   timer = setInterval(async () => {
-    const simulators = await new IOSDeviceManager(pluginArgs, hostPort, uuidv4()).getSimulators();
+    const iosManager = Container.get(IOSDeviceManager);
+    const simulators = await iosManager.getSimulators();
     await setSimulatorState(simulators);
   }, 10000);
 }
@@ -495,11 +496,21 @@ export async function releaseBlockedDevices(newCommandTimeout: number) {
         `Unblocking device ${device.udid} at host ${device.host} because it has been idle for ${timeSinceLastCmdExecuted} seconds`,
       );
 
-      // Principal Protection: If this device has an active dashboard session, mark it as Failed
+      // Principal Protection: If this device has an active dashboard session, stop it properly
       if (device.session_id) {
+        const sessionId = device.session_id;
+
+        // Mark as stopped/failed in dashboard
         import('./dashboard/event-manager').then((m) => {
-          m.DASHBORD_EVENT_MANAGER.onSessionStoped(device.session_id as string);
+          m.DASHBORD_EVENT_MANAGER.onSessionStoped(sessionId, 'failed' as any, 'Session timed out due to inactivity');
         });
+
+        // Important: Remove from in-memory SessionManager so it doesn't leak
+        import('./sessions/SessionManager').then((m) => {
+          m.SESSION_MANAGER.removeSession(sessionId);
+        });
+
+        log.warn(`🕒 Session ${sessionId} timed out on device ${device.udid}`);
       }
 
       unblockDevice(device.udid, device.host);

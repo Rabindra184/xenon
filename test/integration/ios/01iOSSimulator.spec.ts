@@ -1,3 +1,4 @@
+import 'reflect-metadata';
 import { expect } from 'chai';
 import { XenonManager } from '../../../src/device-managers';
 import { Container } from 'typedi';
@@ -17,15 +18,15 @@ import ip from 'ip';
 import { DefaultPluginArgs } from '../../../src/interfaces/IPluginArgs';
 import { unblockDeviceMatchingFilter } from '../../../src/data-service/device-service';
 import { flatten } from 'lodash';
-import { v4 as uuidv4 } from 'uuid';
+import { createTestXenonManager } from '../../helpers/test-container';
 
 const simctl = new Simctl();
 const name = 'My Device Name';
-const NODE_ID = uuidv4();
 
 const pluginArgs = Object.assign({}, DefaultPluginArgs, {
   remote: [`http://${ip.address()}:4723`],
   iosDeviceType: 'both',
+  platform: 'ios',
 });
 
 async function markSimulatorsAsBooted() {
@@ -34,29 +35,15 @@ async function markSimulatorsAsBooted() {
   deviceModel.findAndUpdate({ platform: 'ios', deviceType: 'simulator' }, (device) => {
     device.state = 'Booted';
   });
-
-  //const simulators = (await XenonDatabase.DeviceModel).chain().find({ platform: 'ios', deviceType: 'simulator' }).data()
-  //console.log('simulators: ', simulators);
 }
 
 async function initDeviceFarm(iosDeviceType: string) {
-  const pluginArgs = Object.assign({}, DefaultPluginArgs, {
-    remote: [`http://${ip.address()}:4723`],
-    iosDeviceType: iosDeviceType,
-  });
   await initializeStorage();
-  const deviceManager = new XenonManager(
-    'ios',
-    {
-      iosDeviceType: 'simulated',
-      androidDeviceType: 'real',
-    },
-    4723,
-    Object.assign(pluginArgs, { maxSessions: 1 }),
-    NODE_ID,
-  );
+  const deviceManager = createTestXenonManager(Object.assign({}, pluginArgs, {
+    iosDeviceType: iosDeviceType,
+    maxSessions: 1,
+  }));
   expect(deviceManager.getMaxSessionCount()).to.be.eql(1);
-  Container.set(XenonManager, deviceManager);
   const hub = pluginArgs.hub;
   await updateDeviceList(pluginArgs.bindHostOrIp, hub);
   await markSimulatorsAsBooted();
@@ -122,13 +109,10 @@ describe('Max sessions CLI argument test', () => {
 
   it('Throw error when all sessions occupied', async () => {
     await initializeStorage();
-    const deviceManager = new XenonManager(
-      'ios',
-      { iosDeviceType: 'simulated', androidDeviceType: 'real' },
-      4723,
-      Object.assign(pluginArgs, { maxSessions: 1 }),
-      NODE_ID,
-    );
+    const deviceManager = createTestXenonManager(Object.assign({}, pluginArgs, {
+      iosDeviceType: 'simulated',
+      maxSessions: 1,
+    }));
     // set all devices to busy
     const allDevices = await deviceManager.getDevices();
     for await (const _device of allDevices) {
@@ -168,14 +152,7 @@ describe('IOS Simulator Test', () => {
 
   it('Should find free iPhone simulator when app path has .app extension and set busy status to true', async () => {
     await initializeStorage();
-    const deviceManager = new XenonManager(
-      'ios',
-      { iosDeviceType: 'both', androidDeviceType: 'real' },
-      4723,
-      pluginArgs,
-      NODE_ID,
-    );
-    Container.set(XenonManager, deviceManager);
+    const deviceManager = createTestXenonManager(pluginArgs);
     const hub = pluginArgs.hub;
     await updateDeviceList(pluginArgs.bindHostOrIp, hub);
     await markSimulatorsAsBooted();
@@ -206,14 +183,7 @@ describe('IOS Simulator Test', () => {
 
   it('Should find free iPad simulator when app path has .app extension and set busy status to true', async () => {
     await initializeStorage();
-    const deviceManager = new XenonManager(
-      'ios',
-      { iosDeviceType: 'both', androidDeviceType: 'real' },
-      4723,
-      pluginArgs,
-      NODE_ID,
-    );
-    Container.set(XenonManager, deviceManager);
+    const deviceManager = createTestXenonManager(pluginArgs);
     const hub = pluginArgs.hub;
     await updateDeviceList(pluginArgs.bindHostOrIp, hub);
     await markSimulatorsAsBooted();
@@ -246,14 +216,7 @@ describe('IOS Simulator Test', () => {
   it('Should find free Apple TV simulator and set busy status to true', async function () {
     if (process.env.CI) {
       await initializeStorage();
-      const deviceManager = new XenonManager(
-        'ios',
-        { iosDeviceType: 'both', androidDeviceType: 'real' },
-        4723,
-        pluginArgs,
-        NODE_ID,
-      );
-      Container.set(XenonManager, deviceManager);
+      const deviceManager = createTestXenonManager(pluginArgs);
       const hub = pluginArgs.hub;
       await updateDeviceList(pluginArgs.bindHostOrIp, hub);
       await markSimulatorsAsBooted();
@@ -308,14 +271,7 @@ describe('Boot simulator test', async () => {
 
   it('Should pick Booted simulator when app path has .app', async () => {
     await initializeStorage();
-    const deviceManager = new XenonManager(
-      'ios',
-      { iosDeviceType: 'both', androidDeviceType: 'real' },
-      4723,
-      Object.assign({}, DefaultPluginArgs, pluginArgs),
-      NODE_ID,
-    );
-    Container.set(XenonManager, deviceManager);
+    const deviceManager = createTestXenonManager(pluginArgs);
     const hub = pluginArgs.hub;
     await updateDeviceList(pluginArgs.bindHostOrIp, hub);
     const capabilities = {

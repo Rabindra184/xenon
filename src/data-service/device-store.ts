@@ -5,12 +5,14 @@ import { IDeviceStore, IPendingSessionStore, ICLIArgsStore } from './device-stor
 import log from '../logger';
 import semver from 'semver';
 import { XenonDatabase } from './db';
-import { SQLiteDeviceStore, SQLitePendingSessionStore, SQLiteCLIArgsStore } from './sqlite-store';
+import { PrismaDeviceStore, PrismaPendingSessionStore, PrismaCLIArgsStore } from './prisma-store';
+import { config } from '../config';
 
 /**
- * LokiJS Implementation of Device Store (Current Default)
+ * LokiJS Implementation of Device Store (Legacy/Internal)
  */
 class LokiDeviceStore implements IDeviceStore {
+  // ... (rest of LokiDeviceStore implementation stays same)
   private log = log.scope('LokiStore');
 
   async getAllDevices(): Promise<IDevice[]> {
@@ -187,22 +189,23 @@ class LokiCLIArgsStore implements ICLIArgsStore {
 
 /**
  * Factory for Device Store.
- * In the future, this will check for Redis configuration.
+ * Determines storage type based on config.
  */
 export class DeviceStoreFactory {
   private static _deviceStore: IDeviceStore;
   private static _pendingSessionStore: IPendingSessionStore;
   private static _cliArgsStore: ICLIArgsStore;
 
-  private static getStorageType(): 'loki' | 'sqlite' {
-    const type = process.env.XENON_STORAGE_TYPE || 'sqlite';
-    return type.toLowerCase() as 'loki' | 'sqlite';
+  private static getStorageType(): 'loki' | 'prisma' {
+    const type = process.env.XENON_STORAGE_TYPE || config.databaseProvider;
+    if (type === 'sqlite' || type === 'postgresql' || type === 'prisma') return 'prisma';
+    return 'loki';
   }
 
   static getStore(): IDeviceStore {
     if (!this._deviceStore) {
-      if (this.getStorageType() === 'sqlite') {
-        this._deviceStore = new SQLiteDeviceStore();
+      if (this.getStorageType() === 'prisma') {
+        this._deviceStore = new PrismaDeviceStore();
       } else {
         this._deviceStore = new LokiDeviceStore();
       }
@@ -212,8 +215,8 @@ export class DeviceStoreFactory {
 
   static getPendingSessionStore(): IPendingSessionStore {
     if (!this._pendingSessionStore) {
-      if (this.getStorageType() === 'sqlite') {
-        this._pendingSessionStore = new SQLitePendingSessionStore();
+      if (this.getStorageType() === 'prisma') {
+        this._pendingSessionStore = new PrismaPendingSessionStore();
       } else {
         this._pendingSessionStore = new LokiPendingSessionStore();
       }
@@ -223,8 +226,8 @@ export class DeviceStoreFactory {
 
   static getCLIArgsStore(): ICLIArgsStore {
     if (!this._cliArgsStore) {
-      if (this.getStorageType() === 'sqlite') {
-        this._cliArgsStore = new SQLiteCLIArgsStore();
+      if (this.getStorageType() === 'prisma') {
+        this._cliArgsStore = new PrismaCLIArgsStore();
       } else {
         this._cliArgsStore = new LokiCLIArgsStore();
       }

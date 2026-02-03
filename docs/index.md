@@ -19,6 +19,8 @@ This is **Xenon**, an intelligent Appium plugin designed to orchestrate, manage,
 - **Self-Healing**: Updates the device pool with new devices during test execution.
 - **Parallelization**: Allocates random ports for parallel execution.
 - **Remote Execution**: Supports distributed testing.
+- **AI-Powered Analysis**: Elite-tier failure diagnosis using Gemini, OpenAI, or Claude.
+- **Scalable State**: PostgreSQL backing for massive horizontal scaling (Cellular Architecture).
 - **Runtime Config**: Update settings on the fly without restarts.
 
 ## Getting Started

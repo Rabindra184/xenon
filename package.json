@@ -51,6 +51,7 @@
   },
   "homepage": "https://github.com/xenon-platform/xenon#readme",
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.72.1",
     "@appium/base-plugin": "^2.2.22",
     "@appium/types": "^0.14.1",
     "@devicefarmer/adbkit": "^3.2.5",
@@ -58,6 +59,7 @@
     "@fortawesome/fontawesome-svg-core": "^7.1.0",
     "@fortawesome/free-brands-svg-icons": "^7.1.0",
     "@fortawesome/react-fontawesome": "^3.1.1",
+    "@google/generative-ai": "^0.24.1",
     "@prisma/client": "^5.4.1",
     "@types/appium-adb": "^9.10.4",
     "@types/express-fileupload": "^1.5.1",
@@ -89,6 +91,7 @@
     "node-simctl": "^7.3.13",
     "normalize-url": "6.1.0",
     "nyc": "^15.1.0",
+    "openai": "^6.17.0",
     "ora": "5.4.1",
     "path-exists-cli": "^2.0.0",
     "prisma": "^5.4.1",
@@ -102,7 +105,8 @@
     "unzipper": "^0.10.14",
     "usbmux": "^0.1.0",
     "uuid": "^8.3.2",
-    "yargs": "^17.7.2"
+    "yargs": "^17.7.2",
+    "zod": "^4.3.6"
   },
   "peerDependencies": {
     "appium": "^3.1.1"
@@ -246,9 +250,36 @@
         },
         "healthCheckSchedule": {
           "type": "string"
+        },
+        "databaseProvider": {
+          "type": "string",
+          "enum": [
+            "sqlite",
+            "postgresql"
+          ],
+          "default": "sqlite"
+        },
+        "databaseUrl": {
+          "type": "string"
+        },
+        "aiProvider": {
+          "type": "string",
+          "enum": [
+            "gemini",
+            "openai",
+            "anthropic",
+            "ollama"
+          ],
+          "default": "gemini"
+        },
+        "aiModel": {
+          "type": "string"
+        },
+        "aiBaseUrl": {
+          "type": "string"
         }
       },
-      "title": "Appium device farm plugin",
+      "title": "Xenon",
       "type": "object"
     }
   },

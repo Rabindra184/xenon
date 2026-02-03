@@ -39,6 +39,7 @@ import {
 } from './device-utils';
 import { XenonManager } from './device-managers';
 import { Container } from 'typedi';
+import { PluginContext } from './PluginContext';
 import log from './logger';
 import { v4 as uuidv4 } from 'uuid';
 import axios, { AxiosError } from 'axios';
@@ -78,6 +79,8 @@ import SessionType from './enums/SessionType';
 import { XenonSession, XenonSessionOptions } from './sessions/XenonSession';
 import { DeviceStoreFactory } from './data-service/device-store';
 import { SessionStatus } from './types/SessionStatus';
+import { CapabilityValidator } from './validators/CapabilityValidator';
+import { CircuitBreaker } from './data-service/CircuitBreaker';
 
 const commandsQueueGuard = new AsyncLock();
 const DEVICE_MANAGER_LOCK_NAME = 'DeviceManager';
@@ -101,6 +104,35 @@ class XenonPlugin extends BasePlugin {
     this.xenonLog.debug(`📱 Plugin Args: ${JSON.stringify(cliArgs)}`);
     // plugin args will assign undefined value as well for bindHostOrIp
     this.pluginArgs = Object.assign({}, DefaultPluginArgs, this.cliArgs as unknown as IPluginArgs);
+
+    // Sync Database Config
+    if (this.pluginArgs.databaseProvider) {
+      process.env.XENON_DB_PROVIDER = this.pluginArgs.databaseProvider;
+    }
+    if (this.pluginArgs.databaseUrl) {
+      process.env.DATABASE_URL = this.pluginArgs.databaseUrl;
+    }
+
+    // Sync AI Config
+    if (this.pluginArgs.aiProvider) {
+      process.env.XENON_AI_PROVIDER = this.pluginArgs.aiProvider;
+    }
+    if (this.pluginArgs.aiModel) {
+      process.env.XENON_AI_MODEL = this.pluginArgs.aiModel;
+    }
+    if (this.pluginArgs.aiBaseUrl) {
+      process.env.XENON_AI_BASE_URL = this.pluginArgs.aiBaseUrl;
+    }
+    if (this.pluginArgs.geminiApiKey) {
+      process.env.GEMINI_API_KEY = this.pluginArgs.geminiApiKey;
+    }
+    if (this.pluginArgs.openaiApiKey) {
+      process.env.OPENAI_API_KEY = this.pluginArgs.openaiApiKey;
+    }
+    if (this.pluginArgs.anthropicApiKey) {
+      process.env.ANTHROPIC_API_KEY = this.pluginArgs.anthropicApiKey;
+    }
+
     // not pretty but will do for now
     if (this.pluginArgs.bindHostOrIp === undefined) {
       this.pluginArgs.bindHostOrIp = ip.address();
@@ -136,7 +168,12 @@ class XenonPlugin extends BasePlugin {
     }
 
     // For local sessions on hub with dashboard enabled, capture command logs
-    const sessionId = args[args.length - 1];
+    const sessionId = (driver.sessionId as string) || args[args.length - 1];
+
+    // Principal Activity: Update the last command timestamp to prevent idle timeout
+    const { updateCmdExecutedTime } = await import('./data-service/device-service');
+    await updateCmdExecutedTime(sessionId);
+
     const isDashboardEnabled = !!this.pluginArgs.enableDashboard;
 
     // Intercept execute command for dashboard commands
@@ -275,7 +312,7 @@ class XenonPlugin extends BasePlugin {
 
     // Load persisted configuration overrides
     try {
-      const persistedConfig = await ConfigService.getInstance().loadConfig();
+      const persistedConfig = await Container.get(ConfigService).loadConfig();
       if (persistedConfig && Object.keys(persistedConfig).length > 0) {
         log.info(`Loading persisted configuration: ${JSON.stringify(persistedConfig)}`);
         Object.assign(pluginArgs, persistedConfig);
@@ -297,6 +334,51 @@ class XenonPlugin extends BasePlugin {
     }
 
     log.debug(`📱 Update server with Plugin Args: ${JSON.stringify(pluginArgs)}`);
+
+    // Dynamic Database Configuration sync
+    const { updateConfig } = await import('./config');
+    const update: any = {};
+    if (pluginArgs.databaseProvider) {
+      update.databaseProvider = pluginArgs.databaseProvider;
+      // Also set in process.env for Prisma/scripts
+      process.env.XENON_DB_PROVIDER = pluginArgs.databaseProvider;
+    }
+    if (pluginArgs.databaseUrl) {
+      update.databaseUrl = pluginArgs.databaseUrl;
+      // Also set in process.env for Prisma/scripts
+      process.env.DATABASE_URL = pluginArgs.databaseUrl;
+    }
+
+    // Dynamic AI Configuration sync
+    if (pluginArgs.aiProvider) {
+      update.aiProvider = pluginArgs.aiProvider;
+      process.env.XENON_AI_PROVIDER = pluginArgs.aiProvider;
+    }
+    if (pluginArgs.aiModel) {
+      update.aiModel = pluginArgs.aiModel;
+      process.env.XENON_AI_MODEL = pluginArgs.aiModel;
+    }
+    if (pluginArgs.aiBaseUrl) {
+      update.aiBaseUrl = pluginArgs.aiBaseUrl;
+      process.env.XENON_AI_BASE_URL = pluginArgs.aiBaseUrl;
+    }
+    if (pluginArgs.geminiApiKey) {
+      update.geminiApiKey = pluginArgs.geminiApiKey;
+      process.env.GEMINI_API_KEY = pluginArgs.geminiApiKey;
+    }
+    if (pluginArgs.openaiApiKey) {
+      update.openaiApiKey = pluginArgs.openaiApiKey;
+      process.env.OPENAI_API_KEY = pluginArgs.openaiApiKey;
+    }
+    if (pluginArgs.anthropicApiKey) {
+      update.anthropicApiKey = pluginArgs.anthropicApiKey;
+      process.env.ANTHROPIC_API_KEY = pluginArgs.anthropicApiKey;
+    }
+    if (Object.keys(update).length > 0) {
+      log.info(`[Plugin] Synchronizing database config: ${JSON.stringify(update)}`);
+      updateConfig(update);
+    }
+
     await initializeStorage();
     await DeviceStoreFactory.getStore().clearStorage();
     platform = pluginArgs.platform;
@@ -329,17 +411,17 @@ class XenonPlugin extends BasePlugin {
     }
 
     const chromeDriverManager =
-      pluginArgs.skipChromeDownload === false ? await ChromeDriverManager.getInstance() : undefined;
+      pluginArgs.skipChromeDownload === false ? await ChromeDriverManager.create() : undefined;
     iosDeviceType = XenonPlugin.setIncludeSimulatorState(pluginArgs, iosDeviceType);
-    const deviceTypes = { androidDeviceType, iosDeviceType };
-    const deviceManager = new XenonManager(
-      platform,
-      deviceTypes,
-      cliArgs.port,
-      pluginArgs,
-      XenonPlugin.NODE_ID,
-    );
-    Container.set(XenonManager, deviceManager);
+
+    // Initialize PluginContext (TypeDI Service) with runtime values
+    const pluginContext = Container.get(PluginContext);
+    pluginContext.setContext(pluginArgs, cliArgs.port, XenonPlugin.NODE_ID, cliArgs.basePath || '');
+
+    // Now get XenonManager from TypeDI (it will use PluginContext via injection)
+    const deviceManager = Container.get(XenonManager);
+    deviceManager.init();
+
     if (chromeDriverManager) Container.set(ChromeDriverManager, chromeDriverManager);
 
     await addCLIArgs(cliArgs);
@@ -398,10 +480,22 @@ class XenonPlugin extends BasePlugin {
 
       // Start Health Monitor Service
       const { HealthMonitorService } = await import('./device-managers/HealthMonitorService');
-      HealthMonitorService.getInstance().start(pluginArgs);
+      Container.get(HealthMonitorService).start(pluginArgs);
 
-      // Principal Cleaning: Mark all pre-existing "running" sessions as Interrupted
+      // Principal Cleaning: Attempt to recover remote sessions before marking as failed
+      // This allows remote node sessions to continue if those nodes are still running
+      const { SessionManager } = await import('./sessions/SessionManager');
+      const sessionManager = Container.get(SessionManager);
+      const recoveredCount = await sessionManager.recoverActiveSessions(
+        XenonPlugin.NODE_ID,
+        XenonPlugin.nodeBasePath
+      );
 
+      if (recoveredCount > 0) {
+        log.info(`🔄 Successfully recovered ${recoveredCount} remote sessions`);
+      }
+
+      // Cleanup any remaining zombie sessions that couldn't be recovered
       const { cleanupZombieSessions } = await import('./dashboard/services/session-service');
       await cleanupZombieSessions();
 
@@ -450,14 +544,25 @@ class XenonPlugin extends BasePlugin {
     const pendingSessionId = uuidv4();
     log.debug(`📱 Creating temporary session capability_id: ${pendingSessionId}`);
     const {
-      alwaysMatch: requiredCaps = {}, // If 'requiredCaps' is undefined, set it to an empty JSON object (#2.1)
-      firstMatch: allFirstMatchCaps = [{}], // If 'firstMatch' is undefined set it to a singleton list with one empty object (#3.1)
+      alwaysMatch: requiredCaps = {},
+      firstMatch: allFirstMatchCaps = [{}],
     } = caps;
-    stripAppiumPrefixes(requiredCaps);
-    stripAppiumPrefixes(allFirstMatchCaps);
+
+    // Technical Fix: stripAppiumPrefixes is not destructive, must capture return value
+    const strippedRequiredCaps = stripAppiumPrefixes(requiredCaps);
+    const strippedFirstMatchCaps = stripAppiumPrefixes(allFirstMatchCaps[0]);
+
+    // Principal Intelligence: Fail-Fast Capability Validation (Zod)
+    try {
+      const mergedCaps = Object.assign({}, strippedFirstMatchCaps, strippedRequiredCaps);
+      Container.get(CapabilityValidator).validate(mergedCaps);
+    } catch (err: any) {
+      log.error(`❌ Session validation failed: ${err.message}`);
+      throw err;
+    }
 
     // Resolve app ID if provided from the App Repository
-    const app = requiredCaps['app'] || allFirstMatchCaps[0]['app'];
+    const app = strippedRequiredCaps['app'] || strippedFirstMatchCaps['app'];
     if (app && typeof app === 'string' && !app.includes('/') && !app.includes('\\')) {
       const { APP_SERVICE } = await import('./dashboard/services/app-service');
       const appDetails = await APP_SERVICE.getAppById(app);
@@ -525,9 +630,8 @@ class XenonPlugin extends BasePlugin {
       if (device.platform === 'ios' && device.realDevice) {
         const { APP_SERVICE } = await import('./dashboard/services/app-service');
         const wdaApp = await APP_SERVICE.getWDAApp();
-        const streamService = (
-          await import('./device-managers/ios/IOSStreamService')
-        ).default.getInstance();
+        const { default: IOSStreamService } = await import('./device-managers/ios/IOSStreamService');
+        const streamService = Container.get(IOSStreamService);
         const streamStatus = streamService.getStreamStatus(device.udid);
         const isWdaActive =
           streamStatus && (streamStatus.status === 'running' || streamStatus.status === 'starting');
@@ -662,13 +766,29 @@ class XenonPlugin extends BasePlugin {
         sessionProgress: 'Session Active',
       });
       if (isRemoteOrCloudSession) {
+        Container.get(CircuitBreaker).recordSuccess(device.host);
         addProxyHandler(sessionId, device.host);
+      }
+
+      // Technical Fix: Refresh device object from store to get the latest mjpegServerPort
+      // The Artisan WDA flow updates the device in the store with mjpegServerPort,
+      // but our in-memory 'device' object is stale. We need the latest for live video streaming.
+      let freshDevice = device;
+      try {
+        const store = (await import('./data-service/device-store')).DeviceStoreFactory.getStore();
+        const updatedDevice = await store.findDevice({ udid: device.udid, host: device.host });
+        if (updatedDevice) {
+          freshDevice = updatedDevice;
+          log.debug(`📱 Refreshed device ${device.udid} - mjpegServerPort: ${freshDevice.mjpegServerPort}`);
+        }
+      } catch (err: any) {
+        log.debug(`📱 Could not refresh device (non-fatal): ${err.message}`);
       }
 
       let sessionInstance: XenonSession;
       const sessionOptions: XenonSessionOptions = {
         sessionId,
-        device,
+        device: freshDevice,
         sessionResponse,
         xenonOption: xenonCapabilities,
       };
@@ -688,6 +808,13 @@ class XenonPlugin extends BasePlugin {
           ...sessionOptions,
           baseUrl: nodeWebdriverUrl,
         });
+      }
+
+      // Principal Intelligence: Virtualized Network Conditioning
+      const networkProfile = xenonCapabilities[XENON_CAPABILITIES.NETWORK_PROFILE];
+      if (networkProfile) {
+        const { NetworkConditioningService } = await import('./services/NetworkConditioningService');
+        await Container.get(NetworkConditioningService).applyProfile(sessionId, device, networkProfile);
       }
 
       const isDashboardEnabled = !!this.pluginArgs.enableDashboard;
@@ -736,6 +863,9 @@ class XenonPlugin extends BasePlugin {
       );
       await updateDeviceProgress(device.udid, device.host, '');
 
+      if (isRemoteOrCloudSession) {
+        Container.get(CircuitBreaker).recordFailure(device.host);
+      }
       this.throwProperError(session, device.host);
     }
 
@@ -753,10 +883,13 @@ class XenonPlugin extends BasePlugin {
       if (errorMessage && errorMessage !== '{}') {
         throw new Error(errorMessage);
       } else {
+        // Technical Optimization: If the error object is empty but the response is present, 
+        // it means the remote node (usually WDA) failed without a clear message.
+        // We wrap the whole session object for better debugging.
+        const fullError = JSON.stringify(session);
         throw new Error(
-          `Empty error response from node ${host}: ${JSON.stringify(
-            session,
-          )}. This usually indicates WDA crashed or failed to return a proper W3C error. Check Appium logs on the node.`,
+          `Remote node ${host} failed to create session. Error Payload: ${fullError}. ` +
+          `This usually indicates WDA/UIAutomator2 crashed or failed to return a proper error message.`,
         );
       }
     } else {
@@ -851,11 +984,24 @@ class XenonPlugin extends BasePlugin {
         // Appium endpoint returns session details w3c format: https://github.com/jlipps/simple-wd-spec?tab=readme-ov-file#new-session
         sessionDetails = response.data as unknown as W3CNewSessionResponse;
 
-        // check if we have error in response by checking sessionDetails.value type
-        if ('error' in sessionDetails.value) {
-          log.error(`Error while creating session: ${sessionDetails.value.error}`);
-          errorMessage = sessionDetails.value.error as string;
+        // Technical Fix: More robust response checking to avoid crashes with non-W3C nodes
+        if (!sessionDetails || !sessionDetails.value) {
+          errorMessage = `Remote node returned invalid response structure: ${JSON.stringify(response.data)}`;
+          break;
+        }
+
+        // check if we have error in response
+        if (typeof sessionDetails.value === 'object' && sessionDetails.value !== null && 'error' in sessionDetails.value) {
+          const remoteError = sessionDetails.value.error;
+          log.error(`Error while creating session: ${JSON.stringify(remoteError)}`);
+          errorMessage = typeof remoteError === 'string' ? remoteError : JSON.stringify(remoteError);
           // If it's a known error from the other node, we shouldn't retry
+          break;
+        } else if (typeof sessionDetails === 'object' && 'error' in sessionDetails) {
+          // Technical Fix: Support for nodes returning { protocol: 'W3C', error: { ... } } directly
+          const remoteError = (sessionDetails as any).error;
+          log.error(`Top-level error received from node: ${JSON.stringify(remoteError)}`);
+          errorMessage = typeof remoteError === 'string' ? remoteError : JSON.stringify(remoteError);
           break;
         } else {
           return sessionDetails;
@@ -946,19 +1092,24 @@ class XenonPlugin extends BasePlugin {
     if (session && session.isVideoRecordingInProgress()) {
       sessionLog.info('Stopping video recording before session deletion');
       try {
-        const videoBase64 = await session.stopVideoRecording();
+        const videoData = await session.stopVideoRecording();
         sessionLog.info(
-          `Video data received: ${videoBase64 ? `${videoBase64.length} bytes` : 'empty'}`,
+          `Video recording stopped: ${videoData ? (videoData.length < 1000 ? videoData : `${videoData.length} chars`) : 'empty'}`,
         );
 
-        if (videoBase64) {
+        if (videoData) {
           try {
-            const videoPath = saveVideoRecording(sessionId, videoBase64);
-            sessionLog.info(`✅ Video saved at ${videoPath}`);
+            let videoPath = videoData;
+            // Technical Optimization: If the returned string is long, it's base64 (legacy/Appium).
+            // If it's short, it's a relative path (Intelligent Pipeline/Zero-Copy).
+            if (videoData.length > 1000) {
+              videoPath = saveVideoRecording(sessionId, videoData);
+            }
+            sessionLog.info(`✅ Video asset registered at ${videoPath}`);
             await updateSessionDetails(sessionId, { video_recording: videoPath });
             sessionLog.info('✅ Database updated with video path');
           } catch (saveErr: any) {
-            sessionLog.error(`❌ Failed to save video: ${saveErr.message}`);
+            sessionLog.error(`❌ Failed to process video asset: ${saveErr.message}`);
           }
         } else {
           sessionLog.warn('⚠️ Video recording returned empty');
@@ -972,15 +1123,25 @@ class XenonPlugin extends BasePlugin {
       const result = await next();
       return result;
     } finally {
+      const session = SESSION_MANAGER.getSession(sessionId);
+      if (session) {
+        const device = session.getDevice();
+        const { NetworkConditioningService } = await import('./services/NetworkConditioningService');
+        await Container.get(NetworkConditioningService).reset(sessionId, device);
+      }
+
       await DASHBORD_EVENT_MANAGER.onSessionStoped(sessionId);
+
+      // Remove session from in-memory manager
+      SESSION_MANAGER.removeSession(sessionId);
 
       // Notify on failure
       try {
         const { getSessionById } = await import('./dashboard/services/session-service');
         const sessionData = await getSessionById(sessionId);
         if (sessionData && (sessionData.status === 'failed' || sessionData.failure_reason)) {
-          const { default: NotificationService } = await import('./services/NotificationService');
-          await NotificationService.dispatchEvent('session_failed', sessionData);
+          const { NotificationService } = await import('./services/NotificationService');
+          await Container.get(NotificationService).dispatchEvent('session_failed', sessionData);
         }
       } catch (err) {
         /* ignore notification errors */

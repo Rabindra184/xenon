@@ -1,9 +1,18 @@
-import axios, { AxiosInstance, AxiosRequestConfig } from 'axios';
+import axios, { AxiosInstance, AxiosRequestConfig, AxiosResponse } from 'axios';
 import http from 'http';
 import https from 'https';
-import _ from 'lodash';
 import log from './logger';
+import { Container } from 'typedi';
 
+/**
+ * InternalHttpClient - Centralized HTTP client for all internal communication.
+ * 
+ * Features:
+ * - Keep-alive connections for performance
+ * - Automatic retry with exponential backoff
+ * - Request/response logging for debugging
+ * - Correlation ID tracking
+ */
 export class InternalHttpClient {
   private static instance: AxiosInstance;
 
@@ -32,11 +41,70 @@ export class InternalHttpClient {
         maxBodyLength: Infinity,
       });
 
-      // Add resilient retry interceptor
+      // Request interceptor - adds timing and logging
+      this.instance.interceptors.request.use(
+        (config: AxiosRequestConfig) => {
+          // Add request start time for duration calculation
+          (config as any).metadata = { startTime: Date.now() };
+
+          // Log outgoing request
+          log.debug(`[HTTP →] ${config.method?.toUpperCase()} ${config.url}`);
+
+          return config as any;
+        },
+        (error) => {
+          log.error(`[HTTP →] Request setup error: ${error.message}`);
+          return Promise.reject(error);
+        }
+      );
+
+      // Response interceptor - logging + retry logic
       this.instance.interceptors.response.use(
-        (response) => response,
+        async (response: AxiosResponse) => {
+          const duration = Date.now() - ((response.config as any).metadata?.startTime || Date.now());
+
+          // Log successful response
+          log.debug(
+            `[HTTP ←] ${response.config.method?.toUpperCase()} ${response.config.url} ` +
+            `[${response.status}] ${duration}ms`
+          );
+
+          // Principal Decoupling: Emit event for logging/observability
+          try {
+            const { EVENT_BUS } = await import('./services/EventBus');
+            EVENT_BUS.emit('http:outgoing', {
+              direction: 'outgoing',
+              method: response.config.method?.toUpperCase() || 'GET',
+              url: response.config.url || '',
+              requestBody: response.config.data ? JSON.stringify(response.config.data) : undefined,
+              responseBody: response.data ? JSON.stringify(response.data).slice(0, 2000) : undefined,
+              statusCode: response.status,
+              durationMs: duration,
+              source: 'InternalHttpClient',
+            });
+          } catch (e) { /* ignore */ }
+
+          return response;
+        },
         async (error) => {
           const { config, response } = error;
+          const duration = Date.now() - ((config as any)?.metadata?.startTime || Date.now());
+
+          // Principal Decoupling: Emit event for logging/observability
+          try {
+            const { EVENT_BUS } = await import('./services/EventBus');
+            EVENT_BUS.emit('http:outgoing', {
+              direction: 'outgoing',
+              method: config?.method?.toUpperCase() || 'GET',
+              url: config?.url || '',
+              requestBody: config?.data ? JSON.stringify(config.data) : undefined,
+              responseBody: response?.data ? JSON.stringify(response.data).slice(0, 2000) : undefined,
+              statusCode: response?.status,
+              durationMs: duration,
+              error: error.message,
+              source: 'InternalHttpClient',
+            });
+          } catch (e) { /* ignore */ }
 
           if (!config || config.retryCount === undefined) {
             config.retryCount = 0;
@@ -44,6 +112,12 @@ export class InternalHttpClient {
 
           const maxRetries = 2;
           const status = response?.status;
+
+          // Log failed request
+          log.warn(
+            `[HTTP ←] ${config?.method?.toUpperCase()} ${config?.url} ` +
+            `[${status || 'ERR'}] ${duration}ms - ${error.message}`
+          );
 
           // Don't retry client errors (4xx) except for occasional 429
           if (status && status < 500 && status !== 429) {
@@ -54,7 +128,7 @@ export class InternalHttpClient {
             config.retryCount += 1;
             const backoff = config.retryCount * 1000;
             log.warn(
-              `Resilient Client: Request to ${config.url} failed (${error.message}). Retrying in ${backoff}ms (Attempt ${config.retryCount}/${maxRetries})...`,
+              `[HTTP ↻] Retrying ${config.url} in ${backoff}ms (Attempt ${config.retryCount}/${maxRetries})...`,
             );
 
             await new Promise((resolve) => setTimeout(resolve, backoff));
@@ -79,6 +153,20 @@ export class InternalHttpClient {
 
   public static async get<T = any>(url: string, config?: AxiosRequestConfig): Promise<T> {
     const response = await this.getClient().get<T>(url, config);
+    return response.data;
+  }
+
+  public static async delete<T = any>(url: string, config?: AxiosRequestConfig): Promise<T> {
+    const response = await this.getClient().delete<T>(url, config);
+    return response.data;
+  }
+
+  public static async put<T = any>(
+    url: string,
+    data?: any,
+    config?: AxiosRequestConfig,
+  ): Promise<T> {
+    const response = await this.getClient().put<T>(url, data, config);
     return response.data;
   }
 }

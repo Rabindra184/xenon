@@ -1,3 +1,4 @@
+import 'reflect-metadata';
 import { expect } from 'chai';
 import { XenonManager } from '../../../src/device-managers';
 import { Container } from 'typedi';
@@ -11,13 +12,13 @@ import {
 import { XenonDatabase } from '../../../src/data-service/db';
 import { DefaultPluginArgs } from '../../../src/interfaces/IPluginArgs';
 import { unblockDeviceMatchingFilter } from '../../../src/data-service/device-service';
-import { v4 as uuidv4 } from 'uuid';
+import { createTestXenonManager } from '../../helpers/test-container';
 
 const pluginArgs = Object.assign({}, DefaultPluginArgs, {
   remote: [`http://${ip.address()}:4723`],
   iosDeviceType: 'both',
+  platform: 'ios',
 });
-const NODE_ID = uuidv4();
 
 describe('IOS Test', () => {
   beforeEach('Release devices', async () => {
@@ -33,14 +34,7 @@ describe('IOS Test', () => {
       .update(function (d) {
         d.plugin['xenon'].iosDeviceType = 'real';
       });
-    const deviceManager = new XenonManager(
-      'ios',
-      { iosDeviceType: 'both', androidDeviceType: 'real' },
-      4723,
-      pluginArgs,
-      NODE_ID,
-    );
-    Container.set(XenonManager, deviceManager);
+    const deviceManager = createTestXenonManager(pluginArgs);
     await updateDeviceList(pluginArgs.bindHostOrIp);
     const capabilities = {
       alwaysMatch: {
@@ -64,14 +58,7 @@ describe('IOS Test', () => {
 
   it('Should throw error if the IPA does not match with device type real', async () => {
     await initializeStorage();
-    const deviceManager = new XenonManager(
-      'ios',
-      { iosDeviceType: 'both', androidDeviceType: 'real' },
-      4723,
-      pluginArgs,
-      NODE_ID,
-    );
-    Container.set(XenonManager, deviceManager);
+    const deviceManager = createTestXenonManager(pluginArgs);
     await updateDeviceList(pluginArgs.bindHostOrIp);
     const capabilities = {
       alwaysMatch: {
