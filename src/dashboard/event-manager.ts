@@ -78,8 +78,7 @@ export class DashboardEventManager {
 
     // start video recording is now handled in plugin.ts createSession to avoid double calls
     log.info(
-      `📹 Video recording capability for session ${session.getId()}: ${
-        capabilities[XENON_CAPABILITIES.VIDEO_RECORDING]
+      `📹 Video recording capability for session ${session.getId()}: ${capabilities[XENON_CAPABILITIES.VIDEO_RECORDING]
       }`,
     );
 
@@ -177,7 +176,7 @@ export class DashboardEventManager {
           updateData['failure_reason'] =
             failedCommand.response && failedCommand.response.includes('error')
               ? safeParseJson(failedCommand.response).value?.error ||
-                `Command failed: ${failedCommand.command_name}`
+              `Command failed: ${failedCommand.command_name}`
               : `Command failed: ${failedCommand.command_name}`;
           log.info(
             `Session ${sessionId} marked as FAILED due to error in command: ${failedCommand.command_name}`,
@@ -240,6 +239,11 @@ export class DashboardEventManager {
     request: Request,
     response: Response,
     responseBody: string,
+    healingInfo?: {
+      originalSelector: string;
+      healedSelector: string;
+      confidence: number;
+    },
   ) {
     const session: XenonSession | undefined = SESSION_MANAGER.getSession(sessionId);
     if (session) {
@@ -254,7 +258,7 @@ export class DashboardEventManager {
         _.isObjectLike(parsedResponse) &&
         (parsedResponse.value === null || (parsedResponse.value && !parsedResponse.value.error));
 
-      const logEntry: Partial<SessionLog> = {
+      const logEntry: any = {
         session_id: session.getId(),
         command_name: commandName || null,
         body: JSON.stringify(request.body),
@@ -266,6 +270,10 @@ export class DashboardEventManager {
         subtitle: '',
         screenshot: null,
         url: request.originalUrl,
+        is_healed: !!healingInfo,
+        original_selector: healingInfo?.originalSelector || null,
+        healed_selector: healingInfo?.healedSelector || null,
+        healing_confidence: healingInfo?.confidence || null,
       };
 
       // Take screenshots for specific commands (like click, setValue, etc.)
@@ -324,6 +332,17 @@ export class DashboardEventManager {
         data: logEntry as SessionLog,
       });
     }
+  }
+
+  async onSessionLog(sessionId: string, logEntry: { level: string, message: string }) {
+    await prisma.log.create({
+      data: {
+        session_id: sessionId,
+        log_type: logEntry.level.toUpperCase(),
+        message: logEntry.message,
+        timestamp: new Date(),
+      },
+    });
   }
 
   private getTitleFromCommandName(commandName: string | undefined) {

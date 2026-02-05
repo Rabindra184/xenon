@@ -206,6 +206,65 @@ Fix: Add a pre-emptive check for the location permission dialog or use the \`aut
         }
     }
 
+    /**
+     * Finds coordinates for an element based on a visual description (Tier 4)
+     */
+    public async visualFind(screenshotBase64: string, description: string): Promise<{ x: number, y: number } | null> {
+        this.initializeProvider();
+        if (!this.isEnabled()) return null;
+
+        const prompt = `
+            Task: Find the center coordinates (X, Y) of the element described as: "${description}"
+            Response Format: JSON only, strictly { "x": number, "y": number }. 
+            Scale: 0 to screen width/height.
+            Instructions: Look at the provided screenshot and find the exact center of the specified element.
+        `;
+
+        try {
+            const response = await this.provider!.analyze(prompt, screenshotBase64);
+            const data = JSON.parse(response.replace(/```json|```/g, '').trim());
+            return data;
+        } catch (err: any) {
+            log.error(`[AIService] visualFind failed: ${err.message}`);
+            return null;
+        }
+    }
+
+    /**
+     * Heals a broken locator using deep LLM reasoning (Tier 5)
+     */
+    public async healLocator(context: {
+        selector: string,
+        strategy: string,
+        xml: string,
+        screenshotBase64?: string
+    }): Promise<{ recommendedXpath: string, reason: string } | null> {
+        this.initializeProvider();
+        if (!this.isEnabled()) return null;
+
+        const prompt = `
+            You are an automated self-healing engine. 
+            The locator "${context.selector}" (strategy: ${context.strategy}) failed to find an element.
+            
+            Current Page Source (XML):
+            ${context.xml.substring(0, 10000)} ... [truncated]
+
+            Analyze the XML and the provided screenshot. Find the element that most likely matches the developer's intent.
+            Return a stable, optimized XPath for this element.
+            
+            Response Format: JSON only, strictly { "recommendedXpath": "string", "reason": "string" }.
+        `;
+
+        try {
+            const response = await this.provider!.analyze(prompt, context.screenshotBase64);
+            const data = JSON.parse(response.replace(/```json|```/g, '').trim());
+            return data;
+        } catch (err: any) {
+            log.error(`[AIService] healLocator failed: ${err.message}`);
+            return null;
+        }
+    }
+
     public async testConnection(testConfig: any): Promise<{ success: boolean; message: string }> {
         try {
             let testProvider: LLMProvider | null = null;

@@ -1,6 +1,6 @@
 import { IDevice } from '../interfaces/IDevice';
 import { IDeviceFilterOptions } from '../interfaces/IDeviceFilterOptions';
-import { IDeviceStore, IPendingSessionStore, ICLIArgsStore } from './device-store.interface';
+import { IDeviceStore, IPendingSessionStore, ICLIArgsStore, IHealEtalonStore } from './device-store.interface';
 
 import log from '../logger';
 import semver from 'semver';
@@ -187,6 +187,35 @@ class LokiCLIArgsStore implements ICLIArgsStore {
   }
 }
 
+class LokiHealEtalonStore implements IHealEtalonStore {
+  private collectionName = 'locator-etalons';
+
+  private async getCollection() {
+    const db = await XenonDatabase.db;
+    let coll = db.getCollection(this.collectionName);
+    if (!coll) {
+      coll = db.addCollection(this.collectionName, { unique: ['selector'] });
+    }
+    return coll;
+  }
+
+  async saveSignature(etalon: any): Promise<void> {
+    const coll = await this.getCollection();
+    const existing = coll.findOne({ selector: etalon.selector });
+    if (existing) {
+      Object.assign(existing, etalon);
+      coll.update(existing);
+    } else {
+      coll.insert(etalon);
+    }
+  }
+
+  async getSignature(selector: string): Promise<any | null> {
+    const coll = await this.getCollection();
+    return coll.findOne({ selector });
+  }
+}
+
 /**
  * Factory for Device Store.
  * Determines storage type based on config.
@@ -233,5 +262,18 @@ export class DeviceStoreFactory {
       }
     }
     return this._cliArgsStore;
+  }
+
+  private static _healEtalonStore: IHealEtalonStore;
+  static getHealEtalonStore(): IHealEtalonStore {
+    if (!this._healEtalonStore) {
+      if (this.getStorageType() === 'prisma') {
+        const { PrismaHealEtalonStore } = require('./prisma-store');
+        this._healEtalonStore = new PrismaHealEtalonStore();
+      } else {
+        this._healEtalonStore = new LokiHealEtalonStore();
+      }
+    }
+    return this._healEtalonStore;
   }
 }

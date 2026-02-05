@@ -40,6 +40,7 @@ model Session {
   performance_trace       String?      @map("performance_trace")
   failure_category        String?
   ai_analysis             String?
+  tags                    String?      // JSON array of searchable tags (e.g., ["regression", "smoke"])
   Log                     Log[]
   Profiling               Profiling[]
   build                   Build?       @relation(fields: [build_id], references: [id])
@@ -58,9 +59,13 @@ model SessionLog {
   response     String
   screenshot   String?
   is_success   Boolean?
-  is_error     Boolean  @default(false)
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  is_error          Boolean  @default(false)
+  is_healed         Boolean  @default(false)
+  original_selector String?
+  healed_selector   String?
+  healing_confidence Float?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
   session      Session  @relation(fields: [session_id], references: [id])
 }
 
@@ -186,4 +191,15 @@ model WebConfig {
   value     String
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+model LocatorEtalon {
+  id         String   @id @default(uuid())
+  selector   String   @unique
+  strategy   String
+  attributes String 
+  nodeName   String
+  lastSeen   DateTime @default(now())
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
 }

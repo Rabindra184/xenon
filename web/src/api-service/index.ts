@@ -58,6 +58,26 @@ export default class XenonApiService {
     return apiClient.makeGETRequest(`/session/${sessionId}/profiling`);
   }
 
+  public static omniScan(sessionId: string) {
+    return apiClient.makeGETRequest(`/session/${sessionId}/xenon/omni-scan`);
+  }
+
+  public static omniScanControl(udid: string) {
+    return apiClient.makeGETRequest(`/control/${udid}/omni-scan`);
+  }
+
+  public static testAiLocator(sessionId: string, strategy: string, selector: string) {
+    return apiClient.makePOSTRequest(
+      `/session/${sessionId}/xenon/test-locator`,
+      {},
+      { strategy, selector },
+    );
+  }
+
+  public static testAiLocatorControl(udid: string, strategy: string, selector: string) {
+    return apiClient.makePOSTRequest(`/control/${udid}/test-locator`, {}, { strategy, selector });
+  }
+
   public static blockDevice(udid: string, host: string) {
     return apiClient.makePOSTRequest('/block', {}, { udid, host });
   }

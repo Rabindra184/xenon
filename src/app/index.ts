@@ -92,9 +92,17 @@ function createRouter(pluginArgs: IPluginArgs) {
     console.warn('Swagger documentation not available. Install swagger-jsdoc and swagger-ui-express to enable.');
   }
 
+  // Handle unmatched API routes with a 404 JSON response instead of the UI fallback
+  apiRouter.use('*', (req, res) => {
+    res.status(404).json({
+      error: true,
+      message: `API endpoint ${req.method} ${req.originalUrl} not found`,
+    });
+  });
+
   // Fallback route for client-side routing - serve index.html for all non-API routes
   // MUST be registered after Swagger to avoid interception
-  router.get('*', (req, res) => {
+  router.get(/^(?!\/api).*/, (req, res) => {
     res.sendFile(path.join(__dirname, '..', '..', 'public', 'index.html'));
   });
 

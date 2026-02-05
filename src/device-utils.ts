@@ -161,6 +161,30 @@ export async function allocateDeviceForSession(
   const matchingDevices = await getDevices(filters);
   const device = matchingDevices.find((d) => !isDeviceReserved(d));
   if (device != undefined) {
+    // Principal Health Check Integration: Ensure device is READY before allocation
+    if (!device.cloud) {
+      const platform = device.platform.toLowerCase();
+      const managers = await getDeviceManager().deviceInstances();
+      const manager = managers.find((m) => {
+        if (platform === DevicePlatform.ANDROID) return m instanceof AndroidDeviceManager;
+        if (platform === DevicePlatform.IOS || platform === 'tvos')
+          return m instanceof IOSDeviceManager;
+        return false;
+      });
+
+      if (manager && manager.readyForSession) {
+        const isReady = await manager.readyForSession(device);
+        if (!isReady) {
+          log.error(
+            `❌ [Allocation] Device ${device.udid} failed pre-session health check. Allocation aborted.`,
+          );
+          throw new Error(
+            `Device ${device.udid} is unhealthy and could not be autonomously recovered.`,
+          );
+        }
+      }
+    }
+
     // log.info(`📱 Device found: ${JSON.stringify(device)}`);
     await blockDevice(device.udid, device.host);
     log.info(`📱 Blocking device ${device.udid} at host ${device.host} for new session`);

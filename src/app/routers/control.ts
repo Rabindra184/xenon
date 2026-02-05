@@ -12,6 +12,7 @@ import AndroidStreamService from '../../device-managers/android/AndroidStreamSer
 import path from 'path';
 import os from 'os';
 import fs from 'fs-extra';
+import { OmniVisionService } from '../../services/omni-vision/OmniVisionService';
 
 const router = Router();
 
@@ -169,7 +170,14 @@ router.get('/:udid/screenshot', async (req: Request, res: Response) => {
   const manager = await getDeviceManagerForPlatform(device.platform);
   if (manager && manager.getScreenshot) {
     const base64 = await manager.getScreenshot(udid);
-    return res.status(200).send({ screenshot: base64 });
+
+    // CRITICAL: Validate screenshot is not empty before returning success
+    if (base64 && base64.length > 100) {
+      return res.status(200).send({ screenshot: base64 });
+    }
+
+    log.error(`Screenshot capture failed for ${udid}: returned empty or invalid data (${base64?.length || 0} bytes)`);
+    return res.status(502).send({ error: 'Screenshot capture failed. Device may be busy or WDA is unresponsive. Try again.' });
   }
   res.status(400).send('Manager not found or screenshot not supported');
 });
@@ -644,6 +652,88 @@ router.post('/:udid/shell', async (req: Request, res: Response) => {
     }
   }
   res.status(400).send('Manager not found or executeShell not supported');
+});
+
+/**
+ * Omni-Scan for manual control (No Appium Session)
+ */
+router.get('/:udid/omni-scan', async (req: Request, res: Response) => {
+  const { udid } = req.params;
+  const device = await getDeviceInfo(udid);
+  if (!device) return res.status(404).send('Device not found');
+
+  const manager = await getDeviceManagerForPlatform(device.platform);
+  if (!manager) return res.status(400).send('Manager not found');
+
+  try {
+    const omniService = Container.get(OmniVisionService);
+
+    // Create a Mock Driver that OmniVisionService can use
+    const mockDriver = {
+      sessionId: `manual_${udid}`,
+      getScreenshot: async () => {
+        if (manager.getScreenshot) {
+          return await manager.getScreenshot(udid);
+        }
+        throw new Error('Screenshot not supported for this device');
+      },
+      // OmniVision might need page source for some analysis later
+      getPageSource: async () => {
+        if (manager.getPageSource) {
+          return await manager.getPageSource(udid);
+        }
+        return '';
+      }
+    };
+
+    const result = await omniService.analyzeScreen(mockDriver);
+    return res.status(200).send({ status: 'success', value: result });
+  } catch (err: any) {
+    log.error(`Manual Omni-Scan failed for ${udid}: ${err.message}`);
+    return res.status(500).send({ status: 'error', message: err.message });
+  }
+});
+
+/**
+ * AI Locator test for manual control
+ */
+router.post('/:udid/test-locator', async (req: Request, res: Response) => {
+  const { udid } = req.params;
+  const { strategy, selector } = req.body;
+  const device = await getDeviceInfo(udid);
+  if (!device) return res.status(404).send('Device not found');
+
+  const manager = await getDeviceManagerForPlatform(device.platform);
+  if (!manager) return res.status(400).send('Manager not found');
+
+  try {
+    const omniService = Container.get(OmniVisionService);
+
+    const mockDriver = {
+      sessionId: `manual_${udid}`,
+      getScreenshot: async () => {
+        if (manager.getScreenshot) {
+          return await manager.getScreenshot(udid);
+        }
+        throw new Error('Screenshot not supported for this device');
+      }
+    };
+
+    let value: any[] = [];
+    if (strategy === '-custom:ai-text') {
+      value = await omniService.findByText(mockDriver, selector);
+    } else if (strategy === '-custom:ai-icon') {
+      const match = await omniService.findByIcon(mockDriver, selector);
+      if (match) value = [match];
+    } else {
+      return res.status(400).send({ status: 'error', message: `Unsupported strategy: ${strategy}` });
+    }
+
+    return res.status(200).send({ status: 'success', value });
+  } catch (err: any) {
+    log.error(`Manual test-locator failed for ${udid}: ${err.message}`);
+    return res.status(500).send({ status: 'error', message: err.message });
+  }
 });
 
 function register(parentRouter: Router) {

@@ -157,6 +157,20 @@
   align-items: flex-start;
 }
 
+.control-view-main.omni-mode .device-preview-column {
+  display: none;
+}
+
+.control-view-main.omni-mode .interaction-tabs {
+  margin-bottom: var(--space-md);
+  border-radius: var(--radius-sm);
+}
+
+.control-view-main.omni-mode .device-interactions-column {
+  max-width: 100%;
+  padding: 0 0 var(--space-md) 0;
+}
+
 .device-preview-column {
   display: flex;
   flex-direction: column;

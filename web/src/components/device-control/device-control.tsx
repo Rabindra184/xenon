@@ -26,13 +26,14 @@ import {
 import { v4 as uuidv4 } from 'uuid';
 import './device-control.css';
 import { Terminal } from '../terminal/terminal';
+import OmniInspector from '../omni-inspector/OmniInspector';
 
 interface DeviceControlProps {
   device: IDevice;
   onClose: () => void;
 }
 
-type TabType = 'actions' | 'screenshot' | 'logs' | 'terminal';
+type TabType = 'actions' | 'screenshot' | 'logs' | 'terminal' | 'omni';
 
 export default function DeviceControl({ device, onClose }: DeviceControlProps) {
   const canvasRef = useRef<HTMLDivElement>(null);
@@ -165,7 +166,7 @@ export default function DeviceControl({ device, onClose }: DeviceControlProps) {
     startAutoStream();
     return () => {
       // Principal cleanup: Stop the stream when user leaves Control view
-      XenonApiService.stopStream(currentDevice.udid).catch(() => {});
+      XenonApiService.stopStream(currentDevice.udid).catch(() => { });
     };
   }, [device.udid]); // Only run once for this udid
 
@@ -549,9 +550,8 @@ export default function DeviceControl({ device, onClose }: DeviceControlProps) {
           {currentDevice.reservedUntil && Date.now() < currentDevice.reservedUntil && (
             <span
               className="device-pill reserved-pill"
-              title={`Reserved by ${currentDevice.reservedBy}${
-                currentDevice.reservationReason ? `: ${currentDevice.reservationReason}` : ''
-              }`}
+              title={`Reserved by ${currentDevice.reservedBy}${currentDevice.reservationReason ? `: ${currentDevice.reservationReason}` : ''
+                }`}
             >
               RESERVED BY {currentDevice.reservedBy?.toUpperCase() || 'ANONYMOUS'}
             </span>
@@ -563,14 +563,13 @@ export default function DeviceControl({ device, onClose }: DeviceControlProps) {
         </div>
       </header>
 
-      <div className={`control-view-main ${!isPortrait ? 'is-landscape' : ''}`}>
+      <div className={`control-view-main ${!isPortrait ? 'is-landscape' : ''} ${activeTab === 'omni' ? 'omni-mode' : ''}`}>
         <div className="device-preview-column">
           <div className="device-screen-wrapper">
             <div
               ref={canvasRef}
-              className={`device-stream-canvas ${!isPortrait ? 'landscape' : ''} ${
-                isCanvasFocused ? 'focused' : ''
-              }`}
+              className={`device-stream-canvas ${!isPortrait ? 'landscape' : ''} ${isCanvasFocused ? 'focused' : ''
+                }`}
               style={{
                 width: canvasDimensions.width,
                 height: canvasDimensions.height,
@@ -662,14 +661,28 @@ export default function DeviceControl({ device, onClose }: DeviceControlProps) {
             >
               <TerminalIcon size={14} style={{ marginRight: 6 }} /> SHELL
             </button>
+            <button
+              className={`tab-btn ${activeTab === 'omni' ? 'active' : ''}`}
+              onClick={() => setActiveTab('omni')}
+            >
+              OMNI-VISION
+            </button>
           </div>
 
           <div
-            className={`interactions-scroll-area ${
-              activeTab === 'terminal' ? 'terminal-mode' : ''
-            }`}
+            className={`interactions-scroll-area ${activeTab === 'terminal' ? 'terminal-mode' : ''
+              }`}
           >
             <div className="tab-content">
+              {activeTab === 'omni' && (
+                <div className="omni-inspector-tab-wrapper animate-fade-in" style={{ height: 'calc(100vh - 266px)' }}>
+                  <OmniInspector
+                    sessionId={currentDevice.session_id ? String(currentDevice.session_id) : null}
+                    udid={currentDevice.udid}
+                  />
+                </div>
+              )}
+
               {activeTab === 'actions' && (
                 <div className="actions-grid">
                   <div className="action-card">
@@ -856,9 +869,8 @@ export default function DeviceControl({ device, onClose }: DeviceControlProps) {
                         {screenshots.map((s, idx) => (
                           <div
                             key={s.id}
-                            className={`screenshot-thumb-item ${
-                              selectedScreenshotIndex === idx ? 'active' : ''
-                            }`}
+                            className={`screenshot-thumb-item ${selectedScreenshotIndex === idx ? 'active' : ''
+                              }`}
                             onClick={() => setSelectedScreenshotIndex(idx)}
                           >
                             <img src={`data:image/png;base64,${s.base64}`} alt="Thumb" />
@@ -1004,9 +1016,8 @@ export default function DeviceControl({ device, onClose }: DeviceControlProps) {
                     platform={
                       (currentDevice.platform || '').toLowerCase() as 'android' | 'ios' | 'tvos'
                     }
-                    prompt={`${
-                      (currentDevice.platform || '').toLowerCase() === 'ios' ? 'ios' : 'adb'
-                    } $`}
+                    prompt={`${(currentDevice.platform || '').toLowerCase() === 'ios' ? 'ios' : 'adb'
+                      } $`}
                     welcomeMessage={`Connected to ${currentDevice.name} (${currentDevice.udid}).\nInternal Shell Environment.`}
                     onCommand={async (cmd) => {
                       const res = await XenonApiService.executeShell(currentDevice.udid, cmd);

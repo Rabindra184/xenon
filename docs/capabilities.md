@@ -45,6 +45,45 @@ Xenon uses a strict validation system powered by Zod. Every session request is v
 | `appium:maxSDK`                    | This capability is used to filter devices/simulators based on SDK. Devices/Simulators with SDK less then or equal to maxSDK would only be considered for test run. `appium:maxSDK` is optional argument. ex: `'appium:maxSDK': 15`                                 |
 | `appium:filterByHost`              | This capability is used to filter devices/simulators based on node IP. This will only consider devices from specific node. `host` is optional argument. ex: `'host': '192.168.0.226',`                                                                      |
 
+### Execute Script Commands
+
+Xenon provides a powerful `executeScript` interface using the `xenon:` namespace. This allows test frameworks to communicate runtime metadata and trigger specific actions without requiring new Appium commands.
+
+#### Commands
+
+| Command | Arguments | Description |
+|:---|:---|:---|
+| `xenon: setSessionStatus` | `{"status": string, "reason": string}` | Sets the session status to `passed` or `failed`. |
+| `xenon: setSessionName` | `{"name": string}` or `string` | Updates the session name displayed in the dashboard. |
+| `xenon: captureEvidence`| `{"reason": string, "label": string}` or `string` | Captures a manual screenshot and logs it as evidence with an optional label. |
+| `xenon: addTag` | `{"tag": string}` or `string` | Adds a searchable tag to the current session. |
+| `xenon: debug` | `{"message": string}` or `string` | Appends a custom debug log line to the session dashboard. |
+
+#### Code Examples
+
+**WebdriverIO (v8+)**
+```javascript
+// Set Status
+await driver.executeScript('xenon: setSessionStatus', [{ status: 'passed', reason: 'Verified checkout flow' }]);
+
+// Capture Evidence
+await driver.executeScript('xenon: captureEvidence', ['User profile verified']);
+
+// Add Tags
+await driver.executeScript('xenon: addTag', ['smoke', 'payment']);
+```
+
+**Appium Java Client (v9+)**
+```java
+// Set Status
+driver.executeScript("xenon: setSessionStatus", ImmutableMap.of("status", "failed", "reason", "Element timed out"));
+
+// Set Name
+driver.executeScript("xenon: setSessionName", "Regression: Payment Module");
+```
+
+---
+
 ### API Documentation
 
 For full API documentation, visit the [Swagger UI](/xenon/api-docs) or the raw [OpenAPI Spec](/xenon/api-docs.json) on your running server.

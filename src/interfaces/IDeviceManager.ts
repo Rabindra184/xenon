@@ -30,5 +30,7 @@ export interface IDeviceManager {
   getAdditionalDeviceInfo?(device: IDevice): Promise<Partial<IDevice>>;
   checkHealth?(device: IDevice): Promise<Partial<IDevice>>;
   recoverHealth?(device: IDevice): Promise<boolean>;
+  readyForSession?(device: IDevice): Promise<boolean>;
   executeShell?(udid: string, command: string): Promise<string>;
+  getPageSource?(udid: string): Promise<string>;
 }

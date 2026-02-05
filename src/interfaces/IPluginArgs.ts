@@ -89,6 +89,8 @@ export interface IPluginArgs {
   geminiApiKey?: string;
   openaiApiKey?: string;
   anthropicApiKey?: string;
+  /** Enable or disable self-healing locators */
+  enableSelfHealing: boolean;
 }
 
 export const DefaultPluginArgs: IPluginArgs = {
@@ -125,4 +127,5 @@ export const DefaultPluginArgs: IPluginArgs = {
   geminiApiKey: undefined,
   openaiApiKey: undefined,
   anthropicApiKey: undefined,
+  enableSelfHealing: true,
 };

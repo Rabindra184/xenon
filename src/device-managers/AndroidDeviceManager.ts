@@ -672,6 +672,22 @@ export default class AndroidDeviceManager implements IDeviceManager {
     });
   }
 
+  async getPageSource(udid: string): Promise<string> {
+    log.info(`Android getPageSource on ${udid}`);
+    const adb = await this.getAdbForDevice(udid);
+    return await deviceLock.acquire(udid, async () => {
+      try {
+        const dumpPath = '/data/local/tmp/dump.xml';
+        await adb.adbExec(['-s', udid, 'shell', 'uiautomator', 'dump', dumpPath], { timeout: 15000 });
+        const xml = await adb.adbExec(['-s', udid, 'shell', 'cat', dumpPath], { timeout: 10000 });
+        return xml || '';
+      } catch (err: any) {
+        log.error(`Failed to get Android page source for ${udid}: ${err.message}`);
+        return '';
+      }
+    });
+  }
+
   async installApp(udid: string, appPath: string): Promise<void> {
     const { adbInstance } = await this.getAdb();
     if (!adbInstance) throw new Error('ADB is not available');
@@ -744,7 +760,10 @@ export default class AndroidDeviceManager implements IDeviceManager {
         }
       }
     } catch (err: unknown) {
-      log.warn(`Failed to fetch Android clipboard for ${udid}: ${err instanceof Error ? err.message : err}`);
+      log.warn(
+        `Failed to fetch Android clipboard for ${udid}: ${err instanceof Error ? err.message : err
+        }`,
+      );
     }
     return '';
   }
@@ -771,7 +790,9 @@ export default class AndroidDeviceManager implements IDeviceManager {
         Buffer.from(content).toString('base64'), // Send as Base64 for safety
       ]);
     } catch (err: unknown) {
-      log.warn(`Failed to set Android clipboard for ${udid}: ${err instanceof Error ? err.message : err}`);
+      log.warn(
+        `Failed to set Android clipboard for ${udid}: ${err instanceof Error ? err.message : err}`,
+      );
     }
   }
 
@@ -829,15 +850,27 @@ export default class AndroidDeviceManager implements IDeviceManager {
 
     // Principal Optimization: Try to use the latest frame from the active stream if available
     try {
+      const { default: AndroidStreamService } = await import('./android/AndroidStreamService');
       const streamSession = Container.get(AndroidStreamService).getStreamStatus(udid);
       if (streamSession?.status === 'running' && streamSession.latestFrame) {
-        log.info(`[AndroidDeviceManager] Using cached stream frame for ${udid} screenshot.`);
-        return streamSession.latestFrame.toString('base64');
+        // Sanity Check: A full screenshot should be at least ~10KB as JPEG.
+        // Staleness Check: If the frame is older than 5 seconds, it's considered poor quality for interactive use.
+        const isFresh = streamSession.latestFrameTimestamp && (Date.now() - streamSession.latestFrameTimestamp < 5000);
+
+        if (streamSession.latestFrame.length > 10000 && isFresh) {
+          log.info(`[AndroidDeviceManager] Using fresh cached stream frame for ${udid} screenshot.`);
+          return streamSession.latestFrame.toString('base64');
+        } else if (!isFresh) {
+          log.warn(`[AndroidDeviceManager] Cached frame for ${udid} is STALE (${Math.round((Date.now() - (streamSession.latestFrameTimestamp || 0)) / 1000)}s old). Falling back to direct screencap.`);
+        } else {
+          log.warn(`[AndroidDeviceManager] Cached frame for ${udid} is too small (${streamSession.latestFrame.length}b). Falling back to direct screencap.`);
+        }
       }
     } catch (e) {
       log.debug(`Failed to check stream status for ${udid}: ${e}`);
     }
 
+    const { spawn } = await import('child_process');
     const adb = await this.getAdbForDevice(udid);
     try {
       // 1. Try targeted exec-out screencap -p for maximum speed/reliability
@@ -882,7 +915,10 @@ export default class AndroidDeviceManager implements IDeviceManager {
         const base64 = await adb.adbExec(['-s', udid, 'shell', 'screencap', '-p', '|', 'base64']);
         return base64.replace(/\r?\n/g, '');
       } catch (fallbackErr: unknown) {
-        log.error(`Fallback screenshot also failed for ${udid}: ${fallbackErr instanceof Error ? fallbackErr.message : fallbackErr}`);
+        log.error(
+          `Fallback screenshot also failed for ${udid}: ${fallbackErr instanceof Error ? fallbackErr.message : fallbackErr
+          }`,
+        );
       }
       return '';
     }
@@ -976,7 +1012,10 @@ export default class AndroidDeviceManager implements IDeviceManager {
         healthStatus: 'Healthy',
       };
     } catch (err: unknown) {
-      return { healthStatus: 'Unhealthy', healthCheckError: err instanceof Error ? err.message : String(err) };
+      return {
+        healthStatus: 'Unhealthy',
+        healthCheckError: err instanceof Error ? err.message : String(err),
+      };
     }
   }
 
@@ -1000,7 +1039,9 @@ export default class AndroidDeviceManager implements IDeviceManager {
 
       return true;
     } catch (err: unknown) {
-      log.error(`Auto-recovery failed for ${device.udid}: ${err instanceof Error ? err.message : err}`);
+      log.error(
+        `Auto-recovery failed for ${device.udid}: ${err instanceof Error ? err.message : err}`,
+      );
       return false;
     }
   }

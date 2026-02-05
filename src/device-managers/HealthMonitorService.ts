@@ -97,13 +97,30 @@ export class HealthMonitorService {
         if (device.cloud) continue;
 
         // Principal Intelligence: Health monitor must detect "Zombie Busy" devices.
-        // A device is a Zombie if it's marked busy in DB but NOT found in Hub's session map.
+        // A device is a Zombie if it's marked busy in DB but NOT found in Hub's session map
+        // AND not currently streaming to a manual viewer.
         if (device.busy) {
           const hasActiveSession = SESSION_MANAGER.isValidSession(device.session_id || '');
 
-          if (hasActiveSession) {
+          // NEW: Check for active manual streams (dashboard viewers)
+          let hasActiveManualStream = false;
+          try {
+            if (['ios', 'tvos'].includes(device.platform)) {
+              const IOSStreamService = (await import('./ios/IOSStreamService')).default;
+              const iosStream = Container.get(IOSStreamService);
+              const streamStatus = iosStream.getStreamStatus(device.udid);
+              hasActiveManualStream = !!(streamStatus && (streamStatus.status === 'running' || streamStatus.status === 'starting'));
+            } else if (device.platform === 'android') {
+              const AndroidStreamService = (await import('./android/AndroidStreamService')).default;
+              const androidStream = Container.get(AndroidStreamService);
+              const streamStatus = androidStream.getStreamStatus(device.udid);
+              hasActiveManualStream = !!(streamStatus && (streamStatus.status === 'running' || streamStatus.status === 'starting'));
+            }
+          } catch (e) { /* Stream service not available */ }
+
+          if (hasActiveSession || hasActiveManualStream) {
             log.debug(
-              `[HealthMonitor] Skipping check for busy device ${device.udid} (Active Hub Session ${device.session_id})`,
+              `[HealthMonitor] Skipping check for busy device ${device.udid} (Active: Session=${!!hasActiveSession}, Stream=${hasActiveManualStream})`,
             );
             continue;
           } else {

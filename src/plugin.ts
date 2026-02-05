@@ -81,6 +81,10 @@ import { DeviceStoreFactory } from './data-service/device-store';
 import { SessionStatus } from './types/SessionStatus';
 import { CapabilityValidator } from './validators/CapabilityValidator';
 import { CircuitBreaker } from './data-service/CircuitBreaker';
+import { HealingOrchestrator } from './services/healing/HealingOrchestrator';
+import { HealEtalonService } from './services/healing/HealEtalonService';
+import { OmniVisionService } from './services/omni-vision/OmniVisionService';
+import { VisionAssertionService } from './services/omni-vision/VisionAssertionService';
 
 const commandsQueueGuard = new AsyncLock();
 const DEVICE_MANAGER_LOCK_NAME = 'DeviceManager';
@@ -92,6 +96,20 @@ let proxy: any;
 
 class XenonPlugin extends BasePlugin {
   static nodeBasePath = '';
+  public static newMethodMap = {
+    '/session/:sessionId/xenon/analyze': {
+      POST: { command: 'analyzeScreen' },
+    },
+    '/session/:sessionId/xenon/assert': {
+      POST: { command: 'assertVisualState' },
+    },
+    '/session/:sessionId/xenon/omni-scan': {
+      GET: { command: 'omniScan' },
+    },
+    '/session/:sessionId/xenon/test-locator': {
+      POST: { command: 'testAiLocator' },
+    },
+  };
   static port: number;
   private xenonLog = log.scope('Plugin');
   private pluginArgs: IPluginArgs = Object.assign({}, DefaultPluginArgs);
@@ -176,6 +194,45 @@ class XenonPlugin extends BasePlugin {
 
     const isDashboardEnabled = !!this.pluginArgs.enableDashboard;
 
+    // --- OMNI-VISION: PROACTIVE SEARCH ---
+    const locatorCommands = ['findElement', 'findElements'];
+    const strategy = args[0];
+    const selector = args[1];
+    if (
+      locatorCommands.includes(commandName) &&
+      (strategy === '-custom:ai-icon' || strategy === '-custom:ai-text')
+    ) {
+      log.info(`[XenonPlugin] Proactive Omni-Vision search detected: ${strategy} -> ${selector}`);
+      return await this.handleOmniVisionSearch(sessionId, driver, commandName, strategy, selector);
+    }
+
+    // --- OMNI-VISION: VIRTUAL ELEMENT INTERACTION ---
+    const elementCommands = [
+      'click',
+      'getElementRect',
+      'getElementLocation',
+      'getElementSize',
+      'getText',
+      'setValue',
+    ];
+    if (elementCommands.includes(commandName)) {
+      const elementId = args[0];
+      if (
+        typeof elementId === 'string' &&
+        (elementId.startsWith('omni_') ||
+          elementId.startsWith('healed_ocr') ||
+          elementId.startsWith('healed_visual'))
+      ) {
+        return await this.handleVirtualElementCommand(
+          sessionId,
+          driver,
+          commandName,
+          elementId,
+          args[1],
+        );
+      }
+    }
+
     // Intercept execute command for dashboard commands
     if (XenonPlugin.IS_HUB && isDashboardEnabled && commandName === 'execute') {
       const script = args[0];
@@ -214,8 +271,111 @@ class XenonPlugin extends BasePlugin {
           JSON.stringify({ value: response, sessionId }),
         );
 
+        // --- BACKGROUND: LEARNING PHASE ---
+        // Save locator signature for successful findElement to enable better healing later
+        if (commandName === 'findElement' && response) {
+          const strategy = args[0];
+          const selector = args[1];
+          const elementId = response.ELEMENT || response['element-6066-11e4-a52e-4f735466cecf'];
+
+          if (elementId && typeof selector === 'string') {
+            (async () => {
+              try {
+                const etalonService = Container.get(HealEtalonService);
+                const anchors = ['content-desc', 'resource-id', 'text', 'name', 'id', 'hint'];
+                const nodeAttrs: { name: string; value: string }[] = [];
+
+                for (const attr of anchors) {
+                  try {
+                    const val = await driver.getElementAttribute(elementId, attr);
+                    if (val) nodeAttrs.push({ name: attr, value: val });
+                  } catch (e) {
+                    // ignore attribute fetch errors
+                  }
+                }
+
+                const nodeName = await driver.getElementTagName(elementId);
+                await etalonService.saveSignature(strategy, selector, {
+                  nodeName,
+                  attributes: nodeAttrs,
+                });
+              } catch (err: any) {
+                // background error logging
+                this.xenonLog.debug(`[Learning] Failed to capture signature: ${err.message}`);
+              }
+            })();
+          }
+        }
+        // --- END LEARNING PHASE ---
+
         return response;
       } catch (error: any) {
+        // --- SELF-HEALING LOGIC ---
+        // Intercept NoSuchElement errors for findElement/findElements
+        const locatorCommands = ['findElement', 'findElements'];
+        const isNoSuchElement = error.name === 'NoSuchElementError' ||
+          error.message?.includes('NoSuchElement') ||
+          error.status === 7; // legacy JSONWP status
+
+        if (locatorCommands.includes(commandName) && isNoSuchElement) {
+          if (this.pluginArgs.enableSelfHealing === false) {
+            log.info(`[XenonPlugin] Element not found, but Self-Healing is DISABLED by configuration.`);
+          } else {
+            log.info(`[XenonPlugin] Element not found for command ${commandName}. Attempting Self-Healing...`);
+
+            try {
+              // We need strategy and selector which are args[0] and args[1]
+              const strategy = args[0];
+              const selector = args[1];
+              const orchestrator = Container.get(HealingOrchestrator);
+
+              const healed = await orchestrator.attemptHealing(sessionId, driver, strategy, selector);
+
+              if (healed) {
+                // SUCCESS! Return the healed element to the test script
+                log.info(`[XenonPlugin] ✅ Self-Healing successful! Tier ${healed.tier}: ${healed.message}`);
+
+                // Log the healing event to the dashboard
+                await DASHBORD_EVENT_MANAGER.afterSessionCommand(
+                  sessionId,
+                  commandName,
+                  driver,
+                  {
+                    body: args,
+                    method: 'POST',
+                    path: `/${commandName}`,
+                    originalUrl: `/${commandName}`,
+                  } as any,
+                  {} as any,
+                  JSON.stringify({ value: { ELEMENT: healed.id }, sessionId }),
+                  {
+                    originalSelector: args[1], // selection
+                    healedSelector: healed.recommendedSelector,
+                    confidence: healed.confidence,
+                  },
+                );
+
+                // For findElement, we return a single element object
+                // For findElements, we return an array
+                if (commandName === 'findElement') {
+                  return {
+                    ELEMENT: healed.id,
+                    'element-6066-11e4-a52e-4f735466cecf': healed.id
+                  };
+                } else {
+                  return [{
+                    ELEMENT: healed.id,
+                    'element-6066-11e4-a52e-4f735466cecf': healed.id
+                  }];
+                }
+              }
+            } catch (healErr: any) {
+              log.error(`[XenonPlugin] Self-healing system error: ${healErr.message}`);
+            }
+          }
+        }
+        // --- END SELF-HEALING ---
+
         // Log the failed command
         await DASHBORD_EVENT_MANAGER.afterSessionCommand(
           sessionId,
@@ -766,7 +926,7 @@ class XenonPlugin extends BasePlugin {
         sessionProgress: 'Session Active',
       });
       if (isRemoteOrCloudSession) {
-        Container.get(CircuitBreaker).recordSuccess(device.host);
+        (Container.get(CircuitBreaker) as CircuitBreaker).recordSuccess(device.host);
         addProxyHandler(sessionId, device.host);
       }
 
@@ -864,7 +1024,7 @@ class XenonPlugin extends BasePlugin {
       await updateDeviceProgress(device.udid, device.host, '');
 
       if (isRemoteOrCloudSession) {
-        Container.get(CircuitBreaker).recordFailure(device.host);
+        (Container.get(CircuitBreaker) as CircuitBreaker).recordFailure(device.host);
       }
       this.throwProperError(session, device.host);
     }
@@ -1210,6 +1370,139 @@ class XenonPlugin extends BasePlugin {
       },
     });
     log.info(`[XenonPlugin] Added debug log for session ${sessionId}`);
+  }
+
+  async analyzeScreen(sessionId: string, driver: any) {
+    log.info(`[XenonPlugin] Analyzing screen for session ${sessionId}`);
+    const omniService = Container.get(OmniVisionService);
+    return await omniService.analyzeScreen(driver);
+  }
+
+  async assertVisualState(sessionId: string, driver: any, instruction: string) {
+    log.info(`[XenonPlugin] Asserting visual state for session ${sessionId}: ${instruction}`);
+    const assertionService = Container.get(VisionAssertionService);
+    return await assertionService.assertState(driver, instruction);
+  }
+
+  async omniScan(sessionId: string, driver: any) {
+    log.info(`[XenonPlugin] Requesting Omni-Scan for session ${sessionId}`);
+    const omniService = Container.get(OmniVisionService);
+    return await omniService.analyzeScreen(driver);
+  }
+
+  async testAiLocator(
+    sessionId: string,
+    driver: any,
+    locator: { strategy: string; selector: string },
+  ) {
+    log.info(
+      `[XenonPlugin] Testing AI locator for session ${sessionId}: ${locator.strategy}=${locator.selector}`,
+    );
+    const omniService = Container.get(OmniVisionService);
+    if (locator.strategy === '-custom:ai-text') {
+      return await omniService.findByText(driver, locator.selector);
+    } else if (locator.strategy === '-custom:ai-icon') {
+      const result = await omniService.findByIcon(driver, locator.selector);
+      return result ? [result] : [];
+    }
+    throw new Error(`Unsupported strategy for testAiLocator: ${locator.strategy}`);
+  }
+
+  private async handleOmniVisionSearch(
+    sessionId: string,
+    driver: any,
+    commandName: string,
+    strategy: string,
+    selector: string,
+  ) {
+    const omniService = Container.get(OmniVisionService);
+    let results: any[] = [];
+
+    if (strategy === '-custom:ai-text') {
+      results = await omniService.findByText(driver, selector);
+    } else if (strategy === '-custom:ai-icon') {
+      const match = await omniService.findByIcon(driver, selector);
+      if (match) results = [match];
+    }
+
+    const appiumResults = results.map((r) => ({
+      ELEMENT: r.id,
+      'element-6066-11e4-a52e-4f735466cecf': r.id,
+    }));
+
+    if (commandName === 'findElement') {
+      if (appiumResults.length === 0)
+        throw new Error('NoSuchElement: AI Vision failed to find matching element');
+      return appiumResults[0];
+    }
+    return appiumResults;
+  }
+
+  private async handleVirtualElementCommand(
+    sessionId: string,
+    driver: any,
+    commandName: string,
+    elementId: string,
+    value?: any,
+  ) {
+    const omniService = Container.get(OmniVisionService);
+    const element = omniService.getVirtualElement(elementId);
+
+    if (!element)
+      throw new Error(`NoSuchElement: Virtual element ${elementId} not found or expired`);
+
+    const centerX = Math.round(element.rect.x + element.rect.width / 2);
+    const centerY = Math.round(element.rect.y + element.rect.height / 2);
+
+    switch (commandName) {
+      case 'click':
+        log.info(`[XenonPlugin] Virtual Click at (${centerX}, ${centerY})`);
+        await driver.performActions([
+          {
+            type: 'pointer',
+            id: 'finger1',
+            parameters: { pointerType: 'touch' },
+            actions: [
+              { type: 'pointerMove', duration: 0, x: centerX, y: centerY },
+              { type: 'pointerDown', button: 0 },
+              { type: 'pause', duration: 100 },
+              { type: 'pointerUp', button: 0 },
+            ],
+          },
+        ]);
+        return null;
+      case 'getElementRect':
+        return element.rect;
+      case 'getElementLocation':
+        return { x: element.rect.x, y: element.rect.y };
+      case 'getElementSize':
+        return { width: element.rect.width, height: element.rect.height };
+      case 'getText':
+        return element.text || '';
+      case 'setValue':
+        await driver.performActions([
+          {
+            type: 'pointer',
+            id: 'finger1',
+            parameters: { pointerType: 'touch' },
+            actions: [
+              { type: 'pointerMove', duration: 0, x: centerX, y: centerY },
+              { type: 'pointerDown', button: 0 },
+              { type: 'pause', duration: 100 },
+              { type: 'pointerUp', button: 0 },
+            ],
+          },
+        ]);
+        // For sendKeys, we might need a more generic approach if setValue fails
+        try {
+          return await driver.setValue(value, elementId);
+        } catch (e) {
+          // If setValue fails because it's a virtual ID, we try keyboard actions if supported
+          return null;
+        }
+      default:
+        throw new Error(`Command ${commandName} is not yet supported for visual elements`);
+    }
   }
 }
 

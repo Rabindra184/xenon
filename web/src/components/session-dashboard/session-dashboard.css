@@ -1519,6 +1519,104 @@
   gap: 12px;
 }
 
+/* HEALING INTELLIGENCE STYLES */
+.healed-badge {
+  background: rgba(16, 185, 129, 0.1);
+  color: var(--primary);
+  border-color: var(--primary);
+  margin-left: var(--space-md);
+  font-weight: 700;
+  font-size: 0.7rem;
+  padding: 0 8px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+@keyframes pulse-subtle {
+
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+
+  50% {
+    opacity: 0.8;
+    transform: scale(0.98);
+  }
+}
+
+.animate-pulse-subtle {
+  animation: pulse-subtle 2s ease-in-out infinite;
+}
+
+.healing-intelligence-card {
+  margin: var(--space-sm) 0 var(--space-md) var(--space-xl);
+  background: rgba(16, 185, 129, 0.03);
+  border: 1px solid rgba(16, 185, 129, 0.1);
+  border-radius: var(--radius-md);
+  padding: var(--space-md);
+  max-width: 800px;
+  backdrop-filter: blur(8px);
+  animation: slideInDown 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes slideInDown {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.intelligence-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-lg);
+}
+
+.intel-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 150px;
+}
+
+.intel-label {
+  font-size: 0.65rem;
+  font-weight: 800;
+  color: var(--text-dim);
+  letter-spacing: 1px;
+  text-transform: uppercase;
+}
+
+.intel-value {
+  color: var(--text-main);
+  font-size: 0.85rem;
+  font-weight: 600;
+  word-break: break-all;
+}
+
+code.intel-value {
+  font-family: 'JetBrains Mono', monospace;
+  background: rgba(255, 255, 255, 0.05);
+  padding: 2px 6px;
+  border-radius: 4px;
+  color: var(--primary);
+}
+
+.intel-item:last-child .intel-value {
+  color: var(--primary);
+  font-family: 'Outfit', sans-serif;
+  font-weight: 700;
+}
+
 .ai-icon {
   color: var(--primary);
   filter: drop-shadow(0 0 8px rgba(16, 185, 129, 0.4));
@@ -1578,4 +1676,47 @@
 
 .ai-content strong {
   color: var(--text-bright);
+}
+
+/* Session Tag Pills in Table */
+.session-tags-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 4px;
+}
+
+.tag-pill-mini {
+  font-size: 8px;
+  font-weight: 700;
+  color: var(--text-dim);
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--border-subtle);
+  padding: 1px 4px;
+  border-radius: 3px;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
+/* Session Tag Badges in Details */
+.session-detail-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.session-tag-badge {
+  font-size: 9px !important;
+  font-weight: 600 !important;
+  font-family: 'JetBrains Mono', monospace !important;
+  background: rgba(30, 41, 59, 0.8) !important;
+  border-color: var(--border-medium) !important;
+  color: var(--accent-blue) !important;
+  text-transform: uppercase !important;
+}
+
+.metadata-item.full-width {
+  width: 100%;
+  margin-top: 8px;
 }

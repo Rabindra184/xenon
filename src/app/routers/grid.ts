@@ -290,6 +290,7 @@ async function getRequestLogs(request: Request, response: Response) {
 }
 
 function register(router: Router, pluginArgs: IPluginArgs) {
+  router.get('/devices', getDevices);
   router.get('/device', getDevices);
   router.get('/device/:platform', getDeviceByPlatform);
   router.post('/register', registerNode);

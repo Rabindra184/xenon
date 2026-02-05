@@ -1,6 +1,6 @@
 import { IDevice } from '../interfaces/IDevice';
 import { IDeviceFilterOptions } from '../interfaces/IDeviceFilterOptions';
-import { IDeviceStore, IPendingSessionStore, ICLIArgsStore } from './device-store.interface';
+import { IDeviceStore, IPendingSessionStore, ICLIArgsStore, IHealEtalonStore } from './device-store.interface';
 import { PrismaService } from './prisma-service';
 import { Device, PendingSession, CLIArgs, PrismaClient } from '@prisma/client';
 import { Container } from 'typedi';
@@ -278,5 +278,40 @@ export class PrismaCLIArgsStore implements ICLIArgsStore {
   async getCLIArgs(): Promise<any[]> {
     const entries = await this.prisma.cLIArgs.findMany();
     return entries.map((e: CLIArgs) => JSON.parse(e.args));
+  }
+}
+
+export class PrismaHealEtalonStore implements IHealEtalonStore {
+  private prisma = Container.get(PrismaService);
+
+  async saveSignature(etalon: any): Promise<void> {
+    await this.prisma.locatorEtalon.upsert({
+      where: { selector: etalon.selector },
+      update: {
+        strategy: etalon.strategy,
+        attributes: JSON.stringify(etalon.attributes),
+        nodeName: etalon.nodeName,
+        lastSeen: new Date(),
+      },
+      create: {
+        selector: etalon.selector,
+        strategy: etalon.strategy,
+        attributes: JSON.stringify(etalon.attributes),
+        nodeName: etalon.nodeName,
+        lastSeen: new Date(),
+      },
+    });
+  }
+
+  async getSignature(selector: string): Promise<any | null> {
+    const etalon = await this.prisma.locatorEtalon.findUnique({
+      where: { selector },
+    });
+    if (!etalon) return null;
+    return {
+      ...etalon,
+      attributes: JSON.parse(etalon.attributes),
+      lastSeen: etalon.lastSeen.getTime(),
+    };
   }
 }

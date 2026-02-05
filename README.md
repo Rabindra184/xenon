@@ -55,6 +55,12 @@
 - ✅ **Interactive Shell** - Execute ADB/iOS commands directly
 - ✅ **Device information** - Battery, storage, network status
 
+### 🧠 AI Self-Healing (Flagship)
+- ✅ **5-Tier Healing Orchestration** - From DOM to LLM recovery
+- ✅ **Signature-Based Learning** - Persistent "Etalon" signatures for high-confidence recovery
+- ✅ **Multi-Modal Fallback** - Syntactic -> OCR -> Visual AI -> LLM reasoning
+- ✅ **Infrastructure-Free** - Works with existing LokiJS (local) or PostgreSQL (remote)
+
 ### Recording & Artifacts
 - ✅ **Video recording** - Full session capture
 - ✅ **Screenshot capture** - On-demand and per-command
@@ -64,7 +70,6 @@
 ### Intelligence (Roadmap)
 - 🔲 **Flaky test detection** - Auto-identify unstable tests
 - 🔲 **Error categorization** - Crash vs timeout vs element not found
-- 🔲 **Self-healing locators** - AI-powered element recovery
 - 🔲 **Predictive health** - USB/battery failure prediction
 
 ---
@@ -109,6 +114,7 @@ server:
       platform: both
       maxSessions: 8
       enableDashboard: true
+      enableSelfHealing: true
 ```
 
 Run Appium with the config:
@@ -193,6 +199,58 @@ const capabilities = {
   'appium:iPhoneOnly': true
 };
 ```
+
+### Custom Execute Script Commands
+
+Xenon supports extended control and reporting via the `xenon:` execute script namespace. These commands allow you to interact with the Xenon dashboard and session management directly from your test code.
+
+| Command | Description | Example |
+|---------|-------------|---------|
+| `xenon: setSessionStatus` | Mark session as passed/failed in dashboard | `{"status": "passed", "reason": "All steps OK"}` |
+| `xenon: setSessionName` | Update session name at runtime | `{"name": "Step 2: Payment Verification"}` |
+| `xenon: captureEvidence` | Trigger manual screenshot with custom label | `{"reason": "Checkpoint reached", "label": "success"}` |
+| `xenon: addTag` | Add searchable tags to the session | `{"tag": "regression"}` |
+| `xenon: debug` | Send custom debug logs to Xenon dashboard | `{"message": "API Response: 200 OK"}` |
+
+See [docs/capabilities.md](docs/capabilities.md) for full usage details.
+
+---
+
+## 🧠 AI Self-Healing
+
+Xenon features a best-in-class, 5-tier self-healing system that ensures your tests never fail due to minor UI changes. It automatically intercepts `NoSuchElementError` and attempts to recover the locator using increasingly advanced methods.
+
+### 🛡️ The 5-Tier Strategy
+
+| Tier | Provider | Mechanism | Stability |
+|:---|:---|:---|:---|
+| **1** | **Native** | Standard Appium `findElement` | Baseline |
+| **2** | **Fuzzy XML**| **Weighted Signature Matching** (Dice Coefficient) | **85%+** |
+| **3** | **OCR** | Local Text Recognition (Tesseract.js) | High |
+| **4** | **Visual AI**| AI-powered coordinate discovery | High |
+| **5** | **LLM** | Deep Reasoning (Gemini/OpenAI) | Absolute |
+
+### ⚡ Signature-Based Learning (Etalon)
+
+Xenon "learns" during every successful run. When an element is found, it captures a persistent **Element Signature (Etalon)**. 
+- **Zero Configuration**: Learning is fully automatic and backgrounded.
+- **Persistent Memory**: Signatures are stored in your database (LokiJS or PostgreSQL).
+- **Extreme Precision**: Even if `id`, `text`, or `class` changes, Xenon uses anchor attributes (`content-desc`, `resource-id`) from its memory to find the match with industrial-grade confidence.
+
+### 🎛️ Control & Transparency
+
+Xenon provides full visibility and control over its self-healing system:
+
+- **Global Toggle**: Enable or disable healing via CLI:
+  ```bash
+  appium server --use-plugins=xenon --plugin-xenon-enable-self-healing=true
+  ```
+- **Live Configuration**: Toggle self-healing directly from the **Xenon Dashboard Settings** at runtime without restarting the server.
+- **Audit Logs**: Every healing event is recorded in the session command history. You can see:
+    - **Original Selector**: The locator that failed.
+    - **Recovered Selector**: The replacement locator found by Xenon.
+    - **Confidence Score**: The mathematical match probability (0-1.0).
+    - **Healing Tier**: Which tier (Fuzzy XML, OCR, etc.) performed the recovery.
 
 ---
 

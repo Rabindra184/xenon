@@ -12,15 +12,18 @@ import {
   MousePointer2,
   RotateCcw,
   Info,
+  Brain,
 } from 'lucide-react';
 
 export const Settings: React.FC = () => {
   const [config, setConfig] = useState<{
     healthCheckIntervalMs: number;
     healthCheckSchedule: string;
+    enableSelfHealing: boolean;
   }>({
     healthCheckIntervalMs: 30000,
     healthCheckSchedule: '',
+    enableSelfHealing: true,
   });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -37,6 +40,7 @@ export const Settings: React.FC = () => {
       setConfig({
         healthCheckIntervalMs: data.healthCheckIntervalMs || 30000,
         healthCheckSchedule: data.healthCheckSchedule || '',
+        enableSelfHealing: data.enableSelfHealing !== undefined ? data.enableSelfHealing : true,
       });
     } catch (error) {
       console.error('Failed to load settings', error);
@@ -65,6 +69,7 @@ export const Settings: React.FC = () => {
     const defaultWebConfig = {
       healthCheckIntervalMs: 30000,
       healthCheckSchedule: '',
+      enableSelfHealing: true,
     };
     setConfig(defaultWebConfig);
     await handleSave(defaultWebConfig);
@@ -183,9 +188,32 @@ export const Settings: React.FC = () => {
                 </div>
               </div>
             </div>
+            <div className="setting-card stagger-3">
+              <div className="setting-card-header">
+                <Brain size={16} />
+                <h4>AI Self-Healing</h4>
+              </div>
+              <p>Automatically intercept and recover from failing locators using Xenon's 5-tier strategy.</p>
+
+              <div className="toggle-group">
+                <label className="switch">
+                  <input
+                    type="checkbox"
+                    checked={config.enableSelfHealing}
+                    onChange={(e) => setConfig({ ...config, enableSelfHealing: e.target.checked })}
+                  />
+                  <span className="slider round"></span>
+                </label>
+                <span className="toggle-label">{config.enableSelfHealing ? 'ENABLED' : 'DISABLED'}</span>
+              </div>
+
+              <div className="setting-hint-clean">
+                When enabled, Xenon will attempt to find elements via Fuzzy XML, OCR, Visual AI, and LLM before failing a test.
+              </div>
+            </div>
           </div>
 
-          <div className="health-monitor-alert stagger-3" style={{ background: 'rgba(59, 130, 246, 0.05)', borderColor: 'rgba(59, 130, 246, 0.2)', color: '#60a5fa' }}>
+          <div className="health-monitor-alert stagger-4" style={{ background: 'rgba(59, 130, 246, 0.05)', borderColor: 'rgba(59, 130, 246, 0.2)', color: '#60a5fa' }}>
             <Info size={18} />
             <span>
               <strong>Orchestration Rule:</strong> Diagnostic schedules carry higher priority than idle pings. During active CI jobs, all maintenance is automatically deferred to isolate performance variables.

@@ -125,7 +125,9 @@ class IOSStreamService {
    */
   public async detectWDABundleId(udid: string): Promise<string | null> {
     try {
-      const { stdout } = await execPromise(`"${this.goIOSPath}" apps --udid ${udid}`);
+      const { stdout } = await execPromise(`"${this.goIOSPath}" apps --udid ${udid}`, {
+        env: { ...process.env, ENABLE_GO_IOS_AGENT: 'yes' },
+      });
       const apps = JSON.parse(stdout);
       const wda = apps.find(
         (a: any) =>
@@ -144,7 +146,9 @@ class IOSStreamService {
    */
   public async ensureTunnel(udid: string): Promise<ChildProcess | null> {
     try {
-      const { stdout } = await execPromise(`"${this.goIOSPath}" info --udid ${udid}`);
+      const { stdout } = await execPromise(`"${this.goIOSPath}" info --udid ${udid}`, {
+        env: { ...process.env, ENABLE_GO_IOS_AGENT: 'yes' },
+      });
       const info = JSON.parse(stdout);
       const version = parseFloat(
         info.ProductVersion || info.HumanReadableProductVersionString || '0',
@@ -154,17 +158,21 @@ class IOSStreamService {
         // SDK 26.1 corresponds to iOS 17+
         log.info(`iOS ${version} detected for ${udid}. Starting tunnel...`);
 
-        // Check if already running
+        // Check if already running in our session tracker
         const existing = [...this.sessions.values()].find(
-          (s) => s.udid === udid && s.tunnelProcess,
+          (s) => s.udid === udid && s.tunnelProcess && s.tunnelProcess.exitCode === null,
         );
         if (existing && existing.tunnelProcess) return existing.tunnelProcess;
+
+        // CRITICAL: Kill any orphan tunnel processes before starting new one
+        // This prevents 'address already in use' errors from stale processes
+        await this.cleanupOrphanTunnels(udid);
 
         const isolationService = Container.get(ResourceIsolationService);
         const { command, args } = isolationService.wrapSpawn(
           this.goIOSPath,
           ['tunnel', 'start', '--udid', udid, '--userspace'],
-          'Economy' // Run tunnel in Economy mode
+          'Performance' // Performance mode for critical tunnel stability
         );
 
         const tunnelProcess = spawn(
@@ -179,8 +187,26 @@ class IOSStreamService {
         tunnelProcess.stdout?.on('data', (data) => log.debug(`Tunnel [${udid}]: ${data}`));
         tunnelProcess.stderr?.on('data', (data) => log.debug(`Tunnel Err [${udid}]: ${data}`));
 
-        // Wait a bit for tunnel to establish
-        await new Promise((resolve) => setTimeout(resolve, 5000));
+        // Wait for tunnel to establish by checking the go-ios agent port
+        log.info(`Waiting for tunnel agent on port 60105 to be ready...`);
+        let tunnelReady = false;
+        const tunnelTimeout = 15000;
+        const subStartTime = Date.now();
+        while (Date.now() - subStartTime < tunnelTimeout) {
+          try {
+            tunnelReady = await tcpPortUsed.check(60105, '127.0.0.1');
+            if (tunnelReady) break;
+          } catch (e) { /* ignore */ }
+          await new Promise((resolve) => setTimeout(resolve, 1000));
+        }
+
+        if (!tunnelReady) {
+          log.warn(`Tunnel agent port 60105 not ready after ${tunnelTimeout / 1000}s, proceeding anyway...`);
+        } else {
+          log.info(`Tunnel agent is ready. Settling for 2s...`);
+          await new Promise((resolve) => setTimeout(resolve, 2000));
+          log.info(`Tunnel agent settled.`);
+        }
         return tunnelProcess;
       }
     } catch (error) {
@@ -190,19 +216,61 @@ class IOSStreamService {
   }
 
   /**
+   * Kill any orphan tunnel processes that might be left from previous runs
+   * This is critical for preventing 'address already in use' errors
+   */
+  private async cleanupOrphanTunnels(udid: string): Promise<void> {
+    log.debug(`Cleaning up orphan tunnels for ${udid}...`);
+
+    const pkillCmds = [
+      // Kill any existing tunnel for this specific device
+      `pkill -9 -f "ios tunnel.*${udid}"`,
+      `pkill -9 -f "go-ios.*tunnel.*${udid}"`,
+    ];
+
+    for (const cmd of pkillCmds) {
+      try {
+        await execPromise(cmd);
+      } catch (err) {
+        /* ignore - process might not exist */
+      }
+    }
+
+    // Check common go-ios agent ports (60105, 60106) and kill if bound
+    const agentPorts = [60105, 60106];
+    for (const port of agentPorts) {
+      try {
+        const { stdout } = await execPromise(`lsof -ti :${port}`);
+        const pids = stdout.trim().split('\n');
+        for (const pid of pids) {
+          if (pid) {
+            log.debug(`Killing orphan process ${pid} on go-ios agent port ${port}`);
+            await execPromise(`kill -9 ${pid}`);
+          }
+        }
+      } catch (err) {
+        /* ignore - lsof returns 1 if no port found */
+      }
+    }
+
+    // Small delay to ensure OS releases sockets
+    await new Promise((resolve) => setTimeout(resolve, 500));
+  }
+
+  /**
    * Check if WDA is already running and responding
    */
   public async isWDARunning(wdaPort: number): Promise<boolean> {
     const axios = (await import('axios')).default;
     // Fast check: Use short timeout and no internal retries
-    const hosts = ['127.0.0.1', 'localhost']; // Favor IPv4 for local tunnels
+    const hosts = ['127.0.0.1']; // Force IPv4 for local tunnels
     for (const host of hosts) {
       try {
-        await axios.get(`http://${host}:${wdaPort}/status`, {
+        const response = await axios.get(`http://${host}:${wdaPort}/status`, {
           timeout: 2000, // 2s for consistency
           httpAgent: new http.Agent({ keepAlive: false }),
         });
-        return true;
+        return response.data?.value?.ready === true;
       } catch (error) {
         // ignore
       }
@@ -356,7 +424,9 @@ class IOSStreamService {
           udid,
         ], 'Performance'); // WDA deserves Performance mode
 
-        session.wdaProcess = spawn(wdaSpawn.command, wdaSpawn.args);
+        session.wdaProcess = spawn(wdaSpawn.command, wdaSpawn.args, {
+          env: { ...process.env, ENABLE_GO_IOS_AGENT: 'yes' },
+        });
 
         const logDir = path.join(os.tmpdir(), 'xenon-logs');
         if (!fs.existsSync(logDir)) fs.mkdirSync(logDir);
@@ -370,6 +440,7 @@ class IOSStreamService {
         while (Date.now() - startTime < timeout) {
           if (await this.isWDARunning(wdaPort)) {
             session.status = 'running';
+            session.startedAt = new Date(); // Reset settlement timer for strict readiness phase
 
             // Ensure MJPEG server is started by updating WDA settings
             await this.updateWDASettings(wdaPort);
@@ -483,9 +554,11 @@ class IOSStreamService {
   ): Promise<void> {
     log.info(`Cleaning up stale processes for ${udid} (Ports: ${wdaPort}, ${mjpegPort})`);
 
+    // Senior Resiliency: Use centralized tunnel cleanup
+    await this.cleanupOrphanTunnels(udid);
+
     const pkillCmds = [
       `pkill -9 -f "iproxy.*${udid}"`,
-      `pkill -9 -f "ios tunnel.*${udid}"`,
       `pkill -9 -f "ios runwda.*${udid}"`,
     ];
 
@@ -504,7 +577,10 @@ class IOSStreamService {
         const { stdout } = await execPromise(`lsof -ti :${port}`);
         const pids = stdout.trim().split('\n');
         for (const pid of pids) {
-          if (pid) await execPromise(`kill -9 ${pid}`);
+          if (pid) {
+            log.debug(`Killing stale process ${pid} on port ${port}`);
+            await execPromise(`kill -9 ${pid}`);
+          }
         }
       } catch (err) {
         /* ignore - lsof returns 1 if no port found */
@@ -518,7 +594,9 @@ class IOSStreamService {
   public async stopStream(udid: string): Promise<void> {
     const session = this.sessions.get(udid);
     if (!session) return;
-    [session.wdaProcess, session.forwardWDAProcess, session.forwardMJPEGProcess].forEach((p) => {
+
+    // Kill all processes including tunnel (CRITICAL: tunnel was missing from cleanup!)
+    [session.wdaProcess, session.forwardWDAProcess, session.forwardMJPEGProcess, session.tunnelProcess].forEach((p) => {
       if (p)
         try {
           p.kill('SIGKILL');
@@ -538,14 +616,14 @@ class IOSStreamService {
       log.error(`Failed to release lock during stream stop for ${udid}: ${e}`);
     }
 
+    // Also clean up any orphan processes (belt and suspenders)
+    await this.cleanupOrphanTunnels(udid);
+
     this.sessions.delete(udid);
   }
 
   private async updateWDASettings(wdaPort: number): Promise<void> {
-    const urls = [
-      `http://127.0.0.1:${wdaPort}/appium/settings`,
-      `http://[::1]:${wdaPort}/appium/settings`,
-    ];
+    const urls = [`http://127.0.0.1:${wdaPort}/appium/settings`];
     const data = {
       settings: {
         mjpegServerPort: 9100,

@@ -29,3 +29,8 @@ export interface ICLIArgsStore {
   addCLIArgs(args: any): Promise<void>;
   getCLIArgs(): Promise<any[]>;
 }
+
+export interface IHealEtalonStore {
+  saveSignature(etalon: any): Promise<void>;
+  getSignature(selector: string): Promise<any | null>;
+}

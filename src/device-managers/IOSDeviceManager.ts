@@ -33,6 +33,9 @@ import { Service } from 'typedi';
 @Service()
 export default class IOSDeviceManager implements IDeviceManager {
   private log = log.scope('IOSManager');
+  // Soft failure tracking: Allow transient 'ready: false' states before declaring unhealthy
+  private wdaSoftFailures: Map<string, number> = new Map();
+  private readonly WDA_SOFT_FAIL_MAX = 3; // Allow 3 consecutive 'ready: false' before triggering recovery
 
   constructor(private context: PluginContext) { }
 
@@ -503,15 +506,16 @@ export default class IOSDeviceManager implements IDeviceManager {
 
     const hosts = cached
       ? [cached.host] // Fast path: Use known host
-      : ['127.0.0.1', 'localhost', '[::1]'];
+      : ['127.0.0.1']; // Force IPv4 for reliable tunnel access, avoid ::1 fallback
 
     let lastError: any = new Error('No connection attempts were successful');
 
     // Higher-level retry loop for network-level failures (ECONNRESET, etc)
     const MAX_NETWORK_RETRIES = 3;
-    const networkRetryCount = 0;
+    let networkRetryCount = 0;
 
     while (networkRetryCount < MAX_NETWORK_RETRIES) {
+      networkRetryCount++;
       for (const host of hosts) {
         for (const prefix of pathPrefixes) {
           try {
@@ -569,10 +573,12 @@ export default class IOSDeviceManager implements IDeviceManager {
             }
 
             if (err.code === 'ECONNREFUSED' || err.code === 'ECONNRESET') {
-              log.debug(
-                `WDA connection ${err.code} for ${udid} at ${host}:${port}. Path: ${prefix}${endpoint}`,
-              );
-              continue;
+              lastError = err;
+              // Aggressive Cache Purge: Force rediscovery on next retry
+              this.wdaConnectionCache.delete(cacheKey);
+              Container.get(IOSStreamService).setWDASessionId(udid, undefined);
+              cached = undefined;
+              continue; // Try next host/prefix in this attempt
             }
             if (err.response?.status === 404) continue;
             break;
@@ -580,7 +586,15 @@ export default class IOSDeviceManager implements IDeviceManager {
         }
       }
 
-      break;
+      if (lastError.code === 'ECONNREFUSED' || lastError.code === 'ECONNRESET') {
+        log.warn(
+          `[WDA] ${lastError.code} for ${udid} (Attempt ${networkRetryCount}/${MAX_NETWORK_RETRIES}). Purging cache and backoff...`,
+        );
+        // Backoff delay to let the instrumentation stack recover
+        await new Promise((r) => setTimeout(r, 800));
+      } else {
+        break;
+      }
     }
 
     // Principal Recovery: If all paths failed with 404 or we have no session, attempt recovery.
@@ -1003,7 +1017,9 @@ export default class IOSDeviceManager implements IDeviceManager {
         await goIOS.ensureTunnel(udid);
 
         // Use the public goIOSPath
-        await execPromise(`"${goIOS.goIOSPath}" install --path="${appPath}" --udid ${udid}`);
+        await execPromise(`"${goIOS.goIOSPath}" install --path="${appPath}" --udid ${udid}`, {
+          env: { ...process.env, ENABLE_GO_IOS_AGENT: 'yes' },
+        });
       } catch (err: any) {
         log.error(`Installation via go-ios failed: ${err.message}`);
         throw err;
@@ -1023,7 +1039,9 @@ export default class IOSDeviceManager implements IDeviceManager {
     const goIOS = Container.get(IOSStreamService);
     if (await goIOS.isGoIOSAvailable()) {
       try {
-        await execPromise(`"${goIOS.goIOSPath}" uninstall "${bundleId}" --udid ${udid}`);
+        await execPromise(`"${goIOS.goIOSPath}" uninstall "${bundleId}" --udid ${udid}`, {
+          env: { ...process.env, ENABLE_GO_IOS_AGENT: 'yes' },
+        });
       } catch (err: any) {
         log.warn(`go-ios uninstall failed, trying ideviceinstaller: ${err.message}`);
         try {
@@ -1049,13 +1067,25 @@ export default class IOSDeviceManager implements IDeviceManager {
     if (await goIOS.isGoIOSAvailable()) {
       try {
         const localPath = path.join(os.tmpdir(), `screenshot-${udid}.png`);
-        await execPromise(`"${goIOS.goIOSPath}" screenshot --udid ${udid} --output "${localPath}"`);
+        await execPromise(`"${goIOS.goIOSPath}" screenshot --udid ${udid} --output "${localPath}"`, {
+          env: { ...process.env, ENABLE_GO_IOS_AGENT: 'yes' },
+        });
+
+        // Validation Layer: Ensure file exists and is not empty
+        const stats = await fs.stat(localPath);
+        if (stats.size === 0) {
+          throw new Error('go-ios captured an empty 0-byte file.');
+        }
+
         const buffer = await fs.readFile(localPath);
         // Clean up
         await fs.remove(localPath);
+        this.log.info(`[iOS] Captured ${stats.size} bytes via go-ios for ${udid}`);
         return buffer.toString('base64');
       } catch (err: any) {
-        log.warn(`go-ios screenshot failed for ${udid}: ${err.message}. Falling back to WDA...`);
+        log.warn(`go-ios screenshot failed for ${udid}: ${err.message}. Buffering 1s before WDA fallback...`);
+        // Instrumentation breathing room
+        await new Promise((r) => setTimeout(r, 1000));
       }
     }
 
@@ -1074,8 +1104,13 @@ export default class IOSDeviceManager implements IDeviceManager {
       const localPath = path.join(os.tmpdir(), `screenshot-${udid}.png`);
       try {
         await execPromise(`xcrun simctl io ${udid} screenshot ${localPath}`);
+        const stats = await fs.stat(localPath);
+        if (stats.size === 0) {
+          throw new Error('simctl captured an empty 0-byte file.');
+        }
         const buffer = await fs.readFile(localPath);
         await fs.remove(localPath);
+        this.log.info(`[iOS] Captured ${stats.size} bytes via simctl for ${udid}`);
         return buffer.toString('base64');
       } catch (err: any) {
         log.error(`Screenshot failed for simulator ${udid}: ${err.message}`);
@@ -1089,7 +1124,9 @@ export default class IOSDeviceManager implements IDeviceManager {
     const goIOS = Container.get(IOSStreamService);
     if (await goIOS.isGoIOSAvailable()) {
       try {
-        const { stdout } = await execPromise(`"${goIOS.goIOSPath}" apps --udid ${udid}`);
+        const { stdout } = await execPromise(`"${goIOS.goIOSPath}" apps --udid ${udid}`, {
+          env: { ...process.env, ENABLE_GO_IOS_AGENT: 'yes' },
+        });
         // Response can be JSON or text based on version
         try {
           const apps = JSON.parse(stdout);
@@ -1123,7 +1160,9 @@ export default class IOSDeviceManager implements IDeviceManager {
         const goIOS = Container.get(IOSStreamService);
         if (await goIOS.isGoIOSAvailable()) {
           log.info(`WDA activate failed, trying go-ios launch for ${udid}`);
-          await execPromise(`"${goIOS.goIOSPath}" launch ${wdaBundleId} --udid ${udid}`);
+          await execPromise(`"${goIOS.goIOSPath}" launch ${wdaBundleId} --udid ${udid}`, {
+            env: { ...process.env, ENABLE_GO_IOS_AGENT: 'yes' },
+          });
         }
       }
 
@@ -1220,7 +1259,9 @@ export default class IOSDeviceManager implements IDeviceManager {
       const goIOS = Container.get(IOSStreamService);
       if (await goIOS.isGoIOSAvailable()) {
         try {
-          const { stdout } = await execPromise(`"${goIOS.goIOSPath}" apps --udid ${udid}`);
+          const { stdout } = await execPromise(`"${goIOS.goIOSPath}" apps --udid ${udid}`, {
+            env: { ...process.env, ENABLE_GO_IOS_AGENT: 'yes' },
+          });
           // go-ios 1.0.134+ outputs JSON by default
           try {
             const appsJson = JSON.parse(stdout);
@@ -1286,7 +1327,9 @@ export default class IOSDeviceManager implements IDeviceManager {
         try {
           // Capture syslog for 2 seconds
           const cmd = `timeout 2 "${goIOS.goIOSPath}" syslog --udid ${udid}`;
-          const { stdout } = await execPromise(cmd).catch((e) => e); // timeout will cause non-zero exit
+          const { stdout } = await execPromise(cmd, {
+            env: { ...process.env, ENABLE_GO_IOS_AGENT: 'yes' },
+          }).catch((e) => e); // timeout will cause non-zero exit
           return stdout || 'Waiting for log stream...';
         } catch (err: any) {
           return `Failed to fetch device logs: ${err.message}`;
@@ -1312,6 +1355,7 @@ export default class IOSDeviceManager implements IDeviceManager {
             try {
               const { stdout } = await execPromise(
                 `"${streamService.goIOSPath}" ${subCmd} --udid ${device.udid}`,
+                { env: { ...process.env, ENABLE_GO_IOS_AGENT: 'yes' } },
               );
               const jsonStartIndex = stdout.indexOf('{');
               const jsonEndIndex = stdout.lastIndexOf('}');
@@ -1396,12 +1440,33 @@ export default class IOSDeviceManager implements IDeviceManager {
           thermalStatus,
         };
 
-        // 2. Check WDA responsiveness (via Stream Service Diagnostic)
+        // 2. Check WDA responsiveness (via strict status check)
         try {
-          const streamService = Container.get(IOSStreamService);
-          const isResponsive = await streamService.isStreamResponsive(device.udid);
+          const streamStatus = streamService.getStreamStatus(device.udid);
+          if (!streamStatus) {
+            log.debug(`[HealthCheck] [${device.udid}] No active stream. Skipping WDA check.`);
+            return { ...healthData, healthStatus: 'Healthy' };
+          }
 
-          if (isResponsive) {
+          const isStarting = streamStatus.status === 'starting';
+          const elapsedMs = streamStatus.startedAt
+            ? Date.now() - new Date(streamStatus.startedAt).getTime()
+            : -1;
+          const isSettling = streamStatus.status === 'running' && elapsedMs >= 0 && elapsedMs < 60000;
+
+          log.debug(
+            `[HealthCheck] [${device.udid}] Guard Check - Status: ${streamStatus.status}, Elapsed: ${elapsedMs}ms, isStarting: ${isStarting}, isSettling: ${isSettling}`,
+          );
+
+          if (isStarting || isSettling) {
+            log.info(
+              `[HealthCheck] [${device.udid}] Stream is ${isStarting ? 'STARTING' : 'SETTLING'}. Skipping WDA check (Settlement progress: ${Math.round(elapsedMs / 1000)}s/60s).`,
+            );
+            return { ...healthData, healthStatus: 'Healthy' };
+          }
+
+          const isReady = await this.verifyWDAStatus(device.udid);
+          if (isReady) {
             if (
               healthData.batteryLevel !== undefined &&
               healthData.batteryLevel > 0 &&
@@ -1414,25 +1479,16 @@ export default class IOSDeviceManager implements IDeviceManager {
               };
             }
             return { ...healthData, healthStatus: 'Healthy' };
-          } else {
-            // If stream is not responsive, double check via direct command
-            const status = await (this as any).sendWDACommand(device.udid, 'get', '/status');
-            if (status && (status.status === 200 || status.data)) {
-              return { ...healthData, healthStatus: 'Healthy' };
-            }
-            throw new Error('WebDriverAgent stream and endpoint are unresponsive');
           }
-        } catch (e: any) {
-          log.warn(`[HealthCheck] WDA Status fail for ${device.udid}: ${e.message}`);
+          throw new Error('WebDriverAgent status check failed (unready or slow)');
+        } catch (err: any) {
+          log.warn(`[HealthCheck] WDA Status fail for ${device.udid}: ${err.message}`);
           return {
             ...healthData,
             healthStatus: 'Unhealthy',
-            healthCheckError: `WebDriverAgent not responding: ${e.message}`,
+            healthCheckError: `WebDriverAgent not responding: ${err.message}`,
           };
         }
-
-        // Final fallback for real devices
-        return { ...healthData, healthStatus: 'Healthy' };
       } else {
         // Simulator health check
         const simctl = new Simctl();
@@ -1451,7 +1507,105 @@ export default class IOSDeviceManager implements IDeviceManager {
     } catch (err: any) {
       return { healthStatus: 'Unhealthy', healthCheckError: err.message };
     }
-    return { healthStatus: 'Healthy' };
+  }
+
+  /**
+   * Status check helper for internal use.
+   */
+  private async verifyWDAStatus(udid: string): Promise<boolean> {
+    const startTime = Date.now();
+    try {
+      const status: any = await this.sendWDACommand(udid, 'get', '/status');
+      const latency = Date.now() - startTime;
+
+      if (!status || (status.status !== 200 && !status.value)) {
+        log.warn(
+          `[HealthCheck] [${udid}] WDA unreachable or invalid status: ${status?.status || 'Unknown'}`,
+        );
+        return false;
+      }
+
+      const isReady = status.value?.ready === true;
+      if (!isReady) {
+        // Soft failure: WDA is reachable but not ready, increment counter
+        const softFails = (this.wdaSoftFailures.get(udid) || 0) + 1;
+        this.wdaSoftFailures.set(udid, softFails);
+
+        if (softFails <= this.WDA_SOFT_FAIL_MAX) {
+          log.debug(`[HealthCheck] [${udid}] WDA reported NOT READY (Soft Fail ${softFails}/${this.WDA_SOFT_FAIL_MAX}). Tolerating...`);
+          return true; // Tolerate transient unreadiness
+        }
+
+        log.warn(`[HealthCheck] [${udid}] WDA reported NOT READY (Exceeded soft fail threshold: ${softFails}/${this.WDA_SOFT_FAIL_MAX})`);
+        return false;
+      }
+
+      // Reset soft fail counter on success
+      this.wdaSoftFailures.delete(udid);
+
+      if (latency > 1000) {
+        log.warn(`[HealthCheck] [${udid}] WDA response SLOW: ${latency}ms (Threshold: 1s)`);
+        return false;
+      }
+
+      log.debug(`[HealthCheck] [${udid}] WDA is HEALTHY (Latency: ${latency}ms)`);
+      return true;
+    } catch (err: any) {
+      log.warn(`[HealthCheck] [${udid}] WDA connectivity failure: ${err.message}`);
+      return false;
+    }
+  }
+
+  /**
+   * Pre-Session Readiness:
+   * Mandatory check before every test run.
+   */
+  async readyForSession(device: IDevice): Promise<boolean> {
+    if (device.cloud) return true;
+
+    log.info(`🚀 [SessionStart] Verifying readiness for ${device.udid}...`);
+
+    // Guard: If stream is currently starting, don't trigger another recovery
+    const streamService = Container.get(IOSStreamService);
+    const streamStatus = streamService.getStreamStatus(device.udid);
+    if (streamStatus && streamStatus.status === 'starting') {
+      log.info(`🚀 [SessionStart] ${device.udid} stream is already STARTING. Waiting for completion...`);
+      // Wait up to 30s for the existing startup to finish
+      const startTime = Date.now();
+      while (Date.now() - startTime < 30000) {
+        const current = streamService.getStreamStatus(device.udid);
+        if (current?.status === 'running') return true;
+        if (current?.status === 'error') break;
+        await new Promise((r) => setTimeout(r, 2000));
+      }
+    }
+
+    // 1. Initial Check
+    let healthy = await this.verifyWDAStatus(device.udid);
+
+    // 2. Automated Recovery (Retry once)
+    if (!healthy) {
+      log.warn(`⚠️ [SessionStart] ${device.udid} is UNHEALTHY. Triggering emergency recovery...`);
+      const recovered = await this.recoverHealth(device);
+      if (recovered) {
+        log.info(`🔄 [SessionStart] Recovery triggered. Waiting for WDA to settle...`);
+        // Wait up to 15s for WDA to settle after recovery
+        const startTime = Date.now();
+        while (Date.now() - startTime < 15000) {
+          healthy = await this.verifyWDAStatus(device.udid);
+          if (healthy) break;
+          await new Promise((r) => setTimeout(r, 2000));
+        }
+      }
+    }
+
+    if (healthy) {
+      log.info(`✅ [SessionStart] ${device.udid} is READY for test run.`);
+      return true;
+    } else {
+      log.error(`❌ [SessionStart] ${device.udid} FAILED readiness check. Aborting session.`);
+      return false;
+    }
   }
 
   async recoverHealth(device: IDevice): Promise<boolean> {
@@ -1460,7 +1614,6 @@ export default class IOSDeviceManager implements IDeviceManager {
     try {
       if (device.realDevice) {
         // If device is busy with a session, don't interrupt it for recovery
-        // unless we add more sophisticated session-aware checks later.
         if (device.busy && device.session_id) {
           log.info(`Skipping auto-recovery for ${device.udid} as it has an active session`);
           return false;
@@ -1541,7 +1694,9 @@ export default class IOSDeviceManager implements IDeviceManager {
       const goIOSPath = streamService.goIOSPath;
       // Example: go-ios apps --udid <udid>
       try {
-        const { stdout } = await execPromise(`"${goIOSPath}" ${safeCommand} --udid ${udid}`);
+        const { stdout } = await execPromise(`"${goIOSPath}" ${safeCommand} --udid ${udid}`, {
+          env: { ...process.env, ENABLE_GO_IOS_AGENT: 'yes' },
+        });
         return stdout;
       } catch (err: any) {
         throw new Error(`Execution failed: ${err.message}`);
@@ -1571,6 +1726,17 @@ export default class IOSDeviceManager implements IDeviceManager {
       } catch (err: any) {
         throw new Error(`Simulator execution failed: ${err.message}`);
       }
+    }
+  }
+
+  async getPageSource(udid: string): Promise<string> {
+    log.info(`iOS getPageSource on ${udid}`);
+    try {
+      const response = await this.sendWDACommand(udid, 'get', '/source');
+      return response?.data?.value || '';
+    } catch (err: any) {
+      log.error(`Failed to get iOS page source for ${udid}: ${err.message}`);
+      return '';
     }
   }
 }

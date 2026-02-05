@@ -51,6 +51,7 @@ async function getSessions(request: Request, response: Response) {
       { device_udid: { contains: query as string } },
       { device_name: { contains: query as string } },
       { failure_category: { contains: query as string } },
+      { tags: { contains: query as string } },
     ];
   }
 
@@ -85,7 +86,7 @@ async function getBuilds(request: Request, response: Response) {
   const formattedBuilds = builds.map((b) => ({
     ...b,
     sessionCount: b._count.sessions,
-    passedCount: b.sessions.filter((s) => s.status === 'success').length,
+    passedCount: b.sessions.filter((s) => ['success', 'passed'].includes(s.status)).length,
     failedCount: b.sessions.filter((s) => s.status === 'failed').length,
     runningCount: b.sessions.filter((s) => s.status === 'running').length,
     sessions: undefined, // remove raw sessions for payload efficiency

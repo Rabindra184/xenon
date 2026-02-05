@@ -26,6 +26,7 @@ interface AndroidStreamSession {
   lastViewerAt: number;
   viewerCount: number;
   latestFrame?: Buffer;
+  latestFrameTimestamp?: number;
 }
 
 @Service()
@@ -97,6 +98,12 @@ class AndroidStreamService {
           const pixels = screenshot.slice(headerSize);
 
           if (pixels.length >= w * h * 4) {
+            // Sanity check: Extreme small images or weird ratios are often corrupted buffers
+            if (w < 100 || h < 100 || w > 8000 || h > 8000) {
+              log.debug(`[${udid}] Suspicious frame detected (${w}x${h}). Skipping.`);
+              continue;
+            }
+
             const pixFmt = fmt === 1 ? 'rgba' : 'rgb565';
             // Optimization: Downscale to 720p maximum width for efficiency
             let targetW = w;
@@ -114,6 +121,7 @@ class AndroidStreamService {
               targetH,
               pixFmt,
             );
+            session.latestFrameTimestamp = Date.now();
           }
         }
 

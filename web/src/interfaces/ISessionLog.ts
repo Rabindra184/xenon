@@ -11,6 +11,10 @@ export interface ISessionLog {
   screenshot?: string | null;
   is_success?: boolean | null;
   is_error?: boolean;
+  is_healed?: boolean;
+  original_selector?: string | null;
+  healed_selector?: string | null;
+  healing_confidence?: number | null;
   createdAt: string;
   updatedAt: string;
 }

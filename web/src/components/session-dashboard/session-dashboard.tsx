@@ -100,6 +100,15 @@ const SessionTableRow = React.memo(
           <div className="cell-id">
             <span className="id-text">#{session.id.slice(0, 8)}</span>
             {session.name && <span className="name-text">{session.name}</span>}
+            {session.tags && (
+              <div className="session-tags-pills">
+                {parseJson(session.tags)?.map((tag: string) => (
+                  <span key={tag} className="tag-pill-mini">
+                    {tag}
+                  </span>
+                ))}
+              </div>
+            )}
           </div>
         </td>
         <td>
@@ -114,7 +123,7 @@ const SessionTableRow = React.memo(
         <td>
           <Badge
             variant={
-              session.status === 'success'
+              ['success', 'passed'].includes(session.status)
                 ? 'success'
                 : session.status === 'failed'
                   ? 'error'
@@ -379,7 +388,7 @@ const SessionDashboard: React.FC = () => {
             <span className="metadata-label">Status</span>
             <Badge
               variant={
-                selectedSession.status === 'success'
+                ['success', 'passed'].includes(selectedSession.status)
                   ? 'success'
                   : selectedSession.status === 'failed'
                     ? 'error'
@@ -408,6 +417,18 @@ const SessionDashboard: React.FC = () => {
               {prettyMilliseconds(getDuration(selectedSession))}
             </span>
           </div>
+          {selectedSession.tags && (
+            <div className="metadata-item full-width">
+              <span className="metadata-label">Tags</span>
+              <div className="session-detail-tags">
+                {parseJson(selectedSession.tags)?.map((tag: string) => (
+                  <Badge key={tag} variant="secondary" className="session-tag-badge">
+                    {tag}
+                  </Badge>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
 
         {/* AI Root-Cause Analysis (Elite Tier) */}
@@ -506,7 +527,31 @@ const SessionDashboard: React.FC = () => {
                               <span className="log-time">[{formatDate(l.createdAt)}]</span>
                               <span className={`log-method ${l.method}`}>{l.method}</span>
                               <span className="log-title">{l.title}</span>
+                              {l.is_healed && (
+                                <Badge variant="outline" className="healed-badge animate-pulse-subtle">
+                                  <Brain size={12} className="mr-1" />
+                                  [HEALED]
+                                </Badge>
+                              )}
                             </div>
+                            {l.is_healed && (
+                              <div className="healing-intelligence-card">
+                                <div className="intelligence-grid">
+                                  <div className="intel-item">
+                                    <span className="intel-label">FAILED LOCATOR</span>
+                                    <code className="intel-value">{l.original_selector}</code>
+                                  </div>
+                                  <div className="intel-item">
+                                    <span className="intel-label">AUTO-RECOVERY</span>
+                                    <code className="intel-value">{l.healed_selector}</code>
+                                  </div>
+                                  <div className="intel-item">
+                                    <span className="intel-label">CONFIDENCE</span>
+                                    <span className="intel-value">{(l.healing_confidence! * 100).toFixed(1)}%</span>
+                                  </div>
+                                </div>
+                              </div>
+                            )}
                             {showScreenshots && l.screenshot && (
                               <div className="log-screenshot">
                                 <img
