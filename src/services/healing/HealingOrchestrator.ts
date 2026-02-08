@@ -6,6 +6,7 @@ import { OcrHealingProvider } from './OcrHealingProvider';
 import { VisualAiHealingProvider } from './VisualAiHealingProvider';
 import { LlmHealingProvider } from './LlmHealingProvider';
 import { HealEtalonService } from './HealEtalonService';
+import { ResilioTreeHealingProvider } from './ResilioTreeHealingProvider';
 
 @Service()
 export class HealingOrchestrator {
@@ -14,6 +15,7 @@ export class HealingOrchestrator {
 
     constructor(private etalonService: HealEtalonService) {
         this.providers = [
+            new ResilioTreeHealingProvider(this.etalonService),
             new FuzzyXmlHealingProvider(this.etalonService),
             new OcrHealingProvider(),
             new VisualAiHealingProvider(),

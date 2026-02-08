@@ -15,6 +15,9 @@ export interface ISessionLog {
   original_selector?: string | null;
   healed_selector?: string | null;
   healing_confidence?: number | null;
+  trace_id?: string | null;
+  span_id?: string | null;
+  duration?: number | null;
   createdAt: string;
   updatedAt: string;
 }

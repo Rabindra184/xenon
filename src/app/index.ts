@@ -17,6 +17,7 @@ import ConfigRouter from './routers/config';
 import { IPluginArgs } from '../interfaces/IPluginArgs';
 import fileUpload from 'express-fileupload';
 import { setupSwagger } from './swagger';
+import { Container } from 'typedi';
 
 let dashboardPluginUrl: any = null;
 
@@ -67,6 +68,13 @@ apiRouter.use(async (req, res, next) => {
 
 apiRouter.get('/cliArgs', async (req, res) => {
   res.json(await getCLIArgs());
+});
+
+apiRouter.get('/metrics', async (req, res) => {
+  const { MetricsService } = await import('../services/MetricsService');
+  const metrics = await Container.get(MetricsService).getMetrics();
+  res.set('Content-Type', 'text/plain');
+  res.send(metrics);
 });
 
 staticFilesRouter.use(express.static(path.join(__dirname, '..', '..', 'public')));

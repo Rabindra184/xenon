@@ -42,8 +42,7 @@ export class RemoteSession extends XenonSession {
         data: {},
       });
       console.log(
-        `[RemoteSession] stopVideoRecording response status: ${response.status}, data length: ${
-          response?.data?.value?.length || 0
+        `[RemoteSession] stopVideoRecording response status: ${response.status}, data length: ${response?.data?.value?.length || 0
         }`,
       );
       return response.status === 200 && response?.data?.value ? response?.data?.value : '';
@@ -59,8 +58,7 @@ export class RemoteSession extends XenonSession {
           data: {},
         });
         console.log(
-          `[RemoteSession] stopVideoRecording retry succeeded, data length: ${
-            retryResponse?.data?.value?.length || 0
+          `[RemoteSession] stopVideoRecording retry succeeded, data length: ${retryResponse?.data?.value?.length || 0
           }`,
         );
         return retryResponse?.data?.value || '';
@@ -179,6 +177,20 @@ export class RemoteSession extends XenonSession {
       return `${url.origin}/xenon/api/session/${this.sessionId}/live_video`;
     } else {
       return null;
+    }
+  }
+
+  async checkHealth(): Promise<boolean> {
+    try {
+      const response = await axios({
+        method: 'get',
+        url: `${this.baseUrl}/session/${this.sessionId}/url`,
+        timeout: 5000,
+      });
+      return response.status >= 200 && response.status < 300;
+    } catch (err: any) {
+      log.warn(`[RemoteSession] Health check failed for session ${this.sessionId}: ${err.message}`);
+      return false;
     }
   }
 }

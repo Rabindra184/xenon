@@ -1,14 +1,15 @@
-@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700&family=Outfit:wght@400;700&family=JetBrains+Mono:wght@400;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600;700&family=Fira+Sans:wght@300;400;500;600;700&display=swap');
 
 .settings-container {
-    padding: var(--space-xl);
-    max-width: 1200px;
-    margin: 64px auto 0;
+    padding: 3rem var(--space-xl);
+    max-width: 1400px;
+    margin: 0 auto;
     color: var(--text-main);
     animation: fadeIn 0.4s cubic-bezier(0.16, 1, 0.3, 1);
     min-height: calc(100vh - 64px);
     display: flex;
     flex-direction: column;
+    font-family: 'Fira Sans', sans-serif;
 }
 
 @keyframes fadeIn {
@@ -75,6 +76,26 @@
     padding-bottom: var(--space-lg);
 }
 
+.settings-header-small {
+    margin: var(--space-xl) 0 var(--space-lg);
+    padding-bottom: var(--space-sm);
+    border-bottom: 1px solid var(--border-medium);
+}
+
+.settings-header-small h3 {
+    margin: 0;
+    font-size: 1.25rem;
+    font-weight: 700;
+    font-family: 'Outfit', sans-serif;
+    color: var(--text-bright);
+}
+
+.settings-header-small p {
+    color: var(--text-muted);
+    font-size: 0.9rem;
+    margin-top: 4px;
+}
+
 .settings-title-group {
     display: flex;
     align-items: center;
@@ -89,13 +110,14 @@
 
 .settings-header h2 {
     margin: 0;
-    font-size: 2rem;
+    font-size: 2.25rem;
     font-weight: 700;
-    font-family: 'Outfit', sans-serif;
+    font-family: 'Fira Sans', sans-serif;
     background: linear-gradient(135deg, var(--text-bright) 0%, var(--text-dim) 100%);
     -webkit-background-clip: text;
     background-clip: text;
     -webkit-text-fill-color: transparent;
+    letter-spacing: -0.02em;
 }
 
 .infra-icon {
@@ -152,30 +174,44 @@
     display: flex;
     align-items: center;
     gap: var(--space-sm);
-    font-size: 1.5rem;
+    font-size: 1.25rem;
     margin-bottom: var(--space-xs);
-    color: var(--text-main);
-    font-family: 'Outfit', sans-serif;
+    color: var(--primary);
+    font-family: 'Fira Sans', sans-serif;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+}
+
+/* Ensure content pushes footer down but allows scroll behind */
+.settings-content {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-xl);
+    flex-grow: 1;
+    position: relative;
 }
 
 .section-description {
     color: var(--text-muted);
-    font-size: 0.9rem;
-    margin-bottom: var(--space-lg);
+    font-size: 0.95rem;
+    margin-bottom: 2rem;
+    max-width: 800px;
+    line-height: 1.6;
 }
 
 .settings-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
-    gap: var(--space-lg);
-    margin-bottom: var(--space-lg);
+    grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+    gap: 2rem;
+    margin-bottom: 3rem;
 }
 
 .setting-card {
     background: var(--bg-surface);
     border: 1px solid var(--border-medium);
     border-radius: var(--radius-md);
-    padding: var(--space-lg);
+    padding: var(--space-md);
     transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
     backdrop-filter: var(--glass-blur);
     position: relative;
@@ -208,7 +244,7 @@
     display: flex;
     align-items: center;
     gap: var(--space-sm);
-    margin-bottom: var(--space-md);
+    margin-bottom: var(--space-sm);
     color: var(--primary);
 }
 
@@ -221,8 +257,8 @@
 .setting-card p {
     color: var(--text-muted);
     font-size: 0.875rem;
-    margin-bottom: var(--space-lg);
-    line-height: 1.6;
+    margin-bottom: var(--space-md);
+    line-height: 1.5;
 }
 
 .input-group {
@@ -232,8 +268,8 @@
     background: rgba(255, 255, 255, 0.03);
     backdrop-filter: blur(12px);
     border-radius: 12px;
-    padding: 0 1.25rem;
-    height: 52px;
+    padding: 0 1rem;
+    height: 42px;
     border: 1px solid rgba(255, 255, 255, 0.08);
     transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
     position: relative;
@@ -350,15 +386,36 @@
     display: flex;
     justify-content: space-between;
     align-items: center;
-    gap: var(--space-md);
-    margin-top: auto;
-    padding: var(--space-xl) 0;
-    border-top: 1px solid var(--border-medium);
+    gap: var(--space-lg);
+    margin-top: var(--space-xxl);
+    padding: var(--space-lg) 0;
+
+    /* Integrated Action Bar - truly borderless */
+    position: relative;
+    background: transparent;
+    z-index: 50;
+    border: none;
+}
+
+/* Override container padding for sticky footer context on mobile */
+@media (max-width: 768px) {
+    .settings-footer {
+        bottom: 10px;
+        padding: var(--space-md);
+        flex-direction: column-reverse;
+        /* Ensure save is top on mobile stack if needed, or keep row */
+    }
+}
+
+.footer-left {
+    display: flex;
+    align-items: center;
 }
 
 .footer-right {
     display: flex;
     gap: var(--space-md);
+    align-items: center;
 }
 
 .reset-to-defaults-btn {
@@ -614,5 +671,29 @@ input:checked+.slider:before {
     .save-btn {
         width: 100%;
         justify-content: center;
+    }
+}
+
+/* Enhanced Mobile (< 480px) - Improved touch targets */
+@media (max-width: 480px) {
+    .settings-footer {
+        flex-direction: column-reverse;
+        gap: var(--space-sm);
+    }
+
+    .footer-left,
+    .footer-right {
+        width: 100%;
+        display: flex;
+        flex-direction: column;
+        gap: var(--space-sm);
+    }
+
+    .reset-to-defaults-btn,
+    .reset-btn,
+    .save-btn {
+        width: 100%;
+        justify-content: center;
+        padding: 14px 20px;
     }
 }

@@ -76,6 +76,50 @@ flowchart TD
 
 ```
 
+## WebSocket-First Real-time Sync
+
+Xenon implements a "WebSocket-First" synchronization layer using `socket.io` to eliminate the latency of traditional HTTP polling.
+
+### Bidirectional Heartbeats
+Instead of the Hub polling each node for status, Nodes maintain a persistent WebSocket connection to the Hub.
+
+```mermaid
+sequenceDiagram
+    Node->>Hub: [WebSocket] Connect & Register
+    Hub-->>Node: [WebSocket] Welcome!
+    Note over Node,Hub: Persistent TCP Connection
+    Node->>Hub: [WebSocket] device_added / device_blocked
+    Hub->>Dashboard: [WebSocket] Broadcast status_update
+```
+
+### Instant Dashboard
+The Web Dashboard connects to the Hub via WebSockets. Whenever a device state changes or a session starts/stops, the Hub broadcasts a message, and the Dashboard triggers an immediate data re-fetch. This ensures the UI is always in sync with the live grid state within milliseconds.
+
+## Distributed Observability (OpenTelemetry)
+
+Xenon integrates **OpenTelemetry (OTel)** to provide industrial-grade observability across the entire automation lifecycle.
+
+### Trace Correlation
+Every Appium session is treated as a "Root Trace". All individual Appium commands executed within that session are captured as "Child Spans".
+
+- **Root Trace**: The entire session (from allocation to cleanup).
+- **Child Spans**: Individual WebDriver commands (e.g., `findElement`, `click`, `executeScript`).
+
+### Telemetry Pipeline
+1. **TracingService**: Manages the OTel SDK and span lifecycle.
+2. **Instrumentation**: Automatic wrapping of command handlers.
+3. **Database Correlation**: Trace and Span IDs are persisted in SQLite/PostgreSQL, allowing for one-to-one mapping between logs and performance traces.
+
+```mermaid
+flowchart LR
+    A[Appium Client] -->|Command| B[Xenon Hub]
+    B -->|Start Span| C[OTel Collector/Console]
+    B -->|Persist ID| D[(Database)]
+    B -->|Execute| E[Appium Node]
+    E -->|Result| B
+    B -->|End Span| C
+```
+
 ## Strategic Intelligence
 
 Xenon includes a layer of "Strategic Intelligence" to manage large-scale device farms proactively.

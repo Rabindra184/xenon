@@ -15,6 +15,7 @@ export interface ISession {
   failure_category?: string | null;
   ai_analysis?: string | null;
   tags?: string | null;
+  trace_id?: string | null;
 
   device_udid: string;
   device_platform: string;

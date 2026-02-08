@@ -42,6 +42,10 @@ export default class XenonApiService {
     return apiClient.makeGETRequest(url);
   }
 
+  public static getSession(sessionId: string) {
+    return apiClient.makeGETRequest(`/session/${sessionId}`);
+  }
+
   public static getSessionLogs(sessionId: string) {
     return apiClient.makeGETRequest(`/session/${sessionId}/session_log`);
   }
@@ -182,7 +186,7 @@ export default class XenonApiService {
   }
 
   public static stopStream(udid: string) {
-    return apiClient.makePOSTRequest(`/control/${udid}/stream/stop`, {}, {});
+    return apiClient.makePOSTRequest(`/control/${udid}/stream/stop`, {}, {}, { keepalive: true });
   }
 
   public static uninstallApp(udid: string, bundleId: string) {
@@ -230,6 +234,10 @@ export default class XenonApiService {
 
   public static executeShell(udid: string, command: string) {
     return apiClient.makePOSTRequest(`/control/${udid}/shell`, {}, { command });
+  }
+
+  public static getInspectorSnapshot(udid: string) {
+    return apiClient.makeGETRequest(`/control/${udid}/inspector/snapshot`);
   }
 
   /* Webhook Endpoints */

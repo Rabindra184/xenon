@@ -74,6 +74,8 @@ export interface IPluginArgs {
   healthCheckIntervalMs: number;
   /** Cron schedule for health checks (e.g. "0 * * * *" for every hour) */
   healthCheckSchedule?: string;
+  /** How often to run session heartbeat checks in milliseconds */
+  sessionHeartbeatIntervalMs: number;
 
   // development purposes
   removeDevicesFromDatabaseBeforeRunningThePlugin?: boolean;
@@ -91,6 +93,18 @@ export interface IPluginArgs {
   anthropicApiKey?: string;
   /** Enable or disable self-healing locators */
   enableSelfHealing: boolean;
+
+  /** Build cleanup configuration */
+  /** Retention period in days for older builds and sessions */
+  buildCleanupDays?: number;
+  /** Maximum number of builds to keep in the database */
+  buildCleanupMaxCount?: number;
+  /** Cron schedule for the build cleanup job (default "0 0 * * *", daily at midnight) */
+  buildCleanupSchedule?: string;
+  /** Whether to delete disk assets (videos, screenshots) during cleanup */
+  deleteBuildAssets?: boolean;
+  /** Enable structured JSON logging */
+  enableJsonLogging: boolean;
 }
 
 export const DefaultPluginArgs: IPluginArgs = {
@@ -128,4 +142,10 @@ export const DefaultPluginArgs: IPluginArgs = {
   openaiApiKey: undefined,
   anthropicApiKey: undefined,
   enableSelfHealing: true,
+  buildCleanupDays: 30,
+  buildCleanupMaxCount: 100,
+  buildCleanupSchedule: '0 0 * * *',
+  deleteBuildAssets: true,
+  sessionHeartbeatIntervalMs: 30000,
+  enableJsonLogging: false,
 };

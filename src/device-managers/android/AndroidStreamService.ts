@@ -29,7 +29,7 @@ interface AndroidStreamSession {
   latestFrameTimestamp?: number;
 }
 
-@Service()
+@Service({ name: 'AndroidStreamService' })
 class AndroidStreamService {
   private sessions: Map<string, AndroidStreamSession> = new Map();
   private startPromises: Map<string, Promise<{ mjpegPort: number }>> = new Map();
@@ -73,7 +73,7 @@ class AndroidStreamService {
         const screenshot = await deviceLock.acquire(udid, async () => {
           return await new Promise<Buffer>((resolve, reject) => {
             const isolationService = Container.get(ResourceIsolationService);
-            const { command, args } = isolationService.wrapSpawn('adb', ['-s', udid, 'exec-out', 'screencap'], 'Economy');
+            const { command, args } = isolationService.wrapSpawn('adb', ['-s', udid, 'exec-out', 'screencap'], 'Performance');
             const proc = spawn(command, args);
             const chunks: Uint8Array[] = [];
             proc.stdout.on('data', (c) => chunks.push(c));
@@ -84,8 +84,8 @@ class AndroidStreamService {
             proc.on('error', reject);
             setTimeout(() => {
               proc.kill();
-              reject(new Error('ADB Timeout'));
-            }, 5000);
+              reject(new Error('ADB Timeout (15s)'));
+            }, 15000);
           });
         });
 
@@ -112,6 +112,9 @@ class AndroidStreamService {
               targetW = 720;
               targetH = Math.round((h / w) * targetW);
             }
+            // FFmpeg requires even dimensions for some encoders/filters
+            if (targetW % 2 !== 0) targetW--;
+            if (targetH % 2 !== 0) targetH--;
 
             session.latestFrame = await this.convertRawToJpeg(
               pixels,
@@ -121,6 +124,9 @@ class AndroidStreamService {
               targetH,
               pixFmt,
             );
+            if (!session.latestFrameTimestamp) {
+              log.info(`[${udid}] First Android frame successfully captured and converted.`);
+            }
             session.latestFrameTimestamp = Date.now();
           }
         }
@@ -150,6 +156,22 @@ class AndroidStreamService {
         if (!device) throw new Error(`Device ${udid} not found in DB`);
 
         const mjpegPort = await getFreePort();
+
+        // Aggressive cleanup: Kill any process already using this port
+        try {
+          const { exec } = require('child_process');
+          const { promisify } = require('util');
+          const execPromise = promisify(exec);
+          const { stdout } = await execPromise(`lsof -ti :${mjpegPort}`);
+          const pids = stdout.trim().split('\n');
+          for (const pid of pids) {
+            if (pid) {
+              log.debug(`[${udid}] Killing stale process ${pid} on port ${mjpegPort}`);
+              await execPromise(`kill -9 ${pid}`);
+            }
+          }
+        } catch (e) { /* ignore */ }
+
         const session: AndroidStreamSession = {
           udid,
           mjpegPort,
@@ -165,7 +187,7 @@ class AndroidStreamService {
           session.lastViewerAt = Date.now();
 
           res.writeHead(200, {
-            'Content-Type': 'multipart/x-mixed-replace; boundary=--myboundary',
+            'Content-Type': 'multipart/x-mixed-replace; boundary="BoundaryString"',
             'Cache-Control': 'no-cache',
             Connection: 'close',
             Pragma: 'no-cache',
@@ -184,11 +206,11 @@ class AndroidStreamService {
 
             if (session.latestFrame) {
               try {
-                res.write('--myboundary\n');
-                res.write('Content-Type: image/jpeg\n');
-                res.write(`Content-Length: ${session.latestFrame.length}\n\n`);
+                res.write('--BoundaryString\r\n');
+                res.write('Content-Type: image/jpeg\r\n');
+                res.write(`Content-Length: ${session.latestFrame.length}\r\n\r\n`);
                 res.write(session.latestFrame);
-                res.write('\n');
+                res.write('\r\n');
               } catch (e) {
                 return; // Stop if socket broke
               }
@@ -205,10 +227,10 @@ class AndroidStreamService {
           });
         });
 
-        // Use '0.0.0.0' for maximum compatibility with proxy layers
+        // Use '127.0.0.1' for internal proxy to avoid routing issues
         await new Promise<void>((resolve, reject) => {
-          session.server!.listen(mjpegPort, '0.0.0.0', () => {
-            log.info(`[${udid}] MJPEG server listening on 0.0.0.0:${mjpegPort}`);
+          session.server!.listen(mjpegPort, '127.0.0.1', () => {
+            log.info(`[${udid}] MJPEG server listening on 127.0.0.1:${mjpegPort}`);
             resolve();
           });
           session.server!.on('error', (err) => {
@@ -216,6 +238,9 @@ class AndroidStreamService {
             reject(err);
           });
         });
+
+        // Brief settlement delay for OS networking stack
+        await new Promise(r => setTimeout(r, 200));
 
         session.status = 'running';
         this.captureLoop(udid, session);
@@ -301,7 +326,7 @@ class AndroidStreamService {
         '-frames:v',
         '1',
         'pipe:1',
-      ], 'Economy');
+      ], 'Performance');
 
       const ff = spawn(command, args);
       const output: Uint8Array[] = [];

@@ -1,7 +1,7 @@
 import { Request, Response, Router, NextFunction } from 'express';
 import { prisma } from '../../prisma';
 import { SESSION_MANAGER } from '../../sessions/SessionManager';
-import { MjpegProxy } from 'mjpeg-proxy';
+import { UniversalMjpegProxy } from '../../helpers/UniversalMjpegProxy';
 import { WebConfigService } from '../../data-service/web-config-service';
 import { Container } from 'typedi';
 
@@ -10,6 +10,12 @@ const MJPEG_PROXY_CACHE: Map<string, any> = new Map();
 //session guard
 async function isValidSession(request: Request, response: Response, next: NextFunction) {
   const sessionId = request.params.sessionId;
+
+  // Principal Robustness: Allow virtual manual sessions
+  if (sessionId && sessionId.startsWith('manual_')) {
+    return next();
+  }
+
   const session = await prisma.session.findFirst({
     where: {
       id: sessionId,
@@ -160,7 +166,13 @@ async function streamLiveSessionVideo(request: Request, response: Response) {
   const videoUrl = session?.getLiveVideoUrl();
   if (videoUrl) {
     if (!MJPEG_PROXY_CACHE.has(sessionId)) {
-      MJPEG_PROXY_CACHE.set(sessionId, new MjpegProxy(videoUrl));
+      MJPEG_PROXY_CACHE.set(sessionId, new UniversalMjpegProxy(videoUrl));
+    }
+
+    // Principal Robustness: Ensure proxy is updated if URL changes
+    const existingProxy = MJPEG_PROXY_CACHE.get(sessionId);
+    if (existingProxy && (existingProxy as any).mjpegUrl !== videoUrl) {
+      MJPEG_PROXY_CACHE.set(sessionId, new UniversalMjpegProxy(videoUrl));
     }
 
     MJPEG_PROXY_CACHE.get(sessionId)?.proxyRequest(request, response);

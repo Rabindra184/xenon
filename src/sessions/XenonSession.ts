@@ -55,4 +55,9 @@ export abstract class XenonSession {
   abstract getType(): SessionType;
 
   abstract getLiveVideoUrl(): string | null;
+
+  /**
+   * Proactively checks if the session is still responsive.
+   */
+  abstract checkHealth(): Promise<boolean>;
 }

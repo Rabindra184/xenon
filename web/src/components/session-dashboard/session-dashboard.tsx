@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import prettyMilliseconds from 'pretty-ms';
 import {
   Search,
@@ -12,6 +12,8 @@ import {
   Clock,
   Brain,
 } from 'lucide-react';
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { useSocket } from '../../hooks/useSocket';
 import ReactMarkdown from 'react-markdown';
 import XenonApiService from '../../api-service';
 import { ISession } from '../../interfaces/ISession';
@@ -24,6 +26,7 @@ import { Badge } from '../ui/badge';
 import { Input } from '../ui/input';
 import ProfilingView from './ProfilingView';
 import ScreenshotsView from './ScreenshotsView';
+import TraceWaterfall from './TraceWaterfall';
 import './session-dashboard.css';
 
 const REFRESH_INTERVAL_MS = 3000; // Senior Polish: 3s for "Live" feel
@@ -146,6 +149,8 @@ const SessionTableRow = React.memo(
 const SessionDashboard: React.FC = () => {
   const [builds, setBuilds] = React.useState<IBuild[]>([]);
   const [sessions, setSessions] = React.useState<ISession[]>([]);
+  const [selectedSessionLogs, setSelectedSessionLogs] = useState<ISessionLog[]>([]);
+  const { on: onSocketEvent } = useSocket();
   const [isLoading, setIsLoading] = React.useState<boolean>(true);
   const [selectedBuildId, setSelectedBuildId] = React.useState<string | null>(null);
   const [selectedSessionId, setSelectedSessionId] = React.useState<string | null>(null);
@@ -159,7 +164,7 @@ const SessionDashboard: React.FC = () => {
   const [profilingData, setProfilingData] = React.useState<IProfiling[]>([]);
   const [isLoadingLogs, setIsLoadingLogs] = React.useState<boolean>(false);
   const [selectedLogTab, setSelectedLogTab] = React.useState<
-    'command' | 'screenshots' | 'device' | 'debug' | 'profiling'
+    'command' | 'trace' | 'screenshots' | 'device' | 'debug' | 'profiling'
   >('command');
   const [showScreenshots, setShowScreenshots] = React.useState<boolean>(true);
   const [showErrorsOnly, setShowErrorsOnly] = React.useState<boolean>(false);
@@ -186,29 +191,53 @@ const SessionDashboard: React.FC = () => {
     [sessions, selectedSessionId],
   );
 
-  const fetchData = React.useCallback(async () => {
+  const fetchBuilds = React.useCallback(async () => {
     try {
       const buildsData = await XenonApiService.getBuilds();
       setBuilds(buildsData);
-
       if (isInitialLoad.current && buildsData.length > 0) {
         setSelectedBuildId(buildsData[0].id);
         isInitialLoad.current = false;
       }
+    } catch (error) {
+      console.error('Failed to fetch builds', error);
+    }
+  }, []);
 
-      if (selectedBuildId) {
+  const fetchSessions = React.useCallback(async () => {
+    if (selectedBuildId) {
+      try {
         const sessionsData = await XenonApiService.getSessions({
           buildId: selectedBuildId,
           query: sessionSearch,
         });
         setSessions(sessionsData);
+      } catch (error) {
+        console.error('Failed to fetch sessions', error);
       }
+    }
+  }, [selectedBuildId, sessionSearch]);
+
+  const fetchSessionDetails = React.useCallback(async (sessionId: string) => {
+    try {
+      const sessionData = await XenonApiService.getSession(sessionId);
+      setSessions(prevSessions => prevSessions.map(s => s.id === sessionId ? sessionData : s));
+    } catch (error) {
+      console.error('Failed to fetch session details', error);
+    }
+  }, []);
+
+  const fetchData = React.useCallback(async () => {
+    setIsLoading(true);
+    try {
+      await fetchBuilds();
+      await fetchSessions();
     } catch (error) {
       console.error('Failed to fetch dashboard data', error);
     } finally {
       setIsLoading(false);
     }
-  }, [selectedBuildId, sessionSearch]);
+  }, [fetchBuilds, fetchSessions]);
 
   const fetchLogs = async (sessionId: string) => {
     if (abortControllerRef.current) abortControllerRef.current.abort();
@@ -246,6 +275,32 @@ const SessionDashboard: React.FC = () => {
   React.useEffect(() => {
     if (selectedSessionId) fetchLogs(selectedSessionId);
   }, [selectedSessionId, selectedSession?.status]);
+
+  // WebSocket Event Listeners for "Next-Level" Live feel
+  React.useEffect(() => {
+    if (!onSocketEvent) return;
+
+    onSocketEvent('session_started', (data: ISession) => {
+      setSessions((prev) => [data, ...prev]);
+    });
+
+    onSocketEvent('session_stopped', (data: { id: string; status: string }) => {
+      setSessions((prev) =>
+        prev.map((s) => (s.id === data.id ? { ...s, status: data.status, endTime: new Date().toISOString() } : s))
+      );
+    });
+
+    onSocketEvent('session_command', (data: ISessionLog) => {
+      // Only append if it's the currently selected session
+      if (selectedSessionId === data.session_id) {
+        setLogs((prev) => [data, ...prev]);
+      }
+    });
+
+    // Device events for grid awareness
+    onSocketEvent('device_added', () => fetchData());
+    onSocketEvent('device_removed', () => fetchData());
+  }, [onSocketEvent, selectedSessionId, fetchData]);
 
   const filteredBuilds = builds.filter((b) => {
     // 1. Text Search
@@ -380,6 +435,18 @@ const SessionDashboard: React.FC = () => {
             <span className="metadata-label">Device</span>
             <span className="metadata-value">{selectedSession.device_name}</span>
           </div>
+          {selectedSession.node_id && (
+            <div className="metadata-item">
+              <span className="metadata-label">Node ID</span>
+              <span className="metadata-value mono">{selectedSession.node_id}</span>
+            </div>
+          )}
+          {selectedSession.trace_id && (
+            <div className="metadata-item">
+              <span className="metadata-label">Trace ID</span>
+              <span className="metadata-value mono">{selectedSession.trace_id}</span>
+            </div>
+          )}
           <div className="metadata-item">
             <span className="metadata-label">Platform</span>
             <span className="metadata-value">{selectedSession.device_platform}</span>
@@ -452,7 +519,7 @@ const SessionDashboard: React.FC = () => {
           {/* Left Panel: Tabs & Logs */}
           <div className="session-detail-left">
             <div className="tabs-nav">
-              {(['command', 'screenshots', 'device', 'debug', 'profiling'] as const).map((tab) => {
+              {(['command', 'trace', 'screenshots', 'device', 'debug', 'profiling'] as const).map((tab) => {
                 if (
                   tab === 'profiling' &&
                   !['android', 'ios'].includes(selectedSession.device_platform.toLowerCase())
@@ -472,7 +539,9 @@ const SessionDashboard: React.FC = () => {
                           ? 'Device Logs'
                           : tab === 'debug'
                             ? 'Debug Logs'
-                            : 'Profiling'}
+                            : tab === 'trace'
+                              ? 'Performance Trace'
+                              : 'System Profiling'}
                   </button>
                 );
               })}
@@ -503,7 +572,21 @@ const SessionDashboard: React.FC = () => {
                 <Spinner />
               ) : (
                 <div className="logs-container">
-                  {selectedLogTab === 'command' ? (
+                  {selectedLogTab === 'trace' ? (
+                    <TraceWaterfall
+                      logs={logs}
+                      onCommandClick={(logId) => {
+                        setSelectedLogTab('command');
+                        // Optional: Smooth scroll to logId if needed
+                        setTimeout(() => {
+                          const el = document.getElementById(logId);
+                          el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                          el?.classList.add('highlight-flash');
+                          setTimeout(() => el?.classList.remove('highlight-flash'), 2000);
+                        }, 100);
+                      }}
+                    />
+                  ) : selectedLogTab === 'command' ? (
                     logs
                       .filter((l) => {
                         if (showErrorsOnly && l.is_success) return false;
@@ -527,11 +610,21 @@ const SessionDashboard: React.FC = () => {
                               <span className="log-time">[{formatDate(l.createdAt)}]</span>
                               <span className={`log-method ${l.method}`}>{l.method}</span>
                               <span className="log-title">{l.title}</span>
+                              {l.duration !== null && l.duration !== undefined && (
+                                <span className="log-duration">
+                                  {prettyMilliseconds(l.duration)}
+                                </span>
+                              )}
                               {l.is_healed && (
                                 <Badge variant="outline" className="healed-badge animate-pulse-subtle">
                                   <Brain size={12} className="mr-1" />
                                   [HEALED]
                                 </Badge>
+                              )}
+                              {l.span_id && (
+                                <div className="log-otel-link" title={`Span ID: ${l.span_id}`}>
+                                  <Activity size={10} />
+                                </div>
                               )}
                             </div>
                             {l.is_healed && (

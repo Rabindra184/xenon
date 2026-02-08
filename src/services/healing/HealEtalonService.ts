@@ -7,6 +7,7 @@ export interface LocatorSignature {
     strategy: string;
     attributes: Record<string, string>;
     nodeName: string;
+    path?: any; // JSON representation of resiliotree.Path
     lastSeen: number;
 }
 
@@ -20,7 +21,7 @@ export class HealEtalonService {
     /**
      * Saves or updates a signature for a successful locator
      */
-    async saveSignature(strategy: string, selector: string, node: any): Promise<void> {
+    async saveSignature(strategy: string, selector: string, node: any, path?: any): Promise<void> {
         try {
             const attributes: Record<string, string> = {};
 
@@ -40,6 +41,7 @@ export class HealEtalonService {
                 strategy,
                 attributes,
                 nodeName: node.nodeName,
+                path,
                 lastSeen: Date.now()
             };
 

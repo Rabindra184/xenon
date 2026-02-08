@@ -16,6 +16,7 @@ import {
     ShieldCheck,
     HelpCircle,
 } from 'lucide-react';
+import { ActionBar, SettingSection } from '../ui/Layouts';
 
 export const AISettings: React.FC = () => {
     const [config, setConfig] = useState<{
@@ -77,11 +78,11 @@ export const AISettings: React.FC = () => {
         }
     };
 
-    const handleSave = async () => {
+    const handleSave = async (configToSave = config) => {
         setSaving(true);
         setStatus(null);
         try {
-            await XenonApiService.updateGlobalConfig(config);
+            await XenonApiService.updateGlobalConfig(configToSave);
             setStatus({ type: 'success', message: 'AI Intelligence engine synchronized successfully!' });
             setTimeout(() => setStatus(null), 5000);
         } catch (error) {
@@ -90,6 +91,19 @@ export const AISettings: React.FC = () => {
         } finally {
             setSaving(false);
         }
+    };
+
+    const handleResetToDefaults = async () => {
+        const defaultAIConfig = {
+            aiProvider: 'gemini',
+            aiModel: '',
+            aiBaseUrl: '',
+            geminiApiKey: '',
+            openaiApiKey: '',
+            anthropicApiKey: '',
+        };
+        setConfig(defaultAIConfig);
+        await handleSave(defaultAIConfig);
     };
 
     if (loading) {
@@ -122,37 +136,35 @@ export const AISettings: React.FC = () => {
             <div className="settings-content">
                 <div className="settings-grid">
                     {/* Phase 1: Engine Selection */}
-                    <div className="setting-card stagger-1">
-                        <div className="setting-card-header">
-                            <Brain size={16} />
-                            <h4>Phase 1: Intelligence Engine</h4>
-                        </div>
-                        <p>Select the LLM provider for failure analysis. Cloud providers offer scale, while Ollama offers local privacy.</p>
+                    <SettingSection
+                        title="Inference Engine"
+                        description="Select the foundation model provider. Cloud engines offer global scale, while local instances provide maximum data privacy."
+                        icon={Brain}
+                    >
                         <div className="input-group">
                             <select
                                 value={config.aiProvider}
                                 onChange={(e) => setConfig({ ...config, aiProvider: e.target.value })}
                             >
                                 <option value="gemini">Google Gemini (Default & Recommended)</option>
-                                <option value="openai">OpenAI (GPT-4o)</option>
-                                <option value="anthropic">Anthropic (Claude-3.5)</option>
-                                <option value="ollama">Ollama (Private / Local Instance)</option>
+                                <option value="openai">OpenAI (GPT-4o / O1)</option>
+                                <option value="anthropic">Anthropic (Claude-3.5 Sonnet)</option>
+                                <option value="ollama">Ollama (Private Local Instance)</option>
                             </select>
                         </div>
                         <div className="setting-hint-clean">
                             {config.aiProvider === 'gemini' && "Gemini 1.5 is optimized for Xenon's multi-modal video diagnosis."}
-                            {config.aiProvider === 'openai' && "World-class reasoning for complex logistical failures."}
-                            {config.aiProvider === 'ollama' && "Zero-data-leakage analysis for high-security lab environments."}
+                            {config.aiProvider === 'openai' && "World-class reasoning for complex logistical and hardware failures."}
+                            {config.aiProvider === 'ollama' && "Zero-data-leakage analysis for high-security laboratory environments."}
                         </div>
-                    </div>
+                    </SettingSection>
 
                     {/* Phase 2: Secure Authentication */}
-                    <div className="setting-card stagger-2">
-                        <div className="setting-card-header">
-                            <Key size={16} />
-                            <h4>Phase 2: Secure Credentials</h4>
-                        </div>
-                        <p>Credentials are used exclusively for diagnosis during test sessions.</p>
+                    <SettingSection
+                        title="Security & Secrets"
+                        description="Configure secure access to your selected intelligence provider. Keys are encrypted at rest."
+                        icon={Key}
+                    >
                         <div className="input-group" style={{ position: 'relative' }}>
                             {config.aiProvider === 'gemini' && (
                                 <input
@@ -188,24 +200,22 @@ export const AISettings: React.FC = () => {
                             )}
                             {config.aiProvider === 'ollama' && (
                                 <div style={{ color: 'var(--text-dim)', fontSize: '0.875rem', fontWeight: 500, display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                    <ShieldCheck size={16} style={{ color: 'var(--primary)' }} /> No API Key required for local sessions.
+                                    <ShieldCheck size={16} style={{ color: 'var(--primary)' }} /> Secure local-only session (No external key required).
                                 </div>
                             )}
                         </div>
                         <div className="setting-hint-clean">
                             <HelpCircle size={12} style={{ marginRight: '4px', verticalAlign: 'middle' }} />
-                            Keys are stored in an encrypted vault on your Xenon server.
+                            Xenon uses hardware-level encryption for API key persistence.
                         </div>
-                    </div>
+                    </SettingSection>
 
-                    {/* Phase 3: Infrastructure Tuning */}
                     {isCustomProvider && (
-                        <div className="setting-card stagger-3">
-                            <div className="setting-card-header">
-                                <Link size={16} />
-                                <h4>Phase 3: Host Topology</h4>
-                            </div>
-                            <p>Specify the endpoint for your {config.aiProvider === 'ollama' ? 'Local Instance' : 'Custom Proxy'}.</p>
+                        <SettingSection
+                            title="Infrastructure"
+                            description={`Direct established traffic to your ${config.aiProvider === 'ollama' ? 'local Ollama' : 'custom proxy'} host.`}
+                            icon={Link}
+                        >
                             <div className="input-group">
                                 <input
                                     type="text"
@@ -215,15 +225,14 @@ export const AISettings: React.FC = () => {
                                 />
                             </div>
                             <div className="setting-hint-clean">Default: {config.aiProvider === 'ollama' ? 'http://localhost:11434' : 'Standard API Endpoint'}</div>
-                        </div>
+                        </SettingSection>
                     )}
 
-                    <div className="setting-card stagger-4">
-                        <div className="setting-card-header">
-                            <Zap size={16} />
-                            <h4>Phase 4: Optimization</h4>
-                        </div>
-                        <p>Fine-tune the intelligence engine with specific model overrides.</p>
+                    <SettingSection
+                        title="Model Optimization"
+                        description="Fine-tune the intelligence engine with specific model-level overrides."
+                        icon={Zap}
+                    >
                         <div className="input-group">
                             <input
                                 type="text"
@@ -236,8 +245,8 @@ export const AISettings: React.FC = () => {
                                 onChange={(e) => setConfig({ ...config, aiModel: e.target.value })}
                             />
                         </div>
-                        <div className="setting-hint-clean">Leave empty for Xenon-optimized defaults.</div>
-                    </div>
+                        <div className="setting-hint-clean">Leave empty for Xenon binary-optimized defaults.</div>
+                    </SettingSection>
                 </div>
 
                 {/* Validation Actions */}
@@ -265,19 +274,15 @@ export const AISettings: React.FC = () => {
                         <span>{status.message}</span>
                     </div>
                 )}
-
-                <div className="settings-footer">
-                    <div className="footer-right">
-                        <button className="reset-btn" onClick={loadConfig} disabled={saving}>
-                            Discard Changes
-                        </button>
-                        <button className="save-btn" onClick={handleSave} disabled={saving || isTesting}>
-                            {saving ? <RefreshCw className="animate-spin" size={18} /> : <Save size={18} />}
-                            {saving ? 'Synchronizing...' : 'Apply Elastic Intelligence'}
-                        </button>
-                    </div>
-                </div>
             </div>
+
+            <ActionBar
+                onSave={handleSave}
+                onDiscard={loadConfig}
+                onRestoreDefaults={handleResetToDefaults}
+                isSaving={saving}
+                isValidating={isTesting}
+            />
         </div>
     );
 };

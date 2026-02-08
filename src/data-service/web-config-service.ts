@@ -4,6 +4,10 @@ import { Service } from 'typedi';
 export interface IWebConfig {
   healthCheckIntervalMs?: number;
   healthCheckSchedule?: string;
+  buildCleanupDays?: number;
+  buildCleanupMaxCount?: number;
+  buildCleanupSchedule?: string;
+  deleteBuildAssets?: boolean;
 }
 
 @Service()
@@ -21,6 +25,14 @@ export class WebConfigService {
         result.healthCheckIntervalMs = parseInt(config.value);
       } else if (config.name === 'healthCheckSchedule') {
         result.healthCheckSchedule = config.value;
+      } else if (config.name === 'buildCleanupDays') {
+        result.buildCleanupDays = parseInt(config.value);
+      } else if (config.name === 'buildCleanupMaxCount') {
+        result.buildCleanupMaxCount = parseInt(config.value);
+      } else if (config.name === 'buildCleanupSchedule') {
+        result.buildCleanupSchedule = config.value;
+      } else if (config.name === 'deleteBuildAssets') {
+        result.deleteBuildAssets = config.value === 'true';
       }
     }
     return result;
@@ -52,6 +64,62 @@ export class WebConfigService {
             id: this.CONFIG_ID,
             name: 'healthCheckSchedule',
             value: config.healthCheckSchedule,
+          },
+        }),
+      );
+    }
+
+    if (config.buildCleanupDays !== undefined) {
+      promises.push(
+        prisma.webConfig.upsert({
+          where: { name: 'buildCleanupDays' },
+          update: { value: config.buildCleanupDays.toString() },
+          create: {
+            id: this.CONFIG_ID,
+            name: 'buildCleanupDays',
+            value: config.buildCleanupDays.toString(),
+          },
+        }),
+      );
+    }
+
+    if (config.buildCleanupMaxCount !== undefined) {
+      promises.push(
+        prisma.webConfig.upsert({
+          where: { name: 'buildCleanupMaxCount' },
+          update: { value: config.buildCleanupMaxCount.toString() },
+          create: {
+            id: this.CONFIG_ID,
+            name: 'buildCleanupMaxCount',
+            value: config.buildCleanupMaxCount.toString(),
+          },
+        }),
+      );
+    }
+
+    if (config.buildCleanupSchedule !== undefined) {
+      promises.push(
+        prisma.webConfig.upsert({
+          where: { name: 'buildCleanupSchedule' },
+          update: { value: config.buildCleanupSchedule },
+          create: {
+            id: this.CONFIG_ID,
+            name: 'buildCleanupSchedule',
+            value: config.buildCleanupSchedule,
+          },
+        }),
+      );
+    }
+
+    if (config.deleteBuildAssets !== undefined) {
+      promises.push(
+        prisma.webConfig.upsert({
+          where: { name: 'deleteBuildAssets' },
+          update: { value: config.deleteBuildAssets.toString() },
+          create: {
+            id: this.CONFIG_ID,
+            name: 'deleteBuildAssets',
+            value: config.deleteBuildAssets.toString(),
           },
         }),
       );

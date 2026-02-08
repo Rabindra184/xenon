@@ -6,6 +6,7 @@ echo "🚀 Starting Xenon Production Build..."
 cd web
 npm run build
 cd ..
-rm -rf src/public/*
+rm -rf src/public
+mkdir -p src/public
 cp -R web/build/* src/public/
 echo "✅ Xenon build complete."

@@ -61,7 +61,7 @@ export class HealthMonitorService {
       this.log.info(`Scheduling Health Monitor (Cron: ${args.healthCheckSchedule})`);
       this.job = schedule.scheduleJob(args.healthCheckSchedule, () => this.checkAllDevices());
     } else {
-      const intervalMs = args.healthCheckIntervalMs || 30000;
+      const intervalMs = args.healthCheckIntervalMs || 86400000;
       this.log.info(`Starting Health Monitor Service (Interval: ${intervalMs}ms)`);
       this.interval = setInterval(() => this.checkAllDevices(), intervalMs);
     }
@@ -101,31 +101,32 @@ export class HealthMonitorService {
         // AND not currently streaming to a manual viewer.
         if (device.busy) {
           const hasActiveSession = SESSION_MANAGER.isValidSession(device.session_id || '');
+          const isManualStream = device.session_id?.startsWith('manual_');
 
           // NEW: Check for active manual streams (dashboard viewers)
           let hasActiveManualStream = false;
           try {
             if (['ios', 'tvos'].includes(device.platform)) {
-              const IOSStreamService = (await import('./ios/IOSStreamService')).default;
-              const iosStream = Container.get(IOSStreamService);
+              await import('./ios/IOSStreamService');
+              const iosStream = Container.get<any>('IOSStreamService');
               const streamStatus = iosStream.getStreamStatus(device.udid);
               hasActiveManualStream = !!(streamStatus && (streamStatus.status === 'running' || streamStatus.status === 'starting'));
             } else if (device.platform === 'android') {
-              const AndroidStreamService = (await import('./android/AndroidStreamService')).default;
-              const androidStream = Container.get(AndroidStreamService);
+              await import('./android/AndroidStreamService');
+              const androidStream = Container.get<any>('AndroidStreamService');
               const streamStatus = androidStream.getStreamStatus(device.udid);
               hasActiveManualStream = !!(streamStatus && (streamStatus.status === 'running' || streamStatus.status === 'starting'));
             }
           } catch (e) { /* Stream service not available */ }
 
-          if (hasActiveSession || hasActiveManualStream) {
+          if (hasActiveSession || hasActiveManualStream || isManualStream) {
             log.debug(
-              `[HealthMonitor] Skipping check for busy device ${device.udid} (Active: Session=${!!hasActiveSession}, Stream=${hasActiveManualStream})`,
+              `[HealthMonitor] Skipping check for busy device ${device.udid} (Active: Session=${!!hasActiveSession}, Manual=${isManualStream}, Stream=${hasActiveManualStream})`,
             );
             continue;
           } else {
             this.log.info(
-              `[HealthMonitor] 🧟 Zombie busy device detected ${device.udid}. Last session ${device.session_id} is not in memory. Proceeding with health check.`
+              `[HealthMonitor] 🧟 Zombie busy device detected ${device.udid}. Last session ${device.session_id} is not in memory and no manual stream found. Proceeding with health check.`
             );
           }
         }
@@ -148,10 +149,29 @@ export class HealthMonitorService {
 
             // Principal Fix: If this was a zombie busy device, reset its busy status
             // so it can be recovered and utilized again.
-            if (device.busy && !SESSION_MANAGER.isValidSession(device.session_id || '')) {
-              this.log.info(`[HealthMonitor] Reclaiming zombie device ${device.udid}`);
-              updateData.busy = false;
-              updateData.session_id = undefined;
+            // Double-check: Must NOT be an active session AND NOT an active stream/manual control
+            const hasSessionNow = SESSION_MANAGER.isValidSession(device.session_id || '');
+            const isManualNow = device.session_id?.startsWith('manual_');
+
+            if (device.busy && !hasSessionNow && !isManualNow) {
+              // Re-check stream status immediately before reclaiming
+              let hasStreamNow = false;
+              try {
+                if (['ios', 'tvos'].includes(device.platform)) {
+                  hasStreamNow = !!Container.get<any>('IOSStreamService').getStreamStatus(device.udid);
+                } else if (device.platform === 'android') {
+                  hasStreamNow = !!Container.get<any>('AndroidStreamService').getStreamStatus(device.udid);
+                }
+              } catch (e) { /* ignore */ }
+
+              if (!hasStreamNow) {
+                this.log.info(`[HealthMonitor] Reclaiming zombie device ${device.udid}`);
+                updateData.busy = false;
+                updateData.session_id = undefined;
+              } else {
+                this.log.debug(`[HealthMonitor] Cancelled reclamation for ${device.udid} - stream appeared.`);
+                continue;
+              }
             }
 
             await store.updateDevice(device.udid, device.host, updateData);

@@ -3,11 +3,12 @@ class ApiClient {
     return fetch(this.formatUrl(url)).then(this.jsonResult);
   }
 
-  public makePOSTRequest(url: string, queryParams: any, body: any) {
+  public makePOSTRequest(url: string, queryParams: any, body: any, options: RequestInit = {}) {
     return fetch(this.formatUrl(url), {
       method: 'POST',
       body: JSON.stringify(body || {}),
       headers: { 'Content-Type': 'application/json' },
+      ...options
     }).then(this.jsonResult);
   }
 

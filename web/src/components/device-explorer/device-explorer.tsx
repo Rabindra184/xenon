@@ -1,12 +1,15 @@
 import React from 'react';
 import { Smartphone as AndroidIcon, Apple as AppleIcon, Search, RefreshCw } from 'lucide-react';
+import { useParams, useNavigate } from 'react-router-dom';
 import CardView from './card-view/card-view';
 import './device-explorer.css';
 import XenonApiService from '../../api-service';
+import DeviceControl from '../device-control/device-control';
 import { IDeviceFilter } from '../../interfaces/IDeviceFilter';
 import { IDevice } from '../../interfaces/IDevice';
 import { Button } from '../ui/button';
 import { Badge } from '../ui/badge';
+import { useSocket } from '../../hooks/useSocket';
 
 interface IDeviceExplorerState {
   filter: IDeviceFilter;
@@ -29,8 +32,16 @@ const DEFAULT_FILTER: IDeviceFilter = {
   name: '',
 };
 
-export default class DeviceExplorer extends React.Component<any, IDeviceExplorerState> {
+interface IDeviceExplorerProps {
+  params: any;
+  navigate: any;
+  onSocketEvent: (event: string, callback: (data: any) => void) => () => void;
+}
+
+export class DeviceExplorer extends React.Component<IDeviceExplorerProps, IDeviceExplorerState> {
   private devicePolling: any;
+  private socketCleanups: (() => void)[] = [];
+  private refreshTimeout: NodeJS.Timeout | null = null;
 
   constructor(props: any) {
     super(props);
@@ -48,6 +59,17 @@ export default class DeviceExplorer extends React.Component<any, IDeviceExplorer
     this.devicePolling = setInterval(() => {
       this.fetchDevices();
     }, 10000);
+
+    // Register real-time updates
+    const unblockedCleanup = this.props.onSocketEvent('device_unblocked', () => {
+      console.info('Real-time: Device unblocked, triggering debounced refresh');
+      this.fetchDevicesDebounced();
+    });
+    const blockedCleanup = this.props.onSocketEvent('device_blocked', () => {
+      console.info('Real-time: Device blocked, triggering debounced refresh');
+      this.fetchDevicesDebounced();
+    });
+    this.socketCleanups.push(unblockedCleanup, blockedCleanup);
   }
 
   componentWillUnmount() {
@@ -55,6 +77,19 @@ export default class DeviceExplorer extends React.Component<any, IDeviceExplorer
       clearInterval(this.devicePolling);
       this.devicePolling = undefined;
     }
+    if (this.refreshTimeout) {
+      clearTimeout(this.refreshTimeout);
+      this.refreshTimeout = null;
+    }
+    this.socketCleanups.forEach(cleanup => cleanup());
+  }
+
+  fetchDevicesDebounced() {
+    if (this.refreshTimeout) clearTimeout(this.refreshTimeout);
+    this.refreshTimeout = setTimeout(() => {
+      this.refreshTimeout = null;
+      this.fetchDevices();
+    }, 500); // 500ms debounce
   }
 
   getBusyDevicesCount(devices: Array<IDevice>) {
@@ -196,6 +231,9 @@ export default class DeviceExplorer extends React.Component<any, IDeviceExplorer
 
   render() {
     const devices = this.getFilteredDevice();
+    const { udid } = this.props.params;
+    const selectedDevice = udid ? this.state.devices.find(d => d.udid === udid) : null;
+
     return (
       <div className="device-explorer-container">
         <div className="device-explorer-header-container">
@@ -264,7 +302,24 @@ export default class DeviceExplorer extends React.Component<any, IDeviceExplorer
           </div>
         </div>
         <CardView devices={devices} reloadDevices={() => this.fetchDevices()} />
+        {selectedDevice && (
+          <div className="device-control-modal-overlay">
+            <div className="device-control-modal">
+              <DeviceControl
+                device={selectedDevice}
+                onClose={() => this.props.navigate('/devices')}
+              />
+            </div>
+          </div>
+        )}
       </div>
     );
   }
+}
+
+export default function DeviceExplorerWrapper() {
+  const params = useParams();
+  const navigate = useNavigate();
+  const { on } = useSocket();
+  return <DeviceExplorer params={params} navigate={navigate} onSocketEvent={on} />;
 }

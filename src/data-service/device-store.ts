@@ -60,7 +60,13 @@ class LokiDeviceStore implements IDeviceStore {
             filter.userBlocked = filterOptions.userBlocked;
             break;
           case 'udid':
-            if (filterOptions.udid.length > 0) filter.udid = { $in: filterOptions.udid };
+            if (filterOptions.udid) {
+              if (Array.isArray(filterOptions.udid)) {
+                if (filterOptions.udid.length > 0) filter.udid = { $in: filterOptions.udid };
+              } else {
+                filter.udid = filterOptions.udid;
+              }
+            }
             break;
           case 'deviceType':
             filter.deviceType = filterOptions.deviceType;
@@ -144,6 +150,19 @@ class LokiDeviceStore implements IDeviceStore {
 
   async findDevices(filter: Partial<IDevice>): Promise<IDevice[]> {
     return (await XenonDatabase.DeviceModel).find(filter);
+  }
+
+  async findAndLockDevice(filterOptions: IDeviceFilterOptions): Promise<IDevice | null> {
+    const devices = await this.getDevices(filterOptions);
+    // Find first device that is not busy and not user blocked
+    // (getDevices already filters for busy: false and userBlocked: false if provided in filterOptions)
+    const available = devices.find((d) => !d.busy && !d.userBlocked);
+    if (available) {
+      // Mark as busy immediately
+      await this.updateDevice(available.udid, available.host, { busy: true });
+      return available;
+    }
+    return null;
   }
 
   async resetMetrics(): Promise<void> {

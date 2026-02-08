@@ -35,12 +35,13 @@ import {
   updateDeviceList,
   setupCronCleanPendingSessions,
   setupCronCleanExpiredReservations,
+  setupCronCleanupBuilds,
   removeStaleDevices,
 } from './device-utils';
 import { XenonManager } from './device-managers';
 import { Container } from 'typedi';
 import { PluginContext } from './PluginContext';
-import log from './logger';
+import log, { XenonLogger } from './logger';
 import { v4 as uuidv4 } from 'uuid';
 import axios, { AxiosError } from 'axios';
 import { HttpsProxyAgent } from 'https-proxy-agent';
@@ -85,6 +86,12 @@ import { HealingOrchestrator } from './services/healing/HealingOrchestrator';
 import { HealEtalonService } from './services/healing/HealEtalonService';
 import { OmniVisionService } from './services/omni-vision/OmniVisionService';
 import { VisionAssertionService } from './services/omni-vision/VisionAssertionService';
+import { SocketServer } from './services/SocketServer';
+import { SocketClient } from './services/SocketClient';
+import { TracingService } from './services/TracingService';
+import AndroidDeviceManager from './device-managers/AndroidDeviceManager';
+import IOSDeviceManager from './device-managers/IOSDeviceManager';
+import { Span } from '@opentelemetry/api';
 
 const commandsQueueGuard = new AsyncLock();
 const DEVICE_MANAGER_LOCK_NAME = 'DeviceManager';
@@ -151,6 +158,9 @@ class XenonPlugin extends BasePlugin {
       process.env.ANTHROPIC_API_KEY = this.pluginArgs.anthropicApiKey;
     }
 
+    // Sync Logger Config
+    XenonLogger.configure({ enableJsonLogging: this.pluginArgs.enableJsonLogging });
+
     // not pretty but will do for now
     if (this.pluginArgs.bindHostOrIp === undefined) {
       this.pluginArgs.bindHostOrIp = ip.address();
@@ -180,222 +190,266 @@ class XenonPlugin extends BasePlugin {
       return await next();
     }
 
-    // Skip createSession and deleteSession as they have their own handlers
-    if (commandName === 'createSession' || commandName === 'deleteSession') {
-      return await next();
-    }
-
-    // For local sessions on hub with dashboard enabled, capture command logs
+    const isDashboardEnabled = !!this.pluginArgs.enableDashboard;
     const sessionId = (driver.sessionId as string) || args[args.length - 1];
 
-    // Principal Activity: Update the last command timestamp to prevent idle timeout
-    const { updateCmdExecutedTime } = await import('./data-service/device-service');
-    await updateCmdExecutedTime(sessionId);
-
-    const isDashboardEnabled = !!this.pluginArgs.enableDashboard;
-
-    // --- OMNI-VISION: PROACTIVE SEARCH ---
-    const locatorCommands = ['findElement', 'findElements'];
-    const strategy = args[0];
-    const selector = args[1];
-    if (
-      locatorCommands.includes(commandName) &&
-      (strategy === '-custom:ai-icon' || strategy === '-custom:ai-text')
-    ) {
-      log.info(`[XenonPlugin] Proactive Omni-Vision search detected: ${strategy} -> ${selector}`);
-      return await this.handleOmniVisionSearch(sessionId, driver, commandName, strategy, selector);
+    // --- TRACING: START COMMAND SPAN ---
+    const tracingService = Container.get(TracingService);
+    let span: Span | undefined;
+    if (XenonPlugin.IS_HUB && sessionId) {
+      span = tracingService.startCommandSpan(sessionId, commandName, {
+        'xenon.command.args': JSON.stringify(args),
+      });
     }
 
-    // --- OMNI-VISION: VIRTUAL ELEMENT INTERACTION ---
-    const elementCommands = [
-      'click',
-      'getElementRect',
-      'getElementLocation',
-      'getElementSize',
-      'getText',
-      'setValue',
-    ];
-    if (elementCommands.includes(commandName)) {
-      const elementId = args[0];
-      if (
-        typeof elementId === 'string' &&
-        (elementId.startsWith('omni_') ||
-          elementId.startsWith('healed_ocr') ||
-          elementId.startsWith('healed_visual'))
-      ) {
-        return await this.handleVirtualElementCommand(
-          sessionId,
-          driver,
-          commandName,
-          elementId,
-          args[1],
-        );
+    // Skip createSession and deleteSession as they have their own handlers
+    if (commandName === 'createSession' || commandName === 'deleteSession') {
+      try {
+        return await next();
+      } finally {
+        if (span) tracingService.endSpan(`${sessionId}:${commandName}`);
       }
     }
 
-    // Intercept execute command for dashboard commands
-    if (XenonPlugin.IS_HUB && isDashboardEnabled && commandName === 'execute') {
-      const script = args[0];
+    try {
+      // Principal Activity: Update the last command timestamp to prevent idle timeout
+      const { updateCmdExecutedTime } = await import('./data-service/device-service');
+      await updateCmdExecutedTime(sessionId);
+
+      // Track command start time for duration calculation
+      await DASHBORD_EVENT_MANAGER.beforeSessionCommand(sessionId, commandName, {} as any, {} as any);
+
+      // --- OMNI-VISION: PROACTIVE SEARCH ---
+      const locatorCommands = ['findElement', 'findElements'];
+      const strategy = args[0];
+      const selector = args[1];
       if (
-        script &&
-        typeof script === 'string' &&
-        (script.startsWith('xenon') || script.startsWith('devicefarm'))
+        locatorCommands.includes(commandName) &&
+        (strategy === '-custom:ai-icon' || strategy === '-custom:ai-text')
       ) {
-        log.info(`[XenonPlugin] Dashboard command detected: ${script}`);
-        // Execute the dashboard command directly
-        const commandName = script.split(':')[1]?.trim();
-        if (commandName) {
-          const commandArgs = args[1];
-          await this.executeDashboardCommand(sessionId, commandName, commandArgs);
-          return null; // Dashboard commands don't return a value
+        log.info(`[XenonPlugin] Proactive Omni-Vision search detected: ${strategy} -> ${selector}`);
+        return await this.handleOmniVisionSearch(sessionId, driver, commandName, strategy, selector);
+      }
+
+      // --- OMNI-VISION: VIRTUAL ELEMENT INTERACTION ---
+      const elementCommands = [
+        'click',
+        'getElementRect',
+        'getElementLocation',
+        'getElementSize',
+        'getText',
+        'setValue',
+      ];
+      if (elementCommands.includes(commandName)) {
+        const elementId = args[0];
+        if (
+          typeof elementId === 'string' &&
+          (elementId.startsWith('omni_') ||
+            elementId.startsWith('healed_ocr') ||
+            elementId.startsWith('healed_visual'))
+        ) {
+          return await this.handleVirtualElementCommand(
+            sessionId,
+            driver,
+            commandName,
+            elementId,
+            args[1],
+          );
         }
       }
-    }
 
-    if (XenonPlugin.IS_HUB && isDashboardEnabled && SESSION_MANAGER.isValidSession(sessionId)) {
-      try {
-        const response = await next();
-
-        // Log the successful command
-        await DASHBORD_EVENT_MANAGER.afterSessionCommand(
-          sessionId,
-          commandName,
-          driver,
-          {
-            body: args,
-            method: 'POST',
-            path: `/${commandName}`,
-            originalUrl: `/${commandName}`,
-          } as any,
-          {} as any,
-          JSON.stringify({ value: response, sessionId }),
-        );
-
-        // --- BACKGROUND: LEARNING PHASE ---
-        // Save locator signature for successful findElement to enable better healing later
-        if (commandName === 'findElement' && response) {
-          const strategy = args[0];
-          const selector = args[1];
-          const elementId = response.ELEMENT || response['element-6066-11e4-a52e-4f735466cecf'];
-
-          if (elementId && typeof selector === 'string') {
-            (async () => {
-              try {
-                const etalonService = Container.get(HealEtalonService);
-                const anchors = ['content-desc', 'resource-id', 'text', 'name', 'id', 'hint'];
-                const nodeAttrs: { name: string; value: string }[] = [];
-
-                for (const attr of anchors) {
-                  try {
-                    const val = await driver.getElementAttribute(elementId, attr);
-                    if (val) nodeAttrs.push({ name: attr, value: val });
-                  } catch (e) {
-                    // ignore attribute fetch errors
-                  }
-                }
-
-                const nodeName = await driver.getElementTagName(elementId);
-                await etalonService.saveSignature(strategy, selector, {
-                  nodeName,
-                  attributes: nodeAttrs,
-                });
-              } catch (err: any) {
-                // background error logging
-                this.xenonLog.debug(`[Learning] Failed to capture signature: ${err.message}`);
-              }
-            })();
+      // Intercept execute command for dashboard commands
+      if (XenonPlugin.IS_HUB && isDashboardEnabled && commandName === 'execute') {
+        const script = args[0];
+        if (
+          script &&
+          typeof script === 'string' &&
+          (script.startsWith('xenon') || script.startsWith('devicefarm'))
+        ) {
+          log.info(`[XenonPlugin] Dashboard command detected: ${script}`);
+          // Execute the dashboard command directly
+          const commandName = script.split(':')[1]?.trim();
+          if (commandName) {
+            const commandArgs = args[1];
+            await this.executeDashboardCommand(sessionId, commandName, commandArgs);
+            return null; // Dashboard commands don't return a value
           }
         }
-        // --- END LEARNING PHASE ---
+      }
 
-        return response;
-      } catch (error: any) {
-        // --- SELF-HEALING LOGIC ---
-        // Intercept NoSuchElement errors for findElement/findElements
-        const locatorCommands = ['findElement', 'findElements'];
-        const isNoSuchElement = error.name === 'NoSuchElementError' ||
-          error.message?.includes('NoSuchElement') ||
-          error.status === 7; // legacy JSONWP status
+      if (XenonPlugin.IS_HUB && isDashboardEnabled && SESSION_MANAGER.isValidSession(sessionId)) {
+        try {
+          const response = await next();
 
-        if (locatorCommands.includes(commandName) && isNoSuchElement) {
-          if (this.pluginArgs.enableSelfHealing === false) {
-            log.info(`[XenonPlugin] Element not found, but Self-Healing is DISABLED by configuration.`);
-          } else {
-            log.info(`[XenonPlugin] Element not found for command ${commandName}. Attempting Self-Healing...`);
+          // Log the successful command
+          await DASHBORD_EVENT_MANAGER.afterSessionCommand(
+            sessionId,
+            commandName,
+            driver,
+            {
+              body: args,
+              method: 'POST',
+              path: `/${commandName}`,
+              originalUrl: `/${commandName}`,
+            } as any,
+            {} as any,
+            JSON.stringify({ value: response, sessionId }),
+          );
 
-            try {
-              // We need strategy and selector which are args[0] and args[1]
-              const strategy = args[0];
-              const selector = args[1];
-              const orchestrator = Container.get(HealingOrchestrator);
+          // --- BACKGROUND: LEARNING PHASE ---
+          // Save locator signature for successful findElement to enable better healing later
+          if (commandName === 'findElement' && response) {
+            const strategy = args[0];
+            const selector = args[1];
+            const elementId = response.ELEMENT || response['element-6066-11e4-a52e-4f735466cecf'];
 
-              const healed = await orchestrator.attemptHealing(sessionId, driver, strategy, selector);
+            if (elementId && typeof selector === 'string') {
+              (async () => {
+                try {
+                  const etalonService = Container.get(HealEtalonService);
+                  const anchors = ['content-desc', 'resource-id', 'text', 'name', 'id', 'hint'];
+                  const nodeAttrs: { name: string; value: string }[] = [];
 
-              if (healed) {
-                // SUCCESS! Return the healed element to the test script
-                log.info(`[XenonPlugin] ✅ Self-Healing successful! Tier ${healed.tier}: ${healed.message}`);
+                  for (const attr of anchors) {
+                    try {
+                      const val = await driver.getElementAttribute(elementId, attr);
+                      if (val) nodeAttrs.push({ name: attr, value: val });
+                    } catch (e) {
+                      // ignore attribute fetch errors
+                    }
+                  }
 
-                // Log the healing event to the dashboard
-                await DASHBORD_EVENT_MANAGER.afterSessionCommand(
-                  sessionId,
-                  commandName,
-                  driver,
-                  {
-                    body: args,
-                    method: 'POST',
-                    path: `/${commandName}`,
-                    originalUrl: `/${commandName}`,
-                  } as any,
-                  {} as any,
-                  JSON.stringify({ value: { ELEMENT: healed.id }, sessionId }),
-                  {
-                    originalSelector: args[1], // selection
-                    healedSelector: healed.recommendedSelector,
-                    confidence: healed.confidence,
-                  },
-                );
+                  const nodeName = await driver.getElementTagName(elementId);
 
-                // For findElement, we return a single element object
-                // For findElements, we return an array
-                if (commandName === 'findElement') {
-                  return {
-                    ELEMENT: healed.id,
-                    'element-6066-11e4-a52e-4f735466cecf': healed.id
-                  };
-                } else {
-                  return [{
-                    ELEMENT: healed.id,
-                    'element-6066-11e4-a52e-4f735466cecf': healed.id
-                  }];
+                  // --- NEW: Capture ResilioTree Path ---
+                  let resiliotreePathJson: any = null;
+                  try {
+                    const { JSDOMParser, Path } = await import('resiliotree');
+                    const pageSource = await driver.getPageSource();
+                    const parser = new JSDOMParser();
+                    const rootNode = parser.parse(pageSource);
+
+                    const foundNode = this.findMatchingNode(rootNode, nodeName, nodeAttrs);
+                    if (foundNode) {
+                      const pathNodes: any[] = [];
+                      let curr: any = foundNode;
+                      while (curr) {
+                        pathNodes.unshift(curr);
+                        curr = curr.parent;
+                      }
+                      resiliotreePathJson = new Path(pathNodes).toJSON();
+                      this.xenonLog.debug(`[Learning] Captured ResilioTree path for ${selector}`);
+                    }
+                  } catch (e: any) {
+                    this.xenonLog.debug(`[Learning] Failed to capture ResilioTree path: ${e.message}`);
+                  }
+
+                  await etalonService.saveSignature(strategy, selector, {
+                    nodeName,
+                    attributes: nodeAttrs,
+                  }, resiliotreePathJson);
+                } catch (err: any) {
+                  // background error logging
+                  this.xenonLog.debug(`[Learning] Failed to capture signature: ${err.message}`);
                 }
-              }
-            } catch (healErr: any) {
-              log.error(`[XenonPlugin] Self-healing system error: ${healErr.message}`);
+              })();
             }
           }
+          // --- END LEARNING PHASE ---
+
+          return response;
+        } catch (error: any) {
+          // --- SELF-HEALING LOGIC ---
+          // Intercept NoSuchElement errors for findElement/findElements
+          const locatorCommands = ['findElement', 'findElements'];
+          const isNoSuchElement = error.name === 'NoSuchElementError' ||
+            error.message?.includes('NoSuchElement') ||
+            error.status === 7; // legacy JSONWP status
+
+          if (locatorCommands.includes(commandName) && isNoSuchElement) {
+            if (this.pluginArgs.enableSelfHealing === false) {
+              log.info(`[XenonPlugin] Element not found, but Self-Healing is DISABLED by configuration.`);
+            } else {
+              log.info(`[XenonPlugin] Element not found for command ${commandName}. Attempting Self-Healing...`);
+
+              try {
+                // We need strategy and selector which are args[0] and args[1]
+                const strategy = args[0];
+                const selector = args[1];
+                const orchestrator = Container.get(HealingOrchestrator);
+
+                const healed = await orchestrator.attemptHealing(sessionId, driver, strategy, selector);
+
+                if (healed) {
+                  // SUCCESS! Return the healed element to the test script
+                  log.info(`[XenonPlugin] ✅ Self-Healing successful! Tier ${healed.tier}: ${healed.message}`);
+
+                  // Log the healing event to the dashboard
+                  await DASHBORD_EVENT_MANAGER.afterSessionCommand(
+                    sessionId,
+                    commandName,
+                    driver,
+                    {
+                      body: args,
+                      method: 'POST',
+                      path: `/${commandName}`,
+                      originalUrl: `/${commandName}`,
+                    } as any,
+                    {} as any,
+                    JSON.stringify({ value: { ELEMENT: healed.id }, sessionId }),
+                    {
+                      originalSelector: args[1], // selection
+                      healedSelector: healed.recommendedSelector,
+                      confidence: healed.confidence,
+                    },
+                  );
+
+                  // For findElement, we return a single element object
+                  // For findElements, we return an array
+                  if (commandName === 'findElement') {
+                    return {
+                      ELEMENT: healed.id,
+                      'element-6066-11e4-a52e-4f735466cecf': healed.id
+                    };
+                  } else {
+                    return [{
+                      ELEMENT: healed.id,
+                      'element-6066-11e4-a52e-4f735466cecf': healed.id
+                    }];
+                  }
+                }
+              } catch (healErr: any) {
+                log.error(`[XenonPlugin] Self-healing system error: ${healErr.message}`);
+              }
+            }
+          }
+          // --- END SELF-HEALING ---
+
+          // Log the failed command
+          await DASHBORD_EVENT_MANAGER.afterSessionCommand(
+            sessionId,
+            commandName,
+            driver,
+            {
+              body: args,
+              method: 'POST',
+              path: `/${commandName}`,
+              originalUrl: `/${commandName}`,
+            } as any,
+            {} as any,
+            JSON.stringify({ value: { error: error.message || error }, sessionId }),
+          );
+
+          throw error;
         }
-        // --- END SELF-HEALING ---
+      }
 
-        // Log the failed command
-        await DASHBORD_EVENT_MANAGER.afterSessionCommand(
-          sessionId,
-          commandName,
-          driver,
-          {
-            body: args,
-            method: 'POST',
-            path: `/${commandName}`,
-            originalUrl: `/${commandName}`,
-          } as any,
-          {} as any,
-          JSON.stringify({ value: { error: error.message || error }, sessionId }),
-        );
-
-        throw error;
+      return await next();
+    } finally {
+      if (XenonPlugin.IS_HUB && sessionId && span) {
+        tracingService.endSpan(`${sessionId}:${commandName}`);
       }
     }
-
-    return await next();
   }
 
   async onUnexpectedShutdown(driver: any, _cause: any) {
@@ -448,6 +502,11 @@ class XenonPlugin extends BasePlugin {
         SessionStatus.FAILED,
         'Driver shut down unexpectedly',
       );
+
+      // End session span
+      Container.get(TracingService).endSpan(sessionId, 'ERROR', {
+        'xenon.session.stop_reason': 'Unexpected shutdown',
+      });
     }
   }
 
@@ -578,6 +637,16 @@ class XenonPlugin extends BasePlugin {
     const pluginContext = Container.get(PluginContext);
     pluginContext.setContext(pluginArgs, cliArgs.port, XenonPlugin.NODE_ID, cliArgs.basePath || '');
 
+    // Register Stores in Container for Dependency Injection
+    Container.set('DeviceStore', DeviceStoreFactory.getStore());
+    Container.set('PendingSessionStore', DeviceStoreFactory.getPendingSessionStore());
+    Container.set('CLIArgsStore', DeviceStoreFactory.getCLIArgsStore());
+    Container.set('HealEtalonStore', DeviceStoreFactory.getHealEtalonStore());
+
+    // Register Device Managers in Container for string-based lookup (e.g. in InspectorService)
+    Container.set('AndroidDeviceManager', Container.get(AndroidDeviceManager));
+    Container.set('IOSDeviceManager', Container.get(IOSDeviceManager));
+
     // Now get XenonManager from TypeDI (it will use PluginContext via injection)
     const deviceManager = Container.get(XenonManager);
     deviceManager.init();
@@ -613,9 +682,21 @@ class XenonPlugin extends BasePlugin {
           process.kill(process.pid, signal);
         });
       });
+
+      // Initialize Socket Client to connect to Hub
+      const socketClient = Container.get(SocketClient);
+      socketClient.initialize(hubArgument, pluginArgs.bindHostOrIp);
     } else {
       XenonPlugin.IS_HUB = true;
       log.info(`🌐 I'm a hub and I'm listening on ${pluginArgs.bindHostOrIp}:${cliArgs.port}`);
+
+      // Initialize Socket Server for the Hub
+      const socketServer = Container.get(SocketServer);
+      socketServer.initialize(httpServer);
+
+      // Initialize Tracing Service
+      const tracingService = Container.get(TracingService);
+      tracingService.initialize();
     }
     if (pluginArgs.cloud == undefined) {
       // check for stale nodes
@@ -635,12 +716,18 @@ class XenonPlugin extends BasePlugin {
       );
       // clean up expired reservations every 1 minute
       await setupCronCleanExpiredReservations(60000);
+      // clean up older builds and sessions
+      await setupCronCleanupBuilds(pluginArgs);
       // unblock all devices on node/hub restart
       await unblockDeviceMatchingFilter({});
 
       // Start Health Monitor Service
       const { HealthMonitorService } = await import('./device-managers/HealthMonitorService');
       Container.get(HealthMonitorService).start(pluginArgs);
+
+      // Start Session Heartbeat Service
+      const { SessionHeartbeatService } = await import('./services/SessionHeartbeatService');
+      Container.get(SessionHeartbeatService).start(pluginArgs);
 
       // Principal Cleaning: Attempt to recover remote sessions before marking as failed
       // This allows remote node sessions to continue if those nodes are still running
@@ -916,6 +1003,16 @@ class XenonPlugin extends BasePlugin {
       (sessionResponse as any).desired = requestedCaps;
 
       const xenonCapabilities = getXenonCapabilities(caps);
+
+      // --- TRACING: START SESSION SPAN ---
+      const tracingService = Container.get(TracingService);
+      if (XenonPlugin.IS_HUB) {
+        tracingService.startSessionSpan(sessionId, xenonCapabilities[XENON_CAPABILITIES.SESSION_NAME] || sessionId, {
+          'xenon.build_name': xenonCapabilities[XENON_CAPABILITIES.BUILD_NAME],
+          'xenon.platform': device.platform,
+          'xenon.udid': device.udid,
+        });
+      }
 
       log.info(`📱 Device UDID ${device.udid} blocked for session ${sessionId}`);
       await updatedAllocatedDevice(device, {
@@ -1503,6 +1600,40 @@ class XenonPlugin extends BasePlugin {
       default:
         throw new Error(`Command ${commandName} is not yet supported for visual elements`);
     }
+  }
+
+  /**
+   * Helper to find a matching node in a ResilioTree for the learning phase
+   */
+  private findMatchingNode(root: any, tag: string, attributes: { name: string; value: string }[]): any {
+    const attrMap = new Map(attributes.map((a) => [a.name.toLowerCase(), a.value]));
+    const queue = [root];
+
+    while (queue.length > 0) {
+      const node = queue.shift();
+
+      // Simple heuristic match for learning phase
+      if (node.tag.toLowerCase() === tag.toLowerCase()) {
+        let matchCount = 0;
+        for (const [name, value] of attrMap) {
+          if (
+            node.otherAttributes.get(name) === value ||
+            node.id === value ||
+            node.classes.has(value)
+          ) {
+            matchCount++;
+          }
+        }
+        // If we match at least one major attribute, we consider it a candidate
+        // In the teaching phase, this is usually enough as we are on the "correct" screen
+        if (matchCount > 0) return node;
+      }
+
+      if (node.children) {
+        queue.push(...node.children);
+      }
+    }
+    return null;
   }
 }
 

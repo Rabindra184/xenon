@@ -35,11 +35,15 @@ interface DeviceControlProps {
 
 type TabType = 'actions' | 'screenshot' | 'logs' | 'terminal' | 'omni';
 
+import { useNavigate, useParams } from 'react-router-dom';
+
 export default function DeviceControl({ device, onClose }: DeviceControlProps) {
+  const navigate = useNavigate();
+  const { tab } = useParams();
   const canvasRef = useRef<HTMLDivElement>(null);
   const logContainerRef = useRef<HTMLDivElement>(null);
   const [canvasDimensions, setCanvasDimensions] = useState({ width: 0, height: 0 });
-  const [activeTab, setActiveTab] = useState<TabType>('actions');
+  const [activeTab, setActiveTab] = useState<TabType>((tab as TabType) || 'actions');
   const [textInput, setTextInput] = useState('');
   const [clipboardContent, setClipboardContent] = useState('');
   const [uninstallBundleId, setUninstallBundleId] = useState('');
@@ -65,6 +69,13 @@ export default function DeviceControl({ device, onClose }: DeviceControlProps) {
   const inputBuffer = useRef<string>('');
   const inputTimer = useRef<NodeJS.Timeout | null>(null);
   const [isCanvasFocused, setIsCanvasFocused] = useState(false);
+
+  // Synchronize Tab switch with URL
+  useEffect(() => {
+    if (activeTab && (!tab || tab !== activeTab)) {
+      navigate(`/devices/${device.udid}/control/${activeTab}`, { replace: true });
+    }
+  }, [activeTab, tab, device.udid, navigate]);
 
   // Log Polling for real-time logs
   useEffect(() => {
@@ -296,15 +307,27 @@ export default function DeviceControl({ device, onClose }: DeviceControlProps) {
     };
   }, [currentDevice.udid, currentDevice.platform, isCanvasFocused, activeTab]);
 
+  const [streamTimestamp, setStreamTimestamp] = useState(Date.now());
+
   // Get stream URL
   const getStreamUrl = () => {
-    const ts = Date.now(); // Cache busting
     const retryPrefix = streamRetryCount > 0 ? `r=${streamRetryCount}&` : '';
-    if (currentDevice.session_id) {
-      return `/xenon/api/session/${currentDevice.session_id}/live_video?${retryPrefix}t=${ts}`;
+
+    // Principal Insight: Internal Virtual Sessions
+    // Manual control sessions use ids like "manual_UDID". These are NOT in the database
+    // and should use the dedicated /control endpoint.
+    if (currentDevice.session_id && !String(currentDevice.session_id).startsWith('manual_')) {
+      return `/xenon/api/session/${currentDevice.session_id}/live_video?${retryPrefix}t=${streamTimestamp}`;
     }
-    return `/xenon/api/control/${currentDevice.udid}/stream?${retryPrefix}t=${ts}`;
+    return `/xenon/api/control/${currentDevice.udid}/stream?${retryPrefix}t=${streamTimestamp}`;
   };
+
+  // Update timestamp on retry
+  useEffect(() => {
+    if (streamRetryCount > 0) {
+      setStreamTimestamp(Date.now());
+    }
+  }, [streamRetryCount]);
 
   // Interaction handlers
   const handleMouseDown = useRef<{ x: number; y: number; time: number } | null>(null);
@@ -679,6 +702,7 @@ export default function DeviceControl({ device, onClose }: DeviceControlProps) {
                   <OmniInspector
                     sessionId={currentDevice.session_id ? String(currentDevice.session_id) : null}
                     udid={currentDevice.udid}
+                    streamUrl={getStreamUrl()}
                   />
                 </div>
               )}

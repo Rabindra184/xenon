@@ -122,6 +122,11 @@ const Header: React.FC = () => {
                   <span>AI Intelligence</span>
                 </button>
 
+                <button className="dropdown-item" onClick={() => handleNavClick('/maintenance')}>
+                  <ShieldCheck size={16} />
+                  <span>Maintenance & Retention</span>
+                </button>
+
                 <button className="dropdown-item" onClick={() => window.open(window.location.origin + '/xenon/api-docs', '_blank')}>
                   <BookOpen size={16} />
                   <span>API Documentation</span>

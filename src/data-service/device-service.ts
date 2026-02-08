@@ -7,6 +7,7 @@ import { Container } from 'typedi';
 import { CircuitBreaker } from './CircuitBreaker';
 
 import { NotificationService } from '../services/NotificationService';
+import { SocketServer } from '../services/SocketServer';
 
 const store = DeviceStoreFactory.getStore();
 
@@ -15,6 +16,7 @@ export async function removeDevice(devices: { udid: string; host: string }[]) {
     log.info(`Removing device ${device.udid} from host ${device.host}`);
     await store.removeDevices({ udid: device.udid, host: device.host });
     Container.get(NotificationService).dispatchEvent('device_offline', device);
+    Container.get(SocketServer).emitToDashboard('device_removed', device);
   }
 }
 
@@ -37,6 +39,7 @@ export async function addNewDevice(devices: IDevice[], host?: string): Promise<I
   // Notify for new devices
   for (const device of added) {
     Container.get(NotificationService).dispatchEvent('device_new', device);
+    Container.get(SocketServer).emitToDashboard('device_added', device);
   }
 
   log.debug(`Sync: Added ${added.length} new devices to store`);
@@ -111,8 +114,8 @@ export async function updateDeviceProgress(
 ) {
   log.debug(`[${udid}] progress: ${progress}`);
   await store.updateDevice(udid, host, { sessionProgress: progress, ...extra });
-  // We don't dispatch an event for every progress update to avoid flooding the socket,
-  // but the dashboard poller/refresh will pick it up.
+  // Emit progress update via socket
+  Container.get(SocketServer).emitToDashboard('device_progress', { udid, host, progress, ...extra });
 }
 
 export async function updateCmdExecutedTime(sessionId: string) {
@@ -139,12 +142,14 @@ export async function userUnblockDevice(udid: string, host: string) {
  * @param udid
  * @param host
  */
-export async function blockDevice(udid: string, host: string) {
+export async function blockDevice(udid: string, host: string, sessionId?: string) {
   await store.updateDevice(udid, host, {
     busy: true,
     lastCmdExecutedAt: undefined,
     sessionProgress: '',
+    session_id: sessionId || null as any,
   });
+  Container.get(SocketServer).emitToDashboard('device_blocked', { udid, host, session_id: sessionId });
 }
 
 export async function unblockDevice(udid: string, host: string) {
@@ -176,6 +181,7 @@ export async function unblockDeviceMatchingFilter(filter: object) {
         } as Partial<IDevice>);
 
         log.debug(`Unblocked device ${device.udid}`);
+        Container.get(SocketServer).emitToDashboard('device_unblocked', { udid: device.udid, host: device.host });
       }),
     ).catch((error) => {
       log.error(`Unable to unblock device: ${error}`);

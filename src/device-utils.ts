@@ -59,6 +59,7 @@ let timer: any;
 let cronTimerToReleaseBlockedDevices: any;
 let cronTimerToUpdateDevices: any;
 let cronTimerToCleanPendingSessions: any;
+let cronTimerToCleanupBuilds: any;
 
 export const getDeviceTypeFromApp = (app: string): 'real' | 'simulator' | undefined => {
   /* If the test is targeting safarim, then app capability will be empty */
@@ -106,42 +107,46 @@ export async function allocateDeviceForSession(
   pluginArgs: IPluginArgs,
 ): Promise<IDevice> {
   const firstMatch = Object.assign({}, capability.firstMatch[0], capability.alwaysMatch);
-  // log.debug(`firstMatch: ${JSON.stringify(firstMatch)}`);
   const filters = getDeviceFiltersFromCapability(firstMatch, pluginArgs);
 
-  // log.debug(`Device allocation request for filter: ${JSON.stringify(filters)}`);
   const timeout = firstMatch[customCapability.deviceTimeOut] || deviceTimeOutMs;
   const intervalBetweenAttempts =
     firstMatch[customCapability.deviceQueryInterval] || deviceQueryIntervalMs;
+
+  let device: IDevice | null = null;
+  const store = DeviceStoreFactory.getStore();
 
   try {
     await waitUntil(
       async () => {
         const maxSessions = getDeviceManager().getMaxSessionCount();
         const busyDevicesCount = await getBusyDevicesCount();
-        log.debug(`Max session count: ${maxSessions}, Busy device count: ${busyDevicesCount}`);
         if (maxSessions !== undefined && busyDevicesCount === maxSessions) {
           log.info(
             `Waiting for session available, already at max session count of: ${maxSessions}`,
           );
           return false;
-        } else log.info(`Waiting for free device. Filter: ${JSON.stringify(filters)}}`);
+        }
 
-        // Get matching devices and filter out reserved ones
+        // Get matching devices and find one that is not reserved
         const matchingDevices = await getDevices(filters);
-        const availableDevice = matchingDevices.find((d) => !isDeviceReserved(d));
-        return availableDevice != undefined;
+        const availableCandidate = matchingDevices.find((d) => !isDeviceReserved(d));
+        if (availableCandidate) {
+          // Principal Intelligence: Multi-node consistent locking
+          // Attempt to atomically claim this specific device
+          device = await store.findAndLockDevice({ ...filters, udid: [availableCandidate.udid] });
+          return device !== null;
+        }
+
+        log.info(`Waiting for free device. Filter: ${JSON.stringify(filters)}}`);
+        return false;
       },
       { timeout, intervalBetweenAttempts },
     );
   } catch (err) {
     // figure out whether the device is simply busy or non-existent
-    // there's slight delay between last check and this check
-    // so, it's possible that the device is not busy now
     const filterCopy = { ...filters };
-    // remove the busy flag
     delete filterCopy.busy;
-    // remove the userBlocked flag
     delete filterCopy.userBlocked;
 
     const possibleDevice = await getDevice(filterCopy);
@@ -153,17 +158,15 @@ export async function allocateDeviceForSession(
       failureReason = `Device is reserved by ${possibleDevice.reservedBy}.`;
     }
 
-    // provide friendly error message
     throw new Error(`${failureReason}. Device request: ${JSON.stringify(filterCopy)}`);
   }
 
-  // Get matching devices and find one that is not reserved
-  const matchingDevices = await getDevices(filters);
-  const device = matchingDevices.find((d) => !isDeviceReserved(d));
-  if (device != undefined) {
+  // We have a locked device here
+  if (device !== null) {
+    const lockedDevice: IDevice = device;
     // Principal Health Check Integration: Ensure device is READY before allocation
-    if (!device.cloud) {
-      const platform = device.platform.toLowerCase();
+    if (!lockedDevice.cloud) {
+      const platform = lockedDevice.platform.toLowerCase();
       const managers = await getDeviceManager().deviceInstances();
       const manager = managers.find((m) => {
         if (platform === DevicePlatform.ANDROID) return m instanceof AndroidDeviceManager;
@@ -173,36 +176,34 @@ export async function allocateDeviceForSession(
       });
 
       if (manager && manager.readyForSession) {
-        const isReady = await manager.readyForSession(device);
+        const isReady = await manager.readyForSession(lockedDevice);
         if (!isReady) {
           log.error(
-            `❌ [Allocation] Device ${device.udid} failed pre-session health check. Allocation aborted.`,
+            `❌ [Allocation] Device ${lockedDevice.udid} failed pre-session health check. Unblocking.`,
           );
+          await unblockDevice(lockedDevice.udid, lockedDevice.host);
           throw new Error(
-            `Device ${device.udid} is unhealthy and could not be autonomously recovered.`,
+            `Device ${lockedDevice.udid} is unhealthy and could not be autonomously recovered.`,
           );
         }
       }
     }
 
-    // log.info(`📱 Device found: ${JSON.stringify(device)}`);
-    await blockDevice(device.udid, device.host);
-    log.info(`📱 Blocking device ${device.udid} at host ${device.host} for new session`);
+    // Since findAndLockDevice already sets busy: true, we don't need blockDevice(device.udid, device.host);
+    log.info(`📱 Locked device ${lockedDevice.udid} at host ${lockedDevice.host} for new session`);
 
-    // FIXME: convert this into a return value
-    await updateCapabilityForDevice(capability, device);
+    await updateCapabilityForDevice(capability, lockedDevice);
 
-    // update newCommandTimeout for the device.
-    // This is required so it won't get unblocked by prematurely.
     let newCommandTimeout = firstMatch['appium:newCommandTimeout'];
     if (!newCommandTimeout) {
       newCommandTimeout = pluginArgs.newCommandTimeoutSec;
     }
-    await updatedAllocatedDevice(device, { newCommandTimeout });
+    await updatedAllocatedDevice(lockedDevice, { newCommandTimeout });
 
-    return device;
+    return lockedDevice;
   } else {
-    throw new Error(`No device found for filters: ${JSON.stringify(filters)}`);
+    // This should theoretically not be reached if waitUntil succeeded
+    throw new Error(`Device allocation failed unexpectedly for filters: ${JSON.stringify(filters)}`);
   }
 }
 
@@ -620,4 +621,25 @@ export async function setupCronCleanExpiredReservations(intervalMs: number) {
     log.debug('Cleaning expired reservations...');
     await cleanExpiredReservations();
   }, intervalMs);
+}
+
+/**
+ * Sets up a cron job to purge older builds and sessions based on configuration
+ */
+export async function setupCronCleanupBuilds(pluginArgs: IPluginArgs) {
+  const { buildCleanupSchedule = '0 0 * * *' } = pluginArgs;
+  const { CleanupService } = await import('./services/CleanupService');
+  const schedule = await import('node-schedule');
+  const cleanupService = Container.get(CleanupService);
+
+  if (cronTimerToCleanupBuilds) {
+    cronTimerToCleanupBuilds.cancel();
+  }
+
+  log.info(`Build cleanup scheduled with expression: ${buildCleanupSchedule}`);
+
+  cronTimerToCleanupBuilds = schedule.scheduleJob(buildCleanupSchedule, async () => {
+    log.info('Running scheduled build cleanup...');
+    await cleanupService.runCleanup(pluginArgs);
+  });
 }

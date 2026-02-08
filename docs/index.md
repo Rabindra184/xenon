@@ -28,7 +28,8 @@ This is **Xenon**, an intelligent Appium plugin designed to orchestrate, manage,
 1.  **[Setup Guide](setup.md)** - Install Xenon
 2.  **[Configuration](server-args.md)** - Configure via File, CLI, or API
 3.  **[Capabilities](capabilities.md)** - Usage in tests
-4.  **[API Documentation](capabilities.md#api-documentation)** - Integrate programmatically
+4.  **[Data Retention](retention.md)** - Manage storage and cleanup
+5.  **[API Documentation](capabilities.md#api-documentation)** - Integrate programmatically
 
 **Big thanks to the following organizations for their support to the project with their open source licenses:**
 <h3>

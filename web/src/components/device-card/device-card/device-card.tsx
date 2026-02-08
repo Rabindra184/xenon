@@ -10,20 +10,20 @@ import {
   Clock,
   Plus,
   ShieldCheck,
-  Battery,
   Thermometer,
   HardDrive,
 } from 'lucide-react';
 import { IDevice } from '../../../interfaces/IDevice';
 import prettyMilliseconds from 'pretty-ms';
 import XenonApiService from '../../../api-service';
-import DeviceControl from '../../device-control/device-control';
+import { useNavigate } from 'react-router-dom';
 import ReservationModal from '../../reservation-modal/reservation-modal';
 import TagManagerModal from '../../tag-manager-modal/tag-manager-modal';
 
 interface IDeviceCardProps {
   device: IDevice;
   reloadDevices: () => void;
+  navigate: any;
 }
 
 interface IDeviceCardState {
@@ -32,13 +32,13 @@ interface IDeviceCardState {
   showTagManager: boolean;
 }
 
-export default class DeviceCard extends React.Component<IDeviceCardProps, IDeviceCardState> {
+export class DeviceCard extends React.Component<IDeviceCardProps, IDeviceCardState> {
   constructor(props: IDeviceCardProps) {
     super(props);
     this.state = {
-      showControl: false,
       showReservation: false,
       showTagManager: false,
+      showControl: false, // Keep for interface compatibility if needed, though unused
     };
   }
   getStatusClassName() {
@@ -208,8 +208,7 @@ export default class DeviceCard extends React.Component<IDeviceCardProps, IDevic
 
     return (
       <div
-        className={`device-info-card-container ${this.getStatusClassName()} ${this.state.showControl ? 'controlling' : ''
-          }`}
+        className={`device-info-card-container ${this.getStatusClassName()}`}
       >
         <div
           className={`device-state ${deviceState} ${deviceState === 'busy' && sessionProgress && sessionProgress !== 'Session Active'
@@ -309,7 +308,6 @@ export default class DeviceCard extends React.Component<IDeviceCardProps, IDevic
                 <div className={`battery-level-indicator ${batteryLevel < 20 ? 'low' : ''}`}>
                   <div className="battery-level-fill" style={{ width: `${batteryLevel}%` }}></div>
                 </div>
-                <Battery size={12} />
                 <span>{batteryLevel}%</span>
               </div>
             )}
@@ -394,12 +392,12 @@ export default class DeviceCard extends React.Component<IDeviceCardProps, IDevic
         <div className="device-info-card-container__footer_wrapper">
           {blockButton()}
           <button
-            className={`device-info-card__body_control-device ${busy && !!session_id ? 'disabled' : ''
+            className={`device-info-card__body_control-device ${busy && !!session_id && !session_id.toString().startsWith('manual_') ? 'disabled' : ''
               }`}
-            onClick={() => !(busy && !!session_id) && this.setState({ showControl: true })}
-            disabled={busy && !!session_id}
+            onClick={() => !(busy && !!session_id && !session_id.toString().startsWith('manual_')) && this.props.navigate(`/devices/${udid}/control`)}
+            disabled={busy && !!session_id && !session_id.toString().startsWith('manual_')}
             title={
-              busy && !!session_id
+              busy && !!session_id && !session_id.toString().startsWith('manual_')
                 ? 'Device is currently busy with Appium session'
                 : 'Take manual control'
             }
@@ -408,16 +406,6 @@ export default class DeviceCard extends React.Component<IDeviceCardProps, IDevic
             Control
           </button>
         </div>
-        {this.state.showControl && (
-          <div className="device-control-modal-overlay">
-            <div className="device-control-modal">
-              <DeviceControl
-                device={this.props.device}
-                onClose={() => this.setState({ showControl: false })}
-              />
-            </div>
-          </div>
-        )}
         {this.state.showReservation && (
           <ReservationModal
             device={this.props.device}
@@ -435,4 +423,9 @@ export default class DeviceCard extends React.Component<IDeviceCardProps, IDevic
       </div>
     );
   }
+}
+
+export default function DeviceCardWrapper(props: any) {
+  const navigate = useNavigate();
+  return <DeviceCard {...props} navigate={navigate} />;
 }

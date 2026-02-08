@@ -5,6 +5,7 @@ import { PrismaService } from './prisma-service';
 import { Device, PendingSession, CLIArgs, PrismaClient } from '@prisma/client';
 import { Container } from 'typedi';
 import * as semver from 'semver';
+import log from '../logger';
 
 export class PrismaDeviceStore implements IDeviceStore {
   private prisma: PrismaClient = Container.get(PrismaService);
@@ -52,13 +53,51 @@ export class PrismaDeviceStore implements IDeviceStore {
   }
 
   async getDevices(filterOptions: IDeviceFilterOptions): Promise<IDevice[]> {
-    const all = await this.getAllDevices();
-    let results = all.filter((d) => d.host !== undefined && d.userBlocked !== undefined);
+    const where: any = {};
 
     if (filterOptions.platform) {
-      results = results.filter((d) => d.platform === filterOptions.platform);
+      where.platform = filterOptions.platform;
     }
 
+    if (filterOptions.busy !== undefined) {
+      where.busy = filterOptions.busy;
+    }
+
+    if (filterOptions.offline !== undefined) {
+      where.offline = filterOptions.offline;
+    }
+
+    if (filterOptions.userBlocked !== undefined) {
+      where.userBlocked = filterOptions.userBlocked;
+    }
+
+    if (filterOptions.udid) {
+      if (Array.isArray(filterOptions.udid)) {
+        if (filterOptions.udid.length > 0) {
+          where.udid = { in: filterOptions.udid };
+        }
+      } else {
+        where.udid = filterOptions.udid;
+      }
+    }
+
+    if (filterOptions.deviceType) {
+      where.deviceType = filterOptions.deviceType;
+    }
+
+    if (filterOptions.session_id) {
+      where.session_id = filterOptions.session_id;
+    }
+
+    if (filterOptions.filterByHost) {
+      where.host = { contains: filterOptions.filterByHost };
+    }
+
+    // 1. Fetch narrowed result set from Database
+    const devices = await this.prisma.device.findMany({ where });
+    let results = devices.map((d: Device) => this.toIDevice(d));
+
+    // 2. Apply complex filters (Semver, Tags) in memory on the narrowed set
     if (filterOptions.platformVersion) {
       const coercedPlatformVersion = semver.coerce(filterOptions.platformVersion);
       results = results.filter((obj: IDevice) => {
@@ -69,38 +108,6 @@ export class PrismaDeviceStore implements IDeviceStore {
           semver.eq(coercedSDK, coercedPlatformVersion)
         );
       });
-    }
-
-    if (filterOptions.name?.trim()) {
-      results = results.filter((d) => d.name.includes(filterOptions.name!.trim()));
-    }
-
-    if (filterOptions.busy !== undefined) {
-      results = results.filter((d) => d.busy === filterOptions.busy);
-    }
-
-    if (filterOptions.offline !== undefined) {
-      results = results.filter((d) => d.offline === filterOptions.offline);
-    }
-
-    if (filterOptions.userBlocked !== undefined) {
-      results = results.filter((d) => d.userBlocked === filterOptions.userBlocked);
-    }
-
-    if (filterOptions.udid && filterOptions.udid.length > 0) {
-      results = results.filter((d) => filterOptions.udid.includes(d.udid));
-    }
-
-    if (filterOptions.deviceType) {
-      results = results.filter((d) => d.deviceType === filterOptions.deviceType);
-    }
-
-    if (filterOptions.session_id) {
-      results = results.filter((d) => d.session_id === filterOptions.session_id);
-    }
-
-    if (filterOptions.filterByHost) {
-      results = results.filter((d) => d.host.includes(filterOptions.filterByHost!));
     }
 
     if (filterOptions.minSDK) {
@@ -209,6 +216,39 @@ export class PrismaDeviceStore implements IDeviceStore {
   async findDevices(filter: Partial<IDevice>): Promise<IDevice[]> {
     const devices = await this.prisma.device.findMany({ where: filter as any });
     return devices.map((d) => this.toIDevice(d));
+  }
+
+  async findAndLockDevice(filterOptions: IDeviceFilterOptions): Promise<IDevice | null> {
+    // 1. Get candidate devices that match the filters and are NOT busy
+    const candidates = await this.getDevices({ ...filterOptions, busy: false });
+
+    // 2. Attempt to atomically lock them one by one
+    for (const device of candidates) {
+      const result = await this.prisma.device.updateMany({
+        where: {
+          udid: device.udid,
+          host: device.host,
+          busy: false, // Double check it's still free
+          offline: false
+        },
+        data: {
+          busy: true,
+          lastCmdExecutedAt: Date.now(),
+          sessionStartTime: Date.now()
+        }
+      });
+
+      if (result.count === 1) {
+        log.info(`[PrismaStore] Successfully locked device ${device.udid} atomically`);
+        // Fetch the latest state to return
+        const lockedDevice = await this.prisma.device.findUnique({
+          where: { udid_host: { udid: device.udid, host: device.host } }
+        });
+        return lockedDevice ? this.toIDevice(lockedDevice) : null;
+      }
+    }
+
+    return null;
   }
 
   async resetMetrics(): Promise<void> {

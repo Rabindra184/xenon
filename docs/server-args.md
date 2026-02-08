@@ -48,6 +48,12 @@ server:
       deviceAvailabilityQueryIntervalMs: 10000
       newCommandTimeoutSec: 60
 
+      # BUILD & SESSION RETENTION
+      buildCleanupDays: 30
+      buildCleanupMaxCount: 100
+      buildCleanupSchedule: "0 0 * * *"
+      deleteBuildAssets: true
+
       # DATABASE (Optional - defaults to SQLite)
       # databaseProvider: postgresql
       # databaseUrl: "postgresql://user:password@localhost:5432/xenon"
@@ -114,6 +120,22 @@ These arguments can be passed via command line flags (e.g., `--plugin-xenon-plat
 | `aiProvider` | `--plugin-xenon-ai-provider` | AI provider for Xenon | `gemini` | `gemini`, `openai`, `anthropic`, `ollama` |
 | `aiModel` | `--plugin-xenon-ai-model` | AI model name to use | - | e.g., `gpt-4o`, `llama3` |
 | `aiBaseUrl` | `--plugin-xenon-ai-base-url` | Custom base URL for AI provider | - | e.g., for Ollama |
+| `buildCleanupDays` | `--plugin-xenon-build-cleanup-days` | Retention period in days | `30` | Number |
+| `buildCleanupMaxCount` | `--plugin-xenon-build-cleanup-max-count` | Maximum number of builds to keep | `100` | Number |
+| `buildCleanupSchedule` | `--plugin-xenon-build-cleanup-schedule` | Cron schedule for cleanup | `"0 0 * * *"` | Cron |
+| `deleteBuildAssets` | `--plugin-xenon-delete-build-assets` | Delete videos/screenshots | `true` | `true`, `false` |
+
+---
+
+## 4. Environment Variables
+
+Some advanced features, such as OpenTelemetry tracing, are configured via environment variables.
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | The endpoint for the OpenTelemetry collector (e.g., `http://jaeger:4318/v1/traces`). | None |
+| `XENON_OTEL_DEBUG` | If set to `true`, traces will be logged to the console for debugging. | `false` |
+| `DATABASE_URL` | Connection string for PostgreSQL or SQLite (e.g., `postgresql://...` or `file:/path/to/db`). | SQLite |
 
 ### Cloud & Proxy
 

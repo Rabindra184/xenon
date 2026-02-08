@@ -1,4 +1,5 @@
 export enum HealingTier {
+    TIER_1_RECOVERY = 0,
     TIER_1_NATIVE = 1,
     TIER_2_FUZZY_XML = 2,
     TIER_3_LOCAL_OCR = 3,

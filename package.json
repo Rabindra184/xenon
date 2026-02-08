@@ -19,7 +19,7 @@
     "integration-ios2": "mocha -r ts-node/register ./test/integration/ios/02iOSDevices.spec.ts --timeout 260000 --exit",
     "build": "npx tsc -b && npm run copy-files",
     "build-web-and-plugin": "npx tsc -b && npm run buildXenon && npm run copy-files",
-    "copy-files": "cp -R src/public lib",
+    "copy-files": "rm -rf lib/public && mkdir -p lib && cp -R src/public lib/",
     "buildXenon": "sh scripts/build-xenon.sh",
     "prepublish": "npx tsc && npm run buildXenon && npm run copy-files",
     "lint": "eslint . --ext .ts,.tsx --fix",
@@ -60,6 +60,11 @@
     "@fortawesome/free-brands-svg-icons": "^7.1.0",
     "@fortawesome/react-fontawesome": "^3.1.1",
     "@google/generative-ai": "^0.24.1",
+    "@opentelemetry/api": "^1.9.0",
+    "@opentelemetry/exporter-trace-otlp-http": "^0.211.0",
+    "@opentelemetry/resources": "^2.5.0",
+    "@opentelemetry/sdk-node": "^0.211.0",
+    "@opentelemetry/semantic-conventions": "^1.39.0",
     "@prisma/client": "^5.4.1",
     "@types/appium-adb": "^9.10.4",
     "@types/express-fileupload": "^1.5.1",
@@ -74,6 +79,7 @@
     "download": "^8.0.0",
     "express": "^4.17.3",
     "express-fileupload": "^1.5.2",
+    "fast-xml-parser": "^5.3.4",
     "fs-extra": "^11.1.1",
     "get-port": "^5.1.1",
     "http-proxy-agent": "7.0.0",
@@ -97,8 +103,11 @@
     "prisma": "^5.4.1",
     "ramda": "^0.28.0",
     "reflect-metadata": "^0.1.13",
+    "resiliotree": "^1.1.3",
     "semver": "^7.5.4",
     "sharp": "^0.34.5",
+    "socket.io": "^4.8.3",
+    "socket.io-client": "^4.8.3",
     "swagger-jsdoc": "^6.2.8",
     "swagger-ui-express": "^5.0.1",
     "tcp-port-used": "^1.0.2",
@@ -250,7 +259,7 @@
         },
         "healthCheckIntervalMs": {
           "type": "number",
-          "default": 30000
+          "default": 86400000
         },
         "healthCheckSchedule": {
           "type": "string"
@@ -283,6 +292,22 @@
           "type": "string"
         },
         "enableSelfHealing": {
+          "type": "boolean",
+          "default": true
+        },
+        "buildCleanupDays": {
+          "type": "number",
+          "default": 30
+        },
+        "buildCleanupMaxCount": {
+          "type": "number",
+          "default": 100
+        },
+        "buildCleanupSchedule": {
+          "type": "string",
+          "default": "0 0 * * *"
+        },
+        "deleteBuildAssets": {
           "type": "boolean",
           "default": true
         }

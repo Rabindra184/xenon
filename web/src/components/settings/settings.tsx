@@ -212,13 +212,6 @@ export const Settings: React.FC = () => {
               </div>
             </div>
           </div>
-
-          <div className="health-monitor-alert stagger-4" style={{ background: 'rgba(59, 130, 246, 0.05)', borderColor: 'rgba(59, 130, 246, 0.2)', color: '#60a5fa' }}>
-            <Info size={18} />
-            <span>
-              <strong>Orchestration Rule:</strong> Diagnostic schedules carry higher priority than idle pings. During active CI jobs, all maintenance is automatically deferred to isolate performance variables.
-            </span>
-          </div>
         </section>
 
         {status && (
@@ -228,27 +221,28 @@ export const Settings: React.FC = () => {
           </div>
         )}
 
-        <div className="settings-footer stagger-4">
-          <div className="footer-left">
-            <button
-              className="reset-to-defaults-btn"
-              onClick={handleResetToDefaults}
-              disabled={saving}
-              style={{ padding: '12px 20px', fontSize: '0.875rem' }}
-            >
-              <RotateCcw size={16} />
-              Revert to Stable Baseline
-            </button>
-          </div>
-          <div className="footer-right">
-            <button className="reset-btn" onClick={loadConfig} disabled={saving}>
-              Discard Changes
-            </button>
-            <button className="save-btn" onClick={() => handleSave()} disabled={saving}>
-              {saving ? <RefreshCw className="animate-spin" size={18} /> : <Save size={18} />}
-              {saving ? 'Synchronizing...' : 'Broadcast Fleet Configuration'}
-            </button>
-          </div>
+      </div>
+
+      <div className="settings-footer stagger-4">
+        <div className="footer-left">
+          <button
+            className="reset-to-defaults-btn"
+            onClick={handleResetToDefaults}
+            disabled={saving}
+            style={{ padding: '12px 20px', fontSize: '0.875rem' }}
+          >
+            <RotateCcw size={16} />
+            Restore Defaults
+          </button>
+        </div>
+        <div className="footer-right">
+          <button className="reset-btn" onClick={loadConfig} disabled={saving}>
+            Discard
+          </button>
+          <button className="save-btn" onClick={() => handleSave()} disabled={saving}>
+            {saving ? <RefreshCw className="animate-spin" size={18} /> : <Save size={18} />}
+            {saving ? 'Saving...' : 'Save Configuration'}
+          </button>
         </div>
       </div>
     </div>

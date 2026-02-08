@@ -82,12 +82,22 @@ export default class IOSDeviceManager implements IDeviceManager {
     }
   }
 
-  async getOSVersion(udid: string) {
-    return await IOSUtils.getOSVersion(udid);
+  async getOSVersion(udid: string): Promise<string> {
+    try {
+      return await IOSUtils.getOSVersion(udid);
+    } catch (error: any) {
+      log.warn(`Failed to get OS version for device ${udid}: ${error.message}`);
+      return 'Unknown';
+    }
   }
 
-  async getDeviceName(udid: string) {
-    return await IOSUtils.getDeviceName(udid);
+  async getDeviceName(udid: string): Promise<string> {
+    try {
+      return await IOSUtils.getDeviceName(udid);
+    } catch (error: any) {
+      log.warn(`Failed to get device name for device ${udid}: ${error.message}`);
+      return 'iPhone';
+    }
   }
 
   private getDevicePlatformName(name: string) {
@@ -159,20 +169,27 @@ export default class IOSDeviceManager implements IDeviceManager {
   ): Promise<IDevice[]> {
     const devices = await this.getConnectedDevices();
     const deviceProcessingPromises = devices.map(async (udid: string) => {
-      const existingDevice = existingDeviceDetails.find((device) => device.udid === udid);
-      if (existingDevice) {
-        log.info(`IOS Device details for ${udid} already available`);
-        return {
-          ...existingDevice,
-          busy: false,
-          userBlocked: false,
-        };
-      } else {
-        return await this.getDeviceInfo(udid, pluginArgs, hostPort);
+      try {
+        const existingDevice = existingDeviceDetails.find((device) => device.udid === udid);
+        if (existingDevice) {
+          log.info(`IOS Device details for ${udid} already available`);
+          return {
+            ...existingDevice,
+            busy: false,
+            userBlocked: false,
+          };
+        } else {
+          return await this.getDeviceInfo(udid, pluginArgs, hostPort);
+        }
+      } catch (e: any) {
+        log.error(`Failed to initialize iOS device ${udid}: ${e.message}`);
+        return null; // Resolve with null to filter out failed devices
       }
     });
 
-    const deviceState = await Promise.all(deviceProcessingPromises);
+    const deviceState = (await Promise.all(deviceProcessingPromises)).filter(
+      (d): d is IDevice => d !== null,
+    );
     // might as well track devices
     this.trackIOSDevices(pluginArgs);
 
@@ -182,19 +199,23 @@ export default class IOSDeviceManager implements IDeviceManager {
   async trackIOSDevices(pluginArgs: IPluginArgs) {
     const iosTracker = Container.get(IosTracker).getListener();
     iosTracker.on('attached', async (udid: string) => {
-      const deviceAttached = await this.getDeviceInfo(udid, pluginArgs, this.hostPort);
-      const deviceTracked: IDevice = {
-        ...deviceAttached,
-        nodeId: this.nodeId,
-      };
-      if (pluginArgs.hub !== undefined) {
-        log.info(`Updating Hub with iOS device ${udid}`);
-        const nodeDevices = new NodeDevices(pluginArgs.hub);
-        await nodeDevices.postDevicesToHub([deviceTracked], 'add');
+      try {
+        const deviceAttached = await this.getDeviceInfo(udid, pluginArgs, this.hostPort);
+        const deviceTracked: IDevice = {
+          ...deviceAttached,
+          nodeId: this.nodeId,
+        };
+        if (pluginArgs.hub !== undefined) {
+          log.info(`Updating Hub with iOS device ${udid}`);
+          const nodeDevices = new NodeDevices(pluginArgs.hub);
+          await nodeDevices.postDevicesToHub([deviceTracked], 'add');
+        }
+        // add device to local list
+        log.info(`iOS device with udid ${udid} plugged! updating device list...`);
+        await addNewDevice([deviceTracked], pluginArgs.bindHostOrIp);
+      } catch (e: any) {
+        log.error(`Failed to handle iOS device attach for ${udid}: ${e.message}`);
       }
-      // add device to local list
-      log.info(`iOS device with udid ${udid} plugged! updating device list...`);
-      await addNewDevice([deviceTracked], pluginArgs.bindHostOrIp);
     });
     iosTracker.on('detached', async (udid: string) => {
       const deviceRemoved: any = [{ udid, host: pluginArgs.bindHostOrIp }];
@@ -255,7 +276,15 @@ export default class IOSDeviceManager implements IDeviceManager {
     if (!mjpegServerPort || (await isPortBusy(mjpegServerPort)))
       mjpegServerPort = await getFreePort();
     const totalUtilizationTimeMilliSec = await getUtilizationTime(udid);
-    const [sdk, name] = await Promise.all([this.getOSVersion(udid), this.getDeviceName(udid)]);
+
+    let sdk = 'Unknown';
+    let name = 'iPhone';
+
+    try {
+      [sdk, name] = await Promise.all([this.getOSVersion(udid), this.getDeviceName(udid)]);
+    } catch (e: any) {
+      log.error(`Critical error during metadata discovery for ${udid}: ${e.message}`);
+    }
 
     return Object.assign(
       {
@@ -590,8 +619,24 @@ export default class IOSDeviceManager implements IDeviceManager {
         log.warn(
           `[WDA] ${lastError.code} for ${udid} (Attempt ${networkRetryCount}/${MAX_NETWORK_RETRIES}). Purging cache and backoff...`,
         );
+
+        // Senior Resilience: Trigger proactive stream restart if it's a real device.
+        // This bridges the gap between managed proxies (iproxy) and WDA.
+        if (device.realDevice && !device.cloud) {
+          log.info(`[WDA] Detected tunnel/WDA crash for ${udid}. Triggering immediate stream-aware recovery...`);
+          try {
+            const streamService = Container.get(IOSStreamService);
+            // Don't await here to avoid blocking the retry loop, BUT the next retry 
+            // will benefit from the started startup promise in IOSStreamService.
+            // If it's already starting, startStream returns the same promise.
+            streamService.startStream(udid).catch((e) => log.error(`Stream-aware recovery failed: ${e}`));
+          } catch (e) {
+            log.warn(`Failed to access stream service for recovery: ${e}`);
+          }
+        }
+
         // Backoff delay to let the instrumentation stack recover
-        await new Promise((r) => setTimeout(r, 800));
+        await new Promise((r) => setTimeout(r, 1200));
       } else {
         break;
       }

@@ -24,6 +24,10 @@ import { takeScreenshot } from '../helpers';
 import { Container } from 'typedi';
 import { XenonManager } from '../device-managers';
 import AndroidDeviceManager from '../device-managers/AndroidDeviceManager';
+import { SocketServer } from '../services/SocketServer';
+import { TracingService } from '../services/TracingService';
+import { MetricsService } from '../services/MetricsService';
+import { SocketEvents } from '../enums/SocketEvents';
 
 export class DashboardEventManager {
   // private SCREENSHOT_FOR_COMMANDS = ['click', 'setUrl', 'setValue', 'performActions'];
@@ -38,6 +42,8 @@ export class DashboardEventManager {
   private appProfilers: Map<string, AndroidAppProfiler> = new Map();
   // Track last log line for each session (for device logs)
   private lastLogLine: Map<string, number> = new Map();
+  // Track start time for each command to calculate duration
+  private commandStartTime: Map<string, number> = new Map();
 
   async onSessionStarted(
     capabilities: Record<string, any>,
@@ -86,7 +92,11 @@ export class DashboardEventManager {
     const build = await getOrCreateNewBuild(buildName);
 
     const sessionResponse = _.assign({}, session.getCapabilities());
-    const createData: Prisma.SessionCreateInput = {
+
+    const tracingService = Container.get(TracingService);
+    const traceId = tracingService.getTraceId(session.getId());
+
+    const createData: any = {
       id: session.getId(),
       build: build.id ? { connect: { id: build.id } } : undefined,
       name: capabilities[XENON_CAPABILITIES.SESSION_NAME] || undefined,
@@ -101,11 +111,21 @@ export class DashboardEventManager {
       device_platform: device.platform || '',
       device_version: device.sdk || '',
       device_name: device.name,
+      trace_id: traceId,
     };
 
     await prisma.session.create({
       data: createData,
     });
+
+    // Emit session started event
+    Container.get(SocketServer).emitToDashboard(SocketEvents.SESSION_STARTED, {
+      ...createData,
+      build_name: buildName,
+    });
+
+    // Increment Metrics
+    Container.get(MetricsService).incrementSessionStart();
   }
 
   async onSessionStoped(sessionId: string, status?: SessionStatus, failureReason?: string) {
@@ -189,6 +209,13 @@ export class DashboardEventManager {
       await updateSessionDetails(sessionId, updateData);
       log.info(`✅ Session ${sessionId} updated successfully`);
 
+      // Increment Metrics
+      if (updateData.status === SessionStatus.SUCCESS) {
+        Container.get(MetricsService).incrementSessionSuccess();
+      } else if (updateData.status === SessionStatus.FAILED) {
+        Container.get(MetricsService).incrementSessionFailure();
+      }
+
       // Principal Triage: If session failed, perform intelligent failure analysis
       if (updateData.status === SessionStatus.FAILED) {
         try {
@@ -198,6 +225,13 @@ export class DashboardEventManager {
           log.warn(`⚠️ Failure analysis skipped for ${sessionId}: ${analysisErr.message}`);
         }
       }
+
+      // Emit session stopped event
+      Container.get(SocketServer).emitToDashboard(SocketEvents.SESSION_STOPPED, {
+        id: sessionId,
+        status: updateData.status,
+        failure_reason: updateData.failure_reason,
+      });
     } else {
       log.warn(`⚠️ Session ${sessionId} not found in database`);
     }
@@ -213,6 +247,10 @@ export class DashboardEventManager {
 
     if (!session) {
       return false;
+    }
+
+    if (commandName) {
+      this.commandStartTime.set(`${sessionId}:${commandName}`, Date.now());
     }
 
     switch (commandName) {
@@ -258,6 +296,13 @@ export class DashboardEventManager {
         _.isObjectLike(parsedResponse) &&
         (parsedResponse.value === null || (parsedResponse.value && !parsedResponse.value.error));
 
+      const tracingService = Container.get(TracingService);
+      const spanId = tracingService.getSpanId(`${session.getId()}:${commandName}`);
+      const traceId = tracingService.getTraceId(session.getId());
+
+      const startTime = this.commandStartTime.get(`${sessionId}:${commandName}`);
+      const duration = startTime ? Date.now() - startTime : null;
+
       const logEntry: any = {
         session_id: session.getId(),
         command_name: commandName || null,
@@ -274,7 +319,22 @@ export class DashboardEventManager {
         original_selector: healingInfo?.originalSelector || null,
         healed_selector: healingInfo?.healedSelector || null,
         healing_confidence: healingInfo?.confidence || null,
+        span_id: spanId,
+        trace_id: traceId,
+        duration: duration,
       };
+
+      // Increment Healing Metrics
+      if (healingInfo) {
+        Container.get(MetricsService).incrementHealingAttempt();
+        if (isSuccessResponse) {
+          Container.get(MetricsService).incrementHealingSuccess();
+        }
+      }
+
+      if (startTime) {
+        this.commandStartTime.delete(`${sessionId}:${commandName}`);
+      }
 
       // Take screenshots for specific commands (like click, setValue, etc.)
       // OR on failure if SCREENSHOT_ON_FAILURE capability is enabled
@@ -330,6 +390,12 @@ export class DashboardEventManager {
 
       await prisma.sessionLog.create({
         data: logEntry as SessionLog,
+      });
+
+      // Emit command log event to dashboard
+      Container.get(SocketServer).emitToDashboard(SocketEvents.SESSION_COMMAND, {
+        session_id: session.getId(),
+        ...logEntry,
       });
     }
   }

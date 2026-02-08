@@ -8,8 +8,19 @@ class XenonLogger {
   private baseLogger: any;
   private context = '';
 
+  public static isJsonLogging = process.env.XENON_JSON_LOGGING === 'true';
+
   constructor(prefix = 'xenon') {
     this.baseLogger = logger.getLogger(prefix);
+  }
+
+  /**
+   * Configure global logger settings
+   */
+  public static configure(options: { enableJsonLogging?: boolean }) {
+    if (options.enableJsonLogging !== undefined) {
+      this.isJsonLogging = options.enableJsonLogging;
+    }
   }
 
   /**
@@ -35,20 +46,37 @@ class XenonLogger {
     return sessionLogger;
   }
 
+  private logMessage(level: 'info' | 'warn' | 'error' | 'debug', message: any, ...args: any[]) {
+    if (XenonLogger.isJsonLogging) {
+      const logEntry = {
+        timestamp: new Date().toISOString(),
+        level,
+        scope: this.context.trim() || 'root',
+        message: this.format(message),
+        args: args.length ? args : undefined,
+      };
+      // For JSON logging, we typically want it on stdout directly to avoid Appium's [XENON] prefix
+      // but for consistency with Appium's plugin model, we use info() for everything when in JSON mode
+      this.baseLogger.info(JSON.stringify(logEntry));
+    } else {
+      this.baseLogger[level](`${this.context}${this.format(message)}`, ...args);
+    }
+  }
+
   public info(message: any, ...args: any[]) {
-    this.baseLogger.info(`${this.context}${this.format(message)}`, ...args);
+    this.logMessage('info', message, ...args);
   }
 
   public warn(message: any, ...args: any[]) {
-    this.baseLogger.warn(`${this.context}${this.format(message)}`, ...args);
+    this.logMessage('warn', message, ...args);
   }
 
   public error(message: any, ...args: any[]) {
-    this.baseLogger.error(`${this.context}${this.format(message)}`, ...args);
+    this.logMessage('error', message, ...args);
   }
 
   public debug(message: any, ...args: any[]) {
-    this.baseLogger.debug(`${this.context}${this.format(message)}`, ...args);
+    this.logMessage('debug', message, ...args);
   }
 
   /**

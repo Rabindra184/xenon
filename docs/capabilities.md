@@ -23,6 +23,11 @@ Xenon uses the `xe:` prefix for its custom capabilities. `xenon:` and `appium:` 
 > [!TIP]
 > **AI Analysis Tip**: For the most accurate AI diagnoses, ensure `xe:screenshot_on_failure` and `xe:save_device_logs` are set to `true`. This provides the multimodal context (visuals + logs) the AI needs to identify the root cause.
 
+### Instant Dashboard & Tracing
+Xenon provides real-time observability out of the box:
+- **Instant Updates**: The web dashboard uses WebSockets to reflect device and session state changes immediately.
+- **Trace correlation**: Every session is assigned a unique OpenTelemetry **Trace ID**, visible in the dashboard metadata.
+
 ### Strict Capability Validation
 
 Xenon uses a strict validation system powered by Zod. Every session request is validated against a schema before a device is even considered for allocation. This ensures:

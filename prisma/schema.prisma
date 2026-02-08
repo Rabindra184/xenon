@@ -40,7 +40,8 @@ model Session {
   performance_trace       String?      @map("performance_trace")
   failure_category        String?
   ai_analysis             String?
-  tags                    String?      // JSON array of searchable tags (e.g., ["regression", "smoke"])
+  tags                    String?
+  trace_id                String?
   Log                     Log[]
   Profiling               Profiling[]
   build                   Build?       @relation(fields: [build_id], references: [id])
@@ -48,25 +49,28 @@ model Session {
 }
 
 model SessionLog {
-  id           String   @id @default(uuid())
-  session_id   String
-  command_name String?
-  url          String
-  method       String
-  title        String
-  subtitle     String?
-  body         String?
-  response     String
-  screenshot   String?
-  is_success   Boolean?
-  is_error          Boolean  @default(false)
-  is_healed         Boolean  @default(false)
-  original_selector String?
-  healed_selector   String?
+  id                 String   @id @default(uuid())
+  session_id         String
+  command_name       String?
+  url                String
+  method             String
+  title              String
+  subtitle           String?
+  body               String?
+  response           String
+  screenshot         String?
+  is_success         Boolean?
+  is_error           Boolean  @default(false)
+  is_healed          Boolean  @default(false)
+  original_selector  String?
+  healed_selector    String?
   healing_confidence Float?
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
-  session      Session  @relation(fields: [session_id], references: [id])
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+  duration           Int?
+  span_id            String?
+  trace_id           String?
+  session            Session  @relation(fields: [session_id], references: [id])
 }
 
 model Log {
@@ -143,19 +147,19 @@ model Device {
   screenHeight                 String?
   dashboard_link               String?
   total_session_count          Int?     @default(0)
-  sessionProgress              String?  @default("")
   createdAt                    DateTime @default(now())
   updatedAt                    DateTime @updatedAt
   healthCheckError             String?
   healthStatus                 String?  @default("Healthy")
   lastHealthCheckAt            Float?
   batteryLevel                 Int?
-  thermalStatus                String?
-  storageFree                  String?
   reservationReason            String?
   reservedBy                   String?
   reservedUntil                Float?
+  storageFree                  String?
   tags                         String?
+  thermalStatus                String?
+  sessionProgress              String?  @default("")
   totalHealedCount             Int?     @default(0)
 
   @@id([udid, host])
@@ -197,7 +201,7 @@ model LocatorEtalon {
   id         String   @id @default(uuid())
   selector   String   @unique
   strategy   String
-  attributes String 
+  attributes String
   nodeName   String
   lastSeen   DateTime @default(now())
   createdAt  DateTime @default(now())

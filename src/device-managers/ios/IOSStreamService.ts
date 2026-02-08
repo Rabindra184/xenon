@@ -44,7 +44,7 @@ interface StreamSession {
   screenHeight?: number;
 }
 
-@Service()
+@Service({ name: 'IOSStreamService' })
 class IOSStreamService {
   private sessions: Map<string, StreamSession> = new Map();
   private startPromises: Map<string, Promise<{ wdaPort: number; mjpegPort: number }>> = new Map();
@@ -65,6 +65,8 @@ class IOSStreamService {
         if (session.status === 'running') {
           // Check for inactivity
           if (now - session.lastViewerAt > 30000 && session.viewerCount === 0) {
+            log.info(`[${udid}] [Watchdog] Stopping idle iOS stream (No viewers for 30s)`);
+            this.stopStream(udid);
             continue;
           }
 
@@ -150,13 +152,13 @@ class IOSStreamService {
         env: { ...process.env, ENABLE_GO_IOS_AGENT: 'yes' },
       });
       const info = JSON.parse(stdout);
-      const version = parseFloat(
-        info.ProductVersion || info.HumanReadableProductVersionString || '0',
-      );
+      const versionStr = String(info.ProductVersion || info.HumanReadableProductVersionString || '0');
+      // Extract the first numeric sequence (e.g., "15.8.6" or "iOS 17.2")
+      const versionMatch = versionStr.match(/(\d+\.?\d*)/);
+      const version = versionMatch ? parseFloat(versionMatch[0]) : 0;
 
-      if (version >= 17 || version >= 26) {
-        // SDK 26.1 corresponds to iOS 17+
-        log.info(`iOS ${version} detected for ${udid}. Starting tunnel...`);
+      if (version >= 17) {
+        log.info(`iOS ${version} detected for ${udid} (Raw: "${versionStr}"). Starting tunnel...`);
 
         // Check if already running in our session tracker
         const existing = [...this.sessions.values()].find(
@@ -263,19 +265,26 @@ class IOSStreamService {
   public async isWDARunning(wdaPort: number): Promise<boolean> {
     const axios = (await import('axios')).default;
     // Fast check: Use short timeout and no internal retries
-    const hosts = ['127.0.0.1']; // Force IPv4 for local tunnels
-    for (const host of hosts) {
-      try {
-        const response = await axios.get(`http://${host}:${wdaPort}/status`, {
-          timeout: 2000, // 2s for consistency
-          httpAgent: new http.Agent({ keepAlive: false }),
-        });
-        return response.data?.value?.ready === true;
-      } catch (error) {
-        // ignore
+    const host = '127.0.0.1'; // Force IPv4 for local tunnels
+    try {
+      const response = await axios.get(`http://${host}:${wdaPort}/status`, {
+        timeout: 2500, // 2.5s for consistency
+        httpAgent: new http.Agent({ keepAlive: false }),
+        validateStatus: (status) => status === 200,
+      });
+      const isReady = response.data?.value?.ready === true;
+      if (!isReady) log.debug(`[WDA] Port ${wdaPort} active but not ready. Status: ${JSON.stringify(response.data?.value)}`);
+      return isReady;
+    } catch (error: any) {
+      if (error.code === 'ECONNREFUSED') {
+        log.debug(`[WDA] Port ${wdaPort} connection refused (Tunnel likely down)`);
+      } else if (error.code === 'ECONNABORTED') {
+        log.debug(`[WDA] Port ${wdaPort} health check timed out (WDA hanging)`);
+      } else {
+        log.debug(`[WDA] Port ${wdaPort} health check failed: ${error.message}`);
       }
+      return false;
     }
-    return false;
   }
 
   /**
@@ -389,8 +398,8 @@ class IOSStreamService {
         log.info(`Forwarding ${udid}: ${wdaPort}->8100, ${mjpegPort}->9100 using iproxy`);
         const isolationService = Container.get(ResourceIsolationService);
 
-        const wdaIproxy = isolationService.wrapSpawn('iproxy', ['-u', udid, `${wdaPort}:8100`], 'Economy');
-        const mjpegIproxy = isolationService.wrapSpawn('iproxy', ['-u', udid, `${mjpegPort}:9100`], 'Economy');
+        const wdaIproxy = isolationService.wrapSpawn('iproxy', ['-u', udid, `${wdaPort}:8100`], 'Performance');
+        const mjpegIproxy = isolationService.wrapSpawn('iproxy', ['-u', udid, `${mjpegPort}:9100`], 'Performance');
 
         session.forwardWDAProcess = spawn(wdaIproxy.command, wdaIproxy.args);
         session.forwardMJPEGProcess = spawn(mjpegIproxy.command, mjpegIproxy.args);
@@ -461,10 +470,10 @@ class IOSStreamService {
             }
 
             if (mjpegReady) {
-              log.info(`MJPEG server is ready on port ${mjpegPort}`);
+              log.info(`MJPEG server is ready on port ${mjpegPort} for ${udid}`);
             } else {
               log.warn(
-                `MJPEG server not detected on port ${mjpegPort} after timeout, proceeding anyway`,
+                `MJPEG server not detected on port ${mjpegPort} for ${udid} after 5s timeout. It might be starting slowly or WDA might be struggling.`,
               );
             }
 

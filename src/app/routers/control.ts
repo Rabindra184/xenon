@@ -6,13 +6,14 @@ import { Container } from 'typedi';
 import log from '../../logger';
 import { InternalHttpClient } from '../../InternalHttpClient';
 import { blockDevice, unblockDevice } from '../../data-service/device-service';
-import { MjpegProxy } from 'mjpeg-proxy';
+import { UniversalMjpegProxy } from '../../helpers/UniversalMjpegProxy';
 import IOSStreamService from '../../device-managers/ios/IOSStreamService';
 import AndroidStreamService from '../../device-managers/android/AndroidStreamService';
 import path from 'path';
 import os from 'os';
 import fs from 'fs-extra';
 import { OmniVisionService } from '../../services/omni-vision/OmniVisionService';
+import { InspectorService } from '../../services/InspectorService';
 
 const router = Router();
 
@@ -447,8 +448,9 @@ router.post('/:udid/stream/start', async (req: Request, res: Response) => {
 
     // Principal Insight: Concurrency Protection
     // Mark device as "Busy" so automation sessions don't pick it up
-    await blockDevice(udid, device.host);
-    log.info(`Manual Control: Device ${udid} locked for active UI session.`);
+    const manualSid = `manual_${udid}`;
+    await blockDevice(udid, device.host, manualSid);
+    log.info(`Manual Control: Device ${udid} locked for active UI session (${manualSid}).`);
 
     log.info(`Stream started for ${udid} - Port: ${result.mjpegPort}`);
 
@@ -481,8 +483,12 @@ router.post('/:udid/stream/stop', async (req: Request, res: Response) => {
       await Container.get(AndroidStreamService).stopStream(udid);
     }
 
-    // Clear MJPEG proxy cache
-    MJPEG_PROXY_CACHE.delete(udid);
+    // Clear and stop MJPEG proxy
+    const existingProxy = MJPEG_PROXY_CACHE.get(udid);
+    if (existingProxy) {
+      existingProxy.stop();
+      MJPEG_PROXY_CACHE.delete(udid);
+    }
 
     log.info(`Stream stopped for ${udid}`);
     return res.status(200).send({ success: true });
@@ -591,14 +597,15 @@ router.get('/:udid/stream', async (req: Request, res: Response) => {
 
   const videoUrl = `http://127.0.0.1:${mjpegPort}`;
 
-  // MjpegProxy will handle connectivity and retries internally
+  // UniversalMjpegProxy will handle connectivity and retries internally
   if (!MJPEG_PROXY_CACHE.has(udid)) {
-    MJPEG_PROXY_CACHE.set(udid, new MjpegProxy(videoUrl));
+    MJPEG_PROXY_CACHE.set(udid, new UniversalMjpegProxy(videoUrl));
   } else {
     // Check if URL changed and update proxy
     const existingProxy = MJPEG_PROXY_CACHE.get(udid);
-    if (existingProxy.mjpegUrl !== videoUrl && existingProxy._mjpegUrl !== videoUrl) {
-      MJPEG_PROXY_CACHE.set(udid, new MjpegProxy(videoUrl));
+    if (existingProxy.url !== videoUrl) {
+      existingProxy.stop();
+      MJPEG_PROXY_CACHE.set(udid, new UniversalMjpegProxy(videoUrl));
     }
   }
 
@@ -691,6 +698,21 @@ router.get('/:udid/omni-scan', async (req: Request, res: Response) => {
   } catch (err: any) {
     log.error(`Manual Omni-Scan failed for ${udid}: ${err.message}`);
     return res.status(500).send({ status: 'error', message: err.message });
+  }
+});
+
+/**
+ * Native-First Inspector Snapshot
+ */
+router.get('/:udid/inspector/snapshot', async (req: Request, res: Response) => {
+  const { udid } = req.params;
+  try {
+    const inspectorService = Container.get(InspectorService);
+    const snapshot = await inspectorService.getSnapshot(udid);
+    return res.status(200).send(snapshot);
+  } catch (err: any) {
+    log.error(`Inspector snapshot failed for ${udid}: ${err.message}`);
+    return res.status(500).send({ error: err.message });
   }
 });
 

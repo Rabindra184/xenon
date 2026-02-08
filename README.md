@@ -45,6 +45,7 @@
 ### Device Orchestration
 - ✅ **Automatic device discovery** - Android (USB + emulators), iOS (devices + simulators)
 - ✅ **Smart session allocation** - Queue management with ETA
+- ✅ **WebSocket-First Sync** - Real-time Hub-Node-Dashboard bidirectional sync
 - ✅ **Device reservation** - Manual mode for debugging
 - ✅ **Team-based quotas** - Fair resource sharing
 
@@ -64,8 +65,10 @@
 ### Recording & Artifacts
 - ✅ **Video recording** - Full session capture
 - ✅ **Screenshot capture** - On-demand and per-command
+- ✅ **Distributed Tracing** - OpenTelemetry spans for exact command latency
 - ✅ **Performance profiling** - CPU, memory, FPS metrics
 - ✅ **Log aggregation** - Appium, device, app logs
+- ✅ **OpenTelemetry Integration** - Standardized distributed tracing for all sessions
 
 ### Intelligence (Roadmap)
 - 🔲 **Flaky test detection** - Auto-identify unstable tests
@@ -136,6 +139,29 @@ PUT /xenon/api/config
 ```
 
 > **Note:** Some changes (like `platform` or `hub` URL) require a server restart to take full effect. The API response will indicate if a restart is required.
+
+### Build & Session Retention 🧹
+
+Xenon includes an enterprise-ready cleanup job that automatically purges older builds, sessions, and associated assets (videos/screenshots) to manage disk space.
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `buildCleanupDays` | Retention period in days | `30` |
+| `buildCleanupMaxCount` | Maximum number of builds to keep | `100` |
+| `buildCleanupSchedule` | Cron schedule for the cleanup job | `"0 0 * * *"` |
+| `deleteBuildAssets` | Delete video recordings and screenshots from disk | `true` |
+
+**Example (YAML):**
+```yaml
+plugin:
+  xenon:
+    buildCleanupDays: 14
+    buildCleanupMaxCount: 50
+    buildCleanupSchedule: "0 0 * * *"
+    deleteBuildAssets: true
+```
+
+Detailed explanation of how the retention logic works can be found in the **[Data Retention & Maintenance Guide](docs/retention.md)**.
 
 See [docs/server-args.md](docs/server-args.md) for all available options.
 
