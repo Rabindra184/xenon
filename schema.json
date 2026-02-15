@@ -1,0 +1,357 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema",
+    "additionalProperties": false,
+    "description": "Appium configuration schema for the Xenon plugin.",
+    "definitions": {
+        "DeviceTypeToInclude": {
+            "title": "DeviceTypeToInclude",
+            "type": "string",
+            "enum": [
+                "both",
+                "real",
+                "simulated"
+            ]
+        },
+        "IDevice": {
+            "title": "IDevice",
+            "type": "object",
+            "properties": {
+                "name": {
+                    "type": "string"
+                },
+                "udid": {
+                    "type": "string"
+                },
+                "state": {
+                    "type": "string"
+                },
+                "sdk": {
+                    "type": "string"
+                },
+                "platform": {
+                    "type": "string",
+                    "enum": [
+                        "ios",
+                        "android",
+                        "tvos"
+                    ]
+                },
+                "busy": {
+                    "type": "boolean"
+                },
+                "realDevice": {
+                    "type": "boolean"
+                },
+                "deviceType": {
+                    "type": "string",
+                    "enum": [
+                        "real",
+                        "simulator",
+                        "emulator"
+                    ]
+                },
+                "host": {
+                    "type": "string"
+                },
+                "mjpegServerPort": {
+                    "type": "number"
+                },
+                "wdaLocalPort": {
+                    "type": "number"
+                },
+                "totalUtilizationTimeMilliSec": {
+                    "type": "number"
+                },
+                "sessionStartTime": {
+                    "type": "number"
+                },
+                "userBlocked": {
+                    "type": "boolean"
+                }
+            },
+            "required": [
+                "udid",
+                "platform",
+                "deviceType"
+            ]
+        },
+        "AxiosProxy": {
+            "title": "AxiosProxy",
+            "type": "object",
+            "properties": {
+                "host": {
+                    "type": "string"
+                },
+                "port": {
+                    "type": "number"
+                },
+                "auth": {
+                    "type": "object",
+                    "properties": {
+                        "username": {
+                            "type": "string"
+                        },
+                        "password": {
+                            "type": "string"
+                        }
+                    }
+                },
+                "protocol": {
+                    "type": "string"
+                }
+            }
+        },
+        "CloudConfig": {
+            "title": "CloudConfig",
+            "type": "object",
+            "properties": {
+                "apiUrl": {
+                    "type": "string"
+                },
+                "apiKey": {
+                    "type": "string"
+                },
+                "cloudName": {
+                    "type": "string"
+                },
+                "url": {
+                    "type": "string"
+                },
+                "devices": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/CloudDevice"
+                    }
+                }
+            },
+            "required": [
+                "cloudName",
+                "url",
+                "devices"
+            ]
+        },
+        "CloudDevice": {
+            "title": "CloudDevice",
+            "type": "object",
+            "properties": {
+                "id": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                }
+            }
+        },
+        "IDerivedDataPath": {
+            "title": "IDerivedDataPath",
+            "type": "object",
+            "properties": {
+                "device": {
+                    "type": "string"
+                },
+                "simulator": {
+                    "type": "string"
+                }
+            }
+        }
+    },
+    "properties": {
+        "platform": {
+            "type": "string",
+            "enum": [
+                "ios",
+                "android",
+                "both"
+            ],
+            "default": "both"
+        },
+        "androidDeviceType": {
+            "$ref": "#/definitions/DeviceTypeToInclude",
+            "default": "both"
+        },
+        "simulators": {
+            "type": "array",
+            "items": {
+                "$ref": "#/definitions/IDevice"
+            },
+            "default": []
+        },
+        "iosDeviceType": {
+            "$ref": "#/definitions/DeviceTypeToInclude",
+            "default": "both"
+        },
+        "hub": {
+            "type": "string"
+        },
+        "remoteMachineProxyIP": {
+            "type": "string"
+        },
+        "adbRemote": {
+            "type": "array",
+            "items": {
+                "type": "string"
+            },
+            "default": []
+        },
+        "skipChromeDownload": {
+            "type": "boolean",
+            "default": true
+        },
+        "maxSessions": {
+            "type": "number",
+            "default": 8
+        },
+        "cloud": {
+            "$ref": "#/definitions/CloudConfig"
+        },
+        "derivedDataPath": {
+            "$ref": "#/definitions/IDerivedDataPath"
+        },
+        "emulators": {
+            "type": "array",
+            "items": {
+                "type": "object"
+            },
+            "default": []
+        },
+        "proxy": {
+            "$ref": "#/definitions/AxiosProxy"
+        },
+        "deviceAvailabilityTimeoutMs": {
+            "type": "number",
+            "default": 300000
+        },
+        "deviceAvailabilityQueryIntervalMs": {
+            "type": "number",
+            "default": 10000
+        },
+        "sendNodeDevicesToHubIntervalMs": {
+            "type": "number",
+            "default": 30000
+        },
+        "checkStaleDevicesIntervalMs": {
+            "type": "number",
+            "default": 30000
+        },
+        "checkBlockedDevicesIntervalMs": {
+            "type": "number",
+            "default": 30000
+        },
+        "newCommandTimeoutSec": {
+            "type": "number",
+            "default": 60
+        },
+        "bindHostOrIp": {
+            "type": "string",
+            "default": "127.0.0.1"
+        },
+        "enableDashboard": {
+            "type": "boolean",
+            "default": false
+        },
+        "bootedSimulators": {
+            "type": "boolean",
+            "default": false
+        },
+        "removeDevicesFromDatabaseBeforeRunningThePlugin": {
+            "type": "boolean",
+            "default": false
+        },
+        "healthCheckIntervalMs": {
+            "type": "number",
+            "default": 30000
+        },
+        "healthCheckSchedule": {
+            "type": "string"
+        },
+        "databaseProvider": {
+            "type": "string",
+            "enum": [
+                "sqlite",
+                "postgresql"
+            ]
+        },
+        "databaseUrl": {
+            "type": "string"
+        },
+        "aiProvider": {
+            "type": "string",
+            "enum": [
+                "gemini",
+                "openai",
+                "anthropic",
+                "ollama"
+            ]
+        },
+        "aiModel": {
+            "type": "string"
+        },
+        "aiBaseUrl": {
+            "type": "string"
+        },
+        "geminiApiKey": {
+            "type": "string"
+        },
+        "openaiApiKey": {
+            "type": "string"
+        },
+        "anthropicApiKey": {
+            "type": "string"
+        },
+        "enableSelfHealing": {
+            "type": "boolean",
+            "default": true
+        },
+        "buildCleanupDays": {
+            "type": "number",
+            "default": 30
+        },
+        "buildCleanupMaxCount": {
+            "type": "number",
+            "default": 100
+        },
+        "buildCleanupSchedule": {
+            "type": "string",
+            "default": "0 0 * * *"
+        },
+        "deleteBuildAssets": {
+            "type": "boolean",
+            "default": true
+        },
+        "sessionHeartbeatIntervalMs": {
+            "type": "number",
+            "default": 30000
+        },
+        "enableJsonLogging": {
+            "type": "boolean",
+            "default": false
+        }
+    },
+    "required": [
+        "platform",
+        "androidDeviceType",
+        "iosDeviceType",
+        "skipChromeDownload",
+        "maxSessions",
+        "deviceAvailabilityTimeoutMs",
+        "deviceAvailabilityQueryIntervalMs",
+        "sendNodeDevicesToHubIntervalMs",
+        "checkStaleDevicesIntervalMs",
+        "checkBlockedDevicesIntervalMs",
+        "newCommandTimeoutSec",
+        "bindHostOrIp",
+        "enableDashboard",
+        "bootedSimulators",
+        "removeDevicesFromDatabaseBeforeRunningThePlugin",
+        "healthCheckIntervalMs",
+        "enableSelfHealing",
+        "buildCleanupDays",
+        "buildCleanupMaxCount",
+        "buildCleanupSchedule",
+        "deleteBuildAssets",
+        "sessionHeartbeatIntervalMs",
+        "enableJsonLogging"
+    ],
+    "title": "IPluginArgs",
+    "type": "object"
+}

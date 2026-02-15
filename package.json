@@ -33,6 +33,7 @@
     "run-server": "export APPIUM_HOME=/tmp/some-temp-dir && npx appium server -ka 800 --use-plugins=xenon -pa /wd/hub --plugin-xenon-platform=ios --plugin-xenon-max-sessions=8 --plugin-xenon-enable-dashboard",
     "run-db-migration": "path-exists lib/src/scripts/initialize-database.js && node lib/src/scripts/initialize-database.js || ts-node src/scripts/initialize-database.ts",
     "generate-migration": "ts-node src/scripts/generate-database-migration.ts",
+    "build:schema": "node scripts/generate-types-from-schema.js",
     "postinstall": "npm run run-db-migration"
   },
   "repository": {
@@ -166,6 +167,7 @@
     "eslint-plugin-prettier": "^5.0.0",
     "husky": "7.0.4",
     "js-yaml": "^4.1.0",
+    "json-schema-to-typescript": "^15.0.4",
     "lint-staged": "15.0.2",
     "mocha": "9.2.2",
     "prettier": "^3.0.3",
@@ -180,141 +182,7 @@
   "appium": {
     "pluginName": "xenon",
     "mainClass": "XenonPlugin",
-    "schema": {
-      "$schema": "http://json-schema.org/draft-07/schema",
-      "additionalProperties": false,
-      "description": "Appium configuration schema for the Xenon plugin.",
-      "properties": {
-        "platform": {
-          "type": "string"
-        },
-        "androidDeviceType": {
-          "type": "string",
-          "default": "both"
-        },
-        "simulators": {
-          "type": "array"
-        },
-        "iosDeviceType": {
-          "type": "string",
-          "default": "both"
-        },
-        "hub": {
-          "type": "string"
-        },
-        "remoteMachineProxyIP": {
-          "type": "string"
-        },
-        "adbRemote": {
-          "type": "array"
-        },
-        "skipChromeDownload": {
-          "type": "boolean"
-        },
-        "maxSessions": {
-          "type": "number"
-        },
-        "cloud": {
-          "type": "object"
-        },
-        "derivedDataPath": {
-          "type": "object"
-        },
-        "emulators": {
-          "type": "array"
-        },
-        "proxy": {
-          "type": "object"
-        },
-        "deviceAvailabilityTimeoutMs": {
-          "type": "number"
-        },
-        "deviceAvailabilityQueryIntervalMs": {
-          "type": "number"
-        },
-        "sendNodeDevicesToHubIntervalMs": {
-          "type": "number"
-        },
-        "checkStaleDevicesIntervalMs": {
-          "type": "number"
-        },
-        "checkBlockedDevicesIntervalMs": {
-          "type": "number"
-        },
-        "newCommandTimeoutSec": {
-          "type": "number"
-        },
-        "bindHostOrIp": {
-          "type": "string"
-        },
-        "enableDashboard": {
-          "type": "boolean"
-        },
-        "bootedSimulators": {
-          "type": "boolean"
-        },
-        "removeDevicesFromDatabaseBeforeRunningThePlugin": {
-          "type": "boolean",
-          "default": false
-        },
-        "healthCheckIntervalMs": {
-          "type": "number",
-          "default": 86400000
-        },
-        "healthCheckSchedule": {
-          "type": "string"
-        },
-        "databaseProvider": {
-          "type": "string",
-          "enum": [
-            "sqlite",
-            "postgresql"
-          ],
-          "default": "sqlite"
-        },
-        "databaseUrl": {
-          "type": "string"
-        },
-        "aiProvider": {
-          "type": "string",
-          "enum": [
-            "gemini",
-            "openai",
-            "anthropic",
-            "ollama"
-          ],
-          "default": "gemini"
-        },
-        "aiModel": {
-          "type": "string"
-        },
-        "aiBaseUrl": {
-          "type": "string"
-        },
-        "enableSelfHealing": {
-          "type": "boolean",
-          "default": true
-        },
-        "buildCleanupDays": {
-          "type": "number",
-          "default": 30
-        },
-        "buildCleanupMaxCount": {
-          "type": "number",
-          "default": 100
-        },
-        "buildCleanupSchedule": {
-          "type": "string",
-          "default": "0 0 * * *"
-        },
-        "deleteBuildAssets": {
-          "type": "boolean",
-          "default": true
-        }
-      },
-      "title": "Xenon",
-      "type": "object"
-    }
+    "schema": "schema.json"
   },
   "engines": {
     "node": "^14.17.0 || ^16.13.0 || >=18.0.0",
@@ -335,7 +203,8 @@
   "files": [
     "lib",
     "scripts",
-    "prisma"
+    "prisma",
+    "schema.json"
   ],
   "typedoc": {
     "entryPoint": "lib/src/index.js"

@@ -234,7 +234,7 @@ export class SessionManager {
       cloud: 0,
     };
 
-    for (const session of this.sessionMap.values()) {
+    for (const session of Array.from(this.sessionMap.values())) {
       const type = session.getType().toLowerCase();
       byType[type] = (byType[type] || 0) + 1;
     }

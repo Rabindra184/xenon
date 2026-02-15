@@ -107,10 +107,11 @@ export default class AndroidDeviceManager implements IDeviceManager {
 
     for (const [adbInstance, devices] of connectedDevices) {
       log.debug(
-        `fetchAndroidDevices from host: ${adbInstance.adbRemoteHost || 'Local'}. Found ${devices.length
+        `fetchAndroidDevices from host: ${adbInstance.adbRemoteHost || 'Local'}. Found ${(devices as any[]).length
         } android devices`,
       );
-      for (const device of devices) {
+      const devicesArray = devices as any[];
+      for (const device of devicesArray) {
         deviceProcessingPromises.push(
           (async () => {
             device.adbRemoteHost =
