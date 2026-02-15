@@ -26,7 +26,7 @@ interface ExtendedADB extends ADB {
   adbHost?: string;
   adbPort?: number;
   adbRemoteHost?: string | null;
-  executable: { path: string; defaultArgs: string[];[key: string]: any };
+  executable: { path: string; defaultArgs: string[]; [key: string]: any };
 }
 
 import { PluginContext } from '../PluginContext';
@@ -41,11 +41,17 @@ export default class AndroidDeviceManager implements IDeviceManager {
   private tracker?: Tracker = undefined;
   private remoteTrackers: { id: string; tracker: Tracker }[] = [];
 
-  constructor(private context: PluginContext) { }
+  constructor(private context: PluginContext) {}
 
-  private get pluginArgs() { return this.context.pluginArgs; }
-  private get hostPort() { return this.context.port; }
-  private get nodeId() { return this.context.nodeId; }
+  private get pluginArgs() {
+    return this.context.pluginArgs;
+  }
+  private get hostPort() {
+    return this.context.port;
+  }
+  private get nodeId() {
+    return this.context.nodeId;
+  }
 
   private initiateAbortControl(deviceUdid: string) {
     const control = new AbortController();
@@ -94,7 +100,9 @@ export default class AndroidDeviceManager implements IDeviceManager {
         return devices;
       }
     } catch (e: unknown) {
-      log.error(`Error while getting android devices. Error: ${e instanceof Error ? e.message : e}`);
+      log.error(
+        `Error while getting android devices. Error: ${e instanceof Error ? e.message : e}`,
+      );
     }
     return [];
   }
@@ -107,7 +115,8 @@ export default class AndroidDeviceManager implements IDeviceManager {
 
     for (const [adbInstance, devices] of connectedDevices) {
       log.debug(
-        `fetchAndroidDevices from host: ${adbInstance.adbRemoteHost || 'Local'}. Found ${(devices as any[]).length
+        `fetchAndroidDevices from host: ${adbInstance.adbRemoteHost || 'Local'}. Found ${
+          (devices as any[]).length
         } android devices`,
       );
       const devicesArray = devices as any[];
@@ -219,7 +228,10 @@ export default class AndroidDeviceManager implements IDeviceManager {
     const { adbInstance } = await this.getAdb();
     if (!adbInstance) return {};
     const adb = device.adbRemoteHost
-      ? (adbInstance.clone({ remoteAdbHost: device.adbRemoteHost, adbPort: device.adbPort }) as ExtendedADB)
+      ? (adbInstance.clone({
+          remoteAdbHost: device.adbRemoteHost,
+          adbPort: device.adbPort,
+        }) as ExtendedADB)
       : adbInstance;
 
     try {
@@ -284,7 +296,10 @@ export default class AndroidDeviceManager implements IDeviceManager {
     return undefined;
   }
 
-  private async getAdb(): Promise<{ adbInstance: ExtendedADB | undefined; adbTracker: Tracker | undefined }> {
+  private async getAdb(): Promise<{
+    adbInstance: ExtendedADB | undefined;
+    adbTracker: Tracker | undefined;
+  }> {
     try {
       if (!this.adb) {
         try {
@@ -368,11 +383,7 @@ export default class AndroidDeviceManager implements IDeviceManager {
           host: adbHost,
           port: adbPort,
         });
-        const remoteAdbTracking = await this.createRemoteAdbTracker(
-          remoteAdb,
-          originalADB,
-          value,
-        );
+        const remoteAdbTracking = await this.createRemoteAdbTracker(remoteAdb, originalADB, value);
         await remoteAdbTracking();
       });
       await Promise.all(promises);
@@ -589,7 +600,10 @@ export default class AndroidDeviceManager implements IDeviceManager {
     return sdkRoot;
   }
 
-  private getDeviceName = async (adbInstance: ExtendedADB, udid: string): Promise<string | undefined> => {
+  private getDeviceName = async (
+    adbInstance: ExtendedADB,
+    udid: string,
+  ): Promise<string | undefined> => {
     let deviceName = await this.getDeviceProperty(await adbInstance, udid, 'ro.product.name');
 
     if (!deviceName || (deviceName && deviceName.trim() === '')) {
@@ -679,7 +693,9 @@ export default class AndroidDeviceManager implements IDeviceManager {
     return await deviceLock.acquire(udid, async () => {
       try {
         const dumpPath = '/data/local/tmp/dump.xml';
-        await adb.adbExec(['-s', udid, 'shell', 'uiautomator', 'dump', dumpPath], { timeout: 15000 });
+        await adb.adbExec(['-s', udid, 'shell', 'uiautomator', 'dump', dumpPath], {
+          timeout: 15000,
+        });
         const xml = await adb.adbExec(['-s', udid, 'shell', 'cat', dumpPath], { timeout: 10000 });
         return xml || '';
       } catch (err: any) {
@@ -762,7 +778,8 @@ export default class AndroidDeviceManager implements IDeviceManager {
       }
     } catch (err: unknown) {
       log.warn(
-        `Failed to fetch Android clipboard for ${udid}: ${err instanceof Error ? err.message : err
+        `Failed to fetch Android clipboard for ${udid}: ${
+          err instanceof Error ? err.message : err
         }`,
       );
     }
@@ -856,15 +873,23 @@ export default class AndroidDeviceManager implements IDeviceManager {
       if (streamSession?.status === 'running' && streamSession.latestFrame) {
         // Sanity Check: A full screenshot should be at least ~10KB as JPEG.
         // Staleness Check: If the frame is older than 5 seconds, it's considered poor quality for interactive use.
-        const isFresh = streamSession.latestFrameTimestamp && (Date.now() - streamSession.latestFrameTimestamp < 5000);
+        const isFresh =
+          streamSession.latestFrameTimestamp &&
+          Date.now() - streamSession.latestFrameTimestamp < 5000;
 
         if (streamSession.latestFrame.length > 10000 && isFresh) {
-          log.info(`[AndroidDeviceManager] Using fresh cached stream frame for ${udid} screenshot.`);
+          log.info(
+            `[AndroidDeviceManager] Using fresh cached stream frame for ${udid} screenshot.`,
+          );
           return streamSession.latestFrame.toString('base64');
         } else if (!isFresh) {
-          log.warn(`[AndroidDeviceManager] Cached frame for ${udid} is STALE (${Math.round((Date.now() - (streamSession.latestFrameTimestamp || 0)) / 1000)}s old). Falling back to direct screencap.`);
+          log.warn(
+            `[AndroidDeviceManager] Cached frame for ${udid} is STALE (${Math.round((Date.now() - (streamSession.latestFrameTimestamp || 0)) / 1000)}s old). Falling back to direct screencap.`,
+          );
         } else {
-          log.warn(`[AndroidDeviceManager] Cached frame for ${udid} is too small (${streamSession.latestFrame.length}b). Falling back to direct screencap.`);
+          log.warn(
+            `[AndroidDeviceManager] Cached frame for ${udid} is too small (${streamSession.latestFrame.length}b). Falling back to direct screencap.`,
+          );
         }
       }
     } catch (e) {
@@ -909,7 +934,9 @@ export default class AndroidDeviceManager implements IDeviceManager {
       });
       return screenshot;
     } catch (err: unknown) {
-      log.error(`Failed to take screenshot for ${udid}: ${err instanceof Error ? err.message : err}`);
+      log.error(
+        `Failed to take screenshot for ${udid}: ${err instanceof Error ? err.message : err}`,
+      );
       // Fallback: Try shell method with base64 conversion on device
       try {
         log.info(`Attempting fallback screenshot for ${udid}...`);
@@ -917,7 +944,8 @@ export default class AndroidDeviceManager implements IDeviceManager {
         return base64.replace(/\r?\n/g, '');
       } catch (fallbackErr: unknown) {
         log.error(
-          `Fallback screenshot also failed for ${udid}: ${fallbackErr instanceof Error ? fallbackErr.message : fallbackErr
+          `Fallback screenshot also failed for ${udid}: ${
+            fallbackErr instanceof Error ? fallbackErr.message : fallbackErr
           }`,
         );
       }
@@ -942,7 +970,9 @@ export default class AndroidDeviceManager implements IDeviceManager {
         'threadtime',
       ]);
     } catch (err: unknown) {
-      log.warn(`Failed to fetch Android logs for ${udid}: ${err instanceof Error ? err.message : err}`);
+      log.warn(
+        `Failed to fetch Android logs for ${udid}: ${err instanceof Error ? err.message : err}`,
+      );
       return `Failed to fetch logs: ${err instanceof Error ? err.message : err}`;
     }
   }

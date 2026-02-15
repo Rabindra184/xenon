@@ -24,9 +24,11 @@ export default class IOSDeviceManager implements IDeviceManager {
   private wdaSoftFailures: Map<string, number> = new Map();
   private readonly WDA_SOFT_FAIL_MAX = 3;
 
-  constructor(private context: PluginContext) { }
+  constructor(private context: PluginContext) {}
 
-  private get pluginArgs() { return this.context.pluginArgs; }
+  private get pluginArgs() {
+    return this.context.pluginArgs;
+  }
 
   async getDevices(
     deviceTypes: { iosDeviceType: DeviceTypeToInclude },
@@ -52,7 +54,11 @@ export default class IOSDeviceManager implements IDeviceManager {
   async getAdditionalDeviceInfo(device: IDevice): Promise<Partial<IDevice>> {
     this.log.info(`Fetching additional iOS device info for ${device.udid}`);
     const result: Partial<IDevice> = {
-      derivedDataPath: this.prepareDerivedDataPath(this.pluginArgs.derivedDataPath, device.udid, device.realDevice),
+      derivedDataPath: this.prepareDerivedDataPath(
+        this.pluginArgs.derivedDataPath,
+        device.udid,
+        device.realDevice,
+      ),
     };
 
     const streamStatus = Container.get(IOSStreamService).getStreamStatus(device.udid);
@@ -69,8 +75,15 @@ export default class IOSDeviceManager implements IDeviceManager {
     return result;
   }
 
-  private prepareDerivedDataPath(derivedDataPath: IDerivedDataPath | undefined, udid: string, realDevice: boolean): string {
-    const tmpPath = path.join(os.homedir(), `Library/Developer/Xcode/DerivedData/WebDriverAgent-${udid}`);
+  private prepareDerivedDataPath(
+    derivedDataPath: IDerivedDataPath | undefined,
+    udid: string,
+    realDevice: boolean,
+  ): string {
+    const tmpPath = path.join(
+      os.homedir(),
+      `Library/Developer/Xcode/DerivedData/WebDriverAgent-${udid}`,
+    );
     if (derivedDataPath) {
       const source = realDevice ? derivedDataPath.device : derivedDataPath.simulator;
       if (source) fs.copySync(source, tmpPath);
@@ -85,7 +98,14 @@ export default class IOSDeviceManager implements IDeviceManager {
     return Container.get(WDAClient).tap(udid, x, y);
   }
 
-  async swipe(udid: string, x: number, y: number, endX: number, endY: number, duration: number): Promise<void> {
+  async swipe(
+    udid: string,
+    x: number,
+    y: number,
+    endX: number,
+    endY: number,
+    duration: number,
+  ): Promise<void> {
     return Container.get(WDAClient).swipe(udid, x, y, endX, endY, duration);
   }
 
@@ -156,7 +176,9 @@ export default class IOSDeviceManager implements IDeviceManager {
       } else {
         const simctl = new Simctl();
         const list = await simctl.list();
-        const sim: any = flatten(Object.values(list.devices)).find((s: any) => s.udid === device.udid);
+        const sim: any = flatten(Object.values(list.devices)).find(
+          (s: any) => s.udid === device.udid,
+        );
         return sim && ['Booted', 'Shutdown'].includes(sim.state)
           ? { healthStatus: 'Healthy' }
           : { healthStatus: 'Unhealthy', healthCheckError: `Simulator state: ${sim?.state}` };
@@ -176,7 +198,7 @@ export default class IOSDeviceManager implements IDeviceManager {
       const start = Date.now();
       while (Date.now() - start < 30000) {
         if (streamService.getStreamStatus(device.udid)?.status === 'running') return true;
-        await new Promise(r => setTimeout(r, 2000));
+        await new Promise((r) => setTimeout(r, 2000));
       }
     }
 
@@ -188,7 +210,7 @@ export default class IOSDeviceManager implements IDeviceManager {
         while (Date.now() - start < 15000) {
           healthy = await Container.get(WDAClient).verifyWDAStatus(device.udid);
           if (healthy) break;
-          await new Promise(r => setTimeout(r, 2000));
+          await new Promise((r) => setTimeout(r, 2000));
         }
       }
     }
@@ -206,7 +228,10 @@ export default class IOSDeviceManager implements IDeviceManager {
       } else {
         const simctl = new Simctl();
         simctl.udid = device.udid;
-        try { await simctl.shutdownDevice(); await new Promise(r => setTimeout(r, 2000)); } catch (e) { }
+        try {
+          await simctl.shutdownDevice();
+          await new Promise((r) => setTimeout(r, 2000));
+        } catch (e) {}
         await simctl.bootDevice();
         return true;
       }

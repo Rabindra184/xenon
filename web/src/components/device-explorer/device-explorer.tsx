@@ -81,7 +81,7 @@ export class DeviceExplorer extends React.Component<IDeviceExplorerProps, IDevic
       clearTimeout(this.refreshTimeout);
       this.refreshTimeout = null;
     }
-    this.socketCleanups.forEach(cleanup => cleanup());
+    this.socketCleanups.forEach((cleanup) => cleanup());
   }
 
   fetchDevicesDebounced() {
@@ -232,7 +232,7 @@ export class DeviceExplorer extends React.Component<IDeviceExplorerProps, IDevic
   render() {
     const devices = this.getFilteredDevice();
     const { udid } = this.props.params;
-    const selectedDevice = udid ? this.state.devices.find(d => d.udid === udid) : null;
+    const selectedDevice = udid ? this.state.devices.find((d) => d.udid === udid) : null;
 
     return (
       <div className="device-explorer-container">

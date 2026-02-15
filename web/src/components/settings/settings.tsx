@@ -55,7 +55,10 @@ export const Settings: React.FC = () => {
     setStatus(null);
     try {
       await XenonApiService.updateGlobalConfig(configToSave);
-      setStatus({ type: 'success', message: 'Infrastructure parameters synchronized across fleet.' });
+      setStatus({
+        type: 'success',
+        message: 'Infrastructure parameters synchronized across fleet.',
+      });
       setTimeout(() => setStatus(null), 5000);
     } catch (error) {
       console.error('Failed to save settings', error);
@@ -118,7 +121,8 @@ export const Settings: React.FC = () => {
           <h2>Infrastructure Control</h2>
         </div>
         <p className="settings-subtitle">
-          Manage core farm parameters, heartbeat frequency, and maintenance orchestrations across the global registry.
+          Manage core farm parameters, heartbeat frequency, and maintenance orchestrations across
+          the global registry.
         </p>
       </div>
 
@@ -143,7 +147,10 @@ export const Settings: React.FC = () => {
                 />
                 <span className="code-font">MS</span>
               </div>
-              <div className="setting-hint-clean">Minimum safe value: 5000ms. Note: This frequency is overridden when a schedule is active.</div>
+              <div className="setting-hint-clean">
+                Minimum safe value: 5000ms. Note: This frequency is overridden when a schedule is
+                active.
+              </div>
             </div>
 
             <div className="setting-card stagger-2">
@@ -151,7 +158,10 @@ export const Settings: React.FC = () => {
                 <Calendar size={16} />
                 <h4>Deep Diagnostic Schedule</h4>
               </div>
-              <p>Execute intensive reliability bursts (WDA restarts, Cache purges) using standardized Cron syntax.</p>
+              <p>
+                Execute intensive reliability bursts (WDA restarts, Cache purges) using standardized
+                Cron syntax.
+              </p>
 
               <div className="input-group">
                 <input
@@ -178,8 +188,9 @@ export const Settings: React.FC = () => {
                   {presets.map((p) => (
                     <button
                       key={p.label}
-                      className={`preset-chip ${config.healthCheckSchedule === p.value ? 'active' : ''
-                        }`}
+                      className={`preset-chip ${
+                        config.healthCheckSchedule === p.value ? 'active' : ''
+                      }`}
                       onClick={() => setConfig({ ...config, healthCheckSchedule: p.value })}
                     >
                       {p.label}
@@ -193,7 +204,10 @@ export const Settings: React.FC = () => {
                 <Brain size={16} />
                 <h4>AI Self-Healing</h4>
               </div>
-              <p>Automatically intercept and recover from failing locators using Xenon's 5-tier strategy.</p>
+              <p>
+                Automatically intercept and recover from failing locators using Xenon's 5-tier
+                strategy.
+              </p>
 
               <div className="toggle-group">
                 <label className="switch">
@@ -204,11 +218,14 @@ export const Settings: React.FC = () => {
                   />
                   <span className="slider round"></span>
                 </label>
-                <span className="toggle-label">{config.enableSelfHealing ? 'ENABLED' : 'DISABLED'}</span>
+                <span className="toggle-label">
+                  {config.enableSelfHealing ? 'ENABLED' : 'DISABLED'}
+                </span>
               </div>
 
               <div className="setting-hint-clean">
-                When enabled, Xenon will attempt to find elements via Fuzzy XML, OCR, Visual AI, and LLM before failing a test.
+                When enabled, Xenon will attempt to find elements via Fuzzy XML, OCR, Visual AI, and
+                LLM before failing a test.
               </div>
             </div>
           </div>
@@ -220,7 +237,6 @@ export const Settings: React.FC = () => {
             <span>{status.message}</span>
           </div>
         )}
-
       </div>
 
       <div className="settings-footer stagger-4">

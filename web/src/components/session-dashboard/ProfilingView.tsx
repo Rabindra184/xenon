@@ -103,10 +103,10 @@ const ProfilingView: React.FC<ProfilingViewProps> = ({ data, session }) => {
               ? 'Performance trace is being recorded. It will be available for download once the session ends.'
               : 'No performance trace was captured. This may happen if the session ended unexpectedly or the device was a simulator.'
             : isAndroid
-            ? isRunning
-              ? 'Profiling data is being collected. CPU & Memory charts will appear once the session ends.'
-              : 'No profiling data was captured. Ensure the app was launched and appPackage capability was provided.'
-            : 'Profiling is only available for Android and iOS real device sessions.'}
+              ? isRunning
+                ? 'Profiling data is being collected. CPU & Memory charts will appear once the session ends.'
+                : 'No profiling data was captured. Ensure the app was launched and appPackage capability was provided.'
+              : 'Profiling is only available for Android and iOS real device sessions.'}
         </p>
         {isAndroid && isRunning && (
           <p className="hint-text">

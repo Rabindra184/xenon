@@ -50,7 +50,8 @@ export default class ChromeDriverManager {
     );
     const latestVersion =
       newVersion !== null && newVersion !== undefined ? `v${newVersion}` : `v${fallBackVersion}`;
-    return `${await getChromedriverBinaryPath(this.tempDirectory)}/chromedriver_${this.osInfo.name
-      }${this.osInfo.arch}_${latestVersion}`;
+    return `${await getChromedriverBinaryPath(this.tempDirectory)}/chromedriver_${
+      this.osInfo.name
+    }${this.osInfo.arch}_${latestVersion}`;
   }
 }

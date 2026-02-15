@@ -116,10 +116,14 @@ function handler(cliArgs: Record<string, any>) {
       const { NetworkConditioningService } = await import('../services/NetworkConditioningService');
       const latency = Container.get(NetworkConditioningService).getLatency(sessionId);
       if (latency > 0) {
-        log.debug(`⏳ Network Conditioning: Delaying command by ${latency}ms for session ${sessionId}`);
-        await new Promise(resolve => setTimeout(resolve, latency));
+        log.debug(
+          `⏳ Network Conditioning: Delaying command by ${latency}ms for session ${sessionId}`,
+        );
+        await new Promise((resolve) => setTimeout(resolve, latency));
       }
-    } catch (e) { /* ignore */ }
+    } catch (e) {
+      /* ignore */
+    }
 
     if (remoteProxyMap.has(sessionId)) {
       if (proxyServer) {

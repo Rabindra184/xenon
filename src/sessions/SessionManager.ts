@@ -11,7 +11,7 @@ import { getXenonCapabilities } from '../XenonCapabilityManager';
 
 /**
  * SessionManager with persistence and recovery capabilities.
- * 
+ *
  * Key Design Decisions:
  * 1. LocalSessions CANNOT be recovered (Appium driver dies with the hub).
  *    On recovery, orphaned local sessions are marked as failed.
@@ -59,10 +59,10 @@ export class SessionManager {
 
   /**
    * Recover active sessions from the database after hub restart.
-   * 
+   *
    * @param currentNodeId - The ID of the current hub node
    * @param nodeBasePath - The base path for WebDriver URLs
-   * 
+   *
    * Strategy:
    * - Sessions on THIS node (LocalSessions) are marked as failed because
    *   the Appium driver is gone.
@@ -95,32 +95,30 @@ export class SessionManager {
         try {
           // Get the device associated with this session
           const device = await DeviceStoreFactory.getStore().findDevice({
-            udid: dbSession.device_udid
+            udid: dbSession.device_udid,
           });
 
           if (!device) {
             this.log.warn(
-              `⚠️ Session ${dbSession.id}: Device ${dbSession.device_udid} not found. Marking as failed.`
+              `⚠️ Session ${dbSession.id}: Device ${dbSession.device_udid} not found. Marking as failed.`,
             );
-            await this.markSessionAsFailed(
-              dbSession.id,
-              'Device not found after hub restart'
-            );
+            await this.markSessionAsFailed(dbSession.id, 'Device not found after hub restart');
             failedCount++;
             continue;
           }
 
           // Check if this session was on THE CURRENT NODE (LocalSession)
-          const isLocalSession = dbSession.node_id === currentNodeId || device.nodeId === currentNodeId;
+          const isLocalSession =
+            dbSession.node_id === currentNodeId || device.nodeId === currentNodeId;
 
           if (isLocalSession) {
             // LocalSessions cannot be recovered - the Appium driver is gone
             this.log.warn(
-              `⏹️ Session ${dbSession.id}: Was a LocalSession on this node. Marking as failed (driver lost).`
+              `⏹️ Session ${dbSession.id}: Was a LocalSession on this node. Marking as failed (driver lost).`,
             );
             await this.markSessionAsFailed(
               dbSession.id,
-              'Hub restarted - local Appium driver session was lost'
+              'Hub restarted - local Appium driver session was lost',
             );
 
             // Also unblock the device
@@ -183,22 +181,18 @@ export class SessionManager {
           // Add to in-memory map
           this.addSession(dbSession.id, recoveredSession);
           recoveredCount++;
-
         } catch (sessionErr: any) {
-          this.log.error(
-            `❌ Failed to recover session ${dbSession.id}: ${sessionErr.message}`
-          );
+          this.log.error(`❌ Failed to recover session ${dbSession.id}: ${sessionErr.message}`);
           await this.markSessionAsFailed(dbSession.id, `Recovery failed: ${sessionErr.message}`);
           failedCount++;
         }
       }
 
       this.log.info(
-        `✅ Session recovery complete. Recovered: ${recoveredCount}, Failed: ${failedCount}`
+        `✅ Session recovery complete. Recovered: ${recoveredCount}, Failed: ${failedCount}`,
       );
 
       return recoveredCount;
-
     } catch (err: any) {
       this.log.error(`❌ Session recovery error: ${err.message}`);
       return 0;

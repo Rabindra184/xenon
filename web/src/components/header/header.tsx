@@ -127,7 +127,10 @@ const Header: React.FC = () => {
                   <span>Maintenance & Retention</span>
                 </button>
 
-                <button className="dropdown-item" onClick={() => window.open(window.location.origin + '/xenon/api-docs', '_blank')}>
+                <button
+                  className="dropdown-item"
+                  onClick={() => window.open(window.location.origin + '/xenon/api-docs', '_blank')}
+                >
                   <BookOpen size={16} />
                   <span>API Documentation</span>
                 </button>

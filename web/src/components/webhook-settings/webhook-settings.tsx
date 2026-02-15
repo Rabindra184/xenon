@@ -232,8 +232,8 @@ export const WebhookSettings: React.FC = () => {
             {testStatus === 'success'
               ? 'Sent!'
               : testStatus === 'error'
-              ? 'Failed'
-              : 'Test Payload'}
+                ? 'Failed'
+                : 'Test Payload'}
           </button>
           <button className="add-btn" onClick={handleAdd} disabled={!newUrl || loading}>
             {loading ? 'Saving...' : 'Save Configuration'}

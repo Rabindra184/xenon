@@ -31,8 +31,6 @@ async function isValidSession(request: Request, response: Response, next: NextFu
   }
 }
 
-
-
 async function getSessions(request: Request, response: Response) {
   const { buildId, query, status, platform } = request.query;
 

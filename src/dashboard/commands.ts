@@ -83,7 +83,9 @@ export class DashboardCommands {
     // FIX: Validate against 'passed' and 'failed' (not 'success')
     const validStatuses = ['passed', 'failed', 'success']; // 'success' kept for backward compat
     if (args.status && validStatuses.indexOf(args.status) < 0) {
-      log.warn(`[DashboardCommands] Invalid status: ${args.status}. Valid: ${validStatuses.join(', ')}`);
+      log.warn(
+        `[DashboardCommands] Invalid status: ${args.status}. Valid: ${validStatuses.join(', ')}`,
+      );
       return this.sendSuccessResponse(response);
     }
     // Normalize 'success' to 'passed' for consistency
@@ -132,7 +134,8 @@ export class DashboardCommands {
     const { args } = request.body;
     const evidenceData = _.isArray(args) ? args[0] : args;
 
-    const reason = typeof evidenceData === 'string' ? evidenceData : evidenceData.reason || 'Manual capture';
+    const reason =
+      typeof evidenceData === 'string' ? evidenceData : evidenceData.reason || 'Manual capture';
     const label = typeof evidenceData === 'object' ? evidenceData.label : undefined;
 
     try {
@@ -224,4 +227,3 @@ export class DashboardCommands {
 }
 
 export const dashboardCommands = new DashboardCommands();
-

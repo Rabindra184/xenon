@@ -248,7 +248,7 @@ async function getActiveSessions(request: Request, response: Response) {
   const { SessionManager } = await import('../../sessions/SessionManager');
   const sessionManager = Container.get(SessionManager);
   const stats = sessionManager.getStats();
-  const sessions = sessionManager.getAllSessions().map(s => ({
+  const sessions = sessionManager.getAllSessions().map((s) => ({
     id: s.getId(),
     type: s.getType(),
     deviceUdid: s.getDevice()?.udid,
@@ -272,8 +272,12 @@ async function getRequestLogs(request: Request, response: Response) {
   const limit = parseInt(request.query.limit as string) || 50;
   const method = request.query.method as string;
   const urlPattern = request.query.url as string;
-  const hasError = request.query.hasError === 'true' ? true :
-    request.query.hasError === 'false' ? false : undefined;
+  const hasError =
+    request.query.hasError === 'true'
+      ? true
+      : request.query.hasError === 'false'
+        ? false
+        : undefined;
 
   const logs = logService.getRecentLogs(limit, {
     method,

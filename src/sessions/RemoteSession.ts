@@ -42,7 +42,8 @@ export class RemoteSession extends XenonSession {
         data: {},
       });
       console.log(
-        `[RemoteSession] stopVideoRecording response status: ${response.status}, data length: ${response?.data?.value?.length || 0
+        `[RemoteSession] stopVideoRecording response status: ${response.status}, data length: ${
+          response?.data?.value?.length || 0
         }`,
       );
       return response.status === 200 && response?.data?.value ? response?.data?.value : '';
@@ -58,7 +59,8 @@ export class RemoteSession extends XenonSession {
           data: {},
         });
         console.log(
-          `[RemoteSession] stopVideoRecording retry succeeded, data length: ${retryResponse?.data?.value?.length || 0
+          `[RemoteSession] stopVideoRecording retry succeeded, data length: ${
+            retryResponse?.data?.value?.length || 0
           }`,
         );
         return retryResponse?.data?.value || '';

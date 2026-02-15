@@ -32,7 +32,7 @@ export async function asyncForEach(
 export async function spinWith(
   msg: string,
   fn: () => Promise<boolean>,
-  callback = (_msg: string) => { },
+  callback = (_msg: string) => {},
 ) {
   const spinner = ora(msg).start();
   await asyncWait(
@@ -81,8 +81,9 @@ export function nodeUrl(device: IDevice, basePath = ''): string {
     } else if (device.cloud.toLowerCase() === Cloud.HEADSPIN) {
       return `${host}`;
     } else {
-      return `https://${process.env.CLOUD_USERNAME}:${process.env.CLOUD_KEY}@${new URL(device.host).host
-        }/wd/hub`;
+      return `https://${process.env.CLOUD_USERNAME}:${process.env.CLOUD_KEY}@${
+        new URL(device.host).host
+      }/wd/hub`;
     }
   }
   // hardcoded the `/wd/hub` for now. This can be fetch from serverArgs.basePath
@@ -133,9 +134,7 @@ export function stripAppiumPrefixes(caps: any) {
   const allPrefixes = [APPIUM_VENDOR_PREFIX, ...XENON_PREFIXES];
   const keys = _.keys(caps);
 
-  const prefixedCaps = keys.filter(cap =>
-    allPrefixes.some(prefix => cap.startsWith(prefix))
-  );
+  const prefixedCaps = keys.filter((cap) => allPrefixes.some((prefix) => cap.startsWith(prefix)));
   const nonPrefixedCaps = _.difference(keys, prefixedCaps);
 
   // initialize this with the k/v pairs of the non-prefixed caps
@@ -147,7 +146,7 @@ export function stripAppiumPrefixes(caps: any) {
 
   // Strip prefixes
   for (const prefixedCap of prefixedCaps) {
-    const activePrefix = allPrefixes.find(p => prefixedCap.startsWith(p))!;
+    const activePrefix = allPrefixes.find((p) => prefixedCap.startsWith(p))!;
     const strippedCapName = prefixedCap.substring(activePrefix.length) as string;
 
     // If it's standard capability that was prefixed, add it to an array of incorrectly prefixed capabilities
@@ -158,7 +157,7 @@ export function stripAppiumPrefixes(caps: any) {
       } else {
         log.warn(
           `Ignoring capability '${prefixedCap}=${caps[prefixedCap]}' and ` +
-          `using capability '${strippedCapName}=${strippedCaps[strippedCapName]}'`,
+            `using capability '${strippedCapName}=${strippedCaps[strippedCapName]}'`,
         );
       }
     } else {

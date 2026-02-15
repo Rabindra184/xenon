@@ -39,10 +39,12 @@ async function markSimulatorsAsBooted() {
 
 async function initDeviceFarm(iosDeviceType: string) {
   await initializeStorage();
-  const deviceManager = createTestXenonManager(Object.assign({}, pluginArgs, {
-    iosDeviceType: iosDeviceType,
-    maxSessions: 1,
-  }));
+  const deviceManager = createTestXenonManager(
+    Object.assign({}, pluginArgs, {
+      iosDeviceType: iosDeviceType,
+      maxSessions: 1,
+    }),
+  );
   expect(deviceManager.getMaxSessionCount()).to.be.eql(1);
   const hub = pluginArgs.hub;
   await updateDeviceList(pluginArgs.bindHostOrIp, hub);
@@ -109,10 +111,12 @@ describe('Max sessions CLI argument test', () => {
 
   it('Throw error when all sessions occupied', async () => {
     await initializeStorage();
-    const deviceManager = createTestXenonManager(Object.assign({}, pluginArgs, {
-      iosDeviceType: 'simulated',
-      maxSessions: 1,
-    }));
+    const deviceManager = createTestXenonManager(
+      Object.assign({}, pluginArgs, {
+        iosDeviceType: 'simulated',
+        maxSessions: 1,
+      }),
+    );
     // set all devices to busy
     const allDevices = await deviceManager.getDevices();
     for await (const _device of allDevices) {

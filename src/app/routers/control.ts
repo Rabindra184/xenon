@@ -177,8 +177,12 @@ router.get('/:udid/screenshot', async (req: Request, res: Response) => {
       return res.status(200).send({ screenshot: base64 });
     }
 
-    log.error(`Screenshot capture failed for ${udid}: returned empty or invalid data (${base64?.length || 0} bytes)`);
-    return res.status(502).send({ error: 'Screenshot capture failed. Device may be busy or WDA is unresponsive. Try again.' });
+    log.error(
+      `Screenshot capture failed for ${udid}: returned empty or invalid data (${base64?.length || 0} bytes)`,
+    );
+    return res.status(502).send({
+      error: 'Screenshot capture failed. Device may be busy or WDA is unresponsive. Try again.',
+    });
   }
   res.status(400).send('Manager not found or screenshot not supported');
 });
@@ -329,7 +333,7 @@ router.post('/:udid/upload-install', async (req: Request, res: Response) => {
     if (manager && manager.installApp) {
       await manager.installApp(udid, appPath);
       // Clean up after installation
-      setTimeout(() => fs.remove(appPath).catch(() => { }), 10000);
+      setTimeout(() => fs.remove(appPath).catch(() => {}), 10000);
       return res
         .status(200)
         .send({ success: true, message: `App ${appFile.name} installed successfully` });
@@ -690,7 +694,7 @@ router.get('/:udid/omni-scan', async (req: Request, res: Response) => {
           return await manager.getPageSource(udid);
         }
         return '';
-      }
+      },
     };
 
     const result = await omniService.analyzeScreen(mockDriver);
@@ -738,7 +742,7 @@ router.post('/:udid/test-locator', async (req: Request, res: Response) => {
           return await manager.getScreenshot(udid);
         }
         throw new Error('Screenshot not supported for this device');
-      }
+      },
     };
 
     let value: any[] = [];
@@ -748,7 +752,9 @@ router.post('/:udid/test-locator', async (req: Request, res: Response) => {
       const match = await omniService.findByIcon(mockDriver, selector);
       if (match) value = [match];
     } else {
-      return res.status(400).send({ status: 'error', message: `Unsupported strategy: ${strategy}` });
+      return res
+        .status(400)
+        .send({ status: 'error', message: `Unsupported strategy: ${strategy}` });
     }
 
     return res.status(200).send({ status: 'success', value });

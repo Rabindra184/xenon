@@ -145,8 +145,9 @@ export class DeviceCard extends React.Component<IDeviceCardProps, IDeviceCardSta
           <button
             className="device-info-card__body_unblock-device"
             onClick={() => this.releaseReservation(udid, host)}
-            title={`Reserved by ${reservedBy}${reservationReason ? `: ${reservationReason}` : ''
-              }. Expires: ${reservedUntil ? new Date(reservedUntil).toLocaleString() : 'Never'}`}
+            title={`Reserved by ${reservedBy}${
+              reservationReason ? `: ${reservationReason}` : ''
+            }. Expires: ${reservedUntil ? new Date(reservedUntil).toLocaleString() : 'Never'}`}
           >
             <Unlock
               size={16}
@@ -207,14 +208,13 @@ export class DeviceCard extends React.Component<IDeviceCardProps, IDeviceCardSta
     };
 
     return (
-      <div
-        className={`device-info-card-container ${this.getStatusClassName()}`}
-      >
+      <div className={`device-info-card-container ${this.getStatusClassName()}`}>
         <div
-          className={`device-state ${deviceState} ${deviceState === 'busy' && sessionProgress && sessionProgress !== 'Session Active'
-            ? 'progress-active'
-            : ''
-            }`}
+          className={`device-state ${deviceState} ${
+            deviceState === 'busy' && sessionProgress && sessionProgress !== 'Session Active'
+              ? 'progress-active'
+              : ''
+          }`}
         >
           {deviceState === 'busy' && sessionProgress && sessionProgress !== 'Session Active'
             ? sessionProgress
@@ -266,8 +266,9 @@ export class DeviceCard extends React.Component<IDeviceCardProps, IDeviceCardSta
           <div className="device-info-card-container__body_row">
             <div className="device-info-card-container__body_row_label">Health:</div>
             <div
-              className={`device-info-card-container__body_row_value health-status ${this.props.device.healthStatus?.toLowerCase() || 'healthy'
-                }`}
+              className={`device-info-card-container__body_row_value health-status ${
+                this.props.device.healthStatus?.toLowerCase() || 'healthy'
+              }`}
               title={this.props.device.healthCheckError || 'Device is healthy'}
             >
               <span className="health-status-dot"></span>
@@ -392,9 +393,13 @@ export class DeviceCard extends React.Component<IDeviceCardProps, IDeviceCardSta
         <div className="device-info-card-container__footer_wrapper">
           {blockButton()}
           <button
-            className={`device-info-card__body_control-device ${busy && !!session_id && !session_id.toString().startsWith('manual_') ? 'disabled' : ''
-              }`}
-            onClick={() => !(busy && !!session_id && !session_id.toString().startsWith('manual_')) && this.props.navigate(`/devices/${udid}/control`)}
+            className={`device-info-card__body_control-device ${
+              busy && !!session_id && !session_id.toString().startsWith('manual_') ? 'disabled' : ''
+            }`}
+            onClick={() =>
+              !(busy && !!session_id && !session_id.toString().startsWith('manual_')) &&
+              this.props.navigate(`/devices/${udid}/control`)
+            }
             disabled={busy && !!session_id && !session_id.toString().startsWith('manual_')}
             title={
               busy && !!session_id && !session_id.toString().startsWith('manual_')

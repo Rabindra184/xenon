@@ -191,8 +191,11 @@ export class LocalSession extends RemoteSession {
       size = '720x1280';
     }
 
-    const isolationService = Container.get((await import('../services/ResourceIsolationService')).ResourceIsolationService);
-    const isolationProfile = (this.getCapabilities() as any)[XENON_CAPABILITIES.ISOLATION_PROFILE] || 'Performance';
+    const isolationService = Container.get(
+      (await import('../services/ResourceIsolationService')).ResourceIsolationService,
+    );
+    const isolationProfile =
+      (this.getCapabilities() as any)[XENON_CAPABILITIES.ISOLATION_PROFILE] || 'Performance';
     const videoPipeline = Container.get(VideoPipelineService);
 
     try {
@@ -210,7 +213,7 @@ export class LocalSession extends RemoteSession {
       await videoPipeline.startRecording({
         sessionId: this.sessionId,
         udid: device.udid,
-        resolution
+        resolution,
       });
     } catch (err: any) {
       log.warn('[LocalSession] Failed to start Intelligent Video Pipeline:', err);
@@ -246,7 +249,8 @@ export class LocalSession extends RemoteSession {
         }
       } else {
         log.warn(
-          `[LocalSession] Direct stopRecordingScreen not found on target driver. Function exists: ${typeof targetDriver?.stopRecordingScreen === 'function'
+          `[LocalSession] Direct stopRecordingScreen not found on target driver. Function exists: ${
+            typeof targetDriver?.stopRecordingScreen === 'function'
           }`,
         );
       }

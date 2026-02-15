@@ -71,14 +71,16 @@ export async function getDevices(filterOptions: IDeviceFilterOptions): Promise<I
 
   // Principal Intelligence: Multi-layered Reliability Filter
   const breaker = Container.get(CircuitBreaker);
-  return devices.filter(device => {
+  return devices.filter((device) => {
     // 1. Host Stability (Circuit Breaker)
     if (breaker.isOpen(device.host)) return false;
 
     // 2. Device Health (Proactive Status)
     // Only exclude if healthStatus is explicitly defined and not 'Healthy'
     if (device.healthStatus && device.healthStatus !== 'Healthy') {
-      log.debug(`[DeviceService] Skipping unhealthy device ${device.udid}: ${device.healthCheckError}`);
+      log.debug(
+        `[DeviceService] Skipping unhealthy device ${device.udid}: ${device.healthCheckError}`,
+      );
       return false;
     }
 
@@ -115,7 +117,12 @@ export async function updateDeviceProgress(
   log.debug(`[${udid}] progress: ${progress}`);
   await store.updateDevice(udid, host, { sessionProgress: progress, ...extra });
   // Emit progress update via socket
-  Container.get(SocketServer).emitToDashboard('device_progress', { udid, host, progress, ...extra });
+  Container.get(SocketServer).emitToDashboard('device_progress', {
+    udid,
+    host,
+    progress,
+    ...extra,
+  });
 }
 
 export async function updateCmdExecutedTime(sessionId: string) {
@@ -147,9 +154,13 @@ export async function blockDevice(udid: string, host: string, sessionId?: string
     busy: true,
     lastCmdExecutedAt: undefined,
     sessionProgress: '',
-    session_id: sessionId || null as any,
+    session_id: sessionId || (null as any),
   });
-  Container.get(SocketServer).emitToDashboard('device_blocked', { udid, host, session_id: sessionId });
+  Container.get(SocketServer).emitToDashboard('device_blocked', {
+    udid,
+    host,
+    session_id: sessionId,
+  });
 }
 
 export async function unblockDevice(udid: string, host: string) {
@@ -181,7 +192,10 @@ export async function unblockDeviceMatchingFilter(filter: object) {
         } as Partial<IDevice>);
 
         log.debug(`Unblocked device ${device.udid}`);
-        Container.get(SocketServer).emitToDashboard('device_unblocked', { udid: device.udid, host: device.host });
+        Container.get(SocketServer).emitToDashboard('device_unblocked', {
+          udid: device.udid,
+          host: device.host,
+        });
       }),
     ).catch((error) => {
       log.error(`Unable to unblock device: ${error}`);
