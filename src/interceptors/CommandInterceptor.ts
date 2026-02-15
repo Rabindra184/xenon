@@ -40,9 +40,11 @@ export class CommandInterceptor {
         }
 
         try {
-            const { updateCmdExecutedTime } = await import('../data-service/device-service');
-            await updateCmdExecutedTime(sessionId);
-            await DASHBORD_EVENT_MANAGER.beforeSessionCommand(sessionId, commandName, {} as any, {} as any);
+            if (sessionId) {
+                const { updateCmdExecutedTime } = await import('../data-service/device-service');
+                await updateCmdExecutedTime(sessionId);
+                await DASHBORD_EVENT_MANAGER.beforeSessionCommand(sessionId, commandName, {} as any, {} as any);
+            }
 
             // --- OMNI-VISION: PROACTIVE SEARCH ---
             const strategy = args[0];
