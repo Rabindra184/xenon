@@ -151,7 +151,12 @@ export class CommandInterceptor {
             case 'getText': return element.text || '';
             case 'setValue':
                 await driver.performActions([{ type: 'pointer', id: 'finger1', parameters: { pointerType: 'touch' }, actions: [{ type: 'pointerMove', duration: 0, x: centerX, y: centerY }, { type: 'pointerDown', button: 0 }, { type: 'pause', duration: 100 }, { type: 'pointerUp', button: 0 }] }]);
-                try { return await driver.setValue(value, elementId); } catch (e) { return null; }
+                try {
+                    return await driver.setValue(elementId, value);
+                } catch (e: any) {
+                    this.log.error(`setValue failed for virtual element ${elementId} on session ${sessionId}: ${e.message}`);
+                    throw e;
+                }
             default: throw new Error(`Command ${commandName} not supported for visual elements`);
         }
     }
