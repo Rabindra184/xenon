@@ -30,7 +30,7 @@ export class WDAClient {
   private async executeSerializedCommand<T>(udid: string, action: () => Promise<T>): Promise<T> {
     const currentQueue = this.commandQueues.get(udid) || Promise.resolve();
     const nextInQueue = currentQueue
-      .catch(() => {})
+      .catch(() => { })
       .then(() => action())
       .finally(() => {
         if (this.commandQueues.get(udid) === nextInQueue) this.commandQueues.delete(udid);
@@ -304,13 +304,13 @@ export class WDAClient {
     }
   }
   async installApp(udid: string, p: string): Promise<void> {
-    await execFilePromise('ideviceinstaller', ['-u', udid, '-i', p]);
+    await execFilePromise('ideviceinstaller', ['-u', udid, 'install', p]);
   }
   async uninstallApp(udid: string, b: string): Promise<void> {
-    await execFilePromise('ideviceinstaller', ['-u', udid, '-U', b]);
+    await execFilePromise('ideviceinstaller', ['-u', udid, 'uninstall', b]);
   }
   async listApps(udid: string): Promise<string[]> {
-    const { stdout } = await execFilePromise('ideviceinstaller', ['-u', udid, '-l']);
+    const { stdout } = await execFilePromise('ideviceinstaller', ['-u', udid, 'list']);
     return stdout
       .split('\n')
       .filter((l) => l.includes(' - '))
