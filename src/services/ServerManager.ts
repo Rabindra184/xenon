@@ -3,6 +3,8 @@ import { v4 as uuidv4 } from 'uuid';
 import { redactSecrets } from '../helpers';
 import ip from 'ip';
 import log from '../logger';
+// enable resolveJsonModule in tsconfig must be true for this to work
+import pkg from '../../package.json';
 import { IPluginArgs, DefaultPluginArgs } from '../interfaces/IPluginArgs';
 import { ConfigService } from '../data-service/config-service';
 import { PluginContext } from '../PluginContext';
@@ -42,9 +44,8 @@ export class ServerManager {
 
     const pluginArgs = await this.resolvePluginArgs(cliArgs);
     const nodeId = uuidv4();
-    const { version } = require('../../package.json');
 
-    log.banner(version, nodeId);
+    log.banner(pkg.version, nodeId);
 
     // Standardize static variable initialization
     XenonPlugin.NODE_ID = nodeId;
