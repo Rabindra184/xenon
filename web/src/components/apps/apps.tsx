@@ -171,15 +171,17 @@ const Apps: React.FC = () => {
             <div className="device-explorer-header-entry-header">Platform</div>
             <div className="device-explorer-header-value">
               <button
-                className={`device-explorer-header__platform-btn ${platformFilter.android && 'selected'
-                  }`}
+                className={`device-explorer-header__platform-btn ${
+                  platformFilter.android && 'selected'
+                }`}
                 onClick={() => togglePlatform('android')}
               >
                 <Smartphone size={18} color="currentColor" /> Android
               </button>
               <button
-                className={`device-explorer-header__platform-btn ${platformFilter.ios && 'selected'
-                  }`}
+                className={`device-explorer-header__platform-btn ${
+                  platformFilter.ios && 'selected'
+                }`}
                 onClick={() => togglePlatform('ios')}
               >
                 <Apple size={18} color="currentColor" /> iOS
@@ -309,8 +311,9 @@ const Apps: React.FC = () => {
 
                     <div className="col-actions">
                       <button
-                        className={`instant-deploy-trigger ${deployingAppId === app.id && 'active'
-                          }`}
+                        className={`instant-deploy-trigger ${
+                          deployingAppId === app.id && 'active'
+                        }`}
                         onClick={() => {
                           if (deployingAppId === app.id) {
                             setDeployingAppId(null);

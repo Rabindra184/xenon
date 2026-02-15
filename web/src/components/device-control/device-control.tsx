@@ -179,7 +179,7 @@ export default function DeviceControl({ device, onClose }: DeviceControlProps) {
     startAutoStream();
     return () => {
       // Principal cleanup: Stop the stream when user leaves Control view
-      XenonApiService.stopStream(currentDevice.udid).catch(() => { });
+      XenonApiService.stopStream(currentDevice.udid).catch(() => {});
     };
   }, [device.udid]); // Only run once for this udid
 
@@ -579,8 +579,9 @@ export default function DeviceControl({ device, onClose }: DeviceControlProps) {
           {currentDevice.reservedUntil && Date.now() < currentDevice.reservedUntil && (
             <span
               className="device-pill reserved-pill"
-              title={`Reserved by ${currentDevice.reservedBy}${currentDevice.reservationReason ? `: ${currentDevice.reservationReason}` : ''
-                }`}
+              title={`Reserved by ${currentDevice.reservedBy}${
+                currentDevice.reservationReason ? `: ${currentDevice.reservationReason}` : ''
+              }`}
             >
               RESERVED BY {currentDevice.reservedBy?.toUpperCase() || 'ANONYMOUS'}
             </span>
@@ -599,8 +600,9 @@ export default function DeviceControl({ device, onClose }: DeviceControlProps) {
           <div className="device-screen-wrapper">
             <div
               ref={canvasRef}
-              className={`device-stream-canvas ${!isPortrait ? 'landscape' : ''} ${isCanvasFocused ? 'focused' : ''
-                }`}
+              className={`device-stream-canvas ${!isPortrait ? 'landscape' : ''} ${
+                isCanvasFocused ? 'focused' : ''
+              }`}
               style={{
                 width: canvasDimensions.width,
                 height: canvasDimensions.height,
@@ -701,8 +703,9 @@ export default function DeviceControl({ device, onClose }: DeviceControlProps) {
           </div>
 
           <div
-            className={`interactions-scroll-area ${activeTab === 'terminal' ? 'terminal-mode' : ''
-              }`}
+            className={`interactions-scroll-area ${
+              activeTab === 'terminal' ? 'terminal-mode' : ''
+            }`}
           >
             <div className="tab-content">
               {activeTab === 'omni' && (
@@ -904,8 +907,9 @@ export default function DeviceControl({ device, onClose }: DeviceControlProps) {
                         {screenshots.map((s, idx) => (
                           <div
                             key={s.id}
-                            className={`screenshot-thumb-item ${selectedScreenshotIndex === idx ? 'active' : ''
-                              }`}
+                            className={`screenshot-thumb-item ${
+                              selectedScreenshotIndex === idx ? 'active' : ''
+                            }`}
                             onClick={() => setSelectedScreenshotIndex(idx)}
                           >
                             <img src={`data:image/png;base64,${s.base64}`} alt="Thumb" />
@@ -1051,8 +1055,9 @@ export default function DeviceControl({ device, onClose }: DeviceControlProps) {
                     platform={
                       (currentDevice.platform || '').toLowerCase() as 'android' | 'ios' | 'tvos'
                     }
-                    prompt={`${(currentDevice.platform || '').toLowerCase() === 'ios' ? 'ios' : 'adb'
-                      } $`}
+                    prompt={`${
+                      (currentDevice.platform || '').toLowerCase() === 'ios' ? 'ios' : 'adb'
+                    } $`}
                     welcomeMessage={`Connected to ${currentDevice.name} (${currentDevice.udid}).\nInternal Shell Environment.`}
                     onCommand={async (cmd) => {
                       const res = await XenonApiService.executeShell(currentDevice.udid, cmd);

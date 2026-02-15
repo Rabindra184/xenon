@@ -25,9 +25,11 @@ export default class IOSDeviceManager implements IDeviceManager {
   private readonly WDA_SOFT_FAIL_MAX = 3;
 
   constructor(private context: PluginContext) {
-    Container.get(WDAClient).checkRequirements().catch((e) => {
-      this.log.error(`Failed to verify ideviceinstaller requirements: ${e.message}`);
-    });
+    Container.get(WDAClient)
+      .checkRequirements()
+      .catch((e) => {
+        this.log.error(`Failed to verify ideviceinstaller requirements: ${e.message}`);
+      });
   }
 
   private get pluginArgs() {
@@ -235,7 +237,7 @@ export default class IOSDeviceManager implements IDeviceManager {
         try {
           await simctl.shutdownDevice();
           await new Promise((r) => setTimeout(r, 2000));
-        } catch (e) { }
+        } catch (e) {}
         await simctl.bootDevice();
         return true;
       }

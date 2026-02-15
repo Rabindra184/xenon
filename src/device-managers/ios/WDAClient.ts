@@ -32,7 +32,7 @@ export class WDAClient {
   private async executeSerializedCommand<T>(udid: string, action: () => Promise<T>): Promise<T> {
     const currentQueue = this.commandQueues.get(udid) || Promise.resolve();
     const nextInQueue = currentQueue
-      .catch(() => { })
+      .catch(() => {})
       .then(() => action())
       .finally(() => {
         if (this.commandQueues.get(udid) === nextInQueue) this.commandQueues.delete(udid);
@@ -374,7 +374,9 @@ export class WDAClient {
         });
         this.log.info(`Successfully installed app using go-ios on ${udid}`);
       } catch (e2: any) {
-        this.log.error(`Installation failed for ${udid} with both tools. Last error: ${e2.message}`);
+        this.log.error(
+          `Installation failed for ${udid} with both tools. Last error: ${e2.message}`,
+        );
         throw e2;
       }
     }
@@ -389,7 +391,9 @@ export class WDAClient {
         await execFilePromise('ideviceinstaller', ['-u', udid, '-U', b]);
       }
     } catch (e: any) {
-      this.log.warn(`ideviceinstaller uninstall failed for ${udid}: ${e.message}. Trying go-ios fallback.`);
+      this.log.warn(
+        `ideviceinstaller uninstall failed for ${udid}: ${e.message}. Trying go-ios fallback.`,
+      );
       const s = Container.get(IOSStreamService);
       try {
         await execFilePromise(s.goIOSPath, ['uninstall', `--bundleid=${b}`, '--udid', udid], {
@@ -397,7 +401,9 @@ export class WDAClient {
         });
         this.log.info(`Successfully uninstalled app ${b} using go-ios on ${udid}`);
       } catch (e2: any) {
-        this.log.error(`Uninstallation failed for ${udid} with both tools. Last error: ${e2.message}`);
+        this.log.error(
+          `Uninstallation failed for ${udid} with both tools. Last error: ${e2.message}`,
+        );
         throw e2;
       }
     }
@@ -414,9 +420,13 @@ export class WDAClient {
         .map((l) => l.split(' - ')[0]);
 
       if (apps.length > 0) return apps;
-      this.log.info(`ideviceinstaller returned empty app list for ${udid}. Trying go-ios fallback.`);
+      this.log.info(
+        `ideviceinstaller returned empty app list for ${udid}. Trying go-ios fallback.`,
+      );
     } catch (e: any) {
-      this.log.warn(`ideviceinstaller listApps failed for ${udid}: ${e.message}. Trying go-ios fallback.`);
+      this.log.warn(
+        `ideviceinstaller listApps failed for ${udid}: ${e.message}. Trying go-ios fallback.`,
+      );
     }
 
     // Fallback to go-ios
