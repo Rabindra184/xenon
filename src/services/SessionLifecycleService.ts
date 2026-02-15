@@ -376,8 +376,11 @@ export class SessionLifecycleService {
     };
 
     if (context.pluginArgs.proxy) {
+      const rejectUnauthorized = context.pluginArgs.tlsRejectUnauthorized !== false;
       this.logger.info(`Added proxy to axios config: ${JSON.stringify(context.pluginArgs.proxy)}`);
-      config.httpsAgent = new HttpsProxyAgent(context.pluginArgs.proxy as any);
+      config.httpsAgent = new HttpsProxyAgent(context.pluginArgs.proxy as any, {
+        rejectUnauthorized,
+      } as any);
       config.httpAgent = new HttpProxyAgent(context.pluginArgs.proxy as any);
       config.proxy = false;
     }
