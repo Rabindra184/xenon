@@ -328,8 +328,8 @@ export class WDAClient {
         const coerced = semver.coerce(match[1]);
         if (coerced) {
           this.ideviceinstallerVersion = coerced.version;
-          this.log.debug(
-            `Detected ideviceinstaller version (normalized): ${this.ideviceinstallerVersion}`,
+          this.log.info(
+            `Detected ideviceinstaller version: Raw="${stdout.trim()}", Normalized="${this.ideviceinstallerVersion}"`,
           );
           return this.ideviceinstallerVersion;
         }
@@ -342,14 +342,14 @@ export class WDAClient {
           const coerced = semver.coerce(match[1]);
           if (coerced) {
             this.ideviceinstallerVersion = coerced.version;
-            this.log.debug(
-              `Detected ideviceinstaller version (normalized): ${this.ideviceinstallerVersion}`,
+            this.log.info(
+              `Detected ideviceinstaller version (alt): Raw="${stdout.trim()}", Normalized="${this.ideviceinstallerVersion}"`,
             );
             return this.ideviceinstallerVersion;
           }
         }
       } catch (e2: any) {
-        this.log.debug(`Failed to detect ideviceinstaller version: ${e2.message}`);
+        this.log.warn(`Failed to detect ideviceinstaller version: ${e2.message}`);
       }
     }
     this.ideviceinstallerVersion = '1.0.0'; // Fallback to legacy
@@ -358,7 +358,7 @@ export class WDAClient {
 
   async installApp(udid: string, p: string): Promise<void> {
     const version = await this.getIdeviceinstallerVersion();
-    // Threshold adjusted: 1.1.1-40 and above (coerced to 1.1.0 or 1.1.1) use 'install' subcommand
+    // Threshold adjusted: 1.1.0 and above use 'install' subcommand. Version 1.1.1 dropped legacy flags.
     if (semver.gte(version, '1.1.0')) {
       await execFilePromise('ideviceinstaller', ['-u', udid, 'install', p]);
     } else {
@@ -384,6 +384,7 @@ export class WDAClient {
       .filter((l) => l.includes(' - '))
       .map((l) => l.split(' - ')[0]);
   }
+
   async getLogs(udid: string): Promise<string> {
     // timeout command is usually available on linux/mac (via coreutils)
     const { stdout } = await execFilePromise('timeout', ['2', 'idevicesyslog', '-u', udid]).catch(
