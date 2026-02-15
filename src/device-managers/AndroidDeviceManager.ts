@@ -149,9 +149,9 @@ export default class AndroidDeviceManager implements IDeviceManager {
     const seenUdids = new Set();
 
     for (const dev of processedDevices) {
-      if (dev && !seenUdids.has(`${dev.udid} -${dev.adbRemoteHost} `)) {
+      if (dev && !seenUdids.has(`${dev.udid}-${dev.adbRemoteHost}`)) {
         availableDevices.push(dev);
-        seenUdids.add(`${dev.udid} -${dev.adbRemoteHost} `);
+        seenUdids.add(`${dev.udid}-${dev.adbRemoteHost}`);
       }
     }
 
