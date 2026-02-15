@@ -93,8 +93,11 @@ export class SessionLifecycleService {
       }
     }
 
+    const firstMatch =
+      Array.isArray(caps.firstMatch) && caps.firstMatch.length > 0 ? caps.firstMatch[0] : {};
+
     await addNewPendingSession({
-      ...Object.assign({}, caps.firstMatch[0], caps.alwaysMatch),
+      ...Object.assign({}, firstMatch, caps.alwaysMatch),
       capability_id: pendingSessionId,
       createdAt: new Date().getTime(),
     });
