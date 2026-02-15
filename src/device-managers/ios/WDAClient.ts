@@ -5,12 +5,13 @@ import { Container, Service } from 'typedi';
 import IOSStreamService from './IOSStreamService';
 import { IDevice } from '../../interfaces/IDevice';
 import { DeviceStoreFactory } from '../../data-service/device-store';
-import { exec } from 'child_process';
+import { exec, execFile } from 'child_process';
 import { promisify } from 'util';
 import path from 'path';
 import os from 'os';
 import fs from 'fs-extra';
 
+const execFilePromise = promisify(execFile);
 const execPromise = promisify(exec);
 
 @Service()
@@ -133,7 +134,7 @@ export class WDAClient {
         if (await s.isGoIOSAvailable()) {
             try {
                 const p = path.join(os.tmpdir(), `screenshot-${udid}.png`);
-                await execPromise(`"${s.goIOSPath}" screenshot --udid ${udid} --output "${p}"`, { env: { ...process.env, ENABLE_GO_IOS_AGENT: 'yes' } });
+                await execFilePromise(s.goIOSPath, ['screenshot', '--udid', udid, '--output', p], { env: { ...process.env, ENABLE_GO_IOS_AGENT: 'yes' } });
                 const b = await fs.readFile(p); await fs.remove(p); return b.toString('base64');
             } catch (e: any) { this.log.debug(`go-ios screenshot failed for ${udid}: ${e.message}\n${e.stack}`); }
         }
@@ -158,14 +159,18 @@ export class WDAClient {
 
     async lock(udid: string): Promise<void> { try { await this.sendWDACommand(udid, 'post', '/wda/lock', {}); } catch (e: any) { this.log.debug(`Failed to lock device ${udid}: ${e.message}\n${e.stack}`); } }
     async unlock(udid: string): Promise<void> { try { await this.sendWDACommand(udid, 'post', '/wda/unlock', {}); } catch (e: any) { this.log.debug(`Failed to unlock device ${udid}: ${e.message}\n${e.stack}`); } }
-    async installApp(udid: string, p: string): Promise<void> { await execPromise(`ideviceinstaller -u ${udid} -i "${p}"`); }
-    async uninstallApp(udid: string, b: string): Promise<void> { await execPromise(`ideviceinstaller -u ${udid} -U ${b}`); }
+    async installApp(udid: string, p: string): Promise<void> { await execFilePromise('ideviceinstaller', ['-u', udid, '-i', p]); }
+    async uninstallApp(udid: string, b: string): Promise<void> { await execFilePromise('ideviceinstaller', ['-u', udid, '-U', b]); }
     async listApps(udid: string): Promise<string[]> {
-        const { stdout } = await execPromise(`ideviceinstaller -u ${udid} -l`);
+        const { stdout } = await execFilePromise('ideviceinstaller', ['-u', udid, '-l']);
         return stdout.split('\n').filter(l => l.includes(' - ')).map(l => l.split(' - ')[0]);
     }
     async getLogs(udid: string): Promise<string> {
-        const { stdout } = await execPromise(`timeout 2 idrvsyslog -u ${udid}`).catch(e => e);
+        // timeout command is usually available on linux/mac (via coreutils)
+        const { stdout } = await execFilePromise('timeout', ['2', 'idrvsyslog', '-u', udid]).catch(e => {
+            this.log.debug(`getLogs failed for ${udid}: ${e.message}`);
+            return { stdout: '' };
+        });
         return stdout || '';
     }
 
@@ -175,9 +180,11 @@ export class WDAClient {
     }
 
     async executeShell(udid: string, command: string): Promise<string> {
-        const { stdout } = await execPromise(`xcrun simctl ${command} ${udid}`).catch(async () => {
+        const args = command.split(' ');
+        const { stdout } = await execFilePromise('xcrun', ['simctl', ...args, udid]).catch(async (e: any) => {
+            this.log.debug(`xcrun simctl failed for ${udid}: ${e.message}. Trying go-ios fallback.`);
             const s = Container.get(IOSStreamService);
-            return await execPromise(`"${s.goIOSPath}" ${command} --udid ${udid}`, { env: { ...process.env, ENABLE_GO_IOS_AGENT: 'yes' } });
+            return await execFilePromise(s.goIOSPath, [...args, '--udid', udid], { env: { ...process.env, ENABLE_GO_IOS_AGENT: 'yes' } });
         });
         return stdout;
     }
