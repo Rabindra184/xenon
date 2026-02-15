@@ -310,20 +310,26 @@ export class WDAClient {
     if (this.ideviceinstallerVersion) return this.ideviceinstallerVersion;
     try {
       const { stdout } = await execFilePromise('ideviceinstaller', ['--version']);
-      const match = stdout.match(/ideviceinstaller\s+([\d\.]+)/);
+      const match = stdout.match(/ideviceinstaller\s+([\d.]+)/);
       if (match) {
-        this.ideviceinstallerVersion = match[1];
-        this.log.debug(`Detected ideviceinstaller version: ${this.ideviceinstallerVersion}`);
-        return this.ideviceinstallerVersion;
+        const coerced = semver.coerce(match[1]);
+        if (coerced) {
+          this.ideviceinstallerVersion = coerced.version;
+          this.log.debug(`Detected ideviceinstaller version (normalized): ${this.ideviceinstallerVersion}`);
+          return this.ideviceinstallerVersion;
+        }
       }
     } catch (e: any) {
       try {
         const { stdout } = await execFilePromise('ideviceinstaller', ['-v']);
-        const match = stdout.match(/ideviceinstaller\s+([\d\.]+)/);
+        const match = stdout.match(/ideviceinstaller\s+([\d.]+)/);
         if (match) {
-          this.ideviceinstallerVersion = match[1];
-          this.log.debug(`Detected ideviceinstaller version: ${this.ideviceinstallerVersion}`);
-          return this.ideviceinstallerVersion;
+          const coerced = semver.coerce(match[1]);
+          if (coerced) {
+            this.ideviceinstallerVersion = coerced.version;
+            this.log.debug(`Detected ideviceinstaller version (normalized): ${this.ideviceinstallerVersion}`);
+            return this.ideviceinstallerVersion;
+          }
         }
       } catch (e2: any) {
         this.log.debug(`Failed to detect ideviceinstaller version: ${e2.message}`);
