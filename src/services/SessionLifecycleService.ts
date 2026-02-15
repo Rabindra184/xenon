@@ -381,7 +381,9 @@ export class SessionLifecycleService {
       config.httpsAgent = new HttpsProxyAgent(context.pluginArgs.proxy as any, {
         rejectUnauthorized,
       } as any);
-      config.httpAgent = new HttpProxyAgent(context.pluginArgs.proxy as any);
+      config.httpAgent = new HttpProxyAgent(context.pluginArgs.proxy as any, {
+        rejectUnauthorized,
+      } as any);
       config.proxy = false;
     }
 
