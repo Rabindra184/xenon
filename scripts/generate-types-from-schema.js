@@ -11,17 +11,10 @@ async function generate() {
     try {
         const schema = JSON.parse(fs.readFileSync(schemaPath, 'utf8'));
 
-        // Recursively replace custom "ts-ref" with "$ref" for TypeScript compilation
-        // This allows us to hide nested structures from Appium's CLI flattener
-        function resolveTsRefs(obj) {
-            if (typeof obj !== 'object' || obj === null) return;
-            if (obj['ts-ref']) {
-                obj['$ref'] = obj['ts-ref'];
-                delete obj['ts-ref'];
-            }
-            Object.values(obj).forEach(resolveTsRefs);
-        }
-        resolveTsRefs(schema);
+        // Inject strict definitions into properties for type generation only.
+        // This keeps the runtime schema.json simple and compatible with Appium's CLI flattener.
+        schema.properties.cloud = { '$ref': '#/definitions/CloudConfig' };
+        schema.properties.proxy = { '$ref': '#/definitions/AxiosProxy' };
 
         const { compile } = require('json-schema-to-typescript');
         const ts = await compile(schema, 'IPluginArgs', {

@@ -62,7 +62,8 @@
             "default": 8
         },
         "cloud": {
-            "ts-ref": "#/definitions/CloudConfig"
+            "type": "object",
+            "description": "Cloud configuration object. See CloudConfig interface for details."
         },
         "derivedDataPath": {
             "title": "IDerivedDataPath",
@@ -80,7 +81,8 @@
             "default": []
         },
         "proxy": {
-            "ts-ref": "#/definitions/AxiosProxy"
+            "type": "object",
+            "description": "Proxy configuration object. See AxiosProxy interface for details."
         },
         "deviceAvailabilityTimeoutMs": {
             "type": "number",
@@ -276,7 +278,7 @@
                 "devices": {
                     "type": "array",
                     "items": {
-                        "ts-ref": "#/definitions/CloudDevice"
+                        "$ref": "#/definitions/CloudDevice"
                     }
                 }
             },
