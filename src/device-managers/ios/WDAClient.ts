@@ -382,21 +382,57 @@ export class WDAClient {
 
   async uninstallApp(udid: string, b: string): Promise<void> {
     const version = await this.getIdeviceinstallerVersion();
-    if (semver.gte(version, '1.1.0')) {
-      await execFilePromise('ideviceinstaller', ['-u', udid, 'uninstall', b]);
-    } else {
-      await execFilePromise('ideviceinstaller', ['-u', udid, '-U', b]);
+    try {
+      if (semver.gte(version, '1.1.0')) {
+        await execFilePromise('ideviceinstaller', ['-u', udid, 'uninstall', b]);
+      } else {
+        await execFilePromise('ideviceinstaller', ['-u', udid, '-U', b]);
+      }
+    } catch (e: any) {
+      this.log.warn(`ideviceinstaller uninstall failed for ${udid}: ${e.message}. Trying go-ios fallback.`);
+      const s = Container.get(IOSStreamService);
+      try {
+        await execFilePromise(s.goIOSPath, ['uninstall', `--bundleid=${b}`, '--udid', udid], {
+          env: { ...process.env, ENABLE_GO_IOS_AGENT: 'yes' },
+        });
+        this.log.info(`Successfully uninstalled app ${b} using go-ios on ${udid}`);
+      } catch (e2: any) {
+        this.log.error(`Uninstallation failed for ${udid} with both tools. Last error: ${e2.message}`);
+        throw e2;
+      }
     }
   }
 
   async listApps(udid: string): Promise<string[]> {
     const version = await this.getIdeviceinstallerVersion();
     const args = semver.gte(version, '1.1.0') ? ['-u', udid, 'list'] : ['-u', udid, '-l'];
-    const { stdout } = await execFilePromise('ideviceinstaller', args);
-    return stdout
-      .split('\n')
-      .filter((l) => l.includes(' - '))
-      .map((l) => l.split(' - ')[0]);
+    try {
+      const { stdout } = await execFilePromise('ideviceinstaller', args);
+      const apps = stdout
+        .split('\n')
+        .filter((l) => l.includes(' - '))
+        .map((l) => l.split(' - ')[0]);
+
+      if (apps.length > 0) return apps;
+      this.log.info(`ideviceinstaller returned empty app list for ${udid}. Trying go-ios fallback.`);
+    } catch (e: any) {
+      this.log.warn(`ideviceinstaller listApps failed for ${udid}: ${e.message}. Trying go-ios fallback.`);
+    }
+
+    // Fallback to go-ios
+    try {
+      const s = Container.get(IOSStreamService);
+      const { stdout } = await execFilePromise(s.goIOSPath, ['apps', '--list', '--udid', udid], {
+        env: { ...process.env, ENABLE_GO_IOS_AGENT: 'yes' },
+      });
+      return stdout
+        .split('\n')
+        .filter((line) => line.trim() !== '')
+        .map((line) => line.split(/\s+/)[0]);
+    } catch (e2: any) {
+      this.log.error(`Failed to list apps for ${udid} using go-ios: ${e2.message}`);
+      return [];
+    }
   }
 
   async getLogs(udid: string): Promise<string> {
