@@ -359,10 +359,24 @@ export class WDAClient {
   async installApp(udid: string, p: string): Promise<void> {
     const version = await this.getIdeviceinstallerVersion();
     // Threshold adjusted: 1.1.0 and above use 'install' subcommand. Version 1.1.1 dropped legacy flags.
-    if (semver.gte(version, '1.1.0')) {
-      await execFilePromise('ideviceinstaller', ['-u', udid, 'install', p]);
-    } else {
-      await execFilePromise('ideviceinstaller', ['-u', udid, '-i', p]);
+    try {
+      if (semver.gte(version, '1.1.0')) {
+        await execFilePromise('ideviceinstaller', ['-u', udid, 'install', p]);
+      } else {
+        await execFilePromise('ideviceinstaller', ['-u', udid, '-i', p]);
+      }
+    } catch (e: any) {
+      this.log.warn(`ideviceinstaller failed for ${udid}: ${e.message}. Trying go-ios fallback.`);
+      const s = Container.get(IOSStreamService);
+      try {
+        await execFilePromise(s.goIOSPath, ['install', `--path=${p}`, '--udid', udid], {
+          env: { ...process.env, ENABLE_GO_IOS_AGENT: 'yes' },
+        });
+        this.log.info(`Successfully installed app using go-ios on ${udid}`);
+      } catch (e2: any) {
+        this.log.error(`Installation failed for ${udid} with both tools. Last error: ${e2.message}`);
+        throw e2;
+      }
     }
   }
 
