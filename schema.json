@@ -62,7 +62,7 @@
             "default": 8
         },
         "cloud": {
-            "$ref": "#/definitions/CloudConfig"
+            "ts-ref": "#/definitions/CloudConfig"
         },
         "derivedDataPath": {
             "title": "IDerivedDataPath",
@@ -80,28 +80,7 @@
             "default": []
         },
         "proxy": {
-            "title": "AxiosProxy",
-            "type": "object",
-            "properties": {
-                "host": {
-                    "type": "string"
-                },
-                "port": {
-                    "type": "integer"
-                },
-                "protocol": {
-                    "type": "string",
-                    "enum": [
-                        "http",
-                        "https"
-                    ]
-                },
-                "auth": {
-                    "type": "object"
-                }
-            },
-            "additionalProperties": true,
-            "description": "Proxy configuration object. Contains 'host', 'port', 'auth', 'protocol'."
+            "ts-ref": "#/definitions/AxiosProxy"
         },
         "deviceAvailabilityTimeoutMs": {
             "type": "number",
@@ -246,6 +225,30 @@
     "title": "IPluginArgs",
     "type": "object",
     "definitions": {
+        "AxiosProxy": {
+            "type": "object",
+            "title": "AxiosProxy",
+            "properties": {
+                "host": {
+                    "type": "string"
+                },
+                "port": {
+                    "type": "integer"
+                },
+                "protocol": {
+                    "type": "string",
+                    "enum": [
+                        "http",
+                        "https"
+                    ]
+                },
+                "auth": {
+                    "type": "object"
+                }
+            },
+            "additionalProperties": true,
+            "description": "Proxy configuration object. Contains 'host', 'port', 'auth', 'protocol'."
+        },
         "CloudConfig": {
             "type": "object",
             "title": "CloudConfig",
@@ -273,7 +276,7 @@
                 "devices": {
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/CloudDevice"
+                        "ts-ref": "#/definitions/CloudDevice"
                     }
                 }
             },
