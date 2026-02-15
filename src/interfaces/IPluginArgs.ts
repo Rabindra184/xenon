@@ -6,43 +6,30 @@
  */
 import ip from 'ip';
 
+export type DeviceTypeToInclude = 'both' | 'real' | 'simulated';
+export type DeviceTypeToInclude1 = 'both' | 'real' | 'simulated';
+
 /**
  * Appium configuration schema for the Xenon plugin.
  */
 export interface IPluginArgs {
   platform: 'ios' | 'android' | 'both';
-  androidDeviceType: 'both' | 'real' | 'simulated';
+  androidDeviceType: DeviceTypeToInclude;
   simulators?: {
     [k: string]: unknown;
   }[];
-  iosDeviceType: 'both' | 'real' | 'simulated';
+  iosDeviceType: DeviceTypeToInclude1;
   hub?: string;
   remoteMachineProxyIP?: string;
   adbRemote?: string[];
   skipChromeDownload: boolean;
   maxSessions: number;
   cloud?: CloudConfig;
-  /**
-   * Map of derived data paths for iOS simulators/devices.
-   */
-  derivedDataPath?: {
-    [k: string]: string;
-  };
+  derivedDataPath?: IDerivedDataPath;
   emulators?: {
     [k: string]: unknown;
   }[];
-  /**
-   * Proxy configuration object. Contains 'host', 'port', 'auth', 'protocol'.
-   */
-  proxy?: {
-    host?: string;
-    port?: number;
-    protocol?: 'http' | 'https';
-    auth?: {
-      [k: string]: unknown;
-    };
-    [k: string]: unknown;
-  };
+  proxy?: AxiosProxy;
   deviceAvailabilityTimeoutMs: number;
   deviceAvailabilityQueryIntervalMs: number;
   sendNodeDevicesToHubIntervalMs: number;
@@ -82,7 +69,7 @@ export interface CloudConfig {
   /**
    * Name of the cloud provider (e.g. browserstack, saucelabs, pcloudy, lambdatest)
    */
-  cloudName?: string;
+  cloudName: string;
   /**
    * URL of the cloud provider hub
    */
@@ -107,6 +94,24 @@ export interface CloudDevice {
   platformVersion?: string;
   pCloudy_DeviceManufacturer?: string;
   pCloudy_DeviceVersion?: string;
+  [k: string]: unknown;
+}
+/**
+ * Map of derived data paths for iOS simulators/devices.
+ */
+export interface IDerivedDataPath {
+  [k: string]: string;
+}
+/**
+ * Proxy configuration object. Contains 'host', 'port', 'auth', 'protocol'.
+ */
+export interface AxiosProxy {
+  host?: string;
+  port?: number;
+  protocol?: 'http' | 'https';
+  auth?: {
+    [k: string]: unknown;
+  };
   [k: string]: unknown;
 }
 
