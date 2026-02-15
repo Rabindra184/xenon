@@ -5,7 +5,7 @@ import ip from 'ip';
 import log from '../logger';
 // enable resolveJsonModule in tsconfig must be true for this to work
 import pkg from '../../package.json';
-import { IPluginArgs, DefaultPluginArgs } from '../interfaces/IPluginArgs';
+import { IPluginArgs, DefaultPluginArgs, EmulatorConfig } from '../interfaces/IPluginArgs';
 import { ConfigService } from '../data-service/config-service';
 import { PluginContext } from '../PluginContext';
 import { DeviceStoreFactory } from '../data-service/device-store';
@@ -182,7 +182,7 @@ export class ServerManager {
       this.logger.info('Emulators will be booted!!');
       const adb = await ADB.createADB({});
       const array = pluginArgs.emulators || [];
-      await Promise.all(array.map((arr: any) => adb.launchAVD(arr.avdName, arr)));
+      await Promise.all(array.map((arr: EmulatorConfig) => adb.launchAVD(arr.avdName, arr as any)));
     }
   }
 

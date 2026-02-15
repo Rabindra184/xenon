@@ -25,8 +25,7 @@
         "simulators": {
             "type": "array",
             "items": {
-                "type": "object",
-                "additionalProperties": true
+                "$ref": "#/definitions/SimulatorConfig"
             },
             "default": []
         },
@@ -76,7 +75,7 @@
         "emulators": {
             "type": "array",
             "items": {
-                "type": "object"
+                "$ref": "#/definitions/EmulatorConfig"
             },
             "default": []
         },
@@ -314,6 +313,36 @@
                     "type": "string"
                 }
             }
+        },
+        "SimulatorConfig": {
+            "type": "object",
+            "title": "SimulatorConfig",
+            "properties": {
+                "name": {
+                    "type": "string"
+                },
+                "sdk": {
+                    "type": "string"
+                }
+            },
+            "required": [
+                "name",
+                "sdk"
+            ],
+            "additionalProperties": true
+        },
+        "EmulatorConfig": {
+            "type": "object",
+            "title": "EmulatorConfig",
+            "properties": {
+                "avdName": {
+                    "type": "string"
+                }
+            },
+            "required": [
+                "avdName"
+            ],
+            "additionalProperties": true
         }
     }
 }

@@ -6,7 +6,7 @@ import { getFreePort } from '../../helpers';
 import log from '../../logger';
 import { getUtilizationTime } from '../../device-utils';
 import { DeviceStoreFactory } from '../../data-service/device-store';
-import { DeviceTypeToInclude } from '../../interfaces/IPluginArgs';
+import { DeviceTypeToInclude, SimulatorConfig } from '../../interfaces/IPluginArgs';
 import { PluginContext } from '../../PluginContext';
 import { Service, Container } from 'typedi';
 import Devices from '../cloud/Devices';

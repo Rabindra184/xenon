@@ -15,9 +15,7 @@ export type DeviceTypeToInclude1 = 'both' | 'real' | 'simulated';
 export interface IPluginArgs {
   platform: 'ios' | 'android' | 'both';
   androidDeviceType: DeviceTypeToInclude;
-  simulators?: {
-    [k: string]: unknown;
-  }[];
+  simulators?: SimulatorConfig[];
   iosDeviceType: DeviceTypeToInclude1;
   hub?: string;
   remoteMachineProxyIP?: string;
@@ -26,9 +24,7 @@ export interface IPluginArgs {
   maxSessions: number;
   cloud?: CloudConfig;
   derivedDataPath?: IDerivedDataPath;
-  emulators?: {
-    [k: string]: unknown;
-  }[];
+  emulators?: EmulatorConfig[];
   proxy?: AxiosProxy;
   deviceAvailabilityTimeoutMs: number;
   deviceAvailabilityQueryIntervalMs: number;
@@ -61,6 +57,11 @@ export interface IPluginArgs {
    * Whether to verify TLS certificates for internal outgoing requests. Default is true. Set to false only for dev/test.
    */
   tlsRejectUnauthorized?: boolean;
+}
+export interface SimulatorConfig {
+  name: string;
+  sdk: string;
+  [k: string]: unknown;
 }
 /**
  * Cloud configuration object. Should be provided via config file.
@@ -101,6 +102,10 @@ export interface CloudDevice {
  */
 export interface IDerivedDataPath {
   [k: string]: string;
+}
+export interface EmulatorConfig {
+  avdName: string;
+  [k: string]: unknown;
 }
 /**
  * Proxy configuration object. Contains 'host', 'port', 'auth', 'protocol'.
