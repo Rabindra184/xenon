@@ -32,7 +32,7 @@ export class WDAClient {
   private async executeSerializedCommand<T>(udid: string, action: () => Promise<T>): Promise<T> {
     const currentQueue = this.commandQueues.get(udid) || Promise.resolve();
     const nextInQueue = currentQueue
-      .catch(() => {})
+      .catch(() => { })
       .then(() => action())
       .finally(() => {
         if (this.commandQueues.get(udid) === nextInQueue) this.commandQueues.delete(udid);
@@ -306,6 +306,19 @@ export class WDAClient {
     }
   }
 
+  /**
+   * Performs an early check of ideviceinstaller requirements
+   */
+  async checkRequirements(): Promise<void> {
+    const version = await this.getIdeviceinstallerVersion();
+    this.log.info(`iOS Installation Requirement Check: ideviceinstaller ${version}`);
+    if (semver.lt(version, '1.1.0')) {
+      this.log.warn(
+        `⚠️ ideviceinstaller version ${version} is legacy. We recommend upgrading to 1.1.2 or 1.2.0+ for better compatibility (brew upgrade ideviceinstaller).`,
+      );
+    }
+  }
+
   private async getIdeviceinstallerVersion(): Promise<string> {
     if (this.ideviceinstallerVersion) return this.ideviceinstallerVersion;
     try {
@@ -345,7 +358,8 @@ export class WDAClient {
 
   async installApp(udid: string, p: string): Promise<void> {
     const version = await this.getIdeviceinstallerVersion();
-    if (semver.gte(version, '1.1.2')) {
+    // Threshold adjusted: 1.1.1-40 and above (coerced to 1.1.0 or 1.1.1) use 'install' subcommand
+    if (semver.gte(version, '1.1.0')) {
       await execFilePromise('ideviceinstaller', ['-u', udid, 'install', p]);
     } else {
       await execFilePromise('ideviceinstaller', ['-u', udid, '-i', p]);
@@ -354,7 +368,7 @@ export class WDAClient {
 
   async uninstallApp(udid: string, b: string): Promise<void> {
     const version = await this.getIdeviceinstallerVersion();
-    if (semver.gte(version, '1.1.2')) {
+    if (semver.gte(version, '1.1.0')) {
       await execFilePromise('ideviceinstaller', ['-u', udid, 'uninstall', b]);
     } else {
       await execFilePromise('ideviceinstaller', ['-u', udid, '-U', b]);
@@ -363,7 +377,7 @@ export class WDAClient {
 
   async listApps(udid: string): Promise<string[]> {
     const version = await this.getIdeviceinstallerVersion();
-    const args = semver.gte(version, '1.1.2') ? ['-u', udid, 'list'] : ['-u', udid, '-l'];
+    const args = semver.gte(version, '1.1.0') ? ['-u', udid, 'list'] : ['-u', udid, '-l'];
     const { stdout } = await execFilePromise('ideviceinstaller', args);
     return stdout
       .split('\n')
