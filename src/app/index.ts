@@ -117,7 +117,7 @@ function createRouter(pluginArgs: IPluginArgs) {
   // Fallback route for client-side routing - serve index.html for all non-API routes
   // MUST be registered after Swagger to avoid interception
   router.get(/^(?!\/api).*/, (req, res) => {
-    res.sendFile(path.join(__dirname, '..', '..', 'public', 'index.html'));
+    res.sendFile(path.join(publicPath, 'index.html'));
   });
 
   return router;
