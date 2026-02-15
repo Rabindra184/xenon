@@ -107,10 +107,11 @@ export default class AndroidDeviceManager implements IDeviceManager {
 
     for (const [adbInstance, devices] of connectedDevices) {
       log.debug(
-        `fetchAndroidDevices from host: ${adbInstance.adbRemoteHost || 'Local'}. Found ${devices.length
+        `fetchAndroidDevices from host: ${adbInstance.adbRemoteHost || 'Local'}. Found ${(devices as any[]).length
         } android devices`,
       );
-      for (const device of devices) {
+      const devicesArray = devices as any[];
+      for (const device of devicesArray) {
         deviceProcessingPromises.push(
           (async () => {
             device.adbRemoteHost =
@@ -129,11 +130,11 @@ export default class AndroidDeviceManager implements IDeviceManager {
                 busy: false,
               };
             } else {
-              log.info(`Android Device details for ${device.udid} not available. So querying now.`);
+              log.info(`Android Device details for ${device.udid} not available.So querying now.`);
               if (device.state === 'device') {
                 return await this.deviceInfo(device, adbInstance, this.pluginArgs, this.hostPort);
               } else {
-                log.info(`Device ${device.udid} is not in "device" state. So, ignoring.`);
+                log.info(`Device ${device.udid} is not in "device" state.So, ignoring.`);
                 return undefined;
               }
             }
@@ -148,9 +149,9 @@ export default class AndroidDeviceManager implements IDeviceManager {
     const seenUdids = new Set();
 
     for (const dev of processedDevices) {
-      if (dev && !seenUdids.has(`${dev.udid}-${dev.adbRemoteHost}`)) {
+      if (dev && !seenUdids.has(`${dev.udid} -${dev.adbRemoteHost} `)) {
         availableDevices.push(dev);
-        seenUdids.add(`${dev.udid}-${dev.adbRemoteHost}`);
+        seenUdids.add(`${dev.udid} -${dev.adbRemoteHost} `);
       }
     }
 
@@ -174,7 +175,7 @@ export default class AndroidDeviceManager implements IDeviceManager {
         this.getDeviceName(adbInstance, device.udid),
       ]);
     } catch (error) {
-      log.info(`Error while getting base device info for ${device.udid}. Error: ${error}`);
+      log.info(`Error while getting base device info for ${device.udid}.Error: ${error} `);
       return undefined;
     }
 
@@ -182,7 +183,7 @@ export default class AndroidDeviceManager implements IDeviceManager {
 
     // Base info is mandatory
     if (_.isNil(sdk) || _.isNil(realDevice) || _.isNil(name)) {
-      log.info(`Cannot get base device info for ${device.udid}. Skipping`);
+      log.info(`Cannot get base device info for ${device.udid}.Skipping`);
       return undefined;
     }
 

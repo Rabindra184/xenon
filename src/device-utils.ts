@@ -36,6 +36,7 @@ import { LocalStorage } from 'node-persist';
 import CapabilityManager from './device-managers/cloud/CapabilityManager';
 import AndroidDeviceManager from './device-managers/AndroidDeviceManager';
 import IOSDeviceManager from './device-managers/IOSDeviceManager';
+import { IOSDiscoveryService } from './device-managers/ios/IOSDiscoveryService';
 import NodeDevices from './device-managers/NodeDevices';
 import { IPluginArgs } from './interfaces/IPluginArgs';
 import { DeviceStoreFactory } from './data-service/device-store';
@@ -420,8 +421,8 @@ export async function refreshSimulatorState(pluginArgs: IPluginArgs, hostPort: n
     clearInterval(timer);
   }
   timer = setInterval(async () => {
-    const iosManager = Container.get(IOSDeviceManager);
-    const simulators = await iosManager.getSimulators();
+    const iosDiscoveryService = Container.get(IOSDiscoveryService);
+    const simulators = await iosDiscoveryService.getSimulators();
     await setSimulatorState(simulators);
   }, 10000);
 }
