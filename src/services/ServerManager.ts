@@ -1,5 +1,6 @@
 import { Container, Service } from 'typedi';
 import { v4 as uuidv4 } from 'uuid';
+import { redactSecrets } from '../helpers';
 import ip from 'ip';
 import log from '../logger';
 import { IPluginArgs, DefaultPluginArgs } from '../interfaces/IPluginArgs';
@@ -37,7 +38,7 @@ export class ServerManager {
   public static IS_HUB = false;
 
   async updateServer(expressApp: any, httpServer: any, cliArgs: ServerArgs): Promise<void> {
-    this.logger.debug(`📱 Update server with CLI Args: ${JSON.stringify(cliArgs)}`);
+    this.logger.debug(`📱 Update server with CLI Args: ${JSON.stringify(redactSecrets(cliArgs as any))}`);
 
     const pluginArgs = await this.resolvePluginArgs(cliArgs);
     const nodeId = uuidv4();
@@ -101,7 +102,7 @@ export class ServerManager {
     try {
       const persistedConfig = await Container.get(ConfigService).loadConfig();
       if (persistedConfig && Object.keys(persistedConfig).length > 0) {
-        this.logger.info(`Loading persisted configuration: ${JSON.stringify(persistedConfig)}`);
+        this.logger.info(`Loading persisted configuration: ${JSON.stringify(redactSecrets(persistedConfig as any))}`);
         Object.assign(pluginArgs, persistedConfig);
       }
     } catch (err) {
@@ -153,7 +154,7 @@ export class ServerManager {
     }
 
     if (Object.keys(update).length > 0) {
-      this.logger.info(`[Plugin] Synchronizing database config: ${JSON.stringify(update)}`);
+      this.logger.info(`[Plugin] Synchronizing database config: ${JSON.stringify(redactSecrets(update))}`);
       updateConfig(update);
     }
   }

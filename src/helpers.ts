@@ -13,6 +13,49 @@ import asyncWait from 'async-wait-until';
 import { InternalHttpClient } from './InternalHttpClient';
 
 const APPIUM_VENDOR_PREFIX = 'appium:';
+
+/**
+ * Keys whose values must never appear in log output.
+ * Case-insensitive substring matching is used so 'myApiKey' and 'API_KEY' both match.
+ */
+const SENSITIVE_KEY_PATTERNS = [
+  'apikey', 'api_key', 'secret', 'password', 'token',
+  'accesstoken', 'refreshtoken', 'dburl', 'databaseurl',
+  'clientsecret', 'privatekey', 'auth', 'credentials',
+  'secretkey',
+];
+
+const REDACTED = '***REDACTED***';
+
+function isSensitiveKey(key: string): boolean {
+  const lower = key.toLowerCase().replace(/[_-]/g, '');
+  return SENSITIVE_KEY_PATTERNS.some((p) => lower.includes(p));
+}
+
+/**
+ * Deep-clone an object, replacing values of sensitive keys with ***REDACTED***.
+ * Safe to call before JSON.stringify for logging.
+ */
+export function redactSecrets<T>(obj: T): T {
+  if (obj === null || obj === undefined || typeof obj !== 'object') {
+    return obj;
+  }
+  if (Array.isArray(obj)) {
+    return obj.map((item) => redactSecrets(item)) as unknown as T;
+  }
+  const result: Record<string, any> = {};
+  for (const [key, value] of Object.entries(obj)) {
+    if (isSensitiveKey(key) && value) {
+      result[key] = REDACTED;
+    } else if (typeof value === 'object' && value !== null) {
+      result[key] = redactSecrets(value);
+    } else {
+      result[key] = value;
+    }
+  }
+  return result as T;
+}
+
 const XENON_PREFIXES = ['xe:'];
 
 export async function asyncForEach(
