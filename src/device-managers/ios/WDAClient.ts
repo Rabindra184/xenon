@@ -1,4 +1,5 @@
 import axios from 'axios';
+import semver from 'semver';
 import http from 'http';
 import log from '../../logger';
 import { Container, Service } from 'typedi';
@@ -22,6 +23,7 @@ export class WDAClient {
     { host: string; pathPrefix: string; sessionId?: string }
   > = new Map();
   private commandQueues: Map<string, Promise<any>> = new Map();
+  private ideviceinstallerVersion: string | null = null;
   private typeBuffers: Map<
     string,
     { text: string; timer: NodeJS.Timeout | null; pending: boolean }
@@ -303,14 +305,56 @@ export class WDAClient {
       this.log.debug(`Failed to unlock device ${udid}: ${e.message}\n${e.stack}`);
     }
   }
+
+  private async getIdeviceinstallerVersion(): Promise<string> {
+    if (this.ideviceinstallerVersion) return this.ideviceinstallerVersion;
+    try {
+      const { stdout } = await execFilePromise('ideviceinstaller', ['--version']);
+      const match = stdout.match(/ideviceinstaller\s+([\d\.]+)/);
+      if (match) {
+        this.ideviceinstallerVersion = match[1];
+        this.log.debug(`Detected ideviceinstaller version: ${this.ideviceinstallerVersion}`);
+        return this.ideviceinstallerVersion;
+      }
+    } catch (e: any) {
+      try {
+        const { stdout } = await execFilePromise('ideviceinstaller', ['-v']);
+        const match = stdout.match(/ideviceinstaller\s+([\d\.]+)/);
+        if (match) {
+          this.ideviceinstallerVersion = match[1];
+          this.log.debug(`Detected ideviceinstaller version: ${this.ideviceinstallerVersion}`);
+          return this.ideviceinstallerVersion;
+        }
+      } catch (e2: any) {
+        this.log.debug(`Failed to detect ideviceinstaller version: ${e2.message}`);
+      }
+    }
+    this.ideviceinstallerVersion = '1.0.0'; // Fallback to legacy
+    return this.ideviceinstallerVersion;
+  }
+
   async installApp(udid: string, p: string): Promise<void> {
-    await execFilePromise('ideviceinstaller', ['-u', udid, 'install', p]);
+    const version = await this.getIdeviceinstallerVersion();
+    if (semver.gte(version, '1.1.2')) {
+      await execFilePromise('ideviceinstaller', ['-u', udid, 'install', p]);
+    } else {
+      await execFilePromise('ideviceinstaller', ['-u', udid, '-i', p]);
+    }
   }
+
   async uninstallApp(udid: string, b: string): Promise<void> {
-    await execFilePromise('ideviceinstaller', ['-u', udid, 'uninstall', b]);
+    const version = await this.getIdeviceinstallerVersion();
+    if (semver.gte(version, '1.1.2')) {
+      await execFilePromise('ideviceinstaller', ['-u', udid, 'uninstall', b]);
+    } else {
+      await execFilePromise('ideviceinstaller', ['-u', udid, '-U', b]);
+    }
   }
+
   async listApps(udid: string): Promise<string[]> {
-    const { stdout } = await execFilePromise('ideviceinstaller', ['-u', udid, 'list']);
+    const version = await this.getIdeviceinstallerVersion();
+    const args = semver.gte(version, '1.1.2') ? ['-u', udid, 'list'] : ['-u', udid, '-l'];
+    const { stdout } = await execFilePromise('ideviceinstaller', args);
     return stdout
       .split('\n')
       .filter((l) => l.includes(' - '))
