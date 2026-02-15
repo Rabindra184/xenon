@@ -17,9 +17,8 @@ const cleanup = async () => {
 
   try {
     const { default: IOSStreamService } = await import('./device-managers/ios/IOSStreamService');
-    const { default: AndroidStreamService } = await import(
-      './device-managers/android/AndroidStreamService'
-    );
+    const { default: AndroidStreamService } =
+      await import('./device-managers/android/AndroidStreamService');
     const { VideoPipelineService } = await import('./services/VideoPipelineService');
 
     // Shutdown all independent MJPEG streams, tunnels, and video recordings

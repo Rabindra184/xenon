@@ -19,9 +19,19 @@ const APPIUM_VENDOR_PREFIX = 'appium:';
  * Case-insensitive substring matching is used so 'myApiKey' and 'API_KEY' both match.
  */
 const SENSITIVE_KEY_PATTERNS = [
-  'apikey', 'api_key', 'secret', 'password', 'token',
-  'accesstoken', 'refreshtoken', 'dburl', 'databaseurl',
-  'clientsecret', 'privatekey', 'auth', 'credentials',
+  'apikey',
+  'api_key',
+  'secret',
+  'password',
+  'token',
+  'accesstoken',
+  'refreshtoken',
+  'dburl',
+  'databaseurl',
+  'clientsecret',
+  'privatekey',
+  'auth',
+  'credentials',
   'secretkey',
 ];
 
@@ -37,23 +47,29 @@ function isSensitiveKey(key: string): boolean {
  * Safe to call before JSON.stringify for logging.
  */
 export function redactSecrets<T>(obj: T): T {
-  if (obj === null || obj === undefined || typeof obj !== 'object') {
-    return obj;
-  }
-  if (Array.isArray(obj)) {
-    return obj.map((item) => redactSecrets(item)) as unknown as T;
-  }
-  const result: Record<string, any> = {};
-  for (const [key, value] of Object.entries(obj)) {
-    if (isSensitiveKey(key) && value) {
-      result[key] = REDACTED;
-    } else if (typeof value === 'object' && value !== null) {
-      result[key] = redactSecrets(value);
-    } else {
-      result[key] = value;
+  const seen = new WeakSet<object>();
+  const redact = (value: any): any => {
+    if (value === null || value === undefined || typeof value !== 'object') {
+      return value;
     }
-  }
-  return result as T;
+    if (seen.has(value)) {
+      return '[Circular]';
+    }
+    seen.add(value);
+    if (Array.isArray(value)) {
+      return value.map((item) => redact(item));
+    }
+    const result: Record<string, any> = {};
+    for (const [key, v] of Object.entries(value)) {
+      if (isSensitiveKey(key)) {
+        result[key] = REDACTED;
+      } else {
+        result[key] = redact(v);
+      }
+    }
+    return result;
+  };
+  return redact(obj) as T;
 }
 
 const XENON_PREFIXES = ['xe:'];
@@ -75,7 +91,7 @@ export async function asyncForEach(
 export async function spinWith(
   msg: string,
   fn: () => Promise<boolean>,
-  callback = (_msg: string) => { },
+  callback = (_msg: string) => {},
 ) {
   const spinner = ora(msg).start();
   await asyncWait(
@@ -124,8 +140,9 @@ export function nodeUrl(device: IDevice, basePath = ''): string {
     } else if (device.cloud.toLowerCase() === Cloud.HEADSPIN) {
       return `${host}`;
     } else {
-      return `https://${process.env.CLOUD_USERNAME}:${process.env.CLOUD_KEY}@${new URL(device.host).host
-        }/wd/hub`;
+      return `https://${process.env.CLOUD_USERNAME}:${process.env.CLOUD_KEY}@${
+        new URL(device.host).host
+      }/wd/hub`;
     }
   }
   // hardcoded the `/wd/hub` for now. This can be fetch from serverArgs.basePath
@@ -176,9 +193,7 @@ export function stripAppiumPrefixes(caps: any) {
   const allPrefixes = [APPIUM_VENDOR_PREFIX, ...XENON_PREFIXES];
   const keys = _.keys(caps);
 
-  const prefixedCaps = keys.filter(cap =>
-    allPrefixes.some(prefix => cap.startsWith(prefix))
-  );
+  const prefixedCaps = keys.filter((cap) => allPrefixes.some((prefix) => cap.startsWith(prefix)));
   const nonPrefixedCaps = _.difference(keys, prefixedCaps);
 
   // initialize this with the k/v pairs of the non-prefixed caps
@@ -190,7 +205,7 @@ export function stripAppiumPrefixes(caps: any) {
 
   // Strip prefixes
   for (const prefixedCap of prefixedCaps) {
-    const activePrefix = allPrefixes.find(p => prefixedCap.startsWith(p))!;
+    const activePrefix = allPrefixes.find((p) => prefixedCap.startsWith(p))!;
     const strippedCapName = prefixedCap.substring(activePrefix.length) as string;
 
     // If it's standard capability that was prefixed, add it to an array of incorrectly prefixed capabilities
@@ -201,7 +216,7 @@ export function stripAppiumPrefixes(caps: any) {
       } else {
         log.warn(
           `Ignoring capability '${prefixedCap}=${caps[prefixedCap]}' and ` +
-          `using capability '${strippedCapName}=${strippedCaps[strippedCapName]}'`,
+            `using capability '${strippedCapName}=${strippedCaps[strippedCapName]}'`,
         );
       }
     } else {

@@ -204,7 +204,9 @@ export async function allocateDeviceForSession(
     return lockedDevice;
   } else {
     // This should theoretically not be reached if waitUntil succeeded
-    throw new Error(`Device allocation failed unexpectedly for filters: ${JSON.stringify(filters)}`);
+    throw new Error(
+      `Device allocation failed unexpectedly for filters: ${JSON.stringify(filters)}`,
+    );
   }
 }
 
@@ -536,7 +538,11 @@ export async function releaseBlockedDevices(newCommandTimeout: number) {
 
         // Mark as stopped/failed in dashboard
         import('./dashboard/event-manager').then((m) => {
-          m.DASHBORD_EVENT_MANAGER.onSessionStoped(sessionId, 'failed' as any, 'Session timed out due to inactivity');
+          m.DASHBORD_EVENT_MANAGER.onSessionStopped(
+            sessionId,
+            'failed' as any,
+            'Session timed out due to inactivity',
+          );
         });
 
         // Important: Remove from in-memory SessionManager so it doesn't leak

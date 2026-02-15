@@ -3,17 +3,17 @@ import swaggerUi from 'swagger-ui-express';
 import { Express, Router, Request, Response } from 'express';
 
 const swaggerDefinition = {
-    openapi: '3.0.0',
-    servers: [
-        {
-            url: '/xenon',
-            description: 'Local Grid Node Registry',
-        },
-    ],
-    info: {
-        title: 'Xenon API',
-        version: '1.0.0',
-        description: `
+  openapi: '3.0.0',
+  servers: [
+    {
+      url: '/xenon',
+      description: 'Local Grid Node Registry',
+    },
+  ],
+  info: {
+    title: 'Xenon API',
+    version: '1.0.0',
+    description: `
 # Xenon Edge • Intelligent Infrastructure API
 **The foundation for autonomous mobile device orchestration.**
 
@@ -28,140 +28,144 @@ Xenon's high-performance API provides programmatic access to the core orchestrat
 ---
 Currently operating in **OSS Mode**. Future releases will support **Xenon Identity (JWT)** for secure fleet-wide propagation.
         `,
-        contact: {
-            name: 'Xenon Architecture Team',
-            url: 'https://github.com/xenon-platform/xenon',
-        },
-        license: {
-            name: 'ISC License',
-            url: 'https://opensource.org/licenses/ISC',
-        },
+    contact: {
+      name: 'Xenon Architecture Team',
+      url: 'https://github.com/xenon-platform/xenon',
     },
+    license: {
+      name: 'ISC License',
+      url: 'https://opensource.org/licenses/ISC',
+    },
+  },
 
-    tags: [
-        { name: 'Devices', description: 'Real-time grid discovery' },
-        { name: 'Sessions', description: 'Orchestration & Logs' },
-        { name: 'Builds', description: 'Telemetry tracking' },
-        { name: 'Control', description: 'Direct interaction engine' },
-        { name: 'Reservations', description: 'Resource locking' },
-        { name: 'Applications', description: 'Artifact management' },
-        { name: 'Grid', description: 'Cluster topology' },
-        { name: 'Webhooks', description: 'Event propagation' },
-        { name: 'Configuration', description: 'Edge node parameters' },
-    ],
-    components: {
-        schemas: {
-            Device: {
-                type: 'object',
-                properties: {
-                    udid: { type: 'string', description: 'Unique identity', example: '00008110-00084CE80E51401E' },
-                    name: { type: 'string', example: 'iPhone 14 Pro' },
-                    platform: { type: 'string', enum: ['ios', 'android'] },
-                    host: { type: 'string', example: '192.168.1.100' },
-                    busy: { type: 'boolean' },
-                    session_id: { type: 'string', nullable: true },
-                    state: { type: 'string' },
-                    sdk: { type: 'string', example: '17.0' },
-                    deviceType: { type: 'string' },
-                },
-            },
-            // ... (rest of schemas remain same for internal completeness)
-            Session: {
-                type: 'object',
-                properties: {
-                    id: { type: 'string' },
-                    name: { type: 'string' },
-                    status: { type: 'string', enum: ['running', 'success', 'failed'] },
-                    device_udid: { type: 'string' },
-                    device_name: { type: 'string' },
-                    device_platform: { type: 'string' },
-                    createdAt: { type: 'string', format: 'date-time' },
-                },
-            },
-            Build: {
-                type: 'object',
-                properties: {
-                    id: { type: 'string' },
-                    name: { type: 'string' },
-                    sessionCount: { type: 'integer' },
-                    passedCount: { type: 'integer' },
-                    failedCount: { type: 'integer' },
-                    runningCount: { type: 'integer' },
-                    createdAt: { type: 'string', format: 'date-time' },
-                },
-            },
-            Reservation: {
-                type: 'object',
-                properties: {
-                    udid: { type: 'string' },
-                    host: { type: 'string' },
-                    reservedBy: { type: 'string' },
-                    reservedUntil: { type: 'integer' },
-                    reservationReason: { type: 'string' },
-                    remainingMs: { type: 'integer' },
-                },
-            },
-            App: {
-                type: 'object',
-                properties: {
-                    id: { type: 'string' },
-                    name: { type: 'string' },
-                    filename: { type: 'string' },
-                    filepath: { type: 'string' },
-                    platform: { type: 'string', enum: ['ios', 'android'] },
-                    uploadedAt: { type: 'string', format: 'date-time' },
-                },
-            },
-            WebhookConfig: {
-                type: 'object',
-                properties: {
-                    id: { type: 'string' },
-                    url: { type: 'string', format: 'uri' },
-                    events: { type: 'array', items: { type: 'string' } },
-                    type: { type: 'string', enum: ['slack', 'webhook'] },
-                },
-            },
-            Error: {
-                type: 'object',
-                properties: {
-                    error: { type: 'boolean', example: true },
-                    message: { type: 'string' },
-                },
-            },
-            Success: {
-                type: 'object',
-                properties: {
-                    success: { type: 'boolean', example: true },
-                },
-            },
+  tags: [
+    { name: 'Devices', description: 'Real-time grid discovery' },
+    { name: 'Sessions', description: 'Orchestration & Logs' },
+    { name: 'Builds', description: 'Telemetry tracking' },
+    { name: 'Control', description: 'Direct interaction engine' },
+    { name: 'Reservations', description: 'Resource locking' },
+    { name: 'Applications', description: 'Artifact management' },
+    { name: 'Grid', description: 'Cluster topology' },
+    { name: 'Webhooks', description: 'Event propagation' },
+    { name: 'Configuration', description: 'Edge node parameters' },
+  ],
+  components: {
+    schemas: {
+      Device: {
+        type: 'object',
+        properties: {
+          udid: {
+            type: 'string',
+            description: 'Unique identity',
+            example: '00008110-00084CE80E51401E',
+          },
+          name: { type: 'string', example: 'iPhone 14 Pro' },
+          platform: { type: 'string', enum: ['ios', 'android'] },
+          host: { type: 'string', example: '192.168.1.100' },
+          busy: { type: 'boolean' },
+          session_id: { type: 'string', nullable: true },
+          state: { type: 'string' },
+          sdk: { type: 'string', example: '17.0' },
+          deviceType: { type: 'string' },
         },
+      },
+      // ... (rest of schemas remain same for internal completeness)
+      Session: {
+        type: 'object',
+        properties: {
+          id: { type: 'string' },
+          name: { type: 'string' },
+          status: { type: 'string', enum: ['running', 'success', 'failed'] },
+          device_udid: { type: 'string' },
+          device_name: { type: 'string' },
+          device_platform: { type: 'string' },
+          createdAt: { type: 'string', format: 'date-time' },
+        },
+      },
+      Build: {
+        type: 'object',
+        properties: {
+          id: { type: 'string' },
+          name: { type: 'string' },
+          sessionCount: { type: 'integer' },
+          passedCount: { type: 'integer' },
+          failedCount: { type: 'integer' },
+          runningCount: { type: 'integer' },
+          createdAt: { type: 'string', format: 'date-time' },
+        },
+      },
+      Reservation: {
+        type: 'object',
+        properties: {
+          udid: { type: 'string' },
+          host: { type: 'string' },
+          reservedBy: { type: 'string' },
+          reservedUntil: { type: 'integer' },
+          reservationReason: { type: 'string' },
+          remainingMs: { type: 'integer' },
+        },
+      },
+      App: {
+        type: 'object',
+        properties: {
+          id: { type: 'string' },
+          name: { type: 'string' },
+          filename: { type: 'string' },
+          filepath: { type: 'string' },
+          platform: { type: 'string', enum: ['ios', 'android'] },
+          uploadedAt: { type: 'string', format: 'date-time' },
+        },
+      },
+      WebhookConfig: {
+        type: 'object',
+        properties: {
+          id: { type: 'string' },
+          url: { type: 'string', format: 'uri' },
+          events: { type: 'array', items: { type: 'string' } },
+          type: { type: 'string', enum: ['slack', 'webhook'] },
+        },
+      },
+      Error: {
+        type: 'object',
+        properties: {
+          error: { type: 'boolean', example: true },
+          message: { type: 'string' },
+        },
+      },
+      Success: {
+        type: 'object',
+        properties: {
+          success: { type: 'boolean', example: true },
+        },
+      },
     },
+  },
 };
 
 import path from 'path';
 
 // @ts-ignore - Types will be available after package install
 const options: any = {
-    swaggerDefinition,
-    apis: [
-        // Load from compiled JS (execution runtime)
-        path.join(__dirname, 'swagger-docs.js'),
-        path.join(__dirname, 'routers', '*.js'),
-        // Fallback to TS source (development environment)
-        path.join(__dirname, '..', '..', '..', 'src', 'app', 'swagger-docs.ts'),
-        path.join(__dirname, '..', '..', '..', 'src', 'app', 'routers', '*.ts'),
-    ],
+  swaggerDefinition,
+  apis: [
+    // Load from compiled JS (execution runtime)
+    path.join(__dirname, 'swagger-docs.js'),
+    path.join(__dirname, 'routers', '*.js'),
+    // Fallback to TS source (development environment)
+    path.join(__dirname, '..', '..', '..', 'src', 'app', 'swagger-docs.ts'),
+    path.join(__dirname, '..', '..', '..', 'src', 'app', 'routers', '*.ts'),
+  ],
 };
 
 const swaggerSpec = swaggerJsdoc(options);
 
 export function setupSwagger(app: Express | Router, basePath = '/xenon') {
-    // Serve Swagger UI at /xenon/api-docs
-    (app as any).use(
-        '/api-docs',
-        swaggerUi.serve,
-        swaggerUi.setup(swaggerSpec, {
-            customCss: `
+  // Serve Swagger UI at /xenon/api-docs
+  (app as any).use(
+    '/api-docs',
+    swaggerUi.serve,
+    swaggerUi.setup(swaggerSpec, {
+      customCss: `
         /* Xenon Ultimate V2 • High-Integrity API Documentation */
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@500;600;700;800&family=JetBrains+Mono:wght@500;700&display=swap');
 
@@ -308,17 +312,16 @@ export function setupSwagger(app: Express | Router, basePath = '/xenon') {
         ::-webkit-scrollbar-thumb { background: #27272a; border-radius: 5px; border: 2px solid var(--xenon-bg); }
         ::-webkit-scrollbar-thumb:hover { background: #3f3f46; }
       `,
-            customSiteTitle: 'Xenon API Documentation',
-            customfavIcon: '/xenon/favicon.png',
-        })
-    );
+      customSiteTitle: 'Xenon API Documentation',
+      customfavIcon: '/xenon/favicon.png',
+    }),
+  );
 
-    // Serve raw OpenAPI spec as JSON
-    (app as any).get('/api-docs.json', (req: Request, res: Response) => {
-        res.setHeader('Content-Type', 'application/json');
-        res.send(swaggerSpec);
-    });
+  // Serve raw OpenAPI spec as JSON
+  (app as any).get('/api-docs.json', (req: Request, res: Response) => {
+    res.setHeader('Content-Type', 'application/json');
+    res.send(swaggerSpec);
+  });
 }
 
 export { swaggerSpec };
-

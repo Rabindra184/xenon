@@ -100,7 +100,9 @@ describe('Device Utils', () => {
 
   it('Allocate devices for session with host filter', async () => {
     (await XenonDatabase.DeviceModel).removeDataOnly();
-    const deviceManager = createTestXenonManager(Object.assign({}, pluginArgs, { maxSessions: 3, platform: 'android' }));
+    const deviceManager = createTestXenonManager(
+      Object.assign({}, pluginArgs, { maxSessions: 3, platform: 'android' }),
+    );
     await addNewDevice(devices);
     const capabilities = {
       alwaysMatch: {
@@ -142,7 +144,9 @@ describe('Device Utils', () => {
   });
   it('Allocating device should set device to be busy', async function () {
     (await XenonDatabase.DeviceModel).removeDataOnly();
-    const deviceManager = createTestXenonManager(Object.assign({}, pluginArgs, { maxSessions: 3, platform: 'android' }));
+    const deviceManager = createTestXenonManager(
+      Object.assign({}, pluginArgs, { maxSessions: 3, platform: 'android' }),
+    );
     await addNewDevice(devices);
     const capabilities = {
       alwaysMatch: {
@@ -346,7 +350,9 @@ describe('Device Utils', () => {
 
   it('should remove stale devices', async () => {
     (await XenonDatabase.DeviceModel).removeDataOnly();
-    const deviceManager = createTestXenonManager(Object.assign({}, pluginArgs, { maxSessions: 3, platform: 'android' }));
+    const deviceManager = createTestXenonManager(
+      Object.assign({}, pluginArgs, { maxSessions: 3, platform: 'android' }),
+    );
     addNewDevice(devices);
 
     DeviceUtils.removeStaleDevices(pluginArgs.bindHostOrIp);

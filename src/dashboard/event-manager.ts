@@ -84,7 +84,8 @@ export class DashboardEventManager {
 
     // start video recording is now handled in plugin.ts createSession to avoid double calls
     log.info(
-      `📹 Video recording capability for session ${session.getId()}: ${capabilities[XENON_CAPABILITIES.VIDEO_RECORDING]
+      `📹 Video recording capability for session ${session.getId()}: ${
+        capabilities[XENON_CAPABILITIES.VIDEO_RECORDING]
       }`,
     );
 
@@ -128,8 +129,8 @@ export class DashboardEventManager {
     Container.get(MetricsService).incrementSessionStart();
   }
 
-  async onSessionStoped(sessionId: string, status?: SessionStatus, failureReason?: string) {
-    log.info(`🟢 onSessionStoped called for session ${sessionId}`);
+  async onSessionStopped(sessionId: string, status?: SessionStatus, failureReason?: string) {
+    log.info(`🟢 onSessionStopped called for session ${sessionId}`);
 
     // Video recording is now handled in plugin.ts deleteSession() before the session is deleted
     // This ensures we can call stop_recording_screen while the session is still active
@@ -196,7 +197,7 @@ export class DashboardEventManager {
           updateData['failure_reason'] =
             failedCommand.response && failedCommand.response.includes('error')
               ? safeParseJson(failedCommand.response).value?.error ||
-              `Command failed: ${failedCommand.command_name}`
+                `Command failed: ${failedCommand.command_name}`
               : `Command failed: ${failedCommand.command_name}`;
           log.info(
             `Session ${sessionId} marked as FAILED due to error in command: ${failedCommand.command_name}`,
@@ -400,7 +401,7 @@ export class DashboardEventManager {
     }
   }
 
-  async onSessionLog(sessionId: string, logEntry: { level: string, message: string }) {
+  async onSessionLog(sessionId: string, logEntry: { level: string; message: string }) {
     await prisma.log.create({
       data: {
         session_id: sessionId,

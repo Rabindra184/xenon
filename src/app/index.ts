@@ -82,8 +82,6 @@ router.use('/api', apiRouter);
 router.use('/assets', express.static(config.sessionAssetsPath));
 router.use(staticFilesRouter);
 
-
-
 function createRouter(pluginArgs: IPluginArgs) {
   DashboardRouter.register(apiRouter);
   GridRouter.register(apiRouter, pluginArgs);
@@ -97,7 +95,9 @@ function createRouter(pluginArgs: IPluginArgs) {
   try {
     setupSwagger(router, '/xenon');
   } catch (err) {
-    console.warn('Swagger documentation not available. Install swagger-jsdoc and swagger-ui-express to enable.');
+    console.warn(
+      'Swagger documentation not available. Install swagger-jsdoc and swagger-ui-express to enable.',
+    );
   }
 
   // Handle unmatched API routes with a 404 JSON response instead of the UI fallback
@@ -118,4 +118,3 @@ function createRouter(pluginArgs: IPluginArgs) {
 }
 
 export { createRouter };
-

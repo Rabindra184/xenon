@@ -11,37 +11,37 @@ import { XenonManager } from '../../src/device-managers';
  * configured for testing purposes.
  */
 export function setupTestContainer(overrides?: Partial<IPluginArgs>): {
-    context: PluginContext;
-    androidManager: AndroidDeviceManager;
-    iosManager: IOSDeviceManager;
-    xenonManager: XenonManager;
-    nodeId: string;
-    port: number;
+  context: PluginContext;
+  androidManager: AndroidDeviceManager;
+  iosManager: IOSDeviceManager;
+  xenonManager: XenonManager;
+  nodeId: string;
+  port: number;
 } {
-    // Reset container to ensure clean state between tests
-    Container.reset();
+  // Reset container to ensure clean state between tests
+  Container.reset();
 
-    const nodeId = uuidv4();
-    const port = 4723;
-    const pluginArgs: IPluginArgs = Object.assign({}, DefaultPluginArgs, overrides || {});
+  const nodeId = uuidv4();
+  const port = 4723;
+  const pluginArgs: IPluginArgs = Object.assign({}, DefaultPluginArgs, overrides || {});
 
-    // Initialize PluginContext
-    const context = Container.get(PluginContext);
-    context.setContext(pluginArgs, port, nodeId, '');
+  // Initialize PluginContext
+  const context = Container.get(PluginContext);
+  context.setContext(pluginArgs, port, nodeId, '');
 
-    // Get managers (they'll use the PluginContext via DI)
-    const androidManager = Container.get(AndroidDeviceManager);
-    const iosManager = Container.get(IOSDeviceManager);
-    const xenonManager = Container.get(XenonManager);
+  // Get managers (they'll use the PluginContext via DI)
+  const androidManager = Container.get(AndroidDeviceManager);
+  const iosManager = Container.get(IOSDeviceManager);
+  const xenonManager = Container.get(XenonManager);
 
-    return {
-        context,
-        androidManager,
-        iosManager,
-        xenonManager,
-        nodeId,
-        port,
-    };
+  return {
+    context,
+    androidManager,
+    iosManager,
+    xenonManager,
+    nodeId,
+    port,
+  };
 }
 
 /**
@@ -49,23 +49,23 @@ export function setupTestContainer(overrides?: Partial<IPluginArgs>): {
  * Use this when you need to stub/spy on the manager.
  */
 export function createTestAndroidManager(pluginArgs?: Partial<IPluginArgs>): AndroidDeviceManager {
-    const { androidManager } = setupTestContainer(pluginArgs);
-    return androidManager;
+  const { androidManager } = setupTestContainer(pluginArgs);
+  return androidManager;
 }
 
 /**
  * Creates a mock PluginContext and IOSDeviceManager for unit testing.
  */
 export function createTestIOSManager(pluginArgs?: Partial<IPluginArgs>): IOSDeviceManager {
-    const { iosManager } = setupTestContainer(pluginArgs);
-    return iosManager;
+  const { iosManager } = setupTestContainer(pluginArgs);
+  return iosManager;
 }
 
 /**
  * Creates a XenonManager configured for testing.
  */
 export function createTestXenonManager(pluginArgs?: Partial<IPluginArgs>): XenonManager {
-    const { xenonManager } = setupTestContainer(pluginArgs);
-    xenonManager.init();
-    return xenonManager;
+  const { xenonManager } = setupTestContainer(pluginArgs);
+  xenonManager.init();
+  return xenonManager;
 }

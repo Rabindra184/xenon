@@ -18,9 +18,10 @@ export class HealthMonitorService {
   private recoveringDevices: Set<string> = new Set();
   private pluginArgs: IPluginArgs | undefined;
   private lastWebConfig: any = {};
-  private healthHistory: Map<string, Array<{ time: number, battery?: number, thermal?: string }>> = new Map();
+  private healthHistory: Map<string, Array<{ time: number; battery?: number; thermal?: string }>> =
+    new Map();
 
-  constructor(private webConfigService: WebConfigService) { }
+  constructor(private webConfigService: WebConfigService) {}
 
   public start(pluginArgs: IPluginArgs) {
     this.pluginArgs = pluginArgs;
@@ -110,14 +111,22 @@ export class HealthMonitorService {
               await import('./ios/IOSStreamService');
               const iosStream = Container.get<any>('IOSStreamService');
               const streamStatus = iosStream.getStreamStatus(device.udid);
-              hasActiveManualStream = !!(streamStatus && (streamStatus.status === 'running' || streamStatus.status === 'starting'));
+              hasActiveManualStream = !!(
+                streamStatus &&
+                (streamStatus.status === 'running' || streamStatus.status === 'starting')
+              );
             } else if (device.platform === 'android') {
               await import('./android/AndroidStreamService');
               const androidStream = Container.get<any>('AndroidStreamService');
               const streamStatus = androidStream.getStreamStatus(device.udid);
-              hasActiveManualStream = !!(streamStatus && (streamStatus.status === 'running' || streamStatus.status === 'starting'));
+              hasActiveManualStream = !!(
+                streamStatus &&
+                (streamStatus.status === 'running' || streamStatus.status === 'starting')
+              );
             }
-          } catch (e) { /* Stream service not available */ }
+          } catch (e) {
+            /* Stream service not available */
+          }
 
           if (hasActiveSession || hasActiveManualStream || isManualStream) {
             log.debug(
@@ -126,7 +135,7 @@ export class HealthMonitorService {
             continue;
           } else {
             this.log.info(
-              `[HealthMonitor] 🧟 Zombie busy device detected ${device.udid}. Last session ${device.session_id} is not in memory and no manual stream found. Proceeding with health check.`
+              `[HealthMonitor] 🧟 Zombie busy device detected ${device.udid}. Last session ${device.session_id} is not in memory and no manual stream found. Proceeding with health check.`,
             );
           }
         }
@@ -158,18 +167,26 @@ export class HealthMonitorService {
               let hasStreamNow = false;
               try {
                 if (['ios', 'tvos'].includes(device.platform)) {
-                  hasStreamNow = !!Container.get<any>('IOSStreamService').getStreamStatus(device.udid);
+                  hasStreamNow = !!Container.get<any>('IOSStreamService').getStreamStatus(
+                    device.udid,
+                  );
                 } else if (device.platform === 'android') {
-                  hasStreamNow = !!Container.get<any>('AndroidStreamService').getStreamStatus(device.udid);
+                  hasStreamNow = !!Container.get<any>('AndroidStreamService').getStreamStatus(
+                    device.udid,
+                  );
                 }
-              } catch (e) { /* ignore */ }
+              } catch (e) {
+                /* ignore */
+              }
 
               if (!hasStreamNow) {
                 this.log.info(`[HealthMonitor] Reclaiming zombie device ${device.udid}`);
                 updateData.busy = false;
                 updateData.session_id = undefined;
               } else {
-                this.log.debug(`[HealthMonitor] Cancelled reclamation for ${device.udid} - stream appeared.`);
+                this.log.debug(
+                  `[HealthMonitor] Cancelled reclamation for ${device.udid} - stream appeared.`,
+                );
                 continue;
               }
             }
@@ -234,7 +251,7 @@ export class HealthMonitorService {
     history.push({
       time: Date.now(),
       battery: currentHealth.batteryLevel,
-      thermal: currentHealth.thermalStatus
+      thermal: currentHealth.thermalStatus,
     });
 
     // Keep last 10 entries (~5 minutes if checking every 30s)
@@ -248,14 +265,16 @@ export class HealthMonitorService {
 
     // 1. Thermal Anomaly: Normal -> Hot or Hot -> Critical
     if (previous.thermal !== current.thermal && current.thermal !== 'Normal') {
-      this.log.warn(`⚠️ [Anomaly] Thermal spike detected on ${device.udid}: ${previous.thermal} -> ${current.thermal}`);
+      this.log.warn(
+        `⚠️ [Anomaly] Thermal spike detected on ${device.udid}: ${previous.thermal} -> ${current.thermal}`,
+      );
       EVENT_BUS.emit('device:anomaly', {
         udid: device.udid,
         host: device.host,
         type: 'thermal_spike',
         previous: previous.thermal,
         current: current.thermal,
-        severity: current.thermal === 'Critical' ? 'high' : 'medium'
+        severity: current.thermal === 'Critical' ? 'high' : 'medium',
       });
     }
 
@@ -263,14 +282,16 @@ export class HealthMonitorService {
     if (previous.battery !== undefined && current.battery !== undefined) {
       const drain = previous.battery - current.battery;
       if (drain >= 5) {
-        this.log.warn(`⚠️ [Anomaly] Rapid battery drain on ${device.udid}: -${drain}% since last check`);
+        this.log.warn(
+          `⚠️ [Anomaly] Rapid battery drain on ${device.udid}: -${drain}% since last check`,
+        );
         EVENT_BUS.emit('device:anomaly', {
           udid: device.udid,
           host: device.host,
           type: 'battery_drain',
           drainValue: drain,
           currentLevel: current.battery,
-          severity: current.battery < 20 ? 'high' : 'medium'
+          severity: current.battery < 20 ? 'high' : 'medium',
         });
       }
     }

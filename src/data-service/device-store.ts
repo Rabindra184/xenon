@@ -1,6 +1,11 @@
 import { IDevice } from '../interfaces/IDevice';
 import { IDeviceFilterOptions } from '../interfaces/IDeviceFilterOptions';
-import { IDeviceStore, IPendingSessionStore, ICLIArgsStore, IHealEtalonStore } from './device-store.interface';
+import {
+  IDeviceStore,
+  IPendingSessionStore,
+  ICLIArgsStore,
+  IHealEtalonStore,
+} from './device-store.interface';
 
 import log from '../logger';
 import semver from 'semver';

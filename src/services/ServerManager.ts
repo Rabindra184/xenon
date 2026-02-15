@@ -40,7 +40,9 @@ export class ServerManager {
   public static IS_HUB = false;
 
   async updateServer(expressApp: any, httpServer: any, cliArgs: ServerArgs): Promise<void> {
-    this.logger.debug(`📱 Update server with CLI Args: ${JSON.stringify(redactSecrets(cliArgs as any))}`);
+    this.logger.debug(
+      `📱 Update server with CLI Args: ${JSON.stringify(redactSecrets(cliArgs as any))}`,
+    );
 
     const pluginArgs = await this.resolvePluginArgs(cliArgs);
     const nodeId = uuidv4();
@@ -82,10 +84,7 @@ export class ServerManager {
     await cleanupZombieSessions();
 
     // remove stale devices
-    await removeStaleDevices(
-      pluginArgs.bindHostOrIp as string,
-      pluginArgs.tlsRejectUnauthorized,
-    );
+    await removeStaleDevices(pluginArgs.bindHostOrIp as string, pluginArgs.tlsRejectUnauthorized);
 
     this.logger.info(
       `🚀 Xenon will be served at http://${pluginArgs.bindHostOrIp}:${cliArgs.port}/xenon with id ${nodeId}`,
@@ -103,7 +102,9 @@ export class ServerManager {
     try {
       const persistedConfig = await Container.get(ConfigService).loadConfig();
       if (persistedConfig && Object.keys(persistedConfig).length > 0) {
-        this.logger.info(`Loading persisted configuration: ${JSON.stringify(redactSecrets(persistedConfig as any))}`);
+        this.logger.info(
+          `Loading persisted configuration: ${JSON.stringify(redactSecrets(persistedConfig as any))}`,
+        );
         Object.assign(pluginArgs, persistedConfig);
       }
     } catch (err) {
@@ -155,7 +156,9 @@ export class ServerManager {
     }
 
     if (Object.keys(update).length > 0) {
-      this.logger.info(`[Plugin] Synchronizing database config: ${JSON.stringify(redactSecrets(update))}`);
+      this.logger.info(
+        `[Plugin] Synchronizing database config: ${JSON.stringify(redactSecrets(update))}`,
+      );
       updateConfig(update);
     }
   }
@@ -203,9 +206,7 @@ export class ServerManager {
     if (pluginArgs.skipChromeDownload === false) {
       ChromeDriverManager.create()
         .then((mgr: ChromeDriverManager) => Container.set(ChromeDriverManager, mgr))
-        .catch((err: any) =>
-          this.logger.error(`Failed to initialize ChromeDriverManager: ${err}`),
-        );
+        .catch((err: any) => this.logger.error(`Failed to initialize ChromeDriverManager: ${err}`));
     }
 
     addCLIArgs(cliArgs);

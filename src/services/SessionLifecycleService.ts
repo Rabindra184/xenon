@@ -379,14 +379,17 @@ export class SessionLifecycleService {
     };
 
     if (context.pluginArgs.proxy) {
-      const rejectUnauthorized = context.pluginArgs.tlsRejectUnauthorized !== false;
       this.logger.info(`Added proxy to axios config: ${JSON.stringify(context.pluginArgs.proxy)}`);
-      config.httpsAgent = new HttpsProxyAgent(context.pluginArgs.proxy as any, {
-        rejectUnauthorized,
-      } as any);
-      config.httpAgent = new HttpProxyAgent(context.pluginArgs.proxy as any, {
-        rejectUnauthorized,
-      } as any);
+      const proxyUrl =
+        typeof context.pluginArgs.proxy === 'string'
+          ? context.pluginArgs.proxy
+          : `http://${(context.pluginArgs.proxy as any).host}:${(context.pluginArgs.proxy as any).port}`;
+      config.httpsAgent = new HttpsProxyAgent(proxyUrl, {
+        rejectUnauthorized: context.pluginArgs.tlsRejectUnauthorized,
+      });
+      config.httpAgent = new HttpProxyAgent(proxyUrl, {
+        rejectUnauthorized: context.pluginArgs.tlsRejectUnauthorized,
+      });
       config.proxy = false;
     }
 
@@ -409,16 +412,15 @@ export class SessionLifecycleService {
       const errorDetail =
         (createdSession as any).error || val?.error || val?.message || 'Unknown W3C error';
       return new Error(
-        `W3C session creation failed on ${device.host}: ${typeof errorDetail === 'object' ? JSON.stringify(errorDetail) : errorDetail
+        `W3C session creation failed on ${device.host}: ${
+          typeof errorDetail === 'object' ? JSON.stringify(errorDetail) : errorDetail
         }`,
       );
     }
 
     // Only build the success tuple for genuine W3C success payloads
     if (!val?.sessionId) {
-      return new Error(
-        `Invalid session response from ${device.host}: missing sessionId`,
-      );
+      return new Error(`Invalid session response from ${device.host}: missing sessionId`);
     }
 
     return {
@@ -464,14 +466,20 @@ export class SessionLifecycleService {
       (something.value.length === 2 || something.value.length === 3) &&
       typeof something.value[0] === 'string' &&
       typeof something.value[1] === 'object' &&
-      (something.value.length === 2 || typeof something.value[2] === 'string' || something.value[2] === undefined)
+      (something.value.length === 2 ||
+        typeof something.value[2] === 'string' ||
+        something.value[2] === undefined)
     );
   }
 
   throwProperError(session: any, host: string) {
     if (session instanceof Error) {
       throw session;
-    } else if (session && typeof session === 'object' && Object.prototype.hasOwnProperty.call(session, 'error')) {
+    } else if (
+      session &&
+      typeof session === 'object' &&
+      Object.prototype.hasOwnProperty.call(session, 'error')
+    ) {
       let errorMessage = (session as W3CNewSessionResponseError).error;
       if (typeof errorMessage === 'object') {
         errorMessage = JSON.stringify(errorMessage);
@@ -546,7 +554,7 @@ export class SessionLifecycleService {
         await Container.get(NetworkConditioningService).reset(sessionId, device);
       }
 
-      await DASHBORD_EVENT_MANAGER.onSessionStoped(sessionId);
+      await DASHBORD_EVENT_MANAGER.onSessionStopped(sessionId);
       SESSION_MANAGER.removeSession(sessionId);
 
       try {

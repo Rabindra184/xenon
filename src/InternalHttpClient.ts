@@ -72,13 +72,12 @@ export class InternalHttpClient {
     // Response interceptor - logging + retry logic
     this.axiosInstance.interceptors.response.use(
       async (response: AxiosResponse) => {
-        const duration =
-          Date.now() - ((response.config as any).metadata?.startTime || Date.now());
+        const duration = Date.now() - ((response.config as any).metadata?.startTime || Date.now());
 
         // Log successful response
         log.debug(
           `[HTTP ←] ${response.config.method?.toUpperCase()} ${response.config.url} ` +
-          `[${response.status}] ${duration}ms`,
+            `[${response.status}] ${duration}ms`,
         );
 
         // Principal Decoupling: Emit event for logging/observability
@@ -133,7 +132,7 @@ export class InternalHttpClient {
         // Log failed request
         log.warn(
           `[HTTP ←] ${config?.method?.toUpperCase()} ${config?.url} ` +
-          `[${status || 'ERR'}] ${duration}ms - ${error.message}`,
+            `[${status || 'ERR'}] ${duration}ms - ${error.message}`,
         );
 
         // Don't retry client errors (4xx) except for occasional 429

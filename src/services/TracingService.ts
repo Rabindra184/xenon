@@ -7,112 +7,127 @@ import log from '../logger';
 
 @Service()
 export class TracingService {
-    private sdk: NodeSDK | null = null;
-    private tracer = trace.getTracer('xenon-core');
-    private activeSpans: Map<string, Span> = new Map();
+  private sdk: NodeSDK | null = null;
+  private tracer = trace.getTracer('xenon-core');
+  private activeSpans: Map<string, Span> = new Map();
 
-    public initialize() {
-        const exporters = [];
+  public initialize() {
+    const exporters = [];
 
-        // Always add console exporter for debugging if enabled via env or log level
-        if (process.env.XENON_OTEL_DEBUG === 'true') {
-            exporters.push(new ConsoleSpanExporter());
-        }
-
-        // Add OTLP exporter if endpoint is provided
-        if (process.env.OTEL_EXPORTER_OTLP_ENDPOINT) {
-            exporters.push(new OTLPTraceExporter({
-                url: process.env.OTEL_EXPORTER_OTLP_ENDPOINT,
-            }));
-        }
-
-        if (exporters.length === 0) {
-            log.info('[TracingService] No OTel exporters configured. Spans will be recorded in memory only.');
-        }
-
-        this.sdk = new NodeSDK({
-            serviceName: 'xenon',
-            spanProcessor: new SimpleSpanProcessor(
-                exporters.length > 0 ? exporters[0] : new ConsoleSpanExporter()
-            ),
-        });
-
-        try {
-            this.sdk.start();
-            log.info('[TracingService] OpenTelemetry SDK started');
-        } catch (err: any) {
-            log.error(`[TracingService] Failed to start OTel SDK: ${err.message}`);
-        }
+    // Always add console exporter for debugging if enabled via env or log level
+    if (process.env.XENON_OTEL_DEBUG === 'true') {
+      exporters.push(new ConsoleSpanExporter());
     }
 
-    public startSessionSpan(sessionId: string, name: string, attributes: Record<string, any> = {}): Span {
-        const span = this.tracer.startSpan(`Session: ${name || sessionId}`, {
-            kind: SpanKind.SERVER,
-            attributes: {
-                'xenon.session_id': sessionId,
-                ...attributes,
-            },
-        });
-        this.activeSpans.set(sessionId, span);
-        return span;
+    // Add OTLP exporter if endpoint is provided
+    if (process.env.OTEL_EXPORTER_OTLP_ENDPOINT) {
+      exporters.push(
+        new OTLPTraceExporter({
+          url: process.env.OTEL_EXPORTER_OTLP_ENDPOINT,
+        }),
+      );
     }
 
-    public startCommandSpan(sessionId: string, commandName: string, attributes: Record<string, any> = {}): Span {
-        const parentSpan = this.activeSpans.get(sessionId);
-        const spanOptions: any = {
-            kind: SpanKind.INTERNAL,
-            attributes: {
-                'xenon.session_id': sessionId,
-                'xenon.command': commandName,
-                ...attributes,
-            },
-        };
-
-        let span: Span;
-        if (parentSpan) {
-            const ctx = trace.setSpan(context.active(), parentSpan);
-            span = this.tracer.startSpan(commandName, spanOptions, ctx);
-        } else {
-            span = this.tracer.startSpan(commandName, spanOptions);
-        }
-
-        this.activeSpans.set(`${sessionId}:${commandName}`, span);
-        return span;
+    if (exporters.length === 0) {
+      log.info(
+        '[TracingService] No OTel exporters configured. Spans will be recorded in memory only.',
+      );
     }
 
-    public endSpan(id: string, status: 'OK' | 'ERROR' = 'OK', attributes: Record<string, any> = {}) {
-        const span = this.activeSpans.get(id);
-        if (span) {
-            if (Object.keys(attributes).length > 0) {
-                span.setAttributes(attributes);
-            }
+    this.sdk = new NodeSDK({
+      serviceName: 'xenon',
+      spanProcessor: new SimpleSpanProcessor(
+        exporters.length > 0 ? exporters[0] : new ConsoleSpanExporter(),
+      ),
+    });
 
-            span.setStatus({
-                code: status === 'OK' ? SpanStatusCode.OK : SpanStatusCode.ERROR,
-            });
+    try {
+      this.sdk.start();
+      log.info('[TracingService] OpenTelemetry SDK started');
+    } catch (err: any) {
+      log.error(`[TracingService] Failed to start OTel SDK: ${err.message}`);
+    }
+  }
 
-            span.end();
-            this.activeSpans.delete(id);
-        }
+  public startSessionSpan(
+    sessionId: string,
+    name: string,
+    attributes: Record<string, any> = {},
+  ): Span {
+    const span = this.tracer.startSpan(`Session: ${name || sessionId}`, {
+      kind: SpanKind.SERVER,
+      attributes: {
+        'xenon.session_id': sessionId,
+        ...attributes,
+      },
+    });
+    this.activeSpans.set(sessionId, span);
+    return span;
+  }
+
+  public startCommandSpan(
+    sessionId: string,
+    commandName: string,
+    attributes: Record<string, any> = {},
+  ): Span {
+    const parentSpan = this.activeSpans.get(sessionId);
+    const spanOptions: any = {
+      kind: SpanKind.INTERNAL,
+      attributes: {
+        'xenon.session_id': sessionId,
+        'xenon.command': commandName,
+        ...attributes,
+      },
+    };
+
+    let span: Span;
+    if (parentSpan) {
+      const ctx = trace.setSpan(context.active(), parentSpan);
+      span = this.tracer.startSpan(commandName, spanOptions, ctx);
+    } else {
+      span = this.tracer.startSpan(commandName, spanOptions);
     }
 
-    public recordError(id: string, error: Error | string) {
-        const span = this.activeSpans.get(id);
-        if (span) {
-            span.recordException(error);
-            span.setStatus({ code: SpanStatusCode.ERROR, message: typeof error === 'string' ? error : error.message });
-        }
-    }
+    this.activeSpans.set(`${sessionId}:${commandName}`, span);
+    return span;
+  }
 
-    public getTraceId(sessionId: string): string | undefined {
-        return this.activeSpans.get(sessionId)?.spanContext().traceId;
-    }
+  public endSpan(id: string, status: 'OK' | 'ERROR' = 'OK', attributes: Record<string, any> = {}) {
+    const span = this.activeSpans.get(id);
+    if (span) {
+      if (Object.keys(attributes).length > 0) {
+        span.setAttributes(attributes);
+      }
 
-    public getSpanId(id: string): string | undefined {
-        return this.activeSpans.get(id)?.spanContext().spanId;
-    }
+      span.setStatus({
+        code: status === 'OK' ? SpanStatusCode.OK : SpanStatusCode.ERROR,
+      });
 
-    public shutdown() {
-        this.sdk?.shutdown();
+      span.end();
+      this.activeSpans.delete(id);
     }
+  }
+
+  public recordError(id: string, error: Error | string) {
+    const span = this.activeSpans.get(id);
+    if (span) {
+      span.recordException(error);
+      span.setStatus({
+        code: SpanStatusCode.ERROR,
+        message: typeof error === 'string' ? error : error.message,
+      });
+    }
+  }
+
+  public getTraceId(sessionId: string): string | undefined {
+    return this.activeSpans.get(sessionId)?.spanContext().traceId;
+  }
+
+  public getSpanId(id: string): string | undefined {
+    return this.activeSpans.get(id)?.spanContext().spanId;
+  }
+
+  public shutdown() {
+    this.sdk?.shutdown();
+  }
 }

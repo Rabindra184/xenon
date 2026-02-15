@@ -116,10 +116,14 @@ function handler(cliArgs: Record<string, any>) {
       const { NetworkConditioningService } = await import('../services/NetworkConditioningService');
       const latency = Container.get(NetworkConditioningService).getLatency(sessionId);
       if (latency > 0) {
-        log.debug(`⏳ Network Conditioning: Delaying command by ${latency}ms for session ${sessionId}`);
-        await new Promise(resolve => setTimeout(resolve, latency));
+        log.debug(
+          `⏳ Network Conditioning: Delaying command by ${latency}ms for session ${sessionId}`,
+        );
+        await new Promise((resolve) => setTimeout(resolve, latency));
       }
-    } catch (e) { /* ignore */ }
+    } catch (e) {
+      /* ignore */
+    }
 
     if (remoteProxyMap.has(sessionId)) {
       if (proxyServer) {
@@ -170,8 +174,8 @@ async function interceptResponse(
     }
     const body = Buffer.concat(chunks).toString('utf8');
     if (req.method === 'DELETE') {
-      log.info(`🔴 DELETE request intercepted, calling onSessionStoped for ${sessionId}`);
-      await DASHBORD_EVENT_MANAGER.onSessionStoped(sessionId);
+      log.info(`🔴 DELETE request intercepted, calling onSessionStopped for ${sessionId}`);
+      await DASHBORD_EVENT_MANAGER.onSessionStopped(sessionId);
     } else {
       await DASHBORD_EVENT_MANAGER.afterSessionCommand(
         sessionId,

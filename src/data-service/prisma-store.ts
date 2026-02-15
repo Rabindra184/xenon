@@ -1,6 +1,11 @@
 import { IDevice } from '../interfaces/IDevice';
 import { IDeviceFilterOptions } from '../interfaces/IDeviceFilterOptions';
-import { IDeviceStore, IPendingSessionStore, ICLIArgsStore, IHealEtalonStore } from './device-store.interface';
+import {
+  IDeviceStore,
+  IPendingSessionStore,
+  ICLIArgsStore,
+  IHealEtalonStore,
+} from './device-store.interface';
 import { PrismaService } from './prisma-service';
 import { Device, PendingSession, CLIArgs, PrismaClient } from '@prisma/client';
 import { Container } from 'typedi';
@@ -229,20 +234,20 @@ export class PrismaDeviceStore implements IDeviceStore {
           udid: device.udid,
           host: device.host,
           busy: false, // Double check it's still free
-          offline: false
+          offline: false,
         },
         data: {
           busy: true,
           lastCmdExecutedAt: Date.now(),
-          sessionStartTime: Date.now()
-        }
+          sessionStartTime: Date.now(),
+        },
       });
 
       if (result.count === 1) {
         log.info(`[PrismaStore] Successfully locked device ${device.udid} atomically`);
         // Fetch the latest state to return
         const lockedDevice = await this.prisma.device.findUnique({
-          where: { udid_host: { udid: device.udid, host: device.host } }
+          where: { udid_host: { udid: device.udid, host: device.host } },
         });
         return lockedDevice ? this.toIDevice(lockedDevice) : null;
       }

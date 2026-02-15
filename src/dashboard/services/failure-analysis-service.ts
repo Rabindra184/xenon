@@ -95,18 +95,18 @@ export async function analyzeSessionFailure(sessionId: string): Promise<void> {
         });
 
         // Find the last screenshot in logs
-        const lastScreenshotLog = lastCommands.find(l => l.screenshot !== null);
+        const lastScreenshotLog = lastCommands.find((l) => l.screenshot !== null);
 
         aiAnalysis = await AI_SERVICE.analyzeFailure({
           sessionId,
           failureReason: reason,
-          commandLogs: lastCommands.map(c => ({
+          commandLogs: lastCommands.map((c) => ({
             command: c.command_name,
             success: c.is_success,
-            response: c.response?.slice(0, 500) // Truncate long responses
+            response: c.response?.slice(0, 500), // Truncate long responses
           })),
-          deviceLogs: lastLogs.map(l => l.message),
-          screenshotPath: lastScreenshotLog?.screenshot || undefined
+          deviceLogs: lastLogs.map((l) => l.message),
+          screenshotPath: lastScreenshotLog?.screenshot || undefined,
         });
       }
     } catch (aiErr: any) {

@@ -221,7 +221,9 @@ const SessionDashboard: React.FC = () => {
   const fetchSessionDetails = React.useCallback(async (sessionId: string) => {
     try {
       const sessionData = await XenonApiService.getSession(sessionId);
-      setSessions(prevSessions => prevSessions.map(s => s.id === sessionId ? sessionData : s));
+      setSessions((prevSessions) =>
+        prevSessions.map((s) => (s.id === sessionId ? sessionData : s)),
+      );
     } catch (error) {
       console.error('Failed to fetch session details', error);
     }
@@ -286,7 +288,9 @@ const SessionDashboard: React.FC = () => {
 
     onSocketEvent('session_stopped', (data: { id: string; status: string }) => {
       setSessions((prev) =>
-        prev.map((s) => (s.id === data.id ? { ...s, status: data.status, endTime: new Date().toISOString() } : s))
+        prev.map((s) =>
+          s.id === data.id ? { ...s, status: data.status, endTime: new Date().toISOString() } : s,
+        ),
       );
     });
 
@@ -506,7 +510,9 @@ const SessionDashboard: React.FC = () => {
                 <Brain size={20} className="ai-icon" />
                 <h2>AI Root-Cause Diagnosis</h2>
               </div>
-              <Badge variant="outline" className="ai-badge">Elite Tier</Badge>
+              <Badge variant="outline" className="ai-badge">
+                Elite Tier
+              </Badge>
             </div>
             <div className="ai-content">
               <ReactMarkdown>{selectedSession.ai_analysis}</ReactMarkdown>
@@ -519,32 +525,34 @@ const SessionDashboard: React.FC = () => {
           {/* Left Panel: Tabs & Logs */}
           <div className="session-detail-left">
             <div className="tabs-nav">
-              {(['command', 'trace', 'screenshots', 'device', 'debug', 'profiling'] as const).map((tab) => {
-                if (
-                  tab === 'profiling' &&
-                  !['android', 'ios'].includes(selectedSession.device_platform.toLowerCase())
-                )
-                  return null;
-                return (
-                  <button
-                    key={tab}
-                    className={`tab-btn ${selectedLogTab === tab ? 'active' : ''}`}
-                    onClick={() => setSelectedLogTab(tab)}
-                  >
-                    {tab === 'command'
-                      ? 'Text Logs'
-                      : tab === 'screenshots'
-                        ? 'Evidence'
-                        : tab === 'device'
-                          ? 'Device Logs'
-                          : tab === 'debug'
-                            ? 'Debug Logs'
-                            : tab === 'trace'
-                              ? 'Performance Trace'
-                              : 'System Profiling'}
-                  </button>
-                );
-              })}
+              {(['command', 'trace', 'screenshots', 'device', 'debug', 'profiling'] as const).map(
+                (tab) => {
+                  if (
+                    tab === 'profiling' &&
+                    !['android', 'ios'].includes(selectedSession.device_platform.toLowerCase())
+                  )
+                    return null;
+                  return (
+                    <button
+                      key={tab}
+                      className={`tab-btn ${selectedLogTab === tab ? 'active' : ''}`}
+                      onClick={() => setSelectedLogTab(tab)}
+                    >
+                      {tab === 'command'
+                        ? 'Text Logs'
+                        : tab === 'screenshots'
+                          ? 'Evidence'
+                          : tab === 'device'
+                            ? 'Device Logs'
+                            : tab === 'debug'
+                              ? 'Debug Logs'
+                              : tab === 'trace'
+                                ? 'Performance Trace'
+                                : 'System Profiling'}
+                    </button>
+                  );
+                },
+              )}
 
               {selectedLogTab === 'command' && (
                 <div className="log-filters">
@@ -616,7 +624,10 @@ const SessionDashboard: React.FC = () => {
                                 </span>
                               )}
                               {l.is_healed && (
-                                <Badge variant="outline" className="healed-badge animate-pulse-subtle">
+                                <Badge
+                                  variant="outline"
+                                  className="healed-badge animate-pulse-subtle"
+                                >
                                   <Brain size={12} className="mr-1" />
                                   [HEALED]
                                 </Badge>
@@ -640,7 +651,9 @@ const SessionDashboard: React.FC = () => {
                                   </div>
                                   <div className="intel-item">
                                     <span className="intel-label">CONFIDENCE</span>
-                                    <span className="intel-value">{(l.healing_confidence! * 100).toFixed(1)}%</span>
+                                    <span className="intel-value">
+                                      {(l.healing_confidence! * 100).toFixed(1)}%
+                                    </span>
                                   </div>
                                 </div>
                               </div>

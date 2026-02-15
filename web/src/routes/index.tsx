@@ -8,16 +8,20 @@ const DeviceExplorer = lazy(() => import('../components/device-explorer/device-e
 const SessionDashboard = lazy(() => import('../components/session-dashboard/session-dashboard'));
 const Apps = lazy(() => import('../components/apps/apps'));
 const WebhookSettings = lazy(() =>
-  import('../components/webhook-settings/webhook-settings').then(m => ({ default: m.WebhookSettings }))
+  import('../components/webhook-settings/webhook-settings').then((m) => ({
+    default: m.WebhookSettings,
+  })),
 );
 const Settings = lazy(() =>
-  import('../components/settings/settings').then(m => ({ default: m.Settings }))
+  import('../components/settings/settings').then((m) => ({ default: m.Settings })),
 );
 const AISettings = lazy(() =>
-  import('../components/settings/ai-settings').then(m => ({ default: m.AISettings }))
+  import('../components/settings/ai-settings').then((m) => ({ default: m.AISettings })),
 );
 const MaintenanceSettings = lazy(() =>
-  import('../components/settings/maintenance-settings').then(m => ({ default: m.MaintenanceSettings }))
+  import('../components/settings/maintenance-settings').then((m) => ({
+    default: m.MaintenanceSettings,
+  })),
 );
 
 const LoadingFallback = () => (

@@ -3,77 +3,82 @@ import Tesseract from 'tesseract.js';
 import log from '../../logger';
 
 export class OcrHealingProvider implements HealingProvider {
-    name = 'OCR Text Provider';
-    tier = HealingTier.TIER_3_LOCAL_OCR;
-    private logger = log.scope('OcrHealing');
+  name = 'OCR Text Provider';
+  tier = HealingTier.TIER_3_LOCAL_OCR;
+  private logger = log.scope('OcrHealing');
 
-    async heal(context: HealingContext): Promise<HealedElement | null> {
-        if (!context.screenshotBase64) {
-            this.logger.debug('No screenshot available for OCR matching');
-            return null;
-        }
-
-        try {
-            // Extract what text we are looking for from the selector
-            const soughtText = this.extractTextHint(context.selector);
-            if (!soughtText) return null;
-
-            this.logger.info(`Attempting OCR search for text: "${soughtText}"`);
-
-            // Run OCR on the screenshot
-            const buffer = Buffer.from(context.screenshotBase64, 'base64');
-            const result: any = await Tesseract.recognize(buffer, 'eng');
-            const { words } = result.data;
-
-            // Look for the best word match
-            const bestWord = words ? words.find((w: any) =>
-                w.text.toLowerCase().includes(soughtText.toLowerCase()) ||
-                soughtText.toLowerCase().includes(w.text.toLowerCase())
-            ) : null;
-
-            if (bestWord) {
-                this.logger.info(`✅ OCR found text "${bestWord.text}" at ${JSON.stringify(bestWord.bbox)}`);
-
-                // Convert bbox to center coordinates for click
-                const x = (bestWord.bbox.x0 + bestWord.bbox.x1) / 2;
-                const y = (bestWord.bbox.y0 + bestWord.bbox.y1) / 2;
-
-                // In a real implementation, we would return a special element type that handles clicks by coordinate
-                // For the POC, we return a virtual element representation
-                return {
-                    id: `healed_ocr_${Date.now()}`,
-                    tier: this.tier,
-                    confidence: bestWord.confidence / 100,
-                    originalSelector: context.selector,
-                    recommendedSelector: `ocr:text="${bestWord.text}"`,
-                    message: `Found text "${bestWord.text}" via local OCR (${bestWord.confidence.toFixed(0)}% confidence)`,
-                    rect: {
-                        x: bestWord.bbox.x0,
-                        y: bestWord.bbox.y0,
-                        width: bestWord.bbox.x1 - bestWord.bbox.x0,
-                        height: bestWord.bbox.y1 - bestWord.bbox.y0
-                    }
-                };
-            }
-
-        } catch (err: any) {
-            this.logger.error(`Error during OCR healing: ${err.message}`);
-        }
-
-        return null;
+  async heal(context: HealingContext): Promise<HealedElement | null> {
+    if (!context.screenshotBase64) {
+      this.logger.debug('No screenshot available for OCR matching');
+      return null;
     }
 
-    private extractTextHint(selector: string): string | null {
-        // If selector is //*[@text='Login'] or similar, grab 'Login'
-        const textMatch = selector.match(/text=['"]([^'"]+)['"]/i) ||
-            selector.match(/content-desc=['"]([^'"]+)['"]/i) ||
-            selector.match(/label=['"]([^'"]+)['"]/i);
+    try {
+      // Extract what text we are looking for from the selector
+      const soughtText = this.extractTextHint(context.selector);
+      if (!soughtText) return null;
 
-        if (textMatch) return textMatch[1];
+      this.logger.info(`Attempting OCR search for text: "${soughtText}"`);
 
-        // Otherwise try to grab last part of selector if it looks like words
-        const parts = selector.split(/[\/\@\[\]\=\'\"]/);
-        const lastWord = parts.reverse().find(p => p.length > 3);
-        return lastWord || null;
+      // Run OCR on the screenshot
+      const buffer = Buffer.from(context.screenshotBase64, 'base64');
+      const result: any = await Tesseract.recognize(buffer, 'eng');
+      const { words } = result.data;
+
+      // Look for the best word match
+      const bestWord = words
+        ? words.find(
+            (w: any) =>
+              w.text.toLowerCase().includes(soughtText.toLowerCase()) ||
+              soughtText.toLowerCase().includes(w.text.toLowerCase()),
+          )
+        : null;
+
+      if (bestWord) {
+        this.logger.info(
+          `✅ OCR found text "${bestWord.text}" at ${JSON.stringify(bestWord.bbox)}`,
+        );
+
+        // Convert bbox to center coordinates for click
+        const x = (bestWord.bbox.x0 + bestWord.bbox.x1) / 2;
+        const y = (bestWord.bbox.y0 + bestWord.bbox.y1) / 2;
+
+        // In a real implementation, we would return a special element type that handles clicks by coordinate
+        // For the POC, we return a virtual element representation
+        return {
+          id: `healed_ocr_${Date.now()}`,
+          tier: this.tier,
+          confidence: bestWord.confidence / 100,
+          originalSelector: context.selector,
+          recommendedSelector: `ocr:text="${bestWord.text}"`,
+          message: `Found text "${bestWord.text}" via local OCR (${bestWord.confidence.toFixed(0)}% confidence)`,
+          rect: {
+            x: bestWord.bbox.x0,
+            y: bestWord.bbox.y0,
+            width: bestWord.bbox.x1 - bestWord.bbox.x0,
+            height: bestWord.bbox.y1 - bestWord.bbox.y0,
+          },
+        };
+      }
+    } catch (err: any) {
+      this.logger.error(`Error during OCR healing: ${err.message}`);
     }
+
+    return null;
+  }
+
+  private extractTextHint(selector: string): string | null {
+    // If selector is //*[@text='Login'] or similar, grab 'Login'
+    const textMatch =
+      selector.match(/text=['"]([^'"]+)['"]/i) ||
+      selector.match(/content-desc=['"]([^'"]+)['"]/i) ||
+      selector.match(/label=['"]([^'"]+)['"]/i);
+
+    if (textMatch) return textMatch[1];
+
+    // Otherwise try to grab last part of selector if it looks like words
+    const parts = selector.split(/[\/\@\[\]\=\'\"]/);
+    const lastWord = parts.reverse().find((p) => p.length > 3);
+    return lastWord || null;
+  }
 }

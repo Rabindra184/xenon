@@ -24,7 +24,10 @@ import { unblockDevice } from '../../data-service/device-service';
 
 const execPromise = promisify(exec);
 import { Container } from 'typedi';
-import { ResourceIsolationService, IsolationProfile } from '../../services/ResourceIsolationService';
+import {
+  ResourceIsolationService,
+  IsolationProfile,
+} from '../../services/ResourceIsolationService';
 
 interface StreamSession {
   udid: string;
@@ -101,7 +104,6 @@ class IOSStreamService {
     }, 30000); // 30s interval for background stability
   }
 
-
   private getGoIOSPath(): string {
     const goIOSDir = cachePath('goIOS');
     return path.join(goIOSDir, 'ios');
@@ -152,7 +154,9 @@ class IOSStreamService {
         env: { ...process.env, ENABLE_GO_IOS_AGENT: 'yes' },
       });
       const info = JSON.parse(stdout);
-      const versionStr = String(info.ProductVersion || info.HumanReadableProductVersionString || '0');
+      const versionStr = String(
+        info.ProductVersion || info.HumanReadableProductVersionString || '0',
+      );
       // Extract the first numeric sequence (e.g., "15.8.6" or "iOS 17.2")
       const versionMatch = versionStr.match(/(\d+\.?\d*)/);
       const version = versionMatch ? parseFloat(versionMatch[0]) : 0;
@@ -174,23 +178,19 @@ class IOSStreamService {
         const { command, args } = isolationService.wrapSpawn(
           this.goIOSPath,
           ['tunnel', 'start', '--udid', udid, '--userspace'],
-          'Performance' // Performance mode for critical tunnel stability
+          'Performance', // Performance mode for critical tunnel stability
         );
 
-        const tunnelProcess = spawn(
-          command,
-          args,
-          {
-            stdio: ['pipe', 'pipe', 'pipe'],
-            env: { ...process.env, ENABLE_GO_IOS_AGENT: 'yes' },
-          },
-        );
+        const tunnelProcess = spawn(command, args, {
+          stdio: ['pipe', 'pipe', 'pipe'],
+          env: { ...process.env, ENABLE_GO_IOS_AGENT: 'yes' },
+        });
 
         tunnelProcess.stdout?.on('data', (data) => log.debug(`Tunnel [${udid}]: ${data}`));
         tunnelProcess.stderr?.on('data', (data) => log.debug(`Tunnel Err [${udid}]: ${data}`));
 
         // Wait for tunnel to establish by checking the go-ios agent port
-        log.info(`Waiting for tunnel agent on port 60105 to be ready...`);
+        log.info('Waiting for tunnel agent on port 60105 to be ready...');
         let tunnelReady = false;
         const tunnelTimeout = 15000;
         const subStartTime = Date.now();
@@ -198,16 +198,20 @@ class IOSStreamService {
           try {
             tunnelReady = await tcpPortUsed.check(60105, '127.0.0.1');
             if (tunnelReady) break;
-          } catch (e) { /* ignore */ }
+          } catch (e) {
+            /* ignore */
+          }
           await new Promise((resolve) => setTimeout(resolve, 1000));
         }
 
         if (!tunnelReady) {
-          log.warn(`Tunnel agent port 60105 not ready after ${tunnelTimeout / 1000}s, proceeding anyway...`);
+          log.warn(
+            `Tunnel agent port 60105 not ready after ${tunnelTimeout / 1000}s, proceeding anyway...`,
+          );
         } else {
-          log.info(`Tunnel agent is ready. Settling for 2s...`);
+          log.info('Tunnel agent is ready. Settling for 2s...');
           await new Promise((resolve) => setTimeout(resolve, 2000));
-          log.info(`Tunnel agent settled.`);
+          log.info('Tunnel agent settled.');
         }
         return tunnelProcess;
       }
@@ -273,7 +277,10 @@ class IOSStreamService {
         validateStatus: (status) => status === 200,
       });
       const isReady = response.data?.value?.ready === true;
-      if (!isReady) log.debug(`[WDA] Port ${wdaPort} active but not ready. Status: ${JSON.stringify(response.data?.value)}`);
+      if (!isReady)
+        log.debug(
+          `[WDA] Port ${wdaPort} active but not ready. Status: ${JSON.stringify(response.data?.value)}`,
+        );
       return isReady;
     } catch (error: any) {
       if (error.code === 'ECONNREFUSED') {
@@ -398,8 +405,16 @@ class IOSStreamService {
         log.info(`Forwarding ${udid}: ${wdaPort}->8100, ${mjpegPort}->9100 using iproxy`);
         const isolationService = Container.get(ResourceIsolationService);
 
-        const wdaIproxy = isolationService.wrapSpawn('iproxy', ['-u', udid, `${wdaPort}:8100`], 'Performance');
-        const mjpegIproxy = isolationService.wrapSpawn('iproxy', ['-u', udid, `${mjpegPort}:9100`], 'Performance');
+        const wdaIproxy = isolationService.wrapSpawn(
+          'iproxy',
+          ['-u', udid, `${wdaPort}:8100`],
+          'Performance',
+        );
+        const mjpegIproxy = isolationService.wrapSpawn(
+          'iproxy',
+          ['-u', udid, `${mjpegPort}:9100`],
+          'Performance',
+        );
 
         session.forwardWDAProcess = spawn(wdaIproxy.command, wdaIproxy.args);
         session.forwardMJPEGProcess = spawn(mjpegIproxy.command, mjpegIproxy.args);
@@ -421,17 +436,21 @@ class IOSStreamService {
           (await this.detectWDABundleId(udid)) || 'com.qasecret.WebDriverAgentRunner.xctrunner';
         log.info(`Starting WDA ${bundleId} on ${udid}`);
 
-        const wdaSpawn = isolationService.wrapSpawn(this.goIOSPath, [
-          'runwda',
-          '--bundleid',
-          bundleId,
-          '--testrunnerbundleid',
-          bundleId,
-          '--xctestconfig',
-          'WebDriverAgentRunner.xctest',
-          '--udid',
-          udid,
-        ], 'Performance'); // WDA deserves Performance mode
+        const wdaSpawn = isolationService.wrapSpawn(
+          this.goIOSPath,
+          [
+            'runwda',
+            '--bundleid',
+            bundleId,
+            '--testrunnerbundleid',
+            bundleId,
+            '--xctestconfig',
+            'WebDriverAgentRunner.xctest',
+            '--udid',
+            udid,
+          ],
+          'Performance',
+        ); // WDA deserves Performance mode
 
         session.wdaProcess = spawn(wdaSpawn.command, wdaSpawn.args, {
           env: { ...process.env, ENABLE_GO_IOS_AGENT: 'yes' },
@@ -529,8 +548,9 @@ class IOSStreamService {
           if (session.wdaProcess?.exitCode !== null) {
             const logContent = fs.existsSync(wdaRunLog) ? fs.readFileSync(wdaRunLog, 'utf8') : '';
             throw new Error(
-              `WDA process exited with code ${session.wdaProcess
-                ?.exitCode}. Log: ${logContent.slice(-200)}`,
+              `WDA process exited with code ${
+                session.wdaProcess?.exitCode
+              }. Log: ${logContent.slice(-200)}`,
             );
           }
 
@@ -566,10 +586,7 @@ class IOSStreamService {
     // Senior Resiliency: Use centralized tunnel cleanup
     await this.cleanupOrphanTunnels(udid);
 
-    const pkillCmds = [
-      `pkill -9 -f "iproxy.*${udid}"`,
-      `pkill -9 -f "ios runwda.*${udid}"`,
-    ];
+    const pkillCmds = [`pkill -9 -f "iproxy.*${udid}"`, `pkill -9 -f "ios runwda.*${udid}"`];
 
     for (const cmd of pkillCmds) {
       try {
@@ -605,7 +622,12 @@ class IOSStreamService {
     if (!session) return;
 
     // Kill all processes including tunnel (CRITICAL: tunnel was missing from cleanup!)
-    [session.wdaProcess, session.forwardWDAProcess, session.forwardMJPEGProcess, session.tunnelProcess].forEach((p) => {
+    [
+      session.wdaProcess,
+      session.forwardWDAProcess,
+      session.forwardMJPEGProcess,
+      session.tunnelProcess,
+    ].forEach((p) => {
       if (p)
         try {
           p.kill('SIGKILL');

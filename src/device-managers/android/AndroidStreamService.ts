@@ -38,7 +38,6 @@ class AndroidStreamService {
     this.startWatchdog();
   }
 
-
   private startWatchdog() {
     setInterval(async () => {
       const now = Date.now();
@@ -73,7 +72,11 @@ class AndroidStreamService {
         const screenshot = await deviceLock.acquire(udid, async () => {
           return await new Promise<Buffer>((resolve, reject) => {
             const isolationService = Container.get(ResourceIsolationService);
-            const { command, args } = isolationService.wrapSpawn('adb', ['-s', udid, 'exec-out', 'screencap'], 'Performance');
+            const { command, args } = isolationService.wrapSpawn(
+              'adb',
+              ['-s', udid, 'exec-out', 'screencap'],
+              'Performance',
+            );
             const proc = spawn(command, args);
             const chunks: Uint8Array[] = [];
             proc.stdout.on('data', (c) => chunks.push(c));
@@ -170,7 +173,9 @@ class AndroidStreamService {
               await execPromise(`kill -9 ${pid}`);
             }
           }
-        } catch (e) { /* ignore */ }
+        } catch (e) {
+          /* ignore */
+        }
 
         const session: AndroidStreamSession = {
           udid,
@@ -240,7 +245,7 @@ class AndroidStreamService {
         });
 
         // Brief settlement delay for OS networking stack
-        await new Promise(r => setTimeout(r, 200));
+        await new Promise((r) => setTimeout(r, 200));
 
         session.status = 'running';
         this.captureLoop(udid, session);
@@ -308,25 +313,29 @@ class AndroidStreamService {
     return new Promise((resolve, reject) => {
       if (!FFMPEG_PATH) return reject(new Error('No FFmpeg on path'));
       const isolationService = Container.get(ResourceIsolationService);
-      const { command, args } = isolationService.wrapSpawn(FFMPEG_PATH, [
-        '-f',
-        'rawvideo',
-        '-pixel_format',
-        pixFmt,
-        '-video_size',
-        `${srcW}x${srcH}`,
-        '-i',
-        'pipe:0',
-        '-vf',
-        `scale=${dstW}:-1`,
-        '-f',
-        'mjpeg',
-        '-q:v',
-        '8', // Goldilocks quality for low lag
-        '-frames:v',
-        '1',
-        'pipe:1',
-      ], 'Performance');
+      const { command, args } = isolationService.wrapSpawn(
+        FFMPEG_PATH,
+        [
+          '-f',
+          'rawvideo',
+          '-pixel_format',
+          pixFmt,
+          '-video_size',
+          `${srcW}x${srcH}`,
+          '-i',
+          'pipe:0',
+          '-vf',
+          `scale=${dstW}:-1`,
+          '-f',
+          'mjpeg',
+          '-q:v',
+          '8', // Goldilocks quality for low lag
+          '-frames:v',
+          '1',
+          'pipe:1',
+        ],
+        'Performance',
+      );
 
       const ff = spawn(command, args);
       const output: Uint8Array[] = [];
