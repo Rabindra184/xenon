@@ -148,4 +148,5 @@ export const DefaultPluginArgs: IPluginArgs = {
   deleteBuildAssets: true,
   sessionHeartbeatIntervalMs: 30000,
   enableJsonLogging: false,
+  tlsRejectUnauthorized: true,
 };

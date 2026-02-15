@@ -18,7 +18,11 @@ export async function preparePrismaSchema() {
     return;
   }
 
+<<<<<<< HEAD
   let schema = fs.readFileSync(schemaPath, 'utf8');
+=======
+  const schema = fs.readFileSync(schemaPath, 'utf8');
+>>>>>>> main
   const currentProviderMatch = schema.match(/datasource\s+db\s*{[\s\S]*?provider\s*=\s*"([^"]+)"/);
   const currentProvider = currentProviderMatch ? currentProviderMatch[1] : null;
 
@@ -37,7 +41,11 @@ export async function preparePrismaSchema() {
   );
 
   fs.writeFileSync(schemaPath, newSchema);
+<<<<<<< HEAD
   log.info(`[PrismaPrepare] schema.prisma updated successfully.`);
+=======
+  log.info('[PrismaPrepare] schema.prisma updated successfully.');
+>>>>>>> main
 }
 
 if (require.main === module) {

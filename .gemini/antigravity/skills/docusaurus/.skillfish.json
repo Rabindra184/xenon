@@ -1,0 +1,10 @@
+{
+  "version": 2,
+  "name": "docusaurus",
+  "owner": "anton-abyzov",
+  "repo": "specweave",
+  "path": "plugins/specweave-docs/skills/docusaurus",
+  "branch": "develop",
+  "sha": "03ed6c84ff034a3acccba00394dae83076e6f4cc",
+  "source": "manual"
+}

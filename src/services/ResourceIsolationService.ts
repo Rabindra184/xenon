@@ -78,14 +78,14 @@ export class ResourceIsolationService {
   private wrapMacOS(command: string, profile: IsolationProfile): string {
     if (profile === 'Economy') {
       // taskpolicy -c background is the most effective way to throttle CPU/IO on Mac
-      log.debug(`🛡️ Resource Isolation: Throttling command to background (Economy)`);
+      log.debug('🛡️ Resource Isolation: Throttling command to background (Economy)');
       return `taskpolicy -c background ${command}`;
     }
 
     if (profile === 'Guaranteed') {
       // MacOS doesn't have a simple "High priority" CLI wrapper for spawn easily
       // without sudo, but we can use 'nice'
-      log.debug(`🛡️ Resource Isolation: Assigning high priority (Guaranteed)`);
+      log.debug('🛡️ Resource Isolation: Assigning high priority (Guaranteed)');
       return `nice -n -5 ${command}`;
     }
 
@@ -98,12 +98,12 @@ export class ResourceIsolationService {
    */
   private wrapLinux(command: string, profile: IsolationProfile): string {
     if (profile === 'Economy') {
-      log.debug(`🛡️ Resource Isolation: Throttling command (Economy)`);
+      log.debug('🛡️ Resource Isolation: Throttling command (Economy)');
       return `nice -n 19 ${command}`;
     }
 
     if (profile === 'Guaranteed') {
-      log.debug(`🛡️ Resource Isolation: Assigning high priority (Guaranteed)`);
+      log.debug('🛡️ Resource Isolation: Assigning high priority (Guaranteed)');
       return `nice -n -10 ${command}`;
     }
 

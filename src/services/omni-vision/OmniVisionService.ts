@@ -123,7 +123,7 @@ export class OmniVisionService {
 
       const processedBuffer = await sharpImage.toBuffer();
       this.logger.debug(
-        `Image pre-processed: grayscale + contrast + sharpen applied (no upscaling).`,
+        'Image pre-processed: grayscale + contrast + sharpen applied (no upscaling).',
       );
       return processedBuffer;
     } catch (e: any) {
@@ -222,7 +222,7 @@ export class OmniVisionService {
           );
         }
       } else {
-        this.logger.warn(`HOCR data not available from Tesseract.`);
+        this.logger.warn('HOCR data not available from Tesseract.');
       }
 
       // Fallback Level 3: TSV Parsing

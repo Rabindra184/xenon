@@ -13,6 +13,65 @@ import asyncWait from 'async-wait-until';
 import { InternalHttpClient } from './InternalHttpClient';
 
 const APPIUM_VENDOR_PREFIX = 'appium:';
+
+/**
+ * Keys whose values must never appear in log output.
+ * Case-insensitive substring matching is used so 'myApiKey' and 'API_KEY' both match.
+ */
+const SENSITIVE_KEY_PATTERNS = [
+  'apikey',
+  'api_key',
+  'secret',
+  'password',
+  'token',
+  'accesstoken',
+  'refreshtoken',
+  'dburl',
+  'databaseurl',
+  'clientsecret',
+  'privatekey',
+  'auth',
+  'credentials',
+  'secretkey',
+];
+
+const REDACTED = '***REDACTED***';
+
+function isSensitiveKey(key: string): boolean {
+  const lower = key.toLowerCase().replace(/[_-]/g, '');
+  return SENSITIVE_KEY_PATTERNS.some((p) => lower.includes(p));
+}
+
+/**
+ * Deep-clone an object, replacing values of sensitive keys with ***REDACTED***.
+ * Safe to call before JSON.stringify for logging.
+ */
+export function redactSecrets<T>(obj: T): T {
+  const seen = new WeakSet<object>();
+  const redact = (value: any): any => {
+    if (value === null || value === undefined || typeof value !== 'object') {
+      return value;
+    }
+    if (seen.has(value)) {
+      return '[Circular]';
+    }
+    seen.add(value);
+    if (Array.isArray(value)) {
+      return value.map((item) => redact(item));
+    }
+    const result: Record<string, any> = {};
+    for (const [key, v] of Object.entries(value)) {
+      if (isSensitiveKey(key)) {
+        result[key] = REDACTED;
+      } else {
+        result[key] = redact(v);
+      }
+    }
+    return result;
+  };
+  return redact(obj) as T;
+}
+
 const XENON_PREFIXES = ['xe:'];
 
 export async function asyncForEach(
@@ -176,9 +235,13 @@ export function stripAppiumPrefixes(caps: any) {
   return strippedCaps;
 }
 
-export async function isXenonRunning(host: string): Promise<boolean> {
+export async function isXenonRunning(
+  host: string,
+  tlsRejectUnauthorized?: boolean,
+): Promise<boolean> {
   try {
-    await InternalHttpClient.get(`${host}/xenon/api/status`);
+    const client = InternalHttpClient.getClient(tlsRejectUnauthorized);
+    await client.get(`${host}/xenon/api/status`);
     return true;
   } catch (error: any) {
     log.info(`Xenon is not running at ${host}. Error: ${error}`);
@@ -186,9 +249,13 @@ export async function isXenonRunning(host: string): Promise<boolean> {
   }
 }
 
-export async function isAppiumRunningAt(url: string): Promise<boolean> {
+export async function isAppiumRunningAt(
+  url: string,
+  tlsRejectUnauthorized?: boolean,
+): Promise<boolean> {
   try {
-    await InternalHttpClient.get(`${url}/status`);
+    const client = InternalHttpClient.getClient(tlsRejectUnauthorized);
+    await client.get(`${url}/status`);
     return true;
   } catch (error: any) {
     log.info(`Appium is not running at ${url}. Error: ${error}`);

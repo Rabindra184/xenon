@@ -89,7 +89,10 @@ class XenonPlugin extends BasePlugin {
     } as unknown as IDeviceFilterOptions;
 
     if (this.pluginArgs.hub !== undefined) {
-      await new NodeDevices(this.pluginArgs.hub).unblockDevice(deviceFilter as any);
+      await new NodeDevices(
+        this.pluginArgs.hub,
+        this.pluginArgs.tlsRejectUnauthorized,
+      ).unblockDevice(deviceFilter as any);
     } else {
       await unblockDeviceMatchingFilter(deviceFilter);
     }
@@ -115,7 +118,7 @@ class XenonPlugin extends BasePlugin {
         }
       }
 
-      await DASHBORD_EVENT_MANAGER.onSessionStoped(
+      await DASHBORD_EVENT_MANAGER.onSessionStopped(
         sessionId,
         SessionStatus.FAILED,
         'Driver shut down unexpectedly',

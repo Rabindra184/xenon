@@ -174,8 +174,8 @@ async function interceptResponse(
     }
     const body = Buffer.concat(chunks).toString('utf8');
     if (req.method === 'DELETE') {
-      log.info(`🔴 DELETE request intercepted, calling onSessionStoped for ${sessionId}`);
-      await DASHBORD_EVENT_MANAGER.onSessionStoped(sessionId);
+      log.info(`🔴 DELETE request intercepted, calling onSessionStopped for ${sessionId}`);
+      await DASHBORD_EVENT_MANAGER.onSessionStopped(sessionId);
     } else {
       await DASHBORD_EVENT_MANAGER.afterSessionCommand(
         sessionId,

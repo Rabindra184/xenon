@@ -12,7 +12,7 @@ export class FuzzyXmlHealingProvider implements HealingProvider {
   tier = HealingTier.TIER_2_FUZZY_XML;
   private logger = log.scope('FuzzyXmlHealing');
 
-  constructor(private etalonService?: HealEtalonService) {}
+  constructor(private etalonService?: HealEtalonService) { }
 
   async heal(context: HealingContext): Promise<HealedElement | null> {
     if (!context.pageSource) {
@@ -33,7 +33,7 @@ export class FuzzyXmlHealingProvider implements HealingProvider {
       if (keywords.length === 0 && !etalon) return null;
 
       if (etalon) {
-        this.logger.info(`Baseline signature found for locator. Using weighted recovery...`);
+        this.logger.info('Baseline signature found for locator. Using weighted recovery...');
       } else {
         this.logger.info(
           `No baseline found. Attempting fuzzy match for keywords: ${keywords.join(', ')}`,

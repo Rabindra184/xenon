@@ -189,7 +189,7 @@ export class DashboardCommands {
     const newTag = typeof tagData === 'string' ? tagData : tagData.tag;
 
     if (!newTag) {
-      log.warn(`[DashboardCommands] addTag: No tag provided`);
+      log.warn('[DashboardCommands] addTag: No tag provided');
       return this.sendSuccessResponse(response);
     }
 

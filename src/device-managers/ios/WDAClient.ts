@@ -206,7 +206,11 @@ export class WDAClient {
   }
 
   async typeText(udid: string, text: string): Promise<void> {
+<<<<<<< HEAD
     let b = this.typeBuffers.get(udid) || { text: '', timer: null, pending: false };
+=======
+    const b = this.typeBuffers.get(udid) || { text: '', timer: null, pending: false };
+>>>>>>> main
     this.typeBuffers.set(udid, b);
     b.text += text;
     if (b.timer) clearTimeout(b.timer);
@@ -214,7 +218,11 @@ export class WDAClient {
   }
 
   private async flushTypeBuffer(udid: string) {
+<<<<<<< HEAD
     let b = this.typeBuffers.get(udid);
+=======
+    const b = this.typeBuffers.get(udid);
+>>>>>>> main
     if (!b || !b.text) return;
     const t = b.text;
     b.text = '';

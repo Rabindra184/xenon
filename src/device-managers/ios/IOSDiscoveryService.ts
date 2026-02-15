@@ -1,12 +1,12 @@
 import Simctl from 'node-simctl';
-import { flatten, isEmpty } from 'lodash';
+import { flatten } from 'lodash';
 import { utilities as IOSUtils } from 'appium-ios-device';
 import { IDevice } from '../../interfaces/IDevice';
-import { getFreePort, stripAppiumPrefixes } from '../../helpers';
+import { getFreePort } from '../../helpers';
 import log from '../../logger';
 import { getUtilizationTime } from '../../device-utils';
 import { DeviceStoreFactory } from '../../data-service/device-store';
-import { IPluginArgs, DeviceTypeToInclude } from '../../interfaces/IPluginArgs';
+import { DeviceTypeToInclude } from '../../interfaces/IPluginArgs';
 import { PluginContext } from '../../PluginContext';
 import { Service, Container } from 'typedi';
 import Devices from '../cloud/Devices';
@@ -95,12 +95,21 @@ export class IOSDiscoveryService {
     const store = DeviceStoreFactory.getStore();
     const storeDevice = await store.findDevice({ udid });
 
+<<<<<<< HEAD
     let host = this.pluginArgs.remoteMachineProxyIP
       ? String(this.pluginArgs.remoteMachineProxyIP)
       : `http://${this.pluginArgs.bindHostOrIp}:${this.hostPort}`;
 
     let wdaLocalPort = storeDevice?.wdaLocalPort || (await getFreePort());
     let mjpegServerPort = storeDevice?.mjpegServerPort || (await getFreePort());
+=======
+    const host = this.pluginArgs.remoteMachineProxyIP
+      ? String(this.pluginArgs.remoteMachineProxyIP)
+      : `http://${this.pluginArgs.bindHostOrIp}:${this.hostPort}`;
+
+    const wdaLocalPort = storeDevice?.wdaLocalPort || (await getFreePort());
+    const mjpegServerPort = storeDevice?.mjpegServerPort || (await getFreePort());
+>>>>>>> main
     const totalUtilizationTimeMilliSec = await getUtilizationTime(udid);
 
     let sdk = 'Unknown';
@@ -136,7 +145,14 @@ export class IOSDiscoveryService {
     simulators.sort((a, b) => (a.state > b.state ? 1 : -1));
 
     if (this.pluginArgs.hub !== undefined) {
+<<<<<<< HEAD
       const nodeDevices = new NodeDevices(this.pluginArgs.hub);
+=======
+      const nodeDevices = new NodeDevices(
+        this.pluginArgs.hub,
+        this.pluginArgs.tlsRejectUnauthorized,
+      );
+>>>>>>> main
       await nodeDevices.postDevicesToHub(simulators, 'add');
     }
     return simulators;
@@ -197,7 +213,14 @@ export class IOSDiscoveryService {
       try {
         const device = { ...(await this.getDeviceInfo(udid)), nodeId: this.nodeId };
         if (this.pluginArgs.hub) {
+<<<<<<< HEAD
           await new NodeDevices(this.pluginArgs.hub).postDevicesToHub([device], 'add');
+=======
+          await new NodeDevices(
+            this.pluginArgs.hub,
+            this.pluginArgs.tlsRejectUnauthorized,
+          ).postDevicesToHub([device], 'add');
+>>>>>>> main
         }
         await addNewDevice([device], this.pluginArgs.bindHostOrIp);
       } catch (e: any) {
@@ -208,7 +231,14 @@ export class IOSDiscoveryService {
     tracker.on('detached', async (udid: string) => {
       const deviceRemoved = [{ udid, host: this.pluginArgs.bindHostOrIp as string }];
       if (this.pluginArgs.hub) {
+<<<<<<< HEAD
         await new NodeDevices(this.pluginArgs.hub).postDevicesToHub(deviceRemoved as any, 'remove');
+=======
+        await new NodeDevices(
+          this.pluginArgs.hub,
+          this.pluginArgs.tlsRejectUnauthorized,
+        ).postDevicesToHub(deviceRemoved as any, 'remove');
+>>>>>>> main
       }
       await removeDevice(deviceRemoved);
     });

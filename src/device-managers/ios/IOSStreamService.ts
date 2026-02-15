@@ -190,7 +190,7 @@ class IOSStreamService {
         tunnelProcess.stderr?.on('data', (data) => log.debug(`Tunnel Err [${udid}]: ${data}`));
 
         // Wait for tunnel to establish by checking the go-ios agent port
-        log.info(`Waiting for tunnel agent on port 60105 to be ready...`);
+        log.info('Waiting for tunnel agent on port 60105 to be ready...');
         let tunnelReady = false;
         const tunnelTimeout = 15000;
         const subStartTime = Date.now();
@@ -209,9 +209,9 @@ class IOSStreamService {
             `Tunnel agent port 60105 not ready after ${tunnelTimeout / 1000}s, proceeding anyway...`,
           );
         } else {
-          log.info(`Tunnel agent is ready. Settling for 2s...`);
+          log.info('Tunnel agent is ready. Settling for 2s...');
           await new Promise((resolve) => setTimeout(resolve, 2000));
-          log.info(`Tunnel agent settled.`);
+          log.info('Tunnel agent settled.');
         }
         return tunnelProcess;
       }

@@ -35,7 +35,7 @@ export class HealingOrchestrator {
 
     // Preparation: Collect data required for healing
     // Note: We do this once to avoid multiple expensive round-trips
-    let context: HealingContext = { sessionId, driver, strategy, selector };
+    const context: HealingContext = { sessionId, driver, strategy, selector };
 
     try {
       this.logger.debug('Collecting page source and screenshot for analysis...');

@@ -21,7 +21,11 @@ interface LLMProvider {
 
 class GeminiProvider implements LLMProvider {
   private model: any;
+<<<<<<< HEAD
   constructor(apiKey: string, modelName: string = 'gemini-1.5-flash') {
+=======
+  constructor(apiKey: string, modelName = 'gemini-1.5-flash') {
+>>>>>>> main
     const genAI = new GoogleGenerativeAI(apiKey);
     this.model = genAI.getGenerativeModel({ model: modelName });
   }
@@ -44,7 +48,11 @@ class GeminiProvider implements LLMProvider {
 class OpenAIProvider implements LLMProvider {
   private client: OpenAI;
   private model: string;
+<<<<<<< HEAD
   constructor(apiKey: string, model: string = 'gpt-4o', baseURL?: string) {
+=======
+  constructor(apiKey: string, model = 'gpt-4o', baseURL?: string) {
+>>>>>>> main
     this.client = new OpenAI({ apiKey, baseURL });
     this.model = model;
   }
@@ -75,7 +83,11 @@ class OpenAIProvider implements LLMProvider {
 class AnthropicProvider implements LLMProvider {
   private client: Anthropic;
   private model: string;
+<<<<<<< HEAD
   constructor(apiKey: string, model: string = 'claude-3-5-sonnet-20240620') {
+=======
+  constructor(apiKey: string, model = 'claude-3-5-sonnet-20240620') {
+>>>>>>> main
     this.client = new Anthropic({ apiKey });
     this.model = model;
   }
@@ -105,7 +117,11 @@ class AnthropicProvider implements LLMProvider {
 class OllamaProvider implements LLMProvider {
   private baseUrl: string;
   private model: string;
+<<<<<<< HEAD
   constructor(baseUrl: string = 'http://localhost:11434', model: string = 'llama3') {
+=======
+  constructor(baseUrl = 'http://localhost:11434', model = 'llama3') {
+>>>>>>> main
     this.baseUrl = baseUrl;
     this.model = model;
   }
@@ -122,7 +138,11 @@ class OllamaProvider implements LLMProvider {
 
 export class AIService {
   private provider: LLMProvider | null = null;
+<<<<<<< HEAD
   private isMock: boolean = false;
+=======
+  private isMock = false;
+>>>>>>> main
 
   constructor() {
     this.initializeProvider();

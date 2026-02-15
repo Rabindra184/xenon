@@ -55,7 +55,7 @@ export class InspectorService {
     parseAttributeValue: true,
   });
 
-  constructor(@Inject() private context: PluginContext) {}
+  constructor(@Inject() private context: PluginContext) { }
 
   async getSnapshot(udid: string): Promise<InspectorSnapshot> {
     try {
@@ -91,7 +91,7 @@ export class InspectorService {
             // Update store asynchronously
             Container.get<any>('DeviceStore')
               .updateDevice(udid, device.host, additional)
-              .catch(() => {});
+              .catch(() => { });
           }
         } catch (e) {
           this.log.warn(`Failed to lazy-load dimensions for ${udid}: ${e}`);
@@ -258,7 +258,7 @@ export class InspectorService {
     ) {
       actions.push({
         action: 'click',
-        snippet: `await element.click();`,
+        snippet: 'await element.click();',
         description: 'Performs a single tap interaction',
       });
     }
@@ -272,12 +272,12 @@ export class InspectorService {
     ) {
       actions.push({
         action: 'sendKeys',
-        snippet: `await element.sendKeys("value");`,
+        snippet: 'await element.sendKeys("value");',
         description: 'Inputs text into the element',
       });
       actions.push({
         action: 'clear',
-        snippet: `await element.clear();`,
+        snippet: 'await element.clear();',
         description: 'Clears the text content',
       });
     }

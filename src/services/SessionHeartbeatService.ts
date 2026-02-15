@@ -96,7 +96,7 @@ export class SessionHeartbeatService {
 
     try {
       // 1. Notify Dashboard
-      await DASHBORD_EVENT_MANAGER.onSessionStoped(
+      await DASHBORD_EVENT_MANAGER.onSessionStopped(
         sessionId,
         SessionStatus.FAILED,
         'Session became unresponsive (Heartbeat failure)',

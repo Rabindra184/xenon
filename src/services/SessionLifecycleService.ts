@@ -1,13 +1,14 @@
 import { Container, Service } from 'typedi';
 import { v4 as uuidv4 } from 'uuid';
 import _ from 'lodash';
-import axios, { AxiosError } from 'axios';
+import axios, { AxiosError, AxiosRequestConfig } from 'axios';
 import { HttpsProxyAgent } from 'https-proxy-agent';
 import { HttpProxyAgent } from 'http-proxy-agent';
 import http from 'http';
 import https from 'https';
 import log from '../logger';
 import { stripAppiumPrefixes, nodeUrl } from '../helpers';
+import { InternalHttpClient } from '../InternalHttpClient';
 import { PluginContext } from '../PluginContext';
 import { CapabilityValidator } from '../validators/CapabilityValidator';
 import {
@@ -92,8 +93,11 @@ export class SessionLifecycleService {
       }
     }
 
+    const firstMatch =
+      Array.isArray(caps.firstMatch) && caps.firstMatch.length > 0 ? caps.firstMatch[0] : {};
+
     await addNewPendingSession({
-      ...Object.assign({}, caps.firstMatch[0], caps.alwaysMatch),
+      ...Object.assign({}, firstMatch, caps.alwaysMatch),
       capability_id: pendingSessionId,
       createdAt: new Date().getTime(),
     });
@@ -366,46 +370,72 @@ export class SessionLifecycleService {
   ): Promise<CreateSessionResponseInternal | Error> {
     const context = Container.get(PluginContext);
     const remoteUrl = `${nodeUrl(device, context.nodeBasePath)}/session`;
-    const httpAgent = new http.Agent({ keepAlive: true, keepAliveMsecs: 120000 });
-    const httpsAgent = new https.Agent({
-      keepAlive: true,
-      keepAliveMsecs: 120000,
-      // Hardened TLS Security: rejectUnauthorized defaults to true (from schema).
-      // Can be explicitly disabled for dev/test environments using tlsRejectUnauthorized config
-      rejectUnauthorized: context.pluginArgs.tlsRejectUnauthorized !== false,
-    });
 
-    const config: any = {
+    const config: AxiosRequestConfig = {
       method: 'post',
       url: remoteUrl,
       headers: { 'Content-Type': 'application/json' },
       data: { capabilities: caps },
-      httpAgent,
-      httpsAgent,
     };
 
     if (context.pluginArgs.proxy) {
       this.logger.info(`Added proxy to axios config: ${JSON.stringify(context.pluginArgs.proxy)}`);
-      config.httpsAgent = new HttpsProxyAgent(context.pluginArgs.proxy as any);
-      config.httpAgent = new HttpProxyAgent(context.pluginArgs.proxy as any);
+      const proxyUrl =
+        typeof context.pluginArgs.proxy === 'string'
+          ? context.pluginArgs.proxy
+          : `http://${(context.pluginArgs.proxy as any).host}:${(context.pluginArgs.proxy as any).port}`;
+      config.httpsAgent = new HttpsProxyAgent(proxyUrl, {
+        rejectUnauthorized: context.pluginArgs.tlsRejectUnauthorized,
+      });
+      config.httpAgent = new HttpProxyAgent(proxyUrl, {
+        rejectUnauthorized: context.pluginArgs.tlsRejectUnauthorized,
+      });
       config.proxy = false;
     }
 
-    const createdSession: W3CNewSessionResponse | Error = await this.invokeSessionRequest(config);
+    const createdSession: W3CNewSessionResponse | Error = await this.invokeSessionRequest(
+      config,
+      context.pluginArgs.tlsRejectUnauthorized,
+    );
 
     if (createdSession instanceof Error) {
       return createdSession;
-    } else {
-      return {
-        protocol: 'W3C',
-        value: [createdSession.value.sessionId, createdSession.value.capabilities, 'W3C'],
-      };
     }
+
+    // Detect W3C-style error payloads that invokeSessionRequest returned as data
+    const val = createdSession?.value as any;
+    if (
+      Object.prototype.hasOwnProperty.call(createdSession, 'error') ||
+      (val && val.error) ||
+      (val && typeof val.message === 'string' && !val.sessionId)
+    ) {
+      const errorDetail =
+        (createdSession as any).error || val?.error || val?.message || 'Unknown W3C error';
+      return new Error(
+        `W3C session creation failed on ${device.host}: ${
+          typeof errorDetail === 'object' ? JSON.stringify(errorDetail) : errorDetail
+        }`,
+      );
+    }
+
+    // Only build the success tuple for genuine W3C success payloads
+    if (!val?.sessionId) {
+      return new Error(`Invalid session response from ${device.host}: missing sessionId`);
+    }
+
+    return {
+      protocol: 'W3C',
+      value: [val.sessionId, val.capabilities, 'W3C'],
+    };
   }
 
-  async invokeSessionRequest(config: any): Promise<W3CNewSessionResponse | Error> {
+  async invokeSessionRequest(
+    config: AxiosRequestConfig,
+    tlsRejectUnauthorized?: boolean,
+  ): Promise<W3CNewSessionResponse | Error> {
     try {
-      const response = await axios(config);
+      const client = InternalHttpClient.getClient(tlsRejectUnauthorized);
+      const response = await client.request(config);
       return response.data as W3CNewSessionResponse;
     } catch (error: any) {
       if (axios.isAxiosError(error)) {
@@ -422,7 +452,8 @@ export class SessionLifecycleService {
     return (
       something &&
       typeof something === 'object' &&
-      (something.hasOwnProperty('value') || something.hasOwnProperty('error'))
+      (Object.prototype.hasOwnProperty.call(something, 'value') ||
+        Object.prototype.hasOwnProperty.call(something, 'error'))
     );
   }
 
@@ -430,18 +461,25 @@ export class SessionLifecycleService {
     return (
       something &&
       typeof something === 'object' &&
-      something.hasOwnProperty('value') &&
+      Object.prototype.hasOwnProperty.call(something, 'value') &&
       Array.isArray(something.value) &&
-      something.value.length === 2 &&
+      (something.value.length === 2 || something.value.length === 3) &&
       typeof something.value[0] === 'string' &&
-      typeof something.value[1] === 'object'
+      typeof something.value[1] === 'object' &&
+      (something.value.length === 2 ||
+        typeof something.value[2] === 'string' ||
+        something.value[2] === undefined)
     );
   }
 
   throwProperError(session: any, host: string) {
     if (session instanceof Error) {
       throw session;
-    } else if (session && typeof session === 'object' && session.hasOwnProperty('error')) {
+    } else if (
+      session &&
+      typeof session === 'object' &&
+      Object.prototype.hasOwnProperty.call(session, 'error')
+    ) {
       let errorMessage = (session as W3CNewSessionResponseError).error;
       if (typeof errorMessage === 'object') {
         errorMessage = JSON.stringify(errorMessage);
@@ -516,7 +554,7 @@ export class SessionLifecycleService {
         await Container.get(NetworkConditioningService).reset(sessionId, device);
       }
 
-      await DASHBORD_EVENT_MANAGER.onSessionStoped(sessionId);
+      await DASHBORD_EVENT_MANAGER.onSessionStopped(sessionId);
       SESSION_MANAGER.removeSession(sessionId);
 
       try {

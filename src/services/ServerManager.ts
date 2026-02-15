@@ -1,7 +1,10 @@
 import { Container, Service } from 'typedi';
 import { v4 as uuidv4 } from 'uuid';
+import { redactSecrets } from '../helpers';
 import ip from 'ip';
 import log from '../logger';
+// enable resolveJsonModule in tsconfig must be true for this to work
+import pkg from '../../package.json';
 import { IPluginArgs, DefaultPluginArgs } from '../interfaces/IPluginArgs';
 import { ConfigService } from '../data-service/config-service';
 import { PluginContext } from '../PluginContext';
@@ -37,13 +40,14 @@ export class ServerManager {
   public static IS_HUB = false;
 
   async updateServer(expressApp: any, httpServer: any, cliArgs: ServerArgs): Promise<void> {
-    this.logger.debug(`📱 Update server with CLI Args: ${JSON.stringify(cliArgs)}`);
+    this.logger.debug(
+      `📱 Update server with CLI Args: ${JSON.stringify(redactSecrets(cliArgs as any))}`,
+    );
 
     const pluginArgs = await this.resolvePluginArgs(cliArgs);
     const nodeId = uuidv4();
-    const { version } = require('../../package.json');
 
-    log.banner(version, nodeId);
+    log.banner(pkg.version, nodeId);
 
     // Standardize static variable initialization
     XenonPlugin.NODE_ID = nodeId;
@@ -80,7 +84,7 @@ export class ServerManager {
     await cleanupZombieSessions();
 
     // remove stale devices
-    await removeStaleDevices(pluginArgs.bindHostOrIp as string);
+    await removeStaleDevices(pluginArgs.bindHostOrIp as string, pluginArgs.tlsRejectUnauthorized);
 
     this.logger.info(
       `🚀 Xenon will be served at http://${pluginArgs.bindHostOrIp}:${cliArgs.port}/xenon with id ${nodeId}`,
@@ -89,7 +93,7 @@ export class ServerManager {
 
   private async resolvePluginArgs(cliArgs: ServerArgs): Promise<IPluginArgs> {
     const pluginConfigs = cliArgs.plugin as PluginConfig;
-    let pluginArgs: IPluginArgs = Object.assign(
+    const pluginArgs: IPluginArgs = Object.assign(
       {},
       DefaultPluginArgs,
       (pluginConfigs?.['xenon'] || {}) as any,
@@ -98,7 +102,9 @@ export class ServerManager {
     try {
       const persistedConfig = await Container.get(ConfigService).loadConfig();
       if (persistedConfig && Object.keys(persistedConfig).length > 0) {
-        this.logger.info(`Loading persisted configuration: ${JSON.stringify(persistedConfig)}`);
+        this.logger.info(
+          `Loading persisted configuration: ${JSON.stringify(redactSecrets(persistedConfig as any))}`,
+        );
         Object.assign(pluginArgs, persistedConfig);
       }
     } catch (err) {
@@ -150,7 +156,9 @@ export class ServerManager {
     }
 
     if (Object.keys(update).length > 0) {
-      this.logger.info(`[Plugin] Synchronizing database config: ${JSON.stringify(update)}`);
+      this.logger.info(
+        `[Plugin] Synchronizing database config: ${JSON.stringify(redactSecrets(update))}`,
+      );
       updateConfig(update);
     }
   }
@@ -196,7 +204,9 @@ export class ServerManager {
 
     // Optional Chrome Download
     if (pluginArgs.skipChromeDownload === false) {
-      ChromeDriverManager.create().then((mgr) => Container.set(ChromeDriverManager, mgr));
+      ChromeDriverManager.create()
+        .then((mgr: ChromeDriverManager) => Container.set(ChromeDriverManager, mgr))
+        .catch((err: any) => this.logger.error(`Failed to initialize ChromeDriverManager: ${err}`));
     }
 
     addCLIArgs(cliArgs);
@@ -215,6 +225,7 @@ export class ServerManager {
         pluginArgs.bindHostOrIp as string,
         hubArgument,
         pluginArgs.sendNodeDevicesToHubIntervalMs as number,
+        pluginArgs.tlsRejectUnauthorized,
       );
 
       // Handle graceful shutdown
@@ -222,7 +233,9 @@ export class ServerManager {
         process.once(signal, async () => {
           log.info(`Received ${signal}, unregistering node from hub...`);
           try {
-            await new NodeDevices(hubArgument).unRegisterNode(pluginArgs.bindHostOrIp as string);
+            await new NodeDevices(hubArgument, pluginArgs.tlsRejectUnauthorized).unRegisterNode(
+              pluginArgs.bindHostOrIp as string,
+            );
           } catch (err) {
             log.error(`Error during node unregistration: ${err}`);
           }
@@ -253,6 +266,7 @@ export class ServerManager {
       await setupCronCheckStaleDevices(
         pluginArgs.checkStaleDevicesIntervalMs as number,
         pluginArgs.bindHostOrIp as string,
+        pluginArgs.tlsRejectUnauthorized,
       );
       // 2. Release blocked devices
       await setupCronReleaseBlockedDevices(

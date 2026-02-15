@@ -129,8 +129,8 @@ export class DashboardEventManager {
     Container.get(MetricsService).incrementSessionStart();
   }
 
-  async onSessionStoped(sessionId: string, status?: SessionStatus, failureReason?: string) {
-    log.info(`🟢 onSessionStoped called for session ${sessionId}`);
+  async onSessionStopped(sessionId: string, status?: SessionStatus, failureReason?: string) {
+    log.info(`🟢 onSessionStopped called for session ${sessionId}`);
 
     // Video recording is now handled in plugin.ts deleteSession() before the session is deleted
     // This ensures we can call stop_recording_screen while the session is still active
