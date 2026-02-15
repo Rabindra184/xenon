@@ -201,7 +201,11 @@ export class ServerManager {
 
     // Optional Chrome Download
     if (pluginArgs.skipChromeDownload === false) {
-      ChromeDriverManager.create().then((mgr) => Container.set(ChromeDriverManager, mgr));
+      ChromeDriverManager.create()
+        .then((mgr: ChromeDriverManager) => Container.set(ChromeDriverManager, mgr))
+        .catch((err: any) =>
+          this.logger.error(`Failed to initialize ChromeDriverManager: ${err}`),
+        );
     }
 
     addCLIArgs(cliArgs);
