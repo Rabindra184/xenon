@@ -19,7 +19,7 @@ export class IOSDiscoveryService {
   private log = log.scope('IOSDiscovery');
   private trackingInitialized = false;
 
-  constructor(private context: PluginContext) {}
+  constructor(private context: PluginContext) { }
 
   private get pluginArgs() {
     return this.context.pluginArgs;
@@ -57,7 +57,7 @@ export class IOSDiscoveryService {
 
   async getRealDevices(existingDeviceDetails: Array<IDevice>): Promise<Array<IDevice>> {
     let deviceState: Array<IDevice> = [];
-    if (this.pluginArgs.cloud !== undefined) {
+    if (this.pluginArgs.cloud?.cloudName) {
       const cloud = new Devices(this.pluginArgs.cloud, deviceState, 'ios');
       return await cloud.getDevices();
     } else {

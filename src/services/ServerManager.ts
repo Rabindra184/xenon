@@ -261,7 +261,7 @@ export class ServerManager {
   }
 
   private async setupMaintenanceCrons(pluginArgs: IPluginArgs) {
-    if (pluginArgs.cloud == undefined) {
+    if (!pluginArgs.cloud?.cloudName) {
       // 1. Check for stale nodes
       await setupCronCheckStaleDevices(
         pluginArgs.checkStaleDevicesIntervalMs as number,
