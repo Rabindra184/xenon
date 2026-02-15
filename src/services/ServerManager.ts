@@ -18,6 +18,7 @@ import {
   setupCronReleaseBlockedDevices,
   setupCronUpdateDeviceList,
   removeStaleDevices,
+  updateDeviceList,
 } from '../device-utils';
 import { createRouter } from '../app';
 import { registerProxyMiddlware } from '../proxy/wd-command-proxy';
@@ -82,6 +83,13 @@ export class ServerManager {
     // Cleanup any remaining zombie sessions
     const { cleanupZombieSessions } = await import('../dashboard/services/session-service');
     await cleanupZombieSessions();
+
+    // Initial device discovery poll to start managers and trackers
+    await updateDeviceList(
+      pluginArgs.bindHostOrIp as string,
+      pluginArgs.hub,
+      pluginArgs.tlsRejectUnauthorized,
+    );
 
     // remove stale devices
     await removeStaleDevices(pluginArgs.bindHostOrIp as string, pluginArgs.tlsRejectUnauthorized);
