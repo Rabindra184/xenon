@@ -79,7 +79,7 @@ export class WDAClient {
                 Container.get(IOSStreamService).setWDASessionId(udid, sid);
                 return sid;
             }
-        } catch (e) { }
+        } catch (e: any) { this.log.debug(`Failed to ensure WDA session for ${udid}: ${e.message}\n${e.stack}`); }
         return null;
     }
 
@@ -92,7 +92,7 @@ export class WDAClient {
                 Container.get(IOSStreamService).setWDASessionId(udid, sid);
                 return sid;
             }
-        } catch (e) { }
+        } catch (e: any) { this.log.debug(`Failed to recover WDA session for ${udid}: ${e.message}\n${e.stack}`); }
         return null;
     }
 
@@ -135,7 +135,7 @@ export class WDAClient {
                 const p = path.join(os.tmpdir(), `screenshot-${udid}.png`);
                 await execPromise(`"${s.goIOSPath}" screenshot --udid ${udid} --output "${p}"`, { env: { ...process.env, ENABLE_GO_IOS_AGENT: 'yes' } });
                 const b = await fs.readFile(p); await fs.remove(p); return b.toString('base64');
-            } catch (e) { }
+            } catch (e: any) { this.log.debug(`go-ios screenshot failed for ${udid}: ${e.message}\n${e.stack}`); }
         }
         const res = await this.sendWDACommand(udid, 'get', '/screenshot');
         return res.data?.value?.screenshot || res.data?.value || '';
@@ -147,17 +147,17 @@ export class WDAClient {
             await new Promise(r => setTimeout(r, 1000));
             const res = await this.sendWDACommand(udid, 'post', '/wda/getPasteboard', { contentType: 'plaintext' });
             if (res.data?.value) return Buffer.from(res.data.value, 'base64').toString('utf8');
-        } catch (e) { }
+        } catch (e: any) { this.log.debug(`Failed to get clipboard for ${udid}: ${e.message}\n${e.stack}`); }
         return '';
     }
 
     async setClipboard(udid: string, content: string): Promise<void> {
         try { await this.sendWDACommand(udid, 'post', '/wda/setPasteboard', { content: Buffer.from(content).toString('base64'), contentType: 'plaintext' }); }
-        catch (e) { }
+        catch (e: any) { this.log.debug(`Failed to set clipboard for ${udid}: ${e.message}\n${e.stack}`); }
     }
 
-    async lock(udid: string): Promise<void> { try { await this.sendWDACommand(udid, 'post', '/wda/lock', {}); } catch (e) { } }
-    async unlock(udid: string): Promise<void> { try { await this.sendWDACommand(udid, 'post', '/wda/unlock', {}); } catch (e) { } }
+    async lock(udid: string): Promise<void> { try { await this.sendWDACommand(udid, 'post', '/wda/lock', {}); } catch (e: any) { this.log.debug(`Failed to lock device ${udid}: ${e.message}\n${e.stack}`); } }
+    async unlock(udid: string): Promise<void> { try { await this.sendWDACommand(udid, 'post', '/wda/unlock', {}); } catch (e: any) { this.log.debug(`Failed to unlock device ${udid}: ${e.message}\n${e.stack}`); } }
     async installApp(udid: string, p: string): Promise<void> { await execPromise(`ideviceinstaller -u ${udid} -i "${p}"`); }
     async uninstallApp(udid: string, b: string): Promise<void> { await execPromise(`ideviceinstaller -u ${udid} -U ${b}`); }
     async listApps(udid: string): Promise<string[]> {
@@ -171,7 +171,7 @@ export class WDAClient {
 
     async verifyWDAStatus(udid: string): Promise<boolean> {
         try { const res = await this.sendWDACommand(udid, 'get', '/status'); return res.data?.value?.ready === true; }
-        catch (e) { return false; }
+        catch (e: any) { this.log.debug(`Failed to verify WDA status for ${udid}: ${e.message}\n${e.stack}`); return false; }
     }
 
     async executeShell(udid: string, command: string): Promise<string> {
