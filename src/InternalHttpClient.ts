@@ -6,7 +6,7 @@ import { Container } from 'typedi';
 
 /**
  * InternalHttpClient - Centralized HTTP client for all internal communication.
- * 
+ *
  * Features:
  * - Keep-alive connections for performance
  * - Automatic retry with exponential backoff
@@ -25,7 +25,9 @@ export class InternalHttpClient {
 
   private static getHttpsAgent() {
     return new https.Agent({
-      rejectUnauthorized: false,
+      // Hardened TLS Security: rejectUnauthorized defaults to true (production-safe).
+      // Can be explicitly disabled for dev/test environments using XENON_TLS_REJECT_UNAUTHORIZED=false
+      rejectUnauthorized: process.env.XENON_TLS_REJECT_UNAUTHORIZED !== 'false',
       keepAlive: true,
       keepAliveMsecs: 120000,
     });
@@ -55,18 +57,19 @@ export class InternalHttpClient {
         (error) => {
           log.error(`[HTTP →] Request setup error: ${error.message}`);
           return Promise.reject(error);
-        }
+        },
       );
 
       // Response interceptor - logging + retry logic
       this.instance.interceptors.response.use(
         async (response: AxiosResponse) => {
-          const duration = Date.now() - ((response.config as any).metadata?.startTime || Date.now());
+          const duration =
+            Date.now() - ((response.config as any).metadata?.startTime || Date.now());
 
           // Log successful response
           log.debug(
             `[HTTP ←] ${response.config.method?.toUpperCase()} ${response.config.url} ` +
-            `[${response.status}] ${duration}ms`
+            `[${response.status}] ${duration}ms`,
           );
 
           // Principal Decoupling: Emit event for logging/observability
@@ -77,12 +80,16 @@ export class InternalHttpClient {
               method: response.config.method?.toUpperCase() || 'GET',
               url: response.config.url || '',
               requestBody: response.config.data ? JSON.stringify(response.config.data) : undefined,
-              responseBody: response.data ? JSON.stringify(response.data).slice(0, 2000) : undefined,
+              responseBody: response.data
+                ? JSON.stringify(response.data).slice(0, 2000)
+                : undefined,
               statusCode: response.status,
               durationMs: duration,
               source: 'InternalHttpClient',
             });
-          } catch (e) { /* ignore */ }
+          } catch (e) {
+            /* ignore */
+          }
 
           return response;
         },
@@ -98,13 +105,17 @@ export class InternalHttpClient {
               method: config?.method?.toUpperCase() || 'GET',
               url: config?.url || '',
               requestBody: config?.data ? JSON.stringify(config.data) : undefined,
-              responseBody: response?.data ? JSON.stringify(response.data).slice(0, 2000) : undefined,
+              responseBody: response?.data
+                ? JSON.stringify(response.data).slice(0, 2000)
+                : undefined,
               statusCode: response?.status,
               durationMs: duration,
               error: error.message,
               source: 'InternalHttpClient',
             });
-          } catch (e) { /* ignore */ }
+          } catch (e) {
+            /* ignore */
+          }
 
           if (!config || config.retryCount === undefined) {
             config.retryCount = 0;
@@ -116,7 +127,7 @@ export class InternalHttpClient {
           // Log failed request
           log.warn(
             `[HTTP ←] ${config?.method?.toUpperCase()} ${config?.url} ` +
-            `[${status || 'ERR'}] ${duration}ms - ${error.message}`
+            `[${status || 'ERR'}] ${duration}ms - ${error.message}`,
           );
 
           // Don't retry client errors (4xx) except for occasional 429

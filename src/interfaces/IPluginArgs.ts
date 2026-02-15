@@ -55,6 +55,10 @@ export interface IPluginArgs {
   deleteBuildAssets: boolean;
   sessionHeartbeatIntervalMs: number;
   enableJsonLogging: boolean;
+  /**
+   * Whether to verify TLS certificates for internal outgoing requests. Default is true. Set to false only for dev/test.
+   */
+  tlsRejectUnauthorized?: boolean;
 }
 export interface IDevice {
   name?: string;

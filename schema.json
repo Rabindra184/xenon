@@ -325,6 +325,11 @@
         "enableJsonLogging": {
             "type": "boolean",
             "default": false
+        },
+        "tlsRejectUnauthorized": {
+            "type": "boolean",
+            "default": true,
+            "description": "Whether to verify TLS certificates for internal outgoing requests. Default is true. Set to false only for dev/test."
         }
     },
     "required": [
