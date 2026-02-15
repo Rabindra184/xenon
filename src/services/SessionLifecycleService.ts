@@ -392,12 +392,34 @@ export class SessionLifecycleService {
 
     if (createdSession instanceof Error) {
       return createdSession;
-    } else {
-      return {
-        protocol: 'W3C',
-        value: [createdSession.value.sessionId, createdSession.value.capabilities, 'W3C'],
-      };
     }
+
+    // Detect W3C-style error payloads that invokeSessionRequest returned as data
+    const val = createdSession?.value as any;
+    if (
+      createdSession.hasOwnProperty('error') ||
+      (val && val.error) ||
+      (val && typeof val.message === 'string' && !val.sessionId)
+    ) {
+      const errorDetail =
+        (createdSession as any).error || val?.error || val?.message || 'Unknown W3C error';
+      return new Error(
+        `W3C session creation failed on ${device.host}: ${typeof errorDetail === 'object' ? JSON.stringify(errorDetail) : errorDetail
+        }`,
+      );
+    }
+
+    // Only build the success tuple for genuine W3C success payloads
+    if (!val?.sessionId) {
+      return new Error(
+        `Invalid session response from ${device.host}: missing sessionId`,
+      );
+    }
+
+    return {
+      protocol: 'W3C',
+      value: [val.sessionId, val.capabilities, 'W3C'],
+    };
   }
 
   async invokeSessionRequest(
