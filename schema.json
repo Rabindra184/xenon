@@ -2,159 +2,6 @@
     "$schema": "http://json-schema.org/draft-07/schema",
     "additionalProperties": false,
     "description": "Appium configuration schema for the Xenon plugin.",
-    "definitions": {
-        "DeviceTypeToInclude": {
-            "title": "DeviceTypeToInclude",
-            "type": "string",
-            "enum": [
-                "both",
-                "real",
-                "simulated"
-            ]
-        },
-        "IDevice": {
-            "title": "IDevice",
-            "type": "object",
-            "properties": {
-                "name": {
-                    "type": "string"
-                },
-                "udid": {
-                    "type": "string"
-                },
-                "state": {
-                    "type": "string"
-                },
-                "sdk": {
-                    "type": "string"
-                },
-                "platform": {
-                    "type": "string",
-                    "enum": [
-                        "ios",
-                        "android",
-                        "tvos"
-                    ]
-                },
-                "busy": {
-                    "type": "boolean"
-                },
-                "realDevice": {
-                    "type": "boolean"
-                },
-                "deviceType": {
-                    "type": "string",
-                    "enum": [
-                        "real",
-                        "simulator",
-                        "emulator"
-                    ]
-                },
-                "host": {
-                    "type": "string"
-                },
-                "mjpegServerPort": {
-                    "type": "number"
-                },
-                "wdaLocalPort": {
-                    "type": "number"
-                },
-                "totalUtilizationTimeMilliSec": {
-                    "type": "number"
-                },
-                "sessionStartTime": {
-                    "type": "number"
-                },
-                "userBlocked": {
-                    "type": "boolean"
-                }
-            },
-            "required": [
-                "udid",
-                "platform",
-                "deviceType"
-            ]
-        },
-        "AxiosProxy": {
-            "title": "AxiosProxy",
-            "type": "object",
-            "properties": {
-                "host": {
-                    "type": "string"
-                },
-                "port": {
-                    "type": "number"
-                },
-                "auth": {
-                    "type": "object",
-                    "properties": {
-                        "username": {
-                            "type": "string"
-                        },
-                        "password": {
-                            "type": "string"
-                        }
-                    }
-                },
-                "protocol": {
-                    "type": "string"
-                }
-            }
-        },
-        "CloudConfig": {
-            "title": "CloudConfig",
-            "type": "object",
-            "properties": {
-                "apiUrl": {
-                    "type": "string"
-                },
-                "apiKey": {
-                    "type": "string"
-                },
-                "cloudName": {
-                    "type": "string"
-                },
-                "url": {
-                    "type": "string"
-                },
-                "devices": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/CloudDevice"
-                    }
-                }
-            },
-            "required": [
-                "cloudName",
-                "url",
-                "devices"
-            ]
-        },
-        "CloudDevice": {
-            "title": "CloudDevice",
-            "type": "object",
-            "properties": {
-                "id": {
-                    "type": "string"
-                },
-                "name": {
-                    "type": "string"
-                }
-            }
-        },
-        "IDerivedDataPath": {
-            "title": "IDerivedDataPath",
-            "type": "object",
-            "properties": {
-                "device": {
-                    "type": "string"
-                },
-                "simulator": {
-                    "type": "string"
-                }
-            }
-        }
-    },
     "properties": {
         "platform": {
             "type": "string",
@@ -166,18 +13,29 @@
             "default": "both"
         },
         "androidDeviceType": {
-            "$ref": "#/definitions/DeviceTypeToInclude",
+            "type": "string",
+            "enum": [
+                "both",
+                "real",
+                "simulated"
+            ],
             "default": "both"
         },
         "simulators": {
             "type": "array",
             "items": {
-                "$ref": "#/definitions/IDevice"
+                "type": "object",
+                "additionalProperties": true
             },
             "default": []
         },
         "iosDeviceType": {
-            "$ref": "#/definitions/DeviceTypeToInclude",
+            "type": "string",
+            "enum": [
+                "both",
+                "real",
+                "simulated"
+            ],
             "default": "both"
         },
         "hub": {
@@ -202,10 +60,14 @@
             "default": 8
         },
         "cloud": {
-            "$ref": "#/definitions/CloudConfig"
+            "type": "object",
+            "additionalProperties": true,
+            "description": "Cloud configuration object. Contains 'url', 'apiKey', 'devices' list, etc. Should be provided via config file."
         },
         "derivedDataPath": {
-            "$ref": "#/definitions/IDerivedDataPath"
+            "type": "object",
+            "additionalProperties": true,
+            "description": "Map of derived data paths for iOS simulators/devices."
         },
         "emulators": {
             "type": "array",
@@ -215,7 +77,9 @@
             "default": []
         },
         "proxy": {
-            "$ref": "#/definitions/AxiosProxy"
+            "type": "object",
+            "additionalProperties": true,
+            "description": "Proxy configuration object. Contains 'host', 'port', 'auth', 'protocol'."
         },
         "deviceAvailabilityTimeoutMs": {
             "type": "number",
