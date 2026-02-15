@@ -397,7 +397,7 @@ export class SessionLifecycleService {
     // Detect W3C-style error payloads that invokeSessionRequest returned as data
     const val = createdSession?.value as any;
     if (
-      createdSession.hasOwnProperty('error') ||
+      Object.prototype.hasOwnProperty.call(createdSession, 'error') ||
       (val && val.error) ||
       (val && typeof val.message === 'string' && !val.sessionId)
     ) {
@@ -445,7 +445,8 @@ export class SessionLifecycleService {
     return (
       something &&
       typeof something === 'object' &&
-      (something.hasOwnProperty('value') || something.hasOwnProperty('error'))
+      (Object.prototype.hasOwnProperty.call(something, 'value') ||
+        Object.prototype.hasOwnProperty.call(something, 'error'))
     );
   }
 
@@ -453,7 +454,7 @@ export class SessionLifecycleService {
     return (
       something &&
       typeof something === 'object' &&
-      something.hasOwnProperty('value') &&
+      Object.prototype.hasOwnProperty.call(something, 'value') &&
       Array.isArray(something.value) &&
       (something.value.length === 2 || something.value.length === 3) &&
       typeof something.value[0] === 'string' &&
@@ -465,7 +466,7 @@ export class SessionLifecycleService {
   throwProperError(session: any, host: string) {
     if (session instanceof Error) {
       throw session;
-    } else if (session && typeof session === 'object' && session.hasOwnProperty('error')) {
+    } else if (session && typeof session === 'object' && Object.prototype.hasOwnProperty.call(session, 'error')) {
       let errorMessage = (session as W3CNewSessionResponseError).error;
       if (typeof errorMessage === 'object') {
         errorMessage = JSON.stringify(errorMessage);
