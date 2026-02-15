@@ -32,7 +32,7 @@ export class WDAClient {
   private async executeSerializedCommand<T>(udid: string, action: () => Promise<T>): Promise<T> {
     const currentQueue = this.commandQueues.get(udid) || Promise.resolve();
     const nextInQueue = currentQueue
-      .catch(() => { })
+      .catch(() => {})
       .then(() => action())
       .finally(() => {
         if (this.commandQueues.get(udid) === nextInQueue) this.commandQueues.delete(udid);
@@ -315,7 +315,9 @@ export class WDAClient {
         const coerced = semver.coerce(match[1]);
         if (coerced) {
           this.ideviceinstallerVersion = coerced.version;
-          this.log.debug(`Detected ideviceinstaller version (normalized): ${this.ideviceinstallerVersion}`);
+          this.log.debug(
+            `Detected ideviceinstaller version (normalized): ${this.ideviceinstallerVersion}`,
+          );
           return this.ideviceinstallerVersion;
         }
       }
@@ -327,7 +329,9 @@ export class WDAClient {
           const coerced = semver.coerce(match[1]);
           if (coerced) {
             this.ideviceinstallerVersion = coerced.version;
-            this.log.debug(`Detected ideviceinstaller version (normalized): ${this.ideviceinstallerVersion}`);
+            this.log.debug(
+              `Detected ideviceinstaller version (normalized): ${this.ideviceinstallerVersion}`,
+            );
             return this.ideviceinstallerVersion;
           }
         }

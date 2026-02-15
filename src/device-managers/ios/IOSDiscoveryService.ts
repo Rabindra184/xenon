@@ -19,7 +19,7 @@ export class IOSDiscoveryService {
   private log = log.scope('IOSDiscovery');
   private trackingInitialized = false;
 
-  constructor(private context: PluginContext) { }
+  constructor(private context: PluginContext) {}
 
   private get pluginArgs() {
     return this.context.pluginArgs;
