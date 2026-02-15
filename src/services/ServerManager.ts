@@ -94,7 +94,7 @@ export class ServerManager {
 
   private async resolvePluginArgs(cliArgs: ServerArgs): Promise<IPluginArgs> {
     const pluginConfigs = cliArgs.plugin as PluginConfig;
-    let pluginArgs: IPluginArgs = Object.assign(
+    const pluginArgs: IPluginArgs = Object.assign(
       {},
       DefaultPluginArgs,
       (pluginConfigs?.['xenon'] || {}) as any,
