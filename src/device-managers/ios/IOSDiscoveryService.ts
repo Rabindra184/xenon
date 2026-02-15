@@ -72,7 +72,7 @@ export class IOSDiscoveryService {
             try {
                 const existingDevice = existingDeviceDetails.find((device) => device.udid === udid);
                 if (existingDevice) {
-                    return { ...existingDevice, busy: false, userBlocked: false };
+                    return { ...existingDevice };
                 } else {
                     return await this.getDeviceInfo(udid);
                 }
