@@ -388,7 +388,11 @@ export async function getBusyDevicesCount() {
   }).length;
 }
 
-export async function updateDeviceList(host: string, hubArgument?: string): Promise<IDevice[]> {
+export async function updateDeviceList(
+  host: string,
+  hubArgument?: string,
+  tlsRejectUnauthorized?: boolean,
+): Promise<IDevice[]> {
   const devices: IDevice[] = await getDeviceManager().getDevices(await getAllDevices());
   if (devices.length === 0) {
     log.warn('No devices found');
@@ -401,8 +405,8 @@ export async function updateDeviceList(host: string, hubArgument?: string): Prom
   await addNewDevice(devices, host);
 
   if (hubArgument) {
-    if (await isXenonRunning(hubArgument)) {
-      const nodeDevices = new NodeDevices(hubArgument);
+    if (await isXenonRunning(hubArgument, tlsRejectUnauthorized)) {
+      const nodeDevices = new NodeDevices(hubArgument, tlsRejectUnauthorized);
       try {
         await nodeDevices.postDevicesToHub(devices, 'add');
       } catch (error) {
@@ -427,9 +431,13 @@ export async function refreshSimulatorState(pluginArgs: IPluginArgs, hostPort: n
   }, 10000);
 }
 
-export async function setupCronCheckStaleDevices(intervalMs: number, currentHost: string) {
+export async function setupCronCheckStaleDevices(
+  intervalMs: number,
+  currentHost: string,
+  tlsRejectUnauthorized?: boolean,
+) {
   setInterval(async () => {
-    await removeStaleDevices(currentHost);
+    await removeStaleDevices(currentHost, tlsRejectUnauthorized);
   }, intervalMs);
 }
 
@@ -437,7 +445,7 @@ export async function setupCronCheckStaleDevices(intervalMs: number, currentHost
  * Remove devices where the host is not alive nor defined.
  * @param currentHost current host ip address
  */
-export async function removeStaleDevices(currentHost: string) {
+export async function removeStaleDevices(currentHost: string, tlsRejectUnauthorized?: boolean) {
   const allDevices = await getAllDevices();
   const nodeDevices = allDevices.filter((device) => {
     // devices that's not from this node ip address
@@ -454,7 +462,7 @@ export async function removeStaleDevices(currentHost: string) {
     nodeHosts.map(async (host) => {
       return {
         host: host,
-        alive: await isXenonRunning(host),
+        alive: await isXenonRunning(host, tlsRejectUnauthorized),
       };
     }),
   )) as { status: 'fulfilled' | 'rejected'; value: { host: string; alive: boolean } }[];
@@ -462,7 +470,7 @@ export async function removeStaleDevices(currentHost: string) {
     cloudHosts.map(async (host) => {
       return {
         host: host,
-        alive: await isAppiumRunningAt(host),
+        alive: await isAppiumRunningAt(host, tlsRejectUnauthorized),
       };
     }),
   )) as { status: 'fulfilled' | 'rejected'; value: { host: string; alive: boolean } }[];
@@ -561,6 +569,7 @@ export async function setupCronUpdateDeviceList(
   host: string,
   hubArgument: string,
   intervalMs: number,
+  tlsRejectUnauthorized?: boolean,
 ) {
   if (cronTimerToUpdateDevices) {
     clearInterval(cronTimerToUpdateDevices);
@@ -570,7 +579,7 @@ export async function setupCronUpdateDeviceList(
   );
 
   cronTimerToUpdateDevices = setInterval(async () => {
-    await updateDeviceList(host, hubArgument);
+    await updateDeviceList(host, hubArgument, tlsRejectUnauthorized);
   }, intervalMs);
 }
 

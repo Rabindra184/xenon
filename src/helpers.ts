@@ -177,9 +177,13 @@ export function stripAppiumPrefixes(caps: any) {
   return strippedCaps;
 }
 
-export async function isXenonRunning(host: string): Promise<boolean> {
+export async function isXenonRunning(
+  host: string,
+  tlsRejectUnauthorized?: boolean,
+): Promise<boolean> {
   try {
-    await InternalHttpClient.get(`${host}/xenon/api/status`);
+    const client = InternalHttpClient.getClient(tlsRejectUnauthorized);
+    await client.get(`${host}/xenon/api/status`);
     return true;
   } catch (error: any) {
     log.info(`Xenon is not running at ${host}. Error: ${error}`);
@@ -187,9 +191,13 @@ export async function isXenonRunning(host: string): Promise<boolean> {
   }
 }
 
-export async function isAppiumRunningAt(url: string): Promise<boolean> {
+export async function isAppiumRunningAt(
+  url: string,
+  tlsRejectUnauthorized?: boolean,
+): Promise<boolean> {
   try {
-    await InternalHttpClient.get(`${url}/status`);
+    const client = InternalHttpClient.getClient(tlsRejectUnauthorized);
+    await client.get(`${url}/status`);
     return true;
   } catch (error: any) {
     log.info(`Appium is not running at ${url}. Error: ${error}`);

@@ -1,12 +1,12 @@
 import Simctl from 'node-simctl';
-import { flatten, isEmpty } from 'lodash';
+import { flatten } from 'lodash';
 import { utilities as IOSUtils } from 'appium-ios-device';
 import { IDevice } from '../../interfaces/IDevice';
-import { getFreePort, stripAppiumPrefixes } from '../../helpers';
+import { getFreePort } from '../../helpers';
 import log from '../../logger';
 import { getUtilizationTime } from '../../device-utils';
 import { DeviceStoreFactory } from '../../data-service/device-store';
-import { IPluginArgs, DeviceTypeToInclude } from '../../interfaces/IPluginArgs';
+import { DeviceTypeToInclude } from '../../interfaces/IPluginArgs';
 import { PluginContext } from '../../PluginContext';
 import { Service, Container } from 'typedi';
 import Devices from '../cloud/Devices';
@@ -21,28 +21,27 @@ export class IOSDiscoveryService {
 
     constructor(private context: PluginContext) { }
 
-    private get pluginArgs() { return this.context.pluginArgs; }
-    private get hostPort() { return this.context.port; }
-    private get nodeId() { return this.context.nodeId; }
+    private get pluginArgs() {
+        return this.context.pluginArgs;
+    }
+    private get hostPort() {
+        return this.context.port;
+    }
+    private get nodeId() {
+        return this.context.nodeId;
+    }
 
     async getDevices(
         deviceTypes: { iosDeviceType: DeviceTypeToInclude },
         existingDeviceDetails: Array<IDevice>,
     ): Promise<IDevice[]> {
         if (deviceTypes.iosDeviceType === 'real') {
-            return flatten(
-                await Promise.all([
-                    this.getRealDevices(existingDeviceDetails),
-                ]),
-            );
+            return flatten(await Promise.all([this.getRealDevices(existingDeviceDetails)]));
         } else if (deviceTypes.iosDeviceType === 'simulated') {
             return await this.getSimulators();
         } else {
             return flatten(
-                await Promise.all([
-                    this.getRealDevices(existingDeviceDetails),
-                    this.getSimulators(),
-                ]),
+                await Promise.all([this.getRealDevices(existingDeviceDetails), this.getSimulators()]),
             );
         }
     }
@@ -96,22 +95,19 @@ export class IOSDiscoveryService {
         const store = DeviceStoreFactory.getStore();
         const storeDevice = await store.findDevice({ udid });
 
-        let host = this.pluginArgs.remoteMachineProxyIP
+        const host = this.pluginArgs.remoteMachineProxyIP
             ? String(this.pluginArgs.remoteMachineProxyIP)
             : `http://${this.pluginArgs.bindHostOrIp}:${this.hostPort}`;
 
-        let wdaLocalPort = storeDevice?.wdaLocalPort || await getFreePort();
-        let mjpegServerPort = storeDevice?.mjpegServerPort || await getFreePort();
+        const wdaLocalPort = storeDevice?.wdaLocalPort || (await getFreePort());
+        const mjpegServerPort = storeDevice?.mjpegServerPort || (await getFreePort());
         const totalUtilizationTimeMilliSec = await getUtilizationTime(udid);
 
         let sdk = 'Unknown';
         let name = 'iPhone';
 
         try {
-            [sdk, name] = await Promise.all([
-                IOSUtils.getOSVersion(udid),
-                IOSUtils.getDeviceName(udid)
-            ]);
+            [sdk, name] = await Promise.all([IOSUtils.getOSVersion(udid), IOSUtils.getDeviceName(udid)]);
         } catch (e: any) {
             this.log.error(`Metadata discovery failed for ${udid}: ${e.message}`);
         }
@@ -140,7 +136,7 @@ export class IOSDiscoveryService {
         simulators.sort((a, b) => (a.state > b.state ? 1 : -1));
 
         if (this.pluginArgs.hub !== undefined) {
-            const nodeDevices = new NodeDevices(this.pluginArgs.hub);
+            const nodeDevices = new NodeDevices(this.pluginArgs.hub, this.pluginArgs.tlsRejectUnauthorized);
             await nodeDevices.postDevicesToHub(simulators, 'add');
         }
         return simulators;
@@ -151,11 +147,12 @@ export class IOSDiscoveryService {
         const list = await simctl.list();
 
         // Log unavailable runtimes
-        list.runtimes.filter((r: any) => !r.isAvailable)
+        list.runtimes
+            .filter((r: any) => !r.isAvailable)
             .forEach((r: any) => this.log.error(`Runtime not available: ${r.name}`));
 
-        const iosSims = flatten(Object.values(await simctl.getDevicesByParsing('iOS') as any));
-        const tvosSims = flatten(Object.values(await simctl.getDevicesByParsing('tvOS') as any));
+        const iosSims = flatten(Object.values((await simctl.getDevicesByParsing('iOS')) as any));
+        const tvosSims = flatten(Object.values((await simctl.getDevicesByParsing('tvOS')) as any));
 
         let simulators = [...(iosSims as IDevice[]), ...(tvosSims as IDevice[])];
         if (this.pluginArgs.bootedSimulators) {
@@ -166,22 +163,30 @@ export class IOSDiscoveryService {
         if (localPluginArgs.simulators && localPluginArgs.simulators.length > 0) {
             const allowedSimulators = localPluginArgs.simulators;
             simulators = simulators.filter((d) =>
-                allowedSimulators.some(s => d.name === s.name && d.sdk === s.sdk)
+                allowedSimulators.some((s) => d.name === s.name && d.sdk === s.sdk),
             );
         }
 
-        return await Promise.all(simulators.map(async (d) => ({
-            ...d,
-            wdaLocalPort: await getFreePort(),
-            mjpegServerPort: await getFreePort(),
-            busy: false,
-            realDevice: false,
-            platform: (d.name?.toLowerCase().includes('tv') ? 'tvos' : 'ios') as 'ios' | 'android' | 'tvos',
-            deviceType: 'simulator',
-            host: `http://${this.pluginArgs.bindHostOrIp}:${this.hostPort}`,
-            totalUtilizationTimeMilliSec: await getUtilizationTime(d.udid),
-            sessionStartTime: 0,
-        } as IDevice)));
+        return await Promise.all(
+            simulators.map(
+                async (d) =>
+                    ({
+                        ...d,
+                        wdaLocalPort: await getFreePort(),
+                        mjpegServerPort: await getFreePort(),
+                        busy: false,
+                        realDevice: false,
+                        platform: (d.name?.toLowerCase().includes('tv') ? 'tvos' : 'ios') as
+                            | 'ios'
+                            | 'android'
+                            | 'tvos',
+                        deviceType: 'simulator',
+                        host: `http://${this.pluginArgs.bindHostOrIp}:${this.hostPort}`,
+                        totalUtilizationTimeMilliSec: await getUtilizationTime(d.udid),
+                        sessionStartTime: 0,
+                    }) as IDevice,
+            ),
+        );
     }
 
     trackIOSDevices() {
@@ -192,7 +197,10 @@ export class IOSDiscoveryService {
             try {
                 const device = { ...(await this.getDeviceInfo(udid)), nodeId: this.nodeId };
                 if (this.pluginArgs.hub) {
-                    await new NodeDevices(this.pluginArgs.hub).postDevicesToHub([device], 'add');
+                    await new NodeDevices(this.pluginArgs.hub, this.pluginArgs.tlsRejectUnauthorized).postDevicesToHub(
+                        [device],
+                        'add',
+                    );
                 }
                 await addNewDevice([device], this.pluginArgs.bindHostOrIp);
             } catch (e: any) {
@@ -203,7 +211,10 @@ export class IOSDiscoveryService {
         tracker.on('detached', async (udid: string) => {
             const deviceRemoved = [{ udid, host: this.pluginArgs.bindHostOrIp as string }];
             if (this.pluginArgs.hub) {
-                await new NodeDevices(this.pluginArgs.hub).postDevicesToHub(deviceRemoved as any, 'remove');
+                await new NodeDevices(this.pluginArgs.hub, this.pluginArgs.tlsRejectUnauthorized).postDevicesToHub(
+                    deviceRemoved as any,
+                    'remove',
+                );
             }
             await removeDevice(deviceRemoved);
         });

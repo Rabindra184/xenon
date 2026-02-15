@@ -219,7 +219,10 @@ export default class AndroidDeviceManager implements IDeviceManager {
     const { adbInstance } = await this.getAdb();
     if (!adbInstance) return {};
     const adb = device.adbRemoteHost
-      ? (adbInstance.clone({ remoteAdbHost: device.adbRemoteHost, adbPort: device.adbPort }) as ExtendedADB)
+      ? (adbInstance.clone({
+        remoteAdbHost: device.adbRemoteHost,
+        adbPort: device.adbPort,
+      }) as ExtendedADB)
       : adbInstance;
 
     try {
@@ -419,7 +422,7 @@ export default class AndroidDeviceManager implements IDeviceManager {
       };
       if (this.pluginArgs.hub != undefined) {
         log.info(`Updating Hub with device ${newDevice.udid}`);
-        const nodeDevices = new NodeDevices(this.pluginArgs.hub);
+        const nodeDevices = new NodeDevices(this.pluginArgs.hub, this.pluginArgs.tlsRejectUnauthorized);
         await nodeDevices.postDevicesToHub([deviceTracked], 'add');
       }
 
@@ -463,7 +466,7 @@ export default class AndroidDeviceManager implements IDeviceManager {
       state: device.type,
     };
     if (pluginArgs.hub != undefined) {
-      const nodeDevices = new NodeDevices(pluginArgs.hub);
+      const nodeDevices = new NodeDevices(pluginArgs.hub, pluginArgs.tlsRejectUnauthorized);
       await nodeDevices.postDevicesToHub([clonedDevice], 'remove');
     }
 

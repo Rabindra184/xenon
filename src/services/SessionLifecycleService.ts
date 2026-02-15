@@ -1,13 +1,14 @@
 import { Container, Service } from 'typedi';
 import { v4 as uuidv4 } from 'uuid';
 import _ from 'lodash';
-import axios, { AxiosError } from 'axios';
+import axios, { AxiosError, AxiosRequestConfig } from 'axios';
 import { HttpsProxyAgent } from 'https-proxy-agent';
 import { HttpProxyAgent } from 'http-proxy-agent';
 import http from 'http';
 import https from 'https';
 import log from '../logger';
 import { stripAppiumPrefixes, nodeUrl } from '../helpers';
+import { InternalHttpClient } from '../InternalHttpClient';
 import { PluginContext } from '../PluginContext';
 import { CapabilityValidator } from '../validators/CapabilityValidator';
 import {
@@ -366,22 +367,12 @@ export class SessionLifecycleService {
   ): Promise<CreateSessionResponseInternal | Error> {
     const context = Container.get(PluginContext);
     const remoteUrl = `${nodeUrl(device, context.nodeBasePath)}/session`;
-    const httpAgent = new http.Agent({ keepAlive: true, keepAliveMsecs: 120000 });
-    const httpsAgent = new https.Agent({
-      keepAlive: true,
-      keepAliveMsecs: 120000,
-      // Hardened TLS Security: rejectUnauthorized defaults to true (from schema).
-      // Can be explicitly disabled for dev/test environments using tlsRejectUnauthorized config
-      rejectUnauthorized: context.pluginArgs.tlsRejectUnauthorized !== false,
-    });
 
-    const config: any = {
+    const config: AxiosRequestConfig = {
       method: 'post',
       url: remoteUrl,
       headers: { 'Content-Type': 'application/json' },
       data: { capabilities: caps },
-      httpAgent,
-      httpsAgent,
     };
 
     if (context.pluginArgs.proxy) {
@@ -391,7 +382,10 @@ export class SessionLifecycleService {
       config.proxy = false;
     }
 
-    const createdSession: W3CNewSessionResponse | Error = await this.invokeSessionRequest(config);
+    const createdSession: W3CNewSessionResponse | Error = await this.invokeSessionRequest(
+      config,
+      context.pluginArgs.tlsRejectUnauthorized,
+    );
 
     if (createdSession instanceof Error) {
       return createdSession;
@@ -403,9 +397,13 @@ export class SessionLifecycleService {
     }
   }
 
-  async invokeSessionRequest(config: any): Promise<W3CNewSessionResponse | Error> {
+  async invokeSessionRequest(
+    config: AxiosRequestConfig,
+    tlsRejectUnauthorized?: boolean,
+  ): Promise<W3CNewSessionResponse | Error> {
     try {
-      const response = await axios(config);
+      const client = InternalHttpClient.getClient(tlsRejectUnauthorized);
+      const response = await client.request(config);
       return response.data as W3CNewSessionResponse;
     } catch (error: any) {
       if (axios.isAxiosError(error)) {
@@ -432,9 +430,10 @@ export class SessionLifecycleService {
       typeof something === 'object' &&
       something.hasOwnProperty('value') &&
       Array.isArray(something.value) &&
-      something.value.length === 2 &&
+      (something.value.length === 2 || something.value.length === 3) &&
       typeof something.value[0] === 'string' &&
-      typeof something.value[1] === 'object'
+      typeof something.value[1] === 'object' &&
+      (something.value.length === 2 || typeof something.value[2] === 'string' || something.value[2] === undefined)
     );
   }
 

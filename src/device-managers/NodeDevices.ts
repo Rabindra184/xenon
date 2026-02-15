@@ -6,9 +6,11 @@ import { InternalHttpClient } from '../InternalHttpClient';
 
 export default class NodeDevices {
   private host: string;
+  private tlsRejectUnauthorized?: boolean;
 
-  constructor(host: string) {
+  constructor(host: string, tlsRejectUnauthorized?: boolean) {
     this.host = host;
+    this.tlsRejectUnauthorized = tlsRejectUnauthorized;
   }
 
   async postDevicesToHub(devices: DeviceWithPath[] | DeviceUpdate[], arg: string) {
@@ -16,7 +18,8 @@ export default class NodeDevices {
     // DeviceUpdate -> removed device
     log.info(`Updating remote android devices ${this.host}/xenon/api/register`);
     try {
-      await InternalHttpClient.post(`${this.host}/xenon/api/register`, devices, {
+      const client = InternalHttpClient.getClient(this.tlsRejectUnauthorized);
+      await client.post(`${this.host}/xenon/api/register`, devices, {
         params: {
           type: arg,
         },
@@ -34,7 +37,8 @@ export default class NodeDevices {
   async unblockDevice(filter: IDeviceFilterOptions) {
     log.info(`Unblocking device ${this.host}/xenon/api/unblock`);
     try {
-      await InternalHttpClient.post(`${this.host}/xenon/api/unblock`, filter, {
+      const client = InternalHttpClient.getClient(this.tlsRejectUnauthorized);
+      await client.post(`${this.host}/xenon/api/unblock`, filter, {
         params: {
           type: 'unblock',
         },
@@ -48,7 +52,8 @@ export default class NodeDevices {
   async unRegisterNode(host: string) {
     log.info(`Unregistering node ${this.host}/xenon/api/register`);
     try {
-      await InternalHttpClient.post(`${this.host}/xenon/api/register`, [], {
+      const client = InternalHttpClient.getClient(this.tlsRejectUnauthorized);
+      await client.post(`${this.host}/xenon/api/register`, [], {
         params: {
           type: 'unregister',
           host,
