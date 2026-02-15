@@ -175,7 +175,7 @@ export default class AndroidDeviceManager implements IDeviceManager {
         this.getDeviceName(adbInstance, device.udid),
       ]);
     } catch (error) {
-      log.info(`Error while getting base device info for ${device.udid}.Error: ${error} `);
+      log.info(`Error while getting base device info for ${device.udid}. Error: ${error}`);
       return undefined;
     }
 
@@ -183,7 +183,7 @@ export default class AndroidDeviceManager implements IDeviceManager {
 
     // Base info is mandatory
     if (_.isNil(sdk) || _.isNil(realDevice) || _.isNil(name)) {
-      log.info(`Cannot get base device info for ${device.udid}.Skipping`);
+      log.info(`Cannot get base device info for ${device.udid}. Skipping`);
       return undefined;
     }
 
