@@ -167,7 +167,7 @@ export class WDAClient {
     }
     async getLogs(udid: string): Promise<string> {
         // timeout command is usually available on linux/mac (via coreutils)
-        const { stdout } = await execFilePromise('timeout', ['2', 'idrvsyslog', '-u', udid]).catch(e => {
+        const { stdout } = await execFilePromise('timeout', ['2', 'idevicesyslog', '-u', udid]).catch(e => {
             this.log.debug(`getLogs failed for ${udid}: ${e.message}`);
             return { stdout: '' };
         });
