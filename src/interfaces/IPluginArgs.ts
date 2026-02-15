@@ -6,28 +6,43 @@
  */
 import ip from 'ip';
 
-export type DeviceTypeToInclude = 'both' | 'real' | 'simulated';
-export type DeviceTypeToInclude1 = 'both' | 'real' | 'simulated';
-
 /**
  * Appium configuration schema for the Xenon plugin.
  */
 export interface IPluginArgs {
   platform: 'ios' | 'android' | 'both';
-  androidDeviceType: DeviceTypeToInclude;
-  simulators?: IDevice[];
-  iosDeviceType: DeviceTypeToInclude1;
+  androidDeviceType: 'both' | 'real' | 'simulated';
+  simulators?: {
+    [k: string]: unknown;
+  }[];
+  iosDeviceType: 'both' | 'real' | 'simulated';
   hub?: string;
   remoteMachineProxyIP?: string;
   adbRemote?: string[];
   skipChromeDownload: boolean;
   maxSessions: number;
   cloud?: CloudConfig;
-  derivedDataPath?: IDerivedDataPath;
+  /**
+   * Map of derived data paths for iOS simulators/devices.
+   */
+  derivedDataPath?: {
+    [k: string]: string;
+  };
   emulators?: {
     [k: string]: unknown;
   }[];
-  proxy?: AxiosProxy;
+  /**
+   * Proxy configuration object. Contains 'host', 'port', 'auth', 'protocol'.
+   */
+  proxy?: {
+    host?: string;
+    port?: number;
+    protocol?: 'http' | 'https';
+    auth?: {
+      [k: string]: unknown;
+    };
+    [k: string]: unknown;
+  };
   deviceAvailabilityTimeoutMs: number;
   deviceAvailabilityQueryIntervalMs: number;
   sendNodeDevicesToHubIntervalMs: number;
@@ -60,50 +75,38 @@ export interface IPluginArgs {
    */
   tlsRejectUnauthorized?: boolean;
 }
-export interface IDevice {
-  name?: string;
-  udid: string;
-  state?: string;
-  sdk?: string;
-  platform: 'ios' | 'android' | 'tvos';
-  busy?: boolean;
-  realDevice?: boolean;
-  deviceType: 'real' | 'simulator' | 'emulator';
-  host?: string;
-  mjpegServerPort?: number;
-  wdaLocalPort?: number;
-  totalUtilizationTimeMilliSec?: number;
-  sessionStartTime?: number;
-  userBlocked?: boolean;
-  [k: string]: unknown;
-}
+/**
+ * Cloud configuration object. Should be provided via config file.
+ */
 export interface CloudConfig {
-  apiUrl?: string;
-  apiKey?: string;
-  cloudName: string;
+  /**
+   * Name of the cloud provider (e.g. browserstack, saucelabs, pcloudy, lambdatest)
+   */
+  cloudName?: string;
+  /**
+   * URL of the cloud provider hub
+   */
   url: string;
+  /**
+   * API Key for the cloud provider
+   */
+  apiKey: string;
+  /**
+   * API URL for the cloud provider
+   */
+  apiUrl?: string;
   devices: CloudDevice[];
-  [k: string]: unknown;
 }
+/**
+ * Device configuration object
+ */
 export interface CloudDevice {
-  id?: string;
-  name?: string;
-  [k: string]: unknown;
-}
-export interface IDerivedDataPath {
-  device?: string;
-  simulator?: string;
-  [k: string]: unknown;
-}
-export interface AxiosProxy {
-  host?: string;
-  port?: number;
-  auth?: {
-    username?: string;
-    password?: string;
-    [k: string]: unknown;
-  };
-  protocol?: string;
+  deviceName?: string;
+  platform?: string;
+  os_version?: string;
+  platformVersion?: string;
+  pCloudy_DeviceManufacturer?: string;
+  pCloudy_DeviceVersion?: string;
   [k: string]: unknown;
 }
 
@@ -148,5 +151,4 @@ export const DefaultPluginArgs: IPluginArgs = {
   deleteBuildAssets: true,
   sessionHeartbeatIntervalMs: 30000,
   enableJsonLogging: false,
-  tlsRejectUnauthorized: true,
 };

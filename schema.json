@@ -61,12 +61,69 @@
         },
         "cloud": {
             "type": "object",
-            "additionalProperties": true,
-            "description": "Cloud configuration object. Contains 'url', 'apiKey', 'devices' list, etc. Should be provided via config file."
+            "title": "CloudConfig",
+            "additionalProperties": false,
+            "description": "Cloud configuration object. Should be provided via config file.",
+            "properties": {
+                "cloudName": {
+                    "type": "string",
+                    "description": "Name of the cloud provider (e.g. browserstack, saucelabs, pcloudy, lambdatest)"
+                },
+                "url": {
+                    "type": "string",
+                    "format": "uri",
+                    "description": "URL of the cloud provider hub"
+                },
+                "apiKey": {
+                    "type": "string",
+                    "description": "API Key for the cloud provider"
+                },
+                "apiUrl": {
+                    "type": "string",
+                    "format": "uri",
+                    "description": "API URL for the cloud provider"
+                },
+                "devices": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "title": "CloudDevice",
+                        "additionalProperties": true,
+                        "description": "Device configuration object",
+                        "properties": {
+                            "deviceName": {
+                                "type": "string"
+                            },
+                            "platform": {
+                                "type": "string"
+                            },
+                            "os_version": {
+                                "type": "string"
+                            },
+                            "platformVersion": {
+                                "type": "string"
+                            },
+                            "pCloudy_DeviceManufacturer": {
+                                "type": "string"
+                            },
+                            "pCloudy_DeviceVersion": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            },
+            "required": [
+                "url",
+                "apiKey",
+                "devices"
+            ]
         },
         "derivedDataPath": {
             "type": "object",
-            "additionalProperties": true,
+            "additionalProperties": {
+                "type": "string"
+            },
             "description": "Map of derived data paths for iOS simulators/devices."
         },
         "emulators": {
@@ -78,6 +135,24 @@
         },
         "proxy": {
             "type": "object",
+            "properties": {
+                "host": {
+                    "type": "string"
+                },
+                "port": {
+                    "type": "integer"
+                },
+                "protocol": {
+                    "type": "string",
+                    "enum": [
+                        "http",
+                        "https"
+                    ]
+                },
+                "auth": {
+                    "type": "object"
+                }
+            },
             "additionalProperties": true,
             "description": "Proxy configuration object. Contains 'host', 'port', 'auth', 'protocol'."
         },
