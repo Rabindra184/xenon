@@ -237,7 +237,9 @@ export default class IOSDeviceManager implements IDeviceManager {
         try {
           await simctl.shutdownDevice();
           await new Promise((r) => setTimeout(r, 2000));
-        } catch (e) {}
+        } catch (e) {
+          this.log.error(`IOSDeviceManager: Error shutting down iOS device`, e);
+        }
         await simctl.bootDevice();
         return true;
       }

@@ -52,7 +52,7 @@ export const ToastProvider: React.FC<{ children: ReactNode }> = ({ children }) =
   return (
     <ToastContext.Provider value={{ toast, removeToast }}>
       {children}
-      <div className="toast-container">
+      <div className="toast-container" aria-live="polite" aria-atomic="true" role="status">
         {toasts.map((t) => (
           <div key={t.id} className={`toast-item toast-${t.type} animate-slide-in`}>
             <div className="toast-icon">
@@ -62,7 +62,11 @@ export const ToastProvider: React.FC<{ children: ReactNode }> = ({ children }) =
               {t.type === 'loading' && <Loader2 size={18} className="animate-spin" />}
             </div>
             <div className="toast-message">{t.message}</div>
-            <button className="toast-close" onClick={() => removeToast(t.id)}>
+            <button
+              className="toast-close"
+              onClick={() => removeToast(t.id)}
+              aria-label={`Close ${t.type} notification`}
+            >
               <X size={14} />
             </button>
           </div>
