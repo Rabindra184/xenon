@@ -130,11 +130,11 @@ export default class AndroidDeviceManager implements IDeviceManager {
                 busy: false,
               };
             } else {
-              log.info(`Android Device details for ${device.udid} not available.So querying now.`);
+              log.info(`Android Device details for ${device.udid} not available. So querying now.`);
               if (device.state === 'device') {
                 return await this.deviceInfo(device, adbInstance, this.pluginArgs, this.hostPort);
               } else {
-                log.info(`Device ${device.udid} is not in "device" state.So, ignoring.`);
+                log.info(`Device ${device.udid} is not in "device" state. So, ignoring.`);
                 return undefined;
               }
             }
