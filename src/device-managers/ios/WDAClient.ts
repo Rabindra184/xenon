@@ -180,7 +180,31 @@ export class WDAClient {
     }
 
     async executeShell(udid: string, command: string): Promise<string> {
-        const args = command.split(' ');
+        const ALLOWED_COMMANDS = [
+            'ls',
+            'ps',
+            'top',
+            'whoami',
+            'date',
+            'uptime',
+            'netstat',
+            'id',
+        ];
+
+        // Basic sanitation
+        const safeCommand = command.trim();
+
+        // Check if the command starts with any allowed prefix
+        const isAllowed = ALLOWED_COMMANDS.some((prefix) => safeCommand.startsWith(prefix));
+
+        if (!isAllowed) {
+            this.log.warn(`Blocked potentially unsafe shell command on ${udid}: ${safeCommand}`);
+            throw new Error(`Command '${safeCommand}' is not allowed for security reasons.`);
+        }
+
+        // Split command into args for execFilePromise
+        const args = safeCommand.split(/\s+/);
+
         const { stdout } = await execFilePromise('xcrun', ['simctl', ...args, udid]).catch(async (e: any) => {
             this.log.debug(`xcrun simctl failed for ${udid}: ${e.message}. Trying go-ios fallback.`);
             const s = Container.get(IOSStreamService);
