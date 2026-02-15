@@ -17,6 +17,7 @@ import { IosTracker } from '../iOSTracker';
 @Service()
 export class IOSDiscoveryService {
     private log = log.scope('IOSDiscovery');
+    private trackingInitialized = false;
 
     constructor(private context: PluginContext) { }
 
@@ -85,7 +86,9 @@ export class IOSDiscoveryService {
         const deviceState = (await Promise.all(deviceProcessingPromises)).filter(
             (d): d is IDevice => d !== null,
         );
-        this.trackIOSDevices();
+        if (!this.trackingInitialized) {
+            this.trackIOSDevices();
+        }
         return deviceState;
     }
 
@@ -182,6 +185,8 @@ export class IOSDiscoveryService {
     }
 
     trackIOSDevices() {
+        if (this.trackingInitialized) return;
+        this.trackingInitialized = true;
         const tracker = Container.get(IosTracker).getListener();
         tracker.on('attached', async (udid: string) => {
             try {
