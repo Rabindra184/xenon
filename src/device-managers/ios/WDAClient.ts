@@ -478,7 +478,24 @@ export class WDAClient {
         terminal: false,
       });
 
+      let timer: NodeJS.Timeout;
+      const resetInactivityTimeout = () => {
+        if (timer) clearTimeout(timer);
+        timer = setTimeout(() => {
+          if (!resolved) {
+            resolved = true;
+            proc.kill('SIGKILL');
+            this.log.debug(`getLogs snapshot completed (inactivity timeout) for ${udid}`);
+            resolve(output);
+          }
+        }, 2000);
+      };
+
+      // Initial timer start
+      resetInactivityTimeout();
+
       rl.on('line', (line) => {
+        resetInactivityTimeout();
         if (!line.trim()) return;
         if (command === s.goIOSPath) {
           try {
@@ -493,17 +510,9 @@ export class WDAClient {
       });
 
       proc.stderr?.on('data', (data) => {
+        resetInactivityTimeout();
         this.log.debug(`[getLogs][stderr] ${data.toString()}`);
       });
-
-      const timer = setTimeout(() => {
-        if (!resolved) {
-          resolved = true;
-          proc.kill('SIGKILL');
-          this.log.debug(`getLogs snapshot completed (timeout) for ${udid}`);
-          resolve(output);
-        }
-      }, 2000);
 
       proc.on('error', (err) => {
         if (!resolved) {
