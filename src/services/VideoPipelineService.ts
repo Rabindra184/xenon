@@ -66,6 +66,9 @@ export class VideoPipelineService {
 
     log.info(`[VideoPipeline] Starting HW-accelerated recording for ${sessionId} from ${mjpegUrl}`);
 
+    // Small settlement delay to allow the source stream to prime
+    await new Promise(r => setTimeout(r, 500));
+
     // 2. Construct FFMPEG Args
     // -f mjpeg: Input format
     // -i: Input source
@@ -73,6 +76,8 @@ export class VideoPipelineService {
     // -movflags: fMP4 for instant playback and crash resiliency
     const args = [
       '-y',
+      '-loglevel',
+      'error', // Only log errors to keep console clean
       '-reconnect',
       '1',
       '-reconnect_at_eof',
@@ -81,6 +86,10 @@ export class VideoPipelineService {
       '1',
       '-reconnect_delay_max',
       '5',
+      '-probesize',
+      '32', // Fast startup for MJPEG
+      '-analyzeduration',
+      '0',
       '-f',
       'mjpeg',
       '-i',

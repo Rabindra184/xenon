@@ -251,6 +251,25 @@ class AndroidStreamService {
         session.status = 'running';
         this.captureLoop(udid, session);
 
+        // Principal Resilience: Wait for the FIRST FRAME to be captured
+        // FFMPEG often fails to "open" the input if there is no data immediately available
+        const firstFrameStartTime = Date.now();
+        const firstFrameTimeout = 5000;
+        let frameCount = 0;
+        while (Date.now() - firstFrameStartTime < firstFrameTimeout) {
+          if (session.latestFrame) {
+            frameCount++;
+            if (frameCount >= 1) break; // We have at least one frame ready to serve
+          }
+          await new Promise(r => setTimeout(r, 200));
+        }
+
+        if (!session.latestFrame) {
+          log.warn(`[${udid}] Stream started but no frames captured after ${firstFrameTimeout}ms. Downstream video might be unstable.`);
+        } else {
+          log.info(`[${udid}] MJPEG stream primed with first frame.`);
+        }
+
         // Update device info in store to ensure other services (like VideoPipeline) can find the port
         const updatedDevice = await DeviceStoreFactory.getStore().findDevice({ udid });
         if (updatedDevice) {
