@@ -570,8 +570,14 @@ export class SessionLifecycleService {
         const session = SESSION_MANAGER.getSession(sessionId);
         if (session) {
           const device = session.getDevice();
-          const { NetworkConditioningService } = await import('./NetworkConditioningService');
-          await Container.get(NetworkConditioningService).reset(sessionId, device);
+          try {
+            const { NetworkConditioningService } = await import('./NetworkConditioningService');
+            await Container.get(NetworkConditioningService).reset(sessionId, device);
+          } catch (resetErr: any) {
+            this.logger.warn(
+              `⚠️ NetworkConditioningService.reset failed for session ${sessionId}: ${resetErr.message}`,
+            );
+          }
         }
 
         await DASHBORD_EVENT_MANAGER.onSessionStopped(sessionId);

@@ -41,10 +41,8 @@ export class RemoteSession extends XenonSession {
         url: `${this.baseUrl}/session/${this.sessionId}/appium/stop_recording_screen`,
         data: {},
       });
-      console.log(
-        `[RemoteSession] stopVideoRecording response status: ${response.status}, data length: ${response?.data?.value?.length || 0
-        }`,
-      );
+      const dataLen = response?.data?.value?.length || 0;
+      console.log(`[RemoteSession] stopVideoRecording response status: ${response.status}, data length: ${dataLen}`);
       return response.status === 200 && response?.data?.value ? response?.data?.value : '';
     } catch (err: any) {
       console.log(
@@ -57,10 +55,8 @@ export class RemoteSession extends XenonSession {
           url: `${this.baseUrl}/session/${this.sessionId}/appium/stop_recording_screen`,
           data: {},
         });
-        console.log(
-          `[RemoteSession] stopVideoRecording retry succeeded, data length: ${retryResponse?.data?.value?.length || 0
-          }`,
-        );
+        const retryDataLen = retryResponse?.data?.value?.length || 0;
+        console.log(`[RemoteSession] stopVideoRecording retry succeeded, data length: ${retryDataLen}`);
         return retryResponse?.data?.value || '';
       } catch (retryErr: any) {
         console.log(`[RemoteSession] stopVideoRecording retry also failed: ${retryErr.message}`);
@@ -159,9 +155,8 @@ export class RemoteSession extends XenonSession {
       .then((response) => {
         // Set flag to true if response is successful (status 200 or 2xx)
         this.isVideoAvailable = response.status >= 200 && response.status < 300;
-        console.log(
-          `[RemoteSession] startVideoRecording response status: ${response.status}, isVideoAvailable: ${this.isVideoAvailable}`,
-        );
+        const status = response.status;
+        console.log(`[RemoteSession] startVideoRecording response status: ${status}, isVideoAvailable: ${this.isVideoAvailable}`);
       })
       .catch((error) => {
         console.log('[RemoteSession] startVideoRecording error:', error.message);
