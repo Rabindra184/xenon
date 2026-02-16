@@ -6,8 +6,9 @@ import { Container, Service } from 'typedi';
 import IOSStreamService from './IOSStreamService';
 import { IDevice } from '../../interfaces/IDevice';
 import { DeviceStoreFactory } from '../../data-service/device-store';
-import { exec, execFile } from 'child_process';
+import { exec, execFile, spawn } from 'child_process';
 import { promisify } from 'util';
+import readline from 'readline';
 import path from 'path';
 import os from 'os';
 import fs from 'fs-extra';
@@ -32,7 +33,7 @@ export class WDAClient {
   private async executeSerializedCommand<T>(udid: string, action: () => Promise<T>): Promise<T> {
     const currentQueue = this.commandQueues.get(udid) || Promise.resolve();
     const nextInQueue = currentQueue
-      .catch(() => {})
+      .catch(() => { })
       .then(() => action())
       .finally(() => {
         if (this.commandQueues.get(udid) === nextInQueue) this.commandQueues.delete(udid);
@@ -446,14 +447,74 @@ export class WDAClient {
   }
 
   async getLogs(udid: string): Promise<string> {
-    // timeout command is usually available on linux/mac (via coreutils)
-    const { stdout } = await execFilePromise('timeout', ['2', 'idevicesyslog', '-u', udid]).catch(
-      (e) => {
-        this.log.debug(`getLogs failed for ${udid}: ${e.message}`);
-        return { stdout: '' };
-      },
-    );
-    return stdout || '';
+    const s = Container.get(IOSStreamService);
+    let command = 'idevicesyslog';
+    let args = ['-u', udid];
+
+    if (await s.isGoIOSAvailable()) {
+      command = s.goIOSPath;
+      args = ['syslog', '--udid', udid];
+    }
+
+    this.log.debug(`Fetching logs for ${udid} using ${command} ${args.join(' ')}`);
+
+    return new Promise((resolve) => {
+      const proc = spawn(command, args, {
+        env: { ...process.env, ENABLE_GO_IOS_AGENT: 'yes' },
+      });
+      let output = '';
+      let resolved = false;
+
+      const rl = readline.createInterface({
+        input: proc.stdout!,
+        terminal: false,
+      });
+
+      rl.on('line', (line) => {
+        if (!line.trim()) return;
+        if (command === s.goIOSPath) {
+          try {
+            const parsed = JSON.parse(line);
+            output += (parsed.msg || line) + '\n';
+          } catch (e) {
+            output += line + '\n';
+          }
+        } else {
+          output += line + '\n';
+        }
+      });
+
+      proc.stderr?.on('data', (data) => {
+        this.log.debug(`[getLogs][stderr] ${data.toString()}`);
+      });
+
+      const timer = setTimeout(() => {
+        if (!resolved) {
+          resolved = true;
+          proc.kill('SIGKILL');
+          this.log.debug(`getLogs snapshot completed (timeout) for ${udid}`);
+          resolve(output);
+        }
+      }, 2000);
+
+      proc.on('error', (err) => {
+        if (!resolved) {
+          resolved = true;
+          this.log.debug(`getLogs failed for ${udid}: ${err.message}`);
+          clearTimeout(timer);
+          resolve(output);
+        }
+      });
+
+      proc.on('exit', (code) => {
+        if (!resolved) {
+          resolved = true;
+          clearTimeout(timer);
+          this.log.debug(`getLogs process exited with code ${code} for ${udid}`);
+          resolve(output);
+        }
+      });
+    });
   }
 
   async verifyWDAStatus(udid: string): Promise<boolean> {
