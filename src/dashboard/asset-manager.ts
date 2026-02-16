@@ -2,6 +2,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { config } from '../config';
 import { v4 as uuidv4 } from 'uuid';
+import log from '../logger';
 
 const SCREENSHOT_DIRECTORY = 'screenshots';
 const VIDEO_DIRECTORY = 'video';
@@ -21,7 +22,7 @@ export function saveScreenShot(sessionId: string, screenshotBase64String: string
   const assetPath = path.join(sessionId, SCREENSHOT_DIRECTORY, `${uuidv4()}.png`);
   const fullPath = path.join(config.sessionAssetsPath, assetPath);
   fs.writeFileSync(fullPath, screenshotBase64String, 'base64');
-  console.log(`[AssetManager] Saved screenshot for session ${sessionId} at ${fullPath}`);
+  log.info(`[AssetManager] Saved screenshot for session ${sessionId} at ${fullPath}`);
   return assetPath;
 }
 

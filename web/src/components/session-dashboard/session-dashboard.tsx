@@ -31,6 +31,15 @@ import './session-dashboard.css';
 
 const REFRESH_INTERVAL_MS = 3000; // Senior Polish: 3s for "Live" feel
 
+const safeFormatDuration = (ms: number | undefined | null) => {
+  if (ms === null || ms === undefined || isNaN(ms) || !isFinite(ms)) return '0ms';
+  try {
+    return prettyMilliseconds(Math.max(0, ms));
+  } catch (e) {
+    return `${Math.round(Math.max(0, ms))}ms`;
+  }
+};
+
 const formatDate = (value?: string | null) => {
   if (!value) return '—';
   const date = new Date(value);
@@ -51,7 +60,7 @@ const getDuration = (session: ISession) => {
     const start = new Date(session.startTime).getTime();
     const end = session.endTime ? new Date(session.endTime).getTime() : Date.now();
     const duration = end - start;
-    return isNaN(duration) ? 0 : duration;
+    return isNaN(duration) || !isFinite(duration) ? 0 : Math.max(0, duration);
   } catch (e) {
     return 0;
   }
@@ -137,7 +146,7 @@ const SessionTableRow = React.memo(
           </Badge>
         </td>
         <td>{formatDate(session.startTime)}</td>
-        <td>{prettyMilliseconds(duration)}</td>
+        <td>{safeFormatDuration(duration)}</td>
         <td className="cell-actions">
           <ChevronRight size={16} />
         </td>
@@ -504,7 +513,7 @@ const SessionDashboard: React.FC = () => {
           <div className="metadata-item">
             <span className="metadata-label">Duration</span>
             <span className="metadata-value">
-              {prettyMilliseconds(getDuration(selectedSession))}
+              {safeFormatDuration(getDuration(selectedSession))}
             </span>
           </div>
           {selectedSession.tags && (
@@ -641,7 +650,7 @@ const SessionDashboard: React.FC = () => {
                               <span className="log-title">{l.title}</span>
                               {l.duration !== null && l.duration !== undefined && (
                                 <span className="log-duration">
-                                  {prettyMilliseconds(l.duration)}
+                                  {safeFormatDuration(l.duration)}
                                 </span>
                               )}
                               {l.is_healed && (

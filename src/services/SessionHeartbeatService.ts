@@ -25,9 +25,21 @@ export class SessionHeartbeatService {
     }
   }
 
+  private failureCounts: Map<string, number> = new Map();
+  private readonly MAX_CONSECUTIVE_FAILURES = 3;
+
   private async checkAllSessions() {
     // 1. Local memory check (fast path)
     const localSessions = SESSION_MANAGER.getAllSessions();
+    const activeSessionIds = new Set(localSessions.map((s) => s.getId()));
+
+    // Cleanup failure counts for closed sessions
+    for (const sid of this.failureCounts.keys()) {
+      if (!activeSessionIds.has(sid)) {
+        this.failureCounts.delete(sid);
+      }
+    }
+
     for (const session of localSessions) {
       // Principal Grace Period: If a session is already stopping, give it 60 seconds to finish
       // its own cleanup (video processing, etc.) before we force it out.
@@ -37,11 +49,22 @@ export class SessionHeartbeatService {
       const sessionId = session.getId();
       try {
         const isHealthy = await session.checkHealth();
-        if (!isHealthy) {
-          this.log.warn(`💔 Local Session ${sessionId} failed health check. Cleaning up.`);
+        if (isHealthy) {
+          // Reset failure count on success
+          this.failureCounts.set(sessionId, 0);
+          continue;
+        }
+
+        const count = (this.failureCounts.get(sessionId) || 0) + 1;
+        this.failureCounts.set(sessionId, count);
+
+        if (count >= this.MAX_CONSECUTIVE_FAILURES) {
+          this.log.warn(
+            `💔 Local Session ${sessionId} failed ${count} consecutive health checks. Cleaning up.`,
+          );
           const reason = session.isStopping
             ? 'Shutdown timeout (Cleanup hung for > 60s)'
-            : 'Session became unresponsive (Heartbeat failure)';
+            : `Session became unresponsive (${count} consecutive heartbeat failures)`;
 
           await DASHBORD_EVENT_MANAGER.onSessionStopped(sessionId, SessionStatus.FAILED, reason);
 
@@ -52,7 +75,12 @@ export class SessionHeartbeatService {
             session_id: null as any,
           });
           SESSION_MANAGER.removeSession(sessionId);
+          this.failureCounts.delete(sessionId);
           this.log.info(`✅ Successfully cleaned up dead session ${sessionId}`);
+        } else {
+          this.log.info(
+            `⚠️ Local Session ${sessionId} failed health check (${count}/${this.MAX_CONSECUTIVE_FAILURES}). Retrying...`,
+          );
         }
       } catch (err: any) {
         this.log.error(`Error checking health for local session ${sessionId}: ${err.message}`);

@@ -76,13 +76,15 @@ export class ServerManager {
       XenonPlugin.nodeBasePath,
     );
 
+    const recoveredSessionIds = sessionManager.getAllSessions().map((s) => s.getId());
+
     if (recoveredCount > 0) {
       log.info(`🔄 Successfully recovered ${recoveredCount} remote sessions`);
     }
 
     // Cleanup any remaining zombie sessions
     const { cleanupZombieSessions } = await import('../dashboard/services/session-service');
-    await cleanupZombieSessions();
+    await cleanupZombieSessions(recoveredSessionIds);
 
     // Initial device discovery poll to start managers and trackers
     await updateDeviceList(

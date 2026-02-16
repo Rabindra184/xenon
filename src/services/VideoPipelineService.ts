@@ -13,6 +13,7 @@ export interface VideoPipelineOptions {
   udid: string;
   resolution?: string;
   bitrate?: string;
+  mjpegPort?: number; // Principal Efficiency: Optional pre-resolved port
 }
 
 /**
@@ -26,6 +27,7 @@ export interface VideoPipelineOptions {
 @Service()
 export class VideoPipelineService {
   private activeRecordings: Map<string, ChildProcess> = new Map();
+  private recordingPaths: Map<string, string> = new Map();
   private isMac: boolean;
 
   constructor() {
@@ -43,15 +45,19 @@ export class VideoPipelineService {
       return;
     }
 
-    // 1. Resolve Device MJPEG Port from Store
-    const device = await DeviceStoreFactory.getStore().findDevice({ udid });
-    if (!device || !device.mjpegServerPort) {
-      throw new Error(
-        `[VideoPipeline] Cannot find MJPEG port for device ${udid}. Is the stream service running?`,
-      );
+    // 1. Resolve Device MJPEG Port
+    let mjpegPort = options.mjpegPort;
+    if (!mjpegPort) {
+      const device = await DeviceStoreFactory.getStore().findDevice({ udid });
+      if (!device || !device.mjpegServerPort) {
+        throw new Error(
+          `[VideoPipeline] Cannot find MJPEG port for device ${udid}. Is the stream service running?`,
+        );
+      }
+      mjpegPort = device.mjpegServerPort;
     }
 
-    const mjpegUrl = `http://127.0.0.1:${device.mjpegServerPort}`;
+    const mjpegUrl = `http://127.0.0.1:${mjpegPort}`;
     const outputDir = path.join(config.sessionAssetsPath, sessionId, 'video');
     if (!fs.existsSync(outputDir)) {
       fs.mkdirSync(outputDir, { recursive: true });
@@ -120,6 +126,7 @@ export class VideoPipelineService {
     });
 
     this.activeRecordings.set(sessionId, ffmpegProc);
+    this.recordingPaths.set(sessionId, outputPath);
   }
 
   /**
@@ -127,16 +134,22 @@ export class VideoPipelineService {
    */
   public async stopRecording(sessionId: string): Promise<string | null> {
     const proc = this.activeRecordings.get(sessionId);
+    const recordedPath = this.recordingPaths.get(sessionId);
+
     if (!proc) {
-      log.warn(`[VideoPipeline] No active recording found for session ${sessionId}`);
-      return null;
+      log.info(`[VideoPipeline] No active recording process for ${sessionId}, returning stored path if any.`);
+      const relativePath = recordedPath ? path.relative(config.sessionAssetsPath, recordedPath) : null;
+      this.recordingPaths.delete(sessionId);
+      return relativePath;
     }
 
     log.info(`[VideoPipeline] Stopping recording for ${sessionId}`);
 
     return new Promise((resolve) => {
       proc.on('exit', () => {
-        const relativePath = path.join(sessionId, 'video', `${sessionId}.mp4`);
+        const relativePath = path.relative(config.sessionAssetsPath, recordedPath!);
+        this.activeRecordings.delete(sessionId);
+        this.recordingPaths.delete(sessionId);
         resolve(relativePath);
       });
       proc.kill('SIGINT'); // Graceful termination to ensure header finalization
@@ -144,7 +157,7 @@ export class VideoPipelineService {
   }
 
   public isRecording(sessionId: string): boolean {
-    return this.activeRecordings.has(sessionId);
+    return this.activeRecordings.has(sessionId) || this.recordingPaths.has(sessionId);
   }
 
   /**

@@ -2,6 +2,7 @@ import { Service } from 'typedi';
 import { SESSION_MANAGER } from '../sessions/SessionManager';
 import { DeviceStoreFactory } from '../data-service/device-store';
 import { prisma } from '../prisma';
+import log from '../logger';
 
 @Service()
 export class MetricsService {
@@ -18,8 +19,9 @@ export class MetricsService {
         update: { value: (currentValue + 1).toString() },
         create: { id: name, name, value: '1' },
       });
-    } catch (error) {
-      console.error(`[MetricsService] Failed to increment ${name}`, error);
+    } catch (error: any) {
+      const msg = error?.message ?? String(error);
+      log.error(`[MetricsService] Failed to increment ${name}: ${msg}`, error);
     }
   }
 

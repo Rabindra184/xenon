@@ -28,7 +28,9 @@ import { SocketServer } from '../services/SocketServer';
 import { TracingService } from '../services/TracingService';
 import { MetricsService } from '../services/MetricsService';
 import { SocketEvents } from '../enums/SocketEvents';
+import { Service } from 'typedi';
 
+@Service()
 export class DashboardEventManager {
   // private SCREENSHOT_FOR_COMMANDS = ['click', 'setUrl', 'setValue', 'performActions'];
 
@@ -134,7 +136,9 @@ export class DashboardEventManager {
     // Idempotency Guard: If this session is already being stopped by another actor
     // (heartbeat, stream watchdog, plugin.deleteSession), skip to avoid double-cleanup.
     if (this.stoppingSessionIds.has(sessionId)) {
-      log.info(`⏭️ onSessionStopped already in progress for ${sessionId}. Skipping duplicate call.`);
+      log.info(
+        `⏭️ onSessionStopped already in progress for ${sessionId}. Skipping duplicate call.`,
+      );
       return;
     }
     this.stoppingSessionIds.add(sessionId);
@@ -158,26 +162,74 @@ export class DashboardEventManager {
 
         // Clean up syslog service for real iOS devices
         const udid = this.sessionToUdid.get(sessionId);
-        if (udid && this.syslogServices.has(udid)) {
-          const deviceData = this.syslogServices.get(udid);
-          if (deviceData && deviceData.service) {
-            try {
-              // Note: The syslog service doesn't have a stop method, but we can clean up our reference
-              this.syslogServices.delete(udid);
-              this.sessionToUdid.delete(sessionId);
-              log.info(`Cleaned up syslog service for device ${udid}`);
-            } catch (err) {
-              log.debug(`Error cleaning up syslog service: ${err}`);
-            }
+        if (udid) {
+          try {
+            this.syslogServices.delete(udid);
+            this.sessionToUdid.delete(sessionId);
+            log.info(`Cleaned up syslog service for device ${udid}`);
+          } catch (err) {
+            log.debug(`Error cleaning up syslog service info: ${err}`);
           }
         }
 
-        // Clean up device mapping
-        this.sessionToDevice.delete(sessionId);
         // Clean up last log line tracking
         this.lastLogLine.delete(sessionId);
+
+        // Principal Resource Management: Unblock device immediately
+        const device = this.sessionToDevice.get(sessionId);
+        if (device) {
+          const { unblockDevice } = await import('../data-service/device-service');
+          try {
+            await unblockDevice(device.udid, device.host);
+            log.info(`🔓 [${sessionId}] Device ${device.udid} released.`);
+          } catch (unblockErr: any) {
+            const msg = unblockErr?.message ?? String(unblockErr);
+            log.error(
+              `⚠️ Failed to unblock device ${device.udid} for session ${sessionId}: ${msg}`,
+              unblockErr,
+            );
+          }
+        } else {
+          const { unblockDeviceMatchingFilter } = await import('../data-service/device-service');
+          try {
+            await unblockDeviceMatchingFilter({ session_id: sessionId });
+            log.info(`🔓 [${sessionId}] Device released via session_id fallback.`);
+          } catch (unblockErr: any) {
+            const msg = unblockErr?.message ?? String(unblockErr);
+            log.error(`⚠️ Failed to unblock device for session ${sessionId}: ${msg}`, unblockErr);
+          }
+        }
+
+        // Final local cleanup to prevent state leaks
+        this.sessionToDevice.delete(sessionId);
+        this.lastLogLine.delete(sessionId);
+        const orphanUdid = this.sessionToUdid.get(sessionId);
+        if (orphanUdid) {
+          this.sessionToUdid.delete(sessionId);
+          this.syslogServices.delete(orphanUdid);
+        }
       } else {
         log.warn(`⚠️ Session ${sessionId} not found in SESSION_MANAGER`);
+        // Fallback: If session not in manager, attempt to unblock by session_id in store
+        const { unblockDeviceMatchingFilter } = await import('../data-service/device-service');
+        try {
+          await unblockDeviceMatchingFilter({ session_id: sessionId });
+          log.info(`🔓 [${sessionId}] Orphaned device released via session_id fallback.`);
+        } catch (unblockErr: any) {
+          const msg = unblockErr?.message ?? String(unblockErr);
+          log.error(
+            `⚠️ Failed to unblock device for orphaned session ${sessionId}: ${msg}`,
+            unblockErr,
+          );
+        } finally {
+          this.sessionToDevice.delete(sessionId);
+          this.lastLogLine.delete(sessionId);
+          const orphanUdid = this.sessionToUdid.get(sessionId);
+          if (orphanUdid) {
+            this.sessionToUdid.delete(sessionId);
+            this.syslogServices.delete(orphanUdid);
+          }
+        }
       }
 
       const sessionEntry = await getSessionById(sessionId);
@@ -266,25 +318,32 @@ export class DashboardEventManager {
   ): Promise<boolean> {
     if (commandName) {
       this.commandStartTime.set(`${sessionId}:${commandName}`, Date.now());
-      log.debug(`[EventManager] beforeSessionCommand: sessionId=${sessionId}, commandName=${commandName}`);
+      log.debug(
+        `[EventManager] beforeSessionCommand: sessionId=${sessionId}, commandName=${commandName}`,
+      );
     }
 
     // Principal Interception: Handle Xenon-specific commands regardless of session state in memory
     if (commandName === 'execute') {
-      const script = request.body?.script || (Array.isArray(request.body) ? request.body[0] : undefined);
+      const script =
+        request.body?.script || (Array.isArray(request.body) ? request.body[0] : undefined);
       if (script && dashboardCommands.isDashboardCommand(script)) {
         log.info(`[EventManager] Intercepting Xenon command: ${script} for session ${sessionId}`);
         await dashboardCommands.process(sessionId, request, response);
         return false;
       } else if (script && script.includes(':')) {
-        log.debug(`[EventManager] Custom command ${script} not handled by Xenon. Passing to driver.`);
+        log.debug(
+          `[EventManager] Custom command ${script} not handled by Xenon. Passing to driver.`,
+        );
       }
     }
 
     const session: XenonSession | undefined = SESSION_MANAGER.getSession(sessionId);
 
     if (!session) {
-      log.debug(`[EventManager] No session object found in memory for ${sessionId}. Allowing command ${commandName} to proceed.`);
+      log.debug(
+        `[EventManager] No session object found in memory for ${sessionId}. Allowing command ${commandName} to proceed.`,
+      );
       return true;
     }
 
@@ -311,118 +370,120 @@ export class DashboardEventManager {
   ) {
     const session: XenonSession | undefined = SESSION_MANAGER.getSession(sessionId);
     if (session) {
-      // Save device logs (only if driver is available)
-      if (driver) {
-        await this.saveDeviceLogs(sessionId, driver);
-      }
-
-      // Save command log
-      const parsedResponse: any = safeParseJson(responseBody) as any;
-      const isSuccessResponse =
-        _.isObjectLike(parsedResponse) &&
-        (parsedResponse.value === null || (parsedResponse.value && !parsedResponse.value.error));
-
-      const tracingService = Container.get(TracingService);
-      const spanId = tracingService.getSpanId(`${session.getId()}:${commandName}`);
-      const traceId = tracingService.getTraceId(session.getId());
-
-      const startTime = this.commandStartTime.get(`${sessionId}:${commandName}`);
-      const duration = startTime ? Date.now() - startTime : null;
-
-      const logEntry: any = {
-        session_id: session.getId(),
-        command_name: commandName || null,
-        body: JSON.stringify(request.body),
-        response: responseBody,
-        is_success: isSuccessResponse,
-        is_error: !isSuccessResponse,
-        method: request.method,
-        title: this.getTitleFromCommandName(commandName),
-        subtitle: '',
-        screenshot: null,
-        url: request.originalUrl,
-        is_healed: !!healingInfo,
-        original_selector: healingInfo?.originalSelector || null,
-        healed_selector: healingInfo?.healedSelector || null,
-        healing_confidence: healingInfo?.confidence || null,
-        span_id: spanId,
-        trace_id: traceId,
-        duration: duration,
-      };
-
-      // Increment Healing Metrics
-      if (healingInfo) {
-        Container.get(MetricsService).incrementHealingAttempt();
-        if (isSuccessResponse) {
-          Container.get(MetricsService).incrementHealingSuccess();
+      try {
+        // Save device logs (only if driver is available)
+        if (driver) {
+          await this.saveDeviceLogs(sessionId, driver);
         }
-      }
 
-      if (startTime) {
-        this.commandStartTime.delete(`${sessionId}:${commandName}`);
-      }
+        // Save command log
+        const parsedResponse: any = safeParseJson(responseBody) as any;
+        const isSuccessResponse = !parsedResponse?.value?.error;
 
-      // Take screenshots for specific commands (like click, setValue, etc.)
-      // OR on failure if SCREENSHOT_ON_FAILURE capability is enabled
-      const shouldTakeScreenshotForCommand =
-        commandName && config.takeScreenshotsFor.indexOf(commandName) >= 0;
+        const tracingService = Container.get(TracingService);
+        const spanId = tracingService.getSpanId(`${session.getId()}:${commandName}`);
+        const traceId = tracingService.getTraceId(session.getId());
 
-      const screenShotCapability = session.getXenonOption(
-        XENON_CAPABILITIES.SCREENSHOT_ON_FAILURE,
-        false,
-      );
+        const startTime = this.commandStartTime.get(`${sessionId}:${commandName}`);
+        const duration = startTime ? Date.now() - startTime : null;
 
-      const screenshotEveryCommandCapability = session.getXenonOption(
-        XENON_CAPABILITIES.SCREENSHOT_ON_EVERY_COMMAND,
-        false,
-      );
+        const logEntry: any = {
+          session_id: session.getId(),
+          command_name: commandName || null,
+          body: JSON.stringify(request.body),
+          response: responseBody,
+          is_success: isSuccessResponse,
+          is_error: !isSuccessResponse,
+          method: request.method,
+          title: this.getTitleFromCommandName(commandName),
+          subtitle: '',
+          screenshot: null,
+          url: request.originalUrl,
+          is_healed: !!healingInfo,
+          original_selector: healingInfo?.originalSelector || null,
+          healed_selector: healingInfo?.healedSelector || null,
+          healing_confidence: healingInfo?.confidence || null,
+          span_id: spanId,
+          trace_id: traceId,
+          duration: duration,
+        };
 
-      const shouldTakeScreenshotOnFailure =
-        !_.isNil(screenShotCapability) &&
-        screenShotCapability.toString() === 'true' &&
-        !isSuccessResponse;
-
-      const shouldTakeScreenshotOnEveryCommand =
-        !_.isNil(screenshotEveryCommandCapability) &&
-        screenshotEveryCommandCapability.toString() === 'true';
-
-      if (
-        shouldTakeScreenshotForCommand ||
-        shouldTakeScreenshotOnFailure ||
-        shouldTakeScreenshotOnEveryCommand
-      ) {
-        let screenshotBase64: string | null = null;
-        try {
-          // Principal Intelligence: Always prefer session.getScreenShot() because it contains
-          // platform-specific optimizations (like direct, high-speed ADB capture for Android).
-          screenshotBase64 = await session.getScreenShot();
-        } catch (err: any) {
-          log.warn(
-            `[Dashboard] Session-level screenshot failed for ${sessionId}: ${err.message}. Trying direct driver...`,
-          );
-          if (driver) {
-            try {
-              screenshotBase64 = await takeScreenshot(driver);
-            } catch (driverErr: any) {
-              log.error(`[Dashboard] Driver screenshot also failed: ${driverErr.message}`);
-            }
+        // Increment Healing Metrics
+        if (healingInfo) {
+          Container.get(MetricsService).incrementHealingAttempt();
+          if (isSuccessResponse) {
+            Container.get(MetricsService).incrementHealingSuccess();
           }
         }
 
-        if (screenshotBase64) {
-          logEntry['screenshot'] = saveScreenShot(session.getId(), screenshotBase64);
+        if (startTime) {
+          this.commandStartTime.delete(`${sessionId}:${commandName}`);
         }
+
+        // Take screenshots for specific commands (like click, setValue, etc.)
+        // OR on failure if SCREENSHOT_ON_FAILURE capability is enabled
+        const shouldTakeScreenshotForCommand =
+          commandName && config.takeScreenshotsFor.indexOf(commandName) >= 0;
+
+        const screenShotCapability = session.getXenonOption(
+          XENON_CAPABILITIES.SCREENSHOT_ON_FAILURE,
+          false,
+        );
+
+        const screenshotEveryCommandCapability = session.getXenonOption(
+          XENON_CAPABILITIES.SCREENSHOT_ON_EVERY_COMMAND,
+          false,
+        );
+
+        const shouldTakeScreenshotOnFailure =
+          !_.isNil(screenShotCapability) &&
+          screenShotCapability.toString() === 'true' &&
+          !isSuccessResponse;
+
+        const shouldTakeScreenshotOnEveryCommand =
+          !_.isNil(screenshotEveryCommandCapability) &&
+          screenshotEveryCommandCapability.toString() === 'true';
+
+        if (
+          shouldTakeScreenshotForCommand ||
+          shouldTakeScreenshotOnFailure ||
+          shouldTakeScreenshotOnEveryCommand
+        ) {
+          let screenshotBase64: string | null = null;
+          try {
+            // Principal Intelligence: Always prefer session.getScreenShot() because it contains
+            // platform-specific optimizations (like direct, high-speed ADB capture for Android).
+            screenshotBase64 = await session.getScreenShot();
+          } catch (err: any) {
+            log.warn(
+              `[Dashboard] Session-level screenshot failed for ${sessionId}: ${err.message}. Trying direct driver...`,
+            );
+            if (driver) {
+              try {
+                screenshotBase64 = await takeScreenshot(driver);
+              } catch (driverErr: any) {
+                log.error(`[Dashboard] Driver screenshot also failed: ${driverErr.message}`);
+              }
+            }
+          }
+
+          if (screenshotBase64) {
+            logEntry['screenshot'] = saveScreenShot(session.getId(), screenshotBase64);
+          }
+        }
+
+        await prisma.sessionLog.create({
+          data: logEntry as SessionLog,
+        });
+
+        // Emit command log event to dashboard
+        Container.get(SocketServer).emitToDashboard(SocketEvents.SESSION_COMMAND, {
+          session_id: session.getId(),
+          ...logEntry,
+        });
+      } catch (err: any) {
+        log.error(`[Dashboard] Failed to process command telemetry for ${sessionId}: ${err.message}`);
       }
-
-      await prisma.sessionLog.create({
-        data: logEntry as SessionLog,
-      });
-
-      // Emit command log event to dashboard
-      Container.get(SocketServer).emitToDashboard(SocketEvents.SESSION_COMMAND, {
-        session_id: session.getId(),
-        ...logEntry,
-      });
     }
   }
 
@@ -701,4 +762,4 @@ export class DashboardEventManager {
   }
 }
 
-export const DASHBORD_EVENT_MANAGER = new DashboardEventManager();
+export const DASHBORD_EVENT_MANAGER = Container.get(DashboardEventManager);

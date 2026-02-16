@@ -84,15 +84,13 @@ export class DeviceCard extends React.Component<IDeviceCardProps, IDeviceCardSta
     this.props.reloadDevices();
   }
 
-  blockDevice(udid: string, host: string) {
-    XenonApiService.blockDevice(udid, host);
-
+  async blockDevice(udid: string, host: string) {
+    await XenonApiService.blockDevice(udid, host);
     this.props.reloadDevices();
   }
 
-  unblockDevice(udid: string, host: string) {
-    XenonApiService.unblockDevice(udid, host);
-
+  async unblockDevice(udid: string, host: string) {
+    await XenonApiService.unblockDevice(udid, host);
     this.props.reloadDevices();
   }
 

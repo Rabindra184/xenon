@@ -42,7 +42,8 @@ export async function preparePrismaSchema() {
 
 if (require.main === module) {
   preparePrismaSchema().catch((err) => {
-    console.error(err);
+    const msg = (err as any)?.message ?? String(err);
+    log.error(`[PrismaPrepare] Critical failure: ${msg}`, err);
     process.exit(1);
   });
 }

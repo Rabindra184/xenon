@@ -108,9 +108,13 @@ class XenonPlugin extends BasePlugin {
       const session = SESSION_MANAGER.getSession(sessionId);
       if (session && session.isVideoRecordingInProgress()) {
         try {
-          const videoBase64 = await session.stopVideoRecording(driver);
-          if (videoBase64) {
-            const videoPath = saveVideoRecording(sessionId, videoBase64);
+          const videoData = await session.stopVideoRecording(driver);
+          if (videoData) {
+            let videoPath = videoData;
+            // Principal Heuristic: If it's data (>1000 chars), save it. If it's short, it's a path.
+            if (videoData.length > 1000) {
+              videoPath = saveVideoRecording(sessionId, videoData);
+            }
             await updateSessionDetails(sessionId, { video_recording: videoPath });
           }
         } catch (err: any) {
@@ -149,7 +153,10 @@ class XenonPlugin extends BasePlugin {
   }
 
   async deleteSession(next: () => any, driver: any, sessionId?: string | null) {
-    return await Container.get(SessionLifecycleService).deleteSession(next, sessionId || driver?.sessionId);
+    return await Container.get(SessionLifecycleService).deleteSession(
+      next,
+      sessionId || driver?.sessionId,
+    );
   }
 
   async analyzeScreen(driver: any) {

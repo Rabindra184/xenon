@@ -348,7 +348,7 @@ export default class AndroidDeviceManager implements IDeviceManager {
             'init.svc.bootanim',
           )) as any;
           if (!_.isNil(bootStatus) && !_.isEmpty(bootStatus) && bootStatus == 'stopped') {
-            console.log('Boot Completed!', udid);
+            this.log.info('Boot Completed!', udid);
             return true;
           }
         } catch (err) {
@@ -521,9 +521,9 @@ export default class AndroidDeviceManager implements IDeviceManager {
             await this.onDeviceAdded(originalADB, device);
           }
         });
-        remoteTracker.on('end', () => console.log('Tracking stopped'));
+        remoteTracker.on('end', () => this.log.info('Tracking stopped'));
       } catch (err: unknown) {
-        console.error('Something went wrong:', err instanceof Error ? err.stack : err);
+        this.log.error('Something went wrong:', err instanceof Error ? err.stack : err);
       }
     };
 

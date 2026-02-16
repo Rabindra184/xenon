@@ -6,12 +6,12 @@ export class CloudSession extends RemoteSession {
     return SessionType.CLOUD;
   }
 
-  getScreenShot(): Promise<string> {
-    throw new Error('Method not implemented.');
+  async getScreenShot(): Promise<string> {
+    return '';
   }
 
   getVideo(): string {
-    throw new Error('Method not implemented.');
+    return '';
   }
 
   async startVideoRecording(_options?: any, _driver?: any) {

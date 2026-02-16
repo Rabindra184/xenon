@@ -34,7 +34,7 @@ export function addProxyHandler(sessionId: string, remoteHost: string) {
         // log.debug(`proxyRes host: ${req.headers.host} method: ${req.method}  path: ${req.url}`);
       },
       error: (err: any, _req: any, _res: any) => {
-        log.error('proxy handler error: ', err.message, ' data: ', err.response.data);
+        log.error('proxy handler error: ', err.message, ' data: ', err.response?.data);
       },
     },
   };
@@ -53,7 +53,7 @@ export function removeProxyHandler(sessionId: string) {
   remoteProxyMap.delete(sessionId);
 }
 
-function getSessionIdFromUr(url: string) {
+function getSessionIdFromUrl(url: string) {
   const SESSION_ID_PATTERN = /\/session\/([^/]+)/;
   const match = SESSION_ID_PATTERN.exec(url);
   if (match) {
@@ -78,7 +78,7 @@ function handler(cliArgs: Record<string, any>) {
       return next();
     }
 
-    const sessionId = getSessionIdFromUr(req.url);
+    const sessionId = getSessionIdFromUrl(req.url);
     const proxyServer = getProxyServer();
 
     if (!sessionId) {
@@ -174,8 +174,7 @@ async function interceptResponse(
     }
     const body = Buffer.concat(chunks).toString('utf8');
     if (req.method === 'DELETE') {
-      log.info(`🔴 DELETE request intercepted, calling onSessionStopped for ${sessionId}`);
-      await DASHBORD_EVENT_MANAGER.onSessionStopped(sessionId);
+      log.info(`🔴 DELETE request intercepted for ${sessionId}`);
     } else {
       await DASHBORD_EVENT_MANAGER.afterSessionCommand(
         sessionId,

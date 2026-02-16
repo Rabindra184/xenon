@@ -184,7 +184,10 @@ export default class IOSDeviceManager implements IDeviceManager {
         if (!device.busy) {
           const streamService = Container.get(IOSStreamService);
           const streamStatus = streamService.getStreamStatus(device.udid);
-          if (!streamStatus || (streamStatus.status !== 'running' && streamStatus.status !== 'starting')) {
+          if (
+            !streamStatus ||
+            (streamStatus.status !== 'running' && streamStatus.status !== 'starting')
+          ) {
             return { healthStatus: 'Healthy', healthCheckError: 'Idle (WDA Stopped)' };
           }
         }

@@ -108,22 +108,26 @@ export class CommandInterceptor {
       const response = await next();
 
       if (isHub && !!pluginArgs.enableDashboard && SESSION_MANAGER.isValidSession(sessionId)) {
-        await DASHBORD_EVENT_MANAGER.afterSessionCommand(
-          sessionId,
-          commandName,
-          driver,
-          {
-            body: args,
-            method: 'POST',
-            path: `/${commandName}`,
-            originalUrl: `/${commandName}`,
-          } as any,
-          {} as any,
-          JSON.stringify({ value: response, sessionId }),
-        );
+        try {
+          await DASHBORD_EVENT_MANAGER.afterSessionCommand(
+            sessionId,
+            commandName,
+            driver,
+            {
+              body: args,
+              method: 'POST',
+              path: `/${commandName}`,
+              originalUrl: `/${commandName}`,
+            } as any,
+            {} as any,
+            JSON.stringify({ value: response, sessionId }),
+          );
 
-        if (commandName === 'findElement' && response) {
-          this.triggerLearning(driver, args, response, sessionId);
+          if (commandName === 'findElement' && response) {
+            this.triggerLearning(driver, args, response, sessionId);
+          }
+        } catch (postCommandErr: any) {
+          this.log.warn(`[Interceptor] Post-command hooks failed: ${postCommandErr.message}`);
         }
       }
 
@@ -270,11 +274,19 @@ export class CommandInterceptor {
     }
   }
 
+  private learningSessions: Set<string> = new Set();
+
   private async triggerLearning(driver: any, args: any[], response: any, sessionId: string) {
+    if (this.learningSessions.has(sessionId)) return;
+    this.learningSessions.add(sessionId);
+
     const strategy = args[0];
     const selector = args[1];
     const elementId = response.ELEMENT || response['element-6066-11e4-a52e-4f735466cecf'];
-    if (!elementId || typeof selector !== 'string') return;
+    if (!elementId || typeof selector !== 'string') {
+      this.learningSessions.delete(sessionId);
+      return;
+    }
 
     (async () => {
       try {
@@ -291,7 +303,28 @@ export class CommandInterceptor {
           }
         }
 
-        const nodeName = await driver.getElementTagName(elementId);
+        let nodeName = 'XCUIElementTypeAny'; // Default for IOS, will be overridden
+        try {
+          if (typeof driver.getElementTagName === 'function') {
+            nodeName = (await driver.getElementTagName(elementId)) || nodeName;
+          } else if (typeof driver.getName === 'function') {
+            nodeName = (await driver.getName(elementId)) || nodeName;
+          } else {
+            // Check if it's android or ios to provide a better default
+            const caps = await driver.getCapabilities();
+            const platform = (
+              caps.platformName ||
+              caps.platform ||
+              'ios'
+            ).toLowerCase();
+            nodeName = platform === 'android' ? 'android.view.View' : 'XCUIElementTypeAny';
+          }
+        } catch (e) {
+          this.log.debug(`[Learning] Failed to get tag name for element ${elementId}. Using default.`);
+        }
+
+        // Final safety check to ensure nodeName is a valid string
+        if (!nodeName) nodeName = 'Unknown';
 
         // Path capture logic
         let resiliotreePathJson: any = null;
@@ -321,6 +354,8 @@ export class CommandInterceptor {
         );
       } catch (err: any) {
         this.log.debug(`[Learning] Failed: ${err.message}`);
+      } finally {
+        this.learningSessions.delete(sessionId);
       }
     })();
   }

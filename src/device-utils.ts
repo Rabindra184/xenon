@@ -659,3 +659,16 @@ export async function setupCronCleanupBuilds(pluginArgs: IPluginArgs) {
     await cleanupService.runCleanup(pluginArgs);
   });
 }
+
+/**
+ * Principal Shutdown: Clears all background intervals and scheduled jobs
+ * to prevent process hangs and handle leaks.
+ */
+export function stopAllTimers() {
+  if (timer) clearInterval(timer);
+  if (cronTimerToReleaseBlockedDevices) clearInterval(cronTimerToReleaseBlockedDevices);
+  if (cronTimerToUpdateDevices) clearInterval(cronTimerToUpdateDevices);
+  if (cronTimerToCleanPendingSessions) clearInterval(cronTimerToCleanPendingSessions);
+  if (cronTimerToCleanExpiredReservations) clearInterval(cronTimerToCleanExpiredReservations);
+  if (cronTimerToCleanupBuilds) cronTimerToCleanupBuilds.cancel();
+}

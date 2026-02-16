@@ -32,8 +32,8 @@ export class RemoteSession extends XenonSession {
   }
 
   async stopVideoRecording(_driver?: any) {
-    console.log(
-      `[RemoteSession] stopVideoRecording called. isVideoAvailable: ${this.isVideoAvailable}`,
+    log.info(
+      `[RemoteSession] stopVideoRecording called for session ${this.sessionId}. isVideoAvailable: ${this.isVideoAvailable}`,
     );
     try {
       const response = await axios({
@@ -42,10 +42,12 @@ export class RemoteSession extends XenonSession {
         data: {},
       });
       const dataLen = response?.data?.value?.length || 0;
-      console.log(`[RemoteSession] stopVideoRecording response status: ${response.status}, data length: ${dataLen}`);
+      log.info(
+        `[RemoteSession] stopVideoRecording response status: ${response.status}, data length: ${dataLen}`,
+      );
       return response.status === 200 && response?.data?.value ? response?.data?.value : '';
     } catch (err: any) {
-      console.log(
+      log.warn(
         `[RemoteSession] stopVideoRecording error: ${err.message}, trying anyway to retrieve video...`,
       );
       // Even if there's an error, try to get the video data
@@ -56,10 +58,12 @@ export class RemoteSession extends XenonSession {
           data: {},
         });
         const retryDataLen = retryResponse?.data?.value?.length || 0;
-        console.log(`[RemoteSession] stopVideoRecording retry succeeded, data length: ${retryDataLen}`);
+        log.info(
+          `[RemoteSession] stopVideoRecording retry succeeded, data length: ${retryDataLen}`,
+        );
         return retryResponse?.data?.value || '';
       } catch (retryErr: any) {
-        console.log(`[RemoteSession] stopVideoRecording retry also failed: ${retryErr.message}`);
+        log.error(`[RemoteSession] stopVideoRecording retry also failed: ${retryErr.message}`);
         return '';
       }
     }
@@ -156,10 +160,12 @@ export class RemoteSession extends XenonSession {
         // Set flag to true if response is successful (status 200 or 2xx)
         this.isVideoAvailable = response.status >= 200 && response.status < 300;
         const status = response.status;
-        console.log(`[RemoteSession] startVideoRecording response status: ${status}, isVideoAvailable: ${this.isVideoAvailable}`);
+        log.info(
+          `[RemoteSession] startVideoRecording response status: ${status}, isVideoAvailable: ${this.isVideoAvailable}`,
+        );
       })
       .catch((error) => {
-        console.log('[RemoteSession] startVideoRecording error:', error.message);
+        log.error('[RemoteSession] startVideoRecording error:', error.message);
         this.isVideoAvailable = false;
         throw error;
       });
@@ -217,9 +223,7 @@ export class RemoteSession extends XenonSession {
       });
       return response.status >= 200 && response.status < 300;
     } catch (err: any) {
-      log.warn(
-        `[RemoteSession] Health check failed for session ${this.sessionId}: ${err.message}`,
-      );
+      log.warn(`[RemoteSession] Health check failed for session ${this.sessionId}: ${err.message}`);
       return false;
     }
   }

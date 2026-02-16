@@ -21,7 +21,7 @@ export class HealthMonitorService {
   private healthHistory: Map<string, Array<{ time: number; battery?: number; thermal?: string }>> =
     new Map();
 
-  constructor(private webConfigService: WebConfigService) { }
+  constructor(private webConfigService: WebConfigService) {}
 
   public start(pluginArgs: IPluginArgs) {
     this.pluginArgs = pluginArgs;

@@ -203,10 +203,13 @@ export class LocalSession extends RemoteSession {
       log.info(`[LocalSession] Triggering Intelligent Video Pipeline for ${this.sessionId}`);
 
       // 1. Ensure MJPEG Stream is active for the device
+      let mjpegPort: number | undefined;
       if (device.platform === 'android') {
-        await Container.get(AndroidStreamService).startStream(device.udid);
+        const result = await Container.get(AndroidStreamService).startStream(device.udid);
+        mjpegPort = result.mjpegPort;
       } else if (device.platform === 'ios') {
-        await Container.get(IOSStreamService).startStream(device.udid);
+        const result = await Container.get(IOSStreamService).startStream(device.udid);
+        mjpegPort = result.mjpegPort;
       }
 
       // 2. Start HW-Accelerated Recording
@@ -214,6 +217,7 @@ export class LocalSession extends RemoteSession {
         sessionId: this.sessionId,
         udid: device.udid,
         resolution,
+        mjpegPort,
       });
     } catch (err: any) {
       log.warn('[LocalSession] Failed to start Intelligent Video Pipeline:', err);
@@ -249,8 +253,7 @@ export class LocalSession extends RemoteSession {
         }
       } else {
         log.warn(
-          `[LocalSession] Direct stopRecordingScreen not found on target driver. Function exists: ${
-            typeof targetDriver?.stopRecordingScreen === 'function'
+          `[LocalSession] Direct stopRecordingScreen not found on target driver. Function exists: ${typeof targetDriver?.stopRecordingScreen === 'function'
           }`,
         );
       }

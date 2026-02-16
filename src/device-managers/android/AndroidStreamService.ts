@@ -132,6 +132,10 @@ class AndroidStreamService {
             }
             session.latestFrameTimestamp = Date.now();
           }
+        } else {
+          log.warn(
+            `[${udid}] Received empty or tiny screenshot (${screenshot.length} bytes). Is the screen 'flag_secure'?`,
+          );
         }
 
         const elapsed = Date.now() - startTime;
@@ -250,6 +254,14 @@ class AndroidStreamService {
         session.status = 'running';
         this.captureLoop(udid, session);
 
+        // Update device info in store to ensure other services (like VideoPipeline) can find the port
+        const updatedDevice = await DeviceStoreFactory.getStore().findDevice({ udid });
+        if (updatedDevice) {
+          await DeviceStoreFactory.getStore().updateDevice(udid, updatedDevice.host, {
+            mjpegServerPort: mjpegPort,
+          });
+        }
+
         return { mjpegPort };
       } catch (error: any) {
         log.error(`[${udid}] Stream failed to start: ${error.message}`);
@@ -281,7 +293,9 @@ class AndroidStreamService {
           log.info(`[${udid}] Stream Stop: Releasing manual control lock.`);
           await unblockDevice(udid, device.host);
         } else if (device && device.busy) {
-          log.info(`[${udid}] Stream Stop: Device busy with session ${device.session_id}. NOT releasing lock.`);
+          log.info(
+            `[${udid}] Stream Stop: Device busy with session ${device.session_id}. NOT releasing lock.`,
+          );
         }
       } catch (e) {
         /* Ignore unblocking failure on stop */
