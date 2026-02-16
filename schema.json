@@ -125,7 +125,7 @@
         },
         "healthCheckIntervalMs": {
             "type": "number",
-            "default": 30000
+            "default": 86400000
         },
         "healthCheckSchedule": {
             "type": "string"
