@@ -264,36 +264,36 @@ export class DashboardEventManager {
     request: Request,
     response: Response,
   ): Promise<boolean> {
-    const session: XenonSession | undefined = SESSION_MANAGER.getSession(sessionId);
-
-    if (!session) {
-      return true;
-    }
-
     if (commandName) {
       this.commandStartTime.set(`${sessionId}:${commandName}`, Date.now());
       log.debug(`[EventManager] beforeSessionCommand: sessionId=${sessionId}, commandName=${commandName}`);
     }
 
-    switch (commandName) {
-      case 'deleteSession':
-        // Video recording is handled in onSessionStoped() called after deleteSession
-        // No need to handle it here to avoid race conditions
-        break;
-      case 'execute': {
-        const script = request.body?.script || (Array.isArray(request.body) ? request.body[0] : undefined);
-        if (script && dashboardCommands.isDashboardCommand(script)) {
-          log.info(`[EventManager] Intercepting dashboard command: ${script}`);
-          await dashboardCommands.process(sessionId, request, response);
-          return false;
-        } else if (script) {
-          log.debug(`[EventManager] Not a dashboard command. script=${script}`);
-        }
-        break;
+    // Principal Interception: Handle Xenon-specific commands regardless of session state in memory
+    if (commandName === 'execute') {
+      const script = request.body?.script || (Array.isArray(request.body) ? request.body[0] : undefined);
+      if (script && dashboardCommands.isDashboardCommand(script)) {
+        log.info(`[EventManager] Intercepting Xenon command: ${script} for session ${sessionId}`);
+        await dashboardCommands.process(sessionId, request, response);
+        return false;
+      } else if (script) {
+        log.debug(`[EventManager] Not a Xenon command. script=${script}`);
       }
     }
 
-    return !!session;
+    const session: XenonSession | undefined = SESSION_MANAGER.getSession(sessionId);
+
+    if (!session) {
+      log.debug(`[EventManager] No session object found in memory for ${sessionId}. Allowing command ${commandName} to proceed.`);
+      return true;
+    }
+
+    if (commandName === 'deleteSession') {
+      // Video recording is handled in onSessionStoped() called after deleteSession
+      // No need to handle it here to avoid race conditions
+    }
+
+    return true;
   }
 
   async afterSessionCommand(
