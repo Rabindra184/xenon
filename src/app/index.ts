@@ -7,6 +7,7 @@ import cors from 'cors';
 import AsyncLock from 'async-lock';
 import { InternalHttpClient } from '../InternalHttpClient';
 import { config } from '../config';
+import log from '../logger';
 
 import DashboardRouter from './routers/dashboard';
 import GridRouter from './routers/grid';
@@ -101,7 +102,7 @@ function createRouter(pluginArgs: IPluginArgs) {
   try {
     setupSwagger(router, '/xenon');
   } catch (err) {
-    console.warn(
+    log.warn(
       'Swagger documentation not available. Install swagger-jsdoc and swagger-ui-express to enable.',
     );
   }

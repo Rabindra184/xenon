@@ -26,7 +26,7 @@ interface ExtendedADB extends ADB {
   adbHost?: string;
   adbPort?: number;
   adbRemoteHost?: string | null;
-  executable: { path: string; defaultArgs: string[]; [key: string]: any };
+  executable: { path: string; defaultArgs: string[];[key: string]: any };
 }
 
 import { PluginContext } from '../PluginContext';
@@ -41,7 +41,7 @@ export default class AndroidDeviceManager implements IDeviceManager {
   private tracker?: Tracker = undefined;
   private remoteTrackers: { id: string; tracker: Tracker }[] = [];
 
-  constructor(private context: PluginContext) {}
+  constructor(private context: PluginContext) { }
 
   private get pluginArgs() {
     return this.context.pluginArgs;
@@ -115,8 +115,7 @@ export default class AndroidDeviceManager implements IDeviceManager {
 
     for (const [adbInstance, devices] of connectedDevices) {
       log.debug(
-        `fetchAndroidDevices from host: ${adbInstance.adbRemoteHost || 'Local'}. Found ${
-          (devices as any[]).length
+        `fetchAndroidDevices from host: ${adbInstance.adbRemoteHost || 'Local'}. Found ${(devices as any[]).length
         } android devices`,
       );
       const devicesArray = devices as any[];
@@ -229,9 +228,9 @@ export default class AndroidDeviceManager implements IDeviceManager {
     if (!adbInstance) return {};
     const adb = device.adbRemoteHost
       ? (adbInstance.clone({
-          remoteAdbHost: device.adbRemoteHost,
-          adbPort: device.adbPort,
-        }) as ExtendedADB)
+        remoteAdbHost: device.adbRemoteHost,
+        adbPort: device.adbPort,
+      }) as ExtendedADB)
       : adbInstance;
 
     try {
@@ -348,7 +347,7 @@ export default class AndroidDeviceManager implements IDeviceManager {
             'init.svc.bootanim',
           )) as any;
           if (!_.isNil(bootStatus) && !_.isEmpty(bootStatus) && bootStatus == 'stopped') {
-            console.log('Boot Completed!', udid);
+            this.log.info('Boot Completed!', udid);
             return true;
           }
         } catch (err) {
@@ -521,9 +520,9 @@ export default class AndroidDeviceManager implements IDeviceManager {
             await this.onDeviceAdded(originalADB, device);
           }
         });
-        remoteTracker.on('end', () => console.log('Tracking stopped'));
+        remoteTracker.on('end', () => this.log.info('Tracking stopped'));
       } catch (err: unknown) {
-        console.error('Something went wrong:', err instanceof Error ? err.stack : err);
+        this.log.error('Something went wrong:', err instanceof Error ? err.stack : err);
       }
     };
 
@@ -781,8 +780,7 @@ export default class AndroidDeviceManager implements IDeviceManager {
       }
     } catch (err: unknown) {
       log.warn(
-        `Failed to fetch Android clipboard for ${udid}: ${
-          err instanceof Error ? err.message : err
+        `Failed to fetch Android clipboard for ${udid}: ${err instanceof Error ? err.message : err
         }`,
       );
     }
@@ -947,8 +945,7 @@ export default class AndroidDeviceManager implements IDeviceManager {
         return base64.replace(/\r?\n/g, '');
       } catch (fallbackErr: unknown) {
         log.error(
-          `Fallback screenshot also failed for ${udid}: ${
-            fallbackErr instanceof Error ? fallbackErr.message : fallbackErr
+          `Fallback screenshot also failed for ${udid}: ${fallbackErr instanceof Error ? fallbackErr.message : fallbackErr
           }`,
         );
       }

@@ -6,6 +6,8 @@ import path from 'path';
 import axios from 'axios';
 import { exec } from 'teen_process';
 
+import log from './logger';
+
 const CD_CDN =
   process.env.npm_config_chromedriver_cdnurl ||
   process.env.CHROMEDRIVER_CDNURL ||
@@ -35,7 +37,7 @@ const getModuleRoot = _.memoize(function getModuleRoot() {
           return currentDir;
         }
         // eslint-disable-next-line no-empty
-      } catch (ign) {}
+      } catch (ign) { }
       currentDir = path.dirname(currentDir);
       isAtFsRoot = currentDir.length <= path.dirname(currentDir).length;
     }
@@ -64,7 +66,7 @@ async function formatCdVersion(ver: any) {
 
 async function getChromedriverBinaryPath(dir: any, osName = getOsName()) {
   const pathSuffix = osName === OS.windows ? '.exe' : '';
-  console.log(`${CD_EXECUTABLE_PREFIX}*${pathSuffix}`);
+  log.debug(`${CD_EXECUTABLE_PREFIX}*${pathSuffix}`);
   const paths = await fs.glob(`${CD_EXECUTABLE_PREFIX}*${pathSuffix}`, {
     cwd: dir,
     absolute: true,

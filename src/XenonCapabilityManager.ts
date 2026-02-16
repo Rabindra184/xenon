@@ -3,6 +3,7 @@ import { ISessionCapability } from './interfaces/ISessionCapability';
 import _ from 'lodash';
 import { IDevice } from './interfaces/IDevice';
 import { Container } from 'typedi';
+import log from './logger';
 
 export enum XENON_CAPABILITIES {
   BUILD_NAME = 'build',
@@ -82,7 +83,7 @@ export async function iOSCapabilities(
     const streamService = Container.get(IOSStreamService);
     const streamStatus = streamService.getStreamStatus(freeDevice.udid);
 
-    console.log(
+    log.info(
       `[Xenon] 🔍 Checking Stream Status for ${freeDevice.udid}: ${streamStatus?.status || 'None'}`,
     );
 
@@ -99,12 +100,12 @@ export async function iOSCapabilities(
         delete caps.alwaysMatch['appium:mjpegServerPort'];
       }
 
-      console.log(
+      log.info(
         `[Xenon] 🚀 Optimization: Reusing active WDA tunnel at ${wdaUrl} for ${freeDevice.udid}. Port check bypassed.`,
       );
     }
   } catch (e: any) {
-    console.warn(`[Xenon] ⚠️ Failed to check Stream Service: ${e.message}`);
+    log.warn(`[Xenon] ⚠️ Failed to check Stream Service: ${e.message}`);
   }
 
   // Senior Resiliency: Inject higher defaults for WebDriverAgent in enterprise environments
@@ -195,12 +196,12 @@ export function getXenonCapabilities(caps: ISessionCapability) {
     'isolationProfile',
   );
 
-  console.log(
+  log.debug(
     '[CapabilityManager] Resolved Capabilities: ' +
-      `Video=${capabilities[XENON_CAPABILITIES.VIDEO_RECORDING]}, ` +
-      `EveryScreenshot=${capabilities[XENON_CAPABILITIES.SCREENSHOT_ON_EVERY_COMMAND]}, ` +
-      `FailScreenshot=${capabilities[XENON_CAPABILITIES.SCREENSHOT_ON_FAILURE]}, ` +
-      `SaveLogs=${capabilities[XENON_CAPABILITIES.SAVE_DEVICE_LOGS]}`,
+    `Video=${capabilities[XENON_CAPABILITIES.VIDEO_RECORDING]}, ` +
+    `EveryScreenshot=${capabilities[XENON_CAPABILITIES.SCREENSHOT_ON_EVERY_COMMAND]}, ` +
+    `FailScreenshot=${capabilities[XENON_CAPABILITIES.SCREENSHOT_ON_FAILURE]}, ` +
+    `SaveLogs=${capabilities[XENON_CAPABILITIES.SAVE_DEVICE_LOGS]}`,
   );
 
   return capabilities;

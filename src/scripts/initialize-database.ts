@@ -1,6 +1,7 @@
 import { execSync } from 'node:child_process';
 import { config } from '../config';
 import { preparePrismaSchema } from './prepare-prisma';
+import log from '../logger';
 
 const env = {
   ...process.env,
@@ -13,31 +14,31 @@ function executeCmd(cmd: string) {
       env,
       stdio: 'inherit',
     });
-  } catch (error) {
-    console.error(`Failed to execute command: ${cmd}`);
+  } catch (error: any) {
+    log.error(`[DBInit] Failed to execute command: ${cmd} | Error: ${error.message}`);
     throw error;
   }
 }
 
 async function main() {
-  console.log(`[DBInit] Preparing database for provider: ${config.databaseProvider}`);
+  log.info(`[DBInit] Preparing database for provider: ${config.databaseProvider}`);
 
   // 1. Ensure schema matches provider
   await preparePrismaSchema();
 
   // 2. Handle Migrations
   if (config.databaseProvider === 'sqlite') {
-    console.log('[DBInit] Deploying SQLite migrations...');
+    log.info('[DBInit] Deploying SQLite migrations...');
     executeCmd('npx prisma migrate deploy');
   } else {
     // For PostgreSQL, we might not have migrations checked in yet.
     // In "Cellular Architecture", we use db push to ensure the schema is synced
     // without requiring migration history sync across cells.
-    console.log('[DBInit] Syncing PostgreSQL schema via db push...');
+    log.info('[DBInit] Syncing PostgreSQL schema via db push...');
     executeCmd('npx prisma db push --accept-data-loss');
   }
 
-  console.log('[DBInit] Generating Prisma Client...');
+  log.info('[DBInit] Generating Prisma Client...');
   executeCmd('npx prisma generate');
 }
 
