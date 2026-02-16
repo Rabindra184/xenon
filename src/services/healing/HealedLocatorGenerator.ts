@@ -48,7 +48,7 @@ export class HealedLocatorGenerator {
             candidates.push(`//${tagName}[@name='${attrs['name']}']`);
         }
 
-        // 5. Parent-Relative (Healenium style)
+        // 5. Parent-Relative
         const parent = node.parentNode || node.parent;
         if (parent) {
             const parentTag = parent.nodeName || parent.tag;

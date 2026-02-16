@@ -28,7 +28,7 @@ export class FuzzyXmlHealingProvider implements HealingProvider {
     try {
       const dom = new DOMParser().parseFromString(context.pageSource);
 
-      // TIER 2+ Optimization: Use Baseline Signature if available (Healenium standard)
+      // TIER 2+ Optimization: Use Baseline Signature if available
       let etalon: LocatorSignature | null = null;
       if (this.etalonService) {
         etalon = await this.etalonService.getSignature(context.selector);
