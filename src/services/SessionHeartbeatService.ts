@@ -29,12 +29,30 @@ export class SessionHeartbeatService {
     // 1. Local memory check (fast path)
     const localSessions = SESSION_MANAGER.getAllSessions();
     for (const session of localSessions) {
+      // Principal Grace Period: If a session is already stopping, give it 60 seconds to finish
+      // its own cleanup (video processing, etc.) before we force it out.
+      if (session.isStopping && session.stoppedAt && Date.now() - session.stoppedAt < 60000) {
+        continue;
+      }
       const sessionId = session.getId();
       try {
         const isHealthy = await session.checkHealth();
         if (!isHealthy) {
           this.log.warn(`💔 Local Session ${sessionId} failed health check. Cleaning up.`);
-          await this.cleanupDeadSession(session);
+          const reason = session.isStopping
+            ? 'Shutdown timeout (Cleanup hung for > 60s)'
+            : 'Session became unresponsive (Heartbeat failure)';
+
+          await DASHBORD_EVENT_MANAGER.onSessionStopped(sessionId, SessionStatus.FAILED, reason);
+
+          // Unblock device and remove from memory
+          const device = session.getDevice();
+          await DeviceStoreFactory.getStore().updateDevice(device.udid, device.host, {
+            busy: false,
+            session_id: null as any,
+          });
+          SESSION_MANAGER.removeSession(sessionId);
+          this.log.info(`✅ Successfully cleaned up dead session ${sessionId}`);
         }
       } catch (err: any) {
         this.log.error(`Error checking health for local session ${sessionId}: ${err.message}`);
@@ -87,33 +105,6 @@ export class SessionHeartbeatService {
       this.log.info(`✅ Global zombie ${id} neutralized and device ${device_udid} released.`);
     } catch (err: any) {
       this.log.error(`Failed to cleanup global zombie ${id}: ${err.message}`);
-    }
-  }
-
-  private async cleanupDeadSession(session: any) {
-    const sessionId = session.getId();
-    const device = session.getDevice();
-
-    try {
-      // 1. Notify Dashboard
-      await DASHBORD_EVENT_MANAGER.onSessionStopped(
-        sessionId,
-        SessionStatus.FAILED,
-        'Session became unresponsive (Heartbeat failure)',
-      );
-
-      // 2. Unblock Device
-      await DeviceStoreFactory.getStore().updateDevice(device.udid, device.host, {
-        busy: false,
-        session_id: null as any,
-      });
-
-      // 3. Remove from memory
-      SESSION_MANAGER.removeSession(sessionId);
-
-      this.log.info(`✅ Successfully cleaned up dead session ${sessionId}`);
-    } catch (err: any) {
-      this.log.error(`Failed to cleanup dead session ${sessionId}: ${err.message}`);
     }
   }
 }

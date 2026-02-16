@@ -148,27 +148,23 @@ class XenonPlugin extends BasePlugin {
     return await Container.get(SessionLifecycleService).createSession(next, driver, caps);
   }
 
-  async deleteSession(next: () => any, sessionId: string) {
-    return await Container.get(SessionLifecycleService).deleteSession(next, sessionId);
+  async deleteSession(next: () => any, driver: any, sessionId?: string | null) {
+    return await Container.get(SessionLifecycleService).deleteSession(next, sessionId || driver?.sessionId);
   }
 
-  async analyzeScreen(sessionId: string, driver: any) {
+  async analyzeScreen(driver: any) {
     return await this.aiCommandService.analyzeScreen(driver);
   }
 
-  async assertVisualState(sessionId: string, driver: any, instruction: string) {
+  async assertVisualState(driver: any, instruction: string) {
     return await this.aiCommandService.assertVisualState(driver, instruction);
   }
 
-  async omniScan(sessionId: string, driver: any) {
+  async omniScan(driver: any) {
     return await this.aiCommandService.omniScan(driver);
   }
 
-  async testAiLocator(
-    sessionId: string,
-    driver: any,
-    locator: { strategy: string; selector: string },
-  ) {
+  async testAiLocator(driver: any, locator: { strategy: string; selector: string }) {
     return await this.aiCommandService.testAiLocator(driver, locator);
   }
 }

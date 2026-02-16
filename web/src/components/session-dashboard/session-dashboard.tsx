@@ -101,7 +101,7 @@ const SessionTableRow = React.memo(
       <tr className={`session-table-row ${session.status}`} onClick={() => onSelect(session.id)}>
         <td>
           <div className="cell-id">
-            <span className="id-text">#{session.id.slice(0, 8)}</span>
+            <span className="id-text">#{session.id?.slice(0, 8) || 'unknown'}</span>
             {session.name && <span className="name-text">{session.name}</span>}
             {session.tags && (
               <div className="session-tags-pills">
@@ -118,7 +118,7 @@ const SessionTableRow = React.memo(
           <div className="cell-platform">
             <Smartphone
               size={14}
-              color={session.device_platform.toLowerCase() === 'ios' ? '#38bdf8' : '#4ade80'}
+              color={session.device_platform?.toLowerCase() === 'ios' ? '#38bdf8' : '#4ade80'}
             />
             <span>{session.device_name || 'Unknown Device'}</span>
           </div>
@@ -133,7 +133,7 @@ const SessionTableRow = React.memo(
                   : 'warning'
             }
           >
-            {session.status.toUpperCase()}
+            {session.status?.toUpperCase() || 'UNKNOWN'}
           </Badge>
         </td>
         <td>{formatDate(session.startTime)}</td>
@@ -282,28 +282,47 @@ const SessionDashboard: React.FC = () => {
   React.useEffect(() => {
     if (!onSocketEvent) return;
 
-    onSocketEvent('session_started', (data: ISession) => {
-      setSessions((prev) => [data, ...prev]);
-    });
+    const unsubs: (() => void)[] = [];
 
-    onSocketEvent('session_stopped', (data: { id: string; status: string }) => {
-      setSessions((prev) =>
-        prev.map((s) =>
-          s.id === data.id ? { ...s, status: data.status, endTime: new Date().toISOString() } : s,
-        ),
-      );
-    });
+    unsubs.push(
+      onSocketEvent('session_started', (data: ISession) => {
+        setSessions((prev) => {
+          // Prevent duplicates if fetchData also ran
+          if (prev.some((s) => s.id === data.id)) return prev;
+          return [data, ...prev];
+        });
+      }),
+    );
 
-    onSocketEvent('session_command', (data: ISessionLog) => {
-      // Only append if it's the currently selected session
-      if (selectedSessionId === data.session_id) {
-        setLogs((prev) => [data, ...prev]);
-      }
-    });
+    unsubs.push(
+      onSocketEvent('session_stopped', (data: { id: string; status: string }) => {
+        setSessions((prev) =>
+          prev.map((s) =>
+            s.id === data.id ? { ...s, status: data.status, endTime: new Date().toISOString() } : s,
+          ),
+        );
+      }),
+    );
+
+    unsubs.push(
+      onSocketEvent('session_command', (data: ISessionLog) => {
+        // Only append if it's the currently selected session
+        if (selectedSessionId === data.session_id) {
+          setLogs((prev) => {
+            if (prev.some((l) => l.id === data.id)) return prev;
+            return [data, ...prev];
+          });
+        }
+      }),
+    );
 
     // Device events for grid awareness
-    onSocketEvent('device_added', () => fetchData());
-    onSocketEvent('device_removed', () => fetchData());
+    unsubs.push(onSocketEvent('device_added', () => fetchData()));
+    unsubs.push(onSocketEvent('device_removed', () => fetchData()));
+
+    return () => {
+      unsubs.forEach((u) => u());
+    };
   }, [onSocketEvent, selectedSessionId, fetchData]);
 
   const filteredBuilds = builds.filter((b) => {
@@ -430,7 +449,7 @@ const SessionDashboard: React.FC = () => {
           <span className="crumb-separator">›</span>
           <span>Sessions</span>
           <span className="crumb-separator">›</span>
-          <span className="crumb-current">{selectedSession.id.slice(0, 16)}...</span>
+          <span className="crumb-current">{selectedSession.id?.slice(0, 16) || 'unknown'}...</span>
         </div>
 
         {/* Metadata Bar */}
@@ -466,7 +485,7 @@ const SessionDashboard: React.FC = () => {
                     : 'warning'
               }
             >
-              {selectedSession.status.toUpperCase()}
+              {selectedSession.status?.toUpperCase() || 'UNKNOWN'}
             </Badge>
             {selectedSession.status === 'failed' && selectedSession.failure_category && (
               <Badge variant="secondary" className="category-badge">
@@ -529,7 +548,9 @@ const SessionDashboard: React.FC = () => {
                 (tab) => {
                   if (
                     tab === 'profiling' &&
-                    !['android', 'ios'].includes(selectedSession.device_platform.toLowerCase())
+                    !['android', 'ios'].includes(
+                      selectedSession.device_platform?.toLowerCase() || '',
+                    )
                   )
                     return null;
                   return (

@@ -21,54 +21,70 @@ export class HealthMonitorService {
   private healthHistory: Map<string, Array<{ time: number; battery?: number; thermal?: string }>> =
     new Map();
 
-  constructor(private webConfigService: WebConfigService) {}
+  constructor(private webConfigService: WebConfigService) { }
 
   public start(pluginArgs: IPluginArgs) {
     this.pluginArgs = pluginArgs;
     this.stop();
 
-    this.setupMonitor(pluginArgs);
+    // Do NOT run checkAllDevices immediately on startup.
+    // Devices are freshly discovered and presumed healthy.
+    // The first check will fire after the configured interval (default: 24h).
+    this.setupMonitor(pluginArgs, false);
 
-    // Initial config poll and setup polling
-    this.pollWebConfig();
+    // Delay config polling to avoid restarting the monitor during startup
     this.configPollInterval = setInterval(() => this.pollWebConfig(), 60000); // Poll every minute
   }
 
   private async pollWebConfig() {
     try {
       const webConfig = await this.webConfigService.getConfig();
-      if (JSON.stringify(webConfig) !== JSON.stringify(this.lastWebConfig)) {
-        this.log.info('Detected web configuration changes, restarting monitor...');
-        this.lastWebConfig = webConfig;
 
-        // Merge web config with plugin args, web config takes precedence
-        const effectiveArgs = {
-          ...this.pluginArgs,
-          ...webConfig,
-        } as IPluginArgs;
+      // Merge web config with plugin args to get current effective settings
+      const currentEffectiveArgs = {
+        ...this.pluginArgs,
+        ...webConfig,
+      } as IPluginArgs;
 
-        this.setupMonitor(effectiveArgs);
+      // Check if interval-related settings actually changed
+      const lastEffectiveArgs = {
+        ...this.pluginArgs,
+        ...this.lastWebConfig,
+      } as IPluginArgs;
+
+      const hasChanged =
+        currentEffectiveArgs.healthCheckIntervalMs !== lastEffectiveArgs.healthCheckIntervalMs ||
+        currentEffectiveArgs.healthCheckSchedule !== lastEffectiveArgs.healthCheckSchedule;
+
+      if (hasChanged) {
+        this.log.info('Detected health check configuration changes, restarting monitor...');
+        this.setupMonitor(currentEffectiveArgs, false); // Don't run immediately on config refresh
       }
+
+      this.lastWebConfig = webConfig;
     } catch (err: any) {
       this.log.error(`Failed to poll web config: ${err.message}`);
     }
   }
 
-  private setupMonitor(args: IPluginArgs) {
+  private setupMonitor(args: IPluginArgs, runImmediately: boolean = true) {
+    const intervalMs = args.healthCheckIntervalMs || 86400000;
+    const scheduleStr = args.healthCheckSchedule;
+
     if (this.interval) clearInterval(this.interval);
     if (this.job) this.job.cancel();
 
-    if (args.healthCheckSchedule) {
-      this.log.info(`Scheduling Health Monitor (Cron: ${args.healthCheckSchedule})`);
-      this.job = schedule.scheduleJob(args.healthCheckSchedule, () => this.checkAllDevices());
+    if (scheduleStr) {
+      this.log.info(`Scheduling Health Monitor (Cron: ${scheduleStr})`);
+      this.job = schedule.scheduleJob(scheduleStr, () => this.checkAllDevices());
     } else {
-      const intervalMs = args.healthCheckIntervalMs || 86400000;
       this.log.info(`Starting Health Monitor Service (Interval: ${intervalMs}ms)`);
       this.interval = setInterval(() => this.checkAllDevices(), intervalMs);
     }
 
-    // Run immediately
-    this.checkAllDevices();
+    if (runImmediately) {
+      this.checkAllDevices();
+    }
   }
 
   public stop() {

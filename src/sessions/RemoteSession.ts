@@ -41,11 +41,8 @@ export class RemoteSession extends XenonSession {
         url: `${this.baseUrl}/session/${this.sessionId}/appium/stop_recording_screen`,
         data: {},
       });
-      console.log(
-        `[RemoteSession] stopVideoRecording response status: ${response.status}, data length: ${
-          response?.data?.value?.length || 0
-        }`,
-      );
+      const dataLen = response?.data?.value?.length || 0;
+      console.log(`[RemoteSession] stopVideoRecording response status: ${response.status}, data length: ${dataLen}`);
       return response.status === 200 && response?.data?.value ? response?.data?.value : '';
     } catch (err: any) {
       console.log(
@@ -58,11 +55,8 @@ export class RemoteSession extends XenonSession {
           url: `${this.baseUrl}/session/${this.sessionId}/appium/stop_recording_screen`,
           data: {},
         });
-        console.log(
-          `[RemoteSession] stopVideoRecording retry succeeded, data length: ${
-            retryResponse?.data?.value?.length || 0
-          }`,
-        );
+        const retryDataLen = retryResponse?.data?.value?.length || 0;
+        console.log(`[RemoteSession] stopVideoRecording retry succeeded, data length: ${retryDataLen}`);
         return retryResponse?.data?.value || '';
       } catch (retryErr: any) {
         console.log(`[RemoteSession] stopVideoRecording retry also failed: ${retryErr.message}`);
@@ -161,9 +155,8 @@ export class RemoteSession extends XenonSession {
       .then((response) => {
         // Set flag to true if response is successful (status 200 or 2xx)
         this.isVideoAvailable = response.status >= 200 && response.status < 300;
-        console.log(
-          `[RemoteSession] startVideoRecording response status: ${response.status}, isVideoAvailable: ${this.isVideoAvailable}`,
-        );
+        const status = response.status;
+        console.log(`[RemoteSession] startVideoRecording response status: ${status}, isVideoAvailable: ${this.isVideoAvailable}`);
       })
       .catch((error) => {
         console.log('[RemoteSession] startVideoRecording error:', error.message);
@@ -183,15 +176,50 @@ export class RemoteSession extends XenonSession {
   }
 
   async checkHealth(): Promise<boolean> {
+    // Session-aware health probe: Use W3C WebDriver GET /session/{id}/timeouts
+    // as the primary check. Unlike /status (which only confirms the Appium server
+    // is alive), /timeouts validates that the specific session still exists.
+    // A 404 means the session is gone; a 2xx means it's genuinely alive.
+    // Falls back to /status only when sessionId is unavailable.
+
+    if (this.sessionId) {
+      try {
+        const response = await axios({
+          method: 'get',
+          url: `${this.baseUrl}/session/${this.sessionId}/timeouts`,
+          timeout: 5000,
+        });
+        return response.status >= 200 && response.status < 300;
+      } catch (err: any) {
+        const status = err.response?.status;
+
+        // Session-specific errors (4xx) → session is dead
+        if (status && status >= 400 && status < 500) {
+          log.warn(
+            `[RemoteSession] Session ${this.sessionId} is dead (HTTP ${status} from /timeouts). Marking unhealthy.`,
+          );
+          return false;
+        }
+
+        // Server-level errors (5xx, ECONNREFUSED, timeout) → fall back to /status
+        log.debug(
+          `[RemoteSession] /timeouts probe failed for ${this.sessionId} (${err.message}). Falling back to /status.`,
+        );
+      }
+    }
+
+    // Fallback: /status check (server-level liveness)
     try {
       const response = await axios({
         method: 'get',
-        url: `${this.baseUrl}/session/${this.sessionId}/url`,
+        url: `${this.baseUrl}/status`,
         timeout: 5000,
       });
       return response.status >= 200 && response.status < 300;
     } catch (err: any) {
-      log.warn(`[RemoteSession] Health check failed for session ${this.sessionId}: ${err.message}`);
+      log.warn(
+        `[RemoteSession] Health check failed for session ${this.sessionId}: ${err.message}`,
+      );
       return false;
     }
   }

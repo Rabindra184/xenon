@@ -498,13 +498,17 @@ export class SessionLifecycleService {
     return 'default-lock';
   }
 
-  async deleteSession(next: () => any, sessionId: string) {
-    await unblockDeviceMatchingFilter({ session_id: sessionId as any });
-    this.logger.info(`📱 Unblocking the device that is blocked for session ${sessionId}`);
+  async deleteSession(next: () => any, sessionId?: string | null) {
+    if (sessionId) {
+      await unblockDeviceMatchingFilter({ session_id: sessionId as any });
+      this.logger.info(`📱 Unblocking the device that is blocked for session ${sessionId}`);
+    }
 
-    const session = SESSION_MANAGER.getSession(sessionId);
+    const session = sessionId ? SESSION_MANAGER.getSession(sessionId) : undefined;
 
     if (session) {
+      session.isStopping = true;
+      session.stoppedAt = Date.now();
       const device = session.getDevice();
       if (device && device.platform?.toLowerCase() === 'ios') {
         this.logger.info('Stopping iOS profiling before session deletion');
@@ -512,8 +516,8 @@ export class SessionLifecycleService {
           const traceBase64 = await session.stopPerformanceRecording();
           if (traceBase64) {
             const { savePerformanceTrace } = await import('../dashboard/asset-manager');
-            const tracePath = savePerformanceTrace(sessionId, traceBase64);
-            await updateSessionDetails(sessionId, { performance_trace: tracePath });
+            const tracePath = savePerformanceTrace(session.getId(), traceBase64);
+            await updateSessionDetails(session.getId(), { performance_trace: tracePath });
             this.logger.info(`✅ iOS profiling trace saved at ${tracePath}`);
           }
         } catch (err: any) {
@@ -530,9 +534,9 @@ export class SessionLifecycleService {
               const { saveVideoRecording } = await import('../dashboard/asset-manager');
               let videoPath = videoData;
               if (videoData.length > 1000) {
-                videoPath = saveVideoRecording(sessionId, videoData);
+                videoPath = saveVideoRecording(session.getId(), videoData);
               }
-              await updateSessionDetails(sessionId, { video_recording: videoPath });
+              await updateSessionDetails(session.getId(), { video_recording: videoPath });
             } catch (saveErr: any) {
               this.logger.error(`❌ Failed to process video asset: ${saveErr.message}`);
             }
@@ -543,28 +547,52 @@ export class SessionLifecycleService {
       }
     }
 
+    let timeoutId: any;
     try {
-      return await next();
+      // Principal Protection: Wrap the driver deletion with a timeout.
+      // If the underlying driver (WDA/ADB) hangs during shutdown, we don't want
+      // our session lifecycle to be stuck 'RUNNING' forever.
+      const deletionTimeout = new Promise((_, reject) => {
+        timeoutId = setTimeout(() => reject(new Error('Deletion timed out')), 30000);
+      });
+
+      const response = await Promise.race([next(), deletionTimeout]);
+      clearTimeout(timeoutId);
+      return response;
+    } catch (err: any) {
+      clearTimeout(timeoutId);
+      this.logger.warn(
+        `⚠️ Internal deleteSession failed or timed out: ${err.message}. Continuing cleanup anyway.`,
+      );
+      return null;
     } finally {
-      const session = SESSION_MANAGER.getSession(sessionId);
-      if (session) {
-        const device = session.getDevice();
-        const { NetworkConditioningService } = await import('./NetworkConditioningService');
-        await Container.get(NetworkConditioningService).reset(sessionId, device);
-      }
-
-      await DASHBORD_EVENT_MANAGER.onSessionStopped(sessionId);
-      SESSION_MANAGER.removeSession(sessionId);
-
-      try {
-        const { getSessionById } = await import('../dashboard/services/session-service');
-        const sessionData = await getSessionById(sessionId);
-        if (sessionData && (sessionData.status === 'failed' || sessionData.failure_reason)) {
-          const { NotificationService } = await import('./NotificationService');
-          await Container.get(NotificationService).dispatchEvent('session_failed', sessionData);
+      if (sessionId) {
+        const session = SESSION_MANAGER.getSession(sessionId);
+        if (session) {
+          const device = session.getDevice();
+          try {
+            const { NetworkConditioningService } = await import('./NetworkConditioningService');
+            await Container.get(NetworkConditioningService).reset(sessionId, device);
+          } catch (resetErr: any) {
+            this.logger.warn(
+              `⚠️ NetworkConditioningService.reset failed for session ${sessionId}: ${resetErr.message}`,
+            );
+          }
         }
-      } catch (err) {
-        /* ignore notification errors */
+
+        await DASHBORD_EVENT_MANAGER.onSessionStopped(sessionId);
+        SESSION_MANAGER.removeSession(sessionId);
+
+        try {
+          const { getSessionById } = await import('../dashboard/services/session-service');
+          const sessionData = await getSessionById(sessionId);
+          if (sessionData && (sessionData.status === 'failed' || sessionData.failure_reason)) {
+            const { NotificationService } = await import('./NotificationService');
+            await Container.get(NotificationService).dispatchEvent('session_failed', sessionData);
+          }
+        } catch (err) {
+          /* ignore notification errors */
+        }
       }
     }
   }

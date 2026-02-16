@@ -275,17 +275,22 @@ export class CommandInterceptor {
     const selector = args[1];
     const elementId = response.ELEMENT || response['element-6066-11e4-a52e-4f735466cecf'];
     if (!elementId || typeof selector !== 'string') return;
+
     (async () => {
       try {
         const etalonService = Container.get(HealEtalonService);
         const anchors = ['content-desc', 'resource-id', 'text', 'name', 'id', 'hint'];
         const nodeAttrs: { name: string; value: string }[] = [];
+
         for (const attr of anchors) {
           try {
             const val = await driver.getElementAttribute(elementId, attr);
             if (val) nodeAttrs.push({ name: attr, value: val });
-          } catch (e) { }
+          } catch (e) {
+            // Silently ignore: attribute may not exist or be inaccessible
+          }
         }
+
         const nodeName = await driver.getElementTagName(elementId);
 
         // Path capture logic
@@ -304,7 +309,9 @@ export class CommandInterceptor {
             }
             resiliotreePathJson = new Path(pathNodes).toJSON();
           }
-        } catch (e) { }
+        } catch (e) {
+          // Silently ignore: path capture is optional for learning
+        }
 
         await etalonService.saveSignature(
           strategy,

@@ -90,7 +90,7 @@ export class PrismaDeviceStore implements IDeviceStore {
       where.deviceType = filterOptions.deviceType;
     }
 
-    if (filterOptions.session_id) {
+    if (filterOptions.session_id && typeof filterOptions.session_id === 'string') {
       where.session_id = filterOptions.session_id;
     }
 

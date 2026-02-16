@@ -314,11 +314,11 @@ export class DeviceCard extends React.Component<IDeviceCardProps, IDeviceCardSta
             )}
             {thermalStatus && thermalStatus !== 'Normal' && (
               <div
-                className={`health-metric thermal-metric ${thermalStatus.toLowerCase()}`}
+                className={`health-metric thermal-metric ${thermalStatus?.toLowerCase() || ''}`}
                 title={`Thermal: ${thermalStatus}`}
               >
                 <Thermometer size={12} />
-                <span>{thermalStatus.toUpperCase()}</span>
+                <span>{thermalStatus?.toUpperCase() || ''}</span>
               </div>
             )}
             {storageFree && storageFree !== 'Unknown' && (
