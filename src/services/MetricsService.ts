@@ -16,7 +16,7 @@ export class MetricsService {
       await prisma.webConfig.upsert({
         where: { name },
         update: { value: (currentValue + 1).toString() },
-        create: { id: this.CONFIG_ID, name, value: '1' },
+        create: { id: name, name, value: '1' },
       });
     } catch (error) {
       console.error(`[MetricsService] Failed to increment ${name}`, error);

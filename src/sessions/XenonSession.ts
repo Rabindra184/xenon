@@ -12,6 +12,7 @@ export type XenonSessionOptions = {
 export abstract class XenonSession {
   protected sessionId: string;
   protected xenonOption: Record<string, any>;
+  public isStopping: boolean = false;
 
   constructor(private options: XenonSessionOptions) {
     this.sessionId = options.sessionId;

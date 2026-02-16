@@ -29,10 +29,13 @@ export class SessionHeartbeatService {
     // 1. Local memory check (fast path)
     const localSessions = SESSION_MANAGER.getAllSessions();
     for (const session of localSessions) {
+      if (session.isStopping) {
+        continue;
+      }
       const sessionId = session.getId();
       try {
         const isHealthy = await session.checkHealth();
-        if (!isHealthy) {
+        if (!isHealthy && !session.isStopping) {
           this.log.warn(`💔 Local Session ${sessionId} failed health check. Cleaning up.`);
           await this.cleanupDeadSession(session);
         }

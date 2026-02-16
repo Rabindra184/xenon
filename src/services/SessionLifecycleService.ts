@@ -505,6 +505,7 @@ export class SessionLifecycleService {
     const session = SESSION_MANAGER.getSession(sessionId);
 
     if (session) {
+      session.isStopping = true;
       const device = session.getDevice();
       if (device && device.platform?.toLowerCase() === 'ios') {
         this.logger.info('Stopping iOS profiling before session deletion');

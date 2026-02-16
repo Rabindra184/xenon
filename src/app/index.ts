@@ -78,10 +78,10 @@ apiRouter.get('/metrics', async (req, res) => {
   res.send(metrics);
 });
 
-const publicPath = [
-  path.join(__dirname, '..', 'public'),
-  path.join(__dirname, '..', '..', 'public')
-].find(p => fs.existsSync(p)) || path.join(__dirname, '..', '..', 'public');
+const publicPath =
+  [path.join(__dirname, '..', 'public'), path.join(__dirname, '..', '..', 'public')].find((p) =>
+    fs.existsSync(p),
+  ) || path.join(__dirname, '..', '..', 'public');
 
 staticFilesRouter.use(express.static(publicPath));
 router.use('/api', apiRouter);
