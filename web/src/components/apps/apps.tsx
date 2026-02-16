@@ -17,12 +17,14 @@ import {
   X,
 } from 'lucide-react';
 import XenonApiService from '../../api-service';
+import { useToast } from '../ui/toast';
 import './apps.css';
 import { IDevice } from '../../interfaces/IDevice';
 import { Badge } from '../ui/badge';
 import { Button } from '../ui/button';
 
 const Apps: React.FC = () => {
+  const { toast, removeToast } = useToast();
   const [apps, setApps] = useState<any[]>([]);
   const [devices, setDevices] = useState<IDevice[]>([]);
   const [loading, setLoading] = useState(false);
@@ -98,16 +100,20 @@ const Apps: React.FC = () => {
   };
 
   const handleInstall = async (appId: string, udid: string) => {
+    const toastId = toast(`Deploying app to ${udid}...`, 'loading', 0);
     try {
       const res = await XenonApiService.installRepositoryApp(udid, appId);
       if (res.success) {
+        toast('App deployed successfully', 'success');
         setDeployingAppId(null);
         setSelectedUDID('');
       } else {
-        alert(`Deployment failed: ${res.error}`);
+        toast(`Deployment failed: ${res.error}`, 'error');
       }
     } catch (err: any) {
-      alert(`Execution Error: ${err.message}`);
+      toast(`Execution Error: ${err.message}`, 'error');
+    } finally {
+      removeToast(toastId);
     }
   };
 

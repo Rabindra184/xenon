@@ -3,6 +3,7 @@ import './tag-manager-modal.css';
 import { Tag as TagIcon, X, Plus } from 'lucide-react';
 import { IDevice } from '../../interfaces/IDevice';
 import XenonApiService from '../../api-service';
+import { useToast } from '../ui/toast';
 
 interface TagManagerModalProps {
   device: IDevice;
@@ -11,6 +12,7 @@ interface TagManagerModalProps {
 }
 
 const TagManagerModal: React.FC<TagManagerModalProps> = ({ device, onClose, onUpdated }) => {
+  const { toast } = useToast();
   const [tags, setTags] = useState<string[]>(device.tags || []);
   const [inputValue, setInputValue] = useState('');
   const [isSaving, setIsSaving] = useState(false);
@@ -50,7 +52,7 @@ const TagManagerModal: React.FC<TagManagerModalProps> = ({ device, onClose, onUp
       onClose();
     } catch (err) {
       console.error('Failed to update tags', err);
-      alert('Error saving tags. Please try again.');
+      toast('Error saving tags. Please try again.', 'error');
     } finally {
       setIsSaving(false);
     }

@@ -1,5 +1,6 @@
 import express from 'express';
 import path from 'path';
+import fs from 'fs';
 
 import { getCLIArgs } from '../data-service/pluginArgs';
 import cors from 'cors';
@@ -77,7 +78,12 @@ apiRouter.get('/metrics', async (req, res) => {
   res.send(metrics);
 });
 
-staticFilesRouter.use(express.static(path.join(__dirname, '..', '..', 'public')));
+const publicPath = [
+  path.join(__dirname, '..', 'public'),
+  path.join(__dirname, '..', '..', 'public')
+].find(p => fs.existsSync(p)) || path.join(__dirname, '..', '..', 'public');
+
+staticFilesRouter.use(express.static(publicPath));
 router.use('/api', apiRouter);
 router.use('/assets', express.static(config.sessionAssetsPath));
 router.use(staticFilesRouter);
@@ -111,7 +117,7 @@ function createRouter(pluginArgs: IPluginArgs) {
   // Fallback route for client-side routing - serve index.html for all non-API routes
   // MUST be registered after Swagger to avoid interception
   router.get(/^(?!\/api).*/, (req, res) => {
-    res.sendFile(path.join(__dirname, '..', '..', 'public', 'index.html'));
+    res.sendFile(path.join(publicPath, 'index.html'));
   });
 
   return router;
