@@ -46,12 +46,20 @@ export class CommandInterceptor {
       if (sessionId) {
         const { updateCmdExecutedTime } = await import('../data-service/device-service');
         await updateCmdExecutedTime(sessionId);
-        await DASHBORD_EVENT_MANAGER.beforeSessionCommand(
+        const shouldProceed = await DASHBORD_EVENT_MANAGER.beforeSessionCommand(
           sessionId,
           commandName,
-          {} as any,
-          {} as any,
+          { body: { script: args[0], args: args[1] } } as any,
+          {
+            status: () => ({ json: (d: any) => d }),
+            setHeader: () => { },
+            getHeader: () => { },
+          } as any,
         );
+
+        if (shouldProceed === false) {
+          return null;
+        }
       }
 
       // --- OMNI-VISION: PROACTIVE SEARCH ---
@@ -94,23 +102,6 @@ export class CommandInterceptor {
             elementId,
             args[1],
           );
-        }
-      }
-
-      // Intercept execute for dashboard
-      if (isHub && !!pluginArgs.enableDashboard && commandName === 'execute') {
-        const script = args[0];
-        if (
-          script &&
-          typeof script === 'string' &&
-          (script.startsWith('xenon') || script.startsWith('devicefarm'))
-        ) {
-          const dashboardCmd = script.split(':')[1]?.trim();
-          if (dashboardCmd) {
-            // This would need to call plugin.executeDashboardCommand, or we move it to a service
-            // For now, let's assume we can handle it or pass it back.
-            // (Re-evaluating: better to keep it in plugin.ts if it impacts other systems or move it to a DashboardService)
-          }
         }
       }
 
@@ -293,7 +284,7 @@ export class CommandInterceptor {
           try {
             const val = await driver.getElementAttribute(elementId, attr);
             if (val) nodeAttrs.push({ name: attr, value: val });
-          } catch (e) {}
+          } catch (e) { }
         }
         const nodeName = await driver.getElementTagName(elementId);
 
@@ -313,7 +304,7 @@ export class CommandInterceptor {
             }
             resiliotreePathJson = new Path(pathNodes).toJSON();
           }
-        } catch (e) {}
+        } catch (e) { }
 
         await etalonService.saveSignature(
           strategy,
