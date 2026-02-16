@@ -272,6 +272,7 @@ export class DashboardEventManager {
 
     if (commandName) {
       this.commandStartTime.set(`${sessionId}:${commandName}`, Date.now());
+      log.debug(`[EventManager] beforeSessionCommand: sessionId=${sessionId}, commandName=${commandName}`);
     }
 
     switch (commandName) {
@@ -279,13 +280,17 @@ export class DashboardEventManager {
         // Video recording is handled in onSessionStoped() called after deleteSession
         // No need to handle it here to avoid race conditions
         break;
-      case 'execute':
-        if (request.body && dashboardCommands.isDashboardCommand(request.body.script)) {
-          log.info('Recieved execute command with script ' + request.body.script);
+      case 'execute': {
+        const script = request.body?.script || (Array.isArray(request.body) ? request.body[0] : undefined);
+        if (script && dashboardCommands.isDashboardCommand(script)) {
+          log.info(`[EventManager] Intercepting dashboard command: ${script}`);
           await dashboardCommands.process(sessionId, request, response);
           return false;
+        } else if (script) {
+          log.debug(`[EventManager] Not a dashboard command. script=${script}`);
         }
         break;
+      }
     }
 
     return !!session;

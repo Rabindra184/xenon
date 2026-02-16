@@ -16,11 +16,13 @@ export class TracingService {
 
     // Always add console exporter for debugging if enabled via env or log level
     if (process.env.XENON_OTEL_DEBUG === 'true') {
+      log.info('[TracingService] XENON_OTEL_DEBUG is true. Adding ConsoleSpanExporter.');
       exporters.push(new ConsoleSpanExporter());
     }
 
     // Add OTLP exporter if endpoint is provided
     if (process.env.OTEL_EXPORTER_OTLP_ENDPOINT) {
+      log.info(`[TracingService] OTLP Endpoint found: ${process.env.OTEL_EXPORTER_OTLP_ENDPOINT}. Adding OTLPTraceExporter.`);
       exporters.push(
         new OTLPTraceExporter({
           url: process.env.OTEL_EXPORTER_OTLP_ENDPOINT,
@@ -33,6 +35,8 @@ export class TracingService {
         '[TracingService] No OTel exporters configured. Spans will be recorded in memory only.',
       );
     }
+
+    log.info(`[TracingService] Initializing with ${exporters.length} exporters. XENON_OTEL_DEBUG=${process.env.XENON_OTEL_DEBUG}`);
 
     if (exporters.length > 0) {
       this.sdk = new NodeSDK({
