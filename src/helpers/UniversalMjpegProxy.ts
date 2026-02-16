@@ -33,6 +33,16 @@ export class UniversalMjpegProxy {
   private reconnectionTimeout: NodeJS.Timeout | null = null;
   private isStopped = false;
 
+  /**
+   * Principal Resilience: Retry limits with exponential backoff.
+   * Without these, the proxy retries every 500ms FOREVER, flooding logs
+   * and wasting CPU after a session ends or the server shuts down.
+   */
+  private consecutiveRetries = 0;
+  private static readonly MAX_RETRIES = 10;
+  private static readonly BASE_RETRY_MS = 500;
+  private static readonly MAX_RETRY_MS = 10000;
+
   constructor(mjpegUrl: string) {
     this.mjpegUrl = mjpegUrl;
   }
@@ -81,6 +91,8 @@ export class UniversalMjpegProxy {
       }
 
       this.isConnected = true;
+      this.consecutiveRetries = 0; // Reset on successful connection
+
       // Standard MJPEG
       sourceRes.on('data', (chunk) => {
         this.broadcast(chunk);
@@ -107,7 +119,7 @@ export class UniversalMjpegProxy {
         );
         this.startRawSource();
       } else {
-        log.error(`[MjpegProxy] Connection request error: ${err.message}`);
+        log.error(`[MjpegProxy] Connection error: ${err.message}`);
         this.reconnect();
       }
     });
@@ -129,6 +141,7 @@ export class UniversalMjpegProxy {
       () => {
         log.info(`[MjpegProxy] Raw MJPEG socket connected to ${url.hostname}:${url.port}`);
         this.isConnected = true;
+        this.consecutiveRetries = 0; // Reset on successful connection
 
         // Some MJPEG servers expect a GET request even if they don't send valid HTTP headers back
         socket.write(`GET ${url.pathname}${url.search} HTTP/1.1\r\nHost: ${url.hostname}\r\n\r\n`);
@@ -214,18 +227,39 @@ export class UniversalMjpegProxy {
       return;
     }
 
+    // Principal Fix: Enforce maximum retry limit with exponential backoff.
+    // Without this, the proxy retries every 500ms FOREVER after a session
+    // ends or the server shuts down, flooding logs and wasting CPU.
+    this.consecutiveRetries++;
+
+    if (this.consecutiveRetries > UniversalMjpegProxy.MAX_RETRIES) {
+      log.warn(
+        `[MjpegProxy] Max retries (${UniversalMjpegProxy.MAX_RETRIES}) reached for ${this.mjpegUrl}. Giving up and disconnecting clients.`,
+      );
+      this.stop();
+      return;
+    }
+
     if (this.reconnectionTimeout) return; // Already waiting for reconnect
 
     this.stopSource('reconnecting');
 
+    // Exponential backoff: 500ms, 1s, 2s, 4s, 8s, 10s (capped)
+    const delayMs = Math.min(
+      UniversalMjpegProxy.BASE_RETRY_MS * Math.pow(2, this.consecutiveRetries - 1),
+      UniversalMjpegProxy.MAX_RETRY_MS,
+    );
+
     if (this.clients.size > 0) {
-      log.info('[MjpegProxy] Attempting reconnection in 500ms...');
+      log.info(
+        `[MjpegProxy] Retry ${this.consecutiveRetries}/${UniversalMjpegProxy.MAX_RETRIES} in ${delayMs}ms...`,
+      );
       this.reconnectionTimeout = setTimeout(() => {
         this.reconnectionTimeout = null;
         if (this.clients.size > 0 && !this.isStopped) {
           this.startSource();
         }
-      }, 500);
+      }, delayMs);
     }
   }
 }
