@@ -54,7 +54,7 @@ export const DefaultPluginArgs: IPluginArgs = {
   bindHostOrIp: ip.address(),
   enableDashboard: false,
   bootedSimulators: false,
-  healthCheckIntervalMs: 30000,
+  healthCheckIntervalMs: 86400000,
   healthCheckSchedule: undefined,
   removeDevicesFromDatabaseBeforeRunningThePlugin: false,
   databaseProvider: undefined,
