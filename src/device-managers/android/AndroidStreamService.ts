@@ -236,20 +236,17 @@ class AndroidStreamService {
           });
         });
 
-        // Use '127.0.0.1' for internal proxy to avoid routing issues
-        await new Promise<void>((resolve, reject) => {
-          session.server!.listen(mjpegPort, '127.0.0.1', () => {
-            log.info(`[${udid}] MJPEG server listening on 127.0.0.1:${mjpegPort}`);
-            resolve();
-          });
-          session.server!.on('error', (err) => {
-            log.error(`[${udid}] MJPEG Server Error: ${err.message}`);
-            reject(err);
-          });
-        });
+        session.server!.listen(mjpegPort, '127.0.0.1');
 
-        // Brief settlement delay for OS networking stack
-        await new Promise((r) => setTimeout(r, 200));
+        // Principal Resilience: Wait for port to be actually listening
+        // This prevents FFMPEG race conditions where it tries to connect before the socket is open
+        const tcpPortUsed = require('tcp-port-used');
+        try {
+          await tcpPortUsed.waitUntilUsed(mjpegPort, 200, 2000);
+          log.info(`[${udid}] MJPEG stream confirmed active on port ${mjpegPort}`);
+        } catch (e) {
+          log.warn(`[${udid}] MJPEG port check timed out, proceeding anyway: ${e}`);
+        }
 
         session.status = 'running';
         this.captureLoop(udid, session);
