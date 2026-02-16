@@ -80,20 +80,36 @@ export class DashboardCommands {
     if (_.isArray(args)) {
       args = args[0];
     }
-    // FIX: Validate against 'passed' and 'failed' (not 'success')
-    const validStatuses = ['passed', 'failed', 'success']; // 'success' kept for backward compat
-    if (args.status && validStatuses.indexOf(args.status) < 0) {
+
+    // Normalize input
+    const inputStatus = (args.status || '').toLowerCase();
+    const validStatuses = ['success', 'failed', 'passed'];
+
+    if (!validStatuses.includes(inputStatus)) {
       log.warn(
         `[DashboardCommands] Invalid status: ${args.status}. Valid: ${validStatuses.join(', ')}`,
       );
       return this.sendSuccessResponse(response);
     }
-    // Normalize 'success' to 'passed' for consistency
-    const normalizedStatus = args.status === 'success' ? 'passed' : args.status;
+    // Normalize 'passed' to 'success' for consistency with SessionStatus enum
+    const normalizedStatus = inputStatus === 'passed' ? 'success' : inputStatus;
     await updateSessionDetails(sessionId, {
       status: normalizedStatus,
       failure_reason: args.reason || undefined,
     });
+
+    // --- REAL-TIME UI UPDATE ---
+    // Principal Speed: Emit a socket event so the dashboard row updates immediately.
+    const { SocketServer } = await import('../services/SocketServer');
+    const { Container } = await import('typedi');
+    const { SocketEvents } = await import('../enums/SocketEvents');
+
+    Container.get(SocketServer).emitToDashboard(SocketEvents.SESSION_STOPPED, {
+      id: sessionId,
+      status: normalizedStatus,
+      failure_reason: args.reason || undefined,
+    });
+
     return this.sendSuccessResponse(response);
   }
 

@@ -230,9 +230,8 @@ export class UniversalMjpegProxy {
     // Principal Fix: Enforce maximum retry limit with exponential backoff.
     // Without this, the proxy retries every 500ms FOREVER after a session
     // ends or the server shuts down, flooding logs and wasting CPU.
-    this.consecutiveRetries++;
-
-    if (this.consecutiveRetries > UniversalMjpegProxy.MAX_RETRIES) {
+    // Peek-ahead check: will the next attempt exceed the limit?
+    if (this.consecutiveRetries + 1 > UniversalMjpegProxy.MAX_RETRIES) {
       log.warn(
         `[MjpegProxy] Max retries (${UniversalMjpegProxy.MAX_RETRIES}) reached for ${this.mjpegUrl}. Giving up and disconnecting clients.`,
       );
@@ -240,7 +239,12 @@ export class UniversalMjpegProxy {
       return;
     }
 
-    if (this.reconnectionTimeout) return; // Already waiting for reconnect
+    // Guard: if a reconnection is already scheduled, don't schedule another
+    // and don't inflate the retry counter.
+    if (this.reconnectionTimeout) return;
+
+    // Only increment when a real reconnection will be scheduled.
+    this.consecutiveRetries++;
 
     this.stopSource('reconnecting');
 

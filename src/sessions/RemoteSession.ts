@@ -181,23 +181,50 @@ export class RemoteSession extends XenonSession {
   }
 
   async checkHealth(): Promise<boolean> {
-    // Principal Fix: Use Appium's /status endpoint as the primary health check.
-    // The previous approach used /session/{id}/url which returns 404 for native iOS apps
-    // (XCUITest), causing the heartbeat to falsely kill healthy sessions.
-    // /status always works regardless of app type (native or web).
+    // Session-aware health probe: Use W3C WebDriver GET /session/{id}/timeouts
+    // as the primary check. Unlike /status (which only confirms the Appium server
+    // is alive), /timeouts validates that the specific session still exists.
+    // A 404 means the session is gone; a 2xx means it's genuinely alive.
+    // Falls back to /status only when sessionId is unavailable.
+
+    if (this.sessionId) {
+      try {
+        const response = await axios({
+          method: 'get',
+          url: `${this.baseUrl}/session/${this.sessionId}/timeouts`,
+          timeout: 5000,
+        });
+        return response.status >= 200 && response.status < 300;
+      } catch (err: any) {
+        const status = err.response?.status;
+
+        // Session-specific errors (4xx) → session is dead
+        if (status && status >= 400 && status < 500) {
+          log.warn(
+            `[RemoteSession] Session ${this.sessionId} is dead (HTTP ${status} from /timeouts). Marking unhealthy.`,
+          );
+          return false;
+        }
+
+        // Server-level errors (5xx, ECONNREFUSED, timeout) → fall back to /status
+        log.debug(
+          `[RemoteSession] /timeouts probe failed for ${this.sessionId} (${err.message}). Falling back to /status.`,
+        );
+      }
+    }
+
+    // Fallback: /status check (server-level liveness)
     try {
       const response = await axios({
         method: 'get',
         url: `${this.baseUrl}/status`,
         timeout: 5000,
       });
-      // If the Appium server is alive and the session exists in its map, it's healthy
-      if (response.status >= 200 && response.status < 300) {
-        return true;
-      }
-      return false;
+      return response.status >= 200 && response.status < 300;
     } catch (err: any) {
-      log.warn(`[RemoteSession] Health check failed for session ${this.sessionId}: ${err.message}`);
+      log.warn(
+        `[RemoteSession] Health check failed for session ${this.sessionId}: ${err.message}`,
+      );
       return false;
     }
   }
