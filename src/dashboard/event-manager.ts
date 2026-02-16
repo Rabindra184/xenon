@@ -276,8 +276,8 @@ export class DashboardEventManager {
         log.info(`[EventManager] Intercepting Xenon command: ${script} for session ${sessionId}`);
         await dashboardCommands.process(sessionId, request, response);
         return false;
-      } else if (script) {
-        log.debug(`[EventManager] Not a Xenon command. script=${script}`);
+      } else if (script && script.includes(':')) {
+        log.debug(`[EventManager] Custom command ${script} not handled by Xenon. Passing to driver.`);
       }
     }
 

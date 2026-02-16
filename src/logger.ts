@@ -136,8 +136,7 @@ class XenonLogger {
 }
 
 // Initial main instance
-const which_appium = process.env.APPIUM_HOME ? 'main' : 'core';
-const mainLogger = new XenonLogger(`xenon-${which_appium}`);
+const mainLogger = new XenonLogger('xenon');
 
 export default mainLogger;
 export { XenonLogger };

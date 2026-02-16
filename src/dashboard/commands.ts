@@ -8,11 +8,7 @@ import { saveScreenShot } from './asset-manager';
 
 export class DashboardCommands {
   public isDashboardCommand(commandName: string) {
-    return (
-      commandName.startsWith('xenon') ||
-      commandName.startsWith('xe') ||
-      commandName.startsWith('devicefarm')
-    );
+    return commandName.startsWith('xenon') || commandName.startsWith('xe');
   }
 
   public async process(sessionId: string, request: Request, response: Response) {

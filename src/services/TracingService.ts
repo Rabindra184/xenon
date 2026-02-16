@@ -59,7 +59,8 @@ export class TracingService {
     sessionId: string,
     name: string,
     attributes: Record<string, any> = {},
-  ): Span {
+  ): Span | undefined {
+    if (!this.sdk) return undefined;
     const span = this.tracer.startSpan(`Session: ${name || sessionId}`, {
       kind: SpanKind.SERVER,
       attributes: {
@@ -75,7 +76,8 @@ export class TracingService {
     sessionId: string,
     commandName: string,
     attributes: Record<string, any> = {},
-  ): Span {
+  ): Span | undefined {
+    if (!this.sdk) return undefined;
     const parentSpan = this.activeSpans.get(sessionId);
     const spanOptions: any = {
       kind: SpanKind.INTERNAL,
@@ -99,6 +101,7 @@ export class TracingService {
   }
 
   public endSpan(id: string, status: 'OK' | 'ERROR' = 'OK', attributes: Record<string, any> = {}) {
+    if (!this.sdk) return;
     const span = this.activeSpans.get(id);
     if (span) {
       if (Object.keys(attributes).length > 0) {
@@ -115,6 +118,7 @@ export class TracingService {
   }
 
   public recordError(id: string, error: Error | string) {
+    if (!this.sdk) return;
     const span = this.activeSpans.get(id);
     if (span) {
       span.recordException(error);
