@@ -28,7 +28,9 @@ import { SocketServer } from '../services/SocketServer';
 import { TracingService } from '../services/TracingService';
 import { MetricsService } from '../services/MetricsService';
 import { SocketEvents } from '../enums/SocketEvents';
+import { Service } from 'typedi';
 
+@Service()
 export class DashboardEventManager {
   // private SCREENSHOT_FOR_COMMANDS = ['click', 'setUrl', 'setValue', 'performActions'];
 
@@ -172,12 +174,28 @@ export class DashboardEventManager {
           }
         }
 
-        // Clean up device mapping
-        this.sessionToDevice.delete(sessionId);
         // Clean up last log line tracking
         this.lastLogLine.delete(sessionId);
+
+        // Principal Resource Management: Unblock device immediately
+        const device = this.sessionToDevice.get(sessionId);
+        if (device) {
+          const { unblockDevice } = await import('../data-service/device-service');
+          try {
+            await unblockDevice(device.udid, device.host);
+            log.info(`🔓 [${sessionId}] Device ${device.udid} released.`);
+          } catch (unblockErr: any) {
+            log.error(`⚠️ Failed to unblock device ${device.udid} for session ${sessionId}: ${unblockErr.message}`);
+          }
+        }
+
+        // Clean up device mapping
+        this.sessionToDevice.delete(sessionId);
       } else {
         log.warn(`⚠️ Session ${sessionId} not found in SESSION_MANAGER`);
+        // Fallback: If session not in manager, attempt to unblock by session_id in store
+        const { unblockDeviceMatchingFilter } = await import('../data-service/device-service');
+        await unblockDeviceMatchingFilter({ session_id: sessionId });
       }
 
       const sessionEntry = await getSessionById(sessionId);
@@ -701,4 +719,4 @@ export class DashboardEventManager {
   }
 }
 
-export const DASHBORD_EVENT_MANAGER = new DashboardEventManager();
+export const DASHBORD_EVENT_MANAGER = Container.get(DashboardEventManager);

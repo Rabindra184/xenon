@@ -270,11 +270,19 @@ export class CommandInterceptor {
     }
   }
 
+  private learningSessions: Set<string> = new Set();
+
   private async triggerLearning(driver: any, args: any[], response: any, sessionId: string) {
+    if (this.learningSessions.has(sessionId)) return;
+    this.learningSessions.add(sessionId);
+
     const strategy = args[0];
     const selector = args[1];
     const elementId = response.ELEMENT || response['element-6066-11e4-a52e-4f735466cecf'];
-    if (!elementId || typeof selector !== 'string') return;
+    if (!elementId || typeof selector !== 'string') {
+      this.learningSessions.delete(sessionId);
+      return;
+    }
 
     (async () => {
       try {
@@ -321,6 +329,8 @@ export class CommandInterceptor {
         );
       } catch (err: any) {
         this.log.debug(`[Learning] Failed: ${err.message}`);
+      } finally {
+        this.learningSessions.delete(sessionId);
       }
     })();
   }

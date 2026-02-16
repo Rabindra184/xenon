@@ -1,4 +1,5 @@
 import { prisma } from '../../prisma';
+import log from '../../logger';
 
 export async function getOrCreateNewBuild(buildName: string) {
   // Principal Logic: Find the LATEST build with this name to check for a "Warm Window"
@@ -55,20 +56,25 @@ export async function updateSessionDetails(sessionId: string, data: any) {
 /**
  * Principal Protection: Marks all orphaned "running" sessions as FAILED.
  * This should be called on plugin initialization to clear crashes from previous runs.
+ * @param ignoreSessionIds - Array of session IDs that were successfully recovered and should NOT be cleaned up.
  */
-export async function cleanupZombieSessions() {
+export async function cleanupZombieSessions(ignoreSessionIds: string[] = []) {
+  const whereClause: any = {
+    status: 'running',
+  };
+
+  if (ignoreSessionIds.length > 0) {
+    whereClause.id = { notIn: ignoreSessionIds };
+  }
+
   const orphanedSessions = await prisma.session.findMany({
-    where: {
-      status: 'running',
-    },
+    where: whereClause,
   });
 
   if (orphanedSessions.length > 0) {
-    console.log(`[Dashboard] Cleaning up ${orphanedSessions.length} zombie sessions...`);
+    log.info(`[Dashboard] Cleaning up ${orphanedSessions.length} zombie sessions...`);
     await prisma.session.updateMany({
-      where: {
-        status: 'running',
-      },
+      where: whereClause,
       data: {
         status: 'failed',
         failure_reason: 'Session interrupted (Server restart or process crash)',
@@ -83,7 +89,7 @@ export async function cleanupZombieSessions() {
   });
 
   if (missingBuildSessions > 0) {
-    console.log(`[Dashboard] Repairing ${missingBuildSessions} orphaned sessions...`);
+    log.info(`[Dashboard] Repairing ${missingBuildSessions} orphaned sessions...`);
     const defaultBuild = await getOrCreateNewBuild('Default Build');
     await prisma.session.updateMany({
       where: { build_id: null },

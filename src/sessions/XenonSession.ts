@@ -28,7 +28,7 @@ export abstract class XenonSession {
     return this.options.device;
   }
 
-  getDeviefarmOptions(): Record<string, any> {
+  getDeviceFarmOptions(): Record<string, any> {
     return this.xenonOption;
   }
 

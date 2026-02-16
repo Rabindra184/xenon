@@ -19,9 +19,11 @@ const cleanup = async () => {
     const { default: IOSStreamService } = await import('./device-managers/ios/IOSStreamService');
     const { default: AndroidStreamService } =
       await import('./device-managers/android/AndroidStreamService');
+    const { stopAllTimers } = await import('./device-utils');
     const { VideoPipelineService } = await import('./services/VideoPipelineService');
 
     // Shutdown all independent MJPEG streams, tunnels, and video recordings
+    stopAllTimers();
     await Container.get(IOSStreamService).cleanup();
     await Container.get(AndroidStreamService).cleanup();
     await Container.get(VideoPipelineService).cleanup();
@@ -30,12 +32,24 @@ const cleanup = async () => {
   } catch (err: any) {
     log.error(`❌ [Xenon] Cleanup failed: ${err.message}`);
   } finally {
-    process.exit(0);
+    // Principal Delay: Wait 2 seconds before hard-exiting to allow
+    // other async handlers (like hub unregistration) to finish.
+    setTimeout(() => process.exit(0), 2000);
   }
 };
 
 process.on('SIGINT', cleanup);
 process.on('SIGTERM', cleanup);
+
+process.on('unhandledRejection', (reason, promise) => {
+  log.error('❌ [Xenon] Unhandled Rejection at:', promise, 'reason:', reason);
+});
+
+process.on('uncaughtException', (err) => {
+  log.error('❌ [Xenon] Uncaught Exception:', err);
+  // Give logger time to flush before exiting
+  setTimeout(() => process.exit(1), 1000);
+});
 
 export default XenonPlugin;
 export { XenonPlugin };

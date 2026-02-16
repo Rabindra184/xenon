@@ -155,7 +155,7 @@ export class PrismaDeviceStore implements IDeviceStore {
       where: { udid, host },
       data,
     });
-    console.log(`[PrismaStore] Update device ${udid} at ${host}: ${result.count} records affected`);
+    log.debug(`[PrismaStore] Update device ${udid} at ${host}: ${result.count} records affected`);
   }
 
   async updateDevices(
