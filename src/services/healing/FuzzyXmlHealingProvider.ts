@@ -4,15 +4,20 @@ import { DOMParser } from 'xmldom';
 // @ts-ignore
 import { select as xpathQuery } from 'xpath';
 import _ from 'lodash';
+import { Container } from 'typedi';
 import log from '../../logger';
 import { HealEtalonService, LocatorSignature } from './HealEtalonService';
+import { HealedLocatorGenerator } from './HealedLocatorGenerator';
 
 export class FuzzyXmlHealingProvider implements HealingProvider {
   name = 'Fuzzy XML Provider';
   tier = HealingTier.TIER_2_FUZZY_XML;
   private logger = log.scope('FuzzyXmlHealing');
+  private generator: HealedLocatorGenerator;
 
-  constructor(private etalonService?: HealEtalonService) {}
+  constructor(private etalonService?: HealEtalonService) {
+    this.generator = Container.get(HealedLocatorGenerator);
+  }
 
   async heal(context: HealingContext): Promise<HealedElement | null> {
     if (!context.pageSource) {
@@ -56,14 +61,15 @@ export class FuzzyXmlHealingProvider implements HealingProvider {
       }
 
       if (bestMatch) {
-        const recommendedXpath = this.getAbsoluteXpath(bestMatch);
+        const candidateLocators = this.generator.generate(bestMatch);
+        const recommendedXpath = candidateLocators[0] || this.getAbsoluteXpath(bestMatch);
+
         this.logger.info(
           `✅ Found fuzzy match with score ${highestScore.toFixed(2)}: ${recommendedXpath}`,
         );
 
-        // Note: For Appium, we need to return an actual element ID.
-        // Since we are in the middle of a command handle, we might need to find it via standard find
         try {
+          // Standard element lookup to return the actual Appium ID
           const element = await context.driver.findElement('xpath', recommendedXpath);
           return {
             id: element.ELEMENT || element['element-6066-11e4-a52e-4f735466cecf'],
@@ -71,10 +77,12 @@ export class FuzzyXmlHealingProvider implements HealingProvider {
             confidence: highestScore,
             originalSelector: context.selector,
             recommendedSelector: recommendedXpath,
-            message: `Found element via fuzzy attribute matching (${(highestScore * 100).toFixed(0)}% confidence)`,
+            candidateSelectors: candidateLocators,
+            node: bestMatch,
+            message: `Found element via fuzzy matching (${(highestScore * 100).toFixed(0)}% confidence). Recommendation: ${recommendedXpath}`,
           };
         } catch (err) {
-          this.logger.error('Failed to resolve healed element on device');
+          this.logger.error(`Failed to resolve healed element using: ${recommendedXpath}`);
         }
       }
     } catch (err: any) {

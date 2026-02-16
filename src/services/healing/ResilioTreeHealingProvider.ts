@@ -6,15 +6,20 @@ const {
   LCSPathDistance,
   HeuristicNodeDistance,
 } = require('resiliotree');
+import { Container } from 'typedi';
 import log from '../../logger';
 import { HealEtalonService } from './HealEtalonService';
+import { HealedLocatorGenerator } from './HealedLocatorGenerator';
 
 export class ResilioTreeHealingProvider implements HealingProvider {
   name = 'ResilioTree Provider';
   tier = HealingTier.TIER_1_RECOVERY; // High priority robust recovery
   private logger = log.scope('ResilioTreeHealing');
+  private generator: HealedLocatorGenerator;
 
-  constructor(private etalonService: HealEtalonService) {}
+  constructor(private etalonService: HealEtalonService) {
+    this.generator = Container.get(HealedLocatorGenerator);
+  }
 
   async heal(context: HealingContext): Promise<HealedElement | null> {
     if (!context.pageSource) {
@@ -45,7 +50,8 @@ export class ResilioTreeHealingProvider implements HealingProvider {
       const nearestNode = pathFinder.findNearest(savedPath, targetRoot);
 
       if (nearestNode) {
-        const recommendedXpath = this.generateXpath(nearestNode);
+        const candidateLocators = this.generator.generate(nearestNode);
+        const recommendedXpath = candidateLocators[0] || this.generateXpath(nearestNode);
         this.logger.info(`ResilioTree suggested recovery XPath: ${recommendedXpath}`);
 
         try {
@@ -55,8 +61,10 @@ export class ResilioTreeHealingProvider implements HealingProvider {
               id: healedElement.ELEMENT || healedElement['element-6066-11e4-a52e-4f735466cecf'],
               originalSelector: context.selector,
               recommendedSelector: recommendedXpath,
+              candidateSelectors: candidateLocators,
               confidence: 0.9, // ResilioTree path matching is high confidence
               tier: this.tier,
+              node: nearestNode,
               message: `Recovered via ResilioTree path matching. New XPath: ${recommendedXpath}`,
             };
           }

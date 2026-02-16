@@ -13,6 +13,7 @@ export interface HealedElement {
   confidence: number;
   originalSelector: string;
   recommendedSelector: string;
+  candidateSelectors?: string[]; // Multiple strategies from best to worst
   message?: string;
   rect?: {
     x: number;
@@ -20,6 +21,7 @@ export interface HealedElement {
     width: number;
     height: number;
   };
+  node?: any; // Optional raw node information for learning
 }
 
 export interface HealingContext {

@@ -55,8 +55,63 @@ export class HealingOrchestrator {
 
         if (result) {
           this.logger.info(
-            `✨ Successfully healed using ${provider.name}! Confidence: ${(result.confidence * 100).toFixed(0)}%`,
+            `✨ Provider ${provider.name} found a match! Confidence: ${(
+              result.confidence * 100
+            ).toFixed(0)}%`,
           );
+
+          // Tier 1/2 Optimization: Stability Verification Loop
+          // We try all candidates to see which one is the most stable (semantic vs absolute)
+          if (result.candidateSelectors && result.candidateSelectors.length > 0) {
+            this.logger.debug(`Verifying ${result.candidateSelectors.length} candidate locators for stability...`);
+            for (const candidate of result.candidateSelectors) {
+              try {
+                const elements = await context.driver.findElements('xpath', candidate);
+                if (elements.length === 1) {
+                  this.logger.info(`🎯 Verified stable & unique locator: ${candidate}`);
+                  result.recommendedSelector = candidate;
+                  break; // Found a unique stable locator
+                } else if (elements.length > 1) {
+                  this.logger.debug(`⚠️ Candidate locator is not unique (${elements.length} matches): ${candidate}`);
+                }
+              } catch (e) {
+                this.logger.debug(`Candidate locator check failed: ${candidate}`);
+              }
+            }
+          }
+
+          // Principal Learning: Autonomously update the etalon to prevent future failures
+          // We only do this if confidence is over 70% to avoid pollution with false positives
+          if (result.confidence > 0.7 && result.node) {
+            try {
+              this.logger.info(`🧠 Learning from healing success: updating etalon for ${selector}`);
+
+              // Recalculate path for ResilioTree if node is available
+              let learnedPath: any = null;
+              if (result.node) {
+                try {
+                  const { Path } = await import('resiliotree');
+                  const pathNodes: any[] = [];
+                  let curr: any = result.node;
+                  while (curr) {
+                    pathNodes.unshift(curr);
+                    curr = curr.parent || curr.parentNode;
+                  }
+                  learnedPath = new Path(pathNodes).toJSON();
+                } catch (e) { }
+              }
+
+              await this.etalonService.saveSignature(
+                strategy,
+                selector,
+                result.node,
+                learnedPath
+              );
+            } catch (learnErr: any) {
+              this.logger.debug(`Failed to update etalon after healing: ${learnErr.message}`);
+            }
+          }
+
           return result;
         }
       } catch (err: any) {
