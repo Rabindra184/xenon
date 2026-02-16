@@ -465,8 +465,16 @@ export class WDAClient {
       let output = '';
       let resolved = false;
 
+      if (!proc.stdout) {
+        resolved = true;
+        this.log.error(`Failed to capture logs for ${udid}: stdout stream is missing`);
+        proc.kill('SIGKILL');
+        resolve(output);
+        return;
+      }
+
       const rl = readline.createInterface({
-        input: proc.stdout!,
+        input: proc.stdout,
         terminal: false,
       });
 
