@@ -76,7 +76,7 @@ export class ServerManager {
       XenonPlugin.nodeBasePath,
     );
 
-    const recoveredSessionIds = sessionManager.getAllSessions().map(s => s.getId());
+    const recoveredSessionIds = sessionManager.getAllSessions().map((s) => s.getId());
 
     if (recoveredCount > 0) {
       log.info(`🔄 Successfully recovered ${recoveredCount} remote sessions`);

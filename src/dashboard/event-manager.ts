@@ -136,7 +136,9 @@ export class DashboardEventManager {
     // Idempotency Guard: If this session is already being stopped by another actor
     // (heartbeat, stream watchdog, plugin.deleteSession), skip to avoid double-cleanup.
     if (this.stoppingSessionIds.has(sessionId)) {
-      log.info(`⏭️ onSessionStopped already in progress for ${sessionId}. Skipping duplicate call.`);
+      log.info(
+        `⏭️ onSessionStopped already in progress for ${sessionId}. Skipping duplicate call.`,
+      );
       return;
     }
     this.stoppingSessionIds.add(sessionId);
@@ -185,7 +187,9 @@ export class DashboardEventManager {
             await unblockDevice(device.udid, device.host);
             log.info(`🔓 [${sessionId}] Device ${device.udid} released.`);
           } catch (unblockErr: any) {
-            log.error(`⚠️ Failed to unblock device ${device.udid} for session ${sessionId}: ${unblockErr.message}`);
+            log.error(
+              `⚠️ Failed to unblock device ${device.udid} for session ${sessionId}: ${unblockErr.message}`,
+            );
           }
         }
 
@@ -195,7 +199,23 @@ export class DashboardEventManager {
         log.warn(`⚠️ Session ${sessionId} not found in SESSION_MANAGER`);
         // Fallback: If session not in manager, attempt to unblock by session_id in store
         const { unblockDeviceMatchingFilter } = await import('../data-service/device-service');
-        await unblockDeviceMatchingFilter({ session_id: sessionId });
+        try {
+          await unblockDeviceMatchingFilter({ session_id: sessionId });
+        } catch (unblockErr: any) {
+          log.error(
+            `⚠️ Failed to unblock device for orphaned session ${sessionId}: ${
+              unblockErr && unblockErr.message ? unblockErr.message : String(unblockErr)
+            }`,
+          );
+        } finally {
+          this.sessionToDevice.delete(sessionId);
+          this.lastLogLine.delete(sessionId);
+          const orphanUdid = this.sessionToUdid.get(sessionId);
+          if (orphanUdid) {
+            this.sessionToUdid.delete(sessionId);
+            this.syslogServices.delete(orphanUdid);
+          }
+        }
       }
 
       const sessionEntry = await getSessionById(sessionId);
@@ -225,7 +245,7 @@ export class DashboardEventManager {
             updateData['failure_reason'] =
               failedCommand.response && failedCommand.response.includes('error')
                 ? safeParseJson(failedCommand.response).value?.error ||
-                `Command failed: ${failedCommand.command_name}`
+                  `Command failed: ${failedCommand.command_name}`
                 : `Command failed: ${failedCommand.command_name}`;
             log.info(
               `Session ${sessionId} marked as FAILED due to error in command: ${failedCommand.command_name}`,
@@ -284,25 +304,32 @@ export class DashboardEventManager {
   ): Promise<boolean> {
     if (commandName) {
       this.commandStartTime.set(`${sessionId}:${commandName}`, Date.now());
-      log.debug(`[EventManager] beforeSessionCommand: sessionId=${sessionId}, commandName=${commandName}`);
+      log.debug(
+        `[EventManager] beforeSessionCommand: sessionId=${sessionId}, commandName=${commandName}`,
+      );
     }
 
     // Principal Interception: Handle Xenon-specific commands regardless of session state in memory
     if (commandName === 'execute') {
-      const script = request.body?.script || (Array.isArray(request.body) ? request.body[0] : undefined);
+      const script =
+        request.body?.script || (Array.isArray(request.body) ? request.body[0] : undefined);
       if (script && dashboardCommands.isDashboardCommand(script)) {
         log.info(`[EventManager] Intercepting Xenon command: ${script} for session ${sessionId}`);
         await dashboardCommands.process(sessionId, request, response);
         return false;
       } else if (script && script.includes(':')) {
-        log.debug(`[EventManager] Custom command ${script} not handled by Xenon. Passing to driver.`);
+        log.debug(
+          `[EventManager] Custom command ${script} not handled by Xenon. Passing to driver.`,
+        );
       }
     }
 
     const session: XenonSession | undefined = SESSION_MANAGER.getSession(sessionId);
 
     if (!session) {
-      log.debug(`[EventManager] No session object found in memory for ${sessionId}. Allowing command ${commandName} to proceed.`);
+      log.debug(
+        `[EventManager] No session object found in memory for ${sessionId}. Allowing command ${commandName} to proceed.`,
+      );
       return true;
     }
 

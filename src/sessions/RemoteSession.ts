@@ -42,7 +42,9 @@ export class RemoteSession extends XenonSession {
         data: {},
       });
       const dataLen = response?.data?.value?.length || 0;
-      log.info(`[RemoteSession] stopVideoRecording response status: ${response.status}, data length: ${dataLen}`);
+      log.info(
+        `[RemoteSession] stopVideoRecording response status: ${response.status}, data length: ${dataLen}`,
+      );
       return response.status === 200 && response?.data?.value ? response?.data?.value : '';
     } catch (err: any) {
       log.warn(
@@ -56,7 +58,9 @@ export class RemoteSession extends XenonSession {
           data: {},
         });
         const retryDataLen = retryResponse?.data?.value?.length || 0;
-        log.info(`[RemoteSession] stopVideoRecording retry succeeded, data length: ${retryDataLen}`);
+        log.info(
+          `[RemoteSession] stopVideoRecording retry succeeded, data length: ${retryDataLen}`,
+        );
         return retryResponse?.data?.value || '';
       } catch (retryErr: any) {
         log.error(`[RemoteSession] stopVideoRecording retry also failed: ${retryErr.message}`);
@@ -156,7 +160,9 @@ export class RemoteSession extends XenonSession {
         // Set flag to true if response is successful (status 200 or 2xx)
         this.isVideoAvailable = response.status >= 200 && response.status < 300;
         const status = response.status;
-        log.info(`[RemoteSession] startVideoRecording response status: ${status}, isVideoAvailable: ${this.isVideoAvailable}`);
+        log.info(
+          `[RemoteSession] startVideoRecording response status: ${status}, isVideoAvailable: ${this.isVideoAvailable}`,
+        );
       })
       .catch((error) => {
         log.error('[RemoteSession] startVideoRecording error:', error.message);
@@ -217,9 +223,7 @@ export class RemoteSession extends XenonSession {
       });
       return response.status >= 200 && response.status < 300;
     } catch (err: any) {
-      log.warn(
-        `[RemoteSession] Health check failed for session ${this.sessionId}: ${err.message}`,
-      );
+      log.warn(`[RemoteSession] Health check failed for session ${this.sessionId}: ${err.message}`);
       return false;
     }
   }

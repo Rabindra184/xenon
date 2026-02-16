@@ -52,8 +52,8 @@ export class CommandInterceptor {
           { body: { script: args[0], args: args[1] } } as any,
           {
             status: () => ({ json: (d: any) => d }),
-            setHeader: () => { },
-            getHeader: () => { },
+            setHeader: () => {},
+            getHeader: () => {},
           } as any,
         );
 

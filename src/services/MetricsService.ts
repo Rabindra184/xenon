@@ -20,7 +20,8 @@ export class MetricsService {
         create: { id: name, name, value: '1' },
       });
     } catch (error: any) {
-      log.error(`[MetricsService] Failed to increment ${name}: ${error.message}`);
+      const msg = error?.message ?? String(error);
+      log.error(`[MetricsService] Failed to increment ${name}: ${msg}`, error);
     }
   }
 

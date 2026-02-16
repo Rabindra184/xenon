@@ -281,7 +281,9 @@ class AndroidStreamService {
           log.info(`[${udid}] Stream Stop: Releasing manual control lock.`);
           await unblockDevice(udid, device.host);
         } else if (device && device.busy) {
-          log.info(`[${udid}] Stream Stop: Device busy with session ${device.session_id}. NOT releasing lock.`);
+          log.info(
+            `[${udid}] Stream Stop: Device busy with session ${device.session_id}. NOT releasing lock.`,
+          );
         }
       } catch (e) {
         /* Ignore unblocking failure on stop */

@@ -149,7 +149,10 @@ class XenonPlugin extends BasePlugin {
   }
 
   async deleteSession(next: () => any, driver: any, sessionId?: string | null) {
-    return await Container.get(SessionLifecycleService).deleteSession(next, sessionId || driver?.sessionId);
+    return await Container.get(SessionLifecycleService).deleteSession(
+      next,
+      sessionId || driver?.sessionId,
+    );
   }
 
   async analyzeScreen(driver: any) {

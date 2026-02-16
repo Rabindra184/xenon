@@ -72,7 +72,9 @@ class IOSStreamService {
             // This prevents the watchdog from killing WDA while a test is running.
             const device = await DeviceStoreFactory.getStore().findDevice({ udid });
             if (device && device.busy) {
-              log.debug(`🛡️ [${udid}] [Watchdog] Stream is idle but device is BUSY. Keeping alive.`);
+              log.debug(
+                `🛡️ [${udid}] [Watchdog] Stream is idle but device is BUSY. Keeping alive.`,
+              );
               session.lastViewerAt = Date.now(); // Refresh timer to avoid constant DB checks
               continue;
             }
@@ -557,7 +559,8 @@ class IOSStreamService {
           if (session.wdaProcess?.exitCode !== null) {
             const logContent = fs.existsSync(wdaRunLog) ? fs.readFileSync(wdaRunLog, 'utf8') : '';
             throw new Error(
-              `WDA process exited with code ${session.wdaProcess?.exitCode
+              `WDA process exited with code ${
+                session.wdaProcess?.exitCode
               }. Log: ${logContent.slice(-200)}`,
             );
           }
@@ -653,7 +656,9 @@ class IOSStreamService {
         log.info(`Stream Stop: Releasing manual control lock for ${udid}`);
         await unblockDevice(udid, device.host);
       } else if (device && device.busy) {
-        log.info(`Stream Stop: Device ${udid} is busy with session ${device.session_id}. NOT releasing lock.`);
+        log.info(
+          `Stream Stop: Device ${udid} is busy with session ${device.session_id}. NOT releasing lock.`,
+        );
       }
     } catch (e) {
       log.error(`Failed to check/release lock during stream stop for ${udid}: ${e}`);

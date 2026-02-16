@@ -198,10 +198,10 @@ export function getXenonCapabilities(caps: ISessionCapability) {
 
   log.debug(
     '[CapabilityManager] Resolved Capabilities: ' +
-    `Video=${capabilities[XENON_CAPABILITIES.VIDEO_RECORDING]}, ` +
-    `EveryScreenshot=${capabilities[XENON_CAPABILITIES.SCREENSHOT_ON_EVERY_COMMAND]}, ` +
-    `FailScreenshot=${capabilities[XENON_CAPABILITIES.SCREENSHOT_ON_FAILURE]}, ` +
-    `SaveLogs=${capabilities[XENON_CAPABILITIES.SAVE_DEVICE_LOGS]}`,
+      `Video=${capabilities[XENON_CAPABILITIES.VIDEO_RECORDING]}, ` +
+      `EveryScreenshot=${capabilities[XENON_CAPABILITIES.SCREENSHOT_ON_EVERY_COMMAND]}, ` +
+      `FailScreenshot=${capabilities[XENON_CAPABILITIES.SCREENSHOT_ON_FAILURE]}, ` +
+      `SaveLogs=${capabilities[XENON_CAPABILITIES.SAVE_DEVICE_LOGS]}`,
   );
 
   return capabilities;

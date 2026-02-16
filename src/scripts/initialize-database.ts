@@ -15,7 +15,8 @@ function executeCmd(cmd: string) {
       stdio: 'inherit',
     });
   } catch (error: any) {
-    log.error(`[DBInit] Failed to execute command: ${cmd} | Error: ${error.message}`);
+    const msg = error?.message ?? String(error);
+    log.error(`[DBInit] Failed to execute command: ${cmd} | Error: ${msg}`, error);
     throw error;
   }
 }

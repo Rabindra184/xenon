@@ -669,5 +669,6 @@ export function stopAllTimers() {
   if (cronTimerToReleaseBlockedDevices) clearInterval(cronTimerToReleaseBlockedDevices);
   if (cronTimerToUpdateDevices) clearInterval(cronTimerToUpdateDevices);
   if (cronTimerToCleanPendingSessions) clearInterval(cronTimerToCleanPendingSessions);
+  if (cronTimerToCleanExpiredReservations) clearInterval(cronTimerToCleanExpiredReservations);
   if (cronTimerToCleanupBuilds) cronTimerToCleanupBuilds.cancel();
 }

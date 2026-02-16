@@ -37,7 +37,7 @@ const getModuleRoot = _.memoize(function getModuleRoot() {
           return currentDir;
         }
         // eslint-disable-next-line no-empty
-      } catch (ign) { }
+      } catch (ign) {}
       currentDir = path.dirname(currentDir);
       isAtFsRoot = currentDir.length <= path.dirname(currentDir).length;
     }
