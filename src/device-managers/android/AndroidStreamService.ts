@@ -132,6 +132,10 @@ class AndroidStreamService {
             }
             session.latestFrameTimestamp = Date.now();
           }
+        } else {
+          log.warn(
+            `[${udid}] Received empty or tiny screenshot (${screenshot.length} bytes). Is the screen 'flag_secure'?`,
+          );
         }
 
         const elapsed = Date.now() - startTime;
@@ -249,6 +253,14 @@ class AndroidStreamService {
 
         session.status = 'running';
         this.captureLoop(udid, session);
+
+        // Update device info in store to ensure other services (like VideoPipeline) can find the port
+        const updatedDevice = await DeviceStoreFactory.getStore().findDevice({ udid });
+        if (updatedDevice) {
+          await DeviceStoreFactory.getStore().updateDevice(udid, updatedDevice.host, {
+            mjpegServerPort: mjpegPort,
+          });
+        }
 
         return { mjpegPort };
       } catch (error: any) {

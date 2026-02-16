@@ -203,8 +203,7 @@ export class DashboardEventManager {
           await unblockDeviceMatchingFilter({ session_id: sessionId });
         } catch (unblockErr: any) {
           log.error(
-            `⚠️ Failed to unblock device for orphaned session ${sessionId}: ${
-              unblockErr && unblockErr.message ? unblockErr.message : String(unblockErr)
+            `⚠️ Failed to unblock device for orphaned session ${sessionId}: ${unblockErr && unblockErr.message ? unblockErr.message : String(unblockErr)
             }`,
           );
         } finally {
@@ -245,7 +244,7 @@ export class DashboardEventManager {
             updateData['failure_reason'] =
               failedCommand.response && failedCommand.response.includes('error')
                 ? safeParseJson(failedCommand.response).value?.error ||
-                  `Command failed: ${failedCommand.command_name}`
+                `Command failed: ${failedCommand.command_name}`
                 : `Command failed: ${failedCommand.command_name}`;
             log.info(
               `Session ${sessionId} marked as FAILED due to error in command: ${failedCommand.command_name}`,
@@ -356,118 +355,120 @@ export class DashboardEventManager {
   ) {
     const session: XenonSession | undefined = SESSION_MANAGER.getSession(sessionId);
     if (session) {
-      // Save device logs (only if driver is available)
-      if (driver) {
-        await this.saveDeviceLogs(sessionId, driver);
-      }
-
-      // Save command log
-      const parsedResponse: any = safeParseJson(responseBody) as any;
-      const isSuccessResponse =
-        _.isObjectLike(parsedResponse) &&
-        (parsedResponse.value === null || (parsedResponse.value && !parsedResponse.value.error));
-
-      const tracingService = Container.get(TracingService);
-      const spanId = tracingService.getSpanId(`${session.getId()}:${commandName}`);
-      const traceId = tracingService.getTraceId(session.getId());
-
-      const startTime = this.commandStartTime.get(`${sessionId}:${commandName}`);
-      const duration = startTime ? Date.now() - startTime : null;
-
-      const logEntry: any = {
-        session_id: session.getId(),
-        command_name: commandName || null,
-        body: JSON.stringify(request.body),
-        response: responseBody,
-        is_success: isSuccessResponse,
-        is_error: !isSuccessResponse,
-        method: request.method,
-        title: this.getTitleFromCommandName(commandName),
-        subtitle: '',
-        screenshot: null,
-        url: request.originalUrl,
-        is_healed: !!healingInfo,
-        original_selector: healingInfo?.originalSelector || null,
-        healed_selector: healingInfo?.healedSelector || null,
-        healing_confidence: healingInfo?.confidence || null,
-        span_id: spanId,
-        trace_id: traceId,
-        duration: duration,
-      };
-
-      // Increment Healing Metrics
-      if (healingInfo) {
-        Container.get(MetricsService).incrementHealingAttempt();
-        if (isSuccessResponse) {
-          Container.get(MetricsService).incrementHealingSuccess();
+      try {
+        // Save device logs (only if driver is available)
+        if (driver) {
+          await this.saveDeviceLogs(sessionId, driver);
         }
-      }
 
-      if (startTime) {
-        this.commandStartTime.delete(`${sessionId}:${commandName}`);
-      }
+        // Save command log
+        const parsedResponse: any = safeParseJson(responseBody) as any;
+        const isSuccessResponse = !parsedResponse?.value?.error;
 
-      // Take screenshots for specific commands (like click, setValue, etc.)
-      // OR on failure if SCREENSHOT_ON_FAILURE capability is enabled
-      const shouldTakeScreenshotForCommand =
-        commandName && config.takeScreenshotsFor.indexOf(commandName) >= 0;
+        const tracingService = Container.get(TracingService);
+        const spanId = tracingService.getSpanId(`${session.getId()}:${commandName}`);
+        const traceId = tracingService.getTraceId(session.getId());
 
-      const screenShotCapability = session.getXenonOption(
-        XENON_CAPABILITIES.SCREENSHOT_ON_FAILURE,
-        false,
-      );
+        const startTime = this.commandStartTime.get(`${sessionId}:${commandName}`);
+        const duration = startTime ? Date.now() - startTime : null;
 
-      const screenshotEveryCommandCapability = session.getXenonOption(
-        XENON_CAPABILITIES.SCREENSHOT_ON_EVERY_COMMAND,
-        false,
-      );
+        const logEntry: any = {
+          session_id: session.getId(),
+          command_name: commandName || null,
+          body: JSON.stringify(request.body),
+          response: responseBody,
+          is_success: isSuccessResponse,
+          is_error: !isSuccessResponse,
+          method: request.method,
+          title: this.getTitleFromCommandName(commandName),
+          subtitle: '',
+          screenshot: null,
+          url: request.originalUrl,
+          is_healed: !!healingInfo,
+          original_selector: healingInfo?.originalSelector || null,
+          healed_selector: healingInfo?.healedSelector || null,
+          healing_confidence: healingInfo?.confidence || null,
+          span_id: spanId,
+          trace_id: traceId,
+          duration: duration,
+        };
 
-      const shouldTakeScreenshotOnFailure =
-        !_.isNil(screenShotCapability) &&
-        screenShotCapability.toString() === 'true' &&
-        !isSuccessResponse;
-
-      const shouldTakeScreenshotOnEveryCommand =
-        !_.isNil(screenshotEveryCommandCapability) &&
-        screenshotEveryCommandCapability.toString() === 'true';
-
-      if (
-        shouldTakeScreenshotForCommand ||
-        shouldTakeScreenshotOnFailure ||
-        shouldTakeScreenshotOnEveryCommand
-      ) {
-        let screenshotBase64: string | null = null;
-        try {
-          // Principal Intelligence: Always prefer session.getScreenShot() because it contains
-          // platform-specific optimizations (like direct, high-speed ADB capture for Android).
-          screenshotBase64 = await session.getScreenShot();
-        } catch (err: any) {
-          log.warn(
-            `[Dashboard] Session-level screenshot failed for ${sessionId}: ${err.message}. Trying direct driver...`,
-          );
-          if (driver) {
-            try {
-              screenshotBase64 = await takeScreenshot(driver);
-            } catch (driverErr: any) {
-              log.error(`[Dashboard] Driver screenshot also failed: ${driverErr.message}`);
-            }
+        // Increment Healing Metrics
+        if (healingInfo) {
+          Container.get(MetricsService).incrementHealingAttempt();
+          if (isSuccessResponse) {
+            Container.get(MetricsService).incrementHealingSuccess();
           }
         }
 
-        if (screenshotBase64) {
-          logEntry['screenshot'] = saveScreenShot(session.getId(), screenshotBase64);
+        if (startTime) {
+          this.commandStartTime.delete(`${sessionId}:${commandName}`);
         }
+
+        // Take screenshots for specific commands (like click, setValue, etc.)
+        // OR on failure if SCREENSHOT_ON_FAILURE capability is enabled
+        const shouldTakeScreenshotForCommand =
+          commandName && config.takeScreenshotsFor.indexOf(commandName) >= 0;
+
+        const screenShotCapability = session.getXenonOption(
+          XENON_CAPABILITIES.SCREENSHOT_ON_FAILURE,
+          false,
+        );
+
+        const screenshotEveryCommandCapability = session.getXenonOption(
+          XENON_CAPABILITIES.SCREENSHOT_ON_EVERY_COMMAND,
+          false,
+        );
+
+        const shouldTakeScreenshotOnFailure =
+          !_.isNil(screenShotCapability) &&
+          screenShotCapability.toString() === 'true' &&
+          !isSuccessResponse;
+
+        const shouldTakeScreenshotOnEveryCommand =
+          !_.isNil(screenshotEveryCommandCapability) &&
+          screenshotEveryCommandCapability.toString() === 'true';
+
+        if (
+          shouldTakeScreenshotForCommand ||
+          shouldTakeScreenshotOnFailure ||
+          shouldTakeScreenshotOnEveryCommand
+        ) {
+          let screenshotBase64: string | null = null;
+          try {
+            // Principal Intelligence: Always prefer session.getScreenShot() because it contains
+            // platform-specific optimizations (like direct, high-speed ADB capture for Android).
+            screenshotBase64 = await session.getScreenShot();
+          } catch (err: any) {
+            log.warn(
+              `[Dashboard] Session-level screenshot failed for ${sessionId}: ${err.message}. Trying direct driver...`,
+            );
+            if (driver) {
+              try {
+                screenshotBase64 = await takeScreenshot(driver);
+              } catch (driverErr: any) {
+                log.error(`[Dashboard] Driver screenshot also failed: ${driverErr.message}`);
+              }
+            }
+          }
+
+          if (screenshotBase64) {
+            logEntry['screenshot'] = saveScreenShot(session.getId(), screenshotBase64);
+          }
+        }
+
+        await prisma.sessionLog.create({
+          data: logEntry as SessionLog,
+        });
+
+        // Emit command log event to dashboard
+        Container.get(SocketServer).emitToDashboard(SocketEvents.SESSION_COMMAND, {
+          session_id: session.getId(),
+          ...logEntry,
+        });
+      } catch (err: any) {
+        log.error(`[Dashboard] Failed to process command telemetry for ${sessionId}: ${err.message}`);
       }
-
-      await prisma.sessionLog.create({
-        data: logEntry as SessionLog,
-      });
-
-      // Emit command log event to dashboard
-      Container.get(SocketServer).emitToDashboard(SocketEvents.SESSION_COMMAND, {
-        session_id: session.getId(),
-        ...logEntry,
-      });
     }
   }
 

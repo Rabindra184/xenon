@@ -12,6 +12,15 @@ const TraceWaterfall: React.FC<TraceWaterfallProps> = ({ logs, onCommandClick })
   const [scrubberPos, setScrubberPos] = useState<number | null>(null);
   const bodyRef = useRef<HTMLDivElement>(null);
 
+  const safeFormatDuration = (ms: number | undefined | null) => {
+    if (ms === null || ms === undefined || isNaN(ms) || !isFinite(ms)) return '0ms';
+    try {
+      return prettyMilliseconds(ms);
+    } catch (e) {
+      return `${Math.round(ms)}ms`;
+    }
+  };
+
   // Sort logs by creation time to ensure correct sequence
   const sortedLogs = useMemo(() => {
     return [...logs].sort((a, b) => {
@@ -26,10 +35,15 @@ const TraceWaterfall: React.FC<TraceWaterfallProps> = ({ logs, onCommandClick })
     if (sortedLogs.length === 0) return null;
 
     const firstLog = sortedLogs[0];
-    const sessionStart = new Date(firstLog.createdAt!).getTime();
+    const sessionStart = firstLog.createdAt ? new Date(firstLog.createdAt).getTime() : 0;
     const lastLog = sortedLogs[sortedLogs.length - 1];
-    const sessionEnd = new Date(lastLog.createdAt!).getTime() + (lastLog.duration || 100);
+    const lastLogStartTime = lastLog.createdAt ? new Date(lastLog.createdAt).getTime() : 0;
+    const sessionEnd = lastLogStartTime + (lastLog.duration || 100);
     const totalDuration = Math.max(sessionEnd - sessionStart, 1);
+
+    if (isNaN(sessionStart) || isNaN(totalDuration) || totalDuration <= 0) {
+      return null;
+    }
 
     return { sessionStart, totalDuration };
   }, [sortedLogs]);
@@ -65,7 +79,7 @@ const TraceWaterfall: React.FC<TraceWaterfallProps> = ({ logs, onCommandClick })
             <div key={percent} className="tick-label" style={{ left: `${percent}%` }}>
               <span className="tick-mark" />
               <span className="tick-text">
-                {prettyMilliseconds((totalDuration * percent) / 100)}
+                {safeFormatDuration((totalDuration * percent) / 100)}
               </span>
             </div>
           ))}
@@ -91,9 +105,12 @@ const TraceWaterfall: React.FC<TraceWaterfallProps> = ({ logs, onCommandClick })
         </div>
 
         {sortedLogs.map((log, index) => {
-          const logStart = new Date(log.createdAt!).getTime();
-          const startOffset = ((logStart - sessionStart) / totalDuration) * 100;
-          const durationWidth = ((log.duration || 10) / totalDuration) * 100;
+          const logStart = log.createdAt ? new Date(log.createdAt).getTime() : sessionStart;
+          let startOffset = ((logStart - sessionStart) / totalDuration) * 100;
+          let durationWidth = ((log.duration || 10) / totalDuration) * 100;
+
+          if (!isFinite(startOffset)) startOffset = 0;
+          if (!isFinite(durationWidth)) durationWidth = 0.4;
           const isSlow = log.duration && log.duration > 1500;
 
           return (
@@ -124,7 +141,7 @@ const TraceWaterfall: React.FC<TraceWaterfallProps> = ({ logs, onCommandClick })
                   {durationWidth > 15 && (
                     <div className="bar-info">
                       <Clock size={10} />
-                      <span>{prettyMilliseconds(log.duration || 0)}</span>
+                      <span>{safeFormatDuration(log.duration || 0)}</span>
                     </div>
                   )}
                   {/* Tooltip trigger area */}
@@ -133,7 +150,7 @@ const TraceWaterfall: React.FC<TraceWaterfallProps> = ({ logs, onCommandClick })
                       <div className="tooltip-title">{log.command_name}</div>
                       <div className="tooltip-row">
                         <span>Duration:</span>
-                        <span className="value">{prettyMilliseconds(log.duration || 0)}</span>
+                        <span className="value">{safeFormatDuration(log.duration || 0)}</span>
                       </div>
                       {log.span_id && (
                         <div className="tooltip-row">

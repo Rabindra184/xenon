@@ -337,13 +337,16 @@ export class SessionLifecycleService {
     const isDashboardEnabled = !!context.pluginArgs.enableDashboard;
     const shouldSaveLogs = session.getType() !== SessionType.CLOUD;
     const isVideoRecordingEnabled = caps[XENON_CAPABILITIES.VIDEO_RECORDING];
+    this.logger.info(`📹 Video recording enabled for session ${session.getId()}: ${isVideoRecordingEnabled}`);
 
     if (isVideoRecordingEnabled) {
       const resolution = caps[XENON_CAPABILITIES.VIDEO_RESOLUTION] || undefined;
       try {
+        this.logger.info(`📹 Starting video recording for session ${session.getId()}...`);
         await session.startVideoRecording({ resolution });
-      } catch (err) {
-        this.logger.warn('⚠️ Failed to start video recording:', err);
+        this.logger.info(`📹 Video recording started successfully for ${session.getId()}`);
+      } catch (err: any) {
+        this.logger.warn(`⚠️ Failed to start video recording for ${session.getId()}: ${err.message}`);
       }
     }
 
@@ -412,8 +415,7 @@ export class SessionLifecycleService {
       const errorDetail =
         (createdSession as any).error || val?.error || val?.message || 'Unknown W3C error';
       return new Error(
-        `W3C session creation failed on ${device.host}: ${
-          typeof errorDetail === 'object' ? JSON.stringify(errorDetail) : errorDetail
+        `W3C session creation failed on ${device.host}: ${typeof errorDetail === 'object' ? JSON.stringify(errorDetail) : errorDetail
         }`,
       );
     }

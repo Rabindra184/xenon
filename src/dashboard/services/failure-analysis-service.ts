@@ -43,6 +43,10 @@ const ERROR_PATTERNS = [
     ],
   },
   {
+    category: 'XENON_COMMAND_FAILURE',
+    patterns: ['Command failed', 'telemetry failed', 'interceptor error'],
+  },
+  {
     category: 'SYSTEM_OVERLOAD',
     patterns: ['OutOfMemory', 'MemoryLimit', 'thermal throttling', 'too many open files'],
   },
