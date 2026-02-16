@@ -267,7 +267,7 @@ export class DashboardEventManager {
     const session: XenonSession | undefined = SESSION_MANAGER.getSession(sessionId);
 
     if (!session) {
-      return false;
+      return true;
     }
 
     if (commandName) {

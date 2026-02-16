@@ -34,18 +34,20 @@ export class TracingService {
       );
     }
 
-    this.sdk = new NodeSDK({
-      serviceName: 'xenon',
-      spanProcessor: new SimpleSpanProcessor(
-        exporters.length > 0 ? exporters[0] : new ConsoleSpanExporter(),
-      ),
-    });
+    if (exporters.length > 0) {
+      this.sdk = new NodeSDK({
+        serviceName: 'xenon',
+        spanProcessor: new SimpleSpanProcessor(exporters[0] as any),
+      });
 
-    try {
-      this.sdk.start();
-      log.info('[TracingService] OpenTelemetry SDK started');
-    } catch (err: any) {
-      log.error(`[TracingService] Failed to start OTel SDK: ${err.message}`);
+      try {
+        this.sdk.start();
+        log.info('[TracingService] OpenTelemetry SDK started');
+      } catch (err: any) {
+        log.error(`[TracingService] Failed to start OTel SDK: ${err.message}`);
+      }
+    } else {
+      log.info('[TracingService] No OTel exporters enabled.');
     }
   }
 
