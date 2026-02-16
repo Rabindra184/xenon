@@ -68,6 +68,15 @@ class IOSStreamService {
         if (session.status === 'running') {
           // Check for inactivity
           if (now - session.lastViewerAt > 30000 && session.viewerCount === 0) {
+            // Principal Protection: Never stop a stream if the device is busy with an active session.
+            // This prevents the watchdog from killing WDA while a test is running.
+            const device = await DeviceStoreFactory.getStore().findDevice({ udid });
+            if (device && device.busy) {
+              log.debug(`🛡️ [${udid}] [Watchdog] Stream is idle but device is BUSY. Keeping alive.`);
+              session.lastViewerAt = Date.now(); // Refresh timer to avoid constant DB checks
+              continue;
+            }
+
             log.info(`[${udid}] [Watchdog] Stopping idle iOS stream (No viewers for 30s)`);
             this.stopStream(udid);
             continue;
@@ -548,8 +557,7 @@ class IOSStreamService {
           if (session.wdaProcess?.exitCode !== null) {
             const logContent = fs.existsSync(wdaRunLog) ? fs.readFileSync(wdaRunLog, 'utf8') : '';
             throw new Error(
-              `WDA process exited with code ${
-                session.wdaProcess?.exitCode
+              `WDA process exited with code ${session.wdaProcess?.exitCode
               }. Log: ${logContent.slice(-200)}`,
             );
           }
@@ -636,15 +644,19 @@ class IOSStreamService {
         }
     });
 
-    // Principal Recovery: Release the device lock in the database
+    // Principal Fix: Only release the device lock if THIS STREAM SERVICE owns it.
+    // The lock could belong to an Appium automation session (session_id is a real UUID).
+    // We should only unblock if it's a manual control lock (session_id starts with 'manual_').
     try {
       const device = await DeviceStoreFactory.getStore().findDevice({ udid });
-      if (device) {
-        log.info(`Stream Stop: Manually releasing lock for ${udid}`);
+      if (device && device.session_id?.startsWith('manual_')) {
+        log.info(`Stream Stop: Releasing manual control lock for ${udid}`);
         await unblockDevice(udid, device.host);
+      } else if (device && device.busy) {
+        log.info(`Stream Stop: Device ${udid} is busy with session ${device.session_id}. NOT releasing lock.`);
       }
     } catch (e) {
-      log.error(`Failed to release lock during stream stop for ${udid}: ${e}`);
+      log.error(`Failed to check/release lock during stream stop for ${udid}: ${e}`);
     }
 
     // Also clean up any orphan processes (belt and suspenders)

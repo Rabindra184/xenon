@@ -44,6 +44,14 @@ class AndroidStreamService {
       for (const [udid, session] of this.sessions.entries()) {
         if (session.status === 'running') {
           if (now - session.lastViewerAt > 30000 && session.viewerCount === 0) {
+            // Principal Protection: Never stop a stream if the device is busy with an active session.
+            const device = await DeviceStoreFactory.getStore().findDevice({ udid });
+            if (device && device.busy) {
+              log.debug(`🛡️ [${udid}] [Watchdog] Stream is idle but device is BUSY. Keeping alive.`);
+              session.lastViewerAt = Date.now(); // Refresh timer to avoid constant DB checks
+              continue;
+            }
+
             log.info(`[${udid}] Stopping idle stream (No active viewers for 30s)`);
             this.stopStream(udid);
           }
@@ -273,14 +281,21 @@ class AndroidStreamService {
         session.server.close();
         session.server = null;
       }
+      // Principal Fix: Only release the device lock if THIS STREAM SERVICE owns it.
+      // If an Appium automation session owns the lock, don't touch it.
       try {
         const device = await DeviceStoreFactory.getStore().findDevice({ udid });
-        if (device) await unblockDevice(udid, device.host);
+        if (device && device.session_id?.startsWith('manual_')) {
+          log.info(`[${udid}] Stream Stop: Releasing manual control lock.`);
+          await unblockDevice(udid, device.host);
+        } else if (device && device.busy) {
+          log.info(`[${udid}] Stream Stop: Device busy with session ${device.session_id}. NOT releasing lock.`);
+        }
       } catch (e) {
         /* Ignore unblocking failure on stop */
       }
       this.sessions.delete(udid);
-      log.info(`[${udid}] Stream terminated and device unblocked.`);
+      log.info(`[${udid}] Stream terminated.`);
     }
   }
 

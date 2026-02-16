@@ -44,6 +44,8 @@ export class DashboardEventManager {
   private lastLogLine: Map<string, number> = new Map();
   // Track start time for each command to calculate duration
   private commandStartTime: Map<string, number> = new Map();
+  // Idempotency Guard: Prevents double-invocation of onSessionStopped by racing actors
+  private stoppingSessionIds: Set<string> = new Set();
 
   async onSessionStarted(
     capabilities: Record<string, any>,
@@ -83,11 +85,8 @@ export class DashboardEventManager {
     }
 
     // start video recording is now handled in plugin.ts createSession to avoid double calls
-    log.info(
-      `📹 Video recording capability for session ${session.getId()}: ${
-        capabilities[XENON_CAPABILITIES.VIDEO_RECORDING]
-      }`,
-    );
+    const videoMsg = `📹 Video recording capability for session ${session.getId()}: ${capabilities[XENON_CAPABILITIES.VIDEO_RECORDING]}`;
+    log.info(videoMsg);
 
     const buildName = capabilities[XENON_CAPABILITIES.BUILD_NAME] || 'Default Build';
     const build = await getOrCreateNewBuild(buildName);
@@ -113,6 +112,7 @@ export class DashboardEventManager {
       device_version: device.sdk || '',
       device_name: device.name,
       trace_id: traceId,
+      status: 'running', // Principal Polish: Set status explicitly
     };
 
     await prisma.session.create({
@@ -122,6 +122,7 @@ export class DashboardEventManager {
     // Emit session started event
     Container.get(SocketServer).emitToDashboard(SocketEvents.SESSION_STARTED, {
       ...createData,
+      status: 'running', // Principal Polish: Ensure frontend gets status
       build_name: buildName,
     });
 
@@ -130,111 +131,130 @@ export class DashboardEventManager {
   }
 
   async onSessionStopped(sessionId: string, status?: SessionStatus, failureReason?: string) {
-    log.info(`🟢 onSessionStopped called for session ${sessionId}`);
+    // Idempotency Guard: If this session is already being stopped by another actor
+    // (heartbeat, stream watchdog, plugin.deleteSession), skip to avoid double-cleanup.
+    if (this.stoppingSessionIds.has(sessionId)) {
+      log.info(`⏭️ onSessionStopped already in progress for ${sessionId}. Skipping duplicate call.`);
+      return;
+    }
+    this.stoppingSessionIds.add(sessionId);
 
-    // Video recording is now handled in plugin.ts deleteSession() before the session is deleted
-    // This ensures we can call stop_recording_screen while the session is still active
-    // Here we just handle the session status update
+    try {
+      log.info(`🟢 onSessionStopped called for session ${sessionId}`);
 
-    const session: XenonSession | undefined = SESSION_MANAGER.getSession(sessionId);
-    if (session) {
-      log.info(`Session ${sessionId} found in SESSION_MANAGER`);
+      // Video recording is now handled in plugin.ts deleteSession() before the session is deleted
+      // This ensures we can call stop_recording_screen while the session is still active
+      // Here we just handle the session status update
 
-      // Save Android profiling data before cleanup
-      await this.saveAppProfilingData(sessionId);
+      const session: XenonSession | undefined = SESSION_MANAGER.getSession(sessionId);
+      if (session) {
+        log.info(`Session ${sessionId} found in SESSION_MANAGER`);
 
-      // iOS profiling is now handled in plugin.ts deleteSession() before the session is deleted
-      // This ensures we can call mobile: stopPerfRecord while the driver is still alive
+        // Save Android profiling data before cleanup
+        await this.saveAppProfilingData(sessionId);
 
-      // Clean up syslog service for real iOS devices
-      const udid = this.sessionToUdid.get(sessionId);
-      if (udid && this.syslogServices.has(udid)) {
-        const deviceData = this.syslogServices.get(udid);
-        if (deviceData && deviceData.service) {
-          try {
-            // Note: The syslog service doesn't have a stop method, but we can clean up our reference
-            this.syslogServices.delete(udid);
-            this.sessionToUdid.delete(sessionId);
-            log.info(`Cleaned up syslog service for device ${udid}`);
-          } catch (err) {
-            log.debug(`Error cleaning up syslog service: ${err}`);
+        // iOS profiling is now handled in plugin.ts deleteSession() before the session is deleted
+        // This ensures we can call mobile: stopPerfRecord while the driver is still alive
+
+        // Clean up syslog service for real iOS devices
+        const udid = this.sessionToUdid.get(sessionId);
+        if (udid && this.syslogServices.has(udid)) {
+          const deviceData = this.syslogServices.get(udid);
+          if (deviceData && deviceData.service) {
+            try {
+              // Note: The syslog service doesn't have a stop method, but we can clean up our reference
+              this.syslogServices.delete(udid);
+              this.sessionToUdid.delete(sessionId);
+              log.info(`Cleaned up syslog service for device ${udid}`);
+            } catch (err) {
+              log.debug(`Error cleaning up syslog service: ${err}`);
+            }
           }
         }
+
+        // Clean up device mapping
+        this.sessionToDevice.delete(sessionId);
+        // Clean up last log line tracking
+        this.lastLogLine.delete(sessionId);
+      } else {
+        log.warn(`⚠️ Session ${sessionId} not found in SESSION_MANAGER`);
       }
 
-      // Clean up device mapping
-      this.sessionToDevice.delete(sessionId);
-      // Clean up last log line tracking
-      this.lastLogLine.delete(sessionId);
-    } else {
-      log.warn(`⚠️ Session ${sessionId} not found in SESSION_MANAGER`);
-    }
+      const sessionEntry = await getSessionById(sessionId);
+      if (sessionEntry) {
+        log.info(`Session ${sessionId} current status: ${sessionEntry.status}`);
+        const updateData: any = {
+          endTime: new Date(),
+          has_live_video: false,
+        };
+        // Principal Intelligence: Determined final status based on command history
+        if (status) {
+          updateData['status'] = status;
+          if (failureReason) updateData['failure_reason'] = failureReason;
+        } else if (
+          sessionEntry.status === SessionStatus.RUNNING ||
+          !sessionEntry.status ||
+          sessionEntry.status === SessionStatus.UNMARKED
+        ) {
+          // Check if any command failed in this session
+          const failedCommand = await prisma.sessionLog.findFirst({
+            where: { session_id: sessionId, is_error: true },
+            orderBy: { createdAt: 'desc' },
+          });
 
-    const sessionEntry = await getSessionById(sessionId);
-    if (sessionEntry) {
-      log.info(`Session ${sessionId} current status: ${sessionEntry.status}`);
-      const updateData: any = {
-        endTime: new Date(),
-        has_live_video: false,
-      };
-      // Principal Intelligence: Determined final status based on command history
-      if (status) {
-        updateData['status'] = status;
-        if (failureReason) updateData['failure_reason'] = failureReason;
-      } else if (
-        sessionEntry.status === SessionStatus.RUNNING ||
-        !sessionEntry.status ||
-        sessionEntry.status === SessionStatus.UNMARKED
-      ) {
-        // Check if any command failed in this session
-        const failedCommand = await prisma.sessionLog.findFirst({
-          where: { session_id: sessionId, is_error: true },
-          orderBy: { createdAt: 'desc' },
+          if (failedCommand) {
+            updateData['status'] = SessionStatus.FAILED;
+            updateData['failure_reason'] =
+              failedCommand.response && failedCommand.response.includes('error')
+                ? safeParseJson(failedCommand.response).value?.error ||
+                `Command failed: ${failedCommand.command_name}`
+                : `Command failed: ${failedCommand.command_name}`;
+            log.info(
+              `Session ${sessionId} marked as FAILED due to error in command: ${failedCommand.command_name}`,
+            );
+          } else {
+            updateData['status'] = SessionStatus.SUCCESS;
+            log.info(`Session ${sessionId} marked as SUCCESS`);
+          }
+        } else {
+          // Principal Reliability: If the session already has a terminal status,
+          // ensure we still use that status for metrics and events below.
+          updateData['status'] = sessionEntry.status;
+        }
+        await updateSessionDetails(sessionId, updateData);
+        log.info(`✅ Session ${sessionId} updated successfully`);
+
+        // 🟢 Socket Events must happen AFTER DB update and MUST include a status
+        // to ensure the UI row changes from 'RUNNING' to its final state.
+        Container.get(SocketServer).emitToDashboard(SocketEvents.SESSION_STOPPED, {
+          id: sessionId,
+          status: updateData.status || sessionEntry.status || SessionStatus.SUCCESS,
+          failure_reason: updateData.failure_reason || sessionEntry.failure_reason,
         });
 
-        if (failedCommand) {
-          updateData['status'] = SessionStatus.FAILED;
-          updateData['failure_reason'] =
-            failedCommand.response && failedCommand.response.includes('error')
-              ? safeParseJson(failedCommand.response).value?.error ||
-                `Command failed: ${failedCommand.command_name}`
-              : `Command failed: ${failedCommand.command_name}`;
-          log.info(
-            `Session ${sessionId} marked as FAILED due to error in command: ${failedCommand.command_name}`,
-          );
-        } else {
-          updateData['status'] = SessionStatus.SUCCESS;
-          log.info(`Session ${sessionId} marked as SUCCESS`);
+        // Principal Analytics: Increment Metrics AFTER emission
+        if (updateData.status === SessionStatus.SUCCESS) {
+          Container.get(MetricsService).incrementSessionSuccess();
+        } else if (updateData.status === SessionStatus.FAILED) {
+          Container.get(MetricsService).incrementSessionFailure();
         }
-      }
-      await updateSessionDetails(sessionId, updateData);
-      log.info(`✅ Session ${sessionId} updated successfully`);
 
-      // Increment Metrics
-      if (updateData.status === SessionStatus.SUCCESS) {
-        Container.get(MetricsService).incrementSessionSuccess();
-      } else if (updateData.status === SessionStatus.FAILED) {
-        Container.get(MetricsService).incrementSessionFailure();
-      }
-
-      // Principal Triage: If session failed, perform intelligent failure analysis
-      if (updateData.status === SessionStatus.FAILED) {
-        try {
-          const { analyzeSessionFailure } = await import('./services/failure-analysis-service');
-          await analyzeSessionFailure(sessionId);
-        } catch (analysisErr: any) {
-          log.warn(`⚠️ Failure analysis skipped for ${sessionId}: ${analysisErr.message}`);
+        // Principal Triage: If session failed, perform intelligent failure analysis
+        if (updateData.status === SessionStatus.FAILED) {
+          try {
+            const { analyzeSessionFailure } = await import('./services/failure-analysis-service');
+            await analyzeSessionFailure(sessionId);
+          } catch (analysisErr: any) {
+            log.warn(`⚠️ Failure analysis skipped for ${sessionId}: ${analysisErr.message}`);
+          }
         }
+      } else {
+        log.warn(`⚠️ Session ${sessionId} not found in database`);
       }
-
-      // Emit session stopped event
-      Container.get(SocketServer).emitToDashboard(SocketEvents.SESSION_STOPPED, {
-        id: sessionId,
-        status: updateData.status,
-        failure_reason: updateData.failure_reason,
-      });
-    } else {
-      log.warn(`⚠️ Session ${sessionId} not found in database`);
+    } finally {
+      // Always release the idempotency lock so future cleanup calls
+      // (e.g., manual recovery) can proceed if needed.
+      this.stoppingSessionIds.delete(sessionId);
     }
   }
 

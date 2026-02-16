@@ -27,10 +27,12 @@ export class HealthMonitorService {
     this.pluginArgs = pluginArgs;
     this.stop();
 
-    this.setupMonitor(pluginArgs);
+    // Do NOT run checkAllDevices immediately on startup.
+    // Devices are freshly discovered and presumed healthy.
+    // The first check will fire after the configured interval (default: 24h).
+    this.setupMonitor(pluginArgs, false);
 
-    // Initial config poll and setup polling
-    this.pollWebConfig();
+    // Delay config polling to avoid restarting the monitor during startup
     this.configPollInterval = setInterval(() => this.pollWebConfig(), 60000); // Poll every minute
   }
 

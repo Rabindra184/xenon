@@ -42,8 +42,7 @@ export class RemoteSession extends XenonSession {
         data: {},
       });
       console.log(
-        `[RemoteSession] stopVideoRecording response status: ${response.status}, data length: ${
-          response?.data?.value?.length || 0
+        `[RemoteSession] stopVideoRecording response status: ${response.status}, data length: ${response?.data?.value?.length || 0
         }`,
       );
       return response.status === 200 && response?.data?.value ? response?.data?.value : '';
@@ -59,8 +58,7 @@ export class RemoteSession extends XenonSession {
           data: {},
         });
         console.log(
-          `[RemoteSession] stopVideoRecording retry succeeded, data length: ${
-            retryResponse?.data?.value?.length || 0
+          `[RemoteSession] stopVideoRecording retry succeeded, data length: ${retryResponse?.data?.value?.length || 0
           }`,
         );
         return retryResponse?.data?.value || '';
@@ -183,13 +181,21 @@ export class RemoteSession extends XenonSession {
   }
 
   async checkHealth(): Promise<boolean> {
+    // Principal Fix: Use Appium's /status endpoint as the primary health check.
+    // The previous approach used /session/{id}/url which returns 404 for native iOS apps
+    // (XCUITest), causing the heartbeat to falsely kill healthy sessions.
+    // /status always works regardless of app type (native or web).
     try {
       const response = await axios({
         method: 'get',
-        url: `${this.baseUrl}/session/${this.sessionId}/url`,
+        url: `${this.baseUrl}/status`,
         timeout: 5000,
       });
-      return response.status >= 200 && response.status < 300;
+      // If the Appium server is alive and the session exists in its map, it's healthy
+      if (response.status >= 200 && response.status < 300) {
+        return true;
+      }
+      return false;
     } catch (err: any) {
       log.warn(`[RemoteSession] Health check failed for session ${this.sessionId}: ${err.message}`);
       return false;

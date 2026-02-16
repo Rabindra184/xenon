@@ -282,28 +282,47 @@ const SessionDashboard: React.FC = () => {
   React.useEffect(() => {
     if (!onSocketEvent) return;
 
-    onSocketEvent('session_started', (data: ISession) => {
-      setSessions((prev) => [data, ...prev]);
-    });
+    const unsubs: (() => void)[] = [];
 
-    onSocketEvent('session_stopped', (data: { id: string; status: string }) => {
-      setSessions((prev) =>
-        prev.map((s) =>
-          s.id === data.id ? { ...s, status: data.status, endTime: new Date().toISOString() } : s,
-        ),
-      );
-    });
+    unsubs.push(
+      onSocketEvent('session_started', (data: ISession) => {
+        setSessions((prev) => {
+          // Prevent duplicates if fetchData also ran
+          if (prev.some((s) => s.id === data.id)) return prev;
+          return [data, ...prev];
+        });
+      }),
+    );
 
-    onSocketEvent('session_command', (data: ISessionLog) => {
-      // Only append if it's the currently selected session
-      if (selectedSessionId === data.session_id) {
-        setLogs((prev) => [data, ...prev]);
-      }
-    });
+    unsubs.push(
+      onSocketEvent('session_stopped', (data: { id: string; status: string }) => {
+        setSessions((prev) =>
+          prev.map((s) =>
+            s.id === data.id ? { ...s, status: data.status, endTime: new Date().toISOString() } : s,
+          ),
+        );
+      }),
+    );
+
+    unsubs.push(
+      onSocketEvent('session_command', (data: ISessionLog) => {
+        // Only append if it's the currently selected session
+        if (selectedSessionId === data.session_id) {
+          setLogs((prev) => {
+            if (prev.some((l) => l.id === data.id)) return prev;
+            return [data, ...prev];
+          });
+        }
+      }),
+    );
 
     // Device events for grid awareness
-    onSocketEvent('device_added', () => fetchData());
-    onSocketEvent('device_removed', () => fetchData());
+    unsubs.push(onSocketEvent('device_added', () => fetchData()));
+    unsubs.push(onSocketEvent('device_removed', () => fetchData()));
+
+    return () => {
+      unsubs.forEach((u) => u());
+    };
   }, [onSocketEvent, selectedSessionId, fetchData]);
 
   const filteredBuilds = builds.filter((b) => {
@@ -529,7 +548,9 @@ const SessionDashboard: React.FC = () => {
                 (tab) => {
                   if (
                     tab === 'profiling' &&
-                    !['android', 'ios'].includes(selectedSession.device_platform?.toLowerCase() || '')
+                    !['android', 'ios'].includes(
+                      selectedSession.device_platform?.toLowerCase() || '',
+                    )
                   )
                     return null;
                   return (
