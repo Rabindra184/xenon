@@ -484,6 +484,7 @@ export class WDAClient {
         timer = setTimeout(() => {
           if (!resolved) {
             resolved = true;
+            rl.close();
             proc.kill('SIGKILL');
             this.log.debug(`getLogs snapshot completed (inactivity timeout) for ${udid}`);
             resolve(output);
@@ -517,6 +518,7 @@ export class WDAClient {
       proc.on('error', (err) => {
         if (!resolved) {
           resolved = true;
+          rl.close();
           this.log.debug(`getLogs failed for ${udid}: ${err.message}`);
           clearTimeout(timer);
           resolve(output);
@@ -526,6 +528,7 @@ export class WDAClient {
       proc.on('exit', (code) => {
         if (!resolved) {
           resolved = true;
+          rl.close();
           clearTimeout(timer);
           this.log.debug(`getLogs process exited with code ${code} for ${udid}`);
           resolve(output);
