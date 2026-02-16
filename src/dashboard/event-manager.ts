@@ -162,17 +162,13 @@ export class DashboardEventManager {
 
         // Clean up syslog service for real iOS devices
         const udid = this.sessionToUdid.get(sessionId);
-        if (udid && this.syslogServices.has(udid)) {
-          const deviceData = this.syslogServices.get(udid);
-          if (deviceData && deviceData.service) {
-            try {
-              // Note: The syslog service doesn't have a stop method, but we can clean up our reference
-              this.syslogServices.delete(udid);
-              this.sessionToUdid.delete(sessionId);
-              log.info(`Cleaned up syslog service for device ${udid}`);
-            } catch (err) {
-              log.debug(`Error cleaning up syslog service: ${err}`);
-            }
+        if (udid) {
+          try {
+            this.syslogServices.delete(udid);
+            this.sessionToUdid.delete(sessionId);
+            log.info(`Cleaned up syslog service for device ${udid}`);
+          } catch (err) {
+            log.debug(`Error cleaning up syslog service info: ${err}`);
           }
         }
 
@@ -187,24 +183,43 @@ export class DashboardEventManager {
             await unblockDevice(device.udid, device.host);
             log.info(`🔓 [${sessionId}] Device ${device.udid} released.`);
           } catch (unblockErr: any) {
+            const msg = unblockErr?.message ?? String(unblockErr);
             log.error(
-              `⚠️ Failed to unblock device ${device.udid} for session ${sessionId}: ${unblockErr.message}`,
+              `⚠️ Failed to unblock device ${device.udid} for session ${sessionId}: ${msg}`,
+              unblockErr,
             );
+          }
+        } else {
+          const { unblockDeviceMatchingFilter } = await import('../data-service/device-service');
+          try {
+            await unblockDeviceMatchingFilter({ session_id: sessionId });
+            log.info(`🔓 [${sessionId}] Device released via session_id fallback.`);
+          } catch (unblockErr: any) {
+            const msg = unblockErr?.message ?? String(unblockErr);
+            log.error(`⚠️ Failed to unblock device for session ${sessionId}: ${msg}`, unblockErr);
           }
         }
 
-        // Clean up device mapping
+        // Final local cleanup to prevent state leaks
         this.sessionToDevice.delete(sessionId);
+        this.lastLogLine.delete(sessionId);
+        const orphanUdid = this.sessionToUdid.get(sessionId);
+        if (orphanUdid) {
+          this.sessionToUdid.delete(sessionId);
+          this.syslogServices.delete(orphanUdid);
+        }
       } else {
         log.warn(`⚠️ Session ${sessionId} not found in SESSION_MANAGER`);
         // Fallback: If session not in manager, attempt to unblock by session_id in store
         const { unblockDeviceMatchingFilter } = await import('../data-service/device-service');
         try {
           await unblockDeviceMatchingFilter({ session_id: sessionId });
+          log.info(`🔓 [${sessionId}] Orphaned device released via session_id fallback.`);
         } catch (unblockErr: any) {
+          const msg = unblockErr?.message ?? String(unblockErr);
           log.error(
-            `⚠️ Failed to unblock device for orphaned session ${sessionId}: ${unblockErr && unblockErr.message ? unblockErr.message : String(unblockErr)
-            }`,
+            `⚠️ Failed to unblock device for orphaned session ${sessionId}: ${msg}`,
+            unblockErr,
           );
         } finally {
           this.sessionToDevice.delete(sessionId);
