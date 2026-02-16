@@ -14,6 +14,10 @@ export function prepareDirectory(sessionId: string) {
 }
 
 export function saveScreenShot(sessionId: string, screenshotBase64String: string): string {
+  const directory = path.join(config.sessionAssetsPath, sessionId, SCREENSHOT_DIRECTORY);
+  if (!fs.existsSync(directory)) {
+    fs.mkdirSync(directory, { recursive: true });
+  }
   const assetPath = path.join(sessionId, SCREENSHOT_DIRECTORY, `${uuidv4()}.png`);
   const fullPath = path.join(config.sessionAssetsPath, assetPath);
   fs.writeFileSync(fullPath, screenshotBase64String, 'base64');
@@ -22,12 +26,20 @@ export function saveScreenShot(sessionId: string, screenshotBase64String: string
 }
 
 export function saveVideoRecording(sessionId: string, videoBase64String: string) {
+  const directory = path.join(config.sessionAssetsPath, sessionId, VIDEO_DIRECTORY);
+  if (!fs.existsSync(directory)) {
+    fs.mkdirSync(directory, { recursive: true });
+  }
   const assetPath = path.join(sessionId, VIDEO_DIRECTORY, `${sessionId}.mp4`);
   fs.writeFileSync(path.join(config.sessionAssetsPath, assetPath), videoBase64String, 'base64');
   return assetPath;
 }
 
 export function savePerformanceTrace(sessionId: string, traceBase64String: string) {
+  const directory = path.join(config.sessionAssetsPath, sessionId, PERFORMANCE_DIRECTORY);
+  if (!fs.existsSync(directory)) {
+    fs.mkdirSync(directory, { recursive: true });
+  }
   const assetPath = path.join(sessionId, PERFORMANCE_DIRECTORY, `${sessionId}.zip`);
   fs.writeFileSync(path.join(config.sessionAssetsPath, assetPath), traceBase64String, 'base64');
   return assetPath;

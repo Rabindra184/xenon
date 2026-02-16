@@ -412,8 +412,7 @@ export class SessionLifecycleService {
       const errorDetail =
         (createdSession as any).error || val?.error || val?.message || 'Unknown W3C error';
       return new Error(
-        `W3C session creation failed on ${device.host}: ${
-          typeof errorDetail === 'object' ? JSON.stringify(errorDetail) : errorDetail
+        `W3C session creation failed on ${device.host}: ${typeof errorDetail === 'object' ? JSON.stringify(errorDetail) : errorDetail
         }`,
       );
     }
@@ -571,6 +570,6 @@ export class SessionLifecycleService {
   }
 
   private isHub(args: any) {
-    return !!args.hub;
+    return !args.hub;
   }
 }
