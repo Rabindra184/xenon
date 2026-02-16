@@ -178,6 +178,17 @@ export default class IOSDeviceManager implements IDeviceManager {
         // For simplicity, we'll keep some health check logic here but use the client for WDA status
         const isReady = await Container.get(WDAClient).verifyWDAStatus(device.udid);
         if (isReady) return { healthStatus: 'Healthy' };
+
+        // Principal Intelligence: If the device is IDLE (not busy) and WDA is down,
+        // check if this is expected (e.g. watchdog stopped the stream).
+        if (!device.busy) {
+          const streamService = Container.get(IOSStreamService);
+          const streamStatus = streamService.getStreamStatus(device.udid);
+          if (!streamStatus || (streamStatus.status !== 'running' && streamStatus.status !== 'starting')) {
+            return { healthStatus: 'Healthy', healthCheckError: 'Idle (WDA Stopped)' };
+          }
+        }
+
         return { healthStatus: 'Unhealthy', healthCheckError: 'WDA not responding' };
       } else {
         const simctl = new Simctl();

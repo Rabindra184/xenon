@@ -67,7 +67,7 @@ class IOSStreamService {
         const now = Date.now();
         if (session.status === 'running') {
           // Check for inactivity
-          if (now - session.lastViewerAt > 30000 && session.viewerCount === 0) {
+          if (now - session.lastViewerAt > 600000 && session.viewerCount === 0) {
             // Principal Protection: Never stop a stream if the device is busy with an active session.
             // This prevents the watchdog from killing WDA while a test is running.
             const device = await DeviceStoreFactory.getStore().findDevice({ udid });
@@ -110,7 +110,7 @@ class IOSStreamService {
           }
         }
       }
-    }, 30000); // 30s interval for background stability
+    }, 3600000); // 1hr interval for background stability
   }
 
   private getGoIOSPath(): string {

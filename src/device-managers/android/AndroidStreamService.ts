@@ -43,21 +43,13 @@ class AndroidStreamService {
       const now = Date.now();
       for (const [udid, session] of this.sessions.entries()) {
         if (session.status === 'running') {
-          if (now - session.lastViewerAt > 30000 && session.viewerCount === 0) {
-            // Principal Protection: Never stop a stream if the device is busy with an active session.
-            const device = await DeviceStoreFactory.getStore().findDevice({ udid });
-            if (device && device.busy) {
-              log.debug(`🛡️ [${udid}] [Watchdog] Stream is idle but device is BUSY. Keeping alive.`);
-              session.lastViewerAt = Date.now(); // Refresh timer to avoid constant DB checks
-              continue;
-            }
-
-            log.info(`[${udid}] Stopping idle stream (No active viewers for 30s)`);
+          if (now - session.lastViewerAt > 600000 && session.viewerCount === 0) {
+            log.info(`[${udid}] Stopping idle stream (No active viewers for 600s)`);
             this.stopStream(udid);
           }
         }
       }
-    }, 10000);
+    }, 3600000);
   }
 
   private async captureLoop(udid: string, session: AndroidStreamSession) {
