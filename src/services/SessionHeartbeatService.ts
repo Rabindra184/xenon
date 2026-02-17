@@ -6,6 +6,9 @@ import { IPluginArgs } from '../interfaces/IPluginArgs';
 import { DASHBORD_EVENT_MANAGER } from '../dashboard/event-manager';
 import { SessionStatus } from '../types/SessionStatus';
 import { prisma } from '../prisma';
+import { SessionLifecycleService } from './SessionLifecycleService';
+
+import { SessionHealthState, HealthErrorType } from '../sessions/XenonSession';
 
 @Service()
 export class SessionHeartbeatService {
@@ -26,7 +29,9 @@ export class SessionHeartbeatService {
   }
 
   private failureCounts: Map<string, number> = new Map();
-  private readonly MAX_CONSECUTIVE_FAILURES = 3;
+  private readonly THRESHOLD_DEGRADED = 1;
+  private readonly THRESHOLD_SUSPECT = 3;
+  private readonly THRESHOLD_DEAD = 6;
 
   private async checkAllSessions() {
     // 1. Local memory check (fast path)
@@ -46,44 +51,58 @@ export class SessionHeartbeatService {
       if (session.isStopping && session.stoppedAt && Date.now() - session.stoppedAt < 60000) {
         continue;
       }
+
       const sessionId = session.getId();
       try {
-        const isHealthy = await session.checkHealth();
-        if (isHealthy) {
-          // Reset failure count on success
+        const result = await session.checkHealth();
+
+        if (result.isHealthy) {
+          // Recovery: Reset failure count and restore HEALTHY state
+          if (this.failureCounts.get(sessionId) || 0 > 0) {
+            this.log.info(`✨ Session ${sessionId} recovered and is now HEALTHY.`);
+          }
           this.failureCounts.set(sessionId, 0);
+          session.healthState = SessionHealthState.HEALTHY;
           continue;
         }
 
         const count = (this.failureCounts.get(sessionId) || 0) + 1;
         this.failureCounts.set(sessionId, count);
 
-        if (count >= this.MAX_CONSECUTIVE_FAILURES) {
-          this.log.warn(
-            `💔 Local Session ${sessionId} failed ${count} consecutive health checks. Cleaning up.`,
+        // State Machine Transition Logic
+        if (count >= this.THRESHOLD_DEAD) {
+          session.healthState = SessionHealthState.DEAD;
+          this.log.error(
+            `💔 Session ${sessionId} reached DEAD state after ${count} failures. Error: ${result.errorType} - ${result.message}`,
           );
+
           const reason = session.isStopping
             ? 'Shutdown timeout (Cleanup hung for > 60s)'
-            : `Session became unresponsive (${count} consecutive heartbeat failures)`;
+            : `Session terminal failure (${result.errorType}: ${result.message})`;
 
-          await DASHBORD_EVENT_MANAGER.onSessionStopped(sessionId, SessionStatus.FAILED, reason);
+          // Trigger terminal cleanup
+          const lifecycleService = Container.get(SessionLifecycleService);
+          await lifecycleService.deleteSession(
+            async () => { /* No-op driver deletion */ },
+            sessionId,
+            SessionStatus.FAILED,
+            reason,
+          );
 
-          // Unblock device and remove from memory
-          const device = session.getDevice();
-          await DeviceStoreFactory.getStore().updateDevice(device.udid, device.host, {
-            busy: false,
-            session_id: null as any,
-          });
-          SESSION_MANAGER.removeSession(sessionId);
           this.failureCounts.delete(sessionId);
-          this.log.info(`✅ Successfully cleaned up dead session ${sessionId}`);
-        } else {
-          this.log.info(
-            `⚠️ Local Session ${sessionId} failed health check (${count}/${this.MAX_CONSECUTIVE_FAILURES}). Retrying...`,
+        } else if (count >= this.THRESHOLD_SUSPECT) {
+          session.healthState = SessionHealthState.SUSPECT;
+          this.log.warn(
+            `🕵️ Session ${sessionId} is SUSPECT (${count}/${this.THRESHOLD_DEAD}). Evidence: ${result.errorType} - ${result.message}`,
+          );
+        } else if (count >= this.THRESHOLD_DEGRADED) {
+          session.healthState = SessionHealthState.DEGRADED;
+          this.log.debug(
+            `⚠️ Session ${sessionId} is DEGRADED (${count}/${this.THRESHOLD_DEAD}).`,
           );
         }
       } catch (err: any) {
-        this.log.error(`Error checking health for local session ${sessionId}: ${err.message}`);
+        this.log.error(`Unexpected error checking health for session ${sessionId}: ${err.message}`);
       }
     }
 

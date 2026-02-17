@@ -33,7 +33,7 @@ export class WDAClient {
   private async executeSerializedCommand<T>(udid: string, action: () => Promise<T>): Promise<T> {
     const currentQueue = this.commandQueues.get(udid) || Promise.resolve();
     const nextInQueue = currentQueue
-      .catch(() => {})
+      .catch(() => { })
       .then(() => action())
       .finally(() => {
         if (this.commandQueues.get(udid) === nextInQueue) this.commandQueues.delete(udid);
@@ -89,10 +89,15 @@ export class WDAClient {
     for (const prefix of prefixes) {
       try {
         const url = `http://127.0.0.1:${port}${['/status', '/health'].includes(endpoint) ? '' : prefix}${endpoint}`;
+
+        // Principal Stability: Screenshots and heavy commands need longer timeouts
+        const isHeavyCommand = endpoint.includes('screenshot') || endpoint.includes('source');
+        const timeout = isHeavyCommand ? 30000 : 15000;
+
         const res =
           method === 'post'
-            ? await axios.post(url, data || {}, { timeout: 10000 })
-            : await axios.get(url, { timeout: 10000 });
+            ? await axios.post(url, data || {}, { timeout })
+            : await axios.get(url, { timeout });
         const sid = res.data?.sessionId || res.data?.value?.sessionId;
         if (sid && sid !== cached?.sessionId) {
           this.wdaConnectionCache.set(cacheKey, {
@@ -109,6 +114,7 @@ export class WDAClient {
     }
     throw lastError;
   }
+
 
   async ensureWDASession(udid: string, port: number): Promise<string | null> {
     try {

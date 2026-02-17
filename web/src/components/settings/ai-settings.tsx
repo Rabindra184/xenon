@@ -3,43 +3,45 @@ import XenonApiService from '../../api-service';
 import './settings.css';
 import {
   Brain,
-  Save,
+  ShieldCheck,
   RefreshCw,
-  Key,
-  Link,
-  Zap,
   CheckCircle,
   AlertTriangle,
-  RotateCcw,
-  Eye,
-  EyeOff,
-  ShieldCheck,
-  HelpCircle,
+  Lock,
+  Save,
+  Server,
+  Cpu,
+  Globe,
 } from 'lucide-react';
-import { ActionBar, SettingSection } from '../ui/Layouts';
+
+interface ProviderInfo {
+  id: string;
+  name: string;
+  description: string;
+  icon: React.ReactNode;
+  isConfigured: boolean;
+}
 
 export const AISettings: React.FC = () => {
   const [config, setConfig] = useState<{
     aiProvider?: string;
     aiModel?: string;
     aiBaseUrl?: string;
-    geminiApiKey?: string;
-    openaiApiKey?: string;
-    anthropicApiKey?: string;
+    geminiSet?: boolean;
+    openaiSet?: boolean;
+    anthropicSet?: boolean;
   }>({
     aiProvider: 'gemini',
     aiModel: '',
     aiBaseUrl: '',
-    geminiApiKey: '',
-    openaiApiKey: '',
-    anthropicApiKey: '',
+    geminiSet: false,
+    openaiSet: false,
+    anthropicSet: false,
   });
+
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [isTesting, setIsTesting] = useState(false);
-  const [showKey, setShowKey] = useState(false);
   const [status, setStatus] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
-  const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null);
 
   useEffect(() => {
     loadConfig();
@@ -53,9 +55,9 @@ export const AISettings: React.FC = () => {
         aiProvider: data.aiProvider || 'gemini',
         aiModel: data.aiModel || '',
         aiBaseUrl: data.aiBaseUrl || '',
-        geminiApiKey: data.geminiApiKey || '',
-        openaiApiKey: data.openaiApiKey || '',
-        anthropicApiKey: data.anthropicApiKey || '',
+        geminiSet: data.geminiSet || false,
+        openaiSet: data.openaiSet || false,
+        anthropicSet: data.anthropicSet || false,
       });
     } catch (error) {
       console.error('Failed to load AISettings', error);
@@ -65,25 +67,12 @@ export const AISettings: React.FC = () => {
     }
   };
 
-  const handleTestConnection = async () => {
-    setIsTesting(true);
-    setTestResult(null);
-    try {
-      const result = await XenonApiService.testAIConfig(config);
-      setTestResult(result);
-    } catch (error: any) {
-      setTestResult({ success: false, message: 'Network error while testing connection.' });
-    } finally {
-      setIsTesting(false);
-    }
-  };
-
-  const handleSave = async (configToSave = config) => {
+  const handleSave = async () => {
     setSaving(true);
     setStatus(null);
     try {
-      await XenonApiService.updateGlobalConfig(configToSave);
-      setStatus({ type: 'success', message: 'AI Intelligence engine synchronized successfully!' });
+      await XenonApiService.updateGlobalConfig({ aiProvider: config.aiProvider });
+      setStatus({ type: 'success', message: 'Active provider updated successfully.' });
       setTimeout(() => setStatus(null), 5000);
     } catch (error) {
       console.error('Failed to save AISettings', error);
@@ -93,18 +82,57 @@ export const AISettings: React.FC = () => {
     }
   };
 
-  const handleResetToDefaults = async () => {
-    const defaultAIConfig = {
-      aiProvider: 'gemini',
-      aiModel: '',
-      aiBaseUrl: '',
-      geminiApiKey: '',
-      openaiApiKey: '',
-      anthropicApiKey: '',
-    };
-    setConfig(defaultAIConfig);
-    await handleSave(defaultAIConfig);
+  const providers: ProviderInfo[] = [
+    {
+      id: 'gemini',
+      name: 'Google Gemini',
+      description: 'Gemini 1.5 Pro — Multimodal reasoning',
+      icon: <Brain size={18} />,
+      isConfigured: !!config.geminiSet,
+    },
+    {
+      id: 'openai',
+      name: 'OpenAI',
+      description: 'GPT-4o — OpenAI v1 compatible',
+      icon: <Cpu size={18} />,
+      isConfigured: !!config.openaiSet,
+    },
+    {
+      id: 'anthropic',
+      name: 'Anthropic',
+      description: 'Claude 3.5 Sonnet — Advanced analysis',
+      icon: <ShieldCheck size={18} />,
+      isConfigured: !!config.anthropicSet,
+    },
+    {
+      id: 'ollama',
+      name: 'Ollama',
+      description: 'Local / Self-hosted — No API key required',
+      icon: <Server size={18} />,
+      isConfigured: !!config.aiModel || !!config.aiBaseUrl,
+    },
+  ];
+
+  const activeProvider = providers.find((p) => p.id === config.aiProvider);
+  const configuredCount = providers.filter((p) => p.isConfigured).length;
+
+  const getModelDefault = (providerId?: string) => {
+    switch (providerId) {
+      case 'gemini': return 'gemini-3-flash-preview';
+      case 'openai': return 'gpt-4o';
+      case 'anthropic': return 'claude-3-5-sonnet-20240620';
+      case 'ollama': return 'llama3';
+      default: return '—';
+    }
   };
+
+  const getBaseUrlDefault = (providerId?: string) => {
+    switch (providerId) {
+      case 'ollama': return 'http://localhost:11434';
+      default: return 'Provider default';
+    }
+  };
+
 
   if (loading) {
     return (
@@ -115,233 +143,150 @@ export const AISettings: React.FC = () => {
     );
   }
 
-  const isCustomProvider = config.aiProvider === 'ollama' || config.aiProvider === 'openai'; // OpenAI can also use custom base URL
-
   return (
     <div className="settings-container mesh-gradient-ai">
       <div className="settings-header">
         <div className="settings-title-group">
           <Brain className="settings-icon ai-engine-icon" size={28} />
-          <h2>AI Intelligence</h2>
+          <h2>AI Engine Configuration</h2>
+          <span className="badge-elite">Enterprise v3.0</span>
         </div>
         <p className="settings-subtitle">
-          Harness autonomous multi-modal analysis to diagnose hardware failures and complex test
-          anomalies with human-level precision.
-        </p>
-        <div
-          className="health-monitor-alert"
-          style={{
-            marginTop: '1rem',
-            background: 'rgba(16, 185, 129, 0.05)',
-            border: '1px solid rgba(16, 185, 129, 0.1)',
-            color: 'var(--primary)',
-          }}
-        >
-          <ShieldCheck size={18} />
-          <span>
-            Secure Architecture: Your API keys are encrypted at rest and never leave your local
-            environment.
+          All credentials and endpoints are managed via environment variables.
+          <br />
+          <span style={{ fontSize: '0.85rem', opacity: 0.7 }}>
+            <Lock size={12} style={{ display: 'inline', marginBottom: -2, marginRight: 4 }} />
+            Select the active provider from configured options below.
           </span>
-        </div>
+        </p>
       </div>
 
       <div className="settings-content">
-        <div className="settings-grid">
-          {/* Phase 1: Engine Selection */}
-          <SettingSection
-            title="Inference Engine"
-            description="Select the foundation model provider. Cloud engines offer global scale, while local instances provide maximum data privacy."
-            icon={Brain}
-          >
-            <div className="input-group">
-              <select
-                value={config.aiProvider}
-                onChange={(e) => setConfig({ ...config, aiProvider: e.target.value })}
-              >
-                <option value="gemini">Google Gemini (Default & Recommended)</option>
-                <option value="openai">OpenAI (GPT-4o / O1)</option>
-                <option value="anthropic">Anthropic (Claude-3.5 Sonnet)</option>
-                <option value="ollama">Ollama (Private Local Instance)</option>
-              </select>
+        {/* Section 1: Provider Registry */}
+        <section className="setting-card">
+          <div className="card-header-dense">
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+              <ShieldCheck size={20} style={{ color: 'var(--primary-enterprise)' }} />
+              <h3 style={{ margin: 0, fontSize: '1.25rem', color: 'var(--text-h1)' }}>
+                Provider Registry
+              </h3>
+              <span className="badge-elite" style={{ marginLeft: 'auto' }}>
+                {configuredCount} / {providers.length} CONFIGURED
+              </span>
             </div>
-            <div className="setting-hint-clean">
-              {config.aiProvider === 'gemini' &&
-                "Gemini 1.5 is optimized for Xenon's multi-modal video diagnosis."}
-              {config.aiProvider === 'openai' &&
-                'World-class reasoning for complex logistical and hardware failures.'}
-              {config.aiProvider === 'ollama' &&
-                'Zero-data-leakage analysis for high-security laboratory environments.'}
-            </div>
-          </SettingSection>
+            <p className="section-description-dense">
+              Providers are activated by setting their API key as an environment variable.
+              Select one of the configured providers to use as the active engine.
+            </p>
+          </div>
 
-          {/* Phase 2: Secure Authentication */}
-          <SettingSection
-            title="Security & Secrets"
-            description="Configure secure access to your selected intelligence provider. Keys are encrypted at rest."
-            icon={Key}
-          >
-            <div className="input-group" style={{ position: 'relative' }}>
-              {config.aiProvider === 'gemini' && (
-                <input
-                  type={showKey ? 'text' : 'password'}
-                  placeholder="Enter GEMINI_API_KEY (AI_V1...)"
-                  value={config.geminiApiKey}
-                  onChange={(e) => setConfig({ ...config, geminiApiKey: e.target.value })}
-                />
-              )}
-              {config.aiProvider === 'openai' && (
-                <input
-                  type={showKey ? 'text' : 'password'}
-                  placeholder="Enter OPENAI_API_KEY (sk...)"
-                  value={config.openaiApiKey}
-                  onChange={(e) => setConfig({ ...config, openaiApiKey: e.target.value })}
-                />
-              )}
-              {config.aiProvider === 'anthropic' && (
-                <input
-                  type={showKey ? 'text' : 'password'}
-                  placeholder="Enter ANTHROPIC_API_KEY (sk-ant...)"
-                  value={config.anthropicApiKey}
-                  onChange={(e) => setConfig({ ...config, anthropicApiKey: e.target.value })}
-                />
-              )}
-              {config.aiProvider !== 'ollama' && (
+          <div className="ai-provider-grid">
+            {providers.map((provider) => {
+              const isActive = config.aiProvider === provider.id;
+              const isSelectable = provider.isConfigured;
+
+              return (
                 <button
-                  onClick={() => setShowKey(!showKey)}
-                  style={{
-                    background: 'transparent',
-                    border: 'none',
-                    cursor: 'pointer',
-                    color: 'var(--text-dim)',
-                    padding: '0 8px',
-                  }}
+                  key={provider.id}
+                  className={`ai-provider-card ${isActive ? 'active' : ''} ${!isSelectable ? 'disabled' : ''}`}
+                  onClick={() => isSelectable && setConfig({ ...config, aiProvider: provider.id })}
+                  disabled={!isSelectable}
+                  title={!isSelectable ? `Set XENON_${provider.id.toUpperCase()}_API_KEY or model/URL to enable` : `Select ${provider.name}`}
                 >
-                  {showKey ? <EyeOff size={18} /> : <Eye size={18} />}
+                  <div className="ai-provider-card-header">
+                    <div className="ai-provider-icon">{provider.icon}</div>
+                    <div className="ai-provider-info">
+                      <span className="ai-provider-name">{provider.name}</span>
+                      <span className="ai-provider-desc">{provider.description}</span>
+                    </div>
+                  </div>
+                  <div className="ai-provider-status">
+                    {isActive ? (
+                      <span className="status-badge success-filled" style={{ height: '28px', fontSize: '0.7rem', padding: '0 10px', width: 'auto' }}>
+                        <div className="live-signal" style={{ width: 6, height: 6, marginRight: 4 }} />
+                        ACTIVE
+                      </span>
+                    ) : provider.isConfigured ? (
+                      <span className="status-badge success-filled" style={{ height: '28px', fontSize: '0.7rem', padding: '0 10px', width: 'auto' }}>
+                        <div className="live-signal" style={{ width: 6, height: 6, marginRight: 4 }} />
+                        READY
+                      </span>
+                    ) : (
+                      <span className="status-badge error-filled" style={{ height: '28px', fontSize: '0.7rem', padding: '0 10px', width: 'auto' }}>
+                        <Lock size={10} />
+                        NOT SET
+                      </span>
+                    )}
+                  </div>
                 </button>
-              )}
-              {config.aiProvider === 'ollama' && (
-                <div
-                  style={{
-                    color: 'var(--text-dim)',
-                    fontSize: '0.875rem',
-                    fontWeight: 500,
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '8px',
-                  }}
-                >
-                  <ShieldCheck size={16} style={{ color: 'var(--primary)' }} /> Secure local-only
-                  session (No external key required).
-                </div>
-              )}
-            </div>
-            <div className="setting-hint-clean">
-              <HelpCircle size={12} style={{ marginRight: '4px', verticalAlign: 'middle' }} />
-              Xenon uses hardware-level encryption for API key persistence.
-            </div>
-          </SettingSection>
+              );
+            })}
+          </div>
+        </section>
 
-          {isCustomProvider && (
-            <SettingSection
-              title="Infrastructure"
-              description={`Direct established traffic to your ${config.aiProvider === 'ollama' ? 'local Ollama' : 'custom proxy'} host.`}
-              icon={Link}
-            >
-              <div className="input-group">
-                <input
-                  type="text"
-                  placeholder={
-                    config.aiProvider === 'ollama'
-                      ? 'http://localhost:11434'
-                      : 'https://custom-proxy.internal'
-                  }
-                  value={config.aiBaseUrl}
-                  onChange={(e) => setConfig({ ...config, aiBaseUrl: e.target.value })}
-                />
-              </div>
-              <div className="setting-hint-clean">
-                Default:{' '}
-                {config.aiProvider === 'ollama'
-                  ? 'http://localhost:11434'
-                  : 'Standard API Endpoint'}
-              </div>
-            </SettingSection>
-          )}
+        {/* Section 2: Runtime Configuration (Read-Only) */}
+        <section className="setting-card">
+          <div className="card-header-dense">
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+              <Globe size={20} style={{ color: 'var(--primary-enterprise)' }} />
+              <h3 style={{ margin: 0, fontSize: '1.25rem', color: 'var(--text-h1)' }}>
+                Runtime Configuration
+              </h3>
+            </div>
+            <p className="section-description-dense">
+              Values sourced from environment variables. Set <code style={{ color: 'var(--primary-enterprise)', background: 'rgba(34,197,94,0.1)', padding: '2px 6px', borderRadius: '4px', fontSize: '0.8rem' }}>XENON_AI_MODEL</code> and <code style={{ color: 'var(--primary-enterprise)', background: 'rgba(34,197,94,0.1)', padding: '2px 6px', borderRadius: '4px', fontSize: '0.8rem' }}>XENON_AI_BASE_URL</code> to override defaults.
+            </p>
+          </div>
 
-          <SettingSection
-            title="Model Optimization"
-            description="Fine-tune the intelligence engine with specific model-level overrides."
-            icon={Zap}
-          >
-            <div className="input-group">
-              <input
-                type="text"
-                placeholder={
-                  config.aiProvider === 'gemini'
-                    ? 'gemini-1.5-flash-latest'
-                    : config.aiProvider === 'openai'
-                      ? 'gpt-4o'
-                      : config.aiProvider === 'anthropic'
-                        ? 'claude-3-5-sonnet-latest'
-                        : 'llama3'
-                }
-                value={config.aiModel}
-                onChange={(e) => setConfig({ ...config, aiModel: e.target.value })}
-              />
+          <div className="ai-config-display">
+            <div className="ai-config-row">
+              <span className="ai-config-label">Active Provider</span>
+              <span className="ai-config-value">
+                {activeProvider?.icon}
+                {activeProvider?.name || '—'}
+              </span>
             </div>
-            <div className="setting-hint-clean">
-              Leave empty for Xenon binary-optimized defaults.
+            <div className="ai-config-row">
+              <span className="ai-config-label">Model</span>
+              <span className="ai-config-value mono">
+                {config.aiModel || getModelDefault(config.aiProvider)}
+                {!config.aiModel && <span className="ai-config-default">default</span>}
+              </span>
             </div>
-          </SettingSection>
-        </div>
-
-        {/* Validation Actions */}
-        <div style={{ display: 'flex', gap: '1rem', alignItems: 'center', marginBottom: '1.5rem' }}>
-          <button
-            className="reset-btn"
-            onClick={handleTestConnection}
-            disabled={isTesting || saving}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '8px',
-              border: '1px solid var(--primary-soft)',
-              color: 'var(--primary)',
-            }}
-          >
-            {isTesting ? (
-              <RefreshCw className="animate-spin" size={16} />
-            ) : (
-              <ShieldCheck size={16} />
-            )}
-            {isTesting ? 'Verifying...' : 'Validate Connection'}
-          </button>
-          {testResult && (
-            <div
-              className={`status-banner ${testResult.success ? 'success' : 'error'}`}
-              style={{ margin: 0, padding: '8px 16px' }}
-            >
-              {testResult.success ? <CheckCircle size={16} /> : <AlertTriangle size={16} />}
-              <span style={{ fontSize: '0.875rem' }}>{testResult.message}</span>
+            <div className="ai-config-row">
+              <span className="ai-config-label">Base URL</span>
+              <span className="ai-config-value mono">
+                {config.aiBaseUrl || getBaseUrlDefault(config.aiProvider)}
+                {!config.aiBaseUrl && <span className="ai-config-default">default</span>}
+              </span>
             </div>
-          )}
-        </div>
+          </div>
+        </section>
 
         {status && (
-          <div className={`status-banner ${status.type}`}>
-            {status.type === 'success' ? <CheckCircle size={18} /> : <AlertTriangle size={18} />}
-            <span>{status.message}</span>
+          <div className={`status-banner ${status.type}`} style={{ borderRadius: 'var(--radius-enterprise)', padding: 'var(--gap-2)', marginTop: 'var(--gap-3)', justifyContent: 'center' }}>
+            {status.type === 'success' ? <CheckCircle size={16} /> : <AlertTriangle size={16} />}
+            <span style={{ fontWeight: 600 }}>{status.message}</span>
           </div>
         )}
       </div>
 
-      <ActionBar
-        onSave={handleSave}
-        onDiscard={loadConfig}
-        onRestoreDefaults={handleResetToDefaults}
-        isSaving={saving}
-        isValidating={isTesting}
-      />
+      <footer className="settings-footer">
+        <div className="footer-dock">
+          <button className="ghost-btn" onClick={loadConfig}>
+            <RefreshCw size={16} /> Refresh Environment
+          </button>
+          <button
+            className="save-btn primary"
+            onClick={handleSave}
+            disabled={saving || !activeProvider?.isConfigured}
+            title={!activeProvider?.isConfigured ? 'The selected provider is not configured in the environment' : 'Save active provider selection'}
+          >
+            {saving ? <RefreshCw className="animate-spin" size={16} /> : <Save size={16} />}
+            {saving ? 'Applying...' : 'Save Configuration'}
+          </button>
+        </div>
+      </footer>
     </div>
   );
 };

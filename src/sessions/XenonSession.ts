@@ -9,11 +9,36 @@ export type XenonSessionOptions = {
   sessionResponse: Record<string, any>;
 };
 
+export enum SessionHealthState {
+  HEALTHY = 'HEALTHY',     // 0 failures
+  DEGRADED = 'DEGRADED',   // 1+ failures
+  SUSPECT = 'SUSPECT',     // 3+ failures
+  DEAD = 'DEAD',           // 6 failures or session verified gone
+}
+
+export enum HealthErrorType {
+  NONE = 'NONE',
+  UNSUPPORTED_ENDPOINT = 'UNSUPPORTED_ENDPOINT', // 404 on orientation but server OK
+  SESSION_NOT_FOUND = 'SESSION_NOT_FOUND',       // 404 from server confirmed session gone
+  SERVER_UNREACHABLE = 'SERVER_UNREACHABLE',     // Connection refused/timeout
+  DRIVER_ERROR = 'DRIVER_ERROR',                 // 500 error
+  TIMEOUT = 'TIMEOUT',                           // Request timed out
+}
+
+export interface SessionHealthResult {
+  isHealthy: boolean;
+  state?: SessionHealthState;
+  errorType: HealthErrorType;
+  message?: string;
+  statusCode?: number;
+}
+
 export abstract class XenonSession {
   protected sessionId: string;
   protected xenonOption: Record<string, any>;
   public isStopping: boolean = false;
   public stoppedAt?: number;
+  public healthState: SessionHealthState = SessionHealthState.HEALTHY;
 
   constructor(private options: XenonSessionOptions) {
     this.sessionId = options.sessionId;
@@ -61,5 +86,5 @@ export abstract class XenonSession {
   /**
    * Proactively checks if the session is still responsive.
    */
-  abstract checkHealth(): Promise<boolean>;
+  abstract checkHealth(): Promise<SessionHealthResult>;
 }

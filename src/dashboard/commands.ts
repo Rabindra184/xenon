@@ -76,18 +76,30 @@ export class DashboardCommands {
    * driver.executeScript("xenon: setSessionStatus", {"status": "passed/failed", "reason": "optional reason"})
    */
   private async setSessionStatus(sessionId: string, request: Request, response: Response) {
-    let { args } = request.body;
+    const { args } = request.body;
+    let statusArg: any = {};
+
     if (_.isArray(args)) {
-      args = args[0];
+      if (typeof args[0] === 'object') {
+        statusArg = args[0];
+      } else {
+        // Handle positional: executeScript("xe:setSessionStatus", "failed", "reason")
+        statusArg = {
+          status: args[0],
+          reason: args[1],
+        };
+      }
+    } else if (typeof args === 'object') {
+      statusArg = args;
     }
 
     // Normalize input
-    const inputStatus = (args.status || '').toLowerCase();
+    const inputStatus = (statusArg.status || '').toLowerCase();
     const validStatuses = ['success', 'failed', 'passed'];
 
     if (!validStatuses.includes(inputStatus)) {
       log.warn(
-        `[DashboardCommands] Invalid status: ${args.status}. Valid: ${validStatuses.join(', ')}`,
+        `[DashboardCommands] Invalid status: ${statusArg.status}. Valid: ${validStatuses.join(', ')}`,
       );
       return this.sendSuccessResponse(response);
     }
@@ -95,7 +107,7 @@ export class DashboardCommands {
     const normalizedStatus = inputStatus === 'passed' ? 'success' : inputStatus;
     await updateSessionDetails(sessionId, {
       status: normalizedStatus,
-      failure_reason: args.reason || undefined,
+      failure_reason: statusArg.reason || undefined,
     });
 
     // --- REAL-TIME UI UPDATE ---

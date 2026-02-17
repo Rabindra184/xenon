@@ -12,65 +12,16 @@ import ora from 'ora';
 import asyncWait from 'async-wait-until';
 import { InternalHttpClient } from './InternalHttpClient';
 
+import { redactSecrets } from './logger';
+
 const APPIUM_VENDOR_PREFIX = 'appium:';
-
-/**
- * Keys whose values must never appear in log output.
- * Case-insensitive substring matching is used so 'myApiKey' and 'API_KEY' both match.
- */
-const SENSITIVE_KEY_PATTERNS = [
-  'apikey',
-  'api_key',
-  'secret',
-  'password',
-  'token',
-  'accesstoken',
-  'refreshtoken',
-  'dburl',
-  'databaseurl',
-  'clientsecret',
-  'privatekey',
-  'auth',
-  'credentials',
-  'secretkey',
-];
-
-const REDACTED = '***REDACTED***';
-
-function isSensitiveKey(key: string): boolean {
-  const lower = key.toLowerCase().replace(/[_-]/g, '');
-  return SENSITIVE_KEY_PATTERNS.some((p) => lower.includes(p));
-}
 
 /**
  * Deep-clone an object, replacing values of sensitive keys with ***REDACTED***.
  * Safe to call before JSON.stringify for logging.
+ * Re-exported from logger to maintain helper compatibility
  */
-export function redactSecrets<T>(obj: T): T {
-  const seen = new WeakSet<object>();
-  const redact = (value: any): any => {
-    if (value === null || value === undefined || typeof value !== 'object') {
-      return value;
-    }
-    if (seen.has(value)) {
-      return '[Circular]';
-    }
-    seen.add(value);
-    if (Array.isArray(value)) {
-      return value.map((item) => redact(item));
-    }
-    const result: Record<string, any> = {};
-    for (const [key, v] of Object.entries(value)) {
-      if (isSensitiveKey(key)) {
-        result[key] = REDACTED;
-      } else {
-        result[key] = redact(v);
-      }
-    }
-    return result;
-  };
-  return redact(obj) as T;
-}
+export { redactSecrets };
 
 const XENON_PREFIXES = ['xe:'];
 
@@ -91,7 +42,7 @@ export async function asyncForEach(
 export async function spinWith(
   msg: string,
   fn: () => Promise<boolean>,
-  callback = (_msg: string) => {},
+  callback = (_msg: string) => { },
 ) {
   const spinner = ora(msg).start();
   await asyncWait(
@@ -140,9 +91,8 @@ export function nodeUrl(device: IDevice, basePath = ''): string {
     } else if (device.cloud.toLowerCase() === Cloud.HEADSPIN) {
       return `${host}`;
     } else {
-      return `https://${process.env.CLOUD_USERNAME}:${process.env.CLOUD_KEY}@${
-        new URL(device.host).host
-      }/wd/hub`;
+      return `https://${process.env.CLOUD_USERNAME}:${process.env.CLOUD_KEY}@${new URL(device.host).host
+        }/wd/hub`;
     }
   }
   // hardcoded the `/wd/hub` for now. This can be fetch from serverArgs.basePath
@@ -216,7 +166,7 @@ export function stripAppiumPrefixes(caps: any) {
       } else {
         log.warn(
           `Ignoring capability '${prefixedCap}=${caps[prefixedCap]}' and ` +
-            `using capability '${strippedCapName}=${strippedCaps[strippedCapName]}'`,
+          `using capability '${strippedCapName}=${strippedCaps[strippedCapName]}'`,
         );
       }
     } else {

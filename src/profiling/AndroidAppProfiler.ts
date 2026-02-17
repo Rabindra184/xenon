@@ -63,7 +63,7 @@ export class AndroidAppProfiler extends EventEmitter {
         '-s',
         '1',
         '-d',
-        '1',
+        '2',
       ];
 
       /* -m argument is only supported after api level 28 */
@@ -131,6 +131,12 @@ export class AndroidAppProfiler extends EventEmitter {
       return;
     }
     const [cpu, memory, pkg] = parts;
+
+    // Filter out invalid samples or headers that cause graph 'drops to zero'
+    if (!cpu || cpu === '0' || cpu === '%CPU' || isNaN(parseFloat(cpu))) {
+      return;
+    }
+
     const outputObj: ProfilingData = {
       timestamp: new Date().toISOString(),
       cpu: cpu || '0',

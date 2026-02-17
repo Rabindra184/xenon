@@ -7,7 +7,7 @@ import cors from 'cors';
 import AsyncLock from 'async-lock';
 import { InternalHttpClient } from '../InternalHttpClient';
 import { config } from '../config';
-import log from '../logger';
+import log, { redactSecrets } from '../logger';
 
 import DashboardRouter from './routers/dashboard';
 import GridRouter from './routers/grid';
@@ -32,39 +32,64 @@ const router = express.Router(),
 router.use(cors());
 apiRouter.use(cors());
 staticFilesRouter.use(cors());
-router.use(fileUpload());
+
+apiRouter.use((req: any, res, next) => {
+  // Defensive Body Parsing Logic:
+  // In some Appium versions, the global HTTP logger or other middleware drains the request stream
+  // before it reaches the plugin. Re-calling express.json() on a drained stream throws 
+  // 'InternalServerError: stream is not readable'.
+
+  // 1. If body is already an object (parsed by parent), proceed.
+  if (req.body && typeof req.body === 'object' && Object.keys(req.body).length > 0) {
+    return next();
+  }
+
+  // 2. If stream is already spent and nothing was parsed, we can't do much, just proceed gracefully.
+  if (!req.readable) {
+    log.debug(`[Xenon] Stream drained for ${req.method} ${req.originalUrl}. Skipping local body-parser.`);
+    return next();
+  }
+
+  // 3. Otherwise, try safe parsing.
+  express.json()(req, res, (err) => {
+    if (err) {
+      log.warn(`[Xenon] Body parsing failed for ${req.originalUrl}: ${err.message}`);
+      // Continue without failing - handlers will validate missing body
+      return next();
+    }
+    next();
+  });
+});
 
 apiRouter.use((req, res, next) => {
   res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
   res.setHeader('Pragma', 'no-cache');
   res.setHeader('Expires', '0');
+
+  // Redact secrets from request body to prevent them from leaking into external logs
+  if (req.body && typeof req.body === 'object') {
+    req.body = redactSecrets(req.body);
+  }
   next();
 });
 
-/**
- * Middleware to check if the appium-dashboard plugin is installed
- * If the plugin is runnig, then we should enable the react app to
- * open the dashboard link upon clicking the device card in the UI.
- */
+// Dashboard state cache - runs once and persists
+let dashboardPluginPromise: Promise<string> | null = null;
 
-//TODO: Remove the middleware after integrating with dashbaod
 apiRouter.use(async (req, res, next) => {
-  await ASYNC_LOCK.acquire('dashboard-plugin-check', async () => {
-    if (dashboardPluginUrl == null) {
+  if (dashboardPluginPromise === null) {
+    dashboardPluginPromise = (async () => {
       const pingurl = `${req.protocol}://${req.get('host')}/dashboard/api/ping`;
       try {
-        const response: any = await InternalHttpClient.get(pingurl);
-        if (response['pong']) {
-          dashboardPluginUrl = `${req.protocol}://${req.get('host')}/dashboard`;
-        } else {
-          dashboardPluginUrl = '';
-        }
+        const response: any = await InternalHttpClient.get(pingurl, { silent: true } as any);
+        return response['pong'] ? `${req.protocol}://${req.get('host')}/dashboard` : '';
       } catch (err) {
-        dashboardPluginUrl = '';
+        return '';
       }
-    }
-  });
-  (req as any)['dashboard-plugin-url'] = dashboardPluginUrl;
+    })();
+  }
+
+  (req as any)['dashboard-plugin-url'] = await dashboardPluginPromise;
   return next();
 });
 

@@ -27,7 +27,21 @@ export class HealEtalonService {
 
       // Extract identifying attributes
       const nodeAttrs = node.attributes || [];
-      const anchorNames = ['content-desc', 'resource-id', 'text', 'name', 'id', 'hint'];
+      const anchorNames = [
+        'content-desc',
+        'resource-id',
+        'text',
+        'name',
+        'id',
+        'hint',
+        'label',
+        'accessibility-id',
+        'value',
+        'x',
+        'y',
+        'width',
+        'height',
+      ];
 
       for (let i = 0; i < nodeAttrs.length; i++) {
         const attr = nodeAttrs[i];

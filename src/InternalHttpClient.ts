@@ -75,10 +75,12 @@ export class InternalHttpClient {
         const duration = Date.now() - ((response.config as any).metadata?.startTime || Date.now());
 
         // Log successful response
-        log.debug(
-          `[HTTP ←] ${response.config.method?.toUpperCase()} ${response.config.url} ` +
+        if (!(response.config as any).silent) {
+          log.debug(
+            `[HTTP ←] ${response.config.method?.toUpperCase()} ${response.config.url} ` +
             `[${response.status}] ${duration}ms`,
-        );
+          );
+        }
 
         // Principal Decoupling: Emit event for logging/observability
         try {
@@ -130,10 +132,12 @@ export class InternalHttpClient {
         const status = response?.status;
 
         // Log failed request
-        log.warn(
-          `[HTTP ←] ${config?.method?.toUpperCase()} ${config?.url} ` +
+        if (!(config as any)?.silent) {
+          log.warn(
+            `[HTTP ←] ${config?.method?.toUpperCase()} ${config?.url} ` +
             `[${status || 'ERR'}] ${duration}ms - ${error.message}`,
-        );
+          );
+        }
 
         // Don't retry client errors (4xx) except for occasional 429
         if (status && status < 500 && status !== 429) {

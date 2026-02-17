@@ -1,6 +1,91 @@
 import { logger } from '@appium/support';
 
 /**
+ * Keys whose values must never appear in log output.
+ * Case-insensitive substring matching is used so 'myApiKey' and 'API_KEY' both match.
+ */
+const SENSITIVE_KEY_PATTERNS = [
+  'apikey',
+  'api_key',
+  'secret',
+  'password',
+  'token',
+  'accesstoken',
+  'refreshtoken',
+  'dburl',
+  'databaseurl',
+  'clientsecret',
+  'privatekey',
+  'auth',
+  'credentials',
+  'secretkey',
+];
+
+const REDACTED = '***REDACTED***';
+
+function isSensitiveKey(key: string): boolean {
+  const lower = key.toLowerCase().replace(/[_-]/g, '');
+  return SENSITIVE_KEY_PATTERNS.some((p) => lower.includes(p));
+}
+
+/**
+ * Deep-clone an object, replacing values of sensitive keys with ***REDACTED***.
+ * Safe to call before JSON.stringify for logging.
+ */
+export function redactSecrets<T>(obj: T): T {
+  if (obj === null || obj === undefined) {
+    return obj;
+  }
+
+  // Deep Intelligence: also redact keys from strings if they look like our API keys
+  if (typeof obj === 'string') {
+    let result: string = obj as any;
+    // Common pattern for Gemini/OpenAI/Anthropic keys in logs
+    const keyPatterns = [/AIza[a-zA-Z0-9-_]{35}/g, /sk-[a-zA-Z0-9]{32,}/g];
+    for (const pattern of keyPatterns) {
+      result = result.split(pattern).join(REDACTED);
+    }
+    return result as any;
+  }
+
+  if (typeof obj !== 'object') {
+    return obj;
+  }
+
+  const seen = new WeakSet<object>();
+  const redact = (value: any): any => {
+    if (value === null || value === undefined) return value;
+    if (typeof value === 'string') {
+      let s = value;
+      const keyPatterns = [/AIza[a-zA-Z0-9-_]{35}/g, /sk-[a-zA-Z0-9]{32,}/g];
+      for (const pattern of keyPatterns) {
+        s = s.replace(pattern, REDACTED);
+      }
+      return s;
+    }
+    if (typeof value !== 'object') return value;
+
+    if (seen.has(value)) {
+      return '[Circular]';
+    }
+    seen.add(value);
+    if (Array.isArray(value)) {
+      return value.map((item) => redact(item));
+    }
+    const result: Record<string, any> = {};
+    for (const [key, v] of Object.entries(value)) {
+      if (isSensitiveKey(key)) {
+        result[key] = REDACTED;
+      } else {
+        result[key] = redact(v);
+      }
+    }
+    return result;
+  };
+  return redact(obj);
+}
+
+/**
  * Enterprise-grade logger for Xenon.
  * Wraps @appium/support logger with contextual capabilities.
  */
@@ -47,19 +132,20 @@ class XenonLogger {
   }
 
   private logMessage(level: 'info' | 'warn' | 'error' | 'debug', message: any, ...args: any[]) {
+    const redactedMessage = redactSecrets(message);
+    const redactedArgs = args.map(arg => redactSecrets(arg));
+
     if (XenonLogger.isJsonLogging) {
       const logEntry = {
         timestamp: new Date().toISOString(),
         level,
         scope: this.context.trim() || 'root',
-        message: this.format(message),
-        args: args.length ? args : undefined,
+        message: this.format(redactedMessage),
+        args: redactedArgs.length ? redactedArgs : undefined,
       };
-      // For JSON logging, we typically want it on stdout directly to avoid Appium's [XENON] prefix
-      // but for consistency with Appium's plugin model, we use info() for everything when in JSON mode
       this.baseLogger.info(JSON.stringify(logEntry));
     } else {
-      this.baseLogger[level](`${this.context}${this.format(message)}`, ...args);
+      this.baseLogger[level](`${this.context}${this.format(redactedMessage)}`, ...redactedArgs);
     }
   }
 
@@ -83,7 +169,8 @@ class XenonLogger {
    * Enterprise Audit entry.
    */
   public audit(action: string, actor = 'system', details: any = {}) {
-    const detailStr = Object.keys(details).length ? ` | Details: ${JSON.stringify(details)}` : '';
+    const redactedDetails = redactSecrets(details);
+    const detailStr = Object.keys(redactedDetails).length ? ` | Details: ${JSON.stringify(redactedDetails)}` : '';
     this.baseLogger.info(`[AUDIT] ${this.context}${action} | Actor: ${actor}${detailStr}`);
   }
 

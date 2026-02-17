@@ -112,9 +112,7 @@ export class ServerManager {
     try {
       const persistedConfig = await Container.get(ConfigService).loadConfig();
       if (persistedConfig && Object.keys(persistedConfig).length > 0) {
-        this.logger.info(
-          `Loading persisted configuration: ${JSON.stringify(redactSecrets(persistedConfig as any))}`,
-        );
+        this.logger.info('Loading persisted configuration', persistedConfig);
         Object.assign(pluginArgs, persistedConfig);
       }
     } catch (err) {
@@ -166,9 +164,7 @@ export class ServerManager {
     }
 
     if (Object.keys(update).length > 0) {
-      this.logger.info(
-        `[Plugin] Synchronizing database config: ${JSON.stringify(redactSecrets(update))}`,
-      );
+      this.logger.info('[Plugin] Synchronizing database config', update);
       updateConfig(update);
     }
   }

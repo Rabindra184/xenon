@@ -3,6 +3,11 @@
   "version": "1.0.0",
   "description": "Xenon - Intelligent Mobile Infrastructure. A self-healing device orchestration platform for Appium.",
   "main": "./lib/src/index.js",
+  "exports": {
+    ".": "./lib/src/index.js",
+    "./schema.json": "./schema.json",
+    "./package.json": "./package.json"
+  },
   "scripts": {
     "build:docs": "appium-docs build --reference=false",
     "publish:docs": "appium-docs build --deploy --push -b docs-site -m 'docs: auto-build docs for xenon@%s' --alias latest",
@@ -19,7 +24,7 @@
     "integration-ios2": "mocha -r ts-node/register ./test/integration/ios/02iOSDevices.spec.ts --timeout 260000 --exit",
     "build": "npx tsc -b && npm run copy-files",
     "build-web-and-plugin": "npx tsc -b && npm run buildXenon && npm run copy-files",
-    "copy-files": "rm -rf lib/public && mkdir -p lib && cp -R src/public lib/",
+    "copy-files": "rm -rf lib/public && mkdir -p lib && cp -R src/public lib/ && cp schema.json lib/",
     "buildXenon": "sh scripts/build-xenon.sh",
     "prepublish": "npx tsc && npm run buildXenon && npm run copy-files",
     "lint": "eslint . --ext .ts,.tsx --fix",

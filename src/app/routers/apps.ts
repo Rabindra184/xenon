@@ -62,6 +62,7 @@ router.delete('/:id', async (req, res) => {
 
 export default {
   register: (apiRouter: Router) => {
-    apiRouter.use('/apps', router);
+    const fileUpload = require('express-fileupload');
+    apiRouter.use('/apps', fileUpload(), router);
   },
 };

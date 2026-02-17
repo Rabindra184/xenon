@@ -385,6 +385,10 @@ export class OmniVisionService {
     }
   }
 
+  addVirtualElement(element: OmniElement) {
+    this.virtualElementStore.set(element.id, element);
+  }
+
   getVirtualElement(id: string): OmniElement | undefined {
     return this.virtualElementStore.get(id);
   }

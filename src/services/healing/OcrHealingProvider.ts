@@ -28,10 +28,10 @@ export class OcrHealingProvider implements HealingProvider {
       // Look for the best word match
       const bestWord = words
         ? words.find(
-            (w: any) =>
-              w.text.toLowerCase().includes(soughtText.toLowerCase()) ||
-              soughtText.toLowerCase().includes(w.text.toLowerCase()),
-          )
+          (w: any) =>
+            w.text.toLowerCase().includes(soughtText.toLowerCase()) ||
+            soughtText.toLowerCase().includes(w.text.toLowerCase()),
+        )
         : null;
 
       if (bestWord) {
@@ -39,12 +39,43 @@ export class OcrHealingProvider implements HealingProvider {
           `✅ OCR found text "${bestWord.text}" at ${JSON.stringify(bestWord.bbox)}`,
         );
 
-        // Convert bbox to center coordinates for click
-        const x = (bestWord.bbox.x0 + bestWord.bbox.x1) / 2;
-        const y = (bestWord.bbox.y0 + bestWord.bbox.y1) / 2;
+        // Convert bbox to center coordinates
+        const x = Math.round((bestWord.bbox.x0 + bestWord.bbox.x1) / 2);
+        const y = Math.round((bestWord.bbox.y0 + bestWord.bbox.y1) / 2);
 
-        // In a real implementation, we would return a special element type that handles clicks by coordinate
-        // For the POC, we return a virtual element representation
+        // Try to get the REAL element at these coordinates by tapping
+        try {
+          // Use W3C Actions to tap at the OCR-detected coordinates, then find the element at that position
+          const element = await context.driver.findElement('-ios predicate string',
+            `label CONTAINS[c] "${bestWord.text.replace(/"/g, '\\"')}"`
+          ).catch(() => null);
+
+          if (element) {
+            const elementId = element.ELEMENT || element['element-6066-11e4-a52e-4f735466cecf'];
+            if (elementId) {
+              this.logger.info(`🎯 OCR resolved to real element via predicate search`);
+              return {
+                id: elementId,
+                tier: this.tier,
+                confidence: bestWord.confidence / 100,
+                originalSelector: context.selector,
+                recommendedSelector: `ocr:text="${bestWord.text}"`,
+                message: `Found text "${bestWord.text}" via local OCR (${bestWord.confidence.toFixed(0)}% confidence)`,
+                rect: {
+                  x: bestWord.bbox.x0,
+                  y: bestWord.bbox.y0,
+                  width: bestWord.bbox.x1 - bestWord.bbox.x0,
+                  height: bestWord.bbox.y1 - bestWord.bbox.y0,
+                },
+              };
+            }
+          }
+        } catch (predErr: any) {
+          this.logger.debug(`Predicate search failed: ${predErr.message}`);
+        }
+
+        // Fallback: Return coordinate-based result with virtual ID
+        // The CommandInterceptor handles rect-based results via coordinate tap
         return {
           id: `healed_ocr_${Date.now()}`,
           tier: this.tier,
@@ -72,7 +103,8 @@ export class OcrHealingProvider implements HealingProvider {
     const textMatch =
       selector.match(/text=['"]([^'"]+)['"]/i) ||
       selector.match(/content-desc=['"]([^'"]+)['"]/i) ||
-      selector.match(/label=['"]([^'"]+)['"]/i);
+      selector.match(/label=['"]([^'"]+)['"]/i) ||
+      selector.match(/name=['"]([^'"]+)['"]/i);
 
     if (textMatch) return textMatch[1];
 

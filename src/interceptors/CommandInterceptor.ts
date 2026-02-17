@@ -86,6 +86,8 @@ export class CommandInterceptor {
         'getElementSize',
         'getText',
         'setValue',
+        'elementDisplayed',
+        'elementEnabled',
       ];
       if (elementCommands.includes(commandName)) {
         const elementId = args[0];
@@ -123,7 +125,11 @@ export class CommandInterceptor {
             JSON.stringify({ value: response, sessionId }),
           );
 
-          if (commandName === 'findElement' && response) {
+          if (
+            commandName === 'findElement' &&
+            response &&
+            (pluginArgs.enableSelfHealing as boolean) !== false
+          ) {
             this.triggerLearning(driver, args, response, sessionId);
           }
         } catch (postCommandErr: any) {
@@ -146,9 +152,68 @@ export class CommandInterceptor {
         );
         if (healed) {
           await this.logHealingEvent(sessionId, commandName, driver, args, healed);
+
+          let finalId = healed.id;
+
+          // OCR/Visual AI tiers return virtual IDs with rect coordinates
+          // We need to resolve a REAL element that Appium can interact with
+          if (healed.id.startsWith('healed_') && healed.rect) {
+            // REGISTER the virtual element for subsequent state checks
+            Container.get(OmniVisionService).addVirtualElement({
+              id: healed.id,
+              rect: healed.rect,
+              confidence: healed.confidence,
+              text: healed.message,
+            });
+
+            this.log.info(`[Interceptor] Visual healing returned coordinates. Resolving real element at (${healed.rect.x}, ${healed.rect.y})...`);
+
+            let resolved = false;
+
+            // Strategy 1: Try to find element at the center of the detected area
+            try {
+              const cx = Math.round(healed.rect.x + healed.rect.width / 2);
+              const cy = Math.round(healed.rect.y + healed.rect.height / 2);
+              const touchEl = await driver.findElement('-ios class chain',
+                `**/XCUIElementTypeAny[\`rect.x <= ${cx} AND rect.x + rect.width >= ${cx} AND rect.y <= ${cy} AND rect.y + rect.height >= ${cy}\`]`
+              );
+              if (touchEl) {
+                finalId = touchEl.ELEMENT || touchEl['element-6066-11e4-a52e-4f735466cecf'] || finalId;
+                resolved = !!finalId && !finalId.startsWith('healed_');
+              }
+            } catch (e) {
+              // Strategy 1 failed
+            }
+
+            // Strategy 2: Use coordinate tap action (W3C Actions API)
+            if (!resolved) {
+              this.log.info(`[Interceptor] Falling back to coordinate-based tap for visual healing`);
+              try {
+                const cx = Math.round(healed.rect.x + healed.rect.width / 2);
+                const cy = Math.round(healed.rect.y + healed.rect.height / 2);
+                await driver.performActions([{
+                  type: 'pointer',
+                  id: 'xenon-heal-tap',
+                  parameters: { pointerType: 'touch' },
+                  actions: [
+                    { type: 'pointerMove', duration: 0, x: cx, y: cy },
+                    { type: 'pointerDown', button: 0 },
+                    { type: 'pause', duration: 100 },
+                    { type: 'pointerUp', button: 0 },
+                  ],
+                }]);
+                await driver.releaseActions();
+                this.log.info(`[Interceptor] ✅ Visual healing: tapped at (${cx}, ${cy})`);
+                // Return the virtual ID — the tap already happened
+              } catch (tapErr: any) {
+                this.log.error(`[Interceptor] Coordinate tap failed: ${tapErr.message}`);
+              }
+            }
+          }
+
           const elementResponse = {
-            ELEMENT: healed.id,
-            'element-6066-11e4-a52e-4f735466cecf': healed.id,
+            ELEMENT: finalId,
+            'element-6066-11e4-a52e-4f735466cecf': finalId,
           };
           return commandName === 'findElement' ? elementResponse : [elementResponse];
         }
@@ -245,6 +310,9 @@ export class CommandInterceptor {
         return { x: element.rect.x, y: element.rect.y };
       case 'getElementSize':
         return { width: element.rect.width, height: element.rect.height };
+      case 'elementDisplayed':
+      case 'elementEnabled':
+        return true;
       case 'getText':
         return element.text || '';
       case 'setValue':
@@ -291,7 +359,20 @@ export class CommandInterceptor {
     (async () => {
       try {
         const etalonService = Container.get(HealEtalonService);
-        const anchors = ['content-desc', 'resource-id', 'text', 'name', 'id', 'hint'];
+
+        // CRITICAL PERFORMANCE OPTIMIZATION: 
+        // Only trigger the heavy metadata collection if we don't already have an etalon for this selector.
+        // Collecting page source and element rects for every single action is too CPU-intensive.
+        const existing = await etalonService.getSignature(selector);
+        if (existing) {
+          this.log.debug(`[Learning] Etalon already exists for selector: ${selector}. Skipping...`);
+          return;
+        }
+
+        const anchors = [
+          'content-desc', 'resource-id', 'text', 'name', 'id', 'hint',
+          'label', 'value',  // iOS-specific identity attributes
+        ];
         const nodeAttrs: { name: string; value: string }[] = [];
 
         for (const attr of anchors) {
@@ -301,6 +382,19 @@ export class CommandInterceptor {
           } catch (e) {
             // Silently ignore: attribute may not exist or be inaccessible
           }
+        }
+
+        // Capture spatial coordinates from element rect for position-based healing
+        try {
+          const rect = await driver.getElementRect(elementId);
+          if (rect) {
+            if (rect.x !== undefined) nodeAttrs.push({ name: 'x', value: String(Math.round(rect.x)) });
+            if (rect.y !== undefined) nodeAttrs.push({ name: 'y', value: String(Math.round(rect.y)) });
+            if (rect.width !== undefined) nodeAttrs.push({ name: 'width', value: String(Math.round(rect.width)) });
+            if (rect.height !== undefined) nodeAttrs.push({ name: 'height', value: String(Math.round(rect.height)) });
+          }
+        } catch (e) {
+          // Silently ignore: rect capture is optional
         }
 
         let nodeName = 'XCUIElementTypeAny'; // Default for IOS, will be overridden

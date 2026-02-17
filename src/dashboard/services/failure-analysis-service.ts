@@ -81,7 +81,7 @@ export async function analyzeSessionFailure(sessionId: string): Promise<void> {
 
     log.info(`[FailureAnalysis] Session ${sessionId} identified as ${identifiedCategory}`);
 
-    // AI Root-Cause Analysis (Elite Tier)
+    // AI Root-Cause Analysis
     let aiAnalysis = null;
     try {
       const { AI_SERVICE } = await import('../../services/AIService');

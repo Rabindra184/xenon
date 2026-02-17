@@ -41,6 +41,7 @@ import { RemoteSession } from '../sessions/RemoteSession';
 import { SESSION_MANAGER } from '../sessions/SessionManager';
 import { DASHBORD_EVENT_MANAGER } from '../dashboard/event-manager';
 import { updateSessionDetails } from '../dashboard/services/session-service';
+import { SessionStatus } from '../types/SessionStatus';
 import SessionType from '../enums/SessionType';
 import AsyncLock from 'async-lock';
 
@@ -501,7 +502,12 @@ export class SessionLifecycleService {
     return 'default-lock';
   }
 
-  async deleteSession(next: () => any, sessionId?: string | null) {
+  async deleteSession(
+    next: () => any,
+    sessionId?: string | null,
+    status?: SessionStatus,
+    reason?: string,
+  ) {
     if (sessionId) {
       await unblockDeviceMatchingFilter({ session_id: sessionId as any });
       this.logger.info(`📱 Unblocking the device that is blocked for session ${sessionId}`);
@@ -512,42 +518,7 @@ export class SessionLifecycleService {
     if (session) {
       session.isStopping = true;
       session.stoppedAt = Date.now();
-      const device = session.getDevice();
-      if (device && device.platform?.toLowerCase() === 'ios') {
-        this.logger.info('Stopping iOS profiling before session deletion');
-        try {
-          const traceBase64 = await session.stopPerformanceRecording();
-          if (traceBase64) {
-            const { savePerformanceTrace } = await import('../dashboard/asset-manager');
-            const tracePath = savePerformanceTrace(session.getId(), traceBase64);
-            await updateSessionDetails(session.getId(), { performance_trace: tracePath });
-            this.logger.info(`✅ iOS profiling trace saved at ${tracePath}`);
-          }
-        } catch (err: any) {
-          this.logger.warn(`⚠️ iOS profiling capture failed: ${err.message}`);
-        }
-      }
-
-      if (session.isVideoRecordingInProgress()) {
-        this.logger.info('Stopping video recording before session deletion');
-        try {
-          const videoData = await session.stopVideoRecording();
-          if (videoData) {
-            try {
-              const { saveVideoRecording } = await import('../dashboard/asset-manager');
-              let videoPath = videoData;
-              if (videoData.length > 1000) {
-                videoPath = saveVideoRecording(session.getId(), videoData);
-              }
-              await updateSessionDetails(session.getId(), { video_recording: videoPath });
-            } catch (saveErr: any) {
-              this.logger.error(`❌ Failed to process video asset: ${saveErr.message}`);
-            }
-          }
-        } catch (error: any) {
-          this.logger.warn(`Failed to stop video recording: ${error.message}`);
-        }
-      }
+      await this.finalizeCleanup(session, status, reason);
     }
 
     let timeoutId: any;
@@ -583,7 +554,7 @@ export class SessionLifecycleService {
           }
         }
 
-        await DASHBORD_EVENT_MANAGER.onSessionStopped(sessionId);
+        await DASHBORD_EVENT_MANAGER.onSessionStopped(sessionId, status, reason);
         SESSION_MANAGER.removeSession(sessionId);
 
         try {
@@ -596,6 +567,56 @@ export class SessionLifecycleService {
         } catch (err) {
           /* ignore notification errors */
         }
+      }
+    }
+  }
+
+  private async finalizeCleanup(
+    session: XenonSession,
+    status?: SessionStatus,
+    reason?: string,
+  ) {
+    const sessionId = session.getId();
+    const device = session.getDevice();
+
+    // 1. iOS Profiling Archival
+    if (device && device.platform?.toLowerCase() === 'ios') {
+      this.logger.info(`[${sessionId}] Stopping iOS profiling for asset archival`);
+      try {
+        const traceBase64 = await session.stopPerformanceRecording();
+        if (traceBase64) {
+          const { savePerformanceTrace } = await import('../dashboard/asset-manager');
+          const tracePath = savePerformanceTrace(sessionId, traceBase64);
+          await updateSessionDetails(sessionId, { performance_trace: tracePath });
+          this.logger.info(`✅ [${sessionId}] iOS profiling trace saved at ${tracePath}`);
+        }
+      } catch (err: any) {
+        this.logger.warn(`⚠️ [${sessionId}] iOS profiling capture failed: ${err.message}`);
+      }
+    }
+
+    // 2. Intelligent Video Archival
+    if (session.isVideoRecordingInProgress()) {
+      this.logger.info(`[${sessionId}] Stopping video recording for asset archival`);
+      try {
+        const videoData = await session.stopVideoRecording();
+        if (videoData) {
+          try {
+            const { saveVideoRecording } = await import('../dashboard/asset-manager');
+            let videoPath = videoData;
+            // Principal Efficiency: If it's a relative path from our pipeline, use it.
+            // If it's base64 (older Appium drivers), save it to disk.
+            if (videoData.length > 1000) {
+              videoPath = saveVideoRecording(sessionId, videoData);
+            }
+            await updateSessionDetails(sessionId, { video_recording: videoPath });
+            this.logger.info(`✅ [${sessionId}] Video recording archived at ${videoPath}`);
+          } catch (saveErr: any) {
+            this.logger.error(`❌ [${sessionId}] Failed to process video asset: ${saveErr.message}`);
+          }
+        }
+      } catch (error: any) {
+        this.logger.warn(`⚠️ [${sessionId}] Failed to stop video recording: ${error.message}`);
       }
     }
   }

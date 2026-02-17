@@ -190,6 +190,7 @@ const SessionDashboard: React.FC = () => {
   });
   const [selectedCapTab, setSelectedCapTab] = React.useState<'desired' | 'session'>('desired');
   const [sessionSearch, setSessionSearch] = React.useState('');
+  const [isAnalysisExpanded, setIsAnalysisExpanded] = useState(true);
 
   const selectedBuild = React.useMemo(
     () => builds.find((b) => b.id === selectedBuildId),
@@ -530,20 +531,41 @@ const SessionDashboard: React.FC = () => {
           )}
         </div>
 
-        {/* AI Root-Cause Analysis (Elite Tier) */}
+        {/* AI Root-Cause Analysis (High-Intent Accordion) */}
         {selectedSession.ai_analysis && (
-          <div className="ai-analysis-hero animate-fade-in">
-            <div className="ai-header">
-              <div className="ai-title">
-                <Brain size={20} className="ai-icon" />
-                <h2>AI Root-Cause Diagnosis</h2>
+          <div className={`ai-analysis-hero animate-fade-in ${!isAnalysisExpanded ? 'collapsed' : ''}`}>
+            <div
+              className="ai-header clickable"
+              onClick={() => setIsAnalysisExpanded(!isAnalysisExpanded)}
+              role="button"
+              aria-expanded={isAnalysisExpanded}
+            >
+              <div className="ai-title-group">
+                <div className="ai-title">
+                  <Brain size={22} className="ai-icon" />
+                  <h2>AI Root-Cause Diagnosis</h2>
+                </div>
+                <Badge variant="outline" className="ai-smart-badge">
+                  <Activity size={10} />
+                  Smart Analysis
+                </Badge>
               </div>
-              <Badge variant="outline" className="ai-badge">
-                Elite Tier
-              </Badge>
+
+              <div className="ai-header-actions">
+                <div className="chevron-wrapper">
+                  <ChevronRight
+                    size={20}
+                    strokeWidth={2.5}
+                    className={`chevron-icon ${isAnalysisExpanded ? 'rotated' : ''}`}
+                  />
+                </div>
+              </div>
             </div>
-            <div className="ai-content">
-              <ReactMarkdown>{selectedSession.ai_analysis}</ReactMarkdown>
+
+            <div className={`ai-collapsible-content ${isAnalysisExpanded ? 'expanded' : 'collapsed'}`}>
+              <div className="ai-content">
+                <ReactMarkdown>{selectedSession.ai_analysis}</ReactMarkdown>
+              </div>
             </div>
           </div>
         )}

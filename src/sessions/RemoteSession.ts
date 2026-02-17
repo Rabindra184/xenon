@@ -1,7 +1,12 @@
 import axios from 'axios';
 import log from '../logger';
 import SessionType from '../enums/SessionType';
-import { XenonSession, XenonSessionOptions } from './XenonSession';
+import {
+  HealthErrorType,
+  SessionHealthResult,
+  XenonSession,
+  XenonSessionOptions,
+} from './XenonSession';
 
 export type RemoteSessionOptions = XenonSessionOptions & {
   baseUrl: any;
@@ -181,50 +186,113 @@ export class RemoteSession extends XenonSession {
     }
   }
 
-  async checkHealth(): Promise<boolean> {
-    // Session-aware health probe: Use W3C WebDriver GET /session/{id}/timeouts
-    // as the primary check. Unlike /status (which only confirms the Appium server
-    // is alive), /timeouts validates that the specific session still exists.
-    // A 404 means the session is gone; a 2xx means it's genuinely alive.
-    // Falls back to /status only when sessionId is unavailable.
-
-    if (this.sessionId) {
-      try {
-        const response = await axios({
-          method: 'get',
-          url: `${this.baseUrl}/session/${this.sessionId}/timeouts`,
-          timeout: 5000,
-        });
-        return response.status >= 200 && response.status < 300;
-      } catch (err: any) {
-        const status = err.response?.status;
-
-        // Session-specific errors (4xx) → session is dead
-        if (status && status >= 400 && status < 500) {
-          log.warn(
-            `[RemoteSession] Session ${this.sessionId} is dead (HTTP ${status} from /timeouts). Marking unhealthy.`,
-          );
-          return false;
-        }
-
-        // Server-level errors (5xx, ECONNREFUSED, timeout) → fall back to /status
-        log.debug(
-          `[RemoteSession] /timeouts probe failed for ${this.sessionId} (${err.message}). Falling back to /status.`,
-        );
-      }
+  async checkHealth(): Promise<SessionHealthResult> {
+    if (!this.sessionId) {
+      return {
+        isHealthy: false,
+        errorType: HealthErrorType.NONE,
+        message: 'No session ID assigned',
+      };
     }
 
-    // Fallback: /status check (server-level liveness)
+    // Identify the root Appium URL (strip /wd-internal if present)
+    const appiumUrl = this.baseUrl.replace(/\/wd-internal$/, '');
+
     try {
+      // 1️⃣ Safe, read-only, lightweight probe: GET /session/{id}/timeouts
+      // This is a W3C standard command that all Appium drivers should register.
       const response = await axios({
         method: 'get',
-        url: `${this.baseUrl}/status`,
+        url: `${this.baseUrl}/session/${this.sessionId}/timeouts`,
         timeout: 5000,
       });
-      return response.status >= 200 && response.status < 300;
+
+      return {
+        isHealthy: response.status >= 200 && response.status < 300,
+        errorType: HealthErrorType.NONE,
+        statusCode: response.status,
+      };
     } catch (err: any) {
-      log.warn(`[RemoteSession] Health check failed for session ${this.sessionId}: ${err.message}`);
-      return false;
+      const status = err.response?.status;
+      const message = err.message || 'Unknown error';
+      const errorData = err.response?.data?.value || err.response?.data;
+      const errorJson = JSON.stringify(errorData || {}).toLowerCase();
+
+      // 2️⃣ Failure Classification & Fallback Logic
+      if (status === 404) {
+        // Distinguish between "Session Not Found" and "Command Not Found"
+        // Appium 2 returns "No route found" or "unknown command" for unsupported endpoints.
+        const isUnsupported = errorJson.includes('unknown command') || errorJson.includes('no route found');
+        const isInvalidSession = errorJson.includes('invalid session id');
+
+        if (isUnsupported) {
+          log.info(`[RemoteSession] Probe endpoint unsupported on this driver, but driver is responsive. Classifying as HEALTHY.`);
+          return {
+            isHealthy: true,
+            errorType: HealthErrorType.UNSUPPORTED_ENDPOINT,
+            message: 'Probe endpoint unsupported but driver is alive',
+          };
+        }
+
+        if (isInvalidSession) {
+          log.error(`[RemoteSession] Session ${this.sessionId} definitively GONE (Invalid Session ID).`);
+          return {
+            isHealthy: false,
+            errorType: HealthErrorType.SESSION_NOT_FOUND,
+            message: 'Invalid Session ID',
+            statusCode: 404,
+          };
+        }
+
+        log.warn(
+          `[RemoteSession] Session ${this.sessionId} probe returned 404. Performing server status fallback...`,
+        );
+
+        // Fallback: Verify Appium server is alive
+        try {
+          const statusRes = await axios.get(`${appiumUrl}/status`, { timeout: 3000 });
+          if (statusRes.status === 200) {
+            // If server is alive but we got a raw 404 with no specific error, 
+            // it's likely the session is gone in Appium 2 (where /sessions list check is unsupported).
+            return {
+              isHealthy: false,
+              errorType: HealthErrorType.SESSION_NOT_FOUND,
+              message: 'Session likely gone (Server alive but 404 on session path)',
+              statusCode: 404,
+            };
+          }
+        } catch (serverErr: any) {
+          log.error(`[RemoteSession] Appium server REACHABILITY FAILED: ${serverErr.message}`);
+          return {
+            isHealthy: false,
+            errorType: HealthErrorType.SERVER_UNREACHABLE,
+            message: `Server unreachable: ${serverErr.message}`,
+          };
+        }
+      }
+
+      if (status >= 500) {
+        return {
+          isHealthy: false,
+          errorType: HealthErrorType.DRIVER_ERROR,
+          message: `Driver internal error: ${message}`,
+          statusCode: status,
+        };
+      }
+
+      if (err.code === 'ECONNREFUSED' || err.code === 'ETIMEDOUT') {
+        return {
+          isHealthy: false,
+          errorType: HealthErrorType.SERVER_UNREACHABLE,
+          message: `Connection failed: ${err.code}`,
+        };
+      }
+
+      return {
+        isHealthy: false,
+        errorType: HealthErrorType.TIMEOUT,
+        message: `Probe timed out: ${message}`,
+      };
     }
   }
 }

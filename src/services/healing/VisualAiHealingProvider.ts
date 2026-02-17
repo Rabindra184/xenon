@@ -47,10 +47,14 @@ export class VisualAiHealingProvider implements HealingProvider {
 
   private generateVisualDescription(selector: string): string {
     // Convert selector to a descriptive string for the AI
-    // e.g. //*[@text='Login'] -> "The button with text 'Login'"
-    if (selector.includes('text=')) {
-      const match = selector.match(/text=['"]([^'"]+)['"]/i);
-      return `the element with text "${match ? match[1] : selector}"`;
+    // Handle iOS (@name, @label) and Android (@text, @content-desc) patterns
+    const textMatch =
+      selector.match(/text=['"]([^'"]+)['"]/i) ||
+      selector.match(/label=['"]([^'"]+)['"]/i) ||
+      selector.match(/name=['"]([^'"]+)['"]/i) ||
+      selector.match(/content-desc=['"]([^'"]+)['"]/i);
+    if (textMatch) {
+      return `the element with text "${textMatch[1]}"`;
     }
 
     // Clean up IDs

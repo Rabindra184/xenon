@@ -184,8 +184,21 @@ async function streamLiveSessionVideo(request: Request, response: Response) {
 
 async function getGlobalConfig(request: Request, response: Response) {
   try {
-    const config = await Container.get(WebConfigService).getConfig();
-    return response.status(200).json(config);
+    const dbConfig = await Container.get(WebConfigService).getConfig();
+    // Merge with Environment Config (AI Settings)
+    const { config } = await import('../../config');
+
+    // Sanitize keys - return boolean existence only
+    const aiConfig = {
+      aiProvider: config.aiProvider,
+      aiModel: config.aiModel,
+      aiBaseUrl: config.aiBaseUrl,
+      geminiSet: !!config.geminiApiKey,
+      openaiSet: !!config.openaiApiKey,
+      anthropicSet: !!config.anthropicApiKey,
+    };
+
+    return response.status(200).json({ ...dbConfig, ...aiConfig });
   } catch (err: any) {
     return response.status(500).json({ error: true, message: err.message });
   }
@@ -193,7 +206,20 @@ async function getGlobalConfig(request: Request, response: Response) {
 
 async function updateGlobalConfig(request: Request, response: Response) {
   try {
-    await Container.get(WebConfigService).setConfig(request.body);
+    const payload = request.body;
+
+    // Handle Runtime AI Config Overrides (Memory only)
+    if (payload.aiProvider || payload.aiModel || payload.aiBaseUrl) {
+      const { updateConfig } = await import('../../config');
+      updateConfig({
+        aiProvider: payload.aiProvider,
+        aiModel: payload.aiModel,
+        aiBaseUrl: payload.aiBaseUrl,
+      });
+    }
+
+    // Persist Web Configs to DB
+    await Container.get(WebConfigService).setConfig(payload);
     return response.status(200).json({ success: true });
   } catch (err: any) {
     return response.status(500).json({ error: true, message: err.message });

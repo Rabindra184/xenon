@@ -25,37 +25,60 @@ export class HealedLocatorGenerator {
             Object.assign(attrs, node.attrs);
         }
 
-        // 1. Content-Desc (Very stable in Android)
+        // 1. Name attribute (maps to accessibilityIdentifier on iOS — THE most reliable iOS locator)
+        if (attrs['name']) {
+            candidates.push(`//${tagName}[@name='${attrs['name']}']`);
+            candidates.push(`//*[@name='${attrs['name']}']`);
+        }
+
+        // 2. Label attribute (maps to accessibilityLabel on iOS — stable and user-visible)
+        if (attrs['label']) {
+            candidates.push(`//${tagName}[@label='${attrs['label']}']`);
+            candidates.push(`//*[@label='${attrs['label']}']`);
+        }
+
+        // 3. Content-Desc (Very stable in Android)
         if (attrs['content-desc']) {
             candidates.push(`//*[contains(@content-desc, '${attrs['content-desc']}')]`);
             candidates.push(`//${tagName}[@content-desc='${attrs['content-desc']}']`);
         }
 
-        // 2. Resource-ID (Stable in Android/iOS)
+        // 4. Resource-ID (Stable in Android)
         if (attrs['resource-id']) {
             candidates.push(`//*[@resource-id='${attrs['resource-id']}']`);
         }
 
-        // 3. Text content (Stable but can change)
-        const textValue = attrs['text'] || node.textContent;
+        // 5. Value attribute (iOS form elements)
+        if (attrs['value'] && attrs['value'].length > 1 && attrs['value'].length < 80) {
+            candidates.push(`//${tagName}[@value='${attrs['value']}']`);
+        }
+
+        // 6. Text content — NOTE: @text does NOT work in WDA/XCUITest XPath!
+        // Use it only as a contains() match for Android, never as a primary iOS locator.
+        const textValue = attrs['text'];
         if (textValue && textValue.length > 2 && textValue.length < 50) {
+            // For Android only — iOS should be handled by @name and @label above
             candidates.push(`//${tagName}[@text='${textValue}']`);
             candidates.push(`//*[contains(@text, '${textValue}')]`);
         }
 
-        // 4. Name attribute
-        if (attrs['name']) {
-            candidates.push(`//${tagName}[@name='${attrs['name']}']`);
+        // 7. Accessibility ID (used in Appium, may differ from @name)
+        if (attrs['accessibility-id']) {
+            candidates.push(`//${tagName}[@accessibility-id='${attrs['accessibility-id']}']`);
+            candidates.push(`//*[@accessibility-id='${attrs['accessibility-id']}']`);
         }
 
-        // 5. Parent-Relative
+        // 8. Parent-Relative
         const parent = node.parentNode || node.parent;
         if (parent) {
             const parentTag = parent.nodeName || parent.tag;
             const parentResourceId = (parent.attributes && this.getAttr(parent, 'resource-id')) || (parent.attrs && parent.attrs['resource-id']);
+            const parentName = (parent.attributes && this.getAttr(parent, 'name')) || (parent.attrs && parent.attrs['name']);
 
             if (parentResourceId) {
                 candidates.push(`//*[@resource-id='${parentResourceId}']//${tagName}`);
+            } else if (parentName && parentName.length < 80) {
+                candidates.push(`//*[@name='${parentName}']//${tagName}`);
             } else if (parentTag && parentTag !== 'HTML' && parentTag !== 'BODY') {
                 candidates.push(`//${parentTag}//${tagName}`);
             }

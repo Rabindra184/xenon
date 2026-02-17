@@ -13,6 +13,9 @@ export interface Config {
   aiProvider: 'gemini' | 'openai' | 'anthropic' | 'ollama';
   aiModel?: string;
   aiBaseUrl?: string;
+  geminiApiKey?: string;
+  openaiApiKey?: string;
+  anthropicApiKey?: string;
 }
 
 export const config: Config = {
@@ -37,6 +40,9 @@ export const config: Config = {
   aiProvider: (process.env.XENON_AI_PROVIDER as any) || 'gemini',
   aiModel: process.env.XENON_AI_MODEL,
   aiBaseUrl: process.env.XENON_AI_BASE_URL,
+  geminiApiKey: process.env.XENON_GEMINI_API_KEY || process.env.GEMINI_API_KEY,
+  openaiApiKey: process.env.XENON_OPENAI_API_KEY || process.env.OPENAI_API_KEY,
+  anthropicApiKey: process.env.XENON_ANTHROPIC_API_KEY || process.env.ANTHROPIC_API_KEY,
 };
 
 export function updateConfig(newConfig: Partial<Config>) {
