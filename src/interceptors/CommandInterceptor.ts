@@ -6,6 +6,7 @@ import { SESSION_MANAGER } from '../sessions/SessionManager';
 import { HealingOrchestrator } from '../services/healing/HealingOrchestrator';
 import { HealEtalonService } from '../services/healing/HealEtalonService';
 import { OmniVisionService } from '../services/omni-vision/OmniVisionService';
+import { AICommandService } from '../services/AICommandService';
 import log from '../logger';
 import { IPluginArgs } from '../interfaces/IPluginArgs';
 
@@ -46,6 +47,49 @@ export class CommandInterceptor {
       if (sessionId) {
         const { updateCmdExecutedTime } = await import('../data-service/device-service');
         await updateCmdExecutedTime(sessionId);
+        if (commandName === 'execute') {
+          const script = typeof args[0] === 'string' ? args[0] : '';
+          let scriptArgs = args[1];
+
+          // Appium executeScript puts script arguments in args[1] as an array.
+          // Dig into it to find our payload object.
+          if (Array.isArray(scriptArgs)) {
+            if (scriptArgs.length > 0 && typeof scriptArgs[0] === 'object' && scriptArgs[0] !== null) {
+              scriptArgs = scriptArgs[0];
+            } else if (scriptArgs.length === 0) {
+              scriptArgs = {};
+            }
+          }
+
+          const aiCommand = script.replace(/^(xe|xenon)\s*:\s*/, '').trim();
+
+          if (aiCommand === 'smartTap' || aiCommand === 'omniClick') {
+            this.log.info(`[Interceptor] Routing AI command: ${script} with payload: ${JSON.stringify(scriptArgs)}`);
+            const payload = typeof scriptArgs === 'object' && scriptArgs !== null ? scriptArgs : {};
+            return await Container.get(AICommandService).smartTap(driver, payload);
+          }
+          if (aiCommand === 'uiInventory' || aiCommand === 'uiScanExport') {
+            this.log.info(`[Interceptor] Routing AI command: ${script} with payload: ${JSON.stringify(scriptArgs)}`);
+            const payload = typeof scriptArgs === 'object' && scriptArgs !== null ? scriptArgs : {};
+            return await Container.get(AICommandService).uiInventory(driver, payload);
+          }
+          if (aiCommand === 'analyzeScreen' || aiCommand === 'omniScan') {
+            this.log.info(`[Interceptor] Routing AI command: ${script}`);
+            return await Container.get(AICommandService).analyzeScreen(driver);
+          }
+          if (aiCommand === 'visualTap') {
+            this.log.info(`[Interceptor] Routing AI command: ${script} with payload: ${JSON.stringify(scriptArgs)}`);
+            const payload = typeof scriptArgs === 'object' && scriptArgs !== null ? scriptArgs : {};
+            return await Container.get(AICommandService).visualTap(driver, payload);
+          }
+          if (aiCommand === 'assertVisualState') {
+            this.log.info(`[Interceptor] Routing AI command: ${script} with payload: ${JSON.stringify(scriptArgs)}`);
+            const instruction = typeof scriptArgs === 'string' ? scriptArgs
+              : (typeof scriptArgs === 'object' && scriptArgs?.instruction) ? scriptArgs.instruction : '';
+            return await Container.get(AICommandService).assertVisualState(driver, instruction);
+          }
+        }
+
         const shouldProceed = await DASHBORD_EVENT_MANAGER.beforeSessionCommand(
           sessionId,
           commandName,

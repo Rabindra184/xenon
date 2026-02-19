@@ -1,0 +1,217 @@
+/**
+ * Any CSS included here will be global. The classic template
+ * bundles Infima by default. Infima is a CSS framework designed to
+ * work well for content-centric websites.
+ */
+
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap');
+
+/* ─── Enterprise Design Tokens ─── */
+:root {
+  /* Color System */
+  --ifm-color-primary: #22C55E;
+  --ifm-color-primary-dark: #1dae52;
+  --ifm-color-primary-darker: #1c9d4d;
+  --ifm-color-primary-darkest: #17813f;
+  --ifm-color-primary-light: #4ade80;
+  --ifm-color-primary-lighter: #5be18d;
+  --ifm-color-primary-lightest: #81e9a9;
+
+  /* Typography System — Inter + Geist Mono */
+  --ifm-font-family-base: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  --ifm-heading-font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  --ifm-code-font-family: 'Geist Mono', 'JetBrains Mono', 'Fira Code', ui-monospace, monospace;
+  --ifm-code-font-size: 90%;
+
+  /* Typographic Scale */
+  --ifm-font-size-base: 16px;
+  --ifm-line-height-base: 1.65;
+  --ifm-heading-line-height: 1.25;
+
+  --docusaurus-highlighted-code-line-bg: rgba(0, 0, 0, 0.1);
+}
+
+/* ─── Dark Mode — Abyss Palette ─── */
+[data-theme='dark'] {
+  --ifm-color-primary: #22C55E;
+  --ifm-background-color: #07090D;
+  --ifm-background-surface-color: #0D1117;
+  --ifm-navbar-background-color: #0D1117;
+  --ifm-footer-background-color: #0D1117;
+  --ifm-toc-border-color: #1a2332;
+  --ifm-color-emphasis-300: #2a3444;
+
+  --docusaurus-highlighted-code-line-bg: rgba(255, 255, 255, 0.1);
+}
+
+/* ─── Global Rendering ─── */
+html {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+.center {
+  display: block;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+/* ─── Enterprise Navbar ─── */
+.navbar {
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  background-color: rgba(13, 17, 23, 0.85);
+  border-bottom: 1px solid rgba(34, 197, 94, 0.08);
+  font-weight: 500;
+  letter-spacing: -0.01em;
+}
+
+[data-theme='light'] .navbar {
+  background-color: rgba(255, 255, 255, 0.85);
+  border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+}
+
+.navbar__title {
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+/* ─── Hero Section ─── */
+.hero {
+  background: radial-gradient(ellipse 80% 50% at 50% -20%, rgba(34, 197, 94, 0.15) 0%, transparent 100%),
+    var(--ifm-background-color);
+}
+
+[data-theme='light'] .hero {
+  background: radial-gradient(ellipse 80% 50% at 50% -20%, rgba(34, 197, 94, 0.08) 0%, transparent 100%),
+    #FAFBFC;
+}
+
+.hero__title {
+  font-weight: 700;
+  letter-spacing: -0.04em;
+  line-height: 1.1;
+  background: linear-gradient(135deg, #FFFFFF 30%, var(--ifm-color-primary) 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  margin-bottom: 1rem;
+}
+
+[data-theme='light'] .hero__title {
+  background: linear-gradient(135deg, #0F172A 30%, var(--ifm-color-primary-darkest) 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.hero__subtitle {
+  font-weight: 400;
+  letter-spacing: -0.01em;
+  line-height: 1.6;
+}
+
+[data-theme='dark'] .hero__subtitle {
+  color: #94A3B8;
+}
+
+/* ─── Buttons — Pill Style ─── */
+.button {
+  border-radius: 50px;
+  font-weight: 600;
+  padding: 0.75rem 2rem;
+  letter-spacing: -0.01em;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.button--primary {
+  background-color: var(--ifm-color-primary);
+  border: 2px solid var(--ifm-color-primary);
+  box-shadow: 0 4px 16px rgba(34, 197, 94, 0.2);
+}
+
+.button--primary:hover {
+  background-color: var(--ifm-color-primary-dark);
+  border-color: var(--ifm-color-primary-dark);
+  transform: translateY(-1px);
+  box-shadow: 0 8px 24px rgba(34, 197, 94, 0.35);
+}
+
+.button--outline {
+  border: 2px solid var(--ifm-color-emphasis-300);
+  background-color: transparent;
+}
+
+.button--outline:hover {
+  border-color: var(--ifm-color-primary);
+  color: var(--ifm-color-primary) !important;
+  transform: translateY(-1px);
+  background-color: rgba(34, 197, 94, 0.05);
+}
+
+/* ─── Documentation Content ─── */
+.markdown h1 {
+  font-weight: 700;
+  letter-spacing: -0.03em;
+}
+
+.markdown h2 {
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  margin-top: 2.5rem;
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid var(--ifm-toc-border-color);
+}
+
+.markdown h3 {
+  font-weight: 600;
+  letter-spacing: -0.015em;
+}
+
+.markdown p {
+  line-height: 1.7;
+}
+
+/* ─── Code Blocks ─── */
+code {
+  font-family: var(--ifm-code-font-family);
+  font-size: var(--ifm-code-font-size);
+  border-radius: 4px;
+}
+
+/* ─── Sidebar ─── */
+.menu__link {
+  font-weight: 400;
+  letter-spacing: -0.005em;
+  font-size: 0.9rem;
+}
+
+.menu__link--active {
+  font-weight: 600;
+}
+
+/* ─── Table of Contents ─── */
+.table-of-contents__link {
+  font-size: 0.85rem;
+  letter-spacing: -0.005em;
+}
+
+/* ─── Admonition Overrides ─── */
+.admonition-note {
+  border-left-color: var(--ifm-color-primary);
+  background-color: rgba(34, 197, 94, 0.04);
+  border-radius: 8px;
+}
+
+/* ─── Footer ─── */
+.footer {
+  font-size: 0.9rem;
+}
+
+.footer__title {
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  text-transform: uppercase;
+  font-size: 0.75rem;
+}

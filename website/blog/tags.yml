@@ -1,0 +1,19 @@
+release:
+  label: Release
+  permalink: /release
+  description: Xenon platform releases
+
+feature:
+  label: Feature
+  permalink: /feature
+  description: New feature announcements
+
+infrastructure:
+  label: Infrastructure
+  permalink: /infrastructure
+  description: Infrastructure and architecture updates
+
+ai:
+  label: AI
+  permalink: /ai
+  description: AI and machine learning features

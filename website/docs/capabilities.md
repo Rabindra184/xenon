@@ -64,12 +64,20 @@ Xenon provides a powerful `executeScript` interface using the `xenon:` namespace
 | `xenon: addTag` | `{"tag": string}` or `string` | Adds a searchable tag to the current session. |
 | `xenon: debug` | `{"message": string}` or `string` | Appends a custom debug log line to the session dashboard. |
 
+import Tabs from '@theme/Tabs';
+import TabItem from '@theme/TabItem';
+
 #### Code Examples
 
-**WebdriverIO (v8+)**
+<Tabs>
+<TabItem value="wdio" label="WebdriverIO" default>
+
 ```javascript
 // Set Status
-await driver.executeScript('xenon: setSessionStatus', [{ status: 'passed', reason: 'Verified checkout flow' }]);
+await driver.executeScript('xenon: setSessionStatus', [{ 
+  status: 'passed', 
+  reason: 'Verified checkout flow' 
+}]);
 
 // Capture Evidence
 await driver.executeScript('xenon: captureEvidence', ['User profile verified']);
@@ -78,16 +86,134 @@ await driver.executeScript('xenon: captureEvidence', ['User profile verified']);
 await driver.executeScript('xenon: addTag', ['smoke', 'payment']);
 ```
 
-**Appium Java Client (v9+)**
+</TabItem>
+<TabItem value="java" label="Java Client">
+
 ```java
 // Set Status
-driver.executeScript("xenon: setSessionStatus", ImmutableMap.of("status", "failed", "reason", "Element timed out"));
+driver.executeScript("xenon: setSessionStatus", 
+  ImmutableMap.of("status", "failed", "reason", "Element timed out"));
 
 // Set Name
 driver.executeScript("xenon: setSessionName", "Regression: Payment Module");
 ```
 
+</TabItem>
+<TabItem value="python" label="Python Client">
+
+```python
+# Set Status
+driver.execute_script('xenon: setSessionStatus', {
+    'status': 'passed',
+    'reason': 'Search functionality works'
+})
+
+# Add Tags
+driver.execute_script('xenon: addTag', 'v2-testing')
+```
+
+</TabItem>
+</Tabs>
+
+
+
 ---
+
+### Omni-Interaction (Smart UI Commands)
+
+Xenon exposes **session-scoped plugin endpoints** for smart, resilient UI interaction and UI introspection. These are designed for enterprise pipelines: they return **structured, auditable outputs** and degrade gracefully when OCR/AI cannot confidently act.
+
+#### Invocation
+
+All Omni-Interaction commands can be invoked in two ways:
+
+1. **`executeScript`** (recommended — works out of the box with all Appium clients):
+
+<Tabs>
+<TabItem value="java" label="Java Client" default>
+
+```java
+// Smart Tap (Text-based)
+Map<String, Object> tapArgs = Map.of("text", "Submit", "index", 1, "takeANewScreenShot", true);
+Map<String, Object> result = (Map<String, Object>) driver.executeScript("xe:smartTap", tapArgs);
+
+// Smart Tap (Icon-based fallback)
+Map<String, Object> iconArgs = Map.of("icon", "back arrow", "takeANewScreenShot", true);
+Map<String, Object> iconResult = (Map<String, Object>) driver.executeScript("xe:smartTap", iconArgs);
+
+// Dedicated Visual Tap
+Map<String, Object> vizResult = (Map<String, Object>) driver.executeScript("xe:visualTap", Map.of("icon", "search magnifying glass"));
+```
+
+</TabItem>
+<TabItem value="wdio" label="WebdriverIO">
+
+```javascript
+// Smart Tap
+const result = await driver.executeScript('xe:smartTap', [{ text: 'Submit', index: 1, takeANewScreenShot: true }]);
+
+// UI Inventory
+const items = await driver.executeScript('xe:uiInventory', [{ maxItems: 200, takeANewScreenShot: true }]);
+```
+
+</TabItem>
+<TabItem value="python" label="Python Client">
+
+```python
+# Smart Tap
+result = driver.execute_script('xe:smartTap', {'text': 'Submit', 'index': 1, 'takeANewScreenShot': True})
+
+# UI Inventory
+items = driver.execute_script('xe:uiInventory', {'maxItems': 200, 'takeANewScreenShot': True})
+```
+
+</TabItem>
+</Tabs>
+
+2. **REST endpoint** (direct HTTP POST):
+
+#### `smartTap` (OCR-driven tap by visible text)
+
+- **Endpoint**: `POST /session/:sessionId/xenon/smart-tap`
+- **Body**:
+  - `text` (string, required): visible text to tap
+  - `index` (number, optional, 1-based): which match to tap if multiple are found (default `1`)
+  - `takeANewScreenShot` (boolean, optional): default `true`
+
+**Response (high level)**:
+- `clicked`: boolean
+- `message`: string
+- `target`: coordinates + rect + confidence (when clicked)
+
+#### `uiInventory` (UI metadata export)
+
+- **Endpoint**: `POST /session/:sessionId/xenon/ui-inventory`
+- **Body**:
+  - `maxItems` (number, optional): default `200`
+  - `takeANewScreenShot` (boolean, optional): default `true`
+
+Returns an array of UI items with stable keys:
+- `text`, `color`, `position`, `aligned`, `above`, `below`, `icon`, `icon_color`, `icon_category`
+
+#### Compatibility aliases (Lens-style clients)
+
+If your existing tests already call Lens-style endpoints, Xenon supports aliases that map to the Xenon-native commands:
+
+- `POST /session/:sessionId/plugin/ai-appium-lens/aiClick` → `smartTap`
+- `POST /session/:sessionId/plugin/ai-appium-lens/fetchUIElementsMetadataJson` → `uiInventory`
+
+#### Additional `executeScript` commands
+
+| Command | Description |
+|:---|:---|
+| `xe:smartTap` / `xe:omniClick` | OCR-driven tap by visible text (supports `icon` fallback) |
+| `xe:visualTap` | AI-driven tap by visual description (e.g. "back icon") |
+| `xe:uiInventory` / `xe:uiScanExport` | Export UI metadata from OCR |
+| `xe:analyzeScreen` / `xe:omniScan` | AI screen analysis |
+| `xe:assertVisualState` | Natural language visual assertion |
+
+> [!IMPORTANT]
+> Use `driver.executeScript()`, not `driver.execute()`. The `execute()` method attempts to encode through Selenium's internal command codec, which doesn't know custom `xe:` commands.
 
 ### API Documentation
 

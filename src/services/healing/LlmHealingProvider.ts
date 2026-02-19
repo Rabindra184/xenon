@@ -13,6 +13,12 @@ export class LlmHealingProvider implements HealingProvider {
       return null;
     }
 
+    // Check if AI service is enabled before attempting
+    if (!AI_SERVICE.isEnabled()) {
+      this.logger.debug('AI service not enabled, skipping LLM healing');
+      return null;
+    }
+
     try {
       this.logger.info(`Attempting Deep LLM healing for locator: "${context.selector}"`);
 
@@ -42,7 +48,12 @@ export class LlmHealingProvider implements HealingProvider {
         }
       }
     } catch (err: any) {
-      this.logger.error(`Error during LLM healing: ${err.message}`);
+      // Log service unavailability at debug level (expected), other errors at warn level
+      if (err.message?.includes('unavailable') || err.message?.includes('404')) {
+        this.logger.debug(`LLM healing skipped: ${err.message}`);
+      } else {
+        this.logger.warn(`Error during LLM healing: ${err.message}`);
+      }
     }
 
     return null;

@@ -2,6 +2,10 @@
 title: Configuration
 ---
 
+import Tabs from '@theme/Tabs';
+import TabItem from '@theme/TabItem';
+
+
 # Configuration & Server Arguments
 
 Xenon is highly configurable to suit single-node, hub-node, or cloud deployments. You can configure Xenon using:
@@ -14,9 +18,11 @@ Xenon is highly configurable to suit single-node, hub-node, or cloud deployments
 
 ## 1. Using Configuration File
 
-We recommend using an Appium configuration file (`json` or `yaml`) to manage settings.
+We recommend using an Appium configuration file to manage complex settings.
 
-### Example `xenon-config.yaml`
+
+<Tabs>
+<TabItem value="yaml" label="YAML (Recommended)" default>
 
 ```yaml
 server:
@@ -26,38 +32,39 @@ server:
     - xenon
   plugin:
     xenon:
-      # PLATFORM & DEVICES
-      platform: both  # options: ios, android, both
-      iosDeviceType: both # options: real, simulated, both
+      platform: both
+      iosDeviceType: both
       androidDeviceType: both
-      
-      # INFRASTRUCTURE
-      # hub: "http://hub-ip:port" # Uncomment for Node configuration
-      maxSessions: 8
-      # proxy: 
-      #   host: "proxy.example.com"
-      #   port: 8080
-      
-      # FEATURES
       enableDashboard: true
-      bootedSimulators: true
-      skipChromeDownload: true
-      
-      # TIMEOUTS (ms)
-      deviceAvailabilityTimeoutMs: 180000
-      deviceAvailabilityQueryIntervalMs: 10000
-      newCommandTimeoutSec: 60
-
-      # BUILD & SESSION RETENTION
-      buildCleanupDays: 30
-      buildCleanupMaxCount: 100
-      buildCleanupSchedule: "0 0 * * *"
-      deleteBuildAssets: true
-
-      # DATABASE (Optional - defaults to SQLite)
-      # databaseProvider: postgresql
-      # databaseUrl: "postgresql://user:password@localhost:5432/xenon"
+      maxSessions: 8
 ```
+
+</TabItem>
+<TabItem value="json" label="JSON">
+
+```json
+{
+  "server": {
+    "keepAliveTimeout": 800,
+    "basePath": "/wd/hub",
+    "usePlugins": ["xenon"],
+    "plugin": {
+      "xenon": {
+        "platform": "both",
+        "iosDeviceType": "both",
+        "androidDeviceType": "both",
+        "enableDashboard": true,
+        "maxSessions": 8
+      }
+    }
+  }
+}
+```
+
+</TabItem>
+</Tabs>
+
+
 
 To run:
 ```bash
@@ -89,7 +96,7 @@ curl -X PUT http://localhost:4723/xenon/api/config \
 }
 ```
 
-> ⚠️ **Restart Required**: Changing these properties via API will **NOT** take effect until a server restart:
+> **Restart Required**: Changing these properties via API will **NOT** take effect until a server restart:
 > - `hub`
 > - `platform`
 > - `bindHostOrIp`
@@ -129,14 +136,42 @@ These arguments can be passed via command line flags (e.g., `--plugin-xenon-plat
 
 ## 4. Environment Variables
 
-Some advanced features, such as OpenTelemetry tracing, are configured via environment variables.
+Some advanced features are configured via environment variables.
+
+### AI & Diagnostics
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `OTEL_EXPORTER_OTLP_ENDPOINT` | The endpoint for the OpenTelemetry collector (e.g., `http://jaeger:4318/v1/traces`). | None |
-| `XENON_OTEL_DEBUG` | If set to `true`, traces will be logged to the console for debugging. | `false` |
-| `DATABASE_URL` | Connection string for PostgreSQL or SQLite (e.g., `postgresql://...` or `file:/path/to/db`). | SQLite |
+| `GEMINI_API_KEY` or `XENON_GEMINI_API_KEY` | Google Gemini API key | — |
+| `OPENAI_API_KEY` or `XENON_OPENAI_API_KEY` | OpenAI API key | — |
+| `ANTHROPIC_API_KEY` or `XENON_ANTHROPIC_API_KEY` | Anthropic API key | — |
+| `XENON_AI_PROVIDER` | AI provider: `gemini`, `openai`, `anthropic`, `ollama` | `gemini` |
+| `XENON_AI_MODEL` | Universal AI model override (all providers) | Provider default |
+| `XENON_GEMINI_MODEL` | Gemini-specific model (e.g., `gemini-3-flash-preview`) | — |
+| `XENON_OPENAI_MODEL` | OpenAI-specific model (e.g., `gpt-4o`) | — |
+| `XENON_ANTHROPIC_MODEL` | Anthropic-specific model | — |
+| `XENON_OLLAMA_MODEL` | Ollama-specific model (e.g., `llava`) | — |
+| `XENON_AI_BASE_URL` | Custom base URL (for self-hosted Ollama) | — |
+
+→ See [AI Features](ai-features.md) for full provider documentation.
+
+### Database
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `DATABASE_URL` | PostgreSQL or SQLite connection string | `file:~/.cache/xenon/xenon.db` |
+| `XENON_DB_PROVIDER` | Database provider (`sqlite` or `postgresql`) | `sqlite` |
+
+→ See [Deployment Guide](deployment.md) for database setup instructions.
+
+### Observability
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | OpenTelemetry collector endpoint (e.g., `http://jaeger:4318/v1/traces`) | — |
+| `XENON_OTEL_DEBUG` | Log traces to console for debugging | `false` |
 
 ### Cloud & Proxy
 
-Xenon also supports `cloud` and `proxy` configurations. See the configuration file example above for structure.
+Xenon also supports `cloud` and `proxy` configurations. See the [Cloud Execution](cloud.md) and [Deployment Guide](deployment.md) for structure.
+

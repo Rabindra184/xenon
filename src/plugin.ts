@@ -47,6 +47,31 @@ class XenonPlugin extends BasePlugin {
     '/session/:sessionId/xenon/test-locator': {
       POST: { command: 'testAiLocator' },
     },
+    // Xenon Omni-Interaction: Enterprise-grade AI/OCR actions
+    '/session/:sessionId/xenon/omni-click': {
+      POST: { command: 'omniClick' },
+    },
+    // Xenon Smart Interaction: clearer, primary name (alias of omniClick)
+    '/session/:sessionId/xenon/smart-tap': {
+      POST: { command: 'smartTap' },
+    },
+    // Xenon UI Scan: Rich OCR-driven UI metadata export
+    '/session/:sessionId/xenon/ui-scan-export': {
+      POST: { command: 'uiScanExport' },
+    },
+    // Xenon UI Inventory: clearer, primary name (alias of uiScanExport)
+    '/session/:sessionId/xenon/ui-inventory': {
+      POST: { command: 'uiInventory' },
+    },
+
+    // Compatibility aliases (Lens-style client code can keep working)
+    // These do NOT change Xenon's public naming; they are optional shims.
+    '/session/:sessionId/plugin/ai-appium-lens/aiClick': {
+      POST: { command: 'smartTap' },
+    },
+    '/session/:sessionId/plugin/ai-appium-lens/fetchUIElementsMetadataJson': {
+      POST: { command: 'uiInventory' },
+    },
   };
   static port: number;
   private xenonLog = log.scope('Plugin');
@@ -173,6 +198,47 @@ class XenonPlugin extends BasePlugin {
 
   async testAiLocator(driver: any, locator: { strategy: string; selector: string }) {
     return await this.aiCommandService.testAiLocator(driver, locator);
+  }
+
+  /**
+   * Omni-Click: OCR-driven smart click by visible text.
+   * Accepts an object payload for compatibility with common plugin patterns.
+   */
+  async omniClick(
+    driver: any,
+    payload: { text?: string; index?: number; takeANewScreenShot?: boolean },
+  ) {
+    return await this.aiCommandService.omniClick(driver, payload);
+  }
+
+  /**
+   * UI Scan Export: returns UI metadata JSON derived from screenshot OCR + lightweight heuristics.
+   */
+  async uiScanExport(
+    driver: any,
+    payload?: { takeANewScreenShot?: boolean; maxItems?: number },
+  ) {
+    return await this.aiCommandService.uiScanExport(driver, payload);
+  }
+
+  /**
+   * Smart Tap: Xenon-native, self-explanatory alias of omniClick.
+   */
+  async smartTap(
+    driver: any,
+    payload: { text?: string; index?: number; takeANewScreenShot?: boolean },
+  ) {
+    return await this.aiCommandService.smartTap(driver, payload);
+  }
+
+  /**
+   * UI Inventory: Xenon-native, self-explanatory alias of uiScanExport.
+   */
+  async uiInventory(
+    driver: any,
+    payload?: { takeANewScreenShot?: boolean; maxItems?: number },
+  ) {
+    return await this.aiCommandService.uiInventory(driver, payload);
   }
 }
 

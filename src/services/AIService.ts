@@ -135,18 +135,62 @@ class AnthropicProvider implements LLMProvider {
 class OllamaProvider implements LLMProvider {
   private baseUrl: string;
   private model: string;
+  private isAvailable: boolean | null = null; // Cache availability status
+  private lastAvailabilityCheck: number = 0;
+  private readonly AVAILABILITY_CHECK_INTERVAL = 60000; // Check every 60s
+
   constructor(baseUrl = 'http://localhost:11434', model = 'llama3') {
     this.baseUrl = baseUrl;
     this.model = model;
   }
+
+  private async checkAvailability(): Promise<boolean> {
+    const now = Date.now();
+    // Use cached status if checked recently
+    if (this.isAvailable !== null && now - this.lastAvailabilityCheck < this.AVAILABILITY_CHECK_INTERVAL) {
+      return this.isAvailable;
+    }
+
+    try {
+      // Quick health check - Ollama has a /api/tags endpoint
+      await axios.get(`${this.baseUrl}/api/tags`, { timeout: 2000 });
+      this.isAvailable = true;
+      this.lastAvailabilityCheck = now;
+      return true;
+    } catch (err: any) {
+      this.isAvailable = false;
+      this.lastAvailabilityCheck = now;
+      return false;
+    }
+  }
+
   async analyze(prompt: string, screenshotBase64?: string): Promise<string> {
-    const response = await axios.post(`${this.baseUrl}/api/generate`, {
-      model: this.model,
-      prompt: prompt,
-      images: screenshotBase64 ? [screenshotBase64] : [],
-      stream: false,
-    });
-    return response.data.response || '';
+    // Check if Ollama is available before attempting
+    const available = await this.checkAvailability();
+    if (!available) {
+      throw new Error(`Ollama service unavailable at ${this.baseUrl}. Is Ollama running?`);
+    }
+
+    try {
+      const response = await axios.post(
+        `${this.baseUrl}/api/generate`,
+        {
+          model: this.model,
+          prompt: prompt,
+          images: screenshotBase64 ? [screenshotBase64] : [],
+          stream: false,
+        },
+        { timeout: 30000 }, // 30s timeout for generation
+      );
+      return response.data.response || '';
+    } catch (err: any) {
+      // Mark as unavailable on 404/ECONNREFUSED
+      if (err.response?.status === 404 || err.code === 'ECONNREFUSED') {
+        this.isAvailable = false;
+        throw new Error(`Ollama service unavailable at ${this.baseUrl}. Is Ollama running?`);
+      }
+      throw err;
+    }
   }
 }
 
@@ -160,7 +204,7 @@ export class AIService {
 
   private initializeProvider() {
     const providerType = config.aiProvider;
-    const model = config.aiModel;
+    const genericModel = config.aiModel;
     const baseUrl = config.aiBaseUrl;
 
     log.info(`[AIService] Initializing with provider: ${providerType}`);
@@ -175,24 +219,30 @@ export class AIService {
       switch (providerType) {
         case 'gemini':
           const geminiKey = config.geminiApiKey;
-          if (geminiKey) this.provider = new GeminiProvider(geminiKey, model);
+          if (geminiKey)
+            this.provider = new GeminiProvider(geminiKey, config.geminiModel || genericModel);
           break;
         case 'openai':
           const openaiKey = config.openaiApiKey;
-          if (openaiKey) this.provider = new OpenAIProvider(openaiKey, model || 'gpt-4o', baseUrl);
+          if (openaiKey)
+            this.provider = new OpenAIProvider(
+              openaiKey,
+              config.openaiModel || genericModel || 'gpt-4o',
+              baseUrl,
+            );
           break;
         case 'anthropic':
           const anthropicKey = config.anthropicApiKey;
           if (anthropicKey)
             this.provider = new AnthropicProvider(
               anthropicKey,
-              model || 'claude-3-5-sonnet-20240620',
+              config.anthropicModel || genericModel || 'claude-3-5-sonnet-20240620',
             );
           break;
         case 'ollama':
           this.provider = new OllamaProvider(
             baseUrl || 'http://localhost:11434',
-            model || 'llama3',
+            config.ollamaModel || genericModel || 'llama3',
           );
           break;
       }
@@ -263,7 +313,12 @@ Fix: Add a pre-emptive check for the location permission dialog or use the \`aut
       const data = JSON.parse(response.replace(/```json|```/g, '').trim());
       return data;
     } catch (err: any) {
-      log.error(`[AIService] visualFind failed: ${err.message}`);
+      // Log service unavailability at debug level (expected), other errors at warn level
+      if (err.message?.includes('unavailable') || err.response?.status === 404) {
+        log.debug(`[AIService] visualFind skipped: ${err.message}`);
+      } else {
+        log.warn(`[AIService] visualFind failed: ${err.message}`);
+      }
       return null;
     }
   }
@@ -304,7 +359,12 @@ Fix: Add a pre-emptive check for the location permission dialog or use the \`aut
       const data = JSON.parse(response.replace(/```json|```/g, '').trim());
       return data;
     } catch (err: any) {
-      log.error(`[AIService] healLocator failed: ${err.message}`);
+      // Log service unavailability at debug level (expected), other errors at warn level
+      if (err.message?.includes('unavailable') || err.response?.status === 404) {
+        log.debug(`[AIService] healLocator skipped: ${err.message}`);
+      } else {
+        log.warn(`[AIService] healLocator failed: ${err.message}`);
+      }
       return null;
     }
   }
@@ -326,7 +386,8 @@ Fix: Add a pre-emptive check for the location permission dialog or use the \`aut
             throw new Error(
               'Gemini API Key missing. Please set XENON_GEMINI_API_KEY environment variable.',
             );
-          const targetGeminiModel = (model || '').trim() || 'gemini-3-flash-preview';
+          const targetGeminiModel =
+            (config.geminiModel || model || '').trim() || 'gemini-3-flash-preview';
           testProvider = new GeminiProvider(geminiKey, targetGeminiModel);
           break;
         case 'openai':
@@ -335,7 +396,11 @@ Fix: Add a pre-emptive check for the location permission dialog or use the \`aut
             throw new Error(
               'OpenAI API Key missing. Please set XENON_OPENAI_API_KEY environment variable.',
             );
-          testProvider = new OpenAIProvider(openaiKey, model || 'gpt-4o', baseUrl);
+          testProvider = new OpenAIProvider(
+            openaiKey,
+            config.openaiModel || model || 'gpt-4o',
+            baseUrl,
+          );
           break;
         case 'anthropic':
           const anthropicKey = (config.anthropicApiKey || testConfig.anthropicApiKey || '').trim();
@@ -343,10 +408,16 @@ Fix: Add a pre-emptive check for the location permission dialog or use the \`aut
             throw new Error(
               'Anthropic API Key missing. Please set XENON_ANTHROPIC_API_KEY environment variable.',
             );
-          testProvider = new AnthropicProvider(anthropicKey, model || 'claude-3-5-sonnet-20240620');
+          testProvider = new AnthropicProvider(
+            anthropicKey,
+            config.anthropicModel || model || 'claude-3-5-sonnet-20240620',
+          );
           break;
         case 'ollama':
-          testProvider = new OllamaProvider(baseUrl || 'http://localhost:11434', model || 'llama3');
+          testProvider = new OllamaProvider(
+            baseUrl || 'http://localhost:11434',
+            config.ollamaModel || model || 'llama3',
+          );
           break;
         default:
           throw new Error(`Unsupported provider: ${providerType}`);

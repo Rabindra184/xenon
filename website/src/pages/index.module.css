@@ -1,0 +1,452 @@
+/* ─────────────────────────────────────────────
+   SECTION 1 — Hero
+   ───────────────────────────────────────────── */
+.hero {
+  padding: 8rem 0 6rem;
+  text-align: center;
+  position: relative;
+  overflow: hidden;
+  background: radial-gradient(ellipse 80% 50% at 50% -20%, rgba(34, 197, 94, 0.15) 0%, transparent 100%);
+}
+
+[data-theme='light'] .hero {
+  background: radial-gradient(ellipse 80% 50% at 50% -20%, rgba(34, 197, 94, 0.08) 0%, transparent 100%),
+    #FAFBFC;
+}
+
+.heroInner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  max-width: 800px;
+  margin: 0 auto;
+}
+
+.heroLogoWrap {
+  margin-bottom: 2rem;
+}
+
+.heroLogo {
+  width: 180px;
+  height: 180px;
+  filter: drop-shadow(0 0 40px rgba(34, 197, 94, 0.15));
+}
+
+.heroTitle {
+  font-size: 4.5rem;
+  font-weight: 700;
+  letter-spacing: -0.05em;
+  line-height: 1;
+  background: linear-gradient(135deg, #FFFFFF 30%, #22C55E 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  margin-bottom: 1rem;
+}
+
+[data-theme='light'] .heroTitle {
+  background: linear-gradient(135deg, #0F172A 30%, #15803D 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.heroSubtitle {
+  font-size: 1.5rem;
+  color: var(--ifm-color-emphasis-700);
+  margin-bottom: 0.75rem;
+  letter-spacing: -0.01em;
+}
+
+.heroTagline {
+  font-size: 1.05rem;
+  color: var(--ifm-color-emphasis-600);
+  max-width: 600px;
+  line-height: 1.7;
+  margin-bottom: 2.5rem;
+}
+
+.heroCta {
+  display: flex;
+  gap: 1rem;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
+/* ─────────────────────────────────────────────
+   SHARED SECTION STYLES
+   ───────────────────────────────────────────── */
+.sectionHeader {
+  text-align: center;
+  margin-bottom: 3.5rem;
+}
+
+.sectionTitle {
+  font-size: 2.25rem;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  margin-bottom: 0.75rem;
+}
+
+.sectionSubtitle {
+  font-size: 1.1rem;
+  color: var(--ifm-color-emphasis-600);
+  max-width: 600px;
+  margin: 0 auto;
+  line-height: 1.6;
+}
+
+/* ─────────────────────────────────────────────
+   SECTION 2 — Core Pillars
+   ───────────────────────────────────────────── */
+.pillars {
+  padding: 6rem 0;
+  border-top: 1px solid var(--ifm-toc-border-color);
+}
+
+.pillarGrid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 2rem;
+}
+
+.pillarCard {
+  padding: 2rem;
+  border-radius: 12px;
+  border: 1px solid var(--ifm-toc-border-color);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.pillarCard:hover {
+  transform: translateY(-4px);
+  border-color: rgba(34, 197, 94, 0.3);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.1);
+}
+
+[data-theme='dark'] .pillarCard:hover {
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.4);
+}
+
+.pillarIcon {
+  width: 52px;
+  height: 52px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 1.25rem;
+}
+
+.pillarTitle {
+  font-size: 1.15rem;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  margin-bottom: 0.5rem;
+}
+
+.pillarDesc {
+  font-size: 0.9rem;
+  line-height: 1.65;
+  color: var(--ifm-color-emphasis-600);
+  margin: 0;
+}
+
+/* ─────────────────────────────────────────────
+   SECTION 3 — Platform Capabilities (Z-Pattern)
+   ───────────────────────────────────────────── */
+.capabilities {
+  padding: 6rem 0;
+  background: var(--ifm-background-surface-color);
+}
+
+[data-theme='light'] .capabilities {
+  background: #F8FAFC;
+}
+
+.capRow {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4rem;
+  align-items: center;
+  margin-bottom: 5rem;
+}
+
+.capRow:last-child {
+  margin-bottom: 0;
+}
+
+.capRowReverse {
+  direction: rtl;
+}
+
+.capRowReverse>* {
+  direction: ltr;
+}
+
+.capLabel {
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--ifm-color-primary);
+  margin-bottom: 0.5rem;
+  display: block;
+}
+
+.capTitle {
+  font-size: 1.75rem;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  margin-bottom: 1rem;
+}
+
+.capDesc {
+  font-size: 0.95rem;
+  line-height: 1.7;
+  color: var(--ifm-color-emphasis-600);
+  margin-bottom: 1.5rem;
+}
+
+.capFeatures {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.capFeature {
+  display: flex;
+  gap: 0.75rem;
+  align-items: flex-start;
+}
+
+.capFeatureIcon {
+  color: var(--ifm-color-primary);
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.capFeature strong {
+  display: block;
+  font-size: 0.9rem;
+  font-weight: 600;
+  margin-bottom: 2px;
+}
+
+.capFeature span {
+  font-size: 0.82rem;
+  color: var(--ifm-color-emphasis-500);
+  line-height: 1.5;
+}
+
+.capVisual {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.capGlowCard {
+  width: 100%;
+  border-radius: 12px;
+  border: 1px solid var(--ifm-toc-border-color);
+  background: var(--ifm-background-color);
+  overflow: hidden;
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.06);
+}
+
+[data-theme='dark'] .capGlowCard {
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.3),
+    0 0 60px rgba(34, 197, 94, 0.04);
+}
+
+.capCode {
+  padding: 1.5rem;
+  margin: 0;
+  font-size: 0.82rem;
+  line-height: 1.7;
+  font-family: var(--ifm-code-font-family);
+  color: var(--ifm-color-emphasis-800);
+  overflow-x: auto;
+}
+
+/* ─────────────────────────────────────────────
+   SECTION 4 — Cloud & Scale
+   ───────────────────────────────────────────── */
+.cloud {
+  padding: 6rem 0;
+  border-top: 1px solid var(--ifm-toc-border-color);
+}
+
+.providerGrid {
+  display: flex;
+  justify-content: center;
+  gap: 1rem;
+  flex-wrap: wrap;
+  margin-bottom: 3rem;
+}
+
+.providerBadge {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.6rem 1.25rem;
+  border-radius: 50px;
+  border: 1px solid var(--ifm-toc-border-color);
+  font-weight: 500;
+  font-size: 0.9rem;
+  transition: all 0.2s ease;
+}
+
+.providerBadge:hover {
+  border-color: var(--ifm-color-primary);
+  color: var(--ifm-color-primary);
+}
+
+.cloudFeatures {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 2rem;
+}
+
+.cloudFeature {
+  display: flex;
+  gap: 1rem;
+  align-items: flex-start;
+}
+
+.cloudFeature svg {
+  color: var(--ifm-color-primary);
+  flex-shrink: 0;
+  margin-top: 3px;
+}
+
+.cloudFeature strong {
+  display: block;
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+
+.cloudFeature p {
+  font-size: 0.85rem;
+  line-height: 1.6;
+  color: var(--ifm-color-emphasis-600);
+  margin: 0;
+}
+
+/* ─────────────────────────────────────────────
+   SECTION 5 — Tech Stack
+   ───────────────────────────────────────────── */
+.techStack {
+  padding: 4rem 0;
+  background: var(--ifm-background-surface-color);
+}
+
+[data-theme='light'] .techStack {
+  background: #F8FAFC;
+}
+
+.techBadges {
+  display: flex;
+  justify-content: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.techBadge {
+  padding: 0.4rem 1rem;
+  border-radius: 6px;
+  font-size: 0.8rem;
+  font-weight: 500;
+  font-family: var(--ifm-code-font-family);
+  border: 1px solid var(--ifm-toc-border-color);
+  color: var(--ifm-color-emphasis-700);
+  transition: all 0.2s ease;
+}
+
+.techBadge:hover {
+  border-color: var(--ifm-color-primary);
+  color: var(--ifm-color-primary);
+  background: rgba(34, 197, 94, 0.05);
+}
+
+/* ─────────────────────────────────────────────
+   SECTION 6 — CTA Banner
+   ───────────────────────────────────────────── */
+.cta {
+  padding: 6rem 0;
+  text-align: center;
+  border-top: 1px solid var(--ifm-toc-border-color);
+  background: radial-gradient(ellipse 50% 80% at 50% 100%, rgba(34, 197, 94, 0.08) 0%, transparent 100%);
+}
+
+.ctaTitle {
+  font-size: 2.25rem;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  margin-bottom: 0.75rem;
+}
+
+.ctaDesc {
+  font-size: 1.05rem;
+  color: var(--ifm-color-emphasis-600);
+  margin-bottom: 2rem;
+}
+
+.ctaButtons {
+  display: flex;
+  gap: 1rem;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
+/* ─────────────────────────────────────────────
+   RESPONSIVE
+   ───────────────────────────────────────────── */
+@media screen and (max-width: 996px) {
+  .hero {
+    padding: 5rem 1.5rem 4rem;
+  }
+
+  .heroLogo {
+    width: 120px;
+    height: 120px;
+  }
+
+  .heroTitle {
+    font-size: 3rem;
+  }
+
+  .heroSubtitle {
+    font-size: 1.2rem;
+  }
+
+  .pillarGrid {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .capRow {
+    grid-template-columns: 1fr;
+    gap: 2rem;
+  }
+
+  .capRowReverse {
+    direction: ltr;
+  }
+
+  .cloudFeatures {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media screen and (max-width: 640px) {
+  .heroTitle {
+    font-size: 2.5rem;
+  }
+
+  .pillarGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .sectionTitle {
+    font-size: 1.75rem;
+  }
+}

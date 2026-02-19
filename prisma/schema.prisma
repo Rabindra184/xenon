@@ -161,6 +161,7 @@ model Device {
   thermalStatus                String?
   sessionProgress              String?  @default("")
   totalHealedCount             Int?     @default(0)
+  ip                           String?  @default("")
 
   @@id([udid, host])
 }

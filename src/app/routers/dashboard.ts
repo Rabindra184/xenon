@@ -193,6 +193,10 @@ async function getGlobalConfig(request: Request, response: Response) {
       aiProvider: config.aiProvider,
       aiModel: config.aiModel,
       aiBaseUrl: config.aiBaseUrl,
+      geminiModel: config.geminiModel,
+      openaiModel: config.openaiModel,
+      anthropicModel: config.anthropicModel,
+      ollamaModel: config.ollamaModel,
       geminiSet: !!config.geminiApiKey,
       openaiSet: !!config.openaiApiKey,
       anthropicSet: !!config.anthropicApiKey,
@@ -209,13 +213,19 @@ async function updateGlobalConfig(request: Request, response: Response) {
     const payload = request.body;
 
     // Handle Runtime AI Config Overrides (Memory only)
-    if (payload.aiProvider || payload.aiModel || payload.aiBaseUrl) {
+    // Only pass defined values to avoid overwriting env vars (e.g. aiBaseUrl, ollamaModel) with undefined
+    const runtimeOverrides: Record<string, any> = {};
+    if (payload.aiProvider !== undefined) runtimeOverrides.aiProvider = payload.aiProvider;
+    if (payload.aiModel !== undefined) runtimeOverrides.aiModel = payload.aiModel;
+    if (payload.aiBaseUrl !== undefined) runtimeOverrides.aiBaseUrl = payload.aiBaseUrl;
+    if (payload.geminiModel !== undefined) runtimeOverrides.geminiModel = payload.geminiModel;
+    if (payload.openaiModel !== undefined) runtimeOverrides.openaiModel = payload.openaiModel;
+    if (payload.anthropicModel !== undefined) runtimeOverrides.anthropicModel = payload.anthropicModel;
+    if (payload.ollamaModel !== undefined) runtimeOverrides.ollamaModel = payload.ollamaModel;
+
+    if (Object.keys(runtimeOverrides).length > 0) {
       const { updateConfig } = await import('../../config');
-      updateConfig({
-        aiProvider: payload.aiProvider,
-        aiModel: payload.aiModel,
-        aiBaseUrl: payload.aiBaseUrl,
-      });
+      updateConfig(runtimeOverrides);
     }
 
     // Persist Web Configs to DB

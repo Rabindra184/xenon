@@ -28,4 +28,5 @@ export interface IDevice {
   tags?: string[];
   sessionProgress?: string;
   totalHealedCount?: number;
+  ip?: string;
 }

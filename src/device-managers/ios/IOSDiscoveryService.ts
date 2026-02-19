@@ -2,8 +2,10 @@ import Simctl from 'node-simctl';
 import { flatten } from 'lodash';
 import { utilities as IOSUtils } from 'appium-ios-device';
 import { IDevice } from '../../interfaces/IDevice';
-import { getFreePort } from '../../helpers';
+import { getFreePort, cachePath } from '../../helpers';
 import log from '../../logger';
+import path from 'path';
+import fs from 'fs-extra';
 import { getUtilizationTime } from '../../device-utils';
 import { DeviceStoreFactory } from '../../data-service/device-store';
 import { DeviceTypeToInclude, SimulatorConfig } from '../../interfaces/IPluginArgs';
@@ -19,7 +21,7 @@ export class IOSDiscoveryService {
   private log = log.scope('IOSDiscovery');
   private trackingInitialized = false;
 
-  constructor(private context: PluginContext) {}
+  constructor(private context: PluginContext) { }
 
   private get pluginArgs() {
     return this.context.pluginArgs;
@@ -105,9 +107,28 @@ export class IOSDiscoveryService {
 
     let sdk = 'Unknown';
     let name = 'iPhone';
+    let ip = '';
 
     try {
       [sdk, name] = await Promise.all([IOSUtils.getOSVersion(udid), IOSUtils.getDeviceName(udid)]);
+
+      // Principal Intelligence: Fetch network IP for health resilience
+      const goIOSDir = cachePath('goIOS');
+      const goIOSPath = path.join(goIOSDir, 'ios');
+      if (fs.existsSync(goIOSPath)) {
+        const { exec } = await import('child_process');
+        const { promisify } = await import('util');
+        const execPromise = promisify(exec);
+        try {
+          const { stdout } = await execPromise(`"${goIOSPath}" info --udid ${udid}`, {
+            env: { ...process.env, ENABLE_GO_IOS_AGENT: 'yes' },
+          });
+          const info = JSON.parse(stdout);
+          ip = info.IPAddress || '';
+        } catch (e) {
+          log.debug(`Failed to fetch IP via go-ios for ${udid}: ${e}`);
+        }
+      }
     } catch (e: any) {
       this.log.error(`Metadata discovery failed for ${udid}: ${e.message}`);
     }
@@ -118,6 +139,7 @@ export class IOSDiscoveryService {
       udid,
       sdk,
       name,
+      ip, // Store detected network IP
       busy: false,
       realDevice: true,
       deviceType: 'real',

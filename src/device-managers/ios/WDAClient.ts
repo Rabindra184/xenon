@@ -47,15 +47,16 @@ export class WDAClient {
     method: 'get' | 'post',
     endpoint: string,
     data?: any,
+    options?: { useSessionPath?: boolean },
   ): Promise<any> {
     if (
       ['/status', '/health'].includes(endpoint) ||
       (method === 'get' && endpoint === '/sessions')
     ) {
-      return this.performWDACommand(udid, method, endpoint, data);
+      return this.performWDACommand(udid, method, endpoint, data, 0, options);
     }
     return this.executeSerializedCommand(udid, () =>
-      this.performWDACommand(udid, method, endpoint, data),
+      this.performWDACommand(udid, method, endpoint, data, 0, options),
     );
   }
 
@@ -64,6 +65,8 @@ export class WDAClient {
     method: 'get' | 'post',
     endpoint: string,
     data?: any,
+    retryCount = 0,
+    options?: { useSessionPath?: boolean },
   ): Promise<any> {
     const device = await DeviceStoreFactory.getStore().findDevice({ udid });
     if (!device) throw new Error(`Device ${udid} not found`);
@@ -86,30 +89,108 @@ export class WDAClient {
 
     const prefixes = cached?.sessionId ? [`/session/${cached.sessionId}`] : ['', '/session/any'];
     let lastError: any;
-    for (const prefix of prefixes) {
-      try {
-        const url = `http://127.0.0.1:${port}${['/status', '/health'].includes(endpoint) ? '' : prefix}${endpoint}`;
 
-        // Principal Stability: Screenshots and heavy commands need longer timeouts
-        const isHeavyCommand = endpoint.includes('screenshot') || endpoint.includes('source');
-        const timeout = isHeavyCommand ? 30000 : 15000;
+    // Principal Intelligence: Prioritize the host that worked last time. 
+    // Usually localhost (tunnel) is fastest, but if it's lagging, network IP is a solid fallback.
+    const hosts = [];
+    if (cached?.host) {
+      hosts.push(cached.host);
+      if (cached.host === '127.0.0.1' && device.ip) hosts.push(device.ip);
+      if (cached.host !== '127.0.0.1') hosts.push('127.0.0.1');
+    } else {
+      hosts.push('127.0.0.1');
+      if (device.ip) hosts.push(device.ip);
+    }
 
-        const res =
-          method === 'post'
-            ? await axios.post(url, data || {}, { timeout })
-            : await axios.get(url, { timeout });
-        const sid = res.data?.sessionId || res.data?.value?.sessionId;
-        if (sid && sid !== cached?.sessionId) {
-          this.wdaConnectionCache.set(cacheKey, {
-            host: '127.0.0.1',
-            pathPrefix: `/session/${sid}`,
-            sessionId: sid,
-          });
-          Container.get(IOSStreamService).setWDASessionId(udid, sid);
+    for (const targetHost of hosts) {
+      const isNetworkHost = targetHost !== '127.0.0.1';
+      const targetPort = isNetworkHost ? 8100 : port;
+
+      for (const prefix of prefixes) {
+        try {
+          const isSessionless =
+            !options?.useSessionPath &&
+            (['/status', '/health'].includes(endpoint) || endpoint.startsWith('/wda/'));
+          const url = `http://${targetHost}:${targetPort}${isSessionless ? '' : prefix}${endpoint}`;
+
+          // Principal Stability: Screenshots, activation, and script execution need longer timeouts. 
+          // Heartbeats and Status checks should be snappy to fail-over quickly.
+          const isHeavyCommand =
+            endpoint.includes('screenshot') ||
+            endpoint.includes('source') ||
+            endpoint.includes('swipe') ||
+            endpoint.includes('touchAndHold') ||
+            endpoint.includes('activate') ||
+            endpoint.includes('execute') ||
+            endpoint.includes('actions');
+          const timeout = isHeavyCommand ? 30000 : 5000; // Snappy 5s timeout for standard commands
+
+          const res =
+            method === 'post'
+              ? await axios.post(url, data || {}, { timeout })
+              : await axios.get(url, { timeout });
+
+          // If we reached a host but it returned a logical error (e.g. 404 for session),
+          // we should update our cache and potentially stop retrying this host/prefix combo.
+          // However, for simplicity, we treat any successful HTTP response as "Host is alive".
+
+          if (isNetworkHost && targetHost !== cached?.host) {
+            this.log.debug(`[WDA] Successful fallback to network IP ${targetHost} for ${udid}`);
+          }
+
+          const sid = res.data?.sessionId || res.data?.value?.sessionId;
+          if (sid && sid !== cached?.sessionId) {
+            this.log.debug(`[WDA] Detected new session ID: ${sid} via ${targetHost}`);
+            this.wdaConnectionCache.set(cacheKey, {
+              host: targetHost,
+              pathPrefix: `/session/${sid}`,
+              sessionId: sid,
+            });
+            Container.get(IOSStreamService).setWDASessionId(udid, sid);
+          }
+          return res;
+        } catch (err: any) {
+          lastError = err;
+          if (err.response) {
+            const status = err.response.status;
+            const errorMsg = JSON.stringify(err.response.data);
+
+            this.log.info(`[WDA] Command ${method.toUpperCase()} ${endpoint} failed (${status}): ${errorMsg}`);
+
+            // Principal Resiliency: Multi-Phase Recovery
+            if (retryCount < 2) {
+              // Phase 1: Dead Session Recovery (404)
+              if (status === 404 && prefix.includes('/session/')) {
+                // Special Intelligence: Some WDA versions don't support /execute, /wda/homescreen, etc.
+                // We should NOT clear the session if these specific commands fail with 404,
+                // as they might just be unsupported features.
+                const NON_FATAL_ENDPOINTS = ['execute', 'homescreen', 'pressButton'];
+                if (NON_FATAL_ENDPOINTS.some(e => endpoint.includes(e))) {
+                  this.log.debug(`[WDA] Command ${endpoint} failed with 404 (Unsupported or Logical Error). Skipping session reset.`);
+                  throw err;
+                }
+
+                this.log.warn(`[WDA] Session ${cached?.sessionId} appears dead. Resetting and retrying...`);
+                this.wdaConnectionCache.delete(cacheKey);
+                Container.get(IOSStreamService).setWDASessionId(udid, '');
+                return this.performWDACommand(udid, method, endpoint, data, retryCount + 1, options);
+              }
+
+              // Phase 2: Transient State Recovery (500)
+              // This handles "Focused" errors, "Internal" errors, or transient locks during app switches.
+              if (status === 500) {
+                this.log.warn(`[WDA] Transient error (500) for ${udid}, retrying in 1s... (Reason: ${errorMsg})`);
+                await new Promise(r => setTimeout(r, 1000));
+                return this.performWDACommand(udid, method, endpoint, data, retryCount + 1, options);
+              }
+            }
+
+            throw err;
+          }
+
+          // If network host fails, don't retry other prefixes if it's just a status check
+          if (isNetworkHost && ['/status', '/health'].includes(endpoint)) break;
         }
-        return res;
-      } catch (err: any) {
-        lastError = err;
       }
     }
     throw lastError;
@@ -165,6 +246,7 @@ export class WDAClient {
           {
             type: 'pointer',
             id: 'finger1',
+            parameters: { pointerType: 'touch' },
             actions: [
               { type: 'pointerMove', duration: 0, x, y },
               { type: 'pointerDown', button: 0 },
@@ -174,8 +256,8 @@ export class WDAClient {
           },
         ],
       });
-    } catch (e) {
-      await this.sendWDACommand(udid, 'post', '/wda/tap', { x, y });
+    } catch (e: any) {
+      this.log.error(`Failed to tap at (${x}, ${y}): ${e.message}`);
     }
   }
 
@@ -188,29 +270,45 @@ export class WDAClient {
     duration: number,
   ): Promise<void> {
     try {
-      await this.sendWDACommand(udid, 'post', '/wda/swipe', {
-        startX: x,
-        startY: y,
-        endX: ex,
-        endY: ey,
-        delay: duration / 1000,
-      });
-    } catch (e) {
+      // Principal Strategy: Use W3C Actions with touch pointer.
+      // This is the most modern, precise, and reliable method for iOS.
       await this.sendWDACommand(udid, 'post', '/actions', {
         actions: [
           {
             type: 'pointer',
             id: 'finger1',
+            parameters: { pointerType: 'touch' },
             actions: [
-              { type: 'pointerMove', duration: 0, x, y },
+              { type: 'pointerMove', duration: 0, x: Math.round(x), y: Math.round(y) },
               { type: 'pointerDown', button: 0 },
               { type: 'pause', duration: 100 },
-              { type: 'pointerMove', duration: 500, x: ex, y: ey },
+              { type: 'pointerMove', duration: 500, x: Math.round(ex), y: Math.round(ey) },
               { type: 'pointerUp', button: 0 },
             ],
           },
         ],
       });
+    } catch (e: any) {
+      this.log.debug(`[WDA] W3C actions failed, falling back to legacy swipe...`);
+      try {
+        // Fallback 1: Coordinate-based (older WDA)
+        await this.sendWDACommand(udid, 'post', '/wda/swipe', {
+          startX: Math.round(x),
+          startY: Math.round(y),
+          endX: Math.round(ex),
+          endY: Math.round(ey),
+          delay: duration / 1000,
+        });
+      } catch (e2) {
+        // Fallback 2: Direction-based (strict WDA)
+        let direction = 'up';
+        if (Math.abs(ex - x) > Math.abs(ey - y)) {
+          direction = ex > x ? 'right' : 'left';
+        } else {
+          direction = ey > y ? 'down' : 'up';
+        }
+        await this.sendWDACommand(udid, 'post', '/wda/swipe', { direction });
+      }
     }
   }
 
@@ -239,14 +337,19 @@ export class WDAClient {
 
   async pressKey(udid: string, key: string | number): Promise<void> {
     const n = key.toString().toLowerCase();
+
+    // Principal Modernization: Use /wda/pressButton with {name: 'home'} as primary.
+    // Legacy /wda/homescreen is often removed in modern WDA versions.
     if (['home', '3'].includes(n)) {
       try {
-        await this.sendWDACommand(udid, 'post', '/wda/homescreen', {});
-      } catch (e) {
         await this.sendWDACommand(udid, 'post', '/wda/pressButton', { name: 'home' });
+      } catch (e) {
+        // Fallback for extremely old WDA
+        await this.sendWDACommand(udid, 'post', '/wda/homescreen', {}).catch(() => { });
       }
       return;
     }
+
     await this.sendWDACommand(udid, 'post', '/wda/pressButton', {
       name: n === 'backspace' ? 'delete' : n,
     });
@@ -273,18 +376,178 @@ export class WDAClient {
 
   async getClipboard(udid: string): Promise<string> {
     try {
-      await this.sendWDACommand(udid, 'post', '/wda/apps/activate', {
-        bundleId: 'com.apple.springboard',
-      });
-      await new Promise((r) => setTimeout(r, 1000));
-      const res = await this.sendWDACommand(udid, 'post', '/wda/getPasteboard', {
-        contentType: 'plaintext',
-      });
-      if (res.data?.value) return Buffer.from(res.data.value, 'base64').toString('utf8');
+      this.log.debug(`[Clipboard] Requesting pasteboard for ${udid}...`);
+
+      const device = await DeviceStoreFactory.getStore().findDevice({ udid });
+      if (!device) throw new Error(`Device ${udid} not found`);
+      const isRealDevice = !!(device as IDevice & { realDevice?: boolean }).realDevice;
+
+      const fetchParams = { contentType: 'plaintext' };
+      let res: any;
+      let value: string = '';
+
+      // On iOS 13+ real devices, WDA must be in foreground to read clipboard (Apple limitation).
+      // Skip fast-path for real devices and activate WDA first; use fast-path only for simulators.
+      if (!isRealDevice) {
+        res = await this.sendWDACommand(udid, 'post', '/wda/getPasteboard', fetchParams);
+        const raw = res.data?.value;
+        if (raw && typeof raw === 'string' && raw.length > 0) {
+          this.log.debug(`[Clipboard] Fast-path successful for ${udid}`);
+          return this.parsePasteboardResponse(raw);
+        }
+        this.log.debug(`[Clipboard] Fast-path empty. Proceeding with surgical foregrounding...`);
+      } else {
+        this.log.debug(`[Clipboard] Real device: activating WDA first (required for clipboard access).`);
+      }
+
+      // Surgical Foregrounding: Capture -> Activate WDA -> Fetch -> Restore
+      let previousApp: string | null = null;
+      try {
+        const activeAppRes = await this.sendWDACommand(udid, 'get', '/wda/activeAppInfo');
+        previousApp = activeAppRes.data?.value?.bundleId || activeAppRes.data?.bundleId;
+      } catch (e: any) {
+        this.log.debug(`[Clipboard] Failed to capture active app: ${e.message}`);
+      }
+
+      const s = Container.get(IOSStreamService);
+      const wdaBundleId = await s.detectWDABundleId(udid) || 'com.qasecret.WebDriverAgentRunner.xctrunner';
+
+      // Phase 1: Activate WDA so it can access UIPasteboard (required on real devices)
+      const CLIPBOARD_SETTLE_MS = 1500; // WDA needs time in foreground to read pasteboard
+      try {
+        this.log.debug(`[Clipboard] Activating WDA (${wdaBundleId}) for ${udid}...`);
+        await this.sendWDACommand(udid, 'post', '/wda/apps/activate', { bundleId: wdaBundleId });
+        await new Promise((r) => setTimeout(r, CLIPBOARD_SETTLE_MS));
+      } catch (e: any) {
+        this.log.debug(`[Clipboard] Cross-session activation info: ${e.message}`);
+      }
+
+      // Tier 1: Session-less getPasteboard (primary for standalone WDA)
+      res = await this.sendWDACommand(udid, 'post', '/wda/getPasteboard', fetchParams)
+        .catch(() => this.sendWDACommand(udid, 'get', '/wda/getPasteboard'));
+      this.log.debug(`[Clipboard] Tier 1 (Runner-CS) raw response: ${JSON.stringify(res?.data)}`);
+      value = this.parsePasteboardResponse(res?.data);
+
+      // Tier 1b: If empty and we have a session, try session-scoped getPasteboard (some WDA builds use /session/.../wda/getPasteboard)
+      if (!value && s.getWDASessionId(udid)) {
+        try {
+          res = await this.sendWDACommand(udid, 'post', '/wda/getPasteboard', fetchParams, { useSessionPath: true });
+          value = this.parsePasteboardResponse(res?.data);
+          if (value) this.log.debug(`[Clipboard] Session-scoped getPasteboard succeeded for ${udid}`);
+        } catch (e: any) {
+          this.log.debug(`[Clipboard] Session-scoped getPasteboard failed: ${e.message}`);
+        }
+      }
+
+      // Tier 2: Home -> Runner -> Focus Fallback
+      if (!value) {
+        this.log.debug(`[Clipboard] Primary fetch empty. Trying Home-Surgical restoration...`);
+        try {
+          await this.sendWDACommand(udid, 'post', '/wda/homescreen', {});
+          await new Promise((r) => setTimeout(r, 1000));
+          await this.sendWDACommand(udid, 'post', '/wda/apps/activate', { bundleId: wdaBundleId });
+          await new Promise((r) => setTimeout(r, CLIPBOARD_SETTLE_MS));
+          await this.tap(udid, 200, 400).catch(() => { });
+          await new Promise((r) => setTimeout(r, 800));
+
+          res = await this.sendWDACommand(udid, 'post', '/wda/getPasteboard', fetchParams);
+          this.log.debug(`[Clipboard] Tier 2 (Home-Surgical) raw response: ${JSON.stringify(res?.data)}`);
+          value = this.parsePasteboardResponse(res?.data);
+        } catch (e: any) { }
+      }
+
+      // Tier 3: Safari System Fallback
+      if (!value) {
+        this.log.debug(`[Clipboard] Trying Safari System Tier...`);
+        try {
+          await this.sendWDACommand(udid, 'post', '/wda/apps/activate', { bundleId: 'com.apple.mobilesafari' });
+          await new Promise((r) => setTimeout(r, CLIPBOARD_SETTLE_MS));
+          res = await this.sendWDACommand(udid, 'post', '/wda/getPasteboard', fetchParams);
+          this.log.debug(`[Clipboard] Tier 3 (Safari-CS) raw response: ${JSON.stringify(res?.data)}`);
+          value = this.parsePasteboardResponse(res?.data);
+        } catch (e: any) { }
+      }
+
+      // Restore Previous App
+      if (previousApp && previousApp !== wdaBundleId && !previousApp.startsWith('com.apple.')) {
+        this.log.debug(`[Clipboard] Background restoring ${previousApp}`);
+        this.sendWDACommand(udid, 'post', '/wda/apps/activate', { bundleId: previousApp }).catch(() => { });
+      }
+
+      // FINAL FALLBACK: Appium script (session-scoped)
+      if (!value) {
+        try {
+          this.log.debug(`[Clipboard] Tiers failed. Executing Mobile Script fallback...`);
+          res = await this.sendWDACommand(udid, 'post', '/execute', {
+            script: 'mobile: getClipboard',
+            args: [fetchParams],
+          }).catch(() =>
+            this.sendWDACommand(udid, 'post', '/execute/sync', {
+              script: 'mobile: getClipboard',
+              args: [fetchParams],
+            }),
+          );
+          value = this.parsePasteboardResponse(res?.data);
+        } catch (e: any) { }
+      }
+
+      if (!value) {
+        this.log.info(`[Clipboard] All recovery tiers yielded empty results for ${udid}. Last HTTP status: ${res?.status ?? 'N/A'}`);
+      }
+
+      return value || '';
     } catch (e: any) {
-      this.log.debug(`Failed to get clipboard for ${udid}: ${e.message}\n${e.stack}`);
+      this.log.error(`Failed to get clipboard for ${udid}: ${e.message}`);
     }
     return '';
+  }
+
+  /**
+   * Universal parser for varied WDA pasteboard response formats.
+   * Handles strings, nested objects, content/result/data fields, and base64 auto-decoding.
+   */
+  private parsePasteboardResponse(data: any): string {
+    if (data === undefined || data === null) return '';
+    if (typeof data === 'string') return data;
+
+    // Top-level value (standard WDA/Appium response)
+    let value = data?.value;
+    // Some proxies or WDA builds use content/result/data at top level
+    if ((!value || (typeof value === 'object' && Object.keys(value).length === 0)) && typeof data?.content === 'string')
+      value = data.content;
+    if ((!value || (typeof value === 'object' && Object.keys(value).length === 0)) && typeof data?.result === 'string')
+      value = data.result;
+    if ((!value || (typeof value === 'object' && Object.keys(value).length === 0)) && typeof data?.data === 'string')
+      value = data.data;
+
+    // Unwrap nested objects: { value: { string/content/value/plaintext/text: "..." } }
+    if (value && typeof value === 'object') {
+      value =
+        value.string ||
+        value.content ||
+        value.value ||
+        value.plaintext ||
+        value.text ||
+        '';
+    }
+
+    if (!value || typeof value !== 'string') return '';
+
+    // Trim so we don't treat whitespace-only as empty when it's valid content
+    value = value.trim();
+    if (value.length === 0) return '';
+
+    // Base64: WDA often returns plaintext as base64. Only decode when it looks like base64.
+    if (value.length > 8 && /^[A-Za-z0-9+/]+=*$/.test(value) && value.length % 4 === 0) {
+      try {
+        const decoded = Buffer.from(value, 'base64').toString('utf8');
+        if (!/[\x00-\x08\x0E-\x1F]/.test(decoded)) return decoded;
+      } catch (e) {
+        // not valid base64, use as-is
+      }
+    }
+
+    return value;
   }
 
   async setClipboard(udid: string, content: string): Promise<void> {
@@ -544,13 +807,38 @@ export class WDAClient {
   }
 
   async verifyWDAStatus(udid: string): Promise<boolean> {
-    try {
-      const res = await this.sendWDACommand(udid, 'get', '/status');
-      return res.data?.value?.ready === true;
-    } catch (e: any) {
-      this.log.debug(`Failed to verify WDA status for ${udid}: ${e.message}\n${e.stack}`);
-      return false;
+    // Use retry logic for transient errors (ECONNRESET, timeouts)
+    const maxRetries = 2;
+    let lastError: any;
+
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      try {
+        const res = await this.sendWDACommand(udid, 'get', '/status');
+        return res.data?.value?.ready === true;
+      } catch (e: any) {
+        lastError = e;
+        const isTransientError =
+          e.code === 'ECONNRESET' ||
+          e.code === 'ETIMEDOUT' ||
+          e.code === 'ECONNABORTED' ||
+          (e.response && e.response.status >= 500);
+
+        if (isTransientError && attempt < maxRetries) {
+          const backoffMs = Math.min(500 * Math.pow(2, attempt), 2000);
+          this.log.debug(
+            `[WDA] Transient error verifying status for ${udid} (${e.code || e.response?.status}), retrying in ${backoffMs}ms (attempt ${attempt + 1}/${maxRetries + 1})`,
+          );
+          await new Promise((resolve) => setTimeout(resolve, backoffMs));
+          continue;
+        }
+
+        // Permanent error or max retries reached
+        this.log.debug(`Failed to verify WDA status for ${udid}: ${e.message}`);
+        return false;
+      }
     }
+
+    return false;
   }
 
   async executeShell(udid: string, command: string): Promise<string> {

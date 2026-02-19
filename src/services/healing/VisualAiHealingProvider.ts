@@ -13,6 +13,12 @@ export class VisualAiHealingProvider implements HealingProvider {
       return null;
     }
 
+    // Check if AI service is enabled before attempting
+    if (!AI_SERVICE.isEnabled()) {
+      this.logger.debug('AI service not enabled, skipping Visual AI healing');
+      return null;
+    }
+
     try {
       // Describe what we are looking for based on the selector
       const description = this.generateVisualDescription(context.selector);
@@ -39,7 +45,12 @@ export class VisualAiHealingProvider implements HealingProvider {
         };
       }
     } catch (err: any) {
-      this.logger.error(`Error during Visual AI healing: ${err.message}`);
+      // Log service unavailability at debug level (expected), other errors at warn level
+      if (err.message?.includes('unavailable') || err.message?.includes('404')) {
+        this.logger.debug(`Visual AI healing skipped: ${err.message}`);
+      } else {
+        this.logger.warn(`Error during Visual AI healing: ${err.message}`);
+      }
     }
 
     return null;

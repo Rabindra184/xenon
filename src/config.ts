@@ -16,6 +16,10 @@ export interface Config {
   geminiApiKey?: string;
   openaiApiKey?: string;
   anthropicApiKey?: string;
+  geminiModel?: string;
+  openaiModel?: string;
+  anthropicModel?: string;
+  ollamaModel?: string;
 }
 
 export const config: Config = {
@@ -43,6 +47,10 @@ export const config: Config = {
   geminiApiKey: process.env.XENON_GEMINI_API_KEY || process.env.GEMINI_API_KEY,
   openaiApiKey: process.env.XENON_OPENAI_API_KEY || process.env.OPENAI_API_KEY,
   anthropicApiKey: process.env.XENON_ANTHROPIC_API_KEY || process.env.ANTHROPIC_API_KEY,
+  geminiModel: process.env.XENON_GEMINI_MODEL,
+  openaiModel: process.env.XENON_OPENAI_MODEL,
+  anthropicModel: process.env.XENON_ANTHROPIC_MODEL,
+  ollamaModel: process.env.XENON_OLLAMA_MODEL,
 };
 
 export function updateConfig(newConfig: Partial<Config>) {

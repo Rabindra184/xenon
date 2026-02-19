@@ -242,8 +242,55 @@ export default class IOSDeviceManager implements IDeviceManager {
     try {
       if (device.realDevice) {
         if (device.busy && device.session_id) return false;
+
+        const streamService = Container.get(IOSStreamService);
+        const streamStatus = streamService.getStreamStatus(device.udid);
+
+        // If the stream process is alive, check whether WDA is actually responding.
+        // A running stream with an unresponsive WDA creates an infinite unhealthy loop
+        // if we blindly skip recovery.
+        if (streamStatus && (streamStatus.status === 'starting' || streamStatus.status === 'running')) {
+          // If still starting, give it more time
+          if (streamStatus.status === 'starting') {
+            this.log.debug(
+              `[${device.udid}] Stream is starting, waiting for WDA to come up`,
+            );
+            return true;
+          }
+
+          // Stream is running — verify WDA health
+          const wdaOk = await Container.get(WDAClient).verifyWDAStatus(device.udid);
+          if (wdaOk) {
+            this.log.debug(`[${device.udid}] Stream running and WDA healthy, no recovery needed`);
+            this.wdaSoftFailures.delete(device.udid);
+            return true;
+          }
+
+          // WDA is down despite stream running. Use soft-failure counter to avoid
+          // thrashing restarts on transient hiccups.
+          const failCount = (this.wdaSoftFailures.get(device.udid) || 0) + 1;
+          this.wdaSoftFailures.set(device.udid, failCount);
+
+          if (failCount < this.WDA_SOFT_FAIL_MAX) {
+            this.log.debug(
+              `[${device.udid}] WDA unresponsive (soft fail ${failCount}/${this.WDA_SOFT_FAIL_MAX}), deferring restart`,
+            );
+            return false; // Report failure so HealthMonitor doesn't claim success
+          }
+
+          // Exceeded threshold — force restart
+          this.log.warn(
+            `[${device.udid}] WDA unresponsive after ${failCount} checks. Force-restarting stream...`,
+          );
+          this.wdaSoftFailures.delete(device.udid);
+          try { await streamService.stopStream(device.udid); } catch (e: any) {
+            this.log.debug(`[${device.udid}] Error stopping stream: ${e.message}`);
+          }
+          await new Promise((r) => setTimeout(r, 2000));
+        }
+
         this.log.info(`🛡️ Auto-recovery for iOS device ${device.udid}...`);
-        await Container.get(IOSStreamService).startStream(device.udid);
+        await streamService.startStream(device.udid);
         return true;
       } else {
         const simctl = new Simctl();

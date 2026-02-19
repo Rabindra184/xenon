@@ -51,6 +51,8 @@ interface StreamSession {
 class IOSStreamService {
   private sessions: Map<string, StreamSession> = new Map();
   private startPromises: Map<string, Promise<{ wdaPort: number; mjpegPort: number }>> = new Map();
+  private recoveryCooldowns: Map<string, number> = new Map(); // Track last recovery attempt time
+  private readonly RECOVERY_COOLDOWN_MS = 30000; // 30s cooldown between recovery attempts
   public goIOSPath: string;
 
   constructor() {
@@ -88,6 +90,16 @@ class IOSStreamService {
           // We use elased autonomous methodology to ensure devices are always warm
           const isAlive = await this.isStreamResponsive(udid);
           if (!isAlive) {
+            // Check cooldown before attempting recovery
+            if (!this.canAttemptRecovery(udid)) {
+              const lastAttempt = this.recoveryCooldowns.get(udid);
+              const waitMs = this.RECOVERY_COOLDOWN_MS - (Date.now() - (lastAttempt || 0));
+              log.debug(
+                `[Watchdog] ${udid} stream unhealthy but recovery cooldown active (${Math.ceil(waitMs / 1000)}s remaining). Skipping recovery attempt.`,
+              );
+              continue;
+            }
+
             log.warn(
               `Stream watchdog detected failure for ${udid}. Attempting autonomous healing...`,
             );
@@ -98,6 +110,7 @@ class IOSStreamService {
                 log.info(`🛡️ [Watchdog] Skipping heal for ${udid} as it has an active session.`);
                 continue;
               }
+              this.markRecoveryAttempt(udid);
               await this.startStream(udid);
 
               // Increment healed count for visual feedback
@@ -276,60 +289,114 @@ class IOSStreamService {
 
   /**
    * Check if WDA is already running and responding
+   * Principal Resilience: Retries transient connection errors (ECONNRESET) up to 2 times
+   * with exponential backoff, as these often indicate WDA is restarting or tunnel is reconnecting.
    */
-  public async isWDARunning(wdaPort: number): Promise<boolean> {
+  public async isWDARunning(wdaPort: number, retries = 2): Promise<boolean> {
     const axios = (await import('axios')).default;
-    // Fast check: Use short timeout and no internal retries
     const host = '127.0.0.1'; // Force IPv4 for local tunnels
-    try {
-      const response = await axios.get(`http://${host}:${wdaPort}/status`, {
-        timeout: 2500, // 2.5s for consistency
-        httpAgent: new http.Agent({ keepAlive: false }),
-        validateStatus: (status) => status === 200,
-      });
-      const isReady = response.data?.value?.ready === true;
-      if (!isReady)
-        log.debug(
-          `[WDA] Port ${wdaPort} active but not ready. Status: ${JSON.stringify(response.data?.value)}`,
-        );
-      return isReady;
-    } catch (error: any) {
-      if (error.code === 'ECONNREFUSED') {
-        log.debug(`[WDA] Port ${wdaPort} connection refused (Tunnel likely down)`);
-      } else if (error.code === 'ECONNABORTED') {
-        log.debug(`[WDA] Port ${wdaPort} health check timed out (WDA hanging)`);
-      } else {
-        log.debug(`[WDA] Port ${wdaPort} health check failed: ${error.message}`);
+    const maxRetries = retries;
+    let lastError: any;
+
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      try {
+        const response = await axios.get(`http://${host}:${wdaPort}/status`, {
+          timeout: 2500, // 2.5s for consistency
+          httpAgent: new http.Agent({ keepAlive: false }),
+          validateStatus: (status) => status === 200,
+        });
+        const isReady = response.data?.value?.ready === true;
+        if (!isReady) {
+          log.debug(
+            `[WDA] Port ${wdaPort} active but not ready. Status: ${JSON.stringify(response.data?.value)}`,
+          );
+        }
+        return isReady;
+      } catch (error: any) {
+        lastError = error;
+        const isTransientError =
+          error.code === 'ECONNRESET' ||
+          error.code === 'ETIMEDOUT' ||
+          error.code === 'ECONNABORTED' ||
+          (error.response && error.response.status >= 500);
+
+        if (isTransientError && attempt < maxRetries) {
+          const backoffMs = Math.min(500 * Math.pow(2, attempt), 2000); // 500ms, 1000ms, 2000ms max
+          log.debug(
+            `[WDA] Port ${wdaPort} transient error (${error.code || error.response?.status}), retrying in ${backoffMs}ms (attempt ${attempt + 1}/${maxRetries + 1})`,
+          );
+          await new Promise((resolve) => setTimeout(resolve, backoffMs));
+          continue;
+        }
+
+        // Permanent error or max retries reached
+        if (error.code === 'ECONNREFUSED') {
+          log.debug(`[WDA] Port ${wdaPort} connection refused (Tunnel likely down)`);
+        } else if (error.code === 'ECONNABORTED') {
+          log.debug(`[WDA] Port ${wdaPort} health check timed out (WDA hanging)`);
+        } else if (error.code === 'ECONNRESET') {
+          log.debug(
+            `[WDA] Port ${wdaPort} connection reset after ${attempt + 1} attempts (WDA may be restarting or tunnel unstable)`,
+          );
+        } else {
+          log.debug(`[WDA] Port ${wdaPort} health check failed: ${error.message}`);
+        }
+        return false;
       }
-      return false;
     }
+
+    return false;
   }
 
   /**
-   * Comprehensive process-level and endpoint-level health check
+   * Comprehensive process-level and endpoint-level health check.
+   * Principal Intelligence: Differentiates between 'Process dead' and 'Network unreachable'.
+   * If only the tunnel is dead but WDA is alive via IP, it will trigger a tunnel restart.
    */
   public async isStreamResponsive(udid: string): Promise<boolean> {
     const session = this.sessions.get(udid);
     if (!session || session.status !== 'running') return false;
 
     // 1. Process Check: verify child processes haven't exited
-    const processes = [
-      { name: 'wda', p: session.wdaProcess },
-      { name: 'iproxy-wda', p: session.forwardWDAProcess },
-      { name: 'iproxy-mjpeg', p: session.forwardMJPEGProcess },
-    ];
+    const isWdaAlive = session.wdaProcess && session.wdaProcess.exitCode === null;
+    const isWdaIproxyAlive = session.forwardWDAProcess && session.forwardWDAProcess.exitCode === null;
+    const isMjpegIproxyAlive = session.forwardMJPEGProcess && session.forwardMJPEGProcess.exitCode === null;
 
-    for (const item of processes) {
-      if (!item.p || item.p.exitCode !== null) {
-        log.warn(`[Watchdog] Process ${item.name} for ${udid} is dead (code: ${item.p?.exitCode})`);
-        return false;
-      }
+    if (!isWdaAlive) {
+      log.warn(`🛡️ [${udid}] [Watchdog] WDA process is dead. Full restart required.`);
+      return false;
     }
 
-    // 2. Network Check: verify endpoint is responding
-    const isResponding = await this.isWDARunning(session.wdaPort);
-    if (!isResponding) {
-      log.warn(`[Watchdog] WDA endpoint for ${udid} on port ${session.wdaPort} is unresponsive`);
+    if (!isWdaIproxyAlive || !isMjpegIproxyAlive) {
+      log.warn(`🛡️ [${udid}] [Watchdog] Tunnel processes are dead. Attempting tunnel-only recovery...`);
+
+      const device = await DeviceStoreFactory.getStore().findDevice({ udid });
+      if (device && device.ip) {
+        // Double check if WDA is alive via network IP
+        const isWdaAccessibleViaNetwork = await this.isWDARunningOnHost(device.ip, 8100);
+        if (isWdaAccessibleViaNetwork) {
+          log.info(`🛡️ [${udid}] [Watchdog] WDA is alive on network ${device.ip}. Restarting tunnels...`);
+          await this.restartTunnelsOnly(session);
+          return true; // We healed it!
+        }
+      }
+      return false; // Cannot heal without network access or if WDA is also dead
+    }
+
+    // 2. Network Check: verify endpoint is responding via tunnel
+    const isRespondingViaTunnel = await this.isWDARunning(session.wdaPort);
+    if (!isRespondingViaTunnel) {
+      log.warn(`🛡️ [${udid}] [Watchdog] WDA tunnel on port ${session.wdaPort} is unresponsive. checking network...`);
+
+      const device = await DeviceStoreFactory.getStore().findDevice({ udid });
+      if (device && device.ip) {
+        const isWdaAccessibleViaNetwork = await this.isWDARunningOnHost(device.ip, 8100);
+        if (isWdaAccessibleViaNetwork) {
+          log.info(`🛡️ [${udid}] [Watchdog] WDA is alive on network but tunnel is hung. Restarting tunnels...`);
+          await this.restartTunnelsOnly(session);
+          return true;
+        }
+      }
       return false;
     }
 
@@ -337,8 +404,70 @@ class IOSStreamService {
   }
 
   /**
+   * Check if WDA is running on a specific host/port
+   */
+  private async isWDARunningOnHost(host: string, port: number): Promise<boolean> {
+    const axios = (await import('axios')).default;
+    try {
+      const response = await axios.get(`http://${host}:${port}/status`, {
+        timeout: 3000,
+        validateStatus: (status) => status === 200,
+      });
+      return response.data?.value?.ready === true;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  /**
+   * Restarts only the iproxy tunnels without stopping WDA
+   */
+  private async restartTunnelsOnly(session: StreamSession): Promise<void> {
+    const udid = session.udid;
+    const isolationService = Container.get(ResourceIsolationService);
+
+    // 1. Kill old tunnels
+    if (session.forwardWDAProcess) session.forwardWDAProcess.kill('SIGKILL');
+    if (session.forwardMJPEGProcess) session.forwardMJPEGProcess.kill('SIGKILL');
+
+    // 2. Start new tunnels
+    const wdaIproxy = isolationService.wrapSpawn(
+      'iproxy',
+      ['-u', udid, `${session.wdaPort}:8100`],
+      'Performance',
+    );
+    const mjpegIproxy = isolationService.wrapSpawn(
+      'iproxy',
+      ['-u', udid, `${session.mjpegPort}:9100`],
+      'Performance',
+    );
+
+    session.forwardWDAProcess = spawn(wdaIproxy.command, wdaIproxy.args);
+    session.forwardMJPEGProcess = spawn(mjpegIproxy.command, mjpegIproxy.args);
+
+    log.info(`🛡️ [${udid}] [Watchdog] Tunnels restarted successfully.`);
+  }
+
+  /**
    * Start streaming for a device
    */
+  /**
+   * Check if recovery is allowed (cooldown period has passed)
+   */
+  private canAttemptRecovery(udid: string): boolean {
+    const lastAttempt = this.recoveryCooldowns.get(udid);
+    if (!lastAttempt) return true;
+    const elapsed = Date.now() - lastAttempt;
+    return elapsed >= this.RECOVERY_COOLDOWN_MS;
+  }
+
+  /**
+   * Mark recovery attempt timestamp
+   */
+  private markRecoveryAttempt(udid: string): void {
+    this.recoveryCooldowns.set(udid, Date.now());
+  }
+
   public async startStream(udid: string): Promise<{ wdaPort: number; mjpegPort: number }> {
     // Return existing promise if already starting
     if (this.startPromises.has(udid)) {
@@ -346,15 +475,53 @@ class IOSStreamService {
       if (existingPromise) return existingPromise;
     }
 
+    // Check if stream is already running - avoid unnecessary restarts
+    const existingSession = this.sessions.get(udid);
+    if (existingSession && existingSession.status === 'running') {
+      const isHealthy = await this.isWDARunning(existingSession.wdaPort);
+      if (isHealthy) {
+        log.debug(`[${udid}] Stream already running and healthy, reusing existing session`);
+        return { wdaPort: existingSession.wdaPort, mjpegPort: existingSession.mjpegPort };
+      }
+      // Stream exists but unhealthy - check cooldown before recovery
+      if (!this.canAttemptRecovery(udid)) {
+        const lastAttempt = this.recoveryCooldowns.get(udid);
+        const waitMs = this.RECOVERY_COOLDOWN_MS - (Date.now() - (lastAttempt || 0));
+        log.debug(
+          `[${udid}] Recovery cooldown active (${Math.ceil(waitMs / 1000)}s remaining). Skipping recovery attempt.`,
+        );
+        throw new Error(
+          `Stream recovery is in cooldown. Last attempt was ${Math.ceil(waitMs / 1000)}s ago.`,
+        );
+      }
+      // Stop unhealthy stream before restarting
+      log.info(`[${udid}] Stream exists but unhealthy, stopping before restart...`);
+      await this.stopStream(udid);
+    }
+
     // Define the core logic as an internal async function
     const performStartup = async () => {
       try {
         const existingSession = this.sessions.get(udid);
         if (existingSession && existingSession.status === 'running') {
-          if (await this.isWDARunning(existingSession.wdaPort)) {
+          const isHealthy = await this.isWDARunning(existingSession.wdaPort);
+          if (isHealthy) {
+            log.debug(`[${udid}] Stream already running and healthy, reusing existing session`);
             return { wdaPort: existingSession.wdaPort, mjpegPort: existingSession.mjpegPort };
           }
+          // Stream exists but unhealthy - check cooldown before recovery
+          if (!this.canAttemptRecovery(udid)) {
+            const lastAttempt = this.recoveryCooldowns.get(udid);
+            const waitMs = this.RECOVERY_COOLDOWN_MS - (Date.now() - (lastAttempt || 0));
+            log.debug(
+              `[${udid}] Recovery cooldown active (${Math.ceil(waitMs / 1000)}s remaining). Skipping recovery attempt.`,
+            );
+            throw new Error(
+              `Stream recovery is in cooldown. Last attempt was ${Math.ceil(waitMs / 1000)}s ago.`,
+            );
+          }
           log.info(`Existing session for ${udid} not responding, restarting...`);
+          this.markRecoveryAttempt(udid);
         }
 
         const device = await DeviceStoreFactory.getStore().findDevice({ udid });
@@ -553,14 +720,15 @@ class IOSStreamService {
             }
 
             session.lastViewerAt = Date.now(); // Initialize activity
+            // Clear recovery cooldown on successful start
+            this.recoveryCooldowns.delete(udid);
             return { wdaPort, mjpegPort };
           }
 
           if (session.wdaProcess?.exitCode !== null) {
             const logContent = fs.existsSync(wdaRunLog) ? fs.readFileSync(wdaRunLog, 'utf8') : '';
             throw new Error(
-              `WDA process exited with code ${
-                session.wdaProcess?.exitCode
+              `WDA process exited with code ${session.wdaProcess?.exitCode
               }. Log: ${logContent.slice(-200)}`,
             );
           }

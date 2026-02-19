@@ -53,8 +53,13 @@ router.post('/:udid/tap', async (req: Request, res: Response) => {
   }
 
   if (manager && manager.tap) {
-    await manager.tap(udid, x, y);
-    return res.status(200).send({ success: true });
+    try {
+      await manager.tap(udid, x, y);
+      return res.status(200).send({ success: true });
+    } catch (err: any) {
+      log.error(`Manual control Tap failed: ${err.message}`);
+      return res.status(500).send({ error: err.message });
+    }
   } else if (device.platform === 'ios' && device.wdaLocalPort) {
     // Fallback/Direct WDA call for iOS
     try {
@@ -89,8 +94,13 @@ router.post('/:udid/swipe', async (req: Request, res: Response) => {
   }
 
   if (manager && manager.swipe) {
-    await manager.swipe(udid, x, y, endX, endY, duration);
-    return res.status(200).send({ success: true });
+    try {
+      await manager.swipe(udid, x, y, endX, endY, duration);
+      return res.status(200).send({ success: true });
+    } catch (err: any) {
+      log.error(`Manual control Swipe failed: ${err.message}`);
+      return res.status(500).send({ error: err.message });
+    }
   }
   res.status(400).send('Manager not found or swipe not supported');
 });
@@ -214,8 +224,13 @@ router.post('/:udid/clipboard', async (req: Request, res: Response) => {
 
   const manager = await getDeviceManagerForPlatform(device.platform);
   if (manager && manager.setClipboard) {
-    await manager.setClipboard(udid, content);
-    return res.status(200).send({ success: true });
+    try {
+      await manager.setClipboard(udid, content);
+      return res.status(200).send({ success: true });
+    } catch (err: any) {
+      log.error(`Manual control setClipboard failed: ${err.message}`);
+      return res.status(500).send({ error: err.message });
+    }
   }
   res.status(400).send('Manager not found or setClipboard not supported');
 });
@@ -238,8 +253,13 @@ router.post('/:udid/touchAndHold', async (req: Request, res: Response) => {
   }
 
   if (manager && manager.touchAndHold) {
-    await manager.touchAndHold(udid, x, y, duration);
-    return res.status(200).send({ success: true });
+    try {
+      await manager.touchAndHold(udid, x, y, duration);
+      return res.status(200).send({ success: true });
+    } catch (err: any) {
+      log.error(`Manual control touchAndHold failed: ${err.message}`);
+      return res.status(500).send({ error: err.message });
+    }
   }
   res.status(400).send('Manager not found or touchAndHold not supported');
 });
@@ -251,8 +271,13 @@ router.post('/:udid/lock', async (req: Request, res: Response) => {
 
   const manager = await getDeviceManagerForPlatform(device.platform);
   if (manager && manager.lock) {
-    await manager.lock(udid);
-    return res.status(200).send({ success: true });
+    try {
+      await manager.lock(udid);
+      return res.status(200).send({ success: true });
+    } catch (err: any) {
+      log.error(`Manual control lock failed: ${err.message}`);
+      return res.status(500).send({ error: err.message });
+    }
   }
   res.status(400).send('Manager not found or lock not supported');
 });
@@ -264,8 +289,13 @@ router.post('/:udid/unlock', async (req: Request, res: Response) => {
 
   const manager = await getDeviceManagerForPlatform(device.platform);
   if (manager && manager.unlock) {
-    await manager.unlock(udid);
-    return res.status(200).send({ success: true });
+    try {
+      await manager.unlock(udid);
+      return res.status(200).send({ success: true });
+    } catch (err: any) {
+      log.error(`Manual control unlock failed: ${err.message}`);
+      return res.status(500).send({ error: err.message });
+    }
   }
   res.status(400).send('Manager not found or unlock not supported');
 });
@@ -278,8 +308,13 @@ router.post('/:udid/install', async (req: Request, res: Response) => {
 
   const manager = await getDeviceManagerForPlatform(device.platform);
   if (manager && manager.installApp) {
-    await manager.installApp(udid, appPath);
-    return res.status(200).send({ success: true });
+    try {
+      await manager.installApp(udid, appPath);
+      return res.status(200).send({ success: true });
+    } catch (err: any) {
+      log.error(`Manual control installApp failed: ${err.message}`);
+      return res.status(500).send({ error: err.message });
+    }
   }
   res.status(400).send('Manager not found or installApp not supported');
 });
@@ -333,7 +368,7 @@ router.post('/:udid/upload-install', async (req: Request, res: Response) => {
     if (manager && manager.installApp) {
       await manager.installApp(udid, appPath);
       // Clean up after installation
-      setTimeout(() => fs.remove(appPath).catch(() => {}), 10000);
+      setTimeout(() => fs.remove(appPath).catch(() => { }), 10000);
       return res
         .status(200)
         .send({ success: true, message: `App ${appFile.name} installed successfully` });
@@ -353,8 +388,13 @@ router.post('/:udid/uninstall', async (req: Request, res: Response) => {
 
   const manager = await getDeviceManagerForPlatform(device.platform);
   if (manager && manager.uninstallApp) {
-    await manager.uninstallApp(udid, bundleId);
-    return res.status(200).send({ success: true });
+    try {
+      await manager.uninstallApp(udid, bundleId);
+      return res.status(200).send({ success: true });
+    } catch (err: any) {
+      log.error(`Manual control uninstallApp failed: ${err.message}`);
+      return res.status(500).send({ error: err.message });
+    }
   }
   res.status(400).send('Manager not found or uninstallApp not supported');
 });

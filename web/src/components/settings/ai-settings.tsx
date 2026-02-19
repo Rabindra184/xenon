@@ -27,6 +27,10 @@ export const AISettings: React.FC = () => {
     aiProvider?: string;
     aiModel?: string;
     aiBaseUrl?: string;
+    geminiModel?: string;
+    openaiModel?: string;
+    anthropicModel?: string;
+    ollamaModel?: string;
     geminiSet?: boolean;
     openaiSet?: boolean;
     anthropicSet?: boolean;
@@ -34,6 +38,10 @@ export const AISettings: React.FC = () => {
     aiProvider: 'gemini',
     aiModel: '',
     aiBaseUrl: '',
+    geminiModel: '',
+    openaiModel: '',
+    anthropicModel: '',
+    ollamaModel: '',
     geminiSet: false,
     openaiSet: false,
     anthropicSet: false,
@@ -55,6 +63,10 @@ export const AISettings: React.FC = () => {
         aiProvider: data.aiProvider || 'gemini',
         aiModel: data.aiModel || '',
         aiBaseUrl: data.aiBaseUrl || '',
+        geminiModel: data.geminiModel || '',
+        openaiModel: data.openaiModel || '',
+        anthropicModel: data.anthropicModel || '',
+        ollamaModel: data.ollamaModel || '',
         geminiSet: data.geminiSet || false,
         openaiSet: data.openaiSet || false,
         anthropicSet: data.anthropicSet || false,
@@ -109,7 +121,7 @@ export const AISettings: React.FC = () => {
       name: 'Ollama',
       description: 'Local / Self-hosted — No API key required',
       icon: <Server size={18} />,
-      isConfigured: !!config.aiModel || !!config.aiBaseUrl,
+      isConfigured: !!config.ollamaModel || !!config.aiModel || !!config.aiBaseUrl,
     },
   ];
 
@@ -249,8 +261,15 @@ export const AISettings: React.FC = () => {
             <div className="ai-config-row">
               <span className="ai-config-label">Model</span>
               <span className="ai-config-value mono">
-                {config.aiModel || getModelDefault(config.aiProvider)}
-                {!config.aiModel && <span className="ai-config-default">default</span>}
+                {config.aiProvider === 'gemini' && (config.geminiModel || config.aiModel || getModelDefault('gemini'))}
+                {config.aiProvider === 'openai' && (config.openaiModel || config.aiModel || getModelDefault('openai'))}
+                {config.aiProvider === 'anthropic' && (config.anthropicModel || config.aiModel || getModelDefault('anthropic'))}
+                {config.aiProvider === 'ollama' && (config.ollamaModel || config.aiModel || getModelDefault('ollama'))}
+                {!config.aiModel &&
+                  !config.geminiModel &&
+                  !config.openaiModel &&
+                  !config.anthropicModel &&
+                  !config.ollamaModel && <span className="ai-config-default">default</span>}
               </span>
             </div>
             <div className="ai-config-row">

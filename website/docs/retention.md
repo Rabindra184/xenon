@@ -1,4 +1,4 @@
-# Data Retention & Maintenance 🧹
+# Data Retention & Maintenance
 
 Xenon includes an enterprise-grade cleanup system designed to manage your infrastructure's storage automatically. As your device lab runs thousands of tests, the database and disk (videos/screenshots) can grow rapidly. This system ensures Xenon stays performant and your disks don't fill up.
 
