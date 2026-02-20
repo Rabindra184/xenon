@@ -67,7 +67,7 @@ export class HealthMonitorService {
     }
   }
 
-  private setupMonitor(args: IPluginArgs, runImmediately: boolean = true) {
+  private setupMonitor(args: IPluginArgs, runImmediately = true) {
     const intervalMs = args.healthCheckIntervalMs || 86400000;
     const scheduleStr = args.healthCheckSchedule;
 

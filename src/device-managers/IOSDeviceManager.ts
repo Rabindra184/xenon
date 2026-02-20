@@ -249,12 +249,13 @@ export default class IOSDeviceManager implements IDeviceManager {
         // If the stream process is alive, check whether WDA is actually responding.
         // A running stream with an unresponsive WDA creates an infinite unhealthy loop
         // if we blindly skip recovery.
-        if (streamStatus && (streamStatus.status === 'starting' || streamStatus.status === 'running')) {
+        if (
+          streamStatus &&
+          (streamStatus.status === 'starting' || streamStatus.status === 'running')
+        ) {
           // If still starting, give it more time
           if (streamStatus.status === 'starting') {
-            this.log.debug(
-              `[${device.udid}] Stream is starting, waiting for WDA to come up`,
-            );
+            this.log.debug(`[${device.udid}] Stream is starting, waiting for WDA to come up`);
             return true;
           }
 
@@ -283,7 +284,9 @@ export default class IOSDeviceManager implements IDeviceManager {
             `[${device.udid}] WDA unresponsive after ${failCount} checks. Force-restarting stream...`,
           );
           this.wdaSoftFailures.delete(device.udid);
-          try { await streamService.stopStream(device.udid); } catch (e: any) {
+          try {
+            await streamService.stopStream(device.udid);
+          } catch (e: any) {
             this.log.debug(`[${device.udid}] Error stopping stream: ${e.message}`);
           }
           await new Promise((r) => setTimeout(r, 2000));
@@ -299,7 +302,7 @@ export default class IOSDeviceManager implements IDeviceManager {
           await simctl.shutdownDevice();
           await new Promise((r) => setTimeout(r, 2000));
         } catch (e) {
-          this.log.error(`IOSDeviceManager: Error shutting down iOS device`, e);
+          this.log.error('IOSDeviceManager: Error shutting down iOS device', e);
         }
         await simctl.bootDevice();
         return true;

@@ -67,7 +67,7 @@ export class VideoPipelineService {
     log.info(`[VideoPipeline] Starting HW-accelerated recording for ${sessionId} from ${mjpegUrl}`);
 
     // Small settlement delay to allow the source stream to prime
-    await new Promise(r => setTimeout(r, 500));
+    await new Promise((r) => setTimeout(r, 500));
 
     // 2. Construct FFMPEG Args
     // -f mjpeg: Input format
@@ -146,8 +146,12 @@ export class VideoPipelineService {
     const recordedPath = this.recordingPaths.get(sessionId);
 
     if (!proc) {
-      log.info(`[VideoPipeline] No active recording process for ${sessionId}, returning stored path if any.`);
-      const relativePath = recordedPath ? path.relative(config.sessionAssetsPath, recordedPath) : null;
+      log.info(
+        `[VideoPipeline] No active recording process for ${sessionId}, returning stored path if any.`,
+      );
+      const relativePath = recordedPath
+        ? path.relative(config.sessionAssetsPath, recordedPath)
+        : null;
       this.recordingPaths.delete(sessionId);
       return relativePath;
     }

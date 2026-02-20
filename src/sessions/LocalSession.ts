@@ -253,7 +253,8 @@ export class LocalSession extends RemoteSession {
         }
       } else {
         log.warn(
-          `[LocalSession] Direct stopRecordingScreen not found on target driver. Function exists: ${typeof targetDriver?.stopRecordingScreen === 'function'
+          `[LocalSession] Direct stopRecordingScreen not found on target driver. Function exists: ${
+            typeof targetDriver?.stopRecordingScreen === 'function'
           }`,
         );
       }

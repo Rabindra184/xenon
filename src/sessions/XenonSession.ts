@@ -10,19 +10,19 @@ export type XenonSessionOptions = {
 };
 
 export enum SessionHealthState {
-  HEALTHY = 'HEALTHY',     // 0 failures
-  DEGRADED = 'DEGRADED',   // 1+ failures
-  SUSPECT = 'SUSPECT',     // 3+ failures
-  DEAD = 'DEAD',           // 6 failures or session verified gone
+  HEALTHY = 'HEALTHY', // 0 failures
+  DEGRADED = 'DEGRADED', // 1+ failures
+  SUSPECT = 'SUSPECT', // 3+ failures
+  DEAD = 'DEAD', // 6 failures or session verified gone
 }
 
 export enum HealthErrorType {
   NONE = 'NONE',
   UNSUPPORTED_ENDPOINT = 'UNSUPPORTED_ENDPOINT', // 404 on orientation but server OK
-  SESSION_NOT_FOUND = 'SESSION_NOT_FOUND',       // 404 from server confirmed session gone
-  SERVER_UNREACHABLE = 'SERVER_UNREACHABLE',     // Connection refused/timeout
-  DRIVER_ERROR = 'DRIVER_ERROR',                 // 500 error
-  TIMEOUT = 'TIMEOUT',                           // Request timed out
+  SESSION_NOT_FOUND = 'SESSION_NOT_FOUND', // 404 from server confirmed session gone
+  SERVER_UNREACHABLE = 'SERVER_UNREACHABLE', // Connection refused/timeout
+  DRIVER_ERROR = 'DRIVER_ERROR', // 500 error
+  TIMEOUT = 'TIMEOUT', // Request timed out
 }
 
 export interface SessionHealthResult {
@@ -36,7 +36,7 @@ export interface SessionHealthResult {
 export abstract class XenonSession {
   protected sessionId: string;
   protected xenonOption: Record<string, any>;
-  public isStopping: boolean = false;
+  public isStopping = false;
   public stoppedAt?: number;
   public healthState: SessionHealthState = SessionHealthState.HEALTHY;
 

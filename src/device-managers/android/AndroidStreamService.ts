@@ -261,11 +261,13 @@ class AndroidStreamService {
             frameCount++;
             if (frameCount >= 1) break; // We have at least one frame ready to serve
           }
-          await new Promise(r => setTimeout(r, 200));
+          await new Promise((r) => setTimeout(r, 200));
         }
 
         if (!session.latestFrame) {
-          log.warn(`[${udid}] Stream started but no frames captured after ${firstFrameTimeout}ms. Downstream video might be unstable.`);
+          log.warn(
+            `[${udid}] Stream started but no frames captured after ${firstFrameTimeout}ms. Downstream video might be unstable.`,
+          );
         } else {
           log.info(`[${udid}] MJPEG stream primed with first frame.`);
         }

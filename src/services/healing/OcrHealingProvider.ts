@@ -28,10 +28,10 @@ export class OcrHealingProvider implements HealingProvider {
       // Look for the best word match
       const bestWord = words
         ? words.find(
-          (w: any) =>
-            w.text.toLowerCase().includes(soughtText.toLowerCase()) ||
-            soughtText.toLowerCase().includes(w.text.toLowerCase()),
-        )
+            (w: any) =>
+              w.text.toLowerCase().includes(soughtText.toLowerCase()) ||
+              soughtText.toLowerCase().includes(w.text.toLowerCase()),
+          )
         : null;
 
       if (bestWord) {
@@ -46,14 +46,17 @@ export class OcrHealingProvider implements HealingProvider {
         // Try to get the REAL element at these coordinates by tapping
         try {
           // Use W3C Actions to tap at the OCR-detected coordinates, then find the element at that position
-          const element = await context.driver.findElement('-ios predicate string',
-            `label CONTAINS[c] "${bestWord.text.replace(/"/g, '\\"')}"`
-          ).catch(() => null);
+          const element = await context.driver
+            .findElement(
+              '-ios predicate string',
+              `label CONTAINS[c] "${bestWord.text.replace(/"/g, '\\"')}"`,
+            )
+            .catch(() => null);
 
           if (element) {
             const elementId = element.ELEMENT || element['element-6066-11e4-a52e-4f735466cecf'];
             if (elementId) {
-              this.logger.info(`🎯 OCR resolved to real element via predicate search`);
+              this.logger.info('🎯 OCR resolved to real element via predicate search');
               return {
                 id: elementId,
                 tier: this.tier,

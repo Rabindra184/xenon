@@ -83,7 +83,9 @@ export class SessionHeartbeatService {
           // Trigger terminal cleanup
           const lifecycleService = Container.get(SessionLifecycleService);
           await lifecycleService.deleteSession(
-            async () => { /* No-op driver deletion */ },
+            async () => {
+              /* No-op driver deletion */
+            },
             sessionId,
             SessionStatus.FAILED,
             reason,
@@ -97,9 +99,7 @@ export class SessionHeartbeatService {
           );
         } else if (count >= this.THRESHOLD_DEGRADED) {
           session.healthState = SessionHealthState.DEGRADED;
-          this.log.debug(
-            `⚠️ Session ${sessionId} is DEGRADED (${count}/${this.THRESHOLD_DEAD}).`,
-          );
+          this.log.debug(`⚠️ Session ${sessionId} is DEGRADED (${count}/${this.THRESHOLD_DEAD}).`);
         }
       } catch (err: any) {
         this.log.error(`Unexpected error checking health for session ${sessionId}: ${err.message}`);

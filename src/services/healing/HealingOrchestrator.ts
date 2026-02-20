@@ -63,7 +63,9 @@ export class HealingOrchestrator {
           // Tier 1/2 Optimization: Stability Verification Loop
           // We try all candidates to see which one is the most stable (semantic vs absolute)
           if (result.candidateSelectors && result.candidateSelectors.length > 0) {
-            this.logger.debug(`Verifying ${result.candidateSelectors.length} candidate locators for stability...`);
+            this.logger.debug(
+              `Verifying ${result.candidateSelectors.length} candidate locators for stability...`,
+            );
             for (const candidate of result.candidateSelectors) {
               try {
                 const elements = await context.driver.findElements('xpath', candidate);
@@ -72,7 +74,9 @@ export class HealingOrchestrator {
                   result.recommendedSelector = candidate;
                   break; // Found a unique stable locator
                 } else if (elements.length > 1) {
-                  this.logger.debug(`⚠️ Candidate locator is not unique (${elements.length} matches): ${candidate}`);
+                  this.logger.debug(
+                    `⚠️ Candidate locator is not unique (${elements.length} matches): ${candidate}`,
+                  );
                 }
               } catch (e) {
                 this.logger.debug(`Candidate locator check failed: ${candidate}`);
@@ -98,15 +102,10 @@ export class HealingOrchestrator {
                     curr = curr.parent || curr.parentNode;
                   }
                   learnedPath = new Path(pathNodes).toJSON();
-                } catch (e) { }
+                } catch (e) {}
               }
 
-              await this.etalonService.saveSignature(
-                strategy,
-                selector,
-                result.node,
-                learnedPath
-              );
+              await this.etalonService.saveSignature(strategy, selector, result.node, learnedPath);
             } catch (learnErr: any) {
               this.logger.debug(`Failed to update etalon after healing: ${learnErr.message}`);
             }

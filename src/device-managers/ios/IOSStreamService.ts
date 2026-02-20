@@ -359,8 +359,10 @@ class IOSStreamService {
 
     // 1. Process Check: verify child processes haven't exited
     const isWdaAlive = session.wdaProcess && session.wdaProcess.exitCode === null;
-    const isWdaIproxyAlive = session.forwardWDAProcess && session.forwardWDAProcess.exitCode === null;
-    const isMjpegIproxyAlive = session.forwardMJPEGProcess && session.forwardMJPEGProcess.exitCode === null;
+    const isWdaIproxyAlive =
+      session.forwardWDAProcess && session.forwardWDAProcess.exitCode === null;
+    const isMjpegIproxyAlive =
+      session.forwardMJPEGProcess && session.forwardMJPEGProcess.exitCode === null;
 
     if (!isWdaAlive) {
       log.warn(`🛡️ [${udid}] [Watchdog] WDA process is dead. Full restart required.`);
@@ -368,14 +370,18 @@ class IOSStreamService {
     }
 
     if (!isWdaIproxyAlive || !isMjpegIproxyAlive) {
-      log.warn(`🛡️ [${udid}] [Watchdog] Tunnel processes are dead. Attempting tunnel-only recovery...`);
+      log.warn(
+        `🛡️ [${udid}] [Watchdog] Tunnel processes are dead. Attempting tunnel-only recovery...`,
+      );
 
       const device = await DeviceStoreFactory.getStore().findDevice({ udid });
       if (device && device.ip) {
         // Double check if WDA is alive via network IP
         const isWdaAccessibleViaNetwork = await this.isWDARunningOnHost(device.ip, 8100);
         if (isWdaAccessibleViaNetwork) {
-          log.info(`🛡️ [${udid}] [Watchdog] WDA is alive on network ${device.ip}. Restarting tunnels...`);
+          log.info(
+            `🛡️ [${udid}] [Watchdog] WDA is alive on network ${device.ip}. Restarting tunnels...`,
+          );
           await this.restartTunnelsOnly(session);
           return true; // We healed it!
         }
@@ -386,13 +392,17 @@ class IOSStreamService {
     // 2. Network Check: verify endpoint is responding via tunnel
     const isRespondingViaTunnel = await this.isWDARunning(session.wdaPort);
     if (!isRespondingViaTunnel) {
-      log.warn(`🛡️ [${udid}] [Watchdog] WDA tunnel on port ${session.wdaPort} is unresponsive. checking network...`);
+      log.warn(
+        `🛡️ [${udid}] [Watchdog] WDA tunnel on port ${session.wdaPort} is unresponsive. checking network...`,
+      );
 
       const device = await DeviceStoreFactory.getStore().findDevice({ udid });
       if (device && device.ip) {
         const isWdaAccessibleViaNetwork = await this.isWDARunningOnHost(device.ip, 8100);
         if (isWdaAccessibleViaNetwork) {
-          log.info(`🛡️ [${udid}] [Watchdog] WDA is alive on network but tunnel is hung. Restarting tunnels...`);
+          log.info(
+            `🛡️ [${udid}] [Watchdog] WDA is alive on network but tunnel is hung. Restarting tunnels...`,
+          );
           await this.restartTunnelsOnly(session);
           return true;
         }
@@ -728,7 +738,8 @@ class IOSStreamService {
           if (session.wdaProcess?.exitCode !== null) {
             const logContent = fs.existsSync(wdaRunLog) ? fs.readFileSync(wdaRunLog, 'utf8') : '';
             throw new Error(
-              `WDA process exited with code ${session.wdaProcess?.exitCode
+              `WDA process exited with code ${
+                session.wdaProcess?.exitCode
               }. Log: ${logContent.slice(-200)}`,
             );
           }

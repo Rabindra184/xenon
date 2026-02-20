@@ -96,7 +96,9 @@ export class FuzzyXmlHealingProvider implements HealingProvider {
           }
         }
 
-        this.logger.warn(`All ${candidateLocators.length} candidate locators failed to resolve for fuzzy match.`);
+        this.logger.warn(
+          `All ${candidateLocators.length} candidate locators failed to resolve for fuzzy match.`,
+        );
       }
     } catch (err: any) {
       this.logger.error(`Error during fuzzy healing: ${err.message}`);
@@ -158,7 +160,9 @@ export class FuzzyXmlHealingProvider implements HealingProvider {
     // Check text content and text-like attributes against baseline or keywords
     const textWeight = etalon ? 0.5 : 1.0;
     const textTargets = etalon
-      ? [etalon.attributes['text'], etalon.attributes['label'], etalon.attributes['name']].filter(Boolean) as string[]
+      ? ([etalon.attributes['text'], etalon.attributes['label'], etalon.attributes['name']].filter(
+          Boolean,
+        ) as string[])
       : keywords;
 
     let bestTextSim = 0;
@@ -184,7 +188,24 @@ export class FuzzyXmlHealingProvider implements HealingProvider {
       const attrName = attr.name.toLowerCase();
 
       // Skip non-anchor, spatial, and already-handled attrs
-      if (['x', 'y', 'width', 'height', 'text', 'type', 'enabled', 'visible', 'accessible', 'index', 'traits', 'processId', 'bundleId'].includes(attrName)) continue;
+      if (
+        [
+          'x',
+          'y',
+          'width',
+          'height',
+          'text',
+          'type',
+          'enabled',
+          'visible',
+          'accessible',
+          'index',
+          'traits',
+          'processId',
+          'bundleId',
+        ].includes(attrName)
+      )
+        continue;
 
       if (ANCHORS[attrName]) {
         const weight = ANCHORS[attrName];
@@ -237,13 +258,13 @@ export class FuzzyXmlHealingProvider implements HealingProvider {
       if (nx !== -999 && ny !== -999) {
         const dist = Math.sqrt(Math.pow(ex - nx, 2) + Math.pow(ey - ny, 2));
         if (dist < 5) {
-          spatialScore = 1.0;  // Near-perfect position match
+          spatialScore = 1.0; // Near-perfect position match
         } else if (dist < 20) {
           spatialScore = 0.85; // Very close
         } else if (dist < 50) {
-          spatialScore = 0.5;  // Same general area
+          spatialScore = 0.5; // Same general area
         } else if (dist < 100) {
-          spatialScore = 0.2;  // Nearby
+          spatialScore = 0.2; // Nearby
         }
         // > 100px: no spatial score
       }
@@ -258,10 +279,10 @@ export class FuzzyXmlHealingProvider implements HealingProvider {
     if (finalScore > 0.3) {
       this.logger.debug(
         `Score [${node.nodeName}]: final=${finalScore.toFixed(2)} ` +
-        `(total=${totalScore.toFixed(2)}/${totalWeight.toFixed(1)}) ` +
-        `name=${this.getAttrValue(node, 'name') || '-'} ` +
-        `label=${this.getAttrValue(node, 'label') || '-'} ` +
-        `X=${this.getAttrValue(node, 'x')},Y=${this.getAttrValue(node, 'y')}`
+          `(total=${totalScore.toFixed(2)}/${totalWeight.toFixed(1)}) ` +
+          `name=${this.getAttrValue(node, 'name') || '-'} ` +
+          `label=${this.getAttrValue(node, 'label') || '-'} ` +
+          `X=${this.getAttrValue(node, 'x')},Y=${this.getAttrValue(node, 'y')}`,
       );
     }
 

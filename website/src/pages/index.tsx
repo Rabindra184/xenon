@@ -5,9 +5,23 @@ import useDocusaurusContext from '@docusaurus/useDocusaurusContext';
 import Layout from '@theme/Layout';
 import Heading from '@theme/Heading';
 import {
-  ShieldCheck, Brain, Activity, Eye, MonitorSmartphone, Shield,
-  Cpu, Wifi, HeartPulse, LayoutDashboard, Terminal, Bell,
-  Cloud, Zap, Database, GitBranch, ArrowRight,
+  ShieldCheck,
+  Brain,
+  Activity,
+  Eye,
+  MonitorSmartphone,
+  Shield,
+  Cpu,
+  Wifi,
+  HeartPulse,
+  LayoutDashboard,
+  Terminal,
+  Bell,
+  Cloud,
+  Zap,
+  Database,
+  GitBranch,
+  ArrowRight,
 } from 'lucide-react';
 
 import styles from './index.module.css';
@@ -31,13 +45,17 @@ function HeroSection() {
             <strong>Autonomous</strong> Mobile Infrastructure for <strong>Enterprise</strong> Teams
           </p>
           <p className={styles.heroTagline}>
-            Self-healing device orchestration, AI-powered diagnostics, and industrial-grade observability — all from a single Appium plugin.
+            Self-healing device orchestration, AI-powered diagnostics, and industrial-grade
+            observability — all from a single Appium plugin.
           </p>
           <div className={styles.heroCta}>
             <Link className="button button--primary button--lg" to="/docs/">
               Get Started
             </Link>
-            <Link className="button button--outline button--lg" to="https://github.com/Rabindra184/xenon">
+            <Link
+              className="button button--outline button--lg"
+              to="https://github.com/Rabindra184/xenon"
+            >
               View on GitHub
             </Link>
           </div>
@@ -52,27 +70,39 @@ function HeroSection() {
    ───────────────────────────────────────────── */
 const pillars = [
   {
-    Icon: ShieldCheck, color: '#22C55E', title: 'Autonomous Self-Healing',
+    Icon: ShieldCheck,
+    color: '#22C55E',
+    title: 'Autonomous Self-Healing',
     desc: 'Powered by ResilioTree — repairs broken locators in real-time using semantic AI matching. Tests pass even when developers change class names.',
   },
   {
-    Icon: Brain, color: '#A78BFA', title: 'AI Root-Cause Analysis',
+    Icon: Brain,
+    color: '#A78BFA',
+    title: 'AI Root-Cause Analysis',
     desc: 'Multimodal triage with Phi-4, Gemini & Florence-2. Captures screenshots + logs and instantly diagnoses failure root cause.',
   },
   {
-    Icon: Activity, color: '#3B82F6', title: 'Enterprise Observability',
+    Icon: Activity,
+    color: '#3B82F6',
+    title: 'Enterprise Observability',
     desc: 'Native OpenTelemetry integration — every session gets a Trace ID. Visualize flows in Jaeger, Honeycomb, or Grafana.',
   },
   {
-    Icon: Eye, color: '#F59E0B', title: 'Omni-Vision',
+    Icon: Eye,
+    color: '#F59E0B',
+    title: 'Omni-Vision',
     desc: 'Visual element grounding via Florence-2. Interact with devices through visual intelligence, not just DOM queries.',
   },
   {
-    Icon: MonitorSmartphone, color: '#EC4899', title: 'Live Device Streaming',
+    Icon: MonitorSmartphone,
+    color: '#EC4899',
+    title: 'Live Device Streaming',
     desc: 'High-fidelity MJPEG streaming with hardware-accelerated Fragmented MP4 video recording for every session.',
   },
   {
-    Icon: Shield, color: '#14B8A6', title: 'Enterprise Security',
+    Icon: Shield,
+    color: '#14B8A6',
+    title: 'Enterprise Security',
     desc: 'RBAC with 4 roles, OIDC/SAML identity federation, visual PII masking (GDPR/SOC2), and mTLS encryption.',
   },
 ];
@@ -82,9 +112,12 @@ function CorePillars() {
     <section className={styles.pillars}>
       <div className="container">
         <div className={styles.sectionHeader}>
-          <Heading as="h2" className={styles.sectionTitle}>Core Pillars</Heading>
+          <Heading as="h2" className={styles.sectionTitle}>
+            Core Pillars
+          </Heading>
           <p className={styles.sectionSubtitle}>
-            Six foundational capabilities that make Xenon the most advanced mobile automation platform.
+            Six foundational capabilities that make Xenon the most advanced mobile automation
+            platform.
           </p>
         </div>
         <div className={styles.pillarGrid}>
@@ -107,17 +140,49 @@ function CorePillars() {
    SECTION 3 — Platform Capabilities (Z-Pattern)
    ───────────────────────────────────────────── */
 const infraFeatures = [
-  { Icon: Cpu, label: 'Auto-Discovery', detail: 'Instant detection of Android devices, iOS Simulators & Real devices' },
-  { Icon: Zap, label: 'Smart Allocation', detail: 'Priority-based device locking with cross-cell failover' },
-  { Icon: HeartPulse, label: 'Health Watchdog', detail: 'Thermal throttling, battery analytics & USB bus integrity monitoring' },
-  { Icon: Wifi, label: 'Network Conditioning', detail: 'Simulate 4G, 3G, Edge, and Offline directly from capabilities' },
+  {
+    Icon: Cpu,
+    label: 'Auto-Discovery',
+    detail: 'Instant detection of Android devices, iOS Simulators & Real devices',
+  },
+  {
+    Icon: Zap,
+    label: 'Smart Allocation',
+    detail: 'Priority-based device locking with cross-cell failover',
+  },
+  {
+    Icon: HeartPulse,
+    label: 'Health Watchdog',
+    detail: 'Thermal throttling, battery analytics & USB bus integrity monitoring',
+  },
+  {
+    Icon: Wifi,
+    label: 'Network Conditioning',
+    detail: 'Simulate 4G, 3G, Edge, and Offline directly from capabilities',
+  },
 ];
 
 const dxFeatures = [
-  { Icon: Terminal, label: 'Execute Script API', detail: 'setSessionStatus, captureEvidence, addTag, debug — all via xenon: namespace' },
-  { Icon: LayoutDashboard, label: 'Real-Time Dashboard', detail: 'WebSocket-powered live view of devices, sessions & AI diagnostics' },
-  { Icon: Bell, label: 'Notifications', detail: 'Slack & Email alerts for session failures and infrastructure events' },
-  { Icon: Database, label: 'Audit Trail', detail: 'Full request logging with session replay and command history' },
+  {
+    Icon: Terminal,
+    label: 'Execute Script API',
+    detail: 'setSessionStatus, captureEvidence, addTag, debug — all via xenon: namespace',
+  },
+  {
+    Icon: LayoutDashboard,
+    label: 'Real-Time Dashboard',
+    detail: 'WebSocket-powered live view of devices, sessions & AI diagnostics',
+  },
+  {
+    Icon: Bell,
+    label: 'Notifications',
+    detail: 'Slack & Email alerts for session failures and infrastructure events',
+  },
+  {
+    Icon: Database,
+    label: 'Audit Trail',
+    detail: 'Full request logging with session replay and command history',
+  },
 ];
 
 function PlatformCapabilities() {
@@ -132,7 +197,8 @@ function PlatformCapabilities() {
               Devices that manage themselves
             </Heading>
             <p className={styles.capDesc}>
-              Xenon treats devices as shared resources in a global mesh. Auto-discovery, health monitoring, and smart allocation ensure your infrastructure runs autonomously.
+              Xenon treats devices as shared resources in a global mesh. Auto-discovery, health
+              monitoring, and smart allocation ensure your infrastructure runs autonomously.
             </p>
             <div className={styles.capFeatures}>
               {infraFeatures.map(({ Icon, label, detail }) => (
@@ -169,7 +235,8 @@ function PlatformCapabilities() {
               Built for engineers, by engineers
             </Heading>
             <p className={styles.capDesc}>
-              Rich APIs, real-time dashboards, and integrated notifications. Every insight is one command away.
+              Rich APIs, real-time dashboards, and integrated notifications. Every insight is one
+              command away.
             </p>
             <div className={styles.capFeatures}>
               {dxFeatures.map(({ Icon, label, detail }) => (
@@ -209,18 +276,19 @@ await driver.executeScript(
 /* ─────────────────────────────────────────────
    SECTION 4 — Cloud & Scale
    ───────────────────────────────────────────── */
-const providers = [
-  'BrowserStack', 'SauceLabs', 'LambdaTest', 'HeadSpin', 'pCloudy',
-];
+const providers = ['BrowserStack', 'SauceLabs', 'LambdaTest', 'HeadSpin', 'pCloudy'];
 
 function CloudScale() {
   return (
     <section className={styles.cloud}>
       <div className="container">
         <div className={styles.sectionHeader}>
-          <Heading as="h2" className={styles.sectionTitle}>Run Anywhere</Heading>
+          <Heading as="h2" className={styles.sectionTitle}>
+            Run Anywhere
+          </Heading>
           <p className={styles.sectionSubtitle}>
-            Your infrastructure, any cloud. Xenon integrates with 5+ cloud device providers — or runs entirely on-premise.
+            Your infrastructure, any cloud. Xenon integrates with 5+ cloud device providers — or
+            runs entirely on-premise.
           </p>
         </div>
         <div className={styles.providerGrid}>
@@ -236,14 +304,19 @@ function CloudScale() {
             <GitBranch size={20} />
             <div>
               <strong>Cellular Architecture</strong>
-              <p>Regional cells (US-West, EU-Central) with shared PostgreSQL state for global scale.</p>
+              <p>
+                Regional cells (US-West, EU-Central) with shared PostgreSQL state for global scale.
+              </p>
             </div>
           </div>
           <div className={styles.cloudFeature}>
             <Zap size={20} />
             <div>
               <strong>gRPC/NATS Event Bus</strong>
-              <p>High-performance messaging for cross-node command routing and distributed state sync.</p>
+              <p>
+                High-performance messaging for cross-node command routing and distributed state
+                sync.
+              </p>
             </div>
           </div>
           <div className={styles.cloudFeature}>
@@ -263,8 +336,16 @@ function CloudScale() {
    SECTION 5 — Technology Stack (Badge Row)
    ───────────────────────────────────────────── */
 const techStack = [
-  'Appium', 'Node.js', 'TypeScript', 'gRPC', 'PostgreSQL',
-  'OpenTelemetry', 'WebSocket', 'NATS', 'Prisma', 'Florence-2',
+  'Appium',
+  'Node.js',
+  'TypeScript',
+  'gRPC',
+  'PostgreSQL',
+  'OpenTelemetry',
+  'WebSocket',
+  'NATS',
+  'Prisma',
+  'Florence-2',
 ];
 
 function TechStack() {
@@ -272,11 +353,15 @@ function TechStack() {
     <section className={styles.techStack}>
       <div className="container">
         <div className={styles.sectionHeader}>
-          <Heading as="h2" className={styles.sectionTitle}>Built With</Heading>
+          <Heading as="h2" className={styles.sectionTitle}>
+            Built With
+          </Heading>
         </div>
         <div className={styles.techBadges}>
           {techStack.map((tech) => (
-            <span key={tech} className={styles.techBadge}>{tech}</span>
+            <span key={tech} className={styles.techBadge}>
+              {tech}
+            </span>
           ))}
         </div>
       </div>
@@ -301,7 +386,10 @@ function CtaBanner() {
           <Link className="button button--primary button--lg" to="/docs/setup">
             Quick Start Guide <ArrowRight size={18} style={{ marginLeft: 8 }} />
           </Link>
-          <Link className="button button--outline button--lg" to="https://github.com/Rabindra184/xenon">
+          <Link
+            className="button button--outline button--lg"
+            to="https://github.com/Rabindra184/xenon"
+          >
             Star on GitHub
           </Link>
         </div>
@@ -318,7 +406,8 @@ export default function Home(): ReactNode {
   return (
     <Layout
       title={`${siteConfig.title} – Intelligent Mobile Infrastructure`}
-      description="Self-healing, AI-powered device orchestration platform for Appium. Scalable, reliable, and enterprise-ready.">
+      description="Self-healing, AI-powered device orchestration platform for Appium. Scalable, reliable, and enterprise-ready."
+    >
       <HeroSection />
       <main>
         <CorePillars />

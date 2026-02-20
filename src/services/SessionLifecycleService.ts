@@ -338,7 +338,9 @@ export class SessionLifecycleService {
     const isDashboardEnabled = !!context.pluginArgs.enableDashboard;
     const shouldSaveLogs = session.getType() !== SessionType.CLOUD;
     const isVideoRecordingEnabled = caps[XENON_CAPABILITIES.VIDEO_RECORDING];
-    this.logger.info(`📹 Video recording enabled for session ${session.getId()}: ${isVideoRecordingEnabled}`);
+    this.logger.info(
+      `📹 Video recording enabled for session ${session.getId()}: ${isVideoRecordingEnabled}`,
+    );
 
     if (isVideoRecordingEnabled) {
       const resolution = caps[XENON_CAPABILITIES.VIDEO_RESOLUTION] || undefined;
@@ -347,7 +349,9 @@ export class SessionLifecycleService {
         await session.startVideoRecording({ resolution });
         this.logger.info(`📹 Video recording started successfully for ${session.getId()}`);
       } catch (err: any) {
-        this.logger.warn(`⚠️ Failed to start video recording for ${session.getId()}: ${err.message}`);
+        this.logger.warn(
+          `⚠️ Failed to start video recording for ${session.getId()}: ${err.message}`,
+        );
       }
     }
 
@@ -416,7 +420,8 @@ export class SessionLifecycleService {
       const errorDetail =
         (createdSession as any).error || val?.error || val?.message || 'Unknown W3C error';
       return new Error(
-        `W3C session creation failed on ${device.host}: ${typeof errorDetail === 'object' ? JSON.stringify(errorDetail) : errorDetail
+        `W3C session creation failed on ${device.host}: ${
+          typeof errorDetail === 'object' ? JSON.stringify(errorDetail) : errorDetail
         }`,
       );
     }
@@ -571,11 +576,7 @@ export class SessionLifecycleService {
     }
   }
 
-  private async finalizeCleanup(
-    session: XenonSession,
-    status?: SessionStatus,
-    reason?: string,
-  ) {
+  private async finalizeCleanup(session: XenonSession, status?: SessionStatus, reason?: string) {
     const sessionId = session.getId();
     const device = session.getDevice();
 
@@ -612,7 +613,9 @@ export class SessionLifecycleService {
             await updateSessionDetails(sessionId, { video_recording: videoPath });
             this.logger.info(`✅ [${sessionId}] Video recording archived at ${videoPath}`);
           } catch (saveErr: any) {
-            this.logger.error(`❌ [${sessionId}] Failed to process video asset: ${saveErr.message}`);
+            this.logger.error(
+              `❌ [${sessionId}] Failed to process video asset: ${saveErr.message}`,
+            );
           }
         }
       } catch (error: any) {

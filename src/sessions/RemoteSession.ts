@@ -222,11 +222,14 @@ export class RemoteSession extends XenonSession {
       if (status === 404) {
         // Distinguish between "Session Not Found" and "Command Not Found"
         // Appium 2 returns "No route found" or "unknown command" for unsupported endpoints.
-        const isUnsupported = errorJson.includes('unknown command') || errorJson.includes('no route found');
+        const isUnsupported =
+          errorJson.includes('unknown command') || errorJson.includes('no route found');
         const isInvalidSession = errorJson.includes('invalid session id');
 
         if (isUnsupported) {
-          log.info(`[RemoteSession] Probe endpoint unsupported on this driver, but driver is responsive. Classifying as HEALTHY.`);
+          log.info(
+            '[RemoteSession] Probe endpoint unsupported on this driver, but driver is responsive. Classifying as HEALTHY.',
+          );
           return {
             isHealthy: true,
             errorType: HealthErrorType.UNSUPPORTED_ENDPOINT,
@@ -235,7 +238,9 @@ export class RemoteSession extends XenonSession {
         }
 
         if (isInvalidSession) {
-          log.error(`[RemoteSession] Session ${this.sessionId} definitively GONE (Invalid Session ID).`);
+          log.error(
+            `[RemoteSession] Session ${this.sessionId} definitively GONE (Invalid Session ID).`,
+          );
           return {
             isHealthy: false,
             errorType: HealthErrorType.SESSION_NOT_FOUND,
@@ -252,7 +257,7 @@ export class RemoteSession extends XenonSession {
         try {
           const statusRes = await axios.get(`${appiumUrl}/status`, { timeout: 3000 });
           if (statusRes.status === 200) {
-            // If server is alive but we got a raw 404 with no specific error, 
+            // If server is alive but we got a raw 404 with no specific error,
             // it's likely the session is gone in Appium 2 (where /sessions list check is unsupported).
             return {
               isHealthy: false,

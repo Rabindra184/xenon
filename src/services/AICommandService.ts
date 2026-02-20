@@ -65,7 +65,10 @@ export class AICommandService {
   /**
    * Visual-Tap: AI-driven click by visual description (icons, buttons, etc).
    */
-  async visualTap(driver: any, payload?: { icon?: string; description?: string; takeANewScreenShot?: boolean }) {
+  async visualTap(
+    driver: any,
+    payload?: { icon?: string; description?: string; takeANewScreenShot?: boolean },
+  ) {
     const icon = payload?.icon || payload?.description;
     if (!icon || typeof icon !== 'string' || icon.trim().length === 0) {
       throw new Error('visualTap requires a non-empty "icon" or "description" string');
@@ -105,7 +108,13 @@ export class AICommandService {
    */
   async smartTap(
     driver: any,
-    payload?: { text?: string; icon?: string; description?: string; index?: number; takeANewScreenShot?: boolean },
+    payload?: {
+      text?: string;
+      icon?: string;
+      description?: string;
+      index?: number;
+      takeANewScreenShot?: boolean;
+    },
   ) {
     this.logger.info(`smartTap payload: ${JSON.stringify(payload)}`);
     const icon = payload?.icon || payload?.description;

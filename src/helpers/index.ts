@@ -3,16 +3,16 @@ import os from 'os';
 import path from 'path';
 import tcpPortUsed from 'tcp-port-used';
 import getPort from 'get-port';
-import { IDevice } from './interfaces/IDevice';
+import { IDevice } from '../interfaces/IDevice';
 import _ from 'lodash';
-import log from './logger';
-import Cloud from './enums/Cloud';
+import log from '../logger';
+import Cloud from '../enums/Cloud';
 import normalizeUrl from 'normalize-url';
 import ora from 'ora';
 import asyncWait from 'async-wait-until';
-import { InternalHttpClient } from './InternalHttpClient';
+import { InternalHttpClient } from '../InternalHttpClient';
 
-import { redactSecrets } from './logger';
+import { redactSecrets } from '../logger';
 
 const APPIUM_VENDOR_PREFIX = 'appium:';
 
@@ -42,7 +42,7 @@ export async function asyncForEach(
 export async function spinWith(
   msg: string,
   fn: () => Promise<boolean>,
-  callback = (_msg: string) => { },
+  callback = (_msg: string) => {},
 ) {
   const spinner = ora(msg).start();
   await asyncWait(
@@ -91,8 +91,9 @@ export function nodeUrl(device: IDevice, basePath = ''): string {
     } else if (device.cloud.toLowerCase() === Cloud.HEADSPIN) {
       return `${host}`;
     } else {
-      return `https://${process.env.CLOUD_USERNAME}:${process.env.CLOUD_KEY}@${new URL(device.host).host
-        }/wd/hub`;
+      return `https://${process.env.CLOUD_USERNAME}:${process.env.CLOUD_KEY}@${
+        new URL(device.host).host
+      }/wd/hub`;
     }
   }
   // hardcoded the `/wd/hub` for now. This can be fetch from serverArgs.basePath
@@ -166,7 +167,7 @@ export function stripAppiumPrefixes(caps: any) {
       } else {
         log.warn(
           `Ignoring capability '${prefixedCap}=${caps[prefixedCap]}' and ` +
-          `using capability '${strippedCapName}=${strippedCaps[strippedCapName]}'`,
+            `using capability '${strippedCapName}=${strippedCaps[strippedCapName]}'`,
         );
       }
     } else {

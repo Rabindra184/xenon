@@ -133,7 +133,7 @@ class XenonLogger {
 
   private logMessage(level: 'info' | 'warn' | 'error' | 'debug', message: any, ...args: any[]) {
     const redactedMessage = redactSecrets(message);
-    const redactedArgs = args.map(arg => redactSecrets(arg));
+    const redactedArgs = args.map((arg) => redactSecrets(arg));
 
     if (XenonLogger.isJsonLogging) {
       const logEntry = {
@@ -170,7 +170,9 @@ class XenonLogger {
    */
   public audit(action: string, actor = 'system', details: any = {}) {
     const redactedDetails = redactSecrets(details);
-    const detailStr = Object.keys(redactedDetails).length ? ` | Details: ${JSON.stringify(redactedDetails)}` : '';
+    const detailStr = Object.keys(redactedDetails).length
+      ? ` | Details: ${JSON.stringify(redactedDetails)}`
+      : '';
     this.baseLogger.info(`[AUDIT] ${this.context}${action} | Actor: ${actor}${detailStr}`);
   }
 

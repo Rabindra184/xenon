@@ -21,7 +21,7 @@ import fileUpload from 'express-fileupload';
 import { setupSwagger } from './swagger';
 import { Container } from 'typedi';
 
-let dashboardPluginUrl: any = null;
+const dashboardPluginUrl: any = null;
 
 const ASYNC_LOCK = new AsyncLock();
 
@@ -36,7 +36,7 @@ staticFilesRouter.use(cors());
 apiRouter.use((req: any, res, next) => {
   // Defensive Body Parsing Logic:
   // In some Appium versions, the global HTTP logger or other middleware drains the request stream
-  // before it reaches the plugin. Re-calling express.json() on a drained stream throws 
+  // before it reaches the plugin. Re-calling express.json() on a drained stream throws
   // 'InternalServerError: stream is not readable'.
 
   // 1. If body is already an object (parsed by parent), proceed.
@@ -46,7 +46,9 @@ apiRouter.use((req: any, res, next) => {
 
   // 2. If stream is already spent and nothing was parsed, we can't do much, just proceed gracefully.
   if (!req.readable) {
-    log.debug(`[Xenon] Stream drained for ${req.method} ${req.originalUrl}. Skipping local body-parser.`);
+    log.debug(
+      `[Xenon] Stream drained for ${req.method} ${req.originalUrl}. Skipping local body-parser.`,
+    );
     return next();
   }
 

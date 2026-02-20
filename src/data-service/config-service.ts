@@ -13,7 +13,7 @@ const CONFIG_DIR = cachePath('config');
 export class ConfigService {
   private storage?: storage.LocalStorage;
 
-  constructor(private securityService: SecurityService) { }
+  constructor(private securityService: SecurityService) {}
 
   public async init() {
     if (!this.storage) {
@@ -25,9 +25,7 @@ export class ConfigService {
     }
   }
 
-  private readonly sensitiveFields: (keyof IPluginArgs)[] = [
-    'databaseUrl',
-  ];
+  private readonly sensitiveFields: (keyof IPluginArgs)[] = ['databaseUrl'];
 
   public async loadConfig(): Promise<Partial<IPluginArgs>> {
     await this.init();

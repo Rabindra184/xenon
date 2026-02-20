@@ -16,7 +16,7 @@ export class HealEtalonService {
   private logger = log.scope('HealEtalonService');
   private store = DeviceStoreFactory.getHealEtalonStore();
 
-  constructor() { }
+  constructor() {}
 
   /**
    * Saves or updates a signature for a successful locator

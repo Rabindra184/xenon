@@ -220,7 +220,8 @@ async function updateGlobalConfig(request: Request, response: Response) {
     if (payload.aiBaseUrl !== undefined) runtimeOverrides.aiBaseUrl = payload.aiBaseUrl;
     if (payload.geminiModel !== undefined) runtimeOverrides.geminiModel = payload.geminiModel;
     if (payload.openaiModel !== undefined) runtimeOverrides.openaiModel = payload.openaiModel;
-    if (payload.anthropicModel !== undefined) runtimeOverrides.anthropicModel = payload.anthropicModel;
+    if (payload.anthropicModel !== undefined)
+      runtimeOverrides.anthropicModel = payload.anthropicModel;
     if (payload.ollamaModel !== undefined) runtimeOverrides.ollamaModel = payload.ollamaModel;
 
     if (Object.keys(runtimeOverrides).length > 0) {

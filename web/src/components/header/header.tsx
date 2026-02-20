@@ -2,7 +2,6 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import './header.css';
 import {
-  Atom as XenonLogo,
   Settings,
   User,
   ChevronDown,
@@ -43,11 +42,7 @@ const Header: React.FC = () => {
     <div className="header-container">
       <div className="header-left">
         <div className="header-logo-container" onClick={() => navigate('/')}>
-          <XenonLogo size={45} className="header-logo-image" />
-          <div className="header-logo">
-            Xenon
-            <span className="logo-badge">OSS</span>
-          </div>
+          <img src="logo.svg" alt="Xenon Logo" className="header-logo-image" style={{ height: '64px', width: 'auto' }} />
         </div>
         <div className="header-nav">
           {navItems.map((item) => (

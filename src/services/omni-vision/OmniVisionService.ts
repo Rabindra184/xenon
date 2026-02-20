@@ -53,10 +53,7 @@ export class OmniVisionService {
   private virtualElementStore = new Map<string, OmniElement>();
   private sharedWorker: Tesseract.Worker | null = null;
   private workerBusy = false;
-  private uiLensCache = new Map<
-    string,
-    { hash: string; createdAt: number; items: UiLensItem[] }
-  >();
+  private uiLensCache = new Map<string, { hash: string; createdAt: number; items: UiLensItem[] }>();
 
   private static readonly UI_LENS_CACHE_TTL_MS = 10_000; // 10s TTL to avoid repeated OCR on rapid calls
 
@@ -144,9 +141,9 @@ export class OmniVisionService {
     }
   }
 
-  private normalizeWordBBox(word: any):
-    | { x0: number; y0: number; x1: number; y1: number; text: string; confidence: number }
-    | null {
+  private normalizeWordBBox(
+    word: any,
+  ): { x0: number; y0: number; x1: number; y1: number; text: string; confidence: number } | null {
     const text = (word?.text || '').trim();
     if (!text) return null;
 
@@ -158,8 +155,14 @@ export class OmniVisionService {
     if (bbox && typeof bbox === 'object') {
       const x0 = bbox.x0 ?? bbox.left ?? bbox.x ?? bbox[0];
       const y0 = bbox.y0 ?? bbox.top ?? bbox.y ?? bbox[1];
-      const x1 = bbox.x1 ?? bbox.right ?? (bbox.x0 !== undefined && bbox.width !== undefined ? bbox.x0 + bbox.width : bbox[2]);
-      const y1 = bbox.y1 ?? bbox.bottom ?? (bbox.y0 !== undefined && bbox.height !== undefined ? bbox.y0 + bbox.height : bbox[3]);
+      const x1 =
+        bbox.x1 ??
+        bbox.right ??
+        (bbox.x0 !== undefined && bbox.width !== undefined ? bbox.x0 + bbox.width : bbox[2]);
+      const y1 =
+        bbox.y1 ??
+        bbox.bottom ??
+        (bbox.y0 !== undefined && bbox.height !== undefined ? bbox.y0 + bbox.height : bbox[3]);
 
       if ([x0, y0, x1, y1].every((v) => typeof v === 'number' && isFinite(v))) {
         return { x0, y0, x1, y1, text, confidence };
@@ -232,7 +235,9 @@ export class OmniVisionService {
 
       // raw is RGB (or RGBA) depending on input; ensure 3 channels
       const channels = raw.length === targetW * targetH * 4 ? 4 : 3;
-      let r = 0, g = 0, b = 0;
+      let r = 0,
+        g = 0,
+        b = 0;
       for (let i = 0; i < raw.length; i += channels) {
         r += raw[i];
         g += raw[i + 1];
@@ -557,9 +562,14 @@ export class OmniVisionService {
     const screenshot = await driver.getScreenshot();
     const buffer = Buffer.from(screenshot, 'base64');
     const { words } = await this.performOcr(buffer);
-    const normalized = words
-      .map((w: any) => this.normalizeWordBBox(w))
-      .filter(Boolean) as Array<{ x0: number; y0: number; x1: number; y1: number; text: string; confidence: number }>;
+    const normalized = words.map((w: any) => this.normalizeWordBBox(w)).filter(Boolean) as Array<{
+      x0: number;
+      y0: number;
+      x1: number;
+      y1: number;
+      text: string;
+      confidence: number;
+    }>;
 
     const matches = normalized
       .filter((w) => w.text.toLowerCase().includes(text.toLowerCase()))
@@ -595,7 +605,7 @@ export class OmniVisionService {
     ]);
     if (typeof driver.releaseActions === 'function') {
       // best-effort
-      await driver.releaseActions().catch(() => { });
+      await driver.releaseActions().catch(() => {});
     }
 
     return {
@@ -615,7 +625,10 @@ export class OmniVisionService {
   /**
    * Omni-Click by Icon: Find a target by visual description and click its center.
    */
-  async omniClickByIcon(driver: any, req: { icon: string; takeANewScreenShot?: boolean }): Promise<OmniClickResult> {
+  async omniClickByIcon(
+    driver: any,
+    req: { icon: string; takeANewScreenShot?: boolean },
+  ): Promise<OmniClickResult> {
     const icon = (req.icon || '').trim();
     if (!icon) return { clicked: false, message: 'Icon description is empty' };
 
@@ -693,9 +706,14 @@ export class OmniVisionService {
     const imageH = meta.height || 0;
 
     const { words } = await this.performOcr(buffer);
-    const normalized = words
-      .map((w: any) => this.normalizeWordBBox(w))
-      .filter(Boolean) as Array<{ x0: number; y0: number; x1: number; y1: number; text: string; confidence: number }>;
+    const normalized = words.map((w: any) => this.normalizeWordBBox(w)).filter(Boolean) as Array<{
+      x0: number;
+      y0: number;
+      x1: number;
+      y1: number;
+      text: string;
+      confidence: number;
+    }>;
 
     // Reduce noise: keep higher-confidence words first
     const sliced = normalized
@@ -710,8 +728,20 @@ export class OmniVisionService {
     });
 
     const toPosition = (cx: number, cy: number) => {
-      const horiz = imageW ? (cx < imageW / 3 ? 'left' : cx < (2 * imageW) / 3 ? 'center' : 'right') : 'center';
-      const vert = imageH ? (cy < imageH / 3 ? 'top' : cy < (2 * imageH) / 3 ? 'middle' : 'bottom') : 'middle';
+      const horiz = imageW
+        ? cx < imageW / 3
+          ? 'left'
+          : cx < (2 * imageW) / 3
+            ? 'center'
+            : 'right'
+        : 'center';
+      const vert = imageH
+        ? cy < imageH / 3
+          ? 'top'
+          : cy < (2 * imageH) / 3
+            ? 'middle'
+            : 'bottom'
+        : 'middle';
       return `${vert} ${horiz}`;
     };
 
@@ -737,7 +767,8 @@ export class OmniVisionService {
 
     const items: UiLensItem[] = [];
     for (const n of nodes) {
-      const color = imageW && imageH ? await this.sampleAverageColorName(baseImage, n, imageW, imageH) : null;
+      const color =
+        imageW && imageH ? await this.sampleAverageColorName(baseImage, n, imageW, imageH) : null;
       items.push({
         text: n.text,
         color,

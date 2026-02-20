@@ -25,7 +25,8 @@ class GeminiProvider implements LLMProvider {
 
   constructor(apiKey: string, modelName?: string) {
     this.genAI = new GoogleGenerativeAI(apiKey.trim());
-    this.modelName = modelName && modelName.trim() !== '' ? modelName.trim() : 'gemini-3-flash-preview';
+    this.modelName =
+      modelName && modelName.trim() !== '' ? modelName.trim() : 'gemini-3-flash-preview';
   }
 
   async analyze(prompt: string, screenshotBase64?: string): Promise<string> {
@@ -47,7 +48,10 @@ class GeminiProvider implements LLMProvider {
 
     for (const version of versions) {
       try {
-        const model = this.genAI.getGenerativeModel({ model: this.modelName }, { apiVersion: version });
+        const model = this.genAI.getGenerativeModel(
+          { model: this.modelName },
+          { apiVersion: version },
+        );
         const result = await model.generateContent(parts);
         const response = await result.response;
         return response.text();
@@ -56,10 +60,14 @@ class GeminiProvider implements LLMProvider {
         // If we get a 429, the connection IS WORKING, just rate limited.
         if (err.message.includes('429') || err.message.includes('Quota exceeded')) {
           log.info(`[Gemini] Connection verified (Rate Limited) via ${version} endpoint.`);
-          return "CONNECTION_OK_RATE_LIMITED";
+          return 'CONNECTION_OK_RATE_LIMITED';
         }
 
-        if (err.message.includes('404') || err.message.includes('not found') || err.message.includes('unsupported')) {
+        if (
+          err.message.includes('404') ||
+          err.message.includes('not found') ||
+          err.message.includes('unsupported')
+        ) {
           log.info(`[Gemini] ${version} endpoint failed for ${this.modelName}. Trying next...`);
           continue;
         }
@@ -136,7 +144,7 @@ class OllamaProvider implements LLMProvider {
   private baseUrl: string;
   private model: string;
   private isAvailable: boolean | null = null; // Cache availability status
-  private lastAvailabilityCheck: number = 0;
+  private lastAvailabilityCheck = 0;
   private readonly AVAILABILITY_CHECK_INTERVAL = 60000; // Check every 60s
 
   constructor(baseUrl = 'http://localhost:11434', model = 'llama3') {
@@ -147,7 +155,10 @@ class OllamaProvider implements LLMProvider {
   private async checkAvailability(): Promise<boolean> {
     const now = Date.now();
     // Use cached status if checked recently
-    if (this.isAvailable !== null && now - this.lastAvailabilityCheck < this.AVAILABILITY_CHECK_INTERVAL) {
+    if (
+      this.isAvailable !== null &&
+      now - this.lastAvailabilityCheck < this.AVAILABILITY_CHECK_INTERVAL
+    ) {
       return this.isAvailable;
     }
 
@@ -428,7 +439,10 @@ Fix: Add a pre-emptive check for the location permission dialog or use the \`aut
       // Send a minimal ping command
       const responseText = await testProvider.analyze('Hello. Response: OK');
       if (responseText === 'CONNECTION_OK_RATE_LIMITED') {
-        return { success: true, message: `Successfully connected to ${providerType}! (Note: You are currently out of quota/rate-limited, but the setup is correct)` };
+        return {
+          success: true,
+          message: `Successfully connected to ${providerType}! (Note: You are currently out of quota/rate-limited, but the setup is correct)`,
+        };
       }
       return { success: true, message: `Successfully connected to ${providerType}!` };
     } catch (err: any) {

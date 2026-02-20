@@ -78,7 +78,7 @@ export class InternalHttpClient {
         if (!(response.config as any).silent) {
           log.debug(
             `[HTTP ←] ${response.config.method?.toUpperCase()} ${response.config.url} ` +
-            `[${response.status}] ${duration}ms`,
+              `[${response.status}] ${duration}ms`,
           );
         }
 
@@ -135,7 +135,7 @@ export class InternalHttpClient {
         if (!(config as any)?.silent) {
           log.warn(
             `[HTTP ←] ${config?.method?.toUpperCase()} ${config?.url} ` +
-            `[${status || 'ERR'}] ${duration}ms - ${error.message}`,
+              `[${status || 'ERR'}] ${duration}ms - ${error.message}`,
           );
         }
 

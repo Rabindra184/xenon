@@ -13,8 +13,12 @@ export default class ConfigRouter {
     function getMaskedConfig(args: IPluginArgs) {
       const masked = { ...args };
       // Boolean flags for secret status
-      (masked as any).geminiSet = !!(process.env.XENON_GEMINI_API_KEY || process.env.GEMINI_API_KEY);
-      (masked as any).openaiSet = !!(process.env.XENON_OPENAI_API_KEY || process.env.OPENAI_API_KEY);
+      (masked as any).geminiSet = !!(
+        process.env.XENON_GEMINI_API_KEY || process.env.GEMINI_API_KEY
+      );
+      (masked as any).openaiSet = !!(
+        process.env.XENON_OPENAI_API_KEY || process.env.OPENAI_API_KEY
+      );
       (masked as any).anthropicSet = !!(
         process.env.XENON_ANTHROPIC_API_KEY || process.env.ANTHROPIC_API_KEY
       );
@@ -62,7 +66,9 @@ export default class ConfigRouter {
       }
 
       try {
-        log.debug(`Updating configuration with payload: ${JSON.stringify(redactSecrets(newConfig))}`);
+        log.debug(
+          `Updating configuration with payload: ${JSON.stringify(redactSecrets(newConfig))}`,
+        );
         // 1. Persist (also updates global config singleton and env vars)
         await Container.get(ConfigService).updateConfig(newConfig);
 
@@ -80,7 +86,9 @@ export default class ConfigRouter {
         });
       } catch (err: any) {
         log.error(`Failed to update config: ${err.message}`, err);
-        res.status(500).json({ success: false, error: `Failed to update configuration: ${err.message}` });
+        res
+          .status(500)
+          .json({ success: false, error: `Failed to update configuration: ${err.message}` });
       }
     });
 

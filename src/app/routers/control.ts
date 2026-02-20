@@ -368,7 +368,7 @@ router.post('/:udid/upload-install', async (req: Request, res: Response) => {
     if (manager && manager.installApp) {
       await manager.installApp(udid, appPath);
       // Clean up after installation
-      setTimeout(() => fs.remove(appPath).catch(() => { }), 10000);
+      setTimeout(() => fs.remove(appPath).catch(() => {}), 10000);
       return res
         .status(200)
         .send({ success: true, message: `App ${appFile.name} installed successfully` });

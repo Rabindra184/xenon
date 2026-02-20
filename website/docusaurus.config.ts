@@ -14,7 +14,6 @@ const config: Config = {
     v4: true, // Improve compatibility with the upcoming Docusaurus v4
   },
 
-
   // Set the production url of your site here
   url: 'https://appium-xenon-eight.vercel.app',
   // Set the /<baseUrl>/ pathname under which your site is served
@@ -39,8 +38,7 @@ const config: Config = {
       {
         docs: {
           sidebarPath: './sidebars.ts',
-          editUrl:
-            'https://github.com/Rabindra184/xenon/tree/master/website/',
+          editUrl: 'https://github.com/Rabindra184/xenon/tree/master/website/',
         },
         blog: {
           showReadingTime: true,
@@ -48,8 +46,7 @@ const config: Config = {
             type: ['rss', 'atom'],
             xslt: true,
           },
-          editUrl:
-            'https://github.com/Rabindra184/xenon/tree/master/website/',
+          editUrl: 'https://github.com/Rabindra184/xenon/tree/master/website/',
           onInlineTags: 'warn',
           onInlineAuthors: 'warn',
           onUntruncatedBlogPosts: 'warn',
@@ -81,8 +78,6 @@ const config: Config = {
         alt: 'Xenon Logo',
         src: 'img/logo-premium.svg',
       },
-
-
 
       items: [
         {
@@ -164,6 +159,5 @@ const config: Config = {
     },
   } satisfies Preset.ThemeConfig,
 };
-
 
 export default config;

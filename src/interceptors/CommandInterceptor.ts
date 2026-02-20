@@ -54,7 +54,11 @@ export class CommandInterceptor {
           // Appium executeScript puts script arguments in args[1] as an array.
           // Dig into it to find our payload object.
           if (Array.isArray(scriptArgs)) {
-            if (scriptArgs.length > 0 && typeof scriptArgs[0] === 'object' && scriptArgs[0] !== null) {
+            if (
+              scriptArgs.length > 0 &&
+              typeof scriptArgs[0] === 'object' &&
+              scriptArgs[0] !== null
+            ) {
               scriptArgs = scriptArgs[0];
             } else if (scriptArgs.length === 0) {
               scriptArgs = {};
@@ -64,12 +68,16 @@ export class CommandInterceptor {
           const aiCommand = script.replace(/^(xe|xenon)\s*:\s*/, '').trim();
 
           if (aiCommand === 'smartTap' || aiCommand === 'omniClick') {
-            this.log.info(`[Interceptor] Routing AI command: ${script} with payload: ${JSON.stringify(scriptArgs)}`);
+            this.log.info(
+              `[Interceptor] Routing AI command: ${script} with payload: ${JSON.stringify(scriptArgs)}`,
+            );
             const payload = typeof scriptArgs === 'object' && scriptArgs !== null ? scriptArgs : {};
             return await Container.get(AICommandService).smartTap(driver, payload);
           }
           if (aiCommand === 'uiInventory' || aiCommand === 'uiScanExport') {
-            this.log.info(`[Interceptor] Routing AI command: ${script} with payload: ${JSON.stringify(scriptArgs)}`);
+            this.log.info(
+              `[Interceptor] Routing AI command: ${script} with payload: ${JSON.stringify(scriptArgs)}`,
+            );
             const payload = typeof scriptArgs === 'object' && scriptArgs !== null ? scriptArgs : {};
             return await Container.get(AICommandService).uiInventory(driver, payload);
           }
@@ -78,14 +86,22 @@ export class CommandInterceptor {
             return await Container.get(AICommandService).analyzeScreen(driver);
           }
           if (aiCommand === 'visualTap') {
-            this.log.info(`[Interceptor] Routing AI command: ${script} with payload: ${JSON.stringify(scriptArgs)}`);
+            this.log.info(
+              `[Interceptor] Routing AI command: ${script} with payload: ${JSON.stringify(scriptArgs)}`,
+            );
             const payload = typeof scriptArgs === 'object' && scriptArgs !== null ? scriptArgs : {};
             return await Container.get(AICommandService).visualTap(driver, payload);
           }
           if (aiCommand === 'assertVisualState') {
-            this.log.info(`[Interceptor] Routing AI command: ${script} with payload: ${JSON.stringify(scriptArgs)}`);
-            const instruction = typeof scriptArgs === 'string' ? scriptArgs
-              : (typeof scriptArgs === 'object' && scriptArgs?.instruction) ? scriptArgs.instruction : '';
+            this.log.info(
+              `[Interceptor] Routing AI command: ${script} with payload: ${JSON.stringify(scriptArgs)}`,
+            );
+            const instruction =
+              typeof scriptArgs === 'string'
+                ? scriptArgs
+                : typeof scriptArgs === 'object' && scriptArgs?.instruction
+                  ? scriptArgs.instruction
+                  : '';
             return await Container.get(AICommandService).assertVisualState(driver, instruction);
           }
         }
@@ -96,8 +112,8 @@ export class CommandInterceptor {
           { body: { script: args[0], args: args[1] } } as any,
           {
             status: () => ({ json: (d: any) => d }),
-            setHeader: () => { },
-            getHeader: () => { },
+            setHeader: () => {},
+            getHeader: () => {},
           } as any,
         );
 
@@ -210,7 +226,9 @@ export class CommandInterceptor {
               text: healed.message,
             });
 
-            this.log.info(`[Interceptor] Visual healing returned coordinates. Resolving real element at (${healed.rect.x}, ${healed.rect.y})...`);
+            this.log.info(
+              `[Interceptor] Visual healing returned coordinates. Resolving real element at (${healed.rect.x}, ${healed.rect.y})...`,
+            );
 
             let resolved = false;
 
@@ -218,11 +236,13 @@ export class CommandInterceptor {
             try {
               const cx = Math.round(healed.rect.x + healed.rect.width / 2);
               const cy = Math.round(healed.rect.y + healed.rect.height / 2);
-              const touchEl = await driver.findElement('-ios class chain',
-                `**/XCUIElementTypeAny[\`rect.x <= ${cx} AND rect.x + rect.width >= ${cx} AND rect.y <= ${cy} AND rect.y + rect.height >= ${cy}\`]`
+              const touchEl = await driver.findElement(
+                '-ios class chain',
+                `**/XCUIElementTypeAny[\`rect.x <= ${cx} AND rect.x + rect.width >= ${cx} AND rect.y <= ${cy} AND rect.y + rect.height >= ${cy}\`]`,
               );
               if (touchEl) {
-                finalId = touchEl.ELEMENT || touchEl['element-6066-11e4-a52e-4f735466cecf'] || finalId;
+                finalId =
+                  touchEl.ELEMENT || touchEl['element-6066-11e4-a52e-4f735466cecf'] || finalId;
                 resolved = !!finalId && !finalId.startsWith('healed_');
               }
             } catch (e) {
@@ -231,21 +251,25 @@ export class CommandInterceptor {
 
             // Strategy 2: Use coordinate tap action (W3C Actions API)
             if (!resolved) {
-              this.log.info(`[Interceptor] Falling back to coordinate-based tap for visual healing`);
+              this.log.info(
+                '[Interceptor] Falling back to coordinate-based tap for visual healing',
+              );
               try {
                 const cx = Math.round(healed.rect.x + healed.rect.width / 2);
                 const cy = Math.round(healed.rect.y + healed.rect.height / 2);
-                await driver.performActions([{
-                  type: 'pointer',
-                  id: 'xenon-heal-tap',
-                  parameters: { pointerType: 'touch' },
-                  actions: [
-                    { type: 'pointerMove', duration: 0, x: cx, y: cy },
-                    { type: 'pointerDown', button: 0 },
-                    { type: 'pause', duration: 100 },
-                    { type: 'pointerUp', button: 0 },
-                  ],
-                }]);
+                await driver.performActions([
+                  {
+                    type: 'pointer',
+                    id: 'xenon-heal-tap',
+                    parameters: { pointerType: 'touch' },
+                    actions: [
+                      { type: 'pointerMove', duration: 0, x: cx, y: cy },
+                      { type: 'pointerDown', button: 0 },
+                      { type: 'pause', duration: 100 },
+                      { type: 'pointerUp', button: 0 },
+                    ],
+                  },
+                ]);
                 await driver.releaseActions();
                 this.log.info(`[Interceptor] ✅ Visual healing: tapped at (${cx}, ${cy})`);
                 // Return the virtual ID — the tap already happened
@@ -404,7 +428,7 @@ export class CommandInterceptor {
       try {
         const etalonService = Container.get(HealEtalonService);
 
-        // CRITICAL PERFORMANCE OPTIMIZATION: 
+        // CRITICAL PERFORMANCE OPTIMIZATION:
         // Only trigger the heavy metadata collection if we don't already have an etalon for this selector.
         // Collecting page source and element rects for every single action is too CPU-intensive.
         const existing = await etalonService.getSignature(selector);
@@ -414,8 +438,14 @@ export class CommandInterceptor {
         }
 
         const anchors = [
-          'content-desc', 'resource-id', 'text', 'name', 'id', 'hint',
-          'label', 'value',  // iOS-specific identity attributes
+          'content-desc',
+          'resource-id',
+          'text',
+          'name',
+          'id',
+          'hint',
+          'label',
+          'value', // iOS-specific identity attributes
         ];
         const nodeAttrs: { name: string; value: string }[] = [];
 
@@ -432,10 +462,14 @@ export class CommandInterceptor {
         try {
           const rect = await driver.getElementRect(elementId);
           if (rect) {
-            if (rect.x !== undefined) nodeAttrs.push({ name: 'x', value: String(Math.round(rect.x)) });
-            if (rect.y !== undefined) nodeAttrs.push({ name: 'y', value: String(Math.round(rect.y)) });
-            if (rect.width !== undefined) nodeAttrs.push({ name: 'width', value: String(Math.round(rect.width)) });
-            if (rect.height !== undefined) nodeAttrs.push({ name: 'height', value: String(Math.round(rect.height)) });
+            if (rect.x !== undefined)
+              nodeAttrs.push({ name: 'x', value: String(Math.round(rect.x)) });
+            if (rect.y !== undefined)
+              nodeAttrs.push({ name: 'y', value: String(Math.round(rect.y)) });
+            if (rect.width !== undefined)
+              nodeAttrs.push({ name: 'width', value: String(Math.round(rect.width)) });
+            if (rect.height !== undefined)
+              nodeAttrs.push({ name: 'height', value: String(Math.round(rect.height)) });
           }
         } catch (e) {
           // Silently ignore: rect capture is optional
@@ -450,15 +484,13 @@ export class CommandInterceptor {
           } else {
             // Check if it's android or ios to provide a better default
             const caps = await driver.getCapabilities();
-            const platform = (
-              caps.platformName ||
-              caps.platform ||
-              'ios'
-            ).toLowerCase();
+            const platform = (caps.platformName || caps.platform || 'ios').toLowerCase();
             nodeName = platform === 'android' ? 'android.view.View' : 'XCUIElementTypeAny';
           }
         } catch (e) {
-          this.log.debug(`[Learning] Failed to get tag name for element ${elementId}. Using default.`);
+          this.log.debug(
+            `[Learning] Failed to get tag name for element ${elementId}. Using default.`,
+          );
         }
 
         // Final safety check to ensure nodeName is a valid string

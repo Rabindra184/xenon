@@ -214,10 +214,7 @@ class XenonPlugin extends BasePlugin {
   /**
    * UI Scan Export: returns UI metadata JSON derived from screenshot OCR + lightweight heuristics.
    */
-  async uiScanExport(
-    driver: any,
-    payload?: { takeANewScreenShot?: boolean; maxItems?: number },
-  ) {
+  async uiScanExport(driver: any, payload?: { takeANewScreenShot?: boolean; maxItems?: number }) {
     return await this.aiCommandService.uiScanExport(driver, payload);
   }
 
@@ -234,10 +231,7 @@ class XenonPlugin extends BasePlugin {
   /**
    * UI Inventory: Xenon-native, self-explanatory alias of uiScanExport.
    */
-  async uiInventory(
-    driver: any,
-    payload?: { takeANewScreenShot?: boolean; maxItems?: number },
-  ) {
+  async uiInventory(driver: any, payload?: { takeANewScreenShot?: boolean; maxItems?: number }) {
     return await this.aiCommandService.uiInventory(driver, payload);
   }
 }

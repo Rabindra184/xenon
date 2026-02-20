@@ -130,21 +130,27 @@ export const AISettings: React.FC = () => {
 
   const getModelDefault = (providerId?: string) => {
     switch (providerId) {
-      case 'gemini': return 'gemini-3-flash-preview';
-      case 'openai': return 'gpt-4o';
-      case 'anthropic': return 'claude-3-5-sonnet-20240620';
-      case 'ollama': return 'llama3';
-      default: return '—';
+      case 'gemini':
+        return 'gemini-3-flash-preview';
+      case 'openai':
+        return 'gpt-4o';
+      case 'anthropic':
+        return 'claude-3-5-sonnet-20240620';
+      case 'ollama':
+        return 'llama3';
+      default:
+        return '—';
     }
   };
 
   const getBaseUrlDefault = (providerId?: string) => {
     switch (providerId) {
-      case 'ollama': return 'http://localhost:11434';
-      default: return 'Provider default';
+      case 'ollama':
+        return 'http://localhost:11434';
+      default:
+        return 'Provider default';
     }
   };
-
 
   if (loading) {
     return (
@@ -187,8 +193,8 @@ export const AISettings: React.FC = () => {
               </span>
             </div>
             <p className="section-description-dense">
-              Providers are activated by setting their API key as an environment variable.
-              Select one of the configured providers to use as the active engine.
+              Providers are activated by setting their API key as an environment variable. Select
+              one of the configured providers to use as the active engine.
             </p>
           </div>
 
@@ -203,7 +209,11 @@ export const AISettings: React.FC = () => {
                   className={`ai-provider-card ${isActive ? 'active' : ''} ${!isSelectable ? 'disabled' : ''}`}
                   onClick={() => isSelectable && setConfig({ ...config, aiProvider: provider.id })}
                   disabled={!isSelectable}
-                  title={!isSelectable ? `Set XENON_${provider.id.toUpperCase()}_API_KEY or model/URL to enable` : `Select ${provider.name}`}
+                  title={
+                    !isSelectable
+                      ? `Set XENON_${provider.id.toUpperCase()}_API_KEY or model/URL to enable`
+                      : `Select ${provider.name}`
+                  }
                 >
                   <div className="ai-provider-card-header">
                     <div className="ai-provider-icon">{provider.icon}</div>
@@ -214,17 +224,47 @@ export const AISettings: React.FC = () => {
                   </div>
                   <div className="ai-provider-status">
                     {isActive ? (
-                      <span className="status-badge success-filled" style={{ height: '28px', fontSize: '0.7rem', padding: '0 10px', width: 'auto' }}>
-                        <div className="live-signal" style={{ width: 6, height: 6, marginRight: 4 }} />
+                      <span
+                        className="status-badge success-filled"
+                        style={{
+                          height: '28px',
+                          fontSize: '0.7rem',
+                          padding: '0 10px',
+                          width: 'auto',
+                        }}
+                      >
+                        <div
+                          className="live-signal"
+                          style={{ width: 6, height: 6, marginRight: 4 }}
+                        />
                         ACTIVE
                       </span>
                     ) : provider.isConfigured ? (
-                      <span className="status-badge success-filled" style={{ height: '28px', fontSize: '0.7rem', padding: '0 10px', width: 'auto' }}>
-                        <div className="live-signal" style={{ width: 6, height: 6, marginRight: 4 }} />
+                      <span
+                        className="status-badge success-filled"
+                        style={{
+                          height: '28px',
+                          fontSize: '0.7rem',
+                          padding: '0 10px',
+                          width: 'auto',
+                        }}
+                      >
+                        <div
+                          className="live-signal"
+                          style={{ width: 6, height: 6, marginRight: 4 }}
+                        />
                         READY
                       </span>
                     ) : (
-                      <span className="status-badge error-filled" style={{ height: '28px', fontSize: '0.7rem', padding: '0 10px', width: 'auto' }}>
+                      <span
+                        className="status-badge error-filled"
+                        style={{
+                          height: '28px',
+                          fontSize: '0.7rem',
+                          padding: '0 10px',
+                          width: 'auto',
+                        }}
+                      >
                         <Lock size={10} />
                         NOT SET
                       </span>
@@ -246,7 +286,31 @@ export const AISettings: React.FC = () => {
               </h3>
             </div>
             <p className="section-description-dense">
-              Values sourced from environment variables. Set <code style={{ color: 'var(--primary-enterprise)', background: 'rgba(34,197,94,0.1)', padding: '2px 6px', borderRadius: '4px', fontSize: '0.8rem' }}>XENON_AI_MODEL</code> and <code style={{ color: 'var(--primary-enterprise)', background: 'rgba(34,197,94,0.1)', padding: '2px 6px', borderRadius: '4px', fontSize: '0.8rem' }}>XENON_AI_BASE_URL</code> to override defaults.
+              Values sourced from environment variables. Set{' '}
+              <code
+                style={{
+                  color: 'var(--primary-enterprise)',
+                  background: 'rgba(34,197,94,0.1)',
+                  padding: '2px 6px',
+                  borderRadius: '4px',
+                  fontSize: '0.8rem',
+                }}
+              >
+                XENON_AI_MODEL
+              </code>{' '}
+              and{' '}
+              <code
+                style={{
+                  color: 'var(--primary-enterprise)',
+                  background: 'rgba(34,197,94,0.1)',
+                  padding: '2px 6px',
+                  borderRadius: '4px',
+                  fontSize: '0.8rem',
+                }}
+              >
+                XENON_AI_BASE_URL
+              </code>{' '}
+              to override defaults.
             </p>
           </div>
 
@@ -261,10 +325,14 @@ export const AISettings: React.FC = () => {
             <div className="ai-config-row">
               <span className="ai-config-label">Model</span>
               <span className="ai-config-value mono">
-                {config.aiProvider === 'gemini' && (config.geminiModel || config.aiModel || getModelDefault('gemini'))}
-                {config.aiProvider === 'openai' && (config.openaiModel || config.aiModel || getModelDefault('openai'))}
-                {config.aiProvider === 'anthropic' && (config.anthropicModel || config.aiModel || getModelDefault('anthropic'))}
-                {config.aiProvider === 'ollama' && (config.ollamaModel || config.aiModel || getModelDefault('ollama'))}
+                {config.aiProvider === 'gemini' &&
+                  (config.geminiModel || config.aiModel || getModelDefault('gemini'))}
+                {config.aiProvider === 'openai' &&
+                  (config.openaiModel || config.aiModel || getModelDefault('openai'))}
+                {config.aiProvider === 'anthropic' &&
+                  (config.anthropicModel || config.aiModel || getModelDefault('anthropic'))}
+                {config.aiProvider === 'ollama' &&
+                  (config.ollamaModel || config.aiModel || getModelDefault('ollama'))}
                 {!config.aiModel &&
                   !config.geminiModel &&
                   !config.openaiModel &&
@@ -283,7 +351,15 @@ export const AISettings: React.FC = () => {
         </section>
 
         {status && (
-          <div className={`status-banner ${status.type}`} style={{ borderRadius: 'var(--radius-enterprise)', padding: 'var(--gap-2)', marginTop: 'var(--gap-3)', justifyContent: 'center' }}>
+          <div
+            className={`status-banner ${status.type}`}
+            style={{
+              borderRadius: 'var(--radius-enterprise)',
+              padding: 'var(--gap-2)',
+              marginTop: 'var(--gap-3)',
+              justifyContent: 'center',
+            }}
+          >
             {status.type === 'success' ? <CheckCircle size={16} /> : <AlertTriangle size={16} />}
             <span style={{ fontWeight: 600 }}>{status.message}</span>
           </div>
@@ -299,7 +375,11 @@ export const AISettings: React.FC = () => {
             className="save-btn primary"
             onClick={handleSave}
             disabled={saving || !activeProvider?.isConfigured}
-            title={!activeProvider?.isConfigured ? 'The selected provider is not configured in the environment' : 'Save active provider selection'}
+            title={
+              !activeProvider?.isConfigured
+                ? 'The selected provider is not configured in the environment'
+                : 'Save active provider selection'
+            }
           >
             {saving ? <RefreshCw className="animate-spin" size={16} /> : <Save size={16} />}
             {saving ? 'Applying...' : 'Save Configuration'}

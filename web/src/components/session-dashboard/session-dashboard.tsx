@@ -533,7 +533,9 @@ const SessionDashboard: React.FC = () => {
 
         {/* AI Root-Cause Analysis (High-Intent Accordion) */}
         {selectedSession.ai_analysis && (
-          <div className={`ai-analysis-hero animate-fade-in ${!isAnalysisExpanded ? 'collapsed' : ''}`}>
+          <div
+            className={`ai-analysis-hero animate-fade-in ${!isAnalysisExpanded ? 'collapsed' : ''}`}
+          >
             <div
               className="ai-header clickable"
               onClick={() => setIsAnalysisExpanded(!isAnalysisExpanded)}
@@ -562,7 +564,9 @@ const SessionDashboard: React.FC = () => {
               </div>
             </div>
 
-            <div className={`ai-collapsible-content ${isAnalysisExpanded ? 'expanded' : 'collapsed'}`}>
+            <div
+              className={`ai-collapsible-content ${isAnalysisExpanded ? 'expanded' : 'collapsed'}`}
+            >
               <div className="ai-content">
                 <ReactMarkdown>{selectedSession.ai_analysis}</ReactMarkdown>
               </div>
