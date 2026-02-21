@@ -14,41 +14,46 @@
 
 .reservation-modal {
     background-color: var(--bg-surface);
-    border: 1px solid var(--border-medium);
-    border-radius: var(--radius-lg);
+    border: 1px solid var(--border-visible);
+    border-radius: 2px;
     width: 450px;
     max-width: 90%;
-    padding: var(--space-xl);
-    box-shadow: var(--shadow-lg);
+    padding: 32px;
+    box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5);
     animation: modal-enter 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+    position: relative;
+    overflow: hidden;
 }
 
 @keyframes modal-enter {
     from {
         opacity: 0;
-        transform: scale(0.95);
+        transform: translateY(10px);
     }
 
     to {
         opacity: 1;
-        transform: scale(1);
+        transform: translateY(0);
     }
 }
 
 .reservation-modal h2 {
-    margin: 0 0 8px 0;
-    color: var(--text-main);
-    font-size: 24px;
-    font-weight: 700;
-    letter-spacing: -0.025em;
+    margin: 0 0 12px 0;
+    color: var(--text-bright);
+    font-size: 1.5rem;
+    font-weight: 800;
+    letter-spacing: -0.01em;
     font-family: 'Outfit', sans-serif;
+    text-transform: uppercase;
+    border-bottom: 2px solid var(--border-visible);
+    padding-bottom: 12px;
 }
 
 .reservation-modal p {
-    color: var(--text-muted);
-    font-size: 14px;
+    color: var(--text-dim);
+    font-size: 13px;
     margin-bottom: 24px;
-    line-height: 1.5;
+    line-height: 1.6;
 }
 
 .reservation-form-group {
@@ -57,29 +62,32 @@
 
 .reservation-form-group label {
     display: block;
-    color: var(--text-secondary);
-    font-size: 13px;
-    font-weight: 600;
+    color: var(--text-dim);
+    font-size: 10px;
+    font-weight: 800;
     margin-bottom: 8px;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    font-family: 'JetBrains Mono', monospace;
 }
 
 .reservation-input {
     width: 100%;
-    background-color: var(--bg-app);
-    border: 1px solid var(--border-medium);
-    border-radius: var(--radius-sm);
+    background-color: rgba(0, 0, 0, 0.3);
+    border: 1px solid var(--border-visible);
+    border-radius: 2px;
     padding: 12px 16px;
-    color: var(--text-main);
-    font-size: 14px;
+    color: var(--text-bright);
+    font-size: 13px;
     box-sizing: border-box;
     transition: all 0.2s;
-    font-family: inherit;
+    font-family: 'JetBrains Mono', monospace;
 }
 
 .reservation-input:focus {
     outline: none;
-    border-color: var(--primary);
-    box-shadow: 0 0 0 4px var(--primary-glow);
+    border-color: var(--color-primary);
+    box-shadow: 0 0 10px rgba(0, 255, 136, 0.1);
 }
 
 .duration-selector {
@@ -90,29 +98,29 @@
 }
 
 .duration-option {
-    background-color: var(--bg-app);
-    border: 1px solid var(--border-medium);
-    color: var(--text-muted);
-    padding: 8px;
-    border-radius: var(--radius-sm);
-    font-size: 12px;
+    background-color: rgba(0, 0, 0, 0.3);
+    border: 1px solid var(--border-visible);
+    color: var(--text-dim);
+    padding: 10px;
+    border-radius: 2px;
+    font-size: 11px;
     cursor: pointer;
     text-align: center;
     transition: all 0.2s;
-    font-weight: 500;
+    font-weight: 800;
+    font-family: 'JetBrains Mono', monospace;
 }
 
 .duration-option:hover {
     border-color: var(--text-muted);
-    background-color: var(--secondary-hover);
+    background-color: rgba(255, 255, 255, 0.02);
 }
 
 .duration-option.active {
-    background-color: var(--primary-soft);
-    border-color: var(--primary);
-    color: var(--primary);
-    font-weight: 700;
-    box-shadow: 0 0 10px var(--primary-glow);
+    background-color: rgba(0, 255, 136, 0.05);
+    border-color: var(--color-primary);
+    color: var(--color-primary);
+    box-shadow: 0 0 10px rgba(0, 255, 136, 0.1);
 }
 
 .reservation-actions {
@@ -124,43 +132,45 @@
 
 .btn-cancel {
     background: transparent;
-    border: 1px solid var(--border-medium);
-    color: var(--text-muted);
-    padding: 10px 20px;
-    border-radius: var(--radius-md);
-    font-size: 14px;
-    font-weight: 600;
+    border: 1px solid var(--border-visible);
+    color: var(--text-dim);
+    padding: 10px 24px;
+    border-radius: 2px;
+    font-size: 12px;
+    font-weight: 700;
     cursor: pointer;
     transition: all 0.2s;
+    text-transform: uppercase;
+    font-family: 'JetBrains Mono', monospace;
 }
 
 .btn-cancel:hover {
-    color: var(--text-main);
+    color: var(--text-bright);
     border-color: var(--text-muted);
-    background-color: var(--border-subtle);
 }
 
 .btn-reserve {
-    background: var(--primary);
-    color: var(--text-inverse);
+    background: var(--color-primary);
+    color: var(--bg-page);
     border: none;
     padding: 10px 24px;
-    border-radius: var(--radius-md);
-    font-size: 14px;
-    font-weight: 700;
+    border-radius: 2px;
+    font-size: 12px;
+    font-weight: 800;
     cursor: pointer;
-    transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
-    box-shadow: 0 4px 14px var(--primary-glow);
+    transition: all 0.2s;
+    text-transform: uppercase;
+    font-family: 'JetBrains Mono', monospace;
+    box-shadow: 0 0 15px rgba(0, 255, 136, 0.2);
 }
 
 .btn-reserve:hover:not(:disabled) {
-    background: var(--primary-hover);
-    transform: translateY(-2px);
-    box-shadow: 0 8px 20px var(--primary-glow);
+    background: #00e67a;
+    box-shadow: 0 0 25px rgba(0, 255, 136, 0.4);
 }
 
 .btn-reserve:disabled {
-    background-color: var(--secondary-hover);
+    background-color: var(--border-visible);
     color: var(--text-dim);
     cursor: not-allowed;
     box-shadow: none;
@@ -169,11 +179,12 @@
 }
 
 .error-message {
-    color: var(--status-error);
-    font-size: 12px;
-    margin-top: 8px;
-    background-color: var(--accent-red-soft);
+    color: #ff4d4d;
+    font-size: 11px;
+    margin-top: 12px;
+    background-color: rgba(255, 77, 77, 0.05);
     padding: 8px 12px;
-    border-radius: 6px;
-    border: 1px solid rgba(244, 63, 94, 0.2);
+    border-radius: 2px;
+    border: 1px solid rgba(255, 77, 77, 0.2);
+    font-family: 'JetBrains Mono', monospace;
 }

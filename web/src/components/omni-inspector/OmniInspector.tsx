@@ -407,6 +407,14 @@ const OmniInspector: React.FC<OmniInspectorProps> = ({ sessionId, udid, streamUr
 
   return (
     <div className="omni-inspector-container">
+      {/* Mission Control Scanline Overlay */}
+      <div className="scanline" style={{
+        position: 'absolute',
+        inset: 0,
+        pointerEvents: 'none',
+        opacity: 0.05,
+        zIndex: 1001
+      }}></div>
       <div className="omni-main-content">
         {/* Left Panel: Device Preview */}
         <div className="omni-screenshot-panel">

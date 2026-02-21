@@ -59,6 +59,14 @@ const ReservationModal: React.FC<ReservationModalProps> = ({ device, onClose, on
   return createPortal(
     <div className="reservation-modal-overlay" onClick={onClose}>
       <div className="reservation-modal" onClick={(e) => e.stopPropagation()}>
+        {/* Mission Control Scanline Overlay */}
+        <div className="scanline" style={{
+          position: 'absolute',
+          inset: 0,
+          pointerEvents: 'none',
+          opacity: 0.05,
+          zIndex: 1001
+        }}></div>
         <h2>Reserve Device</h2>
         <p>
           Reserve <strong>{device.name || device.udid}</strong> for exclusive use. This will prevent

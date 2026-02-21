@@ -115,6 +115,14 @@ export const Settings: React.FC = () => {
 
   return (
     <div className="settings-container mesh-gradient-infra">
+      {/* Mission Control Scanline Overlay */}
+      <div className="scanline" style={{
+        position: 'absolute',
+        inset: 0,
+        pointerEvents: 'none',
+        opacity: 0.05,
+        zIndex: 1001
+      }}></div>
       <div className="settings-header">
         <div className="settings-title-group">
           <InfrastructureIcon className="settings-icon infra-icon" size={28} />
@@ -188,9 +196,8 @@ export const Settings: React.FC = () => {
                   {presets.map((p) => (
                     <button
                       key={p.label}
-                      className={`preset-chip ${
-                        config.healthCheckSchedule === p.value ? 'active' : ''
-                      }`}
+                      className={`preset-chip ${config.healthCheckSchedule === p.value ? 'active' : ''
+                        }`}
                       onClick={() => setConfig({ ...config, healthCheckSchedule: p.value })}
                     >
                       {p.label}

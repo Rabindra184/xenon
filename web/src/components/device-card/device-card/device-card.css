@@ -1,137 +1,97 @@
 .device-info-card-container {
-  background: var(--bg-surface);
+  background: var(--bg-card);
   height: 100%;
   min-height: 440px;
   width: 100%;
   display: flex;
   flex-direction: column;
-  padding: var(--space-lg);
-  border-radius: var(--radius-xl);
+  padding: 20px;
+  border-radius: 2px;
+  /* Squared for tech look */
   position: relative;
-  box-shadow: var(--shadow-md);
-  border: 1px solid var(--border-light);
-  transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
-  backdrop-filter: var(--glass-blur);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+  border: 1px solid var(--border-visible);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   overflow: hidden;
 }
 
+/* Corner Accents */
+.device-info-card-container::before {
+  content: "";
+  position: absolute;
+  top: -1px;
+  left: -1px;
+  width: 10px;
+  height: 10px;
+  border-top: 2px solid var(--color-primary);
+  border-left: 2px solid var(--color-primary);
+  z-index: 10;
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
 
+.device-info-card-container:hover::before {
+  opacity: 1;
+}
 
 .device-info-card-container:hover {
-  box-shadow: var(--shadow-lg);
-  transform: translateY(-4px);
-  border-color: var(--primary-glow);
+  border-color: rgba(0, 255, 136, 0.3);
+  box-shadow: 0 0 20px rgba(0, 255, 136, 0.1);
+  transform: translateY(-2px);
 }
 
 .device-info-card-container.controlling {
   transform: none !important;
-  backdrop-filter: none !important;
   z-index: 10000;
 }
 
 /* Status Modes */
 .device-info-card-container.disabled {
-  opacity: 0.6;
-  filter: grayscale(0.5);
+  opacity: 0.5;
+  filter: grayscale(0.8);
 }
 
 .device-info-card-container.busy {
-  border-color: var(--status-busy);
-  animation: pulse-busy 2s infinite ease-in-out;
-}
-
-.device-info-card-container.reserved {
-  border-color: var(--accent-blue);
-  animation: pulse-reserved 2s infinite ease-in-out;
-}
-
-@keyframes pulse-reserved {
-  0% {
-    box-shadow: 0 0 0 0 rgba(56, 189, 248, 0.2);
-  }
-
-  50% {
-    box-shadow: 0 0 0 8px rgba(56, 189, 248, 0);
-  }
-
-  100% {
-    box-shadow: 0 0 0 0 rgba(56, 189, 248, 0);
-  }
-}
-
-@keyframes pulse-busy {
-  0% {
-    box-shadow: 0 0 0 0 rgba(245, 158, 11, 0.2);
-  }
-
-  50% {
-    box-shadow: 0 0 0 8px rgba(245, 158, 11, 0);
-  }
-
-  100% {
-    box-shadow: 0 0 0 0 rgba(245, 158, 11, 0);
-  }
+  border-color: rgba(255, 184, 0, 0.3);
+  box-shadow: 0 0 20px rgba(255, 184, 0, 0.05);
 }
 
 /* Device Status Badge */
 .device-state {
-  font-size: 10px;
+  font-size: 9px;
   font-weight: 700;
   text-transform: uppercase;
-  letter-spacing: 0.05em;
-  padding: 4px 12px;
-  border-radius: 20px;
+  letter-spacing: 0.1em;
+  padding: 4px 10px;
+  border-radius: 2px;
   width: fit-content;
   white-space: nowrap;
   margin-top: 4px;
-  margin-bottom: var(--space-md);
-  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+  margin-bottom: 20px;
+  transition: all 0.3s ease;
   display: flex;
   align-items: center;
   gap: 6px;
+  font-family: 'JetBrains Mono', monospace;
+  border: 1px solid transparent;
 }
 
 .device-state.ready {
-  color: var(--status-ready);
-  background: var(--primary-soft);
+  color: var(--color-primary);
+  background: rgba(0, 255, 136, 0.05);
+  border-color: rgba(0, 255, 136, 0.2);
 }
 
 .device-state.busy {
-  color: var(--status-busy);
-  background: var(--accent-amber-soft);
+  color: var(--color-amber);
+  background: rgba(255, 184, 0, 0.05);
+  border-color: rgba(255, 184, 0, 0.2);
 }
 
 .device-state.offline {
-  color: var(--status-offline);
-  background: rgba(148, 163, 184, 0.1);
-}
-
-.device-state.progress-active {
-  color: var(--status-busy);
-  background: var(--accent-amber-soft);
-  border: 1px solid rgba(245, 189, 36, 0.3);
-  box-shadow: 0 0 10px rgba(245, 189, 36, 0.1);
-  animation: progress-shimmer 2s infinite linear;
-}
-
-@keyframes progress-shimmer {
-  0% {
-    opacity: 0.8;
-  }
-
-  50% {
-    opacity: 1;
-    border-color: rgba(245, 158, 11, 0.6);
-  }
-
-  100% {
-    opacity: 0.8;
-  }
-}
-
-.device-state.reserved {
-  color: var(--accent-blue);
-  background: rgba(56, 189, 248, 0.1);
+  color: var(--text-dim);
+  background: rgba(0, 0, 0, 0.2);
+  border-color: var(--border-visible);
 }
 
 /* Title Wrapper */
@@ -139,21 +99,18 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding-bottom: var(--space-sm);
-  margin-bottom: var(--space-sm);
-  border-bottom: 1px solid var(--border-light);
+  padding-bottom: 12px;
+  margin-bottom: 12px;
+  border-bottom: 1px solid var(--border-subtle);
 }
 
 .device-info-card-container__device-title {
-  font-family: 'JetBrains Mono', monospace;
-  font-size: 12px;
-  font-weight: 500;
-  color: var(--text-main);
-  max-width: 190px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  /* Prevent wrapping */
+  font-family: 'Outfit', sans-serif;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text-bright);
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
 }
 
 
@@ -161,230 +118,148 @@
 .device-info-card-container__body {
   display: flex;
   flex-direction: column;
-  gap: var(--space-xs);
-  padding: var(--space-sm) 0;
+  gap: 8px;
+  padding: 12px 0;
 }
 
 .device-info-card-container__body_row {
-  display: grid;
-  grid-template-columns: 120px 1fr;
-  align-items: baseline;
-  font-size: 13px;
-  gap: 12px;
-  padding-bottom: 2px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 11px;
+  padding: 6px 0;
+  border-bottom: 1px dotted var(--border-subtle);
 }
 
 .device-info-card-container__body_row_label {
-  color: var(--text-muted);
-  font-weight: 500;
-  white-space: nowrap;
+  color: var(--text-dim);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  font-family: 'JetBrains Mono', monospace;
 }
 
 .device-info-card-container__body_row_value {
-  color: var(--text-main);
-  font-weight: 600;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  text-align: right;
-  white-space: nowrap;
+  color: var(--text-bright);
+  font-weight: 500;
   font-family: 'JetBrains Mono', monospace;
   font-size: 12px;
+  text-align: right;
 }
 
 .health-status {
   display: flex;
   align-items: center;
   justify-content: flex-end;
-  gap: 6px;
+  gap: 8px;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
 }
 
 .health-status-dot {
   width: 6px;
   height: 6px;
-  border-radius: 50%;
+  border-radius: 1px;
   background: currentColor;
 }
 
 .health-status.healthy {
-  color: #10b981;
-}
-
-.health-status.healthy .health-status-dot {
-  box-shadow: 0 0 8px var(--status-ready);
+  color: var(--color-primary);
 }
 
 .health-status.unhealthy {
-  color: #ef4444;
-  text-decoration: underline dotted;
-  cursor: help;
-}
-
-.health-status.unhealthy .health-status-dot {
-  box-shadow: 0 0 8px var(--status-error);
-}
-
-.healed-count-badge {
-  display: flex;
-  align-items: center;
-  gap: 2px;
-  background: linear-gradient(135deg, var(--primary-soft), rgba(56, 189, 248, 0.2));
-  color: var(--primary);
-  padding: 1px 6px;
-  border-radius: 10px;
-  font-size: 9px;
-  font-weight: 800;
-  margin-left: 6px;
-  border: 1px solid rgba(16, 185, 129, 0.3);
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
-  animation: heal-pulse 4s infinite ease-in-out;
-}
-
-@keyframes heal-pulse {
-
-  0%,
-  100% {
-    transform: scale(1);
-    opacity: 0.9;
-  }
-
-  50% {
-    transform: scale(1.05);
-    opacity: 1;
-    box-shadow: 0 0 10px rgba(16, 185, 129, 0.2);
-  }
-}
-
-
-
-/* Reservation Details */
-.reservation-details-section {
-  margin-top: var(--space-xs);
-  padding: var(--space-xs) var(--space-sm);
-  background: rgba(56, 189, 248, 0.05);
-  border-radius: var(--radius-md);
-  border: 1px dashed rgba(56, 189, 248, 0.3);
-}
-
-.reservation-row {
-  margin-bottom: 2px !important;
-}
-
-.reservation-row .device-info-card-container__body_row_label {
-  color: var(--accent-blue) !important;
-  font-size: 11px;
-}
-
-.highlight-value {
-  color: var(--accent-blue) !important;
-  font-weight: 700 !important;
-}
-
-/* Interactive Elements */
-.dashboard-link-wrapper {
-  margin-top: var(--space-sm);
-  padding-top: var(--space-sm);
-  border-top: 1px solid var(--border-light);
-}
-
-.footer-deeplink {
-  font-size: 12px;
-  color: var(--secondary);
-  font-weight: 600;
-  display: flex;
-  align-items: center;
-  gap: 4px;
-}
-
-.footer-deeplink:hover {
-  text-decoration: underline;
+  color: var(--color-red);
+  text-decoration: none;
 }
 
 /* Action Buttons */
 .device-info-card-container__footer_wrapper {
   margin-top: auto;
-  padding-top: var(--space-md);
+  padding-top: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }
-
 
 .device-info-card__body_block-device,
 .device-info-card__body_unblock-device {
   width: 100%;
-  padding: var(--space-sm);
-  border-radius: var(--radius-md);
-  font-size: 12px;
-  font-weight: 600;
+  padding: 10px;
+  border-radius: 2px;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  font-family: 'JetBrains Mono', monospace;
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: var(--space-xs);
+  gap: 8px;
   border: 1px solid transparent;
+  transition: all 0.2s ease;
 }
 
 .device-info-card__body_block-device {
-  background: rgba(16, 185, 129, 0.05);
-  color: var(--status-ready);
-  border-color: rgba(16, 185, 129, 0.2);
+  background: rgba(0, 255, 136, 0.03);
+  color: var(--color-primary);
+  border-color: rgba(0, 255, 136, 0.1);
 }
 
 .device-info-card__body_block-device:hover {
-  background: var(--status-ready);
-  color: var(--text-inverse);
+  background: rgba(0, 255, 136, 0.1);
+  border-color: var(--color-primary);
+  box-shadow: 0 0 15px rgba(0, 255, 136, 0.1);
 }
 
 .device-info-card__body_unblock-device {
-  background: rgba(239, 68, 68, 0.05);
-  color: var(--status-error);
-  border-color: rgba(239, 68, 68, 0.2);
+  background: rgba(255, 68, 68, 0.03);
+  color: var(--color-red);
+  border-color: rgba(255, 68, 68, 0.1);
 }
 
 .device-info-card__body_unblock-device:hover {
-  background: var(--status-error);
-  color: var(--text-inverse);
-}
-
-/* Override for reservation release button to be sky blue instead of red */
-.device-info-card__body_unblock-device[title*="Reserved"] {
-  background: rgba(56, 189, 248, 0.1);
-  color: var(--accent-blue);
-  border-color: rgba(56, 189, 248, 0.2);
-}
-
-.device-info-card__body_unblock-device[title*="Reserved"]:hover {
-  background: var(--accent-blue);
-  color: var(--secondary);
+  background: rgba(255, 68, 68, 0.1);
+  border-color: var(--color-red);
+  box-shadow: 0 0 15px rgba(255, 68, 68, 0.1);
 }
 
 .device-info-card__body_control-device {
   width: 100%;
-  padding: 10px;
-  margin-top: 10px;
-  border-radius: var(--radius-md);
-  font-size: 13px;
-  font-weight: 700;
+  padding: 12px;
+  border-radius: 2px;
+  font-size: 12px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  font-family: 'Outfit', sans-serif;
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: var(--space-sm);
-  border: 1px solid var(--primary-glow);
-  background: var(--primary-soft);
-  color: var(--primary);
+  gap: 10px;
+  border: 1px solid var(--color-primary);
+  background: rgba(0, 255, 136, 0.1);
+  color: var(--color-primary);
   cursor: pointer;
-  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
-  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  margin-top: 4px;
 }
 
 .device-info-card__body_control-device:hover:not(.disabled) {
-  background: var(--primary);
-  color: var(--text-inverse);
+  background: var(--color-primary);
+  color: var(--bg-page);
+  box-shadow: 0 0 30px rgba(0, 255, 136, 0.3);
   transform: translateY(-2px);
-  box-shadow: 0 10px 15px -3px var(--primary-glow);
 }
 
 .device-info-card__body_control-device.disabled {
-  opacity: 0.5;
+  opacity: 0.3;
   cursor: not-allowed;
   filter: grayscale(1);
-  border-color: var(--border-medium);
+  border-color: var(--border-visible);
+  background: transparent;
+  color: var(--text-dim);
 }
 
 /* Modal Overlay */

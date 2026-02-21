@@ -42,19 +42,7 @@ const Header: React.FC = () => {
     <div className="header-container">
       <div className="header-left">
         <div className="header-logo-container" onClick={() => navigate('/')}>
-          <img src="logo.svg" alt="Xenon Logo" className="header-logo-image" style={{ height: '64px', width: 'auto' }} />
-        </div>
-        <div className="header-nav">
-          {navItems.map((item) => (
-            <button
-              key={item.id}
-              className={`header-nav__item ${isActive(item.path) ? 'active' : ''}`}
-              onClick={() => handleNavClick(item.path)}
-            >
-              <span className="header-nav__icon">{item.icon}</span>
-              {item.label}
-            </button>
-          ))}
+          <img src="logo.svg" alt="Xenon Logo" className="header-logo-image" />
         </div>
       </div>
 

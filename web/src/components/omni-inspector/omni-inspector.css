@@ -4,10 +4,11 @@
     display: flex;
     flex-direction: column;
     height: 100%;
-    background: var(--bg-app);
+    background: var(--bg-page);
     color: var(--text-main);
     font-family: 'Inter', sans-serif;
     overflow: hidden;
+    position: relative;
 }
 
 .omni-main-content {
@@ -26,10 +27,9 @@
     flex-shrink: 0;
     display: flex;
     flex-direction: column;
-    background: rgba(15, 23, 42, 0.4);
-    backdrop-filter: blur(16px);
-    border-radius: var(--radius-md);
-    border: 1px solid var(--border-medium);
+    background: var(--bg-surface);
+    border-radius: 2px;
+    border: 1px solid var(--border-visible);
     overflow: hidden;
 }
 
@@ -37,32 +37,27 @@
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: 8px 16px;
-    background: rgba(15, 23, 42, 0.4);
-    border-bottom: 1px solid var(--border-medium);
-}
-
-.omni-header-left {
-    display: flex;
-    align-items: center;
-    gap: 16px;
+    padding: 12px 16px;
+    background: rgba(0, 0, 0, 0.4);
+    border-bottom: 2px solid var(--border-visible);
 }
 
 .omni-screenshot-title {
-    font-size: 11px;
-    font-weight: 700;
+    font-size: 10px;
+    font-weight: 800;
     text-transform: uppercase;
-    letter-spacing: 0.05em;
-    color: var(--text-main);
-    opacity: 0.8;
+    letter-spacing: 0.1em;
+    color: var(--text-bright);
+    opacity: 0.9;
+    font-family: 'JetBrains Mono', monospace;
 }
 
 .omni-mode-toggle {
     display: flex;
     background: rgba(0, 0, 0, 0.3);
     padding: 2px;
-    border-radius: var(--radius-sm);
-    border: 1px solid var(--border-medium);
+    border-radius: 2px;
+    border: 1px solid var(--border-visible);
 }
 
 .omni-mode-btn {
@@ -72,26 +67,21 @@
     padding: 4px 10px;
     background: transparent;
     border: none;
-    border-radius: 4px;
-    color: var(--text-muted);
-    font-size: 10px;
-    font-weight: 600;
+    border-radius: 1px;
+    color: var(--text-dim);
+    font-size: 9px;
+    font-weight: 800;
     cursor: pointer;
-    transition: all 0.2s ease;
-}
-
-.omni-mode-btn:hover:not(.active) {
-    color: var(--text-main);
-    background: rgba(255, 255, 255, 0.05);
+    transition: all 0.2s;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    font-family: 'JetBrains Mono', monospace;
 }
 
 .omni-mode-btn.active {
-    background: var(--primary);
-    color: #000;
-}
-
-.omni-mode-btn svg {
-    opacity: 0.8;
+    background: var(--color-primary);
+    color: var(--bg-page);
+    box-shadow: 0 0 10px rgba(0, 255, 136, 0.3);
 }
 
 .omni-refresh-btn {
@@ -99,22 +89,22 @@
     align-items: center;
     gap: 6px;
     padding: 6px 12px;
-    background: var(--primary);
-    color: #000;
+    background: var(--color-primary);
+    color: var(--bg-page);
     border: none;
-    border-radius: var(--radius-sm);
-    font-size: 10px;
-    font-weight: 700;
+    border-radius: 2px;
+    font-size: 9px;
+    font-weight: 800;
     text-transform: uppercase;
-    letter-spacing: 0.05em;
+    letter-spacing: 0.1em;
     cursor: pointer;
-    transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+    transition: all 0.2s;
+    font-family: 'JetBrains Mono', monospace;
 }
 
 .omni-refresh-btn:hover:not(:disabled) {
-    background: #4ade80;
-    transform: translateY(-1px);
-    box-shadow: 0 4px 12px var(--primary-glow);
+    background: #00e67a;
+    box-shadow: 0 0 15px rgba(0, 255, 136, 0.4);
 }
 
 .omni-refresh-btn:disabled {
@@ -249,9 +239,9 @@
     flex: 1;
     display: flex;
     flex-direction: column;
-    background: rgba(15, 23, 42, 0.2);
-    border-radius: var(--radius-md);
-    border: 1px solid var(--border-medium);
+    background: rgba(0, 0, 0, 0.2);
+    border-radius: 2px;
+    border: 1px solid var(--border-visible);
     overflow: hidden;
 }
 
@@ -259,40 +249,33 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 8px 12px;
-    background: rgba(15, 23, 42, 0.4);
-    border-bottom: 1px solid var(--border-medium);
+    padding: 12px;
+    background: rgba(0, 0, 0, 0.4);
+    border-bottom: 2px solid var(--border-visible);
 }
 
 .omni-tree-title {
     display: flex;
     align-items: center;
     gap: 8px;
-    font-size: 11px;
-    font-weight: 700;
+    font-size: 10px;
+    font-weight: 800;
     text-transform: uppercase;
-    letter-spacing: 0.05em;
-    color: var(--text-main);
-    opacity: 0.8;
-}
-
-.omni-tree-title svg {
-    color: var(--primary);
+    letter-spacing: 0.1em;
+    color: var(--text-bright);
+    opacity: 0.9;
+    font-family: 'JetBrains Mono', monospace;
 }
 
 .omni-count-badge {
     font-size: 9px;
-    background: rgba(16, 185, 129, 0.1);
-    color: var(--primary);
-    padding: 2px 6px;
-    border-radius: 4px;
-    font-weight: 700;
+    background: rgba(0, 255, 136, 0.05);
+    color: var(--color-primary);
+    padding: 2px 8px;
+    border-radius: 2px;
+    font-weight: 800;
     text-transform: uppercase;
-}
-
-.omni-tree-actions {
-    display: flex;
-    gap: 4px;
+    font-family: 'JetBrains Mono', monospace;
 }
 
 .omni-action-btn {
@@ -301,18 +284,18 @@
     justify-content: center;
     width: 28px;
     height: 28px;
-    background: rgba(255, 255, 255, 0.03);
-    border: 1px solid var(--border-medium);
-    border-radius: var(--radius-sm);
-    color: var(--text-muted);
+    background: rgba(255, 255, 255, 0.02);
+    border: 1px solid var(--border-visible);
+    border-radius: 2px;
+    color: var(--text-dim);
     cursor: pointer;
-    transition: all 0.2s ease;
+    transition: all 0.2s;
 }
 
 .omni-action-btn:hover {
-    background: rgba(255, 255, 255, 0.08);
-    color: var(--text-main);
-    border-color: var(--text-muted);
+    background: rgba(255, 255, 255, 0.05);
+    color: var(--color-primary);
+    border-color: var(--color-primary);
 }
 
 .omni-tree-search {
@@ -321,138 +304,52 @@
     gap: 8px;
     margin: 12px;
     padding: 8px 12px;
-    background: rgba(0, 0, 0, 0.2);
-    border: 1px solid var(--border-medium);
-    border-radius: var(--radius-sm);
-    transition: all 0.2s ease;
+    background: rgba(0, 0, 0, 0.4);
+    border: 1px solid var(--border-visible);
+    border-radius: 2px;
+    transition: all 0.2s;
 }
 
 .omni-tree-search:focus-within {
-    border-color: var(--primary);
-    box-shadow: 0 0 0 3px var(--primary-soft);
-}
-
-.omni-tree-search svg {
-    color: var(--text-muted);
-    opacity: 0.6;
-    flex-shrink: 0;
+    border-color: var(--color-primary);
+    box-shadow: 0 0 10px rgba(0, 255, 136, 0.1);
 }
 
 .omni-tree-search input {
     flex: 1;
     background: transparent;
     border: none;
-    color: var(--text-main);
-    font-size: 12px;
+    color: var(--text-bright);
+    font-size: 11px;
     outline: none;
+    font-family: 'JetBrains Mono', monospace;
 }
-
-.omni-clear-btn {
-    background: none;
-    border: none;
-    color: var(--text-muted);
-    cursor: pointer;
-    font-size: 14px;
-    line-height: 1;
-    padding: 0 4px;
-}
-
-.omni-clear-btn:hover {
-    color: var(--text-main);
-}
-
-.omni-tree-content {
-    flex: 1;
-    overflow-y: auto;
-    padding: 0 8px 16px 8px;
-}
-
-/* Tree Node Styling */
-
 
 .tree-item {
     display: flex;
     align-items: center;
     gap: 8px;
-    padding: 12px 16px;
-    margin-bottom: 4px;
-    border-radius: var(--radius-md);
+    padding: 8px 12px;
+    margin-bottom: 2px;
+    border-radius: 1px;
     cursor: pointer;
-    font-size: 13px;
-    color: var(--text-muted);
-    transition: all 0.2s ease;
+    font-size: 12px;
+    color: var(--text-dim);
+    transition: all 0.15s;
     border: 1px solid transparent;
-    min-height: 44px;
-    background: rgba(0, 0, 0, 0.15);
+    min-height: 36px;
+    background: rgba(0, 0, 0, 0.1);
 }
 
 .tree-item:hover {
-    background: rgba(255, 255, 255, 0.05);
-    color: var(--text-main);
+    background: rgba(255, 255, 255, 0.02);
+    color: var(--text-bright);
 }
 
 .tree-item.selected {
-    background: var(--primary-soft);
-    color: var(--primary);
-    border-color: var(--primary);
-}
-
-.tree-item.hovered:not(.selected) {
-    background: rgba(16, 185, 129, 0.08);
-}
-
-.tree-item-indent {
-    flex-shrink: 0;
-}
-
-.tree-toggle {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 16px;
-    height: 16px;
-    background: none;
-    border: none;
-    color: var(--text-muted);
-    cursor: pointer;
-    padding: 0;
-    flex-shrink: 0;
-}
-
-.tree-toggle:hover {
-    color: var(--primary);
-}
-
-.tree-toggle-spacer {
-    width: 16px;
-    flex-shrink: 0;
-}
-
-.tree-icon {
-    color: var(--text-muted);
-    opacity: 0.5;
-    flex-shrink: 0;
-}
-
-.tree-label {
-    flex: 1;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-
-.tree-badge {
-    font-size: 9px;
-    background: rgba(255, 255, 255, 0.05);
-    color: var(--text-muted);
-    padding: 1px 5px;
-    border-radius: 3px;
-    flex-shrink: 0;
-}
-
-.tree-children {
-    border-left: 1px solid var(--border-subtle);
-    margin-left: 8px;
+    background: rgba(0, 255, 136, 0.05);
+    color: var(--color-primary);
+    border-color: rgba(0, 255, 136, 0.3);
 }
 
 /* ========== Details Panel (Right) ========== */
@@ -461,10 +358,9 @@
     min-width: 320px;
     display: flex;
     flex-direction: column;
-    background: rgba(15, 23, 42, 0.4);
-    backdrop-filter: blur(16px);
-    border-radius: var(--radius-md);
-    border: 1px solid var(--border-medium);
+    background: var(--bg-surface);
+    border-radius: 2px;
+    border: 1px solid var(--border-visible);
     overflow: hidden;
 }
 
@@ -473,84 +369,60 @@
     align-items: center;
     gap: 8px;
     padding: 12px 16px;
-    background: rgba(15, 23, 42, 0.4);
-    border-bottom: 1px solid var(--border-medium);
-    font-size: 11px;
-    font-weight: 700;
+    background: rgba(0, 0, 0, 0.4);
+    border-bottom: 2px solid var(--border-visible);
+    font-size: 10px;
+    font-weight: 800;
     text-transform: uppercase;
-    letter-spacing: 0.05em;
-    color: var(--text-main);
-    opacity: 0.8;
+    letter-spacing: 0.1em;
+    color: var(--text-bright);
+    opacity: 0.9;
+    font-family: 'JetBrains Mono', monospace;
 }
 
-.omni-details-header svg {
-    color: var(--primary);
-}
-
-.omni-details-content {
-    flex: 1;
-    overflow-y: auto;
-    padding: 16px;
-}
-
-/* Section Styling - Matches Debug Logs */
 .omni-section {
-    margin-bottom: 16px;
+    margin-bottom: 24px;
 }
 
 .omni-section-header {
-    font-size: 10px;
-    font-weight: 700;
+    font-size: 9px;
+    font-weight: 800;
     text-transform: uppercase;
-    letter-spacing: 0.05em;
-    color: var(--text-muted);
-    margin-bottom: 8px;
-    padding-bottom: 6px;
-    border-bottom: 1px solid var(--border-subtle);
+    letter-spacing: 0.1em;
+    color: var(--text-dim);
+    margin-bottom: 12px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--border-visible);
+    font-family: 'JetBrains Mono', monospace;
 }
 
 /* Info Table */
-.omni-info-table {
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-}
-
 .omni-info-row {
     display: flex;
     gap: 16px;
-    padding: 16px 18px;
-    background: rgba(0, 0, 0, 0.3);
-    border-radius: var(--radius-md);
-    border: 1px solid var(--border-medium);
-    min-height: 52px;
+    padding: 12px 16px;
+    background: rgba(0, 0, 0, 0.4);
+    border-radius: 2px;
+    border: 1px solid var(--border-visible);
+    min-height: 44px;
     align-items: center;
 }
 
 .omni-info-key {
     width: 60px;
     flex-shrink: 0;
-    font-size: 10px;
-    font-weight: 700;
+    font-size: 9px;
+    font-weight: 800;
     text-transform: uppercase;
-    color: var(--text-muted);
+    color: var(--text-dim);
+    font-family: 'JetBrains Mono', monospace;
 }
 
 .omni-info-value {
     flex: 1;
-    font-size: 12px;
-    color: var(--text-main);
-    word-break: break-all;
-}
-
-.omni-info-value.mono {
-    font-family: 'Fira Code', monospace;
     font-size: 11px;
-}
-
-.omni-info-value.small {
-    font-size: 10px;
-    color: var(--text-muted);
+    color: var(--text-bright);
+    word-break: break-all;
 }
 
 /* Layout Grid */
@@ -563,71 +435,68 @@
 .omni-layout-item {
     display: flex;
     flex-direction: column;
-    gap: 8px;
-    padding: 18px 14px;
-    background: rgba(0, 0, 0, 0.3);
-    border-radius: var(--radius-md);
-    border: 1px solid var(--border-medium);
+    gap: 6px;
+    padding: 12px 8px;
+    background: rgba(0, 0, 0, 0.4);
+    border-radius: 2px;
+    border: 1px solid var(--border-visible);
     text-align: center;
-    min-height: 72px;
+    min-height: 60px;
     justify-content: center;
 }
 
 .omni-layout-label {
-    font-size: 9px;
-    font-weight: 700;
+    font-size: 8px;
+    font-weight: 800;
     text-transform: uppercase;
-    color: var(--text-muted);
+    color: var(--text-dim);
+    font-family: 'JetBrains Mono', monospace;
 }
 
 .omni-layout-value {
-    font-size: 13px;
-    font-weight: 600;
-    color: var(--primary);
-    font-family: 'Fira Code', monospace;
+    font-size: 12px;
+    font-weight: 800;
+    color: var(--color-primary);
+    font-family: 'JetBrains Mono', monospace;
 }
 
-/* Locators List - Matches log-line styling */
-.omni-locators-list {
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-}
-
+/* Locators List */
 .omni-locator-row {
     display: flex;
     align-items: center;
     gap: 12px;
-    padding: 16px 18px;
-    background: #020617;
-    border-radius: var(--radius-md);
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    border-left: 4px solid var(--primary);
-    transition: background 0.2s ease;
-    min-height: 56px;
+    padding: 12px 16px;
+    background: rgba(0, 0, 0, 0.6);
+    border-radius: 2px;
+    border: 1px solid var(--border-visible);
+    border-left: 3px solid var(--color-primary);
+    transition: all 0.2s;
+    min-height: 48px;
 }
 
 .omni-locator-row:hover {
     background: rgba(255, 255, 255, 0.02);
+    border-color: var(--color-primary);
 }
 
 .omni-locator-strategy {
     flex-shrink: 0;
-    font-size: 9px;
-    font-weight: 700;
+    font-size: 8px;
+    font-weight: 800;
     text-transform: uppercase;
-    background: rgba(16, 185, 129, 0.1);
-    color: var(--primary);
+    background: rgba(0, 255, 136, 0.05);
+    color: var(--color-primary);
     padding: 2px 6px;
-    border-radius: 3px;
+    border-radius: 1px;
     letter-spacing: 0.05em;
+    font-family: 'JetBrains Mono', monospace;
 }
 
 .omni-locator-value {
     flex: 1;
-    font-family: 'Fira Code', monospace;
+    font-family: 'JetBrains Mono', monospace;
     font-size: 11px;
-    color: #94a3b8;
+    color: var(--text-muted);
     word-break: break-all;
     line-height: 1.5;
 }
@@ -726,6 +595,7 @@
 .omni-attributes-table::-webkit-scrollbar-thumb:hover {
     background: var(--text-muted);
 }
+
 /* ========== Action Parity Styles ========== */
 .omni-quick-actions {
     display: flex;

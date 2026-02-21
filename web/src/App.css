@@ -1,9 +1,28 @@
-.app-container {
+.app-layout {
   display: flex;
-  min-height: 100vh;
-  width: 100%;
   flex-direction: column;
-  background: var(--bg-app);
+  height: 100vh;
+  width: 100vw;
+  overflow: hidden;
+  background: var(--bg-page);
+}
+
+.app-main-container {
+  display: flex;
+  flex: 1;
+  width: 100%;
+  margin-top: 40px;
+  /* Space for StatusBar */
+  height: calc(100vh - 40px);
+}
+
+.app-content {
+  flex: 1;
+  margin-left: 56px;
+  /* Space for Sidebar */
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
 }
 
 .app-body-container {
@@ -11,8 +30,9 @@
   flex: 1;
   width: 100%;
   max-width: 1400px;
-  margin: 64px auto 0;
-  padding: var(--space-lg);
+  margin: 0 auto;
+  padding: var(--space-sm) var(--space-lg);
+  overflow-y: auto;
 }
 
 .app-body-container.sessions-view,
@@ -22,9 +42,9 @@
   flex-direction: column;
   width: 100%;
   max-width: none;
-  margin: 64px 0 0;
+  margin: 0;
   padding: 0;
-  height: calc(100vh - 64px);
+  height: 100%;
   overflow-y: auto;
   overflow-x: hidden;
 }

@@ -849,6 +849,14 @@ const SessionDashboard: React.FC = () => {
 
   return (
     <div className="session-dashboard-root">
+      {/* Mission Control Scanline Overlay */}
+      <div className="scanline" style={{
+        position: 'absolute',
+        inset: 0,
+        pointerEvents: 'none',
+        opacity: 0.05,
+        zIndex: 1001
+      }}></div>
       <div className="dashboard-layout">
         <aside className="dashboard-sidebar">
           <div className="sidebar-header">
