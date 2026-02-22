@@ -1,6 +1,6 @@
 node_modules
 .idea
-lib/
+/lib/
 .DS_Store
 .history
 .vscode
