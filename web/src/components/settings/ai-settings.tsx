@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import XenonApiService from '../../api-service';
 import './settings.css';
+import { ActionBar, SettingSection } from '../ui/Layouts';
 import {
   Brain,
   ShieldCheck,
@@ -163,6 +164,17 @@ export const AISettings: React.FC = () => {
 
   return (
     <div className="settings-container mesh-gradient-ai">
+      {/* Mission Control Scanline Overlay */}
+      <div
+        className="scanline"
+        style={{
+          position: 'absolute',
+          inset: 0,
+          pointerEvents: 'none',
+          opacity: 0.05,
+          zIndex: 1001,
+        }}
+      ></div>
       <div className="settings-header">
         <div className="settings-title-group">
           <Brain className="settings-icon ai-engine-icon" size={28} />
@@ -366,26 +378,12 @@ export const AISettings: React.FC = () => {
         )}
       </div>
 
-      <footer className="settings-footer">
-        <div className="footer-dock">
-          <button className="ghost-btn" onClick={loadConfig}>
-            <RefreshCw size={16} /> Refresh Environment
-          </button>
-          <button
-            className="save-btn primary"
-            onClick={handleSave}
-            disabled={saving || !activeProvider?.isConfigured}
-            title={
-              !activeProvider?.isConfigured
-                ? 'The selected provider is not configured in the environment'
-                : 'Save active provider selection'
-            }
-          >
-            {saving ? <RefreshCw className="animate-spin" size={16} /> : <Save size={16} />}
-            {saving ? 'Applying...' : 'Save Configuration'}
-          </button>
-        </div>
-      </footer>
+      <ActionBar
+        onSave={handleSave}
+        onDiscard={loadConfig}
+        isSaving={saving}
+        saveLabel="Save Configuration"
+      />
     </div>
   );
 };

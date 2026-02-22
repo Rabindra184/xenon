@@ -106,6 +106,17 @@ export const WebhookSettings: React.FC = () => {
 
   return (
     <div className="webhook-settings-container">
+      {/* Mission Control Scanline Overlay */}
+      <div
+        className="scanline"
+        style={{
+          position: 'absolute',
+          inset: 0,
+          pointerEvents: 'none',
+          opacity: 0.05,
+          zIndex: 1001,
+        }}
+      ></div>
       <div className="webhook-header">
         <div className="webhook-title">
           <Bell className="webhook-icon" size={20} />

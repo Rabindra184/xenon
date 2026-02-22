@@ -9,19 +9,22 @@
 .apps-registry-content {
   flex: 1;
   overflow-y: auto;
-  padding: var(--space-md) var(--space-lg);
+  padding: 0 24px 24px;
+  background: var(--bg-page);
 }
 
 .registry-table-header {
   display: grid;
   grid-template-columns: 3fr 1fr 1fr 1.5fr 1.5fr;
   padding: 12px 24px;
-  border-bottom: 1px solid var(--border-medium);
-  color: var(--text-muted);
-  font-size: 10px;
+  border-bottom: 2px solid var(--border-visible);
+  color: var(--text-dim);
+  font-size: var(--fs-xs);
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.1em;
+  background: rgba(0, 0, 0, 0.2);
+  font-family: 'JetBrains Mono', monospace;
 }
 
 .registry-list {
@@ -34,19 +37,20 @@
   display: grid;
   grid-template-columns: 3fr 1fr 1fr 1.5fr 1.5fr;
   align-items: center;
-  padding: 16px 24px;
-  background: transparent;
-  border-bottom: 1px solid var(--border-light);
-  transition: all 0.15s ease;
+  padding: 12px 24px;
+  background: rgba(0, 0, 0, 0.1);
+  border-bottom: 1px solid var(--border-visible);
+  transition: all 0.2s ease;
   position: relative;
 }
 
 .artifact-row:hover {
-  background: rgba(255, 255, 255, 0.01);
+  background: rgba(255, 255, 255, 0.02);
 }
 
 .artifact-row.active {
-  background: rgba(34, 197, 94, 0.03);
+  background: rgba(0, 255, 136, 0.05);
+  border-left: 3px solid var(--color-primary);
 }
 
 .col-app-info {
@@ -57,26 +61,26 @@
 }
 
 .app-platform-badge {
-  width: 36px;
-  height: 36px;
-  background: rgba(255, 255, 255, 0.02);
-  border: 1px solid var(--border-medium);
-  border-radius: 8px;
+  width: 32px;
+  height: 32px;
+  background: rgba(0, 0, 0, 0.4);
+  border: 1px solid var(--border-visible);
+  border-radius: 6px;
   display: flex;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
-  color: var(--text-muted);
+  color: var(--text-dim);
 }
 
 .artifact-row.android .app-platform-badge {
-  color: #3ddc84;
-  background: rgba(61, 220, 132, 0.05);
+  color: var(--color-primary);
+  border-color: rgba(0, 255, 136, 0.2);
 }
 
 .artifact-row.ios .app-platform-badge {
-  color: #fff;
-  background: rgba(255, 255, 255, 0.05);
+  color: var(--text-bright);
+  border-color: var(--border-subtle);
 }
 
 .app-text-block {
@@ -86,92 +90,94 @@
 }
 
 .app-display-name {
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--text-main);
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-bright);
+  font-family: 'Outfit', sans-serif;
   margin-bottom: 2px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  text-transform: uppercase;
 }
 
 .app-package-id {
-  font-family: 'Fira Code', monospace;
-  font-size: 11px;
-  color: var(--text-muted);
-  opacity: 0.6;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: var(--fs-xs);
+  color: var(--text-dim);
+  opacity: 0.8;
   display: flex;
   align-items: center;
   gap: 6px;
 }
 
 .col-version {
-  font-family: 'Fira Code', monospace;
-  font-size: 12px;
-  color: var(--text-muted);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  color: var(--color-primary);
+  font-weight: 600;
 }
 
 .col-size {
-  font-family: 'Fira Code', monospace;
-  font-size: 12px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
   color: var(--text-muted);
 }
 
 .col-timestamp {
-  font-size: 12px;
-  color: var(--text-muted);
+  font-size: var(--fs-xs);
+  color: var(--text-dim);
+  font-family: 'JetBrains Mono', monospace;
+  text-transform: uppercase;
 }
 
 .col-actions {
   display: flex;
   align-items: center;
   justify-content: flex-end;
-  gap: 8px;
+  gap: 12px;
 }
 
 .instant-deploy-trigger {
-  height: 30px;
-  background: rgba(255, 255, 255, 0.03);
-  border: 1px solid var(--border-medium);
+  height: 28px;
+  background: rgba(0, 255, 136, 0.05);
+  border: 1px solid var(--color-primary);
   border-radius: 6px;
   padding: 0 12px;
   display: flex;
   align-items: center;
-  gap: 6px;
-  color: var(--text-main);
-  font-size: 11px;
-  font-weight: 600;
+  gap: 8px;
+  color: var(--color-primary);
+  font-size: var(--fs-xs);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
   transition: all 0.2s;
   cursor: pointer;
 }
 
 .instant-deploy-trigger:hover:not(:disabled) {
-  background: var(--primary);
-  color: #000;
-  border-color: var(--primary);
-}
-
-.instant-deploy-trigger.active {
-  background: var(--bg-surface);
-  border-color: var(--primary);
+  background: var(--color-primary);
+  color: var(--bg-page);
+  box-shadow: 0 0 20px rgba(0, 255, 136, 0.2);
 }
 
 .utility-icon-btn {
-  width: 30px;
-  height: 30px;
-  background: transparent;
-  border: none;
+  width: 28px;
+  height: 28px;
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid var(--border-visible);
   border-radius: 6px;
   display: flex;
   align-items: center;
   justify-content: center;
-  color: var(--text-muted);
+  color: var(--text-dim);
   transition: all 0.2s;
 }
 
 .utility-icon-btn:hover {
-  background: rgba(255, 255, 255, 0.05);
-  color: var(--text-main);
+  border-color: var(--border-subtle);
+  color: var(--text-bright);
 }
 
 .utility-icon-btn.danger:hover {
@@ -179,32 +185,51 @@
 }
 
 /* --- Header Actions --- */
+.device-explorer-header-container {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 24px;
+  background: rgba(15, 15, 26, 0.4);
+  backdrop-filter: blur(12px);
+  border-bottom: 1px solid var(--border-visible);
+  z-index: 100;
+}
+
+.device-explorer-header-left-container {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.device-explorer-header-right-container {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.device-explorer-header-filter-count {
+  margin-left: 8px;
+}
+
 .icon-btn-secondary {
   width: 32px;
   height: 32px;
-  background: #1e293b;
-  border: 1px solid var(--border-medium);
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--border-visible);
   border-radius: 6px;
   display: flex;
   align-items: center;
   justify-content: center;
-  color: var(--text-muted);
+  color: var(--text-dim);
   cursor: pointer;
   transition: all 0.2s ease;
 }
 
 .icon-btn-secondary:hover {
-  background: #2d3748;
-  color: var(--text-main);
-  border-color: var(--primary);
-}
-
-.icon-btn-secondary svg {
-  transition: transform 0.2s ease;
-}
-
-.icon-btn-secondary:active svg {
-  transform: scale(0.9);
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text-bright);
+  border-color: var(--border-subtle);
 }
 
 /* --- Flyout Deployment --- */
@@ -214,7 +239,7 @@
   padding: 6px;
   right: 180px;
   transform: translateY(-50%);
-  background: #0f172a;
+  background: var(--bg-surface);
   border: 1px solid var(--primary);
   border-radius: 8px;
   box-shadow: 0 10px 40px rgba(0, 0, 0, 0.6);
@@ -238,7 +263,7 @@
 
 .target-device-select {
   height: 32px;
-  background: #1e293b;
+  background: rgba(0, 0, 0, 0.25);
   border: 1px solid var(--border-medium);
   border-radius: 6px;
   color: var(--text-main);
@@ -257,11 +282,11 @@
 
 .target-device-select:hover {
   border-color: var(--primary);
-  background-color: #2d3748;
+  background-color: rgba(0, 0, 0, 0.4);
 }
 
 .target-device-select option {
-  background: #0f172a;
+  background: var(--bg-surface);
   color: var(--text-main);
   padding: 8px;
 }
@@ -298,9 +323,9 @@
 }
 
 .confirm-deploy-btn:hover:not(:disabled) {
-  background: #4ade80;
+  background: var(--primary-hover);
   transform: scale(1.05);
-  box-shadow: 0 0 15px rgba(34, 197, 94, 0.4);
+  box-shadow: 0 0 15px var(--primary-glow);
 }
 
 .confirm-deploy-btn:disabled {
@@ -372,7 +397,7 @@
 }
 
 .empty-description {
-  font-size: 15px;
+  font-size: var(--fs-md);
   line-height: 1.6;
   color: var(--text-muted);
   margin-bottom: 40px;
@@ -396,8 +421,9 @@
   align-items: center;
   padding: 30px 60px;
   background: var(--bg-surface);
-  border: 1px dashed var(--primary);
-  border-radius: 12px;
+  border: 1px solid var(--color-primary);
+  box-shadow: 0 0 15px rgba(0, 255, 136, 0.1);
+  border-radius: 8px;
   color: var(--primary);
   font-weight: 700;
   font-size: 16px;

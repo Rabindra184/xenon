@@ -3,19 +3,18 @@
 .terminal-container {
     display: flex;
     flex-direction: column;
-    background-color: #020617;
-    /* Slate 950 - deeper OLED */
-    color: #F8FAFC;
-    font-family: 'JetBrains Mono', 'Fira Code', monospace;
-    border-radius: 16px;
+    background-color: var(--bg-page);
+    color: var(--text-bright);
+    font-family: 'JetBrains Mono', monospace;
+    border-radius: 6px;
     overflow: hidden;
     height: 100%;
     max-height: 100%;
     width: 100%;
     min-height: 0;
-    /* Allow shrinking in flex */
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.5), 0 10px 10px -5px rgba(0, 0, 0, 0.4);
+    border: 1px solid var(--border-visible);
+    box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5);
+    position: relative;
 }
 
 .terminal-header {
@@ -23,8 +22,8 @@
     align-items: center;
     justify-content: space-between;
     padding: 12px 20px;
-    background-color: #1E293B;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+    background-color: rgba(0, 0, 0, 0.4);
+    border-bottom: 2px solid var(--border-visible);
 }
 
 .terminal-controls {
@@ -34,29 +33,31 @@
 }
 
 .dot {
-    width: 10px;
-    height: 10px;
-    border-radius: 50%;
+    width: 8px;
+    height: 8px;
+    border-radius: 4px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
 }
 
 .dot.red {
-    background-color: #ef4444;
+    background-color: #ff4d4d;
 }
 
 .dot.yellow {
-    background-color: #f59e0b;
+    background-color: #ffcc00;
 }
 
 .dot.green {
-    background-color: #22c55e;
+    background-color: var(--color-primary);
 }
 
 .terminal-title {
-    font-size: 11px;
-    font-weight: 700;
-    color: #94A3B8;
+    font-size: var(--fs-xs);
+    font-weight: 800;
+    color: var(--text-dim);
     text-transform: uppercase;
-    letter-spacing: 0.1em;
+    letter-spacing: 0.15em;
+    font-family: 'JetBrains Mono', monospace;
 }
 
 .terminal-actions {
@@ -67,90 +68,78 @@
 
 .terminal-action-btn {
     background: transparent;
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    color: #94A3B8;
-    font-size: 9px;
-    font-weight: 700;
-    padding: 4px 8px;
-    border-radius: 4px;
+    border: 1px solid var(--border-visible);
+    color: var(--text-dim);
+    font-size: var(--fs-xs);
+    font-weight: 800;
+    padding: 4px 10px;
+    border-radius: 6px;
     cursor: pointer;
-    transition: all 0.2s ease;
+    transition: all 0.2s;
+    text-transform: uppercase;
+    font-family: 'JetBrains Mono', monospace;
 }
 
 .terminal-action-btn:hover {
-    color: white;
+    color: var(--text-bright);
     background: rgba(255, 255, 255, 0.05);
-    border-color: rgba(255, 255, 255, 0.2);
+    border-color: var(--text-muted);
 }
-
 
 .terminal-history {
     flex: 1;
     overflow-y: auto;
     overflow-x: hidden;
-    padding: 16px;
-    /* More breathing room */
-    padding-bottom: 24px;
-    font-size: 13px;
+    padding: 20px;
+    font-size: 12px;
     line-height: 1.6;
-    /* Better readability */
     scrollbar-width: thin;
-    scrollbar-color: var(--primary, #22C55E) #0F172A;
+    scrollbar-color: var(--color-primary) var(--bg-page);
     min-height: 0;
-    /* Allow flex to shrink this child if parent is constrained */
 }
 
 .terminal-history::-webkit-scrollbar {
-    width: 8px;
+    width: 6px;
 }
 
 .terminal-history::-webkit-scrollbar-track {
-    background: #0F172A;
+    background: transparent;
 }
 
 .terminal-history::-webkit-scrollbar-thumb {
-    background-color: #334155;
+    background-color: var(--border-visible);
     border-radius: 4px;
-    border: 2px solid #0F172A;
-    /* Create a gap effect */
 }
 
 .terminal-history::-webkit-scrollbar-thumb:hover {
-    background-color: var(--primary, #22C55E);
+    background-color: var(--color-primary);
 }
 
 .terminal-line {
-    margin-bottom: 8px;
+    margin-bottom: 6px;
     white-space: pre-wrap;
-    /* Preserve formatting */
     word-break: normal;
-    /* Prevent breaking words mid-word */
     overflow-wrap: anywhere;
-    /* Break long strings (URLs/JSON) only if needed */
 }
 
 .terminal-line.command {
-    color: #22C55E;
-    /* Vibrant Green for commands */
+    color: var(--color-primary);
     font-weight: 600;
 }
 
 .terminal-line.output {
-    color: #E2E8F0;
-    /* Slate 200 - High contrast text */
+    color: var(--text-body);
 }
 
 .terminal-line.error {
-    color: #EF4444;
-    /* Red 500 */
+    color: #ff4d4d;
 }
 
 .terminal-line.system {
-    color: #94A3B8;
-    /* Slate 400 */
+    color: var(--text-dim);
     font-style: italic;
-    border-bottom: 1px dashed #334155;
-    padding-bottom: 4px;
+    border-bottom: 1px dashed var(--border-visible);
+    padding-bottom: 6px;
     margin-bottom: 12px;
 }
 
@@ -158,17 +147,14 @@
     display: flex;
     align-items: center;
     padding: 16px 20px;
-    background-color: #1E293B;
-    /* Slate 800 input area */
-    border-top: 1px solid #334155;
-    box-shadow: 0 -4px 6px -1px rgba(0, 0, 0, 0.1);
+    background-color: rgba(0, 0, 0, 0.4);
+    border-top: 2px solid var(--border-visible);
 }
 
 .terminal-prompt {
-    color: #38BDF8;
-    /* Sky 400 - Distinct prompt color */
+    color: var(--color-primary);
     margin-right: 12px;
-    font-weight: bold;
+    font-weight: 800;
     user-select: none;
 }
 
@@ -176,43 +162,26 @@
     flex: 1;
     background: transparent;
     border: none;
-    color: #F8FAFC;
+    color: var(--text-bright);
     font-family: inherit;
-    font-size: 14px;
-    /* Slightly larger input */
+    font-size: 13px;
     outline: none;
     font-weight: 500;
 }
 
 .terminal-input::placeholder {
-    color: rgba(255, 255, 255, 0.2);
+    color: rgba(255, 255, 255, 0.1);
 }
-
-.animate-pulse {
-    animation: pulse-op 1.5s infinite;
-}
-
-@keyframes pulse-op {
-
-    0%,
-    100% {
-        opacity: 1;
-    }
-
-    50% {
-        opacity: 0.4;
-    }
-}
-
 
 .terminal-loading-indicator {
     display: inline-block;
     width: 8px;
     height: 16px;
-    background-color: #22C55E;
+    background-color: var(--color-primary);
     animation: blink 1s step-end infinite;
     vertical-align: middle;
     margin-left: 8px;
+    border-radius: 4px;
 }
 
 @keyframes blink {

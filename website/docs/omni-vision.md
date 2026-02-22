@@ -6,6 +6,8 @@ title: Omni-Vision
 
 Omni-Vision is Xenon's visual intelligence layer powered by Florence-2. It enables **coordinate-free element interaction** and **visual assertions** — testing your app as a human sees it, not as the DOM describes it.
 
+For interactive exploration and code generation powered by Omni-Vision, see the [OmniInspector](omni-inspector.md).
+
 ---
 
 ## Capabilities

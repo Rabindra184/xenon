@@ -463,10 +463,9 @@ export default function DeviceControl({ device, onClose }: DeviceControlProps) {
   };
 
   const clearAllScreenshots = () => {
-    if (window.confirm('Clear all captured evidence?')) {
-      setScreenshots([]);
-      setSelectedScreenshotIndex(null);
-    }
+    setScreenshots([]);
+    setSelectedScreenshotIndex(null);
+    toast('Cleared all captured evidence.', 'success');
   };
 
   const downloadScreenshot = (base64: string) => {
@@ -568,6 +567,17 @@ export default function DeviceControl({ device, onClose }: DeviceControlProps) {
 
   return (
     <div className="device-control-view">
+      {/* Mission Control Scanline Overlay */}
+      <div
+        className="scanline"
+        style={{
+          position: 'absolute',
+          inset: 0,
+          pointerEvents: 'none',
+          opacity: 0.05,
+          zIndex: 1001,
+        }}
+      ></div>
       <header className="control-view-top-bar">
         <button className="back-to-devices-btn" onClick={onClose}>
           <ChevronLeft size={18} /> DEVICES
@@ -706,7 +716,7 @@ export default function DeviceControl({ device, onClose }: DeviceControlProps) {
           <div
             className={`interactions-scroll-area ${
               activeTab === 'terminal' ? 'terminal-mode' : ''
-            }`}
+            } ${activeTab === 'screenshot' || activeTab === 'logs' ? 'screenshot-mode' : ''}`}
           >
             <div className="tab-content">
               {activeTab === 'omni' && (
@@ -990,7 +1000,7 @@ export default function DeviceControl({ device, onClose }: DeviceControlProps) {
               )}
 
               {activeTab === 'logs' && (
-                <div className="action-card screenshot-card" style={{ padding: 0 }}>
+                <div className="action-card screenshot-card" style={{ padding: 0, gap: 0 }}>
                   <div className="log-toolbar">
                     <div className="log-filter-group">
                       <div className="log-stat-pill">LIVE</div>

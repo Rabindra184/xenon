@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import XenonApiService from '../../api-service';
 import './settings.css';
+import { ActionBar, SettingSection } from '../ui/Layouts';
 import {
   Shield as InfrastructureIcon,
   Save,
@@ -115,6 +116,17 @@ export const Settings: React.FC = () => {
 
   return (
     <div className="settings-container mesh-gradient-infra">
+      {/* Mission Control Scanline Overlay */}
+      <div
+        className="scanline"
+        style={{
+          position: 'absolute',
+          inset: 0,
+          pointerEvents: 'none',
+          opacity: 0.05,
+          zIndex: 1001,
+        }}
+      ></div>
       <div className="settings-header">
         <div className="settings-title-group">
           <InfrastructureIcon className="settings-icon infra-icon" size={28} />
@@ -239,28 +251,13 @@ export const Settings: React.FC = () => {
         )}
       </div>
 
-      <div className="settings-footer stagger-4">
-        <div className="footer-left">
-          <button
-            className="reset-to-defaults-btn"
-            onClick={handleResetToDefaults}
-            disabled={saving}
-            style={{ padding: '12px 20px', fontSize: '0.875rem' }}
-          >
-            <RotateCcw size={16} />
-            Restore Defaults
-          </button>
-        </div>
-        <div className="footer-right">
-          <button className="reset-btn" onClick={loadConfig} disabled={saving}>
-            Discard
-          </button>
-          <button className="save-btn" onClick={() => handleSave()} disabled={saving}>
-            {saving ? <RefreshCw className="animate-spin" size={18} /> : <Save size={18} />}
-            {saving ? 'Saving...' : 'Save Configuration'}
-          </button>
-        </div>
-      </div>
+      <ActionBar
+        onSave={handleSave}
+        onDiscard={loadConfig}
+        onRestoreDefaults={handleResetToDefaults}
+        isSaving={saving}
+        saveLabel="Save Configuration"
+      />
     </div>
   );
 };

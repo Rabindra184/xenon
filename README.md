@@ -89,7 +89,7 @@ appium plugin install xenon
 git clone https://github.com/xenon-platform/xenon.git
 cd xenon
 npm install
-npm run build
+npm run build:all
 appium plugin install --source=local .
 ```
 
@@ -406,16 +406,17 @@ git clone https://github.com/xenon-platform/xenon.git
 cd xenon
 npm install
 
-# Build
-npm run build
+# Build everything (Plugin + Dashboard)
+npm run build:all
 
-# Build with web dashboard
-npm run build-web-and-plugin
+# High-velocity development loop
+# (Auto-rebuilds and restarts Appium server)
+npm run dev
 
 # Run tests
-npm test                      # Unit tests
-npm run integration-android   # Android integration
-npm run integration-ios       # iOS integration
+npm run test:all              # Unit tests
+npm run test:android          # Android integration
+npm run test:ios              # iOS integration
 ```
 
 ---

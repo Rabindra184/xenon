@@ -61,7 +61,14 @@ appium plugin install --source=npm appium-dashboard
 If you are developing Xenon or using a custom build:
 
 ```bash
+# Build everything (Plugin + Dashboard)
+npm run build:all
+
+# Install locally
 appium plugin install --source=local /path/to/appium-xenon
+
+# High-velocity dev loop (Auto-rebuilds)
+npm run dev
 ```
 
 </TabItem>

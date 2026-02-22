@@ -8,13 +8,13 @@ const sidebars: SidebarsConfig = {
       type: 'category',
       label: 'Core Architecture',
       collapsed: false,
-      items: ['architecture', 'server-args', 'capabilities', 'deployment'],
+      items: ['architecture', 'design-system', 'server-args', 'capabilities', 'deployment'],
     },
     {
       type: 'category',
       label: 'Intelligence & AI',
       collapsed: false,
-      items: ['ai-features', 'self-healing', 'omni-vision'],
+      items: ['ai-features', 'omni-inspector', 'self-healing', 'omni-vision'],
     },
     {
       type: 'category',

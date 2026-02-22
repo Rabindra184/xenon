@@ -720,65 +720,117 @@ export default class AndroidDeviceManager implements IDeviceManager {
     await adbInstance.adbExec(['-s', udid, 'uninstall', bundleId]);
   }
 
+  /**
+   * Helper function to temporarily set the Android device's IME to Appium Settings.
+   * This is required on Android 10+ to bypass OS background clipboard restrictions.
+   */
+  private async withAppiumIME<T>(
+    adbInstance: ExtendedADB,
+    udid: string,
+    action: () => Promise<T>,
+  ): Promise<T> {
+    let originalIME = '';
+    const appiumIME = 'io.appium.settings/.AppiumIME';
+
+    try {
+      // 1. Get current IME
+      originalIME = (
+        await adbInstance.adbExec([
+          '-s',
+          udid,
+          'shell',
+          'settings',
+          'get',
+          'secure',
+          'default_input_method',
+        ])
+      ).trim();
+
+      // 2. Enable and Set Appium IME
+      if (originalIME !== appiumIME) {
+        await adbInstance.adbExec(['-s', udid, 'shell', 'ime', 'enable', appiumIME]);
+        await adbInstance.adbExec(['-s', udid, 'shell', 'ime', 'set', appiumIME]);
+        // Give the OS a tiny moment to process the IME swap
+        await new Promise((resolve) => setTimeout(resolve, 500));
+      }
+
+      // 3. Execute the clipboard action with the Appium IME active
+      return await action();
+    } finally {
+      // 4. Always restore the original IME if we swapped it
+      if (originalIME && originalIME !== appiumIME) {
+        try {
+          await adbInstance.adbExec(['-s', udid, 'shell', 'ime', 'set', originalIME]);
+        } catch (e) {
+          log.warn(`[${udid}] Failed to restore original IME (${originalIME}): ${e}`);
+        }
+      }
+    }
+  }
+
   async getClipboard(udid: string): Promise<string> {
     const { adbInstance } = await this.getAdb();
     if (!adbInstance) return '';
     try {
-      // 1. Try Targeted Broadcast method (Reliable for modern Android)
-      const result = await adbInstance.adbExec([
-        '-s',
-        udid,
-        'shell',
-        'am',
-        'broadcast',
-        '-a',
-        'com.appium.settings.clipboard.get',
-        '-n',
-        'io.appium.settings/.receivers.ClipboardReceiver',
-      ]);
+      // Wrap the targeted broadcast in the Appium IME context
+      return await this.withAppiumIME(adbInstance, udid, async () => {
+        // 1. Try Targeted Broadcast method (Reliable for modern Android)
+        const result = await adbInstance.adbExec([
+          '-s',
+          udid,
+          'shell',
+          'am',
+          'broadcast',
+          '-a',
+          'com.appium.settings.clipboard.get',
+          '-n',
+          'io.appium.settings/.receivers.ClipboardReceiver',
+        ]);
 
-      // Parse result like: Broadcast completed: result=-1, data="BASE64_DATA"
-      const dataMatch = /data="([^"]*)"/.exec(result);
-      if (dataMatch) {
-        const rawData = dataMatch[1];
-        if (!rawData) return '';
+        // Parse result like: Broadcast completed: result=-1, data="BASE64_DATA"
+        const dataMatch = /data="([^"]*)"/.exec(result);
+        if (dataMatch) {
+          const rawData = dataMatch[1];
+          if (!rawData) return '';
 
-        // Appium Settings returns Base64 for robustness
-        try {
-          const decoded = Buffer.from(rawData, 'base64').toString('utf8');
-          // If it looks like printable text after decoding, use it
-          if (/^[\x20-\x7E\s\u00A0-\uFFFF]*$/.test(decoded)) return decoded;
-          return rawData;
-        } catch (e) {
-          return rawData;
+          // Appium Settings returns Base64 for robustness
+          try {
+            const decoded = Buffer.from(rawData, 'base64').toString('utf8');
+            // If it looks like printable text after decoding, use it
+            if (/^[\x20-\x7E\s\u00A0-\uFFFF]*$/.test(decoded)) return decoded;
+            return rawData;
+          } catch (e) {
+            return rawData;
+          }
         }
-      }
 
-      // 2. Fallback: Query the content provider
-      const queryResult = await adbInstance.adbExec([
-        '-s',
-        udid,
-        'shell',
-        'content',
-        'query',
-        '--uri',
-        'content://io.appium.settings.clipboard/clipboard',
-      ]);
+        // 2. Fallback: Query the content provider (Legacy/Alternative)
+        const queryResult = await adbInstance.adbExec([
+          '-s',
+          udid,
+          'shell',
+          'content',
+          'query',
+          '--uri',
+          'content://io.appium.settings.clipboard/clipboard',
+        ]);
 
-      // Extract value using a more flexible regex that handles different formats
-      const valMatch = /value=([^\s,]*)/i.exec(queryResult);
-      if (valMatch) {
-        const val = valMatch[1];
-        // Most content providers return base64 for safety
-        try {
-          const decoded = Buffer.from(val, 'base64').toString('utf8');
-          // Basic sanity check: if it contains non-printable characters, it might not have been base64
-          if (/^[\x20-\x7E\s]*$/.test(decoded)) return decoded;
-          return val;
-        } catch (e) {
-          return val;
+        // Extract value using a more flexible regex that handles different formats
+        const valMatch = /value=([^\s,]*)/i.exec(queryResult);
+        if (valMatch) {
+          const val = valMatch[1];
+          // Most content providers return base64 for safety
+          try {
+            const decoded = Buffer.from(val, 'base64').toString('utf8');
+            // Basic sanity check: if it contains non-printable characters, it might not have been base64
+            if (/^[\x20-\x7E\s]*$/.test(decoded)) return decoded;
+            return val;
+          } catch (e) {
+            return val;
+          }
         }
-      }
+        return '';
+      });
     } catch (err: unknown) {
       log.warn(
         `Failed to fetch Android clipboard for ${udid}: ${
@@ -786,6 +838,7 @@ export default class AndroidDeviceManager implements IDeviceManager {
         }`,
       );
     }
+
     return '';
   }
 
@@ -793,23 +846,25 @@ export default class AndroidDeviceManager implements IDeviceManager {
     const { adbInstance } = await this.getAdb();
     if (!adbInstance) return;
     try {
-      await adbInstance.adbExec([
-        '-s',
-        udid,
-        'shell',
-        'am',
-        'broadcast',
-        '-a',
-        'com.appium.settings.clipboard.set',
-        '-n',
-        'io.appium.settings/.receivers.ClipboardReceiver',
-        '--es',
-        'label',
-        'clipboard',
-        '--es',
-        'content',
-        Buffer.from(content).toString('base64'), // Send as Base64 for safety
-      ]);
+      await this.withAppiumIME(adbInstance, udid, async () => {
+        await adbInstance.adbExec([
+          '-s',
+          udid,
+          'shell',
+          'am',
+          'broadcast',
+          '-a',
+          'com.appium.settings.clipboard.set',
+          '-n',
+          'io.appium.settings/.receivers.ClipboardReceiver',
+          '--es',
+          'label',
+          'clipboard',
+          '--es',
+          'content',
+          Buffer.from(content).toString('base64'), // Send as Base64 for safety
+        ]);
+      });
     } catch (err: unknown) {
       log.warn(
         `Failed to set Android clipboard for ${udid}: ${err instanceof Error ? err.message : err}`,

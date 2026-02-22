@@ -301,7 +301,40 @@ export class DeviceExplorer extends React.Component<IDeviceExplorerProps, IDevic
             </Button>
           </div>
         </div>
-        <CardView devices={devices} reloadDevices={() => this.fetchDevices()} />
+
+        {devices.length > 0 ? (
+          <CardView devices={devices} reloadDevices={() => this.fetchDevices()} />
+        ) : (
+          <div className="device-explorer-empty stagger-1">
+            <div className="device-explorer-empty-icon">
+              <AndroidIcon size={32} />
+            </div>
+            {this.state.devices.length === 0 ? (
+              <>
+                <h3 className="brand-font">Global Device Registry Empty</h3>
+                <p>
+                  Xenon hasn't detected any active device nodes in your infrastructure. Ensure your
+                  device farm is connected and heartbeat signals are active.
+                </p>
+                <Button variant="default" onClick={() => this.fetchDevices()}>
+                  <RefreshCw size={14} className="mr-2" />
+                  Manual Sync
+                </Button>
+              </>
+            ) : (
+              <>
+                <h3 className="brand-font">No Devices Found</h3>
+                <p>
+                  Deployment configuration mismatch. Adjust your platform or state filters to find
+                  the appropriate testing target.
+                </p>
+                <Button variant="outline" onClick={() => this.setState({ filter: DEFAULT_FILTER })}>
+                  Reset All Filters
+                </Button>
+              </>
+            )}
+          </div>
+        )}
         {selectedDevice && (
           <div className="device-control-modal-overlay">
             <div className="device-control-modal">

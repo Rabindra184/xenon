@@ -169,7 +169,7 @@ const ProfilingView: React.FC<ProfilingViewProps> = ({ data, session }) => {
             {/* CPU Line */}
             <polyline
               fill="none"
-              stroke="#f59e0b"
+              stroke="#ffb800"
               strokeWidth="2"
               strokeLinecap="round"
               strokeLinejoin="round"
@@ -184,7 +184,7 @@ const ProfilingView: React.FC<ProfilingViewProps> = ({ data, session }) => {
             {/* Memory Line (Targeting 1024 MB max) */}
             <polyline
               fill="none"
-              stroke="#3b82f6"
+              stroke="#00aaff"
               strokeWidth="2"
               strokeLinecap="round"
               strokeLinejoin="round"

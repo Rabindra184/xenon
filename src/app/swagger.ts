@@ -125,6 +125,51 @@ Currently operating in **OSS Mode**. Future releases will support **Xenon Identi
           type: { type: 'string', enum: ['slack', 'webhook'] },
         },
       },
+      LocatorSuggestion: {
+        type: 'object',
+        properties: {
+          strategy: { type: 'string' },
+          value: { type: 'string' },
+          priority: { type: 'integer' },
+          isUnique: { type: 'boolean' },
+        },
+      },
+      InspectorNode: {
+        type: 'object',
+        properties: {
+          id: { type: 'string' },
+          type: { type: 'string' },
+          text: { type: 'string' },
+          path: { type: 'string' },
+          rect: {
+            type: 'object',
+            properties: {
+              x: { type: 'number' },
+              y: { type: 'number' },
+              width: { type: 'number' },
+              height: { type: 'number' },
+            },
+          },
+          attributes: { type: 'object', additionalProperties: true },
+          locators: {
+            type: 'array',
+            items: { $ref: '#/components/schemas/LocatorSuggestion' },
+          },
+          children: {
+            type: 'array',
+            items: { $ref: '#/components/schemas/InspectorNode' },
+          },
+        },
+      },
+      InspectorSnapshot: {
+        type: 'object',
+        properties: {
+          udid: { type: 'string' },
+          platform: { type: 'string' },
+          screenshot: { type: 'string', description: 'Base64 encoded screenshot' },
+          root: { $ref: '#/components/schemas/InspectorNode' },
+        },
+      },
       Error: {
         type: 'object',
         properties: {

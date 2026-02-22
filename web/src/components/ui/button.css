@@ -4,90 +4,99 @@
   justify-content: center;
   gap: var(--space-sm);
   white-space: nowrap;
-  border-radius: var(--radius-md);
-  font-weight: 600;
-  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  border-radius: 6px;
+  font-weight: 800;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
   border: 1px solid transparent;
   cursor: pointer;
-  font-family: inherit;
+  font-family: 'JetBrains Mono', monospace;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
 }
 
 .button-base:focus-visible {
   outline: none;
-  box-shadow: 0 0 0 2px var(--secondary-hover);
+  border-color: var(--color-primary);
+  box-shadow: 0 0 10px rgba(0, 255, 136, 0.2);
 }
 
 .button-base:disabled {
   pointer-events: none;
-  opacity: 0.5;
+  opacity: 0.4;
+  filter: grayscale(1);
 }
 
 /* Size variants */
 .button-sm {
-  height: 32px;
-  padding: 0 var(--space-md);
-  font-size: 12px;
+  height: 28px;
+  padding: 0 12px;
+  font-size: var(--fs-xs);
 }
 
 .button-default {
-  height: 40px;
-  padding: var(--space-sm) var(--space-lg);
-  font-size: 14px;
+  height: 36px;
+  padding: 0 20px;
+  font-size: 11px;
 }
 
 .button-lg {
-  height: 48px;
-  padding: var(--space-md) var(--space-xl);
-  font-size: 16px;
+  height: 44px;
+  padding: 0 32px;
+  font-size: 13px;
 }
 
 .button-icon {
-  height: 40px;
-  width: 40px;
+  height: 36px;
+  width: 36px;
   padding: 0;
 }
 
 /* Color variants */
 .button-variant-default {
-  background: linear-gradient(135deg, var(--primary) 0%, var(--primary-hover) 100%);
-  color: var(--text-inverse);
-  box-shadow: var(--shadow-sm);
+  background: var(--color-primary);
+  color: var(--bg-page);
+  border: none;
+  box-shadow: 0 0 15px rgba(0, 255, 136, 0.2);
 }
 
 .button-variant-default:hover {
-  box-shadow: var(--shadow-md);
+  background: #00e67a;
+  box-shadow: 0 0 25px rgba(0, 255, 136, 0.4);
   transform: translateY(-1px);
 }
 
 .button-variant-default:active {
-  transform: scale(0.98);
+  transform: translateY(0);
 }
 
 .button-variant-outline {
-  border-color: var(--border-medium);
-  background: var(--bg-surface);
-  color: var(--text-main);
+  border: 1px solid var(--border-visible);
+  background: rgba(0, 0, 0, 0.3);
+  color: var(--text-bright);
 }
 
 .button-variant-outline:hover {
-  background: var(--bg-app);
-  border-color: var(--text-muted);
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+  background: rgba(0, 255, 136, 0.05);
 }
 
 .button-variant-ghost {
   background: transparent;
-  color: var(--text-main);
+  color: var(--text-dim);
 }
 
 .button-variant-ghost:hover {
-  background: var(--border-light);
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text-bright);
 }
 
 .button-variant-destructive {
-  background: var(--status-error);
-  color: var(--text-inverse);
+  background: #ff4d4d;
+  color: var(--bg-page);
 }
 
 .button-variant-destructive:hover {
-  filter: brightness(0.9);
+  background: #ff3333;
+  box-shadow: 0 0 20px rgba(255, 77, 77, 0.3);
 }

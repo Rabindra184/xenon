@@ -6,13 +6,20 @@ import { AppRoutes } from './routes';
 
 import { ToastProvider } from './components/ui/toast';
 
+import Sidebar from './components/sidebar/sidebar';
+
 function App() {
   return (
     <ToastProvider>
       <BrowserRouter basename="/xenon">
-        <div className="app-container">
+        <div className="app-layout">
           <Header />
-          <AppRoutes />
+          <div className="app-main-container">
+            <Sidebar />
+            <main className="app-content">
+              <AppRoutes />
+            </main>
+          </div>
         </div>
       </BrowserRouter>
     </ToastProvider>

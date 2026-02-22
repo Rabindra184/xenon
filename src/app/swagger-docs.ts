@@ -303,6 +303,45 @@
 
 /**
  * @swagger
+ * /api/control/{udid}/touchAndHold:
+ *   post:
+ *     summary: Touch and hold on device screen
+ *     description: Perform a long press gesture at the specified coordinates
+ *     tags: [Control]
+ *     parameters:
+ *       - in: path
+ *         name: udid
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Device UDID
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [x, y]
+ *             properties:
+ *               x:
+ *                 type: number
+ *                 description: X coordinate
+ *               y:
+ *                 type: number
+ *                 description: Y coordinate
+ *               duration:
+ *                 type: number
+ *                 default: 1000
+ *                 description: Hold duration in milliseconds
+ *     responses:
+ *       200:
+ *         description: Touch and hold successful
+ *       404:
+ *         description: Device not found
+ */
+
+/**
+ * @swagger
  * /api/control/{udid}/text:
  *   post:
  *     summary: Type text on device
@@ -479,6 +518,79 @@
 
 /**
  * @swagger
+ * /api/control/{udid}/stream/status:
+ *   get:
+ *     summary: Get stream status
+ *     description: Check the current status of the device MJPEG stream
+ *     tags: [Control]
+ *     parameters:
+ *       - in: path
+ *         name: udid
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Device UDID
+ *     responses:
+ *       200:
+ *         description: Stream status information
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   enum: [running, stopped]
+ *       404:
+ *         description: Device not found
+ */
+
+/**
+ * @swagger
+ * /api/control/{udid}/stream/start:
+ *   post:
+ *     summary: Start device stream
+ *     description: Initiate high-speed MJPEG streaming for a device
+ *     tags: [Control]
+ *     parameters:
+ *       - in: path
+ *         name: udid
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Device UDID
+ *     responses:
+ *       200:
+ *         description: Stream started successfully
+ *       409:
+ *         description: Device busy
+ *       404:
+ *         description: Device not found
+ */
+
+/**
+ * @swagger
+ * /api/control/{udid}/stream/stop:
+ *   post:
+ *     summary: Stop device stream
+ *     description: Terminate the active MJPEG stream for a device
+ *     tags: [Control]
+ *     parameters:
+ *       - in: path
+ *         name: udid
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Device UDID
+ *     responses:
+ *       200:
+ *         description: Stream stopped successfully
+ *       404:
+ *         description: Device not found
+ */
+
+/**
+ * @swagger
  * /api/control/{udid}/lock:
  *   post:
  *     summary: Lock device
@@ -549,6 +661,38 @@
  *         description: App installed
  *       404:
  *         description: Device not found
+ */
+
+/**
+ * @swagger
+ * /api/control/{udid}/install-repository-app:
+ *   post:
+ *     summary: Install app from repository
+ *     description: Install an application from the Xenon app repository using its ID
+ *     tags: [Control]
+ *     parameters:
+ *       - in: path
+ *         name: udid
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Device UDID
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [appId]
+ *             properties:
+ *               appId:
+ *                 type: string
+ *                 description: ID of the app in the repository
+ *     responses:
+ *       200:
+ *         description: App installation initiated
+ *       404:
+ *         description: Device or app not found
  */
 
 /**
@@ -685,6 +829,107 @@
  *               properties:
  *                 output:
  *                   type: string
+ *       404:
+ *         description: Device not found
+ */
+
+/**
+ * @swagger
+ * /api/control/{udid}/omni-scan:
+ *   get:
+ *     summary: Perform Omni-Scan
+ *     description: Perform an AI-powered visual scan of the current screen (no active session required)
+ *     tags: [Control]
+ *     parameters:
+ *       - in: path
+ *         name: udid
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Device UDID
+ *     responses:
+ *       200:
+ *         description: Scan results
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                 value:
+ *                   type: object
+ *       404:
+ *         description: Device not found
+ */
+
+/**
+ * @swagger
+ * /api/control/{udid}/inspector/snapshot:
+ *   get:
+ *     summary: Get Inspector snapshot
+ *     description: Retrieve a native-first UI inspector snapshot with locator suggestions
+ *     tags: [Control]
+ *     parameters:
+ *       - in: path
+ *         name: udid
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Device UDID
+ *     responses:
+ *       200:
+ *         description: Inspector snapshot
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/InspectorSnapshot'
+ *       404:
+ *         description: Device not found
+ */
+
+/**
+ * @swagger
+ * /api/control/{udid}/test-locator:
+ *   post:
+ *     summary: Test AI locator
+ *     description: Test an AI-powered locator strategy (ai-text or ai-icon) against the current screen
+ *     tags: [Control]
+ *     parameters:
+ *       - in: path
+ *         name: udid
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Device UDID
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [strategy, selector]
+ *             properties:
+ *               strategy:
+ *                 type: string
+ *                 enum: [-custom:ai-text, -custom:ai-icon]
+ *               selector:
+ *                 type: string
+ *                 description: Visual description or text to find
+ *     responses:
+ *       200:
+ *         description: Locator match results
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                 value:
+ *                   type: array
+ *                   items:
+ *                     type: object
  *       404:
  *         description: Device not found
  */
