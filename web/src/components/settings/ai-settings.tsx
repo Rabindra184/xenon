@@ -192,175 +192,115 @@ export const AISettings: React.FC = () => {
       </div>
 
       <div className="settings-content">
-        {/* Section 1: Provider Registry */}
-        <section className="setting-card">
-          <div className="card-header-dense">
-            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-              <ShieldCheck size={20} style={{ color: 'var(--primary-enterprise)' }} />
-              <h3 style={{ margin: 0, fontSize: '1.25rem', color: 'var(--text-h1)' }}>
-                Provider Registry
-              </h3>
+        <div className="settings-grid">
+          {/* Section 1: Provider Registry */}
+          <div className="setting-card stagger-1">
+            <div className="setting-card-header">
+              <ShieldCheck size={16} />
+              <h4>Provider Registry</h4>
               <span className="badge-elite" style={{ marginLeft: 'auto' }}>
                 {configuredCount} / {providers.length} CONFIGURED
               </span>
             </div>
             <p className="section-description-dense">
-              Providers are activated by setting their API key as an environment variable. Select
-              one of the configured providers to use as the active engine.
+              Providers are activated via environment variables. Select a configured engine to
+              activate.
             </p>
-          </div>
 
-          <div className="ai-provider-grid">
-            {providers.map((provider) => {
-              const isActive = config.aiProvider === provider.id;
-              const isSelectable = provider.isConfigured;
+            <div className="ai-provider-grid">
+              {providers.map((provider) => {
+                const isActive = config.aiProvider === provider.id;
+                const isSelectable = provider.isConfigured;
 
-              return (
-                <button
-                  key={provider.id}
-                  className={`ai-provider-card ${isActive ? 'active' : ''} ${!isSelectable ? 'disabled' : ''}`}
-                  onClick={() => isSelectable && setConfig({ ...config, aiProvider: provider.id })}
-                  disabled={!isSelectable}
-                  title={
-                    !isSelectable
-                      ? `Set XENON_${provider.id.toUpperCase()}_API_KEY or model/URL to enable`
-                      : `Select ${provider.name}`
-                  }
-                >
-                  <div className="ai-provider-card-header">
-                    <div className="ai-provider-icon">{provider.icon}</div>
-                    <div className="ai-provider-info">
-                      <span className="ai-provider-name">{provider.name}</span>
-                      <span className="ai-provider-desc">{provider.description}</span>
+                return (
+                  <button
+                    key={provider.id}
+                    className={`ai-provider-card ${isActive ? 'active' : ''} ${!isSelectable ? 'disabled' : ''}`}
+                    onClick={() => isSelectable && setConfig({ ...config, aiProvider: provider.id })}
+                    disabled={!isSelectable}
+                    title={
+                      !isSelectable
+                        ? `Set XENON_${provider.id.toUpperCase()}_API_KEY or model/URL to enable`
+                        : `Select ${provider.name}`
+                    }
+                  >
+                    <div className="ai-provider-card-header">
+                      <div className="ai-provider-icon">{provider.icon}</div>
+                      <div className="ai-provider-info">
+                        <span className="ai-provider-name">{provider.name}</span>
+                        <span className="ai-provider-desc">{provider.description}</span>
+                      </div>
                     </div>
-                  </div>
-                  <div className="ai-provider-status">
-                    {isActive ? (
-                      <span
-                        className="status-badge success-filled"
-                        style={{
-                          height: '28px',
-                          fontSize: '0.7rem',
-                          padding: '0 10px',
-                          width: 'auto',
-                        }}
-                      >
-                        <div
-                          className="live-signal"
-                          style={{ width: 6, height: 6, marginRight: 4 }}
-                        />
-                        ACTIVE
-                      </span>
-                    ) : provider.isConfigured ? (
-                      <span
-                        className="status-badge success-filled"
-                        style={{
-                          height: '28px',
-                          fontSize: '0.7rem',
-                          padding: '0 10px',
-                          width: 'auto',
-                        }}
-                      >
-                        <div
-                          className="live-signal"
-                          style={{ width: 6, height: 6, marginRight: 4 }}
-                        />
-                        READY
-                      </span>
-                    ) : (
-                      <span
-                        className="status-badge error-filled"
-                        style={{
-                          height: '28px',
-                          fontSize: '0.7rem',
-                          padding: '0 10px',
-                          width: 'auto',
-                        }}
-                      >
-                        <Lock size={10} />
-                        NOT SET
-                      </span>
-                    )}
-                  </div>
-                </button>
-              );
-            })}
+                    <div className="ai-provider-status">
+                      {isActive ? (
+                        <span className="status-badge success-filled">
+                          <div className="live-signal" />
+                          ACTIVE
+                        </span>
+                      ) : provider.isConfigured ? (
+                        <span className="status-badge success-filled">
+                          <div className="live-signal" />
+                          READY
+                        </span>
+                      ) : (
+                        <span className="status-badge error-filled">
+                          <Lock size={10} />
+                          NOT SET
+                        </span>
+                      )}
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
           </div>
-        </section>
 
-        {/* Section 2: Runtime Configuration (Read-Only) */}
-        <section className="setting-card">
-          <div className="card-header-dense">
-            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-              <Globe size={20} style={{ color: 'var(--primary-enterprise)' }} />
-              <h3 style={{ margin: 0, fontSize: '1.25rem', color: 'var(--text-h1)' }}>
-                Runtime Configuration
-              </h3>
+          {/* Section 2: Runtime Configuration (Read-Only) */}
+          <div className="setting-card stagger-2">
+            <div className="setting-card-header">
+              <Globe size={16} />
+              <h4>Runtime Configuration</h4>
             </div>
             <p className="section-description-dense">
-              Values sourced from environment variables. Set{' '}
-              <code
-                style={{
-                  color: 'var(--primary-enterprise)',
-                  background: 'rgba(34,197,94,0.1)',
-                  padding: '2px 6px',
-                  borderRadius: '4px',
-                  fontSize: '0.8rem',
-                }}
-              >
-                XENON_AI_MODEL
-              </code>{' '}
-              and{' '}
-              <code
-                style={{
-                  color: 'var(--primary-enterprise)',
-                  background: 'rgba(34,197,94,0.1)',
-                  padding: '2px 6px',
-                  borderRadius: '4px',
-                  fontSize: '0.8rem',
-                }}
-              >
-                XENON_AI_BASE_URL
-              </code>{' '}
-              to override defaults.
+              Environmental overrides for AI model endpoints and identifiers.
             </p>
-          </div>
 
-          <div className="ai-config-display">
-            <div className="ai-config-row">
-              <span className="ai-config-label">Active Provider</span>
-              <span className="ai-config-value">
-                {activeProvider?.icon}
-                {activeProvider?.name || '—'}
-              </span>
-            </div>
-            <div className="ai-config-row">
-              <span className="ai-config-label">Model</span>
-              <span className="ai-config-value mono">
-                {config.aiProvider === 'gemini' &&
-                  (config.geminiModel || config.aiModel || getModelDefault('gemini'))}
-                {config.aiProvider === 'openai' &&
-                  (config.openaiModel || config.aiModel || getModelDefault('openai'))}
-                {config.aiProvider === 'anthropic' &&
-                  (config.anthropicModel || config.aiModel || getModelDefault('anthropic'))}
-                {config.aiProvider === 'ollama' &&
-                  (config.ollamaModel || config.aiModel || getModelDefault('ollama'))}
-                {!config.aiModel &&
-                  !config.geminiModel &&
-                  !config.openaiModel &&
-                  !config.anthropicModel &&
-                  !config.ollamaModel && <span className="ai-config-default">default</span>}
-              </span>
-            </div>
-            <div className="ai-config-row">
-              <span className="ai-config-label">Base URL</span>
-              <span className="ai-config-value mono">
-                {config.aiBaseUrl || getBaseUrlDefault(config.aiProvider)}
-                {!config.aiBaseUrl && <span className="ai-config-default">default</span>}
-              </span>
+            <div className="ai-config-display">
+              <div className="ai-config-row">
+                <span className="ai-config-label">Active Provider</span>
+                <span className="ai-config-value">
+                  {activeProvider?.icon}
+                  {activeProvider?.name || '—'}
+                </span>
+              </div>
+              <div className="ai-config-row">
+                <span className="ai-config-label">Model</span>
+                <span className="ai-config-value mono">
+                  {config.aiProvider === 'gemini' &&
+                    (config.geminiModel || config.aiModel || getModelDefault('gemini'))}
+                  {config.aiProvider === 'openai' &&
+                    (config.openaiModel || config.aiModel || getModelDefault('openai'))}
+                  {config.aiProvider === 'anthropic' &&
+                    (config.anthropicModel || config.aiModel || getModelDefault('anthropic'))}
+                  {config.aiProvider === 'ollama' &&
+                    (config.ollamaModel || config.aiModel || getModelDefault('ollama'))}
+                  {!config.aiModel &&
+                    !config.geminiModel &&
+                    !config.openaiModel &&
+                    !config.anthropicModel &&
+                    !config.ollamaModel && <span className="ai-config-default">default</span>}
+                </span>
+              </div>
+              <div className="ai-config-row">
+                <span className="ai-config-label">Base URL</span>
+                <span className="ai-config-value mono">
+                  {config.aiBaseUrl || getBaseUrlDefault(config.aiProvider)}
+                  {!config.aiBaseUrl && <span className="ai-config-default">default</span>}
+                </span>
+              </div>
             </div>
           </div>
-        </section>
+        </div>
 
         {status && (
           <div
