@@ -119,16 +119,18 @@ export const MaintenanceSettings: React.FC = () => {
             title="Retention Window"
             description="Number of days to preserve builds and sessions before automatic purging from the system."
           >
-            <div className="input-group">
-              <input
-                type="number"
-                value={config.buildCleanupDays}
-                onChange={(e) =>
-                  setConfig({ ...config, buildCleanupDays: parseInt(e.target.value) })
-                }
-                min={1}
-              />
-              <span className="code-font">DAYS</span>
+            <div className="setting-field">
+              <div className="input-group">
+                <input
+                  type="number"
+                  value={config.buildCleanupDays}
+                  onChange={(e) =>
+                    setConfig({ ...config, buildCleanupDays: parseInt(e.target.value) })
+                  }
+                  min={1}
+                />
+                <span className="code-font">DAYS</span>
+              </div>
             </div>
             <div className="setting-hint-clean">
               Standard enterprise retention is typically 30-90 days.
@@ -139,16 +141,18 @@ export const MaintenanceSettings: React.FC = () => {
             title="Max Build Capacity"
             description="Cap the maximum number of historical builds stored in the primary database."
           >
-            <div className="input-group">
-              <input
-                type="number"
-                value={config.buildCleanupMaxCount}
-                onChange={(e) =>
-                  setConfig({ ...config, buildCleanupMaxCount: parseInt(e.target.value) })
-                }
-                min={1}
-              />
-              <span className="code-font">BUILDS</span>
+            <div className="setting-field">
+              <div className="input-group">
+                <input
+                  type="number"
+                  value={config.buildCleanupMaxCount}
+                  onChange={(e) =>
+                    setConfig({ ...config, buildCleanupMaxCount: parseInt(e.target.value) })
+                  }
+                  min={1}
+                />
+                <span className="code-font">BUILDS</span>
+              </div>
             </div>
             <div className="setting-hint-clean">
               Protects against database bloat during high-frequency CI bursts.
@@ -181,13 +185,15 @@ export const MaintenanceSettings: React.FC = () => {
             title="Cleanup Orchestration"
             description="Standardized Cron syntax for scheduling the automated cleanup engine."
           >
-            <div className="input-group">
-              <input
-                type="text"
-                placeholder="e.g. 0 0 * * * (Midnight)"
-                value={config.buildCleanupSchedule}
-                onChange={(e) => setConfig({ ...config, buildCleanupSchedule: e.target.value })}
-              />
+            <div className="setting-field">
+              <div className="setting-input-wrapper">
+                <input
+                  type="text"
+                  placeholder="e.g. 0 0 * * * (Midnight)"
+                  value={config.buildCleanupSchedule}
+                  onChange={(e) => setConfig({ ...config, buildCleanupSchedule: e.target.value })}
+                />
+              </div>
             </div>
 
             <div className="cron-presets">
@@ -199,9 +205,8 @@ export const MaintenanceSettings: React.FC = () => {
                 ].map((p) => (
                   <button
                     key={p.label}
-                    className={`preset-chip ${
-                      config.buildCleanupSchedule === p.value ? 'active' : ''
-                    }`}
+                    className={`preset-chip ${config.buildCleanupSchedule === p.value ? 'active' : ''
+                      }`}
                     onClick={() => setConfig({ ...config, buildCleanupSchedule: p.value })}
                   >
                     {p.label}

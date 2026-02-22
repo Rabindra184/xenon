@@ -147,17 +147,19 @@ export const Settings: React.FC = () => {
                 <h4>Idle Health Frequency</h4>
               </div>
               <p>Frequency of passive health pings when the system is in idle state.</p>
-              <div className="input-group">
-                <input
-                  type="number"
-                  value={config.healthCheckIntervalMs}
-                  onChange={(e) =>
-                    setConfig({ ...config, healthCheckIntervalMs: parseInt(e.target.value) })
-                  }
-                  min={5000}
-                  step={5000}
-                />
-                <span className="code-font">MS</span>
+              <div className="setting-field">
+                <div className="input-group">
+                  <input
+                    type="number"
+                    value={config.healthCheckIntervalMs}
+                    onChange={(e) =>
+                      setConfig({ ...config, healthCheckIntervalMs: parseInt(e.target.value) })
+                    }
+                    min={5000}
+                    step={5000}
+                  />
+                  <span className="code-font">MS</span>
+                </div>
               </div>
               <div className="setting-hint-clean">
                 Minimum safe value: 5000ms. Note: This frequency is overridden when a schedule is
@@ -175,13 +177,15 @@ export const Settings: React.FC = () => {
                 Cron syntax.
               </p>
 
-              <div className="input-group">
-                <input
-                  type="text"
-                  placeholder="e.g. 0 * * * * (At internal min 0)"
-                  value={config.healthCheckSchedule}
-                  onChange={(e) => setConfig({ ...config, healthCheckSchedule: e.target.value })}
-                />
+              <div className="setting-field">
+                <div className="setting-input-wrapper">
+                  <input
+                    type="text"
+                    placeholder="e.g. 0 * * * * (At internal min 0)"
+                    value={config.healthCheckSchedule}
+                    onChange={(e) => setConfig({ ...config, healthCheckSchedule: e.target.value })}
+                  />
+                </div>
               </div>
 
               <div className="cron-preview">
@@ -200,9 +204,8 @@ export const Settings: React.FC = () => {
                   {presets.map((p) => (
                     <button
                       key={p.label}
-                      className={`preset-chip ${
-                        config.healthCheckSchedule === p.value ? 'active' : ''
-                      }`}
+                      className={`preset-chip ${config.healthCheckSchedule === p.value ? 'active' : ''
+                        }`}
                       onClick={() => setConfig({ ...config, healthCheckSchedule: p.value })}
                     >
                       {p.label}
