@@ -13,3 +13,5 @@ src/public/*
 docs/reference
 # Ignore OS-specific files everywhere
 **/.DS_Store
+.agent
+.gemini
