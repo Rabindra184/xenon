@@ -1,4 +1,4 @@
-import React from 'react';
+import * as React from 'react';
 import { Smartphone, Hammer, AppWindow, Bell, Settings } from 'lucide-react';
 
 export interface NavItem {

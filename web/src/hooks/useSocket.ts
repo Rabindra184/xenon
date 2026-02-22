@@ -33,12 +33,12 @@ export const useSocket = () => {
     const handleEvent = (event: string, data: any) => {
       const eventListeners = listeners.current.get(event);
       if (eventListeners) {
-        eventListeners.forEach((callback) => callback(data));
+        eventListeners.forEach((callback: (data: any) => void) => callback(data));
       }
     };
 
     // Generic event listener for all registered events
-    newSocket.onAny((event, data) => {
+    newSocket.onAny((event: string, data: any) => {
       handleEvent(event, data);
     });
 
@@ -58,7 +58,7 @@ export const useSocket = () => {
       if (eventListeners) {
         listeners.current.set(
           event,
-          eventListeners.filter((cb) => cb !== callback),
+          eventListeners.filter((cb: (data: any) => void) => cb !== callback),
         );
       }
     };

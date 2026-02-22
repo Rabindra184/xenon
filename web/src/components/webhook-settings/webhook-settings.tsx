@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from 'react';
+import * as React from 'react';
+import { useState, useEffect } from 'react';
 import XenonApiService from '../../api-service';
 import './webhook-settings.css';
 import { Trash2, Bell, CheckCircle, AlertCircle, Plus, Zap } from 'lucide-react';
@@ -128,7 +129,7 @@ export const WebhookSettings: React.FC = () => {
       </div>
 
       <div className="webhook-list">
-        {configs.map((config) => (
+        {configs.map((config: WebhookConfig) => (
           <div key={config.id} className="webhook-card">
             <div className="webhook-card-header">
               <div className="webhook-url-display">
@@ -171,7 +172,7 @@ export const WebhookSettings: React.FC = () => {
               className="webhook-input"
               placeholder="https://hooks.slack.com/services/..."
               value={newUrl}
-              onChange={(e) => setNewUrl(e.target.value)}
+              onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNewUrl(e.target.value)}
             />
           </div>
 
@@ -181,9 +182,8 @@ export const WebhookSettings: React.FC = () => {
               {AVAILABLE_EVENTS.map((event) => (
                 <div
                   key={event.id}
-                  className={`event-checkbox ${
-                    selectedEvents.includes(event.id) ? 'selected' : ''
-                  }`}
+                  className={`event-checkbox ${selectedEvents.includes(event.id) ? 'selected' : ''
+                    }`}
                   onClick={() => toggleEvent(event.id)}
                 >
                   {event.icon}
@@ -220,7 +220,7 @@ export const WebhookSettings: React.FC = () => {
                     'failureReason',
                     'eventType',
                     'platform',
-                  ].map((v) => (
+                  ].map((v: string) => (
                     <span key={v} className="variable-chip" onClick={() => insertVariable(v)}>
                       {v}
                     </span>
@@ -230,7 +230,7 @@ export const WebhookSettings: React.FC = () => {
                   className="template-textarea"
                   placeholder='Example JSON: { "text": "Alert: Device {{udid}} is offline!" }'
                   value={payloadTemplate}
-                  onChange={(e) => setPayloadTemplate(e.target.value)}
+                  onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setPayloadTemplate(e.target.value)}
                   rows={3}
                 />
               </div>

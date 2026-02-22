@@ -1,4 +1,5 @@
-import React, { Suspense, lazy } from 'react';
+import * as React from 'react';
+import { Suspense, lazy } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { RefreshCw } from 'lucide-react';
 import { ErrorBoundary } from '../components/ui/ErrorBoundary';
