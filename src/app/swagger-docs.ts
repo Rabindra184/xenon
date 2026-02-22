@@ -211,8 +211,194 @@
  *             schema:
  *               type: string
  *               format: binary
- *       500:
  *         description: Live video not available
+ */
+
+/**
+ * @swagger
+ * /api/session/{sessionId}/xenon/analyze:
+ *   post:
+ *     summary: Analyze current screen
+ *     description: Perform an AI-powered visual analysis of the current screen to identify elements and state.
+ *     tags: [Sessions]
+ *     parameters:
+ *       - in: path
+ *         name: sessionId
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Session ID
+ *     responses:
+ *       200:
+ *         description: Analysis results
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *       404:
+ *         description: Session not found
+ */
+
+/**
+ * @swagger
+ * /api/session/{sessionId}/xenon/assert:
+ *   post:
+ *     summary: Assert visual state
+ *     description: Verify the visual state of the screen against a natural language instruction.
+ *     tags: [Sessions]
+ *     parameters:
+ *       - in: path
+ *         name: sessionId
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Session ID
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [instruction]
+ *             properties:
+ *               instruction:
+ *                 type: string
+ *                 description: Natural language assertion (e.g., "The login button is visible")
+ *     responses:
+ *       200:
+ *         description: Assertion results
+ *       404:
+ *         description: Session not found
+ */
+
+/**
+ * @swagger
+ * /api/session/{sessionId}/xenon/omni-scan:
+ *   get:
+ *     summary: Perform Omni-Scan
+ *     description: Capture a rich AI/OCR-driven scan of the current screen for advanced interaction.
+ *     tags: [Sessions]
+ *     parameters:
+ *       - in: path
+ *         name: sessionId
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Session ID
+ *     responses:
+ *       200:
+ *         description: Scan results
+ *       404:
+ *         description: Session not found
+ */
+
+/**
+ * @swagger
+ * /api/session/{sessionId}/xenon/omni-click:
+ *   post:
+ *     summary: Omni-Click (OCR-driven click)
+ *     description: Click on an element identified by its text using AI/OCR.
+ *     tags: [Sessions]
+ *     parameters:
+ *       - in: path
+ *         name: sessionId
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Session ID
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [text]
+ *             properties:
+ *               text:
+ *                 type: string
+ *                 description: Text of the element to click
+ *               index:
+ *                 type: integer
+ *                 default: 0
+ *               takeANewScreenShot:
+ *                 type: boolean
+ *                 default: true
+ *     responses:
+ *       200:
+ *         description: Click successful
+ *       404:
+ *         description: Session not found
+ */
+
+/**
+ * @swagger
+ * /api/session/{sessionId}/xenon/smart-tap:
+ *   post:
+ *     summary: Smart Tap (Alias of Omni-Click)
+ *     description: Xenon-native alias for performing an OCR-driven smart tap.
+ *     tags: [Sessions]
+ *     parameters:
+ *       - in: path
+ *         name: sessionId
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Session ID
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [text]
+ *             properties:
+ *               text:
+ *                 type: string
+ *                 description: Text of the element to tap
+ *               index:
+ *                 type: integer
+ *                 default: 0
+ *               takeANewScreenShot:
+ *                 type: boolean
+ *                 default: true
+ *     responses:
+ *       200:
+ *         description: Tap successful
+ *       404:
+ *         description: Session not found
+ */
+
+/**
+ * @swagger
+ * /api/session/{sessionId}/xenon/ui-inventory:
+ *   post:
+ *     summary: UI Inventory Export
+ *     description: Export rich UI metadata derived from AI/OCR analysis of the current screen.
+ *     tags: [Sessions]
+ *     parameters:
+ *       - in: path
+ *         name: sessionId
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Session ID
+ *     requestBody:
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               takeANewScreenShot:
+ *                 type: boolean
+ *                 default: true
+ *               maxItems:
+ *                 type: integer
+ *                 default: 50
+ *     responses:
+ *       200:
+ *         description: UI metadata exported
+ *       404:
+ *         description: Session not found
  */
 
 /**
@@ -1411,7 +1597,7 @@
  */
 
 // This file is only for Swagger documentation - no exports needed
-export {};
+export { };
 
 /**
  * @swagger
