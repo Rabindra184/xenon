@@ -104,7 +104,7 @@ const TraceWaterfall: React.FC<TraceWaterfallProps> = ({ logs, onCommandClick })
           )}
         </div>
 
-        {sortedLogs.map((log, index) => {
+        {sortedLogs.map((log: ISessionLog, index: number) => {
           const logStart = log.createdAt ? new Date(log.createdAt).getTime() : sessionStart;
           let startOffset = ((logStart - sessionStart) / totalDuration) * 100;
           let durationWidth = ((log.duration || 10) / totalDuration) * 100;

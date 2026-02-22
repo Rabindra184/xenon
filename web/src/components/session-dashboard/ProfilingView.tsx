@@ -23,25 +23,25 @@ const ProfilingView: React.FC<ProfilingViewProps> = ({ data, session }) => {
   // Calculation utilities
   const calculateAvgCpu = () => {
     if (data.length === 0) return '0.0';
-    const total = data.reduce((acc, curr) => acc + parseFloat(curr.cpu || '0'), 0);
+    const total = data.reduce((acc: number, curr: IProfiling) => acc + parseFloat(curr.cpu || '0'), 0);
     return (total / data.length).toFixed(1);
   };
 
   const calculatePeakCpu = () => {
     if (data.length === 0) return '0.0';
-    const peak = Math.max(...data.map((d) => parseFloat(d.cpu || '0')));
+    const peak = Math.max(...data.map((d: IProfiling) => parseFloat(d.cpu || '0')));
     return peak.toFixed(1);
   };
 
   const calculateMaxMemory = () => {
     if (data.length === 0) return '0.0';
-    const maxKb = Math.max(...data.map((curr) => parseFloat(curr.memory || '0')));
+    const maxKb = Math.max(...data.map((curr: IProfiling) => parseFloat(curr.memory || '0')));
     return (maxKb / 1024).toFixed(1);
   };
 
   const calculateAvgMemory = () => {
     if (data.length === 0) return '0.0';
-    const total = data.reduce((acc, curr) => acc + parseFloat(curr.memory || '0'), 0);
+    const total = data.reduce((acc: number, curr: IProfiling) => acc + parseFloat(curr.memory || '0'), 0);
     return (total / data.length / 1024).toFixed(1);
   };
 
@@ -174,7 +174,7 @@ const ProfilingView: React.FC<ProfilingViewProps> = ({ data, session }) => {
               strokeLinecap="round"
               strokeLinejoin="round"
               points={data
-                .map((d, i) => {
+                .map((d: IProfiling, i: number) => {
                   const x = data.length > 1 ? (i / (data.length - 1)) * 800 : 400;
                   const y = 200 - (parseFloat(d.cpu || '0') / 100) * 180;
                   return `${x},${y}`;
@@ -189,7 +189,7 @@ const ProfilingView: React.FC<ProfilingViewProps> = ({ data, session }) => {
               strokeLinecap="round"
               strokeLinejoin="round"
               points={data
-                .map((d, i) => {
+                .map((d: IProfiling, i: number) => {
                   const x = data.length > 1 ? (i / (data.length - 1)) * 800 : 400;
                   const mb = parseFloat(d.memory || '0') / 1024;
                   const y = 200 - (mb / 1024) * 180;
@@ -225,7 +225,7 @@ const ProfilingView: React.FC<ProfilingViewProps> = ({ data, session }) => {
             {data
               .slice()
               .reverse()
-              .map((entry) => (
+              .map((entry: IProfiling) => (
                 <tr key={entry.id}>
                   <td className="time-cell">{new Date(entry.timestamp).toLocaleTimeString()}</td>
                   <td>

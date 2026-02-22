@@ -105,7 +105,7 @@ const ReservationModal: React.FC<ReservationModalProps> = ({ device, onClose, on
               className="reservation-input"
               placeholder="Enter your name or ID"
               value={reservedBy}
-              onChange={(e) => setReservedBy(e.target.value)}
+              onChange={(e: React.ChangeEvent<HTMLInputElement>) => setReservedBy(e.target.value)}
               disabled={loading}
             />
           </div>
@@ -144,7 +144,7 @@ const ReservationModal: React.FC<ReservationModalProps> = ({ device, onClose, on
               className="reservation-input"
               placeholder="e.g., Debugging flaky login test"
               value={reason}
-              onChange={(e) => setReason(e.target.value)}
+              onChange={(e: React.ChangeEvent<HTMLInputElement>) => setReason(e.target.value)}
               disabled={loading}
             />
           </div>

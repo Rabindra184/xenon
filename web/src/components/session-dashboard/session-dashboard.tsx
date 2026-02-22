@@ -196,13 +196,12 @@ const SessionTableRow = React.memo(
         </td>
         <td>
           <span
-            className={`status-text ${
-              ['success', 'passed'].includes(session.status)
+            className={`status-text ${['success', 'passed'].includes(session.status)
                 ? 'text-neon-green'
                 : session.status === 'failed'
                   ? 'text-neon-red'
                   : 'text-neon-amber'
-            }`}
+              }`}
             style={{ fontWeight: 700, fontSize: '10px' }}
           >
             {session.status?.toUpperCase() || 'UNKNOWN'}
@@ -256,11 +255,11 @@ const SessionDashboard: React.FC = () => {
   const [isAnalysisExpanded, setIsAnalysisExpanded] = useState(true);
 
   const selectedBuild = React.useMemo(
-    () => builds.find((b) => b.id === selectedBuildId),
+    () => builds.find((b: IBuild) => b.id === selectedBuildId),
     [builds, selectedBuildId],
   );
   const selectedSession = React.useMemo(
-    () => sessions.find((s) => s.id === selectedSessionId),
+    () => sessions.find((s: ISession) => s.id === selectedSessionId),
     [sessions, selectedSessionId],
   );
 
@@ -294,8 +293,8 @@ const SessionDashboard: React.FC = () => {
   const fetchSessionDetails = React.useCallback(async (sessionId: string) => {
     try {
       const sessionData = await XenonApiService.getSession(sessionId);
-      setSessions((prevSessions) =>
-        prevSessions.map((s) => (s.id === sessionId ? sessionData : s)),
+      setSessions((prevSessions: ISession[]) =>
+        prevSessions.map((s: ISession) => (s.id === sessionId ? sessionData : s)),
       );
     } catch (error) {
       console.error('Failed to fetch session details', error);
@@ -359,9 +358,9 @@ const SessionDashboard: React.FC = () => {
 
     unsubs.push(
       onSocketEvent('session_started', (data: ISession) => {
-        setSessions((prev) => {
+        setSessions((prev: ISession[]) => {
           // Prevent duplicates if fetchData also ran
-          if (prev.some((s) => s.id === data.id)) return prev;
+          if (prev.some((s: ISession) => s.id === data.id)) return prev;
           return [data, ...prev];
         });
       }),
@@ -369,8 +368,8 @@ const SessionDashboard: React.FC = () => {
 
     unsubs.push(
       onSocketEvent('session_stopped', (data: { id: string; status: string }) => {
-        setSessions((prev) =>
-          prev.map((s) =>
+        setSessions((prev: ISession[]) =>
+          prev.map((s: ISession) =>
             s.id === data.id ? { ...s, status: data.status, endTime: new Date().toISOString() } : s,
           ),
         );
@@ -381,8 +380,8 @@ const SessionDashboard: React.FC = () => {
       onSocketEvent('session_command', (data: ISessionLog) => {
         // Only append if it's the currently selected session
         if (selectedSessionId === data.session_id) {
-          setLogs((prev) => {
-            if (prev.some((l) => l.id === data.id)) return prev;
+          setLogs((prev: ISessionLog[]) => {
+            if (prev.some((l: ISessionLog) => l.id === data.id)) return prev;
             return [data, ...prev];
           });
         }
@@ -398,7 +397,7 @@ const SessionDashboard: React.FC = () => {
     };
   }, [onSocketEvent, selectedSessionId, fetchData]);
 
-  const filteredBuilds = builds.filter((b) => {
+  const filteredBuilds = builds.filter((b: IBuild) => {
     // 1. Text Search
     const matchesSearch =
       b.name?.toLowerCase().includes(buildSearch.toLowerCase()) ||
@@ -468,7 +467,7 @@ const SessionDashboard: React.FC = () => {
             <Input
               placeholder="Search sessions by ID, name, or device..."
               value={sessionSearch}
-              onChange={(e) => setSessionSearch(e.target.value)}
+              onChange={(e: React.ChangeEvent<HTMLInputElement>) => setSessionSearch(e.target.value)}
               className="compact-search"
             />
           </div>
@@ -486,7 +485,7 @@ const SessionDashboard: React.FC = () => {
             </tr>
           </thead>
           <tbody>
-            {sessions.map((s) => (
+            {sessions.map((s: ISession) => (
               <SessionTableRow key={s.id} session={s} onSelect={setSelectedSessionId} />
             ))}
             {sessions.length === 0 && (
@@ -679,7 +678,7 @@ const SessionDashboard: React.FC = () => {
                     <input
                       type="checkbox"
                       checked={showScreenshots}
-                      onChange={(e) => setShowScreenshots(e.target.checked)}
+                      onChange={(e: React.ChangeEvent<HTMLInputElement>) => setShowScreenshots(e.target.checked)}
                     />
                     <span>Show Screenshots</span>
                   </label>
@@ -687,7 +686,7 @@ const SessionDashboard: React.FC = () => {
                     <input
                       type="checkbox"
                       checked={showErrorsOnly}
-                      onChange={(e) => setShowErrorsOnly(e.target.checked)}
+                      onChange={(e: React.ChangeEvent<HTMLInputElement>) => setShowErrorsOnly(e.target.checked)}
                     />
                     <span>Show Errors Only</span>
                   </label>
@@ -702,7 +701,7 @@ const SessionDashboard: React.FC = () => {
                   {selectedLogTab === 'trace' ? (
                     <TraceWaterfall
                       logs={logs}
-                      onCommandClick={(logId) => {
+                      onCommandClick={(logId: string) => {
                         setSelectedLogTab('command');
                         // Optional: Smooth scroll to logId if needed
                         setTimeout(() => {
@@ -719,7 +718,7 @@ const SessionDashboard: React.FC = () => {
                         if (showErrorsOnly && l.is_success) return false;
                         return true;
                       })
-                      .map((l) => {
+                      .map((l: ISessionLog) => {
                         const displayBody =
                           (l.body || '').length > 1000
                             ? l.body?.substring(0, 1000) + '... [TRUNCATED]'
@@ -800,7 +799,7 @@ const SessionDashboard: React.FC = () => {
                   ) : selectedLogTab === 'profiling' ? (
                     <ProfilingView data={profilingData} session={selectedSession} />
                   ) : (
-                    (selectedLogTab === 'device' ? deviceLogs : debugLogs).slice(-500).map((l) => (
+                    (selectedLogTab === 'device' ? deviceLogs : debugLogs).slice(-500).map((l: ILog) => (
                       <div key={l.id} className="log-line-complex">
                         <div className="log-line-header">
                           <span className="log-time">[{formatDate(l.timestamp)}]</span>
@@ -991,7 +990,7 @@ const SessionDashboard: React.FC = () => {
             ) : filteredBuilds.length === 0 ? (
               <div className="sidebar-empty">No builds found</div>
             ) : (
-              filteredBuilds.map((b) => (
+              filteredBuilds.map((b: IBuild) => (
                 <BuildCard
                   key={b.id}
                   build={b}

@@ -4,6 +4,7 @@
 
 echo "🚀 Starting Xenon Production Build..."
 cd web
+npm install
 npm run build
 cd ..
 rm -rf src/public

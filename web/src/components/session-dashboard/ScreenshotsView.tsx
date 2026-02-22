@@ -15,9 +15,9 @@ interface ScreenshotsViewProps {
 }
 
 const ScreenshotsView: React.FC<ScreenshotsViewProps> = ({ logs }) => {
-  const screenshots: ScreenshotEntry[] = logs
-    .filter((l) => l.screenshot)
-    .map((l) => ({
+  const screenshots: ScreenshotEntry[] = (logs as any[])
+    .filter((l: any) => l.screenshot)
+    .map((l: any) => ({
       id: l.id,
       screenshot: l.screenshot,
       command_name: l.command_name,
