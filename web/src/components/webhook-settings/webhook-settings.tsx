@@ -107,13 +107,16 @@ export const WebhookSettings: React.FC = () => {
   return (
     <div className="webhook-settings-container">
       {/* Mission Control Scanline Overlay */}
-      <div className="scanline" style={{
-        position: 'absolute',
-        inset: 0,
-        pointerEvents: 'none',
-        opacity: 0.05,
-        zIndex: 1001
-      }}></div>
+      <div
+        className="scanline"
+        style={{
+          position: 'absolute',
+          inset: 0,
+          pointerEvents: 'none',
+          opacity: 0.05,
+          zIndex: 1001,
+        }}
+      ></div>
       <div className="webhook-header">
         <div className="webhook-title">
           <Bell className="webhook-icon" size={20} />
@@ -178,8 +181,9 @@ export const WebhookSettings: React.FC = () => {
               {AVAILABLE_EVENTS.map((event) => (
                 <div
                   key={event.id}
-                  className={`event-checkbox ${selectedEvents.includes(event.id) ? 'selected' : ''
-                    }`}
+                  className={`event-checkbox ${
+                    selectedEvents.includes(event.id) ? 'selected' : ''
+                  }`}
                   onClick={() => toggleEvent(event.id)}
                 >
                   {event.icon}

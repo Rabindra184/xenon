@@ -183,7 +183,7 @@ export class InspectorService {
       attributes,
     };
 
-    nodeObj.suggestedLocators = this.generateLocators(nodeObj, 'android', root);
+    nodeObj.suggestedLocators = this.generateLocators(nodeObj, 'android', root || node);
     nodeObj.suggestedActions = this.generateActions(nodeObj);
     nodeObj.xpath = nodeObj.suggestedLocators.find((l) => l.strategy === 'xpath')?.value || '/';
 
@@ -237,7 +237,7 @@ export class InspectorService {
       attributes,
     };
 
-    nodeObj.suggestedLocators = this.generateLocators(nodeObj, 'ios', root);
+    nodeObj.suggestedLocators = this.generateLocators(nodeObj, 'ios', root || node);
     nodeObj.suggestedActions = this.generateActions(nodeObj);
     nodeObj.xpath = nodeObj.suggestedLocators.find((l) => l.strategy === 'xpath')?.value || '/';
 
@@ -286,63 +286,137 @@ export class InspectorService {
   }
 
   private generateLocators(node: InspectorNode, platform: string, root: any): LocatorSuggestion[] {
-    const primarySuggestions: LocatorSuggestion[] = [];
+    const suggestions: LocatorSuggestion[] = [];
 
-    // 1. Accessibility ID / Resource ID (Highest Priority)
-    const accId =
-      node.attributes.accessibilityId || node.attributes.name || node.attributes.resourceId;
-    if (accId) {
-      const strategy = platform === 'android' ? 'id' : 'accessibility id';
-      primarySuggestions.push({
-        strategy,
-        value: accId,
-        unique: this.checkUniqueness(root, strategy, accId),
+    // 1. Accessibility ID - GOLD STANDARD
+    // Android: content-desc | iOS: name/accessibility-id
+    const contentDesc = node.attributes.contentDescription || node.attributes['content-desc'];
+    const iosName = node.attributes.name || node.attributes.label;
+
+    if (contentDesc || iosName) {
+      const val = contentDesc || iosName;
+      suggestions.push({
+        strategy: 'accessibility id',
+        value: val,
+        unique: this.checkUniqueness(root, 'accessibility id', val),
         score: 100,
       });
     }
 
-    // 2. Platform Specific (Class Chain / UiAutomator)
-    if (platform === 'ios') {
-      const predicate = `type == "${node.type}" AND label == "${node.text || ''}"`;
-      primarySuggestions.push({
-        strategy: '-ios predicate string',
-        value: predicate,
-        unique: true, // Predicates can be complex, assuming uniqueness for now
-        score: 90,
-      });
-    } else {
-      const uiSelector = `new UiSelector().className("${node.type}").text("${node.text || ''}")`;
-      primarySuggestions.push({
-        strategy: '-android uiautomator',
-        value: uiSelector,
-        unique: true,
-        score: 85,
+    // 2. Resource ID / ID
+    // Android: resource-id | iOS: identifier/name
+    const resId =
+      node.attributes.resourceId || node.attributes['resource-id'] || node.attributes.identifier;
+    if (resId) {
+      suggestions.push({
+        strategy: 'id',
+        value: resId,
+        unique: this.checkUniqueness(root, 'id', resId),
+        score: 95,
       });
     }
 
-    // 3. XPath (Fallback)
-    const xpath = `//${node.type.split('.').pop()}[@text="${node.text || ''}"]`;
-    primarySuggestions.push({
-      strategy: 'xpath',
-      value: xpath,
-      unique: this.checkUniqueness(root, 'xpath', xpath),
-      score: 50,
-    });
+    // 3. Platform Specific - Performance Tier
+    if (platform === 'ios') {
+      // iOS Predicate String - High Performance
+      const predicate = `type == "${node.type}" AND label == "${node.text || node.label || ''}"`;
+      if (node.text || node.label) {
+        suggestions.push({
+          strategy: '-ios predicate string',
+          value: predicate,
+          unique: true,
+          score: 90,
+        });
+      }
 
-    return primarySuggestions;
+      // iOS Class Chain - High Precision
+      const classChain =
+        `**/${node.type}[` +
+        (node.attributes.name
+          ? `name == "${node.attributes.name}"`
+          : `label == "${node.text || ''}"`) +
+        `]`;
+      suggestions.push({
+        strategy: '-ios class chain',
+        value: classChain,
+        unique: true,
+        score: 85,
+      });
+    } else {
+      // Android UIAutomator - Reliable Native
+      if (resId) {
+        suggestions.push({
+          strategy: '-android uiautomator',
+          value: `new UiSelector().resourceId("${resId}")`,
+          unique: true,
+          score: 88,
+        });
+      }
+      if (node.text) {
+        suggestions.push({
+          strategy: '-android uiautomator',
+          value: `new UiSelector().text("${node.text}")`,
+          unique: this.checkUniqueness(root, 'text', node.text),
+          score: 80,
+        });
+      }
+    }
+
+    // 4. XPath - Stable Semantic version
+    // Use tag name from the last part of Class name
+    const tagName = node.type.includes('.') ? node.type.split('.').pop() : node.type;
+
+    if (resId) {
+      suggestions.push({
+        strategy: 'xpath',
+        value: `//${tagName}[@resource-id="${resId}"]`,
+        unique: true,
+        score: 70,
+      });
+    } else if (node.text) {
+      suggestions.push({
+        strategy: 'xpath',
+        value: `//${tagName}[@text="${node.text}"]`,
+        unique: this.checkUniqueness(root, 'xpath', `//${tagName}[@text="${node.text}"]`),
+        score: 60,
+      });
+    } else if (contentDesc) {
+      suggestions.push({
+        strategy: 'xpath',
+        value: `//${tagName}[@content-desc="${contentDesc}"]`,
+        unique: true,
+        score: 65,
+      });
+    }
+
+    return suggestions;
   }
 
   private checkUniqueness(root: any, strategy: string, value: string): boolean {
-    // Implementation of a lightweight uniqueness checker across the parsed XML/JSON tree
     let matches = 0;
     const search = (n: any) => {
-      if (strategy === 'id' || strategy === 'accessibility id') {
-        if (n.resourceId === value || n.accessibilityId === value || n.name === value) matches++;
+      const node = n.node || n;
+      if (strategy === 'id') {
+        if (node.resourceId === value || node['resource-id'] === value || node.identifier === value)
+          matches++;
+      } else if (strategy === 'accessibility id') {
+        if (
+          node.accessibilityId === value ||
+          node['content-desc'] === value ||
+          node.contentDescription === value ||
+          node.name === value
+        )
+          matches++;
+      } else if (strategy === 'text') {
+        if (node.text === value || node.label === value) matches++;
       }
+
       if (matches > 1) return;
+
       const children = n.node || [];
       if (Array.isArray(children)) children.forEach(search);
-      else if (children) search(children);
+      else if (n.children && Array.isArray(n.children)) n.children.forEach(search);
+      else if (children && typeof children === 'object') search(children);
     };
     search(root);
     return matches === 1;

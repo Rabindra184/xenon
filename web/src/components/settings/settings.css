@@ -457,9 +457,9 @@
 }
 
 .save-btn:hover:not(:disabled) {
-    background: #00e67a;
+    background: var(--primary-hover);
     transform: translateY(-1px);
-    box-shadow: 0 0 30px rgba(0, 255, 136, 0.4);
+    box-shadow: 0 0 30px var(--primary-glow);
 }
 
 .save-btn:active:not(:disabled) {
@@ -622,10 +622,10 @@
 
 /* --- Critical Alert State (High-Contrast AA Compliant) --- */
 .critical-alert-card {
-    background: #450a0a;
+    background: rgba(127, 29, 29, 0.3);
     /* Dark Red BG */
-    border: 2px solid #ef4444;
-    /* Bright Red Border */
+    border: 2px solid var(--color-red);
+    /* Design token red border */
     border-radius: var(--radius-enterprise);
     overflow: hidden;
     margin-top: var(--gap-4);
@@ -656,9 +656,9 @@
 }
 
 .critical-header {
-    background: #ef4444;
-    /* Solid Red Header */
-    color: #ffffff;
+    background: var(--color-red);
+    /* Design token red */
+    color: var(--text-bright);
     padding: 16px 24px;
     display: flex;
     align-items: center;
@@ -707,8 +707,8 @@
 }
 
 .input-container select option {
-    background-color: #020617;
-    /* Deep Slate Black to match Obsidian Theme */
+    background-color: var(--bg-surface);
+    /* Deep surface bg to match dark theme */
     color: var(--text-body);
     padding: 12px;
 }
@@ -726,8 +726,8 @@
 }
 
 .terminal-block-critical {
-    background: #000000;
-    border: 1px solid #7f1d1d;
+    background: var(--bg-page);
+    border: 1px solid rgba(127, 29, 29, 0.6);
     border-radius: 8px;
     padding: 16px;
     font-family: 'Fira Code', monospace;

@@ -136,6 +136,16 @@ When all other healing tiers fail, the AI performs **deep reasoning** over the p
 
 This is the **Tier 5** of the [Self-Healing Engine](self-healing.md) and is only invoked when all cheaper methods have failed.
 
+## AI OmniInspector (Diagnostic Exploration)
+
+The OmniInspector is the flagship tool for interactive debugging. It runs the Xenon AI Engine on every element selection to provide:
+
+- **Smart Stability Scoring**: Ranks locators by protocol performance and layout robustness.
+- **AI Insights**: Explains *why* an element might be difficult to target and suggests fixes.
+- **Code Generation**: Instant boilerplate for Java, Python, and WebdriverIO using Appium 2.x standards.
+
+See the [OmniInspector Guide](omni-inspector.md) for full details.
+
 ---
 
 ## Dashboard Settings

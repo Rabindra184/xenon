@@ -179,7 +179,7 @@ export default function DeviceControl({ device, onClose }: DeviceControlProps) {
     startAutoStream();
     return () => {
       // Principal cleanup: Stop the stream when user leaves Control view
-      XenonApiService.stopStream(currentDevice.udid).catch(() => { });
+      XenonApiService.stopStream(currentDevice.udid).catch(() => {});
     };
   }, [device.udid]); // Only run once for this udid
 
@@ -463,10 +463,9 @@ export default function DeviceControl({ device, onClose }: DeviceControlProps) {
   };
 
   const clearAllScreenshots = () => {
-    if (window.confirm('Clear all captured evidence?')) {
-      setScreenshots([]);
-      setSelectedScreenshotIndex(null);
-    }
+    setScreenshots([]);
+    setSelectedScreenshotIndex(null);
+    toast('Cleared all captured evidence.', 'success');
   };
 
   const downloadScreenshot = (base64: string) => {
@@ -569,13 +568,16 @@ export default function DeviceControl({ device, onClose }: DeviceControlProps) {
   return (
     <div className="device-control-view">
       {/* Mission Control Scanline Overlay */}
-      <div className="scanline" style={{
-        position: 'absolute',
-        inset: 0,
-        pointerEvents: 'none',
-        opacity: 0.05,
-        zIndex: 1001
-      }}></div>
+      <div
+        className="scanline"
+        style={{
+          position: 'absolute',
+          inset: 0,
+          pointerEvents: 'none',
+          opacity: 0.05,
+          zIndex: 1001,
+        }}
+      ></div>
       <header className="control-view-top-bar">
         <button className="back-to-devices-btn" onClick={onClose}>
           <ChevronLeft size={18} /> DEVICES
@@ -588,8 +590,9 @@ export default function DeviceControl({ device, onClose }: DeviceControlProps) {
           {currentDevice.reservedUntil && Date.now() < currentDevice.reservedUntil && (
             <span
               className="device-pill reserved-pill"
-              title={`Reserved by ${currentDevice.reservedBy}${currentDevice.reservationReason ? `: ${currentDevice.reservationReason}` : ''
-                }`}
+              title={`Reserved by ${currentDevice.reservedBy}${
+                currentDevice.reservationReason ? `: ${currentDevice.reservationReason}` : ''
+              }`}
             >
               RESERVED BY {currentDevice.reservedBy?.toUpperCase() || 'ANONYMOUS'}
             </span>
@@ -608,8 +611,9 @@ export default function DeviceControl({ device, onClose }: DeviceControlProps) {
           <div className="device-screen-wrapper">
             <div
               ref={canvasRef}
-              className={`device-stream-canvas ${!isPortrait ? 'landscape' : ''} ${isCanvasFocused ? 'focused' : ''
-                }`}
+              className={`device-stream-canvas ${!isPortrait ? 'landscape' : ''} ${
+                isCanvasFocused ? 'focused' : ''
+              }`}
               style={{
                 width: canvasDimensions.width,
                 height: canvasDimensions.height,
@@ -710,8 +714,9 @@ export default function DeviceControl({ device, onClose }: DeviceControlProps) {
           </div>
 
           <div
-            className={`interactions-scroll-area ${activeTab === 'terminal' ? 'terminal-mode' : ''
-              }`}
+            className={`interactions-scroll-area ${
+              activeTab === 'terminal' ? 'terminal-mode' : ''
+            } ${activeTab === 'screenshot' || activeTab === 'logs' ? 'screenshot-mode' : ''}`}
           >
             <div className="tab-content">
               {activeTab === 'omni' && (
@@ -913,8 +918,9 @@ export default function DeviceControl({ device, onClose }: DeviceControlProps) {
                         {screenshots.map((s, idx) => (
                           <div
                             key={s.id}
-                            className={`screenshot-thumb-item ${selectedScreenshotIndex === idx ? 'active' : ''
-                              }`}
+                            className={`screenshot-thumb-item ${
+                              selectedScreenshotIndex === idx ? 'active' : ''
+                            }`}
                             onClick={() => setSelectedScreenshotIndex(idx)}
                           >
                             <img src={`data:image/png;base64,${s.base64}`} alt="Thumb" />
@@ -994,7 +1000,7 @@ export default function DeviceControl({ device, onClose }: DeviceControlProps) {
               )}
 
               {activeTab === 'logs' && (
-                <div className="action-card screenshot-card" style={{ padding: 0 }}>
+                <div className="action-card screenshot-card" style={{ padding: 0, gap: 0 }}>
                   <div className="log-toolbar">
                     <div className="log-filter-group">
                       <div className="log-stat-pill">LIVE</div>
@@ -1060,8 +1066,9 @@ export default function DeviceControl({ device, onClose }: DeviceControlProps) {
                     platform={
                       (currentDevice.platform || '').toLowerCase() as 'android' | 'ios' | 'tvos'
                     }
-                    prompt={`${(currentDevice.platform || '').toLowerCase() === 'ios' ? 'ios' : 'adb'
-                      } $`}
+                    prompt={`${
+                      (currentDevice.platform || '').toLowerCase() === 'ios' ? 'ios' : 'adb'
+                    } $`}
                     welcomeMessage={`Connected to ${currentDevice.name} (${currentDevice.udid}).\nInternal Shell Environment.`}
                     onCommand={async (cmd) => {
                       const res = await XenonApiService.executeShell(currentDevice.udid, cmd);

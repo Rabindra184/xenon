@@ -313,8 +313,8 @@ export class DeviceExplorer extends React.Component<IDeviceExplorerProps, IDevic
               <>
                 <h3 className="brand-font">Global Device Registry Empty</h3>
                 <p>
-                  Xenon hasn't detected any active device nodes in your infrastructure.
-                  Ensure your device farm is connected and heartbeat signals are active.
+                  Xenon hasn't detected any active device nodes in your infrastructure. Ensure your
+                  device farm is connected and heartbeat signals are active.
                 </p>
                 <Button variant="default" onClick={() => this.fetchDevices()}>
                   <RefreshCw size={14} className="mr-2" />
@@ -325,13 +325,10 @@ export class DeviceExplorer extends React.Component<IDeviceExplorerProps, IDevic
               <>
                 <h3 className="brand-font">No Devices Found</h3>
                 <p>
-                  Deployment configuration mismatch. Adjust your platform or state filters
-                  to find the appropriate testing target.
+                  Deployment configuration mismatch. Adjust your platform or state filters to find
+                  the appropriate testing target.
                 </p>
-                <Button
-                  variant="outline"
-                  onClick={() => this.setState({ filter: DEFAULT_FILTER })}
-                >
+                <Button variant="outline" onClick={() => this.setState({ filter: DEFAULT_FILTER })}>
                   Reset All Filters
                 </Button>
               </>
@@ -348,7 +345,7 @@ export class DeviceExplorer extends React.Component<IDeviceExplorerProps, IDevic
             </div>
           </div>
         )}
-      </div >
+      </div>
     );
   }
 }

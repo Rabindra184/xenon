@@ -195,9 +195,16 @@ const SessionTableRow = React.memo(
           </div>
         </td>
         <td>
-          <span className={`status-text ${['success', 'passed'].includes(session.status) ? 'text-neon-green' :
-            session.status === 'failed' ? 'text-neon-red' : 'text-neon-amber'
-            }`} style={{ fontWeight: 700, fontSize: '10px' }}>
+          <span
+            className={`status-text ${
+              ['success', 'passed'].includes(session.status)
+                ? 'text-neon-green'
+                : session.status === 'failed'
+                  ? 'text-neon-red'
+                  : 'text-neon-amber'
+            }`}
+            style={{ fontWeight: 700, fontSize: '10px' }}
+          >
             {session.status?.toUpperCase() || 'UNKNOWN'}
           </span>
         </td>
@@ -906,13 +913,16 @@ const SessionDashboard: React.FC = () => {
   return (
     <div className="session-dashboard-root">
       {/* Mission Control Scanline Overlay */}
-      <div className="scanline" style={{
-        position: 'absolute',
-        inset: 0,
-        pointerEvents: 'none',
-        opacity: 0.05,
-        zIndex: 1001
-      }}></div>
+      <div
+        className="scanline"
+        style={{
+          position: 'absolute',
+          inset: 0,
+          pointerEvents: 'none',
+          opacity: 0.05,
+          zIndex: 1001,
+        }}
+      ></div>
       <div className="dashboard-layout">
         <aside className="dashboard-sidebar">
           <div className="sidebar-header">

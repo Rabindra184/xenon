@@ -114,12 +114,12 @@
 
 .omni-screenshot-container {
     flex: 1;
+    min-height: 0;
     display: flex;
-    align-items: flex-start;
-    /* Corrected: Top-align device as requested */
+    align-items: center;
     justify-content: center;
-    padding: 16px;
-    background: #020617;
+    padding: 12px;
+    background: var(--bg-glass);
     position: relative;
     overflow: hidden;
 }
@@ -128,6 +128,10 @@
     position: relative;
     max-width: 100%;
     max-height: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
     user-select: none;
 }
 
@@ -136,11 +140,13 @@
 }
 
 .omni-screenshot-img {
-    width: 100%;
-    height: 100%;
+    max-width: 100%;
+    max-height: 100%;
+    width: auto;
+    height: auto;
     object-fit: contain;
-    border-radius: inherit;
-    /* Use parent's radius */
+    border-radius: 4px;
+    display: block;
 }
 
 .omni-overlay {
@@ -237,12 +243,24 @@
 /* ========== Tree Panel (Center) ========== */
 .omni-tree-panel {
     flex: 1;
+    min-width: 0;
     display: flex;
     flex-direction: column;
     background: rgba(0, 0, 0, 0.2);
     border-radius: 6px;
     border: 1px solid var(--border-visible);
     overflow: hidden;
+    min-height: 0;
+}
+
+/* Scrollable content area for the tree */
+.omni-tree-content {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    padding: 8px;
+    scrollbar-width: thin;
+    scrollbar-color: var(--border-medium) transparent;
 }
 
 .omni-tree-header {
@@ -347,21 +365,147 @@
 }
 
 .tree-item.selected {
-    background: rgba(0, 255, 136, 0.05);
+    background: rgba(0, 255, 136, 0.08);
     color: var(--color-primary);
-    border-color: rgba(0, 255, 136, 0.3);
+    border-color: rgba(0, 255, 136, 0.4);
+    box-shadow: inset 0 0 0 1px rgba(0, 255, 136, 0.2);
+}
+
+.tree-item.hovered:not(.selected) {
+    background: rgba(255, 255, 255, 0.04);
+    border-color: rgba(255, 255, 255, 0.1);
+    color: var(--text-bright);
+}
+
+.tree-node {
+    display: flex;
+    flex-direction: column;
+}
+
+.tree-children {
+    margin-left: 0;
+}
+
+.tree-toggle {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 18px;
+    height: 18px;
+    border: none;
+    background: transparent;
+    color: var(--text-muted);
+    cursor: pointer;
+    border-radius: 3px;
+    flex-shrink: 0;
+    padding: 0;
+    transition: color 0.15s, background 0.15s;
+}
+
+.tree-toggle:hover {
+    color: var(--color-primary);
+    background: rgba(0, 255, 136, 0.1);
+}
+
+.tree-toggle-spacer {
+    display: inline-block;
+    width: 18px;
+    flex-shrink: 0;
+}
+
+.tree-item-indent {
+    flex-shrink: 0;
+}
+
+.tree-icon {
+    color: var(--text-muted);
+    flex-shrink: 0;
+    opacity: 0.6;
+}
+
+.tree-label {
+    flex: 1;
+    font-size: 12px;
+    font-family: 'JetBrains Mono', 'Fira Code', monospace;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.tree-badge {
+    font-size: 10px;
+    font-weight: 700;
+    background: rgba(255, 255, 255, 0.06);
+    color: var(--text-muted);
+    padding: 1px 5px;
+    border-radius: 4px;
+    flex-shrink: 0;
+    font-family: 'JetBrains Mono', monospace;
 }
 
 /* ========== Details Panel (Right) ========== */
 .omni-details-panel {
     flex: 1;
-    min-width: 320px;
+    min-width: 280px;
+    max-width: 360px;
     display: flex;
     flex-direction: column;
     background: var(--bg-surface);
     border-radius: 6px;
     border: 1px solid var(--border-visible);
     overflow: hidden;
+    min-height: 0;
+}
+
+/* Scrollable content area for details */
+.omni-details-content {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    padding: 16px;
+    scrollbar-width: thin;
+    scrollbar-color: var(--border-medium) transparent;
+}
+
+.omni-header-left {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+
+.omni-tree-actions {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+}
+
+.omni-clear-btn {
+    background: transparent;
+    border: none;
+    color: var(--text-muted);
+    cursor: pointer;
+    font-size: 16px;
+    padding: 0 4px;
+    line-height: 1;
+    border-radius: 3px;
+}
+
+.omni-clear-btn:hover {
+    color: var(--text-bright);
+    background: rgba(255, 255, 255, 0.08);
+}
+
+.omni-info-table {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.omni-locators-list {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
 }
 
 .omni-details-header {
@@ -533,9 +677,10 @@
     display: flex;
     flex-direction: column;
     gap: 4px;
-    background: #020617;
+    background: var(--bg-glass);
+    backdrop-filter: blur(8px);
     border-radius: var(--radius-sm);
-    border: 1px solid rgba(255, 255, 255, 0.05);
+    border: 1px solid var(--border-medium);
     padding: 8px;
     max-height: 200px;
     overflow-y: auto;
@@ -672,7 +817,9 @@
 
 .omni-clipboard-val {
     flex: 1;
-    background: #000;
+    background: var(--bg-glass);
+    backdrop-filter: blur(8px);
+    border: 1px solid var(--border-medium);
     border-radius: 4px;
     padding: 8px;
     font-family: 'Fira Code', monospace;
@@ -681,4 +828,427 @@
     min-height: 32px;
     overflow-x: auto;
     white-space: nowrap;
+}
+
+/* ===================================================
+   AI FEATURES: Details Tabs
+   =================================================== */
+.omni-details-tabs {
+    display: flex;
+    background: rgba(0, 0, 0, 0.5);
+    border-bottom: 1px solid var(--border-visible);
+    flex-shrink: 0;
+}
+
+.omni-details-tab {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    flex: 1;
+    padding: 10px 8px;
+    border: none;
+    background: transparent;
+    color: var(--text-muted);
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
+    transition: all 0.15s ease;
+    font-family: 'JetBrains Mono', monospace;
+    justify-content: center;
+}
+
+.omni-details-tab:hover:not(:disabled) {
+    color: var(--text-bright);
+    background: rgba(255, 255, 255, 0.03);
+}
+
+.omni-details-tab.active {
+    color: var(--color-primary);
+    border-bottom-color: var(--color-primary);
+    background: rgba(0, 255, 136, 0.04);
+}
+
+.omni-details-tab:disabled {
+    opacity: 0.3;
+    cursor: not-allowed;
+}
+
+/* ===================================================
+   AI FEATURES: Locator with Stability Score
+   =================================================== */
+.omni-locator-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 10px 14px;
+    background: rgba(0, 0, 0, 0.4);
+    border-radius: 6px;
+    border: 1px solid var(--border-visible);
+    border-left: 3px solid var(--color-primary);
+    transition: all 0.15s;
+    cursor: pointer;
+}
+
+.omni-locator-row:hover {
+    background: rgba(255, 255, 255, 0.02);
+    border-color: var(--color-primary);
+}
+
+.omni-locator-row.selected-for-code {
+    border-color: var(--color-primary);
+    background: rgba(0, 255, 136, 0.06);
+    box-shadow: 0 0 12px rgba(0, 255, 136, 0.08);
+}
+
+.omni-locator-left {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    min-width: 0;
+}
+
+.omni-locator-top {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+}
+
+.omni-stability-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    font-size: 9px;
+    font-weight: 800;
+    padding: 2px 6px;
+    border-radius: 4px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    font-family: 'JetBrains Mono', monospace;
+}
+
+.omni-stability-badge.stable {
+    background: rgba(16, 185, 129, 0.12);
+    color: #10b981;
+    border: 1px solid rgba(16, 185, 129, 0.25);
+}
+
+.omni-stability-badge.moderate {
+    background: rgba(251, 191, 36, 0.1);
+    color: #fbbf24;
+    border: 1px solid rgba(251, 191, 36, 0.25);
+}
+
+.omni-stability-badge.fragile {
+    background: rgba(244, 63, 94, 0.1);
+    color: #f43f5e;
+    border: 1px solid rgba(244, 63, 94, 0.25);
+}
+
+.omni-stability-reason {
+    font-size: 10px;
+    color: var(--text-muted);
+    font-style: italic;
+    line-height: 1.3;
+}
+
+.omni-section-badge {
+    font-size: 9px;
+    font-weight: 600;
+    background: rgba(0, 255, 136, 0.08);
+    color: var(--color-primary);
+    padding: 2px 6px;
+    border-radius: 4px;
+    margin-left: 6px;
+    vertical-align: middle;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+/* ===================================================
+   AI FEATURES: Tree text preview
+   =================================================== */
+.tree-text-preview {
+    font-size: 10px;
+    color: var(--text-muted);
+    font-style: italic;
+    max-width: 80px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+
+/* ===================================================
+   AI FEATURES: Smart Search Hint
+   =================================================== */
+.omni-search-hint {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    padding: 4px 14px;
+    font-size: 10px;
+    color: var(--color-primary);
+    opacity: 0.7;
+    font-style: italic;
+    background: rgba(0, 255, 136, 0.03);
+    border-bottom: 1px solid rgba(0, 255, 136, 0.08);
+}
+
+/* ===================================================
+   AI FEATURES: Element Insight Panel
+   =================================================== */
+.omni-insight-panel {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+.omni-insight-role {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 16px;
+    background: rgba(0, 255, 136, 0.04);
+    border-radius: 8px;
+    border: 1px solid rgba(0, 255, 136, 0.12);
+}
+
+.omni-insight-emoji {
+    font-size: 28px;
+    line-height: 1;
+}
+
+.omni-insight-role-name {
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--text-bright);
+    font-family: 'JetBrains Mono', monospace;
+}
+
+.omni-insight-interactable {
+    margin-top: 4px;
+    display: flex;
+    gap: 6px;
+}
+
+.omni-badge-green {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 10px;
+    font-weight: 700;
+    color: #10b981;
+    background: rgba(16, 185, 129, 0.1);
+    padding: 2px 8px;
+    border-radius: 4px;
+    border: 1px solid rgba(16, 185, 129, 0.2);
+}
+
+.omni-badge-gray {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 10px;
+    font-weight: 700;
+    color: var(--text-muted);
+    background: rgba(255, 255, 255, 0.04);
+    padding: 2px 8px;
+    border-radius: 4px;
+    border: 1px solid var(--border-medium);
+}
+
+.omni-insight-warning {
+    padding: 10px 12px;
+    background: rgba(251, 191, 36, 0.06);
+    border: 1px solid rgba(251, 191, 36, 0.2);
+    border-radius: 6px;
+    font-size: 11px;
+    color: #fbbf24;
+}
+
+.omni-insight-description {
+    display: flex;
+    gap: 10px;
+    align-items: flex-start;
+    padding: 12px;
+    background: rgba(0, 0, 0, 0.3);
+    border-radius: 6px;
+    border: 1px solid var(--border-visible);
+}
+
+.omni-insight-icon {
+    color: var(--color-primary);
+    flex-shrink: 0;
+    margin-top: 2px;
+}
+
+.omni-insight-description p {
+    font-size: 12px;
+    color: var(--text-main);
+    line-height: 1.6;
+    margin: 0;
+}
+
+.omni-insight-best-locator {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.omni-insight-attributes {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.omni-quick-facts {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.omni-quick-fact-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 6px 10px;
+    border-radius: 4px;
+    background: rgba(0, 0, 0, 0.2);
+}
+
+.omni-quick-fact-label {
+    font-size: 11px;
+    color: var(--text-muted);
+    font-weight: 600;
+}
+
+.omni-quick-fact-value {
+    font-size: 11px;
+    color: var(--text-main);
+    font-family: 'JetBrains Mono', monospace;
+}
+
+.omni-quick-fact-value.true {
+    color: #10b981;
+    font-weight: 700;
+}
+
+/* ===================================================
+   AI FEATURES: Code Generator Panel
+   =================================================== */
+.omni-codegen-panel {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.omni-codegen-frameworks {
+    display: flex;
+    gap: 4px;
+    flex-wrap: wrap;
+}
+
+.omni-fw-btn {
+    flex: 1;
+    padding: 6px 4px;
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid var(--border-visible);
+    border-radius: 6px;
+    color: var(--text-muted);
+    font-size: 10px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: all 0.15s;
+    white-space: nowrap;
+}
+
+.omni-fw-btn:hover {
+    background: rgba(255, 255, 255, 0.06);
+    color: var(--text-bright);
+}
+
+.omni-fw-btn.active {
+    background: rgba(0, 255, 136, 0.08);
+    border-color: rgba(0, 255, 136, 0.4);
+    color: var(--color-primary);
+}
+
+.omni-codegen-locator-selector {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.omni-codegen-label {
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    white-space: nowrap;
+    letter-spacing: 0.05em;
+}
+
+.omni-fw-select {
+    flex: 1;
+    padding: 6px 8px;
+    background: rgba(0, 0, 0, 0.3);
+    border: 1px solid var(--border-visible);
+    border-radius: 6px;
+    color: var(--text-bright);
+    font-size: 11px;
+    outline: none;
+    cursor: pointer;
+}
+
+.omni-fw-select:focus {
+    border-color: var(--color-primary);
+}
+
+.omni-codegen-output {
+    display: flex;
+    flex-direction: column;
+    border-radius: 8px;
+    border: 1px solid var(--border-visible);
+    overflow: hidden;
+}
+
+.omni-codegen-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 12px;
+    background: rgba(0, 0, 0, 0.5);
+    border-bottom: 1px solid var(--border-visible);
+}
+
+.omni-codegen-lang {
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--color-primary);
+    font-family: 'JetBrains Mono', monospace;
+}
+
+.omni-codegen-pre {
+    margin: 0;
+    padding: 14px;
+    background: var(--bg-glass);
+    color: #e2e8f0;
+    font-family: 'Fira Code', 'JetBrains Mono', monospace;
+    font-size: 11px;
+    line-height: 1.6;
+    overflow-x: auto;
+    white-space: pre;
+}
+
+.omni-codegen-pre code {
+    font-family: inherit;
+    font-size: inherit;
+    color: inherit;
 }

@@ -165,13 +165,16 @@ export const AISettings: React.FC = () => {
   return (
     <div className="settings-container mesh-gradient-ai">
       {/* Mission Control Scanline Overlay */}
-      <div className="scanline" style={{
-        position: 'absolute',
-        inset: 0,
-        pointerEvents: 'none',
-        opacity: 0.05,
-        zIndex: 1001
-      }}></div>
+      <div
+        className="scanline"
+        style={{
+          position: 'absolute',
+          inset: 0,
+          pointerEvents: 'none',
+          opacity: 0.05,
+          zIndex: 1001,
+        }}
+      ></div>
       <div className="settings-header">
         <div className="settings-title-group">
           <Brain className="settings-icon ai-engine-icon" size={28} />

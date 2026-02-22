@@ -92,13 +92,16 @@ export const MaintenanceSettings: React.FC = () => {
   return (
     <div className="settings-container mesh-gradient-infra">
       {/* Mission Control Scanline Overlay */}
-      <div className="scanline" style={{
-        position: 'absolute',
-        inset: 0,
-        pointerEvents: 'none',
-        opacity: 0.05,
-        zIndex: 1001
-      }}></div>
+      <div
+        className="scanline"
+        style={{
+          position: 'absolute',
+          inset: 0,
+          pointerEvents: 'none',
+          opacity: 0.05,
+          zIndex: 1001,
+        }}
+      ></div>
       <div className="settings-header">
         <div className="settings-title-group">
           <MaintenanceIcon className="settings-icon infra-icon" size={28} />
@@ -196,8 +199,9 @@ export const MaintenanceSettings: React.FC = () => {
                 ].map((p) => (
                   <button
                     key={p.label}
-                    className={`preset-chip ${config.buildCleanupSchedule === p.value ? 'active' : ''
-                      }`}
+                    className={`preset-chip ${
+                      config.buildCleanupSchedule === p.value ? 'active' : ''
+                    }`}
                     onClick={() => setConfig({ ...config, buildCleanupSchedule: p.value })}
                   >
                     {p.label}

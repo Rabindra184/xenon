@@ -62,13 +62,16 @@ const TagManagerModal: React.FC<TagManagerModalProps> = ({ device, onClose, onUp
     <div className="tag-modal-overlay" onClick={onClose}>
       <div className="tag-modal-container" onClick={(e) => e.stopPropagation()}>
         {/* Mission Control Scanline Overlay */}
-        <div className="scanline" style={{
-          position: 'absolute',
-          inset: 0,
-          pointerEvents: 'none',
-          opacity: 0.05,
-          zIndex: 1001
-        }}></div>
+        <div
+          className="scanline"
+          style={{
+            position: 'absolute',
+            inset: 0,
+            pointerEvents: 'none',
+            opacity: 0.05,
+            zIndex: 1001,
+          }}
+        ></div>
         <div className="tag-modal-header">
           <div className="tag-modal-title">
             <TagIcon size={18} className="title-icon" />

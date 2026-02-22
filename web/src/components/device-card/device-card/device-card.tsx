@@ -147,8 +147,9 @@ export class DeviceCard extends React.Component<IDeviceCardProps, IDeviceCardSta
           <button
             className="tactical-btn reserved"
             onClick={() => this.releaseReservation(udid, host)}
-            title={`Reserved by ${reservedBy}${reservationReason ? `: ${reservationReason}` : ''
-              }. Expires: ${reservedUntil ? new Date(reservedUntil).toLocaleString() : 'Never'}`}
+            title={`Reserved by ${reservedBy}${
+              reservationReason ? `: ${reservationReason}` : ''
+            }. Expires: ${reservedUntil ? new Date(reservedUntil).toLocaleString() : 'Never'}`}
           >
             <Unlock size={14} color="#38bdf8" />
           </button>
@@ -190,13 +191,16 @@ export class DeviceCard extends React.Component<IDeviceCardProps, IDeviceCardSta
     return (
       <div className={`device-info-card-container ${this.getStatusClassName()} group`}>
         {/* Mission Control Scanline Overlay */}
-        <div className="scanline" style={{
-          position: 'absolute',
-          inset: 0,
-          pointerEvents: 'none',
-          opacity: 0.1,
-          zIndex: 0
-        }}></div>
+        <div
+          className="scanline"
+          style={{
+            position: 'absolute',
+            inset: 0,
+            pointerEvents: 'none',
+            opacity: 0.1,
+            zIndex: 0,
+          }}
+        ></div>
 
         {/* Compact Header */}
         <div className="card-header relative z-10">
@@ -212,21 +216,31 @@ export class DeviceCard extends React.Component<IDeviceCardProps, IDeviceCardSta
               {udid}
             </div>
           </div>
-          <div className={`device-status-badge ${deviceState} ${deviceState === 'busy' && sessionProgress && sessionProgress !== 'Session Active' ? 'pulse' : ''}`}>
-            {deviceState === 'busy' && sessionProgress && sessionProgress !== 'Session Active' ? sessionProgress : deviceState}
+          <div
+            className={`device-status-badge ${deviceState} ${deviceState === 'busy' && sessionProgress && sessionProgress !== 'Session Active' ? 'pulse' : ''}`}
+          >
+            {deviceState === 'busy' && sessionProgress && sessionProgress !== 'Session Active'
+              ? sessionProgress
+              : deviceState}
           </div>
         </div>
 
         {/* Device Name and Info */}
         <div className="device-info-main relative z-10">
-          <h3 className="device-name" title={name}>{name}</h3>
-          <p className="device-subtext">{deviceType.toUpperCase()} • {sdk}</p>
+          <h3 className="device-name" title={name}>
+            {name}
+          </h3>
+          <p className="device-subtext">
+            {deviceType.toUpperCase()} • {sdk}
+          </p>
 
           {/* Inline Tags Display */}
           {this.props.device.tags && this.props.device.tags.length > 0 && (
             <div className="device-tags-inline">
-              {this.props.device.tags.slice(0, 3).map(tag => (
-                <span key={tag} className="inline-tag" title={tag}>{tag}</span>
+              {this.props.device.tags.slice(0, 3).map((tag) => (
+                <span key={tag} className="inline-tag" title={tag}>
+                  {tag}
+                </span>
               ))}
               {this.props.device.tags.length > 3 && (
                 <span className="inline-tag-overflow">+{this.props.device.tags.length - 3}</span>
@@ -249,17 +263,28 @@ export class DeviceCard extends React.Component<IDeviceCardProps, IDeviceCardSta
             </div>
           )}
 
-          <div className={`metric-item health ${this.props.device.healthStatus?.toLowerCase() || 'healthy'}`} title={this.props.device.healthCheckError || 'Device is healthy'}>
+          <div
+            className={`metric-item health ${this.props.device.healthStatus?.toLowerCase() || 'healthy'}`}
+            title={this.props.device.healthCheckError || 'Device is healthy'}
+          >
             <div className="health-dot"></div>
             <span>{this.props.device.healthStatus || 'Healthy'}</span>
             {totalHealedCount && totalHealedCount > 0 && (
-              <span className="heal-badge"><ShieldCheck size={8} /> {totalHealedCount}</span>
+              <span className="heal-badge">
+                <ShieldCheck size={8} /> {totalHealedCount}
+              </span>
             )}
           </div>
 
           {thermalStatus && thermalStatus !== 'Unknown' && (
             <div className="metric-item thermal" title={`Thermal: ${thermalStatus}`}>
-              <Thermometer size={10} style={{ color: thermalStatus === 'Nominal' ? 'var(--color-primary)' : 'var(--color-amber)' }} />
+              <Thermometer
+                size={10}
+                style={{
+                  color:
+                    thermalStatus === 'Nominal' ? 'var(--color-primary)' : 'var(--color-amber)',
+                }}
+              />
               <span>{thermalStatus}</span>
             </div>
           )}
@@ -286,7 +311,9 @@ export class DeviceCard extends React.Component<IDeviceCardProps, IDeviceCardSta
           {this.isReserved() ? (
             <div className="reservation-micro-banner">
               <Clock size={10} />
-              <span>RES: {reservedBy || 'Anon'} ({this.getRemainingReservationTime()})</span>
+              <span>
+                RES: {reservedBy || 'Anon'} ({this.getRemainingReservationTime()})
+              </span>
             </div>
           ) : session_id ? (
             <div className="session-micro-banner">
@@ -295,14 +322,20 @@ export class DeviceCard extends React.Component<IDeviceCardProps, IDeviceCardSta
             </div>
           ) : (
             <div className="utilization-micro-info">
-              <span>UTIL: {prettyMilliseconds(totalUtilizationTimeMilliSec || 0, { compact: true })}</span>
+              <span>
+                UTIL: {prettyMilliseconds(totalUtilizationTimeMilliSec || 0, { compact: true })}
+              </span>
             </div>
           )}
         </div>
 
         {/* Tactical Action Row */}
         <div className="action-row relative z-10">
-          <button className="tactical-btn add-tag" onClick={() => this.manageTags()} title="Manage Tags">
+          <button
+            className="tactical-btn add-tag"
+            onClick={() => this.manageTags()}
+            title="Manage Tags"
+          >
             <Plus size={14} />
           </button>
           {blockButton()}
@@ -314,10 +347,23 @@ export class DeviceCard extends React.Component<IDeviceCardProps, IDeviceCardSta
               this.props.navigate(`/devices/${udid}/control`)
             }
             disabled={busy && !!session_id && !session_id.toString().startsWith('manual_')}
-            title={busy && !!session_id && !session_id.toString().startsWith('manual_') ? 'Locked: Appium Session' : 'Take Control'}
+            title={
+              busy && !!session_id && !session_id.toString().startsWith('manual_')
+                ? 'Locked: Appium Session'
+                : 'Take Control'
+            }
           >
             <Monitor size={14} />
-            <span style={{ fontSize: '10px', fontWeight: 800, letterSpacing: '0.05em', fontFamily: 'Outfit, sans-serif' }}>CTRL</span>
+            <span
+              style={{
+                fontSize: '10px',
+                fontWeight: 800,
+                letterSpacing: '0.05em',
+                fontFamily: 'Outfit, sans-serif',
+              }}
+            >
+              CTRL
+            </span>
           </button>
         </div>
 

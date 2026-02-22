@@ -171,7 +171,7 @@
   top: calc(100% + 4px);
   left: 0;
   right: 0;
-  background: #0a0a0a;
+  background: var(--bg-surface);
   border: 1px solid var(--border-visible);
   border-radius: 6px;
   z-index: 1100;
@@ -944,7 +944,7 @@
   cursor: pointer;
   transition: all 0.2s ease;
   object-fit: contain;
-  background: #000;
+  background: var(--bg-page);
 }
 
 .log-screenshot-img:hover {
@@ -992,7 +992,7 @@
 }
 
 .video-player-container {
-  background: #000;
+  background: var(--bg-page);
   border-radius: 8px;
   aspect-ratio: 9/16;
   max-height: 220px;
@@ -1101,7 +1101,7 @@
   position: absolute;
   top: -8px;
   left: 12px;
-  background: #0a0a0f;
+  background: var(--bg-surface);
   padding: 0 6px;
   font-size: 9px;
   font-weight: 800;
@@ -1694,7 +1694,7 @@
 /* Waterfall Trace View - Elite Tier */
 .waterfall-container.elite-tier {
   padding: 1.5rem;
-  background: #020617;
+  background: var(--bg-page);
   border-radius: 8px;
   border: 1px solid rgba(56, 189, 248, 0.1);
   display: flex;
@@ -1832,7 +1832,7 @@
   font-weight: 800;
   padding: 1px 4px;
   border-radius: 4px;
-  background: #1e293b;
+  background: var(--bg-surface);
 }
 
 .method-badge.POST {
@@ -1928,7 +1928,7 @@
   bottom: calc(100% + 12px);
   left: 50%;
   transform: translateX(-50%) translateY(10px);
-  background: #1e293b;
+  background: var(--bg-surface);
   border: 1px solid #38bdf8;
   border-radius: 8px;
   padding: 12px;

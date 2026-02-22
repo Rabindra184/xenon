@@ -166,27 +166,32 @@ const Apps: React.FC = () => {
   return (
     <div className="apps-container device-explorer-container">
       {/* Mission Control Scanline Overlay */}
-      <div className="scanline" style={{
-        position: 'absolute',
-        inset: 0,
-        pointerEvents: 'none',
-        opacity: 0.05,
-        zIndex: 1001
-      }}></div>
+      <div
+        className="scanline"
+        style={{
+          position: 'absolute',
+          inset: 0,
+          pointerEvents: 'none',
+          opacity: 0.05,
+          zIndex: 1001,
+        }}
+      ></div>
       <div className="device-explorer-header-container">
         <div className="device-explorer-header-left-container">
           <div className="device-explorer-header-entry">
             <div className="device-explorer-header-value">
               <button
-                className={`device-explorer-header__platform-btn ${platformFilter.android && 'selected'
-                  }`}
+                className={`device-explorer-header__platform-btn ${
+                  platformFilter.android && 'selected'
+                }`}
                 onClick={() => togglePlatform('android')}
               >
                 <Smartphone size={18} color="currentColor" /> Android
               </button>
               <button
-                className={`device-explorer-header__platform-btn ${platformFilter.ios && 'selected'
-                  }`}
+                className={`device-explorer-header__platform-btn ${
+                  platformFilter.ios && 'selected'
+                }`}
                 onClick={() => togglePlatform('ios')}
               >
                 <Apple size={18} color="currentColor" /> iOS
@@ -315,8 +320,9 @@ const Apps: React.FC = () => {
 
                     <div className="col-actions">
                       <button
-                        className={`instant-deploy-trigger ${deployingAppId === app.id && 'active'
-                          }`}
+                        className={`instant-deploy-trigger ${
+                          deployingAppId === app.id && 'active'
+                        }`}
                         onClick={() => {
                           if (deployingAppId === app.id) {
                             setDeployingAppId(null);

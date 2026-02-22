@@ -239,7 +239,7 @@
   padding: 6px;
   right: 180px;
   transform: translateY(-50%);
-  background: #0f172a;
+  background: var(--bg-surface);
   border: 1px solid var(--primary);
   border-radius: 8px;
   box-shadow: 0 10px 40px rgba(0, 0, 0, 0.6);
@@ -263,7 +263,7 @@
 
 .target-device-select {
   height: 32px;
-  background: #1e293b;
+  background: rgba(0, 0, 0, 0.25);
   border: 1px solid var(--border-medium);
   border-radius: 6px;
   color: var(--text-main);
@@ -282,11 +282,11 @@
 
 .target-device-select:hover {
   border-color: var(--primary);
-  background-color: #2d3748;
+  background-color: rgba(0, 0, 0, 0.4);
 }
 
 .target-device-select option {
-  background: #0f172a;
+  background: var(--bg-surface);
   color: var(--text-main);
   padding: 8px;
 }
@@ -323,9 +323,9 @@
 }
 
 .confirm-deploy-btn:hover:not(:disabled) {
-  background: #4ade80;
+  background: var(--primary-hover);
   transform: scale(1.05);
-  box-shadow: 0 0 15px rgba(34, 197, 94, 0.4);
+  box-shadow: 0 0 15px var(--primary-glow);
 }
 
 .confirm-deploy-btn:disabled {

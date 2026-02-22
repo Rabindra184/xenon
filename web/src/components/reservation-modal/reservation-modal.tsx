@@ -60,13 +60,16 @@ const ReservationModal: React.FC<ReservationModalProps> = ({ device, onClose, on
     <div className="reservation-modal-overlay" onClick={onClose}>
       <div className="reservation-modal" onClick={(e) => e.stopPropagation()}>
         {/* Mission Control Scanline Overlay */}
-        <div className="scanline" style={{
-          position: 'absolute',
-          inset: 0,
-          pointerEvents: 'none',
-          opacity: 0.05,
-          zIndex: 1001
-        }}></div>
+        <div
+          className="scanline"
+          style={{
+            position: 'absolute',
+            inset: 0,
+            pointerEvents: 'none',
+            opacity: 0.05,
+            zIndex: 1001,
+          }}
+        ></div>
 
         <div className="reservation-modal-header">
           <div className="reservation-modal-title">
@@ -85,13 +88,16 @@ const ReservationModal: React.FC<ReservationModalProps> = ({ device, onClose, on
           </div>
 
           <p>
-            Reserve <strong>{device.name || device.udid}</strong> for exclusive use. This will prevent
-            CI sessions from using this device.
+            Reserve <strong>{device.name || device.udid}</strong> for exclusive use. This will
+            prevent CI sessions from using this device.
           </p>
 
           <div className="reservation-form-group">
             <label>
-              <User size={14} style={{ marginRight: 6, verticalAlign: 'middle', color: 'var(--color-primary)' }} />
+              <User
+                size={14}
+                style={{ marginRight: 6, verticalAlign: 'middle', color: 'var(--color-primary)' }}
+              />
               Reserved By
             </label>
             <input
@@ -106,7 +112,10 @@ const ReservationModal: React.FC<ReservationModalProps> = ({ device, onClose, on
 
           <div className="reservation-form-group">
             <label>
-              <Clock size={14} style={{ marginRight: 6, verticalAlign: 'middle', color: 'var(--color-primary)' }} />
+              <Clock
+                size={14}
+                style={{ marginRight: 6, verticalAlign: 'middle', color: 'var(--color-primary)' }}
+              />
               Duration
             </label>
             <div className="duration-selector">
@@ -124,7 +133,10 @@ const ReservationModal: React.FC<ReservationModalProps> = ({ device, onClose, on
 
           <div className="reservation-form-group">
             <label>
-              <MessageSquare size={14} style={{ marginRight: 6, verticalAlign: 'middle', color: 'var(--color-primary)' }} />
+              <MessageSquare
+                size={14}
+                style={{ marginRight: 6, verticalAlign: 'middle', color: 'var(--color-primary)' }}
+              />
               Reason (Optional)
             </label>
             <input
