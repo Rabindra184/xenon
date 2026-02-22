@@ -20,10 +20,13 @@ rm -rf src/public
 mkdir -p src/public
 
 # Using absolute-ish path for robustness in CI
-if [ -d "web/build" ]; then
-  cp -R web/build/* src/public/
+if [ -d "web/build" ] && [ "$(ls -A web/build)" ]; then
+  echo "📦 Copying artifacts from web/build to src/public..."
+  cp -R web/build/. src/public/
   echo "✅ Xenon build complete."
 else
-  echo "❌ Error: web/build directory not found. Frontend build failed?"
+  echo "❌ Error: web/build directory not found or empty. Frontend build failed?"
+  ls -la web/ || true
+  ls -la web/build/ || true
   exit 1
 fi
