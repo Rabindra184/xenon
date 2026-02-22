@@ -11,9 +11,11 @@ import sinon from 'sinon';
 import { IDevice } from '../../src/interfaces/IDevice';
 const sandbox = sinon.createSandbox();
 
+import { createTestAndroidManager, resetTestContainer } from '../helpers/test-container';
+
 describe('Model Test', async () => {
   before('Add device collection', async () => {
-    (await XenonDatabase.DeviceModel).removeDataOnly();
+    await resetTestContainer();
     expect((await XenonDatabase.DeviceModel).chain().find().data().length).to.be.equal(0);
     expect(deviceMock.length).to.be.greaterThanOrEqual(1);
     // console.log(`deviceMock length: ${deviceMock.length}`);
@@ -53,6 +55,7 @@ describe('Model Test', async () => {
         state: 'device',
         udid: 'emulator-9994',
         platform: 'android',
+        host: '127.0.0.1',
       },
     ] as unknown as IDevice[];
 
@@ -73,6 +76,7 @@ describe('Model Test', async () => {
         udid: 'emulator-5554',
         platform: 'android',
         offline: false,
+        host: '127.0.0.1',
       },
       {
         busy: false,
@@ -80,6 +84,7 @@ describe('Model Test', async () => {
         udid: 'emulator-5556',
         platform: 'android',
         offline: false,
+        host: '127.0.0.1',
       },
       {
         name: 'iPad Air',
@@ -91,6 +96,7 @@ describe('Model Test', async () => {
         busy: true,
         realDevice: false,
         offline: false,
+        host: '127.0.0.1',
       },
       {
         name: 'iPad Air (3rd generation)',
@@ -102,6 +108,7 @@ describe('Model Test', async () => {
         busy: false,
         realDevice: false,
         offline: false,
+        host: '127.0.0.1',
       },
     ] as unknown as IDevice[];
     await setSimulatorState(newDeviceList);
@@ -122,6 +129,7 @@ describe('Model Test', async () => {
         udid: `emulator-${i}`,
         platform: 'android',
         offline: false,
+        host: '127.0.0.1',
       } as unknown as IDevice);
     }
 

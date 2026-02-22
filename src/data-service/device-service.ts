@@ -7,9 +7,16 @@ import { Container } from 'typedi';
 import { CircuitBreaker } from './CircuitBreaker';
 
 import { NotificationService } from '../services/NotificationService';
+import { IDeviceStore } from './device-store.interface';
 import { SocketServer } from '../services/SocketServer';
 
-const store = DeviceStoreFactory.getStore();
+// Use a Proxy to ensure we're always using the latest store from the factory,
+// which is critical for test isolation when the factory cache is cleared.
+const store: IDeviceStore = new Proxy({} as IDeviceStore, {
+  get: (target, prop) => {
+    return (DeviceStoreFactory.getStore() as any)[prop];
+  },
+});
 
 export async function removeDevice(devices: { udid: string; host: string }[]) {
   for (const device of devices) {

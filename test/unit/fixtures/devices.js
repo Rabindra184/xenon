@@ -26,13 +26,14 @@ export const deviceMock = [
   {
     name: 'iPad Air',
     udid: '0FBCBDCC-2FF1-4FCA-B034-60ABC86ED888',
-    state: 'Booted',
+    state: 'Shutdown',
     deviceType: 'simulator',
     sdk: '13.5',
     platform: 'ios',
     busy: false,
     realDevice: false,
     offline: false,
+    host: '127.0.0.1',
   },
   {
     name: 'iPad Air (3rd generation)',
@@ -44,6 +45,7 @@ export const deviceMock = [
     busy: false,
     realDevice: false,
     offline: false,
+    host: '127.0.0.1',
   },
   {
     name: 'iPhone SE (3rd generation)',
@@ -51,6 +53,8 @@ export const deviceMock = [
     state: 'Shutdown',
     sdk: '16.1',
     platform: 'iOS',
+    host: '127.0.0.1',
+    deviceType: 'simulator',
   },
   {
     name: 'iPhone 14',
@@ -58,6 +62,8 @@ export const deviceMock = [
     state: 'Shutdown',
     sdk: '16.1',
     platform: 'iOS',
+    host: '127.0.0.1',
+    deviceType: 'simulator',
   },
   {
     name: 'iPhone 14 Plus',
@@ -65,6 +71,8 @@ export const deviceMock = [
     state: 'Shutdown',
     sdk: '16.1',
     platform: 'iOS',
+    host: '127.0.0.1',
+    deviceType: 'simulator',
   },
   {
     name: 'iPhone 14 Pro',
@@ -72,5 +80,7 @@ export const deviceMock = [
     state: 'Shutdown',
     sdk: '16.1',
     platform: 'iOS',
+    host: '127.0.0.1',
+    deviceType: 'simulator',
   },
 ];

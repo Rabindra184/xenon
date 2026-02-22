@@ -30,20 +30,24 @@ export class XenonDatabase {
 
   private static dbname() {
     const appium_home = process.env.APPIUM_HOME || './temp-appium';
-    // log.debug(`Using database file: ${appium_home}/xenon-db.json`);
-    return `${appium_home}/xenon-db.json`;
+    const isTest = process.env.NODE_ENV === 'test';
+    const dbFile = isTest ? `xenon-test-${process.pid}.json` : 'xenon-db.json';
+    return `${appium_home}/${dbFile}`;
   }
 
   private static async getDeviceModel() {
-    return (await XenonDatabase.getDB()).addCollection('devices');
+    const db = await XenonDatabase.getDB();
+    return db.getCollection('devices') || db.addCollection('devices');
   }
 
   private static async getPendingSessionsModel() {
-    return (await XenonDatabase.getDB()).addCollection('pending-sessions');
+    const db = await XenonDatabase.getDB();
+    return db.getCollection('pending-sessions') || db.addCollection('pending-sessions');
   }
 
   private static async getCLIArgs() {
-    return (await XenonDatabase.getDB()).addCollection('cliArgs');
+    const db = await XenonDatabase.getDB();
+    return db.getCollection('cliArgs') || db.addCollection('cliArgs');
   }
 
   private static initCollections(db: loki) {
@@ -62,9 +66,16 @@ export class XenonDatabase {
     log.debug(`Creating new database: ${XenonDatabase.dbname()}`);
 
     const db = await new Promise<loki>((resolve, reject) => {
+      const isTest = process.env.NODE_ENV === 'test';
       const db = new loki(XenonDatabase.dbname(), {
-        autoload: true,
+        autoload: !isTest,
       });
+
+      if (isTest) {
+        XenonDatabase.initCollections(db);
+        resolve(db);
+        return;
+      }
 
       db.on('autoload', () => {
         log.info('Database autoloaded');
@@ -93,5 +104,17 @@ export class XenonDatabase {
     XenonDatabase.instance()._dbList.push({ dbname: XenonDatabase.dbname(), db });
 
     return db;
+  }
+
+  public static async reset() {
+    if (XenonDatabase._instance) {
+      console.log(`[XenonDatabase] Resetting ${XenonDatabase._instance._dbList.length} databases`);
+      for (const dbInfo of XenonDatabase._instance._dbList) {
+        dbInfo.db.collections.forEach((c: any) => {
+          console.log(`[XenonDatabase] Removing data from collection: ${c.name}`);
+          c.removeDataOnly();
+        });
+      }
+    }
   }
 }

@@ -1,10 +1,17 @@
+import 'reflect-metadata';
 import { Container } from 'typedi';
 import { PluginContext } from '../../src/PluginContext';
 import { DefaultPluginArgs, IPluginArgs } from '../../src/interfaces/IPluginArgs';
 import { v4 as uuidv4 } from 'uuid';
+import { XenonDatabase } from '../../src/data-service/db';
+import { DeviceStoreFactory } from '../../src/data-service/device-store';
 import AndroidDeviceManager from '../../src/device-managers/AndroidDeviceManager';
 import IOSDeviceManager from '../../src/device-managers/IOSDeviceManager';
 import { XenonManager } from '../../src/device-managers';
+import sinon from 'sinon';
+import { IOSDiscoveryService } from '../../src/device-managers/ios/IOSDiscoveryService';
+
+const sandbox = sinon.createSandbox();
 
 /**
  * Test utility to initialize the TypeDI Container with a PluginContext
@@ -24,6 +31,13 @@ export function setupTestContainer(overrides?: Partial<IPluginArgs>): {
   const nodeId = uuidv4();
   const port = 4723;
   const pluginArgs: IPluginArgs = Object.assign({}, DefaultPluginArgs, overrides || {});
+
+  // Mock LocalStorage
+  Container.set('LocalStorage', {
+    getItem: (key: string) => null,
+    setItem: (key: string, value: string) => {},
+    removeItem: (key: string) => {},
+  });
 
   // Initialize PluginContext
   const context = Container.get(PluginContext);
@@ -68,4 +82,32 @@ export function createTestXenonManager(pluginArgs?: Partial<IPluginArgs>): Xenon
   const { xenonManager } = setupTestContainer(pluginArgs);
   xenonManager.init();
   return xenonManager;
+}
+
+export async function resetTestContainer() {
+  sandbox.restore();
+  Container.reset();
+
+  // Stub discovery methods to prevent background pollution
+  sandbox.stub(AndroidDeviceManager.prototype, 'getDevices').resolves([]);
+  sandbox.stub(IOSDiscoveryService.prototype, 'getDevices').resolves([]);
+
+  // @ts-ignore - Stubbing internal methods to be extra safe
+  sandbox.stub(AndroidDeviceManager.prototype, 'fetchAndroidDevices').resolves([]);
+  // @ts-ignore
+  sandbox.stub(IOSDiscoveryService.prototype, 'fetchLocalIOSDevices').resolves([]);
+  // @ts-ignore
+  sandbox.stub(IOSDiscoveryService.prototype, 'fetchLocalSimulators').resolves([]);
+
+  // Clear DeviceStoreFactory static caches to prevent cross-test pollution
+  // @ts-ignore - Accessing private static members for test cleanup
+  DeviceStoreFactory._deviceStore = undefined;
+  // @ts-ignore
+  DeviceStoreFactory._pendingSessionStore = undefined;
+  // @ts-ignore
+  DeviceStoreFactory._cliArgsStore = undefined;
+  // @ts-ignore
+  DeviceStoreFactory._healEtalonStore = undefined;
+
+  await XenonDatabase.reset();
 }

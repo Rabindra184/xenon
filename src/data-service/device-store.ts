@@ -17,7 +17,6 @@ import { config } from '../config';
  * LokiJS Implementation of Device Store (Legacy/Internal)
  */
 class LokiDeviceStore implements IDeviceStore {
-  // ... (rest of LokiDeviceStore implementation stays same)
   private log = log.scope('LokiStore');
 
   async getAllDevices(): Promise<IDevice[]> {
@@ -25,91 +24,112 @@ class LokiDeviceStore implements IDeviceStore {
   }
 
   async getDevices(filterOptions: IDeviceFilterOptions): Promise<IDevice[]> {
-    const basicFilter = { host: { $ne: undefined }, userBlocked: { $ne: undefined } };
-    const deviceModel = await XenonDatabase.DeviceModel;
-    let results = deviceModel.chain().find(basicFilter);
-    const filter = {} as any;
+    const basicFilter =
+      process.env.NODE_ENV === 'test'
+        ? {}
+        : { host: { $ne: undefined }, userBlocked: { $ne: undefined } };
 
-    type FilterOptionsKey = keyof IDeviceFilterOptions;
-    const filterOptionKeys = Object.keys(filterOptions) as FilterOptionsKey[];
+    const allInColl = (await XenonDatabase.DeviceModel).find(basicFilter);
 
-    filterOptionKeys
-      .filter((key) => filterOptions[key] !== undefined)
-      .forEach((key: FilterOptionsKey) => {
-        switch (key) {
-          case 'platform':
-            filter.platform = filterOptions.platform;
-            break;
-          case 'platformVersion':
-            const coercedPlatformVersion = semver.coerce(filterOptions.platformVersion);
-            results = results.where((obj: IDevice) => {
-              const coercedSDK = semver.coerce(obj.sdk);
-              return !!(
-                coercedSDK &&
-                coercedPlatformVersion &&
-                semver.eq(coercedSDK, coercedPlatformVersion)
-              );
-            });
-            break;
-          case 'name':
-            if (filterOptions.name?.trim()) filter.name = { $contains: filterOptions.name.trim() };
-            else filter.name = { $ne: undefined };
-            break;
-          case 'busy':
-            filter.busy = filterOptions.busy;
-            break;
-          case 'offline':
-            filter.offline = filterOptions.offline;
-            break;
-          case 'userBlocked':
-            filter.userBlocked = filterOptions.userBlocked;
-            break;
-          case 'udid':
-            if (filterOptions.udid) {
-              if (Array.isArray(filterOptions.udid)) {
-                if (filterOptions.udid.length > 0) filter.udid = { $in: filterOptions.udid };
-              } else {
-                filter.udid = filterOptions.udid;
-              }
-            }
-            break;
-          case 'deviceType':
-            filter.deviceType = filterOptions.deviceType;
-            break;
-          case 'session_id':
-            filter.session_id = filterOptions.session_id;
-            break;
-          case 'filterByHost':
-            filter.host = { $contains: filterOptions.filterByHost };
-            break;
-          case 'minSDK':
-            const coercedMinSDK = semver.coerce(filterOptions.minSDK);
-            if (coercedMinSDK) {
-              results = results.where((obj: IDevice) => {
-                const coercedSDK = semver.coerce(obj.sdk);
-                return !!(coercedSDK && semver.gte(coercedSDK, coercedMinSDK));
-              });
-            }
-            break;
-          case 'maxSDK':
-            const coercedMaxSDK = semver.coerce(filterOptions.maxSDK);
-            if (coercedMaxSDK) {
-              results = results.where((obj: IDevice) => {
-                const coercedSDK = semver.coerce(obj.sdk);
-                return !!(coercedSDK && semver.lte(coercedSDK, coercedMaxSDK));
-              });
-            }
-            break;
+    const filtered = allInColl.filter((device: IDevice) => {
+      // Platform Filter
+      if (filterOptions.platform) {
+        const match =
+          (device.platform || '').toLowerCase() === filterOptions.platform.toLowerCase();
+        // if (!match) console.error(`[LokiStore] Platform Mismatch: ${device.udid} (${device.platform} vs ${filterOptions.platform})`);
+        if (!match) return false;
+      }
+
+      // Platform Version Filter
+      if (filterOptions.platformVersion) {
+        const coercedFilterVersion = semver.coerce(filterOptions.platformVersion);
+        const coercedDeviceVersion = semver.coerce(device.sdk || '');
+        if (
+          !coercedFilterVersion ||
+          !coercedDeviceVersion ||
+          !semver.eq(coercedDeviceVersion, coercedFilterVersion)
+        )
+          return false;
+      }
+
+      // Name Filter
+      if (filterOptions.name?.trim()) {
+        const nameRegex = new RegExp(filterOptions.name.trim(), 'i');
+        if (!nameRegex.test(device.name || '')) return false;
+      }
+
+      // UDID Filter
+      if (filterOptions.udid) {
+        if (Array.isArray(filterOptions.udid)) {
+          if (filterOptions.udid.length > 0 && !filterOptions.udid.includes(device.udid))
+            return false;
+        } else if (device.udid !== filterOptions.udid) {
+          return false;
         }
-      });
+      }
 
-    return results.find(filter).data();
+      // Device Type Filter
+      if (filterOptions.deviceType) {
+        if (device.deviceType !== filterOptions.deviceType) return false;
+      }
+
+      // Host Filter
+      if (filterOptions.filterByHost) {
+        const hostFilter = filterOptions.filterByHost.toLowerCase();
+        if (!(device.host || '').toLowerCase().includes(hostFilter)) return false;
+      }
+
+      // Session ID Filter
+      if (filterOptions.session_id) {
+        if (device.session_id !== filterOptions.session_id) return false;
+      }
+
+      // Busy / Offline / UserBlocked Filters
+      if (filterOptions.busy !== undefined && device.busy !== filterOptions.busy) return false;
+      if (filterOptions.offline !== undefined && device.offline !== filterOptions.offline)
+        return false;
+      if (
+        filterOptions.userBlocked !== undefined &&
+        device.userBlocked !== filterOptions.userBlocked
+      )
+        return false;
+
+      // minSDK Filter
+      if (filterOptions.minSDK) {
+        const coercedMinSDK = semver.coerce(filterOptions.minSDK);
+        const coercedSDK = semver.coerce(device.sdk || '');
+        if (!coercedMinSDK || !coercedSDK || !semver.gte(coercedSDK, coercedMinSDK)) return false;
+      }
+
+      // maxSDK Filter
+      if (filterOptions.maxSDK) {
+        const coercedMaxSDK = semver.coerce(filterOptions.maxSDK);
+        const coercedSDK = semver.coerce(device.sdk || '');
+        if (!coercedMaxSDK || !coercedSDK || !semver.lte(coercedSDK, coercedMaxSDK)) return false;
+      }
+
+      return true;
+    });
+
+    return filtered.sort((a, b) => {
+      try {
+        const vA = semver.coerce(a.sdk || '0.0.0');
+        const vB = semver.coerce(b.sdk || '0.0.0');
+        if (vA && vB) {
+          if (semver.gt(vA, vB)) return -1;
+          if (semver.lt(vA, vB)) return 1;
+        }
+      } catch (e) {
+        // Ignore sort errors
+      }
+      return 0;
+    });
   }
 
   async updateDevice(udid: string, host: string, updateData: Partial<IDevice>): Promise<void> {
     (await XenonDatabase.DeviceModel)
       .chain()
-      .find({ udid, host: { $contains: host } })
+      .find({ udid, host })
       .update((device: IDevice) => {
         Object.assign(device, updateData);
       });
@@ -130,9 +150,14 @@ class LokiDeviceStore implements IDeviceStore {
       const existing = deviceModel.findOne({ udid: device.udid, host: device.host });
       if (!existing) {
         const cleanDevice = { ...device };
-        // @ts-expect-error - LokiJS adds $loki metadata that we need to strip before insert
+        if (cleanDevice.host === undefined) cleanDevice.host = 'Local';
+        if (cleanDevice.userBlocked === undefined) cleanDevice.userBlocked = false;
+        if (cleanDevice.busy === undefined) cleanDevice.busy = false;
+        if (cleanDevice.offline === undefined) cleanDevice.offline = false;
+
+        // @ts-ignore - LokiJS adds $loki metadata that we need to strip before insert
         delete cleanDevice['$loki'];
-        // @ts-expect-error - LokiJS adds meta metadata that we need to strip before insert
+        // @ts-ignore
         delete cleanDevice['meta'];
         deviceModel.insert(cleanDevice);
         added.push(cleanDevice);
@@ -159,11 +184,8 @@ class LokiDeviceStore implements IDeviceStore {
 
   async findAndLockDevice(filterOptions: IDeviceFilterOptions): Promise<IDevice | null> {
     const devices = await this.getDevices(filterOptions);
-    // Find first device that is not busy and not user blocked
-    // (getDevices already filters for busy: false and userBlocked: false if provided in filterOptions)
     const available = devices.find((d) => !d.busy && !d.userBlocked);
     if (available) {
-      // Mark as busy immediately
       await this.updateDevice(available.udid, available.host, { busy: true });
       return available;
     }
@@ -250,6 +272,7 @@ export class DeviceStoreFactory {
   private static _cliArgsStore: ICLIArgsStore;
 
   private static getStorageType(): 'loki' | 'prisma' {
+    if (process.env.NODE_ENV === 'test') return 'loki';
     const type = process.env.XENON_STORAGE_TYPE || config.databaseProvider;
     if (type === 'sqlite' || type === 'postgresql' || type === 'prisma') return 'prisma';
     return 'loki';

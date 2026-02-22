@@ -40,9 +40,16 @@ import { IOSDiscoveryService } from './device-managers/ios/IOSDiscoveryService';
 import NodeDevices from './device-managers/NodeDevices';
 import { IPluginArgs } from './interfaces/IPluginArgs';
 import { DeviceStoreFactory } from './data-service/device-store';
+import { IPendingSessionStore } from './data-service/device-store.interface';
 import { v4 as uuidv4 } from 'uuid';
 
-const pendingStore = DeviceStoreFactory.getPendingSessionStore();
+// Use a Proxy to ensure we're always using the latest store from the factory,
+// which is critical for test isolation when the factory cache is cleared.
+const pendingStore: IPendingSessionStore = new Proxy({} as IPendingSessionStore, {
+  get: (target, prop) => {
+    return (DeviceStoreFactory.getPendingSessionStore() as any)[prop];
+  },
+});
 
 const customCapability = {
   deviceTimeOut: 'appium:deviceAvailabilityTimeout',
@@ -395,7 +402,8 @@ export async function updateDeviceList(
   hubArgument?: string,
   tlsRejectUnauthorized?: boolean,
 ): Promise<IDevice[]> {
-  const devices: IDevice[] = await getDeviceManager().getDevices(await getAllDevices());
+  const allExistingDevices = await getAllDevices();
+  const devices: IDevice[] = await getDeviceManager().getDevices(allExistingDevices);
   if (devices.length === 0) {
     log.warn('No devices found');
     return [];
@@ -406,11 +414,29 @@ export async function updateDeviceList(
   // first thing first. Update device list in local list
   await addNewDevice(devices, host);
 
+  // Prune any devices that are in our local DB for this host but NO LONGER discovered.
+  // This automatically cleans up disconnected Android devices safely, or filtered
+  // iOS simulators (e.g. when booted-simulators is turned on and a simulator shuts down)
+  const discoveredUdids = new Set(devices.map((d) => d.udid));
+  const staleLocalDevices = allExistingDevices.filter(
+    (d) => d.host === host && !discoveredUdids.has(d.udid),
+  );
+
+  if (staleLocalDevices.length > 0) {
+    log.info(
+      `Removing ${staleLocalDevices.length} stale devices/simulators no longer discovered on this host.`,
+    );
+    await removeDevice(staleLocalDevices.map((d) => ({ udid: d.udid, host: d.host })));
+  }
+
   if (hubArgument) {
     if (await isXenonRunning(hubArgument, tlsRejectUnauthorized)) {
       const nodeDevices = new NodeDevices(hubArgument, tlsRejectUnauthorized);
       try {
         await nodeDevices.postDevicesToHub(devices, 'add');
+        if (staleLocalDevices.length > 0) {
+          await nodeDevices.postDevicesToHub(staleLocalDevices as any, 'remove');
+        }
       } catch (error) {
         log.error(`Cannot send device list update. Reason: ${error}`);
       }

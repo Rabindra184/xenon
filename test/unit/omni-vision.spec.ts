@@ -24,16 +24,25 @@ describe('OmniVisionService Unit Tests', () => {
     sinon.restore();
   });
 
-  it('findByText should return matched elements via OCR', async () => {
-    const mockOcrResult = {
+  const createMockWorker = () => ({
+    setParameters: sinon.stub().resolves(),
+    recognize: sinon.stub().resolves({
       data: {
+        text: 'Screen Text',
         words: [
           { text: 'Login', confidence: 90, bbox: { x0: 10, y0: 10, x1: 50, y1: 30 } },
           { text: 'Cancel', confidence: 80, bbox: { x0: 60, y0: 10, x1: 100, y1: 30 } },
         ],
+        hocr: '',
+        tsv: '',
       },
-    };
-    sinon.stub(Tesseract, 'recognize').resolves(mockOcrResult as any);
+    }),
+    terminate: sinon.stub().resolves(),
+  });
+
+  it('findByText should return matched elements via OCR', async () => {
+    const mockWorker = createMockWorker();
+    sinon.stub(Tesseract, 'createWorker').resolves(mockWorker as any);
 
     const results = await omniService.findByText(mockDriver, 'Login');
 
@@ -67,13 +76,19 @@ describe('OmniVisionService Unit Tests', () => {
   });
 
   it('analyzeScreen should combine OCR and AI insights', async () => {
-    const mockOcrResult = {
-      data: {
-        text: 'Screen Text',
-        words: [{ text: 'Screen', confidence: 90, bbox: {} }],
-      },
+    const mockWorker = {
+      setParameters: sinon.stub().resolves(),
+      recognize: sinon.stub().resolves({
+        data: {
+          text: 'Screen Text',
+          words: [{ text: 'Screen', confidence: 90, bbox: { x0: 0, y0: 0, x1: 10, y1: 10 } }],
+          hocr: '',
+          tsv: '',
+        },
+      }),
+      terminate: sinon.stub().resolves(),
     };
-    sinon.stub(Tesseract, 'recognize').resolves(mockOcrResult as any);
+    sinon.stub(Tesseract, 'createWorker').resolves(mockWorker as any);
     sinon.stub(AI_SERVICE, 'analyzeFailure').resolves('AI Insights text');
 
     const analysis = await omniService.analyzeScreen(mockDriver);

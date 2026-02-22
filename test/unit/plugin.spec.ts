@@ -33,12 +33,13 @@ describe('Device filter tests', () => {
       platformVersion: '14.0',
       name: 'iPhone',
       deviceType: 'real',
-      udid: '21112-1111-1111-111',
+      udid: ['21112-1111-1111-111'],
       minSDK: undefined,
       maxSDK: undefined,
       filterByHost: undefined,
       busy: false,
       userBlocked: false,
+      tags: undefined,
     });
   });
 
@@ -66,11 +67,12 @@ describe('Device filter tests', () => {
       name: 'iPhone',
       filterByHost: undefined,
       deviceType: 'simulator',
-      udid: undefined,
+      udid: [],
       minSDK: undefined,
       maxSDK: undefined,
       busy: false,
       userBlocked: false,
+      tags: undefined,
     });
   });
 
@@ -92,16 +94,21 @@ describe('Device filter tests', () => {
       platformVersion: undefined,
       name: 'iPhone',
       deviceType: 'simulator',
-      udid: undefined,
+      udid: [],
       minSDK: '10.2.0',
       maxSDK: undefined,
       busy: false,
       userBlocked: false,
+      tags: undefined,
     });
   });
 });
 
 describe('Pending sessions', async () => {
+  beforeEach(async () => {
+    (await XenonDatabase.PendingSessionsModel).removeDataOnly();
+  });
+
   it('clean pending sessions', async () => {
     // insert pending sessions
     (await XenonDatabase.PendingSessionsModel).insert({

@@ -25,11 +25,13 @@ export default class IOSDeviceManager implements IDeviceManager {
   private readonly WDA_SOFT_FAIL_MAX = 3;
 
   constructor(private context: PluginContext) {
-    Container.get(WDAClient)
-      .checkRequirements()
-      .catch((e) => {
-        this.log.error(`Failed to verify ideviceinstaller requirements: ${e.message}`);
-      });
+    if (process.env.NODE_ENV !== 'test') {
+      Container.get(WDAClient)
+        .checkRequirements()
+        .catch((e) => {
+          this.log.error(`Failed to verify ideviceinstaller requirements: ${e.message}`);
+        });
+    }
   }
 
   private get pluginArgs() {
@@ -55,6 +57,15 @@ export default class IOSDeviceManager implements IDeviceManager {
   async getDeviceName(udid: string): Promise<string> {
     const device = await Container.get(IOSDiscoveryService).getDeviceInfo(udid);
     return device.name || 'iPhone';
+  }
+
+  // Shims for legacy unit tests
+  async getSimulators(): Promise<IDevice[]> {
+    return Container.get(IOSDiscoveryService).getSimulators();
+  }
+
+  async getLocalSims(): Promise<IDevice[]> {
+    return Container.get(IOSDiscoveryService).fetchLocalSimulators();
   }
 
   async getAdditionalDeviceInfo(device: IDevice): Promise<Partial<IDevice>> {

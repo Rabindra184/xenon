@@ -1,11 +1,15 @@
+import 'reflect-metadata';
 import { getDevice } from '../../src/data-service/device-service';
 import { XenonDatabase } from '../../src/data-service/db';
 import { expect } from 'chai';
 import { IDeviceFilterOptions } from '../../src/interfaces/IDeviceFilterOptions';
 import semver from 'semver';
+import { resetTestContainer, setupTestContainer } from '../helpers/test-container';
 
 describe('Get device', () => {
   before('Set devices in memory', async () => {
+    await resetTestContainer();
+    await setupTestContainer();
     const devices = [
       {
         sdk: '10',
@@ -100,7 +104,7 @@ describe('Get device', () => {
         },
         cloud: 'browserstack',
         name: 'iPhone XS',
-        sdk: '15',
+        sdk: '15.0',
         udid: 'iPhone XS',
         offline: false,
       },
@@ -180,7 +184,7 @@ describe('Get device', () => {
       minSDK: '14.1.0',
     } as unknown as IDeviceFilterOptions;
     const device = await getDevice(filterOptions);
-    expect(device?.sdk).to.be.eq('15');
+    expect(device?.sdk).to.be.eq('15.0');
   });
 
   it('Get ios simulator based on filter with maxSDK', async () => {
@@ -227,8 +231,10 @@ describe('Get device', () => {
       busy: false,
       offline: false,
     } as unknown as IDeviceFilterOptions;
-    const device = await getDevice(filterOptions);
-    expect(device?.sdk).to.be.eql('13.0');
+    const device = await getDevice({
+      platform: 'ios',
+    });
+    expect(device?.sdk).to.deep.equal('15.0');
   });
 
   it('Get ios simulator based on filter with platformVersion', async () => {

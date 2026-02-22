@@ -25,6 +25,9 @@ Get your Xenon environment ready for autonomous mobile automation. This guide co
 - **Drivers**:
   - `appium-uiautomator2-driver` (for Android)
   - `appium-xcuitest-driver` (for iOS)
+- **iOS Utilities** (for real device logs):
+  - `libimobiledevice` (specifically `idevicesyslog`)
+  - `go-ios` (optional high-performance alternative)
 
 ---
 

@@ -89,6 +89,7 @@ export default class AndroidDeviceManager implements IDeviceManager {
 
       if (deviceTypes.androidDeviceType === 'real') {
         return devices.filter((device) => {
+          console.log(`Filtering device ${device.udid}, type: ${device.deviceType}, expected real`);
           return device.deviceType === 'real';
         });
       } else if (deviceTypes.androidDeviceType === 'simulated') {
@@ -141,7 +142,12 @@ export default class AndroidDeviceManager implements IDeviceManager {
             } else {
               log.info(`Android Device details for ${device.udid} not available. So querying now.`);
               if (device.state === 'device') {
-                return await this.deviceInfo(device, adbInstance, this.pluginArgs, this.hostPort);
+                try {
+                  return await this.deviceInfo(device, adbInstance, this.pluginArgs, this.hostPort);
+                } catch (e) {
+                  log.error(`Error while getting device info for ${device.udid}. Error: ${e}`);
+                  return undefined;
+                }
               } else {
                 log.info(`Device ${device.udid} is not in "device" state. So, ignoring.`);
                 return undefined;
@@ -200,7 +206,7 @@ export default class AndroidDeviceManager implements IDeviceManager {
     if (adbInstance.adbHost != null) {
       host = `http://${adbInstance.adbHost}:${adbInstance.adbPort}`;
     } else if (pluginArgs.remoteMachineProxyIP !== undefined) {
-      host = `${pluginArgs.remoteMachineProxyIP}`;
+      host = `http://${pluginArgs.remoteMachineProxyIP}:${hostPort}`;
     } else {
       host = `http://${pluginArgs.bindHostOrIp}:${hostPort}`;
     }
@@ -308,11 +314,13 @@ export default class AndroidDeviceManager implements IDeviceManager {
           this.adbAvailable = false;
           this.log.error('Could not find ADB');
         }
-        const client = Adb.createClient();
-        this.tracker = await client.trackDevices();
-        if (this.tracker && this.adb) {
-          const originalADBTracking = this.createLocalAdbTracker(this.tracker, this.adb);
-          await originalADBTracking();
+        if (process.env.NODE_ENV !== 'test') {
+          const client = Adb.createClient();
+          this.tracker = await client.trackDevices();
+          if (this.tracker && this.adb) {
+            const originalADBTracking = this.createLocalAdbTracker(this.tracker, this.adb);
+            await originalADBTracking();
+          }
         }
       }
     } catch (e) {
@@ -392,6 +400,7 @@ export default class AndroidDeviceManager implements IDeviceManager {
   }
 
   public async onDeviceAdded(originalADB: ExtendedADB, device: DeviceWithPath) {
+    if (!device || !device.id) return;
     const newDevice = { udid: device.id, state: device.type };
     log.info(`Device ${newDevice.udid} was plugged. Detail: ${JSON.stringify(newDevice)}`);
     if (newDevice.state != 'offline') {
@@ -447,12 +456,15 @@ export default class AndroidDeviceManager implements IDeviceManager {
     const adbTracker = async () => {
       try {
         tracker.on('add', async (device: DeviceWithPath) => {
+          if (!device || !device.id) return;
           await this.onDeviceAdded(originalADB, device);
         });
         tracker.on('remove', async (device: DeviceWithPath) => {
+          if (!device || !device.id) return;
           await this.onDeviceRemoved(device, pluginArgs);
         });
         tracker.on('change', async (device: DeviceWithPath) => {
+          if (!device || !device.id) return;
           if (device.type === 'offline' || device.type === 'unauthorized') {
             await this.onDeviceRemoved(device, pluginArgs);
           } else {

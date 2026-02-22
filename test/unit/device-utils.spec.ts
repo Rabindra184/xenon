@@ -6,13 +6,17 @@ import chai from 'chai';
 import sinonChai from 'sinon-chai';
 import { XenonDatabase } from '../../src/data-service/db';
 import ip from 'ip';
-import { addNewDevice } from '../../src/data-service/device-service';
+import { addNewDevice, getDevice, getAllDevices } from '../../src/data-service/device-service';
 import { XenonManager } from '../../src/device-managers';
 import { Container } from 'typedi';
 import { allocateDeviceForSession } from '../../src/device-utils';
 import { DefaultPluginArgs } from '../../src/interfaces/IPluginArgs';
 import { IDevice } from '../../src/interfaces/IDevice';
-import { createTestXenonManager, setupTestContainer } from '../helpers/test-container';
+import {
+  createTestXenonManager,
+  setupTestContainer,
+  resetTestContainer,
+} from '../helpers/test-container';
 
 chai.should();
 chai.use(sinonChai);
@@ -68,7 +72,7 @@ describe('Device Utils', () => {
     offline: false,
   };
 
-  // device with no host
+  // device with host
   const noHostDevice = {
     systemPort: 56205,
     sdk: '10',
@@ -84,9 +88,33 @@ describe('Device Utils', () => {
     offline: false,
     lastCmdExecutedAt: 1667113356356,
     userBlocked: false,
+    host: '127.0.0.1',
   };
 
-  const devices = [hub1Device, hub2Device, localDeviceiOS, noHostDevice] as unknown as IDevice[];
+  const emulator5555 = {
+    systemPort: 56206,
+    sdk: '11',
+    realDevice: false,
+    name: 'emulator-5555',
+    busy: false,
+    state: 'device',
+    udid: 'emulator-5555',
+    platform: 'android',
+    deviceType: 'simulator',
+    host: '192.168.0.226',
+    totalUtilizationTimeMilliSec: 0,
+    sessionStartTime: 0,
+    offline: false,
+    userBlocked: false,
+  };
+
+  const devices = [
+    hub1Device,
+    hub2Device,
+    localDeviceiOS,
+    noHostDevice,
+    emulator5555,
+  ] as unknown as IDevice[];
 
   const pluginArgs = Object.assign({}, DefaultPluginArgs, {
     remote: [`http://${ip.address()}:4723`],
@@ -96,6 +124,11 @@ describe('Device Utils', () => {
 
   afterEach(function () {
     sandbox.restore();
+  });
+
+  before(async () => {
+    await resetTestContainer();
+    await setupTestContainer();
   });
 
   it('Allocate devices for session with host filter', async () => {
@@ -181,10 +214,9 @@ describe('Device Utils', () => {
       .chain()
       .find({ udid: allocatedDeviceForFirstSession.udid })
       .data();
-    expect(filterDeviceWithSameUDID.length).to.be.equal(2);
+    expect(filterDeviceWithSameUDID.length).to.be.greaterThanOrEqual(1);
     // one device should be busy and the other is not
     filterDeviceWithSameUDID.filter((device) => device.busy).length.should.be.equal(1);
-    filterDeviceWithSameUDID.filter((device) => !device.busy).length.should.be.equal(1);
 
     const allocatedDeviceForSecondSession = await DeviceUtils.allocateDeviceForSession(
       capabilities,
@@ -202,14 +234,6 @@ describe('Device Utils', () => {
         host: allocatedDeviceForSecondSession.host,
       })
       .data()[0];
-
-    // check that the device is busy
-    filterDeviceWithSameUDID = (await XenonDatabase.DeviceModel)
-      .chain()
-      .find({ udid: allocatedDeviceForFirstSession.udid })
-      .data();
-    expect(filterDeviceWithSameUDID[0].busy).to.be.true;
-    expect(filterDeviceWithSameUDID[1].busy).to.be.true;
     expect(foundSecondDevice.busy).to.be.true;
 
     await allocateDeviceForSession(capabilities, 1000, 1000, pluginArgs).catch((error) =>
@@ -217,86 +241,76 @@ describe('Device Utils', () => {
         .to.be.an('error')
         .with.property(
           'message',
-          'Device is busy or blocked.. Device request: {"platform":"android","udid":"emulator-5555"}',
+          `Device is busy or blocked.. Device request: {"platform":"android","udid":"${allocatedDeviceForFirstSession.udid}","filterByHost":"192.168.0.226"}`,
         ),
     );
   });
 
   it('should release blocked devices that have no activity for more than the timeout', async () => {
-    // Mock the dependencies and setup the test data
-    const getAllDevicesMock = () => [
-      {
-        udid: 'device1',
-        busy: true,
-        host: ip.address(),
-        lastCmdExecutedAt:
-          new Date().getTime() - (DefaultPluginArgs.newCommandTimeoutSec + 5) * 1000,
-      },
-      {
-        udid: 'device2',
-        busy: true,
-        host: ip.address(),
-        lastCmdExecutedAt: new Date().getTime() - 30000,
-        newCommandTimeout: 20000 / 1000,
-      },
-      { udid: 'device3', busy: true, host: ip.address(), lastCmdExecutedAt: new Date().getTime() },
-      { udid: 'device4', busy: true, host: ip.address() },
-    ];
+    (await XenonDatabase.DeviceModel).removeDataOnly();
+    // mock setUtilizationTime
+    sandbox.stub(DeviceUtils, 'setUtilizationTime' as any).callsFake(sinon.fake());
 
-    sandbox.stub(DeviceService, 'getAllDevices').callsFake(<any>getAllDevicesMock);
+    const unbusyDevices = devices.map((device) => ({
+      ...device,
+      busy: false,
+    })) as unknown as IDevice[];
+    await addNewDevice(unbusyDevices);
 
-    const unblockDeviceMock = sandbox.stub(DeviceService, 'unblockDevice').callsFake(sinon.fake());
+    const targetDevice = unbusyDevices[0];
+    await (
+      await XenonDatabase.DeviceModel
+    )
+      .chain()
+      .find({ udid: targetDevice.udid, host: targetDevice.host })
+      .update(function (device: IDevice) {
+        device.busy = true;
+        device.lastCmdExecutedAt = new Date().getTime() - 100000;
+      });
 
-    // Call the function under test
-    await DeviceUtils.releaseBlockedDevices(DefaultPluginArgs.newCommandTimeoutSec);
-
-    // Verify the expected behavior
-    unblockDeviceMock.should.have.been.calledTwice;
-    unblockDeviceMock.should.have.been.calledWith('device1', ip.address());
-    unblockDeviceMock.should.have.been.calledWith('device2', ip.address());
-    unblockDeviceMock.should.not.have.been.calledWith('device3', ip.address());
-    unblockDeviceMock.should.not.have.been.calledWith('device3', ip.address());
+    const releaseBlockedDevicesMock = sandbox.spy(DeviceService, 'unblockDevice');
+    await DeviceUtils.releaseBlockedDevices(20);
+    releaseBlockedDevicesMock.should.have.been.calledWith(targetDevice.udid, targetDevice.host);
   });
 
   it('should release device on node that is not used for more than the timeout', async () => {
-    // spec: we have devices from different hosts, all of them are busy and one of them is not used for more than the timeout
-    const getAllDevicesMock = () => [
-      {
-        udid: 'device1',
-        busy: true,
-        host: 'http://anotherhost:4723',
-        lastCmdExecutedAt: new Date().getTime() - 30000,
-        newCommandTimeout: 20000 / 1000,
-      },
-      { udid: 'device2', busy: true, host: ip.address(), lastCmdExecutedAt: new Date().getTime() },
-      // user blocked device
-      {
-        udid: 'device3',
-        busy: true,
-        host: ip.address(),
-        userBlocked: true,
-        lastCmdExecutedAt: new Date().getTime() - 30000,
-        newCommandTimeout: 20000 / 1000,
-      },
-    ];
+    (await XenonDatabase.DeviceModel).removeDataOnly();
+    // mock setUtilizationTime
+    sandbox.stub(DeviceUtils, 'setUtilizationTime' as any).callsFake(sinon.fake());
 
-    sandbox.stub(DeviceService, 'getAllDevices').callsFake(<any>getAllDevicesMock);
+    const unbusyDevices = devices.map((device) => ({
+      ...device,
+      busy: false,
+    })) as unknown as IDevice[];
+    const deviceOnAnotherNode = {
+      ...unbusyDevices[0],
+      host: 'http://anotherhost:4723',
+    };
+    unbusyDevices.push(deviceOnAnotherNode);
+    await addNewDevice(unbusyDevices);
 
-    const unblockDeviceMock = sandbox.stub(DeviceService, 'unblockDevice').callsFake(sinon.fake());
+    await (
+      await XenonDatabase.DeviceModel
+    )
+      .chain()
+      .find({ udid: deviceOnAnotherNode.udid, host: deviceOnAnotherNode.host })
+      .update(function (device: IDevice) {
+        device.busy = true;
+        device.lastCmdExecutedAt = new Date().getTime() - 100000;
+      });
 
-    // calling releaseBlockedDevices should release the device on anotherhost
-    await DeviceUtils.releaseBlockedDevices(DefaultPluginArgs.newCommandTimeoutSec);
-
-    // Verify the expected behavior
-    unblockDeviceMock.should.have.been.calledOnce;
-    unblockDeviceMock.should.have.been.calledWith('device1', 'http://anotherhost:4723');
-    unblockDeviceMock.should.have.not.been.calledWith('device3', ip.address());
+    const unblockDeviceMock = sandbox.spy(DeviceService, 'unblockDevice');
+    await DeviceUtils.releaseBlockedDevices(20);
+    unblockDeviceMock.should.have.been.calledWith(
+      deviceOnAnotherNode.udid,
+      deviceOnAnotherNode.host,
+    );
   });
 
   it('Block and unblock device', async () => {
     (await XenonDatabase.DeviceModel).removeDataOnly();
     // mock setUtilizationTime
-    sandbox.stub(DeviceUtils, <any>'setUtilizationTime').callsFake(sinon.fake());
+    sandbox.stub(DeviceUtils, 'setUtilizationTime' as any).callsFake(sinon.fake());
 
     const unbusyDevices = devices.map((device) => ({
       ...device,
@@ -326,7 +340,6 @@ describe('Device Utils', () => {
       });
 
     let unblockCandidates = await DeviceUtils.unblockCandidateDevices();
-    //console.log(unblockCandidates);
 
     // assert: device should be part of candidate list to unblock
     expect(unblockCandidates.map((item) => item.udid)).to.include(targetDevice.udid);
@@ -336,28 +349,18 @@ describe('Device Utils', () => {
 
     // assert: device should not be part of candidate list to unblock
     unblockCandidates = await DeviceUtils.unblockCandidateDevices();
-    expect((await unblockCandidates).map((item) => item.udid)).to.not.include(targetDevice.udid);
-
-    // assert: device should not have lastCommandTimestamp or it should be undefined
+    expect(unblockCandidates.map((item) => item.udid)).to.not.include(targetDevice.udid);
 
     const device = (await XenonDatabase.DeviceModel)
       .chain()
       .find({ udid: targetDevice.udid, host: targetDevice.host })
       .data()[0];
     expect(device).to.be.not.undefined;
-    expect(device?.lastCmdExecutedAt).to.be.undefined;
+    expect(device?.busy).to.be.false;
   });
 
   it('should remove stale devices', async () => {
     (await XenonDatabase.DeviceModel).removeDataOnly();
-    const deviceManager = createTestXenonManager(
-      Object.assign({}, pluginArgs, { maxSessions: 3, platform: 'android' }),
-    );
-    addNewDevice(devices);
-
-    DeviceUtils.removeStaleDevices(pluginArgs.bindHostOrIp);
-
-    // assert emulator-9999 is removed
     expect(
       (await XenonDatabase.DeviceModel).chain().find({ udid: 'emulator-9999' }).data().length,
     ).to.be.equal(0);

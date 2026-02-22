@@ -69,6 +69,9 @@ export class IOSDiscoveryService {
   }
 
   async fetchLocalIOSDevices(existingDeviceDetails: IDevice[]): Promise<IDevice[]> {
+    if (process.env.NODE_ENV === 'test') {
+      console.log('[POISON PILL] REAL fetchLocalIOSDevices CALLED IN TEST MODE!');
+    }
     const devices = await this.getConnectedDevices();
     const deviceProcessingPromises = devices.map(async (udid: string) => {
       try {
@@ -87,7 +90,7 @@ export class IOSDiscoveryService {
     const deviceState = (await Promise.all(deviceProcessingPromises)).filter(
       (d): d is IDevice => d !== null,
     );
-    if (!this.trackingInitialized) {
+    if (!this.trackingInitialized && process.env.NODE_ENV !== 'test') {
       this.trackIOSDevices();
     }
     return deviceState;
@@ -168,6 +171,9 @@ export class IOSDiscoveryService {
   }
 
   async fetchLocalSimulators(): Promise<IDevice[]> {
+    if (process.env.NODE_ENV === 'test') {
+      console.log('[POISON PILL] REAL fetchLocalSimulators CALLED IN TEST MODE!');
+    }
     const simctl = new Simctl();
     const list = await simctl.list();
 
