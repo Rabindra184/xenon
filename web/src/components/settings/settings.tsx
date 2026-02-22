@@ -139,112 +139,110 @@ export const Settings: React.FC = () => {
       </div>
 
       <div className="settings-content">
-        <section className="settings-section">
-          <div className="settings-grid">
-            <div className="setting-card stagger-1">
-              <div className="setting-card-header">
-                <Clock size={16} />
-                <h4>Idle Health Frequency</h4>
+        <div className="settings-grid">
+          <div className="setting-card stagger-1">
+            <div className="setting-card-header">
+              <Clock size={16} />
+              <h4>Idle Health Frequency</h4>
+            </div>
+            <p className="section-description-dense">
+              Frequency of passive health pings when the system is in idle state.
+            </p>
+            <div className="setting-field">
+              <div className="input-group">
+                <input
+                  type="number"
+                  value={config.healthCheckIntervalMs}
+                  onChange={(e) =>
+                    setConfig({ ...config, healthCheckIntervalMs: parseInt(e.target.value) })
+                  }
+                  min={5000}
+                  step={5000}
+                />
+                <span className="code-font">MS</span>
               </div>
-              <p>Frequency of passive health pings when the system is in idle state.</p>
-              <div className="setting-field">
-                <div className="input-group">
-                  <input
-                    type="number"
-                    value={config.healthCheckIntervalMs}
-                    onChange={(e) =>
-                      setConfig({ ...config, healthCheckIntervalMs: parseInt(e.target.value) })
-                    }
-                    min={5000}
-                    step={5000}
-                  />
-                  <span className="code-font">MS</span>
-                </div>
-              </div>
-              <div className="setting-hint-clean">
-                Minimum safe value: 5000ms. Note: This frequency is overridden when a schedule is
-                active.
+            </div>
+            <div className="setting-hint-clean">
+              Minimum safe value: 5000ms. Note: This frequency is overridden when a schedule is
+              active.
+            </div>
+          </div>
+
+          <div className="setting-card stagger-2">
+            <div className="setting-card-header">
+              <Calendar size={16} />
+              <h4>Deep Diagnostic Schedule</h4>
+            </div>
+            <p className="section-description-dense">
+              Execute intensive reliability bursts (WDA restarts, Cache purges) using standardized
+              Cron syntax.
+            </p>
+
+            <div className="setting-field">
+              <div className="setting-input-wrapper">
+                <input
+                  type="text"
+                  placeholder="e.g. 0 * * * * (At internal min 0)"
+                  value={config.healthCheckSchedule}
+                  onChange={(e) => setConfig({ ...config, healthCheckSchedule: e.target.value })}
+                />
               </div>
             </div>
 
-            <div className="setting-card stagger-2">
-              <div className="setting-card-header">
-                <Calendar size={16} />
-                <h4>Deep Diagnostic Schedule</h4>
-              </div>
-              <p>
-                Execute intensive reliability bursts (WDA restarts, Cache purges) using standardized
-                Cron syntax.
-              </p>
-
-              <div className="setting-field">
-                <div className="setting-input-wrapper">
-                  <input
-                    type="text"
-                    placeholder="e.g. 0 * * * * (At internal min 0)"
-                    value={config.healthCheckSchedule}
-                    onChange={(e) => setConfig({ ...config, healthCheckSchedule: e.target.value })}
-                  />
-                </div>
-              </div>
-
-              <div className="cron-preview">
-                <span className="preview-label">Active Logic:</span>
-                <span className="preview-value">
-                  {getSchedulePreview(config.healthCheckSchedule)}
-                </span>
-              </div>
-
-              <div className="cron-presets">
-                <div className="presets-label">
-                  <MousePointer2 size={12} />
-                  <span>Intent-Based Presets:</span>
-                </div>
-                <div className="presets-grid">
-                  {presets.map((p) => (
-                    <button
-                      key={p.label}
-                      className={`preset-chip ${config.healthCheckSchedule === p.value ? 'active' : ''
-                        }`}
-                      onClick={() => setConfig({ ...config, healthCheckSchedule: p.value })}
-                    >
-                      {p.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
+            <div className="cron-preview">
+              <span className="preview-label">Active Logic:</span>
+              <span className="preview-value">{getSchedulePreview(config.healthCheckSchedule)}</span>
             </div>
-            <div className="setting-card stagger-3">
-              <div className="setting-card-header">
-                <Brain size={16} />
-                <h4>AI Self-Healing</h4>
-              </div>
-              <p>
-                Automatically intercept and recover from failing locators using Xenon's 5-tier
-                strategy.
-              </p>
 
-              <div className="toggle-group">
-                <label className="switch">
-                  <input
-                    type="checkbox"
-                    checked={config.enableSelfHealing}
-                    onChange={(e) => setConfig({ ...config, enableSelfHealing: e.target.checked })}
-                  />
-                  <span className="slider round"></span>
-                </label>
-                <span className="toggle-label">
-                  {config.enableSelfHealing ? 'ENABLED' : 'DISABLED'}
-                </span>
+            <div className="cron-presets">
+              <div className="presets-label">
+                <MousePointer2 size={12} />
+                <span>Intent-Based Presets:</span>
               </div>
-
-              <div className="setting-hint-clean">
-                When enabled, Xenon will attempt to find elements via Fuzzy XML, OCR, Visual AI, and
-                LLM before failing a test.
+              <div className="presets-grid">
+                {presets.map((p) => (
+                  <button
+                    key={p.label}
+                    className={`preset-chip ${config.healthCheckSchedule === p.value ? 'active' : ''
+                      }`}
+                    onClick={() => setConfig({ ...config, healthCheckSchedule: p.value })}
+                  >
+                    {p.label}
+                  </button>
+                ))}
               </div>
             </div>
           </div>
-        </section>
+          <div className="setting-card stagger-3">
+            <div className="setting-card-header">
+              <Brain size={16} />
+              <h4>AI Self-Healing</h4>
+            </div>
+            <p className="section-description-dense">
+              Automatically intercept and recover from failing locators using Xenon's 5-tier
+              strategy.
+            </p>
+
+            <div className="toggle-group">
+              <label className="switch">
+                <input
+                  type="checkbox"
+                  checked={config.enableSelfHealing}
+                  onChange={(e) => setConfig({ ...config, enableSelfHealing: e.target.checked })}
+                />
+                <span className="slider round"></span>
+              </label>
+              <span className="toggle-label">
+                {config.enableSelfHealing ? 'ENABLED' : 'DISABLED'}
+              </span>
+            </div>
+
+            <div className="setting-hint-clean">
+              When enabled, Xenon will attempt to find elements via Fuzzy XML, OCR, Visual AI, and
+              LLM before failing a test.
+            </div>
+          </div>
+        </div>
 
         {status && (
           <div className={`status-banner ${status.type}`}>
@@ -264,3 +262,4 @@ export const Settings: React.FC = () => {
     </div>
   );
 };
+
