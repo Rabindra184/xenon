@@ -179,7 +179,6 @@ export const AISettings: React.FC = () => {
         <div className="settings-title-group">
           <Brain className="settings-icon ai-engine-icon" size={28} />
           <h2>AI Engine Configuration</h2>
-          <span className="badge-elite">Enterprise v3.0</span>
         </div>
         <p className="settings-subtitle">
           All credentials and endpoints are managed via environment variables.
