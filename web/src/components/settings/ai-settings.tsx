@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import XenonApiService from '../../api-service';
 import './settings.css';
+import { ActionBar, SettingSection } from '../ui/Layouts';
 import {
   Brain,
   ShieldCheck,
@@ -374,26 +375,12 @@ export const AISettings: React.FC = () => {
         )}
       </div>
 
-      <footer className="settings-footer">
-        <div className="footer-dock">
-          <button className="ghost-btn" onClick={loadConfig}>
-            <RefreshCw size={16} /> Refresh Environment
-          </button>
-          <button
-            className="save-btn primary"
-            onClick={handleSave}
-            disabled={saving || !activeProvider?.isConfigured}
-            title={
-              !activeProvider?.isConfigured
-                ? 'The selected provider is not configured in the environment'
-                : 'Save active provider selection'
-            }
-          >
-            {saving ? <RefreshCw className="animate-spin" size={16} /> : <Save size={16} />}
-            {saving ? 'Applying...' : 'Save Configuration'}
-          </button>
-        </div>
-      </footer>
+      <ActionBar
+        onSave={handleSave}
+        onDiscard={loadConfig}
+        isSaving={saving}
+        saveLabel="Save Configuration"
+      />
     </div>
   );
 };

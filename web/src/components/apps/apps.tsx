@@ -176,7 +176,6 @@ const Apps: React.FC = () => {
       <div className="device-explorer-header-container">
         <div className="device-explorer-header-left-container">
           <div className="device-explorer-header-entry">
-            <div className="device-explorer-header-entry-header">Platform</div>
             <div className="device-explorer-header-value">
               <button
                 className={`device-explorer-header__platform-btn ${platformFilter.android && 'selected'
@@ -196,7 +195,6 @@ const Apps: React.FC = () => {
           </div>
 
           <div className="device-explorer-header-entry">
-            <div className="device-explorer-header-entry-header">Search Bundles</div>
             <div className="device-explorer-header-value">
               <div className="device-explorer-search-wrapper">
                 <Search size={16} color="#94a3b8" className="device-explorer-search-icon" />
@@ -210,14 +208,14 @@ const Apps: React.FC = () => {
               </div>
             </div>
           </div>
-        </div>
 
-        <div className="device-explorer-header-filter-count">
-          <Badge variant="secondary">
-            <span className="font-bold">{filteredApps.length}</span> of{' '}
-            <span className="font-bold">{apps.length}</span>{' '}
-            {apps.length === 1 ? 'artifact' : 'artifacts'}
-          </Badge>
+          <div className="device-explorer-header-filter-count">
+            <Badge variant="secondary">
+              <span className="font-bold">{filteredApps.length}</span> of{' '}
+              <span className="font-bold">{apps.length}</span>{' '}
+              {apps.length === 1 ? 'artifact' : 'artifacts'}
+            </Badge>
+          </div>
         </div>
 
         <div className="device-explorer-header-right-container">

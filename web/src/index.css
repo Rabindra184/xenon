@@ -78,6 +78,17 @@
   --space-xl: 32px;
   --space-xxl: 48px;
 
+  /* --- Typography Scale --- */
+  --fs-xs: 11px;
+  --fs-sm: 13px;
+  --fs-md: 15px;
+  --fs-lg: 18px;
+  --fs-xl: 24px;
+  --fs-xxl: 32px;
+  --lh-tight: 1.2;
+  --lh-normal: 1.5;
+  --lh-loose: 1.8;
+
   /* --- Premium Effects --- */
   --radius-sm: 8px;
   --radius-md: 12px;
@@ -175,8 +186,13 @@ a:hover {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.1);
-  border-radius: 10px;
+  background: rgba(0, 255, 136, 0.2);
+  border-radius: 8px;
+  border: 1px solid rgba(0, 255, 136, 0.1);
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 255, 136, 0.4);
 }
 
 /* Custom Mission Control Checkbox */
@@ -187,7 +203,7 @@ input[type="checkbox"] {
   height: 18px;
   background: rgba(0, 0, 0, 0.3);
   border: 1px solid var(--border-visible);
-  border-radius: 2px;
+  border-radius: 6px;
   cursor: pointer;
   position: relative;
   transition: all 0.2s;

@@ -6,7 +6,7 @@
     background-color: var(--bg-page);
     color: var(--text-bright);
     font-family: 'JetBrains Mono', monospace;
-    border-radius: 2px;
+    border-radius: 6px;
     overflow: hidden;
     height: 100%;
     max-height: 100%;
@@ -35,7 +35,7 @@
 .dot {
     width: 8px;
     height: 8px;
-    border-radius: 1px;
+    border-radius: 4px;
     border: 1px solid rgba(255, 255, 255, 0.1);
 }
 
@@ -52,7 +52,7 @@
 }
 
 .terminal-title {
-    font-size: 10px;
+    font-size: var(--fs-xs);
     font-weight: 800;
     color: var(--text-dim);
     text-transform: uppercase;
@@ -70,10 +70,10 @@
     background: transparent;
     border: 1px solid var(--border-visible);
     color: var(--text-dim);
-    font-size: 8px;
+    font-size: var(--fs-xs);
     font-weight: 800;
     padding: 4px 10px;
-    border-radius: 2px;
+    border-radius: 6px;
     cursor: pointer;
     transition: all 0.2s;
     text-transform: uppercase;
@@ -108,7 +108,7 @@
 
 .terminal-history::-webkit-scrollbar-thumb {
     background-color: var(--border-visible);
-    border-radius: 3px;
+    border-radius: 4px;
 }
 
 .terminal-history::-webkit-scrollbar-thumb:hover {
@@ -181,7 +181,7 @@
     animation: blink 1s step-end infinite;
     vertical-align: middle;
     margin-left: 8px;
-    border-radius: 1px;
+    border-radius: 4px;
 }
 
 @keyframes blink {

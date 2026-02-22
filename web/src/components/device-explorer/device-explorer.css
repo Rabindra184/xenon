@@ -39,7 +39,7 @@
 }
 
 .device-explorer-header-entry-header {
-  font-size: 9px;
+  font-size: var(--fs-xs);
   font-weight: 700;
   color: var(--text-dim);
   text-transform: uppercase;
@@ -59,11 +59,11 @@
   align-items: center;
   gap: 6px;
   padding: 6px 12px;
-  border-radius: 2px;
+  border-radius: 6px;
   background: rgba(0, 0, 0, 0.4);
   border: 1px solid var(--border-visible);
   color: var(--text-muted);
-  font-size: 11px;
+  font-size: var(--fs-sm);
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.05em;
@@ -123,11 +123,11 @@
   width: 100%;
   height: 32px;
   padding: 0 12px 0 36px;
-  border-radius: 2px;
+  border-radius: 6px;
   border: 1px solid var(--border-visible);
   background: rgba(0, 0, 0, 0.4);
   font-family: 'JetBrains Mono', monospace;
-  font-size: 12px;
+  font-size: var(--fs-sm);
   color: var(--text-bright);
   transition: all 0.2s ease;
 }
@@ -142,7 +142,7 @@
 .device-explorer-header-text-filter::placeholder {
   color: var(--text-dim);
   text-transform: uppercase;
-  font-size: 10px;
+  font-size: var(--fs-xs);
   letter-spacing: 0.1em;
 }
 
@@ -205,5 +205,91 @@
   .device-explorer-header-filter-count {
     justify-content: space-between;
     padding-right: 0;
+  }
+}
+
+/* Empty State */
+.device-explorer-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 80px 40px;
+  background: rgba(15, 15, 26, 0.4);
+  border: 1px dashed var(--border-visible);
+  border-radius: var(--radius-md);
+  text-align: center;
+  margin: 40px auto;
+  max-width: 600px;
+  gap: var(--space-md);
+  margin-top: 60px;
+}
+
+.device-explorer-empty-icon {
+  width: 64px;
+  height: 64px;
+  background: rgba(0, 255, 136, 0.05);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--color-primary);
+  margin-bottom: 8px;
+  border: 1px solid rgba(0, 255, 136, 0.1);
+}
+
+.device-explorer-empty h3 {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: var(--text-bright);
+  margin: 0;
+  font-family: 'Outfit', sans-serif;
+}
+
+.device-explorer-empty p {
+  color: var(--text-muted);
+  font-size: 14px;
+  max-width: 400px;
+  line-height: 1.6;
+  margin: 0;
+}
+
+.device-explorer-empty .Button {
+  margin-top: 8px;
+}
+
+/* Device Control Modal Overlay - Formal Full Screen */
+.device-control-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: var(--bg-app);
+  /* Use opaque background to hide cards */
+  z-index: 6000;
+  display: flex;
+  flex-direction: column;
+  padding: 0;
+  margin: 0;
+  animation: modal-fade-in 0.25s ease-out;
+}
+
+.device-control-modal {
+  flex: 1;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-app);
+}
+
+@keyframes modal-fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
   }
 }

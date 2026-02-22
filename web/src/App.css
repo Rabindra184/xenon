@@ -38,6 +38,8 @@
 .app-body-container.sessions-view,
 .app-body-container.devices-view,
 .app-body-container.apps-view,
+.app-body-container.notifications-view,
+.app-body-container.ai-view,
 .app-body-container.settings-view {
   flex-direction: column;
   width: 100%;

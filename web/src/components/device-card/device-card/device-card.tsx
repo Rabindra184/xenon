@@ -12,6 +12,10 @@ import {
   ShieldCheck,
   Thermometer,
   HardDrive,
+  Terminal,
+  Wifi,
+  Wrench,
+  CalendarPlus,
 } from 'lucide-react';
 import { IDevice } from '../../../interfaces/IDevice';
 import prettyMilliseconds from 'pretty-ms';
@@ -56,6 +60,8 @@ export class DeviceCard extends React.Component<IDeviceCardProps, IDeviceCardSta
   getDeviceState() {
     if (this.props.device.offline) {
       return 'offline';
+    } else if (this.props.device.userBlocked) {
+      return 'maintenance';
     } else if (this.props.device.busy) {
       return 'busy';
     } else if (this.isReserved()) {
@@ -132,80 +138,57 @@ export class DeviceCard extends React.Component<IDeviceCardProps, IDeviceCardSta
     }
 
     const blockButton = () => {
-      if (busy) {
-        return;
-      }
+      if (busy) return null;
 
       const isReserved = this.isReserved();
 
       if (isReserved) {
         return (
           <button
-            className="device-info-card__body_unblock-device"
+            className="tactical-btn reserved"
             onClick={() => this.releaseReservation(udid, host)}
             title={`Reserved by ${reservedBy}${reservationReason ? `: ${reservationReason}` : ''
               }. Expires: ${reservedUntil ? new Date(reservedUntil).toLocaleString() : 'Never'}`}
           >
-            <Unlock
-              size={16}
-              className="device-info-card__body_block-device-icon"
-              color="var(--accent-blue)"
-            />
-            {this.getRemainingReservationTime()
-              ? `Release (${this.getRemainingReservationTime()})`
-              : 'Release Reservation'}
+            <Unlock size={14} color="#38bdf8" />
           </button>
         );
       }
 
       if (!userBlocked) {
         return (
-          <div style={{ display: 'flex', gap: '8px', width: '100%' }}>
+          <>
             <button
-              className="device-info-card__body_block-device"
-              style={{ flex: 1 }}
+              className="tactical-btn reserve"
               onClick={() => this.setState({ showReservation: true })}
+              title="Reserve Device"
             >
-              <Clock
-                size={16}
-                className="device-info-card__body_block-device-icon"
-                color="var(--accent-blue)"
-              />
-              Reserve
+              <CalendarPlus size={14} color="#38bdf8" />
             </button>
             <button
-              className="device-info-card__body_block-device"
-              style={{ flex: 1 }}
+              className="tactical-btn maintenance"
               onClick={() => this.blockDevice(udid, host)}
+              title="Enter Maintenance"
             >
-              <XCircle
-                size={16}
-                className="device-info-card__body_block-device-icon"
-                color="var(--primary)"
-              />
-              Maintenance
+              <Wrench size={14} color="#fbbf24" />
             </button>
-          </div>
+          </>
         );
       } else {
         return (
           <button
-            className="device-info-card__body_unblock-device"
+            className="tactical-btn exit-maintenance"
             onClick={() => this.unblockDevice(udid, host)}
+            title="Exit Maintenance"
           >
-            <XCircle
-              size={16}
-              className="device-info-card__body_block-device-icon"
-              color="var(--status-error)"
-            />
-            Exit Maintenance
+            <ShieldCheck size={14} />
           </button>
         );
       }
     };
 
     return (
-      <div className={`device-info-card-container ${this.getStatusClassName()}`}>
+      <div className={`device-info-card-container ${this.getStatusClassName()} group`}>
         {/* Mission Control Scanline Overlay */}
         <div className="scanline" style={{
           position: 'absolute',
@@ -215,217 +198,130 @@ export class DeviceCard extends React.Component<IDeviceCardProps, IDeviceCardSta
           zIndex: 0
         }}></div>
 
-        <div
-          className={`device-state ${deviceState} ${deviceState === 'busy' && sessionProgress && sessionProgress !== 'Session Active'
-              ? 'progress-active'
-              : ''
-            }`}
-          style={{ position: 'relative', zIndex: 1 }}
-        >
-          {deviceState === 'busy' && sessionProgress && sessionProgress !== 'Session Active'
-            ? sessionProgress
-            : deviceState}
-        </div>
-        <div className="device-info-card-container__title_wrapper">
-          <div className="code device-info-card-container__device-title" title={udid}>
-            {udid}
-          </div>
-          {['ios', 'tvos'].includes(platform) ? (
-            <AppleIcon
-              size={18}
-              color="var(--status-offline)"
-              className="device-info-card-container__device-icon"
-            />
-          ) : (
-            <AndroidIcon
-              size={18}
-              color="var(--status-offline)"
-              className="device-info-card-container__device-icon"
-            />
-          )}
-        </div>
-        <div className="device-info-card-container__body">
-          <div className="device-info-card-container__body_row">
-            <div className="device-info-card-container__body_row_label">Version:</div>
-            <div className="device-info-card-container__body_row_value" title={sdk}>
-              {sdk}
-            </div>
-          </div>
-          <div className="device-info-card-container__body_row">
-            <div className="device-info-card-container__body_row_label">Name:</div>
-            <div className="device-info-card-container__body_row_value" title={name}>
-              {name}
-            </div>
-          </div>
-          <div className="device-info-card-container__body_row">
-            <div className="device-info-card-container__body_row_label">Device Type:</div>
-            <div className="device-info-card-container__body_row_value" title={deviceType}>
-              {deviceType}
-            </div>
-          </div>
-          <div className="device-info-card-container__body_row">
-            <div className="device-info-card-container__body_row_label">Device Location:</div>
-            <div className="device-info-card-container__body_row_value" title={hostName}>
-              {hostName}
-            </div>
-          </div>
-          {this.props.device.ip && (
-            <div className="device-info-card-container__body_row">
-              <div className="device-info-card-container__body_row_label">Device IP:</div>
-              <div
-                className="device-info-card-container__body_row_value"
-                title={this.props.device.ip}
-              >
-                {this.props.device.ip}
-              </div>
-            </div>
-          )}
-          <div className="device-info-card-container__body_row">
-            <div className="device-info-card-container__body_row_label">Health:</div>
-            <div
-              className={`device-info-card-container__body_row_value health-status ${this.props.device.healthStatus?.toLowerCase() || 'healthy'
-                }`}
-              title={this.props.device.healthCheckError || 'Device is healthy'}
-            >
-              <span className="health-status-dot"></span>
-              {this.props.device.healthStatus || 'Healthy'}
-              {totalHealedCount && totalHealedCount > 0 ? (
-                <span
-                  className="healed-count-badge"
-                  title={`Autonomous Watchdog healed this device ${totalHealedCount} times`}
-                >
-                  <ShieldCheck size={10} style={{ marginRight: '2px' }} />
-                  {totalHealedCount > 99 ? '99+' : totalHealedCount}
-                </span>
-              ) : null}
-            </div>
-          </div>
-
-          <div className="device-info-card-container__body_row">
-            <div className="device-info-card-container__body_row_label">Tags:</div>
-            <div className="device-tags-container">
-              {tags && tags.length > 0 ? (
-                tags.map((tag: string) => (
-                  <span key={tag} className="device-tag-pill" onClick={() => this.manageTags()}>
-                    {tag}
-                  </span>
-                ))
+        {/* Compact Header */}
+        <div className="card-header relative z-10">
+          <div className="header-left">
+            <div className={`platform-icon-wrapper ${platform}`}>
+              {['ios', 'tvos'].includes(platform) ? (
+                <AppleIcon size={14} />
               ) : (
-                <span className="no-tags">No tags</span>
-              )}
-              <button className="add-tag-btn" onClick={() => this.manageTags()}>
-                <Plus size={10} />
-              </button>
-            </div>
-          </div>
-
-          <div className="device-health-metrics">
-            {batteryLevel !== undefined && (
-              <div className="health-metric" title={`Battery: ${batteryLevel}%`}>
-                <div className={`battery-level-indicator ${batteryLevel < 20 ? 'low' : ''}`}>
-                  <div className="battery-level-fill" style={{ width: `${batteryLevel}%` }}></div>
-                </div>
-                <span>{batteryLevel}%</span>
-              </div>
-            )}
-            {thermalStatus && thermalStatus !== 'Normal' && (
-              <div
-                className={`health-metric thermal-metric ${thermalStatus?.toLowerCase() || ''}`}
-                title={`Thermal: ${thermalStatus}`}
-              >
-                <Thermometer size={12} />
-                <span>{thermalStatus?.toUpperCase() || ''}</span>
-              </div>
-            )}
-            {storageFree && storageFree !== 'Unknown' && (
-              <div className="health-metric storage-metric" title={`Free Space: ${storageFree}`}>
-                <HardDrive size={12} />
-                <span>{storageFree}</span>
-              </div>
-            )}
-          </div>
-
-          {totalUtilizationTimeMilliSec != null && (
-            <div className="device-info-card-container__body_row">
-              <div className="device-info-card-container__body_row_label">Utilization:</div>
-              <div
-                className="device-info-card-container__body_row_value"
-                title={prettyMilliseconds(totalUtilizationTimeMilliSec)}
-              >
-                {prettyMilliseconds(totalUtilizationTimeMilliSec)}
-              </div>
-            </div>
-          )}
-
-          {this.isReserved() && (
-            <div className="reservation-details-section">
-              <div className="device-info-card-container__body_row reservation-row">
-                <div className="device-info-card-container__body_row_label">Reserved By:</div>
-                <div className="device-info-card-container__body_row_value highlight-value">
-                  {reservedBy || 'Anonymous'}
-                </div>
-              </div>
-              {reservationReason && (
-                <div className="device-info-card-container__body_row reservation-row">
-                  <div className="device-info-card-container__body_row_label">Reason:</div>
-                  <div
-                    className="device-info-card-container__body_row_value"
-                    title={reservationReason}
-                  >
-                    {reservationReason}
-                  </div>
-                </div>
+                <AndroidIcon size={14} />
               )}
             </div>
-          )}
-
-          {session_id != null && (
-            <div className="device-info-card-container__body_row">
-              <div className="device-info-card-container__body_row_label">Session ID:</div>
-              <div
-                className="device-info-card-container__body_row_value"
-                title={session_id.toString()}
-              >
-                {session_id}
-              </div>
+            <div className="device-id-mono" title={udid}>
+              {udid}
             </div>
-          )}
-          {dashboard_link && !!total_session_count && total_session_count > 0 && (
-            <div className="dashboard-link-wrapper">
-              <div>
-                <div className="device-info-card-container__body_row_label">
-                  {`Session${total_session_count > 1 ? 's' : ''}:`}
-                </div>
-              </div>
-              <div className="dashboard-link">
-                <LinkIcon className="link-icon" />
-                <a className="footer-deeplink" href={dashboard_link} target="_blank">
-                  Appium Dashboard ({total_session_count})
-                </a>
-              </div>
+          </div>
+          <div className={`device-status-badge ${deviceState} ${deviceState === 'busy' && sessionProgress && sessionProgress !== 'Session Active' ? 'pulse' : ''}`}>
+            {deviceState === 'busy' && sessionProgress && sessionProgress !== 'Session Active' ? sessionProgress : deviceState}
+          </div>
+        </div>
+
+        {/* Device Name and Info */}
+        <div className="device-info-main relative z-10">
+          <h3 className="device-name" title={name}>{name}</h3>
+          <p className="device-subtext">{deviceType.toUpperCase()} • {sdk}</p>
+
+          {/* Inline Tags Display */}
+          {this.props.device.tags && this.props.device.tags.length > 0 && (
+            <div className="device-tags-inline">
+              {this.props.device.tags.slice(0, 3).map(tag => (
+                <span key={tag} className="inline-tag" title={tag}>{tag}</span>
+              ))}
+              {this.props.device.tags.length > 3 && (
+                <span className="inline-tag-overflow">+{this.props.device.tags.length - 3}</span>
+              )}
             </div>
           )}
         </div>
-        <div className="device-info-card-container__footer_wrapper">
+
+        {/* High-Density Metrics Grid */}
+        <div className="metrics-grid relative z-10">
+          <div className="metric-item" title={`Location: ${hostName}`}>
+            <Monitor size={10} className="text-dim" />
+            <span className="truncate">{hostName}</span>
+          </div>
+
+          {this.props.device.ip && (
+            <div className="metric-item" title={`IP: ${this.props.device.ip}`}>
+              <Wifi size={10} className="text-dim" />
+              <span className="truncate">{this.props.device.ip}</span>
+            </div>
+          )}
+
+          <div className={`metric-item health ${this.props.device.healthStatus?.toLowerCase() || 'healthy'}`} title={this.props.device.healthCheckError || 'Device is healthy'}>
+            <div className="health-dot"></div>
+            <span>{this.props.device.healthStatus || 'Healthy'}</span>
+            {totalHealedCount && totalHealedCount > 0 && (
+              <span className="heal-badge"><ShieldCheck size={8} /> {totalHealedCount}</span>
+            )}
+          </div>
+
+          {thermalStatus && thermalStatus !== 'Unknown' && (
+            <div className="metric-item thermal" title={`Thermal: ${thermalStatus}`}>
+              <Thermometer size={10} style={{ color: thermalStatus === 'Nominal' ? 'var(--color-primary)' : 'var(--color-amber)' }} />
+              <span>{thermalStatus}</span>
+            </div>
+          )}
+
+          {batteryLevel !== undefined && (
+            <div className="metric-item battery" title={`Battery: ${batteryLevel}%`}>
+              <div className={`mini-battery ${batteryLevel < 20 ? 'low' : ''}`}>
+                <div className="battery-fill" style={{ width: `${batteryLevel}%` }}></div>
+              </div>
+              <span>{batteryLevel}%</span>
+            </div>
+          )}
+
+          {storageFree && storageFree !== 'Unknown' && (
+            <div className="metric-item storage" title={`Free Space: ${storageFree}`}>
+              <HardDrive size={10} style={{ color: 'var(--color-sky)' }} />
+              <span>{storageFree}</span>
+            </div>
+          )}
+        </div>
+
+        {/* Utilization & Dynamic Info (Busy/Reserved) */}
+        <div className="dynamic-data-layer relative z-10">
+          {this.isReserved() ? (
+            <div className="reservation-micro-banner">
+              <Clock size={10} />
+              <span>RES: {reservedBy || 'Anon'} ({this.getRemainingReservationTime()})</span>
+            </div>
+          ) : session_id ? (
+            <div className="session-micro-banner">
+              <Terminal size={10} />
+              <span>SID: {session_id}</span>
+            </div>
+          ) : (
+            <div className="utilization-micro-info">
+              <span>UTIL: {prettyMilliseconds(totalUtilizationTimeMilliSec || 0, { compact: true })}</span>
+            </div>
+          )}
+        </div>
+
+        {/* Tactical Action Row */}
+        <div className="action-row relative z-10">
+          <button className="tactical-btn add-tag" onClick={() => this.manageTags()} title="Manage Tags">
+            <Plus size={14} />
+          </button>
           {blockButton()}
+
           <button
-            className={`device-info-card__body_control-device ${busy && !!session_id && !session_id.toString().startsWith('manual_') ? 'disabled' : ''
-              }`}
+            className={`tactical-btn control-btn ${busy && !!session_id && !session_id.toString().startsWith('manual_') ? 'disabled' : ''}`}
             onClick={() =>
               !(busy && !!session_id && !session_id.toString().startsWith('manual_')) &&
               this.props.navigate(`/devices/${udid}/control`)
             }
             disabled={busy && !!session_id && !session_id.toString().startsWith('manual_')}
-            title={
-              busy && !!session_id && !session_id.toString().startsWith('manual_')
-                ? 'Device is currently busy with Appium session'
-                : 'Take manual control'
-            }
+            title={busy && !!session_id && !session_id.toString().startsWith('manual_') ? 'Locked: Appium Session' : 'Take Control'}
           >
-            <Monitor size={16} className="device-info-card__body_control-device-icon" />
-            Control
+            <Monitor size={14} />
+            <span style={{ fontSize: '10px', fontWeight: 800, letterSpacing: '0.05em', fontFamily: 'Outfit, sans-serif' }}>CTRL</span>
           </button>
         </div>
+
+        {/* Modals */}
         {this.state.showReservation && (
           <ReservationModal
             device={this.props.device}

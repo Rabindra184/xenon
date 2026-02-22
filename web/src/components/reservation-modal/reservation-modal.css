@@ -15,10 +15,9 @@
 .reservation-modal {
     background-color: var(--bg-surface);
     border: 1px solid var(--border-visible);
-    border-radius: 2px;
+    border-radius: 6px;
     width: 450px;
     max-width: 90%;
-    padding: 32px;
     box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5);
     animation: modal-enter 0.3s cubic-bezier(0.16, 1, 0.3, 1);
     position: relative;
@@ -37,33 +36,97 @@
     }
 }
 
-.reservation-modal h2 {
-    margin: 0 0 12px 0;
-    color: var(--text-bright);
-    font-size: 1.5rem;
-    font-weight: 800;
-    letter-spacing: -0.01em;
-    font-family: 'Outfit', sans-serif;
-    text-transform: uppercase;
+.reservation-modal-header {
+    padding: 24px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
     border-bottom: 2px solid var(--border-visible);
-    padding-bottom: 12px;
+    background: rgba(0, 0, 0, 0.4);
+}
+
+.reservation-modal-title {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    font-size: 1.25rem;
+    font-weight: 800;
+    color: var(--text-bright);
+    text-transform: uppercase;
+    font-family: 'Outfit', sans-serif;
+    letter-spacing: -0.01em;
+}
+
+.title-icon {
+    color: var(--color-primary);
+}
+
+.close-btn {
+    background: transparent;
+    border: none;
+    color: var(--text-dim);
+    cursor: pointer;
+    padding: 4px;
+    border-radius: 6px;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.close-btn:hover {
+    background: rgba(255, 255, 255, 0.05);
+    color: var(--text-bright);
+}
+
+.reservation-modal-body {
+    padding: 24px;
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+}
+
+.device-id-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    background: rgba(0, 0, 0, 0.4);
+    padding: 8px 16px;
+    border-radius: 6px;
+    border: 1px solid var(--border-visible);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    width: fit-content;
+    margin-bottom: 12px;
+}
+
+.device-id-badge .label {
+    color: var(--text-dim);
+    text-transform: uppercase;
+    font-weight: 800;
+    font-size: 10px;
+}
+
+.device-id-badge .value {
+    color: var(--color-primary);
+    font-weight: 800;
 }
 
 .reservation-modal p {
     color: var(--text-dim);
     font-size: 13px;
-    margin-bottom: 24px;
     line-height: 1.6;
+    margin: 0;
 }
 
 .reservation-form-group {
-    margin-bottom: 20px;
+    margin-bottom: 0;
 }
 
 .reservation-form-group label {
     display: block;
     color: var(--text-dim);
-    font-size: 10px;
+    font-size: var(--fs-xs);
     font-weight: 800;
     margin-bottom: 8px;
     text-transform: uppercase;
@@ -75,7 +138,7 @@
     width: 100%;
     background-color: rgba(0, 0, 0, 0.3);
     border: 1px solid var(--border-visible);
-    border-radius: 2px;
+    border-radius: 6px;
     padding: 12px 16px;
     color: var(--text-bright);
     font-size: 13px;
@@ -102,7 +165,7 @@
     border: 1px solid var(--border-visible);
     color: var(--text-dim);
     padding: 10px;
-    border-radius: 2px;
+    border-radius: 6px;
     font-size: 11px;
     cursor: pointer;
     text-align: center;
@@ -124,10 +187,12 @@
 }
 
 .reservation-actions {
+    padding: 24px;
     display: flex;
     justify-content: flex-end;
     gap: 12px;
-    margin-top: 32px;
+    background: rgba(0, 0, 0, 0.4);
+    border-top: 2px solid var(--border-visible);
 }
 
 .btn-cancel {
@@ -135,7 +200,7 @@
     border: 1px solid var(--border-visible);
     color: var(--text-dim);
     padding: 10px 24px;
-    border-radius: 2px;
+    border-radius: 6px;
     font-size: 12px;
     font-weight: 700;
     cursor: pointer;
@@ -154,7 +219,7 @@
     color: var(--bg-page);
     border: none;
     padding: 10px 24px;
-    border-radius: 2px;
+    border-radius: 6px;
     font-size: 12px;
     font-weight: 800;
     cursor: pointer;
@@ -184,7 +249,7 @@
     margin-top: 12px;
     background-color: rgba(255, 77, 77, 0.05);
     padding: 8px 12px;
-    border-radius: 2px;
+    border-radius: 6px;
     border: 1px solid rgba(255, 77, 77, 0.2);
     font-family: 'JetBrains Mono', monospace;
 }

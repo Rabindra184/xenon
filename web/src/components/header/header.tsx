@@ -89,38 +89,6 @@ const Header: React.FC = () => {
 
               <div className="dropdown-divider"></div>
 
-              {/* Section 2: Operations */}
-              <div className="dropdown-group">
-                <div className="dropdown-section-header">
-                  <Settings size={12} />
-                  <span>Administration</span>
-                </div>
-                <button className="dropdown-item" onClick={() => handleNavClick('/settings')}>
-                  <ShieldCheck size={16} />
-                  <span>Infrastructure Control</span>
-                </button>
-
-                <button className="dropdown-item" onClick={() => handleNavClick('/ai-settings')}>
-                  <Brain size={16} />
-                  <span>AI Intelligence</span>
-                </button>
-
-                <button className="dropdown-item" onClick={() => handleNavClick('/maintenance')}>
-                  <ShieldCheck size={16} />
-                  <span>Maintenance & Retention</span>
-                </button>
-
-                <button
-                  className="dropdown-item"
-                  onClick={() => window.open(window.location.origin + '/xenon/api-docs', '_blank')}
-                >
-                  <BookOpen size={16} />
-                  <span>API Documentation</span>
-                </button>
-              </div>
-
-              <div className="dropdown-divider"></div>
-
               {/* Section 3: System Status (Non-interactive) */}
               <div className="dropdown-system-info">
                 <div className="status-indicator">

@@ -8,7 +8,8 @@ import {
     Settings,
     ShieldCheck,
     Brain,
-    Info
+    Info,
+    BookOpen
 } from 'lucide-react';
 import { getEnabledNavItems } from '../../config/navigation';
 import './sidebar.css';
@@ -71,6 +72,20 @@ export const Sidebar: React.FC = () => {
                     path="/ai-settings"
                     active={isActive('/ai-settings')}
                     onClick={() => navigate('/ai-settings')}
+                />
+                <SidebarItem
+                    icon={<ShieldCheck size={18} />}
+                    label="Maintenance"
+                    path="/maintenance"
+                    active={isActive('/maintenance')}
+                    onClick={() => navigate('/maintenance')}
+                />
+                <SidebarItem
+                    icon={<BookOpen size={18} />}
+                    label="API Docs"
+                    path="/xenon/api-docs"
+                    active={false}
+                    onClick={() => window.open(window.location.origin + '/xenon/api-docs', '_blank')}
                 />
             </div>
         </aside>

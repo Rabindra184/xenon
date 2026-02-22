@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import prettyMilliseconds from 'pretty-ms';
 import {
   Search,
@@ -11,6 +11,7 @@ import {
   ArrowLeft,
   Clock,
   Brain,
+  ChevronDown,
 } from 'lucide-react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useSocket } from '../../hooks/useSocket';
@@ -68,6 +69,60 @@ const getDuration = (session: ISession) => {
 
 // --- Sub-components ---
 
+const CustomSelect = ({
+  value,
+  onChange,
+  options,
+  icon,
+}: {
+  value: string;
+  onChange: (val: string) => void;
+  options: { label: string; value: string }[];
+  icon?: React.ReactNode;
+}) => {
+  const [isOpen, setIsOpen] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
+        setIsOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  const selectedOption = options.find((opt) => opt.value === value);
+
+  return (
+    <div className="custom-select-container" ref={containerRef}>
+      <div className="compact-select-trigger" onClick={() => setIsOpen(!isOpen)}>
+        {icon}
+        <span className="trigger-text">{selectedOption?.label}</span>
+        <ChevronDown size={12} className={`chevron-icon ${isOpen ? 'open' : ''}`} />
+      </div>
+
+      {isOpen && (
+        <div className="custom-select-dropdown">
+          {options.map((opt) => (
+            <div
+              key={opt.value}
+              className={`custom-select-option ${opt.value === value ? 'active' : ''}`}
+              onClick={() => {
+                onChange(opt.value);
+                setIsOpen(false);
+              }}
+            >
+              {opt.label}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
+
 const BuildCard = React.memo(
   ({
     build,
@@ -84,20 +139,27 @@ const BuildCard = React.memo(
         onClick={() => onClick(build.id)}
       >
         <div className="mini-header">
-          <span className="mini-id">{build.name || 'Unnamed Build'}</span>
+          <span className="name-text">{build.name || 'Unnamed Build'}</span>
           <span className="mini-timestamp">{formatDate(build.createdAt)}</span>
         </div>
         <div className="build-stats-row">
-          <Badge variant="secondary" className="stat-pill">
-            {build.sessionCount} Tests
-          </Badge>
-          <div className="stat-dots">
-            {build.passedCount > 0 && <span className="dot-passed" title="Passed" />}
-            {build.failedCount > 0 && <span className="dot-failed" title="Failed" />}
-            {build.runningCount > 0 && <span className="dot-running" title="Running" />}
-          </div>
+          {build.passedCount > 0 && (
+            <Badge variant="secondary" className="stat-pill passed text-neon-green">
+              {build.passedCount} PASSED
+            </Badge>
+          )}
+          {build.failedCount > 0 && (
+            <Badge variant="secondary" className="stat-pill failed text-neon-red">
+              {build.failedCount} FAILED
+            </Badge>
+          )}
+          {build.runningCount > 0 && (
+            <Badge variant="secondary" className="stat-pill unmarked text-neon-amber">
+              {build.runningCount} RUNNING
+            </Badge>
+          )}
         </div>
-        <div className="build-id-footer">{build.id.slice(0, 8)}...</div>
+        <div className="build-id-footer text-neon-dim">{build.id.slice(0, 8)}...</div>
       </button>
     );
   },
@@ -124,29 +186,23 @@ const SessionTableRow = React.memo(
           </div>
         </td>
         <td>
-          <div className="cell-platform">
+          <div className="cell-platform text-neon-purple">
             <Smartphone
               size={14}
-              color={session.device_platform?.toLowerCase() === 'ios' ? '#38bdf8' : '#4ade80'}
+              color={session.device_platform?.toLowerCase() === 'ios' ? '#8b5cf6' : '#a78bfa'}
             />
-            <span>{session.device_name || 'Unknown Device'}</span>
+            <span style={{ marginLeft: '6px' }}>{session.device_name || 'Unknown Device'}</span>
           </div>
         </td>
         <td>
-          <Badge
-            variant={
-              ['success', 'passed'].includes(session.status)
-                ? 'success'
-                : session.status === 'failed'
-                  ? 'error'
-                  : 'warning'
-            }
-          >
+          <span className={`status-text ${['success', 'passed'].includes(session.status) ? 'text-neon-green' :
+            session.status === 'failed' ? 'text-neon-red' : 'text-neon-amber'
+            }`} style={{ fontWeight: 700, fontSize: '10px' }}>
             {session.status?.toUpperCase() || 'UNKNOWN'}
-          </Badge>
+          </span>
         </td>
-        <td>{formatDate(session.startTime)}</td>
-        <td>{safeFormatDuration(duration)}</td>
+        <td className="text-neon-dim">{formatDate(session.startTime)}</td>
+        <td className="text-neon-dim">{safeFormatDuration(duration)}</td>
         <td className="cell-actions">
           <ChevronRight size={16} />
         </td>
@@ -873,19 +929,17 @@ const SessionDashboard: React.FC = () => {
             <div className="advanced-filters">
               <div className="filter-row">
                 <div className="select-container">
-                  <Clock size={12} className="select-icon" />
-                  <select
-                    className="compact-select"
+                  <CustomSelect
+                    icon={<Clock size={12} className="select-icon" />}
                     value={buildTimeFilter}
-                    onChange={(e) =>
-                      setBuildTimeFilter(e.target.value as 'all' | '24h' | '7d' | '30d')
-                    }
-                  >
-                    <option value="all">All Time</option>
-                    <option value="24h">Last 24h</option>
-                    <option value="7d">Last 7 Days</option>
-                    <option value="30d">Last 30 Days</option>
-                  </select>
+                    onChange={(val) => setBuildTimeFilter(val as 'all' | '24h' | '7d' | '30d')}
+                    options={[
+                      { label: 'All Time', value: 'all' },
+                      { label: 'Last 24h', value: '24h' },
+                      { label: 'Last 7 Days', value: '7d' },
+                      { label: 'Last 30 Days', value: '30d' },
+                    ]}
+                  />
                 </div>
               </div>
 
