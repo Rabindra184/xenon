@@ -13,6 +13,7 @@ import {
   Info,
   History,
   Trash2,
+  ShieldCheck,
 } from 'lucide-react';
 import { ActionBar, SettingSection } from '../ui/Layouts';
 
@@ -115,10 +116,15 @@ export const MaintenanceSettings: React.FC = () => {
 
       <div className="settings-content">
         <div className="settings-grid">
-          <SettingSection
-            title="Retention Window"
-            description="Number of days to preserve builds and sessions before automatic purging from the system."
-          >
+          <div className="setting-card stagger-1">
+            <div className="setting-card-header">
+              <History size={16} />
+              <h4>Retention Window</h4>
+            </div>
+            <p className="section-description-dense">
+              Number of days to preserve builds and sessions before automatic purging from the
+              system.
+            </p>
             <div className="setting-field">
               <div className="input-group">
                 <input
@@ -135,12 +141,16 @@ export const MaintenanceSettings: React.FC = () => {
             <div className="setting-hint-clean">
               Standard enterprise retention is typically 30-90 days.
             </div>
-          </SettingSection>
+          </div>
 
-          <SettingSection
-            title="Max Build Capacity"
-            description="Cap the maximum number of historical builds stored in the primary database."
-          >
+          <div className="setting-card stagger-2">
+            <div className="setting-card-header">
+              <Trash2 size={16} />
+              <h4>Max Build Capacity</h4>
+            </div>
+            <p className="section-description-dense">
+              Cap the maximum number of historical builds stored in the primary database.
+            </p>
             <div className="setting-field">
               <div className="input-group">
                 <input
@@ -157,12 +167,17 @@ export const MaintenanceSettings: React.FC = () => {
             <div className="setting-hint-clean">
               Protects against database bloat during high-frequency CI bursts.
             </div>
-          </SettingSection>
+          </div>
 
-          <SettingSection
-            title="Asset Purge Strategy"
-            description="Automatically remove binary artifacts (videos, screenshots) when build records are purged."
-          >
+          <div className="setting-card stagger-3">
+            <div className="setting-card-header">
+              <ShieldCheck size={16} />
+              <h4>Asset Purge Strategy</h4>
+            </div>
+            <p className="section-description-dense">
+              Automatically remove binary artifacts (videos, screenshots) when build records are
+              purged.
+            </p>
             <div className="toggle-group">
               <label className="switch">
                 <input
@@ -179,12 +194,16 @@ export const MaintenanceSettings: React.FC = () => {
             <div className="setting-hint-clean">
               Disabling this will leave orphaned files on disk—use with caution.
             </div>
-          </SettingSection>
+          </div>
 
-          <SettingSection
-            title="Cleanup Orchestration"
-            description="Standardized Cron syntax for scheduling the automated cleanup engine."
-          >
+          <div className="setting-card stagger-4">
+            <div className="setting-card-header">
+              <Calendar size={16} />
+              <h4>Cleanup Orchestration</h4>
+            </div>
+            <p className="section-description-dense">
+              Standardized Cron syntax for scheduling the automated cleanup engine.
+            </p>
             <div className="setting-field">
               <div className="setting-input-wrapper">
                 <input
@@ -214,7 +233,7 @@ export const MaintenanceSettings: React.FC = () => {
                 ))}
               </div>
             </div>
-          </SettingSection>
+          </div>
         </div>
 
         <div
