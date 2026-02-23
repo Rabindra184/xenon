@@ -18,7 +18,7 @@ export class QueueService {
   private deviceStore: IDeviceStore = DeviceStoreFactory.getStore();
   private pendingStore: IPendingSessionStore = DeviceStoreFactory.getPendingSessionStore();
 
-  constructor(private prisma: PrismaService) {}
+  constructor(private prismaService: PrismaService) { }
 
   /**
    * Calculates the average session duration for a platform in milliseconds
@@ -26,7 +26,7 @@ export class QueueService {
    */
   private async getAverageSessionDuration(platform: string): Promise<number> {
     try {
-      const recentSessions = await this.prisma.session.findMany({
+      const recentSessions = await this.prismaService.client.session.findMany({
         where: {
           device_platform: platform.toLowerCase(),
           endTime: { not: null },
