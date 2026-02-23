@@ -59,7 +59,7 @@ A high thermal status on iOS devices will cause WDA to become extremely sluggish
 ## Session Lifecycle Notes
 
 :::info
-**Auto-Release Policy**: If there is no activity (no commands received) on a session for more than **100 seconds**, Xenon will automatically release the device to the available pool to prevent resource starvation.
+**Auto-Release Policy**: If there is no activity (no commands received) on a session for more than **60 seconds**, Xenon will automatically release the device to the available pool to prevent resource starvation.
 :::
 
 #### Performance Impact

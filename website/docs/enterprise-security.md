@@ -21,7 +21,7 @@ Seamlessly integrate with your existing enterprise identity providers:
 - **GitHub Enterprise**
 - **Google Workspace**
 
-Configuration is handled via the `security` section in `xenon.config.json` or through environment-level OIDC variables.
+Configuration is handled via environment-level variables or the Dashboard Settings UI.
 
 ## Visual PII Masking (Autonomous Privacy)
 
