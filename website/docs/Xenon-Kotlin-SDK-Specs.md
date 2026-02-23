@@ -109,7 +109,7 @@ The SDK includes native listeners for:
 
 ## 6. Comparison with ATD
 
-| Feature | AppiumTestDistribution (ATD) | Xenon Kotlin SDK |
+| Feature | Legacy ATD Core | Xenon Kotlin SDK |
 | :--- | :--- | :--- |
 | **Logic** | Client-side heavy | Server-side reservation heavy |
 | **Direct Control** | Minimal | Rich (Tap/Swipe/Shell) |

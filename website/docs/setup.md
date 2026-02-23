@@ -51,11 +51,8 @@ Xenon is engineered for high-density labs. Ensure your host machine meets these 
 Install the Xenon plugin and the Dashboard directly from the NPM registry:
 
 ```bash
-# Install Xenon Plugin
-appium plugin install --source=npm appium-xenon
-
-# Install Dashboard (Required for Web UI)
-appium plugin install --source=npm appium-dashboard
+# Install Xenon Plugin (Includes Dashboard)
+appium plugin install --source=npm @xenon-device-management/xenon
 ```
 
 </TabItem>
@@ -68,7 +65,7 @@ If you are developing Xenon or using a custom build:
 npm run build:all
 
 # Install locally
-appium plugin install --source=local /path/to/appium-xenon
+appium plugin install --source=local /path/to/xenon
 
 # High-velocity dev loop (Auto-rebuilds)
 npm run dev

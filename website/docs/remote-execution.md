@@ -6,7 +6,7 @@ hide:
 
 <div style={{textAlign: 'center'}}>
 
-  <img src="https://raw.githubusercontent.com/AppiumTestDistribution/appium-xenon/main/docs/assets/images/remote.jpg" class="center"/>
+  <img src="https://raw.githubusercontent.com/xenon-platform/xenon/main/docs/assets/images/remote.jpg" class="center"/>
 </div>
 
 ### Distributed Event-Driven Grid
@@ -37,7 +37,7 @@ To enable this, configure the `databaseProvider` and `databaseUrl` in your `xeno
 ### Dashboard
 * Navigate to the host and port of Hub server from the above example it will be http://localhost:31137/xenon
 * Dashboard should have device list based on the hub configuration.
-  ![](https://github.com/AppiumTestDistribution/appium-xenon/blob/main/assets/demo.gif)
+  ![](https://github.com/xenon-platform/xenon/blob/main/assets/demo.gif)
 
 ### Test Execution
 * Point your Appium test execution URL to the Hub endpoint. 
