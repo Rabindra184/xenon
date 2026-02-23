@@ -14,8 +14,9 @@ module.exports = {
   parserOptions: {
     ecmaVersion: 2016,
     sourceType: 'module',
+    requireConfigFile: false,
     babelOptions: {
-      plugins: ['@babel/plugin-proposal-class-properties'],
+      plugins: ['@babel/plugin-transform-class-properties'],
     },
   },
   plugins: ['prettier', '@typescript-eslint'],
