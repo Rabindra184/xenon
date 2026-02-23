@@ -211,7 +211,6 @@
  *             schema:
  *               type: string
  *               format: binary
- *         description: Live video not available
  */
 
 /**

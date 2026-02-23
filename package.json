@@ -9,7 +9,7 @@
     "./package.json": "./package.json"
   },
   "scripts": {
-    "build": "tsc -b && npm run build:copy",
+    "build": "npx prisma generate && tsc -b && npm run build:copy",
     "build:all": "npm run build:xenon && npm run build",
     "build:copy": "rm -rf lib/public && mkdir -p lib && cp -R src/public lib/ && cp schema.json lib/",
     "build:schema": "node scripts/generate-types-from-schema.js",
@@ -29,6 +29,7 @@
     "format": "prettier --write \"{src,web,test}/**/*.{ts,tsx,json,md}\" --single-quote",
     "db:migrate": "path-exists lib/src/scripts/initialize-database.js && node lib/src/scripts/initialize-database.js || ts-node src/scripts/initialize-database.ts",
     "db:generate": "ts-node src/scripts/generate-database-migration.ts",
+    "prepare": "npx prisma generate",
     "prepublishOnly": "npm run build:all"
   },
   "repository": {
