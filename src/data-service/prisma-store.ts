@@ -13,7 +13,9 @@ import * as semver from 'semver';
 import log from '../logger';
 
 export class PrismaDeviceStore implements IDeviceStore {
-  private prisma: PrismaClient = Container.get(PrismaService).client;
+  private get prisma(): PrismaClient {
+    return Container.get(PrismaService).client;
+  }
 
   private toIDevice(device: Device): IDevice {
     return {
@@ -266,7 +268,9 @@ export class PrismaDeviceStore implements IDeviceStore {
 }
 
 export class PrismaPendingSessionStore implements IPendingSessionStore {
-  private prisma: PrismaClient = Container.get(PrismaService).client;
+  private get prisma(): PrismaClient {
+    return Container.get(PrismaService).client;
+  }
 
   async addPendingSession(capability: any): Promise<void> {
     await this.prisma.pendingSession.upsert({
@@ -310,7 +314,9 @@ export class PrismaPendingSessionStore implements IPendingSessionStore {
 }
 
 export class PrismaCLIArgsStore implements ICLIArgsStore {
-  private prisma: PrismaClient = Container.get(PrismaService).client;
+  private get prisma(): PrismaClient {
+    return Container.get(PrismaService).client;
+  }
 
   async addCLIArgs(args: any): Promise<void> {
     await this.prisma.cLIArgs.create({
@@ -327,7 +333,9 @@ export class PrismaCLIArgsStore implements ICLIArgsStore {
 }
 
 export class PrismaHealEtalonStore implements IHealEtalonStore {
-  private prisma: PrismaClient = Container.get(PrismaService).client;
+  private get prisma(): PrismaClient {
+    return Container.get(PrismaService).client;
+  }
 
   async saveSignature(etalon: any): Promise<void> {
     await this.prisma.locatorEtalon.upsert({

@@ -1,12 +1,12 @@
 import { DeviceStoreFactory } from './device-store';
 
-const store = DeviceStoreFactory.getPendingSessionStore();
-
 async function addNewPendingSession(capability: any) {
+  const store = DeviceStoreFactory.getPendingSessionStore();
   await store.addPendingSession(capability);
 }
 
 async function removePendingSession(sessionCapabilityId: string) {
+  const store = DeviceStoreFactory.getPendingSessionStore();
   await store.removePendingSession(sessionCapabilityId);
 }
 
