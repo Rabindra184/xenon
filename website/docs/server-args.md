@@ -33,10 +33,13 @@ server:
   plugin:
     xenon:
       platform: both
-      iosDeviceType: both
-      androidDeviceType: both
-      enableDashboard: true
       maxSessions: 8
+      enableDashboard: true
+      bootedSimulators: true
+      aiProvider: gemini
+      aiModel: llava:7b
+      aiBaseUrl: "http://localhost:11434"
+      buildCleanupDays: 30
 ```
 
 </TabItem>

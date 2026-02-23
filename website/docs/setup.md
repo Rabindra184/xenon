@@ -84,26 +84,43 @@ The plugin must be explicitly activated when starting the Appium server.
 <TabItem value="cli" label="CLI Arguments" default>
 
 ```bash
-appium server -ka 800 --use-plugins=xenon,appium-dashboard \
-  -pa /wd/hub \
-  --plugin-xenon-platform=both
+# Production Ready Start
+XENON_AI_PROVIDER=gemini \
+XENON_GEMINI_API_KEY=AIzaSyAkb1eXwMxY4 \
+XENON_OLLAMA_MODEL=llava:7b \
+XENON_AI_BASE_URL=http://localhost:11434 \
+XENON_OTEL_DEBUG=true \
+appium server -ka 800 --use-plugins=xenon -pa /wd/hub \
+  --plugin-xenon-platform=both \
+  --plugin-xenon-max-sessions=8 \
+  --plugin-xenon-enable-dashboard \
+  --plugin-xenon-booted-simulators \
+  --plugin-xenon-ai-provider=gemini \
+  --plugin-xenon-ai-model=llava:7b \
+  --plugin-xenon-ai-base-url=http://localhost:11434
 ```
 
 </TabItem>
 <TabItem value="config" label="Config File">
 
-Create a `xenon-config.yaml` and pass it to the Appium server:
+Create a `xenon-config.yaml` and pass it to the Appium server. This configuration includes AI, session management, and dashboard settings.
 
 ```yaml
 server:
   port: 4723
   basePath: /wd/hub
+  keepAliveTimeout: 800
   usePlugins:
     - xenon
-    - appium-dashboard
   plugin:
     xenon:
-      platform: android # or 'ios' or 'both'
+      platform: both
+      maxSessions: 8
+      enableDashboard: true
+      bootedSimulators: true
+      aiProvider: gemini
+      aiModel: llava:7b # Optional override
+      aiBaseUrl: "http://localhost:11434"
 ```
 
 Run with:
