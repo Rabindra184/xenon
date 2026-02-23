@@ -83,7 +83,7 @@
 
 ```bash
 # Install Xenon plugin
-appium plugin install xenon
+appium plugin install --source=npm @xenon-device-management/xenon
 
 # Or install from source
 git clone https://github.com/xenon-platform/xenon.git
