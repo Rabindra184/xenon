@@ -86,7 +86,7 @@ The plugin must be explicitly activated when starting the Appium server.
 ```bash
 # Production Ready Start
 XENON_AI_PROVIDER=gemini \
-XENON_GEMINI_API_KEY=AIzaSyAkb1eXwMxY4 \
+XENON_GEMINI_API_KEY=YOUR_GEMINI_API_KEY \
 XENON_OLLAMA_MODEL=llava:7b \
 XENON_AI_BASE_URL=http://localhost:11434 \
 XENON_OTEL_DEBUG=true \
