@@ -109,31 +109,42 @@ curl -X PUT http://localhost:4723/xenon/api/config \
 
 ---
 
-## 3. CLI Arguments Reference
+## 3. Master Parameters Reference
 
-These arguments can be passed via command line flags (e.g., `--plugin-xenon-platform=ios`).
+Below is the definitive list of all Xenon configuration parameters.
 
-| Configuration Key | CLI Flag | Description | Default | Options |
-| ----------------- | -------- | ----------- | ------- | ------- |
-| `platform` | `--plugin-xenon-platform` | Platform to run tests against | `both` | `both`,`ios`,`android` |
-| `iosDeviceType` | `--plugin-xenon-ios-device-type` | Types of iOS devices to include | `both` | `both`,`simulated`,`real` |
-| `androidDeviceType` | `--plugin-xenon-android-device-type` | Types of Android devices to include | `both` | `both`,`simulated`,`real` |
-| `skipChromeDownload` | `--plugin-xenon-skip-chrome-download` | Skip automatic chromedriver download | `true` | `true`, `false` |
-| `hub` | `--plugin-xenon-hub` | HUB IP address (if running as node) | None | `http://host:port` |
-| `maxSessions` | `--plugin-xenon-max-sessions` | Limit concurrent sessions | `8` | Number |
-| `enableDashboard` | `--plugin-xenon-enable-dashboard` | Enable the web dashboard | `false` | `true`, `false` |
-| `bootedSimulators` | `--plugin-xenon-booted-simulators` | Use already booted simulators | `false` | `true`, `false` |
-| `deviceAvailabilityTimeoutMs` | `--plugin-device-availability-timeout-ms` | Wait time for free device (ms) | `300000` | Number |
-| `newCommandTimeoutSec` | `--plugin-new-command-timeout-sec` | Auto-release session timeout (sec) | `60` | Number |
-| `databaseProvider` | `--plugin-xenon-database-provider` | Database type for state storage | `sqlite` | `sqlite`, `postgresql` |
-| `databaseUrl` | `--plugin-xenon-database-url` | Connection string for the database | Local path | Connection URL |
-| `aiProvider` | `--plugin-xenon-ai-provider` | AI provider for Xenon | `gemini` | `gemini`, `openai`, `anthropic`, `ollama` |
-| `aiModel` | `--plugin-xenon-ai-model` | AI model name to use | - | e.g., `gpt-4o`, `llama3` |
-| `aiBaseUrl` | `--plugin-xenon-ai-base-url` | Custom base URL for AI provider | - | e.g., for Ollama |
-| `buildCleanupDays` | `--plugin-xenon-build-cleanup-days` | Retention period in days | `30` | Number |
-| `buildCleanupMaxCount` | `--plugin-xenon-build-cleanup-max-count` | Maximum number of builds to keep | `100` | Number |
-| `buildCleanupSchedule` | `--plugin-xenon-build-cleanup-schedule` | Cron schedule for cleanup | `"0 0 * * *"` | Cron |
-| `deleteBuildAssets` | `--plugin-xenon-delete-build-assets` | Delete videos/screenshots | `true` | `true`, `false` |
+| YAML Key | CLI Flag | Mandatory | Type / Values | Default | Description |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| **Core Options** | | | | | |
+| `platform` | `--plugin-xenon-platform` | No | `android`, `ios`, `both` | `both` | Target platform for automation |
+| `maxSessions` | `--plugin-xenon-max-sessions` | No | Number | `8` | Maximum concurrent sessions |
+| `enableDashboard` | `--plugin-xenon-enable-dashboard` | No | Boolean | `false` | Enable the web dashboard interface |
+| `bindHostOrIp` | `--plugin-xenon-bind-host-or-ip` | No | String | Local IP | Internal binding address |
+| **Device Filters** | | | | | |
+| `androidDeviceType`| `--plugin-xenon-android-device-type`| No | `both`, `real`, `simulated` | `both` | Android device categories to include |
+| `iosDeviceType` | `--plugin-xenon-ios-device-type` | No | `both`, `real`, `simulated` | `both` | iOS device categories to include |
+| `bootedSimulators` | `--plugin-xenon-booted-simulators` | No | Boolean | `false` | Use only simulators already in `Booted` state |
+| `skipChromeDownload`| `--plugin-xenon-skip-chrome-download`| No | Boolean | `true` | Prevent automatic Chromedriver fetching |
+| `hub` | `--plugin-xenon-hub` | No | URL | None | Hub URL when running in Node mode |
+| **AI & Self-Healing** | | | | | |
+| `enableSelfHealing` | `--plugin-xenon-enable-self-healing` | No | Boolean | `true` | Enable global locator auto-recovery |
+| `aiProvider` | `--plugin-xenon-ai-provider` | No | `gemini`, `openai`, `anthropic`, `ollama` | `gemini` | Primary AI diagnostics provider |
+| `aiModel` | `--plugin-xenon-ai-model` | No | String | Provider def | Model name override (e.g. `gpt-4o`) |
+| `aiBaseUrl` | `--plugin-xenon-ai-base-url` | No | URL | None | Custom API endpoint (e.g. for Ollama) |
+| **Database** | | | | | |
+| `databaseProvider` | `--plugin-xenon-database-provider` | No | `sqlite`, `postgresql` | `sqlite` | State storage engine |
+| `databaseUrl` | `--plugin-xenon-database-url` | No | String | Local DB Path | Connection string or path |
+| **Cleanup & Retention** | | | | | |
+| `buildCleanupDays` | `--plugin-xenon-build-cleanup-days` | No | Number | `30` | Build retention period in days |
+| `buildCleanupMaxCount`| `--plugin-xenon-build-cleanup-max-count`| No | Number | `100` | Max builds to retain in database |
+| `buildCleanupSchedule`| `--plugin-xenon-build-cleanup-schedule`| No | Cron String | `0 0 * * *` | Cleanup job execution schedule |
+| `deleteBuildAssets` | `--plugin-xenon-delete-build-assets` | No | Boolean | `true` | Delete video/screenshots during cleanup |
+| **Timeouts & Monitoring** | | | | | |
+| `deviceAvailabilityTimeoutMs` | `--plugin-device-availability-timeout-ms` | No | Number | `300000` | Max wait for a free device (ms) |
+| `newCommandTimeoutSec` | `--plugin-new-command-timeout-sec` | No | Number | `60` | Auto-release idle sessions (sec) |
+| `healthCheckIntervalMs`| `--plugin-xenon-health-check-interval-ms`| No | Number | `86400000` | Frequency of device health audits |
+| `sessionHeartbeatIntervalMs`| `--plugin-xenon-session-heartbeat-interval-ms`| No | Number | `30000` | Session health check frequency |
+| `enableJsonLogging` | `--plugin-xenon-enable-json-logging` | No | Boolean | `false` | Format logs as structured JSON |
 
 ---
 
