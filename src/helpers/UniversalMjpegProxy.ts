@@ -166,7 +166,7 @@ export class UniversalMjpegProxy {
     this.sourceRequest = { abort: () => socket.destroy() } as any;
   }
 
-  private broadcast(chunk: Buffer) {
+  private broadcast(chunk: Buffer | string) {
     for (const client of this.clients) {
       try {
         client.write(chunk);
