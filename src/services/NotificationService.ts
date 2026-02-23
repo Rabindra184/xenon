@@ -8,10 +8,10 @@ export type EventType = 'device_offline' | 'session_failed' | 'device_new';
 
 @Service()
 export class NotificationService {
-  constructor(private prisma: PrismaService) {}
+  constructor(private prisma: PrismaService) { }
 
   async getConfigs(): Promise<WebhookConfig[]> {
-    return this.prisma.webhookConfig.findMany();
+    return this.prisma.client.webhookConfig.findMany();
   }
 
   async saveConfig(
@@ -20,7 +20,7 @@ export class NotificationService {
     type = 'slack',
     payloadTemplate?: string,
   ): Promise<WebhookConfig> {
-    return this.prisma.webhookConfig.create({
+    return this.prisma.client.webhookConfig.create({
       data: {
         url,
         events: JSON.stringify(events),
@@ -32,7 +32,7 @@ export class NotificationService {
   }
 
   async deleteConfig(id: string): Promise<void> {
-    await this.prisma.webhookConfig.delete({ where: { id } });
+    await this.prisma.client.webhookConfig.delete({ where: { id } });
   }
 
   async dispatchEvent(eventType: EventType, payload: any) {
