@@ -23,7 +23,10 @@ const ProfilingView: React.FC<ProfilingViewProps> = ({ data, session }) => {
   // Calculation utilities
   const calculateAvgCpu = () => {
     if (data.length === 0) return '0.0';
-    const total = data.reduce((acc: number, curr: IProfiling) => acc + parseFloat(curr.cpu || '0'), 0);
+    const total = data.reduce(
+      (acc: number, curr: IProfiling) => acc + parseFloat(curr.cpu || '0'),
+      0,
+    );
     return (total / data.length).toFixed(1);
   };
 
@@ -41,7 +44,10 @@ const ProfilingView: React.FC<ProfilingViewProps> = ({ data, session }) => {
 
   const calculateAvgMemory = () => {
     if (data.length === 0) return '0.0';
-    const total = data.reduce((acc: number, curr: IProfiling) => acc + parseFloat(curr.memory || '0'), 0);
+    const total = data.reduce(
+      (acc: number, curr: IProfiling) => acc + parseFloat(curr.memory || '0'),
+      0,
+    );
     return (total / data.length / 1024).toFixed(1);
   };
 

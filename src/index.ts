@@ -47,13 +47,16 @@ process.on('unhandledRejection', (reason, promise) => {
 });
 
 process.on('uncaughtException', (err) => {
-  const errorDetails = err instanceof Error ? {
-    name: err.name,
-    message: err.message,
-    stack: err.stack,
-    // Add other non-standard properties if they exist
-    ...(_.omit(err as any, ['name', 'message', 'stack']))
-  } : err;
+  const errorDetails =
+    err instanceof Error
+      ? {
+          name: err.name,
+          message: err.message,
+          stack: err.stack,
+          // Add other non-standard properties if they exist
+          ..._.omit(err as any, ['name', 'message', 'stack']),
+        }
+      : err;
   log.error('❌ [Xenon] Uncaught Exception:', JSON.stringify(errorDetails, null, 2));
   log.error('❌ [Xenon] Stack Trace:', err instanceof Error ? err.stack : new Error().stack);
   // Give logger time to flush before exiting

@@ -4,7 +4,7 @@ import { PrismaClient, WebhookConfig } from '../generated/client';
 
 @Service()
 export class PrismaService {
-  constructor() { }
+  constructor() {}
 
   get client(): PrismaClient {
     return prisma;

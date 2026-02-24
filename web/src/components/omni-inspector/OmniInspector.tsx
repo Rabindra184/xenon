@@ -316,7 +316,7 @@ function generateTestCode(
     const driverType =
       platform === 'android' ? 'AndroidDriver' : platform === 'ios' ? 'IOSDriver' : 'AppiumDriver';
     const interaction = isScrollable
-      ? `((Scrollable) element).scrollTo("target text");`
+      ? '((Scrollable) element).scrollTo("target text");'
       : isInput
         ? 'element.clear();\n        element.sendKeys("your text here");'
         : 'element.click();';

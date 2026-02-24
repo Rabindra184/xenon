@@ -1596,7 +1596,7 @@
  */
 
 // This file is only for Swagger documentation - no exports needed
-export { };
+export {};
 
 /**
  * @swagger

@@ -160,8 +160,8 @@ export class FuzzyXmlHealingProvider implements HealingProvider {
     const textWeight = etalon ? 0.5 : 1.0;
     const textTargets = etalon
       ? ([etalon.attributes['text'], etalon.attributes['label'], etalon.attributes['name']].filter(
-        Boolean,
-      ) as string[])
+          Boolean,
+        ) as string[])
       : keywords;
 
     let bestTextSim = 0;
@@ -278,10 +278,10 @@ export class FuzzyXmlHealingProvider implements HealingProvider {
     if (finalScore > 0.3) {
       this.logger.debug(
         `Score [${node.nodeName}]: final=${finalScore.toFixed(2)} ` +
-        `(total=${totalScore.toFixed(2)}/${totalWeight.toFixed(1)}) ` +
-        `name=${this.getAttrValue(node, 'name') || '-'} ` +
-        `label=${this.getAttrValue(node, 'label') || '-'} ` +
-        `X=${this.getAttrValue(node, 'x')},Y=${this.getAttrValue(node, 'y')}`,
+          `(total=${totalScore.toFixed(2)}/${totalWeight.toFixed(1)}) ` +
+          `name=${this.getAttrValue(node, 'name') || '-'} ` +
+          `label=${this.getAttrValue(node, 'label') || '-'} ` +
+          `X=${this.getAttrValue(node, 'x')},Y=${this.getAttrValue(node, 'y')}`,
       );
     }
 

@@ -259,7 +259,7 @@ export class DashboardEventManager {
             updateData['failure_reason'] =
               failedCommand.response && failedCommand.response.includes('error')
                 ? safeParseJson(failedCommand.response).value?.error ||
-                `Command failed: ${failedCommand.command_name}`
+                  `Command failed: ${failedCommand.command_name}`
                 : `Command failed: ${failedCommand.command_name}`;
             log.info(
               `Session ${sessionId} marked as FAILED due to error in command: ${failedCommand.command_name}`,

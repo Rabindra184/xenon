@@ -11,7 +11,7 @@ export class XenonManager {
   private log = log.scope('XenonManager');
   private deviceManagers: IDeviceManager[] = [];
 
-  constructor(private context: PluginContext) { }
+  constructor(private context: PluginContext) {}
 
   /**
    * Initializes the managers based on the platform requested.
@@ -58,7 +58,9 @@ export class XenonManager {
           }),
         );
       } catch (err: any) {
-        this.log.error(`Device manager ${deviceManager.constructor.name} failed to get devices: ${err.message || err}`);
+        this.log.error(
+          `Device manager ${deviceManager.constructor.name} failed to get devices: ${err.message || err}`,
+        );
       }
     }
     return devices;

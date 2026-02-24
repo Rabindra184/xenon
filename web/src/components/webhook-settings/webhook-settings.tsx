@@ -182,8 +182,9 @@ export const WebhookSettings: React.FC = () => {
               {AVAILABLE_EVENTS.map((event) => (
                 <div
                   key={event.id}
-                  className={`event-checkbox ${selectedEvents.includes(event.id) ? 'selected' : ''
-                    }`}
+                  className={`event-checkbox ${
+                    selectedEvents.includes(event.id) ? 'selected' : ''
+                  }`}
                   onClick={() => toggleEvent(event.id)}
                 >
                   {event.icon}
@@ -230,7 +231,9 @@ export const WebhookSettings: React.FC = () => {
                   className="template-textarea"
                   placeholder='Example JSON: { "text": "Alert: Device {{udid}} is offline!" }'
                   value={payloadTemplate}
-                  onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setPayloadTemplate(e.target.value)}
+                  onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) =>
+                    setPayloadTemplate(e.target.value)
+                  }
                   rows={3}
                 />
               </div>

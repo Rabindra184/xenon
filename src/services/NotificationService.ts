@@ -8,7 +8,7 @@ export type EventType = 'device_offline' | 'session_failed' | 'device_new';
 
 @Service()
 export class NotificationService {
-  constructor(private prisma: PrismaService) { }
+  constructor(private prisma: PrismaService) {}
 
   async getConfigs(): Promise<WebhookConfig[]> {
     return this.prisma.client.webhookConfig.findMany();

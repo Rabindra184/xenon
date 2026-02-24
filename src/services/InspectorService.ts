@@ -335,7 +335,7 @@ export class InspectorService {
         (node.attributes.name
           ? `name == "${node.attributes.name}"`
           : `label == "${node.text || ''}"`) +
-        `]`;
+        ']';
       suggestions.push({
         strategy: '-ios class chain',
         value: classChain,

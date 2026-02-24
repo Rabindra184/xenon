@@ -18,7 +18,7 @@ export class QueueService {
   private deviceStore: IDeviceStore = DeviceStoreFactory.getStore();
   private pendingStore: IPendingSessionStore = DeviceStoreFactory.getPendingSessionStore();
 
-  constructor(private prismaService: PrismaService) { }
+  constructor(private prismaService: PrismaService) {}
 
   /**
    * Calculates the average session duration for a platform in milliseconds

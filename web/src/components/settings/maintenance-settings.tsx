@@ -224,8 +224,9 @@ export const MaintenanceSettings: React.FC = () => {
                 ].map((p) => (
                   <button
                     key={p.label}
-                    className={`preset-chip ${config.buildCleanupSchedule === p.value ? 'active' : ''
-                      }`}
+                    className={`preset-chip ${
+                      config.buildCleanupSchedule === p.value ? 'active' : ''
+                    }`}
                     onClick={() => setConfig({ ...config, buildCleanupSchedule: p.value })}
                   >
                     {p.label}

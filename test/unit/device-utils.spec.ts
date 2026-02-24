@@ -210,7 +210,7 @@ describe('Device Utils', () => {
 
     expect(foundDevice.busy).to.be.true;
 
-    let filterDeviceWithSameUDID = (await XenonDatabase.DeviceModel)
+    const filterDeviceWithSameUDID = (await XenonDatabase.DeviceModel)
       .chain()
       .find({ udid: allocatedDeviceForFirstSession.udid })
       .data();

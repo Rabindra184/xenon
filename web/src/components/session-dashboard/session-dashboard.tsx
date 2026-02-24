@@ -196,12 +196,13 @@ const SessionTableRow = React.memo(
         </td>
         <td>
           <span
-            className={`status-text ${['success', 'passed'].includes(session.status)
+            className={`status-text ${
+              ['success', 'passed'].includes(session.status)
                 ? 'text-neon-green'
                 : session.status === 'failed'
                   ? 'text-neon-red'
                   : 'text-neon-amber'
-              }`}
+            }`}
             style={{ fontWeight: 700, fontSize: '10px' }}
           >
             {session.status?.toUpperCase() || 'UNKNOWN'}
@@ -467,7 +468,9 @@ const SessionDashboard: React.FC = () => {
             <Input
               placeholder="Search sessions by ID, name, or device..."
               value={sessionSearch}
-              onChange={(e: React.ChangeEvent<HTMLInputElement>) => setSessionSearch(e.target.value)}
+              onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                setSessionSearch(e.target.value)
+              }
               className="compact-search"
             />
           </div>
@@ -678,7 +681,9 @@ const SessionDashboard: React.FC = () => {
                     <input
                       type="checkbox"
                       checked={showScreenshots}
-                      onChange={(e: React.ChangeEvent<HTMLInputElement>) => setShowScreenshots(e.target.checked)}
+                      onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                        setShowScreenshots(e.target.checked)
+                      }
                     />
                     <span>Show Screenshots</span>
                   </label>
@@ -686,7 +691,9 @@ const SessionDashboard: React.FC = () => {
                     <input
                       type="checkbox"
                       checked={showErrorsOnly}
-                      onChange={(e: React.ChangeEvent<HTMLInputElement>) => setShowErrorsOnly(e.target.checked)}
+                      onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                        setShowErrorsOnly(e.target.checked)
+                      }
                     />
                     <span>Show Errors Only</span>
                   </label>
@@ -799,14 +806,16 @@ const SessionDashboard: React.FC = () => {
                   ) : selectedLogTab === 'profiling' ? (
                     <ProfilingView data={profilingData} session={selectedSession} />
                   ) : (
-                    (selectedLogTab === 'device' ? deviceLogs : debugLogs).slice(-500).map((l: ILog) => (
-                      <div key={l.id} className="log-line-complex">
-                        <div className="log-line-header">
-                          <span className="log-time">[{formatDate(l.timestamp)}]</span>
-                          <span className="log-title">{l.message}</span>
+                    (selectedLogTab === 'device' ? deviceLogs : debugLogs)
+                      .slice(-500)
+                      .map((l: ILog) => (
+                        <div key={l.id} className="log-line-complex">
+                          <div className="log-line-header">
+                            <span className="log-time">[{formatDate(l.timestamp)}]</span>
+                            <span className="log-title">{l.message}</span>
+                          </div>
                         </div>
-                      </div>
-                    ))
+                      ))
                   )}
                 </div>
               )}

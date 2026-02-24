@@ -215,7 +215,9 @@ export const AISettings: React.FC = () => {
                   <button
                     key={provider.id}
                     className={`ai-provider-card ${isActive ? 'active' : ''} ${!isSelectable ? 'disabled' : ''}`}
-                    onClick={() => isSelectable && setConfig({ ...config, aiProvider: provider.id })}
+                    onClick={() =>
+                      isSelectable && setConfig({ ...config, aiProvider: provider.id })
+                    }
                     disabled={!isSelectable}
                     title={
                       !isSelectable

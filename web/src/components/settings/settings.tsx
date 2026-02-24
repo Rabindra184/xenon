@@ -191,7 +191,9 @@ export const Settings: React.FC = () => {
 
             <div className="cron-preview">
               <span className="preview-label">Active Logic:</span>
-              <span className="preview-value">{getSchedulePreview(config.healthCheckSchedule)}</span>
+              <span className="preview-value">
+                {getSchedulePreview(config.healthCheckSchedule)}
+              </span>
             </div>
 
             <div className="cron-presets">
@@ -203,8 +205,9 @@ export const Settings: React.FC = () => {
                 {presets.map((p) => (
                   <button
                     key={p.label}
-                    className={`preset-chip ${config.healthCheckSchedule === p.value ? 'active' : ''
-                      }`}
+                    className={`preset-chip ${
+                      config.healthCheckSchedule === p.value ? 'active' : ''
+                    }`}
                     onClick={() => setConfig({ ...config, healthCheckSchedule: p.value })}
                   >
                     {p.label}
@@ -262,4 +265,3 @@ export const Settings: React.FC = () => {
     </div>
   );
 };
-
