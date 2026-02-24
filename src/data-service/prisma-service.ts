@@ -1,6 +1,6 @@
 import { prisma } from '../prisma';
 import { Service } from 'typedi';
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient, WebhookConfig } from '../generated/client';
 
 @Service()
 export class PrismaService {

@@ -7,7 +7,7 @@ import {
   IHealEtalonStore,
 } from './device-store.interface';
 import { PrismaService } from './prisma-service';
-import { Device, PendingSession, CLIArgs, PrismaClient } from '@prisma/client';
+import { Device, PrismaClient, PendingSession, CLIArgs, LocatorEtalon } from '../generated/client';
 import { Container } from 'typedi';
 import * as semver from 'semver';
 import log from '../logger';

@@ -3,19 +3,30 @@ const path = require('path');
 const fs = require('fs');
 
 /**
- * Robust Prisma Client Generator
+ * Robust Prisma Client Generator (v1.1.8)
  * 
- * This script runs 'prisma generate' but ensures that it doesn't 
- * crash the npm install process if it fails.
+ * This script runs 'prisma generate' with extreme diagnostics.
+ * It ensures the custom output directory exists and won't crash npm install.
  */
 function generate() {
-    console.log('📦 [Xenon] Running Prisma client generation...');
+    const rootDir = path.resolve(__dirname, '..');
+    const outputDir = path.resolve(rootDir, 'src/generated/client');
+
+    console.log('📦 [Xenon] Initializing Prisma generation...');
+    console.log(`📂 [Xenon] Root: ${rootDir}`);
+    console.log(`📂 [Xenon] Target: ${outputDir}`);
+
+    // Ensure output directory exists
+    if (!fs.existsSync(path.resolve(rootDir, 'src/generated'))) {
+        fs.mkdirSync(path.resolve(rootDir, 'src/generated'), { recursive: true });
+    }
 
     try {
-        // Determine the path to prisma CLI
-        let prismaBin = path.resolve(__dirname, '../node_modules/.bin/prisma');
+        // Find prisma CLI
+        let prismaBin = path.resolve(rootDir, 'node_modules/.bin/prisma');
         if (!fs.existsSync(prismaBin)) {
-            prismaBin = 'npx prisma'; // Fallback to npx
+            console.log('ℹ️ [Xenon] Prisma binary not found in node_modules, checking global/npx...');
+            prismaBin = 'npx prisma';
         }
 
         const command = `${prismaBin} generate`;
@@ -23,16 +34,17 @@ function generate() {
 
         execSync(command, {
             stdio: 'inherit',
-            cwd: path.resolve(__dirname, '..')
+            cwd: rootDir,
+            env: { ...process.env, PRISMA_SKIP_POSTINSTALL_GENERATE: 'true' }
         });
 
-        console.log('✅ [Xenon] Prisma client generated successfully.');
+        console.log('✅ [Xenon] Prisma client generated in src/generated/client.');
     } catch (error) {
-        console.error('⚠️ [Xenon] Prisma client generation failed.');
-        console.error('⚠️ [Xenon] This is usually fine during installation; the client will be verified at runtime.');
-        console.error('⚠️ [Xenon] Error detail:', error.message);
+        console.error('⚠️ [Xenon] Prisma generation encountered an issue.');
+        console.error('⚠️ [Xenon] This is expected in some Appium/NPM environments.');
+        console.error('⚠️ [Xenon] Error:', error.message);
 
-        // Crucial: Exit with 0 so npm install proceeds
+        // Always exit 0 to prevent npm install failure
         process.exit(0);
     }
 }

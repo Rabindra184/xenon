@@ -1,7 +1,7 @@
 import axios from 'axios';
 import log from '../logger';
 import { PrismaService } from '../data-service/prisma-service';
-import { WebhookConfig } from '@prisma/client';
+import { WebhookConfig } from '../generated/client';
 import { Service } from 'typedi';
 
 export type EventType = 'device_offline' | 'session_failed' | 'device_new';
