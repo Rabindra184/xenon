@@ -14,7 +14,7 @@ import { safeParseJson } from '../helpers';
 import { prepareDirectory, savePerformanceTrace, saveScreenShot } from './asset-manager';
 import { dashboardCommands } from './commands';
 import { SessionStatus } from '../types/SessionStatus';
-import { SessionLog, Session, Prisma } from '@prisma/client';
+import { SessionLog, Session, Prisma } from '../generated/client';
 import { XenonSession } from '../sessions/XenonSession';
 import { services as iosDeviceServices } from 'appium-ios-device';
 import { AndroidAppProfiler } from '../profiling/AndroidAppProfiler';
@@ -259,7 +259,7 @@ export class DashboardEventManager {
             updateData['failure_reason'] =
               failedCommand.response && failedCommand.response.includes('error')
                 ? safeParseJson(failedCommand.response).value?.error ||
-                  `Command failed: ${failedCommand.command_name}`
+                `Command failed: ${failedCommand.command_name}`
                 : `Command failed: ${failedCommand.command_name}`;
             log.info(
               `Session ${sessionId} marked as FAILED due to error in command: ${failedCommand.command_name}`,
