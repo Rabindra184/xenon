@@ -21,7 +21,7 @@ export class IOSDiscoveryService {
   private log = log.scope('IOSDiscovery');
   private trackingInitialized = false;
 
-  constructor(private context: PluginContext) {}
+  constructor(private context: PluginContext) { }
 
   private get pluginArgs() {
     return this.context.pluginArgs;
@@ -175,17 +175,23 @@ export class IOSDiscoveryService {
       console.log('[POISON PILL] REAL fetchLocalSimulators CALLED IN TEST MODE!');
     }
     const simctl = new Simctl();
-    const list = await simctl.list();
+    let simulators: IDevice[] = [];
+    try {
+      const list = await simctl.list();
 
-    // Log unavailable runtimes
-    list.runtimes
-      .filter((r: any) => !r.isAvailable)
-      .forEach((r: any) => this.log.error(`Runtime not available: ${r.name}`));
+      // Log unavailable runtimes
+      if (list && list.runtimes) {
+        list.runtimes
+          .filter((r: any) => !r.isAvailable)
+          .forEach((r: any) => this.log.error(`Runtime not available: ${r.name}`));
+      }
 
-    const iosSims = flatten(Object.values((await simctl.getDevicesByParsing('iOS')) as any));
-    const tvosSims = flatten(Object.values((await simctl.getDevicesByParsing('tvOS')) as any));
-
-    let simulators = [...(iosSims as IDevice[]), ...(tvosSims as IDevice[])];
+      const iosSims = flatten(Object.values((await simctl.getDevicesByParsing('iOS')) as any));
+      const tvosSims = flatten(Object.values((await simctl.getDevicesByParsing('tvOS')) as any));
+      simulators = [...(iosSims as IDevice[]), ...(tvosSims as IDevice[])];
+    } catch (e: any) {
+      this.log.error(`Failed to fetch local simulators: ${e.message || e}`);
+    }
     if (this.pluginArgs.bootedSimulators) {
       simulators = simulators.filter((d) => d.state === 'Booted');
     }

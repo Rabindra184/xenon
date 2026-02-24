@@ -3,6 +3,7 @@ import { XenonPlugin } from './plugin';
 import { path as ffmpeg } from '@ffmpeg-installer/ffmpeg';
 import log from './logger';
 import { Container } from 'typedi';
+import _ from 'lodash';
 
 // Add FFMPEG to path for appium to record video of the session
 process.env.PATH = process.env.PATH + ':' + ffmpeg.replace(/ffmpeg$/g, '');
@@ -46,7 +47,15 @@ process.on('unhandledRejection', (reason, promise) => {
 });
 
 process.on('uncaughtException', (err) => {
-  log.error('❌ [Xenon] Uncaught Exception:', err);
+  const errorDetails = err instanceof Error ? {
+    name: err.name,
+    message: err.message,
+    stack: err.stack,
+    // Add other non-standard properties if they exist
+    ...(_.omit(err as any, ['name', 'message', 'stack']))
+  } : err;
+  log.error('❌ [Xenon] Uncaught Exception:', JSON.stringify(errorDetails, null, 2));
+  log.error('❌ [Xenon] Stack Trace:', err instanceof Error ? err.stack : new Error().stack);
   // Give logger time to flush before exiting
   setTimeout(() => process.exit(1), 1000);
 });
