@@ -1,6 +1,6 @@
 {
   "name": "@xenon-device-management/xenon",
-  "version": "1.1.12",
+  "version": "1.1.13",
   "description": "Xenon - Intelligent Mobile Infrastructure. A self-healing device orchestration platform for Appium.",
   "main": "./lib/src/index.js",
   "exports": {
@@ -114,7 +114,7 @@
     "unzipper": "^0.12.3",
     "usbmux": "^0.1.0",
     "uuid": "^8.3.2",
-    "@xmldom/xmldom": "^0.9.8",
+    "@xmldom/xmldom": "^0.8.10",
     "xpath": "^0.0.34",
     "yargs": "^17.7.2",
     "zod": "^4.3.6"
@@ -123,7 +123,7 @@
     "unzipper": "^0.12.3",
     "usbmux": {
       "plist": {
-        "xmldom": "npm:@xmldom/xmldom@^0.9.8"
+        "xmldom": "npm:@xmldom/xmldom@^0.8.10"
       }
     }
   },
