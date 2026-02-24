@@ -3,22 +3,22 @@ const path = require('path');
 const fs = require('fs');
 
 /**
- * Robust Prisma Client Generator (v1.1.8)
+ * Robust Prisma Client Generator (v1.1.9)
  * 
- * This script runs 'prisma generate' with extreme diagnostics.
- * It ensures the custom output directory exists and won't crash npm install.
+ * This script runs 'prisma generate' and ensures the output is placed
+ * where both source code and compiled code (lib) can find it.
  */
 function generate() {
     const rootDir = path.resolve(__dirname, '..');
-    const outputDir = path.resolve(rootDir, 'src/generated/client');
+    const srcOutputDir = path.resolve(rootDir, 'src/generated/client');
+    const libOutputDir = path.resolve(rootDir, 'lib/src/generated/client');
 
     console.log('📦 [Xenon] Initializing Prisma generation...');
     console.log(`📂 [Xenon] Root: ${rootDir}`);
-    console.log(`📂 [Xenon] Target: ${outputDir}`);
 
-    // Ensure output directory exists
-    if (!fs.existsSync(path.resolve(rootDir, 'src/generated'))) {
-        fs.mkdirSync(path.resolve(rootDir, 'src/generated'), { recursive: true });
+    // Ensure src/generated exists (Prisma will create 'client' subfolder)
+    if (!fs.existsSync(path.dirname(srcOutputDir))) {
+        fs.mkdirSync(path.dirname(srcOutputDir), { recursive: true });
     }
 
     try {
@@ -39,13 +39,45 @@ function generate() {
         });
 
         console.log('✅ [Xenon] Prisma client generated in src/generated/client.');
+
+        // CRITICAL: If we are in an installed environment (lib exists), 
+        // we must copy the generated client to lib/src/generated/client 
+        // because the compiled code imports from there.
+        if (fs.existsSync(path.resolve(rootDir, 'lib'))) {
+            console.log('📂 [Xenon] Detected "lib" directory. Syncing generated client...');
+
+            if (!fs.existsSync(path.dirname(libOutputDir))) {
+                fs.mkdirSync(path.dirname(libOutputDir), { recursive: true });
+            }
+
+            // Simple recursive copy
+            copyRecursiveSync(srcOutputDir, libOutputDir);
+            console.log('✅ [Xenon] Prisma client synced to lib/src/generated/client.');
+        }
+
     } catch (error) {
         console.error('⚠️ [Xenon] Prisma generation encountered an issue.');
-        console.error('⚠️ [Xenon] This is expected in some Appium/NPM environments.');
+        console.error('⚠️ [Xenon] This is expected in some restricted environments.');
         console.error('⚠️ [Xenon] Error:', error.message);
 
         // Always exit 0 to prevent npm install failure
         process.exit(0);
+    }
+}
+
+function copyRecursiveSync(src, dest) {
+    const exists = fs.existsSync(src);
+    const stats = exists && fs.statSync(src);
+    const isDirectory = exists && stats.isDirectory();
+    if (isDirectory) {
+        if (!fs.existsSync(dest)) {
+            fs.mkdirSync(dest, { recursive: true });
+        }
+        fs.readdirSync(src).forEach((childItemName) => {
+            copyRecursiveSync(path.join(src, childItemName), path.join(dest, childItemName));
+        });
+    } else {
+        fs.copyFileSync(src, dest);
     }
 }
 

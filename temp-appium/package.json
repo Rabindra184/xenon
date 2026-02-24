@@ -1,0 +1,6 @@
+{
+  "devDependencies": {
+    "@xenon-device-management/xenon": "file:..",
+    "appium-uiautomator2-driver": "^7.0.0"
+  }
+}
