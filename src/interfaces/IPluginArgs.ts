@@ -35,6 +35,7 @@ export interface IPluginArgs {
   bindHostOrIp: string;
   enableDashboard: boolean;
   bootedSimulators: boolean;
+  bootedEmulators?: boolean;
   removeDevicesFromDatabaseBeforeRunningThePlugin: boolean;
   healthCheckIntervalMs: number;
   healthCheckSchedule?: string;
@@ -143,6 +144,7 @@ export const DefaultPluginArgs: IPluginArgs = {
   bindHostOrIp: ip.address(),
   enableDashboard: false,
   bootedSimulators: false,
+  bootedEmulators: false,
   healthCheckIntervalMs: 86400000,
   healthCheckSchedule: undefined,
   removeDevicesFromDatabaseBeforeRunningThePlugin: false,

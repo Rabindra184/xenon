@@ -132,7 +132,8 @@ const findPublicPath = () => {
 };
 
 const publicPath = findPublicPath();
-log.info(`[Xenon] Public assets path resolved to: ${publicPath}`);
+log.info(`[Xenon] Dashboard assets path: ${publicPath}`);
+log.info(`[Xenon] Dashboard available at: /xenon/ (e.g. http://localhost:4723/xenon/)`);
 
 // Principal Security: Add permissive CSP and CORS for the dashboard
 router.use((req, res, next) => {
@@ -191,13 +192,15 @@ function createRouter(pluginArgs: IPluginArgs) {
     log.debug(`[Xenon] UI Fallback triggered for: ${url}. Targeting: ${indexPath}`);
 
     if (fs.existsSync(indexPath)) {
-      res.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
-      res.sendFile(indexPath, (err) => {
-        if (err && !res.headersSent) {
-          log.error(`[Xenon] res.sendFile failed for ${indexPath}. Error: ${err.message}`);
-          res.status(404).send(`Xenon UI Asset Error: ${err.message}`);
-        }
-      });
+      try {
+        const html = fs.readFileSync(indexPath, 'utf-8');
+        res.set('Content-Type', 'text/html');
+        res.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+        return res.send(html);
+      } catch (err: any) {
+        log.error(`[Xenon] UI Fallback read error for ${indexPath}: ${err.message}`);
+        return res.status(500).send(`Xenon UI Asset Error: ${err.message}`);
+      }
     } else {
       log.error(`[Xenon] UI Fallback failed: index.html not found at ${indexPath}`);
       // Diagnostic: List files in publicPath
@@ -207,7 +210,7 @@ function createRouter(pluginArgs: IPluginArgs) {
       } catch (e: any) {
         log.error(`[Xenon] Could not even read directory ${publicPath}: ${e.message}`);
       }
-      res.status(404).send('Xenon UI assets not found. Check installation.');
+      return res.status(404).send('Xenon UI assets not found. Check installation.');
     }
   });
   return router;

@@ -93,11 +93,23 @@ export default class AndroidDeviceManager implements IDeviceManager {
           return device.deviceType === 'real';
         });
       } else if (deviceTypes.androidDeviceType === 'simulated') {
-        return devices.filter((device) => {
+        const simulated = devices.filter((device) => {
           return device.deviceType === 'emulator';
         });
+        if (this.pluginArgs.bootedEmulators) {
+          return simulated.filter((device) => device.state === 'device');
+        }
+        return simulated;
         // return both real and simulated (emulated) devices
       } else {
+        if (this.pluginArgs.bootedEmulators) {
+          return devices.filter((device) => {
+            if (device.deviceType === 'emulator') {
+              return device.state === 'device';
+            }
+            return true;
+          });
+        }
         return devices;
       }
     } catch (e: unknown) {
