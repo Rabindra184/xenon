@@ -359,21 +359,58 @@ export class WDAClient {
   async pressKey(udid: string, key: string | number): Promise<void> {
     const n = key.toString().toLowerCase();
 
-    // Principal Modernization: Use /wda/pressButton with {name: 'home'} as primary.
-    // Legacy /wda/homescreen is often removed in modern WDA versions.
-    if (['home', '3'].includes(n)) {
+    // Hardware buttons supported by WDA /wda/pressButton
+    const hardwareButtons: Record<string, string> = {
+      'home': 'home',
+      '3': 'home',
+      'volumeup': 'volumeUp',
+      'volumedown': 'volumeDown',
+      'volume_up': 'volumeUp',
+      'volume_down': 'volumeDown',
+    };
+
+    if (hardwareButtons[n]) {
+      const buttonName = hardwareButtons[n];
       try {
-        await this.sendWDACommand(udid, 'post', '/wda/pressButton', { name: 'home' });
-      } catch (e) {
-        // Fallback for extremely old WDA
-        await this.sendWDACommand(udid, 'post', '/wda/homescreen', {}).catch(() => { });
+        await this.sendWDACommand(udid, 'post', '/wda/pressButton', { name: buttonName });
+      } catch (e: any) {
+        if (buttonName === 'home') {
+          // Fallback for extremely old WDA
+          await this.sendWDACommand(udid, 'post', '/wda/homescreen', {}).catch(() => { });
+        } else {
+          this.log.debug(`[WDA] Hardware button '${buttonName}' failed: ${e.message}`);
+        }
       }
       return;
     }
 
-    await this.sendWDACommand(udid, 'post', '/wda/pressButton', {
-      name: n === 'backspace' ? 'delete' : n,
-    });
+    // Keyboard keys (Enter, Backspace, etc.)
+    const keyboardKeys: Record<string, string> = {
+      'enter': '\n',
+      'backspace': '\b',
+      'delete': '\b',
+      'tab': '\t',
+      'escape': '\x1b',
+    };
+
+    if (keyboardKeys[n]) {
+      try {
+        // Principal Reliability: Use /wda/keys for typing special characters
+        await this.sendWDACommand(udid, 'post', '/wda/keys', { value: [keyboardKeys[n]] });
+      } catch (e: any) {
+        this.log.debug(`[WDA] Special key '${n}' failed via /wda/keys: ${e.message}`);
+        // Fallback to /wda/type if keys fails
+        await this.sendWDACommand(udid, 'post', '/wda/type', { text: keyboardKeys[n] }).catch(() => { });
+      }
+      return;
+    }
+
+    // Default: try pressButton but catch errors (as many buttons aren't physical on iPhone)
+    try {
+      await this.sendWDACommand(udid, 'post', '/wda/pressButton', { name: n });
+    } catch (e: any) {
+      this.log.debug(`[WDA] Generic pressButton failed for '${n}': ${e.message}`);
+    }
   }
 
   async getScreenshot(udid: string): Promise<string> {
