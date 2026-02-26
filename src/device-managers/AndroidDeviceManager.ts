@@ -243,7 +243,48 @@ export default class AndroidDeviceManager implements IDeviceManager {
       totalUtilizationTimeMilliSec: totalUtilizationTimeMilliSec,
       sessionStartTime: 0,
       userBlocked: false,
+      ip: await this.getDeviceIp(adbInstance, device.udid),
+      cpuArchitecture: await this.getCpuArchitecture(adbInstance, device.udid),
     };
+  }
+
+  private async getDeviceIp(adbInstance: ExtendedADB, udid: string): Promise<string> {
+    try {
+      // Primary: Check wlan0
+      const stdout = await deviceLock.acquire(udid, async () => {
+        return await adbInstance.adbExec(['-s', udid, 'shell', 'ip', 'addr', 'show', 'wlan0'], {
+          timeout: 5000,
+        });
+      });
+      const match = /inet\s+(\d+\.\d+\.\d+\.\d+)/.exec(stdout);
+      if (match) return match[1];
+
+      // Secondary: Check ip route for default gateway source
+      const stdoutRoute = await deviceLock.acquire(udid, async () => {
+        return await adbInstance.adbExec(['-s', udid, 'shell', 'ip', 'route'], { timeout: 5000 });
+      });
+      const routeMatch = /src\s+(\d+\.\d+\.\d+\.\d+)/.exec(stdoutRoute);
+      if (routeMatch) return routeMatch[1];
+
+      return '';
+    } catch (e) {
+      log.debug(`Failed to fetch IP for android device ${udid}: ${e}`);
+      return '';
+    }
+  }
+
+  private async getCpuArchitecture(adbInstance: ExtendedADB, udid: string): Promise<string> {
+    try {
+      const abi = await deviceLock.acquire(udid, async () => {
+        return await adbInstance.adbExec(['-s', udid, 'shell', 'getprop', 'ro.product.cpu.abi'], {
+          timeout: 3000,
+        });
+      });
+      return abi.trim();
+    } catch (e) {
+      log.debug(`Failed to fetch CPU architecture for ${udid}: ${e}`);
+      return '';
+    }
   }
 
   async getAdditionalDeviceInfo(device: IDevice): Promise<Partial<IDevice>> {
@@ -258,15 +299,18 @@ export default class AndroidDeviceManager implements IDeviceManager {
       : adbInstance;
 
     try {
-      const [chromeDriverPath, screenSize] = await Promise.all([
+      const [chromeDriverPath, screenSize, cpuArchitecture] = await Promise.all([
         this.getChromeVersion(adb, device.udid, this.pluginArgs),
         this.getScreenSize(adb, device.udid),
+        this.getCpuArchitecture(adb, device.udid),
       ]);
 
       return {
         chromeDriverPath,
         screenWidth: screenSize?.width,
         screenHeight: screenSize?.height,
+        ip: await this.getDeviceIp(adb, device.udid),
+        cpuArchitecture,
       };
     } catch (err) {
       log.warn(`Failed to fetch additional info for ${device.udid}: ${err}`);

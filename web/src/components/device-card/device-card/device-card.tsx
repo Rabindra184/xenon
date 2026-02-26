@@ -16,6 +16,7 @@ import {
   Wifi,
   Wrench,
   CalendarPlus,
+  Cpu,
 } from 'lucide-react';
 import { IDevice } from '../../../interfaces/IDevice';
 import prettyMilliseconds from 'pretty-ms';
@@ -147,9 +148,8 @@ export class DeviceCard extends React.Component<IDeviceCardProps, IDeviceCardSta
           <button
             className="tactical-btn reserved"
             onClick={() => this.releaseReservation(udid, host)}
-            title={`Reserved by ${reservedBy}${
-              reservationReason ? `: ${reservationReason}` : ''
-            }. Expires: ${reservedUntil ? new Date(reservedUntil).toLocaleString() : 'Never'}`}
+            title={`Reserved by ${reservedBy}${reservationReason ? `: ${reservationReason}` : ''
+              }. Expires: ${reservedUntil ? new Date(reservedUntil).toLocaleString() : 'Never'}`}
           >
             <Unlock size={14} color="#38bdf8" />
           </button>
@@ -251,17 +251,15 @@ export class DeviceCard extends React.Component<IDeviceCardProps, IDeviceCardSta
 
         {/* High-Density Metrics Grid */}
         <div className="metrics-grid relative z-10">
-          <div className="metric-item" title={`Location: ${hostName}`}>
-            <Monitor size={10} className="text-dim" />
-            <span className="truncate">{hostName}</span>
+          <div className="metric-item" title={`Host: ${hostName}${this.props.device.ip ? ` • IP: ${this.props.device.ip}` : ''}`}>
+            {this.props.device.ip ? <Wifi size={10} className="text-dim" /> : <Monitor size={10} className="text-dim" />}
+            <span className="truncate">{this.props.device.ip || hostName}</span>
           </div>
 
-          {this.props.device.ip && (
-            <div className="metric-item" title={`IP: ${this.props.device.ip}`}>
-              <Wifi size={10} className="text-dim" />
-              <span className="truncate">{this.props.device.ip}</span>
-            </div>
-          )}
+          <div className="metric-item" title={`Architecture: ${this.props.device.cpuArchitecture || 'Unknown'}`}>
+            <Cpu size={10} className="text-dim" />
+            <span className="truncate uppercase">{this.props.device.cpuArchitecture || 'arch'}</span>
+          </div>
 
           <div
             className={`metric-item health ${this.props.device.healthStatus?.toLowerCase() || 'healthy'}`}

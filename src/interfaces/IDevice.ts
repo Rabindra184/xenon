@@ -51,4 +51,5 @@ export interface IDevice {
   sessionProgress?: string;
   totalHealedCount?: number;
   ip?: string;
+  cpuArchitecture?: string;
 }

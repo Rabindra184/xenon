@@ -21,7 +21,7 @@ export class IOSDiscoveryService {
   private log = log.scope('IOSDiscovery');
   private trackingInitialized = false;
 
-  constructor(private context: PluginContext) {}
+  constructor(private context: PluginContext) { }
 
   private get pluginArgs() {
     return this.context.pluginArgs;
@@ -146,6 +146,7 @@ export class IOSDiscoveryService {
       busy: false,
       realDevice: true,
       deviceType: 'real',
+      cpuArchitecture: 'arm64',
       platform: (name.toLowerCase().includes('tv') ? 'tvos' : 'ios') as 'ios' | 'android' | 'tvos',
       host: host as string,
       totalUtilizationTimeMilliSec,
