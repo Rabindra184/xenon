@@ -258,6 +258,15 @@ export class ServerManager {
         `🌐 I'm a hub and I'm listening on ${pluginArgs.bindHostOrIp}:${cliArgs.port}`,
       );
 
+      // Principal discovery: Background poll to prune stale/offline devices on the Hub itself
+      (async () => {
+        const { setupCronLocalDiscovery } = await import('../device-utils');
+        await setupCronLocalDiscovery(
+          pluginArgs.bindHostOrIp as string,
+          pluginArgs.sendNodeDevicesToHubIntervalMs as number,
+        );
+      })();
+
       const socketServer = Container.get(SocketServer);
       socketServer.initialize(httpServer);
 

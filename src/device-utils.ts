@@ -615,6 +615,20 @@ export async function setupCronUpdateDeviceList(
   }, intervalMs);
 }
 
+/**
+ * Principal discovery: Periodically poll for local devices to prune stales/offlines.
+ * Critical for standalone Hubs where setupCronUpdateDeviceList isn't called.
+ */
+export async function setupCronLocalDiscovery(host: string, intervalMs: number) {
+  if (timer) {
+    clearInterval(timer);
+  }
+  log.info(`Local device discovery poll started every ${intervalMs} ms`);
+  timer = setInterval(async () => {
+    await updateDeviceList(host);
+  }, intervalMs);
+}
+
 export async function cleanPendingSessions(timeoutMs: number) {
   const pendingSessions = await pendingStore.getAllPendingSessions();
   const currentEpoch = new Date().getTime();

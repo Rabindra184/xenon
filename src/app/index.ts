@@ -115,6 +115,7 @@ const findPublicPath = () => {
     path.resolve(__dirname, '../public'), // Alternative structure
     path.resolve(__dirname, '../../public'),
     path.resolve(__dirname, '../../../public'),
+    path.resolve(__dirname, '../../../../public'),
   ];
 
   for (const p of searchPaths) {
@@ -133,9 +134,20 @@ const findPublicPath = () => {
 const publicPath = findPublicPath();
 log.info(`[Xenon] Public assets path resolved to: ${publicPath}`);
 
-staticFilesRouter.use(express.static(publicPath));
+// Principal Security: Add permissive CSP and CORS for the dashboard
+router.use((req, res, next) => {
+  res.setHeader(
+    'Content-Security-Policy',
+    "default-src * 'unsafe-inline' 'unsafe-eval' data: blob:; frame-ancestors 'self';",
+  );
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  next();
+});
+
+staticFilesRouter.use(express.static(publicPath, { index: false }));
 router.use('/api', apiRouter);
-router.use('/assets', express.static(config.sessionAssetsPath));
+// Principal Fix: Rename collision route from /assets to /session-recordings to avoid conflict with dashboard's /assets folder
+router.use('/session-recordings', express.static(config.sessionAssetsPath));
 router.use(staticFilesRouter);
 
 function createRouter(pluginArgs: IPluginArgs) {
@@ -169,19 +181,21 @@ function createRouter(pluginArgs: IPluginArgs) {
 
   // Fallback route for client-side routing - serve index.html for all non-API routes
   // MUST be registered after Swagger to avoid interception
-  router.get(/^(?!\/api).*/, (req, res) => {
+  router.get('*', (req, res) => {
     const indexPath = path.resolve(publicPath, 'index.html');
     const url = req.originalUrl || req.url;
+
+    // Skip if it's an API call that somehow reached here
+    if (url.includes('/api/')) return res.status(404).json({ error: true, message: 'Not Found' });
 
     log.debug(`[Xenon] UI Fallback triggered for: ${url}. Targeting: ${indexPath}`);
 
     if (fs.existsSync(indexPath)) {
+      res.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
       res.sendFile(indexPath, (err) => {
-        if (err) {
+        if (err && !res.headersSent) {
           log.error(`[Xenon] res.sendFile failed for ${indexPath}. Error: ${err.message}`);
-          if (!res.headersSent) {
-            res.status(404).send(`Xenon UI Asset Error: ${err.message}`);
-          }
+          res.status(404).send(`Xenon UI Asset Error: ${err.message}`);
         }
       });
     } else {
@@ -196,7 +210,6 @@ function createRouter(pluginArgs: IPluginArgs) {
       res.status(404).send('Xenon UI assets not found. Check installation.');
     }
   });
-
   return router;
 }
 
