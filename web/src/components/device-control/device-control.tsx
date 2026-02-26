@@ -62,9 +62,11 @@ export default function DeviceControl({ device, onClose }: DeviceControlProps) {
   const [fetchingApps, setFetchingApps] = useState(false);
   const [installing, setInstalling] = useState(false);
   const [uploadFile, setUploadFile] = useState<File | null>(null);
-  const [deviceLogs, setDeviceLogs] = useState<string[]>([]); // Switch to array for buffer management
+  const [deviceLogs, setDeviceLogs] = useState<string[]>([]);
   const [isFollowing, setIsFollowing] = useState(true);
   const [logFilter, setLogFilter] = useState('');
+  const [logStreamActive, setLogStreamActive] = useState(false); // true after first successful log batch
+  const [logPollCount, setLogPollCount] = useState(0); // tracks how many polls have completed
 
   // Principal Reliability: Keyboard Input Buffer
   // This prevents high-frequency keystrokes from overwhelming the iOS WDA session.
@@ -83,10 +85,15 @@ export default function DeviceControl({ device, onClose }: DeviceControlProps) {
   useEffect(() => {
     let interval: NodeJS.Timeout;
     if (activeTab === 'logs') {
+      setLogStreamActive(false);
+      setLogPollCount(0);
+
       const fetchLogs = async () => {
         try {
           const response = await XenonApiService.getLogs(currentDevice.udid);
+          setLogPollCount((c) => c + 1);
           if (response && response.logs && response.logs.trim().length > 0) {
+            setLogStreamActive(true);
             // High-performance log cleaning: Remove JSON formatting and ANSI/Unicode escapes
             const cleanLines = response.logs
               .replace(/\\u[0-9a-fA-F]{4}/g, (match: string) => JSON.parse(`"${match}"`))
@@ -104,9 +111,19 @@ export default function DeviceControl({ device, onClose }: DeviceControlProps) {
                 return combined.slice(-1000); // 1000 line ring buffer for performance
               });
             }
+          } else {
+            // After 3+ empty polls, mark stream as active but empty (device is quiet)
+            setLogPollCount((c) => {
+              if (c >= 3) setLogStreamActive(true);
+              return c;
+            });
           }
         } catch (err) {
           console.error('Failed to fetch logs:', err);
+          setLogPollCount((c) => {
+            if (c >= 3) setLogStreamActive(true);
+            return c;
+          });
         }
       };
 
@@ -120,8 +137,22 @@ export default function DeviceControl({ device, onClose }: DeviceControlProps) {
   const renderLogLines = () => {
     if (deviceLogs.length === 0) {
       return (
-        <div className="log-line log-debug">
-          <span className="log-content">Establishing technical link... Waiting for heartbeat.</span>
+        <div className="log-empty-state">
+          {!logStreamActive ? (
+            <>
+              <Loader2 size={28} className="animate-spin" style={{ color: 'var(--primary)', marginBottom: 12 }} />
+              <p className="log-empty-title">Connecting to device syslog...</p>
+              <p className="log-empty-subtitle">Initializing persistent log stream for {currentDevice.name}</p>
+            </>
+          ) : (
+            <>
+              <TerminalIcon size={28} style={{ color: 'var(--text-muted)', marginBottom: 12, opacity: 0.4 }} />
+              <p className="log-empty-title">No log output yet</p>
+              <p className="log-empty-subtitle">
+                The log stream is active but the device is quiet. Interact with the device to generate logs.
+              </p>
+            </>
+          )}
         </div>
       );
     }
@@ -129,6 +160,18 @@ export default function DeviceControl({ device, onClose }: DeviceControlProps) {
     const filtered = deviceLogs.filter(
       (line) => !logFilter || line.toLowerCase().includes(logFilter.toLowerCase()),
     );
+
+    if (filtered.length === 0 && logFilter) {
+      return (
+        <div className="log-empty-state">
+          <Search size={28} style={{ color: 'var(--text-muted)', marginBottom: 12, opacity: 0.4 }} />
+          <p className="log-empty-title">No matches for "{logFilter}"</p>
+          <p className="log-empty-subtitle">
+            {deviceLogs.length} lines in buffer. Try a different search term.
+          </p>
+        </div>
+      );
+    }
 
     return filtered.map((line, i) => {
       let typeClass = 'log-debug';
@@ -997,7 +1040,10 @@ export default function DeviceControl({ device, onClose }: DeviceControlProps) {
                 <div className="action-card screenshot-card" style={{ padding: 0, gap: 0 }}>
                   <div className="log-toolbar">
                     <div className="log-filter-group">
-                      <div className="log-stat-pill">LIVE</div>
+                      <div className="log-stat-pill">
+                        <span className={`log-live-dot ${logStreamActive ? 'active' : ''}`} />
+                        {logStreamActive ? 'LIVE' : 'CONNECTING'}
+                      </div>
                       <div className="log-stat-pill" style={{ opacity: 0.6 }}>
                         {deviceLogs.length} LINES
                       </div>
