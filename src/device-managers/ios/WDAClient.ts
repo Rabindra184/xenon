@@ -756,9 +756,92 @@ export class WDAClient {
     }
   }
 
+  // Persistent log streams: one background syslog process per device
+  private logStreams: Map<string, {
+    proc: ReturnType<typeof spawn>;
+    buffer: string[];
+    lastAccess: number;
+    idleTimer: NodeJS.Timeout | null;
+    goIOSPath: string;
+  }> = new Map();
+
+  private static readonly LOG_BUFFER_MAX = 500; // Ring buffer size
+  private static readonly LOG_IDLE_TIMEOUT_MS = 60000; // Kill after 60s of no polling
+
+  private startLogStream(udid: string, command: string, args: string[], goIOSPath: string): void {
+    // Already running?
+    const existing = this.logStreams.get(udid);
+    if (existing && existing.proc && !existing.proc.killed) {
+      existing.lastAccess = Date.now();
+      return;
+    }
+
+    this.log.info(`[LogStream] Starting persistent syslog for ${udid}: ${command} ${args.join(' ')}`);
+
+    const proc = spawn(command, args, {
+      env: { ...process.env, ENABLE_GO_IOS_AGENT: 'yes' },
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+
+    const entry = {
+      proc,
+      buffer: [] as string[],
+      lastAccess: Date.now(),
+      idleTimer: null as NodeJS.Timeout | null,
+      goIOSPath,
+    };
+
+    if (proc.stdout) {
+      const rl = readline.createInterface({ input: proc.stdout, terminal: false });
+      rl.on('line', (line) => {
+        if (!line.trim()) return;
+        let parsed = line;
+        if (command === goIOSPath) {
+          try {
+            const obj = JSON.parse(line);
+            parsed = obj.msg || line;
+          } catch (e) {
+            // Use raw line
+          }
+        }
+        entry.buffer.push(parsed);
+        // Ring buffer: drop oldest lines
+        if (entry.buffer.length > WDAClient.LOG_BUFFER_MAX) {
+          entry.buffer.splice(0, entry.buffer.length - WDAClient.LOG_BUFFER_MAX);
+        }
+      });
+    }
+
+    // Suppress stderr noise (go-ios tunnel messages)
+    proc.stderr?.on('data', () => { });
+
+    proc.on('error', (err) => {
+      this.log.debug(`[LogStream] Process error for ${udid}: ${err.message}`);
+      this.logStreams.delete(udid);
+    });
+
+    proc.on('exit', (code) => {
+      this.log.debug(`[LogStream] Process exited for ${udid} with code ${code}`);
+      this.logStreams.delete(udid);
+    });
+
+    this.logStreams.set(udid, entry);
+  }
+
+  private stopLogStream(udid: string): void {
+    const entry = this.logStreams.get(udid);
+    if (entry) {
+      if (entry.idleTimer) clearTimeout(entry.idleTimer);
+      if (entry.proc && !entry.proc.killed) {
+        entry.proc.kill('SIGKILL');
+      }
+      this.logStreams.delete(udid);
+      this.log.debug(`[LogStream] Stopped persistent syslog for ${udid}`);
+    }
+  }
+
   async getLogs(udid: string): Promise<string> {
     const s = Container.get(IOSStreamService);
-    // Find device to check if it's a simulator
     const device = await DeviceStoreFactory.getStore().findDevice({ udid });
     const isSimulator = device && !device.realDevice;
 
@@ -766,94 +849,42 @@ export class WDAClient {
     let args = ['-u', udid];
 
     if (isSimulator) {
+      // Simulators: Use one-shot log show (no persistent stream needed)
       command = 'xcrun';
       args = ['simctl', 'spawn', udid, 'log', 'show', '--last', '10s', '--style', 'compact'];
-    } else if (await s.isGoIOSAvailable()) {
+      return new Promise((resolve) => {
+        const proc = spawn(command, args);
+        let output = '';
+        proc.stdout?.on('data', (data) => { output += data.toString(); });
+        proc.on('close', () => resolve(output));
+        setTimeout(() => { if (!proc.killed) proc.kill('SIGKILL'); resolve(output); }, 5000);
+      });
+    }
+
+    if (await s.isGoIOSAvailable()) {
       command = s.goIOSPath;
       args = ['syslog', '--udid', udid];
     }
 
-    this.log.debug(
-      `Fetching logs for ${udid} (Simulator: ${isSimulator}) using ${command} ${args.join(' ')}`,
-    );
+    // Ensure persistent stream is running
+    this.startLogStream(udid, command, args, s.goIOSPath);
 
-    return new Promise((resolve) => {
-      const proc = spawn(command, args, {
-        env: { ...process.env, ENABLE_GO_IOS_AGENT: 'yes' },
-      });
-      let output = '';
-      let resolved = false;
+    const entry = this.logStreams.get(udid);
+    if (!entry) {
+      return '';
+    }
 
-      if (!proc.stdout) {
-        resolved = true;
-        this.log.error(`Failed to capture logs for ${udid}: stdout stream is missing`);
-        proc.kill('SIGKILL');
-        resolve(output);
-        return;
-      }
+    // Mark access and reset idle timer
+    entry.lastAccess = Date.now();
+    if (entry.idleTimer) clearTimeout(entry.idleTimer);
+    entry.idleTimer = setTimeout(() => {
+      this.log.info(`[LogStream] Idle timeout for ${udid}, stopping persistent syslog`);
+      this.stopLogStream(udid);
+    }, WDAClient.LOG_IDLE_TIMEOUT_MS);
 
-      const rl = readline.createInterface({
-        input: proc.stdout,
-        terminal: false,
-      });
-
-      let timer: NodeJS.Timeout;
-      const resetInactivityTimeout = () => {
-        if (timer) clearTimeout(timer);
-        timer = setTimeout(() => {
-          if (!resolved) {
-            resolved = true;
-            rl.close();
-            proc.kill('SIGKILL');
-            this.log.debug(`getLogs snapshot completed (inactivity timeout) for ${udid}`);
-            resolve(output);
-          }
-        }, 2000);
-      };
-
-      // Initial timer start
-      resetInactivityTimeout();
-
-      rl.on('line', (line) => {
-        resetInactivityTimeout();
-        if (!line.trim()) return;
-        if (command === s.goIOSPath) {
-          try {
-            const parsed = JSON.parse(line);
-            output += (parsed.msg || line) + '\n';
-          } catch (e) {
-            output += line + '\n';
-          }
-        } else {
-          output += line + '\n';
-        }
-      });
-
-      proc.stderr?.on('data', (data) => {
-        resetInactivityTimeout();
-        this.log.debug(`[getLogs][stderr] ${data.toString()}`);
-      });
-
-      proc.on('error', (err) => {
-        if (!resolved) {
-          resolved = true;
-          rl.close();
-          this.log.debug(`getLogs failed for ${udid}: ${err.message}`);
-          clearTimeout(timer);
-          resolve(output);
-        }
-      });
-
-      proc.on('exit', (code) => {
-        if (!resolved) {
-          resolved = true;
-          rl.close();
-          clearTimeout(timer);
-          this.log.debug(`getLogs process exited with code ${code} for ${udid}`);
-          resolve(output);
-        }
-      });
-    });
+    // Return buffered lines and clear (so next poll gets only new lines)
+    const lines = entry.buffer.splice(0, entry.buffer.length);
+    return lines.join('\n');
   }
 
   async verifyWDAStatus(udid: string): Promise<boolean> {

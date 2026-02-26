@@ -86,7 +86,7 @@ export default function DeviceControl({ device, onClose }: DeviceControlProps) {
       const fetchLogs = async () => {
         try {
           const response = await XenonApiService.getLogs(currentDevice.udid);
-          if (response && response.logs) {
+          if (response && response.logs && response.logs.trim().length > 0) {
             // High-performance log cleaning: Remove JSON formatting and ANSI/Unicode escapes
             const cleanLines = response.logs
               .replace(/\\u[0-9a-fA-F]{4}/g, (match: string) => JSON.parse(`"${match}"`))
@@ -98,14 +98,12 @@ export default function DeviceControl({ device, onClose }: DeviceControlProps) {
               .split('\n')
               .filter((l: string) => l.trim().length > 0);
 
-            setDeviceLogs((prev) => {
-              // Create a unique set of lines to avoid duplicates during polling overlap
-              // (Simple approach: take new lines that aren't in the tail of the buffer)
-              const tail = prev.slice(-20);
-              const trulyNew = cleanLines.filter((l: string) => !tail.includes(l));
-              const combined = [...prev, ...trulyNew];
-              return combined.slice(-1000); // 1000 line ring buffer for performance
-            });
+            if (cleanLines.length > 0) {
+              setDeviceLogs((prev) => {
+                const combined = [...prev, ...cleanLines];
+                return combined.slice(-1000); // 1000 line ring buffer for performance
+              });
+            }
           }
         } catch (err) {
           console.error('Failed to fetch logs:', err);
@@ -113,7 +111,7 @@ export default function DeviceControl({ device, onClose }: DeviceControlProps) {
       };
 
       fetchLogs();
-      interval = setInterval(fetchLogs, 2000); // Tighter 2s loop
+      interval = setInterval(fetchLogs, 3000); // 3s poll - backend returns instantly now
     }
 
     return () => clearInterval(interval);
@@ -179,7 +177,7 @@ export default function DeviceControl({ device, onClose }: DeviceControlProps) {
     startAutoStream();
     return () => {
       // Principal cleanup: Stop the stream when user leaves Control view
-      XenonApiService.stopStream(currentDevice.udid).catch(() => {});
+      XenonApiService.stopStream(currentDevice.udid).catch(() => { });
     };
   }, [device.udid]); // Only run once for this udid
 
@@ -590,9 +588,8 @@ export default function DeviceControl({ device, onClose }: DeviceControlProps) {
           {currentDevice.reservedUntil && Date.now() < currentDevice.reservedUntil && (
             <span
               className="device-pill reserved-pill"
-              title={`Reserved by ${currentDevice.reservedBy}${
-                currentDevice.reservationReason ? `: ${currentDevice.reservationReason}` : ''
-              }`}
+              title={`Reserved by ${currentDevice.reservedBy}${currentDevice.reservationReason ? `: ${currentDevice.reservationReason}` : ''
+                }`}
             >
               RESERVED BY {currentDevice.reservedBy?.toUpperCase() || 'ANONYMOUS'}
             </span>
@@ -611,9 +608,8 @@ export default function DeviceControl({ device, onClose }: DeviceControlProps) {
           <div className="device-screen-wrapper">
             <div
               ref={canvasRef}
-              className={`device-stream-canvas ${!isPortrait ? 'landscape' : ''} ${
-                isCanvasFocused ? 'focused' : ''
-              }`}
+              className={`device-stream-canvas ${!isPortrait ? 'landscape' : ''} ${isCanvasFocused ? 'focused' : ''
+                }`}
               style={{
                 width: canvasDimensions.width,
                 height: canvasDimensions.height,
@@ -714,9 +710,8 @@ export default function DeviceControl({ device, onClose }: DeviceControlProps) {
           </div>
 
           <div
-            className={`interactions-scroll-area ${
-              activeTab === 'terminal' ? 'terminal-mode' : ''
-            } ${activeTab === 'screenshot' || activeTab === 'logs' ? 'screenshot-mode' : ''}`}
+            className={`interactions-scroll-area ${activeTab === 'terminal' ? 'terminal-mode' : ''
+              } ${activeTab === 'screenshot' || activeTab === 'logs' ? 'screenshot-mode' : ''}`}
           >
             <div className="tab-content">
               {activeTab === 'omni' && (
@@ -918,9 +913,8 @@ export default function DeviceControl({ device, onClose }: DeviceControlProps) {
                         {screenshots.map((s, idx) => (
                           <div
                             key={s.id}
-                            className={`screenshot-thumb-item ${
-                              selectedScreenshotIndex === idx ? 'active' : ''
-                            }`}
+                            className={`screenshot-thumb-item ${selectedScreenshotIndex === idx ? 'active' : ''
+                              }`}
                             onClick={() => setSelectedScreenshotIndex(idx)}
                           >
                             <img src={`data:image/png;base64,${s.base64}`} alt="Thumb" />
@@ -1066,9 +1060,8 @@ export default function DeviceControl({ device, onClose }: DeviceControlProps) {
                     platform={
                       (currentDevice.platform || '').toLowerCase() as 'android' | 'ios' | 'tvos'
                     }
-                    prompt={`${
-                      (currentDevice.platform || '').toLowerCase() === 'ios' ? 'ios' : 'adb'
-                    } $`}
+                    prompt={`${(currentDevice.platform || '').toLowerCase() === 'ios' ? 'ios' : 'adb'
+                      } $`}
                     welcomeMessage={`Connected to ${currentDevice.name} (${currentDevice.udid}).\nInternal Shell Environment.`}
                     onCommand={async (cmd) => {
                       const res = await XenonApiService.executeShell(currentDevice.udid, cmd);
