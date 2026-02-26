@@ -26,7 +26,7 @@ interface ExtendedADB extends ADB {
   adbHost?: string;
   adbPort?: number;
   adbRemoteHost?: string | null;
-  executable: { path: string; defaultArgs: string[]; [key: string]: any };
+  executable: { path: string; defaultArgs: string[];[key: string]: any };
 }
 
 import { PluginContext } from '../PluginContext';
@@ -41,7 +41,7 @@ export default class AndroidDeviceManager implements IDeviceManager {
   private tracker?: Tracker = undefined;
   private remoteTrackers: { id: string; tracker: Tracker }[] = [];
 
-  constructor(private context: PluginContext) {}
+  constructor(private context: PluginContext) { }
 
   private get pluginArgs() {
     return this.context.pluginArgs;
@@ -116,8 +116,7 @@ export default class AndroidDeviceManager implements IDeviceManager {
 
     for (const [adbInstance, devices] of connectedDevices) {
       log.debug(
-        `fetchAndroidDevices from host: ${adbInstance.adbRemoteHost || 'Local'}. Found ${
-          (devices as any[]).length
+        `fetchAndroidDevices from host: ${adbInstance.adbRemoteHost || 'Local'}. Found ${(devices as any[]).length
         } android devices`,
       );
       const devicesArray = devices as any[];
@@ -134,14 +133,20 @@ export default class AndroidDeviceManager implements IDeviceManager {
             );
 
             if (existingDevice) {
-              log.info(`Android Device details for ${device.udid} already available`);
-              return {
-                ...existingDevice,
-                busy: false,
-              };
-            } else {
-              log.info(`Android Device details for ${device.udid} not available. So querying now.`);
               if (device.state === 'device') {
+                log.debug(`Android Device details for ${device.udid} already available and online`);
+                return {
+                  ...existingDevice,
+                  state: 'device',
+                  busy: existingDevice.busy || false,
+                };
+              } else {
+                log.info(`Device ${device.udid} was cached but is now in "${device.state}" state. Ignoring.`);
+                return undefined;
+              }
+            } else {
+              if (device.state === 'device') {
+                log.info(`New Android Device ${device.udid} discovered in "device" state. Querying details...`);
                 try {
                   return await this.deviceInfo(device, adbInstance, this.pluginArgs, this.hostPort);
                 } catch (e) {
@@ -149,7 +154,7 @@ export default class AndroidDeviceManager implements IDeviceManager {
                   return undefined;
                 }
               } else {
-                log.info(`Device ${device.udid} is not in "device" state. So, ignoring.`);
+                log.info(`Device ${device.udid} is in "${device.state}" state. Ignoring.`);
                 return undefined;
               }
             }
@@ -235,9 +240,9 @@ export default class AndroidDeviceManager implements IDeviceManager {
     if (!adbInstance) return {};
     const adb = device.adbRemoteHost
       ? (adbInstance.clone({
-          remoteAdbHost: device.adbRemoteHost,
-          adbPort: device.adbPort,
-        }) as ExtendedADB)
+        remoteAdbHost: device.adbRemoteHost,
+        adbPort: device.adbPort,
+      }) as ExtendedADB)
       : adbInstance;
 
     try {
@@ -845,8 +850,7 @@ export default class AndroidDeviceManager implements IDeviceManager {
       });
     } catch (err: unknown) {
       log.warn(
-        `Failed to fetch Android clipboard for ${udid}: ${
-          err instanceof Error ? err.message : err
+        `Failed to fetch Android clipboard for ${udid}: ${err instanceof Error ? err.message : err
         }`,
       );
     }
@@ -1014,8 +1018,7 @@ export default class AndroidDeviceManager implements IDeviceManager {
         return base64.replace(/\r?\n/g, '');
       } catch (fallbackErr: unknown) {
         log.error(
-          `Fallback screenshot also failed for ${udid}: ${
-            fallbackErr instanceof Error ? fallbackErr.message : fallbackErr
+          `Fallback screenshot also failed for ${udid}: ${fallbackErr instanceof Error ? fallbackErr.message : fallbackErr
           }`,
         );
       }

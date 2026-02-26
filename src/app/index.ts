@@ -170,11 +170,29 @@ function createRouter(pluginArgs: IPluginArgs) {
   // Fallback route for client-side routing - serve index.html for all non-API routes
   // MUST be registered after Swagger to avoid interception
   router.get(/^(?!\/api).*/, (req, res) => {
-    const indexPath = path.join(publicPath, 'index.html');
+    const indexPath = path.resolve(publicPath, 'index.html');
+    const url = req.originalUrl || req.url;
+
+    log.debug(`[Xenon] UI Fallback triggered for: ${url}. Targeting: ${indexPath}`);
+
     if (fs.existsSync(indexPath)) {
-      res.sendFile(indexPath);
+      res.sendFile(indexPath, (err) => {
+        if (err) {
+          log.error(`[Xenon] res.sendFile failed for ${indexPath}. Error: ${err.message}`);
+          if (!res.headersSent) {
+            res.status(404).send(`Xenon UI Asset Error: ${err.message}`);
+          }
+        }
+      });
     } else {
       log.error(`[Xenon] UI Fallback failed: index.html not found at ${indexPath}`);
+      // Diagnostic: List files in publicPath
+      try {
+        const files = fs.readdirSync(publicPath);
+        log.error(`[Xenon] Contents of ${publicPath}: ${files.join(', ')}`);
+      } catch (e: any) {
+        log.error(`[Xenon] Could not even read directory ${publicPath}: ${e.message}`);
+      }
       res.status(404).send('Xenon UI assets not found. Check installation.');
     }
   });
