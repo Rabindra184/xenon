@@ -107,18 +107,30 @@ apiRouter.get('/metrics', async (req, res) => {
   res.send(metrics);
 });
 
-const publicPathCandidates = [
-  path.resolve(__dirname, '..', 'public'),
-  path.resolve(__dirname, '..', '..', 'public'),
-  path.resolve(__dirname, '..', '..', '..', 'public'),
-];
+const findPublicPath = () => {
+  const rootDir = path.resolve(__dirname, '..', '..');
+  const searchPaths = [
+    path.join(rootDir, 'public'), // Production (lib/public)
+    path.join(rootDir, 'src', 'public'), // Development (src/public)
+    path.resolve(__dirname, '../public'), // Alternative structure
+    path.resolve(__dirname, '../../public'),
+    path.resolve(__dirname, '../../../public'),
+  ];
 
-const publicPath = publicPathCandidates.find((p) => {
-  const exists = fs.existsSync(p) && fs.existsSync(path.join(p, 'index.html'));
-  if (exists) log.debug(`[Xenon] Found public assets at: ${p}`);
-  return exists;
-}) || publicPathCandidates[1];
+  for (const p of searchPaths) {
+    if (fs.existsSync(path.join(p, 'index.html'))) {
+      log.info(`[Xenon] Dashboard assets found at: ${p}`);
+      return p;
+    }
+  }
 
+  // Last resort fallback
+  const fallback = path.resolve(__dirname, '../../public');
+  log.warn(`[Xenon] Could not find dashboard index.html in standard paths. Falling back to: ${fallback}`);
+  return fallback;
+};
+
+const publicPath = findPublicPath();
 log.info(`[Xenon] Public assets path resolved to: ${publicPath}`);
 
 staticFilesRouter.use(express.static(publicPath));
