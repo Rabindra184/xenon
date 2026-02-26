@@ -404,22 +404,18 @@ export async function updateDeviceList(
 ): Promise<IDevice[]> {
   const allExistingDevices = await getAllDevices();
   const devices: IDevice[] = await getDeviceManager().getDevices(allExistingDevices);
-  if (devices.length === 0) {
-    log.warn('No devices found');
-    return [];
+
+  if (devices.length > 0) {
+    // first thing first. Update device list in local list
+    await addNewDevice(devices, host);
   }
-
-  // log.debug(`Updating device list with ${JSON.stringify(devices)} devices`);
-
-  // first thing first. Update device list in local list
-  await addNewDevice(devices, host);
 
   // Prune any devices that are in our local DB for this host but NO LONGER discovered.
   // This automatically cleans up disconnected Android devices safely, or filtered
   // iOS simulators (e.g. when booted-simulators is turned on and a simulator shuts down)
   const discoveredUdids = new Set(devices.map((d) => d.udid));
   const staleLocalDevices = allExistingDevices.filter(
-    (d) => d.host === host && !discoveredUdids.has(d.udid),
+    (d) => (d.host === host || d.host.includes(`//${host}:`) || d.host.includes(`//${host}/`)) && !discoveredUdids.has(d.udid),
   );
 
   if (staleLocalDevices.length > 0) {
