@@ -1,6 +1,7 @@
 import express from 'express';
 import path from 'path';
 import fs from 'fs';
+import pkg from '../../package.json';
 
 import { getCLIArgs } from '../data-service/pluginArgs';
 import cors from 'cors';
@@ -106,10 +107,19 @@ apiRouter.get('/metrics', async (req, res) => {
   res.send(metrics);
 });
 
-const publicPath =
-  [path.join(__dirname, '..', 'public'), path.join(__dirname, '..', '..', 'public')].find((p) =>
-    fs.existsSync(p),
-  ) || path.join(__dirname, '..', '..', 'public');
+const publicPathCandidates = [
+  path.resolve(__dirname, '..', 'public'),
+  path.resolve(__dirname, '..', '..', 'public'),
+  path.resolve(__dirname, '..', '..', '..', 'public'),
+];
+
+const publicPath = publicPathCandidates.find((p) => {
+  const exists = fs.existsSync(p) && fs.existsSync(path.join(p, 'index.html'));
+  if (exists) log.debug(`[Xenon] Found public assets at: ${p}`);
+  return exists;
+}) || publicPathCandidates[1];
+
+log.info(`[Xenon] Public assets path resolved to: ${publicPath}`);
 
 staticFilesRouter.use(express.static(publicPath));
 router.use('/api', apiRouter);
@@ -124,6 +134,9 @@ function createRouter(pluginArgs: IPluginArgs) {
   webhookRouter.register(apiRouter);
   ConfigRouter.register(apiRouter, pluginArgs);
   apiRouter.use('/reservation', reservationRouter);
+
+  // Principal Health: Add ping endpoint
+  apiRouter.get('/ping', (req, res) => res.json({ pong: true, version: pkg.version }));
 
   // Setup Swagger API documentation at /xenon/api-docs
   try {
@@ -145,7 +158,13 @@ function createRouter(pluginArgs: IPluginArgs) {
   // Fallback route for client-side routing - serve index.html for all non-API routes
   // MUST be registered after Swagger to avoid interception
   router.get(/^(?!\/api).*/, (req, res) => {
-    res.sendFile(path.join(publicPath, 'index.html'));
+    const indexPath = path.join(publicPath, 'index.html');
+    if (fs.existsSync(indexPath)) {
+      res.sendFile(indexPath);
+    } else {
+      log.error(`[Xenon] UI Fallback failed: index.html not found at ${indexPath}`);
+      res.status(404).send('Xenon UI assets not found. Check installation.');
+    }
   });
 
   return router;
