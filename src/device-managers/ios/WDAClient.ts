@@ -33,7 +33,7 @@ export class WDAClient {
   private async executeSerializedCommand<T>(udid: string, action: () => Promise<T>): Promise<T> {
     const currentQueue = this.commandQueues.get(udid) || Promise.resolve();
     const nextInQueue = currentQueue
-      .catch(() => {})
+      .catch(() => { })
       .then(() => action())
       .finally(() => {
         if (this.commandQueues.get(udid) === nextInQueue) this.commandQueues.delete(udid);
@@ -110,7 +110,7 @@ export class WDAClient {
         try {
           const isSessionless =
             !options?.useSessionPath &&
-            (['/status', '/health'].includes(endpoint) || endpoint.startsWith('/wda/'));
+            (['/status', '/health', '/wda/healthcheck'].includes(endpoint));
           const url = `http://${targetHost}:${targetPort}${isSessionless ? '' : prefix}${endpoint}`;
 
           // Principal Stability: Screenshots, activation, and script execution need longer timeouts.
@@ -366,7 +366,7 @@ export class WDAClient {
         await this.sendWDACommand(udid, 'post', '/wda/pressButton', { name: 'home' });
       } catch (e) {
         // Fallback for extremely old WDA
-        await this.sendWDACommand(udid, 'post', '/wda/homescreen', {}).catch(() => {});
+        await this.sendWDACommand(udid, 'post', '/wda/homescreen', {}).catch(() => { });
       }
       return;
     }
@@ -475,7 +475,7 @@ export class WDAClient {
           await new Promise((r) => setTimeout(r, 1000));
           await this.sendWDACommand(udid, 'post', '/wda/apps/activate', { bundleId: wdaBundleId });
           await new Promise((r) => setTimeout(r, CLIPBOARD_SETTLE_MS));
-          await this.tap(udid, 200, 400).catch(() => {});
+          await this.tap(udid, 200, 400).catch(() => { });
           await new Promise((r) => setTimeout(r, 800));
 
           res = await this.sendWDACommand(udid, 'post', '/wda/getPasteboard', fetchParams);
@@ -483,7 +483,7 @@ export class WDAClient {
             `[Clipboard] Tier 2 (Home-Surgical) raw response: ${JSON.stringify(res?.data)}`,
           );
           value = this.parsePasteboardResponse(res?.data);
-        } catch (e: any) {}
+        } catch (e: any) { }
       }
 
       // Tier 3: Safari System Fallback
@@ -499,14 +499,14 @@ export class WDAClient {
             `[Clipboard] Tier 3 (Safari-CS) raw response: ${JSON.stringify(res?.data)}`,
           );
           value = this.parsePasteboardResponse(res?.data);
-        } catch (e: any) {}
+        } catch (e: any) { }
       }
 
       // Restore Previous App
       if (previousApp && previousApp !== wdaBundleId && !previousApp.startsWith('com.apple.')) {
         this.log.debug(`[Clipboard] Background restoring ${previousApp}`);
         this.sendWDACommand(udid, 'post', '/wda/apps/activate', { bundleId: previousApp }).catch(
-          () => {},
+          () => { },
         );
       }
 
@@ -524,7 +524,7 @@ export class WDAClient {
             }),
           );
           value = this.parsePasteboardResponse(res?.data);
-        } catch (e: any) {}
+        } catch (e: any) { }
       }
 
       if (!value) {
