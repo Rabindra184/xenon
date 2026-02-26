@@ -88,10 +88,12 @@ Android Allowed Commands:
         } else if (platform === 'ios' || platform === 'tvos') {
           helpText = `
 iOS Allowed Commands:
+  • Real Device (go-ios): 
+      apps, info, list, syslog, deviceinfo, diagnostics
   • Simulator (xcrun simctl): 
       listapps, get_app_container, list, getenv
-  • Real Device (go-ios): 
-      apps, info, syslog, list
+  • Simulator System: 
+      ls, ps, top, date, uptime, whoami
             `;
         }
 
