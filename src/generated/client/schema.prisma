@@ -216,3 +216,15 @@ model LocatorEtalon {
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 }
+
+model PortLease {
+  port         Int    @id
+  purpose      String
+  leasedToUdid String
+  leasedToPid  Int?
+  leasedAt     Float
+  expiresAt    Float
+
+  @@index([purpose, expiresAt])
+  @@index([leasedToUdid])
+}

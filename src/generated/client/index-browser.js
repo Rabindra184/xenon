@@ -317,6 +317,15 @@ exports.Prisma.LocatorEtalonScalarFieldEnum = {
   updatedAt: 'updatedAt'
 };
 
+exports.Prisma.PortLeaseScalarFieldEnum = {
+  port: 'port',
+  purpose: 'purpose',
+  leasedToUdid: 'leasedToUdid',
+  leasedToPid: 'leasedToPid',
+  leasedAt: 'leasedAt',
+  expiresAt: 'expiresAt'
+};
+
 exports.Prisma.SortOrder = {
   asc: 'asc',
   desc: 'desc'
@@ -340,7 +349,8 @@ exports.Prisma.ModelName = {
   CLIArgs: 'CLIArgs',
   WebhookConfig: 'WebhookConfig',
   WebConfig: 'WebConfig',
-  LocatorEtalon: 'LocatorEtalon'
+  LocatorEtalon: 'LocatorEtalon',
+  PortLease: 'PortLease'
 };
 
 /**

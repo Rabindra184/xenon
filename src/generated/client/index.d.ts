@@ -73,6 +73,11 @@ export type WebConfig = $Result.DefaultSelection<Prisma.$WebConfigPayload>
  * 
  */
 export type LocatorEtalon = $Result.DefaultSelection<Prisma.$LocatorEtalonPayload>
+/**
+ * Model PortLease
+ * 
+ */
+export type PortLease = $Result.DefaultSelection<Prisma.$PortLeasePayload>
 
 /**
  * ##  Prisma Client ʲˢ
@@ -316,6 +321,16 @@ export class PrismaClient<
     * ```
     */
   get locatorEtalon(): Prisma.LocatorEtalonDelegate<ExtArgs>;
+
+  /**
+   * `prisma.portLease`: Exposes CRUD operations for the **PortLease** model.
+    * Example usage:
+    * ```ts
+    * // Fetch zero or more PortLeases
+    * const portLeases = await prisma.portLease.findMany()
+    * ```
+    */
+  get portLease(): Prisma.PortLeaseDelegate<ExtArgs>;
 }
 
 export namespace Prisma {
@@ -768,7 +783,8 @@ export namespace Prisma {
     CLIArgs: 'CLIArgs',
     WebhookConfig: 'WebhookConfig',
     WebConfig: 'WebConfig',
-    LocatorEtalon: 'LocatorEtalon'
+    LocatorEtalon: 'LocatorEtalon',
+    PortLease: 'PortLease'
   };
 
   export type ModelName = (typeof ModelName)[keyof typeof ModelName]
@@ -784,7 +800,7 @@ export namespace Prisma {
 
   export type TypeMap<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs, ClientOptions = {}> = {
     meta: {
-      modelProps: "build" | "session" | "sessionLog" | "log" | "profiling" | "app" | "device" | "pendingSession" | "cLIArgs" | "webhookConfig" | "webConfig" | "locatorEtalon"
+      modelProps: "build" | "session" | "sessionLog" | "log" | "profiling" | "app" | "device" | "pendingSession" | "cLIArgs" | "webhookConfig" | "webConfig" | "locatorEtalon" | "portLease"
       txIsolationLevel: Prisma.TransactionIsolationLevel
     }
     model: {
@@ -1625,6 +1641,76 @@ export namespace Prisma {
           count: {
             args: Prisma.LocatorEtalonCountArgs<ExtArgs>
             result: $Utils.Optional<LocatorEtalonCountAggregateOutputType> | number
+          }
+        }
+      }
+      PortLease: {
+        payload: Prisma.$PortLeasePayload<ExtArgs>
+        fields: Prisma.PortLeaseFieldRefs
+        operations: {
+          findUnique: {
+            args: Prisma.PortLeaseFindUniqueArgs<ExtArgs>
+            result: $Utils.PayloadToResult<Prisma.$PortLeasePayload> | null
+          }
+          findUniqueOrThrow: {
+            args: Prisma.PortLeaseFindUniqueOrThrowArgs<ExtArgs>
+            result: $Utils.PayloadToResult<Prisma.$PortLeasePayload>
+          }
+          findFirst: {
+            args: Prisma.PortLeaseFindFirstArgs<ExtArgs>
+            result: $Utils.PayloadToResult<Prisma.$PortLeasePayload> | null
+          }
+          findFirstOrThrow: {
+            args: Prisma.PortLeaseFindFirstOrThrowArgs<ExtArgs>
+            result: $Utils.PayloadToResult<Prisma.$PortLeasePayload>
+          }
+          findMany: {
+            args: Prisma.PortLeaseFindManyArgs<ExtArgs>
+            result: $Utils.PayloadToResult<Prisma.$PortLeasePayload>[]
+          }
+          create: {
+            args: Prisma.PortLeaseCreateArgs<ExtArgs>
+            result: $Utils.PayloadToResult<Prisma.$PortLeasePayload>
+          }
+          createMany: {
+            args: Prisma.PortLeaseCreateManyArgs<ExtArgs>
+            result: BatchPayload
+          }
+          createManyAndReturn: {
+            args: Prisma.PortLeaseCreateManyAndReturnArgs<ExtArgs>
+            result: $Utils.PayloadToResult<Prisma.$PortLeasePayload>[]
+          }
+          delete: {
+            args: Prisma.PortLeaseDeleteArgs<ExtArgs>
+            result: $Utils.PayloadToResult<Prisma.$PortLeasePayload>
+          }
+          update: {
+            args: Prisma.PortLeaseUpdateArgs<ExtArgs>
+            result: $Utils.PayloadToResult<Prisma.$PortLeasePayload>
+          }
+          deleteMany: {
+            args: Prisma.PortLeaseDeleteManyArgs<ExtArgs>
+            result: BatchPayload
+          }
+          updateMany: {
+            args: Prisma.PortLeaseUpdateManyArgs<ExtArgs>
+            result: BatchPayload
+          }
+          upsert: {
+            args: Prisma.PortLeaseUpsertArgs<ExtArgs>
+            result: $Utils.PayloadToResult<Prisma.$PortLeasePayload>
+          }
+          aggregate: {
+            args: Prisma.PortLeaseAggregateArgs<ExtArgs>
+            result: $Utils.Optional<AggregatePortLease>
+          }
+          groupBy: {
+            args: Prisma.PortLeaseGroupByArgs<ExtArgs>
+            result: $Utils.Optional<PortLeaseGroupByOutputType>[]
+          }
+          count: {
+            args: Prisma.PortLeaseCountArgs<ExtArgs>
+            result: $Utils.Optional<PortLeaseCountAggregateOutputType> | number
           }
         }
       }
@@ -14286,6 +14372,940 @@ export namespace Prisma {
 
 
   /**
+   * Model PortLease
+   */
+
+  export type AggregatePortLease = {
+    _count: PortLeaseCountAggregateOutputType | null
+    _avg: PortLeaseAvgAggregateOutputType | null
+    _sum: PortLeaseSumAggregateOutputType | null
+    _min: PortLeaseMinAggregateOutputType | null
+    _max: PortLeaseMaxAggregateOutputType | null
+  }
+
+  export type PortLeaseAvgAggregateOutputType = {
+    port: number | null
+    leasedToPid: number | null
+    leasedAt: number | null
+    expiresAt: number | null
+  }
+
+  export type PortLeaseSumAggregateOutputType = {
+    port: number | null
+    leasedToPid: number | null
+    leasedAt: number | null
+    expiresAt: number | null
+  }
+
+  export type PortLeaseMinAggregateOutputType = {
+    port: number | null
+    purpose: string | null
+    leasedToUdid: string | null
+    leasedToPid: number | null
+    leasedAt: number | null
+    expiresAt: number | null
+  }
+
+  export type PortLeaseMaxAggregateOutputType = {
+    port: number | null
+    purpose: string | null
+    leasedToUdid: string | null
+    leasedToPid: number | null
+    leasedAt: number | null
+    expiresAt: number | null
+  }
+
+  export type PortLeaseCountAggregateOutputType = {
+    port: number
+    purpose: number
+    leasedToUdid: number
+    leasedToPid: number
+    leasedAt: number
+    expiresAt: number
+    _all: number
+  }
+
+
+  export type PortLeaseAvgAggregateInputType = {
+    port?: true
+    leasedToPid?: true
+    leasedAt?: true
+    expiresAt?: true
+  }
+
+  export type PortLeaseSumAggregateInputType = {
+    port?: true
+    leasedToPid?: true
+    leasedAt?: true
+    expiresAt?: true
+  }
+
+  export type PortLeaseMinAggregateInputType = {
+    port?: true
+    purpose?: true
+    leasedToUdid?: true
+    leasedToPid?: true
+    leasedAt?: true
+    expiresAt?: true
+  }
+
+  export type PortLeaseMaxAggregateInputType = {
+    port?: true
+    purpose?: true
+    leasedToUdid?: true
+    leasedToPid?: true
+    leasedAt?: true
+    expiresAt?: true
+  }
+
+  export type PortLeaseCountAggregateInputType = {
+    port?: true
+    purpose?: true
+    leasedToUdid?: true
+    leasedToPid?: true
+    leasedAt?: true
+    expiresAt?: true
+    _all?: true
+  }
+
+  export type PortLeaseAggregateArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Filter which PortLease to aggregate.
+     */
+    where?: PortLeaseWhereInput
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/sorting Sorting Docs}
+     * 
+     * Determine the order of PortLeases to fetch.
+     */
+    orderBy?: PortLeaseOrderByWithRelationInput | PortLeaseOrderByWithRelationInput[]
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination#cursor-based-pagination Cursor Docs}
+     * 
+     * Sets the start position
+     */
+    cursor?: PortLeaseWhereUniqueInput
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination Pagination Docs}
+     * 
+     * Take `±n` PortLeases from the position of the cursor.
+     */
+    take?: number
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination Pagination Docs}
+     * 
+     * Skip the first `n` PortLeases.
+     */
+    skip?: number
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/aggregations Aggregation Docs}
+     * 
+     * Count returned PortLeases
+    **/
+    _count?: true | PortLeaseCountAggregateInputType
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/aggregations Aggregation Docs}
+     * 
+     * Select which fields to average
+    **/
+    _avg?: PortLeaseAvgAggregateInputType
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/aggregations Aggregation Docs}
+     * 
+     * Select which fields to sum
+    **/
+    _sum?: PortLeaseSumAggregateInputType
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/aggregations Aggregation Docs}
+     * 
+     * Select which fields to find the minimum value
+    **/
+    _min?: PortLeaseMinAggregateInputType
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/aggregations Aggregation Docs}
+     * 
+     * Select which fields to find the maximum value
+    **/
+    _max?: PortLeaseMaxAggregateInputType
+  }
+
+  export type GetPortLeaseAggregateType<T extends PortLeaseAggregateArgs> = {
+        [P in keyof T & keyof AggregatePortLease]: P extends '_count' | 'count'
+      ? T[P] extends true
+        ? number
+        : GetScalarType<T[P], AggregatePortLease[P]>
+      : GetScalarType<T[P], AggregatePortLease[P]>
+  }
+
+
+
+
+  export type PortLeaseGroupByArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    where?: PortLeaseWhereInput
+    orderBy?: PortLeaseOrderByWithAggregationInput | PortLeaseOrderByWithAggregationInput[]
+    by: PortLeaseScalarFieldEnum[] | PortLeaseScalarFieldEnum
+    having?: PortLeaseScalarWhereWithAggregatesInput
+    take?: number
+    skip?: number
+    _count?: PortLeaseCountAggregateInputType | true
+    _avg?: PortLeaseAvgAggregateInputType
+    _sum?: PortLeaseSumAggregateInputType
+    _min?: PortLeaseMinAggregateInputType
+    _max?: PortLeaseMaxAggregateInputType
+  }
+
+  export type PortLeaseGroupByOutputType = {
+    port: number
+    purpose: string
+    leasedToUdid: string
+    leasedToPid: number | null
+    leasedAt: number
+    expiresAt: number
+    _count: PortLeaseCountAggregateOutputType | null
+    _avg: PortLeaseAvgAggregateOutputType | null
+    _sum: PortLeaseSumAggregateOutputType | null
+    _min: PortLeaseMinAggregateOutputType | null
+    _max: PortLeaseMaxAggregateOutputType | null
+  }
+
+  type GetPortLeaseGroupByPayload<T extends PortLeaseGroupByArgs> = Prisma.PrismaPromise<
+    Array<
+      PickEnumerable<PortLeaseGroupByOutputType, T['by']> &
+        {
+          [P in ((keyof T) & (keyof PortLeaseGroupByOutputType))]: P extends '_count'
+            ? T[P] extends boolean
+              ? number
+              : GetScalarType<T[P], PortLeaseGroupByOutputType[P]>
+            : GetScalarType<T[P], PortLeaseGroupByOutputType[P]>
+        }
+      >
+    >
+
+
+  export type PortLeaseSelect<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = $Extensions.GetSelect<{
+    port?: boolean
+    purpose?: boolean
+    leasedToUdid?: boolean
+    leasedToPid?: boolean
+    leasedAt?: boolean
+    expiresAt?: boolean
+  }, ExtArgs["result"]["portLease"]>
+
+  export type PortLeaseSelectCreateManyAndReturn<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = $Extensions.GetSelect<{
+    port?: boolean
+    purpose?: boolean
+    leasedToUdid?: boolean
+    leasedToPid?: boolean
+    leasedAt?: boolean
+    expiresAt?: boolean
+  }, ExtArgs["result"]["portLease"]>
+
+  export type PortLeaseSelectScalar = {
+    port?: boolean
+    purpose?: boolean
+    leasedToUdid?: boolean
+    leasedToPid?: boolean
+    leasedAt?: boolean
+    expiresAt?: boolean
+  }
+
+
+  export type $PortLeasePayload<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    name: "PortLease"
+    objects: {}
+    scalars: $Extensions.GetPayloadResult<{
+      port: number
+      purpose: string
+      leasedToUdid: string
+      leasedToPid: number | null
+      leasedAt: number
+      expiresAt: number
+    }, ExtArgs["result"]["portLease"]>
+    composites: {}
+  }
+
+  type PortLeaseGetPayload<S extends boolean | null | undefined | PortLeaseDefaultArgs> = $Result.GetResult<Prisma.$PortLeasePayload, S>
+
+  type PortLeaseCountArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = 
+    Omit<PortLeaseFindManyArgs, 'select' | 'include' | 'distinct'> & {
+      select?: PortLeaseCountAggregateInputType | true
+    }
+
+  export interface PortLeaseDelegate<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> {
+    [K: symbol]: { types: Prisma.TypeMap<ExtArgs>['model']['PortLease'], meta: { name: 'PortLease' } }
+    /**
+     * Find zero or one PortLease that matches the filter.
+     * @param {PortLeaseFindUniqueArgs} args - Arguments to find a PortLease
+     * @example
+     * // Get one PortLease
+     * const portLease = await prisma.portLease.findUnique({
+     *   where: {
+     *     // ... provide filter here
+     *   }
+     * })
+     */
+    findUnique<T extends PortLeaseFindUniqueArgs>(args: SelectSubset<T, PortLeaseFindUniqueArgs<ExtArgs>>): Prisma__PortLeaseClient<$Result.GetResult<Prisma.$PortLeasePayload<ExtArgs>, T, "findUnique"> | null, null, ExtArgs>
+
+    /**
+     * Find one PortLease that matches the filter or throw an error with `error.code='P2025'` 
+     * if no matches were found.
+     * @param {PortLeaseFindUniqueOrThrowArgs} args - Arguments to find a PortLease
+     * @example
+     * // Get one PortLease
+     * const portLease = await prisma.portLease.findUniqueOrThrow({
+     *   where: {
+     *     // ... provide filter here
+     *   }
+     * })
+     */
+    findUniqueOrThrow<T extends PortLeaseFindUniqueOrThrowArgs>(args: SelectSubset<T, PortLeaseFindUniqueOrThrowArgs<ExtArgs>>): Prisma__PortLeaseClient<$Result.GetResult<Prisma.$PortLeasePayload<ExtArgs>, T, "findUniqueOrThrow">, never, ExtArgs>
+
+    /**
+     * Find the first PortLease that matches the filter.
+     * Note, that providing `undefined` is treated as the value not being there.
+     * Read more here: https://pris.ly/d/null-undefined
+     * @param {PortLeaseFindFirstArgs} args - Arguments to find a PortLease
+     * @example
+     * // Get one PortLease
+     * const portLease = await prisma.portLease.findFirst({
+     *   where: {
+     *     // ... provide filter here
+     *   }
+     * })
+     */
+    findFirst<T extends PortLeaseFindFirstArgs>(args?: SelectSubset<T, PortLeaseFindFirstArgs<ExtArgs>>): Prisma__PortLeaseClient<$Result.GetResult<Prisma.$PortLeasePayload<ExtArgs>, T, "findFirst"> | null, null, ExtArgs>
+
+    /**
+     * Find the first PortLease that matches the filter or
+     * throw `PrismaKnownClientError` with `P2025` code if no matches were found.
+     * Note, that providing `undefined` is treated as the value not being there.
+     * Read more here: https://pris.ly/d/null-undefined
+     * @param {PortLeaseFindFirstOrThrowArgs} args - Arguments to find a PortLease
+     * @example
+     * // Get one PortLease
+     * const portLease = await prisma.portLease.findFirstOrThrow({
+     *   where: {
+     *     // ... provide filter here
+     *   }
+     * })
+     */
+    findFirstOrThrow<T extends PortLeaseFindFirstOrThrowArgs>(args?: SelectSubset<T, PortLeaseFindFirstOrThrowArgs<ExtArgs>>): Prisma__PortLeaseClient<$Result.GetResult<Prisma.$PortLeasePayload<ExtArgs>, T, "findFirstOrThrow">, never, ExtArgs>
+
+    /**
+     * Find zero or more PortLeases that matches the filter.
+     * Note, that providing `undefined` is treated as the value not being there.
+     * Read more here: https://pris.ly/d/null-undefined
+     * @param {PortLeaseFindManyArgs} args - Arguments to filter and select certain fields only.
+     * @example
+     * // Get all PortLeases
+     * const portLeases = await prisma.portLease.findMany()
+     * 
+     * // Get first 10 PortLeases
+     * const portLeases = await prisma.portLease.findMany({ take: 10 })
+     * 
+     * // Only select the `port`
+     * const portLeaseWithPortOnly = await prisma.portLease.findMany({ select: { port: true } })
+     * 
+     */
+    findMany<T extends PortLeaseFindManyArgs>(args?: SelectSubset<T, PortLeaseFindManyArgs<ExtArgs>>): Prisma.PrismaPromise<$Result.GetResult<Prisma.$PortLeasePayload<ExtArgs>, T, "findMany">>
+
+    /**
+     * Create a PortLease.
+     * @param {PortLeaseCreateArgs} args - Arguments to create a PortLease.
+     * @example
+     * // Create one PortLease
+     * const PortLease = await prisma.portLease.create({
+     *   data: {
+     *     // ... data to create a PortLease
+     *   }
+     * })
+     * 
+     */
+    create<T extends PortLeaseCreateArgs>(args: SelectSubset<T, PortLeaseCreateArgs<ExtArgs>>): Prisma__PortLeaseClient<$Result.GetResult<Prisma.$PortLeasePayload<ExtArgs>, T, "create">, never, ExtArgs>
+
+    /**
+     * Create many PortLeases.
+     * @param {PortLeaseCreateManyArgs} args - Arguments to create many PortLeases.
+     * @example
+     * // Create many PortLeases
+     * const portLease = await prisma.portLease.createMany({
+     *   data: [
+     *     // ... provide data here
+     *   ]
+     * })
+     *     
+     */
+    createMany<T extends PortLeaseCreateManyArgs>(args?: SelectSubset<T, PortLeaseCreateManyArgs<ExtArgs>>): Prisma.PrismaPromise<BatchPayload>
+
+    /**
+     * Create many PortLeases and returns the data saved in the database.
+     * @param {PortLeaseCreateManyAndReturnArgs} args - Arguments to create many PortLeases.
+     * @example
+     * // Create many PortLeases
+     * const portLease = await prisma.portLease.createManyAndReturn({
+     *   data: [
+     *     // ... provide data here
+     *   ]
+     * })
+     * 
+     * // Create many PortLeases and only return the `port`
+     * const portLeaseWithPortOnly = await prisma.portLease.createManyAndReturn({ 
+     *   select: { port: true },
+     *   data: [
+     *     // ... provide data here
+     *   ]
+     * })
+     * Note, that providing `undefined` is treated as the value not being there.
+     * Read more here: https://pris.ly/d/null-undefined
+     * 
+     */
+    createManyAndReturn<T extends PortLeaseCreateManyAndReturnArgs>(args?: SelectSubset<T, PortLeaseCreateManyAndReturnArgs<ExtArgs>>): Prisma.PrismaPromise<$Result.GetResult<Prisma.$PortLeasePayload<ExtArgs>, T, "createManyAndReturn">>
+
+    /**
+     * Delete a PortLease.
+     * @param {PortLeaseDeleteArgs} args - Arguments to delete one PortLease.
+     * @example
+     * // Delete one PortLease
+     * const PortLease = await prisma.portLease.delete({
+     *   where: {
+     *     // ... filter to delete one PortLease
+     *   }
+     * })
+     * 
+     */
+    delete<T extends PortLeaseDeleteArgs>(args: SelectSubset<T, PortLeaseDeleteArgs<ExtArgs>>): Prisma__PortLeaseClient<$Result.GetResult<Prisma.$PortLeasePayload<ExtArgs>, T, "delete">, never, ExtArgs>
+
+    /**
+     * Update one PortLease.
+     * @param {PortLeaseUpdateArgs} args - Arguments to update one PortLease.
+     * @example
+     * // Update one PortLease
+     * const portLease = await prisma.portLease.update({
+     *   where: {
+     *     // ... provide filter here
+     *   },
+     *   data: {
+     *     // ... provide data here
+     *   }
+     * })
+     * 
+     */
+    update<T extends PortLeaseUpdateArgs>(args: SelectSubset<T, PortLeaseUpdateArgs<ExtArgs>>): Prisma__PortLeaseClient<$Result.GetResult<Prisma.$PortLeasePayload<ExtArgs>, T, "update">, never, ExtArgs>
+
+    /**
+     * Delete zero or more PortLeases.
+     * @param {PortLeaseDeleteManyArgs} args - Arguments to filter PortLeases to delete.
+     * @example
+     * // Delete a few PortLeases
+     * const { count } = await prisma.portLease.deleteMany({
+     *   where: {
+     *     // ... provide filter here
+     *   }
+     * })
+     * 
+     */
+    deleteMany<T extends PortLeaseDeleteManyArgs>(args?: SelectSubset<T, PortLeaseDeleteManyArgs<ExtArgs>>): Prisma.PrismaPromise<BatchPayload>
+
+    /**
+     * Update zero or more PortLeases.
+     * Note, that providing `undefined` is treated as the value not being there.
+     * Read more here: https://pris.ly/d/null-undefined
+     * @param {PortLeaseUpdateManyArgs} args - Arguments to update one or more rows.
+     * @example
+     * // Update many PortLeases
+     * const portLease = await prisma.portLease.updateMany({
+     *   where: {
+     *     // ... provide filter here
+     *   },
+     *   data: {
+     *     // ... provide data here
+     *   }
+     * })
+     * 
+     */
+    updateMany<T extends PortLeaseUpdateManyArgs>(args: SelectSubset<T, PortLeaseUpdateManyArgs<ExtArgs>>): Prisma.PrismaPromise<BatchPayload>
+
+    /**
+     * Create or update one PortLease.
+     * @param {PortLeaseUpsertArgs} args - Arguments to update or create a PortLease.
+     * @example
+     * // Update or create a PortLease
+     * const portLease = await prisma.portLease.upsert({
+     *   create: {
+     *     // ... data to create a PortLease
+     *   },
+     *   update: {
+     *     // ... in case it already exists, update
+     *   },
+     *   where: {
+     *     // ... the filter for the PortLease we want to update
+     *   }
+     * })
+     */
+    upsert<T extends PortLeaseUpsertArgs>(args: SelectSubset<T, PortLeaseUpsertArgs<ExtArgs>>): Prisma__PortLeaseClient<$Result.GetResult<Prisma.$PortLeasePayload<ExtArgs>, T, "upsert">, never, ExtArgs>
+
+
+    /**
+     * Count the number of PortLeases.
+     * Note, that providing `undefined` is treated as the value not being there.
+     * Read more here: https://pris.ly/d/null-undefined
+     * @param {PortLeaseCountArgs} args - Arguments to filter PortLeases to count.
+     * @example
+     * // Count the number of PortLeases
+     * const count = await prisma.portLease.count({
+     *   where: {
+     *     // ... the filter for the PortLeases we want to count
+     *   }
+     * })
+    **/
+    count<T extends PortLeaseCountArgs>(
+      args?: Subset<T, PortLeaseCountArgs>,
+    ): Prisma.PrismaPromise<
+      T extends $Utils.Record<'select', any>
+        ? T['select'] extends true
+          ? number
+          : GetScalarType<T['select'], PortLeaseCountAggregateOutputType>
+        : number
+    >
+
+    /**
+     * Allows you to perform aggregations operations on a PortLease.
+     * Note, that providing `undefined` is treated as the value not being there.
+     * Read more here: https://pris.ly/d/null-undefined
+     * @param {PortLeaseAggregateArgs} args - Select which aggregations you would like to apply and on what fields.
+     * @example
+     * // Ordered by age ascending
+     * // Where email contains prisma.io
+     * // Limited to the 10 users
+     * const aggregations = await prisma.user.aggregate({
+     *   _avg: {
+     *     age: true,
+     *   },
+     *   where: {
+     *     email: {
+     *       contains: "prisma.io",
+     *     },
+     *   },
+     *   orderBy: {
+     *     age: "asc",
+     *   },
+     *   take: 10,
+     * })
+    **/
+    aggregate<T extends PortLeaseAggregateArgs>(args: Subset<T, PortLeaseAggregateArgs>): Prisma.PrismaPromise<GetPortLeaseAggregateType<T>>
+
+    /**
+     * Group by PortLease.
+     * Note, that providing `undefined` is treated as the value not being there.
+     * Read more here: https://pris.ly/d/null-undefined
+     * @param {PortLeaseGroupByArgs} args - Group by arguments.
+     * @example
+     * // Group by city, order by createdAt, get count
+     * const result = await prisma.user.groupBy({
+     *   by: ['city', 'createdAt'],
+     *   orderBy: {
+     *     createdAt: true
+     *   },
+     *   _count: {
+     *     _all: true
+     *   },
+     * })
+     * 
+    **/
+    groupBy<
+      T extends PortLeaseGroupByArgs,
+      HasSelectOrTake extends Or<
+        Extends<'skip', Keys<T>>,
+        Extends<'take', Keys<T>>
+      >,
+      OrderByArg extends True extends HasSelectOrTake
+        ? { orderBy: PortLeaseGroupByArgs['orderBy'] }
+        : { orderBy?: PortLeaseGroupByArgs['orderBy'] },
+      OrderFields extends ExcludeUnderscoreKeys<Keys<MaybeTupleToUnion<T['orderBy']>>>,
+      ByFields extends MaybeTupleToUnion<T['by']>,
+      ByValid extends Has<ByFields, OrderFields>,
+      HavingFields extends GetHavingFields<T['having']>,
+      HavingValid extends Has<ByFields, HavingFields>,
+      ByEmpty extends T['by'] extends never[] ? True : False,
+      InputErrors extends ByEmpty extends True
+      ? `Error: "by" must not be empty.`
+      : HavingValid extends False
+      ? {
+          [P in HavingFields]: P extends ByFields
+            ? never
+            : P extends string
+            ? `Error: Field "${P}" used in "having" needs to be provided in "by".`
+            : [
+                Error,
+                'Field ',
+                P,
+                ` in "having" needs to be provided in "by"`,
+              ]
+        }[HavingFields]
+      : 'take' extends Keys<T>
+      ? 'orderBy' extends Keys<T>
+        ? ByValid extends True
+          ? {}
+          : {
+              [P in OrderFields]: P extends ByFields
+                ? never
+                : `Error: Field "${P}" in "orderBy" needs to be provided in "by"`
+            }[OrderFields]
+        : 'Error: If you provide "take", you also need to provide "orderBy"'
+      : 'skip' extends Keys<T>
+      ? 'orderBy' extends Keys<T>
+        ? ByValid extends True
+          ? {}
+          : {
+              [P in OrderFields]: P extends ByFields
+                ? never
+                : `Error: Field "${P}" in "orderBy" needs to be provided in "by"`
+            }[OrderFields]
+        : 'Error: If you provide "skip", you also need to provide "orderBy"'
+      : ByValid extends True
+      ? {}
+      : {
+          [P in OrderFields]: P extends ByFields
+            ? never
+            : `Error: Field "${P}" in "orderBy" needs to be provided in "by"`
+        }[OrderFields]
+    >(args: SubsetIntersection<T, PortLeaseGroupByArgs, OrderByArg> & InputErrors): {} extends InputErrors ? GetPortLeaseGroupByPayload<T> : Prisma.PrismaPromise<InputErrors>
+  /**
+   * Fields of the PortLease model
+   */
+  readonly fields: PortLeaseFieldRefs;
+  }
+
+  /**
+   * The delegate class that acts as a "Promise-like" for PortLease.
+   * Why is this prefixed with `Prisma__`?
+   * Because we want to prevent naming conflicts as mentioned in
+   * https://github.com/prisma/prisma-client-js/issues/707
+   */
+  export interface Prisma__PortLeaseClient<T, Null = never, ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> extends Prisma.PrismaPromise<T> {
+    readonly [Symbol.toStringTag]: "PrismaPromise"
+    /**
+     * Attaches callbacks for the resolution and/or rejection of the Promise.
+     * @param onfulfilled The callback to execute when the Promise is resolved.
+     * @param onrejected The callback to execute when the Promise is rejected.
+     * @returns A Promise for the completion of which ever callback is executed.
+     */
+    then<TResult1 = T, TResult2 = never>(onfulfilled?: ((value: T) => TResult1 | PromiseLike<TResult1>) | undefined | null, onrejected?: ((reason: any) => TResult2 | PromiseLike<TResult2>) | undefined | null): $Utils.JsPromise<TResult1 | TResult2>
+    /**
+     * Attaches a callback for only the rejection of the Promise.
+     * @param onrejected The callback to execute when the Promise is rejected.
+     * @returns A Promise for the completion of the callback.
+     */
+    catch<TResult = never>(onrejected?: ((reason: any) => TResult | PromiseLike<TResult>) | undefined | null): $Utils.JsPromise<T | TResult>
+    /**
+     * Attaches a callback that is invoked when the Promise is settled (fulfilled or rejected). The
+     * resolved value cannot be modified from the callback.
+     * @param onfinally The callback to execute when the Promise is settled (fulfilled or rejected).
+     * @returns A Promise for the completion of the callback.
+     */
+    finally(onfinally?: (() => void) | undefined | null): $Utils.JsPromise<T>
+  }
+
+
+
+
+  /**
+   * Fields of the PortLease model
+   */ 
+  interface PortLeaseFieldRefs {
+    readonly port: FieldRef<"PortLease", 'Int'>
+    readonly purpose: FieldRef<"PortLease", 'String'>
+    readonly leasedToUdid: FieldRef<"PortLease", 'String'>
+    readonly leasedToPid: FieldRef<"PortLease", 'Int'>
+    readonly leasedAt: FieldRef<"PortLease", 'Float'>
+    readonly expiresAt: FieldRef<"PortLease", 'Float'>
+  }
+    
+
+  // Custom InputTypes
+  /**
+   * PortLease findUnique
+   */
+  export type PortLeaseFindUniqueArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the PortLease
+     */
+    select?: PortLeaseSelect<ExtArgs> | null
+    /**
+     * Filter, which PortLease to fetch.
+     */
+    where: PortLeaseWhereUniqueInput
+  }
+
+  /**
+   * PortLease findUniqueOrThrow
+   */
+  export type PortLeaseFindUniqueOrThrowArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the PortLease
+     */
+    select?: PortLeaseSelect<ExtArgs> | null
+    /**
+     * Filter, which PortLease to fetch.
+     */
+    where: PortLeaseWhereUniqueInput
+  }
+
+  /**
+   * PortLease findFirst
+   */
+  export type PortLeaseFindFirstArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the PortLease
+     */
+    select?: PortLeaseSelect<ExtArgs> | null
+    /**
+     * Filter, which PortLease to fetch.
+     */
+    where?: PortLeaseWhereInput
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/sorting Sorting Docs}
+     * 
+     * Determine the order of PortLeases to fetch.
+     */
+    orderBy?: PortLeaseOrderByWithRelationInput | PortLeaseOrderByWithRelationInput[]
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination#cursor-based-pagination Cursor Docs}
+     * 
+     * Sets the position for searching for PortLeases.
+     */
+    cursor?: PortLeaseWhereUniqueInput
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination Pagination Docs}
+     * 
+     * Take `±n` PortLeases from the position of the cursor.
+     */
+    take?: number
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination Pagination Docs}
+     * 
+     * Skip the first `n` PortLeases.
+     */
+    skip?: number
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/distinct Distinct Docs}
+     * 
+     * Filter by unique combinations of PortLeases.
+     */
+    distinct?: PortLeaseScalarFieldEnum | PortLeaseScalarFieldEnum[]
+  }
+
+  /**
+   * PortLease findFirstOrThrow
+   */
+  export type PortLeaseFindFirstOrThrowArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the PortLease
+     */
+    select?: PortLeaseSelect<ExtArgs> | null
+    /**
+     * Filter, which PortLease to fetch.
+     */
+    where?: PortLeaseWhereInput
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/sorting Sorting Docs}
+     * 
+     * Determine the order of PortLeases to fetch.
+     */
+    orderBy?: PortLeaseOrderByWithRelationInput | PortLeaseOrderByWithRelationInput[]
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination#cursor-based-pagination Cursor Docs}
+     * 
+     * Sets the position for searching for PortLeases.
+     */
+    cursor?: PortLeaseWhereUniqueInput
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination Pagination Docs}
+     * 
+     * Take `±n` PortLeases from the position of the cursor.
+     */
+    take?: number
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination Pagination Docs}
+     * 
+     * Skip the first `n` PortLeases.
+     */
+    skip?: number
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/distinct Distinct Docs}
+     * 
+     * Filter by unique combinations of PortLeases.
+     */
+    distinct?: PortLeaseScalarFieldEnum | PortLeaseScalarFieldEnum[]
+  }
+
+  /**
+   * PortLease findMany
+   */
+  export type PortLeaseFindManyArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the PortLease
+     */
+    select?: PortLeaseSelect<ExtArgs> | null
+    /**
+     * Filter, which PortLeases to fetch.
+     */
+    where?: PortLeaseWhereInput
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/sorting Sorting Docs}
+     * 
+     * Determine the order of PortLeases to fetch.
+     */
+    orderBy?: PortLeaseOrderByWithRelationInput | PortLeaseOrderByWithRelationInput[]
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination#cursor-based-pagination Cursor Docs}
+     * 
+     * Sets the position for listing PortLeases.
+     */
+    cursor?: PortLeaseWhereUniqueInput
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination Pagination Docs}
+     * 
+     * Take `±n` PortLeases from the position of the cursor.
+     */
+    take?: number
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination Pagination Docs}
+     * 
+     * Skip the first `n` PortLeases.
+     */
+    skip?: number
+    distinct?: PortLeaseScalarFieldEnum | PortLeaseScalarFieldEnum[]
+  }
+
+  /**
+   * PortLease create
+   */
+  export type PortLeaseCreateArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the PortLease
+     */
+    select?: PortLeaseSelect<ExtArgs> | null
+    /**
+     * The data needed to create a PortLease.
+     */
+    data: XOR<PortLeaseCreateInput, PortLeaseUncheckedCreateInput>
+  }
+
+  /**
+   * PortLease createMany
+   */
+  export type PortLeaseCreateManyArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * The data used to create many PortLeases.
+     */
+    data: PortLeaseCreateManyInput | PortLeaseCreateManyInput[]
+  }
+
+  /**
+   * PortLease createManyAndReturn
+   */
+  export type PortLeaseCreateManyAndReturnArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the PortLease
+     */
+    select?: PortLeaseSelectCreateManyAndReturn<ExtArgs> | null
+    /**
+     * The data used to create many PortLeases.
+     */
+    data: PortLeaseCreateManyInput | PortLeaseCreateManyInput[]
+  }
+
+  /**
+   * PortLease update
+   */
+  export type PortLeaseUpdateArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the PortLease
+     */
+    select?: PortLeaseSelect<ExtArgs> | null
+    /**
+     * The data needed to update a PortLease.
+     */
+    data: XOR<PortLeaseUpdateInput, PortLeaseUncheckedUpdateInput>
+    /**
+     * Choose, which PortLease to update.
+     */
+    where: PortLeaseWhereUniqueInput
+  }
+
+  /**
+   * PortLease updateMany
+   */
+  export type PortLeaseUpdateManyArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * The data used to update PortLeases.
+     */
+    data: XOR<PortLeaseUpdateManyMutationInput, PortLeaseUncheckedUpdateManyInput>
+    /**
+     * Filter which PortLeases to update
+     */
+    where?: PortLeaseWhereInput
+  }
+
+  /**
+   * PortLease upsert
+   */
+  export type PortLeaseUpsertArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the PortLease
+     */
+    select?: PortLeaseSelect<ExtArgs> | null
+    /**
+     * The filter to search for the PortLease to update in case it exists.
+     */
+    where: PortLeaseWhereUniqueInput
+    /**
+     * In case the PortLease found by the `where` argument doesn't exist, create a new PortLease with this data.
+     */
+    create: XOR<PortLeaseCreateInput, PortLeaseUncheckedCreateInput>
+    /**
+     * In case the PortLease was found with the provided `where` argument, update it with this data.
+     */
+    update: XOR<PortLeaseUpdateInput, PortLeaseUncheckedUpdateInput>
+  }
+
+  /**
+   * PortLease delete
+   */
+  export type PortLeaseDeleteArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the PortLease
+     */
+    select?: PortLeaseSelect<ExtArgs> | null
+    /**
+     * Filter which PortLease to delete.
+     */
+    where: PortLeaseWhereUniqueInput
+  }
+
+  /**
+   * PortLease deleteMany
+   */
+  export type PortLeaseDeleteManyArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Filter which PortLeases to delete
+     */
+    where?: PortLeaseWhereInput
+  }
+
+  /**
+   * PortLease without action
+   */
+  export type PortLeaseDefaultArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the PortLease
+     */
+    select?: PortLeaseSelect<ExtArgs> | null
+  }
+
+
+  /**
    * Enums
    */
 
@@ -14528,6 +15548,18 @@ export namespace Prisma {
   };
 
   export type LocatorEtalonScalarFieldEnum = (typeof LocatorEtalonScalarFieldEnum)[keyof typeof LocatorEtalonScalarFieldEnum]
+
+
+  export const PortLeaseScalarFieldEnum: {
+    port: 'port',
+    purpose: 'purpose',
+    leasedToUdid: 'leasedToUdid',
+    leasedToPid: 'leasedToPid',
+    leasedAt: 'leasedAt',
+    expiresAt: 'expiresAt'
+  };
+
+  export type PortLeaseScalarFieldEnum = (typeof PortLeaseScalarFieldEnum)[keyof typeof PortLeaseScalarFieldEnum]
 
 
   export const SortOrder: {
@@ -15760,6 +16792,65 @@ export namespace Prisma {
     lastSeen?: DateTimeWithAggregatesFilter<"LocatorEtalon"> | Date | string
     createdAt?: DateTimeWithAggregatesFilter<"LocatorEtalon"> | Date | string
     updatedAt?: DateTimeWithAggregatesFilter<"LocatorEtalon"> | Date | string
+  }
+
+  export type PortLeaseWhereInput = {
+    AND?: PortLeaseWhereInput | PortLeaseWhereInput[]
+    OR?: PortLeaseWhereInput[]
+    NOT?: PortLeaseWhereInput | PortLeaseWhereInput[]
+    port?: IntFilter<"PortLease"> | number
+    purpose?: StringFilter<"PortLease"> | string
+    leasedToUdid?: StringFilter<"PortLease"> | string
+    leasedToPid?: IntNullableFilter<"PortLease"> | number | null
+    leasedAt?: FloatFilter<"PortLease"> | number
+    expiresAt?: FloatFilter<"PortLease"> | number
+  }
+
+  export type PortLeaseOrderByWithRelationInput = {
+    port?: SortOrder
+    purpose?: SortOrder
+    leasedToUdid?: SortOrder
+    leasedToPid?: SortOrderInput | SortOrder
+    leasedAt?: SortOrder
+    expiresAt?: SortOrder
+  }
+
+  export type PortLeaseWhereUniqueInput = Prisma.AtLeast<{
+    port?: number
+    AND?: PortLeaseWhereInput | PortLeaseWhereInput[]
+    OR?: PortLeaseWhereInput[]
+    NOT?: PortLeaseWhereInput | PortLeaseWhereInput[]
+    purpose?: StringFilter<"PortLease"> | string
+    leasedToUdid?: StringFilter<"PortLease"> | string
+    leasedToPid?: IntNullableFilter<"PortLease"> | number | null
+    leasedAt?: FloatFilter<"PortLease"> | number
+    expiresAt?: FloatFilter<"PortLease"> | number
+  }, "port">
+
+  export type PortLeaseOrderByWithAggregationInput = {
+    port?: SortOrder
+    purpose?: SortOrder
+    leasedToUdid?: SortOrder
+    leasedToPid?: SortOrderInput | SortOrder
+    leasedAt?: SortOrder
+    expiresAt?: SortOrder
+    _count?: PortLeaseCountOrderByAggregateInput
+    _avg?: PortLeaseAvgOrderByAggregateInput
+    _max?: PortLeaseMaxOrderByAggregateInput
+    _min?: PortLeaseMinOrderByAggregateInput
+    _sum?: PortLeaseSumOrderByAggregateInput
+  }
+
+  export type PortLeaseScalarWhereWithAggregatesInput = {
+    AND?: PortLeaseScalarWhereWithAggregatesInput | PortLeaseScalarWhereWithAggregatesInput[]
+    OR?: PortLeaseScalarWhereWithAggregatesInput[]
+    NOT?: PortLeaseScalarWhereWithAggregatesInput | PortLeaseScalarWhereWithAggregatesInput[]
+    port?: IntWithAggregatesFilter<"PortLease"> | number
+    purpose?: StringWithAggregatesFilter<"PortLease"> | string
+    leasedToUdid?: StringWithAggregatesFilter<"PortLease"> | string
+    leasedToPid?: IntNullableWithAggregatesFilter<"PortLease"> | number | null
+    leasedAt?: FloatWithAggregatesFilter<"PortLease"> | number
+    expiresAt?: FloatWithAggregatesFilter<"PortLease"> | number
   }
 
   export type BuildCreateInput = {
@@ -17151,6 +18242,69 @@ export namespace Prisma {
     updatedAt?: DateTimeFieldUpdateOperationsInput | Date | string
   }
 
+  export type PortLeaseCreateInput = {
+    port: number
+    purpose: string
+    leasedToUdid: string
+    leasedToPid?: number | null
+    leasedAt: number
+    expiresAt: number
+  }
+
+  export type PortLeaseUncheckedCreateInput = {
+    port: number
+    purpose: string
+    leasedToUdid: string
+    leasedToPid?: number | null
+    leasedAt: number
+    expiresAt: number
+  }
+
+  export type PortLeaseUpdateInput = {
+    port?: IntFieldUpdateOperationsInput | number
+    purpose?: StringFieldUpdateOperationsInput | string
+    leasedToUdid?: StringFieldUpdateOperationsInput | string
+    leasedToPid?: NullableIntFieldUpdateOperationsInput | number | null
+    leasedAt?: FloatFieldUpdateOperationsInput | number
+    expiresAt?: FloatFieldUpdateOperationsInput | number
+  }
+
+  export type PortLeaseUncheckedUpdateInput = {
+    port?: IntFieldUpdateOperationsInput | number
+    purpose?: StringFieldUpdateOperationsInput | string
+    leasedToUdid?: StringFieldUpdateOperationsInput | string
+    leasedToPid?: NullableIntFieldUpdateOperationsInput | number | null
+    leasedAt?: FloatFieldUpdateOperationsInput | number
+    expiresAt?: FloatFieldUpdateOperationsInput | number
+  }
+
+  export type PortLeaseCreateManyInput = {
+    port: number
+    purpose: string
+    leasedToUdid: string
+    leasedToPid?: number | null
+    leasedAt: number
+    expiresAt: number
+  }
+
+  export type PortLeaseUpdateManyMutationInput = {
+    port?: IntFieldUpdateOperationsInput | number
+    purpose?: StringFieldUpdateOperationsInput | string
+    leasedToUdid?: StringFieldUpdateOperationsInput | string
+    leasedToPid?: NullableIntFieldUpdateOperationsInput | number | null
+    leasedAt?: FloatFieldUpdateOperationsInput | number
+    expiresAt?: FloatFieldUpdateOperationsInput | number
+  }
+
+  export type PortLeaseUncheckedUpdateManyInput = {
+    port?: IntFieldUpdateOperationsInput | number
+    purpose?: StringFieldUpdateOperationsInput | string
+    leasedToUdid?: StringFieldUpdateOperationsInput | string
+    leasedToPid?: NullableIntFieldUpdateOperationsInput | number | null
+    leasedAt?: FloatFieldUpdateOperationsInput | number
+    expiresAt?: FloatFieldUpdateOperationsInput | number
+  }
+
   export type StringFilter<$PrismaModel = never> = {
     equals?: string | StringFieldRefInput<$PrismaModel>
     in?: string[]
@@ -18137,6 +19291,47 @@ export namespace Prisma {
     lastSeen?: SortOrder
     createdAt?: SortOrder
     updatedAt?: SortOrder
+  }
+
+  export type PortLeaseCountOrderByAggregateInput = {
+    port?: SortOrder
+    purpose?: SortOrder
+    leasedToUdid?: SortOrder
+    leasedToPid?: SortOrder
+    leasedAt?: SortOrder
+    expiresAt?: SortOrder
+  }
+
+  export type PortLeaseAvgOrderByAggregateInput = {
+    port?: SortOrder
+    leasedToPid?: SortOrder
+    leasedAt?: SortOrder
+    expiresAt?: SortOrder
+  }
+
+  export type PortLeaseMaxOrderByAggregateInput = {
+    port?: SortOrder
+    purpose?: SortOrder
+    leasedToUdid?: SortOrder
+    leasedToPid?: SortOrder
+    leasedAt?: SortOrder
+    expiresAt?: SortOrder
+  }
+
+  export type PortLeaseMinOrderByAggregateInput = {
+    port?: SortOrder
+    purpose?: SortOrder
+    leasedToUdid?: SortOrder
+    leasedToPid?: SortOrder
+    leasedAt?: SortOrder
+    expiresAt?: SortOrder
+  }
+
+  export type PortLeaseSumOrderByAggregateInput = {
+    port?: SortOrder
+    leasedToPid?: SortOrder
+    leasedAt?: SortOrder
+    expiresAt?: SortOrder
   }
 
   export type SessionCreateNestedManyWithoutBuildInput = {
@@ -19886,6 +21081,10 @@ export namespace Prisma {
      * @deprecated Use LocatorEtalonDefaultArgs instead
      */
     export type LocatorEtalonArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = LocatorEtalonDefaultArgs<ExtArgs>
+    /**
+     * @deprecated Use PortLeaseDefaultArgs instead
+     */
+    export type PortLeaseArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = PortLeaseDefaultArgs<ExtArgs>
 
   /**
    * Batch Payload for updateMany & deleteMany & createMany
