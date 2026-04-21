@@ -28,3 +28,8 @@ jobs:
               exit 1
             }
           echo "Schema and migrations are in sync."
+
+      - name: Generated client freshness
+        env:
+          DATABASE_URL: 'file:./freshness.db'
+        run: node scripts/check-client-freshness.js

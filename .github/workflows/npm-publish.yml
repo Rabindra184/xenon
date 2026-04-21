@@ -28,6 +28,11 @@ jobs:
             }
           echo "Schema and migrations are in sync."
 
+      - name: Generated client freshness
+        env:
+          DATABASE_URL: 'file:./freshness.db'
+        run: node scripts/check-client-freshness.js
+
   publish:
     needs: drift-check
     runs-on: ubuntu-latest
