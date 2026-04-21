@@ -16,6 +16,7 @@ import {
   setupCronCleanExpiredReservations,
   setupCronCleanPendingSessions,
   setupCronReleaseBlockedDevices,
+  setupCronSweepOrphanSessions,
   setupCronUpdateDeviceList,
   removeStaleDevices,
   updateDeviceList,
@@ -307,6 +308,9 @@ export class ServerManager {
       // 7. Start Session Heartbeat Service
       const { SessionHeartbeatService } = await import('./SessionHeartbeatService');
       Container.get(SessionHeartbeatService).start(pluginArgs);
+
+      // 8. Sweep orphaned sessions on a 30s cron
+      setupCronSweepOrphanSessions(pluginArgs.sessionHeartbeatIntervalMs || 30_000);
     }
   }
 }

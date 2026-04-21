@@ -696,6 +696,30 @@ export async function setupCronCleanupBuilds(pluginArgs: IPluginArgs) {
   });
 }
 
+let cronTimerSweepOrphanSessions: any;
+
+/**
+ * Periodically sweep sessions whose heartbeat has gone stale, marking them as
+ * failed and releasing their devices.
+ */
+export function setupCronSweepOrphanSessions(heartbeatIntervalMs: number) {
+  // Use dynamic require to avoid circular-import issues at module load time
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const { OrphanSweeper } = require('./services/OrphanSweeper') as { OrphanSweeper: new () => import('./services/OrphanSweeper').OrphanSweeper };
+  const sweeper = Container.get(OrphanSweeper);
+  const intervalMs = 30_000;
+  log.info(`Orphan session sweep scheduled every ${intervalMs}ms`);
+  if (cronTimerSweepOrphanSessions) {
+    clearInterval(cronTimerSweepOrphanSessions);
+  }
+  cronTimerSweepOrphanSessions = setInterval(() => {
+    sweeper.sweep({ heartbeatIntervalMs }).catch((err: any) => {
+      log.error(`Orphan sweep crashed: ${err.message}`);
+    });
+  }, intervalMs);
+  return cronTimerSweepOrphanSessions;
+}
+
 /**
  * Principal Shutdown: Clears all background intervals and scheduled jobs
  * to prevent process hangs and handle leaks.
@@ -707,4 +731,5 @@ export function stopAllTimers() {
   if (cronTimerToCleanPendingSessions) clearInterval(cronTimerToCleanPendingSessions);
   if (cronTimerToCleanExpiredReservations) clearInterval(cronTimerToCleanExpiredReservations);
   if (cronTimerToCleanupBuilds) cronTimerToCleanupBuilds.cancel();
+  if (cronTimerSweepOrphanSessions) clearInterval(cronTimerSweepOrphanSessions);
 }
