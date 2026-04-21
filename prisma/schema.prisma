@@ -230,6 +230,7 @@ model PortLease {
 
   @@index([purpose, expiresAt])
   @@index([leasedToUdid])
+  @@index([expiresAt])
 }
 
 model ApiKey {
