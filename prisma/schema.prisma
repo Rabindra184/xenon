@@ -164,6 +164,7 @@ model Device {
   sessionProgress              String?  @default("")
   totalHealedCount             Int?     @default(0)
   ip                           String?  @default("")
+  cpuArchitecture              String?
 
   @@id([udid, host])
 }

@@ -171,6 +171,8 @@ export class ServerManager {
 
   private async initializeCoreSubsystems(pluginArgs: IPluginArgs) {
     await initializeStorage();
+    const { runMigrations } = await import('../scripts/run-migrations');
+    await runMigrations();
     await DeviceStoreFactory.getStore().clearStorage();
   }
 
