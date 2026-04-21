@@ -1,4 +1,5 @@
 import { Container, Service } from 'typedi';
+import * as os from 'os';
 import { OrphanSweeper } from './OrphanSweeper';
 import { v4 as uuidv4 } from 'uuid';
 import { redactSecrets } from '../helpers';
@@ -84,18 +85,20 @@ export class ServerManager {
       log.info(`🔄 Successfully recovered ${recoveredCount} remote sessions`);
     }
 
-    // Cleanup any remaining zombie sessions
-    const { cleanupZombieSessions } = await import('../dashboard/services/session-service');
-    await cleanupZombieSessions(recoveredSessionIds);
-
-    // Reconcile orphans left by a prior PID on this host
+    // Sweep prior-PID orphans on this host BEFORE the broad zombie cleanup,
+    // so heartbeat_pid/host scoping can protect other nodes' running sessions.
     try {
       await Container.get(OrphanSweeper).sweep({
         heartbeatIntervalMs: pluginArgs.sessionHeartbeatIntervalMs || 30_000,
+        hostScope: { host: os.hostname(), excludePid: process.pid },
       });
     } catch (err: any) {
       this.logger.warn(`Startup orphan reconciliation failed: ${err.message}`);
     }
+
+    // Cleanup any remaining zombie sessions (cross-node fallback)
+    const { cleanupZombieSessions } = await import('../dashboard/services/session-service');
+    await cleanupZombieSessions(recoveredSessionIds);
 
     // Initial device discovery poll to start managers and trackers
     await updateDeviceList(
