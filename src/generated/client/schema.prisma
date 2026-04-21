@@ -170,11 +170,11 @@ model Device {
   totalHealedCount             Int?     @default(0)
   ip                           String?  @default("")
   cpuArchitecture              String?
-  owning_session_id            String?
-  locked_at                    Float?
+  owningSessionId              String?  @map("owning_session_id")
+  lockedAt                     Float?   @map("locked_at")
 
   @@id([udid, host])
-  @@index([owning_session_id])
+  @@index([owningSessionId])
 }
 
 model PendingSession {
