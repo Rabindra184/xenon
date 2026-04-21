@@ -73,7 +73,7 @@ export class SessionHeartbeatService {
 
         if (result.isHealthy) {
           // Recovery: Reset failure count and restore HEALTHY state
-          if (this.failureCounts.get(sessionId) || 0 > 0) {
+          if ((this.failureCounts.get(sessionId) || 0) > 0) {
             this.log.info(`✨ Session ${sessionId} recovered and is now HEALTHY.`);
           }
           this.failureCounts.set(sessionId, 0);
