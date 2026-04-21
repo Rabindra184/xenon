@@ -3,6 +3,8 @@ import { expect } from 'chai';
 import sinon from 'sinon';
 import { getPrismaClient } from '../../src/prisma';
 import { setupTestContainer, resetTestContainer } from '../helpers/test-container';
+import { DASHBORD_EVENT_MANAGER } from '../../src/dashboard/event-manager';
+import { SessionStatus } from '../../src/types/SessionStatus';
 
 describe('OrphanSweeper', () => {
   let prismaClient: ReturnType<typeof getPrismaClient>;
@@ -77,6 +79,8 @@ describe('OrphanSweeper', () => {
     // heartbeatIntervalMs = 30_000, staleMultiplier = 3 (default)
     // cutoff = now - 3 * 30000 = now - 90000ms = 90 seconds ago
     // Our stale session has last_heartbeat_at = 5 minutes ago → should be swept
+    const eventSpy = sinon.spy(DASHBORD_EVENT_MANAGER, 'onSessionStopped');
+
     const { OrphanSweeper } = await import('../../src/services/OrphanSweeper');
     const sweeper = new OrphanSweeper();
     await sweeper.sweep({ heartbeatIntervalMs: 30_000 });
@@ -94,6 +98,14 @@ describe('OrphanSweeper', () => {
     });
     expect(device!.busy).to.equal(false);
     expect(device!.owningSessionId).to.equal(null);
+
+    expect(
+      eventSpy.calledWith(
+        sinon.match.string,
+        SessionStatus.FAILED,
+        sinon.match(/heartbeat timeout/i),
+      ),
+    ).to.be.true;
   });
 
   it('leaves fresh sessions alone', async () => {
