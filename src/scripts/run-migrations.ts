@@ -7,9 +7,10 @@ import { config } from '../config';
 
 function resolvePluginRoot(): string {
   let dir = __dirname;
-  for (let i = 0; i < 6; i++) {
+  for (let i = 0; i < 8; i++) {
     const pkgJson = path.join(dir, 'package.json');
-    if (fs.existsSync(pkgJson)) {
+    const schema = path.join(dir, 'prisma', 'schema.prisma');
+    if (fs.existsSync(pkgJson) && fs.existsSync(schema)) {
       try {
         const pkg = JSON.parse(fs.readFileSync(pkgJson, 'utf8'));
         if (pkg.name === '@xenon-device-management/xenon' || pkg.name === 'xenon') {
