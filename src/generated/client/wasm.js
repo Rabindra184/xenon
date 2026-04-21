@@ -326,6 +326,17 @@ exports.Prisma.PortLeaseScalarFieldEnum = {
   expiresAt: 'expiresAt'
 };
 
+exports.Prisma.ApiKeyScalarFieldEnum = {
+  id: 'id',
+  name: 'name',
+  keyHash: 'keyHash',
+  scopes: 'scopes',
+  rateLimit: 'rateLimit',
+  createdAt: 'createdAt',
+  revokedAt: 'revokedAt',
+  lastUsedAt: 'lastUsedAt'
+};
+
 exports.Prisma.SortOrder = {
   asc: 'asc',
   desc: 'desc'
@@ -350,7 +361,8 @@ exports.Prisma.ModelName = {
   WebhookConfig: 'WebhookConfig',
   WebConfig: 'WebConfig',
   LocatorEtalon: 'LocatorEtalon',
-  PortLease: 'PortLease'
+  PortLease: 'PortLease',
+  ApiKey: 'ApiKey'
 };
 
 /**

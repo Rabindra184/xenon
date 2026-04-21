@@ -228,3 +228,14 @@ model PortLease {
   @@index([purpose, expiresAt])
   @@index([leasedToUdid])
 }
+
+model ApiKey {
+  id          String    @id @default(uuid())
+  name        String
+  keyHash     String    @unique
+  scopes      String
+  rateLimit   Int       @default(300)
+  createdAt   DateTime  @default(now())
+  revokedAt   DateTime?
+  lastUsedAt  DateTime?
+}
