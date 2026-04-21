@@ -707,7 +707,7 @@ export function setupCronSweepOrphanSessions(heartbeatIntervalMs: number) {
   // eslint-disable-next-line @typescript-eslint/no-var-requires
   const { OrphanSweeper } = require('./services/OrphanSweeper') as { OrphanSweeper: new () => import('./services/OrphanSweeper').OrphanSweeper };
   const sweeper = Container.get(OrphanSweeper);
-  const intervalMs = 30_000;
+  const intervalMs = heartbeatIntervalMs; // sweep as often as sessions heartbeat
   log.info(`Orphan session sweep scheduled every ${intervalMs}ms`);
   if (cronTimerSweepOrphanSessions) {
     clearInterval(cronTimerSweepOrphanSessions);
