@@ -1,0 +1,27 @@
+name: Schema Drift Check
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+jobs:
+  drift-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - run: npm ci
+      - name: Prisma migrate diff (migrations ↔ schema)
+        env:
+          DATABASE_URL: 'file:./ci-check.db'
+        run: |
+          npx prisma migrate diff \
+            --from-migrations prisma/migrations \
+            --to-schema-datamodel prisma/schema.prisma \
+            --exit-code \
+            && echo "Schema and migrations are in sync." \
+            || (echo "::error::Schema drift detected. Run 'npm run db:generate -- --name <change>' to add a migration."; exit 1)
