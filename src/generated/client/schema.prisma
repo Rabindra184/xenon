@@ -51,6 +51,8 @@ model Session {
   Profiling               Profiling[]
   build                   Build?       @relation(fields: [build_id], references: [id])
   SessionLog              SessionLog[]
+
+  @@index([status, last_heartbeat_at])
 }
 
 model SessionLog {
@@ -172,6 +174,7 @@ model Device {
   locked_at                    Float?
 
   @@id([udid, host])
+  @@index([owning_session_id])
 }
 
 model PendingSession {
