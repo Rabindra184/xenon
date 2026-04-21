@@ -86,7 +86,7 @@ When the Appium process crashes or is killed, sessions in the `running` state re
 ### Flow
 
 1. **Heartbeat writer** (extends existing `SessionHeartbeatService`): every `sessionHeartbeatIntervalMs` (default 30s), for each in-memory session, UPSERT `{last_heartbeat_at: now, heartbeat_pid: process.pid, heartbeat_host: os.hostname()}`.
-2. **Orphan sweeper** (new cron, `setupCronSweepOrphanSessions`, 60s period):
+2. **Orphan sweeper** (new cron, `setupCronSweepOrphanSessions`, 30s period — chosen so worst-case orphan detection = `3 × heartbeat (90s) + sweep interval (30s)` = ~120s):
    - Find sessions where `status = 'running'` AND `last_heartbeat_at < now - 3 × heartbeatIntervalMs`.
    - For each: mark `status = 'failed'`, set `failure_reason = 'Session heartbeat timeout'`, set `endTime = now`, release device (`busy = false`, `owning_session_id = null`, `locked_at = null`). Emit `session.failed` webhook and socket event.
 3. **Startup reconciliation** (in `ServerManager.updateServer`, after existing `recoverActiveSessions`):
@@ -245,7 +245,7 @@ model ApiKey {
   name        String
   keyHash     String    @unique                 // sha256 hex of raw key
   scopes      String                            // comma-separated: 'read' | 'sessions' | 'devices' | 'admin'
-  rateLimit   Int       @default(60)            // requests per minute
+  rateLimit   Int       @default(300)           // requests per minute (5 rps; sized for parallel CI with status polls)
   createdAt   DateTime  @default(now())
   revokedAt   DateTime?
   lastUsedAt  DateTime?
@@ -264,11 +264,16 @@ On `/xenon/api/*` (registered in `src/app/index.ts`, before route handlers):
    - `admin`: `POST/DELETE /apikeys`, `POST /webhooks`, `POST /nodes`, `GET /processes`
 3. **`rateLimitMiddleware`** — in-memory token bucket per `apiKey.id`. Refill `rateLimit / 60` tokens per second, capacity `rateLimit`. Exhausted → 429 with `Retry-After` header.
 
-### Exemptions
+### Exemptions and hub-node channel
 
 - `/xenon/` (dashboard static assets) — no auth.
 - `/xenon/api/health` — no auth, no rate limit (load balancer probe).
-- `/xenon/api/nodes/register` — uses existing hub-node shared secret (verify in implementation whether `pluginArgs.nodeSecret` exists; if not, introduce it in this spec's scope).
+- **Hub-node channel** (`/xenon/api/register`, `/xenon/api/unblock`, and any future node→hub call):
+  - Verified in code: no shared secret exists today; `NodeDevices.postDevicesToHub` sends plain HTTP.
+  - This spec introduces a shared secret. New CLI arg `--plugin-xenon-node-secret` (also `XENON_NODE_SECRET` env). Both hub and node require identical value at startup.
+  - Node attaches `X-Xenon-Node-Secret: <value>` on every request to hub.
+  - New `nodeSecretMiddleware` registered on hub-node routes before route handlers. Constant-time compare. Reject 401 on mismatch. When the CLI arg is unset, the middleware logs WARN every 60s and allows traffic (back-compat for single-node installs); when set, it enforces.
+  - `nodeSecretMiddleware` runs **instead of** `apiKeyMiddleware` on these routes (different trust model; nodes are operators, not users).
 
 ### Bootstrap flow
 
@@ -283,10 +288,11 @@ On first plugin start, if `ApiKey` table is empty:
 
 ### Dashboard authentication
 
-- First-load flow: dashboard reads `document.cookie` for `xenon_dashboard_key`.
-- If missing, show a "Paste your API key" screen. On submit, POST to `/xenon/api/auth/dashboard-session` (unauth, rate-limited separately, accepts key in body) → returns a short-lived (24h) HttpOnly cookie bound to the key's scopes.
-- Socket.io connection upgrades with that cookie.
+- First-load flow: dashboard reads `document.cookie` for `xenon_dashboard_session`.
+- If missing, show a "Paste your API key" screen. On submit, POST to `/xenon/api/auth/dashboard-session` (unauth, rate-limited separately to 10/min per IP, accepts key in body) → returns a short-lived (24h) HttpOnly cookie bound to the key's scopes.
+- Socket.io connection upgrades with that cookie (handshake via `auth: { sessionToken }`).
 - No changes to dashboard visual design.
+- SSO (Google, Okta, SAML) is explicitly out of scope and noted as future work; paste-key is acceptable for phase 1 because Xenon is an internal dev tool, not a public SaaS.
 
 ### Config
 
@@ -294,14 +300,17 @@ New plugin CLI args:
 
 - `--plugin-xenon-auth-disabled` (default `false`) — for local dev only; logs a WARN every 60s when enabled.
 - `--plugin-xenon-bootstrap-key-path` (default `${cacheDir}/bootstrap-key.txt`).
+- `--plugin-xenon-node-secret` (default unset; also reads `XENON_NODE_SECRET` env). Shared string required on both hub and node to authenticate node→hub calls. When unset, the middleware logs WARN every 60s and permits traffic for single-node installs.
 
 ### Testing
 
 - Unit: middleware rejects missing/wrong/revoked keys.
 - Unit: scopeGuard rejects insufficient scopes.
 - Unit: token bucket enforces rate limit and refills correctly.
+- Unit: `nodeSecretMiddleware` rejects wrong/missing header when secret is set; permits with a throttled WARN when unset.
 - Integration: full dashboard login flow with a real API key.
-- Migration test: upgrading a node that had no auth adds bootstrap key and logs it.
+- Integration: hub-node round-trip with matching and mismatching node secrets.
+- Migration test: upgrading a node that had no auth adds bootstrap key and writes the file.
 
 ---
 
@@ -348,12 +357,14 @@ Single minor version bump (1.2.0). No staged rollout; no feature flag. Release n
 
 ---
 
-## Open questions for reviewer
+## Resolved decisions
 
-1. **Scope of `nodeSecret`** — confirm whether hub-node handshake today has a shared-secret concept to reuse, or whether §5 needs to introduce it.
-2. **Dashboard auth UX** — OK with a paste-key screen on first load? Or prefer a Google-SSO-style deferred design (not in scope here)?
-3. **Rate limit default of 60/min** — reasonable for most CI pipelines? Adjust via `ApiKey.rateLimit`.
-4. **Sweeper interval** — 60s acceptable, or should orphan detection be sub-minute for tighter device turnaround?
+These were open during drafting; resolved after codebase inspection and usage-pattern analysis.
+
+1. **Hub-node shared secret** — verified the current code path (`NodeDevices.postDevicesToHub`, `/xenon/api/register`) has no auth. This spec introduces `--plugin-xenon-node-secret`, with a back-compat WARN-and-permit mode when unset so single-node installs keep working.
+2. **Dashboard auth UX** — paste-key screen. SSO deferred (no identity store exists; added as future work in this doc).
+3. **Rate limit default** — raised from an initial 60/min proposal to **300/min** (5 rps). One req/sec is too tight for parallel CI with 8-device pools and status polling; 5 rps is still safe against runaway scripts. Operators tune per key.
+4. **Orphan sweeper interval** — reduced from 60s to **30s**. Worst-case orphan detection = `3 × heartbeat (90s) + sweep interval (30s)` = ~2min, bounded and acceptable. Sweep query is indexed on `status + last_heartbeat_at`; DB cost is negligible.
 
 ---
 
