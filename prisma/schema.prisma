@@ -168,6 +168,8 @@ model Device {
   totalHealedCount             Int?     @default(0)
   ip                           String?  @default("")
   cpuArchitecture              String?
+  owning_session_id            String?
+  locked_at                    Float?
 
   @@id([udid, host])
 }

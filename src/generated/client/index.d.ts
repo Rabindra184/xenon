@@ -8318,6 +8318,7 @@ export namespace Prisma {
     batteryLevel: number | null
     reservedUntil: number | null
     totalHealedCount: number | null
+    locked_at: number | null
   }
 
   export type DeviceSumAggregateOutputType = {
@@ -8335,6 +8336,7 @@ export namespace Prisma {
     batteryLevel: number | null
     reservedUntil: number | null
     totalHealedCount: number | null
+    locked_at: number | null
   }
 
   export type DeviceMinAggregateOutputType = {
@@ -8386,6 +8388,8 @@ export namespace Prisma {
     totalHealedCount: number | null
     ip: string | null
     cpuArchitecture: string | null
+    owning_session_id: string | null
+    locked_at: number | null
   }
 
   export type DeviceMaxAggregateOutputType = {
@@ -8437,6 +8441,8 @@ export namespace Prisma {
     totalHealedCount: number | null
     ip: string | null
     cpuArchitecture: string | null
+    owning_session_id: string | null
+    locked_at: number | null
   }
 
   export type DeviceCountAggregateOutputType = {
@@ -8488,6 +8494,8 @@ export namespace Prisma {
     totalHealedCount: number
     ip: number
     cpuArchitecture: number
+    owning_session_id: number
+    locked_at: number
     _all: number
   }
 
@@ -8507,6 +8515,7 @@ export namespace Prisma {
     batteryLevel?: true
     reservedUntil?: true
     totalHealedCount?: true
+    locked_at?: true
   }
 
   export type DeviceSumAggregateInputType = {
@@ -8524,6 +8533,7 @@ export namespace Prisma {
     batteryLevel?: true
     reservedUntil?: true
     totalHealedCount?: true
+    locked_at?: true
   }
 
   export type DeviceMinAggregateInputType = {
@@ -8575,6 +8585,8 @@ export namespace Prisma {
     totalHealedCount?: true
     ip?: true
     cpuArchitecture?: true
+    owning_session_id?: true
+    locked_at?: true
   }
 
   export type DeviceMaxAggregateInputType = {
@@ -8626,6 +8638,8 @@ export namespace Prisma {
     totalHealedCount?: true
     ip?: true
     cpuArchitecture?: true
+    owning_session_id?: true
+    locked_at?: true
   }
 
   export type DeviceCountAggregateInputType = {
@@ -8677,6 +8691,8 @@ export namespace Prisma {
     totalHealedCount?: true
     ip?: true
     cpuArchitecture?: true
+    owning_session_id?: true
+    locked_at?: true
     _all?: true
   }
 
@@ -8815,6 +8831,8 @@ export namespace Prisma {
     totalHealedCount: number | null
     ip: string | null
     cpuArchitecture: string | null
+    owning_session_id: string | null
+    locked_at: number | null
     _count: DeviceCountAggregateOutputType | null
     _avg: DeviceAvgAggregateOutputType | null
     _sum: DeviceSumAggregateOutputType | null
@@ -8885,6 +8903,8 @@ export namespace Prisma {
     totalHealedCount?: boolean
     ip?: boolean
     cpuArchitecture?: boolean
+    owning_session_id?: boolean
+    locked_at?: boolean
   }, ExtArgs["result"]["device"]>
 
   export type DeviceSelectCreateManyAndReturn<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = $Extensions.GetSelect<{
@@ -8936,6 +8956,8 @@ export namespace Prisma {
     totalHealedCount?: boolean
     ip?: boolean
     cpuArchitecture?: boolean
+    owning_session_id?: boolean
+    locked_at?: boolean
   }, ExtArgs["result"]["device"]>
 
   export type DeviceSelectScalar = {
@@ -8987,6 +9009,8 @@ export namespace Prisma {
     totalHealedCount?: boolean
     ip?: boolean
     cpuArchitecture?: boolean
+    owning_session_id?: boolean
+    locked_at?: boolean
   }
 
 
@@ -9042,6 +9066,8 @@ export namespace Prisma {
       totalHealedCount: number | null
       ip: string | null
       cpuArchitecture: string | null
+      owning_session_id: string | null
+      locked_at: number | null
     }, ExtArgs["result"]["device"]>
     composites: {}
   }
@@ -9483,6 +9509,8 @@ export namespace Prisma {
     readonly totalHealedCount: FieldRef<"Device", 'Int'>
     readonly ip: FieldRef<"Device", 'String'>
     readonly cpuArchitecture: FieldRef<"Device", 'String'>
+    readonly owning_session_id: FieldRef<"Device", 'String'>
+    readonly locked_at: FieldRef<"Device", 'Float'>
   }
     
 
@@ -14436,7 +14464,9 @@ export namespace Prisma {
     sessionProgress: 'sessionProgress',
     totalHealedCount: 'totalHealedCount',
     ip: 'ip',
-    cpuArchitecture: 'cpuArchitecture'
+    cpuArchitecture: 'cpuArchitecture',
+    owning_session_id: 'owning_session_id',
+    locked_at: 'locked_at'
   };
 
   export type DeviceScalarFieldEnum = (typeof DeviceScalarFieldEnum)[keyof typeof DeviceScalarFieldEnum]
@@ -15225,6 +15255,8 @@ export namespace Prisma {
     totalHealedCount?: IntNullableFilter<"Device"> | number | null
     ip?: StringNullableFilter<"Device"> | string | null
     cpuArchitecture?: StringNullableFilter<"Device"> | string | null
+    owning_session_id?: StringNullableFilter<"Device"> | string | null
+    locked_at?: FloatNullableFilter<"Device"> | number | null
   }
 
   export type DeviceOrderByWithRelationInput = {
@@ -15276,6 +15308,8 @@ export namespace Prisma {
     totalHealedCount?: SortOrderInput | SortOrder
     ip?: SortOrderInput | SortOrder
     cpuArchitecture?: SortOrderInput | SortOrder
+    owning_session_id?: SortOrderInput | SortOrder
+    locked_at?: SortOrderInput | SortOrder
   }
 
   export type DeviceWhereUniqueInput = Prisma.AtLeast<{
@@ -15331,6 +15365,8 @@ export namespace Prisma {
     totalHealedCount?: IntNullableFilter<"Device"> | number | null
     ip?: StringNullableFilter<"Device"> | string | null
     cpuArchitecture?: StringNullableFilter<"Device"> | string | null
+    owning_session_id?: StringNullableFilter<"Device"> | string | null
+    locked_at?: FloatNullableFilter<"Device"> | number | null
   }, "udid_host">
 
   export type DeviceOrderByWithAggregationInput = {
@@ -15382,6 +15418,8 @@ export namespace Prisma {
     totalHealedCount?: SortOrderInput | SortOrder
     ip?: SortOrderInput | SortOrder
     cpuArchitecture?: SortOrderInput | SortOrder
+    owning_session_id?: SortOrderInput | SortOrder
+    locked_at?: SortOrderInput | SortOrder
     _count?: DeviceCountOrderByAggregateInput
     _avg?: DeviceAvgOrderByAggregateInput
     _max?: DeviceMaxOrderByAggregateInput
@@ -15441,6 +15479,8 @@ export namespace Prisma {
     totalHealedCount?: IntNullableWithAggregatesFilter<"Device"> | number | null
     ip?: StringNullableWithAggregatesFilter<"Device"> | string | null
     cpuArchitecture?: StringNullableWithAggregatesFilter<"Device"> | string | null
+    owning_session_id?: StringNullableWithAggregatesFilter<"Device"> | string | null
+    locked_at?: FloatNullableWithAggregatesFilter<"Device"> | number | null
   }
 
   export type PendingSessionWhereInput = {
@@ -16494,6 +16534,8 @@ export namespace Prisma {
     totalHealedCount?: number | null
     ip?: string | null
     cpuArchitecture?: string | null
+    owning_session_id?: string | null
+    locked_at?: number | null
   }
 
   export type DeviceUncheckedCreateInput = {
@@ -16545,6 +16587,8 @@ export namespace Prisma {
     totalHealedCount?: number | null
     ip?: string | null
     cpuArchitecture?: string | null
+    owning_session_id?: string | null
+    locked_at?: number | null
   }
 
   export type DeviceUpdateInput = {
@@ -16596,6 +16640,8 @@ export namespace Prisma {
     totalHealedCount?: NullableIntFieldUpdateOperationsInput | number | null
     ip?: NullableStringFieldUpdateOperationsInput | string | null
     cpuArchitecture?: NullableStringFieldUpdateOperationsInput | string | null
+    owning_session_id?: NullableStringFieldUpdateOperationsInput | string | null
+    locked_at?: NullableFloatFieldUpdateOperationsInput | number | null
   }
 
   export type DeviceUncheckedUpdateInput = {
@@ -16647,6 +16693,8 @@ export namespace Prisma {
     totalHealedCount?: NullableIntFieldUpdateOperationsInput | number | null
     ip?: NullableStringFieldUpdateOperationsInput | string | null
     cpuArchitecture?: NullableStringFieldUpdateOperationsInput | string | null
+    owning_session_id?: NullableStringFieldUpdateOperationsInput | string | null
+    locked_at?: NullableFloatFieldUpdateOperationsInput | number | null
   }
 
   export type DeviceCreateManyInput = {
@@ -16698,6 +16746,8 @@ export namespace Prisma {
     totalHealedCount?: number | null
     ip?: string | null
     cpuArchitecture?: string | null
+    owning_session_id?: string | null
+    locked_at?: number | null
   }
 
   export type DeviceUpdateManyMutationInput = {
@@ -16749,6 +16799,8 @@ export namespace Prisma {
     totalHealedCount?: NullableIntFieldUpdateOperationsInput | number | null
     ip?: NullableStringFieldUpdateOperationsInput | string | null
     cpuArchitecture?: NullableStringFieldUpdateOperationsInput | string | null
+    owning_session_id?: NullableStringFieldUpdateOperationsInput | string | null
+    locked_at?: NullableFloatFieldUpdateOperationsInput | number | null
   }
 
   export type DeviceUncheckedUpdateManyInput = {
@@ -16800,6 +16852,8 @@ export namespace Prisma {
     totalHealedCount?: NullableIntFieldUpdateOperationsInput | number | null
     ip?: NullableStringFieldUpdateOperationsInput | string | null
     cpuArchitecture?: NullableStringFieldUpdateOperationsInput | string | null
+    owning_session_id?: NullableStringFieldUpdateOperationsInput | string | null
+    locked_at?: NullableFloatFieldUpdateOperationsInput | number | null
   }
 
   export type PendingSessionCreateInput = {
@@ -17776,6 +17830,8 @@ export namespace Prisma {
     totalHealedCount?: SortOrder
     ip?: SortOrder
     cpuArchitecture?: SortOrder
+    owning_session_id?: SortOrder
+    locked_at?: SortOrder
   }
 
   export type DeviceAvgOrderByAggregateInput = {
@@ -17793,6 +17849,7 @@ export namespace Prisma {
     batteryLevel?: SortOrder
     reservedUntil?: SortOrder
     totalHealedCount?: SortOrder
+    locked_at?: SortOrder
   }
 
   export type DeviceMaxOrderByAggregateInput = {
@@ -17844,6 +17901,8 @@ export namespace Prisma {
     totalHealedCount?: SortOrder
     ip?: SortOrder
     cpuArchitecture?: SortOrder
+    owning_session_id?: SortOrder
+    locked_at?: SortOrder
   }
 
   export type DeviceMinOrderByAggregateInput = {
@@ -17895,6 +17954,8 @@ export namespace Prisma {
     totalHealedCount?: SortOrder
     ip?: SortOrder
     cpuArchitecture?: SortOrder
+    owning_session_id?: SortOrder
+    locked_at?: SortOrder
   }
 
   export type DeviceSumOrderByAggregateInput = {
@@ -17912,6 +17973,7 @@ export namespace Prisma {
     batteryLevel?: SortOrder
     reservedUntil?: SortOrder
     totalHealedCount?: SortOrder
+    locked_at?: SortOrder
   }
 
   export type FloatWithAggregatesFilter<$PrismaModel = never> = {

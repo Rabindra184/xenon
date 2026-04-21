@@ -269,7 +269,9 @@ exports.Prisma.DeviceScalarFieldEnum = {
   sessionProgress: 'sessionProgress',
   totalHealedCount: 'totalHealedCount',
   ip: 'ip',
-  cpuArchitecture: 'cpuArchitecture'
+  cpuArchitecture: 'cpuArchitecture',
+  owning_session_id: 'owning_session_id',
+  locked_at: 'locked_at'
 };
 
 exports.Prisma.PendingSessionScalarFieldEnum = {
