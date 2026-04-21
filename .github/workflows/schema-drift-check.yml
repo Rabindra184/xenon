@@ -14,6 +14,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
+          cache: 'npm'
       - run: npm ci
       - name: Prisma migrate diff (migrations ↔ schema)
         env:
@@ -22,6 +23,8 @@ jobs:
           npx prisma migrate diff \
             --from-migrations prisma/migrations \
             --to-schema-datamodel prisma/schema.prisma \
-            --exit-code \
-            && echo "Schema and migrations are in sync." \
-            || (echo "::error::Schema drift detected. Run 'npm run db:generate -- --name <change>' to add a migration."; exit 1)
+            --exit-code || {
+              echo "::error::Schema drift detected. Run 'npm run db:generate -- --name <change>' to add a migration."
+              exit 1
+            }
+          echo "Schema and migrations are in sync."
