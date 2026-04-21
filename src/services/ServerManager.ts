@@ -1,4 +1,5 @@
 import { Container, Service } from 'typedi';
+import { OrphanSweeper } from './OrphanSweeper';
 import { v4 as uuidv4 } from 'uuid';
 import { redactSecrets } from '../helpers';
 import ip from 'ip';
@@ -86,6 +87,15 @@ export class ServerManager {
     // Cleanup any remaining zombie sessions
     const { cleanupZombieSessions } = await import('../dashboard/services/session-service');
     await cleanupZombieSessions(recoveredSessionIds);
+
+    // Reconcile orphans left by a prior PID on this host
+    try {
+      await Container.get(OrphanSweeper).sweep({
+        heartbeatIntervalMs: pluginArgs.sessionHeartbeatIntervalMs || 30_000,
+      });
+    } catch (err: any) {
+      this.logger.warn(`Startup orphan reconciliation failed: ${err.message}`);
+    }
 
     // Initial device discovery poll to start managers and trackers
     await updateDeviceList(
