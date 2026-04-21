@@ -49,14 +49,19 @@ export async function runMigrations(): Promise<void> {
   fs.mkdirSync(dbDir, { recursive: true });
 
   const { cmd, prefix } = resolvePrismaInvocation(rootDir);
-  const args = [...prefix, 'migrate', 'deploy', '--schema', schemaPath];
   const env = { ...process.env, DATABASE_URL: config.databaseUrl };
+  const isSqlite = config.databaseProvider === 'sqlite';
+  const args = isSqlite
+    ? [...prefix, 'db', 'push', '--skip-generate', '--accept-data-loss', '--schema', schemaPath]
+    : [...prefix, 'migrate', 'deploy', '--schema', schemaPath];
   try {
-    log.info(`[DBMigrate] Applying pending migrations (${config.databaseProvider})...`);
+    log.info(
+      `[DBMigrate] Syncing database schema (${config.databaseProvider}, ${isSqlite ? 'db push' : 'migrate deploy'})...`,
+    );
     execFileSync(cmd, args, { env, cwd: rootDir, stdio: 'pipe' });
-    log.info('[DBMigrate] Migrations up-to-date.');
+    log.info('[DBMigrate] Database schema in sync.');
   } catch (err: any) {
     const msg = err?.stderr?.toString() || err?.message || String(err);
-    log.error(`[DBMigrate] Auto-migrate failed: ${msg}`);
+    log.error(`[DBMigrate] Auto-sync failed: ${msg}`);
   }
 }
