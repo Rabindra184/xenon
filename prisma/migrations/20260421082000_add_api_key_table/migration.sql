@@ -1,5 +1,5 @@
 -- CreateTable
-CREATE TABLE "ApiKey" (
+CREATE TABLE IF NOT EXISTS "ApiKey" (
     "id" TEXT NOT NULL PRIMARY KEY,
     "name" TEXT NOT NULL,
     "keyHash" TEXT NOT NULL,
@@ -11,4 +11,4 @@ CREATE TABLE "ApiKey" (
 );
 
 -- CreateIndex
-CREATE UNIQUE INDEX "ApiKey_keyHash_key" ON "ApiKey"("keyHash");
+CREATE UNIQUE INDEX IF NOT EXISTS "ApiKey_keyHash_key" ON "ApiKey"("keyHash");
