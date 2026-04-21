@@ -53,25 +53,27 @@ export class OrphanSweeper {
 
     for (const s of stale) {
       try {
-        await prisma.session.update({
-          where: { id: s.id },
-          data: {
-            status: 'failed',
-            failure_reason: 'Session heartbeat timeout',
-            endTime: new Date(),
-          },
-        });
+        await prisma.$transaction([
+          prisma.session.update({
+            where: { id: s.id },
+            data: {
+              status: 'failed',
+              failure_reason: 'Session heartbeat timeout',
+              endTime: new Date(),
+            },
+          }),
+          prisma.device.updateMany({
+            where: { udid: s.device_udid },
+            data: {
+              busy: false,
+              session_id: null,
+              owningSessionId: null,
+              lockedAt: null,
+            },
+          }),
+        ]);
 
-        await prisma.device.updateMany({
-          where: { udid: s.device_udid },
-          data: {
-            busy: false,
-            session_id: null,
-            owningSessionId: null,
-            lockedAt: null,
-          },
-        });
-
+        // Event emit stays outside the transaction (side-effect with own error boundary)
         await DASHBORD_EVENT_MANAGER.onSessionStopped(
           s.id,
           SessionStatus.FAILED,
