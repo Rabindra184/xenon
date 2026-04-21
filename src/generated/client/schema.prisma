@@ -44,6 +44,9 @@ model Session {
   ai_analysis             String?
   tags                    String?
   trace_id                String?
+  last_heartbeat_at       DateTime?
+  heartbeat_pid           Int?
+  heartbeat_host          String?
   Log                     Log[]
   Profiling               Profiling[]
   build                   Build?       @relation(fields: [build_id], references: [id])

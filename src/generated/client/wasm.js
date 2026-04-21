@@ -152,7 +152,10 @@ exports.Prisma.SessionScalarFieldEnum = {
   failure_category: 'failure_category',
   ai_analysis: 'ai_analysis',
   tags: 'tags',
-  trace_id: 'trace_id'
+  trace_id: 'trace_id',
+  last_heartbeat_at: 'last_heartbeat_at',
+  heartbeat_pid: 'heartbeat_pid',
+  heartbeat_host: 'heartbeat_host'
 };
 
 exports.Prisma.SessionLogScalarFieldEnum = {

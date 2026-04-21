@@ -2808,8 +2808,18 @@ export namespace Prisma {
 
   export type AggregateSession = {
     _count: SessionCountAggregateOutputType | null
+    _avg: SessionAvgAggregateOutputType | null
+    _sum: SessionSumAggregateOutputType | null
     _min: SessionMinAggregateOutputType | null
     _max: SessionMaxAggregateOutputType | null
+  }
+
+  export type SessionAvgAggregateOutputType = {
+    heartbeat_pid: number | null
+  }
+
+  export type SessionSumAggregateOutputType = {
+    heartbeat_pid: number | null
   }
 
   export type SessionMinAggregateOutputType = {
@@ -2839,6 +2849,9 @@ export namespace Prisma {
     ai_analysis: string | null
     tags: string | null
     trace_id: string | null
+    last_heartbeat_at: Date | null
+    heartbeat_pid: number | null
+    heartbeat_host: string | null
   }
 
   export type SessionMaxAggregateOutputType = {
@@ -2868,6 +2881,9 @@ export namespace Prisma {
     ai_analysis: string | null
     tags: string | null
     trace_id: string | null
+    last_heartbeat_at: Date | null
+    heartbeat_pid: number | null
+    heartbeat_host: string | null
   }
 
   export type SessionCountAggregateOutputType = {
@@ -2897,9 +2913,20 @@ export namespace Prisma {
     ai_analysis: number
     tags: number
     trace_id: number
+    last_heartbeat_at: number
+    heartbeat_pid: number
+    heartbeat_host: number
     _all: number
   }
 
+
+  export type SessionAvgAggregateInputType = {
+    heartbeat_pid?: true
+  }
+
+  export type SessionSumAggregateInputType = {
+    heartbeat_pid?: true
+  }
 
   export type SessionMinAggregateInputType = {
     id?: true
@@ -2928,6 +2955,9 @@ export namespace Prisma {
     ai_analysis?: true
     tags?: true
     trace_id?: true
+    last_heartbeat_at?: true
+    heartbeat_pid?: true
+    heartbeat_host?: true
   }
 
   export type SessionMaxAggregateInputType = {
@@ -2957,6 +2987,9 @@ export namespace Prisma {
     ai_analysis?: true
     tags?: true
     trace_id?: true
+    last_heartbeat_at?: true
+    heartbeat_pid?: true
+    heartbeat_host?: true
   }
 
   export type SessionCountAggregateInputType = {
@@ -2986,6 +3019,9 @@ export namespace Prisma {
     ai_analysis?: true
     tags?: true
     trace_id?: true
+    last_heartbeat_at?: true
+    heartbeat_pid?: true
+    heartbeat_host?: true
     _all?: true
   }
 
@@ -3027,6 +3063,18 @@ export namespace Prisma {
     /**
      * {@link https://www.prisma.io/docs/concepts/components/prisma-client/aggregations Aggregation Docs}
      * 
+     * Select which fields to average
+    **/
+    _avg?: SessionAvgAggregateInputType
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/aggregations Aggregation Docs}
+     * 
+     * Select which fields to sum
+    **/
+    _sum?: SessionSumAggregateInputType
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/aggregations Aggregation Docs}
+     * 
      * Select which fields to find the minimum value
     **/
     _min?: SessionMinAggregateInputType
@@ -3057,6 +3105,8 @@ export namespace Prisma {
     take?: number
     skip?: number
     _count?: SessionCountAggregateInputType | true
+    _avg?: SessionAvgAggregateInputType
+    _sum?: SessionSumAggregateInputType
     _min?: SessionMinAggregateInputType
     _max?: SessionMaxAggregateInputType
   }
@@ -3088,7 +3138,12 @@ export namespace Prisma {
     ai_analysis: string | null
     tags: string | null
     trace_id: string | null
+    last_heartbeat_at: Date | null
+    heartbeat_pid: number | null
+    heartbeat_host: string | null
     _count: SessionCountAggregateOutputType | null
+    _avg: SessionAvgAggregateOutputType | null
+    _sum: SessionSumAggregateOutputType | null
     _min: SessionMinAggregateOutputType | null
     _max: SessionMaxAggregateOutputType | null
   }
@@ -3134,6 +3189,9 @@ export namespace Prisma {
     ai_analysis?: boolean
     tags?: boolean
     trace_id?: boolean
+    last_heartbeat_at?: boolean
+    heartbeat_pid?: boolean
+    heartbeat_host?: boolean
     Log?: boolean | Session$LogArgs<ExtArgs>
     Profiling?: boolean | Session$ProfilingArgs<ExtArgs>
     build?: boolean | Session$buildArgs<ExtArgs>
@@ -3168,6 +3226,9 @@ export namespace Prisma {
     ai_analysis?: boolean
     tags?: boolean
     trace_id?: boolean
+    last_heartbeat_at?: boolean
+    heartbeat_pid?: boolean
+    heartbeat_host?: boolean
     build?: boolean | Session$buildArgs<ExtArgs>
   }, ExtArgs["result"]["session"]>
 
@@ -3198,6 +3259,9 @@ export namespace Prisma {
     ai_analysis?: boolean
     tags?: boolean
     trace_id?: boolean
+    last_heartbeat_at?: boolean
+    heartbeat_pid?: boolean
+    heartbeat_host?: boolean
   }
 
   export type SessionInclude<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
@@ -3246,6 +3310,9 @@ export namespace Prisma {
       ai_analysis: string | null
       tags: string | null
       trace_id: string | null
+      last_heartbeat_at: Date | null
+      heartbeat_pid: number | null
+      heartbeat_host: string | null
     }, ExtArgs["result"]["session"]>
     composites: {}
   }
@@ -3669,6 +3736,9 @@ export namespace Prisma {
     readonly ai_analysis: FieldRef<"Session", 'String'>
     readonly tags: FieldRef<"Session", 'String'>
     readonly trace_id: FieldRef<"Session", 'String'>
+    readonly last_heartbeat_at: FieldRef<"Session", 'DateTime'>
+    readonly heartbeat_pid: FieldRef<"Session", 'Int'>
+    readonly heartbeat_host: FieldRef<"Session", 'String'>
   }
     
 
@@ -14234,7 +14304,10 @@ export namespace Prisma {
     failure_category: 'failure_category',
     ai_analysis: 'ai_analysis',
     tags: 'tags',
-    trace_id: 'trace_id'
+    trace_id: 'trace_id',
+    last_heartbeat_at: 'last_heartbeat_at',
+    heartbeat_pid: 'heartbeat_pid',
+    heartbeat_host: 'heartbeat_host'
   };
 
   export type SessionScalarFieldEnum = (typeof SessionScalarFieldEnum)[keyof typeof SessionScalarFieldEnum]
@@ -14470,16 +14543,16 @@ export namespace Prisma {
 
 
   /**
-   * Reference to a field of type 'Float'
+   * Reference to a field of type 'Int'
    */
-  export type FloatFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'Float'>
+  export type IntFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'Int'>
     
 
 
   /**
-   * Reference to a field of type 'Int'
+   * Reference to a field of type 'Float'
    */
-  export type IntFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'Int'>
+  export type FloatFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'Float'>
     
   /**
    * Deep Input Types
@@ -14566,6 +14639,9 @@ export namespace Prisma {
     ai_analysis?: StringNullableFilter<"Session"> | string | null
     tags?: StringNullableFilter<"Session"> | string | null
     trace_id?: StringNullableFilter<"Session"> | string | null
+    last_heartbeat_at?: DateTimeNullableFilter<"Session"> | Date | string | null
+    heartbeat_pid?: IntNullableFilter<"Session"> | number | null
+    heartbeat_host?: StringNullableFilter<"Session"> | string | null
     Log?: LogListRelationFilter
     Profiling?: ProfilingListRelationFilter
     build?: XOR<BuildNullableRelationFilter, BuildWhereInput> | null
@@ -14599,6 +14675,9 @@ export namespace Prisma {
     ai_analysis?: SortOrderInput | SortOrder
     tags?: SortOrderInput | SortOrder
     trace_id?: SortOrderInput | SortOrder
+    last_heartbeat_at?: SortOrderInput | SortOrder
+    heartbeat_pid?: SortOrderInput | SortOrder
+    heartbeat_host?: SortOrderInput | SortOrder
     Log?: LogOrderByRelationAggregateInput
     Profiling?: ProfilingOrderByRelationAggregateInput
     build?: BuildOrderByWithRelationInput
@@ -14635,6 +14714,9 @@ export namespace Prisma {
     ai_analysis?: StringNullableFilter<"Session"> | string | null
     tags?: StringNullableFilter<"Session"> | string | null
     trace_id?: StringNullableFilter<"Session"> | string | null
+    last_heartbeat_at?: DateTimeNullableFilter<"Session"> | Date | string | null
+    heartbeat_pid?: IntNullableFilter<"Session"> | number | null
+    heartbeat_host?: StringNullableFilter<"Session"> | string | null
     Log?: LogListRelationFilter
     Profiling?: ProfilingListRelationFilter
     build?: XOR<BuildNullableRelationFilter, BuildWhereInput> | null
@@ -14668,9 +14750,14 @@ export namespace Prisma {
     ai_analysis?: SortOrderInput | SortOrder
     tags?: SortOrderInput | SortOrder
     trace_id?: SortOrderInput | SortOrder
+    last_heartbeat_at?: SortOrderInput | SortOrder
+    heartbeat_pid?: SortOrderInput | SortOrder
+    heartbeat_host?: SortOrderInput | SortOrder
     _count?: SessionCountOrderByAggregateInput
+    _avg?: SessionAvgOrderByAggregateInput
     _max?: SessionMaxOrderByAggregateInput
     _min?: SessionMinOrderByAggregateInput
+    _sum?: SessionSumOrderByAggregateInput
   }
 
   export type SessionScalarWhereWithAggregatesInput = {
@@ -14703,6 +14790,9 @@ export namespace Prisma {
     ai_analysis?: StringNullableWithAggregatesFilter<"Session"> | string | null
     tags?: StringNullableWithAggregatesFilter<"Session"> | string | null
     trace_id?: StringNullableWithAggregatesFilter<"Session"> | string | null
+    last_heartbeat_at?: DateTimeNullableWithAggregatesFilter<"Session"> | Date | string | null
+    heartbeat_pid?: IntNullableWithAggregatesFilter<"Session"> | number | null
+    heartbeat_host?: StringNullableWithAggregatesFilter<"Session"> | string | null
   }
 
   export type SessionLogWhereInput = {
@@ -15711,6 +15801,9 @@ export namespace Prisma {
     ai_analysis?: string | null
     tags?: string | null
     trace_id?: string | null
+    last_heartbeat_at?: Date | string | null
+    heartbeat_pid?: number | null
+    heartbeat_host?: string | null
     Log?: LogCreateNestedManyWithoutSessionInput
     Profiling?: ProfilingCreateNestedManyWithoutSessionInput
     build?: BuildCreateNestedOneWithoutSessionsInput
@@ -15744,6 +15837,9 @@ export namespace Prisma {
     ai_analysis?: string | null
     tags?: string | null
     trace_id?: string | null
+    last_heartbeat_at?: Date | string | null
+    heartbeat_pid?: number | null
+    heartbeat_host?: string | null
     Log?: LogUncheckedCreateNestedManyWithoutSessionInput
     Profiling?: ProfilingUncheckedCreateNestedManyWithoutSessionInput
     SessionLog?: SessionLogUncheckedCreateNestedManyWithoutSessionInput
@@ -15775,6 +15871,9 @@ export namespace Prisma {
     ai_analysis?: NullableStringFieldUpdateOperationsInput | string | null
     tags?: NullableStringFieldUpdateOperationsInput | string | null
     trace_id?: NullableStringFieldUpdateOperationsInput | string | null
+    last_heartbeat_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    heartbeat_pid?: NullableIntFieldUpdateOperationsInput | number | null
+    heartbeat_host?: NullableStringFieldUpdateOperationsInput | string | null
     Log?: LogUpdateManyWithoutSessionNestedInput
     Profiling?: ProfilingUpdateManyWithoutSessionNestedInput
     build?: BuildUpdateOneWithoutSessionsNestedInput
@@ -15808,6 +15907,9 @@ export namespace Prisma {
     ai_analysis?: NullableStringFieldUpdateOperationsInput | string | null
     tags?: NullableStringFieldUpdateOperationsInput | string | null
     trace_id?: NullableStringFieldUpdateOperationsInput | string | null
+    last_heartbeat_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    heartbeat_pid?: NullableIntFieldUpdateOperationsInput | number | null
+    heartbeat_host?: NullableStringFieldUpdateOperationsInput | string | null
     Log?: LogUncheckedUpdateManyWithoutSessionNestedInput
     Profiling?: ProfilingUncheckedUpdateManyWithoutSessionNestedInput
     SessionLog?: SessionLogUncheckedUpdateManyWithoutSessionNestedInput
@@ -15840,6 +15942,9 @@ export namespace Prisma {
     ai_analysis?: string | null
     tags?: string | null
     trace_id?: string | null
+    last_heartbeat_at?: Date | string | null
+    heartbeat_pid?: number | null
+    heartbeat_host?: string | null
   }
 
   export type SessionUpdateManyMutationInput = {
@@ -15868,6 +15973,9 @@ export namespace Prisma {
     ai_analysis?: NullableStringFieldUpdateOperationsInput | string | null
     tags?: NullableStringFieldUpdateOperationsInput | string | null
     trace_id?: NullableStringFieldUpdateOperationsInput | string | null
+    last_heartbeat_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    heartbeat_pid?: NullableIntFieldUpdateOperationsInput | number | null
+    heartbeat_host?: NullableStringFieldUpdateOperationsInput | string | null
   }
 
   export type SessionUncheckedUpdateManyInput = {
@@ -15897,6 +16005,9 @@ export namespace Prisma {
     ai_analysis?: NullableStringFieldUpdateOperationsInput | string | null
     tags?: NullableStringFieldUpdateOperationsInput | string | null
     trace_id?: NullableStringFieldUpdateOperationsInput | string | null
+    last_heartbeat_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    heartbeat_pid?: NullableIntFieldUpdateOperationsInput | number | null
+    heartbeat_host?: NullableStringFieldUpdateOperationsInput | string | null
   }
 
   export type SessionLogCreateInput = {
@@ -17125,6 +17236,17 @@ export namespace Prisma {
     not?: NestedDateTimeNullableFilter<$PrismaModel> | Date | string | null
   }
 
+  export type IntNullableFilter<$PrismaModel = never> = {
+    equals?: number | IntFieldRefInput<$PrismaModel> | null
+    in?: number[] | null
+    notIn?: number[] | null
+    lt?: number | IntFieldRefInput<$PrismaModel>
+    lte?: number | IntFieldRefInput<$PrismaModel>
+    gt?: number | IntFieldRefInput<$PrismaModel>
+    gte?: number | IntFieldRefInput<$PrismaModel>
+    not?: NestedIntNullableFilter<$PrismaModel> | number | null
+  }
+
   export type LogListRelationFilter = {
     every?: LogWhereInput
     some?: LogWhereInput
@@ -17187,6 +17309,13 @@ export namespace Prisma {
     ai_analysis?: SortOrder
     tags?: SortOrder
     trace_id?: SortOrder
+    last_heartbeat_at?: SortOrder
+    heartbeat_pid?: SortOrder
+    heartbeat_host?: SortOrder
+  }
+
+  export type SessionAvgOrderByAggregateInput = {
+    heartbeat_pid?: SortOrder
   }
 
   export type SessionMaxOrderByAggregateInput = {
@@ -17216,6 +17345,9 @@ export namespace Prisma {
     ai_analysis?: SortOrder
     tags?: SortOrder
     trace_id?: SortOrder
+    last_heartbeat_at?: SortOrder
+    heartbeat_pid?: SortOrder
+    heartbeat_host?: SortOrder
   }
 
   export type SessionMinOrderByAggregateInput = {
@@ -17245,6 +17377,13 @@ export namespace Prisma {
     ai_analysis?: SortOrder
     tags?: SortOrder
     trace_id?: SortOrder
+    last_heartbeat_at?: SortOrder
+    heartbeat_pid?: SortOrder
+    heartbeat_host?: SortOrder
+  }
+
+  export type SessionSumOrderByAggregateInput = {
+    heartbeat_pid?: SortOrder
   }
 
   export type BoolWithAggregatesFilter<$PrismaModel = never> = {
@@ -17269,6 +17408,22 @@ export namespace Prisma {
     _max?: NestedDateTimeNullableFilter<$PrismaModel>
   }
 
+  export type IntNullableWithAggregatesFilter<$PrismaModel = never> = {
+    equals?: number | IntFieldRefInput<$PrismaModel> | null
+    in?: number[] | null
+    notIn?: number[] | null
+    lt?: number | IntFieldRefInput<$PrismaModel>
+    lte?: number | IntFieldRefInput<$PrismaModel>
+    gt?: number | IntFieldRefInput<$PrismaModel>
+    gte?: number | IntFieldRefInput<$PrismaModel>
+    not?: NestedIntNullableWithAggregatesFilter<$PrismaModel> | number | null
+    _count?: NestedIntNullableFilter<$PrismaModel>
+    _avg?: NestedFloatNullableFilter<$PrismaModel>
+    _sum?: NestedIntNullableFilter<$PrismaModel>
+    _min?: NestedIntNullableFilter<$PrismaModel>
+    _max?: NestedIntNullableFilter<$PrismaModel>
+  }
+
   export type BoolNullableFilter<$PrismaModel = never> = {
     equals?: boolean | BooleanFieldRefInput<$PrismaModel> | null
     not?: NestedBoolNullableFilter<$PrismaModel> | boolean | null
@@ -17283,17 +17438,6 @@ export namespace Prisma {
     gt?: number | FloatFieldRefInput<$PrismaModel>
     gte?: number | FloatFieldRefInput<$PrismaModel>
     not?: NestedFloatNullableFilter<$PrismaModel> | number | null
-  }
-
-  export type IntNullableFilter<$PrismaModel = never> = {
-    equals?: number | IntFieldRefInput<$PrismaModel> | null
-    in?: number[] | null
-    notIn?: number[] | null
-    lt?: number | IntFieldRefInput<$PrismaModel>
-    lte?: number | IntFieldRefInput<$PrismaModel>
-    gt?: number | IntFieldRefInput<$PrismaModel>
-    gte?: number | IntFieldRefInput<$PrismaModel>
-    not?: NestedIntNullableFilter<$PrismaModel> | number | null
   }
 
   export type SessionRelationFilter = {
@@ -17405,22 +17549,6 @@ export namespace Prisma {
     _sum?: NestedFloatNullableFilter<$PrismaModel>
     _min?: NestedFloatNullableFilter<$PrismaModel>
     _max?: NestedFloatNullableFilter<$PrismaModel>
-  }
-
-  export type IntNullableWithAggregatesFilter<$PrismaModel = never> = {
-    equals?: number | IntFieldRefInput<$PrismaModel> | null
-    in?: number[] | null
-    notIn?: number[] | null
-    lt?: number | IntFieldRefInput<$PrismaModel>
-    lte?: number | IntFieldRefInput<$PrismaModel>
-    gt?: number | IntFieldRefInput<$PrismaModel>
-    gte?: number | IntFieldRefInput<$PrismaModel>
-    not?: NestedIntNullableWithAggregatesFilter<$PrismaModel> | number | null
-    _count?: NestedIntNullableFilter<$PrismaModel>
-    _avg?: NestedFloatNullableFilter<$PrismaModel>
-    _sum?: NestedIntNullableFilter<$PrismaModel>
-    _min?: NestedIntNullableFilter<$PrismaModel>
-    _max?: NestedIntNullableFilter<$PrismaModel>
   }
 
   export type LogCountOrderByAggregateInput = {
@@ -18059,6 +18187,14 @@ export namespace Prisma {
     set?: Date | string | null
   }
 
+  export type NullableIntFieldUpdateOperationsInput = {
+    set?: number | null
+    increment?: number
+    decrement?: number
+    multiply?: number
+    divide?: number
+  }
+
   export type LogUpdateManyWithoutSessionNestedInput = {
     create?: XOR<LogCreateWithoutSessionInput, LogUncheckedCreateWithoutSessionInput> | LogCreateWithoutSessionInput[] | LogUncheckedCreateWithoutSessionInput[]
     connectOrCreate?: LogCreateOrConnectWithoutSessionInput | LogCreateOrConnectWithoutSessionInput[]
@@ -18164,14 +18300,6 @@ export namespace Prisma {
   }
 
   export type NullableFloatFieldUpdateOperationsInput = {
-    set?: number | null
-    increment?: number
-    decrement?: number
-    multiply?: number
-    divide?: number
-  }
-
-  export type NullableIntFieldUpdateOperationsInput = {
     set?: number | null
     increment?: number
     decrement?: number
@@ -18378,9 +18506,20 @@ export namespace Prisma {
     _max?: NestedDateTimeNullableFilter<$PrismaModel>
   }
 
-  export type NestedBoolNullableFilter<$PrismaModel = never> = {
-    equals?: boolean | BooleanFieldRefInput<$PrismaModel> | null
-    not?: NestedBoolNullableFilter<$PrismaModel> | boolean | null
+  export type NestedIntNullableWithAggregatesFilter<$PrismaModel = never> = {
+    equals?: number | IntFieldRefInput<$PrismaModel> | null
+    in?: number[] | null
+    notIn?: number[] | null
+    lt?: number | IntFieldRefInput<$PrismaModel>
+    lte?: number | IntFieldRefInput<$PrismaModel>
+    gt?: number | IntFieldRefInput<$PrismaModel>
+    gte?: number | IntFieldRefInput<$PrismaModel>
+    not?: NestedIntNullableWithAggregatesFilter<$PrismaModel> | number | null
+    _count?: NestedIntNullableFilter<$PrismaModel>
+    _avg?: NestedFloatNullableFilter<$PrismaModel>
+    _sum?: NestedIntNullableFilter<$PrismaModel>
+    _min?: NestedIntNullableFilter<$PrismaModel>
+    _max?: NestedIntNullableFilter<$PrismaModel>
   }
 
   export type NestedFloatNullableFilter<$PrismaModel = never> = {
@@ -18392,6 +18531,11 @@ export namespace Prisma {
     gt?: number | FloatFieldRefInput<$PrismaModel>
     gte?: number | FloatFieldRefInput<$PrismaModel>
     not?: NestedFloatNullableFilter<$PrismaModel> | number | null
+  }
+
+  export type NestedBoolNullableFilter<$PrismaModel = never> = {
+    equals?: boolean | BooleanFieldRefInput<$PrismaModel> | null
+    not?: NestedBoolNullableFilter<$PrismaModel> | boolean | null
   }
 
   export type NestedBoolNullableWithAggregatesFilter<$PrismaModel = never> = {
@@ -18416,22 +18560,6 @@ export namespace Prisma {
     _sum?: NestedFloatNullableFilter<$PrismaModel>
     _min?: NestedFloatNullableFilter<$PrismaModel>
     _max?: NestedFloatNullableFilter<$PrismaModel>
-  }
-
-  export type NestedIntNullableWithAggregatesFilter<$PrismaModel = never> = {
-    equals?: number | IntFieldRefInput<$PrismaModel> | null
-    in?: number[] | null
-    notIn?: number[] | null
-    lt?: number | IntFieldRefInput<$PrismaModel>
-    lte?: number | IntFieldRefInput<$PrismaModel>
-    gt?: number | IntFieldRefInput<$PrismaModel>
-    gte?: number | IntFieldRefInput<$PrismaModel>
-    not?: NestedIntNullableWithAggregatesFilter<$PrismaModel> | number | null
-    _count?: NestedIntNullableFilter<$PrismaModel>
-    _avg?: NestedFloatNullableFilter<$PrismaModel>
-    _sum?: NestedIntNullableFilter<$PrismaModel>
-    _min?: NestedIntNullableFilter<$PrismaModel>
-    _max?: NestedIntNullableFilter<$PrismaModel>
   }
 
   export type NestedIntWithAggregatesFilter<$PrismaModel = never> = {
@@ -18503,6 +18631,9 @@ export namespace Prisma {
     ai_analysis?: string | null
     tags?: string | null
     trace_id?: string | null
+    last_heartbeat_at?: Date | string | null
+    heartbeat_pid?: number | null
+    heartbeat_host?: string | null
     Log?: LogCreateNestedManyWithoutSessionInput
     Profiling?: ProfilingCreateNestedManyWithoutSessionInput
     SessionLog?: SessionLogCreateNestedManyWithoutSessionInput
@@ -18534,6 +18665,9 @@ export namespace Prisma {
     ai_analysis?: string | null
     tags?: string | null
     trace_id?: string | null
+    last_heartbeat_at?: Date | string | null
+    heartbeat_pid?: number | null
+    heartbeat_host?: string | null
     Log?: LogUncheckedCreateNestedManyWithoutSessionInput
     Profiling?: ProfilingUncheckedCreateNestedManyWithoutSessionInput
     SessionLog?: SessionLogUncheckedCreateNestedManyWithoutSessionInput
@@ -18594,6 +18728,9 @@ export namespace Prisma {
     ai_analysis?: StringNullableFilter<"Session"> | string | null
     tags?: StringNullableFilter<"Session"> | string | null
     trace_id?: StringNullableFilter<"Session"> | string | null
+    last_heartbeat_at?: DateTimeNullableFilter<"Session"> | Date | string | null
+    heartbeat_pid?: IntNullableFilter<"Session"> | number | null
+    heartbeat_host?: StringNullableFilter<"Session"> | string | null
   }
 
   export type LogCreateWithoutSessionInput = {
@@ -18887,6 +19024,9 @@ export namespace Prisma {
     ai_analysis?: string | null
     tags?: string | null
     trace_id?: string | null
+    last_heartbeat_at?: Date | string | null
+    heartbeat_pid?: number | null
+    heartbeat_host?: string | null
     Log?: LogCreateNestedManyWithoutSessionInput
     Profiling?: ProfilingCreateNestedManyWithoutSessionInput
     build?: BuildCreateNestedOneWithoutSessionsInput
@@ -18919,6 +19059,9 @@ export namespace Prisma {
     ai_analysis?: string | null
     tags?: string | null
     trace_id?: string | null
+    last_heartbeat_at?: Date | string | null
+    heartbeat_pid?: number | null
+    heartbeat_host?: string | null
     Log?: LogUncheckedCreateNestedManyWithoutSessionInput
     Profiling?: ProfilingUncheckedCreateNestedManyWithoutSessionInput
   }
@@ -18965,6 +19108,9 @@ export namespace Prisma {
     ai_analysis?: NullableStringFieldUpdateOperationsInput | string | null
     tags?: NullableStringFieldUpdateOperationsInput | string | null
     trace_id?: NullableStringFieldUpdateOperationsInput | string | null
+    last_heartbeat_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    heartbeat_pid?: NullableIntFieldUpdateOperationsInput | number | null
+    heartbeat_host?: NullableStringFieldUpdateOperationsInput | string | null
     Log?: LogUpdateManyWithoutSessionNestedInput
     Profiling?: ProfilingUpdateManyWithoutSessionNestedInput
     build?: BuildUpdateOneWithoutSessionsNestedInput
@@ -18997,6 +19143,9 @@ export namespace Prisma {
     ai_analysis?: NullableStringFieldUpdateOperationsInput | string | null
     tags?: NullableStringFieldUpdateOperationsInput | string | null
     trace_id?: NullableStringFieldUpdateOperationsInput | string | null
+    last_heartbeat_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    heartbeat_pid?: NullableIntFieldUpdateOperationsInput | number | null
+    heartbeat_host?: NullableStringFieldUpdateOperationsInput | string | null
     Log?: LogUncheckedUpdateManyWithoutSessionNestedInput
     Profiling?: ProfilingUncheckedUpdateManyWithoutSessionNestedInput
   }
@@ -19027,6 +19176,9 @@ export namespace Prisma {
     ai_analysis?: string | null
     tags?: string | null
     trace_id?: string | null
+    last_heartbeat_at?: Date | string | null
+    heartbeat_pid?: number | null
+    heartbeat_host?: string | null
     Profiling?: ProfilingCreateNestedManyWithoutSessionInput
     build?: BuildCreateNestedOneWithoutSessionsInput
     SessionLog?: SessionLogCreateNestedManyWithoutSessionInput
@@ -19059,6 +19211,9 @@ export namespace Prisma {
     ai_analysis?: string | null
     tags?: string | null
     trace_id?: string | null
+    last_heartbeat_at?: Date | string | null
+    heartbeat_pid?: number | null
+    heartbeat_host?: string | null
     Profiling?: ProfilingUncheckedCreateNestedManyWithoutSessionInput
     SessionLog?: SessionLogUncheckedCreateNestedManyWithoutSessionInput
   }
@@ -19105,6 +19260,9 @@ export namespace Prisma {
     ai_analysis?: NullableStringFieldUpdateOperationsInput | string | null
     tags?: NullableStringFieldUpdateOperationsInput | string | null
     trace_id?: NullableStringFieldUpdateOperationsInput | string | null
+    last_heartbeat_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    heartbeat_pid?: NullableIntFieldUpdateOperationsInput | number | null
+    heartbeat_host?: NullableStringFieldUpdateOperationsInput | string | null
     Profiling?: ProfilingUpdateManyWithoutSessionNestedInput
     build?: BuildUpdateOneWithoutSessionsNestedInput
     SessionLog?: SessionLogUpdateManyWithoutSessionNestedInput
@@ -19137,6 +19295,9 @@ export namespace Prisma {
     ai_analysis?: NullableStringFieldUpdateOperationsInput | string | null
     tags?: NullableStringFieldUpdateOperationsInput | string | null
     trace_id?: NullableStringFieldUpdateOperationsInput | string | null
+    last_heartbeat_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    heartbeat_pid?: NullableIntFieldUpdateOperationsInput | number | null
+    heartbeat_host?: NullableStringFieldUpdateOperationsInput | string | null
     Profiling?: ProfilingUncheckedUpdateManyWithoutSessionNestedInput
     SessionLog?: SessionLogUncheckedUpdateManyWithoutSessionNestedInput
   }
@@ -19167,6 +19328,9 @@ export namespace Prisma {
     ai_analysis?: string | null
     tags?: string | null
     trace_id?: string | null
+    last_heartbeat_at?: Date | string | null
+    heartbeat_pid?: number | null
+    heartbeat_host?: string | null
     Log?: LogCreateNestedManyWithoutSessionInput
     build?: BuildCreateNestedOneWithoutSessionsInput
     SessionLog?: SessionLogCreateNestedManyWithoutSessionInput
@@ -19199,6 +19363,9 @@ export namespace Prisma {
     ai_analysis?: string | null
     tags?: string | null
     trace_id?: string | null
+    last_heartbeat_at?: Date | string | null
+    heartbeat_pid?: number | null
+    heartbeat_host?: string | null
     Log?: LogUncheckedCreateNestedManyWithoutSessionInput
     SessionLog?: SessionLogUncheckedCreateNestedManyWithoutSessionInput
   }
@@ -19245,6 +19412,9 @@ export namespace Prisma {
     ai_analysis?: NullableStringFieldUpdateOperationsInput | string | null
     tags?: NullableStringFieldUpdateOperationsInput | string | null
     trace_id?: NullableStringFieldUpdateOperationsInput | string | null
+    last_heartbeat_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    heartbeat_pid?: NullableIntFieldUpdateOperationsInput | number | null
+    heartbeat_host?: NullableStringFieldUpdateOperationsInput | string | null
     Log?: LogUpdateManyWithoutSessionNestedInput
     build?: BuildUpdateOneWithoutSessionsNestedInput
     SessionLog?: SessionLogUpdateManyWithoutSessionNestedInput
@@ -19277,6 +19447,9 @@ export namespace Prisma {
     ai_analysis?: NullableStringFieldUpdateOperationsInput | string | null
     tags?: NullableStringFieldUpdateOperationsInput | string | null
     trace_id?: NullableStringFieldUpdateOperationsInput | string | null
+    last_heartbeat_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    heartbeat_pid?: NullableIntFieldUpdateOperationsInput | number | null
+    heartbeat_host?: NullableStringFieldUpdateOperationsInput | string | null
     Log?: LogUncheckedUpdateManyWithoutSessionNestedInput
     SessionLog?: SessionLogUncheckedUpdateManyWithoutSessionNestedInput
   }
@@ -19307,6 +19480,9 @@ export namespace Prisma {
     ai_analysis?: string | null
     tags?: string | null
     trace_id?: string | null
+    last_heartbeat_at?: Date | string | null
+    heartbeat_pid?: number | null
+    heartbeat_host?: string | null
   }
 
   export type SessionUpdateWithoutBuildInput = {
@@ -19335,6 +19511,9 @@ export namespace Prisma {
     ai_analysis?: NullableStringFieldUpdateOperationsInput | string | null
     tags?: NullableStringFieldUpdateOperationsInput | string | null
     trace_id?: NullableStringFieldUpdateOperationsInput | string | null
+    last_heartbeat_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    heartbeat_pid?: NullableIntFieldUpdateOperationsInput | number | null
+    heartbeat_host?: NullableStringFieldUpdateOperationsInput | string | null
     Log?: LogUpdateManyWithoutSessionNestedInput
     Profiling?: ProfilingUpdateManyWithoutSessionNestedInput
     SessionLog?: SessionLogUpdateManyWithoutSessionNestedInput
@@ -19366,6 +19545,9 @@ export namespace Prisma {
     ai_analysis?: NullableStringFieldUpdateOperationsInput | string | null
     tags?: NullableStringFieldUpdateOperationsInput | string | null
     trace_id?: NullableStringFieldUpdateOperationsInput | string | null
+    last_heartbeat_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    heartbeat_pid?: NullableIntFieldUpdateOperationsInput | number | null
+    heartbeat_host?: NullableStringFieldUpdateOperationsInput | string | null
     Log?: LogUncheckedUpdateManyWithoutSessionNestedInput
     Profiling?: ProfilingUncheckedUpdateManyWithoutSessionNestedInput
     SessionLog?: SessionLogUncheckedUpdateManyWithoutSessionNestedInput
@@ -19397,6 +19579,9 @@ export namespace Prisma {
     ai_analysis?: NullableStringFieldUpdateOperationsInput | string | null
     tags?: NullableStringFieldUpdateOperationsInput | string | null
     trace_id?: NullableStringFieldUpdateOperationsInput | string | null
+    last_heartbeat_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    heartbeat_pid?: NullableIntFieldUpdateOperationsInput | number | null
+    heartbeat_host?: NullableStringFieldUpdateOperationsInput | string | null
   }
 
   export type LogCreateManySessionInput = {
