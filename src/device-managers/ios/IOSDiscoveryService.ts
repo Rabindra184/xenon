@@ -2,7 +2,7 @@ import Simctl from 'node-simctl';
 import { flatten } from 'lodash';
 import { utilities as IOSUtils } from 'appium-ios-device';
 import { IDevice } from '../../interfaces/IDevice';
-import { getFreePort, cachePath } from '../../helpers';
+import { cachePath } from '../../helpers';
 import log from '../../logger';
 import path from 'path';
 import fs from 'fs-extra';
@@ -11,6 +11,7 @@ import { DeviceStoreFactory } from '../../data-service/device-store';
 import { DeviceTypeToInclude, SimulatorConfig } from '../../interfaces/IPluginArgs';
 import { PluginContext } from '../../PluginContext';
 import { Service, Container } from 'typedi';
+import { PortAllocator } from '../../services/PortAllocator';
 import Devices from '../cloud/Devices';
 import NodeDevices from '../NodeDevices';
 import { addNewDevice, removeDevice } from '../../data-service/device-service';
@@ -104,8 +105,8 @@ export class IOSDiscoveryService {
       ? String(this.pluginArgs.remoteMachineProxyIP)
       : `http://${this.pluginArgs.bindHostOrIp}:${this.hostPort}`;
 
-    const wdaLocalPort = storeDevice?.wdaLocalPort || (await getFreePort());
-    const mjpegServerPort = storeDevice?.mjpegServerPort || (await getFreePort());
+    const wdaLocalPort = storeDevice?.wdaLocalPort || (await Container.get(PortAllocator).acquire('wda', udid));
+    const mjpegServerPort = storeDevice?.mjpegServerPort || (await Container.get(PortAllocator).acquire('mjpeg', udid));
     const totalUtilizationTimeMilliSec = await getUtilizationTime(udid);
 
     let sdk = 'Unknown';
@@ -210,8 +211,8 @@ export class IOSDiscoveryService {
         async (d) =>
           ({
             ...d,
-            wdaLocalPort: await getFreePort(),
-            mjpegServerPort: await getFreePort(),
+            wdaLocalPort: await Container.get(PortAllocator).acquire('wda', d.udid),
+            mjpegServerPort: await Container.get(PortAllocator).acquire('mjpeg', d.udid),
             busy: false,
             realDevice: false,
             platform: (d.name?.toLowerCase().includes('tv') ? 'tvos' : 'ios') as
