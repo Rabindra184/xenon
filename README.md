@@ -421,6 +421,55 @@ npm run test:ios              # iOS integration
 
 ---
 
+## 🔐 Authentication
+
+Xenon REST endpoints under `/xenon/api/*` require an API key passed in the `X-Xenon-API-Key` header.
+
+### Bootstrap key
+
+On first start, Xenon writes a one-time bootstrap key (admin-scoped) to:
+
+```
+~/.cache/xenon/bootstrap-key.txt   (0600 permissions)
+```
+
+The startup log prints a WARN pointing at this path. **Rotate the bootstrap key within 24 hours.**
+
+### Creating a permanent key
+
+```bash
+# Create a scoped key for CI
+curl -X POST \
+  -H "X-Xenon-API-Key: $(cat ~/.cache/xenon/bootstrap-key.txt)" \
+  -H 'Content-Type: application/json' \
+  -d '{"name":"ci","scopes":["sessions","read"],"rateLimit":600}' \
+  http://localhost:4723/xenon/api/apikeys
+
+# Revoke the bootstrap key after saving the returned `key` value
+curl -X DELETE \
+  -H "X-Xenon-API-Key: $NEW_ADMIN_KEY" \
+  http://localhost:4723/xenon/api/apikeys/<bootstrap-id>
+```
+
+### Scopes
+
+| Scope | Access |
+|-------|--------|
+| `read` | GET sessions, devices, logs, apps |
+| `sessions` | Create/delete sessions and reservations |
+| `devices` | Block/unblock devices, install apps |
+| `admin` | API key management, webhooks, node registration |
+
+### Hub-node channel
+
+Set `--plugin-xenon-node-secret` (or `XENON_NODE_SECRET`) to the **same value** on both hub and node. When unset, the channel permits with a WARN (back-compat for single-node installs).
+
+### Local development
+
+Pass `--plugin-xenon-auth-disabled` to skip auth entirely. A WARN is logged every 60 s as a reminder.
+
+---
+
 ## 🤝 Contributing
 
 We welcome contributions! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.

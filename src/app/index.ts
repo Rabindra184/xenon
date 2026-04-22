@@ -19,6 +19,7 @@ import reservationRouter from './routers/reservation';
 import ConfigRouter from './routers/config';
 import { apiKeysRouter } from './routers/apikeys';
 import { authRouter } from './routers/auth';
+import { processesRouter } from './routers/processes';
 import { apiKeyMiddleware } from '../middleware/apiKeyMiddleware';
 import { rateLimitMiddleware } from '../middleware/rateLimitMiddleware';
 import { nodeSecretMiddleware } from '../middleware/nodeSecretMiddleware';
@@ -175,6 +176,8 @@ function createRouter(pluginArgs: IPluginArgs) {
 
   // Admin: API key management
   apiRouter.use('/apikeys', apiKeysRouter());
+  // Admin: running process snapshot (ops debugging)
+  apiRouter.use('/processes', processesRouter());
 
   DashboardRouter.register(apiRouter);
   GridRouter.register(apiRouter, pluginArgs);
