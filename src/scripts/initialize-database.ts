@@ -29,8 +29,8 @@ async function main() {
 
   // 2. Handle Migrations
   if (config.databaseProvider === 'sqlite') {
-    log.info('[DBInit] Deploying SQLite migrations...');
-    executeCmd('npx prisma migrate deploy');
+    log.info('[DBInit] Syncing SQLite schema via db push...');
+    executeCmd('npx prisma db push --accept-data-loss --skip-generate');
   } else {
     // For PostgreSQL, we might not have migrations checked in yet.
     // In "Cellular Architecture", we use db push to ensure the schema is synced

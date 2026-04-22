@@ -1,12 +1,12 @@
 import { spawn } from 'child_process';
 import http from 'http';
 import log from '../../logger';
-import { getFreePort } from '../../helpers';
 import { DeviceStoreFactory } from '../../data-service/device-store';
 import { unblockDevice } from '../../data-service/device-service';
 import { deviceLock } from './DeviceLockManager';
 import { Service, Container } from 'typedi';
 import { ResourceIsolationService } from '../../services/ResourceIsolationService';
+import { PortAllocator } from '../../services/PortAllocator';
 
 // FFmpeg is optional - only used for raw-to-JPEG conversion
 let FFMPEG_PATH: string | null = null;
@@ -162,7 +162,7 @@ class AndroidStreamService {
         const device = await DeviceStoreFactory.getStore().findDevice({ udid });
         if (!device) throw new Error(`Device ${udid} not found in DB`);
 
-        const mjpegPort = await getFreePort();
+        const mjpegPort = await Container.get(PortAllocator).acquire('mjpeg', udid);
 
         // Aggressive cleanup: Kill any process already using this port
         try {

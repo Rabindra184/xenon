@@ -6,7 +6,33 @@ on:
       - main
 
 jobs:
+  drift-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - run: npm ci
+      - name: Prisma migrate diff (migrations ↔ schema)
+        env:
+          DATABASE_URL: 'file:./ci-check.db'
+        run: |
+          npx prisma migrate diff \
+            --from-migrations prisma/migrations \
+            --to-schema-datamodel prisma/schema.prisma \
+            --exit-code || {
+              echo "::error::Schema drift detected."
+              exit 1
+            }
+          echo "Schema and migrations are in sync."
+
+      - name: Generated client freshness
+        run: node scripts/check-client-freshness.js
+
   publish:
+    needs: drift-check
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Code
@@ -28,7 +54,7 @@ jobs:
         run: |
           CURRENT_VERSION=$(node -p "require('./package.json').version")
           PREVIOUS_VERSION=$(git show HEAD^:package.json | node -p "JSON.parse(require('fs').readFileSync(0, 'utf8')).version" || echo "0.0.0")
-          
+
           if [ "$CURRENT_VERSION" != "$PREVIOUS_VERSION" ]; then
             echo "version_changed=true" >> $GITHUB_OUTPUT
             echo "Publishing version $CURRENT_VERSION (previous was $PREVIOUS_VERSION)"

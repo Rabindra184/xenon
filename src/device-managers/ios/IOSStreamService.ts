@@ -17,7 +17,8 @@ import fs from 'fs-extra';
 import tcpPortUsed from 'tcp-port-used';
 import { InternalHttpClient } from '../../InternalHttpClient';
 import log from '../../logger';
-import { getFreePort, cachePath } from '../../helpers';
+import { cachePath } from '../../helpers';
+import { PortAllocator } from '../../services/PortAllocator';
 import { DeviceStoreFactory } from '../../data-service/device-store';
 
 import { unblockDevice } from '../../data-service/device-service';
@@ -537,8 +538,8 @@ class IOSStreamService {
         const device = await DeviceStoreFactory.getStore().findDevice({ udid });
         if (!device) throw new Error(`Device ${udid} not found`);
 
-        const wdaPort = device.wdaLocalPort || (await getFreePort());
-        const mjpegPort = device.mjpegServerPort || (await getFreePort());
+        const wdaPort = device.wdaLocalPort || (await Container.get(PortAllocator).acquire('wda', udid));
+        const mjpegPort = device.mjpegServerPort || (await Container.get(PortAllocator).acquire('mjpeg', udid));
 
         // Perform aggressive cleanup of any existing processes for THIS device/ports
         await this.stopStream(udid);

@@ -44,10 +44,15 @@ model Session {
   ai_analysis             String?
   tags                    String?
   trace_id                String?
+  last_heartbeat_at       DateTime?
+  heartbeat_pid           Int?
+  heartbeat_host          String?
   Log                     Log[]
   Profiling               Profiling[]
   build                   Build?       @relation(fields: [build_id], references: [id])
   SessionLog              SessionLog[]
+
+  @@index([status, last_heartbeat_at])
 }
 
 model SessionLog {
@@ -165,8 +170,11 @@ model Device {
   totalHealedCount             Int?     @default(0)
   ip                           String?  @default("")
   cpuArchitecture              String?
+  owningSessionId              String?  @map("owning_session_id")
+  lockedAt                     Float?   @map("locked_at")
 
   @@id([udid, host])
+  @@index([owningSessionId])
 }
 
 model PendingSession {
@@ -210,4 +218,28 @@ model LocatorEtalon {
   lastSeen   DateTime @default(now())
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
+}
+
+model PortLease {
+  port         Int    @id
+  purpose      String
+  leasedToUdid String
+  leasedToPid  Int?
+  leasedAt     Float
+  expiresAt    Float
+
+  @@index([purpose, expiresAt])
+  @@index([leasedToUdid])
+  @@index([expiresAt])
+}
+
+model ApiKey {
+  id         String    @id @default(uuid())
+  name       String
+  keyHash    String    @unique
+  scopes     String
+  rateLimit  Int       @default(300)
+  createdAt  DateTime  @default(now())
+  revokedAt  DateTime?
+  lastUsedAt DateTime?
 }

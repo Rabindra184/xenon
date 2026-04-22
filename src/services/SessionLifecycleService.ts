@@ -30,6 +30,7 @@ import {
 } from '../interfaces/ISessionCapability';
 import { IDevice } from '../interfaces/IDevice';
 import { TracingService } from './TracingService';
+import { PortAllocator } from './PortAllocator';
 import { getXenonCapabilities, XENON_CAPABILITIES } from '../XenonCapabilityManager';
 import { CircuitBreaker } from '../data-service/CircuitBreaker';
 import { addProxyHandler } from '../proxy/wd-command-proxy';
@@ -579,6 +580,15 @@ export class SessionLifecycleService {
   private async finalizeCleanup(session: XenonSession, status?: SessionStatus, reason?: string) {
     const sessionId = session.getId();
     const device = session.getDevice();
+
+    // Release allocated ports for this device
+    if (device?.udid) {
+      try {
+        await Container.get(PortAllocator).releaseForUdid(device.udid);
+      } catch (err: any) {
+        log.warn(`Port release failed: ${err.message}`);
+      }
+    }
 
     // 1. iOS Profiling Archival
     if (device && device.platform?.toLowerCase() === 'ios') {

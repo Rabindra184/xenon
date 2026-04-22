@@ -73,6 +73,16 @@ export type WebConfig = $Result.DefaultSelection<Prisma.$WebConfigPayload>
  * 
  */
 export type LocatorEtalon = $Result.DefaultSelection<Prisma.$LocatorEtalonPayload>
+/**
+ * Model PortLease
+ * 
+ */
+export type PortLease = $Result.DefaultSelection<Prisma.$PortLeasePayload>
+/**
+ * Model ApiKey
+ * 
+ */
+export type ApiKey = $Result.DefaultSelection<Prisma.$ApiKeyPayload>
 
 /**
  * ##  Prisma Client ʲˢ
@@ -316,6 +326,26 @@ export class PrismaClient<
     * ```
     */
   get locatorEtalon(): Prisma.LocatorEtalonDelegate<ExtArgs>;
+
+  /**
+   * `prisma.portLease`: Exposes CRUD operations for the **PortLease** model.
+    * Example usage:
+    * ```ts
+    * // Fetch zero or more PortLeases
+    * const portLeases = await prisma.portLease.findMany()
+    * ```
+    */
+  get portLease(): Prisma.PortLeaseDelegate<ExtArgs>;
+
+  /**
+   * `prisma.apiKey`: Exposes CRUD operations for the **ApiKey** model.
+    * Example usage:
+    * ```ts
+    * // Fetch zero or more ApiKeys
+    * const apiKeys = await prisma.apiKey.findMany()
+    * ```
+    */
+  get apiKey(): Prisma.ApiKeyDelegate<ExtArgs>;
 }
 
 export namespace Prisma {
@@ -768,7 +798,9 @@ export namespace Prisma {
     CLIArgs: 'CLIArgs',
     WebhookConfig: 'WebhookConfig',
     WebConfig: 'WebConfig',
-    LocatorEtalon: 'LocatorEtalon'
+    LocatorEtalon: 'LocatorEtalon',
+    PortLease: 'PortLease',
+    ApiKey: 'ApiKey'
   };
 
   export type ModelName = (typeof ModelName)[keyof typeof ModelName]
@@ -784,7 +816,7 @@ export namespace Prisma {
 
   export type TypeMap<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs, ClientOptions = {}> = {
     meta: {
-      modelProps: "build" | "session" | "sessionLog" | "log" | "profiling" | "app" | "device" | "pendingSession" | "cLIArgs" | "webhookConfig" | "webConfig" | "locatorEtalon"
+      modelProps: "build" | "session" | "sessionLog" | "log" | "profiling" | "app" | "device" | "pendingSession" | "cLIArgs" | "webhookConfig" | "webConfig" | "locatorEtalon" | "portLease" | "apiKey"
       txIsolationLevel: Prisma.TransactionIsolationLevel
     }
     model: {
@@ -1625,6 +1657,146 @@ export namespace Prisma {
           count: {
             args: Prisma.LocatorEtalonCountArgs<ExtArgs>
             result: $Utils.Optional<LocatorEtalonCountAggregateOutputType> | number
+          }
+        }
+      }
+      PortLease: {
+        payload: Prisma.$PortLeasePayload<ExtArgs>
+        fields: Prisma.PortLeaseFieldRefs
+        operations: {
+          findUnique: {
+            args: Prisma.PortLeaseFindUniqueArgs<ExtArgs>
+            result: $Utils.PayloadToResult<Prisma.$PortLeasePayload> | null
+          }
+          findUniqueOrThrow: {
+            args: Prisma.PortLeaseFindUniqueOrThrowArgs<ExtArgs>
+            result: $Utils.PayloadToResult<Prisma.$PortLeasePayload>
+          }
+          findFirst: {
+            args: Prisma.PortLeaseFindFirstArgs<ExtArgs>
+            result: $Utils.PayloadToResult<Prisma.$PortLeasePayload> | null
+          }
+          findFirstOrThrow: {
+            args: Prisma.PortLeaseFindFirstOrThrowArgs<ExtArgs>
+            result: $Utils.PayloadToResult<Prisma.$PortLeasePayload>
+          }
+          findMany: {
+            args: Prisma.PortLeaseFindManyArgs<ExtArgs>
+            result: $Utils.PayloadToResult<Prisma.$PortLeasePayload>[]
+          }
+          create: {
+            args: Prisma.PortLeaseCreateArgs<ExtArgs>
+            result: $Utils.PayloadToResult<Prisma.$PortLeasePayload>
+          }
+          createMany: {
+            args: Prisma.PortLeaseCreateManyArgs<ExtArgs>
+            result: BatchPayload
+          }
+          createManyAndReturn: {
+            args: Prisma.PortLeaseCreateManyAndReturnArgs<ExtArgs>
+            result: $Utils.PayloadToResult<Prisma.$PortLeasePayload>[]
+          }
+          delete: {
+            args: Prisma.PortLeaseDeleteArgs<ExtArgs>
+            result: $Utils.PayloadToResult<Prisma.$PortLeasePayload>
+          }
+          update: {
+            args: Prisma.PortLeaseUpdateArgs<ExtArgs>
+            result: $Utils.PayloadToResult<Prisma.$PortLeasePayload>
+          }
+          deleteMany: {
+            args: Prisma.PortLeaseDeleteManyArgs<ExtArgs>
+            result: BatchPayload
+          }
+          updateMany: {
+            args: Prisma.PortLeaseUpdateManyArgs<ExtArgs>
+            result: BatchPayload
+          }
+          upsert: {
+            args: Prisma.PortLeaseUpsertArgs<ExtArgs>
+            result: $Utils.PayloadToResult<Prisma.$PortLeasePayload>
+          }
+          aggregate: {
+            args: Prisma.PortLeaseAggregateArgs<ExtArgs>
+            result: $Utils.Optional<AggregatePortLease>
+          }
+          groupBy: {
+            args: Prisma.PortLeaseGroupByArgs<ExtArgs>
+            result: $Utils.Optional<PortLeaseGroupByOutputType>[]
+          }
+          count: {
+            args: Prisma.PortLeaseCountArgs<ExtArgs>
+            result: $Utils.Optional<PortLeaseCountAggregateOutputType> | number
+          }
+        }
+      }
+      ApiKey: {
+        payload: Prisma.$ApiKeyPayload<ExtArgs>
+        fields: Prisma.ApiKeyFieldRefs
+        operations: {
+          findUnique: {
+            args: Prisma.ApiKeyFindUniqueArgs<ExtArgs>
+            result: $Utils.PayloadToResult<Prisma.$ApiKeyPayload> | null
+          }
+          findUniqueOrThrow: {
+            args: Prisma.ApiKeyFindUniqueOrThrowArgs<ExtArgs>
+            result: $Utils.PayloadToResult<Prisma.$ApiKeyPayload>
+          }
+          findFirst: {
+            args: Prisma.ApiKeyFindFirstArgs<ExtArgs>
+            result: $Utils.PayloadToResult<Prisma.$ApiKeyPayload> | null
+          }
+          findFirstOrThrow: {
+            args: Prisma.ApiKeyFindFirstOrThrowArgs<ExtArgs>
+            result: $Utils.PayloadToResult<Prisma.$ApiKeyPayload>
+          }
+          findMany: {
+            args: Prisma.ApiKeyFindManyArgs<ExtArgs>
+            result: $Utils.PayloadToResult<Prisma.$ApiKeyPayload>[]
+          }
+          create: {
+            args: Prisma.ApiKeyCreateArgs<ExtArgs>
+            result: $Utils.PayloadToResult<Prisma.$ApiKeyPayload>
+          }
+          createMany: {
+            args: Prisma.ApiKeyCreateManyArgs<ExtArgs>
+            result: BatchPayload
+          }
+          createManyAndReturn: {
+            args: Prisma.ApiKeyCreateManyAndReturnArgs<ExtArgs>
+            result: $Utils.PayloadToResult<Prisma.$ApiKeyPayload>[]
+          }
+          delete: {
+            args: Prisma.ApiKeyDeleteArgs<ExtArgs>
+            result: $Utils.PayloadToResult<Prisma.$ApiKeyPayload>
+          }
+          update: {
+            args: Prisma.ApiKeyUpdateArgs<ExtArgs>
+            result: $Utils.PayloadToResult<Prisma.$ApiKeyPayload>
+          }
+          deleteMany: {
+            args: Prisma.ApiKeyDeleteManyArgs<ExtArgs>
+            result: BatchPayload
+          }
+          updateMany: {
+            args: Prisma.ApiKeyUpdateManyArgs<ExtArgs>
+            result: BatchPayload
+          }
+          upsert: {
+            args: Prisma.ApiKeyUpsertArgs<ExtArgs>
+            result: $Utils.PayloadToResult<Prisma.$ApiKeyPayload>
+          }
+          aggregate: {
+            args: Prisma.ApiKeyAggregateArgs<ExtArgs>
+            result: $Utils.Optional<AggregateApiKey>
+          }
+          groupBy: {
+            args: Prisma.ApiKeyGroupByArgs<ExtArgs>
+            result: $Utils.Optional<ApiKeyGroupByOutputType>[]
+          }
+          count: {
+            args: Prisma.ApiKeyCountArgs<ExtArgs>
+            result: $Utils.Optional<ApiKeyCountAggregateOutputType> | number
           }
         }
       }
@@ -2808,8 +2980,18 @@ export namespace Prisma {
 
   export type AggregateSession = {
     _count: SessionCountAggregateOutputType | null
+    _avg: SessionAvgAggregateOutputType | null
+    _sum: SessionSumAggregateOutputType | null
     _min: SessionMinAggregateOutputType | null
     _max: SessionMaxAggregateOutputType | null
+  }
+
+  export type SessionAvgAggregateOutputType = {
+    heartbeat_pid: number | null
+  }
+
+  export type SessionSumAggregateOutputType = {
+    heartbeat_pid: number | null
   }
 
   export type SessionMinAggregateOutputType = {
@@ -2839,6 +3021,9 @@ export namespace Prisma {
     ai_analysis: string | null
     tags: string | null
     trace_id: string | null
+    last_heartbeat_at: Date | null
+    heartbeat_pid: number | null
+    heartbeat_host: string | null
   }
 
   export type SessionMaxAggregateOutputType = {
@@ -2868,6 +3053,9 @@ export namespace Prisma {
     ai_analysis: string | null
     tags: string | null
     trace_id: string | null
+    last_heartbeat_at: Date | null
+    heartbeat_pid: number | null
+    heartbeat_host: string | null
   }
 
   export type SessionCountAggregateOutputType = {
@@ -2897,9 +3085,20 @@ export namespace Prisma {
     ai_analysis: number
     tags: number
     trace_id: number
+    last_heartbeat_at: number
+    heartbeat_pid: number
+    heartbeat_host: number
     _all: number
   }
 
+
+  export type SessionAvgAggregateInputType = {
+    heartbeat_pid?: true
+  }
+
+  export type SessionSumAggregateInputType = {
+    heartbeat_pid?: true
+  }
 
   export type SessionMinAggregateInputType = {
     id?: true
@@ -2928,6 +3127,9 @@ export namespace Prisma {
     ai_analysis?: true
     tags?: true
     trace_id?: true
+    last_heartbeat_at?: true
+    heartbeat_pid?: true
+    heartbeat_host?: true
   }
 
   export type SessionMaxAggregateInputType = {
@@ -2957,6 +3159,9 @@ export namespace Prisma {
     ai_analysis?: true
     tags?: true
     trace_id?: true
+    last_heartbeat_at?: true
+    heartbeat_pid?: true
+    heartbeat_host?: true
   }
 
   export type SessionCountAggregateInputType = {
@@ -2986,6 +3191,9 @@ export namespace Prisma {
     ai_analysis?: true
     tags?: true
     trace_id?: true
+    last_heartbeat_at?: true
+    heartbeat_pid?: true
+    heartbeat_host?: true
     _all?: true
   }
 
@@ -3027,6 +3235,18 @@ export namespace Prisma {
     /**
      * {@link https://www.prisma.io/docs/concepts/components/prisma-client/aggregations Aggregation Docs}
      * 
+     * Select which fields to average
+    **/
+    _avg?: SessionAvgAggregateInputType
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/aggregations Aggregation Docs}
+     * 
+     * Select which fields to sum
+    **/
+    _sum?: SessionSumAggregateInputType
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/aggregations Aggregation Docs}
+     * 
      * Select which fields to find the minimum value
     **/
     _min?: SessionMinAggregateInputType
@@ -3057,6 +3277,8 @@ export namespace Prisma {
     take?: number
     skip?: number
     _count?: SessionCountAggregateInputType | true
+    _avg?: SessionAvgAggregateInputType
+    _sum?: SessionSumAggregateInputType
     _min?: SessionMinAggregateInputType
     _max?: SessionMaxAggregateInputType
   }
@@ -3088,7 +3310,12 @@ export namespace Prisma {
     ai_analysis: string | null
     tags: string | null
     trace_id: string | null
+    last_heartbeat_at: Date | null
+    heartbeat_pid: number | null
+    heartbeat_host: string | null
     _count: SessionCountAggregateOutputType | null
+    _avg: SessionAvgAggregateOutputType | null
+    _sum: SessionSumAggregateOutputType | null
     _min: SessionMinAggregateOutputType | null
     _max: SessionMaxAggregateOutputType | null
   }
@@ -3134,6 +3361,9 @@ export namespace Prisma {
     ai_analysis?: boolean
     tags?: boolean
     trace_id?: boolean
+    last_heartbeat_at?: boolean
+    heartbeat_pid?: boolean
+    heartbeat_host?: boolean
     Log?: boolean | Session$LogArgs<ExtArgs>
     Profiling?: boolean | Session$ProfilingArgs<ExtArgs>
     build?: boolean | Session$buildArgs<ExtArgs>
@@ -3168,6 +3398,9 @@ export namespace Prisma {
     ai_analysis?: boolean
     tags?: boolean
     trace_id?: boolean
+    last_heartbeat_at?: boolean
+    heartbeat_pid?: boolean
+    heartbeat_host?: boolean
     build?: boolean | Session$buildArgs<ExtArgs>
   }, ExtArgs["result"]["session"]>
 
@@ -3198,6 +3431,9 @@ export namespace Prisma {
     ai_analysis?: boolean
     tags?: boolean
     trace_id?: boolean
+    last_heartbeat_at?: boolean
+    heartbeat_pid?: boolean
+    heartbeat_host?: boolean
   }
 
   export type SessionInclude<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
@@ -3246,6 +3482,9 @@ export namespace Prisma {
       ai_analysis: string | null
       tags: string | null
       trace_id: string | null
+      last_heartbeat_at: Date | null
+      heartbeat_pid: number | null
+      heartbeat_host: string | null
     }, ExtArgs["result"]["session"]>
     composites: {}
   }
@@ -3669,6 +3908,9 @@ export namespace Prisma {
     readonly ai_analysis: FieldRef<"Session", 'String'>
     readonly tags: FieldRef<"Session", 'String'>
     readonly trace_id: FieldRef<"Session", 'String'>
+    readonly last_heartbeat_at: FieldRef<"Session", 'DateTime'>
+    readonly heartbeat_pid: FieldRef<"Session", 'Int'>
+    readonly heartbeat_host: FieldRef<"Session", 'String'>
   }
     
 
@@ -8248,6 +8490,7 @@ export namespace Prisma {
     batteryLevel: number | null
     reservedUntil: number | null
     totalHealedCount: number | null
+    lockedAt: number | null
   }
 
   export type DeviceSumAggregateOutputType = {
@@ -8265,6 +8508,7 @@ export namespace Prisma {
     batteryLevel: number | null
     reservedUntil: number | null
     totalHealedCount: number | null
+    lockedAt: number | null
   }
 
   export type DeviceMinAggregateOutputType = {
@@ -8316,6 +8560,8 @@ export namespace Prisma {
     totalHealedCount: number | null
     ip: string | null
     cpuArchitecture: string | null
+    owningSessionId: string | null
+    lockedAt: number | null
   }
 
   export type DeviceMaxAggregateOutputType = {
@@ -8367,6 +8613,8 @@ export namespace Prisma {
     totalHealedCount: number | null
     ip: string | null
     cpuArchitecture: string | null
+    owningSessionId: string | null
+    lockedAt: number | null
   }
 
   export type DeviceCountAggregateOutputType = {
@@ -8418,6 +8666,8 @@ export namespace Prisma {
     totalHealedCount: number
     ip: number
     cpuArchitecture: number
+    owningSessionId: number
+    lockedAt: number
     _all: number
   }
 
@@ -8437,6 +8687,7 @@ export namespace Prisma {
     batteryLevel?: true
     reservedUntil?: true
     totalHealedCount?: true
+    lockedAt?: true
   }
 
   export type DeviceSumAggregateInputType = {
@@ -8454,6 +8705,7 @@ export namespace Prisma {
     batteryLevel?: true
     reservedUntil?: true
     totalHealedCount?: true
+    lockedAt?: true
   }
 
   export type DeviceMinAggregateInputType = {
@@ -8505,6 +8757,8 @@ export namespace Prisma {
     totalHealedCount?: true
     ip?: true
     cpuArchitecture?: true
+    owningSessionId?: true
+    lockedAt?: true
   }
 
   export type DeviceMaxAggregateInputType = {
@@ -8556,6 +8810,8 @@ export namespace Prisma {
     totalHealedCount?: true
     ip?: true
     cpuArchitecture?: true
+    owningSessionId?: true
+    lockedAt?: true
   }
 
   export type DeviceCountAggregateInputType = {
@@ -8607,6 +8863,8 @@ export namespace Prisma {
     totalHealedCount?: true
     ip?: true
     cpuArchitecture?: true
+    owningSessionId?: true
+    lockedAt?: true
     _all?: true
   }
 
@@ -8745,6 +9003,8 @@ export namespace Prisma {
     totalHealedCount: number | null
     ip: string | null
     cpuArchitecture: string | null
+    owningSessionId: string | null
+    lockedAt: number | null
     _count: DeviceCountAggregateOutputType | null
     _avg: DeviceAvgAggregateOutputType | null
     _sum: DeviceSumAggregateOutputType | null
@@ -8815,6 +9075,8 @@ export namespace Prisma {
     totalHealedCount?: boolean
     ip?: boolean
     cpuArchitecture?: boolean
+    owningSessionId?: boolean
+    lockedAt?: boolean
   }, ExtArgs["result"]["device"]>
 
   export type DeviceSelectCreateManyAndReturn<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = $Extensions.GetSelect<{
@@ -8866,6 +9128,8 @@ export namespace Prisma {
     totalHealedCount?: boolean
     ip?: boolean
     cpuArchitecture?: boolean
+    owningSessionId?: boolean
+    lockedAt?: boolean
   }, ExtArgs["result"]["device"]>
 
   export type DeviceSelectScalar = {
@@ -8917,6 +9181,8 @@ export namespace Prisma {
     totalHealedCount?: boolean
     ip?: boolean
     cpuArchitecture?: boolean
+    owningSessionId?: boolean
+    lockedAt?: boolean
   }
 
 
@@ -8972,6 +9238,8 @@ export namespace Prisma {
       totalHealedCount: number | null
       ip: string | null
       cpuArchitecture: string | null
+      owningSessionId: string | null
+      lockedAt: number | null
     }, ExtArgs["result"]["device"]>
     composites: {}
   }
@@ -9413,6 +9681,8 @@ export namespace Prisma {
     readonly totalHealedCount: FieldRef<"Device", 'Int'>
     readonly ip: FieldRef<"Device", 'String'>
     readonly cpuArchitecture: FieldRef<"Device", 'String'>
+    readonly owningSessionId: FieldRef<"Device", 'String'>
+    readonly lockedAt: FieldRef<"Device", 'Float'>
   }
     
 
@@ -14188,6 +14458,1886 @@ export namespace Prisma {
 
 
   /**
+   * Model PortLease
+   */
+
+  export type AggregatePortLease = {
+    _count: PortLeaseCountAggregateOutputType | null
+    _avg: PortLeaseAvgAggregateOutputType | null
+    _sum: PortLeaseSumAggregateOutputType | null
+    _min: PortLeaseMinAggregateOutputType | null
+    _max: PortLeaseMaxAggregateOutputType | null
+  }
+
+  export type PortLeaseAvgAggregateOutputType = {
+    port: number | null
+    leasedToPid: number | null
+    leasedAt: number | null
+    expiresAt: number | null
+  }
+
+  export type PortLeaseSumAggregateOutputType = {
+    port: number | null
+    leasedToPid: number | null
+    leasedAt: number | null
+    expiresAt: number | null
+  }
+
+  export type PortLeaseMinAggregateOutputType = {
+    port: number | null
+    purpose: string | null
+    leasedToUdid: string | null
+    leasedToPid: number | null
+    leasedAt: number | null
+    expiresAt: number | null
+  }
+
+  export type PortLeaseMaxAggregateOutputType = {
+    port: number | null
+    purpose: string | null
+    leasedToUdid: string | null
+    leasedToPid: number | null
+    leasedAt: number | null
+    expiresAt: number | null
+  }
+
+  export type PortLeaseCountAggregateOutputType = {
+    port: number
+    purpose: number
+    leasedToUdid: number
+    leasedToPid: number
+    leasedAt: number
+    expiresAt: number
+    _all: number
+  }
+
+
+  export type PortLeaseAvgAggregateInputType = {
+    port?: true
+    leasedToPid?: true
+    leasedAt?: true
+    expiresAt?: true
+  }
+
+  export type PortLeaseSumAggregateInputType = {
+    port?: true
+    leasedToPid?: true
+    leasedAt?: true
+    expiresAt?: true
+  }
+
+  export type PortLeaseMinAggregateInputType = {
+    port?: true
+    purpose?: true
+    leasedToUdid?: true
+    leasedToPid?: true
+    leasedAt?: true
+    expiresAt?: true
+  }
+
+  export type PortLeaseMaxAggregateInputType = {
+    port?: true
+    purpose?: true
+    leasedToUdid?: true
+    leasedToPid?: true
+    leasedAt?: true
+    expiresAt?: true
+  }
+
+  export type PortLeaseCountAggregateInputType = {
+    port?: true
+    purpose?: true
+    leasedToUdid?: true
+    leasedToPid?: true
+    leasedAt?: true
+    expiresAt?: true
+    _all?: true
+  }
+
+  export type PortLeaseAggregateArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Filter which PortLease to aggregate.
+     */
+    where?: PortLeaseWhereInput
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/sorting Sorting Docs}
+     * 
+     * Determine the order of PortLeases to fetch.
+     */
+    orderBy?: PortLeaseOrderByWithRelationInput | PortLeaseOrderByWithRelationInput[]
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination#cursor-based-pagination Cursor Docs}
+     * 
+     * Sets the start position
+     */
+    cursor?: PortLeaseWhereUniqueInput
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination Pagination Docs}
+     * 
+     * Take `±n` PortLeases from the position of the cursor.
+     */
+    take?: number
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination Pagination Docs}
+     * 
+     * Skip the first `n` PortLeases.
+     */
+    skip?: number
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/aggregations Aggregation Docs}
+     * 
+     * Count returned PortLeases
+    **/
+    _count?: true | PortLeaseCountAggregateInputType
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/aggregations Aggregation Docs}
+     * 
+     * Select which fields to average
+    **/
+    _avg?: PortLeaseAvgAggregateInputType
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/aggregations Aggregation Docs}
+     * 
+     * Select which fields to sum
+    **/
+    _sum?: PortLeaseSumAggregateInputType
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/aggregations Aggregation Docs}
+     * 
+     * Select which fields to find the minimum value
+    **/
+    _min?: PortLeaseMinAggregateInputType
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/aggregations Aggregation Docs}
+     * 
+     * Select which fields to find the maximum value
+    **/
+    _max?: PortLeaseMaxAggregateInputType
+  }
+
+  export type GetPortLeaseAggregateType<T extends PortLeaseAggregateArgs> = {
+        [P in keyof T & keyof AggregatePortLease]: P extends '_count' | 'count'
+      ? T[P] extends true
+        ? number
+        : GetScalarType<T[P], AggregatePortLease[P]>
+      : GetScalarType<T[P], AggregatePortLease[P]>
+  }
+
+
+
+
+  export type PortLeaseGroupByArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    where?: PortLeaseWhereInput
+    orderBy?: PortLeaseOrderByWithAggregationInput | PortLeaseOrderByWithAggregationInput[]
+    by: PortLeaseScalarFieldEnum[] | PortLeaseScalarFieldEnum
+    having?: PortLeaseScalarWhereWithAggregatesInput
+    take?: number
+    skip?: number
+    _count?: PortLeaseCountAggregateInputType | true
+    _avg?: PortLeaseAvgAggregateInputType
+    _sum?: PortLeaseSumAggregateInputType
+    _min?: PortLeaseMinAggregateInputType
+    _max?: PortLeaseMaxAggregateInputType
+  }
+
+  export type PortLeaseGroupByOutputType = {
+    port: number
+    purpose: string
+    leasedToUdid: string
+    leasedToPid: number | null
+    leasedAt: number
+    expiresAt: number
+    _count: PortLeaseCountAggregateOutputType | null
+    _avg: PortLeaseAvgAggregateOutputType | null
+    _sum: PortLeaseSumAggregateOutputType | null
+    _min: PortLeaseMinAggregateOutputType | null
+    _max: PortLeaseMaxAggregateOutputType | null
+  }
+
+  type GetPortLeaseGroupByPayload<T extends PortLeaseGroupByArgs> = Prisma.PrismaPromise<
+    Array<
+      PickEnumerable<PortLeaseGroupByOutputType, T['by']> &
+        {
+          [P in ((keyof T) & (keyof PortLeaseGroupByOutputType))]: P extends '_count'
+            ? T[P] extends boolean
+              ? number
+              : GetScalarType<T[P], PortLeaseGroupByOutputType[P]>
+            : GetScalarType<T[P], PortLeaseGroupByOutputType[P]>
+        }
+      >
+    >
+
+
+  export type PortLeaseSelect<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = $Extensions.GetSelect<{
+    port?: boolean
+    purpose?: boolean
+    leasedToUdid?: boolean
+    leasedToPid?: boolean
+    leasedAt?: boolean
+    expiresAt?: boolean
+  }, ExtArgs["result"]["portLease"]>
+
+  export type PortLeaseSelectCreateManyAndReturn<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = $Extensions.GetSelect<{
+    port?: boolean
+    purpose?: boolean
+    leasedToUdid?: boolean
+    leasedToPid?: boolean
+    leasedAt?: boolean
+    expiresAt?: boolean
+  }, ExtArgs["result"]["portLease"]>
+
+  export type PortLeaseSelectScalar = {
+    port?: boolean
+    purpose?: boolean
+    leasedToUdid?: boolean
+    leasedToPid?: boolean
+    leasedAt?: boolean
+    expiresAt?: boolean
+  }
+
+
+  export type $PortLeasePayload<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    name: "PortLease"
+    objects: {}
+    scalars: $Extensions.GetPayloadResult<{
+      port: number
+      purpose: string
+      leasedToUdid: string
+      leasedToPid: number | null
+      leasedAt: number
+      expiresAt: number
+    }, ExtArgs["result"]["portLease"]>
+    composites: {}
+  }
+
+  type PortLeaseGetPayload<S extends boolean | null | undefined | PortLeaseDefaultArgs> = $Result.GetResult<Prisma.$PortLeasePayload, S>
+
+  type PortLeaseCountArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = 
+    Omit<PortLeaseFindManyArgs, 'select' | 'include' | 'distinct'> & {
+      select?: PortLeaseCountAggregateInputType | true
+    }
+
+  export interface PortLeaseDelegate<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> {
+    [K: symbol]: { types: Prisma.TypeMap<ExtArgs>['model']['PortLease'], meta: { name: 'PortLease' } }
+    /**
+     * Find zero or one PortLease that matches the filter.
+     * @param {PortLeaseFindUniqueArgs} args - Arguments to find a PortLease
+     * @example
+     * // Get one PortLease
+     * const portLease = await prisma.portLease.findUnique({
+     *   where: {
+     *     // ... provide filter here
+     *   }
+     * })
+     */
+    findUnique<T extends PortLeaseFindUniqueArgs>(args: SelectSubset<T, PortLeaseFindUniqueArgs<ExtArgs>>): Prisma__PortLeaseClient<$Result.GetResult<Prisma.$PortLeasePayload<ExtArgs>, T, "findUnique"> | null, null, ExtArgs>
+
+    /**
+     * Find one PortLease that matches the filter or throw an error with `error.code='P2025'` 
+     * if no matches were found.
+     * @param {PortLeaseFindUniqueOrThrowArgs} args - Arguments to find a PortLease
+     * @example
+     * // Get one PortLease
+     * const portLease = await prisma.portLease.findUniqueOrThrow({
+     *   where: {
+     *     // ... provide filter here
+     *   }
+     * })
+     */
+    findUniqueOrThrow<T extends PortLeaseFindUniqueOrThrowArgs>(args: SelectSubset<T, PortLeaseFindUniqueOrThrowArgs<ExtArgs>>): Prisma__PortLeaseClient<$Result.GetResult<Prisma.$PortLeasePayload<ExtArgs>, T, "findUniqueOrThrow">, never, ExtArgs>
+
+    /**
+     * Find the first PortLease that matches the filter.
+     * Note, that providing `undefined` is treated as the value not being there.
+     * Read more here: https://pris.ly/d/null-undefined
+     * @param {PortLeaseFindFirstArgs} args - Arguments to find a PortLease
+     * @example
+     * // Get one PortLease
+     * const portLease = await prisma.portLease.findFirst({
+     *   where: {
+     *     // ... provide filter here
+     *   }
+     * })
+     */
+    findFirst<T extends PortLeaseFindFirstArgs>(args?: SelectSubset<T, PortLeaseFindFirstArgs<ExtArgs>>): Prisma__PortLeaseClient<$Result.GetResult<Prisma.$PortLeasePayload<ExtArgs>, T, "findFirst"> | null, null, ExtArgs>
+
+    /**
+     * Find the first PortLease that matches the filter or
+     * throw `PrismaKnownClientError` with `P2025` code if no matches were found.
+     * Note, that providing `undefined` is treated as the value not being there.
+     * Read more here: https://pris.ly/d/null-undefined
+     * @param {PortLeaseFindFirstOrThrowArgs} args - Arguments to find a PortLease
+     * @example
+     * // Get one PortLease
+     * const portLease = await prisma.portLease.findFirstOrThrow({
+     *   where: {
+     *     // ... provide filter here
+     *   }
+     * })
+     */
+    findFirstOrThrow<T extends PortLeaseFindFirstOrThrowArgs>(args?: SelectSubset<T, PortLeaseFindFirstOrThrowArgs<ExtArgs>>): Prisma__PortLeaseClient<$Result.GetResult<Prisma.$PortLeasePayload<ExtArgs>, T, "findFirstOrThrow">, never, ExtArgs>
+
+    /**
+     * Find zero or more PortLeases that matches the filter.
+     * Note, that providing `undefined` is treated as the value not being there.
+     * Read more here: https://pris.ly/d/null-undefined
+     * @param {PortLeaseFindManyArgs} args - Arguments to filter and select certain fields only.
+     * @example
+     * // Get all PortLeases
+     * const portLeases = await prisma.portLease.findMany()
+     * 
+     * // Get first 10 PortLeases
+     * const portLeases = await prisma.portLease.findMany({ take: 10 })
+     * 
+     * // Only select the `port`
+     * const portLeaseWithPortOnly = await prisma.portLease.findMany({ select: { port: true } })
+     * 
+     */
+    findMany<T extends PortLeaseFindManyArgs>(args?: SelectSubset<T, PortLeaseFindManyArgs<ExtArgs>>): Prisma.PrismaPromise<$Result.GetResult<Prisma.$PortLeasePayload<ExtArgs>, T, "findMany">>
+
+    /**
+     * Create a PortLease.
+     * @param {PortLeaseCreateArgs} args - Arguments to create a PortLease.
+     * @example
+     * // Create one PortLease
+     * const PortLease = await prisma.portLease.create({
+     *   data: {
+     *     // ... data to create a PortLease
+     *   }
+     * })
+     * 
+     */
+    create<T extends PortLeaseCreateArgs>(args: SelectSubset<T, PortLeaseCreateArgs<ExtArgs>>): Prisma__PortLeaseClient<$Result.GetResult<Prisma.$PortLeasePayload<ExtArgs>, T, "create">, never, ExtArgs>
+
+    /**
+     * Create many PortLeases.
+     * @param {PortLeaseCreateManyArgs} args - Arguments to create many PortLeases.
+     * @example
+     * // Create many PortLeases
+     * const portLease = await prisma.portLease.createMany({
+     *   data: [
+     *     // ... provide data here
+     *   ]
+     * })
+     *     
+     */
+    createMany<T extends PortLeaseCreateManyArgs>(args?: SelectSubset<T, PortLeaseCreateManyArgs<ExtArgs>>): Prisma.PrismaPromise<BatchPayload>
+
+    /**
+     * Create many PortLeases and returns the data saved in the database.
+     * @param {PortLeaseCreateManyAndReturnArgs} args - Arguments to create many PortLeases.
+     * @example
+     * // Create many PortLeases
+     * const portLease = await prisma.portLease.createManyAndReturn({
+     *   data: [
+     *     // ... provide data here
+     *   ]
+     * })
+     * 
+     * // Create many PortLeases and only return the `port`
+     * const portLeaseWithPortOnly = await prisma.portLease.createManyAndReturn({ 
+     *   select: { port: true },
+     *   data: [
+     *     // ... provide data here
+     *   ]
+     * })
+     * Note, that providing `undefined` is treated as the value not being there.
+     * Read more here: https://pris.ly/d/null-undefined
+     * 
+     */
+    createManyAndReturn<T extends PortLeaseCreateManyAndReturnArgs>(args?: SelectSubset<T, PortLeaseCreateManyAndReturnArgs<ExtArgs>>): Prisma.PrismaPromise<$Result.GetResult<Prisma.$PortLeasePayload<ExtArgs>, T, "createManyAndReturn">>
+
+    /**
+     * Delete a PortLease.
+     * @param {PortLeaseDeleteArgs} args - Arguments to delete one PortLease.
+     * @example
+     * // Delete one PortLease
+     * const PortLease = await prisma.portLease.delete({
+     *   where: {
+     *     // ... filter to delete one PortLease
+     *   }
+     * })
+     * 
+     */
+    delete<T extends PortLeaseDeleteArgs>(args: SelectSubset<T, PortLeaseDeleteArgs<ExtArgs>>): Prisma__PortLeaseClient<$Result.GetResult<Prisma.$PortLeasePayload<ExtArgs>, T, "delete">, never, ExtArgs>
+
+    /**
+     * Update one PortLease.
+     * @param {PortLeaseUpdateArgs} args - Arguments to update one PortLease.
+     * @example
+     * // Update one PortLease
+     * const portLease = await prisma.portLease.update({
+     *   where: {
+     *     // ... provide filter here
+     *   },
+     *   data: {
+     *     // ... provide data here
+     *   }
+     * })
+     * 
+     */
+    update<T extends PortLeaseUpdateArgs>(args: SelectSubset<T, PortLeaseUpdateArgs<ExtArgs>>): Prisma__PortLeaseClient<$Result.GetResult<Prisma.$PortLeasePayload<ExtArgs>, T, "update">, never, ExtArgs>
+
+    /**
+     * Delete zero or more PortLeases.
+     * @param {PortLeaseDeleteManyArgs} args - Arguments to filter PortLeases to delete.
+     * @example
+     * // Delete a few PortLeases
+     * const { count } = await prisma.portLease.deleteMany({
+     *   where: {
+     *     // ... provide filter here
+     *   }
+     * })
+     * 
+     */
+    deleteMany<T extends PortLeaseDeleteManyArgs>(args?: SelectSubset<T, PortLeaseDeleteManyArgs<ExtArgs>>): Prisma.PrismaPromise<BatchPayload>
+
+    /**
+     * Update zero or more PortLeases.
+     * Note, that providing `undefined` is treated as the value not being there.
+     * Read more here: https://pris.ly/d/null-undefined
+     * @param {PortLeaseUpdateManyArgs} args - Arguments to update one or more rows.
+     * @example
+     * // Update many PortLeases
+     * const portLease = await prisma.portLease.updateMany({
+     *   where: {
+     *     // ... provide filter here
+     *   },
+     *   data: {
+     *     // ... provide data here
+     *   }
+     * })
+     * 
+     */
+    updateMany<T extends PortLeaseUpdateManyArgs>(args: SelectSubset<T, PortLeaseUpdateManyArgs<ExtArgs>>): Prisma.PrismaPromise<BatchPayload>
+
+    /**
+     * Create or update one PortLease.
+     * @param {PortLeaseUpsertArgs} args - Arguments to update or create a PortLease.
+     * @example
+     * // Update or create a PortLease
+     * const portLease = await prisma.portLease.upsert({
+     *   create: {
+     *     // ... data to create a PortLease
+     *   },
+     *   update: {
+     *     // ... in case it already exists, update
+     *   },
+     *   where: {
+     *     // ... the filter for the PortLease we want to update
+     *   }
+     * })
+     */
+    upsert<T extends PortLeaseUpsertArgs>(args: SelectSubset<T, PortLeaseUpsertArgs<ExtArgs>>): Prisma__PortLeaseClient<$Result.GetResult<Prisma.$PortLeasePayload<ExtArgs>, T, "upsert">, never, ExtArgs>
+
+
+    /**
+     * Count the number of PortLeases.
+     * Note, that providing `undefined` is treated as the value not being there.
+     * Read more here: https://pris.ly/d/null-undefined
+     * @param {PortLeaseCountArgs} args - Arguments to filter PortLeases to count.
+     * @example
+     * // Count the number of PortLeases
+     * const count = await prisma.portLease.count({
+     *   where: {
+     *     // ... the filter for the PortLeases we want to count
+     *   }
+     * })
+    **/
+    count<T extends PortLeaseCountArgs>(
+      args?: Subset<T, PortLeaseCountArgs>,
+    ): Prisma.PrismaPromise<
+      T extends $Utils.Record<'select', any>
+        ? T['select'] extends true
+          ? number
+          : GetScalarType<T['select'], PortLeaseCountAggregateOutputType>
+        : number
+    >
+
+    /**
+     * Allows you to perform aggregations operations on a PortLease.
+     * Note, that providing `undefined` is treated as the value not being there.
+     * Read more here: https://pris.ly/d/null-undefined
+     * @param {PortLeaseAggregateArgs} args - Select which aggregations you would like to apply and on what fields.
+     * @example
+     * // Ordered by age ascending
+     * // Where email contains prisma.io
+     * // Limited to the 10 users
+     * const aggregations = await prisma.user.aggregate({
+     *   _avg: {
+     *     age: true,
+     *   },
+     *   where: {
+     *     email: {
+     *       contains: "prisma.io",
+     *     },
+     *   },
+     *   orderBy: {
+     *     age: "asc",
+     *   },
+     *   take: 10,
+     * })
+    **/
+    aggregate<T extends PortLeaseAggregateArgs>(args: Subset<T, PortLeaseAggregateArgs>): Prisma.PrismaPromise<GetPortLeaseAggregateType<T>>
+
+    /**
+     * Group by PortLease.
+     * Note, that providing `undefined` is treated as the value not being there.
+     * Read more here: https://pris.ly/d/null-undefined
+     * @param {PortLeaseGroupByArgs} args - Group by arguments.
+     * @example
+     * // Group by city, order by createdAt, get count
+     * const result = await prisma.user.groupBy({
+     *   by: ['city', 'createdAt'],
+     *   orderBy: {
+     *     createdAt: true
+     *   },
+     *   _count: {
+     *     _all: true
+     *   },
+     * })
+     * 
+    **/
+    groupBy<
+      T extends PortLeaseGroupByArgs,
+      HasSelectOrTake extends Or<
+        Extends<'skip', Keys<T>>,
+        Extends<'take', Keys<T>>
+      >,
+      OrderByArg extends True extends HasSelectOrTake
+        ? { orderBy: PortLeaseGroupByArgs['orderBy'] }
+        : { orderBy?: PortLeaseGroupByArgs['orderBy'] },
+      OrderFields extends ExcludeUnderscoreKeys<Keys<MaybeTupleToUnion<T['orderBy']>>>,
+      ByFields extends MaybeTupleToUnion<T['by']>,
+      ByValid extends Has<ByFields, OrderFields>,
+      HavingFields extends GetHavingFields<T['having']>,
+      HavingValid extends Has<ByFields, HavingFields>,
+      ByEmpty extends T['by'] extends never[] ? True : False,
+      InputErrors extends ByEmpty extends True
+      ? `Error: "by" must not be empty.`
+      : HavingValid extends False
+      ? {
+          [P in HavingFields]: P extends ByFields
+            ? never
+            : P extends string
+            ? `Error: Field "${P}" used in "having" needs to be provided in "by".`
+            : [
+                Error,
+                'Field ',
+                P,
+                ` in "having" needs to be provided in "by"`,
+              ]
+        }[HavingFields]
+      : 'take' extends Keys<T>
+      ? 'orderBy' extends Keys<T>
+        ? ByValid extends True
+          ? {}
+          : {
+              [P in OrderFields]: P extends ByFields
+                ? never
+                : `Error: Field "${P}" in "orderBy" needs to be provided in "by"`
+            }[OrderFields]
+        : 'Error: If you provide "take", you also need to provide "orderBy"'
+      : 'skip' extends Keys<T>
+      ? 'orderBy' extends Keys<T>
+        ? ByValid extends True
+          ? {}
+          : {
+              [P in OrderFields]: P extends ByFields
+                ? never
+                : `Error: Field "${P}" in "orderBy" needs to be provided in "by"`
+            }[OrderFields]
+        : 'Error: If you provide "skip", you also need to provide "orderBy"'
+      : ByValid extends True
+      ? {}
+      : {
+          [P in OrderFields]: P extends ByFields
+            ? never
+            : `Error: Field "${P}" in "orderBy" needs to be provided in "by"`
+        }[OrderFields]
+    >(args: SubsetIntersection<T, PortLeaseGroupByArgs, OrderByArg> & InputErrors): {} extends InputErrors ? GetPortLeaseGroupByPayload<T> : Prisma.PrismaPromise<InputErrors>
+  /**
+   * Fields of the PortLease model
+   */
+  readonly fields: PortLeaseFieldRefs;
+  }
+
+  /**
+   * The delegate class that acts as a "Promise-like" for PortLease.
+   * Why is this prefixed with `Prisma__`?
+   * Because we want to prevent naming conflicts as mentioned in
+   * https://github.com/prisma/prisma-client-js/issues/707
+   */
+  export interface Prisma__PortLeaseClient<T, Null = never, ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> extends Prisma.PrismaPromise<T> {
+    readonly [Symbol.toStringTag]: "PrismaPromise"
+    /**
+     * Attaches callbacks for the resolution and/or rejection of the Promise.
+     * @param onfulfilled The callback to execute when the Promise is resolved.
+     * @param onrejected The callback to execute when the Promise is rejected.
+     * @returns A Promise for the completion of which ever callback is executed.
+     */
+    then<TResult1 = T, TResult2 = never>(onfulfilled?: ((value: T) => TResult1 | PromiseLike<TResult1>) | undefined | null, onrejected?: ((reason: any) => TResult2 | PromiseLike<TResult2>) | undefined | null): $Utils.JsPromise<TResult1 | TResult2>
+    /**
+     * Attaches a callback for only the rejection of the Promise.
+     * @param onrejected The callback to execute when the Promise is rejected.
+     * @returns A Promise for the completion of the callback.
+     */
+    catch<TResult = never>(onrejected?: ((reason: any) => TResult | PromiseLike<TResult>) | undefined | null): $Utils.JsPromise<T | TResult>
+    /**
+     * Attaches a callback that is invoked when the Promise is settled (fulfilled or rejected). The
+     * resolved value cannot be modified from the callback.
+     * @param onfinally The callback to execute when the Promise is settled (fulfilled or rejected).
+     * @returns A Promise for the completion of the callback.
+     */
+    finally(onfinally?: (() => void) | undefined | null): $Utils.JsPromise<T>
+  }
+
+
+
+
+  /**
+   * Fields of the PortLease model
+   */ 
+  interface PortLeaseFieldRefs {
+    readonly port: FieldRef<"PortLease", 'Int'>
+    readonly purpose: FieldRef<"PortLease", 'String'>
+    readonly leasedToUdid: FieldRef<"PortLease", 'String'>
+    readonly leasedToPid: FieldRef<"PortLease", 'Int'>
+    readonly leasedAt: FieldRef<"PortLease", 'Float'>
+    readonly expiresAt: FieldRef<"PortLease", 'Float'>
+  }
+    
+
+  // Custom InputTypes
+  /**
+   * PortLease findUnique
+   */
+  export type PortLeaseFindUniqueArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the PortLease
+     */
+    select?: PortLeaseSelect<ExtArgs> | null
+    /**
+     * Filter, which PortLease to fetch.
+     */
+    where: PortLeaseWhereUniqueInput
+  }
+
+  /**
+   * PortLease findUniqueOrThrow
+   */
+  export type PortLeaseFindUniqueOrThrowArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the PortLease
+     */
+    select?: PortLeaseSelect<ExtArgs> | null
+    /**
+     * Filter, which PortLease to fetch.
+     */
+    where: PortLeaseWhereUniqueInput
+  }
+
+  /**
+   * PortLease findFirst
+   */
+  export type PortLeaseFindFirstArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the PortLease
+     */
+    select?: PortLeaseSelect<ExtArgs> | null
+    /**
+     * Filter, which PortLease to fetch.
+     */
+    where?: PortLeaseWhereInput
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/sorting Sorting Docs}
+     * 
+     * Determine the order of PortLeases to fetch.
+     */
+    orderBy?: PortLeaseOrderByWithRelationInput | PortLeaseOrderByWithRelationInput[]
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination#cursor-based-pagination Cursor Docs}
+     * 
+     * Sets the position for searching for PortLeases.
+     */
+    cursor?: PortLeaseWhereUniqueInput
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination Pagination Docs}
+     * 
+     * Take `±n` PortLeases from the position of the cursor.
+     */
+    take?: number
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination Pagination Docs}
+     * 
+     * Skip the first `n` PortLeases.
+     */
+    skip?: number
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/distinct Distinct Docs}
+     * 
+     * Filter by unique combinations of PortLeases.
+     */
+    distinct?: PortLeaseScalarFieldEnum | PortLeaseScalarFieldEnum[]
+  }
+
+  /**
+   * PortLease findFirstOrThrow
+   */
+  export type PortLeaseFindFirstOrThrowArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the PortLease
+     */
+    select?: PortLeaseSelect<ExtArgs> | null
+    /**
+     * Filter, which PortLease to fetch.
+     */
+    where?: PortLeaseWhereInput
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/sorting Sorting Docs}
+     * 
+     * Determine the order of PortLeases to fetch.
+     */
+    orderBy?: PortLeaseOrderByWithRelationInput | PortLeaseOrderByWithRelationInput[]
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination#cursor-based-pagination Cursor Docs}
+     * 
+     * Sets the position for searching for PortLeases.
+     */
+    cursor?: PortLeaseWhereUniqueInput
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination Pagination Docs}
+     * 
+     * Take `±n` PortLeases from the position of the cursor.
+     */
+    take?: number
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination Pagination Docs}
+     * 
+     * Skip the first `n` PortLeases.
+     */
+    skip?: number
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/distinct Distinct Docs}
+     * 
+     * Filter by unique combinations of PortLeases.
+     */
+    distinct?: PortLeaseScalarFieldEnum | PortLeaseScalarFieldEnum[]
+  }
+
+  /**
+   * PortLease findMany
+   */
+  export type PortLeaseFindManyArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the PortLease
+     */
+    select?: PortLeaseSelect<ExtArgs> | null
+    /**
+     * Filter, which PortLeases to fetch.
+     */
+    where?: PortLeaseWhereInput
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/sorting Sorting Docs}
+     * 
+     * Determine the order of PortLeases to fetch.
+     */
+    orderBy?: PortLeaseOrderByWithRelationInput | PortLeaseOrderByWithRelationInput[]
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination#cursor-based-pagination Cursor Docs}
+     * 
+     * Sets the position for listing PortLeases.
+     */
+    cursor?: PortLeaseWhereUniqueInput
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination Pagination Docs}
+     * 
+     * Take `±n` PortLeases from the position of the cursor.
+     */
+    take?: number
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination Pagination Docs}
+     * 
+     * Skip the first `n` PortLeases.
+     */
+    skip?: number
+    distinct?: PortLeaseScalarFieldEnum | PortLeaseScalarFieldEnum[]
+  }
+
+  /**
+   * PortLease create
+   */
+  export type PortLeaseCreateArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the PortLease
+     */
+    select?: PortLeaseSelect<ExtArgs> | null
+    /**
+     * The data needed to create a PortLease.
+     */
+    data: XOR<PortLeaseCreateInput, PortLeaseUncheckedCreateInput>
+  }
+
+  /**
+   * PortLease createMany
+   */
+  export type PortLeaseCreateManyArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * The data used to create many PortLeases.
+     */
+    data: PortLeaseCreateManyInput | PortLeaseCreateManyInput[]
+  }
+
+  /**
+   * PortLease createManyAndReturn
+   */
+  export type PortLeaseCreateManyAndReturnArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the PortLease
+     */
+    select?: PortLeaseSelectCreateManyAndReturn<ExtArgs> | null
+    /**
+     * The data used to create many PortLeases.
+     */
+    data: PortLeaseCreateManyInput | PortLeaseCreateManyInput[]
+  }
+
+  /**
+   * PortLease update
+   */
+  export type PortLeaseUpdateArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the PortLease
+     */
+    select?: PortLeaseSelect<ExtArgs> | null
+    /**
+     * The data needed to update a PortLease.
+     */
+    data: XOR<PortLeaseUpdateInput, PortLeaseUncheckedUpdateInput>
+    /**
+     * Choose, which PortLease to update.
+     */
+    where: PortLeaseWhereUniqueInput
+  }
+
+  /**
+   * PortLease updateMany
+   */
+  export type PortLeaseUpdateManyArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * The data used to update PortLeases.
+     */
+    data: XOR<PortLeaseUpdateManyMutationInput, PortLeaseUncheckedUpdateManyInput>
+    /**
+     * Filter which PortLeases to update
+     */
+    where?: PortLeaseWhereInput
+  }
+
+  /**
+   * PortLease upsert
+   */
+  export type PortLeaseUpsertArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the PortLease
+     */
+    select?: PortLeaseSelect<ExtArgs> | null
+    /**
+     * The filter to search for the PortLease to update in case it exists.
+     */
+    where: PortLeaseWhereUniqueInput
+    /**
+     * In case the PortLease found by the `where` argument doesn't exist, create a new PortLease with this data.
+     */
+    create: XOR<PortLeaseCreateInput, PortLeaseUncheckedCreateInput>
+    /**
+     * In case the PortLease was found with the provided `where` argument, update it with this data.
+     */
+    update: XOR<PortLeaseUpdateInput, PortLeaseUncheckedUpdateInput>
+  }
+
+  /**
+   * PortLease delete
+   */
+  export type PortLeaseDeleteArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the PortLease
+     */
+    select?: PortLeaseSelect<ExtArgs> | null
+    /**
+     * Filter which PortLease to delete.
+     */
+    where: PortLeaseWhereUniqueInput
+  }
+
+  /**
+   * PortLease deleteMany
+   */
+  export type PortLeaseDeleteManyArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Filter which PortLeases to delete
+     */
+    where?: PortLeaseWhereInput
+  }
+
+  /**
+   * PortLease without action
+   */
+  export type PortLeaseDefaultArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the PortLease
+     */
+    select?: PortLeaseSelect<ExtArgs> | null
+  }
+
+
+  /**
+   * Model ApiKey
+   */
+
+  export type AggregateApiKey = {
+    _count: ApiKeyCountAggregateOutputType | null
+    _avg: ApiKeyAvgAggregateOutputType | null
+    _sum: ApiKeySumAggregateOutputType | null
+    _min: ApiKeyMinAggregateOutputType | null
+    _max: ApiKeyMaxAggregateOutputType | null
+  }
+
+  export type ApiKeyAvgAggregateOutputType = {
+    rateLimit: number | null
+  }
+
+  export type ApiKeySumAggregateOutputType = {
+    rateLimit: number | null
+  }
+
+  export type ApiKeyMinAggregateOutputType = {
+    id: string | null
+    name: string | null
+    keyHash: string | null
+    scopes: string | null
+    rateLimit: number | null
+    createdAt: Date | null
+    revokedAt: Date | null
+    lastUsedAt: Date | null
+  }
+
+  export type ApiKeyMaxAggregateOutputType = {
+    id: string | null
+    name: string | null
+    keyHash: string | null
+    scopes: string | null
+    rateLimit: number | null
+    createdAt: Date | null
+    revokedAt: Date | null
+    lastUsedAt: Date | null
+  }
+
+  export type ApiKeyCountAggregateOutputType = {
+    id: number
+    name: number
+    keyHash: number
+    scopes: number
+    rateLimit: number
+    createdAt: number
+    revokedAt: number
+    lastUsedAt: number
+    _all: number
+  }
+
+
+  export type ApiKeyAvgAggregateInputType = {
+    rateLimit?: true
+  }
+
+  export type ApiKeySumAggregateInputType = {
+    rateLimit?: true
+  }
+
+  export type ApiKeyMinAggregateInputType = {
+    id?: true
+    name?: true
+    keyHash?: true
+    scopes?: true
+    rateLimit?: true
+    createdAt?: true
+    revokedAt?: true
+    lastUsedAt?: true
+  }
+
+  export type ApiKeyMaxAggregateInputType = {
+    id?: true
+    name?: true
+    keyHash?: true
+    scopes?: true
+    rateLimit?: true
+    createdAt?: true
+    revokedAt?: true
+    lastUsedAt?: true
+  }
+
+  export type ApiKeyCountAggregateInputType = {
+    id?: true
+    name?: true
+    keyHash?: true
+    scopes?: true
+    rateLimit?: true
+    createdAt?: true
+    revokedAt?: true
+    lastUsedAt?: true
+    _all?: true
+  }
+
+  export type ApiKeyAggregateArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Filter which ApiKey to aggregate.
+     */
+    where?: ApiKeyWhereInput
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/sorting Sorting Docs}
+     * 
+     * Determine the order of ApiKeys to fetch.
+     */
+    orderBy?: ApiKeyOrderByWithRelationInput | ApiKeyOrderByWithRelationInput[]
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination#cursor-based-pagination Cursor Docs}
+     * 
+     * Sets the start position
+     */
+    cursor?: ApiKeyWhereUniqueInput
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination Pagination Docs}
+     * 
+     * Take `±n` ApiKeys from the position of the cursor.
+     */
+    take?: number
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination Pagination Docs}
+     * 
+     * Skip the first `n` ApiKeys.
+     */
+    skip?: number
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/aggregations Aggregation Docs}
+     * 
+     * Count returned ApiKeys
+    **/
+    _count?: true | ApiKeyCountAggregateInputType
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/aggregations Aggregation Docs}
+     * 
+     * Select which fields to average
+    **/
+    _avg?: ApiKeyAvgAggregateInputType
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/aggregations Aggregation Docs}
+     * 
+     * Select which fields to sum
+    **/
+    _sum?: ApiKeySumAggregateInputType
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/aggregations Aggregation Docs}
+     * 
+     * Select which fields to find the minimum value
+    **/
+    _min?: ApiKeyMinAggregateInputType
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/aggregations Aggregation Docs}
+     * 
+     * Select which fields to find the maximum value
+    **/
+    _max?: ApiKeyMaxAggregateInputType
+  }
+
+  export type GetApiKeyAggregateType<T extends ApiKeyAggregateArgs> = {
+        [P in keyof T & keyof AggregateApiKey]: P extends '_count' | 'count'
+      ? T[P] extends true
+        ? number
+        : GetScalarType<T[P], AggregateApiKey[P]>
+      : GetScalarType<T[P], AggregateApiKey[P]>
+  }
+
+
+
+
+  export type ApiKeyGroupByArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    where?: ApiKeyWhereInput
+    orderBy?: ApiKeyOrderByWithAggregationInput | ApiKeyOrderByWithAggregationInput[]
+    by: ApiKeyScalarFieldEnum[] | ApiKeyScalarFieldEnum
+    having?: ApiKeyScalarWhereWithAggregatesInput
+    take?: number
+    skip?: number
+    _count?: ApiKeyCountAggregateInputType | true
+    _avg?: ApiKeyAvgAggregateInputType
+    _sum?: ApiKeySumAggregateInputType
+    _min?: ApiKeyMinAggregateInputType
+    _max?: ApiKeyMaxAggregateInputType
+  }
+
+  export type ApiKeyGroupByOutputType = {
+    id: string
+    name: string
+    keyHash: string
+    scopes: string
+    rateLimit: number
+    createdAt: Date
+    revokedAt: Date | null
+    lastUsedAt: Date | null
+    _count: ApiKeyCountAggregateOutputType | null
+    _avg: ApiKeyAvgAggregateOutputType | null
+    _sum: ApiKeySumAggregateOutputType | null
+    _min: ApiKeyMinAggregateOutputType | null
+    _max: ApiKeyMaxAggregateOutputType | null
+  }
+
+  type GetApiKeyGroupByPayload<T extends ApiKeyGroupByArgs> = Prisma.PrismaPromise<
+    Array<
+      PickEnumerable<ApiKeyGroupByOutputType, T['by']> &
+        {
+          [P in ((keyof T) & (keyof ApiKeyGroupByOutputType))]: P extends '_count'
+            ? T[P] extends boolean
+              ? number
+              : GetScalarType<T[P], ApiKeyGroupByOutputType[P]>
+            : GetScalarType<T[P], ApiKeyGroupByOutputType[P]>
+        }
+      >
+    >
+
+
+  export type ApiKeySelect<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = $Extensions.GetSelect<{
+    id?: boolean
+    name?: boolean
+    keyHash?: boolean
+    scopes?: boolean
+    rateLimit?: boolean
+    createdAt?: boolean
+    revokedAt?: boolean
+    lastUsedAt?: boolean
+  }, ExtArgs["result"]["apiKey"]>
+
+  export type ApiKeySelectCreateManyAndReturn<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = $Extensions.GetSelect<{
+    id?: boolean
+    name?: boolean
+    keyHash?: boolean
+    scopes?: boolean
+    rateLimit?: boolean
+    createdAt?: boolean
+    revokedAt?: boolean
+    lastUsedAt?: boolean
+  }, ExtArgs["result"]["apiKey"]>
+
+  export type ApiKeySelectScalar = {
+    id?: boolean
+    name?: boolean
+    keyHash?: boolean
+    scopes?: boolean
+    rateLimit?: boolean
+    createdAt?: boolean
+    revokedAt?: boolean
+    lastUsedAt?: boolean
+  }
+
+
+  export type $ApiKeyPayload<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    name: "ApiKey"
+    objects: {}
+    scalars: $Extensions.GetPayloadResult<{
+      id: string
+      name: string
+      keyHash: string
+      scopes: string
+      rateLimit: number
+      createdAt: Date
+      revokedAt: Date | null
+      lastUsedAt: Date | null
+    }, ExtArgs["result"]["apiKey"]>
+    composites: {}
+  }
+
+  type ApiKeyGetPayload<S extends boolean | null | undefined | ApiKeyDefaultArgs> = $Result.GetResult<Prisma.$ApiKeyPayload, S>
+
+  type ApiKeyCountArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = 
+    Omit<ApiKeyFindManyArgs, 'select' | 'include' | 'distinct'> & {
+      select?: ApiKeyCountAggregateInputType | true
+    }
+
+  export interface ApiKeyDelegate<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> {
+    [K: symbol]: { types: Prisma.TypeMap<ExtArgs>['model']['ApiKey'], meta: { name: 'ApiKey' } }
+    /**
+     * Find zero or one ApiKey that matches the filter.
+     * @param {ApiKeyFindUniqueArgs} args - Arguments to find a ApiKey
+     * @example
+     * // Get one ApiKey
+     * const apiKey = await prisma.apiKey.findUnique({
+     *   where: {
+     *     // ... provide filter here
+     *   }
+     * })
+     */
+    findUnique<T extends ApiKeyFindUniqueArgs>(args: SelectSubset<T, ApiKeyFindUniqueArgs<ExtArgs>>): Prisma__ApiKeyClient<$Result.GetResult<Prisma.$ApiKeyPayload<ExtArgs>, T, "findUnique"> | null, null, ExtArgs>
+
+    /**
+     * Find one ApiKey that matches the filter or throw an error with `error.code='P2025'` 
+     * if no matches were found.
+     * @param {ApiKeyFindUniqueOrThrowArgs} args - Arguments to find a ApiKey
+     * @example
+     * // Get one ApiKey
+     * const apiKey = await prisma.apiKey.findUniqueOrThrow({
+     *   where: {
+     *     // ... provide filter here
+     *   }
+     * })
+     */
+    findUniqueOrThrow<T extends ApiKeyFindUniqueOrThrowArgs>(args: SelectSubset<T, ApiKeyFindUniqueOrThrowArgs<ExtArgs>>): Prisma__ApiKeyClient<$Result.GetResult<Prisma.$ApiKeyPayload<ExtArgs>, T, "findUniqueOrThrow">, never, ExtArgs>
+
+    /**
+     * Find the first ApiKey that matches the filter.
+     * Note, that providing `undefined` is treated as the value not being there.
+     * Read more here: https://pris.ly/d/null-undefined
+     * @param {ApiKeyFindFirstArgs} args - Arguments to find a ApiKey
+     * @example
+     * // Get one ApiKey
+     * const apiKey = await prisma.apiKey.findFirst({
+     *   where: {
+     *     // ... provide filter here
+     *   }
+     * })
+     */
+    findFirst<T extends ApiKeyFindFirstArgs>(args?: SelectSubset<T, ApiKeyFindFirstArgs<ExtArgs>>): Prisma__ApiKeyClient<$Result.GetResult<Prisma.$ApiKeyPayload<ExtArgs>, T, "findFirst"> | null, null, ExtArgs>
+
+    /**
+     * Find the first ApiKey that matches the filter or
+     * throw `PrismaKnownClientError` with `P2025` code if no matches were found.
+     * Note, that providing `undefined` is treated as the value not being there.
+     * Read more here: https://pris.ly/d/null-undefined
+     * @param {ApiKeyFindFirstOrThrowArgs} args - Arguments to find a ApiKey
+     * @example
+     * // Get one ApiKey
+     * const apiKey = await prisma.apiKey.findFirstOrThrow({
+     *   where: {
+     *     // ... provide filter here
+     *   }
+     * })
+     */
+    findFirstOrThrow<T extends ApiKeyFindFirstOrThrowArgs>(args?: SelectSubset<T, ApiKeyFindFirstOrThrowArgs<ExtArgs>>): Prisma__ApiKeyClient<$Result.GetResult<Prisma.$ApiKeyPayload<ExtArgs>, T, "findFirstOrThrow">, never, ExtArgs>
+
+    /**
+     * Find zero or more ApiKeys that matches the filter.
+     * Note, that providing `undefined` is treated as the value not being there.
+     * Read more here: https://pris.ly/d/null-undefined
+     * @param {ApiKeyFindManyArgs} args - Arguments to filter and select certain fields only.
+     * @example
+     * // Get all ApiKeys
+     * const apiKeys = await prisma.apiKey.findMany()
+     * 
+     * // Get first 10 ApiKeys
+     * const apiKeys = await prisma.apiKey.findMany({ take: 10 })
+     * 
+     * // Only select the `id`
+     * const apiKeyWithIdOnly = await prisma.apiKey.findMany({ select: { id: true } })
+     * 
+     */
+    findMany<T extends ApiKeyFindManyArgs>(args?: SelectSubset<T, ApiKeyFindManyArgs<ExtArgs>>): Prisma.PrismaPromise<$Result.GetResult<Prisma.$ApiKeyPayload<ExtArgs>, T, "findMany">>
+
+    /**
+     * Create a ApiKey.
+     * @param {ApiKeyCreateArgs} args - Arguments to create a ApiKey.
+     * @example
+     * // Create one ApiKey
+     * const ApiKey = await prisma.apiKey.create({
+     *   data: {
+     *     // ... data to create a ApiKey
+     *   }
+     * })
+     * 
+     */
+    create<T extends ApiKeyCreateArgs>(args: SelectSubset<T, ApiKeyCreateArgs<ExtArgs>>): Prisma__ApiKeyClient<$Result.GetResult<Prisma.$ApiKeyPayload<ExtArgs>, T, "create">, never, ExtArgs>
+
+    /**
+     * Create many ApiKeys.
+     * @param {ApiKeyCreateManyArgs} args - Arguments to create many ApiKeys.
+     * @example
+     * // Create many ApiKeys
+     * const apiKey = await prisma.apiKey.createMany({
+     *   data: [
+     *     // ... provide data here
+     *   ]
+     * })
+     *     
+     */
+    createMany<T extends ApiKeyCreateManyArgs>(args?: SelectSubset<T, ApiKeyCreateManyArgs<ExtArgs>>): Prisma.PrismaPromise<BatchPayload>
+
+    /**
+     * Create many ApiKeys and returns the data saved in the database.
+     * @param {ApiKeyCreateManyAndReturnArgs} args - Arguments to create many ApiKeys.
+     * @example
+     * // Create many ApiKeys
+     * const apiKey = await prisma.apiKey.createManyAndReturn({
+     *   data: [
+     *     // ... provide data here
+     *   ]
+     * })
+     * 
+     * // Create many ApiKeys and only return the `id`
+     * const apiKeyWithIdOnly = await prisma.apiKey.createManyAndReturn({ 
+     *   select: { id: true },
+     *   data: [
+     *     // ... provide data here
+     *   ]
+     * })
+     * Note, that providing `undefined` is treated as the value not being there.
+     * Read more here: https://pris.ly/d/null-undefined
+     * 
+     */
+    createManyAndReturn<T extends ApiKeyCreateManyAndReturnArgs>(args?: SelectSubset<T, ApiKeyCreateManyAndReturnArgs<ExtArgs>>): Prisma.PrismaPromise<$Result.GetResult<Prisma.$ApiKeyPayload<ExtArgs>, T, "createManyAndReturn">>
+
+    /**
+     * Delete a ApiKey.
+     * @param {ApiKeyDeleteArgs} args - Arguments to delete one ApiKey.
+     * @example
+     * // Delete one ApiKey
+     * const ApiKey = await prisma.apiKey.delete({
+     *   where: {
+     *     // ... filter to delete one ApiKey
+     *   }
+     * })
+     * 
+     */
+    delete<T extends ApiKeyDeleteArgs>(args: SelectSubset<T, ApiKeyDeleteArgs<ExtArgs>>): Prisma__ApiKeyClient<$Result.GetResult<Prisma.$ApiKeyPayload<ExtArgs>, T, "delete">, never, ExtArgs>
+
+    /**
+     * Update one ApiKey.
+     * @param {ApiKeyUpdateArgs} args - Arguments to update one ApiKey.
+     * @example
+     * // Update one ApiKey
+     * const apiKey = await prisma.apiKey.update({
+     *   where: {
+     *     // ... provide filter here
+     *   },
+     *   data: {
+     *     // ... provide data here
+     *   }
+     * })
+     * 
+     */
+    update<T extends ApiKeyUpdateArgs>(args: SelectSubset<T, ApiKeyUpdateArgs<ExtArgs>>): Prisma__ApiKeyClient<$Result.GetResult<Prisma.$ApiKeyPayload<ExtArgs>, T, "update">, never, ExtArgs>
+
+    /**
+     * Delete zero or more ApiKeys.
+     * @param {ApiKeyDeleteManyArgs} args - Arguments to filter ApiKeys to delete.
+     * @example
+     * // Delete a few ApiKeys
+     * const { count } = await prisma.apiKey.deleteMany({
+     *   where: {
+     *     // ... provide filter here
+     *   }
+     * })
+     * 
+     */
+    deleteMany<T extends ApiKeyDeleteManyArgs>(args?: SelectSubset<T, ApiKeyDeleteManyArgs<ExtArgs>>): Prisma.PrismaPromise<BatchPayload>
+
+    /**
+     * Update zero or more ApiKeys.
+     * Note, that providing `undefined` is treated as the value not being there.
+     * Read more here: https://pris.ly/d/null-undefined
+     * @param {ApiKeyUpdateManyArgs} args - Arguments to update one or more rows.
+     * @example
+     * // Update many ApiKeys
+     * const apiKey = await prisma.apiKey.updateMany({
+     *   where: {
+     *     // ... provide filter here
+     *   },
+     *   data: {
+     *     // ... provide data here
+     *   }
+     * })
+     * 
+     */
+    updateMany<T extends ApiKeyUpdateManyArgs>(args: SelectSubset<T, ApiKeyUpdateManyArgs<ExtArgs>>): Prisma.PrismaPromise<BatchPayload>
+
+    /**
+     * Create or update one ApiKey.
+     * @param {ApiKeyUpsertArgs} args - Arguments to update or create a ApiKey.
+     * @example
+     * // Update or create a ApiKey
+     * const apiKey = await prisma.apiKey.upsert({
+     *   create: {
+     *     // ... data to create a ApiKey
+     *   },
+     *   update: {
+     *     // ... in case it already exists, update
+     *   },
+     *   where: {
+     *     // ... the filter for the ApiKey we want to update
+     *   }
+     * })
+     */
+    upsert<T extends ApiKeyUpsertArgs>(args: SelectSubset<T, ApiKeyUpsertArgs<ExtArgs>>): Prisma__ApiKeyClient<$Result.GetResult<Prisma.$ApiKeyPayload<ExtArgs>, T, "upsert">, never, ExtArgs>
+
+
+    /**
+     * Count the number of ApiKeys.
+     * Note, that providing `undefined` is treated as the value not being there.
+     * Read more here: https://pris.ly/d/null-undefined
+     * @param {ApiKeyCountArgs} args - Arguments to filter ApiKeys to count.
+     * @example
+     * // Count the number of ApiKeys
+     * const count = await prisma.apiKey.count({
+     *   where: {
+     *     // ... the filter for the ApiKeys we want to count
+     *   }
+     * })
+    **/
+    count<T extends ApiKeyCountArgs>(
+      args?: Subset<T, ApiKeyCountArgs>,
+    ): Prisma.PrismaPromise<
+      T extends $Utils.Record<'select', any>
+        ? T['select'] extends true
+          ? number
+          : GetScalarType<T['select'], ApiKeyCountAggregateOutputType>
+        : number
+    >
+
+    /**
+     * Allows you to perform aggregations operations on a ApiKey.
+     * Note, that providing `undefined` is treated as the value not being there.
+     * Read more here: https://pris.ly/d/null-undefined
+     * @param {ApiKeyAggregateArgs} args - Select which aggregations you would like to apply and on what fields.
+     * @example
+     * // Ordered by age ascending
+     * // Where email contains prisma.io
+     * // Limited to the 10 users
+     * const aggregations = await prisma.user.aggregate({
+     *   _avg: {
+     *     age: true,
+     *   },
+     *   where: {
+     *     email: {
+     *       contains: "prisma.io",
+     *     },
+     *   },
+     *   orderBy: {
+     *     age: "asc",
+     *   },
+     *   take: 10,
+     * })
+    **/
+    aggregate<T extends ApiKeyAggregateArgs>(args: Subset<T, ApiKeyAggregateArgs>): Prisma.PrismaPromise<GetApiKeyAggregateType<T>>
+
+    /**
+     * Group by ApiKey.
+     * Note, that providing `undefined` is treated as the value not being there.
+     * Read more here: https://pris.ly/d/null-undefined
+     * @param {ApiKeyGroupByArgs} args - Group by arguments.
+     * @example
+     * // Group by city, order by createdAt, get count
+     * const result = await prisma.user.groupBy({
+     *   by: ['city', 'createdAt'],
+     *   orderBy: {
+     *     createdAt: true
+     *   },
+     *   _count: {
+     *     _all: true
+     *   },
+     * })
+     * 
+    **/
+    groupBy<
+      T extends ApiKeyGroupByArgs,
+      HasSelectOrTake extends Or<
+        Extends<'skip', Keys<T>>,
+        Extends<'take', Keys<T>>
+      >,
+      OrderByArg extends True extends HasSelectOrTake
+        ? { orderBy: ApiKeyGroupByArgs['orderBy'] }
+        : { orderBy?: ApiKeyGroupByArgs['orderBy'] },
+      OrderFields extends ExcludeUnderscoreKeys<Keys<MaybeTupleToUnion<T['orderBy']>>>,
+      ByFields extends MaybeTupleToUnion<T['by']>,
+      ByValid extends Has<ByFields, OrderFields>,
+      HavingFields extends GetHavingFields<T['having']>,
+      HavingValid extends Has<ByFields, HavingFields>,
+      ByEmpty extends T['by'] extends never[] ? True : False,
+      InputErrors extends ByEmpty extends True
+      ? `Error: "by" must not be empty.`
+      : HavingValid extends False
+      ? {
+          [P in HavingFields]: P extends ByFields
+            ? never
+            : P extends string
+            ? `Error: Field "${P}" used in "having" needs to be provided in "by".`
+            : [
+                Error,
+                'Field ',
+                P,
+                ` in "having" needs to be provided in "by"`,
+              ]
+        }[HavingFields]
+      : 'take' extends Keys<T>
+      ? 'orderBy' extends Keys<T>
+        ? ByValid extends True
+          ? {}
+          : {
+              [P in OrderFields]: P extends ByFields
+                ? never
+                : `Error: Field "${P}" in "orderBy" needs to be provided in "by"`
+            }[OrderFields]
+        : 'Error: If you provide "take", you also need to provide "orderBy"'
+      : 'skip' extends Keys<T>
+      ? 'orderBy' extends Keys<T>
+        ? ByValid extends True
+          ? {}
+          : {
+              [P in OrderFields]: P extends ByFields
+                ? never
+                : `Error: Field "${P}" in "orderBy" needs to be provided in "by"`
+            }[OrderFields]
+        : 'Error: If you provide "skip", you also need to provide "orderBy"'
+      : ByValid extends True
+      ? {}
+      : {
+          [P in OrderFields]: P extends ByFields
+            ? never
+            : `Error: Field "${P}" in "orderBy" needs to be provided in "by"`
+        }[OrderFields]
+    >(args: SubsetIntersection<T, ApiKeyGroupByArgs, OrderByArg> & InputErrors): {} extends InputErrors ? GetApiKeyGroupByPayload<T> : Prisma.PrismaPromise<InputErrors>
+  /**
+   * Fields of the ApiKey model
+   */
+  readonly fields: ApiKeyFieldRefs;
+  }
+
+  /**
+   * The delegate class that acts as a "Promise-like" for ApiKey.
+   * Why is this prefixed with `Prisma__`?
+   * Because we want to prevent naming conflicts as mentioned in
+   * https://github.com/prisma/prisma-client-js/issues/707
+   */
+  export interface Prisma__ApiKeyClient<T, Null = never, ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> extends Prisma.PrismaPromise<T> {
+    readonly [Symbol.toStringTag]: "PrismaPromise"
+    /**
+     * Attaches callbacks for the resolution and/or rejection of the Promise.
+     * @param onfulfilled The callback to execute when the Promise is resolved.
+     * @param onrejected The callback to execute when the Promise is rejected.
+     * @returns A Promise for the completion of which ever callback is executed.
+     */
+    then<TResult1 = T, TResult2 = never>(onfulfilled?: ((value: T) => TResult1 | PromiseLike<TResult1>) | undefined | null, onrejected?: ((reason: any) => TResult2 | PromiseLike<TResult2>) | undefined | null): $Utils.JsPromise<TResult1 | TResult2>
+    /**
+     * Attaches a callback for only the rejection of the Promise.
+     * @param onrejected The callback to execute when the Promise is rejected.
+     * @returns A Promise for the completion of the callback.
+     */
+    catch<TResult = never>(onrejected?: ((reason: any) => TResult | PromiseLike<TResult>) | undefined | null): $Utils.JsPromise<T | TResult>
+    /**
+     * Attaches a callback that is invoked when the Promise is settled (fulfilled or rejected). The
+     * resolved value cannot be modified from the callback.
+     * @param onfinally The callback to execute when the Promise is settled (fulfilled or rejected).
+     * @returns A Promise for the completion of the callback.
+     */
+    finally(onfinally?: (() => void) | undefined | null): $Utils.JsPromise<T>
+  }
+
+
+
+
+  /**
+   * Fields of the ApiKey model
+   */ 
+  interface ApiKeyFieldRefs {
+    readonly id: FieldRef<"ApiKey", 'String'>
+    readonly name: FieldRef<"ApiKey", 'String'>
+    readonly keyHash: FieldRef<"ApiKey", 'String'>
+    readonly scopes: FieldRef<"ApiKey", 'String'>
+    readonly rateLimit: FieldRef<"ApiKey", 'Int'>
+    readonly createdAt: FieldRef<"ApiKey", 'DateTime'>
+    readonly revokedAt: FieldRef<"ApiKey", 'DateTime'>
+    readonly lastUsedAt: FieldRef<"ApiKey", 'DateTime'>
+  }
+    
+
+  // Custom InputTypes
+  /**
+   * ApiKey findUnique
+   */
+  export type ApiKeyFindUniqueArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the ApiKey
+     */
+    select?: ApiKeySelect<ExtArgs> | null
+    /**
+     * Filter, which ApiKey to fetch.
+     */
+    where: ApiKeyWhereUniqueInput
+  }
+
+  /**
+   * ApiKey findUniqueOrThrow
+   */
+  export type ApiKeyFindUniqueOrThrowArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the ApiKey
+     */
+    select?: ApiKeySelect<ExtArgs> | null
+    /**
+     * Filter, which ApiKey to fetch.
+     */
+    where: ApiKeyWhereUniqueInput
+  }
+
+  /**
+   * ApiKey findFirst
+   */
+  export type ApiKeyFindFirstArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the ApiKey
+     */
+    select?: ApiKeySelect<ExtArgs> | null
+    /**
+     * Filter, which ApiKey to fetch.
+     */
+    where?: ApiKeyWhereInput
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/sorting Sorting Docs}
+     * 
+     * Determine the order of ApiKeys to fetch.
+     */
+    orderBy?: ApiKeyOrderByWithRelationInput | ApiKeyOrderByWithRelationInput[]
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination#cursor-based-pagination Cursor Docs}
+     * 
+     * Sets the position for searching for ApiKeys.
+     */
+    cursor?: ApiKeyWhereUniqueInput
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination Pagination Docs}
+     * 
+     * Take `±n` ApiKeys from the position of the cursor.
+     */
+    take?: number
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination Pagination Docs}
+     * 
+     * Skip the first `n` ApiKeys.
+     */
+    skip?: number
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/distinct Distinct Docs}
+     * 
+     * Filter by unique combinations of ApiKeys.
+     */
+    distinct?: ApiKeyScalarFieldEnum | ApiKeyScalarFieldEnum[]
+  }
+
+  /**
+   * ApiKey findFirstOrThrow
+   */
+  export type ApiKeyFindFirstOrThrowArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the ApiKey
+     */
+    select?: ApiKeySelect<ExtArgs> | null
+    /**
+     * Filter, which ApiKey to fetch.
+     */
+    where?: ApiKeyWhereInput
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/sorting Sorting Docs}
+     * 
+     * Determine the order of ApiKeys to fetch.
+     */
+    orderBy?: ApiKeyOrderByWithRelationInput | ApiKeyOrderByWithRelationInput[]
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination#cursor-based-pagination Cursor Docs}
+     * 
+     * Sets the position for searching for ApiKeys.
+     */
+    cursor?: ApiKeyWhereUniqueInput
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination Pagination Docs}
+     * 
+     * Take `±n` ApiKeys from the position of the cursor.
+     */
+    take?: number
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination Pagination Docs}
+     * 
+     * Skip the first `n` ApiKeys.
+     */
+    skip?: number
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/distinct Distinct Docs}
+     * 
+     * Filter by unique combinations of ApiKeys.
+     */
+    distinct?: ApiKeyScalarFieldEnum | ApiKeyScalarFieldEnum[]
+  }
+
+  /**
+   * ApiKey findMany
+   */
+  export type ApiKeyFindManyArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the ApiKey
+     */
+    select?: ApiKeySelect<ExtArgs> | null
+    /**
+     * Filter, which ApiKeys to fetch.
+     */
+    where?: ApiKeyWhereInput
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/sorting Sorting Docs}
+     * 
+     * Determine the order of ApiKeys to fetch.
+     */
+    orderBy?: ApiKeyOrderByWithRelationInput | ApiKeyOrderByWithRelationInput[]
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination#cursor-based-pagination Cursor Docs}
+     * 
+     * Sets the position for listing ApiKeys.
+     */
+    cursor?: ApiKeyWhereUniqueInput
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination Pagination Docs}
+     * 
+     * Take `±n` ApiKeys from the position of the cursor.
+     */
+    take?: number
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination Pagination Docs}
+     * 
+     * Skip the first `n` ApiKeys.
+     */
+    skip?: number
+    distinct?: ApiKeyScalarFieldEnum | ApiKeyScalarFieldEnum[]
+  }
+
+  /**
+   * ApiKey create
+   */
+  export type ApiKeyCreateArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the ApiKey
+     */
+    select?: ApiKeySelect<ExtArgs> | null
+    /**
+     * The data needed to create a ApiKey.
+     */
+    data: XOR<ApiKeyCreateInput, ApiKeyUncheckedCreateInput>
+  }
+
+  /**
+   * ApiKey createMany
+   */
+  export type ApiKeyCreateManyArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * The data used to create many ApiKeys.
+     */
+    data: ApiKeyCreateManyInput | ApiKeyCreateManyInput[]
+  }
+
+  /**
+   * ApiKey createManyAndReturn
+   */
+  export type ApiKeyCreateManyAndReturnArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the ApiKey
+     */
+    select?: ApiKeySelectCreateManyAndReturn<ExtArgs> | null
+    /**
+     * The data used to create many ApiKeys.
+     */
+    data: ApiKeyCreateManyInput | ApiKeyCreateManyInput[]
+  }
+
+  /**
+   * ApiKey update
+   */
+  export type ApiKeyUpdateArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the ApiKey
+     */
+    select?: ApiKeySelect<ExtArgs> | null
+    /**
+     * The data needed to update a ApiKey.
+     */
+    data: XOR<ApiKeyUpdateInput, ApiKeyUncheckedUpdateInput>
+    /**
+     * Choose, which ApiKey to update.
+     */
+    where: ApiKeyWhereUniqueInput
+  }
+
+  /**
+   * ApiKey updateMany
+   */
+  export type ApiKeyUpdateManyArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * The data used to update ApiKeys.
+     */
+    data: XOR<ApiKeyUpdateManyMutationInput, ApiKeyUncheckedUpdateManyInput>
+    /**
+     * Filter which ApiKeys to update
+     */
+    where?: ApiKeyWhereInput
+  }
+
+  /**
+   * ApiKey upsert
+   */
+  export type ApiKeyUpsertArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the ApiKey
+     */
+    select?: ApiKeySelect<ExtArgs> | null
+    /**
+     * The filter to search for the ApiKey to update in case it exists.
+     */
+    where: ApiKeyWhereUniqueInput
+    /**
+     * In case the ApiKey found by the `where` argument doesn't exist, create a new ApiKey with this data.
+     */
+    create: XOR<ApiKeyCreateInput, ApiKeyUncheckedCreateInput>
+    /**
+     * In case the ApiKey was found with the provided `where` argument, update it with this data.
+     */
+    update: XOR<ApiKeyUpdateInput, ApiKeyUncheckedUpdateInput>
+  }
+
+  /**
+   * ApiKey delete
+   */
+  export type ApiKeyDeleteArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the ApiKey
+     */
+    select?: ApiKeySelect<ExtArgs> | null
+    /**
+     * Filter which ApiKey to delete.
+     */
+    where: ApiKeyWhereUniqueInput
+  }
+
+  /**
+   * ApiKey deleteMany
+   */
+  export type ApiKeyDeleteManyArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Filter which ApiKeys to delete
+     */
+    where?: ApiKeyWhereInput
+  }
+
+  /**
+   * ApiKey without action
+   */
+  export type ApiKeyDefaultArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the ApiKey
+     */
+    select?: ApiKeySelect<ExtArgs> | null
+  }
+
+
+  /**
    * Enums
    */
 
@@ -14234,7 +16384,10 @@ export namespace Prisma {
     failure_category: 'failure_category',
     ai_analysis: 'ai_analysis',
     tags: 'tags',
-    trace_id: 'trace_id'
+    trace_id: 'trace_id',
+    last_heartbeat_at: 'last_heartbeat_at',
+    heartbeat_pid: 'heartbeat_pid',
+    heartbeat_host: 'heartbeat_host'
   };
 
   export type SessionScalarFieldEnum = (typeof SessionScalarFieldEnum)[keyof typeof SessionScalarFieldEnum]
@@ -14363,7 +16516,9 @@ export namespace Prisma {
     sessionProgress: 'sessionProgress',
     totalHealedCount: 'totalHealedCount',
     ip: 'ip',
-    cpuArchitecture: 'cpuArchitecture'
+    cpuArchitecture: 'cpuArchitecture',
+    owningSessionId: 'owningSessionId',
+    lockedAt: 'lockedAt'
   };
 
   export type DeviceScalarFieldEnum = (typeof DeviceScalarFieldEnum)[keyof typeof DeviceScalarFieldEnum]
@@ -14427,6 +16582,32 @@ export namespace Prisma {
   export type LocatorEtalonScalarFieldEnum = (typeof LocatorEtalonScalarFieldEnum)[keyof typeof LocatorEtalonScalarFieldEnum]
 
 
+  export const PortLeaseScalarFieldEnum: {
+    port: 'port',
+    purpose: 'purpose',
+    leasedToUdid: 'leasedToUdid',
+    leasedToPid: 'leasedToPid',
+    leasedAt: 'leasedAt',
+    expiresAt: 'expiresAt'
+  };
+
+  export type PortLeaseScalarFieldEnum = (typeof PortLeaseScalarFieldEnum)[keyof typeof PortLeaseScalarFieldEnum]
+
+
+  export const ApiKeyScalarFieldEnum: {
+    id: 'id',
+    name: 'name',
+    keyHash: 'keyHash',
+    scopes: 'scopes',
+    rateLimit: 'rateLimit',
+    createdAt: 'createdAt',
+    revokedAt: 'revokedAt',
+    lastUsedAt: 'lastUsedAt'
+  };
+
+  export type ApiKeyScalarFieldEnum = (typeof ApiKeyScalarFieldEnum)[keyof typeof ApiKeyScalarFieldEnum]
+
+
   export const SortOrder: {
     asc: 'asc',
     desc: 'desc'
@@ -14470,16 +16651,16 @@ export namespace Prisma {
 
 
   /**
-   * Reference to a field of type 'Float'
+   * Reference to a field of type 'Int'
    */
-  export type FloatFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'Float'>
+  export type IntFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'Int'>
     
 
 
   /**
-   * Reference to a field of type 'Int'
+   * Reference to a field of type 'Float'
    */
-  export type IntFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'Int'>
+  export type FloatFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'Float'>
     
   /**
    * Deep Input Types
@@ -14566,6 +16747,9 @@ export namespace Prisma {
     ai_analysis?: StringNullableFilter<"Session"> | string | null
     tags?: StringNullableFilter<"Session"> | string | null
     trace_id?: StringNullableFilter<"Session"> | string | null
+    last_heartbeat_at?: DateTimeNullableFilter<"Session"> | Date | string | null
+    heartbeat_pid?: IntNullableFilter<"Session"> | number | null
+    heartbeat_host?: StringNullableFilter<"Session"> | string | null
     Log?: LogListRelationFilter
     Profiling?: ProfilingListRelationFilter
     build?: XOR<BuildNullableRelationFilter, BuildWhereInput> | null
@@ -14599,6 +16783,9 @@ export namespace Prisma {
     ai_analysis?: SortOrderInput | SortOrder
     tags?: SortOrderInput | SortOrder
     trace_id?: SortOrderInput | SortOrder
+    last_heartbeat_at?: SortOrderInput | SortOrder
+    heartbeat_pid?: SortOrderInput | SortOrder
+    heartbeat_host?: SortOrderInput | SortOrder
     Log?: LogOrderByRelationAggregateInput
     Profiling?: ProfilingOrderByRelationAggregateInput
     build?: BuildOrderByWithRelationInput
@@ -14635,6 +16822,9 @@ export namespace Prisma {
     ai_analysis?: StringNullableFilter<"Session"> | string | null
     tags?: StringNullableFilter<"Session"> | string | null
     trace_id?: StringNullableFilter<"Session"> | string | null
+    last_heartbeat_at?: DateTimeNullableFilter<"Session"> | Date | string | null
+    heartbeat_pid?: IntNullableFilter<"Session"> | number | null
+    heartbeat_host?: StringNullableFilter<"Session"> | string | null
     Log?: LogListRelationFilter
     Profiling?: ProfilingListRelationFilter
     build?: XOR<BuildNullableRelationFilter, BuildWhereInput> | null
@@ -14668,9 +16858,14 @@ export namespace Prisma {
     ai_analysis?: SortOrderInput | SortOrder
     tags?: SortOrderInput | SortOrder
     trace_id?: SortOrderInput | SortOrder
+    last_heartbeat_at?: SortOrderInput | SortOrder
+    heartbeat_pid?: SortOrderInput | SortOrder
+    heartbeat_host?: SortOrderInput | SortOrder
     _count?: SessionCountOrderByAggregateInput
+    _avg?: SessionAvgOrderByAggregateInput
     _max?: SessionMaxOrderByAggregateInput
     _min?: SessionMinOrderByAggregateInput
+    _sum?: SessionSumOrderByAggregateInput
   }
 
   export type SessionScalarWhereWithAggregatesInput = {
@@ -14703,6 +16898,9 @@ export namespace Prisma {
     ai_analysis?: StringNullableWithAggregatesFilter<"Session"> | string | null
     tags?: StringNullableWithAggregatesFilter<"Session"> | string | null
     trace_id?: StringNullableWithAggregatesFilter<"Session"> | string | null
+    last_heartbeat_at?: DateTimeNullableWithAggregatesFilter<"Session"> | Date | string | null
+    heartbeat_pid?: IntNullableWithAggregatesFilter<"Session"> | number | null
+    heartbeat_host?: StringNullableWithAggregatesFilter<"Session"> | string | null
   }
 
   export type SessionLogWhereInput = {
@@ -15135,6 +17333,8 @@ export namespace Prisma {
     totalHealedCount?: IntNullableFilter<"Device"> | number | null
     ip?: StringNullableFilter<"Device"> | string | null
     cpuArchitecture?: StringNullableFilter<"Device"> | string | null
+    owningSessionId?: StringNullableFilter<"Device"> | string | null
+    lockedAt?: FloatNullableFilter<"Device"> | number | null
   }
 
   export type DeviceOrderByWithRelationInput = {
@@ -15186,6 +17386,8 @@ export namespace Prisma {
     totalHealedCount?: SortOrderInput | SortOrder
     ip?: SortOrderInput | SortOrder
     cpuArchitecture?: SortOrderInput | SortOrder
+    owningSessionId?: SortOrderInput | SortOrder
+    lockedAt?: SortOrderInput | SortOrder
   }
 
   export type DeviceWhereUniqueInput = Prisma.AtLeast<{
@@ -15241,6 +17443,8 @@ export namespace Prisma {
     totalHealedCount?: IntNullableFilter<"Device"> | number | null
     ip?: StringNullableFilter<"Device"> | string | null
     cpuArchitecture?: StringNullableFilter<"Device"> | string | null
+    owningSessionId?: StringNullableFilter<"Device"> | string | null
+    lockedAt?: FloatNullableFilter<"Device"> | number | null
   }, "udid_host">
 
   export type DeviceOrderByWithAggregationInput = {
@@ -15292,6 +17496,8 @@ export namespace Prisma {
     totalHealedCount?: SortOrderInput | SortOrder
     ip?: SortOrderInput | SortOrder
     cpuArchitecture?: SortOrderInput | SortOrder
+    owningSessionId?: SortOrderInput | SortOrder
+    lockedAt?: SortOrderInput | SortOrder
     _count?: DeviceCountOrderByAggregateInput
     _avg?: DeviceAvgOrderByAggregateInput
     _max?: DeviceMaxOrderByAggregateInput
@@ -15351,6 +17557,8 @@ export namespace Prisma {
     totalHealedCount?: IntNullableWithAggregatesFilter<"Device"> | number | null
     ip?: StringNullableWithAggregatesFilter<"Device"> | string | null
     cpuArchitecture?: StringNullableWithAggregatesFilter<"Device"> | string | null
+    owningSessionId?: StringNullableWithAggregatesFilter<"Device"> | string | null
+    lockedAt?: FloatNullableWithAggregatesFilter<"Device"> | number | null
   }
 
   export type PendingSessionWhereInput = {
@@ -15632,6 +17840,134 @@ export namespace Prisma {
     updatedAt?: DateTimeWithAggregatesFilter<"LocatorEtalon"> | Date | string
   }
 
+  export type PortLeaseWhereInput = {
+    AND?: PortLeaseWhereInput | PortLeaseWhereInput[]
+    OR?: PortLeaseWhereInput[]
+    NOT?: PortLeaseWhereInput | PortLeaseWhereInput[]
+    port?: IntFilter<"PortLease"> | number
+    purpose?: StringFilter<"PortLease"> | string
+    leasedToUdid?: StringFilter<"PortLease"> | string
+    leasedToPid?: IntNullableFilter<"PortLease"> | number | null
+    leasedAt?: FloatFilter<"PortLease"> | number
+    expiresAt?: FloatFilter<"PortLease"> | number
+  }
+
+  export type PortLeaseOrderByWithRelationInput = {
+    port?: SortOrder
+    purpose?: SortOrder
+    leasedToUdid?: SortOrder
+    leasedToPid?: SortOrderInput | SortOrder
+    leasedAt?: SortOrder
+    expiresAt?: SortOrder
+  }
+
+  export type PortLeaseWhereUniqueInput = Prisma.AtLeast<{
+    port?: number
+    AND?: PortLeaseWhereInput | PortLeaseWhereInput[]
+    OR?: PortLeaseWhereInput[]
+    NOT?: PortLeaseWhereInput | PortLeaseWhereInput[]
+    purpose?: StringFilter<"PortLease"> | string
+    leasedToUdid?: StringFilter<"PortLease"> | string
+    leasedToPid?: IntNullableFilter<"PortLease"> | number | null
+    leasedAt?: FloatFilter<"PortLease"> | number
+    expiresAt?: FloatFilter<"PortLease"> | number
+  }, "port">
+
+  export type PortLeaseOrderByWithAggregationInput = {
+    port?: SortOrder
+    purpose?: SortOrder
+    leasedToUdid?: SortOrder
+    leasedToPid?: SortOrderInput | SortOrder
+    leasedAt?: SortOrder
+    expiresAt?: SortOrder
+    _count?: PortLeaseCountOrderByAggregateInput
+    _avg?: PortLeaseAvgOrderByAggregateInput
+    _max?: PortLeaseMaxOrderByAggregateInput
+    _min?: PortLeaseMinOrderByAggregateInput
+    _sum?: PortLeaseSumOrderByAggregateInput
+  }
+
+  export type PortLeaseScalarWhereWithAggregatesInput = {
+    AND?: PortLeaseScalarWhereWithAggregatesInput | PortLeaseScalarWhereWithAggregatesInput[]
+    OR?: PortLeaseScalarWhereWithAggregatesInput[]
+    NOT?: PortLeaseScalarWhereWithAggregatesInput | PortLeaseScalarWhereWithAggregatesInput[]
+    port?: IntWithAggregatesFilter<"PortLease"> | number
+    purpose?: StringWithAggregatesFilter<"PortLease"> | string
+    leasedToUdid?: StringWithAggregatesFilter<"PortLease"> | string
+    leasedToPid?: IntNullableWithAggregatesFilter<"PortLease"> | number | null
+    leasedAt?: FloatWithAggregatesFilter<"PortLease"> | number
+    expiresAt?: FloatWithAggregatesFilter<"PortLease"> | number
+  }
+
+  export type ApiKeyWhereInput = {
+    AND?: ApiKeyWhereInput | ApiKeyWhereInput[]
+    OR?: ApiKeyWhereInput[]
+    NOT?: ApiKeyWhereInput | ApiKeyWhereInput[]
+    id?: StringFilter<"ApiKey"> | string
+    name?: StringFilter<"ApiKey"> | string
+    keyHash?: StringFilter<"ApiKey"> | string
+    scopes?: StringFilter<"ApiKey"> | string
+    rateLimit?: IntFilter<"ApiKey"> | number
+    createdAt?: DateTimeFilter<"ApiKey"> | Date | string
+    revokedAt?: DateTimeNullableFilter<"ApiKey"> | Date | string | null
+    lastUsedAt?: DateTimeNullableFilter<"ApiKey"> | Date | string | null
+  }
+
+  export type ApiKeyOrderByWithRelationInput = {
+    id?: SortOrder
+    name?: SortOrder
+    keyHash?: SortOrder
+    scopes?: SortOrder
+    rateLimit?: SortOrder
+    createdAt?: SortOrder
+    revokedAt?: SortOrderInput | SortOrder
+    lastUsedAt?: SortOrderInput | SortOrder
+  }
+
+  export type ApiKeyWhereUniqueInput = Prisma.AtLeast<{
+    id?: string
+    keyHash?: string
+    AND?: ApiKeyWhereInput | ApiKeyWhereInput[]
+    OR?: ApiKeyWhereInput[]
+    NOT?: ApiKeyWhereInput | ApiKeyWhereInput[]
+    name?: StringFilter<"ApiKey"> | string
+    scopes?: StringFilter<"ApiKey"> | string
+    rateLimit?: IntFilter<"ApiKey"> | number
+    createdAt?: DateTimeFilter<"ApiKey"> | Date | string
+    revokedAt?: DateTimeNullableFilter<"ApiKey"> | Date | string | null
+    lastUsedAt?: DateTimeNullableFilter<"ApiKey"> | Date | string | null
+  }, "id" | "keyHash">
+
+  export type ApiKeyOrderByWithAggregationInput = {
+    id?: SortOrder
+    name?: SortOrder
+    keyHash?: SortOrder
+    scopes?: SortOrder
+    rateLimit?: SortOrder
+    createdAt?: SortOrder
+    revokedAt?: SortOrderInput | SortOrder
+    lastUsedAt?: SortOrderInput | SortOrder
+    _count?: ApiKeyCountOrderByAggregateInput
+    _avg?: ApiKeyAvgOrderByAggregateInput
+    _max?: ApiKeyMaxOrderByAggregateInput
+    _min?: ApiKeyMinOrderByAggregateInput
+    _sum?: ApiKeySumOrderByAggregateInput
+  }
+
+  export type ApiKeyScalarWhereWithAggregatesInput = {
+    AND?: ApiKeyScalarWhereWithAggregatesInput | ApiKeyScalarWhereWithAggregatesInput[]
+    OR?: ApiKeyScalarWhereWithAggregatesInput[]
+    NOT?: ApiKeyScalarWhereWithAggregatesInput | ApiKeyScalarWhereWithAggregatesInput[]
+    id?: StringWithAggregatesFilter<"ApiKey"> | string
+    name?: StringWithAggregatesFilter<"ApiKey"> | string
+    keyHash?: StringWithAggregatesFilter<"ApiKey"> | string
+    scopes?: StringWithAggregatesFilter<"ApiKey"> | string
+    rateLimit?: IntWithAggregatesFilter<"ApiKey"> | number
+    createdAt?: DateTimeWithAggregatesFilter<"ApiKey"> | Date | string
+    revokedAt?: DateTimeNullableWithAggregatesFilter<"ApiKey"> | Date | string | null
+    lastUsedAt?: DateTimeNullableWithAggregatesFilter<"ApiKey"> | Date | string | null
+  }
+
   export type BuildCreateInput = {
     id?: string
     name?: string | null
@@ -15711,6 +18047,9 @@ export namespace Prisma {
     ai_analysis?: string | null
     tags?: string | null
     trace_id?: string | null
+    last_heartbeat_at?: Date | string | null
+    heartbeat_pid?: number | null
+    heartbeat_host?: string | null
     Log?: LogCreateNestedManyWithoutSessionInput
     Profiling?: ProfilingCreateNestedManyWithoutSessionInput
     build?: BuildCreateNestedOneWithoutSessionsInput
@@ -15744,6 +18083,9 @@ export namespace Prisma {
     ai_analysis?: string | null
     tags?: string | null
     trace_id?: string | null
+    last_heartbeat_at?: Date | string | null
+    heartbeat_pid?: number | null
+    heartbeat_host?: string | null
     Log?: LogUncheckedCreateNestedManyWithoutSessionInput
     Profiling?: ProfilingUncheckedCreateNestedManyWithoutSessionInput
     SessionLog?: SessionLogUncheckedCreateNestedManyWithoutSessionInput
@@ -15775,6 +18117,9 @@ export namespace Prisma {
     ai_analysis?: NullableStringFieldUpdateOperationsInput | string | null
     tags?: NullableStringFieldUpdateOperationsInput | string | null
     trace_id?: NullableStringFieldUpdateOperationsInput | string | null
+    last_heartbeat_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    heartbeat_pid?: NullableIntFieldUpdateOperationsInput | number | null
+    heartbeat_host?: NullableStringFieldUpdateOperationsInput | string | null
     Log?: LogUpdateManyWithoutSessionNestedInput
     Profiling?: ProfilingUpdateManyWithoutSessionNestedInput
     build?: BuildUpdateOneWithoutSessionsNestedInput
@@ -15808,6 +18153,9 @@ export namespace Prisma {
     ai_analysis?: NullableStringFieldUpdateOperationsInput | string | null
     tags?: NullableStringFieldUpdateOperationsInput | string | null
     trace_id?: NullableStringFieldUpdateOperationsInput | string | null
+    last_heartbeat_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    heartbeat_pid?: NullableIntFieldUpdateOperationsInput | number | null
+    heartbeat_host?: NullableStringFieldUpdateOperationsInput | string | null
     Log?: LogUncheckedUpdateManyWithoutSessionNestedInput
     Profiling?: ProfilingUncheckedUpdateManyWithoutSessionNestedInput
     SessionLog?: SessionLogUncheckedUpdateManyWithoutSessionNestedInput
@@ -15840,6 +18188,9 @@ export namespace Prisma {
     ai_analysis?: string | null
     tags?: string | null
     trace_id?: string | null
+    last_heartbeat_at?: Date | string | null
+    heartbeat_pid?: number | null
+    heartbeat_host?: string | null
   }
 
   export type SessionUpdateManyMutationInput = {
@@ -15868,6 +18219,9 @@ export namespace Prisma {
     ai_analysis?: NullableStringFieldUpdateOperationsInput | string | null
     tags?: NullableStringFieldUpdateOperationsInput | string | null
     trace_id?: NullableStringFieldUpdateOperationsInput | string | null
+    last_heartbeat_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    heartbeat_pid?: NullableIntFieldUpdateOperationsInput | number | null
+    heartbeat_host?: NullableStringFieldUpdateOperationsInput | string | null
   }
 
   export type SessionUncheckedUpdateManyInput = {
@@ -15897,6 +18251,9 @@ export namespace Prisma {
     ai_analysis?: NullableStringFieldUpdateOperationsInput | string | null
     tags?: NullableStringFieldUpdateOperationsInput | string | null
     trace_id?: NullableStringFieldUpdateOperationsInput | string | null
+    last_heartbeat_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    heartbeat_pid?: NullableIntFieldUpdateOperationsInput | number | null
+    heartbeat_host?: NullableStringFieldUpdateOperationsInput | string | null
   }
 
   export type SessionLogCreateInput = {
@@ -16383,6 +18740,8 @@ export namespace Prisma {
     totalHealedCount?: number | null
     ip?: string | null
     cpuArchitecture?: string | null
+    owningSessionId?: string | null
+    lockedAt?: number | null
   }
 
   export type DeviceUncheckedCreateInput = {
@@ -16434,6 +18793,8 @@ export namespace Prisma {
     totalHealedCount?: number | null
     ip?: string | null
     cpuArchitecture?: string | null
+    owningSessionId?: string | null
+    lockedAt?: number | null
   }
 
   export type DeviceUpdateInput = {
@@ -16485,6 +18846,8 @@ export namespace Prisma {
     totalHealedCount?: NullableIntFieldUpdateOperationsInput | number | null
     ip?: NullableStringFieldUpdateOperationsInput | string | null
     cpuArchitecture?: NullableStringFieldUpdateOperationsInput | string | null
+    owningSessionId?: NullableStringFieldUpdateOperationsInput | string | null
+    lockedAt?: NullableFloatFieldUpdateOperationsInput | number | null
   }
 
   export type DeviceUncheckedUpdateInput = {
@@ -16536,6 +18899,8 @@ export namespace Prisma {
     totalHealedCount?: NullableIntFieldUpdateOperationsInput | number | null
     ip?: NullableStringFieldUpdateOperationsInput | string | null
     cpuArchitecture?: NullableStringFieldUpdateOperationsInput | string | null
+    owningSessionId?: NullableStringFieldUpdateOperationsInput | string | null
+    lockedAt?: NullableFloatFieldUpdateOperationsInput | number | null
   }
 
   export type DeviceCreateManyInput = {
@@ -16587,6 +18952,8 @@ export namespace Prisma {
     totalHealedCount?: number | null
     ip?: string | null
     cpuArchitecture?: string | null
+    owningSessionId?: string | null
+    lockedAt?: number | null
   }
 
   export type DeviceUpdateManyMutationInput = {
@@ -16638,6 +19005,8 @@ export namespace Prisma {
     totalHealedCount?: NullableIntFieldUpdateOperationsInput | number | null
     ip?: NullableStringFieldUpdateOperationsInput | string | null
     cpuArchitecture?: NullableStringFieldUpdateOperationsInput | string | null
+    owningSessionId?: NullableStringFieldUpdateOperationsInput | string | null
+    lockedAt?: NullableFloatFieldUpdateOperationsInput | number | null
   }
 
   export type DeviceUncheckedUpdateManyInput = {
@@ -16689,6 +19058,8 @@ export namespace Prisma {
     totalHealedCount?: NullableIntFieldUpdateOperationsInput | number | null
     ip?: NullableStringFieldUpdateOperationsInput | string | null
     cpuArchitecture?: NullableStringFieldUpdateOperationsInput | string | null
+    owningSessionId?: NullableStringFieldUpdateOperationsInput | string | null
+    lockedAt?: NullableFloatFieldUpdateOperationsInput | number | null
   }
 
   export type PendingSessionCreateInput = {
@@ -16986,6 +19357,146 @@ export namespace Prisma {
     updatedAt?: DateTimeFieldUpdateOperationsInput | Date | string
   }
 
+  export type PortLeaseCreateInput = {
+    port: number
+    purpose: string
+    leasedToUdid: string
+    leasedToPid?: number | null
+    leasedAt: number
+    expiresAt: number
+  }
+
+  export type PortLeaseUncheckedCreateInput = {
+    port: number
+    purpose: string
+    leasedToUdid: string
+    leasedToPid?: number | null
+    leasedAt: number
+    expiresAt: number
+  }
+
+  export type PortLeaseUpdateInput = {
+    port?: IntFieldUpdateOperationsInput | number
+    purpose?: StringFieldUpdateOperationsInput | string
+    leasedToUdid?: StringFieldUpdateOperationsInput | string
+    leasedToPid?: NullableIntFieldUpdateOperationsInput | number | null
+    leasedAt?: FloatFieldUpdateOperationsInput | number
+    expiresAt?: FloatFieldUpdateOperationsInput | number
+  }
+
+  export type PortLeaseUncheckedUpdateInput = {
+    port?: IntFieldUpdateOperationsInput | number
+    purpose?: StringFieldUpdateOperationsInput | string
+    leasedToUdid?: StringFieldUpdateOperationsInput | string
+    leasedToPid?: NullableIntFieldUpdateOperationsInput | number | null
+    leasedAt?: FloatFieldUpdateOperationsInput | number
+    expiresAt?: FloatFieldUpdateOperationsInput | number
+  }
+
+  export type PortLeaseCreateManyInput = {
+    port: number
+    purpose: string
+    leasedToUdid: string
+    leasedToPid?: number | null
+    leasedAt: number
+    expiresAt: number
+  }
+
+  export type PortLeaseUpdateManyMutationInput = {
+    port?: IntFieldUpdateOperationsInput | number
+    purpose?: StringFieldUpdateOperationsInput | string
+    leasedToUdid?: StringFieldUpdateOperationsInput | string
+    leasedToPid?: NullableIntFieldUpdateOperationsInput | number | null
+    leasedAt?: FloatFieldUpdateOperationsInput | number
+    expiresAt?: FloatFieldUpdateOperationsInput | number
+  }
+
+  export type PortLeaseUncheckedUpdateManyInput = {
+    port?: IntFieldUpdateOperationsInput | number
+    purpose?: StringFieldUpdateOperationsInput | string
+    leasedToUdid?: StringFieldUpdateOperationsInput | string
+    leasedToPid?: NullableIntFieldUpdateOperationsInput | number | null
+    leasedAt?: FloatFieldUpdateOperationsInput | number
+    expiresAt?: FloatFieldUpdateOperationsInput | number
+  }
+
+  export type ApiKeyCreateInput = {
+    id?: string
+    name: string
+    keyHash: string
+    scopes: string
+    rateLimit?: number
+    createdAt?: Date | string
+    revokedAt?: Date | string | null
+    lastUsedAt?: Date | string | null
+  }
+
+  export type ApiKeyUncheckedCreateInput = {
+    id?: string
+    name: string
+    keyHash: string
+    scopes: string
+    rateLimit?: number
+    createdAt?: Date | string
+    revokedAt?: Date | string | null
+    lastUsedAt?: Date | string | null
+  }
+
+  export type ApiKeyUpdateInput = {
+    id?: StringFieldUpdateOperationsInput | string
+    name?: StringFieldUpdateOperationsInput | string
+    keyHash?: StringFieldUpdateOperationsInput | string
+    scopes?: StringFieldUpdateOperationsInput | string
+    rateLimit?: IntFieldUpdateOperationsInput | number
+    createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
+    revokedAt?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    lastUsedAt?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  }
+
+  export type ApiKeyUncheckedUpdateInput = {
+    id?: StringFieldUpdateOperationsInput | string
+    name?: StringFieldUpdateOperationsInput | string
+    keyHash?: StringFieldUpdateOperationsInput | string
+    scopes?: StringFieldUpdateOperationsInput | string
+    rateLimit?: IntFieldUpdateOperationsInput | number
+    createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
+    revokedAt?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    lastUsedAt?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  }
+
+  export type ApiKeyCreateManyInput = {
+    id?: string
+    name: string
+    keyHash: string
+    scopes: string
+    rateLimit?: number
+    createdAt?: Date | string
+    revokedAt?: Date | string | null
+    lastUsedAt?: Date | string | null
+  }
+
+  export type ApiKeyUpdateManyMutationInput = {
+    id?: StringFieldUpdateOperationsInput | string
+    name?: StringFieldUpdateOperationsInput | string
+    keyHash?: StringFieldUpdateOperationsInput | string
+    scopes?: StringFieldUpdateOperationsInput | string
+    rateLimit?: IntFieldUpdateOperationsInput | number
+    createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
+    revokedAt?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    lastUsedAt?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  }
+
+  export type ApiKeyUncheckedUpdateManyInput = {
+    id?: StringFieldUpdateOperationsInput | string
+    name?: StringFieldUpdateOperationsInput | string
+    keyHash?: StringFieldUpdateOperationsInput | string
+    scopes?: StringFieldUpdateOperationsInput | string
+    rateLimit?: IntFieldUpdateOperationsInput | number
+    createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
+    revokedAt?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    lastUsedAt?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  }
+
   export type StringFilter<$PrismaModel = never> = {
     equals?: string | StringFieldRefInput<$PrismaModel>
     in?: string[]
@@ -17125,6 +19636,17 @@ export namespace Prisma {
     not?: NestedDateTimeNullableFilter<$PrismaModel> | Date | string | null
   }
 
+  export type IntNullableFilter<$PrismaModel = never> = {
+    equals?: number | IntFieldRefInput<$PrismaModel> | null
+    in?: number[] | null
+    notIn?: number[] | null
+    lt?: number | IntFieldRefInput<$PrismaModel>
+    lte?: number | IntFieldRefInput<$PrismaModel>
+    gt?: number | IntFieldRefInput<$PrismaModel>
+    gte?: number | IntFieldRefInput<$PrismaModel>
+    not?: NestedIntNullableFilter<$PrismaModel> | number | null
+  }
+
   export type LogListRelationFilter = {
     every?: LogWhereInput
     some?: LogWhereInput
@@ -17187,6 +19709,13 @@ export namespace Prisma {
     ai_analysis?: SortOrder
     tags?: SortOrder
     trace_id?: SortOrder
+    last_heartbeat_at?: SortOrder
+    heartbeat_pid?: SortOrder
+    heartbeat_host?: SortOrder
+  }
+
+  export type SessionAvgOrderByAggregateInput = {
+    heartbeat_pid?: SortOrder
   }
 
   export type SessionMaxOrderByAggregateInput = {
@@ -17216,6 +19745,9 @@ export namespace Prisma {
     ai_analysis?: SortOrder
     tags?: SortOrder
     trace_id?: SortOrder
+    last_heartbeat_at?: SortOrder
+    heartbeat_pid?: SortOrder
+    heartbeat_host?: SortOrder
   }
 
   export type SessionMinOrderByAggregateInput = {
@@ -17245,6 +19777,13 @@ export namespace Prisma {
     ai_analysis?: SortOrder
     tags?: SortOrder
     trace_id?: SortOrder
+    last_heartbeat_at?: SortOrder
+    heartbeat_pid?: SortOrder
+    heartbeat_host?: SortOrder
+  }
+
+  export type SessionSumOrderByAggregateInput = {
+    heartbeat_pid?: SortOrder
   }
 
   export type BoolWithAggregatesFilter<$PrismaModel = never> = {
@@ -17269,6 +19808,22 @@ export namespace Prisma {
     _max?: NestedDateTimeNullableFilter<$PrismaModel>
   }
 
+  export type IntNullableWithAggregatesFilter<$PrismaModel = never> = {
+    equals?: number | IntFieldRefInput<$PrismaModel> | null
+    in?: number[] | null
+    notIn?: number[] | null
+    lt?: number | IntFieldRefInput<$PrismaModel>
+    lte?: number | IntFieldRefInput<$PrismaModel>
+    gt?: number | IntFieldRefInput<$PrismaModel>
+    gte?: number | IntFieldRefInput<$PrismaModel>
+    not?: NestedIntNullableWithAggregatesFilter<$PrismaModel> | number | null
+    _count?: NestedIntNullableFilter<$PrismaModel>
+    _avg?: NestedFloatNullableFilter<$PrismaModel>
+    _sum?: NestedIntNullableFilter<$PrismaModel>
+    _min?: NestedIntNullableFilter<$PrismaModel>
+    _max?: NestedIntNullableFilter<$PrismaModel>
+  }
+
   export type BoolNullableFilter<$PrismaModel = never> = {
     equals?: boolean | BooleanFieldRefInput<$PrismaModel> | null
     not?: NestedBoolNullableFilter<$PrismaModel> | boolean | null
@@ -17283,17 +19838,6 @@ export namespace Prisma {
     gt?: number | FloatFieldRefInput<$PrismaModel>
     gte?: number | FloatFieldRefInput<$PrismaModel>
     not?: NestedFloatNullableFilter<$PrismaModel> | number | null
-  }
-
-  export type IntNullableFilter<$PrismaModel = never> = {
-    equals?: number | IntFieldRefInput<$PrismaModel> | null
-    in?: number[] | null
-    notIn?: number[] | null
-    lt?: number | IntFieldRefInput<$PrismaModel>
-    lte?: number | IntFieldRefInput<$PrismaModel>
-    gt?: number | IntFieldRefInput<$PrismaModel>
-    gte?: number | IntFieldRefInput<$PrismaModel>
-    not?: NestedIntNullableFilter<$PrismaModel> | number | null
   }
 
   export type SessionRelationFilter = {
@@ -17405,22 +19949,6 @@ export namespace Prisma {
     _sum?: NestedFloatNullableFilter<$PrismaModel>
     _min?: NestedFloatNullableFilter<$PrismaModel>
     _max?: NestedFloatNullableFilter<$PrismaModel>
-  }
-
-  export type IntNullableWithAggregatesFilter<$PrismaModel = never> = {
-    equals?: number | IntFieldRefInput<$PrismaModel> | null
-    in?: number[] | null
-    notIn?: number[] | null
-    lt?: number | IntFieldRefInput<$PrismaModel>
-    lte?: number | IntFieldRefInput<$PrismaModel>
-    gt?: number | IntFieldRefInput<$PrismaModel>
-    gte?: number | IntFieldRefInput<$PrismaModel>
-    not?: NestedIntNullableWithAggregatesFilter<$PrismaModel> | number | null
-    _count?: NestedIntNullableFilter<$PrismaModel>
-    _avg?: NestedFloatNullableFilter<$PrismaModel>
-    _sum?: NestedIntNullableFilter<$PrismaModel>
-    _min?: NestedIntNullableFilter<$PrismaModel>
-    _max?: NestedIntNullableFilter<$PrismaModel>
   }
 
   export type LogCountOrderByAggregateInput = {
@@ -17648,6 +20176,8 @@ export namespace Prisma {
     totalHealedCount?: SortOrder
     ip?: SortOrder
     cpuArchitecture?: SortOrder
+    owningSessionId?: SortOrder
+    lockedAt?: SortOrder
   }
 
   export type DeviceAvgOrderByAggregateInput = {
@@ -17665,6 +20195,7 @@ export namespace Prisma {
     batteryLevel?: SortOrder
     reservedUntil?: SortOrder
     totalHealedCount?: SortOrder
+    lockedAt?: SortOrder
   }
 
   export type DeviceMaxOrderByAggregateInput = {
@@ -17716,6 +20247,8 @@ export namespace Prisma {
     totalHealedCount?: SortOrder
     ip?: SortOrder
     cpuArchitecture?: SortOrder
+    owningSessionId?: SortOrder
+    lockedAt?: SortOrder
   }
 
   export type DeviceMinOrderByAggregateInput = {
@@ -17767,6 +20300,8 @@ export namespace Prisma {
     totalHealedCount?: SortOrder
     ip?: SortOrder
     cpuArchitecture?: SortOrder
+    owningSessionId?: SortOrder
+    lockedAt?: SortOrder
   }
 
   export type DeviceSumOrderByAggregateInput = {
@@ -17784,6 +20319,7 @@ export namespace Prisma {
     batteryLevel?: SortOrder
     reservedUntil?: SortOrder
     totalHealedCount?: SortOrder
+    lockedAt?: SortOrder
   }
 
   export type FloatWithAggregatesFilter<$PrismaModel = never> = {
@@ -17949,6 +20485,88 @@ export namespace Prisma {
     updatedAt?: SortOrder
   }
 
+  export type PortLeaseCountOrderByAggregateInput = {
+    port?: SortOrder
+    purpose?: SortOrder
+    leasedToUdid?: SortOrder
+    leasedToPid?: SortOrder
+    leasedAt?: SortOrder
+    expiresAt?: SortOrder
+  }
+
+  export type PortLeaseAvgOrderByAggregateInput = {
+    port?: SortOrder
+    leasedToPid?: SortOrder
+    leasedAt?: SortOrder
+    expiresAt?: SortOrder
+  }
+
+  export type PortLeaseMaxOrderByAggregateInput = {
+    port?: SortOrder
+    purpose?: SortOrder
+    leasedToUdid?: SortOrder
+    leasedToPid?: SortOrder
+    leasedAt?: SortOrder
+    expiresAt?: SortOrder
+  }
+
+  export type PortLeaseMinOrderByAggregateInput = {
+    port?: SortOrder
+    purpose?: SortOrder
+    leasedToUdid?: SortOrder
+    leasedToPid?: SortOrder
+    leasedAt?: SortOrder
+    expiresAt?: SortOrder
+  }
+
+  export type PortLeaseSumOrderByAggregateInput = {
+    port?: SortOrder
+    leasedToPid?: SortOrder
+    leasedAt?: SortOrder
+    expiresAt?: SortOrder
+  }
+
+  export type ApiKeyCountOrderByAggregateInput = {
+    id?: SortOrder
+    name?: SortOrder
+    keyHash?: SortOrder
+    scopes?: SortOrder
+    rateLimit?: SortOrder
+    createdAt?: SortOrder
+    revokedAt?: SortOrder
+    lastUsedAt?: SortOrder
+  }
+
+  export type ApiKeyAvgOrderByAggregateInput = {
+    rateLimit?: SortOrder
+  }
+
+  export type ApiKeyMaxOrderByAggregateInput = {
+    id?: SortOrder
+    name?: SortOrder
+    keyHash?: SortOrder
+    scopes?: SortOrder
+    rateLimit?: SortOrder
+    createdAt?: SortOrder
+    revokedAt?: SortOrder
+    lastUsedAt?: SortOrder
+  }
+
+  export type ApiKeyMinOrderByAggregateInput = {
+    id?: SortOrder
+    name?: SortOrder
+    keyHash?: SortOrder
+    scopes?: SortOrder
+    rateLimit?: SortOrder
+    createdAt?: SortOrder
+    revokedAt?: SortOrder
+    lastUsedAt?: SortOrder
+  }
+
+  export type ApiKeySumOrderByAggregateInput = {
+    rateLimit?: SortOrder
+  }
+
   export type SessionCreateNestedManyWithoutBuildInput = {
     create?: XOR<SessionCreateWithoutBuildInput, SessionUncheckedCreateWithoutBuildInput> | SessionCreateWithoutBuildInput[] | SessionUncheckedCreateWithoutBuildInput[]
     connectOrCreate?: SessionCreateOrConnectWithoutBuildInput | SessionCreateOrConnectWithoutBuildInput[]
@@ -18059,6 +20677,14 @@ export namespace Prisma {
     set?: Date | string | null
   }
 
+  export type NullableIntFieldUpdateOperationsInput = {
+    set?: number | null
+    increment?: number
+    decrement?: number
+    multiply?: number
+    divide?: number
+  }
+
   export type LogUpdateManyWithoutSessionNestedInput = {
     create?: XOR<LogCreateWithoutSessionInput, LogUncheckedCreateWithoutSessionInput> | LogCreateWithoutSessionInput[] | LogUncheckedCreateWithoutSessionInput[]
     connectOrCreate?: LogCreateOrConnectWithoutSessionInput | LogCreateOrConnectWithoutSessionInput[]
@@ -18164,14 +20790,6 @@ export namespace Prisma {
   }
 
   export type NullableFloatFieldUpdateOperationsInput = {
-    set?: number | null
-    increment?: number
-    decrement?: number
-    multiply?: number
-    divide?: number
-  }
-
-  export type NullableIntFieldUpdateOperationsInput = {
     set?: number | null
     increment?: number
     decrement?: number
@@ -18378,9 +20996,20 @@ export namespace Prisma {
     _max?: NestedDateTimeNullableFilter<$PrismaModel>
   }
 
-  export type NestedBoolNullableFilter<$PrismaModel = never> = {
-    equals?: boolean | BooleanFieldRefInput<$PrismaModel> | null
-    not?: NestedBoolNullableFilter<$PrismaModel> | boolean | null
+  export type NestedIntNullableWithAggregatesFilter<$PrismaModel = never> = {
+    equals?: number | IntFieldRefInput<$PrismaModel> | null
+    in?: number[] | null
+    notIn?: number[] | null
+    lt?: number | IntFieldRefInput<$PrismaModel>
+    lte?: number | IntFieldRefInput<$PrismaModel>
+    gt?: number | IntFieldRefInput<$PrismaModel>
+    gte?: number | IntFieldRefInput<$PrismaModel>
+    not?: NestedIntNullableWithAggregatesFilter<$PrismaModel> | number | null
+    _count?: NestedIntNullableFilter<$PrismaModel>
+    _avg?: NestedFloatNullableFilter<$PrismaModel>
+    _sum?: NestedIntNullableFilter<$PrismaModel>
+    _min?: NestedIntNullableFilter<$PrismaModel>
+    _max?: NestedIntNullableFilter<$PrismaModel>
   }
 
   export type NestedFloatNullableFilter<$PrismaModel = never> = {
@@ -18392,6 +21021,11 @@ export namespace Prisma {
     gt?: number | FloatFieldRefInput<$PrismaModel>
     gte?: number | FloatFieldRefInput<$PrismaModel>
     not?: NestedFloatNullableFilter<$PrismaModel> | number | null
+  }
+
+  export type NestedBoolNullableFilter<$PrismaModel = never> = {
+    equals?: boolean | BooleanFieldRefInput<$PrismaModel> | null
+    not?: NestedBoolNullableFilter<$PrismaModel> | boolean | null
   }
 
   export type NestedBoolNullableWithAggregatesFilter<$PrismaModel = never> = {
@@ -18416,22 +21050,6 @@ export namespace Prisma {
     _sum?: NestedFloatNullableFilter<$PrismaModel>
     _min?: NestedFloatNullableFilter<$PrismaModel>
     _max?: NestedFloatNullableFilter<$PrismaModel>
-  }
-
-  export type NestedIntNullableWithAggregatesFilter<$PrismaModel = never> = {
-    equals?: number | IntFieldRefInput<$PrismaModel> | null
-    in?: number[] | null
-    notIn?: number[] | null
-    lt?: number | IntFieldRefInput<$PrismaModel>
-    lte?: number | IntFieldRefInput<$PrismaModel>
-    gt?: number | IntFieldRefInput<$PrismaModel>
-    gte?: number | IntFieldRefInput<$PrismaModel>
-    not?: NestedIntNullableWithAggregatesFilter<$PrismaModel> | number | null
-    _count?: NestedIntNullableFilter<$PrismaModel>
-    _avg?: NestedFloatNullableFilter<$PrismaModel>
-    _sum?: NestedIntNullableFilter<$PrismaModel>
-    _min?: NestedIntNullableFilter<$PrismaModel>
-    _max?: NestedIntNullableFilter<$PrismaModel>
   }
 
   export type NestedIntWithAggregatesFilter<$PrismaModel = never> = {
@@ -18503,6 +21121,9 @@ export namespace Prisma {
     ai_analysis?: string | null
     tags?: string | null
     trace_id?: string | null
+    last_heartbeat_at?: Date | string | null
+    heartbeat_pid?: number | null
+    heartbeat_host?: string | null
     Log?: LogCreateNestedManyWithoutSessionInput
     Profiling?: ProfilingCreateNestedManyWithoutSessionInput
     SessionLog?: SessionLogCreateNestedManyWithoutSessionInput
@@ -18534,6 +21155,9 @@ export namespace Prisma {
     ai_analysis?: string | null
     tags?: string | null
     trace_id?: string | null
+    last_heartbeat_at?: Date | string | null
+    heartbeat_pid?: number | null
+    heartbeat_host?: string | null
     Log?: LogUncheckedCreateNestedManyWithoutSessionInput
     Profiling?: ProfilingUncheckedCreateNestedManyWithoutSessionInput
     SessionLog?: SessionLogUncheckedCreateNestedManyWithoutSessionInput
@@ -18594,6 +21218,9 @@ export namespace Prisma {
     ai_analysis?: StringNullableFilter<"Session"> | string | null
     tags?: StringNullableFilter<"Session"> | string | null
     trace_id?: StringNullableFilter<"Session"> | string | null
+    last_heartbeat_at?: DateTimeNullableFilter<"Session"> | Date | string | null
+    heartbeat_pid?: IntNullableFilter<"Session"> | number | null
+    heartbeat_host?: StringNullableFilter<"Session"> | string | null
   }
 
   export type LogCreateWithoutSessionInput = {
@@ -18887,6 +21514,9 @@ export namespace Prisma {
     ai_analysis?: string | null
     tags?: string | null
     trace_id?: string | null
+    last_heartbeat_at?: Date | string | null
+    heartbeat_pid?: number | null
+    heartbeat_host?: string | null
     Log?: LogCreateNestedManyWithoutSessionInput
     Profiling?: ProfilingCreateNestedManyWithoutSessionInput
     build?: BuildCreateNestedOneWithoutSessionsInput
@@ -18919,6 +21549,9 @@ export namespace Prisma {
     ai_analysis?: string | null
     tags?: string | null
     trace_id?: string | null
+    last_heartbeat_at?: Date | string | null
+    heartbeat_pid?: number | null
+    heartbeat_host?: string | null
     Log?: LogUncheckedCreateNestedManyWithoutSessionInput
     Profiling?: ProfilingUncheckedCreateNestedManyWithoutSessionInput
   }
@@ -18965,6 +21598,9 @@ export namespace Prisma {
     ai_analysis?: NullableStringFieldUpdateOperationsInput | string | null
     tags?: NullableStringFieldUpdateOperationsInput | string | null
     trace_id?: NullableStringFieldUpdateOperationsInput | string | null
+    last_heartbeat_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    heartbeat_pid?: NullableIntFieldUpdateOperationsInput | number | null
+    heartbeat_host?: NullableStringFieldUpdateOperationsInput | string | null
     Log?: LogUpdateManyWithoutSessionNestedInput
     Profiling?: ProfilingUpdateManyWithoutSessionNestedInput
     build?: BuildUpdateOneWithoutSessionsNestedInput
@@ -18997,6 +21633,9 @@ export namespace Prisma {
     ai_analysis?: NullableStringFieldUpdateOperationsInput | string | null
     tags?: NullableStringFieldUpdateOperationsInput | string | null
     trace_id?: NullableStringFieldUpdateOperationsInput | string | null
+    last_heartbeat_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    heartbeat_pid?: NullableIntFieldUpdateOperationsInput | number | null
+    heartbeat_host?: NullableStringFieldUpdateOperationsInput | string | null
     Log?: LogUncheckedUpdateManyWithoutSessionNestedInput
     Profiling?: ProfilingUncheckedUpdateManyWithoutSessionNestedInput
   }
@@ -19027,6 +21666,9 @@ export namespace Prisma {
     ai_analysis?: string | null
     tags?: string | null
     trace_id?: string | null
+    last_heartbeat_at?: Date | string | null
+    heartbeat_pid?: number | null
+    heartbeat_host?: string | null
     Profiling?: ProfilingCreateNestedManyWithoutSessionInput
     build?: BuildCreateNestedOneWithoutSessionsInput
     SessionLog?: SessionLogCreateNestedManyWithoutSessionInput
@@ -19059,6 +21701,9 @@ export namespace Prisma {
     ai_analysis?: string | null
     tags?: string | null
     trace_id?: string | null
+    last_heartbeat_at?: Date | string | null
+    heartbeat_pid?: number | null
+    heartbeat_host?: string | null
     Profiling?: ProfilingUncheckedCreateNestedManyWithoutSessionInput
     SessionLog?: SessionLogUncheckedCreateNestedManyWithoutSessionInput
   }
@@ -19105,6 +21750,9 @@ export namespace Prisma {
     ai_analysis?: NullableStringFieldUpdateOperationsInput | string | null
     tags?: NullableStringFieldUpdateOperationsInput | string | null
     trace_id?: NullableStringFieldUpdateOperationsInput | string | null
+    last_heartbeat_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    heartbeat_pid?: NullableIntFieldUpdateOperationsInput | number | null
+    heartbeat_host?: NullableStringFieldUpdateOperationsInput | string | null
     Profiling?: ProfilingUpdateManyWithoutSessionNestedInput
     build?: BuildUpdateOneWithoutSessionsNestedInput
     SessionLog?: SessionLogUpdateManyWithoutSessionNestedInput
@@ -19137,6 +21785,9 @@ export namespace Prisma {
     ai_analysis?: NullableStringFieldUpdateOperationsInput | string | null
     tags?: NullableStringFieldUpdateOperationsInput | string | null
     trace_id?: NullableStringFieldUpdateOperationsInput | string | null
+    last_heartbeat_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    heartbeat_pid?: NullableIntFieldUpdateOperationsInput | number | null
+    heartbeat_host?: NullableStringFieldUpdateOperationsInput | string | null
     Profiling?: ProfilingUncheckedUpdateManyWithoutSessionNestedInput
     SessionLog?: SessionLogUncheckedUpdateManyWithoutSessionNestedInput
   }
@@ -19167,6 +21818,9 @@ export namespace Prisma {
     ai_analysis?: string | null
     tags?: string | null
     trace_id?: string | null
+    last_heartbeat_at?: Date | string | null
+    heartbeat_pid?: number | null
+    heartbeat_host?: string | null
     Log?: LogCreateNestedManyWithoutSessionInput
     build?: BuildCreateNestedOneWithoutSessionsInput
     SessionLog?: SessionLogCreateNestedManyWithoutSessionInput
@@ -19199,6 +21853,9 @@ export namespace Prisma {
     ai_analysis?: string | null
     tags?: string | null
     trace_id?: string | null
+    last_heartbeat_at?: Date | string | null
+    heartbeat_pid?: number | null
+    heartbeat_host?: string | null
     Log?: LogUncheckedCreateNestedManyWithoutSessionInput
     SessionLog?: SessionLogUncheckedCreateNestedManyWithoutSessionInput
   }
@@ -19245,6 +21902,9 @@ export namespace Prisma {
     ai_analysis?: NullableStringFieldUpdateOperationsInput | string | null
     tags?: NullableStringFieldUpdateOperationsInput | string | null
     trace_id?: NullableStringFieldUpdateOperationsInput | string | null
+    last_heartbeat_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    heartbeat_pid?: NullableIntFieldUpdateOperationsInput | number | null
+    heartbeat_host?: NullableStringFieldUpdateOperationsInput | string | null
     Log?: LogUpdateManyWithoutSessionNestedInput
     build?: BuildUpdateOneWithoutSessionsNestedInput
     SessionLog?: SessionLogUpdateManyWithoutSessionNestedInput
@@ -19277,6 +21937,9 @@ export namespace Prisma {
     ai_analysis?: NullableStringFieldUpdateOperationsInput | string | null
     tags?: NullableStringFieldUpdateOperationsInput | string | null
     trace_id?: NullableStringFieldUpdateOperationsInput | string | null
+    last_heartbeat_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    heartbeat_pid?: NullableIntFieldUpdateOperationsInput | number | null
+    heartbeat_host?: NullableStringFieldUpdateOperationsInput | string | null
     Log?: LogUncheckedUpdateManyWithoutSessionNestedInput
     SessionLog?: SessionLogUncheckedUpdateManyWithoutSessionNestedInput
   }
@@ -19307,6 +21970,9 @@ export namespace Prisma {
     ai_analysis?: string | null
     tags?: string | null
     trace_id?: string | null
+    last_heartbeat_at?: Date | string | null
+    heartbeat_pid?: number | null
+    heartbeat_host?: string | null
   }
 
   export type SessionUpdateWithoutBuildInput = {
@@ -19335,6 +22001,9 @@ export namespace Prisma {
     ai_analysis?: NullableStringFieldUpdateOperationsInput | string | null
     tags?: NullableStringFieldUpdateOperationsInput | string | null
     trace_id?: NullableStringFieldUpdateOperationsInput | string | null
+    last_heartbeat_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    heartbeat_pid?: NullableIntFieldUpdateOperationsInput | number | null
+    heartbeat_host?: NullableStringFieldUpdateOperationsInput | string | null
     Log?: LogUpdateManyWithoutSessionNestedInput
     Profiling?: ProfilingUpdateManyWithoutSessionNestedInput
     SessionLog?: SessionLogUpdateManyWithoutSessionNestedInput
@@ -19366,6 +22035,9 @@ export namespace Prisma {
     ai_analysis?: NullableStringFieldUpdateOperationsInput | string | null
     tags?: NullableStringFieldUpdateOperationsInput | string | null
     trace_id?: NullableStringFieldUpdateOperationsInput | string | null
+    last_heartbeat_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    heartbeat_pid?: NullableIntFieldUpdateOperationsInput | number | null
+    heartbeat_host?: NullableStringFieldUpdateOperationsInput | string | null
     Log?: LogUncheckedUpdateManyWithoutSessionNestedInput
     Profiling?: ProfilingUncheckedUpdateManyWithoutSessionNestedInput
     SessionLog?: SessionLogUncheckedUpdateManyWithoutSessionNestedInput
@@ -19397,6 +22069,9 @@ export namespace Prisma {
     ai_analysis?: NullableStringFieldUpdateOperationsInput | string | null
     tags?: NullableStringFieldUpdateOperationsInput | string | null
     trace_id?: NullableStringFieldUpdateOperationsInput | string | null
+    last_heartbeat_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    heartbeat_pid?: NullableIntFieldUpdateOperationsInput | number | null
+    heartbeat_host?: NullableStringFieldUpdateOperationsInput | string | null
   }
 
   export type LogCreateManySessionInput = {
@@ -19639,6 +22314,14 @@ export namespace Prisma {
      * @deprecated Use LocatorEtalonDefaultArgs instead
      */
     export type LocatorEtalonArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = LocatorEtalonDefaultArgs<ExtArgs>
+    /**
+     * @deprecated Use PortLeaseDefaultArgs instead
+     */
+    export type PortLeaseArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = PortLeaseDefaultArgs<ExtArgs>
+    /**
+     * @deprecated Use ApiKeyDefaultArgs instead
+     */
+    export type ApiKeyArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = ApiKeyDefaultArgs<ExtArgs>
 
   /**
    * Batch Payload for updateMany & deleteMany & createMany

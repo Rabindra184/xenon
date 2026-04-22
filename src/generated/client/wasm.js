@@ -152,7 +152,10 @@ exports.Prisma.SessionScalarFieldEnum = {
   failure_category: 'failure_category',
   ai_analysis: 'ai_analysis',
   tags: 'tags',
-  trace_id: 'trace_id'
+  trace_id: 'trace_id',
+  last_heartbeat_at: 'last_heartbeat_at',
+  heartbeat_pid: 'heartbeat_pid',
+  heartbeat_host: 'heartbeat_host'
 };
 
 exports.Prisma.SessionLogScalarFieldEnum = {
@@ -266,7 +269,9 @@ exports.Prisma.DeviceScalarFieldEnum = {
   sessionProgress: 'sessionProgress',
   totalHealedCount: 'totalHealedCount',
   ip: 'ip',
-  cpuArchitecture: 'cpuArchitecture'
+  cpuArchitecture: 'cpuArchitecture',
+  owningSessionId: 'owningSessionId',
+  lockedAt: 'lockedAt'
 };
 
 exports.Prisma.PendingSessionScalarFieldEnum = {
@@ -312,6 +317,26 @@ exports.Prisma.LocatorEtalonScalarFieldEnum = {
   updatedAt: 'updatedAt'
 };
 
+exports.Prisma.PortLeaseScalarFieldEnum = {
+  port: 'port',
+  purpose: 'purpose',
+  leasedToUdid: 'leasedToUdid',
+  leasedToPid: 'leasedToPid',
+  leasedAt: 'leasedAt',
+  expiresAt: 'expiresAt'
+};
+
+exports.Prisma.ApiKeyScalarFieldEnum = {
+  id: 'id',
+  name: 'name',
+  keyHash: 'keyHash',
+  scopes: 'scopes',
+  rateLimit: 'rateLimit',
+  createdAt: 'createdAt',
+  revokedAt: 'revokedAt',
+  lastUsedAt: 'lastUsedAt'
+};
+
 exports.Prisma.SortOrder = {
   asc: 'asc',
   desc: 'desc'
@@ -335,7 +360,9 @@ exports.Prisma.ModelName = {
   CLIArgs: 'CLIArgs',
   WebhookConfig: 'WebhookConfig',
   WebConfig: 'WebConfig',
-  LocatorEtalon: 'LocatorEtalon'
+  LocatorEtalon: 'LocatorEtalon',
+  PortLease: 'PortLease',
+  ApiKey: 'ApiKey'
 };
 
 /**

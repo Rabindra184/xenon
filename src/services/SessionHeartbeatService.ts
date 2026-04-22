@@ -1,4 +1,5 @@
 import { Container, Service } from 'typedi';
+import * as os from 'os';
 import { SESSION_MANAGER } from '../sessions/SessionManager';
 import { DeviceStoreFactory } from '../data-service/device-store';
 import log from '../logger';
@@ -56,9 +57,23 @@ export class SessionHeartbeatService {
       try {
         const result = await session.checkHealth();
 
+        // Persist liveness signal for crash-recovery sweeper
+        try {
+          await prisma.session.update({
+            where: { id: sessionId },
+            data: {
+              last_heartbeat_at: new Date(),
+              heartbeat_pid: process.pid,
+              heartbeat_host: os.hostname(),
+            },
+          });
+        } catch (err: any) {
+          this.log.debug(`Heartbeat write failed for ${sessionId}: ${err.message}`);
+        }
+
         if (result.isHealthy) {
           // Recovery: Reset failure count and restore HEALTHY state
-          if (this.failureCounts.get(sessionId) || 0 > 0) {
+          if ((this.failureCounts.get(sessionId) || 0) > 0) {
             this.log.info(`✨ Session ${sessionId} recovered and is now HEALTHY.`);
           }
           this.failureCounts.set(sessionId, 0);

@@ -15,10 +15,13 @@ describe('Prisma Client Unit Tests', () => {
   });
 
   it('prisma proxy should forward properties to getPrismaClient', () => {
-    // We don't need to call actual DB methods, just check if property access works
-    // and returns the same thing as the client itself.
-    const client = getPrismaClient();
-    expect(prisma.device).to.equal(client.device);
+    // Non-model properties ($connect, $disconnect, etc.) are forwarded directly.
+    // Model delegates (device, session, portLease, …) are wrapped in plain objects
+    // so test frameworks can stub individual methods via sinon.
     expect(prisma.$connect).to.be.a('function');
+    // Model delegates are stable (same wrapper returned on every access)
+    expect(prisma.device).to.equal(prisma.device);
+    // Model delegates expose the core CRUD methods
+    expect((prisma.device as any).findMany).to.be.a('function');
   });
 });
