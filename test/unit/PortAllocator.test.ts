@@ -1,25 +1,32 @@
 import { expect } from 'chai';
 import sinon from 'sinon';
-import { PortAllocator, PortPurpose, PortRangeExhaustedError } from '../../src/services/PortAllocator';
+import { PortAllocator, PortPurpose, PortRangeExhaustedError, PortRanges } from '../../src/services/PortAllocator';
 import { prisma } from '../../src/prisma';
+
+function makeAllocator(overrides: PortRanges) {
+  const a = new PortAllocator();
+  a.configure(overrides);
+  return a;
+}
 
 describe('PortAllocator', () => {
   let createStub: sinon.SinonStub;
   let findManyStub: sinon.SinonStub;
   let deleteManyStub: sinon.SinonStub;
+  let deleteStub: sinon.SinonStub;
 
   beforeEach(() => {
     createStub = sinon.stub(prisma.portLease, 'create');
     findManyStub = sinon.stub(prisma.portLease, 'findMany').resolves([]);
     deleteManyStub = sinon.stub(prisma.portLease, 'deleteMany').resolves({ count: 0 } as any);
-    sinon.stub(prisma.portLease, 'delete').resolves({} as any);
+    deleteStub = sinon.stub(prisma.portLease, 'delete').resolves({} as any);
   });
 
   afterEach(() => sinon.restore());
 
   it('allocates first free port in the configured range', async () => {
     createStub.resolves({ port: 8100 } as any);
-    const allocator = new PortAllocator({ wda: [8100, 8102] });
+    const allocator = makeAllocator({ wda: [8100, 8102] });
     (allocator as any).isOsFree = async () => true;
     const port = await allocator.acquire('wda' as PortPurpose, 'udid-1');
     expect(port).to.equal(8100);
@@ -34,7 +41,7 @@ describe('PortAllocator', () => {
     createStub.onFirstCall().rejects(collision);
     createStub.onSecondCall().resolves({ port: 8101 } as any);
 
-    const allocator = new PortAllocator({ wda: [8100, 8105] });
+    const allocator = makeAllocator({ wda: [8100, 8105] });
     (allocator as any).isOsFree = async () => true;
     const port = await allocator.acquire('wda' as PortPurpose, 'udid-1');
     expect(port).to.equal(8101);
@@ -42,7 +49,7 @@ describe('PortAllocator', () => {
 
   it('throws PortRangeExhaustedError when range exhausted', async () => {
     findManyStub.resolves([{ port: 8100 }, { port: 8101 }, { port: 8102 }] as any);
-    const allocator = new PortAllocator({ wda: [8100, 8102] });
+    const allocator = makeAllocator({ wda: [8100, 8102] });
     (allocator as any).isOsFree = async () => true;
     try {
       await allocator.acquire('wda' as PortPurpose, 'udid-1');
@@ -55,7 +62,7 @@ describe('PortAllocator', () => {
 
   it('releaseForUdid deletes all leases for that UDID', async () => {
     deleteManyStub.resolves({ count: 2 } as any);
-    const allocator = new PortAllocator({ wda: [8100, 8102] });
+    const allocator = makeAllocator({ wda: [8100, 8102] });
     await allocator.releaseForUdid('udid-1');
     const call = deleteManyStub.getCalls().find((c) => c.args[0]?.where?.leasedToUdid === 'udid-1');
     expect(call, 'expected deleteMany with leasedToUdid filter').to.exist;
@@ -68,7 +75,7 @@ describe('PortAllocator', () => {
       return Promise.resolve({ port: data.port } as any);
     });
 
-    const allocator = new PortAllocator({ wda: [8100, 8101] });
+    const allocator = makeAllocator({ wda: [8100, 8101] });
     let osCalls = 0;
     (allocator as any).isOsFree = async (port: number) => {
       osCalls++;
@@ -78,5 +85,7 @@ describe('PortAllocator', () => {
     const port = await allocator.acquire('wda' as PortPurpose, 'udid-1');
     expect(port).to.equal(8101);
     expect(osCalls).to.be.greaterThan(1);
+    const cleanup = deleteStub.getCalls().find((c) => c.args[0]?.where?.port === 8100);
+    expect(cleanup, 'expected delete({ where: { port: 8100 } }) after OS probe failure').to.exist;
   });
 });

@@ -29,9 +29,11 @@ export class PortRangeExhaustedError extends Error {
 @Service()
 export class PortAllocator {
   private log = log.scope('PortAllocator');
-  private ranges: Required<PortRanges>;
+  private ranges: Required<PortRanges> = { ...DEFAULT_RANGES };
 
-  constructor(overrides: PortRanges = {}) {
+  constructor() {}
+
+  configure(overrides: PortRanges): void {
     this.ranges = { ...DEFAULT_RANGES, ...overrides };
   }
 
