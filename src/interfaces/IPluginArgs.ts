@@ -58,6 +58,8 @@ export interface IPluginArgs {
    * Whether to verify TLS certificates for internal outgoing requests. Default is true. Set to false only for dev/test.
    */
   tlsRejectUnauthorized?: boolean;
+  authDisabled?: boolean;
+  nodeSecret?: string;
 }
 export interface SimulatorConfig {
   name: string;

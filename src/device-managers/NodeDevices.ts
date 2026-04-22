@@ -7,10 +7,16 @@ import { InternalHttpClient } from '../InternalHttpClient';
 export default class NodeDevices {
   private host: string;
   private tlsRejectUnauthorized?: boolean;
+  private nodeSecret?: string;
 
-  constructor(host: string, tlsRejectUnauthorized?: boolean) {
+  constructor(host: string, tlsRejectUnauthorized?: boolean, nodeSecret?: string) {
     this.host = host;
     this.tlsRejectUnauthorized = tlsRejectUnauthorized;
+    this.nodeSecret = nodeSecret;
+  }
+
+  private nodeHeaders(): Record<string, string> {
+    return this.nodeSecret ? { 'x-xenon-node-secret': this.nodeSecret } : {};
   }
 
   async postDevicesToHub(devices: DeviceWithPath[] | DeviceUpdate[], arg: string) {
@@ -23,6 +29,7 @@ export default class NodeDevices {
         params: {
           type: arg,
         },
+        headers: this.nodeHeaders(),
       });
       if (arg === 'add') {
         log.info(`Pushed devices to hub ${JSON.stringify(devices)}`);
@@ -42,6 +49,7 @@ export default class NodeDevices {
         params: {
           type: 'unblock',
         },
+        headers: this.nodeHeaders(),
       });
       log.info(`Unblocked device with filter: ${JSON.stringify(filter)}`);
     } catch (error) {
@@ -58,6 +66,7 @@ export default class NodeDevices {
           type: 'unregister',
           host,
         },
+        headers: this.nodeHeaders(),
       });
       log.info(`Unregistered node ${host} from hub`);
     } catch (error) {

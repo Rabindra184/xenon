@@ -14,6 +14,7 @@ export const useSocket = () => {
     const newSocket = io(socketUrl, {
       path: '/socket.io',
       reconnection: true,
+      withCredentials: true,
     });
 
     setSocket(newSocket);

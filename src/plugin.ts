@@ -117,6 +117,7 @@ class XenonPlugin extends BasePlugin {
       await new NodeDevices(
         this.pluginArgs.hub,
         this.pluginArgs.tlsRejectUnauthorized,
+        this.pluginArgs.nodeSecret,
       ).unblockDevice(deviceFilter as any);
     } else {
       await unblockDeviceMatchingFilter(deviceFilter);
