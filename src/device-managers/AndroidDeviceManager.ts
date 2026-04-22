@@ -1,5 +1,5 @@
 import { IDeviceManager } from '../interfaces/IDeviceManager';
-import { asyncForEach, getFreePort } from '../helpers';
+import { asyncForEach } from '../helpers';
 import { spawn } from 'child_process';
 import { ADB, getSdkRootFromEnv } from 'appium-adb';
 import log from '../logger';
@@ -7,6 +7,7 @@ import _ from 'lodash';
 import { fs } from '@appium/support';
 import ChromeDriverManager from './ChromeDriverManager';
 import { Container } from 'typedi';
+import { PortAllocator } from '../services/PortAllocator';
 import { getUtilizationTime } from '../device-utils';
 import Adb, { Client, DeviceWithPath } from '@devicefarmer/adbkit';
 import { AbortController } from 'node-abort-controller';
@@ -196,7 +197,7 @@ export default class AndroidDeviceManager implements IDeviceManager {
     pluginArgs: IPluginArgs,
     hostPort: number,
   ): Promise<IDevice | undefined> {
-    const systemPort = await getFreePort();
+    const systemPort = await Container.get(PortAllocator).acquire('system', device.udid);
     const totalUtilizationTimeMilliSec = await getUtilizationTime(device.udid);
     let deviceInfo;
 
