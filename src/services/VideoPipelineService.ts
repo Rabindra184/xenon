@@ -1,4 +1,5 @@
 import { Service, Container } from 'typedi';
+import { ProcessRegistry } from './ProcessRegistry';
 import { spawn, ChildProcess } from 'child_process';
 import log from '../logger';
 import path from 'path';
@@ -119,6 +120,7 @@ export class VideoPipelineService {
     const ffmpegProc = spawn(command, wrappedArgs, {
       stdio: ['ignore', 'ignore', 'pipe'], // Only capture stderr for errors
     });
+    Container.get(ProcessRegistry).track({ kind: 'ffmpeg', sessionId, udid, process: ffmpegProc });
 
     ffmpegProc.stderr?.on('data', (data) => {
       const msg = data.toString();

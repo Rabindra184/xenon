@@ -7,22 +7,25 @@ import { AppRoutes } from './routes';
 import { ToastProvider } from './components/ui/toast';
 
 import Sidebar from './components/sidebar/sidebar';
+import { ApiKeyGate } from './components/ApiKeyGate';
 
 function App() {
   return (
-    <ToastProvider>
-      <BrowserRouter basename="/xenon">
-        <div className="app-layout">
-          <Header />
-          <div className="app-main-container">
-            <Sidebar />
-            <main className="app-content">
-              <AppRoutes />
-            </main>
+    <ApiKeyGate>
+      <ToastProvider>
+        <BrowserRouter basename="/xenon">
+          <div className="app-layout">
+            <Header />
+            <div className="app-main-container">
+              <Sidebar />
+              <main className="app-content">
+                <AppRoutes />
+              </main>
+            </div>
           </div>
-        </div>
-      </BrowserRouter>
-    </ToastProvider>
+        </BrowserRouter>
+      </ToastProvider>
+    </ApiKeyGate>
   );
 }
 

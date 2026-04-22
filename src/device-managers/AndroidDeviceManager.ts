@@ -504,6 +504,7 @@ export default class AndroidDeviceManager implements IDeviceManager {
         const nodeDevices = new NodeDevices(
           this.pluginArgs.hub,
           this.pluginArgs.tlsRejectUnauthorized,
+          this.pluginArgs.nodeSecret,
         );
         await nodeDevices.postDevicesToHub([deviceTracked], 'add');
       }
@@ -551,7 +552,7 @@ export default class AndroidDeviceManager implements IDeviceManager {
       state: device.type,
     };
     if (pluginArgs.hub != undefined) {
-      const nodeDevices = new NodeDevices(pluginArgs.hub, pluginArgs.tlsRejectUnauthorized);
+      const nodeDevices = new NodeDevices(pluginArgs.hub, pluginArgs.tlsRejectUnauthorized, pluginArgs.nodeSecret);
       await nodeDevices.postDevicesToHub([clonedDevice], 'remove');
     }
 

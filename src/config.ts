@@ -20,6 +20,9 @@ export interface Config {
   openaiModel?: string;
   anthropicModel?: string;
   ollamaModel?: string;
+  bootstrapKeyPath: string;
+  authDisabled: boolean;
+  nodeSecret?: string;
 }
 
 export const config: Config = {
@@ -51,6 +54,11 @@ export const config: Config = {
   openaiModel: process.env.XENON_OPENAI_MODEL,
   anthropicModel: process.env.XENON_ANTHROPIC_MODEL,
   ollamaModel: process.env.XENON_OLLAMA_MODEL,
+  bootstrapKeyPath:
+    process.env.XENON_BOOTSTRAP_KEY_PATH ||
+    path.join(basePath, 'bootstrap-key.txt'),
+  authDisabled: process.env.XENON_AUTH_DISABLED === 'true',
+  nodeSecret: process.env.XENON_NODE_SECRET,
 };
 
 export function updateConfig(newConfig: Partial<Config>) {

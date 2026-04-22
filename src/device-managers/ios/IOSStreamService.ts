@@ -8,6 +8,7 @@
  */
 
 import { Service } from 'typedi';
+import { ProcessRegistry } from '../../services/ProcessRegistry';
 import { spawn, ChildProcess, exec } from 'child_process';
 import { promisify } from 'util';
 import path from 'path';
@@ -210,6 +211,7 @@ class IOSStreamService {
           stdio: ['pipe', 'pipe', 'pipe'],
           env: { ...process.env, ENABLE_GO_IOS_AGENT: 'yes' },
         });
+        Container.get(ProcessRegistry).track({ kind: 'other', udid, process: tunnelProcess });
 
         tunnelProcess.stdout?.on('data', (data) => log.debug(`Tunnel [${udid}]: ${data}`));
         tunnelProcess.stderr?.on('data', (data) => log.debug(`Tunnel Err [${udid}]: ${data}`));
@@ -454,7 +456,9 @@ class IOSStreamService {
     );
 
     session.forwardWDAProcess = spawn(wdaIproxy.command, wdaIproxy.args);
+    Container.get(ProcessRegistry).track({ kind: 'other', udid, process: session.forwardWDAProcess });
     session.forwardMJPEGProcess = spawn(mjpegIproxy.command, mjpegIproxy.args);
+    Container.get(ProcessRegistry).track({ kind: 'ios-mjpeg', udid, process: session.forwardMJPEGProcess });
 
     log.info(`🛡️ [${udid}] [Watchdog] Tunnels restarted successfully.`);
   }
@@ -606,7 +610,9 @@ class IOSStreamService {
         );
 
         session.forwardWDAProcess = spawn(wdaIproxy.command, wdaIproxy.args);
+        Container.get(ProcessRegistry).track({ kind: 'other', udid, process: session.forwardWDAProcess });
         session.forwardMJPEGProcess = spawn(mjpegIproxy.command, mjpegIproxy.args);
+        Container.get(ProcessRegistry).track({ kind: 'ios-mjpeg', udid, process: session.forwardMJPEGProcess });
 
         const handleIproxyProcess = (p: ChildProcess, name: string) => {
           p.on('error', (err) => log.error(`${name} [${udid}] error: ${err.message}`));
@@ -644,6 +650,7 @@ class IOSStreamService {
         session.wdaProcess = spawn(wdaSpawn.command, wdaSpawn.args, {
           env: { ...process.env, ENABLE_GO_IOS_AGENT: 'yes' },
         });
+        Container.get(ProcessRegistry).track({ kind: 'wda', udid, process: session.wdaProcess });
 
         const logDir = path.join(os.tmpdir(), 'xenon-logs');
         if (!fs.existsSync(logDir)) fs.mkdirSync(logDir);

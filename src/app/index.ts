@@ -17,6 +17,11 @@ import AppsRouter from './routers/apps';
 import webhookRouter from './routers/webhook';
 import reservationRouter from './routers/reservation';
 import ConfigRouter from './routers/config';
+import { apiKeysRouter } from './routers/apikeys';
+import { authRouter } from './routers/auth';
+import { apiKeyMiddleware } from '../middleware/apiKeyMiddleware';
+import { rateLimitMiddleware } from '../middleware/rateLimitMiddleware';
+import { nodeSecretMiddleware } from '../middleware/nodeSecretMiddleware';
 import { IPluginArgs } from '../interfaces/IPluginArgs';
 import fileUpload from 'express-fileupload';
 import { setupSwagger } from './swagger';
@@ -152,6 +157,25 @@ router.use('/session-recordings', express.static(config.sessionAssetsPath));
 router.use(staticFilesRouter);
 
 function createRouter(pluginArgs: IPluginArgs) {
+  // Health endpoint: no auth, no rate limit
+  apiRouter.get('/health', (_req, res) => res.json({ ok: true }));
+
+  // Hub-node channel: node-secret auth instead of API key
+  apiRouter.use(
+    ['/register', '/unblock'],
+    nodeSecretMiddleware(pluginArgs.nodeSecret || process.env.XENON_NODE_SECRET),
+  );
+
+  // Dashboard login: unauthenticated (rate-limited internally via separate IP logic)
+  apiRouter.use('/auth', authRouter());
+
+  // All remaining /api/* requires API key + rate limit
+  apiRouter.use(apiKeyMiddleware as any);
+  apiRouter.use(rateLimitMiddleware());
+
+  // Admin: API key management
+  apiRouter.use('/apikeys', apiKeysRouter());
+
   DashboardRouter.register(apiRouter);
   GridRouter.register(apiRouter, pluginArgs);
   ControlRouter.register(apiRouter);

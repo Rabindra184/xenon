@@ -188,6 +188,10 @@ export class ServerManager {
     const { runMigrations } = await import('../scripts/run-migrations');
     await runMigrations();
     await DeviceStoreFactory.getStore().clearStorage();
+
+    const { ApiKeyService } = await import('./ApiKeyService');
+    const { config: xenonConfig } = await import('../config');
+    await Container.get(ApiKeyService).bootstrapIfEmpty(xenonConfig.bootstrapKeyPath);
   }
 
   private registerRoutes(expressApp: any, cliArgs: ServerArgs, pluginArgs: IPluginArgs) {
@@ -248,6 +252,7 @@ export class ServerManager {
         hubArgument,
         pluginArgs.sendNodeDevicesToHubIntervalMs as number,
         pluginArgs.tlsRejectUnauthorized,
+        pluginArgs.nodeSecret,
       );
 
       // Handle graceful shutdown
@@ -255,7 +260,7 @@ export class ServerManager {
         process.once(signal, async () => {
           log.info(`Received ${signal}, unregistering node from hub...`);
           try {
-            await new NodeDevices(hubArgument, pluginArgs.tlsRejectUnauthorized).unRegisterNode(
+            await new NodeDevices(hubArgument, pluginArgs.tlsRejectUnauthorized, pluginArgs.nodeSecret).unRegisterNode(
               pluginArgs.bindHostOrIp as string,
             );
           } catch (err) {

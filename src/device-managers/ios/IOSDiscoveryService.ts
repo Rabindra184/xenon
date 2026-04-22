@@ -166,6 +166,7 @@ export class IOSDiscoveryService {
       const nodeDevices = new NodeDevices(
         this.pluginArgs.hub,
         this.pluginArgs.tlsRejectUnauthorized,
+        this.pluginArgs.nodeSecret,
       );
       await nodeDevices.postDevicesToHub(simulators, 'add');
     }
@@ -239,6 +240,7 @@ export class IOSDiscoveryService {
           await new NodeDevices(
             this.pluginArgs.hub,
             this.pluginArgs.tlsRejectUnauthorized,
+            this.pluginArgs.nodeSecret,
           ).postDevicesToHub([device], 'add');
         }
         await addNewDevice([device], this.pluginArgs.bindHostOrIp);
@@ -253,6 +255,7 @@ export class IOSDiscoveryService {
         await new NodeDevices(
           this.pluginArgs.hub,
           this.pluginArgs.tlsRejectUnauthorized,
+          this.pluginArgs.nodeSecret,
         ).postDevicesToHub(deviceRemoved as any, 'remove');
       }
       await removeDevice(deviceRemoved);

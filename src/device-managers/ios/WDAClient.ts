@@ -3,6 +3,7 @@ import semver from 'semver';
 import http from 'http';
 import log from '../../logger';
 import { Container, Service } from 'typedi';
+import { ProcessRegistry } from '../../services/ProcessRegistry';
 import IOSStreamService from './IOSStreamService';
 import { IDevice } from '../../interfaces/IDevice';
 import { DeviceStoreFactory } from '../../data-service/device-store';
@@ -819,6 +820,7 @@ export class WDAClient {
       env: { ...process.env, ENABLE_GO_IOS_AGENT: 'yes' },
       stdio: ['ignore', 'pipe', 'pipe'],
     });
+    Container.get(ProcessRegistry).track({ kind: 'log-tailer', udid, process: proc });
 
     const entry = {
       proc,
