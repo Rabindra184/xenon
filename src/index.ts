@@ -23,11 +23,16 @@ const cleanup = async () => {
     const { stopAllTimers } = await import('./device-utils');
     const { VideoPipelineService } = await import('./services/VideoPipelineService');
 
+    const { ProcessRegistry } = await import('./services/ProcessRegistry');
+
     // Shutdown all independent MJPEG streams, tunnels, and video recordings
     stopAllTimers();
     await Container.get(IOSStreamService).cleanup();
     await Container.get(AndroidStreamService).cleanup();
     await Container.get(VideoPipelineService).cleanup();
+
+    // Final sweep: terminate any remaining tracked processes
+    await Container.get(ProcessRegistry).terminateAll();
 
     log.info('✅ [Xenon] Infrastructure components sanitized. Safe to exit.');
   } catch (err: any) {
