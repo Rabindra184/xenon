@@ -6,9 +6,11 @@ import pkg from '../../package.json';
 import { getCLIArgs } from '../data-service/pluginArgs';
 import cors from 'cors';
 import AsyncLock from 'async-lock';
+import crypto from 'crypto';
 import { InternalHttpClient } from '../InternalHttpClient';
 import { config } from '../config';
 import log from '../logger';
+import { sessionContext } from '../logging/sessionContext';
 
 import DashboardRouter from './routers/dashboard';
 import GridRouter from './routers/grid';
@@ -44,6 +46,21 @@ const router = express.Router(),
 // the dashboard bundle can be embedded from anywhere if needed.
 apiRouter.use(cors({ origin: false }));
 staticFilesRouter.use(cors());
+
+// Tag every API request with an AsyncLocalStorage frame so downstream logs
+// (handlers, DB calls, outbound HTTP from InternalHttpClient) can attribute
+// themselves to this request/session without plumbing IDs through every call.
+// Regex picks up sessionId from /session/<id>/... paths so the context is
+// populated before the individual handler runs.
+const SESSION_ID_PATH_RE = /\/session\/([a-zA-Z0-9_-]{8,})(?:\/|$)/;
+apiRouter.use((req, res, next) => {
+  const inboundId = (req.headers['x-request-id'] as string) || '';
+  const requestId = inboundId || crypto.randomUUID();
+  const match = SESSION_ID_PATH_RE.exec(req.path);
+  const sessionId = match ? match[1] : undefined;
+  res.setHeader('X-Request-Id', requestId);
+  sessionContext.run({ requestId, sessionId }, () => next());
+});
 
 apiRouter.use((req: any, res, next) => {
   // Defensive Body Parsing Logic:

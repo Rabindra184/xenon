@@ -8,6 +8,7 @@ import { HealEtalonService } from '../services/healing/HealEtalonService';
 import { OmniVisionService } from '../services/omni-vision/OmniVisionService';
 import { AICommandService } from '../services/AICommandService';
 import log from '../logger';
+import { sessionContext } from '../logging/sessionContext';
 import { IPluginArgs } from '../interfaces/IPluginArgs';
 
 @Service()
@@ -35,6 +36,45 @@ export class CommandInterceptor {
       });
     }
 
+    // Wrap the rest of the work in an AsyncLocalStorage frame so logs emitted
+    // from any downstream service (healing, omni-vision, dashboard event
+    // manager) automatically carry session/command/trace attribution without
+    // those services having to accept a context parameter.
+    const spanCtx = span?.spanContext();
+    return sessionContext.run(
+      {
+        sessionId: sessionId || undefined,
+        udid: driver?.caps?.udid,
+        commandName,
+        traceId: spanCtx?.traceId,
+        spanId: spanCtx?.spanId,
+      },
+      () =>
+        this.handleInContext(
+          next,
+          driver,
+          commandName,
+          args,
+          pluginArgs,
+          isHub,
+          sessionId,
+          span,
+          tracingService,
+        ),
+    );
+  }
+
+  private async handleInContext(
+    next: () => any,
+    driver: any,
+    commandName: string,
+    args: any[],
+    pluginArgs: IPluginArgs,
+    isHub: boolean,
+    sessionId: string,
+    span: Span | undefined,
+    tracingService: TracingService,
+  ) {
     if (commandName === 'createSession' || commandName === 'deleteSession') {
       try {
         return await next();

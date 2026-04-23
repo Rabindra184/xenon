@@ -1,4 +1,5 @@
 import { logger } from '@appium/support';
+import { sessionContext, SessionLogContext } from './logging/sessionContext';
 
 /**
  * Keys whose values must never appear in log output.
@@ -134,19 +135,41 @@ class XenonLogger {
   private logMessage(level: 'info' | 'warn' | 'error' | 'debug', message: any, ...args: any[]) {
     const redactedMessage = redactSecrets(message);
     const redactedArgs = args.map((arg) => redactSecrets(arg));
+    const ctx = sessionContext.get();
 
     if (XenonLogger.isJsonLogging) {
-      const logEntry = {
+      const logEntry: Record<string, any> = {
         timestamp: new Date().toISOString(),
         level,
         scope: this.context.trim() || 'root',
         message: this.format(redactedMessage),
-        args: redactedArgs.length ? redactedArgs : undefined,
       };
+      if (ctx) {
+        if (ctx.sessionId) logEntry.sessionId = ctx.sessionId;
+        if (ctx.udid) logEntry.udid = ctx.udid;
+        if (ctx.requestId) logEntry.requestId = ctx.requestId;
+        if (ctx.commandName) logEntry.commandName = ctx.commandName;
+        if (ctx.traceId) logEntry.traceId = ctx.traceId;
+        if (ctx.spanId) logEntry.spanId = ctx.spanId;
+      }
+      if (redactedArgs.length) logEntry.args = redactedArgs;
       this.baseLogger.info(JSON.stringify(logEntry));
     } else {
-      this.baseLogger[level](`${this.context}${this.format(redactedMessage)}`, ...redactedArgs);
+      const ctxPrefix = this.buildTextPrefix(ctx);
+      this.baseLogger[level](
+        `${this.context}${ctxPrefix}${this.format(redactedMessage)}`,
+        ...redactedArgs,
+      );
     }
+  }
+
+  // Emit a compact [s:shortId] marker when async context has a sessionId that
+  // isn't already baked into this.context (i.e. this logger wasn't created via
+  // withSession). Keeps console lines short while still giving grep-ability.
+  private buildTextPrefix(ctx: SessionLogContext | undefined): string {
+    if (!ctx?.sessionId) return '';
+    if (this.context.includes(ctx.sessionId)) return '';
+    return `[s:${ctx.sessionId.slice(0, 8)}] `;
   }
 
   public info(message: any, ...args: any[]) {
