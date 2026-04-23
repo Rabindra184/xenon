@@ -12,14 +12,18 @@ function makeAllocator(overrides: PortRanges) {
 describe('PortAllocator', () => {
   let createStub: sinon.SinonStub;
   let findManyStub: sinon.SinonStub;
+  let findFirstStub: sinon.SinonStub;
   let deleteManyStub: sinon.SinonStub;
   let deleteStub: sinon.SinonStub;
+  let updateStub: sinon.SinonStub;
 
   beforeEach(() => {
     createStub = sinon.stub(prisma.portLease, 'create');
     findManyStub = sinon.stub(prisma.portLease, 'findMany').resolves([]);
+    findFirstStub = sinon.stub(prisma.portLease, 'findFirst').resolves(null as any);
     deleteManyStub = sinon.stub(prisma.portLease, 'deleteMany').resolves({ count: 0 } as any);
     deleteStub = sinon.stub(prisma.portLease, 'delete').resolves({} as any);
+    updateStub = sinon.stub(prisma.portLease, 'update').resolves({} as any);
   });
 
   afterEach(() => sinon.restore());
@@ -58,6 +62,19 @@ describe('PortAllocator', () => {
       expect(err).to.be.instanceOf(PortRangeExhaustedError);
       expect(err.message).to.match(/wda/);
     }
+  });
+
+  it('reuses an existing lease when the same (purpose, udid) acquires again', async () => {
+    findFirstStub.resolves({ port: 8101 } as any);
+    const allocator = makeAllocator({ wda: [8100, 8102] });
+    (allocator as any).isOsFree = async () => true;
+
+    const port = await allocator.acquire('wda' as PortPurpose, 'udid-1');
+
+    expect(port).to.equal(8101);
+    expect(createStub.called, 'should not create a new lease').to.be.false;
+    expect(updateStub.calledOnce, 'should refresh the existing lease').to.be.true;
+    expect(updateStub.firstCall.args[0].where.port).to.equal(8101);
   });
 
   it('releaseForUdid deletes all leases for that UDID', async () => {

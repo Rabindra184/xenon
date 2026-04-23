@@ -48,6 +48,20 @@ export class PortAllocator {
 
     await prisma.portLease.deleteMany({ where: { expiresAt: { lt: now } } });
 
+    const existing = await prisma.portLease.findFirst({
+      where: { purpose, leasedToUdid: udid, port: { gte: start, lte: end } },
+      select: { port: true },
+    });
+    if (existing) {
+      await prisma.portLease
+        .update({
+          where: { port: existing.port },
+          data: { leasedAt: now, expiresAt: now + ttlMs, leasedToPid: opts.pid },
+        })
+        .catch(() => undefined);
+      return existing.port;
+    }
+
     const active = await prisma.portLease.findMany({
       where: { purpose, port: { gte: start, lte: end } },
       select: { port: true },

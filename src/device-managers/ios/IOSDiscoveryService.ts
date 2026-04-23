@@ -207,25 +207,29 @@ export class IOSDiscoveryService {
       );
     }
 
+    const store = DeviceStoreFactory.getStore();
     return await Promise.all(
-      simulators.map(
-        async (d) =>
-          ({
-            ...d,
-            wdaLocalPort: await Container.get(PortAllocator).acquire('wda', d.udid),
-            mjpegServerPort: await Container.get(PortAllocator).acquire('mjpeg', d.udid),
-            busy: false,
-            realDevice: false,
-            platform: (d.name?.toLowerCase().includes('tv') ? 'tvos' : 'ios') as
-              | 'ios'
-              | 'android'
-              | 'tvos',
-            deviceType: 'simulator',
-            host: `http://${this.pluginArgs.bindHostOrIp}:${this.hostPort}`,
-            totalUtilizationTimeMilliSec: await getUtilizationTime(d.udid),
-            sessionStartTime: 0,
-          }) as IDevice,
-      ),
+      simulators.map(async (d) => {
+        const storeDevice = await store.findDevice({ udid: d.udid });
+        return {
+          ...d,
+          wdaLocalPort:
+            storeDevice?.wdaLocalPort || (await Container.get(PortAllocator).acquire('wda', d.udid)),
+          mjpegServerPort:
+            storeDevice?.mjpegServerPort ||
+            (await Container.get(PortAllocator).acquire('mjpeg', d.udid)),
+          busy: false,
+          realDevice: false,
+          platform: (d.name?.toLowerCase().includes('tv') ? 'tvos' : 'ios') as
+            | 'ios'
+            | 'android'
+            | 'tvos',
+          deviceType: 'simulator',
+          host: `http://${this.pluginArgs.bindHostOrIp}:${this.hostPort}`,
+          totalUtilizationTimeMilliSec: await getUtilizationTime(d.udid),
+          sessionStartTime: 0,
+        } as IDevice;
+      }),
     );
   }
 
