@@ -75,6 +75,20 @@ router.post('/', async (req, res) => {
       });
     }
 
+    // Bounds check: refuse negative, zero, NaN, Infinity, and anything over 24h.
+    const MIN_DURATION_MS = 60 * 1000; // 1 minute
+    const MAX_DURATION_MS = 24 * 60 * 60 * 1000; // 24 hours
+    if (
+      !Number.isFinite(durationMs) ||
+      durationMs < MIN_DURATION_MS ||
+      durationMs > MAX_DURATION_MS
+    ) {
+      return res.status(400).json({
+        success: false,
+        error: `duration must be between ${MIN_DURATION_MS}ms (1 minute) and ${MAX_DURATION_MS}ms (24 hours)`,
+      });
+    }
+
     // Check if device exists
     const device = await getDevice({ udid: [udid] });
     if (!device) {

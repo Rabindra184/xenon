@@ -47,6 +47,9 @@ import SessionType from '../enums/SessionType';
 import AsyncLock from 'async-lock';
 
 const commandsQueueGuard = new AsyncLock();
+// Serializes concurrent deleteSession cleanup for the same sessionId so
+// that onSessionStopped events don't fire twice if two clients race.
+const sessionCleanupLock = new AsyncLock();
 
 @Service()
 export class SessionLifecycleService {
@@ -521,7 +524,9 @@ export class SessionLifecycleService {
 
     const session = sessionId ? SESSION_MANAGER.getSession(sessionId) : undefined;
 
-    if (session) {
+    // Guard against concurrent deletes: only the first caller runs finalizeCleanup.
+    // Port release and video/profiling archival are not safe to run twice.
+    if (session && !session.isStopping) {
       session.isStopping = true;
       session.stoppedAt = Date.now();
       await this.finalizeCleanup(session, status, reason);
@@ -547,8 +552,12 @@ export class SessionLifecycleService {
       return null;
     } finally {
       if (sessionId) {
-        const session = SESSION_MANAGER.getSession(sessionId);
-        if (session) {
+        await sessionCleanupLock.acquire(sessionId, async () => {
+          const session = SESSION_MANAGER.getSession(sessionId);
+          if (!session) {
+            // Another concurrent deleteSession already cleaned up.
+            return;
+          }
           const device = session.getDevice();
           try {
             const { NetworkConditioningService } = await import('./NetworkConditioningService');
@@ -558,21 +567,21 @@ export class SessionLifecycleService {
               `⚠️ NetworkConditioningService.reset failed for session ${sessionId}: ${resetErr.message}`,
             );
           }
-        }
 
-        await DASHBORD_EVENT_MANAGER.onSessionStopped(sessionId, status, reason);
-        SESSION_MANAGER.removeSession(sessionId);
+          await DASHBORD_EVENT_MANAGER.onSessionStopped(sessionId, status, reason);
+          SESSION_MANAGER.removeSession(sessionId);
 
-        try {
-          const { getSessionById } = await import('../dashboard/services/session-service');
-          const sessionData = await getSessionById(sessionId);
-          if (sessionData && (sessionData.status === 'failed' || sessionData.failure_reason)) {
-            const { NotificationService } = await import('./NotificationService');
-            await Container.get(NotificationService).dispatchEvent('session_failed', sessionData);
+          try {
+            const { getSessionById } = await import('../dashboard/services/session-service');
+            const sessionData = await getSessionById(sessionId);
+            if (sessionData && (sessionData.status === 'failed' || sessionData.failure_reason)) {
+              const { NotificationService } = await import('./NotificationService');
+              await Container.get(NotificationService).dispatchEvent('session_failed', sessionData);
+            }
+          } catch (err) {
+            /* ignore notification errors */
           }
-        } catch (err) {
-          /* ignore notification errors */
-        }
+        });
       }
     }
   }

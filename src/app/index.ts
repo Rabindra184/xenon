@@ -82,23 +82,40 @@ apiRouter.use((req, res, next) => {
   next();
 });
 
-// Dashboard state cache - runs once and persists
+// Dashboard state cache - runs once and persists on success.
+// On failure we back off exponentially (1s → 2s → 4s → … capped at 30s)
+// so a down dashboard doesn't turn every API request into a fresh ping.
 let dashboardPluginPromise: Promise<string> | null = null;
+let dashboardNextRetryAt = 0;
+let dashboardRetryDelayMs = 1000;
+const DASHBOARD_RETRY_MAX_MS = 30_000;
 
 apiRouter.use(async (req, res, next) => {
-  if (dashboardPluginPromise === null) {
+  if (dashboardPluginPromise === null && Date.now() >= dashboardNextRetryAt) {
     dashboardPluginPromise = (async () => {
       const pingurl = `${req.protocol}://${req.get('host')}/dashboard/api/ping`;
       try {
         const response: any = await InternalHttpClient.get(pingurl, { silent: true } as any);
-        return response['pong'] ? `${req.protocol}://${req.get('host')}/dashboard` : '';
-      } catch (err) {
-        return '';
+        if (response && response['pong']) {
+          dashboardRetryDelayMs = 1000;
+          dashboardNextRetryAt = 0;
+          return `${req.protocol}://${req.get('host')}/dashboard`;
+        }
+      } catch (err: any) {
+        log.warn(
+          `[Xenon] Dashboard ping failed, retrying in ${dashboardRetryDelayMs}ms: ${
+            err?.message || err
+          }`,
+        );
       }
+      dashboardNextRetryAt = Date.now() + dashboardRetryDelayMs;
+      dashboardRetryDelayMs = Math.min(dashboardRetryDelayMs * 2, DASHBOARD_RETRY_MAX_MS);
+      dashboardPluginPromise = null;
+      return '';
     })();
   }
 
-  (req as any)['dashboard-plugin-url'] = await dashboardPluginPromise;
+  (req as any)['dashboard-plugin-url'] = dashboardPluginPromise ? await dashboardPluginPromise : '';
   return next();
 });
 

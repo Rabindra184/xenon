@@ -107,7 +107,11 @@ export class HealingOrchestrator {
 
               await this.etalonService.saveSignature(strategy, selector, result.node, learnedPath);
             } catch (learnErr: any) {
-              this.logger.debug(`Failed to update etalon after healing: ${learnErr.message}`);
+              // Warn (not debug) so the loss of learning shows up in default logs —
+              // a silent failure here means the same selector keeps needing the LLM tier.
+              this.logger.warn(
+                `Etalon save failed after healing [strategy=${strategy}, selector=${selector}, confidence=${result.confidence}]: ${learnErr.message}`,
+              );
             }
           }
 
