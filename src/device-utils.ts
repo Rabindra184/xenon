@@ -699,6 +699,31 @@ export async function setupCronCleanupBuilds(pluginArgs: IPluginArgs) {
 }
 
 let cronTimerSweepOrphanSessions: any;
+let cronTimerReconcileDevices: any;
+
+/**
+ * Cross-checks the device store against SESSION_MANAGER and frees devices
+ * that are busy with a session ID the driver layer no longer knows about.
+ * Fills the gap between OrphanSweeper (Prisma heartbeat-driven) and
+ * releaseBlockedDevices (command-idle-driven).
+ */
+export function setupCronReconcileDevices(intervalMs: number) {
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const { DeviceReconciler } = require('./services/DeviceReconciler') as {
+    DeviceReconciler: new () => import('./services/DeviceReconciler').DeviceReconciler;
+  };
+  const reconciler = Container.get(DeviceReconciler);
+  log.info(`Device reconcile scheduled every ${intervalMs}ms`);
+  if (cronTimerReconcileDevices) {
+    clearInterval(cronTimerReconcileDevices);
+  }
+  cronTimerReconcileDevices = setInterval(() => {
+    reconciler.reconcile().catch((err: any) => {
+      log.error(`Device reconcile crashed: ${err.message}`);
+    });
+  }, intervalMs);
+  return cronTimerReconcileDevices;
+}
 
 /**
  * Periodically sweep sessions whose heartbeat has gone stale, marking them as
@@ -734,4 +759,5 @@ export function stopAllTimers() {
   if (cronTimerToCleanExpiredReservations) clearInterval(cronTimerToCleanExpiredReservations);
   if (cronTimerToCleanupBuilds) cronTimerToCleanupBuilds.cancel();
   if (cronTimerSweepOrphanSessions) clearInterval(cronTimerSweepOrphanSessions);
+  if (cronTimerReconcileDevices) clearInterval(cronTimerReconcileDevices);
 }

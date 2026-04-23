@@ -19,6 +19,7 @@ import {
   setupCronCleanPendingSessions,
   setupCronReleaseBlockedDevices,
   setupCronSweepOrphanSessions,
+  setupCronReconcileDevices,
   setupCronUpdateDeviceList,
   removeStaleDevices,
   updateDeviceList,
@@ -329,6 +330,11 @@ export class ServerManager {
 
       // 8. Sweep orphaned sessions on a 30s cron
       setupCronSweepOrphanSessions(pluginArgs.sessionHeartbeatIntervalMs || 30_000);
+
+      // 9. Reconcile device-store busy flags against SESSION_MANAGER every
+      //    60s to catch devices orphaned mid-allocation (driver crash before
+      //    session registration, etc.)
+      setupCronReconcileDevices(60_000);
     }
   }
 }

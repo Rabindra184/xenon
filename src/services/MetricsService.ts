@@ -1,10 +1,11 @@
-import { Service } from 'typedi';
+import { Service, Container } from 'typedi';
 import { SESSION_MANAGER } from '../sessions/SessionManager';
 import { DeviceStoreFactory } from '../data-service/device-store';
 import { prisma } from '../prisma';
 import log from '../logger';
 import { HEALING_METRICS } from './healing/HealingMetrics';
 import { CIRCUIT_BREAKERS } from './CircuitBreaker';
+import { DeviceReconciler } from './DeviceReconciler';
 
 // Label values must escape backslash, double-quote, and newline per the
 // Prometheus exposition format. Breaker keys contain colons which are fine.
@@ -158,6 +159,15 @@ export class MetricsService {
       '# HELP xenon_heal_all_tiers_failed_total Healing calls where no tier matched',
       '# TYPE xenon_heal_all_tiers_failed_total counter',
       `xenon_heal_all_tiers_failed_total ${HEALING_METRICS.getAllTiersFailedCount()}`,
+    );
+
+    // Device reconciliation: non-zero = ghost devices were being leaked and
+    // the reconciler caught them. A steady climb usually points at a bug in
+    // session allocation or shutdown.
+    lines.push(
+      '# HELP xenon_device_reconciler_orphans_freed_total Ghost devices released by the reconciler',
+      '# TYPE xenon_device_reconciler_orphans_freed_total counter',
+      `xenon_device_reconciler_orphans_freed_total ${Container.get(DeviceReconciler).getOrphansFreedCount()}`,
     );
 
     // Circuit breaker state — makes it obvious from a dashboard alert when
