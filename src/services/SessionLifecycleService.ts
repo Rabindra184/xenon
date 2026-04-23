@@ -56,6 +56,15 @@ export class SessionLifecycleService {
   private logger = log.scope('SessionLifecycleService');
 
   async createSession(next: () => any, driver: any, caps: ISessionCapability) {
+    // Fail fast during graceful shutdown so clients get a clear error instead
+    // of their request hanging until the process dies. Lazy import to avoid
+    // a cycle (ShutdownCoordinator -> SessionLifecycleService -> this file).
+    const { ShutdownCoordinator } = await import('./ShutdownCoordinator');
+    if (Container.get(ShutdownCoordinator).isDraining) {
+      this.logger.warn('Rejecting new session: hub is draining for shutdown');
+      throw new Error('Hub is shutting down; please retry against a different node');
+    }
+
     const context = Container.get(PluginContext);
     const pluginArgs = context.pluginArgs;
 
@@ -643,6 +652,41 @@ export class SessionLifecycleService {
         this.logger.warn(`⚠️ [${sessionId}] Failed to stop video recording: ${error.message}`);
       }
     }
+  }
+
+  // Shutdown-path counterpart to deleteSession. Runs the same cleanup (unblock
+  // device, archive video, release ports, mark failed, emit stopped) WITHOUT
+  // needing Appium's `next()` driver shutdown — during process shutdown we
+  // don't have it, and any leftover driver state dies with the process
+  // anyway. Shares sessionCleanupLock with deleteSession so a racing client
+  // delete can't double-archive video.
+  public async stopSessionForShutdown(sessionId: string, reason: string): Promise<void> {
+    await sessionCleanupLock.acquire(sessionId, async () => {
+      try {
+        await unblockDeviceMatchingFilter({ session_id: sessionId as any });
+      } catch (err: any) {
+        this.logger.warn(`[shutdown] unblock failed for ${sessionId}: ${err.message}`);
+      }
+
+      const session = SESSION_MANAGER.getSession(sessionId);
+      if (session && !session.isStopping) {
+        session.isStopping = true;
+        session.stoppedAt = Date.now();
+        try {
+          await this.finalizeCleanup(session, SessionStatus.FAILED, reason);
+        } catch (err: any) {
+          this.logger.warn(`[shutdown] finalizeCleanup failed for ${sessionId}: ${err.message}`);
+        }
+      }
+
+      try {
+        await DASHBORD_EVENT_MANAGER.onSessionStopped(sessionId, SessionStatus.FAILED, reason);
+      } catch (err: any) {
+        this.logger.warn(`[shutdown] onSessionStopped failed for ${sessionId}: ${err.message}`);
+      }
+
+      SESSION_MANAGER.removeSession(sessionId);
+    });
   }
 
   private isHub(args: any) {

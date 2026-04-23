@@ -14,9 +14,15 @@ process.env.PATH = process.env.PATH + ':' + ffmpeg.replace(/ffmpeg$/g, '');
  * all spawned sidecar processes (go-ios, iproxy, tunnels) are killed.
  */
 const cleanup = async () => {
-  log.info('🚀 [Xenon] Shutdown signal received. Performing graceful cleanup...');
+  log.info('🚀 [Xenon] Shutdown signal received. Performing graceful drain + cleanup...');
 
   try {
+    // Phase 1: drain active sessions so in-flight video gets archived,
+    // ports get released, and the DB rows don't stay "running" forever.
+    // Bounded so a hung driver can't hold up systemd (default 90s timeout).
+    const { ShutdownCoordinator } = await import('./services/ShutdownCoordinator');
+    await Container.get(ShutdownCoordinator).drain(15_000);
+
     const { default: IOSStreamService } = await import('./device-managers/ios/IOSStreamService');
     const { default: AndroidStreamService } =
       await import('./device-managers/android/AndroidStreamService');
@@ -25,13 +31,13 @@ const cleanup = async () => {
 
     const { ProcessRegistry } = await import('./services/ProcessRegistry');
 
-    // Shutdown all independent MJPEG streams, tunnels, and video recordings
+    // Phase 2: tear down infra (timers, sidecars, MJPEG streams).
     stopAllTimers();
     await Container.get(IOSStreamService).cleanup();
     await Container.get(AndroidStreamService).cleanup();
     await Container.get(VideoPipelineService).cleanup();
 
-    // Final sweep: terminate any remaining tracked processes
+    // Phase 3: kill anything that's still running
     await Container.get(ProcessRegistry).terminateAll();
 
     log.info('✅ [Xenon] Infrastructure components sanitized. Safe to exit.');
