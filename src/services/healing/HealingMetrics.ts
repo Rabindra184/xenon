@@ -23,10 +23,17 @@ export interface TierMetricSnapshot {
   durationMsSum: number;
 }
 
+interface SkipBucket {
+  tier: number;
+  name: string;
+  count: number;
+}
+
 class HealingMetricsRegistry {
   // Key: `${tier}:${name}` so the same tier number with a renamed provider
   // lands in a separate bucket instead of silently merging.
   private readonly buckets = new Map<string, TierBucket>();
+  private readonly skipBuckets = new Map<string, SkipBucket>();
   private allTiersFailedCount = 0;
 
   public record(tier: number, name: string, outcome: HealingOutcome, durationMs: number): void {
@@ -44,6 +51,22 @@ class HealingMetricsRegistry {
 
   public recordAllTiersFailed(): void {
     this.allTiersFailedCount++;
+  }
+
+  public recordSkippedRemaining(tier: number, name: string): void {
+    const key = `${tier}:${name}`;
+    let bucket = this.skipBuckets.get(key);
+    if (!bucket) {
+      bucket = { tier, name, count: 0 };
+      this.skipBuckets.set(key, bucket);
+    }
+    bucket.count++;
+  }
+
+  public skipSnapshot(): SkipBucket[] {
+    return Array.from(this.skipBuckets.values()).sort(
+      (a, b) => a.tier - b.tier || a.name.localeCompare(b.name),
+    );
   }
 
   public snapshot(): TierMetricSnapshot[] {

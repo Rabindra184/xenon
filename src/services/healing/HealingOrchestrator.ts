@@ -141,6 +141,18 @@ export class HealingOrchestrator {
         HEALING_METRICS.record(provider.tier, provider.name, 'failure', Date.now() - tierStart);
         this.logger.error(`Provider ${provider.name} failed: ${err.message}`);
       }
+
+      // Provider-driven short-circuit: a tier can advise that no downstream
+      // tier can plausibly succeed (e.g. missing prerequisites that all
+      // share). Saves an expensive LLM round-trip when upstream context
+      // collection failed.
+      if (provider.shouldSkipRemaining?.(context)) {
+        this.logger.warn(
+          `Tier ${provider.tier} (${provider.name}) advised skipping remaining tiers for selector=${selector}`,
+        );
+        HEALING_METRICS.recordSkippedRemaining(provider.tier, provider.name);
+        break;
+      }
     }
 
     HEALING_METRICS.recordAllTiersFailed();

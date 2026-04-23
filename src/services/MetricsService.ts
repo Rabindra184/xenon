@@ -162,6 +162,22 @@ export class MetricsService {
       `xenon_heal_all_tiers_failed_total ${HEALING_METRICS.getAllTiersFailedCount()}`,
     );
 
+    // Tier-advised skips. A rising trend on tier 3 usually means context
+    // collection (page source + screenshot) is failing upstream — the
+    // remaining tiers are being shed correctly but the root cause lives in
+    // the driver, not the heal pipeline.
+    const skips = HEALING_METRICS.skipSnapshot();
+    if (skips.length > 0) {
+      lines.push(
+        '# HELP xenon_heal_tier_skipped_remaining_total Times a tier short-circuited the remaining tiers',
+        '# TYPE xenon_heal_tier_skipped_remaining_total counter',
+      );
+      for (const s of skips) {
+        const labels = `tier="${s.tier}",name="${escapeLabel(s.name)}"`;
+        lines.push(`xenon_heal_tier_skipped_remaining_total{${labels}} ${s.count}`);
+      }
+    }
+
     // Device reconciliation: non-zero = ghost devices were being leaked and
     // the reconciler caught them. A steady climb usually points at a bug in
     // session allocation or shutdown.

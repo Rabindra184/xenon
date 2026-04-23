@@ -7,6 +7,14 @@ export class OcrHealingProvider implements HealingProvider {
   tier = HealingTier.TIER_3_LOCAL_OCR;
   private logger = log.scope('OcrHealing');
 
+  // Visual AI (tier 4) also needs a screenshot, and LLM (tier 5) needs a
+  // pageSource. If the context has neither, the remaining tiers can't do
+  // better than we did, so tell the orchestrator to give up — saves an
+  // LLM round-trip when context collection actually failed upstream.
+  shouldSkipRemaining(context: HealingContext): boolean {
+    return !context.screenshotBase64 && !context.pageSource;
+  }
+
   async heal(context: HealingContext): Promise<HealedElement | null> {
     if (!context.screenshotBase64) {
       this.logger.debug('No screenshot available for OCR matching');
