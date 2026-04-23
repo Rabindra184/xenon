@@ -6,6 +6,7 @@ import log from '../logger';
 import * as fs from 'fs';
 import * as path from 'path';
 import { config } from '../config';
+import { CIRCUIT_BREAKERS, CircuitOpenError } from './CircuitBreaker';
 
 export interface AnalysisContext {
   sessionId: string;
@@ -213,6 +214,32 @@ export class AIService {
     this.initializeProvider();
   }
 
+  // Key the breaker by provider + resolved model name so a misbehaving model
+  // (rate-limited preview tier, deprecated snapshot) doesn't trip sibling
+  // models on the same provider. Falls back to 'default' if model unresolved.
+  private breakerKey(): string {
+    const provider = config.aiProvider || 'unknown';
+    const model =
+      provider === 'gemini'
+        ? config.geminiModel
+        : provider === 'openai'
+          ? config.openaiModel
+          : provider === 'anthropic'
+            ? config.anthropicModel
+            : provider === 'ollama'
+              ? config.ollamaModel
+              : config.aiModel;
+    return `ai:${provider}:${model || 'default'}`;
+  }
+
+  // Single choke point for every LLM call so circuit-breaker state is shared
+  // across analyzeFailure / visualFind / healLocator.
+  private async callProvider(prompt: string, screenshotBase64?: string): Promise<string> {
+    return CIRCUIT_BREAKERS.execute(this.breakerKey(), () =>
+      this.provider!.analyze(prompt, screenshotBase64),
+    );
+  }
+
   private initializeProvider() {
     const providerType = config.aiProvider;
     const genericModel = config.aiModel;
@@ -292,12 +319,16 @@ Fix: Add a pre-emptive check for the location permission dialog or use the \`aut
       const prompt = this.constructPrompt(context);
       const screenshotBase64 = this.getScreenshotBase64(context.screenshotPath);
 
-      const text = await this.provider!.analyze(prompt, screenshotBase64 || undefined);
+      const text = await this.callProvider(prompt, screenshotBase64 || undefined);
 
       log.info(`[AIService] Analysis complete for ${context.sessionId}`);
       return text;
     } catch (err: any) {
-      log.error(`[AIService] Analysis failed: ${err.message}`);
+      if (err instanceof CircuitOpenError) {
+        log.debug(`[AIService] Analysis skipped: ${err.message}`);
+      } else {
+        log.error(`[AIService] Analysis failed: ${err.message}`);
+      }
       return null;
     }
   }
@@ -320,12 +351,17 @@ Fix: Add a pre-emptive check for the location permission dialog or use the \`aut
         `;
 
     try {
-      const response = await this.provider!.analyze(prompt, screenshotBase64);
+      const response = await this.callProvider(prompt, screenshotBase64);
       const data = JSON.parse(response.replace(/```json|```/g, '').trim());
       return data;
     } catch (err: any) {
-      // Log service unavailability at debug level (expected), other errors at warn level
-      if (err.message?.includes('unavailable') || err.response?.status === 404) {
+      // Log service unavailability / tripped breaker at debug level (expected);
+      // genuine errors at warn.
+      if (
+        err instanceof CircuitOpenError ||
+        err.message?.includes('unavailable') ||
+        err.response?.status === 404
+      ) {
         log.debug(`[AIService] visualFind skipped: ${err.message}`);
       } else {
         log.warn(`[AIService] visualFind failed: ${err.message}`);
@@ -366,12 +402,17 @@ Fix: Add a pre-emptive check for the location permission dialog or use the \`aut
         `;
 
     try {
-      const response = await this.provider!.analyze(prompt, context.screenshotBase64);
+      const response = await this.callProvider(prompt, context.screenshotBase64);
       const data = JSON.parse(response.replace(/```json|```/g, '').trim());
       return data;
     } catch (err: any) {
-      // Log service unavailability at debug level (expected), other errors at warn level
-      if (err.message?.includes('unavailable') || err.response?.status === 404) {
+      // Log service unavailability / tripped breaker at debug level (expected);
+      // genuine errors at warn.
+      if (
+        err instanceof CircuitOpenError ||
+        err.message?.includes('unavailable') ||
+        err.response?.status === 404
+      ) {
         log.debug(`[AIService] healLocator skipped: ${err.message}`);
       } else {
         log.warn(`[AIService] healLocator failed: ${err.message}`);
