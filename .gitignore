@@ -15,3 +15,6 @@ docs/reference
 **/.DS_Store
 .agent
 .gemini
+# Runtime Loki DBs written under APPIUM_HOME (see src/data-service/db.ts)
+temp-appium/xenon-db.json
+temp-appium/xenon-test-*.json
