@@ -17,16 +17,30 @@ export class InternalHttpClient {
   private static defaultInstance: InternalHttpClient;
   private axiosInstance: AxiosInstance;
 
-  constructor(tlsRejectUnauthorized?: boolean) {
+  constructor(tlsRejectUnauthorized?: boolean, timeoutMs?: number) {
     this.axiosInstance = axios.create({
       httpAgent: this.getHttpAgent(),
       httpsAgent: this.getHttpsAgent(tlsRejectUnauthorized),
-      timeout: 30000,
+      timeout: InternalHttpClient.resolveTimeoutMs(timeoutMs),
       maxContentLength: Infinity,
       maxBodyLength: Infinity,
     });
 
     this.setupInterceptors();
+  }
+
+  // Ops can shorten the global default via env var when a slow node is
+  // stalling session creation. Per-call override is still available via
+  // AxiosRequestConfig.timeout on individual post/get/etc calls.
+  private static resolveTimeoutMs(explicit?: number): number {
+    if (typeof explicit === 'number' && explicit > 0) return explicit;
+    const raw = process.env.XENON_HTTP_TIMEOUT_MS;
+    if (raw) {
+      const parsed = Number(raw);
+      if (Number.isFinite(parsed) && parsed > 0) return parsed;
+      log.warn(`[HTTP] Ignoring invalid XENON_HTTP_TIMEOUT_MS=${raw}, using 30000ms default`);
+    }
+    return 30000;
   }
 
   private getHttpAgent() {

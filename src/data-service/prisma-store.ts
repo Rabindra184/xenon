@@ -17,13 +17,25 @@ export class PrismaDeviceStore implements IDeviceStore {
     return Container.get(PrismaService).client;
   }
 
+  private safeParse(raw: string | null | undefined, field: string, udid: string): any {
+    if (!raw) return undefined;
+    try {
+      return JSON.parse(raw);
+    } catch (err: any) {
+      log.warn(
+        `[PrismaDeviceStore] Corrupt JSON in Device.${field} for udid=${udid}: ${err?.message || err}`,
+      );
+      return undefined;
+    }
+  }
+
   private toIDevice(device: Device): IDevice {
     return {
       ...device,
-      cloud: device.cloud ? JSON.parse(device.cloud) : undefined,
-      capability: device.capability ? JSON.parse(device.capability) : undefined,
-      chromeDriverPath: device.chromeDriverPath ? JSON.parse(device.chromeDriverPath) : undefined,
-      tags: device.tags ? JSON.parse(device.tags) : undefined,
+      cloud: this.safeParse(device.cloud, 'cloud', device.udid),
+      capability: this.safeParse(device.capability, 'capability', device.udid),
+      chromeDriverPath: this.safeParse(device.chromeDriverPath, 'chromeDriverPath', device.udid),
+      tags: this.safeParse(device.tags, 'tags', device.udid),
       platform: (device.platform || 'android') as any,
       name: device.name || 'unknown',
       state: device.state || 'available',

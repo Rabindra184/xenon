@@ -100,23 +100,35 @@ async function registerNode(request: Request, response: Response) {
 async function blockDevice(request: Request, response: Response) {
   const requestBody = request.body;
   const device = await getDevice(requestBody);
-  if (!_.isNil(device)) {
-    await userBlockDevice(device.udid, device.host);
+  if (_.isNil(device)) {
+    return response.status(404).json({ success: false, error: 'Device not found' });
   }
-  response.status(200).send({
-    success: true,
-  });
+  try {
+    await userBlockDevice(device.udid, device.host);
+  } catch (err: any) {
+    log.error(`Failed to block device ${device.udid}@${device.host}: ${err?.message || err}`);
+    return response
+      .status(500)
+      .json({ success: false, error: err?.message || 'Failed to block device' });
+  }
+  response.status(200).send({ success: true });
 }
 
 async function unBlockDevice(request: Request, response: Response) {
   const requestBody = request.body;
   const device = await getDevice(requestBody);
-  if (!_.isNil(device)) {
-    await userUnblockDevice(device.udid, device.host);
+  if (_.isNil(device)) {
+    return response.status(404).json({ success: false, error: 'Device not found' });
   }
-  response.status(200).send({
-    success: true,
-  });
+  try {
+    await userUnblockDevice(device.udid, device.host);
+  } catch (err: any) {
+    log.error(`Failed to unblock device ${device.udid}@${device.host}: ${err?.message || err}`);
+    return response
+      .status(500)
+      .json({ success: false, error: err?.message || 'Failed to unblock device' });
+  }
+  response.status(200).send({ success: true });
 }
 
 async function getQueuedSessionLength(request: Request<void>, response: Response<number>) {

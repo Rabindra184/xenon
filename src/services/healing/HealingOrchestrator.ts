@@ -62,7 +62,10 @@ export class HealingOrchestrator {
 
           // Tier 1/2 Optimization: Stability Verification Loop
           // We try all candidates to see which one is the most stable (semantic vs absolute)
+          let stabilityAttempted = false;
+          let stabilityVerified = false;
           if (result.candidateSelectors && result.candidateSelectors.length > 0) {
+            stabilityAttempted = true;
             this.logger.debug(
               `Verifying ${result.candidateSelectors.length} candidate locators for stability...`,
             );
@@ -72,6 +75,7 @@ export class HealingOrchestrator {
                 if (elements.length === 1) {
                   this.logger.info(`🎯 Verified stable & unique locator: ${candidate}`);
                   result.recommendedSelector = candidate;
+                  stabilityVerified = true;
                   break; // Found a unique stable locator
                 } else if (elements.length > 1) {
                   this.logger.debug(
@@ -84,9 +88,17 @@ export class HealingOrchestrator {
             }
           }
 
-          // Principal Learning: Autonomously update the etalon to prevent future failures
-          // We only do this if confidence is over 70% to avoid pollution with false positives
-          if (result.confidence > 0.7 && result.node) {
+          // Principal Learning: Autonomously update the etalon to prevent future failures.
+          // Gate on stability: if the provider emitted candidate selectors but none of them
+          // resolved to a unique element, the structural guess was wrong and we must not
+          // persist it — that's how lucky LLM/fuzzy-XML guesses poison future sessions.
+          // Providers that emit no candidates (OCR/Visual) can't be verified this way, so
+          // they still learn on confidence alone.
+          if (stabilityAttempted && !stabilityVerified) {
+            this.logger.warn(
+              `Skipping etalon save for ${selector}: ${result.candidateSelectors!.length} candidate locator(s) attempted, none verified unique (provider=${provider.name}, confidence=${result.confidence})`,
+            );
+          } else if (result.confidence > 0.7 && result.node) {
             try {
               this.logger.info(`🧠 Learning from healing success: updating etalon for ${selector}`);
 

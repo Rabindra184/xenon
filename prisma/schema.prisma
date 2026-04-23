@@ -53,6 +53,9 @@ model Session {
   SessionLog              SessionLog[]
 
   @@index([status, last_heartbeat_at])
+  @@index([build_id])
+  @@index([device_udid])
+  @@index([device_platform, status])
 }
 
 model SessionLog {
