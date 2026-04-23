@@ -5,10 +5,15 @@ import { Container } from 'typedi';
 import log, { redactSecrets } from '../../logger';
 
 import { AI_SERVICE } from '../../services/AIService';
+import { mutationScopeGuard } from '../../middleware/scopeGuard';
 
 export default class ConfigRouter {
   public static register(router: Router, pluginArgs: IPluginArgs) {
     const configRouter = Router();
+
+    // All mutations under /config require admin scope (global plugin
+    // config + AI provider test probes). GET passthrough for read scope.
+    configRouter.use(mutationScopeGuard(['admin']));
 
     function getMaskedConfig(args: IPluginArgs) {
       const masked = { ...args };

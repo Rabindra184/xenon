@@ -14,8 +14,14 @@ import os from 'os';
 import fs from 'fs-extra';
 import { OmniVisionService } from '../../services/omni-vision/OmniVisionService';
 import { InspectorService } from '../../services/InspectorService';
+import { mutationScopeGuard } from '../../middleware/scopeGuard';
 
 const router = Router();
+
+// Every mutation under /control (tap, swipe, install, shell, lock, etc.)
+// requires devices scope. Read endpoints (screenshots, page source) stay
+// open to any authenticated key.
+router.use(mutationScopeGuard(['devices']));
 
 // Cloud metadata endpoints — never proxy to these regardless of caller.
 const FORBIDDEN_PROXY_HOSTS = new Set([

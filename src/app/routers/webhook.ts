@@ -2,6 +2,7 @@ import { Router, Request, Response } from 'express';
 import { NotificationService } from '../../services/NotificationService';
 import { Container } from 'typedi';
 import log from '../../logger';
+import { scopeGuard } from '../../middleware/scopeGuard';
 
 async function getConfigs(req: Request, res: Response) {
   try {
@@ -61,9 +62,11 @@ async function testWebhook(req: Request, res: Response) {
 
 function register(router: Router) {
   router.get('/webhook', getConfigs);
-  router.post('/webhook', addConfig);
-  router.delete('/webhook/:id', deleteConfig);
-  router.post('/webhook/test', testWebhook);
+  // Webhook mutations are admin-only: adding / removing / test-firing global
+  // webhooks is a fleet-wide config change.
+  router.post('/webhook', scopeGuard(['admin']), addConfig);
+  router.delete('/webhook/:id', scopeGuard(['admin']), deleteConfig);
+  router.post('/webhook/test', scopeGuard(['admin']), testWebhook);
 }
 
 export default {

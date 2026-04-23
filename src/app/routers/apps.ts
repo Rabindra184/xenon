@@ -2,8 +2,13 @@ import { Router } from 'express';
 import { APP_SERVICE } from '../../dashboard/services/app-service';
 import log from '../../logger';
 import fs from 'fs-extra';
+import { mutationScopeGuard } from '../../middleware/scopeGuard';
 
 const router = Router();
+
+// Uploading an APK/IPA or deleting one from the fleet requires devices scope.
+// App listings stay readable to any authenticated key.
+router.use(mutationScopeGuard(['devices']));
 
 router.get('/', async (req, res) => {
   try {

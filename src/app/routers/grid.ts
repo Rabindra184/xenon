@@ -13,6 +13,7 @@ import {
   userUnblockDevice,
   updateDeviceTags,
 } from '../../data-service/device-service';
+import { scopeGuard } from '../../middleware/scopeGuard';
 import log from '../../logger';
 import { XenonManager } from '../../device-managers';
 import { Container } from 'typedi';
@@ -309,10 +310,13 @@ function register(router: Router, pluginArgs: IPluginArgs) {
   router.get('/devices', getDevices);
   router.get('/device', getDevices);
   router.get('/device/:platform', getDeviceByPlatform);
-  router.post('/register', registerNode);
-  router.post('/block', blockDevice);
-  router.post('/unblock', unBlockDevice);
-  router.post('/device/tags', updateTags);
+  // Node registration + device manipulation all require devices scope.
+  // Node bootstrap keys have admin scope so they pass; operator keys
+  // need an explicit 'devices' grant.
+  router.post('/register', scopeGuard(['devices']), registerNode);
+  router.post('/block', scopeGuard(['devices']), blockDevice);
+  router.post('/unblock', scopeGuard(['devices']), unBlockDevice);
+  router.post('/device/tags', scopeGuard(['devices']), updateTags);
 
   // session related
   router.get('/queue/length', getQueuedSessionLength);

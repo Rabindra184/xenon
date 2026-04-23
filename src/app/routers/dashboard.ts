@@ -4,6 +4,7 @@ import { SESSION_MANAGER } from '../../sessions/SessionManager';
 import { UniversalMjpegProxy } from '../../helpers/UniversalMjpegProxy';
 import { WebConfigService } from '../../data-service/web-config-service';
 import { Container } from 'typedi';
+import { scopeGuard } from '../../middleware/scopeGuard';
 
 const MJPEG_PROXY_CACHE: Map<string, any> = new Map();
 
@@ -254,8 +255,10 @@ function register(router: Router) {
   router.get('/session/:sessionId/logs/debug', getDebugLogs);
   router.get('/session/:sessionId/profiling', getProfilingData);
   router.get('/config', getGlobalConfig);
-  router.post('/config', updateGlobalConfig);
-  router.post('/config/reset-metrics', resetMetrics);
+  // Config + destructive ops: admin-only. Read-only config stays open to any
+  // authenticated key so dashboards using 'read' scope can still populate.
+  router.post('/config', scopeGuard(['admin']), updateGlobalConfig);
+  router.post('/config/reset-metrics', scopeGuard(['admin']), resetMetrics);
 }
 
 export default {

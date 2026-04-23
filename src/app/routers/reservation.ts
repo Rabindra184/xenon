@@ -7,8 +7,13 @@ import {
   isDeviceReserved,
 } from '../../data-service/device-service';
 import log from '../../logger';
+import { mutationScopeGuard } from '../../middleware/scopeGuard';
 
 const router = express.Router();
+
+// Reserving / releasing / extending a device hold requires devices scope.
+// GET listings remain open to any authenticated key.
+router.use(mutationScopeGuard(['devices']));
 
 // Duration options in milliseconds
 const DURATION_OPTIONS: Record<string, number> = {
