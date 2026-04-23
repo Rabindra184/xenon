@@ -25,6 +25,7 @@ import { processesRouter } from './routers/processes';
 import { apiKeyMiddleware } from '../middleware/apiKeyMiddleware';
 import { rateLimitMiddleware } from '../middleware/rateLimitMiddleware';
 import { nodeSecretMiddleware } from '../middleware/nodeSecretMiddleware';
+import { csrfMiddleware } from '../middleware/csrfMiddleware';
 import { IPluginArgs } from '../interfaces/IPluginArgs';
 import fileUpload from 'express-fileupload';
 import { setupSwagger } from './swagger';
@@ -192,6 +193,12 @@ router.use('/session-recordings', express.static(config.sessionAssetsPath));
 router.use(staticFilesRouter);
 
 function createRouter(pluginArgs: IPluginArgs) {
+  // CSRF defense (runs before /health so even a hostile GET->POST confused-
+  // deputy has no soft target). Pass-through for GETs, for header-authed
+  // callers, and when authDisabled=true. Returns 403 for cookie-authed
+  // POST/PUT/DELETE/PATCH whose Origin/Referer doesn't match our Host.
+  apiRouter.use(csrfMiddleware);
+
   // Health endpoint: no auth, no rate limit
   apiRouter.get('/health', (_req, res) => res.json({ ok: true }));
 
