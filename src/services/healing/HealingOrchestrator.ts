@@ -7,6 +7,7 @@ import { VisualAiHealingProvider } from './VisualAiHealingProvider';
 import { LlmHealingProvider } from './LlmHealingProvider';
 import { HealEtalonService } from './HealEtalonService';
 import { ResilioTreeHealingProvider } from './ResilioTreeHealingProvider';
+import { HEALING_METRICS } from './HealingMetrics';
 
 @Service()
 export class HealingOrchestrator {
@@ -49,9 +50,16 @@ export class HealingOrchestrator {
 
     // Tiered Execution: Try providers in order of cost/complexity
     for (const provider of this.providers) {
+      const tierStart = Date.now();
       try {
         this.logger.info(`Attempting Tier ${provider.tier}: ${provider.name}...`);
         const result = await provider.heal(context);
+        HEALING_METRICS.record(
+          provider.tier,
+          provider.name,
+          result ? 'success' : 'failure',
+          Date.now() - tierStart,
+        );
 
         if (result) {
           this.logger.info(
@@ -130,10 +138,12 @@ export class HealingOrchestrator {
           return result;
         }
       } catch (err: any) {
+        HEALING_METRICS.record(provider.tier, provider.name, 'failure', Date.now() - tierStart);
         this.logger.error(`Provider ${provider.name} failed: ${err.message}`);
       }
     }
 
+    HEALING_METRICS.recordAllTiersFailed();
     this.logger.warn(`❌ All healing tiers failed for selector: ${selector}`);
     return null;
   }

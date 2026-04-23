@@ -3,6 +3,20 @@ import { SESSION_MANAGER } from '../sessions/SessionManager';
 import { DeviceStoreFactory } from '../data-service/device-store';
 import { prisma } from '../prisma';
 import log from '../logger';
+import { HEALING_METRICS } from './healing/HealingMetrics';
+import { CIRCUIT_BREAKERS } from './CircuitBreaker';
+
+// Label values must escape backslash, double-quote, and newline per the
+// Prometheus exposition format. Breaker keys contain colons which are fine.
+function escapeLabel(value: string): string {
+  return value.replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/\n/g, '\\n');
+}
+
+const BREAKER_STATE_CODE: Record<string, number> = {
+  closed: 0,
+  half_open: 1,
+  open: 2,
+};
 
 @Service()
 export class MetricsService {
@@ -101,6 +115,76 @@ export class MetricsService {
       `xenon_healing_total{status="attempt"} ${healingAttempts}`,
       `xenon_healing_total{status="success"} ${healingSuccesses}`,
     ];
+
+    // Per-tier healing metrics (in-process; resets on restart — fine for Prom
+    // scrape semantics). Tells us which tier is actually earning its compute.
+    const tiers = HEALING_METRICS.snapshot();
+    if (tiers.length > 0) {
+      lines.push(
+        '# HELP xenon_heal_tier_attempts_total Healing attempts per tier',
+        '# TYPE xenon_heal_tier_attempts_total counter',
+      );
+      for (const t of tiers) {
+        const labels = `tier="${t.tier}",name="${escapeLabel(t.name)}"`;
+        lines.push(`xenon_heal_tier_attempts_total{${labels}} ${t.attempts}`);
+      }
+      lines.push(
+        '# HELP xenon_heal_tier_successes_total Healing successes per tier',
+        '# TYPE xenon_heal_tier_successes_total counter',
+      );
+      for (const t of tiers) {
+        const labels = `tier="${t.tier}",name="${escapeLabel(t.name)}"`;
+        lines.push(`xenon_heal_tier_successes_total{${labels}} ${t.successes}`);
+      }
+      lines.push(
+        '# HELP xenon_heal_tier_failures_total Healing failures per tier',
+        '# TYPE xenon_heal_tier_failures_total counter',
+      );
+      for (const t of tiers) {
+        const labels = `tier="${t.tier}",name="${escapeLabel(t.name)}"`;
+        lines.push(`xenon_heal_tier_failures_total{${labels}} ${t.failures}`);
+      }
+      lines.push(
+        '# HELP xenon_heal_tier_duration_seconds_sum Cumulative time spent in each tier',
+        '# TYPE xenon_heal_tier_duration_seconds_sum counter',
+      );
+      for (const t of tiers) {
+        const labels = `tier="${t.tier}",name="${escapeLabel(t.name)}"`;
+        const seconds = (t.durationMsSum / 1000).toFixed(3);
+        lines.push(`xenon_heal_tier_duration_seconds_sum{${labels}} ${seconds}`);
+      }
+    }
+    lines.push(
+      '# HELP xenon_heal_all_tiers_failed_total Healing calls where no tier matched',
+      '# TYPE xenon_heal_all_tiers_failed_total counter',
+      `xenon_heal_all_tiers_failed_total ${HEALING_METRICS.getAllTiersFailedCount()}`,
+    );
+
+    // Circuit breaker state — makes it obvious from a dashboard alert when
+    // an AI provider or any future wrapped dependency is shedding traffic.
+    // State encoded as int so Grafana can threshold on it easily:
+    //   0=closed (healthy), 1=half_open (probing), 2=open (shedding).
+    const breakers = CIRCUIT_BREAKERS.snapshot();
+    if (breakers.length > 0) {
+      lines.push(
+        '# HELP xenon_circuit_breaker_state 0=closed, 1=half_open, 2=open',
+        '# TYPE xenon_circuit_breaker_state gauge',
+      );
+      for (const b of breakers) {
+        lines.push(
+          `xenon_circuit_breaker_state{key="${escapeLabel(b.key)}"} ${BREAKER_STATE_CODE[b.state] ?? 0}`,
+        );
+      }
+      lines.push(
+        '# HELP xenon_circuit_breaker_consecutive_failures Current failure streak',
+        '# TYPE xenon_circuit_breaker_consecutive_failures gauge',
+      );
+      for (const b of breakers) {
+        lines.push(
+          `xenon_circuit_breaker_consecutive_failures{key="${escapeLabel(b.key)}"} ${b.consecutiveFailures}`,
+        );
+      }
+    }
 
     return lines.join('\n') + '\n';
   }
