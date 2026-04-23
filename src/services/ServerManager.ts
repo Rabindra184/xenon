@@ -335,6 +335,12 @@ export class ServerManager {
       //    60s to catch devices orphaned mid-allocation (driver crash before
       //    session registration, etc.)
       setupCronReconcileDevices(60_000);
+
+      // 10. Start event-loop lag sampler so xenon_process_event_loop_lag_ms
+      //     has real values by first scrape. Memory gauges are read on
+      //     demand; lag needs a running sampler.
+      const { ProcessMetricsService } = await import('./ProcessMetricsService');
+      Container.get(ProcessMetricsService).start(1000);
     }
   }
 }

@@ -6,6 +6,7 @@ import log from '../logger';
 import { HEALING_METRICS } from './healing/HealingMetrics';
 import { CIRCUIT_BREAKERS } from './CircuitBreaker';
 import { DeviceReconciler } from './DeviceReconciler';
+import { ProcessMetricsService } from './ProcessMetricsService';
 
 // Label values must escape backslash, double-quote, and newline per the
 // Prometheus exposition format. Breaker keys contain colons which are fine.
@@ -168,6 +169,36 @@ export class MetricsService {
       '# HELP xenon_device_reconciler_orphans_freed_total Ghost devices released by the reconciler',
       '# TYPE xenon_device_reconciler_orphans_freed_total counter',
       `xenon_device_reconciler_orphans_freed_total ${Container.get(DeviceReconciler).getOrphansFreedCount()}`,
+    );
+
+    // Hub process health. Heap growing while xenon_sessions_active is flat
+    // means a leak; event-loop lag climbing while CPU is idle means some
+    // handler is doing sync work on the hot path.
+    const proc = Container.get(ProcessMetricsService).snapshot();
+    lines.push(
+      '# HELP xenon_process_memory_bytes Node process memoryUsage breakdown',
+      '# TYPE xenon_process_memory_bytes gauge',
+      `xenon_process_memory_bytes{type="rss"} ${proc.memory.rss}`,
+      `xenon_process_memory_bytes{type="heap_used"} ${proc.memory.heapUsed}`,
+      `xenon_process_memory_bytes{type="heap_total"} ${proc.memory.heapTotal}`,
+      `xenon_process_memory_bytes{type="external"} ${proc.memory.external}`,
+      `xenon_process_memory_bytes{type="array_buffers"} ${proc.memory.arrayBuffers}`,
+
+      '# HELP xenon_process_event_loop_lag_ms Most recent observed event-loop lag sample',
+      '# TYPE xenon_process_event_loop_lag_ms gauge',
+      `xenon_process_event_loop_lag_ms ${proc.eventLoop.lagMs}`,
+
+      '# HELP xenon_process_event_loop_lag_max_ms Max event-loop lag since last scrape',
+      '# TYPE xenon_process_event_loop_lag_max_ms gauge',
+      `xenon_process_event_loop_lag_max_ms ${proc.eventLoop.maxLagSinceScrapeMs}`,
+
+      '# HELP xenon_session_commands_processed_total All Appium commands intercepted (includes errors)',
+      '# TYPE xenon_session_commands_processed_total counter',
+      `xenon_session_commands_processed_total ${proc.commands.processed}`,
+
+      '# HELP xenon_session_command_duration_ms_sum Cumulative command wall time',
+      '# TYPE xenon_session_command_duration_ms_sum counter',
+      `xenon_session_command_duration_ms_sum ${proc.commands.durationMsSum}`,
     );
 
     // Circuit breaker state — makes it obvious from a dashboard alert when

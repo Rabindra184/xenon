@@ -9,6 +9,7 @@ import { OmniVisionService } from '../services/omni-vision/OmniVisionService';
 import { AICommandService } from '../services/AICommandService';
 import log from '../logger';
 import { sessionContext } from '../logging/sessionContext';
+import { ProcessMetricsService } from '../services/ProcessMetricsService';
 import { IPluginArgs } from '../interfaces/IPluginArgs';
 
 @Service()
@@ -41,27 +42,36 @@ export class CommandInterceptor {
     // manager) automatically carry session/command/trace attribution without
     // those services having to accept a context parameter.
     const spanCtx = span?.spanContext();
-    return sessionContext.run(
-      {
-        sessionId: sessionId || undefined,
-        udid: driver?.caps?.udid,
-        commandName,
-        traceId: spanCtx?.traceId,
-        spanId: spanCtx?.spanId,
-      },
-      () =>
-        this.handleInContext(
-          next,
-          driver,
+    const cmdStart = Date.now();
+    try {
+      return await sessionContext.run(
+        {
+          sessionId: sessionId || undefined,
+          udid: driver?.caps?.udid,
           commandName,
-          args,
-          pluginArgs,
-          isHub,
-          sessionId,
-          span,
-          tracingService,
-        ),
-    );
+          traceId: spanCtx?.traceId,
+          spanId: spanCtx?.spanId,
+        },
+        () =>
+          this.handleInContext(
+            next,
+            driver,
+            commandName,
+            args,
+            pluginArgs,
+            isHub,
+            sessionId,
+            span,
+            tracingService,
+          ),
+      );
+    } finally {
+      // Aggregate counter — no per-session label, just fleet-wide throughput
+      // so Prom rate() gives commands/sec and the duration sum gives avg
+      // latency. Errors still count: a 429-hit dashboard poll is still hub
+      // work done.
+      Container.get(ProcessMetricsService).recordCommand(Date.now() - cmdStart);
+    }
   }
 
   private async handleInContext(
