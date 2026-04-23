@@ -11,10 +11,12 @@ export function authRouter(): Router {
     if (!apiKey) return res.status(400).json({ error: 'apiKey required' });
     const row = await svc.verify(apiKey);
     if (!row) return res.status(401).json({ error: 'invalid key' });
+    const isSecure =
+      req.secure || (req.headers['x-forwarded-proto'] as string | undefined) === 'https';
     res.cookie('xenon_dashboard_session', apiKey, {
       httpOnly: true,
-      secure: false,
-      sameSite: 'lax',
+      secure: isSecure,
+      sameSite: 'strict',
       maxAge: 24 * 60 * 60 * 1000,
     });
     res.json({ ok: true, scopes: row.scopes });

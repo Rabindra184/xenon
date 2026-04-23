@@ -102,17 +102,6 @@ apiRouter.use(async (req, res, next) => {
   return next();
 });
 
-apiRouter.get('/cliArgs', async (req, res) => {
-  res.json(await getCLIArgs());
-});
-
-apiRouter.get('/metrics', async (req, res) => {
-  const { MetricsService } = await import('../services/MetricsService');
-  const metrics = await Container.get(MetricsService).getMetrics();
-  res.set('Content-Type', 'text/plain');
-  res.send(metrics);
-});
-
 const findPublicPath = () => {
   const rootDir = path.resolve(__dirname, '..', '..');
   const searchPaths = [
@@ -141,13 +130,23 @@ const publicPath = findPublicPath();
 log.info(`[Xenon] Dashboard assets path: ${publicPath}`);
 log.info(`[Xenon] Dashboard available at: /xenon/ (e.g. http://localhost:4723/xenon/)`);
 
-// Principal Security: Add permissive CSP and CORS for the dashboard
+// CSP for the dashboard. Keeps 'unsafe-inline' (React/Vite inline styles),
+// drops 'unsafe-eval' and the default-src wildcard to avoid full XSS-to-RCE.
+// CORS is handled by cors() above; no manual wildcard header.
 router.use((req, res, next) => {
   res.setHeader(
     'Content-Security-Policy',
-    "default-src * 'unsafe-inline' 'unsafe-eval' data: blob:; frame-ancestors 'self';",
+    [
+      "default-src 'self'",
+      "script-src 'self' 'unsafe-inline'",
+      "style-src 'self' 'unsafe-inline'",
+      "img-src 'self' data: blob:",
+      "media-src 'self' blob:",
+      "connect-src 'self' ws: wss: http: https:",
+      "font-src 'self' data:",
+      "frame-ancestors 'self'",
+    ].join('; ') + ';',
   );
-  res.setHeader('Access-Control-Allow-Origin', '*');
   next();
 });
 
@@ -178,6 +177,19 @@ function createRouter(pluginArgs: IPluginArgs) {
   apiRouter.use('/apikeys', apiKeysRouter());
   // Admin: running process snapshot (ops debugging)
   apiRouter.use('/processes', processesRouter());
+
+  // Exposes plugin CLI args (may include host, hub URL, etc.) — auth-gated.
+  apiRouter.get('/cliArgs', async (_req, res) => {
+    res.json(await getCLIArgs());
+  });
+
+  // Prometheus-style metrics — auth-gated to avoid operational recon.
+  apiRouter.get('/metrics', async (_req, res) => {
+    const { MetricsService } = await import('../services/MetricsService');
+    const metrics = await Container.get(MetricsService).getMetrics();
+    res.set('Content-Type', 'text/plain');
+    res.send(metrics);
+  });
 
   DashboardRouter.register(apiRouter);
   GridRouter.register(apiRouter, pluginArgs);

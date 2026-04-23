@@ -11,7 +11,6 @@ export async function apiKeyMiddleware(req: Request, res: Response, next: NextFu
 
   const raw =
     (req.headers['x-xenon-api-key'] as string | undefined) ||
-    (req.query.apiKey as string | undefined) ||
     ((req as any).cookies?.xenon_dashboard_session as string | undefined);
 
   if (!raw) {

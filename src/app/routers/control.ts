@@ -17,6 +17,37 @@ import { InspectorService } from '../../services/InspectorService';
 
 const router = Router();
 
+// Cloud metadata endpoints — never proxy to these regardless of caller.
+const FORBIDDEN_PROXY_HOSTS = new Set([
+  '169.254.169.254', // AWS/Azure/GCP IMDS
+  'metadata.google.internal',
+  'metadata.goog',
+  '100.100.100.200', // Alibaba ECS metadata
+  'fd00:ec2::254', // AWS IMDSv6
+]);
+
+/**
+ * Build a safe proxy URL from a device's reported host. Strips any path,
+ * query, or fragment the host string carried, blocks cloud-metadata targets,
+ * and refuses non-http(s) schemes. Returns null if the host is unsafe.
+ */
+function buildProxyUrl(deviceHost: string, req: Request): string | null {
+  let parsed: URL;
+  try {
+    parsed = new URL(deviceHost);
+  } catch {
+    return null;
+  }
+  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return null;
+  if (FORBIDDEN_PROXY_HOSTS.has(parsed.hostname)) return null;
+
+  // Only keep scheme + host + port; discard any attacker-baked path/query/fragment.
+  const origin = `${parsed.protocol}//${parsed.host}`;
+  // Treat req.originalUrl as a path — reparse to strip any control characters.
+  const forwardPath = req.originalUrl.startsWith('/') ? req.originalUrl : `/${req.originalUrl}`;
+  return `${origin}${forwardPath}`;
+}
+
 async function getDeviceInfo(udid: string) {
   return await DeviceStoreFactory.getStore().findDevice({ udid });
 }
@@ -43,9 +74,11 @@ router.post('/:udid/tap', async (req: Request, res: Response) => {
 
   const manager = await getDeviceManagerForPlatform(device.platform);
   if (device.host && !device.host.includes(req.get('host') || '')) {
-    log.info(`Proxying tap for ${udid} to ${device.host}`);
+    const target = buildProxyUrl(device.host, req);
+    if (!target) return res.status(400).send({ error: 'Unsafe device host' });
+    log.info(`Proxying tap for ${udid} to ${target}`);
     try {
-      await InternalHttpClient.post(`${device.host}${req.originalUrl}`, req.body);
+      await InternalHttpClient.post(target, req.body);
       return res.status(200).send({ success: true });
     } catch (err: any) {
       return res.status(err.response?.status || 500).send(err.response?.data || err.message);
@@ -84,9 +117,11 @@ router.post('/:udid/swipe', async (req: Request, res: Response) => {
 
   const manager = await getDeviceManagerForPlatform(device.platform);
   if (device.host && !device.host.includes(req.get('host') || '')) {
-    log.info(`Proxying swipe for ${udid} to ${device.host}`);
+    const target = buildProxyUrl(device.host, req);
+    if (!target) return res.status(400).send({ error: 'Unsafe device host' });
+    log.info(`Proxying swipe for ${udid} to ${target}`);
     try {
-      await InternalHttpClient.post(`${device.host}${req.originalUrl}`, req.body);
+      await InternalHttpClient.post(target, req.body);
       return res.status(200).send({ success: true });
     } catch (err: any) {
       return res.status(err.response?.status || 500).send(err.response?.data || err.message);
@@ -113,9 +148,11 @@ router.post('/:udid/text', async (req: Request, res: Response) => {
 
   const manager = await getDeviceManagerForPlatform(device.platform);
   if (device.host && !device.host.includes(req.get('host') || '')) {
-    log.info(`Proxying typeText for ${udid} to ${device.host}`);
+    const target = buildProxyUrl(device.host, req);
+    if (!target) return res.status(400).send({ error: 'Unsafe device host' });
+    log.info(`Proxying typeText for ${udid} to ${target}`);
     try {
-      await InternalHttpClient.post(`${device.host}${req.originalUrl}`, req.body);
+      await InternalHttpClient.post(target, req.body);
       return res.status(200).send({ success: true });
     } catch (err: any) {
       return res.status(err.response?.status || 500).send(err.response?.data || err.message);
@@ -142,9 +179,11 @@ router.post('/:udid/keyevent', async (req: Request, res: Response) => {
 
   const manager = await getDeviceManagerForPlatform(device.platform);
   if (device.host && !device.host.includes(req.get('host') || '')) {
-    log.info(`Proxying keyevent for ${udid} to ${device.host}`);
+    const target = buildProxyUrl(device.host, req);
+    if (!target) return res.status(400).send({ error: 'Unsafe device host' });
+    log.info(`Proxying keyevent for ${udid} to ${target}`);
     try {
-      await InternalHttpClient.post(`${device.host}${req.originalUrl}`, req.body);
+      await InternalHttpClient.post(target, req.body);
       return res.status(200).send({ success: true });
     } catch (err: any) {
       return res.status(err.response?.status || 500).send(err.response?.data || err.message);
@@ -243,9 +282,11 @@ router.post('/:udid/touchAndHold', async (req: Request, res: Response) => {
 
   const manager = await getDeviceManagerForPlatform(device.platform);
   if (device.host && !device.host.includes(req.get('host') || '')) {
-    log.info(`Proxying touchAndHold for ${udid} to ${device.host}`);
+    const target = buildProxyUrl(device.host, req);
+    if (!target) return res.status(400).send({ error: 'Unsafe device host' });
+    log.info(`Proxying touchAndHold for ${udid} to ${target}`);
     try {
-      await InternalHttpClient.post(`${device.host}${req.originalUrl}`, req.body);
+      await InternalHttpClient.post(target, req.body);
       return res.status(200).send({ success: true });
     } catch (err: any) {
       return res.status(err.response?.status || 500).send(err.response?.data || err.message);
