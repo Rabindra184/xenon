@@ -8,7 +8,7 @@ import cors from 'cors';
 import AsyncLock from 'async-lock';
 import { InternalHttpClient } from '../InternalHttpClient';
 import { config } from '../config';
-import log, { redactSecrets } from '../logger';
+import log from '../logger';
 
 import DashboardRouter from './routers/dashboard';
 import GridRouter from './routers/grid';
@@ -36,8 +36,13 @@ const router = express.Router(),
   apiRouter = express.Router(),
   staticFilesRouter = express.Router();
 
-router.use(cors());
-apiRouter.use(cors());
+// API is same-origin with the dashboard; block cross-origin browser callers.
+// Non-browser clients (curl, CLI, SDKs) send no Origin header and are unaffected.
+// Parent `router` has no cors() — if it did, its wildcard would leak through
+// to apiRouter responses because cors({origin:false}) below doesn't strip
+// headers set earlier in the chain. Static files keep permissive cors() so
+// the dashboard bundle can be embedded from anywhere if needed.
+apiRouter.use(cors({ origin: false }));
 staticFilesRouter.use(cors());
 
 apiRouter.use((req: any, res, next) => {
@@ -74,11 +79,6 @@ apiRouter.use((req, res, next) => {
   res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
   res.setHeader('Pragma', 'no-cache');
   res.setHeader('Expires', '0');
-
-  // Redact secrets from request body to prevent them from leaking into external logs
-  if (req.body && typeof req.body === 'object') {
-    req.body = redactSecrets(req.body);
-  }
   next();
 });
 
