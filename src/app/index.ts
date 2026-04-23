@@ -132,18 +132,19 @@ log.info(`[Xenon] Dashboard available at: /xenon/ (e.g. http://localhost:4723/xe
 
 // CSP for the dashboard. Keeps 'unsafe-inline' (React/Vite inline styles),
 // drops 'unsafe-eval' and the default-src wildcard to avoid full XSS-to-RCE.
-// CORS is handled by cors() above; no manual wildcard header.
+// Google Fonts (fonts.googleapis.com for CSS, fonts.gstatic.com for woff2)
+// are explicitly allowlisted because the bundled stylesheets @import them.
 router.use((req, res, next) => {
   res.setHeader(
     'Content-Security-Policy',
     [
       "default-src 'self'",
       "script-src 'self' 'unsafe-inline'",
-      "style-src 'self' 'unsafe-inline'",
+      "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
       "img-src 'self' data: blob:",
       "media-src 'self' blob:",
       "connect-src 'self' ws: wss: http: https:",
-      "font-src 'self' data:",
+      "font-src 'self' data: https://fonts.gstatic.com",
       "frame-ancestors 'self'",
     ].join('; ') + ';',
   );
