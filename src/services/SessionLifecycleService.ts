@@ -517,19 +517,21 @@ export class SessionLifecycleService {
     status?: SessionStatus,
     reason?: string,
   ) {
+    // Phase 1: device unblock + finalizeCleanup must be atomic. Without the lock,
+    // two racing deletes both observe isStopping=false and both run finalizeCleanup,
+    // which releases ports and archives video twice.
     if (sessionId) {
-      await unblockDeviceMatchingFilter({ session_id: sessionId as any });
-      this.logger.info(`📱 Unblocking the device that is blocked for session ${sessionId}`);
-    }
+      await sessionCleanupLock.acquire(sessionId, async () => {
+        await unblockDeviceMatchingFilter({ session_id: sessionId as any });
+        this.logger.info(`📱 Unblocking the device that is blocked for session ${sessionId}`);
 
-    const session = sessionId ? SESSION_MANAGER.getSession(sessionId) : undefined;
-
-    // Guard against concurrent deletes: only the first caller runs finalizeCleanup.
-    // Port release and video/profiling archival are not safe to run twice.
-    if (session && !session.isStopping) {
-      session.isStopping = true;
-      session.stoppedAt = Date.now();
-      await this.finalizeCleanup(session, status, reason);
+        const session = SESSION_MANAGER.getSession(sessionId);
+        if (session && !session.isStopping) {
+          session.isStopping = true;
+          session.stoppedAt = Date.now();
+          await this.finalizeCleanup(session, status, reason);
+        }
+      });
     }
 
     let timeoutId: any;

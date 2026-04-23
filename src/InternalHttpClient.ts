@@ -17,6 +17,23 @@ export class InternalHttpClient {
   private static defaultInstance: InternalHttpClient;
   private axiosInstance: AxiosInstance;
 
+  // Transient network failures worth retrying. Stalled/restarting node ports
+  // commonly surface as these codes; the node is usually back within seconds.
+  private static readonly RETRYABLE_NETWORK_CODES = new Set([
+    'ECONNRESET',
+    'ECONNREFUSED',
+    'ETIMEDOUT',
+    'ENOTFOUND',
+    'EAI_AGAIN',
+    'EPIPE',
+    'ECONNABORTED',
+    'ERR_NETWORK',
+  ]);
+
+  private static readonly MAX_RETRIES = 3;
+  private static readonly BASE_RETRY_MS = 500;
+  private static readonly MAX_RETRY_MS = 4000;
+
   constructor(tlsRejectUnauthorized?: boolean, timeoutMs?: number) {
     this.axiosInstance = axios.create({
       httpAgent: this.getHttpAgent(),
@@ -138,11 +155,13 @@ export class InternalHttpClient {
           /* ignore */
         }
 
-        if (!config || config.retryCount === undefined) {
+        if (!config) {
+          return Promise.reject(error);
+        }
+        if (config.retryCount === undefined) {
           config.retryCount = 0;
         }
 
-        const maxRetries = 2;
         const status = response?.status;
 
         // Log failed request
@@ -153,25 +172,50 @@ export class InternalHttpClient {
           );
         }
 
-        // Don't retry client errors (4xx) except for occasional 429
-        if (status && status < 500 && status !== 429) {
+        const decision = InternalHttpClient.classifyRetry(error);
+        if (!decision.retryable || config.retryCount >= InternalHttpClient.MAX_RETRIES) {
           return Promise.reject(error);
         }
 
-        if (config.retryCount < maxRetries) {
-          config.retryCount += 1;
-          const backoff = config.retryCount * 1000;
-          log.warn(
-            `[HTTP ↻] Retrying ${config.url} in ${backoff}ms (Attempt ${config.retryCount}/${maxRetries})...`,
-          );
+        config.retryCount += 1;
+        const backoff = InternalHttpClient.computeBackoff(config.retryCount);
+        log.warn(
+          `[HTTP ↻] Retrying ${config.url} in ${backoff}ms (${decision.reason}, attempt ${config.retryCount}/${InternalHttpClient.MAX_RETRIES})`,
+        );
 
-          await new Promise((resolve) => setTimeout(resolve, backoff));
-          return this.axiosInstance(config);
-        }
-
-        return Promise.reject(error);
+        await new Promise((resolve) => setTimeout(resolve, backoff));
+        return this.axiosInstance(config);
       },
     );
+  }
+
+  private static classifyRetry(error: AxiosError): { retryable: boolean; reason: string } {
+    const response = error.response;
+    if (response) {
+      const s = response.status;
+      if (s >= 500) return { retryable: true, reason: `HTTP ${s}` };
+      if (s === 429) return { retryable: true, reason: 'rate limited (429)' };
+      return { retryable: false, reason: `HTTP ${s}` };
+    }
+    // No response — network/transport error
+    const code = (error as any).code || '';
+    if (InternalHttpClient.RETRYABLE_NETWORK_CODES.has(code)) {
+      return { retryable: true, reason: `network: ${code}` };
+    }
+    if (/timeout/i.test(error.message)) {
+      return { retryable: true, reason: 'request timeout' };
+    }
+    return { retryable: false, reason: code || error.message };
+  }
+
+  private static computeBackoff(attempt: number): number {
+    const base = Math.min(
+      InternalHttpClient.BASE_RETRY_MS * Math.pow(2, attempt - 1),
+      InternalHttpClient.MAX_RETRY_MS,
+    );
+    // 0-25% jitter to avoid thundering-herd on a recovering node
+    const jitter = Math.random() * base * 0.25;
+    return Math.floor(base + jitter);
   }
 
   public static getClient(tlsRejectUnauthorized?: boolean): AxiosInstance {

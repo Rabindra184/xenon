@@ -43,6 +43,12 @@ export class UniversalMjpegProxy {
   private static readonly BASE_RETRY_MS = 500;
   private static readonly MAX_RETRY_MS = 10000;
 
+  // Drop a client whose kernel send buffer exceeds this. MJPEG frames must not be
+  // split mid-boundary, so we drop the whole client rather than partial chunks —
+  // otherwise a single paused browser tab silently queues frames in Node's heap
+  // until the process OOMs on a long session.
+  private static readonly MAX_CLIENT_BACKLOG_BYTES = 4 * 1024 * 1024;
+
   constructor(mjpegUrl: string) {
     this.mjpegUrl = mjpegUrl;
   }
@@ -168,6 +174,26 @@ export class UniversalMjpegProxy {
 
   private broadcast(chunk: Buffer | string) {
     for (const client of this.clients) {
+      if (!client.writable || (client as any).destroyed) {
+        this.clients.delete(client);
+        continue;
+      }
+
+      const socket: any = (client as any).socket ?? (client as any).req?.socket;
+      const backlog = socket?.writableLength ?? 0;
+      if (backlog > UniversalMjpegProxy.MAX_CLIENT_BACKLOG_BYTES) {
+        log.warn(
+          `[MjpegProxy] Dropping lagging client (backlog=${backlog}B > ${UniversalMjpegProxy.MAX_CLIENT_BACKLOG_BYTES}B) on ${this.mjpegUrl}`,
+        );
+        try {
+          client.end();
+        } catch (e) {
+          /* ignore */
+        }
+        this.clients.delete(client);
+        continue;
+      }
+
       try {
         client.write(chunk);
       } catch (e) {
