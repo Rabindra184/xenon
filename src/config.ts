@@ -23,6 +23,10 @@ export interface Config {
   bootstrapKeyPath: string;
   authDisabled: boolean;
   nodeSecret?: string;
+  // Previous secret accepted during a rotation overlap window. Set both
+  // `XENON_NODE_SECRET` (new) and `XENON_NODE_SECRET_PREVIOUS` (old) on the
+  // hub, flip nodes one by one to the new secret, then drop PREVIOUS.
+  nodeSecretPrevious?: string;
 }
 
 export const config: Config = {
@@ -59,6 +63,7 @@ export const config: Config = {
     path.join(basePath, 'bootstrap-key.txt'),
   authDisabled: process.env.XENON_AUTH_DISABLED === 'true',
   nodeSecret: process.env.XENON_NODE_SECRET,
+  nodeSecretPrevious: process.env.XENON_NODE_SECRET_PREVIOUS,
 };
 
 export function updateConfig(newConfig: Partial<Config>) {

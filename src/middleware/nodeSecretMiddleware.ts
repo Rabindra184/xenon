@@ -1,7 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
-import crypto from 'crypto';
 import log from '../logger';
 import { config as xenonConfig } from '../config';
+import { validateNodeSecret } from '../auth/nodeSecret';
 
 let lastWarnAt = 0;
 
@@ -26,9 +26,11 @@ export function nodeSecretMiddleware(expected: string | undefined) {
       return next();
     }
     const got = (req.headers['x-xenon-node-secret'] as string | undefined) || '';
-    const a = Buffer.from(got, 'utf8');
-    const b = Buffer.from(expected, 'utf8');
-    if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) {
+    const outcome = validateNodeSecret(got, {
+      current: expected,
+      previous: xenonConfig.nodeSecretPrevious,
+    });
+    if (outcome === 'reject') {
       return res.status(401).json({ error: 'invalid node secret' });
     }
     next();

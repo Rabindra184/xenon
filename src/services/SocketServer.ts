@@ -1,10 +1,10 @@
 import { Server as SocketIOServer, Socket } from 'socket.io';
 import { Server as HTTPServer } from 'http';
 import { Service, Container } from 'typedi';
-import crypto from 'crypto';
 import log from '../logger';
 import { config as xenonConfig } from '../config';
 import { ApiKeyService } from './ApiKeyService';
+import { validateNodeSecret } from '../auth/nodeSecret';
 import { SocketEvents, XENON_PROTOCOL_VERSION, HandshakeData } from '../enums/SocketEvents';
 
 // Socket principals mirror the two REST auth paths. 'auth-disabled' is a
@@ -24,12 +24,6 @@ function readCookie(cookieHeader: string | undefined, name: string): string | un
     }
   }
   return undefined;
-}
-
-function timingSafeEqStr(a: string, b: string): boolean {
-  const ab = Buffer.from(a, 'utf8');
-  const bb = Buffer.from(b, 'utf8');
-  return ab.length === bb.length && crypto.timingSafeEqual(ab, bb);
 }
 
 @Service()
@@ -140,15 +134,21 @@ export class SocketServer {
     const headers = socket.handshake.headers || {};
 
     // Node path: shared secret. Checked first because nodes never have a
-    // dashboard cookie, so we avoid a pointless ApiKeyService lookup.
+    // dashboard cookie, so we avoid a pointless ApiKeyService lookup. Accepts
+    // either the current or (during rotation overlap) the previous secret —
+    // validateNodeSecret logs a warn for the previous-match case.
     const nodeSecret =
       (typeof auth.nodeSecret === 'string' && auth.nodeSecret) ||
       ((headers['x-xenon-node-secret'] as string | undefined) ?? '');
     if (nodeSecret) {
-      if (!xenonConfig.nodeSecret) {
+      if (!xenonConfig.nodeSecret && !xenonConfig.nodeSecretPrevious) {
         throw new Error('node secret presented but server has none configured');
       }
-      if (!timingSafeEqStr(nodeSecret, xenonConfig.nodeSecret)) {
+      const outcome = validateNodeSecret(nodeSecret, {
+        current: xenonConfig.nodeSecret,
+        previous: xenonConfig.nodeSecretPrevious,
+      });
+      if (outcome === 'reject') {
         throw new Error('invalid node secret');
       }
       return 'node';
