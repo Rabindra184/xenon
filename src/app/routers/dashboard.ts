@@ -11,11 +11,6 @@ const MJPEG_PROXY_CACHE: Map<string, any> = new Map();
 async function isValidSession(request: Request, response: Response, next: NextFunction) {
   const sessionId = request.params.sessionId;
 
-  // Principal Robustness: Allow virtual manual sessions
-  if (sessionId && sessionId.startsWith('manual_')) {
-    return next();
-  }
-
   const session = await prisma.session.findFirst({
     where: {
       id: sessionId,

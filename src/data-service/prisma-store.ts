@@ -22,8 +22,13 @@ export class PrismaDeviceStore implements IDeviceStore {
     try {
       return JSON.parse(raw);
     } catch (err: any) {
-      log.warn(
-        `[PrismaDeviceStore] Corrupt JSON in Device.${field} for udid=${udid}: ${err?.message || err}`,
+      // Error (not warn) + truncated raw snippet so the corrupt row is
+      // findable. Returning undefined keeps getAllDevices alive, but without
+      // this log operators would see the field as "not set" and never know
+      // the DB actually has malformed data that needs manual repair.
+      const snippet = raw.length > 120 ? `${raw.slice(0, 120)}…` : raw;
+      log.error(
+        `[PrismaDeviceStore] Corrupt JSON in Device.${field} for udid=${udid} (${err?.message || err}). Raw: ${snippet}`,
       );
       return undefined;
     }

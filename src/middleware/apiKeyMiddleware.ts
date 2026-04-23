@@ -21,7 +21,7 @@ function readSessionCookie(req: Request): string | undefined {
 
 export async function apiKeyMiddleware(req: Request, res: Response, next: NextFunction) {
   if (xenonConfig.authDisabled === true) {
-    (req as any).apiKey = { id: 'auth-disabled', scopes: 'admin', rateLimit: 100_000 };
+    req.apiKey = { id: 'auth-disabled', scopes: 'admin', rateLimit: 100_000 };
     return next();
   }
 
@@ -37,6 +37,6 @@ export async function apiKeyMiddleware(req: Request, res: Response, next: NextFu
     return res.status(401).json({ error: 'invalid or revoked API key' });
   }
 
-  (req as any).apiKey = { id: row.id, scopes: row.scopes, rateLimit: row.rateLimit };
+  req.apiKey = { id: row.id, scopes: row.scopes, rateLimit: row.rateLimit };
   next();
 }

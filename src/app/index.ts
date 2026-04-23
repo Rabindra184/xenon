@@ -188,7 +188,7 @@ function createRouter(pluginArgs: IPluginArgs) {
   apiRouter.use('/auth', authRouter());
 
   // All remaining /api/* requires API key + rate limit
-  apiRouter.use(apiKeyMiddleware as any);
+  apiRouter.use(apiKeyMiddleware);
   apiRouter.use(rateLimitMiddleware());
 
   // Admin: API key management

@@ -18,7 +18,7 @@ function refill(b: Bucket) {
 
 export function rateLimitMiddleware() {
   return function (req: Request, res: Response, next: NextFunction) {
-    const key = (req as any).apiKey;
+    const key = req.apiKey;
     if (!key) return next();
 
     let bucket = buckets.get(key.id);
