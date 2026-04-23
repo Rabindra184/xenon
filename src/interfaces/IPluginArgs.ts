@@ -6,59 +6,179 @@
  */
 import ip from 'ip';
 
+/**
+ * Which Android device kinds to include: physical devices, emulators, or both.
+ */
 export type DeviceTypeToInclude = 'both' | 'real' | 'simulated';
+/**
+ * Which iOS device kinds to include: physical devices, simulators, or both.
+ */
 export type DeviceTypeToInclude1 = 'both' | 'real' | 'simulated';
 
 /**
  * Appium configuration schema for the Xenon plugin.
  */
 export interface IPluginArgs {
+  /**
+   * Which mobile platform(s) Xenon should discover and orchestrate.
+   */
   platform: 'ios' | 'android' | 'both';
   androidDeviceType: DeviceTypeToInclude;
+  /**
+   * Allow-list of iOS simulators (by name + sdk) to expose. Empty array means expose all discoverable simulators.
+   */
   simulators?: SimulatorConfig[];
   iosDeviceType: DeviceTypeToInclude1;
+  /**
+   * URL of the Xenon hub this instance should register with as a node (e.g. http://hub.example:4723). Omit to run as a standalone hub.
+   */
   hub?: string;
+  /**
+   * Public host/URL that clients should use to reach this node when running behind a reverse proxy or NAT.
+   */
   remoteMachineProxyIP?: string;
+  /**
+   * List of remote ADB hosts in host:port form (e.g. '192.168.1.50:5037') to discover Android devices on other machines.
+   */
   adbRemote?: string[];
+  /**
+   * Skip the automatic ChromeDriver download performed by uiautomator2. Leave true unless you specifically need Xenon to manage Chrome binaries.
+   */
   skipChromeDownload: boolean;
+  /**
+   * Maximum number of Appium sessions this node will run concurrently. Additional requests queue until a slot frees.
+   */
   maxSessions: number;
   cloud?: CloudConfig;
   derivedDataPath?: IDerivedDataPath;
+  /**
+   * Allow-list of Android emulator AVDs to expose. Empty array means expose all discoverable emulators.
+   */
   emulators?: EmulatorConfig[];
   proxy?: AxiosProxy;
+  /**
+   * How long (ms) a session request waits for a free device before failing.
+   */
   deviceAvailabilityTimeoutMs: number;
+  /**
+   * How often (ms) the session queue polls for a free device while waiting.
+   */
   deviceAvailabilityQueryIntervalMs: number;
+  /**
+   * How often (ms) a node pushes its current device list to the hub. Only used when `hub` is set.
+   */
   sendNodeDevicesToHubIntervalMs: number;
+  /**
+   * How often (ms) the hub prunes devices from nodes that have stopped heartbeating.
+   */
   checkStaleDevicesIntervalMs: number;
+  /**
+   * How often (ms) to re-evaluate manually-blocked devices and the session reconciler that frees orphaned busy devices.
+   */
   checkBlockedDevicesIntervalMs: number;
+  /**
+   * Default Appium newCommandTimeout (seconds) applied when a client does not send one. Also drives the reconciler that releases devices idle past this threshold.
+   */
   newCommandTimeoutSec: number;
+  /**
+   * Host/IP the Xenon REST and WebSocket server binds to. Set to 0.0.0.0 to expose on all interfaces.
+   */
   bindHostOrIp: string;
+  /**
+   * Serve the React dashboard at /xenon/ and the Socket.io event stream.
+   */
   enableDashboard: boolean;
+  /**
+   * Only discover iOS simulators that are already booted. Recommended on machines with many installed simulators — avoids allocating WDA/MJPEG ports for shutdown sims (the WDA pool is 8100-8199, 100 ports).
+   */
   bootedSimulators: boolean;
+  /**
+   * Only discover Android emulators that are already booted.
+   */
   bootedEmulators?: boolean;
+  /**
+   * Wipe the persisted Device table at startup so discovery begins from a clean slate. Useful after hardware changes.
+   */
   removeDevicesFromDatabaseBeforeRunningThePlugin: boolean;
+  /**
+   * Default interval (ms) between background device health checks. Overridden when `healthCheckSchedule` is set.
+   */
   healthCheckIntervalMs: number;
+  /**
+   * Cron expression for the device health-check job (e.g. '0 * * * *' for hourly). When set, takes precedence over `healthCheckIntervalMs`.
+   */
   healthCheckSchedule?: string;
+  /**
+   * Database backend. Defaults to sqlite (file under ~/.cache/xenon). Use postgresql for multi-node hub deployments.
+   */
   databaseProvider?: 'sqlite' | 'postgresql';
+  /**
+   * Prisma-style database URL. For sqlite: `file:/path/to/xenon.db`. For postgres: `postgresql://user:pass@host/db`. Falls back to the DATABASE_URL env var.
+   */
   databaseUrl?: string;
+  /**
+   * AI provider for the LLM healing tier and visual analysis. Also controlled by XENON_AI_PROVIDER.
+   */
   aiProvider?: 'gemini' | 'openai' | 'anthropic' | 'ollama';
+  /**
+   * Override the default model for the selected `aiProvider` (e.g. 'gemini-1.5-pro', 'gpt-4o', 'claude-sonnet-4-6'). Falls back to XENON_AI_MODEL.
+   */
   aiModel?: string;
+  /**
+   * Custom base URL for the AI provider (e.g. a local Ollama server or an OpenAI-compatible gateway). Falls back to XENON_AI_BASE_URL.
+   */
   aiBaseUrl?: string;
+  /**
+   * Gemini API key. Prefer setting XENON_GEMINI_API_KEY (or GEMINI_API_KEY) via environment instead of committing it to a config file.
+   */
   geminiApiKey?: string;
+  /**
+   * OpenAI API key. Prefer setting XENON_OPENAI_API_KEY (or OPENAI_API_KEY) via environment.
+   */
   openaiApiKey?: string;
+  /**
+   * Anthropic API key. Prefer setting XENON_ANTHROPIC_API_KEY (or ANTHROPIC_API_KEY) via environment.
+   */
   anthropicApiKey?: string;
+  /**
+   * Enable the 5-tier self-healing pipeline (Native → Fuzzy XML → OCR → Visual AI → LLM) for failed findElement calls. Can also be toggled at runtime from the dashboard.
+   */
   enableSelfHealing: boolean;
+  /**
+   * Builds/sessions older than this many days are purged by the cleanup job.
+   */
   buildCleanupDays: number;
+  /**
+   * Maximum number of builds to retain. Oldest-first eviction beyond this cap regardless of `buildCleanupDays`.
+   */
   buildCleanupMaxCount: number;
+  /**
+   * Cron expression for the retention job. Default '0 0 * * *' runs at midnight.
+   */
   buildCleanupSchedule: string;
+  /**
+   * When true, the cleanup job also deletes session video recordings and screenshots from disk (not just DB rows).
+   */
   deleteBuildAssets: boolean;
+  /**
+   * How often (ms) each active session writes a heartbeat. The orphan sweeper uses ~3× this interval to detect abandoned sessions.
+   */
   sessionHeartbeatIntervalMs: number;
+  /**
+   * Emit structured JSON log lines instead of human-readable text. Recommended for shipping logs to a log aggregator.
+   */
   enableJsonLogging: boolean;
   /**
    * Whether to verify TLS certificates for internal outgoing requests. Default is true. Set to false only for dev/test.
    */
   tlsRejectUnauthorized?: boolean;
+  /**
+   * Disable API key authentication for all /xenon/api/* endpoints. Use only in local dev environments.
+   */
   authDisabled?: boolean;
+  /**
+   * Shared secret for hub-node channel authentication. Nodes must send this value in X-Xenon-Node-Secret header.
+   */
   nodeSecret?: string;
 }
 export interface SimulatorConfig {
@@ -146,7 +266,6 @@ export const DefaultPluginArgs: IPluginArgs = {
   bindHostOrIp: ip.address(),
   enableDashboard: false,
   bootedSimulators: false,
-  bootedEmulators: false,
   healthCheckIntervalMs: 86400000,
   healthCheckSchedule: undefined,
   removeDevicesFromDatabaseBeforeRunningThePlugin: false,

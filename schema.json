@@ -10,7 +10,8 @@
                 "android",
                 "both"
             ],
-            "default": "both"
+            "default": "both",
+            "description": "Which mobile platform(s) Xenon should discover and orchestrate."
         },
         "androidDeviceType": {
             "title": "DeviceTypeToInclude",
@@ -20,14 +21,16 @@
                 "real",
                 "simulated"
             ],
-            "default": "both"
+            "default": "both",
+            "description": "Which Android device kinds to include: physical devices, emulators, or both."
         },
         "simulators": {
             "type": "array",
             "items": {
                 "$ref": "#/definitions/SimulatorConfig"
             },
-            "default": []
+            "default": [],
+            "description": "Allow-list of iOS simulators (by name + sdk) to expose. Empty array means expose all discoverable simulators."
         },
         "iosDeviceType": {
             "title": "DeviceTypeToInclude1",
@@ -37,28 +40,34 @@
                 "real",
                 "simulated"
             ],
-            "default": "both"
+            "default": "both",
+            "description": "Which iOS device kinds to include: physical devices, simulators, or both."
         },
         "hub": {
-            "type": "string"
+            "type": "string",
+            "description": "URL of the Xenon hub this instance should register with as a node (e.g. http://hub.example:4723). Omit to run as a standalone hub."
         },
         "remoteMachineProxyIP": {
-            "type": "string"
+            "type": "string",
+            "description": "Public host/URL that clients should use to reach this node when running behind a reverse proxy or NAT."
         },
         "adbRemote": {
             "type": "array",
             "items": {
                 "type": "string"
             },
-            "default": []
+            "default": [],
+            "description": "List of remote ADB hosts in host:port form (e.g. '192.168.1.50:5037') to discover Android devices on other machines."
         },
         "skipChromeDownload": {
             "type": "boolean",
-            "default": true
+            "default": true,
+            "description": "Skip the automatic ChromeDriver download performed by uiautomator2. Leave true unless you specifically need Xenon to manage Chrome binaries."
         },
         "maxSessions": {
             "type": "number",
-            "default": 8
+            "default": 8,
+            "description": "Maximum number of Appium sessions this node will run concurrently. Additional requests queue until a slot frees."
         },
         "cloud": {
             "type": "object",
@@ -77,7 +86,8 @@
             "items": {
                 "$ref": "#/definitions/EmulatorConfig"
             },
-            "default": []
+            "default": [],
+            "description": "Allow-list of Android emulator AVDs to expose. Empty array means expose all discoverable emulators."
         },
         "proxy": {
             "type": "object",
@@ -85,64 +95,79 @@
         },
         "deviceAvailabilityTimeoutMs": {
             "type": "number",
-            "default": 300000
+            "default": 300000,
+            "description": "How long (ms) a session request waits for a free device before failing."
         },
         "deviceAvailabilityQueryIntervalMs": {
             "type": "number",
-            "default": 10000
+            "default": 10000,
+            "description": "How often (ms) the session queue polls for a free device while waiting."
         },
         "sendNodeDevicesToHubIntervalMs": {
             "type": "number",
-            "default": 30000
+            "default": 30000,
+            "description": "How often (ms) a node pushes its current device list to the hub. Only used when `hub` is set."
         },
         "checkStaleDevicesIntervalMs": {
             "type": "number",
-            "default": 30000
+            "default": 30000,
+            "description": "How often (ms) the hub prunes devices from nodes that have stopped heartbeating."
         },
         "checkBlockedDevicesIntervalMs": {
             "type": "number",
-            "default": 30000
+            "default": 30000,
+            "description": "How often (ms) to re-evaluate manually-blocked devices and the session reconciler that frees orphaned busy devices."
         },
         "newCommandTimeoutSec": {
             "type": "number",
-            "default": 60
+            "default": 60,
+            "description": "Default Appium newCommandTimeout (seconds) applied when a client does not send one. Also drives the reconciler that releases devices idle past this threshold."
         },
         "bindHostOrIp": {
             "type": "string",
-            "default": "127.0.0.1"
+            "default": "127.0.0.1",
+            "description": "Host/IP the Xenon REST and WebSocket server binds to. Set to 0.0.0.0 to expose on all interfaces."
         },
         "enableDashboard": {
             "type": "boolean",
-            "default": false
+            "default": false,
+            "description": "Serve the React dashboard at /xenon/ and the Socket.io event stream."
         },
         "bootedSimulators": {
             "type": "boolean",
-            "default": false
+            "default": false,
+            "description": "Only discover iOS simulators that are already booted. Recommended on machines with many installed simulators — avoids allocating WDA/MJPEG ports for shutdown sims (the WDA pool is 8100-8199, 100 ports)."
         },
         "bootedEmulators": {
             "type": "boolean",
-            "default": false
+            "default": false,
+            "description": "Only discover Android emulators that are already booted."
         },
         "removeDevicesFromDatabaseBeforeRunningThePlugin": {
             "type": "boolean",
-            "default": false
+            "default": false,
+            "description": "Wipe the persisted Device table at startup so discovery begins from a clean slate. Useful after hardware changes."
         },
         "healthCheckIntervalMs": {
             "type": "number",
-            "default": 86400000
+            "default": 86400000,
+            "description": "Default interval (ms) between background device health checks. Overridden when `healthCheckSchedule` is set."
         },
         "healthCheckSchedule": {
-            "type": "string"
+            "type": "string",
+            "description": "Cron expression for the device health-check job (e.g. '0 * * * *' for hourly). When set, takes precedence over `healthCheckIntervalMs`."
         },
         "databaseProvider": {
             "type": "string",
             "enum": [
                 "sqlite",
                 "postgresql"
-            ]
+            ],
+            "description": "Database backend. Defaults to sqlite (file under ~/.cache/xenon). Use postgresql for multi-node hub deployments."
         },
         "databaseUrl": {
-            "type": "string"
+            "type": "string",
+            "description": "Prisma-style database URL. For sqlite: `file:/path/to/xenon.db`. For postgres: `postgresql://user:pass@host/db`. Falls back to the DATABASE_URL env var."
         },
         "aiProvider": {
             "type": "string",
@@ -151,50 +176,63 @@
                 "openai",
                 "anthropic",
                 "ollama"
-            ]
+            ],
+            "description": "AI provider for the LLM healing tier and visual analysis. Also controlled by XENON_AI_PROVIDER."
         },
         "aiModel": {
-            "type": "string"
+            "type": "string",
+            "description": "Override the default model for the selected `aiProvider` (e.g. 'gemini-1.5-pro', 'gpt-4o', 'claude-sonnet-4-6'). Falls back to XENON_AI_MODEL."
         },
         "aiBaseUrl": {
-            "type": "string"
+            "type": "string",
+            "description": "Custom base URL for the AI provider (e.g. a local Ollama server or an OpenAI-compatible gateway). Falls back to XENON_AI_BASE_URL."
         },
         "geminiApiKey": {
-            "type": "string"
+            "type": "string",
+            "description": "Gemini API key. Prefer setting XENON_GEMINI_API_KEY (or GEMINI_API_KEY) via environment instead of committing it to a config file."
         },
         "openaiApiKey": {
-            "type": "string"
+            "type": "string",
+            "description": "OpenAI API key. Prefer setting XENON_OPENAI_API_KEY (or OPENAI_API_KEY) via environment."
         },
         "anthropicApiKey": {
-            "type": "string"
+            "type": "string",
+            "description": "Anthropic API key. Prefer setting XENON_ANTHROPIC_API_KEY (or ANTHROPIC_API_KEY) via environment."
         },
         "enableSelfHealing": {
             "type": "boolean",
-            "default": true
+            "default": true,
+            "description": "Enable the 5-tier self-healing pipeline (Native → Fuzzy XML → OCR → Visual AI → LLM) for failed findElement calls. Can also be toggled at runtime from the dashboard."
         },
         "buildCleanupDays": {
             "type": "number",
-            "default": 30
+            "default": 30,
+            "description": "Builds/sessions older than this many days are purged by the cleanup job."
         },
         "buildCleanupMaxCount": {
             "type": "number",
-            "default": 100
+            "default": 100,
+            "description": "Maximum number of builds to retain. Oldest-first eviction beyond this cap regardless of `buildCleanupDays`."
         },
         "buildCleanupSchedule": {
             "type": "string",
-            "default": "0 0 * * *"
+            "default": "0 0 * * *",
+            "description": "Cron expression for the retention job. Default '0 0 * * *' runs at midnight."
         },
         "deleteBuildAssets": {
             "type": "boolean",
-            "default": true
+            "default": true,
+            "description": "When true, the cleanup job also deletes session video recordings and screenshots from disk (not just DB rows)."
         },
         "sessionHeartbeatIntervalMs": {
             "type": "number",
-            "default": 30000
+            "default": 30000,
+            "description": "How often (ms) each active session writes a heartbeat. The orphan sweeper uses ~3× this interval to detect abandoned sessions."
         },
         "enableJsonLogging": {
             "type": "boolean",
-            "default": false
+            "default": false,
+            "description": "Emit structured JSON log lines instead of human-readable text. Recommended for shipping logs to a log aggregator."
         },
         "tlsRejectUnauthorized": {
             "type": "boolean",

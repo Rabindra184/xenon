@@ -464,9 +464,34 @@ curl -X DELETE \
 
 Set `--plugin-xenon-node-secret` (or `XENON_NODE_SECRET`) to the **same value** on both hub and node. When unset, the channel permits with a WARN (back-compat for single-node installs).
 
+For zero-downtime secret rotation, set `XENON_NODE_SECRET` to the new secret and `XENON_NODE_SECRET_PREVIOUS` to the old one. The hub accepts either during the overlap window — flip nodes one at a time, then drop `XENON_NODE_SECRET_PREVIOUS`.
+
 ### Local development
 
 Pass `--plugin-xenon-auth-disabled` to skip auth entirely. A WARN is logged every 60 s as a reminder.
+
+---
+
+## 🌱 Environment Variables
+
+Xenon reads these env vars in addition to the CLI flags. Prefer env vars for credentials so keys don't end up in shell history or config files.
+
+| Variable | Purpose |
+|----------|---------|
+| `XENON_AI_PROVIDER` | AI backend: `gemini`, `openai`, `anthropic`, or `ollama`. Same as `--plugin-xenon-aiProvider`. |
+| `XENON_AI_MODEL` | Override the default model for the selected provider. |
+| `XENON_AI_BASE_URL` | Custom base URL (local Ollama, OpenAI-compatible gateway). |
+| `XENON_GEMINI_API_KEY` / `GEMINI_API_KEY` | Gemini credentials. `XENON_`-prefixed form wins if both set. |
+| `XENON_OPENAI_API_KEY` / `OPENAI_API_KEY` | OpenAI credentials. |
+| `XENON_ANTHROPIC_API_KEY` / `ANTHROPIC_API_KEY` | Anthropic credentials. |
+| `XENON_OPENAI_MODEL` | Alternate way to set the OpenAI model. |
+| `XENON_OTEL_DEBUG` | When `true`, OpenTelemetry adds a ConsoleSpanExporter so every span is logged. Dev/tracing only. |
+| `XENON_DB_PROVIDER` | `sqlite` or `postgresql`. Same as `--plugin-xenon-databaseProvider`. |
+| `DATABASE_URL` | Prisma database URL. Falls back to `file:~/.cache/xenon/xenon.db`. |
+| `XENON_NODE_SECRET` | Shared hub↔node secret (see above). |
+| `XENON_NODE_SECRET_PREVIOUS` | Secondary secret accepted during rotation overlap. |
+
+See [`docs/server-args.md`](docs/server-args.md) for the full CLI-flag reference and how these variables interact with config files.
 
 ---
 
