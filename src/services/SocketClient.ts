@@ -1,6 +1,7 @@
 import { io, Socket } from 'socket.io-client';
 import { Service } from 'typedi';
 import log from '../logger';
+import { config as xenonConfig } from '../config';
 import { SocketEvents, XENON_PROTOCOL_VERSION } from '../enums/SocketEvents';
 
 @Service()
@@ -18,11 +19,24 @@ export class SocketClient {
 
     log.info(`[SocketClient] Connecting to Hub WebSocket: ${normalizedHubUrl}`);
 
+    // Hub now authenticates every socket handshake. Nodes present the same
+    // shared secret they already use for REST calls; without it the hub will
+    // reject the handshake with "unauthorized". auth-disabled mode on the hub
+    // (XENON_AUTH_DISABLED=true) ignores this field, so it's safe to send
+    // unconditionally.
+    const nodeSecret = xenonConfig.nodeSecret;
+    if (!nodeSecret) {
+      log.warn(
+        '[SocketClient] XENON_NODE_SECRET not set; hub will reject the handshake unless it also has auth disabled.',
+      );
+    }
+
     this.socket = io(normalizedHubUrl, {
       reconnection: true,
       reconnectionAttempts: Infinity,
       reconnectionDelay: 1000,
       reconnectionDelayMax: 5000,
+      auth: nodeSecret ? { nodeSecret } : undefined,
     });
 
     this.socket.on('connect', () => {

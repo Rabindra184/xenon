@@ -1,8 +1,36 @@
-import { Server as SocketIOServer } from 'socket.io';
+import { Server as SocketIOServer, Socket } from 'socket.io';
 import { Server as HTTPServer } from 'http';
-import { Service } from 'typedi';
+import { Service, Container } from 'typedi';
+import crypto from 'crypto';
 import log from '../logger';
+import { config as xenonConfig } from '../config';
+import { ApiKeyService } from './ApiKeyService';
 import { SocketEvents, XENON_PROTOCOL_VERSION, HandshakeData } from '../enums/SocketEvents';
+
+// Socket principals mirror the two REST auth paths. 'auth-disabled' is a
+// deliberate passthrough so XENON_AUTH_DISABLED=true still lets the dashboard
+// and nodes connect (matches apiKeyMiddleware behavior).
+type Principal = 'dashboard' | 'node' | 'auth-disabled';
+
+const SESSION_COOKIE = 'xenon_dashboard_session';
+
+function readCookie(cookieHeader: string | undefined, name: string): string | undefined {
+  if (!cookieHeader) return undefined;
+  for (const part of cookieHeader.split(';')) {
+    const eq = part.indexOf('=');
+    if (eq < 0) continue;
+    if (part.slice(0, eq).trim() === name) {
+      return decodeURIComponent(part.slice(eq + 1).trim());
+    }
+  }
+  return undefined;
+}
+
+function timingSafeEqStr(a: string, b: string): boolean {
+  const ab = Buffer.from(a, 'utf8');
+  const bb = Buffer.from(b, 'utf8');
+  return ab.length === bb.length && crypto.timingSafeEqual(ab, bb);
+}
 
 @Service()
 export class SocketServer {
@@ -11,17 +39,33 @@ export class SocketServer {
 
   public initialize(server: HTTPServer) {
     this.io = new SocketIOServer(server, {
+      // Same-origin only. Browsers on a different origin are blocked at the
+      // handshake; server-to-server node connections send no Origin header
+      // and are unaffected. Matches the apiRouter cors({origin:false}) policy.
       cors: {
-        origin: '*',
+        origin: false,
         methods: ['GET', 'POST'],
       },
     });
 
+    this.io.use(async (socket, next) => {
+      try {
+        const principal = await this.authenticate(socket);
+        socket.data.principal = principal;
+        next();
+      } catch (err: any) {
+        log.warn(`[SocketServer] Handshake rejected for ${socket.id}: ${err.message}`);
+        next(new Error('unauthorized'));
+      }
+    });
+
     this.io.on('connection', (socket) => {
       const socketId = socket.id;
-      log.info(`[SocketServer] New connection attempt: ${socketId}`);
+      const principal: Principal = socket.data.principal;
+      log.info(`[SocketServer] New connection: ${socketId} (principal=${principal})`);
 
-      // 1. Mandatory Handshake for Protocol Sync
+      // Protocol version handshake — still runs after auth so a logged-in
+      // client on the wrong protocol version still gets a clean disconnect.
       socket.on(SocketEvents.HANDSHAKE, (data: HandshakeData) => {
         const { version, host } = data;
         if (version !== XENON_PROTOCOL_VERSION) {
@@ -37,6 +81,13 @@ export class SocketServer {
       });
 
       socket.on(SocketEvents.REGISTER_NODE, (data: { host: string }) => {
+        if (!SocketServer.canRegisterAs(principal, 'node')) {
+          log.warn(
+            `[SocketServer] Rejected REGISTER_NODE from principal=${principal} on ${socketId}`,
+          );
+          socket.disconnect();
+          return;
+        }
         const { host } = data;
         this.nodes.set(socketId, host);
         log.info(`[SocketServer] Node registered: ${host} (Socket: ${socketId})`);
@@ -47,6 +98,13 @@ export class SocketServer {
       });
 
       socket.on(SocketEvents.REGISTER_DASHBOARD, () => {
+        if (!SocketServer.canRegisterAs(principal, 'dashboard')) {
+          log.warn(
+            `[SocketServer] Rejected REGISTER_DASHBOARD from principal=${principal} on ${socketId}`,
+          );
+          socket.disconnect();
+          return;
+        }
         log.info(`[SocketServer] Dashboard client registered (Socket: ${socketId})`);
         socket.join('dashboard');
       });
@@ -63,7 +121,55 @@ export class SocketServer {
       });
     });
 
-    log.info('[SocketServer] WebSocket server initialized');
+    log.info('[SocketServer] WebSocket server initialized (auth enabled)');
+  }
+
+  // Role-based registration guard. A dashboard-authed socket can't join the
+  // 'nodes' broadcast room and a node-authed socket can't subscribe to
+  // dashboard events — keeps a stolen credential of one class from acting
+  // as the other. auth-disabled mode trusts the caller for parity with REST.
+  private static canRegisterAs(principal: Principal, role: 'dashboard' | 'node'): boolean {
+    if (principal === 'auth-disabled') return true;
+    return principal === role;
+  }
+
+  private async authenticate(socket: Socket): Promise<Principal> {
+    if (xenonConfig.authDisabled === true) return 'auth-disabled';
+
+    const auth = (socket.handshake.auth || {}) as Record<string, any>;
+    const headers = socket.handshake.headers || {};
+
+    // Node path: shared secret. Checked first because nodes never have a
+    // dashboard cookie, so we avoid a pointless ApiKeyService lookup.
+    const nodeSecret =
+      (typeof auth.nodeSecret === 'string' && auth.nodeSecret) ||
+      ((headers['x-xenon-node-secret'] as string | undefined) ?? '');
+    if (nodeSecret) {
+      if (!xenonConfig.nodeSecret) {
+        throw new Error('node secret presented but server has none configured');
+      }
+      if (!timingSafeEqStr(nodeSecret, xenonConfig.nodeSecret)) {
+        throw new Error('invalid node secret');
+      }
+      return 'node';
+    }
+
+    // Dashboard path: API key header, or session cookie set by /auth/login.
+    const apiKeyRaw =
+      (typeof auth.apiKey === 'string' && auth.apiKey) ||
+      ((headers['x-xenon-api-key'] as string | undefined) ?? '') ||
+      readCookie(headers.cookie as string | undefined, SESSION_COOKIE) ||
+      '';
+
+    if (!apiKeyRaw) {
+      throw new Error('missing credentials (need nodeSecret, apiKey, or dashboard cookie)');
+    }
+
+    const row = await Container.get(ApiKeyService).verify(apiKeyRaw);
+    if (!row) {
+      throw new Error('invalid or revoked API key');
+    }
+    return 'dashboard';
   }
 
   public emitToDashboard(event: string, data: any) {
