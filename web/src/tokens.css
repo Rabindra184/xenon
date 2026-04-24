@@ -1,9 +1,4 @@
-/* Xenon design tokens — v2 is now the default and only theme.
- * Compat aliases for legacy token names (--bg-page, --color-primary, etc.)
- * kept as a deprecation shim so any not-yet-migrated .css keeps rendering.
- * These aliases will be removed in a future maintenance pass once every
- * callsite is on the canonical names.
- */
+/* Xenon design tokens. */
 
 :root {
   /* Surfaces */
@@ -73,46 +68,6 @@
   --motion-fast: 150ms cubic-bezier(0.2, 0, 0, 1);
   --motion-slow: 250ms cubic-bezier(0.2, 0, 0, 1);
 
-  /* ——— Compat aliases (deprecation shim) — remove in a later pass ——— */
-  --bg-page: var(--bg-canvas);
-  --bg-card: var(--bg-surface);
-  --bg-card-hover: var(--bg-elevated);
-  --color-primary: var(--accent);
-  --color-amber: var(--status-busy-fg);
-  --color-red: var(--status-error-fg);
-  --color-blue: var(--status-reserved-fg);
-  --color-sky: var(--status-reserved-fg);
-  --color-purple: #8b5cf6;
-  --border-subtle: var(--border-muted);
-  --border-visible: var(--border-default);
-  --text-dim: var(--text-subtle);
-  --text-body: var(--text-secondary);
-  --text-bright: var(--text-primary);
-  --primary: var(--accent);
-  --primary-hover: var(--accent-bold);
-  --primary-glow: var(--accent-subtle);
-  --bg-app: var(--bg-canvas);
-  --bg-glass: rgba(22, 27, 34, 0.7);
-  --text-main: var(--text-secondary);
-  --border-light: var(--border-muted);
-  --border-medium: var(--border-default);
-  --status-ready: var(--status-ready-fg);
-  --status-busy: var(--status-busy-fg);
-  --status-offline: var(--status-offline-fg);
-  --status-error: var(--status-error-fg);
-  --space-xs: var(--space-1);
-  --space-sm: var(--space-2);
-  --space-md: var(--space-4);
-  --space-lg: var(--space-6);
-  --space-xl: var(--space-8);
-  --space-xxl: var(--space-12);
-  --fs-xs: 11px;
-  --fs-sm: 12px;
-  --fs-md: 14px;
-  --fs-lg: 16px;
-  --fs-xl: 20px;
-  --fs-xxl: 24px;
-  --glass-blur: blur(20px);
 }
 
 /* Suppress any remaining v1 glow/pulse effects */

@@ -4,8 +4,8 @@
     display: flex;
     flex-direction: column;
     height: 100%;
-    background: var(--bg-page);
-    color: var(--text-main);
+    background: var(--bg-canvas);
+    color: var(--text-secondary);
     font-family: 'Inter', sans-serif;
     overflow: hidden;
     position: relative;
@@ -29,7 +29,7 @@
     flex-direction: column;
     background: var(--bg-surface);
     border-radius: 6px;
-    border: 1px solid var(--border-visible);
+    border: 1px solid var(--border-default);
     overflow: hidden;
 }
 
@@ -39,15 +39,15 @@
     align-items: center;
     padding: 12px 16px;
     background: rgba(0, 0, 0, 0.4);
-    border-bottom: 2px solid var(--border-visible);
+    border-bottom: 2px solid var(--border-default);
 }
 
 .omni-screenshot-title {
-    font-size: var(--fs-xs);
+    font-size: 11px;
     font-weight: 800;
     text-transform: uppercase;
     letter-spacing: 0.1em;
-    color: var(--text-bright);
+    color: var(--text-primary);
     opacity: 0.9;
     font-family: 'JetBrains Mono', monospace;
 }
@@ -57,7 +57,7 @@
     background: rgba(0, 0, 0, 0.3);
     padding: 2px;
     border-radius: 6px;
-    border: 1px solid var(--border-visible);
+    border: 1px solid var(--border-default);
 }
 
 .omni-mode-btn {
@@ -68,8 +68,8 @@
     background: transparent;
     border: none;
     border-radius: 4px;
-    color: var(--text-dim);
-    font-size: var(--fs-xs);
+    color: var(--text-subtle);
+    font-size: 11px;
     font-weight: 800;
     cursor: pointer;
     transition: all 0.2s;
@@ -79,8 +79,8 @@
 }
 
 .omni-mode-btn.active {
-    background: var(--color-primary);
-    color: var(--bg-page);
+    background: var(--accent);
+    color: var(--bg-canvas);
     box-shadow: 0 0 10px rgba(0, 255, 136, 0.3);
 }
 
@@ -89,11 +89,11 @@
     align-items: center;
     gap: 6px;
     padding: 6px 12px;
-    background: var(--color-primary);
-    color: var(--bg-page);
+    background: var(--accent);
+    color: var(--bg-canvas);
     border: none;
     border-radius: 6px;
-    font-size: var(--fs-xs);
+    font-size: 11px;
     font-weight: 800;
     text-transform: uppercase;
     letter-spacing: 0.1em;
@@ -119,7 +119,7 @@
     align-items: center;
     justify-content: center;
     padding: 12px;
-    background: var(--bg-glass);
+    background: rgba(22, 27, 34, 0.7);
     position: relative;
     overflow: hidden;
 }
@@ -172,7 +172,7 @@
 
 .omni-frame-hover {
     position: absolute;
-    border: 2px solid var(--primary);
+    border: 2px solid var(--accent);
     background: rgba(16, 185, 129, 0.1);
     pointer-events: none;
     border-radius: 6px;
@@ -180,10 +180,10 @@
 
 .omni-frame-select {
     position: absolute;
-    border: 2px solid var(--primary);
+    border: 2px solid var(--accent);
     background: rgba(16, 185, 129, 0.2);
     pointer-events: none;
-    box-shadow: 0 0 20px var(--primary-glow);
+    box-shadow: 0 0 20px var(--accent-subtle);
     border-radius: 6px;
 }
 
@@ -203,8 +203,8 @@
 .omni-spinner {
     width: 24px;
     height: 24px;
-    border: 2px solid var(--border-medium);
-    border-top-color: var(--primary);
+    border: 2px solid var(--border-default);
+    border-top-color: var(--accent);
     border-radius: 50%;
     animation: spin 1s linear infinite;
 }
@@ -248,7 +248,7 @@
     flex-direction: column;
     background: rgba(0, 0, 0, 0.2);
     border-radius: 6px;
-    border: 1px solid var(--border-visible);
+    border: 1px solid var(--border-default);
     overflow: hidden;
     min-height: 0;
 }
@@ -260,7 +260,7 @@
     overflow-y: auto;
     padding: 8px;
     scrollbar-width: thin;
-    scrollbar-color: var(--border-medium) transparent;
+    scrollbar-color: var(--border-default) transparent;
 }
 
 .omni-tree-header {
@@ -269,26 +269,26 @@
     justify-content: space-between;
     padding: 12px;
     background: rgba(0, 0, 0, 0.4);
-    border-bottom: 2px solid var(--border-visible);
+    border-bottom: 2px solid var(--border-default);
 }
 
 .omni-tree-title {
     display: flex;
     align-items: center;
     gap: 8px;
-    font-size: var(--fs-xs);
+    font-size: 11px;
     font-weight: 800;
     text-transform: uppercase;
     letter-spacing: 0.1em;
-    color: var(--text-bright);
+    color: var(--text-primary);
     opacity: 0.9;
     font-family: 'JetBrains Mono', monospace;
 }
 
 .omni-count-badge {
-    font-size: var(--fs-xs);
+    font-size: 11px;
     background: rgba(0, 255, 136, 0.05);
-    color: var(--color-primary);
+    color: var(--accent);
     padding: 2px 8px;
     border-radius: 6px;
     font-weight: 800;
@@ -303,17 +303,17 @@
     width: 28px;
     height: 28px;
     background: rgba(255, 255, 255, 0.02);
-    border: 1px solid var(--border-visible);
+    border: 1px solid var(--border-default);
     border-radius: 6px;
-    color: var(--text-dim);
+    color: var(--text-subtle);
     cursor: pointer;
     transition: all 0.2s;
 }
 
 .omni-action-btn:hover {
     background: rgba(255, 255, 255, 0.05);
-    color: var(--color-primary);
-    border-color: var(--color-primary);
+    color: var(--accent);
+    border-color: var(--accent);
 }
 
 .omni-tree-search {
@@ -323,13 +323,13 @@
     margin: 12px;
     padding: 8px 12px;
     background: rgba(0, 0, 0, 0.4);
-    border: 1px solid var(--border-visible);
+    border: 1px solid var(--border-default);
     border-radius: 6px;
     transition: all 0.2s;
 }
 
 .omni-tree-search:focus-within {
-    border-color: var(--color-primary);
+    border-color: var(--accent);
     box-shadow: 0 0 10px rgba(0, 255, 136, 0.1);
 }
 
@@ -337,7 +337,7 @@
     flex: 1;
     background: transparent;
     border: none;
-    color: var(--text-bright);
+    color: var(--text-primary);
     font-size: 11px;
     outline: none;
     font-family: 'JetBrains Mono', monospace;
@@ -352,7 +352,7 @@
     border-radius: 4px;
     cursor: pointer;
     font-size: 12px;
-    color: var(--text-dim);
+    color: var(--text-subtle);
     transition: all 0.15s;
     border: 1px solid transparent;
     min-height: 36px;
@@ -361,12 +361,12 @@
 
 .tree-item:hover {
     background: rgba(255, 255, 255, 0.02);
-    color: var(--text-bright);
+    color: var(--text-primary);
 }
 
 .tree-item.selected {
     background: rgba(0, 255, 136, 0.08);
-    color: var(--color-primary);
+    color: var(--accent);
     border-color: rgba(0, 255, 136, 0.4);
     box-shadow: inset 0 0 0 1px rgba(0, 255, 136, 0.2);
 }
@@ -374,7 +374,7 @@
 .tree-item.hovered:not(.selected) {
     background: rgba(255, 255, 255, 0.04);
     border-color: rgba(255, 255, 255, 0.1);
-    color: var(--text-bright);
+    color: var(--text-primary);
 }
 
 .tree-node {
@@ -403,7 +403,7 @@
 }
 
 .tree-toggle:hover {
-    color: var(--color-primary);
+    color: var(--accent);
     background: rgba(0, 255, 136, 0.1);
 }
 
@@ -452,7 +452,7 @@
     flex-direction: column;
     background: var(--bg-surface);
     border-radius: 6px;
-    border: 1px solid var(--border-visible);
+    border: 1px solid var(--border-default);
     overflow: hidden;
     min-height: 0;
 }
@@ -464,7 +464,7 @@
     overflow-y: auto;
     padding: 16px;
     scrollbar-width: thin;
-    scrollbar-color: var(--border-medium) transparent;
+    scrollbar-color: var(--border-default) transparent;
 }
 
 .omni-header-left {
@@ -492,7 +492,7 @@
 }
 
 .omni-clear-btn:hover {
-    color: var(--text-bright);
+    color: var(--text-primary);
     background: rgba(255, 255, 255, 0.08);
 }
 
@@ -514,12 +514,12 @@
     gap: 8px;
     padding: 12px 16px;
     background: rgba(0, 0, 0, 0.4);
-    border-bottom: 2px solid var(--border-visible);
-    font-size: var(--fs-xs);
+    border-bottom: 2px solid var(--border-default);
+    font-size: 11px;
     font-weight: 800;
     text-transform: uppercase;
     letter-spacing: 0.1em;
-    color: var(--text-bright);
+    color: var(--text-primary);
     opacity: 0.9;
     font-family: 'JetBrains Mono', monospace;
 }
@@ -529,14 +529,14 @@
 }
 
 .omni-section-header {
-    font-size: var(--fs-xs);
+    font-size: 11px;
     font-weight: 800;
     text-transform: uppercase;
     letter-spacing: 0.1em;
-    color: var(--text-dim);
+    color: var(--text-subtle);
     margin-bottom: 12px;
     padding-bottom: 8px;
-    border-bottom: 1px solid var(--border-visible);
+    border-bottom: 1px solid var(--border-default);
     font-family: 'JetBrains Mono', monospace;
 }
 
@@ -547,7 +547,7 @@
     padding: 12px 16px;
     background: rgba(0, 0, 0, 0.4);
     border-radius: 6px;
-    border: 1px solid var(--border-visible);
+    border: 1px solid var(--border-default);
     min-height: 44px;
     align-items: center;
 }
@@ -555,17 +555,17 @@
 .omni-info-key {
     width: 60px;
     flex-shrink: 0;
-    font-size: var(--fs-xs);
+    font-size: 11px;
     font-weight: 800;
     text-transform: uppercase;
-    color: var(--text-dim);
+    color: var(--text-subtle);
     font-family: 'JetBrains Mono', monospace;
 }
 
 .omni-info-value {
     flex: 1;
     font-size: 11px;
-    color: var(--text-bright);
+    color: var(--text-primary);
     word-break: break-all;
 }
 
@@ -583,24 +583,24 @@
     padding: 12px 8px;
     background: rgba(0, 0, 0, 0.4);
     border-radius: 6px;
-    border: 1px solid var(--border-visible);
+    border: 1px solid var(--border-default);
     text-align: center;
     min-height: 60px;
     justify-content: center;
 }
 
 .omni-layout-label {
-    font-size: var(--fs-xs);
+    font-size: 11px;
     font-weight: 800;
     text-transform: uppercase;
-    color: var(--text-dim);
+    color: var(--text-subtle);
     font-family: 'JetBrains Mono', monospace;
 }
 
 .omni-layout-value {
     font-size: 12px;
     font-weight: 800;
-    color: var(--color-primary);
+    color: var(--accent);
     font-family: 'JetBrains Mono', monospace;
 }
 
@@ -612,24 +612,24 @@
     padding: 12px 16px;
     background: rgba(0, 0, 0, 0.6);
     border-radius: 6px;
-    border: 1px solid var(--border-visible);
-    border-left: 3px solid var(--color-primary);
+    border: 1px solid var(--border-default);
+    border-left: 3px solid var(--accent);
     transition: all 0.2s;
     min-height: 48px;
 }
 
 .omni-locator-row:hover {
     background: rgba(255, 255, 255, 0.02);
-    border-color: var(--color-primary);
+    border-color: var(--accent);
 }
 
 .omni-locator-strategy {
     flex-shrink: 0;
-    font-size: var(--fs-xs);
+    font-size: 11px;
     font-weight: 800;
     text-transform: uppercase;
     background: rgba(0, 255, 136, 0.05);
-    color: var(--color-primary);
+    color: var(--accent);
     padding: 2px 6px;
     border-radius: 6px;
     letter-spacing: 0.05em;
@@ -653,7 +653,7 @@
     width: 24px;
     height: 24px;
     background: rgba(255, 255, 255, 0.03);
-    border: 1px solid var(--border-medium);
+    border: 1px solid var(--border-default);
     border-radius: var(--radius-sm);
     color: var(--text-muted);
     cursor: pointer;
@@ -661,14 +661,14 @@
 }
 
 .omni-copy-btn:hover {
-    background: var(--primary);
-    border-color: var(--primary);
+    background: var(--accent);
+    border-color: var(--accent);
     color: #000;
 }
 
 .omni-copy-btn.copied {
-    background: var(--primary);
-    border-color: var(--primary);
+    background: var(--accent);
+    border-color: var(--accent);
     color: #000;
 }
 
@@ -677,10 +677,10 @@
     display: flex;
     flex-direction: column;
     gap: 4px;
-    background: var(--bg-glass);
+    background: rgba(22, 27, 34, 0.7);
     backdrop-filter: blur(8px);
     border-radius: var(--radius-sm);
-    border: 1px solid var(--border-medium);
+    border: 1px solid var(--border-default);
     padding: 8px;
     max-height: 200px;
     overflow-y: auto;
@@ -701,7 +701,7 @@
 .omni-attr-key {
     width: 120px;
     flex-shrink: 0;
-    font-size: var(--fs-xs);
+    font-size: 11px;
     font-weight: 600;
     color: var(--text-muted);
     font-family: 'Fira Code', monospace;
@@ -731,7 +731,7 @@
 .omni-tree-content::-webkit-scrollbar-thumb,
 .omni-details-content::-webkit-scrollbar-thumb,
 .omni-attributes-table::-webkit-scrollbar-thumb {
-    background: var(--border-medium);
+    background: var(--border-default);
     border-radius: 8px;
 }
 
@@ -757,17 +757,17 @@
 .omni-input-field {
     width: 100%;
     background: rgba(0, 0, 0, 0.3);
-    border: 1px solid var(--border-medium);
+    border: 1px solid var(--border-default);
     border-radius: var(--radius-sm);
     padding: 8px 12px;
-    color: var(--text-main);
+    color: var(--text-secondary);
     font-size: 12px;
     outline: none;
     transition: all 0.2s ease;
 }
 
 .omni-input-field:focus {
-    border-color: var(--primary);
+    border-color: var(--accent);
     background: rgba(0, 0, 0, 0.5);
 }
 
@@ -779,7 +779,7 @@
     padding: 16px;
     background: rgba(0, 0, 0, 0.2);
     border-radius: var(--radius-md);
-    border: 1px solid var(--border-subtle);
+    border: 1px solid var(--border-muted);
 }
 
 .omni-dpad {
@@ -804,7 +804,7 @@
 }
 
 .omni-dpad-btn:hover {
-    background: var(--primary);
+    background: var(--accent);
     color: #000;
     transform: scale(1.1);
 }
@@ -817,9 +817,9 @@
 
 .omni-clipboard-val {
     flex: 1;
-    background: var(--bg-glass);
+    background: rgba(22, 27, 34, 0.7);
     backdrop-filter: blur(8px);
-    border: 1px solid var(--border-medium);
+    border: 1px solid var(--border-default);
     border-radius: 4px;
     padding: 8px;
     font-family: 'Fira Code', monospace;
@@ -836,7 +836,7 @@
 .omni-details-tabs {
     display: flex;
     background: rgba(0, 0, 0, 0.5);
-    border-bottom: 1px solid var(--border-visible);
+    border-bottom: 1px solid var(--border-default);
     flex-shrink: 0;
 }
 
@@ -861,13 +861,13 @@
 }
 
 .omni-details-tab:hover:not(:disabled) {
-    color: var(--text-bright);
+    color: var(--text-primary);
     background: rgba(255, 255, 255, 0.03);
 }
 
 .omni-details-tab.active {
-    color: var(--color-primary);
-    border-bottom-color: var(--color-primary);
+    color: var(--accent);
+    border-bottom-color: var(--accent);
     background: rgba(0, 255, 136, 0.04);
 }
 
@@ -886,19 +886,19 @@
     padding: 10px 14px;
     background: rgba(0, 0, 0, 0.4);
     border-radius: 6px;
-    border: 1px solid var(--border-visible);
-    border-left: 3px solid var(--color-primary);
+    border: 1px solid var(--border-default);
+    border-left: 3px solid var(--accent);
     transition: all 0.15s;
     cursor: pointer;
 }
 
 .omni-locator-row:hover {
     background: rgba(255, 255, 255, 0.02);
-    border-color: var(--color-primary);
+    border-color: var(--accent);
 }
 
 .omni-locator-row.selected-for-code {
-    border-color: var(--color-primary);
+    border-color: var(--accent);
     background: rgba(0, 255, 136, 0.06);
     box-shadow: 0 0 12px rgba(0, 255, 136, 0.08);
 }
@@ -960,7 +960,7 @@
     font-size: 9px;
     font-weight: 600;
     background: rgba(0, 255, 136, 0.08);
-    color: var(--color-primary);
+    color: var(--accent);
     padding: 2px 6px;
     border-radius: 4px;
     margin-left: 6px;
@@ -992,7 +992,7 @@
     gap: 5px;
     padding: 4px 14px;
     font-size: 10px;
-    color: var(--color-primary);
+    color: var(--accent);
     opacity: 0.7;
     font-style: italic;
     background: rgba(0, 255, 136, 0.03);
@@ -1026,7 +1026,7 @@
 .omni-insight-role-name {
     font-size: 14px;
     font-weight: 700;
-    color: var(--text-bright);
+    color: var(--text-primary);
     font-family: 'JetBrains Mono', monospace;
 }
 
@@ -1059,7 +1059,7 @@
     background: rgba(255, 255, 255, 0.04);
     padding: 2px 8px;
     border-radius: 4px;
-    border: 1px solid var(--border-medium);
+    border: 1px solid var(--border-default);
 }
 
 .omni-insight-warning {
@@ -1078,18 +1078,18 @@
     padding: 12px;
     background: rgba(0, 0, 0, 0.3);
     border-radius: 6px;
-    border: 1px solid var(--border-visible);
+    border: 1px solid var(--border-default);
 }
 
 .omni-insight-icon {
-    color: var(--color-primary);
+    color: var(--accent);
     flex-shrink: 0;
     margin-top: 2px;
 }
 
 .omni-insight-description p {
     font-size: 12px;
-    color: var(--text-main);
+    color: var(--text-secondary);
     line-height: 1.6;
     margin: 0;
 }
@@ -1129,7 +1129,7 @@
 
 .omni-quick-fact-value {
     font-size: 11px;
-    color: var(--text-main);
+    color: var(--text-secondary);
     font-family: 'JetBrains Mono', monospace;
 }
 
@@ -1157,7 +1157,7 @@
     flex: 1;
     padding: 6px 4px;
     background: rgba(255, 255, 255, 0.03);
-    border: 1px solid var(--border-visible);
+    border: 1px solid var(--border-default);
     border-radius: 6px;
     color: var(--text-muted);
     font-size: 10px;
@@ -1169,13 +1169,13 @@
 
 .omni-fw-btn:hover {
     background: rgba(255, 255, 255, 0.06);
-    color: var(--text-bright);
+    color: var(--text-primary);
 }
 
 .omni-fw-btn.active {
     background: rgba(0, 255, 136, 0.08);
     border-color: rgba(0, 255, 136, 0.4);
-    color: var(--color-primary);
+    color: var(--accent);
 }
 
 .omni-codegen-locator-selector {
@@ -1197,23 +1197,23 @@
     flex: 1;
     padding: 6px 8px;
     background: rgba(0, 0, 0, 0.3);
-    border: 1px solid var(--border-visible);
+    border: 1px solid var(--border-default);
     border-radius: 6px;
-    color: var(--text-bright);
+    color: var(--text-primary);
     font-size: 11px;
     outline: none;
     cursor: pointer;
 }
 
 .omni-fw-select:focus {
-    border-color: var(--color-primary);
+    border-color: var(--accent);
 }
 
 .omni-codegen-output {
     display: flex;
     flex-direction: column;
     border-radius: 8px;
-    border: 1px solid var(--border-visible);
+    border: 1px solid var(--border-default);
     overflow: hidden;
 }
 
@@ -1223,7 +1223,7 @@
     align-items: center;
     padding: 8px 12px;
     background: rgba(0, 0, 0, 0.5);
-    border-bottom: 1px solid var(--border-visible);
+    border-bottom: 1px solid var(--border-default);
 }
 
 .omni-codegen-lang {
@@ -1231,14 +1231,14 @@
     font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 0.06em;
-    color: var(--color-primary);
+    color: var(--accent);
     font-family: 'JetBrains Mono', monospace;
 }
 
 .omni-codegen-pre {
     margin: 0;
     padding: 14px;
-    background: var(--bg-glass);
+    background: rgba(22, 27, 34, 0.7);
     color: #e2e8f0;
     font-family: 'Fira Code', 'JetBrains Mono', monospace;
     font-size: 11px;
