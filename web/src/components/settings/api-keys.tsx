@@ -12,6 +12,7 @@ import {
   AlertTriangle,
 } from 'lucide-react';
 import { useToast } from '../ui/toast';
+import { Table, THead, TBody, TR, TH, TD } from '../ui/Table';
 
 type Scope = 'read' | 'sessions' | 'devices' | 'admin';
 const ALL_SCOPES: Scope[] = ['read', 'sessions', 'devices', 'admin'];
@@ -224,43 +225,43 @@ export const ApiKeys: React.FC = () => {
           </div>
         ) : (
           <div className="setting-card" style={{ padding: 0, overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-              <thead>
-                <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
-                  <th style={th}>Name</th>
-                  <th style={th}>Team</th>
-                  <th style={th}>Scopes</th>
-                  <th style={th}>Rate limit</th>
-                  <th style={th}>Last used</th>
-                  <th style={th}>Created</th>
-                  <th style={{ ...th, textAlign: 'right' }}>Actions</th>
-                </tr>
-              </thead>
-              <tbody>
+            <Table>
+              <THead>
+                <TR>
+                  <TH>Name</TH>
+                  <TH>Team</TH>
+                  <TH>Scopes</TH>
+                  <TH>Rate limit</TH>
+                  <TH>Last used</TH>
+                  <TH>Created</TH>
+                  <TH style={{ textAlign: 'right' }}>Actions</TH>
+                </TR>
+              </THead>
+              <TBody>
                 {keys.map((k) => (
-                  <tr key={k.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-                    <td style={td}>
+                  <TR key={k.id}>
+                    <TD>
                       <strong>{k.name}</strong>
-                      <div style={{ fontSize: '0.75em', opacity: 0.5, fontFamily: 'monospace' }}>
+                      <div style={{ fontSize: '11px', color: 'var(--text-subtle)', fontFamily: 'monospace' }}>
                         {k.id.slice(0, 8)}
                       </div>
-                    </td>
-                    <td style={td}>
-                      <span style={{ ...chip, background: k.teamId ? 'rgba(16,185,129,0.15)' : 'rgba(255,255,255,0.06)', color: k.teamId ? '#34d399' : '#9ca3af' }}>
+                    </TD>
+                    <TD>
+                      <span style={{ ...chip, background: k.teamId ? 'var(--status-ready-bg)' : 'var(--bg-elevated)', color: k.teamId ? 'var(--status-ready-fg)' : 'var(--text-muted)' }}>
                         {teamNameById(k.teamId)}
                       </span>
-                    </td>
-                    <td style={td}>
+                    </TD>
+                    <TD>
                       {k.scopes.split(',').map((s) => (
                         <span key={s} style={chip}>
                           {s.trim()}
                         </span>
                       ))}
-                    </td>
-                    <td style={td}>{k.rateLimit}/min</td>
-                    <td style={td}>{fmtRelative(k.lastUsedAt)}</td>
-                    <td style={td}>{fmtRelative(k.createdAt)}</td>
-                    <td style={{ ...td, textAlign: 'right' }}>
+                    </TD>
+                    <TD>{k.rateLimit}/min</TD>
+                    <TD>{fmtRelative(k.lastUsedAt)}</TD>
+                    <TD>{fmtRelative(k.createdAt)}</TD>
+                    <TD style={{ textAlign: 'right' }}>
                       <button
                         className="reset-btn"
                         disabled={revokingId === k.id}
@@ -273,16 +274,16 @@ export const ApiKeys: React.FC = () => {
                             submitRevoke(k.id);
                           }
                         }}
-                        style={{ color: 'var(--accent-red)' }}
+                        style={{ color: 'var(--status-error-fg)' }}
                       >
                         <Trash2 size={14} />
                         {revokingId === k.id ? 'Revoking…' : 'Revoke'}
                       </button>
-                    </td>
-                  </tr>
+                    </TD>
+                  </TR>
                 ))}
-              </tbody>
-            </table>
+              </TBody>
+            </Table>
           </div>
         )}
       </div>
@@ -378,8 +379,8 @@ export const ApiKeys: React.FC = () => {
           <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
             <div
               style={{
-                background: 'rgba(245, 158, 11, 0.1)',
-                border: '1px solid rgba(245, 158, 11, 0.4)',
+                background: 'var(--status-busy-bg)',
+                border: '1px solid var(--status-busy-border)',
                 borderRadius: 6,
                 padding: 12,
                 display: 'flex',
@@ -442,8 +443,8 @@ const Modal: React.FC<{
     <div
       onClick={(e) => e.stopPropagation()}
       style={{
-        background: 'var(--bg-main, #0d0d12)',
-        border: '1px solid rgba(255,255,255,0.08)',
+        background: 'var(--bg-surface)',
+        border: '1px solid var(--border-default)',
         borderRadius: 10,
         padding: 24,
         width: 'min(520px, 90vw)',
@@ -473,24 +474,14 @@ const Modal: React.FC<{
   </div>
 );
 
-const th: React.CSSProperties = {
-  textAlign: 'left',
-  padding: '12px 16px',
-  fontSize: '0.85em',
-  textTransform: 'uppercase',
-  letterSpacing: '0.05em',
-  opacity: 0.7,
-  fontWeight: 600,
-};
-const td: React.CSSProperties = { padding: '12px 16px', verticalAlign: 'top' };
 const chip: React.CSSProperties = {
   display: 'inline-block',
   padding: '2px 8px',
   margin: '0 4px 2px 0',
-  background: 'rgba(59, 130, 246, 0.15)',
-  color: '#60a5fa',
+  background: 'var(--status-reserved-bg)',
+  color: 'var(--status-reserved-fg)',
   borderRadius: 4,
-  fontSize: '0.8em',
+  fontSize: '11px',
   fontFamily: 'monospace',
 };
 const label: React.CSSProperties = {
