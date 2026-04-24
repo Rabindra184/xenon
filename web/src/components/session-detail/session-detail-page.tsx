@@ -21,11 +21,12 @@ import { Copy } from 'lucide-react';
 import { useToast } from '../ui/toast';
 import type { MetadataRow } from './metadata-card';
 
-function statusTone(status: string): { label: string; tone: StatusTone } {
+function statusTone(status: string | null | undefined): { label: string; tone: StatusTone } {
   if (status === 'running') return { label: 'RUNNING', tone: 'running' };
   if (status === 'failed') return { label: 'FAILED', tone: 'failed' };
   if (status === 'ended' || status === 'passed') return { label: 'PASSED', tone: 'passed' };
-  return { label: status.toUpperCase(), tone: 'offline' };
+  const s = typeof status === 'string' ? status : '';
+  return { label: (s || 'UNKNOWN').toUpperCase(), tone: 'offline' };
 }
 
 export const SessionDetailPage: React.FC = () => {
