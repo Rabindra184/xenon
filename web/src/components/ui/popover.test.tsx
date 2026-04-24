@@ -44,3 +44,32 @@ describe('Popover', () => {
     expect(screen.queryByText('one')).not.toBeInTheDocument();
   });
 });
+
+describe('Popover layered dismissal', () => {
+  it('Escape closes only the top popover when two are stacked', () => {
+    function Outer() {
+      const outerAnchor = React.useRef<HTMLButtonElement>(null);
+      const innerAnchor = React.useRef<HTMLButtonElement>(null);
+      const [outerOpen, setOuterOpen] = React.useState(true);
+      const [innerOpen, setInnerOpen] = React.useState(true);
+      return (
+        <>
+          <button ref={outerAnchor}>outer anchor</button>
+          <button ref={innerAnchor}>inner anchor</button>
+          <Popover open={outerOpen} onClose={() => setOuterOpen(false)} anchorRef={outerAnchor}>
+            <div data-testid="outer-body">outer body</div>
+          </Popover>
+          <Popover open={innerOpen} onClose={() => setInnerOpen(false)} anchorRef={innerAnchor}>
+            <div data-testid="inner-body">inner body</div>
+          </Popover>
+        </>
+      );
+    }
+    render(<Outer />);
+    expect(screen.getByTestId('outer-body')).toBeInTheDocument();
+    expect(screen.getByTestId('inner-body')).toBeInTheDocument();
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(screen.queryByTestId('inner-body')).not.toBeInTheDocument();
+    expect(screen.getByTestId('outer-body')).toBeInTheDocument();
+  });
+});
