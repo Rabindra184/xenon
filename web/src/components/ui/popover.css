@@ -1,5 +1,4 @@
 .popover {
-  position: fixed;
   z-index: 9000;
   background: var(--bg-elevated);
   border: 1px solid var(--border-strong);
@@ -8,8 +7,6 @@
   min-width: 180px;
   padding: 4px;
 }
-.popover-bottom-end { transform: translateX(-100%); }
-.popover-top-end { transform: translate(-100%, -100%); }
 
 .menu { display: flex; flex-direction: column; gap: 0; }
 .menu-item {

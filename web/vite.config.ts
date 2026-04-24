@@ -24,5 +24,10 @@ export default defineConfig({
     css: true,
     include: ['src/**/*.{test,spec}.{ts,tsx}'],
     exclude: ['node_modules', 'build', 'src/App.test.tsx'],
+    server: {
+      deps: {
+        inline: [/@radix-ui\/.*/],
+      },
+    },
   },
 });

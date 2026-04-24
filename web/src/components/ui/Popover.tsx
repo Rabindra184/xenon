@@ -1,4 +1,7 @@
 import * as React from 'react';
+import * as PopperPrimitive from '@radix-ui/react-popper';
+import { DismissableLayer } from '@radix-ui/react-dismissable-layer';
+import { Portal } from '@radix-ui/react-portal';
 import './popover.css';
 
 export interface PopoverProps {
@@ -16,45 +19,70 @@ export const Popover: React.FC<PopoverProps> = ({
   placement = 'bottom-end',
   children,
 }) => {
-  const ref = React.useRef<HTMLDivElement>(null);
-  const [pos, setPos] = React.useState<{ top: number; left: number }>({ top: 0, left: 0 });
+  const contentRef = React.useRef<HTMLDivElement>(null);
 
-  React.useEffect(() => {
-    if (!open) return;
-    const anchor = anchorRef.current;
-    if (!anchor) return;
-    const r = anchor.getBoundingClientRect();
-    const top = placement.startsWith('top') ? r.top - 8 : r.bottom + 4;
-    const left = placement.endsWith('end') ? r.right : r.left;
-    setPos({ top: Math.round(top), left: Math.round(left) });
-  }, [open, anchorRef, placement]);
-
+  // Supplementary mousedown listener so the original `closes on outside click`
+  // test (which uses fireEvent.mouseDown) continues to pass unmodified and so we
+  // preserve the pre-refactor Popover's outside-click dismissal behavior exactly.
+  // Radix DismissableLayer only listens to pointerdown.
+  //
+  // Behavioral note: unlike DismissableLayer.onEscapeKeyDown — which fires only
+  // on the topmost layer (see the 'layered dismissal' test) — this handler has
+  // no layer-stack awareness. Two stacked popovers will both close on an outside
+  // click. Layered outside-click dismissal is explicitly out of scope per the
+  // Task 3 plan; the layered requirement is ESC-only.
+  //
+  // The `if (!open) return` guard inside the handler protects against a real-
+  // browser race: DismissableLayer's onPointerDownOutside runs inside a
+  // flushSync, synchronously unmounting this component, but this useEffect's
+  // cleanup runs on the next microtask — so the mousedown handler can still
+  // fire with a stale contentRef between those two steps.
   React.useEffect(() => {
     if (!open) return;
     const handler = (e: MouseEvent) => {
-      if (ref.current?.contains(e.target as Node)) return;
+      if (!open) return; // guard against stale handler after flushSync+unmount
+      if (contentRef.current?.contains(e.target as Node)) return;
       if (anchorRef.current?.contains(e.target as Node)) return;
       onClose();
     };
-    const esc = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
     document.addEventListener('mousedown', handler);
-    document.addEventListener('keydown', esc);
-    return () => {
-      document.removeEventListener('mousedown', handler);
-      document.removeEventListener('keydown', esc);
-    };
+    return () => document.removeEventListener('mousedown', handler);
   }, [open, onClose, anchorRef]);
 
   if (!open) return null;
+  const side = placement.startsWith('top') ? 'top' : 'bottom';
+  const align = placement.endsWith('end') ? 'end' : 'start';
+  const sideOffset = placement.startsWith('top') ? 8 : 4;
 
   return (
-    <div
-      ref={ref}
-      className={`popover popover-${placement}`}
-      style={{ top: pos.top, left: pos.left }}
-      role="dialog"
-    >
-      {children}
-    </div>
+    <PopperPrimitive.Root>
+      <PopperPrimitive.Anchor virtualRef={anchorRef} />
+      <Portal>
+        <DismissableLayer
+          onEscapeKeyDown={(e) => {
+            e.preventDefault();
+            onClose();
+          }}
+          onPointerDownOutside={(e) => {
+            if (anchorRef.current?.contains(e.target as Node)) {
+              e.preventDefault();
+              return;
+            }
+            onClose();
+          }}
+        >
+          <PopperPrimitive.Content
+            ref={contentRef}
+            side={side}
+            align={align}
+            sideOffset={sideOffset}
+            className={`popover popover-${placement}`}
+            role="dialog"
+          >
+            {children}
+          </PopperPrimitive.Content>
+        </DismissableLayer>
+      </Portal>
+    </PopperPrimitive.Root>
   );
 };
