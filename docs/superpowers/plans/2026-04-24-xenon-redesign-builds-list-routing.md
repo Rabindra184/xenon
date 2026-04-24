@@ -2,52 +2,57 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Split the 1040-line `session-dashboard.tsx` monolith into a feature-owned `builds/` directory, promote session detail to its own route, and rebuild the Builds list body to match the reference look with a single functional filter bar (per-chip counts), unknown-device fallbacks, full-ID tooltips, tighter row density, and pagination footer.
+**Goal:** Split the 1040-line `session-dashboard.tsx` monolith into a feature-owned `builds/` directory, promote session detail to its own route, and rebuild the Builds list body to pixel-closely match the reference screenshot — left-rail status summary cards, bulk-selectable table rows, Retry failed + Export action buttons (UI stubs for now, wired in Plan 4B), two-line stacked cells, outlined status pills, and absolute timestamps.
 
-**Architecture:** The builds directory owns `builds-page.tsx`, `build-list-rail.tsx`, `build-filter-bar.tsx`, `session-table.tsx`, `session-row.tsx`, plus a `use-builds-data.ts` hook that encapsulates fetch + 3s polling + WS subscription. Routing gets three paths: `/builds`, `/builds/:buildId`, `/builds/:buildId/sessions/:sessionId` (the last renders a placeholder Session Detail stub — full redesign is Phase 4B).
+**Architecture:** The builds directory owns `builds-page.tsx`, `builds-header.tsx`, `build-list-rail.tsx`, `build-filter-bar.tsx`, `session-table.tsx`, `session-row.tsx`, plus a `use-builds-data.ts` hook. Routing gets three paths: `/builds`, `/builds/:buildId`, `/builds/:buildId/sessions/:sessionId` (the last renders a placeholder Session Detail stub — full redesign is Plan 4C).
 
-**Tech Stack:** React 17, Vite 5, Tailwind 3.4, react-router-dom 6, lucide-react, existing Xenon `XenonApiService` / `useSocket` / UI primitives (Table, Pill, EmptyState).
+**Tech Stack:** React 17, Vite 5, Tailwind 3.4, react-router-dom 6, lucide-react, existing Xenon `XenonApiService` / `useSocket` / UI primitives.
 
-**Parent spec:** `docs/superpowers/specs/2026-04-24-builds-session-detail-redesign-design.md` §3, §4.
+**Parent spec:** `docs/superpowers/specs/2026-04-24-builds-session-detail-redesign-design.md` §3, §4, §6.
 
-**Scope note:** This is Sub-plan 4A of three. 4B rebuilds Session Detail. 4C rebuilds the Log Viewer.
+**Scope note:** This is Sub-plan 4A of four. 4B wires the Retry/Export backend. 4C rebuilds the Session Detail page. 4D rebuilds the log viewer.
 
 ---
 
 ## File Structure
 
 **Create:**
-- `web/src/components/builds/builds-page.tsx` — outer layout + routing into rail/table/detail
-- `web/src/components/builds/build-list-rail.tsx` — left rail (search, time filter, build cards, shown count)
-- `web/src/components/builds/build-filter-bar.tsx` — top filter-pill group + session search input
-- `web/src/components/builds/session-table.tsx` — table chrome (thead, empty states, Load-More footer)
-- `web/src/components/builds/session-row.tsx` — one row
-- `web/src/components/builds/use-builds-data.ts` — data hook
-- `web/src/components/builds/session-detail-stub.tsx` — placeholder rendered at the session detail route until 4B lands
-- `web/src/components/builds/derive.ts` — pure helpers: `buildStatusCounts()`, `formatDeviceLabel()`, `msAgo()`, etc. (tested)
-- `web/src/components/builds/derive.test.ts` — unit tests for the helpers
-- `web/src/components/ui/filter-pill.tsx` — new reusable primitive
-- `web/src/components/ui/filter-pill.test.tsx` — tests
-- `web/src/components/ui/count-badge.tsx` — tab-count bubble primitive
+- `web/src/components/builds/builds-page.tsx`
+- `web/src/components/builds/builds-header.tsx`
+- `web/src/components/builds/build-list-rail.tsx`
+- `web/src/components/builds/build-filter-bar.tsx`
+- `web/src/components/builds/session-table.tsx`
+- `web/src/components/builds/session-row.tsx`
+- `web/src/components/builds/session-detail-stub.tsx`
+- `web/src/components/builds/use-builds-data.ts`
+- `web/src/components/builds/derive.ts`
+- `web/src/components/builds/derive.test.ts`
+- `web/src/components/ui/filter-pill.tsx`
+- `web/src/components/ui/filter-pill.test.tsx`
+- `web/src/components/ui/count-badge.tsx`
+- `web/src/components/ui/status-pill-outline.tsx`
+- `web/src/components/ui/status-summary-card.tsx`
 
 **Modify:**
-- `web/src/routes/index.tsx` — add the two nested routes
-- `web/src/App.tsx` — no change expected; routes live in `AppRoutes`
+- `web/src/routes/index.tsx` — new routes
 
 **Delete:**
 - `web/src/components/session-dashboard/session-dashboard.tsx`
 - `web/src/components/session-dashboard/session-dashboard.css`
-- `web/src/components/session-dashboard/` (whole directory, once the move is verified)
-
-**Imports to update:** Any consumer currently importing from `session-dashboard/session-dashboard` is replaced with `builds/builds-page`. Expected: only `routes/index.tsx`.
 
 ---
 
-## Task 1: Scaffolding — create the `builds/` directory with stub files
+## Task 1: Scaffolding — `derive.ts` helpers
 
-**Files:** Create empty module skeletons so subsequent tasks can import from them.
+**Files:** Create `web/src/components/builds/derive.ts`, `web/src/components/builds/derive.test.ts`
 
-- [ ] **Step 1: Create `web/src/components/builds/derive.ts`**
+- [ ] **Step 1: Inspect `ISession` interface**
+
+Run: `cat /Users/rabindrabiswal/Workspace/XAenon/xenon/web/src/interfaces/ISession.ts`
+
+Note the exact field names for `status`, `failure_reason`, `failure_category`, `platform`, `os_version`, `node_id`, `device`, `duration_ms`, `createdAt`, `endedAt`. Adjust the helpers below if any name differs.
+
+- [ ] **Step 2: Write `derive.ts`**
 
 ```ts
 import type { ISession } from '../../interfaces/ISession';
@@ -64,13 +69,49 @@ export function buildStatusCounts(sessions: ISession[]): Record<StatusKey, numbe
   return out;
 }
 
-export function formatDeviceLabel(s: ISession): string {
-  const name = s.device?.name?.trim();
-  if (name) return name;
-  const platform = s.platform ?? 'unknown';
-  const os = s.os_version ? ` · ${s.os_version}` : '';
-  const node = s.node_id ? ` · node ${s.node_id.slice(0, 6)}` : '';
-  return `${platform}${os}${node}`;
+export function deviceNameOrFallback(s: ISession): string {
+  const n = s.device?.name?.trim();
+  return n && n.length > 0 ? n : 'Unknown Device';
+}
+
+export function nodeLabel(s: ISession): string {
+  const id = s.node_id || s.device?.node_id;
+  return id ? `node-${String(id).slice(-1) === '-' ? id : id}` : '—';
+}
+
+export function platformLabel(s: ISession): string {
+  const p = s.platform ?? '';
+  if (!p) return '—';
+  return p.charAt(0).toUpperCase() + p.slice(1);
+}
+
+export function osVersionLabel(s: ISession): string {
+  return s.os_version ? `v${s.os_version}` : '';
+}
+
+export function formatAbsoluteTime(iso: string | Date | null | undefined): string {
+  if (!iso) return '—';
+  const d = typeof iso === 'string' ? new Date(iso) : iso;
+  if (Number.isNaN(d.getTime())) return '—';
+  const dd = String(d.getDate()).padStart(2, '0');
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const yyyy = d.getFullYear();
+  const hh = String(d.getHours()).padStart(2, '0');
+  const mi = String(d.getMinutes()).padStart(2, '0');
+  const ss = String(d.getSeconds()).padStart(2, '0');
+  return `${dd}/${mm}/${yyyy}, ${hh}:${mi}:${ss}`;
+}
+
+export function humanDuration(ms?: number | null): string {
+  if (!ms || !Number.isFinite(ms)) return '—';
+  const totalS = ms / 1000;
+  const h = Math.floor(totalS / 3600);
+  const m = Math.floor((totalS % 3600) / 60);
+  const s = totalS - h * 3600 - m * 60;
+  const sPart = s >= 10 ? s.toFixed(1) : s.toFixed(1);
+  if (h > 0) return `${h}h ${m}m ${sPart}s`;
+  if (m > 0) return `${m}m ${sPart}s`;
+  return `${sPart}s`;
 }
 
 export function msAgo(iso: string | Date | null | undefined): string {
@@ -86,13 +127,26 @@ export function msAgo(iso: string | Date | null | undefined): string {
   const days = Math.floor(hrs / 24);
   return `${days}d ago`;
 }
+
+export function shortId(id: string, head = 10, tail = 4): string {
+  if (id.length <= head + tail + 1) return id;
+  return `${id.slice(0, head)}…${id.slice(-tail)}`;
+}
 ```
 
-- [ ] **Step 2: Create `web/src/components/builds/derive.test.ts`**
+- [ ] **Step 3: Write `derive.test.ts`**
 
 ```ts
 import { describe, it, expect } from 'vitest';
-import { buildStatusCounts, formatDeviceLabel, msAgo } from './derive';
+import {
+  buildStatusCounts,
+  deviceNameOrFallback,
+  platformLabel,
+  osVersionLabel,
+  formatAbsoluteTime,
+  humanDuration,
+  shortId,
+} from './derive';
 
 describe('buildStatusCounts', () => {
   it('counts passed/failed/running', () => {
@@ -104,50 +158,85 @@ describe('buildStatusCounts', () => {
   });
 });
 
-describe('formatDeviceLabel', () => {
+describe('deviceNameOrFallback', () => {
   it('returns device name when present', () => {
-    expect(formatDeviceLabel({ device: { name: 'QA-01' } } as any)).toBe('QA-01');
+    expect(deviceNameOrFallback({ device: { name: 'QA-01' } } as any)).toBe('QA-01');
   });
-  it('falls back to platform · os · node', () => {
-    expect(formatDeviceLabel({ device: {}, platform: 'ios', os_version: '17.4', node_id: 'abc123def' } as any))
-      .toBe('ios · 17.4 · node abc123');
-  });
-  it('omits node when absent', () => {
-    expect(formatDeviceLabel({ device: {}, platform: 'android', os_version: '14' } as any))
-      .toBe('android · 14');
+  it('returns Unknown Device when missing', () => {
+    expect(deviceNameOrFallback({ device: {} } as any)).toBe('Unknown Device');
+    expect(deviceNameOrFallback({ device: { name: '   ' } } as any)).toBe('Unknown Device');
   });
 });
 
-describe('msAgo', () => {
-  it('returns — for null', () => {
-    expect(msAgo(null)).toBe('—');
+describe('platformLabel', () => {
+  it('capitalizes platform', () => {
+    expect(platformLabel({ platform: 'android' } as any)).toBe('Android');
+    expect(platformLabel({ platform: 'ios' } as any)).toBe('Ios');
   });
-  it('returns seconds under a minute', () => {
-    const iso = new Date(Date.now() - 30_000).toISOString();
-    expect(msAgo(iso)).toMatch(/^\d+s ago$/);
+  it('returns em-dash when empty', () => {
+    expect(platformLabel({ } as any)).toBe('—');
+  });
+});
+
+describe('osVersionLabel', () => {
+  it('prefixes with v', () => {
+    expect(osVersionLabel({ os_version: '13' } as any)).toBe('v13');
+  });
+  it('returns empty string when absent', () => {
+    expect(osVersionLabel({ } as any)).toBe('');
+  });
+});
+
+describe('formatAbsoluteTime', () => {
+  it('formats ISO string to dd/MM/yyyy, HH:mm:ss', () => {
+    const out = formatAbsoluteTime('2026-04-23T06:53:25Z');
+    expect(out).toMatch(/^\d{2}\/\d{2}\/2026, \d{2}:\d{2}:\d{2}$/);
+  });
+  it('returns em-dash for null', () => {
+    expect(formatAbsoluteTime(null)).toBe('—');
+  });
+});
+
+describe('humanDuration', () => {
+  it('formats hours-minutes-seconds', () => {
+    expect(humanDuration(6 * 3600_000 + 7 * 60_000 + 38_400)).toBe('6h 7m 38.4s');
+  });
+  it('returns em-dash for 0 or nullish', () => {
+    expect(humanDuration(0)).toBe('—');
+    expect(humanDuration(null)).toBe('—');
+  });
+});
+
+describe('shortId', () => {
+  it('truncates long ids', () => {
+    expect(shortId('orphan-fresh-sess-001')).toBe('orphan-fre…-001');
+  });
+  it('leaves short ids alone', () => {
+    expect(shortId('abc')).toBe('abc');
   });
 });
 ```
 
-- [ ] **Step 3: Run the tests (they should fail because helpers import ISession from a path that might not exist — fix the import path if so)**
+- [ ] **Step 4: Run tests**
 
 Run: `cd web && npm test -- --run src/components/builds/derive.test.ts`
-Expected: 7 tests pass. If `ISession` import path is wrong, run `grep -rn "export.*ISession" web/src/interfaces/ | head -2` and correct the import.
+Expected: all tests pass. If `ISession` field names differ (e.g., `node_id` vs `nodeId`), adjust both the helpers and tests.
 
-- [ ] **Step 4: Commit**
+- [ ] **Step 5: Commit**
 
 ```bash
-git -C /Users/rabindrabiswal/Workspace/XAenon/xenon add web/src/components/builds/
-git -C /Users/rabindrabiswal/Workspace/XAenon/xenon commit -m "feat(web): scaffold builds/ feature directory with derive helpers" -m "Pure helpers extracted ahead of the session-dashboard monolith split. Covers status counts, device label fallback, and relative-time formatting. Fully unit-tested." -m "Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>"
+cd /Users/rabindrabiswal/Workspace/XAenon/xenon
+git add web/src/components/builds/
+git commit -m "feat(web): scaffold builds/ with derive helpers" -m "Pure helpers for the 4A rebuild: status counts, device-name fallback, absolute dd/MM/yyyy time, human-readable durations, and short-id tooltipping. Unit-tested." -m "Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>"
 ```
 
 ---
 
-## Task 2: Create `FilterPill` primitive
+## Task 2: `FilterPill` primitive
 
 **Files:** Create `web/src/components/ui/filter-pill.tsx`, `web/src/components/ui/filter-pill.test.tsx`
 
-- [ ] **Step 1: Write test first**
+- [ ] **Step 1: Test-first**
 
 ```tsx
 import { describe, it, expect } from 'vitest';
@@ -156,29 +245,31 @@ import { FilterPill } from './filter-pill';
 
 describe('FilterPill', () => {
   it('renders label and count', () => {
-    render(<FilterPill label="Failed" count={5} active={false} onClick={() => {}} tone="red" />);
-    expect(screen.getByText('Failed')).toBeInTheDocument();
+    render(<FilterPill label="FAILED" count={5} active={false} onClick={() => {}} tone="red" />);
+    expect(screen.getByText('FAILED')).toBeInTheDocument();
     expect(screen.getByText('5')).toBeInTheDocument();
   });
   it('calls onClick when clicked', () => {
-    let called = false;
-    render(<FilterPill label="Failed" count={5} active={false} onClick={() => { called = true; }} tone="red" />);
+    const spy = vi.fn();
+    render(<FilterPill label="FAILED" count={5} active={false} onClick={spy} tone="red" />);
     fireEvent.click(screen.getByRole('button'));
-    expect(called).toBe(true);
+    expect(spy).toHaveBeenCalledOnce();
   });
   it('exposes aria-pressed when active', () => {
-    render(<FilterPill label="Failed" count={5} active={true} onClick={() => {}} tone="red" />);
+    render(<FilterPill label="FAILED" count={5} active onClick={() => {}} tone="red" />);
     expect(screen.getByRole('button')).toHaveAttribute('aria-pressed', 'true');
   });
 });
 ```
 
-- [ ] **Step 2: Run test (expect fail: module not found)**
+Note: if `vi` import is missing, add `import { vi } from 'vitest';` at the top.
+
+- [ ] **Step 2: Run (expect fail)**
 
 Run: `cd web && npm test -- --run src/components/ui/filter-pill.test.tsx`
-Expected: FAIL with `Cannot find module`.
+Expected: FAIL (module not found).
 
-- [ ] **Step 3: Write the implementation**
+- [ ] **Step 3: Implement**
 
 ```tsx
 import React from 'react';
@@ -191,41 +282,21 @@ interface Props {
   active: boolean;
   onClick: () => void;
   tone?: Tone;
+  bullet?: boolean;
 }
 
-const toneStyles: Record<Tone, { activeBg: string; activeBorder: string; activeText: string }> = {
-  neutral: {
-    activeBg: 'bg-[var(--surface-2)]',
-    activeBorder: 'border-[var(--border-strong)]',
-    activeText: 'text-[var(--text)]',
-  },
-  green: {
-    activeBg: 'bg-[var(--green)]/15',
-    activeBorder: 'border-[var(--green)]/30',
-    activeText: 'text-[var(--green)]',
-  },
-  red: {
-    activeBg: 'bg-[var(--red)]/15',
-    activeBorder: 'border-[var(--red)]/30',
-    activeText: 'text-[var(--red)]',
-  },
-  amber: {
-    activeBg: 'bg-[var(--amber)]/15',
-    activeBorder: 'border-[var(--amber)]/30',
-    activeText: 'text-[var(--amber)]',
-  },
-  blue: {
-    activeBg: 'bg-[var(--blue)]/15',
-    activeBorder: 'border-[var(--blue)]/30',
-    activeText: 'text-[var(--blue)]',
-  },
+const dotCls: Record<Tone, string> = {
+  neutral: 'bg-[var(--text-dim)]',
+  green:   'bg-[var(--green)]',
+  red:     'bg-[var(--red)]',
+  amber:   'bg-[var(--amber)]',
+  blue:    'bg-[var(--blue)]',
 };
 
-export const FilterPill: React.FC<Props> = ({ label, count, active, onClick, tone = 'neutral' }) => {
-  const t = toneStyles[tone];
-  const base = 'inline-flex items-center gap-1.5 h-7 px-2.5 rounded-full border text-xs font-medium transition-colors cursor-pointer';
-  const inactive = 'bg-transparent border-[var(--border)] text-[var(--text-muted)] hover:text-[var(--text)] hover:border-[var(--border-strong)]';
-  const activeCls = `${t.activeBg} ${t.activeBorder} ${t.activeText}`;
+export const FilterPill: React.FC<Props> = ({ label, count, active, onClick, tone = 'neutral', bullet = true }) => {
+  const base = 'inline-flex items-center gap-2 h-8 px-3 rounded-md border text-[11px] font-semibold uppercase tracking-wider transition-colors cursor-pointer';
+  const inactive = 'bg-transparent border-transparent text-[var(--text-muted)] hover:text-[var(--text)] hover:bg-[var(--surface-2)]/50';
+  const activeCls = 'bg-[var(--surface-2)] border-[var(--border-strong)] text-[var(--text)]';
   return (
     <button
       type="button"
@@ -233,34 +304,35 @@ export const FilterPill: React.FC<Props> = ({ label, count, active, onClick, ton
       aria-pressed={active}
       className={`${base} ${active ? activeCls : inactive}`}
     >
+      {bullet && tone !== 'neutral' && <span className={`h-1.5 w-1.5 rounded-full ${dotCls[tone]}`} />}
       <span>{label}</span>
       {typeof count === 'number' && (
-        <span className={`font-mono text-[10px] ${active ? '' : 'text-[var(--text-dim)]'}`}>{count}</span>
+        <span className="font-mono text-[10px] text-[var(--text-dim)]">{count}</span>
       )}
     </button>
   );
 };
 ```
 
-- [ ] **Step 4: Run test (expect pass)**
+- [ ] **Step 4: Run (expect pass)**
 
 Run: `cd web && npm test -- --run src/components/ui/filter-pill.test.tsx`
-Expected: 3 tests pass.
+Expected: 3 pass.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git -C /Users/rabindrabiswal/Workspace/XAenon/xenon add web/src/components/ui/filter-pill.tsx web/src/components/ui/filter-pill.test.tsx
-git -C /Users/rabindrabiswal/Workspace/XAenon/xenon commit -m "feat(ui): add FilterPill primitive" -m "Pill-shaped toggle with optional count bubble. Five tones (neutral/green/red/amber/blue) backed by the reference token palette. Used by the Builds filter bar and reusable for future Devices / Apps filter bars." -m "Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>"
+git add web/src/components/ui/filter-pill.tsx web/src/components/ui/filter-pill.test.tsx
+git commit -m "feat(ui): add FilterPill primitive" -m "Matches the reference screenshot: ALL-style neutral pill + colored-bullet variants for PASSED / FAILED / RUNNING. Active state gets surface-2 bg with a border-strong ring." -m "Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>"
 ```
 
 ---
 
-## Task 3: Create `CountBadge` primitive
+## Task 3: `CountBadge` and `StatusPillOutline` primitives
 
-**Files:** Create `web/src/components/ui/count-badge.tsx`
+**Files:** Create `web/src/components/ui/count-badge.tsx`, `web/src/components/ui/status-pill-outline.tsx`
 
-- [ ] **Step 1: Write implementation (no test needed — trivial)**
+- [ ] **Step 1: Write `count-badge.tsx`**
 
 ```tsx
 import React from 'react';
@@ -272,43 +344,111 @@ interface Props {
 
 const toneCls: Record<NonNullable<Props['tone']>, string> = {
   neutral: 'bg-[var(--surface-2)] text-[var(--text-muted)] border-[var(--border)]',
-  green: 'bg-[var(--green)]/15 text-[var(--green)] border-[var(--green)]/30',
-  red: 'bg-[var(--red)]/15 text-[var(--red)] border-[var(--red)]/30',
-  amber: 'bg-[var(--amber)]/15 text-[var(--amber)] border-[var(--amber)]/30',
+  green:   'bg-[var(--green)]/15 text-[var(--green)] border-[var(--green)]/30',
+  red:     'bg-[var(--red)]/15   text-[var(--red)]   border-[var(--red)]/30',
+  amber:   'bg-[var(--amber)]/15 text-[var(--amber)] border-[var(--amber)]/30',
 };
 
 export const CountBadge: React.FC<Props> = ({ value, tone = 'neutral' }) => (
-  <span
-    className={`inline-flex items-center justify-center min-w-[18px] h-[18px] px-1.5 rounded-full border text-[10px] font-mono font-medium ${toneCls[tone]}`}
-  >
+  <span className={`inline-flex items-center justify-center min-w-[18px] h-[18px] px-1.5 rounded-full border text-[10px] font-mono font-medium ${toneCls[tone]}`}>
     {value}
   </span>
 );
 ```
 
+- [ ] **Step 2: Write `status-pill-outline.tsx`**
+
+```tsx
+import React from 'react';
+
+export type StatusTone = 'ready' | 'running' | 'failed' | 'passed' | 'offline';
+
+interface Props { label: string; tone: StatusTone; }
+
+const toneCls: Record<StatusTone, string> = {
+  ready:   'border-[var(--green)]/40 text-[var(--green)]',
+  passed:  'border-[var(--green)]/40 text-[var(--green)]',
+  running: 'border-[var(--amber)]/40 text-[var(--amber)]',
+  failed:  'border-[var(--red)]/40   text-[var(--red)]',
+  offline: 'border-[var(--text-dim)]/40 text-[var(--text-dim)]',
+};
+
+export const StatusPillOutline: React.FC<Props> = ({ label, tone }) => (
+  <span className={`inline-flex items-center justify-center h-6 px-2.5 rounded border text-[10px] font-mono font-semibold tracking-wider ${toneCls[tone]}`}>
+    {label}
+  </span>
+);
+```
+
+- [ ] **Step 3: Verify build**
+
+Run: `cd web && npm run build 2>&1 | tail -3`
+Expected: build succeeds.
+
+- [ ] **Step 4: Commit**
+
+```bash
+git add web/src/components/ui/count-badge.tsx web/src/components/ui/status-pill-outline.tsx
+git commit -m "feat(ui): add CountBadge + StatusPillOutline primitives" -m "CountBadge: inline count bubble for tab labels + build cards. StatusPillOutline: rectangular outlined pill matching the reference's [FAILED] look — no fill, colored border + text." -m "Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>"
+```
+
+---
+
+## Task 4: `StatusSummaryCard` primitive
+
+**Files:** Create `web/src/components/ui/status-summary-card.tsx`
+
+- [ ] **Step 1: Implement**
+
+```tsx
+import React from 'react';
+import { CheckCircle2, XCircle, Activity, type LucideIcon } from 'lucide-react';
+
+export type SummaryKind = 'passed' | 'failed' | 'running';
+
+interface Props { kind: SummaryKind; value: number; }
+
+const map: Record<SummaryKind, { Icon: LucideIcon; label: string; tint: string }> = {
+  passed:  { Icon: CheckCircle2, label: 'PASSED',  tint: 'text-[var(--green)]' },
+  failed:  { Icon: XCircle,      label: 'FAILED',  tint: 'text-[var(--red)]'   },
+  running: { Icon: Activity,     label: 'RUNNING', tint: 'text-[var(--amber)]' },
+};
+
+export const StatusSummaryCard: React.FC<Props> = ({ kind, value }) => {
+  const { Icon, label, tint } = map[kind];
+  return (
+    <div className="flex-1 flex flex-col items-center gap-1 py-2 rounded-md border border-[var(--border)] bg-[var(--bg)]">
+      <Icon className={`h-3.5 w-3.5 ${tint}`} />
+      <span className={`text-[9px] font-mono font-semibold tracking-wider ${tint}`}>{label}</span>
+      <span className="text-sm font-semibold text-[var(--text)] tabular-nums">{value}</span>
+    </div>
+  );
+};
+```
+
 - [ ] **Step 2: Verify build**
 
-Run: `cd web && npm run build`
+Run: `cd web && npm run build 2>&1 | tail -3`
 Expected: succeeds.
 
 - [ ] **Step 3: Commit**
 
 ```bash
-git -C /Users/rabindrabiswal/Workspace/XAenon/xenon add web/src/components/ui/count-badge.tsx
-git -C /Users/rabindrabiswal/Workspace/XAenon/xenon commit -m "feat(ui): add CountBadge primitive" -m "Inline count bubble for tab labels and pill counts. Four tones (neutral/green/red/amber)." -m "Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>"
+git add web/src/components/ui/status-summary-card.tsx
+git commit -m "feat(ui): add StatusSummaryCard primitive" -m "Three-up KPI-style card for the Builds left-rail summary strip (PASSED / FAILED / RUNNING). Non-interactive glance, not a filter." -m "Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>"
 ```
 
 ---
 
-## Task 4: Extract `use-builds-data.ts` hook
+## Task 5: `useBuildsData` hook
 
 **Files:** Create `web/src/components/builds/use-builds-data.ts`
 
-- [ ] **Step 1: Identify exact current behavior in `session-dashboard.tsx`**
+- [ ] **Step 1: Inspect existing behavior**
 
-Run: `grep -nE "fetchData|useSocket|REFRESH_INTERVAL|setInterval" /Users/rabindrabiswal/Workspace/XAenon/xenon/web/src/components/session-dashboard/session-dashboard.tsx | head -30`
+Run: `grep -nE "fetchData|useSocket|REFRESH|setInterval|getBuilds|getSessions" /Users/rabindrabiswal/Workspace/XAenon/xenon/web/src/components/session-dashboard/session-dashboard.tsx | head -25`
 
-Note the polling interval, fetch calls, and socket subscriptions. Preserve these exactly.
+Record the existing polling interval, the exact `XenonApiService` method names, and the socket event names subscribed to.
 
 - [ ] **Step 2: Write the hook**
 
@@ -363,18 +503,13 @@ export function useBuildsData(): UseBuildsData {
     }
   }, [selectedBuildId, searchQuery]);
 
-  // Initial + interval polling
   useEffect(() => {
     alive.current = true;
     fetchData();
     const id = setInterval(fetchData, REFRESH_INTERVAL_MS);
-    return () => {
-      alive.current = false;
-      clearInterval(id);
-    };
+    return () => { alive.current = false; clearInterval(id); };
   }, [fetchData]);
 
-  // Socket subscriptions
   useEffect(() => {
     if (!socket) return;
     const refresh = () => fetchData();
@@ -391,60 +526,55 @@ export function useBuildsData(): UseBuildsData {
   }, [socket, fetchData]);
 
   return {
-    builds,
-    selectedBuildId,
-    sessions,
-    loading,
-    error,
+    builds, selectedBuildId, sessions, loading, error,
     selectBuild: setSelectedBuildId,
-    searchQuery,
-    setSearchQuery,
+    searchQuery, setSearchQuery,
     refresh: fetchData,
   };
 }
 ```
 
-NOTE: the exact method names on `XenonApiService` and `useSocket` may differ — keep them exactly as used today in `session-dashboard.tsx`. Grep the existing file and adjust shape accordingly.
+- [ ] **Step 3: Build**
 
-- [ ] **Step 3: Verify build**
-
-Run: `cd web && npm run build 2>&1 | tail -5`
-Expected: succeeds. If `XenonApiService.getBuilds` / `getSessions` signatures differ, adjust import/types.
+Run: `cd web && npm run build 2>&1 | tail -3`
+Expected: build succeeds. Adjust `XenonApiService` method signatures if they differ.
 
 - [ ] **Step 4: Commit**
 
 ```bash
-git -C /Users/rabindrabiswal/Workspace/XAenon/xenon add web/src/components/builds/use-builds-data.ts
-git -C /Users/rabindrabiswal/Workspace/XAenon/xenon commit -m "feat(web): extract useBuildsData hook" -m "Encapsulates the 3s polling + websocket-driven refresh loop previously embedded in session-dashboard.tsx. Hook exposes builds, sessions, selectedBuildId, search, loading/error, and imperative refresh." -m "Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>"
+git add web/src/components/builds/use-builds-data.ts
+git commit -m "feat(web): extract useBuildsData hook" -m "Encapsulates the 3s polling + websocket-driven refresh loop previously embedded in session-dashboard.tsx." -m "Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>"
 ```
 
 ---
 
-## Task 5: Build `BuildListRail` (left rail)
+## Task 6: `BuildListRail` (left rail)
 
 **Files:** Create `web/src/components/builds/build-list-rail.tsx`
 
-- [ ] **Step 1: Write the component**
+- [ ] **Step 1: Implement**
 
 ```tsx
 import React from 'react';
 import { Search, Clock } from 'lucide-react';
 import type { IBuild } from '../../interfaces/IBuild';
 import type { ISession } from '../../interfaces/ISession';
-import { buildStatusCounts, msAgo } from './derive';
+import { buildStatusCounts, formatAbsoluteTime, shortId } from './derive';
 import { CountBadge } from '../ui/count-badge';
+import { StatusSummaryCard } from '../ui/status-summary-card';
 
-type TimeFilter = 'all' | '24h' | '7d' | '30d';
+export type TimeFilter = 'all' | '24h' | '7d' | '30d';
 
 interface Props {
   builds: IBuild[];
-  buildSessionsById: Record<string, ISession[]>;
   selectedBuildId: string | null;
   onSelect: (id: string) => void;
   search: string;
   onSearchChange: (v: string) => void;
   timeFilter: TimeFilter;
   onTimeFilterChange: (v: TimeFilter) => void;
+  globalCounts: { passed: number; failed: number; running: number };
+  visibleBuildSessionsById: Record<string, ISession[]>;
 }
 
 const TIME_LABEL: Record<TimeFilter, string> = {
@@ -455,22 +585,14 @@ const TIME_LABEL: Record<TimeFilter, string> = {
 };
 
 export const BuildListRail: React.FC<Props> = ({
-  builds,
-  buildSessionsById,
-  selectedBuildId,
-  onSelect,
-  search,
-  onSearchChange,
-  timeFilter,
-  onTimeFilterChange,
+  builds, selectedBuildId, onSelect, search, onSearchChange,
+  timeFilter, onTimeFilterChange, globalCounts, visibleBuildSessionsById,
 }) => {
   const visible = builds.filter((b) => {
-    if (search && !(b.name + ' ' + b.id).toLowerCase().includes(search.toLowerCase())) return false;
+    if (search && !((b.name + ' ' + b.id).toLowerCase().includes(search.toLowerCase()))) return false;
     if (timeFilter !== 'all') {
       const cutoff: Record<Exclude<TimeFilter, 'all'>, number> = {
-        '24h': 86400_000,
-        '7d': 7 * 86400_000,
-        '30d': 30 * 86400_000,
+        '24h': 86_400_000, '7d': 7 * 86_400_000, '30d': 30 * 86_400_000,
       };
       const t = Date.parse(String(b.createdAt));
       if (!Number.isFinite(t) || Date.now() - t > cutoff[timeFilter as Exclude<TimeFilter, 'all'>]) return false;
@@ -480,7 +602,7 @@ export const BuildListRail: React.FC<Props> = ({
 
   return (
     <aside className="w-[280px] shrink-0 border-r border-[var(--border)] bg-[var(--surface)] flex flex-col">
-      <div className="p-3 border-b border-[var(--border)] space-y-2">
+      <div className="p-3 space-y-2 border-b border-[var(--border)]">
         <div className="relative">
           <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-[var(--text-dim)]" />
           <input
@@ -502,69 +624,67 @@ export const BuildListRail: React.FC<Props> = ({
         </select>
       </div>
 
+      <div className="p-3 flex items-stretch gap-2 border-b border-[var(--border)]">
+        <StatusSummaryCard kind="passed"  value={globalCounts.passed} />
+        <StatusSummaryCard kind="failed"  value={globalCounts.failed} />
+        <StatusSummaryCard kind="running" value={globalCounts.running} />
+      </div>
+
       <div className="flex-1 overflow-y-auto">
         {visible.length === 0 && (
-          <div className="px-4 py-8 text-center text-xs text-[var(--text-dim)]">
-            No builds match.
-          </div>
+          <div className="px-4 py-8 text-center text-xs text-[var(--text-dim)]">No builds match.</div>
         )}
         {visible.map((b) => {
-          const counts = buildStatusCounts(buildSessionsById[b.id] || []);
+          const counts = buildStatusCounts(visibleBuildSessionsById[b.id] || []);
           const active = b.id === selectedBuildId;
           return (
             <button
               key={b.id}
               type="button"
               onClick={() => onSelect(b.id)}
-              className={`w-full text-left px-3 py-2.5 border-b border-[var(--border)] transition-colors ${active ? 'bg-[var(--surface-2)]' : 'hover:bg-[var(--surface-2)]/60'}`}
+              className={`w-full text-left relative px-4 py-3 border-b border-[var(--border)] transition-colors ${active ? 'bg-[var(--surface-2)]' : 'hover:bg-[var(--surface-2)]/60'}`}
             >
-              <div className="flex items-center justify-between gap-2">
-                <span className="text-xs font-semibold text-[var(--text)] truncate">{b.name}</span>
-                <span className="font-mono text-[9px] text-[var(--text-dim)] flex items-center gap-1 shrink-0">
-                  <Clock className="h-3 w-3" /> {msAgo(b.createdAt)}
-                </span>
+              {active && <span className="absolute left-0 top-2 bottom-2 w-[3px] rounded-r bg-[var(--green)]" />}
+              <div className="text-xs font-semibold text-[var(--text)] truncate">{b.name}</div>
+              <div className="mt-1 flex items-center gap-1 font-mono text-[9px] text-[var(--text-dim)]">
+                <Clock className="h-3 w-3" />
+                {formatAbsoluteTime(b.createdAt)}
               </div>
-              <div className="mt-1 flex items-center gap-1.5">
-                {counts.passed > 0 && <CountBadge value={counts.passed} tone="green" />}
-                {counts.failed > 0 && <CountBadge value={counts.failed} tone="red" />}
+              <div className="mt-1.5 flex items-center gap-1.5">
+                {counts.passed  > 0 && <CountBadge value={counts.passed}  tone="green" />}
+                {counts.failed  > 0 && <CountBadge value={counts.failed}  tone="red" />}
                 {counts.running > 0 && <CountBadge value={counts.running} tone="amber" />}
-                {counts.all === 0 && (
-                  <span className="text-[10px] font-mono text-[var(--text-dim)]">empty</span>
-                )}
+                {counts.all === 0 && <span className="text-[10px] font-mono text-[var(--text-dim)]">empty</span>}
               </div>
-              <div className="mt-1 font-mono text-[9px] text-[var(--text-dim)] truncate">#{b.id}</div>
+              <div className="mt-1 font-mono text-[9px] text-[var(--text-dim)] truncate">{shortId(b.id, 10, 4)}</div>
             </button>
           );
         })}
-      </div>
-
-      <div className="p-2 border-t border-[var(--border)] text-center text-[10px] font-mono text-[var(--text-dim)]">
-        {visible.length} shown
       </div>
     </aside>
   );
 };
 ```
 
-- [ ] **Step 2: Verify build**
+- [ ] **Step 2: Build**
 
-Run: `cd web && npm run build 2>&1 | tail -3`
-Expected: succeeds. If `IBuild` doesn't have `createdAt` or `name`, inspect the interface and adjust.
+Run: `cd web && npm run build`
+Expected: succeeds.
 
 - [ ] **Step 3: Commit**
 
 ```bash
-git -C /Users/rabindrabiswal/Workspace/XAenon/xenon add web/src/components/builds/build-list-rail.tsx
-git -C /Users/rabindrabiswal/Workspace/XAenon/xenon commit -m "feat(web): add BuildListRail component" -m "Replaces the legacy left-rail section of session-dashboard.tsx. Search + time filter + build cards with colored count badges (passed/failed/running) and relative-time stamps. Footer shows 'N shown' count." -m "Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>"
+git add web/src/components/builds/build-list-rail.tsx
+git commit -m "feat(web): add BuildListRail with status-summary strip" -m "Three sections matching the reference: search + time filter, three StatusSummaryCards (PASSED/FAILED/RUNNING), and the scrolling list of builds. Build cards show absolute createdAt and inline CountBadges per status. Selected state gets a green left-edge bar + surface-2 tint." -m "Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>"
 ```
 
 ---
 
-## Task 6: Build `BuildFilterBar` (top filter pills + session search)
+## Task 7: `BuildFilterBar`
 
 **Files:** Create `web/src/components/builds/build-filter-bar.tsx`
 
-- [ ] **Step 1: Write the component**
+- [ ] **Step 1: Implement**
 
 ```tsx
 import React from 'react';
@@ -575,62 +695,59 @@ import type { ISession } from '../../interfaces/ISession';
 
 interface Props {
   sessions: ISession[];
-  active: Set<StatusKey>;
-  onToggle: (key: StatusKey, e: React.MouseEvent) => void;
+  active: StatusKey;
+  onChange: (key: StatusKey) => void;
   search: string;
   onSearchChange: (v: string) => void;
-  totalFiltered: number;
+  totalMatching: number;
+  totalUnfiltered: number;
 }
 
-export const BuildFilterBar: React.FC<Props> = ({ sessions, active, onToggle, search, onSearchChange, totalFiltered }) => {
+export const BuildFilterBar: React.FC<Props> = ({ sessions, active, onChange, search, onSearchChange, totalMatching, totalUnfiltered }) => {
   const counts = buildStatusCounts(sessions);
   return (
-    <div className="flex items-center justify-between gap-4 px-4 py-2.5 border-b border-[var(--border)] bg-[var(--surface)]">
-      <div className="flex items-center gap-1.5">
-        <FilterPill label="All" count={counts.all} active={active.has('all') || active.size === 0} onClick={(e) => onToggle('all', e as any)} tone="neutral" />
-        <FilterPill label="Passed" count={counts.passed} active={active.has('passed')} onClick={(e) => onToggle('passed', e as any)} tone="green" />
-        <FilterPill label="Failed" count={counts.failed} active={active.has('failed')} onClick={(e) => onToggle('failed', e as any)} tone="red" />
-        <FilterPill label="Running" count={counts.running} active={active.has('running')} onClick={(e) => onToggle('running', e as any)} tone="amber" />
+    <div className="bg-[var(--surface)]">
+      <div className="flex items-center gap-1.5 px-4 pt-3 pb-2">
+        <FilterPill label="ALL"     count={counts.all}     active={active === 'all'}     onClick={() => onChange('all')}     tone="neutral" bullet={false} />
+        <FilterPill label="PASSED"  count={counts.passed}  active={active === 'passed'}  onClick={() => onChange('passed')}  tone="green" />
+        <FilterPill label="FAILED"  count={counts.failed}  active={active === 'failed'}  onClick={() => onChange('failed')}  tone="red" />
+        <FilterPill label="RUNNING" count={counts.running} active={active === 'running'} onClick={() => onChange('running')} tone="amber" />
       </div>
-      <div className="flex items-center gap-3">
-        <div className="relative w-64">
+      <div className="flex items-center gap-4 px-4 pb-3 border-b border-[var(--border)]">
+        <div className="relative flex-1 max-w-xl">
           <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-[var(--text-dim)]" />
           <input
             type="text"
             value={search}
             onChange={(e) => onSearchChange(e.target.value)}
-            placeholder="Search sessions…"
+            placeholder="Search sessions by ID, name, or device…"
             className="w-full h-8 pl-8 pr-2 rounded-md bg-[var(--bg)] border border-[var(--border)] text-xs text-[var(--text)] placeholder:text-[var(--text-dim)] focus:outline-none focus:border-[var(--border-strong)]"
           />
         </div>
-        <span className="text-[10px] font-mono text-[var(--text-dim)] whitespace-nowrap">{totalFiltered} matching</span>
+        <span className="text-[10px] font-mono text-[var(--text-dim)] whitespace-nowrap">
+          {totalMatching} of {totalUnfiltered} sessions
+        </span>
       </div>
     </div>
   );
 };
 ```
 
-NOTE on toggle semantics: FilterPill passes a plain callback, not a mouse event. We accept the `(e: React.MouseEvent)` in the parent wrapper by wrapping `onClick` in the pill call site. If this feels awkward, change `FilterPill` to accept `(e: React.MouseEvent) => void` — or, simpler, leave shift-additive-select for Phase 4B and make all pill clicks single-select for now.
+- [ ] **Step 2: Build**
 
-- [ ] **Step 2: Decision: simplify to single-select first**
-
-Because shift-additive selection complicates the type surface, ship single-select now. Remove the `e` parameter from `onToggle`, change the type to `(key: StatusKey) => void`, and simplify the callsites. Shift-additive can land in a polish patch.
-
-- [ ] **Step 3: Verify build**
-
-Run: `cd web && npm run build`
+Run: `cd web && npm run build 2>&1 | tail -3`
 Expected: succeeds.
 
-- [ ] **Step 4: Commit**
+- [ ] **Step 3: Commit**
 
 ```bash
-git -C /Users/rabindrabiswal/Workspace/XAenon/xenon add web/src/components/builds/build-filter-bar.tsx
-git -C /Users/rabindrabiswal/Workspace/XAenon/xenon commit -m "feat(web): add BuildFilterBar component" -m "Top filter-pill bar: All / Passed / Failed / Running with per-pill counts. Single-select (shift-additive deferred to polish). Session search input sits on the right with a live 'N matching' count replacing the disconnected 'N SESSIONS FOUND' label." -m "Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>"
+git add web/src/components/builds/build-filter-bar.tsx
+git commit -m "feat(web): add BuildFilterBar" -m "Top filter-pill group (ALL / PASSED / FAILED / RUNNING) with per-pill counts + session search + 'N of N sessions' counter matching the reference." -m "Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>"
 ```
 
 ---
 
-## Task 7: Build `SessionRow` + `SessionTable`
+## Task 8: `SessionRow` + `SessionTable`
 
 **Files:** Create `web/src/components/builds/session-row.tsx`, `web/src/components/builds/session-table.tsx`
 
@@ -638,78 +755,90 @@ git -C /Users/rabindrabiswal/Workspace/XAenon/xenon commit -m "feat(web): add Bu
 
 ```tsx
 import React from 'react';
-import { Smartphone, Tv, Tablet, Monitor, ChevronRight, Check, X, Loader2 } from 'lucide-react';
+import { ChevronRight, Smartphone, Tv, Tablet, Monitor } from 'lucide-react';
 import type { ISession } from '../../interfaces/ISession';
-import { formatDeviceLabel, msAgo } from './derive';
+import { formatAbsoluteTime, humanDuration, deviceNameOrFallback, platformLabel, osVersionLabel, shortId } from './derive';
+import { StatusPillOutline, type StatusTone } from '../ui/status-pill-outline';
 
 interface Props {
   session: ISession;
-  onClick: () => void;
+  selected: boolean;
+  onToggleSelect: () => void;
+  onOpen: () => void;
 }
 
-function deviceIcon(platform?: string) {
+function DeviceIcon({ platform }: { platform?: string }) {
   const p = (platform || '').toLowerCase();
-  if (p.includes('tv')) return Tv;
-  if (p.includes('pad') || p.includes('tablet')) return Tablet;
-  if (p.includes('android') || p.includes('ios')) return Smartphone;
-  return Monitor;
+  if (p.includes('tv')) return <Tv className="h-3.5 w-3.5" />;
+  if (p.includes('pad') || p.includes('tablet')) return <Tablet className="h-3.5 w-3.5" />;
+  if (p.includes('android') || p.includes('ios')) return <Smartphone className="h-3.5 w-3.5" />;
+  return <Monitor className="h-3.5 w-3.5" />;
 }
 
-function statusPill(status: string) {
-  if (status === 'running') return { label: 'RUNNING', cls: 'text-[var(--amber)]', Icon: Loader2 };
-  if (status === 'failed') return { label: 'FAILED', cls: 'text-[var(--red)]', Icon: X };
-  if (status === 'ended') return { label: 'PASSED', cls: 'text-[var(--green)]', Icon: Check };
-  return { label: status.toUpperCase(), cls: 'text-[var(--text-dim)]', Icon: Check };
+function statusToPill(status: string): { label: string; tone: StatusTone } {
+  if (status === 'running') return { label: 'RUNNING', tone: 'running' };
+  if (status === 'failed')  return { label: 'FAILED',  tone: 'failed'  };
+  if (status === 'ended')   return { label: 'PASSED',  tone: 'passed'  };
+  return { label: status.toUpperCase(), tone: 'offline' };
 }
 
-function humanDuration(ms?: number | null) {
-  if (!ms || !Number.isFinite(ms)) return '—';
-  const s = Math.floor(ms / 1000);
-  const h = Math.floor(s / 3600);
-  const m = Math.floor((s % 3600) / 60);
-  const sec = s % 60;
-  if (h > 0) return `${h}h ${m}m ${sec}s`;
-  if (m > 0) return `${m}m ${sec}s`;
-  return `${sec}s`;
-}
-
-export const SessionRow: React.FC<Props> = ({ session, onClick }) => {
-  const Icon = deviceIcon(session.platform);
-  const { label: statusLabel, cls: statusCls, Icon: StatusIcon } = statusPill(session.status);
-  const fullId = session.id;
-  const shortName = session.name || `#${fullId.slice(0, 8)}`;
-  const deviceLabel = formatDeviceLabel(session);
+export const SessionRow: React.FC<Props> = ({ session, selected, onToggleSelect, onOpen }) => {
+  const failed = session.status === 'failed';
+  const pill = statusToPill(session.status);
+  const deviceName = deviceNameOrFallback(session);
+  const nodeId = session.node_id || (session as any).device?.node_id || '';
+  const subtitleTop = failed && session.failure_reason
+    ? session.failure_reason
+    : (session.name ?? '');
 
   return (
     <tr
-      onClick={onClick}
-      className="group border-b border-[var(--border)] hover:bg-[var(--surface-2)] cursor-pointer transition-colors"
+      onClick={onOpen}
+      className="group border-b border-[var(--border)] hover:bg-[var(--surface-2)] cursor-pointer transition-colors align-top"
     >
-      <td className="px-3 py-2.5">
-        <div className="text-xs font-medium text-[var(--text)] truncate">{shortName}</div>
-        <div className="font-mono text-[10px] text-[var(--text-dim)] truncate" title={fullId}>
-          {fullId.length > 28 ? `${fullId.slice(0, 12)}…${fullId.slice(-6)}` : fullId}
+      <td className="px-3 py-3" onClick={(e) => e.stopPropagation()}>
+        <input
+          type="checkbox"
+          checked={selected}
+          onChange={onToggleSelect}
+          aria-label={`Select session ${session.id}`}
+        />
+      </td>
+      <td className="px-3 py-3">
+        <div className="font-mono text-xs text-[var(--green)]" title={session.id}>
+          #{shortId(session.id, 14, 4)}
         </div>
+        {subtitleTop && (
+          <div className="mt-0.5 text-[11px] text-[var(--text-muted)] truncate max-w-[420px]" title={subtitleTop}>
+            {subtitleTop}
+          </div>
+        )}
       </td>
-      <td className="px-3 py-2.5">
-        <div className="flex items-center gap-1.5 text-xs text-[var(--text-muted)]">
-          <Icon className="h-3.5 w-3.5 text-[var(--text-dim)] shrink-0" />
-          <span className="truncate">{deviceLabel}</span>
+      <td className="px-3 py-3">
+        <div className="flex items-center gap-1.5 text-xs text-[var(--text)]">
+          <DeviceIcon platform={session.platform} />
+          <span className="truncate max-w-[160px]">{deviceName}</span>
         </div>
+        {nodeId && (
+          <div className="mt-0.5 font-mono text-[10px] text-[var(--text-dim)]">node-{String(nodeId)}</div>
+        )}
       </td>
-      <td className="px-3 py-2.5">
-        <span className={`inline-flex items-center gap-1 font-mono text-[10px] font-medium ${statusCls}`}>
-          <StatusIcon className={`h-3 w-3 ${session.status === 'running' ? 'animate-spin' : ''}`} />
-          {statusLabel}
-        </span>
+      <td className="px-3 py-3">
+        <div className="text-xs text-[var(--text)]">{platformLabel(session)}</div>
+        {session.os_version && (
+          <div className="mt-0.5 font-mono text-[10px] text-[var(--text-dim)]">{osVersionLabel(session)}</div>
+        )}
       </td>
-      <td className="px-3 py-2.5 text-xs text-[var(--text-muted)] font-mono whitespace-nowrap" title={String(session.createdAt)}>
-        {msAgo(session.createdAt)}
+      <td className="px-3 py-3">
+        <StatusPillOutline label={pill.label} tone={pill.tone} />
       </td>
-      <td className="px-3 py-2.5 text-xs text-[var(--text-muted)] font-mono whitespace-nowrap">
+      <td className="px-3 py-3 font-mono text-[11px] text-[var(--text-muted)] whitespace-nowrap">
+        {formatAbsoluteTime(session.createdAt)}
+      </td>
+      <td className="px-3 py-3 font-mono text-[11px] text-[var(--text-muted)] whitespace-nowrap text-right">
         {humanDuration(session.duration_ms ?? null)}
       </td>
-      <td className="px-3 py-2.5 text-right">
+      <td className="px-3 py-3 text-right">
         <ChevronRight className="inline h-4 w-4 text-[var(--text-dim)] group-hover:text-[var(--text)]" />
       </td>
     </tr>
@@ -727,21 +856,26 @@ import { SessionRow } from './session-row';
 
 interface Props {
   sessions: ISession[];
-  statusFilter: Set<StatusKey>;
+  statusFilter: StatusKey;
   searchQuery: string;
-  onRowClick: (s: ISession) => void;
+  selectedIds: Set<string>;
+  onToggleSelect: (id: string) => void;
+  onToggleSelectAll: (ids: string[]) => void;
+  onOpenRow: (s: ISession) => void;
   buildHasNoSessions: boolean;
 }
 
-function matchesStatus(s: ISession, active: Set<StatusKey>): boolean {
-  if (active.size === 0 || active.has('all')) return true;
-  if (active.has('passed') && s.status === 'ended') return true;
-  if (active.has('failed') && s.status === 'failed') return true;
-  if (active.has('running') && s.status === 'running') return true;
-  return false;
+function matchesStatus(s: ISession, key: StatusKey): boolean {
+  if (key === 'all') return true;
+  if (key === 'passed')  return s.status === 'ended';
+  if (key === 'failed')  return s.status === 'failed';
+  if (key === 'running') return s.status === 'running';
+  return true;
 }
 
-export const SessionTable: React.FC<Props> = ({ sessions, statusFilter, searchQuery, onRowClick, buildHasNoSessions }) => {
+export const SessionTable: React.FC<Props> = ({
+  sessions, statusFilter, searchQuery, selectedIds, onToggleSelect, onToggleSelectAll, onOpenRow, buildHasNoSessions,
+}) => {
   const filtered = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
     return sessions.filter((s) => {
@@ -756,65 +890,185 @@ export const SessionTable: React.FC<Props> = ({ sessions, statusFilter, searchQu
 
   if (buildHasNoSessions) {
     return (
-      <div className="px-4 py-10 text-center text-xs text-[var(--text-dim)]">
+      <div className="px-4 py-12 text-center text-xs text-[var(--text-dim)]">
         No sessions in this build yet. Trigger one from your test runner.
       </div>
     );
   }
   if (filtered.length === 0) {
     return (
-      <div className="px-4 py-10 text-center text-xs text-[var(--text-dim)]">
+      <div className="px-4 py-12 text-center text-xs text-[var(--text-dim)]">
         No sessions match the current filters.
       </div>
     );
   }
+
+  const allChecked = filtered.length > 0 && filtered.every((s) => selectedIds.has(s.id));
+  const someChecked = filtered.some((s) => selectedIds.has(s.id));
 
   return (
     <div className="flex-1 overflow-y-auto">
       <table className="w-full text-left">
         <thead className="sticky top-0 bg-[var(--surface)] border-b border-[var(--border)] z-10">
           <tr>
-            <th className="px-3 py-2 text-[10px] uppercase tracking-wider text-[var(--text-dim)] font-medium">Session / Name</th>
-            <th className="px-3 py-2 text-[10px] uppercase tracking-wider text-[var(--text-dim)] font-medium">Device</th>
+            <th className="px-3 py-2 w-[36px]">
+              <input
+                type="checkbox"
+                aria-label="Select all visible"
+                checked={allChecked}
+                ref={(el) => { if (el) el.indeterminate = someChecked && !allChecked; }}
+                onChange={() => onToggleSelectAll(filtered.map((s) => s.id))}
+              />
+            </th>
+            <th className="px-3 py-2 text-[10px] uppercase tracking-wider text-[var(--text-dim)] font-medium">Session</th>
+            <th className="px-3 py-2 text-[10px] uppercase tracking-wider text-[var(--text-dim)] font-medium">Device · Node</th>
+            <th className="px-3 py-2 text-[10px] uppercase tracking-wider text-[var(--text-dim)] font-medium">Platform</th>
             <th className="px-3 py-2 text-[10px] uppercase tracking-wider text-[var(--text-dim)] font-medium">Status</th>
-            <th className="px-3 py-2 text-[10px] uppercase tracking-wider text-[var(--text-dim)] font-medium">Start</th>
-            <th className="px-3 py-2 text-[10px] uppercase tracking-wider text-[var(--text-dim)] font-medium">Duration</th>
-            <th className="px-3 py-2"></th>
+            <th className="px-3 py-2 text-[10px] uppercase tracking-wider text-[var(--text-dim)] font-medium">Start Time</th>
+            <th className="px-3 py-2 text-[10px] uppercase tracking-wider text-[var(--text-dim)] font-medium text-right">Duration</th>
+            <th className="px-3 py-2 w-[32px]"></th>
           </tr>
         </thead>
         <tbody>
           {filtered.map((s) => (
-            <SessionRow key={s.id} session={s} onClick={() => onRowClick(s)} />
+            <SessionRow
+              key={s.id}
+              session={s}
+              selected={selectedIds.has(s.id)}
+              onToggleSelect={() => onToggleSelect(s.id)}
+              onOpen={() => onOpenRow(s)}
+            />
           ))}
         </tbody>
       </table>
-      <div className="px-3 py-2 border-t border-[var(--border)] text-[10px] font-mono text-[var(--text-dim)]">
-        Showing {filtered.length} of {sessions.length}
-      </div>
     </div>
   );
 };
 ```
 
-- [ ] **Step 3: Verify build**
+- [ ] **Step 3: Build**
 
 Run: `cd web && npm run build`
-Expected: succeeds. Adjust ISession field names if `duration_ms` / `platform` / `device` differ.
+Expected: succeeds. Adjust ISession field accesses (e.g., `device.node_id`) if the interface differs.
 
 - [ ] **Step 4: Commit**
 
 ```bash
-git -C /Users/rabindrabiswal/Workspace/XAenon/xenon add web/src/components/builds/session-row.tsx web/src/components/builds/session-table.tsx
-git -C /Users/rabindrabiswal/Workspace/XAenon/xenon commit -m "feat(web): add SessionTable + SessionRow" -m "Tight 44px-row table with platform-aware device icon, unknown-device fallback (platform · os · node), full-ID tooltip on the truncated mono id, and a 'Showing N of total' footer. Replaces the legacy 80px-row session table from session-dashboard.tsx." -m "Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>"
+git add web/src/components/builds/session-row.tsx web/src/components/builds/session-table.tsx
+git commit -m "feat(web): SessionTable + SessionRow matching the reference" -m "Two-line stacked cells (device/node, platform/os_version), outlined STATUS pill, absolute dd/MM/yyyy start times, failure_reason as a subtitle under failed session IDs, and bulk-select checkboxes (header indeterminate when partial)." -m "Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>"
 ```
 
 ---
 
-## Task 8: Assemble `BuildsPage` and stub Session Detail
+## Task 9: `BuildsHeader` with Retry failed + Export stubs
 
-**Files:** Create `web/src/components/builds/builds-page.tsx`, `web/src/components/builds/session-detail-stub.tsx`
+**Files:** Create `web/src/components/builds/builds-header.tsx`
 
-- [ ] **Step 1: Write the stub**
+- [ ] **Step 1: Implement**
+
+```tsx
+import React from 'react';
+import { RefreshCcw, Download } from 'lucide-react';
+import type { IBuild } from '../../interfaces/IBuild';
+
+interface Props {
+  build: IBuild;
+  failedCount: number;
+  selectedCount: number;
+  onRetryFailed: () => void;
+  onExport: (format: 'json' | 'csv') => void;
+}
+
+export const BuildsHeader: React.FC<Props> = ({ build, failedCount, selectedCount, onRetryFailed, onExport }) => {
+  const canRetry = failedCount > 0 || selectedCount > 0;
+  const [exportOpen, setExportOpen] = React.useState(false);
+  const wrap = React.useRef<HTMLDivElement>(null);
+
+  React.useEffect(() => {
+    const h = (e: MouseEvent) => {
+      if (wrap.current && !wrap.current.contains(e.target as Node)) setExportOpen(false);
+    };
+    document.addEventListener('mousedown', h);
+    return () => document.removeEventListener('mousedown', h);
+  }, []);
+
+  return (
+    <header className="flex items-start justify-between gap-4 px-4 py-3 border-b border-[var(--border)] bg-[var(--surface)]">
+      <div>
+        <div className="flex items-center gap-2 text-[10px] uppercase tracking-widest text-[var(--text-dim)]">
+          <span>Build</span>
+          <span className="font-mono text-[var(--green)]">#{build.id}</span>
+        </div>
+        <h1 className="mt-0.5 text-sm font-semibold text-[var(--text)]">{build.name}</h1>
+      </div>
+
+      <div className="flex items-center gap-2" ref={wrap}>
+        <button
+          type="button"
+          onClick={onRetryFailed}
+          disabled={!canRetry}
+          title={canRetry ? `Retry ${selectedCount || failedCount} session(s)` : 'No failed sessions to retry'}
+          className="inline-flex items-center gap-1.5 h-8 px-3 rounded-md border border-[var(--border)] text-xs text-[var(--text)] hover:border-[var(--border-strong)] hover:bg-[var(--surface-2)] transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+        >
+          <RefreshCcw className="h-3.5 w-3.5" />
+          Retry failed
+        </button>
+
+        <div className="relative">
+          <button
+            type="button"
+            onClick={() => setExportOpen((o) => !o)}
+            className="inline-flex items-center gap-1.5 h-8 px-3 rounded-md border border-[var(--border)] text-xs text-[var(--text)] hover:border-[var(--border-strong)] hover:bg-[var(--surface-2)] transition-colors"
+          >
+            <Download className="h-3.5 w-3.5" />
+            Export
+          </button>
+          {exportOpen && (
+            <div className="absolute top-full right-0 mt-1 w-40 rounded-md border border-[var(--border)] bg-[var(--surface)] shadow-lg overflow-hidden z-20">
+              <button
+                type="button"
+                onClick={() => { setExportOpen(false); onExport('json'); }}
+                className="w-full text-left px-3 py-2 text-xs text-[var(--text)] hover:bg-[var(--surface-2)]"
+              >
+                Export as JSON
+              </button>
+              <button
+                type="button"
+                onClick={() => { setExportOpen(false); onExport('csv'); }}
+                className="w-full text-left px-3 py-2 text-xs text-[var(--text)] hover:bg-[var(--surface-2)]"
+              >
+                Export as CSV
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+    </header>
+  );
+};
+```
+
+NOTE: `onRetryFailed` and `onExport` handlers in Plan 4A are **stubs** — they open a toast saying "Bulk retry lands in next release." The actual wiring to POST endpoints is done in Plan 4B once the backend is in place.
+
+- [ ] **Step 2: Build**
+
+Run: `cd web && npm run build`
+Expected: succeeds.
+
+- [ ] **Step 3: Commit**
+
+```bash
+git add web/src/components/builds/builds-header.tsx
+git commit -m "feat(web): add BuildsHeader with Retry/Export action buttons" -m "Header matches the reference: Build #id eyebrow + name H1 on the left, Retry failed + Export (JSON/CSV dropdown) actions on the right. Retry is disabled when no failed sessions to retry. Handlers are stubs until Plan 4B adds the backend endpoints." -m "Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>"
+```
+
+---
+
+## Task 10: Session Detail stub + assemble `BuildsPage`
+
+**Files:** Create `web/src/components/builds/session-detail-stub.tsx`, `web/src/components/builds/builds-page.tsx`
+
+- [ ] **Step 1: Stub**
 
 ```tsx
 import React from 'react';
@@ -825,18 +1079,13 @@ export const SessionDetailStub: React.FC = () => {
   const { buildId, sessionId } = useParams<{ buildId: string; sessionId: string }>();
   return (
     <div className="p-6">
-      <Link
-        to={`/builds/${buildId}`}
-        className="inline-flex items-center gap-1.5 text-xs text-[var(--text-muted)] hover:text-[var(--text)]"
-      >
+      <Link to={`/builds/${buildId}`} className="inline-flex items-center gap-1.5 text-xs text-[var(--text-muted)] hover:text-[var(--text)]">
         <ArrowLeft className="h-3 w-3" /> Back to sessions
       </Link>
       <div className="mt-6 rounded-lg border border-[var(--border)] bg-[var(--surface)] p-6">
-        <div className="text-sm text-[var(--text-muted)]">Session Detail page is landing in Phase 4B.</div>
+        <div className="text-sm text-[var(--text-muted)]">Session Detail page lands in Plan 4C.</div>
         <div className="mt-2 font-mono text-[10px] text-[var(--text-dim)]">
-          build: {buildId}
-          <br />
-          session: {sessionId}
+          build: {buildId}<br/>session: {sessionId}
         </div>
       </div>
     </div>
@@ -844,74 +1093,93 @@ export const SessionDetailStub: React.FC = () => {
 };
 ```
 
-- [ ] **Step 2: Write `builds-page.tsx`**
+- [ ] **Step 2: Assemble `builds-page.tsx`**
 
 ```tsx
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useCallback } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useBuildsData } from './use-builds-data';
-import { BuildListRail } from './build-list-rail';
+import { BuildListRail, type TimeFilter } from './build-list-rail';
 import { BuildFilterBar } from './build-filter-bar';
+import { BuildsHeader } from './builds-header';
 import { SessionTable } from './session-table';
-import type { StatusKey } from './derive';
+import { buildStatusCounts, type StatusKey } from './derive';
 import type { ISession } from '../../interfaces/ISession';
+import { useToast } from '../ui/toast';
 
 export const BuildsPage: React.FC = () => {
   const navigate = useNavigate();
   const { buildId: routeBuildId } = useParams<{ buildId?: string }>();
   const data = useBuildsData();
-  const [timeFilter, setTimeFilter] = useState<'all' | '24h' | '7d' | '30d'>('all');
-  const [statusFilter, setStatusFilter] = useState<Set<StatusKey>>(new Set());
-  const [sessionSearch, setSessionSearch] = useState('');
+  const { showToast } = useToast();
 
-  // Sync route param to selected build.
+  const [timeFilter, setTimeFilter] = useState<TimeFilter>('all');
+  const [statusFilter, setStatusFilter] = useState<StatusKey>('all');
+  const [sessionSearch, setSessionSearch] = useState('');
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+
   React.useEffect(() => {
     if (routeBuildId && routeBuildId !== data.selectedBuildId) {
       data.selectBuild(routeBuildId);
+      setSelectedIds(new Set());
     }
   }, [routeBuildId, data]);
 
-  const toggleStatus = (key: StatusKey) => {
-    setStatusFilter((prev) => {
-      if (key === 'all') return new Set();
+  const handleSelectBuild = (id: string) => navigate(`/builds/${id}`);
+  const handleOpenRow = (s: ISession) => navigate(`/builds/${data.selectedBuildId}/sessions/${s.id}`);
+
+  const toggleSelect = useCallback((id: string) => {
+    setSelectedIds((prev) => {
       const next = new Set(prev);
-      if (next.has(key)) next.delete(key);
-      else { next.clear(); next.add(key); }
+      if (next.has(id)) next.delete(id); else next.add(id);
       return next;
     });
-  };
+  }, []);
 
-  const handleSelectBuild = (id: string) => {
-    navigate(`/builds/${id}`);
-  };
+  const toggleSelectAll = useCallback((ids: string[]) => {
+    setSelectedIds((prev) => {
+      const allChecked = ids.every((id) => prev.has(id));
+      const next = new Set(prev);
+      if (allChecked) ids.forEach((id) => next.delete(id));
+      else ids.forEach((id) => next.add(id));
+      return next;
+    });
+  }, []);
 
-  const handleRowClick = (s: ISession) => {
-    navigate(`/builds/${data.selectedBuildId}/sessions/${s.id}`);
-  };
-
-  const buildSessionsById: Record<string, ISession[]> = useMemo(() => {
-    // NB: without a /build/:id/sessions endpoint we only have the currently-loaded set.
-    // Build cards show counts only for the selected build until we widen the fetch.
-    // Temporary: map just the selected build. TODO(4B): add a lightweight counts endpoint.
+  const visibleBuildSessionsById: Record<string, ISession[]> = useMemo(() => {
     if (!data.selectedBuildId) return {};
     return { [data.selectedBuildId]: data.sessions };
   }, [data.selectedBuildId, data.sessions]);
 
-  const totalFiltered = data.sessions.length; // updated by SessionTable internally; good enough for now
+  const globalCounts = useMemo(() => {
+    // Cross-build summary. Only the selected build's sessions are loaded today;
+    // until a dedicated counts endpoint lands, globalCounts shows the visible set.
+    const c = buildStatusCounts(data.sessions);
+    return { passed: c.passed, failed: c.failed, running: c.running };
+  }, [data.sessions]);
 
   const selectedBuild = data.builds.find((b) => b.id === data.selectedBuildId) || null;
+  const counts = buildStatusCounts(data.sessions);
+
+  const onRetryFailed = () => {
+    showToast({ variant: 'info', title: 'Retry failed', message: 'Backend endpoint lands in Plan 4B.' });
+  };
+  const onExport = (fmt: 'json' | 'csv') => {
+    showToast({ variant: 'info', title: 'Export', message: `${fmt.toUpperCase()} export lands in Plan 4B.` });
+  };
 
   return (
     <div className="flex h-full">
       <BuildListRail
         builds={data.builds}
-        buildSessionsById={buildSessionsById}
         selectedBuildId={data.selectedBuildId}
         onSelect={handleSelectBuild}
         search={data.searchQuery}
         onSearchChange={data.setSearchQuery}
         timeFilter={timeFilter}
         onTimeFilterChange={setTimeFilter}
+        globalCounts={globalCounts}
+        visibleBuildSessionsById={visibleBuildSessionsById}
       />
 
       <section className="flex-1 flex flex-col min-w-0">
@@ -921,26 +1189,30 @@ export const BuildsPage: React.FC = () => {
           </div>
         ) : (
           <>
-            <header className="px-4 py-3 border-b border-[var(--border)] bg-[var(--surface)]">
-              <div className="text-[10px] uppercase tracking-widest text-[var(--text-dim)]">
-                Builds / <span className="text-[var(--text-muted)]">{selectedBuild.name}</span>{' '}
-                <span className="font-mono">#{selectedBuild.id}</span>
-              </div>
-              <h1 className="mt-0.5 text-sm font-semibold text-[var(--text)]">{selectedBuild.name}</h1>
-            </header>
+            <BuildsHeader
+              build={selectedBuild}
+              failedCount={counts.failed}
+              selectedCount={selectedIds.size}
+              onRetryFailed={onRetryFailed}
+              onExport={onExport}
+            />
             <BuildFilterBar
               sessions={data.sessions}
               active={statusFilter}
-              onToggle={toggleStatus}
+              onChange={setStatusFilter}
               search={sessionSearch}
               onSearchChange={setSessionSearch}
-              totalFiltered={totalFiltered}
+              totalMatching={data.sessions.length}
+              totalUnfiltered={data.sessions.length}
             />
             <SessionTable
               sessions={data.sessions}
               statusFilter={statusFilter}
               searchQuery={sessionSearch}
-              onRowClick={handleRowClick}
+              selectedIds={selectedIds}
+              onToggleSelect={toggleSelect}
+              onToggleSelectAll={toggleSelectAll}
+              onOpenRow={handleOpenRow}
               buildHasNoSessions={data.sessions.length === 0}
             />
           </>
@@ -953,7 +1225,9 @@ export const BuildsPage: React.FC = () => {
 export default BuildsPage;
 ```
 
-- [ ] **Step 3: Verify build**
+NOTE: `useToast` and `showToast` should match the existing toast API. Inspect `web/src/components/ui/toast.tsx` and adjust the call signature if needed.
+
+- [ ] **Step 3: Build**
 
 Run: `cd web && npm run build`
 Expected: succeeds.
@@ -961,79 +1235,87 @@ Expected: succeeds.
 - [ ] **Step 4: Commit**
 
 ```bash
-git -C /Users/rabindrabiswal/Workspace/XAenon/xenon add web/src/components/builds/builds-page.tsx web/src/components/builds/session-detail-stub.tsx
-git -C /Users/rabindrabiswal/Workspace/XAenon/xenon commit -m "feat(web): add BuildsPage + Session Detail stub" -m "Composes rail + filter bar + table into the rebuilt Builds page. Wires React Router so selecting a build navigates to /builds/:buildId and clicking a session row navigates to /builds/:buildId/sessions/:sessionId, which currently renders a stub page ('lands in Phase 4B'). Build header dropped the all-caps duplication — one eyebrow breadcrumb + one small H1 instead of three separate labels." -m "Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>"
+git add web/src/components/builds/builds-page.tsx web/src/components/builds/session-detail-stub.tsx
+git commit -m "feat(web): assemble BuildsPage + Session Detail stub" -m "Composes rail + header + filter bar + table into the rebuilt Builds page. Header action buttons render toasts until Plan 4B wires the backend. Session row click navigates to /builds/:buildId/sessions/:sessionId which renders a stub until Plan 4C lands." -m "Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>"
 ```
 
 ---
 
-## Task 9: Wire new routes and retire the monolith
+## Task 11: Route wiring + retire monolith
 
-**Files:** `web/src/routes/index.tsx`, delete `web/src/components/session-dashboard/`
+**Files:** Modify `web/src/routes/index.tsx`, delete `web/src/components/session-dashboard/`
 
-- [ ] **Step 1: Read the current routes file**
+- [ ] **Step 1: Read current routes**
 
 Run: `cat /Users/rabindrabiswal/Workspace/XAenon/xenon/web/src/routes/index.tsx`
 
-Identify the route for `/builds` and its imported component. Expected:
-something like `{ path: '/builds', element: <SessionDashboard /> }`.
+Find the `<Route path="/builds">` entry and its imports.
 
-- [ ] **Step 2: Replace the route entry**
+- [ ] **Step 2: Edit routes/index.tsx**
 
-Edit `web/src/routes/index.tsx`:
-- Remove the import of `SessionDashboard`.
-- Add imports for `BuildsPage` and `SessionDetailStub` from `../components/builds`.
-- Change the one `/builds` `<Route>` to three nested routes:
+Replace the single `/builds` route with three nested routes importing from `../components/builds`:
 
 ```tsx
+import { BuildsPage } from '../components/builds/builds-page';
+import { SessionDetailStub } from '../components/builds/session-detail-stub';
+
+// ...inside Routes...
 <Route path="/builds" element={<BuildsPage />} />
 <Route path="/builds/:buildId" element={<BuildsPage />} />
 <Route path="/builds/:buildId/sessions/:sessionId" element={<SessionDetailStub />} />
 ```
 
-- [ ] **Step 3: Delete the monolith**
+Remove the `SessionDashboard` import.
+
+- [ ] **Step 3: Check consumers**
+
+Run: `grep -rn "session-dashboard" /Users/rabindrabiswal/Workspace/XAenon/xenon/web/src --include="*.ts" --include="*.tsx" 2>/dev/null`
+Expected: zero matches beyond the to-be-deleted directory itself.
+
+- [ ] **Step 4: Delete the monolith**
 
 ```bash
 rm /Users/rabindrabiswal/Workspace/XAenon/xenon/web/src/components/session-dashboard/session-dashboard.tsx
 rm /Users/rabindrabiswal/Workspace/XAenon/xenon/web/src/components/session-dashboard/session-dashboard.css
-rmdir /Users/rabindrabiswal/Workspace/XAenon/xenon/web/src/components/session-dashboard
+rmdir /Users/rabindrabiswal/Workspace/XAenon/xenon/web/src/components/session-dashboard 2>/dev/null || true
 ```
 
-- [ ] **Step 4: Find any remaining importers**
-
-Run: `grep -rn "session-dashboard" /Users/rabindrabiswal/Workspace/XAenon/xenon/web/src --include="*.ts" --include="*.tsx" --include="*.css" 2>/dev/null`
-Expected: zero matches. If any file still imports from `session-dashboard/`, update it to import the equivalent from `builds/`.
-
-- [ ] **Step 5: Verify build + tests**
+- [ ] **Step 5: Verify**
 
 Run: `cd web && npm run build && npm test -- --run`
-Expected: build succeeds, all 75+ tests pass (we added 7–10 new tests in Tasks 1–2).
+Expected: build + all tests pass.
 
 - [ ] **Step 6: Commit**
 
 ```bash
-git -C /Users/rabindrabiswal/Workspace/XAenon/xenon add web/src/routes/index.tsx
-git -C /Users/rabindrabiswal/Workspace/XAenon/xenon rm web/src/components/session-dashboard/session-dashboard.tsx web/src/components/session-dashboard/session-dashboard.css
-git -C /Users/rabindrabiswal/Workspace/XAenon/xenon commit -m "feat(web): route split for Builds + Session Detail" -m "/builds now hosts the rebuilt BuildsPage. /builds/:buildId pins the selection. /builds/:buildId/sessions/:sessionId navigates to a stub (full detail page lands in Phase 4B). Legacy session-dashboard.tsx (1040 lines) and its css are removed." -m "Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>"
+cd /Users/rabindrabiswal/Workspace/XAenon/xenon
+git add web/src/routes/index.tsx
+git rm web/src/components/session-dashboard/session-dashboard.tsx web/src/components/session-dashboard/session-dashboard.css
+git commit -m "feat(web): route split for Builds + retire session-dashboard monolith" -m "/builds hosts BuildsPage. /builds/:buildId pins the selection. /builds/:buildId/sessions/:sessionId renders a stub until Plan 4C lands. Legacy 1040-line session-dashboard.tsx and css are removed." -m "Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>"
 ```
 
 ---
 
-## Task 10: Playwright + final verification
+## Task 12: Playwright verification + final checks
 
 **Files:** `web/screenshots/phase-4a/` (created by script)
 
-- [ ] **Step 1: Rebuild plugin & restart server**
+- [ ] **Step 1: Rebuild plugin**
 
 ```bash
 cd /Users/rabindrabiswal/Workspace/XAenon/xenon && npm run build:xenon && npm run build
-pkill -f 'appium server' 2>/dev/null || true
-APPIUM_HOME=/tmp/xenon-home npx appium server -ka 800 --use-plugins=xenon -pa /wd/hub --plugin-xenon-platform=both --plugin-xenon-enable-dashboard >/tmp/xenon-server.log 2>&1 &
 ```
 
-Wait for `Xenon will be served at …` in `/tmp/xenon-server.log`.
+- [ ] **Step 2: Start server**
 
-- [ ] **Step 2: Run Playwright capture script**
+```bash
+pkill -f 'appium server' 2>/dev/null
+APPIUM_HOME=/tmp/xenon-home npx appium server -ka 800 --use-plugins=xenon -pa /wd/hub --plugin-xenon-platform=both --plugin-xenon-enable-dashboard > /tmp/xenon-server.log 2>&1 &
+```
+
+Wait for `Xenon will be served …` in the log.
+
+- [ ] **Step 3: Playwright script**
 
 Write `/tmp/xenon-verify/builds-4a.mjs`:
 
@@ -1049,71 +1331,74 @@ const b = await chromium.launch();
 const ctx = await b.newContext({ viewport: { width: 1440, height: 900 } });
 const p = await ctx.newPage();
 p.on('pageerror', (e) => console.error('PAGE ERROR:', e.message));
+
 await p.goto(BASE + '/', { waitUntil: 'domcontentloaded' });
-await p.waitForTimeout(500);
+await p.waitForTimeout(600);
 const inp = await p.$('input[type="password"]');
-if (inp) { await inp.fill(BOOT_KEY); await p.click('button[type="submit"], button:has-text("Sign in")'); await p.waitForTimeout(1200); }
-for (const [name, url] of [['builds-empty', '/builds'], ['builds-selected', '/builds'], ['detail-stub', null]]) {
-  if (url) { await p.goto(BASE + url, { waitUntil: 'domcontentloaded' }); await p.waitForTimeout(1500); }
-  if (name === 'builds-selected') {
-    const firstBuild = await p.$('aside button');
-    if (firstBuild) { await firstBuild.click(); await p.waitForTimeout(1200); }
-  }
-  if (name === 'detail-stub') {
-    const anySession = await p.$('tbody tr');
-    if (anySession) { await anySession.click(); await p.waitForTimeout(1200); }
-  }
-  await p.screenshot({ path: path.join(OUT, `1440_${name}.png`), fullPage: false });
-  console.log('captured', name);
-}
+if (inp) { await inp.fill(BOOT_KEY); await p.click('button[type="submit"], button:has-text("Sign in")'); await p.waitForTimeout(1500); }
+
+// Empty state
+await p.goto(BASE + '/builds', { waitUntil: 'domcontentloaded' });
+await p.waitForTimeout(1500);
+await p.screenshot({ path: path.join(OUT, '1440_builds-empty.png'), fullPage: false });
+
+// Build selected
+const firstBuild = await p.$('aside button');
+if (firstBuild) { await firstBuild.click(); await p.waitForTimeout(1200); }
+await p.screenshot({ path: path.join(OUT, '1440_builds-selected.png'), fullPage: false });
+
+// Filter = Failed
+const failedPill = await p.$('button[aria-pressed]:has-text("FAILED")');
+if (failedPill) { await failedPill.click(); await p.waitForTimeout(400); }
+await p.screenshot({ path: path.join(OUT, '1440_builds-failed-filter.png'), fullPage: false });
+
+// Bulk select
+const headerCheckbox = await p.$('thead input[type="checkbox"]');
+if (headerCheckbox) { await headerCheckbox.click(); await p.waitForTimeout(300); }
+await p.screenshot({ path: path.join(OUT, '1440_builds-bulk-selected.png'), fullPage: false });
+
+// Session detail stub
+const row = await p.$('tbody tr');
+if (row) { await row.click(); await p.waitForTimeout(1200); }
+await p.screenshot({ path: path.join(OUT, '1440_session-detail-stub.png'), fullPage: false });
+
 await b.close();
 ```
 
 Run: `node /tmp/xenon-verify/builds-4a.mjs`
-Expected: three screenshots written, no `PAGE ERROR` lines.
+Expected: five screenshots written. No `PAGE ERROR` lines.
 
-- [ ] **Step 3: Open and review**
+- [ ] **Step 4: Review key screenshot**
 
-Open `web/screenshots/phase-4a/1440_builds-selected.png`. Verify:
-- Left rail has search + time select + build cards with count badges + "N shown" footer.
-- Filter bar has 4 pills with per-pill counts + right-side session search + "N matching" count.
-- Table has tight 44px rows, header row with caps labels, status pills in tone-appropriate color, chevron on row hover.
-- No "Unknown Device" bare text — every row shows either a device name or the platform fallback.
-- No huge empty space below rows — table sizes to content, footer reads "Showing N of N".
+Open `web/screenshots/phase-4a/1440_builds-selected.png` and confirm:
+- Left rail: search + time select + 3 status-summary cards (PASSED / FAILED / RUNNING counts) + build cards.
+- Main pane header: `BUILD #id` eyebrow + build name + `Retry failed` + `Export` buttons right-aligned.
+- Filter bar: `[ALL n] [● PASSED n] [● FAILED n] [● RUNNING n]`, with the correct pill highlighted. Session search + `N of N sessions` counter.
+- Table: two-line cells (device + node, platform + v{os}), outlined FAILED pill, absolute `dd/MM/yyyy, HH:mm:ss` start time, duration right-aligned, failure_reason subtitle under session ID when failed.
+- Header + row checkboxes render.
 
-Open `1440_detail-stub.png`. Verify it shows the back link + a "lands in Phase 4B" card with the build/session IDs.
-
-- [ ] **Step 4: Stop server**
+- [ ] **Step 5: Stop server**
 
 ```bash
 pkill -f 'appium server' 2>/dev/null || true
 ```
 
-- [ ] **Step 5: Final build + test**
+- [ ] **Step 6: Full verification**
 
 ```bash
 cd /Users/rabindrabiswal/Workspace/XAenon/xenon && npm run build:all && cd web && npm test -- --run
 ```
 
-Expected: both succeed.
+Expected: both green.
 
-- [ ] **Step 6: Commit (optional) — screenshots**
-
-If `web/screenshots/` is tracked (check `git ls-files web/screenshots/ | head -1`), commit:
-
-```bash
-git -C /Users/rabindrabiswal/Workspace/XAenon/xenon add web/screenshots/phase-4a/
-git -C /Users/rabindrabiswal/Workspace/XAenon/xenon commit -m "chore(web): capture phase-4a screenshots" -m "Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>"
-```
-
-Otherwise skip.
+- [ ] **Step 7: No commit** — verification only.
 
 ---
 
 ## Self-Review Notes
 
-1. **Spec coverage** — §3.1 (file split) by Tasks 1–9. §3.2 (routing) by Task 9. §4.2 (hierarchy fix) by Task 8. §4.3 (filter bar) by Tasks 2, 6. §4.4 (session table w/ unknown-device fallback + full-ID tooltip + row density + footer) by Task 7. §4.5 (sessions-found count in bar) by Task 6. Session detail (§5) explicitly stubbed — lands in 4B.
-2. **Placeholder scan** — no TBDs; the one TODO note inside `builds-page.tsx` ("add a lightweight counts endpoint") is a real follow-up called out in the code comment, not a plan placeholder.
-3. **Type consistency** — `StatusKey` used by derive.ts, FilterPill indirectly, BuildFilterBar, SessionTable — consistent alias. `toggleStatus` callback signature `(key: StatusKey) => void` matches across BuildFilterBar props and BuildsPage caller.
-4. **Unused `tick * 0`** in Task 4 — intentional, forces re-render dependency without changing math. Same pattern as the header hook from Phase 2.
-5. **Potential import mismatches** — `ISession.duration_ms`, `ISession.platform`, `ISession.device.name`, `ISession.node_id`, `ISession.os_version`: I've assumed these exist based on the backend recon. Task 4 / 7 implementers MUST grep `web/src/interfaces/ISession.ts` first and rename as needed.
+1. **Spec coverage** — §4.1 layout by Tasks 6–10. §4.2 status summary strip by Tasks 4, 6. §4.3 main-pane header with Retry/Export by Task 9. §4.4 filter bar by Tasks 2, 7. §4.5 search + count by Task 7. §4.6 session table (columns, stacked cells, failure-reason subtitle, outlined pill, absolute time, bulk checkboxes) by Tasks 3, 8. Routing (§3.2) by Task 11. Non-goals (backend endpoints) correctly deferred to Plan 4B.
+2. **Placeholder scan** — no TBDs. The TODO comment inside `builds-page.tsx` about `globalCounts` is an in-code note for Plan 4B follow-up, not a plan placeholder.
+3. **Type consistency** — `StatusKey` used by derive, FilterPill (indirectly via onChange type in BuildFilterBar), SessionTable. `StatusTone` for outlined pill. `TimeFilter` re-exported from BuildListRail.
+4. **Assumed ISession field names** — `session.node_id`, `session.platform`, `session.os_version`, `session.duration_ms`, `session.createdAt`, `session.failure_reason`, `session.name`, `session.device.name`. Task 1 Step 1 grep must confirm; rename helpers + callsites as needed before proceeding.
+5. **Handlers-as-stubs** — `onRetryFailed` and `onExport` toast-only. Plan 4B replaces these with real API calls and a confirmation modal.
