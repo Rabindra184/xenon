@@ -1,89 +1,18 @@
-.reservation-modal-overlay {
-    position: fixed;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    background-color: rgba(2, 6, 23, 0.95);
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    z-index: 100000;
-    backdrop-filter: blur(12px);
-}
-
-.reservation-modal {
-    background-color: var(--bg-surface);
-    border: 1px solid var(--border-default);
-    border-radius: 6px;
-    width: 450px;
-    max-width: 90%;
-    box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5);
-    animation: modal-enter 0.3s cubic-bezier(0.16, 1, 0.3, 1);
-    position: relative;
-    overflow: hidden;
-}
-
-@keyframes modal-enter {
-    from {
-        opacity: 0;
-        transform: translateY(10px);
-    }
-
-    to {
-        opacity: 1;
-        transform: translateY(0);
-    }
-}
-
-.reservation-modal-header {
-    padding: 24px;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    border-bottom: 2px solid var(--border-default);
-    background: rgba(0, 0, 0, 0.4);
-}
-
-.reservation-modal-title {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    font-size: 1.25rem;
-    font-weight: 800;
-    color: var(--text-primary);
-    text-transform: uppercase;
-    font-family: 'Outfit', sans-serif;
-    letter-spacing: -0.01em;
-}
-
 .title-icon {
     color: var(--accent);
 }
 
-.close-btn {
-    background: transparent;
-    border: none;
-    color: var(--text-subtle);
-    cursor: pointer;
-    padding: 4px;
-    border-radius: 6px;
-    transition: all 0.2s;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-}
-
-.close-btn:hover {
-    background: rgba(255, 255, 255, 0.05);
-    color: var(--text-primary);
-}
-
 .reservation-modal-body {
-    padding: 24px;
     display: flex;
     flex-direction: column;
     gap: 20px;
+}
+
+.reservation-modal-body p {
+    color: var(--text-subtle);
+    font-size: 13px;
+    line-height: 1.6;
+    margin: 0;
 }
 
 .device-id-badge {
@@ -110,13 +39,6 @@
 .device-id-badge .value {
     color: var(--accent);
     font-weight: 800;
-}
-
-.reservation-modal p {
-    color: var(--text-subtle);
-    font-size: 13px;
-    line-height: 1.6;
-    margin: 0;
 }
 
 .reservation-form-group {
@@ -184,15 +106,6 @@
     border-color: var(--accent);
     color: var(--accent);
     box-shadow: 0 0 10px rgba(0, 255, 136, 0.1);
-}
-
-.reservation-actions {
-    padding: 24px;
-    display: flex;
-    justify-content: flex-end;
-    gap: 12px;
-    background: rgba(0, 0, 0, 0.4);
-    border-top: 2px solid var(--border-default);
 }
 
 .btn-cancel {
