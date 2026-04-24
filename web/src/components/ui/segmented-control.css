@@ -1,0 +1,33 @@
+.seg {
+  display: inline-flex;
+  gap: 2px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  padding: 2px;
+}
+.seg-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  font-family: 'Inter', sans-serif;
+  font-weight: 500;
+  border-radius: calc(var(--radius-md) - 2px);
+  cursor: pointer;
+  transition: background var(--motion-fast), color var(--motion-fast);
+}
+.seg-btn:hover { color: var(--text-primary); }
+.seg-btn-active { background: var(--bg-elevated); color: var(--text-primary); }
+.seg-count {
+  background: var(--bg-subtle);
+  color: var(--text-muted);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: 8px;
+}
+.seg-sm .seg-btn { height: 24px; padding: 0 10px; font-size: 11px; }
+.seg-md .seg-btn { height: 30px; padding: 0 12px; font-size: 12px; }
