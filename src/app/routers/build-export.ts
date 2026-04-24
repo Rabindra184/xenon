@@ -16,11 +16,14 @@ const CSV_COLUMNS = [
   'name',
 ] as const;
 
-type CsvCell = string | number | boolean | null | undefined;
+type CsvCell = string | number | boolean | Date | null | undefined;
 
 function escapeCsvCell(value: CsvCell): string {
   if (value === null || value === undefined) return '';
-  const s = String(value);
+  // Render Date objects as ISO so the CSV is locale-independent and easy to
+  // parse downstream. Without this, String(new Date()) emits "Thu Apr 23
+  // 2026 06:53:25 GMT+0530 …" which spreadsheets interpret poorly.
+  const s = value instanceof Date ? value.toISOString() : String(value);
   if (s.includes('"') || s.includes(',') || s.includes('\n') || s.includes('\r')) {
     return '"' + s.replace(/"/g, '""') + '"';
   }

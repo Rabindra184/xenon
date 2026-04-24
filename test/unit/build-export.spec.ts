@@ -97,4 +97,25 @@ describe('sessionsToCsv', () => {
     expect(csv.endsWith('\n')).to.equal(true);
     expect(csv.endsWith('\n\n')).to.equal(false);
   });
+
+  it('renders Date instances as ISO strings (not locale)', () => {
+    const s = [
+      {
+        id: 's1',
+        build_id: 'b1',
+        status: 'ended',
+        failure_category: null,
+        failure_reason: null,
+        device_platform: 'android',
+        device_version: '13',
+        device_name: 'Pixel',
+        node_id: 'node-a',
+        startTime: new Date('2026-04-23T06:53:25.000Z'),
+        endTime: null,
+        name: null,
+      },
+    ] as any[];
+    const csv = sessionsToCsv(s);
+    expect(csv).to.include('2026-04-23T06:53:25.000Z');
+  });
 });
