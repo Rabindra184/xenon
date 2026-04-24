@@ -293,3 +293,49 @@
     transform: translateY(0);
   }
 }
+
+/* ============================================================
+ * v2 Device Explorer toolbar
+ * ============================================================ */
+
+html[data-theme="v2"] .de2-toolbar {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  padding: 12px 20px;
+  border-bottom: 1px solid var(--border-default);
+  background: var(--bg-canvas);
+  position: sticky;
+  top: 0;
+  z-index: 1002;
+  box-shadow: none;
+  flex-wrap: wrap;
+}
+html[data-theme="v2"] .de2-search {
+  flex: 1;
+  min-width: 200px;
+  height: 28px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  padding: 0 10px;
+  color: var(--text-primary);
+  font-family: 'Inter', sans-serif;
+  font-size: 12px;
+  outline: none;
+}
+html[data-theme="v2"] .de2-search::placeholder {
+  color: var(--text-subtle);
+}
+html[data-theme="v2"] .de2-search:focus {
+  border-color: var(--border-strong);
+}
+html[data-theme="v2"] .device-explorer-container {
+  gap: 0;
+}
+html[data-theme="v2"] .device-explorer-empty h3 {
+  color: var(--text-primary);
+  font-family: 'Inter', sans-serif;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
