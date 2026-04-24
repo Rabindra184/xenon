@@ -27,6 +27,7 @@ import { Badge } from '../ui/badge';
 import { Input } from '../ui/input';
 import { SegmentedControl } from '../ui/SegmentedControl';
 import { EmptyState } from '../ui/EmptyState';
+import { Table, THead, TBody, TR, TH, TD } from '../ui/Table';
 import ProfilingView from './ProfilingView';
 import ScreenshotsView from './ScreenshotsView';
 import TraceWaterfall from './TraceWaterfall';
@@ -171,8 +172,8 @@ const SessionTableRow = React.memo(
   ({ session, onSelect }: { session: ISession; onSelect: (id: string) => void }) => {
     const duration = getDuration(session);
     return (
-      <tr className={`session-table-row ${session.status}`} onClick={() => onSelect(session.id)}>
-        <td>
+      <TR className={`session-table-row ${session.status}`} onClick={() => onSelect(session.id)}>
+        <TD>
           <div className="cell-id">
             <span className="id-text">#{session.id?.slice(0, 8) || 'unknown'}</span>
             {session.name && <span className="name-text">{session.name}</span>}
@@ -186,8 +187,8 @@ const SessionTableRow = React.memo(
               </div>
             )}
           </div>
-        </td>
-        <td>
+        </TD>
+        <TD>
           <div className="cell-platform text-neon-purple">
             <Smartphone
               size={14}
@@ -195,8 +196,8 @@ const SessionTableRow = React.memo(
             />
             <span style={{ marginLeft: '6px' }}>{session.device_name || 'Unknown Device'}</span>
           </div>
-        </td>
-        <td>
+        </TD>
+        <TD>
           <span
             className={`status-text ${
               ['success', 'passed'].includes(session.status)
@@ -209,13 +210,13 @@ const SessionTableRow = React.memo(
           >
             {session.status?.toUpperCase() || 'UNKNOWN'}
           </span>
-        </td>
-        <td className="text-neon-dim">{formatDate(session.startTime)}</td>
-        <td className="text-neon-dim">{safeFormatDuration(duration)}</td>
-        <td className="cell-actions">
+        </TD>
+        <TD className="text-neon-dim">{formatDate(session.startTime)}</TD>
+        <TD className="text-neon-dim">{safeFormatDuration(duration)}</TD>
+        <TD className="cell-actions">
           <ChevronRight size={16} />
-        </td>
-      </tr>
+        </TD>
+      </TR>
     );
   },
 );
@@ -478,34 +479,34 @@ const SessionDashboard: React.FC = () => {
           </div>
           <div className="table-stats">{sessions.length} sessions found</div>
         </div>
-        <table className="sessions-table">
-          <thead>
-            <tr>
-              <th>Session / Name</th>
-              <th>Device</th>
-              <th>Status</th>
-              <th>Start Time</th>
-              <th>Duration</th>
-              <th />
-            </tr>
-          </thead>
-          <tbody>
+        <Table className="sessions-table">
+          <THead>
+            <TR>
+              <TH>Session / Name</TH>
+              <TH>Device</TH>
+              <TH>Status</TH>
+              <TH>Start Time</TH>
+              <TH>Duration</TH>
+              <TH />
+            </TR>
+          </THead>
+          <TBody>
             {sessions.map((s: ISession) => (
               <SessionTableRow key={s.id} session={s} onSelect={setSelectedSessionId} />
             ))}
             {sessions.length === 0 && (
-              <tr>
-                <td colSpan={6} className="table-empty">
+              <TR>
+                <TD colSpan={6} className="table-empty">
                   <EmptyState
                     icon={<Activity size={20} />}
                     title="No sessions yet"
                     description="No sessions have run against this build. Trigger one from your test runner or the CLI."
                   />
-                </td>
-              </tr>
+                </TD>
+              </TR>
             )}
-          </tbody>
-        </table>
+          </TBody>
+        </Table>
       </div>
     </div>
   );
@@ -861,53 +862,53 @@ const SessionDashboard: React.FC = () => {
 
               {/* Capabilities Table */}
               <div className="capabilities-content">
-                <table className="capabilities-table">
-                  <thead>
-                    <tr>
-                      <th>Key</th>
-                      <th>Value</th>
-                    </tr>
-                  </thead>
-                  <tbody>
+                <Table className="capabilities-table">
+                  <THead>
+                    <TR>
+                      <TH>Key</TH>
+                      <TH>Value</TH>
+                    </TR>
+                  </THead>
+                  <TBody>
                     {selectedCapTab === 'desired' ? (
                       desiredCaps && typeof desiredCaps === 'object' ? (
                         Object.entries(desiredCaps).map(([key, value]) => (
-                          <tr key={key}>
-                            <td>{key}</td>
-                            <td>
+                          <TR key={key}>
+                            <TD>{key}</TD>
+                            <TD>
                               {typeof value === 'object'
                                 ? JSON.stringify(value).slice(0, 80)
                                 : String(value)}
-                            </td>
-                          </tr>
+                            </TD>
+                          </TR>
                         ))
                       ) : (
-                        <tr>
-                          <td colSpan={2} className="table-empty">
+                        <TR>
+                          <TD colSpan={2} className="table-empty">
                             No desired capabilities available
-                          </td>
-                        </tr>
+                          </TD>
+                        </TR>
                       )
                     ) : caps && typeof caps === 'object' ? (
                       Object.entries(caps).map(([key, value]) => (
-                        <tr key={key}>
-                          <td>{key}</td>
-                          <td>
+                        <TR key={key}>
+                          <TD>{key}</TD>
+                          <TD>
                             {typeof value === 'object'
                               ? JSON.stringify(value).slice(0, 80)
                               : String(value)}
-                          </td>
-                        </tr>
+                          </TD>
+                        </TR>
                       ))
                     ) : (
-                      <tr>
-                        <td colSpan={2} className="table-empty">
+                      <TR>
+                        <TD colSpan={2} className="table-empty">
                           No session capabilities available
-                        </td>
-                      </tr>
+                        </TD>
+                      </TR>
                     )}
-                  </tbody>
-                </table>
+                  </TBody>
+                </Table>
               </div>
             </div>
           </div>

@@ -13,6 +13,7 @@ import {
 import { ISession } from '../../interfaces/ISession';
 import XenonApiService from '../../api-service';
 import Spinner from '../../widgets/spinner/spinner';
+import { Table, THead, TBody, TR, TH, TD } from '../ui/Table';
 
 interface ProfilingViewProps {
   data: IProfiling[];
@@ -218,23 +219,23 @@ const ProfilingView: React.FC<ProfilingViewProps> = ({ data, session }) => {
       </div>
 
       <div className="profiling-table-wrapper">
-        <table className="profiling-table">
-          <thead>
-            <tr>
-              <th>Timestamp</th>
-              <th>CPU %</th>
-              <th>Memory MB</th>
-              <th>System CPU</th>
-            </tr>
-          </thead>
-          <tbody>
+        <Table className="profiling-table">
+          <THead>
+            <TR>
+              <TH>Timestamp</TH>
+              <TH>CPU %</TH>
+              <TH>Memory MB</TH>
+              <TH>System CPU</TH>
+            </TR>
+          </THead>
+          <TBody>
             {data
               .slice()
               .reverse()
               .map((entry: IProfiling) => (
-                <tr key={entry.id}>
-                  <td className="time-cell">{new Date(entry.timestamp).toLocaleTimeString()}</td>
-                  <td>
+                <TR key={entry.id}>
+                  <TD className="time-cell">{new Date(entry.timestamp).toLocaleTimeString()}</TD>
+                  <TD>
                     <div className="progress-bar-container">
                       <div
                         className="progress-bar cpu"
@@ -242,8 +243,8 @@ const ProfilingView: React.FC<ProfilingViewProps> = ({ data, session }) => {
                       />
                       <span className="progress-text">{entry.cpu}%</span>
                     </div>
-                  </td>
-                  <td>
+                  </TD>
+                  <TD>
                     <div className="progress-bar-container">
                       <div
                         className="progress-bar memory"
@@ -258,14 +259,14 @@ const ProfilingView: React.FC<ProfilingViewProps> = ({ data, session }) => {
                         {(parseFloat(entry.memory || '0') / 1024).toFixed(1)} MB
                       </span>
                     </div>
-                  </td>
-                  <td className="details-cell">
+                  </TD>
+                  <TD className="details-cell">
                     {entry.total_cpu_used ? `${entry.total_cpu_used}%` : '—'}
-                  </td>
-                </tr>
+                  </TD>
+                </TR>
               ))}
-          </tbody>
-        </table>
+          </TBody>
+        </Table>
       </div>
     </div>
   );
