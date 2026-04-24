@@ -52,11 +52,14 @@ describe('Modal', () => {
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 
-  it('closes when the overlay is clicked', () => {
+  it('closes when the overlay is clicked', async () => {
     const onClose = vi.fn();
     render(<Harness onClose={onClose} />);
     const overlay = document.querySelector('.modal-overlay') as HTMLElement;
     expect(overlay).not.toBeNull();
+    // DismissableLayer registers its pointerdown listener inside setTimeout(0).
+    // Flush that macrotask before firing so the listener is active.
+    await new Promise((r) => setTimeout(r, 0));
     fireEvent.pointerDown(overlay);
     fireEvent.mouseDown(overlay);
     fireEvent.click(overlay);
@@ -97,6 +100,9 @@ describe('Modal', () => {
     await act(async () => {
       fireEvent.keyDown(document, { key: 'Escape' });
     });
+    // FocusScope restores focus inside setTimeout(0). Flush that macrotask
+    // before asserting so the restoration has had a chance to run.
+    await new Promise((r) => setTimeout(r, 0));
     await waitFor(() => {
       expect(document.activeElement).toBe(opener);
     });

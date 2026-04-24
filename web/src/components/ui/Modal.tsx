@@ -19,10 +19,15 @@ export const Modal: React.FC<ModalProps> = ({
   children,
   width = 480,
 }) => {
-  // Track the element that had focus before the dialog opened so we can
-  // restore it on close. Radix's built-in restoration is unreliable in
-  // React 17 / JSDOM due to the setTimeout(0) race with document focusin
-  // listeners still active at the point the scheduled callback fires.
+  // Capture the focused element before the dialog opens so we can restore it
+  // on close. Radix FocusScope calls focus(previouslyFocusedElement) inside a
+  // setTimeout(0) on unmount, but in JSDOM the element it captures at mount
+  // time is already wrong: fireEvent.click() does not keep the clicked element
+  // as activeElement across the synchronous React re-render that opens the
+  // dialog, so FocusScope records the wrong element. We save it one render
+  // earlier (while open is still false) and restore it ourselves via
+  // onCloseAutoFocus, which lets us preventDefault() on Radix's built-in
+  // restoration attempt and supply the correct target instead.
   const returnFocusRef = React.useRef<Element | null>(null);
 
   React.useEffect(() => {
@@ -34,8 +39,7 @@ export const Modal: React.FC<ModalProps> = ({
   return (
     <DialogPrimitive.Root open={open} onOpenChange={(o) => !o && onClose()}>
       <DialogPrimitive.Portal>
-        {/* onClick fires synchronously; Radix's pointer-outside path is async */}
-        <DialogPrimitive.Overlay className="modal-overlay" onClick={onClose} />
+        <DialogPrimitive.Overlay className="modal-overlay" />
         <DialogPrimitive.Content
           className="modal"
           style={{ width }}
