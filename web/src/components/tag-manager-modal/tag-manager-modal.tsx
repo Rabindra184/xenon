@@ -5,6 +5,7 @@ import { IDevice } from '../../interfaces/IDevice';
 import XenonApiService from '../../api-service';
 import { useToast } from '../ui/toast';
 import { Modal } from '../ui/Modal';
+import { FieldGroup } from '../ui/FieldGroup';
 
 interface TagManagerModalProps {
   device: IDevice;
@@ -85,8 +86,11 @@ const TagManagerModal: React.FC<TagManagerModalProps> = ({ device, onClose, onUp
           <span className="value">{device.udid}</span>
         </div>
 
-        <div className="tag-input-section">
-          <label htmlFor="tag-input">Add New Tag</label>
+        <FieldGroup
+          label="Add New Tag"
+          description="Press Enter to add multiple tags"
+          htmlFor="tag-input"
+        >
           <div className="input-with-button">
             <input
               ref={inputRef}
@@ -105,8 +109,7 @@ const TagManagerModal: React.FC<TagManagerModalProps> = ({ device, onClose, onUp
               <Plus size={16} />
             </button>
           </div>
-          <p className="input-hint">Press Enter to add multiple tags</p>
-        </div>
+        </FieldGroup>
 
         <div className="tags-display-section">
           <label>Current Tags</label>

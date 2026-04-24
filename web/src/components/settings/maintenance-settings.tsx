@@ -3,7 +3,6 @@ import XenonApiService from '../../api-service';
 import './settings.css';
 import {
   Shield as MaintenanceIcon,
-  Save,
   RefreshCw,
   Clock,
   Calendar,
@@ -16,6 +15,7 @@ import {
   ShieldCheck,
 } from 'lucide-react';
 import { ActionBar, SettingSection } from '../ui/Layouts';
+import { SettingCard } from '../ui/SettingCard';
 
 export const MaintenanceSettings: React.FC = () => {
   const [config, setConfig] = useState<{
@@ -116,68 +116,50 @@ export const MaintenanceSettings: React.FC = () => {
 
       <div className="settings-content">
         <div className="settings-grid">
-          <div className="setting-card stagger-1">
-            <div className="setting-card-header">
-              <History size={16} />
-              <h4>Retention Window</h4>
+          <SettingCard
+            icon={<History size={16} />}
+            title="Retention Window"
+            description="Number of days to preserve builds and sessions before automatic purging from the system."
+            hint="Standard enterprise retention is typically 30-90 days."
+          >
+            <div className="input-group">
+              <input
+                type="number"
+                value={config.buildCleanupDays}
+                onChange={(e) =>
+                  setConfig({ ...config, buildCleanupDays: parseInt(e.target.value) })
+                }
+                min={1}
+              />
+              <span className="code-font">DAYS</span>
             </div>
-            <p className="section-description-dense">
-              Number of days to preserve builds and sessions before automatic purging from the
-              system.
-            </p>
-            <div className="setting-field">
-              <div className="input-group">
-                <input
-                  type="number"
-                  value={config.buildCleanupDays}
-                  onChange={(e) =>
-                    setConfig({ ...config, buildCleanupDays: parseInt(e.target.value) })
-                  }
-                  min={1}
-                />
-                <span className="code-font">DAYS</span>
-              </div>
-            </div>
-            <div className="setting-hint-clean">
-              Standard enterprise retention is typically 30-90 days.
-            </div>
-          </div>
+          </SettingCard>
 
-          <div className="setting-card stagger-2">
-            <div className="setting-card-header">
-              <Trash2 size={16} />
-              <h4>Max Build Capacity</h4>
+          <SettingCard
+            icon={<Trash2 size={16} />}
+            title="Max Build Capacity"
+            description="Cap the maximum number of historical builds stored in the primary database."
+            hint="Protects against database bloat during high-frequency CI bursts."
+          >
+            <div className="input-group">
+              <input
+                type="number"
+                value={config.buildCleanupMaxCount}
+                onChange={(e) =>
+                  setConfig({ ...config, buildCleanupMaxCount: parseInt(e.target.value) })
+                }
+                min={1}
+              />
+              <span className="code-font">BUILDS</span>
             </div>
-            <p className="section-description-dense">
-              Cap the maximum number of historical builds stored in the primary database.
-            </p>
-            <div className="setting-field">
-              <div className="input-group">
-                <input
-                  type="number"
-                  value={config.buildCleanupMaxCount}
-                  onChange={(e) =>
-                    setConfig({ ...config, buildCleanupMaxCount: parseInt(e.target.value) })
-                  }
-                  min={1}
-                />
-                <span className="code-font">BUILDS</span>
-              </div>
-            </div>
-            <div className="setting-hint-clean">
-              Protects against database bloat during high-frequency CI bursts.
-            </div>
-          </div>
+          </SettingCard>
 
-          <div className="setting-card stagger-3">
-            <div className="setting-card-header">
-              <ShieldCheck size={16} />
-              <h4>Asset Purge Strategy</h4>
-            </div>
-            <p className="section-description-dense">
-              Automatically remove binary artifacts (videos, screenshots) when build records are
-              purged.
-            </p>
+          <SettingCard
+            icon={<ShieldCheck size={16} />}
+            title="Asset Purge Strategy"
+            description="Automatically remove binary artifacts (videos, screenshots) when build records are purged."
+            hint="Disabling this will leave orphaned files on disk—use with caution."
+          >
             <div className="toggle-group">
               <label className="switch">
                 <input
@@ -191,28 +173,20 @@ export const MaintenanceSettings: React.FC = () => {
                 {config.deleteBuildAssets ? 'ENABLED' : 'DISABLED'}
               </span>
             </div>
-            <div className="setting-hint-clean">
-              Disabling this will leave orphaned files on disk—use with caution.
-            </div>
-          </div>
+          </SettingCard>
 
-          <div className="setting-card stagger-4">
-            <div className="setting-card-header">
-              <Calendar size={16} />
-              <h4>Cleanup Orchestration</h4>
-            </div>
-            <p className="section-description-dense">
-              Standardized Cron syntax for scheduling the automated cleanup engine.
-            </p>
-            <div className="setting-field">
-              <div className="setting-input-wrapper">
-                <input
-                  type="text"
-                  placeholder="e.g. 0 0 * * * (Midnight)"
-                  value={config.buildCleanupSchedule}
-                  onChange={(e) => setConfig({ ...config, buildCleanupSchedule: e.target.value })}
-                />
-              </div>
+          <SettingCard
+            icon={<Calendar size={16} />}
+            title="Cleanup Orchestration"
+            description="Standardized Cron syntax for scheduling the automated cleanup engine."
+          >
+            <div className="setting-input-wrapper">
+              <input
+                type="text"
+                placeholder="e.g. 0 0 * * * (Midnight)"
+                value={config.buildCleanupSchedule}
+                onChange={(e) => setConfig({ ...config, buildCleanupSchedule: e.target.value })}
+              />
             </div>
 
             <div className="cron-presets">
@@ -234,7 +208,7 @@ export const MaintenanceSettings: React.FC = () => {
                 ))}
               </div>
             </div>
-          </div>
+          </SettingCard>
         </div>
 
         <div

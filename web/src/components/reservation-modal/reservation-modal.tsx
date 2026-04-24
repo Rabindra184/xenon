@@ -4,6 +4,7 @@ import { Clock, User, MessageSquare, AlertCircle, CalendarPlus } from 'lucide-re
 import XenonApiService from '../../api-service';
 import { IDevice } from '../../interfaces/IDevice';
 import { Modal } from '../ui/Modal';
+import { FieldGroup } from '../ui/FieldGroup';
 
 interface ReservationModalProps {
   device: IDevice;
@@ -23,16 +24,18 @@ const ReservationModal: React.FC<ReservationModalProps> = ({ device, onClose, on
   const [duration, setDuration] = useState('1h');
   const [reason, setReason] = useState('');
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [nameError, setNameError] = useState<string | null>(null);
+  const [submitError, setSubmitError] = useState<string | null>(null);
 
   const handleReserve = async () => {
     if (!reservedBy.trim()) {
-      setError('Please enter your name/ID');
+      setNameError('Please enter your name/ID');
       return;
     }
 
     setLoading(true);
-    setError(null);
+    setNameError(null);
+    setSubmitError(null);
 
     try {
       const response = await XenonApiService.reserveDevice(
@@ -47,10 +50,10 @@ const ReservationModal: React.FC<ReservationModalProps> = ({ device, onClose, on
         onReserved();
         onClose();
       } else {
-        setError(response.error || 'Failed to reserve device');
+        setSubmitError(response.error || 'Failed to reserve device');
       }
     } catch (err: any) {
-      setError(err.message || 'An unexpected error occurred');
+      setSubmitError(err.message || 'An unexpected error occurred');
     } finally {
       setLoading(false);
     }
@@ -93,15 +96,28 @@ const ReservationModal: React.FC<ReservationModalProps> = ({ device, onClose, on
           prevent CI sessions from using this device.
         </p>
 
-        <div className="reservation-form-group">
-          <label>
-            <User
-              size={14}
-              style={{ marginRight: 6, verticalAlign: 'middle', color: 'var(--accent)' }}
-            />
-            Reserved By
-          </label>
+        <FieldGroup
+          label={
+            <>
+              <User
+                size={14}
+                style={{ marginRight: 6, verticalAlign: 'middle', color: 'var(--accent)' }}
+              />
+              Reserved By
+            </>
+          }
+          htmlFor="reservation-reserved-by"
+          error={
+            nameError ? (
+              <>
+                <AlertCircle size={14} style={{ marginRight: 6, verticalAlign: 'middle' }} />
+                {nameError}
+              </>
+            ) : undefined
+          }
+        >
           <input
+            id="reservation-reserved-by"
             type="text"
             className="reservation-input"
             placeholder="Enter your name or ID"
@@ -109,16 +125,19 @@ const ReservationModal: React.FC<ReservationModalProps> = ({ device, onClose, on
             onChange={(e: React.ChangeEvent<HTMLInputElement>) => setReservedBy(e.target.value)}
             disabled={loading}
           />
-        </div>
+        </FieldGroup>
 
-        <div className="reservation-form-group">
-          <label>
-            <Clock
-              size={14}
-              style={{ marginRight: 6, verticalAlign: 'middle', color: 'var(--accent)' }}
-            />
-            Duration
-          </label>
+        <FieldGroup
+          label={
+            <>
+              <Clock
+                size={14}
+                style={{ marginRight: 6, verticalAlign: 'middle', color: 'var(--accent)' }}
+              />
+              Duration
+            </>
+          }
+        >
           <div className="duration-selector">
             {DURATION_OPTIONS.map((opt) => (
               <div
@@ -130,17 +149,30 @@ const ReservationModal: React.FC<ReservationModalProps> = ({ device, onClose, on
               </div>
             ))}
           </div>
-        </div>
+        </FieldGroup>
 
-        <div className="reservation-form-group">
-          <label>
-            <MessageSquare
-              size={14}
-              style={{ marginRight: 6, verticalAlign: 'middle', color: 'var(--accent)' }}
-            />
-            Reason (Optional)
-          </label>
+        <FieldGroup
+          label={
+            <>
+              <MessageSquare
+                size={14}
+                style={{ marginRight: 6, verticalAlign: 'middle', color: 'var(--accent)' }}
+              />
+              Reason (Optional)
+            </>
+          }
+          htmlFor="reservation-reason"
+          error={
+            submitError ? (
+              <>
+                <AlertCircle size={14} style={{ marginRight: 6, verticalAlign: 'middle' }} />
+                {submitError}
+              </>
+            ) : undefined
+          }
+        >
           <input
+            id="reservation-reason"
             type="text"
             className="reservation-input"
             placeholder="e.g., Debugging flaky login test"
@@ -148,14 +180,7 @@ const ReservationModal: React.FC<ReservationModalProps> = ({ device, onClose, on
             onChange={(e: React.ChangeEvent<HTMLInputElement>) => setReason(e.target.value)}
             disabled={loading}
           />
-        </div>
-
-        {error && (
-          <div className="error-message">
-            <AlertCircle size={14} style={{ marginRight: 6, verticalAlign: 'middle' }} />
-            {error}
-          </div>
-        )}
+        </FieldGroup>
       </div>
     </Modal>
   );

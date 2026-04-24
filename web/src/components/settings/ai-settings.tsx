@@ -14,6 +14,7 @@ import {
   Cpu,
   Globe,
 } from 'lucide-react';
+import { SettingCard } from '../ui/SettingCard';
 
 interface ProviderInfo {
   id: string;
@@ -193,19 +194,16 @@ export const AISettings: React.FC = () => {
       <div className="settings-content">
         <div className="settings-grid">
           {/* Section 1: Provider Registry */}
-          <div className="setting-card stagger-1">
-            <div className="setting-card-header">
-              <ShieldCheck size={16} />
-              <h4>Provider Registry</h4>
+          <SettingCard
+            icon={<ShieldCheck size={16} />}
+            title="Provider Registry"
+            titleExtra={
               <span className="badge-elite" style={{ marginLeft: 'auto' }}>
                 {configuredCount} / {providers.length} CONFIGURED
               </span>
-            </div>
-            <p className="section-description-dense">
-              Providers are activated via environment variables. Select a configured engine to
-              activate.
-            </p>
-
+            }
+            description="Providers are activated via environment variables. Select a configured engine to activate."
+          >
             <div className="ai-provider-grid">
               {providers.map((provider) => {
                 const isActive = config.aiProvider === provider.id;
@@ -254,18 +252,14 @@ export const AISettings: React.FC = () => {
                 );
               })}
             </div>
-          </div>
+          </SettingCard>
 
           {/* Section 2: Runtime Configuration (Read-Only) */}
-          <div className="setting-card stagger-2">
-            <div className="setting-card-header">
-              <Globe size={16} />
-              <h4>Runtime Configuration</h4>
-            </div>
-            <p className="section-description-dense">
-              Environmental overrides for AI model endpoints and identifiers.
-            </p>
-
+          <SettingCard
+            icon={<Globe size={16} />}
+            title="Runtime Configuration"
+            description="Environmental overrides for AI model endpoints and identifiers."
+          >
             <div className="ai-config-display">
               <div className="ai-config-row">
                 <span className="ai-config-label">Active Provider</span>
@@ -300,7 +294,7 @@ export const AISettings: React.FC = () => {
                 </span>
               </div>
             </div>
-          </div>
+          </SettingCard>
         </div>
 
         {status && (

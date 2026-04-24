@@ -32,7 +32,6 @@
     font-weight: 800;
 }
 
-.tag-input-section label,
 .tags-display-section label {
     display: block;
     font-size: 11px;
@@ -44,12 +43,12 @@
     font-family: 'JetBrains Mono', monospace;
 }
 
-.tag-input-section .input-with-button {
+.input-with-button {
     display: flex;
     gap: 8px;
 }
 
-.tag-input-section input {
+.input-with-button input {
     flex: 1;
     background: rgba(0, 0, 0, 0.3);
     border: 1px solid var(--border-default);
@@ -61,16 +60,10 @@
     font-family: 'JetBrains Mono', monospace;
 }
 
-.tag-input-section input:focus {
+.input-with-button input:focus {
     outline: none;
     border-color: var(--accent);
     box-shadow: 0 0 15px rgba(0, 255, 136, 0.2);
-}
-
-.tag-input-section .input-hint {
-    margin: 6px 0 0 0;
-    font-size: 11px;
-    color: var(--text-subtle);
 }
 
 .add-inline-btn {
