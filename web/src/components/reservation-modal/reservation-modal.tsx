@@ -122,7 +122,10 @@ const ReservationModal: React.FC<ReservationModalProps> = ({ device, onClose, on
             className="reservation-input"
             placeholder="Enter your name or ID"
             value={reservedBy}
-            onChange={(e: React.ChangeEvent<HTMLInputElement>) => setReservedBy(e.target.value)}
+            onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
+              setReservedBy(e.target.value);
+              if (nameError) setNameError(null);
+            }}
             disabled={loading}
           />
         </FieldGroup>

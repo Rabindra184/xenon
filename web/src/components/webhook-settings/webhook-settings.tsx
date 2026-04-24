@@ -183,23 +183,37 @@ export const WebhookSettings: React.FC = () => {
           </FieldGroup>
 
           <FieldGroup label="Trigger Events">
-            <div className="events-grid">
-              {AVAILABLE_EVENTS.map((event) => (
-                <div
-                  key={event.id}
-                  className={`event-checkbox ${
-                    selectedEvents.includes(event.id) ? 'selected' : ''
-                  }`}
-                  onClick={() => toggleEvent(event.id)}
-                >
-                  {event.icon}
-                  <span>{event.label}</span>
-                  {selectedEvents.includes(event.id) && (
-                    <CheckCircle size={14} className="check-icon" />
-                  )}
-                </div>
-              ))}
-            </div>
+            <fieldset
+              role="group"
+              aria-label="Trigger Events"
+              style={{ border: 'none', margin: 0, padding: 0 }}
+            >
+              <div className="events-grid">
+                {AVAILABLE_EVENTS.map((event) => {
+                  const isSelected = selectedEvents.includes(event.id);
+                  return (
+                    <div
+                      key={event.id}
+                      role="checkbox"
+                      aria-checked={isSelected}
+                      tabIndex={0}
+                      className={`event-checkbox ${isSelected ? 'selected' : ''}`}
+                      onClick={() => toggleEvent(event.id)}
+                      onKeyDown={(e) => {
+                        if (e.key === ' ' || e.key === 'Enter') {
+                          e.preventDefault();
+                          toggleEvent(event.id);
+                        }
+                      }}
+                    >
+                      {event.icon}
+                      <span>{event.label}</span>
+                      {isSelected && <CheckCircle size={14} className="check-icon" />}
+                    </div>
+                  );
+                })}
+              </div>
+            </fieldset>
           </FieldGroup>
 
           <div className="template-section">
