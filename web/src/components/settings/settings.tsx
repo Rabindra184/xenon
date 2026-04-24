@@ -4,17 +4,15 @@ import './settings.css';
 import { ActionBar, SettingSection } from '../ui/Layouts';
 import {
   Shield as InfrastructureIcon,
-  Save,
   RefreshCw,
   Clock,
   Calendar,
   CheckCircle,
   AlertTriangle,
   MousePointer2,
-  RotateCcw,
-  Info,
   Brain,
 } from 'lucide-react';
+import { SettingCard } from '../ui/SettingCard';
 
 export const Settings: React.FC = () => {
   const [config, setConfig] = useState<{
@@ -140,44 +138,31 @@ export const Settings: React.FC = () => {
 
       <div className="settings-content">
         <div className="settings-grid">
-          <div className="setting-card stagger-1">
-            <div className="setting-card-header">
-              <Clock size={16} />
-              <h4>Idle Health Frequency</h4>
+          <SettingCard
+            icon={<Clock size={16} />}
+            title="Idle Health Frequency"
+            description="Frequency of passive health pings when the system is in idle state."
+            hint="Minimum safe value: 5000ms. Note: This frequency is overridden when a schedule is active."
+          >
+            <div className="input-group">
+              <input
+                type="number"
+                value={config.healthCheckIntervalMs}
+                onChange={(e) =>
+                  setConfig({ ...config, healthCheckIntervalMs: parseInt(e.target.value) })
+                }
+                min={5000}
+                step={5000}
+              />
+              <span className="code-font">MS</span>
             </div>
-            <p className="section-description-dense">
-              Frequency of passive health pings when the system is in idle state.
-            </p>
-            <div className="setting-field">
-              <div className="input-group">
-                <input
-                  type="number"
-                  value={config.healthCheckIntervalMs}
-                  onChange={(e) =>
-                    setConfig({ ...config, healthCheckIntervalMs: parseInt(e.target.value) })
-                  }
-                  min={5000}
-                  step={5000}
-                />
-                <span className="code-font">MS</span>
-              </div>
-            </div>
-            <div className="setting-hint-clean">
-              Minimum safe value: 5000ms. Note: This frequency is overridden when a schedule is
-              active.
-            </div>
-          </div>
+          </SettingCard>
 
-          <div className="setting-card stagger-2">
-            <div className="setting-card-header">
-              <Calendar size={16} />
-              <h4>Deep Diagnostic Schedule</h4>
-            </div>
-            <p className="section-description-dense">
-              Execute intensive reliability bursts (WDA restarts, Cache purges) using standardized
-              Cron syntax.
-            </p>
-
+          <SettingCard
+            icon={<Calendar size={16} />}
+            title="Deep Diagnostic Schedule"
+            description="Execute intensive reliability bursts (WDA restarts, Cache purges) using standardized Cron syntax."
+          >
             <div className="setting-field">
               <div className="setting-input-wrapper">
                 <input
@@ -215,17 +200,14 @@ export const Settings: React.FC = () => {
                 ))}
               </div>
             </div>
-          </div>
-          <div className="setting-card stagger-3">
-            <div className="setting-card-header">
-              <Brain size={16} />
-              <h4>AI Self-Healing</h4>
-            </div>
-            <p className="section-description-dense">
-              Automatically intercept and recover from failing locators using Xenon's 5-tier
-              strategy.
-            </p>
+          </SettingCard>
 
+          <SettingCard
+            icon={<Brain size={16} />}
+            title="AI Self-Healing"
+            description="Automatically intercept and recover from failing locators using Xenon's 5-tier strategy."
+            hint="When enabled, Xenon will attempt to find elements via Fuzzy XML, OCR, Visual AI, and LLM before failing a test."
+          >
             <div className="toggle-group">
               <label className="switch">
                 <input
@@ -239,12 +221,7 @@ export const Settings: React.FC = () => {
                 {config.enableSelfHealing ? 'ENABLED' : 'DISABLED'}
               </span>
             </div>
-
-            <div className="setting-hint-clean">
-              When enabled, Xenon will attempt to find elements via Fuzzy XML, OCR, Visual AI, and
-              LLM before failing a test.
-            </div>
-          </div>
+          </SettingCard>
         </div>
 
         {status && (
