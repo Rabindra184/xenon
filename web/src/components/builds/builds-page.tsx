@@ -8,6 +8,7 @@ import { SessionTable } from './session-table';
 import { buildStatusCounts, type StatusKey } from './derive';
 import type { ISession } from '../../interfaces/ISession';
 import { useToast } from '../ui/toast';
+import XenonApiService from '../../api-service';
 
 export const BuildsPage: React.FC = () => {
   const navigate = useNavigate();
@@ -55,10 +56,32 @@ export const BuildsPage: React.FC = () => {
   const counts = buildStatusCounts(data.sessions);
 
   const onRetryFailed = () => {
-    toast('Bulk retry lands in Plan 4B — backend endpoint not yet wired.', 'info');
+    toast('Bulk retry lands in a future release.', 'info');
   };
-  const onExport = (fmt: 'json' | 'csv') => {
-    toast(`${fmt.toUpperCase()} export lands in Plan 4B.`, 'info');
+
+  const onExport = async (fmt: 'json' | 'csv') => {
+    if (!data.selectedBuildId) return;
+    try {
+      const ids = selectedIds.size > 0 ? Array.from(selectedIds) : undefined;
+      const { blob, filename } = await XenonApiService.exportBuild(
+        data.selectedBuildId,
+        fmt,
+        ids,
+      );
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      const n = ids ? ids.length : 'all';
+      toast(`Exported ${n} session${n === 1 ? '' : 's'} as ${fmt.toUpperCase()}.`, 'success');
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      toast(`Export failed: ${msg}`, 'error');
+    }
   };
 
   return (
