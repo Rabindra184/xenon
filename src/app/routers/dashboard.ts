@@ -5,6 +5,7 @@ import { UniversalMjpegProxy } from '../../helpers/UniversalMjpegProxy';
 import { WebConfigService } from '../../data-service/web-config-service';
 import { Container } from 'typedi';
 import { scopeGuard } from '../../middleware/scopeGuard';
+import { buildExport } from './build-export';
 
 const MJPEG_PROXY_CACHE: Map<string, any> = new Map();
 
@@ -249,6 +250,7 @@ function register(router: Router) {
 
   router.get('/session', getSessions);
   router.get('/build', getBuilds);
+  router.post('/build/:buildId/export', buildExport);
   router.get('/session/:sessionId/live_video', streamLiveSessionVideo);
   router.get('/session/:sessionId/session_log', getSessionLogs);
   router.get('/session/:sessionId/logs/device', getDeviceLogs);
