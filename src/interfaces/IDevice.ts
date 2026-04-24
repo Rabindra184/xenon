@@ -52,4 +52,7 @@ export interface IDevice {
   totalHealedCount?: number;
   ip?: string;
   cpuArchitecture?: string;
+
+  // Phase 2: team ownership (null = shared pool). See docs/teams.md.
+  teamId?: string | null;
 }

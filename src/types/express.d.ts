@@ -7,6 +7,7 @@ declare global {
         id: string;
         scopes: string;
         rateLimit: number;
+        teamId?: string | null;
       };
     }
   }

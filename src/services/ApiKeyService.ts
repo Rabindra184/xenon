@@ -14,6 +14,8 @@ export interface ApiKeyRow {
   scopes: string;
   rateLimit: number;
   revokedAt: Date | null;
+  teamId?: string | null;
+  role?: string;
 }
 
 @Service()
@@ -69,7 +71,12 @@ export class ApiKeyService {
     return required.some((r) => owned.has(r));
   }
 
-  async create(params: { name: string; scopes: Scope[]; rateLimit?: number }): Promise<{ id: string; raw: string }> {
+  async create(params: {
+    name: string;
+    scopes: Scope[];
+    rateLimit?: number;
+    teamId?: string | null;
+  }): Promise<{ id: string; raw: string }> {
     const raw = this.generateRaw();
     const row = await prisma.apiKey.create({
       data: {
@@ -77,6 +84,7 @@ export class ApiKeyService {
         keyHash: this.hash(raw),
         scopes: params.scopes.join(','),
         rateLimit: params.rateLimit ?? 300,
+        teamId: params.teamId ?? null,
       },
     });
     return { id: row.id, raw };
@@ -84,5 +92,22 @@ export class ApiKeyService {
 
   async revoke(id: string): Promise<void> {
     await prisma.apiKey.update({ where: { id }, data: { revokedAt: new Date() } });
+  }
+
+  async list() {
+    return prisma.apiKey.findMany({
+      where: { revokedAt: null },
+      select: {
+        id: true,
+        name: true,
+        scopes: true,
+        rateLimit: true,
+        createdAt: true,
+        lastUsedAt: true,
+        teamId: true,
+        role: true,
+      },
+      orderBy: { createdAt: 'desc' },
+    });
   }
 }

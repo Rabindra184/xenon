@@ -63,7 +63,7 @@ export class ServerManager {
     context.setContext(pluginArgs, cliArgs.port, nodeId, cliArgs.basePath || '');
 
     await this.syncDatabaseAndAIConfig(pluginArgs);
-    await this.initializeCoreSubsystems(pluginArgs);
+    await this.initializeCoreSubsystems(pluginArgs, cliArgs.port);
 
     this.registerRoutes(expressApp, cliArgs, pluginArgs);
     await this.bootEmulators(pluginArgs);
@@ -184,7 +184,7 @@ export class ServerManager {
     }
   }
 
-  private async initializeCoreSubsystems(pluginArgs: IPluginArgs) {
+  private async initializeCoreSubsystems(pluginArgs: IPluginArgs, port: number) {
     await initializeStorage();
     const { runMigrations } = await import('../scripts/run-migrations');
     await runMigrations();
@@ -192,7 +192,14 @@ export class ServerManager {
 
     const { ApiKeyService } = await import('./ApiKeyService');
     const { config: xenonConfig } = await import('../config');
-    await Container.get(ApiKeyService).bootstrapIfEmpty(xenonConfig.bootstrapKeyPath);
+    const raw = await Container.get(ApiKeyService).bootstrapIfEmpty(xenonConfig.bootstrapKeyPath);
+    if (raw) {
+      log.bootstrapKeyBanner({
+        dashboardUrl: `http://${pluginArgs.bindHostOrIp}:${port}/xenon/`,
+        key: raw,
+        keyFilePath: xenonConfig.bootstrapKeyPath,
+      });
+    }
   }
 
   private registerRoutes(expressApp: any, cliArgs: ServerArgs, pluginArgs: IPluginArgs) {

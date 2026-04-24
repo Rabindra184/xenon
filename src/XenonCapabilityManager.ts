@@ -128,6 +128,32 @@ export async function iOSCapabilities(
   deleteMatch.forEach((value) => deleteAlwaysMatch(caps, value));
 }
 
+export function extractTeamCap(caps: ISessionCapability): string | undefined {
+  const merged = Object.assign({}, caps.firstMatch?.[0] || {}, caps.alwaysMatch || {});
+  const prefixes = ['xenon:', 'xe:', 'appium:', ''];
+  const names = ['teamId', 'team_id', 'team'];
+  for (const prefix of prefixes) {
+    for (const name of names) {
+      const v = merged[prefix ? `${prefix}${name}` : name];
+      if (typeof v === 'string' && v.length > 0) return v;
+    }
+  }
+  return undefined;
+}
+
+export function extractAccessKeyCap(caps: ISessionCapability): string | undefined {
+  const merged = Object.assign({}, caps.firstMatch?.[0] || {}, caps.alwaysMatch || {});
+  const prefixes = ['xenon:', 'xe:', 'appium:', ''];
+  const names = ['accessKey', 'access_key'];
+  for (const prefix of prefixes) {
+    for (const name of names) {
+      const v = merged[prefix ? `${prefix}${name}` : name];
+      if (typeof v === 'string' && v.length > 0) return v;
+    }
+  }
+  return undefined;
+}
+
 export function getXenonCapabilities(caps: ISessionCapability) {
   const mergedCapabilites = Object.assign({}, caps.firstMatch[0], caps.alwaysMatch);
 

@@ -113,9 +113,16 @@ export async function allocateDeviceForSession(
   deviceTimeOutMs: number,
   deviceQueryIntervalMs: number,
   pluginArgs: IPluginArgs,
+  callerTeamId?: string | null,
 ): Promise<IDevice> {
   const firstMatch = Object.assign({}, capability.firstMatch[0], capability.alwaysMatch);
   const filters = getDeviceFiltersFromCapability(firstMatch, pluginArgs);
+  // callerTeamId === undefined → unscoped (admin / auth-disabled / back-compat).
+  // callerTeamId === null      → caller has no team, only shared pool visible.
+  // callerTeamId === '<uuid>'  → team + shared pool visible.
+  if (callerTeamId !== undefined) {
+    filters.callerTeamId = callerTeamId;
+  }
 
   const timeout = firstMatch[customCapability.deviceTimeOut] || deviceTimeOutMs;
   const intervalBetweenAttempts =

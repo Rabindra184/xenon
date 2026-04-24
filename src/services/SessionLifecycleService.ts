@@ -31,7 +31,12 @@ import {
 import { IDevice } from '../interfaces/IDevice';
 import { TracingService } from './TracingService';
 import { PortAllocator } from './PortAllocator';
-import { getXenonCapabilities, XENON_CAPABILITIES } from '../XenonCapabilityManager';
+import {
+  extractAccessKeyCap,
+  extractTeamCap,
+  getXenonCapabilities,
+  XENON_CAPABILITIES,
+} from '../XenonCapabilityManager';
 import { CircuitBreaker } from '../data-service/CircuitBreaker';
 import { addProxyHandler } from '../proxy/wd-command-proxy';
 import { DeviceStoreFactory } from '../data-service/device-store';
@@ -45,6 +50,7 @@ import { updateSessionDetails } from '../dashboard/services/session-service';
 import { SessionStatus } from '../types/SessionStatus';
 import SessionType from '../enums/SessionType';
 import AsyncLock from 'async-lock';
+import { errors as appiumErrors } from '@appium/base-driver';
 
 const commandsQueueGuard = new AsyncLock();
 // Serializes concurrent deleteSession cleanup for the same sessionId so
@@ -64,6 +70,8 @@ export class SessionLifecycleService {
       this.logger.warn('Rejecting new session: hub is draining for shutdown');
       throw new Error('Hub is shutting down; please retry against a different node');
     }
+
+    const authResult = await this.authorizeSessionRequest(caps);
 
     const context = Container.get(PluginContext);
     const pluginArgs = context.pluginArgs;
@@ -126,6 +134,7 @@ export class SessionLifecycleService {
           pluginArgs.deviceAvailabilityTimeoutMs,
           pluginArgs.deviceAvailabilityQueryIntervalMs,
           pluginArgs,
+          authResult.scoped ? authResult.callerTeamId : undefined,
         );
       } catch (err) {
         await removePendingSession(pendingSessionId);
@@ -159,12 +168,78 @@ export class SessionLifecycleService {
     await removePendingSession(pendingSessionId);
 
     if (this.isCreateSessionResponseInternal(session)) {
-      await this.finalizeSession(session, device, caps, driver, isRemoteOrCloudSession);
+      await this.finalizeSession(
+        session,
+        device,
+        caps,
+        driver,
+        isRemoteOrCloudSession,
+        authResult.apiKeyId,
+      );
     } else {
       await this.handleSessionFailure(session, device, isRemoteOrCloudSession);
     }
 
     return session;
+  }
+
+  // Verify a WebDriver session request against an API key supplied via the
+  // `xenon:accessKey` capability. Today this is best-effort: if no cap is
+  // supplied we log a warning and let the request through to avoid breaking
+  // pre-existing test clients. A supplied key that is invalid / revoked / has
+  // insufficient scope is rejected. Respects the global `authDisabled` flag.
+  //
+  // Returns the caller's { apiKeyId, callerTeamId } so allocation can filter
+  // devices by team. `apiKeyId` is null when auth is disabled or no key was
+  // presented (back-compat path); `callerTeamId` is null when the caller has
+  // no team (sees the shared pool only).
+  private async authorizeSessionRequest(
+    caps: ISessionCapability,
+  ): Promise<{ apiKeyId: string | null; callerTeamId: string | null; scoped: boolean }> {
+    const { config: xenonConfig } = await import('../config');
+    // `scoped` tells the allocator whether to restrict device candidates by
+    // team. False = see everything (admin, authDisabled, back-compat path);
+    // true = filter to { null, callerTeamId } where callerTeamId may itself
+    // be null (meaning "shared pool only").
+    if (xenonConfig.authDisabled === true) {
+      return { apiKeyId: null, callerTeamId: null, scoped: false };
+    }
+
+    const raw = extractAccessKeyCap(caps);
+    if (!raw) {
+      this.logger.warn(
+        'Session created without xenon:accessKey capability. Add `xenon:accessKey` to your Appium capabilities to authenticate this session.',
+      );
+      return { apiKeyId: null, callerTeamId: null, scoped: false };
+    }
+
+    const { ApiKeyService } = await import('./ApiKeyService');
+    const svc = Container.get(ApiKeyService);
+    const row = await svc.verify(raw);
+    if (!row || !svc.hasScope(row, ['sessions'])) {
+      this.logger.error('Rejecting session: xenon:accessKey is invalid, revoked, or lacks the `sessions` scope');
+      throw new appiumErrors.InvalidArgumentError(
+        'xenon:accessKey is invalid, revoked, or lacks the `sessions` scope',
+      );
+    }
+
+    const isAdmin = svc.hasScope(row, ['admin']);
+    const callerTeamId = row.teamId ?? null;
+
+    const requestedTeam = extractTeamCap(caps);
+    if (requestedTeam) {
+      if (!isAdmin && requestedTeam !== callerTeamId) {
+        this.logger.error(
+          `Rejecting session: xenon:team=${requestedTeam} but caller key is bound to team ${callerTeamId ?? '(none)'}`,
+        );
+        throw new appiumErrors.InvalidArgumentError(
+          `xenon:team '${requestedTeam}' is not allowed for this API key`,
+        );
+      }
+      return { apiKeyId: row.id, callerTeamId: requestedTeam, scoped: !isAdmin };
+    }
+
+    return { apiKeyId: row.id, callerTeamId, scoped: !isAdmin };
   }
 
   private async handleLocalWDAProvisioning(device: IDevice, caps: ISessionCapability) {
@@ -255,6 +330,7 @@ export class SessionLifecycleService {
     caps: ISessionCapability,
     driver: any,
     isRemote: boolean,
+    apiKeyId: string | null = null,
   ) {
     const sessionId = session.value[0];
     const sessionResponse = session.value[1];
@@ -296,6 +372,7 @@ export class SessionLifecycleService {
       xenonCapabilities,
       driver,
     );
+    sessionInstance.apiKeyId = apiKeyId;
 
     await this.applyPostSessionLogic(sessionInstance, xenonCapabilities, freshDevice);
   }

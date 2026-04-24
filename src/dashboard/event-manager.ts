@@ -115,6 +115,7 @@ export class DashboardEventManager {
       device_name: device.name,
       trace_id: traceId,
       status: 'running', // Principal Polish: Set status explicitly
+      api_key_id: session.apiKeyId ?? null,
     };
 
     await prisma.session.create({

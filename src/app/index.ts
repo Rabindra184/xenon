@@ -20,6 +20,7 @@ import webhookRouter from './routers/webhook';
 import reservationRouter from './routers/reservation';
 import ConfigRouter from './routers/config';
 import { apiKeysRouter } from './routers/apikeys';
+import { teamsRouter } from './routers/teams';
 import { authRouter } from './routers/auth';
 import { processesRouter } from './routers/processes';
 import { apiKeyMiddleware } from '../middleware/apiKeyMiddleware';
@@ -217,6 +218,8 @@ function createRouter(pluginArgs: IPluginArgs) {
 
   // Admin: API key management
   apiRouter.use('/apikeys', apiKeysRouter());
+  // Admin: team membership and device→team ownership
+  apiRouter.use('/teams', teamsRouter());
   // Admin: running process snapshot (ops debugging)
   apiRouter.use('/processes', processesRouter());
 

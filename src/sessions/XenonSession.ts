@@ -39,6 +39,9 @@ export abstract class XenonSession {
   public isStopping = false;
   public stoppedAt?: number;
   public healthState: SessionHealthState = SessionHealthState.HEALTHY;
+  // Phase 2 audit: which API key created this session (null when auth is
+  // disabled or the client didn't present xenon:accessKey).
+  public apiKeyId: string | null = null;
 
   constructor(private options: XenonSessionOptions) {
     this.sessionId = options.sessionId;

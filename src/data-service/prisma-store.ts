@@ -117,6 +117,14 @@ export class PrismaDeviceStore implements IDeviceStore {
       where.host = { contains: filterOptions.filterByHost };
     }
 
+    // Team scoping: caller with a team sees devices in its team + shared pool;
+    // caller without a team sees shared pool only. Admin callers pass undefined.
+    if (Object.prototype.hasOwnProperty.call(filterOptions, 'callerTeamId')) {
+      where.teamId = filterOptions.callerTeamId
+        ? { in: [null, filterOptions.callerTeamId] }
+        : null;
+    }
+
     // 1. Fetch narrowed result set from Database
     const devices = await this.prisma.device.findMany({ where });
     let results = devices.map((d: Device) => this.toIDevice(d));

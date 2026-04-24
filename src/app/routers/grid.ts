@@ -19,6 +19,7 @@ import { XenonManager } from '../../device-managers';
 import { Container } from 'typedi';
 import { IPluginArgs } from '../../interfaces/IPluginArgs';
 import { IDevice } from '../../interfaces/IDevice';
+import { prisma } from '../../prisma';
 
 const store = DeviceStoreFactory.getStore();
 const pendingStore = DeviceStoreFactory.getPendingSessionStore();
@@ -27,6 +28,16 @@ const SERVER_UP_TIME = new Date().toISOString();
 
 async function getDevices(request: Request, response: Response) {
   let devices = await store.getAllDevices();
+  // Non-admin callers only see devices in their team + shared (null) pool.
+  // Admin keys (including the bootstrap key) see everything.
+  const caller = request.apiKey;
+  if (caller) {
+    const scopes = new Set(caller.scopes.split(',').map((s) => s.trim()));
+    if (!scopes.has('admin')) {
+      const myTeam = caller.teamId ?? null;
+      devices = devices.filter((d) => !d.teamId || d.teamId === myTeam);
+    }
+  }
   const { sessionId } = request.query;
   if (sessionId) {
     return response.json(devices.find((value) => value.session_id === sessionId));
@@ -72,6 +83,15 @@ async function getDeviceByPlatform(request: Request, response: Response) {
 
   if (!_.isNil(booted)) {
     devices = devices.filter((d) => d.state === 'Booted');
+  }
+
+  const caller = request.apiKey;
+  if (caller) {
+    const scopes = new Set(caller.scopes.split(',').map((s) => s.trim()));
+    if (!scopes.has('admin')) {
+      const myTeam = caller.teamId ?? null;
+      devices = devices.filter((d) => !d.teamId || d.teamId === myTeam);
+    }
   }
 
   return response.status(200).send(devices);
@@ -254,6 +274,26 @@ async function updateTags(request: Request, response: Response) {
   response.status(200).json({ success: true });
 }
 
+async function assignDeviceToTeam(request: Request, response: Response) {
+  const { udid } = request.params;
+  const { teamId } = request.body as { teamId: string | null };
+  if (teamId) {
+    const team = await prisma.team.findUnique({ where: { id: teamId }, select: { id: true } });
+    if (!team) return response.status(404).json({ error: 'team not found' });
+  }
+  const result = await prisma.device.updateMany({
+    where: { udid },
+    data: { teamId: teamId || null },
+  });
+  if (result.count === 0) return response.status(404).json({ error: 'device not found' });
+  // Refresh in-memory store so subsequent allocation sees the change immediately.
+  const rows = await prisma.device.findMany({ where: { udid } });
+  for (const row of rows) {
+    await store.updateDevice(row.udid, row.host, { teamId: row.teamId } as Partial<IDevice>);
+  }
+  response.json({ ok: true, updated: result.count });
+}
+
 /**
  * Returns active session statistics
  */
@@ -317,6 +357,7 @@ function register(router: Router, pluginArgs: IPluginArgs) {
   router.post('/block', scopeGuard(['devices']), blockDevice);
   router.post('/unblock', scopeGuard(['devices']), unBlockDevice);
   router.post('/device/tags', scopeGuard(['devices']), updateTags);
+  router.put('/device/:udid/team', scopeGuard(['admin']), assignDeviceToTeam);
 
   // session related
   router.get('/queue/length', getQueuedSessionLength);

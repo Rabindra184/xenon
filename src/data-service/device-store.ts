@@ -79,6 +79,16 @@ class LokiDeviceStore implements IDeviceStore {
         if (!(device.host || '').toLowerCase().includes(hostFilter)) return false;
       }
 
+      // Team scoping (see prisma-store.ts for the DB equivalent).
+      if (Object.prototype.hasOwnProperty.call(filterOptions, 'callerTeamId')) {
+        const caller = filterOptions.callerTeamId;
+        if (caller) {
+          if (device.teamId && device.teamId !== caller) return false;
+        } else {
+          if (device.teamId) return false;
+        }
+      }
+
       // Session ID Filter
       if (filterOptions.session_id) {
         if (device.session_id !== filterOptions.session_id) return false;
