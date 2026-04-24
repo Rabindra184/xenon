@@ -24,16 +24,18 @@ const ReservationModal: React.FC<ReservationModalProps> = ({ device, onClose, on
   const [duration, setDuration] = useState('1h');
   const [reason, setReason] = useState('');
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [nameError, setNameError] = useState<string | null>(null);
+  const [submitError, setSubmitError] = useState<string | null>(null);
 
   const handleReserve = async () => {
     if (!reservedBy.trim()) {
-      setError('Please enter your name/ID');
+      setNameError('Please enter your name/ID');
       return;
     }
 
     setLoading(true);
-    setError(null);
+    setNameError(null);
+    setSubmitError(null);
 
     try {
       const response = await XenonApiService.reserveDevice(
@@ -48,10 +50,10 @@ const ReservationModal: React.FC<ReservationModalProps> = ({ device, onClose, on
         onReserved();
         onClose();
       } else {
-        setError(response.error || 'Failed to reserve device');
+        setSubmitError(response.error || 'Failed to reserve device');
       }
     } catch (err: any) {
-      setError(err.message || 'An unexpected error occurred');
+      setSubmitError(err.message || 'An unexpected error occurred');
     } finally {
       setLoading(false);
     }
@@ -105,6 +107,14 @@ const ReservationModal: React.FC<ReservationModalProps> = ({ device, onClose, on
             </>
           }
           htmlFor="reservation-reserved-by"
+          error={
+            nameError ? (
+              <>
+                <AlertCircle size={14} style={{ marginRight: 6, verticalAlign: 'middle' }} />
+                {nameError}
+              </>
+            ) : undefined
+          }
         >
           <input
             id="reservation-reserved-by"
@@ -153,10 +163,10 @@ const ReservationModal: React.FC<ReservationModalProps> = ({ device, onClose, on
           }
           htmlFor="reservation-reason"
           error={
-            error ? (
+            submitError ? (
               <>
                 <AlertCircle size={14} style={{ marginRight: 6, verticalAlign: 'middle' }} />
-                {error}
+                {submitError}
               </>
             ) : undefined
           }
