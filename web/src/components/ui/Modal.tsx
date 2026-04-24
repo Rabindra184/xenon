@@ -1,4 +1,5 @@
 import * as React from 'react';
+import * as DialogPrimitive from '@radix-ui/react-dialog';
 import './modal.css';
 
 export interface ModalProps {
@@ -10,10 +11,6 @@ export interface ModalProps {
   width?: number;
 }
 
-/**
- * Barebones modal primitive. Click-outside and Esc both trigger onClose.
- * Owner is responsible for preventing body scroll if that matters.
- */
 export const Modal: React.FC<ModalProps> = ({
   open,
   title,
@@ -22,28 +19,41 @@ export const Modal: React.FC<ModalProps> = ({
   children,
   width = 480,
 }) => {
-  React.useEffect(() => {
-    if (!open) return;
-    const esc = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
-    document.addEventListener('keydown', esc);
-    return () => document.removeEventListener('keydown', esc);
-  }, [open, onClose]);
+  // Track the element that had focus before the dialog opened so we can
+  // restore it on close. Radix's built-in restoration is unreliable in
+  // React 17 / JSDOM due to the setTimeout(0) race with document focusin
+  // listeners still active at the point the scheduled callback fires.
+  const returnFocusRef = React.useRef<Element | null>(null);
 
-  if (!open) return null;
+  React.useEffect(() => {
+    if (open) {
+      returnFocusRef.current = document.activeElement;
+    }
+  }, [open]);
+
   return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div
-        className="modal"
-        role="dialog"
-        aria-modal
-        aria-label={typeof title === 'string' ? title : undefined}
-        style={{ width }}
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="modal-header">{title}</div>
-        <div className="modal-body">{children}</div>
-        {footer && <div className="modal-footer">{footer}</div>}
-      </div>
-    </div>
+    <DialogPrimitive.Root open={open} onOpenChange={(o) => !o && onClose()}>
+      <DialogPrimitive.Portal>
+        {/* onClick fires synchronously; Radix's pointer-outside path is async */}
+        <DialogPrimitive.Overlay className="modal-overlay" onClick={onClose} />
+        <DialogPrimitive.Content
+          className="modal"
+          style={{ width }}
+          onCloseAutoFocus={(e) => {
+            e.preventDefault();
+            const el = returnFocusRef.current;
+            if (el && 'focus' in el) {
+              (el as HTMLElement).focus();
+            }
+          }}
+        >
+          <DialogPrimitive.Title asChild>
+            <div className="modal-header">{title}</div>
+          </DialogPrimitive.Title>
+          <div className="modal-body">{children}</div>
+          {footer && <div className="modal-footer">{footer}</div>}
+        </DialogPrimitive.Content>
+      </DialogPrimitive.Portal>
+    </DialogPrimitive.Root>
   );
 };
