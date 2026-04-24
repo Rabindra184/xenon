@@ -2,6 +2,12 @@ import React from 'react';
 import { RefreshCcw, Download } from 'lucide-react';
 import type { IBuild } from '../../interfaces/IBuild';
 
+function shortBuildId(id: string): string {
+  // Use the leading 8 chars (uppercased) matching the reference "BUILD #A70AC97A" look.
+  const first = id.split('-')[0] || id;
+  return first.slice(0, 8).toUpperCase();
+}
+
 interface Props {
   build: IBuild;
   failedCount: number;
@@ -38,7 +44,9 @@ export const BuildsHeader: React.FC<Props> = ({
       <div>
         <div className="flex items-center gap-2 text-[10px] uppercase tracking-widest text-[var(--text-dim)]">
           <span>Build</span>
-          <span className="font-mono text-[var(--green)]">#{build.id}</span>
+          <span className="font-mono text-[var(--green)]" title={build.id}>
+            #{shortBuildId(build.id)}
+          </span>
         </div>
         <h1 className="mt-0.5 text-sm font-semibold text-[var(--text)]">
           {build.name || 'Unnamed build'}
