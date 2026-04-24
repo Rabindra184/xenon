@@ -33,43 +33,9 @@ export const MenuItem: React.FC<MenuItemProps> = ({
 
 export const MenuDivider: React.FC = () => <div className="menu-divider" role="separator" />;
 
-function handleMenuKeyDown(event: React.KeyboardEvent<HTMLDivElement>) {
-  const container = event.currentTarget;
-  const items = Array.from(
-    container.querySelectorAll<HTMLElement>('[role="menuitem"]:not([disabled])'),
-  );
-  if (items.length === 0) return;
-
-  const current = document.activeElement as HTMLElement;
-  const currentIndex = items.indexOf(current);
-
-  let next: HTMLElement | undefined;
-
-  if (event.key === 'ArrowDown') {
-    event.preventDefault();
-    next = currentIndex === -1 ? items[0] : items[(currentIndex + 1) % items.length];
-  } else if (event.key === 'ArrowUp') {
-    event.preventDefault();
-    next =
-      currentIndex === -1
-        ? items[items.length - 1]
-        : items[(currentIndex - 1 + items.length) % items.length];
-  } else if (event.key === 'Home') {
-    event.preventDefault();
-    next = items[0];
-  } else if (event.key === 'End') {
-    event.preventDefault();
-    next = items[items.length - 1];
-  }
-
-  if (next) {
-    next.focus();
-  }
-}
-
 export const Menu: React.FC<{ children: React.ReactNode }> = ({ children }) => (
   <RovingFocusGroup.Root asChild orientation="vertical" loop>
-    <div className="menu" role="menu" onKeyDown={handleMenuKeyDown}>
+    <div className="menu" role="menu">
       {children}
     </div>
   </RovingFocusGroup.Root>
