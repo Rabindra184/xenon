@@ -460,6 +460,23 @@ curl -X DELETE \
 | `devices` | Block/unblock devices, install apps |
 | `admin` | API key management, webhooks, node registration |
 
+### Teams (device access control)
+
+Scopes govern *which verbs* a key can call; **teams** govern *which devices* it can reach. A key bound to a team sees its team's devices plus the shared pool (`teamId = null`). `admin`-scoped keys bypass team filtering.
+
+Test clients pass the key via the `xenon:accessKey` capability:
+
+```js
+const caps = {
+  platformName: 'iOS',
+  'appium:automationName': 'XCUITest',
+  'xenon:accessKey': process.env.XENON_CI_KEY,   // key bound to a team
+  // optional: 'xenon:team': '<team-id>' to pin allocation to a specific team (admins only for cross-team)
+};
+```
+
+See [docs/teams.md](docs/teams.md) for creating teams, assigning devices, and the full error taxonomy.
+
 ### Hub-node channel
 
 Set `--plugin-xenon-node-secret` (or `XENON_NODE_SECRET`) to the **same value** on both hub and node. When unset, the channel permits with a WARN (back-compat for single-node installs).
