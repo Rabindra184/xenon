@@ -92,8 +92,6 @@
   font-size: 0.75rem;
   color: var(--text-subtle);
   margin-top: 4px;
-  font-style: italic;
-  padding-left: 2px;
   position: relative;
   z-index: 1;
 }

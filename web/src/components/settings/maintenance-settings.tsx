@@ -3,7 +3,6 @@ import XenonApiService from '../../api-service';
 import './settings.css';
 import {
   Shield as MaintenanceIcon,
-  Save,
   RefreshCw,
   Clock,
   Calendar,
