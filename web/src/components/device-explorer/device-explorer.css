@@ -51,6 +51,13 @@
   display: flex;
   align-items: center;
   gap: 8px;
+  flex-wrap: wrap;
+}
+
+/* Explicit horizontal margin keeps the platform pills from visually fusing
+   with adjacent toolbar items when flex gap is collapsed by box-shadow halos. */
+.device-explorer-header-value > .device-explorer-header__platform-btn + .device-explorer-header__platform-btn {
+  margin-left: 4px;
 }
 
 .device-explorer-header__platform-btn,
@@ -191,20 +198,31 @@
 
 @media (max-width: 640px) {
   .device-explorer-header-left-container {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: var(--space-2);
-  }
-
-  .device-explorer-header-right-container {
+    display: flex;
     flex-direction: column;
     align-items: stretch;
-    gap: var(--space-2);
+    gap: var(--space-3);
+  }
+
+  .device-explorer-header-entry,
+  .device-explorer-header-value,
+  .device-explorer-header-filter-count {
+    width: 100%;
+    min-width: 0;
   }
 
   .device-explorer-header-filter-count {
-    justify-content: space-between;
     padding-right: 0;
+    border-right: none;
+    justify-content: flex-start;
+  }
+
+  .device-explorer-header-right-container {
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-2);
+    width: 100%;
   }
 }
 

@@ -1,50 +1,57 @@
+/* @import url() FONT IMPORTS MUST ALWAYS BE AT THE VERY TOP OF THIS FILE, ABOVE THE TAILWIND DIRECTIVES — DO NOT DELETE THIS COMMENT */
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
 @import './tokens.css';
 
+/* CRITICAL: THE FOLLOWING TAILWIND DIRECTIVES MUST NEVER BE DELETED OR REORDERED — DO NOT DELETE THIS COMMENT */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* END TAILWIND DIRECTIVES — ALL OTHER CSS MUST GO BELOW THIS LINE */
+
 * {
   box-sizing: border-box;
-  margin: 0;
-  padding: 0;
 }
 
 html,
-body {
+body,
+#root {
   height: 100%;
   margin: 0;
   padding: 0;
-  background-color: var(--bg-canvas);
-  overflow: hidden;
-}
-
-body {
-  font-family: 'Inter', sans-serif;
-  color: var(--text-secondary);
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  font-feature-settings: 'cv11', 'ss01';
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   line-height: 1.5;
 }
 
-h1,
-h2,
-h3,
-h4,
-h5,
-h6,
-.brand-font {
+body {
+  overflow: hidden;
+}
+
+h1, h2, h3, h4, h5, h6, .brand-font {
   font-family: 'Inter', sans-serif;
   font-weight: 700;
   letter-spacing: -0.02em;
-  color: var(--text-primary);
+  color: var(--text);
+}
+
+.font-mono,
+code,
+.code-font {
+  font-family: 'JetBrains Mono', ui-monospace, 'Menlo', 'Monaco', 'Consolas', monospace;
 }
 
 code,
 .code-font {
-  font-family: 'JetBrains Mono', 'Menlo', 'Monaco', 'Consolas', monospace;
   font-size: 0.9em;
-  background: var(--bg-elevated);
+  background: var(--surface-2);
   padding: 2px 6px;
   border-radius: var(--radius-sm);
-  color: var(--accent);
+  color: var(--green);
 }
 
 button {
@@ -54,7 +61,7 @@ button {
 }
 
 a {
-  color: var(--status-reserved-fg);
+  color: var(--blue);
   text-decoration: none;
   transition: color var(--motion-fast);
 }
@@ -65,8 +72,8 @@ a:hover {
 
 /* Scrollbar */
 ::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+  width: 10px;
+  height: 10px;
 }
 
 ::-webkit-scrollbar-track {
@@ -74,21 +81,21 @@ a:hover {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: var(--border-strong);
-  border-radius: var(--radius-sm);
+  background: var(--border);
+  border-radius: var(--radius-md);
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: var(--text-subtle);
+  background: var(--border-strong);
 }
 
-/* Checkbox */
+/* Native checkbox reset — preserved from previous index.css */
 input[type="checkbox"] {
   appearance: none;
   -webkit-appearance: none;
   width: 16px;
   height: 16px;
-  background: var(--bg-subtle);
+  background: var(--bg);
   border: 1px solid var(--border-strong);
   border-radius: var(--radius-sm);
   cursor: pointer;
@@ -100,24 +107,41 @@ input[type="checkbox"] {
 }
 
 input[type="checkbox"]:hover {
-  border-color: var(--accent);
+  border-color: var(--green);
 }
 
 input[type="checkbox"]:checked {
-  background: var(--accent);
-  border-color: var(--accent);
+  background: var(--green);
+  border-color: var(--green);
 }
 
 input[type="checkbox"]:checked::after {
   content: "✓";
-  color: var(--bg-canvas);
+  color: var(--bg);
   font-size: 11px;
   font-weight: 700;
 }
 
 input[type="checkbox"]:focus {
   outline: none;
-  box-shadow: 0 0 0 2px var(--accent-subtle);
+  box-shadow: 0 0 0 2px rgba(34, 197, 94, 0.25);
+}
+
+/* Subtle grid utility */
+.bg-grid {
+  background-image:
+    linear-gradient(to right, rgba(255, 255, 255, 0.02) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(255, 255, 255, 0.02) 1px, transparent 1px);
+  background-size: 32px 32px;
+}
+
+/* Pulse dot — used by status indicators */
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.5; transform: scale(0.85); }
+}
+.pulse-dot {
+  animation: pulse-dot 2s ease-in-out infinite;
 }
 
 .fade-in {
@@ -125,13 +149,6 @@ input[type="checkbox"]:focus {
 }
 
 @keyframes fadeIn {
-  from {
-    opacity: 0;
-    transform: translateY(4px);
-  }
-
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
 }

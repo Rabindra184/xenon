@@ -194,12 +194,17 @@
   backdrop-filter: blur(12px);
   border-bottom: 1px solid var(--border-default);
   z-index: 100;
+  gap: 16px;
+  flex-wrap: wrap;
 }
 
 .device-explorer-header-left-container {
   display: flex;
   align-items: center;
-  gap: 16px;
+  gap: 24px;
+  flex: 1;
+  min-width: 0;
+  flex-wrap: wrap;
 }
 
 .device-explorer-header-right-container {
@@ -210,6 +215,30 @@
 
 .device-explorer-header-filter-count {
   margin-left: 8px;
+}
+
+@media (max-width: 900px) {
+  .device-explorer-header-container {
+    flex-direction: column;
+    align-items: stretch;
+    padding: 12px 16px;
+  }
+
+  .device-explorer-header-left-container {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 12px;
+  }
+
+  .device-explorer-header-left-container > * {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .device-explorer-header-right-container {
+    justify-content: flex-end;
+    flex-wrap: wrap;
+  }
 }
 
 .icon-btn-secondary {

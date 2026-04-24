@@ -233,7 +233,8 @@
 .status-toggles {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 4px;
+  flex-wrap: wrap;
   background: rgba(0, 0, 0, 0.2) !important;
   padding: 4px !important;
   border-radius: 8px !important;
@@ -241,18 +242,34 @@
 }
 
 .status-toggle {
-  width: 28px;
-  height: 28px;
-  display: flex;
+  height: 26px;
+  padding: 0 8px;
+  display: inline-flex;
   align-items: center;
   justify-content: center;
+  gap: 5px;
   background: transparent !important;
   border: 1px solid transparent !important;
   border-radius: 6px !important;
   cursor: pointer;
   transition: all 0.2s ease;
   position: relative;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-subtle);
 }
+
+.status-toggle span {
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.status-toggle.active.status-toggle--success { color: #10b981; }
+.status-toggle.active.status-toggle--failed { color: #ef4444; }
+.status-toggle.active.status-toggle--running { color: #f59e0b; }
 
 .status-toggle:hover {
   background: rgba(255, 255, 255, 0.05) !important;
@@ -280,13 +297,14 @@
 
 .filter-count-label {
   margin-left: auto;
-  font-size: 10px;
+  font-size: 9px;
   color: var(--text-subtle);
   font-weight: 700;
   text-transform: uppercase;
-  letter-spacing: 0.1em;
+  letter-spacing: 0.08em;
   font-family: 'JetBrains Mono', monospace;
   padding-right: 4px;
+  white-space: nowrap;
 }
 
 /* Build Cards - Tech Cards */

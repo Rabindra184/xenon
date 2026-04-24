@@ -962,28 +962,34 @@ const SessionDashboard: React.FC = () => {
 
               <div className="status-toggles">
                 <button
-                  className={`status-toggle ${buildStatusFilter.success ? 'active' : ''}`}
+                  className={`status-toggle status-toggle--success ${buildStatusFilter.success ? 'active' : ''}`}
                   onClick={() => setBuildStatusFilter((p) => ({ ...p, success: !p.success }))}
                   title="Show Passed"
+                  aria-pressed={buildStatusFilter.success}
                 >
                   <CheckCircle2
                     size={14}
                     color={buildStatusFilter.success ? '#10b981' : '#64748b'}
                   />
+                  <span>Passed</span>
                 </button>
                 <button
-                  className={`status-toggle ${buildStatusFilter.failed ? 'active' : ''}`}
+                  className={`status-toggle status-toggle--failed ${buildStatusFilter.failed ? 'active' : ''}`}
                   onClick={() => setBuildStatusFilter((p) => ({ ...p, failed: !p.failed }))}
                   title="Show Failed"
+                  aria-pressed={buildStatusFilter.failed}
                 >
                   <XCircle size={14} color={buildStatusFilter.failed ? '#ef4444' : '#64748b'} />
+                  <span>Failed</span>
                 </button>
                 <button
-                  className={`status-toggle ${buildStatusFilter.running ? 'active' : ''}`}
+                  className={`status-toggle status-toggle--running ${buildStatusFilter.running ? 'active' : ''}`}
                   onClick={() => setBuildStatusFilter((p) => ({ ...p, running: !p.running }))}
                   title="Show Running"
+                  aria-pressed={buildStatusFilter.running}
                 >
                   <Activity size={14} color={buildStatusFilter.running ? '#f59e0b' : '#64748b'} />
+                  <span>Running</span>
                 </button>
                 <div className="filter-count-label">{filteredBuilds.length} shown</div>
               </div>

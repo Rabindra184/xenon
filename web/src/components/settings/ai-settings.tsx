@@ -114,7 +114,7 @@ export const AISettings: React.FC = () => {
     {
       id: 'anthropic',
       name: 'Anthropic',
-      description: 'Claude 3.5 Sonnet — Advanced analysis',
+      description: 'Claude Sonnet 4.6 — Advanced analysis',
       icon: <ShieldCheck size={18} />,
       isConfigured: !!config.anthropicSet,
     },
@@ -137,7 +137,7 @@ export const AISettings: React.FC = () => {
       case 'openai':
         return 'gpt-4o';
       case 'anthropic':
-        return 'claude-3-5-sonnet-20240620';
+        return 'claude-sonnet-4-6';
       case 'ollama':
         return 'llama3';
       default:

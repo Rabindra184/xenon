@@ -15,14 +15,12 @@ function App() {
     <ApiKeyGate>
       <ToastProvider>
         <BrowserRouter basename="/xenon">
-          <div className="app-layout">
+          <div className="min-h-screen w-full bg-[var(--bg)] text-[var(--text)]">
+            <Sidebar />
             <Header />
-            <div className="app-main-container">
-              <Sidebar />
-              <main className="app-content">
-                <AppRoutes />
-              </main>
-            </div>
+            <main className="pl-14 pt-14 h-screen overflow-y-auto">
+              <AppRoutes />
+            </main>
             <CommandPalette />
           </div>
         </BrowserRouter>
