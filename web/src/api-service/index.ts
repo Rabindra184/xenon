@@ -278,4 +278,30 @@ export default class XenonApiService {
   public static resetMetrics() {
     return apiClient.makePOSTRequest('/config/reset-metrics', {}, {});
   }
+
+  /**
+   * Export a build's sessions as a downloadable file.
+   * Returns a { blob, filename } pair suitable for a browser-download trigger.
+   * Bypasses makePOSTRequest because the response body is binary, not JSON.
+   */
+  public static async exportBuild(
+    buildId: string,
+    format: 'json' | 'csv',
+    sessionIds?: string[],
+  ): Promise<{ blob: Blob; filename: string }> {
+    const resp = await fetch(`/xenon/api/build/${encodeURIComponent(buildId)}/export`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ format, ...(sessionIds ? { sessionIds } : {}) }),
+    });
+    if (!resp.ok) {
+      const text = await resp.text().catch(() => resp.statusText);
+      throw new Error(`Export failed (${resp.status}): ${text || resp.statusText}`);
+    }
+    const disposition = resp.headers.get('Content-Disposition') || '';
+    const match = /filename="?([^";]+)"?/.exec(disposition);
+    const filename = match ? match[1] : `build-${buildId}-sessions.${format}`;
+    const blob = await resp.blob();
+    return { blob, filename };
+  }
 }
