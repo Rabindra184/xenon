@@ -1,0 +1,138 @@
+/* Xenon Theme v2 — dark-only, Command Center direction.
+ * Scoped under [data-theme="v2"] so the v1 theme stays intact during rollout.
+ * Compat aliases map legacy token names onto v2 values — legacy .css files
+ * continue to render correctly until migrated.
+ */
+
+html[data-theme="v2"] {
+  /* Surfaces */
+  --bg-canvas: #0d1117;
+  --bg-surface: #161b22;
+  --bg-elevated: #1c2128;
+  --bg-subtle: #0d1117;
+
+  --border-default: #21262d;
+  --border-strong: #30363d;
+  --border-muted: #1c2128;
+
+  /* Text */
+  --text-primary: #e6edf3;
+  --text-secondary: #c9d1d9;
+  --text-muted: #8b949e;
+  --text-subtle: #6e7681;
+
+  /* Accent (forest green) */
+  --accent: #3fb950;
+  --accent-bold: #238636;
+  --accent-subtle: rgba(63, 185, 80, 0.1);
+  --accent-border: rgba(63, 185, 80, 0.3);
+
+  /* Status — foreground */
+  --status-ready-fg: #3fb950;
+  --status-busy-fg: #d29922;
+  --status-reserved-fg: #58a6ff;
+  --status-error-fg: #f85149;
+  --status-offline-fg: #8b949e;
+
+  /* Status — background (10% alpha of fg) */
+  --status-ready-bg: rgba(63, 185, 80, 0.1);
+  --status-busy-bg: rgba(210, 153, 34, 0.1);
+  --status-reserved-bg: rgba(88, 166, 255, 0.1);
+  --status-error-bg: rgba(248, 81, 73, 0.1);
+  --status-offline-bg: rgba(139, 148, 158, 0.08);
+
+  /* Status — border (30% alpha of fg) */
+  --status-ready-border: rgba(63, 185, 80, 0.3);
+  --status-busy-border: rgba(210, 153, 34, 0.3);
+  --status-reserved-border: rgba(88, 166, 255, 0.3);
+  --status-error-border: rgba(248, 81, 73, 0.3);
+  --status-offline-border: rgba(139, 148, 158, 0.25);
+
+  /* Spacing (4px grid) */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-12: 48px;
+
+  /* Radii */
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
+
+  /* Shadows (subtle — no glow) */
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.25);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.35);
+  --shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.45);
+
+  /* Motion */
+  --motion-fast: 150ms cubic-bezier(0.2, 0, 0, 1);
+  --motion-slow: 250ms cubic-bezier(0.2, 0, 0, 1);
+
+  /* ——— Compat aliases — map legacy tokens onto new values ——— */
+  --bg-page: var(--bg-canvas);
+  --bg-card: var(--bg-surface);
+  --bg-card-hover: var(--bg-elevated);
+  --color-primary: var(--accent);
+  --color-amber: var(--status-busy-fg);
+  --color-red: var(--status-error-fg);
+  --color-blue: var(--status-reserved-fg);
+  --color-sky: var(--status-reserved-fg);
+  --color-purple: #8b5cf6;
+  --border-subtle: var(--border-muted);
+  --border-visible: var(--border-default);
+  --text-dim: var(--text-subtle);
+  --text-body: var(--text-secondary);
+  --text-bright: var(--text-primary);
+  --primary: var(--accent);
+  --primary-hover: var(--accent-bold);
+  --primary-glow: var(--accent-subtle);
+  --bg-app: var(--bg-canvas);
+  --bg-glass: rgba(22, 27, 34, 0.7);
+  --text-main: var(--text-secondary);
+  --border-light: var(--border-muted);
+  --border-medium: var(--border-default);
+  --status-ready: var(--status-ready-fg);
+  --status-busy: var(--status-busy-fg);
+  --status-offline: var(--status-offline-fg);
+  --status-error: var(--status-error-fg);
+  --space-xs: var(--space-1);
+  --space-sm: var(--space-2);
+  --space-md: var(--space-4);
+  --space-lg: var(--space-6);
+  --space-xl: var(--space-8);
+  --space-xxl: var(--space-12);
+  --fs-xs: 11px;
+  --fs-sm: 12px;
+  --fs-md: 14px;
+  --fs-lg: 16px;
+  --fs-xl: 20px;
+  --fs-xxl: 24px;
+  --glass-blur: blur(20px);
+}
+
+/* Suppress v1 glow/pulse effects under v2 */
+html[data-theme="v2"] .scanline,
+html[data-theme="v2"] .header-container::after {
+  display: none !important;
+}
+
+html[data-theme="v2"] .animate-pulse-success,
+html[data-theme="v2"] .animate-pulse-running {
+  animation: none !important;
+}
+
+html[data-theme="v2"] .text-glow {
+  text-shadow: none !important;
+}
+
+/* Reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  html[data-theme="v2"] * {
+    transition: none !important;
+    animation: none !important;
+  }
+}
