@@ -1,7 +1,7 @@
 # Radix Primitive Retrofit — Design Spec
 
 **Date:** 2026-04-24
-**Status:** Approved — ready for implementation planning
+**Status:** Drafted — awaiting user review before implementation planning
 **Scope:** `web/src/components/ui/Modal.tsx`, `Popover.tsx`, `Menu.tsx`
 **Target branch:** `refactor/web-radix-primitives` (off `main`)
 
@@ -60,7 +60,10 @@ Fix the accessibility and behavioral gaps in the three hand-rolled UI primitives
 | `@radix-ui/react-dialog` | `Modal` | ~8 KB |
 | `@radix-ui/react-popper` | `Popover` | ~12 KB (incl. `@floating-ui/react-dom`) |
 | `@radix-ui/react-dismissable-layer` | `Popover` | ~3 KB |
+| `@radix-ui/react-portal` | `Popover` | ~1 KB |
 | `@radix-ui/react-roving-focus` | `Menu` | ~3 KB |
+
+`@radix-ui/react-portal` is a transitive dep of the other Radix packages but is listed explicitly in `package.json` so the `Popover` implementation can import it directly rather than reaching through a sibling package's internals.
 
 All four packages declare React 17 in their peer-dependency range (`^16.8 || ^17.0 || ^18.0 || ^19.0 || ^19.0.0-rc`) as of the latest published versions; verified via `npm view` on 2026-04-24.
 
@@ -156,7 +159,7 @@ interface PopoverProps {
 </Popper.Root>
 ```
 
-`Portal` is `@radix-ui/react-portal`, a transitive dep of the other two — listed explicitly in `package.json` for clarity.
+`Portal` is `@radix-ui/react-portal`.
 
 **Gaps closed:**
 
@@ -204,7 +207,7 @@ interface MenuItemProps {
 </RovingFocusGroup.Root>
 ```
 
-Each `MenuItem` wraps its `<button>` in `<RovingFocusGroup.Item asChild focusable={!disabled} active={false}>` and adds `role="menuitem"`.
+Each `MenuItem` wraps its `<button>` in a `RovingFocusGroup.Item`, passes `focusable={!disabled}`, and adds `role="menuitem"`. Which item holds the initial tab stop is left to the implementation plan — the expected behavior is "first non-disabled item" per standard menu semantics, and the exact prop(s) on `RovingFocusGroup.Root` / `RovingFocusGroup.Item` that achieve this are an implementation detail to verify against the current Radix version at plan-execution time.
 
 **Gaps closed:**
 
@@ -301,7 +304,7 @@ A final consumer list is produced as the first step of the implementation plan (
 - `npm test` passes (includes new a11y tests).
 - `npm run build:xenon` produces a bundle.
 - Every consumer in 6.2 opened and exercised in the browser.
-- Bundle size delta confirmed ≤ 40 KB gzipped via `npm run build:xenon` output.
+- Bundle size delta confirmed ≤ 40 KB gzipped. Measured by running `npm run build:xenon` on `main` and on the retrofit branch and comparing the gzipped size Vite reports for the main JS chunk.
 
 ### 6.4 Rollback plan
 
