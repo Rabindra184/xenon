@@ -8,6 +8,8 @@ import { ToastProvider } from './components/ui/toast';
 
 import Sidebar from './components/sidebar/sidebar';
 import { ApiKeyGate } from './components/ApiKeyGate';
+import CommandPalette from './components/command-palette/command-palette';
+import { isThemeV2 } from './lib/theme-flag';
 
 function App() {
   return (
@@ -22,6 +24,7 @@ function App() {
                 <AppRoutes />
               </main>
             </div>
+            {isThemeV2() && <CommandPalette />}
           </div>
         </BrowserRouter>
       </ToastProvider>
