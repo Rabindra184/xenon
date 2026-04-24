@@ -1,0 +1,25 @@
+.fg {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 16px;
+}
+.fg-label {
+  color: var(--text-primary);
+  font-size: 12px;
+  font-weight: 600;
+  font-family: 'Inter', sans-serif;
+}
+.fg-desc {
+  color: var(--text-muted);
+  font-size: 11px;
+  line-height: 1.4;
+}
+.fg-control {
+  display: flex;
+  flex-direction: column;
+}
+.fg-error {
+  color: var(--status-error-fg);
+  font-size: 11px;
+}
