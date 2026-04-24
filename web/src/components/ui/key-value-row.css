@@ -1,0 +1,10 @@
+.kv-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 12px;
+  min-height: 18px;
+}
+.kv-label { color: var(--text-muted); }
+.kv-value { color: var(--text-secondary); font-weight: 500; }
+.kv-value-mono { font-family: 'JetBrains Mono', monospace; font-size: 11px; }
