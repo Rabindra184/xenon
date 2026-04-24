@@ -180,15 +180,13 @@ export const MaintenanceSettings: React.FC = () => {
             title="Cleanup Orchestration"
             description="Standardized Cron syntax for scheduling the automated cleanup engine."
           >
-            <div className="setting-field">
-              <div className="setting-input-wrapper">
-                <input
-                  type="text"
-                  placeholder="e.g. 0 0 * * * (Midnight)"
-                  value={config.buildCleanupSchedule}
-                  onChange={(e) => setConfig({ ...config, buildCleanupSchedule: e.target.value })}
-                />
-              </div>
+            <div className="setting-input-wrapper">
+              <input
+                type="text"
+                placeholder="e.g. 0 0 * * * (Midnight)"
+                value={config.buildCleanupSchedule}
+                onChange={(e) => setConfig({ ...config, buildCleanupSchedule: e.target.value })}
+              />
             </div>
 
             <div className="cron-presets">

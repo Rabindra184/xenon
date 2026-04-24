@@ -163,15 +163,13 @@ export const Settings: React.FC = () => {
             title="Deep Diagnostic Schedule"
             description="Execute intensive reliability bursts (WDA restarts, Cache purges) using standardized Cron syntax."
           >
-            <div className="setting-field">
-              <div className="setting-input-wrapper">
-                <input
-                  type="text"
-                  placeholder="e.g. 0 * * * * (At internal min 0)"
-                  value={config.healthCheckSchedule}
-                  onChange={(e) => setConfig({ ...config, healthCheckSchedule: e.target.value })}
-                />
-              </div>
+            <div className="setting-input-wrapper">
+              <input
+                type="text"
+                placeholder="e.g. 0 * * * * (At internal min 0)"
+                value={config.healthCheckSchedule}
+                onChange={(e) => setConfig({ ...config, healthCheckSchedule: e.target.value })}
+              />
             </div>
 
             <div className="cron-preview">
