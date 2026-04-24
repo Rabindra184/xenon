@@ -83,6 +83,11 @@ export type PortLease = $Result.DefaultSelection<Prisma.$PortLeasePayload>
  * 
  */
 export type ApiKey = $Result.DefaultSelection<Prisma.$ApiKeyPayload>
+/**
+ * Model Team
+ * 
+ */
+export type Team = $Result.DefaultSelection<Prisma.$TeamPayload>
 
 /**
  * ##  Prisma Client ʲˢ
@@ -346,6 +351,16 @@ export class PrismaClient<
     * ```
     */
   get apiKey(): Prisma.ApiKeyDelegate<ExtArgs>;
+
+  /**
+   * `prisma.team`: Exposes CRUD operations for the **Team** model.
+    * Example usage:
+    * ```ts
+    * // Fetch zero or more Teams
+    * const teams = await prisma.team.findMany()
+    * ```
+    */
+  get team(): Prisma.TeamDelegate<ExtArgs>;
 }
 
 export namespace Prisma {
@@ -800,7 +815,8 @@ export namespace Prisma {
     WebConfig: 'WebConfig',
     LocatorEtalon: 'LocatorEtalon',
     PortLease: 'PortLease',
-    ApiKey: 'ApiKey'
+    ApiKey: 'ApiKey',
+    Team: 'Team'
   };
 
   export type ModelName = (typeof ModelName)[keyof typeof ModelName]
@@ -816,7 +832,7 @@ export namespace Prisma {
 
   export type TypeMap<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs, ClientOptions = {}> = {
     meta: {
-      modelProps: "build" | "session" | "sessionLog" | "log" | "profiling" | "app" | "device" | "pendingSession" | "cLIArgs" | "webhookConfig" | "webConfig" | "locatorEtalon" | "portLease" | "apiKey"
+      modelProps: "build" | "session" | "sessionLog" | "log" | "profiling" | "app" | "device" | "pendingSession" | "cLIArgs" | "webhookConfig" | "webConfig" | "locatorEtalon" | "portLease" | "apiKey" | "team"
       txIsolationLevel: Prisma.TransactionIsolationLevel
     }
     model: {
@@ -1800,6 +1816,76 @@ export namespace Prisma {
           }
         }
       }
+      Team: {
+        payload: Prisma.$TeamPayload<ExtArgs>
+        fields: Prisma.TeamFieldRefs
+        operations: {
+          findUnique: {
+            args: Prisma.TeamFindUniqueArgs<ExtArgs>
+            result: $Utils.PayloadToResult<Prisma.$TeamPayload> | null
+          }
+          findUniqueOrThrow: {
+            args: Prisma.TeamFindUniqueOrThrowArgs<ExtArgs>
+            result: $Utils.PayloadToResult<Prisma.$TeamPayload>
+          }
+          findFirst: {
+            args: Prisma.TeamFindFirstArgs<ExtArgs>
+            result: $Utils.PayloadToResult<Prisma.$TeamPayload> | null
+          }
+          findFirstOrThrow: {
+            args: Prisma.TeamFindFirstOrThrowArgs<ExtArgs>
+            result: $Utils.PayloadToResult<Prisma.$TeamPayload>
+          }
+          findMany: {
+            args: Prisma.TeamFindManyArgs<ExtArgs>
+            result: $Utils.PayloadToResult<Prisma.$TeamPayload>[]
+          }
+          create: {
+            args: Prisma.TeamCreateArgs<ExtArgs>
+            result: $Utils.PayloadToResult<Prisma.$TeamPayload>
+          }
+          createMany: {
+            args: Prisma.TeamCreateManyArgs<ExtArgs>
+            result: BatchPayload
+          }
+          createManyAndReturn: {
+            args: Prisma.TeamCreateManyAndReturnArgs<ExtArgs>
+            result: $Utils.PayloadToResult<Prisma.$TeamPayload>[]
+          }
+          delete: {
+            args: Prisma.TeamDeleteArgs<ExtArgs>
+            result: $Utils.PayloadToResult<Prisma.$TeamPayload>
+          }
+          update: {
+            args: Prisma.TeamUpdateArgs<ExtArgs>
+            result: $Utils.PayloadToResult<Prisma.$TeamPayload>
+          }
+          deleteMany: {
+            args: Prisma.TeamDeleteManyArgs<ExtArgs>
+            result: BatchPayload
+          }
+          updateMany: {
+            args: Prisma.TeamUpdateManyArgs<ExtArgs>
+            result: BatchPayload
+          }
+          upsert: {
+            args: Prisma.TeamUpsertArgs<ExtArgs>
+            result: $Utils.PayloadToResult<Prisma.$TeamPayload>
+          }
+          aggregate: {
+            args: Prisma.TeamAggregateArgs<ExtArgs>
+            result: $Utils.Optional<AggregateTeam>
+          }
+          groupBy: {
+            args: Prisma.TeamGroupByArgs<ExtArgs>
+            result: $Utils.Optional<TeamGroupByOutputType>[]
+          }
+          count: {
+            args: Prisma.TeamCountArgs<ExtArgs>
+            result: $Utils.Optional<TeamCountAggregateOutputType> | number
+          }
+        }
+      }
     }
   } & {
     other: {
@@ -2033,6 +2119,46 @@ export namespace Prisma {
    */
   export type SessionCountOutputTypeCountSessionLogArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
     where?: SessionLogWhereInput
+  }
+
+
+  /**
+   * Count Type TeamCountOutputType
+   */
+
+  export type TeamCountOutputType = {
+    devices: number
+    apiKeys: number
+  }
+
+  export type TeamCountOutputTypeSelect<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    devices?: boolean | TeamCountOutputTypeCountDevicesArgs
+    apiKeys?: boolean | TeamCountOutputTypeCountApiKeysArgs
+  }
+
+  // Custom InputTypes
+  /**
+   * TeamCountOutputType without action
+   */
+  export type TeamCountOutputTypeDefaultArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the TeamCountOutputType
+     */
+    select?: TeamCountOutputTypeSelect<ExtArgs> | null
+  }
+
+  /**
+   * TeamCountOutputType without action
+   */
+  export type TeamCountOutputTypeCountDevicesArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    where?: DeviceWhereInput
+  }
+
+  /**
+   * TeamCountOutputType without action
+   */
+  export type TeamCountOutputTypeCountApiKeysArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    where?: ApiKeyWhereInput
   }
 
 
@@ -3024,6 +3150,7 @@ export namespace Prisma {
     last_heartbeat_at: Date | null
     heartbeat_pid: number | null
     heartbeat_host: string | null
+    api_key_id: string | null
   }
 
   export type SessionMaxAggregateOutputType = {
@@ -3056,6 +3183,7 @@ export namespace Prisma {
     last_heartbeat_at: Date | null
     heartbeat_pid: number | null
     heartbeat_host: string | null
+    api_key_id: string | null
   }
 
   export type SessionCountAggregateOutputType = {
@@ -3088,6 +3216,7 @@ export namespace Prisma {
     last_heartbeat_at: number
     heartbeat_pid: number
     heartbeat_host: number
+    api_key_id: number
     _all: number
   }
 
@@ -3130,6 +3259,7 @@ export namespace Prisma {
     last_heartbeat_at?: true
     heartbeat_pid?: true
     heartbeat_host?: true
+    api_key_id?: true
   }
 
   export type SessionMaxAggregateInputType = {
@@ -3162,6 +3292,7 @@ export namespace Prisma {
     last_heartbeat_at?: true
     heartbeat_pid?: true
     heartbeat_host?: true
+    api_key_id?: true
   }
 
   export type SessionCountAggregateInputType = {
@@ -3194,6 +3325,7 @@ export namespace Prisma {
     last_heartbeat_at?: true
     heartbeat_pid?: true
     heartbeat_host?: true
+    api_key_id?: true
     _all?: true
   }
 
@@ -3313,6 +3445,7 @@ export namespace Prisma {
     last_heartbeat_at: Date | null
     heartbeat_pid: number | null
     heartbeat_host: string | null
+    api_key_id: string | null
     _count: SessionCountAggregateOutputType | null
     _avg: SessionAvgAggregateOutputType | null
     _sum: SessionSumAggregateOutputType | null
@@ -3364,6 +3497,7 @@ export namespace Prisma {
     last_heartbeat_at?: boolean
     heartbeat_pid?: boolean
     heartbeat_host?: boolean
+    api_key_id?: boolean
     Log?: boolean | Session$LogArgs<ExtArgs>
     Profiling?: boolean | Session$ProfilingArgs<ExtArgs>
     build?: boolean | Session$buildArgs<ExtArgs>
@@ -3401,6 +3535,7 @@ export namespace Prisma {
     last_heartbeat_at?: boolean
     heartbeat_pid?: boolean
     heartbeat_host?: boolean
+    api_key_id?: boolean
     build?: boolean | Session$buildArgs<ExtArgs>
   }, ExtArgs["result"]["session"]>
 
@@ -3434,6 +3569,7 @@ export namespace Prisma {
     last_heartbeat_at?: boolean
     heartbeat_pid?: boolean
     heartbeat_host?: boolean
+    api_key_id?: boolean
   }
 
   export type SessionInclude<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
@@ -3485,6 +3621,7 @@ export namespace Prisma {
       last_heartbeat_at: Date | null
       heartbeat_pid: number | null
       heartbeat_host: string | null
+      api_key_id: string | null
     }, ExtArgs["result"]["session"]>
     composites: {}
   }
@@ -3911,6 +4048,7 @@ export namespace Prisma {
     readonly last_heartbeat_at: FieldRef<"Session", 'DateTime'>
     readonly heartbeat_pid: FieldRef<"Session", 'Int'>
     readonly heartbeat_host: FieldRef<"Session", 'String'>
+    readonly api_key_id: FieldRef<"Session", 'String'>
   }
     
 
@@ -8562,6 +8700,7 @@ export namespace Prisma {
     cpuArchitecture: string | null
     owningSessionId: string | null
     lockedAt: number | null
+    teamId: string | null
   }
 
   export type DeviceMaxAggregateOutputType = {
@@ -8615,6 +8754,7 @@ export namespace Prisma {
     cpuArchitecture: string | null
     owningSessionId: string | null
     lockedAt: number | null
+    teamId: string | null
   }
 
   export type DeviceCountAggregateOutputType = {
@@ -8668,6 +8808,7 @@ export namespace Prisma {
     cpuArchitecture: number
     owningSessionId: number
     lockedAt: number
+    teamId: number
     _all: number
   }
 
@@ -8759,6 +8900,7 @@ export namespace Prisma {
     cpuArchitecture?: true
     owningSessionId?: true
     lockedAt?: true
+    teamId?: true
   }
 
   export type DeviceMaxAggregateInputType = {
@@ -8812,6 +8954,7 @@ export namespace Prisma {
     cpuArchitecture?: true
     owningSessionId?: true
     lockedAt?: true
+    teamId?: true
   }
 
   export type DeviceCountAggregateInputType = {
@@ -8865,6 +9008,7 @@ export namespace Prisma {
     cpuArchitecture?: true
     owningSessionId?: true
     lockedAt?: true
+    teamId?: true
     _all?: true
   }
 
@@ -9005,6 +9149,7 @@ export namespace Prisma {
     cpuArchitecture: string | null
     owningSessionId: string | null
     lockedAt: number | null
+    teamId: string | null
     _count: DeviceCountAggregateOutputType | null
     _avg: DeviceAvgAggregateOutputType | null
     _sum: DeviceSumAggregateOutputType | null
@@ -9077,6 +9222,8 @@ export namespace Prisma {
     cpuArchitecture?: boolean
     owningSessionId?: boolean
     lockedAt?: boolean
+    teamId?: boolean
+    team?: boolean | Device$teamArgs<ExtArgs>
   }, ExtArgs["result"]["device"]>
 
   export type DeviceSelectCreateManyAndReturn<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = $Extensions.GetSelect<{
@@ -9130,6 +9277,8 @@ export namespace Prisma {
     cpuArchitecture?: boolean
     owningSessionId?: boolean
     lockedAt?: boolean
+    teamId?: boolean
+    team?: boolean | Device$teamArgs<ExtArgs>
   }, ExtArgs["result"]["device"]>
 
   export type DeviceSelectScalar = {
@@ -9183,12 +9332,21 @@ export namespace Prisma {
     cpuArchitecture?: boolean
     owningSessionId?: boolean
     lockedAt?: boolean
+    teamId?: boolean
   }
 
+  export type DeviceInclude<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    team?: boolean | Device$teamArgs<ExtArgs>
+  }
+  export type DeviceIncludeCreateManyAndReturn<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    team?: boolean | Device$teamArgs<ExtArgs>
+  }
 
   export type $DevicePayload<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
     name: "Device"
-    objects: {}
+    objects: {
+      team: Prisma.$TeamPayload<ExtArgs> | null
+    }
     scalars: $Extensions.GetPayloadResult<{
       udid: string
       host: string
@@ -9240,6 +9398,7 @@ export namespace Prisma {
       cpuArchitecture: string | null
       owningSessionId: string | null
       lockedAt: number | null
+      teamId: string | null
     }, ExtArgs["result"]["device"]>
     composites: {}
   }
@@ -9604,6 +9763,7 @@ export namespace Prisma {
    */
   export interface Prisma__DeviceClient<T, Null = never, ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> extends Prisma.PrismaPromise<T> {
     readonly [Symbol.toStringTag]: "PrismaPromise"
+    team<T extends Device$teamArgs<ExtArgs> = {}>(args?: Subset<T, Device$teamArgs<ExtArgs>>): Prisma__TeamClient<$Result.GetResult<Prisma.$TeamPayload<ExtArgs>, T, "findUniqueOrThrow"> | null, null, ExtArgs>
     /**
      * Attaches callbacks for the resolution and/or rejection of the Promise.
      * @param onfulfilled The callback to execute when the Promise is resolved.
@@ -9683,6 +9843,7 @@ export namespace Prisma {
     readonly cpuArchitecture: FieldRef<"Device", 'String'>
     readonly owningSessionId: FieldRef<"Device", 'String'>
     readonly lockedAt: FieldRef<"Device", 'Float'>
+    readonly teamId: FieldRef<"Device", 'String'>
   }
     
 
@@ -9695,6 +9856,10 @@ export namespace Prisma {
      * Select specific fields to fetch from the Device
      */
     select?: DeviceSelect<ExtArgs> | null
+    /**
+     * Choose, which related nodes to fetch as well
+     */
+    include?: DeviceInclude<ExtArgs> | null
     /**
      * Filter, which Device to fetch.
      */
@@ -9710,6 +9875,10 @@ export namespace Prisma {
      */
     select?: DeviceSelect<ExtArgs> | null
     /**
+     * Choose, which related nodes to fetch as well
+     */
+    include?: DeviceInclude<ExtArgs> | null
+    /**
      * Filter, which Device to fetch.
      */
     where: DeviceWhereUniqueInput
@@ -9723,6 +9892,10 @@ export namespace Prisma {
      * Select specific fields to fetch from the Device
      */
     select?: DeviceSelect<ExtArgs> | null
+    /**
+     * Choose, which related nodes to fetch as well
+     */
+    include?: DeviceInclude<ExtArgs> | null
     /**
      * Filter, which Device to fetch.
      */
@@ -9768,6 +9941,10 @@ export namespace Prisma {
      */
     select?: DeviceSelect<ExtArgs> | null
     /**
+     * Choose, which related nodes to fetch as well
+     */
+    include?: DeviceInclude<ExtArgs> | null
+    /**
      * Filter, which Device to fetch.
      */
     where?: DeviceWhereInput
@@ -9812,6 +9989,10 @@ export namespace Prisma {
      */
     select?: DeviceSelect<ExtArgs> | null
     /**
+     * Choose, which related nodes to fetch as well
+     */
+    include?: DeviceInclude<ExtArgs> | null
+    /**
      * Filter, which Devices to fetch.
      */
     where?: DeviceWhereInput
@@ -9851,6 +10032,10 @@ export namespace Prisma {
      */
     select?: DeviceSelect<ExtArgs> | null
     /**
+     * Choose, which related nodes to fetch as well
+     */
+    include?: DeviceInclude<ExtArgs> | null
+    /**
      * The data needed to create a Device.
      */
     data: XOR<DeviceCreateInput, DeviceUncheckedCreateInput>
@@ -9878,6 +10063,10 @@ export namespace Prisma {
      * The data used to create many Devices.
      */
     data: DeviceCreateManyInput | DeviceCreateManyInput[]
+    /**
+     * Choose, which related nodes to fetch as well
+     */
+    include?: DeviceIncludeCreateManyAndReturn<ExtArgs> | null
   }
 
   /**
@@ -9888,6 +10077,10 @@ export namespace Prisma {
      * Select specific fields to fetch from the Device
      */
     select?: DeviceSelect<ExtArgs> | null
+    /**
+     * Choose, which related nodes to fetch as well
+     */
+    include?: DeviceInclude<ExtArgs> | null
     /**
      * The data needed to update a Device.
      */
@@ -9921,6 +10114,10 @@ export namespace Prisma {
      */
     select?: DeviceSelect<ExtArgs> | null
     /**
+     * Choose, which related nodes to fetch as well
+     */
+    include?: DeviceInclude<ExtArgs> | null
+    /**
      * The filter to search for the Device to update in case it exists.
      */
     where: DeviceWhereUniqueInput
@@ -9943,6 +10140,10 @@ export namespace Prisma {
      */
     select?: DeviceSelect<ExtArgs> | null
     /**
+     * Choose, which related nodes to fetch as well
+     */
+    include?: DeviceInclude<ExtArgs> | null
+    /**
      * Filter which Device to delete.
      */
     where: DeviceWhereUniqueInput
@@ -9959,6 +10160,21 @@ export namespace Prisma {
   }
 
   /**
+   * Device.team
+   */
+  export type Device$teamArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the Team
+     */
+    select?: TeamSelect<ExtArgs> | null
+    /**
+     * Choose, which related nodes to fetch as well
+     */
+    include?: TeamInclude<ExtArgs> | null
+    where?: TeamWhereInput
+  }
+
+  /**
    * Device without action
    */
   export type DeviceDefaultArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
@@ -9966,6 +10182,10 @@ export namespace Prisma {
      * Select specific fields to fetch from the Device
      */
     select?: DeviceSelect<ExtArgs> | null
+    /**
+     * Choose, which related nodes to fetch as well
+     */
+    include?: DeviceInclude<ExtArgs> | null
   }
 
 
@@ -15420,6 +15640,8 @@ export namespace Prisma {
     createdAt: Date | null
     revokedAt: Date | null
     lastUsedAt: Date | null
+    teamId: string | null
+    role: string | null
   }
 
   export type ApiKeyMaxAggregateOutputType = {
@@ -15431,6 +15653,8 @@ export namespace Prisma {
     createdAt: Date | null
     revokedAt: Date | null
     lastUsedAt: Date | null
+    teamId: string | null
+    role: string | null
   }
 
   export type ApiKeyCountAggregateOutputType = {
@@ -15442,6 +15666,8 @@ export namespace Prisma {
     createdAt: number
     revokedAt: number
     lastUsedAt: number
+    teamId: number
+    role: number
     _all: number
   }
 
@@ -15463,6 +15689,8 @@ export namespace Prisma {
     createdAt?: true
     revokedAt?: true
     lastUsedAt?: true
+    teamId?: true
+    role?: true
   }
 
   export type ApiKeyMaxAggregateInputType = {
@@ -15474,6 +15702,8 @@ export namespace Prisma {
     createdAt?: true
     revokedAt?: true
     lastUsedAt?: true
+    teamId?: true
+    role?: true
   }
 
   export type ApiKeyCountAggregateInputType = {
@@ -15485,6 +15715,8 @@ export namespace Prisma {
     createdAt?: true
     revokedAt?: true
     lastUsedAt?: true
+    teamId?: true
+    role?: true
     _all?: true
   }
 
@@ -15583,6 +15815,8 @@ export namespace Prisma {
     createdAt: Date
     revokedAt: Date | null
     lastUsedAt: Date | null
+    teamId: string | null
+    role: string
     _count: ApiKeyCountAggregateOutputType | null
     _avg: ApiKeyAvgAggregateOutputType | null
     _sum: ApiKeySumAggregateOutputType | null
@@ -15613,6 +15847,9 @@ export namespace Prisma {
     createdAt?: boolean
     revokedAt?: boolean
     lastUsedAt?: boolean
+    teamId?: boolean
+    role?: boolean
+    team?: boolean | ApiKey$teamArgs<ExtArgs>
   }, ExtArgs["result"]["apiKey"]>
 
   export type ApiKeySelectCreateManyAndReturn<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = $Extensions.GetSelect<{
@@ -15624,6 +15861,9 @@ export namespace Prisma {
     createdAt?: boolean
     revokedAt?: boolean
     lastUsedAt?: boolean
+    teamId?: boolean
+    role?: boolean
+    team?: boolean | ApiKey$teamArgs<ExtArgs>
   }, ExtArgs["result"]["apiKey"]>
 
   export type ApiKeySelectScalar = {
@@ -15635,12 +15875,22 @@ export namespace Prisma {
     createdAt?: boolean
     revokedAt?: boolean
     lastUsedAt?: boolean
+    teamId?: boolean
+    role?: boolean
   }
 
+  export type ApiKeyInclude<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    team?: boolean | ApiKey$teamArgs<ExtArgs>
+  }
+  export type ApiKeyIncludeCreateManyAndReturn<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    team?: boolean | ApiKey$teamArgs<ExtArgs>
+  }
 
   export type $ApiKeyPayload<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
     name: "ApiKey"
-    objects: {}
+    objects: {
+      team: Prisma.$TeamPayload<ExtArgs> | null
+    }
     scalars: $Extensions.GetPayloadResult<{
       id: string
       name: string
@@ -15650,6 +15900,8 @@ export namespace Prisma {
       createdAt: Date
       revokedAt: Date | null
       lastUsedAt: Date | null
+      teamId: string | null
+      role: string
     }, ExtArgs["result"]["apiKey"]>
     composites: {}
   }
@@ -16014,6 +16266,7 @@ export namespace Prisma {
    */
   export interface Prisma__ApiKeyClient<T, Null = never, ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> extends Prisma.PrismaPromise<T> {
     readonly [Symbol.toStringTag]: "PrismaPromise"
+    team<T extends ApiKey$teamArgs<ExtArgs> = {}>(args?: Subset<T, ApiKey$teamArgs<ExtArgs>>): Prisma__TeamClient<$Result.GetResult<Prisma.$TeamPayload<ExtArgs>, T, "findUniqueOrThrow"> | null, null, ExtArgs>
     /**
      * Attaches callbacks for the resolution and/or rejection of the Promise.
      * @param onfulfilled The callback to execute when the Promise is resolved.
@@ -16051,6 +16304,8 @@ export namespace Prisma {
     readonly createdAt: FieldRef<"ApiKey", 'DateTime'>
     readonly revokedAt: FieldRef<"ApiKey", 'DateTime'>
     readonly lastUsedAt: FieldRef<"ApiKey", 'DateTime'>
+    readonly teamId: FieldRef<"ApiKey", 'String'>
+    readonly role: FieldRef<"ApiKey", 'String'>
   }
     
 
@@ -16063,6 +16318,10 @@ export namespace Prisma {
      * Select specific fields to fetch from the ApiKey
      */
     select?: ApiKeySelect<ExtArgs> | null
+    /**
+     * Choose, which related nodes to fetch as well
+     */
+    include?: ApiKeyInclude<ExtArgs> | null
     /**
      * Filter, which ApiKey to fetch.
      */
@@ -16078,6 +16337,10 @@ export namespace Prisma {
      */
     select?: ApiKeySelect<ExtArgs> | null
     /**
+     * Choose, which related nodes to fetch as well
+     */
+    include?: ApiKeyInclude<ExtArgs> | null
+    /**
      * Filter, which ApiKey to fetch.
      */
     where: ApiKeyWhereUniqueInput
@@ -16091,6 +16354,10 @@ export namespace Prisma {
      * Select specific fields to fetch from the ApiKey
      */
     select?: ApiKeySelect<ExtArgs> | null
+    /**
+     * Choose, which related nodes to fetch as well
+     */
+    include?: ApiKeyInclude<ExtArgs> | null
     /**
      * Filter, which ApiKey to fetch.
      */
@@ -16136,6 +16403,10 @@ export namespace Prisma {
      */
     select?: ApiKeySelect<ExtArgs> | null
     /**
+     * Choose, which related nodes to fetch as well
+     */
+    include?: ApiKeyInclude<ExtArgs> | null
+    /**
      * Filter, which ApiKey to fetch.
      */
     where?: ApiKeyWhereInput
@@ -16180,6 +16451,10 @@ export namespace Prisma {
      */
     select?: ApiKeySelect<ExtArgs> | null
     /**
+     * Choose, which related nodes to fetch as well
+     */
+    include?: ApiKeyInclude<ExtArgs> | null
+    /**
      * Filter, which ApiKeys to fetch.
      */
     where?: ApiKeyWhereInput
@@ -16219,6 +16494,10 @@ export namespace Prisma {
      */
     select?: ApiKeySelect<ExtArgs> | null
     /**
+     * Choose, which related nodes to fetch as well
+     */
+    include?: ApiKeyInclude<ExtArgs> | null
+    /**
      * The data needed to create a ApiKey.
      */
     data: XOR<ApiKeyCreateInput, ApiKeyUncheckedCreateInput>
@@ -16246,6 +16525,10 @@ export namespace Prisma {
      * The data used to create many ApiKeys.
      */
     data: ApiKeyCreateManyInput | ApiKeyCreateManyInput[]
+    /**
+     * Choose, which related nodes to fetch as well
+     */
+    include?: ApiKeyIncludeCreateManyAndReturn<ExtArgs> | null
   }
 
   /**
@@ -16256,6 +16539,10 @@ export namespace Prisma {
      * Select specific fields to fetch from the ApiKey
      */
     select?: ApiKeySelect<ExtArgs> | null
+    /**
+     * Choose, which related nodes to fetch as well
+     */
+    include?: ApiKeyInclude<ExtArgs> | null
     /**
      * The data needed to update a ApiKey.
      */
@@ -16289,6 +16576,10 @@ export namespace Prisma {
      */
     select?: ApiKeySelect<ExtArgs> | null
     /**
+     * Choose, which related nodes to fetch as well
+     */
+    include?: ApiKeyInclude<ExtArgs> | null
+    /**
      * The filter to search for the ApiKey to update in case it exists.
      */
     where: ApiKeyWhereUniqueInput
@@ -16311,6 +16602,10 @@ export namespace Prisma {
      */
     select?: ApiKeySelect<ExtArgs> | null
     /**
+     * Choose, which related nodes to fetch as well
+     */
+    include?: ApiKeyInclude<ExtArgs> | null
+    /**
      * Filter which ApiKey to delete.
      */
     where: ApiKeyWhereUniqueInput
@@ -16327,6 +16622,21 @@ export namespace Prisma {
   }
 
   /**
+   * ApiKey.team
+   */
+  export type ApiKey$teamArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the Team
+     */
+    select?: TeamSelect<ExtArgs> | null
+    /**
+     * Choose, which related nodes to fetch as well
+     */
+    include?: TeamInclude<ExtArgs> | null
+    where?: TeamWhereInput
+  }
+
+  /**
    * ApiKey without action
    */
   export type ApiKeyDefaultArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
@@ -16334,6 +16644,956 @@ export namespace Prisma {
      * Select specific fields to fetch from the ApiKey
      */
     select?: ApiKeySelect<ExtArgs> | null
+    /**
+     * Choose, which related nodes to fetch as well
+     */
+    include?: ApiKeyInclude<ExtArgs> | null
+  }
+
+
+  /**
+   * Model Team
+   */
+
+  export type AggregateTeam = {
+    _count: TeamCountAggregateOutputType | null
+    _min: TeamMinAggregateOutputType | null
+    _max: TeamMaxAggregateOutputType | null
+  }
+
+  export type TeamMinAggregateOutputType = {
+    id: string | null
+    name: string | null
+    createdAt: Date | null
+  }
+
+  export type TeamMaxAggregateOutputType = {
+    id: string | null
+    name: string | null
+    createdAt: Date | null
+  }
+
+  export type TeamCountAggregateOutputType = {
+    id: number
+    name: number
+    createdAt: number
+    _all: number
+  }
+
+
+  export type TeamMinAggregateInputType = {
+    id?: true
+    name?: true
+    createdAt?: true
+  }
+
+  export type TeamMaxAggregateInputType = {
+    id?: true
+    name?: true
+    createdAt?: true
+  }
+
+  export type TeamCountAggregateInputType = {
+    id?: true
+    name?: true
+    createdAt?: true
+    _all?: true
+  }
+
+  export type TeamAggregateArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Filter which Team to aggregate.
+     */
+    where?: TeamWhereInput
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/sorting Sorting Docs}
+     * 
+     * Determine the order of Teams to fetch.
+     */
+    orderBy?: TeamOrderByWithRelationInput | TeamOrderByWithRelationInput[]
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination#cursor-based-pagination Cursor Docs}
+     * 
+     * Sets the start position
+     */
+    cursor?: TeamWhereUniqueInput
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination Pagination Docs}
+     * 
+     * Take `±n` Teams from the position of the cursor.
+     */
+    take?: number
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination Pagination Docs}
+     * 
+     * Skip the first `n` Teams.
+     */
+    skip?: number
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/aggregations Aggregation Docs}
+     * 
+     * Count returned Teams
+    **/
+    _count?: true | TeamCountAggregateInputType
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/aggregations Aggregation Docs}
+     * 
+     * Select which fields to find the minimum value
+    **/
+    _min?: TeamMinAggregateInputType
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/aggregations Aggregation Docs}
+     * 
+     * Select which fields to find the maximum value
+    **/
+    _max?: TeamMaxAggregateInputType
+  }
+
+  export type GetTeamAggregateType<T extends TeamAggregateArgs> = {
+        [P in keyof T & keyof AggregateTeam]: P extends '_count' | 'count'
+      ? T[P] extends true
+        ? number
+        : GetScalarType<T[P], AggregateTeam[P]>
+      : GetScalarType<T[P], AggregateTeam[P]>
+  }
+
+
+
+
+  export type TeamGroupByArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    where?: TeamWhereInput
+    orderBy?: TeamOrderByWithAggregationInput | TeamOrderByWithAggregationInput[]
+    by: TeamScalarFieldEnum[] | TeamScalarFieldEnum
+    having?: TeamScalarWhereWithAggregatesInput
+    take?: number
+    skip?: number
+    _count?: TeamCountAggregateInputType | true
+    _min?: TeamMinAggregateInputType
+    _max?: TeamMaxAggregateInputType
+  }
+
+  export type TeamGroupByOutputType = {
+    id: string
+    name: string
+    createdAt: Date
+    _count: TeamCountAggregateOutputType | null
+    _min: TeamMinAggregateOutputType | null
+    _max: TeamMaxAggregateOutputType | null
+  }
+
+  type GetTeamGroupByPayload<T extends TeamGroupByArgs> = Prisma.PrismaPromise<
+    Array<
+      PickEnumerable<TeamGroupByOutputType, T['by']> &
+        {
+          [P in ((keyof T) & (keyof TeamGroupByOutputType))]: P extends '_count'
+            ? T[P] extends boolean
+              ? number
+              : GetScalarType<T[P], TeamGroupByOutputType[P]>
+            : GetScalarType<T[P], TeamGroupByOutputType[P]>
+        }
+      >
+    >
+
+
+  export type TeamSelect<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = $Extensions.GetSelect<{
+    id?: boolean
+    name?: boolean
+    createdAt?: boolean
+    devices?: boolean | Team$devicesArgs<ExtArgs>
+    apiKeys?: boolean | Team$apiKeysArgs<ExtArgs>
+    _count?: boolean | TeamCountOutputTypeDefaultArgs<ExtArgs>
+  }, ExtArgs["result"]["team"]>
+
+  export type TeamSelectCreateManyAndReturn<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = $Extensions.GetSelect<{
+    id?: boolean
+    name?: boolean
+    createdAt?: boolean
+  }, ExtArgs["result"]["team"]>
+
+  export type TeamSelectScalar = {
+    id?: boolean
+    name?: boolean
+    createdAt?: boolean
+  }
+
+  export type TeamInclude<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    devices?: boolean | Team$devicesArgs<ExtArgs>
+    apiKeys?: boolean | Team$apiKeysArgs<ExtArgs>
+    _count?: boolean | TeamCountOutputTypeDefaultArgs<ExtArgs>
+  }
+  export type TeamIncludeCreateManyAndReturn<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {}
+
+  export type $TeamPayload<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    name: "Team"
+    objects: {
+      devices: Prisma.$DevicePayload<ExtArgs>[]
+      apiKeys: Prisma.$ApiKeyPayload<ExtArgs>[]
+    }
+    scalars: $Extensions.GetPayloadResult<{
+      id: string
+      name: string
+      createdAt: Date
+    }, ExtArgs["result"]["team"]>
+    composites: {}
+  }
+
+  type TeamGetPayload<S extends boolean | null | undefined | TeamDefaultArgs> = $Result.GetResult<Prisma.$TeamPayload, S>
+
+  type TeamCountArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = 
+    Omit<TeamFindManyArgs, 'select' | 'include' | 'distinct'> & {
+      select?: TeamCountAggregateInputType | true
+    }
+
+  export interface TeamDelegate<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> {
+    [K: symbol]: { types: Prisma.TypeMap<ExtArgs>['model']['Team'], meta: { name: 'Team' } }
+    /**
+     * Find zero or one Team that matches the filter.
+     * @param {TeamFindUniqueArgs} args - Arguments to find a Team
+     * @example
+     * // Get one Team
+     * const team = await prisma.team.findUnique({
+     *   where: {
+     *     // ... provide filter here
+     *   }
+     * })
+     */
+    findUnique<T extends TeamFindUniqueArgs>(args: SelectSubset<T, TeamFindUniqueArgs<ExtArgs>>): Prisma__TeamClient<$Result.GetResult<Prisma.$TeamPayload<ExtArgs>, T, "findUnique"> | null, null, ExtArgs>
+
+    /**
+     * Find one Team that matches the filter or throw an error with `error.code='P2025'` 
+     * if no matches were found.
+     * @param {TeamFindUniqueOrThrowArgs} args - Arguments to find a Team
+     * @example
+     * // Get one Team
+     * const team = await prisma.team.findUniqueOrThrow({
+     *   where: {
+     *     // ... provide filter here
+     *   }
+     * })
+     */
+    findUniqueOrThrow<T extends TeamFindUniqueOrThrowArgs>(args: SelectSubset<T, TeamFindUniqueOrThrowArgs<ExtArgs>>): Prisma__TeamClient<$Result.GetResult<Prisma.$TeamPayload<ExtArgs>, T, "findUniqueOrThrow">, never, ExtArgs>
+
+    /**
+     * Find the first Team that matches the filter.
+     * Note, that providing `undefined` is treated as the value not being there.
+     * Read more here: https://pris.ly/d/null-undefined
+     * @param {TeamFindFirstArgs} args - Arguments to find a Team
+     * @example
+     * // Get one Team
+     * const team = await prisma.team.findFirst({
+     *   where: {
+     *     // ... provide filter here
+     *   }
+     * })
+     */
+    findFirst<T extends TeamFindFirstArgs>(args?: SelectSubset<T, TeamFindFirstArgs<ExtArgs>>): Prisma__TeamClient<$Result.GetResult<Prisma.$TeamPayload<ExtArgs>, T, "findFirst"> | null, null, ExtArgs>
+
+    /**
+     * Find the first Team that matches the filter or
+     * throw `PrismaKnownClientError` with `P2025` code if no matches were found.
+     * Note, that providing `undefined` is treated as the value not being there.
+     * Read more here: https://pris.ly/d/null-undefined
+     * @param {TeamFindFirstOrThrowArgs} args - Arguments to find a Team
+     * @example
+     * // Get one Team
+     * const team = await prisma.team.findFirstOrThrow({
+     *   where: {
+     *     // ... provide filter here
+     *   }
+     * })
+     */
+    findFirstOrThrow<T extends TeamFindFirstOrThrowArgs>(args?: SelectSubset<T, TeamFindFirstOrThrowArgs<ExtArgs>>): Prisma__TeamClient<$Result.GetResult<Prisma.$TeamPayload<ExtArgs>, T, "findFirstOrThrow">, never, ExtArgs>
+
+    /**
+     * Find zero or more Teams that matches the filter.
+     * Note, that providing `undefined` is treated as the value not being there.
+     * Read more here: https://pris.ly/d/null-undefined
+     * @param {TeamFindManyArgs} args - Arguments to filter and select certain fields only.
+     * @example
+     * // Get all Teams
+     * const teams = await prisma.team.findMany()
+     * 
+     * // Get first 10 Teams
+     * const teams = await prisma.team.findMany({ take: 10 })
+     * 
+     * // Only select the `id`
+     * const teamWithIdOnly = await prisma.team.findMany({ select: { id: true } })
+     * 
+     */
+    findMany<T extends TeamFindManyArgs>(args?: SelectSubset<T, TeamFindManyArgs<ExtArgs>>): Prisma.PrismaPromise<$Result.GetResult<Prisma.$TeamPayload<ExtArgs>, T, "findMany">>
+
+    /**
+     * Create a Team.
+     * @param {TeamCreateArgs} args - Arguments to create a Team.
+     * @example
+     * // Create one Team
+     * const Team = await prisma.team.create({
+     *   data: {
+     *     // ... data to create a Team
+     *   }
+     * })
+     * 
+     */
+    create<T extends TeamCreateArgs>(args: SelectSubset<T, TeamCreateArgs<ExtArgs>>): Prisma__TeamClient<$Result.GetResult<Prisma.$TeamPayload<ExtArgs>, T, "create">, never, ExtArgs>
+
+    /**
+     * Create many Teams.
+     * @param {TeamCreateManyArgs} args - Arguments to create many Teams.
+     * @example
+     * // Create many Teams
+     * const team = await prisma.team.createMany({
+     *   data: [
+     *     // ... provide data here
+     *   ]
+     * })
+     *     
+     */
+    createMany<T extends TeamCreateManyArgs>(args?: SelectSubset<T, TeamCreateManyArgs<ExtArgs>>): Prisma.PrismaPromise<BatchPayload>
+
+    /**
+     * Create many Teams and returns the data saved in the database.
+     * @param {TeamCreateManyAndReturnArgs} args - Arguments to create many Teams.
+     * @example
+     * // Create many Teams
+     * const team = await prisma.team.createManyAndReturn({
+     *   data: [
+     *     // ... provide data here
+     *   ]
+     * })
+     * 
+     * // Create many Teams and only return the `id`
+     * const teamWithIdOnly = await prisma.team.createManyAndReturn({ 
+     *   select: { id: true },
+     *   data: [
+     *     // ... provide data here
+     *   ]
+     * })
+     * Note, that providing `undefined` is treated as the value not being there.
+     * Read more here: https://pris.ly/d/null-undefined
+     * 
+     */
+    createManyAndReturn<T extends TeamCreateManyAndReturnArgs>(args?: SelectSubset<T, TeamCreateManyAndReturnArgs<ExtArgs>>): Prisma.PrismaPromise<$Result.GetResult<Prisma.$TeamPayload<ExtArgs>, T, "createManyAndReturn">>
+
+    /**
+     * Delete a Team.
+     * @param {TeamDeleteArgs} args - Arguments to delete one Team.
+     * @example
+     * // Delete one Team
+     * const Team = await prisma.team.delete({
+     *   where: {
+     *     // ... filter to delete one Team
+     *   }
+     * })
+     * 
+     */
+    delete<T extends TeamDeleteArgs>(args: SelectSubset<T, TeamDeleteArgs<ExtArgs>>): Prisma__TeamClient<$Result.GetResult<Prisma.$TeamPayload<ExtArgs>, T, "delete">, never, ExtArgs>
+
+    /**
+     * Update one Team.
+     * @param {TeamUpdateArgs} args - Arguments to update one Team.
+     * @example
+     * // Update one Team
+     * const team = await prisma.team.update({
+     *   where: {
+     *     // ... provide filter here
+     *   },
+     *   data: {
+     *     // ... provide data here
+     *   }
+     * })
+     * 
+     */
+    update<T extends TeamUpdateArgs>(args: SelectSubset<T, TeamUpdateArgs<ExtArgs>>): Prisma__TeamClient<$Result.GetResult<Prisma.$TeamPayload<ExtArgs>, T, "update">, never, ExtArgs>
+
+    /**
+     * Delete zero or more Teams.
+     * @param {TeamDeleteManyArgs} args - Arguments to filter Teams to delete.
+     * @example
+     * // Delete a few Teams
+     * const { count } = await prisma.team.deleteMany({
+     *   where: {
+     *     // ... provide filter here
+     *   }
+     * })
+     * 
+     */
+    deleteMany<T extends TeamDeleteManyArgs>(args?: SelectSubset<T, TeamDeleteManyArgs<ExtArgs>>): Prisma.PrismaPromise<BatchPayload>
+
+    /**
+     * Update zero or more Teams.
+     * Note, that providing `undefined` is treated as the value not being there.
+     * Read more here: https://pris.ly/d/null-undefined
+     * @param {TeamUpdateManyArgs} args - Arguments to update one or more rows.
+     * @example
+     * // Update many Teams
+     * const team = await prisma.team.updateMany({
+     *   where: {
+     *     // ... provide filter here
+     *   },
+     *   data: {
+     *     // ... provide data here
+     *   }
+     * })
+     * 
+     */
+    updateMany<T extends TeamUpdateManyArgs>(args: SelectSubset<T, TeamUpdateManyArgs<ExtArgs>>): Prisma.PrismaPromise<BatchPayload>
+
+    /**
+     * Create or update one Team.
+     * @param {TeamUpsertArgs} args - Arguments to update or create a Team.
+     * @example
+     * // Update or create a Team
+     * const team = await prisma.team.upsert({
+     *   create: {
+     *     // ... data to create a Team
+     *   },
+     *   update: {
+     *     // ... in case it already exists, update
+     *   },
+     *   where: {
+     *     // ... the filter for the Team we want to update
+     *   }
+     * })
+     */
+    upsert<T extends TeamUpsertArgs>(args: SelectSubset<T, TeamUpsertArgs<ExtArgs>>): Prisma__TeamClient<$Result.GetResult<Prisma.$TeamPayload<ExtArgs>, T, "upsert">, never, ExtArgs>
+
+
+    /**
+     * Count the number of Teams.
+     * Note, that providing `undefined` is treated as the value not being there.
+     * Read more here: https://pris.ly/d/null-undefined
+     * @param {TeamCountArgs} args - Arguments to filter Teams to count.
+     * @example
+     * // Count the number of Teams
+     * const count = await prisma.team.count({
+     *   where: {
+     *     // ... the filter for the Teams we want to count
+     *   }
+     * })
+    **/
+    count<T extends TeamCountArgs>(
+      args?: Subset<T, TeamCountArgs>,
+    ): Prisma.PrismaPromise<
+      T extends $Utils.Record<'select', any>
+        ? T['select'] extends true
+          ? number
+          : GetScalarType<T['select'], TeamCountAggregateOutputType>
+        : number
+    >
+
+    /**
+     * Allows you to perform aggregations operations on a Team.
+     * Note, that providing `undefined` is treated as the value not being there.
+     * Read more here: https://pris.ly/d/null-undefined
+     * @param {TeamAggregateArgs} args - Select which aggregations you would like to apply and on what fields.
+     * @example
+     * // Ordered by age ascending
+     * // Where email contains prisma.io
+     * // Limited to the 10 users
+     * const aggregations = await prisma.user.aggregate({
+     *   _avg: {
+     *     age: true,
+     *   },
+     *   where: {
+     *     email: {
+     *       contains: "prisma.io",
+     *     },
+     *   },
+     *   orderBy: {
+     *     age: "asc",
+     *   },
+     *   take: 10,
+     * })
+    **/
+    aggregate<T extends TeamAggregateArgs>(args: Subset<T, TeamAggregateArgs>): Prisma.PrismaPromise<GetTeamAggregateType<T>>
+
+    /**
+     * Group by Team.
+     * Note, that providing `undefined` is treated as the value not being there.
+     * Read more here: https://pris.ly/d/null-undefined
+     * @param {TeamGroupByArgs} args - Group by arguments.
+     * @example
+     * // Group by city, order by createdAt, get count
+     * const result = await prisma.user.groupBy({
+     *   by: ['city', 'createdAt'],
+     *   orderBy: {
+     *     createdAt: true
+     *   },
+     *   _count: {
+     *     _all: true
+     *   },
+     * })
+     * 
+    **/
+    groupBy<
+      T extends TeamGroupByArgs,
+      HasSelectOrTake extends Or<
+        Extends<'skip', Keys<T>>,
+        Extends<'take', Keys<T>>
+      >,
+      OrderByArg extends True extends HasSelectOrTake
+        ? { orderBy: TeamGroupByArgs['orderBy'] }
+        : { orderBy?: TeamGroupByArgs['orderBy'] },
+      OrderFields extends ExcludeUnderscoreKeys<Keys<MaybeTupleToUnion<T['orderBy']>>>,
+      ByFields extends MaybeTupleToUnion<T['by']>,
+      ByValid extends Has<ByFields, OrderFields>,
+      HavingFields extends GetHavingFields<T['having']>,
+      HavingValid extends Has<ByFields, HavingFields>,
+      ByEmpty extends T['by'] extends never[] ? True : False,
+      InputErrors extends ByEmpty extends True
+      ? `Error: "by" must not be empty.`
+      : HavingValid extends False
+      ? {
+          [P in HavingFields]: P extends ByFields
+            ? never
+            : P extends string
+            ? `Error: Field "${P}" used in "having" needs to be provided in "by".`
+            : [
+                Error,
+                'Field ',
+                P,
+                ` in "having" needs to be provided in "by"`,
+              ]
+        }[HavingFields]
+      : 'take' extends Keys<T>
+      ? 'orderBy' extends Keys<T>
+        ? ByValid extends True
+          ? {}
+          : {
+              [P in OrderFields]: P extends ByFields
+                ? never
+                : `Error: Field "${P}" in "orderBy" needs to be provided in "by"`
+            }[OrderFields]
+        : 'Error: If you provide "take", you also need to provide "orderBy"'
+      : 'skip' extends Keys<T>
+      ? 'orderBy' extends Keys<T>
+        ? ByValid extends True
+          ? {}
+          : {
+              [P in OrderFields]: P extends ByFields
+                ? never
+                : `Error: Field "${P}" in "orderBy" needs to be provided in "by"`
+            }[OrderFields]
+        : 'Error: If you provide "skip", you also need to provide "orderBy"'
+      : ByValid extends True
+      ? {}
+      : {
+          [P in OrderFields]: P extends ByFields
+            ? never
+            : `Error: Field "${P}" in "orderBy" needs to be provided in "by"`
+        }[OrderFields]
+    >(args: SubsetIntersection<T, TeamGroupByArgs, OrderByArg> & InputErrors): {} extends InputErrors ? GetTeamGroupByPayload<T> : Prisma.PrismaPromise<InputErrors>
+  /**
+   * Fields of the Team model
+   */
+  readonly fields: TeamFieldRefs;
+  }
+
+  /**
+   * The delegate class that acts as a "Promise-like" for Team.
+   * Why is this prefixed with `Prisma__`?
+   * Because we want to prevent naming conflicts as mentioned in
+   * https://github.com/prisma/prisma-client-js/issues/707
+   */
+  export interface Prisma__TeamClient<T, Null = never, ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> extends Prisma.PrismaPromise<T> {
+    readonly [Symbol.toStringTag]: "PrismaPromise"
+    devices<T extends Team$devicesArgs<ExtArgs> = {}>(args?: Subset<T, Team$devicesArgs<ExtArgs>>): Prisma.PrismaPromise<$Result.GetResult<Prisma.$DevicePayload<ExtArgs>, T, "findMany"> | Null>
+    apiKeys<T extends Team$apiKeysArgs<ExtArgs> = {}>(args?: Subset<T, Team$apiKeysArgs<ExtArgs>>): Prisma.PrismaPromise<$Result.GetResult<Prisma.$ApiKeyPayload<ExtArgs>, T, "findMany"> | Null>
+    /**
+     * Attaches callbacks for the resolution and/or rejection of the Promise.
+     * @param onfulfilled The callback to execute when the Promise is resolved.
+     * @param onrejected The callback to execute when the Promise is rejected.
+     * @returns A Promise for the completion of which ever callback is executed.
+     */
+    then<TResult1 = T, TResult2 = never>(onfulfilled?: ((value: T) => TResult1 | PromiseLike<TResult1>) | undefined | null, onrejected?: ((reason: any) => TResult2 | PromiseLike<TResult2>) | undefined | null): $Utils.JsPromise<TResult1 | TResult2>
+    /**
+     * Attaches a callback for only the rejection of the Promise.
+     * @param onrejected The callback to execute when the Promise is rejected.
+     * @returns A Promise for the completion of the callback.
+     */
+    catch<TResult = never>(onrejected?: ((reason: any) => TResult | PromiseLike<TResult>) | undefined | null): $Utils.JsPromise<T | TResult>
+    /**
+     * Attaches a callback that is invoked when the Promise is settled (fulfilled or rejected). The
+     * resolved value cannot be modified from the callback.
+     * @param onfinally The callback to execute when the Promise is settled (fulfilled or rejected).
+     * @returns A Promise for the completion of the callback.
+     */
+    finally(onfinally?: (() => void) | undefined | null): $Utils.JsPromise<T>
+  }
+
+
+
+
+  /**
+   * Fields of the Team model
+   */ 
+  interface TeamFieldRefs {
+    readonly id: FieldRef<"Team", 'String'>
+    readonly name: FieldRef<"Team", 'String'>
+    readonly createdAt: FieldRef<"Team", 'DateTime'>
+  }
+    
+
+  // Custom InputTypes
+  /**
+   * Team findUnique
+   */
+  export type TeamFindUniqueArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the Team
+     */
+    select?: TeamSelect<ExtArgs> | null
+    /**
+     * Choose, which related nodes to fetch as well
+     */
+    include?: TeamInclude<ExtArgs> | null
+    /**
+     * Filter, which Team to fetch.
+     */
+    where: TeamWhereUniqueInput
+  }
+
+  /**
+   * Team findUniqueOrThrow
+   */
+  export type TeamFindUniqueOrThrowArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the Team
+     */
+    select?: TeamSelect<ExtArgs> | null
+    /**
+     * Choose, which related nodes to fetch as well
+     */
+    include?: TeamInclude<ExtArgs> | null
+    /**
+     * Filter, which Team to fetch.
+     */
+    where: TeamWhereUniqueInput
+  }
+
+  /**
+   * Team findFirst
+   */
+  export type TeamFindFirstArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the Team
+     */
+    select?: TeamSelect<ExtArgs> | null
+    /**
+     * Choose, which related nodes to fetch as well
+     */
+    include?: TeamInclude<ExtArgs> | null
+    /**
+     * Filter, which Team to fetch.
+     */
+    where?: TeamWhereInput
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/sorting Sorting Docs}
+     * 
+     * Determine the order of Teams to fetch.
+     */
+    orderBy?: TeamOrderByWithRelationInput | TeamOrderByWithRelationInput[]
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination#cursor-based-pagination Cursor Docs}
+     * 
+     * Sets the position for searching for Teams.
+     */
+    cursor?: TeamWhereUniqueInput
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination Pagination Docs}
+     * 
+     * Take `±n` Teams from the position of the cursor.
+     */
+    take?: number
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination Pagination Docs}
+     * 
+     * Skip the first `n` Teams.
+     */
+    skip?: number
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/distinct Distinct Docs}
+     * 
+     * Filter by unique combinations of Teams.
+     */
+    distinct?: TeamScalarFieldEnum | TeamScalarFieldEnum[]
+  }
+
+  /**
+   * Team findFirstOrThrow
+   */
+  export type TeamFindFirstOrThrowArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the Team
+     */
+    select?: TeamSelect<ExtArgs> | null
+    /**
+     * Choose, which related nodes to fetch as well
+     */
+    include?: TeamInclude<ExtArgs> | null
+    /**
+     * Filter, which Team to fetch.
+     */
+    where?: TeamWhereInput
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/sorting Sorting Docs}
+     * 
+     * Determine the order of Teams to fetch.
+     */
+    orderBy?: TeamOrderByWithRelationInput | TeamOrderByWithRelationInput[]
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination#cursor-based-pagination Cursor Docs}
+     * 
+     * Sets the position for searching for Teams.
+     */
+    cursor?: TeamWhereUniqueInput
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination Pagination Docs}
+     * 
+     * Take `±n` Teams from the position of the cursor.
+     */
+    take?: number
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination Pagination Docs}
+     * 
+     * Skip the first `n` Teams.
+     */
+    skip?: number
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/distinct Distinct Docs}
+     * 
+     * Filter by unique combinations of Teams.
+     */
+    distinct?: TeamScalarFieldEnum | TeamScalarFieldEnum[]
+  }
+
+  /**
+   * Team findMany
+   */
+  export type TeamFindManyArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the Team
+     */
+    select?: TeamSelect<ExtArgs> | null
+    /**
+     * Choose, which related nodes to fetch as well
+     */
+    include?: TeamInclude<ExtArgs> | null
+    /**
+     * Filter, which Teams to fetch.
+     */
+    where?: TeamWhereInput
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/sorting Sorting Docs}
+     * 
+     * Determine the order of Teams to fetch.
+     */
+    orderBy?: TeamOrderByWithRelationInput | TeamOrderByWithRelationInput[]
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination#cursor-based-pagination Cursor Docs}
+     * 
+     * Sets the position for listing Teams.
+     */
+    cursor?: TeamWhereUniqueInput
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination Pagination Docs}
+     * 
+     * Take `±n` Teams from the position of the cursor.
+     */
+    take?: number
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination Pagination Docs}
+     * 
+     * Skip the first `n` Teams.
+     */
+    skip?: number
+    distinct?: TeamScalarFieldEnum | TeamScalarFieldEnum[]
+  }
+
+  /**
+   * Team create
+   */
+  export type TeamCreateArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the Team
+     */
+    select?: TeamSelect<ExtArgs> | null
+    /**
+     * Choose, which related nodes to fetch as well
+     */
+    include?: TeamInclude<ExtArgs> | null
+    /**
+     * The data needed to create a Team.
+     */
+    data: XOR<TeamCreateInput, TeamUncheckedCreateInput>
+  }
+
+  /**
+   * Team createMany
+   */
+  export type TeamCreateManyArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * The data used to create many Teams.
+     */
+    data: TeamCreateManyInput | TeamCreateManyInput[]
+  }
+
+  /**
+   * Team createManyAndReturn
+   */
+  export type TeamCreateManyAndReturnArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the Team
+     */
+    select?: TeamSelectCreateManyAndReturn<ExtArgs> | null
+    /**
+     * The data used to create many Teams.
+     */
+    data: TeamCreateManyInput | TeamCreateManyInput[]
+  }
+
+  /**
+   * Team update
+   */
+  export type TeamUpdateArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the Team
+     */
+    select?: TeamSelect<ExtArgs> | null
+    /**
+     * Choose, which related nodes to fetch as well
+     */
+    include?: TeamInclude<ExtArgs> | null
+    /**
+     * The data needed to update a Team.
+     */
+    data: XOR<TeamUpdateInput, TeamUncheckedUpdateInput>
+    /**
+     * Choose, which Team to update.
+     */
+    where: TeamWhereUniqueInput
+  }
+
+  /**
+   * Team updateMany
+   */
+  export type TeamUpdateManyArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * The data used to update Teams.
+     */
+    data: XOR<TeamUpdateManyMutationInput, TeamUncheckedUpdateManyInput>
+    /**
+     * Filter which Teams to update
+     */
+    where?: TeamWhereInput
+  }
+
+  /**
+   * Team upsert
+   */
+  export type TeamUpsertArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the Team
+     */
+    select?: TeamSelect<ExtArgs> | null
+    /**
+     * Choose, which related nodes to fetch as well
+     */
+    include?: TeamInclude<ExtArgs> | null
+    /**
+     * The filter to search for the Team to update in case it exists.
+     */
+    where: TeamWhereUniqueInput
+    /**
+     * In case the Team found by the `where` argument doesn't exist, create a new Team with this data.
+     */
+    create: XOR<TeamCreateInput, TeamUncheckedCreateInput>
+    /**
+     * In case the Team was found with the provided `where` argument, update it with this data.
+     */
+    update: XOR<TeamUpdateInput, TeamUncheckedUpdateInput>
+  }
+
+  /**
+   * Team delete
+   */
+  export type TeamDeleteArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the Team
+     */
+    select?: TeamSelect<ExtArgs> | null
+    /**
+     * Choose, which related nodes to fetch as well
+     */
+    include?: TeamInclude<ExtArgs> | null
+    /**
+     * Filter which Team to delete.
+     */
+    where: TeamWhereUniqueInput
+  }
+
+  /**
+   * Team deleteMany
+   */
+  export type TeamDeleteManyArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Filter which Teams to delete
+     */
+    where?: TeamWhereInput
+  }
+
+  /**
+   * Team.devices
+   */
+  export type Team$devicesArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the Device
+     */
+    select?: DeviceSelect<ExtArgs> | null
+    /**
+     * Choose, which related nodes to fetch as well
+     */
+    include?: DeviceInclude<ExtArgs> | null
+    where?: DeviceWhereInput
+    orderBy?: DeviceOrderByWithRelationInput | DeviceOrderByWithRelationInput[]
+    cursor?: DeviceWhereUniqueInput
+    take?: number
+    skip?: number
+    distinct?: DeviceScalarFieldEnum | DeviceScalarFieldEnum[]
+  }
+
+  /**
+   * Team.apiKeys
+   */
+  export type Team$apiKeysArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the ApiKey
+     */
+    select?: ApiKeySelect<ExtArgs> | null
+    /**
+     * Choose, which related nodes to fetch as well
+     */
+    include?: ApiKeyInclude<ExtArgs> | null
+    where?: ApiKeyWhereInput
+    orderBy?: ApiKeyOrderByWithRelationInput | ApiKeyOrderByWithRelationInput[]
+    cursor?: ApiKeyWhereUniqueInput
+    take?: number
+    skip?: number
+    distinct?: ApiKeyScalarFieldEnum | ApiKeyScalarFieldEnum[]
+  }
+
+  /**
+   * Team without action
+   */
+  export type TeamDefaultArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the Team
+     */
+    select?: TeamSelect<ExtArgs> | null
+    /**
+     * Choose, which related nodes to fetch as well
+     */
+    include?: TeamInclude<ExtArgs> | null
   }
 
 
@@ -16387,7 +17647,8 @@ export namespace Prisma {
     trace_id: 'trace_id',
     last_heartbeat_at: 'last_heartbeat_at',
     heartbeat_pid: 'heartbeat_pid',
-    heartbeat_host: 'heartbeat_host'
+    heartbeat_host: 'heartbeat_host',
+    api_key_id: 'api_key_id'
   };
 
   export type SessionScalarFieldEnum = (typeof SessionScalarFieldEnum)[keyof typeof SessionScalarFieldEnum]
@@ -16518,7 +17779,8 @@ export namespace Prisma {
     ip: 'ip',
     cpuArchitecture: 'cpuArchitecture',
     owningSessionId: 'owningSessionId',
-    lockedAt: 'lockedAt'
+    lockedAt: 'lockedAt',
+    teamId: 'teamId'
   };
 
   export type DeviceScalarFieldEnum = (typeof DeviceScalarFieldEnum)[keyof typeof DeviceScalarFieldEnum]
@@ -16602,10 +17864,21 @@ export namespace Prisma {
     rateLimit: 'rateLimit',
     createdAt: 'createdAt',
     revokedAt: 'revokedAt',
-    lastUsedAt: 'lastUsedAt'
+    lastUsedAt: 'lastUsedAt',
+    teamId: 'teamId',
+    role: 'role'
   };
 
   export type ApiKeyScalarFieldEnum = (typeof ApiKeyScalarFieldEnum)[keyof typeof ApiKeyScalarFieldEnum]
+
+
+  export const TeamScalarFieldEnum: {
+    id: 'id',
+    name: 'name',
+    createdAt: 'createdAt'
+  };
+
+  export type TeamScalarFieldEnum = (typeof TeamScalarFieldEnum)[keyof typeof TeamScalarFieldEnum]
 
 
   export const SortOrder: {
@@ -16750,6 +18023,7 @@ export namespace Prisma {
     last_heartbeat_at?: DateTimeNullableFilter<"Session"> | Date | string | null
     heartbeat_pid?: IntNullableFilter<"Session"> | number | null
     heartbeat_host?: StringNullableFilter<"Session"> | string | null
+    api_key_id?: StringNullableFilter<"Session"> | string | null
     Log?: LogListRelationFilter
     Profiling?: ProfilingListRelationFilter
     build?: XOR<BuildNullableRelationFilter, BuildWhereInput> | null
@@ -16786,6 +18060,7 @@ export namespace Prisma {
     last_heartbeat_at?: SortOrderInput | SortOrder
     heartbeat_pid?: SortOrderInput | SortOrder
     heartbeat_host?: SortOrderInput | SortOrder
+    api_key_id?: SortOrderInput | SortOrder
     Log?: LogOrderByRelationAggregateInput
     Profiling?: ProfilingOrderByRelationAggregateInput
     build?: BuildOrderByWithRelationInput
@@ -16825,6 +18100,7 @@ export namespace Prisma {
     last_heartbeat_at?: DateTimeNullableFilter<"Session"> | Date | string | null
     heartbeat_pid?: IntNullableFilter<"Session"> | number | null
     heartbeat_host?: StringNullableFilter<"Session"> | string | null
+    api_key_id?: StringNullableFilter<"Session"> | string | null
     Log?: LogListRelationFilter
     Profiling?: ProfilingListRelationFilter
     build?: XOR<BuildNullableRelationFilter, BuildWhereInput> | null
@@ -16861,6 +18137,7 @@ export namespace Prisma {
     last_heartbeat_at?: SortOrderInput | SortOrder
     heartbeat_pid?: SortOrderInput | SortOrder
     heartbeat_host?: SortOrderInput | SortOrder
+    api_key_id?: SortOrderInput | SortOrder
     _count?: SessionCountOrderByAggregateInput
     _avg?: SessionAvgOrderByAggregateInput
     _max?: SessionMaxOrderByAggregateInput
@@ -16901,6 +18178,7 @@ export namespace Prisma {
     last_heartbeat_at?: DateTimeNullableWithAggregatesFilter<"Session"> | Date | string | null
     heartbeat_pid?: IntNullableWithAggregatesFilter<"Session"> | number | null
     heartbeat_host?: StringNullableWithAggregatesFilter<"Session"> | string | null
+    api_key_id?: StringNullableWithAggregatesFilter<"Session"> | string | null
   }
 
   export type SessionLogWhereInput = {
@@ -17335,6 +18613,8 @@ export namespace Prisma {
     cpuArchitecture?: StringNullableFilter<"Device"> | string | null
     owningSessionId?: StringNullableFilter<"Device"> | string | null
     lockedAt?: FloatNullableFilter<"Device"> | number | null
+    teamId?: StringNullableFilter<"Device"> | string | null
+    team?: XOR<TeamNullableRelationFilter, TeamWhereInput> | null
   }
 
   export type DeviceOrderByWithRelationInput = {
@@ -17388,6 +18668,8 @@ export namespace Prisma {
     cpuArchitecture?: SortOrderInput | SortOrder
     owningSessionId?: SortOrderInput | SortOrder
     lockedAt?: SortOrderInput | SortOrder
+    teamId?: SortOrderInput | SortOrder
+    team?: TeamOrderByWithRelationInput
   }
 
   export type DeviceWhereUniqueInput = Prisma.AtLeast<{
@@ -17445,6 +18727,8 @@ export namespace Prisma {
     cpuArchitecture?: StringNullableFilter<"Device"> | string | null
     owningSessionId?: StringNullableFilter<"Device"> | string | null
     lockedAt?: FloatNullableFilter<"Device"> | number | null
+    teamId?: StringNullableFilter<"Device"> | string | null
+    team?: XOR<TeamNullableRelationFilter, TeamWhereInput> | null
   }, "udid_host">
 
   export type DeviceOrderByWithAggregationInput = {
@@ -17498,6 +18782,7 @@ export namespace Prisma {
     cpuArchitecture?: SortOrderInput | SortOrder
     owningSessionId?: SortOrderInput | SortOrder
     lockedAt?: SortOrderInput | SortOrder
+    teamId?: SortOrderInput | SortOrder
     _count?: DeviceCountOrderByAggregateInput
     _avg?: DeviceAvgOrderByAggregateInput
     _max?: DeviceMaxOrderByAggregateInput
@@ -17559,6 +18844,7 @@ export namespace Prisma {
     cpuArchitecture?: StringNullableWithAggregatesFilter<"Device"> | string | null
     owningSessionId?: StringNullableWithAggregatesFilter<"Device"> | string | null
     lockedAt?: FloatNullableWithAggregatesFilter<"Device"> | number | null
+    teamId?: StringNullableWithAggregatesFilter<"Device"> | string | null
   }
 
   export type PendingSessionWhereInput = {
@@ -17911,6 +19197,9 @@ export namespace Prisma {
     createdAt?: DateTimeFilter<"ApiKey"> | Date | string
     revokedAt?: DateTimeNullableFilter<"ApiKey"> | Date | string | null
     lastUsedAt?: DateTimeNullableFilter<"ApiKey"> | Date | string | null
+    teamId?: StringNullableFilter<"ApiKey"> | string | null
+    role?: StringFilter<"ApiKey"> | string
+    team?: XOR<TeamNullableRelationFilter, TeamWhereInput> | null
   }
 
   export type ApiKeyOrderByWithRelationInput = {
@@ -17922,6 +19211,9 @@ export namespace Prisma {
     createdAt?: SortOrder
     revokedAt?: SortOrderInput | SortOrder
     lastUsedAt?: SortOrderInput | SortOrder
+    teamId?: SortOrderInput | SortOrder
+    role?: SortOrder
+    team?: TeamOrderByWithRelationInput
   }
 
   export type ApiKeyWhereUniqueInput = Prisma.AtLeast<{
@@ -17936,6 +19228,9 @@ export namespace Prisma {
     createdAt?: DateTimeFilter<"ApiKey"> | Date | string
     revokedAt?: DateTimeNullableFilter<"ApiKey"> | Date | string | null
     lastUsedAt?: DateTimeNullableFilter<"ApiKey"> | Date | string | null
+    teamId?: StringNullableFilter<"ApiKey"> | string | null
+    role?: StringFilter<"ApiKey"> | string
+    team?: XOR<TeamNullableRelationFilter, TeamWhereInput> | null
   }, "id" | "keyHash">
 
   export type ApiKeyOrderByWithAggregationInput = {
@@ -17947,6 +19242,8 @@ export namespace Prisma {
     createdAt?: SortOrder
     revokedAt?: SortOrderInput | SortOrder
     lastUsedAt?: SortOrderInput | SortOrder
+    teamId?: SortOrderInput | SortOrder
+    role?: SortOrder
     _count?: ApiKeyCountOrderByAggregateInput
     _avg?: ApiKeyAvgOrderByAggregateInput
     _max?: ApiKeyMaxOrderByAggregateInput
@@ -17966,6 +19263,56 @@ export namespace Prisma {
     createdAt?: DateTimeWithAggregatesFilter<"ApiKey"> | Date | string
     revokedAt?: DateTimeNullableWithAggregatesFilter<"ApiKey"> | Date | string | null
     lastUsedAt?: DateTimeNullableWithAggregatesFilter<"ApiKey"> | Date | string | null
+    teamId?: StringNullableWithAggregatesFilter<"ApiKey"> | string | null
+    role?: StringWithAggregatesFilter<"ApiKey"> | string
+  }
+
+  export type TeamWhereInput = {
+    AND?: TeamWhereInput | TeamWhereInput[]
+    OR?: TeamWhereInput[]
+    NOT?: TeamWhereInput | TeamWhereInput[]
+    id?: StringFilter<"Team"> | string
+    name?: StringFilter<"Team"> | string
+    createdAt?: DateTimeFilter<"Team"> | Date | string
+    devices?: DeviceListRelationFilter
+    apiKeys?: ApiKeyListRelationFilter
+  }
+
+  export type TeamOrderByWithRelationInput = {
+    id?: SortOrder
+    name?: SortOrder
+    createdAt?: SortOrder
+    devices?: DeviceOrderByRelationAggregateInput
+    apiKeys?: ApiKeyOrderByRelationAggregateInput
+  }
+
+  export type TeamWhereUniqueInput = Prisma.AtLeast<{
+    id?: string
+    name?: string
+    AND?: TeamWhereInput | TeamWhereInput[]
+    OR?: TeamWhereInput[]
+    NOT?: TeamWhereInput | TeamWhereInput[]
+    createdAt?: DateTimeFilter<"Team"> | Date | string
+    devices?: DeviceListRelationFilter
+    apiKeys?: ApiKeyListRelationFilter
+  }, "id" | "name">
+
+  export type TeamOrderByWithAggregationInput = {
+    id?: SortOrder
+    name?: SortOrder
+    createdAt?: SortOrder
+    _count?: TeamCountOrderByAggregateInput
+    _max?: TeamMaxOrderByAggregateInput
+    _min?: TeamMinOrderByAggregateInput
+  }
+
+  export type TeamScalarWhereWithAggregatesInput = {
+    AND?: TeamScalarWhereWithAggregatesInput | TeamScalarWhereWithAggregatesInput[]
+    OR?: TeamScalarWhereWithAggregatesInput[]
+    NOT?: TeamScalarWhereWithAggregatesInput | TeamScalarWhereWithAggregatesInput[]
+    id?: StringWithAggregatesFilter<"Team"> | string
+    name?: StringWithAggregatesFilter<"Team"> | string
+    createdAt?: DateTimeWithAggregatesFilter<"Team"> | Date | string
   }
 
   export type BuildCreateInput = {
@@ -18050,6 +19397,7 @@ export namespace Prisma {
     last_heartbeat_at?: Date | string | null
     heartbeat_pid?: number | null
     heartbeat_host?: string | null
+    api_key_id?: string | null
     Log?: LogCreateNestedManyWithoutSessionInput
     Profiling?: ProfilingCreateNestedManyWithoutSessionInput
     build?: BuildCreateNestedOneWithoutSessionsInput
@@ -18086,6 +19434,7 @@ export namespace Prisma {
     last_heartbeat_at?: Date | string | null
     heartbeat_pid?: number | null
     heartbeat_host?: string | null
+    api_key_id?: string | null
     Log?: LogUncheckedCreateNestedManyWithoutSessionInput
     Profiling?: ProfilingUncheckedCreateNestedManyWithoutSessionInput
     SessionLog?: SessionLogUncheckedCreateNestedManyWithoutSessionInput
@@ -18120,6 +19469,7 @@ export namespace Prisma {
     last_heartbeat_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
     heartbeat_pid?: NullableIntFieldUpdateOperationsInput | number | null
     heartbeat_host?: NullableStringFieldUpdateOperationsInput | string | null
+    api_key_id?: NullableStringFieldUpdateOperationsInput | string | null
     Log?: LogUpdateManyWithoutSessionNestedInput
     Profiling?: ProfilingUpdateManyWithoutSessionNestedInput
     build?: BuildUpdateOneWithoutSessionsNestedInput
@@ -18156,6 +19506,7 @@ export namespace Prisma {
     last_heartbeat_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
     heartbeat_pid?: NullableIntFieldUpdateOperationsInput | number | null
     heartbeat_host?: NullableStringFieldUpdateOperationsInput | string | null
+    api_key_id?: NullableStringFieldUpdateOperationsInput | string | null
     Log?: LogUncheckedUpdateManyWithoutSessionNestedInput
     Profiling?: ProfilingUncheckedUpdateManyWithoutSessionNestedInput
     SessionLog?: SessionLogUncheckedUpdateManyWithoutSessionNestedInput
@@ -18191,6 +19542,7 @@ export namespace Prisma {
     last_heartbeat_at?: Date | string | null
     heartbeat_pid?: number | null
     heartbeat_host?: string | null
+    api_key_id?: string | null
   }
 
   export type SessionUpdateManyMutationInput = {
@@ -18222,6 +19574,7 @@ export namespace Prisma {
     last_heartbeat_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
     heartbeat_pid?: NullableIntFieldUpdateOperationsInput | number | null
     heartbeat_host?: NullableStringFieldUpdateOperationsInput | string | null
+    api_key_id?: NullableStringFieldUpdateOperationsInput | string | null
   }
 
   export type SessionUncheckedUpdateManyInput = {
@@ -18254,6 +19607,7 @@ export namespace Prisma {
     last_heartbeat_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
     heartbeat_pid?: NullableIntFieldUpdateOperationsInput | number | null
     heartbeat_host?: NullableStringFieldUpdateOperationsInput | string | null
+    api_key_id?: NullableStringFieldUpdateOperationsInput | string | null
   }
 
   export type SessionLogCreateInput = {
@@ -18742,6 +20096,7 @@ export namespace Prisma {
     cpuArchitecture?: string | null
     owningSessionId?: string | null
     lockedAt?: number | null
+    team?: TeamCreateNestedOneWithoutDevicesInput
   }
 
   export type DeviceUncheckedCreateInput = {
@@ -18795,6 +20150,7 @@ export namespace Prisma {
     cpuArchitecture?: string | null
     owningSessionId?: string | null
     lockedAt?: number | null
+    teamId?: string | null
   }
 
   export type DeviceUpdateInput = {
@@ -18848,6 +20204,7 @@ export namespace Prisma {
     cpuArchitecture?: NullableStringFieldUpdateOperationsInput | string | null
     owningSessionId?: NullableStringFieldUpdateOperationsInput | string | null
     lockedAt?: NullableFloatFieldUpdateOperationsInput | number | null
+    team?: TeamUpdateOneWithoutDevicesNestedInput
   }
 
   export type DeviceUncheckedUpdateInput = {
@@ -18901,6 +20258,7 @@ export namespace Prisma {
     cpuArchitecture?: NullableStringFieldUpdateOperationsInput | string | null
     owningSessionId?: NullableStringFieldUpdateOperationsInput | string | null
     lockedAt?: NullableFloatFieldUpdateOperationsInput | number | null
+    teamId?: NullableStringFieldUpdateOperationsInput | string | null
   }
 
   export type DeviceCreateManyInput = {
@@ -18954,6 +20312,7 @@ export namespace Prisma {
     cpuArchitecture?: string | null
     owningSessionId?: string | null
     lockedAt?: number | null
+    teamId?: string | null
   }
 
   export type DeviceUpdateManyMutationInput = {
@@ -19060,6 +20419,7 @@ export namespace Prisma {
     cpuArchitecture?: NullableStringFieldUpdateOperationsInput | string | null
     owningSessionId?: NullableStringFieldUpdateOperationsInput | string | null
     lockedAt?: NullableFloatFieldUpdateOperationsInput | number | null
+    teamId?: NullableStringFieldUpdateOperationsInput | string | null
   }
 
   export type PendingSessionCreateInput = {
@@ -19429,6 +20789,8 @@ export namespace Prisma {
     createdAt?: Date | string
     revokedAt?: Date | string | null
     lastUsedAt?: Date | string | null
+    role?: string
+    team?: TeamCreateNestedOneWithoutApiKeysInput
   }
 
   export type ApiKeyUncheckedCreateInput = {
@@ -19440,6 +20802,8 @@ export namespace Prisma {
     createdAt?: Date | string
     revokedAt?: Date | string | null
     lastUsedAt?: Date | string | null
+    teamId?: string | null
+    role?: string
   }
 
   export type ApiKeyUpdateInput = {
@@ -19451,6 +20815,8 @@ export namespace Prisma {
     createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
     revokedAt?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
     lastUsedAt?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    role?: StringFieldUpdateOperationsInput | string
+    team?: TeamUpdateOneWithoutApiKeysNestedInput
   }
 
   export type ApiKeyUncheckedUpdateInput = {
@@ -19462,6 +20828,8 @@ export namespace Prisma {
     createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
     revokedAt?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
     lastUsedAt?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    teamId?: NullableStringFieldUpdateOperationsInput | string | null
+    role?: StringFieldUpdateOperationsInput | string
   }
 
   export type ApiKeyCreateManyInput = {
@@ -19473,6 +20841,8 @@ export namespace Prisma {
     createdAt?: Date | string
     revokedAt?: Date | string | null
     lastUsedAt?: Date | string | null
+    teamId?: string | null
+    role?: string
   }
 
   export type ApiKeyUpdateManyMutationInput = {
@@ -19484,6 +20854,7 @@ export namespace Prisma {
     createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
     revokedAt?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
     lastUsedAt?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    role?: StringFieldUpdateOperationsInput | string
   }
 
   export type ApiKeyUncheckedUpdateManyInput = {
@@ -19495,6 +20866,58 @@ export namespace Prisma {
     createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
     revokedAt?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
     lastUsedAt?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    teamId?: NullableStringFieldUpdateOperationsInput | string | null
+    role?: StringFieldUpdateOperationsInput | string
+  }
+
+  export type TeamCreateInput = {
+    id?: string
+    name: string
+    createdAt?: Date | string
+    devices?: DeviceCreateNestedManyWithoutTeamInput
+    apiKeys?: ApiKeyCreateNestedManyWithoutTeamInput
+  }
+
+  export type TeamUncheckedCreateInput = {
+    id?: string
+    name: string
+    createdAt?: Date | string
+    devices?: DeviceUncheckedCreateNestedManyWithoutTeamInput
+    apiKeys?: ApiKeyUncheckedCreateNestedManyWithoutTeamInput
+  }
+
+  export type TeamUpdateInput = {
+    id?: StringFieldUpdateOperationsInput | string
+    name?: StringFieldUpdateOperationsInput | string
+    createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
+    devices?: DeviceUpdateManyWithoutTeamNestedInput
+    apiKeys?: ApiKeyUpdateManyWithoutTeamNestedInput
+  }
+
+  export type TeamUncheckedUpdateInput = {
+    id?: StringFieldUpdateOperationsInput | string
+    name?: StringFieldUpdateOperationsInput | string
+    createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
+    devices?: DeviceUncheckedUpdateManyWithoutTeamNestedInput
+    apiKeys?: ApiKeyUncheckedUpdateManyWithoutTeamNestedInput
+  }
+
+  export type TeamCreateManyInput = {
+    id?: string
+    name: string
+    createdAt?: Date | string
+  }
+
+  export type TeamUpdateManyMutationInput = {
+    id?: StringFieldUpdateOperationsInput | string
+    name?: StringFieldUpdateOperationsInput | string
+    createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
+  }
+
+  export type TeamUncheckedUpdateManyInput = {
+    id?: StringFieldUpdateOperationsInput | string
+    name?: StringFieldUpdateOperationsInput | string
+    createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
   }
 
   export type StringFilter<$PrismaModel = never> = {
@@ -19712,6 +21135,7 @@ export namespace Prisma {
     last_heartbeat_at?: SortOrder
     heartbeat_pid?: SortOrder
     heartbeat_host?: SortOrder
+    api_key_id?: SortOrder
   }
 
   export type SessionAvgOrderByAggregateInput = {
@@ -19748,6 +21172,7 @@ export namespace Prisma {
     last_heartbeat_at?: SortOrder
     heartbeat_pid?: SortOrder
     heartbeat_host?: SortOrder
+    api_key_id?: SortOrder
   }
 
   export type SessionMinOrderByAggregateInput = {
@@ -19780,6 +21205,7 @@ export namespace Prisma {
     last_heartbeat_at?: SortOrder
     heartbeat_pid?: SortOrder
     heartbeat_host?: SortOrder
+    api_key_id?: SortOrder
   }
 
   export type SessionSumOrderByAggregateInput = {
@@ -20122,6 +21548,11 @@ export namespace Prisma {
     not?: NestedFloatFilter<$PrismaModel> | number
   }
 
+  export type TeamNullableRelationFilter = {
+    is?: TeamWhereInput | null
+    isNot?: TeamWhereInput | null
+  }
+
   export type DeviceUdidHostCompoundUniqueInput = {
     udid: string
     host: string
@@ -20178,6 +21609,7 @@ export namespace Prisma {
     cpuArchitecture?: SortOrder
     owningSessionId?: SortOrder
     lockedAt?: SortOrder
+    teamId?: SortOrder
   }
 
   export type DeviceAvgOrderByAggregateInput = {
@@ -20249,6 +21681,7 @@ export namespace Prisma {
     cpuArchitecture?: SortOrder
     owningSessionId?: SortOrder
     lockedAt?: SortOrder
+    teamId?: SortOrder
   }
 
   export type DeviceMinOrderByAggregateInput = {
@@ -20302,6 +21735,7 @@ export namespace Prisma {
     cpuArchitecture?: SortOrder
     owningSessionId?: SortOrder
     lockedAt?: SortOrder
+    teamId?: SortOrder
   }
 
   export type DeviceSumOrderByAggregateInput = {
@@ -20535,6 +21969,8 @@ export namespace Prisma {
     createdAt?: SortOrder
     revokedAt?: SortOrder
     lastUsedAt?: SortOrder
+    teamId?: SortOrder
+    role?: SortOrder
   }
 
   export type ApiKeyAvgOrderByAggregateInput = {
@@ -20550,6 +21986,8 @@ export namespace Prisma {
     createdAt?: SortOrder
     revokedAt?: SortOrder
     lastUsedAt?: SortOrder
+    teamId?: SortOrder
+    role?: SortOrder
   }
 
   export type ApiKeyMinOrderByAggregateInput = {
@@ -20561,10 +21999,50 @@ export namespace Prisma {
     createdAt?: SortOrder
     revokedAt?: SortOrder
     lastUsedAt?: SortOrder
+    teamId?: SortOrder
+    role?: SortOrder
   }
 
   export type ApiKeySumOrderByAggregateInput = {
     rateLimit?: SortOrder
+  }
+
+  export type DeviceListRelationFilter = {
+    every?: DeviceWhereInput
+    some?: DeviceWhereInput
+    none?: DeviceWhereInput
+  }
+
+  export type ApiKeyListRelationFilter = {
+    every?: ApiKeyWhereInput
+    some?: ApiKeyWhereInput
+    none?: ApiKeyWhereInput
+  }
+
+  export type DeviceOrderByRelationAggregateInput = {
+    _count?: SortOrder
+  }
+
+  export type ApiKeyOrderByRelationAggregateInput = {
+    _count?: SortOrder
+  }
+
+  export type TeamCountOrderByAggregateInput = {
+    id?: SortOrder
+    name?: SortOrder
+    createdAt?: SortOrder
+  }
+
+  export type TeamMaxOrderByAggregateInput = {
+    id?: SortOrder
+    name?: SortOrder
+    createdAt?: SortOrder
+  }
+
+  export type TeamMinOrderByAggregateInput = {
+    id?: SortOrder
+    name?: SortOrder
+    createdAt?: SortOrder
   }
 
   export type SessionCreateNestedManyWithoutBuildInput = {
@@ -20841,12 +22319,128 @@ export namespace Prisma {
     divide?: number
   }
 
+  export type TeamCreateNestedOneWithoutDevicesInput = {
+    create?: XOR<TeamCreateWithoutDevicesInput, TeamUncheckedCreateWithoutDevicesInput>
+    connectOrCreate?: TeamCreateOrConnectWithoutDevicesInput
+    connect?: TeamWhereUniqueInput
+  }
+
   export type FloatFieldUpdateOperationsInput = {
     set?: number
     increment?: number
     decrement?: number
     multiply?: number
     divide?: number
+  }
+
+  export type TeamUpdateOneWithoutDevicesNestedInput = {
+    create?: XOR<TeamCreateWithoutDevicesInput, TeamUncheckedCreateWithoutDevicesInput>
+    connectOrCreate?: TeamCreateOrConnectWithoutDevicesInput
+    upsert?: TeamUpsertWithoutDevicesInput
+    disconnect?: TeamWhereInput | boolean
+    delete?: TeamWhereInput | boolean
+    connect?: TeamWhereUniqueInput
+    update?: XOR<XOR<TeamUpdateToOneWithWhereWithoutDevicesInput, TeamUpdateWithoutDevicesInput>, TeamUncheckedUpdateWithoutDevicesInput>
+  }
+
+  export type TeamCreateNestedOneWithoutApiKeysInput = {
+    create?: XOR<TeamCreateWithoutApiKeysInput, TeamUncheckedCreateWithoutApiKeysInput>
+    connectOrCreate?: TeamCreateOrConnectWithoutApiKeysInput
+    connect?: TeamWhereUniqueInput
+  }
+
+  export type TeamUpdateOneWithoutApiKeysNestedInput = {
+    create?: XOR<TeamCreateWithoutApiKeysInput, TeamUncheckedCreateWithoutApiKeysInput>
+    connectOrCreate?: TeamCreateOrConnectWithoutApiKeysInput
+    upsert?: TeamUpsertWithoutApiKeysInput
+    disconnect?: TeamWhereInput | boolean
+    delete?: TeamWhereInput | boolean
+    connect?: TeamWhereUniqueInput
+    update?: XOR<XOR<TeamUpdateToOneWithWhereWithoutApiKeysInput, TeamUpdateWithoutApiKeysInput>, TeamUncheckedUpdateWithoutApiKeysInput>
+  }
+
+  export type DeviceCreateNestedManyWithoutTeamInput = {
+    create?: XOR<DeviceCreateWithoutTeamInput, DeviceUncheckedCreateWithoutTeamInput> | DeviceCreateWithoutTeamInput[] | DeviceUncheckedCreateWithoutTeamInput[]
+    connectOrCreate?: DeviceCreateOrConnectWithoutTeamInput | DeviceCreateOrConnectWithoutTeamInput[]
+    createMany?: DeviceCreateManyTeamInputEnvelope
+    connect?: DeviceWhereUniqueInput | DeviceWhereUniqueInput[]
+  }
+
+  export type ApiKeyCreateNestedManyWithoutTeamInput = {
+    create?: XOR<ApiKeyCreateWithoutTeamInput, ApiKeyUncheckedCreateWithoutTeamInput> | ApiKeyCreateWithoutTeamInput[] | ApiKeyUncheckedCreateWithoutTeamInput[]
+    connectOrCreate?: ApiKeyCreateOrConnectWithoutTeamInput | ApiKeyCreateOrConnectWithoutTeamInput[]
+    createMany?: ApiKeyCreateManyTeamInputEnvelope
+    connect?: ApiKeyWhereUniqueInput | ApiKeyWhereUniqueInput[]
+  }
+
+  export type DeviceUncheckedCreateNestedManyWithoutTeamInput = {
+    create?: XOR<DeviceCreateWithoutTeamInput, DeviceUncheckedCreateWithoutTeamInput> | DeviceCreateWithoutTeamInput[] | DeviceUncheckedCreateWithoutTeamInput[]
+    connectOrCreate?: DeviceCreateOrConnectWithoutTeamInput | DeviceCreateOrConnectWithoutTeamInput[]
+    createMany?: DeviceCreateManyTeamInputEnvelope
+    connect?: DeviceWhereUniqueInput | DeviceWhereUniqueInput[]
+  }
+
+  export type ApiKeyUncheckedCreateNestedManyWithoutTeamInput = {
+    create?: XOR<ApiKeyCreateWithoutTeamInput, ApiKeyUncheckedCreateWithoutTeamInput> | ApiKeyCreateWithoutTeamInput[] | ApiKeyUncheckedCreateWithoutTeamInput[]
+    connectOrCreate?: ApiKeyCreateOrConnectWithoutTeamInput | ApiKeyCreateOrConnectWithoutTeamInput[]
+    createMany?: ApiKeyCreateManyTeamInputEnvelope
+    connect?: ApiKeyWhereUniqueInput | ApiKeyWhereUniqueInput[]
+  }
+
+  export type DeviceUpdateManyWithoutTeamNestedInput = {
+    create?: XOR<DeviceCreateWithoutTeamInput, DeviceUncheckedCreateWithoutTeamInput> | DeviceCreateWithoutTeamInput[] | DeviceUncheckedCreateWithoutTeamInput[]
+    connectOrCreate?: DeviceCreateOrConnectWithoutTeamInput | DeviceCreateOrConnectWithoutTeamInput[]
+    upsert?: DeviceUpsertWithWhereUniqueWithoutTeamInput | DeviceUpsertWithWhereUniqueWithoutTeamInput[]
+    createMany?: DeviceCreateManyTeamInputEnvelope
+    set?: DeviceWhereUniqueInput | DeviceWhereUniqueInput[]
+    disconnect?: DeviceWhereUniqueInput | DeviceWhereUniqueInput[]
+    delete?: DeviceWhereUniqueInput | DeviceWhereUniqueInput[]
+    connect?: DeviceWhereUniqueInput | DeviceWhereUniqueInput[]
+    update?: DeviceUpdateWithWhereUniqueWithoutTeamInput | DeviceUpdateWithWhereUniqueWithoutTeamInput[]
+    updateMany?: DeviceUpdateManyWithWhereWithoutTeamInput | DeviceUpdateManyWithWhereWithoutTeamInput[]
+    deleteMany?: DeviceScalarWhereInput | DeviceScalarWhereInput[]
+  }
+
+  export type ApiKeyUpdateManyWithoutTeamNestedInput = {
+    create?: XOR<ApiKeyCreateWithoutTeamInput, ApiKeyUncheckedCreateWithoutTeamInput> | ApiKeyCreateWithoutTeamInput[] | ApiKeyUncheckedCreateWithoutTeamInput[]
+    connectOrCreate?: ApiKeyCreateOrConnectWithoutTeamInput | ApiKeyCreateOrConnectWithoutTeamInput[]
+    upsert?: ApiKeyUpsertWithWhereUniqueWithoutTeamInput | ApiKeyUpsertWithWhereUniqueWithoutTeamInput[]
+    createMany?: ApiKeyCreateManyTeamInputEnvelope
+    set?: ApiKeyWhereUniqueInput | ApiKeyWhereUniqueInput[]
+    disconnect?: ApiKeyWhereUniqueInput | ApiKeyWhereUniqueInput[]
+    delete?: ApiKeyWhereUniqueInput | ApiKeyWhereUniqueInput[]
+    connect?: ApiKeyWhereUniqueInput | ApiKeyWhereUniqueInput[]
+    update?: ApiKeyUpdateWithWhereUniqueWithoutTeamInput | ApiKeyUpdateWithWhereUniqueWithoutTeamInput[]
+    updateMany?: ApiKeyUpdateManyWithWhereWithoutTeamInput | ApiKeyUpdateManyWithWhereWithoutTeamInput[]
+    deleteMany?: ApiKeyScalarWhereInput | ApiKeyScalarWhereInput[]
+  }
+
+  export type DeviceUncheckedUpdateManyWithoutTeamNestedInput = {
+    create?: XOR<DeviceCreateWithoutTeamInput, DeviceUncheckedCreateWithoutTeamInput> | DeviceCreateWithoutTeamInput[] | DeviceUncheckedCreateWithoutTeamInput[]
+    connectOrCreate?: DeviceCreateOrConnectWithoutTeamInput | DeviceCreateOrConnectWithoutTeamInput[]
+    upsert?: DeviceUpsertWithWhereUniqueWithoutTeamInput | DeviceUpsertWithWhereUniqueWithoutTeamInput[]
+    createMany?: DeviceCreateManyTeamInputEnvelope
+    set?: DeviceWhereUniqueInput | DeviceWhereUniqueInput[]
+    disconnect?: DeviceWhereUniqueInput | DeviceWhereUniqueInput[]
+    delete?: DeviceWhereUniqueInput | DeviceWhereUniqueInput[]
+    connect?: DeviceWhereUniqueInput | DeviceWhereUniqueInput[]
+    update?: DeviceUpdateWithWhereUniqueWithoutTeamInput | DeviceUpdateWithWhereUniqueWithoutTeamInput[]
+    updateMany?: DeviceUpdateManyWithWhereWithoutTeamInput | DeviceUpdateManyWithWhereWithoutTeamInput[]
+    deleteMany?: DeviceScalarWhereInput | DeviceScalarWhereInput[]
+  }
+
+  export type ApiKeyUncheckedUpdateManyWithoutTeamNestedInput = {
+    create?: XOR<ApiKeyCreateWithoutTeamInput, ApiKeyUncheckedCreateWithoutTeamInput> | ApiKeyCreateWithoutTeamInput[] | ApiKeyUncheckedCreateWithoutTeamInput[]
+    connectOrCreate?: ApiKeyCreateOrConnectWithoutTeamInput | ApiKeyCreateOrConnectWithoutTeamInput[]
+    upsert?: ApiKeyUpsertWithWhereUniqueWithoutTeamInput | ApiKeyUpsertWithWhereUniqueWithoutTeamInput[]
+    createMany?: ApiKeyCreateManyTeamInputEnvelope
+    set?: ApiKeyWhereUniqueInput | ApiKeyWhereUniqueInput[]
+    disconnect?: ApiKeyWhereUniqueInput | ApiKeyWhereUniqueInput[]
+    delete?: ApiKeyWhereUniqueInput | ApiKeyWhereUniqueInput[]
+    connect?: ApiKeyWhereUniqueInput | ApiKeyWhereUniqueInput[]
+    update?: ApiKeyUpdateWithWhereUniqueWithoutTeamInput | ApiKeyUpdateWithWhereUniqueWithoutTeamInput[]
+    updateMany?: ApiKeyUpdateManyWithWhereWithoutTeamInput | ApiKeyUpdateManyWithWhereWithoutTeamInput[]
+    deleteMany?: ApiKeyScalarWhereInput | ApiKeyScalarWhereInput[]
   }
 
   export type NestedStringFilter<$PrismaModel = never> = {
@@ -21124,6 +22718,7 @@ export namespace Prisma {
     last_heartbeat_at?: Date | string | null
     heartbeat_pid?: number | null
     heartbeat_host?: string | null
+    api_key_id?: string | null
     Log?: LogCreateNestedManyWithoutSessionInput
     Profiling?: ProfilingCreateNestedManyWithoutSessionInput
     SessionLog?: SessionLogCreateNestedManyWithoutSessionInput
@@ -21158,6 +22753,7 @@ export namespace Prisma {
     last_heartbeat_at?: Date | string | null
     heartbeat_pid?: number | null
     heartbeat_host?: string | null
+    api_key_id?: string | null
     Log?: LogUncheckedCreateNestedManyWithoutSessionInput
     Profiling?: ProfilingUncheckedCreateNestedManyWithoutSessionInput
     SessionLog?: SessionLogUncheckedCreateNestedManyWithoutSessionInput
@@ -21221,6 +22817,7 @@ export namespace Prisma {
     last_heartbeat_at?: DateTimeNullableFilter<"Session"> | Date | string | null
     heartbeat_pid?: IntNullableFilter<"Session"> | number | null
     heartbeat_host?: StringNullableFilter<"Session"> | string | null
+    api_key_id?: StringNullableFilter<"Session"> | string | null
   }
 
   export type LogCreateWithoutSessionInput = {
@@ -21517,6 +23114,7 @@ export namespace Prisma {
     last_heartbeat_at?: Date | string | null
     heartbeat_pid?: number | null
     heartbeat_host?: string | null
+    api_key_id?: string | null
     Log?: LogCreateNestedManyWithoutSessionInput
     Profiling?: ProfilingCreateNestedManyWithoutSessionInput
     build?: BuildCreateNestedOneWithoutSessionsInput
@@ -21552,6 +23150,7 @@ export namespace Prisma {
     last_heartbeat_at?: Date | string | null
     heartbeat_pid?: number | null
     heartbeat_host?: string | null
+    api_key_id?: string | null
     Log?: LogUncheckedCreateNestedManyWithoutSessionInput
     Profiling?: ProfilingUncheckedCreateNestedManyWithoutSessionInput
   }
@@ -21601,6 +23200,7 @@ export namespace Prisma {
     last_heartbeat_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
     heartbeat_pid?: NullableIntFieldUpdateOperationsInput | number | null
     heartbeat_host?: NullableStringFieldUpdateOperationsInput | string | null
+    api_key_id?: NullableStringFieldUpdateOperationsInput | string | null
     Log?: LogUpdateManyWithoutSessionNestedInput
     Profiling?: ProfilingUpdateManyWithoutSessionNestedInput
     build?: BuildUpdateOneWithoutSessionsNestedInput
@@ -21636,6 +23236,7 @@ export namespace Prisma {
     last_heartbeat_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
     heartbeat_pid?: NullableIntFieldUpdateOperationsInput | number | null
     heartbeat_host?: NullableStringFieldUpdateOperationsInput | string | null
+    api_key_id?: NullableStringFieldUpdateOperationsInput | string | null
     Log?: LogUncheckedUpdateManyWithoutSessionNestedInput
     Profiling?: ProfilingUncheckedUpdateManyWithoutSessionNestedInput
   }
@@ -21669,6 +23270,7 @@ export namespace Prisma {
     last_heartbeat_at?: Date | string | null
     heartbeat_pid?: number | null
     heartbeat_host?: string | null
+    api_key_id?: string | null
     Profiling?: ProfilingCreateNestedManyWithoutSessionInput
     build?: BuildCreateNestedOneWithoutSessionsInput
     SessionLog?: SessionLogCreateNestedManyWithoutSessionInput
@@ -21704,6 +23306,7 @@ export namespace Prisma {
     last_heartbeat_at?: Date | string | null
     heartbeat_pid?: number | null
     heartbeat_host?: string | null
+    api_key_id?: string | null
     Profiling?: ProfilingUncheckedCreateNestedManyWithoutSessionInput
     SessionLog?: SessionLogUncheckedCreateNestedManyWithoutSessionInput
   }
@@ -21753,6 +23356,7 @@ export namespace Prisma {
     last_heartbeat_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
     heartbeat_pid?: NullableIntFieldUpdateOperationsInput | number | null
     heartbeat_host?: NullableStringFieldUpdateOperationsInput | string | null
+    api_key_id?: NullableStringFieldUpdateOperationsInput | string | null
     Profiling?: ProfilingUpdateManyWithoutSessionNestedInput
     build?: BuildUpdateOneWithoutSessionsNestedInput
     SessionLog?: SessionLogUpdateManyWithoutSessionNestedInput
@@ -21788,6 +23392,7 @@ export namespace Prisma {
     last_heartbeat_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
     heartbeat_pid?: NullableIntFieldUpdateOperationsInput | number | null
     heartbeat_host?: NullableStringFieldUpdateOperationsInput | string | null
+    api_key_id?: NullableStringFieldUpdateOperationsInput | string | null
     Profiling?: ProfilingUncheckedUpdateManyWithoutSessionNestedInput
     SessionLog?: SessionLogUncheckedUpdateManyWithoutSessionNestedInput
   }
@@ -21821,6 +23426,7 @@ export namespace Prisma {
     last_heartbeat_at?: Date | string | null
     heartbeat_pid?: number | null
     heartbeat_host?: string | null
+    api_key_id?: string | null
     Log?: LogCreateNestedManyWithoutSessionInput
     build?: BuildCreateNestedOneWithoutSessionsInput
     SessionLog?: SessionLogCreateNestedManyWithoutSessionInput
@@ -21856,6 +23462,7 @@ export namespace Prisma {
     last_heartbeat_at?: Date | string | null
     heartbeat_pid?: number | null
     heartbeat_host?: string | null
+    api_key_id?: string | null
     Log?: LogUncheckedCreateNestedManyWithoutSessionInput
     SessionLog?: SessionLogUncheckedCreateNestedManyWithoutSessionInput
   }
@@ -21905,6 +23512,7 @@ export namespace Prisma {
     last_heartbeat_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
     heartbeat_pid?: NullableIntFieldUpdateOperationsInput | number | null
     heartbeat_host?: NullableStringFieldUpdateOperationsInput | string | null
+    api_key_id?: NullableStringFieldUpdateOperationsInput | string | null
     Log?: LogUpdateManyWithoutSessionNestedInput
     build?: BuildUpdateOneWithoutSessionsNestedInput
     SessionLog?: SessionLogUpdateManyWithoutSessionNestedInput
@@ -21940,8 +23548,350 @@ export namespace Prisma {
     last_heartbeat_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
     heartbeat_pid?: NullableIntFieldUpdateOperationsInput | number | null
     heartbeat_host?: NullableStringFieldUpdateOperationsInput | string | null
+    api_key_id?: NullableStringFieldUpdateOperationsInput | string | null
     Log?: LogUncheckedUpdateManyWithoutSessionNestedInput
     SessionLog?: SessionLogUncheckedUpdateManyWithoutSessionNestedInput
+  }
+
+  export type TeamCreateWithoutDevicesInput = {
+    id?: string
+    name: string
+    createdAt?: Date | string
+    apiKeys?: ApiKeyCreateNestedManyWithoutTeamInput
+  }
+
+  export type TeamUncheckedCreateWithoutDevicesInput = {
+    id?: string
+    name: string
+    createdAt?: Date | string
+    apiKeys?: ApiKeyUncheckedCreateNestedManyWithoutTeamInput
+  }
+
+  export type TeamCreateOrConnectWithoutDevicesInput = {
+    where: TeamWhereUniqueInput
+    create: XOR<TeamCreateWithoutDevicesInput, TeamUncheckedCreateWithoutDevicesInput>
+  }
+
+  export type TeamUpsertWithoutDevicesInput = {
+    update: XOR<TeamUpdateWithoutDevicesInput, TeamUncheckedUpdateWithoutDevicesInput>
+    create: XOR<TeamCreateWithoutDevicesInput, TeamUncheckedCreateWithoutDevicesInput>
+    where?: TeamWhereInput
+  }
+
+  export type TeamUpdateToOneWithWhereWithoutDevicesInput = {
+    where?: TeamWhereInput
+    data: XOR<TeamUpdateWithoutDevicesInput, TeamUncheckedUpdateWithoutDevicesInput>
+  }
+
+  export type TeamUpdateWithoutDevicesInput = {
+    id?: StringFieldUpdateOperationsInput | string
+    name?: StringFieldUpdateOperationsInput | string
+    createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
+    apiKeys?: ApiKeyUpdateManyWithoutTeamNestedInput
+  }
+
+  export type TeamUncheckedUpdateWithoutDevicesInput = {
+    id?: StringFieldUpdateOperationsInput | string
+    name?: StringFieldUpdateOperationsInput | string
+    createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
+    apiKeys?: ApiKeyUncheckedUpdateManyWithoutTeamNestedInput
+  }
+
+  export type TeamCreateWithoutApiKeysInput = {
+    id?: string
+    name: string
+    createdAt?: Date | string
+    devices?: DeviceCreateNestedManyWithoutTeamInput
+  }
+
+  export type TeamUncheckedCreateWithoutApiKeysInput = {
+    id?: string
+    name: string
+    createdAt?: Date | string
+    devices?: DeviceUncheckedCreateNestedManyWithoutTeamInput
+  }
+
+  export type TeamCreateOrConnectWithoutApiKeysInput = {
+    where: TeamWhereUniqueInput
+    create: XOR<TeamCreateWithoutApiKeysInput, TeamUncheckedCreateWithoutApiKeysInput>
+  }
+
+  export type TeamUpsertWithoutApiKeysInput = {
+    update: XOR<TeamUpdateWithoutApiKeysInput, TeamUncheckedUpdateWithoutApiKeysInput>
+    create: XOR<TeamCreateWithoutApiKeysInput, TeamUncheckedCreateWithoutApiKeysInput>
+    where?: TeamWhereInput
+  }
+
+  export type TeamUpdateToOneWithWhereWithoutApiKeysInput = {
+    where?: TeamWhereInput
+    data: XOR<TeamUpdateWithoutApiKeysInput, TeamUncheckedUpdateWithoutApiKeysInput>
+  }
+
+  export type TeamUpdateWithoutApiKeysInput = {
+    id?: StringFieldUpdateOperationsInput | string
+    name?: StringFieldUpdateOperationsInput | string
+    createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
+    devices?: DeviceUpdateManyWithoutTeamNestedInput
+  }
+
+  export type TeamUncheckedUpdateWithoutApiKeysInput = {
+    id?: StringFieldUpdateOperationsInput | string
+    name?: StringFieldUpdateOperationsInput | string
+    createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
+    devices?: DeviceUncheckedUpdateManyWithoutTeamNestedInput
+  }
+
+  export type DeviceCreateWithoutTeamInput = {
+    udid: string
+    host: string
+    systemPort?: number | null
+    proxyPort?: number | null
+    proxyHost?: string | null
+    wdaLocalPort?: number | null
+    name?: string | null
+    state?: string | null
+    sdk?: string | null
+    platform?: string | null
+    deviceType?: string | null
+    busy?: boolean | null
+    userBlocked?: boolean | null
+    realDevice?: boolean | null
+    session_id?: string | null
+    offline?: boolean | null
+    mjpegServerPort?: number | null
+    lastCmdExecutedAt?: number | null
+    totalUtilizationTimeMilliSec?: number
+    sessionStartTime?: number
+    newCommandTimeout?: number | null
+    cloud?: string | null
+    derivedDataPath?: string | null
+    chromeDriverPath?: string | null
+    capability?: string | null
+    adbRemoteHost?: string | null
+    adbPort?: number | null
+    nodeId?: string | null
+    screenWidth?: string | null
+    screenHeight?: string | null
+    dashboard_link?: string | null
+    total_session_count?: number | null
+    createdAt?: Date | string
+    updatedAt?: Date | string
+    healthCheckError?: string | null
+    healthStatus?: string | null
+    lastHealthCheckAt?: number | null
+    batteryLevel?: number | null
+    reservationReason?: string | null
+    reservedBy?: string | null
+    reservedUntil?: number | null
+    storageFree?: string | null
+    tags?: string | null
+    thermalStatus?: string | null
+    sessionProgress?: string | null
+    totalHealedCount?: number | null
+    ip?: string | null
+    cpuArchitecture?: string | null
+    owningSessionId?: string | null
+    lockedAt?: number | null
+  }
+
+  export type DeviceUncheckedCreateWithoutTeamInput = {
+    udid: string
+    host: string
+    systemPort?: number | null
+    proxyPort?: number | null
+    proxyHost?: string | null
+    wdaLocalPort?: number | null
+    name?: string | null
+    state?: string | null
+    sdk?: string | null
+    platform?: string | null
+    deviceType?: string | null
+    busy?: boolean | null
+    userBlocked?: boolean | null
+    realDevice?: boolean | null
+    session_id?: string | null
+    offline?: boolean | null
+    mjpegServerPort?: number | null
+    lastCmdExecutedAt?: number | null
+    totalUtilizationTimeMilliSec?: number
+    sessionStartTime?: number
+    newCommandTimeout?: number | null
+    cloud?: string | null
+    derivedDataPath?: string | null
+    chromeDriverPath?: string | null
+    capability?: string | null
+    adbRemoteHost?: string | null
+    adbPort?: number | null
+    nodeId?: string | null
+    screenWidth?: string | null
+    screenHeight?: string | null
+    dashboard_link?: string | null
+    total_session_count?: number | null
+    createdAt?: Date | string
+    updatedAt?: Date | string
+    healthCheckError?: string | null
+    healthStatus?: string | null
+    lastHealthCheckAt?: number | null
+    batteryLevel?: number | null
+    reservationReason?: string | null
+    reservedBy?: string | null
+    reservedUntil?: number | null
+    storageFree?: string | null
+    tags?: string | null
+    thermalStatus?: string | null
+    sessionProgress?: string | null
+    totalHealedCount?: number | null
+    ip?: string | null
+    cpuArchitecture?: string | null
+    owningSessionId?: string | null
+    lockedAt?: number | null
+  }
+
+  export type DeviceCreateOrConnectWithoutTeamInput = {
+    where: DeviceWhereUniqueInput
+    create: XOR<DeviceCreateWithoutTeamInput, DeviceUncheckedCreateWithoutTeamInput>
+  }
+
+  export type DeviceCreateManyTeamInputEnvelope = {
+    data: DeviceCreateManyTeamInput | DeviceCreateManyTeamInput[]
+  }
+
+  export type ApiKeyCreateWithoutTeamInput = {
+    id?: string
+    name: string
+    keyHash: string
+    scopes: string
+    rateLimit?: number
+    createdAt?: Date | string
+    revokedAt?: Date | string | null
+    lastUsedAt?: Date | string | null
+    role?: string
+  }
+
+  export type ApiKeyUncheckedCreateWithoutTeamInput = {
+    id?: string
+    name: string
+    keyHash: string
+    scopes: string
+    rateLimit?: number
+    createdAt?: Date | string
+    revokedAt?: Date | string | null
+    lastUsedAt?: Date | string | null
+    role?: string
+  }
+
+  export type ApiKeyCreateOrConnectWithoutTeamInput = {
+    where: ApiKeyWhereUniqueInput
+    create: XOR<ApiKeyCreateWithoutTeamInput, ApiKeyUncheckedCreateWithoutTeamInput>
+  }
+
+  export type ApiKeyCreateManyTeamInputEnvelope = {
+    data: ApiKeyCreateManyTeamInput | ApiKeyCreateManyTeamInput[]
+  }
+
+  export type DeviceUpsertWithWhereUniqueWithoutTeamInput = {
+    where: DeviceWhereUniqueInput
+    update: XOR<DeviceUpdateWithoutTeamInput, DeviceUncheckedUpdateWithoutTeamInput>
+    create: XOR<DeviceCreateWithoutTeamInput, DeviceUncheckedCreateWithoutTeamInput>
+  }
+
+  export type DeviceUpdateWithWhereUniqueWithoutTeamInput = {
+    where: DeviceWhereUniqueInput
+    data: XOR<DeviceUpdateWithoutTeamInput, DeviceUncheckedUpdateWithoutTeamInput>
+  }
+
+  export type DeviceUpdateManyWithWhereWithoutTeamInput = {
+    where: DeviceScalarWhereInput
+    data: XOR<DeviceUpdateManyMutationInput, DeviceUncheckedUpdateManyWithoutTeamInput>
+  }
+
+  export type DeviceScalarWhereInput = {
+    AND?: DeviceScalarWhereInput | DeviceScalarWhereInput[]
+    OR?: DeviceScalarWhereInput[]
+    NOT?: DeviceScalarWhereInput | DeviceScalarWhereInput[]
+    udid?: StringFilter<"Device"> | string
+    host?: StringFilter<"Device"> | string
+    systemPort?: IntNullableFilter<"Device"> | number | null
+    proxyPort?: IntNullableFilter<"Device"> | number | null
+    proxyHost?: StringNullableFilter<"Device"> | string | null
+    wdaLocalPort?: IntNullableFilter<"Device"> | number | null
+    name?: StringNullableFilter<"Device"> | string | null
+    state?: StringNullableFilter<"Device"> | string | null
+    sdk?: StringNullableFilter<"Device"> | string | null
+    platform?: StringNullableFilter<"Device"> | string | null
+    deviceType?: StringNullableFilter<"Device"> | string | null
+    busy?: BoolNullableFilter<"Device"> | boolean | null
+    userBlocked?: BoolNullableFilter<"Device"> | boolean | null
+    realDevice?: BoolNullableFilter<"Device"> | boolean | null
+    session_id?: StringNullableFilter<"Device"> | string | null
+    offline?: BoolNullableFilter<"Device"> | boolean | null
+    mjpegServerPort?: IntNullableFilter<"Device"> | number | null
+    lastCmdExecutedAt?: FloatNullableFilter<"Device"> | number | null
+    totalUtilizationTimeMilliSec?: FloatFilter<"Device"> | number
+    sessionStartTime?: FloatFilter<"Device"> | number
+    newCommandTimeout?: IntNullableFilter<"Device"> | number | null
+    cloud?: StringNullableFilter<"Device"> | string | null
+    derivedDataPath?: StringNullableFilter<"Device"> | string | null
+    chromeDriverPath?: StringNullableFilter<"Device"> | string | null
+    capability?: StringNullableFilter<"Device"> | string | null
+    adbRemoteHost?: StringNullableFilter<"Device"> | string | null
+    adbPort?: IntNullableFilter<"Device"> | number | null
+    nodeId?: StringNullableFilter<"Device"> | string | null
+    screenWidth?: StringNullableFilter<"Device"> | string | null
+    screenHeight?: StringNullableFilter<"Device"> | string | null
+    dashboard_link?: StringNullableFilter<"Device"> | string | null
+    total_session_count?: IntNullableFilter<"Device"> | number | null
+    createdAt?: DateTimeFilter<"Device"> | Date | string
+    updatedAt?: DateTimeFilter<"Device"> | Date | string
+    healthCheckError?: StringNullableFilter<"Device"> | string | null
+    healthStatus?: StringNullableFilter<"Device"> | string | null
+    lastHealthCheckAt?: FloatNullableFilter<"Device"> | number | null
+    batteryLevel?: IntNullableFilter<"Device"> | number | null
+    reservationReason?: StringNullableFilter<"Device"> | string | null
+    reservedBy?: StringNullableFilter<"Device"> | string | null
+    reservedUntil?: FloatNullableFilter<"Device"> | number | null
+    storageFree?: StringNullableFilter<"Device"> | string | null
+    tags?: StringNullableFilter<"Device"> | string | null
+    thermalStatus?: StringNullableFilter<"Device"> | string | null
+    sessionProgress?: StringNullableFilter<"Device"> | string | null
+    totalHealedCount?: IntNullableFilter<"Device"> | number | null
+    ip?: StringNullableFilter<"Device"> | string | null
+    cpuArchitecture?: StringNullableFilter<"Device"> | string | null
+    owningSessionId?: StringNullableFilter<"Device"> | string | null
+    lockedAt?: FloatNullableFilter<"Device"> | number | null
+    teamId?: StringNullableFilter<"Device"> | string | null
+  }
+
+  export type ApiKeyUpsertWithWhereUniqueWithoutTeamInput = {
+    where: ApiKeyWhereUniqueInput
+    update: XOR<ApiKeyUpdateWithoutTeamInput, ApiKeyUncheckedUpdateWithoutTeamInput>
+    create: XOR<ApiKeyCreateWithoutTeamInput, ApiKeyUncheckedCreateWithoutTeamInput>
+  }
+
+  export type ApiKeyUpdateWithWhereUniqueWithoutTeamInput = {
+    where: ApiKeyWhereUniqueInput
+    data: XOR<ApiKeyUpdateWithoutTeamInput, ApiKeyUncheckedUpdateWithoutTeamInput>
+  }
+
+  export type ApiKeyUpdateManyWithWhereWithoutTeamInput = {
+    where: ApiKeyScalarWhereInput
+    data: XOR<ApiKeyUpdateManyMutationInput, ApiKeyUncheckedUpdateManyWithoutTeamInput>
+  }
+
+  export type ApiKeyScalarWhereInput = {
+    AND?: ApiKeyScalarWhereInput | ApiKeyScalarWhereInput[]
+    OR?: ApiKeyScalarWhereInput[]
+    NOT?: ApiKeyScalarWhereInput | ApiKeyScalarWhereInput[]
+    id?: StringFilter<"ApiKey"> | string
+    name?: StringFilter<"ApiKey"> | string
+    keyHash?: StringFilter<"ApiKey"> | string
+    scopes?: StringFilter<"ApiKey"> | string
+    rateLimit?: IntFilter<"ApiKey"> | number
+    createdAt?: DateTimeFilter<"ApiKey"> | Date | string
+    revokedAt?: DateTimeNullableFilter<"ApiKey"> | Date | string | null
+    lastUsedAt?: DateTimeNullableFilter<"ApiKey"> | Date | string | null
+    teamId?: StringNullableFilter<"ApiKey"> | string | null
+    role?: StringFilter<"ApiKey"> | string
   }
 
   export type SessionCreateManyBuildInput = {
@@ -21973,6 +23923,7 @@ export namespace Prisma {
     last_heartbeat_at?: Date | string | null
     heartbeat_pid?: number | null
     heartbeat_host?: string | null
+    api_key_id?: string | null
   }
 
   export type SessionUpdateWithoutBuildInput = {
@@ -22004,6 +23955,7 @@ export namespace Prisma {
     last_heartbeat_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
     heartbeat_pid?: NullableIntFieldUpdateOperationsInput | number | null
     heartbeat_host?: NullableStringFieldUpdateOperationsInput | string | null
+    api_key_id?: NullableStringFieldUpdateOperationsInput | string | null
     Log?: LogUpdateManyWithoutSessionNestedInput
     Profiling?: ProfilingUpdateManyWithoutSessionNestedInput
     SessionLog?: SessionLogUpdateManyWithoutSessionNestedInput
@@ -22038,6 +23990,7 @@ export namespace Prisma {
     last_heartbeat_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
     heartbeat_pid?: NullableIntFieldUpdateOperationsInput | number | null
     heartbeat_host?: NullableStringFieldUpdateOperationsInput | string | null
+    api_key_id?: NullableStringFieldUpdateOperationsInput | string | null
     Log?: LogUncheckedUpdateManyWithoutSessionNestedInput
     Profiling?: ProfilingUncheckedUpdateManyWithoutSessionNestedInput
     SessionLog?: SessionLogUncheckedUpdateManyWithoutSessionNestedInput
@@ -22072,6 +24025,7 @@ export namespace Prisma {
     last_heartbeat_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
     heartbeat_pid?: NullableIntFieldUpdateOperationsInput | number | null
     heartbeat_host?: NullableStringFieldUpdateOperationsInput | string | null
+    api_key_id?: NullableStringFieldUpdateOperationsInput | string | null
   }
 
   export type LogCreateManySessionInput = {
@@ -22253,6 +24207,266 @@ export namespace Prisma {
     trace_id?: NullableStringFieldUpdateOperationsInput | string | null
   }
 
+  export type DeviceCreateManyTeamInput = {
+    udid: string
+    host: string
+    systemPort?: number | null
+    proxyPort?: number | null
+    proxyHost?: string | null
+    wdaLocalPort?: number | null
+    name?: string | null
+    state?: string | null
+    sdk?: string | null
+    platform?: string | null
+    deviceType?: string | null
+    busy?: boolean | null
+    userBlocked?: boolean | null
+    realDevice?: boolean | null
+    session_id?: string | null
+    offline?: boolean | null
+    mjpegServerPort?: number | null
+    lastCmdExecutedAt?: number | null
+    totalUtilizationTimeMilliSec?: number
+    sessionStartTime?: number
+    newCommandTimeout?: number | null
+    cloud?: string | null
+    derivedDataPath?: string | null
+    chromeDriverPath?: string | null
+    capability?: string | null
+    adbRemoteHost?: string | null
+    adbPort?: number | null
+    nodeId?: string | null
+    screenWidth?: string | null
+    screenHeight?: string | null
+    dashboard_link?: string | null
+    total_session_count?: number | null
+    createdAt?: Date | string
+    updatedAt?: Date | string
+    healthCheckError?: string | null
+    healthStatus?: string | null
+    lastHealthCheckAt?: number | null
+    batteryLevel?: number | null
+    reservationReason?: string | null
+    reservedBy?: string | null
+    reservedUntil?: number | null
+    storageFree?: string | null
+    tags?: string | null
+    thermalStatus?: string | null
+    sessionProgress?: string | null
+    totalHealedCount?: number | null
+    ip?: string | null
+    cpuArchitecture?: string | null
+    owningSessionId?: string | null
+    lockedAt?: number | null
+  }
+
+  export type ApiKeyCreateManyTeamInput = {
+    id?: string
+    name: string
+    keyHash: string
+    scopes: string
+    rateLimit?: number
+    createdAt?: Date | string
+    revokedAt?: Date | string | null
+    lastUsedAt?: Date | string | null
+    role?: string
+  }
+
+  export type DeviceUpdateWithoutTeamInput = {
+    udid?: StringFieldUpdateOperationsInput | string
+    host?: StringFieldUpdateOperationsInput | string
+    systemPort?: NullableIntFieldUpdateOperationsInput | number | null
+    proxyPort?: NullableIntFieldUpdateOperationsInput | number | null
+    proxyHost?: NullableStringFieldUpdateOperationsInput | string | null
+    wdaLocalPort?: NullableIntFieldUpdateOperationsInput | number | null
+    name?: NullableStringFieldUpdateOperationsInput | string | null
+    state?: NullableStringFieldUpdateOperationsInput | string | null
+    sdk?: NullableStringFieldUpdateOperationsInput | string | null
+    platform?: NullableStringFieldUpdateOperationsInput | string | null
+    deviceType?: NullableStringFieldUpdateOperationsInput | string | null
+    busy?: NullableBoolFieldUpdateOperationsInput | boolean | null
+    userBlocked?: NullableBoolFieldUpdateOperationsInput | boolean | null
+    realDevice?: NullableBoolFieldUpdateOperationsInput | boolean | null
+    session_id?: NullableStringFieldUpdateOperationsInput | string | null
+    offline?: NullableBoolFieldUpdateOperationsInput | boolean | null
+    mjpegServerPort?: NullableIntFieldUpdateOperationsInput | number | null
+    lastCmdExecutedAt?: NullableFloatFieldUpdateOperationsInput | number | null
+    totalUtilizationTimeMilliSec?: FloatFieldUpdateOperationsInput | number
+    sessionStartTime?: FloatFieldUpdateOperationsInput | number
+    newCommandTimeout?: NullableIntFieldUpdateOperationsInput | number | null
+    cloud?: NullableStringFieldUpdateOperationsInput | string | null
+    derivedDataPath?: NullableStringFieldUpdateOperationsInput | string | null
+    chromeDriverPath?: NullableStringFieldUpdateOperationsInput | string | null
+    capability?: NullableStringFieldUpdateOperationsInput | string | null
+    adbRemoteHost?: NullableStringFieldUpdateOperationsInput | string | null
+    adbPort?: NullableIntFieldUpdateOperationsInput | number | null
+    nodeId?: NullableStringFieldUpdateOperationsInput | string | null
+    screenWidth?: NullableStringFieldUpdateOperationsInput | string | null
+    screenHeight?: NullableStringFieldUpdateOperationsInput | string | null
+    dashboard_link?: NullableStringFieldUpdateOperationsInput | string | null
+    total_session_count?: NullableIntFieldUpdateOperationsInput | number | null
+    createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
+    updatedAt?: DateTimeFieldUpdateOperationsInput | Date | string
+    healthCheckError?: NullableStringFieldUpdateOperationsInput | string | null
+    healthStatus?: NullableStringFieldUpdateOperationsInput | string | null
+    lastHealthCheckAt?: NullableFloatFieldUpdateOperationsInput | number | null
+    batteryLevel?: NullableIntFieldUpdateOperationsInput | number | null
+    reservationReason?: NullableStringFieldUpdateOperationsInput | string | null
+    reservedBy?: NullableStringFieldUpdateOperationsInput | string | null
+    reservedUntil?: NullableFloatFieldUpdateOperationsInput | number | null
+    storageFree?: NullableStringFieldUpdateOperationsInput | string | null
+    tags?: NullableStringFieldUpdateOperationsInput | string | null
+    thermalStatus?: NullableStringFieldUpdateOperationsInput | string | null
+    sessionProgress?: NullableStringFieldUpdateOperationsInput | string | null
+    totalHealedCount?: NullableIntFieldUpdateOperationsInput | number | null
+    ip?: NullableStringFieldUpdateOperationsInput | string | null
+    cpuArchitecture?: NullableStringFieldUpdateOperationsInput | string | null
+    owningSessionId?: NullableStringFieldUpdateOperationsInput | string | null
+    lockedAt?: NullableFloatFieldUpdateOperationsInput | number | null
+  }
+
+  export type DeviceUncheckedUpdateWithoutTeamInput = {
+    udid?: StringFieldUpdateOperationsInput | string
+    host?: StringFieldUpdateOperationsInput | string
+    systemPort?: NullableIntFieldUpdateOperationsInput | number | null
+    proxyPort?: NullableIntFieldUpdateOperationsInput | number | null
+    proxyHost?: NullableStringFieldUpdateOperationsInput | string | null
+    wdaLocalPort?: NullableIntFieldUpdateOperationsInput | number | null
+    name?: NullableStringFieldUpdateOperationsInput | string | null
+    state?: NullableStringFieldUpdateOperationsInput | string | null
+    sdk?: NullableStringFieldUpdateOperationsInput | string | null
+    platform?: NullableStringFieldUpdateOperationsInput | string | null
+    deviceType?: NullableStringFieldUpdateOperationsInput | string | null
+    busy?: NullableBoolFieldUpdateOperationsInput | boolean | null
+    userBlocked?: NullableBoolFieldUpdateOperationsInput | boolean | null
+    realDevice?: NullableBoolFieldUpdateOperationsInput | boolean | null
+    session_id?: NullableStringFieldUpdateOperationsInput | string | null
+    offline?: NullableBoolFieldUpdateOperationsInput | boolean | null
+    mjpegServerPort?: NullableIntFieldUpdateOperationsInput | number | null
+    lastCmdExecutedAt?: NullableFloatFieldUpdateOperationsInput | number | null
+    totalUtilizationTimeMilliSec?: FloatFieldUpdateOperationsInput | number
+    sessionStartTime?: FloatFieldUpdateOperationsInput | number
+    newCommandTimeout?: NullableIntFieldUpdateOperationsInput | number | null
+    cloud?: NullableStringFieldUpdateOperationsInput | string | null
+    derivedDataPath?: NullableStringFieldUpdateOperationsInput | string | null
+    chromeDriverPath?: NullableStringFieldUpdateOperationsInput | string | null
+    capability?: NullableStringFieldUpdateOperationsInput | string | null
+    adbRemoteHost?: NullableStringFieldUpdateOperationsInput | string | null
+    adbPort?: NullableIntFieldUpdateOperationsInput | number | null
+    nodeId?: NullableStringFieldUpdateOperationsInput | string | null
+    screenWidth?: NullableStringFieldUpdateOperationsInput | string | null
+    screenHeight?: NullableStringFieldUpdateOperationsInput | string | null
+    dashboard_link?: NullableStringFieldUpdateOperationsInput | string | null
+    total_session_count?: NullableIntFieldUpdateOperationsInput | number | null
+    createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
+    updatedAt?: DateTimeFieldUpdateOperationsInput | Date | string
+    healthCheckError?: NullableStringFieldUpdateOperationsInput | string | null
+    healthStatus?: NullableStringFieldUpdateOperationsInput | string | null
+    lastHealthCheckAt?: NullableFloatFieldUpdateOperationsInput | number | null
+    batteryLevel?: NullableIntFieldUpdateOperationsInput | number | null
+    reservationReason?: NullableStringFieldUpdateOperationsInput | string | null
+    reservedBy?: NullableStringFieldUpdateOperationsInput | string | null
+    reservedUntil?: NullableFloatFieldUpdateOperationsInput | number | null
+    storageFree?: NullableStringFieldUpdateOperationsInput | string | null
+    tags?: NullableStringFieldUpdateOperationsInput | string | null
+    thermalStatus?: NullableStringFieldUpdateOperationsInput | string | null
+    sessionProgress?: NullableStringFieldUpdateOperationsInput | string | null
+    totalHealedCount?: NullableIntFieldUpdateOperationsInput | number | null
+    ip?: NullableStringFieldUpdateOperationsInput | string | null
+    cpuArchitecture?: NullableStringFieldUpdateOperationsInput | string | null
+    owningSessionId?: NullableStringFieldUpdateOperationsInput | string | null
+    lockedAt?: NullableFloatFieldUpdateOperationsInput | number | null
+  }
+
+  export type DeviceUncheckedUpdateManyWithoutTeamInput = {
+    udid?: StringFieldUpdateOperationsInput | string
+    host?: StringFieldUpdateOperationsInput | string
+    systemPort?: NullableIntFieldUpdateOperationsInput | number | null
+    proxyPort?: NullableIntFieldUpdateOperationsInput | number | null
+    proxyHost?: NullableStringFieldUpdateOperationsInput | string | null
+    wdaLocalPort?: NullableIntFieldUpdateOperationsInput | number | null
+    name?: NullableStringFieldUpdateOperationsInput | string | null
+    state?: NullableStringFieldUpdateOperationsInput | string | null
+    sdk?: NullableStringFieldUpdateOperationsInput | string | null
+    platform?: NullableStringFieldUpdateOperationsInput | string | null
+    deviceType?: NullableStringFieldUpdateOperationsInput | string | null
+    busy?: NullableBoolFieldUpdateOperationsInput | boolean | null
+    userBlocked?: NullableBoolFieldUpdateOperationsInput | boolean | null
+    realDevice?: NullableBoolFieldUpdateOperationsInput | boolean | null
+    session_id?: NullableStringFieldUpdateOperationsInput | string | null
+    offline?: NullableBoolFieldUpdateOperationsInput | boolean | null
+    mjpegServerPort?: NullableIntFieldUpdateOperationsInput | number | null
+    lastCmdExecutedAt?: NullableFloatFieldUpdateOperationsInput | number | null
+    totalUtilizationTimeMilliSec?: FloatFieldUpdateOperationsInput | number
+    sessionStartTime?: FloatFieldUpdateOperationsInput | number
+    newCommandTimeout?: NullableIntFieldUpdateOperationsInput | number | null
+    cloud?: NullableStringFieldUpdateOperationsInput | string | null
+    derivedDataPath?: NullableStringFieldUpdateOperationsInput | string | null
+    chromeDriverPath?: NullableStringFieldUpdateOperationsInput | string | null
+    capability?: NullableStringFieldUpdateOperationsInput | string | null
+    adbRemoteHost?: NullableStringFieldUpdateOperationsInput | string | null
+    adbPort?: NullableIntFieldUpdateOperationsInput | number | null
+    nodeId?: NullableStringFieldUpdateOperationsInput | string | null
+    screenWidth?: NullableStringFieldUpdateOperationsInput | string | null
+    screenHeight?: NullableStringFieldUpdateOperationsInput | string | null
+    dashboard_link?: NullableStringFieldUpdateOperationsInput | string | null
+    total_session_count?: NullableIntFieldUpdateOperationsInput | number | null
+    createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
+    updatedAt?: DateTimeFieldUpdateOperationsInput | Date | string
+    healthCheckError?: NullableStringFieldUpdateOperationsInput | string | null
+    healthStatus?: NullableStringFieldUpdateOperationsInput | string | null
+    lastHealthCheckAt?: NullableFloatFieldUpdateOperationsInput | number | null
+    batteryLevel?: NullableIntFieldUpdateOperationsInput | number | null
+    reservationReason?: NullableStringFieldUpdateOperationsInput | string | null
+    reservedBy?: NullableStringFieldUpdateOperationsInput | string | null
+    reservedUntil?: NullableFloatFieldUpdateOperationsInput | number | null
+    storageFree?: NullableStringFieldUpdateOperationsInput | string | null
+    tags?: NullableStringFieldUpdateOperationsInput | string | null
+    thermalStatus?: NullableStringFieldUpdateOperationsInput | string | null
+    sessionProgress?: NullableStringFieldUpdateOperationsInput | string | null
+    totalHealedCount?: NullableIntFieldUpdateOperationsInput | number | null
+    ip?: NullableStringFieldUpdateOperationsInput | string | null
+    cpuArchitecture?: NullableStringFieldUpdateOperationsInput | string | null
+    owningSessionId?: NullableStringFieldUpdateOperationsInput | string | null
+    lockedAt?: NullableFloatFieldUpdateOperationsInput | number | null
+  }
+
+  export type ApiKeyUpdateWithoutTeamInput = {
+    id?: StringFieldUpdateOperationsInput | string
+    name?: StringFieldUpdateOperationsInput | string
+    keyHash?: StringFieldUpdateOperationsInput | string
+    scopes?: StringFieldUpdateOperationsInput | string
+    rateLimit?: IntFieldUpdateOperationsInput | number
+    createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
+    revokedAt?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    lastUsedAt?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    role?: StringFieldUpdateOperationsInput | string
+  }
+
+  export type ApiKeyUncheckedUpdateWithoutTeamInput = {
+    id?: StringFieldUpdateOperationsInput | string
+    name?: StringFieldUpdateOperationsInput | string
+    keyHash?: StringFieldUpdateOperationsInput | string
+    scopes?: StringFieldUpdateOperationsInput | string
+    rateLimit?: IntFieldUpdateOperationsInput | number
+    createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
+    revokedAt?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    lastUsedAt?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    role?: StringFieldUpdateOperationsInput | string
+  }
+
+  export type ApiKeyUncheckedUpdateManyWithoutTeamInput = {
+    id?: StringFieldUpdateOperationsInput | string
+    name?: StringFieldUpdateOperationsInput | string
+    keyHash?: StringFieldUpdateOperationsInput | string
+    scopes?: StringFieldUpdateOperationsInput | string
+    rateLimit?: IntFieldUpdateOperationsInput | number
+    createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
+    revokedAt?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    lastUsedAt?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    role?: StringFieldUpdateOperationsInput | string
+  }
+
 
 
   /**
@@ -22266,6 +24480,10 @@ export namespace Prisma {
      * @deprecated Use SessionCountOutputTypeDefaultArgs instead
      */
     export type SessionCountOutputTypeArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = SessionCountOutputTypeDefaultArgs<ExtArgs>
+    /**
+     * @deprecated Use TeamCountOutputTypeDefaultArgs instead
+     */
+    export type TeamCountOutputTypeArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = TeamCountOutputTypeDefaultArgs<ExtArgs>
     /**
      * @deprecated Use BuildDefaultArgs instead
      */
@@ -22322,6 +24540,10 @@ export namespace Prisma {
      * @deprecated Use ApiKeyDefaultArgs instead
      */
     export type ApiKeyArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = ApiKeyDefaultArgs<ExtArgs>
+    /**
+     * @deprecated Use TeamDefaultArgs instead
+     */
+    export type TeamArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = TeamDefaultArgs<ExtArgs>
 
   /**
    * Batch Payload for updateMany & deleteMany & createMany

@@ -47,6 +47,7 @@ model Session {
   last_heartbeat_at       DateTime?
   heartbeat_pid           Int?
   heartbeat_host          String?
+  api_key_id              String?
   Log                     Log[]
   Profiling               Profiling[]
   build                   Build?       @relation(fields: [build_id], references: [id])
@@ -56,6 +57,7 @@ model Session {
   @@index([build_id])
   @@index([device_udid])
   @@index([device_platform, status])
+  @@index([api_key_id])
 }
 
 model SessionLog {
@@ -175,9 +177,12 @@ model Device {
   cpuArchitecture              String?
   owningSessionId              String?  @map("owning_session_id")
   lockedAt                     Float?   @map("locked_at")
+  teamId                       String?
+  team                         Team?    @relation(fields: [teamId], references: [id])
 
   @@id([udid, host])
   @@index([owningSessionId])
+  @@index([teamId])
 }
 
 model PendingSession {
@@ -245,4 +250,17 @@ model ApiKey {
   createdAt  DateTime  @default(now())
   revokedAt  DateTime?
   lastUsedAt DateTime?
+  teamId     String?
+  role       String    @default("member")
+  team       Team?     @relation(fields: [teamId], references: [id])
+
+  @@index([teamId])
+}
+
+model Team {
+  id        String   @id @default(uuid())
+  name      String   @unique
+  createdAt DateTime @default(now())
+  devices   Device[]
+  apiKeys   ApiKey[]
 }

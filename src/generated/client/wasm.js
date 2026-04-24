@@ -155,7 +155,8 @@ exports.Prisma.SessionScalarFieldEnum = {
   trace_id: 'trace_id',
   last_heartbeat_at: 'last_heartbeat_at',
   heartbeat_pid: 'heartbeat_pid',
-  heartbeat_host: 'heartbeat_host'
+  heartbeat_host: 'heartbeat_host',
+  api_key_id: 'api_key_id'
 };
 
 exports.Prisma.SessionLogScalarFieldEnum = {
@@ -271,7 +272,8 @@ exports.Prisma.DeviceScalarFieldEnum = {
   ip: 'ip',
   cpuArchitecture: 'cpuArchitecture',
   owningSessionId: 'owningSessionId',
-  lockedAt: 'lockedAt'
+  lockedAt: 'lockedAt',
+  teamId: 'teamId'
 };
 
 exports.Prisma.PendingSessionScalarFieldEnum = {
@@ -334,7 +336,15 @@ exports.Prisma.ApiKeyScalarFieldEnum = {
   rateLimit: 'rateLimit',
   createdAt: 'createdAt',
   revokedAt: 'revokedAt',
-  lastUsedAt: 'lastUsedAt'
+  lastUsedAt: 'lastUsedAt',
+  teamId: 'teamId',
+  role: 'role'
+};
+
+exports.Prisma.TeamScalarFieldEnum = {
+  id: 'id',
+  name: 'name',
+  createdAt: 'createdAt'
 };
 
 exports.Prisma.SortOrder = {
@@ -362,7 +372,8 @@ exports.Prisma.ModelName = {
   WebConfig: 'WebConfig',
   LocatorEtalon: 'LocatorEtalon',
   PortLease: 'PortLease',
-  ApiKey: 'ApiKey'
+  ApiKey: 'ApiKey',
+  Team: 'Team'
 };
 
 /**
