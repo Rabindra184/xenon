@@ -28,6 +28,9 @@ export const Modal: React.FC<ModalProps> = ({
   // earlier (while open is still false) and restore it ourselves via
   // onCloseAutoFocus, which lets us preventDefault() on Radix's built-in
   // restoration attempt and supply the correct target instead.
+  // This workaround can be removed once: (a) all modal tests use
+  // @testing-library/user-event (which correctly tracks activeElement), or
+  // (b) JSDOM updates activeElement synchronously on fireEvent.click.
   const returnFocusRef = React.useRef<Element | null>(null);
 
   React.useEffect(() => {
@@ -43,6 +46,7 @@ export const Modal: React.FC<ModalProps> = ({
         <DialogPrimitive.Content
           className="modal"
           style={{ width }}
+          aria-describedby={undefined}
           onCloseAutoFocus={(e) => {
             e.preventDefault();
             const el = returnFocusRef.current;

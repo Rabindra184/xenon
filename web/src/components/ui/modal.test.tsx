@@ -61,8 +61,6 @@ describe('Modal', () => {
     // Flush that macrotask before firing so the listener is active.
     await new Promise((r) => setTimeout(r, 0));
     fireEvent.pointerDown(overlay);
-    fireEvent.mouseDown(overlay);
-    fireEvent.click(overlay);
     expect(onClose).toHaveBeenCalled();
   });
 
