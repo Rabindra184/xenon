@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import { useToast } from '../ui/toast';
 import { Table, THead, TBody, TR, TH, TD } from '../ui/Table';
+import { FieldGroup } from '../ui/FieldGroup';
 
 interface TeamRow {
   id: string;
@@ -226,10 +227,10 @@ const CreateTeamModal: React.FC<{ onClose: () => void; onCreated: () => void }> 
 
   return (
     <Modal onClose={onClose} title="New team">
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-        <label>
-          <div style={labelStyle}>Name</div>
+      <div style={{ display: 'flex', flexDirection: 'column' }}>
+        <FieldGroup label="Name" htmlFor="team-name">
           <input
+            id="team-name"
             type="text"
             value={name}
             onChange={(e) => setName(e.target.value)}
@@ -237,7 +238,7 @@ const CreateTeamModal: React.FC<{ onClose: () => void; onCreated: () => void }> 
             style={inputStyle}
             autoFocus
           />
-        </label>
+        </FieldGroup>
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
           <button className="reset-btn" onClick={onClose} disabled={submitting}>
             Cancel
@@ -575,14 +576,6 @@ const Modal: React.FC<{ onClose: () => void; title: string; children: React.Reac
   </div>
 );
 
-const labelStyle: React.CSSProperties = {
-  fontSize: '0.85em',
-  textTransform: 'uppercase',
-  letterSpacing: '0.05em',
-  opacity: 0.7,
-  marginBottom: 6,
-  fontWeight: 600,
-};
 const inputStyle: React.CSSProperties = {
   width: '100%',
   padding: '8px 12px',
