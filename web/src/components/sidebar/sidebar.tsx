@@ -12,12 +12,13 @@ import {
   Users,
   Key,
   BookOpen,
+  type LucideIcon,
 } from 'lucide-react';
 
 type NavItem = {
   id: string;
   label: string;
-  icon: React.ComponentType<{ className?: string }>;
+  icon: LucideIcon;
   path: string;
 };
 
@@ -52,15 +53,16 @@ const Sidebar: React.FC = () => {
               key={item.id}
               type="button"
               onClick={() => navigate(item.path)}
-              className="group relative w-full flex justify-center py-2.5"
+              className={`group relative w-full flex justify-center py-2.5 mx-1 rounded-md transition-colors ${active ? 'bg-[var(--surface-2)]' : 'hover:bg-[var(--surface-2)]/60'}`}
               aria-label={item.label}
               aria-current={active ? 'page' : undefined}
             >
               <span
-                className={`absolute left-0 top-1.5 bottom-1.5 w-[2px] rounded-r transition-all ${active ? 'bg-[var(--green)]' : 'bg-transparent'}`}
+                className={`absolute left-0 top-1 bottom-1 w-[3px] rounded-r transition-all ${active ? 'bg-[var(--green)]' : 'bg-transparent'}`}
               />
               <Icon
-                className={`h-[18px] w-[18px] transition-colors ${active ? 'text-[var(--text)]' : 'text-[var(--text-dim)] group-hover:text-[var(--text)]'}`}
+                className={`h-[18px] w-[18px] transition-colors ${active ? 'text-[var(--green)]' : 'text-[var(--text-dim)] group-hover:text-[var(--text)]'}`}
+                strokeWidth={active ? 2.25 : 2}
               />
               <span className="pointer-events-none absolute left-full ml-2 top-1/2 -translate-y-1/2 whitespace-nowrap rounded-md bg-[var(--surface-2)] border border-[var(--border-strong)] px-2 py-1 text-xs text-[var(--text)] opacity-0 group-hover:opacity-100 transition-opacity z-50 shadow-lg">
                 {item.label}
