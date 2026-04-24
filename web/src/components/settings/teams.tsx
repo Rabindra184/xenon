@@ -12,6 +12,7 @@ import {
   Smartphone,
 } from 'lucide-react';
 import { useToast } from '../ui/toast';
+import { Table, THead, TBody, TR, TH, TD } from '../ui/Table';
 
 interface TeamRow {
   id: string;
@@ -144,45 +145,42 @@ export const Teams: React.FC = () => {
           </div>
         ) : (
           <div className="setting-card" style={{ padding: 0, overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-              <thead>
-                <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
-                  <th style={th}>Name</th>
-                  <th style={th}>Devices</th>
-                  <th style={th}>Members</th>
-                  <th style={th}>Created</th>
-                  <th style={{ ...th, textAlign: 'right' }}>Actions</th>
-                </tr>
-              </thead>
-              <tbody>
+            <Table>
+              <THead>
+                <TR>
+                  <TH>Name</TH>
+                  <TH>Devices</TH>
+                  <TH>Members</TH>
+                  <TH>Created</TH>
+                  <TH style={{ textAlign: 'right' }}>Actions</TH>
+                </TR>
+              </THead>
+              <TBody>
                 {teams.map((t) => (
-                  <tr
+                  <TR
                     key={t.id}
-                    style={{
-                      borderBottom: '1px solid rgba(255,255,255,0.05)',
-                      cursor: 'pointer',
-                    }}
+                    style={{ cursor: 'pointer' }}
                     onClick={() => setSelected(t)}
                   >
-                    <td style={td}>
+                    <TD>
                       <strong>{t.name}</strong>
-                      <div style={{ fontSize: '0.75em', opacity: 0.5, fontFamily: 'monospace' }}>
+                      <div style={{ fontSize: '11px', color: 'var(--text-subtle)', fontFamily: 'monospace' }}>
                         {t.id.slice(0, 8)}
                       </div>
-                    </td>
-                    <td style={td}>{t.deviceCount}</td>
-                    <td style={td}>{t.memberCount}</td>
-                    <td style={td}>{new Date(t.createdAt).toLocaleDateString()}</td>
-                    <td style={{ ...td, textAlign: 'right' }}>
+                    </TD>
+                    <TD>{t.deviceCount}</TD>
+                    <TD>{t.memberCount}</TD>
+                    <TD>{new Date(t.createdAt).toLocaleDateString()}</TD>
+                    <TD style={{ textAlign: 'right' }}>
                       <DeleteTeamButton
                         team={t}
                         onDeleted={load}
                       />
-                    </td>
-                  </tr>
+                    </TD>
+                  </TR>
                 ))}
-              </tbody>
-            </table>
+              </TBody>
+            </Table>
           </div>
         )}
       </div>
@@ -276,7 +274,7 @@ const DeleteTeamButton: React.FC<{ team: TeamRow; onDeleted: () => void }> = ({
     }
   };
   return (
-    <button className="reset-btn" disabled={busy} onClick={handle} style={{ color: 'var(--accent-red)' }}>
+    <button className="reset-btn" disabled={busy} onClick={handle} style={{ color: 'var(--status-error-fg)' }}>
       <Trash2 size={14} />
       {busy ? 'Deleting…' : 'Delete'}
     </button>
@@ -431,36 +429,36 @@ const TeamDetail: React.FC<{ team: TeamRow; onBack: () => void }> = ({ team, onB
                   No members yet. Add any API key above.
                 </p>
               ) : (
-                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                  <thead>
-                    <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
-                      <th style={th}>Name</th>
-                      <th style={th}>Role</th>
-                      <th style={th}>Scopes</th>
-                      <th style={{ ...th, textAlign: 'right' }}>Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody>
+                <Table>
+                  <THead>
+                    <TR>
+                      <TH>Name</TH>
+                      <TH>Role</TH>
+                      <TH>Scopes</TH>
+                      <TH style={{ textAlign: 'right' }}>Actions</TH>
+                    </TR>
+                  </THead>
+                  <TBody>
                     {members.map((m) => (
-                      <tr key={m.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-                        <td style={td}>{m.name}</td>
-                        <td style={td}>{m.role}</td>
-                        <td style={td}>
-                          <code style={{ fontSize: '0.85em', opacity: 0.8 }}>{m.scopes}</code>
-                        </td>
-                        <td style={{ ...td, textAlign: 'right' }}>
+                      <TR key={m.id}>
+                        <TD>{m.name}</TD>
+                        <TD>{m.role}</TD>
+                        <TD>
+                          <code style={{ fontSize: '11px', color: 'var(--text-muted)' }}>{m.scopes}</code>
+                        </TD>
+                        <TD style={{ textAlign: 'right' }}>
                           <button
                             className="reset-btn"
                             onClick={() => removeMember(m.id)}
-                            style={{ color: 'var(--accent-red)' }}
+                            style={{ color: 'var(--status-error-fg)' }}
                           >
                             <Trash2 size={14} /> Remove
                           </button>
-                        </td>
-                      </tr>
+                        </TD>
+                      </TR>
                     ))}
-                  </tbody>
-                </table>
+                  </TBody>
+                </Table>
               )}
             </div>
           </section>
@@ -490,35 +488,35 @@ const TeamDetail: React.FC<{ team: TeamRow; onBack: () => void }> = ({ team, onB
                   No devices assigned. Use the Devices page to move devices into this team.
                 </p>
               ) : (
-                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                  <thead>
-                    <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
-                      <th style={th}>Name</th>
-                      <th style={th}>Platform</th>
-                      <th style={th}>UDID</th>
-                      <th style={{ ...th, textAlign: 'right' }}>Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody>
+                <Table>
+                  <THead>
+                    <TR>
+                      <TH>Name</TH>
+                      <TH>Platform</TH>
+                      <TH>UDID</TH>
+                      <TH style={{ textAlign: 'right' }}>Actions</TH>
+                    </TR>
+                  </THead>
+                  <TBody>
                     {devices.map((d) => (
-                      <tr key={d.udid} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-                        <td style={td}>
+                      <TR key={d.udid}>
+                        <TD>
                           <Smartphone size={14} style={{ marginRight: 6, verticalAlign: 'middle' }} />
                           {d.name}
-                        </td>
-                        <td style={td}>{d.platform}</td>
-                        <td style={td}>
-                          <code style={{ fontSize: '0.85em' }}>{d.udid.slice(0, 14)}…</code>
-                        </td>
-                        <td style={{ ...td, textAlign: 'right' }}>
+                        </TD>
+                        <TD>{d.platform}</TD>
+                        <TD>
+                          <code style={{ fontSize: '11px' }}>{d.udid.slice(0, 14)}…</code>
+                        </TD>
+                        <TD style={{ textAlign: 'right' }}>
                           <button className="reset-btn" onClick={() => unassignDevice(d.udid)}>
                             Return to shared pool
                           </button>
-                        </td>
-                      </tr>
+                        </TD>
+                      </TR>
                     ))}
-                  </tbody>
-                </table>
+                  </TBody>
+                </Table>
               )}
             </div>
           </section>
@@ -548,8 +546,8 @@ const Modal: React.FC<{ onClose: () => void; title: string; children: React.Reac
     <div
       onClick={(e) => e.stopPropagation()}
       style={{
-        background: 'var(--bg-main, #0d0d12)',
-        border: '1px solid rgba(255,255,255,0.08)',
+        background: 'var(--bg-surface)',
+        border: '1px solid var(--border-default)',
         borderRadius: 10,
         padding: 24,
         width: 'min(480px, 90vw)',
@@ -577,16 +575,6 @@ const Modal: React.FC<{ onClose: () => void; title: string; children: React.Reac
   </div>
 );
 
-const th: React.CSSProperties = {
-  textAlign: 'left',
-  padding: '12px 16px',
-  fontSize: '0.85em',
-  textTransform: 'uppercase',
-  letterSpacing: '0.05em',
-  opacity: 0.7,
-  fontWeight: 600,
-};
-const td: React.CSSProperties = { padding: '12px 16px', verticalAlign: 'top' };
 const labelStyle: React.CSSProperties = {
   fontSize: '0.85em',
   textTransform: 'uppercase',
