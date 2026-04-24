@@ -7,7 +7,8 @@ import { ErrorBoundary } from '../components/ui/ErrorBoundary';
 // Lazy load components for optimal performance
 const Overview = lazy(() => import('../components/overview/overview'));
 const DeviceExplorer = lazy(() => import('../components/device-explorer/device-explorer'));
-const SessionDashboard = lazy(() => import('../components/session-dashboard/session-dashboard'));
+const BuildsPage = lazy(() => import('../components/builds/builds-page'));
+const SessionDetailStub = lazy(() => import('../components/builds/session-detail-stub'));
 const Apps = lazy(() => import('../components/apps/apps'));
 const WebhookSettings = lazy(() =>
   import('../components/webhook-settings/webhook-settings').then((m) => ({
@@ -89,7 +90,25 @@ export const AppRoutes: React.FC = () => {
             path="/builds"
             element={
               <div className="app-body-container sessions-view">
-                <SessionDashboard />
+                <BuildsPage />
+              </div>
+            }
+          />
+
+          <Route
+            path="/builds/:buildId"
+            element={
+              <div className="app-body-container sessions-view">
+                <BuildsPage />
+              </div>
+            }
+          />
+
+          <Route
+            path="/builds/:buildId/sessions/:sessionId"
+            element={
+              <div className="app-body-container sessions-view">
+                <SessionDetailStub />
               </div>
             }
           />
