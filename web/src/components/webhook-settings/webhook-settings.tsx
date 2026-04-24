@@ -3,6 +3,7 @@ import { useState, useEffect } from 'react';
 import XenonApiService from '../../api-service';
 import './webhook-settings.css';
 import { Trash2, Bell, CheckCircle, AlertCircle, Plus, Zap } from 'lucide-react';
+import { FieldGroup } from '../ui/FieldGroup';
 
 interface WebhookConfig {
   id: string;
@@ -166,18 +167,22 @@ export const WebhookSettings: React.FC = () => {
       <div className="add-webhook-form">
         <div className="form-scrollable-content">
           <h3>Add New Webhook</h3>
-          <div className="form-group">
+          <FieldGroup
+            label="Webhook URL"
+            description="The endpoint we POST webhook events to."
+            htmlFor="webhook-url"
+          >
             <input
+              id="webhook-url"
               type="text"
               className="webhook-input"
               placeholder="https://hooks.slack.com/services/..."
               value={newUrl}
               onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNewUrl(e.target.value)}
             />
-          </div>
+          </FieldGroup>
 
-          <div className="events-selection">
-            <label>Trigger Events:</label>
+          <FieldGroup label="Trigger Events">
             <div className="events-grid">
               {AVAILABLE_EVENTS.map((event) => (
                 <div
@@ -195,7 +200,7 @@ export const WebhookSettings: React.FC = () => {
                 </div>
               ))}
             </div>
-          </div>
+          </FieldGroup>
 
           <div className="template-section">
             <div className="template-header" onClick={() => setShowTemplate(!showTemplate)}>
