@@ -1,0 +1,524 @@
+import React, { useEffect, useState } from 'react';
+import './settings.css';
+import {
+  Key,
+  Plus,
+  Trash2,
+  Copy,
+  Check,
+  ShieldAlert,
+  RefreshCw,
+  X,
+  AlertTriangle,
+} from 'lucide-react';
+import { useToast } from '../ui/toast';
+
+type Scope = 'read' | 'sessions' | 'devices' | 'admin';
+const ALL_SCOPES: Scope[] = ['read', 'sessions', 'devices', 'admin'];
+
+interface ApiKeyRow {
+  id: string;
+  name: string;
+  scopes: string;
+  rateLimit: number;
+  createdAt: string;
+  lastUsedAt: string | null;
+  teamId?: string | null;
+}
+
+interface TeamOption {
+  id: string;
+  name: string;
+}
+
+function fmtRelative(iso: string | null): string {
+  if (!iso) return 'Never';
+  const diff = Date.now() - new Date(iso).getTime();
+  if (diff < 60_000) return 'Just now';
+  if (diff < 3_600_000) return `${Math.floor(diff / 60_000)}m ago`;
+  if (diff < 86_400_000) return `${Math.floor(diff / 3_600_000)}h ago`;
+  return `${Math.floor(diff / 86_400_000)}d ago`;
+}
+
+export const ApiKeys: React.FC = () => {
+  const { toast } = useToast();
+  const [keys, setKeys] = useState<ApiKeyRow[]>([]);
+  const [teams, setTeams] = useState<TeamOption[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [forbidden, setForbidden] = useState(false);
+  const [showCreate, setShowCreate] = useState(false);
+  const [revealKey, setRevealKey] = useState<{ name: string; raw: string } | null>(null);
+  const [revokingId, setRevokingId] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
+
+  const [newName, setNewName] = useState('');
+  const [newScopes, setNewScopes] = useState<Record<Scope, boolean>>({
+    read: true,
+    sessions: true,
+    devices: false,
+    admin: false,
+  });
+  const [newRateLimit, setNewRateLimit] = useState(300);
+  const [newTeamId, setNewTeamId] = useState<string>('');
+  const [submitting, setSubmitting] = useState(false);
+
+  const teamNameById = (id?: string | null) =>
+    id ? teams.find((t) => t.id === id)?.name || id.slice(0, 8) : 'Shared';
+
+  const load = async () => {
+    setLoading(true);
+    try {
+      const [keysRes, teamsRes] = await Promise.all([
+        fetch('/xenon/api/apikeys', { credentials: 'include' }),
+        fetch('/xenon/api/teams', { credentials: 'include' }),
+      ]);
+      if (keysRes.status === 403) {
+        setForbidden(true);
+        setKeys([]);
+        return;
+      }
+      if (!keysRes.ok) throw new Error(`HTTP ${keysRes.status}`);
+      setKeys(await keysRes.json());
+      if (teamsRes.ok) setTeams(await teamsRes.json());
+      setForbidden(false);
+    } catch (e: any) {
+      toast(`Failed to load API keys: ${e.message}`, 'error');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    load();
+  }, []);
+
+  const resetCreateForm = () => {
+    setNewName('');
+    setNewScopes({ read: true, sessions: true, devices: false, admin: false });
+    setNewRateLimit(300);
+    setNewTeamId('');
+  };
+
+  const submitCreate = async () => {
+    const scopes = ALL_SCOPES.filter((s) => newScopes[s]);
+    if (!newName.trim()) {
+      toast('Key name is required', 'error');
+      return;
+    }
+    if (scopes.length === 0) {
+      toast('Select at least one scope', 'error');
+      return;
+    }
+    setSubmitting(true);
+    try {
+      const res = await fetch('/xenon/api/apikeys', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: newName.trim(),
+          scopes,
+          rateLimit: newRateLimit,
+          teamId: newTeamId || null,
+        }),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const body = await res.json();
+      setShowCreate(false);
+      resetCreateForm();
+      setRevealKey({ name: newName.trim(), raw: body.key });
+      await load();
+    } catch (e: any) {
+      toast(`Create failed: ${e.message}`, 'error');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const submitRevoke = async (id: string) => {
+    setRevokingId(id);
+    try {
+      const res = await fetch(`/xenon/api/apikeys/${id}`, {
+        method: 'DELETE',
+        credentials: 'include',
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      toast('Key revoked', 'success');
+      await load();
+    } catch (e: any) {
+      toast(`Revoke failed: ${e.message}`, 'error');
+    } finally {
+      setRevokingId(null);
+    }
+  };
+
+  const copyKey = async (raw: string) => {
+    try {
+      await navigator.clipboard.writeText(raw);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch {
+      toast('Copy failed — select the text manually', 'error');
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="settings-loading">
+        <RefreshCw className="animate-spin" size={32} />
+        <span>Loading API keys…</span>
+      </div>
+    );
+  }
+
+  if (forbidden) {
+    return (
+      <div className="settings-container mesh-gradient-infra">
+        <div className="settings-header">
+          <div className="settings-title-group">
+            <ShieldAlert className="settings-icon infra-icon" size={28} />
+            <h2>API Keys</h2>
+          </div>
+          <p className="settings-subtitle">
+            Your key lacks the <code>admin</code> scope. Ask an administrator to issue an admin key
+            so you can manage access for other users.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="settings-container mesh-gradient-infra">
+      <div
+        className="scanline"
+        style={{ position: 'absolute', inset: 0, pointerEvents: 'none', opacity: 0.05, zIndex: 1001 }}
+      />
+      <div className="settings-header">
+        <div className="settings-title-group">
+          <Key className="settings-icon infra-icon" size={28} />
+          <h2>API Keys</h2>
+        </div>
+        <p className="settings-subtitle">
+          Issue scoped credentials for humans (dashboard login) and machines (CI, WebDriver clients
+          via <code>xenon:accessKey</code>). Keys are shown only once at creation — copy the value
+          before closing the dialog.
+        </p>
+      </div>
+
+      <div className="settings-content">
+        <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 16 }}>
+          <button className="save-btn" onClick={() => setShowCreate(true)}>
+            <Plus size={18} />
+            Create new key
+          </button>
+        </div>
+
+        {keys.length === 0 ? (
+          <div className="setting-card" style={{ textAlign: 'center', padding: 48 }}>
+            <AlertTriangle size={32} style={{ opacity: 0.4 }} />
+            <p style={{ marginTop: 12 }}>
+              No active keys. Create one above, or revoke the bootstrap key after a replacement is
+              in place.
+            </p>
+          </div>
+        ) : (
+          <div className="setting-card" style={{ padding: 0, overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+              <thead>
+                <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
+                  <th style={th}>Name</th>
+                  <th style={th}>Team</th>
+                  <th style={th}>Scopes</th>
+                  <th style={th}>Rate limit</th>
+                  <th style={th}>Last used</th>
+                  <th style={th}>Created</th>
+                  <th style={{ ...th, textAlign: 'right' }}>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {keys.map((k) => (
+                  <tr key={k.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                    <td style={td}>
+                      <strong>{k.name}</strong>
+                      <div style={{ fontSize: '0.75em', opacity: 0.5, fontFamily: 'monospace' }}>
+                        {k.id.slice(0, 8)}
+                      </div>
+                    </td>
+                    <td style={td}>
+                      <span style={{ ...chip, background: k.teamId ? 'rgba(16,185,129,0.15)' : 'rgba(255,255,255,0.06)', color: k.teamId ? '#34d399' : '#9ca3af' }}>
+                        {teamNameById(k.teamId)}
+                      </span>
+                    </td>
+                    <td style={td}>
+                      {k.scopes.split(',').map((s) => (
+                        <span key={s} style={chip}>
+                          {s.trim()}
+                        </span>
+                      ))}
+                    </td>
+                    <td style={td}>{k.rateLimit}/min</td>
+                    <td style={td}>{fmtRelative(k.lastUsedAt)}</td>
+                    <td style={td}>{fmtRelative(k.createdAt)}</td>
+                    <td style={{ ...td, textAlign: 'right' }}>
+                      <button
+                        className="reset-btn"
+                        disabled={revokingId === k.id}
+                        onClick={() => {
+                          if (
+                            window.confirm(
+                              `Revoke "${k.name}"? Any client using this key will immediately fail.`,
+                            )
+                          ) {
+                            submitRevoke(k.id);
+                          }
+                        }}
+                        style={{ color: 'var(--accent-red)' }}
+                      >
+                        <Trash2 size={14} />
+                        {revokingId === k.id ? 'Revoking…' : 'Revoke'}
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      {showCreate && (
+        <Modal onClose={() => setShowCreate(false)} title="Create API key">
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+            <label>
+              <div style={label}>Name</div>
+              <input
+                type="text"
+                value={newName}
+                onChange={(e) => setNewName(e.target.value)}
+                placeholder="alice-laptop, ci-main, etc."
+                style={input}
+                autoFocus
+              />
+            </label>
+
+            <div>
+              <div style={label}>Scopes</div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                {ALL_SCOPES.map((s) => (
+                  <label key={s} style={scopeLabel}>
+                    <input
+                      type="checkbox"
+                      checked={newScopes[s]}
+                      onChange={(e) =>
+                        setNewScopes({ ...newScopes, [s]: e.target.checked })
+                      }
+                    />
+                    <span>{s}</span>
+                  </label>
+                ))}
+              </div>
+              <div style={{ fontSize: '0.8em', opacity: 0.6, marginTop: 6 }}>
+                <code>admin</code> grants full access including API-key management.{' '}
+                <code>sessions</code> is required for WebDriver <code>xenon:accessKey</code>.
+              </div>
+            </div>
+
+            <label>
+              <div style={label}>Rate limit (requests/min)</div>
+              <input
+                type="number"
+                min={10}
+                step={10}
+                value={newRateLimit}
+                onChange={(e) => setNewRateLimit(parseInt(e.target.value) || 300)}
+                style={input}
+              />
+            </label>
+
+            <label>
+              <div style={label}>Default team</div>
+              <select
+                value={newTeamId}
+                onChange={(e) => setNewTeamId(e.target.value)}
+                style={input}
+              >
+                <option value="">No team (shared pool only)</option>
+                {teams.map((t) => (
+                  <option key={t.id} value={t.id}>
+                    {t.name}
+                  </option>
+                ))}
+              </select>
+              <div style={{ fontSize: '0.8em', opacity: 0.6, marginTop: 6 }}>
+                Keys without a team can only reach shared-pool devices. Admins can override at
+                session time via <code>xenon:team</code>.
+              </div>
+            </label>
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 8 }}>
+              <button className="reset-btn" onClick={() => setShowCreate(false)} disabled={submitting}>
+                Cancel
+              </button>
+              <button className="save-btn" onClick={submitCreate} disabled={submitting}>
+                {submitting ? <RefreshCw className="animate-spin" size={18} /> : <Plus size={18} />}
+                {submitting ? 'Creating…' : 'Create key'}
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
+
+      {revealKey && (
+        <Modal
+          onClose={() => setRevealKey(null)}
+          title={`Key created: ${revealKey.name}`}
+          closeOnBackdrop={false}
+        >
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+            <div
+              style={{
+                background: 'rgba(245, 158, 11, 0.1)',
+                border: '1px solid rgba(245, 158, 11, 0.4)',
+                borderRadius: 6,
+                padding: 12,
+                display: 'flex',
+                gap: 8,
+                alignItems: 'flex-start',
+              }}
+            >
+              <AlertTriangle size={18} style={{ flexShrink: 0, marginTop: 2 }} />
+              <div>
+                <strong>This key will not be shown again.</strong> Copy it now and store it in your
+                password manager, CI secret store, or client config.
+              </div>
+            </div>
+            <div
+              style={{
+                fontFamily: 'monospace',
+                padding: 12,
+                background: 'rgba(0,0,0,0.3)',
+                borderRadius: 6,
+                wordBreak: 'break-all',
+                fontSize: '0.9em',
+              }}
+            >
+              {revealKey.raw}
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+              <button className="save-btn" onClick={() => copyKey(revealKey.raw)}>
+                {copied ? <Check size={18} /> : <Copy size={18} />}
+                {copied ? 'Copied' : 'Copy to clipboard'}
+              </button>
+              <button className="reset-btn" onClick={() => setRevealKey(null)}>
+                I've saved it
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
+    </div>
+  );
+};
+
+const Modal: React.FC<{
+  onClose: () => void;
+  title: string;
+  children: React.ReactNode;
+  closeOnBackdrop?: boolean;
+}> = ({ onClose, title, children, closeOnBackdrop = true }) => (
+  <div
+    onClick={closeOnBackdrop ? onClose : undefined}
+    style={{
+      position: 'fixed',
+      inset: 0,
+      background: 'rgba(0,0,0,0.6)',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      zIndex: 2000,
+    }}
+  >
+    <div
+      onClick={(e) => e.stopPropagation()}
+      style={{
+        background: 'var(--bg-main, #0d0d12)',
+        border: '1px solid rgba(255,255,255,0.08)',
+        borderRadius: 10,
+        padding: 24,
+        width: 'min(520px, 90vw)',
+        maxHeight: '85vh',
+        overflowY: 'auto',
+      }}
+    >
+      <div
+        style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          marginBottom: 16,
+        }}
+      >
+        <h3 style={{ margin: 0 }}>{title}</h3>
+        <button
+          onClick={onClose}
+          style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'inherit' }}
+          aria-label="Close"
+        >
+          <X size={20} />
+        </button>
+      </div>
+      {children}
+    </div>
+  </div>
+);
+
+const th: React.CSSProperties = {
+  textAlign: 'left',
+  padding: '12px 16px',
+  fontSize: '0.85em',
+  textTransform: 'uppercase',
+  letterSpacing: '0.05em',
+  opacity: 0.7,
+  fontWeight: 600,
+};
+const td: React.CSSProperties = { padding: '12px 16px', verticalAlign: 'top' };
+const chip: React.CSSProperties = {
+  display: 'inline-block',
+  padding: '2px 8px',
+  margin: '0 4px 2px 0',
+  background: 'rgba(59, 130, 246, 0.15)',
+  color: '#60a5fa',
+  borderRadius: 4,
+  fontSize: '0.8em',
+  fontFamily: 'monospace',
+};
+const label: React.CSSProperties = {
+  fontSize: '0.85em',
+  textTransform: 'uppercase',
+  letterSpacing: '0.05em',
+  opacity: 0.7,
+  marginBottom: 6,
+  fontWeight: 600,
+};
+const input: React.CSSProperties = {
+  width: '100%',
+  padding: '8px 12px',
+  background: 'rgba(0,0,0,0.3)',
+  border: '1px solid rgba(255,255,255,0.1)',
+  borderRadius: 6,
+  color: 'inherit',
+  fontSize: '0.95em',
+  boxSizing: 'border-box',
+};
+const scopeLabel: React.CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  gap: 6,
+  padding: '6px 12px',
+  background: 'rgba(255,255,255,0.04)',
+  borderRadius: 6,
+  cursor: 'pointer',
+  fontFamily: 'monospace',
+  fontSize: '0.9em',
+};

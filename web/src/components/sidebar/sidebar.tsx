@@ -10,6 +10,8 @@ import {
   Brain,
   Info,
   BookOpen,
+  Key,
+  Users,
 } from 'lucide-react';
 import { getEnabledNavItems } from '../../config/navigation';
 import './sidebar.css';
@@ -75,6 +77,20 @@ export const Sidebar: React.FC = () => {
           path="/maintenance"
           active={isActive('/maintenance')}
           onClick={() => navigate('/maintenance')}
+        />
+        <SidebarItem
+          icon={<Users size={18} />}
+          label="Teams"
+          path="/teams"
+          active={isActive('/teams')}
+          onClick={() => navigate('/teams')}
+        />
+        <SidebarItem
+          icon={<Key size={18} />}
+          label="API Keys"
+          path="/api-keys"
+          active={isActive('/api-keys')}
+          onClick={() => navigate('/api-keys')}
         />
         <SidebarItem
           icon={<BookOpen size={18} />}

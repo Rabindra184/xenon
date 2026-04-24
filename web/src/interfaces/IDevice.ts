@@ -30,4 +30,5 @@ export interface IDevice {
   totalHealedCount?: number;
   ip?: string;
   cpuArchitecture?: string;
+  teamId?: string | null;
 }

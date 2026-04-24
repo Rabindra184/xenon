@@ -24,6 +24,12 @@ const MaintenanceSettings = lazy(() =>
     default: m.MaintenanceSettings,
   })),
 );
+const ApiKeys = lazy(() =>
+  import('../components/settings/api-keys').then((m) => ({ default: m.ApiKeys })),
+);
+const Teams = lazy(() =>
+  import('../components/settings/teams').then((m) => ({ default: m.Teams })),
+);
 
 const LoadingFallback = () => (
   <div className="settings-loading" style={{ height: 'calc(100vh - 72px)' }}>
@@ -118,6 +124,24 @@ export const AppRoutes: React.FC = () => {
             element={
               <div className="app-body-container settings-view">
                 <MaintenanceSettings />
+              </div>
+            }
+          />
+
+          <Route
+            path="/api-keys"
+            element={
+              <div className="app-body-container settings-view">
+                <ApiKeys />
+              </div>
+            }
+          />
+
+          <Route
+            path="/teams"
+            element={
+              <div className="app-body-container settings-view">
+                <Teams />
               </div>
             }
           />

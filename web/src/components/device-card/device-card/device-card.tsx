@@ -17,6 +17,7 @@ import {
   Wrench,
   CalendarPlus,
   Cpu,
+  Users as UsersIcon,
 } from 'lucide-react';
 import { IDevice } from '../../../interfaces/IDevice';
 import prettyMilliseconds from 'pretty-ms';
@@ -234,15 +235,27 @@ export class DeviceCard extends React.Component<IDeviceCardProps, IDeviceCardSta
             {deviceType.toUpperCase()} • {sdk}
           </p>
 
-          {/* Inline Tags Display */}
-          {this.props.device.tags && this.props.device.tags.length > 0 && (
+          {/* Team + Tags */}
+          {(this.props.device.teamId ||
+            (this.props.device.tags && this.props.device.tags.length > 0)) && (
             <div className="device-tags-inline">
-              {this.props.device.tags.slice(0, 3).map((tag) => (
-                <span key={tag} className="inline-tag" title={tag}>
-                  {tag}
+              {this.props.device.teamId && (
+                <span
+                  className="inline-tag"
+                  title={`Assigned to team ${this.props.device.teamId}`}
+                  style={{ background: 'rgba(16,185,129,0.15)', color: '#34d399' }}
+                >
+                  <UsersIcon size={10} style={{ marginRight: 4, verticalAlign: '-2px' }} />
+                  team
                 </span>
-              ))}
-              {this.props.device.tags.length > 3 && (
+              )}
+              {this.props.device.tags &&
+                this.props.device.tags.slice(0, 3).map((tag) => (
+                  <span key={tag} className="inline-tag" title={tag}>
+                    {tag}
+                  </span>
+                ))}
+              {this.props.device.tags && this.props.device.tags.length > 3 && (
                 <span className="inline-tag-overflow">+{this.props.device.tags.length - 3}</span>
               )}
             </div>
