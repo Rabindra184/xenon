@@ -3,39 +3,41 @@ import { cva, type VariantProps } from 'class-variance-authority';
 import { cn } from '../../lib/utils';
 import './button.css';
 
-const buttonVariants = cva('button-base', {
+const buttonVariants = cva('btn-base', {
   variants: {
     variant: {
-      default: 'button-variant-default',
-      outline: 'button-variant-outline',
-      ghost: 'button-variant-ghost',
-      link: 'button-variant-link',
-      destructive: 'button-variant-destructive',
+      default: 'btn-primary',
+      primary: 'btn-primary',
+      secondary: 'btn-secondary',
+      outline: 'btn-secondary',
+      ghost: 'btn-ghost',
+      link: 'btn-link',
+      destructive: 'btn-danger',
+      danger: 'btn-danger',
     },
     size: {
-      default: 'button-default',
-      sm: 'button-sm',
-      lg: 'button-lg',
-      icon: 'button-icon',
+      default: 'btn-size-md',
+      md: 'btn-size-md',
+      sm: 'btn-size-sm',
+      lg: 'btn-size-lg',
+      icon: 'btn-size-icon',
     },
   },
   defaultVariants: {
-    variant: 'default',
-    size: 'default',
+    variant: 'primary',
+    size: 'md',
   },
 });
 
 export interface ButtonProps
-  extends React.ButtonHTMLAttributes<HTMLButtonElement>, VariantProps<typeof buttonVariants> {}
+  extends React.ButtonHTMLAttributes<HTMLButtonElement>,
+    VariantProps<typeof buttonVariants> {}
 
 const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
-  ({ className, variant, size, ...props }, ref) => {
-    return (
-      <button className={cn(buttonVariants({ variant, size, className }))} ref={ref} {...props} />
-    );
-  },
+  ({ className, variant, size, ...props }, ref) => (
+    <button className={cn(buttonVariants({ variant, size, className }))} ref={ref} {...props} />
+  ),
 );
-
 Button.displayName = 'Button';
 
 export { Button, buttonVariants };
