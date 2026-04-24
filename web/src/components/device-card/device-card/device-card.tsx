@@ -398,7 +398,19 @@ export class DeviceCard extends React.Component<IDeviceCardProps, IDeviceCardSta
   }
 }
 
+import { isThemeV2 } from '../../../lib/theme-flag';
+import DeviceCardV2 from './device-card-v2';
+
 export default function DeviceCardWrapper(props: any) {
   const navigate = useNavigate();
+  if (isThemeV2()) {
+    return (
+      <DeviceCardV2
+        device={props.device}
+        reloadDevices={props.reloadDevices}
+        navigate={navigate}
+      />
+    );
+  }
   return <DeviceCard {...props} navigate={navigate} />;
 }

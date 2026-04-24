@@ -1,0 +1,224 @@
+import * as React from 'react';
+import prettyMilliseconds from 'pretty-ms';
+import { Copy, MoreHorizontal, Clock, Terminal } from 'lucide-react';
+import { IDevice } from '../../../interfaces/IDevice';
+import XenonApiService from '../../../api-service';
+import { Button } from '../../ui/button';
+import { Pill } from '../../ui/Pill';
+import { StatusCode } from '../../ui/StatusCode';
+import { StatusKind } from '../../ui/StatusDot';
+import { KeyValueRow } from '../../ui/KeyValueRow';
+import { Popover } from '../../ui/Popover';
+import { Menu, MenuItem, MenuDivider } from '../../ui/Menu';
+import ReservationModal from '../../reservation-modal/reservation-modal';
+import TagManagerModal from '../../tag-manager-modal/tag-manager-modal';
+import './device-card-v2.css';
+
+interface Props {
+  device: IDevice;
+  reloadDevices: () => void;
+  navigate: (path: string) => void;
+}
+
+function deriveKind(d: IDevice): StatusKind {
+  if (d.offline) return 'offline';
+  if (d.userBlocked) return 'error';
+  if (d.busy) return 'busy';
+  if (d.reservedUntil && Date.now() < d.reservedUntil) return 'reserved';
+  return 'ready';
+}
+
+function middleEllipsis(s: string, head = 10, tail = 4): string {
+  if (!s || s.length <= head + tail + 1) return s;
+  return `${s.slice(0, head)}…${s.slice(-tail)}`;
+}
+
+const DeviceCardV2: React.FC<Props> = ({ device, reloadDevices, navigate }) => {
+  const [showReservation, setShowReservation] = React.useState(false);
+  const [showTagManager, setShowTagManager] = React.useState(false);
+  const [menuOpen, setMenuOpen] = React.useState(false);
+  const moreRef = React.useRef<HTMLButtonElement>(null);
+
+  const kind = deriveKind(device);
+  const reserved = kind === 'reserved';
+  const busyLocked = Boolean(
+    device.busy && device.session_id && !String(device.session_id).startsWith('manual_'),
+  );
+
+  const copyUdid = () => navigator.clipboard?.writeText(device.udid);
+
+  const release = async () => {
+    await XenonApiService.releaseReservation(device.udid, device.host);
+    reloadDevices();
+  };
+  const block = async () => {
+    await XenonApiService.blockDevice(device.udid, device.host);
+    reloadDevices();
+  };
+  const unblock = async () => {
+    await XenonApiService.unblockDevice(device.udid, device.host);
+    reloadDevices();
+  };
+
+  return (
+    <div className={`dc2 dc2-${kind}`}>
+      <div className="dc2-stripe" />
+
+      <div className="dc2-header">
+        <span className="dc2-platform">
+          {device.platform.toUpperCase()} · {device.sdk}
+        </span>
+        <StatusCode kind={kind} showDot>
+          {kind}
+        </StatusCode>
+      </div>
+
+      <div className="dc2-name" title={device.name}>
+        {device.name}
+      </div>
+      <div className="dc2-udid" title={device.udid}>
+        {middleEllipsis(device.udid)}
+      </div>
+
+      {(device.teamId || (device.tags && device.tags.length > 0)) && (
+        <div className="dc2-tags">
+          {device.teamId && (
+            <Pill tone="accent" title={`Team ${device.teamId}`}>
+              team
+            </Pill>
+          )}
+          {device.tags?.slice(0, 3).map((t) => (
+            <Pill key={t} tone="neutral" title={t}>
+              {t}
+            </Pill>
+          ))}
+          {(device.tags?.length || 0) > 3 && (
+            <Pill tone="neutral">+{(device.tags?.length || 0) - 3}</Pill>
+          )}
+        </div>
+      )}
+
+      <div className="dc2-metrics">
+        {reserved ? (
+          <div className="dc2-banner dc2-banner-reserved">
+            <Clock size={12} />
+            <span>
+              RES · {device.reservedBy || 'anon'}
+              {device.reservedUntil
+                ? ` (${prettyMilliseconds(device.reservedUntil - Date.now(), { compact: true })})`
+                : ''}
+            </span>
+          </div>
+        ) : device.session_id ? (
+          <div className="dc2-banner dc2-banner-session">
+            <Terminal size={12} />
+            <span>SID · {String(device.session_id).slice(0, 10)}</span>
+          </div>
+        ) : (
+          <KeyValueRow
+            label="Utilization"
+            value={prettyMilliseconds(device.totalUtilizationTimeMilliSec || 0, { compact: true })}
+          />
+        )}
+        {typeof device.batteryLevel === 'number' && (
+          <KeyValueRow label="Battery" value={`${device.batteryLevel}%`} />
+        )}
+        {device.thermalStatus && device.thermalStatus !== 'Unknown' && (
+          <KeyValueRow label="Thermal" value={device.thermalStatus} />
+        )}
+        <KeyValueRow label="Host" value={device.ip || device.host} mono />
+      </div>
+
+      <div className="dc2-actions">
+        <Button
+          variant="primary"
+          size="sm"
+          disabled={busyLocked}
+          onClick={() => {
+            if (busyLocked) return;
+            navigate(`/devices/${device.udid}/control`);
+          }}
+          title={busyLocked ? 'Locked: Appium session running' : 'Take control'}
+          className="dc2-primary"
+        >
+          Control
+        </Button>
+        {reserved ? (
+          <Button variant="secondary" size="sm" onClick={release}>
+            Release
+          </Button>
+        ) : !device.userBlocked && !device.busy ? (
+          <Button variant="secondary" size="sm" onClick={() => setShowReservation(true)}>
+            Reserve
+          </Button>
+        ) : null}
+        <button
+          ref={moreRef}
+          type="button"
+          className="dc2-more"
+          onClick={() => setMenuOpen((o) => !o)}
+          aria-label="More actions"
+        >
+          <MoreHorizontal size={14} />
+        </button>
+        <Popover open={menuOpen} onClose={() => setMenuOpen(false)} anchorRef={moreRef}>
+          <Menu>
+            <MenuItem
+              onClick={() => {
+                setMenuOpen(false);
+                setShowTagManager(true);
+              }}
+            >
+              Manage tags…
+            </MenuItem>
+            {device.userBlocked ? (
+              <MenuItem
+                onClick={() => {
+                  setMenuOpen(false);
+                  unblock();
+                }}
+              >
+                Exit maintenance
+              </MenuItem>
+            ) : (
+              <MenuItem
+                onClick={() => {
+                  setMenuOpen(false);
+                  block();
+                }}
+              >
+                Enter maintenance
+              </MenuItem>
+            )}
+            <MenuDivider />
+            <MenuItem
+              icon={<Copy size={12} />}
+              onClick={() => {
+                setMenuOpen(false);
+                copyUdid();
+              }}
+            >
+              Copy UDID
+            </MenuItem>
+          </Menu>
+        </Popover>
+      </div>
+
+      {showReservation && (
+        <ReservationModal
+          device={device}
+          onClose={() => setShowReservation(false)}
+          onReserved={() => reloadDevices()}
+        />
+      )}
+      {showTagManager && (
+        <TagManagerModal
+          device={device}
+          onClose={() => setShowTagManager(false)}
+          onUpdated={() => reloadDevices()}
+        />
+      )}
+    </div>
+  );
+};
+export default DeviceCardV2;
