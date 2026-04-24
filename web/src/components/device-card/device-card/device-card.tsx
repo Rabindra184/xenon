@@ -1,416 +1,235 @@
-import React from 'react';
-import './device-card.css';
-import {
-  Smartphone as AndroidIcon,
-  Apple as AppleIcon,
-  Link as LinkIcon,
-  XCircle,
-  Monitor,
-  Unlock,
-  Clock,
-  Plus,
-  ShieldCheck,
-  Thermometer,
-  HardDrive,
-  Terminal,
-  Wifi,
-  Wrench,
-  CalendarPlus,
-  Cpu,
-  Users as UsersIcon,
-} from 'lucide-react';
-import { IDevice } from '../../../interfaces/IDevice';
+import * as React from 'react';
 import prettyMilliseconds from 'pretty-ms';
-import XenonApiService from '../../../api-service';
+import { Copy, MoreHorizontal, Clock, Terminal } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import { IDevice } from '../../../interfaces/IDevice';
+import XenonApiService from '../../../api-service';
+import { Button } from '../../ui/button';
+import { Pill } from '../../ui/Pill';
+import { StatusCode } from '../../ui/StatusCode';
+import { StatusKind } from '../../ui/StatusDot';
+import { KeyValueRow } from '../../ui/KeyValueRow';
+import { Popover } from '../../ui/Popover';
+import { Menu, MenuItem, MenuDivider } from '../../ui/Menu';
 import ReservationModal from '../../reservation-modal/reservation-modal';
 import TagManagerModal from '../../tag-manager-modal/tag-manager-modal';
+import './device-card.css';
 
-interface IDeviceCardProps {
+interface Props {
   device: IDevice;
   reloadDevices: () => void;
-  navigate: any;
+  navigate: (path: string) => void;
 }
 
-interface IDeviceCardState {
-  showControl: boolean;
-  showReservation: boolean;
-  showTagManager: boolean;
+function deriveKind(d: IDevice): StatusKind {
+  if (d.offline) return 'offline';
+  if (d.userBlocked) return 'error';
+  if (d.busy) return 'busy';
+  if (d.reservedUntil && Date.now() < d.reservedUntil) return 'reserved';
+  return 'ready';
 }
 
-export class DeviceCard extends React.Component<IDeviceCardProps, IDeviceCardState> {
-  constructor(props: IDeviceCardProps) {
-    super(props);
-    this.state = {
-      showReservation: false,
-      showTagManager: false,
-      showControl: false, // Keep for interface compatibility if needed, though unused
-    };
-  }
-  getStatusClassName() {
-    if (this.props.device.offline) {
-      return 'disabled';
-    } else if (this.props.device.busy) {
-      return 'busy';
-    } else if (this.isReserved()) {
-      return 'reserved';
-    } else {
-      return '';
-    }
-  }
+function middleEllipsis(s: string, head = 10, tail = 4): string {
+  if (!s || s.length <= head + tail + 1) return s;
+  return `${s.slice(0, head)}…${s.slice(-tail)}`;
+}
 
-  getDeviceState() {
-    if (this.props.device.offline) {
-      return 'offline';
-    } else if (this.props.device.userBlocked) {
-      return 'maintenance';
-    } else if (this.props.device.busy) {
-      return 'busy';
-    } else if (this.isReserved()) {
-      return 'reserved';
-    } else {
-      return 'ready';
-    }
-  }
+export const DeviceCard: React.FC<Props> = ({ device, reloadDevices, navigate }) => {
+  const [showReservation, setShowReservation] = React.useState(false);
+  const [showTagManager, setShowTagManager] = React.useState(false);
+  const [menuOpen, setMenuOpen] = React.useState(false);
+  const moreRef = React.useRef<HTMLButtonElement>(null);
 
-  isReserved() {
-    const { reservedUntil } = this.props.device;
-    if (!reservedUntil) return false;
-    return Date.now() < reservedUntil;
-  }
+  const kind = deriveKind(device);
+  const reserved = kind === 'reserved';
+  const busyLocked = Boolean(
+    device.busy && device.session_id && !String(device.session_id).startsWith('manual_'),
+  );
 
-  getRemainingReservationTime() {
-    const { reservedUntil } = this.props.device;
-    if (!reservedUntil) return '';
-    const diff = reservedUntil - Date.now();
-    if (diff <= 0) return '';
-    return prettyMilliseconds(diff, { compact: true });
-  }
+  const copyUdid = () => navigator.clipboard?.writeText(device.udid);
 
-  async releaseReservation(udid: string, host: string) {
-    await XenonApiService.releaseReservation(udid, host);
-    this.props.reloadDevices();
-  }
+  const release = async () => {
+    await XenonApiService.releaseReservation(device.udid, device.host);
+    reloadDevices();
+  };
+  const block = async () => {
+    await XenonApiService.blockDevice(device.udid, device.host);
+    reloadDevices();
+  };
+  const unblock = async () => {
+    await XenonApiService.unblockDevice(device.udid, device.host);
+    reloadDevices();
+  };
 
-  async blockDevice(udid: string, host: string) {
-    await XenonApiService.blockDevice(udid, host);
-    this.props.reloadDevices();
-  }
+  return (
+    <div className={`dc2 dc2-${kind}`}>
+      <div className="dc2-stripe" />
 
-  async unblockDevice(udid: string, host: string) {
-    await XenonApiService.unblockDevice(udid, host);
-    this.props.reloadDevices();
-  }
+      <div className="dc2-header">
+        <span className="dc2-platform">
+          {device.platform.toUpperCase()} · {device.sdk}
+        </span>
+        <StatusCode kind={kind} showDot>
+          {kind}
+        </StatusCode>
+      </div>
 
-  async manageTags() {
-    this.setState({ showTagManager: true });
-  }
+      <div className="dc2-name" title={device.name}>
+        {device.name}
+      </div>
+      <div className="dc2-udid" title={device.udid}>
+        {middleEllipsis(device.udid)}
+      </div>
 
-  render() {
-    const {
-      name,
-      sdk,
-      deviceType,
-      platform,
-      udid,
-      dashboard_link,
-      total_session_count,
-      host,
-      totalUtilizationTimeMilliSec,
-      userBlocked,
-      busy,
-      session_id,
-      reservedBy,
-      reservedUntil,
-      reservationReason,
-      batteryLevel,
-      thermalStatus,
-      storageFree,
-      tags,
-      sessionProgress,
-      totalHealedCount,
-    } = this.props.device;
+      {(device.teamId || (device.tags && device.tags.length > 0)) && (
+        <div className="dc2-tags">
+          {device.teamId && (
+            <Pill tone="accent" title={`Team ${device.teamId}`}>
+              team
+            </Pill>
+          )}
+          {device.tags?.slice(0, 3).map((t) => (
+            <Pill key={t} tone="neutral" title={t}>
+              {t}
+            </Pill>
+          ))}
+          {(device.tags?.length || 0) > 3 && (
+            <Pill tone="neutral">+{(device.tags?.length || 0) - 3}</Pill>
+          )}
+        </div>
+      )}
 
-    const deviceState = this.getDeviceState();
-    let hostName = '';
-    try {
-      hostName = new URL(host).hostname;
-    } catch (error) {
-      hostName = host.split(':')[1].replace('//', '');
-    }
+      <div className="dc2-metrics">
+        {reserved ? (
+          <div className="dc2-banner dc2-banner-reserved">
+            <Clock size={12} />
+            <span>
+              RES · {device.reservedBy || 'anon'}
+              {device.reservedUntil
+                ? ` (${prettyMilliseconds(device.reservedUntil - Date.now(), { compact: true })})`
+                : ''}
+            </span>
+          </div>
+        ) : device.session_id ? (
+          <div className="dc2-banner dc2-banner-session">
+            <Terminal size={12} />
+            <span>SID · {String(device.session_id).slice(0, 10)}</span>
+          </div>
+        ) : (
+          <KeyValueRow
+            label="Utilization"
+            value={prettyMilliseconds(device.totalUtilizationTimeMilliSec || 0, { compact: true })}
+          />
+        )}
+        {typeof device.batteryLevel === 'number' && (
+          <KeyValueRow label="Battery" value={`${device.batteryLevel}%`} />
+        )}
+        {device.thermalStatus && device.thermalStatus !== 'Unknown' && (
+          <KeyValueRow label="Thermal" value={device.thermalStatus} />
+        )}
+        <KeyValueRow label="Host" value={device.ip || device.host} mono />
+      </div>
 
-    const blockButton = () => {
-      if (busy) return null;
-
-      const isReserved = this.isReserved();
-
-      if (isReserved) {
-        return (
-          <button
-            className="tactical-btn reserved"
-            onClick={() => this.releaseReservation(udid, host)}
-            title={`Reserved by ${reservedBy}${reservationReason ? `: ${reservationReason}` : ''
-              }. Expires: ${reservedUntil ? new Date(reservedUntil).toLocaleString() : 'Never'}`}
-          >
-            <Unlock size={14} color="#38bdf8" />
-          </button>
-        );
-      }
-
-      if (!userBlocked) {
-        return (
-          <>
-            <button
-              className="tactical-btn reserve"
-              onClick={() => this.setState({ showReservation: true })}
-              title="Reserve Device"
-            >
-              <CalendarPlus size={14} color="#38bdf8" />
-            </button>
-            <button
-              className="tactical-btn maintenance"
-              onClick={() => this.blockDevice(udid, host)}
-              title="Enter Maintenance"
-            >
-              <Wrench size={14} color="#fbbf24" />
-            </button>
-          </>
-        );
-      } else {
-        return (
-          <button
-            className="tactical-btn exit-maintenance"
-            onClick={() => this.unblockDevice(udid, host)}
-            title="Exit Maintenance"
-          >
-            <ShieldCheck size={14} />
-          </button>
-        );
-      }
-    };
-
-    return (
-      <div className={`device-info-card-container ${this.getStatusClassName()} group`}>
-        {/* Mission Control Scanline Overlay */}
-        <div
-          className="scanline"
-          style={{
-            position: 'absolute',
-            inset: 0,
-            pointerEvents: 'none',
-            opacity: 0.1,
-            zIndex: 0,
+      <div className="dc2-actions">
+        <Button
+          variant="primary"
+          size="sm"
+          disabled={busyLocked}
+          onClick={() => {
+            if (busyLocked) return;
+            navigate(`/devices/${device.udid}/control`);
           }}
-        ></div>
-
-        {/* Compact Header */}
-        <div className="card-header relative z-10">
-          <div className="header-left">
-            <div className={`platform-icon-wrapper ${platform}`}>
-              {['ios', 'tvos'].includes(platform) ? (
-                <AppleIcon size={14} />
-              ) : (
-                <AndroidIcon size={14} />
-              )}
-            </div>
-            <div className="device-id-mono" title={udid}>
-              {udid}
-            </div>
-          </div>
-          <div
-            className={`device-status-badge ${deviceState} ${deviceState === 'busy' && sessionProgress && sessionProgress !== 'Session Active' ? 'pulse' : ''}`}
-          >
-            {deviceState === 'busy' && sessionProgress && sessionProgress !== 'Session Active'
-              ? sessionProgress
-              : deviceState}
-          </div>
-        </div>
-
-        {/* Device Name and Info */}
-        <div className="device-info-main relative z-10">
-          <h3 className="device-name" title={name}>
-            {name}
-          </h3>
-          <p className="device-subtext">
-            {deviceType.toUpperCase()} • {sdk}
-          </p>
-
-          {/* Team + Tags */}
-          {(this.props.device.teamId ||
-            (this.props.device.tags && this.props.device.tags.length > 0)) && (
-            <div className="device-tags-inline">
-              {this.props.device.teamId && (
-                <span
-                  className="inline-tag"
-                  title={`Assigned to team ${this.props.device.teamId}`}
-                  style={{ background: 'rgba(16,185,129,0.15)', color: '#34d399' }}
-                >
-                  <UsersIcon size={10} style={{ marginRight: 4, verticalAlign: '-2px' }} />
-                  team
-                </span>
-              )}
-              {this.props.device.tags &&
-                this.props.device.tags.slice(0, 3).map((tag) => (
-                  <span key={tag} className="inline-tag" title={tag}>
-                    {tag}
-                  </span>
-                ))}
-              {this.props.device.tags && this.props.device.tags.length > 3 && (
-                <span className="inline-tag-overflow">+{this.props.device.tags.length - 3}</span>
-              )}
-            </div>
-          )}
-        </div>
-
-        {/* High-Density Metrics Grid */}
-        <div className="metrics-grid relative z-10">
-          <div className="metric-item" title={`Host: ${hostName}${this.props.device.ip ? ` • IP: ${this.props.device.ip}` : ''}`}>
-            {this.props.device.ip ? <Wifi size={10} className="text-dim" /> : <Monitor size={10} className="text-dim" />}
-            <span className="truncate">{this.props.device.ip || hostName}</span>
-          </div>
-
-          <div className="metric-item" title={`Architecture: ${this.props.device.cpuArchitecture || 'Unknown'}`}>
-            <Cpu size={10} className="text-dim" />
-            <span className="truncate uppercase">{this.props.device.cpuArchitecture || 'arch'}</span>
-          </div>
-
-          <div
-            className={`metric-item health ${this.props.device.healthStatus?.toLowerCase() || 'healthy'}`}
-            title={this.props.device.healthCheckError || 'Device is healthy'}
-          >
-            <div className="health-dot"></div>
-            <span>{this.props.device.healthStatus || 'Healthy'}</span>
-            {totalHealedCount && totalHealedCount > 0 && (
-              <span className="heal-badge">
-                <ShieldCheck size={8} /> {totalHealedCount}
-              </span>
-            )}
-          </div>
-
-          {thermalStatus && thermalStatus !== 'Unknown' && (
-            <div className="metric-item thermal" title={`Thermal: ${thermalStatus}`}>
-              <Thermometer
-                size={10}
-                style={{
-                  color:
-                    thermalStatus === 'Nominal' ? 'var(--color-primary)' : 'var(--color-amber)',
-                }}
-              />
-              <span>{thermalStatus}</span>
-            </div>
-          )}
-
-          {batteryLevel !== undefined && (
-            <div className="metric-item battery" title={`Battery: ${batteryLevel}%`}>
-              <div className={`mini-battery ${batteryLevel < 20 ? 'low' : ''}`}>
-                <div className="battery-fill" style={{ width: `${batteryLevel}%` }}></div>
-              </div>
-              <span>{batteryLevel}%</span>
-            </div>
-          )}
-
-          {storageFree && storageFree !== 'Unknown' && (
-            <div className="metric-item storage" title={`Free Space: ${storageFree}`}>
-              <HardDrive size={10} style={{ color: 'var(--color-sky)' }} />
-              <span>{storageFree}</span>
-            </div>
-          )}
-        </div>
-
-        {/* Utilization & Dynamic Info (Busy/Reserved) */}
-        <div className="dynamic-data-layer relative z-10">
-          {this.isReserved() ? (
-            <div className="reservation-micro-banner">
-              <Clock size={10} />
-              <span>
-                RES: {reservedBy || 'Anon'} ({this.getRemainingReservationTime()})
-              </span>
-            </div>
-          ) : session_id ? (
-            <div className="session-micro-banner">
-              <Terminal size={10} />
-              <span>SID: {session_id}</span>
-            </div>
-          ) : (
-            <div className="utilization-micro-info">
-              <span>
-                UTIL: {prettyMilliseconds(totalUtilizationTimeMilliSec || 0, { compact: true })}
-              </span>
-            </div>
-          )}
-        </div>
-
-        {/* Tactical Action Row */}
-        <div className="action-row relative z-10">
-          <button
-            className="tactical-btn add-tag"
-            onClick={() => this.manageTags()}
-            title="Manage Tags"
-          >
-            <Plus size={14} />
-          </button>
-          {blockButton()}
-
-          <button
-            className={`tactical-btn control-btn ${busy && !!session_id && !session_id.toString().startsWith('manual_') ? 'disabled' : ''}`}
-            onClick={() =>
-              !(busy && !!session_id && !session_id.toString().startsWith('manual_')) &&
-              this.props.navigate(`/devices/${udid}/control`)
-            }
-            disabled={busy && !!session_id && !session_id.toString().startsWith('manual_')}
-            title={
-              busy && !!session_id && !session_id.toString().startsWith('manual_')
-                ? 'Locked: Appium Session'
-                : 'Take Control'
-            }
-          >
-            <Monitor size={14} />
-            <span
-              style={{
-                fontSize: '10px',
-                fontWeight: 800,
-                letterSpacing: '0.05em',
-                fontFamily: 'Outfit, sans-serif',
+          title={busyLocked ? 'Locked: Appium session running' : 'Take control'}
+          className="dc2-primary"
+        >
+          Control
+        </Button>
+        {reserved ? (
+          <Button variant="secondary" size="sm" onClick={release}>
+            Release
+          </Button>
+        ) : !device.userBlocked && !device.busy ? (
+          <Button variant="secondary" size="sm" onClick={() => setShowReservation(true)}>
+            Reserve
+          </Button>
+        ) : null}
+        <button
+          ref={moreRef}
+          type="button"
+          className="dc2-more"
+          onClick={() => setMenuOpen((o) => !o)}
+          aria-label="More actions"
+        >
+          <MoreHorizontal size={14} />
+        </button>
+        <Popover open={menuOpen} onClose={() => setMenuOpen(false)} anchorRef={moreRef}>
+          <Menu>
+            <MenuItem
+              onClick={() => {
+                setMenuOpen(false);
+                setShowTagManager(true);
               }}
             >
-              CTRL
-            </span>
-          </button>
-        </div>
-
-        {/* Modals */}
-        {this.state.showReservation && (
-          <ReservationModal
-            device={this.props.device}
-            onClose={() => this.setState({ showReservation: false })}
-            onReserved={() => this.props.reloadDevices()}
-          />
-        )}
-        {this.state.showTagManager && (
-          <TagManagerModal
-            device={this.props.device}
-            onClose={() => this.setState({ showTagManager: false })}
-            onUpdated={() => this.props.reloadDevices()}
-          />
-        )}
+              Manage tags…
+            </MenuItem>
+            {device.userBlocked ? (
+              <MenuItem
+                onClick={() => {
+                  setMenuOpen(false);
+                  unblock();
+                }}
+              >
+                Exit maintenance
+              </MenuItem>
+            ) : (
+              <MenuItem
+                onClick={() => {
+                  setMenuOpen(false);
+                  block();
+                }}
+              >
+                Enter maintenance
+              </MenuItem>
+            )}
+            <MenuDivider />
+            <MenuItem
+              icon={<Copy size={12} />}
+              onClick={() => {
+                setMenuOpen(false);
+                copyUdid();
+              }}
+            >
+              Copy UDID
+            </MenuItem>
+          </Menu>
+        </Popover>
       </div>
-    );
-  }
-}
 
-import { isThemeV2 } from '../../../lib/theme-flag';
-import DeviceCardV2 from './device-card-v2';
+      {showReservation && (
+        <ReservationModal
+          device={device}
+          onClose={() => setShowReservation(false)}
+          onReserved={() => reloadDevices()}
+        />
+      )}
+      {showTagManager && (
+        <TagManagerModal
+          device={device}
+          onClose={() => setShowTagManager(false)}
+          onUpdated={() => reloadDevices()}
+        />
+      )}
+    </div>
+  );
+};
 
-export default function DeviceCardWrapper(props: any) {
+export default function DeviceCardWrapper(props: { device: IDevice; reloadDevices: () => void }) {
   const navigate = useNavigate();
-  if (isThemeV2()) {
-    return (
-      <DeviceCardV2
-        device={props.device}
-        reloadDevices={props.reloadDevices}
-        navigate={navigate}
-      />
-    );
-  }
-  return <DeviceCard {...props} navigate={navigate} />;
+  return (
+    <DeviceCard
+      device={props.device}
+      reloadDevices={props.reloadDevices}
+      navigate={navigate}
+    />
+  );
 }

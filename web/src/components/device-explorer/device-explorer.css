@@ -295,10 +295,10 @@
 }
 
 /* ============================================================
- * v2 Device Explorer toolbar
+ * Device Explorer toolbar
  * ============================================================ */
 
-html[data-theme="v2"] .de2-toolbar {
+.de2-toolbar {
   display: flex;
   gap: 10px;
   align-items: center;
@@ -311,7 +311,7 @@ html[data-theme="v2"] .de2-toolbar {
   box-shadow: none;
   flex-wrap: wrap;
 }
-html[data-theme="v2"] .de2-search {
+.de2-search {
   flex: 1;
   min-width: 200px;
   height: 28px;
@@ -324,16 +324,13 @@ html[data-theme="v2"] .de2-search {
   font-size: 12px;
   outline: none;
 }
-html[data-theme="v2"] .de2-search::placeholder {
+.de2-search::placeholder {
   color: var(--text-subtle);
 }
-html[data-theme="v2"] .de2-search:focus {
+.de2-search:focus {
   border-color: var(--border-strong);
 }
-html[data-theme="v2"] .device-explorer-container {
-  gap: 0;
-}
-html[data-theme="v2"] .device-explorer-empty h3 {
+.device-explorer-empty h3 {
   color: var(--text-primary);
   font-family: 'Inter', sans-serif;
   font-weight: 700;

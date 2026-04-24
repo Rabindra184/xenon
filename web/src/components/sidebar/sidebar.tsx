@@ -15,104 +15,10 @@ import {
   PinOff,
   Pin,
 } from 'lucide-react';
-import { isThemeV2 } from '../../lib/theme-flag';
 import { useSidebarState } from '../../hooks/useSidebarState';
-import { getEnabledNavItems } from '../../config/navigation';
 import './sidebar.css';
 
-/* ============================================================
- * v1 Sidebar — preserved verbatim
- * ============================================================ */
-
-interface V1ItemProps {
-  icon: React.ReactNode;
-  label: string;
-  path: string;
-  active?: boolean;
-  onClick: () => void;
-}
-
-const V1Item: React.FC<V1ItemProps> = ({ icon, label, active, onClick }) => (
-  <div className="sidebar-item-wrapper group" onClick={onClick}>
-    {active && <div className="sidebar-active-indicator" />}
-    <div className={`sidebar-icon-container ${active ? 'active' : ''}`}>{icon}</div>
-    <div className="sidebar-tooltip">{label}</div>
-  </div>
-);
-
-const SidebarV1: React.FC = () => {
-  const navigate = useNavigate();
-  const location = useLocation();
-  const navItems = getEnabledNavItems();
-  const isActive = (path: string) => location.pathname === path;
-
-  return (
-    <aside className="app-sidebar">
-      <div className="sidebar-nav">
-        {navItems.map((item) => (
-          <V1Item
-            key={item.id}
-            icon={item.icon}
-            label={item.label}
-            path={item.path}
-            active={isActive(item.path)}
-            onClick={() => navigate(item.path)}
-          />
-        ))}
-      </div>
-      <div className="sidebar-footer">
-        <V1Item
-          icon={<SettingsIcon size={18} />}
-          label="Settings"
-          path="/settings"
-          active={isActive('/settings')}
-          onClick={() => navigate('/settings')}
-        />
-        <V1Item
-          icon={<Brain size={18} />}
-          label="AI Engine"
-          path="/ai-settings"
-          active={isActive('/ai-settings')}
-          onClick={() => navigate('/ai-settings')}
-        />
-        <V1Item
-          icon={<ShieldCheck size={18} />}
-          label="Maintenance"
-          path="/maintenance"
-          active={isActive('/maintenance')}
-          onClick={() => navigate('/maintenance')}
-        />
-        <V1Item
-          icon={<Users size={18} />}
-          label="Teams"
-          path="/teams"
-          active={isActive('/teams')}
-          onClick={() => navigate('/teams')}
-        />
-        <V1Item
-          icon={<Key size={18} />}
-          label="API Keys"
-          path="/api-keys"
-          active={isActive('/api-keys')}
-          onClick={() => navigate('/api-keys')}
-        />
-        <V1Item
-          icon={<BookOpen size={18} />}
-          label="API Docs"
-          path="/xenon/api-docs"
-          active={false}
-          onClick={() => window.open(window.location.origin + '/xenon/api-docs', '_blank')}
-        />
-      </div>
-    </aside>
-  );
-};
-
-/* ============================================================
- * v2 Sidebar — expandable, pinnable, grouped with counts
- * ============================================================ */
-
-interface V2NavRow {
+interface NavRow {
   id: string;
   label: string;
   icon: React.ReactNode;
@@ -121,12 +27,12 @@ interface V2NavRow {
   count?: number;
 }
 
-interface V2NavGroup {
+interface NavGroup {
   heading: string;
-  rows: V2NavRow[];
+  rows: NavRow[];
 }
 
-const SidebarV2: React.FC = () => {
+const Sidebar: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const { state, isPinned, setHover, togglePin } = useSidebarState();
@@ -135,7 +41,7 @@ const SidebarV2: React.FC = () => {
   const isActive = (p: string) =>
     location.pathname === p || location.pathname.startsWith(p + '/');
 
-  const groups: V2NavGroup[] = [
+  const groups: NavGroup[] = [
     {
       heading: 'WORKSPACE',
       rows: [
@@ -236,5 +142,5 @@ const SidebarV2: React.FC = () => {
   );
 };
 
-export const Sidebar: React.FC = () => (isThemeV2() ? <SidebarV2 /> : <SidebarV1 />);
+export { Sidebar };
 export default Sidebar;

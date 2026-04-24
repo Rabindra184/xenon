@@ -1,100 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
-import { ChevronDown, Info, Search, Shield } from 'lucide-react';
-import { isThemeV2 } from '../../lib/theme-flag';
+import { useNavigate } from 'react-router-dom';
+import { ChevronDown, Search, Shield } from 'lucide-react';
 import './header.css';
 
-/* ============================================================
- * v1 Header — preserved verbatim.
- * ============================================================ */
-
-const HeaderV1: React.FC = () => {
+const Header: React.FC = () => {
   const navigate = useNavigate();
-  const [dropdownOpen, setDropdownOpen] = useState(false);
-  const dropdownRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
-        setDropdownOpen(false);
-      }
-    };
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
-
-  return (
-    <div className="header-container">
-      <div className="header-left">
-        <div className="header-logo-container" onClick={() => navigate('/')}>
-          <img src="logo.svg" alt="Xenon Logo" className="header-logo-image" />
-        </div>
-      </div>
-
-      <div className="header-right">
-        <div className="header-actions">
-          <div className="header-status-pill">
-            <div className="status-dot"></div>
-            <span>System Online</span>
-          </div>
-        </div>
-
-        <div className="profile-dropdown-container" ref={dropdownRef}>
-          <button
-            className={`profile-trigger ${dropdownOpen ? 'open' : ''}`}
-            onClick={() => setDropdownOpen(!dropdownOpen)}
-          >
-            <div className="avatar-preview">
-              <Shield size={16} />
-            </div>
-            <div className="profile-info-compact">
-              <span className="profile-name">Administrator</span>
-              <span className="profile-role">Root Node</span>
-            </div>
-            <ChevronDown size={14} className={`chevron-icon ${dropdownOpen ? 'rotate' : ''}`} />
-          </button>
-
-          {dropdownOpen && (
-            <div className="profile-dropdown animate-slide-up">
-              <div className="dropdown-group">
-                <div className="dropdown-section-header">
-                  <Info size={12} />
-                  <span>Workspace Context</span>
-                </div>
-                <div className="dropdown-context-item">
-                  <p className="context-label">Current Registry</p>
-                  <p className="context-value">Xenon Default Registry</p>
-                </div>
-                <div className="dropdown-context-item">
-                  <p className="context-label">Active Node</p>
-                  <p className="context-value">Root Node • Primary</p>
-                </div>
-              </div>
-
-              <div className="dropdown-divider"></div>
-
-              <div className="dropdown-system-info">
-                <div className="status-indicator">
-                  <div className="status-dot online"></div>
-                  <span>Node: Stable</span>
-                </div>
-                <span className="version-label">v{__XENON_VERSION__}</span>
-              </div>
-            </div>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-};
-
-/* ============================================================
- * v2 Header — slim 44px, ⌘K search trigger.
- * ============================================================ */
-
-const HeaderV2: React.FC = () => {
-  const navigate = useNavigate();
-  useLocation(); // re-render on route change so active indicators (future) stay fresh
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const ddRef = useRef<HTMLDivElement>(null);
 
@@ -167,5 +77,4 @@ const HeaderV2: React.FC = () => {
   );
 };
 
-const Header: React.FC = () => (isThemeV2() ? <HeaderV2 /> : <HeaderV1 />);
 export default Header;

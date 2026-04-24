@@ -4,25 +4,28 @@
   height: 100vh;
   width: 100vw;
   overflow: hidden;
-  background: var(--bg-page);
+  background: var(--bg-canvas);
 }
 
 .app-main-container {
   display: flex;
   flex: 1;
   width: 100%;
-  margin-top: 40px;
-  /* Space for StatusBar */
-  height: calc(100vh - 40px);
+  margin-top: 44px;
+  height: calc(100vh - 44px);
 }
 
 .app-content {
   flex: 1;
   margin-left: 56px;
-  /* Space for Sidebar */
   overflow: hidden;
   display: flex;
   flex-direction: column;
+  transition: margin-left var(--motion-fast);
+}
+
+body:has(.sb2.sb2-pinned) .app-content {
+  margin-left: 200px;
 }
 
 .app-body-container {
@@ -31,7 +34,7 @@
   width: 100%;
   max-width: 1400px;
   margin: 0 auto;
-  padding: var(--space-sm) var(--space-lg);
+  padding: var(--space-2) var(--space-6);
   overflow-y: auto;
 }
 
@@ -49,25 +52,4 @@
   height: 100%;
   overflow-y: auto;
   overflow-x: hidden;
-}
-
-/* ============================================================
- * v2 Layout — slim 44px header, sidebar variable-width.
- * ============================================================ */
-
-html[data-theme="v2"] .app-layout { background: var(--bg-canvas); }
-
-html[data-theme="v2"] .app-main-container {
-  margin-top: 44px;
-  height: calc(100vh - 44px);
-}
-
-html[data-theme="v2"] .app-content {
-  margin-left: 56px;
-  transition: margin-left var(--motion-fast);
-}
-
-html[data-theme="v2"] .app-content:has(~ .sb2.sb2-pinned),
-html[data-theme="v2"]:has(.sb2.sb2-pinned) .app-content {
-  margin-left: 200px;
 }
