@@ -96,6 +96,17 @@ async function getBuilds(request: Request, response: Response) {
   return response.status(200).json(formattedBuilds);
 }
 
+async function getSessionById(request: Request, response: Response) {
+  const sessionId = request.params.sessionId;
+  const session = await prisma.session.findUnique({
+    where: { id: sessionId },
+  });
+  if (!session) {
+    return response.status(404).json({ error: true, message: 'Session not found' });
+  }
+  return response.status(200).json(session);
+}
+
 async function getSessionLogs(request: Request, response: Response) {
   const sessionId = request.params.sessionId;
 
@@ -249,6 +260,7 @@ function register(router: Router) {
   router.use('/session/:sessionId', isValidSession);
 
   router.get('/session', getSessions);
+  router.get('/session/:sessionId', getSessionById);
   router.get('/build', getBuilds);
   router.post('/build/:buildId/export', buildExport);
   router.get('/session/:sessionId/live_video', streamLiveSessionVideo);
