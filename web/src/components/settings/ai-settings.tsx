@@ -196,13 +196,11 @@ export const AISettings: React.FC = () => {
           {/* Section 1: Provider Registry */}
           <SettingCard
             icon={<ShieldCheck size={16} />}
-            title={
-              <>
-                Provider Registry
-                <span className="badge-elite" style={{ marginLeft: 'auto' }}>
-                  {configuredCount} / {providers.length} CONFIGURED
-                </span>
-              </>
+            title="Provider Registry"
+            titleExtra={
+              <span className="badge-elite" style={{ marginLeft: 'auto' }}>
+                {configuredCount} / {providers.length} CONFIGURED
+              </span>
             }
             description="Providers are activated via environment variables. Select a configured engine to activate."
           >

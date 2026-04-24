@@ -4,6 +4,7 @@ import './setting-card.css';
 export interface SettingCardProps {
   icon: React.ReactNode;
   title: React.ReactNode;
+  titleExtra?: React.ReactNode;
   description?: React.ReactNode;
   hint?: React.ReactNode;
   children: React.ReactNode;
@@ -12,6 +13,7 @@ export interface SettingCardProps {
 export const SettingCard: React.FC<SettingCardProps> = ({
   icon,
   title,
+  titleExtra,
   description,
   hint,
   children,
@@ -20,6 +22,7 @@ export const SettingCard: React.FC<SettingCardProps> = ({
     <div className="setting-card-header">
       {icon}
       <h4>{title}</h4>
+      {titleExtra}
     </div>
     {description && <p className="setting-card-description">{description}</p>}
     <div className="setting-card-field">{children}</div>

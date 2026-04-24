@@ -69,4 +69,28 @@ describe('SettingCard', () => {
     expect(screen.queryByRole('heading', { level: 3 })).toBeNull();
     expect(screen.getByRole('heading', { level: 4 })).toBeInTheDocument();
   });
+
+  it('renders titleExtra when provided, omits when not', () => {
+    const { rerender, container } = render(
+      <SettingCard
+        icon={<span />}
+        title="t"
+        titleExtra={<span data-testid="extra">badge</span>}
+      >
+        <input />
+      </SettingCard>,
+    );
+    expect(screen.getByTestId('extra')).toBeInTheDocument();
+    const header = container.querySelector('.setting-card-header');
+    // titleExtra renders as a sibling of h4, not inside it
+    expect(header?.querySelector('h4 [data-testid="extra"]')).toBeNull();
+    expect(header?.querySelector('[data-testid="extra"]')).not.toBeNull();
+
+    rerender(
+      <SettingCard icon={<span />} title="t">
+        <input />
+      </SettingCard>,
+    );
+    expect(screen.queryByTestId('extra')).toBeNull();
+  });
 });
