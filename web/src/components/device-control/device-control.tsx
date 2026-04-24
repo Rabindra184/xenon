@@ -140,7 +140,7 @@ export default function DeviceControl({ device, onClose }: DeviceControlProps) {
         <div className="log-empty-state">
           {!logStreamActive ? (
             <>
-              <Loader2 size={28} className="animate-spin" style={{ color: 'var(--primary)', marginBottom: 12 }} />
+              <Loader2 size={28} className="animate-spin" style={{ color: 'var(--accent)', marginBottom: 12 }} />
               <p className="log-empty-title">Connecting to device syslog...</p>
               <p className="log-empty-subtitle">Initializing persistent log stream for {currentDevice.name}</p>
             </>
@@ -669,7 +669,7 @@ export default function DeviceControl({ device, onClose }: DeviceControlProps) {
                   className="device-stream-placeholder"
                   style={{ position: 'absolute', zIndex: 10 }}
                 >
-                  <RotateCw size={40} className="animate-spin" color="var(--primary)" />
+                  <RotateCw size={40} className="animate-spin" color="var(--accent)" />
                   <p style={{ marginTop: 16 }}>ESTABLISHING TRACE...</p>
                 </div>
               )}
@@ -774,7 +774,7 @@ export default function DeviceControl({ device, onClose }: DeviceControlProps) {
                 <div className="actions-grid">
                   <div className="action-card">
                     <h4 className="action-card-title">
-                      <Move size={18} color="var(--primary)" /> Directional Gestures
+                      <Move size={18} color="var(--accent)" /> Directional Gestures
                     </h4>
                     <div className="gestures-grid-container">
                       <div className="gestures-dpad">
@@ -804,7 +804,7 @@ export default function DeviceControl({ device, onClose }: DeviceControlProps) {
 
                   <div className="action-card">
                     <h4 className="action-card-title">
-                      <FileText size={18} color="var(--primary)" /> Smart Input
+                      <FileText size={18} color="var(--accent)" /> Smart Input
                     </h4>
                     <input
                       type="text"
@@ -818,7 +818,7 @@ export default function DeviceControl({ device, onClose }: DeviceControlProps) {
 
                   <div className="action-card full-width">
                     <h4 className="action-card-title">
-                      <Package size={18} color="var(--primary)" /> App Management
+                      <Package size={18} color="var(--accent)" /> App Management
                     </h4>
                     <div className="app-mgmt-content">
                       <div className="install-section">
@@ -897,7 +897,7 @@ export default function DeviceControl({ device, onClose }: DeviceControlProps) {
 
                   <div className="action-card full-width">
                     <h4 className="action-card-title">
-                      <Clipboard size={18} color="var(--primary)" /> Clipboard
+                      <Clipboard size={18} color="var(--accent)" /> Clipboard
                     </h4>
                     <div style={{ display: 'flex', gap: '12px', alignItems: 'flex-start' }}>
                       <button
@@ -920,7 +920,7 @@ export default function DeviceControl({ device, onClose }: DeviceControlProps) {
                   <header className="action-card-header">
                     <div className="title-group">
                       <h4 className="action-card-title">
-                        <Camera size={20} color="var(--primary)" /> Captured Evidence
+                        <Camera size={20} color="var(--accent)" /> Captured Evidence
                       </h4>
                       <p className="hint-text">Relay screenshots from device to host.</p>
                     </div>

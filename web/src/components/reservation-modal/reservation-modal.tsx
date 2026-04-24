@@ -96,7 +96,7 @@ const ReservationModal: React.FC<ReservationModalProps> = ({ device, onClose, on
             <label>
               <User
                 size={14}
-                style={{ marginRight: 6, verticalAlign: 'middle', color: 'var(--color-primary)' }}
+                style={{ marginRight: 6, verticalAlign: 'middle', color: 'var(--accent)' }}
               />
               Reserved By
             </label>
@@ -114,7 +114,7 @@ const ReservationModal: React.FC<ReservationModalProps> = ({ device, onClose, on
             <label>
               <Clock
                 size={14}
-                style={{ marginRight: 6, verticalAlign: 'middle', color: 'var(--color-primary)' }}
+                style={{ marginRight: 6, verticalAlign: 'middle', color: 'var(--accent)' }}
               />
               Duration
             </label>
@@ -135,7 +135,7 @@ const ReservationModal: React.FC<ReservationModalProps> = ({ device, onClose, on
             <label>
               <MessageSquare
                 size={14}
-                style={{ marginRight: 6, verticalAlign: 'middle', color: 'var(--color-primary)' }}
+                style={{ marginRight: 6, verticalAlign: 'middle', color: 'var(--accent)' }}
               />
               Reason (Optional)
             </label>

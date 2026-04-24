@@ -20,9 +20,9 @@
   gap: 16px;
   background: var(--bg-surface);
   backdrop-filter: blur(16px);
-  border: 1px solid var(--border-visible);
+  border: 1px solid var(--border-default);
   box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4);
-  color: var(--text-bright);
+  color: var(--text-primary);
   font-size: 13px;
   font-weight: 600;
   font-family: 'JetBrains Mono', monospace;
@@ -58,7 +58,7 @@
 .toast-close {
   background: transparent;
   border: none;
-  color: var(--text-dim);
+  color: var(--text-subtle);
   cursor: pointer;
   padding: 4px;
   border-radius: 6px;
@@ -70,16 +70,16 @@
 
 .toast-close:hover {
   background: rgba(255, 255, 255, 0.05);
-  color: var(--text-bright);
+  color: var(--text-primary);
 }
 
 .toast-success {
   border-color: rgba(0, 255, 136, 0.3);
-  color: var(--color-primary);
+  color: var(--accent);
 }
 
 .toast-success .toast-icon {
-  color: var(--color-primary);
+  color: var(--accent);
 }
 
 .toast-error {
@@ -102,11 +102,11 @@
 
 .toast-loading {
   border-color: var(--text-muted);
-  color: var(--text-dim);
+  color: var(--text-subtle);
 }
 
 .toast-loading .toast-icon {
-  color: var(--text-dim);
+  color: var(--text-subtle);
 }
 
 @keyframes slide-in {

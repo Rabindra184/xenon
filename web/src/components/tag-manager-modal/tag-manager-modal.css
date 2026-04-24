@@ -17,7 +17,7 @@
     width: 100%;
     max-width: 450px;
     border-radius: 6px;
-    border: 1px solid var(--border-visible);
+    border: 1px solid var(--border-default);
     box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5);
     overflow: hidden;
     animation: slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1);
@@ -41,7 +41,7 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    border-bottom: 2px solid var(--border-visible);
+    border-bottom: 2px solid var(--border-default);
     background: rgba(0, 0, 0, 0.4);
 }
 
@@ -51,20 +51,20 @@
     gap: 12px;
     font-size: 1.25rem;
     font-weight: 800;
-    color: var(--text-bright);
+    color: var(--text-primary);
     text-transform: uppercase;
     font-family: 'Outfit', sans-serif;
     letter-spacing: -0.01em;
 }
 
 .title-icon {
-    color: var(--color-primary);
+    color: var(--accent);
 }
 
 .close-btn {
     background: transparent;
     border: none;
-    color: var(--text-dim);
+    color: var(--text-subtle);
     cursor: pointer;
     padding: 4px;
     border-radius: 6px;
@@ -76,7 +76,7 @@
 
 .close-btn:hover {
     background: rgba(255, 255, 255, 0.05);
-    color: var(--text-bright);
+    color: var(--text-primary);
 }
 
 .tag-modal-body {
@@ -93,29 +93,29 @@
     background: rgba(0, 0, 0, 0.4);
     padding: 8px 16px;
     border-radius: 6px;
-    border: 1px solid var(--border-visible);
+    border: 1px solid var(--border-default);
     font-family: 'JetBrains Mono', monospace;
     font-size: 11px;
 }
 
 .device-id-badge .label {
-    color: var(--text-dim);
+    color: var(--text-subtle);
     text-transform: uppercase;
     font-weight: 800;
     font-size: 10px;
 }
 
 .device-id-badge .value {
-    color: var(--color-primary);
+    color: var(--accent);
     font-weight: 800;
 }
 
 .tag-input-section label,
 .tags-display-section label {
     display: block;
-    font-size: var(--fs-xs);
+    font-size: 11px;
     font-weight: 800;
-    color: var(--text-dim);
+    color: var(--text-subtle);
     text-transform: uppercase;
     letter-spacing: 0.1em;
     margin-bottom: 8px;
@@ -125,10 +125,10 @@
 .tag-input-section input {
     flex: 1;
     background: rgba(0, 0, 0, 0.3);
-    border: 1px solid var(--border-visible);
+    border: 1px solid var(--border-default);
     border-radius: 6px;
     padding: 10px 14px;
-    color: var(--text-bright);
+    color: var(--text-primary);
     font-size: 13px;
     transition: all 0.2s;
     font-family: 'JetBrains Mono', monospace;
@@ -136,13 +136,13 @@
 
 .tag-input-section input:focus {
     outline: none;
-    border-color: var(--color-primary);
+    border-color: var(--accent);
     box-shadow: 0 0 15px rgba(0, 255, 136, 0.2);
 }
 
 .add-inline-btn {
-    background: var(--color-primary);
-    color: var(--bg-page);
+    background: var(--accent);
+    color: var(--bg-canvas);
     border: none;
     border-radius: 6px;
     width: 40px;
@@ -159,8 +159,8 @@
 }
 
 .add-inline-btn:disabled {
-    background: var(--border-visible);
-    color: var(--text-dim);
+    background: var(--border-default);
+    color: var(--text-subtle);
     cursor: not-allowed;
     filter: grayscale(1);
     opacity: 0.5;
@@ -174,7 +174,7 @@
     padding: 12px;
     background: rgba(0, 0, 0, 0.4);
     border-radius: 6px;
-    border: 1px dashed var(--border-visible);
+    border: 1px dashed var(--border-default);
 }
 
 .tag-pill-editable {
@@ -182,7 +182,7 @@
     align-items: center;
     gap: 6px;
     background: rgba(0, 255, 136, 0.05);
-    color: var(--color-primary);
+    color: var(--accent);
     padding: 6px 12px;
     border-radius: 6px;
     font-size: 11px;
@@ -197,7 +197,7 @@
 .remove-tag {
     background: transparent;
     border: none;
-    color: var(--color-primary);
+    color: var(--accent);
     cursor: pointer;
     padding: 2px;
     border-radius: 4px;
@@ -219,15 +219,15 @@
     gap: 12px;
     justify-content: flex-end;
     background: rgba(0, 0, 0, 0.4);
-    border-top: 2px solid var(--border-visible);
+    border-top: 2px solid var(--border-default);
 }
 
 .btn-cancel {
     padding: 10px 24px;
     border-radius: 6px;
     background: transparent;
-    border: 1px solid var(--border-visible);
-    color: var(--text-dim);
+    border: 1px solid var(--border-default);
+    color: var(--text-subtle);
     font-weight: 700;
     cursor: pointer;
     transition: all 0.2s;
@@ -237,16 +237,16 @@
 }
 
 .btn-cancel:hover {
-    color: var(--text-bright);
+    color: var(--text-primary);
     border-color: var(--text-muted);
 }
 
 .btn-save {
     padding: 10px 24px;
     border-radius: 6px;
-    background: var(--color-primary);
+    background: var(--accent);
     border: none;
-    color: var(--bg-page);
+    color: var(--bg-canvas);
     font-weight: 800;
     cursor: pointer;
     transition: all 0.2s;
@@ -262,8 +262,8 @@
 }
 
 .btn-save:disabled {
-    background-color: var(--border-visible);
-    color: var(--text-dim);
+    background-color: var(--border-default);
+    color: var(--text-subtle);
     cursor: not-allowed;
     box-shadow: none;
     filter: grayscale(1);

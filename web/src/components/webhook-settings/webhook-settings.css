@@ -1,11 +1,11 @@
 .webhook-settings-container {
     padding: 24px 40px;
-    color: var(--text-body);
+    color: var(--text-secondary);
     font-family: 'Inter', sans-serif;
     max-width: 800px;
     margin: 0 auto;
     min-height: calc(100vh - 40px);
-    background: var(--bg-page);
+    background: var(--bg-canvas);
     position: relative;
     display: flex;
     flex-direction: column;
@@ -14,7 +14,7 @@
 .webhook-header {
     margin-bottom: 24px;
     padding-bottom: 24px;
-    border-bottom: 2px solid var(--border-visible);
+    border-bottom: 2px solid var(--border-default);
 }
 
 .webhook-title {
@@ -25,21 +25,21 @@
 }
 
 .webhook-icon {
-    color: var(--color-primary);
+    color: var(--accent);
 }
 
 .webhook-title h2 {
     font-size: 2rem;
     font-weight: 800;
     margin: 0;
-    color: var(--text-bright);
+    color: var(--text-primary);
     letter-spacing: -0.01em;
     text-transform: uppercase;
     font-family: 'Outfit', sans-serif;
 }
 
 .webhook-subtitle {
-    color: var(--text-dim);
+    color: var(--text-subtle);
     font-size: 14px;
     margin: 0;
     line-height: 1.6;
@@ -55,7 +55,7 @@
 
 .webhook-card {
     background: var(--bg-surface);
-    border: 1px solid var(--border-visible);
+    border: 1px solid var(--border-default);
     border-radius: 6px;
     padding: 24px 32px;
     transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
@@ -63,7 +63,7 @@
 }
 
 .webhook-card:hover {
-    border-color: var(--color-primary);
+    border-color: var(--accent);
     background: rgba(255, 255, 255, 0.01);
     transform: translateY(-2px);
     box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5);
@@ -71,8 +71,8 @@
 
 .platform-tag {
     background: rgba(0, 0, 0, 0.4);
-    color: var(--color-primary);
-    font-size: var(--fs-xs);
+    color: var(--accent);
+    font-size: 11px;
     font-weight: 800;
     padding: 2px 12px;
     border-radius: 6px;
@@ -96,11 +96,11 @@
     align-items: center;
     gap: 8px;
     background: rgba(0, 0, 0, 0.3);
-    border: 1px solid var(--border-visible);
+    border: 1px solid var(--border-default);
     padding: 6px 14px;
     border-radius: 6px;
-    font-size: var(--fs-xs);
-    color: var(--text-dim);
+    font-size: 11px;
+    color: var(--text-subtle);
     font-weight: 800;
     text-transform: uppercase;
     letter-spacing: 0.05em;
@@ -145,7 +145,7 @@
 /* Add Form */
 .add-webhook-form {
     background: var(--bg-surface);
-    border: 1px solid var(--border-visible);
+    border: 1px solid var(--border-default);
     border-radius: 6px;
     padding: 0;
     display: flex;
@@ -165,7 +165,7 @@
     font-size: 14px;
     font-weight: 800;
     margin: 0 0 24px 0;
-    color: var(--color-primary);
+    color: var(--accent);
     text-transform: uppercase;
     letter-spacing: 0.1em;
     font-family: 'JetBrains Mono', monospace;
@@ -178,10 +178,10 @@
 .webhook-input {
     width: 100%;
     background: rgba(0, 0, 0, 0.3);
-    border: 1px solid var(--border-visible);
+    border: 1px solid var(--border-default);
     border-radius: 6px;
     padding: 12px 16px;
-    color: var(--text-bright);
+    color: var(--text-primary);
     font-size: 13px;
     font-family: 'JetBrains Mono', monospace;
     transition: all 0.2s;
@@ -190,7 +190,7 @@
 
 .webhook-input:focus {
     outline: none;
-    border-color: var(--color-primary);
+    border-color: var(--accent);
     box-shadow: 0 0 15px rgba(0, 255, 136, 0.1);
 }
 
@@ -198,7 +198,7 @@
     display: block;
     font-size: 11px;
     font-weight: 800;
-    color: var(--text-dim);
+    color: var(--text-subtle);
     margin-bottom: 12px;
     text-transform: uppercase;
     letter-spacing: 0.05em;
@@ -218,12 +218,12 @@
     gap: 12px;
     padding: 14px;
     background: rgba(0, 0, 0, 0.3);
-    border: 1px solid var(--border-visible);
+    border: 1px solid var(--border-default);
     border-radius: 6px;
     cursor: pointer;
     transition: all 0.2s;
     font-size: 13px;
-    color: var(--text-dim);
+    color: var(--text-subtle);
     user-select: none;
 }
 
@@ -234,15 +234,15 @@
 
 .event-checkbox.selected {
     background: rgba(0, 255, 136, 0.05);
-    border-color: var(--color-primary);
-    color: var(--color-primary);
+    border-color: var(--accent);
+    color: var(--accent);
     font-weight: 600;
 }
 
 /* Template Section */
 .template-section {
     background: rgba(0, 0, 0, 0.2);
-    border: 1px solid var(--border-visible);
+    border: 1px solid var(--border-default);
     border-radius: 6px;
     margin-bottom: 24px;
     overflow: hidden;
@@ -275,18 +275,18 @@
 
 .toggle-indicator {
     font-size: 18px;
-    color: var(--text-dim);
+    color: var(--text-subtle);
     font-weight: bold;
 }
 
 .template-editor {
     padding: 24px;
-    border-top: 1px solid var(--border-visible);
+    border-top: 1px solid var(--border-default);
     background: rgba(0, 0, 0, 0.1);
 }
 
 .template-hint {
-    color: var(--text-dim);
+    color: var(--text-subtle);
     font-size: 12px;
     margin: 0 0 16px 0;
     line-height: 1.6;
@@ -296,7 +296,7 @@
     background: rgba(0, 0, 0, 0.3);
     padding: 2px 6px;
     border-radius: 6px;
-    color: var(--color-primary);
+    color: var(--accent);
     font-family: 'JetBrains Mono', monospace;
 }
 
@@ -309,18 +309,18 @@
 
 .variable-chip {
     background: rgba(0, 0, 0, 0.3);
-    border: 1px solid var(--border-visible);
-    color: var(--color-primary);
+    border: 1px solid var(--border-default);
+    color: var(--accent);
     padding: 6px 12px;
     border-radius: 6px;
-    font-size: var(--fs-xs);
+    font-size: 11px;
     cursor: pointer;
     font-family: 'JetBrains Mono', monospace;
     transition: all 0.2s;
 }
 
 .variable-chip:hover {
-    border-color: var(--color-primary);
+    border-color: var(--accent);
     background: rgba(0, 255, 136, 0.05);
     transform: translateY(-1px);
 }
@@ -328,9 +328,9 @@
 .template-textarea {
     width: 100%;
     background: rgba(0, 0, 0, 0.3);
-    border: 1px solid var(--border-visible);
+    border: 1px solid var(--border-default);
     border-radius: 6px;
-    color: var(--text-bright);
+    color: var(--text-primary);
     padding: 16px;
     font-family: 'JetBrains Mono', monospace;
     font-size: 12px;
@@ -343,7 +343,7 @@
 
 .template-textarea:focus {
     outline: none;
-    border-color: var(--color-primary);
+    border-color: var(--accent);
 }
 
 .form-actions {
@@ -358,8 +358,8 @@
 }
 
 .add-btn {
-    background: var(--color-primary);
-    color: var(--bg-page);
+    background: var(--accent);
+    color: var(--bg-canvas);
     font-weight: 800;
     padding: 12px 32px;
     border-radius: 6px;
@@ -380,14 +380,14 @@
 
 .add-btn:disabled {
     background: var(--bg-elevated);
-    color: var(--text-dim);
+    color: var(--text-subtle);
     cursor: not-allowed;
     box-shadow: none;
 }
 
 .test-btn {
     background: transparent;
-    border: 1px solid var(--border-visible);
+    border: 1px solid var(--border-default);
     color: var(--text-muted);
     font-weight: 700;
     padding: 11px 24px;
@@ -400,14 +400,14 @@
 }
 
 .test-btn:hover:not(:disabled) {
-    color: var(--text-bright);
-    border-color: var(--text-dim);
+    color: var(--text-primary);
+    border-color: var(--text-subtle);
     background: rgba(255, 255, 255, 0.05);
 }
 
 .test-btn.success {
-    border-color: var(--color-primary);
-    color: var(--color-primary);
+    border-color: var(--accent);
+    color: var(--accent);
     background: rgba(0, 255, 136, 0.05);
 }
 

@@ -5,7 +5,7 @@
   border-radius: 6px;
   border: 1px solid transparent;
   padding: 2px 8px;
-  font-size: var(--fs-xs);
+  font-size: 11px;
   font-weight: 800;
   transition: all 0.2s ease;
   white-space: nowrap;
@@ -16,13 +16,13 @@
 
 .badge-variant-default {
   background: rgba(0, 0, 0, 0.3);
-  color: var(--text-dim);
-  border-color: var(--border-visible);
+  color: var(--text-subtle);
+  border-color: var(--border-default);
 }
 
 .badge-variant-success {
   background: rgba(0, 255, 136, 0.05);
-  color: var(--color-primary);
+  color: var(--accent);
   border-color: rgba(0, 255, 136, 0.2);
 }
 
@@ -40,17 +40,17 @@
 
 .badge-variant-secondary {
   background: var(--bg-surface);
-  color: var(--text-bright);
-  border-color: var(--border-visible);
+  color: var(--text-primary);
+  border-color: var(--border-default);
 }
 
 .badge-variant-outline {
   background: transparent;
-  color: var(--text-dim);
-  border: 1px solid var(--border-visible);
+  color: var(--text-subtle);
+  border: 1px solid var(--border-default);
 }
 
 .badge-variant-outline:hover {
-  color: var(--text-bright);
+  color: var(--text-primary);
   border-color: var(--text-muted);
 }

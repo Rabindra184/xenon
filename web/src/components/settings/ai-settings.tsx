@@ -307,9 +307,9 @@ export const AISettings: React.FC = () => {
           <div
             className={`status-banner ${status.type}`}
             style={{
-              borderRadius: 'var(--radius-enterprise)',
-              padding: 'var(--gap-2)',
-              marginTop: 'var(--gap-3)',
+              borderRadius: 'var(--radius-lg)',
+              padding: 'var(--space-4)',
+              marginTop: 'var(--space-6)',
               justifyContent: 'center',
             }}
           >
