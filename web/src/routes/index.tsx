@@ -5,6 +5,7 @@ import { RefreshCw } from 'lucide-react';
 import { ErrorBoundary } from '../components/ui/ErrorBoundary';
 
 // Lazy load components for optimal performance
+const Overview = lazy(() => import('../components/overview/overview'));
 const DeviceExplorer = lazy(() => import('../components/device-explorer/device-explorer'));
 const SessionDashboard = lazy(() => import('../components/session-dashboard/session-dashboard'));
 const Apps = lazy(() => import('../components/apps/apps'));
@@ -46,7 +47,16 @@ export const AppRoutes: React.FC = () => {
     <ErrorBoundary>
       <Suspense fallback={<LoadingFallback />}>
         <Routes>
-          <Route path="/" element={<Navigate to="/devices" replace />} />
+          <Route path="/" element={<Navigate to="/overview" replace />} />
+
+          <Route
+            path="/overview"
+            element={
+              <div className="app-body-container">
+                <Overview />
+              </div>
+            }
+          />
 
           <Route
             path="/devices"
@@ -146,7 +156,7 @@ export const AppRoutes: React.FC = () => {
             }
           />
 
-          <Route path="*" element={<Navigate to="/devices" replace />} />
+          <Route path="*" element={<Navigate to="/overview" replace />} />
         </Routes>
       </Suspense>
     </ErrorBoundary>
