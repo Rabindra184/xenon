@@ -217,7 +217,7 @@ export const ApiKeys: React.FC = () => {
         </div>
 
         {keys.length === 0 ? (
-          <div className="setting-card" style={{ textAlign: 'center', padding: 48 }}>
+          <div className="surface-card" style={{ textAlign: 'center', padding: 48 }}>
             <AlertTriangle size={32} style={{ opacity: 0.4 }} />
             <p style={{ marginTop: 12 }}>
               No active keys. Create one above, or revoke the bootstrap key after a replacement is
@@ -225,7 +225,7 @@ export const ApiKeys: React.FC = () => {
             </p>
           </div>
         ) : (
-          <div className="setting-card" style={{ padding: 0, overflowX: 'auto' }}>
+          <div className="surface-card" style={{ padding: 0, overflowX: 'auto' }}>
             <Table>
               <THead>
                 <TR>
