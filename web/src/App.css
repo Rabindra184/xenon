@@ -50,3 +50,24 @@
   overflow-y: auto;
   overflow-x: hidden;
 }
+
+/* ============================================================
+ * v2 Layout — slim 44px header, sidebar variable-width.
+ * ============================================================ */
+
+html[data-theme="v2"] .app-layout { background: var(--bg-canvas); }
+
+html[data-theme="v2"] .app-main-container {
+  margin-top: 44px;
+  height: calc(100vh - 44px);
+}
+
+html[data-theme="v2"] .app-content {
+  margin-left: 56px;
+  transition: margin-left var(--motion-fast);
+}
+
+html[data-theme="v2"] .app-content:has(~ .sb2.sb2-pinned),
+html[data-theme="v2"]:has(.sb2.sb2-pinned) .app-content {
+  margin-left: 200px;
+}
