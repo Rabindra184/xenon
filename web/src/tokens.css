@@ -1,48 +1,67 @@
-/* Xenon design tokens. */
+/* Xenon design tokens — reference palette. */
 
 :root {
-  /* Surfaces */
-  --bg-canvas: #0d1117;
-  --bg-surface: #161b22;
-  --bg-elevated: #1c2128;
-  --bg-subtle: #0d1117;
-
-  --border-default: #21262d;
-  --border-strong: #30363d;
-  --border-muted: #1c2128;
+  /* ===== Primary surface palette (reference names) ===== */
+  --bg: #0a0d0c;
+  --surface: #111514;
+  --surface-2: #161b1a;
+  --border: #1f2624;
+  --border-strong: #2a3331;
 
   /* Text */
-  --text-primary: #e6edf3;
-  --text-secondary: #c9d1d9;
-  --text-muted: #8b949e;
-  --text-subtle: #6e7681;
+  --text: #e6ebe9;
+  --text-muted: #8a938f;
+  --text-dim: #5b6460;
 
-  /* Accent (forest green) */
-  --accent: #3fb950;
-  --accent-bold: #238636;
-  --accent-subtle: rgba(63, 185, 80, 0.1);
-  --accent-border: rgba(63, 185, 80, 0.3);
+  /* Accents */
+  --green: #22c55e;
+  --green-dim: #16a34a;
+  --amber: #f59e0b;
+  --red: #ef4444;
+  --blue: #3b82f6;
+
+  /* ===== Legacy aliases — used by page CSS until each page is
+     redesigned in a later plan. Removed in Phase 6 cleanup. ===== */
+
+  /* Surfaces */
+  --bg-canvas: var(--bg);
+  --bg-surface: var(--surface);
+  --bg-elevated: var(--surface-2);
+  --bg-subtle: var(--bg);
+  --border-default: var(--border);
+  --border-muted: var(--border);
+
+  /* Text */
+  --text-primary: var(--text);
+  --text-secondary: var(--text);
+  --text-subtle: var(--text-dim);
+
+  /* Accent (forest green family) */
+  --accent: var(--green);
+  --accent-bold: var(--green-dim);
+  --accent-subtle: rgba(34, 197, 94, 0.1);
+  --accent-border: rgba(34, 197, 94, 0.3);
 
   /* Status — foreground */
-  --status-ready-fg: #3fb950;
-  --status-busy-fg: #d29922;
-  --status-reserved-fg: #58a6ff;
-  --status-error-fg: #f85149;
-  --status-offline-fg: #8b949e;
+  --status-ready-fg: var(--green);
+  --status-busy-fg: var(--amber);
+  --status-reserved-fg: var(--blue);
+  --status-error-fg: var(--red);
+  --status-offline-fg: var(--text-muted);
 
-  /* Status — background (10% alpha of fg) */
-  --status-ready-bg: rgba(63, 185, 80, 0.1);
-  --status-busy-bg: rgba(210, 153, 34, 0.1);
-  --status-reserved-bg: rgba(88, 166, 255, 0.1);
-  --status-error-bg: rgba(248, 81, 73, 0.1);
-  --status-offline-bg: rgba(139, 148, 158, 0.08);
+  /* Status — background */
+  --status-ready-bg: rgba(34, 197, 94, 0.1);
+  --status-busy-bg: rgba(245, 158, 11, 0.1);
+  --status-reserved-bg: rgba(59, 130, 246, 0.1);
+  --status-error-bg: rgba(239, 68, 68, 0.1);
+  --status-offline-bg: rgba(138, 147, 143, 0.08);
 
-  /* Status — border (30% alpha of fg) */
-  --status-ready-border: rgba(63, 185, 80, 0.3);
-  --status-busy-border: rgba(210, 153, 34, 0.3);
-  --status-reserved-border: rgba(88, 166, 255, 0.3);
-  --status-error-border: rgba(248, 81, 73, 0.3);
-  --status-offline-border: rgba(139, 148, 158, 0.25);
+  /* Status — border */
+  --status-ready-border: rgba(34, 197, 94, 0.3);
+  --status-busy-border: rgba(245, 158, 11, 0.3);
+  --status-reserved-border: rgba(59, 130, 246, 0.3);
+  --status-error-border: rgba(239, 68, 68, 0.3);
+  --status-offline-border: rgba(138, 147, 143, 0.25);
 
   /* Spacing (4px grid) */
   --space-1: 4px;
@@ -59,7 +78,7 @@
   --radius-md: 6px;
   --radius-lg: 8px;
 
-  /* Shadows (subtle — no glow) */
+  /* Shadows */
   --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.25);
   --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.35);
   --shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.45);
@@ -67,10 +86,9 @@
   /* Motion */
   --motion-fast: 150ms cubic-bezier(0.2, 0, 0, 1);
   --motion-slow: 250ms cubic-bezier(0.2, 0, 0, 1);
-
 }
 
-/* Suppress any remaining v1 glow/pulse effects */
+/* Legacy glow suppressions kept from previous tokens.css */
 .scanline,
 .header-container::after {
   display: none !important;
