@@ -1,42 +1,25 @@
 import React from 'react';
-import { Smartphone as AndroidIcon, Apple as AppleIcon, Search, RefreshCw } from 'lucide-react';
+import { Smartphone as AndroidIcon, RefreshCw } from 'lucide-react';
 import { useParams, useNavigate } from 'react-router-dom';
 import CardView from './card-view/card-view';
 import './device-explorer.css';
 import XenonApiService from '../../api-service';
 import DeviceControl from '../device-control/device-control';
-import { IDeviceFilter } from '../../interfaces/IDeviceFilter';
 import { IDevice } from '../../interfaces/IDevice';
 import { Button } from '../ui/button';
-import { Badge } from '../ui/badge';
 import { SegmentedControl } from '../ui/SegmentedControl';
 import { useSocket } from '../../hooks/useSocket';
-import { isThemeV2 } from '../../lib/theme-flag';
 
-type V2StatusFilter = 'all' | 'ready' | 'busy' | 'reserved' | 'offline';
+type StatusFilter = 'all' | 'ready' | 'busy' | 'reserved' | 'offline';
 
 interface IDeviceExplorerState {
-  filter: IDeviceFilter;
   devices: IDevice[];
   activeSessionsCount: number;
   pendingSessionsCount: number;
   queueSummary: any;
-  v2Status: V2StatusFilter;
-  v2Search: string;
+  statusFilter: StatusFilter;
+  search: string;
 }
-
-const DEFAULT_FILTER: IDeviceFilter = {
-  platform: {
-    ios: true,
-    android: true,
-  },
-  state: {
-    ready: true,
-    offline: true,
-    busy: true,
-  },
-  name: '',
-};
 
 interface IDeviceExplorerProps {
   params: any;
@@ -56,58 +39,9 @@ export class DeviceExplorer extends React.Component<IDeviceExplorerProps, IDevic
       activeSessionsCount: 0,
       pendingSessionsCount: 0,
       queueSummary: null,
-      filter: DEFAULT_FILTER,
-      v2Status: 'all',
-      v2Search: '',
+      statusFilter: 'all',
+      search: '',
     };
-  }
-
-  // Apply v2 single-select status filter + name/UDID search. Used only
-  // when the themeV2 flag is on; v1 uses getFilteredDevice() untouched.
-  getV2Filtered(): IDevice[] {
-    const now = Date.now();
-    const isReserved = (d: IDevice) => Boolean(d.reservedUntil && now < d.reservedUntil);
-    const q = this.state.v2Search.trim().toLowerCase();
-
-    return this.state.devices.filter((d) => {
-      if (q) {
-        const hay = `${d.name} ${d.udid}`.toLowerCase();
-        if (!hay.includes(q)) return false;
-      }
-      switch (this.state.v2Status) {
-        case 'all':
-          return true;
-        case 'offline':
-          return d.offline;
-        case 'busy':
-          return d.busy && !d.offline;
-        case 'reserved':
-          return isReserved(d) && !d.busy && !d.offline;
-        case 'ready':
-          return !d.offline && !d.busy && !isReserved(d) && !d.userBlocked;
-        default:
-          return true;
-      }
-    });
-  }
-
-  v2StatusCount(kind: V2StatusFilter): number {
-    const now = Date.now();
-    const isReserved = (d: IDevice) => Boolean(d.reservedUntil && now < d.reservedUntil);
-    switch (kind) {
-      case 'all':
-        return this.state.devices.length;
-      case 'offline':
-        return this.state.devices.filter((d) => d.offline).length;
-      case 'busy':
-        return this.state.devices.filter((d) => d.busy && !d.offline).length;
-      case 'reserved':
-        return this.state.devices.filter((d) => isReserved(d) && !d.busy && !d.offline).length;
-      case 'ready':
-        return this.state.devices.filter(
-          (d) => !d.offline && !d.busy && !isReserved(d) && !d.userBlocked,
-        ).length;
-    }
   }
 
   componentDidMount() {
@@ -116,13 +50,10 @@ export class DeviceExplorer extends React.Component<IDeviceExplorerProps, IDevic
       this.fetchDevices();
     }, 10000);
 
-    // Register real-time updates
     const unblockedCleanup = this.props.onSocketEvent('device_unblocked', () => {
-      console.info('Real-time: Device unblocked, triggering debounced refresh');
       this.fetchDevicesDebounced();
     });
     const blockedCleanup = this.props.onSocketEvent('device_blocked', () => {
-      console.info('Real-time: Device blocked, triggering debounced refresh');
       this.fetchDevicesDebounced();
     });
     this.socketCleanups.push(unblockedCleanup, blockedCleanup);
@@ -145,14 +76,11 @@ export class DeviceExplorer extends React.Component<IDeviceExplorerProps, IDevic
     this.refreshTimeout = setTimeout(() => {
       this.refreshTimeout = null;
       this.fetchDevices();
-    }, 500); // 500ms debounce
+    }, 500);
   }
 
   getBusyDevicesCount(devices: Array<IDevice>) {
-    const filters = [(d: IDevice) => d.busy];
-    return filters.reduce((devices: Array<IDevice>, predicate: (d: IDevice) => boolean) => {
-      return devices.filter(predicate);
-    }, devices).length;
+    return devices.filter((d: IDevice) => d.busy).length;
   }
 
   async fetchDevices() {
@@ -161,236 +89,89 @@ export class DeviceExplorer extends React.Component<IDeviceExplorerProps, IDevic
       const activeSessionsCount = this.getBusyDevicesCount(devices);
       const pendingSessionsCount = await XenonApiService.getPendingSessionsCount();
       const queueSummary = await XenonApiService.getQueueSummary();
-      console.log(devices);
-
       this.setState({ devices, activeSessionsCount, pendingSessionsCount, queueSummary });
     } catch (error) {
       console.log(error);
     }
   }
 
-  getFilteredDevice() {
-    const { ready, busy, offline } = this.state.filter.state;
-    const { ios, android } = this.state.filter.platform;
-    const filters = [
-      (d: IDevice) =>
-        (ios && (d.platform == 'ios' || d.platform == 'tvos')) ||
-        (android && d.platform == 'android'),
-      (d: IDevice) =>
-        (ready && !d.busy && !d.offline) || (busy && d.busy) || (offline && d.offline),
-    ];
+  getFiltered(): IDevice[] {
+    const now = Date.now();
+    const isReserved = (d: IDevice) => Boolean(d.reservedUntil && now < d.reservedUntil);
+    const q = this.state.search.trim().toLowerCase();
 
-    if (this.state.filter.name != '') {
-      filters.push(
-        (d: IDevice) =>
-          d.name.toLowerCase().includes(this.state.filter.name.toLowerCase()) ||
-          d.udid.toLowerCase().includes(this.state.filter.name.toLowerCase()),
-      );
-    }
-    return filters.reduce((acc: Array<IDevice>, predicate: (d: IDevice) => boolean) => {
-      return acc.filter(predicate);
-    }, this.state.devices);
-  }
-
-  setFilter(newFilter: Partial<IDeviceFilter>) {
-    this.setState({
-      filter: {
-        ...this.state.filter,
-        ...newFilter,
-      },
+    return this.state.devices.filter((d) => {
+      if (q) {
+        const hay = `${d.name} ${d.udid}`.toLowerCase();
+        if (!hay.includes(q)) return false;
+      }
+      switch (this.state.statusFilter) {
+        case 'all':
+          return true;
+        case 'offline':
+          return d.offline;
+        case 'busy':
+          return d.busy && !d.offline;
+        case 'reserved':
+          return isReserved(d) && !d.busy && !d.offline;
+        case 'ready':
+          return !d.offline && !d.busy && !isReserved(d) && !d.userBlocked;
+        default:
+          return true;
+      }
     });
   }
 
-  /* Render filter components */
-  getPlatformFilterComponent() {
-    const { ios, android } = this.state.filter.platform;
-    return (
-      <div className="device-explorer-header-value">
-        <button
-          className={`device-explorer-header__platform-btn ${android && 'selected'}`}
-          onClick={() =>
-            this.setFilter({
-              platform: {
-                ...this.state.filter.platform,
-                android: !this.state.filter.platform.android,
-              },
-            })
-          }
-        >
-          <AndroidIcon size={20} color="currentColor" />
-          Android
-        </button>
-        <button
-          className={`device-explorer-header__platform-btn ${ios && 'selected'}`}
-          onClick={() =>
-            this.setFilter({
-              platform: {
-                ...this.state.filter.platform,
-                ios: !this.state.filter.platform.ios,
-              },
-            })
-          }
-        >
-          <AppleIcon size={20} color="currentColor" />
-          iOS
-        </button>
-      </div>
-    );
-  }
-
-  getDeviceStateFilterComponent() {
-    const { ready, busy, offline } = this.state.filter.state;
-    return (
-      <div className="device-explorer-header-value">
-        <div
-          className={`device-explorer-header__device-state ready ${ready && 'selected'}`}
-          onClick={() =>
-            this.setFilter({
-              state: {
-                ...this.state.filter.state,
-                ready: !this.state.filter.state.ready,
-              },
-            })
-          }
-        >
-          Ready
-        </div>
-        <div
-          className={`device-explorer-header__device-state busy ${busy && 'selected'}`}
-          onClick={() =>
-            this.setFilter({
-              state: {
-                ...this.state.filter.state,
-                busy: !this.state.filter.state.busy,
-              },
-            })
-          }
-        >
-          Busy
-        </div>
-        <div
-          className={`device-explorer-header__device-state offline ${offline && 'selected'}`}
-          onClick={() =>
-            this.setFilter({
-              state: {
-                ...this.state.filter.state,
-                offline: !this.state.filter.state.offline,
-              },
-            })
-          }
-        >
-          Offline
-        </div>
-      </div>
-    );
-  }
-
-  renderV2Toolbar() {
-    return (
-      <div className="de2-toolbar">
-        <SegmentedControl
-          size="sm"
-          value={this.state.v2Status}
-          onChange={(v) => this.setState({ v2Status: v })}
-          segments={[
-            { value: 'all', label: 'All', count: this.v2StatusCount('all') },
-            { value: 'ready', label: 'Ready', count: this.v2StatusCount('ready') },
-            { value: 'busy', label: 'Busy', count: this.v2StatusCount('busy') },
-            { value: 'reserved', label: 'Reserved', count: this.v2StatusCount('reserved') },
-            { value: 'offline', label: 'Offline', count: this.v2StatusCount('offline') },
-          ]}
-        />
-        <input
-          type="text"
-          className="de2-search"
-          placeholder="Search by name or UDID…"
-          value={this.state.v2Search}
-          onChange={(e) => this.setState({ v2Search: e.target.value })}
-        />
-        <Button variant="secondary" size="sm" onClick={() => this.fetchDevices()}>
-          <RefreshCw size={12} /> Refresh
-        </Button>
-      </div>
-    );
+  statusCount(kind: StatusFilter): number {
+    const now = Date.now();
+    const isReserved = (d: IDevice) => Boolean(d.reservedUntil && now < d.reservedUntil);
+    switch (kind) {
+      case 'all':
+        return this.state.devices.length;
+      case 'offline':
+        return this.state.devices.filter((d) => d.offline).length;
+      case 'busy':
+        return this.state.devices.filter((d) => d.busy && !d.offline).length;
+      case 'reserved':
+        return this.state.devices.filter((d) => isReserved(d) && !d.busy && !d.offline).length;
+      case 'ready':
+        return this.state.devices.filter(
+          (d) => !d.offline && !d.busy && !isReserved(d) && !d.userBlocked,
+        ).length;
+    }
   }
 
   render() {
-    const v2 = isThemeV2();
-    const devices = v2 ? this.getV2Filtered() : this.getFilteredDevice();
+    const devices = this.getFiltered();
     const { udid } = this.props.params;
     const selectedDevice = udid ? this.state.devices.find((d) => d.udid === udid) : null;
 
     return (
       <div className="device-explorer-container">
-        {v2 ? (
-          this.renderV2Toolbar()
-        ) : (
-          <div className="device-explorer-header-container">
-            <div className="device-explorer-header-left-container">
-              <div className="device-explorer-header-entry">
-                <div className="device-explorer-header-entry-header">Platform</div>
-                {this.getPlatformFilterComponent()}
-              </div>
-              <div className="device-explorer-header-entry">
-                <div className="device-explorer-header-entry-header">Device state</div>
-                {this.getDeviceStateFilterComponent()}
-              </div>
-              <div className="device-explorer-header-entry search-entry">
-                <div className="device-explorer-header-entry-header">Search by name or udid</div>
-                <div className="device-explorer-header-value">
-                  <div className="device-explorer-search-wrapper">
-                    <Search size={16} color="#94a3b8" className="device-explorer-search-icon" />
-                    <input
-                      type="text"
-                      className="device-explorer-header-text-filter"
-                      placeholder="Search devices..."
-                      onChange={(e) => {
-                        this.setState({
-                          filter: {
-                            ...this.state.filter,
-                            name: e.target.value,
-                          },
-                        });
-                      }}
-                    />
-                  </div>
-                </div>
-              </div>
-            </div>
-            <div className="device-explorer-header-filter-count">
-              <Badge variant="secondary">
-                <span className="font-bold">{devices.length}</span> of{' '}
-                <span className="font-bold">{this.state.devices.length}</span>{' '}
-                {this.state.devices.length === 1 ? 'device' : 'devices'}
-              </Badge>
-            </div>
-            <div className="device-explorer-header-right-container">
-              {this.state.queueSummary && this.state.pendingSessionsCount > 0 && (
-                <Badge variant="secondary" className="mr-2">
-                  <span className="font-bold">Queue Insights:</span>{' '}
-                  {Object.entries(this.state.queueSummary.byPlatform).map(([p, data]: any) => (
-                    <span key={p} className="ml-1">
-                      {p === 'any' ? 'Mixed' : p.toUpperCase()}:{' '}
-                      {Math.ceil(data.avgDurationMs / 60000)}m ETA
-                    </span>
-                  ))}
-                </Badge>
-              )}
-              <Badge variant="success">
-                <span className="font-bold">{this.state.activeSessionsCount}</span> Active session
-                {this.state.activeSessionsCount !== 1 ? 's' : ''}
-              </Badge>
-              <Badge variant="warning">
-                <span className="font-bold">{this.state.pendingSessionsCount}</span> Pending session
-                {this.state.pendingSessionsCount !== 1 ? 's' : ''}
-              </Badge>
-              <Button size="sm" variant="default" onClick={() => this.fetchDevices()}>
-                <RefreshCw size={14} color="currentColor" className="mr-1" />
-                Refresh
-              </Button>
-            </div>
-          </div>
-        )}
+        <div className="de2-toolbar">
+          <SegmentedControl
+            size="sm"
+            value={this.state.statusFilter}
+            onChange={(v) => this.setState({ statusFilter: v })}
+            segments={[
+              { value: 'all', label: 'All', count: this.statusCount('all') },
+              { value: 'ready', label: 'Ready', count: this.statusCount('ready') },
+              { value: 'busy', label: 'Busy', count: this.statusCount('busy') },
+              { value: 'reserved', label: 'Reserved', count: this.statusCount('reserved') },
+              { value: 'offline', label: 'Offline', count: this.statusCount('offline') },
+            ]}
+          />
+          <input
+            type="text"
+            className="de2-search"
+            placeholder="Search by name or UDID…"
+            value={this.state.search}
+            onChange={(e) => this.setState({ search: e.target.value })}
+          />
+          <Button variant="secondary" size="sm" onClick={() => this.fetchDevices()}>
+            <RefreshCw size={12} /> Refresh
+          </Button>
+        </div>
 
         {devices.length > 0 ? (
           <CardView devices={devices} reloadDevices={() => this.fetchDevices()} />
@@ -401,30 +182,28 @@ export class DeviceExplorer extends React.Component<IDeviceExplorerProps, IDevic
             </div>
             {this.state.devices.length === 0 ? (
               <>
-                <h3 className="brand-font">Global Device Registry Empty</h3>
+                <h3>Global Device Registry Empty</h3>
                 <p>
                   Xenon hasn't detected any active device nodes in your infrastructure. Ensure your
                   device farm is connected and heartbeat signals are active.
                 </p>
-                <Button variant="default" onClick={() => this.fetchDevices()}>
-                  <RefreshCw size={14} className="mr-2" />
+                <Button variant="primary" onClick={() => this.fetchDevices()}>
+                  <RefreshCw size={14} />
                   Manual Sync
                 </Button>
               </>
             ) : (
               <>
-                <h3 className="brand-font">No Devices Found</h3>
+                <h3>No Devices Found</h3>
                 <p>
                   Deployment configuration mismatch. Adjust your platform or state filters to find
                   the appropriate testing target.
                 </p>
                 <Button
-                  variant="outline"
-                  onClick={() =>
-                    this.setState({ filter: DEFAULT_FILTER, v2Status: 'all', v2Search: '' })
-                  }
+                  variant="secondary"
+                  onClick={() => this.setState({ statusFilter: 'all', search: '' })}
                 >
-                  Reset All Filters
+                  Reset filters
                 </Button>
               </>
             )}

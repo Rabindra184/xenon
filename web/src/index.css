@@ -1,117 +1,5 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&family=Outfit:wght@400;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
 @import './tokens.css';
-
-@keyframes pulse {
-  0% {
-    box-shadow: 0 0 0 0 rgba(0, 255, 136, 0.4);
-  }
-
-  70% {
-    box-shadow: 0 0 0 10px rgba(0, 255, 136, 0);
-  }
-
-  100% {
-    box-shadow: 0 0 0 0 rgba(0, 255, 136, 0);
-  }
-}
-
-@keyframes pulse-running {
-  0% {
-    box-shadow: 0 0 0 0 rgba(255, 184, 0, 0.4);
-  }
-
-  70% {
-    box-shadow: 0 0 0 10px rgba(255, 184, 0, 0);
-  }
-
-  100% {
-    box-shadow: 0 0 0 0 rgba(255, 184, 0, 0);
-  }
-}
-
-.animate-pulse-success {
-  animation: pulse 2s infinite;
-}
-
-.animate-pulse-running {
-  animation: pulse-running 2s infinite;
-}
-
-:root {
-  /* --- Mission Control Palette (Reference) --- */
-  --bg-page: #0a0a0f;
-  --bg-surface: #0f0f1a;
-  --bg-card: #12121f;
-  --bg-card-hover: #161625;
-  --color-primary: #00ff88;
-  --color-amber: #ffb800;
-  --color-red: #ff4444;
-  --color-blue: #00aaff;
-  --color-purple: #8b5cf6;
-  --border-subtle: #1a1a2e;
-  --border-visible: #252540;
-  --text-dim: #4a4a6a;
-  --text-muted: #8888aa;
-  --text-body: #c8c8e8;
-  --text-bright: #e8e8ff;
-
-  /* --- Legacy compatible mappings --- */
-  --primary: var(--color-primary);
-  --primary-hover: #00e67a;
-  --primary-glow: rgba(0, 255, 136, 0.2);
-  --bg-app: var(--bg-page);
-  --bg-glass: rgba(15, 15, 26, 0.7);
-  --text-main: var(--text-body);
-  --border-light: var(--border-subtle);
-  --border-medium: var(--border-visible);
-
-  /* --- Semantic Status Colors --- */
-  --status-ready: var(--color-primary);
-  --status-busy: var(--color-amber);
-  --status-offline: var(--text-dim);
-  --status-error: var(--color-red);
-
-  /* --- Spacing Scale --- */
-  --space-xs: 4px;
-  --space-sm: 8px;
-  --space-md: 16px;
-  --space-lg: 24px;
-  --space-xl: 32px;
-  --space-xxl: 48px;
-
-  /* --- Typography Scale --- */
-  --fs-xs: 11px;
-  --fs-sm: 13px;
-  --fs-md: 15px;
-  --fs-lg: 18px;
-  --fs-xl: 24px;
-  --fs-xxl: 32px;
-  --lh-tight: 1.2;
-  --lh-normal: 1.5;
-  --lh-loose: 1.8;
-
-  /* --- Premium Effects --- */
-  --radius-sm: 8px;
-  --radius-md: 12px;
-  --radius-lg: 20px;
-  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
-  --shadow-md: 0 10px 15px -3px rgba(0, 0, 0, 0.4);
-  --shadow-lg: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
-  --glass-blur: blur(24px);
-}
-
-.scanline {
-  background: linear-gradient(to bottom,
-      rgba(255, 255, 255, 0),
-      rgba(255, 255, 255, 0) 50%,
-      rgba(0, 0, 0, 0.2) 50%,
-      rgba(0, 0, 0, 0.2));
-  background-size: 100% 4px;
-}
-
-.text-glow {
-  text-shadow: 0 0 10px rgba(0, 255, 136, 0.5);
-}
 
 * {
   box-sizing: border-box;
@@ -124,14 +12,13 @@ body {
   height: 100%;
   margin: 0;
   padding: 0;
-  background-color: var(--bg-page);
+  background-color: var(--bg-canvas);
   overflow: hidden;
-  /* App handles scrolling internally */
 }
 
 body {
   font-family: 'Inter', sans-serif;
-  color: var(--text-body);
+  color: var(--text-secondary);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   line-height: 1.5;
@@ -144,39 +31,39 @@ h4,
 h5,
 h6,
 .brand-font {
-  font-family: 'Outfit', sans-serif;
+  font-family: 'Inter', sans-serif;
   font-weight: 700;
   letter-spacing: -0.02em;
+  color: var(--text-primary);
 }
 
 code,
 .code-font {
   font-family: 'JetBrains Mono', 'Menlo', 'Monaco', 'Consolas', monospace;
   font-size: 0.9em;
-  background: rgba(255, 255, 255, 0.05);
+  background: var(--bg-elevated);
   padding: 2px 6px;
-  border-radius: 4px;
-  color: var(--primary);
+  border-radius: var(--radius-sm);
+  color: var(--accent);
 }
 
-/* Base Styles for Buttons & Inputs */
 button {
   font-family: inherit;
   cursor: pointer;
-  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: background var(--motion-fast), border-color var(--motion-fast), color var(--motion-fast);
 }
 
 a {
-  color: #60a5fa;
+  color: var(--status-reserved-fg);
   text-decoration: none;
-  transition: color 0.2s ease;
+  transition: color var(--motion-fast);
 }
 
 a:hover {
-  color: #93c5fd;
+  color: #79b8ff;
 }
 
-/* Custom Scrollbar */
+/* Scrollbar */
 ::-webkit-scrollbar {
   width: 6px;
   height: 6px;
@@ -187,62 +74,60 @@ a:hover {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: rgba(0, 255, 136, 0.2);
-  border-radius: 8px;
-  border: 1px solid rgba(0, 255, 136, 0.1);
+  background: var(--border-strong);
+  border-radius: var(--radius-sm);
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(0, 255, 136, 0.4);
+  background: var(--text-subtle);
 }
 
-/* Custom Mission Control Checkbox */
+/* Checkbox */
 input[type="checkbox"] {
   appearance: none;
   -webkit-appearance: none;
-  width: 18px;
-  height: 18px;
-  background: rgba(0, 0, 0, 0.3);
-  border: 1px solid var(--border-visible);
-  border-radius: 6px;
+  width: 16px;
+  height: 16px;
+  background: var(--bg-subtle);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
   cursor: pointer;
   position: relative;
-  transition: all 0.2s;
+  transition: background var(--motion-fast), border-color var(--motion-fast);
   display: inline-flex;
   align-items: center;
   justify-content: center;
 }
 
 input[type="checkbox"]:hover {
-  border-color: var(--color-primary);
-  background: rgba(0, 255, 136, 0.05);
+  border-color: var(--accent);
 }
 
 input[type="checkbox"]:checked {
-  background: var(--color-primary);
-  border-color: var(--color-primary);
+  background: var(--accent);
+  border-color: var(--accent);
 }
 
 input[type="checkbox"]:checked::after {
   content: "✓";
-  color: var(--bg-page);
-  font-size: 14px;
-  font-weight: 800;
+  color: var(--bg-canvas);
+  font-size: 11px;
+  font-weight: 700;
 }
 
 input[type="checkbox"]:focus {
   outline: none;
-  box-shadow: 0 0 10px rgba(0, 255, 136, 0.3);
+  box-shadow: 0 0 0 2px var(--accent-subtle);
 }
 
 .fade-in {
-  animation: fadeIn 0.4s ease-out forwards;
+  animation: fadeIn 0.2s ease-out forwards;
 }
 
 @keyframes fadeIn {
   from {
     opacity: 0;
-    transform: translateY(8px);
+    transform: translateY(4px);
   }
 
   to {

@@ -1,10 +1,11 @@
-/* Xenon Theme v2 — dark-only, Command Center direction.
- * Scoped under [data-theme="v2"] so the v1 theme stays intact during rollout.
- * Compat aliases map legacy token names onto v2 values — legacy .css files
- * continue to render correctly until migrated.
+/* Xenon design tokens — v2 is now the default and only theme.
+ * Compat aliases for legacy token names (--bg-page, --color-primary, etc.)
+ * kept as a deprecation shim so any not-yet-migrated .css keeps rendering.
+ * These aliases will be removed in a future maintenance pass once every
+ * callsite is on the canonical names.
  */
 
-html[data-theme="v2"] {
+:root {
   /* Surfaces */
   --bg-canvas: #0d1117;
   --bg-surface: #161b22;
@@ -72,7 +73,7 @@ html[data-theme="v2"] {
   --motion-fast: 150ms cubic-bezier(0.2, 0, 0, 1);
   --motion-slow: 250ms cubic-bezier(0.2, 0, 0, 1);
 
-  /* ——— Compat aliases — map legacy tokens onto new values ——— */
+  /* ——— Compat aliases (deprecation shim) — remove in a later pass ——— */
   --bg-page: var(--bg-canvas);
   --bg-card: var(--bg-surface);
   --bg-card-hover: var(--bg-elevated);
@@ -114,24 +115,24 @@ html[data-theme="v2"] {
   --glass-blur: blur(20px);
 }
 
-/* Suppress v1 glow/pulse effects under v2 */
-html[data-theme="v2"] .scanline,
-html[data-theme="v2"] .header-container::after {
+/* Suppress any remaining v1 glow/pulse effects */
+.scanline,
+.header-container::after {
   display: none !important;
 }
 
-html[data-theme="v2"] .animate-pulse-success,
-html[data-theme="v2"] .animate-pulse-running {
+.animate-pulse-success,
+.animate-pulse-running {
   animation: none !important;
 }
 
-html[data-theme="v2"] .text-glow {
+.text-glow {
   text-shadow: none !important;
 }
 
 /* Reduced motion */
 @media (prefers-reduced-motion: reduce) {
-  html[data-theme="v2"] * {
+  * {
     transition: none !important;
     animation: none !important;
   }
