@@ -2,7 +2,13 @@ import React, { useEffect, useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ChevronDown, Search, Shield } from 'lucide-react';
 
-function useRelativeTime() {
+type Staleness = 'fresh' | 'aging' | 'stale';
+
+// Tracks elapsed time since this Header mounted. It's a rough proxy for
+// "time since you last saw a data update" — resets on page reload but
+// not on websocket events (Phase 4 will wire a real last-event timestamp
+// via a ConnectionContext once the dashboard data layer is refactored).
+function useRelativeTime(): { label: string; staleness: Staleness } {
   const [tick, setTick] = useState(0);
   const [startedAt] = useState(() => Date.now());
   useEffect(() => {
@@ -10,17 +16,20 @@ function useRelativeTime() {
     return () => clearInterval(id);
   }, []);
   const secs = Math.floor((Date.now() - startedAt) / 1000) + tick * 0;
-  if (secs < 10) return 'Updated just now';
-  if (secs < 60) return `Updated ${secs}s ago`;
   const mins = Math.floor(secs / 60);
-  if (mins < 60) return `Updated ${mins}m ago`;
   const hrs = Math.floor(mins / 60);
-  return `Updated ${hrs}h ago`;
+  const label =
+    secs < 10 ? 'Updated just now' :
+    secs < 60 ? `Updated ${secs}s ago` :
+    mins < 60 ? `Updated ${mins}m ago` :
+                `Updated ${hrs}h ago`;
+  const staleness: Staleness = mins >= 10 ? 'stale' : mins >= 2 ? 'aging' : 'fresh';
+  return { label, staleness };
 }
 
 const Header: React.FC = () => {
   const navigate = useNavigate();
-  const rel = useRelativeTime();
+  const { label: rel, staleness } = useRelativeTime();
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const ddRef = useRef<HTMLDivElement>(null);
 
@@ -82,7 +91,22 @@ const Header: React.FC = () => {
 
         {/* Right */}
         <div className="flex items-center gap-3">
-          <span className="hidden md:inline text-xs text-[var(--text-dim)] font-mono">
+          <span
+            className={`hidden md:inline text-xs font-mono transition-colors ${
+              staleness === 'stale'
+                ? 'text-[var(--red)]'
+                : staleness === 'aging'
+                  ? 'text-[var(--amber)]'
+                  : 'text-[var(--text-dim)]'
+            }`}
+            title={
+              staleness === 'stale'
+                ? 'Data is stale — reconnection may be needed.'
+                : staleness === 'aging'
+                  ? 'Data hasn’t updated in a while.'
+                  : 'Live data.'
+            }
+          >
             {rel}
           </span>
           <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-[var(--green)]/10 border border-[var(--green)]/20">
