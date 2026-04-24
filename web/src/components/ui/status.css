@@ -1,0 +1,26 @@
+.status-dot {
+  display: inline-block;
+  border-radius: 50%;
+  vertical-align: middle;
+}
+.status-dot-ready    { background: var(--status-ready-fg); }
+.status-dot-busy     { background: var(--status-busy-fg); }
+.status-dot-reserved { background: var(--status-reserved-fg); }
+.status-dot-error    { background: var(--status-error-fg); }
+.status-dot-offline  { background: var(--status-offline-fg); }
+
+.status-code {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  font-weight: 600;
+}
+.status-code-label { line-height: 1; }
+.status-code-ready    { color: var(--status-ready-fg); }
+.status-code-busy     { color: var(--status-busy-fg); }
+.status-code-reserved { color: var(--status-reserved-fg); }
+.status-code-error    { color: var(--status-error-fg); }
+.status-code-offline  { color: var(--status-offline-fg); }

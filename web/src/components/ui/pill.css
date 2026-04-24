@@ -1,0 +1,23 @@
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-family: 'Inter', sans-serif;
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1.4;
+  max-width: 180px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  border: 1px solid transparent;
+}
+.pill-neutral  { background: var(--bg-elevated);     color: var(--text-secondary); }
+.pill-accent   { background: var(--accent-subtle);   color: var(--accent);            border-color: var(--accent-border); }
+.pill-ready    { background: var(--status-ready-bg); color: var(--status-ready-fg);   border-color: var(--status-ready-border); }
+.pill-busy     { background: var(--status-busy-bg);  color: var(--status-busy-fg);    border-color: var(--status-busy-border); }
+.pill-reserved { background: var(--status-reserved-bg); color: var(--status-reserved-fg); border-color: var(--status-reserved-border); }
+.pill-error    { background: var(--status-error-bg); color: var(--status-error-fg);   border-color: var(--status-error-border); }
+.pill-offline  { background: var(--status-offline-bg); color: var(--status-offline-fg); border-color: var(--status-offline-border); }

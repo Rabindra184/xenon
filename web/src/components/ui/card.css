@@ -1,0 +1,31 @@
+.card {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+.card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border-default);
+}
+.card-header-title {
+  color: var(--text-primary);
+  font-size: 12px;
+  font-weight: 600;
+  font-family: 'Inter', sans-serif;
+}
+.card-header-action {
+  font-size: 11px;
+  color: var(--status-reserved-fg);
+}
+.card-body { padding: 14px; }
+.card-body-flush { padding: 0; }
+.card-footer {
+  padding: 10px 14px;
+  border-top: 1px solid var(--border-default);
+  color: var(--text-muted);
+  font-size: 11px;
+}
