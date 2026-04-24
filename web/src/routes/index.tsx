@@ -8,7 +8,7 @@ import { ErrorBoundary } from '../components/ui/ErrorBoundary';
 const Overview = lazy(() => import('../components/overview/overview'));
 const DeviceExplorer = lazy(() => import('../components/device-explorer/device-explorer'));
 const BuildsPage = lazy(() => import('../components/builds/builds-page'));
-const SessionDetailStub = lazy(() => import('../components/builds/session-detail-stub'));
+const SessionDetailPage = lazy(() => import('../components/session-detail/session-detail-page'));
 const Apps = lazy(() => import('../components/apps/apps'));
 const WebhookSettings = lazy(() =>
   import('../components/webhook-settings/webhook-settings').then((m) => ({
@@ -108,7 +108,7 @@ export const AppRoutes: React.FC = () => {
             path="/builds/:buildId/sessions/:sessionId"
             element={
               <div className="app-body-container sessions-view">
-                <SessionDetailStub />
+                <SessionDetailPage />
               </div>
             }
           />
