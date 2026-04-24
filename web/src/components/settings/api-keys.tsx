@@ -8,12 +8,12 @@ import {
   Check,
   ShieldAlert,
   RefreshCw,
-  X,
   AlertTriangle,
 } from 'lucide-react';
 import { useToast } from '../ui/toast';
 import { Table, THead, TBody, TR, TH, TD } from '../ui/Table';
 import { FieldGroup } from '../ui/FieldGroup';
+import { Modal } from '../ui/Modal';
 
 type Scope = 'read' | 'sessions' | 'devices' | 'admin';
 const ALL_SCOPES: Scope[] = ['read', 'sessions', 'devices', 'admin'];
@@ -289,102 +289,123 @@ export const ApiKeys: React.FC = () => {
         )}
       </div>
 
-      {showCreate && (
-        <Modal onClose={() => setShowCreate(false)} title="Create API key">
-          <div style={{ display: 'flex', flexDirection: 'column' }}>
-            <FieldGroup label="Name" htmlFor="apikey-name">
-              <input
-                id="apikey-name"
-                type="text"
-                value={newName}
-                onChange={(e) => setNewName(e.target.value)}
-                placeholder="alice-laptop, ci-main, etc."
-                style={input}
-                autoFocus
-              />
-            </FieldGroup>
+      <Modal
+        open={showCreate}
+        title="Create API key"
+        width={520}
+        onClose={() => setShowCreate(false)}
+        footer={
+          <>
+            <button className="reset-btn" onClick={() => setShowCreate(false)} disabled={submitting}>
+              Cancel
+            </button>
+            <button className="save-btn" onClick={submitCreate} disabled={submitting}>
+              {submitting ? <RefreshCw className="animate-spin" size={18} /> : <Plus size={18} />}
+              {submitting ? 'Creating…' : 'Create key'}
+            </button>
+          </>
+        }
+      >
+        <div style={{ display: 'flex', flexDirection: 'column' }}>
+          <FieldGroup label="Name" htmlFor="apikey-name">
+            <input
+              id="apikey-name"
+              type="text"
+              value={newName}
+              onChange={(e) => setNewName(e.target.value)}
+              placeholder="alice-laptop, ci-main, etc."
+              style={input}
+              autoFocus
+            />
+          </FieldGroup>
 
-            <FieldGroup
-              label="Scopes"
-              description={
-                <>
-                  <code>admin</code> grants full access including API-key management.{' '}
-                  <code>sessions</code> is required for WebDriver <code>xenon:accessKey</code>.
-                </>
-              }
-            >
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-                {ALL_SCOPES.map((s) => (
-                  <label key={s} style={scopeLabel}>
-                    <input
-                      type="checkbox"
-                      checked={newScopes[s]}
-                      onChange={(e) =>
-                        setNewScopes({ ...newScopes, [s]: e.target.checked })
-                      }
-                    />
-                    <span>{s}</span>
-                  </label>
-                ))}
-              </div>
-            </FieldGroup>
-
-            <FieldGroup label="Rate limit (requests/min)" htmlFor="apikey-ratelimit">
-              <input
-                id="apikey-ratelimit"
-                type="number"
-                min={10}
-                step={10}
-                value={newRateLimit}
-                onChange={(e) => setNewRateLimit(parseInt(e.target.value) || 300)}
-                style={input}
-              />
-            </FieldGroup>
-
-            <FieldGroup
-              label="Default team"
-              description={
-                <>
-                  Keys without a team can only reach shared-pool devices. Admins can override at
-                  session time via <code>xenon:team</code>.
-                </>
-              }
-              htmlFor="apikey-team"
-            >
-              <select
-                id="apikey-team"
-                value={newTeamId}
-                onChange={(e) => setNewTeamId(e.target.value)}
-                style={input}
-              >
-                <option value="">No team (shared pool only)</option>
-                {teams.map((t) => (
-                  <option key={t.id} value={t.id}>
-                    {t.name}
-                  </option>
-                ))}
-              </select>
-            </FieldGroup>
-
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 8 }}>
-              <button className="reset-btn" onClick={() => setShowCreate(false)} disabled={submitting}>
-                Cancel
-              </button>
-              <button className="save-btn" onClick={submitCreate} disabled={submitting}>
-                {submitting ? <RefreshCw className="animate-spin" size={18} /> : <Plus size={18} />}
-                {submitting ? 'Creating…' : 'Create key'}
-              </button>
+          <FieldGroup
+            label="Scopes"
+            description={
+              <>
+                <code>admin</code> grants full access including API-key management.{' '}
+                <code>sessions</code> is required for WebDriver <code>xenon:accessKey</code>.
+              </>
+            }
+          >
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+              {ALL_SCOPES.map((s) => (
+                <label key={s} style={scopeLabel}>
+                  <input
+                    type="checkbox"
+                    checked={newScopes[s]}
+                    onChange={(e) =>
+                      setNewScopes({ ...newScopes, [s]: e.target.checked })
+                    }
+                  />
+                  <span>{s}</span>
+                </label>
+              ))}
             </div>
-          </div>
-        </Modal>
-      )}
+          </FieldGroup>
 
-      {revealKey && (
-        <Modal
-          onClose={() => setRevealKey(null)}
-          title={`Key created: ${revealKey.name}`}
-          closeOnBackdrop={false}
-        >
+          <FieldGroup label="Rate limit (requests/min)" htmlFor="apikey-ratelimit">
+            <input
+              id="apikey-ratelimit"
+              type="number"
+              min={10}
+              step={10}
+              value={newRateLimit}
+              onChange={(e) => setNewRateLimit(parseInt(e.target.value) || 300)}
+              style={input}
+            />
+          </FieldGroup>
+
+          <FieldGroup
+            label="Default team"
+            description={
+              <>
+                Keys without a team can only reach shared-pool devices. Admins can override at
+                session time via <code>xenon:team</code>.
+              </>
+            }
+            htmlFor="apikey-team"
+          >
+            <select
+              id="apikey-team"
+              value={newTeamId}
+              onChange={(e) => setNewTeamId(e.target.value)}
+              style={input}
+            >
+              <option value="">No team (shared pool only)</option>
+              {teams.map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.name}
+                </option>
+              ))}
+            </select>
+          </FieldGroup>
+        </div>
+      </Modal>
+
+      <Modal
+        open={!!revealKey}
+        title={revealKey ? `Key created: ${revealKey.name}` : ''}
+        width={560}
+        onClose={() => setRevealKey(null)}
+        closeOnOverlayClick={false}
+        footer={
+          <>
+            <button
+              className="save-btn"
+              onClick={() => revealKey && copyKey(revealKey.raw)}
+              disabled={!revealKey}
+            >
+              {copied ? <Check size={18} /> : <Copy size={18} />}
+              {copied ? 'Copied' : 'Copy to clipboard'}
+            </button>
+            <button className="reset-btn" onClick={() => setRevealKey(null)}>
+              I've saved it
+            </button>
+          </>
+        }
+      >
+        {revealKey && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
             <div
               style={{
@@ -415,73 +436,12 @@ export const ApiKeys: React.FC = () => {
             >
               {revealKey.raw}
             </div>
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
-              <button className="save-btn" onClick={() => copyKey(revealKey.raw)}>
-                {copied ? <Check size={18} /> : <Copy size={18} />}
-                {copied ? 'Copied' : 'Copy to clipboard'}
-              </button>
-              <button className="reset-btn" onClick={() => setRevealKey(null)}>
-                I've saved it
-              </button>
-            </div>
           </div>
-        </Modal>
-      )}
+        )}
+      </Modal>
     </div>
   );
 };
-
-const Modal: React.FC<{
-  onClose: () => void;
-  title: string;
-  children: React.ReactNode;
-  closeOnBackdrop?: boolean;
-}> = ({ onClose, title, children, closeOnBackdrop = true }) => (
-  <div
-    onClick={closeOnBackdrop ? onClose : undefined}
-    style={{
-      position: 'fixed',
-      inset: 0,
-      background: 'rgba(0,0,0,0.6)',
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      zIndex: 2000,
-    }}
-  >
-    <div
-      onClick={(e) => e.stopPropagation()}
-      style={{
-        background: 'var(--bg-surface)',
-        border: '1px solid var(--border-default)',
-        borderRadius: 10,
-        padding: 24,
-        width: 'min(520px, 90vw)',
-        maxHeight: '85vh',
-        overflowY: 'auto',
-      }}
-    >
-      <div
-        style={{
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          marginBottom: 16,
-        }}
-      >
-        <h3 style={{ margin: 0 }}>{title}</h3>
-        <button
-          onClick={onClose}
-          style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'inherit' }}
-          aria-label="Close"
-        >
-          <X size={20} />
-        </button>
-      </div>
-      {children}
-    </div>
-  </div>
-);
 
 const chip: React.CSSProperties = {
   display: 'inline-block',
