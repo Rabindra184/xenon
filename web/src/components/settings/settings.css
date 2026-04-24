@@ -1,6 +1,6 @@
 .settings-container {
     padding: 24px 32px;
-    max-width: 1200px;
+    max-width: 1440px;
     margin: 0 auto;
     color: var(--text-secondary);
     animation: fadeIn 0.3s ease;
@@ -10,6 +10,7 @@
     font-family: 'Inter', -apple-system, sans-serif;
     position: relative;
     background: var(--bg-canvas);
+    width: 100%;
 }
 
 .settings-header {
@@ -490,9 +491,17 @@
     }
 
     .settings-footer {
-        flex-direction: column-reverse;
-        gap: var(--space-4);
+        flex-direction: column;
+        gap: var(--space-3);
         padding: var(--space-6);
+    }
+
+    .footer-left,
+    .footer-right {
+        width: 100%;
+        display: flex;
+        flex-direction: column;
+        gap: var(--space-2);
     }
 
     .reset-btn,
@@ -500,7 +509,15 @@
     .reset-to-defaults-btn {
         width: 100%;
         justify-content: center;
+        white-space: nowrap;
     }
+}
+
+/* Keep save-button label on a single line on all viewports. */
+.save-btn,
+.reset-btn,
+.reset-to-defaults-btn {
+    white-space: nowrap;
 }
 
 /* --- Polish: Glow & Alerts --- */
@@ -947,4 +964,151 @@
     font-family: 'JetBrains Mono', monospace;
     text-transform: uppercase;
     letter-spacing: 0.05em;
+}
+
+/* --- Toggle Switch (used by SettingCard boolean toggles) --- */
+.toggle-group {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.switch {
+    position: relative;
+    display: inline-block;
+    width: 38px;
+    height: 22px;
+    flex-shrink: 0;
+}
+
+.switch input {
+    opacity: 0;
+    width: 0;
+    height: 0;
+}
+
+.slider {
+    position: absolute;
+    inset: 0;
+    background: rgba(255, 255, 255, 0.08);
+    border: 1px solid var(--border-default);
+    transition: all 0.2s ease;
+    cursor: pointer;
+    border-radius: 999px;
+}
+
+.slider::before {
+    content: '';
+    position: absolute;
+    width: 16px;
+    height: 16px;
+    left: 2px;
+    top: 50%;
+    transform: translateY(-50%);
+    background: var(--text-muted);
+    border-radius: 50%;
+    transition: all 0.2s ease;
+}
+
+.switch input:checked + .slider {
+    background: rgba(0, 255, 136, 0.15);
+    border-color: var(--accent);
+    box-shadow: 0 0 12px rgba(0, 255, 136, 0.15);
+}
+
+.switch input:checked + .slider::before {
+    left: calc(100% - 18px);
+    background: var(--accent);
+}
+
+.switch input:focus-visible + .slider {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+}
+
+.toggle-label {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    color: var(--text-muted);
+    text-transform: uppercase;
+}
+
+/* --- Cron Preview (Deep Diagnostic Schedule card) --- */
+.cron-preview {
+    margin-top: 12px;
+    padding: 10px 12px;
+    background: rgba(0, 0, 0, 0.25);
+    border: 1px solid var(--border-default);
+    border-radius: 6px;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 8px;
+}
+
+.cron-preview .preview-label {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--text-subtle);
+}
+
+.cron-preview .preview-value {
+    font-size: 13px;
+    color: var(--text-primary);
+    font-weight: 500;
+}
+
+/* --- Cron preset chips --- */
+.cron-presets {
+    margin-top: 12px;
+}
+
+.presets-label {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text-subtle);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    margin-bottom: 8px;
+}
+
+.presets-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.preset-chip {
+    padding: 6px 12px;
+    border-radius: 6px;
+    border: 1px solid var(--border-default);
+    background: rgba(255, 255, 255, 0.03);
+    color: var(--text-muted);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.preset-chip:hover {
+    border-color: var(--border-muted);
+    color: var(--text-primary);
+}
+
+.preset-chip.active {
+    background: rgba(0, 255, 136, 0.08);
+    border-color: var(--accent);
+    color: var(--accent);
 }

@@ -2,7 +2,7 @@ import * as React from 'react';
 import { useState, useEffect } from 'react';
 import XenonApiService from '../../api-service';
 import './webhook-settings.css';
-import { Trash2, Bell, CheckCircle, AlertCircle, Plus, Zap } from 'lucide-react';
+import { Trash2, Bell, CheckCircle, AlertCircle, Plus, Zap, XCircle } from 'lucide-react';
 import { FieldGroup } from '../ui/FieldGroup';
 
 interface WebhookConfig {
@@ -23,7 +23,7 @@ const AVAILABLE_EVENTS = [
   {
     id: 'session_failed',
     label: 'Session Failed',
-    icon: <Trash2 size={14} className="text-orange-400" />,
+    icon: <XCircle size={14} className="text-orange-400" />,
   },
 ];
 

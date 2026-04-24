@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ChevronDown, Search, Shield } from 'lucide-react';
+import { StatusDot } from '../ui/StatusDot';
 import './header.css';
 
 const Header: React.FC = () => {
@@ -33,7 +34,7 @@ const Header: React.FC = () => {
 
       <div className="hdr2-right">
         <div className="hdr2-status">
-          <span className="status-dot status-dot-ready" style={{ width: 6, height: 6 }} />
+          <StatusDot kind="ready" />
           <span>Online</span>
         </div>
         <div className="hdr2-profile-wrap" ref={ddRef}>

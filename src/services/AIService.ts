@@ -114,7 +114,7 @@ class OpenAIProvider implements LLMProvider {
 class AnthropicProvider implements LLMProvider {
   private client: Anthropic;
   private model: string;
-  constructor(apiKey: string, model = 'claude-3-5-sonnet-20240620') {
+  constructor(apiKey: string, model = 'claude-sonnet-4-6') {
     this.client = new Anthropic({ apiKey });
     this.model = model;
   }
@@ -274,7 +274,7 @@ export class AIService {
           if (anthropicKey)
             this.provider = new AnthropicProvider(
               anthropicKey,
-              config.anthropicModel || genericModel || 'claude-3-5-sonnet-20240620',
+              config.anthropicModel || genericModel || 'claude-sonnet-4-6',
             );
           break;
         case 'ollama':
@@ -462,7 +462,7 @@ Fix: Add a pre-emptive check for the location permission dialog or use the \`aut
             );
           testProvider = new AnthropicProvider(
             anthropicKey,
-            config.anthropicModel || model || 'claude-3-5-sonnet-20240620',
+            config.anthropicModel || model || 'claude-sonnet-4-6',
           );
           break;
         case 'ollama':

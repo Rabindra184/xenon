@@ -1157,3 +1157,25 @@
   padding: 0;
   overflow: hidden;
 }
+
+/* Stack the device mirror above the interaction panel on narrow viewports
+   instead of overflowing off the right edge. */
+@media (max-width: 900px) {
+  .control-view-main {
+    flex-direction: column;
+    padding: 16px;
+    gap: 16px;
+    overflow-y: auto;
+  }
+  .device-preview-column {
+    min-width: 0;
+    width: 100%;
+    max-width: 420px;
+    margin: 0 auto;
+  }
+  .device-interactions-column {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+  }
+}

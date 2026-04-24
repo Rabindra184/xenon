@@ -142,3 +142,29 @@
   background: var(--border-default);
   margin: 6px 4px;
 }
+
+/* Narrow viewports: collapse the search to an icon and hide the
+   Administrator label so the profile button does not get clipped. */
+@media (max-width: 720px) {
+  .hdr2 {
+    gap: 10px;
+    padding: 0 10px;
+  }
+  .hdr2-version { display: none; }
+  .hdr2-search {
+    flex: 0 0 auto;
+    width: 32px;
+    height: 28px;
+    padding: 0;
+    justify-content: center;
+  }
+  .hdr2-search-placeholder,
+  .hdr2-kbd {
+    display: none;
+  }
+  .hdr2-status span:not(.status-dot) { display: none; }
+  .hdr2-profile-name { display: none; }
+  .hdr2-profile {
+    padding-right: 6px;
+  }
+}
