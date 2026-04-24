@@ -137,7 +137,7 @@ export const Teams: React.FC = () => {
         </div>
 
         {teams.length === 0 ? (
-          <div className="setting-card" style={{ textAlign: 'center', padding: 48 }}>
+          <div className="surface-card" style={{ textAlign: 'center', padding: 48 }}>
             <AlertTriangle size={32} style={{ opacity: 0.4 }} />
             <p style={{ marginTop: 12 }}>
               No teams yet. Every device is in the shared pool until you create a team and assign
@@ -145,7 +145,7 @@ export const Teams: React.FC = () => {
             </p>
           </div>
         ) : (
-          <div className="setting-card" style={{ padding: 0, overflowX: 'auto' }}>
+          <div className="surface-card" style={{ padding: 0, overflowX: 'auto' }}>
             <Table>
               <THead>
                 <TR>
@@ -413,7 +413,7 @@ const TeamDetail: React.FC<{ team: TeamRow; onBack: () => void }> = ({ team, onB
         <div className="settings-content" style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
           <section>
             <h3 style={{ marginBottom: 12 }}>Members ({members.length})</h3>
-            <div className="setting-card" style={{ padding: 12 }}>
+            <div className="surface-card" style={{ padding: 12 }}>
               <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
                 <select
                   value={addApiKeyId}
@@ -472,7 +472,7 @@ const TeamDetail: React.FC<{ team: TeamRow; onBack: () => void }> = ({ team, onB
 
           <section>
             <h3 style={{ marginBottom: 12 }}>Devices ({devices.length})</h3>
-            <div className="setting-card" style={{ padding: 12 }}>
+            <div className="surface-card" style={{ padding: 12 }}>
               <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
                 <select
                   value={assignUdid}
