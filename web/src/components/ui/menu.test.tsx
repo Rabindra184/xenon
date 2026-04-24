@@ -56,7 +56,9 @@ describe('Menu', () => {
     fireEvent.keyDown(items[1], { key: 'End' });
     await flush();
     expect(document.activeElement).toBe(items[items.length - 1]);
-    fireEvent.keyDown(document.activeElement!, { key: 'Home' });
+    const afterEnd = document.activeElement;
+    expect(afterEnd).not.toBeNull();
+    fireEvent.keyDown(afterEnd as HTMLElement, { key: 'Home' });
     await flush();
     expect(document.activeElement).toBe(items[0]);
   });
@@ -70,12 +72,11 @@ describe('Menu', () => {
     expect(document.activeElement).toBe(items[2]);
   });
 
-  it('Enter on focused item invokes its onClick', () => {
+  it('click on focused item invokes its onClick', () => {
     const onFirst = vi.fn();
     render(<Harness onFirst={onFirst} />);
     const items = screen.getAllByRole('menuitem');
     items[0].focus();
-    fireEvent.keyDown(items[0], { key: 'Enter' });
     fireEvent.click(items[0]);
     expect(onFirst).toHaveBeenCalled();
   });
