@@ -1,5 +1,6 @@
 import * as React from 'react';
 import * as DialogPrimitive from '@radix-ui/react-dialog';
+import { X } from 'lucide-react';
 import './modal.css';
 
 export interface ModalProps {
@@ -9,6 +10,7 @@ export interface ModalProps {
   footer?: React.ReactNode;
   children: React.ReactNode;
   width?: number;
+  closeOnOverlayClick?: boolean;
 }
 
 export const Modal: React.FC<ModalProps> = ({
@@ -18,6 +20,7 @@ export const Modal: React.FC<ModalProps> = ({
   footer,
   children,
   width = 480,
+  closeOnOverlayClick = true,
 }) => {
   // Capture the focused element before the dialog opens so we can restore it
   // on close. Radix FocusScope calls focus(previouslyFocusedElement) inside a
@@ -47,6 +50,9 @@ export const Modal: React.FC<ModalProps> = ({
           className="modal"
           style={{ width }}
           aria-describedby={undefined}
+          onPointerDownOutside={(e) => {
+            if (!closeOnOverlayClick) e.preventDefault();
+          }}
           onCloseAutoFocus={(e) => {
             e.preventDefault();
             const el = returnFocusRef.current;
@@ -55,9 +61,16 @@ export const Modal: React.FC<ModalProps> = ({
             }
           }}
         >
-          <DialogPrimitive.Title asChild>
-            <div className="modal-header">{title}</div>
-          </DialogPrimitive.Title>
+          <div className="modal-header">
+            <DialogPrimitive.Title asChild>
+              <div className="modal-title">{title}</div>
+            </DialogPrimitive.Title>
+            <DialogPrimitive.Close asChild>
+              <button type="button" className="modal-close" aria-label="Close">
+                <X size={18} />
+              </button>
+            </DialogPrimitive.Close>
+          </div>
           <div className="modal-body">{children}</div>
           {footer && <div className="modal-footer">{footer}</div>}
         </DialogPrimitive.Content>
