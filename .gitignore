@@ -20,3 +20,6 @@ docs/reference
 # Runtime Loki DBs written under APPIUM_HOME (see src/data-service/db.ts)
 temp-appium/xenon-db.json
 temp-appium/xenon-test-*.json
+# Local dev runtime artifacts
+xenon.db
+selfIdentity.plist

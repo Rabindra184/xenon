@@ -7,13 +7,13 @@ import {
   ShieldAlert,
   RefreshCw,
   ArrowLeft,
-  X,
   AlertTriangle,
   Smartphone,
 } from 'lucide-react';
 import { useToast } from '../ui/toast';
 import { Table, THead, TBody, TR, TH, TD } from '../ui/Table';
 import { FieldGroup } from '../ui/FieldGroup';
+import { Modal } from '../ui/Modal';
 
 interface TeamRow {
   id: string;
@@ -226,7 +226,22 @@ const CreateTeamModal: React.FC<{ onClose: () => void; onCreated: () => void }> 
   };
 
   return (
-    <Modal onClose={onClose} title="New team">
+    <Modal
+      open={true}
+      onClose={onClose}
+      title="New team"
+      footer={
+        <>
+          <button className="reset-btn" onClick={onClose} disabled={submitting}>
+            Cancel
+          </button>
+          <button className="save-btn" onClick={submit} disabled={submitting}>
+            {submitting ? <RefreshCw className="animate-spin" size={18} /> : <Plus size={18} />}
+            {submitting ? 'Creating…' : 'Create'}
+          </button>
+        </>
+      }
+    >
       <div style={{ display: 'flex', flexDirection: 'column' }}>
         <FieldGroup label="Name" htmlFor="team-name">
           <input
@@ -239,15 +254,6 @@ const CreateTeamModal: React.FC<{ onClose: () => void; onCreated: () => void }> 
             autoFocus
           />
         </FieldGroup>
-        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
-          <button className="reset-btn" onClick={onClose} disabled={submitting}>
-            Cancel
-          </button>
-          <button className="save-btn" onClick={submit} disabled={submitting}>
-            {submitting ? <RefreshCw className="animate-spin" size={18} /> : <Plus size={18} />}
-            {submitting ? 'Creating…' : 'Create'}
-          </button>
-        </div>
       </div>
     </Modal>
   );
@@ -526,55 +532,6 @@ const TeamDetail: React.FC<{ team: TeamRow; onBack: () => void }> = ({ team, onB
     </div>
   );
 };
-
-const Modal: React.FC<{ onClose: () => void; title: string; children: React.ReactNode }> = ({
-  onClose,
-  title,
-  children,
-}) => (
-  <div
-    onClick={onClose}
-    style={{
-      position: 'fixed',
-      inset: 0,
-      background: 'rgba(0,0,0,0.6)',
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      zIndex: 2000,
-    }}
-  >
-    <div
-      onClick={(e) => e.stopPropagation()}
-      style={{
-        background: 'var(--bg-surface)',
-        border: '1px solid var(--border-default)',
-        borderRadius: 10,
-        padding: 24,
-        width: 'min(480px, 90vw)',
-      }}
-    >
-      <div
-        style={{
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          marginBottom: 16,
-        }}
-      >
-        <h3 style={{ margin: 0 }}>{title}</h3>
-        <button
-          onClick={onClose}
-          style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'inherit' }}
-          aria-label="Close"
-        >
-          <X size={20} />
-        </button>
-      </div>
-      {children}
-    </div>
-  </div>
-);
 
 const inputStyle: React.CSSProperties = {
   width: '100%',

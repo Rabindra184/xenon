@@ -1,9 +1,9 @@
 import React, { useState } from 'react';
-import { createPortal } from 'react-dom';
 import './reservation-modal.css';
-import { Clock, User, MessageSquare, AlertCircle, CalendarPlus, X, Tag } from 'lucide-react';
+import { Clock, User, MessageSquare, AlertCircle, CalendarPlus } from 'lucide-react';
 import XenonApiService from '../../api-service';
 import { IDevice } from '../../interfaces/IDevice';
+import { Modal } from '../ui/Modal';
 
 interface ReservationModalProps {
   device: IDevice;
@@ -56,108 +56,19 @@ const ReservationModal: React.FC<ReservationModalProps> = ({ device, onClose, on
     }
   };
 
-  return createPortal(
-    <div className="reservation-modal-overlay" onClick={onClose}>
-      <div className="reservation-modal" onClick={(e) => e.stopPropagation()}>
-        {/* Mission Control Scanline Overlay */}
-        <div
-          className="scanline"
-          style={{
-            position: 'absolute',
-            inset: 0,
-            pointerEvents: 'none',
-            opacity: 0.05,
-            zIndex: 1001,
-          }}
-        ></div>
-
-        <div className="reservation-modal-header">
-          <div className="reservation-modal-title">
-            <CalendarPlus size={18} className="title-icon" />
-            Reserve Device
-          </div>
-          <button className="close-btn" onClick={onClose}>
-            <X size={20} />
-          </button>
-        </div>
-
-        <div className="reservation-modal-body">
-          <div className="device-id-badge">
-            <span className="label">Device:</span>
-            <span className="value">{device.udid}</span>
-          </div>
-
-          <p>
-            Reserve <strong>{device.name || device.udid}</strong> for exclusive use. This will
-            prevent CI sessions from using this device.
-          </p>
-
-          <div className="reservation-form-group">
-            <label>
-              <User
-                size={14}
-                style={{ marginRight: 6, verticalAlign: 'middle', color: 'var(--accent)' }}
-              />
-              Reserved By
-            </label>
-            <input
-              type="text"
-              className="reservation-input"
-              placeholder="Enter your name or ID"
-              value={reservedBy}
-              onChange={(e: React.ChangeEvent<HTMLInputElement>) => setReservedBy(e.target.value)}
-              disabled={loading}
-            />
-          </div>
-
-          <div className="reservation-form-group">
-            <label>
-              <Clock
-                size={14}
-                style={{ marginRight: 6, verticalAlign: 'middle', color: 'var(--accent)' }}
-              />
-              Duration
-            </label>
-            <div className="duration-selector">
-              {DURATION_OPTIONS.map((opt) => (
-                <div
-                  key={opt.value}
-                  className={`duration-option ${duration === opt.value ? 'active' : ''}`}
-                  onClick={() => setDuration(opt.value)}
-                >
-                  {opt.label}
-                </div>
-              ))}
-            </div>
-          </div>
-
-          <div className="reservation-form-group">
-            <label>
-              <MessageSquare
-                size={14}
-                style={{ marginRight: 6, verticalAlign: 'middle', color: 'var(--accent)' }}
-              />
-              Reason (Optional)
-            </label>
-            <input
-              type="text"
-              className="reservation-input"
-              placeholder="e.g., Debugging flaky login test"
-              value={reason}
-              onChange={(e: React.ChangeEvent<HTMLInputElement>) => setReason(e.target.value)}
-              disabled={loading}
-            />
-          </div>
-
-          {error && (
-            <div className="error-message">
-              <AlertCircle size={14} style={{ marginRight: 6, verticalAlign: 'middle' }} />
-              {error}
-            </div>
-          )}
-        </div>
-
-        <div className="reservation-actions">
+  return (
+    <Modal
+      open={true}
+      onClose={onClose}
+      width={520}
+      title={
+        <>
+          <CalendarPlus size={16} className="title-icon" />
+          Reserve Device
+        </>
+      }
+      footer={
+        <>
           <button className="btn-cancel" onClick={onClose} disabled={loading}>
             Cancel
           </button>
@@ -168,10 +79,85 @@ const ReservationModal: React.FC<ReservationModalProps> = ({ device, onClose, on
           >
             {loading ? 'Reserving...' : 'Confirm Reservation'}
           </button>
+        </>
+      }
+    >
+      <div className="reservation-modal-body">
+        <div className="device-id-badge">
+          <span className="label">Device:</span>
+          <span className="value">{device.udid}</span>
         </div>
+
+        <p>
+          Reserve <strong>{device.name || device.udid}</strong> for exclusive use. This will
+          prevent CI sessions from using this device.
+        </p>
+
+        <div className="reservation-form-group">
+          <label>
+            <User
+              size={14}
+              style={{ marginRight: 6, verticalAlign: 'middle', color: 'var(--accent)' }}
+            />
+            Reserved By
+          </label>
+          <input
+            type="text"
+            className="reservation-input"
+            placeholder="Enter your name or ID"
+            value={reservedBy}
+            onChange={(e: React.ChangeEvent<HTMLInputElement>) => setReservedBy(e.target.value)}
+            disabled={loading}
+          />
+        </div>
+
+        <div className="reservation-form-group">
+          <label>
+            <Clock
+              size={14}
+              style={{ marginRight: 6, verticalAlign: 'middle', color: 'var(--accent)' }}
+            />
+            Duration
+          </label>
+          <div className="duration-selector">
+            {DURATION_OPTIONS.map((opt) => (
+              <div
+                key={opt.value}
+                className={`duration-option ${duration === opt.value ? 'active' : ''}`}
+                onClick={() => setDuration(opt.value)}
+              >
+                {opt.label}
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="reservation-form-group">
+          <label>
+            <MessageSquare
+              size={14}
+              style={{ marginRight: 6, verticalAlign: 'middle', color: 'var(--accent)' }}
+            />
+            Reason (Optional)
+          </label>
+          <input
+            type="text"
+            className="reservation-input"
+            placeholder="e.g., Debugging flaky login test"
+            value={reason}
+            onChange={(e: React.ChangeEvent<HTMLInputElement>) => setReason(e.target.value)}
+            disabled={loading}
+          />
+        </div>
+
+        {error && (
+          <div className="error-message">
+            <AlertCircle size={14} style={{ marginRight: 6, verticalAlign: 'middle' }} />
+            {error}
+          </div>
+        )}
       </div>
-    </div>,
-    document.body,
+    </Modal>
   );
 };
 

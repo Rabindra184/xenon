@@ -121,4 +121,54 @@ describe('Modal', () => {
     expect(labelEl?.textContent).toContain('Complex');
     expect(labelEl?.textContent).toContain('title');
   });
+
+  it('closes when the header close button is clicked', async () => {
+    const onClose = vi.fn();
+    render(<Harness onClose={onClose} />);
+    await act(async () => {
+      await Promise.resolve();
+    });
+    const closeBtn = document.querySelector('.modal-close') as HTMLElement;
+    expect(closeBtn).not.toBeNull();
+    fireEvent.click(closeBtn);
+    expect(onClose).toHaveBeenCalled();
+  });
+
+  it('does not close on overlay pointerdown when closeOnOverlayClick is false', async () => {
+    const onClose = vi.fn();
+    render(
+      <Modal
+        open={true}
+        title="t"
+        onClose={onClose}
+        closeOnOverlayClick={false}
+      >
+        <button>inside</button>
+      </Modal>,
+    );
+    const overlay = document.querySelector('.modal-overlay') as HTMLElement;
+    expect(overlay).not.toBeNull();
+    // DismissableLayer registers its pointerdown listener inside setTimeout(0).
+    // Flush that macrotask before firing so the listener is active.
+    await new Promise((r) => setTimeout(r, 0));
+    fireEvent.pointerDown(overlay);
+    expect(onClose).not.toHaveBeenCalled();
+    expect(document.querySelector('.modal')).not.toBeNull();
+  });
+
+  it('still closes on Escape when closeOnOverlayClick is false', () => {
+    const onClose = vi.fn();
+    render(
+      <Modal
+        open={true}
+        title="t"
+        onClose={onClose}
+        closeOnOverlayClick={false}
+      >
+        <button>inside</button>
+      </Modal>,
+    );
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
 });

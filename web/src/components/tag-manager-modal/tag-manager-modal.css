@@ -1,86 +1,8 @@
-.tag-modal-overlay {
-    position: fixed;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    background: rgba(2, 6, 23, 0.95);
-    backdrop-filter: blur(12px);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    z-index: 100000;
-}
-
-.tag-modal-container {
-    background: var(--bg-surface);
-    width: 100%;
-    max-width: 450px;
-    border-radius: 6px;
-    border: 1px solid var(--border-default);
-    box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5);
-    overflow: hidden;
-    animation: slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1);
-    position: relative;
-}
-
-@keyframes slideUp {
-    from {
-        transform: translateY(10px);
-        opacity: 0;
-    }
-
-    to {
-        transform: translateY(0);
-        opacity: 1;
-    }
-}
-
-.tag-modal-header {
-    padding: 24px;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    border-bottom: 2px solid var(--border-default);
-    background: rgba(0, 0, 0, 0.4);
-}
-
-.tag-modal-title {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    font-size: 1.25rem;
-    font-weight: 800;
-    color: var(--text-primary);
-    text-transform: uppercase;
-    font-family: 'Outfit', sans-serif;
-    letter-spacing: -0.01em;
-}
-
 .title-icon {
     color: var(--accent);
 }
 
-.close-btn {
-    background: transparent;
-    border: none;
-    color: var(--text-subtle);
-    cursor: pointer;
-    padding: 4px;
-    border-radius: 6px;
-    transition: all 0.2s;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-}
-
-.close-btn:hover {
-    background: rgba(255, 255, 255, 0.05);
-    color: var(--text-primary);
-}
-
 .tag-modal-body {
-    padding: 24px;
     display: flex;
     flex-direction: column;
     gap: 20px;
@@ -122,6 +44,11 @@
     font-family: 'JetBrains Mono', monospace;
 }
 
+.tag-input-section .input-with-button {
+    display: flex;
+    gap: 8px;
+}
+
 .tag-input-section input {
     flex: 1;
     background: rgba(0, 0, 0, 0.3);
@@ -138,6 +65,12 @@
     outline: none;
     border-color: var(--accent);
     box-shadow: 0 0 15px rgba(0, 255, 136, 0.2);
+}
+
+.tag-input-section .input-hint {
+    margin: 6px 0 0 0;
+    font-size: 11px;
+    color: var(--text-subtle);
 }
 
 .add-inline-btn {
@@ -211,15 +144,6 @@
 .remove-tag:hover {
     background: rgba(0, 255, 136, 0.2);
     opacity: 1;
-}
-
-.tag-modal-footer {
-    padding: 24px;
-    display: flex;
-    gap: 12px;
-    justify-content: flex-end;
-    background: rgba(0, 0, 0, 0.4);
-    border-top: 2px solid var(--border-default);
 }
 
 .btn-cancel {
