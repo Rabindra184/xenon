@@ -25,6 +25,9 @@ import { IProfiling } from '../../interfaces/IProfiling';
 import Spinner from '../../widgets/spinner/spinner';
 import { Badge } from '../ui/badge';
 import { Input } from '../ui/input';
+import { SegmentedControl } from '../ui/SegmentedControl';
+import { EmptyState } from '../ui/EmptyState';
+import { isThemeV2 } from '../../lib/theme-flag';
 import ProfilingView from './ProfilingView';
 import ScreenshotsView from './ScreenshotsView';
 import TraceWaterfall from './TraceWaterfall';
@@ -494,7 +497,15 @@ const SessionDashboard: React.FC = () => {
             {sessions.length === 0 && (
               <tr>
                 <td colSpan={6} className="table-empty">
-                  No sessions found for this build.
+                  {isThemeV2() ? (
+                    <EmptyState
+                      icon={<Activity size={20} />}
+                      title="No sessions yet"
+                      description="No sessions have run against this build. Trigger one from your test runner or the CLI."
+                    />
+                  ) : (
+                    'No sessions found for this build.'
+                  )}
                 </td>
               </tr>
             )}
@@ -644,35 +655,59 @@ const SessionDashboard: React.FC = () => {
           {/* Left Panel: Tabs & Logs */}
           <div className="session-detail-left">
             <div className="tabs-nav">
-              {(['command', 'trace', 'screenshots', 'device', 'debug', 'profiling'] as const).map(
-                (tab) => {
-                  if (
-                    tab === 'profiling' &&
-                    !['android', 'ios'].includes(
-                      selectedSession.device_platform?.toLowerCase() || '',
+              {isThemeV2() ? (
+                <SegmentedControl
+                  size="sm"
+                  value={selectedLogTab}
+                  onChange={(v) => setSelectedLogTab(v)}
+                  segments={(
+                    [
+                      { value: 'command', label: 'Text Logs' },
+                      { value: 'trace', label: 'Performance Trace' },
+                      { value: 'screenshots', label: 'Evidence' },
+                      { value: 'device', label: 'Device Logs' },
+                      { value: 'debug', label: 'Debug Logs' },
+                      { value: 'profiling', label: 'System Profiling' },
+                    ] as const
+                  ).filter(
+                    (seg) =>
+                      seg.value !== 'profiling' ||
+                      ['android', 'ios'].includes(
+                        selectedSession.device_platform?.toLowerCase() || '',
+                      ),
+                  )}
+                />
+              ) : (
+                (['command', 'trace', 'screenshots', 'device', 'debug', 'profiling'] as const).map(
+                  (tab) => {
+                    if (
+                      tab === 'profiling' &&
+                      !['android', 'ios'].includes(
+                        selectedSession.device_platform?.toLowerCase() || '',
+                      )
                     )
-                  )
-                    return null;
-                  return (
-                    <button
-                      key={tab}
-                      className={`tab-btn ${selectedLogTab === tab ? 'active' : ''}`}
-                      onClick={() => setSelectedLogTab(tab)}
-                    >
-                      {tab === 'command'
-                        ? 'Text Logs'
-                        : tab === 'screenshots'
-                          ? 'Evidence'
-                          : tab === 'device'
-                            ? 'Device Logs'
-                            : tab === 'debug'
-                              ? 'Debug Logs'
-                              : tab === 'trace'
-                                ? 'Performance Trace'
-                                : 'System Profiling'}
-                    </button>
-                  );
-                },
+                      return null;
+                    return (
+                      <button
+                        key={tab}
+                        className={`tab-btn ${selectedLogTab === tab ? 'active' : ''}`}
+                        onClick={() => setSelectedLogTab(tab)}
+                      >
+                        {tab === 'command'
+                          ? 'Text Logs'
+                          : tab === 'screenshots'
+                            ? 'Evidence'
+                            : tab === 'device'
+                              ? 'Device Logs'
+                              : tab === 'debug'
+                                ? 'Debug Logs'
+                                : tab === 'trace'
+                                  ? 'Performance Trace'
+                                  : 'System Profiling'}
+                      </button>
+                    );
+                  },
+                )
               )}
 
               {selectedLogTab === 'command' && (
