@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import { useToast } from '../ui/toast';
 import { Table, THead, TBody, TR, TH, TD } from '../ui/Table';
+import { FieldGroup } from '../ui/FieldGroup';
 
 type Scope = 'read' | 'sessions' | 'devices' | 'admin';
 const ALL_SCOPES: Scope[] = ['read', 'sessions', 'devices', 'admin'];
@@ -290,10 +291,10 @@ export const ApiKeys: React.FC = () => {
 
       {showCreate && (
         <Modal onClose={() => setShowCreate(false)} title="Create API key">
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-            <label>
-              <div style={label}>Name</div>
+          <div style={{ display: 'flex', flexDirection: 'column' }}>
+            <FieldGroup label="Name" htmlFor="apikey-name">
               <input
+                id="apikey-name"
                 type="text"
                 value={newName}
                 onChange={(e) => setNewName(e.target.value)}
@@ -301,10 +302,17 @@ export const ApiKeys: React.FC = () => {
                 style={input}
                 autoFocus
               />
-            </label>
+            </FieldGroup>
 
-            <div>
-              <div style={label}>Scopes</div>
+            <FieldGroup
+              label="Scopes"
+              description={
+                <>
+                  <code>admin</code> grants full access including API-key management.{' '}
+                  <code>sessions</code> is required for WebDriver <code>xenon:accessKey</code>.
+                </>
+              }
+            >
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
                 {ALL_SCOPES.map((s) => (
                   <label key={s} style={scopeLabel}>
@@ -319,15 +327,11 @@ export const ApiKeys: React.FC = () => {
                   </label>
                 ))}
               </div>
-              <div style={{ fontSize: '0.8em', opacity: 0.6, marginTop: 6 }}>
-                <code>admin</code> grants full access including API-key management.{' '}
-                <code>sessions</code> is required for WebDriver <code>xenon:accessKey</code>.
-              </div>
-            </div>
+            </FieldGroup>
 
-            <label>
-              <div style={label}>Rate limit (requests/min)</div>
+            <FieldGroup label="Rate limit (requests/min)" htmlFor="apikey-ratelimit">
               <input
+                id="apikey-ratelimit"
                 type="number"
                 min={10}
                 step={10}
@@ -335,11 +339,20 @@ export const ApiKeys: React.FC = () => {
                 onChange={(e) => setNewRateLimit(parseInt(e.target.value) || 300)}
                 style={input}
               />
-            </label>
+            </FieldGroup>
 
-            <label>
-              <div style={label}>Default team</div>
+            <FieldGroup
+              label="Default team"
+              description={
+                <>
+                  Keys without a team can only reach shared-pool devices. Admins can override at
+                  session time via <code>xenon:team</code>.
+                </>
+              }
+              htmlFor="apikey-team"
+            >
               <select
+                id="apikey-team"
                 value={newTeamId}
                 onChange={(e) => setNewTeamId(e.target.value)}
                 style={input}
@@ -351,11 +364,7 @@ export const ApiKeys: React.FC = () => {
                   </option>
                 ))}
               </select>
-              <div style={{ fontSize: '0.8em', opacity: 0.6, marginTop: 6 }}>
-                Keys without a team can only reach shared-pool devices. Admins can override at
-                session time via <code>xenon:team</code>.
-              </div>
-            </label>
+            </FieldGroup>
 
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 8 }}>
               <button className="reset-btn" onClick={() => setShowCreate(false)} disabled={submitting}>
@@ -483,14 +492,6 @@ const chip: React.CSSProperties = {
   borderRadius: 4,
   fontSize: '11px',
   fontFamily: 'monospace',
-};
-const label: React.CSSProperties = {
-  fontSize: '0.85em',
-  textTransform: 'uppercase',
-  letterSpacing: '0.05em',
-  opacity: 0.7,
-  marginBottom: 6,
-  fontWeight: 600,
 };
 const input: React.CSSProperties = {
   width: '100%',
