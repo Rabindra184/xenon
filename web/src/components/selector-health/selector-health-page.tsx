@@ -2,6 +2,7 @@ import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { TabNav, Tab } from './tab-nav';
 import { formatStrategy } from '../../utils/strategy-labels';
+import { CopyButton } from './copy-language-modal';
 import {
   HeartPulse,
   RefreshCw,
@@ -10,8 +11,6 @@ import {
   ArrowDownRight,
   Minus,
   ChevronRight,
-  Copy,
-  Check,
   Filter,
   Send,
 } from 'lucide-react';
@@ -247,12 +246,6 @@ const SelectorHealthPage: React.FC = () => {
     });
     return () => { unsub && unsub(); };
   }, [on, load]);
-
-  const copy = (text: string, key: string) => {
-    navigator.clipboard.writeText(text).catch(() => { });
-    setCopiedKey(key);
-    setTimeout(() => setCopiedKey((current) => (current === key ? null : current)), 1500);
-  };
 
   const openSelector = (selector: string) => {
     navigate(`/selector-health/detail?value=${encodeURIComponent(selector)}&windowDays=${windowDays}`);
@@ -509,18 +502,20 @@ const SelectorHealthPage: React.FC = () => {
                   </div>
                   <div className="sh-td sh-td--actions">
                     {h.suggestedRewrite && (
-                      <button
-                        type="button"
-                        className={`sh-icon-btn ${copiedKey === copyKey ? 'copied' : ''}`}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          copy(h.suggestedRewrite!, copyKey);
+                      <CopyButton
+                        hotspot={h}
+                        onCopied={(lang) => {
+                          setCopiedKey(copyKey);
+                          setTimeout(
+                            () =>
+                              setCopiedKey((current) =>
+                                current === copyKey ? null : current,
+                              ),
+                            1500,
+                          );
+                          toast(`Copied as ${lang}`, 'success');
                         }}
-                        aria-label="Copy suggested rewrite"
-                        title={copiedKey === copyKey ? 'Copied' : 'Copy rewrite'}
-                      >
-                        {copiedKey === copyKey ? <Check size={11} /> : <Copy size={11} />}
-                      </button>
+                      />
                     )}
                     {tab === 'active' && (
                       <>
