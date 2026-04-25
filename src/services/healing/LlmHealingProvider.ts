@@ -40,7 +40,9 @@ export class LlmHealingProvider implements HealingProvider {
             tier: this.tier,
             confidence: 0.95, // Deep reasoning is typically highly accurate
             originalSelector: context.selector,
+            originalStrategy: context.strategy,
             recommendedSelector: healingResult.recommendedXpath,
+            recommendedStrategy: 'xpath',
             message: `Found alternative element via Deep AI Reasoning: ${healingResult.reason}`,
           };
         } catch (err) {

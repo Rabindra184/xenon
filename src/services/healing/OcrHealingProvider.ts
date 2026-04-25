@@ -70,7 +70,9 @@ export class OcrHealingProvider implements HealingProvider {
                 tier: this.tier,
                 confidence: bestWord.confidence / 100,
                 originalSelector: context.selector,
+                originalStrategy: context.strategy,
                 recommendedSelector: `ocr:text="${bestWord.text}"`,
+                recommendedStrategy: 'xenon:visual',
                 message: `Found text "${bestWord.text}" via local OCR (${bestWord.confidence.toFixed(0)}% confidence)`,
                 rect: {
                   x: bestWord.bbox.x0,
@@ -92,7 +94,9 @@ export class OcrHealingProvider implements HealingProvider {
           tier: this.tier,
           confidence: bestWord.confidence / 100,
           originalSelector: context.selector,
+          originalStrategy: context.strategy,
           recommendedSelector: `ocr:text="${bestWord.text}"`,
+          recommendedStrategy: 'xenon:visual',
           message: `Found text "${bestWord.text}" via local OCR (${bestWord.confidence.toFixed(0)}% confidence)`,
           rect: {
             x: bestWord.bbox.x0,

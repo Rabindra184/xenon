@@ -7,6 +7,11 @@ import { Container } from 'typedi';
 import { scopeGuard } from '../../middleware/scopeGuard';
 import { buildExport } from './build-export';
 import { NotificationService } from '../../services/NotificationService';
+import {
+  SelectorStateService,
+  SelectorStateConflictError,
+} from '../../services/SelectorStateService';
+import log from '../../logger';
 
 const MJPEG_PROXY_CACHE: Map<string, any> = new Map();
 
@@ -287,10 +292,22 @@ async function getHealingSummary(request: Request, response: Response) {
   const current = aggregate(currentRows);
   const prior = aggregate(priorRows);
 
+  // Lifecycle counts: how many selectors have been resolved in this
+  // window, and how many are mid-verification right now. Cheap — both
+  // are indexed COUNT(*)s.
+  const [resolvedCount, pendingCount] = await Promise.all([
+    prisma.selectorState.count({
+      where: { status: 'resolved', resolved_at: { gte: since } },
+    }),
+    prisma.selectorState.count({ where: { status: 'pending' } }),
+  ]);
+
   return response.status(200).json({
     windowDays,
     current,
     prior,
+    resolvedCount,
+    pendingCount,
   });
 }
 
@@ -304,29 +321,56 @@ async function getHealingHotspots(request: Request, response: Response) {
     typeof request.query.platform === 'string' && request.query.platform
       ? request.query.platform
       : null;
+  const status = (request.query.status as string | undefined) ?? 'active';
 
-  const agg = await aggregateHotspots({ windowDays, limit, tier, platform });
+  const agg = await aggregateHotspots({ windowDays, limit, tier, platform, status });
 
   return response.status(200).json({
     windowDays,
     totalScanned: agg.totalScanned,
-    filters: { tier, platform },
+    filters: { tier, platform, status },
     hotspots: agg.hotspots,
   });
+}
+
+// Decide whether a hotspot, augmented with its (optional) SelectorState row,
+// belongs in the response for a given `?status=` query value.
+//
+// `active` (default) hides muted/pending/resolved selectors, so that fixes,
+// triage, and silenced selectors stop polluting the live hotspot list. The
+// CI gate and webhook digest both inherit this default — that's intentional
+// (spec §10.3).
+function filterByStatus(state: any, requested: string): boolean {
+  switch (requested) {
+    case 'all':
+      return true;
+    case 'pending':
+      return state?.status === 'pending';
+    case 'resolved':
+      return state?.status === 'resolved';
+    case 'muted':
+      return state?.status === 'muted';
+    case 'active':
+    default:
+      return state == null || state.status === 'active';
+  }
 }
 
 // Shape used by both the dashboard hotspots view and the CI gate. Kept
 // close to the route to keep type churn local.
 interface HotspotRow {
+  originalStrategy: string | null;
   originalSelector: string;
   healCount: number;
   sessionCount: number;
   topTier: string | null;
   suggestedRewrite: string | null;
+  suggestedStrategy: string | null;
   suggestedRewriteShare: number | null;
   averageConfidence: number | null;
   firstHealedAt: string;
   lastHealedAt: string;
+  state?: any | null;
 }
 
 interface HotspotAggregation {
@@ -346,9 +390,12 @@ interface HotspotQueryOptions {
   platform?: string | null;
   buildId?: string | null;
   minHealCount?: number;
+  status?: string;
 }
 
-async function aggregateHotspots(opts: HotspotQueryOptions): Promise<HotspotAggregation> {
+export async function aggregateHotspots(
+  opts: HotspotQueryOptions,
+): Promise<HotspotAggregation> {
   const since = new Date();
   since.setDate(since.getDate() - opts.windowDays);
 
@@ -369,7 +416,9 @@ async function aggregateHotspots(opts: HotspotQueryOptions): Promise<HotspotAggr
     where,
     select: {
       session_id: true,
+      original_strategy: true,
       original_selector: true,
+      healed_strategy: true,
       healed_selector: true,
       healing_confidence: true,
       healing_tier: true,
@@ -380,11 +429,13 @@ async function aggregateHotspots(opts: HotspotQueryOptions): Promise<HotspotAggr
   });
 
   type Bucket = {
+    originalStrategy: string | null;
     originalSelector: string;
     healCount: number;
     sessions: Set<string>;
     tiers: Map<string, number>;
     healedSelectors: Map<string, number>;
+    healedStrategies: Map<string, number>;
     confidenceSum: number;
     confidenceSamples: number;
     lastHealedAt: Date;
@@ -399,15 +450,20 @@ async function aggregateHotspots(opts: HotspotQueryOptions): Promise<HotspotAggr
     const tier = r.healing_tier || 'Unknown';
     byTier[tier] = (byTier[tier] || 0) + 1;
 
-    const key = r.original_selector!;
+    // Group by (strategy, selector) tuple. Two heals with the same selector
+    // value but different strategies are genuinely different problems and
+    // get separate hotspot rows.
+    const key = `${r.original_strategy ?? ''}\x00${r.original_selector!}`;
     let b = buckets.get(key);
     if (!b) {
       b = {
-        originalSelector: key,
+        originalStrategy: r.original_strategy ?? null,
+        originalSelector: r.original_selector!,
         healCount: 0,
         sessions: new Set<string>(),
         tiers: new Map<string, number>(),
         healedSelectors: new Map<string, number>(),
+        healedStrategies: new Map<string, number>(),
         confidenceSum: 0,
         confidenceSamples: 0,
         lastHealedAt: r.createdAt,
@@ -422,6 +478,12 @@ async function aggregateHotspots(opts: HotspotQueryOptions): Promise<HotspotAggr
       b.healedSelectors.set(
         r.healed_selector,
         (b.healedSelectors.get(r.healed_selector) ?? 0) + 1,
+      );
+    }
+    if (r.healed_strategy) {
+      b.healedStrategies.set(
+        r.healed_strategy,
+        (b.healedStrategies.get(r.healed_strategy) ?? 0) + 1,
       );
     }
     if (typeof r.healing_confidence === 'number') {
@@ -441,7 +503,7 @@ async function aggregateHotspots(opts: HotspotQueryOptions): Promise<HotspotAggr
   };
 
   const minCount = opts.minHealCount ?? 1;
-  const hotspots: HotspotRow[] = Array.from(buckets.values())
+  const topHotspots: HotspotRow[] = Array.from(buckets.values())
     .filter((b) => b.healCount >= minCount)
     .sort(
       (a, b) =>
@@ -451,12 +513,15 @@ async function aggregateHotspots(opts: HotspotQueryOptions): Promise<HotspotAggr
     .map((b) => {
       const topRewrite = pickTopEntry(b.healedSelectors);
       const topTier = pickTopEntry(b.tiers);
+      const topStrategy = pickTopEntry(b.healedStrategies);
       return {
+        originalStrategy: b.originalStrategy,
         originalSelector: b.originalSelector,
         healCount: b.healCount,
         sessionCount: b.sessions.size,
         topTier: topTier?.value ?? null,
         suggestedRewrite: topRewrite?.value ?? null,
+        suggestedStrategy: topStrategy?.value ?? null,
         suggestedRewriteShare: topRewrite ? topRewrite.count / b.healCount : null,
         averageConfidence:
           b.confidenceSamples > 0 ? b.confidenceSum / b.confidenceSamples : null,
@@ -464,6 +529,33 @@ async function aggregateHotspots(opts: HotspotQueryOptions): Promise<HotspotAggr
         lastHealedAt: b.lastHealedAt.toISOString(),
       };
     });
+
+  // Bulk-fetch SelectorState rows for the top hotspots in a single DB call,
+  // then merge them into each hotspot. The default `status=active` filter
+  // hides muted/pending/resolved selectors so the live list, CI gate, and
+  // webhook digest all see only "still actively breaking" selectors.
+  let stateMap = new Map<string, any>();
+  if (topHotspots.length > 0) {
+    const states = await prisma.selectorState.findMany({
+      where: {
+        OR: topHotspots.map((h) => ({
+          original_strategy: h.originalStrategy ?? '',
+          original_selector: h.originalSelector,
+        })),
+      },
+    });
+    stateMap = new Map(
+      states.map((s: any) => [`${s.original_strategy}\x00${s.original_selector}`, s]),
+    );
+  }
+
+  const requestedStatus = opts.status ?? 'active';
+  const hotspots: HotspotRow[] = topHotspots
+    .map((h) => ({
+      ...h,
+      state: stateMap.get(`${h.originalStrategy ?? ''}\x00${h.originalSelector}`) ?? null,
+    }))
+    .filter((h) => filterByStatus(h.state, requestedStatus));
 
   return {
     totalScanned: rows.length,
@@ -673,6 +765,122 @@ async function getHealingSelectorDetail(request: Request, response: Response) {
   });
 }
 
+// SelectorState lifecycle action endpoint — mark fixed / mute / unmute /
+// cancel verification. The action vocabulary is closed (any value not in
+// VALID_ACTIONS rejects with 400). A SelectorStateConflictError surfaces as
+// 409 with `currentStatus`; anything else logs and surfaces as 500.
+const VALID_SELECTOR_ACTIONS = ['mark_fixed', 'mute', 'unmute', 'cancel_verification'] as const;
+type SelectorAction = (typeof VALID_SELECTOR_ACTIONS)[number];
+
+export async function postSelectorStateAction(request: Request, response: Response) {
+  const { original_strategy, original_selector, action } = (request.body ?? {}) as {
+    original_strategy?: string;
+    original_selector?: string;
+    action?: string;
+  };
+  if (!original_strategy || !original_selector || !action) {
+    return response.status(400).json({
+      error: 'original_strategy, original_selector, and action are required',
+    });
+  }
+  if (!(VALID_SELECTOR_ACTIONS as readonly string[]).includes(action)) {
+    return response.status(400).json({
+      error: `action must be one of ${VALID_SELECTOR_ACTIONS.join(', ')}`,
+    });
+  }
+
+  const apiKeyId = request.apiKey?.id ?? '';
+  const ctx = { strategy: original_strategy, selector: original_selector, apiKeyId };
+  const service = Container.get(SelectorStateService);
+
+  try {
+    let row;
+    switch (action as SelectorAction) {
+      case 'mark_fixed':
+        row = await service.markFixed(ctx);
+        break;
+      case 'mute':
+        row = await service.mute(ctx);
+        break;
+      case 'unmute':
+        row = await service.unmute(ctx);
+        break;
+      case 'cancel_verification':
+        row = await service.cancelVerification(ctx);
+        break;
+    }
+    return response.json({ state: row });
+  } catch (err: any) {
+    if (err instanceof SelectorStateConflictError) {
+      return response.status(409).json({ error: err.message, currentStatus: err.currentStatus });
+    }
+    log.error(`[Dashboard] selector state action failed: ${err?.message ?? err}`);
+    return response.status(500).json({ error: 'internal' });
+  }
+}
+
+// Muted-selectors list — sourced directly from SelectorState (not the
+// hotspot aggregator) so muted-but-no-recent-heal entries still surface.
+// Each row is enriched with `last_healed_at` from the most recent healed
+// SessionLog row for that tuple (null if never healed).
+export async function getMutedSelectors(request: Request, response: Response) {
+  const limit = Math.min(
+    Math.max(parseInt(String(request.query.limit ?? '50'), 10) || 50, 1),
+    200,
+  );
+  const offset = Math.max(parseInt(String(request.query.offset ?? '0'), 10) || 0, 0);
+
+  const muted = await prisma.selectorState.findMany({
+    where: { status: 'muted' },
+    orderBy: { muted_at: 'desc' },
+    take: limit,
+    skip: offset,
+  });
+  const total = await prisma.selectorState.count({ where: { status: 'muted' } });
+
+  const enriched = await Promise.all(
+    muted.map(async (s) => {
+      const last = await prisma.sessionLog.findFirst({
+        where: {
+          original_strategy: s.original_strategy,
+          original_selector: s.original_selector,
+          is_healed: true,
+        },
+        orderBy: { createdAt: 'desc' },
+        select: { createdAt: true },
+      });
+      return {
+        original_strategy: s.original_strategy,
+        original_selector: s.original_selector,
+        muted_at: s.muted_at ? s.muted_at.toISOString() : null,
+        muted_by_api_key: s.muted_by_api_key,
+        last_healed_at: last?.createdAt ? last.createdAt.toISOString() : null,
+        regression_count: s.regression_count,
+      };
+    }),
+  );
+
+  return response.json({ muted: enriched, total, limit, offset });
+}
+
+// Single-tuple state lookup. Strategy and value arrive URL-encoded since
+// XPath selectors contain `/` and `[`. Returns `{ state: null }` when no
+// row exists (intentional — null is meaningful: the selector is implicitly
+// active).
+export async function getSelectorStateByTuple(request: Request, response: Response) {
+  const strategy = decodeURIComponent(request.params.strategy ?? '');
+  const value = decodeURIComponent(request.params.value ?? '');
+  const row = await prisma.selectorState.findUnique({
+    where: {
+      original_strategy_original_selector: {
+        original_strategy: strategy,
+        original_selector: value,
+      },
+    },
+  });
+  return response.json({ state: row });
+}
+
 async function getProfilingData(request: Request, response: Response) {
   const sessionId = request.params.sessionId;
 
@@ -798,6 +1006,12 @@ function register(router: Router) {
   // Outbound notification — admin only since it can fan out to every
   // configured webhook (Slack channels, etc.).
   router.post('/healing/digest/send', scopeGuard(['admin']), sendHealingDigest);
+  // SelectorState lifecycle: state mutations require admin (they affect what
+  // shows up in the live hotspot list, the CI gate, and the digest); the two
+  // reads inherit the existing dashboard auth.
+  router.post('/healing/selector/state', scopeGuard(['admin']), postSelectorStateAction);
+  router.get('/healing/state/muted', getMutedSelectors);
+  router.get('/healing/state/:strategy/:value', getSelectorStateByTuple);
   router.get('/config', getGlobalConfig);
   // Config + destructive ops: admin-only. Read-only config stays open to any
   // authenticated key so dashboards using 'read' scope can still populate.

@@ -26,7 +26,9 @@ export interface HealedElement {
   tier: HealingTier;
   confidence: number;
   originalSelector: string;
+  originalStrategy?: string; // Strategy the test author used (e.g., 'xpath', 'accessibility id')
   recommendedSelector: string;
+  recommendedStrategy?: string; // Strategy of the healed locator; may differ from original
   candidateSelectors?: string[]; // Multiple strategies from best to worst
   message?: string;
   rect?: {

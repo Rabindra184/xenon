@@ -8,6 +8,13 @@ export enum SocketEvents {
   SESSION_STOPPED = 'session_stopped',
   SESSION_COMMAND = 'session_command',
   HEALING_EVENT = 'healing_event',
+  SELECTOR_FIXED = 'selector_fixed',
+  SELECTOR_RESOLVED = 'selector_resolved',
+  SELECTOR_REGRESSED = 'selector_regressed',
+  SELECTOR_CANCELLED = 'selector_cancelled',
+  SELECTOR_MUTED = 'selector_muted',
+  SELECTOR_UNMUTED = 'selector_unmuted',
+  SELECTOR_PROGRESS = 'selector_progress',
 }
 
 export const XENON_PROTOCOL_VERSION = '1.0.0';

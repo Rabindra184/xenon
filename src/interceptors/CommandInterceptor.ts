@@ -627,7 +627,9 @@ export class CommandInterceptor {
       JSON.stringify({ value: { ELEMENT: healed.id }, sessionId }),
       {
         originalSelector: args[1],
+        originalStrategy: args[0],
         healedSelector: healed.recommendedSelector,
+        healedStrategy: healed.recommendedStrategy ?? args[0],
         confidence: healed.confidence,
         tier: healed.tier,
       },

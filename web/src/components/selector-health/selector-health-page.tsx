@@ -1,5 +1,12 @@
 import React, { useEffect, useState, useCallback, useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
+import { TabNav, Tab } from './tab-nav';
+import { formatStrategy } from '../../utils/strategy-labels';
+import { CopyButton } from './copy-language-modal';
+import { PendingRow } from './pending-row';
+import { ResolvedRow } from './resolved-row';
+import { MutedList } from './muted-list';
+import { RegressionBanner } from './regression-banner';
 import {
   HeartPulse,
   RefreshCw,
@@ -8,8 +15,6 @@ import {
   ArrowDownRight,
   Minus,
   ChevronRight,
-  Copy,
-  Check,
   Filter,
   Send,
 } from 'lucide-react';
@@ -185,6 +190,17 @@ const KpiStrip: React.FC<{ summary: IHealingSummaryResponse | null; loading: boo
           )
         }
       />
+      <KpiTile
+        label="Resolved"
+        value={loading ? '—' : (summary?.resolvedCount ?? 0).toLocaleString()}
+        sub={`last ${summary?.windowDays ?? 30}d`}
+        delta={
+          !loading && typeof summary?.pendingCount === 'number' ? (
+            <span className="sh-kpi__delta">⏳ {summary.pendingCount} pending</span>
+          ) : undefined
+        }
+        tone="neutral"
+      />
     </div>
   );
 };
@@ -193,6 +209,12 @@ const SelectorHealthPage: React.FC = () => {
   const navigate = useNavigate();
   const { on } = useSocket();
   const { toast } = useToast();
+  const [searchParams] = useSearchParams();
+  // URL-persisted lifecycle tab. The aggregator's `status` filter mirrors
+  // the tab id, so each tab's fetch returns just that bucket. 'muted' is
+  // a separate view in Task 20 — for Phase 1 of this task, all four tabs
+  // share the existing hotspot table and the per-tab UX layers on later.
+  const tab: Tab = ((searchParams.get('tab') as Tab) ?? 'active');
   const [windowDays, setWindowDays] = useState<WindowDays>(30);
   const [tier, setTier] = useState<TierFilter>('');
   const [platform, setPlatform] = useState<PlatformFilter>('');
@@ -213,6 +235,7 @@ const SelectorHealthPage: React.FC = () => {
           limit: 50,
           tier: tier || undefined,
           platform: platform || undefined,
+          status: tab,
         }) as Promise<IHealingHotspotsResponse>,
       ]);
       setSummary(s ?? null);
@@ -223,31 +246,88 @@ const SelectorHealthPage: React.FC = () => {
       setLoading(false);
       setLoaded(true);
     }
-  }, [windowDays, tier, platform]);
+  }, [windowDays, tier, platform, tab]);
 
   useEffect(() => {
     load();
   }, [load]);
 
-  // Live refresh on new heal events keeps the page useful as a dashboard
-  // on a wallboard. Keeping it simple: re-fetch on each event. If volume
-  // gets noisy we can debounce.
+  // Live refresh on heal + lifecycle events. Keeping it simple: re-fetch
+  // on each event. If volume gets noisy we can debounce. The page already
+  // routes the data through `status=tab`, so the new bucket / new
+  // metadata appears on the right tab without further wiring.
   useEffect(() => {
-    const unsub = on('healing_event', () => {
-      load();
-    });
-    return () => { unsub && unsub(); };
+    const events = [
+      'healing_event',
+      'selector_fixed',
+      'selector_resolved',
+      'selector_regressed',
+      'selector_cancelled',
+      'selector_muted',
+      'selector_unmuted',
+      'selector_progress',
+    ];
+    const unsubs = events.map((e) => on(e, () => load()));
+    return () => {
+      unsubs.forEach((u) => u && u());
+    };
   }, [on, load]);
-
-  const copy = (text: string, key: string) => {
-    navigator.clipboard.writeText(text).catch(() => { });
-    setCopiedKey(key);
-    setTimeout(() => setCopiedKey((current) => (current === key ? null : current)), 1500);
-  };
 
   const openSelector = (selector: string) => {
     navigate(`/selector-health/detail?value=${encodeURIComponent(selector)}&windowDays=${windowDays}`);
   };
+
+  // Mark Fixed / Mute action dispatcher. Uses window.confirm() as a
+  // placeholder until a proper confirm modal lands; the API request itself
+  // is idempotent on the backend so a misclick recovers via the inverse
+  // action (Mute -> Unmute, Mark Fixed -> Cancel verification).
+  const handleAction = useCallback(
+    async (
+      kind: 'mark_fixed' | 'mute' | 'unmute' | 'cancel_verification',
+      h: IHealingHotspot,
+    ) => {
+      const confirmMsg = (() => {
+        switch (kind) {
+          case 'mark_fixed':
+            return `Mark this selector as fixed? Xenon will move it to Pending Verification and watch for 3 clean CI builds.`;
+          case 'mute':
+            return `Mute this selector? It will be hidden from Hotspots, the CI gate, and digests until you unmute.`;
+          case 'unmute':
+            return `Unmute this selector?`;
+          case 'cancel_verification':
+            return `Cancel verification? The selector returns to Active and the clean-build counter resets.`;
+        }
+      })();
+      if (!window.confirm(confirmMsg)) return;
+      try {
+        await XenonApiService.postSelectorStateAction({
+          original_strategy: h.originalStrategy ?? '',
+          original_selector: h.originalSelector,
+          action: kind,
+        });
+        const successMsg = (() => {
+          switch (kind) {
+            case 'mark_fixed':
+              return 'Marked fixed. Watching for clean builds.';
+            case 'mute':
+              return 'Muted.';
+            case 'unmute':
+              return 'Unmuted.';
+            case 'cancel_verification':
+              return 'Verification cancelled.';
+          }
+        })();
+        toast(successMsg, 'success');
+        load();
+      } catch (err: any) {
+        const detail = err?.currentStatus
+          ? ` (currently ${err.currentStatus})`
+          : '';
+        toast(`${err?.message ?? 'Action failed'}${detail}`, 'error');
+      }
+    },
+    [load, toast],
+  );
 
   const sendDigest = async () => {
     setSendingDigest(true);
@@ -314,8 +394,22 @@ const SelectorHealthPage: React.FC = () => {
       />
 
       <div className="sh-content">
+        <RegressionBanner />
         <KpiStrip summary={summary} loading={loading && !loaded} />
 
+        <TabNav current={tab} counts={{ [tab]: hotspots.length }} />
+
+        {tab === 'muted' ? (
+          <MutedList
+            onUnmute={async (strategy, selector) => {
+              await handleAction('unmute', {
+                originalStrategy: strategy,
+                originalSelector: selector,
+              } as IHealingHotspot);
+            }}
+          />
+        ) : (
+        <>
         <div className="sh-filter-bar">
           <div className="sh-filter-bar__group">
             <span className="sh-filter-bar__label">Window</span>
@@ -374,12 +468,44 @@ const SelectorHealthPage: React.FC = () => {
           <div className="sh-empty sh-empty--clean">
             <HeartPulse size={28} />
             <div>
-              <div className="sh-empty__title">Locator hygiene is clean</div>
+              <div className="sh-empty__title">
+                {tab === 'pending'
+                  ? 'Nothing pending'
+                  : tab === 'resolved'
+                    ? 'Nothing resolved yet'
+                    : 'Locator hygiene is clean'}
+              </div>
               <div className="sh-empty__subtitle">
-                No selectors required healing in the last {windowDays} days
-                {filtersActive ? ' for the active filters' : ''}.
+                {tab === 'pending'
+                  ? 'When you mark a selector fixed, it shows here while we watch for 3 clean CI builds.'
+                  : tab === 'resolved'
+                    ? 'Fix a hot selector and Xenon will track its verification here.'
+                    : `No selectors required healing in the last ${windowDays} days${filtersActive ? ' for the active filters' : ''}.`}
               </div>
             </div>
+          </div>
+        ) : tab === 'pending' ? (
+          <div className="sh-pending-list">
+            {hotspots.map((h) => (
+              <PendingRow
+                key={`${h.originalStrategy ?? ''} ${h.originalSelector}`}
+                hotspot={h}
+                onCancel={(hot) => handleAction('cancel_verification', hot)}
+                onMute={(hot) => handleAction('mute', hot)}
+                onOpen={openSelector}
+              />
+            ))}
+          </div>
+        ) : tab === 'resolved' ? (
+          <div className="sh-pending-list">
+            {hotspots.map((h) => (
+              <ResolvedRow
+                key={`${h.originalStrategy ?? ''} ${h.originalSelector}`}
+                hotspot={h}
+                onMute={(hot) => handleAction('mute', hot)}
+                onOpen={openSelector}
+              />
+            ))}
           </div>
         ) : (
           <div className="sh-table">
@@ -417,6 +543,9 @@ const SelectorHealthPage: React.FC = () => {
                 >
                   <div className="sh-td sh-td--rank">{i + 1}</div>
                   <div className="sh-td sh-td--selector">
+                    <span className="sh-strategy-badge">
+                      {formatStrategy(h.originalStrategy)}
+                    </span>
                     <code title={h.originalSelector}>{h.originalSelector}</code>
                   </div>
                   <div className="sh-td sh-td--count">
@@ -443,6 +572,14 @@ const SelectorHealthPage: React.FC = () => {
                             {sharePct}%
                           </span>
                         )}
+                        {h.suggestedStrategy && (
+                          <span
+                            className="sh-strategy-badge sh-strategy-badge--rewrite"
+                            title="Strategy of the suggested rewrite"
+                          >
+                            {formatStrategy(h.suggestedStrategy)}
+                          </span>
+                        )}
                         <code className="sh-rewrite-value" title={h.suggestedRewrite}>
                           {h.suggestedRewrite}
                         </code>
@@ -453,18 +590,46 @@ const SelectorHealthPage: React.FC = () => {
                   </div>
                   <div className="sh-td sh-td--actions">
                     {h.suggestedRewrite && (
-                      <button
-                        type="button"
-                        className={`sh-icon-btn ${copiedKey === copyKey ? 'copied' : ''}`}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          copy(h.suggestedRewrite!, copyKey);
+                      <CopyButton
+                        hotspot={h}
+                        onCopied={(lang) => {
+                          setCopiedKey(copyKey);
+                          setTimeout(
+                            () =>
+                              setCopiedKey((current) =>
+                                current === copyKey ? null : current,
+                              ),
+                            1500,
+                          );
+                          toast(`Copied as ${lang}`, 'success');
                         }}
-                        aria-label="Copy suggested rewrite"
-                        title={copiedKey === copyKey ? 'Copied' : 'Copy rewrite'}
-                      >
-                        {copiedKey === copyKey ? <Check size={11} /> : <Copy size={11} />}
-                      </button>
+                      />
+                    )}
+                    {tab === 'active' && (
+                      <>
+                        <button
+                          type="button"
+                          className="sh-action-btn sh-action-btn--primary"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleAction('mark_fixed', h);
+                          }}
+                          title="Move to Pending Verification"
+                        >
+                          Mark Fixed
+                        </button>
+                        <button
+                          type="button"
+                          className="sh-action-btn sh-action-btn--ghost"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleAction('mute', h);
+                          }}
+                          title="Hide from Hotspots, CI gate, and digests"
+                        >
+                          Mute
+                        </button>
+                      </>
                     )}
                     <button
                       type="button"
@@ -483,6 +648,8 @@ const SelectorHealthPage: React.FC = () => {
               );
             })}
           </div>
+        )}
+        </>
         )}
       </div>
     </div>

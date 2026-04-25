@@ -88,6 +88,11 @@ export type ApiKey = $Result.DefaultSelection<Prisma.$ApiKeyPayload>
  * 
  */
 export type Team = $Result.DefaultSelection<Prisma.$TeamPayload>
+/**
+ * Model SelectorState
+ * 
+ */
+export type SelectorState = $Result.DefaultSelection<Prisma.$SelectorStatePayload>
 
 /**
  * ##  Prisma Client ʲˢ
@@ -361,6 +366,16 @@ export class PrismaClient<
     * ```
     */
   get team(): Prisma.TeamDelegate<ExtArgs>;
+
+  /**
+   * `prisma.selectorState`: Exposes CRUD operations for the **SelectorState** model.
+    * Example usage:
+    * ```ts
+    * // Fetch zero or more SelectorStates
+    * const selectorStates = await prisma.selectorState.findMany()
+    * ```
+    */
+  get selectorState(): Prisma.SelectorStateDelegate<ExtArgs>;
 }
 
 export namespace Prisma {
@@ -816,7 +831,8 @@ export namespace Prisma {
     LocatorEtalon: 'LocatorEtalon',
     PortLease: 'PortLease',
     ApiKey: 'ApiKey',
-    Team: 'Team'
+    Team: 'Team',
+    SelectorState: 'SelectorState'
   };
 
   export type ModelName = (typeof ModelName)[keyof typeof ModelName]
@@ -832,7 +848,7 @@ export namespace Prisma {
 
   export type TypeMap<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs, ClientOptions = {}> = {
     meta: {
-      modelProps: "build" | "session" | "sessionLog" | "log" | "profiling" | "app" | "device" | "pendingSession" | "cLIArgs" | "webhookConfig" | "webConfig" | "locatorEtalon" | "portLease" | "apiKey" | "team"
+      modelProps: "build" | "session" | "sessionLog" | "log" | "profiling" | "app" | "device" | "pendingSession" | "cLIArgs" | "webhookConfig" | "webConfig" | "locatorEtalon" | "portLease" | "apiKey" | "team" | "selectorState"
       txIsolationLevel: Prisma.TransactionIsolationLevel
     }
     model: {
@@ -1883,6 +1899,76 @@ export namespace Prisma {
           count: {
             args: Prisma.TeamCountArgs<ExtArgs>
             result: $Utils.Optional<TeamCountAggregateOutputType> | number
+          }
+        }
+      }
+      SelectorState: {
+        payload: Prisma.$SelectorStatePayload<ExtArgs>
+        fields: Prisma.SelectorStateFieldRefs
+        operations: {
+          findUnique: {
+            args: Prisma.SelectorStateFindUniqueArgs<ExtArgs>
+            result: $Utils.PayloadToResult<Prisma.$SelectorStatePayload> | null
+          }
+          findUniqueOrThrow: {
+            args: Prisma.SelectorStateFindUniqueOrThrowArgs<ExtArgs>
+            result: $Utils.PayloadToResult<Prisma.$SelectorStatePayload>
+          }
+          findFirst: {
+            args: Prisma.SelectorStateFindFirstArgs<ExtArgs>
+            result: $Utils.PayloadToResult<Prisma.$SelectorStatePayload> | null
+          }
+          findFirstOrThrow: {
+            args: Prisma.SelectorStateFindFirstOrThrowArgs<ExtArgs>
+            result: $Utils.PayloadToResult<Prisma.$SelectorStatePayload>
+          }
+          findMany: {
+            args: Prisma.SelectorStateFindManyArgs<ExtArgs>
+            result: $Utils.PayloadToResult<Prisma.$SelectorStatePayload>[]
+          }
+          create: {
+            args: Prisma.SelectorStateCreateArgs<ExtArgs>
+            result: $Utils.PayloadToResult<Prisma.$SelectorStatePayload>
+          }
+          createMany: {
+            args: Prisma.SelectorStateCreateManyArgs<ExtArgs>
+            result: BatchPayload
+          }
+          createManyAndReturn: {
+            args: Prisma.SelectorStateCreateManyAndReturnArgs<ExtArgs>
+            result: $Utils.PayloadToResult<Prisma.$SelectorStatePayload>[]
+          }
+          delete: {
+            args: Prisma.SelectorStateDeleteArgs<ExtArgs>
+            result: $Utils.PayloadToResult<Prisma.$SelectorStatePayload>
+          }
+          update: {
+            args: Prisma.SelectorStateUpdateArgs<ExtArgs>
+            result: $Utils.PayloadToResult<Prisma.$SelectorStatePayload>
+          }
+          deleteMany: {
+            args: Prisma.SelectorStateDeleteManyArgs<ExtArgs>
+            result: BatchPayload
+          }
+          updateMany: {
+            args: Prisma.SelectorStateUpdateManyArgs<ExtArgs>
+            result: BatchPayload
+          }
+          upsert: {
+            args: Prisma.SelectorStateUpsertArgs<ExtArgs>
+            result: $Utils.PayloadToResult<Prisma.$SelectorStatePayload>
+          }
+          aggregate: {
+            args: Prisma.SelectorStateAggregateArgs<ExtArgs>
+            result: $Utils.Optional<AggregateSelectorState>
+          }
+          groupBy: {
+            args: Prisma.SelectorStateGroupByArgs<ExtArgs>
+            result: $Utils.Optional<SelectorStateGroupByOutputType>[]
+          }
+          count: {
+            args: Prisma.SelectorStateCountArgs<ExtArgs>
+            result: $Utils.Optional<SelectorStateCountAggregateOutputType> | number
           }
         }
       }
@@ -4494,6 +4580,8 @@ export namespace Prisma {
     healed_selector: string | null
     healing_confidence: number | null
     healing_tier: string | null
+    original_strategy: string | null
+    healed_strategy: string | null
     createdAt: Date | null
     updatedAt: Date | null
     duration: number | null
@@ -4519,6 +4607,8 @@ export namespace Prisma {
     healed_selector: string | null
     healing_confidence: number | null
     healing_tier: string | null
+    original_strategy: string | null
+    healed_strategy: string | null
     createdAt: Date | null
     updatedAt: Date | null
     duration: number | null
@@ -4544,6 +4634,8 @@ export namespace Prisma {
     healed_selector: number
     healing_confidence: number
     healing_tier: number
+    original_strategy: number
+    healed_strategy: number
     createdAt: number
     updatedAt: number
     duration: number
@@ -4581,6 +4673,8 @@ export namespace Prisma {
     healed_selector?: true
     healing_confidence?: true
     healing_tier?: true
+    original_strategy?: true
+    healed_strategy?: true
     createdAt?: true
     updatedAt?: true
     duration?: true
@@ -4606,6 +4700,8 @@ export namespace Prisma {
     healed_selector?: true
     healing_confidence?: true
     healing_tier?: true
+    original_strategy?: true
+    healed_strategy?: true
     createdAt?: true
     updatedAt?: true
     duration?: true
@@ -4631,6 +4727,8 @@ export namespace Prisma {
     healed_selector?: true
     healing_confidence?: true
     healing_tier?: true
+    original_strategy?: true
+    healed_strategy?: true
     createdAt?: true
     updatedAt?: true
     duration?: true
@@ -4743,6 +4841,8 @@ export namespace Prisma {
     healed_selector: string | null
     healing_confidence: number | null
     healing_tier: string | null
+    original_strategy: string | null
+    healed_strategy: string | null
     createdAt: Date
     updatedAt: Date
     duration: number | null
@@ -4787,6 +4887,8 @@ export namespace Prisma {
     healed_selector?: boolean
     healing_confidence?: boolean
     healing_tier?: boolean
+    original_strategy?: boolean
+    healed_strategy?: boolean
     createdAt?: boolean
     updatedAt?: boolean
     duration?: boolean
@@ -4813,6 +4915,8 @@ export namespace Prisma {
     healed_selector?: boolean
     healing_confidence?: boolean
     healing_tier?: boolean
+    original_strategy?: boolean
+    healed_strategy?: boolean
     createdAt?: boolean
     updatedAt?: boolean
     duration?: boolean
@@ -4839,6 +4943,8 @@ export namespace Prisma {
     healed_selector?: boolean
     healing_confidence?: boolean
     healing_tier?: boolean
+    original_strategy?: boolean
+    healed_strategy?: boolean
     createdAt?: boolean
     updatedAt?: boolean
     duration?: boolean
@@ -4876,6 +4982,8 @@ export namespace Prisma {
       healed_selector: string | null
       healing_confidence: number | null
       healing_tier: string | null
+      original_strategy: string | null
+      healed_strategy: string | null
       createdAt: Date
       updatedAt: Date
       duration: number | null
@@ -5292,6 +5400,8 @@ export namespace Prisma {
     readonly healed_selector: FieldRef<"SessionLog", 'String'>
     readonly healing_confidence: FieldRef<"SessionLog", 'Float'>
     readonly healing_tier: FieldRef<"SessionLog", 'String'>
+    readonly original_strategy: FieldRef<"SessionLog", 'String'>
+    readonly healed_strategy: FieldRef<"SessionLog", 'String'>
     readonly createdAt: FieldRef<"SessionLog", 'DateTime'>
     readonly updatedAt: FieldRef<"SessionLog", 'DateTime'>
     readonly duration: FieldRef<"SessionLog", 'Int'>
@@ -17610,6 +17720,1028 @@ export namespace Prisma {
 
 
   /**
+   * Model SelectorState
+   */
+
+  export type AggregateSelectorState = {
+    _count: SelectorStateCountAggregateOutputType | null
+    _avg: SelectorStateAvgAggregateOutputType | null
+    _sum: SelectorStateSumAggregateOutputType | null
+    _min: SelectorStateMinAggregateOutputType | null
+    _max: SelectorStateMaxAggregateOutputType | null
+  }
+
+  export type SelectorStateAvgAggregateOutputType = {
+    regression_count: number | null
+    clean_builds_count: number | null
+  }
+
+  export type SelectorStateSumAggregateOutputType = {
+    regression_count: number | null
+    clean_builds_count: number | null
+  }
+
+  export type SelectorStateMinAggregateOutputType = {
+    id: string | null
+    original_strategy: string | null
+    original_selector: string | null
+    status: string | null
+    fixed_at: Date | null
+    fixed_by_api_key: string | null
+    resolved_at: Date | null
+    muted_at: Date | null
+    muted_by_api_key: string | null
+    regression_count: number | null
+    clean_builds_count: number | null
+    last_event_at: Date | null
+    createdAt: Date | null
+    updatedAt: Date | null
+  }
+
+  export type SelectorStateMaxAggregateOutputType = {
+    id: string | null
+    original_strategy: string | null
+    original_selector: string | null
+    status: string | null
+    fixed_at: Date | null
+    fixed_by_api_key: string | null
+    resolved_at: Date | null
+    muted_at: Date | null
+    muted_by_api_key: string | null
+    regression_count: number | null
+    clean_builds_count: number | null
+    last_event_at: Date | null
+    createdAt: Date | null
+    updatedAt: Date | null
+  }
+
+  export type SelectorStateCountAggregateOutputType = {
+    id: number
+    original_strategy: number
+    original_selector: number
+    status: number
+    fixed_at: number
+    fixed_by_api_key: number
+    resolved_at: number
+    muted_at: number
+    muted_by_api_key: number
+    regression_count: number
+    clean_builds_count: number
+    last_event_at: number
+    createdAt: number
+    updatedAt: number
+    _all: number
+  }
+
+
+  export type SelectorStateAvgAggregateInputType = {
+    regression_count?: true
+    clean_builds_count?: true
+  }
+
+  export type SelectorStateSumAggregateInputType = {
+    regression_count?: true
+    clean_builds_count?: true
+  }
+
+  export type SelectorStateMinAggregateInputType = {
+    id?: true
+    original_strategy?: true
+    original_selector?: true
+    status?: true
+    fixed_at?: true
+    fixed_by_api_key?: true
+    resolved_at?: true
+    muted_at?: true
+    muted_by_api_key?: true
+    regression_count?: true
+    clean_builds_count?: true
+    last_event_at?: true
+    createdAt?: true
+    updatedAt?: true
+  }
+
+  export type SelectorStateMaxAggregateInputType = {
+    id?: true
+    original_strategy?: true
+    original_selector?: true
+    status?: true
+    fixed_at?: true
+    fixed_by_api_key?: true
+    resolved_at?: true
+    muted_at?: true
+    muted_by_api_key?: true
+    regression_count?: true
+    clean_builds_count?: true
+    last_event_at?: true
+    createdAt?: true
+    updatedAt?: true
+  }
+
+  export type SelectorStateCountAggregateInputType = {
+    id?: true
+    original_strategy?: true
+    original_selector?: true
+    status?: true
+    fixed_at?: true
+    fixed_by_api_key?: true
+    resolved_at?: true
+    muted_at?: true
+    muted_by_api_key?: true
+    regression_count?: true
+    clean_builds_count?: true
+    last_event_at?: true
+    createdAt?: true
+    updatedAt?: true
+    _all?: true
+  }
+
+  export type SelectorStateAggregateArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Filter which SelectorState to aggregate.
+     */
+    where?: SelectorStateWhereInput
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/sorting Sorting Docs}
+     * 
+     * Determine the order of SelectorStates to fetch.
+     */
+    orderBy?: SelectorStateOrderByWithRelationInput | SelectorStateOrderByWithRelationInput[]
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination#cursor-based-pagination Cursor Docs}
+     * 
+     * Sets the start position
+     */
+    cursor?: SelectorStateWhereUniqueInput
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination Pagination Docs}
+     * 
+     * Take `±n` SelectorStates from the position of the cursor.
+     */
+    take?: number
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination Pagination Docs}
+     * 
+     * Skip the first `n` SelectorStates.
+     */
+    skip?: number
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/aggregations Aggregation Docs}
+     * 
+     * Count returned SelectorStates
+    **/
+    _count?: true | SelectorStateCountAggregateInputType
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/aggregations Aggregation Docs}
+     * 
+     * Select which fields to average
+    **/
+    _avg?: SelectorStateAvgAggregateInputType
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/aggregations Aggregation Docs}
+     * 
+     * Select which fields to sum
+    **/
+    _sum?: SelectorStateSumAggregateInputType
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/aggregations Aggregation Docs}
+     * 
+     * Select which fields to find the minimum value
+    **/
+    _min?: SelectorStateMinAggregateInputType
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/aggregations Aggregation Docs}
+     * 
+     * Select which fields to find the maximum value
+    **/
+    _max?: SelectorStateMaxAggregateInputType
+  }
+
+  export type GetSelectorStateAggregateType<T extends SelectorStateAggregateArgs> = {
+        [P in keyof T & keyof AggregateSelectorState]: P extends '_count' | 'count'
+      ? T[P] extends true
+        ? number
+        : GetScalarType<T[P], AggregateSelectorState[P]>
+      : GetScalarType<T[P], AggregateSelectorState[P]>
+  }
+
+
+
+
+  export type SelectorStateGroupByArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    where?: SelectorStateWhereInput
+    orderBy?: SelectorStateOrderByWithAggregationInput | SelectorStateOrderByWithAggregationInput[]
+    by: SelectorStateScalarFieldEnum[] | SelectorStateScalarFieldEnum
+    having?: SelectorStateScalarWhereWithAggregatesInput
+    take?: number
+    skip?: number
+    _count?: SelectorStateCountAggregateInputType | true
+    _avg?: SelectorStateAvgAggregateInputType
+    _sum?: SelectorStateSumAggregateInputType
+    _min?: SelectorStateMinAggregateInputType
+    _max?: SelectorStateMaxAggregateInputType
+  }
+
+  export type SelectorStateGroupByOutputType = {
+    id: string
+    original_strategy: string
+    original_selector: string
+    status: string
+    fixed_at: Date | null
+    fixed_by_api_key: string | null
+    resolved_at: Date | null
+    muted_at: Date | null
+    muted_by_api_key: string | null
+    regression_count: number
+    clean_builds_count: number
+    last_event_at: Date
+    createdAt: Date
+    updatedAt: Date
+    _count: SelectorStateCountAggregateOutputType | null
+    _avg: SelectorStateAvgAggregateOutputType | null
+    _sum: SelectorStateSumAggregateOutputType | null
+    _min: SelectorStateMinAggregateOutputType | null
+    _max: SelectorStateMaxAggregateOutputType | null
+  }
+
+  type GetSelectorStateGroupByPayload<T extends SelectorStateGroupByArgs> = Prisma.PrismaPromise<
+    Array<
+      PickEnumerable<SelectorStateGroupByOutputType, T['by']> &
+        {
+          [P in ((keyof T) & (keyof SelectorStateGroupByOutputType))]: P extends '_count'
+            ? T[P] extends boolean
+              ? number
+              : GetScalarType<T[P], SelectorStateGroupByOutputType[P]>
+            : GetScalarType<T[P], SelectorStateGroupByOutputType[P]>
+        }
+      >
+    >
+
+
+  export type SelectorStateSelect<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = $Extensions.GetSelect<{
+    id?: boolean
+    original_strategy?: boolean
+    original_selector?: boolean
+    status?: boolean
+    fixed_at?: boolean
+    fixed_by_api_key?: boolean
+    resolved_at?: boolean
+    muted_at?: boolean
+    muted_by_api_key?: boolean
+    regression_count?: boolean
+    clean_builds_count?: boolean
+    last_event_at?: boolean
+    createdAt?: boolean
+    updatedAt?: boolean
+  }, ExtArgs["result"]["selectorState"]>
+
+  export type SelectorStateSelectCreateManyAndReturn<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = $Extensions.GetSelect<{
+    id?: boolean
+    original_strategy?: boolean
+    original_selector?: boolean
+    status?: boolean
+    fixed_at?: boolean
+    fixed_by_api_key?: boolean
+    resolved_at?: boolean
+    muted_at?: boolean
+    muted_by_api_key?: boolean
+    regression_count?: boolean
+    clean_builds_count?: boolean
+    last_event_at?: boolean
+    createdAt?: boolean
+    updatedAt?: boolean
+  }, ExtArgs["result"]["selectorState"]>
+
+  export type SelectorStateSelectScalar = {
+    id?: boolean
+    original_strategy?: boolean
+    original_selector?: boolean
+    status?: boolean
+    fixed_at?: boolean
+    fixed_by_api_key?: boolean
+    resolved_at?: boolean
+    muted_at?: boolean
+    muted_by_api_key?: boolean
+    regression_count?: boolean
+    clean_builds_count?: boolean
+    last_event_at?: boolean
+    createdAt?: boolean
+    updatedAt?: boolean
+  }
+
+
+  export type $SelectorStatePayload<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    name: "SelectorState"
+    objects: {}
+    scalars: $Extensions.GetPayloadResult<{
+      id: string
+      original_strategy: string
+      original_selector: string
+      status: string
+      fixed_at: Date | null
+      fixed_by_api_key: string | null
+      resolved_at: Date | null
+      muted_at: Date | null
+      muted_by_api_key: string | null
+      regression_count: number
+      clean_builds_count: number
+      last_event_at: Date
+      createdAt: Date
+      updatedAt: Date
+    }, ExtArgs["result"]["selectorState"]>
+    composites: {}
+  }
+
+  type SelectorStateGetPayload<S extends boolean | null | undefined | SelectorStateDefaultArgs> = $Result.GetResult<Prisma.$SelectorStatePayload, S>
+
+  type SelectorStateCountArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = 
+    Omit<SelectorStateFindManyArgs, 'select' | 'include' | 'distinct'> & {
+      select?: SelectorStateCountAggregateInputType | true
+    }
+
+  export interface SelectorStateDelegate<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> {
+    [K: symbol]: { types: Prisma.TypeMap<ExtArgs>['model']['SelectorState'], meta: { name: 'SelectorState' } }
+    /**
+     * Find zero or one SelectorState that matches the filter.
+     * @param {SelectorStateFindUniqueArgs} args - Arguments to find a SelectorState
+     * @example
+     * // Get one SelectorState
+     * const selectorState = await prisma.selectorState.findUnique({
+     *   where: {
+     *     // ... provide filter here
+     *   }
+     * })
+     */
+    findUnique<T extends SelectorStateFindUniqueArgs>(args: SelectSubset<T, SelectorStateFindUniqueArgs<ExtArgs>>): Prisma__SelectorStateClient<$Result.GetResult<Prisma.$SelectorStatePayload<ExtArgs>, T, "findUnique"> | null, null, ExtArgs>
+
+    /**
+     * Find one SelectorState that matches the filter or throw an error with `error.code='P2025'` 
+     * if no matches were found.
+     * @param {SelectorStateFindUniqueOrThrowArgs} args - Arguments to find a SelectorState
+     * @example
+     * // Get one SelectorState
+     * const selectorState = await prisma.selectorState.findUniqueOrThrow({
+     *   where: {
+     *     // ... provide filter here
+     *   }
+     * })
+     */
+    findUniqueOrThrow<T extends SelectorStateFindUniqueOrThrowArgs>(args: SelectSubset<T, SelectorStateFindUniqueOrThrowArgs<ExtArgs>>): Prisma__SelectorStateClient<$Result.GetResult<Prisma.$SelectorStatePayload<ExtArgs>, T, "findUniqueOrThrow">, never, ExtArgs>
+
+    /**
+     * Find the first SelectorState that matches the filter.
+     * Note, that providing `undefined` is treated as the value not being there.
+     * Read more here: https://pris.ly/d/null-undefined
+     * @param {SelectorStateFindFirstArgs} args - Arguments to find a SelectorState
+     * @example
+     * // Get one SelectorState
+     * const selectorState = await prisma.selectorState.findFirst({
+     *   where: {
+     *     // ... provide filter here
+     *   }
+     * })
+     */
+    findFirst<T extends SelectorStateFindFirstArgs>(args?: SelectSubset<T, SelectorStateFindFirstArgs<ExtArgs>>): Prisma__SelectorStateClient<$Result.GetResult<Prisma.$SelectorStatePayload<ExtArgs>, T, "findFirst"> | null, null, ExtArgs>
+
+    /**
+     * Find the first SelectorState that matches the filter or
+     * throw `PrismaKnownClientError` with `P2025` code if no matches were found.
+     * Note, that providing `undefined` is treated as the value not being there.
+     * Read more here: https://pris.ly/d/null-undefined
+     * @param {SelectorStateFindFirstOrThrowArgs} args - Arguments to find a SelectorState
+     * @example
+     * // Get one SelectorState
+     * const selectorState = await prisma.selectorState.findFirstOrThrow({
+     *   where: {
+     *     // ... provide filter here
+     *   }
+     * })
+     */
+    findFirstOrThrow<T extends SelectorStateFindFirstOrThrowArgs>(args?: SelectSubset<T, SelectorStateFindFirstOrThrowArgs<ExtArgs>>): Prisma__SelectorStateClient<$Result.GetResult<Prisma.$SelectorStatePayload<ExtArgs>, T, "findFirstOrThrow">, never, ExtArgs>
+
+    /**
+     * Find zero or more SelectorStates that matches the filter.
+     * Note, that providing `undefined` is treated as the value not being there.
+     * Read more here: https://pris.ly/d/null-undefined
+     * @param {SelectorStateFindManyArgs} args - Arguments to filter and select certain fields only.
+     * @example
+     * // Get all SelectorStates
+     * const selectorStates = await prisma.selectorState.findMany()
+     * 
+     * // Get first 10 SelectorStates
+     * const selectorStates = await prisma.selectorState.findMany({ take: 10 })
+     * 
+     * // Only select the `id`
+     * const selectorStateWithIdOnly = await prisma.selectorState.findMany({ select: { id: true } })
+     * 
+     */
+    findMany<T extends SelectorStateFindManyArgs>(args?: SelectSubset<T, SelectorStateFindManyArgs<ExtArgs>>): Prisma.PrismaPromise<$Result.GetResult<Prisma.$SelectorStatePayload<ExtArgs>, T, "findMany">>
+
+    /**
+     * Create a SelectorState.
+     * @param {SelectorStateCreateArgs} args - Arguments to create a SelectorState.
+     * @example
+     * // Create one SelectorState
+     * const SelectorState = await prisma.selectorState.create({
+     *   data: {
+     *     // ... data to create a SelectorState
+     *   }
+     * })
+     * 
+     */
+    create<T extends SelectorStateCreateArgs>(args: SelectSubset<T, SelectorStateCreateArgs<ExtArgs>>): Prisma__SelectorStateClient<$Result.GetResult<Prisma.$SelectorStatePayload<ExtArgs>, T, "create">, never, ExtArgs>
+
+    /**
+     * Create many SelectorStates.
+     * @param {SelectorStateCreateManyArgs} args - Arguments to create many SelectorStates.
+     * @example
+     * // Create many SelectorStates
+     * const selectorState = await prisma.selectorState.createMany({
+     *   data: [
+     *     // ... provide data here
+     *   ]
+     * })
+     *     
+     */
+    createMany<T extends SelectorStateCreateManyArgs>(args?: SelectSubset<T, SelectorStateCreateManyArgs<ExtArgs>>): Prisma.PrismaPromise<BatchPayload>
+
+    /**
+     * Create many SelectorStates and returns the data saved in the database.
+     * @param {SelectorStateCreateManyAndReturnArgs} args - Arguments to create many SelectorStates.
+     * @example
+     * // Create many SelectorStates
+     * const selectorState = await prisma.selectorState.createManyAndReturn({
+     *   data: [
+     *     // ... provide data here
+     *   ]
+     * })
+     * 
+     * // Create many SelectorStates and only return the `id`
+     * const selectorStateWithIdOnly = await prisma.selectorState.createManyAndReturn({ 
+     *   select: { id: true },
+     *   data: [
+     *     // ... provide data here
+     *   ]
+     * })
+     * Note, that providing `undefined` is treated as the value not being there.
+     * Read more here: https://pris.ly/d/null-undefined
+     * 
+     */
+    createManyAndReturn<T extends SelectorStateCreateManyAndReturnArgs>(args?: SelectSubset<T, SelectorStateCreateManyAndReturnArgs<ExtArgs>>): Prisma.PrismaPromise<$Result.GetResult<Prisma.$SelectorStatePayload<ExtArgs>, T, "createManyAndReturn">>
+
+    /**
+     * Delete a SelectorState.
+     * @param {SelectorStateDeleteArgs} args - Arguments to delete one SelectorState.
+     * @example
+     * // Delete one SelectorState
+     * const SelectorState = await prisma.selectorState.delete({
+     *   where: {
+     *     // ... filter to delete one SelectorState
+     *   }
+     * })
+     * 
+     */
+    delete<T extends SelectorStateDeleteArgs>(args: SelectSubset<T, SelectorStateDeleteArgs<ExtArgs>>): Prisma__SelectorStateClient<$Result.GetResult<Prisma.$SelectorStatePayload<ExtArgs>, T, "delete">, never, ExtArgs>
+
+    /**
+     * Update one SelectorState.
+     * @param {SelectorStateUpdateArgs} args - Arguments to update one SelectorState.
+     * @example
+     * // Update one SelectorState
+     * const selectorState = await prisma.selectorState.update({
+     *   where: {
+     *     // ... provide filter here
+     *   },
+     *   data: {
+     *     // ... provide data here
+     *   }
+     * })
+     * 
+     */
+    update<T extends SelectorStateUpdateArgs>(args: SelectSubset<T, SelectorStateUpdateArgs<ExtArgs>>): Prisma__SelectorStateClient<$Result.GetResult<Prisma.$SelectorStatePayload<ExtArgs>, T, "update">, never, ExtArgs>
+
+    /**
+     * Delete zero or more SelectorStates.
+     * @param {SelectorStateDeleteManyArgs} args - Arguments to filter SelectorStates to delete.
+     * @example
+     * // Delete a few SelectorStates
+     * const { count } = await prisma.selectorState.deleteMany({
+     *   where: {
+     *     // ... provide filter here
+     *   }
+     * })
+     * 
+     */
+    deleteMany<T extends SelectorStateDeleteManyArgs>(args?: SelectSubset<T, SelectorStateDeleteManyArgs<ExtArgs>>): Prisma.PrismaPromise<BatchPayload>
+
+    /**
+     * Update zero or more SelectorStates.
+     * Note, that providing `undefined` is treated as the value not being there.
+     * Read more here: https://pris.ly/d/null-undefined
+     * @param {SelectorStateUpdateManyArgs} args - Arguments to update one or more rows.
+     * @example
+     * // Update many SelectorStates
+     * const selectorState = await prisma.selectorState.updateMany({
+     *   where: {
+     *     // ... provide filter here
+     *   },
+     *   data: {
+     *     // ... provide data here
+     *   }
+     * })
+     * 
+     */
+    updateMany<T extends SelectorStateUpdateManyArgs>(args: SelectSubset<T, SelectorStateUpdateManyArgs<ExtArgs>>): Prisma.PrismaPromise<BatchPayload>
+
+    /**
+     * Create or update one SelectorState.
+     * @param {SelectorStateUpsertArgs} args - Arguments to update or create a SelectorState.
+     * @example
+     * // Update or create a SelectorState
+     * const selectorState = await prisma.selectorState.upsert({
+     *   create: {
+     *     // ... data to create a SelectorState
+     *   },
+     *   update: {
+     *     // ... in case it already exists, update
+     *   },
+     *   where: {
+     *     // ... the filter for the SelectorState we want to update
+     *   }
+     * })
+     */
+    upsert<T extends SelectorStateUpsertArgs>(args: SelectSubset<T, SelectorStateUpsertArgs<ExtArgs>>): Prisma__SelectorStateClient<$Result.GetResult<Prisma.$SelectorStatePayload<ExtArgs>, T, "upsert">, never, ExtArgs>
+
+
+    /**
+     * Count the number of SelectorStates.
+     * Note, that providing `undefined` is treated as the value not being there.
+     * Read more here: https://pris.ly/d/null-undefined
+     * @param {SelectorStateCountArgs} args - Arguments to filter SelectorStates to count.
+     * @example
+     * // Count the number of SelectorStates
+     * const count = await prisma.selectorState.count({
+     *   where: {
+     *     // ... the filter for the SelectorStates we want to count
+     *   }
+     * })
+    **/
+    count<T extends SelectorStateCountArgs>(
+      args?: Subset<T, SelectorStateCountArgs>,
+    ): Prisma.PrismaPromise<
+      T extends $Utils.Record<'select', any>
+        ? T['select'] extends true
+          ? number
+          : GetScalarType<T['select'], SelectorStateCountAggregateOutputType>
+        : number
+    >
+
+    /**
+     * Allows you to perform aggregations operations on a SelectorState.
+     * Note, that providing `undefined` is treated as the value not being there.
+     * Read more here: https://pris.ly/d/null-undefined
+     * @param {SelectorStateAggregateArgs} args - Select which aggregations you would like to apply and on what fields.
+     * @example
+     * // Ordered by age ascending
+     * // Where email contains prisma.io
+     * // Limited to the 10 users
+     * const aggregations = await prisma.user.aggregate({
+     *   _avg: {
+     *     age: true,
+     *   },
+     *   where: {
+     *     email: {
+     *       contains: "prisma.io",
+     *     },
+     *   },
+     *   orderBy: {
+     *     age: "asc",
+     *   },
+     *   take: 10,
+     * })
+    **/
+    aggregate<T extends SelectorStateAggregateArgs>(args: Subset<T, SelectorStateAggregateArgs>): Prisma.PrismaPromise<GetSelectorStateAggregateType<T>>
+
+    /**
+     * Group by SelectorState.
+     * Note, that providing `undefined` is treated as the value not being there.
+     * Read more here: https://pris.ly/d/null-undefined
+     * @param {SelectorStateGroupByArgs} args - Group by arguments.
+     * @example
+     * // Group by city, order by createdAt, get count
+     * const result = await prisma.user.groupBy({
+     *   by: ['city', 'createdAt'],
+     *   orderBy: {
+     *     createdAt: true
+     *   },
+     *   _count: {
+     *     _all: true
+     *   },
+     * })
+     * 
+    **/
+    groupBy<
+      T extends SelectorStateGroupByArgs,
+      HasSelectOrTake extends Or<
+        Extends<'skip', Keys<T>>,
+        Extends<'take', Keys<T>>
+      >,
+      OrderByArg extends True extends HasSelectOrTake
+        ? { orderBy: SelectorStateGroupByArgs['orderBy'] }
+        : { orderBy?: SelectorStateGroupByArgs['orderBy'] },
+      OrderFields extends ExcludeUnderscoreKeys<Keys<MaybeTupleToUnion<T['orderBy']>>>,
+      ByFields extends MaybeTupleToUnion<T['by']>,
+      ByValid extends Has<ByFields, OrderFields>,
+      HavingFields extends GetHavingFields<T['having']>,
+      HavingValid extends Has<ByFields, HavingFields>,
+      ByEmpty extends T['by'] extends never[] ? True : False,
+      InputErrors extends ByEmpty extends True
+      ? `Error: "by" must not be empty.`
+      : HavingValid extends False
+      ? {
+          [P in HavingFields]: P extends ByFields
+            ? never
+            : P extends string
+            ? `Error: Field "${P}" used in "having" needs to be provided in "by".`
+            : [
+                Error,
+                'Field ',
+                P,
+                ` in "having" needs to be provided in "by"`,
+              ]
+        }[HavingFields]
+      : 'take' extends Keys<T>
+      ? 'orderBy' extends Keys<T>
+        ? ByValid extends True
+          ? {}
+          : {
+              [P in OrderFields]: P extends ByFields
+                ? never
+                : `Error: Field "${P}" in "orderBy" needs to be provided in "by"`
+            }[OrderFields]
+        : 'Error: If you provide "take", you also need to provide "orderBy"'
+      : 'skip' extends Keys<T>
+      ? 'orderBy' extends Keys<T>
+        ? ByValid extends True
+          ? {}
+          : {
+              [P in OrderFields]: P extends ByFields
+                ? never
+                : `Error: Field "${P}" in "orderBy" needs to be provided in "by"`
+            }[OrderFields]
+        : 'Error: If you provide "skip", you also need to provide "orderBy"'
+      : ByValid extends True
+      ? {}
+      : {
+          [P in OrderFields]: P extends ByFields
+            ? never
+            : `Error: Field "${P}" in "orderBy" needs to be provided in "by"`
+        }[OrderFields]
+    >(args: SubsetIntersection<T, SelectorStateGroupByArgs, OrderByArg> & InputErrors): {} extends InputErrors ? GetSelectorStateGroupByPayload<T> : Prisma.PrismaPromise<InputErrors>
+  /**
+   * Fields of the SelectorState model
+   */
+  readonly fields: SelectorStateFieldRefs;
+  }
+
+  /**
+   * The delegate class that acts as a "Promise-like" for SelectorState.
+   * Why is this prefixed with `Prisma__`?
+   * Because we want to prevent naming conflicts as mentioned in
+   * https://github.com/prisma/prisma-client-js/issues/707
+   */
+  export interface Prisma__SelectorStateClient<T, Null = never, ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> extends Prisma.PrismaPromise<T> {
+    readonly [Symbol.toStringTag]: "PrismaPromise"
+    /**
+     * Attaches callbacks for the resolution and/or rejection of the Promise.
+     * @param onfulfilled The callback to execute when the Promise is resolved.
+     * @param onrejected The callback to execute when the Promise is rejected.
+     * @returns A Promise for the completion of which ever callback is executed.
+     */
+    then<TResult1 = T, TResult2 = never>(onfulfilled?: ((value: T) => TResult1 | PromiseLike<TResult1>) | undefined | null, onrejected?: ((reason: any) => TResult2 | PromiseLike<TResult2>) | undefined | null): $Utils.JsPromise<TResult1 | TResult2>
+    /**
+     * Attaches a callback for only the rejection of the Promise.
+     * @param onrejected The callback to execute when the Promise is rejected.
+     * @returns A Promise for the completion of the callback.
+     */
+    catch<TResult = never>(onrejected?: ((reason: any) => TResult | PromiseLike<TResult>) | undefined | null): $Utils.JsPromise<T | TResult>
+    /**
+     * Attaches a callback that is invoked when the Promise is settled (fulfilled or rejected). The
+     * resolved value cannot be modified from the callback.
+     * @param onfinally The callback to execute when the Promise is settled (fulfilled or rejected).
+     * @returns A Promise for the completion of the callback.
+     */
+    finally(onfinally?: (() => void) | undefined | null): $Utils.JsPromise<T>
+  }
+
+
+
+
+  /**
+   * Fields of the SelectorState model
+   */ 
+  interface SelectorStateFieldRefs {
+    readonly id: FieldRef<"SelectorState", 'String'>
+    readonly original_strategy: FieldRef<"SelectorState", 'String'>
+    readonly original_selector: FieldRef<"SelectorState", 'String'>
+    readonly status: FieldRef<"SelectorState", 'String'>
+    readonly fixed_at: FieldRef<"SelectorState", 'DateTime'>
+    readonly fixed_by_api_key: FieldRef<"SelectorState", 'String'>
+    readonly resolved_at: FieldRef<"SelectorState", 'DateTime'>
+    readonly muted_at: FieldRef<"SelectorState", 'DateTime'>
+    readonly muted_by_api_key: FieldRef<"SelectorState", 'String'>
+    readonly regression_count: FieldRef<"SelectorState", 'Int'>
+    readonly clean_builds_count: FieldRef<"SelectorState", 'Int'>
+    readonly last_event_at: FieldRef<"SelectorState", 'DateTime'>
+    readonly createdAt: FieldRef<"SelectorState", 'DateTime'>
+    readonly updatedAt: FieldRef<"SelectorState", 'DateTime'>
+  }
+    
+
+  // Custom InputTypes
+  /**
+   * SelectorState findUnique
+   */
+  export type SelectorStateFindUniqueArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the SelectorState
+     */
+    select?: SelectorStateSelect<ExtArgs> | null
+    /**
+     * Filter, which SelectorState to fetch.
+     */
+    where: SelectorStateWhereUniqueInput
+  }
+
+  /**
+   * SelectorState findUniqueOrThrow
+   */
+  export type SelectorStateFindUniqueOrThrowArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the SelectorState
+     */
+    select?: SelectorStateSelect<ExtArgs> | null
+    /**
+     * Filter, which SelectorState to fetch.
+     */
+    where: SelectorStateWhereUniqueInput
+  }
+
+  /**
+   * SelectorState findFirst
+   */
+  export type SelectorStateFindFirstArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the SelectorState
+     */
+    select?: SelectorStateSelect<ExtArgs> | null
+    /**
+     * Filter, which SelectorState to fetch.
+     */
+    where?: SelectorStateWhereInput
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/sorting Sorting Docs}
+     * 
+     * Determine the order of SelectorStates to fetch.
+     */
+    orderBy?: SelectorStateOrderByWithRelationInput | SelectorStateOrderByWithRelationInput[]
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination#cursor-based-pagination Cursor Docs}
+     * 
+     * Sets the position for searching for SelectorStates.
+     */
+    cursor?: SelectorStateWhereUniqueInput
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination Pagination Docs}
+     * 
+     * Take `±n` SelectorStates from the position of the cursor.
+     */
+    take?: number
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination Pagination Docs}
+     * 
+     * Skip the first `n` SelectorStates.
+     */
+    skip?: number
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/distinct Distinct Docs}
+     * 
+     * Filter by unique combinations of SelectorStates.
+     */
+    distinct?: SelectorStateScalarFieldEnum | SelectorStateScalarFieldEnum[]
+  }
+
+  /**
+   * SelectorState findFirstOrThrow
+   */
+  export type SelectorStateFindFirstOrThrowArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the SelectorState
+     */
+    select?: SelectorStateSelect<ExtArgs> | null
+    /**
+     * Filter, which SelectorState to fetch.
+     */
+    where?: SelectorStateWhereInput
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/sorting Sorting Docs}
+     * 
+     * Determine the order of SelectorStates to fetch.
+     */
+    orderBy?: SelectorStateOrderByWithRelationInput | SelectorStateOrderByWithRelationInput[]
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination#cursor-based-pagination Cursor Docs}
+     * 
+     * Sets the position for searching for SelectorStates.
+     */
+    cursor?: SelectorStateWhereUniqueInput
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination Pagination Docs}
+     * 
+     * Take `±n` SelectorStates from the position of the cursor.
+     */
+    take?: number
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination Pagination Docs}
+     * 
+     * Skip the first `n` SelectorStates.
+     */
+    skip?: number
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/distinct Distinct Docs}
+     * 
+     * Filter by unique combinations of SelectorStates.
+     */
+    distinct?: SelectorStateScalarFieldEnum | SelectorStateScalarFieldEnum[]
+  }
+
+  /**
+   * SelectorState findMany
+   */
+  export type SelectorStateFindManyArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the SelectorState
+     */
+    select?: SelectorStateSelect<ExtArgs> | null
+    /**
+     * Filter, which SelectorStates to fetch.
+     */
+    where?: SelectorStateWhereInput
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/sorting Sorting Docs}
+     * 
+     * Determine the order of SelectorStates to fetch.
+     */
+    orderBy?: SelectorStateOrderByWithRelationInput | SelectorStateOrderByWithRelationInput[]
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination#cursor-based-pagination Cursor Docs}
+     * 
+     * Sets the position for listing SelectorStates.
+     */
+    cursor?: SelectorStateWhereUniqueInput
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination Pagination Docs}
+     * 
+     * Take `±n` SelectorStates from the position of the cursor.
+     */
+    take?: number
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination Pagination Docs}
+     * 
+     * Skip the first `n` SelectorStates.
+     */
+    skip?: number
+    distinct?: SelectorStateScalarFieldEnum | SelectorStateScalarFieldEnum[]
+  }
+
+  /**
+   * SelectorState create
+   */
+  export type SelectorStateCreateArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the SelectorState
+     */
+    select?: SelectorStateSelect<ExtArgs> | null
+    /**
+     * The data needed to create a SelectorState.
+     */
+    data: XOR<SelectorStateCreateInput, SelectorStateUncheckedCreateInput>
+  }
+
+  /**
+   * SelectorState createMany
+   */
+  export type SelectorStateCreateManyArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * The data used to create many SelectorStates.
+     */
+    data: SelectorStateCreateManyInput | SelectorStateCreateManyInput[]
+  }
+
+  /**
+   * SelectorState createManyAndReturn
+   */
+  export type SelectorStateCreateManyAndReturnArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the SelectorState
+     */
+    select?: SelectorStateSelectCreateManyAndReturn<ExtArgs> | null
+    /**
+     * The data used to create many SelectorStates.
+     */
+    data: SelectorStateCreateManyInput | SelectorStateCreateManyInput[]
+  }
+
+  /**
+   * SelectorState update
+   */
+  export type SelectorStateUpdateArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the SelectorState
+     */
+    select?: SelectorStateSelect<ExtArgs> | null
+    /**
+     * The data needed to update a SelectorState.
+     */
+    data: XOR<SelectorStateUpdateInput, SelectorStateUncheckedUpdateInput>
+    /**
+     * Choose, which SelectorState to update.
+     */
+    where: SelectorStateWhereUniqueInput
+  }
+
+  /**
+   * SelectorState updateMany
+   */
+  export type SelectorStateUpdateManyArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * The data used to update SelectorStates.
+     */
+    data: XOR<SelectorStateUpdateManyMutationInput, SelectorStateUncheckedUpdateManyInput>
+    /**
+     * Filter which SelectorStates to update
+     */
+    where?: SelectorStateWhereInput
+  }
+
+  /**
+   * SelectorState upsert
+   */
+  export type SelectorStateUpsertArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the SelectorState
+     */
+    select?: SelectorStateSelect<ExtArgs> | null
+    /**
+     * The filter to search for the SelectorState to update in case it exists.
+     */
+    where: SelectorStateWhereUniqueInput
+    /**
+     * In case the SelectorState found by the `where` argument doesn't exist, create a new SelectorState with this data.
+     */
+    create: XOR<SelectorStateCreateInput, SelectorStateUncheckedCreateInput>
+    /**
+     * In case the SelectorState was found with the provided `where` argument, update it with this data.
+     */
+    update: XOR<SelectorStateUpdateInput, SelectorStateUncheckedUpdateInput>
+  }
+
+  /**
+   * SelectorState delete
+   */
+  export type SelectorStateDeleteArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the SelectorState
+     */
+    select?: SelectorStateSelect<ExtArgs> | null
+    /**
+     * Filter which SelectorState to delete.
+     */
+    where: SelectorStateWhereUniqueInput
+  }
+
+  /**
+   * SelectorState deleteMany
+   */
+  export type SelectorStateDeleteManyArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Filter which SelectorStates to delete
+     */
+    where?: SelectorStateWhereInput
+  }
+
+  /**
+   * SelectorState without action
+   */
+  export type SelectorStateDefaultArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the SelectorState
+     */
+    select?: SelectorStateSelect<ExtArgs> | null
+  }
+
+
+  /**
    * Enums
    */
 
@@ -17684,6 +18816,8 @@ export namespace Prisma {
     healed_selector: 'healed_selector',
     healing_confidence: 'healing_confidence',
     healing_tier: 'healing_tier',
+    original_strategy: 'original_strategy',
+    healed_strategy: 'healed_strategy',
     createdAt: 'createdAt',
     updatedAt: 'updatedAt',
     duration: 'duration',
@@ -17892,6 +19026,26 @@ export namespace Prisma {
   };
 
   export type TeamScalarFieldEnum = (typeof TeamScalarFieldEnum)[keyof typeof TeamScalarFieldEnum]
+
+
+  export const SelectorStateScalarFieldEnum: {
+    id: 'id',
+    original_strategy: 'original_strategy',
+    original_selector: 'original_selector',
+    status: 'status',
+    fixed_at: 'fixed_at',
+    fixed_by_api_key: 'fixed_by_api_key',
+    resolved_at: 'resolved_at',
+    muted_at: 'muted_at',
+    muted_by_api_key: 'muted_by_api_key',
+    regression_count: 'regression_count',
+    clean_builds_count: 'clean_builds_count',
+    last_event_at: 'last_event_at',
+    createdAt: 'createdAt',
+    updatedAt: 'updatedAt'
+  };
+
+  export type SelectorStateScalarFieldEnum = (typeof SelectorStateScalarFieldEnum)[keyof typeof SelectorStateScalarFieldEnum]
 
 
   export const SortOrder: {
@@ -18215,6 +19369,8 @@ export namespace Prisma {
     healed_selector?: StringNullableFilter<"SessionLog"> | string | null
     healing_confidence?: FloatNullableFilter<"SessionLog"> | number | null
     healing_tier?: StringNullableFilter<"SessionLog"> | string | null
+    original_strategy?: StringNullableFilter<"SessionLog"> | string | null
+    healed_strategy?: StringNullableFilter<"SessionLog"> | string | null
     createdAt?: DateTimeFilter<"SessionLog"> | Date | string
     updatedAt?: DateTimeFilter<"SessionLog"> | Date | string
     duration?: IntNullableFilter<"SessionLog"> | number | null
@@ -18241,6 +19397,8 @@ export namespace Prisma {
     healed_selector?: SortOrderInput | SortOrder
     healing_confidence?: SortOrderInput | SortOrder
     healing_tier?: SortOrderInput | SortOrder
+    original_strategy?: SortOrderInput | SortOrder
+    healed_strategy?: SortOrderInput | SortOrder
     createdAt?: SortOrder
     updatedAt?: SortOrder
     duration?: SortOrderInput | SortOrder
@@ -18270,6 +19428,8 @@ export namespace Prisma {
     healed_selector?: StringNullableFilter<"SessionLog"> | string | null
     healing_confidence?: FloatNullableFilter<"SessionLog"> | number | null
     healing_tier?: StringNullableFilter<"SessionLog"> | string | null
+    original_strategy?: StringNullableFilter<"SessionLog"> | string | null
+    healed_strategy?: StringNullableFilter<"SessionLog"> | string | null
     createdAt?: DateTimeFilter<"SessionLog"> | Date | string
     updatedAt?: DateTimeFilter<"SessionLog"> | Date | string
     duration?: IntNullableFilter<"SessionLog"> | number | null
@@ -18296,6 +19456,8 @@ export namespace Prisma {
     healed_selector?: SortOrderInput | SortOrder
     healing_confidence?: SortOrderInput | SortOrder
     healing_tier?: SortOrderInput | SortOrder
+    original_strategy?: SortOrderInput | SortOrder
+    healed_strategy?: SortOrderInput | SortOrder
     createdAt?: SortOrder
     updatedAt?: SortOrder
     duration?: SortOrderInput | SortOrder
@@ -18329,6 +19491,8 @@ export namespace Prisma {
     healed_selector?: StringNullableWithAggregatesFilter<"SessionLog"> | string | null
     healing_confidence?: FloatNullableWithAggregatesFilter<"SessionLog"> | number | null
     healing_tier?: StringNullableWithAggregatesFilter<"SessionLog"> | string | null
+    original_strategy?: StringNullableWithAggregatesFilter<"SessionLog"> | string | null
+    healed_strategy?: StringNullableWithAggregatesFilter<"SessionLog"> | string | null
     createdAt?: DateTimeWithAggregatesFilter<"SessionLog"> | Date | string
     updatedAt?: DateTimeWithAggregatesFilter<"SessionLog"> | Date | string
     duration?: IntNullableWithAggregatesFilter<"SessionLog"> | number | null
@@ -19333,6 +20497,106 @@ export namespace Prisma {
     createdAt?: DateTimeWithAggregatesFilter<"Team"> | Date | string
   }
 
+  export type SelectorStateWhereInput = {
+    AND?: SelectorStateWhereInput | SelectorStateWhereInput[]
+    OR?: SelectorStateWhereInput[]
+    NOT?: SelectorStateWhereInput | SelectorStateWhereInput[]
+    id?: StringFilter<"SelectorState"> | string
+    original_strategy?: StringFilter<"SelectorState"> | string
+    original_selector?: StringFilter<"SelectorState"> | string
+    status?: StringFilter<"SelectorState"> | string
+    fixed_at?: DateTimeNullableFilter<"SelectorState"> | Date | string | null
+    fixed_by_api_key?: StringNullableFilter<"SelectorState"> | string | null
+    resolved_at?: DateTimeNullableFilter<"SelectorState"> | Date | string | null
+    muted_at?: DateTimeNullableFilter<"SelectorState"> | Date | string | null
+    muted_by_api_key?: StringNullableFilter<"SelectorState"> | string | null
+    regression_count?: IntFilter<"SelectorState"> | number
+    clean_builds_count?: IntFilter<"SelectorState"> | number
+    last_event_at?: DateTimeFilter<"SelectorState"> | Date | string
+    createdAt?: DateTimeFilter<"SelectorState"> | Date | string
+    updatedAt?: DateTimeFilter<"SelectorState"> | Date | string
+  }
+
+  export type SelectorStateOrderByWithRelationInput = {
+    id?: SortOrder
+    original_strategy?: SortOrder
+    original_selector?: SortOrder
+    status?: SortOrder
+    fixed_at?: SortOrderInput | SortOrder
+    fixed_by_api_key?: SortOrderInput | SortOrder
+    resolved_at?: SortOrderInput | SortOrder
+    muted_at?: SortOrderInput | SortOrder
+    muted_by_api_key?: SortOrderInput | SortOrder
+    regression_count?: SortOrder
+    clean_builds_count?: SortOrder
+    last_event_at?: SortOrder
+    createdAt?: SortOrder
+    updatedAt?: SortOrder
+  }
+
+  export type SelectorStateWhereUniqueInput = Prisma.AtLeast<{
+    id?: string
+    original_strategy_original_selector?: SelectorStateOriginal_strategyOriginal_selectorCompoundUniqueInput
+    AND?: SelectorStateWhereInput | SelectorStateWhereInput[]
+    OR?: SelectorStateWhereInput[]
+    NOT?: SelectorStateWhereInput | SelectorStateWhereInput[]
+    original_strategy?: StringFilter<"SelectorState"> | string
+    original_selector?: StringFilter<"SelectorState"> | string
+    status?: StringFilter<"SelectorState"> | string
+    fixed_at?: DateTimeNullableFilter<"SelectorState"> | Date | string | null
+    fixed_by_api_key?: StringNullableFilter<"SelectorState"> | string | null
+    resolved_at?: DateTimeNullableFilter<"SelectorState"> | Date | string | null
+    muted_at?: DateTimeNullableFilter<"SelectorState"> | Date | string | null
+    muted_by_api_key?: StringNullableFilter<"SelectorState"> | string | null
+    regression_count?: IntFilter<"SelectorState"> | number
+    clean_builds_count?: IntFilter<"SelectorState"> | number
+    last_event_at?: DateTimeFilter<"SelectorState"> | Date | string
+    createdAt?: DateTimeFilter<"SelectorState"> | Date | string
+    updatedAt?: DateTimeFilter<"SelectorState"> | Date | string
+  }, "id" | "original_strategy_original_selector">
+
+  export type SelectorStateOrderByWithAggregationInput = {
+    id?: SortOrder
+    original_strategy?: SortOrder
+    original_selector?: SortOrder
+    status?: SortOrder
+    fixed_at?: SortOrderInput | SortOrder
+    fixed_by_api_key?: SortOrderInput | SortOrder
+    resolved_at?: SortOrderInput | SortOrder
+    muted_at?: SortOrderInput | SortOrder
+    muted_by_api_key?: SortOrderInput | SortOrder
+    regression_count?: SortOrder
+    clean_builds_count?: SortOrder
+    last_event_at?: SortOrder
+    createdAt?: SortOrder
+    updatedAt?: SortOrder
+    _count?: SelectorStateCountOrderByAggregateInput
+    _avg?: SelectorStateAvgOrderByAggregateInput
+    _max?: SelectorStateMaxOrderByAggregateInput
+    _min?: SelectorStateMinOrderByAggregateInput
+    _sum?: SelectorStateSumOrderByAggregateInput
+  }
+
+  export type SelectorStateScalarWhereWithAggregatesInput = {
+    AND?: SelectorStateScalarWhereWithAggregatesInput | SelectorStateScalarWhereWithAggregatesInput[]
+    OR?: SelectorStateScalarWhereWithAggregatesInput[]
+    NOT?: SelectorStateScalarWhereWithAggregatesInput | SelectorStateScalarWhereWithAggregatesInput[]
+    id?: StringWithAggregatesFilter<"SelectorState"> | string
+    original_strategy?: StringWithAggregatesFilter<"SelectorState"> | string
+    original_selector?: StringWithAggregatesFilter<"SelectorState"> | string
+    status?: StringWithAggregatesFilter<"SelectorState"> | string
+    fixed_at?: DateTimeNullableWithAggregatesFilter<"SelectorState"> | Date | string | null
+    fixed_by_api_key?: StringNullableWithAggregatesFilter<"SelectorState"> | string | null
+    resolved_at?: DateTimeNullableWithAggregatesFilter<"SelectorState"> | Date | string | null
+    muted_at?: DateTimeNullableWithAggregatesFilter<"SelectorState"> | Date | string | null
+    muted_by_api_key?: StringNullableWithAggregatesFilter<"SelectorState"> | string | null
+    regression_count?: IntWithAggregatesFilter<"SelectorState"> | number
+    clean_builds_count?: IntWithAggregatesFilter<"SelectorState"> | number
+    last_event_at?: DateTimeWithAggregatesFilter<"SelectorState"> | Date | string
+    createdAt?: DateTimeWithAggregatesFilter<"SelectorState"> | Date | string
+    updatedAt?: DateTimeWithAggregatesFilter<"SelectorState"> | Date | string
+  }
+
   export type BuildCreateInput = {
     id?: string
     name?: string | null
@@ -19645,6 +20909,8 @@ export namespace Prisma {
     healed_selector?: string | null
     healing_confidence?: number | null
     healing_tier?: string | null
+    original_strategy?: string | null
+    healed_strategy?: string | null
     createdAt?: Date | string
     updatedAt?: Date | string
     duration?: number | null
@@ -19671,6 +20937,8 @@ export namespace Prisma {
     healed_selector?: string | null
     healing_confidence?: number | null
     healing_tier?: string | null
+    original_strategy?: string | null
+    healed_strategy?: string | null
     createdAt?: Date | string
     updatedAt?: Date | string
     duration?: number | null
@@ -19695,6 +20963,8 @@ export namespace Prisma {
     healed_selector?: NullableStringFieldUpdateOperationsInput | string | null
     healing_confidence?: NullableFloatFieldUpdateOperationsInput | number | null
     healing_tier?: NullableStringFieldUpdateOperationsInput | string | null
+    original_strategy?: NullableStringFieldUpdateOperationsInput | string | null
+    healed_strategy?: NullableStringFieldUpdateOperationsInput | string | null
     createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
     updatedAt?: DateTimeFieldUpdateOperationsInput | Date | string
     duration?: NullableIntFieldUpdateOperationsInput | number | null
@@ -19721,6 +20991,8 @@ export namespace Prisma {
     healed_selector?: NullableStringFieldUpdateOperationsInput | string | null
     healing_confidence?: NullableFloatFieldUpdateOperationsInput | number | null
     healing_tier?: NullableStringFieldUpdateOperationsInput | string | null
+    original_strategy?: NullableStringFieldUpdateOperationsInput | string | null
+    healed_strategy?: NullableStringFieldUpdateOperationsInput | string | null
     createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
     updatedAt?: DateTimeFieldUpdateOperationsInput | Date | string
     duration?: NullableIntFieldUpdateOperationsInput | number | null
@@ -19746,6 +21018,8 @@ export namespace Prisma {
     healed_selector?: string | null
     healing_confidence?: number | null
     healing_tier?: string | null
+    original_strategy?: string | null
+    healed_strategy?: string | null
     createdAt?: Date | string
     updatedAt?: Date | string
     duration?: number | null
@@ -19770,6 +21044,8 @@ export namespace Prisma {
     healed_selector?: NullableStringFieldUpdateOperationsInput | string | null
     healing_confidence?: NullableFloatFieldUpdateOperationsInput | number | null
     healing_tier?: NullableStringFieldUpdateOperationsInput | string | null
+    original_strategy?: NullableStringFieldUpdateOperationsInput | string | null
+    healed_strategy?: NullableStringFieldUpdateOperationsInput | string | null
     createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
     updatedAt?: DateTimeFieldUpdateOperationsInput | Date | string
     duration?: NullableIntFieldUpdateOperationsInput | number | null
@@ -19795,6 +21071,8 @@ export namespace Prisma {
     healed_selector?: NullableStringFieldUpdateOperationsInput | string | null
     healing_confidence?: NullableFloatFieldUpdateOperationsInput | number | null
     healing_tier?: NullableStringFieldUpdateOperationsInput | string | null
+    original_strategy?: NullableStringFieldUpdateOperationsInput | string | null
+    healed_strategy?: NullableStringFieldUpdateOperationsInput | string | null
     createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
     updatedAt?: DateTimeFieldUpdateOperationsInput | Date | string
     duration?: NullableIntFieldUpdateOperationsInput | number | null
@@ -20945,6 +22223,125 @@ export namespace Prisma {
     createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
   }
 
+  export type SelectorStateCreateInput = {
+    id?: string
+    original_strategy: string
+    original_selector: string
+    status: string
+    fixed_at?: Date | string | null
+    fixed_by_api_key?: string | null
+    resolved_at?: Date | string | null
+    muted_at?: Date | string | null
+    muted_by_api_key?: string | null
+    regression_count?: number
+    clean_builds_count?: number
+    last_event_at?: Date | string
+    createdAt?: Date | string
+    updatedAt?: Date | string
+  }
+
+  export type SelectorStateUncheckedCreateInput = {
+    id?: string
+    original_strategy: string
+    original_selector: string
+    status: string
+    fixed_at?: Date | string | null
+    fixed_by_api_key?: string | null
+    resolved_at?: Date | string | null
+    muted_at?: Date | string | null
+    muted_by_api_key?: string | null
+    regression_count?: number
+    clean_builds_count?: number
+    last_event_at?: Date | string
+    createdAt?: Date | string
+    updatedAt?: Date | string
+  }
+
+  export type SelectorStateUpdateInput = {
+    id?: StringFieldUpdateOperationsInput | string
+    original_strategy?: StringFieldUpdateOperationsInput | string
+    original_selector?: StringFieldUpdateOperationsInput | string
+    status?: StringFieldUpdateOperationsInput | string
+    fixed_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    fixed_by_api_key?: NullableStringFieldUpdateOperationsInput | string | null
+    resolved_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    muted_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    muted_by_api_key?: NullableStringFieldUpdateOperationsInput | string | null
+    regression_count?: IntFieldUpdateOperationsInput | number
+    clean_builds_count?: IntFieldUpdateOperationsInput | number
+    last_event_at?: DateTimeFieldUpdateOperationsInput | Date | string
+    createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
+    updatedAt?: DateTimeFieldUpdateOperationsInput | Date | string
+  }
+
+  export type SelectorStateUncheckedUpdateInput = {
+    id?: StringFieldUpdateOperationsInput | string
+    original_strategy?: StringFieldUpdateOperationsInput | string
+    original_selector?: StringFieldUpdateOperationsInput | string
+    status?: StringFieldUpdateOperationsInput | string
+    fixed_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    fixed_by_api_key?: NullableStringFieldUpdateOperationsInput | string | null
+    resolved_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    muted_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    muted_by_api_key?: NullableStringFieldUpdateOperationsInput | string | null
+    regression_count?: IntFieldUpdateOperationsInput | number
+    clean_builds_count?: IntFieldUpdateOperationsInput | number
+    last_event_at?: DateTimeFieldUpdateOperationsInput | Date | string
+    createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
+    updatedAt?: DateTimeFieldUpdateOperationsInput | Date | string
+  }
+
+  export type SelectorStateCreateManyInput = {
+    id?: string
+    original_strategy: string
+    original_selector: string
+    status: string
+    fixed_at?: Date | string | null
+    fixed_by_api_key?: string | null
+    resolved_at?: Date | string | null
+    muted_at?: Date | string | null
+    muted_by_api_key?: string | null
+    regression_count?: number
+    clean_builds_count?: number
+    last_event_at?: Date | string
+    createdAt?: Date | string
+    updatedAt?: Date | string
+  }
+
+  export type SelectorStateUpdateManyMutationInput = {
+    id?: StringFieldUpdateOperationsInput | string
+    original_strategy?: StringFieldUpdateOperationsInput | string
+    original_selector?: StringFieldUpdateOperationsInput | string
+    status?: StringFieldUpdateOperationsInput | string
+    fixed_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    fixed_by_api_key?: NullableStringFieldUpdateOperationsInput | string | null
+    resolved_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    muted_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    muted_by_api_key?: NullableStringFieldUpdateOperationsInput | string | null
+    regression_count?: IntFieldUpdateOperationsInput | number
+    clean_builds_count?: IntFieldUpdateOperationsInput | number
+    last_event_at?: DateTimeFieldUpdateOperationsInput | Date | string
+    createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
+    updatedAt?: DateTimeFieldUpdateOperationsInput | Date | string
+  }
+
+  export type SelectorStateUncheckedUpdateManyInput = {
+    id?: StringFieldUpdateOperationsInput | string
+    original_strategy?: StringFieldUpdateOperationsInput | string
+    original_selector?: StringFieldUpdateOperationsInput | string
+    status?: StringFieldUpdateOperationsInput | string
+    fixed_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    fixed_by_api_key?: NullableStringFieldUpdateOperationsInput | string | null
+    resolved_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    muted_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    muted_by_api_key?: NullableStringFieldUpdateOperationsInput | string | null
+    regression_count?: IntFieldUpdateOperationsInput | number
+    clean_builds_count?: IntFieldUpdateOperationsInput | number
+    last_event_at?: DateTimeFieldUpdateOperationsInput | Date | string
+    createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
+    updatedAt?: DateTimeFieldUpdateOperationsInput | Date | string
+  }
+
   export type StringFilter<$PrismaModel = never> = {
     equals?: string | StringFieldRefInput<$PrismaModel>
     in?: string[]
@@ -21314,6 +22711,8 @@ export namespace Prisma {
     healed_selector?: SortOrder
     healing_confidence?: SortOrder
     healing_tier?: SortOrder
+    original_strategy?: SortOrder
+    healed_strategy?: SortOrder
     createdAt?: SortOrder
     updatedAt?: SortOrder
     duration?: SortOrder
@@ -21344,6 +22743,8 @@ export namespace Prisma {
     healed_selector?: SortOrder
     healing_confidence?: SortOrder
     healing_tier?: SortOrder
+    original_strategy?: SortOrder
+    healed_strategy?: SortOrder
     createdAt?: SortOrder
     updatedAt?: SortOrder
     duration?: SortOrder
@@ -21369,6 +22770,8 @@ export namespace Prisma {
     healed_selector?: SortOrder
     healing_confidence?: SortOrder
     healing_tier?: SortOrder
+    original_strategy?: SortOrder
+    healed_strategy?: SortOrder
     createdAt?: SortOrder
     updatedAt?: SortOrder
     duration?: SortOrder
@@ -22071,6 +23474,72 @@ export namespace Prisma {
     id?: SortOrder
     name?: SortOrder
     createdAt?: SortOrder
+  }
+
+  export type SelectorStateOriginal_strategyOriginal_selectorCompoundUniqueInput = {
+    original_strategy: string
+    original_selector: string
+  }
+
+  export type SelectorStateCountOrderByAggregateInput = {
+    id?: SortOrder
+    original_strategy?: SortOrder
+    original_selector?: SortOrder
+    status?: SortOrder
+    fixed_at?: SortOrder
+    fixed_by_api_key?: SortOrder
+    resolved_at?: SortOrder
+    muted_at?: SortOrder
+    muted_by_api_key?: SortOrder
+    regression_count?: SortOrder
+    clean_builds_count?: SortOrder
+    last_event_at?: SortOrder
+    createdAt?: SortOrder
+    updatedAt?: SortOrder
+  }
+
+  export type SelectorStateAvgOrderByAggregateInput = {
+    regression_count?: SortOrder
+    clean_builds_count?: SortOrder
+  }
+
+  export type SelectorStateMaxOrderByAggregateInput = {
+    id?: SortOrder
+    original_strategy?: SortOrder
+    original_selector?: SortOrder
+    status?: SortOrder
+    fixed_at?: SortOrder
+    fixed_by_api_key?: SortOrder
+    resolved_at?: SortOrder
+    muted_at?: SortOrder
+    muted_by_api_key?: SortOrder
+    regression_count?: SortOrder
+    clean_builds_count?: SortOrder
+    last_event_at?: SortOrder
+    createdAt?: SortOrder
+    updatedAt?: SortOrder
+  }
+
+  export type SelectorStateMinOrderByAggregateInput = {
+    id?: SortOrder
+    original_strategy?: SortOrder
+    original_selector?: SortOrder
+    status?: SortOrder
+    fixed_at?: SortOrder
+    fixed_by_api_key?: SortOrder
+    resolved_at?: SortOrder
+    muted_at?: SortOrder
+    muted_by_api_key?: SortOrder
+    regression_count?: SortOrder
+    clean_builds_count?: SortOrder
+    last_event_at?: SortOrder
+    createdAt?: SortOrder
+    updatedAt?: SortOrder
+  }
+
+  export type SelectorStateSumOrderByAggregateInput = {
+    regression_count?: SortOrder
+    clean_builds_count?: SortOrder
   }
 
   export type SessionCreateNestedManyWithoutBuildInput = {
@@ -22945,6 +24414,8 @@ export namespace Prisma {
     healed_selector?: string | null
     healing_confidence?: number | null
     healing_tier?: string | null
+    original_strategy?: string | null
+    healed_strategy?: string | null
     createdAt?: Date | string
     updatedAt?: Date | string
     duration?: number | null
@@ -22969,6 +24440,8 @@ export namespace Prisma {
     healed_selector?: string | null
     healing_confidence?: number | null
     healing_tier?: string | null
+    original_strategy?: string | null
+    healed_strategy?: string | null
     createdAt?: Date | string
     updatedAt?: Date | string
     duration?: number | null
@@ -23109,6 +24582,8 @@ export namespace Prisma {
     healed_selector?: StringNullableFilter<"SessionLog"> | string | null
     healing_confidence?: FloatNullableFilter<"SessionLog"> | number | null
     healing_tier?: StringNullableFilter<"SessionLog"> | string | null
+    original_strategy?: StringNullableFilter<"SessionLog"> | string | null
+    healed_strategy?: StringNullableFilter<"SessionLog"> | string | null
     createdAt?: DateTimeFilter<"SessionLog"> | Date | string
     updatedAt?: DateTimeFilter<"SessionLog"> | Date | string
     duration?: IntNullableFilter<"SessionLog"> | number | null
@@ -24098,6 +25573,8 @@ export namespace Prisma {
     healed_selector?: string | null
     healing_confidence?: number | null
     healing_tier?: string | null
+    original_strategy?: string | null
+    healed_strategy?: string | null
     createdAt?: Date | string
     updatedAt?: Date | string
     duration?: number | null
@@ -24187,6 +25664,8 @@ export namespace Prisma {
     healed_selector?: NullableStringFieldUpdateOperationsInput | string | null
     healing_confidence?: NullableFloatFieldUpdateOperationsInput | number | null
     healing_tier?: NullableStringFieldUpdateOperationsInput | string | null
+    original_strategy?: NullableStringFieldUpdateOperationsInput | string | null
+    healed_strategy?: NullableStringFieldUpdateOperationsInput | string | null
     createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
     updatedAt?: DateTimeFieldUpdateOperationsInput | Date | string
     duration?: NullableIntFieldUpdateOperationsInput | number | null
@@ -24211,6 +25690,8 @@ export namespace Prisma {
     healed_selector?: NullableStringFieldUpdateOperationsInput | string | null
     healing_confidence?: NullableFloatFieldUpdateOperationsInput | number | null
     healing_tier?: NullableStringFieldUpdateOperationsInput | string | null
+    original_strategy?: NullableStringFieldUpdateOperationsInput | string | null
+    healed_strategy?: NullableStringFieldUpdateOperationsInput | string | null
     createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
     updatedAt?: DateTimeFieldUpdateOperationsInput | Date | string
     duration?: NullableIntFieldUpdateOperationsInput | number | null
@@ -24235,6 +25716,8 @@ export namespace Prisma {
     healed_selector?: NullableStringFieldUpdateOperationsInput | string | null
     healing_confidence?: NullableFloatFieldUpdateOperationsInput | number | null
     healing_tier?: NullableStringFieldUpdateOperationsInput | string | null
+    original_strategy?: NullableStringFieldUpdateOperationsInput | string | null
+    healed_strategy?: NullableStringFieldUpdateOperationsInput | string | null
     createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
     updatedAt?: DateTimeFieldUpdateOperationsInput | Date | string
     duration?: NullableIntFieldUpdateOperationsInput | number | null
@@ -24579,6 +26062,10 @@ export namespace Prisma {
      * @deprecated Use TeamDefaultArgs instead
      */
     export type TeamArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = TeamDefaultArgs<ExtArgs>
+    /**
+     * @deprecated Use SelectorStateDefaultArgs instead
+     */
+    export type SelectorStateArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = SelectorStateDefaultArgs<ExtArgs>
 
   /**
    * Batch Payload for updateMany & deleteMany & createMany

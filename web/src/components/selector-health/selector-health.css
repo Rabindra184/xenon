@@ -740,3 +740,426 @@
     display: none;
   }
 }
+
+/* Tab navigation (Active / Pending / Resolved / Muted) */
+.sh-tab-nav {
+  display: flex;
+  gap: var(--space-2);
+  border-bottom: 1px solid var(--border);
+  margin: var(--space-4) 0 var(--space-5);
+}
+.sh-tab {
+  background: transparent;
+  border: 0;
+  padding: var(--space-3) var(--space-4);
+  cursor: pointer;
+  color: var(--text-muted);
+  display: inline-flex;
+  gap: var(--space-2);
+  align-items: center;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  font-size: 0.9rem;
+  transition: color 0.15s ease, border-color 0.15s ease;
+}
+.sh-tab:hover {
+  color: var(--text);
+}
+.sh-tab--active {
+  color: var(--text);
+  border-bottom-color: var(--accent, #60a5fa);
+}
+.sh-tab__icon {
+  font-size: 0.95rem;
+  line-height: 1;
+}
+.sh-tab__count {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 0 0.5rem;
+  font-size: 0.75rem;
+  min-width: 1.5rem;
+  text-align: center;
+}
+
+/* Strategy badge — shows next to the selector value and the rewrite */
+.sh-strategy-badge {
+  display: inline-flex;
+  align-items: center;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--text-dim);
+  border-radius: 4px;
+  padding: 0.05rem 0.4rem;
+  font-size: 0.7rem;
+  font-weight: 500;
+  text-transform: none;
+  margin-right: 0.4rem;
+  white-space: nowrap;
+}
+.sh-strategy-badge--rewrite {
+  color: var(--text);
+}
+
+/* Inline action buttons (Mark Fixed / Mute) on the Active tab */
+.sh-action-btn {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text-dim);
+  border-radius: 4px;
+  padding: 0.25rem 0.55rem;
+  font-size: 0.72rem;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: color 0.12s ease, border-color 0.12s ease, background 0.12s ease;
+  margin-right: 0.3rem;
+}
+.sh-action-btn:hover {
+  color: var(--text);
+  border-color: var(--text-dim);
+}
+.sh-action-btn--primary {
+  color: var(--accent, #60a5fa);
+  border-color: var(--accent, #60a5fa);
+}
+.sh-action-btn--primary:hover {
+  background: var(--accent, #60a5fa);
+  color: white;
+}
+
+/* Copy button (with stored-language hint + chevron) */
+.sh-copy-group {
+  display: inline-flex;
+  align-items: stretch;
+  margin-right: 0.3rem;
+}
+.sh-copy-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
+  margin-right: 0;
+  border-right-width: 0;
+}
+.sh-copy-btn__lang {
+  font-size: 0.68rem;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+}
+.sh-copy-btn--copied {
+  color: var(--green, #4ade80);
+  border-color: var(--green, #4ade80);
+}
+.sh-copy-chevron {
+  border-top-left-radius: 0;
+  border-bottom-left-radius: 0;
+  padding: 0.25rem 0.35rem;
+  margin-right: 0;
+}
+
+/* Copy-language modal internals (the Modal shell handles backdrop/focus) */
+.sh-copy-modal__hint {
+  color: var(--text-muted);
+  margin: 0 0 1rem;
+  font-size: 0.85rem;
+}
+.sh-copy-modal__lang-list {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 1rem;
+}
+.sh-copy-modal__lang-row {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  padding: 0.4rem 0;
+  cursor: pointer;
+  font-size: 0.9rem;
+}
+.sh-copy-modal__preview-label {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  margin-bottom: 0.3rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.sh-copy-modal__preview {
+  background: var(--bg, #0a0a0a);
+  border: 1px solid var(--border);
+  padding: 0.6rem 0.8rem;
+  border-radius: 4px;
+  font-size: 0.78rem;
+  overflow-x: auto;
+  margin: 0 0 1rem;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+.sh-copy-modal__remember {
+  display: flex;
+  gap: 0.45rem;
+  align-items: center;
+  font-size: 0.85rem;
+  color: var(--text-dim);
+  cursor: pointer;
+}
+
+/* Pending tab — verification progress */
+.sh-pending-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+.sh-table__row--pending {
+  display: block;
+  padding: var(--space-4);
+  cursor: pointer;
+}
+.sh-pending-row__head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+.sh-pending-row__icon {
+  color: var(--accent, #60a5fa);
+}
+.sh-pending-row__selector {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.sh-pending-row__meta {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  margin: 0.4rem 0 0.6rem 0;
+}
+.sh-pending-progress {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: var(--space-3);
+  margin-bottom: var(--space-3);
+}
+.sh-pending-progress__dots {
+  display: flex;
+  gap: 0.6rem;
+  margin-bottom: 0.4rem;
+}
+.sh-pending-progress__dot {
+  width: 14px;
+  height: 14px;
+  border-radius: 999px;
+  border: 2px solid var(--accent, #60a5fa);
+  background: transparent;
+}
+.sh-pending-progress__dot--filled {
+  background: var(--accent, #60a5fa);
+}
+.sh-pending-progress__legend {
+  font-size: 0.85rem;
+  color: var(--text);
+}
+.sh-pending-progress__hint {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  margin-top: 0.3rem;
+}
+.sh-pending-row__actions {
+  display: flex;
+  gap: var(--space-2);
+}
+
+/* Resolved tab — same shape as Pending, different chrome */
+.sh-table__row--resolved {
+  display: block;
+  padding: var(--space-4);
+  cursor: pointer;
+}
+.sh-resolved-row__head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+.sh-resolved-row__icon {
+  color: var(--green, #4ade80);
+}
+.sh-resolved-row__selector {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.sh-resolved-row__regression {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  background: rgba(241, 196, 15, 0.12);
+  color: rgb(241, 196, 15);
+  padding: 0.1rem 0.5rem;
+  border-radius: 999px;
+  font-size: 0.72rem;
+}
+.sh-resolved-row__meta {
+  font-size: 0.85rem;
+  color: var(--text);
+  margin: 0.4rem 0 0.2rem 0;
+}
+.sh-resolved-row__history {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  margin-bottom: var(--space-3);
+}
+.sh-resolved-row__actions {
+  display: flex;
+  gap: var(--space-2);
+}
+
+/* Muted tab — dedicated list view (different shape from hotspot rows) */
+.sh-muted-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.sh-muted-list__item {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: var(--space-3) var(--space-4);
+}
+.sh-muted-list__head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+.sh-muted-list__icon {
+  color: var(--text-muted);
+}
+.sh-muted-list__selector {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.sh-muted-list__meta {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  margin: 0.4rem 0 0.6rem 0;
+}
+.sh-muted-list__actions {
+  display: flex;
+  gap: var(--space-2);
+}
+
+/* Regression banner — top of page, auto-dismisses, aggregates within 5min */
+.sh-regression-banner {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  background: rgba(231, 76, 60, 0.08);
+  border-left: 4px solid #e74c3c;
+  border-radius: 4px;
+  margin-bottom: var(--space-4);
+  font-size: 0.88rem;
+  color: var(--text);
+}
+.sh-regression-banner__icon {
+  color: #e74c3c;
+  flex-shrink: 0;
+}
+.sh-regression-banner__action {
+  margin-left: auto;
+  background: transparent;
+  border: 1px solid #e74c3c;
+  color: #e74c3c;
+  padding: 0.2rem 0.55rem;
+  border-radius: 4px;
+  font-size: 0.76rem;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.sh-regression-banner__action:hover {
+  background: rgba(231, 76, 60, 0.15);
+}
+.sh-regression-banner__close {
+  background: transparent;
+  border: 0;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 0.15rem;
+  display: inline-flex;
+  align-items: center;
+}
+.sh-regression-banner__close:hover {
+  color: var(--text);
+}
+
+/* Detail page — strategy line + state header */
+.sh-detail-strategy-line {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-bottom: var(--space-3);
+  font-size: 0.9rem;
+}
+.sh-detail-banner {
+  background: rgba(96, 165, 250, 0.06);
+  border-left: 3px solid var(--accent, #60a5fa);
+  padding: var(--space-3) var(--space-4);
+  border-radius: 4px;
+  margin-bottom: var(--space-3);
+  font-size: 0.85rem;
+  color: var(--text-dim);
+}
+.sh-detail-state {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: var(--space-4);
+  margin-bottom: var(--space-4);
+}
+.sh-detail-state--pending {
+  border-left: 4px solid var(--accent, #60a5fa);
+}
+.sh-detail-state--resolved {
+  border-left: 4px solid var(--green, #4ade80);
+}
+.sh-detail-state--muted {
+  border-left: 4px solid var(--text-muted);
+  opacity: 0.85;
+}
+.sh-detail-state--active {
+  border-left: 4px solid #e74c3c;
+}
+.sh-detail-state__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+.sh-detail-state__badge {
+  font-size: 1rem;
+  font-weight: 500;
+}
+.sh-detail-state__actions {
+  display: flex;
+  gap: var(--space-2);
+}
+.sh-detail-state__meta {
+  margin-top: var(--space-3);
+  display: flex;
+  gap: var(--space-4);
+  flex-wrap: wrap;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}

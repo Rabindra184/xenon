@@ -1,3 +1,4 @@
+/// <reference path="../types/express.d.ts" />
 import { Request, Response, NextFunction } from 'express';
 import { Container } from 'typedi';
 import { ApiKeyService, Scope } from '../services/ApiKeyService';

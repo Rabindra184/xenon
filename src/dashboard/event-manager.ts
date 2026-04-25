@@ -29,6 +29,7 @@ import { TracingService } from '../services/TracingService';
 import { MetricsService } from '../services/MetricsService';
 import { SocketEvents } from '../enums/SocketEvents';
 import { healingTierLabel } from '../services/healing/types';
+import { SelectorStateService } from '../services/SelectorStateService';
 import { Service } from 'typedi';
 
 @Service()
@@ -366,7 +367,9 @@ export class DashboardEventManager {
     responseBody: string,
     healingInfo?: {
       originalSelector: string;
+      originalStrategy?: string;
       healedSelector: string;
+      healedStrategy?: string;
       confidence: number;
       tier?: number;
     },
@@ -403,14 +406,32 @@ export class DashboardEventManager {
           screenshot: null,
           url: request.originalUrl,
           is_healed: !!healingInfo,
-          original_selector: healingInfo?.originalSelector || null,
-          healed_selector: healingInfo?.healedSelector || null,
-          healing_confidence: healingInfo?.confidence || null,
+          original_selector: healingInfo?.originalSelector ?? null,
+          healed_selector: healingInfo?.healedSelector ?? null,
+          healing_confidence: healingInfo?.confidence ?? null,
           healing_tier: healingTierLabel(healingInfo?.tier),
+          original_strategy: healingInfo?.originalStrategy ?? null,
+          healed_strategy: healingInfo?.healedStrategy ?? null,
           span_id: spanId,
           trace_id: traceId,
           duration: duration,
         };
+
+        // Smart Passive: capture strategy + selector on every findElement,
+        // not just heals. CommandInterceptor synthesizes request.body = args
+        // (the array [strategy, value]). This gives the verification job
+        // exact evidence of "selector ran and didn't heal" per build.
+        if (
+          (commandName === 'findElement' || commandName === 'findElements') &&
+          Array.isArray(request.body)
+        ) {
+          if (logEntry.original_strategy === null) {
+            logEntry.original_strategy = (request.body as any[])[0] ?? null;
+          }
+          if (logEntry.original_selector === null) {
+            logEntry.original_selector = (request.body as any[])[1] ?? null;
+          }
+        }
 
         // Increment Healing Metrics
         if (healingInfo) {
@@ -505,6 +526,28 @@ export class DashboardEventManager {
             isSuccess: logEntry.is_success ?? null,
             createdAt: persistedLog.createdAt.toISOString(),
           });
+        }
+
+        // Regression hook — fire-and-forget. Never block heal write on state lookup.
+        // If the (original_strategy, original_selector) row is in pending/resolved,
+        // SelectorStateService.onHealRecorded will flip it back to active with
+        // regression_count++ and emit SELECTOR_REGRESSED.
+        if (
+          logEntry.is_healed &&
+          logEntry.original_strategy &&
+          logEntry.original_selector
+        ) {
+          Container.get(SelectorStateService)
+            .onHealRecorded({
+              strategy: logEntry.original_strategy,
+              selector: logEntry.original_selector,
+              sessionId: session.getId(),
+            })
+            .catch((err: any) =>
+              log.warn(
+                `[SelectorState] regression hook failed for ${logEntry.original_strategy}:${logEntry.original_selector}: ${err.message}`,
+              ),
+            );
         }
       } catch (err: any) {
         log.error(

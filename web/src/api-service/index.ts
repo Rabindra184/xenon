@@ -291,13 +291,63 @@ export default class XenonApiService {
   }
 
   public static getHealingHotspots(
-    options: { windowDays?: number; limit?: number; tier?: string; platform?: string } = {},
+    options: {
+      windowDays?: number;
+      limit?: number;
+      tier?: string;
+      platform?: string;
+      // 'active' (default) hides muted/pending/resolved selectors. 'all'
+      // returns every hotspot regardless of state — used by detail-page
+      // lookups, never by the live tab list.
+      status?: 'active' | 'pending' | 'resolved' | 'muted' | 'all';
+    } = {},
   ) {
-    const { windowDays = 30, limit = 20, tier, platform } = options;
-    let url = `/healing/hotspots?windowDays=${windowDays}&limit=${limit}&t=${Date.now()}`;
+    const { windowDays = 30, limit = 20, tier, platform, status = 'active' } = options;
+    let url = `/healing/hotspots?windowDays=${windowDays}&limit=${limit}&status=${status}&t=${Date.now()}`;
     if (tier) url += `&tier=${encodeURIComponent(tier)}`;
     if (platform) url += `&platform=${encodeURIComponent(platform)}`;
     return apiClient.makeGETRequest(url);
+  }
+
+  // Muted-selectors list — sourced directly from SelectorState (not the
+  // aggregator) so muted-but-no-recent-heal rows still surface.
+  public static getMutedSelectors(options: { limit?: number; offset?: number } = {}) {
+    const { limit = 50, offset = 0 } = options;
+    return apiClient.makeGETRequest(
+      `/healing/state/muted?limit=${limit}&offset=${offset}&t=${Date.now()}`,
+    );
+  }
+
+  // Single-tuple state lookup. Returns `{ state: ISelectorState | null }`;
+  // null is meaningful (selector is implicitly active).
+  public static getSelectorState(strategy: string, value: string) {
+    return apiClient.makeGETRequest(
+      `/healing/state/${encodeURIComponent(strategy)}/${encodeURIComponent(value)}?t=${Date.now()}`,
+    );
+  }
+
+  // Fire a selector lifecycle action. Bypasses `apiClient.makePOSTRequest`
+  // because callers need access to the response status (409 is a real
+  // outcome here — e.g. mark_fixed on a muted selector) and the body's
+  // `currentStatus` hint, both of which the helper swallows.
+  public static async postSelectorStateAction(payload: {
+    original_strategy: string;
+    original_selector: string;
+    action: 'mark_fixed' | 'mute' | 'unmute' | 'cancel_verification';
+  }) {
+    const res = await fetch('/xenon/api/healing/selector/state', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({} as any));
+      const error: any = new Error(err.error ?? `Selector state action failed (${res.status})`);
+      error.status = res.status;
+      error.currentStatus = err.currentStatus ?? null;
+      throw error;
+    }
+    return res.json();
   }
 
   public static getHealingSelectorDetail(originalSelector: string, windowDays = 30) {
