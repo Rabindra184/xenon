@@ -149,12 +149,13 @@ export class DeviceExplorer extends React.Component<IDeviceExplorerProps, IDevic
 
     return (
       <div className="device-explorer-container">
-        <PageHeader
-          icon={AndroidIcon}
-          title="Devices"
-          subtitle={`${this.state.devices.length} device${this.state.devices.length === 1 ? '' : 's'} registered across the global pool.`}
-        />
-        <div className="de2-toolbar">
+        <div className="de2-sticky-group">
+          <PageHeader
+            icon={AndroidIcon}
+            title="Devices"
+            subtitle={`${this.state.devices.length} device${this.state.devices.length === 1 ? '' : 's'} registered across the global pool.`}
+          />
+          <div className="de2-toolbar">
           <SegmentedControl
             size="sm"
             value={this.state.statusFilter}
@@ -177,6 +178,7 @@ export class DeviceExplorer extends React.Component<IDeviceExplorerProps, IDevic
           <Button variant="secondary" size="sm" onClick={() => this.fetchDevices()}>
             <RefreshCw size={12} /> Refresh
           </Button>
+          </div>
         </div>
 
         {devices.length > 0 ? (

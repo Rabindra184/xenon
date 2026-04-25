@@ -99,6 +99,48 @@
   border: 1px solid var(--border);
 }
 
+/* UDID copy chip in the top bar */
+.udid-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 4px 3px 10px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  color: var(--text-dim);
+  background: rgba(0, 0, 0, 0.4);
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  max-width: 280px;
+}
+
+.udid-chip__value {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+.udid-chip__copy {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border: none;
+  background: transparent;
+  border-radius: 4px;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+  flex-shrink: 0;
+}
+
+.udid-chip__copy:hover {
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--green);
+}
+
 .back-to-devices-btn {
   background: rgba(0, 0, 0, 0.4);
   color: var(--text-dim);
@@ -141,18 +183,14 @@
   align-items: flex-start;
 }
 
+/* Omni-Vision keeps the device preview visible; only tighten the gap so the
+   tree + details panel has room without expanding tab widths. */
+.control-view-main.omni-mode {
+  gap: 20px;
+}
+
 .control-view-main.omni-mode .device-preview-column {
-  display: none;
-}
-
-.control-view-main.omni-mode .interaction-tabs {
-  margin-bottom: var(--space-4);
-  border-radius: var(--radius-sm);
-}
-
-.control-view-main.omni-mode .device-interactions-column {
-  max-width: 100%;
-  padding: 0 0 var(--space-4) 0;
+  min-width: 320px;
 }
 
 .device-preview-column {
@@ -304,19 +342,36 @@
 }
 
 .tab-btn {
-  flex: 1;
-  padding: 8px 12px;
+  flex: 1 1 0;
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 8px 10px;
   background: transparent;
   border: none;
   font-size: 11px;
   font-weight: 800;
   color: var(--text-dim);
   text-transform: uppercase;
-  letter-spacing: 0.1em;
+  letter-spacing: 0.08em;
   border-radius: 4px;
   cursor: pointer;
   transition: all 0.2s;
   font-family: 'JetBrains Mono', monospace;
+  white-space: nowrap;
+}
+
+.tab-btn > svg {
+  flex-shrink: 0;
+  opacity: 0.7;
+  transition: opacity 0.15s;
+}
+
+.tab-btn:hover > svg,
+.tab-btn.active > svg {
+  opacity: 1;
 }
 
 .tab-btn:hover {
@@ -375,6 +430,20 @@
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.05em;
+}
+
+.action-card-hint {
+  margin: -4px 0 4px;
+  font-size: 12px;
+  color: var(--text-muted);
+  line-height: 1.5;
+}
+
+/* Normalize vertical rhythm across action cards */
+.actions-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
 }
 
 .btn-sm {
@@ -539,26 +608,32 @@
 
 .log-line {
   display: flex;
-  gap: 8px;
-  margin-bottom: 2px;
+  gap: 12px;
+  margin-bottom: 0;
+  padding: 2px 8px 2px 6px;
   white-space: pre-wrap;
   word-break: break-all;
   border-left: 2px solid transparent;
-  padding-left: 8px;
-  transition: background 0.2s ease;
+  transition: background 0.15s ease;
+}
+
+/* Subtle alternating row backgrounds aid line tracking. */
+.log-line:nth-child(odd) {
+  background: rgba(255, 255, 255, 0.012);
 }
 
 .log-line:hover {
-  background: rgba(255, 255, 255, 0.03);
+  background: rgba(255, 255, 255, 0.05);
 }
 
 .log-index {
-  color: var(--text-muted);
-  opacity: 0.3;
+  color: var(--text-dim);
+  opacity: 0.55;
   user-select: none;
-  min-width: 32px;
+  min-width: 38px;
   text-align: right;
   font-size: 11px;
+  font-variant-numeric: tabular-nums;
 }
 
 .log-content {
@@ -567,23 +642,35 @@
 
 .log-notice {
   border-left-color: #38bdf8;
-  color: #e2e8f0;
+  color: #cbd5f5;
+}
+
+.log-info,
+.log-debug {
+  border-left-color: transparent;
+  color: var(--text-muted);
+}
+
+.log-warn {
+  border-left-color: #fbbf24;
+  color: #fde68a;
+}
+
+.log-warn:nth-child(odd),
+.log-warn:nth-child(even) {
+  background: rgba(251, 191, 36, 0.04);
 }
 
 .log-error {
   border-left-color: #f43f5e;
   color: #fecdd3;
-  background: rgba(244, 63, 94, 0.05);
+  background: rgba(244, 63, 94, 0.06);
+  font-weight: 500;
 }
 
-.log-warn {
-  border-left-color: #fbbf24;
-  color: #fef3c7;
-}
-
-.log-debug {
-  border-left-color: transparent;
-  color: var(--text-muted);
+.log-error:nth-child(odd),
+.log-error:nth-child(even) {
+  background: rgba(244, 63, 94, 0.08);
 }
 
 .log-toolbar {
@@ -842,23 +929,31 @@
 }
 
 .btn-destructive {
-  background: rgba(239, 68, 68, 0.2);
-  color: #ef4444;
-  border: 1px solid rgba(239, 68, 68, 0.3);
+  background: var(--status-error-fg);
+  color: #fff;
+  border: 1px solid transparent;
   padding: 10px 20px;
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-sm);
   font-weight: 700;
-  font-size: 12px;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
   display: flex;
   align-items: center;
   gap: 8px;
-  transition: all 0.3s ease;
+  cursor: pointer;
+  transition: background 0.2s ease, transform 0.2s ease, box-shadow 0.2s ease;
 }
 
 .btn-destructive:hover:not(:disabled) {
-  background: var(--status-error-fg);
-  color: #fff;
-  box-shadow: 0 4px 15px rgba(239, 68, 68, 0.4);
+  background: #dc2626;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(239, 68, 68, 0.35);
+}
+
+.btn-destructive:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .manual-input-box {
@@ -1103,13 +1198,38 @@
 
 .empty-gallery-state {
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
-  height: 100px;
+  gap: 8px;
+  padding: 24px 12px;
   color: var(--text-muted);
   font-size: 11px;
-  font-style: italic;
-  opacity: 0.5;
+  text-align: center;
+}
+
+.empty-gallery-icon {
+  opacity: 0.4;
+}
+
+.empty-gallery-title {
+  font-weight: 700;
+  font-size: 12px;
+  color: var(--text);
+  margin: 0;
+}
+
+.empty-gallery-hint {
+  margin: 0;
+  font-size: 11px;
+  color: var(--text-muted);
+  line-height: 1.4;
+  max-width: 160px;
+}
+
+.empty-gallery-hint strong {
+  color: var(--green);
+  font-weight: 700;
 }
 
 .interactions-scroll-area.terminal-mode {
@@ -1119,6 +1239,14 @@
   flex-direction: column;
   height: 100%;
   min-height: 0;
+}
+
+/* Omni-Vision tab wrapper fills the interaction column height. */
+.omni-inspector-tab-wrapper {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
 }
 
 .interactions-scroll-area.terminal-mode .action-card.full-height {

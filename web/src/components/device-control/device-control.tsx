@@ -22,6 +22,11 @@ import {
   Download,
   Search,
   Terminal as TerminalIcon,
+  Zap,
+  ScrollText,
+  Sparkles,
+  Copy,
+  Check,
 } from 'lucide-react';
 import { v4 as uuidv4 } from 'uuid';
 import { useToast } from '../ui/toast';
@@ -67,6 +72,14 @@ export default function DeviceControl({ device, onClose }: DeviceControlProps) {
   const [logFilter, setLogFilter] = useState('');
   const [logStreamActive, setLogStreamActive] = useState(false); // true after first successful log batch
   const [logPollCount, setLogPollCount] = useState(0); // tracks how many polls have completed
+  const [streamLoaded, setStreamLoaded] = useState(false);
+  const [udidCopied, setUdidCopied] = useState(false);
+
+  const copyUdid = () => {
+    navigator.clipboard.writeText(currentDevice.udid).catch(() => { });
+    setUdidCopied(true);
+    setTimeout(() => setUdidCopied(false), 1500);
+  };
 
   // Principal Reliability: Keyboard Input Buffer
   // This prevents high-frequency keystrokes from overwhelming the iOS WDA session.
@@ -638,8 +651,17 @@ export default function DeviceControl({ device, onClose }: DeviceControlProps) {
             </span>
           )}
           <h2 className="device-name-text">{currentDevice.name}</h2>
-          <span className="code-font" style={{ opacity: 0.5 }}>
-            {currentDevice.udid}
+          <span className="udid-chip" title={currentDevice.udid}>
+            <span className="udid-chip__value">{currentDevice.udid}</span>
+            <button
+              type="button"
+              className="udid-chip__copy"
+              onClick={copyUdid}
+              aria-label="Copy UDID"
+              title={udidCopied ? 'Copied!' : 'Copy UDID'}
+            >
+              {udidCopied ? <Check size={12} /> : <Copy size={12} />}
+            </button>
           </span>
         </div>
       </header>
@@ -664,13 +686,15 @@ export default function DeviceControl({ device, onClose }: DeviceControlProps) {
               onMouseDown={onMouseDownHandler}
               onMouseUp={onMouseUpHandler}
             >
-              {streamStarting && (
+              {(streamStarting || !streamLoaded) && (
                 <div
                   className="device-stream-placeholder"
                   style={{ position: 'absolute', zIndex: 10 }}
                 >
                   <RotateCw size={40} className="animate-spin" color="var(--green)" />
-                  <p style={{ marginTop: 16 }}>ESTABLISHING TRACE...</p>
+                  <p style={{ marginTop: 16 }}>
+                    {streamStarting ? 'ESTABLISHING TRACE...' : 'Waiting for stream…'}
+                  </p>
                 </div>
               )}
               <img
@@ -682,9 +706,10 @@ export default function DeviceControl({ device, onClose }: DeviceControlProps) {
                   height: '100%',
                   objectFit: 'contain',
                 }}
+                onLoad={() => setStreamLoaded(true)}
                 onError={() => {
                   console.warn('Stream failed to load, retrying...');
-                  // Intelligent Retry: increment state to force re-render
+                  setStreamLoaded(false);
                   setTimeout(() => setStreamRetryCount((prev) => prev + 1), 2000);
                 }}
               />
@@ -724,31 +749,36 @@ export default function DeviceControl({ device, onClose }: DeviceControlProps) {
               className={`tab-btn ${activeTab === 'actions' ? 'active' : ''}`}
               onClick={() => setActiveTab('actions')}
             >
-              ACTIONS
+              <Zap size={13} />
+              <span>Actions</span>
             </button>
             <button
               className={`tab-btn ${activeTab === 'screenshot' ? 'active' : ''}`}
               onClick={() => setActiveTab('screenshot')}
             >
-              SCREENSHOT
+              <Camera size={13} />
+              <span>Screenshot</span>
             </button>
             <button
               className={`tab-btn ${activeTab === 'logs' ? 'active' : ''}`}
               onClick={() => setActiveTab('logs')}
             >
-              DEBUG LOGS
+              <ScrollText size={13} />
+              <span>Debug Logs</span>
             </button>
             <button
               className={`tab-btn ${activeTab === 'terminal' ? 'active' : ''}`}
               onClick={() => setActiveTab('terminal')}
             >
-              <TerminalIcon size={14} style={{ marginRight: 6 }} /> SHELL
+              <TerminalIcon size={13} />
+              <span>Shell</span>
             </button>
             <button
               className={`tab-btn ${activeTab === 'omni' ? 'active' : ''}`}
               onClick={() => setActiveTab('omni')}
             >
-              OMNI-VISION
+              <Sparkles size={13} />
+              <span>Omni-Vision</span>
             </button>
           </div>
 
@@ -758,58 +788,29 @@ export default function DeviceControl({ device, onClose }: DeviceControlProps) {
           >
             <div className="tab-content">
               {activeTab === 'omni' && (
-                <div
-                  className="omni-inspector-tab-wrapper animate-fade-in"
-                  style={{ height: 'calc(100vh - 266px)' }}
-                >
+                <div className="omni-inspector-tab-wrapper animate-fade-in">
                   <OmniInspector
                     sessionId={currentDevice.session_id ? String(currentDevice.session_id) : null}
                     udid={currentDevice.udid}
                     streamUrl={getStreamUrl()}
+                    embedded
                   />
                 </div>
               )}
 
               {activeTab === 'actions' && (
                 <div className="actions-grid">
-                  <div className="action-card">
-                    <h4 className="action-card-title">
-                      <Move size={18} color="var(--green)" /> Directional Gestures
-                    </h4>
-                    <div className="gestures-grid-container">
-                      <div className="gestures-dpad">
-                        <div />
-                        <button className="dpad-btn" onClick={() => quickSwipe('up')}>
-                          <ChevronUp size={24} />
-                        </button>
-                        <div />
-                        <button className="dpad-btn" onClick={() => quickSwipe('left')}>
-                          <ChevronLeft size={24} />
-                        </button>
-                        <div className="dpad-center" />
-                        <button className="dpad-btn" onClick={() => quickSwipe('right')}>
-                          <ChevronRight size={24} />
-                        </button>
-                        <div />
-                        <button className="dpad-btn" onClick={() => quickSwipe('down')}>
-                          <ChevronDown size={24} />
-                        </button>
-                        <div />
-                      </div>
-                      <p className="compact-label" style={{ opacity: 0.5 }}>
-                        Directional Glide
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="action-card">
+                  <div className="action-card full-width">
                     <h4 className="action-card-title">
                       <FileText size={18} color="var(--green)" /> Smart Input
                     </h4>
+                    <p className="action-card-hint">
+                      Relay keystrokes to the focused element on the device.
+                    </p>
                     <input
                       type="text"
                       className="type-input-field compact"
-                      placeholder="Relay keystrokes..."
+                      placeholder="Type and press Enter to send…"
                       value={textInput}
                       onChange={(e) => setTextInput(e.target.value)}
                       onKeyDown={(e) => e.key === 'Enter' && sendText()}
@@ -912,6 +913,36 @@ export default function DeviceControl({ device, onClose }: DeviceControlProps) {
                       </div>
                     </div>
                   </div>
+
+                  <div className="action-card full-width">
+                    <h4 className="action-card-title">
+                      <Move size={18} color="var(--green)" /> Directional Gestures
+                    </h4>
+                    <div className="gestures-grid-container">
+                      <div className="gestures-dpad">
+                        <div />
+                        <button className="dpad-btn" onClick={() => quickSwipe('up')}>
+                          <ChevronUp size={24} />
+                        </button>
+                        <div />
+                        <button className="dpad-btn" onClick={() => quickSwipe('left')}>
+                          <ChevronLeft size={24} />
+                        </button>
+                        <div className="dpad-center" />
+                        <button className="dpad-btn" onClick={() => quickSwipe('right')}>
+                          <ChevronRight size={24} />
+                        </button>
+                        <div />
+                        <button className="dpad-btn" onClick={() => quickSwipe('down')}>
+                          <ChevronDown size={24} />
+                        </button>
+                        <div />
+                      </div>
+                      <p className="compact-label" style={{ opacity: 0.5 }}>
+                        Quick swipe in a direction
+                      </p>
+                    </div>
+                  </div>
                 </div>
               )}
 
@@ -950,7 +981,11 @@ export default function DeviceControl({ device, onClose }: DeviceControlProps) {
                       <div className="screenshot-thumbnails-list">
                         {screenshots.length === 0 && !loading && (
                           <div className="empty-gallery-state">
-                            <p>No captures yet</p>
+                            <Camera size={20} className="empty-gallery-icon" />
+                            <p className="empty-gallery-title">No captures yet</p>
+                            <p className="empty-gallery-hint">
+                              Click <strong>New Capture</strong> above to grab a screenshot.
+                            </p>
                           </div>
                         )}
                         {screenshots.map((s, idx) => (

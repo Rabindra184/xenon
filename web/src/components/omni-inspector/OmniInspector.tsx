@@ -61,6 +61,8 @@ interface OmniInspectorProps {
   sessionId?: string | null;
   udid?: string | null;
   streamUrl?: string | null;
+  /** When true, hide the inspector's own screenshot panel — host renders the device. */
+  embedded?: boolean;
 }
 
 // =====================================================================
@@ -503,7 +505,7 @@ function smartSearch(node: InspectorNode, query: string): boolean {
 // =====================================================================
 // MAIN COMPONENT
 // =====================================================================
-const OmniInspector: React.FC<OmniInspectorProps> = ({ sessionId, udid, streamUrl }) => {
+const OmniInspector: React.FC<OmniInspectorProps> = ({ sessionId, udid, streamUrl, embedded = false }) => {
   const [loading, setLoading] = useState(true);
   const [snapshot, setSnapshot] = useState<InspectorSnapshot | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -707,6 +709,23 @@ const OmniInspector: React.FC<OmniInspectorProps> = ({ sessionId, udid, streamUr
     return count;
   };
 
+  // Roll up element counts by semantic role for the default summary view.
+  const summarizeByRole = (root: InspectorNode | undefined | null): Array<{ role: string; emoji: string; count: number }> => {
+    if (!root) return [];
+    const counts: Record<string, { emoji: string; count: number }> = {};
+    const visit = (n: InspectorNode) => {
+      const i = analyzeElement(n);
+      const key = i.role.replace(/\s*\(.*?\)\s*/, '');
+      if (!counts[key]) counts[key] = { emoji: i.emoji, count: 0 };
+      counts[key].count += 1;
+      n.children?.forEach(visit);
+    };
+    visit(root);
+    return Object.entries(counts)
+      .map(([role, v]) => ({ role, emoji: v.emoji, count: v.count }))
+      .sort((a, b) => b.count - a.count);
+  };
+
   const getElementPath = (node: InspectorNode): string[] => {
     const parts = node.xpath.split('/').filter(Boolean);
     return parts.slice(-3);
@@ -718,7 +737,16 @@ const OmniInspector: React.FC<OmniInspectorProps> = ({ sessionId, udid, streamUr
     const hasChildren = node.children?.length > 0;
     const isSelected = selectedNode?.xpath === node.xpath;
     const isHovered = hoveredNode?.xpath === node.xpath;
-    const displayName = node.name || node.type.split('.').pop() || 'Element';
+    const shortType = node.type?.split('.').pop() || 'Element';
+    // Prefer accessible label/text/name over the raw type so the tree isn't
+    // a wall of "XCUIElementTypeOther" rows. Only count it as "accessible"
+    // if it's actually different from the type itself.
+    const candidate = node.label || node.attributes?.['content-desc'] || node.attributes?.['resource-id'] || node.name;
+    const accessibleLabel =
+      typeof candidate === 'string' && candidate && candidate !== shortType && candidate !== node.type
+        ? candidate
+        : null;
+    const displayName = accessibleLabel || shortType;
 
     // Smart search: uses natural language matching
     const matchesSearch = !searchQuery || smartSearch(node, searchQuery);
@@ -761,7 +789,14 @@ const OmniInspector: React.FC<OmniInspectorProps> = ({ sessionId, udid, streamUr
             <span className="tree-toggle-spacer" />
           )}
           <Box size={11} className="tree-icon" />
-          <span className="tree-label">{displayName}</span>
+          <span className="tree-label" title={`${shortType}${accessibleLabel ? ` — ${accessibleLabel}` : ''}`}>
+            {displayName}
+          </span>
+          {accessibleLabel && (
+            <span className="tree-type-tag" title={shortType}>
+              {shortType}
+            </span>
+          )}
           {node.text && <span className="tree-text-preview">"{node.text.slice(0, 20)}"</span>}
           {hasChildren && <span className="tree-badge">{node.children.length}</span>}
         </div>
@@ -847,10 +882,13 @@ const OmniInspector: React.FC<OmniInspectorProps> = ({ sessionId, udid, streamUr
     'very-fragile': { icon: <ShieldAlert size={10} />, cls: 'very-fragile' },
   };
 
+  const roleSummary = embedded && snapshot?.hierarchy ? summarizeByRole(snapshot.hierarchy) : [];
+
   return (
-    <div className="omni-inspector-container">
+    <div className={`omni-inspector-container ${embedded ? 'omni-embedded' : ''}`}>
       <div className="omni-main-content">
-        {/* ===== Left Panel: Device Preview ===== */}
+        {/* ===== Left Panel: Device Preview (hidden in embedded mode) ===== */}
+        {!embedded && (
         <div className="omni-screenshot-panel">
           <div className="omni-screenshot-header">
             <div className="omni-header-left">
@@ -943,6 +981,9 @@ const OmniInspector: React.FC<OmniInspectorProps> = ({ sessionId, udid, streamUr
             )}
           </div>
         </div>
+        )}
+
+        {/* In embedded mode, expose a refresh button on the tree header instead. */}
 
         {/* ===== Center Panel: Source Tree ===== */}
         <div className="omni-tree-panel">
@@ -961,6 +1002,16 @@ const OmniInspector: React.FC<OmniInspectorProps> = ({ sessionId, udid, streamUr
               <button onClick={collapseAll} className="omni-action-btn" title="Collapse All">
                 <Layout size={12} />
               </button>
+              {embedded && (
+                <button
+                  onClick={loadSnapshot}
+                  className="omni-action-btn"
+                  title={loading ? 'Capturing…' : 'Refresh snapshot'}
+                  disabled={loading}
+                >
+                  <RotateCw size={12} className={loading ? 'animate-spin' : ''} />
+                </button>
+              )}
             </div>
           </div>
           <div className="omni-tree-search">
@@ -1023,10 +1074,69 @@ const OmniInspector: React.FC<OmniInspectorProps> = ({ sessionId, udid, streamUr
 
           <div className="omni-details-content">
             {!selectedNode ? (
-              <div className="omni-empty-state">
-                <Target size={32} />
-                <span>Select an element from the tree or screenshot</span>
-              </div>
+              snapshot?.hierarchy ? (
+                <div className="omni-summary-panel">
+                  <div className="omni-summary-hero">
+                    <Target size={28} />
+                    <div>
+                      <div className="omni-summary-title">No element selected</div>
+                      <div className="omni-summary-subtitle">
+                        Click any node in the tree (or use Inspect mode on the device) to drill in.
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="omni-section">
+                    <div className="omni-section-header">Snapshot Stats</div>
+                    <div className="omni-summary-stats">
+                      <div className="omni-summary-stat">
+                        <span className="omni-summary-stat__label">Elements</span>
+                        <span className="omni-summary-stat__value">{totalElements}</span>
+                      </div>
+                      <div className="omni-summary-stat">
+                        <span className="omni-summary-stat__label">Width</span>
+                        <span className="omni-summary-stat__value">
+                          {snapshot.metadata?.screenWidth ?? naturalDimensions.width ?? '—'}
+                        </span>
+                      </div>
+                      <div className="omni-summary-stat">
+                        <span className="omni-summary-stat__label">Height</span>
+                        <span className="omni-summary-stat__value">
+                          {snapshot.metadata?.screenHeight ?? naturalDimensions.height ?? '—'}
+                        </span>
+                      </div>
+                      <div className="omni-summary-stat">
+                        <span className="omni-summary-stat__label">Platform</span>
+                        <span className="omni-summary-stat__value">
+                          {snapshot.platform || '—'}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {roleSummary.length > 0 && (
+                    <div className="omni-section">
+                      <div className="omni-section-header">By Role</div>
+                      <div className="omni-summary-roles">
+                        {roleSummary.slice(0, 8).map((r) => (
+                          <div key={r.role} className="omni-summary-role">
+                            <span className="omni-summary-role__emoji">{r.emoji}</span>
+                            <span className="omni-summary-role__name">{r.role}</span>
+                            <span className="omni-summary-role__count">{r.count}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className="omni-empty-state">
+                  <Target size={32} />
+                  <span>
+                    {loading ? 'Capturing snapshot…' : 'Select an element from the tree or screenshot'}
+                  </span>
+                </div>
+              )
             ) : (
               <>
                 {/* === TAB: INFO === */}
