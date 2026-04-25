@@ -279,6 +279,11 @@ export default class XenonApiService {
     return apiClient.makePOSTRequest('/config/reset-metrics', {}, {});
   }
 
+  /* Healing Events */
+  public static getRecentHealingEvents(limit = 50) {
+    return apiClient.makeGETRequest(`/healing/events?limit=${limit}&t=${Date.now()}`);
+  }
+
   /**
    * Export a build's sessions as a downloadable file.
    * Returns a { blob, filename } pair suitable for a browser-download trigger.

@@ -78,8 +78,14 @@ const Overview: React.FC = () => {
           <KpiCard
             label="Heals today"
             value={data.healsToday === null ? EM_DASH : data.healsToday}
-            subtitle={data.healsToday === null ? 'Not yet tracked' : 'No heals needed'}
-            state="neutral"
+            subtitle={
+              data.healsToday === null
+                ? 'Loading…'
+                : data.healsToday === 0
+                ? 'No heals needed'
+                : `${data.healsToday} selector${data.healsToday === 1 ? '' : 's'} recovered`
+            }
+            state={data.healsToday && data.healsToday > 0 ? 'warn' : 'neutral'}
           />
           <KpiCard
             label="Failures (24h)"

@@ -18,6 +18,8 @@ import {
 import { SettingCard } from '../ui/SettingCard';
 import { PageHeader } from '../ui/page-header';
 import { useToast } from '../ui/toast';
+import { IHealingEvent, IHealingEventsResponse } from '../../interfaces/IHealingEvent';
+import { useSocket } from '../../hooks/useSocket';
 
 interface InfraConfig {
   healthCheckIntervalMs: number;
@@ -40,12 +42,39 @@ const PRESETS = [
   { label: 'High Performance (10m)', value: '*/10 * * * *' },
 ];
 
-// Recent healing events — sample data; wire to a real API once it lands.
-const SAMPLE_HEALING_EVENTS = [
-  { kind: 'Visual AI', message: 'Recovered missing login button locator', when: '2m ago' },
-  { kind: 'OCR', message: 'Text fallback used for navigation menu', when: '1h ago' },
-  { kind: 'Fuzzy XML', message: 'Healed dynamic ID change in form', when: '5h ago' },
-];
+const MAX_HEALING_EVENTS = 5;
+
+function formatRelative(iso: string): string {
+  const t = Date.parse(iso);
+  if (!Number.isFinite(t)) return '';
+  const diff = Math.max(0, Date.now() - t);
+  const sec = Math.floor(diff / 1000);
+  if (sec < 60) return `${sec}s ago`;
+  const min = Math.floor(sec / 60);
+  if (min < 60) return `${min}m ago`;
+  const hr = Math.floor(min / 60);
+  if (hr < 24) return `${hr}h ago`;
+  const day = Math.floor(hr / 24);
+  return `${day}d ago`;
+}
+
+function healingEventDescription(ev: IHealingEvent): string {
+  const original = ev.originalSelector?.trim();
+  const healed = ev.healedSelector?.trim();
+  if (original && healed && original !== healed) {
+    return `${original} → ${healed}`;
+  }
+  if (healed) return `Recovered locator ${healed}`;
+  if (original) return `Recovered locator ${original}`;
+  const conf = typeof ev.confidence === 'number' ? ` (${Math.round(ev.confidence * 100)}%)` : '';
+  return `Self-healed${conf}`;
+}
+
+function healingEventKindLabel(ev: IHealingEvent): string {
+  if (ev.commandName) return ev.commandName;
+  if (ev.deviceName) return ev.deviceName;
+  return 'Self-heal';
+}
 
 const cfgEqual = (a: InfraConfig, b: InfraConfig) =>
   a.healthCheckIntervalMs === b.healthCheckIntervalMs &&
@@ -58,11 +87,41 @@ export const Settings: React.FC = () => {
   const [baseline, setBaseline] = useState<InfraConfig>(DEFAULTS);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [healingEvents, setHealingEvents] = useState<IHealingEvent[]>([]);
+  const [healingLoaded, setHealingLoaded] = useState(false);
+  const { on } = useSocket();
 
   useEffect(() => {
     loadConfig();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    XenonApiService.getRecentHealingEvents(MAX_HEALING_EVENTS)
+      .then((r: IHealingEventsResponse) => {
+        if (cancelled || !r) return;
+        const events = Array.isArray(r.events) ? r.events.slice(0, MAX_HEALING_EVENTS) : [];
+        setHealingEvents(events);
+      })
+      .catch(() => { /* ignore */ })
+      .finally(() => {
+        if (!cancelled) setHealingLoaded(true);
+      });
+    return () => { cancelled = true; };
+  }, []);
+
+  useEffect(() => {
+    const unsub = on('healing_event', (payload: any) => {
+      const ev = payload as IHealingEvent;
+      if (!ev || !ev.id) return;
+      setHealingEvents((prev) => {
+        if (prev.some((e) => e.id === ev.id)) return prev;
+        return [ev, ...prev].slice(0, MAX_HEALING_EVENTS);
+      });
+    });
+    return () => { unsub && unsub(); };
+  }, [on]);
 
   const loadConfig = async () => {
     setLoading(true);
@@ -288,20 +347,30 @@ export const Settings: React.FC = () => {
                   <FileText size={11} />
                   <span>Recent Healing Events</span>
                 </div>
-                <ul className="healing-events__list">
-                  {SAMPLE_HEALING_EVENTS.map((ev) => (
-                    <li className="healing-event" key={ev.kind}>
-                      <CheckCircle2 size={14} className="healing-event__icon" />
-                      <div className="healing-event__body">
-                        <div className="healing-event__row">
-                          <span className="healing-event__kind">{ev.kind}</span>
-                          <span className="healing-event__when">{ev.when}</span>
+                {healingEvents.length > 0 ? (
+                  <ul className="healing-events__list">
+                    {healingEvents.map((ev) => (
+                      <li className="healing-event" key={ev.id}>
+                        <CheckCircle2 size={14} className="healing-event__icon" />
+                        <div className="healing-event__body">
+                          <div className="healing-event__row">
+                            <span className="healing-event__kind">{healingEventKindLabel(ev)}</span>
+                            <span className="healing-event__when">{formatRelative(ev.createdAt)}</span>
+                          </div>
+                          <div className="healing-event__message" title={healingEventDescription(ev)}>
+                            {healingEventDescription(ev)}
+                          </div>
                         </div>
-                        <div className="healing-event__message">{ev.message}</div>
-                      </div>
-                    </li>
-                  ))}
-                </ul>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <div className="healing-events__empty">
+                    {healingLoaded
+                      ? 'No healing events recorded yet — the dashboard will populate as locators are recovered.'
+                      : 'Loading recent events…'}
+                  </div>
+                )}
               </div>
             )}
           </SettingCard>

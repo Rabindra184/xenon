@@ -151,6 +151,54 @@ async function getDebugLogs(request: Request, response: Response) {
   return response.status(200).json(logs);
 }
 
+function startOfTodayUtc(): Date {
+  const d = new Date();
+  d.setHours(0, 0, 0, 0);
+  return d;
+}
+
+async function getRecentHealingEvents(request: Request, response: Response) {
+  const limitRaw = parseInt((request.query.limit as string) || '50', 10);
+  const limit = Number.isFinite(limitRaw) ? Math.min(Math.max(limitRaw, 1), 200) : 50;
+
+  const [rows, todayCount] = await Promise.all([
+    prisma.sessionLog.findMany({
+      where: { is_healed: true },
+      orderBy: { createdAt: 'desc' },
+      take: limit,
+      include: {
+        session: {
+          select: {
+            id: true,
+            device_udid: true,
+            device_name: true,
+            device_platform: true,
+          },
+        },
+      },
+    }),
+    prisma.sessionLog.count({
+      where: { is_healed: true, createdAt: { gte: startOfTodayUtc() } },
+    }),
+  ]);
+
+  const events = rows.map((r) => ({
+    id: r.id,
+    sessionId: r.session_id,
+    deviceUdid: r.session?.device_udid ?? null,
+    deviceName: r.session?.device_name ?? null,
+    devicePlatform: r.session?.device_platform ?? null,
+    commandName: r.command_name ?? null,
+    originalSelector: r.original_selector ?? null,
+    healedSelector: r.healed_selector ?? null,
+    confidence: r.healing_confidence ?? null,
+    isSuccess: r.is_success ?? null,
+    createdAt: r.createdAt.toISOString(),
+  }));
+
+  return response.status(200).json({ events, todayCount });
+}
+
 async function getProfilingData(request: Request, response: Response) {
   const sessionId = request.params.sessionId;
 
@@ -268,6 +316,7 @@ function register(router: Router) {
   router.get('/session/:sessionId/logs/device', getDeviceLogs);
   router.get('/session/:sessionId/logs/debug', getDebugLogs);
   router.get('/session/:sessionId/profiling', getProfilingData);
+  router.get('/healing/events', getRecentHealingEvents);
   router.get('/config', getGlobalConfig);
   // Config + destructive ops: admin-only. Read-only config stays open to any
   // authenticated key so dashboards using 'read' scope can still populate.

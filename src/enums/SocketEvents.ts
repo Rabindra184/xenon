@@ -7,6 +7,7 @@ export enum SocketEvents {
   SESSION_STARTED = 'session_started',
   SESSION_STOPPED = 'session_stopped',
   SESSION_COMMAND = 'session_command',
+  HEALING_EVENT = 'healing_event',
 }
 
 export const XENON_PROTOCOL_VERSION = '1.0.0';

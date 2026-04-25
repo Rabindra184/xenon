@@ -3,6 +3,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import XenonApiService from '../../api-service';
 import { IDevice } from '../../interfaces/IDevice';
 import { ISession } from '../../interfaces/ISession';
+import { IHealingEvent, IHealingEventsResponse } from '../../interfaces/IHealingEvent';
 import { useSocket } from '../../hooks/useSocket';
 
 export type ActivityEventKind = 'session' | 'session-end' | 'session-failed' | 'node' | 'heal';
@@ -107,6 +108,19 @@ function groupOsBreakdown(devices: IDevice[]): OsBreakdown[] {
   ];
 }
 
+function shortDeviceLabel(ev: IHealingEvent): string {
+  return ev.deviceName || (ev.deviceUdid ? ev.deviceUdid.slice(0, 8) : 'device');
+}
+
+function healMessage(ev: IHealingEvent): React.ReactNode {
+  const cmd = ev.commandName || 'selector';
+  return (
+    <>
+      Healed <strong>{cmd}</strong> on <strong>{shortDeviceLabel(ev)}</strong>
+    </>
+  );
+}
+
 /**
  * Aggregates REST + socket data for the Overview page.
  *
@@ -114,20 +128,21 @@ function groupOsBreakdown(devices: IDevice[]): OsBreakdown[] {
  *  - GET /device — IDevice[]
  *  - GET /session — ISession[]
  *  - GET /queue/length — number
+ *  - GET /healing/events — recent heals + today count
  *
  * Socket (live, from src/enums/SocketEvents.ts):
  *  - session_started, session_stopped  → active/queued + activity
  *  - node_connected, node_disconnected → activity
+ *  - healing_event                     → healsToday + activity
  *
- * Heal events are not exposed yet — `healsToday` stays null and the trend
- * keeps `heals=0` per bar. Same for `failuresDelta` without historical
- * aggregates.
+ * `failuresDelta` stays null until we have historical aggregates.
  */
 export function useOverviewData(): OverviewData {
   const [devices, setDevices] = useState<IDevice[]>([]);
   const [sessions, setSessions] = useState<ISession[]>([]);
   const [queued, setQueued] = useState<number>(0);
   const [activity, setActivity] = useState<ActivityEvent[]>([]);
+  const [healsToday, setHealsToday] = useState<number | null>(null);
   const { on } = useSocket();
   const counter = useRef(0);
 
@@ -147,6 +162,29 @@ export function useOverviewData(): OverviewData {
         if (cancelled) return;
         const n = typeof r === 'number' ? r : typeof r?.count === 'number' ? r.count : 0;
         setQueued(n);
+      })
+      .catch(() => { /* ignore */ });
+
+    XenonApiService.getRecentHealingEvents()
+      .then((r: IHealingEventsResponse) => {
+        if (cancelled || !r) return;
+        setHealsToday(typeof r.todayCount === 'number' ? r.todayCount : 0);
+        const events = Array.isArray(r.events) ? r.events : [];
+        if (events.length === 0) return;
+        setActivity((prev) => {
+          const seen = new Set(prev.map((e) => e.id));
+          const seeded: ActivityEvent[] = events
+            .filter((e) => !seen.has(e.id))
+            .map((e) => ({
+              id: e.id,
+              ts: Date.parse(e.createdAt) || Date.now(),
+              kind: 'heal' as ActivityEventKind,
+              message: healMessage(e),
+            }));
+          return [...seeded, ...prev]
+            .sort((a, b) => b.ts - a.ts)
+            .slice(0, MAX_ACTIVITY);
+        });
       })
       .catch(() => { /* ignore */ });
 
@@ -204,10 +242,28 @@ export function useOverviewData(): OverviewData {
       push('node', <>Node <strong>{String(nodeId)}</strong> disconnected</>);
     };
 
+    const onHeal = (payload: any) => {
+      const ev = payload as IHealingEvent;
+      if (!ev || !ev.id) return;
+      setHealsToday((prev) => (prev === null ? 1 : prev + 1));
+      counter.current += 1;
+      const activityEvent: ActivityEvent = {
+        id: ev.id,
+        ts: Date.parse(ev.createdAt) || Date.now(),
+        kind: 'heal',
+        message: healMessage(ev),
+      };
+      setActivity((a) => {
+        if (a.some((x) => x.id === activityEvent.id)) return a;
+        return [activityEvent, ...a].slice(0, MAX_ACTIVITY);
+      });
+    };
+
     unsubs.push(on('session_started', onStart));
     unsubs.push(on('session_stopped', onStop));
     unsubs.push(on('node_connected', onNodeUp));
     unsubs.push(on('node_disconnected', onNodeDown));
+    unsubs.push(on('healing_event', onHeal));
 
     return () => { unsubs.forEach((u) => u && u()); };
   }, [on]);
@@ -227,7 +283,7 @@ export function useOverviewData(): OverviewData {
     devices,
     activeSessions,
     queuedSessions: queued,
-    healsToday: null,
+    healsToday,
     failures24h,
     failuresDelta: null,
     activity,

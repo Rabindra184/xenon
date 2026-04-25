@@ -473,7 +473,7 @@ export class DashboardEventManager {
           }
         }
 
-        await prisma.sessionLog.create({
+        const persistedLog = await prisma.sessionLog.create({
           data: logEntry as SessionLog,
         });
 
@@ -482,6 +482,26 @@ export class DashboardEventManager {
           session_id: session.getId(),
           ...logEntry,
         });
+
+        // Heal event broadcast — match the shape returned by GET /healing/events
+        // so the Overview activity feed and Settings list can consume both
+        // sources interchangeably without per-source field translation.
+        if (logEntry.is_healed) {
+          const device = session.getDevice();
+          Container.get(SocketServer).emitToDashboard(SocketEvents.HEALING_EVENT, {
+            id: persistedLog.id,
+            sessionId: session.getId(),
+            deviceUdid: device?.udid ?? null,
+            deviceName: device?.name ?? null,
+            devicePlatform: device?.platform ?? null,
+            commandName: logEntry.command_name ?? null,
+            originalSelector: logEntry.original_selector ?? null,
+            healedSelector: logEntry.healed_selector ?? null,
+            confidence: logEntry.healing_confidence ?? null,
+            isSuccess: logEntry.is_success ?? null,
+            createdAt: persistedLog.createdAt.toISOString(),
+          });
+        }
       } catch (err: any) {
         log.error(
           `[Dashboard] Failed to process command telemetry for ${sessionId}: ${err.message}`,
