@@ -17,7 +17,11 @@ import {
   ChevronRight,
   Filter,
   Send,
+  Info,
+  ExternalLink,
+  Hourglass,
 } from 'lucide-react';
+import { EmptyState } from '../ui/EmptyState';
 import XenonApiService from '../../api-service';
 import { PageHeader } from '../ui/page-header';
 import { SegmentedControl } from '../ui/SegmentedControl';
@@ -112,11 +116,20 @@ interface KpiTileProps {
   sub?: React.ReactNode;
   delta?: React.ReactNode;
   tone?: 'neutral' | 'warn' | 'critical';
+  size?: 'md' | 'hero';
+  hint?: string;
 }
 
-const KpiTile: React.FC<KpiTileProps> = ({ label, value, sub, delta, tone = 'neutral' }) => (
-  <div className={`sh-kpi sh-kpi--${tone}`}>
-    <div className="sh-kpi__label">{label}</div>
+const KpiTile: React.FC<KpiTileProps> = ({ label, value, sub, delta, tone = 'neutral', size = 'md', hint }) => (
+  <div className={`sh-kpi sh-kpi--${tone} sh-kpi--${size}`}>
+    <div className="sh-kpi__label">
+      {label}
+      {hint && (
+        <span className="sh-kpi__info" title={hint} aria-label={hint} role="img">
+          <Info size={11} />
+        </span>
+      )}
+    </div>
     <div className="sh-kpi__value">{value}</div>
     {(sub || delta) && (
       <div className="sh-kpi__foot">
@@ -126,6 +139,13 @@ const KpiTile: React.FC<KpiTileProps> = ({ label, value, sub, delta, tone = 'neu
     )}
   </div>
 );
+
+const KPI_HINTS = {
+  brittle: 'Distinct selectors that needed at least one heal in the window. Lower is better.',
+  totalHeals: "Number of times Xenon's self-heal kicked in within the selected window.",
+  llm: 'Heals that escalated all the way to an LLM. The most expensive tier — keep this small.',
+  cost: 'Estimated dollar spend on LLM heals in the window.',
+} as const;
 
 const KpiStrip: React.FC<{ summary: IHealingSummaryResponse | null; loading: boolean }> = ({
   summary,
@@ -150,20 +170,23 @@ const KpiStrip: React.FC<{ summary: IHealingSummaryResponse | null; loading: boo
   return (
     <div className="sh-kpi-strip">
       <KpiTile
-        label="Total heals"
-        value={loading ? '—' : cur.totalHeals.toLocaleString()}
-        sub={`${summary?.windowDays ?? 30}d window`}
-        delta={!loading && <Delta current={cur.totalHeals} prior={prior.totalHeals} />}
-        tone={cur.totalHeals > prior.totalHeals && prior.totalHeals > 0 ? 'warn' : 'neutral'}
-      />
-      <KpiTile
+        size="hero"
         label="Brittle selectors"
+        hint={KPI_HINTS.brittle}
         value={loading ? '—' : cur.distinctSelectors.toLocaleString()}
-        sub="distinct"
+        sub="distinct selectors needing attention"
         delta={
           !loading && <Delta current={cur.distinctSelectors} prior={prior.distinctSelectors} />
         }
         tone={cur.distinctSelectors > 50 ? 'warn' : 'neutral'}
+      />
+      <KpiTile
+        label="Total heals"
+        hint={KPI_HINTS.totalHeals}
+        value={loading ? '—' : cur.totalHeals.toLocaleString()}
+        sub={`${summary?.windowDays ?? 30}d window`}
+        delta={!loading && <Delta current={cur.totalHeals} prior={prior.totalHeals} />}
+        tone={cur.totalHeals > prior.totalHeals && prior.totalHeals > 0 ? 'warn' : 'neutral'}
       />
       <KpiTile
         label="Sessions touched"
@@ -173,12 +196,14 @@ const KpiStrip: React.FC<{ summary: IHealingSummaryResponse | null; loading: boo
       />
       <KpiTile
         label="LLM heals"
+        hint={KPI_HINTS.llm}
         value={loading ? '—' : llmHeals.toLocaleString()}
         sub={`${llmShare}% of total`}
         tone={llmShare > 30 ? 'critical' : llmShare > 10 ? 'warn' : 'neutral'}
       />
       <KpiTile
         label="Est. cost"
+        hint={KPI_HINTS.cost}
         value={loading ? '—' : formatCost(cur.estCostUsd)}
         sub="this window"
         delta={
@@ -196,7 +221,10 @@ const KpiStrip: React.FC<{ summary: IHealingSummaryResponse | null; loading: boo
         sub={`last ${summary?.windowDays ?? 30}d`}
         delta={
           !loading && typeof summary?.pendingCount === 'number' ? (
-            <span className="sh-kpi__delta">⏳ {summary.pendingCount} pending</span>
+            <span className="sh-kpi__delta sh-kpi__delta--with-icon">
+              <Hourglass size={11} style={{ color: 'var(--accent, #60a5fa)' }} />
+              {summary.pendingCount} pending
+            </span>
           ) : undefined
         }
         tone="neutral"
@@ -371,23 +399,23 @@ const SelectorHealthPage: React.FC = () => {
           <>
             <button
               type="button"
-              className="sh-refresh-btn"
+              className="sh-ghost-btn"
               onClick={sendDigest}
               disabled={sendingDigest}
-              title="Push the current digest to all subscribed webhooks"
+              title={sendingDigest ? 'Sending digest…' : 'Send digest to subscribed webhooks'}
+              aria-label="Send digest"
             >
-              <Send size={12} className={sendingDigest ? 'animate-spin' : ''} />
-              {sendingDigest ? 'Sending…' : 'Send digest'}
+              <Send size={14} className={sendingDigest ? 'animate-spin' : ''} />
             </button>
             <button
               type="button"
-              className="sh-refresh-btn"
+              className="sh-ghost-btn"
               onClick={load}
               disabled={loading}
-              title="Refresh"
+              title="Refresh hotspots"
+              aria-label="Refresh"
             >
-              <RefreshCw size={12} className={loading ? 'animate-spin' : ''} />
-              Refresh
+              <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
             </button>
           </>
         }
@@ -411,6 +439,7 @@ const SelectorHealthPage: React.FC = () => {
         ) : (
         <>
         <div className="sh-filter-bar">
+          <span className="sh-filter-bar__lead">Filter results</span>
           <div className="sh-filter-bar__group">
             <span className="sh-filter-bar__label">Window</span>
             <SegmentedControl<string>
@@ -465,25 +494,49 @@ const SelectorHealthPage: React.FC = () => {
             <span>Loading hotspots…</span>
           </div>
         ) : hotspots.length === 0 ? (
-          <div className="sh-empty sh-empty--clean">
-            <HeartPulse size={28} />
-            <div>
-              <div className="sh-empty__title">
-                {tab === 'pending'
-                  ? 'Nothing pending'
-                  : tab === 'resolved'
-                    ? 'Nothing resolved yet'
-                    : 'Locator hygiene is clean'}
+          <EmptyState
+            icon={
+              <HeartPulse
+                size={32}
+                color={tab === 'active' ? 'var(--green)' : 'var(--text-dim)'}
+              />
+            }
+            title={
+              tab === 'pending'
+                ? 'Nothing pending'
+                : tab === 'resolved'
+                  ? 'Nothing resolved yet'
+                  : 'Locator hygiene is clean'
+            }
+            description={
+              tab === 'pending'
+                ? 'When you mark a selector fixed, it shows here while we watch for 3 clean CI builds.'
+                : tab === 'resolved'
+                  ? 'Fix a hot selector and Xenon will track its verification here.'
+                  : `No selectors required healing in the last ${windowDays} days${filtersActive ? ' for the active filters' : ''}.`
+            }
+            action={
+              <div className="sh-empty-actions">
+                {filtersActive && tab === 'active' && (
+                  <button
+                    type="button"
+                    className="sh-ghost-btn sh-ghost-btn--inline"
+                    onClick={() => { setTier(''); setPlatform(''); }}
+                  >
+                    <Filter size={12} /> Reset filters
+                  </button>
+                )}
+                <a
+                  href="/xenon/api-docs"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="sh-ghost-btn sh-ghost-btn--inline"
+                >
+                  <ExternalLink size={12} /> View API docs
+                </a>
               </div>
-              <div className="sh-empty__subtitle">
-                {tab === 'pending'
-                  ? 'When you mark a selector fixed, it shows here while we watch for 3 clean CI builds.'
-                  : tab === 'resolved'
-                    ? 'Fix a hot selector and Xenon will track its verification here.'
-                    : `No selectors required healing in the last ${windowDays} days${filtersActive ? ' for the active filters' : ''}.`}
-              </div>
-            </div>
-          </div>
+            }
+          />
         ) : tab === 'pending' ? (
           <div className="sh-pending-list">
             {hotspots.map((h) => (
