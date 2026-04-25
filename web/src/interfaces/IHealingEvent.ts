@@ -8,6 +8,7 @@ export interface IHealingEvent {
   originalSelector: string | null;
   healedSelector: string | null;
   confidence: number | null;
+  tier: string | null;
   isSuccess: boolean | null;
   createdAt: string;
 }

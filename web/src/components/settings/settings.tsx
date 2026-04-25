@@ -61,16 +61,20 @@ function formatRelative(iso: string): string {
 function healingEventDescription(ev: IHealingEvent): string {
   const original = ev.originalSelector?.trim();
   const healed = ev.healedSelector?.trim();
+  // When tier is the chip, prefix with the command so the row still
+  // explains *what* was healed instead of just how.
+  const cmdPrefix = ev.tier && ev.commandName ? `${ev.commandName}: ` : '';
   if (original && healed && original !== healed) {
-    return `${original} → ${healed}`;
+    return `${cmdPrefix}${original} → ${healed}`;
   }
-  if (healed) return `Recovered locator ${healed}`;
-  if (original) return `Recovered locator ${original}`;
+  if (healed) return `${cmdPrefix}Recovered locator ${healed}`;
+  if (original) return `${cmdPrefix}Recovered locator ${original}`;
   const conf = typeof ev.confidence === 'number' ? ` (${Math.round(ev.confidence * 100)}%)` : '';
-  return `Self-healed${conf}`;
+  return `${cmdPrefix || ''}Self-healed${conf}`;
 }
 
 function healingEventKindLabel(ev: IHealingEvent): string {
+  if (ev.tier) return ev.tier;
   if (ev.commandName) return ev.commandName;
   if (ev.deviceName) return ev.deviceName;
   return 'Self-heal';

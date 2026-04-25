@@ -629,6 +629,7 @@ export class CommandInterceptor {
         originalSelector: args[1],
         healedSelector: healed.recommendedSelector,
         confidence: healed.confidence,
+        tier: healed.tier,
       },
     );
   }

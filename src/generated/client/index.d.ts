@@ -4493,6 +4493,7 @@ export namespace Prisma {
     original_selector: string | null
     healed_selector: string | null
     healing_confidence: number | null
+    healing_tier: string | null
     createdAt: Date | null
     updatedAt: Date | null
     duration: number | null
@@ -4517,6 +4518,7 @@ export namespace Prisma {
     original_selector: string | null
     healed_selector: string | null
     healing_confidence: number | null
+    healing_tier: string | null
     createdAt: Date | null
     updatedAt: Date | null
     duration: number | null
@@ -4541,6 +4543,7 @@ export namespace Prisma {
     original_selector: number
     healed_selector: number
     healing_confidence: number
+    healing_tier: number
     createdAt: number
     updatedAt: number
     duration: number
@@ -4577,6 +4580,7 @@ export namespace Prisma {
     original_selector?: true
     healed_selector?: true
     healing_confidence?: true
+    healing_tier?: true
     createdAt?: true
     updatedAt?: true
     duration?: true
@@ -4601,6 +4605,7 @@ export namespace Prisma {
     original_selector?: true
     healed_selector?: true
     healing_confidence?: true
+    healing_tier?: true
     createdAt?: true
     updatedAt?: true
     duration?: true
@@ -4625,6 +4630,7 @@ export namespace Prisma {
     original_selector?: true
     healed_selector?: true
     healing_confidence?: true
+    healing_tier?: true
     createdAt?: true
     updatedAt?: true
     duration?: true
@@ -4736,6 +4742,7 @@ export namespace Prisma {
     original_selector: string | null
     healed_selector: string | null
     healing_confidence: number | null
+    healing_tier: string | null
     createdAt: Date
     updatedAt: Date
     duration: number | null
@@ -4779,6 +4786,7 @@ export namespace Prisma {
     original_selector?: boolean
     healed_selector?: boolean
     healing_confidence?: boolean
+    healing_tier?: boolean
     createdAt?: boolean
     updatedAt?: boolean
     duration?: boolean
@@ -4804,6 +4812,7 @@ export namespace Prisma {
     original_selector?: boolean
     healed_selector?: boolean
     healing_confidence?: boolean
+    healing_tier?: boolean
     createdAt?: boolean
     updatedAt?: boolean
     duration?: boolean
@@ -4829,6 +4838,7 @@ export namespace Prisma {
     original_selector?: boolean
     healed_selector?: boolean
     healing_confidence?: boolean
+    healing_tier?: boolean
     createdAt?: boolean
     updatedAt?: boolean
     duration?: boolean
@@ -4865,6 +4875,7 @@ export namespace Prisma {
       original_selector: string | null
       healed_selector: string | null
       healing_confidence: number | null
+      healing_tier: string | null
       createdAt: Date
       updatedAt: Date
       duration: number | null
@@ -5280,6 +5291,7 @@ export namespace Prisma {
     readonly original_selector: FieldRef<"SessionLog", 'String'>
     readonly healed_selector: FieldRef<"SessionLog", 'String'>
     readonly healing_confidence: FieldRef<"SessionLog", 'Float'>
+    readonly healing_tier: FieldRef<"SessionLog", 'String'>
     readonly createdAt: FieldRef<"SessionLog", 'DateTime'>
     readonly updatedAt: FieldRef<"SessionLog", 'DateTime'>
     readonly duration: FieldRef<"SessionLog", 'Int'>
@@ -17671,6 +17683,7 @@ export namespace Prisma {
     original_selector: 'original_selector',
     healed_selector: 'healed_selector',
     healing_confidence: 'healing_confidence',
+    healing_tier: 'healing_tier',
     createdAt: 'createdAt',
     updatedAt: 'updatedAt',
     duration: 'duration',
@@ -18201,6 +18214,7 @@ export namespace Prisma {
     original_selector?: StringNullableFilter<"SessionLog"> | string | null
     healed_selector?: StringNullableFilter<"SessionLog"> | string | null
     healing_confidence?: FloatNullableFilter<"SessionLog"> | number | null
+    healing_tier?: StringNullableFilter<"SessionLog"> | string | null
     createdAt?: DateTimeFilter<"SessionLog"> | Date | string
     updatedAt?: DateTimeFilter<"SessionLog"> | Date | string
     duration?: IntNullableFilter<"SessionLog"> | number | null
@@ -18226,6 +18240,7 @@ export namespace Prisma {
     original_selector?: SortOrderInput | SortOrder
     healed_selector?: SortOrderInput | SortOrder
     healing_confidence?: SortOrderInput | SortOrder
+    healing_tier?: SortOrderInput | SortOrder
     createdAt?: SortOrder
     updatedAt?: SortOrder
     duration?: SortOrderInput | SortOrder
@@ -18254,6 +18269,7 @@ export namespace Prisma {
     original_selector?: StringNullableFilter<"SessionLog"> | string | null
     healed_selector?: StringNullableFilter<"SessionLog"> | string | null
     healing_confidence?: FloatNullableFilter<"SessionLog"> | number | null
+    healing_tier?: StringNullableFilter<"SessionLog"> | string | null
     createdAt?: DateTimeFilter<"SessionLog"> | Date | string
     updatedAt?: DateTimeFilter<"SessionLog"> | Date | string
     duration?: IntNullableFilter<"SessionLog"> | number | null
@@ -18279,6 +18295,7 @@ export namespace Prisma {
     original_selector?: SortOrderInput | SortOrder
     healed_selector?: SortOrderInput | SortOrder
     healing_confidence?: SortOrderInput | SortOrder
+    healing_tier?: SortOrderInput | SortOrder
     createdAt?: SortOrder
     updatedAt?: SortOrder
     duration?: SortOrderInput | SortOrder
@@ -18311,6 +18328,7 @@ export namespace Prisma {
     original_selector?: StringNullableWithAggregatesFilter<"SessionLog"> | string | null
     healed_selector?: StringNullableWithAggregatesFilter<"SessionLog"> | string | null
     healing_confidence?: FloatNullableWithAggregatesFilter<"SessionLog"> | number | null
+    healing_tier?: StringNullableWithAggregatesFilter<"SessionLog"> | string | null
     createdAt?: DateTimeWithAggregatesFilter<"SessionLog"> | Date | string
     updatedAt?: DateTimeWithAggregatesFilter<"SessionLog"> | Date | string
     duration?: IntNullableWithAggregatesFilter<"SessionLog"> | number | null
@@ -19626,6 +19644,7 @@ export namespace Prisma {
     original_selector?: string | null
     healed_selector?: string | null
     healing_confidence?: number | null
+    healing_tier?: string | null
     createdAt?: Date | string
     updatedAt?: Date | string
     duration?: number | null
@@ -19651,6 +19670,7 @@ export namespace Prisma {
     original_selector?: string | null
     healed_selector?: string | null
     healing_confidence?: number | null
+    healing_tier?: string | null
     createdAt?: Date | string
     updatedAt?: Date | string
     duration?: number | null
@@ -19674,6 +19694,7 @@ export namespace Prisma {
     original_selector?: NullableStringFieldUpdateOperationsInput | string | null
     healed_selector?: NullableStringFieldUpdateOperationsInput | string | null
     healing_confidence?: NullableFloatFieldUpdateOperationsInput | number | null
+    healing_tier?: NullableStringFieldUpdateOperationsInput | string | null
     createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
     updatedAt?: DateTimeFieldUpdateOperationsInput | Date | string
     duration?: NullableIntFieldUpdateOperationsInput | number | null
@@ -19699,6 +19720,7 @@ export namespace Prisma {
     original_selector?: NullableStringFieldUpdateOperationsInput | string | null
     healed_selector?: NullableStringFieldUpdateOperationsInput | string | null
     healing_confidence?: NullableFloatFieldUpdateOperationsInput | number | null
+    healing_tier?: NullableStringFieldUpdateOperationsInput | string | null
     createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
     updatedAt?: DateTimeFieldUpdateOperationsInput | Date | string
     duration?: NullableIntFieldUpdateOperationsInput | number | null
@@ -19723,6 +19745,7 @@ export namespace Prisma {
     original_selector?: string | null
     healed_selector?: string | null
     healing_confidence?: number | null
+    healing_tier?: string | null
     createdAt?: Date | string
     updatedAt?: Date | string
     duration?: number | null
@@ -19746,6 +19769,7 @@ export namespace Prisma {
     original_selector?: NullableStringFieldUpdateOperationsInput | string | null
     healed_selector?: NullableStringFieldUpdateOperationsInput | string | null
     healing_confidence?: NullableFloatFieldUpdateOperationsInput | number | null
+    healing_tier?: NullableStringFieldUpdateOperationsInput | string | null
     createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
     updatedAt?: DateTimeFieldUpdateOperationsInput | Date | string
     duration?: NullableIntFieldUpdateOperationsInput | number | null
@@ -19770,6 +19794,7 @@ export namespace Prisma {
     original_selector?: NullableStringFieldUpdateOperationsInput | string | null
     healed_selector?: NullableStringFieldUpdateOperationsInput | string | null
     healing_confidence?: NullableFloatFieldUpdateOperationsInput | number | null
+    healing_tier?: NullableStringFieldUpdateOperationsInput | string | null
     createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
     updatedAt?: DateTimeFieldUpdateOperationsInput | Date | string
     duration?: NullableIntFieldUpdateOperationsInput | number | null
@@ -21288,6 +21313,7 @@ export namespace Prisma {
     original_selector?: SortOrder
     healed_selector?: SortOrder
     healing_confidence?: SortOrder
+    healing_tier?: SortOrder
     createdAt?: SortOrder
     updatedAt?: SortOrder
     duration?: SortOrder
@@ -21317,6 +21343,7 @@ export namespace Prisma {
     original_selector?: SortOrder
     healed_selector?: SortOrder
     healing_confidence?: SortOrder
+    healing_tier?: SortOrder
     createdAt?: SortOrder
     updatedAt?: SortOrder
     duration?: SortOrder
@@ -21341,6 +21368,7 @@ export namespace Prisma {
     original_selector?: SortOrder
     healed_selector?: SortOrder
     healing_confidence?: SortOrder
+    healing_tier?: SortOrder
     createdAt?: SortOrder
     updatedAt?: SortOrder
     duration?: SortOrder
@@ -22916,6 +22944,7 @@ export namespace Prisma {
     original_selector?: string | null
     healed_selector?: string | null
     healing_confidence?: number | null
+    healing_tier?: string | null
     createdAt?: Date | string
     updatedAt?: Date | string
     duration?: number | null
@@ -22939,6 +22968,7 @@ export namespace Prisma {
     original_selector?: string | null
     healed_selector?: string | null
     healing_confidence?: number | null
+    healing_tier?: string | null
     createdAt?: Date | string
     updatedAt?: Date | string
     duration?: number | null
@@ -23078,6 +23108,7 @@ export namespace Prisma {
     original_selector?: StringNullableFilter<"SessionLog"> | string | null
     healed_selector?: StringNullableFilter<"SessionLog"> | string | null
     healing_confidence?: FloatNullableFilter<"SessionLog"> | number | null
+    healing_tier?: StringNullableFilter<"SessionLog"> | string | null
     createdAt?: DateTimeFilter<"SessionLog"> | Date | string
     updatedAt?: DateTimeFilter<"SessionLog"> | Date | string
     duration?: IntNullableFilter<"SessionLog"> | number | null
@@ -24066,6 +24097,7 @@ export namespace Prisma {
     original_selector?: string | null
     healed_selector?: string | null
     healing_confidence?: number | null
+    healing_tier?: string | null
     createdAt?: Date | string
     updatedAt?: Date | string
     duration?: number | null
@@ -24154,6 +24186,7 @@ export namespace Prisma {
     original_selector?: NullableStringFieldUpdateOperationsInput | string | null
     healed_selector?: NullableStringFieldUpdateOperationsInput | string | null
     healing_confidence?: NullableFloatFieldUpdateOperationsInput | number | null
+    healing_tier?: NullableStringFieldUpdateOperationsInput | string | null
     createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
     updatedAt?: DateTimeFieldUpdateOperationsInput | Date | string
     duration?: NullableIntFieldUpdateOperationsInput | number | null
@@ -24177,6 +24210,7 @@ export namespace Prisma {
     original_selector?: NullableStringFieldUpdateOperationsInput | string | null
     healed_selector?: NullableStringFieldUpdateOperationsInput | string | null
     healing_confidence?: NullableFloatFieldUpdateOperationsInput | number | null
+    healing_tier?: NullableStringFieldUpdateOperationsInput | string | null
     createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
     updatedAt?: DateTimeFieldUpdateOperationsInput | Date | string
     duration?: NullableIntFieldUpdateOperationsInput | number | null
@@ -24200,6 +24234,7 @@ export namespace Prisma {
     original_selector?: NullableStringFieldUpdateOperationsInput | string | null
     healed_selector?: NullableStringFieldUpdateOperationsInput | string | null
     healing_confidence?: NullableFloatFieldUpdateOperationsInput | number | null
+    healing_tier?: NullableStringFieldUpdateOperationsInput | string | null
     createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
     updatedAt?: DateTimeFieldUpdateOperationsInput | Date | string
     duration?: NullableIntFieldUpdateOperationsInput | number | null

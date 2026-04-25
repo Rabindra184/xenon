@@ -176,6 +176,7 @@ exports.Prisma.SessionLogScalarFieldEnum = {
   original_selector: 'original_selector',
   healed_selector: 'healed_selector',
   healing_confidence: 'healing_confidence',
+  healing_tier: 'healing_tier',
   createdAt: 'createdAt',
   updatedAt: 'updatedAt',
   duration: 'duration',

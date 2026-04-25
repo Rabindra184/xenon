@@ -192,6 +192,7 @@ async function getRecentHealingEvents(request: Request, response: Response) {
     originalSelector: r.original_selector ?? null,
     healedSelector: r.healed_selector ?? null,
     confidence: r.healing_confidence ?? null,
+    tier: r.healing_tier ?? null,
     isSuccess: r.is_success ?? null,
     createdAt: r.createdAt.toISOString(),
   }));

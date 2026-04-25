@@ -7,6 +7,20 @@ export enum HealingTier {
   TIER_5_LLM_REASONING = 5,
 }
 
+const TIER_LABELS: Record<HealingTier, string> = {
+  [HealingTier.TIER_1_RECOVERY]: 'Resilio',
+  [HealingTier.TIER_1_NATIVE]: 'Native',
+  [HealingTier.TIER_2_FUZZY_XML]: 'Fuzzy XML',
+  [HealingTier.TIER_3_LOCAL_OCR]: 'OCR',
+  [HealingTier.TIER_4_VISUAL_AI]: 'Visual AI',
+  [HealingTier.TIER_5_LLM_REASONING]: 'LLM',
+};
+
+export function healingTierLabel(tier: HealingTier | number | null | undefined): string | null {
+  if (tier === null || tier === undefined) return null;
+  return TIER_LABELS[tier as HealingTier] ?? null;
+}
+
 export interface HealedElement {
   id: string; // W3C element object / internal ID
   tier: HealingTier;

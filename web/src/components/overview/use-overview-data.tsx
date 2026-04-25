@@ -114,9 +114,17 @@ function shortDeviceLabel(ev: IHealingEvent): string {
 
 function healMessage(ev: IHealingEvent): React.ReactNode {
   const cmd = ev.commandName || 'selector';
+  const device = shortDeviceLabel(ev);
+  if (ev.tier) {
+    return (
+      <>
+        <strong>{ev.tier}</strong> healed <strong>{cmd}</strong> on <strong>{device}</strong>
+      </>
+    );
+  }
   return (
     <>
-      Healed <strong>{cmd}</strong> on <strong>{shortDeviceLabel(ev)}</strong>
+      Healed <strong>{cmd}</strong> on <strong>{device}</strong>
     </>
   );
 }

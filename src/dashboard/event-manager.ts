@@ -28,6 +28,7 @@ import { SocketServer } from '../services/SocketServer';
 import { TracingService } from '../services/TracingService';
 import { MetricsService } from '../services/MetricsService';
 import { SocketEvents } from '../enums/SocketEvents';
+import { healingTierLabel } from '../services/healing/types';
 import { Service } from 'typedi';
 
 @Service()
@@ -367,6 +368,7 @@ export class DashboardEventManager {
       originalSelector: string;
       healedSelector: string;
       confidence: number;
+      tier?: number;
     },
   ) {
     const session: XenonSession | undefined = SESSION_MANAGER.getSession(sessionId);
@@ -404,6 +406,7 @@ export class DashboardEventManager {
           original_selector: healingInfo?.originalSelector || null,
           healed_selector: healingInfo?.healedSelector || null,
           healing_confidence: healingInfo?.confidence || null,
+          healing_tier: healingTierLabel(healingInfo?.tier),
           span_id: spanId,
           trace_id: traceId,
           duration: duration,
@@ -498,6 +501,7 @@ export class DashboardEventManager {
             originalSelector: logEntry.original_selector ?? null,
             healedSelector: logEntry.healed_selector ?? null,
             confidence: logEntry.healing_confidence ?? null,
+            tier: logEntry.healing_tier ?? null,
             isSuccess: logEntry.is_success ?? null,
             createdAt: persistedLog.createdAt.toISOString(),
           });
