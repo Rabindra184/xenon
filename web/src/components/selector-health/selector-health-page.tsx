@@ -19,6 +19,7 @@ import {
   Send,
   Info,
   ExternalLink,
+  Hourglass,
 } from 'lucide-react';
 import { EmptyState } from '../ui/EmptyState';
 import XenonApiService from '../../api-service';
@@ -220,7 +221,10 @@ const KpiStrip: React.FC<{ summary: IHealingSummaryResponse | null; loading: boo
         sub={`last ${summary?.windowDays ?? 30}d`}
         delta={
           !loading && typeof summary?.pendingCount === 'number' ? (
-            <span className="sh-kpi__delta">⏳ {summary.pendingCount} pending</span>
+            <span className="sh-kpi__delta sh-kpi__delta--with-icon">
+              <Hourglass size={11} style={{ color: 'var(--accent, #60a5fa)' }} />
+              {summary.pendingCount} pending
+            </span>
           ) : undefined
         }
         tone="neutral"
