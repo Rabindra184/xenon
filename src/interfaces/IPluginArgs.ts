@@ -180,6 +180,23 @@ export interface IPluginArgs {
    * Shared secret for hub-node channel authentication. Nodes must send this value in X-Xenon-Node-Secret header.
    */
   nodeSecret?: string;
+  /**
+   * Network request interception configuration (capture + mock + modify). Android-only in v1.
+   */
+  interceptor?: {
+    /**
+     * Enable the network interceptor. Sessions still need xenon:options.interceptor.enabled=true (or interceptorEnabled cap) to be intercepted.
+     */
+    enabled?: boolean;
+    /**
+     * Maximum number of captured requests to retain in-memory per session before evicting oldest.
+     */
+    bufferSize?: number;
+    /**
+     * Whether to capture request/response bodies. Disable for privacy or to reduce memory usage.
+     */
+    captureBodies?: boolean;
+  };
 }
 export interface SimulatorConfig {
   name: string;

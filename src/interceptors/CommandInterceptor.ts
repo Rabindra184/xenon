@@ -154,6 +154,35 @@ export class CommandInterceptor {
                   : '';
             return await Container.get(AICommandService).assertVisualState(driver, instruction);
           }
+
+          if (
+            aiCommand === 'addMock' ||
+            aiCommand === 'removeMock' ||
+            aiCommand === 'clearMocks' ||
+            aiCommand === 'getRequests' ||
+            aiCommand === 'getMocks' ||
+            aiCommand === 'exportHar'
+          ) {
+            const payload = typeof scriptArgs === 'object' && scriptArgs !== null ? scriptArgs : {};
+            const { InterceptorService } = await import('../services/InterceptorService');
+            const interceptor = Container.get(InterceptorService);
+            this.log.info(`[Interceptor] Routing network command: ${script}`);
+            switch (aiCommand) {
+              case 'addMock':
+                return interceptor.addMock(sessionId, payload as any);
+              case 'removeMock':
+                return interceptor.removeMock(sessionId, (payload as any).id);
+              case 'clearMocks':
+                interceptor.clearMocks(sessionId);
+                return { ok: true };
+              case 'getMocks':
+                return interceptor.listMocks(sessionId);
+              case 'getRequests':
+                return interceptor.getRequests(sessionId);
+              case 'exportHar':
+                return interceptor.exportHar(sessionId);
+            }
+          }
         }
 
         const shouldProceed = await DASHBORD_EVENT_MANAGER.beforeSessionCommand(

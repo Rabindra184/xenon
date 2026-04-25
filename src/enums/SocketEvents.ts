@@ -15,6 +15,10 @@ export enum SocketEvents {
   SELECTOR_MUTED = 'selector_muted',
   SELECTOR_UNMUTED = 'selector_unmuted',
   SELECTOR_PROGRESS = 'selector_progress',
+
+  INTERCEPTOR_REQUEST = 'interceptor_request',
+  INTERCEPTOR_SESSION_STARTED = 'interceptor_session_started',
+  INTERCEPTOR_SESSION_STOPPED = 'interceptor_session_stopped',
 }
 
 export const XENON_PROTOCOL_VERSION = '1.0.0';
