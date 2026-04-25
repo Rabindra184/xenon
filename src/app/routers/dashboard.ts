@@ -304,29 +304,56 @@ async function getHealingHotspots(request: Request, response: Response) {
     typeof request.query.platform === 'string' && request.query.platform
       ? request.query.platform
       : null;
+  const status = (request.query.status as string | undefined) ?? 'active';
 
-  const agg = await aggregateHotspots({ windowDays, limit, tier, platform });
+  const agg = await aggregateHotspots({ windowDays, limit, tier, platform, status });
 
   return response.status(200).json({
     windowDays,
     totalScanned: agg.totalScanned,
-    filters: { tier, platform },
+    filters: { tier, platform, status },
     hotspots: agg.hotspots,
   });
+}
+
+// Decide whether a hotspot, augmented with its (optional) SelectorState row,
+// belongs in the response for a given `?status=` query value.
+//
+// `active` (default) hides muted/pending/resolved selectors, so that fixes,
+// triage, and silenced selectors stop polluting the live hotspot list. The
+// CI gate and webhook digest both inherit this default — that's intentional
+// (spec §10.3).
+function filterByStatus(state: any, requested: string): boolean {
+  switch (requested) {
+    case 'all':
+      return true;
+    case 'pending':
+      return state?.status === 'pending';
+    case 'resolved':
+      return state?.status === 'resolved';
+    case 'muted':
+      return state?.status === 'muted';
+    case 'active':
+    default:
+      return state == null || state.status === 'active';
+  }
 }
 
 // Shape used by both the dashboard hotspots view and the CI gate. Kept
 // close to the route to keep type churn local.
 interface HotspotRow {
+  originalStrategy: string | null;
   originalSelector: string;
   healCount: number;
   sessionCount: number;
   topTier: string | null;
   suggestedRewrite: string | null;
+  suggestedStrategy: string | null;
   suggestedRewriteShare: number | null;
   averageConfidence: number | null;
   firstHealedAt: string;
   lastHealedAt: string;
+  state?: any | null;
 }
 
 interface HotspotAggregation {
@@ -346,9 +373,12 @@ interface HotspotQueryOptions {
   platform?: string | null;
   buildId?: string | null;
   minHealCount?: number;
+  status?: string;
 }
 
-async function aggregateHotspots(opts: HotspotQueryOptions): Promise<HotspotAggregation> {
+export async function aggregateHotspots(
+  opts: HotspotQueryOptions,
+): Promise<HotspotAggregation> {
   const since = new Date();
   since.setDate(since.getDate() - opts.windowDays);
 
@@ -369,7 +399,9 @@ async function aggregateHotspots(opts: HotspotQueryOptions): Promise<HotspotAggr
     where,
     select: {
       session_id: true,
+      original_strategy: true,
       original_selector: true,
+      healed_strategy: true,
       healed_selector: true,
       healing_confidence: true,
       healing_tier: true,
@@ -380,11 +412,13 @@ async function aggregateHotspots(opts: HotspotQueryOptions): Promise<HotspotAggr
   });
 
   type Bucket = {
+    originalStrategy: string | null;
     originalSelector: string;
     healCount: number;
     sessions: Set<string>;
     tiers: Map<string, number>;
     healedSelectors: Map<string, number>;
+    healedStrategies: Map<string, number>;
     confidenceSum: number;
     confidenceSamples: number;
     lastHealedAt: Date;
@@ -399,15 +433,20 @@ async function aggregateHotspots(opts: HotspotQueryOptions): Promise<HotspotAggr
     const tier = r.healing_tier || 'Unknown';
     byTier[tier] = (byTier[tier] || 0) + 1;
 
-    const key = r.original_selector!;
+    // Group by (strategy, selector) tuple. Two heals with the same selector
+    // value but different strategies are genuinely different problems and
+    // get separate hotspot rows.
+    const key = `${r.original_strategy ?? ''}\x00${r.original_selector!}`;
     let b = buckets.get(key);
     if (!b) {
       b = {
-        originalSelector: key,
+        originalStrategy: r.original_strategy ?? null,
+        originalSelector: r.original_selector!,
         healCount: 0,
         sessions: new Set<string>(),
         tiers: new Map<string, number>(),
         healedSelectors: new Map<string, number>(),
+        healedStrategies: new Map<string, number>(),
         confidenceSum: 0,
         confidenceSamples: 0,
         lastHealedAt: r.createdAt,
@@ -422,6 +461,12 @@ async function aggregateHotspots(opts: HotspotQueryOptions): Promise<HotspotAggr
       b.healedSelectors.set(
         r.healed_selector,
         (b.healedSelectors.get(r.healed_selector) ?? 0) + 1,
+      );
+    }
+    if (r.healed_strategy) {
+      b.healedStrategies.set(
+        r.healed_strategy,
+        (b.healedStrategies.get(r.healed_strategy) ?? 0) + 1,
       );
     }
     if (typeof r.healing_confidence === 'number') {
@@ -441,7 +486,7 @@ async function aggregateHotspots(opts: HotspotQueryOptions): Promise<HotspotAggr
   };
 
   const minCount = opts.minHealCount ?? 1;
-  const hotspots: HotspotRow[] = Array.from(buckets.values())
+  const topHotspots: HotspotRow[] = Array.from(buckets.values())
     .filter((b) => b.healCount >= minCount)
     .sort(
       (a, b) =>
@@ -451,12 +496,15 @@ async function aggregateHotspots(opts: HotspotQueryOptions): Promise<HotspotAggr
     .map((b) => {
       const topRewrite = pickTopEntry(b.healedSelectors);
       const topTier = pickTopEntry(b.tiers);
+      const topStrategy = pickTopEntry(b.healedStrategies);
       return {
+        originalStrategy: b.originalStrategy,
         originalSelector: b.originalSelector,
         healCount: b.healCount,
         sessionCount: b.sessions.size,
         topTier: topTier?.value ?? null,
         suggestedRewrite: topRewrite?.value ?? null,
+        suggestedStrategy: topStrategy?.value ?? null,
         suggestedRewriteShare: topRewrite ? topRewrite.count / b.healCount : null,
         averageConfidence:
           b.confidenceSamples > 0 ? b.confidenceSum / b.confidenceSamples : null,
@@ -464,6 +512,33 @@ async function aggregateHotspots(opts: HotspotQueryOptions): Promise<HotspotAggr
         lastHealedAt: b.lastHealedAt.toISOString(),
       };
     });
+
+  // Bulk-fetch SelectorState rows for the top hotspots in a single DB call,
+  // then merge them into each hotspot. The default `status=active` filter
+  // hides muted/pending/resolved selectors so the live list, CI gate, and
+  // webhook digest all see only "still actively breaking" selectors.
+  let stateMap = new Map<string, any>();
+  if (topHotspots.length > 0) {
+    const states = await prisma.selectorState.findMany({
+      where: {
+        OR: topHotspots.map((h) => ({
+          original_strategy: h.originalStrategy ?? '',
+          original_selector: h.originalSelector,
+        })),
+      },
+    });
+    stateMap = new Map(
+      states.map((s: any) => [`${s.original_strategy}\x00${s.original_selector}`, s]),
+    );
+  }
+
+  const requestedStatus = opts.status ?? 'active';
+  const hotspots: HotspotRow[] = topHotspots
+    .map((h) => ({
+      ...h,
+      state: stateMap.get(`${h.originalStrategy ?? ''}\x00${h.originalSelector}`) ?? null,
+    }))
+    .filter((h) => filterByStatus(h.state, requestedStatus));
 
   return {
     totalScanned: rows.length,
