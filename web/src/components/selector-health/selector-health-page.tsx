@@ -137,6 +137,13 @@ const KpiTile: React.FC<KpiTileProps> = ({ label, value, sub, delta, tone = 'neu
   </div>
 );
 
+const KPI_HINTS = {
+  brittle: 'Distinct selectors that needed at least one heal in the window. Lower is better.',
+  totalHeals: "Number of times Xenon's self-heal kicked in within the selected window.",
+  llm: 'Heals that escalated all the way to an LLM. The most expensive tier — keep this small.',
+  cost: 'Estimated dollar spend on LLM heals in the window.',
+} as const;
+
 const KpiStrip: React.FC<{ summary: IHealingSummaryResponse | null; loading: boolean }> = ({
   summary,
   loading,
@@ -162,6 +169,7 @@ const KpiStrip: React.FC<{ summary: IHealingSummaryResponse | null; loading: boo
       <KpiTile
         size="hero"
         label="Brittle selectors"
+        hint={KPI_HINTS.brittle}
         value={loading ? '—' : cur.distinctSelectors.toLocaleString()}
         sub="distinct selectors needing attention"
         delta={
@@ -171,6 +179,7 @@ const KpiStrip: React.FC<{ summary: IHealingSummaryResponse | null; loading: boo
       />
       <KpiTile
         label="Total heals"
+        hint={KPI_HINTS.totalHeals}
         value={loading ? '—' : cur.totalHeals.toLocaleString()}
         sub={`${summary?.windowDays ?? 30}d window`}
         delta={!loading && <Delta current={cur.totalHeals} prior={prior.totalHeals} />}
@@ -184,12 +193,14 @@ const KpiStrip: React.FC<{ summary: IHealingSummaryResponse | null; loading: boo
       />
       <KpiTile
         label="LLM heals"
+        hint={KPI_HINTS.llm}
         value={loading ? '—' : llmHeals.toLocaleString()}
         sub={`${llmShare}% of total`}
         tone={llmShare > 30 ? 'critical' : llmShare > 10 ? 'warn' : 'neutral'}
       />
       <KpiTile
         label="Est. cost"
+        hint={KPI_HINTS.cost}
         value={loading ? '—' : formatCost(cur.estCostUsd)}
         sub="this window"
         delta={

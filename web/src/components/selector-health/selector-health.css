@@ -85,6 +85,19 @@
   margin-top: 4px;
 }
 
+.sh-kpi__info {
+  display: inline-flex;
+  align-items: center;
+  margin-left: 6px;
+  color: var(--text-dim);
+  cursor: help;
+  vertical-align: middle;
+}
+
+.sh-kpi__info:hover {
+  color: var(--text);
+}
+
 .sh-kpi--warn {
   border-color: rgba(245, 158, 11, 0.3);
 }
