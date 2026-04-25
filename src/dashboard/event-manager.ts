@@ -366,7 +366,9 @@ export class DashboardEventManager {
     responseBody: string,
     healingInfo?: {
       originalSelector: string;
+      originalStrategy?: string;
       healedSelector: string;
+      healedStrategy?: string;
       confidence: number;
       tier?: number;
     },
@@ -403,14 +405,32 @@ export class DashboardEventManager {
           screenshot: null,
           url: request.originalUrl,
           is_healed: !!healingInfo,
-          original_selector: healingInfo?.originalSelector || null,
-          healed_selector: healingInfo?.healedSelector || null,
-          healing_confidence: healingInfo?.confidence || null,
+          original_selector: healingInfo?.originalSelector ?? null,
+          healed_selector: healingInfo?.healedSelector ?? null,
+          healing_confidence: healingInfo?.confidence ?? null,
           healing_tier: healingTierLabel(healingInfo?.tier),
+          original_strategy: healingInfo?.originalStrategy ?? null,
+          healed_strategy: healingInfo?.healedStrategy ?? null,
           span_id: spanId,
           trace_id: traceId,
           duration: duration,
         };
+
+        // Smart Passive: capture strategy + selector on every findElement,
+        // not just heals. CommandInterceptor synthesizes request.body = args
+        // (the array [strategy, value]). This gives the verification job
+        // exact evidence of "selector ran and didn't heal" per build.
+        if (
+          (commandName === 'findElement' || commandName === 'findElements') &&
+          Array.isArray(request.body)
+        ) {
+          if (logEntry.original_strategy === null) {
+            logEntry.original_strategy = (request.body as any[])[0] ?? null;
+          }
+          if (logEntry.original_selector === null) {
+            logEntry.original_selector = (request.body as any[])[1] ?? null;
+          }
+        }
 
         // Increment Healing Metrics
         if (healingInfo) {
