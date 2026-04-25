@@ -707,6 +707,7 @@ export async function setupCronCleanupBuilds(pluginArgs: IPluginArgs) {
 
 let cronTimerSweepOrphanSessions: any;
 let cronTimerReconcileDevices: any;
+let cronTimerSelectorVerification: any;
 
 /**
  * Cross-checks the device store against SESSION_MANAGER and frees devices
@@ -755,6 +756,33 @@ export function setupCronSweepOrphanSessions(heartbeatIntervalMs: number) {
 }
 
 /**
+ * Walks every Pending SelectorState row and (if 3+ distinct clean CI builds
+ * have run since fixed_at) promotes it to Resolved. Mirrors the OrphanSweeper
+ * cron-driven shape — single module-level handle that `stopAllTimers` cancels.
+ *
+ * Default cron is every 15 minutes (`*​/15 * * * *`); short enough that the
+ * dashboard's "1/3, 2/3" progress moves at a believable cadence, long enough
+ * that the per-row $queryRaw doesn't dominate the DB.
+ */
+export async function setupCronSelectorVerification(cronExpression = '*/15 * * * *') {
+  const { SelectorVerificationJob } = await import('./services/SelectorVerificationJob');
+  const schedule = await import('node-schedule');
+  const job = Container.get(SelectorVerificationJob);
+
+  if (cronTimerSelectorVerification) {
+    cronTimerSelectorVerification.cancel();
+  }
+
+  log.info(`Selector verification scheduled with expression: ${cronExpression}`);
+  cronTimerSelectorVerification = schedule.scheduleJob(cronExpression, () => {
+    job.run().catch((err: any) => {
+      log.error(`Selector verification crashed: ${err.message}`);
+    });
+  });
+  return cronTimerSelectorVerification;
+}
+
+/**
  * Principal Shutdown: Clears all background intervals and scheduled jobs
  * to prevent process hangs and handle leaks.
  */
@@ -767,4 +795,5 @@ export function stopAllTimers() {
   if (cronTimerToCleanupBuilds) cronTimerToCleanupBuilds.cancel();
   if (cronTimerSweepOrphanSessions) clearInterval(cronTimerSweepOrphanSessions);
   if (cronTimerReconcileDevices) clearInterval(cronTimerReconcileDevices);
+  if (cronTimerSelectorVerification) cronTimerSelectorVerification.cancel();
 }

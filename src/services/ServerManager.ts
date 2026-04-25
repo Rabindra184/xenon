@@ -20,6 +20,7 @@ import {
   setupCronReleaseBlockedDevices,
   setupCronSweepOrphanSessions,
   setupCronReconcileDevices,
+  setupCronSelectorVerification,
   setupCronUpdateDeviceList,
   removeStaleDevices,
   updateDeviceList,
@@ -348,6 +349,10 @@ export class ServerManager {
       //     demand; lag needs a running sampler.
       const { ProcessMetricsService } = await import('./ProcessMetricsService');
       Container.get(ProcessMetricsService).start(1000);
+
+      // 11. Promote Pending SelectorState rows to Resolved after enough
+      //     clean CI builds. Cron-driven, hub-side only.
+      await setupCronSelectorVerification();
     }
   }
 }
