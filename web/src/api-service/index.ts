@@ -306,6 +306,12 @@ export default class XenonApiService {
     );
   }
 
+  public static sendHealingDigest(
+    options: { windowDays?: number; minHealCount?: number; limit?: number } = {},
+  ) {
+    return apiClient.makePOSTRequest('/healing/digest/send', {}, options);
+  }
+
   /**
    * Export a build's sessions as a downloadable file.
    * Returns a { blob, filename } pair suitable for a browser-download trigger.

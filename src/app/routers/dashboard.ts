@@ -6,6 +6,7 @@ import { WebConfigService } from '../../data-service/web-config-service';
 import { Container } from 'typedi';
 import { scopeGuard } from '../../middleware/scopeGuard';
 import { buildExport } from './build-export';
+import { NotificationService } from '../../services/NotificationService';
 
 const MJPEG_PROXY_CACHE: Map<string, any> = new Map();
 
@@ -297,23 +298,72 @@ async function getHealingHotspots(request: Request, response: Response) {
   const windowDays = parseWindowDays(request.query.windowDays);
   const limitRaw = parseInt((request.query.limit as string) || '20', 10);
   const limit = Number.isFinite(limitRaw) ? Math.min(Math.max(limitRaw, 1), 100) : 20;
-  const tierFilter =
+  const tier =
     typeof request.query.tier === 'string' && request.query.tier ? request.query.tier : null;
-  const platformFilter =
+  const platform =
     typeof request.query.platform === 'string' && request.query.platform
       ? request.query.platform
       : null;
 
+  const agg = await aggregateHotspots({ windowDays, limit, tier, platform });
+
+  return response.status(200).json({
+    windowDays,
+    totalScanned: agg.totalScanned,
+    filters: { tier, platform },
+    hotspots: agg.hotspots,
+  });
+}
+
+// Shape used by both the dashboard hotspots view and the CI gate. Kept
+// close to the route to keep type churn local.
+interface HotspotRow {
+  originalSelector: string;
+  healCount: number;
+  sessionCount: number;
+  topTier: string | null;
+  suggestedRewrite: string | null;
+  suggestedRewriteShare: number | null;
+  averageConfidence: number | null;
+  firstHealedAt: string;
+  lastHealedAt: string;
+}
+
+interface HotspotAggregation {
+  totalScanned: number;
+  totalHeals: number;
+  distinctSelectors: number;
+  sessionsTouched: number;
+  byTier: Record<string, number>;
+  estCostUsd: number;
+  hotspots: HotspotRow[];
+}
+
+interface HotspotQueryOptions {
+  windowDays: number;
+  limit: number;
+  tier?: string | null;
+  platform?: string | null;
+  buildId?: string | null;
+  minHealCount?: number;
+}
+
+async function aggregateHotspots(opts: HotspotQueryOptions): Promise<HotspotAggregation> {
   const since = new Date();
-  since.setDate(since.getDate() - windowDays);
+  since.setDate(since.getDate() - opts.windowDays);
 
   const where: any = {
     is_healed: true,
     createdAt: { gte: since },
     original_selector: { not: null },
   };
-  if (tierFilter) where.healing_tier = tierFilter;
-  if (platformFilter) where.session = { device_platform: platformFilter };
+  if (opts.tier) where.healing_tier = opts.tier;
+  if (opts.platform || opts.buildId) {
+    where.session = {
+      ...(opts.platform ? { device_platform: opts.platform } : {}),
+      ...(opts.buildId ? { build_id: opts.buildId } : {}),
+    };
+  }
 
   const rows = await prisma.sessionLog.findMany({
     where,
@@ -324,9 +374,6 @@ async function getHealingHotspots(request: Request, response: Response) {
       healing_confidence: true,
       healing_tier: true,
       createdAt: true,
-      session: {
-        select: { device_platform: true },
-      },
     },
     orderBy: { createdAt: 'desc' },
     take: 5000,
@@ -345,7 +392,13 @@ async function getHealingHotspots(request: Request, response: Response) {
   };
 
   const buckets = new Map<string, Bucket>();
+  const byTier: Record<string, number> = {};
+  const sessionsTouched = new Set<string>();
   for (const r of rows) {
+    sessionsTouched.add(r.session_id);
+    const tier = r.healing_tier || 'Unknown';
+    byTier[tier] = (byTier[tier] || 0) + 1;
+
     const key = r.original_selector!;
     let b = buckets.get(key);
     if (!b) {
@@ -387,12 +440,14 @@ async function getHealingHotspots(request: Request, response: Response) {
     return top;
   };
 
-  const hotspots = Array.from(buckets.values())
+  const minCount = opts.minHealCount ?? 1;
+  const hotspots: HotspotRow[] = Array.from(buckets.values())
+    .filter((b) => b.healCount >= minCount)
     .sort(
       (a, b) =>
         b.healCount - a.healCount || b.lastHealedAt.getTime() - a.lastHealedAt.getTime(),
     )
-    .slice(0, limit)
+    .slice(0, opts.limit)
     .map((b) => {
       const topRewrite = pickTopEntry(b.healedSelectors);
       const topTier = pickTopEntry(b.tiers);
@@ -400,9 +455,9 @@ async function getHealingHotspots(request: Request, response: Response) {
         originalSelector: b.originalSelector,
         healCount: b.healCount,
         sessionCount: b.sessions.size,
+        topTier: topTier?.value ?? null,
         suggestedRewrite: topRewrite?.value ?? null,
         suggestedRewriteShare: topRewrite ? topRewrite.count / b.healCount : null,
-        topTier: topTier?.value ?? null,
         averageConfidence:
           b.confidenceSamples > 0 ? b.confidenceSum / b.confidenceSamples : null,
         firstHealedAt: b.firstHealedAt.toISOString(),
@@ -410,11 +465,103 @@ async function getHealingHotspots(request: Request, response: Response) {
       };
     });
 
+  return {
+    totalScanned: rows.length,
+    totalHeals: rows.length,
+    distinctSelectors: buckets.size,
+    sessionsTouched: sessionsTouched.size,
+    byTier,
+    estCostUsd: estimateCost(byTier),
+    hotspots,
+  };
+}
+
+// CI gate endpoint. CI runs this against a build and inspects
+// `violationCount` to decide whether to soft-fail / warn / block. Always
+// returns 200 — CI owns the policy decision, this just supplies the data.
+async function getHealingViolations(request: Request, response: Response) {
+  const windowDays = parseWindowDays(request.query.windowDays, 7);
+  const minHealCountRaw = parseInt((request.query.minHealCount as string) || '5', 10);
+  const minHealCount = Number.isFinite(minHealCountRaw)
+    ? Math.min(Math.max(minHealCountRaw, 1), 1000)
+    : 5;
+  const tier = typeof request.query.tier === 'string' && request.query.tier ? request.query.tier : null;
+  const platform =
+    typeof request.query.platform === 'string' && request.query.platform
+      ? request.query.platform
+      : null;
+  const buildId =
+    typeof request.query.build === 'string' && request.query.build ? request.query.build : null;
+
+  const agg = await aggregateHotspots({
+    windowDays,
+    limit: 100,
+    tier,
+    platform,
+    buildId,
+    minHealCount,
+  });
+
   return response.status(200).json({
     windowDays,
-    totalScanned: rows.length,
-    filters: { tier: tierFilter, platform: platformFilter },
-    hotspots,
+    minHealCount,
+    filters: { tier, platform, buildId },
+    violationCount: agg.hotspots.length,
+    totalHeals: agg.totalHeals,
+    distinctSelectors: agg.distinctSelectors,
+    estCostUsd: agg.estCostUsd,
+    violations: agg.hotspots,
+  });
+}
+
+// On-demand digest dispatcher. Fires the current Selector Health summary
+// to every webhook subscribed to `selector_health_digest`. Used by the
+// dashboard "Send digest now" button and by external schedulers (cron in
+// CI, etc.) that want to push a weekly digest to Slack.
+async function sendHealingDigest(request: Request, response: Response) {
+  const windowDays = parseWindowDays(
+    request.body?.windowDays ?? request.query?.windowDays,
+    7,
+  );
+  const limit = Math.min(
+    Math.max(parseInt(String(request.body?.limit ?? request.query?.limit ?? '5'), 10) || 5, 1),
+    20,
+  );
+  const minHealCountRaw = parseInt(
+    String(request.body?.minHealCount ?? request.query?.minHealCount ?? '2'),
+    10,
+  );
+  const minHealCount = Number.isFinite(minHealCountRaw)
+    ? Math.min(Math.max(minHealCountRaw, 1), 1000)
+    : 2;
+
+  const agg = await aggregateHotspots({ windowDays, limit, minHealCount });
+  const payload = {
+    windowDays,
+    totalHeals: agg.totalHeals,
+    distinctSelectors: agg.distinctSelectors,
+    estCostUsd: agg.estCostUsd,
+    hotspots: agg.hotspots,
+  };
+
+  const notifier = Container.get(NotificationService);
+  const configs = await notifier.getConfigs();
+  const subscribed = configs.filter((c) => {
+    if (!c.active) return false;
+    try {
+      const events = JSON.parse(c.events) as string[];
+      return events.includes('selector_health_digest');
+    } catch {
+      return false;
+    }
+  });
+
+  await notifier.dispatchEvent('selector_health_digest', payload);
+
+  return response.status(200).json({
+    sent: subscribed.length,
+    windowDays,
+    hotspotsIncluded: agg.hotspots.length,
   });
 }
 
@@ -646,7 +793,11 @@ function register(router: Router) {
   router.get('/healing/events', getRecentHealingEvents);
   router.get('/healing/summary', getHealingSummary);
   router.get('/healing/hotspots', getHealingHotspots);
+  router.get('/healing/hotspots/violations', getHealingViolations);
   router.get('/healing/selector', getHealingSelectorDetail);
+  // Outbound notification — admin only since it can fan out to every
+  // configured webhook (Slack channels, etc.).
+  router.post('/healing/digest/send', scopeGuard(['admin']), sendHealingDigest);
   router.get('/config', getGlobalConfig);
   // Config + destructive ops: admin-only. Read-only config stays open to any
   // authenticated key so dashboards using 'read' scope can still populate.

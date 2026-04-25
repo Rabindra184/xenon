@@ -4,7 +4,11 @@ import { PrismaService } from '../data-service/prisma-service';
 import { WebhookConfig } from '../generated/client';
 import { Service } from 'typedi';
 
-export type EventType = 'device_offline' | 'session_failed' | 'device_new';
+export type EventType =
+  | 'device_offline'
+  | 'session_failed'
+  | 'device_new'
+  | 'selector_health_digest';
 
 @Service()
 export class NotificationService {
@@ -111,6 +115,43 @@ export class NotificationService {
       case 'device_new':
         text = `📱 *New Device Connected*: ${payload.name} (${payload.udid})`;
         break;
+      case 'selector_health_digest': {
+        // Render the digest as a Slack message rather than a flat key/value
+        // dump. Skip the generic field renderer below so we control the
+        // formatting end-to-end.
+        const totalHeals = payload.totalHeals ?? 0;
+        const distinctSelectors = payload.distinctSelectors ?? 0;
+        const estCostUsd = payload.estCostUsd ?? 0;
+        const windowDays = payload.windowDays ?? 30;
+        const top: Array<any> = Array.isArray(payload.hotspots) ? payload.hotspots : [];
+        const lines = top
+          .slice(0, 5)
+          .map(
+            (h, i) =>
+              `${i + 1}. *${h.healCount}× healed* — \`${h.originalSelector}\`` +
+              (h.suggestedRewrite ? `\n   ↳ rewrite: \`${h.suggestedRewrite}\`` : ''),
+          )
+          .join('\n');
+        const summary = `🩺 *Selector Health digest* — last ${windowDays}d\n${totalHeals} heals across ${distinctSelectors} selectors · est. $${estCostUsd.toFixed(2)}`;
+        const body = {
+          text: summary,
+          attachments: [
+            {
+              color: top.length > 0 ? '#f59e0b' : '#36a64f',
+              text: top.length > 0 ? lines : 'No hotspots to flag — locator hygiene is clean.',
+              footer: 'Xenon · Selector Health',
+              ts: Math.floor(Date.now() / 1000),
+            },
+          ],
+        };
+        try {
+          await axios.post(url, body);
+          log.info(`Selector Health digest sent to ${url}`);
+        } catch (err) {
+          log.error(`Failed to send digest to ${url}: ${err}`);
+        }
+        return;
+      }
       default:
         text = `Event: ${eventType}\nPayload: ${JSON.stringify(payload)}`;
     }

@@ -13,6 +13,7 @@ import {
   XCircle,
   Activity,
   RefreshCw,
+  HeartPulse,
 } from 'lucide-react';
 import { FieldGroup } from '../ui/FieldGroup';
 import { PageHeader } from '../ui/page-header';
@@ -39,6 +40,12 @@ const AVAILABLE_EVENTS = [
     label: 'Session Failed',
     icon: XCircle,
     tone: 'amber' as const,
+  },
+  {
+    id: 'selector_health_digest',
+    label: 'Selector Health Digest',
+    icon: HeartPulse,
+    tone: 'green' as const,
   },
 ];
 
