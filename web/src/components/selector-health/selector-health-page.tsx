@@ -18,7 +18,9 @@ import {
   Filter,
   Send,
   Info,
+  ExternalLink,
 } from 'lucide-react';
+import { EmptyState } from '../ui/EmptyState';
 import XenonApiService from '../../api-service';
 import { PageHeader } from '../ui/page-header';
 import { SegmentedControl } from '../ui/SegmentedControl';
@@ -488,25 +490,49 @@ const SelectorHealthPage: React.FC = () => {
             <span>Loading hotspots…</span>
           </div>
         ) : hotspots.length === 0 ? (
-          <div className="sh-empty sh-empty--clean">
-            <HeartPulse size={28} />
-            <div>
-              <div className="sh-empty__title">
-                {tab === 'pending'
-                  ? 'Nothing pending'
-                  : tab === 'resolved'
-                    ? 'Nothing resolved yet'
-                    : 'Locator hygiene is clean'}
+          <EmptyState
+            icon={
+              <HeartPulse
+                size={32}
+                color={tab === 'active' ? 'var(--green)' : 'var(--text-dim)'}
+              />
+            }
+            title={
+              tab === 'pending'
+                ? 'Nothing pending'
+                : tab === 'resolved'
+                  ? 'Nothing resolved yet'
+                  : 'Locator hygiene is clean'
+            }
+            description={
+              tab === 'pending'
+                ? 'When you mark a selector fixed, it shows here while we watch for 3 clean CI builds.'
+                : tab === 'resolved'
+                  ? 'Fix a hot selector and Xenon will track its verification here.'
+                  : `No selectors required healing in the last ${windowDays} days${filtersActive ? ' for the active filters' : ''}.`
+            }
+            action={
+              <div className="sh-empty-actions">
+                {filtersActive && tab === 'active' && (
+                  <button
+                    type="button"
+                    className="sh-ghost-btn sh-ghost-btn--inline"
+                    onClick={() => { setTier(''); setPlatform(''); }}
+                  >
+                    <Filter size={12} /> Reset filters
+                  </button>
+                )}
+                <a
+                  href="/xenon/api-docs"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="sh-ghost-btn sh-ghost-btn--inline"
+                >
+                  <ExternalLink size={12} /> View API docs
+                </a>
               </div>
-              <div className="sh-empty__subtitle">
-                {tab === 'pending'
-                  ? 'When you mark a selector fixed, it shows here while we watch for 3 clean CI builds.'
-                  : tab === 'resolved'
-                    ? 'Fix a hot selector and Xenon will track its verification here.'
-                    : `No selectors required healing in the last ${windowDays} days${filtersActive ? ' for the active filters' : ''}.`}
-              </div>
-            </div>
-          </div>
+            }
+          />
         ) : tab === 'pending' ? (
           <div className="sh-pending-list">
             {hotspots.map((h) => (
