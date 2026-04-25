@@ -19,6 +19,7 @@ import AppsRouter from './routers/apps';
 import webhookRouter from './routers/webhook';
 import reservationRouter from './routers/reservation';
 import ConfigRouter from './routers/config';
+import InterceptorRouter from './routers/interceptor';
 import { apiKeysRouter } from './routers/apikeys';
 import { teamsRouter } from './routers/teams';
 import { authRouter } from './routers/auth';
@@ -158,13 +159,15 @@ const findPublicPath = () => {
 
   // Last resort fallback
   const fallback = path.resolve(__dirname, '../../public');
-  log.warn(`[Xenon] Could not find dashboard index.html in standard paths. Falling back to: ${fallback}`);
+  log.warn(
+    `[Xenon] Could not find dashboard index.html in standard paths. Falling back to: ${fallback}`,
+  );
   return fallback;
 };
 
 const publicPath = findPublicPath();
 log.info(`[Xenon] Dashboard assets path: ${publicPath}`);
-log.info(`[Xenon] Dashboard available at: /xenon/ (e.g. http://localhost:4723/xenon/)`);
+log.info('[Xenon] Dashboard available at: /xenon/ (e.g. http://localhost:4723/xenon/)');
 
 // CSP for the dashboard. Keeps 'unsafe-inline' (React/Vite inline styles),
 // drops 'unsafe-eval' and the default-src wildcard to avoid full XSS-to-RCE.
@@ -242,6 +245,7 @@ function createRouter(pluginArgs: IPluginArgs) {
   AppsRouter.register(apiRouter);
   webhookRouter.register(apiRouter);
   ConfigRouter.register(apiRouter, pluginArgs);
+  InterceptorRouter.register(apiRouter);
   apiRouter.use('/reservation', reservationRouter);
 
   // Principal Health: Add ping endpoint

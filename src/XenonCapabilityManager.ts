@@ -25,6 +25,12 @@ export enum XENON_CAPABILITIES {
 
   NETWORK_PROFILE = 'network_profile',
   ISOLATION_PROFILE = 'isolation_profile',
+
+  INTERCEPTOR = 'interceptor',
+  INTERCEPTOR_ENABLED = 'interceptor_enabled',
+  INTERCEPTOR_BUFFER_SIZE = 'interceptor_buffer_size',
+  INTERCEPTOR_CAPTURE_BODIES = 'interceptor_capture_bodies',
+  INTERCEPTOR_MOCKS = 'interceptor_mocks',
 }
 
 function isCapabilityAlreadyPresent(caps: ISessionCapability, capabilityName: string) {
@@ -221,6 +227,30 @@ export function getXenonCapabilities(caps: ISessionCapability) {
     XENON_CAPABILITIES.ISOLATION_PROFILE,
     'isolationProfile',
   );
+
+  // 8. Network Interceptor
+  // Accept either a structured object (`xe:interceptor: { enabled, mocks, ... }`)
+  // or individual flat keys for users who prefer them.
+  const interceptorObj = getAnyCap(XENON_CAPABILITIES.INTERCEPTOR, 'interceptor');
+  if (interceptorObj && typeof interceptorObj === 'object') {
+    capabilities[XENON_CAPABILITIES.INTERCEPTOR_ENABLED] = !!interceptorObj.enabled;
+    capabilities[XENON_CAPABILITIES.INTERCEPTOR_BUFFER_SIZE] = interceptorObj.bufferSize;
+    capabilities[XENON_CAPABILITIES.INTERCEPTOR_CAPTURE_BODIES] =
+      interceptorObj.captureBodies !== false;
+    capabilities[XENON_CAPABILITIES.INTERCEPTOR_MOCKS] = Array.isArray(interceptorObj.mocks)
+      ? interceptorObj.mocks
+      : [];
+  } else {
+    const enabledFlat = getAnyCap(XENON_CAPABILITIES.INTERCEPTOR_ENABLED, 'interceptorEnabled');
+    capabilities[XENON_CAPABILITIES.INTERCEPTOR_ENABLED] =
+      enabledFlat !== undefined ? String(enabledFlat) === 'true' : false;
+    capabilities[XENON_CAPABILITIES.INTERCEPTOR_BUFFER_SIZE] = getAnyCap(
+      XENON_CAPABILITIES.INTERCEPTOR_BUFFER_SIZE,
+      'interceptorBufferSize',
+    );
+    capabilities[XENON_CAPABILITIES.INTERCEPTOR_CAPTURE_BODIES] = true;
+    capabilities[XENON_CAPABILITIES.INTERCEPTOR_MOCKS] = [];
+  }
 
   log.debug(
     '[CapabilityManager] Resolved Capabilities: ' +

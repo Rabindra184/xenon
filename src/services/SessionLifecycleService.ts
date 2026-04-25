@@ -217,7 +217,9 @@ export class SessionLifecycleService {
     const svc = Container.get(ApiKeyService);
     const row = await svc.verify(raw);
     if (!row || !svc.hasScope(row, ['sessions'])) {
-      this.logger.error('Rejecting session: xenon:accessKey is invalid, revoked, or lacks the `sessions` scope');
+      this.logger.error(
+        'Rejecting session: xenon:accessKey is invalid, revoked, or lacks the `sessions` scope',
+      );
       throw new appiumErrors.InvalidArgumentError(
         'xenon:accessKey is invalid, revoked, or lacks the `sessions` scope',
       );
@@ -423,6 +425,20 @@ export class SessionLifecycleService {
         device,
         networkProfile,
       );
+    }
+
+    if (caps[XENON_CAPABILITIES.INTERCEPTOR_ENABLED]) {
+      try {
+        const { InterceptorService } = await import('./InterceptorService');
+        await Container.get(InterceptorService).start(session.getId(), device, {
+          enabled: true,
+          bufferSize: caps[XENON_CAPABILITIES.INTERCEPTOR_BUFFER_SIZE],
+          captureBodies: caps[XENON_CAPABILITIES.INTERCEPTOR_CAPTURE_BODIES] !== false,
+          mocks: caps[XENON_CAPABILITIES.INTERCEPTOR_MOCKS] || [],
+        });
+      } catch (err: any) {
+        this.logger.warn(`🕸️ Failed to start interceptor for ${session.getId()}: ${err.message}`);
+      }
     }
 
     const isDashboardEnabled = !!context.pluginArgs.enableDashboard;
@@ -653,6 +669,16 @@ export class SessionLifecycleService {
           } catch (resetErr: any) {
             this.logger.warn(
               `⚠️ NetworkConditioningService.reset failed for session ${sessionId}: ${resetErr.message}`,
+            );
+          }
+
+          try {
+            const { InterceptorService } = await import('./InterceptorService');
+            const interceptor = Container.get(InterceptorService);
+            if (interceptor.isActive(sessionId)) await interceptor.stop(sessionId);
+          } catch (interceptorErr: any) {
+            this.logger.warn(
+              `⚠️ InterceptorService.stop failed for session ${sessionId}: ${interceptorErr.message}`,
             );
           }
 

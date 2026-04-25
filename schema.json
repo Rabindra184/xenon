@@ -247,6 +247,28 @@
         "nodeSecret": {
             "type": "string",
             "description": "Shared secret for hub-node channel authentication. Nodes must send this value in X-Xenon-Node-Secret header."
+        },
+        "interceptor": {
+            "type": "object",
+            "description": "Network request interception configuration (capture + mock + modify). Android-only in v1.",
+            "additionalProperties": false,
+            "properties": {
+                "enabled": {
+                    "type": "boolean",
+                    "default": false,
+                    "description": "Enable the network interceptor. Sessions still need xenon:options.interceptor.enabled=true (or interceptorEnabled cap) to be intercepted."
+                },
+                "bufferSize": {
+                    "type": "number",
+                    "default": 1000,
+                    "description": "Maximum number of captured requests to retain in-memory per session before evicting oldest."
+                },
+                "captureBodies": {
+                    "type": "boolean",
+                    "default": true,
+                    "description": "Whether to capture request/response bodies. Disable for privacy or to reduce memory usage."
+                }
+            }
         }
     },
     "required": [
