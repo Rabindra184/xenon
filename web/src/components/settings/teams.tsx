@@ -13,6 +13,7 @@ import {
 import { useToast } from '../ui/toast';
 import { Table, THead, TBody, TR, TH, TD } from '../ui/Table';
 import { FieldGroup } from '../ui/FieldGroup';
+import { PageHeader } from '../ui/page-header';
 import { Modal } from '../ui/Modal';
 
 interface TeamRow {
@@ -117,16 +118,11 @@ export const Teams: React.FC = () => {
 
   return (
     <div className="settings-container mesh-gradient-infra">
-      <div className="settings-header">
-        <div className="settings-title-group">
-          <Users className="settings-icon infra-icon" size={28} />
-          <h2>Teams</h2>
-        </div>
-        <p className="settings-subtitle">
-          Group devices and API keys by team. Devices with no team assignment stay in the shared
-          pool — visible to every authenticated key.
-        </p>
-      </div>
+      <PageHeader
+        icon={Users}
+        title="Teams"
+        subtitle="Group devices and API keys by team. Devices with no team assignment stay in the shared pool — visible to every authenticated key."
+      />
 
       <div className="settings-content">
         <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 16 }}>

@@ -13,6 +13,7 @@ import {
 import { useToast } from '../ui/toast';
 import { Table, THead, TBody, TR, TH, TD } from '../ui/Table';
 import { FieldGroup } from '../ui/FieldGroup';
+import { PageHeader } from '../ui/page-header';
 import { Modal } from '../ui/Modal';
 
 type Scope = 'read' | 'sessions' | 'devices' | 'admin';
@@ -196,17 +197,17 @@ export const ApiKeys: React.FC = () => {
         className="scanline"
         style={{ position: 'absolute', inset: 0, pointerEvents: 'none', opacity: 0.05, zIndex: 1001 }}
       />
-      <div className="settings-header">
-        <div className="settings-title-group">
-          <Key className="settings-icon infra-icon" size={28} />
-          <h2>API Keys</h2>
-        </div>
-        <p className="settings-subtitle">
-          Issue scoped credentials for humans (dashboard login) and machines (CI, WebDriver clients
-          via <code>xenon:accessKey</code>). Keys are shown only once at creation — copy the value
-          before closing the dialog.
-        </p>
-      </div>
+      <PageHeader
+        icon={Key}
+        title="API Keys"
+        subtitle={
+          <>
+            Issue scoped credentials for humans (dashboard login) and machines (CI, WebDriver
+            clients via <code>xenon:accessKey</code>). Keys are shown only once at creation —
+            copy the value before closing the dialog.
+          </>
+        }
+      />
 
       <div className="settings-content">
         <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 16 }}>
