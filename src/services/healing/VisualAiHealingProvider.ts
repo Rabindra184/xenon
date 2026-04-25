@@ -34,7 +34,9 @@ export class VisualAiHealingProvider implements HealingProvider {
           tier: this.tier,
           confidence: 0.8, // Basic vision models don't always give confidence, assuming high if found
           originalSelector: context.selector,
+          originalStrategy: context.strategy,
           recommendedSelector: `visual:description="${description}"`,
+          recommendedStrategy: 'xenon:visual',
           message: `Found element visually via AI Vision (${description})`,
           rect: {
             x: coordinates.x - 20, // Approximate bounding box

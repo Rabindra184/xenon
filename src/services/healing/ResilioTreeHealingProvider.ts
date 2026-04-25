@@ -60,7 +60,9 @@ export class ResilioTreeHealingProvider implements HealingProvider {
             return {
               id: healedElement.ELEMENT || healedElement['element-6066-11e4-a52e-4f735466cecf'],
               originalSelector: context.selector,
+              originalStrategy: context.strategy,
               recommendedSelector: recommendedXpath,
+              recommendedStrategy: 'xpath',
               candidateSelectors: candidateLocators,
               confidence: 0.9, // ResilioTree path matching is high confidence
               tier: this.tier,
