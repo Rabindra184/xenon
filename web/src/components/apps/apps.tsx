@@ -15,6 +15,7 @@ import {
   RefreshCw,
   Rocket,
   X,
+  Package,
 } from 'lucide-react';
 import XenonApiService from '../../api-service';
 import { useToast } from '../ui/toast';
@@ -22,6 +23,7 @@ import './apps.css';
 import { IDevice } from '../../interfaces/IDevice';
 import { Badge } from '../ui/badge';
 import { Button } from '../ui/button';
+import { PageHeader } from '../ui/page-header';
 
 const Apps: React.FC = () => {
   const { toast, removeToast } = useToast();
@@ -176,6 +178,11 @@ const Apps: React.FC = () => {
           zIndex: 1001,
         }}
       ></div>
+      <PageHeader
+        icon={Package}
+        title="App Repository"
+        subtitle="Manage signed builds available for installation across your device fleet."
+      />
       <div className="device-explorer-header-container">
         <div className="device-explorer-header-left-container">
           <div className="device-explorer-header-entry">
