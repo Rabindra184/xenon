@@ -1,5 +1,6 @@
 import React from 'react';
 import { Smartphone as AndroidIcon, RefreshCw } from 'lucide-react';
+import { PageHeader } from '../ui/page-header';
 import { useParams, useNavigate } from 'react-router-dom';
 import CardView from './card-view/card-view';
 import './device-explorer.css';
@@ -148,6 +149,11 @@ export class DeviceExplorer extends React.Component<IDeviceExplorerProps, IDevic
 
     return (
       <div className="device-explorer-container">
+        <PageHeader
+          icon={AndroidIcon}
+          title="Devices"
+          subtitle={`${this.state.devices.length} device${this.state.devices.length === 1 ? '' : 's'} registered across the global pool.`}
+        />
         <div className="de2-toolbar">
           <SegmentedControl
             size="sm"
