@@ -20,6 +20,7 @@ import { PageHeader } from '../ui/page-header';
 import { useToast } from '../ui/toast';
 import { IHealingEvent, IHealingEventsResponse } from '../../interfaces/IHealingEvent';
 import { useSocket } from '../../hooks/useSocket';
+import { HealingHotspots } from './healing-hotspots';
 
 interface InfraConfig {
   healthCheckIntervalMs: number;
@@ -377,6 +378,8 @@ export const Settings: React.FC = () => {
                 )}
               </div>
             )}
+
+            {config.enableSelfHealing && <HealingHotspots />}
           </SettingCard>
         </div>
       </div>

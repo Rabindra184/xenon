@@ -200,6 +200,121 @@ async function getRecentHealingEvents(request: Request, response: Response) {
   return response.status(200).json({ events, todayCount });
 }
 
+// Group raw heal rows by original_selector and surface the worst offenders so
+// users can rewrite the broken selectors in their test code instead of
+// relying on auto-heal forever.
+async function getHealingHotspots(request: Request, response: Response) {
+  const windowDaysRaw = parseInt((request.query.windowDays as string) || '30', 10);
+  const windowDays = Number.isFinite(windowDaysRaw)
+    ? Math.min(Math.max(windowDaysRaw, 1), 365)
+    : 30;
+  const limitRaw = parseInt((request.query.limit as string) || '10', 10);
+  const limit = Number.isFinite(limitRaw) ? Math.min(Math.max(limitRaw, 1), 50) : 10;
+
+  const since = new Date();
+  since.setDate(since.getDate() - windowDays);
+
+  // Cap the underlying scan so a runaway query can't blow up the dashboard.
+  // 5000 heals across a month is already a lot; if a deployment exceeds
+  // this, the aggregation should move into a SQL group-by.
+  const rows = await prisma.sessionLog.findMany({
+    where: {
+      is_healed: true,
+      createdAt: { gte: since },
+      original_selector: { not: null },
+    },
+    select: {
+      session_id: true,
+      original_selector: true,
+      healed_selector: true,
+      healing_confidence: true,
+      healing_tier: true,
+      createdAt: true,
+    },
+    orderBy: { createdAt: 'desc' },
+    take: 5000,
+  });
+
+  type Bucket = {
+    originalSelector: string;
+    healCount: number;
+    sessions: Set<string>;
+    tiers: Map<string, number>;
+    healedSelectors: Map<string, number>;
+    confidenceSum: number;
+    confidenceSamples: number;
+    lastHealedAt: Date;
+  };
+
+  const buckets = new Map<string, Bucket>();
+  for (const r of rows) {
+    const key = r.original_selector!;
+    let b = buckets.get(key);
+    if (!b) {
+      b = {
+        originalSelector: key,
+        healCount: 0,
+        sessions: new Set<string>(),
+        tiers: new Map<string, number>(),
+        healedSelectors: new Map<string, number>(),
+        confidenceSum: 0,
+        confidenceSamples: 0,
+        lastHealedAt: r.createdAt,
+      };
+      buckets.set(key, b);
+    }
+    b.healCount += 1;
+    b.sessions.add(r.session_id);
+    if (r.healing_tier) {
+      b.tiers.set(r.healing_tier, (b.tiers.get(r.healing_tier) ?? 0) + 1);
+    }
+    if (r.healed_selector) {
+      b.healedSelectors.set(
+        r.healed_selector,
+        (b.healedSelectors.get(r.healed_selector) ?? 0) + 1,
+      );
+    }
+    if (typeof r.healing_confidence === 'number') {
+      b.confidenceSum += r.healing_confidence;
+      b.confidenceSamples += 1;
+    }
+    if (r.createdAt > b.lastHealedAt) b.lastHealedAt = r.createdAt;
+  }
+
+  const pickTopEntry = <T>(m: Map<T, number>): { value: T; count: number } | null => {
+    let top: { value: T; count: number } | null = null;
+    for (const [value, count] of m) {
+      if (!top || count > top.count) top = { value, count };
+    }
+    return top;
+  };
+
+  const hotspots = Array.from(buckets.values())
+    .sort((a, b) => b.healCount - a.healCount || b.lastHealedAt.getTime() - a.lastHealedAt.getTime())
+    .slice(0, limit)
+    .map((b) => {
+      const topRewrite = pickTopEntry(b.healedSelectors);
+      const topTier = pickTopEntry(b.tiers);
+      return {
+        originalSelector: b.originalSelector,
+        healCount: b.healCount,
+        sessionCount: b.sessions.size,
+        suggestedRewrite: topRewrite?.value ?? null,
+        suggestedRewriteShare: topRewrite ? topRewrite.count / b.healCount : null,
+        topTier: topTier?.value ?? null,
+        averageConfidence:
+          b.confidenceSamples > 0 ? b.confidenceSum / b.confidenceSamples : null,
+        lastHealedAt: b.lastHealedAt.toISOString(),
+      };
+    });
+
+  return response.status(200).json({
+    windowDays,
+    totalHeals: rows.length,
+    hotspots,
+  });
+}
+
 async function getProfilingData(request: Request, response: Response) {
   const sessionId = request.params.sessionId;
 
@@ -318,6 +433,7 @@ function register(router: Router) {
   router.get('/session/:sessionId/logs/debug', getDebugLogs);
   router.get('/session/:sessionId/profiling', getProfilingData);
   router.get('/healing/events', getRecentHealingEvents);
+  router.get('/healing/hotspots', getHealingHotspots);
   router.get('/config', getGlobalConfig);
   // Config + destructive ops: admin-only. Read-only config stays open to any
   // authenticated key so dashboards using 'read' scope can still populate.

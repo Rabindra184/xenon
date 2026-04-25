@@ -284,6 +284,12 @@ export default class XenonApiService {
     return apiClient.makeGETRequest(`/healing/events?limit=${limit}&t=${Date.now()}`);
   }
 
+  public static getHealingHotspots(windowDays = 30, limit = 10) {
+    return apiClient.makeGETRequest(
+      `/healing/hotspots?windowDays=${windowDays}&limit=${limit}&t=${Date.now()}`,
+    );
+  }
+
   /**
    * Export a build's sessions as a downloadable file.
    * Returns a { blob, filename } pair suitable for a browser-download trigger.
