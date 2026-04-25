@@ -4,6 +4,7 @@ import { TabNav, Tab } from './tab-nav';
 import { formatStrategy } from '../../utils/strategy-labels';
 import { CopyButton } from './copy-language-modal';
 import { PendingRow } from './pending-row';
+import { ResolvedRow } from './resolved-row';
 import {
   HeartPulse,
   RefreshCw,
@@ -454,6 +455,17 @@ const SelectorHealthPage: React.FC = () => {
                 key={`${h.originalStrategy ?? ''} ${h.originalSelector}`}
                 hotspot={h}
                 onCancel={(hot) => handleAction('cancel_verification', hot)}
+                onMute={(hot) => handleAction('mute', hot)}
+                onOpen={openSelector}
+              />
+            ))}
+          </div>
+        ) : tab === 'resolved' ? (
+          <div className="sh-pending-list">
+            {hotspots.map((h) => (
+              <ResolvedRow
+                key={`${h.originalStrategy ?? ''} ${h.originalSelector}`}
+                hotspot={h}
                 onMute={(hot) => handleAction('mute', hot)}
                 onOpen={openSelector}
               />

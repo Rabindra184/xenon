@@ -971,3 +971,50 @@
   display: flex;
   gap: var(--space-2);
 }
+
+/* Resolved tab — same shape as Pending, different chrome */
+.sh-table__row--resolved {
+  display: block;
+  padding: var(--space-4);
+  cursor: pointer;
+}
+.sh-resolved-row__head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+.sh-resolved-row__icon {
+  color: var(--green, #4ade80);
+}
+.sh-resolved-row__selector {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.sh-resolved-row__regression {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  background: rgba(241, 196, 15, 0.12);
+  color: rgb(241, 196, 15);
+  padding: 0.1rem 0.5rem;
+  border-radius: 999px;
+  font-size: 0.72rem;
+}
+.sh-resolved-row__meta {
+  font-size: 0.85rem;
+  color: var(--text);
+  margin: 0.4rem 0 0.2rem 0;
+}
+.sh-resolved-row__history {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  margin-bottom: var(--space-3);
+}
+.sh-resolved-row__actions {
+  display: flex;
+  gap: var(--space-2);
+}
