@@ -11,10 +11,12 @@ import {
   Copy,
   Check,
   Filter,
+  Send,
 } from 'lucide-react';
 import XenonApiService from '../../api-service';
 import { PageHeader } from '../ui/page-header';
 import { SegmentedControl } from '../ui/SegmentedControl';
+import { useToast } from '../ui/toast';
 import {
   IHealingHotspot,
   IHealingHotspotsResponse,
@@ -190,6 +192,7 @@ const KpiStrip: React.FC<{ summary: IHealingSummaryResponse | null; loading: boo
 const SelectorHealthPage: React.FC = () => {
   const navigate = useNavigate();
   const { on } = useSocket();
+  const { toast } = useToast();
   const [windowDays, setWindowDays] = useState<WindowDays>(30);
   const [tier, setTier] = useState<TierFilter>('');
   const [platform, setPlatform] = useState<PlatformFilter>('');
@@ -198,6 +201,7 @@ const SelectorHealthPage: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [loaded, setLoaded] = useState(false);
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
+  const [sendingDigest, setSendingDigest] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -245,6 +249,30 @@ const SelectorHealthPage: React.FC = () => {
     navigate(`/selector-health/detail?value=${encodeURIComponent(selector)}&windowDays=${windowDays}`);
   };
 
+  const sendDigest = async () => {
+    setSendingDigest(true);
+    try {
+      const r = await XenonApiService.sendHealingDigest({ windowDays, limit: 5, minHealCount: 2 });
+      const sent = (r as any)?.sent ?? 0;
+      const included = (r as any)?.hotspotsIncluded ?? 0;
+      if (sent === 0) {
+        toast(
+          'No webhook is subscribed to selector_health_digest yet. Add one in Notifications.',
+          'error',
+        );
+      } else {
+        toast(
+          `Digest sent to ${sent} webhook${sent === 1 ? '' : 's'} (${included} hotspot${included === 1 ? '' : 's'} included).`,
+          'success',
+        );
+      }
+    } catch {
+      toast('Failed to send digest. Check the server logs.', 'error');
+    } finally {
+      setSendingDigest(false);
+    }
+  };
+
   const filtersActive = !!tier || !!platform;
   const headerSubtitle = useMemo(
     () =>
@@ -260,16 +288,28 @@ const SelectorHealthPage: React.FC = () => {
         title="Selector Health"
         subtitle={headerSubtitle}
         action={
-          <button
-            type="button"
-            className="sh-refresh-btn"
-            onClick={load}
-            disabled={loading}
-            title="Refresh"
-          >
-            <RefreshCw size={12} className={loading ? 'animate-spin' : ''} />
-            Refresh
-          </button>
+          <>
+            <button
+              type="button"
+              className="sh-refresh-btn"
+              onClick={sendDigest}
+              disabled={sendingDigest}
+              title="Push the current digest to all subscribed webhooks"
+            >
+              <Send size={12} className={sendingDigest ? 'animate-spin' : ''} />
+              {sendingDigest ? 'Sending…' : 'Send digest'}
+            </button>
+            <button
+              type="button"
+              className="sh-refresh-btn"
+              onClick={load}
+              disabled={loading}
+              title="Refresh"
+            >
+              <RefreshCw size={12} className={loading ? 'animate-spin' : ''} />
+              Refresh
+            </button>
+          </>
         }
       />
 
