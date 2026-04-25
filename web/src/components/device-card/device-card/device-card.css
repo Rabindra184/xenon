@@ -1,7 +1,7 @@
 .dc2 {
   position: relative;
-  background: var(--bg-surface);
-  border: 1px solid var(--border-default);
+  background: var(--surface);
+  border: 1px solid var(--border);
   border-radius: var(--radius-md);
   padding: 12px 14px 14px 16px;
   font-family: 'Inter', sans-serif;
@@ -42,7 +42,7 @@
 }
 
 .dc2-name {
-  color: var(--text-primary);
+  color: var(--text);
   font-size: 15px;
   font-weight: 600;
   letter-spacing: -0.01em;
@@ -51,7 +51,7 @@
   text-overflow: ellipsis;
 }
 .dc2-udid {
-  color: var(--text-subtle);
+  color: var(--text-dim);
   font-family: 'JetBrains Mono', monospace;
   font-size: 11px;
 }
@@ -63,7 +63,7 @@
 }
 
 .dc2-metrics {
-  background: var(--bg-subtle);
+  background: var(--bg);
   border-radius: var(--radius-sm);
   padding: 10px 12px;
   display: flex;
@@ -103,7 +103,7 @@
 }
 .dc2-more {
   background: transparent;
-  border: 1px solid var(--border-default);
+  border: 1px solid var(--border);
   color: var(--text-muted);
   border-radius: var(--radius-md);
   width: 32px;
@@ -115,6 +115,6 @@
   transition: background var(--motion-fast), color var(--motion-fast);
 }
 .dc2-more:hover {
-  background: var(--bg-elevated);
-  color: var(--text-primary);
+  background: var(--surface-2);
+  color: var(--text);
 }

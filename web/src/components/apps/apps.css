@@ -10,15 +10,15 @@
   flex: 1;
   overflow-y: auto;
   padding: 0 24px 24px;
-  background: var(--bg-canvas);
+  background: var(--bg);
 }
 
 .registry-table-header {
   display: grid;
   grid-template-columns: 3fr 1fr 1fr 1.5fr 1.5fr;
   padding: 12px 24px;
-  border-bottom: 2px solid var(--border-default);
-  color: var(--text-subtle);
+  border-bottom: 2px solid var(--border);
+  color: var(--text-dim);
   font-size: 11px;
   font-weight: 700;
   text-transform: uppercase;
@@ -39,7 +39,7 @@
   align-items: center;
   padding: 12px 24px;
   background: rgba(0, 0, 0, 0.1);
-  border-bottom: 1px solid var(--border-default);
+  border-bottom: 1px solid var(--border);
   transition: all 0.2s ease;
   position: relative;
 }
@@ -50,7 +50,7 @@
 
 .artifact-row.active {
   background: rgba(0, 255, 136, 0.05);
-  border-left: 3px solid var(--accent);
+  border-left: 3px solid var(--green);
 }
 
 .col-app-info {
@@ -64,23 +64,23 @@
   width: 32px;
   height: 32px;
   background: rgba(0, 0, 0, 0.4);
-  border: 1px solid var(--border-default);
+  border: 1px solid var(--border);
   border-radius: 6px;
   display: flex;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
-  color: var(--text-subtle);
+  color: var(--text-dim);
 }
 
 .artifact-row.android .app-platform-badge {
-  color: var(--accent);
+  color: var(--green);
   border-color: rgba(0, 255, 136, 0.2);
 }
 
 .artifact-row.ios .app-platform-badge {
-  color: var(--text-primary);
-  border-color: var(--border-muted);
+  color: var(--text);
+  border-color: var(--border);
 }
 
 .app-text-block {
@@ -92,7 +92,7 @@
 .app-display-name {
   font-size: 13px;
   font-weight: 700;
-  color: var(--text-primary);
+  color: var(--text);
   font-family: 'Outfit', sans-serif;
   margin-bottom: 2px;
   white-space: nowrap;
@@ -104,7 +104,7 @@
 .app-package-id {
   font-family: 'JetBrains Mono', monospace;
   font-size: 11px;
-  color: var(--text-subtle);
+  color: var(--text-dim);
   opacity: 0.8;
   display: flex;
   align-items: center;
@@ -114,7 +114,7 @@
 .col-version {
   font-family: 'JetBrains Mono', monospace;
   font-size: 11px;
-  color: var(--accent);
+  color: var(--green);
   font-weight: 600;
 }
 
@@ -126,7 +126,7 @@
 
 .col-timestamp {
   font-size: 11px;
-  color: var(--text-subtle);
+  color: var(--text-dim);
   font-family: 'JetBrains Mono', monospace;
   text-transform: uppercase;
 }
@@ -141,13 +141,13 @@
 .instant-deploy-trigger {
   height: 28px;
   background: rgba(0, 255, 136, 0.05);
-  border: 1px solid var(--accent);
+  border: 1px solid var(--green);
   border-radius: 6px;
   padding: 0 12px;
   display: flex;
   align-items: center;
   gap: 8px;
-  color: var(--accent);
+  color: var(--green);
   font-size: 11px;
   font-weight: 700;
   text-transform: uppercase;
@@ -157,8 +157,8 @@
 }
 
 .instant-deploy-trigger:hover:not(:disabled) {
-  background: var(--accent);
-  color: var(--bg-canvas);
+  background: var(--green);
+  color: var(--bg);
   box-shadow: 0 0 20px rgba(0, 255, 136, 0.2);
 }
 
@@ -166,18 +166,18 @@
   width: 28px;
   height: 28px;
   background: rgba(0, 0, 0, 0.3);
-  border: 1px solid var(--border-default);
+  border: 1px solid var(--border);
   border-radius: 6px;
   display: flex;
   align-items: center;
   justify-content: center;
-  color: var(--text-subtle);
+  color: var(--text-dim);
   transition: all 0.2s;
 }
 
 .utility-icon-btn:hover {
-  border-color: var(--border-muted);
-  color: var(--text-primary);
+  border-color: var(--border);
+  color: var(--text);
 }
 
 .utility-icon-btn.danger:hover {
@@ -192,7 +192,7 @@
   padding: 12px 24px;
   background: rgba(15, 15, 26, 0.4);
   backdrop-filter: blur(12px);
-  border-bottom: 1px solid var(--border-default);
+  border-bottom: 1px solid var(--border);
   z-index: 100;
   gap: 16px;
   flex-wrap: wrap;
@@ -245,20 +245,20 @@
   width: 32px;
   height: 32px;
   background: rgba(255, 255, 255, 0.03);
-  border: 1px solid var(--border-default);
+  border: 1px solid var(--border);
   border-radius: 6px;
   display: flex;
   align-items: center;
   justify-content: center;
-  color: var(--text-subtle);
+  color: var(--text-dim);
   cursor: pointer;
   transition: all 0.2s ease;
 }
 
 .icon-btn-secondary:hover {
   background: rgba(255, 255, 255, 0.08);
-  color: var(--text-primary);
-  border-color: var(--border-muted);
+  color: var(--text);
+  border-color: var(--border);
 }
 
 /* --- Flyout Deployment --- */
@@ -268,8 +268,8 @@
   padding: 6px;
   right: 180px;
   transform: translateY(-50%);
-  background: var(--bg-surface);
-  border: 1px solid var(--accent);
+  background: var(--surface);
+  border: 1px solid var(--green);
   border-radius: 8px;
   box-shadow: 0 10px 40px rgba(0, 0, 0, 0.6);
   z-index: 110;
@@ -293,9 +293,9 @@
 .target-device-select {
   height: 32px;
   background: rgba(0, 0, 0, 0.25);
-  border: 1px solid var(--border-default);
+  border: 1px solid var(--border);
   border-radius: 6px;
-  color: var(--text-secondary);
+  color: var(--text);
   font-size: 11px;
   font-weight: 600;
   padding: 0 12px;
@@ -310,13 +310,13 @@
 }
 
 .target-device-select:hover {
-  border-color: var(--accent);
+  border-color: var(--green);
   background-color: rgba(0, 0, 0, 0.4);
 }
 
 .target-device-select option {
-  background: var(--bg-surface);
-  color: var(--text-secondary);
+  background: var(--surface);
+  color: var(--text);
   padding: 8px;
 }
 
@@ -340,7 +340,7 @@
 .confirm-deploy-btn {
   width: 32px;
   height: 32px;
-  background: var(--accent);
+  background: var(--green);
   border: none;
   border-radius: 6px;
   display: flex;
@@ -352,7 +352,7 @@
 }
 
 .confirm-deploy-btn:hover:not(:disabled) {
-  background: var(--accent-bold);
+  background: var(--green-dim);
   transform: scale(1.05);
   box-shadow: 0 0 15px var(--accent-subtle);
 }
@@ -377,8 +377,8 @@
 
 .upload-card-technical {
   width: 420px;
-  background: var(--bg-surface);
-  border: 1px solid var(--border-default);
+  background: var(--surface);
+  border: 1px solid var(--border);
   border-radius: 16px;
   padding: 40px;
   text-align: center;
@@ -389,7 +389,7 @@
   width: 40px;
   height: 40px;
   border: 2px solid rgba(34, 197, 94, 0.1);
-  border-top-color: var(--accent);
+  border-top-color: var(--green);
   border-radius: 50%;
   margin: 0 auto 20px;
   animation: spin 1s linear infinite;
@@ -420,7 +420,7 @@
 .empty-title {
   font-size: 28px;
   font-weight: 800;
-  color: var(--text-secondary);
+  color: var(--text);
   margin-bottom: 16px;
   letter-spacing: -0.02em;
 }
@@ -449,11 +449,11 @@
   flex-direction: column;
   align-items: center;
   padding: 30px 60px;
-  background: var(--bg-surface);
-  border: 1px solid var(--accent);
+  background: var(--surface);
+  border: 1px solid var(--green);
   box-shadow: 0 0 15px rgba(0, 255, 136, 0.1);
   border-radius: 8px;
-  color: var(--accent);
+  color: var(--green);
   font-weight: 700;
   font-size: 16px;
   transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);

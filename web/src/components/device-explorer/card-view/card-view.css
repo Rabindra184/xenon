@@ -11,6 +11,6 @@
 }
 
 .device-explorer-card-container::-webkit-scrollbar-thumb {
-  background: var(--border-default);
+  background: var(--border);
   border-radius: 8px;
 }

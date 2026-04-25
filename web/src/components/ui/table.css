@@ -9,14 +9,14 @@
   padding: 8px 12px;
   font-weight: 600;
   color: var(--text-muted);
-  border-bottom: 1px solid var(--border-default);
-  background: var(--bg-subtle);
+  border-bottom: 1px solid var(--border);
+  background: var(--bg);
 }
 .tbl tbody td {
   padding: 10px 12px;
-  border-bottom: 1px solid var(--border-default);
-  color: var(--text-secondary);
+  border-bottom: 1px solid var(--border);
+  color: var(--text);
   vertical-align: middle;
 }
 .tbl tbody tr:last-child td { border-bottom: none; }
-.tbl tbody tr:hover { background: var(--bg-elevated); }
+.tbl tbody tr:hover { background: var(--surface-2); }

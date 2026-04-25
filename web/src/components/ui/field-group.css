@@ -5,7 +5,7 @@
   margin-bottom: 16px;
 }
 .fg-label {
-  color: var(--text-primary);
+  color: var(--text);
   font-size: 12px;
   font-weight: 600;
   font-family: 'Inter', sans-serif;

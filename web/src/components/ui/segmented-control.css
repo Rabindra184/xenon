@@ -1,8 +1,8 @@
 .seg {
   display: inline-flex;
   gap: 2px;
-  background: var(--bg-surface);
-  border: 1px solid var(--border-default);
+  background: var(--surface);
+  border: 1px solid var(--border);
   border-radius: var(--radius-md);
   padding: 2px;
 }
@@ -19,10 +19,10 @@
   cursor: pointer;
   transition: background var(--motion-fast), color var(--motion-fast);
 }
-.seg-btn:hover { color: var(--text-primary); }
-.seg-btn-active { background: var(--bg-elevated); color: var(--text-primary); }
+.seg-btn:hover { color: var(--text); }
+.seg-btn-active { background: var(--surface-2); color: var(--text); }
 .seg-count {
-  background: var(--bg-subtle);
+  background: var(--bg);
   color: var(--text-muted);
   font-family: 'JetBrains Mono', monospace;
   font-size: 10px;

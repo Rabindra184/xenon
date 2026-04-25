@@ -7,7 +7,7 @@
   color: var(--text-muted);
   gap: 8px;
 }
-.empty-state-icon { color: var(--text-subtle); margin-bottom: 4px; }
-.empty-state-title { color: var(--text-primary); font-size: 14px; font-weight: 600; }
+.empty-state-icon { color: var(--text-dim); margin-bottom: 4px; }
+.empty-state-title { color: var(--text); font-size: 14px; font-weight: 600; }
 .empty-state-desc { color: var(--text-muted); font-size: 12px; max-width: 360px; }
 .empty-state-action { margin-top: 12px; }

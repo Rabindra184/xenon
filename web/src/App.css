@@ -4,7 +4,7 @@
   height: 100vh;
   width: 100vw;
   overflow: hidden;
-  background: var(--bg-canvas);
+  background: var(--bg);
 }
 
 .app-main-container {

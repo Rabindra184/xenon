@@ -18,11 +18,11 @@
   display: flex;
   align-items: center;
   gap: 16px;
-  background: var(--bg-surface);
+  background: var(--surface);
   backdrop-filter: blur(16px);
-  border: 1px solid var(--border-default);
+  border: 1px solid var(--border);
   box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4);
-  color: var(--text-primary);
+  color: var(--text);
   font-size: 13px;
   font-weight: 600;
   font-family: 'JetBrains Mono', monospace;
@@ -58,7 +58,7 @@
 .toast-close {
   background: transparent;
   border: none;
-  color: var(--text-subtle);
+  color: var(--text-dim);
   cursor: pointer;
   padding: 4px;
   border-radius: 6px;
@@ -70,16 +70,16 @@
 
 .toast-close:hover {
   background: rgba(255, 255, 255, 0.05);
-  color: var(--text-primary);
+  color: var(--text);
 }
 
 .toast-success {
   border-color: rgba(0, 255, 136, 0.3);
-  color: var(--accent);
+  color: var(--green);
 }
 
 .toast-success .toast-icon {
-  color: var(--accent);
+  color: var(--green);
 }
 
 .toast-error {
@@ -102,11 +102,11 @@
 
 .toast-loading {
   border-color: var(--text-muted);
-  color: var(--text-subtle);
+  color: var(--text-dim);
 }
 
 .toast-loading .toast-icon {
-  color: var(--text-subtle);
+  color: var(--text-dim);
 }
 
 @keyframes slide-in {

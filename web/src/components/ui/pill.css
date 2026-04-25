@@ -14,8 +14,8 @@
   text-overflow: ellipsis;
   border: 1px solid transparent;
 }
-.pill-neutral  { background: var(--bg-elevated);     color: var(--text-secondary); }
-.pill-accent   { background: var(--accent-subtle);   color: var(--accent);            border-color: var(--accent-border); }
+.pill-neutral  { background: var(--surface-2);     color: var(--text); }
+.pill-accent   { background: var(--accent-subtle);   color: var(--green);            border-color: var(--accent-border); }
 .pill-ready    { background: var(--status-ready-bg); color: var(--status-ready-fg);   border-color: var(--status-ready-border); }
 .pill-busy     { background: var(--status-busy-bg);  color: var(--status-busy-fg);    border-color: var(--status-busy-border); }
 .pill-reserved { background: var(--status-reserved-bg); color: var(--status-reserved-fg); border-color: var(--status-reserved-border); }

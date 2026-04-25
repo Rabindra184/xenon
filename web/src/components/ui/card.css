@@ -1,6 +1,6 @@
 .card {
-  background: var(--bg-surface);
-  border: 1px solid var(--border-default);
+  background: var(--surface);
+  border: 1px solid var(--border);
   border-radius: var(--radius-md);
   overflow: hidden;
 }
@@ -9,10 +9,10 @@
   align-items: center;
   justify-content: space-between;
   padding: 10px 14px;
-  border-bottom: 1px solid var(--border-default);
+  border-bottom: 1px solid var(--border);
 }
 .card-header-title {
-  color: var(--text-primary);
+  color: var(--text);
   font-size: 12px;
   font-weight: 600;
   font-family: 'Inter', sans-serif;
@@ -25,7 +25,7 @@
 .card-body-flush { padding: 0; }
 .card-footer {
   padding: 10px 14px;
-  border-top: 1px solid var(--border-default);
+  border-top: 1px solid var(--border);
   color: var(--text-muted);
   font-size: 11px;
 }

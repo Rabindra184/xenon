@@ -16,13 +16,13 @@
 
 .badge-variant-default {
   background: rgba(0, 0, 0, 0.3);
-  color: var(--text-subtle);
-  border-color: var(--border-default);
+  color: var(--text-dim);
+  border-color: var(--border);
 }
 
 .badge-variant-success {
   background: rgba(0, 255, 136, 0.05);
-  color: var(--accent);
+  color: var(--green);
   border-color: rgba(0, 255, 136, 0.2);
 }
 
@@ -39,18 +39,18 @@
 }
 
 .badge-variant-secondary {
-  background: var(--bg-surface);
-  color: var(--text-primary);
-  border-color: var(--border-default);
+  background: var(--surface);
+  color: var(--text);
+  border-color: var(--border);
 }
 
 .badge-variant-outline {
   background: transparent;
-  color: var(--text-subtle);
-  border: 1px solid var(--border-default);
+  color: var(--text-dim);
+  border: 1px solid var(--border);
 }
 
 .badge-variant-outline:hover {
-  color: var(--text-primary);
+  color: var(--text);
   border-color: var(--text-muted);
 }
