@@ -1,5 +1,6 @@
 import React, { useEffect, useState, useCallback, useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
+import { TabNav, Tab } from './tab-nav';
 import {
   HeartPulse,
   RefreshCw,
@@ -193,6 +194,12 @@ const SelectorHealthPage: React.FC = () => {
   const navigate = useNavigate();
   const { on } = useSocket();
   const { toast } = useToast();
+  const [searchParams] = useSearchParams();
+  // URL-persisted lifecycle tab. The aggregator's `status` filter mirrors
+  // the tab id, so each tab's fetch returns just that bucket. 'muted' is
+  // a separate view in Task 20 — for Phase 1 of this task, all four tabs
+  // share the existing hotspot table and the per-tab UX layers on later.
+  const tab: Tab = ((searchParams.get('tab') as Tab) ?? 'active');
   const [windowDays, setWindowDays] = useState<WindowDays>(30);
   const [tier, setTier] = useState<TierFilter>('');
   const [platform, setPlatform] = useState<PlatformFilter>('');
@@ -213,6 +220,7 @@ const SelectorHealthPage: React.FC = () => {
           limit: 50,
           tier: tier || undefined,
           platform: platform || undefined,
+          status: tab,
         }) as Promise<IHealingHotspotsResponse>,
       ]);
       setSummary(s ?? null);
@@ -223,7 +231,7 @@ const SelectorHealthPage: React.FC = () => {
       setLoading(false);
       setLoaded(true);
     }
-  }, [windowDays, tier, platform]);
+  }, [windowDays, tier, platform, tab]);
 
   useEffect(() => {
     load();
@@ -315,6 +323,8 @@ const SelectorHealthPage: React.FC = () => {
 
       <div className="sh-content">
         <KpiStrip summary={summary} loading={loading && !loaded} />
+
+        <TabNav current={tab} counts={{ [tab]: hotspots.length }} />
 
         <div className="sh-filter-bar">
           <div className="sh-filter-bar__group">
