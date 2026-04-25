@@ -21,9 +21,12 @@ import {
   ShieldAlert,
   AlertTriangle,
   Sparkles,
+  Crosshair,
+  HelpCircle,
 } from 'lucide-react';
 import { useState, useEffect, useRef, useCallback } from 'react';
 import XenonApiService from '../../api-service';
+import { matchSelector, type MatchResult } from './selector-matcher';
 import './omni-inspector.css';
 import React from 'react';
 
@@ -523,6 +526,11 @@ const OmniInspector: React.FC<OmniInspectorProps> = ({ sessionId, udid, streamUr
   const [canvasDimensions, setCanvasDimensions] = useState({ width: 0, height: 0 });
   const [streamError, setStreamError] = useState(false);
   const [inspectorMode, setInspectorMode] = useState<'inspect' | 'interact'>('inspect');
+  // Per-locator test results, keyed by the locator strategy. Cleared when
+  // the selected node changes so stale match badges don't follow you across
+  // elements.
+  const [locatorTests, setLocatorTests] = useState<Record<string, MatchResult>>({});
+  const [activeLocatorTest, setActiveLocatorTest] = useState<string | null>(null);
 
   const containerRef = useRef<HTMLDivElement>(null);
   const imgRef = useRef<HTMLImageElement>(null);
@@ -578,7 +586,19 @@ const OmniInspector: React.FC<OmniInspectorProps> = ({ sessionId, udid, streamUr
     } else {
       setSelectedLocatorForCode(null);
     }
+    setLocatorTests({});
+    setActiveLocatorTest(null);
   }, [selectedNode]);
+
+  const runLocatorTest = useCallback(
+    (strategy: string, value: string) => {
+      if (!snapshot?.hierarchy) return;
+      const result = matchSelector(snapshot.hierarchy, strategy, value);
+      setLocatorTests((prev) => ({ ...prev, [strategy]: result }));
+      setActiveLocatorTest(strategy);
+    },
+    [snapshot],
+  );
 
   const loadSnapshot = async () => {
     if (!udid) return;
@@ -850,6 +870,35 @@ const OmniInspector: React.FC<OmniInspectorProps> = ({ sessionId, udid, streamUr
     return nodes;
   };
 
+  const renderMatchFrames = (): React.ReactNode[] => {
+    if (!activeLocatorTest || !naturalDimensions.width) return [];
+    const result = locatorTests[activeLocatorTest];
+    if (!result || result.kind !== 'matched' || result.nodes.length === 0) return [];
+    const rootRect = snapshot?.hierarchy?.rect;
+    let deviceW = snapshot?.metadata?.screenWidth || naturalDimensions.width;
+    let deviceH = snapshot?.metadata?.screenHeight || naturalDimensions.height;
+    if (rootRect && rootRect.width > 0 && rootRect.height > 0) {
+      deviceW = rootRect.width;
+      deviceH = rootRect.height;
+    }
+    const matchClass =
+      result.nodes.length === 1 ? 'omni-frame-match unique' : 'omni-frame-match multi';
+    return result.nodes
+      .filter((n) => n.rect && n.rect.width > 0 && n.rect.height > 0)
+      .map((n, i) => (
+        <div
+          key={`match-${activeLocatorTest}-${i}`}
+          className={matchClass}
+          style={{
+            left: `${(n.rect.x / deviceW) * 100}%`,
+            top: `${(n.rect.y / deviceH) * 100}%`,
+            width: `${(n.rect.width / deviceW) * 100}%`,
+            height: `${(n.rect.height / deviceH) * 100}%`,
+          }}
+        />
+      ));
+  };
+
   const renderOverlayFrame = (node: InspectorNode | null, type: 'hover' | 'select') => {
     if (!node?.rect || !naturalDimensions.width) return null;
     const rootRect = snapshot?.hierarchy?.rect;
@@ -950,6 +999,7 @@ const OmniInspector: React.FC<OmniInspectorProps> = ({ sessionId, udid, streamUr
                 {snapshot?.hierarchy && inspectorMode === 'inspect' && (
                   <div className="omni-overlay">
                     {renderHighlights(snapshot.hierarchy)}
+                    {renderMatchFrames()}
                     {renderOverlayFrame(hoveredNode, 'hover')}
                     {renderOverlayFrame(selectedNode, 'select')}
                   </div>
@@ -973,6 +1023,7 @@ const OmniInspector: React.FC<OmniInspectorProps> = ({ sessionId, udid, streamUr
                 {inspectorMode === 'inspect' && (
                   <div className="omni-overlay">
                     {renderHighlights(snapshot.hierarchy)}
+                    {renderMatchFrames()}
                     {renderOverlayFrame(hoveredNode, 'hover')}
                     {renderOverlayFrame(selectedNode, 'select')}
                   </div>
@@ -1187,6 +1238,41 @@ const OmniInspector: React.FC<OmniInspectorProps> = ({ sessionId, udid, streamUr
                         {selectedNode.suggestedLocators?.map((loc) => {
                           const stability = scoreLocatorStability(loc.strategy, loc.value);
                           const cfg = stabilityLevelConfig[stability.level];
+                          const test = locatorTests[loc.strategy];
+                          let matchBadge: React.ReactNode = null;
+                          if (test) {
+                            if (test.kind === 'unsupported') {
+                              matchBadge = (
+                                <span
+                                  className="omni-match-badge unsupported"
+                                  title={test.reason || 'Cannot evaluate without a real driver'}
+                                >
+                                  <HelpCircle size={10} /> preview unavailable
+                                </span>
+                              );
+                            } else if (test.nodes.length === 0) {
+                              matchBadge = (
+                                <span className="omni-match-badge zero" title="No element matches this selector in the current snapshot">
+                                  <ShieldAlert size={10} /> 0 matches
+                                </span>
+                              );
+                            } else if (test.nodes.length === 1) {
+                              matchBadge = (
+                                <span className="omni-match-badge unique" title="Selector is unique in the current snapshot">
+                                  <ShieldCheck size={10} /> unique
+                                </span>
+                              );
+                            } else {
+                              matchBadge = (
+                                <span
+                                  className="omni-match-badge multi"
+                                  title={`${test.nodes.length} elements match — selector is not unique`}
+                                >
+                                  <AlertTriangle size={10} /> {test.nodes.length} matches
+                                </span>
+                              );
+                            }
+                          }
                           return (
                             <div
                               key={loc.strategy}
@@ -1204,23 +1290,37 @@ const OmniInspector: React.FC<OmniInspectorProps> = ({ sessionId, udid, streamUr
                                     {cfg.icon}
                                     {stability.level}
                                   </span>
+                                  {matchBadge}
                                 </div>
                                 <code className="omni-locator-value">{loc.value}</code>
                                 <span className="omni-stability-reason">{stability.reason}</span>
                               </div>
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  copyToClipboard(loc.value, loc.strategy);
-                                }}
-                                className={`omni-copy-btn ${copiedLocator === loc.strategy ? 'copied' : ''}`}
-                              >
-                                {copiedLocator === loc.strategy ? (
-                                  <Check size={12} />
-                                ) : (
-                                  <Copy size={12} />
-                                )}
-                              </button>
+                              <div className="omni-locator-actions">
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    runLocatorTest(loc.strategy, loc.value);
+                                  }}
+                                  className={`omni-test-btn ${activeLocatorTest === loc.strategy ? 'active' : ''}`}
+                                  title="Test this locator against the current snapshot"
+                                >
+                                  <Crosshair size={12} />
+                                </button>
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    copyToClipboard(loc.value, loc.strategy);
+                                  }}
+                                  className={`omni-copy-btn ${copiedLocator === loc.strategy ? 'copied' : ''}`}
+                                >
+                                  {copiedLocator === loc.strategy ? (
+                                    <Check size={12} />
+                                  ) : (
+                                    <Copy size={12} />
+                                  )}
+                                </button>
+                              </div>
                             </div>
                           );
                         })}

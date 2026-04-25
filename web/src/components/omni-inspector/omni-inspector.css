@@ -187,6 +187,36 @@
     border-radius: 6px;
 }
 
+/* Match-flash frames produced by the "Test this locator" button. Coloured
+ * differently from hover/select so the user can tell at a glance whether
+ * the active selector hits one element (green dashed) or many (amber dashed). */
+.omni-frame-match {
+    position: absolute;
+    pointer-events: none;
+    border-radius: 6px;
+    border-style: dashed;
+    border-width: 2px;
+    animation: omni-match-pulse 1.6s ease-out 1;
+}
+
+.omni-frame-match.unique {
+    border-color: var(--green);
+    background: rgba(16, 185, 129, 0.12);
+    box-shadow: 0 0 18px rgba(16, 185, 129, 0.35);
+}
+
+.omni-frame-match.multi {
+    border-color: var(--amber, #f59e0b);
+    background: rgba(245, 158, 11, 0.1);
+    box-shadow: 0 0 14px rgba(245, 158, 11, 0.3);
+}
+
+@keyframes omni-match-pulse {
+    0%   { opacity: 0; transform: scale(0.96); }
+    35%  { opacity: 1; transform: scale(1); }
+    100% { opacity: 1; transform: scale(1); }
+}
+
 .omni-loading-overlay {
     position: absolute;
     inset: 0;
@@ -664,6 +694,78 @@
     background: var(--green);
     border-color: var(--green);
     color: #000;
+}
+
+.omni-locator-actions {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    flex-shrink: 0;
+}
+
+.omni-test-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    color: var(--text-muted);
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.omni-test-btn:hover {
+    background: rgba(16, 185, 129, 0.12);
+    border-color: var(--green);
+    color: var(--green);
+}
+
+.omni-test-btn.active {
+    background: var(--green);
+    border-color: var(--green);
+    color: #000;
+}
+
+.omni-match-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    padding: 1px 6px;
+    border-radius: 4px;
+    font-size: 9.5px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    border: 1px solid transparent;
+    line-height: 1.4;
+    white-space: nowrap;
+}
+
+.omni-match-badge.unique {
+    background: rgba(16, 185, 129, 0.12);
+    border-color: rgba(16, 185, 129, 0.4);
+    color: var(--green);
+}
+
+.omni-match-badge.multi {
+    background: rgba(245, 158, 11, 0.12);
+    border-color: rgba(245, 158, 11, 0.4);
+    color: var(--amber, #f59e0b);
+}
+
+.omni-match-badge.zero {
+    background: rgba(239, 68, 68, 0.12);
+    border-color: rgba(239, 68, 68, 0.4);
+    color: var(--red, #ef4444);
+}
+
+.omni-match-badge.unsupported {
+    background: rgba(255, 255, 255, 0.04);
+    border-color: var(--border);
+    color: var(--text-dim);
 }
 
 .omni-copy-btn.copied {
