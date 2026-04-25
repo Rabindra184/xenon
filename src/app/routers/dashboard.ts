@@ -7,6 +7,11 @@ import { Container } from 'typedi';
 import { scopeGuard } from '../../middleware/scopeGuard';
 import { buildExport } from './build-export';
 import { NotificationService } from '../../services/NotificationService';
+import {
+  SelectorStateService,
+  SelectorStateConflictError,
+} from '../../services/SelectorStateService';
+import log from '../../logger';
 
 const MJPEG_PROXY_CACHE: Map<string, any> = new Map();
 
@@ -748,6 +753,122 @@ async function getHealingSelectorDetail(request: Request, response: Response) {
   });
 }
 
+// SelectorState lifecycle action endpoint — mark fixed / mute / unmute /
+// cancel verification. The action vocabulary is closed (any value not in
+// VALID_ACTIONS rejects with 400). A SelectorStateConflictError surfaces as
+// 409 with `currentStatus`; anything else logs and surfaces as 500.
+const VALID_SELECTOR_ACTIONS = ['mark_fixed', 'mute', 'unmute', 'cancel_verification'] as const;
+type SelectorAction = (typeof VALID_SELECTOR_ACTIONS)[number];
+
+export async function postSelectorStateAction(request: Request, response: Response) {
+  const { original_strategy, original_selector, action } = (request.body ?? {}) as {
+    original_strategy?: string;
+    original_selector?: string;
+    action?: string;
+  };
+  if (!original_strategy || !original_selector || !action) {
+    return response.status(400).json({
+      error: 'original_strategy, original_selector, and action are required',
+    });
+  }
+  if (!(VALID_SELECTOR_ACTIONS as readonly string[]).includes(action)) {
+    return response.status(400).json({
+      error: `action must be one of ${VALID_SELECTOR_ACTIONS.join(', ')}`,
+    });
+  }
+
+  const apiKeyId = request.apiKey?.id ?? '';
+  const ctx = { strategy: original_strategy, selector: original_selector, apiKeyId };
+  const service = Container.get(SelectorStateService);
+
+  try {
+    let row;
+    switch (action as SelectorAction) {
+      case 'mark_fixed':
+        row = await service.markFixed(ctx);
+        break;
+      case 'mute':
+        row = await service.mute(ctx);
+        break;
+      case 'unmute':
+        row = await service.unmute(ctx);
+        break;
+      case 'cancel_verification':
+        row = await service.cancelVerification(ctx);
+        break;
+    }
+    return response.json({ state: row });
+  } catch (err: any) {
+    if (err instanceof SelectorStateConflictError) {
+      return response.status(409).json({ error: err.message, currentStatus: err.currentStatus });
+    }
+    log.error(`[Dashboard] selector state action failed: ${err?.message ?? err}`);
+    return response.status(500).json({ error: 'internal' });
+  }
+}
+
+// Muted-selectors list — sourced directly from SelectorState (not the
+// hotspot aggregator) so muted-but-no-recent-heal entries still surface.
+// Each row is enriched with `last_healed_at` from the most recent healed
+// SessionLog row for that tuple (null if never healed).
+export async function getMutedSelectors(request: Request, response: Response) {
+  const limit = Math.min(
+    Math.max(parseInt(String(request.query.limit ?? '50'), 10) || 50, 1),
+    200,
+  );
+  const offset = Math.max(parseInt(String(request.query.offset ?? '0'), 10) || 0, 0);
+
+  const muted = await prisma.selectorState.findMany({
+    where: { status: 'muted' },
+    orderBy: { muted_at: 'desc' },
+    take: limit,
+    skip: offset,
+  });
+  const total = await prisma.selectorState.count({ where: { status: 'muted' } });
+
+  const enriched = await Promise.all(
+    muted.map(async (s) => {
+      const last = await prisma.sessionLog.findFirst({
+        where: {
+          original_strategy: s.original_strategy,
+          original_selector: s.original_selector,
+          is_healed: true,
+        },
+        orderBy: { createdAt: 'desc' },
+        select: { createdAt: true },
+      });
+      return {
+        original_strategy: s.original_strategy,
+        original_selector: s.original_selector,
+        muted_at: s.muted_at ? s.muted_at.toISOString() : null,
+        muted_by_api_key: s.muted_by_api_key,
+        last_healed_at: last?.createdAt ? last.createdAt.toISOString() : null,
+        regression_count: s.regression_count,
+      };
+    }),
+  );
+
+  return response.json({ muted: enriched, total, limit, offset });
+}
+
+// Single-tuple state lookup. Strategy and value arrive URL-encoded since
+// XPath selectors contain `/` and `[`. Returns `{ state: null }` when no
+// row exists (intentional — null is meaningful: the selector is implicitly
+// active).
+export async function getSelectorStateByTuple(request: Request, response: Response) {
+  const strategy = decodeURIComponent(request.params.strategy ?? '');
+  const value = decodeURIComponent(request.params.value ?? '');
+  const row = await prisma.selectorState.findUnique({
+    where: {
+      original_strategy_original_selector: {
+        original_strategy: strategy,
+        original_selector: value,
+      },
+    },
+  });
+  return response.json({ state: row });
+}
+
 async function getProfilingData(request: Request, response: Response) {
   const sessionId = request.params.sessionId;
 
@@ -873,6 +994,12 @@ function register(router: Router) {
   // Outbound notification — admin only since it can fan out to every
   // configured webhook (Slack channels, etc.).
   router.post('/healing/digest/send', scopeGuard(['admin']), sendHealingDigest);
+  // SelectorState lifecycle: state mutations require admin (they affect what
+  // shows up in the live hotspot list, the CI gate, and the digest); the two
+  // reads inherit the existing dashboard auth.
+  router.post('/healing/selector/state', scopeGuard(['admin']), postSelectorStateAction);
+  router.get('/healing/state/muted', getMutedSelectors);
+  router.get('/healing/state/:strategy/:value', getSelectorStateByTuple);
   router.get('/config', getGlobalConfig);
   // Config + destructive ops: admin-only. Read-only config stays open to any
   // authenticated key so dashboards using 'read' scope can still populate.
