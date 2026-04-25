@@ -7,6 +7,7 @@ import { MetadataGrid } from './metadata-grid';
 import { FailureSummary } from './failure-summary';
 import { RecordingCard } from './recording-card';
 import { CapabilitiesCard } from './capabilities-card';
+import { LogViewer } from './log-viewer';
 import { StatusPillOutline, type StatusTone } from '../ui/status-pill-outline';
 import {
   formatAbsoluteTime,
@@ -151,11 +152,12 @@ export const SessionDetailPage: React.FC = () => {
           )}
 
           <div className="grid grid-cols-1 lg:grid-cols-[1fr_340px] gap-4">
-            <section className="rounded-lg border border-[var(--border)] bg-[var(--surface)] p-4 min-h-[240px] flex items-center justify-center">
-              <span className="text-xs text-[var(--text-dim)]">
-                Log viewer lands in Plan 4D ({allLogs.length} log entries ready to render)
-              </span>
-            </section>
+            <LogViewer
+              sessionLogs={detail.sessionLogs}
+              deviceLogs={detail.deviceLogs}
+              debugLogs={detail.debugLogs}
+              profiling={detail.profiling}
+            />
 
             <div className="flex flex-col gap-4">
               <RecordingCard session={s} />
