@@ -42,7 +42,7 @@ export class ErrorBoundary extends Component<Props, State> {
               flexDirection: 'column',
               alignItems: 'center',
               gap: '1.5rem',
-              color: 'var(--text-secondary)',
+              color: 'var(--text)',
               background: 'var(--bg-main)',
               minHeight: '100vh',
             }}
@@ -80,7 +80,7 @@ export class ErrorBoundary extends Component<Props, State> {
             <button
               onClick={this.handleReset}
               style={{
-                background: 'var(--accent)',
+                background: 'var(--green)',
                 color: 'var(--secondary)',
                 border: 'none',
                 padding: '0.75rem 2rem',

@@ -161,7 +161,7 @@ export const Teams: React.FC = () => {
                   >
                     <TD>
                       <strong>{t.name}</strong>
-                      <div style={{ fontSize: '11px', color: 'var(--text-subtle)', fontFamily: 'monospace' }}>
+                      <div style={{ fontSize: '11px', color: 'var(--text-dim)', fontFamily: 'monospace' }}>
                         {t.id.slice(0, 8)}
                       </div>
                     </TD>

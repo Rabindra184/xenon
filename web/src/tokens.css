@@ -20,25 +20,13 @@
   --red: #ef4444;
   --blue: #3b82f6;
 
-  /* ===== Legacy aliases — used by page CSS until each page is
-     redesigned in a later plan. Removed in Phase 6 cleanup. ===== */
+  /* ===== Semantic aliases (kept) =====
+     The bg/border/text/accent aliases were dropped in Phase 6 cleanup —
+     all consumers were migrated to the primary names (--bg, --surface,
+     --green, etc). The aliases below remain because they encode either
+     a useful semantic (status colors) or a literal rgba value that's
+     awkward to inline at every callsite (--accent-subtle / --accent-border). */
 
-  /* Surfaces */
-  --bg-canvas: var(--bg);
-  --bg-surface: var(--surface);
-  --bg-elevated: var(--surface-2);
-  --bg-subtle: var(--bg);
-  --border-default: var(--border);
-  --border-muted: var(--border);
-
-  /* Text */
-  --text-primary: var(--text);
-  --text-secondary: var(--text);
-  --text-subtle: var(--text-dim);
-
-  /* Accent (forest green family) */
-  --accent: var(--green);
-  --accent-bold: var(--green-dim);
   --accent-subtle: rgba(34, 197, 94, 0.1);
   --accent-border: rgba(34, 197, 94, 0.3);
 

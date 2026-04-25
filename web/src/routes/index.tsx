@@ -35,159 +35,38 @@ const Teams = lazy(() =>
 );
 
 const LoadingFallback = () => (
-  <div className="settings-loading" style={{ height: 'calc(100vh - 72px)' }}>
-    <RefreshCw className="animate-spin" size={32} />
-    <span>Hydrating View...</span>
+  <div className="flex items-center justify-center gap-2 h-full text-xs text-[var(--text-dim)]">
+    <RefreshCw className="animate-spin" size={14} />
+    <span>Hydrating view…</span>
   </div>
 );
 
 /**
- * Application routes configuration
+ * Application routes configuration. The shell (App.tsx) wraps every route in
+ * <main className="pl-14 pt-14 h-screen overflow-y-auto">, so each page
+ * component owns its own internal layout — no per-route wrapper divs needed.
  */
-export const AppRoutes: React.FC = () => {
-  return (
-    <ErrorBoundary>
-      <Suspense fallback={<LoadingFallback />}>
-        <Routes>
-          <Route path="/" element={<Navigate to="/overview" replace />} />
-
-          <Route
-            path="/overview"
-            element={
-              <div className="app-body-container">
-                <Overview />
-              </div>
-            }
-          />
-
-          <Route
-            path="/devices"
-            element={
-              <div className="app-body-container devices-view">
-                <DeviceExplorer />
-              </div>
-            }
-          />
-
-          <Route
-            path="/devices/:udid/control/:tab?"
-            element={
-              <div className="app-body-container devices-view">
-                <DeviceExplorer />
-              </div>
-            }
-          />
-
-          <Route
-            path="/apps"
-            element={
-              <div className="app-body-container apps-view">
-                <Apps />
-              </div>
-            }
-          />
-
-          <Route
-            path="/builds"
-            element={
-              <div className="app-body-container sessions-view">
-                <BuildsPage />
-              </div>
-            }
-          />
-
-          <Route
-            path="/builds/:buildId"
-            element={
-              <div className="app-body-container sessions-view">
-                <BuildsPage />
-              </div>
-            }
-          />
-
-          <Route
-            path="/builds/:buildId/sessions/:sessionId"
-            element={
-              <div className="app-body-container sessions-view">
-                <SessionDetailPage />
-              </div>
-            }
-          />
-
-          <Route
-            path="/notifications"
-            element={
-              <div
-                className="app-body-container settings-view"
-                style={{
-                  height: 'calc(100vh - 72px)',
-                  overflow: 'hidden',
-                  display: 'flex',
-                  flexDirection: 'column',
-                }}
-              >
-                <WebhookSettings />
-              </div>
-            }
-          />
-
-          <Route
-            path="/settings"
-            element={
-              <div className="app-body-container settings-view">
-                <Settings />
-              </div>
-            }
-          />
-
-          <Route
-            path="/ai-settings"
-            element={
-              <div className="app-body-container settings-view">
-                <AISettings />
-              </div>
-            }
-          />
-
-          <Route
-            path="/maintenance"
-            element={
-              <div className="app-body-container settings-view">
-                <MaintenanceSettings />
-              </div>
-            }
-          />
-
-          <Route
-            path="/api-keys"
-            element={
-              <div className="app-body-container settings-view">
-                <ApiKeys />
-              </div>
-            }
-          />
-
-          <Route
-            path="/teams"
-            element={
-              <div className="app-body-container settings-view">
-                <Teams />
-              </div>
-            }
-          />
-
-          <Route
-            path="/runbooks/:category"
-            element={
-              <div className="app-body-container settings-view">
-                <RunbookPage />
-              </div>
-            }
-          />
-
-          <Route path="*" element={<Navigate to="/overview" replace />} />
-        </Routes>
-      </Suspense>
-    </ErrorBoundary>
-  );
-};
+export const AppRoutes: React.FC = () => (
+  <ErrorBoundary>
+    <Suspense fallback={<LoadingFallback />}>
+      <Routes>
+        <Route path="/" element={<Navigate to="/overview" replace />} />
+        <Route path="/overview" element={<Overview />} />
+        <Route path="/devices" element={<DeviceExplorer />} />
+        <Route path="/devices/:udid/control/:tab?" element={<DeviceExplorer />} />
+        <Route path="/apps" element={<Apps />} />
+        <Route path="/builds" element={<BuildsPage />} />
+        <Route path="/builds/:buildId" element={<BuildsPage />} />
+        <Route path="/builds/:buildId/sessions/:sessionId" element={<SessionDetailPage />} />
+        <Route path="/notifications" element={<WebhookSettings />} />
+        <Route path="/settings" element={<Settings />} />
+        <Route path="/ai-settings" element={<AISettings />} />
+        <Route path="/maintenance" element={<MaintenanceSettings />} />
+        <Route path="/api-keys" element={<ApiKeys />} />
+        <Route path="/teams" element={<Teams />} />
+        <Route path="/runbooks/:category" element={<RunbookPage />} />
+        <Route path="*" element={<Navigate to="/overview" replace />} />
+      </Routes>
+    </Suspense>
+  </ErrorBoundary>
+);

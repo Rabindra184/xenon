@@ -1,5 +1,5 @@
 .title-icon {
-    color: var(--accent);
+    color: var(--green);
 }
 
 .tag-modal-body {
@@ -15,20 +15,20 @@
     background: rgba(0, 0, 0, 0.4);
     padding: 8px 16px;
     border-radius: 6px;
-    border: 1px solid var(--border-default);
+    border: 1px solid var(--border);
     font-family: 'JetBrains Mono', monospace;
     font-size: 11px;
 }
 
 .device-id-badge .label {
-    color: var(--text-subtle);
+    color: var(--text-dim);
     text-transform: uppercase;
     font-weight: 800;
     font-size: 10px;
 }
 
 .device-id-badge .value {
-    color: var(--accent);
+    color: var(--green);
     font-weight: 800;
 }
 
@@ -36,7 +36,7 @@
     display: block;
     font-size: 11px;
     font-weight: 800;
-    color: var(--text-subtle);
+    color: var(--text-dim);
     text-transform: uppercase;
     letter-spacing: 0.1em;
     margin-bottom: 8px;
@@ -51,10 +51,10 @@
 .input-with-button input {
     flex: 1;
     background: rgba(0, 0, 0, 0.3);
-    border: 1px solid var(--border-default);
+    border: 1px solid var(--border);
     border-radius: 6px;
     padding: 10px 14px;
-    color: var(--text-primary);
+    color: var(--text);
     font-size: 13px;
     transition: all 0.2s;
     font-family: 'JetBrains Mono', monospace;
@@ -62,13 +62,13 @@
 
 .input-with-button input:focus {
     outline: none;
-    border-color: var(--accent);
+    border-color: var(--green);
     box-shadow: 0 0 15px rgba(0, 255, 136, 0.2);
 }
 
 .add-inline-btn {
-    background: var(--accent);
-    color: var(--bg-canvas);
+    background: var(--green);
+    color: var(--bg);
     border: none;
     border-radius: 6px;
     width: 40px;
@@ -85,8 +85,8 @@
 }
 
 .add-inline-btn:disabled {
-    background: var(--border-default);
-    color: var(--text-subtle);
+    background: var(--border);
+    color: var(--text-dim);
     cursor: not-allowed;
     filter: grayscale(1);
     opacity: 0.5;
@@ -100,7 +100,7 @@
     padding: 12px;
     background: rgba(0, 0, 0, 0.4);
     border-radius: 6px;
-    border: 1px dashed var(--border-default);
+    border: 1px dashed var(--border);
 }
 
 .tag-pill-editable {
@@ -108,7 +108,7 @@
     align-items: center;
     gap: 6px;
     background: rgba(0, 255, 136, 0.05);
-    color: var(--accent);
+    color: var(--green);
     padding: 6px 12px;
     border-radius: 6px;
     font-size: 11px;
@@ -123,7 +123,7 @@
 .remove-tag {
     background: transparent;
     border: none;
-    color: var(--accent);
+    color: var(--green);
     cursor: pointer;
     padding: 2px;
     border-radius: 4px;
@@ -143,8 +143,8 @@
     padding: 10px 24px;
     border-radius: 6px;
     background: transparent;
-    border: 1px solid var(--border-default);
-    color: var(--text-subtle);
+    border: 1px solid var(--border);
+    color: var(--text-dim);
     font-weight: 700;
     cursor: pointer;
     transition: all 0.2s;
@@ -154,16 +154,16 @@
 }
 
 .btn-cancel:hover {
-    color: var(--text-primary);
+    color: var(--text);
     border-color: var(--text-muted);
 }
 
 .btn-save {
     padding: 10px 24px;
     border-radius: 6px;
-    background: var(--accent);
+    background: var(--green);
     border: none;
-    color: var(--bg-canvas);
+    color: var(--bg);
     font-weight: 800;
     cursor: pointer;
     transition: all 0.2s;
@@ -179,8 +179,8 @@
 }
 
 .btn-save:disabled {
-    background-color: var(--border-default);
-    color: var(--text-subtle);
+    background-color: var(--border);
+    color: var(--text-dim);
     cursor: not-allowed;
     box-shadow: none;
     filter: grayscale(1);

@@ -1,6 +1,6 @@
 .setting-card {
-  background: var(--bg-surface);
-  border: 1px solid var(--border-default);
+  background: var(--surface);
+  border: 1px solid var(--border);
   border-radius: var(--radius-lg);
   padding: 20px;
   position: relative;
@@ -13,7 +13,7 @@
 
 .setting-card:hover {
   border-color: var(--border-strong);
-  background: var(--bg-elevated);
+  background: var(--surface-2);
 }
 
 .setting-card::after {
@@ -56,7 +56,7 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  color: var(--accent);
+  color: var(--green);
 }
 
 .setting-card-header svg {
@@ -68,7 +68,7 @@
   font-size: 0.95rem;
   font-weight: 600;
   font-family: 'Outfit', sans-serif;
-  color: var(--text-primary);
+  color: var(--text);
 }
 
 .setting-card-description {
@@ -90,7 +90,7 @@
 
 .setting-card-hint {
   font-size: 0.75rem;
-  color: var(--text-subtle);
+  color: var(--text-dim);
   margin-top: 4px;
   position: relative;
   z-index: 1;

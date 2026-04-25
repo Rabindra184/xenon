@@ -2,21 +2,21 @@
     padding: 24px 32px;
     max-width: 1440px;
     margin: 0 auto;
-    color: var(--text-secondary);
+    color: var(--text);
     animation: fadeIn 0.3s ease;
     min-height: calc(100vh - 40px);
     display: flex;
     flex-direction: column;
     font-family: 'Inter', -apple-system, sans-serif;
     position: relative;
-    background: var(--bg-canvas);
+    background: var(--bg);
     width: 100%;
 }
 
 .settings-header {
     margin-bottom: 24px;
     padding-bottom: 20px;
-    border-bottom: 1px solid var(--border-default);
+    border-bottom: 1px solid var(--border);
 }
 
 .settings-header h2 {
@@ -24,7 +24,7 @@
     font-size: 1.75rem;
     font-weight: 700;
     font-family: 'Outfit', sans-serif;
-    color: var(--text-primary);
+    color: var(--text);
     letter-spacing: -0.01em;
     text-transform: uppercase;
 }
@@ -50,7 +50,7 @@
 .settings-subtitle span {
     font-family: 'JetBrains Mono', monospace;
     font-size: 0.75rem;
-    color: var(--text-subtle);
+    color: var(--text-dim);
 }
 
 .badge-elite {
@@ -58,7 +58,7 @@
     padding: 3px 8px;
     border-radius: 4px;
     background: rgba(0, 255, 136, 0.08);
-    color: var(--accent);
+    color: var(--green);
     border: 1px solid rgba(0, 255, 136, 0.25);
     font-family: 'JetBrains Mono', monospace;
     font-weight: 500;
@@ -76,14 +76,14 @@
     font-weight: 800;
     font-family: 'JetBrains Mono', monospace;
     background: rgba(0, 0, 0, 0.4);
-    border: 1px solid var(--border-default);
+    border: 1px solid var(--border);
     text-transform: uppercase;
     letter-spacing: 0.05em;
 }
 
 .status-pill.success {
     border-color: rgba(0, 255, 136, 0.3);
-    color: var(--accent);
+    color: var(--green);
 }
 
 .status-pill.error {
@@ -96,7 +96,7 @@
     align-items: center;
     gap: 8px;
     font-size: 0.75rem;
-    color: var(--text-subtle);
+    color: var(--text-dim);
     font-family: 'JetBrains Mono', monospace;
     margin-top: var(--space-4);
 }
@@ -120,7 +120,7 @@
     align-items: center;
     gap: var(--space-2);
     font-size: 1.125rem;
-    color: var(--text-primary);
+    color: var(--text);
     font-weight: 700;
     margin-bottom: var(--space-2);
 }
@@ -167,11 +167,11 @@
     display: flex;
     align-items: center;
     gap: 8px;
-    background: var(--bg-canvas);
+    background: var(--bg);
     border-radius: 6px;
     padding: 0 12px;
     height: 42px;
-    border: 1px solid var(--border-default);
+    border: 1px solid var(--border);
     transition: all 0.2s ease;
     position: relative;
 }
@@ -183,16 +183,16 @@
 /* Unified Focus for both Infra and AI */
 .mesh-gradient-infra .input-group:focus-within,
 .mesh-gradient-ai .input-group:focus-within {
-    border-color: var(--accent);
+    border-color: var(--green);
     background: rgba(0, 255, 136, 0.03);
-    box-shadow: 0 0 0 1px var(--accent);
+    box-shadow: 0 0 0 1px var(--green);
 }
 
 .input-group input,
 .input-group select {
     background: transparent;
     border: none;
-    color: var(--text-primary);
+    color: var(--text);
     font-size: 0.95rem;
     width: 100%;
     height: 100%;
@@ -202,7 +202,7 @@
 }
 
 .input-group input::placeholder {
-    color: var(--text-subtle);
+    color: var(--text-dim);
     opacity: 0.5;
 }
 
@@ -216,7 +216,7 @@
 }
 
 .input-group .code-font {
-    color: var(--text-subtle);
+    color: var(--text-dim);
     font-size: 0.7rem;
     font-weight: 500;
     letter-spacing: 1px;
@@ -267,7 +267,7 @@
 .status-banner.success {
     background: rgba(0, 255, 136, 0.06);
     border: 1px solid rgba(0, 255, 136, 0.25);
-    color: var(--accent);
+    color: var(--green);
 }
 
 .status-banner.error {
@@ -280,7 +280,7 @@
 .cron-presets {
     margin-top: 24px;
     padding-top: 16px;
-    border-top: 1px solid var(--border-default);
+    border-top: 1px solid var(--border);
 }
 
 .presets-label {
@@ -289,7 +289,7 @@
     gap: 6px;
     font-size: 10px;
     font-weight: 500;
-    color: var(--text-subtle);
+    color: var(--text-dim);
     text-transform: uppercase;
     letter-spacing: 0.1em;
     margin-bottom: 10px;
@@ -304,8 +304,8 @@
 .preset-chip {
     padding: 5px 12px;
     margin: 2px;
-    background: var(--bg-canvas);
-    border: 1px solid var(--border-default);
+    background: var(--bg);
+    border: 1px solid var(--border);
     color: var(--text-muted);
     font-size: 10px;
     font-weight: 500;
@@ -319,14 +319,14 @@
 }
 
 .preset-chip:hover {
-    background: var(--bg-elevated);
-    color: var(--text-primary);
+    background: var(--surface-2);
+    color: var(--text);
     border-color: var(--border-strong);
 }
 
 .preset-chip.active {
     background: rgba(0, 255, 136, 0.08);
-    color: var(--accent);
+    color: var(--green);
     border-color: rgba(0, 255, 136, 0.3);
 }
 
@@ -337,7 +337,7 @@
     bottom: 0;
     background: rgba(10, 10, 15, 0.95);
     backdrop-filter: blur(16px);
-    border-top: 1px solid var(--border-default);
+    border-top: 1px solid var(--border);
     padding: 16px 32px;
     display: flex;
     justify-content: space-between;
@@ -352,8 +352,8 @@
 }
 
 .save-btn {
-    background: var(--accent);
-    color: var(--bg-canvas);
+    background: var(--green);
+    color: var(--bg);
     padding: 10px 24px;
     border-radius: 6px;
     font-weight: 600;
@@ -368,7 +368,7 @@
 }
 
 .save-btn:hover:not(:disabled) {
-    background: var(--accent-bold);
+    background: var(--green-dim);
     transform: translateY(-1px);
     box-shadow: 0 0 30px var(--accent-subtle);
 }
@@ -379,7 +379,7 @@
 
 .reset-btn {
     background: transparent;
-    border: 1px solid var(--border-default);
+    border: 1px solid var(--border);
     color: var(--text-muted);
     padding: 9px 20px;
     border-radius: 6px;
@@ -391,8 +391,8 @@
 }
 
 .reset-btn:hover:not(:disabled) {
-    background: var(--bg-elevated);
-    color: var(--text-primary);
+    background: var(--surface-2);
+    color: var(--text);
     border-color: var(--border-strong);
 }
 
@@ -438,15 +438,15 @@
     display: flex;
     align-items: center;
     gap: var(--space-4);
-    background: var(--bg-canvas);
-    border: 1px solid var(--border-muted);
+    background: var(--bg);
+    border: 1px solid var(--border);
     border-radius: 6px;
     padding: 8px 12px;
     transition: border-color 150ms, box-shadow 150ms;
 }
 
 .setting-input-wrapper:focus-within {
-    border-color: var(--accent);
+    border-color: var(--green);
     box-shadow: 0 0 0 2px rgba(63, 185, 80, 0.4);
 }
 
@@ -454,7 +454,7 @@
 .setting-input-wrapper select {
     background: transparent;
     border: none;
-    color: var(--text-secondary);
+    color: var(--text);
     font-size: 0.875rem;
     width: 100%;
     outline: none;
@@ -579,7 +579,7 @@
 .critical-header {
     background: var(--status-error-fg);
     /* Design token red */
-    color: var(--text-primary);
+    color: var(--text);
     padding: 16px 24px;
     display: flex;
     align-items: center;
@@ -592,7 +592,7 @@
 /* --- Enterprise Dropdown Styling --- */
 .setting-input-wrapper select {
     background: transparent;
-    color: var(--text-secondary);
+    color: var(--text);
     font-family: 'Inter', sans-serif;
     font-weight: 500;
     cursor: pointer;
@@ -619,18 +619,18 @@
     height: 0;
     border-left: 5px solid transparent;
     border-right: 5px solid transparent;
-    border-top: 5px solid var(--text-subtle);
+    border-top: 5px solid var(--text-dim);
     pointer-events: none;
 }
 
 .setting-input-wrapper:hover::after {
-    border-top-color: var(--accent);
+    border-top-color: var(--green);
 }
 
 .setting-input-wrapper select option {
-    background-color: var(--bg-surface);
+    background-color: var(--surface);
     /* Deep surface bg to match dark theme */
-    color: var(--text-secondary);
+    color: var(--text);
     padding: 12px;
 }
 
@@ -647,7 +647,7 @@
 }
 
 .terminal-block-critical {
-    background: var(--bg-canvas);
+    background: var(--bg);
     border: 1px solid rgba(127, 29, 29, 0.6);
     border-radius: 8px;
     padding: 16px;
@@ -688,11 +688,11 @@
 
 /* --- Premium UX: Reactive Focus Beams --- */
 .setting-input-wrapper:focus-within {
-    border-color: var(--accent);
+    border-color: var(--green);
     background: rgba(34, 197, 94, 0.03);
     /* Subtle green tint */
     box-shadow:
-        0 0 0 1px var(--accent),
+        0 0 0 1px var(--green),
         0 0 15px rgba(34, 197, 94, 0.2),
         inset 0 0 0 1px rgba(34, 197, 94, 0.1);
     transform: translateY(-1px);
@@ -702,7 +702,7 @@
 .live-signal {
     width: 6px;
     height: 6px;
-    background-color: var(--accent);
+    background-color: var(--green);
     border-radius: 50%;
     margin-right: 6px;
     position: relative;
@@ -713,7 +713,7 @@
     position: absolute;
     inset: 0;
     border-radius: 50%;
-    background: var(--accent);
+    background: var(--green);
     animation: ping-signal 1.5s cubic-bezier(0, 0, 0.2, 1) infinite;
 }
 
@@ -812,7 +812,7 @@
 
 .ghost-btn:hover {
     background: rgba(255, 255, 255, 0.05);
-    color: var(--text-secondary);
+    color: var(--text);
     border-color: rgba(255, 255, 255, 0.2);
 }
 
@@ -840,7 +840,7 @@
     cursor: pointer;
     transition: all 0.2s ease;
     text-align: left;
-    color: var(--text-secondary);
+    color: var(--text);
 }
 
 .ai-provider-card:hover:not(.disabled) {
@@ -849,9 +849,9 @@
 }
 
 .ai-provider-card.active {
-    border-color: var(--accent);
+    border-color: var(--green);
     background: rgba(34, 197, 94, 0.06);
-    box-shadow: 0 0 0 1px var(--accent), 0 4px 16px rgba(34, 197, 94, 0.12);
+    box-shadow: 0 0 0 1px var(--green), 0 4px 16px rgba(34, 197, 94, 0.12);
 }
 
 .ai-provider-card.disabled {
@@ -880,7 +880,7 @@
 
 .ai-provider-card.active .ai-provider-icon {
     background: rgba(34, 197, 94, 0.15);
-    color: var(--accent);
+    color: var(--green);
 }
 
 .ai-provider-info {
@@ -893,7 +893,7 @@
 .ai-provider-name {
     font-weight: 700;
     font-size: 0.95rem;
-    color: var(--text-primary);
+    color: var(--text);
 }
 
 .ai-provider-desc {
@@ -943,7 +943,7 @@
 .ai-config-value {
     font-size: 0.9rem;
     font-weight: 500;
-    color: var(--text-primary);
+    color: var(--text);
     display: flex;
     align-items: center;
     gap: 8px;
@@ -952,13 +952,13 @@
 .ai-config-value.mono {
     font-family: 'JetBrains Mono', monospace;
     font-size: 0.85rem;
-    color: var(--text-secondary);
+    color: var(--text);
 }
 
 .ai-config-default {
     font-size: 11px;
     background: rgba(255, 255, 255, 0.06);
-    color: var(--text-subtle);
+    color: var(--text-dim);
     padding: 2px 6px;
     border-radius: 4px;
     font-family: 'JetBrains Mono', monospace;
@@ -991,7 +991,7 @@
     position: absolute;
     inset: 0;
     background: rgba(255, 255, 255, 0.08);
-    border: 1px solid var(--border-default);
+    border: 1px solid var(--border);
     transition: all 0.2s ease;
     cursor: pointer;
     border-radius: 999px;
@@ -1012,17 +1012,17 @@
 
 .switch input:checked + .slider {
     background: rgba(0, 255, 136, 0.15);
-    border-color: var(--accent);
+    border-color: var(--green);
     box-shadow: 0 0 12px rgba(0, 255, 136, 0.15);
 }
 
 .switch input:checked + .slider::before {
     left: calc(100% - 18px);
-    background: var(--accent);
+    background: var(--green);
 }
 
 .switch input:focus-visible + .slider {
-    outline: 2px solid var(--accent);
+    outline: 2px solid var(--green);
     outline-offset: 2px;
 }
 
@@ -1040,7 +1040,7 @@
     margin-top: 12px;
     padding: 10px 12px;
     background: rgba(0, 0, 0, 0.25);
-    border: 1px solid var(--border-default);
+    border: 1px solid var(--border);
     border-radius: 6px;
     display: flex;
     flex-wrap: wrap;
@@ -1054,12 +1054,12 @@
     font-weight: 700;
     letter-spacing: 0.08em;
     text-transform: uppercase;
-    color: var(--text-subtle);
+    color: var(--text-dim);
 }
 
 .cron-preview .preview-value {
     font-size: 13px;
-    color: var(--text-primary);
+    color: var(--text);
     font-weight: 500;
 }
 
@@ -1075,7 +1075,7 @@
     font-family: 'JetBrains Mono', monospace;
     font-size: 11px;
     font-weight: 600;
-    color: var(--text-subtle);
+    color: var(--text-dim);
     text-transform: uppercase;
     letter-spacing: 0.08em;
     margin-bottom: 8px;
@@ -1090,7 +1090,7 @@
 .preset-chip {
     padding: 6px 12px;
     border-radius: 6px;
-    border: 1px solid var(--border-default);
+    border: 1px solid var(--border);
     background: rgba(255, 255, 255, 0.03);
     color: var(--text-muted);
     font-family: 'JetBrains Mono', monospace;
@@ -1103,12 +1103,12 @@
 }
 
 .preset-chip:hover {
-    border-color: var(--border-muted);
-    color: var(--text-primary);
+    border-color: var(--border);
+    color: var(--text);
 }
 
 .preset-chip.active {
     background: rgba(0, 255, 136, 0.08);
-    border-color: var(--accent);
-    color: var(--accent);
+    border-color: var(--green);
+    color: var(--green);
 }

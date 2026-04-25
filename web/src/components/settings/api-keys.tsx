@@ -244,12 +244,12 @@ export const ApiKeys: React.FC = () => {
                   <TR key={k.id}>
                     <TD>
                       <strong>{k.name}</strong>
-                      <div style={{ fontSize: '11px', color: 'var(--text-subtle)', fontFamily: 'monospace' }}>
+                      <div style={{ fontSize: '11px', color: 'var(--text-dim)', fontFamily: 'monospace' }}>
                         {k.id.slice(0, 8)}
                       </div>
                     </TD>
                     <TD>
-                      <span style={{ ...chip, background: k.teamId ? 'var(--status-ready-bg)' : 'var(--bg-elevated)', color: k.teamId ? 'var(--status-ready-fg)' : 'var(--text-muted)' }}>
+                      <span style={{ ...chip, background: k.teamId ? 'var(--status-ready-bg)' : 'var(--surface-2)', color: k.teamId ? 'var(--status-ready-fg)' : 'var(--text-muted)' }}>
                         {teamNameById(k.teamId)}
                       </span>
                     </TD>

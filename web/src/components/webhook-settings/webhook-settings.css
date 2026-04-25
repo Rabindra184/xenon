@@ -1,11 +1,11 @@
 .webhook-settings-container {
     padding: 24px 40px;
-    color: var(--text-secondary);
+    color: var(--text);
     font-family: 'Inter', sans-serif;
     max-width: 800px;
     margin: 0 auto;
     min-height: calc(100vh - 40px);
-    background: var(--bg-canvas);
+    background: var(--bg);
     position: relative;
     display: flex;
     flex-direction: column;
@@ -14,7 +14,7 @@
 .webhook-header {
     margin-bottom: 24px;
     padding-bottom: 24px;
-    border-bottom: 2px solid var(--border-default);
+    border-bottom: 2px solid var(--border);
 }
 
 .webhook-title {
@@ -25,21 +25,21 @@
 }
 
 .webhook-icon {
-    color: var(--accent);
+    color: var(--green);
 }
 
 .webhook-title h2 {
     font-size: 2rem;
     font-weight: 800;
     margin: 0;
-    color: var(--text-primary);
+    color: var(--text);
     letter-spacing: -0.01em;
     text-transform: uppercase;
     font-family: 'Outfit', sans-serif;
 }
 
 .webhook-subtitle {
-    color: var(--text-subtle);
+    color: var(--text-dim);
     font-size: 14px;
     margin: 0;
     line-height: 1.6;
@@ -54,8 +54,8 @@
 }
 
 .webhook-card {
-    background: var(--bg-surface);
-    border: 1px solid var(--border-default);
+    background: var(--surface);
+    border: 1px solid var(--border);
     border-radius: 6px;
     padding: 24px 32px;
     transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
@@ -63,7 +63,7 @@
 }
 
 .webhook-card:hover {
-    border-color: var(--accent);
+    border-color: var(--green);
     background: rgba(255, 255, 255, 0.01);
     transform: translateY(-2px);
     box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5);
@@ -71,7 +71,7 @@
 
 .platform-tag {
     background: rgba(0, 0, 0, 0.4);
-    color: var(--accent);
+    color: var(--green);
     font-size: 11px;
     font-weight: 800;
     padding: 2px 12px;
@@ -96,11 +96,11 @@
     align-items: center;
     gap: 8px;
     background: rgba(0, 0, 0, 0.3);
-    border: 1px solid var(--border-default);
+    border: 1px solid var(--border);
     padding: 6px 14px;
     border-radius: 6px;
     font-size: 11px;
-    color: var(--text-subtle);
+    color: var(--text-dim);
     font-weight: 800;
     text-transform: uppercase;
     letter-spacing: 0.05em;
@@ -144,8 +144,8 @@
 
 /* Add Form */
 .add-webhook-form {
-    background: var(--bg-surface);
-    border: 1px solid var(--border-default);
+    background: var(--surface);
+    border: 1px solid var(--border);
     border-radius: 6px;
     padding: 0;
     display: flex;
@@ -165,7 +165,7 @@
     font-size: 14px;
     font-weight: 800;
     margin: 0 0 24px 0;
-    color: var(--accent);
+    color: var(--green);
     text-transform: uppercase;
     letter-spacing: 0.1em;
     font-family: 'JetBrains Mono', monospace;
@@ -174,10 +174,10 @@
 .webhook-input {
     width: 100%;
     background: rgba(0, 0, 0, 0.3);
-    border: 1px solid var(--border-default);
+    border: 1px solid var(--border);
     border-radius: 6px;
     padding: 12px 16px;
-    color: var(--text-primary);
+    color: var(--text);
     font-size: 13px;
     font-family: 'JetBrains Mono', monospace;
     transition: all 0.2s;
@@ -186,7 +186,7 @@
 
 .webhook-input:focus {
     outline: none;
-    border-color: var(--accent);
+    border-color: var(--green);
     box-shadow: 0 0 15px rgba(0, 255, 136, 0.1);
 }
 
@@ -202,12 +202,12 @@
     gap: 12px;
     padding: 14px;
     background: rgba(0, 0, 0, 0.3);
-    border: 1px solid var(--border-default);
+    border: 1px solid var(--border);
     border-radius: 6px;
     cursor: pointer;
     transition: all 0.2s;
     font-size: 13px;
-    color: var(--text-subtle);
+    color: var(--text-dim);
     user-select: none;
 }
 
@@ -218,15 +218,15 @@
 
 .event-checkbox.selected {
     background: rgba(0, 255, 136, 0.05);
-    border-color: var(--accent);
-    color: var(--accent);
+    border-color: var(--green);
+    color: var(--green);
     font-weight: 600;
 }
 
 /* Template Section */
 .template-section {
     background: rgba(0, 0, 0, 0.2);
-    border: 1px solid var(--border-default);
+    border: 1px solid var(--border);
     border-radius: 6px;
     margin-bottom: 24px;
     overflow: hidden;
@@ -259,18 +259,18 @@
 
 .toggle-indicator {
     font-size: 18px;
-    color: var(--text-subtle);
+    color: var(--text-dim);
     font-weight: bold;
 }
 
 .template-editor {
     padding: 24px;
-    border-top: 1px solid var(--border-default);
+    border-top: 1px solid var(--border);
     background: rgba(0, 0, 0, 0.1);
 }
 
 .template-hint {
-    color: var(--text-subtle);
+    color: var(--text-dim);
     font-size: 12px;
     margin: 0 0 16px 0;
     line-height: 1.6;
@@ -280,7 +280,7 @@
     background: rgba(0, 0, 0, 0.3);
     padding: 2px 6px;
     border-radius: 6px;
-    color: var(--accent);
+    color: var(--green);
     font-family: 'JetBrains Mono', monospace;
 }
 
@@ -293,8 +293,8 @@
 
 .variable-chip {
     background: rgba(0, 0, 0, 0.3);
-    border: 1px solid var(--border-default);
-    color: var(--accent);
+    border: 1px solid var(--border);
+    color: var(--green);
     padding: 6px 12px;
     border-radius: 6px;
     font-size: 11px;
@@ -304,7 +304,7 @@
 }
 
 .variable-chip:hover {
-    border-color: var(--accent);
+    border-color: var(--green);
     background: rgba(0, 255, 136, 0.05);
     transform: translateY(-1px);
 }
@@ -312,9 +312,9 @@
 .template-textarea {
     width: 100%;
     background: rgba(0, 0, 0, 0.3);
-    border: 1px solid var(--border-default);
+    border: 1px solid var(--border);
     border-radius: 6px;
-    color: var(--text-primary);
+    color: var(--text);
     padding: 16px;
     font-family: 'JetBrains Mono', monospace;
     font-size: 12px;
@@ -327,7 +327,7 @@
 
 .template-textarea:focus {
     outline: none;
-    border-color: var(--accent);
+    border-color: var(--green);
 }
 
 .form-actions {
@@ -342,8 +342,8 @@
 }
 
 .add-btn {
-    background: var(--accent);
-    color: var(--bg-canvas);
+    background: var(--green);
+    color: var(--bg);
     font-weight: 800;
     padding: 12px 32px;
     border-radius: 6px;
@@ -363,15 +363,15 @@
 }
 
 .add-btn:disabled {
-    background: var(--bg-elevated);
-    color: var(--text-subtle);
+    background: var(--surface-2);
+    color: var(--text-dim);
     cursor: not-allowed;
     box-shadow: none;
 }
 
 .test-btn {
     background: transparent;
-    border: 1px solid var(--border-default);
+    border: 1px solid var(--border);
     color: var(--text-muted);
     font-weight: 700;
     padding: 11px 24px;
@@ -384,14 +384,14 @@
 }
 
 .test-btn:hover:not(:disabled) {
-    color: var(--text-primary);
-    border-color: var(--text-subtle);
+    color: var(--text);
+    border-color: var(--text-dim);
     background: rgba(255, 255, 255, 0.05);
 }
 
 .test-btn.success {
-    border-color: var(--accent);
-    color: var(--accent);
+    border-color: var(--green);
+    color: var(--green);
     background: rgba(0, 255, 136, 0.05);
 }
 

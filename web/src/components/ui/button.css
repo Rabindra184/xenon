@@ -21,9 +21,9 @@
 .btn-size-icon { height: 32px; width: 32px; padding: 0; }
 
 .btn-primary {
-  background: var(--accent-bold);
+  background: var(--green-dim);
   color: #ffffff;
-  border-color: var(--accent-bold);
+  border-color: var(--green-dim);
 }
 .btn-primary:hover:not(:disabled) {
   background: #2ea043;
@@ -32,22 +32,22 @@
 
 .btn-secondary {
   background: transparent;
-  color: var(--text-secondary);
+  color: var(--text);
   border-color: var(--border-strong);
 }
 .btn-secondary:hover:not(:disabled) {
-  background: var(--bg-elevated);
-  color: var(--text-primary);
+  background: var(--surface-2);
+  color: var(--text);
 }
 
 .btn-ghost {
   background: transparent;
-  color: var(--text-secondary);
+  color: var(--text);
   border-color: transparent;
 }
 .btn-ghost:hover:not(:disabled) {
-  background: var(--bg-elevated);
-  color: var(--text-primary);
+  background: var(--surface-2);
+  color: var(--text);
 }
 
 .btn-link {
