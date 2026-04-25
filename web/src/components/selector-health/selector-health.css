@@ -782,3 +782,48 @@
   min-width: 1.5rem;
   text-align: center;
 }
+
+/* Strategy badge — shows next to the selector value and the rewrite */
+.sh-strategy-badge {
+  display: inline-flex;
+  align-items: center;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--text-dim);
+  border-radius: 4px;
+  padding: 0.05rem 0.4rem;
+  font-size: 0.7rem;
+  font-weight: 500;
+  text-transform: none;
+  margin-right: 0.4rem;
+  white-space: nowrap;
+}
+.sh-strategy-badge--rewrite {
+  color: var(--text);
+}
+
+/* Inline action buttons (Mark Fixed / Mute) on the Active tab */
+.sh-action-btn {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text-dim);
+  border-radius: 4px;
+  padding: 0.25rem 0.55rem;
+  font-size: 0.72rem;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: color 0.12s ease, border-color 0.12s ease, background 0.12s ease;
+  margin-right: 0.3rem;
+}
+.sh-action-btn:hover {
+  color: var(--text);
+  border-color: var(--text-dim);
+}
+.sh-action-btn--primary {
+  color: var(--accent, #60a5fa);
+  border-color: var(--accent, #60a5fa);
+}
+.sh-action-btn--primary:hover {
+  background: var(--accent, #60a5fa);
+  color: white;
+}

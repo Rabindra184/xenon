@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { TabNav, Tab } from './tab-nav';
+import { formatStrategy } from '../../utils/strategy-labels';
 import {
   HeartPulse,
   RefreshCw,
@@ -257,6 +258,40 @@ const SelectorHealthPage: React.FC = () => {
     navigate(`/selector-health/detail?value=${encodeURIComponent(selector)}&windowDays=${windowDays}`);
   };
 
+  // Mark Fixed / Mute action dispatcher. Uses window.confirm() as a
+  // placeholder until a proper confirm modal lands; the API request itself
+  // is idempotent on the backend so a misclick recovers via the inverse
+  // action (Mute -> Unmute, Mark Fixed -> Cancel verification).
+  const handleAction = useCallback(
+    async (kind: 'mark_fixed' | 'mute', h: IHealingHotspot) => {
+      const confirmMsg =
+        kind === 'mark_fixed'
+          ? `Mark this selector as fixed? Xenon will move it to Pending Verification and watch for 3 clean CI builds.`
+          : `Mute this selector? It will be hidden from Hotspots, the CI gate, and digests until you unmute.`;
+      if (!window.confirm(confirmMsg)) return;
+      try {
+        await XenonApiService.postSelectorStateAction({
+          original_strategy: h.originalStrategy ?? '',
+          original_selector: h.originalSelector,
+          action: kind,
+        });
+        toast(
+          kind === 'mark_fixed'
+            ? 'Marked fixed. Watching for clean builds.'
+            : 'Muted.',
+          'success',
+        );
+        load();
+      } catch (err: any) {
+        const detail = err?.currentStatus
+          ? ` (currently ${err.currentStatus})`
+          : '';
+        toast(`${err?.message ?? 'Action failed'}${detail}`, 'error');
+      }
+    },
+    [load, toast],
+  );
+
   const sendDigest = async () => {
     setSendingDigest(true);
     try {
@@ -427,6 +462,9 @@ const SelectorHealthPage: React.FC = () => {
                 >
                   <div className="sh-td sh-td--rank">{i + 1}</div>
                   <div className="sh-td sh-td--selector">
+                    <span className="sh-strategy-badge">
+                      {formatStrategy(h.originalStrategy)}
+                    </span>
                     <code title={h.originalSelector}>{h.originalSelector}</code>
                   </div>
                   <div className="sh-td sh-td--count">
@@ -453,6 +491,14 @@ const SelectorHealthPage: React.FC = () => {
                             {sharePct}%
                           </span>
                         )}
+                        {h.suggestedStrategy && (
+                          <span
+                            className="sh-strategy-badge sh-strategy-badge--rewrite"
+                            title="Strategy of the suggested rewrite"
+                          >
+                            {formatStrategy(h.suggestedStrategy)}
+                          </span>
+                        )}
                         <code className="sh-rewrite-value" title={h.suggestedRewrite}>
                           {h.suggestedRewrite}
                         </code>
@@ -475,6 +521,32 @@ const SelectorHealthPage: React.FC = () => {
                       >
                         {copiedKey === copyKey ? <Check size={11} /> : <Copy size={11} />}
                       </button>
+                    )}
+                    {tab === 'active' && (
+                      <>
+                        <button
+                          type="button"
+                          className="sh-action-btn sh-action-btn--primary"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleAction('mark_fixed', h);
+                          }}
+                          title="Move to Pending Verification"
+                        >
+                          Mark Fixed
+                        </button>
+                        <button
+                          type="button"
+                          className="sh-action-btn sh-action-btn--ghost"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleAction('mute', h);
+                          }}
+                          title="Hide from Hotspots, CI gate, and digests"
+                        >
+                          Mute
+                        </button>
+                      </>
                     )}
                     <button
                       type="button"
