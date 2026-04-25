@@ -422,6 +422,7 @@ const SelectorHealthPage: React.FC = () => {
         ) : (
         <>
         <div className="sh-filter-bar">
+          <span className="sh-filter-bar__lead">Filter results</span>
           <div className="sh-filter-bar__group">
             <span className="sh-filter-bar__label">Window</span>
             <SegmentedControl<string>
