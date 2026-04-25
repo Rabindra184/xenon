@@ -97,6 +97,11 @@ export interface IHealingSummaryResponse {
   windowDays: number;
   current: IHealingPeriodAggregate;
   prior: IHealingPeriodAggregate;
+  // Lifecycle counts (added with the trust-and-truth layer):
+  // - resolvedCount: SelectorState rows in 'resolved' with resolved_at in window
+  // - pendingCount:  SelectorState rows currently in 'pending' (no window — pending is a live state)
+  resolvedCount?: number;
+  pendingCount?: number;
 }
 
 export interface IHealingSelectorAlternate {

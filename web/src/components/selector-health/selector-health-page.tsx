@@ -190,6 +190,17 @@ const KpiStrip: React.FC<{ summary: IHealingSummaryResponse | null; loading: boo
           )
         }
       />
+      <KpiTile
+        label="Resolved"
+        value={loading ? '—' : (summary?.resolvedCount ?? 0).toLocaleString()}
+        sub={`last ${summary?.windowDays ?? 30}d`}
+        delta={
+          !loading && typeof summary?.pendingCount === 'number' ? (
+            <span className="sh-kpi__delta">⏳ {summary.pendingCount} pending</span>
+          ) : undefined
+        }
+        tone="neutral"
+      />
     </div>
   );
 };

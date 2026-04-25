@@ -292,10 +292,22 @@ async function getHealingSummary(request: Request, response: Response) {
   const current = aggregate(currentRows);
   const prior = aggregate(priorRows);
 
+  // Lifecycle counts: how many selectors have been resolved in this
+  // window, and how many are mid-verification right now. Cheap — both
+  // are indexed COUNT(*)s.
+  const [resolvedCount, pendingCount] = await Promise.all([
+    prisma.selectorState.count({
+      where: { status: 'resolved', resolved_at: { gte: since } },
+    }),
+    prisma.selectorState.count({ where: { status: 'pending' } }),
+  ]);
+
   return response.status(200).json({
     windowDays,
     current,
     prior,
+    resolvedCount,
+    pendingCount,
   });
 }
 
