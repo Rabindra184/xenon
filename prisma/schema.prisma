@@ -78,12 +78,16 @@ model SessionLog {
   healed_selector    String?
   healing_confidence Float?
   healing_tier       String?
+  original_strategy  String?
+  healed_strategy    String?
   createdAt          DateTime @default(now())
   updatedAt          DateTime @updatedAt
   duration           Int?
   span_id            String?
   trace_id           String?
   session            Session  @relation(fields: [session_id], references: [id])
+
+  @@index([original_strategy, original_selector, createdAt])
 }
 
 model Log {
@@ -264,4 +268,25 @@ model Team {
   createdAt DateTime @default(now())
   devices   Device[]
   apiKeys   ApiKey[]
+}
+
+model SelectorState {
+  id                 String    @id @default(uuid())
+  original_strategy  String
+  original_selector  String
+  status             String
+  fixed_at           DateTime?
+  fixed_by_api_key   String?
+  resolved_at        DateTime?
+  muted_at           DateTime?
+  muted_by_api_key   String?
+  regression_count   Int       @default(0)
+  clean_builds_count Int       @default(0)
+  last_event_at      DateTime  @default(now())
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  @@unique([original_strategy, original_selector])
+  @@index([status])
+  @@index([fixed_at])
 }

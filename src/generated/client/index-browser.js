@@ -177,6 +177,8 @@ exports.Prisma.SessionLogScalarFieldEnum = {
   healed_selector: 'healed_selector',
   healing_confidence: 'healing_confidence',
   healing_tier: 'healing_tier',
+  original_strategy: 'original_strategy',
+  healed_strategy: 'healed_strategy',
   createdAt: 'createdAt',
   updatedAt: 'updatedAt',
   duration: 'duration',
@@ -348,6 +350,23 @@ exports.Prisma.TeamScalarFieldEnum = {
   createdAt: 'createdAt'
 };
 
+exports.Prisma.SelectorStateScalarFieldEnum = {
+  id: 'id',
+  original_strategy: 'original_strategy',
+  original_selector: 'original_selector',
+  status: 'status',
+  fixed_at: 'fixed_at',
+  fixed_by_api_key: 'fixed_by_api_key',
+  resolved_at: 'resolved_at',
+  muted_at: 'muted_at',
+  muted_by_api_key: 'muted_by_api_key',
+  regression_count: 'regression_count',
+  clean_builds_count: 'clean_builds_count',
+  last_event_at: 'last_event_at',
+  createdAt: 'createdAt',
+  updatedAt: 'updatedAt'
+};
+
 exports.Prisma.SortOrder = {
   asc: 'asc',
   desc: 'desc'
@@ -374,7 +393,8 @@ exports.Prisma.ModelName = {
   LocatorEtalon: 'LocatorEtalon',
   PortLease: 'PortLease',
   ApiKey: 'ApiKey',
-  Team: 'Team'
+  Team: 'Team',
+  SelectorState: 'SelectorState'
 };
 
 /**
