@@ -284,6 +284,28 @@ export default class XenonApiService {
     return apiClient.makeGETRequest(`/healing/events?limit=${limit}&t=${Date.now()}`);
   }
 
+  public static getHealingSummary(windowDays = 30) {
+    return apiClient.makeGETRequest(
+      `/healing/summary?windowDays=${windowDays}&t=${Date.now()}`,
+    );
+  }
+
+  public static getHealingHotspots(
+    options: { windowDays?: number; limit?: number; tier?: string; platform?: string } = {},
+  ) {
+    const { windowDays = 30, limit = 20, tier, platform } = options;
+    let url = `/healing/hotspots?windowDays=${windowDays}&limit=${limit}&t=${Date.now()}`;
+    if (tier) url += `&tier=${encodeURIComponent(tier)}`;
+    if (platform) url += `&platform=${encodeURIComponent(platform)}`;
+    return apiClient.makeGETRequest(url);
+  }
+
+  public static getHealingSelectorDetail(originalSelector: string, windowDays = 30) {
+    return apiClient.makeGETRequest(
+      `/healing/selector?value=${encodeURIComponent(originalSelector)}&windowDays=${windowDays}&t=${Date.now()}`,
+    );
+  }
+
   /**
    * Export a build's sessions as a downloadable file.
    * Returns a { blob, filename } pair suitable for a browser-download trigger.
