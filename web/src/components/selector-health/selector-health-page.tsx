@@ -3,6 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { TabNav, Tab } from './tab-nav';
 import { formatStrategy } from '../../utils/strategy-labels';
 import { CopyButton } from './copy-language-modal';
+import { PendingRow } from './pending-row';
 import {
   HeartPulse,
   RefreshCw,
@@ -256,11 +257,22 @@ const SelectorHealthPage: React.FC = () => {
   // is idempotent on the backend so a misclick recovers via the inverse
   // action (Mute -> Unmute, Mark Fixed -> Cancel verification).
   const handleAction = useCallback(
-    async (kind: 'mark_fixed' | 'mute', h: IHealingHotspot) => {
-      const confirmMsg =
-        kind === 'mark_fixed'
-          ? `Mark this selector as fixed? Xenon will move it to Pending Verification and watch for 3 clean CI builds.`
-          : `Mute this selector? It will be hidden from Hotspots, the CI gate, and digests until you unmute.`;
+    async (
+      kind: 'mark_fixed' | 'mute' | 'unmute' | 'cancel_verification',
+      h: IHealingHotspot,
+    ) => {
+      const confirmMsg = (() => {
+        switch (kind) {
+          case 'mark_fixed':
+            return `Mark this selector as fixed? Xenon will move it to Pending Verification and watch for 3 clean CI builds.`;
+          case 'mute':
+            return `Mute this selector? It will be hidden from Hotspots, the CI gate, and digests until you unmute.`;
+          case 'unmute':
+            return `Unmute this selector?`;
+          case 'cancel_verification':
+            return `Cancel verification? The selector returns to Active and the clean-build counter resets.`;
+        }
+      })();
       if (!window.confirm(confirmMsg)) return;
       try {
         await XenonApiService.postSelectorStateAction({
@@ -268,12 +280,19 @@ const SelectorHealthPage: React.FC = () => {
           original_selector: h.originalSelector,
           action: kind,
         });
-        toast(
-          kind === 'mark_fixed'
-            ? 'Marked fixed. Watching for clean builds.'
-            : 'Muted.',
-          'success',
-        );
+        const successMsg = (() => {
+          switch (kind) {
+            case 'mark_fixed':
+              return 'Marked fixed. Watching for clean builds.';
+            case 'mute':
+              return 'Muted.';
+            case 'unmute':
+              return 'Unmuted.';
+            case 'cancel_verification':
+              return 'Verification cancelled.';
+          }
+        })();
+        toast(successMsg, 'success');
         load();
       } catch (err: any) {
         const detail = err?.currentStatus
@@ -412,12 +431,33 @@ const SelectorHealthPage: React.FC = () => {
           <div className="sh-empty sh-empty--clean">
             <HeartPulse size={28} />
             <div>
-              <div className="sh-empty__title">Locator hygiene is clean</div>
+              <div className="sh-empty__title">
+                {tab === 'pending'
+                  ? 'Nothing pending'
+                  : tab === 'resolved'
+                    ? 'Nothing resolved yet'
+                    : 'Locator hygiene is clean'}
+              </div>
               <div className="sh-empty__subtitle">
-                No selectors required healing in the last {windowDays} days
-                {filtersActive ? ' for the active filters' : ''}.
+                {tab === 'pending'
+                  ? 'When you mark a selector fixed, it shows here while we watch for 3 clean CI builds.'
+                  : tab === 'resolved'
+                    ? 'Fix a hot selector and Xenon will track its verification here.'
+                    : `No selectors required healing in the last ${windowDays} days${filtersActive ? ' for the active filters' : ''}.`}
               </div>
             </div>
+          </div>
+        ) : tab === 'pending' ? (
+          <div className="sh-pending-list">
+            {hotspots.map((h) => (
+              <PendingRow
+                key={`${h.originalStrategy ?? ''} ${h.originalSelector}`}
+                hotspot={h}
+                onCancel={(hot) => handleAction('cancel_verification', hot)}
+                onMute={(hot) => handleAction('mute', hot)}
+                onOpen={openSelector}
+              />
+            ))}
           </div>
         ) : (
           <div className="sh-table">
