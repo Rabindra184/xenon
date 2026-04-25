@@ -13,6 +13,7 @@ import {
   Brain,
 } from 'lucide-react';
 import { SettingCard } from '../ui/SettingCard';
+import { PageHeader } from '../ui/page-header';
 
 export const Settings: React.FC = () => {
   const [config, setConfig] = useState<{
@@ -125,16 +126,11 @@ export const Settings: React.FC = () => {
           zIndex: 1001,
         }}
       ></div>
-      <div className="settings-header">
-        <div className="settings-title-group">
-          <InfrastructureIcon className="settings-icon infra-icon" size={28} />
-          <h2>Infrastructure Control</h2>
-        </div>
-        <p className="settings-subtitle">
-          Manage core farm parameters, heartbeat frequency, and maintenance orchestrations across
-          the global registry.
-        </p>
-      </div>
+      <PageHeader
+        icon={InfrastructureIcon}
+        title="Infrastructure Control"
+        subtitle="Manage core farm parameters, heartbeat frequency, and maintenance orchestrations across the global registry."
+      />
 
       <div className="settings-content">
         <div className="settings-grid">

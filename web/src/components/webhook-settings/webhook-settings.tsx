@@ -4,6 +4,7 @@ import XenonApiService from '../../api-service';
 import './webhook-settings.css';
 import { Trash2, Bell, CheckCircle, AlertCircle, Plus, Zap, XCircle } from 'lucide-react';
 import { FieldGroup } from '../ui/FieldGroup';
+import { PageHeader } from '../ui/page-header';
 
 interface WebhookConfig {
   id: string;
@@ -119,15 +120,11 @@ export const WebhookSettings: React.FC = () => {
           zIndex: 1001,
         }}
       ></div>
-      <div className="webhook-header">
-        <div className="webhook-title">
-          <Bell className="webhook-icon" size={20} />
-          <h2>Notification Webhooks</h2>
-        </div>
-        <p className="webhook-subtitle">
-          Configure Slack or generic webhooks to receive alerts for critical infrastructure events.
-        </p>
-      </div>
+      <PageHeader
+        icon={Bell}
+        title="Notification Webhooks"
+        subtitle="Configure Slack or generic webhooks to receive alerts for critical infrastructure events."
+      />
 
       <div className="webhook-list">
         {configs.map((config: WebhookConfig) => (
