@@ -382,23 +382,23 @@ const SelectorHealthPage: React.FC = () => {
           <>
             <button
               type="button"
-              className="sh-refresh-btn"
+              className="sh-ghost-btn"
               onClick={sendDigest}
               disabled={sendingDigest}
-              title="Push the current digest to all subscribed webhooks"
+              title={sendingDigest ? 'Sending digest…' : 'Send digest to subscribed webhooks'}
+              aria-label="Send digest"
             >
-              <Send size={12} className={sendingDigest ? 'animate-spin' : ''} />
-              {sendingDigest ? 'Sending…' : 'Send digest'}
+              <Send size={14} className={sendingDigest ? 'animate-spin' : ''} />
             </button>
             <button
               type="button"
-              className="sh-refresh-btn"
+              className="sh-ghost-btn"
               onClick={load}
               disabled={loading}
-              title="Refresh"
+              title="Refresh hotspots"
+              aria-label="Refresh"
             >
-              <RefreshCw size={12} className={loading ? 'animate-spin' : ''} />
-              Refresh
+              <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
             </button>
           </>
         }
