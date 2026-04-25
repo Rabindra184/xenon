@@ -9,6 +9,7 @@ const Overview = lazy(() => import('../components/overview/overview'));
 const DeviceExplorer = lazy(() => import('../components/device-explorer/device-explorer'));
 const BuildsPage = lazy(() => import('../components/builds/builds-page'));
 const SessionDetailPage = lazy(() => import('../components/session-detail/session-detail-page'));
+const RunbookPage = lazy(() => import('../components/runbooks/runbook-page'));
 const Apps = lazy(() => import('../components/apps/apps'));
 const WebhookSettings = lazy(() =>
   import('../components/webhook-settings/webhook-settings').then((m) => ({
@@ -171,6 +172,15 @@ export const AppRoutes: React.FC = () => {
             element={
               <div className="app-body-container settings-view">
                 <Teams />
+              </div>
+            }
+          />
+
+          <Route
+            path="/runbooks/:category"
+            element={
+              <div className="app-body-container settings-view">
+                <RunbookPage />
               </div>
             }
           />

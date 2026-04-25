@@ -1,0 +1,82 @@
+/* Lightweight markdown rendering for runbook pages.
+   Tailwind's @tailwindcss/typography plugin isn't installed, so we hand-tune
+   the few elements ReactMarkdown emits. Scoped to .runbook-prose so other
+   pages aren't affected. */
+
+.runbook-prose h1 {
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--text);
+  margin: 0 0 12px;
+}
+
+.runbook-prose h2 {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text);
+  margin: 24px 0 8px;
+  letter-spacing: 0.02em;
+}
+
+.runbook-prose p {
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--text-muted);
+  margin: 0 0 12px;
+}
+
+.runbook-prose ul,
+.runbook-prose ol {
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--text-muted);
+  margin: 0 0 16px;
+  padding-left: 24px;
+}
+
+.runbook-prose li { margin: 4px 0; }
+
+.runbook-prose code {
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  font-size: 12px;
+  background: var(--surface-2);
+  color: var(--green);
+  padding: 1px 5px;
+  border-radius: 4px;
+}
+
+.runbook-prose pre {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 12px;
+  overflow-x: auto;
+  margin: 12px 0;
+}
+
+.runbook-prose pre code {
+  background: transparent;
+  color: var(--text);
+  padding: 0;
+  font-size: 11px;
+}
+
+.runbook-prose blockquote {
+  border-left: 3px solid var(--amber);
+  background: rgba(245, 158, 11, 0.05);
+  padding: 8px 12px;
+  margin: 12px 0;
+  color: var(--amber);
+  font-size: 12px;
+}
+
+.runbook-prose blockquote p {
+  margin: 0;
+  color: inherit;
+}
+
+.runbook-prose a {
+  color: var(--blue);
+  text-decoration: underline;
+}
