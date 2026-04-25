@@ -15,6 +15,7 @@ import {
   Globe,
 } from 'lucide-react';
 import { SettingCard } from '../ui/SettingCard';
+import { PageHeader } from '../ui/page-header';
 
 interface ProviderInfo {
   id: string;
@@ -176,20 +177,20 @@ export const AISettings: React.FC = () => {
           zIndex: 1001,
         }}
       ></div>
-      <div className="settings-header">
-        <div className="settings-title-group">
-          <Brain className="settings-icon ai-engine-icon" size={28} />
-          <h2>AI Engine Configuration</h2>
-        </div>
-        <p className="settings-subtitle">
-          All credentials and endpoints are managed via environment variables.
-          <br />
-          <span style={{ fontSize: '0.85rem', opacity: 0.7 }}>
-            <Lock size={12} style={{ display: 'inline', marginBottom: -2, marginRight: 4 }} />
-            Select the active provider from configured options below.
-          </span>
-        </p>
-      </div>
+      <PageHeader
+        icon={Brain}
+        title="AI Engine Configuration"
+        subtitle={
+          <>
+            All credentials and endpoints are managed via environment variables.
+            <br />
+            <span className="text-xs text-[var(--text-dim)]">
+              <Lock size={12} style={{ display: 'inline', marginBottom: -2, marginRight: 4 }} />
+              Select the active provider from configured options below.
+            </span>
+          </>
+        }
+      />
 
       <div className="settings-content">
         <div className="settings-grid">

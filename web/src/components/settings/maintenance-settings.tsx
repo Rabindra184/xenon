@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import { ActionBar, SettingSection } from '../ui/Layouts';
 import { SettingCard } from '../ui/SettingCard';
+import { PageHeader } from '../ui/page-header';
 
 export const MaintenanceSettings: React.FC = () => {
   const [config, setConfig] = useState<{
@@ -103,16 +104,11 @@ export const MaintenanceSettings: React.FC = () => {
           zIndex: 1001,
         }}
       ></div>
-      <div className="settings-header">
-        <div className="settings-title-group">
-          <MaintenanceIcon className="settings-icon infra-icon" size={28} />
-          <h2>Maintenance & Retention</h2>
-        </div>
-        <p className="settings-subtitle">
-          Manage the lifecycle of test artifacts, automated purging schedules, and storage
-          optimization across the global registry.
-        </p>
-      </div>
+      <PageHeader
+        icon={MaintenanceIcon}
+        title="Maintenance & Retention"
+        subtitle="Manage the lifecycle of test artifacts, automated purging schedules, and storage optimization across the global registry."
+      />
 
       <div className="settings-content">
         <div className="settings-grid">
