@@ -7,6 +7,7 @@ interface ActionBarProps {
   onRestoreDefaults?: () => void;
   isSaving: boolean;
   isValidating?: boolean;
+  isDirty?: boolean;
   saveLabel?: string;
   restoreLabel?: string;
 }
@@ -17,11 +18,19 @@ export const ActionBar: React.FC<ActionBarProps> = ({
   onRestoreDefaults,
   isSaving,
   isValidating = false,
+  isDirty = false,
   saveLabel = 'Save Configuration',
   restoreLabel = 'Restore Defaults',
 }) => (
   <div className="settings-footer">
     <div className="footer-left">
+      {isDirty && (
+        <span className="footer-dirty" aria-live="polite">
+          <span className="footer-dirty__dot" />
+          <span>Unsaved changes</span>
+        </span>
+      )}
+      {isDirty && onRestoreDefaults && <span className="footer-divider" aria-hidden="true" />}
       {onRestoreDefaults && (
         <button
           className="reset-to-defaults-btn"

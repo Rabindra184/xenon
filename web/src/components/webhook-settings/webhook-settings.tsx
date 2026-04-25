@@ -2,9 +2,21 @@ import * as React from 'react';
 import { useState, useEffect } from 'react';
 import XenonApiService from '../../api-service';
 import './webhook-settings.css';
-import { Trash2, Bell, CheckCircle, AlertCircle, Plus, Zap, XCircle } from 'lucide-react';
+import '../settings/settings.css';
+import {
+  Trash2,
+  Bell,
+  CheckCircle2,
+  AlertCircle,
+  Plus,
+  Zap,
+  XCircle,
+  Activity,
+  RefreshCw,
+} from 'lucide-react';
 import { FieldGroup } from '../ui/FieldGroup';
 import { PageHeader } from '../ui/page-header';
+import { useToast } from '../ui/toast';
 
 interface WebhookConfig {
   id: string;
@@ -18,47 +30,65 @@ const AVAILABLE_EVENTS = [
   {
     id: 'device_offline',
     label: 'Device Offline',
-    icon: <AlertCircle size={14} className="text-red-400" />,
+    icon: AlertCircle,
+    tone: 'red' as const,
   },
-  { id: 'device_new', label: 'New Device', icon: <Plus size={14} className="text-green-400" /> },
+  { id: 'device_new', label: 'New Device', icon: Plus, tone: 'green' as const },
   {
     id: 'session_failed',
     label: 'Session Failed',
-    icon: <XCircle size={14} className="text-orange-400" />,
+    icon: XCircle,
+    tone: 'amber' as const,
   },
 ];
 
+const VARIABLES = ['udid', 'host', 'name', 'sessionId', 'failureReason', 'eventType', 'platform'];
+
 export const WebhookSettings: React.FC = () => {
+  const { toast } = useToast();
   const [configs, setConfigs] = useState<WebhookConfig[]>([]);
+  const [loadingList, setLoadingList] = useState(true);
   const [newUrl, setNewUrl] = useState('');
   const [selectedEvents, setSelectedEvents] = useState<string[]>([
     'device_offline',
     'session_failed',
   ]);
-  const [loading, setLoading] = useState(false);
-  const [testStatus, setTestStatus] = useState<'idle' | 'success' | 'error'>('idle');
+  const [submitting, setSubmitting] = useState(false);
+  const [testing, setTesting] = useState(false);
   const [showTemplate, setShowTemplate] = useState(false);
   const [payloadTemplate, setPayloadTemplate] = useState('');
 
   useEffect(() => {
     loadConfigs();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const loadConfigs = async () => {
+    setLoadingList(true);
     try {
       const data = await XenonApiService.getWebhookConfigs();
       setConfigs(data || []);
     } catch (error) {
       console.error('Failed to load webhook configs', error);
+      toast('Failed to load webhooks.', 'error');
+    } finally {
+      setLoadingList(false);
     }
   };
 
   const handleAdd = async () => {
-    if (!newUrl) return;
-    setLoading(true);
+    if (!newUrl.trim()) {
+      toast('Webhook URL is required.', 'error');
+      return;
+    }
+    if (selectedEvents.length === 0) {
+      toast('Select at least one trigger event.', 'error');
+      return;
+    }
+    setSubmitting(true);
     try {
       await XenonApiService.addWebhookConfig(
-        newUrl,
+        newUrl.trim(),
         selectedEvents,
         'slack',
         payloadTemplate || undefined,
@@ -68,32 +98,37 @@ export const WebhookSettings: React.FC = () => {
       setShowTemplate(false);
       setSelectedEvents(['device_offline', 'session_failed']);
       await loadConfigs();
-    } catch (error) {
+      toast('Webhook saved.', 'success');
+    } catch (error: any) {
       console.error('Failed to add webhook', error);
+      toast(`Failed to add webhook: ${error.message || 'unknown error'}`, 'error');
     } finally {
-      setLoading(false);
+      setSubmitting(false);
     }
   };
 
-  const handleDelete = async (id: string) => {
+  const handleDelete = async (id: string, url: string) => {
+    if (!window.confirm(`Remove webhook for "${url}"?`)) return;
     try {
       await XenonApiService.deleteWebhookConfig(id);
       await loadConfigs();
-    } catch (error) {
+      toast('Webhook removed.', 'success');
+    } catch (error: any) {
       console.error('Failed to delete webhook', error);
+      toast(`Failed to delete: ${error.message || 'unknown error'}`, 'error');
     }
   };
 
   const handleTest = async () => {
-    if (!newUrl) return;
-    setTestStatus('idle');
+    if (!newUrl.trim()) return;
+    setTesting(true);
     try {
-      await XenonApiService.testWebhook(newUrl, 'slack');
-      setTestStatus('success');
-      setTimeout(() => setTestStatus('idle'), 3000);
-    } catch (error) {
-      setTestStatus('error');
-      setTimeout(() => setTestStatus('idle'), 3000);
+      await XenonApiService.testWebhook(newUrl.trim(), 'slack');
+      toast('Test payload delivered.', 'success');
+    } catch (error: any) {
+      toast(`Test failed: ${error.message || 'check the URL'}`, 'error');
+    } finally {
+      setTesting(false);
     }
   };
 
@@ -108,166 +143,210 @@ export const WebhookSettings: React.FC = () => {
   };
 
   return (
-    <div className="webhook-settings-container">
-      {/* Mission Control Scanline Overlay */}
-      <div
-        className="scanline"
-        style={{
-          position: 'absolute',
-          inset: 0,
-          pointerEvents: 'none',
-          opacity: 0.05,
-          zIndex: 1001,
-        }}
-      ></div>
+    <div className="settings-container">
       <PageHeader
         icon={Bell}
         title="Notification Webhooks"
         subtitle="Configure Slack or generic webhooks to receive alerts for critical infrastructure events."
       />
 
-      <div className="webhook-list">
-        {configs.map((config: WebhookConfig) => (
-          <div key={config.id} className="webhook-card">
-            <div className="webhook-card-header">
-              <div className="webhook-url-display">
-                <span className="platform-tag">
-                  {(config as any).payloadTemplate ? 'CUSTOM' : 'SLACK'}
-                </span>
-                <span className="url-text">{config.url}</span>
-              </div>
-              <button className="delete-btn" onClick={() => handleDelete(config.id)}>
-                <Trash2 size={16} />
-              </button>
-            </div>
-            <div className="webhook-events-list">
-              {JSON.parse(config.events).map((event: string) => {
-                const eventDef = AVAILABLE_EVENTS.find((e) => e.id === event);
-                return (
-                  <span key={event} className="event-pill">
-                    {eventDef?.icon}
-                    {eventDef?.label || event}
-                  </span>
-                );
-              })}
-            </div>
+      <div className="settings-content">
+        {loadingList ? (
+          <div className="settings-loading" style={{ height: 200 }}>
+            <RefreshCw className="animate-spin" size={28} />
+            <span>Loading webhooks…</span>
           </div>
-        ))}
-        {configs.length === 0 && (
-          <div className="empty-webhook-state">
-            <Bell size={48} className="empty-icon" />
-            <p>No webhooks configured yet.</p>
+        ) : configs.length === 0 ? (
+          <div className="empty-state">
+            <div className="empty-state__icon">
+              <Bell size={28} />
+            </div>
+            <h3 className="empty-state__title">No webhooks configured</h3>
+            <p className="empty-state__copy">
+              Wire up a Slack incoming webhook or any HTTPS endpoint to receive alerts when
+              devices go offline, new devices register, or sessions fail. Configure your first
+              webhook below.
+            </p>
+          </div>
+        ) : (
+          <div className="webhook-list-grid">
+            {configs.map((config) => {
+              const events: string[] = (() => {
+                try {
+                  return JSON.parse(config.events);
+                } catch {
+                  return [];
+                }
+              })();
+              return (
+                <div key={config.id} className="webhook-row-card">
+                  <div className="webhook-row-card__header">
+                    <span
+                      className={`pill-chip ${
+                        (config as any).payloadTemplate
+                          ? 'pill-chip--admin'
+                          : 'pill-chip--scope'
+                      }`}
+                    >
+                      {(config as any).payloadTemplate ? 'CUSTOM' : 'SLACK'}
+                    </span>
+                    <span className="webhook-row-card__url" title={config.url}>
+                      {config.url}
+                    </span>
+                    <button
+                      type="button"
+                      className="row-action row-action--danger"
+                      onClick={() => handleDelete(config.id, config.url)}
+                      aria-label={`Remove webhook for ${config.url}`}
+                    >
+                      <Trash2 size={13} />
+                      <span>Remove</span>
+                    </button>
+                  </div>
+                  <div className="webhook-row-card__events">
+                    {events.length === 0 ? (
+                      <span className="webhook-row-card__no-events">No triggers</span>
+                    ) : (
+                      events.map((event: string) => {
+                        const def = AVAILABLE_EVENTS.find((e) => e.id === event);
+                        const Icon = def?.icon ?? Bell;
+                        return (
+                          <span
+                            key={event}
+                            className={`event-pill event-pill--${def?.tone || 'gray'}`}
+                          >
+                            <Icon size={11} />
+                            {def?.label || event}
+                          </span>
+                        );
+                      })
+                    )}
+                  </div>
+                </div>
+              );
+            })}
           </div>
         )}
-      </div>
 
-      <div className="add-webhook-form">
-        <div className="form-scrollable-content">
-          <h3>Add New Webhook</h3>
-          <FieldGroup
-            label="Webhook URL"
-            description="The endpoint we POST webhook events to."
-            htmlFor="webhook-url"
-          >
-            <input
-              id="webhook-url"
-              type="text"
-              className="webhook-input"
-              placeholder="https://hooks.slack.com/services/..."
-              value={newUrl}
-              onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNewUrl(e.target.value)}
-            />
-          </FieldGroup>
+        <div className="add-webhook-card">
+          <div className="add-webhook-card__header">
+            <Plus size={14} />
+            <span>Add a new webhook</span>
+          </div>
 
-          <FieldGroup label="Trigger Events">
-            <fieldset
-              role="group"
-              aria-label="Trigger Events"
-              style={{ border: 'none', margin: 0, padding: 0 }}
+          <div className="add-webhook-card__body">
+            <FieldGroup
+              label="Webhook URL"
+              description="The endpoint we POST webhook events to."
+              htmlFor="webhook-url"
             >
-              <div className="events-grid">
+              <div className="setting-input-wrapper">
+                <input
+                  id="webhook-url"
+                  type="url"
+                  placeholder="https://hooks.slack.com/services/..."
+                  value={newUrl}
+                  onChange={(e) => setNewUrl(e.target.value)}
+                />
+              </div>
+            </FieldGroup>
+
+            <FieldGroup label="Trigger Events">
+              <div className="event-toggle-grid">
                 {AVAILABLE_EVENTS.map((event) => {
                   const isSelected = selectedEvents.includes(event.id);
+                  const Icon = event.icon;
                   return (
-                    <div
+                    <button
+                      type="button"
                       key={event.id}
                       role="checkbox"
                       aria-checked={isSelected}
-                      tabIndex={0}
-                      className={`event-checkbox ${isSelected ? 'selected' : ''}`}
+                      className={`event-toggle event-toggle--${event.tone} ${
+                        isSelected ? 'is-selected' : ''
+                      }`}
                       onClick={() => toggleEvent(event.id)}
-                      onKeyDown={(e) => {
-                        if (e.key === ' ' || e.key === 'Enter') {
-                          e.preventDefault();
-                          toggleEvent(event.id);
-                        }
-                      }}
                     >
-                      {event.icon}
+                      <Icon size={14} className="event-toggle__lead" />
                       <span>{event.label}</span>
-                      {isSelected && <CheckCircle size={14} className="check-icon" />}
-                    </div>
+                      {isSelected && (
+                        <CheckCircle2 size={14} className="event-toggle__check" />
+                      )}
+                    </button>
                   );
                 })}
               </div>
-            </fieldset>
-          </FieldGroup>
+            </FieldGroup>
 
-          <div className="template-section">
-            <div className="template-header" onClick={() => setShowTemplate(!showTemplate)}>
-              <div className="template-toggle">
-                <Zap size={16} className={showTemplate ? 'text-yellow-400' : 'text-gray-400'} />
-                <span>Use Custom Payload (Optional)</span>
-              </div>
-              <span className="toggle-indicator">{showTemplate ? '−' : '+'}</span>
-            </div>
+            <div className="template-section">
+              <button
+                type="button"
+                className="template-section__toggle"
+                onClick={() => setShowTemplate(!showTemplate)}
+                aria-expanded={showTemplate}
+              >
+                <Zap size={14} className={showTemplate ? 'tone-amber' : 'tone-dim'} />
+                <span>Use custom payload (optional)</span>
+                <span className="template-section__indicator">{showTemplate ? '−' : '+'}</span>
+              </button>
 
-            {showTemplate && (
-              <div className="template-editor">
-                <p className="template-hint">
-                  Define a JSON or text template. Use variables like <code>{'{{udid}}'}</code> to
-                  insert dynamic data.
-                </p>
-                <div className="variable-chips">
-                  {[
-                    'udid',
-                    'host',
-                    'name',
-                    'sessionId',
-                    'failureReason',
-                    'eventType',
-                    'platform',
-                  ].map((v: string) => (
-                    <span key={v} className="variable-chip" onClick={() => insertVariable(v)}>
-                      {v}
-                    </span>
-                  ))}
+              {showTemplate && (
+                <div className="template-editor">
+                  <p className="template-editor__hint">
+                    Define a JSON or text template. Click a variable below to insert it.
+                  </p>
+                  <div className="template-editor__chips">
+                    {VARIABLES.map((v) => (
+                      <button
+                        type="button"
+                        key={v}
+                        className="template-editor__chip"
+                        onClick={() => insertVariable(v)}
+                      >
+                        {`{{${v}}}`}
+                      </button>
+                    ))}
+                  </div>
+                  <textarea
+                    className="template-editor__textarea"
+                    placeholder='Example: { "text": "Alert: Device {{udid}} is offline!" }'
+                    value={payloadTemplate}
+                    onChange={(e) => setPayloadTemplate(e.target.value)}
+                    rows={4}
+                  />
                 </div>
-                <textarea
-                  className="template-textarea"
-                  placeholder='Example JSON: { "text": "Alert: Device {{udid}} is offline!" }'
-                  value={payloadTemplate}
-                  onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) =>
-                    setPayloadTemplate(e.target.value)
-                  }
-                  rows={3}
-                />
-              </div>
-            )}
+              )}
+            </div>
           </div>
-        </div>
 
-        <div className="form-actions">
-          <button className={`test-btn ${testStatus}`} onClick={handleTest} disabled={!newUrl}>
-            {testStatus === 'success'
-              ? 'Sent!'
-              : testStatus === 'error'
-                ? 'Failed'
-                : 'Test Payload'}
-          </button>
-          <button className="add-btn" onClick={handleAdd} disabled={!newUrl || loading}>
-            {loading ? 'Saving...' : 'Save Configuration'}
-          </button>
+          <div className="add-webhook-card__footer">
+            <button
+              type="button"
+              className="page-header-action page-header-action--ghost"
+              onClick={handleTest}
+              disabled={!newUrl.trim() || testing}
+            >
+              {testing ? (
+                <RefreshCw size={14} className="animate-spin" />
+              ) : (
+                <Activity size={14} />
+              )}
+              <span>Test payload</span>
+            </button>
+            <button
+              type="button"
+              className="page-header-action"
+              onClick={handleAdd}
+              disabled={submitting || !newUrl.trim()}
+            >
+              {submitting ? (
+                <RefreshCw size={14} className="animate-spin" />
+              ) : (
+                <Plus size={14} />
+              )}
+              <span>{submitting ? 'Saving…' : 'Save webhook'}</span>
+            </button>
+          </div>
         </div>
       </div>
     </div>
