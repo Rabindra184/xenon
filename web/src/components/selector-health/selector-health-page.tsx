@@ -5,6 +5,7 @@ import { formatStrategy } from '../../utils/strategy-labels';
 import { CopyButton } from './copy-language-modal';
 import { PendingRow } from './pending-row';
 import { ResolvedRow } from './resolved-row';
+import { MutedList } from './muted-list';
 import {
   HeartPulse,
   RefreshCw,
@@ -374,6 +375,17 @@ const SelectorHealthPage: React.FC = () => {
 
         <TabNav current={tab} counts={{ [tab]: hotspots.length }} />
 
+        {tab === 'muted' ? (
+          <MutedList
+            onUnmute={async (strategy, selector) => {
+              await handleAction('unmute', {
+                originalStrategy: strategy,
+                originalSelector: selector,
+              } as IHealingHotspot);
+            }}
+          />
+        ) : (
+        <>
         <div className="sh-filter-bar">
           <div className="sh-filter-bar__group">
             <span className="sh-filter-bar__label">Window</span>
@@ -612,6 +624,8 @@ const SelectorHealthPage: React.FC = () => {
               );
             })}
           </div>
+        )}
+        </>
         )}
       </div>
     </div>
