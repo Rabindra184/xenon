@@ -125,11 +125,14 @@ export class InspectorService {
       if (platform === 'android') {
         // Android hierarchy usually starts with <hierarchy>
         const root = jsonObj.hierarchy?.node || jsonObj.hierarchy;
-        return this.transformAndroidNode(root, '');
+        const rootType: string = (root?.class as string) || 'hierarchy';
+        return this.transformAndroidNode(root, root, `/${rootType}[1]`);
       } else {
         // iOS hierarchy usually starts with <AppiumAUT>
         const root = jsonObj.AppiumAUT || jsonObj;
-        return this.transformIosNode(root, '');
+        const rootKey =
+          Object.keys(root || {}).find((k) => k.startsWith('XCUIElement')) || 'AppiumAUT';
+        return this.transformIosNode(root, root, `/${rootKey}[1]`);
       }
     } catch (e: any) {
       this.log.error(`Failed to parse XML hierarchy: ${e.message}`);
@@ -146,18 +149,26 @@ export class InspectorService {
     }
   }
 
-  private transformAndroidNode(node: any, root: any): InspectorNode {
+  private transformAndroidNode(node: any, root: any, xpath: string): InspectorNode {
     const type = node.class || 'Unknown';
     const name = node.resourceId || node.text || type.split('.').pop() || 'node';
     const bounds = this.parseAndroidBounds(node.bounds || '[0,0][0,0]');
 
-    const xpath = node.xpath || ''; // Placeholder for now, real xpath handled by generator
-
-    const children = Array.isArray(node.node)
-      ? node.node.map((c: any) => this.transformAndroidNode(c, root))
+    // Build children with positional xpath segments so siblings of the same
+    // class are addressable independently. Without this every child of the
+    // same type collapses to one identity in the dashboard tree.
+    const childNodes: any[] = Array.isArray(node.node)
+      ? node.node
       : node.node
-        ? [this.transformAndroidNode(node.node, root)]
+        ? [node.node]
         : [];
+    const typeIndices: Record<string, number> = {};
+    const children: InspectorNode[] = childNodes.map((c) => {
+      const cType: string = (c?.class as string) || 'Unknown';
+      typeIndices[cType] = (typeIndices[cType] || 0) + 1;
+      const childXpath = `${xpath}/${cType}[${typeIndices[cType]}]`;
+      return this.transformAndroidNode(c, root, childXpath);
+    });
 
     const attributes: Record<string, any> = {};
     Object.entries(node).forEach(([key, value]) => {
@@ -184,13 +195,20 @@ export class InspectorService {
     };
 
     nodeObj.suggestedLocators = this.generateLocators(nodeObj, 'android', root || node);
+    if (!nodeObj.suggestedLocators.some((l) => l.strategy === 'xpath')) {
+      nodeObj.suggestedLocators.push({
+        strategy: 'xpath',
+        value: xpath,
+        unique: true,
+        score: 40,
+      });
+    }
     nodeObj.suggestedActions = this.generateActions(nodeObj);
-    nodeObj.xpath = nodeObj.suggestedLocators.find((l) => l.strategy === 'xpath')?.value || '/';
 
     return nodeObj;
   }
 
-  private transformIosNode(node: any, root: any): InspectorNode {
+  private transformIosNode(node: any, root: any, xpath: string): InspectorNode {
     const type = Object.keys(node).find((k) => k.startsWith('XCUIElement')) || 'Unknown';
     const data = node[type];
 
@@ -202,16 +220,25 @@ export class InspectorService {
       height: data?.height || 0,
     };
 
-    const children: InspectorNode[] = [];
+    // Flatten children into a single ordered list so the positional index
+    // matches XCUITest's own [n] semantics for class-chain / xpath lookups.
+    const childData: Array<{ type: string; data: any }> = [];
     Object.keys(data || {}).forEach((key) => {
       if (key.startsWith('XCUIElement')) {
-        const childData = data[key];
-        if (Array.isArray(childData)) {
-          childData.forEach((c) => children.push(this.transformIosNode({ [key]: c }, root)));
+        const c = data[key];
+        if (Array.isArray(c)) {
+          c.forEach((item) => childData.push({ type: key, data: item }));
         } else {
-          children.push(this.transformIosNode({ [key]: childData }, root));
+          childData.push({ type: key, data: c });
         }
       }
+    });
+
+    const typeIndices: Record<string, number> = {};
+    const children: InspectorNode[] = childData.map((cd) => {
+      typeIndices[cd.type] = (typeIndices[cd.type] || 0) + 1;
+      const childXpath = `${xpath}/${cd.type}[${typeIndices[cd.type]}]`;
+      return this.transformIosNode({ [cd.type]: cd.data }, root, childXpath);
     });
 
     const attributes: Record<string, any> = {};
@@ -230,7 +257,7 @@ export class InspectorService {
       type,
       text: data?.label || data?.value,
       rect,
-      xpath: '',
+      xpath,
       suggestedLocators: [],
       suggestedActions: [],
       children,
@@ -238,8 +265,15 @@ export class InspectorService {
     };
 
     nodeObj.suggestedLocators = this.generateLocators(nodeObj, 'ios', root || node);
+    if (!nodeObj.suggestedLocators.some((l) => l.strategy === 'xpath')) {
+      nodeObj.suggestedLocators.push({
+        strategy: 'xpath',
+        value: xpath,
+        unique: true,
+        score: 40,
+      });
+    }
     nodeObj.suggestedActions = this.generateActions(nodeObj);
-    nodeObj.xpath = nodeObj.suggestedLocators.find((l) => l.strategy === 'xpath')?.value || '/';
 
     return nodeObj;
   }
