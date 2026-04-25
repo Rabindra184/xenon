@@ -62,6 +62,20 @@
 - ✅ **Multi-Modal Fallback** - Syntactic -> OCR -> Visual AI -> LLM reasoning
 - ✅ **Infrastructure-Free** - Works with existing LokiJS (local) or PostgreSQL (remote)
 
+#### Selector lifecycle (Trust & Truth layer)
+
+Healed selectors flow through a state machine: **Active → Pending → Resolved**, with an optional **Muted** branch.
+
+- **Active** — a hot selector that's healing in flight; surfaces on the Selector Health dashboard, the CI gate, and the webhook digest.
+- **Mark as Fixed** — after rewriting the selector in your test source, click "Mark as Fixed" in the dashboard. The row moves to **Pending**.
+- **Pending** — Xenon watches subsequent CI builds. When 3 distinct `build_id`s have run the selector with no heals, it auto-promotes to **Resolved** (`SelectorVerificationJob` runs every 15 minutes).
+- **Resolved** — the rewrite stuck. Excluded from the CI gate and digest. A future heal flips the row back to Active with a regression badge (institutional memory).
+- **Muted** — a selector you've intentionally chosen to ignore (legacy flow, etc.). Hidden from dashboard, CI gate, and digest until unmuted.
+
+The dashboard shows strategy + value (`Accessibility ID: login-btn`) so suggested rewrites are copy-ready in JS / Java / Python / C# / Ruby — your client language is remembered in `localStorage.xenon.copyLang`.
+
+> **CI gate behavior change:** muted/pending/resolved selectors no longer count toward `/healing/hotspots/violations`. If your CI was passing/failing based on that endpoint, the signal will get quieter after this release — selectors actively being managed are no longer flagged. Pass `?status=all` to opt back into the old behavior.
+
 ### Recording & Artifacts
 - ✅ **Video recording** - Full session capture
 - ✅ **Screenshot capture** - On-demand and per-command

@@ -1785,3 +1785,131 @@ export {};
  *   - name: Observability
  *     description: Debugging and monitoring endpoints
  */
+
+/**
+ * @swagger
+ * /api/healing/selector/state:
+ *   post:
+ *     summary: Apply a lifecycle action to a selector
+ *     description: |
+ *       Mutates the SelectorState row for a (strategy, selector) tuple.
+ *       Actions are bounded — `mark_fixed`, `mute`, `unmute`,
+ *       `cancel_verification`. Returns 409 with `currentStatus` if the
+ *       action is incompatible with the row's current state (e.g.
+ *       mark_fixed on a muted selector).
+ *     tags: [Selector Health]
+ *     security:
+ *       - apiKey: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [original_strategy, original_selector, action]
+ *             properties:
+ *               original_strategy:
+ *                 type: string
+ *                 example: accessibility id
+ *               original_selector:
+ *                 type: string
+ *                 example: login-btn
+ *               action:
+ *                 type: string
+ *                 enum: [mark_fixed, mute, unmute, cancel_verification]
+ *     responses:
+ *       200:
+ *         description: Updated SelectorState row
+ *       400:
+ *         description: Missing fields or unknown action
+ *       403:
+ *         description: API key lacks `admin` scope
+ *       409:
+ *         description: Action conflicts with current state (returns currentStatus)
+ */
+
+/**
+ * @swagger
+ * /api/healing/state/muted:
+ *   get:
+ *     summary: List muted selectors
+ *     description: |
+ *       Returns muted selectors sourced directly from SelectorState
+ *       (not the hotspot aggregator), so silenced-but-not-recently-healed
+ *       rows still surface. Each row is enriched with the most recent
+ *       `is_healed=true` SessionLog timestamp for the tuple.
+ *     tags: [Selector Health]
+ *     parameters:
+ *       - in: query
+ *         name: limit
+ *         schema: { type: integer, default: 50, maximum: 200 }
+ *       - in: query
+ *         name: offset
+ *         schema: { type: integer, default: 0 }
+ *     responses:
+ *       200:
+ *         description: Paginated muted selectors
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 muted: { type: array }
+ *                 total: { type: integer }
+ *                 limit: { type: integer }
+ *                 offset: { type: integer }
+ */
+
+/**
+ * @swagger
+ * /api/healing/state/{strategy}/{value}:
+ *   get:
+ *     summary: Look up SelectorState for a single tuple
+ *     description: |
+ *       URL-encoded strategy + value. Returns `{ state: null }` when no
+ *       row exists — null is meaningful (the selector is implicitly Active).
+ *     tags: [Selector Health]
+ *     parameters:
+ *       - in: path
+ *         name: strategy
+ *         required: true
+ *         schema: { type: string }
+ *       - in: path
+ *         name: value
+ *         required: true
+ *         schema: { type: string }
+ *     responses:
+ *       200:
+ *         description: SelectorState row, or null
+ */
+
+/**
+ * @swagger
+ * /api/healing/hotspots:
+ *   get:
+ *     summary: List the most-healed selectors (with lifecycle filter)
+ *     description: |
+ *       Status filter is `active` (default), `pending`, `resolved`, `muted`,
+ *       or `all`. The default value transparently hides muted/pending/
+ *       resolved selectors from the live list, the CI gate, and the digest.
+ *     tags: [Selector Health]
+ *     parameters:
+ *       - in: query
+ *         name: windowDays
+ *         schema: { type: integer, default: 30 }
+ *       - in: query
+ *         name: limit
+ *         schema: { type: integer, default: 10 }
+ *       - in: query
+ *         name: status
+ *         schema: { type: string, enum: [active, pending, resolved, muted, all], default: active }
+ *       - in: query
+ *         name: tier
+ *         schema: { type: string }
+ *       - in: query
+ *         name: platform
+ *         schema: { type: string }
+ *     responses:
+ *       200:
+ *         description: Hotspots with state overlay
+ */
