@@ -8,6 +8,7 @@ import { FailureSummary } from './failure-summary';
 import { RecordingCard } from './recording-card';
 import { CapabilitiesCard } from './capabilities-card';
 import { LogViewer } from './log-viewer';
+import { NetworkPanel } from './network-panel';
 import { StatusPillOutline, type StatusTone } from '../ui/status-pill-outline';
 import {
   formatAbsoluteTime,
@@ -164,6 +165,8 @@ export const SessionDetailPage: React.FC = () => {
               <CapabilitiesCard session={s} />
             </div>
           </div>
+
+          <NetworkPanel sessionId={s.id} sessionEnded={s.status !== 'running'} />
         </div>
       </div>
     </div>
