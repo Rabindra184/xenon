@@ -12,7 +12,12 @@ import {
 } from 'lucide-react';
 import XenonApiService from '../../api-service';
 import { PageHeader } from '../ui/page-header';
-import { IHealingSelectorDetail } from '../../interfaces/IHealingEvent';
+import { useToast } from '../ui/toast';
+import {
+  IHealingSelectorDetail,
+  ISelectorState,
+} from '../../interfaces/IHealingEvent';
+import { formatStrategy } from '../../utils/strategy-labels';
 import './selector-health.css';
 
 function formatRelative(iso: string): string {
@@ -37,11 +42,18 @@ function formatCost(usd: number): string {
 
 const SelectorDetailPage: React.FC = () => {
   const navigate = useNavigate();
+  const { toast } = useToast();
   const [params] = useSearchParams();
   const value = params.get('value') ?? '';
+  // Strategy is the recent addition (PR #29 introduced positional XPath);
+  // older bookmarks may omit it. We display a banner in that case rather
+  // than refusing to render — the heal data is still useful even without
+  // the strategy filter.
+  const strategy = params.get('strategy') ?? '';
   const windowDays = parseInt(params.get('windowDays') ?? '30', 10) || 30;
 
   const [detail, setDetail] = useState<IHealingSelectorDetail | null>(null);
+  const [selectorState, setSelectorState] = useState<ISelectorState | null>(null);
   const [loading, setLoading] = useState(false);
   const [loaded, setLoaded] = useState(false);
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
@@ -63,9 +75,61 @@ const SelectorDetailPage: React.FC = () => {
     }
   }, [value, windowDays]);
 
+  // The state lookup is keyed by tuple, so we only attempt it when both
+  // strategy and value are present. Old bookmarks without `strategy` get
+  // the existing data view + an "add strategy filter" banner.
+  const loadState = useCallback(async () => {
+    if (!strategy || !value) {
+      setSelectorState(null);
+      return;
+    }
+    try {
+      const r: any = await XenonApiService.getSelectorState(strategy, value);
+      setSelectorState(r?.state ?? null);
+    } catch {
+      setSelectorState(null);
+    }
+  }, [strategy, value]);
+
   useEffect(() => {
     load();
   }, [load]);
+
+  useEffect(() => {
+    loadState();
+  }, [loadState]);
+
+  const action = useCallback(
+    async (kind: 'mark_fixed' | 'mute' | 'unmute' | 'cancel_verification') => {
+      if (!strategy || !value) return;
+      const confirmCopy = (() => {
+        switch (kind) {
+          case 'mark_fixed':
+            return 'Mark this selector as fixed? Move to Pending Verification.';
+          case 'mute':
+            return 'Mute this selector? It will be hidden from Hotspots, the CI gate, and digests.';
+          case 'unmute':
+            return 'Unmute this selector?';
+          case 'cancel_verification':
+            return 'Cancel verification? The selector returns to Active and the clean-build counter resets.';
+        }
+      })();
+      if (!window.confirm(confirmCopy)) return;
+      try {
+        await XenonApiService.postSelectorStateAction({
+          original_strategy: strategy,
+          original_selector: value,
+          action: kind,
+        });
+        toast('Done.', 'success');
+        loadState();
+      } catch (err: any) {
+        const detail = err?.currentStatus ? ` (currently ${err.currentStatus})` : '';
+        toast(`${err?.message ?? 'Action failed'}${detail}`, 'error');
+      }
+    },
+    [strategy, value, toast, loadState],
+  );
 
   const copy = (text: string, key: string) => {
     navigator.clipboard.writeText(text).catch(() => { });
@@ -121,6 +185,112 @@ const SelectorDetailPage: React.FC = () => {
       />
 
       <div className="sh-content">
+        {strategy && (
+          <div
+            className="sh-detail-strategy-line"
+            title="Tuple identity for this drill-down"
+          >
+            <span className="sh-strategy-badge">{formatStrategy(strategy)}</span>
+            <code>{value}</code>
+          </div>
+        )}
+        {!strategy && (
+          <div className="sh-detail-banner">
+            Showing every strategy that ever healed this selector value. To
+            scope to a single tuple, append <code>?strategy=&lt;name&gt;</code>{' '}
+            to the URL or open this row from the Hotspots list.
+          </div>
+        )}
+        {selectorState && (
+          <div
+            className={`sh-detail-state sh-detail-state--${selectorState.status}`}
+          >
+            <div className="sh-detail-state__head">
+              <span className="sh-detail-state__badge">
+                {selectorState.status === 'pending' && '⏳ Pending verification'}
+                {selectorState.status === 'resolved' && '✅ Resolved'}
+                {selectorState.status === 'muted' && '🔇 Muted'}
+                {selectorState.status === 'active' &&
+                  (selectorState.regression_count > 0
+                    ? `🟡 Active — regressed ${selectorState.regression_count}×`
+                    : '⚡ Active')}
+              </span>
+              <div className="sh-detail-state__actions">
+                {selectorState.status === 'active' && (
+                  <>
+                    <button
+                      type="button"
+                      className="sh-action-btn sh-action-btn--primary"
+                      onClick={() => action('mark_fixed')}
+                    >
+                      Mark Fixed
+                    </button>
+                    <button
+                      type="button"
+                      className="sh-action-btn"
+                      onClick={() => action('mute')}
+                    >
+                      Mute
+                    </button>
+                  </>
+                )}
+                {selectorState.status === 'pending' && (
+                  <>
+                    <button
+                      type="button"
+                      className="sh-action-btn"
+                      onClick={() => action('cancel_verification')}
+                    >
+                      Cancel verification
+                    </button>
+                    <button
+                      type="button"
+                      className="sh-action-btn"
+                      onClick={() => action('mute')}
+                    >
+                      Mute
+                    </button>
+                  </>
+                )}
+                {selectorState.status === 'resolved' && (
+                  <button
+                    type="button"
+                    className="sh-action-btn"
+                    onClick={() => action('mute')}
+                  >
+                    Mute
+                  </button>
+                )}
+                {selectorState.status === 'muted' && (
+                  <button
+                    type="button"
+                    className="sh-action-btn"
+                    onClick={() => action('unmute')}
+                  >
+                    Unmute
+                  </button>
+                )}
+              </div>
+            </div>
+            <div className="sh-detail-state__meta">
+              {selectorState.fixed_at && (
+                <span>Marked fixed: {new Date(selectorState.fixed_at).toLocaleString()}</span>
+              )}
+              {selectorState.resolved_at && (
+                <span>Resolved: {new Date(selectorState.resolved_at).toLocaleString()}</span>
+              )}
+              {selectorState.muted_at && (
+                <span>Muted: {new Date(selectorState.muted_at).toLocaleString()}</span>
+              )}
+              {selectorState.status === 'pending' && (
+                <span>Clean builds: {selectorState.clean_builds_count}/3</span>
+              )}
+              {selectorState.regression_count > 0 && (
+                <span>Regressions on record: {selectorState.regression_count}</span>
+              )}
+            </div>
+          </div>
+        )}
         {loading && !loaded ? (
           <div className="sh-empty">
             <RefreshCw size={18} className="animate-spin" />
