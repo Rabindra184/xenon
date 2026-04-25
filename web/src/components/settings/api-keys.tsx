@@ -176,27 +176,30 @@ export const ApiKeys: React.FC = () => {
 
   if (forbidden) {
     return (
-      <div className="settings-container mesh-gradient-infra">
-        <div className="settings-header">
-          <div className="settings-title-group">
-            <ShieldAlert className="settings-icon infra-icon" size={28} />
-            <h2>API Keys</h2>
-          </div>
-          <p className="settings-subtitle">
-            Your key lacks the <code>admin</code> scope. Ask an administrator to issue an admin key
-            so you can manage access for other users.
-          </p>
-        </div>
+      <div className="settings-container">
+        <PageHeader
+          icon={ShieldAlert}
+          title="API Keys"
+          subtitle={
+            <>
+              Your key lacks the <code>admin</code> scope. Ask an administrator to issue an admin
+              key so you can manage access for other users.
+            </>
+          }
+        />
       </div>
     );
   }
 
+  // Stats
+  const totalKeys = keys.length;
+  const adminKeys = keys.filter((k) => k.scopes.includes('admin')).length;
+  const recentlyUsed = keys.filter(
+    (k) => k.lastUsedAt && Date.now() - new Date(k.lastUsedAt).getTime() < 86_400_000,
+  ).length;
+
   return (
-    <div className="settings-container mesh-gradient-infra">
-      <div
-        className="scanline"
-        style={{ position: 'absolute', inset: 0, pointerEvents: 'none', opacity: 0.05, zIndex: 1001 }}
-      />
+    <div className="settings-container">
       <PageHeader
         icon={Key}
         title="API Keys"
@@ -207,26 +210,57 @@ export const ApiKeys: React.FC = () => {
             copy the value before closing the dialog.
           </>
         }
+        action={
+          <button
+            type="button"
+            className="page-header-action"
+            onClick={() => setShowCreate(true)}
+          >
+            <Plus size={16} />
+            <span>Create new key</span>
+          </button>
+        }
       />
 
       <div className="settings-content">
-        <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 16 }}>
-          <button className="save-btn" onClick={() => setShowCreate(true)}>
-            <Plus size={18} />
-            Create new key
-          </button>
-        </div>
+        {keys.length > 0 && (
+          <div className="stat-strip">
+            <div className="stat-strip__cell">
+              <div className="stat-strip__value">{totalKeys}</div>
+              <div className="stat-strip__label">Total keys</div>
+            </div>
+            <div className="stat-strip__cell">
+              <div className="stat-strip__value stat-strip__value--accent">{adminKeys}</div>
+              <div className="stat-strip__label">Admin scope</div>
+            </div>
+            <div className="stat-strip__cell">
+              <div className="stat-strip__value">{recentlyUsed}</div>
+              <div className="stat-strip__label">Active in last 24h</div>
+            </div>
+          </div>
+        )}
 
         {keys.length === 0 ? (
-          <div className="surface-card" style={{ textAlign: 'center', padding: 48 }}>
-            <AlertTriangle size={32} style={{ opacity: 0.4 }} />
-            <p style={{ marginTop: 12 }}>
-              No active keys. Create one above, or revoke the bootstrap key after a replacement is
-              in place.
+          <div className="empty-state">
+            <div className="empty-state__icon">
+              <Key size={28} />
+            </div>
+            <h3 className="empty-state__title">No API keys yet</h3>
+            <p className="empty-state__copy">
+              Issue your first key to authenticate WebDriver clients or CI pipelines. Keys are
+              shown only once at creation — copy the value before closing the dialog.
             </p>
+            <button
+              type="button"
+              className="page-header-action empty-state__action"
+              onClick={() => setShowCreate(true)}
+            >
+              <Plus size={16} />
+              <span>Create your first key</span>
+            </button>
           </div>
         ) : (
-          <div className="surface-card" style={{ padding: 0, overflowX: 'auto' }}>
+          <div className="data-card">
             <Table>
               <THead>
                 <TR>
@@ -244,28 +278,42 @@ export const ApiKeys: React.FC = () => {
                   <TR key={k.id}>
                     <TD>
                       <strong>{k.name}</strong>
-                      <div style={{ fontSize: '11px', color: 'var(--text-dim)', fontFamily: 'monospace' }}>
-                        {k.id.slice(0, 8)}
-                      </div>
+                      <div className="row-meta-mono">{k.id.slice(0, 8)}</div>
                     </TD>
                     <TD>
-                      <span style={{ ...chip, background: k.teamId ? 'var(--status-ready-bg)' : 'var(--surface-2)', color: k.teamId ? 'var(--status-ready-fg)' : 'var(--text-muted)' }}>
+                      <span
+                        className={`pill-chip ${
+                          k.teamId ? 'pill-chip--team' : 'pill-chip--shared'
+                        }`}
+                      >
                         {teamNameById(k.teamId)}
                       </span>
                     </TD>
                     <TD>
-                      {k.scopes.split(',').map((s) => (
-                        <span key={s} style={chip}>
-                          {s.trim()}
-                        </span>
-                      ))}
+                      <div className="scope-chips">
+                        {k.scopes.split(',').map((s) => {
+                          const scope = s.trim();
+                          const isAdmin = scope === 'admin';
+                          return (
+                            <span
+                              key={s}
+                              className={`pill-chip ${
+                                isAdmin ? 'pill-chip--admin' : 'pill-chip--scope'
+                              }`}
+                            >
+                              {scope}
+                            </span>
+                          );
+                        })}
+                      </div>
                     </TD>
-                    <TD>{k.rateLimit}/min</TD>
-                    <TD>{fmtRelative(k.lastUsedAt)}</TD>
-                    <TD>{fmtRelative(k.createdAt)}</TD>
+                    <TD className="row-mono">{k.rateLimit}/min</TD>
+                    <TD className="row-mono">{fmtRelative(k.lastUsedAt)}</TD>
+                    <TD className="row-mono">{fmtRelative(k.createdAt)}</TD>
                     <TD style={{ textAlign: 'right' }}>
                       <button
-                        className="reset-btn"
+                        type="button"
+                        className="row-action row-action--danger"
                         disabled={revokingId === k.id}
                         onClick={() => {
                           if (
@@ -276,9 +324,8 @@ export const ApiKeys: React.FC = () => {
                             submitRevoke(k.id);
                           }
                         }}
-                        style={{ color: 'var(--status-error-fg)' }}
                       >
-                        <Trash2 size={14} />
+                        <Trash2 size={13} />
                         {revokingId === k.id ? 'Revoking…' : 'Revoke'}
                       </button>
                     </TD>
@@ -444,16 +491,6 @@ export const ApiKeys: React.FC = () => {
   );
 };
 
-const chip: React.CSSProperties = {
-  display: 'inline-block',
-  padding: '2px 8px',
-  margin: '0 4px 2px 0',
-  background: 'var(--status-reserved-bg)',
-  color: 'var(--status-reserved-fg)',
-  borderRadius: 4,
-  fontSize: '11px',
-  fontFamily: 'monospace',
-};
 const input: React.CSSProperties = {
   width: '100%',
   padding: '8px 12px',

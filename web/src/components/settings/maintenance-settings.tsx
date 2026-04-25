@@ -4,82 +4,108 @@ import './settings.css';
 import {
   Shield as MaintenanceIcon,
   RefreshCw,
-  Clock,
   Calendar,
-  CheckCircle,
-  AlertTriangle,
-  RotateCcw,
   Info,
   History,
   Trash2,
   ShieldCheck,
+  Check,
 } from 'lucide-react';
-import { ActionBar, SettingSection } from '../ui/Layouts';
+import { ActionBar } from '../ui/Layouts';
 import { SettingCard } from '../ui/SettingCard';
 import { PageHeader } from '../ui/page-header';
+import { useToast } from '../ui/toast';
+
+interface MaintenanceConfig {
+  buildCleanupDays: number;
+  buildCleanupMaxCount: number;
+  buildCleanupSchedule: string;
+  deleteBuildAssets: boolean;
+}
+
+const DEFAULTS: MaintenanceConfig = {
+  buildCleanupDays: 30,
+  buildCleanupMaxCount: 100,
+  buildCleanupSchedule: '0 0 * * *',
+  deleteBuildAssets: true,
+};
+
+const SCHEDULE_PRESETS = [
+  { label: 'Daily (Midnight)', value: '0 0 * * *' },
+  { label: 'Weekly (Sunday)', value: '0 0 * * 0' },
+  { label: 'Bi-Daily (12h)', value: '0 */12 * * *' },
+];
+
+const cfgEqual = (a: MaintenanceConfig, b: MaintenanceConfig) =>
+  a.buildCleanupDays === b.buildCleanupDays &&
+  a.buildCleanupMaxCount === b.buildCleanupMaxCount &&
+  a.buildCleanupSchedule === b.buildCleanupSchedule &&
+  a.deleteBuildAssets === b.deleteBuildAssets;
 
 export const MaintenanceSettings: React.FC = () => {
-  const [config, setConfig] = useState<{
-    buildCleanupDays: number;
-    buildCleanupMaxCount: number;
-    buildCleanupSchedule: string;
-    deleteBuildAssets: boolean;
-  }>({
-    buildCleanupDays: 30,
-    buildCleanupMaxCount: 100,
-    buildCleanupSchedule: '0 0 * * *',
-    deleteBuildAssets: true,
-  });
+  const { toast } = useToast();
+  const [config, setConfig] = useState<MaintenanceConfig>(DEFAULTS);
+  const [baseline, setBaseline] = useState<MaintenanceConfig>(DEFAULTS);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [status, setStatus] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
   useEffect(() => {
     loadConfig();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const loadConfig = async () => {
     setLoading(true);
     try {
       const data = await XenonApiService.getGlobalConfig();
-      setConfig({
+      const next: MaintenanceConfig = {
         buildCleanupDays: data.buildCleanupDays || 30,
         buildCleanupMaxCount: data.buildCleanupMaxCount || 100,
         buildCleanupSchedule: data.buildCleanupSchedule || '0 0 * * *',
-        deleteBuildAssets: data.deleteBuildAssets !== undefined ? data.deleteBuildAssets : true,
-      });
+        deleteBuildAssets:
+          data.deleteBuildAssets !== undefined ? data.deleteBuildAssets : true,
+      };
+      setConfig(next);
+      setBaseline(next);
     } catch (error) {
       console.error('Failed to load maintenance settings', error);
-      setStatus({ type: 'error', message: 'Failed to access maintenance parameters.' });
+      toast('Failed to access maintenance parameters.', 'error');
     } finally {
       setLoading(false);
     }
   };
 
-  const handleSave = async (configToSave = config) => {
+  const handleSave = async (override?: MaintenanceConfig) => {
+    const payload = override ?? config;
     setSaving(true);
-    setStatus(null);
     try {
-      await XenonApiService.updateGlobalConfig(configToSave);
-      setStatus({ type: 'success', message: 'Maintenance parameters synchronized across fleet.' });
-      setTimeout(() => setStatus(null), 5000);
+      await XenonApiService.updateGlobalConfig(payload);
+      setBaseline(payload);
+      setConfig(payload);
+      toast('Maintenance parameters synchronized across fleet.', 'success');
     } catch (error) {
       console.error('Failed to save maintenance settings', error);
-      setStatus({ type: 'error', message: 'Synchronization failed. Check network integrity.' });
+      toast('Synchronization failed. Check network integrity.', 'error');
     } finally {
       setSaving(false);
     }
   };
 
   const handleResetToDefaults = async () => {
-    const defaultMaintenanceConfig = {
-      buildCleanupDays: 30,
-      buildCleanupMaxCount: 100,
-      buildCleanupSchedule: '0 0 * * *',
-      deleteBuildAssets: true,
-    };
-    setConfig(defaultMaintenanceConfig);
-    await handleSave(defaultMaintenanceConfig);
+    setConfig(DEFAULTS);
+    await handleSave(DEFAULTS);
+  };
+
+  const handleDiscard = () => {
+    setConfig(baseline);
+  };
+
+  const isDirty = !cfgEqual(config, baseline);
+  const dirty = {
+    days: config.buildCleanupDays !== baseline.buildCleanupDays,
+    max: config.buildCleanupMaxCount !== baseline.buildCleanupMaxCount,
+    purge: config.deleteBuildAssets !== baseline.deleteBuildAssets,
+    schedule: config.buildCleanupSchedule !== baseline.buildCleanupSchedule,
   };
 
   if (loading) {
@@ -92,18 +118,7 @@ export const MaintenanceSettings: React.FC = () => {
   }
 
   return (
-    <div className="settings-container mesh-gradient-infra">
-      {/* Mission Control Scanline Overlay */}
-      <div
-        className="scanline"
-        style={{
-          position: 'absolute',
-          inset: 0,
-          pointerEvents: 'none',
-          opacity: 0.05,
-          zIndex: 1001,
-        }}
-      ></div>
+    <div className="settings-container">
       <PageHeader
         icon={MaintenanceIcon}
         title="Maintenance & Retention"
@@ -114,7 +129,12 @@ export const MaintenanceSettings: React.FC = () => {
         <div className="settings-grid">
           <SettingCard
             icon={<History size={16} />}
-            title="Retention Window"
+            title={
+              <span className="card-title-row">
+                Retention Window
+                {dirty.days && <span className="modified-dot" aria-label="Modified" />}
+              </span>
+            }
             description="Number of days to preserve builds and sessions before automatic purging from the system."
             hint="Standard enterprise retention is typically 30-90 days."
           >
@@ -123,7 +143,7 @@ export const MaintenanceSettings: React.FC = () => {
                 type="number"
                 value={config.buildCleanupDays}
                 onChange={(e) =>
-                  setConfig({ ...config, buildCleanupDays: parseInt(e.target.value) })
+                  setConfig({ ...config, buildCleanupDays: parseInt(e.target.value, 10) })
                 }
                 min={1}
               />
@@ -133,7 +153,12 @@ export const MaintenanceSettings: React.FC = () => {
 
           <SettingCard
             icon={<Trash2 size={16} />}
-            title="Max Build Capacity"
+            title={
+              <span className="card-title-row">
+                Max Build Capacity
+                {dirty.max && <span className="modified-dot" aria-label="Modified" />}
+              </span>
+            }
             description="Cap the maximum number of historical builds stored in the primary database."
             hint="Protects against database bloat during high-frequency CI bursts."
           >
@@ -142,7 +167,10 @@ export const MaintenanceSettings: React.FC = () => {
                 type="number"
                 value={config.buildCleanupMaxCount}
                 onChange={(e) =>
-                  setConfig({ ...config, buildCleanupMaxCount: parseInt(e.target.value) })
+                  setConfig({
+                    ...config,
+                    buildCleanupMaxCount: parseInt(e.target.value, 10),
+                  })
                 }
                 min={1}
               />
@@ -152,7 +180,12 @@ export const MaintenanceSettings: React.FC = () => {
 
           <SettingCard
             icon={<ShieldCheck size={16} />}
-            title="Asset Purge Strategy"
+            title={
+              <span className="card-title-row">
+                Asset Purge Strategy
+                {dirty.purge && <span className="modified-dot" aria-label="Modified" />}
+              </span>
+            }
             description="Automatically remove binary artifacts (videos, screenshots) when build records are purged."
             hint="Disabling this will leave orphaned files on disk—use with caution."
           >
@@ -161,7 +194,9 @@ export const MaintenanceSettings: React.FC = () => {
                 <input
                   type="checkbox"
                   checked={config.deleteBuildAssets}
-                  onChange={(e) => setConfig({ ...config, deleteBuildAssets: e.target.checked })}
+                  onChange={(e) =>
+                    setConfig({ ...config, deleteBuildAssets: e.target.checked })
+                  }
                 />
                 <span className="slider round"></span>
               </label>
@@ -173,7 +208,12 @@ export const MaintenanceSettings: React.FC = () => {
 
           <SettingCard
             icon={<Calendar size={16} />}
-            title="Cleanup Orchestration"
+            title={
+              <span className="card-title-row">
+                Cleanup Orchestration
+                {dirty.schedule && <span className="modified-dot" aria-label="Modified" />}
+              </span>
+            }
             description="Standardized Cron syntax for scheduling the automated cleanup engine."
           >
             <div className="setting-input-wrapper">
@@ -181,62 +221,55 @@ export const MaintenanceSettings: React.FC = () => {
                 type="text"
                 placeholder="e.g. 0 0 * * * (Midnight)"
                 value={config.buildCleanupSchedule}
-                onChange={(e) => setConfig({ ...config, buildCleanupSchedule: e.target.value })}
+                onChange={(e) =>
+                  setConfig({ ...config, buildCleanupSchedule: e.target.value })
+                }
               />
             </div>
 
             <div className="cron-presets">
               <div className="presets-grid">
-                {[
-                  { label: 'Daily (Midnight)', value: '0 0 * * *' },
-                  { label: 'Weekly (Sunday)', value: '0 0 * * 0' },
-                  { label: 'Bi-Daily (12h)', value: '0 */12 * * *' },
-                ].map((p) => (
-                  <button
-                    key={p.label}
-                    className={`preset-chip ${
-                      config.buildCleanupSchedule === p.value ? 'active' : ''
-                    }`}
-                    onClick={() => setConfig({ ...config, buildCleanupSchedule: p.value })}
-                  >
-                    {p.label}
-                  </button>
-                ))}
+                {SCHEDULE_PRESETS.map((p) => {
+                  const active = config.buildCleanupSchedule === p.value;
+                  return (
+                    <button
+                      type="button"
+                      key={p.label}
+                      className={`preset-chip ${active ? 'active' : ''}`}
+                      onClick={() =>
+                        setConfig({ ...config, buildCleanupSchedule: p.value })
+                      }
+                      aria-pressed={active}
+                    >
+                      {active && <Check size={11} className="preset-chip__check" />}
+                      <span>{p.label}</span>
+                    </button>
+                  );
+                })}
               </div>
             </div>
           </SettingCard>
         </div>
 
-        <div
-          className="health-monitor-alert"
-          style={{
-            background: 'rgba(59, 130, 246, 0.05)',
-            borderColor: 'rgba(59, 130, 246, 0.2)',
-            color: '#60a5fa',
-            marginTop: '1.5rem',
-          }}
-        >
+        <div className="health-monitor-alert maintenance-notice">
           <Info size={18} />
           <span>
-            <strong>Resource Notice:</strong> Bulk purging operations are non-blocking and execute
-            at low priority to ensure zero interference with active test execution.
+            <strong>Resource Notice:</strong> Bulk purging operations are non-blocking and
+            execute at low priority to ensure zero interference with active test execution.
           </span>
         </div>
-
-        {status && (
-          <div className={`status-banner ${status.type}`}>
-            {status.type === 'success' ? <CheckCircle size={18} /> : <AlertTriangle size={18} />}
-            <span>{status.message}</span>
-          </div>
-        )}
       </div>
 
-      <ActionBar
-        onSave={handleSave}
-        onDiscard={loadConfig}
-        onRestoreDefaults={handleResetToDefaults}
-        isSaving={saving}
-      />
+      {(isDirty || saving) && (
+        <ActionBar
+          onSave={() => handleSave()}
+          onDiscard={handleDiscard}
+          onRestoreDefaults={handleResetToDefaults}
+          isSaving={saving}
+          isDirty={isDirty}
+          saveLabel="Save Configuration"
+        />
+      )}
     </div>
   );
 };

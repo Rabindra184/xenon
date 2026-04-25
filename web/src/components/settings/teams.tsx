@@ -7,7 +7,6 @@ import {
   ShieldAlert,
   RefreshCw,
   ArrowLeft,
-  AlertTriangle,
   Smartphone,
 } from 'lucide-react';
 import { useToast } from '../ui/toast';
@@ -89,17 +88,17 @@ export const Teams: React.FC = () => {
 
   if (forbidden) {
     return (
-      <div className="settings-container mesh-gradient-infra">
-        <div className="settings-header">
-          <div className="settings-title-group">
-            <ShieldAlert className="settings-icon infra-icon" size={28} />
-            <h2>Teams</h2>
-          </div>
-          <p className="settings-subtitle">
-            Your key lacks the <code>admin</code> scope. Ask an administrator to promote your key
-            before you can manage teams.
-          </p>
-        </div>
+      <div className="settings-container">
+        <PageHeader
+          icon={ShieldAlert}
+          title="Teams"
+          subtitle={
+            <>
+              Your key lacks the <code>admin</code> scope. Ask an administrator to promote your
+              key before you can manage teams.
+            </>
+          }
+        />
       </div>
     );
   }
@@ -116,68 +115,110 @@ export const Teams: React.FC = () => {
     );
   }
 
+  const totalDevices = teams.reduce((sum, t) => sum + t.deviceCount, 0);
+  const totalMembers = teams.reduce((sum, t) => sum + t.memberCount, 0);
+
   return (
-    <div className="settings-container mesh-gradient-infra">
+    <div className="settings-container">
       <PageHeader
         icon={Users}
         title="Teams"
         subtitle="Group devices and API keys by team. Devices with no team assignment stay in the shared pool — visible to every authenticated key."
+        action={
+          teams.length > 0 ? (
+            <button
+              type="button"
+              className="page-header-action"
+              onClick={() => setShowCreate(true)}
+            >
+              <Plus size={16} />
+              <span>New team</span>
+            </button>
+          ) : undefined
+        }
       />
 
       <div className="settings-content">
-        <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 16 }}>
-          <button className="save-btn" onClick={() => setShowCreate(true)}>
-            <Plus size={18} />
-            New team
-          </button>
-        </div>
+        {teams.length > 0 && (
+          <div className="stat-strip">
+            <div className="stat-strip__cell">
+              <div className="stat-strip__value stat-strip__value--accent">{teams.length}</div>
+              <div className="stat-strip__label">Teams</div>
+            </div>
+            <div className="stat-strip__cell">
+              <div className="stat-strip__value">{totalMembers}</div>
+              <div className="stat-strip__label">API key members</div>
+            </div>
+            <div className="stat-strip__cell">
+              <div className="stat-strip__value">{totalDevices}</div>
+              <div className="stat-strip__label">Devices assigned</div>
+            </div>
+          </div>
+        )}
 
         {teams.length === 0 ? (
-          <div className="surface-card" style={{ textAlign: 'center', padding: 48 }}>
-            <AlertTriangle size={32} style={{ opacity: 0.4 }} />
-            <p style={{ marginTop: 12 }}>
-              No teams yet. Every device is in the shared pool until you create a team and assign
-              it.
+          <div className="empty-state">
+            <div className="empty-state__icon">
+              <Users size={28} />
+            </div>
+            <h3 className="empty-state__title">No teams yet</h3>
+            <p className="empty-state__copy">
+              Every device is in the shared pool until you create a team and assign it. Teams let
+              you scope an API key to a subset of devices — useful for separating CI runners,
+              staging fleets, or per-team device pools.
             </p>
+            <button
+              type="button"
+              className="page-header-action empty-state__action"
+              onClick={() => setShowCreate(true)}
+            >
+              <Plus size={16} />
+              <span>Create your first team</span>
+            </button>
           </div>
         ) : (
-          <div className="surface-card" style={{ padding: 0, overflowX: 'auto' }}>
-            <Table>
-              <THead>
-                <TR>
-                  <TH>Name</TH>
-                  <TH>Devices</TH>
-                  <TH>Members</TH>
-                  <TH>Created</TH>
-                  <TH style={{ textAlign: 'right' }}>Actions</TH>
-                </TR>
-              </THead>
-              <TBody>
-                {teams.map((t) => (
-                  <TR
-                    key={t.id}
-                    style={{ cursor: 'pointer' }}
-                    onClick={() => setSelected(t)}
+          <div className="team-grid">
+            {teams.map((t) => (
+              <button
+                type="button"
+                key={t.id}
+                className="team-card"
+                onClick={() => setSelected(t)}
+              >
+                <div className="team-card__header">
+                  <div className="team-card__icon">
+                    <Users size={16} />
+                  </div>
+                  <div className="team-card__title">
+                    <div className="team-card__name">{t.name}</div>
+                    <div className="team-card__id">{t.id.slice(0, 8)}</div>
+                  </div>
+                  <span
+                    className="team-card__delete"
+                    role="button"
+                    tabIndex={0}
+                    onClick={(e) => e.stopPropagation()}
                   >
-                    <TD>
-                      <strong>{t.name}</strong>
-                      <div style={{ fontSize: '11px', color: 'var(--text-dim)', fontFamily: 'monospace' }}>
-                        {t.id.slice(0, 8)}
-                      </div>
-                    </TD>
-                    <TD>{t.deviceCount}</TD>
-                    <TD>{t.memberCount}</TD>
-                    <TD>{new Date(t.createdAt).toLocaleDateString()}</TD>
-                    <TD style={{ textAlign: 'right' }}>
-                      <DeleteTeamButton
-                        team={t}
-                        onDeleted={load}
-                      />
-                    </TD>
-                  </TR>
-                ))}
-              </TBody>
-            </Table>
+                    <DeleteTeamButton team={t} onDeleted={load} />
+                  </span>
+                </div>
+                <div className="team-card__metrics">
+                  <div className="team-card__metric">
+                    <Smartphone size={13} />
+                    <span className="team-card__metric-value">{t.deviceCount}</span>
+                    <span className="team-card__metric-label">devices</span>
+                  </div>
+                  <div className="team-card__metric">
+                    <Users size={13} />
+                    <span className="team-card__metric-value">{t.memberCount}</span>
+                    <span className="team-card__metric-label">members</span>
+                  </div>
+                </div>
+                <div className="team-card__footer">
+                  Created {new Date(t.createdAt).toLocaleDateString()}
+                </div>
+              </button>
+            ))}
           </div>
         )}
       </div>

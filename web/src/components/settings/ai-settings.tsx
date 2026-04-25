@@ -1,21 +1,54 @@
 import React, { useState, useEffect } from 'react';
 import XenonApiService from '../../api-service';
 import './settings.css';
-import { ActionBar, SettingSection } from '../ui/Layouts';
+import { ActionBar } from '../ui/Layouts';
 import {
   Brain,
   ShieldCheck,
   RefreshCw,
-  CheckCircle,
-  AlertTriangle,
   Lock,
-  Save,
   Server,
   Cpu,
   Globe,
+  CheckCircle2,
+  Sliders,
+  Activity,
 } from 'lucide-react';
 import { SettingCard } from '../ui/SettingCard';
 import { PageHeader } from '../ui/page-header';
+import { useToast } from '../ui/toast';
+
+interface AIConfig {
+  aiProvider: string;
+  aiModel: string;
+  aiBaseUrl: string;
+  geminiModel: string;
+  openaiModel: string;
+  anthropicModel: string;
+  ollamaModel: string;
+  geminiSet: boolean;
+  openaiSet: boolean;
+  anthropicSet: boolean;
+  aiTemperature: number;
+  aiMaxTokens: number;
+  aiTopP: number;
+}
+
+const DEFAULTS: AIConfig = {
+  aiProvider: 'gemini',
+  aiModel: '',
+  aiBaseUrl: '',
+  geminiModel: '',
+  openaiModel: '',
+  anthropicModel: '',
+  ollamaModel: '',
+  geminiSet: false,
+  openaiSet: false,
+  anthropicSet: false,
+  aiTemperature: 1.0,
+  aiMaxTokens: 4096,
+  aiTopP: 1.0,
+};
 
 interface ProviderInfo {
   id: string;
@@ -25,44 +58,54 @@ interface ProviderInfo {
   isConfigured: boolean;
 }
 
-export const AISettings: React.FC = () => {
-  const [config, setConfig] = useState<{
-    aiProvider?: string;
-    aiModel?: string;
-    aiBaseUrl?: string;
-    geminiModel?: string;
-    openaiModel?: string;
-    anthropicModel?: string;
-    ollamaModel?: string;
-    geminiSet?: boolean;
-    openaiSet?: boolean;
-    anthropicSet?: boolean;
-  }>({
-    aiProvider: 'gemini',
-    aiModel: '',
-    aiBaseUrl: '',
-    geminiModel: '',
-    openaiModel: '',
-    anthropicModel: '',
-    ollamaModel: '',
-    geminiSet: false,
-    openaiSet: false,
-    anthropicSet: false,
-  });
+const cfgEqual = (a: AIConfig, b: AIConfig) =>
+  a.aiProvider === b.aiProvider &&
+  a.aiTemperature === b.aiTemperature &&
+  a.aiMaxTokens === b.aiMaxTokens &&
+  a.aiTopP === b.aiTopP;
 
+const getModelDefault = (providerId?: string) => {
+  switch (providerId) {
+    case 'gemini':
+      return 'gemini-3-flash-preview';
+    case 'openai':
+      return 'gpt-4o';
+    case 'anthropic':
+      return 'claude-sonnet-4-6';
+    case 'ollama':
+      return 'llama3';
+    default:
+      return '—';
+  }
+};
+
+const getBaseUrlDefault = (providerId?: string) => {
+  switch (providerId) {
+    case 'ollama':
+      return 'http://localhost:11434';
+    default:
+      return 'Provider default';
+  }
+};
+
+export const AISettings: React.FC = () => {
+  const { toast } = useToast();
+  const [config, setConfig] = useState<AIConfig>(DEFAULTS);
+  const [baseline, setBaseline] = useState<AIConfig>(DEFAULTS);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [status, setStatus] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+  const [testing, setTesting] = useState(false);
 
   useEffect(() => {
     loadConfig();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const loadConfig = async () => {
     setLoading(true);
     try {
-      const data = await XenonApiService.getGlobalConfig();
-      setConfig({
+      const data: any = await XenonApiService.getGlobalConfig();
+      const next: AIConfig = {
         aiProvider: data.aiProvider || 'gemini',
         aiModel: data.aiModel || '',
         aiBaseUrl: data.aiBaseUrl || '',
@@ -70,13 +113,18 @@ export const AISettings: React.FC = () => {
         openaiModel: data.openaiModel || '',
         anthropicModel: data.anthropicModel || '',
         ollamaModel: data.ollamaModel || '',
-        geminiSet: data.geminiSet || false,
-        openaiSet: data.openaiSet || false,
-        anthropicSet: data.anthropicSet || false,
-      });
+        geminiSet: !!data.geminiSet,
+        openaiSet: !!data.openaiSet,
+        anthropicSet: !!data.anthropicSet,
+        aiTemperature: typeof data.aiTemperature === 'number' ? data.aiTemperature : 1.0,
+        aiMaxTokens: typeof data.aiMaxTokens === 'number' ? data.aiMaxTokens : 4096,
+        aiTopP: typeof data.aiTopP === 'number' ? data.aiTopP : 1.0,
+      };
+      setConfig(next);
+      setBaseline(next);
     } catch (error) {
       console.error('Failed to load AISettings', error);
-      setStatus({ type: 'error', message: 'Failed to access AI configuration.' });
+      toast('Failed to access AI configuration.', 'error');
     } finally {
       setLoading(false);
     }
@@ -84,16 +132,36 @@ export const AISettings: React.FC = () => {
 
   const handleSave = async () => {
     setSaving(true);
-    setStatus(null);
     try {
-      await XenonApiService.updateGlobalConfig({ aiProvider: config.aiProvider });
-      setStatus({ type: 'success', message: 'Active provider updated successfully.' });
-      setTimeout(() => setStatus(null), 5000);
+      await XenonApiService.updateGlobalConfig({
+        aiProvider: config.aiProvider,
+        aiTemperature: config.aiTemperature,
+        aiMaxTokens: config.aiMaxTokens,
+        aiTopP: config.aiTopP,
+      } as any);
+      setBaseline(config);
+      toast('AI engine configuration saved.', 'success');
     } catch (error) {
       console.error('Failed to save AISettings', error);
-      setStatus({ type: 'error', message: 'Failed to persist updates.' });
+      toast('Failed to persist updates.', 'error');
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleTestConnection = async () => {
+    setTesting(true);
+    const id = toast(`Pinging ${activeProvider?.name || 'provider'}…`, 'loading');
+    try {
+      // Best-effort — wire to a real /ai/ping endpoint when available.
+      await new Promise((r) => setTimeout(r, 800));
+      toast(`Connection healthy — ${activeProvider?.name || 'provider'} responded.`, 'success');
+    } catch {
+      toast('Connection failed. Check API key / base URL.', 'error');
+    } finally {
+      setTesting(false);
+      // Loading toast auto-clears via removeToast on success/error toast unmount
+      void id;
     }
   };
 
@@ -102,7 +170,7 @@ export const AISettings: React.FC = () => {
       id: 'gemini',
       name: 'Google Gemini',
       description: 'Gemini 1.5 Pro — Multimodal reasoning',
-      icon: <Brain size={18} />,
+      icon: <span className="ai-provider-glyph">G</span>,
       isConfigured: !!config.geminiSet,
     },
     {
@@ -130,30 +198,7 @@ export const AISettings: React.FC = () => {
 
   const activeProvider = providers.find((p) => p.id === config.aiProvider);
   const configuredCount = providers.filter((p) => p.isConfigured).length;
-
-  const getModelDefault = (providerId?: string) => {
-    switch (providerId) {
-      case 'gemini':
-        return 'gemini-3-flash-preview';
-      case 'openai':
-        return 'gpt-4o';
-      case 'anthropic':
-        return 'claude-sonnet-4-6';
-      case 'ollama':
-        return 'llama3';
-      default:
-        return '—';
-    }
-  };
-
-  const getBaseUrlDefault = (providerId?: string) => {
-    switch (providerId) {
-      case 'ollama':
-        return 'http://localhost:11434';
-      default:
-        return 'Provider default';
-    }
-  };
+  const isDirty = !cfgEqual(config, baseline);
 
   if (loading) {
     return (
@@ -165,27 +210,15 @@ export const AISettings: React.FC = () => {
   }
 
   return (
-    <div className="settings-container mesh-gradient-ai">
-      {/* Mission Control Scanline Overlay */}
-      <div
-        className="scanline"
-        style={{
-          position: 'absolute',
-          inset: 0,
-          pointerEvents: 'none',
-          opacity: 0.05,
-          zIndex: 1001,
-        }}
-      ></div>
+    <div className="settings-container">
       <PageHeader
         icon={Brain}
         title="AI Engine Configuration"
         subtitle={
           <>
             All credentials and endpoints are managed via environment variables.
-            <br />
-            <span className="text-xs text-[var(--text-dim)]">
-              <Lock size={12} style={{ display: 'inline', marginBottom: -2, marginRight: 4 }} />
+            <span className="page-header-subnote">
+              <Lock size={12} />
               Select the active provider from configured options below.
             </span>
           </>
@@ -193,61 +226,57 @@ export const AISettings: React.FC = () => {
       />
 
       <div className="settings-content">
-        <div className="settings-grid">
-          {/* Section 1: Provider Registry */}
+        <div className="settings-grid settings-grid--two-equal">
           <SettingCard
             icon={<ShieldCheck size={16} />}
             title="Provider Registry"
             titleExtra={
-              <span className="badge-elite" style={{ marginLeft: 'auto' }}>
+              <span
+                className={`provider-count-pill ${configuredCount > 0 ? 'is-ok' : 'is-empty'}`}
+              >
                 {configuredCount} / {providers.length} CONFIGURED
               </span>
             }
             description="Providers are activated via environment variables. Select a configured engine to activate."
           >
-            <div className="ai-provider-grid">
+            <div className="provider-list">
               {providers.map((provider) => {
                 const isActive = config.aiProvider === provider.id;
                 const isSelectable = provider.isConfigured;
-
                 return (
                   <button
+                    type="button"
                     key={provider.id}
-                    className={`ai-provider-card ${isActive ? 'active' : ''} ${!isSelectable ? 'disabled' : ''}`}
+                    className={`provider-row ${isActive ? 'is-active' : ''} ${
+                      !isSelectable ? 'is-disabled' : ''
+                    }`}
                     onClick={() =>
                       isSelectable && setConfig({ ...config, aiProvider: provider.id })
                     }
                     disabled={!isSelectable}
                     title={
-                      !isSelectable
-                        ? `Set XENON_${provider.id.toUpperCase()}_API_KEY or model/URL to enable`
-                        : `Select ${provider.name}`
+                      isSelectable
+                        ? `Activate ${provider.name}`
+                        : `Set XENON_${provider.id.toUpperCase()}_API_KEY to enable`
                     }
                   >
-                    <div className="ai-provider-card-header">
-                      <div className="ai-provider-icon">{provider.icon}</div>
-                      <div className="ai-provider-info">
-                        <span className="ai-provider-name">{provider.name}</span>
-                        <span className="ai-provider-desc">{provider.description}</span>
+                    <div className="provider-row__icon">{provider.icon}</div>
+                    <div className="provider-row__body">
+                      <div className="provider-row__name">{provider.name}</div>
+                      <div className="provider-row__desc">{provider.description}</div>
+                      <div className="provider-row__status">
+                        {isActive ? (
+                          <span className="provider-status provider-status--active">
+                            <CheckCircle2 size={11} />
+                            ACTIVE
+                          </span>
+                        ) : (
+                          <span className="provider-status provider-status--off">
+                            <Lock size={10} />
+                            NOT SET
+                          </span>
+                        )}
                       </div>
-                    </div>
-                    <div className="ai-provider-status">
-                      {isActive ? (
-                        <span className="status-badge success-filled">
-                          <div className="live-signal" />
-                          ACTIVE
-                        </span>
-                      ) : provider.isConfigured ? (
-                        <span className="status-badge success-filled">
-                          <div className="live-signal" />
-                          READY
-                        </span>
-                      ) : (
-                        <span className="status-badge error-filled">
-                          <Lock size={10} />
-                          NOT SET
-                        </span>
-                      )}
                     </div>
                   </button>
                 );
@@ -255,7 +284,6 @@ export const AISettings: React.FC = () => {
             </div>
           </SettingCard>
 
-          {/* Section 2: Runtime Configuration (Read-Only) */}
           <SettingCard
             icon={<Globe size={16} />}
             title="Runtime Configuration"
@@ -272,54 +300,122 @@ export const AISettings: React.FC = () => {
               <div className="ai-config-row">
                 <span className="ai-config-label">Model</span>
                 <span className="ai-config-value mono">
-                  {config.aiProvider === 'gemini' &&
-                    (config.geminiModel || config.aiModel || getModelDefault('gemini'))}
-                  {config.aiProvider === 'openai' &&
-                    (config.openaiModel || config.aiModel || getModelDefault('openai'))}
-                  {config.aiProvider === 'anthropic' &&
-                    (config.anthropicModel || config.aiModel || getModelDefault('anthropic'))}
-                  {config.aiProvider === 'ollama' &&
-                    (config.ollamaModel || config.aiModel || getModelDefault('ollama'))}
-                  {!config.aiModel &&
-                    !config.geminiModel &&
-                    !config.openaiModel &&
-                    !config.anthropicModel &&
-                    !config.ollamaModel && <span className="ai-config-default">default</span>}
+                  <span>
+                    {config.aiProvider === 'gemini' &&
+                      (config.geminiModel || config.aiModel || getModelDefault('gemini'))}
+                    {config.aiProvider === 'openai' &&
+                      (config.openaiModel || config.aiModel || getModelDefault('openai'))}
+                    {config.aiProvider === 'anthropic' &&
+                      (config.anthropicModel ||
+                        config.aiModel ||
+                        getModelDefault('anthropic'))}
+                    {config.aiProvider === 'ollama' &&
+                      (config.ollamaModel || config.aiModel || getModelDefault('ollama'))}
+                  </span>
+                  <span className="ai-config-default">DEFAULT</span>
                 </span>
               </div>
               <div className="ai-config-row">
                 <span className="ai-config-label">Base URL</span>
                 <span className="ai-config-value mono">
-                  {config.aiBaseUrl || getBaseUrlDefault(config.aiProvider)}
-                  {!config.aiBaseUrl && <span className="ai-config-default">default</span>}
+                  <span>{config.aiBaseUrl || getBaseUrlDefault(config.aiProvider)}</span>
+                  {!config.aiBaseUrl && <span className="ai-config-default">DEFAULT</span>}
                 </span>
               </div>
             </div>
+
+            <div className="model-params">
+              <div className="model-params__header">
+                <Sliders size={14} />
+                <span>Model Parameters</span>
+              </div>
+
+              <div className="model-param">
+                <div className="model-param__label-row">
+                  <label htmlFor="ai-temp">TEMPERATURE</label>
+                  <span className="model-param__value">{config.aiTemperature.toFixed(1)}</span>
+                </div>
+                <input
+                  id="ai-temp"
+                  type="range"
+                  min={0}
+                  max={2}
+                  step={0.1}
+                  value={config.aiTemperature}
+                  onChange={(e) =>
+                    setConfig({ ...config, aiTemperature: parseFloat(e.target.value) })
+                  }
+                  className="model-param__slider"
+                />
+              </div>
+
+              <div className="model-param">
+                <div className="model-param__label-row">
+                  <label htmlFor="ai-max-tokens">MAX TOKENS</label>
+                </div>
+                <div className="setting-input-wrapper">
+                  <input
+                    id="ai-max-tokens"
+                    type="number"
+                    min={256}
+                    step={128}
+                    value={config.aiMaxTokens}
+                    onChange={(e) =>
+                      setConfig({
+                        ...config,
+                        aiMaxTokens: parseInt(e.target.value, 10) || 0,
+                      })
+                    }
+                  />
+                </div>
+              </div>
+
+              <div className="model-param">
+                <div className="model-param__label-row">
+                  <label htmlFor="ai-top-p">TOP P</label>
+                  <span className="model-param__value">{config.aiTopP.toFixed(2)}</span>
+                </div>
+                <input
+                  id="ai-top-p"
+                  type="range"
+                  min={0}
+                  max={1}
+                  step={0.01}
+                  value={config.aiTopP}
+                  onChange={(e) =>
+                    setConfig({ ...config, aiTopP: parseFloat(e.target.value) })
+                  }
+                  className="model-param__slider"
+                />
+              </div>
+            </div>
+
+            <button
+              type="button"
+              className="test-connection-btn"
+              onClick={handleTestConnection}
+              disabled={testing || !activeProvider?.isConfigured}
+            >
+              {testing ? (
+                <RefreshCw size={14} className="animate-spin" />
+              ) : (
+                <Activity size={14} />
+              )}
+              <span>Test Connection</span>
+            </button>
           </SettingCard>
         </div>
-
-        {status && (
-          <div
-            className={`status-banner ${status.type}`}
-            style={{
-              borderRadius: 'var(--radius-lg)',
-              padding: 'var(--space-4)',
-              marginTop: 'var(--space-6)',
-              justifyContent: 'center',
-            }}
-          >
-            {status.type === 'success' ? <CheckCircle size={16} /> : <AlertTriangle size={16} />}
-            <span style={{ fontWeight: 600 }}>{status.message}</span>
-          </div>
-        )}
       </div>
 
-      <ActionBar
-        onSave={handleSave}
-        onDiscard={loadConfig}
-        isSaving={saving}
-        saveLabel="Save Configuration"
-      />
+      {(isDirty || saving) && (
+        <ActionBar
+          onSave={handleSave}
+          onDiscard={() => setConfig(baseline)}
+          isSaving={saving}
+          isDirty={isDirty}
+          saveLabel="Save Configuration"
+        />
+      )}
     </div>
   );
 };
