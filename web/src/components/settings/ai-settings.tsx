@@ -151,17 +151,21 @@ export const AISettings: React.FC = () => {
 
   const handleTestConnection = async () => {
     setTesting(true);
-    const id = toast(`Pinging ${activeProvider?.name || 'provider'}…`, 'loading');
+    const startedAt = Date.now();
     try {
-      // Best-effort — wire to a real /ai/ping endpoint when available.
-      await new Promise((r) => setTimeout(r, 800));
-      toast(`Connection healthy — ${activeProvider?.name || 'provider'} responded.`, 'success');
-    } catch {
-      toast('Connection failed. Check API key / base URL.', 'error');
+      const result: { success: boolean; message: string } = await XenonApiService.testAIConfig({
+        aiProvider: config.aiProvider,
+      });
+      const ms = Date.now() - startedAt;
+      if (result.success) {
+        toast(`${result.message} (${ms}ms)`, 'success');
+      } else {
+        toast(result.message, 'error');
+      }
+    } catch (err: any) {
+      toast(`Connection failed: ${err?.message || 'unknown error'}`, 'error');
     } finally {
       setTesting(false);
-      // Loading toast auto-clears via removeToast on success/error toast unmount
-      void id;
     }
   };
 
