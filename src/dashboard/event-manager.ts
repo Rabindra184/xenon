@@ -29,6 +29,7 @@ import { TracingService } from '../services/TracingService';
 import { MetricsService } from '../services/MetricsService';
 import { SocketEvents } from '../enums/SocketEvents';
 import { healingTierLabel } from '../services/healing/types';
+import { SelectorStateService } from '../services/SelectorStateService';
 import { Service } from 'typedi';
 
 @Service()
@@ -525,6 +526,28 @@ export class DashboardEventManager {
             isSuccess: logEntry.is_success ?? null,
             createdAt: persistedLog.createdAt.toISOString(),
           });
+        }
+
+        // Regression hook — fire-and-forget. Never block heal write on state lookup.
+        // If the (original_strategy, original_selector) row is in pending/resolved,
+        // SelectorStateService.onHealRecorded will flip it back to active with
+        // regression_count++ and emit SELECTOR_REGRESSED.
+        if (
+          logEntry.is_healed &&
+          logEntry.original_strategy &&
+          logEntry.original_selector
+        ) {
+          Container.get(SelectorStateService)
+            .onHealRecorded({
+              strategy: logEntry.original_strategy,
+              selector: logEntry.original_selector,
+              sessionId: session.getId(),
+            })
+            .catch((err: any) =>
+              log.warn(
+                `[SelectorState] regression hook failed for ${logEntry.original_strategy}:${logEntry.original_selector}: ${err.message}`,
+              ),
+            );
         }
       } catch (err: any) {
         log.error(
