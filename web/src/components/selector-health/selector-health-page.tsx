@@ -6,6 +6,7 @@ import { CopyButton } from './copy-language-modal';
 import { PendingRow } from './pending-row';
 import { ResolvedRow } from './resolved-row';
 import { MutedList } from './muted-list';
+import { RegressionBanner } from './regression-banner';
 import {
   HeartPulse,
   RefreshCw,
@@ -240,14 +241,25 @@ const SelectorHealthPage: React.FC = () => {
     load();
   }, [load]);
 
-  // Live refresh on new heal events keeps the page useful as a dashboard
-  // on a wallboard. Keeping it simple: re-fetch on each event. If volume
-  // gets noisy we can debounce.
+  // Live refresh on heal + lifecycle events. Keeping it simple: re-fetch
+  // on each event. If volume gets noisy we can debounce. The page already
+  // routes the data through `status=tab`, so the new bucket / new
+  // metadata appears on the right tab without further wiring.
   useEffect(() => {
-    const unsub = on('healing_event', () => {
-      load();
-    });
-    return () => { unsub && unsub(); };
+    const events = [
+      'healing_event',
+      'selector_fixed',
+      'selector_resolved',
+      'selector_regressed',
+      'selector_cancelled',
+      'selector_muted',
+      'selector_unmuted',
+      'selector_progress',
+    ];
+    const unsubs = events.map((e) => on(e, () => load()));
+    return () => {
+      unsubs.forEach((u) => u && u());
+    };
   }, [on, load]);
 
   const openSelector = (selector: string) => {
@@ -371,6 +383,7 @@ const SelectorHealthPage: React.FC = () => {
       />
 
       <div className="sh-content">
+        <RegressionBanner />
         <KpiStrip summary={summary} loading={loading && !loaded} />
 
         <TabNav current={tab} counts={{ [tab]: hotspots.length }} />

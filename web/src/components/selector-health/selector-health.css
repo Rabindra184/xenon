@@ -1058,3 +1058,47 @@
   display: flex;
   gap: var(--space-2);
 }
+
+/* Regression banner — top of page, auto-dismisses, aggregates within 5min */
+.sh-regression-banner {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  background: rgba(231, 76, 60, 0.08);
+  border-left: 4px solid #e74c3c;
+  border-radius: 4px;
+  margin-bottom: var(--space-4);
+  font-size: 0.88rem;
+  color: var(--text);
+}
+.sh-regression-banner__icon {
+  color: #e74c3c;
+  flex-shrink: 0;
+}
+.sh-regression-banner__action {
+  margin-left: auto;
+  background: transparent;
+  border: 1px solid #e74c3c;
+  color: #e74c3c;
+  padding: 0.2rem 0.55rem;
+  border-radius: 4px;
+  font-size: 0.76rem;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.sh-regression-banner__action:hover {
+  background: rgba(231, 76, 60, 0.15);
+}
+.sh-regression-banner__close {
+  background: transparent;
+  border: 0;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 0.15rem;
+  display: inline-flex;
+  align-items: center;
+}
+.sh-regression-banner__close:hover {
+  color: var(--text);
+}
