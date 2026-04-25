@@ -26,19 +26,25 @@
 
 .sh-kpi-strip {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: 1fr;
   gap: 12px;
 }
 
 @media (min-width: 768px) {
   .sh-kpi-strip {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .sh-kpi--hero {
+    grid-column: 1 / -1;
   }
 }
 
 @media (min-width: 1280px) {
   .sh-kpi-strip {
-    grid-template-columns: repeat(5, minmax(0, 1fr));
+    grid-template-columns: 2fr repeat(5, minmax(0, 1fr));
+  }
+  .sh-kpi--hero {
+    grid-column: auto;
   }
 }
 
@@ -50,7 +56,29 @@
   border-radius: var(--radius-md);
   background: var(--surface);
   border: 1px solid var(--border);
-  transition: border-color 0.15s ease;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.sh-kpi--hero {
+  background: var(--surface-2);
+  border-color: var(--border-strong);
+  padding: 20px 22px;
+  gap: 6px;
+}
+
+.sh-kpi--hero .sh-kpi__label {
+  font-size: 11px;
+  color: var(--text);
+}
+
+.sh-kpi--hero .sh-kpi__value {
+  font-size: 2.75rem;
+  line-height: 1.05;
+}
+
+.sh-kpi--hero .sh-kpi__foot {
+  font-size: 12px;
+  margin-top: 4px;
 }
 
 .sh-kpi--warn {

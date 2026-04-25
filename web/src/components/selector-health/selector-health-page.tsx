@@ -17,6 +17,7 @@ import {
   ChevronRight,
   Filter,
   Send,
+  Info,
 } from 'lucide-react';
 import XenonApiService from '../../api-service';
 import { PageHeader } from '../ui/page-header';
@@ -112,11 +113,20 @@ interface KpiTileProps {
   sub?: React.ReactNode;
   delta?: React.ReactNode;
   tone?: 'neutral' | 'warn' | 'critical';
+  size?: 'md' | 'hero';
+  hint?: string;
 }
 
-const KpiTile: React.FC<KpiTileProps> = ({ label, value, sub, delta, tone = 'neutral' }) => (
-  <div className={`sh-kpi sh-kpi--${tone}`}>
-    <div className="sh-kpi__label">{label}</div>
+const KpiTile: React.FC<KpiTileProps> = ({ label, value, sub, delta, tone = 'neutral', size = 'md', hint }) => (
+  <div className={`sh-kpi sh-kpi--${tone} sh-kpi--${size}`}>
+    <div className="sh-kpi__label">
+      {label}
+      {hint && (
+        <span className="sh-kpi__info" title={hint} aria-label={hint} role="img">
+          <Info size={11} />
+        </span>
+      )}
+    </div>
     <div className="sh-kpi__value">{value}</div>
     {(sub || delta) && (
       <div className="sh-kpi__foot">
@@ -150,20 +160,21 @@ const KpiStrip: React.FC<{ summary: IHealingSummaryResponse | null; loading: boo
   return (
     <div className="sh-kpi-strip">
       <KpiTile
+        size="hero"
+        label="Brittle selectors"
+        value={loading ? '—' : cur.distinctSelectors.toLocaleString()}
+        sub="distinct selectors needing attention"
+        delta={
+          !loading && <Delta current={cur.distinctSelectors} prior={prior.distinctSelectors} />
+        }
+        tone={cur.distinctSelectors > 50 ? 'warn' : 'neutral'}
+      />
+      <KpiTile
         label="Total heals"
         value={loading ? '—' : cur.totalHeals.toLocaleString()}
         sub={`${summary?.windowDays ?? 30}d window`}
         delta={!loading && <Delta current={cur.totalHeals} prior={prior.totalHeals} />}
         tone={cur.totalHeals > prior.totalHeals && prior.totalHeals > 0 ? 'warn' : 'neutral'}
-      />
-      <KpiTile
-        label="Brittle selectors"
-        value={loading ? '—' : cur.distinctSelectors.toLocaleString()}
-        sub="distinct"
-        delta={
-          !loading && <Delta current={cur.distinctSelectors} prior={prior.distinctSelectors} />
-        }
-        tone={cur.distinctSelectors > 50 ? 'warn' : 'neutral'}
       />
       <KpiTile
         label="Sessions touched"
