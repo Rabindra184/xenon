@@ -33,6 +33,12 @@ const ApiKeys = lazy(() =>
 const Teams = lazy(() =>
   import('../components/settings/teams').then((m) => ({ default: m.Teams })),
 );
+const SelectorHealthPage = lazy(
+  () => import('../components/selector-health/selector-health-page'),
+);
+const SelectorDetailPage = lazy(
+  () => import('../components/selector-health/selector-detail-page'),
+);
 
 const LoadingFallback = () => (
   <div className="flex items-center justify-center gap-2 h-full text-xs text-[var(--text-dim)]">
@@ -64,6 +70,8 @@ export const AppRoutes: React.FC = () => (
         <Route path="/maintenance" element={<MaintenanceSettings />} />
         <Route path="/api-keys" element={<ApiKeys />} />
         <Route path="/teams" element={<Teams />} />
+        <Route path="/selector-health" element={<SelectorHealthPage />} />
+        <Route path="/selector-health/detail" element={<SelectorDetailPage />} />
         <Route path="/runbooks/:category" element={<RunbookPage />} />
         <Route path="*" element={<Navigate to="/overview" replace />} />
       </Routes>

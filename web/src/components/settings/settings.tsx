@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { Link } from 'react-router-dom';
 import XenonApiService from '../../api-service';
 import './settings.css';
 import { ActionBar } from '../ui/Layouts';
@@ -14,6 +15,7 @@ import {
   AlertCircle,
   CheckCircle2,
   FileText,
+  ArrowUpRight,
 } from 'lucide-react';
 import { SettingCard } from '../ui/SettingCard';
 import { PageHeader } from '../ui/page-header';
@@ -350,6 +352,9 @@ export const Settings: React.FC = () => {
                 <div className="healing-events__header">
                   <FileText size={11} />
                   <span>Recent Healing Events</span>
+                  <Link to="/selector-health" className="healing-events__link">
+                    Selector Health <ArrowUpRight size={10} />
+                  </Link>
                 </div>
                 {healingEvents.length > 0 ? (
                   <ul className="healing-events__list">
