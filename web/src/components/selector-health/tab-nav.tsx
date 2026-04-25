@@ -1,5 +1,12 @@
 import React from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
+import {
+  Zap,
+  Hourglass,
+  CheckCircle2,
+  VolumeX,
+  LucideIcon,
+} from 'lucide-react';
 
 export type Tab = 'active' | 'pending' | 'resolved' | 'muted';
 
@@ -15,11 +22,11 @@ interface Props {
   counts?: Counts;
 }
 
-const TABS: Array<{ id: Tab; label: string; icon: string }> = [
-  { id: 'active', label: 'Active', icon: '⚡' },
-  { id: 'pending', label: 'Pending', icon: '⏳' },
-  { id: 'resolved', label: 'Resolved', icon: '✅' },
-  { id: 'muted', label: 'Muted', icon: '🔇' },
+const TABS: Array<{ id: Tab; label: string; icon: LucideIcon; color?: string }> = [
+  { id: 'active', label: 'Active', icon: Zap },
+  { id: 'pending', label: 'Pending', icon: Hourglass, color: 'var(--accent, #60a5fa)' },
+  { id: 'resolved', label: 'Resolved', icon: CheckCircle2, color: 'var(--green, #4ade80)' },
+  { id: 'muted', label: 'Muted', icon: VolumeX, color: 'var(--text-muted)' },
 ];
 
 // URL-persisted tab navigation for /selector-health. The tab id round-trips
@@ -39,6 +46,7 @@ export function TabNav({ current, counts = {} }: Props) {
     <nav className="sh-tab-nav" role="tablist" aria-label="Selector Health tabs">
       {TABS.map((t) => {
         const count = counts[t.id];
+        const Icon = t.icon;
         return (
           <button
             key={t.id}
@@ -48,8 +56,8 @@ export function TabNav({ current, counts = {} }: Props) {
             onClick={() => switchTab(t.id)}
             className={`sh-tab ${current === t.id ? 'sh-tab--active' : ''}`}
           >
-            <span className="sh-tab__icon" aria-hidden="true">
-              {t.icon}
+            <span className="sh-tab__icon" aria-hidden="true" style={t.color ? { color: t.color } : undefined}>
+              <Icon size={14} />
             </span>
             <span className="sh-tab__label">{t.label}</span>
             {typeof count === 'number' && (

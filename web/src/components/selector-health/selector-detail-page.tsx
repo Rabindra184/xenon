@@ -8,7 +8,12 @@ import {
   RefreshCw,
   ExternalLink,
   AlertTriangle,
+  AlertCircle,
   Layers,
+  Zap,
+  Hourglass,
+  CheckCircle2,
+  VolumeX,
 } from 'lucide-react';
 import XenonApiService from '../../api-service';
 import { PageHeader } from '../ui/page-header';
@@ -207,13 +212,36 @@ const SelectorDetailPage: React.FC = () => {
           >
             <div className="sh-detail-state__head">
               <span className="sh-detail-state__badge">
-                {selectorState.status === 'pending' && '⏳ Pending verification'}
-                {selectorState.status === 'resolved' && '✅ Resolved'}
-                {selectorState.status === 'muted' && '🔇 Muted'}
+                {selectorState.status === 'pending' && (
+                  <>
+                    <Hourglass size={16} style={{ color: 'var(--accent, #60a5fa)' }} />
+                    <span>Pending verification</span>
+                  </>
+                )}
+                {selectorState.status === 'resolved' && (
+                  <>
+                    <CheckCircle2 size={16} style={{ color: 'var(--green, #4ade80)' }} />
+                    <span>Resolved</span>
+                  </>
+                )}
+                {selectorState.status === 'muted' && (
+                  <>
+                    <VolumeX size={16} style={{ color: 'var(--text-muted)' }} />
+                    <span>Muted</span>
+                  </>
+                )}
                 {selectorState.status === 'active' &&
-                  (selectorState.regression_count > 0
-                    ? `🟡 Active — regressed ${selectorState.regression_count}×`
-                    : '⚡ Active')}
+                  (selectorState.regression_count > 0 ? (
+                    <>
+                      <AlertCircle size={16} style={{ color: 'var(--amber, #f59e0b)' }} />
+                      <span>Active — regressed {selectorState.regression_count}×</span>
+                    </>
+                  ) : (
+                    <>
+                      <Zap size={16} />
+                      <span>Active</span>
+                    </>
+                  ))}
               </span>
               <div className="sh-detail-state__actions">
                 {selectorState.status === 'active' && (
