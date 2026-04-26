@@ -43,6 +43,8 @@ Every authenticated response carries \`X-RateLimit-Limit\`, \`X-RateLimit-Remain
   },
 
   tags: [
+    { name: 'Health & Ops', description: 'Liveness, version, metrics, runtime args' },
+    { name: 'Authentication', description: 'Browser dashboard login' },
     { name: 'Devices', description: 'Real-time grid discovery' },
     { name: 'Sessions', description: 'Orchestration & Logs' },
     { name: 'Builds', description: 'Telemetry tracking' },
@@ -52,6 +54,10 @@ Every authenticated response carries \`X-RateLimit-Limit\`, \`X-RateLimit-Remain
     { name: 'Grid', description: 'Cluster topology' },
     { name: 'Webhooks', description: 'Event propagation' },
     { name: 'Configuration', description: 'Edge node parameters' },
+    { name: 'Selector Health', description: 'Heal-rate analytics & lifecycle' },
+    { name: 'Network Interceptor', description: 'Per-session HTTP capture, mocks, HAR export' },
+    { name: 'Admin', description: 'API keys, teams, process snapshots' },
+    { name: 'Hub-Node', description: 'Hub↔node device registration channel' },
   ],
   components: {
     schemas: {

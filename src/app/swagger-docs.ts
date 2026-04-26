@@ -1913,3 +1913,956 @@ export {};
  *       200:
  *         description: Hotspots with state overlay
  */
+
+// =============================================================================
+// Health & Operations
+// =============================================================================
+
+/**
+ * @swagger
+ * /api/health:
+ *   get:
+ *     summary: Liveness probe
+ *     description: |
+ *       Public, unauthenticated, not rate-limited. Returns `{ ok: true }` as soon
+ *       as the Express stack is up — does not check database or device state.
+ *       Suitable for Kubernetes/load-balancer liveness probes.
+ *     tags: [Health & Ops]
+ *     security: []
+ *     responses:
+ *       200:
+ *         description: Server is up
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 ok: { type: boolean, example: true }
+ */
+
+/**
+ * @swagger
+ * /api/ping:
+ *   get:
+ *     summary: Authenticated ping with build version
+ *     description: Returns `{ pong, version }`. Use to confirm an API key is valid and read the running plugin version.
+ *     tags: [Health & Ops]
+ *     responses:
+ *       200:
+ *         description: Pong with version
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 pong: { type: boolean, example: true }
+ *                 version: { type: string, example: '1.5.0' }
+ *       401: { $ref: '#/components/responses/Unauthorized' }
+ *       429: { $ref: '#/components/responses/RateLimited' }
+ */
+
+/**
+ * @swagger
+ * /api/metrics:
+ *   get:
+ *     summary: Prometheus-format metrics
+ *     description: |
+ *       Returns scrape-friendly Prometheus exposition format (`text/plain; version=0.0.4`).
+ *       Auth-gated to avoid operational reconnaissance — point your scraper at this
+ *       endpoint with a `read`-scope key in the `x-xenon-api-key` header.
+ *     tags: [Health & Ops]
+ *     responses:
+ *       200:
+ *         description: Prometheus metrics
+ *         content:
+ *           text/plain:
+ *             schema: { type: string }
+ *       401: { $ref: '#/components/responses/Unauthorized' }
+ *       429: { $ref: '#/components/responses/RateLimited' }
+ */
+
+/**
+ * @swagger
+ * /api/cliArgs:
+ *   get:
+ *     summary: Read the plugin CLI arguments in effect
+ *     description: |
+ *       Returns the resolved plugin arguments (host, hub URL, platform, intervals, etc.)
+ *       this process was started with. Sensitive fields (`nodeSecret`, database URLs)
+ *       are redacted by the logger but the raw object is returned over the wire to
+ *       authenticated callers — do not expose this endpoint to untrusted networks.
+ *     tags: [Health & Ops]
+ *     responses:
+ *       200:
+ *         description: Resolved plugin arguments
+ *         content:
+ *           application/json:
+ *             schema: { type: object, additionalProperties: true }
+ *       401: { $ref: '#/components/responses/Unauthorized' }
+ *       429: { $ref: '#/components/responses/RateLimited' }
+ */
+
+// =============================================================================
+// Authentication
+// =============================================================================
+
+/**
+ * @swagger
+ * /api/auth/dashboard-session:
+ *   post:
+ *     summary: Exchange an API key for a browser dashboard session cookie
+ *     description: |
+ *       Used by the dashboard UI to convert a one-time API key paste into a
+ *       short-lived session cookie. Public endpoint — no API key header is
+ *       required because the body itself carries the credential. On success,
+ *       sets `xenon_dashboard_session` (HttpOnly, Secure, SameSite=Strict, 24 h
+ *       max-age). Subsequent dashboard requests use the cookie instead of the
+ *       header. CSRF protection: cookie-authed callers must send a matching
+ *       `Origin`/`Referer`.
+ *     tags: [Authentication]
+ *     security: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [apiKey]
+ *             properties:
+ *               apiKey: { type: string, description: 'Plain-text API key' }
+ *     responses:
+ *       200:
+ *         description: Session cookie set
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 ok: { type: boolean, example: true }
+ *                 scopes:
+ *                   type: array
+ *                   items: { type: string, enum: [read, sessions, devices, admin] }
+ *       400: { description: 'Missing apiKey field' }
+ *       401: { description: 'Invalid API key' }
+ */
+
+// =============================================================================
+// Admin — API Keys
+// =============================================================================
+
+/**
+ * @swagger
+ * /api/apikeys:
+ *   get:
+ *     summary: List all API keys
+ *     description: Returns metadata only — the plain-text key value is never returned after creation. Requires `admin` scope.
+ *     tags: [Admin]
+ *     responses:
+ *       200:
+ *         description: List of API key records
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: array
+ *               items:
+ *                 type: object
+ *                 properties:
+ *                   id: { type: string }
+ *                   name: { type: string }
+ *                   scopes:
+ *                     type: array
+ *                     items: { type: string, enum: [read, sessions, devices, admin] }
+ *                   rateLimit: { type: integer, nullable: true }
+ *                   teamId: { type: string, nullable: true }
+ *                   createdAt: { type: string, format: date-time }
+ *                   lastUsedAt: { type: string, format: date-time, nullable: true }
+ *       401: { $ref: '#/components/responses/Unauthorized' }
+ *       403: { $ref: '#/components/responses/Forbidden' }
+ *       429: { $ref: '#/components/responses/RateLimited' }
+ *   post:
+ *     summary: Mint a new API key
+ *     description: |
+ *       Returns the plain-text key **once** in the response. Store it immediately —
+ *       it cannot be retrieved later. Requires `admin` scope.
+ *     tags: [Admin]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [name, scopes]
+ *             properties:
+ *               name: { type: string, example: 'CI runner' }
+ *               scopes:
+ *                 type: array
+ *                 minItems: 1
+ *                 items: { type: string, enum: [read, sessions, devices, admin] }
+ *               rateLimit:
+ *                 type: integer
+ *                 description: 'Per-window quota override; null inherits the plugin default'
+ *               teamId:
+ *                 type: string
+ *                 nullable: true
+ *                 description: 'Bind this key to a team (so it sees team-owned devices only)'
+ *     responses:
+ *       200:
+ *         description: Key created
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 id: { type: string }
+ *                 key: { type: string, description: 'Plain-text key — shown once' }
+ *       400: { description: 'Missing name or empty scopes array' }
+ *       401: { $ref: '#/components/responses/Unauthorized' }
+ *       403: { $ref: '#/components/responses/Forbidden' }
+ *       429: { $ref: '#/components/responses/RateLimited' }
+ */
+
+/**
+ * @swagger
+ * /api/apikeys/{id}:
+ *   delete:
+ *     summary: Revoke an API key
+ *     description: Hard-deletes the key. In-flight requests already authenticated continue until completion; subsequent requests with the revoked key get 401. Requires `admin` scope.
+ *     tags: [Admin]
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: string }
+ *     responses:
+ *       200:
+ *         description: Key revoked
+ *         content:
+ *           application/json:
+ *             schema: { $ref: '#/components/schemas/Success' }
+ *       401: { $ref: '#/components/responses/Unauthorized' }
+ *       403: { $ref: '#/components/responses/Forbidden' }
+ *       429: { $ref: '#/components/responses/RateLimited' }
+ */
+
+// =============================================================================
+// Admin — Teams
+// =============================================================================
+
+/**
+ * @swagger
+ * /api/teams:
+ *   get:
+ *     summary: List all teams
+ *     description: Requires `admin` scope.
+ *     tags: [Admin]
+ *     responses:
+ *       200:
+ *         description: List of teams
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: array
+ *               items:
+ *                 type: object
+ *                 properties:
+ *                   id: { type: string }
+ *                   name: { type: string }
+ *                   createdAt: { type: string, format: date-time }
+ *       401: { $ref: '#/components/responses/Unauthorized' }
+ *       403: { $ref: '#/components/responses/Forbidden' }
+ *   post:
+ *     summary: Create a team
+ *     description: Team names must be unique. Requires `admin` scope.
+ *     tags: [Admin]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [name]
+ *             properties:
+ *               name: { type: string, example: 'Mobile Platform' }
+ *     responses:
+ *       200:
+ *         description: Team created
+ *       400: { description: 'Missing name' }
+ *       409: { description: 'Team name already exists' }
+ *       401: { $ref: '#/components/responses/Unauthorized' }
+ *       403: { $ref: '#/components/responses/Forbidden' }
+ */
+
+/**
+ * @swagger
+ * /api/teams/{id}:
+ *   delete:
+ *     summary: Delete a team
+ *     description: Cascades to membership rows. Devices owned by the team revert to shared (null) ownership. Requires `admin` scope.
+ *     tags: [Admin]
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: string }
+ *     responses:
+ *       200:
+ *         description: Team deleted
+ *         content:
+ *           application/json:
+ *             schema: { $ref: '#/components/schemas/Success' }
+ *       401: { $ref: '#/components/responses/Unauthorized' }
+ *       403: { $ref: '#/components/responses/Forbidden' }
+ */
+
+/**
+ * @swagger
+ * /api/teams/{id}/members:
+ *   get:
+ *     summary: List team members
+ *     description: Returns the API keys bound to this team. Requires `admin` scope.
+ *     tags: [Admin]
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: string }
+ *     responses:
+ *       200:
+ *         description: List of members
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: array
+ *               items:
+ *                 type: object
+ *                 properties:
+ *                   apiKeyId: { type: string }
+ *                   role: { type: string, enum: [member, owner] }
+ *   post:
+ *     summary: Add a member to a team
+ *     description: Adds an existing API key as a team member. Defaults to `member` role. Requires `admin` scope.
+ *     tags: [Admin]
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: string }
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [apiKeyId]
+ *             properties:
+ *               apiKeyId: { type: string }
+ *               role: { type: string, enum: [member, owner], default: member }
+ *     responses:
+ *       200: { description: 'Member added' }
+ *       400: { description: 'Missing apiKeyId' }
+ *       401: { $ref: '#/components/responses/Unauthorized' }
+ *       403: { $ref: '#/components/responses/Forbidden' }
+ */
+
+/**
+ * @swagger
+ * /api/teams/{id}/members/{apiKeyId}:
+ *   delete:
+ *     summary: Remove a member from a team
+ *     description: Does not revoke the API key itself — only unbinds it from the team. Requires `admin` scope.
+ *     tags: [Admin]
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: string }
+ *       - in: path
+ *         name: apiKeyId
+ *         required: true
+ *         schema: { type: string }
+ *     responses:
+ *       200:
+ *         description: Member removed
+ *         content:
+ *           application/json:
+ *             schema: { $ref: '#/components/schemas/Success' }
+ */
+
+// =============================================================================
+// Admin — Process snapshot
+// =============================================================================
+
+/**
+ * @swagger
+ * /api/processes:
+ *   get:
+ *     summary: Snapshot of long-running child processes
+ *     description: |
+ *       Lists the long-lived workers Xenon is currently supervising — Appium-driven
+ *       sessions, ADB log tails, MJPEG stream encoders, etc. Useful when triaging
+ *       why a host is hot or a device is wedged. Requires `admin` scope.
+ *     tags: [Admin]
+ *     responses:
+ *       200:
+ *         description: List of supervised processes
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: array
+ *               items:
+ *                 type: object
+ *                 properties:
+ *                   id: { type: string }
+ *                   sessionId: { type: string, nullable: true }
+ *                   udid: { type: string, nullable: true }
+ *                   kind: { type: string, example: 'mjpeg-stream' }
+ *                   pid: { type: integer }
+ *                   uptimeMs: { type: integer }
+ *       401: { $ref: '#/components/responses/Unauthorized' }
+ *       403: { $ref: '#/components/responses/Forbidden' }
+ */
+
+// =============================================================================
+// Network Interceptor
+// =============================================================================
+
+/**
+ * @swagger
+ * /api/interceptor/sessions/{sessionId}/requests:
+ *   get:
+ *     summary: List intercepted HTTP requests for a session
+ *     description: |
+ *       Returns the full list of requests captured by the per-session interceptor.
+ *       If the session is still active, results are read live; otherwise the
+ *       archived `requests.json` from the session asset directory is replayed.
+ *       Returns 404 when neither a live interceptor nor an archive exists.
+ *     tags: [Network Interceptor]
+ *     parameters:
+ *       - in: path
+ *         name: sessionId
+ *         required: true
+ *         schema: { type: string }
+ *     responses:
+ *       200:
+ *         description: Request list
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 requests:
+ *                   type: array
+ *                   items: { type: object, additionalProperties: true }
+ *       404: { description: 'Interceptor inactive and no archive on disk' }
+ *       401: { $ref: '#/components/responses/Unauthorized' }
+ */
+
+/**
+ * @swagger
+ * /api/interceptor/sessions/{sessionId}/requests/{requestId}:
+ *   get:
+ *     summary: Get a single intercepted request with full body
+ *     description: |
+ *       Hydrates the request detail, including any response body that was
+ *       offloaded to disk (`bodyPath`). Use this from the dashboard's request
+ *       drawer or for HAR-equivalent single-record export.
+ *     tags: [Network Interceptor]
+ *     parameters:
+ *       - in: path
+ *         name: sessionId
+ *         required: true
+ *         schema: { type: string }
+ *       - in: path
+ *         name: requestId
+ *         required: true
+ *         schema: { type: string }
+ *     responses:
+ *       200:
+ *         description: Single request entry
+ *         content:
+ *           application/json:
+ *             schema: { type: object, additionalProperties: true }
+ *       404: { description: 'Request not found in live or archived state' }
+ */
+
+/**
+ * @swagger
+ * /api/interceptor/sessions/{sessionId}/har:
+ *   get:
+ *     summary: Export session traffic as a HAR file
+ *     description: |
+ *       Returns a HAR 1.2 archive (`application/json`, with `Content-Disposition:
+ *       attachment`). Falls back to the on-disk archive if the session has ended.
+ *     tags: [Network Interceptor]
+ *     parameters:
+ *       - in: path
+ *         name: sessionId
+ *         required: true
+ *         schema: { type: string }
+ *     responses:
+ *       200:
+ *         description: HAR file
+ *         content:
+ *           application/json:
+ *             schema: { type: object, additionalProperties: true }
+ *       404: { description: 'No live interceptor and no archived HAR' }
+ */
+
+/**
+ * @swagger
+ * /api/interceptor/sessions/{sessionId}/mocks:
+ *   get:
+ *     summary: List mock rules for a session
+ *     description: Mock rules apply only while the session is live — there is no archive fallback.
+ *     tags: [Network Interceptor]
+ *     parameters:
+ *       - in: path
+ *         name: sessionId
+ *         required: true
+ *         schema: { type: string }
+ *     responses:
+ *       200:
+ *         description: Mock list
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 mocks:
+ *                   type: array
+ *                   items: { type: object, additionalProperties: true }
+ *       404: { description: 'Interceptor not active for this session' }
+ *   post:
+ *     summary: Add a mock rule
+ *     description: |
+ *       Mock rules match by URL pattern and method, then either return a static
+ *       response, rewrite the upstream response, or delay it. Only valid while
+ *       the target session is live.
+ *     tags: [Network Interceptor]
+ *     parameters:
+ *       - in: path
+ *         name: sessionId
+ *         required: true
+ *         schema: { type: string }
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema: { type: object, additionalProperties: true }
+ *     responses:
+ *       201:
+ *         description: Mock created
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 id: { type: string }
+ *       400: { description: 'Invalid mock rule' }
+ *       404: { description: 'Interceptor not active' }
+ *   delete:
+ *     summary: Clear all mock rules for a session
+ *     tags: [Network Interceptor]
+ *     parameters:
+ *       - in: path
+ *         name: sessionId
+ *         required: true
+ *         schema: { type: string }
+ *     responses:
+ *       200:
+ *         description: Mocks cleared
+ *         content:
+ *           application/json:
+ *             schema: { $ref: '#/components/schemas/Success' }
+ *       404: { description: 'Interceptor not active' }
+ */
+
+/**
+ * @swagger
+ * /api/interceptor/sessions/{sessionId}/mocks/{mockId}:
+ *   delete:
+ *     summary: Remove a single mock rule
+ *     tags: [Network Interceptor]
+ *     parameters:
+ *       - in: path
+ *         name: sessionId
+ *         required: true
+ *         schema: { type: string }
+ *       - in: path
+ *         name: mockId
+ *         required: true
+ *         schema: { type: string }
+ *     responses:
+ *       200:
+ *         description: Mock removed
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 removed: { type: boolean }
+ *       404: { description: 'Interceptor not active or mock not found' }
+ */
+
+// =============================================================================
+// Hub-Node channel (node-secret auth)
+// =============================================================================
+
+/**
+ * @swagger
+ * /api/register:
+ *   post:
+ *     summary: Node→Hub device inventory push
+ *     description: |
+ *       Hub-node only. Authenticates with `x-xenon-node-secret`, not an API key.
+ *       Nodes call this on startup and on a recurring interval
+ *       (`sendNodeDevicesToHubIntervalMs`, default 30 s) to publish their device
+ *       list. The `type` query param selects the operation:
+ *
+ *       | type          | effect                                                        |
+ *       |---------------|---------------------------------------------------------------|
+ *       | `add`         | Insert / refresh the supplied devices                         |
+ *       | `remove`      | Drop the supplied devices (e.g. USB unplug)                   |
+ *       | `unregister`  | Drop every device for the calling host (used on graceful exit) |
+ *
+ *       Not intended for end-user automation. Document here for transparency.
+ *     tags: [Hub-Node]
+ *     security:
+ *       - NodeSecretAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: type
+ *         required: true
+ *         schema: { type: string, enum: [add, remove, unregister] }
+ *       - in: query
+ *         name: host
+ *         schema: { type: string }
+ *         description: 'Required for `unregister`'
+ *     requestBody:
+ *       content:
+ *         application/json:
+ *           schema:
+ *             oneOf:
+ *               - type: array
+ *                 items: { $ref: '#/components/schemas/Device' }
+ *               - type: object
+ *     responses:
+ *       200:
+ *         description: Inventory accepted
+ *         content:
+ *           application/json:
+ *             schema: { $ref: '#/components/schemas/Success' }
+ *       401: { description: 'Missing or invalid x-xenon-node-secret' }
+ */
+
+/**
+ * @swagger
+ * /api/unblock:
+ *   post:
+ *     summary: Node→Hub release of a manually-blocked device
+ *     description: |
+ *       Hub-node only. Authenticates with `x-xenon-node-secret`. Nodes call this
+ *       to re-enter a device into the pool after a maintenance lock or a blocked
+ *       state lifted on the node side. Returns 404 if the (udid, host) tuple is
+ *       not in the registry.
+ *     tags: [Hub-Node]
+ *     security:
+ *       - NodeSecretAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [udid, host]
+ *             properties:
+ *               udid: { type: string }
+ *               host: { type: string }
+ *     responses:
+ *       200:
+ *         description: Device unblocked
+ *         content:
+ *           application/json:
+ *             schema: { $ref: '#/components/schemas/Success' }
+ *       404: { description: 'Device not found in registry' }
+ *       401: { description: 'Missing or invalid x-xenon-node-secret' }
+ */
+
+// =============================================================================
+// Grid — previously-undocumented routes
+// =============================================================================
+
+/**
+ * @swagger
+ * /api/device/tags:
+ *   post:
+ *     summary: Replace the tag list on a device
+ *     description: Tags are user-defined free-form labels (e.g. `flaky`, `lab-row-3`). Replaces — does not append. Requires `devices` scope.
+ *     tags: [Devices]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [udid, host, tags]
+ *             properties:
+ *               udid: { type: string }
+ *               host: { type: string }
+ *               tags:
+ *                 type: array
+ *                 items: { type: string }
+ *     responses:
+ *       200:
+ *         description: Tags updated
+ *         content:
+ *           application/json:
+ *             schema: { $ref: '#/components/schemas/Success' }
+ *       400: { description: 'Missing udid, host, or tags array' }
+ *       401: { $ref: '#/components/responses/Unauthorized' }
+ *       403: { $ref: '#/components/responses/Forbidden' }
+ */
+
+/**
+ * @swagger
+ * /api/device/{udid}/team:
+ *   put:
+ *     summary: Assign (or clear) a device's team ownership
+ *     description: |
+ *       Pass `teamId: null` to unassign the device (it returns to the shared
+ *       pool, visible to all keys). Pass a string id to bind it. The team must
+ *       already exist. Requires `admin` scope.
+ *     tags: [Devices]
+ *     parameters:
+ *       - in: path
+ *         name: udid
+ *         required: true
+ *         schema: { type: string }
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [teamId]
+ *             properties:
+ *               teamId: { type: string, nullable: true }
+ *     responses:
+ *       200:
+ *         description: Team ownership updated
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 ok: { type: boolean }
+ *                 updated: { type: integer }
+ *       404: { description: 'Team or device not found' }
+ *       401: { $ref: '#/components/responses/Unauthorized' }
+ *       403: { $ref: '#/components/responses/Forbidden' }
+ */
+
+/**
+ * @swagger
+ * /api/queue/status/{capability_id}:
+ *   get:
+ *     summary: Status of a single queued session request
+ *     description: |
+ *       Returns the queue position and ETA for a pending session keyed by the
+ *       capability id you submitted. 404 if the request has already been
+ *       allocated or expired.
+ *     tags: [Grid]
+ *     parameters:
+ *       - in: path
+ *         name: capability_id
+ *         required: true
+ *         schema: { type: string }
+ *     responses:
+ *       200:
+ *         description: Queue status
+ *         content:
+ *           application/json:
+ *             schema: { type: object, additionalProperties: true }
+ *       404: { description: 'Pending session not found' }
+ */
+
+/**
+ * @swagger
+ * /api/node/{host}/status:
+ *   get:
+ *     summary: ADB / device status for a specific node
+ *     description: |
+ *       If `host` matches the node serving the request, the response is built
+ *       locally. Otherwise the hub proxies the call to that node's
+ *       `/api/node/status` endpoint and returns the result. Returns 404 if no
+ *       devices are registered for the requested host.
+ *     tags: [Grid]
+ *     parameters:
+ *       - in: path
+ *         name: host
+ *         required: true
+ *         schema: { type: string }
+ *         description: 'Node host (URL or hostname as registered with the hub)'
+ *     responses:
+ *       200:
+ *         description: Per-device status
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: array
+ *               items:
+ *                 type: object
+ *                 properties:
+ *                   udid: { type: string }
+ *                   host: { type: string }
+ *                   state: { type: string }
+ *                   platform: { type: string, enum: [ios, android] }
+ *       404: { description: 'No devices registered for that host' }
+ */
+
+// =============================================================================
+// Selector Health — previously-undocumented routes
+// =============================================================================
+
+/**
+ * @swagger
+ * /api/healing/events:
+ *   get:
+ *     summary: Recent healing events
+ *     description: |
+ *       Returns the most recent self-healing events along with a `todayCount`
+ *       used by the dashboard "today" badge. Newest first; clamped to 1–200.
+ *     tags: [Selector Health]
+ *     parameters:
+ *       - in: query
+ *         name: limit
+ *         schema: { type: integer, minimum: 1, maximum: 200, default: 50 }
+ *     responses:
+ *       200:
+ *         description: Recent events
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 events:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       id: { type: string }
+ *                       sessionId: { type: string }
+ *                       deviceUdid: { type: string }
+ *                       deviceName: { type: string }
+ *                       devicePlatform: { type: string, enum: [ios, android] }
+ *                       commandName: { type: string }
+ *                       originalSelector: { type: string }
+ *                       healedSelector: { type: string }
+ *                       confidence: { type: number }
+ *                       tier: { type: string }
+ *                       isSuccess: { type: boolean }
+ *                       createdAt: { type: string, format: date-time }
+ *                 todayCount: { type: integer }
+ */
+
+/**
+ * @swagger
+ * /api/healing/summary:
+ *   get:
+ *     summary: Selector-health KPI summary with prior-period comparison
+ *     description: |
+ *       Aggregates over `windowDays` (clamped 1–365, default 30) and emits a
+ *       parallel "prior" object covering the equivalent immediately-preceding
+ *       window — use the diff for week-over-week / month-over-month deltas.
+ *     tags: [Selector Health]
+ *     parameters:
+ *       - in: query
+ *         name: windowDays
+ *         schema: { type: integer, minimum: 1, maximum: 365, default: 30 }
+ *     responses:
+ *       200:
+ *         description: KPI summary
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 windowDays: { type: integer }
+ *                 current:
+ *                   type: object
+ *                   properties:
+ *                     totalHeals: { type: integer }
+ *                     distinctSelectors: { type: integer }
+ *                     sessionsTouched: { type: integer }
+ *                     byTier: { type: object, additionalProperties: { type: integer } }
+ *                     estCostUsd: { type: number }
+ *                 prior:
+ *                   type: object
+ *                   description: 'Same shape as `current` for the immediately preceding window'
+ *                 resolvedCount: { type: integer }
+ *                 pendingCount: { type: integer }
+ */
+
+/**
+ * @swagger
+ * /api/healing/digest/send:
+ *   post:
+ *     summary: On-demand selector-health digest webhook
+ *     description: |
+ *       Manually fires the digest that the scheduler normally sends on a fixed
+ *       cadence. Useful for pre-release "is the selector landscape healthy
+ *       enough to ship?" gates. Requires `admin` scope.
+ *     tags: [Selector Health]
+ *     requestBody:
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               windowDays: { type: integer }
+ *               limit: { type: integer }
+ *               minHealCount: { type: integer }
+ *     responses:
+ *       200:
+ *         description: Digest dispatched
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 sent: { type: integer, description: 'Number of webhook subscribers fired' }
+ *                 windowDays: { type: integer }
+ *                 hotspotsIncluded: { type: integer }
+ *       401: { $ref: '#/components/responses/Unauthorized' }
+ *       403: { $ref: '#/components/responses/Forbidden' }
+ */
+
+// =============================================================================
+// Control — previously-undocumented routes
+// =============================================================================
+
+/**
+ * @swagger
+ * /api/control/{udid}/logs:
+ *   get:
+ *     summary: Pull recent device logs
+ *     description: |
+ *       Android: `adb logcat -d` style snapshot. iOS: recent syslog buffer.
+ *       Returns plain text wrapped in a JSON `logs` field.
+ *     tags: [Control]
+ *     parameters:
+ *       - in: path
+ *         name: udid
+ *         required: true
+ *         schema: { type: string }
+ *     responses:
+ *       200:
+ *         description: Device logs
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 logs: { type: string }
+ *       404: { description: 'Device not found' }
+ */
