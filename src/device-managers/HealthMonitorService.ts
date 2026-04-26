@@ -27,10 +27,12 @@ export class HealthMonitorService {
     this.pluginArgs = pluginArgs;
     this.stop();
 
-    // Do NOT run checkAllDevices immediately on startup.
-    // Devices are freshly discovered and presumed healthy.
-    // The first check will fire after the configured interval (default: 24h).
+    // Run the first check 30 seconds after startup so the dashboard
+    // populates battery/thermal badges shortly after boot rather than
+    // waiting for the full interval. The delay gives the discovery
+    // pipeline time to settle before we hit every device.
     this.setupMonitor(pluginArgs, false);
+    setTimeout(() => this.checkAllDevices(), 30_000);
 
     // Delay config polling to avoid restarting the monitor during startup
     this.configPollInterval = setInterval(() => this.pollWebConfig(), 60000); // Poll every minute
@@ -68,7 +70,7 @@ export class HealthMonitorService {
   }
 
   private setupMonitor(args: IPluginArgs, runImmediately = true) {
-    const intervalMs = args.healthCheckIntervalMs || 86400000;
+    const intervalMs = args.healthCheckIntervalMs || 300_000;
     const scheduleStr = args.healthCheckSchedule;
 
     if (this.interval) clearInterval(this.interval);

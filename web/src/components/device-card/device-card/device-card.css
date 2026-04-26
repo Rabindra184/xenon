@@ -118,3 +118,10 @@
   background: var(--surface-2);
   color: var(--text);
 }
+
+.dc2-health {
+  display: flex;
+  gap: 6px;
+  margin-top: 4px;
+  flex-wrap: wrap;
+}

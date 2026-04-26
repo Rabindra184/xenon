@@ -13,6 +13,7 @@ import { Popover } from '../../ui/Popover';
 import { Menu, MenuItem, MenuDivider } from '../../ui/Menu';
 import ReservationModal from '../../reservation-modal/reservation-modal';
 import TagManagerModal from '../../tag-manager-modal/tag-manager-modal';
+import { HealthBadges } from '../health-badges';
 import './device-card.css';
 
 interface Props {
@@ -81,6 +82,8 @@ export const DeviceCard: React.FC<Props> = ({ device, reloadDevices, navigate })
         {middleEllipsis(device.udid)}
       </div>
 
+      <HealthBadges device={device} />
+
       {(device.teamId || (device.tags && device.tags.length > 0)) && (
         <div className="dc2-tags">
           {device.teamId && (
@@ -120,12 +123,6 @@ export const DeviceCard: React.FC<Props> = ({ device, reloadDevices, navigate })
             label="Utilization"
             value={prettyMilliseconds(device.totalUtilizationTimeMilliSec || 0, { compact: true })}
           />
-        )}
-        {typeof device.batteryLevel === 'number' && (
-          <KeyValueRow label="Battery" value={`${device.batteryLevel}%`} />
-        )}
-        {device.thermalStatus && device.thermalStatus !== 'Unknown' && (
-          <KeyValueRow label="Thermal" value={device.thermalStatus} />
         )}
         <KeyValueRow label="Host" value={device.ip || device.host} mono />
       </div>
