@@ -20,6 +20,7 @@ import webhookRouter from './routers/webhook';
 import reservationRouter from './routers/reservation';
 import ConfigRouter from './routers/config';
 import InterceptorRouter from './routers/interceptor';
+import BugReportRouter from './routers/bug-report';
 import { apiKeysRouter } from './routers/apikeys';
 import { teamsRouter } from './routers/teams';
 import { authRouter } from './routers/auth';
@@ -246,6 +247,7 @@ function createRouter(pluginArgs: IPluginArgs) {
   webhookRouter.register(apiRouter);
   ConfigRouter.register(apiRouter, pluginArgs);
   InterceptorRouter.register(apiRouter);
+  BugReportRouter.register(apiRouter);
   apiRouter.use('/reservation', reservationRouter);
 
   // Principal Health: Add ping endpoint
