@@ -175,6 +175,11 @@ class XenonPlugin extends BasePlugin {
     jwpReqCaps: any,
     caps: ISessionCapability,
   ) {
+    // W3C lets clients omit `firstMatch` (it defaults to [{}]). Normalize once at the
+    // entry point so downstream code can rely on `firstMatch[0]` without guarding.
+    if (caps && (!Array.isArray(caps.firstMatch) || caps.firstMatch.length === 0)) {
+      caps.firstMatch = [{}];
+    }
     return await Container.get(SessionLifecycleService).createSession(next, driver, caps);
   }
 

@@ -292,7 +292,7 @@ export class SessionLifecycleService {
 
       const hasWdaUrl =
         _.has(caps.alwaysMatch, 'appium:webDriverAgentUrl') ||
-        _.has(caps.firstMatch[0], 'appium:webDriverAgentUrl');
+        _.has(caps.firstMatch?.[0], 'appium:webDriverAgentUrl');
       if (!hasWdaUrl) {
         await updateDeviceProgress(
           device.udid,

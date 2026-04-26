@@ -248,7 +248,7 @@ export interface AxiosProxy {
  */
 export interface InterceptorConfig {
   /**
-   * Enable the network interceptor. Sessions still need xenon:options.interceptor.enabled=true (or interceptorEnabled cap) to be intercepted.
+   * Enable the network interceptor. Sessions still need to opt in via any of: xenon:options.interceptor.enabled=true, xe:interceptor.enabled=true, appium:interceptor.enabled=true, a bare interceptor.enabled=true cap, or the flat interceptorEnabled cap.
    */
   enabled?: boolean;
   /**
