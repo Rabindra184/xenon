@@ -10,6 +10,7 @@ import { MockEngine } from './interceptor/MockEngine';
 import { RequestBuffer } from './interceptor/RequestBuffer';
 import { MitmProxyHost } from './interceptor/MitmProxyHost';
 import { AndroidProxyAdapter } from './interceptor/AndroidProxyAdapter';
+import { HostFilter } from './interceptor/HostFilter';
 import { CapturedRequest, InterceptorOptions, Mock } from './interceptor/types';
 import { buildHar, HarDocument } from './interceptor/HarBuilder';
 import { PortAllocator } from './PortAllocator';
@@ -91,6 +92,11 @@ export class InterceptorService {
       spillDir,
     });
 
+    const filter = new HostFilter({
+      include: opts.includeHosts,
+      exclude: opts.excludeHosts,
+    });
+
     const proxy = new MitmProxyHost(
       {
         port,
@@ -101,6 +107,10 @@ export class InterceptorService {
       },
       mocks,
       (entry) => {
+        // Filter is capture-only: mocks already matched (and possibly fired) before
+        // we get here, so excluded hosts can still be intentionally mocked while
+        // staying out of the dashboard.
+        if (!filter.accepts(entry.host)) return;
         buffer.push(entry);
         this.emit({ type: 'request', sessionId, payload: entry });
       },
