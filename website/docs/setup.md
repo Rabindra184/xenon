@@ -84,19 +84,27 @@ The plugin must be explicitly activated when starting the Appium server.
 <TabItem value="cli" label="CLI Arguments" default>
 
 ```bash
-# Production Ready Start
+# Production-ready start (Gemini)
 XENON_AI_PROVIDER=gemini \
 XENON_GEMINI_API_KEY=YOUR_GEMINI_API_KEY \
-XENON_OLLAMA_MODEL=llava:7b \
-XENON_AI_BASE_URL=http://localhost:11434 \
 XENON_OTEL_DEBUG=true \
 appium server -ka 800 --use-plugins=xenon -pa /wd/hub \
   --plugin-xenon-platform=both \
   --plugin-xenon-max-sessions=8 \
   --plugin-xenon-enable-dashboard \
   --plugin-xenon-booted-simulators \
-  --plugin-xenon-ai-provider=gemini \
-  --plugin-xenon-ai-model=llava:7b \
+  --plugin-xenon-ai-provider=gemini
+```
+
+For local Ollama instead, swap the AI flags:
+
+```bash
+# Local Ollama (no cloud key needed)
+appium server -ka 800 --use-plugins=xenon -pa /wd/hub \
+  --plugin-xenon-platform=both \
+  --plugin-xenon-enable-dashboard \
+  --plugin-xenon-ai-provider=ollama \
+  --plugin-xenon-ai-model=llava \
   --plugin-xenon-ai-base-url=http://localhost:11434
 ```
 
@@ -119,8 +127,10 @@ server:
       enableDashboard: true
       bootedSimulators: true
       aiProvider: gemini
-      aiModel: llava:7b # Optional override
-      aiBaseUrl: "http://localhost:11434"
+      # Local Ollama alternative — comment out the line above and uncomment:
+      #   aiProvider: ollama
+      #   aiModel: llava
+      #   aiBaseUrl: "http://localhost:11434"
 ```
 
 Run with:

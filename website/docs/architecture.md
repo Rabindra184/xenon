@@ -6,7 +6,7 @@ Xenon is built on a **Cellular Architecture** designed for zero-downtime, autono
 
 ## Autonomous Infrastructure Lifecycle
 
-Xenon's registry is proactive, not reactive. Devices are treated as shared resources in a global mesh, synchronized via high-speed gRPC and WebSockets.
+Xenon's registry is proactive, not reactive. Devices are treated as shared resources in a global mesh, synchronized via HTTP REST and Socket.IO WebSockets.
 
 ### Device Registration & Discovery
 
@@ -21,9 +21,9 @@ sequenceDiagram
     
     D->>N: Hardware Detected (USB/Wi-Fi)
     N->>N: Health Check (Battery/Thermal)
-    N->>H: gRPC: registerDevice(metadata)
+    N->>H: HTTP POST /xenon/api/register?type=add (devices)
     H->>DB: Upsert Device State
-    H-->>N: Registration Confirmed
+    H-->>N: 200 OK
 ```
 
 ### Strategic Session Allocation

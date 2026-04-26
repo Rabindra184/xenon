@@ -25,7 +25,6 @@ const config: Config = {
   projectName: 'xenon', // Usually your repo name.
 
   onBrokenLinks: 'warn',
-  onBrokenMarkdownLinks: 'warn',
 
   i18n: {
     defaultLocale: 'en',
@@ -38,7 +37,7 @@ const config: Config = {
       {
         docs: {
           sidebarPath: './sidebars.ts',
-          editUrl: 'https://github.com/Rabindra184/xenon/tree/master/website/',
+          editUrl: 'https://github.com/Rabindra184/xenon/tree/main/website/',
         },
         blog: {
           showReadingTime: true,
@@ -46,7 +45,7 @@ const config: Config = {
             type: ['rss', 'atom'],
             xslt: true,
           },
-          editUrl: 'https://github.com/Rabindra184/xenon/tree/master/website/',
+          editUrl: 'https://github.com/Rabindra184/xenon/tree/main/website/',
           onInlineTags: 'warn',
           onInlineAuthors: 'warn',
           onUntruncatedBlogPosts: 'warn',
@@ -61,6 +60,9 @@ const config: Config = {
   themes: ['@docusaurus/theme-mermaid'],
   markdown: {
     mermaid: true,
+    hooks: {
+      onBrokenMarkdownLinks: 'warn',
+    },
   },
 
   themeConfig: {

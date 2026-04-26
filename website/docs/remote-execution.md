@@ -4,40 +4,125 @@ hide:
   - navigation
 ---
 
-<div style={{textAlign: 'center'}}>
+# Remote Execution (Hub & Node)
 
-  <img src="https://raw.githubusercontent.com/xenon-platform/xenon/main/docs/assets/images/remote.jpg" class="center"/>
-</div>
+Xenon scales horizontally by separating two concerns onto two roles:
 
-### Distributed Event-Driven Grid
+- **Hub** — a coordinator that holds the global device registry, routes session requests, and serves the dashboard.
+- **Node** — a worker that plugs in physical devices, simulators, and emulators and pushes its inventory to a hub.
 
-Xenon's remote execution is powered by a high-performance **gRPC/NATS** event bus, transforming isolated servers into a unified, reactive mesh.
+Both run the same Xenon plugin under Appium. The role is decided at startup by a single flag (`--plugin-xenon-hub`).
 
-#### Hub (Central Controller)
-The Hub acts as the strategic intelligence layer, orchestrating device allocation and routing commands across the global grid.
-- **Unified Registry**: Real-time visibility into all remote nodes.
-- **Smart Load Balancing**: Allocates devices based on node health and latency.
-- **Failover Recovery**: Automatic session re-routing if a node becomes unresponsive.
+---
 
-#### Node (Hardware Worker)
-A remote machine hosting physical devices or simulators, running an Appium server with the Xenon plugin active.
-- **Auto-Registration**: Nodes use zero-config discovery to join the grid.
-- **High-Fidelity Streaming**: Direct NATS streams for ultra-low latency video and logs.
+## Transport
 
-### Cellular Architecture & Shared State
+The hub-node channel is **HTTP REST** for the control plane (registration, device updates, unblocks) and **Socket.IO** for real-time fan-out (session state, device state, healing events) to the dashboard.
 
-For global-scale deployments, Xenon supports a **Cellular Architecture** where multiple Hubs share a common state via **PostgreSQL**.
+| Path | Direction | Purpose |
+|---|---|---|
+| `POST /xenon/api/register?type=add` | Node → Hub | Push newly discovered devices |
+| `POST /xenon/api/register?type=remove` | Node → Hub | Remove a device that disappeared |
+| `POST /xenon/api/register?type=unregister` | Node → Hub | Pull a node out of the grid |
+| `POST /xenon/api/unblock` | Node → Hub | Release a manually-blocked device |
+| Socket.IO `/xenon` namespace | Hub ⇄ Dashboard | Live state broadcasts |
 
-- **Cell Isolation**: Group infrastructure into regional "cells" (e.g., US-West, EU-Central) to minimize device-to-hub latency.
-- **State Persistence**: All session history and device lockers are persisted in PostgreSQL, allowing Hubs to be completely stateless and easily scalable.
-- **Disaster Recovery**: If a regional cell fails, the global registry allows workers to be immediately re-provisioned to another cell.
+All node→hub requests carry the `X-Xenon-Node-Secret` header when `nodeSecret` is configured. See [Security](enterprise-security.md#hub-node-channel-authentication).
 
-To enable this, configure the `databaseProvider` and `databaseUrl` in your `xenon.config.json`.
+---
 
-### Dashboard
-* Navigate to the host and port of Hub server from the above example it will be http://localhost:31137/xenon
-* Dashboard should have device list based on the hub configuration.
-  ![](https://github.com/xenon-platform/xenon/blob/main/assets/demo.gif)
+## Starting a Hub
 
-### Test Execution
-* Point your Appium test execution URL to the Hub endpoint. 
+A hub is an Appium server with the Xenon plugin and **no `--plugin-xenon-hub` flag**:
+
+```bash
+appium server --use-plugins=xenon -pa /wd/hub \
+  --plugin-xenon-platform=both \
+  --plugin-xenon-enable-dashboard \
+  --plugin-xenon-node-secret="$XENON_NODE_SECRET" \
+  --plugin-xenon-database-provider=postgresql \
+  --plugin-xenon-database-url="postgresql://user:pass@db:5432/xenon"
+```
+
+The hub listens on `4723` by default. The dashboard is served at `http://<hub-host>:4723/xenon`.
+
+---
+
+## Starting a Node
+
+A node points at the hub via `--plugin-xenon-hub`:
+
+```bash
+appium server --use-plugins=xenon -pa /wd/hub \
+  --plugin-xenon-platform=android \
+  --plugin-xenon-hub=http://hub.internal:4723 \
+  --plugin-xenon-node-secret="$XENON_NODE_SECRET"
+```
+
+On startup the node:
+
+1. Discovers locally connected devices — USB-attached real devices, booted simulators or emulators, plus remote ADB hosts when `adbRemote` is set.
+2. Posts the inventory to `<hub>/xenon/api/register?type=add`.
+3. Re-syncs the inventory every `sendNodeDevicesToHubIntervalMs` (default `30000` ms).
+4. Posts removals as devices disappear.
+
+If the node is behind a NAT or is reachable at a public address different from its local bind, set `remoteMachineProxyIP` so the hub knows which URL to hand to clients when it forwards a session.
+
+---
+
+## Hub-side liveness
+
+The hub prunes silent nodes by checking `lastSeen` timestamps every `checkStaleDevicesIntervalMs` (default `30000` ms). If a node misses several intervals — host crash, network partition, container restart — its devices are removed from the registry and any in-flight sessions on that node are released back to the queue.
+
+`checkBlockedDevicesIntervalMs` (default `30000` ms) re-evaluates manually-blocked devices on the same cadence, so they re-enter the pool when a maintainer unblocks them via the dashboard or API.
+
+---
+
+## Shared state (PostgreSQL)
+
+For multi-hub deployments — or a single hub that needs to survive restarts without losing build, session, healing, or selector-health history — point `databaseProvider` at PostgreSQL and share a single `DATABASE_URL` across all hub instances.
+
+```yaml
+plugin:
+  xenon:
+    databaseProvider: postgresql
+    databaseUrl: postgresql://user:pass@db.internal:5432/xenon
+```
+
+Every hub then reads and writes the same registry, session log, healing history, and selector-health lifecycle. Workers are pinned to a single hub at a time but can be moved by simply pointing the node's `--plugin-xenon-hub` at a different hub.
+
+---
+
+## Outbound TLS
+
+When a node talks to a hub over HTTPS, the node verifies the hub's TLS certificate by default. For dev/test against self-signed certs, set `tlsRejectUnauthorized: false` on the node — and only there.
+
+```yaml
+plugin:
+  xenon:
+    hub: https://hub.internal
+    tlsRejectUnauthorized: false   # development only
+```
+
+---
+
+## Dashboard
+
+Once the hub is running, point a browser at `http://<hub-host>:<port>/xenon`. The dashboard lists every device the hub has heard about, grouped by node, with live status and session activity. There is no separate "node dashboard" — nodes are headless workers.
+
+---
+
+## Test execution
+
+Point your Appium client at the hub, not the node:
+
+```javascript
+const opts = {
+  hostname: 'hub.internal',
+  port: 4723,
+  path: '/wd/hub',
+  capabilities: { platformName: 'Android', /* ... */ },
+};
+```
+
+The hub picks an eligible device, holds a server-side proxy to the owning node for the lifetime of the session, and forwards every Appium command transparently. The client never talks to the node directly.

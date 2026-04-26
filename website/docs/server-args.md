@@ -37,8 +37,10 @@ server:
       enableDashboard: true
       bootedSimulators: true
       aiProvider: gemini
-      aiModel: llava:7b
-      aiBaseUrl: "http://localhost:11434"
+      # Local Ollama alternative:
+      #   aiProvider: ollama
+      #   aiModel: llava
+      #   aiBaseUrl: "http://localhost:11434"
       buildCleanupDays: 30
 ```
 
