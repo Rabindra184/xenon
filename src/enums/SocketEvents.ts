@@ -19,6 +19,8 @@ export enum SocketEvents {
   INTERCEPTOR_REQUEST = 'interceptor_request',
   INTERCEPTOR_SESSION_STARTED = 'interceptor_session_started',
   INTERCEPTOR_SESSION_STOPPED = 'interceptor_session_stopped',
+
+  BUG_REPORT_GENERATED = 'bug_report_generated',
 }
 
 export const XENON_PROTOCOL_VERSION = '1.0.0';
