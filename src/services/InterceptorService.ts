@@ -13,6 +13,7 @@ import { AndroidProxyAdapter } from './interceptor/AndroidProxyAdapter';
 import { HostFilter } from './interceptor/HostFilter';
 import { CapturedRequest, InterceptorOptions, Mock } from './interceptor/types';
 import { buildHar, HarDocument } from './interceptor/HarBuilder';
+import { archivePaths } from './interceptor/SessionArchive';
 import { PortAllocator } from './PortAllocator';
 import { SocketServer } from './SocketServer';
 import { SocketEvents } from '../enums/SocketEvents';
@@ -184,11 +185,11 @@ export class InterceptorService {
 
     try {
       const dump = this.serializeForDisk(state);
-      const dir = path.join(config.sessionAssetsPath, sessionId, 'interceptor');
-      fs.mkdirSync(dir, { recursive: true });
-      fs.writeFileSync(path.join(dir, 'requests.json'), JSON.stringify(dump, null, 2), 'utf8');
+      const paths = archivePaths(config.sessionAssetsPath, sessionId);
+      fs.mkdirSync(paths.dir, { recursive: true });
+      fs.writeFileSync(paths.requests, JSON.stringify(dump, null, 2), 'utf8');
       fs.writeFileSync(
-        path.join(dir, 'session.har'),
+        paths.har,
         JSON.stringify(buildHar(state.buffer.list(), sessionId), null, 2),
         'utf8',
       );
