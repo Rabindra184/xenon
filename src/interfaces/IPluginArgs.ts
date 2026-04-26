@@ -101,7 +101,7 @@ export interface IPluginArgs {
    */
   removeDevicesFromDatabaseBeforeRunningThePlugin: boolean;
   /**
-   * Default interval (ms) between background device health checks. Overridden when `healthCheckSchedule` is set.
+   * Default interval (ms) between background device health checks. Overridden when `healthCheckSchedule` is set. Default 5 minutes — frequent enough to keep battery/thermal badges fresh without hammering devices.
    */
   healthCheckIntervalMs: number;
   /**
