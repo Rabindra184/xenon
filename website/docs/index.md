@@ -41,14 +41,3 @@ hide:
 3. **[Deployment Guide](deployment.md)** — Standalone, Hub-Node, or Cloud
 4. **[Capabilities](capabilities.md)** — Usage in tests
 5. **[AI Features](ai-features.md)** — Enable AI diagnostics and self-healing
-
----
-
-**Big thanks to the following organizations for their support to the project with their open source licenses:**
-<h3>
-	<a href="https://www.browserstack.com"><img src="https://maddyness-uk.twic.pics/2021/06/Screenshot-2021-06-21-at-20.14.46.png?twic=v1/resize=630" alt="BrowserStack" width="45%" align="top" /></a>
-</h3>
-
-<h3>
-	<a href="https://www.lambdatest.com"><img src="assets/images/lt.png" alt="LambdaTest" width="45%" align="top" /></a>
-</h3>
