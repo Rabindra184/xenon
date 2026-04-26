@@ -59,3 +59,9 @@ Use natural language to find elements within a dense UI hierarchy.
 :::tip
 Combine **Smart Search** with **AI Insight** to find and verify elements that aren't easily targetable through traditional DOM queries.
 :::
+
+---
+
+## Pairing with Selector Health
+
+OmniInspector tells you which locator to write today. **[Selector Health](selector-health.md)** tells you which already-shipped locators are quietly costing you in CI — ranked by heal frequency, with a state machine that confirms fixes across builds and flags regressions automatically. Use OmniInspector to author stable selectors; use Selector Health to retire brittle ones.
