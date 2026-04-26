@@ -1,5 +1,8 @@
 export type ISessionCapability = {
-  firstMatch: any[];
+  // W3C lets clients omit firstMatch (defaults to [{}]). Optional here so the
+  // compiler forces every consumer to either guard the read or normalize the value
+  // — preventing a class of "Cannot read properties of undefined" crashes.
+  firstMatch?: any[];
   alwaysMatch: any;
 };
 

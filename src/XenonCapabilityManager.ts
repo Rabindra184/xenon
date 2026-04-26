@@ -33,8 +33,15 @@ export enum XENON_CAPABILITIES {
   INTERCEPTOR_MOCKS = 'interceptor_mocks',
 }
 
+// W3C lets clients omit firstMatch (default [{}]). Normalize-and-return so write
+// paths can mutate caps.firstMatch[0] without per-line guarding.
+function ensureFirstMatch(caps: ISessionCapability): Record<string, any> {
+  if (!caps.firstMatch || caps.firstMatch.length === 0) caps.firstMatch = [{}];
+  return caps.firstMatch[0];
+}
+
 function isCapabilityAlreadyPresent(caps: ISessionCapability, capabilityName: string) {
-  return _.has(caps.alwaysMatch, capabilityName) || _.has(caps.firstMatch[0], capabilityName);
+  return _.has(caps.alwaysMatch, capabilityName) || _.has(caps.firstMatch?.[0], capabilityName);
 }
 
 function deleteAlwaysMatch(caps: ISessionCapability, capabilityName: string) {
@@ -42,16 +49,16 @@ function deleteAlwaysMatch(caps: ISessionCapability, capabilityName: string) {
 }
 
 export async function androidCapabilities(caps: ISessionCapability, freeDevice: IDevice) {
-  caps.firstMatch[0]['appium:udid'] = freeDevice.udid;
-  caps.firstMatch[0]['platformName'] = freeDevice.platform;
-  caps.firstMatch[0]['appium:systemPort'] = await getPort();
-  caps.firstMatch[0]['appium:chromeDriverPort'] = await getPort();
-  caps.firstMatch[0]['appium:adbRemoteHost'] = freeDevice.adbRemoteHost;
-  caps.firstMatch[0]['appium:adbPort'] = freeDevice.adbPort;
-  if (freeDevice.chromeDriverPath)
-    caps.firstMatch[0]['appium:chromedriverExecutable'] = freeDevice.chromeDriverPath;
+  const fm = ensureFirstMatch(caps);
+  fm['appium:udid'] = freeDevice.udid;
+  fm['platformName'] = freeDevice.platform;
+  fm['appium:systemPort'] = await getPort();
+  fm['appium:chromeDriverPort'] = await getPort();
+  fm['appium:adbRemoteHost'] = freeDevice.adbRemoteHost;
+  fm['appium:adbPort'] = freeDevice.adbPort;
+  if (freeDevice.chromeDriverPath) fm['appium:chromedriverExecutable'] = freeDevice.chromeDriverPath;
   if (!isCapabilityAlreadyPresent(caps, 'appium:mjpegServerPort')) {
-    caps.firstMatch[0]['appium:mjpegServerPort'] = await getPort();
+    fm['appium:mjpegServerPort'] = await getPort();
   }
   deleteAlwaysMatch(caps, 'platformName');
   deleteAlwaysMatch(caps, 'appium:udid');
@@ -74,13 +81,14 @@ export async function iOSCapabilities(
     derivedDataPath?: string;
   },
 ) {
-  caps.firstMatch[0]['appium:udid'] = freeDevice.udid;
-  caps.firstMatch[0]['platformName'] = freeDevice.platform;
-  caps.firstMatch[0]['appium:deviceName'] = freeDevice.name;
-  caps.firstMatch[0]['appium:platformVersion'] = freeDevice.sdk;
-  caps.firstMatch[0]['appium:wdaLocalPort'] = freeDevice.wdaLocalPort;
-  caps.firstMatch[0]['appium:mjpegServerPort'] = freeDevice.mjpegServerPort;
-  caps.firstMatch[0]['appium:derivedDataPath'] = freeDevice.derivedDataPath;
+  const fm = ensureFirstMatch(caps);
+  fm['appium:udid'] = freeDevice.udid;
+  fm['platformName'] = freeDevice.platform;
+  fm['appium:deviceName'] = freeDevice.name;
+  fm['appium:platformVersion'] = freeDevice.sdk;
+  fm['appium:wdaLocalPort'] = freeDevice.wdaLocalPort;
+  fm['appium:mjpegServerPort'] = freeDevice.mjpegServerPort;
+  fm['appium:derivedDataPath'] = freeDevice.derivedDataPath;
 
   // Technical Optimization: Reuse existing WDA tunnel if Stream Service is active
   // This prevents "Port Occupied" errors when the dashboard is open and speeds up startup by 15-30s
@@ -95,12 +103,12 @@ export async function iOSCapabilities(
 
     if (streamStatus && (streamStatus.status === 'running' || streamStatus.status === 'starting')) {
       const wdaUrl = `http://127.0.0.1:${streamStatus.wdaPort}`;
-      caps.firstMatch[0]['appium:webDriverAgentUrl'] = wdaUrl;
+      fm['appium:webDriverAgentUrl'] = wdaUrl;
 
       // If we are reusing the WDA, we MUST NOT pass wdaLocalPort or mjpegServerPort
       // as XCUITestDriver will still try to verify they are free and fail if busy.
-      delete caps.firstMatch[0]['appium:wdaLocalPort'];
-      delete caps.firstMatch[0]['appium:mjpegServerPort'];
+      delete fm['appium:wdaLocalPort'];
+      delete fm['appium:mjpegServerPort'];
       if (caps.alwaysMatch) {
         delete caps.alwaysMatch['appium:wdaLocalPort'];
         delete caps.alwaysMatch['appium:mjpegServerPort'];
@@ -117,11 +125,11 @@ export async function iOSCapabilities(
   // Senior Resiliency: Inject higher defaults for WebDriverAgent in enterprise environments
   if (!isCapabilityAlreadyPresent(caps, 'appium:wdaLaunchTimeout')) {
     // 180s is safer for physical devices that might need WDA signing/installation
-    caps.firstMatch[0]['appium:wdaLaunchTimeout'] = 180000;
+    fm['appium:wdaLaunchTimeout'] = 180000;
   }
   if (!isCapabilityAlreadyPresent(caps, 'appium:wdaConnectionTimeout')) {
     // 120s is safer for remote devices
-    caps.firstMatch[0]['appium:wdaConnectionTimeout'] = 120000;
+    fm['appium:wdaConnectionTimeout'] = 120000;
   }
 
   const deleteMatch = [
