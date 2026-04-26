@@ -25,7 +25,7 @@ The hub-node channel is **HTTP REST** for the control plane (registration, devic
 | `POST /xenon/api/register?type=remove` | Node → Hub | Remove a device that disappeared |
 | `POST /xenon/api/register?type=unregister` | Node → Hub | Pull a node out of the grid |
 | `POST /xenon/api/unblock` | Node → Hub | Release a manually-blocked device |
-| Socket.IO `/xenon` namespace | Hub ⇄ Dashboard | Live state broadcasts |
+| Socket.IO (default namespace) | Hub ⇄ Dashboard, Hub ⇄ Node | Live state broadcasts — see [Real-time Events](real-time-events.md) |
 
 All node→hub requests carry the `X-Xenon-Node-Secret` header when `nodeSecret` is configured. See [Security](enterprise-security.md#hub-node-channel-authentication).
 

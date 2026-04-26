@@ -25,12 +25,13 @@ const sidebars: SidebarsConfig = {
         'notifications',
         'network-conditioning',
         'network-interceptor',
+        'real-time-events',
         'retention',
         'cloud',
       ],
     },
     'troubleshooting',
-    'Xenon-Kotlin-SDK-Specs',
+    { type: 'doc', id: 'Xenon-Kotlin-SDK-Specs', label: 'Kotlin SDK' },
   ],
 };
 
