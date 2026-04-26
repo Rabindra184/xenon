@@ -33,6 +33,8 @@ interface SessionState {
   buffer: RequestBuffer;
   certInstalledFilename: string;
   startedAt: number;
+  // True when adb reverse was successfully set up; stop() must remove it.
+  reverseEstablished: boolean;
 }
 
 const DEFAULT_BUFFER_CAP = 1000;
@@ -76,7 +78,8 @@ export class InterceptorService {
     const adapter = this.getAndroidAdapter();
 
     const port = await Container.get(PortAllocator).acquire('proxy', device.udid);
-    const host = this.resolveProxyHost(device);
+    const routing = await this.establishDeviceRouting(device, port);
+    const host = routing.deviceProxyHost;
 
     const mocks = new MockEngine();
     for (const m of opts.mocks ?? []) mocks.addMock(m);
@@ -126,12 +129,13 @@ export class InterceptorService {
       buffer,
       certInstalledFilename: certFilename,
       startedAt: Date.now(),
+      reverseEstablished: routing.reverseEstablished,
     };
     this.states.set(sessionId, state);
 
     this.emit({ type: 'session_started', sessionId, port, host });
     this.logger.info(
-      `[${sessionId}] interceptor active on ${host}:${port} (device ${device.udid}, mode=${installMode})`,
+      `[${sessionId}] interceptor active on ${host}:${port} (device ${device.udid}, mode=${installMode}, transport=${routing.transport})`,
     );
   }
 
@@ -144,6 +148,16 @@ export class InterceptorService {
       await this.getAndroidAdapter().clearProxy(state.device.udid);
     } catch (err: any) {
       this.logger.warn(`Clear proxy failed for ${state.device.udid}: ${err.message}`);
+    }
+
+    if (state.reverseEstablished) {
+      try {
+        await this.getAndroidAdapter().removeReverse(state.device.udid, state.port);
+      } catch (err: any) {
+        this.logger.warn(
+          `adb reverse --remove failed for ${state.device.udid}:${state.port}: ${err.message}`,
+        );
+      }
     }
 
     try {
@@ -269,9 +283,40 @@ export class InterceptorService {
     return this.androidAdapter;
   }
 
-  private resolveProxyHost(device: IDevice): string {
-    if (device.deviceType === 'emulator') return '10.0.2.2';
-    return this.firstNonLoopbackIPv4() ?? '127.0.0.1';
+  // Establishes how the device will reach the host-side MITM proxy.
+  //
+  // Emulators have a free ride: 10.0.2.2 is a special alias that always resolves to
+  // the host loopback regardless of network shape, so no per-device setup is needed.
+  //
+  // Real devices used to be pointed at the host's first non-loopback IPv4. That works
+  // only when host and device share a LAN — and most environments where Xenon is
+  // useful (CI runners, hotel WiFi, NAT'd hosts, USB-only labs) violate that. So we
+  // now try `adb reverse tcp:N tcp:N` first, which tunnels the device-local port back
+  // to the host over the adb transport itself (USB or wireless adb). On success the
+  // device proxy points at 127.0.0.1 — which the device sees as itself but is
+  // actually our host's port via the adb tunnel.
+  //
+  // If `adb reverse` fails for some reason we still fall back to the LAN IP so users
+  // who had a working LAN setup don't regress; the warning surfaces the failure so
+  // they know what happened if interception silently stops working.
+  private async establishDeviceRouting(
+    device: IDevice,
+    port: number,
+  ): Promise<{ deviceProxyHost: string; reverseEstablished: boolean; transport: string }> {
+    if (device.deviceType === 'emulator') {
+      return { deviceProxyHost: '10.0.2.2', reverseEstablished: false, transport: 'emulator' };
+    }
+    try {
+      await this.getAndroidAdapter().addReverse(device.udid, port, port);
+      return { deviceProxyHost: '127.0.0.1', reverseEstablished: true, transport: 'adb-reverse' };
+    } catch (err: any) {
+      const lan = this.firstNonLoopbackIPv4() ?? '127.0.0.1';
+      this.logger.warn(
+        `adb reverse failed for ${device.udid} (${err.message}); falling back to host LAN IP ${lan}. ` +
+          'Interception will fail unless the device can reach this address.',
+      );
+      return { deviceProxyHost: lan, reverseEstablished: false, transport: 'lan-fallback' };
+    }
   }
 
   private firstNonLoopbackIPv4(): string | null {
