@@ -1,5 +1,5 @@
 import { Proxy } from 'http-mitm-proxy';
-import { CapturedRequest, RequestSummary } from './types';
+import { CapturedRequest, FailureKind, RequestSummary } from './types';
 import { MockEngine } from './MockEngine';
 import { randomUUID } from 'crypto';
 import log from '../../logger';
@@ -36,9 +36,14 @@ export class MitmProxyHost {
   private proxy: Proxy | undefined;
   private logger = log.scope('MitmProxyHost');
   // Tracks recent HTTPS CONNECT requests so we can attribute ctx-less TLS errors
-  // (HTTPS_CLIENT_ERROR is fired with ctx=null by http-mitm-proxy).
-  private recentConnects: Array<{ host: string; ts: number }> = [];
+  // (HTTPS_CLIENT_ERROR / HTTPS_SERVER_ERROR / ON_CONNECT_ERROR / OPEN_HTTPS_SERVER_ERROR
+  // are all fired with ctx=null by http-mitm-proxy). `consumed` is flipped when an
+  // entry is used to attribute an error so concurrent CONNECTs that all fail don't
+  // collapse onto the single most-recent host — see handleProxyError.
+  private recentConnects: Array<{ host: string; ts: number; consumed: boolean }> = [];
   // Dedupe key = `${host}|${errorKind}` — one stub capture per host-error combo per session.
+  // Bounded in practice by host cardinality (realistically O(10–50) per session), so no
+  // explicit eviction.
   private failedKeys: Set<string> = new Set();
 
   constructor(
@@ -54,7 +59,7 @@ export class MitmProxyHost {
     proxy.onConnect((req: any, _socket: any, _head: any, callback: () => void) => {
       const host = String(req?.url || '').split(':')[0];
       if (host) {
-        this.recentConnects.push({ host, ts: Date.now() });
+        this.recentConnects.push({ host, ts: Date.now(), consumed: false });
         if (this.recentConnects.length > RECENT_CONNECT_RING) this.recentConnects.shift();
       }
       callback();
@@ -257,6 +262,7 @@ export class MitmProxyHost {
   handleProxyError(ctx: any, err: any, errorKind: string): void {
     const reason = MitmProxyHost.classifyError(err, errorKind);
     if (!reason) return;
+    const kind = errorKind as FailureKind;
 
     let host = '';
     const ctxHost = ctx?.clientToProxyRequest?.headers?.host;
@@ -264,14 +270,19 @@ export class MitmProxyHost {
       host = String(ctxHost).split(':')[0];
     } else {
       // ctx-less error path (e.g. HTTPS_CLIENT_ERROR — TLS handshake rejected by app).
-      // Attribute to the most recent CONNECT we saw within the TTL window.
+      // Walk the ring from most-recent → oldest, skipping entries already consumed by
+      // a previous error, and attribute to the first live entry inside the TTL window.
+      // This is heuristic: errors and CONNECTs aren't strictly LIFO across concurrent
+      // pipelines, so attribution may still be off when many CONNECTs interleave with
+      // many failures, but it's strictly better than always picking the newest.
       const now = Date.now();
       for (let i = this.recentConnects.length - 1; i >= 0; i--) {
         const c = this.recentConnects[i];
-        if (now - c.ts <= RECENT_CONNECT_TTL_MS) {
-          host = c.host;
-          break;
-        }
+        if (c.consumed) continue;
+        if (now - c.ts > RECENT_CONNECT_TTL_MS) continue;
+        host = c.host;
+        c.consumed = true;
+        break;
       }
     }
     if (!host) return;
@@ -298,7 +309,7 @@ export class MitmProxyHost {
       modified: false,
       failed: true,
       failureReason: reason,
-      failureKind: errorKind,
+      failureKind: kind,
     };
     this.sink(entry);
   }
@@ -308,14 +319,18 @@ export class MitmProxyHost {
     switch (errorKind) {
       case 'HTTPS_CLIENT_ERROR':
         return 'HTTPS handshake rejected by app — proxy cert is not trusted (Android 7+ apps must opt in via network_security_config.xml)';
+      case 'HTTPS_SERVER_ERROR':
+        return 'HTTPS server-side error during TLS handshake';
       case 'OPEN_HTTPS_SERVER_ERROR':
         return 'Failed to open HTTPS endpoint for host';
+      case 'ON_CONNECT_ERROR':
+        return 'CONNECT tunnel could not be established';
       case 'PROXY_TO_SERVER_REQUEST_ERROR': {
         const code = err?.code;
         if (code === 'ENOTFOUND') return 'DNS lookup failed';
         if (code === 'ECONNREFUSED') return 'Upstream connection refused';
         if (code === 'ETIMEDOUT') return 'Upstream connection timed out';
-        return `Upstream connection failed${code ? ` (${code})` : ''}`;
+        return `Upstream connection failed${code ? ` (${String(code)})` : ''}`;
       }
       default:
         return null;

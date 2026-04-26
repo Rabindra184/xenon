@@ -10,6 +10,7 @@ import {
   fetchSessionRequests,
   fetchRequestDetail,
   harDownloadUrl,
+  shortFailureLabel,
 } from '../../api-service/interceptor';
 import { NetworkRequestModal } from './network-request-modal';
 
@@ -30,14 +31,6 @@ function statusTone(status: number): 'ready' | 'busy' | 'error' | 'neutral' {
   if (status >= 400 && status < 500) return 'busy';
   if (status >= 500) return 'error';
   return 'neutral';
-}
-
-function shortFailureLabel(failureKind?: string): string {
-  if (!failureKind) return 'failed';
-  if (failureKind === 'HTTPS_CLIENT_ERROR') return 'tls';
-  if (failureKind === 'OPEN_HTTPS_SERVER_ERROR') return 'tls';
-  if (failureKind === 'PROXY_TO_SERVER_REQUEST_ERROR') return 'net';
-  return 'failed';
 }
 
 export const NetworkPanel: React.FC<Props> = ({ sessionId, sessionEnded }) => {

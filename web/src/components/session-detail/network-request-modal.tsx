@@ -1,7 +1,7 @@
 import React from 'react';
 import { Modal } from '../ui/Modal';
 import { Pill } from '../ui/Pill';
-import type { CapturedRequest } from '../../api-service/interceptor';
+import { shortFailureLabel, type CapturedRequest } from '../../api-service/interceptor';
 
 interface Props {
   request: CapturedRequest | null;
@@ -57,7 +57,7 @@ export const NetworkRequestModal: React.FC<Props> = ({ request, onClose }) => {
     <div className="flex items-center gap-2 text-sm">
       <Pill tone="accent">{request.method}</Pill>
       {request.failed ? (
-        <Pill tone="error">failed</Pill>
+        <Pill tone="error">{shortFailureLabel(request.failureKind)}</Pill>
       ) : (
         <Pill tone={statusTone(request.resStatus)}>{request.resStatus || '—'}</Pill>
       )}

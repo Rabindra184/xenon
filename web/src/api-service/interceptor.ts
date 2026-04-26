@@ -19,7 +19,29 @@ export interface CapturedRequest {
   commandHint?: { commandName: string; commandTs: number };
   failed?: boolean;
   failureReason?: string;
-  failureKind?: string;
+  failureKind?: FailureKind;
+}
+
+export type FailureKind =
+  | 'HTTPS_CLIENT_ERROR'
+  | 'HTTPS_SERVER_ERROR'
+  | 'OPEN_HTTPS_SERVER_ERROR'
+  | 'ON_CONNECT_ERROR'
+  | 'PROXY_TO_SERVER_REQUEST_ERROR';
+
+export function shortFailureLabel(kind?: FailureKind): string {
+  if (!kind) return 'failed';
+  switch (kind) {
+    case 'HTTPS_CLIENT_ERROR':
+    case 'HTTPS_SERVER_ERROR':
+    case 'OPEN_HTTPS_SERVER_ERROR':
+    case 'ON_CONNECT_ERROR':
+      return 'tls';
+    case 'PROXY_TO_SERVER_REQUEST_ERROR':
+      return 'net';
+    default:
+      return 'failed';
+  }
 }
 
 export interface InterceptorActiveStatus {

@@ -30,6 +30,16 @@ describe('MitmProxyHost.classifyError', () => {
     expect(MitmProxyHost.classifyError(null, 'OPEN_HTTPS_SERVER_ERROR')).to.match(/HTTPS endpoint/);
   });
 
+  it('classifies HTTPS_SERVER_ERROR', () => {
+    expect(MitmProxyHost.classifyError(null, 'HTTPS_SERVER_ERROR')).to.match(
+      /server-side error during TLS/i,
+    );
+  });
+
+  it('classifies ON_CONNECT_ERROR', () => {
+    expect(MitmProxyHost.classifyError(null, 'ON_CONNECT_ERROR')).to.match(/CONNECT tunnel/);
+  });
+
   it('classifies upstream PROXY_TO_SERVER_REQUEST_ERROR with code-aware reasons', () => {
     expect(
       MitmProxyHost.classifyError({ code: 'ENOTFOUND' }, 'PROXY_TO_SERVER_REQUEST_ERROR'),
@@ -71,14 +81,54 @@ describe('MitmProxyHost.handleProxyError', () => {
 
   it('falls back to most-recent CONNECT when ctx is null', () => {
     const { host, emitted } = makeHost();
-    (host as any).recentConnects.push({ host: 'first.example.com', ts: Date.now() - 1000 });
-    (host as any).recentConnects.push({ host: 'second.example.com', ts: Date.now() });
+    (host as any).recentConnects.push({
+      host: 'first.example.com',
+      ts: Date.now() - 1000,
+      consumed: false,
+    });
+    (host as any).recentConnects.push({
+      host: 'second.example.com',
+      ts: Date.now(),
+      consumed: false,
+    });
 
     host.handleProxyError(null, new Error('alert bad cert'), 'HTTPS_CLIENT_ERROR');
 
     expect(emitted).to.have.length(1);
     expect(emitted[0].host).to.equal('second.example.com');
     expect(emitted[0].failureKind).to.equal('HTTPS_CLIENT_ERROR');
+  });
+
+  it('walks back to next-most-recent CONNECT when the newest is already consumed', () => {
+    const { host, emitted } = makeHost();
+    (host as any).recentConnects.push({
+      host: 'auth.example.com',
+      ts: Date.now() - 200,
+      consumed: false,
+    });
+    (host as any).recentConnects.push({
+      host: 'api.example.com',
+      ts: Date.now() - 100,
+      consumed: false,
+    });
+    (host as any).recentConnects.push({
+      host: 'cdn.example.com',
+      ts: Date.now(),
+      consumed: false,
+    });
+
+    // Three concurrent CONNECTs, three ctx-less TLS rejections — without the consumed
+    // flag all three would attribute to cdn and only the first would emit (dedupe).
+    host.handleProxyError(null, new Error('x'), 'HTTPS_CLIENT_ERROR');
+    host.handleProxyError(null, new Error('x'), 'HTTPS_CLIENT_ERROR');
+    host.handleProxyError(null, new Error('x'), 'HTTPS_CLIENT_ERROR');
+
+    expect(emitted).to.have.length(3);
+    expect(emitted.map((e) => e.host)).to.deep.equal([
+      'cdn.example.com',
+      'api.example.com',
+      'auth.example.com',
+    ]);
   });
 
   it('dedupes repeated failures for the same (host, errorKind)', () => {
@@ -115,7 +165,11 @@ describe('MitmProxyHost.handleProxyError', () => {
 
   it('ignores stale CONNECTs older than the TTL window', () => {
     const { host, emitted } = makeHost();
-    (host as any).recentConnects.push({ host: 'stale.example.com', ts: Date.now() - 60_000 });
+    (host as any).recentConnects.push({
+      host: 'stale.example.com',
+      ts: Date.now() - 60_000,
+      consumed: false,
+    });
 
     host.handleProxyError(null, new Error('x'), 'HTTPS_CLIENT_ERROR');
     expect(emitted).to.have.length(0);
