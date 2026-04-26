@@ -84,6 +84,49 @@ describe('AndroidProxyAdapter', () => {
     });
   });
 
+  describe('addReverse', () => {
+    it('runs adb reverse tcp:{devicePort} tcp:{hostPort}', async () => {
+      const adb = makeAdb();
+      const adapter = new AndroidProxyAdapter(async () => adb as any);
+      await adapter.addReverse('udid-1', 8888, 8888);
+      expect(adb.adbExec.firstCall.args[0]).to.deep.equal([
+        '-s',
+        'udid-1',
+        'reverse',
+        'tcp:8888',
+        'tcp:8888',
+      ]);
+    });
+
+    it('supports asymmetric device/host ports', async () => {
+      const adb = makeAdb();
+      const adapter = new AndroidProxyAdapter(async () => adb as any);
+      await adapter.addReverse('udid-1', 9000, 12345);
+      expect(adb.adbExec.firstCall.args[0]).to.deep.equal([
+        '-s',
+        'udid-1',
+        'reverse',
+        'tcp:9000',
+        'tcp:12345',
+      ]);
+    });
+  });
+
+  describe('removeReverse', () => {
+    it('runs adb reverse --remove tcp:{devicePort}', async () => {
+      const adb = makeAdb();
+      const adapter = new AndroidProxyAdapter(async () => adb as any);
+      await adapter.removeReverse('udid-1', 8888);
+      expect(adb.adbExec.firstCall.args[0]).to.deep.equal([
+        '-s',
+        'udid-1',
+        'reverse',
+        '--remove',
+        'tcp:8888',
+      ]);
+    });
+  });
+
   describe('selectInstallMode', () => {
     it('returns "system" for emulator devices', () => {
       const mode = AndroidProxyAdapter.selectInstallMode({
