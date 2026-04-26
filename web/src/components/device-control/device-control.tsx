@@ -27,6 +27,9 @@ import {
   Sparkles,
   Copy,
   Check,
+  Square,
+  Volume1,
+  Volume2,
 } from 'lucide-react';
 import { v4 as uuidv4 } from 'uuid';
 import { useToast } from '../ui/toast';
@@ -34,6 +37,7 @@ import './device-control.css';
 import { Terminal } from '../terminal/terminal';
 import OmniInspector from '../omni-inspector/OmniInspector';
 import { BugReportButton } from '../bug-report/BugReportButton';
+import { ANDROID_KEYCODE, IOS_BUTTON } from './keycodes';
 
 interface DeviceControlProps {
   device: IDevice;
@@ -457,7 +461,24 @@ export default function DeviceControl({ device, onClose }: DeviceControlProps) {
   };
 
   const pressHome = () =>
-    XenonApiService.pressKey(currentDevice.udid, currentDevice.platform === 'android' ? 3 : 'home');
+    XenonApiService.pressKey(
+      currentDevice.udid,
+      currentDevice.platform === 'android' ? ANDROID_KEYCODE.HOME : IOS_BUTTON.HOME,
+    );
+  const pressBack = () =>
+    XenonApiService.pressKey(currentDevice.udid, ANDROID_KEYCODE.BACK);
+  const pressAppSwitcher = () =>
+    XenonApiService.pressKey(currentDevice.udid, ANDROID_KEYCODE.APP_SWITCH);
+  const pressVolumeUp = () =>
+    XenonApiService.pressKey(
+      currentDevice.udid,
+      currentDevice.platform === 'android' ? ANDROID_KEYCODE.VOLUME_UP : IOS_BUTTON.VOLUME_UP,
+    );
+  const pressVolumeDown = () =>
+    XenonApiService.pressKey(
+      currentDevice.udid,
+      currentDevice.platform === 'android' ? ANDROID_KEYCODE.VOLUME_DOWN : IOS_BUTTON.VOLUME_DOWN,
+    );
   const pressLock = () => XenonApiService.lock(currentDevice.udid);
   const pressUnlock = () => XenonApiService.unlock(currentDevice.udid);
 
@@ -734,6 +755,27 @@ export default function DeviceControl({ device, onClose }: DeviceControlProps) {
             <div className="footer-divider" />
             <button className="footer-action-btn" onClick={pressHome}>
               <Home size={20} /> HOME
+            </button>
+            {currentDevice.platform === 'android' && (
+              <>
+                <button className="footer-action-btn" onClick={pressBack} title="Back">
+                  <ChevronLeft size={20} /> BACK
+                </button>
+                <button
+                  className="footer-action-btn"
+                  onClick={pressAppSwitcher}
+                  title="App Switcher"
+                >
+                  <Square size={20} /> APPS
+                </button>
+              </>
+            )}
+            <div className="footer-divider" />
+            <button className="footer-action-btn" onClick={pressVolumeUp} title="Volume Up">
+              <Volume2 size={20} /> VOL+
+            </button>
+            <button className="footer-action-btn" onClick={pressVolumeDown} title="Volume Down">
+              <Volume1 size={20} /> VOL−
             </button>
             <button className="footer-action-btn" onClick={pressLock} title="Lock Device">
               <Lock size={20} />
