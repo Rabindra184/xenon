@@ -26,7 +26,11 @@ Xenon's high-performance API provides programmatic access to the core orchestrat
 *   **Security Protocol**: Industrial-grade isolation for sensitive test environments.
 
 ---
-Currently operating in **OSS Mode**. Future releases will support **Xenon Identity (JWT)** for secure fleet-wide propagation.
+### Authentication
+Most endpoints require an **API key** sent as the \`x-xenon-api-key\` header. Keys carry one of four scopes — \`read\`, \`sessions\`, \`devices\`, or \`admin\` — and \`admin\` always satisfies any scope check. Hub-node endpoints (\`/api/register\`, \`/api/unblock\`) authenticate with the \`x-xenon-node-secret\` header instead and are intended for node-to-hub traffic only.
+
+### Rate limiting
+Every authenticated response carries \`X-RateLimit-Limit\`, \`X-RateLimit-Remaining\`, and \`X-RateLimit-Reset\` headers. Requests beyond the configured budget receive \`429 Too Many Requests\`.
         `,
     contact: {
       name: 'Xenon Architecture Team',
@@ -184,7 +188,72 @@ Currently operating in **OSS Mode**. Future releases will support **Xenon Identi
         },
       },
     },
+    securitySchemes: {
+      ApiKeyAuth: {
+        type: 'apiKey',
+        in: 'header',
+        name: 'x-xenon-api-key',
+        description:
+          'Per-user API key. Carries one of four scopes — `read`, `sessions`, `devices`, or `admin` (admin always satisfies any scope check). Mint and rotate keys via `/api/apikeys` (admin scope required).',
+      },
+      NodeSecretAuth: {
+        type: 'apiKey',
+        in: 'header',
+        name: 'x-xenon-node-secret',
+        description:
+          'Shared secret for node→hub traffic. Used by `/api/register` and `/api/unblock`. Configure with `--plugin-xenon-node-secret`; rotate by setting `nodeSecretPrevious` to the outgoing value while flipping the primary.',
+      },
+    },
+    headers: {
+      'X-RateLimit-Limit': {
+        description: 'Maximum requests allowed in the current window for the matched bucket (read / heavy / control).',
+        schema: { type: 'integer' },
+      },
+      'X-RateLimit-Remaining': {
+        description: 'Remaining requests in the current window.',
+        schema: { type: 'integer' },
+      },
+      'X-RateLimit-Reset': {
+        description: 'Unix epoch seconds at which the window resets.',
+        schema: { type: 'integer' },
+      },
+    },
+    responses: {
+      Unauthorized: {
+        description: 'Missing or invalid API key / node secret.',
+        content: {
+          'application/json': {
+            schema: { $ref: '#/components/schemas/Error' },
+            example: { error: true, message: 'Unauthorized' },
+          },
+        },
+      },
+      Forbidden: {
+        description: "API key lacks the required scope, or CSRF check failed for a browser caller.",
+        content: {
+          'application/json': {
+            schema: { $ref: '#/components/schemas/Error' },
+            example: { error: true, message: 'Forbidden: scope `admin` required' },
+          },
+        },
+      },
+      RateLimited: {
+        description: 'Per-key rate limit exceeded for this bucket.',
+        headers: {
+          'X-RateLimit-Limit': { $ref: '#/components/headers/X-RateLimit-Limit' },
+          'X-RateLimit-Remaining': { $ref: '#/components/headers/X-RateLimit-Remaining' },
+          'X-RateLimit-Reset': { $ref: '#/components/headers/X-RateLimit-Reset' },
+        },
+        content: {
+          'application/json': {
+            schema: { $ref: '#/components/schemas/Error' },
+            example: { error: true, message: 'Too Many Requests' },
+          },
+        },
+      },
+    },
   },
+  security: [{ ApiKeyAuth: [] }],
 };
 
 import path from 'path';
