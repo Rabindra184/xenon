@@ -67,9 +67,9 @@ const config: Config = {
 
   themeConfig: {
     announcementBar: {
-      id: 'support_us',
+      id: 'network_interceptor_launch',
       content:
-        '🚀 <b>Xenon V2</b>: The next generation of autonomous mobile infrastructure is here. <a target="_blank" rel="noopener noreferrer" href="https://github.com/Rabindra184/xenon">Star us on GitHub</a>',
+        'New: <a href="/docs/network-interceptor"><b>Network Interceptor</b></a> — capture, mock, and rewrite device traffic without changing your app or test code.',
       backgroundColor: '#15803D',
       textColor: '#FFFFFF',
       isCloseable: true,
