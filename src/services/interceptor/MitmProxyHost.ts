@@ -1,5 +1,11 @@
 import { Proxy } from 'http-mitm-proxy';
-import { CapturedRequest, FailureKind, RequestSummary } from './types';
+import {
+  CapturedRequest,
+  FailureKind,
+  RequestSummary,
+  RewriteRequest,
+  RewriteResponse,
+} from './types';
 import { MockEngine } from './MockEngine';
 import { randomUUID } from 'crypto';
 import log from '../../logger';
@@ -27,6 +33,8 @@ interface PendingTransaction {
   mocked: boolean;
   modified: boolean;
   mockId?: string;
+  rewriteRequestBody?: string;
+  rewriteResponse?: RewriteResponse;
 }
 
 const RECENT_CONNECT_RING = 20;
@@ -73,8 +81,15 @@ export class MitmProxyHost {
     });
 
     proxy.onRequest((ctx, callback) => this.handleRequest(ctx, callback));
-    proxy.onRequestData((ctx, chunk, cb) => this.collectReqData(ctx, chunk, cb));
-    proxy.onResponseData((ctx, chunk, cb) => this.collectResData(ctx, chunk, cb));
+    // cb signature cast: passing null/undefined chunk drops it from the forward stream
+    // — supported by http-mitm-proxy at runtime but the .d.ts is stricter than reality.
+    proxy.onRequestData((ctx, chunk, cb) =>
+      this.collectReqData(ctx, chunk, cb as (e?: Error | null, c?: Buffer | null) => void),
+    );
+    proxy.onResponse((ctx, cb) => this.handleResponse(ctx, cb));
+    proxy.onResponseData((ctx, chunk, cb) =>
+      this.collectResData(ctx, chunk, cb as (e?: Error | null, c?: Buffer | null) => void),
+    );
     proxy.onResponseEnd((ctx, cb) => this.finalize(ctx, cb));
 
     await new Promise<void>((resolve, reject) => {
@@ -161,22 +176,90 @@ export class MitmProxyHost {
     if (matched?.rewriteRequest) {
       tx.modified = true;
       tx.mockId = matched.id;
-      const opts = ctx.proxyToServerRequestOptions;
-      if (opts && matched.rewriteRequest.headers) {
-        Object.assign(opts.headers, matched.rewriteRequest.headers);
-      }
+      this.applyRewriteRequest(ctx, tx, matched.rewriteRequest);
+    }
+
+    if (matched?.rewriteResponse) {
+      tx.modified = true;
+      tx.mockId = matched.id;
+      tx.rewriteResponse = matched.rewriteResponse;
     }
 
     callback();
   }
 
+  private applyRewriteRequest(ctx: any, tx: PendingTransaction, rewrite: RewriteRequest): void {
+    const opts = ctx.proxyToServerRequestOptions;
+    if (opts && rewrite.headers) {
+      Object.assign(opts.headers, rewrite.headers);
+    }
+
+    if (rewrite.body == null) return;
+
+    const replacement = this.serializeBody(rewrite.body) ?? '';
+    tx.rewriteRequestBody = replacement;
+
+    if (opts) {
+      opts.headers = opts.headers || {};
+      opts.headers['content-length'] = Buffer.byteLength(replacement);
+      const hasContentType = Object.keys(opts.headers).some(
+        (k) => k.toLowerCase() === 'content-type',
+      );
+      if (!hasContentType) opts.headers['content-type'] = 'application/json';
+    }
+
+    ctx.onRequestData((_ctx: any, _chunk: any, cb: any) => cb(null, null));
+    let written = false;
+    ctx.onRequestEnd((c: any, cb: any) => {
+      if (!written) {
+        written = true;
+        try {
+          c.proxyToServerRequest?.write(replacement);
+        } catch (e) {
+          this.logger.warn(
+            `[${this.opts.sessionId}] write rewriteRequest body failed: ${(e as Error).message}`,
+          );
+        }
+      }
+      cb();
+    });
+  }
+
+  // Visible for tests.
+  handleResponse(ctx: any, cb: (err?: Error | null) => void): void {
+    const tx: PendingTransaction | undefined = ctx.tags?.xenonTx;
+    const rewrite = tx?.rewriteResponse;
+    if (!tx || !rewrite) return cb();
+
+    const upstream = ctx.serverToProxyResponse;
+    if (upstream) {
+      if (rewrite.status != null) upstream.statusCode = rewrite.status;
+      if (rewrite.headers) {
+        upstream.headers = upstream.headers || {};
+        for (const k of Object.keys(rewrite.headers)) {
+          upstream.headers[k.toLowerCase()] = rewrite.headers[k];
+        }
+      }
+      // Body length will change; let chunked encoding handle framing.
+      if (rewrite.body != null || rewrite.bodyTransform) {
+        if (upstream.headers) delete upstream.headers['content-length'];
+      }
+    }
+    cb();
+  }
+
   private collectReqData(
     ctx: any,
     chunk: Buffer,
-    cb: (err?: Error | null, c?: Buffer) => void,
+    cb: (err?: Error | null, c?: Buffer | null) => void,
   ): void {
-    if (!this.opts.captureBodies) return cb(null, chunk);
     const tx: PendingTransaction | undefined = ctx.tags?.xenonTx;
+    // When the request body is being rewritten the original chunks are dropped here so
+    // they don't get captured (the replacement is captured in finalize); the per-ctx
+    // onRequestData handler set up in applyRewriteRequest is what stops them reaching
+    // the upstream server.
+    if (tx?.rewriteRequestBody != null) return cb(null, null);
+    if (!this.opts.captureBodies) return cb(null, chunk);
     if (tx) tx.reqBodyChunks.push(Buffer.from(chunk));
     cb(null, chunk);
   }
@@ -184,10 +267,19 @@ export class MitmProxyHost {
   private collectResData(
     ctx: any,
     chunk: Buffer,
-    cb: (err?: Error | null, c?: Buffer) => void,
+    cb: (err?: Error | null, c?: Buffer | null) => void,
   ): void {
-    if (!this.opts.captureBodies) return cb(null, chunk);
     const tx: PendingTransaction | undefined = ctx.tags?.xenonTx;
+    const rewriting =
+      tx?.rewriteResponse != null &&
+      (tx.rewriteResponse.body != null || tx.rewriteResponse.bodyTransform != null);
+    if (rewriting && tx) {
+      // Always buffer the upstream body for jsonMerge, even when captureBodies is off,
+      // because the transform needs to read it.
+      tx.resBodyChunks.push(Buffer.from(chunk));
+      return cb(null, null);
+    }
+    if (!this.opts.captureBodies) return cb(null, chunk);
     if (tx) tx.resBodyChunks.push(Buffer.from(chunk));
     cb(null, chunk);
   }
@@ -195,15 +287,44 @@ export class MitmProxyHost {
   private finalize(ctx: any, cb: (err?: Error | null) => void): void {
     const tx: PendingTransaction | undefined = ctx.tags?.xenonTx;
     if (!tx) return cb();
+
+    // Apply response body rewrite — happens before we read resBodyChunks for capture so
+    // the captured entry reflects what the client actually saw, not the upstream body.
+    if (
+      tx.rewriteResponse &&
+      (tx.rewriteResponse.body != null || tx.rewriteResponse.bodyTransform != null)
+    ) {
+      const original = tx.resBodyChunks.length
+        ? Buffer.concat(tx.resBodyChunks).toString('utf8')
+        : '';
+      const transformed = MitmProxyHost.applyResponseBodyTransform(tx.rewriteResponse, original);
+      try {
+        ctx.proxyToClientResponse?.write(transformed);
+      } catch (e) {
+        this.logger.warn(
+          `[${this.opts.sessionId}] write rewriteResponse body failed: ${(e as Error).message}`,
+        );
+      }
+      tx.resBodyChunks = [Buffer.from(transformed)];
+    }
+
+    // For request-body rewrite, capture the replacement (original chunks were dropped
+    // in collectReqData).
+    if (tx.rewriteRequestBody != null) {
+      tx.reqBodyChunks = [Buffer.from(tx.rewriteRequestBody)];
+    }
+
     const upstream = ctx.serverToProxyResponse;
     const status = upstream?.statusCode ?? 0;
     const headers = this.normalizeHeaders(upstream?.headers || {});
+    const captureReq = this.opts.captureBodies || tx.rewriteRequestBody != null;
+    const captureRes = this.opts.captureBodies || tx.rewriteResponse != null;
     const reqBody =
-      this.opts.captureBodies && tx.reqBodyChunks.length
+      captureReq && tx.reqBodyChunks.length
         ? Buffer.concat(tx.reqBodyChunks).toString('utf8')
         : null;
     const resBody =
-      this.opts.captureBodies && tx.resBodyChunks.length
+      captureRes && tx.resBodyChunks.length
         ? Buffer.concat(tx.resBodyChunks).toString('utf8')
         : null;
 
@@ -314,6 +435,39 @@ export class MitmProxyHost {
     this.sink(entry);
   }
 
+  // Visible for tests. Pure transform: produces the body that should replace the
+  // upstream response body. `original` is the upstream response body as utf8.
+  // - bodyTransform 'jsonMerge': shallow-merge a JSON patch object onto the parsed
+  //   original; if the original is not parseable JSON, fall through to replace.
+  // - bodyTransform 'replace' (or unset, with body provided): emit body as-is
+  //   (string) or JSON-stringified (object).
+  // - body unset: return original unchanged.
+  static applyResponseBodyTransform(rewrite: RewriteResponse, original: string): string {
+    if (rewrite.body == null && !rewrite.bodyTransform) return original;
+
+    if (rewrite.bodyTransform === 'jsonMerge' && rewrite.body != null) {
+      let origObj: any = null;
+      try {
+        origObj = original ? JSON.parse(original) : {};
+      } catch {
+        origObj = null;
+      }
+      if (origObj && typeof origObj === 'object') {
+        const patch =
+          typeof rewrite.body === 'string'
+            ? (safeJsonParse(rewrite.body) ?? rewrite.body)
+            : rewrite.body;
+        if (patch && typeof patch === 'object') {
+          return JSON.stringify({ ...origObj, ...(patch as Record<string, any>) });
+        }
+      }
+      // Fall through: original wasn't object-shaped, behave as 'replace'.
+    }
+
+    if (rewrite.body == null) return original;
+    return typeof rewrite.body === 'string' ? rewrite.body : JSON.stringify(rewrite.body);
+  }
+
   // Visible for tests. Returns null for kinds we don't surface.
   static classifyError(err: any, errorKind: string): string | null {
     switch (errorKind) {
@@ -350,5 +504,13 @@ export class MitmProxyHost {
     if (body == null) return null;
     if (typeof body === 'string') return body;
     return JSON.stringify(body);
+  }
+}
+
+function safeJsonParse(s: string): any {
+  try {
+    return JSON.parse(s);
+  } catch {
+    return null;
   }
 }
