@@ -1,5 +1,5 @@
 import { Proxy } from 'http-mitm-proxy';
-import { CapturedRequest, RequestSummary } from './types';
+import { CapturedRequest, FailureKind, RequestSummary } from './types';
 import { MockEngine } from './MockEngine';
 import { randomUUID } from 'crypto';
 import log from '../../logger';
@@ -29,9 +29,22 @@ interface PendingTransaction {
   mockId?: string;
 }
 
+const RECENT_CONNECT_RING = 20;
+const RECENT_CONNECT_TTL_MS = 30_000;
+
 export class MitmProxyHost {
   private proxy: Proxy | undefined;
   private logger = log.scope('MitmProxyHost');
+  // Tracks recent HTTPS CONNECT requests so we can attribute ctx-less TLS errors
+  // (HTTPS_CLIENT_ERROR / HTTPS_SERVER_ERROR / ON_CONNECT_ERROR / OPEN_HTTPS_SERVER_ERROR
+  // are all fired with ctx=null by http-mitm-proxy). `consumed` is flipped when an
+  // entry is used to attribute an error so concurrent CONNECTs that all fail don't
+  // collapse onto the single most-recent host — see handleProxyError.
+  private recentConnects: Array<{ host: string; ts: number; consumed: boolean }> = [];
+  // Dedupe key = `${host}|${errorKind}` — one stub capture per host-error combo per session.
+  // Bounded in practice by host cardinality (realistically O(10–50) per session), so no
+  // explicit eviction.
+  private failedKeys: Set<string> = new Set();
 
   constructor(
     private readonly opts: ProxyHostOptions,
@@ -43,8 +56,20 @@ export class MitmProxyHost {
     const proxy = new Proxy();
     this.proxy = proxy;
 
-    proxy.onError((_ctx, err) => {
-      this.logger.warn(`[${this.opts.sessionId}] proxy error: ${err?.message || err}`);
+    proxy.onConnect((req: any, _socket: any, _head: any, callback: () => void) => {
+      const host = String(req?.url || '').split(':')[0];
+      if (host) {
+        this.recentConnects.push({ host, ts: Date.now(), consumed: false });
+        if (this.recentConnects.length > RECENT_CONNECT_RING) this.recentConnects.shift();
+      }
+      callback();
+    });
+
+    proxy.onError((ctx: any, err: any, errorKind?: string) => {
+      this.logger.warn(
+        `[${this.opts.sessionId}] proxy error (${errorKind || 'UNKNOWN'}): ${err?.message || err}`,
+      );
+      this.handleProxyError(ctx, err, errorKind || 'UNKNOWN');
     });
 
     proxy.onRequest((ctx, callback) => this.handleRequest(ctx, callback));
@@ -231,6 +256,85 @@ export class MitmProxyHost {
       mockId: tx.mockId,
     };
     this.sink(entry);
+  }
+
+  // Visible for tests.
+  handleProxyError(ctx: any, err: any, errorKind: string): void {
+    const reason = MitmProxyHost.classifyError(err, errorKind);
+    if (!reason) return;
+    const kind = errorKind as FailureKind;
+
+    let host = '';
+    const ctxHost = ctx?.clientToProxyRequest?.headers?.host;
+    if (ctxHost) {
+      host = String(ctxHost).split(':')[0];
+    } else {
+      // ctx-less error path (e.g. HTTPS_CLIENT_ERROR — TLS handshake rejected by app).
+      // Walk the ring from most-recent → oldest, skipping entries already consumed by
+      // a previous error, and attribute to the first live entry inside the TTL window.
+      // This is heuristic: errors and CONNECTs aren't strictly LIFO across concurrent
+      // pipelines, so attribution may still be off when many CONNECTs interleave with
+      // many failures, but it's strictly better than always picking the newest.
+      const now = Date.now();
+      for (let i = this.recentConnects.length - 1; i >= 0; i--) {
+        const c = this.recentConnects[i];
+        if (c.consumed) continue;
+        if (now - c.ts > RECENT_CONNECT_TTL_MS) continue;
+        host = c.host;
+        c.consumed = true;
+        break;
+      }
+    }
+    if (!host) return;
+
+    const key = `${host}|${errorKind}`;
+    if (this.failedKeys.has(key)) return;
+    this.failedKeys.add(key);
+
+    const entry: CapturedRequest = {
+      id: randomUUID(),
+      sessionId: this.opts.sessionId,
+      ts: Date.now(),
+      method: 'CONNECT',
+      url: `https://${host}`,
+      host,
+      path: '',
+      reqHeaders: {},
+      reqBody: null,
+      resStatus: -1,
+      resHeaders: {},
+      resBody: null,
+      durationMs: 0,
+      mocked: false,
+      modified: false,
+      failed: true,
+      failureReason: reason,
+      failureKind: kind,
+    };
+    this.sink(entry);
+  }
+
+  // Visible for tests. Returns null for kinds we don't surface.
+  static classifyError(err: any, errorKind: string): string | null {
+    switch (errorKind) {
+      case 'HTTPS_CLIENT_ERROR':
+        return 'HTTPS handshake rejected by app — proxy cert is not trusted (Android 7+ apps must opt in via network_security_config.xml)';
+      case 'HTTPS_SERVER_ERROR':
+        return 'HTTPS server-side error during TLS handshake';
+      case 'OPEN_HTTPS_SERVER_ERROR':
+        return 'Failed to open HTTPS endpoint for host';
+      case 'ON_CONNECT_ERROR':
+        return 'CONNECT tunnel could not be established';
+      case 'PROXY_TO_SERVER_REQUEST_ERROR': {
+        const code = err?.code;
+        if (code === 'ENOTFOUND') return 'DNS lookup failed';
+        if (code === 'ECONNREFUSED') return 'Upstream connection refused';
+        if (code === 'ETIMEDOUT') return 'Upstream connection timed out';
+        return `Upstream connection failed${code ? ` (${String(code)})` : ''}`;
+      }
+      default:
+        return null;
+    }
   }
 
   private normalizeHeaders(h: Record<string, any>): Record<string, string> {

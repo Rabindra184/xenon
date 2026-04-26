@@ -1,7 +1,7 @@
 import React from 'react';
 import { Modal } from '../ui/Modal';
 import { Pill } from '../ui/Pill';
-import type { CapturedRequest } from '../../api-service/interceptor';
+import { shortFailureLabel, type CapturedRequest } from '../../api-service/interceptor';
 
 interface Props {
   request: CapturedRequest | null;
@@ -56,7 +56,11 @@ export const NetworkRequestModal: React.FC<Props> = ({ request, onClose }) => {
   const title = (
     <div className="flex items-center gap-2 text-sm">
       <Pill tone="accent">{request.method}</Pill>
-      <Pill tone={statusTone(request.resStatus)}>{request.resStatus || '—'}</Pill>
+      {request.failed ? (
+        <Pill tone="error">{shortFailureLabel(request.failureKind)}</Pill>
+      ) : (
+        <Pill tone={statusTone(request.resStatus)}>{request.resStatus || '—'}</Pill>
+      )}
       <span className="font-mono text-xs truncate" title={request.url}>
         {request.url}
       </span>
@@ -66,26 +70,42 @@ export const NetworkRequestModal: React.FC<Props> = ({ request, onClose }) => {
   return (
     <Modal open={!!request} title={title} onClose={onClose} width={720}>
       <div className="space-y-4 text-xs">
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <div className="text-[var(--text-dim)] uppercase tracking-wide text-[10px] mb-1">
-              Duration
+        {request.failed && (
+          <div className="border border-[var(--red,#dc2626)] rounded p-2 bg-[var(--red-soft,rgba(220,38,38,0.08))]">
+            <div className="text-[var(--red,#dc2626)] uppercase tracking-wide text-[10px] mb-1">
+              Failure
             </div>
-            <div className="font-mono">{request.durationMs} ms</div>
+            <div className="text-xs">{request.failureReason || 'Request failed'}</div>
+            {request.failureKind && (
+              <div className="font-mono text-[10px] text-[var(--text-dim)] mt-1">
+                {request.failureKind}
+              </div>
+            )}
           </div>
-          <div>
-            <div className="text-[var(--text-dim)] uppercase tracking-wide text-[10px] mb-1">
-              Flags
+        )}
+
+        {!request.failed && (
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <div className="text-[var(--text-dim)] uppercase tracking-wide text-[10px] mb-1">
+                Duration
+              </div>
+              <div className="font-mono">{request.durationMs} ms</div>
             </div>
-            <div className="flex gap-1">
-              {request.mocked && <Pill tone="accent">mocked</Pill>}
-              {request.modified && <Pill tone="busy">modified</Pill>}
-              {!request.mocked && !request.modified && (
-                <span className="text-[var(--text-dim)]">passthrough</span>
-              )}
+            <div>
+              <div className="text-[var(--text-dim)] uppercase tracking-wide text-[10px] mb-1">
+                Flags
+              </div>
+              <div className="flex gap-1">
+                {request.mocked && <Pill tone="accent">mocked</Pill>}
+                {request.modified && <Pill tone="busy">modified</Pill>}
+                {!request.mocked && !request.modified && (
+                  <span className="text-[var(--text-dim)]">passthrough</span>
+                )}
+              </div>
             </div>
           </div>
-        </div>
+        )}
 
         {request.commandHint && (
           <div>
@@ -96,33 +116,37 @@ export const NetworkRequestModal: React.FC<Props> = ({ request, onClose }) => {
           </div>
         )}
 
-        <div>
-          <div className="text-[var(--text-dim)] uppercase tracking-wide text-[10px] mb-1">
-            Request Headers
-          </div>
-          <HeaderList headers={request.reqHeaders} />
-        </div>
+        {!request.failed && (
+          <>
+            <div>
+              <div className="text-[var(--text-dim)] uppercase tracking-wide text-[10px] mb-1">
+                Request Headers
+              </div>
+              <HeaderList headers={request.reqHeaders} />
+            </div>
 
-        <div>
-          <div className="text-[var(--text-dim)] uppercase tracking-wide text-[10px] mb-1">
-            Request Body
-          </div>
-          <BodyBlock body={request.reqBody} />
-        </div>
+            <div>
+              <div className="text-[var(--text-dim)] uppercase tracking-wide text-[10px] mb-1">
+                Request Body
+              </div>
+              <BodyBlock body={request.reqBody} />
+            </div>
 
-        <div>
-          <div className="text-[var(--text-dim)] uppercase tracking-wide text-[10px] mb-1">
-            Response Headers
-          </div>
-          <HeaderList headers={request.resHeaders} />
-        </div>
+            <div>
+              <div className="text-[var(--text-dim)] uppercase tracking-wide text-[10px] mb-1">
+                Response Headers
+              </div>
+              <HeaderList headers={request.resHeaders} />
+            </div>
 
-        <div>
-          <div className="text-[var(--text-dim)] uppercase tracking-wide text-[10px] mb-1">
-            Response Body
-          </div>
-          <BodyBlock body={request.resBody} />
-        </div>
+            <div>
+              <div className="text-[var(--text-dim)] uppercase tracking-wide text-[10px] mb-1">
+                Response Body
+              </div>
+              <BodyBlock body={request.resBody} />
+            </div>
+          </>
+        )}
       </div>
     </Modal>
   );

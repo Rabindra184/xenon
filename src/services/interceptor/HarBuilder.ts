@@ -57,7 +57,9 @@ export function buildHar(requests: CapturedRequest[], sessionId: string): HarDoc
         version: '1.0',
         comment: `session=${sessionId}`,
       },
-      entries: requests.map((r) => toEntry(r)),
+      // Failed entries (TLS rejections, DNS failures, etc.) have no real response
+      // and aren't replayable, so they're excluded from HAR export.
+      entries: requests.filter((r) => !r.failed).map((r) => toEntry(r)),
     },
   };
 }
