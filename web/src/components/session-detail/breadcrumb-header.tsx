@@ -2,6 +2,7 @@ import React from 'react';
 import { ArrowLeft, Copy, ChevronRight } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { useToast } from '../ui/toast';
+import { BugReportButton } from '../bug-report/BugReportButton';
 
 interface Props {
   buildId: string;
@@ -51,6 +52,9 @@ export const BreadcrumbHeader: React.FC<Props> = ({ buildId, buildName, sessionI
       >
         <Copy className="h-3 w-3" />
       </button>
+      <div className="ml-auto">
+        <BugReportButton sessionId={sessionId} mode="full" variant="inline" />
+      </div>
     </header>
   );
 };

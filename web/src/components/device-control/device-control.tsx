@@ -33,6 +33,7 @@ import { useToast } from '../ui/toast';
 import './device-control.css';
 import { Terminal } from '../terminal/terminal';
 import OmniInspector from '../omni-inspector/OmniInspector';
+import { BugReportButton } from '../bug-report/BugReportButton';
 
 interface DeviceControlProps {
   device: IDevice;
@@ -1156,6 +1157,15 @@ export default function DeviceControl({ device, onClose }: DeviceControlProps) {
           </div>
         </div>
       </div>
+      {currentDevice.session_id &&
+        !String(currentDevice.session_id).startsWith('manual_') && (
+          <BugReportButton
+            sessionId={String(currentDevice.session_id)}
+            mode="slice"
+            windowSec={60}
+            variant="floating"
+          />
+        )}
     </div>
   );
 }

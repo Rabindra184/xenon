@@ -3079,3 +3079,45 @@ export {};
  *       401: { $ref: '#/components/responses/Unauthorized' }
  *       429: { $ref: '#/components/responses/RateLimited' }
  */
+
+// =============================================================================
+// Bug Report — one-click bundling of session artifacts
+// =============================================================================
+
+/**
+ * @swagger
+ * /api/sessions/{sessionId}/bug-report:
+ *   post:
+ *     summary: Generate a bug-report bundle for a session
+ *     description: |
+ *       Streams a zip archive containing the session's video, logs, HAR, AI
+ *       summary, and a manifest.json. In `slice` mode the video is trimmed to
+ *       the last `windowSec` seconds (default 60). In `full` mode the entire
+ *       session is included verbatim.
+ *     tags: [Sessions]
+ *     parameters:
+ *       - in: path
+ *         name: sessionId
+ *         required: true
+ *         schema: { type: string }
+ *       - in: query
+ *         name: mode
+ *         required: true
+ *         schema: { type: string, enum: [slice, full] }
+ *       - in: query
+ *         name: windowSec
+ *         required: false
+ *         schema: { type: integer, minimum: 5, maximum: 600, default: 60 }
+ *         description: Slice window length in seconds. Ignored when mode=full.
+ *     responses:
+ *       200:
+ *         description: zip archive
+ *         content:
+ *           application/zip:
+ *             schema: { type: string, format: binary }
+ *       400: { $ref: '#/components/responses/BadRequest' }
+ *       401: { $ref: '#/components/responses/Unauthorized' }
+ *       403: { $ref: '#/components/responses/Forbidden' }
+ *       404: { $ref: '#/components/responses/NotFound' }
+ *       429: { $ref: '#/components/responses/RateLimited' }
+ */
