@@ -24,6 +24,7 @@ const sidebars: SidebarsConfig = {
         'enterprise-security',
         'notifications',
         'network-conditioning',
+        'network-interceptor',
         'retention',
         'cloud',
       ],
