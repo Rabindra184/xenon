@@ -39,8 +39,20 @@ describe('XenonCapabilityManager.getXenonCapabilities — interceptor activation
     expect(out[XENON_CAPABILITIES.INTERCEPTOR_BUFFER_SIZE]).to.equal(250);
   });
 
+  it('activates via flat alias inside `xenon:options` (interceptorEnabled)', () => {
+    const out = getXenonCapabilities(caps({ 'xenon:options': { interceptorEnabled: true } }));
+    expect(out[XENON_CAPABILITIES.INTERCEPTOR_ENABLED]).to.equal(true);
+  });
+
   it('treats no interceptor cap as disabled', () => {
     const out = getXenonCapabilities(caps({}));
     expect(out[XENON_CAPABILITIES.INTERCEPTOR_ENABLED]).to.equal(false);
+  });
+
+  it('does not throw when firstMatch is missing entirely', () => {
+    const malformed = { alwaysMatch: { interceptor: { enabled: true } } } as any;
+    expect(() => getXenonCapabilities(malformed)).to.not.throw();
+    const out = getXenonCapabilities(malformed);
+    expect(out[XENON_CAPABILITIES.INTERCEPTOR_ENABLED]).to.equal(true);
   });
 });

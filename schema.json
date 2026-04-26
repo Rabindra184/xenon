@@ -408,7 +408,7 @@
                 "enabled": {
                     "type": "boolean",
                     "default": false,
-                    "description": "Enable the network interceptor. Sessions still need xenon:options.interceptor.enabled=true (or interceptorEnabled cap) to be intercepted."
+                    "description": "Enable the network interceptor. Sessions still need to opt in via any of: xenon:options.interceptor.enabled=true, xe:interceptor.enabled=true, appium:interceptor.enabled=true, a bare interceptor.enabled=true cap, or the flat interceptorEnabled cap."
                 },
                 "bufferSize": {
                     "type": "number",

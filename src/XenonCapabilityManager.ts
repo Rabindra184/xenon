@@ -161,7 +161,7 @@ export function extractAccessKeyCap(caps: ISessionCapability): string | undefine
 }
 
 export function getXenonCapabilities(caps: ISessionCapability) {
-  const mergedCapabilites = Object.assign({}, caps.firstMatch[0], caps.alwaysMatch);
+  const mergedCapabilites = Object.assign({}, caps.firstMatch?.[0] ?? {}, caps.alwaysMatch);
 
   const getAnyCap = (snake: string, camel: string) => {
     // Strict prefix resolution: xe:, appium:, no-prefix — snake_case + camelCase fallbacks.
