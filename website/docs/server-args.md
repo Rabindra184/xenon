@@ -145,6 +145,24 @@ Below is the definitive list of all Xenon configuration parameters.
 | `healthCheckIntervalMs`| `--plugin-xenon-health-check-interval-ms`| No | Number | `86400000` | Frequency of device health audits |
 | `sessionHeartbeatIntervalMs`| `--plugin-xenon-session-heartbeat-interval-ms`| No | Number | `30000` | Session health check frequency |
 | `enableJsonLogging` | `--plugin-xenon-enable-json-logging` | No | Boolean | `false` | Format logs as structured JSON |
+| `healthCheckSchedule` | `--plugin-xenon-health-check-schedule` | No | Cron String | — | Cron form for health-check job; takes precedence over `healthCheckIntervalMs` when set |
+| `deviceAvailabilityQueryIntervalMs` | `--plugin-device-availability-query-interval-ms` | No | Number | `10000` | Poll interval (ms) while a session waits for a free device |
+| `bootedEmulators` | `--plugin-xenon-booted-emulators` | No | Boolean | `false` | Discover only Android emulators that are already booted |
+| `simulators` | `--plugin-xenon-simulators` | No | Array | `[]` (all) | Allow-list of iOS simulators (name + sdk). Empty = expose all. |
+| `emulators` | `--plugin-xenon-emulators` | No | Array | `[]` (all) | Allow-list of Android emulator AVDs. Empty = expose all. |
+| `adbRemote` | `--plugin-xenon-adb-remote` | No | Array | `[]` | Remote ADB hosts in `host:port` form for cross-machine device discovery |
+| `removeDevicesFromDatabaseBeforeRunningThePlugin` | `--plugin-xenon-remove-devices-...` | No | Boolean | `false` | Wipe persisted Device table at startup (clean-slate discovery) |
+| **Network Interceptor** | | | | | |
+| `interceptor` | — (config-file only, object) | No | Object | None | Server-level interceptor defaults. See [Network Interceptor](network-interceptor.md) for the per-session capability. Object members: `enabled`, `bufferSize`, `captureBodies`, `includeHosts`, `excludeHosts`, `mocks`. |
+| **Security** | | | | | |
+| `authDisabled` | `--plugin-xenon-auth-disabled` | No | Boolean | `false` | Disable API-key auth on `/xenon/api/*`. **Local dev only.** |
+| `nodeSecret` | `--plugin-xenon-node-secret` | No | String | — | Shared secret for hub-node channel auth; nodes send it in `X-Xenon-Node-Secret`. |
+| `tlsRejectUnauthorized` | `--plugin-xenon-tls-reject-unauthorized` | No | Boolean | `true` | Verify TLS certs for internal outgoing requests. Set `false` only for dev/test. |
+| **Hub-Node Tuning** | | | | | |
+| `sendNodeDevicesToHubIntervalMs` | `--plugin-xenon-send-node-devices-...` | No | Number | `30000` | How often (ms) a node pushes its device list to the hub |
+| `checkStaleDevicesIntervalMs` | `--plugin-xenon-check-stale-devices-...` | No | Number | `30000` | How often (ms) the hub prunes silent nodes |
+| `checkBlockedDevicesIntervalMs` | `--plugin-xenon-check-blocked-devices-...` | No | Number | `30000` | Cadence for re-evaluating manually-blocked devices |
+| `remoteMachineProxyIP` | `--plugin-xenon-remote-machine-proxy-ip` | No | String | — | Public host/URL clients should use to reach this node when behind a proxy |
 
 ---
 

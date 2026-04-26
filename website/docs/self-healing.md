@@ -92,6 +92,19 @@ Etalon learning only activates above 70% confidence to prevent pollution from fa
 
 ---
 
+## Closing the loop — Selector Health
+
+Healing keeps tests passing through breakages, but it isn't a substitute for fixing selectors in source. Xenon tracks every healed selector in a lightweight state machine — **Active → Pending → Resolved**, with **Muted** as a sidebar — so teams can see which selectors are quietly costing them, mark fixes, and get automatic confirmation that the fixes held across CI builds.
+
+When a heal happens:
+- The `(strategy, selector)` tuple shows up in the **Selector Health** dashboard, ranked by frequency.
+- A developer can click **Mark as Fixed**; Xenon then watches subsequent CI builds and promotes the selector to **Resolved** after 3 clean runs.
+- If a "fixed" selector heals again, it auto-regresses to **Active** and the dashboard surfaces a banner.
+
+→ **[Full Selector Health documentation](selector-health.md)**
+
+---
+
 ## Requirements
 
 - **Tiers 1–3**: Work out of the box with no configuration

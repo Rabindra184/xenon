@@ -15,6 +15,7 @@ hide:
 | Pillar | Description |
 |--------|-------------|
 | **[Self-Healing Engine](self-healing.md)** | 5-tier cascading locator repair: ResilioTree → FuzzyXML → OCR → Visual AI → LLM |
+| **[Selector Health](selector-health.md)** | Lifecycle dashboard: triage healed selectors, mark fixes, auto-verify across CI, detect regressions |
 | **[AI Diagnostics](ai-features.md)** | Multimodal root-cause analysis with Gemini, OpenAI, Anthropic, or Ollama |
 | **[Enterprise Observability](architecture.md#omniscient-observability-opentelemetry)** | Native OpenTelemetry integration for distributed tracing across nodes |
 | **[Omni-Vision](omni-vision.md)** | Florence-2 powered visual element detection and assertion + Omni‑Interaction (`smartTap`, `uiInventory`) |
@@ -28,6 +29,7 @@ hide:
 - **Auto-Discovery** — Instant detection of Android devices, iOS Simulators, and Real devices
 - **Smart Allocation** — Priority-based device allocation for parallel execution
 - **[Network Conditioning](network-conditioning.md)** — Simulate 4G, 3G, Edge, and Offline conditions
+- **[Network Interceptor](network-interceptor.md)** — Capture, mock, and rewrite HTTP/HTTPS traffic per session (Android)
 - **[Webhook Notifications](notifications.md)** — Slack and HTTP alerts for device/session events
 - **[Data Retention](retention.md)** — Automated cleanup with configurable policies
 - **Runtime Elasticity** — Hot-reload configurations without disrupting live sessions

@@ -104,6 +104,22 @@ Successful healings are autonomously learned via the Etalon Service to prevent r
 
 → **[Full Self-Healing Documentation](self-healing.md)**
 
+### Selector Lifecycle State Machine {#selector-health}
+
+Healed selectors are tracked in a small state machine — `Active → Pending → Resolved`, with `Muted` as a side state — driven by three forces:
+
+- **User actions** (`mark_fixed`, `mute`, `unmute`, `cancel_verification`) hit `POST /xenon/api/healing/selector/state` and update the row plus emit a Socket.IO event.
+- **Verifier cron** (default 15 min) scans `Pending` rows; promotes to `Resolved` after 3 distinct clean CI builds.
+- **Heal write path** flips `Pending`/`Resolved` rows back to `Active` on regression, increments `regression_count`, and emits `selector_regressed`.
+
+→ **[Selector Health Documentation](selector-health.md)**
+
+### Network Interceptor {#network-interceptor}
+
+An in-process MITM proxy attached per-session for Android targets. Captures every HTTP/HTTPS request, supports inline `respondWith` / `rewriteRequest` / `rewriteResponse` mocks, host-level allow/deny filters, and TLS-handshake failure attribution. Real devices are routed via `adb reverse` over the adb transport itself, so the integration works through NAT, hotel WiFi, and CI runners without LAN setup. Captured traffic is exported as HAR 1.2 and persists past session end.
+
+→ **[Network Interceptor Documentation](network-interceptor.md)**
+
 ## AI Root-Cause Analysis {#ai-diagnostics}
 
 When a failure is unrecoverable, Xenon triggers a multimodal analysis pipeline using **Gemini**, **OpenAI**, **Anthropic**, or **Ollama**:
