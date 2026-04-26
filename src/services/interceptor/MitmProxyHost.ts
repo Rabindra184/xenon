@@ -65,11 +65,7 @@ export class MitmProxyHost {
     this.proxy = proxy;
 
     proxy.onConnect((req: any, _socket: any, _head: any, callback: () => void) => {
-      const host = String(req?.url || '').split(':')[0];
-      if (host) {
-        this.recentConnects.push({ host, ts: Date.now(), consumed: false });
-        if (this.recentConnects.length > RECENT_CONNECT_RING) this.recentConnects.shift();
-      }
+      this.recordConnect(req?.url);
       callback();
     });
 
@@ -377,6 +373,16 @@ export class MitmProxyHost {
       mockId: tx.mockId,
     };
     this.sink(entry);
+  }
+
+  // Visible for tests. Records the host portion of an HTTPS CONNECT so we can
+  // attribute later ctx-less TLS errors to it. Bounded ring of RECENT_CONNECT_RING
+  // entries; oldest evicted on overflow. Empty / missing URLs are dropped silently.
+  recordConnect(rawUrl: string | undefined | null): void {
+    const host = String(rawUrl || '').split(':')[0];
+    if (!host) return;
+    this.recentConnects.push({ host, ts: Date.now(), consumed: false });
+    if (this.recentConnects.length > RECENT_CONNECT_RING) this.recentConnects.shift();
   }
 
   // Visible for tests.

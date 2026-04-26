@@ -268,6 +268,155 @@ describe('MitmProxyHost.handleProxyError', () => {
   });
 });
 
+describe('MitmProxyHost.recordConnect', () => {
+  it('records the host portion of a CONNECT URL into the ring', () => {
+    const { host } = makeHost();
+    host.recordConnect('api.example.com:443');
+    const ring = (host as any).recentConnects;
+    expect(ring).to.have.length(1);
+    expect(ring[0].host).to.equal('api.example.com');
+    expect(ring[0].consumed).to.equal(false);
+  });
+
+  it('strips port from host:port', () => {
+    const { host } = makeHost();
+    host.recordConnect('cdn.example.com:8443');
+    expect((host as any).recentConnects[0].host).to.equal('cdn.example.com');
+  });
+
+  it('ignores empty CONNECT URLs (no ring push)', () => {
+    const { host } = makeHost();
+    host.recordConnect('');
+    host.recordConnect(undefined);
+    host.recordConnect(null);
+    expect((host as any).recentConnects).to.have.length(0);
+  });
+
+  // Tied to RECENT_CONNECT_RING in the source. If that constant changes, update here.
+  it('caps the ring at 20 entries and evicts oldest on overflow', () => {
+    const { host } = makeHost();
+    for (let i = 0; i < 25; i++) host.recordConnect(`h${i}.example.com:443`);
+    const ring = (host as any).recentConnects;
+    expect(ring).to.have.length(20);
+    // oldest five (h0..h4) should be gone; h5 is now the eldest, h24 the newest
+    expect(ring[0].host).to.equal('h5.example.com');
+    expect(ring[ring.length - 1].host).to.equal('h24.example.com');
+  });
+});
+
+describe('MitmProxyHost.handleProxyError ring edge cases', () => {
+  it('drops the error when every recent CONNECT is already consumed', () => {
+    const { host, emitted } = makeHost();
+    (host as any).recentConnects.push(
+      { host: 'a.example.com', ts: Date.now(), consumed: true },
+      { host: 'b.example.com', ts: Date.now(), consumed: true },
+    );
+    host.handleProxyError(null, new Error('x'), 'HTTPS_CLIENT_ERROR');
+    expect(emitted).to.have.length(0);
+  });
+
+  it('attributes ctx-bearing errors without consuming ring entries', () => {
+    // Regression guard: ctx-bearing errors take their host from the request and must
+    // not touch the ring — otherwise a normal failed lookup would silently consume a
+    // slot meant for a parallel ctx-less attribution.
+    const { host, emitted } = makeHost();
+    (host as any).recentConnects.push({ host: 'tls.example.com', ts: Date.now(), consumed: false });
+
+    host.handleProxyError(
+      { clientToProxyRequest: { headers: { host: 'dns.example.com' } } },
+      { code: 'ENOTFOUND' },
+      'PROXY_TO_SERVER_REQUEST_ERROR',
+    );
+
+    expect(emitted).to.have.length(1);
+    expect(emitted[0].host).to.equal('dns.example.com');
+    expect((host as any).recentConnects[0].consumed).to.equal(false);
+
+    // The ring entry should still be available for a subsequent ctx-less error.
+    host.handleProxyError(null, new Error('handshake'), 'HTTPS_CLIENT_ERROR');
+    expect(emitted).to.have.length(2);
+    expect(emitted[1].host).to.equal('tls.example.com');
+  });
+
+  // Tied to RECENT_CONNECT_TTL_MS in the source. If that constant changes, update here.
+  it('honors the TTL boundary: entry exactly at the cutoff is still attributed', () => {
+    const { host, emitted } = makeHost();
+    (host as any).recentConnects.push({
+      host: 'edge.example.com',
+      // strict `>` in the source means equal-to-TTL is still attributable
+      ts: Date.now() - 30_000,
+      consumed: false,
+    });
+    host.handleProxyError(null, new Error('x'), 'HTTPS_CLIENT_ERROR');
+    expect(emitted).to.have.length(1);
+    expect(emitted[0].host).to.equal('edge.example.com');
+  });
+
+  it('honors the TTL boundary: entry one ms past the cutoff is skipped', () => {
+    const { host, emitted } = makeHost();
+    (host as any).recentConnects.push({
+      host: 'stale.example.com',
+      ts: Date.now() - 30_001,
+      consumed: false,
+    });
+    host.handleProxyError(null, new Error('x'), 'HTTPS_CLIENT_ERROR');
+    expect(emitted).to.have.length(0);
+  });
+
+  it('attributes correctly even after ring overflow evicts older hosts', () => {
+    const { host, emitted } = makeHost();
+    // 25 distinct CONNECTs — first 5 evicted, last 20 retained
+    for (let i = 0; i < 25; i++) host.recordConnect(`h${i}.example.com:443`);
+
+    // 20 ctx-less errors of the same kind to distinct hosts: each consumes one
+    // unconsumed entry from the ring, walking newest-to-oldest.
+    for (let i = 0; i < 20; i++) {
+      host.handleProxyError(null, new Error('x'), 'HTTPS_CLIENT_ERROR');
+    }
+
+    // We should attribute exactly 20 errors, all to retained hosts (h5..h24).
+    expect(emitted).to.have.length(20);
+    const attributed = new Set(emitted.map((e) => e.host));
+    for (let i = 5; i < 25; i++) expect(attributed.has(`h${i}.example.com`)).to.equal(true);
+    for (let i = 0; i < 5; i++) expect(attributed.has(`h${i}.example.com`)).to.equal(false);
+  });
+
+  it('intentionally collapses parallel same-(host, kind) ctx-less failures to one capture', () => {
+    // Documenting current behavior as a UX choice, not a bug: when many concurrent
+    // CONNECTs to the same host all fail the TLS handshake the same way, the network
+    // panel shows ONE row, not N. If we ever change this (e.g. show a count), this
+    // test should be updated together with the change.
+    const { host, emitted } = makeHost();
+    for (let i = 0; i < 5; i++) host.recordConnect('api.example.com:443');
+    for (let i = 0; i < 5; i++) {
+      host.handleProxyError(null, new Error('x'), 'HTTPS_CLIENT_ERROR');
+    }
+    expect(emitted).to.have.length(1);
+    expect(emitted[0].host).to.equal('api.example.com');
+    // All five ring entries get consumed even though only one capture is emitted.
+    // That is wasteful but harmless; documenting the current shape, not endorsing it.
+    const consumed = (host as any).recentConnects.filter((c: any) => c.consumed).length;
+    expect(consumed).to.equal(5);
+  });
+
+  it('reports distinct kinds separately even when ring entries are exhausted', () => {
+    const { host, emitted } = makeHost();
+    (host as any).recentConnects.push({
+      host: 'api.example.com',
+      ts: Date.now(),
+      consumed: false,
+    });
+    // First ctx-less error consumes the only entry and emits.
+    host.handleProxyError(null, new Error('x'), 'HTTPS_CLIENT_ERROR');
+    // Second ctx-less error of a different kind has no unconsumed entry to claim,
+    // so it drops — even though logically the host is the same. Documenting that
+    // distinct-kind attribution requires a fresh ring entry.
+    host.handleProxyError(null, { code: 'ENOTFOUND' }, 'PROXY_TO_SERVER_REQUEST_ERROR');
+    expect(emitted).to.have.length(1);
+    expect(emitted[0].failureKind).to.equal('HTTPS_CLIENT_ERROR');
+  });
+});
+
 describe('MitmProxyHost.applyResponseBodyTransform', () => {
   it('replaces with provided string body when bodyTransform is "replace"', () => {
     const out = MitmProxyHost.applyResponseBodyTransform(
