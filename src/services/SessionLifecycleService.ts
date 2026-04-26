@@ -435,6 +435,8 @@ export class SessionLifecycleService {
           bufferSize: caps[XENON_CAPABILITIES.INTERCEPTOR_BUFFER_SIZE],
           captureBodies: caps[XENON_CAPABILITIES.INTERCEPTOR_CAPTURE_BODIES] !== false,
           mocks: caps[XENON_CAPABILITIES.INTERCEPTOR_MOCKS] || [],
+          includeHosts: caps[XENON_CAPABILITIES.INTERCEPTOR_INCLUDE_HOSTS] || [],
+          excludeHosts: caps[XENON_CAPABILITIES.INTERCEPTOR_EXCLUDE_HOSTS] || [],
         });
       } catch (err: any) {
         this.logger.warn(`🕸️ Failed to start interceptor for ${session.getId()}: ${err.message}`);

@@ -84,4 +84,11 @@ export interface InterceptorOptions {
   bufferSize?: number;
   captureBodies?: boolean;
   mocks?: Mock[];
+  // Capture-time host filtering (does not affect mock matching). Both lists
+  // accept exact strings or globs (* = one DNS label, ** = zero or more).
+  // - includeHosts: when present, only matching hosts are captured.
+  // - excludeHosts: when present, matching hosts are dropped.
+  // - Both can apply: include narrows, exclude carves out.
+  includeHosts?: string[];
+  excludeHosts?: string[];
 }

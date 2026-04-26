@@ -31,6 +31,8 @@ export enum XENON_CAPABILITIES {
   INTERCEPTOR_BUFFER_SIZE = 'interceptor_buffer_size',
   INTERCEPTOR_CAPTURE_BODIES = 'interceptor_capture_bodies',
   INTERCEPTOR_MOCKS = 'interceptor_mocks',
+  INTERCEPTOR_INCLUDE_HOSTS = 'interceptor_include_hosts',
+  INTERCEPTOR_EXCLUDE_HOSTS = 'interceptor_exclude_hosts',
 }
 
 // W3C lets clients omit firstMatch (default [{}]). Normalize-and-return so write
@@ -56,7 +58,8 @@ export async function androidCapabilities(caps: ISessionCapability, freeDevice: 
   fm['appium:chromeDriverPort'] = await getPort();
   fm['appium:adbRemoteHost'] = freeDevice.adbRemoteHost;
   fm['appium:adbPort'] = freeDevice.adbPort;
-  if (freeDevice.chromeDriverPath) fm['appium:chromedriverExecutable'] = freeDevice.chromeDriverPath;
+  if (freeDevice.chromeDriverPath)
+    fm['appium:chromedriverExecutable'] = freeDevice.chromeDriverPath;
   if (!isCapabilityAlreadyPresent(caps, 'appium:mjpegServerPort')) {
     fm['appium:mjpegServerPort'] = await getPort();
   }
@@ -256,6 +259,16 @@ export function getXenonCapabilities(caps: ISessionCapability) {
     capabilities[XENON_CAPABILITIES.INTERCEPTOR_MOCKS] = Array.isArray(interceptorObj.mocks)
       ? interceptorObj.mocks
       : [];
+    capabilities[XENON_CAPABILITIES.INTERCEPTOR_INCLUDE_HOSTS] = Array.isArray(
+      interceptorObj.includeHosts,
+    )
+      ? interceptorObj.includeHosts
+      : [];
+    capabilities[XENON_CAPABILITIES.INTERCEPTOR_EXCLUDE_HOSTS] = Array.isArray(
+      interceptorObj.excludeHosts,
+    )
+      ? interceptorObj.excludeHosts
+      : [];
   } else {
     const enabledFlat = getAnyCap(XENON_CAPABILITIES.INTERCEPTOR_ENABLED, 'interceptorEnabled');
     capabilities[XENON_CAPABILITIES.INTERCEPTOR_ENABLED] =
@@ -266,6 +279,20 @@ export function getXenonCapabilities(caps: ISessionCapability) {
     );
     capabilities[XENON_CAPABILITIES.INTERCEPTOR_CAPTURE_BODIES] = true;
     capabilities[XENON_CAPABILITIES.INTERCEPTOR_MOCKS] = [];
+    const includeFlat = getAnyCap(
+      XENON_CAPABILITIES.INTERCEPTOR_INCLUDE_HOSTS,
+      'interceptorIncludeHosts',
+    );
+    const excludeFlat = getAnyCap(
+      XENON_CAPABILITIES.INTERCEPTOR_EXCLUDE_HOSTS,
+      'interceptorExcludeHosts',
+    );
+    capabilities[XENON_CAPABILITIES.INTERCEPTOR_INCLUDE_HOSTS] = Array.isArray(includeFlat)
+      ? includeFlat
+      : [];
+    capabilities[XENON_CAPABILITIES.INTERCEPTOR_EXCLUDE_HOSTS] = Array.isArray(excludeFlat)
+      ? excludeFlat
+      : [];
   }
 
   log.debug(
