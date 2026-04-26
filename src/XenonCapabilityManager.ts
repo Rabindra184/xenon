@@ -164,8 +164,9 @@ export function getXenonCapabilities(caps: ISessionCapability) {
   const mergedCapabilites = Object.assign({}, caps.firstMatch[0], caps.alwaysMatch);
 
   const getAnyCap = (snake: string, camel: string) => {
-    // Principal Intelligence: Strict Prefix Resolution
-    // Supports only xe:, appium: and no-prefix, with snake_case and camelCase fallbacks.
+    // Strict prefix resolution: xe:, appium:, no-prefix — snake_case + camelCase fallbacks.
+    // Also accept the namespaced `xenon:options.<name>` form, which is how other Appium
+    // plugins document nested options and what most users naturally try first.
     const prefixes = ['xe:', 'appium:', ''];
     const names = [snake, camel];
 
@@ -173,6 +174,13 @@ export function getXenonCapabilities(caps: ISessionCapability) {
       for (const name of names) {
         const key = prefix ? `${prefix}${name}` : name;
         if (mergedCapabilites[key] !== undefined) return mergedCapabilites[key];
+      }
+    }
+
+    const xenonOptions = mergedCapabilites[XENON_CAPABILITIES.XENON_OPTIONS];
+    if (xenonOptions && typeof xenonOptions === 'object') {
+      for (const name of names) {
+        if (xenonOptions[name] !== undefined) return xenonOptions[name];
       }
     }
     return undefined;
