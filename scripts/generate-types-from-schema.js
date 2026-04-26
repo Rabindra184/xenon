@@ -15,6 +15,7 @@ async function generate() {
         // This keeps the runtime schema.json simple and compatible with Appium's CLI flattener.
         schema.properties.cloud = { '$ref': '#/definitions/CloudConfig' };
         schema.properties.proxy = { '$ref': '#/definitions/AxiosProxy' };
+        schema.properties.interceptor = { '$ref': '#/definitions/InterceptorConfig' };
 
         const { compile } = require('json-schema-to-typescript');
         const ts = await compile(schema, 'IPluginArgs', {

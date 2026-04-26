@@ -250,25 +250,7 @@
         },
         "interceptor": {
             "type": "object",
-            "description": "Network request interception configuration (capture + mock + modify). Android-only in v1.",
-            "additionalProperties": false,
-            "properties": {
-                "enabled": {
-                    "type": "boolean",
-                    "default": false,
-                    "description": "Enable the network interceptor. Sessions still need xenon:options.interceptor.enabled=true (or interceptorEnabled cap) to be intercepted."
-                },
-                "bufferSize": {
-                    "type": "number",
-                    "default": 1000,
-                    "description": "Maximum number of captured requests to retain in-memory per session before evicting oldest."
-                },
-                "captureBodies": {
-                    "type": "boolean",
-                    "default": true,
-                    "description": "Whether to capture request/response bodies. Disable for privacy or to reduce memory usage."
-                }
-            }
+            "description": "Network request interception configuration (capture + mock + modify). See InterceptorConfig interface for details. Android-only in v1."
         }
     },
     "required": [
@@ -416,6 +398,29 @@
                 "avdName"
             ],
             "additionalProperties": true
+        },
+        "InterceptorConfig": {
+            "type": "object",
+            "title": "InterceptorConfig",
+            "additionalProperties": false,
+            "description": "Network request interceptor configuration.",
+            "properties": {
+                "enabled": {
+                    "type": "boolean",
+                    "default": false,
+                    "description": "Enable the network interceptor. Sessions still need xenon:options.interceptor.enabled=true (or interceptorEnabled cap) to be intercepted."
+                },
+                "bufferSize": {
+                    "type": "number",
+                    "default": 1000,
+                    "description": "Maximum number of captured requests to retain in-memory per session before evicting oldest."
+                },
+                "captureBodies": {
+                    "type": "boolean",
+                    "default": true,
+                    "description": "Whether to capture request/response bodies. Disable for privacy or to reduce memory usage."
+                }
+            }
         }
     }
 }
