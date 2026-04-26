@@ -14,6 +14,8 @@
  *               type: array
  *               items:
  *                 $ref: '#/components/schemas/Device'
+ *       401: { $ref: '#/components/responses/Unauthorized' }
+ *       429: { $ref: '#/components/responses/RateLimited' }
  */
 
 /**
@@ -40,6 +42,8 @@
  *               type: array
  *               items:
  *                 $ref: '#/components/schemas/Device'
+ *       401: { $ref: '#/components/responses/Unauthorized' }
+ *       429: { $ref: '#/components/responses/RateLimited' }
  */
 
 /**
@@ -81,6 +85,8 @@
  *               type: array
  *               items:
  *                 $ref: '#/components/schemas/Session'
+ *       401: { $ref: '#/components/responses/Unauthorized' }
+ *       429: { $ref: '#/components/responses/RateLimited' }
  */
 
 /**
@@ -99,6 +105,8 @@
  *               type: array
  *               items:
  *                 $ref: '#/components/schemas/Build'
+ *       401: { $ref: '#/components/responses/Unauthorized' }
+ *       429: { $ref: '#/components/responses/RateLimited' }
  */
 
 /**
@@ -124,6 +132,8 @@
  *           application/json:
  *             schema:
  *               $ref: '#/components/schemas/Error'
+ *       401: { $ref: '#/components/responses/Unauthorized' }
+ *       429: { $ref: '#/components/responses/RateLimited' }
  */
 
 /**
@@ -145,6 +155,8 @@
  *         description: Device logs
  *       404:
  *         description: Session not found
+ *       401: { $ref: '#/components/responses/Unauthorized' }
+ *       429: { $ref: '#/components/responses/RateLimited' }
  */
 
 /**
@@ -166,6 +178,8 @@
  *         description: Debug logs
  *       404:
  *         description: Session not found
+ *       401: { $ref: '#/components/responses/Unauthorized' }
+ *       429: { $ref: '#/components/responses/RateLimited' }
  */
 
 /**
@@ -187,6 +201,8 @@
  *         description: Profiling data
  *       404:
  *         description: Session not found
+ *       401: { $ref: '#/components/responses/Unauthorized' }
+ *       429: { $ref: '#/components/responses/RateLimited' }
  */
 
 /**
@@ -211,6 +227,8 @@
  *             schema:
  *               type: string
  *               format: binary
+ *       401: { $ref: '#/components/responses/Unauthorized' }
+ *       429: { $ref: '#/components/responses/RateLimited' }
  */
 
 /**
@@ -236,6 +254,9 @@
  *               type: object
  *       404:
  *         description: Session not found
+ *       401: { $ref: '#/components/responses/Unauthorized' }
+ *       403: { $ref: '#/components/responses/Forbidden' }
+ *       429: { $ref: '#/components/responses/RateLimited' }
  */
 
 /**
@@ -268,6 +289,9 @@
  *         description: Assertion results
  *       404:
  *         description: Session not found
+ *       401: { $ref: '#/components/responses/Unauthorized' }
+ *       403: { $ref: '#/components/responses/Forbidden' }
+ *       429: { $ref: '#/components/responses/RateLimited' }
  */
 
 /**
@@ -289,6 +313,8 @@
  *         description: Scan results
  *       404:
  *         description: Session not found
+ *       401: { $ref: '#/components/responses/Unauthorized' }
+ *       429: { $ref: '#/components/responses/RateLimited' }
  */
 
 /**
@@ -327,6 +353,9 @@
  *         description: Click successful
  *       404:
  *         description: Session not found
+ *       401: { $ref: '#/components/responses/Unauthorized' }
+ *       403: { $ref: '#/components/responses/Forbidden' }
+ *       429: { $ref: '#/components/responses/RateLimited' }
  */
 
 /**
@@ -365,6 +394,9 @@
  *         description: Tap successful
  *       404:
  *         description: Session not found
+ *       401: { $ref: '#/components/responses/Unauthorized' }
+ *       403: { $ref: '#/components/responses/Forbidden' }
+ *       429: { $ref: '#/components/responses/RateLimited' }
  */
 
 /**
@@ -398,6 +430,9 @@
  *         description: UI metadata exported
  *       404:
  *         description: Session not found
+ *       401: { $ref: '#/components/responses/Unauthorized' }
+ *       403: { $ref: '#/components/responses/Forbidden' }
+ *       429: { $ref: '#/components/responses/RateLimited' }
  */
 
 /**
@@ -439,6 +474,9 @@
  *         description: Device not found
  *       500:
  *         description: Tap failed
+ *       401: { $ref: '#/components/responses/Unauthorized' }
+ *       403: { $ref: '#/components/responses/Forbidden' }
+ *       429: { $ref: '#/components/responses/RateLimited' }
  */
 
 /**
@@ -484,6 +522,9 @@
  *         description: Swipe successful
  *       404:
  *         description: Device not found
+ *       401: { $ref: '#/components/responses/Unauthorized' }
+ *       403: { $ref: '#/components/responses/Forbidden' }
+ *       429: { $ref: '#/components/responses/RateLimited' }
  */
 
 /**
@@ -523,6 +564,9 @@
  *         description: Touch and hold successful
  *       404:
  *         description: Device not found
+ *       401: { $ref: '#/components/responses/Unauthorized' }
+ *       403: { $ref: '#/components/responses/Forbidden' }
+ *       429: { $ref: '#/components/responses/RateLimited' }
  */
 
 /**
@@ -557,6 +601,9 @@
  *         description: Device not found
  *       500:
  *         description: Text input failed
+ *       401: { $ref: '#/components/responses/Unauthorized' }
+ *       403: { $ref: '#/components/responses/Forbidden' }
+ *       429: { $ref: '#/components/responses/RateLimited' }
  */
 
 /**
@@ -589,6 +636,9 @@
  *         description: Key event sent successfully
  *       404:
  *         description: Device not found
+ *       401: { $ref: '#/components/responses/Unauthorized' }
+ *       403: { $ref: '#/components/responses/Forbidden' }
+ *       429: { $ref: '#/components/responses/RateLimited' }
  */
 
 /**
@@ -618,6 +668,8 @@
  *                   description: Base64 encoded screenshot
  *       404:
  *         description: Device not found
+ *       401: { $ref: '#/components/responses/Unauthorized' }
+ *       429: { $ref: '#/components/responses/RateLimited' }
  */
 
 /**
@@ -646,6 +698,8 @@
  *                   type: string
  *       404:
  *         description: Device not found
+ *       401: { $ref: '#/components/responses/Unauthorized' }
+ *       429: { $ref: '#/components/responses/RateLimited' }
  *   post:
  *     summary: Set clipboard content
  *     description: Set the clipboard content on the device
@@ -673,6 +727,9 @@
  *         description: Clipboard set successfully
  *       404:
  *         description: Device not found
+ *       401: { $ref: '#/components/responses/Unauthorized' }
+ *       403: { $ref: '#/components/responses/Forbidden' }
+ *       429: { $ref: '#/components/responses/RateLimited' }
  */
 
 /**
@@ -699,6 +756,8 @@
  *               format: binary
  *       404:
  *         description: Device not found
+ *       401: { $ref: '#/components/responses/Unauthorized' }
+ *       429: { $ref: '#/components/responses/RateLimited' }
  */
 
 /**
@@ -728,6 +787,8 @@
  *                   enum: [running, stopped]
  *       404:
  *         description: Device not found
+ *       401: { $ref: '#/components/responses/Unauthorized' }
+ *       429: { $ref: '#/components/responses/RateLimited' }
  */
 
 /**
@@ -751,6 +812,9 @@
  *         description: Device busy
  *       404:
  *         description: Device not found
+ *       401: { $ref: '#/components/responses/Unauthorized' }
+ *       403: { $ref: '#/components/responses/Forbidden' }
+ *       429: { $ref: '#/components/responses/RateLimited' }
  */
 
 /**
@@ -772,6 +836,9 @@
  *         description: Stream stopped successfully
  *       404:
  *         description: Device not found
+ *       401: { $ref: '#/components/responses/Unauthorized' }
+ *       403: { $ref: '#/components/responses/Forbidden' }
+ *       429: { $ref: '#/components/responses/RateLimited' }
  */
 
 /**
@@ -793,6 +860,9 @@
  *         description: Device locked
  *       404:
  *         description: Device not found
+ *       401: { $ref: '#/components/responses/Unauthorized' }
+ *       403: { $ref: '#/components/responses/Forbidden' }
+ *       429: { $ref: '#/components/responses/RateLimited' }
  */
 
 /**
@@ -814,6 +884,9 @@
  *         description: Device unlocked
  *       404:
  *         description: Device not found
+ *       401: { $ref: '#/components/responses/Unauthorized' }
+ *       403: { $ref: '#/components/responses/Forbidden' }
+ *       429: { $ref: '#/components/responses/RateLimited' }
  */
 
 /**
@@ -846,6 +919,9 @@
  *         description: App installed
  *       404:
  *         description: Device not found
+ *       401: { $ref: '#/components/responses/Unauthorized' }
+ *       403: { $ref: '#/components/responses/Forbidden' }
+ *       429: { $ref: '#/components/responses/RateLimited' }
  */
 
 /**
@@ -878,6 +954,9 @@
  *         description: App installation initiated
  *       404:
  *         description: Device or app not found
+ *       401: { $ref: '#/components/responses/Unauthorized' }
+ *       403: { $ref: '#/components/responses/Forbidden' }
+ *       429: { $ref: '#/components/responses/RateLimited' }
  */
 
 /**
@@ -913,6 +992,9 @@
  *         description: No file uploaded
  *       404:
  *         description: Device not found
+ *       401: { $ref: '#/components/responses/Unauthorized' }
+ *       403: { $ref: '#/components/responses/Forbidden' }
+ *       429: { $ref: '#/components/responses/RateLimited' }
  */
 
 /**
@@ -945,6 +1027,9 @@
  *         description: App uninstalled
  *       404:
  *         description: Device not found
+ *       401: { $ref: '#/components/responses/Unauthorized' }
+ *       403: { $ref: '#/components/responses/Forbidden' }
+ *       429: { $ref: '#/components/responses/RateLimited' }
  */
 
 /**
@@ -977,6 +1062,8 @@
  *                     type: string
  *       404:
  *         description: Device not found
+ *       401: { $ref: '#/components/responses/Unauthorized' }
+ *       429: { $ref: '#/components/responses/RateLimited' }
  */
 
 /**
@@ -1016,6 +1103,9 @@
  *                   type: string
  *       404:
  *         description: Device not found
+ *       401: { $ref: '#/components/responses/Unauthorized' }
+ *       403: { $ref: '#/components/responses/Forbidden' }
+ *       429: { $ref: '#/components/responses/RateLimited' }
  */
 
 /**
@@ -1046,6 +1136,8 @@
  *                   type: object
  *       404:
  *         description: Device not found
+ *       401: { $ref: '#/components/responses/Unauthorized' }
+ *       429: { $ref: '#/components/responses/RateLimited' }
  */
 
 /**
@@ -1071,6 +1163,8 @@
  *               $ref: '#/components/schemas/InspectorSnapshot'
  *       404:
  *         description: Device not found
+ *       401: { $ref: '#/components/responses/Unauthorized' }
+ *       429: { $ref: '#/components/responses/RateLimited' }
  */
 
 /**
@@ -1117,6 +1211,9 @@
  *                     type: object
  *       404:
  *         description: Device not found
+ *       401: { $ref: '#/components/responses/Unauthorized' }
+ *       403: { $ref: '#/components/responses/Forbidden' }
+ *       429: { $ref: '#/components/responses/RateLimited' }
  */
 
 /**
@@ -1140,6 +1237,8 @@
  *                   type: array
  *                   items:
  *                     $ref: '#/components/schemas/Reservation'
+ *       401: { $ref: '#/components/responses/Unauthorized' }
+ *       429: { $ref: '#/components/responses/RateLimited' }
  *   post:
  *     summary: Reserve a device
  *     description: Reserve a device for exclusive use
@@ -1177,6 +1276,9 @@
  *         description: Device not found
  *       409:
  *         description: Device already reserved or busy
+ *       401: { $ref: '#/components/responses/Unauthorized' }
+ *       403: { $ref: '#/components/responses/Forbidden' }
+ *       429: { $ref: '#/components/responses/RateLimited' }
  */
 
 /**
@@ -1206,6 +1308,9 @@
  *         description: Device is not reserved
  *       404:
  *         description: Device not found
+ *       401: { $ref: '#/components/responses/Unauthorized' }
+ *       403: { $ref: '#/components/responses/Forbidden' }
+ *       429: { $ref: '#/components/responses/RateLimited' }
  */
 
 /**
@@ -1247,6 +1352,9 @@
  *         description: Device is not reserved or invalid duration
  *       404:
  *         description: Device not found
+ *       401: { $ref: '#/components/responses/Unauthorized' }
+ *       403: { $ref: '#/components/responses/Forbidden' }
+ *       429: { $ref: '#/components/responses/RateLimited' }
  */
 
 /**
@@ -1265,6 +1373,8 @@
  *               type: array
  *               items:
  *                 $ref: '#/components/schemas/App'
+ *       401: { $ref: '#/components/responses/Unauthorized' }
+ *       429: { $ref: '#/components/responses/RateLimited' }
  */
 
 /**
@@ -1295,6 +1405,9 @@
  *               $ref: '#/components/schemas/App'
  *       400:
  *         description: No file uploaded
+ *       401: { $ref: '#/components/responses/Unauthorized' }
+ *       403: { $ref: '#/components/responses/Forbidden' }
+ *       429: { $ref: '#/components/responses/RateLimited' }
  */
 
 /**
@@ -1316,6 +1429,9 @@
  *         description: App deleted
  *       404:
  *         description: App not found
+ *       401: { $ref: '#/components/responses/Unauthorized' }
+ *       403: { $ref: '#/components/responses/Forbidden' }
+ *       429: { $ref: '#/components/responses/RateLimited' }
  */
 
 /**
@@ -1342,6 +1458,8 @@
  *               format: binary
  *       404:
  *         description: App not found
+ *       401: { $ref: '#/components/responses/Unauthorized' }
+ *       429: { $ref: '#/components/responses/RateLimited' }
  */
 
 /**
@@ -1358,6 +1476,8 @@
  *           application/json:
  *             schema:
  *               type: integer
+ *       401: { $ref: '#/components/responses/Unauthorized' }
+ *       429: { $ref: '#/components/responses/RateLimited' }
  */
 
 /**
@@ -1376,6 +1496,8 @@
  *               type: array
  *               items:
  *                 type: object
+ *       401: { $ref: '#/components/responses/Unauthorized' }
+ *       429: { $ref: '#/components/responses/RateLimited' }
  */
 
 /**
@@ -1388,6 +1510,8 @@
  *     responses:
  *       200:
  *         description: Queue summary
+ *       401: { $ref: '#/components/responses/Unauthorized' }
+ *       429: { $ref: '#/components/responses/RateLimited' }
  */
 
 /**
@@ -1406,6 +1530,8 @@
  *               type: array
  *               items:
  *                 type: string
+ *       401: { $ref: '#/components/responses/Unauthorized' }
+ *       429: { $ref: '#/components/responses/RateLimited' }
  */
 
 /**
@@ -1425,6 +1551,9 @@
  *     responses:
  *       200:
  *         description: Device blocked
+ *       401: { $ref: '#/components/responses/Unauthorized' }
+ *       403: { $ref: '#/components/responses/Forbidden' }
+ *       429: { $ref: '#/components/responses/RateLimited' }
  */
 
 /**
@@ -1444,6 +1573,9 @@
  *     responses:
  *       200:
  *         description: Device unblocked
+ *       401: { $ref: '#/components/responses/Unauthorized' }
+ *       403: { $ref: '#/components/responses/Forbidden' }
+ *       429: { $ref: '#/components/responses/RateLimited' }
  */
 
 /**
@@ -1462,6 +1594,8 @@
  *               type: array
  *               items:
  *                 $ref: '#/components/schemas/WebhookConfig'
+ *       401: { $ref: '#/components/responses/Unauthorized' }
+ *       429: { $ref: '#/components/responses/RateLimited' }
  *   post:
  *     summary: Add webhook configuration
  *     description: Add a new webhook configuration
@@ -1495,6 +1629,9 @@
  *         description: Webhook added
  *       400:
  *         description: Invalid parameters
+ *       401: { $ref: '#/components/responses/Unauthorized' }
+ *       403: { $ref: '#/components/responses/Forbidden' }
+ *       429: { $ref: '#/components/responses/RateLimited' }
  */
 
 /**
@@ -1514,6 +1651,9 @@
  *     responses:
  *       200:
  *         description: Webhook deleted
+ *       401: { $ref: '#/components/responses/Unauthorized' }
+ *       403: { $ref: '#/components/responses/Forbidden' }
+ *       429: { $ref: '#/components/responses/RateLimited' }
  */
 
 /**
@@ -1544,6 +1684,9 @@
  *         description: Test message sent
  *       500:
  *         description: Test failed
+ *       401: { $ref: '#/components/responses/Unauthorized' }
+ *       403: { $ref: '#/components/responses/Forbidden' }
+ *       429: { $ref: '#/components/responses/RateLimited' }
  */
 
 /**
@@ -1556,6 +1699,8 @@
  *     responses:
  *       200:
  *         description: Configuration object
+ *       401: { $ref: '#/components/responses/Unauthorized' }
+ *       429: { $ref: '#/components/responses/RateLimited' }
  *   post:
  *     summary: Update platform configuration
  *     description: Update the global platform configuration
@@ -1569,6 +1714,9 @@
  *     responses:
  *       200:
  *         description: Configuration updated
+ *       401: { $ref: '#/components/responses/Unauthorized' }
+ *       403: { $ref: '#/components/responses/Forbidden' }
+ *       429: { $ref: '#/components/responses/RateLimited' }
  */
 
 /**
@@ -1581,6 +1729,9 @@
  *     responses:
  *       200:
  *         description: Metrics reset
+ *       401: { $ref: '#/components/responses/Unauthorized' }
+ *       403: { $ref: '#/components/responses/Forbidden' }
+ *       429: { $ref: '#/components/responses/RateLimited' }
  */
 
 /**
@@ -1593,6 +1744,8 @@
  *     responses:
  *       200:
  *         description: CLI arguments
+ *       401: { $ref: '#/components/responses/Unauthorized' }
+ *       429: { $ref: '#/components/responses/RateLimited' }
  */
 
 // This file is only for Swagger documentation - no exports needed
@@ -1612,6 +1765,8 @@ export {};
  *           application/json:
  *             schema:
  *               type: object
+ *       401: { $ref: '#/components/responses/Unauthorized' }
+ *       429: { $ref: '#/components/responses/RateLimited' }
  *   put:
  *     summary: Update configuration
  *     description: Update plugin configuration properties. Changes are persisted. Some changes may require a server restart.
@@ -1641,6 +1796,9 @@ export {};
  *                   description: True if the updated properties require a server restart
  *                 message:
  *                   type: string
+ *       401: { $ref: '#/components/responses/Unauthorized' }
+ *       403: { $ref: '#/components/responses/Forbidden' }
+ *       429: { $ref: '#/components/responses/RateLimited' }
  */
 
 /**
@@ -1689,6 +1847,8 @@ export {};
  *                         type: string
  *                       platform:
  *                         type: string
+ *       401: { $ref: '#/components/responses/Unauthorized' }
+ *       429: { $ref: '#/components/responses/RateLimited' }
  */
 
 /**
@@ -1777,6 +1937,8 @@ export {};
  *                       responseBody:
  *                         type: string
  *                         description: Truncated response body
+ *       401: { $ref: '#/components/responses/Unauthorized' }
+ *       429: { $ref: '#/components/responses/RateLimited' }
  */
 
 /**
@@ -1826,6 +1988,8 @@ export {};
  *         description: API key lacks `admin` scope
  *       409:
  *         description: Action conflicts with current state (returns currentStatus)
+ *       401: { $ref: '#/components/responses/Unauthorized' }
+ *       429: { $ref: '#/components/responses/RateLimited' }
  */
 
 /**
@@ -1858,6 +2022,8 @@ export {};
  *                 total: { type: integer }
  *                 limit: { type: integer }
  *                 offset: { type: integer }
+ *       401: { $ref: '#/components/responses/Unauthorized' }
+ *       429: { $ref: '#/components/responses/RateLimited' }
  */
 
 /**
@@ -1881,6 +2047,8 @@ export {};
  *     responses:
  *       200:
  *         description: SelectorState row, or null
+ *       401: { $ref: '#/components/responses/Unauthorized' }
+ *       429: { $ref: '#/components/responses/RateLimited' }
  */
 
 /**
@@ -1912,6 +2080,8 @@ export {};
  *     responses:
  *       200:
  *         description: Hotspots with state overlay
+ *       401: { $ref: '#/components/responses/Unauthorized' }
+ *       429: { $ref: '#/components/responses/RateLimited' }
  */
 
 // =============================================================================
@@ -2170,6 +2340,7 @@ export {};
  *                   createdAt: { type: string, format: date-time }
  *       401: { $ref: '#/components/responses/Unauthorized' }
  *       403: { $ref: '#/components/responses/Forbidden' }
+ *       429: { $ref: '#/components/responses/RateLimited' }
  *   post:
  *     summary: Create a team
  *     description: Team names must be unique. Requires `admin` scope.
@@ -2190,6 +2361,7 @@ export {};
  *       409: { description: 'Team name already exists' }
  *       401: { $ref: '#/components/responses/Unauthorized' }
  *       403: { $ref: '#/components/responses/Forbidden' }
+ *       429: { $ref: '#/components/responses/RateLimited' }
  */
 
 /**
@@ -2212,6 +2384,7 @@ export {};
  *             schema: { $ref: '#/components/schemas/Success' }
  *       401: { $ref: '#/components/responses/Unauthorized' }
  *       403: { $ref: '#/components/responses/Forbidden' }
+ *       429: { $ref: '#/components/responses/RateLimited' }
  */
 
 /**
@@ -2238,6 +2411,8 @@ export {};
  *                 properties:
  *                   apiKeyId: { type: string }
  *                   role: { type: string, enum: [member, owner] }
+ *       401: { $ref: '#/components/responses/Unauthorized' }
+ *       429: { $ref: '#/components/responses/RateLimited' }
  *   post:
  *     summary: Add a member to a team
  *     description: Adds an existing API key as a team member. Defaults to `member` role. Requires `admin` scope.
@@ -2262,6 +2437,7 @@ export {};
  *       400: { description: 'Missing apiKeyId' }
  *       401: { $ref: '#/components/responses/Unauthorized' }
  *       403: { $ref: '#/components/responses/Forbidden' }
+ *       429: { $ref: '#/components/responses/RateLimited' }
  */
 
 /**
@@ -2286,6 +2462,9 @@ export {};
  *         content:
  *           application/json:
  *             schema: { $ref: '#/components/schemas/Success' }
+ *       401: { $ref: '#/components/responses/Unauthorized' }
+ *       403: { $ref: '#/components/responses/Forbidden' }
+ *       429: { $ref: '#/components/responses/RateLimited' }
  */
 
 // =============================================================================
@@ -2320,6 +2499,7 @@ export {};
  *                   uptimeMs: { type: integer }
  *       401: { $ref: '#/components/responses/Unauthorized' }
  *       403: { $ref: '#/components/responses/Forbidden' }
+ *       429: { $ref: '#/components/responses/RateLimited' }
  */
 
 // =============================================================================
@@ -2355,6 +2535,7 @@ export {};
  *                   items: { type: object, additionalProperties: true }
  *       404: { description: 'Interceptor inactive and no archive on disk' }
  *       401: { $ref: '#/components/responses/Unauthorized' }
+ *       429: { $ref: '#/components/responses/RateLimited' }
  */
 
 /**
@@ -2383,6 +2564,8 @@ export {};
  *           application/json:
  *             schema: { type: object, additionalProperties: true }
  *       404: { description: 'Request not found in live or archived state' }
+ *       401: { $ref: '#/components/responses/Unauthorized' }
+ *       429: { $ref: '#/components/responses/RateLimited' }
  */
 
 /**
@@ -2406,6 +2589,8 @@ export {};
  *           application/json:
  *             schema: { type: object, additionalProperties: true }
  *       404: { description: 'No live interceptor and no archived HAR' }
+ *       401: { $ref: '#/components/responses/Unauthorized' }
+ *       429: { $ref: '#/components/responses/RateLimited' }
  */
 
 /**
@@ -2432,6 +2617,8 @@ export {};
  *                   type: array
  *                   items: { type: object, additionalProperties: true }
  *       404: { description: 'Interceptor not active for this session' }
+ *       401: { $ref: '#/components/responses/Unauthorized' }
+ *       429: { $ref: '#/components/responses/RateLimited' }
  *   post:
  *     summary: Add a mock rule
  *     description: |
@@ -2460,6 +2647,9 @@ export {};
  *                 id: { type: string }
  *       400: { description: 'Invalid mock rule' }
  *       404: { description: 'Interceptor not active' }
+ *       401: { $ref: '#/components/responses/Unauthorized' }
+ *       403: { $ref: '#/components/responses/Forbidden' }
+ *       429: { $ref: '#/components/responses/RateLimited' }
  *   delete:
  *     summary: Clear all mock rules for a session
  *     tags: [Network Interceptor]
@@ -2475,6 +2665,9 @@ export {};
  *           application/json:
  *             schema: { $ref: '#/components/schemas/Success' }
  *       404: { description: 'Interceptor not active' }
+ *       401: { $ref: '#/components/responses/Unauthorized' }
+ *       403: { $ref: '#/components/responses/Forbidden' }
+ *       429: { $ref: '#/components/responses/RateLimited' }
  */
 
 /**
@@ -2502,6 +2695,9 @@ export {};
  *               properties:
  *                 removed: { type: boolean }
  *       404: { description: 'Interceptor not active or mock not found' }
+ *       401: { $ref: '#/components/responses/Unauthorized' }
+ *       403: { $ref: '#/components/responses/Forbidden' }
+ *       429: { $ref: '#/components/responses/RateLimited' }
  */
 
 // =============================================================================
@@ -2553,6 +2749,8 @@ export {};
  *           application/json:
  *             schema: { $ref: '#/components/schemas/Success' }
  *       401: { description: 'Missing or invalid x-xenon-node-secret' }
+ *       403: { $ref: '#/components/responses/Forbidden' }
+ *       429: { $ref: '#/components/responses/RateLimited' }
  */
 
 /**
@@ -2586,6 +2784,8 @@ export {};
  *             schema: { $ref: '#/components/schemas/Success' }
  *       404: { description: 'Device not found in registry' }
  *       401: { description: 'Missing or invalid x-xenon-node-secret' }
+ *       403: { $ref: '#/components/responses/Forbidden' }
+ *       429: { $ref: '#/components/responses/RateLimited' }
  */
 
 // =============================================================================
@@ -2621,6 +2821,7 @@ export {};
  *       400: { description: 'Missing udid, host, or tags array' }
  *       401: { $ref: '#/components/responses/Unauthorized' }
  *       403: { $ref: '#/components/responses/Forbidden' }
+ *       429: { $ref: '#/components/responses/RateLimited' }
  */
 
 /**
@@ -2660,6 +2861,7 @@ export {};
  *       404: { description: 'Team or device not found' }
  *       401: { $ref: '#/components/responses/Unauthorized' }
  *       403: { $ref: '#/components/responses/Forbidden' }
+ *       429: { $ref: '#/components/responses/RateLimited' }
  */
 
 /**
@@ -2684,6 +2886,8 @@ export {};
  *           application/json:
  *             schema: { type: object, additionalProperties: true }
  *       404: { description: 'Pending session not found' }
+ *       401: { $ref: '#/components/responses/Unauthorized' }
+ *       429: { $ref: '#/components/responses/RateLimited' }
  */
 
 /**
@@ -2718,6 +2922,8 @@ export {};
  *                   state: { type: string }
  *                   platform: { type: string, enum: [ios, android] }
  *       404: { description: 'No devices registered for that host' }
+ *       401: { $ref: '#/components/responses/Unauthorized' }
+ *       429: { $ref: '#/components/responses/RateLimited' }
  */
 
 // =============================================================================
@@ -2763,6 +2969,8 @@ export {};
  *                       isSuccess: { type: boolean }
  *                       createdAt: { type: string, format: date-time }
  *                 todayCount: { type: integer }
+ *       401: { $ref: '#/components/responses/Unauthorized' }
+ *       429: { $ref: '#/components/responses/RateLimited' }
  */
 
 /**
@@ -2801,6 +3009,8 @@ export {};
  *                   description: 'Same shape as `current` for the immediately preceding window'
  *                 resolvedCount: { type: integer }
  *                 pendingCount: { type: integer }
+ *       401: { $ref: '#/components/responses/Unauthorized' }
+ *       429: { $ref: '#/components/responses/RateLimited' }
  */
 
 /**
@@ -2835,6 +3045,7 @@ export {};
  *                 hotspotsIncluded: { type: integer }
  *       401: { $ref: '#/components/responses/Unauthorized' }
  *       403: { $ref: '#/components/responses/Forbidden' }
+ *       429: { $ref: '#/components/responses/RateLimited' }
  */
 
 // =============================================================================
@@ -2865,4 +3076,6 @@ export {};
  *               properties:
  *                 logs: { type: string }
  *       404: { description: 'Device not found' }
+ *       401: { $ref: '#/components/responses/Unauthorized' }
+ *       429: { $ref: '#/components/responses/RateLimited' }
  */
