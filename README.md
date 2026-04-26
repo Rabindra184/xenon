@@ -79,6 +79,7 @@ The dashboard shows strategy + value (`Accessibility ID: login-btn`) so suggeste
 ### Recording & Artifacts
 - ✅ **Video recording** - Full session capture
 - ✅ **Screenshot capture** - On-demand and per-command
+- ✅ **Network interceptor** - Live HTTP/HTTPS capture, mocking, and HAR export ([docs](https://xenon-docs.vercel.app/docs/network-interceptor))
 - ✅ **Distributed Tracing** - OpenTelemetry spans for exact command latency
 - ✅ **Performance profiling** - CPU, memory, FPS metrics
 - ✅ **Log aggregation** - Appium, device, app logs

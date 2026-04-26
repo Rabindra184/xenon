@@ -19,6 +19,7 @@ Xenon uses the `xe:` prefix for its custom capabilities. `xenon:` and `appium:` 
 | `xe:teamId` | Team identifier for quota management | - |
 | `xe:network_profile` | Network profile to simulate (`4G`, `3G`, `Edge`, `Offline`) | `Normal` |
 | `xe:max_thermal_status` | Maximum allowed thermal status (`Normal`, `Fair`, `Serious`, `Critical`) | - |
+| `xe:interceptor` | Network interceptor config object (`{ enabled, mocks, includeHosts, excludeHosts, ... }`). See [Network Interceptor](./network-interceptor). | - |
 
 > [!TIP]
 > **AI Analysis Tip**: For the most accurate AI diagnoses, ensure `xe:screenshot_on_failure` and `xe:save_device_logs` are set to `true`. This provides the multimodal context (visuals + logs) the AI needs to identify the root cause.
