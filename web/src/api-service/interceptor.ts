@@ -17,6 +17,9 @@ export interface CapturedRequest {
   modified: boolean;
   mockId?: string;
   commandHint?: { commandName: string; commandTs: number };
+  failed?: boolean;
+  failureReason?: string;
+  failureKind?: string;
 }
 
 export interface InterceptorActiveStatus {

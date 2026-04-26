@@ -32,6 +32,14 @@ function statusTone(status: number): 'ready' | 'busy' | 'error' | 'neutral' {
   return 'neutral';
 }
 
+function shortFailureLabel(failureKind?: string): string {
+  if (!failureKind) return 'failed';
+  if (failureKind === 'HTTPS_CLIENT_ERROR') return 'tls';
+  if (failureKind === 'OPEN_HTTPS_SERVER_ERROR') return 'tls';
+  if (failureKind === 'PROXY_TO_SERVER_REQUEST_ERROR') return 'net';
+  return 'failed';
+}
+
 export const NetworkPanel: React.FC<Props> = ({ sessionId, sessionEnded }) => {
   const [active, setActive] = useState<boolean | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -173,21 +181,26 @@ export const NetworkPanel: React.FC<Props> = ({ sessionId, sessionEnded }) => {
                 key={r.id}
                 onClick={() => openDetail(r)}
                 style={{ cursor: 'pointer' }}
+                title={r.failed ? r.failureReason : undefined}
               >
                 <TD className="font-mono text-[11px]">{formatTime(r.ts)}</TD>
                 <TD>
                   <Pill tone="accent">{r.method}</Pill>
                 </TD>
                 <TD>
-                  <Pill tone={statusTone(r.resStatus)}>{r.resStatus || '—'}</Pill>
+                  {r.failed ? (
+                    <Pill tone="error">{shortFailureLabel(r.failureKind)}</Pill>
+                  ) : (
+                    <Pill tone={statusTone(r.resStatus)}>{r.resStatus || '—'}</Pill>
+                  )}
                 </TD>
                 <TD className="font-mono text-[11px] truncate" title={r.host}>
                   {r.host}
                 </TD>
                 <TD className="font-mono text-[11px] truncate" title={r.path}>
-                  {r.path}
+                  {r.failed ? '—' : r.path}
                 </TD>
-                <TD className="font-mono text-[11px]">{r.durationMs}ms</TD>
+                <TD className="font-mono text-[11px]">{r.failed ? '—' : `${r.durationMs}ms`}</TD>
                 <TD>
                   <div className="flex gap-1">
                     {r.mocked && <Pill tone="accent">mock</Pill>}

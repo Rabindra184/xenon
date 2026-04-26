@@ -65,6 +65,11 @@ export interface CapturedRequest {
   modified: boolean;
   mockId?: string;
   commandHint?: { commandName: string; commandTs: number };
+  // Set when the request never completed (e.g. TLS handshake rejected, DNS lookup
+  // failed, connection refused). resStatus is -1 for these and there is no body.
+  failed?: boolean;
+  failureReason?: string;
+  failureKind?: string;
 }
 
 export interface InterceptorOptions {

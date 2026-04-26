@@ -61,4 +61,21 @@ describe('HarBuilder', () => {
     const har = buildHar([captured({ ts: Date.UTC(2024, 0, 15, 12, 30, 45) })], 'session-x');
     expect(har.log.entries[0].startedDateTime).to.equal('2024-01-15T12:30:45.000Z');
   });
+
+  it('skips failed entries (no real response, not replayable)', () => {
+    const har = buildHar(
+      [
+        captured({ id: 'r-ok' }),
+        captured({
+          id: 'r-failed',
+          failed: true,
+          failureReason: 'TLS handshake rejected',
+          resStatus: -1,
+        }),
+      ],
+      'session-x',
+    );
+    expect(har.log.entries).to.have.length(1);
+    expect(har.log.entries[0].request.url).to.equal('https://api.example.com/users/1');
+  });
 });
