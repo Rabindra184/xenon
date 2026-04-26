@@ -218,4 +218,9 @@ If your existing tests already call Lens-style endpoints, Xenon supports aliases
 
 ### API Documentation
 
-For full API documentation, visit the [Swagger UI](/xenon/api-docs) or the raw [OpenAPI Spec](/xenon/api-docs.json) on your running server.
+The plugin server serves an interactive Swagger UI and a raw OpenAPI spec at runtime. Open them on your running server:
+
+```
+http://<host>:<port>/xenon/api-docs        # Swagger UI
+http://<host>:<port>/xenon/api-docs.json   # OpenAPI 3.0 spec
+```

@@ -19,7 +19,7 @@ Xenon supports four LLM providers through a unified `LLMProvider` interface. Eac
 |----------|---------------|:----------:|---------------------|
 | **Google Gemini** | `gemini-3-flash-preview` | [Yes] | `GEMINI_API_KEY` or `XENON_GEMINI_API_KEY` |
 | **OpenAI** | `gpt-4o` | [Yes] | `OPENAI_API_KEY` or `XENON_OPENAI_API_KEY` |
-| **Anthropic** | `claude-3-5-sonnet-20240620` | [Yes] | `ANTHROPIC_API_KEY` or `XENON_ANTHROPIC_API_KEY` |
+| **Anthropic** | `claude-sonnet-4-6` | [Yes] | `ANTHROPIC_API_KEY` or `XENON_ANTHROPIC_API_KEY` |
 | **Ollama** | `llama3` | [Model Dependent] | — (runs locally) |
 
 ### Configuration
