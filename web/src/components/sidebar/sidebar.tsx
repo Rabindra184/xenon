@@ -3,6 +3,7 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import {
   LayoutGrid,
   Smartphone,
+  Tv,
   AppWindow,
   MonitorPlay,
   Bell,
@@ -26,6 +27,7 @@ type NavItem = {
 const items: NavItem[] = [
   { id: 'overview', label: 'Overview', icon: LayoutGrid, path: '/overview' },
   { id: 'devices', label: 'Devices', icon: Smartphone, path: '/devices' },
+  { id: 'live-devices', label: 'Live Devices', icon: Tv, path: '/devices/live' },
   { id: 'apps', label: 'Apps', icon: AppWindow, path: '/apps' },
   { id: 'sessions', label: 'Sessions', icon: MonitorPlay, path: '/builds' },
   { id: 'selector-health', label: 'Selector Health', icon: HeartPulse, path: '/selector-health' },
