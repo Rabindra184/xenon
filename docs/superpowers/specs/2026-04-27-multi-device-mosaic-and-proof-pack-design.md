@@ -223,6 +223,7 @@ The feature surface in this spec. Phase 2/3/4 are listed under "Out of scope" ab
 | `src/app/swagger-docs.ts` | Document new endpoints |
 | `src/dashboard/event-manager.ts` | Add `emitRecording*` helpers (~+50 LOC, no existing emitters changed) |
 | `src/dashboard/socket-events.ts` | Add new `RECORDING_*` event constants |
+| `src/services/VideoPipelineService.ts` | Additive only: `VideoPipelineOptions` gains optional `outputPath?: string`. When omitted, existing behavior is byte-identical (existing session callers omit it). When provided (mosaic only), ffmpeg writes there. ~+5 LOC. |
 | `prisma/schema.prisma` | Append `Recording`, `Bookmark`, `Annotation` models. No edits to existing models. |
 | `prisma/migrations/<new>/migration.sql` | Generated, additive only |
 | `schema.json` | Add optional `maxConcurrentRecordings` (default 4) and `recordingsAssetsPath` (default `<sessionAssetsPath>/recordings`) |
@@ -376,7 +377,7 @@ proof-{groupId}-{ISO-timestamp}.zip
 
 ## Concurrency, Disk, and Resource Guards
 
-- **Concurrency cap**: `MAX_CONCURRENT_RECORDINGS` (default 4). When exceeded, `POST /recordings` returns `409 concurrency_cap` with the current limit and active count.
+- **Concurrency cap**: `MAX_CONCURRENT_RECORDINGS` (default 4). **Server-wide, not per-user.** Counts only free-form (mosaic) recordings; automation/session recordings are not counted. When exceeded, `POST /recordings` returns `409 concurrency_cap` with the current limit and active count.
 - **Per-device idempotency**: starting a second recording for an already-recording UDID returns the existing one rather than spawning a duplicate ffmpeg.
 - **Crash-safe finalization**: on Xenon shutdown, in-progress recordings receive `SIGINT` and are marked `STOPPED` if they finalize cleanly, `FAILED` otherwise. fMP4's `frag_keyframe` flag (already used by `VideoPipelineService`) means partial files remain playable.
 - **Disk-budget surfacing**: the mosaic header shows live "Recordings: 2 / 4 · ~1.2 GB on disk." No automatic deletion in Phase 1.
@@ -418,7 +419,7 @@ Existing events are untouched.
     "minimum": 1,
     "maximum": 16,
     "default": 4,
-    "description": "Hard cap on simultaneous free-form (non-session) screen recordings."
+    "description": "Server-wide hard cap on simultaneous free-form (non-session) screen recordings across all users. Automation session recording is exempt and not counted against this cap."
   },
   "recordingsAssetsPath": {
     "type": "string",
@@ -451,7 +452,14 @@ Both are optional; existing deployments require no config change.
 2. **Unit**: `RecordingOrchestrator` start/stop/bookmark/annotation, concurrency cap, idempotency, crash-safe finalization (using stubbed ffmpeg).
 3. **Integration**: full REST contract against an in-process Express server, including bundle-zip round-trip and `409 concurrency_cap` shape.
 4. **Frontend**: component tests for `DeviceTile` (overlay coordinate math), `AnnotationOverlay` (shape persistence), and the recording controls reducer.
-5. **Manual smoke**: one Android + one iOS device, 2-up mosaic, 30s recording, two bookmarks, three annotations on each, download bundle, verify on a second machine.
+5. **Cross-workflow integration tests** (new — directly target risks #1, #3, #4, #6, #11, #16, #17 from the matrix):
+   - Start mosaic recording on UDID X → start automation session on UDID X → assert automation session is rejected with the existing busy semantics; mosaic recording continues unaffected.
+   - Start automation session on UDID X → attempt mosaic recording on UDID X → assert `409 device_busy` with `reason='automation'`; no `Recording` row created; no ffmpeg spawned.
+   - Start automation session and mosaic recording on *different* UDIDs concurrently → assert both ffmpegs run, both finalize cleanly, both produce valid MP4s with correct paths (session under `sessionAssetsPath/{sessionId}/...`, mosaic under `recordingsAssetsPath/{recordingId}/...`).
+   - Start mosaic recording → kill ffmpeg via `SIGKILL` (simulate device unplug) → assert `Recording.status='FAILED'` and `manual_${udid}` block released.
+   - Start mosaic recording → restart Xenon process → assert `recoverOnBoot()` marks the orphan recording `FAILED` with `fail_reason='server_restart'` and releases the block.
+   - Start mosaic recording for `[A,B]`, simultaneously have a second client request recording for `[B,C]` → assert exactly one succeeds with the contested UDID; the loser gets `409 device_busy` with no partial group.
+6. **Manual smoke**: one Android + one iOS device, 2-up mosaic, 30s recording, two bookmarks, three annotations on each, download bundle, verify on a second machine. Then repeat with one Appium session running on a third device — assert the third device is greyed out in the picker and the mosaic recording is unaffected.
 
 ## Open Questions (kept open intentionally; defaults assumed unless flipped)
 
@@ -467,6 +475,70 @@ Both are optional; existing deployments require no config change.
 | 2 | Synced log/network overlay, tap visualization, side-by-side playback, voice narration, healing-event timeline, **read-only observer mode** (mosaic-watch a device under automation without taking it busy) | Future spec |
 | 3 | Shareable signed URLs, ticket-tracker integrations, AI-assisted summary, tap heatmap | Future spec |
 | 4 | SSIM-diff visual regression | Future spec |
+
+## Cross-Workflow Compatibility Review
+
+This feature lands in a lab where engineers routinely mix manual control, parallel automation runs, hub-node topologies, and existing single-device manual control. This section walks every integration point with the lens of a real engineer, identifies what could break, and pins the answer.
+
+### Personas exercised
+
+1. **Solo Manual QA** — opens dashboard, selects 4 devices, records a bug. No automation in play.
+2. **Automation Engineer** — runs a Mocha/JUnit Appium suite. Never opens the dashboard. Wants zero impact on session pass-rate.
+3. **Hybrid Engineer** — runs an Appium session, then opens the dashboard to live-watch and capture proof. Or starts mosaic recording, then later kicks off automation on *other* devices.
+4. **Lab Operator** — multiple humans, multiple parallel sessions, shared device pool, hub-node topology.
+5. **CI System** — programmatic, parallel sessions, may be running 24/7. No human at the dashboard.
+
+### Cross-workflow risk matrix
+
+| # | Integration point | Risk if mishandled | Resolution in this design |
+|---|---|---|---|
+| 1 | `VideoPipelineService` keyed by `sessionId` (`src/services/VideoPipelineService.ts:30`) | If mosaic and an Appium session both invoke it on the same UDID with the same key, one ffmpeg overwrites the other's `activeRecordings` entry. | Mosaic passes `Recording.id` (a separate UUID) as the `sessionId` argument. Session ffmpeg and mosaic ffmpeg coexist as two `Map` entries. **No change to the existing service required for keying.** |
+| 2 | Output path is `sessionAssetsPath/{sessionId}/video/{sessionId}.mp4` (hard-coded in `VideoPipelineService.startRecording`) | Mosaic recordings would commingle with Session asset dirs, confusing operators and the existing bug-report bundle's path resolution. | **Strictly additive change**: add optional `outputPath` to `VideoPipelineOptions`. When omitted, existing behavior is byte-identical. Mosaic passes `recordingsAssetsPath/{recordingId}/video/{recordingId}.mp4`. Existing session callers do not pass it. |
+| 3 | Automation calls `AndroidStreamService.startStream` / `IOSStreamService.startStream` directly from `LocalSession` (bypassing the control router) | If automation starts on a UDID that the mosaic is already streaming, the existing viewer-counted stream is reused — fine. But automation's session-allocation must respect the mosaic's `manual_${udid}` busy block, otherwise it could grab a device the QA is recording. | Existing device allocation already skips devices where `device.busy=true`. The mosaic acquires the same `manual_${udid}` block the existing manual-control panel uses. **No new gating needed.** Verified: `blockDevice` is the same primitive both paths use. |
+| 4 | Automation session end triggers `LocalSession.stopVideoRecording()` → `videoPipeline.stopRecording(sessionId)` | Could it tear down a mosaic ffmpeg or a mosaic-held stream? | Stop is keyed by `sessionId`, so it only ends its own ffmpeg. Stream stop is reference-counted; viewer count goes from 2→1 (the mosaic remains a viewer), stream stays alive. Verified at `AndroidStreamService.ts:234` / `IOSStreamService.ts:941`. |
+| 5 | Two ffmpegs from one MJPEG (one for session, one for mosaic) | CPU/disk doubled per device under that overlap. | Acceptable cost — `UniversalMjpegProxy` broadcasts to both efficiently. The new mosaic header surfaces "Recordings: N · CPU: …" so operators see the overlap. Documented, not gated. |
+| 6 | Phase 1 has no per-user identity for manual blocks (block id format is `manual_${udid}`) | Cannot distinguish "this user already has a manual block on the device" from "another user has it." Same human switching from device-control panel to mosaic could see their own device greyed out. | **Phase 1 conservative posture**: any pre-existing `manual_*` block from outside the current recording-start request is treated as `manual_other`. Cost: same user must close the device-control panel before adding that device to a mosaic. Documented in the picker tooltip ("Release manual control first"). Per-user manual identity is a separate, larger change deferred. |
+| 7 | Mosaic input (tap / type / swipe) | If the mosaic let users tap on tiles, two surfaces (mosaic + device-control panel) could fight over `WDA` input on iOS, and on Android could collide with automation that just started before the user noticed. | **Phase 1 mosaic is view-and-record only — no input.** This is an explicit non-feature called out below. The existing single-device manual-control panel remains the place for input. |
+| 8 | Hub-node topology (devices on remote Xenon nodes) | New mosaic might pretend it works on remote nodes when the streaming/recording paths only cover local devices. | **Mosaic supports the same set of devices the existing manual-control panel supports — no more, no less.** If a remote-node device works in the existing single-device manual control today, it works in mosaic; if it doesn't, mosaic doesn't claim to either. No new hub-node forwarding code in Phase 1. |
+| 9 | `Session` proof-bundle vs mosaic proof-bundle on the same time window | If the user started a mosaic recording with `sessionId` set, both the session bug-report and the mosaic proof bundle exist for the same session. They reference different MP4 files (one from session ffmpeg, one from mosaic ffmpeg). Operators could be confused about which is the source of truth. | Documented behavior: when `sessionId` is provided at recording start, the mosaic recording is its **own first-class artifact**, independent of `Session.video_recording`. The proof bundle uses the mosaic's MP4. The session's bug-report bundle continues to use the session's MP4. The two are intentionally distinct because they may have different fps/quality. The proof-bundle README notes which it is. |
+| 10 | "I want to live-watch and record what my running test is doing" (the Hybrid Engineer's classic ask) | The Phase 1 mosaic refuses busy devices, so this user is blocked from recording their own running test. | **Phase 1 fallback**: this user uses the existing `GET /session/:sessionId/live_video` route in session detail to watch live (read-only). Recording from that view is the Phase 2 "observer mode." Documented as a known Phase 1 limitation in the user-facing release note, with the workaround. |
+| 11 | Server-wide ffmpeg pressure (lab with 20 devices, 5 users) | If `MAX_CONCURRENT_RECORDINGS` were per-user, a lab could end up with 20+ ffmpegs and thrash. | The cap is **server-wide, not per-user**. Two users contending for the cap will see `409 concurrency_cap` — this is correct lab behavior; admins raise the cap if needed. Spec language tightened below. |
+| 12 | `PortAllocator` exhaustion | Mosaic exposes the existing port pool more visibly because each device added consumes a port. | No new code. Phase 1 inherits the existing pool size. Surfaced to admins in the release note. |
+| 13 | Multi-tab same-browser interaction | Same user opens mosaic in two tabs, picks overlapping device sets. | Tab B sees Tab A's devices as `manual_other` (per #6) and is blocked from selecting them. Slightly weird UX but safe — two ffmpegs can't be started on one UDID by accident. Phase 1 accepts this; UX polish deferred. |
+| 14 | State recovery after browser refresh | User refreshes the mosaic tab mid-recording. Server-side recording is still going, but the client lost its in-memory state. | On mount, `<DeviceMosaicView>` calls `GET /xenon/api/recordings?status=RECORDING` and rehydrates the recording-group store. UI restores tiles, recording state, and elapsed-time counter. Annotations and bookmarks already on the server are fetched. |
+| 15 | SQLite migration during live traffic | The new migration runs on a system with active sessions hitting the DB. | Migration is **CREATE TABLE only** for `Recording`, `Bookmark`, `Annotation`, plus an inverse-only relation on `Session`. No locks taken on existing tables that would block in-flight session writes. Standard Prisma additive migration. |
+| 16 | Device unplugged or simulator killed mid-recording | ffmpeg dies. We must not leak the manual block; another user must be able to claim the device. | Already in spec under "Edge Cases": `Recording.status=FAILED`, partial fMP4 retained. **Tightened here**: the `manual_${udid}` block must also be released when a recording transitions to `FAILED` or `STOPPED`. Implementation note: this is a finalize step in `RecordingOrchestrator.stop()` and the ffmpeg-exit handler. |
+| 17 | Free-form recording started, server crashes, then restarts | Orphan `Recording` rows in `RECORDING` status, orphan manual blocks, partial MP4 files. | Startup recovery (added below): on `XenonPlugin` boot, `RecordingOrchestrator` scans `Recording.status='RECORDING'` rows, marks them `FAILED` with `fail_reason='server_restart'`, releases any `manual_${udid}` blocks owned by these recordings. Mirrors how the existing session lifecycle handles abandoned sessions. |
+| 18 | A `sessionId` provided to mosaic refers to a session that has since ended | The mosaic should not try to call session-only APIs against a dead session. | If `sessionId` is provided, recording proceeds independently. Log collection at bundle time is best-effort; if the session is gone, we still produce the bundle without `logs.txt`. No hard failure. |
+| 19 | iOS WDA conflict during mosaic recording | iOS streaming creates a minimal WDA session. Automation also creates a WDA session. Two clients of one WDA. | The existing `IOSStreamService` already handles "Reuses existing Appium sessions" (Explore note). Mosaic does not introduce a *second* WDA session — it just consumes the MJPEG from the existing one. **Mosaic does not require keyboard or input WDA features in Phase 1** (no input, see #7), so the conflict surface is zero. |
+| 20 | Concurrent automation/manual stop calls racing on shared resources | Two stop paths firing on overlapping ffmpeg/stream resources at once. | Each path is keyed (sessionId for session stop, recordingId for mosaic stop) and idempotent. Stream stop is viewer-counted with `Math.max(0, …)` clamping (`AndroidStreamService.ts:234`). Safe. |
+
+### Phase 1 explicit non-features (called out so they're not surprises)
+
+- **No tap/type/swipe input from the mosaic.** Use the existing single-device manual-control panel for input. The mosaic is view-and-record only.
+- **No observer mode.** Devices currently in automation are not selectable. Engineers who want to watch their automated run use the existing session-detail live view.
+- **No multi-user identity for manual blocks.** Same user moving between device-control and mosaic on the same device must release the first surface before opening the second.
+- **No remote-node-specific code paths.** Mosaic supports exactly the device set the existing manual-control panel supports.
+- **No automatic deletion / retention policy for proof bundles.** Disk is surfaced; cleanup is the operator's job in Phase 1.
+- **No live participation in an existing session's recording.** Session video and mosaic video are independent files.
+
+### Server-restart recovery (added)
+
+`RecordingOrchestrator.recoverOnBoot()` runs once at plugin startup:
+
+1. Find all `Recording` rows where `status='RECORDING'`.
+2. For each, set `status='FAILED'`, `fail_reason='server_restart'`, `ended_at=now()`.
+3. For each unique UDID across those rows, release the `manual_${udid}` block if and only if the block was owned by a now-failed recording (verified via the block id == `manual_${udid}` heuristic; same approach the existing session-cleanup uses).
+4. Log a single summary line listing recovered recordings.
+
+This mirrors how the existing session-cleanup recovers orphan sessions on boot.
+
+### Tightenings applied to earlier sections of this spec
+
+- **`MAX_CONCURRENT_RECORDINGS` is server-wide**, not per-user. The schema entry's description is updated.
+- **`VideoPipelineService` gains an optional `outputPath`** (additive only). Listed in "Files Touched" as a one-field signature extension.
+- **Mosaic input is explicitly out of scope.** RecordingControls bar has only viewing/recording/annotation/bookmark/export actions — no tap/type buttons.
+- **Manual-block release on recording end / failure / restart** is now part of the orchestrator contract.
 
 ## Why this is safe to merge
 
