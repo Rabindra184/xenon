@@ -33,6 +33,46 @@ Every change is **additive**. None of the following may be modified in incompati
 
 A regression-guard test pass is part of the implementation plan: existing session recording, session bug-report download, and existing dashboard streaming flows must remain green.
 
+## UI-Only Operability (load-bearing)
+
+**Hard constraint:** Every operation in this feature must be invokable from the dashboard alone, with no Appium client, no test script, and no automation session running. A manual QA engineer with only a browser must be able to: pick devices, view them live, record any subset, drop bookmarks, draw annotations, capture annotated still frames, stop, and download the proof bundle — entirely from buttons in the UI.
+
+The architectural primitive for session-free streaming already exists and is reused unmodified:
+
+| Existing primitive | What it gives us |
+|---|---|
+| `POST /xenon/api/control/:udid/stream/start` (`src/app/routers/control.ts:491`) | Starts MJPEG for a UDID without any Appium session. Refuses if the device is busy with automation. Marks the device `busy` with synthetic id `manual_${udid}` so automation will not steal it mid-manual-control. |
+| `POST /xenon/api/control/:udid/stream/stop` | Releases the stream and the manual block. |
+| `GET /:mjpegPort/...` proxied via `UniversalMjpegProxy` | Multi-viewer broadcast — the mosaic and the recorder are both just viewers of the same upstream. |
+
+The mosaic uses these endpoints to bring a device "online for viewing." `RecordingOrchestrator` then attaches its ffmpeg as another viewer of the already-running MJPEG. **No new code path is introduced for "start a stream from the UI" — Phase 1 reuses what the existing manual-control panel already uses.**
+
+### Mapping every user operation to a UI control
+
+| User intent | UI control | Backend call | Requires automation? |
+|---|---|---|---|
+| Pick devices to view | `<DevicePicker>` checkboxes, populated from `GET /xenon/api/devices` | reuses existing | No |
+| Start viewing N devices | "Add to mosaic" button | `POST /xenon/api/control/:udid/stream/start` per UDID (existing) | No |
+| Start recording any subset | ● Record button in `<RecordingControls>` | `POST /xenon/api/recordings { udids }` (new) | No |
+| Stop recording | ⏹ Stop button | `POST /xenon/api/recordings/:groupId/stop` (new) | No |
+| Drop a bookmark mid-recording | 🔖 Bookmark button or `B` hotkey | `POST /xenon/api/recordings/:groupId/bookmark` (new) | No |
+| Draw an annotation on the live frame | ✎ tool palette + canvas | `POST /xenon/api/recordings/:groupId/annotation` (new) | No |
+| Pause a tile and capture an annotated still | ⏸ on a tile, then ✎, then "Save as proof" | `POST /xenon/api/recordings { udids:[udid], stillFrameOnly:true }` (new) | No |
+| Download the proof bundle | ⤓ Download button | `GET /xenon/api/recordings/:groupId/bundle.zip` (new) | No |
+| Download annotated MP4 | "Download annotated" sub-action | `GET /xenon/api/recordings/:groupId/exports/annotated.mp4?udid=…` (new) | No |
+| Stop viewing | "Remove" on a tile, or "End mosaic" | `POST /xenon/api/control/:udid/stream/stop` per UDID (existing) | No |
+
+Every row's right-most column is "No." Nothing in this feature requires Webdriver, an Appium client library, a test runner, or a CI pipeline. The proof bundle download is a single browser request that streams a zip the user saves locally.
+
+### Device-busy semantics (Phase 1)
+
+A device that is currently being viewed in the mosaic is marked busy under id `manual_${udid}` — identical to how the existing single-device manual-control panel marks it. This means:
+
+- An automation session **cannot** steal a device that is being viewed/recorded from the mosaic. Protects the QA's recording from being interrupted.
+- A device that is currently in an automation session **cannot** be added to the mosaic (the existing endpoint returns 409). Protects the automation from concurrent input.
+
+This matches existing behavior exactly. **A read-only "observer mode" that lets the mosaic watch a device under automation without taking it busy is intentionally deferred to Phase 2** to keep Phase 1 strictly additive and consistent with the existing manual-control posture.
+
 ## What ships in Phase 1
 
 The feature surface in this spec. Phase 2/3/4 are listed under "Out of scope" above and will get their own specs.
@@ -75,6 +115,11 @@ The feature surface in this spec. Phase 2/3/4 are listed under "Out of scope" ab
 │                                                                 │
 │ RecordingOrchestrator (NEW)                                     │
 │   ├─ start(udids[], opts) → { groupId, recordings[] }          │
+│   │     for each udid:                                          │
+│   │       1. ensure stream up via existing control endpoint    │
+│   │          POST /xenon/api/control/:udid/stream/start        │
+│   │          (no-op if already streaming)                      │
+│   │       2. spawn VideoPipelineService.startRecording(...)    │
 │   ├─ stop(groupId)                                              │
 │   ├─ addBookmark(groupId, deviceUdid?, timecodeMs, label, note) │
 │   ├─ addAnnotation(groupId, deviceUdid, timecodeMs, shape...)   │
@@ -85,6 +130,8 @@ The feature surface in this spec. Phase 2/3/4 are listed under "Out of scope" ab
 │ Per-device capture (one ffmpeg per UDID, capped):               │
 │   wraps VideoPipelineService.startRecording(udid, outPath)      │
 │   guarded by MAX_CONCURRENT_RECORDINGS (default 4)              │
+│   does NOT stop the upstream MJPEG when recording stops —       │
+│   the mosaic may still be viewing it.                          │
 │                                                                 │
 │ Persistence:                                                    │
 │   Prisma: Recording, Bookmark, Annotation (new tables)          │
@@ -344,7 +391,7 @@ Both are optional; existing deployments require no config change.
 | Phase | Contents | Status after this spec |
 |---|---|---|
 | 1 | Mosaic, multi-device free-form recording, bookmarks, annotation overlay, frame-precise screenshot, proof bundle, watermark export | **This spec** |
-| 2 | Synced log/network overlay, tap visualization, side-by-side playback, voice narration, healing-event timeline | Future spec |
+| 2 | Synced log/network overlay, tap visualization, side-by-side playback, voice narration, healing-event timeline, **read-only observer mode** (mosaic-watch a device under automation without taking it busy) | Future spec |
 | 3 | Shareable signed URLs, ticket-tracker integrations, AI-assisted summary, tap heatmap | Future spec |
 | 4 | SSIM-diff visual regression | Future spec |
 
