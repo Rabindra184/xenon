@@ -47,22 +47,40 @@ export interface UnblockDeviceFn {
   (udid: string, host: string): Promise<void>;
 }
 
+export interface OrchestratorDeps {
+  busyPrecheck?: BusyPrecheck;
+  store?: RecordingStore;
+  gate?: ConcurrencyGate;
+  videoPipeline?: VideoPipelineService;
+  blockDeviceFn?: BlockDeviceFn;
+  eventMgr?: DashboardEventManager;
+  unblockDeviceFn?: UnblockDeviceFn;
+}
+
 @Service()
 export class RecordingOrchestrator {
-  // Expose for test override; default wired through constructor injection.
+  // All deps are public so tests can rebind a single one without rebuilding.
   public unblockDeviceFn: UnblockDeviceFn;
+  public blockDeviceFn: BlockDeviceFn;
+  private readonly _deps: Required<Omit<OrchestratorDeps, 'blockDeviceFn' | 'unblockDeviceFn'>>;
 
-  constructor(
-    private readonly busyPrecheck: BusyPrecheck = Container.get(BusyPrecheck),
-    private readonly store: RecordingStore = Container.get(RecordingStore),
-    private readonly gate: ConcurrencyGate = Container.get(ConcurrencyGate),
-    private readonly videoPipeline: VideoPipelineService = Container.get(VideoPipelineService),
-    private readonly blockDeviceFn: BlockDeviceFn = defaultBlockDevice,
-    private readonly eventMgr: DashboardEventManager = Container.get(DashboardEventManager),
-    unblockDeviceFn?: UnblockDeviceFn,
-  ) {
-    this.unblockDeviceFn = unblockDeviceFn ?? defaultUnblockDevice;
+  constructor(deps: OrchestratorDeps = {}) {
+    this._deps = {
+      busyPrecheck: deps.busyPrecheck ?? Container.get(BusyPrecheck),
+      store: deps.store ?? Container.get(RecordingStore),
+      gate: deps.gate ?? Container.get(ConcurrencyGate),
+      videoPipeline: deps.videoPipeline ?? Container.get(VideoPipelineService),
+      eventMgr: deps.eventMgr ?? Container.get(DashboardEventManager),
+    };
+    this.blockDeviceFn = deps.blockDeviceFn ?? defaultBlockDevice;
+    this.unblockDeviceFn = deps.unblockDeviceFn ?? defaultUnblockDevice;
   }
+
+  private get busyPrecheck() { return this._deps.busyPrecheck; }
+  private get store() { return this._deps.store; }
+  private get gate() { return this._deps.gate; }
+  private get videoPipeline() { return this._deps.videoPipeline; }
+  private get eventMgr() { return this._deps.eventMgr; }
 
   /**
    * Start a recording group. Atomic — if any UDID is busy or the cap would be

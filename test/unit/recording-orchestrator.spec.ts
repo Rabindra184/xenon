@@ -37,15 +37,15 @@ function makeOrch(overrides: any = {}) {
       emitRecordingBookmark: sinon.stub(),
       emitRecordingAnnotation: sinon.stub(),
     };
-  const orch = new RecordingOrchestrator(
-    busyPrecheck as any,
-    store as any,
-    gate as any,
-    videoPipeline as any,
+  const orch = new RecordingOrchestrator({
+    busyPrecheck: busyPrecheck as any,
+    store: store as any,
+    gate: gate as any,
+    videoPipeline: videoPipeline as any,
     blockDeviceFn,
-    eventMgr as any,
+    eventMgr: eventMgr as any,
     unblockDeviceFn,
-  );
+  });
   return { orch, busyPrecheck, store, gate, videoPipeline, blockDeviceFn, unblockDeviceFn, eventMgr };
 }
 
