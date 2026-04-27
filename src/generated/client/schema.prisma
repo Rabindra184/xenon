@@ -52,6 +52,7 @@ model Session {
   Profiling               Profiling[]
   build                   Build?       @relation(fields: [build_id], references: [id])
   SessionLog              SessionLog[]
+  Recording               Recording[]
 
   @@index([status, last_heartbeat_at])
   @@index([build_id])
@@ -289,4 +290,54 @@ model SelectorState {
   @@unique([original_strategy, original_selector])
   @@index([status])
   @@index([fixed_at])
+}
+
+model Recording {
+  id              String       @id @default(uuid())
+  group_id        String
+  device_udid     String
+  device_host     String       @default("127.0.0.1")
+  session_id      String?
+  started_at      DateTime
+  ended_at        DateTime?
+  status          String
+  file_path       String
+  duration_ms     Int?
+  size_bytes      Int?
+  device_snapshot String?
+  fail_reason     String?
+  bookmarks       Bookmark[]
+  annotations     Annotation[]
+  Session         Session?     @relation(fields: [session_id], references: [id])
+
+  @@index([group_id])
+  @@index([device_udid])
+  @@index([started_at])
+}
+
+model Bookmark {
+  id           String    @id @default(uuid())
+  recording_id String
+  timecode_ms  Int
+  label        String
+  note         String?
+  created_at   DateTime  @default(now())
+  Recording    Recording @relation(fields: [recording_id], references: [id], onDelete: Cascade)
+
+  @@index([recording_id, timecode_ms])
+}
+
+model Annotation {
+  id           String    @id @default(uuid())
+  recording_id String
+  timecode_ms  Int
+  shape        String
+  geometry     String
+  color        String
+  text         String?
+  author       String?
+  created_at   DateTime  @default(now())
+  Recording    Recording @relation(fields: [recording_id], references: [id], onDelete: Cascade)
+
+  @@index([recording_id, timecode_ms])
 }
