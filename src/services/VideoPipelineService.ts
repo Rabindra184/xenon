@@ -9,12 +9,28 @@ import { config } from '../config';
 import { DeviceStoreFactory } from '../data-service/device-store';
 import { ResourceIsolationService } from './ResourceIsolationService';
 
+/**
+ * Resolve the on-disk path the recorder will write to.
+ * Extracted as a pure function so it can be unit-tested without spawning ffmpeg.
+ */
+export function resolveOutputPath(sessionId: string, override?: string): string {
+  return (
+    override ??
+    path.join(config.sessionAssetsPath, sessionId, 'video', `${sessionId}.mp4`)
+  );
+}
+
 export interface VideoPipelineOptions {
   sessionId: string;
   udid: string;
   resolution?: string;
   bitrate?: string;
   mjpegPort?: number; // Principal Efficiency: Optional pre-resolved port
+  // When provided, ffmpeg writes directly to this path (and its parent dir is
+  // created if missing). When omitted, the existing default path under
+  // config.sessionAssetsPath is used. Used by the free-form RecordingOrchestrator
+  // to keep mosaic recordings out of the session asset tree.
+  outputPath?: string;
 }
 
 /**
@@ -59,11 +75,11 @@ export class VideoPipelineService {
     }
 
     const mjpegUrl = `http://127.0.0.1:${mjpegPort}`;
-    const outputDir = path.join(config.sessionAssetsPath, sessionId, 'video');
+    const outputPath = resolveOutputPath(sessionId, options.outputPath);
+    const outputDir = path.dirname(outputPath);
     if (!fs.existsSync(outputDir)) {
       fs.mkdirSync(outputDir, { recursive: true });
     }
-    const outputPath = path.join(outputDir, `${sessionId}.mp4`);
 
     log.info(`[VideoPipeline] Starting HW-accelerated recording for ${sessionId} from ${mjpegUrl}`);
 
