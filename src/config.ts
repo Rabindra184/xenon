@@ -27,6 +27,8 @@ export interface Config {
   // `XENON_NODE_SECRET` (new) and `XENON_NODE_SECRET_PREVIOUS` (old) on the
   // hub, flip nodes one by one to the new secret, then drop PREVIOUS.
   nodeSecretPrevious?: string;
+  recordingsAssetsPath: string;
+  maxConcurrentRecordings: number;
 }
 
 export const config: Config = {
@@ -64,6 +66,10 @@ export const config: Config = {
   authDisabled: process.env.XENON_AUTH_DISABLED === 'true',
   nodeSecret: process.env.XENON_NODE_SECRET,
   nodeSecretPrevious: process.env.XENON_NODE_SECRET_PREVIOUS,
+  recordingsAssetsPath:
+    process.env.XENON_RECORDINGS_ASSETS_PATH ||
+    path.join(basePath, 'assets', 'sessions', 'recordings'),
+  maxConcurrentRecordings: Number(process.env.XENON_MAX_CONCURRENT_RECORDINGS ?? 4),
 };
 
 export function updateConfig(newConfig: Partial<Config>) {
