@@ -21,6 +21,13 @@ export enum SocketEvents {
   INTERCEPTOR_SESSION_STOPPED = 'interceptor_session_stopped',
 
   BUG_REPORT_GENERATED = 'bug_report_generated',
+
+  RECORDING_STARTED = 'recording_started',
+  RECORDING_STOPPED = 'recording_stopped',
+  RECORDING_BOOKMARK_ADDED = 'recording_bookmark_added',
+  RECORDING_ANNOTATION_ADDED = 'recording_annotation_added',
+  RECORDING_FAILED = 'recording_failed',
+  RECORDING_FRAME_DROPS = 'recording_frame_drops',
 }
 
 export const XENON_PROTOCOL_VERSION = '1.0.0';

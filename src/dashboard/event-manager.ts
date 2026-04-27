@@ -830,6 +830,47 @@ export class DashboardEventManager {
       this.appProfilers.delete(sessionId);
     }
   }
+
+  // ─── Recording (free-form mosaic) events ─────────────────────────────────
+  // Emitted by RecordingOrchestrator. Distinct namespace from SESSION_*; the
+  // dashboard listens to both independently. No existing emitters changed.
+  public emitRecordingStarted(payload: {
+    groupId: string;
+    recordings: Array<{ id: string; udid: string }>;
+    startedAt: Date;
+  }): void {
+    Container.get(SocketServer).emitToDashboard(SocketEvents.RECORDING_STARTED, payload);
+  }
+
+  public emitRecordingStopped(payload: {
+    groupId: string;
+    recordings: Array<{
+      id: string;
+      udid: string;
+      status: string;
+      durationMs?: number;
+      sizeBytes?: number;
+    }>;
+  }): void {
+    Container.get(SocketServer).emitToDashboard(SocketEvents.RECORDING_STOPPED, payload);
+  }
+
+  public emitRecordingBookmark(payload: { groupId: string; bookmark: unknown }): void {
+    Container.get(SocketServer).emitToDashboard(SocketEvents.RECORDING_BOOKMARK_ADDED, payload);
+  }
+
+  public emitRecordingAnnotation(payload: { groupId: string; annotation: unknown }): void {
+    Container.get(SocketServer).emitToDashboard(SocketEvents.RECORDING_ANNOTATION_ADDED, payload);
+  }
+
+  public emitRecordingFailed(payload: {
+    groupId: string;
+    recordingId: string;
+    udid: string;
+    reason: string;
+  }): void {
+    Container.get(SocketServer).emitToDashboard(SocketEvents.RECORDING_FAILED, payload);
+  }
 }
 
 export const DASHBORD_EVENT_MANAGER = Container.get(DashboardEventManager);
