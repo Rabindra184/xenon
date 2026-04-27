@@ -51,9 +51,10 @@ The mosaic uses these endpoints to bring a device "online for viewing." `Recordi
 
 | User intent | UI control | Backend call | Requires automation? |
 |---|---|---|---|
-| Pick devices to view | `<DevicePicker>` checkboxes, populated from `GET /xenon/api/devices` | reuses existing | No |
-| Start viewing N devices | "Add to mosaic" button | `POST /xenon/api/control/:udid/stream/start` per UDID (existing) | No |
-| Start recording any subset | ● Record button in `<RecordingControls>` | `POST /xenon/api/recordings { udids }` (new) | No |
+| Pick devices to view | `<DevicePicker>` checkboxes, populated from `GET /xenon/api/devices`; busy devices are visibly disabled with the reason shown | reuses existing | No |
+| Start viewing N devices | "Add to mosaic" button (only enabled for free devices) | `POST /xenon/api/control/:udid/stream/start` per UDID (existing) | No |
+| Start recording any subset | ● Record button in `<RecordingControls>` | `POST /xenon/api/recordings { udids }` (new, atomic; 409 on any busy UDID) | No |
+| Add another device to an active recording group | "Add device" within mosaic | `POST /xenon/api/recordings/:groupId/add-device { udid }` (new, atomic) | No |
 | Stop recording | ⏹ Stop button | `POST /xenon/api/recordings/:groupId/stop` (new) | No |
 | Drop a bookmark mid-recording | 🔖 Bookmark button or `B` hotkey | `POST /xenon/api/recordings/:groupId/bookmark` (new) | No |
 | Draw an annotation on the live frame | ✎ tool palette + canvas | `POST /xenon/api/recordings/:groupId/annotation` (new) | No |
@@ -72,6 +73,65 @@ A device that is currently being viewed in the mosaic is marked busy under id `m
 - A device that is currently in an automation session **cannot** be added to the mosaic (the existing endpoint returns 409). Protects the automation from concurrent input.
 
 This matches existing behavior exactly. **A read-only "observer mode" that lets the mosaic watch a device under automation without taking it busy is intentionally deferred to Phase 2** to keep Phase 1 strictly additive and consistent with the existing manual-control posture.
+
+### Busy-Device Safety (defense in depth)
+
+A user must never be able to select a busy device in the mosaic — neither one that is running an automation session nor one that is being controlled by another manual user (the existing single-device manual-control panel, or another tab's mosaic). Any such attempt must fail loudly without partial side effects.
+
+The guarantee is enforced at three layers; bypassing one still leaves the others intact.
+
+**Layer 1 — UI: busy devices are visibly unselectable.**
+
+`<DevicePicker>` reads each device's existing `busy` field plus a new derived `busyReason` (computed server-side from the existing block-id format) and renders busy devices as:
+
+- Greyed-out checkbox, disabled.
+- A status pill: "In automation: <session-id-prefix>" or "Manual control by another user" or "Recording in another mosaic group".
+- A tooltip explaining why selection is blocked.
+- The devices remain visible (not hidden) so the engineer understands the lab state, but cannot be chosen.
+
+The picker subscribes to the existing device-state socket events. If a device transitions to busy while it sits selected in the picker (not yet recorded), the checkbox auto-deselects with a non-modal toast: "Device X became busy and was removed from your selection."
+
+**Layer 2 — REST: the recording-start endpoint pre-validates atomically.**
+
+`POST /xenon/api/recordings` runs an explicit pre-check pass before spawning any ffmpeg:
+
+1. Load the current device record for every requested UDID.
+2. If **any** UDID is `busy` (for any reason other than this same caller's existing manual-control block, see below), return `409 device_busy` with a payload listing every busy UDID and its reason. **No streams started, no rows written, no ffmpeg spawned.**
+3. Otherwise, take the manual block on every UDID transactionally. If the block fails on any one UDID (e.g., it just became busy during the call), release all blocks already taken in this call and return `409 device_busy`.
+4. Only then start streams (idempotent if already streaming for this caller) and spawn the per-device ffmpeg processes.
+
+The "same caller's existing manual-control block" exception lets a user who already has a tile open via the device-control panel promote it into a mosaic recording without re-acquiring the block. The block id format `manual_${udid}` is unchanged; we just recognize it.
+
+**Layer 3 — Stream layer: existing 409 from `POST /control/:udid/stream/start`.**
+
+The existing endpoint at `src/app/routers/control.ts:491` already returns 409 when `device.busy && !isCurrentlyControlledManually`. This is our last line of defense: even if Layers 1 and 2 had a race-window bug, the stream-start primitive itself would refuse. We rely on this behavior unmodified.
+
+#### REST shape for the busy-device error
+
+```http
+POST /xenon/api/recordings
+{ "udids": ["A1B2", "C3D4", "E5F6"] }
+
+HTTP/1.1 409 Conflict
+{
+  "error": "device_busy",
+  "busyDevices": [
+    { "udid": "C3D4", "reason": "automation", "sessionId": "abc12345" },
+    { "udid": "E5F6", "reason": "manual_other_user", "blockId": "manual_E5F6" }
+  ],
+  "message": "2 of 3 selected devices are busy. Recording was not started."
+}
+```
+
+`reason` enum: `automation` | `manual_self` (only used in the rare case the same user already has a recording-group block on it) | `manual_other` | `recording_other_group` | `unknown`.
+
+#### Adding a device to a running recording group
+
+`POST /xenon/api/recordings/:groupId/add-device { udid }` (added to the REST contract section below) follows the exact same atomic pre-check. It either succeeds and returns the new `Recording` row, or returns 409 without taking any action.
+
+#### What the user sees
+
+Because both layers refuse atomically, the user can never end up in a half-started state. The mosaic UI surfaces the 409 as a single dismissible banner: "Cannot start recording — these devices are busy: …". Selections that were valid remain selected; busy ones get the same greyed-out state described in Layer 1.
 
 ## What ships in Phase 1
 
@@ -261,6 +321,14 @@ POST /xenon/api/recordings
   body: { udids: string[], note?: string, sessionId?: string }
   202: { groupId, recordings: [{ id, udid, status }] }
   409: { error: "concurrency_cap", limit, active }
+  409: { error: "device_busy", busyDevices: [{ udid, reason, sessionId?, blockId? }], message }
+        — atomic: no recordings created if any UDID is busy
+
+POST /xenon/api/recordings/:groupId/add-device
+  body: { udid: string }
+  201: { recording: { id, udid, status } }
+  409: { error: "device_busy", busyDevices: [...] }
+  409: { error: "concurrency_cap", limit, active }
 
 POST /xenon/api/recordings/:groupId/stop
   200: { groupId, recordings: [{ id, udid, status, durationMs, sizeBytes }] }
@@ -366,7 +434,12 @@ Both are optional; existing deployments require no config change.
 | Case | Handling |
 |---|---|
 | Device unplugged mid-recording | ffmpeg exits → `Recording.status=FAILED`, `fail_reason="device_disconnected"`, partial fMP4 retained (still playable thanks to `frag_keyframe`). |
-| Two engineers click Record on the same UDID | Idempotent: same `Recording` returned to both; both clients receive `RECORDING_STARTED`. |
+| User selects a device that's running automation | UI greys out the checkbox with reason "In automation". If they bypass the UI somehow, server returns `409 device_busy` atomically — nothing started. |
+| User selects a device that another user is manually controlling | UI greys out with reason "Manual control by another user". Server returns `409 device_busy` atomically. |
+| Device transitions to busy while sitting selected (not yet recorded) | Picker auto-deselects via socket event with a toast. No request is sent. |
+| Race: device becomes busy *during* the recording-start call | Server's atomic pre-check fails on the late-arriving busy state; any blocks already taken in this call are released; `409 device_busy` returned with the offending UDID. |
+| Two engineers click Record on the same set of UDIDs simultaneously | Whichever wins the manual-block transaction first proceeds; the loser's whole call is rolled back with `409 device_busy` (reason `manual_other`). No partial group is ever created. |
+| Two engineers click Record on the same UDID with disjoint sets | Same as above: the second caller gets 409 only for the contested UDID; their request is atomic so no recording starts for any of their UDIDs. |
 | Browser tab closed during recording | Server-side recording is unaffected; `GET /recordings/:groupId` reflects state on next page load. |
 | `recordingsAssetsPath` not writable | Start fails fast with a clear 500; existing session recording (different path) remains usable. |
 | Annotation submitted for a stopped recording | Allowed (engineer marks up after the fact). Stored against `timecode_ms` which is now relative to a finalized duration. |
