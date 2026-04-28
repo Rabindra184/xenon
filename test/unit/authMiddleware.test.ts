@@ -1,7 +1,7 @@
 import 'reflect-metadata';
 import { expect } from 'chai';
 import sinon from 'sinon';
-import { authMiddleware } from '../../src/middleware/authMiddleware';
+import { authMiddleware, scopesForRole } from '../../src/middleware/authMiddleware';
 import { Container } from 'typedi';
 import { ApiKeyService } from '../../src/services/ApiKeyService';
 import { UserSessionService } from '../../src/services/UserSessionService';
@@ -92,5 +92,38 @@ describe('authMiddleware', () => {
     } finally {
       (config as any).acceptLegacyKey = orig;
     }
+  });
+
+  it('cookie falls back to ApiKey when UserSession misses', async () => {
+    sinon.stub(Container.get(UserSessionService), 'resolve').resolves(null);
+    sinon.stub(Container.get(ApiKeyService), 'verify').resolves({
+      id: 'k1',
+      userId: 'u1',
+      scopes: 'read',
+      rateLimit: 300,
+      teamId: null,
+    } as any);
+    sinon.stub(Container.get(UserService), 'findById').resolves({
+      id: 'u1',
+      role: 'MEMBER',
+      status: 'ACTIVE',
+    } as any);
+    const req: any = { headers: { cookie: 'xenon_dashboard_session=legacy-key-id' } };
+    let called = false;
+    await authMiddleware(req, mkRes() as any, () => {
+      called = true;
+    });
+    expect(called).to.be.true;
+    expect(req.auth?.kind).to.equal('api-key');
+    expect(req.auth?.userId).to.equal('u1');
+    expect(req.apiKey?.id).to.equal('k1');
+  });
+
+  describe('scopesForRole', () => {
+    it('maps each role to the documented scope set', () => {
+      expect(scopesForRole('SUPER_ADMIN')).to.equal('admin');
+      expect(scopesForRole('ADMIN')).to.equal('devices,sessions,read');
+      expect(scopesForRole('MEMBER')).to.equal('sessions,read');
+    });
   });
 });

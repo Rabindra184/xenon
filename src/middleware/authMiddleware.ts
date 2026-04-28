@@ -69,6 +69,8 @@ export async function authMiddleware(req: Request, res: Response, next: NextFunc
   }
 
   // Path 2: cookie — UserSession first, then ApiKey (legacy issuance path).
+  // Both ids are UUIDv4; collision is astronomically unlikely (<1 in 2^128).
+  // On collision, UserSession wins and we never look at the ApiKey branch.
   const cookie = readCookie(req, SESSION_COOKIE);
   if (cookie) {
     const session = await userSessionSvc.resolve(cookie);
@@ -90,6 +92,11 @@ export async function authMiddleware(req: Request, res: Response, next: NextFunc
         sessionId: session.id,
         rateLimit: 300,
       };
+      // NOTE: req.apiKey is intentionally NOT set on the user-session path.
+      // It's a legacy shape that only carries api-key context (id, scopes,
+      // rateLimit, teamId) — there's no apiKey here. Routers that still
+      // read req.apiKey?.id as an actor identifier need to migrate to
+      // req.auth.userId; that migration is Task 12.
       return next();
     }
     // Fall through: maybe it's a raw API key in the cookie (legacy issuance path).
