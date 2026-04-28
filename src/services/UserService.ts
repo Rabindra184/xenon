@@ -2,11 +2,21 @@ import { Service } from 'typedi';
 import bcrypt from 'bcrypt';
 import crypto from 'crypto';
 import log from '../logger';
+import { prisma } from '../prisma';
+import type { UserRole, UserStatus } from '../types/identity';
 
 const ACCESS_KEY_PREFIX = 'xen_';
 const ACCESS_KEY_LEN = 12;
 const PASSWORD_MIN = 8;
 const ACCESS_KEY_ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+
+export interface CreateUserParams {
+  email: string;
+  name: string;
+  password: string;
+  role?: UserRole;
+  status?: UserStatus;
+}
 
 @Service()
 export class UserService {
@@ -34,5 +44,63 @@ export class UserService {
       s += ACCESS_KEY_ALPHABET[bytes[i] % ACCESS_KEY_ALPHABET.length];
     }
     return ACCESS_KEY_PREFIX + s;
+  }
+
+  async createUser(p: CreateUserParams) {
+    const passwordHash = await this.hashPassword(p.password);
+    const accessKey = this.generateAccessKey();
+    return prisma.user.create({
+      data: {
+        email: p.email.toLowerCase(),
+        name: p.name,
+        passwordHash,
+        accessKey,
+        role: p.role ?? 'MEMBER',
+        status: p.status ?? 'ACTIVE',
+      },
+    });
+  }
+
+  async findByEmail(email: string) {
+    return prisma.user.findUnique({ where: { email: email.toLowerCase() } });
+  }
+
+  async findByAccessKey(accessKey: string) {
+    return prisma.user.findUnique({ where: { accessKey } });
+  }
+
+  async findById(id: string) {
+    return prisma.user.findUnique({ where: { id } });
+  }
+
+  async rotateAccessKey(userId: string) {
+    const accessKey = this.generateAccessKey();
+    return prisma.user.update({
+      where: { id: userId },
+      data: { accessKey, updatedAt: new Date() },
+      select: { id: true, accessKey: true },
+    });
+  }
+
+  async changePassword(userId: string, oldPassword: string, newPassword: string) {
+    const u = await prisma.user.findUnique({ where: { id: userId } });
+    if (!u) throw new Error('user not found');
+    if (!(await this.verifyPassword(oldPassword, u.passwordHash))) {
+      throw new Error('incorrect current password');
+    }
+    const passwordHash = await this.hashPassword(newPassword);
+    await prisma.user.update({
+      where: { id: userId },
+      data: { passwordHash, passwordChangedAt: new Date() },
+    });
+  }
+
+  async setLastLoginAt(userId: string) {
+    await prisma.user
+      .update({
+        where: { id: userId },
+        data: { lastLoginAt: new Date() },
+      })
+      .catch(() => undefined);
   }
 }
