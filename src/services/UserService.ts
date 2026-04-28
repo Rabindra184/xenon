@@ -46,6 +46,9 @@ export class UserService {
     return ACCESS_KEY_PREFIX + s;
   }
 
+  // CONTRACT: every User insertion path (this method, bootstrap, and any
+  // future migration) must lowercase email before writing — User.email is
+  // unique, and the application treats addresses as case-insensitive.
   async createUser(p: CreateUserParams) {
     const passwordHash = await this.hashPassword(p.password);
     const accessKey = this.generateAccessKey();
@@ -77,7 +80,7 @@ export class UserService {
     const accessKey = this.generateAccessKey();
     return prisma.user.update({
       where: { id: userId },
-      data: { accessKey, updatedAt: new Date() },
+      data: { accessKey },
       select: { id: true, accessKey: true },
     });
   }
@@ -85,6 +88,12 @@ export class UserService {
   async changePassword(userId: string, oldPassword: string, newPassword: string) {
     const u = await prisma.user.findUnique({ where: { id: userId } });
     if (!u) throw new Error('user not found');
+    if (!u.passwordHash) {
+      // Distinguish "no password on file" from "wrong password" so the
+      // operator / support flow can tell a corrupted account apart from a
+      // typo. Bootstrap-reset env var is the recovery path.
+      throw new Error('password has not been set on this account');
+    }
     if (!(await this.verifyPassword(oldPassword, u.passwordHash))) {
       throw new Error('incorrect current password');
     }
@@ -95,12 +104,14 @@ export class UserService {
     });
   }
 
+  // Login-side-effect: never block sign-in on a write failure here. Log
+  // the failure so chronic DB issues are visible in operator logs.
   async setLastLoginAt(userId: string) {
     await prisma.user
       .update({
         where: { id: userId },
         data: { lastLoginAt: new Date() },
       })
-      .catch(() => undefined);
+      .catch((e) => this.log.warn(`failed to update lastLoginAt for ${userId}: ${(e as Error)?.message ?? e}`));
   }
 }

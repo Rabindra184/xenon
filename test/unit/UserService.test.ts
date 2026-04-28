@@ -86,5 +86,13 @@ describe('UserService', () => {
       try { await svc.changePassword('u1', 'WRONG', 'new-password'); } catch (e) { err = e as Error; }
       expect(err?.message).to.match(/incorrect/);
     });
+
+    it('changePassword surfaces "no password set" when passwordHash is empty', async () => {
+      sinon.stub(prisma.user, 'findUnique').resolves({ id: 'u1', passwordHash: '' } as any);
+      const svc = new UserService();
+      let err: Error | undefined;
+      try { await svc.changePassword('u1', 'whatever', 'new-password'); } catch (e) { err = e as Error; }
+      expect(err?.message).to.match(/has not been set/);
+    });
   });
 });
