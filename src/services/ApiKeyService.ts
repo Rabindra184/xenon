@@ -16,6 +16,7 @@ export interface ApiKeyRow {
   revokedAt: Date | null;
   teamId?: string | null;
   role?: string;
+  userId?: string | null;
 }
 
 @Service()
@@ -76,6 +77,10 @@ export class ApiKeyService {
     scopes: Scope[];
     rateLimit?: number;
     teamId?: string | null;
+    // Optional through Task 8-15; Task 16's NOT NULL migration tightens this
+    // to required once all callers pass userId from req.auth (post-Task 12).
+    userId?: string;
+    expiresAt?: Date;
   }): Promise<{ id: string; raw: string }> {
     const raw = this.generateRaw();
     const row = await prisma.apiKey.create({
@@ -85,9 +90,24 @@ export class ApiKeyService {
         scopes: params.scopes.join(','),
         rateLimit: params.rateLimit ?? 300,
         teamId: params.teamId ?? null,
+        ...(params.userId !== undefined ? { userId: params.userId } : {}),
       },
     });
     return { id: row.id, raw };
+  }
+
+  async verifyPair(accessKey: string, token: string): Promise<ApiKeyRow | null> {
+    if (!accessKey || !token) return null;
+    const user = await prisma.user.findUnique({ where: { accessKey } });
+    if (!user) return null;
+    const row = await prisma.apiKey.findFirst({
+      where: { keyHash: this.hash(token), userId: user.id, revokedAt: null },
+    });
+    if (!row) return null;
+    prisma.apiKey
+      .update({ where: { id: row.id }, data: { lastUsedAt: new Date() } })
+      .catch(() => undefined);
+    return row as ApiKeyRow;
   }
 
   async revoke(id: string): Promise<void> {
