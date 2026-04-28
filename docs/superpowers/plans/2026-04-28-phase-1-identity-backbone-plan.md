@@ -127,6 +127,8 @@ Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>"
 
 - [ ] **Step 1: Add new models and enums to `schema.prisma`**
 
+> **SQLite caveat (verified during Task 2 implementation):** Prisma's SQLite connector does not support `enum`. Substitute the two enums below with plain `String` columns (`role String @default("MEMBER")`, `status String @default("ACTIVE")`) and an inline schema comment listing the allowed values. TypeScript string-literal unions in `src/types/identity.ts` (Task 3) provide the type safety the enum would have. If/when the project moves to PostgreSQL, real enums can be added at that time.
+
 Append at the end (after the existing `ApiKey` and `Team` blocks already at lines 249–272):
 
 ```prisma
@@ -193,6 +195,8 @@ model ApiKey {
 ```
 
 > **Why nullable then enforced:** SQLite cannot add a NOT NULL FK with a generated default in one step. We add it nullable, backfill in Task 17, then run a second migration to enforce NOT NULL.
+
+> **Indexing note (verified during Task 2 implementation):** Do NOT add `@@index([accessKey])` on `User`. The `@unique` already creates a covering index in SQLite; a second `@@index` is dead weight (extra writes on user create / accessKey rotate, no read benefit).
 
 - [ ] **Step 2: Generate the migration**
 

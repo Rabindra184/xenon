@@ -367,8 +367,6 @@ model User {
 
   apiKeys           ApiKey[]
   sessions          UserSession[]
-
-  @@index([accessKey])
 }
 
 model UserSession {

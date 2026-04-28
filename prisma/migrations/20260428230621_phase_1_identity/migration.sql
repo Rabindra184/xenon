@@ -59,9 +59,6 @@ CREATE UNIQUE INDEX "User_email_key" ON "User"("email");
 CREATE UNIQUE INDEX "User_accessKey_key" ON "User"("accessKey");
 
 -- CreateIndex
-CREATE INDEX "User_accessKey_idx" ON "User"("accessKey");
-
--- CreateIndex
 CREATE INDEX "UserSession_userId_idx" ON "UserSession"("userId");
 
 -- CreateIndex
