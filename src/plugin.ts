@@ -166,6 +166,15 @@ class XenonPlugin extends BasePlugin {
   ): Promise<void> {
     await Container.get(ServerManager).updateServer(expressApp, httpServer, cliArgs);
     XenonPlugin.IS_HUB = ServerManager.IS_HUB;
+
+    // Mark any orphan free-form recordings (from a previous process) FAILED
+    // and release their manual blocks, mirroring the existing session cleanup.
+    try {
+      const { RecordingOrchestrator } = await import('./services/recording/RecordingOrchestrator');
+      await Container.get(RecordingOrchestrator).recoverOnBoot();
+    } catch (err: any) {
+      log.warn(`[plugin] RecordingOrchestrator.recoverOnBoot failed: ${err?.message}`);
+    }
   }
 
   async createSession(

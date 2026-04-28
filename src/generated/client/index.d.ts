@@ -93,6 +93,21 @@ export type Team = $Result.DefaultSelection<Prisma.$TeamPayload>
  * 
  */
 export type SelectorState = $Result.DefaultSelection<Prisma.$SelectorStatePayload>
+/**
+ * Model Recording
+ * 
+ */
+export type Recording = $Result.DefaultSelection<Prisma.$RecordingPayload>
+/**
+ * Model Bookmark
+ * 
+ */
+export type Bookmark = $Result.DefaultSelection<Prisma.$BookmarkPayload>
+/**
+ * Model Annotation
+ * 
+ */
+export type Annotation = $Result.DefaultSelection<Prisma.$AnnotationPayload>
 
 /**
  * ##  Prisma Client ʲˢ
@@ -376,6 +391,36 @@ export class PrismaClient<
     * ```
     */
   get selectorState(): Prisma.SelectorStateDelegate<ExtArgs>;
+
+  /**
+   * `prisma.recording`: Exposes CRUD operations for the **Recording** model.
+    * Example usage:
+    * ```ts
+    * // Fetch zero or more Recordings
+    * const recordings = await prisma.recording.findMany()
+    * ```
+    */
+  get recording(): Prisma.RecordingDelegate<ExtArgs>;
+
+  /**
+   * `prisma.bookmark`: Exposes CRUD operations for the **Bookmark** model.
+    * Example usage:
+    * ```ts
+    * // Fetch zero or more Bookmarks
+    * const bookmarks = await prisma.bookmark.findMany()
+    * ```
+    */
+  get bookmark(): Prisma.BookmarkDelegate<ExtArgs>;
+
+  /**
+   * `prisma.annotation`: Exposes CRUD operations for the **Annotation** model.
+    * Example usage:
+    * ```ts
+    * // Fetch zero or more Annotations
+    * const annotations = await prisma.annotation.findMany()
+    * ```
+    */
+  get annotation(): Prisma.AnnotationDelegate<ExtArgs>;
 }
 
 export namespace Prisma {
@@ -832,7 +877,10 @@ export namespace Prisma {
     PortLease: 'PortLease',
     ApiKey: 'ApiKey',
     Team: 'Team',
-    SelectorState: 'SelectorState'
+    SelectorState: 'SelectorState',
+    Recording: 'Recording',
+    Bookmark: 'Bookmark',
+    Annotation: 'Annotation'
   };
 
   export type ModelName = (typeof ModelName)[keyof typeof ModelName]
@@ -848,7 +896,7 @@ export namespace Prisma {
 
   export type TypeMap<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs, ClientOptions = {}> = {
     meta: {
-      modelProps: "build" | "session" | "sessionLog" | "log" | "profiling" | "app" | "device" | "pendingSession" | "cLIArgs" | "webhookConfig" | "webConfig" | "locatorEtalon" | "portLease" | "apiKey" | "team" | "selectorState"
+      modelProps: "build" | "session" | "sessionLog" | "log" | "profiling" | "app" | "device" | "pendingSession" | "cLIArgs" | "webhookConfig" | "webConfig" | "locatorEtalon" | "portLease" | "apiKey" | "team" | "selectorState" | "recording" | "bookmark" | "annotation"
       txIsolationLevel: Prisma.TransactionIsolationLevel
     }
     model: {
@@ -1972,6 +2020,216 @@ export namespace Prisma {
           }
         }
       }
+      Recording: {
+        payload: Prisma.$RecordingPayload<ExtArgs>
+        fields: Prisma.RecordingFieldRefs
+        operations: {
+          findUnique: {
+            args: Prisma.RecordingFindUniqueArgs<ExtArgs>
+            result: $Utils.PayloadToResult<Prisma.$RecordingPayload> | null
+          }
+          findUniqueOrThrow: {
+            args: Prisma.RecordingFindUniqueOrThrowArgs<ExtArgs>
+            result: $Utils.PayloadToResult<Prisma.$RecordingPayload>
+          }
+          findFirst: {
+            args: Prisma.RecordingFindFirstArgs<ExtArgs>
+            result: $Utils.PayloadToResult<Prisma.$RecordingPayload> | null
+          }
+          findFirstOrThrow: {
+            args: Prisma.RecordingFindFirstOrThrowArgs<ExtArgs>
+            result: $Utils.PayloadToResult<Prisma.$RecordingPayload>
+          }
+          findMany: {
+            args: Prisma.RecordingFindManyArgs<ExtArgs>
+            result: $Utils.PayloadToResult<Prisma.$RecordingPayload>[]
+          }
+          create: {
+            args: Prisma.RecordingCreateArgs<ExtArgs>
+            result: $Utils.PayloadToResult<Prisma.$RecordingPayload>
+          }
+          createMany: {
+            args: Prisma.RecordingCreateManyArgs<ExtArgs>
+            result: BatchPayload
+          }
+          createManyAndReturn: {
+            args: Prisma.RecordingCreateManyAndReturnArgs<ExtArgs>
+            result: $Utils.PayloadToResult<Prisma.$RecordingPayload>[]
+          }
+          delete: {
+            args: Prisma.RecordingDeleteArgs<ExtArgs>
+            result: $Utils.PayloadToResult<Prisma.$RecordingPayload>
+          }
+          update: {
+            args: Prisma.RecordingUpdateArgs<ExtArgs>
+            result: $Utils.PayloadToResult<Prisma.$RecordingPayload>
+          }
+          deleteMany: {
+            args: Prisma.RecordingDeleteManyArgs<ExtArgs>
+            result: BatchPayload
+          }
+          updateMany: {
+            args: Prisma.RecordingUpdateManyArgs<ExtArgs>
+            result: BatchPayload
+          }
+          upsert: {
+            args: Prisma.RecordingUpsertArgs<ExtArgs>
+            result: $Utils.PayloadToResult<Prisma.$RecordingPayload>
+          }
+          aggregate: {
+            args: Prisma.RecordingAggregateArgs<ExtArgs>
+            result: $Utils.Optional<AggregateRecording>
+          }
+          groupBy: {
+            args: Prisma.RecordingGroupByArgs<ExtArgs>
+            result: $Utils.Optional<RecordingGroupByOutputType>[]
+          }
+          count: {
+            args: Prisma.RecordingCountArgs<ExtArgs>
+            result: $Utils.Optional<RecordingCountAggregateOutputType> | number
+          }
+        }
+      }
+      Bookmark: {
+        payload: Prisma.$BookmarkPayload<ExtArgs>
+        fields: Prisma.BookmarkFieldRefs
+        operations: {
+          findUnique: {
+            args: Prisma.BookmarkFindUniqueArgs<ExtArgs>
+            result: $Utils.PayloadToResult<Prisma.$BookmarkPayload> | null
+          }
+          findUniqueOrThrow: {
+            args: Prisma.BookmarkFindUniqueOrThrowArgs<ExtArgs>
+            result: $Utils.PayloadToResult<Prisma.$BookmarkPayload>
+          }
+          findFirst: {
+            args: Prisma.BookmarkFindFirstArgs<ExtArgs>
+            result: $Utils.PayloadToResult<Prisma.$BookmarkPayload> | null
+          }
+          findFirstOrThrow: {
+            args: Prisma.BookmarkFindFirstOrThrowArgs<ExtArgs>
+            result: $Utils.PayloadToResult<Prisma.$BookmarkPayload>
+          }
+          findMany: {
+            args: Prisma.BookmarkFindManyArgs<ExtArgs>
+            result: $Utils.PayloadToResult<Prisma.$BookmarkPayload>[]
+          }
+          create: {
+            args: Prisma.BookmarkCreateArgs<ExtArgs>
+            result: $Utils.PayloadToResult<Prisma.$BookmarkPayload>
+          }
+          createMany: {
+            args: Prisma.BookmarkCreateManyArgs<ExtArgs>
+            result: BatchPayload
+          }
+          createManyAndReturn: {
+            args: Prisma.BookmarkCreateManyAndReturnArgs<ExtArgs>
+            result: $Utils.PayloadToResult<Prisma.$BookmarkPayload>[]
+          }
+          delete: {
+            args: Prisma.BookmarkDeleteArgs<ExtArgs>
+            result: $Utils.PayloadToResult<Prisma.$BookmarkPayload>
+          }
+          update: {
+            args: Prisma.BookmarkUpdateArgs<ExtArgs>
+            result: $Utils.PayloadToResult<Prisma.$BookmarkPayload>
+          }
+          deleteMany: {
+            args: Prisma.BookmarkDeleteManyArgs<ExtArgs>
+            result: BatchPayload
+          }
+          updateMany: {
+            args: Prisma.BookmarkUpdateManyArgs<ExtArgs>
+            result: BatchPayload
+          }
+          upsert: {
+            args: Prisma.BookmarkUpsertArgs<ExtArgs>
+            result: $Utils.PayloadToResult<Prisma.$BookmarkPayload>
+          }
+          aggregate: {
+            args: Prisma.BookmarkAggregateArgs<ExtArgs>
+            result: $Utils.Optional<AggregateBookmark>
+          }
+          groupBy: {
+            args: Prisma.BookmarkGroupByArgs<ExtArgs>
+            result: $Utils.Optional<BookmarkGroupByOutputType>[]
+          }
+          count: {
+            args: Prisma.BookmarkCountArgs<ExtArgs>
+            result: $Utils.Optional<BookmarkCountAggregateOutputType> | number
+          }
+        }
+      }
+      Annotation: {
+        payload: Prisma.$AnnotationPayload<ExtArgs>
+        fields: Prisma.AnnotationFieldRefs
+        operations: {
+          findUnique: {
+            args: Prisma.AnnotationFindUniqueArgs<ExtArgs>
+            result: $Utils.PayloadToResult<Prisma.$AnnotationPayload> | null
+          }
+          findUniqueOrThrow: {
+            args: Prisma.AnnotationFindUniqueOrThrowArgs<ExtArgs>
+            result: $Utils.PayloadToResult<Prisma.$AnnotationPayload>
+          }
+          findFirst: {
+            args: Prisma.AnnotationFindFirstArgs<ExtArgs>
+            result: $Utils.PayloadToResult<Prisma.$AnnotationPayload> | null
+          }
+          findFirstOrThrow: {
+            args: Prisma.AnnotationFindFirstOrThrowArgs<ExtArgs>
+            result: $Utils.PayloadToResult<Prisma.$AnnotationPayload>
+          }
+          findMany: {
+            args: Prisma.AnnotationFindManyArgs<ExtArgs>
+            result: $Utils.PayloadToResult<Prisma.$AnnotationPayload>[]
+          }
+          create: {
+            args: Prisma.AnnotationCreateArgs<ExtArgs>
+            result: $Utils.PayloadToResult<Prisma.$AnnotationPayload>
+          }
+          createMany: {
+            args: Prisma.AnnotationCreateManyArgs<ExtArgs>
+            result: BatchPayload
+          }
+          createManyAndReturn: {
+            args: Prisma.AnnotationCreateManyAndReturnArgs<ExtArgs>
+            result: $Utils.PayloadToResult<Prisma.$AnnotationPayload>[]
+          }
+          delete: {
+            args: Prisma.AnnotationDeleteArgs<ExtArgs>
+            result: $Utils.PayloadToResult<Prisma.$AnnotationPayload>
+          }
+          update: {
+            args: Prisma.AnnotationUpdateArgs<ExtArgs>
+            result: $Utils.PayloadToResult<Prisma.$AnnotationPayload>
+          }
+          deleteMany: {
+            args: Prisma.AnnotationDeleteManyArgs<ExtArgs>
+            result: BatchPayload
+          }
+          updateMany: {
+            args: Prisma.AnnotationUpdateManyArgs<ExtArgs>
+            result: BatchPayload
+          }
+          upsert: {
+            args: Prisma.AnnotationUpsertArgs<ExtArgs>
+            result: $Utils.PayloadToResult<Prisma.$AnnotationPayload>
+          }
+          aggregate: {
+            args: Prisma.AnnotationAggregateArgs<ExtArgs>
+            result: $Utils.Optional<AggregateAnnotation>
+          }
+          groupBy: {
+            args: Prisma.AnnotationGroupByArgs<ExtArgs>
+            result: $Utils.Optional<AnnotationGroupByOutputType>[]
+          }
+          count: {
+            args: Prisma.AnnotationCountArgs<ExtArgs>
+            result: $Utils.Optional<AnnotationCountAggregateOutputType> | number
+          }
+        }
+      }
     }
   } & {
     other: {
@@ -2167,12 +2425,14 @@ export namespace Prisma {
     Log: number
     Profiling: number
     SessionLog: number
+    Recording: number
   }
 
   export type SessionCountOutputTypeSelect<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
     Log?: boolean | SessionCountOutputTypeCountLogArgs
     Profiling?: boolean | SessionCountOutputTypeCountProfilingArgs
     SessionLog?: boolean | SessionCountOutputTypeCountSessionLogArgs
+    Recording?: boolean | SessionCountOutputTypeCountRecordingArgs
   }
 
   // Custom InputTypes
@@ -2205,6 +2465,13 @@ export namespace Prisma {
    */
   export type SessionCountOutputTypeCountSessionLogArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
     where?: SessionLogWhereInput
+  }
+
+  /**
+   * SessionCountOutputType without action
+   */
+  export type SessionCountOutputTypeCountRecordingArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    where?: RecordingWhereInput
   }
 
 
@@ -2245,6 +2512,46 @@ export namespace Prisma {
    */
   export type TeamCountOutputTypeCountApiKeysArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
     where?: ApiKeyWhereInput
+  }
+
+
+  /**
+   * Count Type RecordingCountOutputType
+   */
+
+  export type RecordingCountOutputType = {
+    bookmarks: number
+    annotations: number
+  }
+
+  export type RecordingCountOutputTypeSelect<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    bookmarks?: boolean | RecordingCountOutputTypeCountBookmarksArgs
+    annotations?: boolean | RecordingCountOutputTypeCountAnnotationsArgs
+  }
+
+  // Custom InputTypes
+  /**
+   * RecordingCountOutputType without action
+   */
+  export type RecordingCountOutputTypeDefaultArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the RecordingCountOutputType
+     */
+    select?: RecordingCountOutputTypeSelect<ExtArgs> | null
+  }
+
+  /**
+   * RecordingCountOutputType without action
+   */
+  export type RecordingCountOutputTypeCountBookmarksArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    where?: BookmarkWhereInput
+  }
+
+  /**
+   * RecordingCountOutputType without action
+   */
+  export type RecordingCountOutputTypeCountAnnotationsArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    where?: AnnotationWhereInput
   }
 
 
@@ -3588,6 +3895,7 @@ export namespace Prisma {
     Profiling?: boolean | Session$ProfilingArgs<ExtArgs>
     build?: boolean | Session$buildArgs<ExtArgs>
     SessionLog?: boolean | Session$SessionLogArgs<ExtArgs>
+    Recording?: boolean | Session$RecordingArgs<ExtArgs>
     _count?: boolean | SessionCountOutputTypeDefaultArgs<ExtArgs>
   }, ExtArgs["result"]["session"]>
 
@@ -3663,6 +3971,7 @@ export namespace Prisma {
     Profiling?: boolean | Session$ProfilingArgs<ExtArgs>
     build?: boolean | Session$buildArgs<ExtArgs>
     SessionLog?: boolean | Session$SessionLogArgs<ExtArgs>
+    Recording?: boolean | Session$RecordingArgs<ExtArgs>
     _count?: boolean | SessionCountOutputTypeDefaultArgs<ExtArgs>
   }
   export type SessionIncludeCreateManyAndReturn<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
@@ -3676,6 +3985,7 @@ export namespace Prisma {
       Profiling: Prisma.$ProfilingPayload<ExtArgs>[]
       build: Prisma.$BuildPayload<ExtArgs> | null
       SessionLog: Prisma.$SessionLogPayload<ExtArgs>[]
+      Recording: Prisma.$RecordingPayload<ExtArgs>[]
     }
     scalars: $Extensions.GetPayloadResult<{
       id: string
@@ -4076,6 +4386,7 @@ export namespace Prisma {
     Profiling<T extends Session$ProfilingArgs<ExtArgs> = {}>(args?: Subset<T, Session$ProfilingArgs<ExtArgs>>): Prisma.PrismaPromise<$Result.GetResult<Prisma.$ProfilingPayload<ExtArgs>, T, "findMany"> | Null>
     build<T extends Session$buildArgs<ExtArgs> = {}>(args?: Subset<T, Session$buildArgs<ExtArgs>>): Prisma__BuildClient<$Result.GetResult<Prisma.$BuildPayload<ExtArgs>, T, "findUniqueOrThrow"> | null, null, ExtArgs>
     SessionLog<T extends Session$SessionLogArgs<ExtArgs> = {}>(args?: Subset<T, Session$SessionLogArgs<ExtArgs>>): Prisma.PrismaPromise<$Result.GetResult<Prisma.$SessionLogPayload<ExtArgs>, T, "findMany"> | Null>
+    Recording<T extends Session$RecordingArgs<ExtArgs> = {}>(args?: Subset<T, Session$RecordingArgs<ExtArgs>>): Prisma.PrismaPromise<$Result.GetResult<Prisma.$RecordingPayload<ExtArgs>, T, "findMany"> | Null>
     /**
      * Attaches callbacks for the resolution and/or rejection of the Promise.
      * @param onfulfilled The callback to execute when the Promise is resolved.
@@ -4523,6 +4834,26 @@ export namespace Prisma {
     take?: number
     skip?: number
     distinct?: SessionLogScalarFieldEnum | SessionLogScalarFieldEnum[]
+  }
+
+  /**
+   * Session.Recording
+   */
+  export type Session$RecordingArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the Recording
+     */
+    select?: RecordingSelect<ExtArgs> | null
+    /**
+     * Choose, which related nodes to fetch as well
+     */
+    include?: RecordingInclude<ExtArgs> | null
+    where?: RecordingWhereInput
+    orderBy?: RecordingOrderByWithRelationInput | RecordingOrderByWithRelationInput[]
+    cursor?: RecordingWhereUniqueInput
+    take?: number
+    skip?: number
+    distinct?: RecordingScalarFieldEnum | RecordingScalarFieldEnum[]
   }
 
   /**
@@ -18742,6 +19073,3126 @@ export namespace Prisma {
 
 
   /**
+   * Model Recording
+   */
+
+  export type AggregateRecording = {
+    _count: RecordingCountAggregateOutputType | null
+    _avg: RecordingAvgAggregateOutputType | null
+    _sum: RecordingSumAggregateOutputType | null
+    _min: RecordingMinAggregateOutputType | null
+    _max: RecordingMaxAggregateOutputType | null
+  }
+
+  export type RecordingAvgAggregateOutputType = {
+    duration_ms: number | null
+    size_bytes: number | null
+  }
+
+  export type RecordingSumAggregateOutputType = {
+    duration_ms: number | null
+    size_bytes: number | null
+  }
+
+  export type RecordingMinAggregateOutputType = {
+    id: string | null
+    group_id: string | null
+    device_udid: string | null
+    device_host: string | null
+    session_id: string | null
+    started_at: Date | null
+    ended_at: Date | null
+    status: string | null
+    file_path: string | null
+    duration_ms: number | null
+    size_bytes: number | null
+    device_snapshot: string | null
+    fail_reason: string | null
+  }
+
+  export type RecordingMaxAggregateOutputType = {
+    id: string | null
+    group_id: string | null
+    device_udid: string | null
+    device_host: string | null
+    session_id: string | null
+    started_at: Date | null
+    ended_at: Date | null
+    status: string | null
+    file_path: string | null
+    duration_ms: number | null
+    size_bytes: number | null
+    device_snapshot: string | null
+    fail_reason: string | null
+  }
+
+  export type RecordingCountAggregateOutputType = {
+    id: number
+    group_id: number
+    device_udid: number
+    device_host: number
+    session_id: number
+    started_at: number
+    ended_at: number
+    status: number
+    file_path: number
+    duration_ms: number
+    size_bytes: number
+    device_snapshot: number
+    fail_reason: number
+    _all: number
+  }
+
+
+  export type RecordingAvgAggregateInputType = {
+    duration_ms?: true
+    size_bytes?: true
+  }
+
+  export type RecordingSumAggregateInputType = {
+    duration_ms?: true
+    size_bytes?: true
+  }
+
+  export type RecordingMinAggregateInputType = {
+    id?: true
+    group_id?: true
+    device_udid?: true
+    device_host?: true
+    session_id?: true
+    started_at?: true
+    ended_at?: true
+    status?: true
+    file_path?: true
+    duration_ms?: true
+    size_bytes?: true
+    device_snapshot?: true
+    fail_reason?: true
+  }
+
+  export type RecordingMaxAggregateInputType = {
+    id?: true
+    group_id?: true
+    device_udid?: true
+    device_host?: true
+    session_id?: true
+    started_at?: true
+    ended_at?: true
+    status?: true
+    file_path?: true
+    duration_ms?: true
+    size_bytes?: true
+    device_snapshot?: true
+    fail_reason?: true
+  }
+
+  export type RecordingCountAggregateInputType = {
+    id?: true
+    group_id?: true
+    device_udid?: true
+    device_host?: true
+    session_id?: true
+    started_at?: true
+    ended_at?: true
+    status?: true
+    file_path?: true
+    duration_ms?: true
+    size_bytes?: true
+    device_snapshot?: true
+    fail_reason?: true
+    _all?: true
+  }
+
+  export type RecordingAggregateArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Filter which Recording to aggregate.
+     */
+    where?: RecordingWhereInput
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/sorting Sorting Docs}
+     * 
+     * Determine the order of Recordings to fetch.
+     */
+    orderBy?: RecordingOrderByWithRelationInput | RecordingOrderByWithRelationInput[]
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination#cursor-based-pagination Cursor Docs}
+     * 
+     * Sets the start position
+     */
+    cursor?: RecordingWhereUniqueInput
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination Pagination Docs}
+     * 
+     * Take `±n` Recordings from the position of the cursor.
+     */
+    take?: number
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination Pagination Docs}
+     * 
+     * Skip the first `n` Recordings.
+     */
+    skip?: number
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/aggregations Aggregation Docs}
+     * 
+     * Count returned Recordings
+    **/
+    _count?: true | RecordingCountAggregateInputType
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/aggregations Aggregation Docs}
+     * 
+     * Select which fields to average
+    **/
+    _avg?: RecordingAvgAggregateInputType
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/aggregations Aggregation Docs}
+     * 
+     * Select which fields to sum
+    **/
+    _sum?: RecordingSumAggregateInputType
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/aggregations Aggregation Docs}
+     * 
+     * Select which fields to find the minimum value
+    **/
+    _min?: RecordingMinAggregateInputType
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/aggregations Aggregation Docs}
+     * 
+     * Select which fields to find the maximum value
+    **/
+    _max?: RecordingMaxAggregateInputType
+  }
+
+  export type GetRecordingAggregateType<T extends RecordingAggregateArgs> = {
+        [P in keyof T & keyof AggregateRecording]: P extends '_count' | 'count'
+      ? T[P] extends true
+        ? number
+        : GetScalarType<T[P], AggregateRecording[P]>
+      : GetScalarType<T[P], AggregateRecording[P]>
+  }
+
+
+
+
+  export type RecordingGroupByArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    where?: RecordingWhereInput
+    orderBy?: RecordingOrderByWithAggregationInput | RecordingOrderByWithAggregationInput[]
+    by: RecordingScalarFieldEnum[] | RecordingScalarFieldEnum
+    having?: RecordingScalarWhereWithAggregatesInput
+    take?: number
+    skip?: number
+    _count?: RecordingCountAggregateInputType | true
+    _avg?: RecordingAvgAggregateInputType
+    _sum?: RecordingSumAggregateInputType
+    _min?: RecordingMinAggregateInputType
+    _max?: RecordingMaxAggregateInputType
+  }
+
+  export type RecordingGroupByOutputType = {
+    id: string
+    group_id: string
+    device_udid: string
+    device_host: string
+    session_id: string | null
+    started_at: Date
+    ended_at: Date | null
+    status: string
+    file_path: string
+    duration_ms: number | null
+    size_bytes: number | null
+    device_snapshot: string | null
+    fail_reason: string | null
+    _count: RecordingCountAggregateOutputType | null
+    _avg: RecordingAvgAggregateOutputType | null
+    _sum: RecordingSumAggregateOutputType | null
+    _min: RecordingMinAggregateOutputType | null
+    _max: RecordingMaxAggregateOutputType | null
+  }
+
+  type GetRecordingGroupByPayload<T extends RecordingGroupByArgs> = Prisma.PrismaPromise<
+    Array<
+      PickEnumerable<RecordingGroupByOutputType, T['by']> &
+        {
+          [P in ((keyof T) & (keyof RecordingGroupByOutputType))]: P extends '_count'
+            ? T[P] extends boolean
+              ? number
+              : GetScalarType<T[P], RecordingGroupByOutputType[P]>
+            : GetScalarType<T[P], RecordingGroupByOutputType[P]>
+        }
+      >
+    >
+
+
+  export type RecordingSelect<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = $Extensions.GetSelect<{
+    id?: boolean
+    group_id?: boolean
+    device_udid?: boolean
+    device_host?: boolean
+    session_id?: boolean
+    started_at?: boolean
+    ended_at?: boolean
+    status?: boolean
+    file_path?: boolean
+    duration_ms?: boolean
+    size_bytes?: boolean
+    device_snapshot?: boolean
+    fail_reason?: boolean
+    bookmarks?: boolean | Recording$bookmarksArgs<ExtArgs>
+    annotations?: boolean | Recording$annotationsArgs<ExtArgs>
+    Session?: boolean | Recording$SessionArgs<ExtArgs>
+    _count?: boolean | RecordingCountOutputTypeDefaultArgs<ExtArgs>
+  }, ExtArgs["result"]["recording"]>
+
+  export type RecordingSelectCreateManyAndReturn<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = $Extensions.GetSelect<{
+    id?: boolean
+    group_id?: boolean
+    device_udid?: boolean
+    device_host?: boolean
+    session_id?: boolean
+    started_at?: boolean
+    ended_at?: boolean
+    status?: boolean
+    file_path?: boolean
+    duration_ms?: boolean
+    size_bytes?: boolean
+    device_snapshot?: boolean
+    fail_reason?: boolean
+    Session?: boolean | Recording$SessionArgs<ExtArgs>
+  }, ExtArgs["result"]["recording"]>
+
+  export type RecordingSelectScalar = {
+    id?: boolean
+    group_id?: boolean
+    device_udid?: boolean
+    device_host?: boolean
+    session_id?: boolean
+    started_at?: boolean
+    ended_at?: boolean
+    status?: boolean
+    file_path?: boolean
+    duration_ms?: boolean
+    size_bytes?: boolean
+    device_snapshot?: boolean
+    fail_reason?: boolean
+  }
+
+  export type RecordingInclude<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    bookmarks?: boolean | Recording$bookmarksArgs<ExtArgs>
+    annotations?: boolean | Recording$annotationsArgs<ExtArgs>
+    Session?: boolean | Recording$SessionArgs<ExtArgs>
+    _count?: boolean | RecordingCountOutputTypeDefaultArgs<ExtArgs>
+  }
+  export type RecordingIncludeCreateManyAndReturn<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    Session?: boolean | Recording$SessionArgs<ExtArgs>
+  }
+
+  export type $RecordingPayload<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    name: "Recording"
+    objects: {
+      bookmarks: Prisma.$BookmarkPayload<ExtArgs>[]
+      annotations: Prisma.$AnnotationPayload<ExtArgs>[]
+      Session: Prisma.$SessionPayload<ExtArgs> | null
+    }
+    scalars: $Extensions.GetPayloadResult<{
+      id: string
+      group_id: string
+      device_udid: string
+      device_host: string
+      session_id: string | null
+      started_at: Date
+      ended_at: Date | null
+      status: string
+      file_path: string
+      duration_ms: number | null
+      size_bytes: number | null
+      device_snapshot: string | null
+      fail_reason: string | null
+    }, ExtArgs["result"]["recording"]>
+    composites: {}
+  }
+
+  type RecordingGetPayload<S extends boolean | null | undefined | RecordingDefaultArgs> = $Result.GetResult<Prisma.$RecordingPayload, S>
+
+  type RecordingCountArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = 
+    Omit<RecordingFindManyArgs, 'select' | 'include' | 'distinct'> & {
+      select?: RecordingCountAggregateInputType | true
+    }
+
+  export interface RecordingDelegate<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> {
+    [K: symbol]: { types: Prisma.TypeMap<ExtArgs>['model']['Recording'], meta: { name: 'Recording' } }
+    /**
+     * Find zero or one Recording that matches the filter.
+     * @param {RecordingFindUniqueArgs} args - Arguments to find a Recording
+     * @example
+     * // Get one Recording
+     * const recording = await prisma.recording.findUnique({
+     *   where: {
+     *     // ... provide filter here
+     *   }
+     * })
+     */
+    findUnique<T extends RecordingFindUniqueArgs>(args: SelectSubset<T, RecordingFindUniqueArgs<ExtArgs>>): Prisma__RecordingClient<$Result.GetResult<Prisma.$RecordingPayload<ExtArgs>, T, "findUnique"> | null, null, ExtArgs>
+
+    /**
+     * Find one Recording that matches the filter or throw an error with `error.code='P2025'` 
+     * if no matches were found.
+     * @param {RecordingFindUniqueOrThrowArgs} args - Arguments to find a Recording
+     * @example
+     * // Get one Recording
+     * const recording = await prisma.recording.findUniqueOrThrow({
+     *   where: {
+     *     // ... provide filter here
+     *   }
+     * })
+     */
+    findUniqueOrThrow<T extends RecordingFindUniqueOrThrowArgs>(args: SelectSubset<T, RecordingFindUniqueOrThrowArgs<ExtArgs>>): Prisma__RecordingClient<$Result.GetResult<Prisma.$RecordingPayload<ExtArgs>, T, "findUniqueOrThrow">, never, ExtArgs>
+
+    /**
+     * Find the first Recording that matches the filter.
+     * Note, that providing `undefined` is treated as the value not being there.
+     * Read more here: https://pris.ly/d/null-undefined
+     * @param {RecordingFindFirstArgs} args - Arguments to find a Recording
+     * @example
+     * // Get one Recording
+     * const recording = await prisma.recording.findFirst({
+     *   where: {
+     *     // ... provide filter here
+     *   }
+     * })
+     */
+    findFirst<T extends RecordingFindFirstArgs>(args?: SelectSubset<T, RecordingFindFirstArgs<ExtArgs>>): Prisma__RecordingClient<$Result.GetResult<Prisma.$RecordingPayload<ExtArgs>, T, "findFirst"> | null, null, ExtArgs>
+
+    /**
+     * Find the first Recording that matches the filter or
+     * throw `PrismaKnownClientError` with `P2025` code if no matches were found.
+     * Note, that providing `undefined` is treated as the value not being there.
+     * Read more here: https://pris.ly/d/null-undefined
+     * @param {RecordingFindFirstOrThrowArgs} args - Arguments to find a Recording
+     * @example
+     * // Get one Recording
+     * const recording = await prisma.recording.findFirstOrThrow({
+     *   where: {
+     *     // ... provide filter here
+     *   }
+     * })
+     */
+    findFirstOrThrow<T extends RecordingFindFirstOrThrowArgs>(args?: SelectSubset<T, RecordingFindFirstOrThrowArgs<ExtArgs>>): Prisma__RecordingClient<$Result.GetResult<Prisma.$RecordingPayload<ExtArgs>, T, "findFirstOrThrow">, never, ExtArgs>
+
+    /**
+     * Find zero or more Recordings that matches the filter.
+     * Note, that providing `undefined` is treated as the value not being there.
+     * Read more here: https://pris.ly/d/null-undefined
+     * @param {RecordingFindManyArgs} args - Arguments to filter and select certain fields only.
+     * @example
+     * // Get all Recordings
+     * const recordings = await prisma.recording.findMany()
+     * 
+     * // Get first 10 Recordings
+     * const recordings = await prisma.recording.findMany({ take: 10 })
+     * 
+     * // Only select the `id`
+     * const recordingWithIdOnly = await prisma.recording.findMany({ select: { id: true } })
+     * 
+     */
+    findMany<T extends RecordingFindManyArgs>(args?: SelectSubset<T, RecordingFindManyArgs<ExtArgs>>): Prisma.PrismaPromise<$Result.GetResult<Prisma.$RecordingPayload<ExtArgs>, T, "findMany">>
+
+    /**
+     * Create a Recording.
+     * @param {RecordingCreateArgs} args - Arguments to create a Recording.
+     * @example
+     * // Create one Recording
+     * const Recording = await prisma.recording.create({
+     *   data: {
+     *     // ... data to create a Recording
+     *   }
+     * })
+     * 
+     */
+    create<T extends RecordingCreateArgs>(args: SelectSubset<T, RecordingCreateArgs<ExtArgs>>): Prisma__RecordingClient<$Result.GetResult<Prisma.$RecordingPayload<ExtArgs>, T, "create">, never, ExtArgs>
+
+    /**
+     * Create many Recordings.
+     * @param {RecordingCreateManyArgs} args - Arguments to create many Recordings.
+     * @example
+     * // Create many Recordings
+     * const recording = await prisma.recording.createMany({
+     *   data: [
+     *     // ... provide data here
+     *   ]
+     * })
+     *     
+     */
+    createMany<T extends RecordingCreateManyArgs>(args?: SelectSubset<T, RecordingCreateManyArgs<ExtArgs>>): Prisma.PrismaPromise<BatchPayload>
+
+    /**
+     * Create many Recordings and returns the data saved in the database.
+     * @param {RecordingCreateManyAndReturnArgs} args - Arguments to create many Recordings.
+     * @example
+     * // Create many Recordings
+     * const recording = await prisma.recording.createManyAndReturn({
+     *   data: [
+     *     // ... provide data here
+     *   ]
+     * })
+     * 
+     * // Create many Recordings and only return the `id`
+     * const recordingWithIdOnly = await prisma.recording.createManyAndReturn({ 
+     *   select: { id: true },
+     *   data: [
+     *     // ... provide data here
+     *   ]
+     * })
+     * Note, that providing `undefined` is treated as the value not being there.
+     * Read more here: https://pris.ly/d/null-undefined
+     * 
+     */
+    createManyAndReturn<T extends RecordingCreateManyAndReturnArgs>(args?: SelectSubset<T, RecordingCreateManyAndReturnArgs<ExtArgs>>): Prisma.PrismaPromise<$Result.GetResult<Prisma.$RecordingPayload<ExtArgs>, T, "createManyAndReturn">>
+
+    /**
+     * Delete a Recording.
+     * @param {RecordingDeleteArgs} args - Arguments to delete one Recording.
+     * @example
+     * // Delete one Recording
+     * const Recording = await prisma.recording.delete({
+     *   where: {
+     *     // ... filter to delete one Recording
+     *   }
+     * })
+     * 
+     */
+    delete<T extends RecordingDeleteArgs>(args: SelectSubset<T, RecordingDeleteArgs<ExtArgs>>): Prisma__RecordingClient<$Result.GetResult<Prisma.$RecordingPayload<ExtArgs>, T, "delete">, never, ExtArgs>
+
+    /**
+     * Update one Recording.
+     * @param {RecordingUpdateArgs} args - Arguments to update one Recording.
+     * @example
+     * // Update one Recording
+     * const recording = await prisma.recording.update({
+     *   where: {
+     *     // ... provide filter here
+     *   },
+     *   data: {
+     *     // ... provide data here
+     *   }
+     * })
+     * 
+     */
+    update<T extends RecordingUpdateArgs>(args: SelectSubset<T, RecordingUpdateArgs<ExtArgs>>): Prisma__RecordingClient<$Result.GetResult<Prisma.$RecordingPayload<ExtArgs>, T, "update">, never, ExtArgs>
+
+    /**
+     * Delete zero or more Recordings.
+     * @param {RecordingDeleteManyArgs} args - Arguments to filter Recordings to delete.
+     * @example
+     * // Delete a few Recordings
+     * const { count } = await prisma.recording.deleteMany({
+     *   where: {
+     *     // ... provide filter here
+     *   }
+     * })
+     * 
+     */
+    deleteMany<T extends RecordingDeleteManyArgs>(args?: SelectSubset<T, RecordingDeleteManyArgs<ExtArgs>>): Prisma.PrismaPromise<BatchPayload>
+
+    /**
+     * Update zero or more Recordings.
+     * Note, that providing `undefined` is treated as the value not being there.
+     * Read more here: https://pris.ly/d/null-undefined
+     * @param {RecordingUpdateManyArgs} args - Arguments to update one or more rows.
+     * @example
+     * // Update many Recordings
+     * const recording = await prisma.recording.updateMany({
+     *   where: {
+     *     // ... provide filter here
+     *   },
+     *   data: {
+     *     // ... provide data here
+     *   }
+     * })
+     * 
+     */
+    updateMany<T extends RecordingUpdateManyArgs>(args: SelectSubset<T, RecordingUpdateManyArgs<ExtArgs>>): Prisma.PrismaPromise<BatchPayload>
+
+    /**
+     * Create or update one Recording.
+     * @param {RecordingUpsertArgs} args - Arguments to update or create a Recording.
+     * @example
+     * // Update or create a Recording
+     * const recording = await prisma.recording.upsert({
+     *   create: {
+     *     // ... data to create a Recording
+     *   },
+     *   update: {
+     *     // ... in case it already exists, update
+     *   },
+     *   where: {
+     *     // ... the filter for the Recording we want to update
+     *   }
+     * })
+     */
+    upsert<T extends RecordingUpsertArgs>(args: SelectSubset<T, RecordingUpsertArgs<ExtArgs>>): Prisma__RecordingClient<$Result.GetResult<Prisma.$RecordingPayload<ExtArgs>, T, "upsert">, never, ExtArgs>
+
+
+    /**
+     * Count the number of Recordings.
+     * Note, that providing `undefined` is treated as the value not being there.
+     * Read more here: https://pris.ly/d/null-undefined
+     * @param {RecordingCountArgs} args - Arguments to filter Recordings to count.
+     * @example
+     * // Count the number of Recordings
+     * const count = await prisma.recording.count({
+     *   where: {
+     *     // ... the filter for the Recordings we want to count
+     *   }
+     * })
+    **/
+    count<T extends RecordingCountArgs>(
+      args?: Subset<T, RecordingCountArgs>,
+    ): Prisma.PrismaPromise<
+      T extends $Utils.Record<'select', any>
+        ? T['select'] extends true
+          ? number
+          : GetScalarType<T['select'], RecordingCountAggregateOutputType>
+        : number
+    >
+
+    /**
+     * Allows you to perform aggregations operations on a Recording.
+     * Note, that providing `undefined` is treated as the value not being there.
+     * Read more here: https://pris.ly/d/null-undefined
+     * @param {RecordingAggregateArgs} args - Select which aggregations you would like to apply and on what fields.
+     * @example
+     * // Ordered by age ascending
+     * // Where email contains prisma.io
+     * // Limited to the 10 users
+     * const aggregations = await prisma.user.aggregate({
+     *   _avg: {
+     *     age: true,
+     *   },
+     *   where: {
+     *     email: {
+     *       contains: "prisma.io",
+     *     },
+     *   },
+     *   orderBy: {
+     *     age: "asc",
+     *   },
+     *   take: 10,
+     * })
+    **/
+    aggregate<T extends RecordingAggregateArgs>(args: Subset<T, RecordingAggregateArgs>): Prisma.PrismaPromise<GetRecordingAggregateType<T>>
+
+    /**
+     * Group by Recording.
+     * Note, that providing `undefined` is treated as the value not being there.
+     * Read more here: https://pris.ly/d/null-undefined
+     * @param {RecordingGroupByArgs} args - Group by arguments.
+     * @example
+     * // Group by city, order by createdAt, get count
+     * const result = await prisma.user.groupBy({
+     *   by: ['city', 'createdAt'],
+     *   orderBy: {
+     *     createdAt: true
+     *   },
+     *   _count: {
+     *     _all: true
+     *   },
+     * })
+     * 
+    **/
+    groupBy<
+      T extends RecordingGroupByArgs,
+      HasSelectOrTake extends Or<
+        Extends<'skip', Keys<T>>,
+        Extends<'take', Keys<T>>
+      >,
+      OrderByArg extends True extends HasSelectOrTake
+        ? { orderBy: RecordingGroupByArgs['orderBy'] }
+        : { orderBy?: RecordingGroupByArgs['orderBy'] },
+      OrderFields extends ExcludeUnderscoreKeys<Keys<MaybeTupleToUnion<T['orderBy']>>>,
+      ByFields extends MaybeTupleToUnion<T['by']>,
+      ByValid extends Has<ByFields, OrderFields>,
+      HavingFields extends GetHavingFields<T['having']>,
+      HavingValid extends Has<ByFields, HavingFields>,
+      ByEmpty extends T['by'] extends never[] ? True : False,
+      InputErrors extends ByEmpty extends True
+      ? `Error: "by" must not be empty.`
+      : HavingValid extends False
+      ? {
+          [P in HavingFields]: P extends ByFields
+            ? never
+            : P extends string
+            ? `Error: Field "${P}" used in "having" needs to be provided in "by".`
+            : [
+                Error,
+                'Field ',
+                P,
+                ` in "having" needs to be provided in "by"`,
+              ]
+        }[HavingFields]
+      : 'take' extends Keys<T>
+      ? 'orderBy' extends Keys<T>
+        ? ByValid extends True
+          ? {}
+          : {
+              [P in OrderFields]: P extends ByFields
+                ? never
+                : `Error: Field "${P}" in "orderBy" needs to be provided in "by"`
+            }[OrderFields]
+        : 'Error: If you provide "take", you also need to provide "orderBy"'
+      : 'skip' extends Keys<T>
+      ? 'orderBy' extends Keys<T>
+        ? ByValid extends True
+          ? {}
+          : {
+              [P in OrderFields]: P extends ByFields
+                ? never
+                : `Error: Field "${P}" in "orderBy" needs to be provided in "by"`
+            }[OrderFields]
+        : 'Error: If you provide "skip", you also need to provide "orderBy"'
+      : ByValid extends True
+      ? {}
+      : {
+          [P in OrderFields]: P extends ByFields
+            ? never
+            : `Error: Field "${P}" in "orderBy" needs to be provided in "by"`
+        }[OrderFields]
+    >(args: SubsetIntersection<T, RecordingGroupByArgs, OrderByArg> & InputErrors): {} extends InputErrors ? GetRecordingGroupByPayload<T> : Prisma.PrismaPromise<InputErrors>
+  /**
+   * Fields of the Recording model
+   */
+  readonly fields: RecordingFieldRefs;
+  }
+
+  /**
+   * The delegate class that acts as a "Promise-like" for Recording.
+   * Why is this prefixed with `Prisma__`?
+   * Because we want to prevent naming conflicts as mentioned in
+   * https://github.com/prisma/prisma-client-js/issues/707
+   */
+  export interface Prisma__RecordingClient<T, Null = never, ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> extends Prisma.PrismaPromise<T> {
+    readonly [Symbol.toStringTag]: "PrismaPromise"
+    bookmarks<T extends Recording$bookmarksArgs<ExtArgs> = {}>(args?: Subset<T, Recording$bookmarksArgs<ExtArgs>>): Prisma.PrismaPromise<$Result.GetResult<Prisma.$BookmarkPayload<ExtArgs>, T, "findMany"> | Null>
+    annotations<T extends Recording$annotationsArgs<ExtArgs> = {}>(args?: Subset<T, Recording$annotationsArgs<ExtArgs>>): Prisma.PrismaPromise<$Result.GetResult<Prisma.$AnnotationPayload<ExtArgs>, T, "findMany"> | Null>
+    Session<T extends Recording$SessionArgs<ExtArgs> = {}>(args?: Subset<T, Recording$SessionArgs<ExtArgs>>): Prisma__SessionClient<$Result.GetResult<Prisma.$SessionPayload<ExtArgs>, T, "findUniqueOrThrow"> | null, null, ExtArgs>
+    /**
+     * Attaches callbacks for the resolution and/or rejection of the Promise.
+     * @param onfulfilled The callback to execute when the Promise is resolved.
+     * @param onrejected The callback to execute when the Promise is rejected.
+     * @returns A Promise for the completion of which ever callback is executed.
+     */
+    then<TResult1 = T, TResult2 = never>(onfulfilled?: ((value: T) => TResult1 | PromiseLike<TResult1>) | undefined | null, onrejected?: ((reason: any) => TResult2 | PromiseLike<TResult2>) | undefined | null): $Utils.JsPromise<TResult1 | TResult2>
+    /**
+     * Attaches a callback for only the rejection of the Promise.
+     * @param onrejected The callback to execute when the Promise is rejected.
+     * @returns A Promise for the completion of the callback.
+     */
+    catch<TResult = never>(onrejected?: ((reason: any) => TResult | PromiseLike<TResult>) | undefined | null): $Utils.JsPromise<T | TResult>
+    /**
+     * Attaches a callback that is invoked when the Promise is settled (fulfilled or rejected). The
+     * resolved value cannot be modified from the callback.
+     * @param onfinally The callback to execute when the Promise is settled (fulfilled or rejected).
+     * @returns A Promise for the completion of the callback.
+     */
+    finally(onfinally?: (() => void) | undefined | null): $Utils.JsPromise<T>
+  }
+
+
+
+
+  /**
+   * Fields of the Recording model
+   */ 
+  interface RecordingFieldRefs {
+    readonly id: FieldRef<"Recording", 'String'>
+    readonly group_id: FieldRef<"Recording", 'String'>
+    readonly device_udid: FieldRef<"Recording", 'String'>
+    readonly device_host: FieldRef<"Recording", 'String'>
+    readonly session_id: FieldRef<"Recording", 'String'>
+    readonly started_at: FieldRef<"Recording", 'DateTime'>
+    readonly ended_at: FieldRef<"Recording", 'DateTime'>
+    readonly status: FieldRef<"Recording", 'String'>
+    readonly file_path: FieldRef<"Recording", 'String'>
+    readonly duration_ms: FieldRef<"Recording", 'Int'>
+    readonly size_bytes: FieldRef<"Recording", 'Int'>
+    readonly device_snapshot: FieldRef<"Recording", 'String'>
+    readonly fail_reason: FieldRef<"Recording", 'String'>
+  }
+    
+
+  // Custom InputTypes
+  /**
+   * Recording findUnique
+   */
+  export type RecordingFindUniqueArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the Recording
+     */
+    select?: RecordingSelect<ExtArgs> | null
+    /**
+     * Choose, which related nodes to fetch as well
+     */
+    include?: RecordingInclude<ExtArgs> | null
+    /**
+     * Filter, which Recording to fetch.
+     */
+    where: RecordingWhereUniqueInput
+  }
+
+  /**
+   * Recording findUniqueOrThrow
+   */
+  export type RecordingFindUniqueOrThrowArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the Recording
+     */
+    select?: RecordingSelect<ExtArgs> | null
+    /**
+     * Choose, which related nodes to fetch as well
+     */
+    include?: RecordingInclude<ExtArgs> | null
+    /**
+     * Filter, which Recording to fetch.
+     */
+    where: RecordingWhereUniqueInput
+  }
+
+  /**
+   * Recording findFirst
+   */
+  export type RecordingFindFirstArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the Recording
+     */
+    select?: RecordingSelect<ExtArgs> | null
+    /**
+     * Choose, which related nodes to fetch as well
+     */
+    include?: RecordingInclude<ExtArgs> | null
+    /**
+     * Filter, which Recording to fetch.
+     */
+    where?: RecordingWhereInput
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/sorting Sorting Docs}
+     * 
+     * Determine the order of Recordings to fetch.
+     */
+    orderBy?: RecordingOrderByWithRelationInput | RecordingOrderByWithRelationInput[]
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination#cursor-based-pagination Cursor Docs}
+     * 
+     * Sets the position for searching for Recordings.
+     */
+    cursor?: RecordingWhereUniqueInput
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination Pagination Docs}
+     * 
+     * Take `±n` Recordings from the position of the cursor.
+     */
+    take?: number
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination Pagination Docs}
+     * 
+     * Skip the first `n` Recordings.
+     */
+    skip?: number
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/distinct Distinct Docs}
+     * 
+     * Filter by unique combinations of Recordings.
+     */
+    distinct?: RecordingScalarFieldEnum | RecordingScalarFieldEnum[]
+  }
+
+  /**
+   * Recording findFirstOrThrow
+   */
+  export type RecordingFindFirstOrThrowArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the Recording
+     */
+    select?: RecordingSelect<ExtArgs> | null
+    /**
+     * Choose, which related nodes to fetch as well
+     */
+    include?: RecordingInclude<ExtArgs> | null
+    /**
+     * Filter, which Recording to fetch.
+     */
+    where?: RecordingWhereInput
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/sorting Sorting Docs}
+     * 
+     * Determine the order of Recordings to fetch.
+     */
+    orderBy?: RecordingOrderByWithRelationInput | RecordingOrderByWithRelationInput[]
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination#cursor-based-pagination Cursor Docs}
+     * 
+     * Sets the position for searching for Recordings.
+     */
+    cursor?: RecordingWhereUniqueInput
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination Pagination Docs}
+     * 
+     * Take `±n` Recordings from the position of the cursor.
+     */
+    take?: number
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination Pagination Docs}
+     * 
+     * Skip the first `n` Recordings.
+     */
+    skip?: number
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/distinct Distinct Docs}
+     * 
+     * Filter by unique combinations of Recordings.
+     */
+    distinct?: RecordingScalarFieldEnum | RecordingScalarFieldEnum[]
+  }
+
+  /**
+   * Recording findMany
+   */
+  export type RecordingFindManyArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the Recording
+     */
+    select?: RecordingSelect<ExtArgs> | null
+    /**
+     * Choose, which related nodes to fetch as well
+     */
+    include?: RecordingInclude<ExtArgs> | null
+    /**
+     * Filter, which Recordings to fetch.
+     */
+    where?: RecordingWhereInput
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/sorting Sorting Docs}
+     * 
+     * Determine the order of Recordings to fetch.
+     */
+    orderBy?: RecordingOrderByWithRelationInput | RecordingOrderByWithRelationInput[]
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination#cursor-based-pagination Cursor Docs}
+     * 
+     * Sets the position for listing Recordings.
+     */
+    cursor?: RecordingWhereUniqueInput
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination Pagination Docs}
+     * 
+     * Take `±n` Recordings from the position of the cursor.
+     */
+    take?: number
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination Pagination Docs}
+     * 
+     * Skip the first `n` Recordings.
+     */
+    skip?: number
+    distinct?: RecordingScalarFieldEnum | RecordingScalarFieldEnum[]
+  }
+
+  /**
+   * Recording create
+   */
+  export type RecordingCreateArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the Recording
+     */
+    select?: RecordingSelect<ExtArgs> | null
+    /**
+     * Choose, which related nodes to fetch as well
+     */
+    include?: RecordingInclude<ExtArgs> | null
+    /**
+     * The data needed to create a Recording.
+     */
+    data: XOR<RecordingCreateInput, RecordingUncheckedCreateInput>
+  }
+
+  /**
+   * Recording createMany
+   */
+  export type RecordingCreateManyArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * The data used to create many Recordings.
+     */
+    data: RecordingCreateManyInput | RecordingCreateManyInput[]
+  }
+
+  /**
+   * Recording createManyAndReturn
+   */
+  export type RecordingCreateManyAndReturnArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the Recording
+     */
+    select?: RecordingSelectCreateManyAndReturn<ExtArgs> | null
+    /**
+     * The data used to create many Recordings.
+     */
+    data: RecordingCreateManyInput | RecordingCreateManyInput[]
+    /**
+     * Choose, which related nodes to fetch as well
+     */
+    include?: RecordingIncludeCreateManyAndReturn<ExtArgs> | null
+  }
+
+  /**
+   * Recording update
+   */
+  export type RecordingUpdateArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the Recording
+     */
+    select?: RecordingSelect<ExtArgs> | null
+    /**
+     * Choose, which related nodes to fetch as well
+     */
+    include?: RecordingInclude<ExtArgs> | null
+    /**
+     * The data needed to update a Recording.
+     */
+    data: XOR<RecordingUpdateInput, RecordingUncheckedUpdateInput>
+    /**
+     * Choose, which Recording to update.
+     */
+    where: RecordingWhereUniqueInput
+  }
+
+  /**
+   * Recording updateMany
+   */
+  export type RecordingUpdateManyArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * The data used to update Recordings.
+     */
+    data: XOR<RecordingUpdateManyMutationInput, RecordingUncheckedUpdateManyInput>
+    /**
+     * Filter which Recordings to update
+     */
+    where?: RecordingWhereInput
+  }
+
+  /**
+   * Recording upsert
+   */
+  export type RecordingUpsertArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the Recording
+     */
+    select?: RecordingSelect<ExtArgs> | null
+    /**
+     * Choose, which related nodes to fetch as well
+     */
+    include?: RecordingInclude<ExtArgs> | null
+    /**
+     * The filter to search for the Recording to update in case it exists.
+     */
+    where: RecordingWhereUniqueInput
+    /**
+     * In case the Recording found by the `where` argument doesn't exist, create a new Recording with this data.
+     */
+    create: XOR<RecordingCreateInput, RecordingUncheckedCreateInput>
+    /**
+     * In case the Recording was found with the provided `where` argument, update it with this data.
+     */
+    update: XOR<RecordingUpdateInput, RecordingUncheckedUpdateInput>
+  }
+
+  /**
+   * Recording delete
+   */
+  export type RecordingDeleteArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the Recording
+     */
+    select?: RecordingSelect<ExtArgs> | null
+    /**
+     * Choose, which related nodes to fetch as well
+     */
+    include?: RecordingInclude<ExtArgs> | null
+    /**
+     * Filter which Recording to delete.
+     */
+    where: RecordingWhereUniqueInput
+  }
+
+  /**
+   * Recording deleteMany
+   */
+  export type RecordingDeleteManyArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Filter which Recordings to delete
+     */
+    where?: RecordingWhereInput
+  }
+
+  /**
+   * Recording.bookmarks
+   */
+  export type Recording$bookmarksArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the Bookmark
+     */
+    select?: BookmarkSelect<ExtArgs> | null
+    /**
+     * Choose, which related nodes to fetch as well
+     */
+    include?: BookmarkInclude<ExtArgs> | null
+    where?: BookmarkWhereInput
+    orderBy?: BookmarkOrderByWithRelationInput | BookmarkOrderByWithRelationInput[]
+    cursor?: BookmarkWhereUniqueInput
+    take?: number
+    skip?: number
+    distinct?: BookmarkScalarFieldEnum | BookmarkScalarFieldEnum[]
+  }
+
+  /**
+   * Recording.annotations
+   */
+  export type Recording$annotationsArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the Annotation
+     */
+    select?: AnnotationSelect<ExtArgs> | null
+    /**
+     * Choose, which related nodes to fetch as well
+     */
+    include?: AnnotationInclude<ExtArgs> | null
+    where?: AnnotationWhereInput
+    orderBy?: AnnotationOrderByWithRelationInput | AnnotationOrderByWithRelationInput[]
+    cursor?: AnnotationWhereUniqueInput
+    take?: number
+    skip?: number
+    distinct?: AnnotationScalarFieldEnum | AnnotationScalarFieldEnum[]
+  }
+
+  /**
+   * Recording.Session
+   */
+  export type Recording$SessionArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the Session
+     */
+    select?: SessionSelect<ExtArgs> | null
+    /**
+     * Choose, which related nodes to fetch as well
+     */
+    include?: SessionInclude<ExtArgs> | null
+    where?: SessionWhereInput
+  }
+
+  /**
+   * Recording without action
+   */
+  export type RecordingDefaultArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the Recording
+     */
+    select?: RecordingSelect<ExtArgs> | null
+    /**
+     * Choose, which related nodes to fetch as well
+     */
+    include?: RecordingInclude<ExtArgs> | null
+  }
+
+
+  /**
+   * Model Bookmark
+   */
+
+  export type AggregateBookmark = {
+    _count: BookmarkCountAggregateOutputType | null
+    _avg: BookmarkAvgAggregateOutputType | null
+    _sum: BookmarkSumAggregateOutputType | null
+    _min: BookmarkMinAggregateOutputType | null
+    _max: BookmarkMaxAggregateOutputType | null
+  }
+
+  export type BookmarkAvgAggregateOutputType = {
+    timecode_ms: number | null
+  }
+
+  export type BookmarkSumAggregateOutputType = {
+    timecode_ms: number | null
+  }
+
+  export type BookmarkMinAggregateOutputType = {
+    id: string | null
+    recording_id: string | null
+    timecode_ms: number | null
+    label: string | null
+    note: string | null
+    created_at: Date | null
+  }
+
+  export type BookmarkMaxAggregateOutputType = {
+    id: string | null
+    recording_id: string | null
+    timecode_ms: number | null
+    label: string | null
+    note: string | null
+    created_at: Date | null
+  }
+
+  export type BookmarkCountAggregateOutputType = {
+    id: number
+    recording_id: number
+    timecode_ms: number
+    label: number
+    note: number
+    created_at: number
+    _all: number
+  }
+
+
+  export type BookmarkAvgAggregateInputType = {
+    timecode_ms?: true
+  }
+
+  export type BookmarkSumAggregateInputType = {
+    timecode_ms?: true
+  }
+
+  export type BookmarkMinAggregateInputType = {
+    id?: true
+    recording_id?: true
+    timecode_ms?: true
+    label?: true
+    note?: true
+    created_at?: true
+  }
+
+  export type BookmarkMaxAggregateInputType = {
+    id?: true
+    recording_id?: true
+    timecode_ms?: true
+    label?: true
+    note?: true
+    created_at?: true
+  }
+
+  export type BookmarkCountAggregateInputType = {
+    id?: true
+    recording_id?: true
+    timecode_ms?: true
+    label?: true
+    note?: true
+    created_at?: true
+    _all?: true
+  }
+
+  export type BookmarkAggregateArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Filter which Bookmark to aggregate.
+     */
+    where?: BookmarkWhereInput
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/sorting Sorting Docs}
+     * 
+     * Determine the order of Bookmarks to fetch.
+     */
+    orderBy?: BookmarkOrderByWithRelationInput | BookmarkOrderByWithRelationInput[]
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination#cursor-based-pagination Cursor Docs}
+     * 
+     * Sets the start position
+     */
+    cursor?: BookmarkWhereUniqueInput
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination Pagination Docs}
+     * 
+     * Take `±n` Bookmarks from the position of the cursor.
+     */
+    take?: number
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination Pagination Docs}
+     * 
+     * Skip the first `n` Bookmarks.
+     */
+    skip?: number
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/aggregations Aggregation Docs}
+     * 
+     * Count returned Bookmarks
+    **/
+    _count?: true | BookmarkCountAggregateInputType
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/aggregations Aggregation Docs}
+     * 
+     * Select which fields to average
+    **/
+    _avg?: BookmarkAvgAggregateInputType
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/aggregations Aggregation Docs}
+     * 
+     * Select which fields to sum
+    **/
+    _sum?: BookmarkSumAggregateInputType
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/aggregations Aggregation Docs}
+     * 
+     * Select which fields to find the minimum value
+    **/
+    _min?: BookmarkMinAggregateInputType
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/aggregations Aggregation Docs}
+     * 
+     * Select which fields to find the maximum value
+    **/
+    _max?: BookmarkMaxAggregateInputType
+  }
+
+  export type GetBookmarkAggregateType<T extends BookmarkAggregateArgs> = {
+        [P in keyof T & keyof AggregateBookmark]: P extends '_count' | 'count'
+      ? T[P] extends true
+        ? number
+        : GetScalarType<T[P], AggregateBookmark[P]>
+      : GetScalarType<T[P], AggregateBookmark[P]>
+  }
+
+
+
+
+  export type BookmarkGroupByArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    where?: BookmarkWhereInput
+    orderBy?: BookmarkOrderByWithAggregationInput | BookmarkOrderByWithAggregationInput[]
+    by: BookmarkScalarFieldEnum[] | BookmarkScalarFieldEnum
+    having?: BookmarkScalarWhereWithAggregatesInput
+    take?: number
+    skip?: number
+    _count?: BookmarkCountAggregateInputType | true
+    _avg?: BookmarkAvgAggregateInputType
+    _sum?: BookmarkSumAggregateInputType
+    _min?: BookmarkMinAggregateInputType
+    _max?: BookmarkMaxAggregateInputType
+  }
+
+  export type BookmarkGroupByOutputType = {
+    id: string
+    recording_id: string
+    timecode_ms: number
+    label: string
+    note: string | null
+    created_at: Date
+    _count: BookmarkCountAggregateOutputType | null
+    _avg: BookmarkAvgAggregateOutputType | null
+    _sum: BookmarkSumAggregateOutputType | null
+    _min: BookmarkMinAggregateOutputType | null
+    _max: BookmarkMaxAggregateOutputType | null
+  }
+
+  type GetBookmarkGroupByPayload<T extends BookmarkGroupByArgs> = Prisma.PrismaPromise<
+    Array<
+      PickEnumerable<BookmarkGroupByOutputType, T['by']> &
+        {
+          [P in ((keyof T) & (keyof BookmarkGroupByOutputType))]: P extends '_count'
+            ? T[P] extends boolean
+              ? number
+              : GetScalarType<T[P], BookmarkGroupByOutputType[P]>
+            : GetScalarType<T[P], BookmarkGroupByOutputType[P]>
+        }
+      >
+    >
+
+
+  export type BookmarkSelect<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = $Extensions.GetSelect<{
+    id?: boolean
+    recording_id?: boolean
+    timecode_ms?: boolean
+    label?: boolean
+    note?: boolean
+    created_at?: boolean
+    Recording?: boolean | RecordingDefaultArgs<ExtArgs>
+  }, ExtArgs["result"]["bookmark"]>
+
+  export type BookmarkSelectCreateManyAndReturn<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = $Extensions.GetSelect<{
+    id?: boolean
+    recording_id?: boolean
+    timecode_ms?: boolean
+    label?: boolean
+    note?: boolean
+    created_at?: boolean
+    Recording?: boolean | RecordingDefaultArgs<ExtArgs>
+  }, ExtArgs["result"]["bookmark"]>
+
+  export type BookmarkSelectScalar = {
+    id?: boolean
+    recording_id?: boolean
+    timecode_ms?: boolean
+    label?: boolean
+    note?: boolean
+    created_at?: boolean
+  }
+
+  export type BookmarkInclude<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    Recording?: boolean | RecordingDefaultArgs<ExtArgs>
+  }
+  export type BookmarkIncludeCreateManyAndReturn<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    Recording?: boolean | RecordingDefaultArgs<ExtArgs>
+  }
+
+  export type $BookmarkPayload<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    name: "Bookmark"
+    objects: {
+      Recording: Prisma.$RecordingPayload<ExtArgs>
+    }
+    scalars: $Extensions.GetPayloadResult<{
+      id: string
+      recording_id: string
+      timecode_ms: number
+      label: string
+      note: string | null
+      created_at: Date
+    }, ExtArgs["result"]["bookmark"]>
+    composites: {}
+  }
+
+  type BookmarkGetPayload<S extends boolean | null | undefined | BookmarkDefaultArgs> = $Result.GetResult<Prisma.$BookmarkPayload, S>
+
+  type BookmarkCountArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = 
+    Omit<BookmarkFindManyArgs, 'select' | 'include' | 'distinct'> & {
+      select?: BookmarkCountAggregateInputType | true
+    }
+
+  export interface BookmarkDelegate<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> {
+    [K: symbol]: { types: Prisma.TypeMap<ExtArgs>['model']['Bookmark'], meta: { name: 'Bookmark' } }
+    /**
+     * Find zero or one Bookmark that matches the filter.
+     * @param {BookmarkFindUniqueArgs} args - Arguments to find a Bookmark
+     * @example
+     * // Get one Bookmark
+     * const bookmark = await prisma.bookmark.findUnique({
+     *   where: {
+     *     // ... provide filter here
+     *   }
+     * })
+     */
+    findUnique<T extends BookmarkFindUniqueArgs>(args: SelectSubset<T, BookmarkFindUniqueArgs<ExtArgs>>): Prisma__BookmarkClient<$Result.GetResult<Prisma.$BookmarkPayload<ExtArgs>, T, "findUnique"> | null, null, ExtArgs>
+
+    /**
+     * Find one Bookmark that matches the filter or throw an error with `error.code='P2025'` 
+     * if no matches were found.
+     * @param {BookmarkFindUniqueOrThrowArgs} args - Arguments to find a Bookmark
+     * @example
+     * // Get one Bookmark
+     * const bookmark = await prisma.bookmark.findUniqueOrThrow({
+     *   where: {
+     *     // ... provide filter here
+     *   }
+     * })
+     */
+    findUniqueOrThrow<T extends BookmarkFindUniqueOrThrowArgs>(args: SelectSubset<T, BookmarkFindUniqueOrThrowArgs<ExtArgs>>): Prisma__BookmarkClient<$Result.GetResult<Prisma.$BookmarkPayload<ExtArgs>, T, "findUniqueOrThrow">, never, ExtArgs>
+
+    /**
+     * Find the first Bookmark that matches the filter.
+     * Note, that providing `undefined` is treated as the value not being there.
+     * Read more here: https://pris.ly/d/null-undefined
+     * @param {BookmarkFindFirstArgs} args - Arguments to find a Bookmark
+     * @example
+     * // Get one Bookmark
+     * const bookmark = await prisma.bookmark.findFirst({
+     *   where: {
+     *     // ... provide filter here
+     *   }
+     * })
+     */
+    findFirst<T extends BookmarkFindFirstArgs>(args?: SelectSubset<T, BookmarkFindFirstArgs<ExtArgs>>): Prisma__BookmarkClient<$Result.GetResult<Prisma.$BookmarkPayload<ExtArgs>, T, "findFirst"> | null, null, ExtArgs>
+
+    /**
+     * Find the first Bookmark that matches the filter or
+     * throw `PrismaKnownClientError` with `P2025` code if no matches were found.
+     * Note, that providing `undefined` is treated as the value not being there.
+     * Read more here: https://pris.ly/d/null-undefined
+     * @param {BookmarkFindFirstOrThrowArgs} args - Arguments to find a Bookmark
+     * @example
+     * // Get one Bookmark
+     * const bookmark = await prisma.bookmark.findFirstOrThrow({
+     *   where: {
+     *     // ... provide filter here
+     *   }
+     * })
+     */
+    findFirstOrThrow<T extends BookmarkFindFirstOrThrowArgs>(args?: SelectSubset<T, BookmarkFindFirstOrThrowArgs<ExtArgs>>): Prisma__BookmarkClient<$Result.GetResult<Prisma.$BookmarkPayload<ExtArgs>, T, "findFirstOrThrow">, never, ExtArgs>
+
+    /**
+     * Find zero or more Bookmarks that matches the filter.
+     * Note, that providing `undefined` is treated as the value not being there.
+     * Read more here: https://pris.ly/d/null-undefined
+     * @param {BookmarkFindManyArgs} args - Arguments to filter and select certain fields only.
+     * @example
+     * // Get all Bookmarks
+     * const bookmarks = await prisma.bookmark.findMany()
+     * 
+     * // Get first 10 Bookmarks
+     * const bookmarks = await prisma.bookmark.findMany({ take: 10 })
+     * 
+     * // Only select the `id`
+     * const bookmarkWithIdOnly = await prisma.bookmark.findMany({ select: { id: true } })
+     * 
+     */
+    findMany<T extends BookmarkFindManyArgs>(args?: SelectSubset<T, BookmarkFindManyArgs<ExtArgs>>): Prisma.PrismaPromise<$Result.GetResult<Prisma.$BookmarkPayload<ExtArgs>, T, "findMany">>
+
+    /**
+     * Create a Bookmark.
+     * @param {BookmarkCreateArgs} args - Arguments to create a Bookmark.
+     * @example
+     * // Create one Bookmark
+     * const Bookmark = await prisma.bookmark.create({
+     *   data: {
+     *     // ... data to create a Bookmark
+     *   }
+     * })
+     * 
+     */
+    create<T extends BookmarkCreateArgs>(args: SelectSubset<T, BookmarkCreateArgs<ExtArgs>>): Prisma__BookmarkClient<$Result.GetResult<Prisma.$BookmarkPayload<ExtArgs>, T, "create">, never, ExtArgs>
+
+    /**
+     * Create many Bookmarks.
+     * @param {BookmarkCreateManyArgs} args - Arguments to create many Bookmarks.
+     * @example
+     * // Create many Bookmarks
+     * const bookmark = await prisma.bookmark.createMany({
+     *   data: [
+     *     // ... provide data here
+     *   ]
+     * })
+     *     
+     */
+    createMany<T extends BookmarkCreateManyArgs>(args?: SelectSubset<T, BookmarkCreateManyArgs<ExtArgs>>): Prisma.PrismaPromise<BatchPayload>
+
+    /**
+     * Create many Bookmarks and returns the data saved in the database.
+     * @param {BookmarkCreateManyAndReturnArgs} args - Arguments to create many Bookmarks.
+     * @example
+     * // Create many Bookmarks
+     * const bookmark = await prisma.bookmark.createManyAndReturn({
+     *   data: [
+     *     // ... provide data here
+     *   ]
+     * })
+     * 
+     * // Create many Bookmarks and only return the `id`
+     * const bookmarkWithIdOnly = await prisma.bookmark.createManyAndReturn({ 
+     *   select: { id: true },
+     *   data: [
+     *     // ... provide data here
+     *   ]
+     * })
+     * Note, that providing `undefined` is treated as the value not being there.
+     * Read more here: https://pris.ly/d/null-undefined
+     * 
+     */
+    createManyAndReturn<T extends BookmarkCreateManyAndReturnArgs>(args?: SelectSubset<T, BookmarkCreateManyAndReturnArgs<ExtArgs>>): Prisma.PrismaPromise<$Result.GetResult<Prisma.$BookmarkPayload<ExtArgs>, T, "createManyAndReturn">>
+
+    /**
+     * Delete a Bookmark.
+     * @param {BookmarkDeleteArgs} args - Arguments to delete one Bookmark.
+     * @example
+     * // Delete one Bookmark
+     * const Bookmark = await prisma.bookmark.delete({
+     *   where: {
+     *     // ... filter to delete one Bookmark
+     *   }
+     * })
+     * 
+     */
+    delete<T extends BookmarkDeleteArgs>(args: SelectSubset<T, BookmarkDeleteArgs<ExtArgs>>): Prisma__BookmarkClient<$Result.GetResult<Prisma.$BookmarkPayload<ExtArgs>, T, "delete">, never, ExtArgs>
+
+    /**
+     * Update one Bookmark.
+     * @param {BookmarkUpdateArgs} args - Arguments to update one Bookmark.
+     * @example
+     * // Update one Bookmark
+     * const bookmark = await prisma.bookmark.update({
+     *   where: {
+     *     // ... provide filter here
+     *   },
+     *   data: {
+     *     // ... provide data here
+     *   }
+     * })
+     * 
+     */
+    update<T extends BookmarkUpdateArgs>(args: SelectSubset<T, BookmarkUpdateArgs<ExtArgs>>): Prisma__BookmarkClient<$Result.GetResult<Prisma.$BookmarkPayload<ExtArgs>, T, "update">, never, ExtArgs>
+
+    /**
+     * Delete zero or more Bookmarks.
+     * @param {BookmarkDeleteManyArgs} args - Arguments to filter Bookmarks to delete.
+     * @example
+     * // Delete a few Bookmarks
+     * const { count } = await prisma.bookmark.deleteMany({
+     *   where: {
+     *     // ... provide filter here
+     *   }
+     * })
+     * 
+     */
+    deleteMany<T extends BookmarkDeleteManyArgs>(args?: SelectSubset<T, BookmarkDeleteManyArgs<ExtArgs>>): Prisma.PrismaPromise<BatchPayload>
+
+    /**
+     * Update zero or more Bookmarks.
+     * Note, that providing `undefined` is treated as the value not being there.
+     * Read more here: https://pris.ly/d/null-undefined
+     * @param {BookmarkUpdateManyArgs} args - Arguments to update one or more rows.
+     * @example
+     * // Update many Bookmarks
+     * const bookmark = await prisma.bookmark.updateMany({
+     *   where: {
+     *     // ... provide filter here
+     *   },
+     *   data: {
+     *     // ... provide data here
+     *   }
+     * })
+     * 
+     */
+    updateMany<T extends BookmarkUpdateManyArgs>(args: SelectSubset<T, BookmarkUpdateManyArgs<ExtArgs>>): Prisma.PrismaPromise<BatchPayload>
+
+    /**
+     * Create or update one Bookmark.
+     * @param {BookmarkUpsertArgs} args - Arguments to update or create a Bookmark.
+     * @example
+     * // Update or create a Bookmark
+     * const bookmark = await prisma.bookmark.upsert({
+     *   create: {
+     *     // ... data to create a Bookmark
+     *   },
+     *   update: {
+     *     // ... in case it already exists, update
+     *   },
+     *   where: {
+     *     // ... the filter for the Bookmark we want to update
+     *   }
+     * })
+     */
+    upsert<T extends BookmarkUpsertArgs>(args: SelectSubset<T, BookmarkUpsertArgs<ExtArgs>>): Prisma__BookmarkClient<$Result.GetResult<Prisma.$BookmarkPayload<ExtArgs>, T, "upsert">, never, ExtArgs>
+
+
+    /**
+     * Count the number of Bookmarks.
+     * Note, that providing `undefined` is treated as the value not being there.
+     * Read more here: https://pris.ly/d/null-undefined
+     * @param {BookmarkCountArgs} args - Arguments to filter Bookmarks to count.
+     * @example
+     * // Count the number of Bookmarks
+     * const count = await prisma.bookmark.count({
+     *   where: {
+     *     // ... the filter for the Bookmarks we want to count
+     *   }
+     * })
+    **/
+    count<T extends BookmarkCountArgs>(
+      args?: Subset<T, BookmarkCountArgs>,
+    ): Prisma.PrismaPromise<
+      T extends $Utils.Record<'select', any>
+        ? T['select'] extends true
+          ? number
+          : GetScalarType<T['select'], BookmarkCountAggregateOutputType>
+        : number
+    >
+
+    /**
+     * Allows you to perform aggregations operations on a Bookmark.
+     * Note, that providing `undefined` is treated as the value not being there.
+     * Read more here: https://pris.ly/d/null-undefined
+     * @param {BookmarkAggregateArgs} args - Select which aggregations you would like to apply and on what fields.
+     * @example
+     * // Ordered by age ascending
+     * // Where email contains prisma.io
+     * // Limited to the 10 users
+     * const aggregations = await prisma.user.aggregate({
+     *   _avg: {
+     *     age: true,
+     *   },
+     *   where: {
+     *     email: {
+     *       contains: "prisma.io",
+     *     },
+     *   },
+     *   orderBy: {
+     *     age: "asc",
+     *   },
+     *   take: 10,
+     * })
+    **/
+    aggregate<T extends BookmarkAggregateArgs>(args: Subset<T, BookmarkAggregateArgs>): Prisma.PrismaPromise<GetBookmarkAggregateType<T>>
+
+    /**
+     * Group by Bookmark.
+     * Note, that providing `undefined` is treated as the value not being there.
+     * Read more here: https://pris.ly/d/null-undefined
+     * @param {BookmarkGroupByArgs} args - Group by arguments.
+     * @example
+     * // Group by city, order by createdAt, get count
+     * const result = await prisma.user.groupBy({
+     *   by: ['city', 'createdAt'],
+     *   orderBy: {
+     *     createdAt: true
+     *   },
+     *   _count: {
+     *     _all: true
+     *   },
+     * })
+     * 
+    **/
+    groupBy<
+      T extends BookmarkGroupByArgs,
+      HasSelectOrTake extends Or<
+        Extends<'skip', Keys<T>>,
+        Extends<'take', Keys<T>>
+      >,
+      OrderByArg extends True extends HasSelectOrTake
+        ? { orderBy: BookmarkGroupByArgs['orderBy'] }
+        : { orderBy?: BookmarkGroupByArgs['orderBy'] },
+      OrderFields extends ExcludeUnderscoreKeys<Keys<MaybeTupleToUnion<T['orderBy']>>>,
+      ByFields extends MaybeTupleToUnion<T['by']>,
+      ByValid extends Has<ByFields, OrderFields>,
+      HavingFields extends GetHavingFields<T['having']>,
+      HavingValid extends Has<ByFields, HavingFields>,
+      ByEmpty extends T['by'] extends never[] ? True : False,
+      InputErrors extends ByEmpty extends True
+      ? `Error: "by" must not be empty.`
+      : HavingValid extends False
+      ? {
+          [P in HavingFields]: P extends ByFields
+            ? never
+            : P extends string
+            ? `Error: Field "${P}" used in "having" needs to be provided in "by".`
+            : [
+                Error,
+                'Field ',
+                P,
+                ` in "having" needs to be provided in "by"`,
+              ]
+        }[HavingFields]
+      : 'take' extends Keys<T>
+      ? 'orderBy' extends Keys<T>
+        ? ByValid extends True
+          ? {}
+          : {
+              [P in OrderFields]: P extends ByFields
+                ? never
+                : `Error: Field "${P}" in "orderBy" needs to be provided in "by"`
+            }[OrderFields]
+        : 'Error: If you provide "take", you also need to provide "orderBy"'
+      : 'skip' extends Keys<T>
+      ? 'orderBy' extends Keys<T>
+        ? ByValid extends True
+          ? {}
+          : {
+              [P in OrderFields]: P extends ByFields
+                ? never
+                : `Error: Field "${P}" in "orderBy" needs to be provided in "by"`
+            }[OrderFields]
+        : 'Error: If you provide "skip", you also need to provide "orderBy"'
+      : ByValid extends True
+      ? {}
+      : {
+          [P in OrderFields]: P extends ByFields
+            ? never
+            : `Error: Field "${P}" in "orderBy" needs to be provided in "by"`
+        }[OrderFields]
+    >(args: SubsetIntersection<T, BookmarkGroupByArgs, OrderByArg> & InputErrors): {} extends InputErrors ? GetBookmarkGroupByPayload<T> : Prisma.PrismaPromise<InputErrors>
+  /**
+   * Fields of the Bookmark model
+   */
+  readonly fields: BookmarkFieldRefs;
+  }
+
+  /**
+   * The delegate class that acts as a "Promise-like" for Bookmark.
+   * Why is this prefixed with `Prisma__`?
+   * Because we want to prevent naming conflicts as mentioned in
+   * https://github.com/prisma/prisma-client-js/issues/707
+   */
+  export interface Prisma__BookmarkClient<T, Null = never, ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> extends Prisma.PrismaPromise<T> {
+    readonly [Symbol.toStringTag]: "PrismaPromise"
+    Recording<T extends RecordingDefaultArgs<ExtArgs> = {}>(args?: Subset<T, RecordingDefaultArgs<ExtArgs>>): Prisma__RecordingClient<$Result.GetResult<Prisma.$RecordingPayload<ExtArgs>, T, "findUniqueOrThrow"> | Null, Null, ExtArgs>
+    /**
+     * Attaches callbacks for the resolution and/or rejection of the Promise.
+     * @param onfulfilled The callback to execute when the Promise is resolved.
+     * @param onrejected The callback to execute when the Promise is rejected.
+     * @returns A Promise for the completion of which ever callback is executed.
+     */
+    then<TResult1 = T, TResult2 = never>(onfulfilled?: ((value: T) => TResult1 | PromiseLike<TResult1>) | undefined | null, onrejected?: ((reason: any) => TResult2 | PromiseLike<TResult2>) | undefined | null): $Utils.JsPromise<TResult1 | TResult2>
+    /**
+     * Attaches a callback for only the rejection of the Promise.
+     * @param onrejected The callback to execute when the Promise is rejected.
+     * @returns A Promise for the completion of the callback.
+     */
+    catch<TResult = never>(onrejected?: ((reason: any) => TResult | PromiseLike<TResult>) | undefined | null): $Utils.JsPromise<T | TResult>
+    /**
+     * Attaches a callback that is invoked when the Promise is settled (fulfilled or rejected). The
+     * resolved value cannot be modified from the callback.
+     * @param onfinally The callback to execute when the Promise is settled (fulfilled or rejected).
+     * @returns A Promise for the completion of the callback.
+     */
+    finally(onfinally?: (() => void) | undefined | null): $Utils.JsPromise<T>
+  }
+
+
+
+
+  /**
+   * Fields of the Bookmark model
+   */ 
+  interface BookmarkFieldRefs {
+    readonly id: FieldRef<"Bookmark", 'String'>
+    readonly recording_id: FieldRef<"Bookmark", 'String'>
+    readonly timecode_ms: FieldRef<"Bookmark", 'Int'>
+    readonly label: FieldRef<"Bookmark", 'String'>
+    readonly note: FieldRef<"Bookmark", 'String'>
+    readonly created_at: FieldRef<"Bookmark", 'DateTime'>
+  }
+    
+
+  // Custom InputTypes
+  /**
+   * Bookmark findUnique
+   */
+  export type BookmarkFindUniqueArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the Bookmark
+     */
+    select?: BookmarkSelect<ExtArgs> | null
+    /**
+     * Choose, which related nodes to fetch as well
+     */
+    include?: BookmarkInclude<ExtArgs> | null
+    /**
+     * Filter, which Bookmark to fetch.
+     */
+    where: BookmarkWhereUniqueInput
+  }
+
+  /**
+   * Bookmark findUniqueOrThrow
+   */
+  export type BookmarkFindUniqueOrThrowArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the Bookmark
+     */
+    select?: BookmarkSelect<ExtArgs> | null
+    /**
+     * Choose, which related nodes to fetch as well
+     */
+    include?: BookmarkInclude<ExtArgs> | null
+    /**
+     * Filter, which Bookmark to fetch.
+     */
+    where: BookmarkWhereUniqueInput
+  }
+
+  /**
+   * Bookmark findFirst
+   */
+  export type BookmarkFindFirstArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the Bookmark
+     */
+    select?: BookmarkSelect<ExtArgs> | null
+    /**
+     * Choose, which related nodes to fetch as well
+     */
+    include?: BookmarkInclude<ExtArgs> | null
+    /**
+     * Filter, which Bookmark to fetch.
+     */
+    where?: BookmarkWhereInput
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/sorting Sorting Docs}
+     * 
+     * Determine the order of Bookmarks to fetch.
+     */
+    orderBy?: BookmarkOrderByWithRelationInput | BookmarkOrderByWithRelationInput[]
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination#cursor-based-pagination Cursor Docs}
+     * 
+     * Sets the position for searching for Bookmarks.
+     */
+    cursor?: BookmarkWhereUniqueInput
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination Pagination Docs}
+     * 
+     * Take `±n` Bookmarks from the position of the cursor.
+     */
+    take?: number
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination Pagination Docs}
+     * 
+     * Skip the first `n` Bookmarks.
+     */
+    skip?: number
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/distinct Distinct Docs}
+     * 
+     * Filter by unique combinations of Bookmarks.
+     */
+    distinct?: BookmarkScalarFieldEnum | BookmarkScalarFieldEnum[]
+  }
+
+  /**
+   * Bookmark findFirstOrThrow
+   */
+  export type BookmarkFindFirstOrThrowArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the Bookmark
+     */
+    select?: BookmarkSelect<ExtArgs> | null
+    /**
+     * Choose, which related nodes to fetch as well
+     */
+    include?: BookmarkInclude<ExtArgs> | null
+    /**
+     * Filter, which Bookmark to fetch.
+     */
+    where?: BookmarkWhereInput
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/sorting Sorting Docs}
+     * 
+     * Determine the order of Bookmarks to fetch.
+     */
+    orderBy?: BookmarkOrderByWithRelationInput | BookmarkOrderByWithRelationInput[]
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination#cursor-based-pagination Cursor Docs}
+     * 
+     * Sets the position for searching for Bookmarks.
+     */
+    cursor?: BookmarkWhereUniqueInput
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination Pagination Docs}
+     * 
+     * Take `±n` Bookmarks from the position of the cursor.
+     */
+    take?: number
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination Pagination Docs}
+     * 
+     * Skip the first `n` Bookmarks.
+     */
+    skip?: number
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/distinct Distinct Docs}
+     * 
+     * Filter by unique combinations of Bookmarks.
+     */
+    distinct?: BookmarkScalarFieldEnum | BookmarkScalarFieldEnum[]
+  }
+
+  /**
+   * Bookmark findMany
+   */
+  export type BookmarkFindManyArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the Bookmark
+     */
+    select?: BookmarkSelect<ExtArgs> | null
+    /**
+     * Choose, which related nodes to fetch as well
+     */
+    include?: BookmarkInclude<ExtArgs> | null
+    /**
+     * Filter, which Bookmarks to fetch.
+     */
+    where?: BookmarkWhereInput
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/sorting Sorting Docs}
+     * 
+     * Determine the order of Bookmarks to fetch.
+     */
+    orderBy?: BookmarkOrderByWithRelationInput | BookmarkOrderByWithRelationInput[]
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination#cursor-based-pagination Cursor Docs}
+     * 
+     * Sets the position for listing Bookmarks.
+     */
+    cursor?: BookmarkWhereUniqueInput
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination Pagination Docs}
+     * 
+     * Take `±n` Bookmarks from the position of the cursor.
+     */
+    take?: number
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination Pagination Docs}
+     * 
+     * Skip the first `n` Bookmarks.
+     */
+    skip?: number
+    distinct?: BookmarkScalarFieldEnum | BookmarkScalarFieldEnum[]
+  }
+
+  /**
+   * Bookmark create
+   */
+  export type BookmarkCreateArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the Bookmark
+     */
+    select?: BookmarkSelect<ExtArgs> | null
+    /**
+     * Choose, which related nodes to fetch as well
+     */
+    include?: BookmarkInclude<ExtArgs> | null
+    /**
+     * The data needed to create a Bookmark.
+     */
+    data: XOR<BookmarkCreateInput, BookmarkUncheckedCreateInput>
+  }
+
+  /**
+   * Bookmark createMany
+   */
+  export type BookmarkCreateManyArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * The data used to create many Bookmarks.
+     */
+    data: BookmarkCreateManyInput | BookmarkCreateManyInput[]
+  }
+
+  /**
+   * Bookmark createManyAndReturn
+   */
+  export type BookmarkCreateManyAndReturnArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the Bookmark
+     */
+    select?: BookmarkSelectCreateManyAndReturn<ExtArgs> | null
+    /**
+     * The data used to create many Bookmarks.
+     */
+    data: BookmarkCreateManyInput | BookmarkCreateManyInput[]
+    /**
+     * Choose, which related nodes to fetch as well
+     */
+    include?: BookmarkIncludeCreateManyAndReturn<ExtArgs> | null
+  }
+
+  /**
+   * Bookmark update
+   */
+  export type BookmarkUpdateArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the Bookmark
+     */
+    select?: BookmarkSelect<ExtArgs> | null
+    /**
+     * Choose, which related nodes to fetch as well
+     */
+    include?: BookmarkInclude<ExtArgs> | null
+    /**
+     * The data needed to update a Bookmark.
+     */
+    data: XOR<BookmarkUpdateInput, BookmarkUncheckedUpdateInput>
+    /**
+     * Choose, which Bookmark to update.
+     */
+    where: BookmarkWhereUniqueInput
+  }
+
+  /**
+   * Bookmark updateMany
+   */
+  export type BookmarkUpdateManyArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * The data used to update Bookmarks.
+     */
+    data: XOR<BookmarkUpdateManyMutationInput, BookmarkUncheckedUpdateManyInput>
+    /**
+     * Filter which Bookmarks to update
+     */
+    where?: BookmarkWhereInput
+  }
+
+  /**
+   * Bookmark upsert
+   */
+  export type BookmarkUpsertArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the Bookmark
+     */
+    select?: BookmarkSelect<ExtArgs> | null
+    /**
+     * Choose, which related nodes to fetch as well
+     */
+    include?: BookmarkInclude<ExtArgs> | null
+    /**
+     * The filter to search for the Bookmark to update in case it exists.
+     */
+    where: BookmarkWhereUniqueInput
+    /**
+     * In case the Bookmark found by the `where` argument doesn't exist, create a new Bookmark with this data.
+     */
+    create: XOR<BookmarkCreateInput, BookmarkUncheckedCreateInput>
+    /**
+     * In case the Bookmark was found with the provided `where` argument, update it with this data.
+     */
+    update: XOR<BookmarkUpdateInput, BookmarkUncheckedUpdateInput>
+  }
+
+  /**
+   * Bookmark delete
+   */
+  export type BookmarkDeleteArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the Bookmark
+     */
+    select?: BookmarkSelect<ExtArgs> | null
+    /**
+     * Choose, which related nodes to fetch as well
+     */
+    include?: BookmarkInclude<ExtArgs> | null
+    /**
+     * Filter which Bookmark to delete.
+     */
+    where: BookmarkWhereUniqueInput
+  }
+
+  /**
+   * Bookmark deleteMany
+   */
+  export type BookmarkDeleteManyArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Filter which Bookmarks to delete
+     */
+    where?: BookmarkWhereInput
+  }
+
+  /**
+   * Bookmark without action
+   */
+  export type BookmarkDefaultArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the Bookmark
+     */
+    select?: BookmarkSelect<ExtArgs> | null
+    /**
+     * Choose, which related nodes to fetch as well
+     */
+    include?: BookmarkInclude<ExtArgs> | null
+  }
+
+
+  /**
+   * Model Annotation
+   */
+
+  export type AggregateAnnotation = {
+    _count: AnnotationCountAggregateOutputType | null
+    _avg: AnnotationAvgAggregateOutputType | null
+    _sum: AnnotationSumAggregateOutputType | null
+    _min: AnnotationMinAggregateOutputType | null
+    _max: AnnotationMaxAggregateOutputType | null
+  }
+
+  export type AnnotationAvgAggregateOutputType = {
+    timecode_ms: number | null
+  }
+
+  export type AnnotationSumAggregateOutputType = {
+    timecode_ms: number | null
+  }
+
+  export type AnnotationMinAggregateOutputType = {
+    id: string | null
+    recording_id: string | null
+    timecode_ms: number | null
+    shape: string | null
+    geometry: string | null
+    color: string | null
+    text: string | null
+    author: string | null
+    created_at: Date | null
+  }
+
+  export type AnnotationMaxAggregateOutputType = {
+    id: string | null
+    recording_id: string | null
+    timecode_ms: number | null
+    shape: string | null
+    geometry: string | null
+    color: string | null
+    text: string | null
+    author: string | null
+    created_at: Date | null
+  }
+
+  export type AnnotationCountAggregateOutputType = {
+    id: number
+    recording_id: number
+    timecode_ms: number
+    shape: number
+    geometry: number
+    color: number
+    text: number
+    author: number
+    created_at: number
+    _all: number
+  }
+
+
+  export type AnnotationAvgAggregateInputType = {
+    timecode_ms?: true
+  }
+
+  export type AnnotationSumAggregateInputType = {
+    timecode_ms?: true
+  }
+
+  export type AnnotationMinAggregateInputType = {
+    id?: true
+    recording_id?: true
+    timecode_ms?: true
+    shape?: true
+    geometry?: true
+    color?: true
+    text?: true
+    author?: true
+    created_at?: true
+  }
+
+  export type AnnotationMaxAggregateInputType = {
+    id?: true
+    recording_id?: true
+    timecode_ms?: true
+    shape?: true
+    geometry?: true
+    color?: true
+    text?: true
+    author?: true
+    created_at?: true
+  }
+
+  export type AnnotationCountAggregateInputType = {
+    id?: true
+    recording_id?: true
+    timecode_ms?: true
+    shape?: true
+    geometry?: true
+    color?: true
+    text?: true
+    author?: true
+    created_at?: true
+    _all?: true
+  }
+
+  export type AnnotationAggregateArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Filter which Annotation to aggregate.
+     */
+    where?: AnnotationWhereInput
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/sorting Sorting Docs}
+     * 
+     * Determine the order of Annotations to fetch.
+     */
+    orderBy?: AnnotationOrderByWithRelationInput | AnnotationOrderByWithRelationInput[]
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination#cursor-based-pagination Cursor Docs}
+     * 
+     * Sets the start position
+     */
+    cursor?: AnnotationWhereUniqueInput
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination Pagination Docs}
+     * 
+     * Take `±n` Annotations from the position of the cursor.
+     */
+    take?: number
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination Pagination Docs}
+     * 
+     * Skip the first `n` Annotations.
+     */
+    skip?: number
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/aggregations Aggregation Docs}
+     * 
+     * Count returned Annotations
+    **/
+    _count?: true | AnnotationCountAggregateInputType
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/aggregations Aggregation Docs}
+     * 
+     * Select which fields to average
+    **/
+    _avg?: AnnotationAvgAggregateInputType
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/aggregations Aggregation Docs}
+     * 
+     * Select which fields to sum
+    **/
+    _sum?: AnnotationSumAggregateInputType
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/aggregations Aggregation Docs}
+     * 
+     * Select which fields to find the minimum value
+    **/
+    _min?: AnnotationMinAggregateInputType
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/aggregations Aggregation Docs}
+     * 
+     * Select which fields to find the maximum value
+    **/
+    _max?: AnnotationMaxAggregateInputType
+  }
+
+  export type GetAnnotationAggregateType<T extends AnnotationAggregateArgs> = {
+        [P in keyof T & keyof AggregateAnnotation]: P extends '_count' | 'count'
+      ? T[P] extends true
+        ? number
+        : GetScalarType<T[P], AggregateAnnotation[P]>
+      : GetScalarType<T[P], AggregateAnnotation[P]>
+  }
+
+
+
+
+  export type AnnotationGroupByArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    where?: AnnotationWhereInput
+    orderBy?: AnnotationOrderByWithAggregationInput | AnnotationOrderByWithAggregationInput[]
+    by: AnnotationScalarFieldEnum[] | AnnotationScalarFieldEnum
+    having?: AnnotationScalarWhereWithAggregatesInput
+    take?: number
+    skip?: number
+    _count?: AnnotationCountAggregateInputType | true
+    _avg?: AnnotationAvgAggregateInputType
+    _sum?: AnnotationSumAggregateInputType
+    _min?: AnnotationMinAggregateInputType
+    _max?: AnnotationMaxAggregateInputType
+  }
+
+  export type AnnotationGroupByOutputType = {
+    id: string
+    recording_id: string
+    timecode_ms: number
+    shape: string
+    geometry: string
+    color: string
+    text: string | null
+    author: string | null
+    created_at: Date
+    _count: AnnotationCountAggregateOutputType | null
+    _avg: AnnotationAvgAggregateOutputType | null
+    _sum: AnnotationSumAggregateOutputType | null
+    _min: AnnotationMinAggregateOutputType | null
+    _max: AnnotationMaxAggregateOutputType | null
+  }
+
+  type GetAnnotationGroupByPayload<T extends AnnotationGroupByArgs> = Prisma.PrismaPromise<
+    Array<
+      PickEnumerable<AnnotationGroupByOutputType, T['by']> &
+        {
+          [P in ((keyof T) & (keyof AnnotationGroupByOutputType))]: P extends '_count'
+            ? T[P] extends boolean
+              ? number
+              : GetScalarType<T[P], AnnotationGroupByOutputType[P]>
+            : GetScalarType<T[P], AnnotationGroupByOutputType[P]>
+        }
+      >
+    >
+
+
+  export type AnnotationSelect<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = $Extensions.GetSelect<{
+    id?: boolean
+    recording_id?: boolean
+    timecode_ms?: boolean
+    shape?: boolean
+    geometry?: boolean
+    color?: boolean
+    text?: boolean
+    author?: boolean
+    created_at?: boolean
+    Recording?: boolean | RecordingDefaultArgs<ExtArgs>
+  }, ExtArgs["result"]["annotation"]>
+
+  export type AnnotationSelectCreateManyAndReturn<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = $Extensions.GetSelect<{
+    id?: boolean
+    recording_id?: boolean
+    timecode_ms?: boolean
+    shape?: boolean
+    geometry?: boolean
+    color?: boolean
+    text?: boolean
+    author?: boolean
+    created_at?: boolean
+    Recording?: boolean | RecordingDefaultArgs<ExtArgs>
+  }, ExtArgs["result"]["annotation"]>
+
+  export type AnnotationSelectScalar = {
+    id?: boolean
+    recording_id?: boolean
+    timecode_ms?: boolean
+    shape?: boolean
+    geometry?: boolean
+    color?: boolean
+    text?: boolean
+    author?: boolean
+    created_at?: boolean
+  }
+
+  export type AnnotationInclude<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    Recording?: boolean | RecordingDefaultArgs<ExtArgs>
+  }
+  export type AnnotationIncludeCreateManyAndReturn<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    Recording?: boolean | RecordingDefaultArgs<ExtArgs>
+  }
+
+  export type $AnnotationPayload<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    name: "Annotation"
+    objects: {
+      Recording: Prisma.$RecordingPayload<ExtArgs>
+    }
+    scalars: $Extensions.GetPayloadResult<{
+      id: string
+      recording_id: string
+      timecode_ms: number
+      shape: string
+      geometry: string
+      color: string
+      text: string | null
+      author: string | null
+      created_at: Date
+    }, ExtArgs["result"]["annotation"]>
+    composites: {}
+  }
+
+  type AnnotationGetPayload<S extends boolean | null | undefined | AnnotationDefaultArgs> = $Result.GetResult<Prisma.$AnnotationPayload, S>
+
+  type AnnotationCountArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = 
+    Omit<AnnotationFindManyArgs, 'select' | 'include' | 'distinct'> & {
+      select?: AnnotationCountAggregateInputType | true
+    }
+
+  export interface AnnotationDelegate<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> {
+    [K: symbol]: { types: Prisma.TypeMap<ExtArgs>['model']['Annotation'], meta: { name: 'Annotation' } }
+    /**
+     * Find zero or one Annotation that matches the filter.
+     * @param {AnnotationFindUniqueArgs} args - Arguments to find a Annotation
+     * @example
+     * // Get one Annotation
+     * const annotation = await prisma.annotation.findUnique({
+     *   where: {
+     *     // ... provide filter here
+     *   }
+     * })
+     */
+    findUnique<T extends AnnotationFindUniqueArgs>(args: SelectSubset<T, AnnotationFindUniqueArgs<ExtArgs>>): Prisma__AnnotationClient<$Result.GetResult<Prisma.$AnnotationPayload<ExtArgs>, T, "findUnique"> | null, null, ExtArgs>
+
+    /**
+     * Find one Annotation that matches the filter or throw an error with `error.code='P2025'` 
+     * if no matches were found.
+     * @param {AnnotationFindUniqueOrThrowArgs} args - Arguments to find a Annotation
+     * @example
+     * // Get one Annotation
+     * const annotation = await prisma.annotation.findUniqueOrThrow({
+     *   where: {
+     *     // ... provide filter here
+     *   }
+     * })
+     */
+    findUniqueOrThrow<T extends AnnotationFindUniqueOrThrowArgs>(args: SelectSubset<T, AnnotationFindUniqueOrThrowArgs<ExtArgs>>): Prisma__AnnotationClient<$Result.GetResult<Prisma.$AnnotationPayload<ExtArgs>, T, "findUniqueOrThrow">, never, ExtArgs>
+
+    /**
+     * Find the first Annotation that matches the filter.
+     * Note, that providing `undefined` is treated as the value not being there.
+     * Read more here: https://pris.ly/d/null-undefined
+     * @param {AnnotationFindFirstArgs} args - Arguments to find a Annotation
+     * @example
+     * // Get one Annotation
+     * const annotation = await prisma.annotation.findFirst({
+     *   where: {
+     *     // ... provide filter here
+     *   }
+     * })
+     */
+    findFirst<T extends AnnotationFindFirstArgs>(args?: SelectSubset<T, AnnotationFindFirstArgs<ExtArgs>>): Prisma__AnnotationClient<$Result.GetResult<Prisma.$AnnotationPayload<ExtArgs>, T, "findFirst"> | null, null, ExtArgs>
+
+    /**
+     * Find the first Annotation that matches the filter or
+     * throw `PrismaKnownClientError` with `P2025` code if no matches were found.
+     * Note, that providing `undefined` is treated as the value not being there.
+     * Read more here: https://pris.ly/d/null-undefined
+     * @param {AnnotationFindFirstOrThrowArgs} args - Arguments to find a Annotation
+     * @example
+     * // Get one Annotation
+     * const annotation = await prisma.annotation.findFirstOrThrow({
+     *   where: {
+     *     // ... provide filter here
+     *   }
+     * })
+     */
+    findFirstOrThrow<T extends AnnotationFindFirstOrThrowArgs>(args?: SelectSubset<T, AnnotationFindFirstOrThrowArgs<ExtArgs>>): Prisma__AnnotationClient<$Result.GetResult<Prisma.$AnnotationPayload<ExtArgs>, T, "findFirstOrThrow">, never, ExtArgs>
+
+    /**
+     * Find zero or more Annotations that matches the filter.
+     * Note, that providing `undefined` is treated as the value not being there.
+     * Read more here: https://pris.ly/d/null-undefined
+     * @param {AnnotationFindManyArgs} args - Arguments to filter and select certain fields only.
+     * @example
+     * // Get all Annotations
+     * const annotations = await prisma.annotation.findMany()
+     * 
+     * // Get first 10 Annotations
+     * const annotations = await prisma.annotation.findMany({ take: 10 })
+     * 
+     * // Only select the `id`
+     * const annotationWithIdOnly = await prisma.annotation.findMany({ select: { id: true } })
+     * 
+     */
+    findMany<T extends AnnotationFindManyArgs>(args?: SelectSubset<T, AnnotationFindManyArgs<ExtArgs>>): Prisma.PrismaPromise<$Result.GetResult<Prisma.$AnnotationPayload<ExtArgs>, T, "findMany">>
+
+    /**
+     * Create a Annotation.
+     * @param {AnnotationCreateArgs} args - Arguments to create a Annotation.
+     * @example
+     * // Create one Annotation
+     * const Annotation = await prisma.annotation.create({
+     *   data: {
+     *     // ... data to create a Annotation
+     *   }
+     * })
+     * 
+     */
+    create<T extends AnnotationCreateArgs>(args: SelectSubset<T, AnnotationCreateArgs<ExtArgs>>): Prisma__AnnotationClient<$Result.GetResult<Prisma.$AnnotationPayload<ExtArgs>, T, "create">, never, ExtArgs>
+
+    /**
+     * Create many Annotations.
+     * @param {AnnotationCreateManyArgs} args - Arguments to create many Annotations.
+     * @example
+     * // Create many Annotations
+     * const annotation = await prisma.annotation.createMany({
+     *   data: [
+     *     // ... provide data here
+     *   ]
+     * })
+     *     
+     */
+    createMany<T extends AnnotationCreateManyArgs>(args?: SelectSubset<T, AnnotationCreateManyArgs<ExtArgs>>): Prisma.PrismaPromise<BatchPayload>
+
+    /**
+     * Create many Annotations and returns the data saved in the database.
+     * @param {AnnotationCreateManyAndReturnArgs} args - Arguments to create many Annotations.
+     * @example
+     * // Create many Annotations
+     * const annotation = await prisma.annotation.createManyAndReturn({
+     *   data: [
+     *     // ... provide data here
+     *   ]
+     * })
+     * 
+     * // Create many Annotations and only return the `id`
+     * const annotationWithIdOnly = await prisma.annotation.createManyAndReturn({ 
+     *   select: { id: true },
+     *   data: [
+     *     // ... provide data here
+     *   ]
+     * })
+     * Note, that providing `undefined` is treated as the value not being there.
+     * Read more here: https://pris.ly/d/null-undefined
+     * 
+     */
+    createManyAndReturn<T extends AnnotationCreateManyAndReturnArgs>(args?: SelectSubset<T, AnnotationCreateManyAndReturnArgs<ExtArgs>>): Prisma.PrismaPromise<$Result.GetResult<Prisma.$AnnotationPayload<ExtArgs>, T, "createManyAndReturn">>
+
+    /**
+     * Delete a Annotation.
+     * @param {AnnotationDeleteArgs} args - Arguments to delete one Annotation.
+     * @example
+     * // Delete one Annotation
+     * const Annotation = await prisma.annotation.delete({
+     *   where: {
+     *     // ... filter to delete one Annotation
+     *   }
+     * })
+     * 
+     */
+    delete<T extends AnnotationDeleteArgs>(args: SelectSubset<T, AnnotationDeleteArgs<ExtArgs>>): Prisma__AnnotationClient<$Result.GetResult<Prisma.$AnnotationPayload<ExtArgs>, T, "delete">, never, ExtArgs>
+
+    /**
+     * Update one Annotation.
+     * @param {AnnotationUpdateArgs} args - Arguments to update one Annotation.
+     * @example
+     * // Update one Annotation
+     * const annotation = await prisma.annotation.update({
+     *   where: {
+     *     // ... provide filter here
+     *   },
+     *   data: {
+     *     // ... provide data here
+     *   }
+     * })
+     * 
+     */
+    update<T extends AnnotationUpdateArgs>(args: SelectSubset<T, AnnotationUpdateArgs<ExtArgs>>): Prisma__AnnotationClient<$Result.GetResult<Prisma.$AnnotationPayload<ExtArgs>, T, "update">, never, ExtArgs>
+
+    /**
+     * Delete zero or more Annotations.
+     * @param {AnnotationDeleteManyArgs} args - Arguments to filter Annotations to delete.
+     * @example
+     * // Delete a few Annotations
+     * const { count } = await prisma.annotation.deleteMany({
+     *   where: {
+     *     // ... provide filter here
+     *   }
+     * })
+     * 
+     */
+    deleteMany<T extends AnnotationDeleteManyArgs>(args?: SelectSubset<T, AnnotationDeleteManyArgs<ExtArgs>>): Prisma.PrismaPromise<BatchPayload>
+
+    /**
+     * Update zero or more Annotations.
+     * Note, that providing `undefined` is treated as the value not being there.
+     * Read more here: https://pris.ly/d/null-undefined
+     * @param {AnnotationUpdateManyArgs} args - Arguments to update one or more rows.
+     * @example
+     * // Update many Annotations
+     * const annotation = await prisma.annotation.updateMany({
+     *   where: {
+     *     // ... provide filter here
+     *   },
+     *   data: {
+     *     // ... provide data here
+     *   }
+     * })
+     * 
+     */
+    updateMany<T extends AnnotationUpdateManyArgs>(args: SelectSubset<T, AnnotationUpdateManyArgs<ExtArgs>>): Prisma.PrismaPromise<BatchPayload>
+
+    /**
+     * Create or update one Annotation.
+     * @param {AnnotationUpsertArgs} args - Arguments to update or create a Annotation.
+     * @example
+     * // Update or create a Annotation
+     * const annotation = await prisma.annotation.upsert({
+     *   create: {
+     *     // ... data to create a Annotation
+     *   },
+     *   update: {
+     *     // ... in case it already exists, update
+     *   },
+     *   where: {
+     *     // ... the filter for the Annotation we want to update
+     *   }
+     * })
+     */
+    upsert<T extends AnnotationUpsertArgs>(args: SelectSubset<T, AnnotationUpsertArgs<ExtArgs>>): Prisma__AnnotationClient<$Result.GetResult<Prisma.$AnnotationPayload<ExtArgs>, T, "upsert">, never, ExtArgs>
+
+
+    /**
+     * Count the number of Annotations.
+     * Note, that providing `undefined` is treated as the value not being there.
+     * Read more here: https://pris.ly/d/null-undefined
+     * @param {AnnotationCountArgs} args - Arguments to filter Annotations to count.
+     * @example
+     * // Count the number of Annotations
+     * const count = await prisma.annotation.count({
+     *   where: {
+     *     // ... the filter for the Annotations we want to count
+     *   }
+     * })
+    **/
+    count<T extends AnnotationCountArgs>(
+      args?: Subset<T, AnnotationCountArgs>,
+    ): Prisma.PrismaPromise<
+      T extends $Utils.Record<'select', any>
+        ? T['select'] extends true
+          ? number
+          : GetScalarType<T['select'], AnnotationCountAggregateOutputType>
+        : number
+    >
+
+    /**
+     * Allows you to perform aggregations operations on a Annotation.
+     * Note, that providing `undefined` is treated as the value not being there.
+     * Read more here: https://pris.ly/d/null-undefined
+     * @param {AnnotationAggregateArgs} args - Select which aggregations you would like to apply and on what fields.
+     * @example
+     * // Ordered by age ascending
+     * // Where email contains prisma.io
+     * // Limited to the 10 users
+     * const aggregations = await prisma.user.aggregate({
+     *   _avg: {
+     *     age: true,
+     *   },
+     *   where: {
+     *     email: {
+     *       contains: "prisma.io",
+     *     },
+     *   },
+     *   orderBy: {
+     *     age: "asc",
+     *   },
+     *   take: 10,
+     * })
+    **/
+    aggregate<T extends AnnotationAggregateArgs>(args: Subset<T, AnnotationAggregateArgs>): Prisma.PrismaPromise<GetAnnotationAggregateType<T>>
+
+    /**
+     * Group by Annotation.
+     * Note, that providing `undefined` is treated as the value not being there.
+     * Read more here: https://pris.ly/d/null-undefined
+     * @param {AnnotationGroupByArgs} args - Group by arguments.
+     * @example
+     * // Group by city, order by createdAt, get count
+     * const result = await prisma.user.groupBy({
+     *   by: ['city', 'createdAt'],
+     *   orderBy: {
+     *     createdAt: true
+     *   },
+     *   _count: {
+     *     _all: true
+     *   },
+     * })
+     * 
+    **/
+    groupBy<
+      T extends AnnotationGroupByArgs,
+      HasSelectOrTake extends Or<
+        Extends<'skip', Keys<T>>,
+        Extends<'take', Keys<T>>
+      >,
+      OrderByArg extends True extends HasSelectOrTake
+        ? { orderBy: AnnotationGroupByArgs['orderBy'] }
+        : { orderBy?: AnnotationGroupByArgs['orderBy'] },
+      OrderFields extends ExcludeUnderscoreKeys<Keys<MaybeTupleToUnion<T['orderBy']>>>,
+      ByFields extends MaybeTupleToUnion<T['by']>,
+      ByValid extends Has<ByFields, OrderFields>,
+      HavingFields extends GetHavingFields<T['having']>,
+      HavingValid extends Has<ByFields, HavingFields>,
+      ByEmpty extends T['by'] extends never[] ? True : False,
+      InputErrors extends ByEmpty extends True
+      ? `Error: "by" must not be empty.`
+      : HavingValid extends False
+      ? {
+          [P in HavingFields]: P extends ByFields
+            ? never
+            : P extends string
+            ? `Error: Field "${P}" used in "having" needs to be provided in "by".`
+            : [
+                Error,
+                'Field ',
+                P,
+                ` in "having" needs to be provided in "by"`,
+              ]
+        }[HavingFields]
+      : 'take' extends Keys<T>
+      ? 'orderBy' extends Keys<T>
+        ? ByValid extends True
+          ? {}
+          : {
+              [P in OrderFields]: P extends ByFields
+                ? never
+                : `Error: Field "${P}" in "orderBy" needs to be provided in "by"`
+            }[OrderFields]
+        : 'Error: If you provide "take", you also need to provide "orderBy"'
+      : 'skip' extends Keys<T>
+      ? 'orderBy' extends Keys<T>
+        ? ByValid extends True
+          ? {}
+          : {
+              [P in OrderFields]: P extends ByFields
+                ? never
+                : `Error: Field "${P}" in "orderBy" needs to be provided in "by"`
+            }[OrderFields]
+        : 'Error: If you provide "skip", you also need to provide "orderBy"'
+      : ByValid extends True
+      ? {}
+      : {
+          [P in OrderFields]: P extends ByFields
+            ? never
+            : `Error: Field "${P}" in "orderBy" needs to be provided in "by"`
+        }[OrderFields]
+    >(args: SubsetIntersection<T, AnnotationGroupByArgs, OrderByArg> & InputErrors): {} extends InputErrors ? GetAnnotationGroupByPayload<T> : Prisma.PrismaPromise<InputErrors>
+  /**
+   * Fields of the Annotation model
+   */
+  readonly fields: AnnotationFieldRefs;
+  }
+
+  /**
+   * The delegate class that acts as a "Promise-like" for Annotation.
+   * Why is this prefixed with `Prisma__`?
+   * Because we want to prevent naming conflicts as mentioned in
+   * https://github.com/prisma/prisma-client-js/issues/707
+   */
+  export interface Prisma__AnnotationClient<T, Null = never, ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> extends Prisma.PrismaPromise<T> {
+    readonly [Symbol.toStringTag]: "PrismaPromise"
+    Recording<T extends RecordingDefaultArgs<ExtArgs> = {}>(args?: Subset<T, RecordingDefaultArgs<ExtArgs>>): Prisma__RecordingClient<$Result.GetResult<Prisma.$RecordingPayload<ExtArgs>, T, "findUniqueOrThrow"> | Null, Null, ExtArgs>
+    /**
+     * Attaches callbacks for the resolution and/or rejection of the Promise.
+     * @param onfulfilled The callback to execute when the Promise is resolved.
+     * @param onrejected The callback to execute when the Promise is rejected.
+     * @returns A Promise for the completion of which ever callback is executed.
+     */
+    then<TResult1 = T, TResult2 = never>(onfulfilled?: ((value: T) => TResult1 | PromiseLike<TResult1>) | undefined | null, onrejected?: ((reason: any) => TResult2 | PromiseLike<TResult2>) | undefined | null): $Utils.JsPromise<TResult1 | TResult2>
+    /**
+     * Attaches a callback for only the rejection of the Promise.
+     * @param onrejected The callback to execute when the Promise is rejected.
+     * @returns A Promise for the completion of the callback.
+     */
+    catch<TResult = never>(onrejected?: ((reason: any) => TResult | PromiseLike<TResult>) | undefined | null): $Utils.JsPromise<T | TResult>
+    /**
+     * Attaches a callback that is invoked when the Promise is settled (fulfilled or rejected). The
+     * resolved value cannot be modified from the callback.
+     * @param onfinally The callback to execute when the Promise is settled (fulfilled or rejected).
+     * @returns A Promise for the completion of the callback.
+     */
+    finally(onfinally?: (() => void) | undefined | null): $Utils.JsPromise<T>
+  }
+
+
+
+
+  /**
+   * Fields of the Annotation model
+   */ 
+  interface AnnotationFieldRefs {
+    readonly id: FieldRef<"Annotation", 'String'>
+    readonly recording_id: FieldRef<"Annotation", 'String'>
+    readonly timecode_ms: FieldRef<"Annotation", 'Int'>
+    readonly shape: FieldRef<"Annotation", 'String'>
+    readonly geometry: FieldRef<"Annotation", 'String'>
+    readonly color: FieldRef<"Annotation", 'String'>
+    readonly text: FieldRef<"Annotation", 'String'>
+    readonly author: FieldRef<"Annotation", 'String'>
+    readonly created_at: FieldRef<"Annotation", 'DateTime'>
+  }
+    
+
+  // Custom InputTypes
+  /**
+   * Annotation findUnique
+   */
+  export type AnnotationFindUniqueArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the Annotation
+     */
+    select?: AnnotationSelect<ExtArgs> | null
+    /**
+     * Choose, which related nodes to fetch as well
+     */
+    include?: AnnotationInclude<ExtArgs> | null
+    /**
+     * Filter, which Annotation to fetch.
+     */
+    where: AnnotationWhereUniqueInput
+  }
+
+  /**
+   * Annotation findUniqueOrThrow
+   */
+  export type AnnotationFindUniqueOrThrowArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the Annotation
+     */
+    select?: AnnotationSelect<ExtArgs> | null
+    /**
+     * Choose, which related nodes to fetch as well
+     */
+    include?: AnnotationInclude<ExtArgs> | null
+    /**
+     * Filter, which Annotation to fetch.
+     */
+    where: AnnotationWhereUniqueInput
+  }
+
+  /**
+   * Annotation findFirst
+   */
+  export type AnnotationFindFirstArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the Annotation
+     */
+    select?: AnnotationSelect<ExtArgs> | null
+    /**
+     * Choose, which related nodes to fetch as well
+     */
+    include?: AnnotationInclude<ExtArgs> | null
+    /**
+     * Filter, which Annotation to fetch.
+     */
+    where?: AnnotationWhereInput
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/sorting Sorting Docs}
+     * 
+     * Determine the order of Annotations to fetch.
+     */
+    orderBy?: AnnotationOrderByWithRelationInput | AnnotationOrderByWithRelationInput[]
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination#cursor-based-pagination Cursor Docs}
+     * 
+     * Sets the position for searching for Annotations.
+     */
+    cursor?: AnnotationWhereUniqueInput
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination Pagination Docs}
+     * 
+     * Take `±n` Annotations from the position of the cursor.
+     */
+    take?: number
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination Pagination Docs}
+     * 
+     * Skip the first `n` Annotations.
+     */
+    skip?: number
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/distinct Distinct Docs}
+     * 
+     * Filter by unique combinations of Annotations.
+     */
+    distinct?: AnnotationScalarFieldEnum | AnnotationScalarFieldEnum[]
+  }
+
+  /**
+   * Annotation findFirstOrThrow
+   */
+  export type AnnotationFindFirstOrThrowArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the Annotation
+     */
+    select?: AnnotationSelect<ExtArgs> | null
+    /**
+     * Choose, which related nodes to fetch as well
+     */
+    include?: AnnotationInclude<ExtArgs> | null
+    /**
+     * Filter, which Annotation to fetch.
+     */
+    where?: AnnotationWhereInput
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/sorting Sorting Docs}
+     * 
+     * Determine the order of Annotations to fetch.
+     */
+    orderBy?: AnnotationOrderByWithRelationInput | AnnotationOrderByWithRelationInput[]
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination#cursor-based-pagination Cursor Docs}
+     * 
+     * Sets the position for searching for Annotations.
+     */
+    cursor?: AnnotationWhereUniqueInput
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination Pagination Docs}
+     * 
+     * Take `±n` Annotations from the position of the cursor.
+     */
+    take?: number
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination Pagination Docs}
+     * 
+     * Skip the first `n` Annotations.
+     */
+    skip?: number
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/distinct Distinct Docs}
+     * 
+     * Filter by unique combinations of Annotations.
+     */
+    distinct?: AnnotationScalarFieldEnum | AnnotationScalarFieldEnum[]
+  }
+
+  /**
+   * Annotation findMany
+   */
+  export type AnnotationFindManyArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the Annotation
+     */
+    select?: AnnotationSelect<ExtArgs> | null
+    /**
+     * Choose, which related nodes to fetch as well
+     */
+    include?: AnnotationInclude<ExtArgs> | null
+    /**
+     * Filter, which Annotations to fetch.
+     */
+    where?: AnnotationWhereInput
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/sorting Sorting Docs}
+     * 
+     * Determine the order of Annotations to fetch.
+     */
+    orderBy?: AnnotationOrderByWithRelationInput | AnnotationOrderByWithRelationInput[]
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination#cursor-based-pagination Cursor Docs}
+     * 
+     * Sets the position for listing Annotations.
+     */
+    cursor?: AnnotationWhereUniqueInput
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination Pagination Docs}
+     * 
+     * Take `±n` Annotations from the position of the cursor.
+     */
+    take?: number
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination Pagination Docs}
+     * 
+     * Skip the first `n` Annotations.
+     */
+    skip?: number
+    distinct?: AnnotationScalarFieldEnum | AnnotationScalarFieldEnum[]
+  }
+
+  /**
+   * Annotation create
+   */
+  export type AnnotationCreateArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the Annotation
+     */
+    select?: AnnotationSelect<ExtArgs> | null
+    /**
+     * Choose, which related nodes to fetch as well
+     */
+    include?: AnnotationInclude<ExtArgs> | null
+    /**
+     * The data needed to create a Annotation.
+     */
+    data: XOR<AnnotationCreateInput, AnnotationUncheckedCreateInput>
+  }
+
+  /**
+   * Annotation createMany
+   */
+  export type AnnotationCreateManyArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * The data used to create many Annotations.
+     */
+    data: AnnotationCreateManyInput | AnnotationCreateManyInput[]
+  }
+
+  /**
+   * Annotation createManyAndReturn
+   */
+  export type AnnotationCreateManyAndReturnArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the Annotation
+     */
+    select?: AnnotationSelectCreateManyAndReturn<ExtArgs> | null
+    /**
+     * The data used to create many Annotations.
+     */
+    data: AnnotationCreateManyInput | AnnotationCreateManyInput[]
+    /**
+     * Choose, which related nodes to fetch as well
+     */
+    include?: AnnotationIncludeCreateManyAndReturn<ExtArgs> | null
+  }
+
+  /**
+   * Annotation update
+   */
+  export type AnnotationUpdateArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the Annotation
+     */
+    select?: AnnotationSelect<ExtArgs> | null
+    /**
+     * Choose, which related nodes to fetch as well
+     */
+    include?: AnnotationInclude<ExtArgs> | null
+    /**
+     * The data needed to update a Annotation.
+     */
+    data: XOR<AnnotationUpdateInput, AnnotationUncheckedUpdateInput>
+    /**
+     * Choose, which Annotation to update.
+     */
+    where: AnnotationWhereUniqueInput
+  }
+
+  /**
+   * Annotation updateMany
+   */
+  export type AnnotationUpdateManyArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * The data used to update Annotations.
+     */
+    data: XOR<AnnotationUpdateManyMutationInput, AnnotationUncheckedUpdateManyInput>
+    /**
+     * Filter which Annotations to update
+     */
+    where?: AnnotationWhereInput
+  }
+
+  /**
+   * Annotation upsert
+   */
+  export type AnnotationUpsertArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the Annotation
+     */
+    select?: AnnotationSelect<ExtArgs> | null
+    /**
+     * Choose, which related nodes to fetch as well
+     */
+    include?: AnnotationInclude<ExtArgs> | null
+    /**
+     * The filter to search for the Annotation to update in case it exists.
+     */
+    where: AnnotationWhereUniqueInput
+    /**
+     * In case the Annotation found by the `where` argument doesn't exist, create a new Annotation with this data.
+     */
+    create: XOR<AnnotationCreateInput, AnnotationUncheckedCreateInput>
+    /**
+     * In case the Annotation was found with the provided `where` argument, update it with this data.
+     */
+    update: XOR<AnnotationUpdateInput, AnnotationUncheckedUpdateInput>
+  }
+
+  /**
+   * Annotation delete
+   */
+  export type AnnotationDeleteArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the Annotation
+     */
+    select?: AnnotationSelect<ExtArgs> | null
+    /**
+     * Choose, which related nodes to fetch as well
+     */
+    include?: AnnotationInclude<ExtArgs> | null
+    /**
+     * Filter which Annotation to delete.
+     */
+    where: AnnotationWhereUniqueInput
+  }
+
+  /**
+   * Annotation deleteMany
+   */
+  export type AnnotationDeleteManyArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Filter which Annotations to delete
+     */
+    where?: AnnotationWhereInput
+  }
+
+  /**
+   * Annotation without action
+   */
+  export type AnnotationDefaultArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the Annotation
+     */
+    select?: AnnotationSelect<ExtArgs> | null
+    /**
+     * Choose, which related nodes to fetch as well
+     */
+    include?: AnnotationInclude<ExtArgs> | null
+  }
+
+
+  /**
    * Enums
    */
 
@@ -19048,6 +22499,52 @@ export namespace Prisma {
   export type SelectorStateScalarFieldEnum = (typeof SelectorStateScalarFieldEnum)[keyof typeof SelectorStateScalarFieldEnum]
 
 
+  export const RecordingScalarFieldEnum: {
+    id: 'id',
+    group_id: 'group_id',
+    device_udid: 'device_udid',
+    device_host: 'device_host',
+    session_id: 'session_id',
+    started_at: 'started_at',
+    ended_at: 'ended_at',
+    status: 'status',
+    file_path: 'file_path',
+    duration_ms: 'duration_ms',
+    size_bytes: 'size_bytes',
+    device_snapshot: 'device_snapshot',
+    fail_reason: 'fail_reason'
+  };
+
+  export type RecordingScalarFieldEnum = (typeof RecordingScalarFieldEnum)[keyof typeof RecordingScalarFieldEnum]
+
+
+  export const BookmarkScalarFieldEnum: {
+    id: 'id',
+    recording_id: 'recording_id',
+    timecode_ms: 'timecode_ms',
+    label: 'label',
+    note: 'note',
+    created_at: 'created_at'
+  };
+
+  export type BookmarkScalarFieldEnum = (typeof BookmarkScalarFieldEnum)[keyof typeof BookmarkScalarFieldEnum]
+
+
+  export const AnnotationScalarFieldEnum: {
+    id: 'id',
+    recording_id: 'recording_id',
+    timecode_ms: 'timecode_ms',
+    shape: 'shape',
+    geometry: 'geometry',
+    color: 'color',
+    text: 'text',
+    author: 'author',
+    created_at: 'created_at'
+  };
+
+  export type AnnotationScalarFieldEnum = (typeof AnnotationScalarFieldEnum)[keyof typeof AnnotationScalarFieldEnum]
+
+
   export const SortOrder: {
     asc: 'asc',
     desc: 'desc'
@@ -19195,6 +22692,7 @@ export namespace Prisma {
     Profiling?: ProfilingListRelationFilter
     build?: XOR<BuildNullableRelationFilter, BuildWhereInput> | null
     SessionLog?: SessionLogListRelationFilter
+    Recording?: RecordingListRelationFilter
   }
 
   export type SessionOrderByWithRelationInput = {
@@ -19232,6 +22730,7 @@ export namespace Prisma {
     Profiling?: ProfilingOrderByRelationAggregateInput
     build?: BuildOrderByWithRelationInput
     SessionLog?: SessionLogOrderByRelationAggregateInput
+    Recording?: RecordingOrderByRelationAggregateInput
   }
 
   export type SessionWhereUniqueInput = Prisma.AtLeast<{
@@ -19272,6 +22771,7 @@ export namespace Prisma {
     Profiling?: ProfilingListRelationFilter
     build?: XOR<BuildNullableRelationFilter, BuildWhereInput> | null
     SessionLog?: SessionLogListRelationFilter
+    Recording?: RecordingListRelationFilter
   }, "id">
 
   export type SessionOrderByWithAggregationInput = {
@@ -20597,6 +24097,248 @@ export namespace Prisma {
     updatedAt?: DateTimeWithAggregatesFilter<"SelectorState"> | Date | string
   }
 
+  export type RecordingWhereInput = {
+    AND?: RecordingWhereInput | RecordingWhereInput[]
+    OR?: RecordingWhereInput[]
+    NOT?: RecordingWhereInput | RecordingWhereInput[]
+    id?: StringFilter<"Recording"> | string
+    group_id?: StringFilter<"Recording"> | string
+    device_udid?: StringFilter<"Recording"> | string
+    device_host?: StringFilter<"Recording"> | string
+    session_id?: StringNullableFilter<"Recording"> | string | null
+    started_at?: DateTimeFilter<"Recording"> | Date | string
+    ended_at?: DateTimeNullableFilter<"Recording"> | Date | string | null
+    status?: StringFilter<"Recording"> | string
+    file_path?: StringFilter<"Recording"> | string
+    duration_ms?: IntNullableFilter<"Recording"> | number | null
+    size_bytes?: IntNullableFilter<"Recording"> | number | null
+    device_snapshot?: StringNullableFilter<"Recording"> | string | null
+    fail_reason?: StringNullableFilter<"Recording"> | string | null
+    bookmarks?: BookmarkListRelationFilter
+    annotations?: AnnotationListRelationFilter
+    Session?: XOR<SessionNullableRelationFilter, SessionWhereInput> | null
+  }
+
+  export type RecordingOrderByWithRelationInput = {
+    id?: SortOrder
+    group_id?: SortOrder
+    device_udid?: SortOrder
+    device_host?: SortOrder
+    session_id?: SortOrderInput | SortOrder
+    started_at?: SortOrder
+    ended_at?: SortOrderInput | SortOrder
+    status?: SortOrder
+    file_path?: SortOrder
+    duration_ms?: SortOrderInput | SortOrder
+    size_bytes?: SortOrderInput | SortOrder
+    device_snapshot?: SortOrderInput | SortOrder
+    fail_reason?: SortOrderInput | SortOrder
+    bookmarks?: BookmarkOrderByRelationAggregateInput
+    annotations?: AnnotationOrderByRelationAggregateInput
+    Session?: SessionOrderByWithRelationInput
+  }
+
+  export type RecordingWhereUniqueInput = Prisma.AtLeast<{
+    id?: string
+    AND?: RecordingWhereInput | RecordingWhereInput[]
+    OR?: RecordingWhereInput[]
+    NOT?: RecordingWhereInput | RecordingWhereInput[]
+    group_id?: StringFilter<"Recording"> | string
+    device_udid?: StringFilter<"Recording"> | string
+    device_host?: StringFilter<"Recording"> | string
+    session_id?: StringNullableFilter<"Recording"> | string | null
+    started_at?: DateTimeFilter<"Recording"> | Date | string
+    ended_at?: DateTimeNullableFilter<"Recording"> | Date | string | null
+    status?: StringFilter<"Recording"> | string
+    file_path?: StringFilter<"Recording"> | string
+    duration_ms?: IntNullableFilter<"Recording"> | number | null
+    size_bytes?: IntNullableFilter<"Recording"> | number | null
+    device_snapshot?: StringNullableFilter<"Recording"> | string | null
+    fail_reason?: StringNullableFilter<"Recording"> | string | null
+    bookmarks?: BookmarkListRelationFilter
+    annotations?: AnnotationListRelationFilter
+    Session?: XOR<SessionNullableRelationFilter, SessionWhereInput> | null
+  }, "id">
+
+  export type RecordingOrderByWithAggregationInput = {
+    id?: SortOrder
+    group_id?: SortOrder
+    device_udid?: SortOrder
+    device_host?: SortOrder
+    session_id?: SortOrderInput | SortOrder
+    started_at?: SortOrder
+    ended_at?: SortOrderInput | SortOrder
+    status?: SortOrder
+    file_path?: SortOrder
+    duration_ms?: SortOrderInput | SortOrder
+    size_bytes?: SortOrderInput | SortOrder
+    device_snapshot?: SortOrderInput | SortOrder
+    fail_reason?: SortOrderInput | SortOrder
+    _count?: RecordingCountOrderByAggregateInput
+    _avg?: RecordingAvgOrderByAggregateInput
+    _max?: RecordingMaxOrderByAggregateInput
+    _min?: RecordingMinOrderByAggregateInput
+    _sum?: RecordingSumOrderByAggregateInput
+  }
+
+  export type RecordingScalarWhereWithAggregatesInput = {
+    AND?: RecordingScalarWhereWithAggregatesInput | RecordingScalarWhereWithAggregatesInput[]
+    OR?: RecordingScalarWhereWithAggregatesInput[]
+    NOT?: RecordingScalarWhereWithAggregatesInput | RecordingScalarWhereWithAggregatesInput[]
+    id?: StringWithAggregatesFilter<"Recording"> | string
+    group_id?: StringWithAggregatesFilter<"Recording"> | string
+    device_udid?: StringWithAggregatesFilter<"Recording"> | string
+    device_host?: StringWithAggregatesFilter<"Recording"> | string
+    session_id?: StringNullableWithAggregatesFilter<"Recording"> | string | null
+    started_at?: DateTimeWithAggregatesFilter<"Recording"> | Date | string
+    ended_at?: DateTimeNullableWithAggregatesFilter<"Recording"> | Date | string | null
+    status?: StringWithAggregatesFilter<"Recording"> | string
+    file_path?: StringWithAggregatesFilter<"Recording"> | string
+    duration_ms?: IntNullableWithAggregatesFilter<"Recording"> | number | null
+    size_bytes?: IntNullableWithAggregatesFilter<"Recording"> | number | null
+    device_snapshot?: StringNullableWithAggregatesFilter<"Recording"> | string | null
+    fail_reason?: StringNullableWithAggregatesFilter<"Recording"> | string | null
+  }
+
+  export type BookmarkWhereInput = {
+    AND?: BookmarkWhereInput | BookmarkWhereInput[]
+    OR?: BookmarkWhereInput[]
+    NOT?: BookmarkWhereInput | BookmarkWhereInput[]
+    id?: StringFilter<"Bookmark"> | string
+    recording_id?: StringFilter<"Bookmark"> | string
+    timecode_ms?: IntFilter<"Bookmark"> | number
+    label?: StringFilter<"Bookmark"> | string
+    note?: StringNullableFilter<"Bookmark"> | string | null
+    created_at?: DateTimeFilter<"Bookmark"> | Date | string
+    Recording?: XOR<RecordingRelationFilter, RecordingWhereInput>
+  }
+
+  export type BookmarkOrderByWithRelationInput = {
+    id?: SortOrder
+    recording_id?: SortOrder
+    timecode_ms?: SortOrder
+    label?: SortOrder
+    note?: SortOrderInput | SortOrder
+    created_at?: SortOrder
+    Recording?: RecordingOrderByWithRelationInput
+  }
+
+  export type BookmarkWhereUniqueInput = Prisma.AtLeast<{
+    id?: string
+    AND?: BookmarkWhereInput | BookmarkWhereInput[]
+    OR?: BookmarkWhereInput[]
+    NOT?: BookmarkWhereInput | BookmarkWhereInput[]
+    recording_id?: StringFilter<"Bookmark"> | string
+    timecode_ms?: IntFilter<"Bookmark"> | number
+    label?: StringFilter<"Bookmark"> | string
+    note?: StringNullableFilter<"Bookmark"> | string | null
+    created_at?: DateTimeFilter<"Bookmark"> | Date | string
+    Recording?: XOR<RecordingRelationFilter, RecordingWhereInput>
+  }, "id">
+
+  export type BookmarkOrderByWithAggregationInput = {
+    id?: SortOrder
+    recording_id?: SortOrder
+    timecode_ms?: SortOrder
+    label?: SortOrder
+    note?: SortOrderInput | SortOrder
+    created_at?: SortOrder
+    _count?: BookmarkCountOrderByAggregateInput
+    _avg?: BookmarkAvgOrderByAggregateInput
+    _max?: BookmarkMaxOrderByAggregateInput
+    _min?: BookmarkMinOrderByAggregateInput
+    _sum?: BookmarkSumOrderByAggregateInput
+  }
+
+  export type BookmarkScalarWhereWithAggregatesInput = {
+    AND?: BookmarkScalarWhereWithAggregatesInput | BookmarkScalarWhereWithAggregatesInput[]
+    OR?: BookmarkScalarWhereWithAggregatesInput[]
+    NOT?: BookmarkScalarWhereWithAggregatesInput | BookmarkScalarWhereWithAggregatesInput[]
+    id?: StringWithAggregatesFilter<"Bookmark"> | string
+    recording_id?: StringWithAggregatesFilter<"Bookmark"> | string
+    timecode_ms?: IntWithAggregatesFilter<"Bookmark"> | number
+    label?: StringWithAggregatesFilter<"Bookmark"> | string
+    note?: StringNullableWithAggregatesFilter<"Bookmark"> | string | null
+    created_at?: DateTimeWithAggregatesFilter<"Bookmark"> | Date | string
+  }
+
+  export type AnnotationWhereInput = {
+    AND?: AnnotationWhereInput | AnnotationWhereInput[]
+    OR?: AnnotationWhereInput[]
+    NOT?: AnnotationWhereInput | AnnotationWhereInput[]
+    id?: StringFilter<"Annotation"> | string
+    recording_id?: StringFilter<"Annotation"> | string
+    timecode_ms?: IntFilter<"Annotation"> | number
+    shape?: StringFilter<"Annotation"> | string
+    geometry?: StringFilter<"Annotation"> | string
+    color?: StringFilter<"Annotation"> | string
+    text?: StringNullableFilter<"Annotation"> | string | null
+    author?: StringNullableFilter<"Annotation"> | string | null
+    created_at?: DateTimeFilter<"Annotation"> | Date | string
+    Recording?: XOR<RecordingRelationFilter, RecordingWhereInput>
+  }
+
+  export type AnnotationOrderByWithRelationInput = {
+    id?: SortOrder
+    recording_id?: SortOrder
+    timecode_ms?: SortOrder
+    shape?: SortOrder
+    geometry?: SortOrder
+    color?: SortOrder
+    text?: SortOrderInput | SortOrder
+    author?: SortOrderInput | SortOrder
+    created_at?: SortOrder
+    Recording?: RecordingOrderByWithRelationInput
+  }
+
+  export type AnnotationWhereUniqueInput = Prisma.AtLeast<{
+    id?: string
+    AND?: AnnotationWhereInput | AnnotationWhereInput[]
+    OR?: AnnotationWhereInput[]
+    NOT?: AnnotationWhereInput | AnnotationWhereInput[]
+    recording_id?: StringFilter<"Annotation"> | string
+    timecode_ms?: IntFilter<"Annotation"> | number
+    shape?: StringFilter<"Annotation"> | string
+    geometry?: StringFilter<"Annotation"> | string
+    color?: StringFilter<"Annotation"> | string
+    text?: StringNullableFilter<"Annotation"> | string | null
+    author?: StringNullableFilter<"Annotation"> | string | null
+    created_at?: DateTimeFilter<"Annotation"> | Date | string
+    Recording?: XOR<RecordingRelationFilter, RecordingWhereInput>
+  }, "id">
+
+  export type AnnotationOrderByWithAggregationInput = {
+    id?: SortOrder
+    recording_id?: SortOrder
+    timecode_ms?: SortOrder
+    shape?: SortOrder
+    geometry?: SortOrder
+    color?: SortOrder
+    text?: SortOrderInput | SortOrder
+    author?: SortOrderInput | SortOrder
+    created_at?: SortOrder
+    _count?: AnnotationCountOrderByAggregateInput
+    _avg?: AnnotationAvgOrderByAggregateInput
+    _max?: AnnotationMaxOrderByAggregateInput
+    _min?: AnnotationMinOrderByAggregateInput
+    _sum?: AnnotationSumOrderByAggregateInput
+  }
+
+  export type AnnotationScalarWhereWithAggregatesInput = {
+    AND?: AnnotationScalarWhereWithAggregatesInput | AnnotationScalarWhereWithAggregatesInput[]
+    OR?: AnnotationScalarWhereWithAggregatesInput[]
+    NOT?: AnnotationScalarWhereWithAggregatesInput | AnnotationScalarWhereWithAggregatesInput[]
+    id?: StringWithAggregatesFilter<"Annotation"> | string
+    recording_id?: StringWithAggregatesFilter<"Annotation"> | string
+    timecode_ms?: IntWithAggregatesFilter<"Annotation"> | number
+    shape?: StringWithAggregatesFilter<"Annotation"> | string
+    geometry?: StringWithAggregatesFilter<"Annotation"> | string
+    color?: StringWithAggregatesFilter<"Annotation"> | string
+    text?: StringNullableWithAggregatesFilter<"Annotation"> | string | null
+    author?: StringNullableWithAggregatesFilter<"Annotation"> | string | null
+    created_at?: DateTimeWithAggregatesFilter<"Annotation"> | Date | string
+  }
+
   export type BuildCreateInput = {
     id?: string
     name?: string | null
@@ -20684,6 +24426,7 @@ export namespace Prisma {
     Profiling?: ProfilingCreateNestedManyWithoutSessionInput
     build?: BuildCreateNestedOneWithoutSessionsInput
     SessionLog?: SessionLogCreateNestedManyWithoutSessionInput
+    Recording?: RecordingCreateNestedManyWithoutSessionInput
   }
 
   export type SessionUncheckedCreateInput = {
@@ -20720,6 +24463,7 @@ export namespace Prisma {
     Log?: LogUncheckedCreateNestedManyWithoutSessionInput
     Profiling?: ProfilingUncheckedCreateNestedManyWithoutSessionInput
     SessionLog?: SessionLogUncheckedCreateNestedManyWithoutSessionInput
+    Recording?: RecordingUncheckedCreateNestedManyWithoutSessionInput
   }
 
   export type SessionUpdateInput = {
@@ -20756,6 +24500,7 @@ export namespace Prisma {
     Profiling?: ProfilingUpdateManyWithoutSessionNestedInput
     build?: BuildUpdateOneWithoutSessionsNestedInput
     SessionLog?: SessionLogUpdateManyWithoutSessionNestedInput
+    Recording?: RecordingUpdateManyWithoutSessionNestedInput
   }
 
   export type SessionUncheckedUpdateInput = {
@@ -20792,6 +24537,7 @@ export namespace Prisma {
     Log?: LogUncheckedUpdateManyWithoutSessionNestedInput
     Profiling?: ProfilingUncheckedUpdateManyWithoutSessionNestedInput
     SessionLog?: SessionLogUncheckedUpdateManyWithoutSessionNestedInput
+    Recording?: RecordingUncheckedUpdateManyWithoutSessionNestedInput
   }
 
   export type SessionCreateManyInput = {
@@ -22342,6 +26088,270 @@ export namespace Prisma {
     updatedAt?: DateTimeFieldUpdateOperationsInput | Date | string
   }
 
+  export type RecordingCreateInput = {
+    id?: string
+    group_id: string
+    device_udid: string
+    device_host?: string
+    started_at: Date | string
+    ended_at?: Date | string | null
+    status: string
+    file_path: string
+    duration_ms?: number | null
+    size_bytes?: number | null
+    device_snapshot?: string | null
+    fail_reason?: string | null
+    bookmarks?: BookmarkCreateNestedManyWithoutRecordingInput
+    annotations?: AnnotationCreateNestedManyWithoutRecordingInput
+    Session?: SessionCreateNestedOneWithoutRecordingInput
+  }
+
+  export type RecordingUncheckedCreateInput = {
+    id?: string
+    group_id: string
+    device_udid: string
+    device_host?: string
+    session_id?: string | null
+    started_at: Date | string
+    ended_at?: Date | string | null
+    status: string
+    file_path: string
+    duration_ms?: number | null
+    size_bytes?: number | null
+    device_snapshot?: string | null
+    fail_reason?: string | null
+    bookmarks?: BookmarkUncheckedCreateNestedManyWithoutRecordingInput
+    annotations?: AnnotationUncheckedCreateNestedManyWithoutRecordingInput
+  }
+
+  export type RecordingUpdateInput = {
+    id?: StringFieldUpdateOperationsInput | string
+    group_id?: StringFieldUpdateOperationsInput | string
+    device_udid?: StringFieldUpdateOperationsInput | string
+    device_host?: StringFieldUpdateOperationsInput | string
+    started_at?: DateTimeFieldUpdateOperationsInput | Date | string
+    ended_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    status?: StringFieldUpdateOperationsInput | string
+    file_path?: StringFieldUpdateOperationsInput | string
+    duration_ms?: NullableIntFieldUpdateOperationsInput | number | null
+    size_bytes?: NullableIntFieldUpdateOperationsInput | number | null
+    device_snapshot?: NullableStringFieldUpdateOperationsInput | string | null
+    fail_reason?: NullableStringFieldUpdateOperationsInput | string | null
+    bookmarks?: BookmarkUpdateManyWithoutRecordingNestedInput
+    annotations?: AnnotationUpdateManyWithoutRecordingNestedInput
+    Session?: SessionUpdateOneWithoutRecordingNestedInput
+  }
+
+  export type RecordingUncheckedUpdateInput = {
+    id?: StringFieldUpdateOperationsInput | string
+    group_id?: StringFieldUpdateOperationsInput | string
+    device_udid?: StringFieldUpdateOperationsInput | string
+    device_host?: StringFieldUpdateOperationsInput | string
+    session_id?: NullableStringFieldUpdateOperationsInput | string | null
+    started_at?: DateTimeFieldUpdateOperationsInput | Date | string
+    ended_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    status?: StringFieldUpdateOperationsInput | string
+    file_path?: StringFieldUpdateOperationsInput | string
+    duration_ms?: NullableIntFieldUpdateOperationsInput | number | null
+    size_bytes?: NullableIntFieldUpdateOperationsInput | number | null
+    device_snapshot?: NullableStringFieldUpdateOperationsInput | string | null
+    fail_reason?: NullableStringFieldUpdateOperationsInput | string | null
+    bookmarks?: BookmarkUncheckedUpdateManyWithoutRecordingNestedInput
+    annotations?: AnnotationUncheckedUpdateManyWithoutRecordingNestedInput
+  }
+
+  export type RecordingCreateManyInput = {
+    id?: string
+    group_id: string
+    device_udid: string
+    device_host?: string
+    session_id?: string | null
+    started_at: Date | string
+    ended_at?: Date | string | null
+    status: string
+    file_path: string
+    duration_ms?: number | null
+    size_bytes?: number | null
+    device_snapshot?: string | null
+    fail_reason?: string | null
+  }
+
+  export type RecordingUpdateManyMutationInput = {
+    id?: StringFieldUpdateOperationsInput | string
+    group_id?: StringFieldUpdateOperationsInput | string
+    device_udid?: StringFieldUpdateOperationsInput | string
+    device_host?: StringFieldUpdateOperationsInput | string
+    started_at?: DateTimeFieldUpdateOperationsInput | Date | string
+    ended_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    status?: StringFieldUpdateOperationsInput | string
+    file_path?: StringFieldUpdateOperationsInput | string
+    duration_ms?: NullableIntFieldUpdateOperationsInput | number | null
+    size_bytes?: NullableIntFieldUpdateOperationsInput | number | null
+    device_snapshot?: NullableStringFieldUpdateOperationsInput | string | null
+    fail_reason?: NullableStringFieldUpdateOperationsInput | string | null
+  }
+
+  export type RecordingUncheckedUpdateManyInput = {
+    id?: StringFieldUpdateOperationsInput | string
+    group_id?: StringFieldUpdateOperationsInput | string
+    device_udid?: StringFieldUpdateOperationsInput | string
+    device_host?: StringFieldUpdateOperationsInput | string
+    session_id?: NullableStringFieldUpdateOperationsInput | string | null
+    started_at?: DateTimeFieldUpdateOperationsInput | Date | string
+    ended_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    status?: StringFieldUpdateOperationsInput | string
+    file_path?: StringFieldUpdateOperationsInput | string
+    duration_ms?: NullableIntFieldUpdateOperationsInput | number | null
+    size_bytes?: NullableIntFieldUpdateOperationsInput | number | null
+    device_snapshot?: NullableStringFieldUpdateOperationsInput | string | null
+    fail_reason?: NullableStringFieldUpdateOperationsInput | string | null
+  }
+
+  export type BookmarkCreateInput = {
+    id?: string
+    timecode_ms: number
+    label: string
+    note?: string | null
+    created_at?: Date | string
+    Recording: RecordingCreateNestedOneWithoutBookmarksInput
+  }
+
+  export type BookmarkUncheckedCreateInput = {
+    id?: string
+    recording_id: string
+    timecode_ms: number
+    label: string
+    note?: string | null
+    created_at?: Date | string
+  }
+
+  export type BookmarkUpdateInput = {
+    id?: StringFieldUpdateOperationsInput | string
+    timecode_ms?: IntFieldUpdateOperationsInput | number
+    label?: StringFieldUpdateOperationsInput | string
+    note?: NullableStringFieldUpdateOperationsInput | string | null
+    created_at?: DateTimeFieldUpdateOperationsInput | Date | string
+    Recording?: RecordingUpdateOneRequiredWithoutBookmarksNestedInput
+  }
+
+  export type BookmarkUncheckedUpdateInput = {
+    id?: StringFieldUpdateOperationsInput | string
+    recording_id?: StringFieldUpdateOperationsInput | string
+    timecode_ms?: IntFieldUpdateOperationsInput | number
+    label?: StringFieldUpdateOperationsInput | string
+    note?: NullableStringFieldUpdateOperationsInput | string | null
+    created_at?: DateTimeFieldUpdateOperationsInput | Date | string
+  }
+
+  export type BookmarkCreateManyInput = {
+    id?: string
+    recording_id: string
+    timecode_ms: number
+    label: string
+    note?: string | null
+    created_at?: Date | string
+  }
+
+  export type BookmarkUpdateManyMutationInput = {
+    id?: StringFieldUpdateOperationsInput | string
+    timecode_ms?: IntFieldUpdateOperationsInput | number
+    label?: StringFieldUpdateOperationsInput | string
+    note?: NullableStringFieldUpdateOperationsInput | string | null
+    created_at?: DateTimeFieldUpdateOperationsInput | Date | string
+  }
+
+  export type BookmarkUncheckedUpdateManyInput = {
+    id?: StringFieldUpdateOperationsInput | string
+    recording_id?: StringFieldUpdateOperationsInput | string
+    timecode_ms?: IntFieldUpdateOperationsInput | number
+    label?: StringFieldUpdateOperationsInput | string
+    note?: NullableStringFieldUpdateOperationsInput | string | null
+    created_at?: DateTimeFieldUpdateOperationsInput | Date | string
+  }
+
+  export type AnnotationCreateInput = {
+    id?: string
+    timecode_ms: number
+    shape: string
+    geometry: string
+    color: string
+    text?: string | null
+    author?: string | null
+    created_at?: Date | string
+    Recording: RecordingCreateNestedOneWithoutAnnotationsInput
+  }
+
+  export type AnnotationUncheckedCreateInput = {
+    id?: string
+    recording_id: string
+    timecode_ms: number
+    shape: string
+    geometry: string
+    color: string
+    text?: string | null
+    author?: string | null
+    created_at?: Date | string
+  }
+
+  export type AnnotationUpdateInput = {
+    id?: StringFieldUpdateOperationsInput | string
+    timecode_ms?: IntFieldUpdateOperationsInput | number
+    shape?: StringFieldUpdateOperationsInput | string
+    geometry?: StringFieldUpdateOperationsInput | string
+    color?: StringFieldUpdateOperationsInput | string
+    text?: NullableStringFieldUpdateOperationsInput | string | null
+    author?: NullableStringFieldUpdateOperationsInput | string | null
+    created_at?: DateTimeFieldUpdateOperationsInput | Date | string
+    Recording?: RecordingUpdateOneRequiredWithoutAnnotationsNestedInput
+  }
+
+  export type AnnotationUncheckedUpdateInput = {
+    id?: StringFieldUpdateOperationsInput | string
+    recording_id?: StringFieldUpdateOperationsInput | string
+    timecode_ms?: IntFieldUpdateOperationsInput | number
+    shape?: StringFieldUpdateOperationsInput | string
+    geometry?: StringFieldUpdateOperationsInput | string
+    color?: StringFieldUpdateOperationsInput | string
+    text?: NullableStringFieldUpdateOperationsInput | string | null
+    author?: NullableStringFieldUpdateOperationsInput | string | null
+    created_at?: DateTimeFieldUpdateOperationsInput | Date | string
+  }
+
+  export type AnnotationCreateManyInput = {
+    id?: string
+    recording_id: string
+    timecode_ms: number
+    shape: string
+    geometry: string
+    color: string
+    text?: string | null
+    author?: string | null
+    created_at?: Date | string
+  }
+
+  export type AnnotationUpdateManyMutationInput = {
+    id?: StringFieldUpdateOperationsInput | string
+    timecode_ms?: IntFieldUpdateOperationsInput | number
+    shape?: StringFieldUpdateOperationsInput | string
+    geometry?: StringFieldUpdateOperationsInput | string
+    color?: StringFieldUpdateOperationsInput | string
+    text?: NullableStringFieldUpdateOperationsInput | string | null
+    author?: NullableStringFieldUpdateOperationsInput | string | null
+    created_at?: DateTimeFieldUpdateOperationsInput | Date | string
+  }
+
+  export type AnnotationUncheckedUpdateManyInput = {
+    id?: StringFieldUpdateOperationsInput | string
+    recording_id?: StringFieldUpdateOperationsInput | string
+    timecode_ms?: IntFieldUpdateOperationsInput | number
+    shape?: StringFieldUpdateOperationsInput | string
+    geometry?: StringFieldUpdateOperationsInput | string
+    color?: StringFieldUpdateOperationsInput | string
+    text?: NullableStringFieldUpdateOperationsInput | string | null
+    author?: NullableStringFieldUpdateOperationsInput | string | null
+    created_at?: DateTimeFieldUpdateOperationsInput | Date | string
+  }
+
   export type StringFilter<$PrismaModel = never> = {
     equals?: string | StringFieldRefInput<$PrismaModel>
     in?: string[]
@@ -22515,6 +26525,12 @@ export namespace Prisma {
     none?: SessionLogWhereInput
   }
 
+  export type RecordingListRelationFilter = {
+    every?: RecordingWhereInput
+    some?: RecordingWhereInput
+    none?: RecordingWhereInput
+  }
+
   export type LogOrderByRelationAggregateInput = {
     _count?: SortOrder
   }
@@ -22524,6 +26540,10 @@ export namespace Prisma {
   }
 
   export type SessionLogOrderByRelationAggregateInput = {
+    _count?: SortOrder
+  }
+
+  export type RecordingOrderByRelationAggregateInput = {
     _count?: SortOrder
   }
 
@@ -23542,6 +27562,173 @@ export namespace Prisma {
     clean_builds_count?: SortOrder
   }
 
+  export type BookmarkListRelationFilter = {
+    every?: BookmarkWhereInput
+    some?: BookmarkWhereInput
+    none?: BookmarkWhereInput
+  }
+
+  export type AnnotationListRelationFilter = {
+    every?: AnnotationWhereInput
+    some?: AnnotationWhereInput
+    none?: AnnotationWhereInput
+  }
+
+  export type SessionNullableRelationFilter = {
+    is?: SessionWhereInput | null
+    isNot?: SessionWhereInput | null
+  }
+
+  export type BookmarkOrderByRelationAggregateInput = {
+    _count?: SortOrder
+  }
+
+  export type AnnotationOrderByRelationAggregateInput = {
+    _count?: SortOrder
+  }
+
+  export type RecordingCountOrderByAggregateInput = {
+    id?: SortOrder
+    group_id?: SortOrder
+    device_udid?: SortOrder
+    device_host?: SortOrder
+    session_id?: SortOrder
+    started_at?: SortOrder
+    ended_at?: SortOrder
+    status?: SortOrder
+    file_path?: SortOrder
+    duration_ms?: SortOrder
+    size_bytes?: SortOrder
+    device_snapshot?: SortOrder
+    fail_reason?: SortOrder
+  }
+
+  export type RecordingAvgOrderByAggregateInput = {
+    duration_ms?: SortOrder
+    size_bytes?: SortOrder
+  }
+
+  export type RecordingMaxOrderByAggregateInput = {
+    id?: SortOrder
+    group_id?: SortOrder
+    device_udid?: SortOrder
+    device_host?: SortOrder
+    session_id?: SortOrder
+    started_at?: SortOrder
+    ended_at?: SortOrder
+    status?: SortOrder
+    file_path?: SortOrder
+    duration_ms?: SortOrder
+    size_bytes?: SortOrder
+    device_snapshot?: SortOrder
+    fail_reason?: SortOrder
+  }
+
+  export type RecordingMinOrderByAggregateInput = {
+    id?: SortOrder
+    group_id?: SortOrder
+    device_udid?: SortOrder
+    device_host?: SortOrder
+    session_id?: SortOrder
+    started_at?: SortOrder
+    ended_at?: SortOrder
+    status?: SortOrder
+    file_path?: SortOrder
+    duration_ms?: SortOrder
+    size_bytes?: SortOrder
+    device_snapshot?: SortOrder
+    fail_reason?: SortOrder
+  }
+
+  export type RecordingSumOrderByAggregateInput = {
+    duration_ms?: SortOrder
+    size_bytes?: SortOrder
+  }
+
+  export type RecordingRelationFilter = {
+    is?: RecordingWhereInput
+    isNot?: RecordingWhereInput
+  }
+
+  export type BookmarkCountOrderByAggregateInput = {
+    id?: SortOrder
+    recording_id?: SortOrder
+    timecode_ms?: SortOrder
+    label?: SortOrder
+    note?: SortOrder
+    created_at?: SortOrder
+  }
+
+  export type BookmarkAvgOrderByAggregateInput = {
+    timecode_ms?: SortOrder
+  }
+
+  export type BookmarkMaxOrderByAggregateInput = {
+    id?: SortOrder
+    recording_id?: SortOrder
+    timecode_ms?: SortOrder
+    label?: SortOrder
+    note?: SortOrder
+    created_at?: SortOrder
+  }
+
+  export type BookmarkMinOrderByAggregateInput = {
+    id?: SortOrder
+    recording_id?: SortOrder
+    timecode_ms?: SortOrder
+    label?: SortOrder
+    note?: SortOrder
+    created_at?: SortOrder
+  }
+
+  export type BookmarkSumOrderByAggregateInput = {
+    timecode_ms?: SortOrder
+  }
+
+  export type AnnotationCountOrderByAggregateInput = {
+    id?: SortOrder
+    recording_id?: SortOrder
+    timecode_ms?: SortOrder
+    shape?: SortOrder
+    geometry?: SortOrder
+    color?: SortOrder
+    text?: SortOrder
+    author?: SortOrder
+    created_at?: SortOrder
+  }
+
+  export type AnnotationAvgOrderByAggregateInput = {
+    timecode_ms?: SortOrder
+  }
+
+  export type AnnotationMaxOrderByAggregateInput = {
+    id?: SortOrder
+    recording_id?: SortOrder
+    timecode_ms?: SortOrder
+    shape?: SortOrder
+    geometry?: SortOrder
+    color?: SortOrder
+    text?: SortOrder
+    author?: SortOrder
+    created_at?: SortOrder
+  }
+
+  export type AnnotationMinOrderByAggregateInput = {
+    id?: SortOrder
+    recording_id?: SortOrder
+    timecode_ms?: SortOrder
+    shape?: SortOrder
+    geometry?: SortOrder
+    color?: SortOrder
+    text?: SortOrder
+    author?: SortOrder
+    created_at?: SortOrder
+  }
+
+  export type AnnotationSumOrderByAggregateInput = {
+    timecode_ms?: SortOrder
+  }
+
   export type SessionCreateNestedManyWithoutBuildInput = {
     create?: XOR<SessionCreateWithoutBuildInput, SessionUncheckedCreateWithoutBuildInput> | SessionCreateWithoutBuildInput[] | SessionUncheckedCreateWithoutBuildInput[]
     connectOrCreate?: SessionCreateOrConnectWithoutBuildInput | SessionCreateOrConnectWithoutBuildInput[]
@@ -23623,6 +27810,13 @@ export namespace Prisma {
     connect?: SessionLogWhereUniqueInput | SessionLogWhereUniqueInput[]
   }
 
+  export type RecordingCreateNestedManyWithoutSessionInput = {
+    create?: XOR<RecordingCreateWithoutSessionInput, RecordingUncheckedCreateWithoutSessionInput> | RecordingCreateWithoutSessionInput[] | RecordingUncheckedCreateWithoutSessionInput[]
+    connectOrCreate?: RecordingCreateOrConnectWithoutSessionInput | RecordingCreateOrConnectWithoutSessionInput[]
+    createMany?: RecordingCreateManySessionInputEnvelope
+    connect?: RecordingWhereUniqueInput | RecordingWhereUniqueInput[]
+  }
+
   export type LogUncheckedCreateNestedManyWithoutSessionInput = {
     create?: XOR<LogCreateWithoutSessionInput, LogUncheckedCreateWithoutSessionInput> | LogCreateWithoutSessionInput[] | LogUncheckedCreateWithoutSessionInput[]
     connectOrCreate?: LogCreateOrConnectWithoutSessionInput | LogCreateOrConnectWithoutSessionInput[]
@@ -23642,6 +27836,13 @@ export namespace Prisma {
     connectOrCreate?: SessionLogCreateOrConnectWithoutSessionInput | SessionLogCreateOrConnectWithoutSessionInput[]
     createMany?: SessionLogCreateManySessionInputEnvelope
     connect?: SessionLogWhereUniqueInput | SessionLogWhereUniqueInput[]
+  }
+
+  export type RecordingUncheckedCreateNestedManyWithoutSessionInput = {
+    create?: XOR<RecordingCreateWithoutSessionInput, RecordingUncheckedCreateWithoutSessionInput> | RecordingCreateWithoutSessionInput[] | RecordingUncheckedCreateWithoutSessionInput[]
+    connectOrCreate?: RecordingCreateOrConnectWithoutSessionInput | RecordingCreateOrConnectWithoutSessionInput[]
+    createMany?: RecordingCreateManySessionInputEnvelope
+    connect?: RecordingWhereUniqueInput | RecordingWhereUniqueInput[]
   }
 
   export type BoolFieldUpdateOperationsInput = {
@@ -23712,6 +27913,20 @@ export namespace Prisma {
     deleteMany?: SessionLogScalarWhereInput | SessionLogScalarWhereInput[]
   }
 
+  export type RecordingUpdateManyWithoutSessionNestedInput = {
+    create?: XOR<RecordingCreateWithoutSessionInput, RecordingUncheckedCreateWithoutSessionInput> | RecordingCreateWithoutSessionInput[] | RecordingUncheckedCreateWithoutSessionInput[]
+    connectOrCreate?: RecordingCreateOrConnectWithoutSessionInput | RecordingCreateOrConnectWithoutSessionInput[]
+    upsert?: RecordingUpsertWithWhereUniqueWithoutSessionInput | RecordingUpsertWithWhereUniqueWithoutSessionInput[]
+    createMany?: RecordingCreateManySessionInputEnvelope
+    set?: RecordingWhereUniqueInput | RecordingWhereUniqueInput[]
+    disconnect?: RecordingWhereUniqueInput | RecordingWhereUniqueInput[]
+    delete?: RecordingWhereUniqueInput | RecordingWhereUniqueInput[]
+    connect?: RecordingWhereUniqueInput | RecordingWhereUniqueInput[]
+    update?: RecordingUpdateWithWhereUniqueWithoutSessionInput | RecordingUpdateWithWhereUniqueWithoutSessionInput[]
+    updateMany?: RecordingUpdateManyWithWhereWithoutSessionInput | RecordingUpdateManyWithWhereWithoutSessionInput[]
+    deleteMany?: RecordingScalarWhereInput | RecordingScalarWhereInput[]
+  }
+
   export type LogUncheckedUpdateManyWithoutSessionNestedInput = {
     create?: XOR<LogCreateWithoutSessionInput, LogUncheckedCreateWithoutSessionInput> | LogCreateWithoutSessionInput[] | LogUncheckedCreateWithoutSessionInput[]
     connectOrCreate?: LogCreateOrConnectWithoutSessionInput | LogCreateOrConnectWithoutSessionInput[]
@@ -23752,6 +27967,20 @@ export namespace Prisma {
     update?: SessionLogUpdateWithWhereUniqueWithoutSessionInput | SessionLogUpdateWithWhereUniqueWithoutSessionInput[]
     updateMany?: SessionLogUpdateManyWithWhereWithoutSessionInput | SessionLogUpdateManyWithWhereWithoutSessionInput[]
     deleteMany?: SessionLogScalarWhereInput | SessionLogScalarWhereInput[]
+  }
+
+  export type RecordingUncheckedUpdateManyWithoutSessionNestedInput = {
+    create?: XOR<RecordingCreateWithoutSessionInput, RecordingUncheckedCreateWithoutSessionInput> | RecordingCreateWithoutSessionInput[] | RecordingUncheckedCreateWithoutSessionInput[]
+    connectOrCreate?: RecordingCreateOrConnectWithoutSessionInput | RecordingCreateOrConnectWithoutSessionInput[]
+    upsert?: RecordingUpsertWithWhereUniqueWithoutSessionInput | RecordingUpsertWithWhereUniqueWithoutSessionInput[]
+    createMany?: RecordingCreateManySessionInputEnvelope
+    set?: RecordingWhereUniqueInput | RecordingWhereUniqueInput[]
+    disconnect?: RecordingWhereUniqueInput | RecordingWhereUniqueInput[]
+    delete?: RecordingWhereUniqueInput | RecordingWhereUniqueInput[]
+    connect?: RecordingWhereUniqueInput | RecordingWhereUniqueInput[]
+    update?: RecordingUpdateWithWhereUniqueWithoutSessionInput | RecordingUpdateWithWhereUniqueWithoutSessionInput[]
+    updateMany?: RecordingUpdateManyWithWhereWithoutSessionInput | RecordingUpdateManyWithWhereWithoutSessionInput[]
+    deleteMany?: RecordingScalarWhereInput | RecordingScalarWhereInput[]
   }
 
   export type SessionCreateNestedOneWithoutSessionLogInput = {
@@ -23938,6 +28167,134 @@ export namespace Prisma {
     update?: ApiKeyUpdateWithWhereUniqueWithoutTeamInput | ApiKeyUpdateWithWhereUniqueWithoutTeamInput[]
     updateMany?: ApiKeyUpdateManyWithWhereWithoutTeamInput | ApiKeyUpdateManyWithWhereWithoutTeamInput[]
     deleteMany?: ApiKeyScalarWhereInput | ApiKeyScalarWhereInput[]
+  }
+
+  export type BookmarkCreateNestedManyWithoutRecordingInput = {
+    create?: XOR<BookmarkCreateWithoutRecordingInput, BookmarkUncheckedCreateWithoutRecordingInput> | BookmarkCreateWithoutRecordingInput[] | BookmarkUncheckedCreateWithoutRecordingInput[]
+    connectOrCreate?: BookmarkCreateOrConnectWithoutRecordingInput | BookmarkCreateOrConnectWithoutRecordingInput[]
+    createMany?: BookmarkCreateManyRecordingInputEnvelope
+    connect?: BookmarkWhereUniqueInput | BookmarkWhereUniqueInput[]
+  }
+
+  export type AnnotationCreateNestedManyWithoutRecordingInput = {
+    create?: XOR<AnnotationCreateWithoutRecordingInput, AnnotationUncheckedCreateWithoutRecordingInput> | AnnotationCreateWithoutRecordingInput[] | AnnotationUncheckedCreateWithoutRecordingInput[]
+    connectOrCreate?: AnnotationCreateOrConnectWithoutRecordingInput | AnnotationCreateOrConnectWithoutRecordingInput[]
+    createMany?: AnnotationCreateManyRecordingInputEnvelope
+    connect?: AnnotationWhereUniqueInput | AnnotationWhereUniqueInput[]
+  }
+
+  export type SessionCreateNestedOneWithoutRecordingInput = {
+    create?: XOR<SessionCreateWithoutRecordingInput, SessionUncheckedCreateWithoutRecordingInput>
+    connectOrCreate?: SessionCreateOrConnectWithoutRecordingInput
+    connect?: SessionWhereUniqueInput
+  }
+
+  export type BookmarkUncheckedCreateNestedManyWithoutRecordingInput = {
+    create?: XOR<BookmarkCreateWithoutRecordingInput, BookmarkUncheckedCreateWithoutRecordingInput> | BookmarkCreateWithoutRecordingInput[] | BookmarkUncheckedCreateWithoutRecordingInput[]
+    connectOrCreate?: BookmarkCreateOrConnectWithoutRecordingInput | BookmarkCreateOrConnectWithoutRecordingInput[]
+    createMany?: BookmarkCreateManyRecordingInputEnvelope
+    connect?: BookmarkWhereUniqueInput | BookmarkWhereUniqueInput[]
+  }
+
+  export type AnnotationUncheckedCreateNestedManyWithoutRecordingInput = {
+    create?: XOR<AnnotationCreateWithoutRecordingInput, AnnotationUncheckedCreateWithoutRecordingInput> | AnnotationCreateWithoutRecordingInput[] | AnnotationUncheckedCreateWithoutRecordingInput[]
+    connectOrCreate?: AnnotationCreateOrConnectWithoutRecordingInput | AnnotationCreateOrConnectWithoutRecordingInput[]
+    createMany?: AnnotationCreateManyRecordingInputEnvelope
+    connect?: AnnotationWhereUniqueInput | AnnotationWhereUniqueInput[]
+  }
+
+  export type BookmarkUpdateManyWithoutRecordingNestedInput = {
+    create?: XOR<BookmarkCreateWithoutRecordingInput, BookmarkUncheckedCreateWithoutRecordingInput> | BookmarkCreateWithoutRecordingInput[] | BookmarkUncheckedCreateWithoutRecordingInput[]
+    connectOrCreate?: BookmarkCreateOrConnectWithoutRecordingInput | BookmarkCreateOrConnectWithoutRecordingInput[]
+    upsert?: BookmarkUpsertWithWhereUniqueWithoutRecordingInput | BookmarkUpsertWithWhereUniqueWithoutRecordingInput[]
+    createMany?: BookmarkCreateManyRecordingInputEnvelope
+    set?: BookmarkWhereUniqueInput | BookmarkWhereUniqueInput[]
+    disconnect?: BookmarkWhereUniqueInput | BookmarkWhereUniqueInput[]
+    delete?: BookmarkWhereUniqueInput | BookmarkWhereUniqueInput[]
+    connect?: BookmarkWhereUniqueInput | BookmarkWhereUniqueInput[]
+    update?: BookmarkUpdateWithWhereUniqueWithoutRecordingInput | BookmarkUpdateWithWhereUniqueWithoutRecordingInput[]
+    updateMany?: BookmarkUpdateManyWithWhereWithoutRecordingInput | BookmarkUpdateManyWithWhereWithoutRecordingInput[]
+    deleteMany?: BookmarkScalarWhereInput | BookmarkScalarWhereInput[]
+  }
+
+  export type AnnotationUpdateManyWithoutRecordingNestedInput = {
+    create?: XOR<AnnotationCreateWithoutRecordingInput, AnnotationUncheckedCreateWithoutRecordingInput> | AnnotationCreateWithoutRecordingInput[] | AnnotationUncheckedCreateWithoutRecordingInput[]
+    connectOrCreate?: AnnotationCreateOrConnectWithoutRecordingInput | AnnotationCreateOrConnectWithoutRecordingInput[]
+    upsert?: AnnotationUpsertWithWhereUniqueWithoutRecordingInput | AnnotationUpsertWithWhereUniqueWithoutRecordingInput[]
+    createMany?: AnnotationCreateManyRecordingInputEnvelope
+    set?: AnnotationWhereUniqueInput | AnnotationWhereUniqueInput[]
+    disconnect?: AnnotationWhereUniqueInput | AnnotationWhereUniqueInput[]
+    delete?: AnnotationWhereUniqueInput | AnnotationWhereUniqueInput[]
+    connect?: AnnotationWhereUniqueInput | AnnotationWhereUniqueInput[]
+    update?: AnnotationUpdateWithWhereUniqueWithoutRecordingInput | AnnotationUpdateWithWhereUniqueWithoutRecordingInput[]
+    updateMany?: AnnotationUpdateManyWithWhereWithoutRecordingInput | AnnotationUpdateManyWithWhereWithoutRecordingInput[]
+    deleteMany?: AnnotationScalarWhereInput | AnnotationScalarWhereInput[]
+  }
+
+  export type SessionUpdateOneWithoutRecordingNestedInput = {
+    create?: XOR<SessionCreateWithoutRecordingInput, SessionUncheckedCreateWithoutRecordingInput>
+    connectOrCreate?: SessionCreateOrConnectWithoutRecordingInput
+    upsert?: SessionUpsertWithoutRecordingInput
+    disconnect?: SessionWhereInput | boolean
+    delete?: SessionWhereInput | boolean
+    connect?: SessionWhereUniqueInput
+    update?: XOR<XOR<SessionUpdateToOneWithWhereWithoutRecordingInput, SessionUpdateWithoutRecordingInput>, SessionUncheckedUpdateWithoutRecordingInput>
+  }
+
+  export type BookmarkUncheckedUpdateManyWithoutRecordingNestedInput = {
+    create?: XOR<BookmarkCreateWithoutRecordingInput, BookmarkUncheckedCreateWithoutRecordingInput> | BookmarkCreateWithoutRecordingInput[] | BookmarkUncheckedCreateWithoutRecordingInput[]
+    connectOrCreate?: BookmarkCreateOrConnectWithoutRecordingInput | BookmarkCreateOrConnectWithoutRecordingInput[]
+    upsert?: BookmarkUpsertWithWhereUniqueWithoutRecordingInput | BookmarkUpsertWithWhereUniqueWithoutRecordingInput[]
+    createMany?: BookmarkCreateManyRecordingInputEnvelope
+    set?: BookmarkWhereUniqueInput | BookmarkWhereUniqueInput[]
+    disconnect?: BookmarkWhereUniqueInput | BookmarkWhereUniqueInput[]
+    delete?: BookmarkWhereUniqueInput | BookmarkWhereUniqueInput[]
+    connect?: BookmarkWhereUniqueInput | BookmarkWhereUniqueInput[]
+    update?: BookmarkUpdateWithWhereUniqueWithoutRecordingInput | BookmarkUpdateWithWhereUniqueWithoutRecordingInput[]
+    updateMany?: BookmarkUpdateManyWithWhereWithoutRecordingInput | BookmarkUpdateManyWithWhereWithoutRecordingInput[]
+    deleteMany?: BookmarkScalarWhereInput | BookmarkScalarWhereInput[]
+  }
+
+  export type AnnotationUncheckedUpdateManyWithoutRecordingNestedInput = {
+    create?: XOR<AnnotationCreateWithoutRecordingInput, AnnotationUncheckedCreateWithoutRecordingInput> | AnnotationCreateWithoutRecordingInput[] | AnnotationUncheckedCreateWithoutRecordingInput[]
+    connectOrCreate?: AnnotationCreateOrConnectWithoutRecordingInput | AnnotationCreateOrConnectWithoutRecordingInput[]
+    upsert?: AnnotationUpsertWithWhereUniqueWithoutRecordingInput | AnnotationUpsertWithWhereUniqueWithoutRecordingInput[]
+    createMany?: AnnotationCreateManyRecordingInputEnvelope
+    set?: AnnotationWhereUniqueInput | AnnotationWhereUniqueInput[]
+    disconnect?: AnnotationWhereUniqueInput | AnnotationWhereUniqueInput[]
+    delete?: AnnotationWhereUniqueInput | AnnotationWhereUniqueInput[]
+    connect?: AnnotationWhereUniqueInput | AnnotationWhereUniqueInput[]
+    update?: AnnotationUpdateWithWhereUniqueWithoutRecordingInput | AnnotationUpdateWithWhereUniqueWithoutRecordingInput[]
+    updateMany?: AnnotationUpdateManyWithWhereWithoutRecordingInput | AnnotationUpdateManyWithWhereWithoutRecordingInput[]
+    deleteMany?: AnnotationScalarWhereInput | AnnotationScalarWhereInput[]
+  }
+
+  export type RecordingCreateNestedOneWithoutBookmarksInput = {
+    create?: XOR<RecordingCreateWithoutBookmarksInput, RecordingUncheckedCreateWithoutBookmarksInput>
+    connectOrCreate?: RecordingCreateOrConnectWithoutBookmarksInput
+    connect?: RecordingWhereUniqueInput
+  }
+
+  export type RecordingUpdateOneRequiredWithoutBookmarksNestedInput = {
+    create?: XOR<RecordingCreateWithoutBookmarksInput, RecordingUncheckedCreateWithoutBookmarksInput>
+    connectOrCreate?: RecordingCreateOrConnectWithoutBookmarksInput
+    upsert?: RecordingUpsertWithoutBookmarksInput
+    connect?: RecordingWhereUniqueInput
+    update?: XOR<XOR<RecordingUpdateToOneWithWhereWithoutBookmarksInput, RecordingUpdateWithoutBookmarksInput>, RecordingUncheckedUpdateWithoutBookmarksInput>
+  }
+
+  export type RecordingCreateNestedOneWithoutAnnotationsInput = {
+    create?: XOR<RecordingCreateWithoutAnnotationsInput, RecordingUncheckedCreateWithoutAnnotationsInput>
+    connectOrCreate?: RecordingCreateOrConnectWithoutAnnotationsInput
+    connect?: RecordingWhereUniqueInput
+  }
+
+  export type RecordingUpdateOneRequiredWithoutAnnotationsNestedInput = {
+    create?: XOR<RecordingCreateWithoutAnnotationsInput, RecordingUncheckedCreateWithoutAnnotationsInput>
+    connectOrCreate?: RecordingCreateOrConnectWithoutAnnotationsInput
+    upsert?: RecordingUpsertWithoutAnnotationsInput
+    connect?: RecordingWhereUniqueInput
+    update?: XOR<XOR<RecordingUpdateToOneWithWhereWithoutAnnotationsInput, RecordingUpdateWithoutAnnotationsInput>, RecordingUncheckedUpdateWithoutAnnotationsInput>
   }
 
   export type NestedStringFilter<$PrismaModel = never> = {
@@ -24219,6 +28576,7 @@ export namespace Prisma {
     Log?: LogCreateNestedManyWithoutSessionInput
     Profiling?: ProfilingCreateNestedManyWithoutSessionInput
     SessionLog?: SessionLogCreateNestedManyWithoutSessionInput
+    Recording?: RecordingCreateNestedManyWithoutSessionInput
   }
 
   export type SessionUncheckedCreateWithoutBuildInput = {
@@ -24254,6 +28612,7 @@ export namespace Prisma {
     Log?: LogUncheckedCreateNestedManyWithoutSessionInput
     Profiling?: ProfilingUncheckedCreateNestedManyWithoutSessionInput
     SessionLog?: SessionLogUncheckedCreateNestedManyWithoutSessionInput
+    Recording?: RecordingUncheckedCreateNestedManyWithoutSessionInput
   }
 
   export type SessionCreateOrConnectWithoutBuildInput = {
@@ -24458,6 +28817,49 @@ export namespace Prisma {
     data: SessionLogCreateManySessionInput | SessionLogCreateManySessionInput[]
   }
 
+  export type RecordingCreateWithoutSessionInput = {
+    id?: string
+    group_id: string
+    device_udid: string
+    device_host?: string
+    started_at: Date | string
+    ended_at?: Date | string | null
+    status: string
+    file_path: string
+    duration_ms?: number | null
+    size_bytes?: number | null
+    device_snapshot?: string | null
+    fail_reason?: string | null
+    bookmarks?: BookmarkCreateNestedManyWithoutRecordingInput
+    annotations?: AnnotationCreateNestedManyWithoutRecordingInput
+  }
+
+  export type RecordingUncheckedCreateWithoutSessionInput = {
+    id?: string
+    group_id: string
+    device_udid: string
+    device_host?: string
+    started_at: Date | string
+    ended_at?: Date | string | null
+    status: string
+    file_path: string
+    duration_ms?: number | null
+    size_bytes?: number | null
+    device_snapshot?: string | null
+    fail_reason?: string | null
+    bookmarks?: BookmarkUncheckedCreateNestedManyWithoutRecordingInput
+    annotations?: AnnotationUncheckedCreateNestedManyWithoutRecordingInput
+  }
+
+  export type RecordingCreateOrConnectWithoutSessionInput = {
+    where: RecordingWhereUniqueInput
+    create: XOR<RecordingCreateWithoutSessionInput, RecordingUncheckedCreateWithoutSessionInput>
+  }
+
+  export type RecordingCreateManySessionInputEnvelope = {
+    data: RecordingCreateManySessionInput | RecordingCreateManySessionInput[]
+  }
+
   export type LogUpsertWithWhereUniqueWithoutSessionInput = {
     where: LogWhereUniqueInput
     update: XOR<LogUpdateWithoutSessionInput, LogUncheckedUpdateWithoutSessionInput>
@@ -24591,6 +28993,41 @@ export namespace Prisma {
     trace_id?: StringNullableFilter<"SessionLog"> | string | null
   }
 
+  export type RecordingUpsertWithWhereUniqueWithoutSessionInput = {
+    where: RecordingWhereUniqueInput
+    update: XOR<RecordingUpdateWithoutSessionInput, RecordingUncheckedUpdateWithoutSessionInput>
+    create: XOR<RecordingCreateWithoutSessionInput, RecordingUncheckedCreateWithoutSessionInput>
+  }
+
+  export type RecordingUpdateWithWhereUniqueWithoutSessionInput = {
+    where: RecordingWhereUniqueInput
+    data: XOR<RecordingUpdateWithoutSessionInput, RecordingUncheckedUpdateWithoutSessionInput>
+  }
+
+  export type RecordingUpdateManyWithWhereWithoutSessionInput = {
+    where: RecordingScalarWhereInput
+    data: XOR<RecordingUpdateManyMutationInput, RecordingUncheckedUpdateManyWithoutSessionInput>
+  }
+
+  export type RecordingScalarWhereInput = {
+    AND?: RecordingScalarWhereInput | RecordingScalarWhereInput[]
+    OR?: RecordingScalarWhereInput[]
+    NOT?: RecordingScalarWhereInput | RecordingScalarWhereInput[]
+    id?: StringFilter<"Recording"> | string
+    group_id?: StringFilter<"Recording"> | string
+    device_udid?: StringFilter<"Recording"> | string
+    device_host?: StringFilter<"Recording"> | string
+    session_id?: StringNullableFilter<"Recording"> | string | null
+    started_at?: DateTimeFilter<"Recording"> | Date | string
+    ended_at?: DateTimeNullableFilter<"Recording"> | Date | string | null
+    status?: StringFilter<"Recording"> | string
+    file_path?: StringFilter<"Recording"> | string
+    duration_ms?: IntNullableFilter<"Recording"> | number | null
+    size_bytes?: IntNullableFilter<"Recording"> | number | null
+    device_snapshot?: StringNullableFilter<"Recording"> | string | null
+    fail_reason?: StringNullableFilter<"Recording"> | string | null
+  }
+
   export type SessionCreateWithoutSessionLogInput = {
     id: string
     name?: string | null
@@ -24624,6 +29061,7 @@ export namespace Prisma {
     Log?: LogCreateNestedManyWithoutSessionInput
     Profiling?: ProfilingCreateNestedManyWithoutSessionInput
     build?: BuildCreateNestedOneWithoutSessionsInput
+    Recording?: RecordingCreateNestedManyWithoutSessionInput
   }
 
   export type SessionUncheckedCreateWithoutSessionLogInput = {
@@ -24659,6 +29097,7 @@ export namespace Prisma {
     api_key_id?: string | null
     Log?: LogUncheckedCreateNestedManyWithoutSessionInput
     Profiling?: ProfilingUncheckedCreateNestedManyWithoutSessionInput
+    Recording?: RecordingUncheckedCreateNestedManyWithoutSessionInput
   }
 
   export type SessionCreateOrConnectWithoutSessionLogInput = {
@@ -24710,6 +29149,7 @@ export namespace Prisma {
     Log?: LogUpdateManyWithoutSessionNestedInput
     Profiling?: ProfilingUpdateManyWithoutSessionNestedInput
     build?: BuildUpdateOneWithoutSessionsNestedInput
+    Recording?: RecordingUpdateManyWithoutSessionNestedInput
   }
 
   export type SessionUncheckedUpdateWithoutSessionLogInput = {
@@ -24745,6 +29185,7 @@ export namespace Prisma {
     api_key_id?: NullableStringFieldUpdateOperationsInput | string | null
     Log?: LogUncheckedUpdateManyWithoutSessionNestedInput
     Profiling?: ProfilingUncheckedUpdateManyWithoutSessionNestedInput
+    Recording?: RecordingUncheckedUpdateManyWithoutSessionNestedInput
   }
 
   export type SessionCreateWithoutLogInput = {
@@ -24780,6 +29221,7 @@ export namespace Prisma {
     Profiling?: ProfilingCreateNestedManyWithoutSessionInput
     build?: BuildCreateNestedOneWithoutSessionsInput
     SessionLog?: SessionLogCreateNestedManyWithoutSessionInput
+    Recording?: RecordingCreateNestedManyWithoutSessionInput
   }
 
   export type SessionUncheckedCreateWithoutLogInput = {
@@ -24815,6 +29257,7 @@ export namespace Prisma {
     api_key_id?: string | null
     Profiling?: ProfilingUncheckedCreateNestedManyWithoutSessionInput
     SessionLog?: SessionLogUncheckedCreateNestedManyWithoutSessionInput
+    Recording?: RecordingUncheckedCreateNestedManyWithoutSessionInput
   }
 
   export type SessionCreateOrConnectWithoutLogInput = {
@@ -24866,6 +29309,7 @@ export namespace Prisma {
     Profiling?: ProfilingUpdateManyWithoutSessionNestedInput
     build?: BuildUpdateOneWithoutSessionsNestedInput
     SessionLog?: SessionLogUpdateManyWithoutSessionNestedInput
+    Recording?: RecordingUpdateManyWithoutSessionNestedInput
   }
 
   export type SessionUncheckedUpdateWithoutLogInput = {
@@ -24901,6 +29345,7 @@ export namespace Prisma {
     api_key_id?: NullableStringFieldUpdateOperationsInput | string | null
     Profiling?: ProfilingUncheckedUpdateManyWithoutSessionNestedInput
     SessionLog?: SessionLogUncheckedUpdateManyWithoutSessionNestedInput
+    Recording?: RecordingUncheckedUpdateManyWithoutSessionNestedInput
   }
 
   export type SessionCreateWithoutProfilingInput = {
@@ -24936,6 +29381,7 @@ export namespace Prisma {
     Log?: LogCreateNestedManyWithoutSessionInput
     build?: BuildCreateNestedOneWithoutSessionsInput
     SessionLog?: SessionLogCreateNestedManyWithoutSessionInput
+    Recording?: RecordingCreateNestedManyWithoutSessionInput
   }
 
   export type SessionUncheckedCreateWithoutProfilingInput = {
@@ -24971,6 +29417,7 @@ export namespace Prisma {
     api_key_id?: string | null
     Log?: LogUncheckedCreateNestedManyWithoutSessionInput
     SessionLog?: SessionLogUncheckedCreateNestedManyWithoutSessionInput
+    Recording?: RecordingUncheckedCreateNestedManyWithoutSessionInput
   }
 
   export type SessionCreateOrConnectWithoutProfilingInput = {
@@ -25022,6 +29469,7 @@ export namespace Prisma {
     Log?: LogUpdateManyWithoutSessionNestedInput
     build?: BuildUpdateOneWithoutSessionsNestedInput
     SessionLog?: SessionLogUpdateManyWithoutSessionNestedInput
+    Recording?: RecordingUpdateManyWithoutSessionNestedInput
   }
 
   export type SessionUncheckedUpdateWithoutProfilingInput = {
@@ -25057,6 +29505,7 @@ export namespace Prisma {
     api_key_id?: NullableStringFieldUpdateOperationsInput | string | null
     Log?: LogUncheckedUpdateManyWithoutSessionNestedInput
     SessionLog?: SessionLogUncheckedUpdateManyWithoutSessionNestedInput
+    Recording?: RecordingUncheckedUpdateManyWithoutSessionNestedInput
   }
 
   export type TeamCreateWithoutDevicesInput = {
@@ -25400,6 +29849,449 @@ export namespace Prisma {
     role?: StringFilter<"ApiKey"> | string
   }
 
+  export type BookmarkCreateWithoutRecordingInput = {
+    id?: string
+    timecode_ms: number
+    label: string
+    note?: string | null
+    created_at?: Date | string
+  }
+
+  export type BookmarkUncheckedCreateWithoutRecordingInput = {
+    id?: string
+    timecode_ms: number
+    label: string
+    note?: string | null
+    created_at?: Date | string
+  }
+
+  export type BookmarkCreateOrConnectWithoutRecordingInput = {
+    where: BookmarkWhereUniqueInput
+    create: XOR<BookmarkCreateWithoutRecordingInput, BookmarkUncheckedCreateWithoutRecordingInput>
+  }
+
+  export type BookmarkCreateManyRecordingInputEnvelope = {
+    data: BookmarkCreateManyRecordingInput | BookmarkCreateManyRecordingInput[]
+  }
+
+  export type AnnotationCreateWithoutRecordingInput = {
+    id?: string
+    timecode_ms: number
+    shape: string
+    geometry: string
+    color: string
+    text?: string | null
+    author?: string | null
+    created_at?: Date | string
+  }
+
+  export type AnnotationUncheckedCreateWithoutRecordingInput = {
+    id?: string
+    timecode_ms: number
+    shape: string
+    geometry: string
+    color: string
+    text?: string | null
+    author?: string | null
+    created_at?: Date | string
+  }
+
+  export type AnnotationCreateOrConnectWithoutRecordingInput = {
+    where: AnnotationWhereUniqueInput
+    create: XOR<AnnotationCreateWithoutRecordingInput, AnnotationUncheckedCreateWithoutRecordingInput>
+  }
+
+  export type AnnotationCreateManyRecordingInputEnvelope = {
+    data: AnnotationCreateManyRecordingInput | AnnotationCreateManyRecordingInput[]
+  }
+
+  export type SessionCreateWithoutRecordingInput = {
+    id: string
+    name?: string | null
+    status?: string
+    desired_capabilities: string
+    session_capabilities: string
+    node_id: string
+    has_live_video: boolean
+    video_recording_enabled?: boolean
+    video_recording?: string | null
+    startTime?: Date | string
+    endTime?: Date | string | null
+    failure_reason?: string | null
+    is_profiling_available?: boolean
+    device_info?: string | null
+    device_udid: string
+    device_platform: string
+    device_version: string
+    device_name?: string | null
+    createdAt?: Date | string
+    updatedAt?: Date | string
+    performance_trace?: string | null
+    failure_category?: string | null
+    ai_analysis?: string | null
+    tags?: string | null
+    trace_id?: string | null
+    last_heartbeat_at?: Date | string | null
+    heartbeat_pid?: number | null
+    heartbeat_host?: string | null
+    api_key_id?: string | null
+    Log?: LogCreateNestedManyWithoutSessionInput
+    Profiling?: ProfilingCreateNestedManyWithoutSessionInput
+    build?: BuildCreateNestedOneWithoutSessionsInput
+    SessionLog?: SessionLogCreateNestedManyWithoutSessionInput
+  }
+
+  export type SessionUncheckedCreateWithoutRecordingInput = {
+    id: string
+    build_id?: string | null
+    name?: string | null
+    status?: string
+    desired_capabilities: string
+    session_capabilities: string
+    node_id: string
+    has_live_video: boolean
+    video_recording_enabled?: boolean
+    video_recording?: string | null
+    startTime?: Date | string
+    endTime?: Date | string | null
+    failure_reason?: string | null
+    is_profiling_available?: boolean
+    device_info?: string | null
+    device_udid: string
+    device_platform: string
+    device_version: string
+    device_name?: string | null
+    createdAt?: Date | string
+    updatedAt?: Date | string
+    performance_trace?: string | null
+    failure_category?: string | null
+    ai_analysis?: string | null
+    tags?: string | null
+    trace_id?: string | null
+    last_heartbeat_at?: Date | string | null
+    heartbeat_pid?: number | null
+    heartbeat_host?: string | null
+    api_key_id?: string | null
+    Log?: LogUncheckedCreateNestedManyWithoutSessionInput
+    Profiling?: ProfilingUncheckedCreateNestedManyWithoutSessionInput
+    SessionLog?: SessionLogUncheckedCreateNestedManyWithoutSessionInput
+  }
+
+  export type SessionCreateOrConnectWithoutRecordingInput = {
+    where: SessionWhereUniqueInput
+    create: XOR<SessionCreateWithoutRecordingInput, SessionUncheckedCreateWithoutRecordingInput>
+  }
+
+  export type BookmarkUpsertWithWhereUniqueWithoutRecordingInput = {
+    where: BookmarkWhereUniqueInput
+    update: XOR<BookmarkUpdateWithoutRecordingInput, BookmarkUncheckedUpdateWithoutRecordingInput>
+    create: XOR<BookmarkCreateWithoutRecordingInput, BookmarkUncheckedCreateWithoutRecordingInput>
+  }
+
+  export type BookmarkUpdateWithWhereUniqueWithoutRecordingInput = {
+    where: BookmarkWhereUniqueInput
+    data: XOR<BookmarkUpdateWithoutRecordingInput, BookmarkUncheckedUpdateWithoutRecordingInput>
+  }
+
+  export type BookmarkUpdateManyWithWhereWithoutRecordingInput = {
+    where: BookmarkScalarWhereInput
+    data: XOR<BookmarkUpdateManyMutationInput, BookmarkUncheckedUpdateManyWithoutRecordingInput>
+  }
+
+  export type BookmarkScalarWhereInput = {
+    AND?: BookmarkScalarWhereInput | BookmarkScalarWhereInput[]
+    OR?: BookmarkScalarWhereInput[]
+    NOT?: BookmarkScalarWhereInput | BookmarkScalarWhereInput[]
+    id?: StringFilter<"Bookmark"> | string
+    recording_id?: StringFilter<"Bookmark"> | string
+    timecode_ms?: IntFilter<"Bookmark"> | number
+    label?: StringFilter<"Bookmark"> | string
+    note?: StringNullableFilter<"Bookmark"> | string | null
+    created_at?: DateTimeFilter<"Bookmark"> | Date | string
+  }
+
+  export type AnnotationUpsertWithWhereUniqueWithoutRecordingInput = {
+    where: AnnotationWhereUniqueInput
+    update: XOR<AnnotationUpdateWithoutRecordingInput, AnnotationUncheckedUpdateWithoutRecordingInput>
+    create: XOR<AnnotationCreateWithoutRecordingInput, AnnotationUncheckedCreateWithoutRecordingInput>
+  }
+
+  export type AnnotationUpdateWithWhereUniqueWithoutRecordingInput = {
+    where: AnnotationWhereUniqueInput
+    data: XOR<AnnotationUpdateWithoutRecordingInput, AnnotationUncheckedUpdateWithoutRecordingInput>
+  }
+
+  export type AnnotationUpdateManyWithWhereWithoutRecordingInput = {
+    where: AnnotationScalarWhereInput
+    data: XOR<AnnotationUpdateManyMutationInput, AnnotationUncheckedUpdateManyWithoutRecordingInput>
+  }
+
+  export type AnnotationScalarWhereInput = {
+    AND?: AnnotationScalarWhereInput | AnnotationScalarWhereInput[]
+    OR?: AnnotationScalarWhereInput[]
+    NOT?: AnnotationScalarWhereInput | AnnotationScalarWhereInput[]
+    id?: StringFilter<"Annotation"> | string
+    recording_id?: StringFilter<"Annotation"> | string
+    timecode_ms?: IntFilter<"Annotation"> | number
+    shape?: StringFilter<"Annotation"> | string
+    geometry?: StringFilter<"Annotation"> | string
+    color?: StringFilter<"Annotation"> | string
+    text?: StringNullableFilter<"Annotation"> | string | null
+    author?: StringNullableFilter<"Annotation"> | string | null
+    created_at?: DateTimeFilter<"Annotation"> | Date | string
+  }
+
+  export type SessionUpsertWithoutRecordingInput = {
+    update: XOR<SessionUpdateWithoutRecordingInput, SessionUncheckedUpdateWithoutRecordingInput>
+    create: XOR<SessionCreateWithoutRecordingInput, SessionUncheckedCreateWithoutRecordingInput>
+    where?: SessionWhereInput
+  }
+
+  export type SessionUpdateToOneWithWhereWithoutRecordingInput = {
+    where?: SessionWhereInput
+    data: XOR<SessionUpdateWithoutRecordingInput, SessionUncheckedUpdateWithoutRecordingInput>
+  }
+
+  export type SessionUpdateWithoutRecordingInput = {
+    id?: StringFieldUpdateOperationsInput | string
+    name?: NullableStringFieldUpdateOperationsInput | string | null
+    status?: StringFieldUpdateOperationsInput | string
+    desired_capabilities?: StringFieldUpdateOperationsInput | string
+    session_capabilities?: StringFieldUpdateOperationsInput | string
+    node_id?: StringFieldUpdateOperationsInput | string
+    has_live_video?: BoolFieldUpdateOperationsInput | boolean
+    video_recording_enabled?: BoolFieldUpdateOperationsInput | boolean
+    video_recording?: NullableStringFieldUpdateOperationsInput | string | null
+    startTime?: DateTimeFieldUpdateOperationsInput | Date | string
+    endTime?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    failure_reason?: NullableStringFieldUpdateOperationsInput | string | null
+    is_profiling_available?: BoolFieldUpdateOperationsInput | boolean
+    device_info?: NullableStringFieldUpdateOperationsInput | string | null
+    device_udid?: StringFieldUpdateOperationsInput | string
+    device_platform?: StringFieldUpdateOperationsInput | string
+    device_version?: StringFieldUpdateOperationsInput | string
+    device_name?: NullableStringFieldUpdateOperationsInput | string | null
+    createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
+    updatedAt?: DateTimeFieldUpdateOperationsInput | Date | string
+    performance_trace?: NullableStringFieldUpdateOperationsInput | string | null
+    failure_category?: NullableStringFieldUpdateOperationsInput | string | null
+    ai_analysis?: NullableStringFieldUpdateOperationsInput | string | null
+    tags?: NullableStringFieldUpdateOperationsInput | string | null
+    trace_id?: NullableStringFieldUpdateOperationsInput | string | null
+    last_heartbeat_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    heartbeat_pid?: NullableIntFieldUpdateOperationsInput | number | null
+    heartbeat_host?: NullableStringFieldUpdateOperationsInput | string | null
+    api_key_id?: NullableStringFieldUpdateOperationsInput | string | null
+    Log?: LogUpdateManyWithoutSessionNestedInput
+    Profiling?: ProfilingUpdateManyWithoutSessionNestedInput
+    build?: BuildUpdateOneWithoutSessionsNestedInput
+    SessionLog?: SessionLogUpdateManyWithoutSessionNestedInput
+  }
+
+  export type SessionUncheckedUpdateWithoutRecordingInput = {
+    id?: StringFieldUpdateOperationsInput | string
+    build_id?: NullableStringFieldUpdateOperationsInput | string | null
+    name?: NullableStringFieldUpdateOperationsInput | string | null
+    status?: StringFieldUpdateOperationsInput | string
+    desired_capabilities?: StringFieldUpdateOperationsInput | string
+    session_capabilities?: StringFieldUpdateOperationsInput | string
+    node_id?: StringFieldUpdateOperationsInput | string
+    has_live_video?: BoolFieldUpdateOperationsInput | boolean
+    video_recording_enabled?: BoolFieldUpdateOperationsInput | boolean
+    video_recording?: NullableStringFieldUpdateOperationsInput | string | null
+    startTime?: DateTimeFieldUpdateOperationsInput | Date | string
+    endTime?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    failure_reason?: NullableStringFieldUpdateOperationsInput | string | null
+    is_profiling_available?: BoolFieldUpdateOperationsInput | boolean
+    device_info?: NullableStringFieldUpdateOperationsInput | string | null
+    device_udid?: StringFieldUpdateOperationsInput | string
+    device_platform?: StringFieldUpdateOperationsInput | string
+    device_version?: StringFieldUpdateOperationsInput | string
+    device_name?: NullableStringFieldUpdateOperationsInput | string | null
+    createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
+    updatedAt?: DateTimeFieldUpdateOperationsInput | Date | string
+    performance_trace?: NullableStringFieldUpdateOperationsInput | string | null
+    failure_category?: NullableStringFieldUpdateOperationsInput | string | null
+    ai_analysis?: NullableStringFieldUpdateOperationsInput | string | null
+    tags?: NullableStringFieldUpdateOperationsInput | string | null
+    trace_id?: NullableStringFieldUpdateOperationsInput | string | null
+    last_heartbeat_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    heartbeat_pid?: NullableIntFieldUpdateOperationsInput | number | null
+    heartbeat_host?: NullableStringFieldUpdateOperationsInput | string | null
+    api_key_id?: NullableStringFieldUpdateOperationsInput | string | null
+    Log?: LogUncheckedUpdateManyWithoutSessionNestedInput
+    Profiling?: ProfilingUncheckedUpdateManyWithoutSessionNestedInput
+    SessionLog?: SessionLogUncheckedUpdateManyWithoutSessionNestedInput
+  }
+
+  export type RecordingCreateWithoutBookmarksInput = {
+    id?: string
+    group_id: string
+    device_udid: string
+    device_host?: string
+    started_at: Date | string
+    ended_at?: Date | string | null
+    status: string
+    file_path: string
+    duration_ms?: number | null
+    size_bytes?: number | null
+    device_snapshot?: string | null
+    fail_reason?: string | null
+    annotations?: AnnotationCreateNestedManyWithoutRecordingInput
+    Session?: SessionCreateNestedOneWithoutRecordingInput
+  }
+
+  export type RecordingUncheckedCreateWithoutBookmarksInput = {
+    id?: string
+    group_id: string
+    device_udid: string
+    device_host?: string
+    session_id?: string | null
+    started_at: Date | string
+    ended_at?: Date | string | null
+    status: string
+    file_path: string
+    duration_ms?: number | null
+    size_bytes?: number | null
+    device_snapshot?: string | null
+    fail_reason?: string | null
+    annotations?: AnnotationUncheckedCreateNestedManyWithoutRecordingInput
+  }
+
+  export type RecordingCreateOrConnectWithoutBookmarksInput = {
+    where: RecordingWhereUniqueInput
+    create: XOR<RecordingCreateWithoutBookmarksInput, RecordingUncheckedCreateWithoutBookmarksInput>
+  }
+
+  export type RecordingUpsertWithoutBookmarksInput = {
+    update: XOR<RecordingUpdateWithoutBookmarksInput, RecordingUncheckedUpdateWithoutBookmarksInput>
+    create: XOR<RecordingCreateWithoutBookmarksInput, RecordingUncheckedCreateWithoutBookmarksInput>
+    where?: RecordingWhereInput
+  }
+
+  export type RecordingUpdateToOneWithWhereWithoutBookmarksInput = {
+    where?: RecordingWhereInput
+    data: XOR<RecordingUpdateWithoutBookmarksInput, RecordingUncheckedUpdateWithoutBookmarksInput>
+  }
+
+  export type RecordingUpdateWithoutBookmarksInput = {
+    id?: StringFieldUpdateOperationsInput | string
+    group_id?: StringFieldUpdateOperationsInput | string
+    device_udid?: StringFieldUpdateOperationsInput | string
+    device_host?: StringFieldUpdateOperationsInput | string
+    started_at?: DateTimeFieldUpdateOperationsInput | Date | string
+    ended_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    status?: StringFieldUpdateOperationsInput | string
+    file_path?: StringFieldUpdateOperationsInput | string
+    duration_ms?: NullableIntFieldUpdateOperationsInput | number | null
+    size_bytes?: NullableIntFieldUpdateOperationsInput | number | null
+    device_snapshot?: NullableStringFieldUpdateOperationsInput | string | null
+    fail_reason?: NullableStringFieldUpdateOperationsInput | string | null
+    annotations?: AnnotationUpdateManyWithoutRecordingNestedInput
+    Session?: SessionUpdateOneWithoutRecordingNestedInput
+  }
+
+  export type RecordingUncheckedUpdateWithoutBookmarksInput = {
+    id?: StringFieldUpdateOperationsInput | string
+    group_id?: StringFieldUpdateOperationsInput | string
+    device_udid?: StringFieldUpdateOperationsInput | string
+    device_host?: StringFieldUpdateOperationsInput | string
+    session_id?: NullableStringFieldUpdateOperationsInput | string | null
+    started_at?: DateTimeFieldUpdateOperationsInput | Date | string
+    ended_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    status?: StringFieldUpdateOperationsInput | string
+    file_path?: StringFieldUpdateOperationsInput | string
+    duration_ms?: NullableIntFieldUpdateOperationsInput | number | null
+    size_bytes?: NullableIntFieldUpdateOperationsInput | number | null
+    device_snapshot?: NullableStringFieldUpdateOperationsInput | string | null
+    fail_reason?: NullableStringFieldUpdateOperationsInput | string | null
+    annotations?: AnnotationUncheckedUpdateManyWithoutRecordingNestedInput
+  }
+
+  export type RecordingCreateWithoutAnnotationsInput = {
+    id?: string
+    group_id: string
+    device_udid: string
+    device_host?: string
+    started_at: Date | string
+    ended_at?: Date | string | null
+    status: string
+    file_path: string
+    duration_ms?: number | null
+    size_bytes?: number | null
+    device_snapshot?: string | null
+    fail_reason?: string | null
+    bookmarks?: BookmarkCreateNestedManyWithoutRecordingInput
+    Session?: SessionCreateNestedOneWithoutRecordingInput
+  }
+
+  export type RecordingUncheckedCreateWithoutAnnotationsInput = {
+    id?: string
+    group_id: string
+    device_udid: string
+    device_host?: string
+    session_id?: string | null
+    started_at: Date | string
+    ended_at?: Date | string | null
+    status: string
+    file_path: string
+    duration_ms?: number | null
+    size_bytes?: number | null
+    device_snapshot?: string | null
+    fail_reason?: string | null
+    bookmarks?: BookmarkUncheckedCreateNestedManyWithoutRecordingInput
+  }
+
+  export type RecordingCreateOrConnectWithoutAnnotationsInput = {
+    where: RecordingWhereUniqueInput
+    create: XOR<RecordingCreateWithoutAnnotationsInput, RecordingUncheckedCreateWithoutAnnotationsInput>
+  }
+
+  export type RecordingUpsertWithoutAnnotationsInput = {
+    update: XOR<RecordingUpdateWithoutAnnotationsInput, RecordingUncheckedUpdateWithoutAnnotationsInput>
+    create: XOR<RecordingCreateWithoutAnnotationsInput, RecordingUncheckedCreateWithoutAnnotationsInput>
+    where?: RecordingWhereInput
+  }
+
+  export type RecordingUpdateToOneWithWhereWithoutAnnotationsInput = {
+    where?: RecordingWhereInput
+    data: XOR<RecordingUpdateWithoutAnnotationsInput, RecordingUncheckedUpdateWithoutAnnotationsInput>
+  }
+
+  export type RecordingUpdateWithoutAnnotationsInput = {
+    id?: StringFieldUpdateOperationsInput | string
+    group_id?: StringFieldUpdateOperationsInput | string
+    device_udid?: StringFieldUpdateOperationsInput | string
+    device_host?: StringFieldUpdateOperationsInput | string
+    started_at?: DateTimeFieldUpdateOperationsInput | Date | string
+    ended_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    status?: StringFieldUpdateOperationsInput | string
+    file_path?: StringFieldUpdateOperationsInput | string
+    duration_ms?: NullableIntFieldUpdateOperationsInput | number | null
+    size_bytes?: NullableIntFieldUpdateOperationsInput | number | null
+    device_snapshot?: NullableStringFieldUpdateOperationsInput | string | null
+    fail_reason?: NullableStringFieldUpdateOperationsInput | string | null
+    bookmarks?: BookmarkUpdateManyWithoutRecordingNestedInput
+    Session?: SessionUpdateOneWithoutRecordingNestedInput
+  }
+
+  export type RecordingUncheckedUpdateWithoutAnnotationsInput = {
+    id?: StringFieldUpdateOperationsInput | string
+    group_id?: StringFieldUpdateOperationsInput | string
+    device_udid?: StringFieldUpdateOperationsInput | string
+    device_host?: StringFieldUpdateOperationsInput | string
+    session_id?: NullableStringFieldUpdateOperationsInput | string | null
+    started_at?: DateTimeFieldUpdateOperationsInput | Date | string
+    ended_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    status?: StringFieldUpdateOperationsInput | string
+    file_path?: StringFieldUpdateOperationsInput | string
+    duration_ms?: NullableIntFieldUpdateOperationsInput | number | null
+    size_bytes?: NullableIntFieldUpdateOperationsInput | number | null
+    device_snapshot?: NullableStringFieldUpdateOperationsInput | string | null
+    fail_reason?: NullableStringFieldUpdateOperationsInput | string | null
+    bookmarks?: BookmarkUncheckedUpdateManyWithoutRecordingNestedInput
+  }
+
   export type SessionCreateManyBuildInput = {
     id: string
     name?: string | null
@@ -25465,6 +30357,7 @@ export namespace Prisma {
     Log?: LogUpdateManyWithoutSessionNestedInput
     Profiling?: ProfilingUpdateManyWithoutSessionNestedInput
     SessionLog?: SessionLogUpdateManyWithoutSessionNestedInput
+    Recording?: RecordingUpdateManyWithoutSessionNestedInput
   }
 
   export type SessionUncheckedUpdateWithoutBuildInput = {
@@ -25500,6 +30393,7 @@ export namespace Prisma {
     Log?: LogUncheckedUpdateManyWithoutSessionNestedInput
     Profiling?: ProfilingUncheckedUpdateManyWithoutSessionNestedInput
     SessionLog?: SessionLogUncheckedUpdateManyWithoutSessionNestedInput
+    Recording?: RecordingUncheckedUpdateManyWithoutSessionNestedInput
   }
 
   export type SessionUncheckedUpdateManyWithoutBuildInput = {
@@ -25580,6 +30474,21 @@ export namespace Prisma {
     duration?: number | null
     span_id?: string | null
     trace_id?: string | null
+  }
+
+  export type RecordingCreateManySessionInput = {
+    id?: string
+    group_id: string
+    device_udid: string
+    device_host?: string
+    started_at: Date | string
+    ended_at?: Date | string | null
+    status: string
+    file_path: string
+    duration_ms?: number | null
+    size_bytes?: number | null
+    device_snapshot?: string | null
+    fail_reason?: string | null
   }
 
   export type LogUpdateWithoutSessionInput = {
@@ -25723,6 +30632,55 @@ export namespace Prisma {
     duration?: NullableIntFieldUpdateOperationsInput | number | null
     span_id?: NullableStringFieldUpdateOperationsInput | string | null
     trace_id?: NullableStringFieldUpdateOperationsInput | string | null
+  }
+
+  export type RecordingUpdateWithoutSessionInput = {
+    id?: StringFieldUpdateOperationsInput | string
+    group_id?: StringFieldUpdateOperationsInput | string
+    device_udid?: StringFieldUpdateOperationsInput | string
+    device_host?: StringFieldUpdateOperationsInput | string
+    started_at?: DateTimeFieldUpdateOperationsInput | Date | string
+    ended_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    status?: StringFieldUpdateOperationsInput | string
+    file_path?: StringFieldUpdateOperationsInput | string
+    duration_ms?: NullableIntFieldUpdateOperationsInput | number | null
+    size_bytes?: NullableIntFieldUpdateOperationsInput | number | null
+    device_snapshot?: NullableStringFieldUpdateOperationsInput | string | null
+    fail_reason?: NullableStringFieldUpdateOperationsInput | string | null
+    bookmarks?: BookmarkUpdateManyWithoutRecordingNestedInput
+    annotations?: AnnotationUpdateManyWithoutRecordingNestedInput
+  }
+
+  export type RecordingUncheckedUpdateWithoutSessionInput = {
+    id?: StringFieldUpdateOperationsInput | string
+    group_id?: StringFieldUpdateOperationsInput | string
+    device_udid?: StringFieldUpdateOperationsInput | string
+    device_host?: StringFieldUpdateOperationsInput | string
+    started_at?: DateTimeFieldUpdateOperationsInput | Date | string
+    ended_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    status?: StringFieldUpdateOperationsInput | string
+    file_path?: StringFieldUpdateOperationsInput | string
+    duration_ms?: NullableIntFieldUpdateOperationsInput | number | null
+    size_bytes?: NullableIntFieldUpdateOperationsInput | number | null
+    device_snapshot?: NullableStringFieldUpdateOperationsInput | string | null
+    fail_reason?: NullableStringFieldUpdateOperationsInput | string | null
+    bookmarks?: BookmarkUncheckedUpdateManyWithoutRecordingNestedInput
+    annotations?: AnnotationUncheckedUpdateManyWithoutRecordingNestedInput
+  }
+
+  export type RecordingUncheckedUpdateManyWithoutSessionInput = {
+    id?: StringFieldUpdateOperationsInput | string
+    group_id?: StringFieldUpdateOperationsInput | string
+    device_udid?: StringFieldUpdateOperationsInput | string
+    device_host?: StringFieldUpdateOperationsInput | string
+    started_at?: DateTimeFieldUpdateOperationsInput | Date | string
+    ended_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    status?: StringFieldUpdateOperationsInput | string
+    file_path?: StringFieldUpdateOperationsInput | string
+    duration_ms?: NullableIntFieldUpdateOperationsInput | number | null
+    size_bytes?: NullableIntFieldUpdateOperationsInput | number | null
+    device_snapshot?: NullableStringFieldUpdateOperationsInput | string | null
+    fail_reason?: NullableStringFieldUpdateOperationsInput | string | null
   }
 
   export type DeviceCreateManyTeamInput = {
@@ -25985,6 +30943,82 @@ export namespace Prisma {
     role?: StringFieldUpdateOperationsInput | string
   }
 
+  export type BookmarkCreateManyRecordingInput = {
+    id?: string
+    timecode_ms: number
+    label: string
+    note?: string | null
+    created_at?: Date | string
+  }
+
+  export type AnnotationCreateManyRecordingInput = {
+    id?: string
+    timecode_ms: number
+    shape: string
+    geometry: string
+    color: string
+    text?: string | null
+    author?: string | null
+    created_at?: Date | string
+  }
+
+  export type BookmarkUpdateWithoutRecordingInput = {
+    id?: StringFieldUpdateOperationsInput | string
+    timecode_ms?: IntFieldUpdateOperationsInput | number
+    label?: StringFieldUpdateOperationsInput | string
+    note?: NullableStringFieldUpdateOperationsInput | string | null
+    created_at?: DateTimeFieldUpdateOperationsInput | Date | string
+  }
+
+  export type BookmarkUncheckedUpdateWithoutRecordingInput = {
+    id?: StringFieldUpdateOperationsInput | string
+    timecode_ms?: IntFieldUpdateOperationsInput | number
+    label?: StringFieldUpdateOperationsInput | string
+    note?: NullableStringFieldUpdateOperationsInput | string | null
+    created_at?: DateTimeFieldUpdateOperationsInput | Date | string
+  }
+
+  export type BookmarkUncheckedUpdateManyWithoutRecordingInput = {
+    id?: StringFieldUpdateOperationsInput | string
+    timecode_ms?: IntFieldUpdateOperationsInput | number
+    label?: StringFieldUpdateOperationsInput | string
+    note?: NullableStringFieldUpdateOperationsInput | string | null
+    created_at?: DateTimeFieldUpdateOperationsInput | Date | string
+  }
+
+  export type AnnotationUpdateWithoutRecordingInput = {
+    id?: StringFieldUpdateOperationsInput | string
+    timecode_ms?: IntFieldUpdateOperationsInput | number
+    shape?: StringFieldUpdateOperationsInput | string
+    geometry?: StringFieldUpdateOperationsInput | string
+    color?: StringFieldUpdateOperationsInput | string
+    text?: NullableStringFieldUpdateOperationsInput | string | null
+    author?: NullableStringFieldUpdateOperationsInput | string | null
+    created_at?: DateTimeFieldUpdateOperationsInput | Date | string
+  }
+
+  export type AnnotationUncheckedUpdateWithoutRecordingInput = {
+    id?: StringFieldUpdateOperationsInput | string
+    timecode_ms?: IntFieldUpdateOperationsInput | number
+    shape?: StringFieldUpdateOperationsInput | string
+    geometry?: StringFieldUpdateOperationsInput | string
+    color?: StringFieldUpdateOperationsInput | string
+    text?: NullableStringFieldUpdateOperationsInput | string | null
+    author?: NullableStringFieldUpdateOperationsInput | string | null
+    created_at?: DateTimeFieldUpdateOperationsInput | Date | string
+  }
+
+  export type AnnotationUncheckedUpdateManyWithoutRecordingInput = {
+    id?: StringFieldUpdateOperationsInput | string
+    timecode_ms?: IntFieldUpdateOperationsInput | number
+    shape?: StringFieldUpdateOperationsInput | string
+    geometry?: StringFieldUpdateOperationsInput | string
+    color?: StringFieldUpdateOperationsInput | string
+    text?: NullableStringFieldUpdateOperationsInput | string | null
+    author?: NullableStringFieldUpdateOperationsInput | string | null
+    created_at?: DateTimeFieldUpdateOperationsInput | Date | string
+  }
+
 
 
   /**
@@ -26002,6 +31036,10 @@ export namespace Prisma {
      * @deprecated Use TeamCountOutputTypeDefaultArgs instead
      */
     export type TeamCountOutputTypeArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = TeamCountOutputTypeDefaultArgs<ExtArgs>
+    /**
+     * @deprecated Use RecordingCountOutputTypeDefaultArgs instead
+     */
+    export type RecordingCountOutputTypeArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = RecordingCountOutputTypeDefaultArgs<ExtArgs>
     /**
      * @deprecated Use BuildDefaultArgs instead
      */
@@ -26066,6 +31104,18 @@ export namespace Prisma {
      * @deprecated Use SelectorStateDefaultArgs instead
      */
     export type SelectorStateArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = SelectorStateDefaultArgs<ExtArgs>
+    /**
+     * @deprecated Use RecordingDefaultArgs instead
+     */
+    export type RecordingArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = RecordingDefaultArgs<ExtArgs>
+    /**
+     * @deprecated Use BookmarkDefaultArgs instead
+     */
+    export type BookmarkArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = BookmarkDefaultArgs<ExtArgs>
+    /**
+     * @deprecated Use AnnotationDefaultArgs instead
+     */
+    export type AnnotationArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = AnnotationDefaultArgs<ExtArgs>
 
   /**
    * Batch Payload for updateMany & deleteMany & createMany

@@ -367,6 +367,43 @@ exports.Prisma.SelectorStateScalarFieldEnum = {
   updatedAt: 'updatedAt'
 };
 
+exports.Prisma.RecordingScalarFieldEnum = {
+  id: 'id',
+  group_id: 'group_id',
+  device_udid: 'device_udid',
+  device_host: 'device_host',
+  session_id: 'session_id',
+  started_at: 'started_at',
+  ended_at: 'ended_at',
+  status: 'status',
+  file_path: 'file_path',
+  duration_ms: 'duration_ms',
+  size_bytes: 'size_bytes',
+  device_snapshot: 'device_snapshot',
+  fail_reason: 'fail_reason'
+};
+
+exports.Prisma.BookmarkScalarFieldEnum = {
+  id: 'id',
+  recording_id: 'recording_id',
+  timecode_ms: 'timecode_ms',
+  label: 'label',
+  note: 'note',
+  created_at: 'created_at'
+};
+
+exports.Prisma.AnnotationScalarFieldEnum = {
+  id: 'id',
+  recording_id: 'recording_id',
+  timecode_ms: 'timecode_ms',
+  shape: 'shape',
+  geometry: 'geometry',
+  color: 'color',
+  text: 'text',
+  author: 'author',
+  created_at: 'created_at'
+};
+
 exports.Prisma.SortOrder = {
   asc: 'asc',
   desc: 'desc'
@@ -394,7 +431,10 @@ exports.Prisma.ModelName = {
   PortLease: 'PortLease',
   ApiKey: 'ApiKey',
   Team: 'Team',
-  SelectorState: 'SelectorState'
+  SelectorState: 'SelectorState',
+  Recording: 'Recording',
+  Bookmark: 'Bookmark',
+  Annotation: 'Annotation'
 };
 
 /**

@@ -15,6 +15,10 @@ import fs from 'fs-extra';
 import { OmniVisionService } from '../../services/omni-vision/OmniVisionService';
 import { InspectorService } from '../../services/InspectorService';
 import { mutationScopeGuard } from '../../middleware/scopeGuard';
+import {
+  formatManualLock,
+  inspectManualLock,
+} from '../../services/recording/manualLock';
 
 const router = Router();
 
@@ -538,8 +542,14 @@ router.post('/:udid/stream/start', async (req: Request, res: Response) => {
     }
 
     // Principal Insight: Concurrency Protection
-    // Mark device as "Busy" so automation sessions don't pick it up
-    const manualSid = `manual_${udid}`;
+    // Mark device as "Busy" so automation sessions don't pick it up. The
+    // block-id encodes the calling user's API-key id so other users can
+    // distinguish their own manual sessions from this one.
+    const actorId = req.apiKey?.id;
+    if (!actorId) {
+      return res.status(401).json({ success: false, error: 'unauthenticated' });
+    }
+    const manualSid = formatManualLock(actorId, udid);
     await blockDevice(udid, device.host, manualSid);
     log.info(`Manual Control: Device ${udid} locked for active UI session (${manualSid}).`);
 
@@ -566,6 +576,21 @@ router.post('/:udid/stream/stop', async (req: Request, res: Response) => {
   const { udid } = req.params;
   const device = await getDeviceInfo(udid);
   if (!device) return res.status(404).send('Device not found');
+
+  // Multi-user safety: refuse to release a manual lock owned by another user.
+  // Admin scope bypasses this so support can clear stuck sessions.
+  const actorId = req.apiKey?.id;
+  const lockInfo = inspectManualLock(device.session_id, actorId, udid);
+  const isAdmin =
+    req.apiKey && (req.apiKey.scopes === 'admin' || req.apiKey.scopes?.includes('admin'));
+  if (lockInfo && !lockInfo.legacy && !lockInfo.self && !isAdmin) {
+    return res.status(403).json({
+      success: false,
+      error: 'lock_owned_by_another_user',
+      message:
+        'This device is being controlled by another user. Ask them to stop, or use an admin key to force-release.',
+    });
+  }
 
   try {
     if (device.platform === 'ios' || device.platform === 'tvos') {

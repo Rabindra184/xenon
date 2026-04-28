@@ -181,6 +181,14 @@ export interface IPluginArgs {
    */
   nodeSecret?: string;
   interceptor?: InterceptorConfig;
+  /**
+   * Server-wide hard cap on simultaneous free-form (non-session) screen recordings across all users. Automation session recording is exempt and not counted against this cap.
+   */
+  maxConcurrentRecordings?: number;
+  /**
+   * Override directory for free-form recording artifacts. Defaults to <sessionAssetsPath>/recordings.
+   */
+  recordingsAssetsPath?: string;
 }
 export interface SimulatorConfig {
   name: string;

@@ -113,9 +113,23 @@ const Overview: React.FC = () => {
           <DeviceBreakdown rows={data.osBreakdown} />
         </div>
 
-        <footer className="mt-10 pt-6 border-t border-[var(--border)] flex items-center justify-between text-[11px] font-mono text-[var(--text-dim)]">
-          <span>XENON Device Ops · v{__XENON_VERSION__}</span>
-          <span>© {year} {TENANT_NAME}</span>
+        <footer className="mt-12 pt-6 pb-8 border-t border-[var(--border)] flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-[var(--text-dim)]">
+          <div className="flex items-center gap-3">
+            <span className="font-medium text-[var(--text)]">{TENANT_NAME} Device Ops</span>
+            <span className="hidden sm:inline-block h-3 w-px bg-[var(--border)]"></span>
+            <span className="hidden sm:inline-block">Intelligent Fleet Management</span>
+          </div>
+          <div className="flex items-center gap-6">
+            <div className="flex items-center gap-1.5">
+              <span className="relative flex h-2 w-2">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[var(--green)] opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-[var(--green)]"></span>
+              </span>
+              <span>Systems operational</span>
+            </div>
+
+            <span className="font-mono">© {year} {TENANT_NAME}</span>
+          </div>
         </footer>
       </div>
     </div>

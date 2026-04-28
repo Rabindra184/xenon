@@ -3121,3 +3121,291 @@ export {};
  *       404: { $ref: '#/components/responses/NotFound' }
  *       429: { $ref: '#/components/responses/RateLimited' }
  */
+
+/**
+ * @swagger
+ * /api/recordings:
+ *   post:
+ *     summary: Start a multi-device recording group
+ *     description: Start free-form recording on one or more devices. Atomic — if any UDID is busy or the concurrency cap is exceeded, nothing is started.
+ *     tags: [Recordings]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [udids]
+ *             properties:
+ *               udids:
+ *                 type: array
+ *                 items: { type: string }
+ *                 description: Device UDIDs to record
+ *               sessionId:
+ *                 type: string
+ *                 description: Optional session ID to associate
+ *               note:
+ *                 type: string
+ *                 description: Optional label for the recording group
+ *     responses:
+ *       202:
+ *         description: Recording started
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 groupId: { type: string }
+ *                 recordings:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       id: { type: string }
+ *                       udid: { type: string }
+ *                       status: { type: string }
+ *                 startedAt: { type: string, format: date-time }
+ *       409:
+ *         description: Device busy or concurrency cap reached
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 error: { type: string, enum: [device_busy, concurrency_cap] }
+ *                 busyDevices:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       udid: { type: string }
+ *                       reason: { type: string }
+ *                       sessionId: { type: string }
+ *                       blockId: { type: string }
+ *                 limit: { type: integer }
+ *                 active: { type: integer }
+ *                 message: { type: string }
+ *       401: { $ref: '#/components/responses/Unauthorized' }
+ *       429: { $ref: '#/components/responses/RateLimited' }
+ */
+
+/**
+ * @swagger
+ * /api/recordings/{groupId}/add-device:
+ *   post:
+ *     summary: Add a device to a running recording group
+ *     description: Add a single device to an existing, active recording group. Atomic — if the device is busy or the cap is exceeded, nothing is started.
+ *     tags: [Recordings]
+ *     parameters:
+ *       - in: path
+ *         name: groupId
+ *         required: true
+ *         schema: { type: string }
+ *         description: Recording group ID
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [udid]
+ *             properties:
+ *               udid:
+ *                 type: string
+ *                 description: Device UDID to add
+ *     responses:
+ *       201:
+ *         description: Device added to recording group
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 recording:
+ *                   type: object
+ *                   properties:
+ *                     id: { type: string }
+ *                     udid: { type: string }
+ *                     status: { type: string }
+ *       409:
+ *         description: Device busy or concurrency cap reached
+ *       401: { $ref: '#/components/responses/Unauthorized' }
+ *       429: { $ref: '#/components/responses/RateLimited' }
+ */
+
+/**
+ * @swagger
+ * /api/recordings/{groupId}/stop:
+ *   post:
+ *     summary: Stop all recordings in a group
+ *     description: Stop all active recordings in the specified group. Each recording is finalized independently.
+ *     tags: [Recordings]
+ *     parameters:
+ *       - in: path
+ *         name: groupId
+ *         required: true
+ *         schema: { type: string }
+ *     responses:
+ *       200:
+ *         description: Recordings stopped
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 groupId: { type: string }
+ *                 recordings:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       id: { type: string }
+ *                       udid: { type: string }
+ *                       status: { type: string }
+ *                       durationMs: { type: integer }
+ *                       sizeBytes: { type: integer }
+ *       401: { $ref: '#/components/responses/Unauthorized' }
+ *       429: { $ref: '#/components/responses/RateLimited' }
+ */
+
+/**
+ * @swagger
+ * /api/recordings/{groupId}/bookmark:
+ *   post:
+ *     summary: Add a bookmark to a recording
+ *     description: Drop a time-stamped bookmark on a recording, optionally with a note.
+ *     tags: [Recordings]
+ *     parameters:
+ *       - in: path
+ *         name: groupId
+ *         required: true
+ *         schema: { type: string }
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [recordingId, timecodeMs, label]
+ *             properties:
+ *               recordingId: { type: string }
+ *               timecodeMs: { type: integer }
+ *               label: { type: string }
+ *               note: { type: string }
+ *     responses:
+ *       201:
+ *         description: Bookmark created
+ *       401: { $ref: '#/components/responses/Unauthorized' }
+ *       429: { $ref: '#/components/responses/RateLimited' }
+ */
+
+/**
+ * @swagger
+ * /api/recordings/{groupId}/annotation:
+ *   post:
+ *     summary: Add an annotation to a recording
+ *     description: Persist a normalized annotation (shape, geometry, color) on a recording frame.
+ *     tags: [Recordings]
+ *     parameters:
+ *       - in: path
+ *         name: groupId
+ *         required: true
+ *         schema: { type: string }
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [recordingId, timecodeMs, shape, geometry, color]
+ *             properties:
+ *               recordingId: { type: string }
+ *               timecodeMs: { type: integer }
+ *               shape: { type: string, enum: [RECT, CIRCLE, ARROW, TEXT, FREEHAND] }
+ *               geometry: { type: string, description: JSON string with normalized coordinates }
+ *               color: { type: string }
+ *               text: { type: string }
+ *               author: { type: string }
+ *     responses:
+ *       201:
+ *         description: Annotation created
+ *       401: { $ref: '#/components/responses/Unauthorized' }
+ *       429: { $ref: '#/components/responses/RateLimited' }
+ */
+
+/**
+ * @swagger
+ * /api/recordings/{groupId}:
+ *   get:
+ *     summary: Get recording group details
+ *     description: Retrieve all recordings, bookmarks, and annotations for a recording group.
+ *     tags: [Recordings]
+ *     parameters:
+ *       - in: path
+ *         name: groupId
+ *         required: true
+ *         schema: { type: string }
+ *     responses:
+ *       200:
+ *         description: Recording group details
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 groupId: { type: string }
+ *                 recordings: { type: array }
+ *       401: { $ref: '#/components/responses/Unauthorized' }
+ *       429: { $ref: '#/components/responses/RateLimited' }
+ */
+
+/**
+ * @swagger
+ * /api/recordings/{groupId}/bundle.zip:
+ *   get:
+ *     summary: Download proof bundle
+ *     description: Download a self-contained zip containing videos, bookmarks, annotations, and device metadata.
+ *     tags: [Recordings]
+ *     parameters:
+ *       - in: path
+ *         name: groupId
+ *         required: true
+ *         schema: { type: string }
+ *     responses:
+ *       200:
+ *         description: Zip archive stream
+ *         content:
+ *           application/zip:
+ *             schema: { type: string, format: binary }
+ *       401: { $ref: '#/components/responses/Unauthorized' }
+ *       429: { $ref: '#/components/responses/RateLimited' }
+ */
+
+/**
+ * @swagger
+ * /api/recordings/{groupId}/exports/annotated.mp4:
+ *   get:
+ *     summary: Download annotated MP4
+ *     description: Generate and stream an MP4 with annotations burned into the video pixels. Lazy — only rendered on demand.
+ *     tags: [Recordings]
+ *     parameters:
+ *       - in: path
+ *         name: groupId
+ *         required: true
+ *         schema: { type: string }
+ *       - in: query
+ *         name: recordingId
+ *         required: true
+ *         schema: { type: string }
+ *         description: The specific recording to render
+ *     responses:
+ *       200:
+ *         description: Annotated MP4 stream
+ *         content:
+ *           video/mp4:
+ *             schema: { type: string, format: binary }
+ *       400:
+ *         description: Missing recordingId query param
+ *       401: { $ref: '#/components/responses/Unauthorized' }
+ *       429: { $ref: '#/components/responses/RateLimited' }
+ */

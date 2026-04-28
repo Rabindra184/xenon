@@ -251,6 +251,17 @@
         "interceptor": {
             "type": "object",
             "description": "Network request interception configuration (capture + mock + modify). See InterceptorConfig interface for details. Android-only in v1."
+        },
+        "maxConcurrentRecordings": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 16,
+            "default": 4,
+            "description": "Server-wide hard cap on simultaneous free-form (non-session) screen recordings across all users. Automation session recording is exempt and not counted against this cap."
+        },
+        "recordingsAssetsPath": {
+            "type": "string",
+            "description": "Override directory for free-form recording artifacts. Defaults to <sessionAssetsPath>/recordings."
         }
     },
     "required": [

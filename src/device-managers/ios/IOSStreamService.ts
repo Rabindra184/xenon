@@ -3,8 +3,6 @@
  *
  * This service manages independent MJPEG streaming for iOS devices without requiring
  * an active Appium session. It uses go-ios to start WDA and forwards the MJPEG stream.
- *
- * Based on GADS implementation approach.
  */
 
 import { Service } from 'typedi';
@@ -295,7 +293,11 @@ class IOSStreamService {
    * Principal Resilience: Retries transient connection errors (ECONNRESET) up to 2 times
    * with exponential backoff, as these often indicate WDA is restarting or tunnel is reconnecting.
    */
-  public async isWDARunning(wdaPort: number, retries = 2): Promise<boolean> {
+  public async isWDARunning(
+    wdaPort: number,
+    udid?: string,
+    retries = 2,
+  ): Promise<boolean> {
     const axios = (await import('axios')).default;
     const host = '127.0.0.1'; // Force IPv4 for local tunnels
     const maxRetries = retries;
@@ -308,10 +310,22 @@ class IOSStreamService {
           httpAgent: new http.Agent({ keepAlive: false }),
           validateStatus: (status) => status === 200,
         });
+
+        // Principal Resilience: Verify the UDID if provided to ensure we're talking to the right device
+        const remoteUdid = response.data?.value?.ios?.udid;
+        if (udid && remoteUdid && remoteUdid !== udid) {
+          log.warn(
+            `[WDA] Port ${wdaPort} is used by a DIFFERENT device: ${remoteUdid} (expected ${udid})`,
+          );
+          return false;
+        }
+
         const isReady = response.data?.value?.ready === true;
         if (!isReady) {
           log.debug(
-            `[WDA] Port ${wdaPort} active but not ready. Status: ${JSON.stringify(response.data?.value)}`,
+            `[WDA] Port ${wdaPort} active but not ready. Status: ${JSON.stringify(
+              response.data?.value,
+            )}`,
           );
         }
         return isReady;
@@ -542,8 +556,71 @@ class IOSStreamService {
         const device = await DeviceStoreFactory.getStore().findDevice({ udid });
         if (!device) throw new Error(`Device ${udid} not found`);
 
-        const wdaPort = device.wdaLocalPort || (await Container.get(PortAllocator).acquire('wda', udid));
-        const mjpegPort = device.mjpegServerPort || (await Container.get(PortAllocator).acquire('mjpeg', udid));
+        const wdaPort =
+          device.wdaLocalPort || (await Container.get(PortAllocator).acquire('wda', udid));
+        const mjpegPort =
+          device.mjpegServerPort || (await Container.get(PortAllocator).acquire('mjpeg', udid));
+
+        // Principal Discovery: Check if WDA is already up (e.g. from an active Appium session)
+        // If yes, and it belongs to our device, we simply attach to it instead of killing it.
+        const alreadyUp = await this.isWDARunning(wdaPort, udid);
+        if (alreadyUp) {
+          log.info(`[${udid}] WDA already responding on port ${wdaPort}. Attaching to existing tunnel...`);
+
+          // WDA reachable on 127.0.0.1:wdaPort means the WDA iproxy is live, but the
+          // MJPEG iproxy is a separate process and may have died (or never started if
+          // WDA was launched outside our service). If we don't ensure it here, the
+          // proxy connection to 127.0.0.1:mjpegPort will fail and the tile shows
+          // "Connection Failed" even though WDA itself is healthy.
+          const isolationService = Container.get(ResourceIsolationService);
+          let forwardMJPEGProcess: ChildProcess | null = null;
+          const mjpegForwarded = await tcpPortUsed.check(mjpegPort, '127.0.0.1');
+          if (!mjpegForwarded) {
+            log.info(
+              `[${udid}] MJPEG port ${mjpegPort} not forwarded. Starting iproxy ${mjpegPort}:9100...`,
+            );
+            const mjpegIproxy = isolationService.wrapSpawn(
+              'iproxy',
+              ['-u', udid, `${mjpegPort}:9100`],
+              'Performance',
+            );
+            forwardMJPEGProcess = spawn(mjpegIproxy.command, mjpegIproxy.args);
+            Container.get(ProcessRegistry).track({
+              kind: 'ios-mjpeg',
+              udid,
+              process: forwardMJPEGProcess,
+            });
+            forwardMJPEGProcess.on('error', (err) =>
+              log.error(`iproxy-mjpeg [${udid}] error: ${err.message}`),
+            );
+            // Give iproxy a moment to bind; without this the proxy can race past us
+            // and hit ECONNREFUSED on its first attempt.
+            for (let i = 0; i < 5; i++) {
+              if (await tcpPortUsed.check(mjpegPort, '127.0.0.1')) break;
+              await new Promise((resolve) => setTimeout(resolve, 500));
+            }
+          }
+
+          const session: StreamSession = {
+            udid,
+            wdaProcess: null,
+            forwardWDAProcess: null,
+            forwardMJPEGProcess,
+            tunnelProcess: null,
+            wdaPort,
+            mjpegPort,
+            status: 'running',
+            startedAt: new Date(),
+            lastViewerAt: Date.now(),
+            viewerCount: 0,
+          };
+          this.sessions.set(udid, session);
+
+          // Ensure MJPEG server is enabled if it wasn't already
+          await this.updateWDASettings(wdaPort);
+
+          return { wdaPort, mjpegPort };
+        }
 
         // Perform aggressive cleanup of any existing processes for THIS device/ports
         await this.stopStream(udid);
@@ -746,8 +823,7 @@ class IOSStreamService {
           if (session.wdaProcess?.exitCode !== null) {
             const logContent = fs.existsSync(wdaRunLog) ? fs.readFileSync(wdaRunLog, 'utf8') : '';
             throw new Error(
-              `WDA process exited with code ${
-                session.wdaProcess?.exitCode
+              `WDA process exited with code ${session.wdaProcess?.exitCode
               }. Log: ${logContent.slice(-200)}`,
             );
           }
@@ -784,13 +860,18 @@ class IOSStreamService {
     // Senior Resiliency: Use centralized tunnel cleanup
     await this.cleanupOrphanTunnels(udid);
 
-    const pkillCmds = [`pkill -9 -f "iproxy.*${udid}"`, `pkill -9 -f "ios runwda.*${udid}"`];
-
-    for (const cmd of pkillCmds) {
-      try {
-        await execPromise(cmd);
-      } catch (err) {
-        /* ignore */
+    // Principal Resilience: Avoid broad pkill on the UDID, which kills Appium's tunnels too.
+    // Instead, rely on the surgical lsof port-based cleanup below to only clear
+    // the specific ports we need.
+    const pkillCmds: string[] = []; // Broad pkill disabled for automation co-existence
+    
+    if (pkillCmds.length > 0) {
+      for (const cmd of pkillCmds) {
+        try {
+          await execPromise(cmd);
+        } catch (err) {
+          /* ignore */
+        }
       }
     }
 
