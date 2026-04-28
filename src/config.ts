@@ -27,6 +27,14 @@ export interface Config {
   // `XENON_NODE_SECRET` (new) and `XENON_NODE_SECRET_PREVIOUS` (old) on the
   // hub, flip nodes one by one to the new secret, then drop PREVIOUS.
   nodeSecretPrevious?: string;
+  // Phase 1 identity
+  bootstrapAdminEmail: string;
+  bootstrapAdminPassword: string;
+  bootstrapResetPassword: boolean;
+  acceptLegacyKey: boolean;
+  loginRateLimitAttempts: number;
+  loginRateLimitWindowMs: number;
+  userSessionTtlMs: number;
   recordingsAssetsPath: string;
   maxConcurrentRecordings: number;
 }
@@ -61,11 +69,17 @@ export const config: Config = {
   anthropicModel: process.env.XENON_ANTHROPIC_MODEL,
   ollamaModel: process.env.XENON_OLLAMA_MODEL,
   bootstrapKeyPath:
-    process.env.XENON_BOOTSTRAP_KEY_PATH ||
-    path.join(basePath, 'bootstrap-key.txt'),
+    process.env.XENON_BOOTSTRAP_KEY_PATH || path.join(basePath, 'bootstrap-key.txt'),
   authDisabled: process.env.XENON_AUTH_DISABLED === 'true',
   nodeSecret: process.env.XENON_NODE_SECRET,
   nodeSecretPrevious: process.env.XENON_NODE_SECRET_PREVIOUS,
+  bootstrapAdminEmail: process.env.XENON_BOOTSTRAP_ADMIN_EMAIL || 'admin@xenon.local',
+  bootstrapAdminPassword: process.env.XENON_BOOTSTRAP_ADMIN_PASSWORD || 'Admin@123',
+  bootstrapResetPassword: process.env.XENON_BOOTSTRAP_RESET_PASSWORD === 'true',
+  acceptLegacyKey: process.env.XENON_ACCEPT_LEGACY_KEY !== 'false',
+  loginRateLimitAttempts: Number(process.env.XENON_LOGIN_RATE_LIMIT_ATTEMPTS) || 5,
+  loginRateLimitWindowMs: Number(process.env.XENON_LOGIN_RATE_LIMIT_WINDOW_MS) || 5 * 60 * 1000,
+  userSessionTtlMs: Number(process.env.XENON_USER_SESSION_TTL_MS) || 24 * 60 * 60 * 1000,
   recordingsAssetsPath:
     process.env.XENON_RECORDINGS_ASSETS_PATH ||
     path.join(basePath, 'assets', 'sessions', 'recordings'),
