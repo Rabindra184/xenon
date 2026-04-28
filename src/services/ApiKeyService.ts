@@ -23,6 +23,11 @@ export interface ApiKeyRow {
 export class ApiKeyService {
   private log = log.scope('ApiKey');
 
+  // Plain SHA-256 (no salt, no key-stretching) is correct for tokens
+  // produced by generateRaw() — they are 32 random bytes (~256 bits of
+  // entropy) so preimage resistance is the only property we need. DO NOT
+  // copy this pattern for password hashing — passwords are low-entropy
+  // and need bcrypt (see UserService.hashPassword).
   hash(raw: string): string {
     return crypto.createHash('sha256').update(raw).digest('hex');
   }
@@ -80,6 +85,10 @@ export class ApiKeyService {
     // Optional through Task 8-15; Task 16's NOT NULL migration tightens this
     // to required once all callers pass userId from req.auth (post-Task 12).
     userId?: string;
+    // Accepted for forward-compat only — there is no expiresAt column on
+    // ApiKey yet, so this value is silently ignored at write time. A later
+    // task will add the column + persistence logic; until then, callers
+    // that need expiry must track it externally.
     expiresAt?: Date;
   }): Promise<{ id: string; raw: string }> {
     const raw = this.generateRaw();
