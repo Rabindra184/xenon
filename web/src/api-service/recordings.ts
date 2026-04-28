@@ -87,6 +87,13 @@ export interface AnnotationInput {
   text?: string;
 }
 
+export function addDevice(
+  groupId: string,
+  udid: string,
+): Promise<{ recording: StartedRecording }> {
+  return postJson(`${BASE}/${encodeURIComponent(groupId)}/add-device`, { udid });
+}
+
 export function addAnnotation(groupId: string, ann: AnnotationInput) {
   return postJson(`${BASE}/${encodeURIComponent(groupId)}/annotation`, ann);
 }
@@ -121,6 +128,10 @@ export async function getGroup(
 
 export function bundleZipUrl(groupId: string): string {
   return `${BASE}/${encodeURIComponent(groupId)}/bundle.zip`;
+}
+
+export function compositeMp4Url(groupId: string): string {
+  return `${BASE}/${encodeURIComponent(groupId)}/composite.mp4`;
 }
 
 export function annotatedMp4Url(groupId: string, recordingId: string): string {

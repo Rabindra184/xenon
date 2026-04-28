@@ -57,7 +57,27 @@ export class UniversalMjpegProxy {
     return this.mjpegUrl;
   }
 
-  public proxyRequest(req: Request, res: Response) {
+  public async proxyRequest(req: Request, res: Response) {
+    // Principal Improvement: Delay headers until connected.
+    // This ensures the browser's <img> tag stays in 'loading' state (and thus the frontend
+    // keeps showing the spinner) until we actually have a source to proxy.
+    if (!this.isConnected && !this.isStopped) {
+      this.startSource();
+      
+      // Wait for connection with timeout (10s)
+      const start = Date.now();
+      while (!this.isConnected && Date.now() - start < 10000 && !this.isStopped) {
+        await new Promise(resolve => setTimeout(resolve, 200));
+      }
+    }
+
+    if (this.isStopped || !this.isConnected) {
+      if (!res.headersSent) {
+        res.status(503).send('[MjpegProxy] Source not available after timeout');
+      }
+      return;
+    }
+
     res.writeHead(200, this.globalResponseHeaders);
     this.clients.add(res);
 
@@ -72,10 +92,6 @@ export class UniversalMjpegProxy {
         this.stopSource();
       }
     });
-
-    if (!this.isConnected) {
-      this.startSource();
-    }
   }
 
   private startSource() {

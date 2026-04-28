@@ -43,8 +43,18 @@ const Sidebar: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
 
-  const isActive = (path: string) =>
-    location.pathname === path || location.pathname.startsWith(path + '/');
+  // Path normalization: remove trailing slashes for consistent matching
+  const currentPath = location.pathname.replace(/\/$/, '') || '/';
+
+  const bestMatch = items
+    .filter(
+      (i) =>
+        currentPath === i.path ||
+        currentPath.startsWith(i.path + '/'),
+    )
+    .sort((a, b) => b.path.length - a.path.length)[0];
+
+  const isActive = (path: string) => bestMatch?.path === path;
 
   return (
     <aside className="fixed inset-y-0 left-0 z-30 w-14 border-r border-[var(--border)] bg-[var(--surface)] flex flex-col items-center py-3">

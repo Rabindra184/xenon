@@ -2,6 +2,7 @@ import { Service, Container } from 'typedi';
 import archiver, { Archiver } from 'archiver';
 import * as fs from 'fs';
 import { RecordingStore } from './recording-store';
+import { compositeOutputPath } from './RecordingOrchestrator';
 
 /**
  * Builds a self-contained zip for one recording group: manifest, README,
@@ -45,6 +46,12 @@ export class ProofBundleService {
     archive.append(this.renderReadme(groupId, recordings as any[]), {
       name: 'README.md',
     });
+
+    // Mosaic-wide composite mp4 (only present for multi-device groups).
+    const compositePath = compositeOutputPath(groupId);
+    if (fs.existsSync(compositePath)) {
+      archive.file(compositePath, { name: 'composite.mp4' });
+    }
 
     for (const r of recordings as any[]) {
       const base = `devices/${r.device_udid}`;

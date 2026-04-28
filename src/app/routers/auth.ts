@@ -22,5 +22,17 @@ export function authRouter(): Router {
     res.json({ ok: true, scopes: row.scopes });
   });
 
+  // Identity probe for the dashboard. Used by the live-devices view to
+  // tell its own manual locks apart from another user's. Requires
+  // authentication (apiKeyMiddleware mounts before this router).
+  r.get('/me', (req, res) => {
+    if (!req.apiKey) return res.status(401).json({ error: 'unauthenticated' });
+    res.json({
+      userId: req.apiKey.id,
+      scopes: req.apiKey.scopes,
+      teamId: req.apiKey.teamId ?? null,
+    });
+  });
+
   return r;
 }

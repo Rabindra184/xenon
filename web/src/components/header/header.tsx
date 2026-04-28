@@ -54,21 +54,8 @@ const Header: React.FC = () => {
           aria-label="Xenon home"
         >
           <div className="flex items-center gap-2">
-            <div className="h-7 w-7 rounded-md bg-[var(--green)] flex items-center justify-center text-black font-bold text-sm">
-              X
-            </div>
-            <div className="flex flex-col leading-tight text-left">
-              <span className="text-[13px] font-semibold tracking-wide text-[var(--text)]">
-                XENON
-              </span>
-              <span className="text-[9px] text-[var(--text-dim)] tracking-widest uppercase">
-                Device Ops
-              </span>
-            </div>
+            <img src={`${import.meta.env.BASE_URL}logo.svg`} alt="Xenon Logo" className="h-8 w-auto object-contain" />
           </div>
-          <span className="font-mono text-[11px] text-[var(--text-dim)] px-1.5 py-0.5 rounded border border-[var(--border)]">
-            v{__XENON_VERSION__}
-          </span>
         </button>
 
         {/* Search */}

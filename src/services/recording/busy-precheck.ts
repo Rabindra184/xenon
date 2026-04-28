@@ -1,5 +1,6 @@
 import { Service } from 'typedi';
 import { DeviceStoreFactory } from '../../data-service/device-store';
+import { inspectManualLock } from './manualLock';
 
 export type BusyReason =
   | 'automation'
@@ -20,9 +21,11 @@ export interface BusyEntry {
  * request is rejected without taking any side effects.
  *
  * Decoding rules for an existing session_id on a busy device:
- *   - id starts with "manual_" → manual_other (single-device control panel
- *     or another mosaic group). We do not have per-user identity in Phase 1
- *     so we conservatively treat all such blocks as foreign.
+ *   - id is exactly "manual_<udid>" → the mosaic preview's canonical lock
+ *     for THIS device. The same dashboard owns it, so the recording can
+ *     take it over. NOT a blocker.
+ *   - id starts with "manual_" but is for a different udid → manual_other
+ *     (a manual session for some other context — treat as foreign).
  *   - any other id → automation (a real Appium session).
  *   - missing/null   → unknown (defensive fallback).
  */
@@ -34,7 +37,14 @@ export class BusyPrecheck {
     this.storeProvider = store ? () => store : () => DeviceStoreFactory.getStore();
   }
 
-  async findBusy(udids: string[]): Promise<BusyEntry[]> {
+  /**
+   * @param udids   Devices to inspect.
+   * @param actorId Identity of the caller (api-key id). When provided, manual
+   *                locks owned by this actor are treated as self and skipped.
+   *                Omit only for legacy/internal call sites that don't have a
+   *                user identity available.
+   */
+  async findBusy(udids: string[], actorId?: string): Promise<BusyEntry[]> {
     const store = this.storeProvider();
     const out: BusyEntry[] = [];
     for (const udid of udids) {
@@ -45,9 +55,17 @@ export class BusyPrecheck {
       }
       if (!device.busy) continue;
       const blockId: string | undefined = device.session_id ?? undefined;
-      if (blockId && blockId.startsWith('manual_')) {
+      const lock = inspectManualLock(blockId, actorId, udid);
+      if (lock?.self) {
+        // Self-owned manual lock — caller can take it over.
+        continue;
+      }
+      if (lock) {
+        // Foreign manual lock (legacy `manual_<udid>` or another user's).
         out.push({ udid, reason: 'manual_other', blockId });
-      } else if (blockId) {
+        continue;
+      }
+      if (blockId) {
         out.push({ udid, reason: 'automation', sessionId: blockId });
       } else {
         out.push({ udid, reason: 'unknown' });

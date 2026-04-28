@@ -5,6 +5,7 @@ import {
   stopRecording,
   addBookmark,
   bundleZipUrl,
+  compositeMp4Url,
   RecordingConflict,
 } from '../../api-service/recordings';
 
@@ -85,6 +86,10 @@ export function RecordingControls({ selectedUdids }: Props) {
   const canStart = !state.recording && selectedUdids.length > 0;
   const canStopOrMark = state.recording;
   const showDownload = state.groupId && !state.recording;
+  // The composite mp4 only exists when the group had ≥2 devices. We use the
+  // tile count at stop-time as the proxy — single-device groups don't get
+  // a composite (the per-device mp4 already shows the whole screen).
+  const showCompositeDownload = showDownload && state.tiles.length >= 2;
 
   return (
     <div className="flex items-center gap-2">
@@ -93,7 +98,7 @@ export function RecordingControls({ selectedUdids }: Props) {
         disabled={!canStart}
         className="px-3 py-1.5 text-sm rounded bg-red-600 text-white disabled:opacity-40 disabled:cursor-not-allowed"
       >
-        ● Record
+        ● {selectedUdids.length > 1 ? 'Record All' : 'Record'}
       </button>
       <button
         onClick={onStop}
@@ -120,13 +125,22 @@ export function RecordingControls({ selectedUdids }: Props) {
       >
         ✎ Annotate
       </button>
+      {showCompositeDownload && (
+        <a
+          href={compositeMp4Url(state.groupId!)}
+          className="ml-2 px-3 py-1.5 text-sm rounded border border-[var(--border)] hover:bg-[var(--surface-2,#1a1a1a)]"
+          download={`mosaic-${state.groupId}.mp4`}
+        >
+          ⤓ Composite mp4
+        </a>
+      )}
       {showDownload && (
         <a
           href={bundleZipUrl(state.groupId!)}
-          className="ml-2 px-3 py-1.5 text-sm rounded border border-[var(--border)] hover:bg-[var(--surface-2,#1a1a1a)]"
+          className={`${showCompositeDownload ? 'ml-1' : 'ml-2'} px-3 py-1.5 text-sm rounded border border-[var(--border)] hover:bg-[var(--surface-2,#1a1a1a)]`}
           download
         >
-          ⤓ Download proof bundle
+          ⤓ Proof bundle
         </a>
       )}
     </div>

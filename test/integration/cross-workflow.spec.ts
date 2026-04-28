@@ -69,13 +69,14 @@ describe('Cross-workflow integration: manual + automation safety (6 scenarios)',
 
   it('1. mosaic recording on UDID X then automation request on UDID X — automation rejected by existing busy semantics', async () => {
     const { orch, blockDeviceFn } = makeOrch();
-    await orch.start({ udids: ['U1'] });
+    await orch.start({ udids: ['U1'], actorId: 'test-actor' });
     // The existing device-allocator inspects device.busy=true (set by
     // blockDevice) and skips the device for any new automation session.
-    // We assert the block was taken with the manual_${udid} sentinel — the
-    // exact handle existing automation guards already use.
+    // We assert the block was taken with the manual_<actorId>_<udid>
+    // sentinel — automation guards continue to recognise it via the
+    // `startsWith('manual_')` test they already use.
     expect(
-      (blockDeviceFn as any).calledWith('U1', '127.0.0.1', 'manual_U1'),
+      (blockDeviceFn as any).calledWith('U1', '127.0.0.1', 'manual_test-actor_U1'),
     ).to.equal(true);
   });
 
@@ -89,7 +90,7 @@ describe('Cross-workflow integration: manual + automation safety (6 scenarios)',
     });
     let caught: any;
     try {
-      await orch.start({ udids: ['U1'] });
+      await orch.start({ udids: ['U1'], actorId: 'test-actor' });
     } catch (e) {
       caught = e;
     }
@@ -103,8 +104,8 @@ describe('Cross-workflow integration: manual + automation safety (6 scenarios)',
 
   it('3. automation and mosaic on different UDIDs concurrently — both proceed, isolated ffmpegs', async () => {
     const { orch, videoPipeline } = makeOrch();
-    await orch.start({ udids: ['U1'] });
-    await orch.start({ udids: ['U2'] });
+    await orch.start({ udids: ['U1'], actorId: 'test-actor' });
+    await orch.start({ udids: ['U2'], actorId: 'test-actor' });
     expect(videoPipeline.startRecording.callCount).to.equal(2);
     // Two distinct sessionIds (Recording.id) → two independent ffmpeg keys
     // in VideoPipelineService.activeRecordings.
@@ -156,7 +157,7 @@ describe('Cross-workflow integration: manual + automation safety (6 scenarios)',
   it('6. two clients race on overlapping UDIDs — exactly one wins, loser gets 409 device_busy, no partial group', async () => {
     // Client A acquires [U1, U2] first.
     const { orch, videoPipeline } = makeOrch();
-    await orch.start({ udids: ['U1', 'U2'] });
+    await orch.start({ udids: ['U1', 'U2'], actorId: 'test-actor' });
     expect(videoPipeline.startRecording.callCount).to.equal(2);
 
     // Client B requests [U2, U3]. The precheck now sees U2 as
@@ -170,7 +171,7 @@ describe('Cross-workflow integration: manual + automation safety (6 scenarios)',
     });
     let caught: any;
     try {
-      await orchB.orch.start({ udids: ['U2', 'U3'] });
+      await orchB.orch.start({ udids: ['U2', 'U3'], actorId: 'test-actor' });
     } catch (e) {
       caught = e;
     }

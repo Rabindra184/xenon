@@ -1,8 +1,10 @@
 import { Router, Request, Response } from 'express';
 import { Container } from 'typedi';
+import * as fs from 'fs';
 import {
   RecordingOrchestrator,
   RecordingError,
+  compositeOutputPath,
 } from '../../services/recording/RecordingOrchestrator';
 import { ProofBundleService } from '../../services/recording/proof-bundle';
 import { AnnotationRenderService } from '../../services/recording/annotation-render';
@@ -22,11 +24,14 @@ router.post('/recordings', async (req: Request, res: Response) => {
       return res.status(400).json({ error: 'every udid must be a non-empty string' });
     }
   }
+  const actorId = req.apiKey?.id;
+  if (!actorId) return res.status(401).json({ error: 'unauthenticated' });
   try {
     const out = await Container.get(RecordingOrchestrator).start({
       udids,
       sessionId,
       note,
+      actorId,
     });
     return res.status(202).json(out);
   } catch (e: any) {
@@ -47,6 +52,42 @@ router.post('/recordings', async (req: Request, res: Response) => {
       });
     }
     recLog.error(`POST /recordings failed: ${e?.message}`);
+    return res.status(500).json({ error: 'internal', message: e?.message });
+  }
+});
+
+router.post('/recordings/:groupId/add-device', async (req: Request, res: Response) => {
+  const { udid } = req.body ?? {};
+  if (typeof udid !== 'string' || udid.length === 0) {
+    return res.status(400).json({ error: 'udid must be a non-empty string' });
+  }
+  const actorId = req.apiKey?.id;
+  if (!actorId) return res.status(401).json({ error: 'unauthenticated' });
+  try {
+    const out = await Container.get(RecordingOrchestrator).addDevice(
+      req.params.groupId,
+      udid,
+      actorId,
+    );
+    return res.status(201).json(out);
+  } catch (e: any) {
+    if (e instanceof RecordingError) {
+      if (e.code === 'concurrency_cap') {
+        return res.status(409).json({
+          error: 'concurrency_cap',
+          limit: e.limit,
+          active: e.active,
+          message: `Server-wide recording cap reached (${e.active}/${e.limit}).`,
+        });
+      }
+      const busyDevices = e.busyDevices ?? [];
+      return res.status(409).json({
+        error: 'device_busy',
+        busyDevices,
+        message: `Device is busy. Recording was not started.`,
+      });
+    }
+    recLog.error(`POST /recordings/:groupId/add-device failed: ${e?.message}`);
     return res.status(500).json({ error: 'internal', message: e?.message });
   }
 });
@@ -116,6 +157,20 @@ router.get('/recordings/:groupId', async (req: Request, res: Response) => {
   } catch (e: any) {
     res.status(500).json({ error: 'internal', message: e?.message });
   }
+});
+
+/**
+ * Stream the mosaic-wide composite mp4 for a group. 404s when no composite
+ * exists (single-device groups skip composite by design).
+ */
+router.get('/recordings/:groupId/composite.mp4', async (req: Request, res: Response) => {
+  const compositePath = compositeOutputPath(req.params.groupId);
+  if (!fs.existsSync(compositePath)) {
+    return res.status(404).json({ error: 'composite_not_found' });
+  }
+  res.setHeader('Content-Type', 'video/mp4');
+  res.setHeader('Accept-Ranges', 'bytes');
+  fs.createReadStream(compositePath).pipe(res);
 });
 
 router.get('/recordings/:groupId/bundle.zip', async (req: Request, res: Response) => {

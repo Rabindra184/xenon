@@ -33,13 +33,41 @@ describe('BusyPrecheck', () => {
     expect(out[0]).to.deep.include({ udid: 'U1', reason: 'automation', sessionId: 'sess-abc' });
   });
 
-  it('flags manual-busy devices as manual_other regardless of caller', async () => {
+  it('treats a manual lock owned by the calling actor as self, not a blocker', async () => {
+    // manual_<actorId>_<udid> is owned by the same dashboard caller, so the
+    // recording can take it over.
+    const pc = new BusyPrecheck(
+      withDevices({
+        U1: { udid: 'U1', busy: true, session_id: 'manual_actor-1_U1' },
+      }),
+    );
+    const out = await pc.findBusy(['U1'], 'actor-1');
+    expect(out).to.deep.equal([]);
+  });
+
+  it('flags a manual lock owned by a different actor as manual_other', async () => {
+    const pc = new BusyPrecheck(
+      withDevices({
+        U1: { udid: 'U1', busy: true, session_id: 'manual_actor-2_U1' },
+      }),
+    );
+    const out = await pc.findBusy(['U1'], 'actor-1');
+    expect(out[0]).to.deep.include({
+      udid: 'U1',
+      reason: 'manual_other',
+      blockId: 'manual_actor-2_U1',
+    });
+  });
+
+  it('treats legacy manual_<udid> (no actor) as foreign — never self', async () => {
+    // Locks written by older code carry no actor identity. They must NOT
+    // be silently treated as self under the new model.
     const pc = new BusyPrecheck(
       withDevices({
         U1: { udid: 'U1', busy: true, session_id: 'manual_U1' },
       }),
     );
-    const out = await pc.findBusy(['U1']);
+    const out = await pc.findBusy(['U1'], 'actor-1');
     expect(out[0]).to.deep.include({ udid: 'U1', reason: 'manual_other', blockId: 'manual_U1' });
   });
 

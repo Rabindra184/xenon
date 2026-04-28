@@ -26,6 +26,8 @@ function makeOrch(overrides: any = {}) {
     overrides.videoPipeline ?? {
       startRecording: sinon.stub().resolves(),
       stopRecording: sinon.stub().resolves('/tmp/x.mp4'),
+      startComposite: sinon.stub().resolves(),
+      stopComposite: sinon.stub().resolves(null),
     };
   const blockDeviceFn = overrides.blockDeviceFn ?? sinon.stub().resolves();
   const unblockDeviceFn = overrides.unblockDeviceFn ?? sinon.stub().resolves();
@@ -73,7 +75,7 @@ describe('RecordingOrchestrator.start', () => {
       },
     });
     try {
-      await orch.start({ udids: ['U1', 'U2'] });
+      await orch.start({ udids: ['U1', 'U2'], actorId: 'actor-1' });
       expect.fail('expected throw');
     } catch (e: any) {
       expect(e).to.be.instanceOf(RecordingError);
@@ -89,7 +91,7 @@ describe('RecordingOrchestrator.start', () => {
     const gate = new ConcurrencyGate(0);
     const { orch, store } = makeOrch({ gate });
     try {
-      await orch.start({ udids: ['U1'] });
+      await orch.start({ udids: ['U1'], actorId: 'actor-1' });
       expect.fail('expected throw');
     } catch (e: any) {
       expect(e.code).to.equal('concurrency_cap');
@@ -100,13 +102,17 @@ describe('RecordingOrchestrator.start', () => {
 
   it('happy path: creates one row per UDID, spawns ffmpeg, takes blocks, emits started', async () => {
     const { orch, store, videoPipeline, blockDeviceFn, eventMgr } = makeOrch();
-    const out = await orch.start({ udids: ['U1', 'U2'] });
+    const out = await orch.start({ udids: ['U1', 'U2'], actorId: 'actor-1' });
     expect(out.recordings).to.have.length(2);
     expect(store.create.callCount).to.equal(2);
     expect(videoPipeline.startRecording.callCount).to.equal(2);
     expect((blockDeviceFn as any).callCount).to.equal(2);
     expect(
-      (blockDeviceFn as any).calledWith('U1', sinon.match.string, 'manual_U1'),
+      (blockDeviceFn as any).calledWith(
+        'U1',
+        sinon.match.string,
+        'manual_actor-1_U1',
+      ),
     ).to.equal(true);
     expect(eventMgr.emitRecordingStarted.callCount).to.equal(1);
   });
