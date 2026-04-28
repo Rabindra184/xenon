@@ -43,10 +43,15 @@ export class LoginRateLimiter {
 const ipSecret = process.env.XENON_IP_HASH_SECRET || 'xenon-ip-hash';
 
 function ipHash(req: Request): string {
-  const ip = (req.headers['x-forwarded-for'] as string)?.split(',')[0].trim()
-    || req.socket.remoteAddress
-    || 'unknown';
-  return crypto.createHash('sha256').update(ip + ':' + ipSecret).digest('hex').slice(0, 16);
+  const ip =
+    (req.headers['x-forwarded-for'] as string)?.split(',')[0].trim() ||
+    req.socket.remoteAddress ||
+    'unknown';
+  return crypto
+    .createHash('sha256')
+    .update(ip + ':' + ipSecret)
+    .digest('hex')
+    .slice(0, 16);
 }
 
 export function loginRateLimitMiddleware(limiter: LoginRateLimiter) {
@@ -56,7 +61,11 @@ export function loginRateLimitMiddleware(limiter: LoginRateLimiter) {
       res.set('Retry-After', String(limiter.retryAfterSec(key)));
       return res.status(429).json({ error: 'too many login attempts' });
     }
-    (req as any).loginRateLimitKey = key;
+    // Cast: ts-node/register (used by mocha) doesn't auto-include .d.ts
+    // files, so the Request augmentation in src/types/express.d.ts isn't
+    // visible at unit-test compile time. The augmentation still helps full
+    // project tsc and IDE autocomplete.
+    (req as Request & { loginRateLimitKey?: string }).loginRateLimitKey = key;
     next();
   };
 }

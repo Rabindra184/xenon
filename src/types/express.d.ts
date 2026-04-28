@@ -22,6 +22,9 @@ declare global {
         rateLimit: number;
         teamId?: string | null;
       };
+      // Set by loginRateLimitMiddleware so the /auth/login route can call
+      // limiter.clearOnSuccess() with the same key on a successful sign-in.
+      loginRateLimitKey?: string;
     }
   }
 }
