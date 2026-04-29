@@ -171,6 +171,23 @@ export function extractAccessKeyCap(caps: ISessionCapability): string | undefine
   return undefined;
 }
 
+// Returns the (accessKey, token) pair from df:options.{accessKey,token} or
+// equivalently df:options.{access_key,token}. Returns undefined if either
+// piece is missing — callers fall back to extractAccessKeyCap (legacy).
+export function extractAccessKeyTokenPair(
+  caps: ISessionCapability,
+): { accessKey: string; token: string } | undefined {
+  const merged = Object.assign({}, caps.firstMatch?.[0] || {}, caps.alwaysMatch || {});
+  const dfOptions =
+    merged['df:options'] ?? merged['xenon:df:options'] ?? merged['appium:df:options'];
+  if (!dfOptions || typeof dfOptions !== 'object') return undefined;
+  const accessKey = (dfOptions as any).accessKey ?? (dfOptions as any).access_key;
+  const token = (dfOptions as any).token;
+  if (typeof accessKey !== 'string' || typeof token !== 'string') return undefined;
+  if (!accessKey || !token) return undefined;
+  return { accessKey, token };
+}
+
 export function getXenonCapabilities(caps: ISessionCapability) {
   const mergedCapabilites = Object.assign({}, caps.firstMatch?.[0] ?? {}, caps.alwaysMatch);
 

@@ -33,6 +33,7 @@ import { TracingService } from './TracingService';
 import { PortAllocator } from './PortAllocator';
 import {
   extractAccessKeyCap,
+  extractAccessKeyTokenPair,
   extractTeamCap,
   getXenonCapabilities,
   XENON_CAPABILITIES,
@@ -205,23 +206,30 @@ export class SessionLifecycleService {
       return { apiKeyId: null, callerTeamId: null, scoped: false };
     }
 
-    const raw = extractAccessKeyCap(caps);
-    if (!raw) {
+    const { ApiKeyService } = await import('./ApiKeyService');
+    const svc = Container.get(ApiKeyService);
+
+    // Path 1: df:options.{accessKey, token} pair (docs-faithful).
+    const pair = extractAccessKeyTokenPair(caps);
+    let row = pair ? await svc.verifyPair(pair.accessKey, pair.token) : null;
+
+    // Path 2: legacy xenon:accessKey (single secret) — only if back-compat is on
+    // AND the pair path didn't already authenticate.
+    if (!row && xenonConfig.acceptLegacyKey) {
+      const raw = extractAccessKeyCap(caps);
+      if (raw) row = await svc.verify(raw);
+    }
+
+    if (!row) {
       this.logger.warn(
-        'Session created without xenon:accessKey capability. Add `xenon:accessKey` to your Appium capabilities to authenticate this session.',
+        'Session created without valid credentials. Pass `df:options.accessKey` + `df:options.token` (preferred) or `xenon:accessKey` (legacy).',
       );
       return { apiKeyId: null, callerTeamId: null, scoped: false };
     }
-
-    const { ApiKeyService } = await import('./ApiKeyService');
-    const svc = Container.get(ApiKeyService);
-    const row = await svc.verify(raw);
-    if (!row || !svc.hasScope(row, ['sessions'])) {
-      this.logger.error(
-        'Rejecting session: xenon:accessKey is invalid, revoked, or lacks the `sessions` scope',
-      );
+    if (!svc.hasScope(row, ['sessions'])) {
+      this.logger.error('Rejecting session: credentials lack the `sessions` scope');
       throw new appiumErrors.InvalidArgumentError(
-        'xenon:accessKey is invalid, revoked, or lacks the `sessions` scope',
+        'credentials are invalid, revoked, or lack the `sessions` scope',
       );
     }
 
