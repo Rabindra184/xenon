@@ -15,12 +15,16 @@ import fs from 'fs-extra';
 import { OmniVisionService } from '../../services/omni-vision/OmniVisionService';
 import { InspectorService } from '../../services/InspectorService';
 import { mutationScopeGuard } from '../../middleware/scopeGuard';
+import { roleGuard } from '../../middleware/roleGuard';
 import {
   formatManualLock,
   inspectManualLock,
 } from '../../services/recording/manualLock';
 
 const router = Router();
+
+// MEMBER-tier baseline: per-device interaction (tap, swipe, install, etc.) is a Member action
+router.use(roleGuard('MEMBER'));
 
 // Every mutation under /control (tap, swipe, install, shell, lock, etc.)
 // requires devices scope. Read endpoints (screenshots, page source) stay
