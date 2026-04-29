@@ -14,6 +14,7 @@ import {
   updateDeviceTags,
 } from '../../data-service/device-service';
 import { scopeGuard } from '../../middleware/scopeGuard';
+import { roleGuard } from '../../middleware/roleGuard';
 import log from '../../logger';
 import { XenonManager } from '../../device-managers';
 import { Container } from 'typedi';
@@ -347,17 +348,25 @@ async function getRequestLogs(request: Request, response: Response) {
 }
 
 function register(router: Router, pluginArgs: IPluginArgs) {
+  // MEMBER-tier baseline: device reads (devices, queue, sessions, nodes)
+  // require Member role. Mounted on the passed-in router so existing route
+  // paths (/devices, /queue, /node, ...) keep their unchanged URLs.
+  router.use(roleGuard('MEMBER'));
+
+  // GET reads — covered by MEMBER floor above
   router.get('/devices', getDevices);
   router.get('/device', getDevices);
   router.get('/device/:platform', getDeviceByPlatform);
+
+  // ADMIN-tier mutations: register, block/unblock, tags, team-assignment
   // Node registration + device manipulation all require devices scope.
   // Node bootstrap keys have admin scope so they pass; operator keys
   // need an explicit 'devices' grant.
-  router.post('/register', scopeGuard(['devices']), registerNode);
-  router.post('/block', scopeGuard(['devices']), blockDevice);
-  router.post('/unblock', scopeGuard(['devices']), unBlockDevice);
-  router.post('/device/tags', scopeGuard(['devices']), updateTags);
-  router.put('/device/:udid/team', scopeGuard(['admin']), assignDeviceToTeam);
+  router.post('/register', roleGuard('ADMIN'), scopeGuard(['devices']), registerNode);
+  router.post('/block', roleGuard('ADMIN'), scopeGuard(['devices']), blockDevice);
+  router.post('/unblock', roleGuard('ADMIN'), scopeGuard(['devices']), unBlockDevice);
+  router.post('/device/tags', roleGuard('ADMIN'), scopeGuard(['devices']), updateTags);
+  router.put('/device/:udid/team', roleGuard('ADMIN'), scopeGuard(['admin']), assignDeviceToTeam);
 
   // session related
   router.get('/queue/length', getQueuedSessionLength);

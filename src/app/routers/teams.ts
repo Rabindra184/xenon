@@ -2,9 +2,11 @@ import { Router } from 'express';
 import { Container } from 'typedi';
 import { TeamService, TeamRole } from '../../services/TeamService';
 import { scopeGuard } from '../../middleware/scopeGuard';
+import { roleGuard } from '../../middleware/roleGuard';
 
 export function teamsRouter(): Router {
   const r = Router();
+  r.use(roleGuard('ADMIN'));
   const svc = Container.get(TeamService);
 
   r.get('/', scopeGuard(['admin']), async (_req, res) => {

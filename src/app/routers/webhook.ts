@@ -3,6 +3,7 @@ import { NotificationService } from '../../services/NotificationService';
 import { Container } from 'typedi';
 import log from '../../logger';
 import { scopeGuard } from '../../middleware/scopeGuard';
+import { roleGuard } from '../../middleware/roleGuard';
 
 async function getConfigs(req: Request, res: Response) {
   try {
@@ -60,13 +61,18 @@ async function testWebhook(req: Request, res: Response) {
   }
 }
 
-function register(router: Router) {
-  router.get('/webhook', getConfigs);
+function register(parentRouter: Router) {
+  const webhookRouterInstance = Router();
+  webhookRouterInstance.use(roleGuard('ADMIN'));
+
+  webhookRouterInstance.get('/', getConfigs);
   // Webhook mutations are admin-only: adding / removing / test-firing global
   // webhooks is a fleet-wide config change.
-  router.post('/webhook', scopeGuard(['admin']), addConfig);
-  router.delete('/webhook/:id', scopeGuard(['admin']), deleteConfig);
-  router.post('/webhook/test', scopeGuard(['admin']), testWebhook);
+  webhookRouterInstance.post('/', scopeGuard(['admin']), addConfig);
+  webhookRouterInstance.delete('/:id', scopeGuard(['admin']), deleteConfig);
+  webhookRouterInstance.post('/test', scopeGuard(['admin']), testWebhook);
+
+  parentRouter.use('/webhook', webhookRouterInstance);
 }
 
 export default {

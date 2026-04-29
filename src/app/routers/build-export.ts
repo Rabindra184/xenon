@@ -1,4 +1,5 @@
-import { Request, Response } from 'express';
+import { Request, Response, Router } from 'express';
+import { roleGuard } from '../../middleware/roleGuard';
 import { prisma } from '../../prisma';
 
 const CSV_COLUMNS = [
@@ -47,7 +48,7 @@ interface ExportBody {
   sessionIds?: string[];
 }
 
-export async function buildExport(req: Request, res: Response): Promise<void> {
+async function buildExportHandler(req: Request, res: Response): Promise<void> {
   const { buildId } = req.params;
   const { format = 'json', sessionIds } = (req.body || {}) as ExportBody;
 
@@ -91,3 +92,13 @@ export async function buildExport(req: Request, res: Response): Promise<void> {
     res.send(sessionsToJson(sessions));
   }
 }
+
+const router = Router();
+router.use(roleGuard('MEMBER'));
+router.post('/:buildId/export', buildExportHandler);
+
+function register(parentRouter: Router) {
+  parentRouter.use('/build', router);
+}
+
+export default { register };

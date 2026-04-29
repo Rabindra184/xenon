@@ -4,8 +4,10 @@ import * as fs from 'fs';
 import { InterceptorService } from '../../services/InterceptorService';
 import { config } from '../../config';
 import { loadArchivedHar, loadArchivedRequests } from '../../services/interceptor/SessionArchive';
+import { roleGuard } from '../../middleware/roleGuard';
 
 const router = Router();
+router.use(roleGuard('ADMIN'));
 
 // GET routes serve from the live in-memory state when the interceptor is active for
 // the session, and fall back to the on-disk archive when it has been stopped (so the

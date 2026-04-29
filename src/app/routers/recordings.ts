@@ -9,10 +9,12 @@ import {
 import { ProofBundleService } from '../../services/recording/proof-bundle';
 import { AnnotationRenderService } from '../../services/recording/annotation-render';
 import { RecordingStore } from '../../services/recording/recording-store';
+import { roleGuard } from '../../middleware/roleGuard';
 import log from '../../logger';
 
 const recLog = log.scope('RecordingsRouter');
 const router = Router();
+router.use(roleGuard('MEMBER'));
 
 router.post('/recordings', async (req: Request, res: Response) => {
   const { udids, sessionId, note } = req.body ?? {};

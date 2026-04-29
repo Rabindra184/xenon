@@ -8,8 +8,12 @@ import {
 } from '../../data-service/device-service';
 import log from '../../logger';
 import { mutationScopeGuard } from '../../middleware/scopeGuard';
+import { roleGuard } from '../../middleware/roleGuard';
 
 const router = express.Router();
+
+// MEMBER-tier baseline: reserving devices for yourself is a Member-tier operation
+router.use(roleGuard('MEMBER'));
 
 // Reserving / releasing / extending a device hold requires devices scope.
 // GET listings remain open to any authenticated key.

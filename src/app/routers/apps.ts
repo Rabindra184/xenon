@@ -3,8 +3,12 @@ import { APP_SERVICE } from '../../dashboard/services/app-service';
 import log from '../../logger';
 import fs from 'fs-extra';
 import { mutationScopeGuard } from '../../middleware/scopeGuard';
+import { roleGuard } from '../../middleware/roleGuard';
 
 const router = Router();
+
+// MEMBER-tier baseline: device app visibility requires authenticated user
+router.use(roleGuard('MEMBER'));
 
 // Uploading an APK/IPA or deleting one from the fleet requires devices scope.
 // App listings stay readable to any authenticated key.
@@ -34,7 +38,7 @@ router.get('/:id/download', async (req, res) => {
   }
 });
 
-router.post('/upload', async (req, res) => {
+router.post('/upload', roleGuard('ADMIN'), async (req, res) => {
   if (!req.files || Object.keys(req.files).length === 0) {
     return res.status(400).json({ error: 'No files were uploaded.' });
   }
@@ -54,7 +58,7 @@ router.post('/upload', async (req, res) => {
   }
 });
 
-router.delete('/:id', async (req, res) => {
+router.delete('/:id', roleGuard('ADMIN'), async (req, res) => {
   try {
     await APP_SERVICE.deleteApp(req.params.id);
     log.audit('APP_DELETE', req.ip, { appId: req.params.id });

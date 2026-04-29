@@ -2,9 +2,11 @@ import { Router } from 'express';
 import { Container } from 'typedi';
 import { ApiKeyService, Scope } from '../../services/ApiKeyService';
 import { scopeGuard } from '../../middleware/scopeGuard';
+import { roleGuard } from '../../middleware/roleGuard';
 
 export function apiKeysRouter(): Router {
   const r = Router();
+  r.use(roleGuard('ADMIN'));
   const svc = Container.get(ApiKeyService);
 
   r.get('/', scopeGuard(['admin']), async (_req, res) => {

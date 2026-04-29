@@ -8,11 +8,13 @@ import {
   SLICE_MAX_SEC,
   SLICE_MIN_SEC,
 } from '../../services/bug-report/types';
+import { roleGuard } from '../../middleware/roleGuard';
 import log from '../../logger';
 import { SocketServer } from '../../services/SocketServer';
 import { SocketEvents } from '../../enums/SocketEvents';
 
 const router = Router();
+router.use(roleGuard('MEMBER'));
 
 function parseMode(raw: unknown): BugReportMode | null {
   if (raw === 'slice' || raw === 'full') return raw;

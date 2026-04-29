@@ -58,7 +58,7 @@ describe('authMiddleware', () => {
     expect(called).to.be.true;
     expect(req.auth?.kind).to.equal('user-session');
     expect(req.auth?.role).to.equal('SUPER_ADMIN');
-    expect(req.auth?.scopes).to.equal('admin');
+    expect(req.auth?.scopes).to.equal('admin,devices,sessions,read');
   });
 
   it('legacy x-xenon-api-key works only when XENON_ACCEPT_LEGACY_KEY=true', async () => {
@@ -120,9 +120,12 @@ describe('authMiddleware', () => {
   });
 
   describe('scopesForRole', () => {
-    it('maps each role to the documented scope set', () => {
-      expect(scopesForRole('SUPER_ADMIN')).to.equal('admin');
-      expect(scopesForRole('ADMIN')).to.equal('devices,sessions,read');
+    it('maps each role to the cookie-session scope set (ADMIN gets admin too)', () => {
+      // SUPER_ADMIN and ADMIN both get the full set on cookie sessions —
+      // they hit scopeGuard(['admin']) routes via the dashboard and must
+      // pass. Token-default scopes (in /profile/tokens) stay narrower.
+      expect(scopesForRole('SUPER_ADMIN')).to.equal('admin,devices,sessions,read');
+      expect(scopesForRole('ADMIN')).to.equal('admin,devices,sessions,read');
       expect(scopesForRole('MEMBER')).to.equal('sessions,read');
     });
   });
