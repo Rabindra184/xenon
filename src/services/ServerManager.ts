@@ -191,16 +191,8 @@ export class ServerManager {
     await runMigrations();
     await DeviceStoreFactory.getStore().clearStorage();
 
-    const { ApiKeyService } = await import('./ApiKeyService');
-    const { config: xenonConfig } = await import('../config');
-    const raw = await Container.get(ApiKeyService).bootstrapIfEmpty(xenonConfig.bootstrapKeyPath);
-    if (raw) {
-      log.bootstrapKeyBanner({
-        dashboardUrl: `http://${pluginArgs.bindHostOrIp}:${port}/xenon/`,
-        key: raw,
-        keyFilePath: xenonConfig.bootstrapKeyPath,
-      });
-    }
+    const { bootstrapIdentity } = await import('./identity/bootstrap');
+    await bootstrapIdentity();
   }
 
   private registerRoutes(expressApp: any, cliArgs: ServerArgs, pluginArgs: IPluginArgs) {
@@ -269,9 +261,11 @@ export class ServerManager {
         process.once(signal, async () => {
           log.info(`Received ${signal}, unregistering node from hub...`);
           try {
-            await new NodeDevices(hubArgument, pluginArgs.tlsRejectUnauthorized, pluginArgs.nodeSecret).unRegisterNode(
-              pluginArgs.bindHostOrIp as string,
-            );
+            await new NodeDevices(
+              hubArgument,
+              pluginArgs.tlsRejectUnauthorized,
+              pluginArgs.nodeSecret,
+            ).unRegisterNode(pluginArgs.bindHostOrIp as string);
           } catch (err) {
             log.error(`Error during node unregistration: ${err}`);
           }

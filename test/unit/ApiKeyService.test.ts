@@ -14,11 +14,12 @@ describe('ApiKeyService', () => {
     sinon.stub(fs, 'mkdirSync');
 
     const svc = new ApiKeyService();
-    const key = await svc.bootstrapIfEmpty('/tmp/test-bootstrap.txt');
+    const key = await svc.bootstrapIfEmpty('/tmp/test-bootstrap.txt', 'u-test');
 
     expect(key).to.be.a('string').with.lengthOf(64);
     expect(create.calledOnce).to.be.true;
     expect(create.firstCall.args[0].data.scopes).to.equal('admin');
+    expect(create.firstCall.args[0].data.userId).to.equal('u-test');
     expect(writeStub.calledOnce).to.be.true;
     expect(writeStub.firstCall.args[0]).to.equal('/tmp/test-bootstrap.txt');
   });
@@ -26,7 +27,7 @@ describe('ApiKeyService', () => {
   it('returns null when keys already exist', async () => {
     sinon.stub(prisma.apiKey, 'count').resolves(1);
     const svc = new ApiKeyService();
-    const key = await svc.bootstrapIfEmpty('/tmp/test-bootstrap.txt');
+    const key = await svc.bootstrapIfEmpty('/tmp/test-bootstrap.txt', 'u-test');
     expect(key).to.be.null;
   });
 

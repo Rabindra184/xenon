@@ -36,7 +36,7 @@ export class ApiKeyService {
     return crypto.randomBytes(32).toString('hex');
   }
 
-  async bootstrapIfEmpty(keyFilePath: string): Promise<string | null> {
+  async bootstrapIfEmpty(keyFilePath: string, userId: string): Promise<string | null> {
     const count = await prisma.apiKey.count();
     if (count > 0) return null;
 
@@ -52,6 +52,7 @@ export class ApiKeyService {
         keyHash,
         scopes: 'admin',
         rateLimit: 300,
+        userId,
       },
     });
 
