@@ -11,9 +11,19 @@ const SESSION_TTL_MS = 24 * 60 * 60 * 1000;
 
 // Role → scopes derivation. The same table is used in profile token creation
 // to enforce that members can never grant 'admin'.
+// Cookie-session scopes: a logged-in user gets the full set of scopes
+// their role is permitted to exercise. ADMIN users hit `scopeGuard(['admin'])`
+// routes via the dashboard, so their session must carry the admin scope --
+// otherwise the role hierarchy is decorative.
+//
+// This is intentionally DIFFERENT from default token scopes (see
+// `ROLE_SCOPES` in src/app/routers/profile.ts): a token an admin creates
+// without explicit scopes still narrows to `devices,sessions,read` -- the
+// admin's CI token shouldn't auto-grant 'admin'. Token-creation narrowing
+// is enforced at /profile/tokens; cookie sessions are the user themselves
+// and inherit their full role grant.
 export function scopesForRole(role: 'SUPER_ADMIN' | 'ADMIN' | 'MEMBER'): string {
-  if (role === 'SUPER_ADMIN') return 'admin';
-  if (role === 'ADMIN') return 'devices,sessions,read';
+  if (role === 'SUPER_ADMIN' || role === 'ADMIN') return 'admin,devices,sessions,read';
   return 'sessions,read';
 }
 

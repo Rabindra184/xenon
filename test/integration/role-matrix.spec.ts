@@ -16,41 +16,36 @@ interface Case {
   expect: { SUPER_ADMIN: number; ADMIN: number; MEMBER: number };
 }
 
-// NOTE on the ADMIN column below.
-// Each of these routers is gated by roleGuard('ADMIN') AND scopeGuard(['admin']).
-// authMiddleware → scopesForRole derives scopes from role:
-//   SUPER_ADMIN → 'admin'
-//   ADMIN       → 'devices,sessions,read'   (NO 'admin' scope)
-//   MEMBER      → 'sessions,read'
-// So today an ADMIN user passes roleGuard but is rejected by scopeGuard with 403
-// {error:'insufficient scope'}. That is intentional — these endpoints are
-// SUPER_ADMIN-only writes from the dashboard's perspective.
-// PR-B / PR-C will expand the matrix as the role/scope alignment is revisited.
+// scopesForRole now grants ADMIN the full 'admin,devices,sessions,read' set on
+// cookie sessions (the user themselves logged in via /login). Token-default
+// scopes in /profile/tokens stay narrower so an admin's CI token doesn't
+// auto-grant 'admin'. Both SUPER_ADMIN and ADMIN should pass these routes;
+// MEMBER is the floor and gets 403 from roleGuard before scopeGuard runs.
 const CASES: Case[] = [
   {
     name: 'apikeys list',
     method: 'GET',
     path: '/apikeys',
-    expect: { SUPER_ADMIN: 200, ADMIN: 403, MEMBER: 403 },
+    expect: { SUPER_ADMIN: 200, ADMIN: 200, MEMBER: 403 },
   },
   {
     name: 'apikeys create',
     method: 'POST',
     path: '/apikeys',
     body: { name: 'cli', scopes: ['read'] },
-    expect: { SUPER_ADMIN: 200, ADMIN: 403, MEMBER: 403 },
+    expect: { SUPER_ADMIN: 200, ADMIN: 200, MEMBER: 403 },
   },
   {
     name: 'teams list',
     method: 'GET',
     path: '/teams',
-    expect: { SUPER_ADMIN: 200, ADMIN: 403, MEMBER: 403 },
+    expect: { SUPER_ADMIN: 200, ADMIN: 200, MEMBER: 403 },
   },
   {
     name: 'processes list',
     method: 'GET',
     path: '/processes',
-    expect: { SUPER_ADMIN: 200, ADMIN: 403, MEMBER: 403 },
+    expect: { SUPER_ADMIN: 200, ADMIN: 200, MEMBER: 403 },
   },
 ];
 
