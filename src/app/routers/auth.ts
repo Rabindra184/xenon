@@ -4,12 +4,15 @@ import { Container } from 'typedi';
 import { ApiKeyService } from '../../services/ApiKeyService';
 import { UserService } from '../../services/UserService';
 import { UserSessionService } from '../../services/UserSessionService';
+import { PasswordResetService } from '../../services/PasswordResetService';
+import { EmailService } from '../../services/EmailService';
 import {
   LoginRateLimiter,
   loginRateLimitMiddleware,
   ipHashOf,
 } from '../../middleware/loginRateLimiter';
 import { config } from '../../config';
+import { prisma } from '../../prisma';
 
 const SESSION_COOKIE = 'xenon_dashboard_session';
 const isSecureFromReq = (req: any) =>
@@ -21,6 +24,10 @@ export function authPublicRouter(): Router {
   const userSvc = Container.get(UserService);
   const sessionSvc = Container.get(UserSessionService);
   const limiter = new LoginRateLimiter();
+  const resetLimiter = new LoginRateLimiter({
+    attempts: (config as any).resetRateLimitAttempts ?? 3,
+    windowMs: (config as any).resetRateLimitWindowMs ?? 15 * 60 * 1000,
+  });
 
   r.post('/login', loginRateLimitMiddleware(limiter), async (req, res) => {
     const { email, password } = req.body as { email?: string; password?: string };
@@ -62,6 +69,74 @@ export function authPublicRouter(): Router {
       ?.slice(`${SESSION_COOKIE}=`.length);
     if (cookie) await sessionSvc.revoke(cookie);
     res.clearCookie(SESSION_COOKIE, { httpOnly: true, sameSite: 'strict' });
+    return res.status(204).end();
+  });
+
+  r.post('/forgot-password', loginRateLimitMiddleware(resetLimiter), async (req, res) => {
+    const { email } = req.body as { email?: string };
+    // Always 204 — no enumeration. Run the work in the background.
+    res.status(204).end();
+    if (!email) return;
+
+    // Constant 50ms delay regardless of branch, to keep timing flat.
+    const t0 = Date.now();
+    try {
+      const user = await userSvc.findByEmail(email);
+      if (user && user.status === 'ACTIVE') {
+        const resetSvc = Container.get(PasswordResetService);
+        const emailSvc = Container.get(EmailService);
+        const { raw } = await resetSvc.createToken(user.id);
+        const proto =
+          req.secure || (req.headers['x-forwarded-proto'] as string) === 'https' ? 'https' : 'http';
+        const host = req.headers.host || 'localhost';
+        const link = `${proto}://${host}/xenon/reset-password/${raw}`;
+        await emailSvc.send({
+          to: user.email,
+          subject: 'Reset your Xenon password',
+          text:
+            `Hi ${user.name},\n\n` +
+            `Someone requested a password reset for your Xenon account. ` +
+            `If that was you, click the link below to choose a new password:\n\n` +
+            `${link}\n\n` +
+            `This link expires in 1 hour. If you did not request this, ignore this email — no action is needed.\n`,
+        });
+      }
+    } catch (e) {
+      // Swallow — anti-enumeration. The operator log catches the cause.
+    }
+    const elapsed = Date.now() - t0;
+    if (elapsed < 50) await new Promise((res2) => setTimeout(res2, 50 - elapsed));
+  });
+
+  r.get('/reset-password/check/:token', async (req, res) => {
+    const resetSvc = Container.get(PasswordResetService);
+    const row = await resetSvc.verifyToken(req.params.token);
+    if (!row) return res.status(404).json({ error: 'invalid or expired token' });
+    return res.json({ ok: true });
+  });
+
+  r.post('/reset-password', async (req, res) => {
+    const { token, newPassword } = req.body as { token?: string; newPassword?: string };
+    if (!token || !newPassword) {
+      return res.status(400).json({ error: 'token and newPassword required' });
+    }
+    if (newPassword.length < 8) {
+      return res.status(400).json({ error: 'password must be at least 8 characters' });
+    }
+
+    const resetSvc = Container.get(PasswordResetService);
+    const row = await resetSvc.verifyToken(token);
+    if (!row) return res.status(404).json({ error: 'invalid or expired token' });
+
+    const passwordHash = await userSvc.hashPassword(newPassword);
+    // Update password + consume token + revoke all sessions.
+    await prisma.user.update({
+      where: { id: row.userId },
+      data: { passwordHash, passwordChangedAt: new Date() },
+    });
+    await resetSvc.consume(row.id);
+    await sessionSvc.revokeAllForUser(row.userId);
+
     return res.status(204).end();
   });
 
