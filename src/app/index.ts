@@ -26,7 +26,7 @@ import { apiKeysRouter } from './routers/apikeys';
 import { teamsRouter } from './routers/teams';
 import { authRouter } from './routers/auth';
 import { processesRouter } from './routers/processes';
-import { apiKeyMiddleware } from '../middleware/apiKeyMiddleware';
+import { authMiddleware } from '../middleware/authMiddleware';
 import { rateLimitMiddleware } from '../middleware/rateLimitMiddleware';
 import { nodeSecretMiddleware } from '../middleware/nodeSecretMiddleware';
 import { csrfMiddleware } from '../middleware/csrfMiddleware';
@@ -217,8 +217,9 @@ function createRouter(pluginArgs: IPluginArgs) {
   // Dashboard login: unauthenticated (rate-limited internally via separate IP logic)
   apiRouter.use('/auth', authRouter());
 
-  // All remaining /api/* requires API key + rate limit
-  apiRouter.use(apiKeyMiddleware);
+  // All remaining /api/* requires authentication (cookie session, header
+  // (accessKey,token) pair, or — gated — legacy x-xenon-api-key) + rate limit.
+  apiRouter.use(authMiddleware);
   apiRouter.use(rateLimitMiddleware());
 
   // Admin: API key management
