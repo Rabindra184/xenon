@@ -1,6 +1,7 @@
-import React, { createContext, useContext, useState, useCallback, ReactNode } from 'react';
+import React, { createContext, useContext, useEffect, useState, useCallback, ReactNode } from 'react';
 import './toast.css';
 import { X, CheckCircle, AlertCircle, Info, Loader2 } from 'lucide-react';
+import { setApiToastEmitter } from '../../api-service/api-client';
 
 type ToastType = 'success' | 'error' | 'info' | 'loading';
 
@@ -48,6 +49,15 @@ export const ToastProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     },
     [removeToast],
   );
+
+  // Bridge for non-React callers (e.g. the central api-client) so they can
+  // surface a 403 as a toast without holding a hook reference. We register
+  // on mount and clear on unmount; only one provider should be alive in the
+  // app at a time.
+  useEffect(() => {
+    setApiToastEmitter((message, type = 'info') => toast(message, type));
+    return () => setApiToastEmitter(null);
+  }, [toast]);
 
   return (
     <ToastContext.Provider value={{ toast, removeToast }}>

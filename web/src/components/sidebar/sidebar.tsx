@@ -16,15 +16,22 @@ import {
   BookOpen,
   type LucideIcon,
 } from 'lucide-react';
+import { useAuth } from '../../auth/auth-context';
+
+type Role = 'SUPER_ADMIN' | 'ADMIN' | 'MEMBER';
 
 type NavItem = {
   id: string;
   label: string;
   icon: LucideIcon;
   path: string;
+  // Highest privilege required to see this item. Items without `minRole`
+  // are visible to every authenticated user (read-style pages).
+  minRole?: Role;
 };
 
 const items: NavItem[] = [
+  // Read-style pages — visible to every authenticated user.
   { id: 'overview', label: 'Overview', icon: LayoutGrid, path: '/overview' },
   { id: 'devices', label: 'Devices', icon: Smartphone, path: '/devices' },
   { id: 'live-devices', label: 'Live Devices', icon: Tv, path: '/devices/live' },
@@ -32,21 +39,32 @@ const items: NavItem[] = [
   { id: 'sessions', label: 'Sessions', icon: MonitorPlay, path: '/builds' },
   { id: 'selector-health', label: 'Selector Health', icon: HeartPulse, path: '/selector-health' },
   { id: 'notifications', label: 'Notifications', icon: Bell, path: '/notifications' },
-  { id: 'settings', label: 'Settings', icon: SettingsIcon, path: '/settings' },
-  { id: 'ai', label: 'AI', icon: Brain, path: '/ai-settings' },
-  { id: 'maintenance', label: 'Maintenance', icon: ShieldCheck, path: '/maintenance' },
-  { id: 'teams', label: 'Teams', icon: Users, path: '/teams' },
-  { id: 'apikeys', label: 'API Keys', icon: Key, path: '/api-keys' },
+  // Admin-only management surfaces.
+  { id: 'settings', label: 'Settings', icon: SettingsIcon, path: '/settings', minRole: 'ADMIN' },
+  { id: 'ai', label: 'AI', icon: Brain, path: '/ai-settings', minRole: 'ADMIN' },
+  { id: 'maintenance', label: 'Maintenance', icon: ShieldCheck, path: '/maintenance', minRole: 'ADMIN' },
+  { id: 'teams', label: 'Teams', icon: Users, path: '/teams', minRole: 'ADMIN' },
+  { id: 'apikeys', label: 'API Keys', icon: Key, path: '/api-keys', minRole: 'ADMIN' },
 ];
+
+const RANK = { SUPER_ADMIN: 3, ADMIN: 2, MEMBER: 1 } as const;
+function visibleFor(role: string | undefined, minRole?: Role): boolean {
+  if (!minRole) return true;
+  const r = role ? (RANK[role as keyof typeof RANK] ?? 0) : 0;
+  return r >= RANK[minRole];
+}
 
 const Sidebar: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
+  const { me } = useAuth();
+
+  const visibleItems = items.filter((i) => visibleFor(me?.role, i.minRole));
 
   // Path normalization: remove trailing slashes for consistent matching
   const currentPath = location.pathname.replace(/\/$/, '') || '/';
 
-  const bestMatch = items
+  const bestMatch = visibleItems
     .filter(
       (i) =>
         currentPath === i.path ||
@@ -59,7 +77,7 @@ const Sidebar: React.FC = () => {
   return (
     <aside className="fixed inset-y-0 left-0 z-30 w-14 border-r border-[var(--border)] bg-[var(--surface)] flex flex-col items-center py-3">
       <nav className="flex-1 flex flex-col gap-1 w-full items-center">
-        {items.map((item) => {
+        {visibleItems.map((item) => {
           const Icon = item.icon;
           const active = isActive(item.path);
           return (

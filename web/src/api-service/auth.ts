@@ -47,3 +47,32 @@ export async function changePassword(oldPassword: string, newPassword: string): 
     throw new Error(body.error || `Change password failed (${r.status})`);
   }
 }
+
+export async function forgotPassword(email: string): Promise<void> {
+  const r = await fetch(`${BASE}/forgot-password`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email }),
+  });
+  if (!r.ok && r.status !== 204) {
+    if (r.status === 429) throw new Error('Too many attempts — try again later.');
+    throw new Error(`Request failed (${r.status})`);
+  }
+}
+
+export async function checkResetToken(token: string): Promise<boolean> {
+  const r = await fetch(`${BASE}/reset-password/check/${encodeURIComponent(token)}`);
+  return r.ok;
+}
+
+export async function resetPassword(token: string, newPassword: string): Promise<void> {
+  const r = await fetch(`${BASE}/reset-password`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ token, newPassword }),
+  });
+  if (!r.ok && r.status !== 204) {
+    const body = await r.json().catch(() => ({}));
+    throw new Error(body.error || `Reset failed (${r.status})`);
+  }
+}

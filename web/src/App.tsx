@@ -10,6 +10,8 @@ import { AuthProvider } from './auth/auth-context';
 import { RouteGuard } from './auth/route-guard';
 
 const LoginPage = lazy(() => import('./pages/login'));
+const ForgotPasswordPage = lazy(() => import('./pages/forgot-password'));
+const ResetPasswordPage = lazy(() => import('./pages/reset-password'));
 const ApiKeyGate = lazy(() =>
   import('./components/ApiKeyGate').then((m) => ({ default: m.ApiKeyGate })),
 );
@@ -36,6 +38,8 @@ function App() {
         <Suspense fallback={<div style={{ padding: 40 }}>Loading…</div>}>
           <Routes>
             <Route path="/login" element={<LoginPage />} />
+            <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+            <Route path="/reset-password/:token" element={<ResetPasswordPage />} />
             <Route
               path="/api-key-gate"
               element={
