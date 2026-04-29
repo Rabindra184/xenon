@@ -56,6 +56,14 @@ export class UserSessionService {
     return r.count;
   }
 
+  async revokeAllForUser(userId: string): Promise<number> {
+    const r = await prisma.userSession.deleteMany({ where: { userId } });
+    if (r.count > 0) {
+      this.log.info(`revoked all ${r.count} sessions for user ${userId}`);
+    }
+    return r.count;
+  }
+
   async cleanupExpired(): Promise<number> {
     const r = await prisma.userSession.deleteMany({
       where: { expiresAt: { lt: new Date() } },
