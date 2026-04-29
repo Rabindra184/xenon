@@ -193,6 +193,9 @@ export class ServerManager {
 
     const { bootstrapIdentity } = await import('./identity/bootstrap');
     await bootstrapIdentity();
+
+    const { startUserSessionCleanupCron } = await import('./identity/sessionCleanupCron');
+    startUserSessionCleanupCron();
   }
 
   private registerRoutes(expressApp: any, cliArgs: ServerArgs, pluginArgs: IPluginArgs) {
