@@ -6,10 +6,15 @@ import log, { redactSecrets } from '../../logger';
 
 import { AI_SERVICE } from '../../services/AIService';
 import { mutationScopeGuard } from '../../middleware/scopeGuard';
+import { roleGuard } from '../../middleware/roleGuard';
 
 export default class ConfigRouter {
   public static register(router: Router, pluginArgs: IPluginArgs) {
     const configRouter = Router();
+
+    // ADMIN-tier baseline: reads (GET /config) require ADMIN+; mutations
+    // (POST /config, /test-ai) step up to SUPER_ADMIN per the matrix.
+    configRouter.use(roleGuard('ADMIN'));
 
     // All mutations under /config require admin scope (global plugin
     // config + AI provider test probes). GET passthrough for read scope.
@@ -44,7 +49,7 @@ export default class ConfigRouter {
       res.json(getMaskedConfig(pluginArgs));
     });
 
-    configRouter.post('/test-ai', async (req, res) => {
+    configRouter.post('/test-ai', roleGuard('SUPER_ADMIN'), async (req, res) => {
       const testConfig = (req as any).unredactedBody || req.body;
       try {
         const result = await AI_SERVICE.testConnection(testConfig);
@@ -54,7 +59,7 @@ export default class ConfigRouter {
       }
     });
 
-    configRouter.post('/', async (req, res) => {
+    configRouter.post('/', roleGuard('SUPER_ADMIN'), async (req, res) => {
       const newConfig = ((req as any).unredactedBody || req.body) as Partial<IPluginArgs>;
       if (!newConfig || Object.keys(newConfig).length === 0) {
         return res.status(400).json({ error: 'No configuration provided' });
