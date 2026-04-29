@@ -1,6 +1,6 @@
 import * as React from 'react';
 import { useState } from 'react';
-import { useLocation, useNavigate } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { login } from '../api-service/auth';
 import { useAuth } from '../auth/auth-context';
 
@@ -74,6 +74,12 @@ export default function LoginPage() {
             required
             className="w-full mb-2 h-10 px-3 rounded-md bg-[var(--surface)] border border-[var(--border)] text-sm focus:border-[var(--green)] outline-none"
           />
+
+          <div className="text-right mb-4">
+            <Link to="/forgot-password" className="text-[11px] text-[var(--text-dim)] hover:text-[var(--text)]">
+              Forgot password?
+            </Link>
+          </div>
 
           {error && <div className="mt-3 text-xs text-[var(--red)]">{error}</div>}
 
