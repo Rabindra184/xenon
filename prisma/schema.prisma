@@ -260,7 +260,12 @@ model ApiKey {
   role        String    @default("member")
   team        Team?     @relation(fields: [teamId], references: [id])
 
+  // NEW
+  userId      String
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
   @@index([teamId])
+  @@index([userId])
 }
 
 model Team {
@@ -340,4 +345,40 @@ model Annotation {
   Recording    Recording @relation(fields: [recording_id], references: [id], onDelete: Cascade)
 
   @@index([recording_id, timecode_ms])
+}
+
+// NOTE: SQLite does not support Prisma enums. UserRole / UserStatus are
+// modeled as TypeScript string-literal types in the application layer and
+// stored as plain TEXT here. Allowed values:
+//   role:   "SUPER_ADMIN" | "ADMIN" | "MEMBER"   (default "MEMBER")
+//   status: "ACTIVE" | "INACTIVE"                (default "ACTIVE")
+model User {
+  id                String        @id @default(uuid())
+  email             String        @unique
+  name              String
+  passwordHash      String
+  accessKey         String        @unique
+  role              String        @default("MEMBER")
+  status            String        @default("ACTIVE")
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+  lastLoginAt       DateTime?
+  passwordChangedAt DateTime?
+
+  apiKeys           ApiKey[]
+  sessions          UserSession[]
+}
+
+model UserSession {
+  id          String   @id @default(uuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt   DateTime @default(now())
+  expiresAt   DateTime
+  lastSeenAt  DateTime @default(now())
+  userAgent   String?
+  ipHash      String?
+
+  @@index([userId])
+  @@index([expiresAt])
 }

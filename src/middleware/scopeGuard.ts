@@ -8,17 +8,17 @@ import { ApiKeyService, Scope } from '../services/ApiKeyService';
 // resource should also be gated.
 export function scopeGuard(required: Scope[]) {
   return function (req: Request, res: Response, next: NextFunction) {
-    const key = req.apiKey;
-    if (!key) return res.status(401).json({ error: 'unauthenticated' });
-    const svc = Container.get(ApiKeyService);
-    const ok = svc.hasScope(
+    const auth = req.auth;
+    if (!auth) return res.status(401).json({ error: 'unauthenticated' });
+    const ok = Container.get(ApiKeyService).hasScope(
       {
-        id: key.id,
+        id: auth.userId,
         name: '',
         keyHash: '',
-        scopes: key.scopes,
-        rateLimit: key.rateLimit,
+        scopes: auth.scopes,
+        rateLimit: auth.rateLimit,
         revokedAt: null,
+        userId: auth.userId,
       },
       required,
     );

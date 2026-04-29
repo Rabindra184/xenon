@@ -21,7 +21,13 @@ export function apiKeysRouter(): Router {
     if (!name || !Array.isArray(scopes) || scopes.length === 0) {
       return res.status(400).json({ error: 'name and scopes required' });
     }
-    const { id, raw } = await svc.create({ name, scopes, rateLimit, teamId: teamId ?? null });
+    const { id, raw } = await svc.create({
+      name,
+      scopes,
+      rateLimit,
+      teamId: teamId ?? null,
+      userId: req.auth!.userId,
+    });
     res.json({ id, key: raw });
   });
 

@@ -341,7 +341,8 @@ exports.Prisma.ApiKeyScalarFieldEnum = {
   revokedAt: 'revokedAt',
   lastUsedAt: 'lastUsedAt',
   teamId: 'teamId',
-  role: 'role'
+  role: 'role',
+  userId: 'userId'
 };
 
 exports.Prisma.TeamScalarFieldEnum = {
@@ -404,6 +405,30 @@ exports.Prisma.AnnotationScalarFieldEnum = {
   created_at: 'created_at'
 };
 
+exports.Prisma.UserScalarFieldEnum = {
+  id: 'id',
+  email: 'email',
+  name: 'name',
+  passwordHash: 'passwordHash',
+  accessKey: 'accessKey',
+  role: 'role',
+  status: 'status',
+  createdAt: 'createdAt',
+  updatedAt: 'updatedAt',
+  lastLoginAt: 'lastLoginAt',
+  passwordChangedAt: 'passwordChangedAt'
+};
+
+exports.Prisma.UserSessionScalarFieldEnum = {
+  id: 'id',
+  userId: 'userId',
+  createdAt: 'createdAt',
+  expiresAt: 'expiresAt',
+  lastSeenAt: 'lastSeenAt',
+  userAgent: 'userAgent',
+  ipHash: 'ipHash'
+};
+
 exports.Prisma.SortOrder = {
   asc: 'asc',
   desc: 'desc'
@@ -434,7 +459,9 @@ exports.Prisma.ModelName = {
   SelectorState: 'SelectorState',
   Recording: 'Recording',
   Bookmark: 'Bookmark',
-  Annotation: 'Annotation'
+  Annotation: 'Annotation',
+  User: 'User',
+  UserSession: 'UserSession'
 };
 
 /**

@@ -16,12 +16,18 @@ export interface ApiKeyRow {
   revokedAt: Date | null;
   teamId?: string | null;
   role?: string;
+  userId: string;
 }
 
 @Service()
 export class ApiKeyService {
   private log = log.scope('ApiKey');
 
+  // Plain SHA-256 (no salt, no key-stretching) is correct for tokens
+  // produced by generateRaw() — they are 32 random bytes (~256 bits of
+  // entropy) so preimage resistance is the only property we need. DO NOT
+  // copy this pattern for password hashing — passwords are low-entropy
+  // and need bcrypt (see UserService.hashPassword).
   hash(raw: string): string {
     return crypto.createHash('sha256').update(raw).digest('hex');
   }
@@ -30,7 +36,7 @@ export class ApiKeyService {
     return crypto.randomBytes(32).toString('hex');
   }
 
-  async bootstrapIfEmpty(keyFilePath: string): Promise<string | null> {
+  async bootstrapIfEmpty(keyFilePath: string, userId: string): Promise<string | null> {
     const count = await prisma.apiKey.count();
     if (count > 0) return null;
 
@@ -46,6 +52,7 @@ export class ApiKeyService {
         keyHash,
         scopes: 'admin',
         rateLimit: 300,
+        userId,
       },
     });
 
@@ -76,6 +83,12 @@ export class ApiKeyService {
     scopes: Scope[];
     rateLimit?: number;
     teamId?: string | null;
+    userId: string;
+    // Accepted for forward-compat only — there is no expiresAt column on
+    // ApiKey yet, so this value is silently ignored at write time. A later
+    // task will add the column + persistence logic; until then, callers
+    // that need expiry must track it externally.
+    expiresAt?: Date;
   }): Promise<{ id: string; raw: string }> {
     const raw = this.generateRaw();
     const row = await prisma.apiKey.create({
@@ -85,9 +98,24 @@ export class ApiKeyService {
         scopes: params.scopes.join(','),
         rateLimit: params.rateLimit ?? 300,
         teamId: params.teamId ?? null,
+        userId: params.userId,
       },
     });
     return { id: row.id, raw };
+  }
+
+  async verifyPair(accessKey: string, token: string): Promise<ApiKeyRow | null> {
+    if (!accessKey || !token) return null;
+    const user = await prisma.user.findUnique({ where: { accessKey } });
+    if (!user) return null;
+    const row = await prisma.apiKey.findFirst({
+      where: { keyHash: this.hash(token), userId: user.id, revokedAt: null },
+    });
+    if (!row) return null;
+    prisma.apiKey
+      .update({ where: { id: row.id }, data: { lastUsedAt: new Date() } })
+      .catch(() => undefined);
+    return row as ApiKeyRow;
   }
 
   async revoke(id: string): Promise<void> {
