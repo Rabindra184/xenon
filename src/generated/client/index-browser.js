@@ -429,6 +429,15 @@ exports.Prisma.UserSessionScalarFieldEnum = {
   ipHash: 'ipHash'
 };
 
+exports.Prisma.PasswordResetTokenScalarFieldEnum = {
+  id: 'id',
+  userId: 'userId',
+  tokenHash: 'tokenHash',
+  createdAt: 'createdAt',
+  expiresAt: 'expiresAt',
+  usedAt: 'usedAt'
+};
+
 exports.Prisma.SortOrder = {
   asc: 'asc',
   desc: 'desc'
@@ -461,7 +470,8 @@ exports.Prisma.ModelName = {
   Bookmark: 'Bookmark',
   Annotation: 'Annotation',
   User: 'User',
-  UserSession: 'UserSession'
+  UserSession: 'UserSession',
+  PasswordResetToken: 'PasswordResetToken'
 };
 
 /**

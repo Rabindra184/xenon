@@ -58,4 +58,11 @@ describe('UserSessionService', () => {
     const where = del.firstCall.args[0]?.where as any;
     expect(where.expiresAt.lt).to.be.instanceOf(Date);
   });
+
+  it('revokeAllForUser() deletes every session for the user', async () => {
+    const del = sinon.stub(prisma.userSession, 'deleteMany').resolves({ count: 3 } as any);
+    const removed = await new UserSessionService().revokeAllForUser('u1');
+    expect(removed).to.equal(3);
+    expect((del.firstCall.args[0] as any).where).to.deep.equal({ userId: 'u1' });
+  });
 });

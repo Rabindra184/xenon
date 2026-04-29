@@ -34,6 +34,7 @@ const MODEL_DELEGATES = new Set([
   'build', 'session', 'sessionLog', 'log', 'profiling', 'app', 'device',
   'pendingSession', 'cLIArgs', 'webhookConfig', 'webConfig', 'locatorEtalon',
   'portLease', 'apiKey', 'selectorState', 'user', 'userSession',
+  'passwordResetToken',
 ]);
 
 /** Cache of plain-object wrappers, keyed by model name. */
