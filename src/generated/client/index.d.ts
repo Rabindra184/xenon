@@ -16488,7 +16488,7 @@ export namespace Prisma {
     lastUsedAt: Date | null
     teamId: string | null
     role: string
-    userId: string | null
+    userId: string
     _count: ApiKeyCountAggregateOutputType | null
     _avg: ApiKeyAvgAggregateOutputType | null
     _sum: ApiKeySumAggregateOutputType | null
@@ -16523,7 +16523,7 @@ export namespace Prisma {
     role?: boolean
     userId?: boolean
     team?: boolean | ApiKey$teamArgs<ExtArgs>
-    user?: boolean | ApiKey$userArgs<ExtArgs>
+    user?: boolean | UserDefaultArgs<ExtArgs>
   }, ExtArgs["result"]["apiKey"]>
 
   export type ApiKeySelectCreateManyAndReturn<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = $Extensions.GetSelect<{
@@ -16539,7 +16539,7 @@ export namespace Prisma {
     role?: boolean
     userId?: boolean
     team?: boolean | ApiKey$teamArgs<ExtArgs>
-    user?: boolean | ApiKey$userArgs<ExtArgs>
+    user?: boolean | UserDefaultArgs<ExtArgs>
   }, ExtArgs["result"]["apiKey"]>
 
   export type ApiKeySelectScalar = {
@@ -16558,18 +16558,18 @@ export namespace Prisma {
 
   export type ApiKeyInclude<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
     team?: boolean | ApiKey$teamArgs<ExtArgs>
-    user?: boolean | ApiKey$userArgs<ExtArgs>
+    user?: boolean | UserDefaultArgs<ExtArgs>
   }
   export type ApiKeyIncludeCreateManyAndReturn<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
     team?: boolean | ApiKey$teamArgs<ExtArgs>
-    user?: boolean | ApiKey$userArgs<ExtArgs>
+    user?: boolean | UserDefaultArgs<ExtArgs>
   }
 
   export type $ApiKeyPayload<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
     name: "ApiKey"
     objects: {
       team: Prisma.$TeamPayload<ExtArgs> | null
-      user: Prisma.$UserPayload<ExtArgs> | null
+      user: Prisma.$UserPayload<ExtArgs>
     }
     scalars: $Extensions.GetPayloadResult<{
       id: string
@@ -16582,7 +16582,7 @@ export namespace Prisma {
       lastUsedAt: Date | null
       teamId: string | null
       role: string
-      userId: string | null
+      userId: string
     }, ExtArgs["result"]["apiKey"]>
     composites: {}
   }
@@ -16948,7 +16948,7 @@ export namespace Prisma {
   export interface Prisma__ApiKeyClient<T, Null = never, ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> extends Prisma.PrismaPromise<T> {
     readonly [Symbol.toStringTag]: "PrismaPromise"
     team<T extends ApiKey$teamArgs<ExtArgs> = {}>(args?: Subset<T, ApiKey$teamArgs<ExtArgs>>): Prisma__TeamClient<$Result.GetResult<Prisma.$TeamPayload<ExtArgs>, T, "findUniqueOrThrow"> | null, null, ExtArgs>
-    user<T extends ApiKey$userArgs<ExtArgs> = {}>(args?: Subset<T, ApiKey$userArgs<ExtArgs>>): Prisma__UserClient<$Result.GetResult<Prisma.$UserPayload<ExtArgs>, T, "findUniqueOrThrow"> | null, null, ExtArgs>
+    user<T extends UserDefaultArgs<ExtArgs> = {}>(args?: Subset<T, UserDefaultArgs<ExtArgs>>): Prisma__UserClient<$Result.GetResult<Prisma.$UserPayload<ExtArgs>, T, "findUniqueOrThrow"> | Null, Null, ExtArgs>
     /**
      * Attaches callbacks for the resolution and/or rejection of the Promise.
      * @param onfulfilled The callback to execute when the Promise is resolved.
@@ -17317,21 +17317,6 @@ export namespace Prisma {
      */
     include?: TeamInclude<ExtArgs> | null
     where?: TeamWhereInput
-  }
-
-  /**
-   * ApiKey.user
-   */
-  export type ApiKey$userArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
-    /**
-     * Select specific fields to fetch from the User
-     */
-    select?: UserSelect<ExtArgs> | null
-    /**
-     * Choose, which related nodes to fetch as well
-     */
-    include?: UserInclude<ExtArgs> | null
-    where?: UserWhereInput
   }
 
   /**
@@ -26154,9 +26139,9 @@ export namespace Prisma {
     lastUsedAt?: DateTimeNullableFilter<"ApiKey"> | Date | string | null
     teamId?: StringNullableFilter<"ApiKey"> | string | null
     role?: StringFilter<"ApiKey"> | string
-    userId?: StringNullableFilter<"ApiKey"> | string | null
+    userId?: StringFilter<"ApiKey"> | string
     team?: XOR<TeamNullableRelationFilter, TeamWhereInput> | null
-    user?: XOR<UserNullableRelationFilter, UserWhereInput> | null
+    user?: XOR<UserRelationFilter, UserWhereInput>
   }
 
   export type ApiKeyOrderByWithRelationInput = {
@@ -26170,7 +26155,7 @@ export namespace Prisma {
     lastUsedAt?: SortOrderInput | SortOrder
     teamId?: SortOrderInput | SortOrder
     role?: SortOrder
-    userId?: SortOrderInput | SortOrder
+    userId?: SortOrder
     team?: TeamOrderByWithRelationInput
     user?: UserOrderByWithRelationInput
   }
@@ -26189,9 +26174,9 @@ export namespace Prisma {
     lastUsedAt?: DateTimeNullableFilter<"ApiKey"> | Date | string | null
     teamId?: StringNullableFilter<"ApiKey"> | string | null
     role?: StringFilter<"ApiKey"> | string
-    userId?: StringNullableFilter<"ApiKey"> | string | null
+    userId?: StringFilter<"ApiKey"> | string
     team?: XOR<TeamNullableRelationFilter, TeamWhereInput> | null
-    user?: XOR<UserNullableRelationFilter, UserWhereInput> | null
+    user?: XOR<UserRelationFilter, UserWhereInput>
   }, "id" | "keyHash">
 
   export type ApiKeyOrderByWithAggregationInput = {
@@ -26205,7 +26190,7 @@ export namespace Prisma {
     lastUsedAt?: SortOrderInput | SortOrder
     teamId?: SortOrderInput | SortOrder
     role?: SortOrder
-    userId?: SortOrderInput | SortOrder
+    userId?: SortOrder
     _count?: ApiKeyCountOrderByAggregateInput
     _avg?: ApiKeyAvgOrderByAggregateInput
     _max?: ApiKeyMaxOrderByAggregateInput
@@ -26227,7 +26212,7 @@ export namespace Prisma {
     lastUsedAt?: DateTimeNullableWithAggregatesFilter<"ApiKey"> | Date | string | null
     teamId?: StringNullableWithAggregatesFilter<"ApiKey"> | string | null
     role?: StringWithAggregatesFilter<"ApiKey"> | string
-    userId?: StringNullableWithAggregatesFilter<"ApiKey"> | string | null
+    userId?: StringWithAggregatesFilter<"ApiKey"> | string
   }
 
   export type TeamWhereInput = {
@@ -28274,7 +28259,7 @@ export namespace Prisma {
     lastUsedAt?: Date | string | null
     role?: string
     team?: TeamCreateNestedOneWithoutApiKeysInput
-    user?: UserCreateNestedOneWithoutApiKeysInput
+    user: UserCreateNestedOneWithoutApiKeysInput
   }
 
   export type ApiKeyUncheckedCreateInput = {
@@ -28288,7 +28273,7 @@ export namespace Prisma {
     lastUsedAt?: Date | string | null
     teamId?: string | null
     role?: string
-    userId?: string | null
+    userId: string
   }
 
   export type ApiKeyUpdateInput = {
@@ -28302,7 +28287,7 @@ export namespace Prisma {
     lastUsedAt?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
     role?: StringFieldUpdateOperationsInput | string
     team?: TeamUpdateOneWithoutApiKeysNestedInput
-    user?: UserUpdateOneWithoutApiKeysNestedInput
+    user?: UserUpdateOneRequiredWithoutApiKeysNestedInput
   }
 
   export type ApiKeyUncheckedUpdateInput = {
@@ -28316,7 +28301,7 @@ export namespace Prisma {
     lastUsedAt?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
     teamId?: NullableStringFieldUpdateOperationsInput | string | null
     role?: StringFieldUpdateOperationsInput | string
-    userId?: NullableStringFieldUpdateOperationsInput | string | null
+    userId?: StringFieldUpdateOperationsInput | string
   }
 
   export type ApiKeyCreateManyInput = {
@@ -28330,7 +28315,7 @@ export namespace Prisma {
     lastUsedAt?: Date | string | null
     teamId?: string | null
     role?: string
-    userId?: string | null
+    userId: string
   }
 
   export type ApiKeyUpdateManyMutationInput = {
@@ -28356,7 +28341,7 @@ export namespace Prisma {
     lastUsedAt?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
     teamId?: NullableStringFieldUpdateOperationsInput | string | null
     role?: StringFieldUpdateOperationsInput | string
-    userId?: NullableStringFieldUpdateOperationsInput | string | null
+    userId?: StringFieldUpdateOperationsInput | string
   }
 
   export type TeamCreateInput = {
@@ -30026,9 +30011,9 @@ export namespace Prisma {
     expiresAt?: SortOrder
   }
 
-  export type UserNullableRelationFilter = {
-    is?: UserWhereInput | null
-    isNot?: UserWhereInput | null
+  export type UserRelationFilter = {
+    is?: UserWhereInput
+    isNot?: UserWhereInput
   }
 
   export type ApiKeyCountOrderByAggregateInput = {
@@ -30402,11 +30387,6 @@ export namespace Prisma {
     updatedAt?: SortOrder
     lastLoginAt?: SortOrder
     passwordChangedAt?: SortOrder
-  }
-
-  export type UserRelationFilter = {
-    is?: UserWhereInput
-    isNot?: UserWhereInput
   }
 
   export type UserSessionCountOrderByAggregateInput = {
@@ -30801,12 +30781,10 @@ export namespace Prisma {
     update?: XOR<XOR<TeamUpdateToOneWithWhereWithoutApiKeysInput, TeamUpdateWithoutApiKeysInput>, TeamUncheckedUpdateWithoutApiKeysInput>
   }
 
-  export type UserUpdateOneWithoutApiKeysNestedInput = {
+  export type UserUpdateOneRequiredWithoutApiKeysNestedInput = {
     create?: XOR<UserCreateWithoutApiKeysInput, UserUncheckedCreateWithoutApiKeysInput>
     connectOrCreate?: UserCreateOrConnectWithoutApiKeysInput
     upsert?: UserUpsertWithoutApiKeysInput
-    disconnect?: UserWhereInput | boolean
-    delete?: UserWhereInput | boolean
     connect?: UserWhereUniqueInput
     update?: XOR<XOR<UserUpdateToOneWithWhereWithoutApiKeysInput, UserUpdateWithoutApiKeysInput>, UserUncheckedUpdateWithoutApiKeysInput>
   }
@@ -32621,7 +32599,7 @@ export namespace Prisma {
     revokedAt?: Date | string | null
     lastUsedAt?: Date | string | null
     role?: string
-    user?: UserCreateNestedOneWithoutApiKeysInput
+    user: UserCreateNestedOneWithoutApiKeysInput
   }
 
   export type ApiKeyUncheckedCreateWithoutTeamInput = {
@@ -32634,7 +32612,7 @@ export namespace Prisma {
     revokedAt?: Date | string | null
     lastUsedAt?: Date | string | null
     role?: string
-    userId?: string | null
+    userId: string
   }
 
   export type ApiKeyCreateOrConnectWithoutTeamInput = {
@@ -32749,7 +32727,7 @@ export namespace Prisma {
     lastUsedAt?: DateTimeNullableFilter<"ApiKey"> | Date | string | null
     teamId?: StringNullableFilter<"ApiKey"> | string | null
     role?: StringFilter<"ApiKey"> | string
-    userId?: StringNullableFilter<"ApiKey"> | string | null
+    userId?: StringFilter<"ApiKey"> | string
   }
 
   export type BookmarkCreateWithoutRecordingInput = {
@@ -33832,7 +33810,7 @@ export namespace Prisma {
     revokedAt?: Date | string | null
     lastUsedAt?: Date | string | null
     role?: string
-    userId?: string | null
+    userId: string
   }
 
   export type DeviceUpdateWithoutTeamInput = {
@@ -34004,7 +33982,7 @@ export namespace Prisma {
     revokedAt?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
     lastUsedAt?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
     role?: StringFieldUpdateOperationsInput | string
-    user?: UserUpdateOneWithoutApiKeysNestedInput
+    user?: UserUpdateOneRequiredWithoutApiKeysNestedInput
   }
 
   export type ApiKeyUncheckedUpdateWithoutTeamInput = {
@@ -34017,7 +33995,7 @@ export namespace Prisma {
     revokedAt?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
     lastUsedAt?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
     role?: StringFieldUpdateOperationsInput | string
-    userId?: NullableStringFieldUpdateOperationsInput | string | null
+    userId?: StringFieldUpdateOperationsInput | string
   }
 
   export type ApiKeyUncheckedUpdateManyWithoutTeamInput = {
@@ -34030,7 +34008,7 @@ export namespace Prisma {
     revokedAt?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
     lastUsedAt?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
     role?: StringFieldUpdateOperationsInput | string
-    userId?: NullableStringFieldUpdateOperationsInput | string | null
+    userId?: StringFieldUpdateOperationsInput | string
   }
 
   export type BookmarkCreateManyRecordingInput = {

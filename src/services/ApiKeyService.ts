@@ -16,7 +16,7 @@ export interface ApiKeyRow {
   revokedAt: Date | null;
   teamId?: string | null;
   role?: string;
-  userId?: string | null;
+  userId: string;
 }
 
 @Service()
@@ -83,9 +83,7 @@ export class ApiKeyService {
     scopes: Scope[];
     rateLimit?: number;
     teamId?: string | null;
-    // Optional through Task 8-15; Task 16's NOT NULL migration tightens this
-    // to required once all callers pass userId from req.auth (post-Task 12).
-    userId?: string;
+    userId: string;
     // Accepted for forward-compat only — there is no expiresAt column on
     // ApiKey yet, so this value is silently ignored at write time. A later
     // task will add the column + persistence logic; until then, callers
@@ -100,7 +98,7 @@ export class ApiKeyService {
         scopes: params.scopes.join(','),
         rateLimit: params.rateLimit ?? 300,
         teamId: params.teamId ?? null,
-        ...(params.userId !== undefined ? { userId: params.userId } : {}),
+        userId: params.userId,
       },
     });
     return { id: row.id, raw };

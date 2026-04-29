@@ -55,10 +55,11 @@ export async function bootstrapIdentity() {
       role: 'SUPER_ADMIN',
       status: 'INACTIVE',
     });
-    await prisma.apiKey.updateMany({
-      where: { userId: null },
-      data: { userId: legacy.id },
-    });
+    // Defensive: post-Task-16 the schema makes userId NOT NULL, but if a
+    // partial upgrade leaves legacy rows with NULL we still want to backfill
+    // them on the next boot. Prisma's typed `where` no longer allows
+    // { userId: null }, so use a raw UPDATE for this safety net.
+    await prisma.$executeRaw`UPDATE "ApiKey" SET "userId" = ${legacy.id} WHERE "userId" IS NULL`;
     await prisma.apiKey.updateMany({
       where: { name: 'bootstrap' },
       data: { userId: superAdmin.id },

@@ -261,8 +261,8 @@ model ApiKey {
   team        Team?     @relation(fields: [teamId], references: [id])
 
   // NEW
-  userId      String?
-  user        User?     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId      String
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([teamId])
   @@index([userId])

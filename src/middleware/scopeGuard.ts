@@ -11,7 +11,15 @@ export function scopeGuard(required: Scope[]) {
     const auth = req.auth;
     if (!auth) return res.status(401).json({ error: 'unauthenticated' });
     const ok = Container.get(ApiKeyService).hasScope(
-      { id: auth.userId, name: '', keyHash: '', scopes: auth.scopes, rateLimit: auth.rateLimit, revokedAt: null },
+      {
+        id: auth.userId,
+        name: '',
+        keyHash: '',
+        scopes: auth.scopes,
+        rateLimit: auth.rateLimit,
+        revokedAt: null,
+        userId: auth.userId,
+      },
       required,
     );
     if (!ok) return res.status(403).json({ error: 'insufficient scope' });
