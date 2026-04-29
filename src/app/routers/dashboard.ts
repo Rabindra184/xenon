@@ -6,7 +6,7 @@ import { WebConfigService } from '../../data-service/web-config-service';
 import { Container } from 'typedi';
 import { scopeGuard } from '../../middleware/scopeGuard';
 import { roleGuard } from '../../middleware/roleGuard';
-import { buildExport } from './build-export';
+import buildExportModule from './build-export';
 import { NotificationService } from '../../services/NotificationService';
 import {
   SelectorStateService,
@@ -994,7 +994,7 @@ function register(router: Router) {
   router.get('/session', getSessions);
   router.get('/session/:sessionId', getSessionById);
   router.get('/build', getBuilds);
-  router.post('/build/:buildId/export', buildExport);
+  buildExportModule.register(router);
   router.get('/session/:sessionId/live_video', streamLiveSessionVideo);
   router.get('/session/:sessionId/session_log', getSessionLogs);
   router.get('/session/:sessionId/logs/device', getDeviceLogs);
