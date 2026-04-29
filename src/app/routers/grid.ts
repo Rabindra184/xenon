@@ -347,10 +347,10 @@ async function getRequestLogs(request: Request, response: Response) {
   });
 }
 
-function register(parentRouter: Router, pluginArgs: IPluginArgs) {
-  const router = Router();
-
-  // MEMBER-tier baseline: device reads (devices, queue, sessions, nodes) require Member role
+function register(router: Router, pluginArgs: IPluginArgs) {
+  // MEMBER-tier baseline: device reads (devices, queue, sessions, nodes)
+  // require Member role. Mounted on the passed-in router so existing route
+  // paths (/devices, /queue, /node, ...) keep their unchanged URLs.
   router.use(roleGuard('MEMBER'));
 
   // GET reads — covered by MEMBER floor above
@@ -393,9 +393,6 @@ function register(parentRouter: Router, pluginArgs: IPluginArgs) {
       });
     },
   );
-
-  // Mount the sub-router onto the parent
-  parentRouter.use('/grid', router);
 }
 
 export default {
