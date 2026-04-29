@@ -1,38 +1,141 @@
+/// <reference path="../../types/express.d.ts" />
 import { Router } from 'express';
 import { Container } from 'typedi';
 import { ApiKeyService } from '../../services/ApiKeyService';
+import { UserService } from '../../services/UserService';
+import { UserSessionService } from '../../services/UserSessionService';
+import {
+  LoginRateLimiter,
+  loginRateLimitMiddleware,
+  ipHashOf,
+} from '../../middleware/loginRateLimiter';
+import { config } from '../../config';
 
-export function authRouter(): Router {
+const SESSION_COOKIE = 'xenon_dashboard_session';
+const isSecureFromReq = (req: any) =>
+  req.secure || (req.headers['x-forwarded-proto'] as string | undefined) === 'https';
+
+// Public — anonymous-callable. Mounted before authMiddleware.
+export function authPublicRouter(): Router {
   const r = Router();
-  const svc = Container.get(ApiKeyService);
+  const userSvc = Container.get(UserService);
+  const sessionSvc = Container.get(UserSessionService);
+  const limiter = new LoginRateLimiter();
+
+  r.post('/login', loginRateLimitMiddleware(limiter), async (req, res) => {
+    const { email, password } = req.body as { email?: string; password?: string };
+    if (!email || !password) return res.status(400).json({ error: 'email and password required' });
+
+    const user = await userSvc.findByEmail(email);
+    // Always run bcrypt to keep timing constant whether or not the user exists.
+    const ok = await userSvc.verifyPassword(
+      password,
+      user?.passwordHash ?? '$2b$04$invalidinvalidinvalidinvalidinvalidinvalidinvalidinvalid',
+    );
+    if (!user || user.status !== 'ACTIVE' || !ok) {
+      return res.status(401).json({ error: 'invalid credentials' });
+    }
+
+    const ipKey = (req as any).loginRateLimitKey ?? ipHashOf(req as any);
+    limiter.clearOnSuccess(ipKey);
+
+    const session = await sessionSvc.create(user.id, {
+      userAgent: (req.headers['user-agent'] as string | undefined)?.slice(0, 200),
+      ipHash: ipKey,
+    });
+    await userSvc.setLastLoginAt(user.id);
+
+    res.cookie(SESSION_COOKIE, session.id, {
+      httpOnly: true,
+      secure: isSecureFromReq(req),
+      sameSite: 'strict',
+      maxAge: config.userSessionTtlMs,
+    });
+    return res.status(204).end();
+  });
+
+  r.post('/logout', async (req, res) => {
+    const cookie = (req.headers.cookie || '')
+      .split(';')
+      .map((s) => s.trim())
+      .find((s) => s.startsWith(`${SESSION_COOKIE}=`))
+      ?.slice(`${SESSION_COOKIE}=`.length);
+    if (cookie) await sessionSvc.revoke(cookie);
+    res.clearCookie(SESSION_COOKIE, { httpOnly: true, sameSite: 'strict' });
+    return res.status(204).end();
+  });
+
+  return r;
+}
+
+// Authenticated — mounted after authMiddleware.
+export function authAuthedRouter(): Router {
+  const r = Router();
+  const apiKeySvc = Container.get(ApiKeyService);
+  const userSvc = Container.get(UserService);
+  const sessionSvc = Container.get(UserSessionService);
+
+  r.post('/change-password', async (req, res) => {
+    const auth = (req as any).auth as { userId: string; sessionId?: string } | undefined;
+    if (!auth) return res.status(401).json({ error: 'unauthenticated' });
+    const { oldPassword, newPassword } = req.body as { oldPassword?: string; newPassword?: string };
+    if (!oldPassword || !newPassword)
+      return res.status(400).json({ error: 'oldPassword and newPassword required' });
+    if (newPassword.length < 8)
+      return res.status(400).json({ error: 'password must be at least 8 characters' });
+    try {
+      await userSvc.changePassword(auth.userId, oldPassword, newPassword);
+    } catch (e: any) {
+      return res.status(400).json({ error: e.message });
+    }
+    if (auth.sessionId) await sessionSvc.revokeAllForUserExcept(auth.userId, auth.sessionId);
+    return res.status(204).end();
+  });
+
+  r.get('/me', async (req, res) => {
+    const auth = (req as any).auth as
+      | { userId: string; scopes: string; teamId?: string | null; kind: string }
+      | undefined;
+    if (!auth) return res.status(401).json({ error: 'unauthenticated' });
+    const user = await userSvc.findById(auth.userId);
+    if (!user) return res.status(401).json({ error: 'unauthenticated' });
+    return res.json({
+      userId: user.id,
+      email: user.email,
+      name: user.name,
+      role: user.role,
+      accessKey: user.accessKey,
+      scopes: auth.scopes,
+      teamId: auth.teamId ?? null,
+      kind: auth.kind,
+    });
+  });
 
   r.post('/dashboard-session', async (req, res) => {
     const { apiKey } = req.body as { apiKey?: string };
     if (!apiKey) return res.status(400).json({ error: 'apiKey required' });
-    const row = await svc.verify(apiKey);
-    if (!row) return res.status(401).json({ error: 'invalid key' });
-    const isSecure =
-      req.secure || (req.headers['x-forwarded-proto'] as string | undefined) === 'https';
-    res.cookie('xenon_dashboard_session', apiKey, {
+    const row = await apiKeySvc.verify(apiKey);
+    if (!row || !row.userId) return res.status(401).json({ error: 'invalid key' });
+    const owner = await userSvc.findById(row.userId);
+    if (!owner || owner.role !== 'SUPER_ADMIN') {
+      return res
+        .status(403)
+        .json({ error: 'super-admin scope required for dashboard-session exchange' });
+    }
+    res.cookie(SESSION_COOKIE, apiKey, {
       httpOnly: true,
-      secure: isSecure,
+      secure: isSecureFromReq(req),
       sameSite: 'strict',
-      maxAge: 24 * 60 * 60 * 1000,
+      maxAge: config.userSessionTtlMs,
     });
     res.json({ ok: true, scopes: row.scopes });
   });
 
-  // Identity probe for the dashboard. Used by the live-devices view to
-  // tell its own manual locks apart from another user's. Requires
-  // authentication (apiKeyMiddleware mounts before this router).
-  r.get('/me', (req, res) => {
-    if (!req.apiKey) return res.status(401).json({ error: 'unauthenticated' });
-    res.json({
-      userId: req.apiKey.id,
-      scopes: req.apiKey.scopes,
-      teamId: req.apiKey.teamId ?? null,
-    });
-  });
-
   return r;
+}
+
+// Back-compat: existing import sites still call `authRouter()`. Keep it as an
+// authed-router alias for now; Task 12-style migrations will move call sites.
+export function authRouter(): Router {
+  return authAuthedRouter();
 }

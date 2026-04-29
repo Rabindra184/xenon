@@ -24,7 +24,7 @@ import BugReportRouter from './routers/bug-report';
 import RecordingsRouter from './routers/recordings';
 import { apiKeysRouter } from './routers/apikeys';
 import { teamsRouter } from './routers/teams';
-import { authRouter } from './routers/auth';
+import { authPublicRouter, authAuthedRouter } from './routers/auth';
 import { processesRouter } from './routers/processes';
 import { authMiddleware } from '../middleware/authMiddleware';
 import { rateLimitMiddleware } from '../middleware/rateLimitMiddleware';
@@ -215,12 +215,15 @@ function createRouter(pluginArgs: IPluginArgs) {
   );
 
   // Dashboard login: unauthenticated (rate-limited internally via separate IP logic)
-  apiRouter.use('/auth', authRouter());
+  apiRouter.use('/auth', authPublicRouter()); // login, logout — unauthenticated
 
   // All remaining /api/* requires authentication (cookie session, header
   // (accessKey,token) pair, or — gated — legacy x-xenon-api-key) + rate limit.
   apiRouter.use(authMiddleware);
   apiRouter.use(rateLimitMiddleware());
+
+  // Authenticated auth endpoints: /me, /change-password, /dashboard-session
+  apiRouter.use('/auth', authAuthedRouter());
 
   // Admin: API key management
   apiRouter.use('/apikeys', apiKeysRouter());
