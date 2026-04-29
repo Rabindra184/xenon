@@ -5,6 +5,7 @@ import { UniversalMjpegProxy } from '../../helpers/UniversalMjpegProxy';
 import { WebConfigService } from '../../data-service/web-config-service';
 import { Container } from 'typedi';
 import { scopeGuard } from '../../middleware/scopeGuard';
+import { roleGuard } from '../../middleware/roleGuard';
 import { buildExport } from './build-export';
 import { NotificationService } from '../../services/NotificationService';
 import {
@@ -988,6 +989,7 @@ async function resetMetrics(request: Request, response: Response) {
 
 function register(router: Router) {
   router.use('/session/:sessionId', isValidSession);
+  router.use(roleGuard('MEMBER'));
 
   router.get('/session', getSessions);
   router.get('/session/:sessionId', getSessionById);
@@ -1005,18 +1007,18 @@ function register(router: Router) {
   router.get('/healing/selector', getHealingSelectorDetail);
   // Outbound notification — admin only since it can fan out to every
   // configured webhook (Slack channels, etc.).
-  router.post('/healing/digest/send', scopeGuard(['admin']), sendHealingDigest);
+  router.post('/healing/digest/send', roleGuard('ADMIN'), scopeGuard(['admin']), sendHealingDigest);
   // SelectorState lifecycle: state mutations require admin (they affect what
   // shows up in the live hotspot list, the CI gate, and the digest); the two
   // reads inherit the existing dashboard auth.
-  router.post('/healing/selector/state', scopeGuard(['admin']), postSelectorStateAction);
+  router.post('/healing/selector/state', roleGuard('ADMIN'), scopeGuard(['admin']), postSelectorStateAction);
   router.get('/healing/state/muted', getMutedSelectors);
   router.get('/healing/state/:strategy/:value', getSelectorStateByTuple);
   router.get('/config', getGlobalConfig);
   // Config + destructive ops: admin-only. Read-only config stays open to any
   // authenticated key so dashboards using 'read' scope can still populate.
-  router.post('/config', scopeGuard(['admin']), updateGlobalConfig);
-  router.post('/config/reset-metrics', scopeGuard(['admin']), resetMetrics);
+  router.post('/config', roleGuard('ADMIN'), scopeGuard(['admin']), updateGlobalConfig);
+  router.post('/config/reset-metrics', roleGuard('ADMIN'), scopeGuard(['admin']), resetMetrics);
 }
 
 export default {
