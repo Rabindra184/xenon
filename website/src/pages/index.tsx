@@ -79,7 +79,7 @@ const pillars = [
     Icon: Brain,
     color: '#A78BFA',
     title: 'AI Root-Cause Analysis',
-    desc: 'Multimodal triage with Phi-4, Gemini & Florence-2. Captures screenshots + logs and instantly diagnoses failure root cause.',
+    desc: 'Multi-provider triage via Gemini, OpenAI, and Anthropic Claude. Captures screenshots, page source, and logs to diagnose failure root cause.',
   },
   {
     Icon: Activity,
@@ -91,7 +91,7 @@ const pillars = [
     Icon: Eye,
     color: '#F59E0B',
     title: 'Omni-Vision',
-    desc: 'Visual element grounding via Florence-2. Interact with devices through visual intelligence, not just DOM queries.',
+    desc: 'OCR-driven element grounding (Tesseract.js) with AI-vision fallback. Interact with devices through what you see on screen, not just DOM queries.',
   },
   {
     Icon: MonitorSmartphone,
@@ -103,7 +103,7 @@ const pillars = [
     Icon: Shield,
     color: '#14B8A6',
     title: 'Enterprise Security',
-    desc: 'RBAC with 4 roles, OIDC/SAML identity federation, visual PII masking (GDPR/SOC2), and mTLS encryption.',
+    desc: 'Role-based access (SUPER_ADMIN / ADMIN / MEMBER), per-team device scoping, per-user pair-auth tokens, CSRF + per-key rate limiting, structured log redaction.',
   },
 ];
 
@@ -148,7 +148,7 @@ const infraFeatures = [
   {
     Icon: Zap,
     label: 'Smart Allocation',
-    detail: 'Priority-based device locking with cross-cell failover',
+    detail: 'Queue-managed device assignment with team-aware filtering and priority hints',
   },
   {
     Icon: HeartPulse,
@@ -303,27 +303,31 @@ function CloudScale() {
           <div className={styles.cloudFeature}>
             <GitBranch size={20} />
             <div>
-              <strong>Cellular Architecture</strong>
+              <strong>Hub & Node Topology</strong>
               <p>
-                Regional cells (US-West, EU-Central) with shared PostgreSQL state for global scale.
+                One hub coordinates many nodes; each node ships its local devices and forwards
+                Appium commands transparently to the client.
               </p>
             </div>
           </div>
           <div className={styles.cloudFeature}>
             <Zap size={20} />
             <div>
-              <strong>gRPC/NATS Event Bus</strong>
+              <strong>Real-time Socket.IO Fanout</strong>
               <p>
-                High-performance messaging for cross-node command routing and distributed state
-                sync.
+                Live device, session, healing, and selector-health events streamed to dashboards
+                and custom listeners — no polling.
               </p>
             </div>
           </div>
           <div className={styles.cloudFeature}>
             <Shield size={20} />
             <div>
-              <strong>Disaster Recovery</strong>
-              <p>Automatic session re-routing. Stateless Hubs with persistent registries.</p>
+              <strong>Shared PostgreSQL State</strong>
+              <p>
+                Multi-hub deployments share a single Prisma-managed database for build, session,
+                healing, and selector-health history.
+              </p>
             </div>
           </div>
         </div>
@@ -339,13 +343,15 @@ const techStack = [
   'Appium',
   'Node.js',
   'TypeScript',
-  'gRPC',
-  'PostgreSQL',
-  'OpenTelemetry',
-  'WebSocket',
-  'NATS',
   'Prisma',
-  'Florence-2',
+  'PostgreSQL',
+  'SQLite',
+  'OpenTelemetry',
+  'Socket.IO',
+  'React',
+  'Vite',
+  'Tailwind CSS',
+  'Tesseract.js',
 ];
 
 function TechStack() {
