@@ -539,6 +539,7 @@ Xenon reads these env vars in addition to the CLI flags. Prefer env vars for cre
 | `XENON_HUB_TOKEN` | Node→hub outbound: token the node sends in `X-Xenon-Token`. Required alongside `XENON_HUB_ACCESS_KEY`. |
 | `XENON_BOOTSTRAP_ADMIN_EMAIL` / `XENON_BOOTSTRAP_ADMIN_PASSWORD` | First-run super-admin user, created on first hub boot. Defaults `admin@xenon.local` / `Admin@123`. Change in any non-throwaway environment. |
 | `XENON_AUTH_DISABLED` | `true` to disable all auth. Local dev only. |
+| `XENON_AUTO_MIGRATE` | When `true` (default), the hub auto-applies pending schema changes at startup (`prisma db push` for SQLite, `prisma migrate deploy` for PostgreSQL). Set `false` if you manage migrations externally via CI for auditable change-control. |
 
 See [`docs/server-args.md`](docs/server-args.md) for the full CLI-flag reference and how these variables interact with config files.
 

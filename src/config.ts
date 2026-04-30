@@ -21,6 +21,13 @@ export interface Config {
   anthropicModel?: string;
   ollamaModel?: string;
   authDisabled: boolean;
+  // When true (default), the hub auto-applies any pending schema changes
+  // at startup — `db push` for SQLite, `prisma migrate deploy` for
+  // PostgreSQL. Set XENON_AUTO_MIGRATE=false in environments where
+  // schema is managed externally (CI-driven migrations with auditable
+  // change-control), in which case the operator is responsible for
+  // applying migrations before the hub boots.
+  autoMigrate: boolean;
   // Outbound credentials a node uses to talk to the hub. Both must be set
   // for node-to-hub traffic to authenticate; otherwise the hub will reject
   // the handshake unless XENON_AUTH_DISABLED=true.
@@ -74,6 +81,7 @@ export const config: Config = {
   anthropicModel: process.env.XENON_ANTHROPIC_MODEL,
   ollamaModel: process.env.XENON_OLLAMA_MODEL,
   authDisabled: process.env.XENON_AUTH_DISABLED === 'true',
+  autoMigrate: process.env.XENON_AUTO_MIGRATE !== 'false',
   hubAccessKey: process.env.XENON_HUB_ACCESS_KEY,
   hubToken: process.env.XENON_HUB_TOKEN,
   bootstrapAdminEmail: process.env.XENON_BOOTSTRAP_ADMIN_EMAIL || 'admin@xenon.local',
