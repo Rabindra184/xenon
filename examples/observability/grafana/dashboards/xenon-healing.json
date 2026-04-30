@@ -1,0 +1,101 @@
+{
+  "annotations": { "list": [] },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 0,
+  "id": null,
+  "links": [],
+  "panels": [
+    {
+      "datasource": { "type": "tempo", "uid": "tempo" },
+      "description": "Stacked rate of healing attempts per tier (the funnel). Tall bars on Native = test authoring is breaking; tall bars on LLM = your fuzzy/visual tiers aren't catching common cases.",
+      "fieldConfig": {
+        "defaults": { "custom": { "drawStyle": "bars", "fillOpacity": 100, "stacking": { "mode": "normal" } }, "unit": "short" }
+      },
+      "gridPos": { "h": 9, "w": 12, "x": 0, "y": 0 },
+      "id": 1,
+      "options": { "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true } },
+      "targets": [
+        {
+          "datasource": { "type": "tempo", "uid": "tempo" },
+          "queryType": "traceqlSearch",
+          "query": "{ name = \"xenon.healing.attempt\" } | rate() by (span.xenon.healing.tier)",
+          "refId": "A"
+        }
+      ],
+      "title": "Healing tier funnel — rate by tier",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "tempo", "uid": "tempo" },
+      "description": "Total successful healings vs. all-tiers-failed events. Sustained gap = test selectors are stable. Closing gap = something upstream is breaking.",
+      "fieldConfig": { "defaults": { "unit": "short" } },
+      "gridPos": { "h": 9, "w": 12, "x": 12, "y": 0 },
+      "id": 2,
+      "options": { "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true } },
+      "targets": [
+        {
+          "datasource": { "type": "tempo", "uid": "tempo" },
+          "queryType": "traceqlSearch",
+          "query": "{ name = \"xenon.healing.attempt\" && status = ok } | rate()",
+          "refId": "Success"
+        },
+        {
+          "datasource": { "type": "tempo", "uid": "tempo" },
+          "queryType": "traceqlSearch",
+          "query": "{ name = \"xenon.healing.attempt\" && status = error } | rate()",
+          "refId": "Failure"
+        }
+      ],
+      "title": "Healing outcome — success vs failure rate",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "tempo", "uid": "tempo" },
+      "description": "p99 healing latency per tier. LLM dominating = hot spot for adopter cost. Native should be near-instant.",
+      "fieldConfig": { "defaults": { "unit": "ms" } },
+      "gridPos": { "h": 9, "w": 12, "x": 0, "y": 9 },
+      "id": 3,
+      "options": { "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true } },
+      "targets": [
+        {
+          "datasource": { "type": "tempo", "uid": "tempo" },
+          "queryType": "traceqlSearch",
+          "query": "{ name = \"xenon.healing.attempt\" } | quantile_over_time(duration, 0.99) by (span.xenon.healing.tier)",
+          "refId": "A"
+        }
+      ],
+      "title": "Healing latency p99 — by tier",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "tempo", "uid": "tempo" },
+      "description": "All-tiers-failed events. Clicking a row shows the broken locator's strategy and full Tempo trace.",
+      "gridPos": { "h": 9, "w": 12, "x": 12, "y": 9 },
+      "id": 4,
+      "options": { "showHeader": true },
+      "targets": [
+        {
+          "datasource": { "type": "tempo", "uid": "tempo" },
+          "queryType": "traceqlSearch",
+          "query": "{ name = \"xenon.healing.attempt\" && status = error }",
+          "refId": "A",
+          "tableType": "spans"
+        }
+      ],
+      "title": "All-tiers-failed events (recent)",
+      "type": "table"
+    }
+  ],
+  "preload": false,
+  "refresh": "30s",
+  "schemaVersion": 38,
+  "tags": ["xenon", "healing"],
+  "templating": { "list": [] },
+  "time": { "from": "now-1h", "to": "now" },
+  "timepicker": {},
+  "timezone": "browser",
+  "title": "Xenon — Self-Healing",
+  "uid": "xenon-healing",
+  "version": 1
+}

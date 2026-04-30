@@ -1,0 +1,16 @@
+apiVersion: 1
+
+# Tells Grafana to look in /var/lib/grafana/dashboards for JSON files and
+# auto-load them. The dashboards folder is mounted by docker-compose. New
+# JSON files dropped in there are picked up on the next 30s refresh tick.
+
+providers:
+  - name: 'Xenon'
+    orgId: 1
+    folder: 'Xenon'
+    type: file
+    disableDeletion: false
+    updateIntervalSeconds: 30
+    allowUiUpdates: true
+    options:
+      path: /var/lib/grafana/dashboards

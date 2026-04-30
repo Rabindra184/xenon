@@ -1,6 +1,6 @@
 services:
   tempo:
-    image: grafana/tempo:2.3.0
+    image: grafana/tempo:2.6.0
     command: ["-config.file=/etc/tempo/tempo.yml"]
     volumes:
       - ./tempo.yml:/etc/tempo/tempo.yml
@@ -23,4 +23,8 @@ services:
     environment:
       - GF_AUTH_ANONYMOUS_ENABLED=true
       - GF_AUTH_ANONYMOUS_ORG_ROLE=Admin
+      - GF_FEATURE_TOGGLES_ENABLE=traceqlEditor traceqlSearch metricsSummary
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning
+      - ./grafana/dashboards:/var/lib/grafana/dashboards
     depends_on: [loki, tempo]

@@ -49,10 +49,28 @@ Setting either endpoint to just the host (e.g. `http://localhost:3100` or
 
 http://localhost:3001 — anonymous admin access.
 
-Add data sources:
+**Data sources are auto-provisioned** (`grafana/provisioning/datasources/`):
+Loki at `http://loki:3100` and Tempo at `http://tempo:3200` are wired on
+first start.
 
-- Loki — URL `http://loki:3100` (the in-network hostname, not localhost)
-- Tempo — URL `http://tempo:3200`
+**Dashboards are auto-loaded** from `grafana/dashboards/` into a "Xenon"
+folder:
+
+- **Xenon — Sessions & Logs** (`xenon-sessions`) — log explorer with
+  Trace ID / Session ID / text filter template variables, plus log
+  volume by severity.
+- **Xenon — Self-Healing** (`xenon-healing`) — tier funnel (rate by
+  tier), success-vs-failure rate, p99 latency by tier, recent
+  all-tiers-failed events table.
+- **Xenon — Recording Health** (`xenon-recording`) — attempt rate,
+  failure breakdown by `fail_reason`, group-size distribution, stop
+  latency p99.
+
+The healing and recording dashboards use **TraceQL metrics** queries
+(Tempo 2.4+) that compute counters/rates/quantiles directly from spans.
+No Prometheus required.
+
+### Ad-hoc queries
 
 In **Explore → Loki**, this LogQL query returns every Xenon log line:
 
@@ -72,6 +90,19 @@ Filter to one role (hub vs. node):
 {service_name="xenon", service="hub"}
 ```
 
+In **Explore → Tempo**, this TraceQL query returns every healing
+attempt:
+
+```
+{ name = "xenon.healing.attempt" }
+```
+
+Healings that fell all the way through:
+
+```
+{ name = "xenon.healing.attempt" && status = error }
+```
+
 ## Cleanup
 
 ```bash
@@ -85,7 +116,12 @@ and Tempo. Drop it if you want logs to persist across restarts.
 
 - Not production-ready. Single-node, in-memory Loki ring, filesystem chunks,
   no auth, no TLS, no replication, 24h retention.
-- Not a Prometheus stack. Xenon's process metrics live at
-  `GET /xenon/api/config/metrics` and are unrelated to this OTLP pipeline.
-- Not a Grafana provisioning recipe. You add data sources and dashboards by
-  hand. A pre-provisioned bundle may follow in a later iteration.
+- Not a Prometheus stack. Xenon's OTel metrics (counters and histograms
+  from `xenon.healing.*`, `xenon.recording.*`) are emitted to whatever
+  `OTEL_EXPORTER_OTLP_METRICS_ENDPOINT` points at — this stack does not
+  receive them. The healing and recording dashboards use TraceQL metrics
+  computed from spans instead, which works without any metrics pipeline.
+  Adopters who want a full metrics pipeline can add an OTel Collector +
+  Prometheus separately.
+- Xenon's process metrics live at `GET /xenon/api/config/metrics`
+  (Prometheus text format) and are unrelated to this OTLP pipeline.
