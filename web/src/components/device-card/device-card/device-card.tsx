@@ -4,6 +4,7 @@ import { Copy, MoreHorizontal, Clock, Terminal } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { IDevice } from '../../../interfaces/IDevice';
 import XenonApiService from '../../../api-service';
+import { useAuth } from '../../../auth/auth-context';
 import { Button } from '../../ui/button';
 import { Pill } from '../../ui/Pill';
 import { StatusCode } from '../../ui/StatusCode';
@@ -20,7 +21,91 @@ interface Props {
   device: IDevice;
   reloadDevices: () => void;
   navigate: (path: string) => void;
+  /**
+   * Map of team-id -> team-name. Prefetched once at the explorer level so
+   * every card can resolve its `device.teamId` without firing its own
+   * /xenon/api/teams request. Defaults to an empty map; falls back to a
+   * "Team {id-prefix}" string if a lookup misses.
+   */
+  teams?: Map<string, string>;
 }
+
+/**
+ * Inline team chip rendered on each device card. Read-only for non-admins;
+ * admins see a click-to-edit `<select>` with all teams + an
+ * "(Unassigned)" option. PUTs /xenon/api/grid/device/:udid/team and triggers
+ * the parent's `reloadDevices` on success so the new team-id is reflected.
+ */
+const DeviceTeamChip: React.FC<{
+  udid: string;
+  currentTeamId: string | null;
+  teams: Map<string, string>;
+  canEdit: boolean;
+  onChanged: () => void;
+}> = ({ udid, currentTeamId, teams, canEdit, onChanged }) => {
+  const [editing, setEditing] = React.useState(false);
+  const [busy, setBusy] = React.useState(false);
+  const teamName = currentTeamId
+    ? teams.get(currentTeamId) ?? `Team ${currentTeamId.slice(0, 6)}`
+    : 'Unassigned';
+
+  async function pick(teamId: string | null) {
+    setBusy(true);
+    try {
+      await XenonApiService.setDeviceTeam(udid, teamId);
+      onChanged();
+      setEditing(false);
+    } catch (e: any) {
+      // 403s are surfaced as a toast by the api-client; for everything else
+      // (5xx, network) we alert and revert by simply not changing displayed
+      // state (server is the source of truth on the next reload).
+      alert(e?.message || 'Failed to update team');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  // Non-admin viewers: read-only chip when assigned, hidden otherwise.
+  if (!canEdit) {
+    if (!currentTeamId) return null;
+    return (
+      <Pill tone="accent" title={`Team: ${teamName}`}>
+        {teamName}
+      </Pill>
+    );
+  }
+
+  if (editing) {
+    return (
+      <select
+        autoFocus
+        disabled={busy}
+        defaultValue={currentTeamId ?? ''}
+        onBlur={() => setEditing(false)}
+        onChange={(e) => pick(e.target.value || null)}
+        className="dc2-team-select"
+      >
+        <option value="">(Unassigned)</option>
+        {Array.from(teams.entries()).map(([id, name]) => (
+          <option key={id} value={id}>
+            {name}
+          </option>
+        ))}
+      </select>
+    );
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={() => setEditing(true)}
+      className="dc2-team-pill"
+      title="Click to change team"
+    >
+      {teamName}
+    </button>
+  );
+};
 
 function deriveKind(d: IDevice): StatusKind {
   if (d.offline) return 'offline';
@@ -35,11 +120,13 @@ function middleEllipsis(s: string, head = 10, tail = 4): string {
   return `${s.slice(0, head)}…${s.slice(-tail)}`;
 }
 
-export const DeviceCard: React.FC<Props> = ({ device, reloadDevices, navigate }) => {
+export const DeviceCard: React.FC<Props> = ({ device, reloadDevices, navigate, teams }) => {
   const [showReservation, setShowReservation] = React.useState(false);
   const [showTagManager, setShowTagManager] = React.useState(false);
   const [menuOpen, setMenuOpen] = React.useState(false);
   const moreRef = React.useRef<HTMLButtonElement>(null);
+  const { me } = useAuth();
+  const canEditTeam = me?.role === 'ADMIN' || me?.role === 'SUPER_ADMIN';
 
   const kind = deriveKind(device);
   const reserved = kind === 'reserved';
@@ -84,12 +171,16 @@ export const DeviceCard: React.FC<Props> = ({ device, reloadDevices, navigate })
 
       <HealthBadges device={device} />
 
-      {(device.teamId || (device.tags && device.tags.length > 0)) && (
+      {(device.teamId || canEditTeam || (device.tags && device.tags.length > 0)) && (
         <div className="dc2-tags">
-          {device.teamId && (
-            <Pill tone="accent" title={`Team ${device.teamId}`}>
-              team
-            </Pill>
+          {(device.teamId || canEditTeam) && (
+            <DeviceTeamChip
+              udid={device.udid}
+              currentTeamId={device.teamId ?? null}
+              teams={teams ?? new Map()}
+              canEdit={canEditTeam}
+              onChanged={reloadDevices}
+            />
           )}
           {device.tags?.slice(0, 3).map((t) => (
             <Pill key={t} tone="neutral" title={t}>
@@ -220,13 +311,18 @@ export const DeviceCard: React.FC<Props> = ({ device, reloadDevices, navigate })
   );
 };
 
-export default function DeviceCardWrapper(props: { device: IDevice; reloadDevices: () => void }) {
+export default function DeviceCardWrapper(props: {
+  device: IDevice;
+  reloadDevices: () => void;
+  teams?: Map<string, string>;
+}) {
   const navigate = useNavigate();
   return (
     <DeviceCard
       device={props.device}
       reloadDevices={props.reloadDevices}
       navigate={navigate}
+      teams={props.teams}
     />
   );
 }

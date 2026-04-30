@@ -94,6 +94,27 @@ export default class XenonApiService {
     return apiClient.makePOSTRequest('/device/tags', {}, { udid, host, tags });
   }
 
+  /* Teams (admin scope on writes; reads available to any auth'd caller) */
+  public static async listTeams(): Promise<{ id: string; name: string }[]> {
+    const r = await fetch('/xenon/api/teams', { credentials: 'include' });
+    if (!r.ok) throw new Error(`listTeams failed (${r.status})`);
+    const rows = await r.json();
+    return rows.map((t: any) => ({ id: t.id, name: t.name }));
+  }
+
+  public static async setDeviceTeam(udid: string, teamId: string | null): Promise<void> {
+    const r = await fetch(`/xenon/api/grid/device/${encodeURIComponent(udid)}/team`, {
+      method: 'PUT',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ teamId }),
+    });
+    if (!r.ok && r.status !== 204) {
+      const body = await r.json().catch(() => ({}));
+      throw new Error(body.error || `setDeviceTeam failed (${r.status})`);
+    }
+  }
+
   public static getSessionLiveVideoUrl(sessionId: string) {
     return apiClient.formatUrl(`/session/${sessionId}/live_video`);
   }
