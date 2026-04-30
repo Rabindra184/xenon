@@ -244,10 +244,6 @@
             "default": false,
             "description": "Disable API key authentication for all /xenon/api/* endpoints. Use only in local dev environments."
         },
-        "nodeSecret": {
-            "type": "string",
-            "description": "Shared secret for hub-node channel authentication. Nodes must send this value in X-Xenon-Node-Secret header."
-        },
         "interceptor": {
             "type": "object",
             "description": "Network request interception configuration (capture + mock + modify). See InterceptorConfig interface for details. Android-only in v1."

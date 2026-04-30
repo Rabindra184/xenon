@@ -6,38 +6,29 @@ import { InternalHttpClient } from '../InternalHttpClient';
 
 interface NodeDevicesOptions {
   tlsRejectUnauthorized?: boolean;
-  nodeSecret?: string; // legacy; phased out via XENON_ACCEPT_LEGACY_NODE_SECRET
-  hubAccessKey?: string; // pair-auth (preferred)
+  hubAccessKey?: string;
   hubToken?: string;
 }
 
 export default class NodeDevices {
   private host: string;
   private tlsRejectUnauthorized?: boolean;
-  private nodeSecret?: string;
   private hubAccessKey?: string;
   private hubToken?: string;
 
   constructor(host: string, options: NodeDevicesOptions = {}) {
     this.host = host;
     this.tlsRejectUnauthorized = options.tlsRejectUnauthorized;
-    this.nodeSecret = options.nodeSecret;
     this.hubAccessKey = options.hubAccessKey;
     this.hubToken = options.hubToken;
   }
 
-  // Phase 4B: pair auth wins when both shapes are configured. A node mid-
-  // migration may have BOTH XENON_HUB_ACCESS_KEY/TOKEN AND XENON_NODE_SECRET
-  // set; we always prefer the pair, leaving the legacy env var harmless.
   private nodeHeaders(): Record<string, string> {
     if (this.hubAccessKey && this.hubToken) {
       return {
         'x-xenon-access-key': this.hubAccessKey,
         'x-xenon-token': this.hubToken,
       };
-    }
-    if (this.nodeSecret) {
-      return { 'x-xenon-node-secret': this.nodeSecret };
     }
     return {};
   }

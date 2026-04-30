@@ -409,7 +409,6 @@ export async function updateDeviceList(
   host: string,
   hubArgument?: string,
   tlsRejectUnauthorized?: boolean,
-  nodeSecret?: string,
 ): Promise<IDevice[]> {
   const allExistingDevices = await getAllDevices();
   const devices: IDevice[] = await getDeviceManager().getDevices(allExistingDevices);
@@ -438,7 +437,6 @@ export async function updateDeviceList(
     if (await isXenonRunning(hubArgument, tlsRejectUnauthorized)) {
       const nodeDevices = new NodeDevices(hubArgument, {
         tlsRejectUnauthorized,
-        nodeSecret,
         hubAccessKey: xenonConfig.hubAccessKey,
         hubToken: xenonConfig.hubToken,
       });
@@ -612,7 +610,6 @@ export async function setupCronUpdateDeviceList(
   hubArgument: string,
   intervalMs: number,
   tlsRejectUnauthorized?: boolean,
-  nodeSecret?: string,
 ) {
   if (cronTimerToUpdateDevices) {
     clearInterval(cronTimerToUpdateDevices);
@@ -622,7 +619,7 @@ export async function setupCronUpdateDeviceList(
   );
 
   cronTimerToUpdateDevices = setInterval(async () => {
-    await updateDeviceList(host, hubArgument, tlsRejectUnauthorized, nodeSecret);
+    await updateDeviceList(host, hubArgument, tlsRejectUnauthorized);
   }, intervalMs);
 }
 
