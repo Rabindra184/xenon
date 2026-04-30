@@ -41,6 +41,7 @@ const SelectorDetailPage = lazy(
 );
 const DeviceMosaicView = lazy(() => import('../components/mosaic/DeviceMosaicView'));
 const ProfilePage = lazy(() => import('../pages/profile/profile-page'));
+const UsersPage = lazy(() => import('../pages/users'));
 
 const LoadingFallback = () => (
   <div className="flex items-center justify-center gap-2 h-full text-xs text-[var(--text-dim)]">
@@ -72,6 +73,7 @@ export const AppRoutes: React.FC = () => (
         <Route path="/maintenance" element={<MaintenanceSettings />} />
         <Route path="/api-keys" element={<ApiKeys />} />
         <Route path="/teams" element={<Teams />} />
+        <Route path="/users" element={<UsersPage />} />
         <Route path="/selector-health" element={<SelectorHealthPage />} />
         <Route path="/selector-health/detail" element={<SelectorDetailPage />} />
         <Route path="/devices/live" element={<DeviceMosaicView />} />
