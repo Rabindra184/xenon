@@ -17,7 +17,6 @@ import {
   LayoutDashboard,
   Terminal,
   Bell,
-  Cloud,
   Zap,
   Database,
   GitBranch,
@@ -274,30 +273,20 @@ await driver.executeScript(
 }
 
 /* ─────────────────────────────────────────────
-   SECTION 4 — Cloud & Scale
+   SECTION 4 — Architecture & Scale
    ───────────────────────────────────────────── */
-const providers = ['BrowserStack', 'SauceLabs', 'LambdaTest', 'HeadSpin', 'pCloudy'];
-
 function CloudScale() {
   return (
     <section className={styles.cloud}>
       <div className="container">
         <div className={styles.sectionHeader}>
           <Heading as="h2" className={styles.sectionTitle}>
-            Run Anywhere
+            Built to Scale
           </Heading>
           <p className={styles.sectionSubtitle}>
-            Your infrastructure, any cloud. Xenon integrates with 5+ cloud device providers — or
-            runs entirely on-premise.
+            From a single laptop to a distributed device lab. Hub-and-node topology,
+            real-time event fanout, and a shared persistent state layer scale with your team.
           </p>
-        </div>
-        <div className={styles.providerGrid}>
-          {providers.map((name) => (
-            <div key={name} className={styles.providerBadge}>
-              <Cloud size={20} />
-              <span>{name}</span>
-            </div>
-          ))}
         </div>
         <div className={styles.cloudFeatures}>
           <div className={styles.cloudFeature}>
