@@ -8,6 +8,31 @@ distributor:
         http:
           endpoint: "0.0.0.0:4318"
 
+# metrics_generator with the local-blocks processor is what powers TraceQL
+# metrics queries (rate / count_over_time / quantile_over_time) used by the
+# Xenon healing and recording dashboards. No Prometheus remote_write is
+# needed — local-blocks computes from the stored spans on the fly.
+metrics_generator:
+  processor:
+    local_blocks:
+      flush_to_storage: true
+      # Tight flush windows so dev/demo queries see data within ~30s of being
+      # emitted. In production these defaults get bumped back up — this stack
+      # is explicitly demo-only (see README).
+      flush_check_period: 10s
+      complete_block_timeout: 30s
+      max_block_duration: 30s
+  storage:
+    path: /tmp/tempo/generator/wal
+  traces_storage:
+    path: /tmp/tempo/generator/traces
+
+overrides:
+  defaults:
+    metrics_generator:
+      processors:
+        - local-blocks
+
 storage:
   trace:
     backend: local

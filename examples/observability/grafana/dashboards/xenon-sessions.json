@@ -1,0 +1,81 @@
+{
+  "annotations": { "list": [] },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 0,
+  "id": null,
+  "links": [],
+  "panels": [
+    {
+      "datasource": { "type": "loki", "uid": "loki" },
+      "description": "Xenon hub and node logs. Filter by Trace ID, Session ID, or any text. Click a line to expand structured metadata.",
+      "gridPos": { "h": 18, "w": 24, "x": 0, "y": 0 },
+      "id": 1,
+      "options": {
+        "dedupStrategy": "none",
+        "enableLogDetails": true,
+        "prettifyLogMessage": false,
+        "showCommonLabels": false,
+        "showLabels": false,
+        "showTime": true,
+        "sortOrder": "Descending",
+        "wrapLogMessage": true
+      },
+      "targets": [
+        {
+          "datasource": { "type": "loki", "uid": "loki" },
+          "editorMode": "code",
+          "expr": "{service_name=\"xenon\"} | sessionId =~ `$sessionId` | traceId =~ `$traceId` |= `$filter`",
+          "queryType": "range",
+          "refId": "A"
+        }
+      ],
+      "title": "Xenon Logs",
+      "type": "logs"
+    },
+    {
+      "datasource": { "type": "loki", "uid": "loki" },
+      "description": "Log volume over time, broken out by severity. Spikes in 'error' are the headline signal.",
+      "fieldConfig": {
+        "defaults": { "custom": { "drawStyle": "bars", "fillOpacity": 100, "stacking": { "mode": "normal" } } },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "ERROR" }, "properties": [{ "id": "color", "value": { "fixedColor": "red", "mode": "fixed" } }] },
+          { "matcher": { "id": "byName", "options": "WARN" }, "properties": [{ "id": "color", "value": { "fixedColor": "yellow", "mode": "fixed" } }] },
+          { "matcher": { "id": "byName", "options": "INFO" }, "properties": [{ "id": "color", "value": { "fixedColor": "blue", "mode": "fixed" } }] }
+        ]
+      },
+      "gridPos": { "h": 6, "w": 24, "x": 0, "y": 18 },
+      "id": 2,
+      "options": { "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true } },
+      "targets": [
+        {
+          "datasource": { "type": "loki", "uid": "loki" },
+          "editorMode": "code",
+          "expr": "sum by (severity_text) (count_over_time({service_name=\"xenon\"} [$__interval]))",
+          "legendFormat": "{{severity_text}}",
+          "queryType": "range",
+          "refId": "A"
+        }
+      ],
+      "title": "Log Volume by Severity",
+      "type": "timeseries"
+    }
+  ],
+  "preload": false,
+  "refresh": "30s",
+  "schemaVersion": 38,
+  "tags": ["xenon", "logs"],
+  "templating": {
+    "list": [
+      { "current": { "text": "", "value": "" }, "description": "Filter by Trace ID", "label": "Trace ID", "name": "traceId", "options": [{ "selected": true, "text": "", "value": "" }], "query": "", "type": "textbox" },
+      { "current": { "text": "", "value": "" }, "description": "Filter by Session ID", "label": "Session ID", "name": "sessionId", "options": [{ "selected": true, "text": "", "value": "" }], "query": "", "type": "textbox" },
+      { "current": { "text": "", "value": "" }, "description": "Substring match against the log body", "label": "Filter", "name": "filter", "options": [{ "selected": true, "text": "", "value": "" }], "query": "", "type": "textbox" }
+    ]
+  },
+  "time": { "from": "now-1h", "to": "now" },
+  "timepicker": {},
+  "timezone": "browser",
+  "title": "Xenon — Sessions & Logs",
+  "uid": "xenon-sessions",
+  "version": 1
+}
