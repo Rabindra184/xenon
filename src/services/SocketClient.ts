@@ -19,15 +19,24 @@ export class SocketClient {
 
     log.info(`[SocketClient] Connecting to Hub WebSocket: ${normalizedHubUrl}`);
 
-    // Hub now authenticates every socket handshake. Nodes present the same
-    // shared secret they already use for REST calls; without it the hub will
-    // reject the handshake with "unauthorized". auth-disabled mode on the hub
-    // (XENON_AUTH_DISABLED=true) ignores this field, so it's safe to send
-    // unconditionally.
+    // Phase 4B: prefer (accessKey, token) pair over legacy nodeSecret. Hub
+    // accepts both shapes during the migration window — when both env vars
+    // are set on this node, the pair wins (mirrors the REST NodeDevices
+    // outbound precedence). auth-disabled mode on the hub
+    // (XENON_AUTH_DISABLED=true) ignores this field entirely.
+    const hubAccessKey = xenonConfig.hubAccessKey;
+    const hubToken = xenonConfig.hubToken;
     const nodeSecret = xenonConfig.nodeSecret;
-    if (!nodeSecret) {
+
+    let socketAuth: Record<string, string> | undefined;
+    if (hubAccessKey && hubToken) {
+      socketAuth = { accessKey: hubAccessKey, token: hubToken };
+    } else if (nodeSecret) {
+      socketAuth = { nodeSecret };
+    } else {
+      socketAuth = undefined;
       log.warn(
-        '[SocketClient] XENON_NODE_SECRET not set; hub will reject the handshake unless it also has auth disabled.',
+        '[SocketClient] Neither (XENON_HUB_ACCESS_KEY + XENON_HUB_TOKEN) nor XENON_NODE_SECRET set; hub will reject the handshake unless it also has auth disabled.',
       );
     }
 
@@ -36,7 +45,7 @@ export class SocketClient {
       reconnectionAttempts: Infinity,
       reconnectionDelay: 1000,
       reconnectionDelayMax: 5000,
-      auth: nodeSecret ? { nodeSecret } : undefined,
+      auth: socketAuth,
     });
 
     this.socket.on('connect', () => {
