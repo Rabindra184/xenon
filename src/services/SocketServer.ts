@@ -5,6 +5,7 @@ import log from '../logger';
 import { config as xenonConfig } from '../config';
 import { ApiKeyService } from './ApiKeyService';
 import { validateNodeSecret } from '../auth/nodeSecret';
+import { prisma } from '../prisma';
 import { SocketEvents, XENON_PROTOCOL_VERSION, HandshakeData } from '../enums/SocketEvents';
 
 // Socket principals mirror the two REST auth paths. 'auth-disabled' is a
@@ -133,14 +134,42 @@ export class SocketServer {
     const auth = (socket.handshake.auth || {}) as Record<string, any>;
     const headers = socket.handshake.headers || {};
 
-    // Node path: shared secret. Checked first because nodes never have a
-    // dashboard cookie, so we avoid a pointless ApiKeyService lookup. Accepts
-    // either the current or (during rotation overlap) the previous secret —
-    // validateNodeSecret logs a warn for the previous-match case.
+    // Phase 4B: pair-auth first (mirrors REST authMiddleware path 1).
+    // Per-node (accessKey, token) credentials supersede the shared
+    // x-xenon-node-secret. The pair resolves to a real ApiKey row owned by
+    // a real User; we additionally enforce that the User is ACTIVE so a
+    // disabled account can't keep a stolen key alive.
+    const pairKey =
+      (typeof auth.accessKey === 'string' && auth.accessKey) ||
+      ((headers['x-xenon-access-key'] as string | undefined) ?? '');
+    const pairTok =
+      (typeof auth.token === 'string' && auth.token) ||
+      ((headers['x-xenon-token'] as string | undefined) ?? '');
+    if (pairKey && pairTok) {
+      const row = await Container.get(ApiKeyService).verifyPair(pairKey, pairTok);
+      if (!row) throw new Error('invalid (accessKey, token) pair');
+      const owner = await prisma.user.findUnique({
+        where: { id: row.userId },
+        select: { status: true },
+      });
+      if (!owner || owner.status !== 'ACTIVE') throw new Error('inactive user');
+      return 'node';
+    }
+
+    // Node path: shared secret. Legacy — gated by acceptLegacyNodeSecret so
+    // operators can flip the kill-switch once all nodes are migrated to
+    // pair auth. Accepts either the current or (during rotation overlap)
+    // the previous secret — validateNodeSecret logs a warn for the
+    // previous-match case.
     const nodeSecret =
       (typeof auth.nodeSecret === 'string' && auth.nodeSecret) ||
       ((headers['x-xenon-node-secret'] as string | undefined) ?? '');
     if (nodeSecret) {
+      if (xenonConfig.acceptLegacyNodeSecret !== true) {
+        throw new Error(
+          'x-xenon-node-secret is rejected; XENON_ACCEPT_LEGACY_NODE_SECRET is false',
+        );
+      }
       if (!xenonConfig.nodeSecret && !xenonConfig.nodeSecretPrevious) {
         throw new Error('node secret presented but server has none configured');
       }
@@ -162,7 +191,9 @@ export class SocketServer {
       '';
 
     if (!apiKeyRaw) {
-      throw new Error('missing credentials (need nodeSecret, apiKey, or dashboard cookie)');
+      throw new Error(
+        'missing credentials (need (accessKey, token) pair, nodeSecret, apiKey, or dashboard cookie)',
+      );
     }
 
     const row = await Container.get(ApiKeyService).verify(apiKeyRaw);

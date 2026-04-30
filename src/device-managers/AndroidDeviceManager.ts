@@ -13,6 +13,7 @@ import Adb, { Client, DeviceWithPath } from '@devicefarmer/adbkit';
 import { AbortController } from 'node-abort-controller';
 import asyncWait from 'async-wait-until';
 import NodeDevices from './NodeDevices';
+import { config as xenonConfig } from '../config';
 import { addNewDevice, removeDevice } from '../data-service/device-service';
 import { DeviceStoreFactory } from '../data-service/device-store';
 
@@ -501,11 +502,12 @@ export default class AndroidDeviceManager implements IDeviceManager {
       };
       if (this.pluginArgs.hub != undefined) {
         log.info(`Updating Hub with device ${newDevice.udid}`);
-        const nodeDevices = new NodeDevices(
-          this.pluginArgs.hub,
-          this.pluginArgs.tlsRejectUnauthorized,
-          this.pluginArgs.nodeSecret,
-        );
+        const nodeDevices = new NodeDevices(this.pluginArgs.hub, {
+          tlsRejectUnauthorized: this.pluginArgs.tlsRejectUnauthorized,
+          nodeSecret: this.pluginArgs.nodeSecret,
+          hubAccessKey: xenonConfig.hubAccessKey,
+          hubToken: xenonConfig.hubToken,
+        });
         await nodeDevices.postDevicesToHub([deviceTracked], 'add');
       }
 
@@ -552,7 +554,12 @@ export default class AndroidDeviceManager implements IDeviceManager {
       state: device.type,
     };
     if (pluginArgs.hub != undefined) {
-      const nodeDevices = new NodeDevices(pluginArgs.hub, pluginArgs.tlsRejectUnauthorized, pluginArgs.nodeSecret);
+      const nodeDevices = new NodeDevices(pluginArgs.hub, {
+        tlsRejectUnauthorized: pluginArgs.tlsRejectUnauthorized,
+        nodeSecret: pluginArgs.nodeSecret,
+        hubAccessKey: xenonConfig.hubAccessKey,
+        hubToken: xenonConfig.hubToken,
+      });
       await nodeDevices.postDevicesToHub([clonedDevice], 'remove');
     }
 

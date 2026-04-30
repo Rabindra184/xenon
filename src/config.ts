@@ -27,6 +27,16 @@ export interface Config {
   // `XENON_NODE_SECRET` (new) and `XENON_NODE_SECRET_PREVIOUS` (old) on the
   // hub, flip nodes one by one to the new secret, then drop PREVIOUS.
   nodeSecretPrevious?: string;
+  // Phase 4B node pair auth — outbound credentials a node uses to talk to
+  // the hub. When both are set they take precedence over the legacy
+  // XENON_NODE_SECRET. Inbound side: the hub continues to accept either
+  // shape; XENON_ACCEPT_LEGACY_NODE_SECRET below gates the legacy path.
+  hubAccessKey?: string;
+  hubToken?: string;
+  // Inbound flag on the hub. When false, x-xenon-node-secret is rejected
+  // and nodes must use the (accessKey, token) pair. Default true for one
+  // minor — mirrors Phase 1's XENON_ACCEPT_LEGACY_KEY pattern.
+  acceptLegacyNodeSecret: boolean;
   // Phase 1 identity
   bootstrapAdminEmail: string;
   bootstrapAdminPassword: string;
@@ -80,6 +90,9 @@ export const config: Config = {
   authDisabled: process.env.XENON_AUTH_DISABLED === 'true',
   nodeSecret: process.env.XENON_NODE_SECRET,
   nodeSecretPrevious: process.env.XENON_NODE_SECRET_PREVIOUS,
+  hubAccessKey: process.env.XENON_HUB_ACCESS_KEY,
+  hubToken: process.env.XENON_HUB_TOKEN,
+  acceptLegacyNodeSecret: process.env.XENON_ACCEPT_LEGACY_NODE_SECRET !== 'false',
   bootstrapAdminEmail: process.env.XENON_BOOTSTRAP_ADMIN_EMAIL || 'admin@xenon.local',
   bootstrapAdminPassword: process.env.XENON_BOOTSTRAP_ADMIN_PASSWORD || 'Admin@123',
   bootstrapResetPassword: process.env.XENON_BOOTSTRAP_RESET_PASSWORD === 'true',

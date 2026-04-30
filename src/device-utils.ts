@@ -38,6 +38,7 @@ import AndroidDeviceManager from './device-managers/AndroidDeviceManager';
 import IOSDeviceManager from './device-managers/IOSDeviceManager';
 import { IOSDiscoveryService } from './device-managers/ios/IOSDiscoveryService';
 import NodeDevices from './device-managers/NodeDevices';
+import { config as xenonConfig } from './config';
 import { IPluginArgs } from './interfaces/IPluginArgs';
 import { DeviceStoreFactory } from './data-service/device-store';
 import { IPendingSessionStore } from './data-service/device-store.interface';
@@ -435,7 +436,12 @@ export async function updateDeviceList(
 
   if (hubArgument) {
     if (await isXenonRunning(hubArgument, tlsRejectUnauthorized)) {
-      const nodeDevices = new NodeDevices(hubArgument, tlsRejectUnauthorized, nodeSecret);
+      const nodeDevices = new NodeDevices(hubArgument, {
+        tlsRejectUnauthorized,
+        nodeSecret,
+        hubAccessKey: xenonConfig.hubAccessKey,
+        hubToken: xenonConfig.hubToken,
+      });
       try {
         await nodeDevices.postDevicesToHub(devices, 'add');
         if (staleLocalDevices.length > 0) {
