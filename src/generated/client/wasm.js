@@ -438,6 +438,12 @@ exports.Prisma.PasswordResetTokenScalarFieldEnum = {
   usedAt: 'usedAt'
 };
 
+exports.Prisma.TeamMemberScalarFieldEnum = {
+  teamId: 'teamId',
+  userId: 'userId',
+  createdAt: 'createdAt'
+};
+
 exports.Prisma.SortOrder = {
   asc: 'asc',
   desc: 'desc'
@@ -471,7 +477,8 @@ exports.Prisma.ModelName = {
   Annotation: 'Annotation',
   User: 'User',
   UserSession: 'UserSession',
-  PasswordResetToken: 'PasswordResetToken'
+  PasswordResetToken: 'PasswordResetToken',
+  TeamMember: 'TeamMember'
 };
 
 /**
