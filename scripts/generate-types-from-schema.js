@@ -16,6 +16,7 @@ async function generate() {
         schema.properties.cloud = { '$ref': '#/definitions/CloudConfig' };
         schema.properties.proxy = { '$ref': '#/definitions/AxiosProxy' };
         schema.properties.interceptor = { '$ref': '#/definitions/InterceptorConfig' };
+        schema.properties.autowait = { '$ref': '#/definitions/AutowaitConfig' };
 
         const { compile } = require('json-schema-to-typescript');
         const ts = await compile(schema, 'IPluginArgs', {
@@ -73,6 +74,12 @@ export const DefaultPluginArgs: IPluginArgs = {
   deleteBuildAssets: true,
   sessionHeartbeatIntervalMs: 30000,
   enableJsonLogging: false,
+  autowait: {
+    enabled: false,
+    timeoutMs: 10000,
+    intervalBetweenAttemptsMs: 500,
+    excludeEnabledCheck: [],
+  },
 };
 `;
 

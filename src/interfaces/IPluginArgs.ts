@@ -185,6 +185,7 @@ export interface IPluginArgs {
    * Override directory for free-form recording artifacts. Defaults to <sessionAssetsPath>/recordings.
    */
   recordingsAssetsPath?: string;
+  autowait?: AutowaitConfig;
 }
 export interface SimulatorConfig {
   name: string;
@@ -248,6 +249,27 @@ export interface AxiosProxy {
   [k: string]: unknown;
 }
 /**
+ * Implicit-wait configuration for findElement/findElements and pre-action enabled checks.
+ */
+export interface AutowaitConfig {
+  /**
+   * Enable autowait globally. Sessions can override via the `xenon: setAutowaitProperties` execute script.
+   */
+  enabled?: boolean;
+  /**
+   * How long (ms) to keep retrying findElement before throwing NoSuchElement. Self-healing still runs once this timeout expires.
+   */
+  timeoutMs?: number;
+  /**
+   * Sleep (ms) between findElement retries while waiting for the element to appear.
+   */
+  intervalBetweenAttemptsMs?: number;
+  /**
+   * Action commands (click, setValue, clear) for which the pre-action elementEnabled check should be skipped.
+   */
+  excludeEnabledCheck?: string[];
+}
+/**
  * Network request interceptor configuration.
  */
 export interface InterceptorConfig {
@@ -306,4 +328,10 @@ export const DefaultPluginArgs: IPluginArgs = {
   deleteBuildAssets: true,
   sessionHeartbeatIntervalMs: 30000,
   enableJsonLogging: false,
+  autowait: {
+    enabled: false,
+    timeoutMs: 10000,
+    intervalBetweenAttemptsMs: 500,
+    excludeEnabledCheck: [],
+  },
 };
