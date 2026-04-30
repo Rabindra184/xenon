@@ -34,8 +34,8 @@ async function getDevices(request: Request, response: Response) {
   // member-tier callers' team set (or [singleTeamId] for token-narrowed
   // (accessKey, token) callers). Empty array = shared-pool-only.
   const auth = (request as Request & { auth?: { teamIds?: string[] } }).auth;
-  if (auth && Object.prototype.hasOwnProperty.call(auth, 'teamIds')) {
-    const ids = auth.teamIds ?? [];
+  if (auth && auth.teamIds !== undefined) {
+    const ids = auth.teamIds;
     if (ids.length === 0) {
       devices = devices.filter((d) => !d.teamId);
     } else {
