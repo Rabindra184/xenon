@@ -29,14 +29,17 @@ const SERVER_UP_TIME = new Date().toISOString();
 
 async function getDevices(request: Request, response: Response) {
   let devices = await store.getAllDevices();
-  // Non-admin callers only see devices in their team + shared (null) pool.
-  // Admin keys (including the bootstrap key) see everything.
-  const caller = request.apiKey;
-  if (caller) {
-    const scopes = new Set(caller.scopes.split(',').map((s) => s.trim()));
-    if (!scopes.has('admin')) {
-      const myTeam = caller.teamId ?? null;
-      devices = devices.filter((d) => !d.teamId || d.teamId === myTeam);
+  // Phase 4A team visibility. authMiddleware populates req.auth.teamIds
+  // once per request: undefined for admins (unscoped), [a, b] for
+  // member-tier callers' team set (or [singleTeamId] for token-narrowed
+  // (accessKey, token) callers). Empty array = shared-pool-only.
+  const auth = (request as Request & { auth?: { teamIds?: string[] } }).auth;
+  if (auth && auth.teamIds !== undefined) {
+    const ids = auth.teamIds;
+    if (ids.length === 0) {
+      devices = devices.filter((d) => !d.teamId);
+    } else {
+      devices = devices.filter((d) => !d.teamId || ids.includes(d.teamId));
     }
   }
   const { sessionId } = request.query;
@@ -86,12 +89,14 @@ async function getDeviceByPlatform(request: Request, response: Response) {
     devices = devices.filter((d) => d.state === 'Booted');
   }
 
-  const caller = request.apiKey;
-  if (caller) {
-    const scopes = new Set(caller.scopes.split(',').map((s) => s.trim()));
-    if (!scopes.has('admin')) {
-      const myTeam = caller.teamId ?? null;
-      devices = devices.filter((d) => !d.teamId || d.teamId === myTeam);
+  // Phase 4A: same team-visibility filter as /devices.
+  const auth = (request as Request & { auth?: { teamIds?: string[] } }).auth;
+  if (auth && auth.teamIds !== undefined) {
+    const ids = auth.teamIds;
+    if (ids.length === 0) {
+      devices = devices.filter((d) => !d.teamId);
+    } else {
+      devices = devices.filter((d) => !d.teamId || ids.includes(d.teamId));
     }
   }
 

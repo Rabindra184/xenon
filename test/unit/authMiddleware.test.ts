@@ -7,6 +7,7 @@ import { ApiKeyService } from '../../src/services/ApiKeyService';
 import { UserSessionService } from '../../src/services/UserSessionService';
 import { UserService } from '../../src/services/UserService';
 import { config } from '../../src/config';
+import { prisma } from '../../src/prisma';
 
 function mkRes() {
   return {
@@ -127,6 +128,86 @@ describe('authMiddleware', () => {
       expect(scopesForRole('SUPER_ADMIN')).to.equal('admin,devices,sessions,read');
       expect(scopesForRole('ADMIN')).to.equal('admin,devices,sessions,read');
       expect(scopesForRole('MEMBER')).to.equal('sessions,read');
+    });
+  });
+
+  describe('teamIds population (Phase 4A)', () => {
+    it('cookie session for MEMBER fetches TeamMember rows', async () => {
+      sinon.stub(Container.get(UserSessionService), 'resolve').resolves({
+        id: 's1', userId: 'u1',
+      } as any);
+      sinon.stub(Container.get(UserService), 'findById').resolves({
+        id: 'u1', role: 'MEMBER', status: 'ACTIVE',
+      } as any);
+      const tmFind = sinon.stub(prisma.teamMember, 'findMany').resolves([
+        { teamId: 't1' }, { teamId: 't2' },
+      ] as any);
+      const req: any = { headers: { cookie: 'xenon_dashboard_session=s1' } };
+      await authMiddleware(req, mkRes() as any, () => {});
+      expect(req.auth?.teamIds).to.deep.equal(['t1', 't2']);
+      expect((tmFind.firstCall.args[0] as any).where).to.deep.equal({ userId: 'u1' });
+    });
+
+    it('cookie session for SUPER_ADMIN does NOT fetch TeamMember rows; teamIds undefined', async () => {
+      sinon.stub(Container.get(UserSessionService), 'resolve').resolves({
+        id: 's1', userId: 'u1',
+      } as any);
+      sinon.stub(Container.get(UserService), 'findById').resolves({
+        id: 'u1', role: 'SUPER_ADMIN', status: 'ACTIVE',
+      } as any);
+      const tmFind = sinon.stub(prisma.teamMember, 'findMany').resolves([] as any);
+      const req: any = { headers: { cookie: 'xenon_dashboard_session=s1' } };
+      await authMiddleware(req, mkRes() as any, () => {});
+      expect(req.auth?.teamIds).to.be.undefined;
+      expect(tmFind.called).to.be.false;
+    });
+
+    it('cookie session for ADMIN does NOT fetch TeamMember rows', async () => {
+      sinon.stub(Container.get(UserSessionService), 'resolve').resolves({
+        id: 's1', userId: 'u1',
+      } as any);
+      sinon.stub(Container.get(UserService), 'findById').resolves({
+        id: 'u1', role: 'ADMIN', status: 'ACTIVE',
+      } as any);
+      const tmFind = sinon.stub(prisma.teamMember, 'findMany').resolves([] as any);
+      const req: any = { headers: { cookie: 'xenon_dashboard_session=s1' } };
+      await authMiddleware(req, mkRes() as any, () => {});
+      expect(req.auth?.teamIds).to.be.undefined;
+      expect(tmFind.called).to.be.false;
+    });
+
+    it('header (accessKey, token) with team-narrowed key sets teamIds=[apiKey.teamId]', async () => {
+      sinon.stub(Container.get(ApiKeyService), 'verifyPair').resolves({
+        id: 'k1', userId: 'u1', scopes: 'sessions,read', rateLimit: 300, teamId: 't9',
+      } as any);
+      sinon.stub(Container.get(UserService), 'findById').resolves({
+        id: 'u1', role: 'MEMBER', status: 'ACTIVE',
+      } as any);
+      const tmFind = sinon.stub(prisma.teamMember, 'findMany').resolves([
+        { teamId: 't9' }, { teamId: 't10' },
+      ] as any);
+      const req: any = {
+        headers: { 'x-xenon-access-key': 'xen_abc', 'x-xenon-token': 'tok' },
+      };
+      await authMiddleware(req, mkRes() as any, () => {});
+      expect(req.auth?.teamIds).to.deep.equal(['t9']);
+      // Token already narrows; TeamMember query should NOT have run.
+      expect(tmFind.called).to.be.false;
+    });
+
+    it('header (accessKey, token) without team narrow sets teamIds from TeamMember', async () => {
+      sinon.stub(Container.get(ApiKeyService), 'verifyPair').resolves({
+        id: 'k1', userId: 'u1', scopes: 'sessions,read', rateLimit: 300, teamId: null,
+      } as any);
+      sinon.stub(Container.get(UserService), 'findById').resolves({
+        id: 'u1', role: 'MEMBER', status: 'ACTIVE',
+      } as any);
+      sinon.stub(prisma.teamMember, 'findMany').resolves([{ teamId: 't1' }] as any);
+      const req: any = {
+        headers: { 'x-xenon-access-key': 'xen_abc', 'x-xenon-token': 'tok' },
+      };
+      await authMiddleware(req, mkRes() as any, () => {});
+      expect(req.auth?.teamIds).to.deep.equal(['t1']);
     });
   });
 });
