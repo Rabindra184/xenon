@@ -14,8 +14,8 @@ The Socket.IO endpoint runs on the Xenon plugin's HTTP server (default `:4723`) 
 
 The handshake is gated by the same auth surface as the REST API. A connecting client must present one of:
 
+- **Pair auth** (programmatic clients and nodes) — `accessKey` + `token` in the Socket.IO `auth` payload, or `x-xenon-access-key` + `x-xenon-token` headers. The pair must resolve to an `ACTIVE` user.
 - **Dashboard credentials** — `apiKey` in the Socket.IO `auth` payload, or an `x-xenon-api-key` header, or the `xenon_dashboard_session` cookie set by the dashboard login flow.
-- **Node credentials** — `nodeSecret` in the `auth` payload, or an `x-xenon-node-secret` header.
 
 When `authDisabled=true`, the handshake is unconditionally accepted; this is for local development only.
 
@@ -40,7 +40,10 @@ socket.on('selector_resolved', (data) => console.log('resolved:', data));
 
 ```javascript
 const socket = io('http://hub.internal:4723', {
-  auth: { nodeSecret: process.env.XENON_NODE_SECRET },
+  auth: {
+    accessKey: process.env.XENON_HUB_ACCESS_KEY,
+    token: process.env.XENON_HUB_TOKEN,
+  },
   transports: ['websocket'],
 });
 

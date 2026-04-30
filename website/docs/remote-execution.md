@@ -27,7 +27,7 @@ The hub-node channel is **HTTP REST** for the control plane (registration, devic
 | `POST /xenon/api/unblock` | Node → Hub | Release a manually-blocked device |
 | Socket.IO (default namespace) | Hub ⇄ Dashboard, Hub ⇄ Node | Live state broadcasts — see [Real-time Events](real-time-events.md) |
 
-All node→hub requests carry the `X-Xenon-Node-Secret` header when `nodeSecret` is configured. See [Security](enterprise-security.md#hub-node-channel-authentication).
+All node→hub requests authenticate with the per-node `(X-Xenon-Access-Key, X-Xenon-Token)` pair the node was provisioned with on the hub. See [Security](enterprise-security.md#hub-node-channel-authentication) for the provisioning flow.
 
 ---
 
@@ -39,27 +39,28 @@ A hub is an Appium server with the Xenon plugin and **no `--plugin-xenon-hub` fl
 appium server --use-plugins=xenon -pa /wd/hub \
   --plugin-xenon-platform=both \
   --plugin-xenon-enable-dashboard \
-  --plugin-xenon-node-secret="$XENON_NODE_SECRET" \
   --plugin-xenon-database-provider=postgresql \
   --plugin-xenon-database-url="postgresql://user:pass@db:5432/xenon"
 ```
 
-The hub listens on `4723` by default. The dashboard is served at `http://<hub-host>:4723/xenon`.
+The hub listens on `4723` by default. The dashboard is served at `http://<hub-host>:4723/xenon`. Sign in as the bootstrap super-admin (see [Security → First-run bootstrap](enterprise-security.md#first-run-bootstrap)) and provision a User per node before bringing any nodes up.
 
 ---
 
 ## Starting a Node
 
-A node points at the hub via `--plugin-xenon-hub`:
+A node points at the hub via `--plugin-xenon-hub` and authenticates with the pair-auth env vars the hub provisioned:
 
 ```bash
+export XENON_HUB_ACCESS_KEY="xen_..."   # access key from /profile on the hub
+export XENON_HUB_TOKEN="..."             # token minted under the node's user
+
 appium server --use-plugins=xenon -pa /wd/hub \
   --plugin-xenon-platform=android \
-  --plugin-xenon-hub=http://hub.internal:4723 \
-  --plugin-xenon-node-secret="$XENON_NODE_SECRET"
+  --plugin-xenon-hub=http://hub.internal:4723
 ```
 
-On startup the node:
+Both REST `/register` calls and the Socket.IO handshake use this pair. On startup the node:
 
 1. Discovers locally connected devices — USB-attached real devices, booted simulators or emulators, plus remote ADB hosts when `adbRemote` is set.
 2. Posts the inventory to `<hub>/xenon/api/register?type=add`.

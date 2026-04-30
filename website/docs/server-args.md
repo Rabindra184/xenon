@@ -157,9 +157,19 @@ Below is the definitive list of all Xenon configuration parameters.
 | **Network Interceptor** | | | | | |
 | `interceptor` | — (config-file only, object) | No | Object | None | Server-level interceptor defaults. See [Network Interceptor](network-interceptor.md) for the per-session capability. Object members: `enabled`, `bufferSize`, `captureBodies`, `includeHosts`, `excludeHosts`, `mocks`. |
 | **Security** | | | | | |
-| `authDisabled` | `--plugin-xenon-auth-disabled` | No | Boolean | `false` | Disable API-key auth on `/xenon/api/*`. **Local dev only.** |
-| `nodeSecret` | `--plugin-xenon-node-secret` | No | String | — | Shared secret for hub-node channel auth; nodes send it in `X-Xenon-Node-Secret`. |
+| `authDisabled` | `--plugin-xenon-auth-disabled` | No | Boolean | `false` | Disable auth on `/xenon/api/*`. **Local dev only.** |
 | `tlsRejectUnauthorized` | `--plugin-xenon-tls-reject-unauthorized` | No | Boolean | `true` | Verify TLS certs for internal outgoing requests. Set `false` only for dev/test. |
+
+Hub-node pair-auth credentials are configured via env vars (no CLI flag — these are secrets):
+
+| Env var | Side | Purpose |
+|---|---|---|
+| `XENON_HUB_ACCESS_KEY` | node (outbound) | Access key the node sends in `X-Xenon-Access-Key`. Required alongside `XENON_HUB_TOKEN`. |
+| `XENON_HUB_TOKEN` | node (outbound) | API token the node sends in `X-Xenon-Token`. Mint via `/profile` on the hub. |
+| `XENON_BOOTSTRAP_ADMIN_EMAIL` / `XENON_BOOTSTRAP_ADMIN_PASSWORD` | hub | First-run super-admin user created on first boot. Defaults `admin@xenon.local` / `Admin@123` — change in any non-throwaway environment. |
+| `XENON_ACCEPT_LEGACY_KEY` | hub | When `false`, rejects the legacy `X-Xenon-API-Key` header. Default `true`. |
+
+See [Security → Hub-node channel authentication](enterprise-security.md#hub-node-channel-authentication) for the full provisioning flow.
 | **Hub-Node Tuning** | | | | | |
 | `sendNodeDevicesToHubIntervalMs` | `--plugin-xenon-send-node-devices-...` | No | Number | `30000` | How often (ms) a node pushes its device list to the hub |
 | `checkStaleDevicesIntervalMs` | `--plugin-xenon-check-stale-devices-...` | No | Number | `30000` | How often (ms) the hub prunes silent nodes |
