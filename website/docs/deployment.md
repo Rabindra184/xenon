@@ -137,7 +137,7 @@ export DATABASE_URL="postgresql://user:password@localhost:5432/xenon"
 ```
 
 :::info
-Xenon automatically runs database migrations on first start. No manual schema setup is needed.
+Xenon auto-applies pending schema changes on every startup — `prisma db push` for SQLite, `prisma migrate deploy` for PostgreSQL — so deploying a new plugin version never requires a manual migration step. Set `XENON_AUTO_MIGRATE=false` if you manage schema externally via CI for auditable change-control; in that case run `prisma migrate deploy` against your DB **before** booting the new plugin version, otherwise the next request that hits an unmigrated column will throw.
 :::
 
 ---

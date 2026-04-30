@@ -34,6 +34,15 @@ function resolvePrismaInvocation(rootDir: string): { cmd: string; prefix: string
 }
 
 export async function runMigrations(): Promise<void> {
+  if (!config.autoMigrate) {
+    log.info(
+      '[DBMigrate] Auto-migrate disabled by XENON_AUTO_MIGRATE=false. ' +
+        'Apply schema changes externally (`prisma migrate deploy` for ' +
+        'PostgreSQL, `prisma db push` for SQLite) before the hub boots.',
+    );
+    return;
+  }
+
   const rootDir = resolvePluginRoot();
   const schemaPath = path.join(rootDir, 'prisma', 'schema.prisma');
   const migrationsDir = path.join(rootDir, 'prisma', 'migrations');

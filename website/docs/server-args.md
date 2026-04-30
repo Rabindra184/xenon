@@ -167,6 +167,7 @@ Hub-node pair-auth credentials are configured via env vars (no CLI flag — thes
 | `XENON_HUB_ACCESS_KEY` | node (outbound) | Access key the node sends in `X-Xenon-Access-Key`. Required alongside `XENON_HUB_TOKEN`. |
 | `XENON_HUB_TOKEN` | node (outbound) | API token the node sends in `X-Xenon-Token`. Mint via `/profile` on the hub. |
 | `XENON_BOOTSTRAP_ADMIN_EMAIL` / `XENON_BOOTSTRAP_ADMIN_PASSWORD` | hub | First-run super-admin user created on first boot. Defaults `admin@xenon.local` / `Admin@123` — change in any non-throwaway environment. |
+| `XENON_AUTO_MIGRATE` | hub | When `true` (default), the hub auto-applies pending schema changes on startup (`prisma db push` for SQLite, `prisma migrate deploy` for PostgreSQL). Set `false` for ops who run migrations externally via CI for auditable change-control. |
 
 See [Security → Hub-node channel authentication](enterprise-security.md#hub-node-channel-authentication) for the full provisioning flow.
 | **Hub-Node Tuning** | | | | | |
