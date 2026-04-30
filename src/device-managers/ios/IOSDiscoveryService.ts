@@ -14,6 +14,7 @@ import { Service, Container } from 'typedi';
 import { PortAllocator } from '../../services/PortAllocator';
 import Devices from '../cloud/Devices';
 import NodeDevices from '../NodeDevices';
+import { config as xenonConfig } from '../../config';
 import { addNewDevice, removeDevice } from '../../data-service/device-service';
 import { IosTracker } from '../iOSTracker';
 
@@ -163,11 +164,12 @@ export class IOSDiscoveryService {
     simulators.sort((a, b) => (a.state > b.state ? 1 : -1));
 
     if (this.pluginArgs.hub !== undefined) {
-      const nodeDevices = new NodeDevices(
-        this.pluginArgs.hub,
-        this.pluginArgs.tlsRejectUnauthorized,
-        this.pluginArgs.nodeSecret,
-      );
+      const nodeDevices = new NodeDevices(this.pluginArgs.hub, {
+        tlsRejectUnauthorized: this.pluginArgs.tlsRejectUnauthorized,
+        nodeSecret: this.pluginArgs.nodeSecret,
+        hubAccessKey: xenonConfig.hubAccessKey,
+        hubToken: xenonConfig.hubToken,
+      });
       await nodeDevices.postDevicesToHub(simulators, 'add');
     }
     return simulators;
@@ -241,11 +243,12 @@ export class IOSDiscoveryService {
       try {
         const device = { ...(await this.getDeviceInfo(udid)), nodeId: this.nodeId };
         if (this.pluginArgs.hub) {
-          await new NodeDevices(
-            this.pluginArgs.hub,
-            this.pluginArgs.tlsRejectUnauthorized,
-            this.pluginArgs.nodeSecret,
-          ).postDevicesToHub([device], 'add');
+          await new NodeDevices(this.pluginArgs.hub, {
+            tlsRejectUnauthorized: this.pluginArgs.tlsRejectUnauthorized,
+            nodeSecret: this.pluginArgs.nodeSecret,
+            hubAccessKey: xenonConfig.hubAccessKey,
+            hubToken: xenonConfig.hubToken,
+          }).postDevicesToHub([device], 'add');
         }
         await addNewDevice([device], this.pluginArgs.bindHostOrIp);
       } catch (e: any) {
@@ -256,11 +259,12 @@ export class IOSDiscoveryService {
     tracker.on('detached', async (udid: string) => {
       const deviceRemoved = [{ udid, host: this.pluginArgs.bindHostOrIp as string }];
       if (this.pluginArgs.hub) {
-        await new NodeDevices(
-          this.pluginArgs.hub,
-          this.pluginArgs.tlsRejectUnauthorized,
-          this.pluginArgs.nodeSecret,
-        ).postDevicesToHub(deviceRemoved as any, 'remove');
+        await new NodeDevices(this.pluginArgs.hub, {
+          tlsRejectUnauthorized: this.pluginArgs.tlsRejectUnauthorized,
+          nodeSecret: this.pluginArgs.nodeSecret,
+          hubAccessKey: xenonConfig.hubAccessKey,
+          hubToken: xenonConfig.hubToken,
+        }).postDevicesToHub(deviceRemoved as any, 'remove');
       }
       await removeDevice(deviceRemoved);
     });

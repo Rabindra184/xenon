@@ -25,6 +25,7 @@ import { DefaultPluginArgs, IPluginArgs } from './interfaces/IPluginArgs';
 import { ServerArgs } from '@appium/types';
 import { IDeviceFilterOptions } from './interfaces/IDeviceFilterOptions';
 import NodeDevices from './device-managers/NodeDevices';
+import { config as xenonConfig } from './config';
 import { SESSION_MANAGER } from './sessions/SessionManager';
 import { DASHBORD_EVENT_MANAGER } from './dashboard/event-manager';
 import { saveVideoRecording } from './dashboard/asset-manager';
@@ -114,11 +115,12 @@ class XenonPlugin extends BasePlugin {
     } as unknown as IDeviceFilterOptions;
 
     if (this.pluginArgs.hub !== undefined) {
-      await new NodeDevices(
-        this.pluginArgs.hub,
-        this.pluginArgs.tlsRejectUnauthorized,
-        this.pluginArgs.nodeSecret,
-      ).unblockDevice(deviceFilter as any);
+      await new NodeDevices(this.pluginArgs.hub, {
+        tlsRejectUnauthorized: this.pluginArgs.tlsRejectUnauthorized,
+        nodeSecret: this.pluginArgs.nodeSecret,
+        hubAccessKey: xenonConfig.hubAccessKey,
+        hubToken: xenonConfig.hubToken,
+      }).unblockDevice(deviceFilter as any);
     } else {
       await unblockDeviceMatchingFilter(deviceFilter);
     }

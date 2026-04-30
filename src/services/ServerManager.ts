@@ -34,6 +34,7 @@ import IOSDeviceManager from '../device-managers/IOSDeviceManager';
 import { XenonManager } from '../device-managers';
 import { addCLIArgs } from '../data-service/pluginArgs';
 import NodeDevices from '../device-managers/NodeDevices';
+import { config as xenonConfig } from '../config';
 import { SocketServer } from './SocketServer';
 import { SocketClient } from './SocketClient';
 import { TracingService } from './TracingService';
@@ -264,11 +265,12 @@ export class ServerManager {
         process.once(signal, async () => {
           log.info(`Received ${signal}, unregistering node from hub...`);
           try {
-            await new NodeDevices(
-              hubArgument,
-              pluginArgs.tlsRejectUnauthorized,
-              pluginArgs.nodeSecret,
-            ).unRegisterNode(pluginArgs.bindHostOrIp as string);
+            await new NodeDevices(hubArgument, {
+              tlsRejectUnauthorized: pluginArgs.tlsRejectUnauthorized,
+              nodeSecret: pluginArgs.nodeSecret,
+              hubAccessKey: xenonConfig.hubAccessKey,
+              hubToken: xenonConfig.hubToken,
+            }).unRegisterNode(pluginArgs.bindHostOrIp as string);
           } catch (err) {
             log.error(`Error during node unregistration: ${err}`);
           }
