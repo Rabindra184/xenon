@@ -175,10 +175,12 @@ See the [Cloud Execution Guide](cloud.md) for provider-specific setup.
 | `XENON_BOOTSTRAP_ADMIN_EMAIL` / `XENON_BOOTSTRAP_ADMIN_PASSWORD` | First-run super-admin user (hub) | `admin@xenon.local` / `Admin@123` |
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | OpenTelemetry trace endpoint, **full URL** (the JS exporter does not append `/v1/traces`). Tempo: `http://tempo:4318/v1/traces`. Collector: `http://collector:4318/v1/traces`. | — |
 | `OTEL_EXPORTER_OTLP_LOGS_ENDPOINT` | OpenTelemetry log endpoint. For Loki 3.0+ direct: `http://loki:3100/otlp/v1/logs`. See `examples/observability/`. | — |
+| `OTEL_EXPORTER_OTLP_METRICS_ENDPOINT` | OpenTelemetry metrics endpoint. Typically an OTel Collector at `http://collector:4318/v1/metrics`; pre-aggregated on a 60s cadence. | — |
 | `OTEL_TRACES_ENABLED` | Set to `false` to disable trace export even if endpoint is set | `true` |
 | `OTEL_LOGS_ENABLED` | Set to `false` to disable log export even if endpoint is set | `true` |
-| `OTEL_SDK_DISABLED` | Master kill switch — disables traces and logs regardless of other vars | `false` |
-| `XENON_OTEL_DEBUG` | Log traces and log records to console (also useful for verifying SDK init) | `false` |
+| `OTEL_METRICS_ENABLED` | Set to `false` to disable metrics export even if endpoint is set | `true` |
+| `OTEL_SDK_DISABLED` | Master kill switch — disables traces, logs, and metrics regardless of other vars | `false` |
+| `XENON_OTEL_DEBUG` | Dump traces, log records, and metrics to console (useful for verifying SDK init) | `false` |
 
 ---
 
