@@ -8,37 +8,56 @@ This page describes what ships in Xenon today. For features that are commonly re
 
 ---
 
-## API-key authentication
+## Identity model
 
-Every endpoint under `/xenon/api/*` is gated behind API-key authentication when `authDisabled` is `false` — the default.
+Xenon ships an enterprise identity stack: **users** with roles (`SUPER_ADMIN` / `ADMIN` / `MEMBER`), **teams** that scope which devices a user can reach, and **API tokens** minted per-user with their own scope set. The dashboard, programmatic clients, and hub-node channel all flow through the same identity surface.
 
-### Where keys come from
+### First-run bootstrap
 
-API keys are issued from **Settings → API Keys** in the dashboard. Each key is stored as a salted hash; the raw token is shown once at creation time and never persisted in plaintext.
+On first start Xenon creates a `SUPER_ADMIN` user from environment variables (defaults `admin@xenon.local` / `Admin@123` — change in any non-throwaway environment):
 
-### How keys are presented
+```bash
+export XENON_BOOTSTRAP_ADMIN_EMAIL="you@example.com"
+export XENON_BOOTSTRAP_ADMIN_PASSWORD="..."  # change me
+```
 
-Two equivalent paths:
+Sign in at `https://<host>/xenon/` with these credentials. From `/profile` you can mint API tokens and rotate your access key.
 
-- `x-xenon-api-key: <token>` header — for CI runners, scripts, third-party integrations.
-- `xenon_dashboard_session` cookie — set by the dashboard login flow. `httpOnly`, `sameSite=strict`, sliding 24-hour TTL that re-ups on every authenticated request, marked `secure` when the request arrives over HTTPS (or via an `X-Forwarded-Proto: https` proxy hop).
+A pre-Phase-1 admin-scoped legacy API key is also written to `~/.cache/xenon/bootstrap-key.txt` (0600) for backwards compatibility and CI bootstrapping. Rotate or revoke it via `/api/apikeys` once you have a real user-issued token.
+
+## Authentication shapes
+
+Every endpoint under `/xenon/api/*` is gated when `authDisabled` is `false` — the default. Xenon accepts four shapes; pick whichever matches your caller.
+
+| Shape | Header(s) | When to use |
+|---|---|---|
+| **Cookie session** | `Cookie: xenon_dashboard_session=…` | Dashboard browser sessions. Set by `POST /api/auth/login` with `{email, password}`. `httpOnly`, `sameSite=strict`, sliding 24-hour TTL that re-ups on every authenticated request, marked `secure` when the request arrives over HTTPS (or via an `X-Forwarded-Proto: https` proxy hop). |
+| **Pair auth** | `X-Xenon-Access-Key` + `X-Xenon-Token` | Programmatic clients (CI, SDK, hub→node). Each user has one access key (rotatable from `/profile`) and any number of scoped tokens minted from `/profile` → API Tokens. The token is shown once at creation and stored as a salted hash. |
+| **Legacy API key** | `X-Xenon-API-Key` | Pre-Phase-1 callers. Still accepted by default; gate with `XENON_ACCEPT_LEGACY_KEY=false` once everyone has migrated. |
+| **Auth disabled** | _(none)_ | Local dev only. Set `--plugin-xenon-auth-disabled` (or `XENON_AUTH_DISABLED=true`). A WARN logs every 60 s. |
 
 ### Scopes
 
-Each key has one or more scopes:
+Tokens carry one or more scopes:
 
 | Scope | Grants |
 |---|---|
 | `read` | All `GET` endpoints — dashboard polling, log pulls, metric scrapes. |
 | `sessions` | Session lifecycle mutations (cancel, set status, attach evidence). |
-| `devices` | Device control mutations (block, unblock, reset, reservation). |
-| `admin` | Super-scope. Includes everything above plus key management, config writes, healing-state writes, digest webhooks. |
+| `devices` | Device control mutations (block, unblock, reset, reservation, hub-node `/register` and `/unblock`). |
+| `admin` | Super-scope. Includes everything above plus user / team / API-key management, config writes, healing-state writes, digest webhooks. |
 
-`admin` always satisfies a scope check. Mutation-only guards let `GET` traffic through with any authenticated key but require the listed scope for `POST`/`PUT`/`PATCH`/`DELETE` on the same resource.
+`admin` always satisfies a scope check. Mutation-only guards let `GET` traffic through with any authenticated token but require the listed scope for `POST`/`PUT`/`PATCH`/`DELETE` on the same resource.
+
+### Roles vs. scopes vs. teams
+
+- **Role** (`SUPER_ADMIN` / `ADMIN` / `MEMBER`) is on the user; it controls what the user can do in the dashboard (e.g. invite users, manage teams) and the maximum scope set their tokens may carry.
+- **Scopes** are on the token; they control which API verbs the token can call.
+- **Teams** are on the user (via team membership) and on devices (via ownership); they control which devices the caller can see. A user bound to a team sees the team's devices plus the shared pool (`teamId = null`). `admin`-scope tokens bypass team filtering.
 
 ### Disabling auth (development only)
 
-Set `--plugin-xenon-auth-disabled=true` to bypass the middleware entirely. The plugin emits a startup warning. **Never use this in production** — every endpoint becomes anonymous, including destructive ones.
+Set `--plugin-xenon-auth-disabled=true` to bypass auth entirely. The plugin emits a startup warning. **Never use this in production** — every endpoint becomes anonymous, including destructive ones.
 
 ---
 
@@ -69,32 +88,30 @@ When throttled, clients receive HTTP 429 with `Retry-After` set to the seconds u
 Cookie-authenticated state-changing requests pass through a CSRF middleware. `POST`, `PUT`, `DELETE`, and `PATCH` require either:
 
 - A double-submit token from the dashboard, or
-- A header-based credential (`x-xenon-api-key` or `x-xenon-node-secret`).
+- A header-based credential (`x-xenon-api-key` or `x-xenon-access-key`).
 
-Header-authed callers are exempt — the cookie is what makes CSRF possible, so a request without a cookie cannot be forged across origins.
+Header-authed callers are exempt — the session cookie is what makes CSRF possible, so a request without a cookie cannot be forged across origins. Browsers will not attach `x-xenon-*` custom headers without an explicit CORS preflight, and the apiRouter's `cors({origin:false})` already refuses preflights.
 
 ---
 
 ## Hub-node channel authentication
 
-When Xenon runs in [Hub-Node mode](remote-execution.md), every node→hub request carries an `X-Xenon-Node-Secret` header. Configure it identically on both ends:
+When Xenon runs in [Hub-Node mode](remote-execution.md), nodes authenticate to the hub using the same `(accessKey, token)` pair shape as any other programmatic client. Each node has its own User row on the hub, with credentials revocable independently — there is no shared secret.
 
-```bash
-# Hub
-appium server ... --plugin-xenon-node-secret="$XENON_NODE_SECRET"
+Provisioning a node:
 
-# Node
-appium server ... --plugin-xenon-hub=http://hub.internal:4723 \
-                  --plugin-xenon-node-secret="$XENON_NODE_SECRET"
-```
+1. On the hub dashboard at `https://<hub-host>/xenon/`, open `/users` → **Invite User**. Email convention `node-<hostname>@xenon.local`, role `ADMIN`.
+2. Sign in as the new node user. Open `/profile` → **API Tokens**, note the **access key** (`xen_…`) at the top of the table, then mint a token scoped `devices`.
+3. On the node, set both env vars before starting the process and restart it:
 
-The hub middleware compares the inbound header against both `nodeSecret` and `nodeSecretPrevious`, accepting either match. This lets you rotate the secret without coordinated downtime:
+   ```bash
+   export XENON_HUB_ACCESS_KEY="xen_..."
+   export XENON_HUB_TOKEN="..."
+   ```
 
-1. Set the new secret on the hub as `nodeSecret`. Move the existing one to `nodeSecretPrevious` (`XENON_NODE_SECRET_PREVIOUS`).
-2. Roll nodes one at a time, replacing their `nodeSecret`.
-3. Once all nodes are on the new value, drop `nodeSecretPrevious` from the hub.
+Both REST `/register` calls and the Socket.IO handshake will use this pair. To rotate, mint a new token on the hub, drop the old one, and re-set `XENON_HUB_TOKEN` on the node — the hub revokes immediately.
 
-If `nodeSecret` is not configured **and** API-key auth is disabled, the plugin refuses to start — that combination would leave the hub-node channel completely open.
+If a node connects without these env vars and the hub does not have `XENON_AUTH_DISABLED=true`, the handshake is rejected. There is no shared-secret fallback.
 
 ---
 
@@ -110,7 +127,7 @@ Disable it (`--plugin-xenon-tls-reject-unauthorized=false`) only against self-si
 
 The plugin's scoped logger filters known secret-bearing fields before writing to console or the structured log sink. Redacted by default:
 
-- `Authorization`, `x-xenon-api-key`, `x-xenon-node-secret` headers
+- `Authorization`, `x-xenon-api-key`, `x-xenon-access-key`, `x-xenon-token` headers
 - API-key strings, AI-provider keys, database URLs that contain credentials
 - Capability fields explicitly tagged as sensitive
 
@@ -122,9 +139,8 @@ If you ship logs to an external observability backend, redaction happens before 
 
 These are commonly-requested security features that are **not yet shipped**. They are tracked but not implemented in the current release.
 
-- **Coarse-grained Role-Based Access Control on top of scopes** — Admin / Maintainer / Developer / Viewer presets, manageable from the dashboard.
 - **OIDC/SAML SSO** — direct integration with Okta, Microsoft Entra ID, Google Workspace, GitHub Enterprise.
 - **Visual PII masking** — autonomous CV-based redaction of credit-card / CVV / password fields in recorded video and screenshots.
-- **mTLS for hub-node** — replace the shared-secret model with mutual TLS using per-node client certificates.
+- **mTLS for hub-node** — pin a hub TLS certificate on each node in addition to the pair-auth credentials.
 
 If any of these are blocking your deployment, open a GitHub issue with the specific compliance requirement so it can be prioritized.
