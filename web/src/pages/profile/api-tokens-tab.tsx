@@ -15,7 +15,7 @@ export function ApiTokensTab() {
   const [tokens, setTokens] = useState<TokenSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
-  const [revealed, setRevealed] = useState<{ name: string; token: string } | null>(null);
+  const [revealed, setRevealed] = useState<{ name: string; token: string; expiresAt: string | null } | null>(null);
 
   async function refresh() {
     setLoading(true);
@@ -85,28 +85,37 @@ export function ApiTokensTab() {
               <th className="text-left py-2">Name</th>
               <th className="text-left py-2">Issued</th>
               <th className="text-left py-2">Last Used</th>
+              <th className="text-left py-2">Expires</th>
               <th className="w-px"></th>
             </tr>
           </thead>
           <tbody>
-            {tokens.map((t) => (
-              <tr key={t.id} className="border-t border-[var(--border)]">
-                <td className="py-2">{t.name}</td>
-                <td className="py-2 text-[var(--text-muted)]">{new Date(t.createdAt).toLocaleString()}</td>
-                <td className="py-2 text-[var(--text-muted)]">
-                  {t.lastUsedAt ? new Date(t.lastUsedAt).toLocaleString() : '—'}
-                </td>
-                <td className="py-2 text-right">
-                  <button
-                    onClick={() => remove(t.id)}
-                    aria-label="Delete token"
-                    className="text-[var(--red)] hover:opacity-80"
-                  >
-                    <Trash2 size={14} />
-                  </button>
-                </td>
-              </tr>
-            ))}
+            {tokens.map((t) => {
+              const expired = t.expiresAt ? new Date(t.expiresAt).getTime() <= Date.now() : false;
+              return (
+                <tr key={t.id} className="border-t border-[var(--border)]">
+                  <td className="py-2">{t.name}</td>
+                  <td className="py-2 text-[var(--text-muted)]">{new Date(t.createdAt).toLocaleString()}</td>
+                  <td className="py-2 text-[var(--text-muted)]">
+                    {t.lastUsedAt ? new Date(t.lastUsedAt).toLocaleString() : '—'}
+                  </td>
+                  <td className={`py-2 ${expired ? 'text-[var(--red)]' : 'text-[var(--text-muted)]'}`}>
+                    {t.expiresAt
+                      ? `${new Date(t.expiresAt).toLocaleDateString()}${expired ? ' (expired)' : ''}`
+                      : 'Never'}
+                  </td>
+                  <td className="py-2 text-right">
+                    <button
+                      onClick={() => remove(t.id)}
+                      aria-label="Delete token"
+                      className="text-[var(--red)] hover:opacity-80"
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  </td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       )}
@@ -130,6 +139,11 @@ export function ApiTokensTab() {
             <code className="block break-all px-3 py-2 rounded bg-[var(--surface)] border border-[var(--border)] text-xs mb-3">
               {revealed.token}
             </code>
+            <p className="text-[11px] text-[var(--text-dim)] mb-4">
+              {revealed.expiresAt
+                ? `Expires ${new Date(revealed.expiresAt).toLocaleDateString()}`
+                : 'No expiry — rotate manually.'}
+            </p>
             <div className="flex justify-end">
               <button
                 onClick={() => setRevealed(null)}

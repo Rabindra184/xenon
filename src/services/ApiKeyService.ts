@@ -12,6 +12,7 @@ export interface ApiKeyRow {
   scopes: string;
   rateLimit: number;
   revokedAt: Date | null;
+  expiresAt: Date | null;
   teamId?: string | null;
   role?: string;
   userId: string;
@@ -38,6 +39,7 @@ export class ApiKeyService {
     if (!raw) return null;
     const row = await prisma.apiKey.findUnique({ where: { keyHash: this.hash(raw) } });
     if (!row || row.revokedAt) return null;
+    if (row.expiresAt && row.expiresAt.getTime() <= Date.now()) return null;
     prisma.apiKey
       .update({ where: { id: row.id }, data: { lastUsedAt: new Date() } })
       .catch(() => undefined);
@@ -56,10 +58,9 @@ export class ApiKeyService {
     rateLimit?: number;
     teamId?: string | null;
     userId: string;
-    // Accepted for forward-compat only — there is no expiresAt column on
-    // ApiKey yet, so this value is silently ignored at write time. A later
-    // task will add the column + persistence logic; until then, callers
-    // that need expiry must track it externally.
+    // Optional hard-stop timestamp. Tokens whose expiresAt is in the past
+    // are rejected by verify() / verifyPair() — same fail-closed shape as
+    // a revoked row. Pass undefined for no expiry.
     expiresAt?: Date;
   }): Promise<{ id: string; raw: string }> {
     const raw = this.generateRaw();
@@ -71,6 +72,7 @@ export class ApiKeyService {
         rateLimit: params.rateLimit ?? 300,
         teamId: params.teamId ?? null,
         userId: params.userId,
+        expiresAt: params.expiresAt ?? null,
       },
     });
     return { id: row.id, raw };
@@ -84,6 +86,7 @@ export class ApiKeyService {
       where: { keyHash: this.hash(token), userId: user.id, revokedAt: null },
     });
     if (!row) return null;
+    if (row.expiresAt && row.expiresAt.getTime() <= Date.now()) return null;
     prisma.apiKey
       .update({ where: { id: row.id }, data: { lastUsedAt: new Date() } })
       .catch(() => undefined);
@@ -104,6 +107,7 @@ export class ApiKeyService {
         rateLimit: true,
         createdAt: true,
         lastUsedAt: true,
+        expiresAt: true,
         teamId: true,
         role: true,
       },

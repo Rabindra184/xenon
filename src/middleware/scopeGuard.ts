@@ -18,6 +18,7 @@ export function scopeGuard(required: Scope[]) {
         scopes: auth.scopes,
         rateLimit: auth.rateLimit,
         revokedAt: null,
+        expiresAt: null,
         userId: auth.userId,
       },
       required,

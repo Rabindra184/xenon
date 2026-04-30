@@ -54,7 +54,7 @@ export function profileRouter(): Router {
     if (!auth) return;
     const rows = await prisma.apiKey.findMany({
       where: { userId: auth.userId, revokedAt: null },
-      select: { id: true, name: true, scopes: true, createdAt: true, lastUsedAt: true },
+      select: { id: true, name: true, scopes: true, createdAt: true, lastUsedAt: true, expiresAt: true },
       orderBy: { createdAt: 'desc' },
     });
     res.json(
@@ -64,6 +64,7 @@ export function profileRouter(): Router {
         scopes: row.scopes.split(','),
         createdAt: row.createdAt,
         lastUsedAt: row.lastUsedAt,
+        expiresAt: row.expiresAt,
       })),
     );
   });
@@ -71,8 +72,24 @@ export function profileRouter(): Router {
   r.post('/tokens', async (req, res) => {
     const auth = requireAuth(req, res);
     if (!auth) return;
-    const { name, scopes } = req.body as { name?: string; scopes?: Scope[] };
+    const { name, scopes, expiresAt } = req.body as {
+      name?: string;
+      scopes?: Scope[];
+      expiresAt?: string | null;
+    };
     if (!name) return res.status(400).json({ error: 'name required' });
+
+    let expiresAtDate: Date | undefined;
+    if (expiresAt !== undefined && expiresAt !== null) {
+      const d = new Date(expiresAt);
+      if (Number.isNaN(d.getTime())) {
+        return res.status(400).json({ error: 'expiresAt must be an ISO-8601 datetime' });
+      }
+      if (d.getTime() <= Date.now()) {
+        return res.status(400).json({ error: 'expiresAt must be in the future' });
+      }
+      expiresAtDate = d;
+    }
 
     const allowed = ROLE_SCOPES[auth.role] ?? ROLE_SCOPES.MEMBER;
     const requested = scopes && scopes.length > 0 ? scopes : allowed;
@@ -83,8 +100,13 @@ export function profileRouter(): Router {
       name,
       scopes: requested,
       userId: auth.userId,
+      expiresAt: expiresAtDate,
     });
-    return res.status(201).json({ id, token: raw });
+    return res.status(201).json({
+      id,
+      token: raw,
+      expiresAt: expiresAtDate?.toISOString() ?? null,
+    });
   });
 
   r.delete('/tokens/:id', async (req, res) => {

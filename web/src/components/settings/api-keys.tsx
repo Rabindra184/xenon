@@ -26,7 +26,27 @@ interface ApiKeyRow {
   rateLimit: number;
   createdAt: string;
   lastUsedAt: string | null;
+  expiresAt: string | null;
   teamId?: string | null;
+}
+
+type ExpiryPreset = '7d' | '30d' | '90d' | '1y' | 'never';
+const EXPIRY_PRESET_LABEL: Record<ExpiryPreset, string> = {
+  '7d': '7 days',
+  '30d': '30 days',
+  '90d': '90 days',
+  '1y': '1 year',
+  never: 'No expiry',
+};
+const EXPIRY_PRESET_DAYS: Record<Exclude<ExpiryPreset, 'never'>, number> = {
+  '7d': 7,
+  '30d': 30,
+  '90d': 90,
+  '1y': 365,
+};
+function expiryPresetToISO(preset: ExpiryPreset): string | null {
+  if (preset === 'never') return null;
+  return new Date(Date.now() + EXPIRY_PRESET_DAYS[preset] * 86_400_000).toISOString();
 }
 
 interface TeamOption {
@@ -63,6 +83,7 @@ export const ApiKeys: React.FC = () => {
   });
   const [newRateLimit, setNewRateLimit] = useState(300);
   const [newTeamId, setNewTeamId] = useState<string>('');
+  const [newExpiry, setNewExpiry] = useState<ExpiryPreset>('30d');
   const [submitting, setSubmitting] = useState(false);
 
   const teamNameById = (id?: string | null) =>
@@ -100,6 +121,7 @@ export const ApiKeys: React.FC = () => {
     setNewScopes({ read: true, sessions: true, devices: false, admin: false });
     setNewRateLimit(300);
     setNewTeamId('');
+    setNewExpiry('30d');
   };
 
   const submitCreate = async () => {
@@ -123,6 +145,7 @@ export const ApiKeys: React.FC = () => {
           scopes,
           rateLimit: newRateLimit,
           teamId: newTeamId || null,
+          expiresAt: expiryPresetToISO(newExpiry),
         }),
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -270,6 +293,7 @@ export const ApiKeys: React.FC = () => {
                   <TH>Rate limit</TH>
                   <TH>Last used</TH>
                   <TH>Created</TH>
+                  <TH>Expires</TH>
                   <TH style={{ textAlign: 'right' }}>Actions</TH>
                 </TR>
               </THead>
@@ -310,6 +334,13 @@ export const ApiKeys: React.FC = () => {
                     <TD className="row-mono">{k.rateLimit}/min</TD>
                     <TD className="row-mono">{fmtRelative(k.lastUsedAt)}</TD>
                     <TD className="row-mono">{fmtRelative(k.createdAt)}</TD>
+                    <TD className="row-mono">
+                      {k.expiresAt
+                        ? new Date(k.expiresAt).getTime() <= Date.now()
+                          ? <span style={{ color: 'var(--red)' }}>expired</span>
+                          : new Date(k.expiresAt).toLocaleDateString()
+                        : 'Never'}
+                    </TD>
                     <TD style={{ textAlign: 'right' }}>
                       <button
                         type="button"
@@ -424,6 +455,29 @@ export const ApiKeys: React.FC = () => {
               {teams.map((t) => (
                 <option key={t.id} value={t.id}>
                   {t.name}
+                </option>
+              ))}
+            </select>
+          </FieldGroup>
+
+          <FieldGroup
+            label="Expires after"
+            description={
+              newExpiry === 'never'
+                ? 'Key never expires. Rotate manually when needed.'
+                : `Key will stop working on ${new Date(expiryPresetToISO(newExpiry)!).toLocaleDateString()}.`
+            }
+            htmlFor="apikey-expiry"
+          >
+            <select
+              id="apikey-expiry"
+              value={newExpiry}
+              onChange={(e) => setNewExpiry(e.target.value as ExpiryPreset)}
+              style={input}
+            >
+              {(Object.keys(EXPIRY_PRESET_LABEL) as ExpiryPreset[]).map((p) => (
+                <option key={p} value={p}>
+                  {EXPIRY_PRESET_LABEL[p]}
                 </option>
               ))}
             </select>

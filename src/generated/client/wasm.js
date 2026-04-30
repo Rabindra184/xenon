@@ -340,6 +340,7 @@ exports.Prisma.ApiKeyScalarFieldEnum = {
   createdAt: 'createdAt',
   revokedAt: 'revokedAt',
   lastUsedAt: 'lastUsedAt',
+  expiresAt: 'expiresAt',
   teamId: 'teamId',
   role: 'role',
   userId: 'userId'
