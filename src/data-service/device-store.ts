@@ -80,12 +80,14 @@ class LokiDeviceStore implements IDeviceStore {
       }
 
       // Team scoping (see prisma-store.ts for the DB equivalent).
-      if (Object.prototype.hasOwnProperty.call(filterOptions, 'callerTeamId')) {
-        const caller = filterOptions.callerTeamId;
-        if (caller) {
-          if (device.teamId && device.teamId !== caller) return false;
-        } else {
+      // Phase 4A: undefined = unscoped; empty array = only shared-pool;
+      // non-empty = shared pool + any listed team.
+      if (Object.prototype.hasOwnProperty.call(filterOptions, 'callerTeamIds')) {
+        const ids = filterOptions.callerTeamIds!;
+        if (ids.length === 0) {
           if (device.teamId) return false;
+        } else {
+          if (device.teamId && !ids.includes(device.teamId)) return false;
         }
       }
 

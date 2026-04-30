@@ -16,7 +16,10 @@ export interface IDeviceFilterOptions {
   filterByHost?: string;
   tags?: string[];
 
-  // Phase 2: when set, restrict to devices whose teamId is null (shared pool)
-  // OR matches this id. Admin callers omit this to see everything.
-  callerTeamId?: string | null;
+  // Team-scope filter (Phase 4A). Undefined = no filter (admin / unscoped).
+  // Empty array = only shared-pool devices (teamId IS NULL). Non-empty array
+  // = shared pool + devices in any of the listed teams. The widening from
+  // single -> set is for Phase 3's User-keyed multi-team membership;
+  // token-narrowed callers pass a single-element array.
+  callerTeamIds?: string[];
 }

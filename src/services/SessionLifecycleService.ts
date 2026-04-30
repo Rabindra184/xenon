@@ -135,7 +135,7 @@ export class SessionLifecycleService {
           pluginArgs.deviceAvailabilityTimeoutMs,
           pluginArgs.deviceAvailabilityQueryIntervalMs,
           pluginArgs,
-          authResult.scoped ? authResult.callerTeamId : undefined,
+          authResult.scoped ? authResult.callerTeamIds : undefined,
         );
       } catch (err) {
         await removePendingSession(pendingSessionId);
@@ -190,20 +190,23 @@ export class SessionLifecycleService {
   // pre-existing test clients. A supplied key that is invalid / revoked / has
   // insufficient scope is rejected. Respects the global `authDisabled` flag.
   //
-  // Returns the caller's { apiKeyId, callerTeamId } so allocation can filter
+  // Returns the caller's { apiKeyId, callerTeamIds } so allocation can filter
   // devices by team. `apiKeyId` is null when auth is disabled or no key was
-  // presented (back-compat path); `callerTeamId` is null when the caller has
-  // no team (sees the shared pool only).
+  // presented (back-compat path); `callerTeamIds` is an empty array when the
+  // caller has no team (sees the shared pool only) and a single-element
+  // array when the apiKey is narrowed to one team. The widening to a set is
+  // for Phase 4A's multi-team membership; today an apiKey can bind to at
+  // most one team, so this is always 0- or 1-element.
   private async authorizeSessionRequest(
     caps: ISessionCapability,
-  ): Promise<{ apiKeyId: string | null; callerTeamId: string | null; scoped: boolean }> {
+  ): Promise<{ apiKeyId: string | null; callerTeamIds: string[] | undefined; scoped: boolean }> {
     const { config: xenonConfig } = await import('../config');
     // `scoped` tells the allocator whether to restrict device candidates by
     // team. False = see everything (admin, authDisabled, back-compat path);
-    // true = filter to { null, callerTeamId } where callerTeamId may itself
-    // be null (meaning "shared pool only").
+    // true = filter to { null, ...callerTeamIds }; when callerTeamIds is
+    // empty, only the shared pool is visible.
     if (xenonConfig.authDisabled === true) {
-      return { apiKeyId: null, callerTeamId: null, scoped: false };
+      return { apiKeyId: null, callerTeamIds: undefined, scoped: false };
     }
 
     const { ApiKeyService } = await import('./ApiKeyService');
@@ -224,7 +227,7 @@ export class SessionLifecycleService {
       this.logger.warn(
         'Session created without valid credentials. Pass `df:options.accessKey` + `df:options.token` (preferred) or `xenon:accessKey` (legacy).',
       );
-      return { apiKeyId: null, callerTeamId: null, scoped: false };
+      return { apiKeyId: null, callerTeamIds: undefined, scoped: false };
     }
     if (!svc.hasScope(row, ['sessions'])) {
       this.logger.error('Rejecting session: credentials lack the `sessions` scope');
@@ -234,22 +237,25 @@ export class SessionLifecycleService {
     }
 
     const isAdmin = svc.hasScope(row, ['admin']);
-    const callerTeamId = row.teamId ?? null;
+    // Empty array (apiKey not bound to a team) preserves the previous
+    // shared-pool-only filter for member-tier callers; single-element
+    // array preserves the previous team-binding narrow.
+    const callerTeamIds: string[] = row.teamId ? [row.teamId] : [];
 
     const requestedTeam = extractTeamCap(caps);
     if (requestedTeam) {
-      if (!isAdmin && requestedTeam !== callerTeamId) {
+      if (!isAdmin && !callerTeamIds.includes(requestedTeam)) {
         this.logger.error(
-          `Rejecting session: xenon:team=${requestedTeam} but caller key is bound to team ${callerTeamId ?? '(none)'}`,
+          `Rejecting session: xenon:team=${requestedTeam} but caller key is bound to team ${row.teamId ?? '(none)'}`,
         );
         throw new appiumErrors.InvalidArgumentError(
           `xenon:team '${requestedTeam}' is not allowed for this API key`,
         );
       }
-      return { apiKeyId: row.id, callerTeamId: requestedTeam, scoped: !isAdmin };
+      return { apiKeyId: row.id, callerTeamIds: [requestedTeam], scoped: !isAdmin };
     }
 
-    return { apiKeyId: row.id, callerTeamId, scoped: !isAdmin };
+    return { apiKeyId: row.id, callerTeamIds, scoped: !isAdmin };
   }
 
   private async handleLocalWDAProvisioning(device: IDevice, caps: ISessionCapability) {
