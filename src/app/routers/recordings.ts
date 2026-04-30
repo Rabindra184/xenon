@@ -10,7 +10,28 @@ import { ProofBundleService } from '../../services/recording/proof-bundle';
 import { AnnotationRenderService } from '../../services/recording/annotation-render';
 import { RecordingStore } from '../../services/recording/recording-store';
 import { roleGuard } from '../../middleware/roleGuard';
+import { filterRowsByVisibleDevice } from '../../data-service/device-service';
+import { prisma } from '../../prisma';
 import log from '../../logger';
+
+// Phase 4A: a recording group is visible if at least one of its rows runs on
+// a device the caller can see. Used by GET /recordings/:groupId and the
+// binary endpoints (composite mp4, bundle zip). Returns:
+//   true  → admin (no filter) or at least one row is visible to caller
+//   false → none of the group's rows are on a visible device → 404
+async function isGroupVisibleToAuth(
+  groupId: string,
+  teamIds: string[] | undefined,
+): Promise<boolean> {
+  if (teamIds === undefined) return true;
+  const rows = await prisma.recording.findMany({
+    where: { group_id: groupId },
+    select: { device_udid: true },
+  });
+  if (rows.length === 0) return false;
+  const visible = await filterRowsByVisibleDevice(rows, teamIds, 'device_udid');
+  return visible.length > 0;
+}
 
 const recLog = log.scope('RecordingsRouter');
 const router = Router();
@@ -155,7 +176,18 @@ router.post('/recordings/:groupId/annotation', async (req: Request, res: Respons
 router.get('/recordings/:groupId', async (req: Request, res: Response) => {
   try {
     const recs = await Container.get(RecordingStore).listGroup(req.params.groupId);
-    res.json({ groupId: req.params.groupId, recordings: recs });
+    // Phase 4A: filter the per-device rows to those whose device is visible
+    // to the caller. 404 the whole group if none are visible.
+    const auth = (req as Request & { auth?: { teamIds?: string[] } }).auth;
+    const visibleRecs = await filterRowsByVisibleDevice(
+      recs,
+      auth?.teamIds,
+      'device_udid',
+    );
+    if (auth?.teamIds !== undefined && visibleRecs.length === 0) {
+      return res.status(404).json({ error: 'not_found' });
+    }
+    res.json({ groupId: req.params.groupId, recordings: visibleRecs });
   } catch (e: any) {
     res.status(500).json({ error: 'internal', message: e?.message });
   }
@@ -166,6 +198,11 @@ router.get('/recordings/:groupId', async (req: Request, res: Response) => {
  * exists (single-device groups skip composite by design).
  */
 router.get('/recordings/:groupId/composite.mp4', async (req: Request, res: Response) => {
+  // Phase 4A: 404 if none of the group's devices are visible to the caller.
+  const auth = (req as Request & { auth?: { teamIds?: string[] } }).auth;
+  if (!(await isGroupVisibleToAuth(req.params.groupId, auth?.teamIds))) {
+    return res.status(404).json({ error: 'composite_not_found' });
+  }
   const compositePath = compositeOutputPath(req.params.groupId);
   if (!fs.existsSync(compositePath)) {
     return res.status(404).json({ error: 'composite_not_found' });
@@ -176,6 +213,11 @@ router.get('/recordings/:groupId/composite.mp4', async (req: Request, res: Respo
 });
 
 router.get('/recordings/:groupId/bundle.zip', async (req: Request, res: Response) => {
+  // Phase 4A: 404 if none of the group's devices are visible to the caller.
+  const auth = (req as Request & { auth?: { teamIds?: string[] } }).auth;
+  if (!(await isGroupVisibleToAuth(req.params.groupId, auth?.teamIds))) {
+    return res.status(404).json({ error: 'not_found' });
+  }
   res.setHeader('Content-Type', 'application/zip');
   res.setHeader(
     'Content-Disposition',
@@ -199,6 +241,21 @@ router.get(
     const recordingId = String(req.query.recordingId ?? '');
     if (!recordingId) {
       return res.status(400).json({ error: 'recordingId query param is required' });
+    }
+    // Phase 4A: 404 if the recording's device is not visible to the caller.
+    const auth = (req as Request & { auth?: { teamIds?: string[] } }).auth;
+    if (auth?.teamIds !== undefined) {
+      const rec = await prisma.recording.findUnique({
+        where: { id: recordingId },
+        select: { device_udid: true },
+      });
+      if (!rec) return res.status(404).json({ error: 'not_found' });
+      const dev = await prisma.device.findFirst({
+        where: { udid: rec.device_udid },
+        select: { teamId: true },
+      });
+      const visible = dev && (dev.teamId === null || auth.teamIds.includes(dev.teamId));
+      if (!visible) return res.status(404).json({ error: 'not_found' });
     }
     try {
       const { stream, cleanup } = await Container.get(
