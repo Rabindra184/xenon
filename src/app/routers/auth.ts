@@ -169,11 +169,31 @@ export function authAuthedRouter(): Router {
 
   r.get('/me', async (req, res) => {
     const auth = (req as any).auth as
-      | { userId: string; scopes: string; teamId?: string | null; kind: string }
+      | {
+          userId: string;
+          scopes: string;
+          teamId?: string | null;
+          teamIds?: string[];
+          kind: string;
+        }
       | undefined;
     if (!auth) return res.status(401).json({ error: 'unauthenticated' });
     const user = await userSvc.findById(auth.userId);
     if (!user) return res.status(401).json({ error: 'unauthenticated' });
+
+    // Phase 4A: include the caller's teams so the dashboard can render
+    // "Your Teams" on /profile. Admins (teamIds undefined) get an empty
+    // array — they're unscoped, so a "your teams" listing isn't meaningful.
+    let teams: { id: string; name: string }[] = [];
+    if (auth.teamIds && auth.teamIds.length > 0) {
+      const rows = await prisma.team.findMany({
+        where: { id: { in: auth.teamIds } },
+        select: { id: true, name: true },
+        orderBy: { name: 'asc' },
+      });
+      teams = rows;
+    }
+
     return res.json({
       userId: user.id,
       email: user.email,
@@ -183,6 +203,7 @@ export function authAuthedRouter(): Router {
       scopes: auth.scopes,
       teamId: auth.teamId ?? null,
       kind: auth.kind,
+      teams,
     });
   });
 

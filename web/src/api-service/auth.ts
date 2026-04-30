@@ -26,6 +26,7 @@ export interface MePayload {
   scopes: string;
   teamId: string | null;
   kind: 'user-session' | 'api-key';
+  teams: { id: string; name: string }[];
 }
 
 export async function getMe(): Promise<MePayload | null> {
