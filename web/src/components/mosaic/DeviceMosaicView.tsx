@@ -11,8 +11,16 @@ import { DevicePicker, type PickerDevice } from './DevicePicker';
 import { LayoutSelector } from './LayoutSelector';
 import { DeviceMosaic } from './DeviceMosaic';
 import { RecordingControls } from './RecordingControls';
+import { IdleWarningModal } from './IdleWarningModal';
 import XenonApiService from '../../api-service';
 import { addAnnotation, addBookmark } from '../../api-service/recordings';
+import { useIdleDetector } from '../../hooks/useIdleDetector';
+
+// Idle thresholds for the manual-session warning + release.
+// 5 min total — same shape ADF uses; matches the hub-side OrphanSweeper's
+// session-heartbeat-driven release floor (default ~120 s).
+const IDLE_TOTAL_MS = 5 * 60 * 1000;
+const IDLE_WARNING_SEC = 30;
 
 interface DeviceRow {
   udid: string;
@@ -288,6 +296,43 @@ export default function DeviceMosaicView() {
     }
   };
 
+  // Release every locked device. Used both by the user's "Release now" click
+  // and by the idle-timeout firing. Uses sendBeacon so the request survives a
+  // tab close. Best-effort — the hub-side OrphanSweeper backstops anything
+  // that doesn't land.
+  const releaseAll = () => {
+    for (const tile of state.tiles) {
+      const url = `/xenon/api/control/${encodeURIComponent(tile.udid)}/stream/stop`;
+      // sendBeacon doesn't send JSON content-type; the route accepts an empty
+      // body so this is safe.
+      try {
+        if (navigator.sendBeacon) {
+          navigator.sendBeacon(url);
+        } else {
+          fetch(url, { method: 'POST', keepalive: true }).catch(() => undefined);
+        }
+      } catch {
+        /* best-effort */
+      }
+    }
+    state.tiles.forEach((t) => dispatch({ type: 'REMOVE_TILE', udid: t.udid }));
+  };
+
+  // Only run the idle watchdog when the user has at least one device tiled.
+  // No tiles → nothing to release → no warning.
+  const idle = useIdleDetector({
+    idleAfterMs: IDLE_TOTAL_MS,
+    warningSec: IDLE_WARNING_SEC,
+    enabled: state.tiles.length > 0,
+    onWarning: () => {
+      // Surface the warning banner; the modal renders below based on
+      // idle.warning. Nothing else to do here.
+    },
+    onTimeout: () => {
+      releaseAll();
+    },
+  });
+
   return (
     <MosaicContext.Provider value={{ state, dispatch }}>
       <div className="flex flex-col h-full p-4 gap-3">
@@ -357,6 +402,14 @@ export default function DeviceMosaicView() {
           </main>
         </div>
       </div>
+
+      {idle.warning && idle.remainingSec !== null && (
+        <IdleWarningModal
+          remainingSec={idle.remainingSec}
+          onContinue={idle.reset}
+          onReleaseNow={releaseAll}
+        />
+      )}
     </MosaicContext.Provider>
   );
 }
