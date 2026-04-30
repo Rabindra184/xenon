@@ -52,7 +52,12 @@ These are read directly from the process environment and complement (or override
 | `XENON_OPENAI_API_KEY` / `OPENAI_API_KEY` | OpenAI credentials. |
 | `XENON_ANTHROPIC_API_KEY` / `ANTHROPIC_API_KEY` | Anthropic credentials. |
 | `XENON_OPENAI_MODEL` | Alternate way to set the OpenAI model. |
-| `XENON_OTEL_DEBUG` | When `true`, OpenTelemetry adds a ConsoleSpanExporter so every span is logged. Use for tracing dev-time work — not for production. |
+| `XENON_OTEL_DEBUG` | When `true`, OpenTelemetry adds a ConsoleSpanExporter and ConsoleLogRecordExporter so every span and log record is dumped to stdout. Use for tracing dev-time work — not for production. |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | OTLP HTTP endpoint for traces. Used as-is — the JS exporter does not append a path. Point at an OTel Collector (`http://collector:4318/v1/traces`) or Tempo (`http://tempo:4318`). |
+| `OTEL_EXPORTER_OTLP_LOGS_ENDPOINT` | OTLP HTTP endpoint for log records. Used as-is. For Loki 3.0+ direct ingestion the path is `/otlp/v1/logs` — set the full URL `http://loki:3100/otlp/v1/logs`. See `examples/observability/README.md`. |
+| `OTEL_TRACES_ENABLED` | When `false`, suppresses trace export even if `OTEL_EXPORTER_OTLP_ENDPOINT` is set. |
+| `OTEL_LOGS_ENABLED` | When `false`, suppresses log export even if `OTEL_EXPORTER_OTLP_LOGS_ENDPOINT` is set. |
+| `OTEL_SDK_DISABLED` | Master kill switch. When `true`, the SDK never starts — both traces and logs are no-ops. |
 | `XENON_DB_PROVIDER` | Same as `--plugin-xenon-databaseProvider` (`sqlite` or `postgresql`). |
 | `DATABASE_URL` | Prisma database URL. Falls back to `file:~/.cache/xenon/xenon.db`. |
 | `XENON_AUTO_MIGRATE` | When `true` (default), the hub auto-applies pending schema changes on startup. Set `false` for ops who run migrations externally via CI. See [retention.md](retention.md) and `prisma/migrations/`. |

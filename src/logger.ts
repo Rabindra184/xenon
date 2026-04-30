@@ -1,5 +1,13 @@
 import { logger } from '@appium/support';
+import { logs as otelLogs, Logger as OtelLogger, SeverityNumber } from '@opentelemetry/api-logs';
 import { sessionContext, SessionLogContext } from './logging/sessionContext';
+
+const OTEL_SEVERITY: Record<'debug' | 'info' | 'warn' | 'error', SeverityNumber> = {
+  debug: SeverityNumber.DEBUG,
+  info: SeverityNumber.INFO,
+  warn: SeverityNumber.WARN,
+  error: SeverityNumber.ERROR,
+};
 
 /**
  * Keys whose values must never appear in log output.
@@ -96,6 +104,12 @@ class XenonLogger {
 
   public static isJsonLogging = process.env.XENON_JSON_LOGGING === 'true';
 
+  // Set by TracingService once a global OTel LoggerProvider is registered.
+  // Until then, emitting OTLP records would just hit a NoopLogger and waste
+  // attribute-construction work on every log call.
+  private static otlpReady = false;
+  private static otelLogger: OtelLogger | null = null;
+
   constructor(prefix = 'xenon') {
     this.baseLogger = logger.getLogger(prefix);
   }
@@ -106,6 +120,18 @@ class XenonLogger {
   public static configure(options: { enableJsonLogging?: boolean }) {
     if (options.enableJsonLogging !== undefined) {
       this.isJsonLogging = options.enableJsonLogging;
+    }
+  }
+
+  /**
+   * Called by TracingService after a global LoggerProvider is registered, so
+   * subsequent log calls fan out to OTLP. Resetting to false on shutdown lets
+   * tests re-init cleanly.
+   */
+  public static setOtlpReady(ready: boolean) {
+    this.otlpReady = ready;
+    if (!ready) {
+      this.otelLogger = null;
     }
   }
 
@@ -136,13 +162,14 @@ class XenonLogger {
     const redactedMessage = redactSecrets(message);
     const redactedArgs = args.map((arg) => redactSecrets(arg));
     const ctx = sessionContext.get();
+    const formattedMessage = this.format(redactedMessage);
 
     if (XenonLogger.isJsonLogging) {
       const logEntry: Record<string, any> = {
         timestamp: new Date().toISOString(),
         level,
         scope: this.context.trim() || 'root',
-        message: this.format(redactedMessage),
+        message: formattedMessage,
       };
       if (ctx) {
         if (ctx.sessionId) logEntry.sessionId = ctx.sessionId;
@@ -156,11 +183,43 @@ class XenonLogger {
       this.baseLogger.info(JSON.stringify(logEntry));
     } else {
       const ctxPrefix = this.buildTextPrefix(ctx);
-      this.baseLogger[level](
-        `${this.context}${ctxPrefix}${this.format(redactedMessage)}`,
-        ...redactedArgs,
-      );
+      this.baseLogger[level](`${this.context}${ctxPrefix}${formattedMessage}`, ...redactedArgs);
     }
+
+    // OTLP fan-out is independent of the stdout format toggle: operators may
+    // want human-readable console + structured remote shipping at the same time.
+    if (XenonLogger.otlpReady) {
+      this.emitOtlp(level, formattedMessage, ctx, redactedArgs);
+    }
+  }
+
+  private emitOtlp(
+    level: 'info' | 'warn' | 'error' | 'debug',
+    body: string,
+    ctx: SessionLogContext | undefined,
+    args: any[],
+  ) {
+    if (!XenonLogger.otelLogger) {
+      XenonLogger.otelLogger = otelLogs.getLogger('xenon');
+    }
+    const attributes: Record<string, any> = {
+      scope: this.context.trim() || 'root',
+      log_level: level,
+    };
+    if (ctx?.sessionId) attributes.sessionId = ctx.sessionId;
+    if (ctx?.udid) attributes.udid = ctx.udid;
+    if (ctx?.requestId) attributes.requestId = ctx.requestId;
+    if (ctx?.commandName) attributes.commandName = ctx.commandName;
+    if (ctx?.traceId) attributes.traceId = ctx.traceId;
+    if (ctx?.spanId) attributes.spanId = ctx.spanId;
+    if (args.length) attributes.args = JSON.stringify(args);
+
+    XenonLogger.otelLogger.emit({
+      severityNumber: OTEL_SEVERITY[level],
+      severityText: level.toUpperCase(),
+      body,
+      attributes,
+    });
   }
 
   // Emit a compact [s:shortId] marker when async context has a sessionId that
