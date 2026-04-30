@@ -1,4 +1,4 @@
-import { trace, Span, SpanStatusCode, context, SpanKind } from '@opentelemetry/api';
+import { trace, metrics, Span, SpanStatusCode, context, SpanKind, Meter } from '@opentelemetry/api';
 import { logs, Logger } from '@opentelemetry/api-logs';
 import { NodeSDK } from '@opentelemetry/sdk-node';
 import { ConsoleSpanExporter, SimpleSpanProcessor } from '@opentelemetry/sdk-trace-base';
@@ -10,6 +10,12 @@ import {
   SimpleLogRecordProcessor,
 } from '@opentelemetry/sdk-logs';
 import { OTLPLogExporter } from '@opentelemetry/exporter-logs-otlp-http';
+import {
+  MeterProvider,
+  PeriodicExportingMetricReader,
+  ConsoleMetricExporter,
+} from '@opentelemetry/sdk-metrics';
+import { OTLPMetricExporter } from '@opentelemetry/exporter-metrics-otlp-http';
 import { resourceFromAttributes } from '@opentelemetry/resources';
 import { ATTR_SERVICE_NAME } from '@opentelemetry/semantic-conventions';
 import { Service } from 'typedi';
@@ -26,6 +32,7 @@ export interface TracingInitOptions {
 export class TracingService {
   private sdk: NodeSDK | null = null;
   private loggerProvider: LoggerProvider | null = null;
+  private meterProvider: MeterProvider | null = null;
   private tracer = trace.getTracer('xenon-core');
   private activeSpans: Map<string, Span> = new Map();
 
@@ -43,6 +50,7 @@ export class TracingService {
 
     this.initTraces(resource);
     this.initLogs(resource);
+    this.initMetrics(resource);
   }
 
   private initTraces(resource: ReturnType<typeof resourceFromAttributes>) {
@@ -72,9 +80,13 @@ export class TracingService {
       return;
     }
 
+    // Pre-existing pre-PR-86 bug: only exporters[0] was wired, so combining
+    // XENON_OTEL_DEBUG=true with an OTLP endpoint silently dropped one of the
+    // two destinations. Each exporter now gets its own SimpleSpanProcessor.
+    const spanProcessors = exporters.map((e) => new SimpleSpanProcessor(e as any));
     this.sdk = new NodeSDK({
       resource,
-      spanProcessor: new SimpleSpanProcessor(exporters[0] as any),
+      spanProcessors,
     });
 
     try {
@@ -107,9 +119,52 @@ export class TracingService {
     log.info(`[TracingService] Log OTLP endpoint: ${endpoint}. Log SDK started.`);
   }
 
+  private initMetrics(resource: ReturnType<typeof resourceFromAttributes>) {
+    if (process.env.OTEL_METRICS_ENABLED === 'false') {
+      log.info('[TracingService] OTEL_METRICS_ENABLED=false — metrics export disabled.');
+      return;
+    }
+
+    const endpoint = process.env.OTEL_EXPORTER_OTLP_METRICS_ENDPOINT;
+    const debug = process.env.XENON_OTEL_DEBUG === 'true';
+    if (!endpoint && !debug) return;
+
+    const readers = [];
+    if (debug) {
+      // 10s interval keeps console output readable during dev sessions.
+      readers.push(
+        new PeriodicExportingMetricReader({
+          exporter: new ConsoleMetricExporter(),
+          exportIntervalMillis: 10_000,
+        }),
+      );
+    }
+    if (endpoint) {
+      // 60s default cadence balances real-time visibility against export volume.
+      readers.push(
+        new PeriodicExportingMetricReader({
+          exporter: new OTLPMetricExporter({ url: endpoint }),
+          exportIntervalMillis: 60_000,
+        }),
+      );
+    }
+
+    const provider = new MeterProvider({ resource, readers });
+    metrics.setGlobalMeterProvider(provider);
+    this.meterProvider = provider;
+    log.info(
+      `[TracingService] Metric OTLP endpoint: ${endpoint ?? '(console-only)'}. Metrics SDK started.`,
+    );
+  }
+
   public getLogger(name = 'xenon-core'): Logger | undefined {
     if (!this.loggerProvider) return undefined;
     return logs.getLogger(name);
+  }
+
+  public getMeter(name = 'xenon-core'): Meter | undefined {
+    if (!this.meterProvider) return undefined;
+    return metrics.getMeter(name);
   }
 
   public startSessionSpan(
@@ -198,5 +253,6 @@ export class TracingService {
     this.sdk?.shutdown();
     XenonLogger.setOtlpReady(false);
     this.loggerProvider?.shutdown();
+    this.meterProvider?.shutdown();
   }
 }

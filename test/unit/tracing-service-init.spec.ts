@@ -7,8 +7,10 @@ const ENV_KEYS = [
   'OTEL_SDK_DISABLED',
   'OTEL_LOGS_ENABLED',
   'OTEL_TRACES_ENABLED',
+  'OTEL_METRICS_ENABLED',
   'OTEL_EXPORTER_OTLP_ENDPOINT',
   'OTEL_EXPORTER_OTLP_LOGS_ENDPOINT',
+  'OTEL_EXPORTER_OTLP_METRICS_ENDPOINT',
   'XENON_OTEL_DEBUG',
 ];
 
@@ -16,7 +18,7 @@ function clearOtelEnv() {
   for (const k of ENV_KEYS) delete process.env[k];
 }
 
-describe('TracingService — log export init', () => {
+describe('TracingService — SDK init', () => {
   beforeEach(() => {
     clearOtelEnv();
     XenonLogger.setOtlpReady(false);
@@ -94,5 +96,73 @@ describe('TracingService — log export init', () => {
     const node = new TracingService();
     expect(() => node.initialize({ isHub: false })).to.not.throw();
     expect(node.getLogger()).to.not.equal(undefined);
+  });
+
+  // ----------------------------------------------------------------------
+  // Metrics SDK
+  // ----------------------------------------------------------------------
+
+  it('returns undefined meter when OTEL_SDK_DISABLED=true', () => {
+    process.env.OTEL_SDK_DISABLED = 'true';
+    process.env.OTEL_EXPORTER_OTLP_METRICS_ENDPOINT = 'http://localhost:4318/v1/metrics';
+    const t = new TracingService();
+    t.initialize({ isHub: true });
+    expect(t.getMeter()).to.equal(undefined);
+  });
+
+  it('returns undefined meter when OTEL_METRICS_ENABLED=false', () => {
+    process.env.OTEL_METRICS_ENABLED = 'false';
+    process.env.OTEL_EXPORTER_OTLP_METRICS_ENDPOINT = 'http://localhost:4318/v1/metrics';
+    const t = new TracingService();
+    t.initialize({ isHub: true });
+    expect(t.getMeter()).to.equal(undefined);
+  });
+
+  it('returns undefined meter when no metrics endpoint and no debug flag', () => {
+    const t = new TracingService();
+    t.initialize({ isHub: true });
+    expect(t.getMeter()).to.equal(undefined);
+  });
+
+  it('wires the MeterProvider when a metrics endpoint is set', () => {
+    process.env.OTEL_EXPORTER_OTLP_METRICS_ENDPOINT = 'http://localhost:4318/v1/metrics';
+    const t = new TracingService();
+    t.initialize({ isHub: true });
+    expect(t.getMeter()).to.not.equal(undefined);
+    t.shutdown();
+  });
+
+  it('wires a console-only MeterProvider when XENON_OTEL_DEBUG=true with no metrics endpoint', () => {
+    process.env.XENON_OTEL_DEBUG = 'true';
+    const t = new TracingService();
+    t.initialize({ isHub: true });
+    expect(t.getMeter()).to.not.equal(undefined);
+    t.shutdown();
+  });
+
+  it('initializes metrics independently from traces and logs', () => {
+    process.env.OTEL_EXPORTER_OTLP_METRICS_ENDPOINT = 'http://localhost:4318/v1/metrics';
+    // Neither traces nor logs endpoints set.
+    const t = new TracingService();
+    t.initialize({ isHub: true });
+    expect(t.getMeter()).to.not.equal(undefined);
+    expect(t.getLogger()).to.equal(undefined);
+    t.shutdown();
+  });
+
+  it('emitting through getMeter does not throw (counter/histogram API smoke)', () => {
+    process.env.OTEL_EXPORTER_OTLP_METRICS_ENDPOINT = 'http://localhost:4318/v1/metrics';
+    const t = new TracingService();
+    t.initialize({ isHub: true });
+    const meter = t.getMeter();
+    expect(meter).to.not.equal(undefined);
+    if (!meter) return;
+
+    const counter = meter.createCounter('xenon.test.smoke_counter');
+    const histogram = meter.createHistogram('xenon.test.smoke_histogram');
+    expect(() => counter.add(1, { tier: 'native' })).to.not.throw();
+    expect(() => histogram.record(42, { tier: 'native' })).to.not.throw();
+
+    t.shutdown();
   });
 });
