@@ -1,5 +1,5 @@
-import React, { useMemo } from 'react';
-import { useParams } from 'react-router-dom';
+import React, { useEffect, useMemo } from 'react';
+import { useNavigate, useParams } from 'react-router-dom';
 import { useBuildsData } from '../builds/use-builds-data';
 import { useSessionDetail } from './use-session-detail';
 import { BreadcrumbHeader } from './breadcrumb-header';
@@ -34,6 +34,7 @@ function statusTone(status: string | null | undefined): { label: string; tone: S
 export const SessionDetailPage: React.FC = () => {
   const { buildId = '', sessionId = '' } = useParams<{ buildId: string; sessionId: string }>();
   const { toast } = useToast();
+  const navigate = useNavigate();
   // Reuse the builds-data hook so we can resolve the build name from the cached list.
   const builds = useBuildsData();
   const detail = useSessionDetail(sessionId || null);
@@ -42,6 +43,20 @@ export const SessionDetailPage: React.FC = () => {
     const match = builds.builds.find((b) => b.id === buildId);
     return match?.name || 'Build';
   }, [builds.builds, buildId]);
+
+  // Phase 4A: when the underlying GET returns a "not found" payload (the
+  // session is on a team-scoped device the caller can't see, or it really
+  // doesn't exist) bounce back to /builds with a toast rather than render
+  // an error card. Effect runs once notFound transitions true.
+  useEffect(() => {
+    if (!detail.loading && detail.notFound) {
+      toast(
+        'Session not available — it may belong to a team you are not on.',
+        'info',
+      );
+      navigate('/builds', { replace: true });
+    }
+  }, [detail.loading, detail.notFound, navigate, toast]);
 
   if (detail.loading) {
     return (
