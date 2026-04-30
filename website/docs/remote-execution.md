@@ -77,6 +77,34 @@ The hub prunes silent nodes by checking `lastSeen` timestamps every `checkStaleD
 
 `checkBlockedDevicesIntervalMs` (default `30000` ms) re-evaluates manually-blocked devices on the same cadence, so they re-enter the pool when a maintainer unblocks them via the dashboard or API.
 
+### Tuning the timers
+
+Four interval primitives govern how quickly state propagates between node, hub, and dashboard. The defaults work for most labs; tune them when you need either tighter detection (paid-per-minute cloud devices) or quieter networks (low-bandwidth links, expensive metered hosts).
+
+| Setting | Where it runs | Default | Drives |
+|---|---|---|---|
+| `sendNodeDevicesToHubIntervalMs` | node (outbound) | 30 s | How often the node *re-asserts* its device inventory to the hub — the heartbeat that the hub's stale-detector watches for. Lower = faster recovery from a node restart but more REST calls; higher = quieter network but slower recovery. |
+| `checkStaleDevicesIntervalMs` | hub (sweep) | 30 s | How often the hub *examines* each registered node's `lastSeen` to decide whether to evict its devices. Lower = faster eviction of crashed nodes but more DB reads; higher = stale devices linger but the hub does less work. |
+| `checkBlockedDevicesIntervalMs` | hub (sweep) | 30 s | How often the manual-block reconciler runs (releases manual locks whose actor is gone, surfaces "still blocked" devices in the picker). |
+| `sessionHeartbeatIntervalMs` | both (per-session) | 30 s | How often a session's `last_heartbeat_at` is bumped while running. The `OrphanSweeper` fails sessions older than `3 × sessionHeartbeatIntervalMs`. Lower = faster orphan detection (e.g. ~120 s worst-case at default) but more writes; higher = slower detection of crashed Appium drivers. |
+
+#### "Heartbeat" vs "node monitor" — which timer detects what
+
+These primitives interlock. A node going dark surfaces in two places:
+
+1. **Node-level** — the node stops calling `POST /api/register?type=add` (controlled by `sendNodeDevicesToHubIntervalMs`). The hub's stale-detector (controlled by `checkStaleDevicesIntervalMs`) eventually evicts the node's devices.
+2. **Session-level** — any in-flight Appium session on that node stops bumping its heartbeat (controlled by `sessionHeartbeatIntervalMs`). The `OrphanSweeper` fails the session and releases the device.
+
+In a clean single-node failure, *both* clocks fire — and whichever expires first determines worst-case detection latency. Default-tuned, the floor is around `2 × 30 s + max(checkStaleDevicesIntervalMs, 3 × sessionHeartbeatIntervalMs)` ≈ ~150 s. Halving the heartbeat to 15 s without halving the node-side push only buys you faster *session* failure; the *device* still hangs around until the stale-detector catches up.
+
+Recommended pairings:
+
+- **Tight CI labs** — `sendNodeDevicesToHubIntervalMs: 10000`, `checkStaleDevicesIntervalMs: 10000`, `sessionHeartbeatIntervalMs: 10000`. Detects in ~30 s at the cost of 3× network and DB pressure.
+- **Quiet metered networks** — keep all four at the default 30 s; that's already conservative.
+- **Soak labs / overnight CI** — push everything to 60 s. Saves visible network traffic; worst-case detection is ~5 min, which is fine when no one is watching.
+
+Don't tune one timer in isolation — the lopsided tuning above (only `sessionHeartbeatIntervalMs` halved) is the most common foot-gun.
+
 ---
 
 ## Shared state (PostgreSQL)
