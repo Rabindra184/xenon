@@ -14,6 +14,7 @@ import { Table, THead, TBody, TR, TH, TD } from '../ui/Table';
 import { FieldGroup } from '../ui/FieldGroup';
 import { PageHeader } from '../ui/page-header';
 import { Modal } from '../ui/Modal';
+import { listUsers, UserRow } from '../../api-service/users';
 
 interface TeamRow {
   id: string;
@@ -23,17 +24,11 @@ interface TeamRow {
   memberCount: number;
 }
 interface MemberRow {
-  id: string;
+  userId: string;
+  email: string;
   name: string;
-  role: string;
-  scopes: string;
-  createdAt: string;
-}
-interface KeyRow {
-  id: string;
-  name: string;
-  scopes: string;
-  teamId?: string | null;
+  role: 'SUPER_ADMIN' | 'ADMIN' | 'MEMBER';
+  addedAt: string;
 }
 interface DeviceRow {
   udid: string;
@@ -41,6 +36,12 @@ interface DeviceRow {
   platform: string;
   teamId?: string | null;
 }
+
+const ROLE_LABELS: Record<MemberRow['role'], string> = {
+  SUPER_ADMIN: 'Super Admin',
+  ADMIN: 'Admin',
+  MEMBER: 'Member',
+};
 
 async function api(url: string, init?: RequestInit) {
   const res = await fetch(url, { credentials: 'include', ...init });
@@ -123,7 +124,7 @@ export const Teams: React.FC = () => {
       <PageHeader
         icon={Users}
         title="Teams"
-        subtitle="Group devices and API keys by team. Devices with no team assignment stay in the shared pool — visible to every authenticated key."
+        subtitle="Group devices and members by team. Devices with no team assignment stay in the shared pool — visible to every authenticated user."
         action={
           teams.length > 0 ? (
             <button
@@ -147,7 +148,7 @@ export const Teams: React.FC = () => {
             </div>
             <div className="stat-strip__cell">
               <div className="stat-strip__value">{totalMembers}</div>
-              <div className="stat-strip__label">API key members</div>
+              <div className="stat-strip__label">Members</div>
             </div>
             <div className="stat-strip__cell">
               <div className="stat-strip__value">{totalDevices}</div>
@@ -328,23 +329,23 @@ const DeleteTeamButton: React.FC<{ team: TeamRow; onDeleted: () => void }> = ({
 const TeamDetail: React.FC<{ team: TeamRow; onBack: () => void }> = ({ team, onBack }) => {
   const { toast } = useToast();
   const [members, setMembers] = useState<MemberRow[]>([]);
-  const [allKeys, setAllKeys] = useState<KeyRow[]>([]);
+  const [allUsers, setAllUsers] = useState<UserRow[]>([]);
   const [devices, setDevices] = useState<DeviceRow[]>([]);
   const [sharedDevices, setSharedDevices] = useState<DeviceRow[]>([]);
   const [loading, setLoading] = useState(true);
-  const [addApiKeyId, setAddApiKeyId] = useState('');
+  const [addUserId, setAddUserId] = useState('');
   const [assignUdid, setAssignUdid] = useState('');
 
   const load = async () => {
     setLoading(true);
     try {
-      const [m, k, d] = await Promise.all([
+      const [m, u, d] = await Promise.all([
         api(`/xenon/api/teams/${team.id}/members`),
-        api('/xenon/api/apikeys'),
+        listUsers(),
         api('/xenon/api/device'),
       ]);
       setMembers(m);
-      setAllKeys(k);
+      setAllUsers(u);
       const allDevices = d as DeviceRow[];
       setDevices(allDevices.filter((x) => x.teamId === team.id));
       setSharedDevices(allDevices.filter((x) => !x.teamId));
@@ -360,25 +361,27 @@ const TeamDetail: React.FC<{ team: TeamRow; onBack: () => void }> = ({ team, onB
   }, [team.id]);
 
   const addMember = async () => {
-    if (!addApiKeyId) return;
+    if (!addUserId) return;
     try {
       await api(`/xenon/api/teams/${team.id}/members`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ apiKeyId: addApiKeyId, role: 'member' }),
+        body: JSON.stringify({ userId: addUserId }),
       });
       toast('Member added', 'success');
-      setAddApiKeyId('');
+      setAddUserId('');
       load();
     } catch (e: any) {
       toast(e.message, 'error');
     }
   };
 
-  const removeMember = async (apiKeyId: string) => {
-    if (!window.confirm('Remove this key from the team?')) return;
+  const removeMember = async (userId: string) => {
+    if (!window.confirm('Remove this member from the team?')) return;
     try {
-      await api(`/xenon/api/teams/${team.id}/members/${apiKeyId}`, { method: 'DELETE' });
+      await api(`/xenon/api/teams/${team.id}/members/${encodeURIComponent(userId)}`, {
+        method: 'DELETE',
+      });
       toast('Member removed', 'success');
       load();
     } catch (e: any) {
@@ -417,7 +420,7 @@ const TeamDetail: React.FC<{ team: TeamRow; onBack: () => void }> = ({ team, onB
     }
   };
 
-  const availableKeys = allKeys.filter((k) => !members.some((m) => m.id === k.id));
+  const availableUsers = allUsers.filter((u) => !members.some((m) => m.userId === u.id));
 
   return (
     <div className="settings-container mesh-gradient-infra">
@@ -453,50 +456,54 @@ const TeamDetail: React.FC<{ team: TeamRow; onBack: () => void }> = ({ team, onB
             <div className="surface-card" style={{ padding: 12 }}>
               <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
                 <select
-                  value={addApiKeyId}
-                  onChange={(e) => setAddApiKeyId(e.target.value)}
+                  value={addUserId}
+                  onChange={(e) => setAddUserId(e.target.value)}
                   style={{ ...inputStyle, flex: 1 }}
                 >
-                  <option value="">Select an API key to add…</option>
-                  {availableKeys.map((k) => (
-                    <option key={k.id} value={k.id}>
-                      {k.name} ({k.scopes})
+                  <option value="">Select a user to add…</option>
+                  {availableUsers.map((u) => (
+                    <option key={u.id} value={u.id}>
+                      {u.name} ({u.email}) — {ROLE_LABELS[u.role]}
                     </option>
                   ))}
                 </select>
-                <button className="save-btn" onClick={addMember} disabled={!addApiKeyId}>
+                <button className="save-btn" onClick={addMember} disabled={!addUserId}>
                   <Plus size={16} /> Add
                 </button>
               </div>
               {members.length === 0 ? (
                 <p style={{ opacity: 0.6, textAlign: 'center', padding: 24 }}>
-                  No members yet. Add any API key above.
+                  No members yet. Add a user above.
                 </p>
               ) : (
                 <Table>
                   <THead>
                     <TR>
                       <TH>Name</TH>
+                      <TH>Email</TH>
                       <TH>Role</TH>
-                      <TH>Scopes</TH>
-                      <TH style={{ textAlign: 'right' }}>Actions</TH>
+                      <TH>Added</TH>
+                      <TH style={{ textAlign: 'right' }}>Action</TH>
                     </TR>
                   </THead>
                   <TBody>
                     {members.map((m) => (
-                      <TR key={m.id}>
+                      <TR key={m.userId}>
                         <TD>{m.name}</TD>
-                        <TD>{m.role}</TD>
                         <TD>
-                          <code style={{ fontSize: '11px', color: 'var(--text-muted)' }}>{m.scopes}</code>
+                          <code style={{ fontSize: '11px', color: 'var(--text-muted)' }}>{m.email}</code>
                         </TD>
+                        <TD>{ROLE_LABELS[m.role]}</TD>
+                        <TD>{new Date(m.addedAt).toLocaleDateString()}</TD>
                         <TD style={{ textAlign: 'right' }}>
                           <button
                             className="reset-btn"
-                            onClick={() => removeMember(m.id)}
+                            onClick={() => removeMember(m.userId)}
                             style={{ color: 'var(--status-error-fg)' }}
+                            aria-label="Remove member"
+                            title="Remove member"
                           >
-                            <Trash2 size={14} /> Remove
+                            <Trash2 size={14} />
                           </button>
                         </TD>
                       </TR>
