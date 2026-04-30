@@ -274,6 +274,7 @@ model Team {
   createdAt DateTime @default(now())
   devices   Device[]
   apiKeys   ApiKey[]
+  members   TeamMember[]
 }
 
 model SelectorState {
@@ -368,6 +369,7 @@ model User {
   apiKeys           ApiKey[]
   sessions          UserSession[]
   passwordResetTokens PasswordResetToken[]
+  teamMemberships TeamMember[]
 }
 
 model UserSession {
@@ -395,4 +397,15 @@ model PasswordResetToken {
 
   @@index([userId])
   @@index([expiresAt])
+}
+
+model TeamMember {
+  teamId    String
+  team      Team     @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@id([teamId, userId])
+  @@index([userId])
 }

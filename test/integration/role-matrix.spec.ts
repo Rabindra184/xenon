@@ -6,13 +6,15 @@ import { authMiddleware } from '../../src/middleware/authMiddleware';
 import { apiKeysRouter } from '../../src/app/routers/apikeys';
 import { teamsRouter } from '../../src/app/routers/teams';
 import { processesRouter } from '../../src/app/routers/processes';
+import { usersRouter } from '../../src/app/routers/users';
+import { prisma } from '../../src/prisma';
 import { seedUser, SeededUser } from '../helpers/seedUser';
 
 interface Case {
   name: string;
   method: 'GET' | 'POST' | 'DELETE';
   path: string;
-  body?: any;
+  body?: any | (() => any);
   expect: { SUPER_ADMIN: number; ADMIN: number; MEMBER: number };
 }
 
@@ -47,6 +49,23 @@ const CASES: Case[] = [
     path: '/processes',
     expect: { SUPER_ADMIN: 200, ADMIN: 200, MEMBER: 403 },
   },
+  {
+    name: 'users list',
+    method: 'GET',
+    path: '/users',
+    expect: { SUPER_ADMIN: 200, ADMIN: 200, MEMBER: 403 },
+  },
+  {
+    name: 'users create (member)',
+    method: 'POST',
+    path: '/users',
+    body: () => ({
+      email: `rmcase-${Date.now()}-${Math.random().toString(36).slice(2, 7)}@xenon.local`,
+      name: 'RM',
+      role: 'MEMBER',
+    }),
+    expect: { SUPER_ADMIN: 201, ADMIN: 201, MEMBER: 403 },
+  },
 ];
 
 function buildApp() {
@@ -56,6 +75,7 @@ function buildApp() {
   app.use('/apikeys', apiKeysRouter());
   app.use('/teams', teamsRouter());
   app.use('/processes', processesRouter());
+  app.use('/users', usersRouter());
   return app;
 }
 
@@ -75,6 +95,7 @@ describe('role matrix (integration)', function () {
     await users.SUPER_ADMIN.cleanup();
     await users.ADMIN.cleanup();
     await users.MEMBER.cleanup();
+    await prisma.user.deleteMany({ where: { email: { contains: 'rmcase-' } } });
   });
 
   CASES.forEach((c) => {
@@ -86,7 +107,8 @@ describe('role matrix (integration)', function () {
           'Cookie',
           users[role].cookie,
         );
-        const r = c.body ? await reqBuilder.send(c.body) : await reqBuilder;
+        const body = typeof c.body === 'function' ? c.body() : c.body;
+        const r = body ? await reqBuilder.send(body) : await reqBuilder;
         if (expected >= 200 && expected < 300) {
           expect(
             r.status,

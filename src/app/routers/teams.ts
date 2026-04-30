@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { Container } from 'typedi';
-import { TeamService, TeamRole } from '../../services/TeamService';
+import { TeamService } from '../../services/TeamService';
 import { scopeGuard } from '../../middleware/scopeGuard';
 import { roleGuard } from '../../middleware/roleGuard';
 
@@ -39,19 +39,23 @@ export function teamsRouter(): Router {
   });
 
   r.post('/:id/members', scopeGuard(['admin']), async (req, res) => {
-    const { apiKeyId, role } = req.body as { apiKeyId: string; role: TeamRole };
-    if (!apiKeyId) return res.status(400).json({ error: 'apiKeyId required' });
+    const { userId } = req.body as { userId: string };
+    if (!userId) return res.status(400).json({ error: 'userId required' });
     try {
-      await svc.addMember(req.params.id, apiKeyId, role || 'member');
+      await svc.addMember(req.params.id, userId);
       res.json({ ok: true });
     } catch (e: any) {
       res.status(400).json({ error: e.message });
     }
   });
 
-  r.delete('/:id/members/:apiKeyId', scopeGuard(['admin']), async (req, res) => {
-    await svc.removeMember(req.params.id, req.params.apiKeyId);
-    res.json({ ok: true });
+  r.delete('/:id/members/:userId', scopeGuard(['admin']), async (req, res) => {
+    try {
+      await svc.removeMember(req.params.id, req.params.userId);
+      res.json({ ok: true });
+    } catch (e: any) {
+      res.status(400).json({ error: e.message });
+    }
   });
 
   return r;

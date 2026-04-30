@@ -114,4 +114,50 @@ export class UserService {
       })
       .catch((e) => this.log.warn(`failed to update lastLoginAt for ${userId}: ${(e as Error)?.message ?? e}`));
   }
+
+  async listUsers(callerRole: 'SUPER_ADMIN' | 'ADMIN' | 'MEMBER') {
+    const where = callerRole === 'SUPER_ADMIN' ? {} : { role: 'MEMBER' as const };
+    return prisma.user.findMany({
+      where,
+      select: {
+        id: true,
+        email: true,
+        name: true,
+        role: true,
+        status: true,
+        createdAt: true,
+        lastLoginAt: true,
+      },
+      orderBy: { createdAt: 'asc' },
+    });
+  }
+
+  // PATCH-shaped update. Email is intentionally dropped — it's immutable post-create.
+  async updateUser(
+    userId: string,
+    patch: { name?: string; role?: 'SUPER_ADMIN' | 'ADMIN' | 'MEMBER'; status?: 'ACTIVE' | 'INACTIVE' },
+  ) {
+    const data: any = {};
+    if (patch.name !== undefined) data.name = patch.name;
+    if (patch.role !== undefined) data.role = patch.role;
+    if (patch.status !== undefined) data.status = patch.status;
+    return prisma.user.update({ where: { id: userId }, data });
+  }
+
+  async setRole(userId: string, role: 'SUPER_ADMIN' | 'ADMIN' | 'MEMBER') {
+    return prisma.user.update({ where: { id: userId }, data: { role } });
+  }
+
+  async deactivateUser(userId: string): Promise<void> {
+    await prisma.user.update({ where: { id: userId }, data: { status: 'INACTIVE' } });
+    await prisma.userSession.deleteMany({ where: { userId } });
+  }
+
+  async deleteUser(userId: string): Promise<void> {
+    // Defense in depth — cascade also clears UserSessions, but doing it
+    // explicitly first lets us emit the revocation log line and avoids
+    // relying on cascade semantics for security-critical cleanup.
+    await prisma.userSession.deleteMany({ where: { userId } });
+    await prisma.user.delete({ where: { id: userId } });
+  }
 }

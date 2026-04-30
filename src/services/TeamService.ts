@@ -2,8 +2,6 @@ import { Service } from 'typedi';
 import { prisma } from '../prisma';
 import log from '../logger';
 
-export type TeamRole = 'admin' | 'member';
-
 @Service()
 export class TeamService {
   private log = log.scope('Team');
@@ -11,16 +9,14 @@ export class TeamService {
   async list() {
     const rows = await prisma.team.findMany({
       orderBy: { createdAt: 'asc' },
-      include: {
-        _count: { select: { devices: true, apiKeys: true } },
-      },
+      include: { _count: { select: { devices: true, members: true } } },
     });
     return rows.map((t) => ({
       id: t.id,
       name: t.name,
       createdAt: t.createdAt,
       deviceCount: t._count.devices,
-      memberCount: t._count.apiKeys,
+      memberCount: t._count.members,
     }));
   }
 
@@ -31,41 +27,42 @@ export class TeamService {
   }
 
   async delete(id: string): Promise<void> {
-    const [devices, apiKeys] = await Promise.all([
+    const [devices, members] = await Promise.all([
       prisma.device.count({ where: { teamId: id } }),
-      prisma.apiKey.count({ where: { teamId: id, revokedAt: null } }),
+      prisma.teamMember.count({ where: { teamId: id } }),
     ]);
-    if (devices > 0 || apiKeys > 0) {
+    if (devices > 0 || members > 0) {
       throw new Error(
-        `Team still has ${devices} device(s) and ${apiKeys} active member(s). Reassign them before deleting.`,
+        `Team still has ${devices} device(s) and ${members} member(s). Reassign them before deleting.`,
       );
     }
-    // Clear the teamId on revoked keys so the FK doesn't block the delete.
+    // Clear teamId on any (revoked) ApiKey rows so the FK doesn't block delete.
     await prisma.apiKey.updateMany({ where: { teamId: id }, data: { teamId: null } });
     await prisma.team.delete({ where: { id } });
   }
 
   async listMembers(teamId: string) {
-    return prisma.apiKey.findMany({
-      where: { teamId, revokedAt: null },
-      select: { id: true, name: true, role: true, scopes: true, createdAt: true },
+    const rows = await prisma.teamMember.findMany({
+      where: { teamId },
+      include: { user: { select: { email: true, name: true, role: true } } },
       orderBy: { createdAt: 'asc' },
     });
+    return rows.map((m) => ({
+      userId: m.userId,
+      email: m.user.email,
+      name: m.user.name,
+      role: m.user.role,
+      addedAt: m.createdAt,
+    }));
   }
 
-  async addMember(teamId: string, apiKeyId: string, role: TeamRole) {
-    if (role !== 'admin' && role !== 'member') throw new Error('invalid role');
-    await prisma.apiKey.update({
-      where: { id: apiKeyId },
-      data: { teamId, role },
-    });
+  async addMember(teamId: string, userId: string) {
+    return prisma.teamMember.create({ data: { teamId, userId } });
   }
 
-  async removeMember(teamId: string, apiKeyId: string) {
-    // Clear the team link rather than delete the key — scopes still apply.
-    await prisma.apiKey.updateMany({
-      where: { id: apiKeyId, teamId },
-      data: { teamId: null, role: 'member' },
+  async removeMember(teamId: string, userId: string): Promise<void> {
+    await prisma.teamMember.delete({
+      where: { teamId_userId: { teamId, userId } },
     });
   }
 }

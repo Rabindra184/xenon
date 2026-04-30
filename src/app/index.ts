@@ -27,6 +27,7 @@ import { teamsRouter } from './routers/teams';
 import { authPublicRouter, authAuthedRouter } from './routers/auth';
 import { processesRouter } from './routers/processes';
 import { profileRouter } from './routers/profile';
+import { usersRouter } from './routers/users';
 import { authMiddleware } from '../middleware/authMiddleware';
 import { rateLimitMiddleware } from '../middleware/rateLimitMiddleware';
 import { nodeSecretMiddleware } from '../middleware/nodeSecretMiddleware';
@@ -230,6 +231,8 @@ function createRouter(pluginArgs: IPluginArgs) {
   apiRouter.use('/apikeys', apiKeysRouter());
   // Self-service: caller's tokens + access key
   apiRouter.use('/profile', profileRouter());
+  // Admin: user CRUD (role + status + temp password)
+  apiRouter.use('/users', usersRouter());
   // Admin: team membership and device→team ownership
   apiRouter.use('/teams', teamsRouter());
   // Admin: running process snapshot (ops debugging)

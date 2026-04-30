@@ -95,4 +95,51 @@ describe('UserService', () => {
       expect(err?.message).to.match(/has not been set/);
     });
   });
+
+  describe('list / update / setRole / deactivate / delete', () => {
+    it('listUsers(callerRole) filters out admins/super-admins for ADMIN callers', async () => {
+      const findMany = sinon.stub(prisma.user, 'findMany').resolves([] as any);
+      await new UserService().listUsers('ADMIN');
+      const args = (findMany.firstCall?.args?.[0]) as any;
+      expect(args.where.role).to.equal('MEMBER');
+    });
+
+    it('listUsers(callerRole) returns everyone for SUPER_ADMIN callers', async () => {
+      const findMany = sinon.stub(prisma.user, 'findMany').resolves([] as any);
+      await new UserService().listUsers('SUPER_ADMIN');
+      const args = (findMany.firstCall?.args?.[0]) as any;
+      expect(args.where).to.not.have.property('role');
+    });
+
+    it('updateUser silently drops email from the patch', async () => {
+      const update = sinon.stub(prisma.user, 'update').resolves({} as any);
+      await new UserService().updateUser('u1', { email: 'evil@x.local', name: 'Alice' } as any);
+      const data = (update.firstCall?.args?.[0])?.data;
+      expect(data).to.not.have.property('email');
+      expect(data.name).to.equal('Alice');
+    });
+
+    it('setRole writes role', async () => {
+      const update = sinon.stub(prisma.user, 'update').resolves({} as any);
+      await new UserService().setRole('u1', 'ADMIN');
+      const data = (update.firstCall?.args?.[0])?.data;
+      expect(data.role).to.equal('ADMIN');
+    });
+
+    it('deactivateUser sets status=INACTIVE and revokes all sessions', async () => {
+      const update = sinon.stub(prisma.user, 'update').resolves({} as any);
+      const revoke = sinon.stub(prisma.userSession, 'deleteMany').resolves({ count: 2 } as any);
+      await new UserService().deactivateUser('u1');
+      expect((update.firstCall?.args?.[0])?.data.status).to.equal('INACTIVE');
+      expect((revoke.firstCall?.args?.[0])?.where).to.deep.equal({ userId: 'u1' });
+    });
+
+    it('deleteUser revokes sessions then deletes; cascade handles the rest', async () => {
+      const revoke = sinon.stub(prisma.userSession, 'deleteMany').resolves({ count: 0 } as any);
+      const del = sinon.stub(prisma.user, 'delete').resolves({} as any);
+      await new UserService().deleteUser('u1');
+      expect(revoke.calledOnce).to.be.true;
+      expect(del.firstCall?.args?.[0]).to.deep.equal({ where: { id: 'u1' } });
+    });
+  });
 });
