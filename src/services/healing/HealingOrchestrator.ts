@@ -1,4 +1,5 @@
 import { Service } from 'typedi';
+import { trace, SpanStatusCode } from '@opentelemetry/api';
 import log from '../../logger';
 import { HealedElement, HealingContext, HealingProvider } from './types';
 import { FuzzyXmlHealingProvider } from './FuzzyXmlHealingProvider';
@@ -8,6 +9,7 @@ import { LlmHealingProvider } from './LlmHealingProvider';
 import { HealEtalonService } from './HealEtalonService';
 import { ResilioTreeHealingProvider } from './ResilioTreeHealingProvider';
 import { HEALING_METRICS } from './HealingMetrics';
+import { ATTR } from '../telemetry/attributes';
 
 @Service()
 export class HealingOrchestrator {
@@ -34,6 +36,19 @@ export class HealingOrchestrator {
       `🚨 Self-Healing triggered for session ${sessionId}. Broken locator: ${strategy}=${selector}`,
     );
 
+    // Span wraps the whole attempt. Original selector text is intentionally
+    // kept off the span — high cardinality (long XPath strings) would explode
+    // Loki labels and Tempo storage. The strategy alone is a low-cardinality
+    // signal that's still useful for "which strategies break most often."
+    // Tracer is fetched per-call so test stubs of trace.getTracer take effect.
+    const span = trace.getTracer('xenon.healing').startSpan('xenon.healing.attempt', {
+      attributes: {
+        [ATTR.SESSION_ID]: sessionId,
+        [ATTR.HEALING_ORIGINAL_STRATEGY]: strategy,
+      },
+    });
+    const attemptStart = Date.now();
+
     // Preparation: Collect data required for healing
     // Note: We do this once to avoid multiple expensive round-trips
     const context: HealingContext = { sessionId, driver, strategy, selector };
@@ -45,12 +60,16 @@ export class HealingOrchestrator {
       context.screenshotBase64 = screenshot;
     } catch (err: any) {
       this.logger.error(`Failed to collect healing context: ${err.message}`);
+      span.addEvent('context_collection_failed', { error: err.message });
+      span.setStatus({ code: SpanStatusCode.ERROR, message: 'context_collection_failed' });
+      span.end();
       return null;
     }
 
     // Tiered Execution: Try providers in order of cost/complexity
     for (const provider of this.providers) {
       const tierStart = Date.now();
+      span.addEvent('tier_started', { tier: provider.name });
       try {
         this.logger.info(`Attempting Tier ${provider.tier}: ${provider.name}...`);
         const result = await provider.heal(context);
@@ -122,7 +141,9 @@ export class HealingOrchestrator {
                     curr = curr.parent || curr.parentNode;
                   }
                   learnedPath = new Path(pathNodes).toJSON();
-                } catch (e) {}
+                } catch {
+                  // resiliotree import is best-effort; learnedPath stays null
+                }
               }
 
               await this.etalonService.saveSignature(strategy, selector, result.node, learnedPath);
@@ -135,11 +156,25 @@ export class HealingOrchestrator {
             }
           }
 
+          span.addEvent('tier_succeeded', {
+            tier: provider.name,
+            confidence: result.confidence,
+          });
+          span.setAttributes({
+            [ATTR.HEALING_TIER]: provider.name,
+            [ATTR.HEALING_CONFIDENCE]: result.confidence,
+            [ATTR.HEALING_RESULT_STRATEGY]: result.recommendedStrategy ?? 'xpath',
+            [ATTR.HEALING_DURATION_MS]: Date.now() - attemptStart,
+          });
+          span.setStatus({ code: SpanStatusCode.OK });
+          span.end();
           return result;
         }
+        span.addEvent('tier_failed', { tier: provider.name });
       } catch (err: any) {
         HEALING_METRICS.record(provider.tier, provider.name, 'failure', Date.now() - tierStart);
         this.logger.error(`Provider ${provider.name} failed: ${err.message}`);
+        span.addEvent('tier_failed', { tier: provider.name, error: err.message });
       }
 
       // Provider-driven short-circuit: a tier can advise that no downstream
@@ -151,12 +186,19 @@ export class HealingOrchestrator {
           `Tier ${provider.tier} (${provider.name}) advised skipping remaining tiers for selector=${selector}`,
         );
         HEALING_METRICS.recordSkippedRemaining(provider.tier, provider.name);
+        span.addEvent('tier_skipped_remaining', { tier: provider.name });
         break;
       }
     }
 
     HEALING_METRICS.recordAllTiersFailed();
     this.logger.warn(`❌ All healing tiers failed for selector: ${selector}`);
+    span.addEvent('all_tiers_failed');
+    span.setAttributes({
+      [ATTR.HEALING_DURATION_MS]: Date.now() - attemptStart,
+    });
+    span.setStatus({ code: SpanStatusCode.ERROR, message: 'all_tiers_failed' });
+    span.end();
     return null;
   }
 }

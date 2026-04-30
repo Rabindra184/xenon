@@ -63,10 +63,11 @@ npm run build:schema  # Regenerate TypeScript types from schema.json
 - Manages device discovery through `AndroidDeviceManager` and `IOSDeviceManager`
 - Starts an Express + Socket.io server at `/xenon/`
 
-### 5-Tier Self-Healing (`src/services/healing/`)
+### 6-Tier Self-Healing (`src/services/healing/`)
 
-When `findElement` fails, `HealingOrchestrator` tries five escalating strategies:
-1. **Native** — retry with original selector
+When `findElement` fails, `HealingOrchestrator` tries six escalating strategies:
+0. **Resilio** — `ResilioTreeHealingProvider` recovers via stored etalon signatures (cheapest, runs first)
+1. **Native** — `FuzzyXmlHealingProvider` retry with original selector
 2. **Fuzzy XML** — Dice-coefficient matching against stored Etalon XML signatures
 3. **OCR** — Tesseract.js text-based location
 4. **Visual AI** — `OmniVisionService` screenshot analysis
@@ -146,7 +147,7 @@ React 17 + Vite + Tailwind CSS dashboard. Talks to the backend over REST and Soc
 | `src/index.ts` | Process signal handling and cleanup orchestrator |
 | `schema.json` | All plugin CLI arguments (JSON Schema Draft 7) |
 | `prisma/schema.prisma` | Database schema; edit here then run `db:generate` |
-| `src/services/healing/HealingOrchestrator.ts` | 5-tier healing entry point |
+| `src/services/healing/HealingOrchestrator.ts` | 6-tier healing entry point |
 | `src/dashboard/event-manager.ts` | WebSocket broadcast hub |
 | `src/device-managers/AndroidDeviceManager.ts` | ADB device discovery & control |
 | `src/device-managers/IOSDeviceManager.ts` | simctl + ios-device control |
