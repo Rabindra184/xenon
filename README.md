@@ -253,7 +253,7 @@ Xenon supports extended control and reporting via the `xenon:` execute script na
 | `xenon: addTag` | Add searchable tags to the session | `{"tag": "regression"}` |
 | `xenon: debug` | Send custom debug logs to Xenon dashboard | `{"message": "API Response: 200 OK"}` |
 
-See [docs/capabilities.md](docs/capabilities.md) for full usage details.
+Full reference for these commands is in the Swagger UI at `/xenon/api-docs`.
 
 ---
 
@@ -406,10 +406,11 @@ The full documentation is available at:
 **[https://xenon-docs.vercel.app/](https://xenon-docs.vercel.app/)**
 
 ### Quick Links
-- [Installation Guide](docs/installation.md)
-- [Configuration Options](docs/configuration.md)
-- [API Reference](docs/api.md)
-- [Troubleshooting](docs/troubleshooting.md)
+- [Server arguments & env vars](docs/server-args.md)
+- [Node provisioning](docs/node-provisioning.md) — pair-auth credentials for hub-node deployments
+- [Teams & device access](docs/teams.md)
+- [Data retention & cleanup](docs/retention.md)
+- API reference: live Swagger at `/xenon/api-docs`
 
 ---
 
@@ -438,55 +439,71 @@ npm run test:ios              # iOS integration
 
 ## 🔐 Authentication
 
-Xenon REST endpoints under `/xenon/api/*` require an API key passed in the `X-Xenon-API-Key` header.
+All `/xenon/api/*` endpoints are authenticated. Xenon supports four shapes — pick whichever matches your caller.
 
-### Bootstrap key
+### Identity model
 
-On first start, Xenon writes a one-time bootstrap key (admin-scoped) to:
+Xenon ships an enterprise identity stack: **users** with roles (`SUPER_ADMIN` / `ADMIN` / `MEMBER`), **teams** that scope which devices a user can reach, and **API tokens** minted per-user with their own scope set. The dashboard, programmatic clients, and hub-node channel all flow through the same identity.
 
-```
-~/.cache/xenon/bootstrap-key.txt   (0600 permissions)
-```
+### Auth shapes
 
-The startup log prints a WARN pointing at this path. **Rotate the bootstrap key within 24 hours.**
+| Shape | Header(s) | When to use |
+|---|---|---|
+| **Cookie session** | `Cookie: xenon_dashboard_session=…` | Dashboard browser sessions. Set by `POST /api/auth/login` with `{email, password}`. |
+| **Pair auth** | `X-Xenon-Access-Key` + `X-Xenon-Token` | Programmatic clients (CI, SDK, hub→node). Each user has one access key (rotatable) and any number of scoped tokens. |
+| **Legacy API key** | `X-Xenon-API-Key` | Pre-Phase-1 callers. Still accepted by default; gate with `XENON_ACCEPT_LEGACY_KEY=false` once everyone has migrated. |
+| **Auth disabled** | _(none)_ | Local dev only. Set `--plugin-xenon-auth-disabled` (or `XENON_AUTH_DISABLED=true`). A WARN logs every 60 s. |
 
-### Creating a permanent key
+### First-run bootstrap
+
+On first start Xenon creates a `SUPER_ADMIN` user from these env vars (defaults `admin@xenon.local` / `Admin@123`):
 
 ```bash
-# Create a scoped key for CI
-curl -X POST \
-  -H "X-Xenon-API-Key: $(cat ~/.cache/xenon/bootstrap-key.txt)" \
-  -H 'Content-Type: application/json' \
-  -d '{"name":"ci","scopes":["sessions","read"],"rateLimit":600}' \
-  http://localhost:4723/xenon/api/apikeys
+export XENON_BOOTSTRAP_ADMIN_EMAIL="you@example.com"
+export XENON_BOOTSTRAP_ADMIN_PASSWORD="..."  # change me
+```
 
-# Revoke the bootstrap key after saving the returned `key` value
-curl -X DELETE \
-  -H "X-Xenon-API-Key: $NEW_ADMIN_KEY" \
-  http://localhost:4723/xenon/api/apikeys/<bootstrap-id>
+Sign in at `https://<host>/xenon/` with these credentials. From `/profile` you can mint API tokens and rotate your access key.
+
+A pre-Phase-1 admin-scoped legacy API key is also written to `~/.cache/xenon/bootstrap-key.txt` (0600) for backwards compatibility and CI bootstrapping. Rotate or revoke it via `/api/apikeys` once you have a real user-issued token.
+
+### Generating a programmatic token
+
+```bash
+# 1. Get your access key + a fresh token from /profile in the dashboard, or:
+curl -s -X POST -b "xenon_dashboard_session=$COOKIE" \
+  -H 'Content-Type: application/json' \
+  -d '{"name":"ci","scopes":["sessions","read"]}' \
+  http://localhost:4723/xenon/api/profile/tokens
+
+# 2. Use it on every subsequent call:
+curl -H "X-Xenon-Access-Key: xen_..." -H "X-Xenon-Token: ..." \
+  http://localhost:4723/xenon/api/devices
 ```
 
 ### Scopes
+
+Tokens carry one or more scopes; the user's role controls which scopes they can grant.
 
 | Scope | Access |
 |-------|--------|
 | `read` | GET sessions, devices, logs, apps |
 | `sessions` | Create/delete sessions and reservations |
-| `devices` | Block/unblock devices, install apps |
-| `admin` | API key management, webhooks, node registration |
+| `devices` | Block/unblock devices, install apps, hub-node `/register` and `/unblock` |
+| `admin` | User / team / API-key management, webhooks |
 
 ### Teams (device access control)
 
-Scopes govern *which verbs* a key can call; **teams** govern *which devices* it can reach. A key bound to a team sees its team's devices plus the shared pool (`teamId = null`). `admin`-scoped keys bypass team filtering.
+Scopes govern *which verbs* a token can call; **teams** govern *which devices* it can reach. A user bound to a team sees the team's devices plus the shared pool (`teamId = null`). `admin`-scope tokens bypass team filtering.
 
-Test clients pass the key via the `xenon:accessKey` capability:
+Test clients pass the access key via the `xenon:accessKey` capability:
 
 ```js
 const caps = {
   platformName: 'iOS',
   'appium:automationName': 'XCUITest',
-  'xenon:accessKey': process.env.XENON_CI_KEY,   // key bound to a team
-  // optional: 'xenon:team': '<team-id>' to pin allocation to a specific team (admins only for cross-team)
+  'xenon:accessKey': process.env.XENON_CI_KEY,   // user with team membership
+  // optional: 'xenon:team': '<team-id>' to pin allocation (admins only for cross-team)
 };
 ```
 
@@ -494,13 +511,14 @@ See [docs/teams.md](docs/teams.md) for creating teams, assigning devices, and th
 
 ### Hub-node channel
 
-Set `--plugin-xenon-node-secret` (or `XENON_NODE_SECRET`) to the **same value** on both hub and node. When unset, the channel permits with a WARN (back-compat for single-node installs).
+Hub and node authenticate using the same pair-auth shape. Provision a User on the hub for each node, mint a `devices`-scoped token, and set both env vars on the node:
 
-For zero-downtime secret rotation, set `XENON_NODE_SECRET` to the new secret and `XENON_NODE_SECRET_PREVIOUS` to the old one. The hub accepts either during the overlap window — flip nodes one at a time, then drop `XENON_NODE_SECRET_PREVIOUS`.
+```bash
+export XENON_HUB_ACCESS_KEY="xen_..."
+export XENON_HUB_TOKEN="..."
+```
 
-### Local development
-
-Pass `--plugin-xenon-auth-disabled` to skip auth entirely. A WARN is logged every 60 s as a reminder.
+Both REST `/register` calls and the Socket.io handshake will use this pair. See [docs/node-provisioning.md](docs/node-provisioning.md) for the full provisioning + recovery flow.
 
 ---
 
@@ -520,8 +538,11 @@ Xenon reads these env vars in addition to the CLI flags. Prefer env vars for cre
 | `XENON_OTEL_DEBUG` | When `true`, OpenTelemetry adds a ConsoleSpanExporter so every span is logged. Dev/tracing only. |
 | `XENON_DB_PROVIDER` | `sqlite` or `postgresql`. Same as `--plugin-xenon-databaseProvider`. |
 | `DATABASE_URL` | Prisma database URL. Falls back to `file:~/.cache/xenon/xenon.db`. |
-| `XENON_NODE_SECRET` | Shared hub↔node secret (see above). |
-| `XENON_NODE_SECRET_PREVIOUS` | Secondary secret accepted during rotation overlap. |
+| `XENON_HUB_ACCESS_KEY` | Node→hub outbound: access key the node sends in `X-Xenon-Access-Key`. Required alongside `XENON_HUB_TOKEN`. See [docs/node-provisioning.md](docs/node-provisioning.md). |
+| `XENON_HUB_TOKEN` | Node→hub outbound: token the node sends in `X-Xenon-Token`. Required alongside `XENON_HUB_ACCESS_KEY`. |
+| `XENON_BOOTSTRAP_ADMIN_EMAIL` / `XENON_BOOTSTRAP_ADMIN_PASSWORD` | First-run super-admin user, created on first hub boot. Defaults `admin@xenon.local` / `Admin@123`. Change in any non-throwaway environment. |
+| `XENON_ACCEPT_LEGACY_KEY` | When `false`, the `X-Xenon-API-Key` header is rejected and callers must use pair auth. Default `true`. |
+| `XENON_AUTH_DISABLED` | `true` to disable all auth. Local dev only. |
 
 See [`docs/server-args.md`](docs/server-args.md) for the full CLI-flag reference and how these variables interact with config files.
 

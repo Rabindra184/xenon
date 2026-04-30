@@ -104,7 +104,6 @@ Prefer environment variables over CLI flags for secrets so they do not end up in
 | `--plugin-xenon-sendNodeDevicesToHubIntervalMs` | number | `30000` | How often (ms) a node pushes its device list to the hub. Only used when `hub` is set. |
 | `--plugin-xenon-checkStaleDevicesIntervalMs` | number | `30000` | How often (ms) the hub prunes devices from nodes that have stopped heartbeating. |
 | `--plugin-xenon-checkBlockedDevicesIntervalMs` | number | `30000` | How often (ms) to re-evaluate manually-blocked devices and the session reconciler that frees orphaned busy devices. |
-| `--plugin-xenon-nodeSecret` | string | — | Shared secret for hub-node channel authentication. Nodes must send this value in the `X-Xenon-Node-Secret` header. |
 | `--plugin-xenon-tlsRejectUnauthorized` | boolean | `true` | Verify TLS certificates on internal outgoing requests. Set to `false` only for dev/test. |
 
 ### Dashboard & auth
