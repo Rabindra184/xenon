@@ -1,6 +1,7 @@
 import { Request, Response, Router } from 'express';
 import { roleGuard } from '../../middleware/roleGuard';
 import { prisma } from '../../prisma';
+import { filterRowsByVisibleDevice } from '../../data-service/device-service';
 
 const CSV_COLUMNS = [
   'id',
@@ -70,11 +71,19 @@ async function buildExportHandler(req: Request, res: Response): Promise<void> {
     where.id = { in: sessionIds };
   }
 
-  const sessions = await prisma.session.findMany({
+  const sessionsAll = await prisma.session.findMany({
     where,
     orderBy: { createdAt: 'desc' },
     take: 5000,
   });
+
+  // Phase 4A: filter exported rows to sessions on devices visible to caller.
+  const auth = (req as Request & { auth?: { teamIds?: string[] } }).auth;
+  const sessions = await filterRowsByVisibleDevice(
+    sessionsAll,
+    auth?.teamIds,
+    'device_udid',
+  );
 
   if (format === 'csv') {
     res.setHeader('Content-Type', 'text/csv; charset=utf-8');

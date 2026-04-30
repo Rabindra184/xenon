@@ -12,6 +12,7 @@ import {
   SelectorStateService,
   SelectorStateConflictError,
 } from '../../services/SelectorStateService';
+import { filterRowsByVisibleDevice } from '../../data-service/device-service';
 import log from '../../logger';
 
 const MJPEG_PROXY_CACHE: Map<string, any> = new Map();
@@ -70,7 +71,10 @@ async function getSessions(request: Request, response: Response) {
     where,
     take: 500,
   });
-  return response.status(200).json(sessions);
+  // Phase 4A: filter to sessions whose underlying device is visible.
+  const auth = (request as Request & { auth?: { teamIds?: string[] } }).auth;
+  const visible = await filterRowsByVisibleDevice(sessions, auth?.teamIds, 'device_udid');
+  return response.status(200).json(visible);
 }
 
 async function getBuilds(request: Request, response: Response) {
@@ -85,13 +89,32 @@ async function getBuilds(request: Request, response: Response) {
       sessions: {
         select: {
           status: true,
+          device_udid: true,
         },
       },
     },
   });
 
+  // Phase 4A: a build is visible if at least one of its sessions runs on a
+  // device the caller can see. Admins (teamIds undefined) skip the filter.
+  const auth = (request as Request & { auth?: { teamIds?: string[] } }).auth;
+  let visibleBuilds = builds;
+  if (auth?.teamIds !== undefined) {
+    const filtered = await Promise.all(
+      builds.map(async (b) => {
+        const visibleSessions = await filterRowsByVisibleDevice(
+          b.sessions,
+          auth.teamIds,
+          'device_udid',
+        );
+        return { build: b, hasVisible: visibleSessions.length > 0 };
+      }),
+    );
+    visibleBuilds = filtered.filter((x) => x.hasVisible).map((x) => x.build);
+  }
+
   // Principal formatting: Add a flat summary object for the frontend
-  const formattedBuilds = builds.map((b) => ({
+  const formattedBuilds = visibleBuilds.map((b) => ({
     ...b,
     sessionCount: b._count.sessions,
     passedCount: b.sessions.filter((s) => ['success', 'passed'].includes(s.status)).length,
@@ -110,6 +133,18 @@ async function getSessionById(request: Request, response: Response) {
   });
   if (!session) {
     return response.status(404).json({ error: true, message: 'Session not found' });
+  }
+  // Phase 4A: 404 if the session's device is not visible to the caller.
+  const auth = (request as Request & { auth?: { teamIds?: string[] } }).auth;
+  if (auth?.teamIds !== undefined) {
+    const dev = await prisma.device.findFirst({
+      where: { udid: session.device_udid },
+      select: { teamId: true },
+    });
+    const visible = dev && (dev.teamId === null || auth.teamIds.includes(dev.teamId));
+    if (!visible) {
+      return response.status(404).json({ error: true, message: 'Session not found' });
+    }
   }
   return response.status(200).json(session);
 }

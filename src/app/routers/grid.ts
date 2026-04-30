@@ -12,6 +12,7 @@ import {
   removeDevicesByHost,
   userUnblockDevice,
   updateDeviceTags,
+  filterRowsByVisibleDevice,
 } from '../../data-service/device-service';
 import { scopeGuard } from '../../middleware/scopeGuard';
 import { roleGuard } from '../../middleware/roleGuard';
@@ -158,16 +159,52 @@ async function unBlockDevice(request: Request, response: Response) {
   response.status(200).send({ success: true });
 }
 
+// Phase 4A: Pending sessions hold a JSON-decoded capability bag, not a row
+// from the Session model — they may carry `appium:udid` if the test runner
+// targeted a specific device, but most queue items are platform-only.
+// Strategy: rows with `appium:udid` get visibility-filtered against that
+// udid; rows without one pass through (the capability could still match any
+// device the caller can see, and there's no row-level ownership to enforce).
+async function filterPendingByVisibleDevice(
+  rows: any[],
+  teamIds: string[] | undefined,
+): Promise<any[]> {
+  if (teamIds === undefined) return rows;
+  const targeted = rows.filter((r) => typeof r['appium:udid'] === 'string' && r['appium:udid']);
+  const untargeted = rows.filter(
+    (r) => !(typeof r['appium:udid'] === 'string' && r['appium:udid']),
+  );
+  if (targeted.length === 0) return untargeted;
+  const visibleTargeted = await filterRowsByVisibleDevice(targeted, teamIds, 'appium:udid' as any);
+  return [...untargeted, ...visibleTargeted];
+}
+
 async function getQueuedSessionLength(request: Request<void>, response: Response<number>) {
-  response.json((await pendingStore.getAllPendingSessions()).length);
+  const auth = (request as unknown as Request & { auth?: { teamIds?: string[] } }).auth;
+  const all = await pendingStore.getAllPendingSessions();
+  const visible = await filterPendingByVisibleDevice(all, auth?.teamIds);
+  response.json(visible.length);
 }
 
 async function getQueuedSessionRequests(request: Request<void>, response: Response<unknown[]>) {
-  response.json(await pendingStore.getAllPendingSessions());
+  const auth = (request as unknown as Request & { auth?: { teamIds?: string[] } }).auth;
+  const all = await pendingStore.getAllPendingSessions();
+  const visible = await filterPendingByVisibleDevice(all, auth?.teamIds);
+  response.json(visible);
 }
 
 async function getNodes(request: Request, response: Response<string[]>) {
-  const allDevices = await store.getAllDevices();
+  const auth = (request as Request & { auth?: { teamIds?: string[] } }).auth;
+  let allDevices = await store.getAllDevices();
+  // Devices on hidden teams shouldn't contribute hosts members can't reach.
+  if (auth && auth.teamIds !== undefined) {
+    const ids = auth.teamIds;
+    if (ids.length === 0) {
+      allDevices = allDevices.filter((d) => !d.teamId);
+    } else {
+      allDevices = allDevices.filter((d) => !d.teamId || ids.includes(d.teamId));
+    }
+  }
   const nodes = allDevices.map((node) => node.host);
   // unique nodes
   const uniqueNodes = _.uniq(nodes);
@@ -179,10 +216,33 @@ async function getQueueStatusById(request: Request<{ capability_id: string }>, r
   if (!status) {
     return response.status(404).json({ error: 'Pending session not found' });
   }
+  // 404 the row if the underlying pending capability targets a device the
+  // caller can't see. Capability-only (no `appium:udid`) requests stay
+  // visible — there's no per-device ownership on them.
+  const auth = (request as Request & { auth?: { teamIds?: string[] } }).auth;
+  if (auth?.teamIds !== undefined) {
+    const allPending = await pendingStore.getAllPendingSessions();
+    const target = allPending.find((s) => s.capability_id === request.params.capability_id);
+    const targetUdid = target && typeof target['appium:udid'] === 'string' ? target['appium:udid'] : undefined;
+    if (targetUdid) {
+      const dev = await prisma.device.findFirst({
+        where: { udid: targetUdid },
+        select: { teamId: true },
+      });
+      const visible =
+        dev && (dev.teamId === null || auth.teamIds.includes(dev.teamId));
+      if (!visible) {
+        return response.status(404).json({ error: 'Pending session not found' });
+      }
+    }
+  }
   response.json(status);
 }
 
 async function getQueueSummary(request: Request, response: Response) {
+  // Global counters / per-platform aggregates only — no per-device or
+  // per-host breakdown. Admins and members see the same number; the team
+  // filter doesn't apply directly.
   const summary = await Container.get(QueueService).getQueueSummary();
   response.json(summary);
 }
@@ -315,9 +375,17 @@ async function getActiveSessions(request: Request, response: Response) {
     platform: s.getDevice()?.platform,
   }));
 
+  // Phase 4A: filter by visibility of the underlying device.
+  const auth = (request as Request & { auth?: { teamIds?: string[] } }).auth;
+  const visibleSessions = await filterRowsByVisibleDevice(
+    sessions,
+    auth?.teamIds,
+    'deviceUdid' as any,
+  );
+
   response.json({
     stats,
-    sessions,
+    sessions: visibleSessions,
   });
 }
 

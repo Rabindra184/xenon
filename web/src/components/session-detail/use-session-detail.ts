@@ -11,6 +11,7 @@ export interface UseSessionDetail {
   profiling: unknown[];
   loading: boolean;
   error: string | null;
+  notFound: boolean;
   refresh: () => void;
 }
 
@@ -22,6 +23,7 @@ export function useSessionDetail(sessionId: string | null): UseSessionDetail {
   const [profiling, setProfiling] = useState<unknown[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [notFound, setNotFound] = useState(false);
   const [refreshTick, setRefreshTick] = useState(0);
 
   useEffect(() => {
@@ -31,6 +33,7 @@ export function useSessionDetail(sessionId: string | null): UseSessionDetail {
       setDeviceLogs([]);
       setDebugLogs([]);
       setProfiling([]);
+      setNotFound(false);
       setLoading(false);
       return;
     }
@@ -53,8 +56,19 @@ export function useSessionDetail(sessionId: string | null): UseSessionDetail {
           s && typeof s === 'object' && typeof (s as any).id === 'string' && typeof (s as any).status === 'string';
         setSession(valid ? (s as ISession) : null);
         if (!valid) {
+          // Phase 4A: when the dashboard's team filter hides a session, the
+          // backend responds with `{ error: true, message: 'Session not found' }`
+          // — same shape as a real 404 on a missing id. The page treats both
+          // as a redirect-with-toast scenario; we don't try to distinguish
+          // here.
+          setNotFound(
+            !!s &&
+              typeof s === 'object' &&
+              ((s as any).error === true || typeof (s as any).message === 'string'),
+          );
           setError(typeof (s as any)?.message === 'string' ? (s as any).message : 'Session not found');
         } else {
+          setNotFound(false);
           setError(null);
         }
         setSessionLogs(Array.isArray(sl) ? (sl as LogLike[]) : []);
@@ -82,6 +96,7 @@ export function useSessionDetail(sessionId: string | null): UseSessionDetail {
     profiling,
     loading,
     error,
+    notFound,
     refresh: () => setRefreshTick((t) => t + 1),
   };
 }

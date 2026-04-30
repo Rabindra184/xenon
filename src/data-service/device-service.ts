@@ -9,6 +9,7 @@ import { CircuitBreaker } from './CircuitBreaker';
 import { NotificationService } from '../services/NotificationService';
 import { IDeviceStore } from './device-store.interface';
 import { SocketServer } from '../services/SocketServer';
+import { prisma } from '../prisma';
 
 // Use a Proxy to ensure we're always using the latest store from the factory,
 // which is critical for test isolation when the factory cache is cleared.
@@ -71,6 +72,36 @@ export async function setSimulatorState(devices: Array<IDevice>) {
 
 export async function getAllDevices(): Promise<IDevice[]> {
   return await store.getAllDevices();
+}
+
+// Filter an array of rows down to those whose `udidField` references a
+// device visible to the caller. Visibility:
+//   teamIds === undefined → no filter (admin / unscoped) → return as-is.
+//   teamIds === []        → only rows whose device.teamId IS NULL.
+//   teamIds === [a, b]    → rows whose device.teamId IS NULL or in the set.
+// Performs a single batched lookup for all referenced udids.
+export async function filterRowsByVisibleDevice<T>(
+  rows: T[],
+  teamIds: string[] | undefined,
+  udidField: keyof T,
+): Promise<T[]> {
+  if (teamIds === undefined) return rows;
+  const udids = Array.from(
+    new Set(rows.map((r) => String(r[udidField])).filter(Boolean)),
+  );
+  if (udids.length === 0) return rows;
+  const devices = await prisma.device.findMany({
+    where: { udid: { in: udids } },
+    select: { udid: true, teamId: true },
+  });
+  const visibleUdids = new Set(
+    devices
+      .filter(
+        (d) => d.teamId === null || (d.teamId !== null && teamIds.includes(d.teamId)),
+      )
+      .map((d) => d.udid),
+  );
+  return rows.filter((r) => visibleUdids.has(String(r[udidField])));
 }
 
 export async function getDevices(filterOptions: IDeviceFilterOptions): Promise<IDevice[]> {
