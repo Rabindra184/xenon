@@ -58,6 +58,83 @@ Set `--plugin-xenon-auth-disabled=true` to bypass auth entirely. The plugin emit
 
 ---
 
+## Permission matrix
+
+The matrix below is what the live router code enforces. Two guards stack: `roleGuard(min)` checks the caller's user role; `scopeGuard(required)` (or `mutationScopeGuard`, which only fires on `POST`/`PUT`/`PATCH`/`DELETE`) checks the token's scope set. **Both must pass.** The role check uses ranks: `MEMBER < ADMIN < SUPER_ADMIN`. The scope check passes if the token has any of the listed scopes; `admin` always satisfies anything.
+
+### Read surface (any authenticated caller)
+
+| Endpoint group | Method | Min role | Scope | Notes |
+|---|---|---|---|---|
+| `/grid/devices`, `/grid/device`, `/grid/device/:platform` | `GET` | `MEMBER` | _none_ | Filtered by team membership for `MEMBER` callers; admins see everything. |
+| `/grid/queue/*`, `/grid/sessions/active` | `GET` | `MEMBER` | _none_ | Same team filter applies. |
+| `/grid/node`, `/grid/node/:host/status` | `GET` | `MEMBER` | _none_ | |
+| `/dashboard/session`, `/dashboard/session/:id`, `/dashboard/build` | `GET` | `MEMBER` | _none_ | |
+| `/dashboard/healing/*` (events, summary, hotspots, selector, state) | `GET` | `MEMBER` | _none_ | |
+| `/control/:udid/screenshot`, `/control/:udid/clipboard`, `/control/:udid/apps`, `/control/:udid/logs` | `GET` | `MEMBER` | _none_ | Mutations on `/control` need `devices` (see below). |
+| `/apps`, `/apps/:id/download` | `GET` | `MEMBER` | _none_ | |
+| `/recordings/:groupId`, `/recordings/:groupId/composite.mp4`, `/recordings/:groupId/bundle.zip` | `GET` | `MEMBER` | _none_ | |
+| `/reservation` | `GET` | `MEMBER` | _none_ | Mutations need `devices`. |
+| `/profile/*` (access-key, tokens) | any | _authenticated_ | _none_ | Self-only — handlers enforce `req.auth.userId`. |
+
+### Device control (state-changing — `devices` scope)
+
+| Endpoint | Method | Min role | Scope | Notes |
+|---|---|---|---|---|
+| `/control/:udid/tap`, `/swipe`, `/text`, `/keyevent`, `/touchAndHold` | `POST` | `MEMBER` | `devices` | |
+| `/control/:udid/lock`, `/unlock`, `/install`, `/install-repository-app`, `/upload-install`, `/uninstall` | `POST` | `MEMBER` | `devices` | |
+| `/control/:udid/clipboard` | `POST` | `MEMBER` | `devices` | |
+| `/reservation`, `/reservation/:udid/:host`, `/reservation/:udid/:host/extend` | `POST` / `DELETE` | `MEMBER` | `devices` | |
+| `/recordings`, `/recordings/:groupId/{add-device,stop,bookmark,annotation}` | `POST` | `MEMBER` | _none_ | Recording control is per-user; no scope guard. |
+
+### Device administration — `ADMIN` + `devices`
+
+| Endpoint | Method | Min role | Scope | Notes |
+|---|---|---|---|---|
+| `/grid/register` | `POST` | `ADMIN` | `devices` | Hub-node channel — nodes provisioned with `devices`-scope tokens. |
+| `/grid/block`, `/grid/unblock` | `POST` | `ADMIN` | `devices` | Manual maintenance lock. |
+| `/grid/device/tags` | `POST` | `ADMIN` | `devices` | Edit device tags. |
+
+### App lifecycle — `ADMIN`
+
+| Endpoint | Method | Min role | Scope | Notes |
+|---|---|---|---|---|
+| `/apps/upload` | `POST` | `ADMIN` | `devices` (mutation guard) | |
+| `/apps/:id` | `DELETE` | `ADMIN` | `devices` (mutation guard) | |
+
+### Identity & multi-tenancy — `ADMIN` + `admin`
+
+| Endpoint | Method | Min role | Scope | Notes |
+|---|---|---|---|---|
+| `/users/*` | all | `ADMIN` | _router-level role-only_ | User CRUD, password reset. |
+| `/teams`, `/teams/:id`, `/teams/:id/members`, `/teams/:id/members/:userId` | all | `ADMIN` | `admin` | Team CRUD + membership. |
+| `/apikeys`, `/apikeys/:id` | all | `ADMIN` | `admin` | Programmatic API-key management (separate from per-user `/profile/tokens`). |
+| `/grid/device/:udid/team` | `PUT` | `ADMIN` | `admin` | Cross-team device reassignment. |
+| `/dashboard/healing/digest/send` | `POST` | `ADMIN` | `admin` | |
+| `/dashboard/healing/selector/state` | `POST` | `ADMIN` | `admin` | Mark-fixed / mute / etc. |
+| `/webhook`, `/webhook/:id`, `/webhook/test` | all | `ADMIN` | `admin` | |
+| `/processes` | `GET` | `ADMIN` | `admin` | Live process snapshot for ops debugging. |
+| `/interceptor/*` | all | `ADMIN` | _router-level role-only_ | Per-session HTTP interceptor + HAR + mocks. |
+
+### Hub-wide config — `SUPER_ADMIN`
+
+| Endpoint | Method | Min role | Scope | Notes |
+|---|---|---|---|---|
+| `/config/test-ai` | `POST` | `SUPER_ADMIN` | `admin` (mutation guard) | Smoke-tests an AI provider config. |
+| `/config` | `POST` | `SUPER_ADMIN` | `admin` (mutation guard) | Writes the global config. |
+| `/config` | `GET` | `ADMIN` | `admin` (mutation guard) | Read remains at `ADMIN`. |
+
+### Reads that don't fit cleanly above
+
+- `/build-export/:buildId/export` (`POST`) — `MEMBER` role; no scope guard. The handler self-enforces team filtering on which builds the caller can reach.
+- `/bug-report/sessions/:sessionId/bug-report` (`POST`) — `MEMBER`; same reasoning.
+
+### Auth-disabled mode
+
+When `XENON_AUTH_DISABLED=true` the middleware short-circuits before any guard runs and synthesises a `SUPER_ADMIN` / `admin`-scope `req.auth`. Every row above is wide open. Local dev only.
+
+---
+
 ## Per-key rate limiting
 
 Each authenticated key has its own token buckets, split into three categories so a runaway in one class can't starve the others:
