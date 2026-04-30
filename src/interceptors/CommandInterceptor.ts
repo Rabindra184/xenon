@@ -11,6 +11,8 @@ import log from '../logger';
 import { sessionContext } from '../logging/sessionContext';
 import { ProcessMetricsService } from '../services/ProcessMetricsService';
 import { IPluginArgs } from '../interfaces/IPluginArgs';
+import { AutowaitService } from '../services/autowait/AutowaitService';
+import { waitFor } from '../services/autowait/waitFor';
 
 @Service()
 export class CommandInterceptor {
@@ -89,6 +91,9 @@ export class CommandInterceptor {
       try {
         return await next();
       } finally {
+        if (commandName === 'deleteSession' && sessionId) {
+          Container.get(AutowaitService).clearSession(sessionId);
+        }
         if (span) tracingService.endSpan(`${sessionId}:${commandName}`);
       }
     }
@@ -116,6 +121,29 @@ export class CommandInterceptor {
           }
 
           const aiCommand = script.replace(/^(xe|xenon)\s*:\s*/, '').trim();
+          // appium-wait-plugin compatible alias — strip the `plugin:` prefix
+          // and map the old camelCase names so existing tests Just Work.
+          const legacyWaitCommand = script.replace(/^plugin\s*:\s*/, '').trim();
+
+          if (
+            aiCommand === 'setAutowaitProperties' ||
+            legacyWaitCommand === 'setWaitPluginProperties'
+          ) {
+            const payload = typeof scriptArgs === 'object' && scriptArgs !== null ? scriptArgs : {};
+            const partial = AutowaitService.fromLegacyShape(payload);
+            // setAutowaitProperties is also accepted with the modern field names
+            // verbatim; merge those in as a second pass.
+            if (typeof (payload as any).enabled === 'boolean') {
+              (partial as any).enabled = (payload as any).enabled;
+            }
+            return Container.get(AutowaitService).setProps(sessionId, partial);
+          }
+          if (
+            aiCommand === 'getAutowaitProperties' ||
+            legacyWaitCommand === 'getWaitPluginProperties'
+          ) {
+            return Container.get(AutowaitService).getProps(sessionId, pluginArgs);
+          }
 
           if (aiCommand === 'smartTap' || aiCommand === 'omniClick') {
             this.log.info(
@@ -246,34 +274,50 @@ export class CommandInterceptor {
         }
       }
 
-      const response = await next();
+      // --- AUTOWAIT: pre-action elementEnabled check for click/setValue/clear ---
+      // Mirrors appium-wait-plugin behavior; runs before native command so
+      // a NotEnabled state surfaces as a wait-then-retry rather than an
+      // immediate failure. Skips elements managed by other Xenon subsystems.
+      const autowait = Container.get(AutowaitService).getProps(sessionId, pluginArgs);
+      if (
+        autowait.enabled &&
+        ['click', 'setValue', 'clear'].includes(commandName) &&
+        !autowait.excludeEnabledCheck.includes(commandName) &&
+        typeof args[0] === 'string' &&
+        !args[0].startsWith('omni_') &&
+        !args[0].startsWith('healed_')
+      ) {
+        await this.waitForElementEnabled(driver, args[0], autowait);
+      }
 
-      if (isHub && !!pluginArgs.enableDashboard && SESSION_MANAGER.isValidSession(sessionId)) {
-        try {
-          await DASHBORD_EVENT_MANAGER.afterSessionCommand(
+      // --- AUTOWAIT: polling find for findElement/findElements ---
+      // Wraps next() in a poll loop so transient NoSuchElement errors get
+      // a retry budget instead of failing immediately. Healing only runs
+      // after the autowait timeout expires (preserving its current role
+      // as the recovery mechanism for genuinely-broken locators).
+      if (
+        autowait.enabled &&
+        ['findElement', 'findElements'].includes(commandName) &&
+        !this.isVisualStrategy(strategy)
+      ) {
+        const response = await this.runFindWithAutowait(next, commandName, autowait);
+        if (isHub && !!pluginArgs.enableDashboard && SESSION_MANAGER.isValidSession(sessionId)) {
+          await this.runPostCommandHooks(
             sessionId,
             commandName,
             driver,
-            {
-              body: args,
-              method: 'POST',
-              path: `/${commandName}`,
-              originalUrl: `/${commandName}`,
-            } as any,
-            {} as any,
-            JSON.stringify({ value: response, sessionId }),
+            args,
+            response,
+            pluginArgs,
           );
-
-          if (
-            commandName === 'findElement' &&
-            response &&
-            (pluginArgs.enableSelfHealing as boolean) !== false
-          ) {
-            this.triggerLearning(driver, args, response, sessionId);
-          }
-        } catch (postCommandErr: any) {
-          this.log.warn(`[Interceptor] Post-command hooks failed: ${postCommandErr.message}`);
         }
+        return response;
+      }
+
+      const response = await next();
+
+      if (isHub && !!pluginArgs.enableDashboard && SESSION_MANAGER.isValidSession(sessionId)) {
+        await this.runPostCommandHooks(sessionId, commandName, driver, args, response, pluginArgs);
       }
 
       return response;
@@ -393,6 +437,114 @@ export class CommandInterceptor {
       error.message?.includes('NoSuchElement') ||
       error.status === 7
     );
+  }
+
+  private isVisualStrategy(strategy: any): boolean {
+    return strategy === '-custom:ai-icon' || strategy === '-custom:ai-text';
+  }
+
+  /**
+   * Polls `next()` until it succeeds or the autowait timeout expires.
+   * For findElements, an empty array also counts as "not yet" — clients
+   * relying on length-based assertions get the same waiting semantics.
+   */
+  private async runFindWithAutowait(
+    next: () => any,
+    commandName: string,
+    autowait: { timeoutMs: number; intervalBetweenAttemptsMs: number },
+  ): Promise<any> {
+    const result = await waitFor<any>(
+      async () => {
+        const r = await next();
+        if (commandName === 'findElements') {
+          return Array.isArray(r) && r.length > 0 ? r : null;
+        }
+        return r ?? null;
+      },
+      {
+        timeoutMs: autowait.timeoutMs,
+        intervalMs: autowait.intervalBetweenAttemptsMs,
+        // NoSuchElement is the expected "not yet" signal — anything else is fatal
+        // (network blow-up, driver crash, etc.) and should bubble immediately.
+        isTransientError: (e) => this.isNoSuchElementError(e),
+      },
+    );
+    if ('value' in result) return result.value;
+
+    if (commandName === 'findElements') {
+      // Timed out without ever seeing an element — the contract says return [].
+      // Do NOT throw, otherwise existing tests that wait for "no items" break.
+      return [];
+    }
+    if (result.lastError) throw result.lastError;
+    const { errors } = await import('@appium/base-driver');
+    throw new errors.NoSuchElementError(
+      `Autowait timed out after ${autowait.timeoutMs} ms waiting for element`,
+    );
+  }
+
+  /**
+   * Pre-action gate: poll `driver.elementEnabled` until truthy or the
+   * autowait timeout expires. Failures are surfaced so the caller can decide
+   * whether to bail; for now we log+throw to mirror appium-wait-plugin.
+   */
+  private async waitForElementEnabled(
+    driver: any,
+    elementId: string,
+    autowait: { timeoutMs: number; intervalBetweenAttemptsMs: number },
+  ): Promise<void> {
+    if (typeof driver.elementEnabled !== 'function') return; // hub/proxy drivers have no elementEnabled
+    const result = await waitFor<boolean>(
+      async () => {
+        try {
+          const enabled = await driver.elementEnabled(elementId);
+          return enabled ? true : null;
+        } catch {
+          return null;
+        }
+      },
+      { timeoutMs: autowait.timeoutMs, intervalMs: autowait.intervalBetweenAttemptsMs },
+    );
+    if ('timedOut' in result) {
+      throw new Error(
+        `Autowait timed out after ${autowait.timeoutMs} ms waiting for element ${elementId} to be enabled`,
+      );
+    }
+  }
+
+  private async runPostCommandHooks(
+    sessionId: string,
+    commandName: string,
+    driver: any,
+    args: any[],
+    response: any,
+    pluginArgs: IPluginArgs,
+  ): Promise<void> {
+    try {
+      await DASHBORD_EVENT_MANAGER.afterSessionCommand(
+        sessionId,
+        commandName,
+        driver,
+        {
+          body: args,
+          method: 'POST',
+          path: `/${commandName}`,
+          originalUrl: `/${commandName}`,
+        } as any,
+        {} as any,
+        JSON.stringify({ value: response, sessionId }),
+      );
+
+      if (
+        commandName === 'findElement' &&
+        response &&
+        (pluginArgs.enableSelfHealing as boolean) !== false
+      ) {
+        this.triggerLearning(driver, args, response, sessionId);
+      }
+    } catch (postCommandErr: any) {
+      this.log.warn(`[Interceptor] Post-command hooks failed: ${postCommandErr.message}`);
+    }
   }
 
   private async handleOmniVisionSearch(
