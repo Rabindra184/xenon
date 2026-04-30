@@ -41,7 +41,11 @@ export const METRIC = {
   HEALING_DURATION_MS: 'xenon.healing.duration_ms',
   HEALING_CONFIDENCE: 'xenon.healing.confidence',
 
+  RECORDING_ATTEMPTS: 'xenon.recording.attempts',
   RECORDING_FAILURES: 'xenon.recording.failures',
+  RECORDING_COMPOSITE_FAILURES: 'xenon.recording.composite_failures',
+  RECORDING_DURATION_MS: 'xenon.recording.duration_ms',
+  RECORDING_DEVICE_COUNT: 'xenon.recording.device_count',
 
   MJPEG_CLIENTS_DROPPED: 'xenon.mjpeg.clients_dropped',
   MJPEG_UPSTREAM_RETRIES: 'xenon.mjpeg.upstream_retries',
