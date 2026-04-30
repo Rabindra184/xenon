@@ -59,7 +59,7 @@ By default, Xenon uses SQLite stored at `~/.cache/xenon/xenon.db`. No setup requ
 
 ## 2. Hub-Node (Distributed Grid)
 
-For larger teams or CI farms with devices spread across multiple machines. The **Hub** acts as the controller and the **Nodes** register via gRPC.
+For larger teams or CI farms with devices spread across multiple machines. The **Hub** acts as the controller and the **Nodes** register over HTTP REST (`/xenon/api/register`) and stream live state over Socket.IO. Each node authenticates with a per-node `(accessKey, token)` pair provisioned on the hub — see [Node Provisioning](enterprise-security.md#hub-node-channel-authentication).
 
 ```mermaid
 graph TD
@@ -78,8 +78,8 @@ graph TD
         D2["Devices"]
         N2 --> D2
     end
-    N1 -->|gRPC| H
-    N2 -->|gRPC| H
+    N1 -->|HTTP + Socket.IO| H
+    N2 -->|HTTP + Socket.IO| H
 ```
 
 ### Hub Configuration
@@ -111,6 +111,13 @@ server:
     xenon:
       platform: android
       hub: "http://hub-ip:4723"
+```
+
+Set the node's pair-auth env vars before starting the Appium server (provision the credentials on the hub first per [Node Provisioning](enterprise-security.md#hub-node-channel-authentication)):
+
+```bash
+export XENON_HUB_ACCESS_KEY="xen_..."
+export XENON_HUB_TOKEN="..."
 ```
 
 ### PostgreSQL Setup
@@ -163,6 +170,9 @@ See the [Cloud Execution Guide](cloud.md) for provider-specific setup.
 | `XENON_AI_PROVIDER` | AI provider selection | `gemini` |
 | `XENON_AI_MODEL` | AI model override | Provider default |
 | `XENON_AI_BASE_URL` | Custom AI endpoint (for Ollama) | — |
+| `XENON_HUB_ACCESS_KEY` | Node→hub access key (pair auth) | — |
+| `XENON_HUB_TOKEN` | Node→hub API token (pair auth) | — |
+| `XENON_BOOTSTRAP_ADMIN_EMAIL` / `XENON_BOOTSTRAP_ADMIN_PASSWORD` | First-run super-admin user (hub) | `admin@xenon.local` / `Admin@123` |
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | OpenTelemetry collector endpoint | — |
 | `XENON_OTEL_DEBUG` | Log traces to console | `false` |
 

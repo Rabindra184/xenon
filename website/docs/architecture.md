@@ -1,16 +1,16 @@
 # Appium Xenon Architecture
 
 :::info
-Xenon is built on a **Cellular Architecture** designed for zero-downtime, autonomous device management. This section explores the lifecycle of devices and sessions within the distributed mesh.
+Xenon uses a **hub-and-node topology** for distributed device management: one hub coordinates many nodes, each node ships its locally-attached devices, and the hub forwards Appium commands transparently to the owning node. This section explores the lifecycle of devices and sessions within that topology.
 :::
 
 ## Autonomous Infrastructure Lifecycle
 
-Xenon's registry is proactive, not reactive. Devices are treated as shared resources in a global mesh, synchronized via HTTP REST and Socket.IO WebSockets.
+Xenon's registry is proactive, not reactive. Devices are treated as shared resources in a global pool, synchronized via HTTP REST and Socket.IO.
 
 ### Device Registration & Discovery
 
-When a hardware node detects a new mobile device, it instantly propagates this state to the nearest available Hub cell.
+When a node detects a new mobile device, it propagates the state to the hub.
 
 ```mermaid
 sequenceDiagram
@@ -97,7 +97,7 @@ Xenon's self-healing engine automatically repairs broken element locators at run
 | 1 | ResilioTree | Structural tree-diff matching |
 | 2 | FuzzyXML | Attribute similarity scoring |
 | 3 | OCR | Text-based visual matching |
-| 4 | Visual AI | Florence-2 element detection |
+| 4 | Visual AI | OCR-driven detection (Tesseract.js) with AI-vision fallback |
 | 5 | LLM | Deep reasoning with GPT/Claude/Gemini |
 
 Successful healings are autonomously learned via the Etalon Service to prevent recurrence.
@@ -138,7 +138,7 @@ When a failure is unrecoverable, Xenon triggers a multimodal analysis pipeline u
 |---------|-------------|------|
 | **Network Conditioning** | Simulate 4G, 3G, Edge, Offline conditions | [Guide](network-conditioning.md) |
 | **Notifications** | Slack and HTTP webhook alerts | [Guide](notifications.md) |
-| **Omni-Vision** | Florence-2 visual intelligence | [Guide](omni-vision.md) |
+| **Omni-Vision** | OCR-driven visual intelligence (Tesseract.js + AI fallback) | [Guide](omni-vision.md) |
 
 ---
 

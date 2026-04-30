@@ -36,7 +36,7 @@ graph TD
 | 1 | **ResilioTree** | Structural tree-diff matching against stored element signatures | ~10ms | Free |
 | 2 | **FuzzyXML** | Attribute similarity scoring (text, class, resource-id, bounds) | ~20ms | Free |
 | 3 | **OCR** | Text-based visual matching using screen text extraction | ~100ms | Free |
-| 4 | **Visual AI** | Florence-2 element detection by visual description | ~500ms | Local GPU |
+| 4 | **Visual AI** | OCR-driven detection (Tesseract.js) with AI-vision fallback for ambiguous cases | ~200ms–2s | Free / API call |
 | 5 | **LLM Deep Healing** | Full page source + screenshot reasoning via GPT/Claude/Gemini | ~3s | API call |
 
 ### Tier 1: ResilioTree
@@ -57,7 +57,7 @@ Extracts visible text from the screenshot and matches it against the expected el
 
 ### Tier 4: Visual AI
 
-Uses Florence-2 (via [Omni-Vision](omni-vision.md)) to detect elements by visual description. Falls back to coordinate-based detection when structural methods fail entirely.
+Uses [Omni-Vision](omni-vision.md) — OCR-driven detection via Tesseract.js, with the configured AI provider (Gemini / OpenAI / Anthropic) as a fallback for visually ambiguous cases. Falls back to coordinate-based detection when structural methods fail entirely.
 
 ### Tier 5: LLM Deep Healing
 
@@ -108,5 +108,5 @@ When a heal happens:
 ## Requirements
 
 - **Tiers 1–3**: Work out of the box with no configuration
-- **Tier 4**: Requires the Omni-Vision service (Florence-2 model)
+- **Tier 4**: Requires the Omni-Vision service (Tesseract.js is bundled; AI-vision fallback uses the same provider as Tier 5 when configured)
 - **Tier 5**: Requires an AI provider API key (see [AI Features](ai-features.md))

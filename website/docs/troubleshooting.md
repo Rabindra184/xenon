@@ -48,7 +48,7 @@ A high thermal status on iOS devices will cause WDA to become extremely sluggish
 **Symptom**: Device status is `unauthorized` in the dashboard.
 
 - **Check Debugging**: Ensure "USB Debugging" is enabled and the RSA fingerprint is accepted.
-- **Node-Hub Connectivity**: Ensure the Node can reach the Hub's gRPC port (default `:4723`).
+- **Node-Hub Connectivity**: Ensure the Node can reach the Hub's HTTP/Socket.IO port (default `:4723`).
 
 </TabItem>
 </Tabs>

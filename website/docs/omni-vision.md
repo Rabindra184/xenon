@@ -4,7 +4,9 @@ title: Omni-Vision
 
 # Omni-Vision (Visual Intelligence)
 
-Omni-Vision is Xenon's visual intelligence layer powered by Florence-2. It enables **coordinate-free element interaction** and **visual assertions** — testing your app as a human sees it, not as the DOM describes it.
+Omni-Vision is Xenon's visual intelligence layer. It enables **coordinate-free element interaction** and **visual assertions** — testing your app as a human sees it, not as the DOM describes it.
+
+The implementation is **OCR-first**: every screen is run through Tesseract.js (with image preprocessing via `sharp` to clean small fonts and low-contrast text) to produce a list of on-screen text + bounding boxes. For matches that OCR can't disambiguate — visual descriptions, icon recognition, complex assertions — the configured LLM provider (Gemini / OpenAI / Anthropic) is used as a fallback over the same screenshot.
 
 For interactive exploration and code generation powered by Omni-Vision, see the [OmniInspector](omni-inspector.md).
 
@@ -72,18 +74,22 @@ driver.executeScript("xe:uiInventory", Map.of("maxItems", 200, "takeANewScreenSh
 graph LR
     A["Test Script"] --> B["Xenon Plugin"]
     B --> C["OmniVisionService"]
-    C --> D["Florence-2 Model"]
-    D --> E["Coordinate Mapping"]
+    C --> D1["Tesseract.js OCR"]
+    C --> D2["AI Vision Fallback\n(Gemini/OpenAI/Anthropic)"]
+    D1 --> E["Coordinate Mapping"]
+    D2 --> E
     E --> F["Device Interaction"]
     C --> G["VisionAssertionService"]
-    G --> D
+    G --> D2
 ```
 
 **OmniVisionService** handles:
-- Screenshot capture and preprocessing
-- Florence-2 model inference
-- Coordinate mapping from model output to device screen coordinates
+- Screenshot capture and preprocessing (`sharp` — contrast adjustment, conditional upscaling)
+- Tesseract.js OCR with a shared worker
+- AI-vision fallback through the configured LLM provider for ambiguous cases
+- Coordinate mapping from OCR/model output to device screen coordinates
 - DPI and viewport offset correction
+- A short-lived UI-lens cache (10 s TTL) to avoid repeated OCR on rapid calls
 
 **VisionAssertionService** handles:
 - Natural language assertion parsing
@@ -97,9 +103,10 @@ graph LR
 Omni-Vision powers **Tier 4** of the [Self-Healing Engine](self-healing.md). When structural matching (Tiers 1–3) fails to find a broken element, the healing orchestrator falls back to visual detection:
 
 1. Captures a screenshot of the current screen
-2. Generates a visual description of the target element from its attributes
-3. Uses Florence-2 to locate the element visually
-4. Returns coordinates for interaction
+2. Runs Tesseract.js OCR over the preprocessed screenshot
+3. Tries to match the broken element's expected text against the OCR results
+4. If OCR can't pin a unique match (or the element has no useful text), falls back to the AI-vision provider for description-based grounding
+5. Returns coordinates for interaction
 
 This makes Xenon's self-healing resilient even when the DOM changes completely — as long as the element is visually present on screen.
 
@@ -107,9 +114,10 @@ This makes Xenon's self-healing resilient even when the DOM changes completely �
 
 ## Requirements
 
-- **Florence-2 model** must be available (local or remote inference)
-- Screenshot capabilities must be enabled on the session
-- Works with both iOS and Android devices
+- **Tesseract.js** is bundled with the plugin — OCR works out of the box, no setup needed.
+- **AI-vision fallback** requires a configured LLM provider. Set `XENON_AI_PROVIDER` and the matching API key (see [AI Features](ai-features.md)). Without this, Omni-Vision still works for OCR-driven flows but gracefully degrades on visually ambiguous matches.
+- Screenshot capabilities must be enabled on the session.
+- Works with both iOS and Android devices.
 
 :::tip
 Omni-Vision works best for elements with distinctive visual characteristics (unique text, icons, colors). For visually ambiguous elements (plain list items, generic buttons), structural matching in Tiers 1–3 is more reliable.
