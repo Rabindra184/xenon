@@ -60,6 +60,37 @@
   display: flex;
   gap: 4px;
   flex-wrap: wrap;
+  align-items: center;
+}
+
+.dc2-team-pill {
+  background: transparent;
+  border: 1px solid var(--border);
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  color: var(--text);
+  cursor: pointer;
+  font-family: 'Inter', sans-serif;
+  line-height: 1.4;
+  transition: border-color var(--motion-fast);
+}
+.dc2-team-pill:hover {
+  border-color: var(--border-strong);
+}
+.dc2-team-pill:focus-visible {
+  outline: 2px solid var(--accent, var(--border-strong));
+  outline-offset: 1px;
+}
+
+.dc2-team-select {
+  font-size: 11px;
+  padding: 2px 6px;
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--text);
+  font-family: 'Inter', sans-serif;
 }
 
 .dc2-metrics {
