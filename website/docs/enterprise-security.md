@@ -21,19 +21,16 @@ export XENON_BOOTSTRAP_ADMIN_EMAIL="you@example.com"
 export XENON_BOOTSTRAP_ADMIN_PASSWORD="..."  # change me
 ```
 
-Sign in at `https://<host>/xenon/` with these credentials. From `/profile` you can mint API tokens and rotate your access key.
-
-A pre-Phase-1 admin-scoped legacy API key is also written to `~/.cache/xenon/bootstrap-key.txt` (0600) for backwards compatibility and CI bootstrapping. Rotate or revoke it via `/api/apikeys` once you have a real user-issued token.
+Sign in at `https://<host>/xenon/` with these credentials. From `/profile` you can mint API tokens and rotate your access key. For CI use, programmatically `POST /api/auth/login` to get the cookie, then `POST /api/profile/tokens` to mint a scoped token under the bootstrap user.
 
 ## Authentication shapes
 
-Every endpoint under `/xenon/api/*` is gated when `authDisabled` is `false` — the default. Xenon accepts four shapes; pick whichever matches your caller.
+Every endpoint under `/xenon/api/*` is gated when `authDisabled` is `false` — the default. Xenon accepts three shapes; pick whichever matches your caller.
 
 | Shape | Header(s) | When to use |
 |---|---|---|
 | **Cookie session** | `Cookie: xenon_dashboard_session=…` | Dashboard browser sessions. Set by `POST /api/auth/login` with `{email, password}`. `httpOnly`, `sameSite=strict`, sliding 24-hour TTL that re-ups on every authenticated request, marked `secure` when the request arrives over HTTPS (or via an `X-Forwarded-Proto: https` proxy hop). |
 | **Pair auth** | `X-Xenon-Access-Key` + `X-Xenon-Token` | Programmatic clients (CI, SDK, hub→node). Each user has one access key (rotatable from `/profile`) and any number of scoped tokens minted from `/profile` → API Tokens. The token is shown once at creation and stored as a salted hash. |
-| **Legacy API key** | `X-Xenon-API-Key` | Pre-Phase-1 callers. Still accepted by default; gate with `XENON_ACCEPT_LEGACY_KEY=false` once everyone has migrated. |
 | **Auth disabled** | _(none)_ | Local dev only. Set `--plugin-xenon-auth-disabled` (or `XENON_AUTH_DISABLED=true`). A WARN logs every 60 s. |
 
 ### Scopes
@@ -88,7 +85,7 @@ When throttled, clients receive HTTP 429 with `Retry-After` set to the seconds u
 Cookie-authenticated state-changing requests pass through a CSRF middleware. `POST`, `PUT`, `DELETE`, and `PATCH` require either:
 
 - A double-submit token from the dashboard, or
-- A header-based credential (`x-xenon-api-key` or `x-xenon-access-key`).
+- A pair-auth credential (`x-xenon-access-key` header alongside `x-xenon-token`).
 
 Header-authed callers are exempt — the session cookie is what makes CSRF possible, so a request without a cookie cannot be forged across origins. Browsers will not attach `x-xenon-*` custom headers without an explicit CORS preflight, and the apiRouter's `cors({origin:false})` already refuses preflights.
 
@@ -127,7 +124,7 @@ Disable it (`--plugin-xenon-tls-reject-unauthorized=false`) only against self-si
 
 The plugin's scoped logger filters known secret-bearing fields before writing to console or the structured log sink. Redacted by default:
 
-- `Authorization`, `x-xenon-api-key`, `x-xenon-access-key`, `x-xenon-token` headers
+- `Authorization`, `x-xenon-access-key`, `x-xenon-token` headers
 - API-key strings, AI-provider keys, database URLs that contain credentials
 - Capability fields explicitly tagged as sensitive
 

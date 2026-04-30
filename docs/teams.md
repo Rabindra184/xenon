@@ -40,7 +40,7 @@ Settings sidebar → **Teams** → **New team**. Click a team to see its members
 
 ```bash
 curl -X POST http://host:4723/xenon/api/teams \
-  -H "X-Xenon-API-Key: <admin-key>" \
+  -H "X-Xenon-Access-Key: <admin-access-key>" -H "X-Xenon-Token: <admin-token>" \
   -H 'Content-Type: application/json' \
   -d '{"name":"android-qa"}'
 # → { "id": "3acef541-…", "name": "android-qa", "createdAt": "…" }
@@ -61,13 +61,13 @@ Open the Team detail panel → **Devices** section → pick a shared-pool device
 ```bash
 # Claim a device for a team
 curl -X PUT http://host:4723/xenon/api/device/<udid>/team \
-  -H "X-Xenon-API-Key: <admin-key>" \
+  -H "X-Xenon-Access-Key: <admin-access-key>" -H "X-Xenon-Token: <admin-token>" \
   -H 'Content-Type: application/json' \
   -d '{"teamId":"3acef541-…"}'
 
 # Return to shared pool
 curl -X PUT http://host:4723/xenon/api/device/<udid>/team \
-  -H "X-Xenon-API-Key: <admin-key>" \
+  -H "X-Xenon-Access-Key: <admin-access-key>" -H "X-Xenon-Token: <admin-token>" \
   -H 'Content-Type: application/json' \
   -d '{"teamId":null}'
 ```
@@ -85,13 +85,13 @@ Settings → **API Keys** → **Create new key** → pick a team in the **Defaul
 ```bash
 # Create a team-bound key directly
 curl -X POST http://host:4723/xenon/api/apikeys \
-  -H "X-Xenon-API-Key: <admin-key>" \
+  -H "X-Xenon-Access-Key: <admin-access-key>" -H "X-Xenon-Token: <admin-token>" \
   -H 'Content-Type: application/json' \
   -d '{"name":"alice-ci", "scopes":["read","sessions"], "teamId":"3acef541-…"}'
 
 # Or move an existing key into a team
 curl -X POST http://host:4723/xenon/api/teams/<team-id>/members \
-  -H "X-Xenon-API-Key: <admin-key>" \
+  -H "X-Xenon-Access-Key: <admin-access-key>" -H "X-Xenon-Token: <admin-token>" \
   -H 'Content-Type: application/json' \
   -d '{"apiKeyId":"<key-id>", "role":"member"}'
 ```
@@ -100,7 +100,7 @@ Removing a key from a team sends it back to the shared pool:
 
 ```bash
 curl -X DELETE http://host:4723/xenon/api/teams/<team-id>/members/<key-id> \
-  -H "X-Xenon-API-Key: <admin-key>"
+  -H "X-Xenon-Access-Key: <admin-access-key>" -H "X-Xenon-Token: <admin-token>"
 ```
 
 ## Using teams from a test client
@@ -190,11 +190,11 @@ An admin can revoke any key via the dashboard or:
 
 ```bash
 curl -X DELETE http://host:4723/xenon/api/apikeys/<id> \
-  -H "X-Xenon-API-Key: <admin-key>"
+  -H "X-Xenon-Access-Key: <admin-access-key>" -H "X-Xenon-Token: <admin-token>"
 ```
 
 ## Related
 
-- [Authentication](../README.md#-authentication) — bootstrap key, dashboard login, session cookie
+- [Authentication](../README.md#-authentication) — first-run bootstrap admin user, dashboard login, pair-auth tokens
 - [`docs/server-args.md`](./server-args.md) — full CLI flag reference
 - [`docs/retention.md`](./retention.md) — how session rows (including `api_key_id`) get pruned

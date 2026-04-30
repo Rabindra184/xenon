@@ -5,37 +5,28 @@ import { bootstrapIdentity } from '../../src/services/identity/bootstrap';
 import { prisma } from '../../src/prisma';
 import { Container } from 'typedi';
 import { UserService } from '../../src/services/UserService';
-import { ApiKeyService } from '../../src/services/ApiKeyService';
 
 describe('bootstrapIdentity', () => {
   afterEach(() => sinon.restore());
 
-  it('creates a super-admin and a Legacy Admin (when ApiKeys exist) on a fresh DB', async () => {
+  it('creates a super-admin on a fresh DB', async () => {
     sinon.stub(prisma.user, 'count').resolves(0);
-    sinon.stub(prisma.apiKey, 'count').resolves(2);
-    const create = sinon.stub(Container.get(UserService), 'createUser')
-      .onFirstCall().resolves({ id: 'super', role: 'SUPER_ADMIN' } as any)
-      .onSecondCall().resolves({ id: 'legacy', role: 'SUPER_ADMIN' } as any);
-    sinon.stub(prisma.apiKey, 'updateMany').resolves({ count: 2 } as any);
-    sinon.stub(Container.get(ApiKeyService), 'bootstrapIfEmpty').resolves(null);
-
-    await bootstrapIdentity();
-
-    expect(create.callCount).to.equal(2);
-    expect(create.firstCall.args[0].role).to.equal('SUPER_ADMIN');
-    expect(create.secondCall.args[0].email).to.equal('legacy-admin@xenon.local');
-    expect(create.secondCall.args[0].status).to.equal('INACTIVE');
-  });
-
-  it('does not create a Legacy Admin when no ApiKeys exist', async () => {
-    sinon.stub(prisma.user, 'count').resolves(0);
-    sinon.stub(prisma.apiKey, 'count').resolves(0);
     const create = sinon.stub(Container.get(UserService), 'createUser')
       .resolves({ id: 'super', role: 'SUPER_ADMIN' } as any);
-    sinon.stub(Container.get(ApiKeyService), 'bootstrapIfEmpty').resolves('rawkey');
 
     await bootstrapIdentity();
-    expect(create.callCount).to.equal(1);
+
+    expect(create.calledOnce).to.be.true;
+    expect(create.firstCall.args[0].role).to.equal('SUPER_ADMIN');
+  });
+
+  it('is a no-op when users already exist', async () => {
+    sinon.stub(prisma.user, 'count').resolves(1);
+    const create = sinon.stub(Container.get(UserService), 'createUser');
+
+    await bootstrapIdentity();
+
+    expect(create.called).to.be.false;
   });
 
   it('XENON_BOOTSTRAP_RESET_PASSWORD=true rotates the super-admin password', async () => {

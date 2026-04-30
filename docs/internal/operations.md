@@ -15,12 +15,12 @@ Internal reference for on-call engineers and lab administrators.
 **Manual recovery (if OrphanSweeper is not running):**
 
 ```bash
-# Find stale sessions
-curl -H "X-Xenon-API-Key: $ADMIN_KEY" \
+# Find stale sessions (pair-auth headers minted at /profile)
+curl -H "X-Xenon-Access-Key: $ACCESS_KEY" -H "X-Xenon-Token: $TOKEN" \
   http://localhost:4723/xenon/api/sessions?status=running
 
 # Force-fail a session (releases device)
-curl -X DELETE -H "X-Xenon-API-Key: $ADMIN_KEY" \
+curl -X DELETE -H "X-Xenon-Access-Key: $ACCESS_KEY" -H "X-Xenon-Token: $TOKEN" \
   http://localhost:4723/xenon/api/sessions/<session-id>
 ```
 
@@ -60,39 +60,42 @@ Default ranges:
 
 ---
 
-## Bootstrap key rotation
+## First-run admin provisioning
 
-**When:** First start, or after a key compromise.
+**When:** First start of a fresh hub, or recovering from a lost super-admin password.
 
-**Locate the bootstrap key:**
+The hub creates a `SUPER_ADMIN` user on first boot from these env vars (defaults `admin@xenon.local` / `Admin@123` — change before deploying anywhere real):
 
 ```bash
-cat ~/.cache/xenon/bootstrap-key.txt   # or the path logged on startup
+export XENON_BOOTSTRAP_ADMIN_EMAIL="ops@xenon.local"
+export XENON_BOOTSTRAP_ADMIN_PASSWORD="...strong..."
 ```
 
-**Create a permanent admin key:**
+**Sign in for browser use:** open `https://<host>/xenon/`, log in with the bootstrap credentials, change the password from `/profile`, and mint scoped API tokens from `/profile` → **API Tokens**.
+
+**Programmatic / CI use** (no browser):
 
 ```bash
-NEW_KEY=$(curl -s -X POST \
-  -H "X-Xenon-API-Key: $(cat ~/.cache/xenon/bootstrap-key.txt)" \
+# 1. Login → cookie
+COOKIE=$(curl -s -c - -X POST \
+  -H 'Content-Type: application/json' \
+  -d "{\"email\":\"$XENON_BOOTSTRAP_ADMIN_EMAIL\",\"password\":\"$XENON_BOOTSTRAP_ADMIN_PASSWORD\"}" \
+  http://localhost:4723/xenon/api/auth/login | grep xenon_dashboard_session | awk '{print $7}')
+
+# 2. Mint a scoped token under the bootstrap user
+TOKEN_JSON=$(curl -s -X POST \
+  -H "Cookie: xenon_dashboard_session=$COOKIE" \
   -H 'Content-Type: application/json' \
   -d '{"name":"ops-admin","scopes":["admin","sessions","devices","read"]}' \
-  http://localhost:4723/xenon/api/apikeys | jq -r .key)
+  http://localhost:4723/xenon/api/profile/tokens)
 
-echo "Save this key securely: $NEW_KEY"
+ACCESS_KEY=$(echo "$TOKEN_JSON" | jq -r '.accessKey')
+TOKEN=$(echo "$TOKEN_JSON" | jq -r '.token')
+echo "ACCESS_KEY=$ACCESS_KEY"
+echo "TOKEN=$TOKEN  # save securely; not retrievable again"
 ```
 
-**Revoke the bootstrap key:**
-
-```bash
-BOOTSTRAP_ID=$(curl -s \
-  -H "X-Xenon-API-Key: $NEW_KEY" \
-  http://localhost:4723/xenon/api/apikeys | jq -r '.[] | select(.name=="bootstrap") | .id')
-
-curl -X DELETE \
-  -H "X-Xenon-API-Key: $NEW_KEY" \
-  http://localhost:4723/xenon/api/apikeys/$BOOTSTRAP_ID
-```
+**Lost password recovery:** set `XENON_BOOTSTRAP_RESET_PASSWORD=true` and restart the hub. The first super-admin's password will be reset to `XENON_BOOTSTRAP_ADMIN_PASSWORD` on next boot, and any active dashboard sessions for that user are deleted. Unset the flag and restart again immediately afterward.
 
 ---
 
@@ -118,7 +121,7 @@ pkill -f 'iproxy'
 **Inspect currently tracked processes** (while Xenon is running):
 
 ```bash
-curl -H "X-Xenon-API-Key: $ADMIN_KEY" \
+curl -H "X-Xenon-Access-Key: $ACCESS_KEY" -H "X-Xenon-Token: $TOKEN" \
   http://localhost:4723/xenon/api/processes
 ```
 
@@ -153,16 +156,16 @@ The node started without either env var and the hub does not have `XENON_AUTH_DI
 
 ## Rate limit tuning
 
-Default: 300 req/min per API key. Adjust per key at creation time or via key update.
+Default: 300 req/min per token. Adjust per token at creation time or via update.
 
-**Increase limit for a CI key:**
+**Mint a higher-rate-limit CI token** (cookie obtained via login per "First-run admin provisioning" above):
 
 ```bash
 curl -X POST \
-  -H "X-Xenon-API-Key: $ADMIN_KEY" \
+  -H "Cookie: xenon_dashboard_session=$COOKIE" \
   -H 'Content-Type: application/json' \
   -d '{"name":"ci-pipeline","scopes":["sessions","read"],"rateLimit":1200}' \
-  http://localhost:4723/xenon/api/apikeys
+  http://localhost:4723/xenon/api/profile/tokens
 ```
 
 **Signs of rate limiting:** HTTP 429 responses with `Retry-After` header. Client should back off for the indicated number of seconds.

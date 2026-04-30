@@ -2139,7 +2139,7 @@ export {};
  *     description: |
  *       Returns scrape-friendly Prometheus exposition format (`text/plain; version=0.0.4`).
  *       Auth-gated to avoid operational reconnaissance — point your scraper at this
- *       endpoint with a `read`-scope key in the `x-xenon-api-key` header.
+ *       endpoint with a `read`-scope token in the `(x-xenon-access-key, x-xenon-token)` pair.
  *     tags: [Health & Ops]
  *     responses:
  *       200:

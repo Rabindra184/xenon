@@ -439,7 +439,7 @@ npm run test:ios              # iOS integration
 
 ## 🔐 Authentication
 
-All `/xenon/api/*` endpoints are authenticated. Xenon supports four shapes — pick whichever matches your caller.
+All `/xenon/api/*` endpoints are authenticated. Xenon supports three shapes — pick whichever matches your caller.
 
 ### Identity model
 
@@ -451,7 +451,6 @@ Xenon ships an enterprise identity stack: **users** with roles (`SUPER_ADMIN` / 
 |---|---|---|
 | **Cookie session** | `Cookie: xenon_dashboard_session=…` | Dashboard browser sessions. Set by `POST /api/auth/login` with `{email, password}`. |
 | **Pair auth** | `X-Xenon-Access-Key` + `X-Xenon-Token` | Programmatic clients (CI, SDK, hub→node). Each user has one access key (rotatable) and any number of scoped tokens. |
-| **Legacy API key** | `X-Xenon-API-Key` | Pre-Phase-1 callers. Still accepted by default; gate with `XENON_ACCEPT_LEGACY_KEY=false` once everyone has migrated. |
 | **Auth disabled** | _(none)_ | Local dev only. Set `--plugin-xenon-auth-disabled` (or `XENON_AUTH_DISABLED=true`). A WARN logs every 60 s. |
 
 ### First-run bootstrap
@@ -463,9 +462,7 @@ export XENON_BOOTSTRAP_ADMIN_EMAIL="you@example.com"
 export XENON_BOOTSTRAP_ADMIN_PASSWORD="..."  # change me
 ```
 
-Sign in at `https://<host>/xenon/` with these credentials. From `/profile` you can mint API tokens and rotate your access key.
-
-A pre-Phase-1 admin-scoped legacy API key is also written to `~/.cache/xenon/bootstrap-key.txt` (0600) for backwards compatibility and CI bootstrapping. Rotate or revoke it via `/api/apikeys` once you have a real user-issued token.
+Sign in at `https://<host>/xenon/` with these credentials. From `/profile` you can mint API tokens and rotate your access key. For CI use, programmatically `POST /api/auth/login` to get the cookie, then `POST /api/profile/tokens` to mint a scoped token.
 
 ### Generating a programmatic token
 
@@ -541,7 +538,6 @@ Xenon reads these env vars in addition to the CLI flags. Prefer env vars for cre
 | `XENON_HUB_ACCESS_KEY` | Node→hub outbound: access key the node sends in `X-Xenon-Access-Key`. Required alongside `XENON_HUB_TOKEN`. See [docs/node-provisioning.md](docs/node-provisioning.md). |
 | `XENON_HUB_TOKEN` | Node→hub outbound: token the node sends in `X-Xenon-Token`. Required alongside `XENON_HUB_ACCESS_KEY`. |
 | `XENON_BOOTSTRAP_ADMIN_EMAIL` / `XENON_BOOTSTRAP_ADMIN_PASSWORD` | First-run super-admin user, created on first hub boot. Defaults `admin@xenon.local` / `Admin@123`. Change in any non-throwaway environment. |
-| `XENON_ACCEPT_LEGACY_KEY` | When `false`, the `X-Xenon-API-Key` header is rejected and callers must use pair auth. Default `true`. |
 | `XENON_AUTH_DISABLED` | `true` to disable all auth. Local dev only. |
 
 See [`docs/server-args.md`](docs/server-args.md) for the full CLI-flag reference and how these variables interact with config files.

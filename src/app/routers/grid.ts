@@ -431,10 +431,11 @@ function register(router: Router, pluginArgs: IPluginArgs) {
   router.get('/device', getDevices);
   router.get('/device/:platform', getDeviceByPlatform);
 
-  // ADMIN-tier mutations: register, block/unblock, tags, team-assignment
+  // ADMIN-tier mutations: register, block/unblock, tags, team-assignment.
   // Node registration + device manipulation all require devices scope.
-  // Node bootstrap keys have admin scope so they pass; operator keys
-  // need an explicit 'devices' grant.
+  // Per-node pair-auth tokens (provisioned with role=ADMIN, scope=devices)
+  // pass the role+scope guards; admin-scope tokens also pass via the
+  // admin-satisfies-everything rule.
   router.post('/register', roleGuard('ADMIN'), scopeGuard(['devices']), registerNode);
   router.post('/block', roleGuard('ADMIN'), scopeGuard(['devices']), blockDevice);
   router.post('/unblock', roleGuard('ADMIN'), scopeGuard(['devices']), unBlockDevice);

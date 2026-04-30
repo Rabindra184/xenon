@@ -212,10 +212,11 @@ function createRouter(pluginArgs: IPluginArgs) {
   // Dashboard login: unauthenticated (rate-limited internally via separate IP logic)
   apiRouter.use('/auth', authPublicRouter()); // login, logout — unauthenticated
 
-  // All remaining /api/* requires authentication (cookie session, header
-  // (accessKey,token) pair, or — gated — legacy x-xenon-api-key) + rate limit.
-  // Hub-node endpoints (/register, /unblock) take the same path: the
-  // (accessKey, token) pair the node was provisioned with on the hub.
+  // All remaining /api/* requires authentication (cookie session for
+  // browsers, or the (x-xenon-access-key, x-xenon-token) pair for
+  // programmatic clients) + rate limit. Hub-node endpoints (/register,
+  // /unblock) take the same path with the per-node pair the hub
+  // provisioned.
   apiRouter.use(authMiddleware);
   apiRouter.use(rateLimitMiddleware());
 
