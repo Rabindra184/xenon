@@ -11,11 +11,12 @@ cd examples/observability
 docker compose up -d
 ```
 
-Wait ~10 seconds for Loki and Tempo to finish their schema bootstrap, then
-start Xenon with the OTel endpoints set:
+Wait ~20 seconds for Loki and Tempo to finish their schema bootstrap (poll
+`http://localhost:3100/ready` and `http://localhost:3200/ready` for `200`
+if you want to be precise), then start Xenon with the OTel endpoints set:
 
 ```bash
-export OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318
+export OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318/v1/traces
 export OTEL_EXPORTER_OTLP_LOGS_ENDPOINT=http://localhost:3100/otlp/v1/logs
 npm run dev
 ```
@@ -23,7 +24,7 @@ npm run dev
 On boot Xenon should print:
 
 ```
-[TracingService] Trace OTLP endpoint: http://localhost:4318.
+[TracingService] Trace OTLP endpoint: http://localhost:4318/v1/traces.
 [TracingService] Trace SDK started.
 [TracingService] Log OTLP endpoint: http://localhost:3100/otlp/v1/logs. Log SDK started.
 ```
@@ -31,17 +32,18 @@ On boot Xenon should print:
 ## Endpoint URL gotcha
 
 The OTLP HTTP exporter posts to whichever URL you give it — it does **not**
-append a signal-specific path. That means:
+append a signal-specific path. **Both** trace and log endpoints need the
+full path:
 
-| Backend                | Logs endpoint                                    | Traces endpoint                          |
-|------------------------|--------------------------------------------------|------------------------------------------|
-| Loki 3.0+ (this stack) | `http://<host>:3100/otlp/v1/logs`                | (use Tempo)                              |
-| Tempo 2.3+ (this stack)| (use Loki)                                       | `http://<host>:4318` *(Tempo accepts root)* |
-| OpenTelemetry Collector| `http://<host>:4318/v1/logs`                     | `http://<host>:4318/v1/traces`           |
+| Backend                 | Logs endpoint                              | Traces endpoint                            |
+|-------------------------|--------------------------------------------|--------------------------------------------|
+| Loki 3.0+ (this stack)  | `http://<host>:3100/otlp/v1/logs`          | (use Tempo)                                |
+| Tempo 2.3+ (this stack) | (use Loki)                                 | `http://<host>:4318/v1/traces`             |
+| OpenTelemetry Collector | `http://<host>:4318/v1/logs`               | `http://<host>:4318/v1/traces`             |
 
-Setting `OTEL_EXPORTER_OTLP_LOGS_ENDPOINT=http://localhost:3100` (no path)
-will silently drop every record — Loki returns 404 on `/` but the batch
-exporter swallows the error.
+Setting either endpoint to just the host (e.g. `http://localhost:3100` or
+`http://localhost:4318`) silently drops every record — the receiver returns
+404 on `/` but the batch exporter swallows the error.
 
 ## Open Grafana
 
