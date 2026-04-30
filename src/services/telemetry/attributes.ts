@@ -35,6 +35,9 @@ export const ATTR = {
 export const METRIC = {
   HEALING_ATTEMPTS: 'xenon.healing.attempts',
   HEALING_SUCCESSES: 'xenon.healing.successes',
+  HEALING_FAILURES: 'xenon.healing.failures',
+  HEALING_ALL_TIERS_FAILED: 'xenon.healing.all_tiers_failed',
+  HEALING_TIER_SKIPPED: 'xenon.healing.tier_skipped',
   HEALING_DURATION_MS: 'xenon.healing.duration_ms',
   HEALING_CONFIDENCE: 'xenon.healing.confidence',
 
@@ -44,6 +47,14 @@ export const METRIC = {
   MJPEG_UPSTREAM_RETRIES: 'xenon.mjpeg.upstream_retries',
   STREAM_IOS_TIME_TO_FIRST_FRAME_MS: 'xenon.stream.ios.time_to_first_frame_ms',
 } as const;
+
+// Outcome label values bound to metric attributes — kept narrow on purpose so
+// that PromQL/LogQL queries can rely on exhaustive enums.
+export const OUTCOME = {
+  SUCCESS: 'success',
+  FAILURE: 'failure',
+} as const;
+export type Outcome = (typeof OUTCOME)[keyof typeof OUTCOME];
 
 // Type aliases let call sites accept only known keys without the awkward
 // `(typeof ATTR)[keyof typeof ATTR]` shape every time.
