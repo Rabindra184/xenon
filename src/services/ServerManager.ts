@@ -298,7 +298,7 @@ export class ServerManager {
       socketServer.initialize(httpServer);
 
       const tracingService = Container.get(TracingService);
-      tracingService.initialize();
+      tracingService.initialize({ isHub: !pluginArgs.hub });
     }
   }
 
