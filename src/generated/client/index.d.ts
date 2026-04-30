@@ -16504,6 +16504,7 @@ export namespace Prisma {
     createdAt: Date | null
     revokedAt: Date | null
     lastUsedAt: Date | null
+    expiresAt: Date | null
     teamId: string | null
     role: string | null
     userId: string | null
@@ -16518,6 +16519,7 @@ export namespace Prisma {
     createdAt: Date | null
     revokedAt: Date | null
     lastUsedAt: Date | null
+    expiresAt: Date | null
     teamId: string | null
     role: string | null
     userId: string | null
@@ -16532,6 +16534,7 @@ export namespace Prisma {
     createdAt: number
     revokedAt: number
     lastUsedAt: number
+    expiresAt: number
     teamId: number
     role: number
     userId: number
@@ -16556,6 +16559,7 @@ export namespace Prisma {
     createdAt?: true
     revokedAt?: true
     lastUsedAt?: true
+    expiresAt?: true
     teamId?: true
     role?: true
     userId?: true
@@ -16570,6 +16574,7 @@ export namespace Prisma {
     createdAt?: true
     revokedAt?: true
     lastUsedAt?: true
+    expiresAt?: true
     teamId?: true
     role?: true
     userId?: true
@@ -16584,6 +16589,7 @@ export namespace Prisma {
     createdAt?: true
     revokedAt?: true
     lastUsedAt?: true
+    expiresAt?: true
     teamId?: true
     role?: true
     userId?: true
@@ -16685,6 +16691,7 @@ export namespace Prisma {
     createdAt: Date
     revokedAt: Date | null
     lastUsedAt: Date | null
+    expiresAt: Date | null
     teamId: string | null
     role: string
     userId: string
@@ -16718,6 +16725,7 @@ export namespace Prisma {
     createdAt?: boolean
     revokedAt?: boolean
     lastUsedAt?: boolean
+    expiresAt?: boolean
     teamId?: boolean
     role?: boolean
     userId?: boolean
@@ -16734,6 +16742,7 @@ export namespace Prisma {
     createdAt?: boolean
     revokedAt?: boolean
     lastUsedAt?: boolean
+    expiresAt?: boolean
     teamId?: boolean
     role?: boolean
     userId?: boolean
@@ -16750,6 +16759,7 @@ export namespace Prisma {
     createdAt?: boolean
     revokedAt?: boolean
     lastUsedAt?: boolean
+    expiresAt?: boolean
     teamId?: boolean
     role?: boolean
     userId?: boolean
@@ -16779,6 +16789,7 @@ export namespace Prisma {
       createdAt: Date
       revokedAt: Date | null
       lastUsedAt: Date | null
+      expiresAt: Date | null
       teamId: string | null
       role: string
       userId: string
@@ -17185,6 +17196,7 @@ export namespace Prisma {
     readonly createdAt: FieldRef<"ApiKey", 'DateTime'>
     readonly revokedAt: FieldRef<"ApiKey", 'DateTime'>
     readonly lastUsedAt: FieldRef<"ApiKey", 'DateTime'>
+    readonly expiresAt: FieldRef<"ApiKey", 'DateTime'>
     readonly teamId: FieldRef<"ApiKey", 'String'>
     readonly role: FieldRef<"ApiKey", 'String'>
     readonly userId: FieldRef<"ApiKey", 'String'>
@@ -26817,6 +26829,7 @@ export namespace Prisma {
     createdAt: 'createdAt',
     revokedAt: 'revokedAt',
     lastUsedAt: 'lastUsedAt',
+    expiresAt: 'expiresAt',
     teamId: 'teamId',
     role: 'role',
     userId: 'userId'
@@ -28285,6 +28298,7 @@ export namespace Prisma {
     createdAt?: DateTimeFilter<"ApiKey"> | Date | string
     revokedAt?: DateTimeNullableFilter<"ApiKey"> | Date | string | null
     lastUsedAt?: DateTimeNullableFilter<"ApiKey"> | Date | string | null
+    expiresAt?: DateTimeNullableFilter<"ApiKey"> | Date | string | null
     teamId?: StringNullableFilter<"ApiKey"> | string | null
     role?: StringFilter<"ApiKey"> | string
     userId?: StringFilter<"ApiKey"> | string
@@ -28301,6 +28315,7 @@ export namespace Prisma {
     createdAt?: SortOrder
     revokedAt?: SortOrderInput | SortOrder
     lastUsedAt?: SortOrderInput | SortOrder
+    expiresAt?: SortOrderInput | SortOrder
     teamId?: SortOrderInput | SortOrder
     role?: SortOrder
     userId?: SortOrder
@@ -28320,6 +28335,7 @@ export namespace Prisma {
     createdAt?: DateTimeFilter<"ApiKey"> | Date | string
     revokedAt?: DateTimeNullableFilter<"ApiKey"> | Date | string | null
     lastUsedAt?: DateTimeNullableFilter<"ApiKey"> | Date | string | null
+    expiresAt?: DateTimeNullableFilter<"ApiKey"> | Date | string | null
     teamId?: StringNullableFilter<"ApiKey"> | string | null
     role?: StringFilter<"ApiKey"> | string
     userId?: StringFilter<"ApiKey"> | string
@@ -28336,6 +28352,7 @@ export namespace Prisma {
     createdAt?: SortOrder
     revokedAt?: SortOrderInput | SortOrder
     lastUsedAt?: SortOrderInput | SortOrder
+    expiresAt?: SortOrderInput | SortOrder
     teamId?: SortOrderInput | SortOrder
     role?: SortOrder
     userId?: SortOrder
@@ -28358,6 +28375,7 @@ export namespace Prisma {
     createdAt?: DateTimeWithAggregatesFilter<"ApiKey"> | Date | string
     revokedAt?: DateTimeNullableWithAggregatesFilter<"ApiKey"> | Date | string | null
     lastUsedAt?: DateTimeNullableWithAggregatesFilter<"ApiKey"> | Date | string | null
+    expiresAt?: DateTimeNullableWithAggregatesFilter<"ApiKey"> | Date | string | null
     teamId?: StringNullableWithAggregatesFilter<"ApiKey"> | string | null
     role?: StringWithAggregatesFilter<"ApiKey"> | string
     userId?: StringWithAggregatesFilter<"ApiKey"> | string
@@ -30523,6 +30541,7 @@ export namespace Prisma {
     createdAt?: Date | string
     revokedAt?: Date | string | null
     lastUsedAt?: Date | string | null
+    expiresAt?: Date | string | null
     role?: string
     team?: TeamCreateNestedOneWithoutApiKeysInput
     user: UserCreateNestedOneWithoutApiKeysInput
@@ -30537,6 +30556,7 @@ export namespace Prisma {
     createdAt?: Date | string
     revokedAt?: Date | string | null
     lastUsedAt?: Date | string | null
+    expiresAt?: Date | string | null
     teamId?: string | null
     role?: string
     userId: string
@@ -30551,6 +30571,7 @@ export namespace Prisma {
     createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
     revokedAt?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
     lastUsedAt?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    expiresAt?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
     role?: StringFieldUpdateOperationsInput | string
     team?: TeamUpdateOneWithoutApiKeysNestedInput
     user?: UserUpdateOneRequiredWithoutApiKeysNestedInput
@@ -30565,6 +30586,7 @@ export namespace Prisma {
     createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
     revokedAt?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
     lastUsedAt?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    expiresAt?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
     teamId?: NullableStringFieldUpdateOperationsInput | string | null
     role?: StringFieldUpdateOperationsInput | string
     userId?: StringFieldUpdateOperationsInput | string
@@ -30579,6 +30601,7 @@ export namespace Prisma {
     createdAt?: Date | string
     revokedAt?: Date | string | null
     lastUsedAt?: Date | string | null
+    expiresAt?: Date | string | null
     teamId?: string | null
     role?: string
     userId: string
@@ -30593,6 +30616,7 @@ export namespace Prisma {
     createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
     revokedAt?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
     lastUsedAt?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    expiresAt?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
     role?: StringFieldUpdateOperationsInput | string
   }
 
@@ -30605,6 +30629,7 @@ export namespace Prisma {
     createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
     revokedAt?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
     lastUsedAt?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    expiresAt?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
     teamId?: NullableStringFieldUpdateOperationsInput | string | null
     role?: StringFieldUpdateOperationsInput | string
     userId?: StringFieldUpdateOperationsInput | string
@@ -32405,6 +32430,7 @@ export namespace Prisma {
     createdAt?: SortOrder
     revokedAt?: SortOrder
     lastUsedAt?: SortOrder
+    expiresAt?: SortOrder
     teamId?: SortOrder
     role?: SortOrder
     userId?: SortOrder
@@ -32423,6 +32449,7 @@ export namespace Prisma {
     createdAt?: SortOrder
     revokedAt?: SortOrder
     lastUsedAt?: SortOrder
+    expiresAt?: SortOrder
     teamId?: SortOrder
     role?: SortOrder
     userId?: SortOrder
@@ -32437,6 +32464,7 @@ export namespace Prisma {
     createdAt?: SortOrder
     revokedAt?: SortOrder
     lastUsedAt?: SortOrder
+    expiresAt?: SortOrder
     teamId?: SortOrder
     role?: SortOrder
     userId?: SortOrder
@@ -35237,6 +35265,7 @@ export namespace Prisma {
     createdAt?: Date | string
     revokedAt?: Date | string | null
     lastUsedAt?: Date | string | null
+    expiresAt?: Date | string | null
     role?: string
     user: UserCreateNestedOneWithoutApiKeysInput
   }
@@ -35250,6 +35279,7 @@ export namespace Prisma {
     createdAt?: Date | string
     revokedAt?: Date | string | null
     lastUsedAt?: Date | string | null
+    expiresAt?: Date | string | null
     role?: string
     userId: string
   }
@@ -35383,6 +35413,7 @@ export namespace Prisma {
     createdAt?: DateTimeFilter<"ApiKey"> | Date | string
     revokedAt?: DateTimeNullableFilter<"ApiKey"> | Date | string | null
     lastUsedAt?: DateTimeNullableFilter<"ApiKey"> | Date | string | null
+    expiresAt?: DateTimeNullableFilter<"ApiKey"> | Date | string | null
     teamId?: StringNullableFilter<"ApiKey"> | string | null
     role?: StringFilter<"ApiKey"> | string
     userId?: StringFilter<"ApiKey"> | string
@@ -35865,6 +35896,7 @@ export namespace Prisma {
     createdAt?: Date | string
     revokedAt?: Date | string | null
     lastUsedAt?: Date | string | null
+    expiresAt?: Date | string | null
     role?: string
     team?: TeamCreateNestedOneWithoutApiKeysInput
   }
@@ -35878,6 +35910,7 @@ export namespace Prisma {
     createdAt?: Date | string
     revokedAt?: Date | string | null
     lastUsedAt?: Date | string | null
+    expiresAt?: Date | string | null
     teamId?: string | null
     role?: string
   }
@@ -36804,6 +36837,7 @@ export namespace Prisma {
     createdAt?: Date | string
     revokedAt?: Date | string | null
     lastUsedAt?: Date | string | null
+    expiresAt?: Date | string | null
     role?: string
     userId: string
   }
@@ -36981,6 +37015,7 @@ export namespace Prisma {
     createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
     revokedAt?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
     lastUsedAt?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    expiresAt?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
     role?: StringFieldUpdateOperationsInput | string
     user?: UserUpdateOneRequiredWithoutApiKeysNestedInput
   }
@@ -36994,6 +37029,7 @@ export namespace Prisma {
     createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
     revokedAt?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
     lastUsedAt?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    expiresAt?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
     role?: StringFieldUpdateOperationsInput | string
     userId?: StringFieldUpdateOperationsInput | string
   }
@@ -37007,6 +37043,7 @@ export namespace Prisma {
     createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
     revokedAt?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
     lastUsedAt?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    expiresAt?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
     role?: StringFieldUpdateOperationsInput | string
     userId?: StringFieldUpdateOperationsInput | string
   }
@@ -37111,6 +37148,7 @@ export namespace Prisma {
     createdAt?: Date | string
     revokedAt?: Date | string | null
     lastUsedAt?: Date | string | null
+    expiresAt?: Date | string | null
     teamId?: string | null
     role?: string
   }
@@ -37146,6 +37184,7 @@ export namespace Prisma {
     createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
     revokedAt?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
     lastUsedAt?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    expiresAt?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
     role?: StringFieldUpdateOperationsInput | string
     team?: TeamUpdateOneWithoutApiKeysNestedInput
   }
@@ -37159,6 +37198,7 @@ export namespace Prisma {
     createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
     revokedAt?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
     lastUsedAt?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    expiresAt?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
     teamId?: NullableStringFieldUpdateOperationsInput | string | null
     role?: StringFieldUpdateOperationsInput | string
   }
@@ -37172,6 +37212,7 @@ export namespace Prisma {
     createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
     revokedAt?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
     lastUsedAt?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    expiresAt?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
     teamId?: NullableStringFieldUpdateOperationsInput | string | null
     role?: StringFieldUpdateOperationsInput | string
   }

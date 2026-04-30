@@ -61,6 +61,32 @@ describe('profile router', () => {
     expect(r.body.error).to.match(/cannot widen/);
   });
 
+  it('POST /profile/tokens accepts a future expiresAt and forwards it to the service', async () => {
+    const create = sinon.stub(Container.get(ApiKeyService), 'create')
+      .resolves({ id: 'k3', raw: 'rawsecret' });
+    const future = new Date(Date.now() + 30 * 24 * 60 * 60_000).toISOString();
+    const app = appWithAuth({ userId: 'u1', role: 'MEMBER', scopes: 'sessions,read' });
+    const r = await request(app).post('/profile/tokens').send({ name: 'CI', expiresAt: future });
+    expect(r.status).to.equal(201);
+    expect(r.body.expiresAt).to.equal(future);
+    expect(create.firstCall.args[0].expiresAt?.toISOString()).to.equal(future);
+  });
+
+  it('POST /profile/tokens rejects a past expiresAt with 400', async () => {
+    const past = new Date(Date.now() - 60_000).toISOString();
+    const app = appWithAuth({ userId: 'u1', role: 'MEMBER', scopes: 'sessions,read' });
+    const r = await request(app).post('/profile/tokens').send({ name: 'CI', expiresAt: past });
+    expect(r.status).to.equal(400);
+    expect(r.body.error).to.match(/future/);
+  });
+
+  it('POST /profile/tokens rejects an unparseable expiresAt with 400', async () => {
+    const app = appWithAuth({ userId: 'u1', role: 'MEMBER', scopes: 'sessions,read' });
+    const r = await request(app).post('/profile/tokens').send({ name: 'CI', expiresAt: 'not-a-date' });
+    expect(r.status).to.equal(400);
+    expect(r.body.error).to.match(/ISO-8601/);
+  });
+
   it('DELETE /profile/tokens/:id only deletes caller-owned tokens', async () => {
     sinon.stub(prisma.apiKey, 'findFirst').resolves({ id: 'k1', userId: 'u1' } as any);
     const revoke = sinon.stub(Container.get(ApiKeyService), 'revoke').resolves(undefined as any);

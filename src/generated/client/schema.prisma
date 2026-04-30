@@ -256,6 +256,7 @@ model ApiKey {
   createdAt  DateTime  @default(now())
   revokedAt  DateTime?
   lastUsedAt DateTime?
+  expiresAt  DateTime?
   teamId     String?
   role       String    @default("member")
   team       Team?     @relation(fields: [teamId], references: [id])
@@ -266,6 +267,7 @@ model ApiKey {
 
   @@index([teamId])
   @@index([userId])
+  @@index([expiresAt])
 }
 
 model Team {

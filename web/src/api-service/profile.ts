@@ -6,6 +6,7 @@ export interface TokenSummary {
   scopes: string[];
   createdAt: string;
   lastUsedAt: string | null;
+  expiresAt: string | null;
 }
 
 export async function listTokens(): Promise<TokenSummary[]> {
@@ -17,12 +18,13 @@ export async function listTokens(): Promise<TokenSummary[]> {
 export async function createToken(
   name: string,
   scopes?: string[],
-): Promise<{ id: string; token: string }> {
+  expiresAt?: string | null,
+): Promise<{ id: string; token: string; expiresAt: string | null }> {
   const r = await fetch(`${BASE}/tokens`, {
     method: 'POST',
     credentials: 'include',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ name, scopes }),
+    body: JSON.stringify({ name, scopes, expiresAt: expiresAt ?? undefined }),
   });
   if (!r.ok) {
     const body = await r.json().catch(() => ({}));
