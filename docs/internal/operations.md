@@ -128,23 +128,26 @@ Returns JSON array with `{ id, kind, pid, udid, sessionId, uptimeMs }` for each 
 
 ## Hub-node channel authentication
 
-**Symptom:** Nodes appear in hub dashboard but device lists are empty; hub logs show `401` from node requests.
+**Symptom:** Nodes appear in hub dashboard but device lists are empty; hub logs show `401` from node requests, or the Socket.io handshake is rejected with `invalid (accessKey, token) pair` / `inactive user`.
 
-**Cause:** `--plugin-xenon-node-secret` mismatch between hub and node, or one side is unset.
+**Cause:** The node is missing `XENON_HUB_ACCESS_KEY` / `XENON_HUB_TOKEN`, the token has been revoked or rotated, or the corresponding User on the hub has been deactivated.
 
-**Fix:** Set identical value on both sides, then restart both.
+**Fix:**
 
-Hub (`hub-config.json`):
-```json
-{ "plugin-xenon-node-secret": "your-shared-secret" }
-```
+1. On the hub, sign in as the node user (or a super-admin acting on its behalf) and confirm the User row is `ACTIVE` and that the token still exists at `/profile` → API Tokens.
+2. On the node, confirm both env vars are set and exported in the process environment:
+   ```bash
+   env | grep XENON_HUB
+   # XENON_HUB_ACCESS_KEY=xen_...
+   # XENON_HUB_TOKEN=...
+   ```
+3. If the token was revoked, mint a new one in the dashboard and re-set `XENON_HUB_TOKEN` on the node. Restart the node — these vars are read at startup, not per-request.
 
-Node (`node-config.json`):
-```json
-{ "plugin-xenon-node-secret": "your-shared-secret" }
-```
+Provisioning a fresh node (or recovering lost credentials) is documented end-to-end in [`docs/node-provisioning.md`](../node-provisioning.md).
 
-When unset on either side, the middleware logs a WARN every 60 s and permits traffic (back-compat for single-node installs).
+**Symptom:** `[SocketClient] XENON_HUB_ACCESS_KEY + XENON_HUB_TOKEN not set; hub will reject the handshake unless it also has auth disabled.`
+
+The node started without either env var and the hub does not have `XENON_AUTH_DISABLED=true`. The handshake will fail until both env vars are set and the node restarts.
 
 ---
 
