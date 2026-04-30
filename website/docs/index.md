@@ -18,9 +18,9 @@ hide:
 | **[Selector Health](selector-health.md)** | Lifecycle dashboard: triage healed selectors, mark fixes, auto-verify across CI, detect regressions |
 | **[AI Diagnostics](ai-features.md)** | Multimodal root-cause analysis with Gemini, OpenAI, Anthropic, or Ollama |
 | **[Enterprise Observability](architecture.md#omniscient-observability-opentelemetry)** | Native OpenTelemetry integration for distributed tracing across nodes |
-| **[Omni-Vision](omni-vision.md)** | Florence-2 powered visual element detection and assertion + Omni‑Interaction (`smartTap`, `uiInventory`) |
+| **[Omni-Vision](omni-vision.md)** | OCR-driven element detection and assertion (Tesseract.js) with AI-vision fallback + Omni‑Interaction (`smartTap`, `uiInventory`) |
 | **Live Streaming** | High-fidelity MJPEG streaming and hardware-accelerated video recording |
-| **[Enterprise Security](enterprise-security.md)** | RBAC, OIDC/SAML, Visual PII masking for compliant labs |
+| **[Enterprise Security](enterprise-security.md)** | RBAC (`SUPER_ADMIN` / `ADMIN` / `MEMBER`), per-team device scoping, per-user pair-auth tokens, CSRF + per-key rate limiting |
 
 ---
 
