@@ -27,7 +27,7 @@ Xenon's high-performance API provides programmatic access to the core orchestrat
 
 ---
 ### Authentication
-Most endpoints require an **API key** sent as the \`x-xenon-api-key\` header. Keys carry one of four scopes — \`read\`, \`sessions\`, \`devices\`, or \`admin\` — and \`admin\` always satisfies any scope check. Hub-node endpoints (\`/api/register\`, \`/api/unblock\`) authenticate with the \`x-xenon-node-secret\` header instead and are intended for node-to-hub traffic only.
+Most endpoints require an **API key** sent as the \`x-xenon-api-key\` header. Keys carry one of four scopes — \`read\`, \`sessions\`, \`devices\`, or \`admin\` — and \`admin\` always satisfies any scope check. Hub-node endpoints (\`/api/register\`, \`/api/unblock\`) prefer the per-node \`(x-xenon-access-key, x-xenon-token)\` pair — the same shape used by SDK / CLI clients. The legacy \`x-xenon-node-secret\` shared header is still accepted while \`XENON_ACCEPT_LEGACY_NODE_SECRET=true\` (default for one minor); operators flip it to \`false\` once every node has migrated. See the node-provisioning ops doc for the migration plan.
 
 ### Rate limiting
 Every authenticated response carries \`X-RateLimit-Limit\`, \`X-RateLimit-Remaining\`, and \`X-RateLimit-Reset\` headers. Requests beyond the configured budget receive \`429 Too Many Requests\`.
@@ -207,7 +207,7 @@ Every authenticated response carries \`X-RateLimit-Limit\`, \`X-RateLimit-Remain
         in: 'header',
         name: 'x-xenon-node-secret',
         description:
-          'Shared secret for node→hub traffic. Used by `/api/register` and `/api/unblock`. Configure with `--plugin-xenon-node-secret`; rotate by setting `nodeSecretPrevious` to the outgoing value while flipping the primary.',
+          'DEPRECATED (Phase 4B): use the (accessKey, token) header pair instead — set `x-xenon-access-key` and `x-xenon-token` on `/api/register` and `/api/unblock`. The legacy header is accepted while `XENON_ACCEPT_LEGACY_NODE_SECRET=true` (default for one minor); operators flip to `false` once every node has migrated. See the node-provisioning ops doc for the migration plan.',
       },
     },
     headers: {

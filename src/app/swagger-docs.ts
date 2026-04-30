@@ -2701,7 +2701,7 @@ export {};
  */
 
 // =============================================================================
-// Hub-Node channel (node-secret auth)
+// Hub-Node channel (pair auth preferred; legacy node-secret accepted)
 // =============================================================================
 
 /**
@@ -2710,7 +2710,9 @@ export {};
  *   post:
  *     summary: Node→Hub device inventory push
  *     description: |
- *       Hub-node only. Authenticates with `x-xenon-node-secret`, not an API key.
+ *       Hub-node only. Preferred auth is the `(x-xenon-access-key, x-xenon-token)`
+ *       pair (Phase 4B); the legacy `x-xenon-node-secret` header is also accepted
+ *       while `XENON_ACCEPT_LEGACY_NODE_SECRET=true` (default for one minor).
  *       Nodes call this on startup and on a recurring interval
  *       (`sendNodeDevicesToHubIntervalMs`, default 30 s) to publish their device
  *       list. The `type` query param selects the operation:
@@ -2748,7 +2750,7 @@ export {};
  *         content:
  *           application/json:
  *             schema: { $ref: '#/components/schemas/Success' }
- *       401: { description: 'Missing or invalid x-xenon-node-secret' }
+ *       401: { description: 'Missing or invalid pair / x-xenon-node-secret' }
  *       403: { $ref: '#/components/responses/Forbidden' }
  *       429: { $ref: '#/components/responses/RateLimited' }
  */
@@ -2759,7 +2761,9 @@ export {};
  *   post:
  *     summary: Node→Hub release of a manually-blocked device
  *     description: |
- *       Hub-node only. Authenticates with `x-xenon-node-secret`. Nodes call this
+ *       Hub-node only. Preferred auth is the `(x-xenon-access-key, x-xenon-token)`
+ *       pair (Phase 4B); legacy `x-xenon-node-secret` is also accepted while
+ *       `XENON_ACCEPT_LEGACY_NODE_SECRET=true`. Nodes call this
  *       to re-enter a device into the pool after a maintenance lock or a blocked
  *       state lifted on the node side. Returns 404 if the (udid, host) tuple is
  *       not in the registry.
@@ -2783,7 +2787,7 @@ export {};
  *           application/json:
  *             schema: { $ref: '#/components/schemas/Success' }
  *       404: { description: 'Device not found in registry' }
- *       401: { description: 'Missing or invalid x-xenon-node-secret' }
+ *       401: { description: 'Missing or invalid pair / x-xenon-node-secret' }
  *       403: { $ref: '#/components/responses/Forbidden' }
  *       429: { $ref: '#/components/responses/RateLimited' }
  */
