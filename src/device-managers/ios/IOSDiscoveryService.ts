@@ -166,7 +166,6 @@ export class IOSDiscoveryService {
     if (this.pluginArgs.hub !== undefined) {
       const nodeDevices = new NodeDevices(this.pluginArgs.hub, {
         tlsRejectUnauthorized: this.pluginArgs.tlsRejectUnauthorized,
-        nodeSecret: this.pluginArgs.nodeSecret,
         hubAccessKey: xenonConfig.hubAccessKey,
         hubToken: xenonConfig.hubToken,
       });
@@ -245,7 +244,6 @@ export class IOSDiscoveryService {
         if (this.pluginArgs.hub) {
           await new NodeDevices(this.pluginArgs.hub, {
             tlsRejectUnauthorized: this.pluginArgs.tlsRejectUnauthorized,
-            nodeSecret: this.pluginArgs.nodeSecret,
             hubAccessKey: xenonConfig.hubAccessKey,
             hubToken: xenonConfig.hubToken,
           }).postDevicesToHub([device], 'add');
@@ -261,7 +259,6 @@ export class IOSDiscoveryService {
       if (this.pluginArgs.hub) {
         await new NodeDevices(this.pluginArgs.hub, {
           tlsRejectUnauthorized: this.pluginArgs.tlsRejectUnauthorized,
-          nodeSecret: this.pluginArgs.nodeSecret,
           hubAccessKey: xenonConfig.hubAccessKey,
           hubToken: xenonConfig.hubToken,
         }).postDevicesToHub(deviceRemoved as any, 'remove');

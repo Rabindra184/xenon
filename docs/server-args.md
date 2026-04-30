@@ -55,8 +55,8 @@ These are read directly from the process environment and complement (or override
 | `XENON_OTEL_DEBUG` | When `true`, OpenTelemetry adds a ConsoleSpanExporter so every span is logged. Use for tracing dev-time work — not for production. |
 | `XENON_DB_PROVIDER` | Same as `--plugin-xenon-databaseProvider` (`sqlite` or `postgresql`). |
 | `DATABASE_URL` | Prisma database URL. Falls back to `file:~/.cache/xenon/xenon.db`. |
-| `XENON_NODE_SECRET` | Shared hub-node secret. Identical to `--plugin-xenon-nodeSecret`. |
-| `XENON_NODE_SECRET_PREVIOUS` | Secondary secret accepted during rotation. Hub accepts either; flip nodes one by one, then drop this. |
+| `XENON_HUB_ACCESS_KEY` | Node→hub outbound: access key the node sends in `x-xenon-access-key`. Required alongside `XENON_HUB_TOKEN`. See `docs/node-provisioning.md`. |
+| `XENON_HUB_TOKEN` | Node→hub outbound: API token the node sends in `x-xenon-token`. Required alongside `XENON_HUB_ACCESS_KEY`. |
 
 Prefer environment variables over CLI flags for secrets so they do not end up in shell history or config files.
 

@@ -30,7 +30,6 @@ import { profileRouter } from './routers/profile';
 import { usersRouter } from './routers/users';
 import { authMiddleware } from '../middleware/authMiddleware';
 import { rateLimitMiddleware } from '../middleware/rateLimitMiddleware';
-import { nodeSecretMiddleware } from '../middleware/nodeSecretMiddleware';
 import { csrfMiddleware } from '../middleware/csrfMiddleware';
 import { IPluginArgs } from '../interfaces/IPluginArgs';
 import fileUpload from 'express-fileupload';
@@ -210,17 +209,13 @@ function createRouter(pluginArgs: IPluginArgs) {
   // Health endpoint: no auth, no rate limit
   apiRouter.get('/health', (_req, res) => res.json({ ok: true }));
 
-  // Hub-node channel: node-secret auth instead of API key
-  apiRouter.use(
-    ['/register', '/unblock'],
-    nodeSecretMiddleware(pluginArgs.nodeSecret || process.env.XENON_NODE_SECRET),
-  );
-
   // Dashboard login: unauthenticated (rate-limited internally via separate IP logic)
   apiRouter.use('/auth', authPublicRouter()); // login, logout — unauthenticated
 
   // All remaining /api/* requires authentication (cookie session, header
   // (accessKey,token) pair, or — gated — legacy x-xenon-api-key) + rate limit.
+  // Hub-node endpoints (/register, /unblock) take the same path: the
+  // (accessKey, token) pair the node was provisioned with on the hub.
   apiRouter.use(authMiddleware);
   apiRouter.use(rateLimitMiddleware());
 

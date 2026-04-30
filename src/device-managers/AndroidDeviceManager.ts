@@ -504,7 +504,6 @@ export default class AndroidDeviceManager implements IDeviceManager {
         log.info(`Updating Hub with device ${newDevice.udid}`);
         const nodeDevices = new NodeDevices(this.pluginArgs.hub, {
           tlsRejectUnauthorized: this.pluginArgs.tlsRejectUnauthorized,
-          nodeSecret: this.pluginArgs.nodeSecret,
           hubAccessKey: xenonConfig.hubAccessKey,
           hubToken: xenonConfig.hubToken,
         });
@@ -556,7 +555,6 @@ export default class AndroidDeviceManager implements IDeviceManager {
     if (pluginArgs.hub != undefined) {
       const nodeDevices = new NodeDevices(pluginArgs.hub, {
         tlsRejectUnauthorized: pluginArgs.tlsRejectUnauthorized,
-        nodeSecret: pluginArgs.nodeSecret,
         hubAccessKey: xenonConfig.hubAccessKey,
         hubToken: xenonConfig.hubToken,
       });

@@ -257,7 +257,6 @@ export class ServerManager {
         hubArgument,
         pluginArgs.sendNodeDevicesToHubIntervalMs as number,
         pluginArgs.tlsRejectUnauthorized,
-        pluginArgs.nodeSecret,
       );
 
       // Handle graceful shutdown
@@ -267,7 +266,6 @@ export class ServerManager {
           try {
             await new NodeDevices(hubArgument, {
               tlsRejectUnauthorized: pluginArgs.tlsRejectUnauthorized,
-              nodeSecret: pluginArgs.nodeSecret,
               hubAccessKey: xenonConfig.hubAccessKey,
               hubToken: xenonConfig.hubToken,
             }).unRegisterNode(pluginArgs.bindHostOrIp as string);

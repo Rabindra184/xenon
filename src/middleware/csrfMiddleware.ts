@@ -10,10 +10,11 @@ import { config as xenonConfig } from '../config';
 //   - reverse-proxy misconfigurations that strip SameSite enforcement
 //   - older browsers whose SameSite implementation has known gaps
 //
-// Header-authed callers (x-xenon-api-key, x-xenon-node-secret) are immune to
-// CSRF by construction: a browser will not attach a custom header without an
-// explicit CORS preflight, and the apiRouter's cors({origin:false}) already
-// refuses preflights. Those requests pass through unchanged.
+// Header-authed callers (x-xenon-api-key, or the (x-xenon-access-key,
+// x-xenon-token) pair) are immune to CSRF by construction: a browser will
+// not attach a custom header without an explicit CORS preflight, and the
+// apiRouter's cors({origin:false}) already refuses preflights. Those
+// requests pass through unchanged.
 
 const STATE_CHANGING_METHODS = new Set(['POST', 'PUT', 'DELETE', 'PATCH']);
 
@@ -45,7 +46,7 @@ export function csrfMiddleware(req: Request, res: Response, next: NextFunction) 
   if (!STATE_CHANGING_METHODS.has(req.method)) return next();
 
   // Header-based auth: safe by construction (see block comment above).
-  if (req.headers['x-xenon-api-key'] || req.headers['x-xenon-node-secret']) {
+  if (req.headers['x-xenon-api-key'] || req.headers['x-xenon-access-key']) {
     return next();
   }
 

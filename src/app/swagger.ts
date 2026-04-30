@@ -27,7 +27,7 @@ Xenon's high-performance API provides programmatic access to the core orchestrat
 
 ---
 ### Authentication
-Most endpoints require an **API key** sent as the \`x-xenon-api-key\` header. Keys carry one of four scopes — \`read\`, \`sessions\`, \`devices\`, or \`admin\` — and \`admin\` always satisfies any scope check. Hub-node endpoints (\`/api/register\`, \`/api/unblock\`) prefer the per-node \`(x-xenon-access-key, x-xenon-token)\` pair — the same shape used by SDK / CLI clients. The legacy \`x-xenon-node-secret\` shared header is still accepted while \`XENON_ACCEPT_LEGACY_NODE_SECRET=true\` (default for one minor); operators flip it to \`false\` once every node has migrated. See the node-provisioning ops doc for the migration plan.
+Most endpoints require an **API key** sent as the \`x-xenon-api-key\` header. Keys carry one of four scopes — \`read\`, \`sessions\`, \`devices\`, or \`admin\` — and \`admin\` always satisfies any scope check. Hub-node endpoints (\`/api/register\`, \`/api/unblock\`) authenticate with the per-node \`(x-xenon-access-key, x-xenon-token)\` pair — the same shape used by SDK / CLI clients. See the node-provisioning ops doc for how to provision a node user and generate its credentials.
 
 ### Rate limiting
 Every authenticated response carries \`X-RateLimit-Limit\`, \`X-RateLimit-Remaining\`, and \`X-RateLimit-Reset\` headers. Requests beyond the configured budget receive \`429 Too Many Requests\`.
@@ -202,12 +202,19 @@ Every authenticated response carries \`X-RateLimit-Limit\`, \`X-RateLimit-Remain
         description:
           'Per-user API key. Carries one of four scopes — `read`, `sessions`, `devices`, or `admin` (admin always satisfies any scope check). Mint and rotate keys via `/api/apikeys` (admin scope required).',
       },
-      NodeSecretAuth: {
+      AccessKeyAuth: {
         type: 'apiKey',
         in: 'header',
-        name: 'x-xenon-node-secret',
+        name: 'x-xenon-access-key',
         description:
-          'DEPRECATED (Phase 4B): use the (accessKey, token) header pair instead — set `x-xenon-access-key` and `x-xenon-token` on `/api/register` and `/api/unblock`. The legacy header is accepted while `XENON_ACCEPT_LEGACY_NODE_SECRET=true` (default for one minor); operators flip to `false` once every node has migrated. See the node-provisioning ops doc for the migration plan.',
+          'Per-user access key (`xen_…`). Paired with `x-xenon-token` for programmatic + hub-node calls. Visible to its owner at `/profile`; rotate via the **Rotate** button there.',
+      },
+      TokenAuth: {
+        type: 'apiKey',
+        in: 'header',
+        name: 'x-xenon-token',
+        description:
+          'Per-user API token, paired with `x-xenon-access-key`. Mint via `/profile` → API Tokens. Carries the token-specific scopes, not the user\'s broader role.',
       },
     },
     headers: {

@@ -60,15 +60,6 @@ async function computeTeamIds(opts: {
 }
 
 export async function authMiddleware(req: Request, res: Response, next: NextFunction) {
-  // Short-circuit when an upstream middleware has already populated req.auth.
-  // Phase 4B: nodeSecretMiddleware synthesizes req.auth on the legacy
-  // x-xenon-node-secret path (gated by XENON_ACCEPT_LEGACY_NODE_SECRET).
-  // Without this guard, this middleware would re-evaluate header/cookie
-  // shapes, find none, and 401 — undoing the synthesis.
-  if ((req as any).auth) {
-    return next();
-  }
-
   if (config.authDisabled === true) {
     req.auth = {
       kind: 'api-key',

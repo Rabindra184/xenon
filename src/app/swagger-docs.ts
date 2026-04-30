@@ -2158,8 +2158,8 @@ export {};
  *     summary: Read the plugin CLI arguments in effect
  *     description: |
  *       Returns the resolved plugin arguments (host, hub URL, platform, intervals, etc.)
- *       this process was started with. Sensitive fields (`nodeSecret`, database URLs)
- *       are redacted by the logger but the raw object is returned over the wire to
+ *       this process was started with. Sensitive fields (database URLs) are
+ *       redacted by the logger but the raw object is returned over the wire to
  *       authenticated callers — do not expose this endpoint to untrusted networks.
  *     tags: [Health & Ops]
  *     responses:
@@ -2701,7 +2701,7 @@ export {};
  */
 
 // =============================================================================
-// Hub-Node channel (pair auth preferred; legacy node-secret accepted)
+// Hub-Node channel (pair auth)
 // =============================================================================
 
 /**
@@ -2710,12 +2710,11 @@ export {};
  *   post:
  *     summary: Node→Hub device inventory push
  *     description: |
- *       Hub-node only. Preferred auth is the `(x-xenon-access-key, x-xenon-token)`
- *       pair (Phase 4B); the legacy `x-xenon-node-secret` header is also accepted
- *       while `XENON_ACCEPT_LEGACY_NODE_SECRET=true` (default for one minor).
- *       Nodes call this on startup and on a recurring interval
- *       (`sendNodeDevicesToHubIntervalMs`, default 30 s) to publish their device
- *       list. The `type` query param selects the operation:
+ *       Hub-node only. Authenticates with the per-node
+ *       `(x-xenon-access-key, x-xenon-token)` pair the node was provisioned
+ *       with on the hub. Nodes call this on startup and on a recurring
+ *       interval (`sendNodeDevicesToHubIntervalMs`, default 30 s) to publish
+ *       their device list. The `type` query param selects the operation:
  *
  *       | type          | effect                                                        |
  *       |---------------|---------------------------------------------------------------|
@@ -2726,7 +2725,8 @@ export {};
  *       Not intended for end-user automation. Document here for transparency.
  *     tags: [Hub-Node]
  *     security:
- *       - NodeSecretAuth: []
+ *       - AccessKeyAuth: []
+ *         TokenAuth: []
  *     parameters:
  *       - in: query
  *         name: type
@@ -2750,7 +2750,7 @@ export {};
  *         content:
  *           application/json:
  *             schema: { $ref: '#/components/schemas/Success' }
- *       401: { description: 'Missing or invalid pair / x-xenon-node-secret' }
+ *       401: { description: 'Missing or invalid (accessKey, token) pair' }
  *       403: { $ref: '#/components/responses/Forbidden' }
  *       429: { $ref: '#/components/responses/RateLimited' }
  */
@@ -2761,15 +2761,15 @@ export {};
  *   post:
  *     summary: Node→Hub release of a manually-blocked device
  *     description: |
- *       Hub-node only. Preferred auth is the `(x-xenon-access-key, x-xenon-token)`
- *       pair (Phase 4B); legacy `x-xenon-node-secret` is also accepted while
- *       `XENON_ACCEPT_LEGACY_NODE_SECRET=true`. Nodes call this
- *       to re-enter a device into the pool after a maintenance lock or a blocked
- *       state lifted on the node side. Returns 404 if the (udid, host) tuple is
- *       not in the registry.
+ *       Hub-node only. Authenticates with the per-node
+ *       `(x-xenon-access-key, x-xenon-token)` pair. Nodes call this to
+ *       re-enter a device into the pool after a maintenance lock or a
+ *       blocked state lifted on the node side. Returns 404 if the
+ *       (udid, host) tuple is not in the registry.
  *     tags: [Hub-Node]
  *     security:
- *       - NodeSecretAuth: []
+ *       - AccessKeyAuth: []
+ *         TokenAuth: []
  *     requestBody:
  *       required: true
  *       content:
@@ -2787,7 +2787,7 @@ export {};
  *           application/json:
  *             schema: { $ref: '#/components/schemas/Success' }
  *       404: { description: 'Device not found in registry' }
- *       401: { description: 'Missing or invalid pair / x-xenon-node-secret' }
+ *       401: { description: 'Missing or invalid (accessKey, token) pair' }
  *       403: { $ref: '#/components/responses/Forbidden' }
  *       429: { $ref: '#/components/responses/RateLimited' }
  */

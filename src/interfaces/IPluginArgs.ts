@@ -176,10 +176,6 @@ export interface IPluginArgs {
    * Disable API key authentication for all /xenon/api/* endpoints. Use only in local dev environments.
    */
   authDisabled?: boolean;
-  /**
-   * Shared secret for hub-node channel authentication. Nodes must send this value in X-Xenon-Node-Secret header.
-   */
-  nodeSecret?: string;
   interceptor?: InterceptorConfig;
   /**
    * Server-wide hard cap on simultaneous free-form (non-session) screen recordings across all users. Automation session recording is exempt and not counted against this cap.

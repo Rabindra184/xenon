@@ -19,24 +19,19 @@ export class SocketClient {
 
     log.info(`[SocketClient] Connecting to Hub WebSocket: ${normalizedHubUrl}`);
 
-    // Phase 4B: prefer (accessKey, token) pair over legacy nodeSecret. Hub
-    // accepts both shapes during the migration window — when both env vars
-    // are set on this node, the pair wins (mirrors the REST NodeDevices
-    // outbound precedence). auth-disabled mode on the hub
-    // (XENON_AUTH_DISABLED=true) ignores this field entirely.
+    // (accessKey, token) pair the node was provisioned with on the hub.
+    // auth-disabled mode on the hub (XENON_AUTH_DISABLED=true) ignores
+    // this field entirely.
     const hubAccessKey = xenonConfig.hubAccessKey;
     const hubToken = xenonConfig.hubToken;
-    const nodeSecret = xenonConfig.nodeSecret;
 
     let socketAuth: Record<string, string> | undefined;
     if (hubAccessKey && hubToken) {
       socketAuth = { accessKey: hubAccessKey, token: hubToken };
-    } else if (nodeSecret) {
-      socketAuth = { nodeSecret };
     } else {
       socketAuth = undefined;
       log.warn(
-        '[SocketClient] Neither (XENON_HUB_ACCESS_KEY + XENON_HUB_TOKEN) nor XENON_NODE_SECRET set; hub will reject the handshake unless it also has auth disabled.',
+        '[SocketClient] XENON_HUB_ACCESS_KEY + XENON_HUB_TOKEN not set; hub will reject the handshake unless it also has auth disabled.',
       );
     }
 
