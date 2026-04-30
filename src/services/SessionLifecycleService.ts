@@ -32,7 +32,6 @@ import { IDevice } from '../interfaces/IDevice';
 import { TracingService } from './TracingService';
 import { PortAllocator } from './PortAllocator';
 import {
-  extractAccessKeyCap,
   extractAccessKeyTokenPair,
   extractTeamCap,
   getXenonCapabilities,
@@ -212,20 +211,13 @@ export class SessionLifecycleService {
     const { ApiKeyService } = await import('./ApiKeyService');
     const svc = Container.get(ApiKeyService);
 
-    // Path 1: df:options.{accessKey, token} pair (docs-faithful).
+    // df:options.{accessKey, token} pair — the only supported credential shape.
     const pair = extractAccessKeyTokenPair(caps);
-    let row = pair ? await svc.verifyPair(pair.accessKey, pair.token) : null;
-
-    // Path 2: legacy xenon:accessKey (single secret) — only if back-compat is on
-    // AND the pair path didn't already authenticate.
-    if (!row && xenonConfig.acceptLegacyKey) {
-      const raw = extractAccessKeyCap(caps);
-      if (raw) row = await svc.verify(raw);
-    }
+    const row = pair ? await svc.verifyPair(pair.accessKey, pair.token) : null;
 
     if (!row) {
       this.logger.warn(
-        'Session created without valid credentials. Pass `df:options.accessKey` + `df:options.token` (preferred) or `xenon:accessKey` (legacy).',
+        'Session created without valid credentials. Pass `df:options.accessKey` + `df:options.token`.',
       );
       return { apiKeyId: null, callerTeamIds: undefined, scoped: false };
     }

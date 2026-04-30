@@ -27,7 +27,7 @@ Xenon's high-performance API provides programmatic access to the core orchestrat
 
 ---
 ### Authentication
-Most endpoints require an **API key** sent as the \`x-xenon-api-key\` header. Keys carry one of four scopes — \`read\`, \`sessions\`, \`devices\`, or \`admin\` — and \`admin\` always satisfies any scope check. Hub-node endpoints (\`/api/register\`, \`/api/unblock\`) authenticate with the per-node \`(x-xenon-access-key, x-xenon-token)\` pair — the same shape used by SDK / CLI clients. See the node-provisioning ops doc for how to provision a node user and generate its credentials.
+Every endpoint authenticates with the per-user \`(x-xenon-access-key, x-xenon-token)\` pair. Each token carries one or more scopes — \`read\`, \`sessions\`, \`devices\`, or \`admin\` (admin always satisfies any scope check). Mint tokens at \`/profile\` → **API Tokens**; the access key is shown at the top of that page and is rotatable. Browser dashboards may use the \`xenon_dashboard_session\` cookie set by \`POST /api/auth/login\`.
 
 ### Rate limiting
 Every authenticated response carries \`X-RateLimit-Limit\`, \`X-RateLimit-Remaining\`, and \`X-RateLimit-Reset\` headers. Requests beyond the configured budget receive \`429 Too Many Requests\`.
@@ -195,13 +195,6 @@ Every authenticated response carries \`X-RateLimit-Limit\`, \`X-RateLimit-Remain
       },
     },
     securitySchemes: {
-      ApiKeyAuth: {
-        type: 'apiKey',
-        in: 'header',
-        name: 'x-xenon-api-key',
-        description:
-          'Per-user API key. Carries one of four scopes — `read`, `sessions`, `devices`, or `admin` (admin always satisfies any scope check). Mint and rotate keys via `/api/apikeys` (admin scope required).',
-      },
       AccessKeyAuth: {
         type: 'apiKey',
         in: 'header',
@@ -266,7 +259,7 @@ Every authenticated response carries \`X-RateLimit-Limit\`, \`X-RateLimit-Remain
       },
     },
   },
-  security: [{ ApiKeyAuth: [] }],
+  security: [{ AccessKeyAuth: [], TokenAuth: [] }],
 };
 
 import path from 'path';

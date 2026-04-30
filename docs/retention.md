@@ -63,7 +63,7 @@ appium server --use-plugins=xenon \
 
 ```bash
 curl -X PUT http://localhost:4723/xenon/api/config \
-  -H "X-Xenon-API-Key: $XENON_API_KEY" \
+  -H "X-Xenon-Access-Key: $XENON_ACCESS_KEY" -H "X-Xenon-Token: $XENON_TOKEN" \
   -H 'Content-Type: application/json' \
   -d '{ "buildCleanupDays": 14, "deleteBuildAssets": true }'
 ```

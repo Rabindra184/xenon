@@ -153,22 +153,16 @@ export class SocketServer {
       return 'node';
     }
 
-    // Dashboard path: API key header, or session cookie set by /auth/login.
-    const apiKeyRaw =
-      (typeof auth.apiKey === 'string' && auth.apiKey) ||
-      ((headers['x-xenon-api-key'] as string | undefined) ?? '') ||
-      readCookie(headers.cookie as string | undefined, SESSION_COOKIE) ||
-      '';
+    // Dashboard path: session cookie set by /auth/login.
+    const cookieValue = readCookie(headers.cookie as string | undefined, SESSION_COOKIE) ?? '';
 
-    if (!apiKeyRaw) {
-      throw new Error(
-        'missing credentials (need (accessKey, token) pair, apiKey, or dashboard cookie)',
-      );
+    if (!cookieValue) {
+      throw new Error('missing credentials (need (accessKey, token) pair or dashboard cookie)');
     }
 
-    const row = await Container.get(ApiKeyService).verify(apiKeyRaw);
+    const row = await Container.get(ApiKeyService).verify(cookieValue);
     if (!row) {
-      throw new Error('invalid or revoked API key');
+      throw new Error('invalid or revoked dashboard session');
     }
     return 'dashboard';
   }

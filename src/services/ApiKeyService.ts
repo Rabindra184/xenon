@@ -1,7 +1,5 @@
 import { Service } from 'typedi';
 import crypto from 'crypto';
-import fs from 'fs';
-import path from 'path';
 import { prisma } from '../prisma';
 import log from '../logger';
 
@@ -34,32 +32,6 @@ export class ApiKeyService {
 
   generateRaw(): string {
     return crypto.randomBytes(32).toString('hex');
-  }
-
-  async bootstrapIfEmpty(keyFilePath: string, userId: string): Promise<string | null> {
-    const count = await prisma.apiKey.count();
-    if (count > 0) return null;
-
-    const raw = this.generateRaw();
-    const keyHash = this.hash(raw);
-
-    fs.mkdirSync(path.dirname(keyFilePath), { recursive: true });
-    fs.writeFileSync(keyFilePath, raw + '\n', { mode: 0o600 });
-
-    await prisma.apiKey.create({
-      data: {
-        name: 'bootstrap',
-        keyHash,
-        scopes: 'admin',
-        rateLimit: 300,
-        userId,
-      },
-    });
-
-    this.log.warn(
-      `No API keys found. Bootstrap key written to ${keyFilePath}. Rotate within 24h via POST /xenon/api/apikeys.`,
-    );
-    return raw;
   }
 
   async verify(raw: string | undefined): Promise<ApiKeyRow | null> {

@@ -172,34 +172,5 @@ export async function authMiddleware(req: Request, res: Response, next: NextFunc
     }
   }
 
-  // Path 3: legacy x-xenon-api-key header (single secret), only when flag is on.
-  if ((config as any).acceptLegacyKey) {
-    const headerKey = req.headers['x-xenon-api-key'] as string | undefined;
-    if (headerKey) {
-      const row = await apiKeySvc.verify(headerKey);
-      if (row && row.userId) {
-        const user = await userSvc.findById(row.userId);
-        if (!user || user.status !== 'ACTIVE') return res.status(401).json({ error: 'invalid credentials' });
-        const teamIds = await computeTeamIds({
-          role: user.role as any,
-          userId: user.id,
-          apiKeyTeamId: row.teamId,
-        });
-        req.auth = {
-          kind: 'api-key',
-          userId: user.id,
-          role: user.role as any,
-          scopes: row.scopes,
-          teamId: row.teamId ?? null,
-          apiKeyId: row.id,
-          rateLimit: row.rateLimit,
-          teamIds,
-        };
-        req.apiKey = { id: row.id, scopes: row.scopes, rateLimit: row.rateLimit, teamId: row.teamId ?? null };
-        return next();
-      }
-    }
-  }
-
   return res.status(401).json({ error: 'unauthenticated' });
 }

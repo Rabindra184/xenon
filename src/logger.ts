@@ -228,28 +228,6 @@ class XenonLogger {
     return String(message);
   }
 
-  public bootstrapKeyBanner(params: {
-    dashboardUrl: string;
-    key: string;
-    keyFilePath: string;
-  }) {
-    const { dashboardUrl, key, keyFilePath } = params;
-    const bar = '═'.repeat(70);
-    const block = `
-\x1b[33m${bar}
-  XENON FIRST-BOOT BOOTSTRAP KEY
-${bar}\x1b[0m
-  Dashboard:  ${dashboardUrl}
-  API key:    \x1b[1m${key}\x1b[0m
-  Stored at:  ${keyFilePath}
-
-  Next step:  Sign in, go to Settings → API Keys, create a named
-              key for yourself, then revoke this bootstrap key.
-\x1b[33m${bar}\x1b[0m
-`;
-    this.baseLogger.warn(block);
-  }
-
   public banner(version: string, nodeId: string) {
     const splash = `
 \x1b[36m

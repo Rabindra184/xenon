@@ -6,7 +6,6 @@ import { Container } from 'typedi';
 import { ApiKeyService } from '../../src/services/ApiKeyService';
 import { UserSessionService } from '../../src/services/UserSessionService';
 import { UserService } from '../../src/services/UserService';
-import { config } from '../../src/config';
 import { prisma } from '../../src/prisma';
 
 function mkRes() {
@@ -62,37 +61,11 @@ describe('authMiddleware', () => {
     expect(req.auth?.scopes).to.equal('admin,devices,sessions,read');
   });
 
-  it('legacy x-xenon-api-key works only when XENON_ACCEPT_LEGACY_KEY=true', async () => {
-    sinon.stub(Container.get(ApiKeyService), 'verify').resolves({
-      id: 'k1', userId: 'u1', scopes: 'read', rateLimit: 300, teamId: null,
-    } as any);
-    sinon.stub(Container.get(UserService), 'findById').resolves({
-      id: 'u1', role: 'MEMBER', status: 'ACTIVE',
-    } as any);
-    const orig = (config as any).acceptLegacyKey;
-    (config as any).acceptLegacyKey = true;
-    try {
-      const req: any = { headers: { 'x-xenon-api-key': 'rawkey' } };
-      let called = false;
-      await authMiddleware(req, mkRes() as any, () => { called = true; });
-      expect(called).to.be.true;
-      expect(req.auth?.kind).to.equal('api-key');
-    } finally {
-      (config as any).acceptLegacyKey = orig;
-    }
-  });
-
-  it('legacy x-xenon-api-key 401s when XENON_ACCEPT_LEGACY_KEY=false', async () => {
-    const orig = (config as any).acceptLegacyKey;
-    (config as any).acceptLegacyKey = false;
-    try {
-      const req: any = { headers: { 'x-xenon-api-key': 'rawkey' } };
-      const res = mkRes() as any;
-      await authMiddleware(req, res, () => { throw new Error('should not call'); });
-      expect(res._code).to.equal(401);
-    } finally {
-      (config as any).acceptLegacyKey = orig;
-    }
+  it('x-xenon-api-key header is rejected (legacy auth removed)', async () => {
+    const req: any = { headers: { 'x-xenon-api-key': 'rawkey' } };
+    const res = mkRes() as any;
+    await authMiddleware(req, res, () => { throw new Error('should not call'); });
+    expect(res._code).to.equal(401);
   });
 
   it('cookie falls back to ApiKey when UserSession misses', async () => {

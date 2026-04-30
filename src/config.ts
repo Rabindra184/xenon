@@ -20,7 +20,6 @@ export interface Config {
   openaiModel?: string;
   anthropicModel?: string;
   ollamaModel?: string;
-  bootstrapKeyPath: string;
   authDisabled: boolean;
   // Outbound credentials a node uses to talk to the hub. Both must be set
   // for node-to-hub traffic to authenticate; otherwise the hub will reject
@@ -31,7 +30,6 @@ export interface Config {
   bootstrapAdminEmail: string;
   bootstrapAdminPassword: string;
   bootstrapResetPassword: boolean;
-  acceptLegacyKey: boolean;
   loginRateLimitAttempts: number;
   loginRateLimitWindowMs: number;
   userSessionTtlMs: number;
@@ -75,15 +73,12 @@ export const config: Config = {
   openaiModel: process.env.XENON_OPENAI_MODEL,
   anthropicModel: process.env.XENON_ANTHROPIC_MODEL,
   ollamaModel: process.env.XENON_OLLAMA_MODEL,
-  bootstrapKeyPath:
-    process.env.XENON_BOOTSTRAP_KEY_PATH || path.join(basePath, 'bootstrap-key.txt'),
   authDisabled: process.env.XENON_AUTH_DISABLED === 'true',
   hubAccessKey: process.env.XENON_HUB_ACCESS_KEY,
   hubToken: process.env.XENON_HUB_TOKEN,
   bootstrapAdminEmail: process.env.XENON_BOOTSTRAP_ADMIN_EMAIL || 'admin@xenon.local',
   bootstrapAdminPassword: process.env.XENON_BOOTSTRAP_ADMIN_PASSWORD || 'Admin@123',
   bootstrapResetPassword: process.env.XENON_BOOTSTRAP_RESET_PASSWORD === 'true',
-  acceptLegacyKey: process.env.XENON_ACCEPT_LEGACY_KEY !== 'false',
   loginRateLimitAttempts: Number(process.env.XENON_LOGIN_RATE_LIMIT_ATTEMPTS) || 5,
   loginRateLimitWindowMs: Number(process.env.XENON_LOGIN_RATE_LIMIT_WINDOW_MS) || 5 * 60 * 1000,
   userSessionTtlMs: Number(process.env.XENON_USER_SESSION_TTL_MS) || 24 * 60 * 60 * 1000,
