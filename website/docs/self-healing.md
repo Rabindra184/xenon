@@ -6,6 +6,10 @@ title: Self-Healing Engine
 
 Xenon's self-healing system automatically repairs broken element locators at runtime. When a `findElement` call fails, the **HealingOrchestrator** cascades through five increasingly powerful strategies — from instant local matching to deep AI reasoning.
 
+:::tip Autowait runs first
+When [Autowait](autowait.md) is enabled, `findElement` is wrapped in a poll loop and only escalates to healing after the autowait timeout expires. Most "broken" finds are slow renders, not bad selectors — the cheap retry comes before the expensive recovery cascade.
+:::
+
 ---
 
 ## Architecture Overview
