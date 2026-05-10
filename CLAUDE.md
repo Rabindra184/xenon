@@ -27,15 +27,17 @@ npm run test:ios          # iOS integration tests (real device)
 npm run test:coverage     # Generate NYC coverage report
 ```
 
-Run a single test file:
+Run a single test file (`.mocharc.json` already wires up `ts-node/register`):
 ```bash
-npx mocha --require ts-node/register test/unit/your-test.spec.ts
+npx mocha test/unit/your-test.spec.ts
 ```
 
 Run a single test by name (mocha grep):
 ```bash
-npx mocha --require ts-node/register --timeout 30000 test/unit/recording-orchestrator.spec.ts -g "happy path"
+npx mocha test/unit/recording-orchestrator.spec.ts -g "happy path"
 ```
+
+Tests that import `CommandInterceptor` or anything that pulls in `SessionManager` need `import 'reflect-metadata'` at the top — TypeDI Container.get is invoked at module-load time and will throw `_a.getMetadata is not a function` without it.
 
 ### Code Quality
 ```bash
@@ -62,6 +64,24 @@ npm run build:schema  # Regenerate TypeScript types from schema.json
 - Intercepts every Appium command via `CommandInterceptor`
 - Manages device discovery through `AndroidDeviceManager` and `IOSDeviceManager`
 - Starts an Express + Socket.io server at `/xenon/`
+
+### Command Interception Flow (`src/interceptors/CommandInterceptor.ts`)
+
+Every Appium command from `XenonPlugin.handle()` lands in `CommandInterceptor.handleInContext()`. The order matters — same-named features compete and have to run in the right sequence:
+
+1. **Session bookkeeping** — `updateCmdExecutedTime`, `sessionContext.run()` for AsyncLocalStorage log attribution.
+2. **`execute` script router** — strips `xenon:` / `xe:` (and legacy `plugin:`) prefixes and dispatches to `AICommandService`, `InterceptorService`, or `AutowaitService`. This is how dashboard / SDK clients call Xenon-specific features without new endpoints.
+3. **OmniVision proactive search** — when `findElement` is called with strategy `-custom:ai-icon` or `-custom:ai-text`, route to `OmniVisionService` instead of the underlying driver. Returns virtual element IDs (`omni_*`).
+4. **Virtual element shortcut** — element commands (`click`, `getText`, etc.) targeting an ID prefixed with `omni_`, `healed_ocr`, or `healed_visual` get served from `OmniVisionService.getVirtualElement()` (coordinate-based actions via W3C Actions API). They never reach the real driver.
+5. **Autowait pre-checks** (`src/services/autowait/`) — when `pluginArgs.autowait.enabled`:
+   - `findElement` / `findElements` get wrapped in a poll loop (timeout / interval) so transient `NoSuchElement` errors retry before healing fires.
+   - `click` / `setValue` / `clear` get a pre-action `elementEnabled` poll. Skippable per-command via `excludeEnabledCheck`.
+   - Per-session overrides via `xenon: setAutowaitProperties` (or legacy `plugin: setWaitPluginProperties`) execute scripts. Cleared on `deleteSession`.
+6. **`next()`** — actually run the underlying Appium driver command.
+7. **Post-command hooks** — dashboard event broadcast + selector learning (`triggerLearning` writes etalons for novel selectors so future failures heal cheaply).
+8. **Catch-and-heal** — if `next()` throws `NoSuchElement` for `findElement`/`findElements` and `enableSelfHealing !== false`, hand off to `HealingOrchestrator.attemptHealing()`. Visual-tier results return coordinates; the interceptor tries to resolve them to a real element (iOS class chain) and falls back to a coordinate tap via W3C Actions if resolution fails.
+
+The "autowait first, healing second" ordering is deliberate: most "broken" findElements are slow renders, not bad selectors, so a cheap retry beats a 6-tier healing escalation that may end at an LLM call.
 
 ### 6-Tier Self-Healing (`src/services/healing/`)
 
@@ -106,6 +126,10 @@ Live recordings are independent of Appium "session video" — the mosaic page ca
 
 `VideoPipelineService` is hardware-accelerated (`h264_videotoolbox` on Mac, `libx264` elsewhere) and writes fragmented mp4 (`frag_keyframe+empty_moov+default_base_moof`) for instant playback / crash resiliency.
 
+### Network Interception (`src/services/interceptor/`, `InterceptorService.ts`)
+
+Android-only in v1. Sessions opt in via any of the capability shapes accepted by `pluginArgs.interceptor.enabled` — see the schema description for the full alias list. Once enabled, an MITM proxy captures requests/responses (capped by `bufferSize`), and `xenon: addMock` / `removeMock` / `clearMocks` / `getRequests` / `getMocks` / `exportHar` execute scripts manipulate per-session state. HAR export is the canonical way to ship captured traffic to clients.
+
 ### Identity & Manual Locks
 
 API-key authentication: every dashboard request is gated by `apiKeyMiddleware` which sets `req.apiKey = { id, scopes, teamId, rateLimit }`. The same key can be exchanged for a `xenon_dashboard_session` cookie via `POST /auth/dashboard-session`. `scopeGuard(['devices'])` and `mutationScopeGuard(['devices'])` (mutations only — GETs always pass) enforce role-based access on routers like `/control`.
@@ -145,9 +169,11 @@ React 17 + Vite + Tailwind CSS dashboard. Talks to the backend over REST and Soc
 |------|---------|
 | `src/plugin.ts` | `XenonPlugin` class — Appium plugin lifecycle hooks |
 | `src/index.ts` | Process signal handling and cleanup orchestrator |
+| `src/interceptors/CommandInterceptor.ts` | Single chokepoint for all Appium commands; see "Command Interception Flow" above |
 | `schema.json` | All plugin CLI arguments (JSON Schema Draft 7) |
 | `prisma/schema.prisma` | Database schema; edit here then run `db:generate` |
 | `src/services/healing/HealingOrchestrator.ts` | 6-tier healing entry point |
+| `src/services/autowait/AutowaitService.ts` | Per-session implicit-wait config; runs before healing |
 | `src/dashboard/event-manager.ts` | WebSocket broadcast hub |
 | `src/device-managers/AndroidDeviceManager.ts` | ADB device discovery & control |
 | `src/device-managers/IOSDeviceManager.ts` | simctl + ios-device control |
