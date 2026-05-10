@@ -14,7 +14,14 @@ const sidebars: SidebarsConfig = {
       type: 'category',
       label: 'Intelligence & AI',
       collapsed: false,
-      items: ['ai-features', 'omni-inspector', 'self-healing', 'selector-health', 'omni-vision'],
+      items: [
+        'ai-features',
+        'omni-inspector',
+        'autowait',
+        'self-healing',
+        'selector-health',
+        'omni-vision',
+      ],
     },
     {
       type: 'category',

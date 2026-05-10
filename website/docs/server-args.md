@@ -154,6 +154,8 @@ Below is the definitive list of all Xenon configuration parameters.
 | `emulators` | `--plugin-xenon-emulators` | No | Array | `[]` (all) | Allow-list of Android emulator AVDs. Empty = expose all. |
 | `adbRemote` | `--plugin-xenon-adb-remote` | No | Array | `[]` | Remote ADB hosts in `host:port` form for cross-machine device discovery |
 | `removeDevicesFromDatabaseBeforeRunningThePlugin` | `--plugin-xenon-remove-devices-...` | No | Boolean | `false` | Wipe persisted Device table at startup (clean-slate discovery) |
+| **Autowait** | | | | | |
+| `autowait` | — (config-file only, object) | No | Object | None | Implicit-wait defaults for `findElement` / `findElements` and pre-action enabled checks. See [Autowait](autowait.md). Object members: `enabled`, `timeoutMs`, `intervalBetweenAttemptsMs`, `excludeEnabledCheck`. |
 | **Network Interceptor** | | | | | |
 | `interceptor` | — (config-file only, object) | No | Object | None | Server-level interceptor defaults. See [Network Interceptor](network-interceptor.md) for the per-session capability. Object members: `enabled`, `bufferSize`, `captureBodies`, `includeHosts`, `excludeHosts`, `mocks`. |
 | **Security** | | | | | |
