@@ -54,4 +54,42 @@ describe('LeaseService', () => {
     expect(portClientStub.allocate.calledOnce).to.equal(true);
     expect(prismaStub.lease.create.calledOnce).to.equal(true);
   });
+
+  it('create rolls back the device lock when port RPC fails', async () => {
+    portClientStub.allocate.rejects(new Error('node unreachable'));
+    const { DeviceUnhealthy } = await import('../../../src/services/lease/LeaseService');
+    let thrown: any = null;
+    try {
+      await svc.create({
+        filters: { platform: 'android' },
+        durationMs: 60_000,
+        heartbeatSeconds: 30,
+        actorId: 'actor-1',
+        teamId: null,
+      });
+    } catch (e) {
+      thrown = e;
+    }
+    expect(thrown).to.be.instanceOf(DeviceUnhealthy);
+    expect(storeStub.updateDevice.calledWith('u1', 'h1', { busy: false })).to.equal(true);
+    expect(prismaStub.lease.create.notCalled).to.equal(true);
+  });
+
+  it('create throws NoMatchingDevice when no device matches', async () => {
+    storeStub.findAndLockDevice.resolves(null);
+    const { NoMatchingDevice } = await import('../../../src/services/lease/LeaseService');
+    let thrown: any = null;
+    try {
+      await svc.create({
+        filters: { platform: 'android', udid: 'absent' },
+        durationMs: 60_000,
+        heartbeatSeconds: 30,
+        actorId: 'actor-1',
+        teamId: null,
+      });
+    } catch (e) {
+      thrown = e;
+    }
+    expect(thrown).to.be.instanceOf(NoMatchingDevice);
+  });
 });
