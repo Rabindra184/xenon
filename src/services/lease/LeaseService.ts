@@ -54,6 +54,12 @@ export class LeaseService {
     // Step 1: atomic find + lock
     const device = await this.store.findAndLockDevice(req.filters);
     if (!device) {
+      // Distinguish "no device matches the filter" (404) from "matching
+      // devices exist but are all busy or already leased" (409). Spec §4.2.
+      const anyMatching = await this.store.getDevices({ platform: req.filters.platform });
+      if (anyMatching && anyMatching.length > 0) {
+        throw new AllMatchingBusy(`all devices matching ${JSON.stringify(req.filters)} are busy`);
+      }
       throw new NoMatchingDevice(`no device matching ${JSON.stringify(req.filters)}`);
     }
 
@@ -108,18 +114,27 @@ export class LeaseService {
       throw err;
     }
 
-    // Step 4: build the cap bag now that we have lease.id, persist + return
+    // Step 4: build the cap bag now that we have lease.id, persist + return.
+    // If this update fails (rare, transient DB error), roll the lease back so
+    // we don't leave a zombie row with capabilityBag='' that would crash on
+    // any later JSON.parse in resolve().
     const bag = buildCapabilityBag(device, ports, lease.id, req.buildId);
-    await this.db.lease.update({
-      where: { id: lease.id },
-      data: { capabilityBag: JSON.stringify(bag) },
-    });
-
-    // Step 5: backfill leaseId on the PortLease rows
-    await this.db.portLease.updateMany({
-      where: { port: { in: Object.values(ports) } },
-      data: { leaseId: lease.id },
-    });
+    try {
+      await this.db.lease.update({
+        where: { id: lease.id },
+        data: { capabilityBag: JSON.stringify(bag) },
+      });
+      // Step 5: backfill leaseId on the PortLease rows
+      await this.db.portLease.updateMany({
+        where: { port: { in: Object.values(ports) } },
+        data: { leaseId: lease.id },
+      });
+    } catch (err) {
+      try { await this.db.lease.delete({ where: { id: lease.id } }); } catch {}
+      try { await this.db.portLease.deleteMany({ where: { port: { in: Object.values(ports) } } }); } catch {}
+      try { await this.store.updateDevice(device.udid, device.host, { busy: false }); } catch {}
+      throw err;
+    }
 
     return {
       leaseId: lease.id,
@@ -151,10 +166,14 @@ export class LeaseService {
     if (lease.expiresAt < now) {
       throw new LeaseGone(`lease ${leaseId} expired at ${lease.expiresAt}`);
     }
-    await this.db.lease.update({
-      where: { id: leaseId },
+    // Guarded by status='active' so a concurrent sweeper expiration is observed.
+    const result = await this.db.lease.updateMany({
+      where: { id: leaseId, status: 'active' },
       data: { lastHeartbeatAt: now },
     });
+    if (result && result.count === 0) {
+      throw new LeaseGone(`lease ${leaseId} no longer active`);
+    }
     return { heartbeatedAt: now, expiresAt: lease.expiresAt };
   }
 
@@ -163,22 +182,29 @@ export class LeaseService {
     const now = Date.now();
     const createdAtMs = typeof lease.createdAt === 'number' ? lease.createdAt : new Date(lease.createdAt).getTime();
     const ceiling = createdAtMs + MAX_LEASE_MS;
-    const newExpiresAt = Math.min(now + additionalMs, ceiling);
-    await this.db.lease.update({
-      where: { id: leaseId },
+    const newExpiresAt = Math.min(now + Math.max(1, additionalMs), ceiling);
+    const result = await this.db.lease.updateMany({
+      where: { id: leaseId, status: 'active' },
       data: { expiresAt: newExpiresAt, lastHeartbeatAt: now },
     });
+    if (result && result.count === 0) {
+      throw new LeaseGone(`lease ${leaseId} no longer active`);
+    }
     return { expiresAt: newExpiresAt };
   }
 
   async release(leaseId: string, token: string): Promise<void> {
     const lease = await this.loadActiveLease(leaseId, token);
-    await this.db.lease.update({
-      where: { id: leaseId },
+    const result = await this.db.lease.updateMany({
+      where: { id: leaseId, status: 'active' },
       data: { status: 'released' },
     });
+    // If sweeper got here first (count===0), the cascade below is still
+    // idempotent and safe — port rows may already be gone, device may already
+    // be unlocked. We treat that as a successful release.
     await this.db.portLease.deleteMany({ where: { leaseId } });
     await this.store.updateDevice(lease.deviceUdid, lease.deviceHost, { busy: false });
+    void result;
   }
 
   /**
@@ -188,7 +214,7 @@ export class LeaseService {
    */
   async resolve(leaseId: string): Promise<{ deviceUdid: string; deviceHost: string; capabilityBag: any } | null> {
     const lease = await this.db.lease.findUnique({ where: { id: leaseId } });
-    if (!lease || lease.status !== 'active') return null;
+    if (!lease || lease.status !== 'active' || lease.expiresAt < Date.now()) return null;
     return {
       deviceUdid: lease.deviceUdid,
       deviceHost: lease.deviceHost,
