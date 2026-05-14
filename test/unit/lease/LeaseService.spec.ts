@@ -92,4 +92,55 @@ describe('LeaseService', () => {
     }
     expect(thrown).to.be.instanceOf(NoMatchingDevice);
   });
+
+  it('heartbeat bumps lastHeartbeatAt; does not bump expiresAt', async () => {
+    const { hashToken } = await import('../../../src/services/lease/leaseToken');
+    const before = Date.now();
+    const tok = 'a'.repeat(64);
+    prismaStub.lease.findUnique.resolves({
+      id: 'lse_test', tokenHash: hashToken(tok), status: 'active', expiresAt: before + 60_000,
+    });
+    prismaStub.lease.update.callsFake(async ({ data }: any) => ({ id: 'lse_test', ...data }));
+    const out = await svc.heartbeat('lse_test', tok);
+    expect(out.expiresAt).to.equal(before + 60_000);
+    expect(prismaStub.lease.update.firstCall.args[0].data.lastHeartbeatAt).to.be.at.least(before);
+  });
+
+  it('extend bumps expiresAt up to MAX_LEASE_MS from createdAt', async () => {
+    const { hashToken } = await import('../../../src/services/lease/leaseToken');
+    const tok = 'b'.repeat(64);
+    const createdAt = Date.now() - 10_000;
+    prismaStub.lease.findUnique.resolves({
+      id: 'lse_test', tokenHash: hashToken(tok), status: 'active',
+      expiresAt: Date.now() + 10_000, createdAt: new Date(createdAt),
+    });
+    prismaStub.lease.update.callsFake(async ({ data }: any) => ({ id: 'lse_test', ...data }));
+    const out = await svc.extend('lse_test', tok, 60_000);
+    expect(out.expiresAt).to.be.at.least(Date.now() + 50_000);
+  });
+
+  it('release sets status=released and cascades PortLease delete', async () => {
+    const { hashToken } = await import('../../../src/services/lease/leaseToken');
+    const tok = 'c'.repeat(64);
+    prismaStub.lease.findUnique.resolves({
+      id: 'lse_test', tokenHash: hashToken(tok), status: 'active',
+      deviceUdid: 'u1', deviceHost: 'h1',
+    });
+    prismaStub.lease.update.callsFake(async ({ data }: any) => ({ id: 'lse_test', ...data }));
+    await svc.release('lse_test', tok);
+    expect(prismaStub.lease.update.firstCall.args[0].data.status).to.equal('released');
+    expect(prismaStub.portLease.deleteMany.firstCall.args[0].where.leaseId).to.equal('lse_test');
+    expect(storeStub.updateDevice.calledWith('u1', 'h1', { busy: false })).to.equal(true);
+  });
+
+  it('rejects operations with mismatched token', async () => {
+    const { hashToken } = await import('../../../src/services/lease/leaseToken');
+    prismaStub.lease.findUnique.resolves({
+      id: 'lse_test', tokenHash: hashToken('right'), status: 'active',
+    });
+    const { LeaseTokenMismatch } = await import('../../../src/services/lease/LeaseService');
+    let thrown: any = null;
+    try { await svc.heartbeat('lse_test', 'wrong'); } catch (e) { thrown = e; }
+    expect(thrown).to.be.instanceOf(LeaseTokenMismatch);
+  });
 });
