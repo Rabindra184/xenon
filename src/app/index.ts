@@ -18,6 +18,7 @@ import ControlRouter from './routers/control';
 import AppsRouter from './routers/apps';
 import webhookRouter from './routers/webhook';
 import reservationRouter from './routers/reservation';
+import registerPortsRouter from './routers/ports';
 import ConfigRouter from './routers/config';
 import InterceptorRouter from './routers/interceptor';
 import BugReportRouter from './routers/bug-report';
@@ -257,6 +258,7 @@ function createRouter(pluginArgs: IPluginArgs) {
   BugReportRouter.register(apiRouter);
   RecordingsRouter.register(apiRouter);
   apiRouter.use('/reservation', reservationRouter);
+  registerPortsRouter(apiRouter);
 
   // Principal Health: Add ping endpoint
   apiRouter.get('/ping', (req, res) => res.json({ pong: true, version: pkg.version }));
