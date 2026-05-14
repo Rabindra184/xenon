@@ -255,11 +255,26 @@ export class PrismaDeviceStore implements IDeviceStore {
   }
 
   async findAndLockDevice(filterOptions: IDeviceFilterOptions): Promise<IDevice | null> {
+    // Phase 2: exclude devices held by an active lease.
+    const activeLeases = await this.prisma.lease.findMany({
+      where: { status: 'active' },
+      select: { deviceUdid: true, deviceHost: true },
+    });
+    const blockedKeys = new Set(
+      (activeLeases as Array<{ deviceUdid: string; deviceHost: string }>).map(
+        (l) => `${l.deviceUdid}@${l.deviceHost}`,
+      ),
+    );
+
     // 1. Get candidate devices that match the filters and are NOT busy
     const candidates = await this.getDevices({ ...filterOptions, busy: false });
 
-    // 2. Attempt to atomically lock them one by one
+    // 2. Attempt to atomically lock them one by one, skipping lease-blocked devices
     for (const device of candidates) {
+      if (blockedKeys.has(`${device.udid}@${device.host}`)) {
+        continue;
+      }
+
       const result = await this.prisma.device.updateMany({
         where: {
           udid: device.udid,
