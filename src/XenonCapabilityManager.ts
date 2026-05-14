@@ -54,8 +54,15 @@ export async function androidCapabilities(caps: ISessionCapability, freeDevice: 
   const fm = ensureFirstMatch(caps);
   fm['appium:udid'] = freeDevice.udid;
   fm['platformName'] = freeDevice.platform;
-  fm['appium:systemPort'] = await getPort();
-  fm['appium:chromeDriverPort'] = await getPort();
+  if (!fm['appium:systemPort']) {
+    fm['appium:systemPort'] = await getPort();
+  }
+  // Lease bag emits lowercase 'chromedriverPort' (W3C-canonical); existing
+  // non-lease path uses capital 'chromeDriverPort'. Recognize both spellings
+  // so a lease-provided lowercase value is not duplicated.
+  if (!fm['appium:chromedriverPort'] && !fm['appium:chromeDriverPort']) {
+    fm['appium:chromeDriverPort'] = await getPort();
+  }
   fm['appium:adbRemoteHost'] = freeDevice.adbRemoteHost;
   fm['appium:adbPort'] = freeDevice.adbPort;
   if (freeDevice.chromeDriverPath)
@@ -89,8 +96,12 @@ export async function iOSCapabilities(
   fm['platformName'] = freeDevice.platform;
   fm['appium:deviceName'] = freeDevice.name;
   fm['appium:platformVersion'] = freeDevice.sdk;
-  fm['appium:wdaLocalPort'] = freeDevice.wdaLocalPort;
-  fm['appium:mjpegServerPort'] = freeDevice.mjpegServerPort;
+  if (!fm['appium:wdaLocalPort']) {
+    fm['appium:wdaLocalPort'] = freeDevice.wdaLocalPort;
+  }
+  if (!fm['appium:mjpegServerPort']) {
+    fm['appium:mjpegServerPort'] = freeDevice.mjpegServerPort;
+  }
   fm['appium:derivedDataPath'] = freeDevice.derivedDataPath;
 
   // Technical Optimization: Reuse existing WDA tunnel if Stream Service is active
