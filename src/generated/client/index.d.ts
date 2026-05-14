@@ -79,6 +79,11 @@ export type LocatorEtalon = $Result.DefaultSelection<Prisma.$LocatorEtalonPayloa
  */
 export type PortLease = $Result.DefaultSelection<Prisma.$PortLeasePayload>
 /**
+ * Model Lease
+ * 
+ */
+export type Lease = $Result.DefaultSelection<Prisma.$LeasePayload>
+/**
  * Model ApiKey
  * 
  */
@@ -381,6 +386,16 @@ export class PrismaClient<
     * ```
     */
   get portLease(): Prisma.PortLeaseDelegate<ExtArgs>;
+
+  /**
+   * `prisma.lease`: Exposes CRUD operations for the **Lease** model.
+    * Example usage:
+    * ```ts
+    * // Fetch zero or more Leases
+    * const leases = await prisma.lease.findMany()
+    * ```
+    */
+  get lease(): Prisma.LeaseDelegate<ExtArgs>;
 
   /**
    * `prisma.apiKey`: Exposes CRUD operations for the **ApiKey** model.
@@ -935,6 +950,7 @@ export namespace Prisma {
     WebConfig: 'WebConfig',
     LocatorEtalon: 'LocatorEtalon',
     PortLease: 'PortLease',
+    Lease: 'Lease',
     ApiKey: 'ApiKey',
     Team: 'Team',
     SelectorState: 'SelectorState',
@@ -960,7 +976,7 @@ export namespace Prisma {
 
   export type TypeMap<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs, ClientOptions = {}> = {
     meta: {
-      modelProps: "build" | "session" | "sessionLog" | "log" | "profiling" | "app" | "device" | "pendingSession" | "cLIArgs" | "webhookConfig" | "webConfig" | "locatorEtalon" | "portLease" | "apiKey" | "team" | "selectorState" | "recording" | "bookmark" | "annotation" | "user" | "userSession" | "passwordResetToken" | "teamMember"
+      modelProps: "build" | "session" | "sessionLog" | "log" | "profiling" | "app" | "device" | "pendingSession" | "cLIArgs" | "webhookConfig" | "webConfig" | "locatorEtalon" | "portLease" | "lease" | "apiKey" | "team" | "selectorState" | "recording" | "bookmark" | "annotation" | "user" | "userSession" | "passwordResetToken" | "teamMember"
       txIsolationLevel: Prisma.TransactionIsolationLevel
     }
     model: {
@@ -1871,6 +1887,76 @@ export namespace Prisma {
           count: {
             args: Prisma.PortLeaseCountArgs<ExtArgs>
             result: $Utils.Optional<PortLeaseCountAggregateOutputType> | number
+          }
+        }
+      }
+      Lease: {
+        payload: Prisma.$LeasePayload<ExtArgs>
+        fields: Prisma.LeaseFieldRefs
+        operations: {
+          findUnique: {
+            args: Prisma.LeaseFindUniqueArgs<ExtArgs>
+            result: $Utils.PayloadToResult<Prisma.$LeasePayload> | null
+          }
+          findUniqueOrThrow: {
+            args: Prisma.LeaseFindUniqueOrThrowArgs<ExtArgs>
+            result: $Utils.PayloadToResult<Prisma.$LeasePayload>
+          }
+          findFirst: {
+            args: Prisma.LeaseFindFirstArgs<ExtArgs>
+            result: $Utils.PayloadToResult<Prisma.$LeasePayload> | null
+          }
+          findFirstOrThrow: {
+            args: Prisma.LeaseFindFirstOrThrowArgs<ExtArgs>
+            result: $Utils.PayloadToResult<Prisma.$LeasePayload>
+          }
+          findMany: {
+            args: Prisma.LeaseFindManyArgs<ExtArgs>
+            result: $Utils.PayloadToResult<Prisma.$LeasePayload>[]
+          }
+          create: {
+            args: Prisma.LeaseCreateArgs<ExtArgs>
+            result: $Utils.PayloadToResult<Prisma.$LeasePayload>
+          }
+          createMany: {
+            args: Prisma.LeaseCreateManyArgs<ExtArgs>
+            result: BatchPayload
+          }
+          createManyAndReturn: {
+            args: Prisma.LeaseCreateManyAndReturnArgs<ExtArgs>
+            result: $Utils.PayloadToResult<Prisma.$LeasePayload>[]
+          }
+          delete: {
+            args: Prisma.LeaseDeleteArgs<ExtArgs>
+            result: $Utils.PayloadToResult<Prisma.$LeasePayload>
+          }
+          update: {
+            args: Prisma.LeaseUpdateArgs<ExtArgs>
+            result: $Utils.PayloadToResult<Prisma.$LeasePayload>
+          }
+          deleteMany: {
+            args: Prisma.LeaseDeleteManyArgs<ExtArgs>
+            result: BatchPayload
+          }
+          updateMany: {
+            args: Prisma.LeaseUpdateManyArgs<ExtArgs>
+            result: BatchPayload
+          }
+          upsert: {
+            args: Prisma.LeaseUpsertArgs<ExtArgs>
+            result: $Utils.PayloadToResult<Prisma.$LeasePayload>
+          }
+          aggregate: {
+            args: Prisma.LeaseAggregateArgs<ExtArgs>
+            result: $Utils.Optional<AggregateLease>
+          }
+          groupBy: {
+            args: Prisma.LeaseGroupByArgs<ExtArgs>
+            result: $Utils.Optional<LeaseGroupByOutputType>[]
+          }
+          count: {
+            args: Prisma.LeaseCountArgs<ExtArgs>
+            result: $Utils.Optional<LeaseCountAggregateOutputType> | number
           }
         }
       }
@@ -15571,6 +15657,8 @@ export namespace Prisma {
     port: number | null
     purpose: string | null
     leasedToUdid: string | null
+    leasedToHost: string | null
+    leaseId: string | null
     leasedToPid: number | null
     leasedAt: number | null
     expiresAt: number | null
@@ -15580,6 +15668,8 @@ export namespace Prisma {
     port: number | null
     purpose: string | null
     leasedToUdid: string | null
+    leasedToHost: string | null
+    leaseId: string | null
     leasedToPid: number | null
     leasedAt: number | null
     expiresAt: number | null
@@ -15589,6 +15679,8 @@ export namespace Prisma {
     port: number
     purpose: number
     leasedToUdid: number
+    leasedToHost: number
+    leaseId: number
     leasedToPid: number
     leasedAt: number
     expiresAt: number
@@ -15614,6 +15706,8 @@ export namespace Prisma {
     port?: true
     purpose?: true
     leasedToUdid?: true
+    leasedToHost?: true
+    leaseId?: true
     leasedToPid?: true
     leasedAt?: true
     expiresAt?: true
@@ -15623,6 +15717,8 @@ export namespace Prisma {
     port?: true
     purpose?: true
     leasedToUdid?: true
+    leasedToHost?: true
+    leaseId?: true
     leasedToPid?: true
     leasedAt?: true
     expiresAt?: true
@@ -15632,6 +15728,8 @@ export namespace Prisma {
     port?: true
     purpose?: true
     leasedToUdid?: true
+    leasedToHost?: true
+    leaseId?: true
     leasedToPid?: true
     leasedAt?: true
     expiresAt?: true
@@ -15728,6 +15826,8 @@ export namespace Prisma {
     port: number
     purpose: string
     leasedToUdid: string
+    leasedToHost: string
+    leaseId: string | null
     leasedToPid: number | null
     leasedAt: number
     expiresAt: number
@@ -15756,6 +15856,8 @@ export namespace Prisma {
     port?: boolean
     purpose?: boolean
     leasedToUdid?: boolean
+    leasedToHost?: boolean
+    leaseId?: boolean
     leasedToPid?: boolean
     leasedAt?: boolean
     expiresAt?: boolean
@@ -15765,6 +15867,8 @@ export namespace Prisma {
     port?: boolean
     purpose?: boolean
     leasedToUdid?: boolean
+    leasedToHost?: boolean
+    leaseId?: boolean
     leasedToPid?: boolean
     leasedAt?: boolean
     expiresAt?: boolean
@@ -15774,6 +15878,8 @@ export namespace Prisma {
     port?: boolean
     purpose?: boolean
     leasedToUdid?: boolean
+    leasedToHost?: boolean
+    leaseId?: boolean
     leasedToPid?: boolean
     leasedAt?: boolean
     expiresAt?: boolean
@@ -15787,6 +15893,8 @@ export namespace Prisma {
       port: number
       purpose: string
       leasedToUdid: string
+      leasedToHost: string
+      leaseId: string | null
       leasedToPid: number | null
       leasedAt: number
       expiresAt: number
@@ -16186,6 +16294,8 @@ export namespace Prisma {
     readonly port: FieldRef<"PortLease", 'Int'>
     readonly purpose: FieldRef<"PortLease", 'String'>
     readonly leasedToUdid: FieldRef<"PortLease", 'String'>
+    readonly leasedToHost: FieldRef<"PortLease", 'String'>
+    readonly leaseId: FieldRef<"PortLease", 'String'>
     readonly leasedToPid: FieldRef<"PortLease", 'Int'>
     readonly leasedAt: FieldRef<"PortLease", 'Float'>
     readonly expiresAt: FieldRef<"PortLease", 'Float'>
@@ -16472,6 +16582,1044 @@ export namespace Prisma {
      * Select specific fields to fetch from the PortLease
      */
     select?: PortLeaseSelect<ExtArgs> | null
+  }
+
+
+  /**
+   * Model Lease
+   */
+
+  export type AggregateLease = {
+    _count: LeaseCountAggregateOutputType | null
+    _avg: LeaseAvgAggregateOutputType | null
+    _sum: LeaseSumAggregateOutputType | null
+    _min: LeaseMinAggregateOutputType | null
+    _max: LeaseMaxAggregateOutputType | null
+  }
+
+  export type LeaseAvgAggregateOutputType = {
+    expiresAt: number | null
+    heartbeatSeconds: number | null
+    lastHeartbeatAt: number | null
+  }
+
+  export type LeaseSumAggregateOutputType = {
+    expiresAt: number | null
+    heartbeatSeconds: number | null
+    lastHeartbeatAt: number | null
+  }
+
+  export type LeaseMinAggregateOutputType = {
+    id: string | null
+    tokenHash: string | null
+    deviceUdid: string | null
+    deviceHost: string | null
+    actorId: string | null
+    teamId: string | null
+    buildId: string | null
+    reason: string | null
+    status: string | null
+    createdAt: Date | null
+    expiresAt: number | null
+    heartbeatSeconds: number | null
+    lastHeartbeatAt: number | null
+    allocatedPorts: string | null
+    capabilityBag: string | null
+  }
+
+  export type LeaseMaxAggregateOutputType = {
+    id: string | null
+    tokenHash: string | null
+    deviceUdid: string | null
+    deviceHost: string | null
+    actorId: string | null
+    teamId: string | null
+    buildId: string | null
+    reason: string | null
+    status: string | null
+    createdAt: Date | null
+    expiresAt: number | null
+    heartbeatSeconds: number | null
+    lastHeartbeatAt: number | null
+    allocatedPorts: string | null
+    capabilityBag: string | null
+  }
+
+  export type LeaseCountAggregateOutputType = {
+    id: number
+    tokenHash: number
+    deviceUdid: number
+    deviceHost: number
+    actorId: number
+    teamId: number
+    buildId: number
+    reason: number
+    status: number
+    createdAt: number
+    expiresAt: number
+    heartbeatSeconds: number
+    lastHeartbeatAt: number
+    allocatedPorts: number
+    capabilityBag: number
+    _all: number
+  }
+
+
+  export type LeaseAvgAggregateInputType = {
+    expiresAt?: true
+    heartbeatSeconds?: true
+    lastHeartbeatAt?: true
+  }
+
+  export type LeaseSumAggregateInputType = {
+    expiresAt?: true
+    heartbeatSeconds?: true
+    lastHeartbeatAt?: true
+  }
+
+  export type LeaseMinAggregateInputType = {
+    id?: true
+    tokenHash?: true
+    deviceUdid?: true
+    deviceHost?: true
+    actorId?: true
+    teamId?: true
+    buildId?: true
+    reason?: true
+    status?: true
+    createdAt?: true
+    expiresAt?: true
+    heartbeatSeconds?: true
+    lastHeartbeatAt?: true
+    allocatedPorts?: true
+    capabilityBag?: true
+  }
+
+  export type LeaseMaxAggregateInputType = {
+    id?: true
+    tokenHash?: true
+    deviceUdid?: true
+    deviceHost?: true
+    actorId?: true
+    teamId?: true
+    buildId?: true
+    reason?: true
+    status?: true
+    createdAt?: true
+    expiresAt?: true
+    heartbeatSeconds?: true
+    lastHeartbeatAt?: true
+    allocatedPorts?: true
+    capabilityBag?: true
+  }
+
+  export type LeaseCountAggregateInputType = {
+    id?: true
+    tokenHash?: true
+    deviceUdid?: true
+    deviceHost?: true
+    actorId?: true
+    teamId?: true
+    buildId?: true
+    reason?: true
+    status?: true
+    createdAt?: true
+    expiresAt?: true
+    heartbeatSeconds?: true
+    lastHeartbeatAt?: true
+    allocatedPorts?: true
+    capabilityBag?: true
+    _all?: true
+  }
+
+  export type LeaseAggregateArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Filter which Lease to aggregate.
+     */
+    where?: LeaseWhereInput
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/sorting Sorting Docs}
+     * 
+     * Determine the order of Leases to fetch.
+     */
+    orderBy?: LeaseOrderByWithRelationInput | LeaseOrderByWithRelationInput[]
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination#cursor-based-pagination Cursor Docs}
+     * 
+     * Sets the start position
+     */
+    cursor?: LeaseWhereUniqueInput
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination Pagination Docs}
+     * 
+     * Take `±n` Leases from the position of the cursor.
+     */
+    take?: number
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination Pagination Docs}
+     * 
+     * Skip the first `n` Leases.
+     */
+    skip?: number
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/aggregations Aggregation Docs}
+     * 
+     * Count returned Leases
+    **/
+    _count?: true | LeaseCountAggregateInputType
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/aggregations Aggregation Docs}
+     * 
+     * Select which fields to average
+    **/
+    _avg?: LeaseAvgAggregateInputType
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/aggregations Aggregation Docs}
+     * 
+     * Select which fields to sum
+    **/
+    _sum?: LeaseSumAggregateInputType
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/aggregations Aggregation Docs}
+     * 
+     * Select which fields to find the minimum value
+    **/
+    _min?: LeaseMinAggregateInputType
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/aggregations Aggregation Docs}
+     * 
+     * Select which fields to find the maximum value
+    **/
+    _max?: LeaseMaxAggregateInputType
+  }
+
+  export type GetLeaseAggregateType<T extends LeaseAggregateArgs> = {
+        [P in keyof T & keyof AggregateLease]: P extends '_count' | 'count'
+      ? T[P] extends true
+        ? number
+        : GetScalarType<T[P], AggregateLease[P]>
+      : GetScalarType<T[P], AggregateLease[P]>
+  }
+
+
+
+
+  export type LeaseGroupByArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    where?: LeaseWhereInput
+    orderBy?: LeaseOrderByWithAggregationInput | LeaseOrderByWithAggregationInput[]
+    by: LeaseScalarFieldEnum[] | LeaseScalarFieldEnum
+    having?: LeaseScalarWhereWithAggregatesInput
+    take?: number
+    skip?: number
+    _count?: LeaseCountAggregateInputType | true
+    _avg?: LeaseAvgAggregateInputType
+    _sum?: LeaseSumAggregateInputType
+    _min?: LeaseMinAggregateInputType
+    _max?: LeaseMaxAggregateInputType
+  }
+
+  export type LeaseGroupByOutputType = {
+    id: string
+    tokenHash: string
+    deviceUdid: string
+    deviceHost: string
+    actorId: string
+    teamId: string | null
+    buildId: string | null
+    reason: string | null
+    status: string
+    createdAt: Date
+    expiresAt: number
+    heartbeatSeconds: number
+    lastHeartbeatAt: number
+    allocatedPorts: string
+    capabilityBag: string
+    _count: LeaseCountAggregateOutputType | null
+    _avg: LeaseAvgAggregateOutputType | null
+    _sum: LeaseSumAggregateOutputType | null
+    _min: LeaseMinAggregateOutputType | null
+    _max: LeaseMaxAggregateOutputType | null
+  }
+
+  type GetLeaseGroupByPayload<T extends LeaseGroupByArgs> = Prisma.PrismaPromise<
+    Array<
+      PickEnumerable<LeaseGroupByOutputType, T['by']> &
+        {
+          [P in ((keyof T) & (keyof LeaseGroupByOutputType))]: P extends '_count'
+            ? T[P] extends boolean
+              ? number
+              : GetScalarType<T[P], LeaseGroupByOutputType[P]>
+            : GetScalarType<T[P], LeaseGroupByOutputType[P]>
+        }
+      >
+    >
+
+
+  export type LeaseSelect<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = $Extensions.GetSelect<{
+    id?: boolean
+    tokenHash?: boolean
+    deviceUdid?: boolean
+    deviceHost?: boolean
+    actorId?: boolean
+    teamId?: boolean
+    buildId?: boolean
+    reason?: boolean
+    status?: boolean
+    createdAt?: boolean
+    expiresAt?: boolean
+    heartbeatSeconds?: boolean
+    lastHeartbeatAt?: boolean
+    allocatedPorts?: boolean
+    capabilityBag?: boolean
+  }, ExtArgs["result"]["lease"]>
+
+  export type LeaseSelectCreateManyAndReturn<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = $Extensions.GetSelect<{
+    id?: boolean
+    tokenHash?: boolean
+    deviceUdid?: boolean
+    deviceHost?: boolean
+    actorId?: boolean
+    teamId?: boolean
+    buildId?: boolean
+    reason?: boolean
+    status?: boolean
+    createdAt?: boolean
+    expiresAt?: boolean
+    heartbeatSeconds?: boolean
+    lastHeartbeatAt?: boolean
+    allocatedPorts?: boolean
+    capabilityBag?: boolean
+  }, ExtArgs["result"]["lease"]>
+
+  export type LeaseSelectScalar = {
+    id?: boolean
+    tokenHash?: boolean
+    deviceUdid?: boolean
+    deviceHost?: boolean
+    actorId?: boolean
+    teamId?: boolean
+    buildId?: boolean
+    reason?: boolean
+    status?: boolean
+    createdAt?: boolean
+    expiresAt?: boolean
+    heartbeatSeconds?: boolean
+    lastHeartbeatAt?: boolean
+    allocatedPorts?: boolean
+    capabilityBag?: boolean
+  }
+
+
+  export type $LeasePayload<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    name: "Lease"
+    objects: {}
+    scalars: $Extensions.GetPayloadResult<{
+      id: string
+      tokenHash: string
+      deviceUdid: string
+      deviceHost: string
+      actorId: string
+      teamId: string | null
+      buildId: string | null
+      reason: string | null
+      status: string
+      createdAt: Date
+      expiresAt: number
+      heartbeatSeconds: number
+      lastHeartbeatAt: number
+      allocatedPorts: string
+      capabilityBag: string
+    }, ExtArgs["result"]["lease"]>
+    composites: {}
+  }
+
+  type LeaseGetPayload<S extends boolean | null | undefined | LeaseDefaultArgs> = $Result.GetResult<Prisma.$LeasePayload, S>
+
+  type LeaseCountArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = 
+    Omit<LeaseFindManyArgs, 'select' | 'include' | 'distinct'> & {
+      select?: LeaseCountAggregateInputType | true
+    }
+
+  export interface LeaseDelegate<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> {
+    [K: symbol]: { types: Prisma.TypeMap<ExtArgs>['model']['Lease'], meta: { name: 'Lease' } }
+    /**
+     * Find zero or one Lease that matches the filter.
+     * @param {LeaseFindUniqueArgs} args - Arguments to find a Lease
+     * @example
+     * // Get one Lease
+     * const lease = await prisma.lease.findUnique({
+     *   where: {
+     *     // ... provide filter here
+     *   }
+     * })
+     */
+    findUnique<T extends LeaseFindUniqueArgs>(args: SelectSubset<T, LeaseFindUniqueArgs<ExtArgs>>): Prisma__LeaseClient<$Result.GetResult<Prisma.$LeasePayload<ExtArgs>, T, "findUnique"> | null, null, ExtArgs>
+
+    /**
+     * Find one Lease that matches the filter or throw an error with `error.code='P2025'` 
+     * if no matches were found.
+     * @param {LeaseFindUniqueOrThrowArgs} args - Arguments to find a Lease
+     * @example
+     * // Get one Lease
+     * const lease = await prisma.lease.findUniqueOrThrow({
+     *   where: {
+     *     // ... provide filter here
+     *   }
+     * })
+     */
+    findUniqueOrThrow<T extends LeaseFindUniqueOrThrowArgs>(args: SelectSubset<T, LeaseFindUniqueOrThrowArgs<ExtArgs>>): Prisma__LeaseClient<$Result.GetResult<Prisma.$LeasePayload<ExtArgs>, T, "findUniqueOrThrow">, never, ExtArgs>
+
+    /**
+     * Find the first Lease that matches the filter.
+     * Note, that providing `undefined` is treated as the value not being there.
+     * Read more here: https://pris.ly/d/null-undefined
+     * @param {LeaseFindFirstArgs} args - Arguments to find a Lease
+     * @example
+     * // Get one Lease
+     * const lease = await prisma.lease.findFirst({
+     *   where: {
+     *     // ... provide filter here
+     *   }
+     * })
+     */
+    findFirst<T extends LeaseFindFirstArgs>(args?: SelectSubset<T, LeaseFindFirstArgs<ExtArgs>>): Prisma__LeaseClient<$Result.GetResult<Prisma.$LeasePayload<ExtArgs>, T, "findFirst"> | null, null, ExtArgs>
+
+    /**
+     * Find the first Lease that matches the filter or
+     * throw `PrismaKnownClientError` with `P2025` code if no matches were found.
+     * Note, that providing `undefined` is treated as the value not being there.
+     * Read more here: https://pris.ly/d/null-undefined
+     * @param {LeaseFindFirstOrThrowArgs} args - Arguments to find a Lease
+     * @example
+     * // Get one Lease
+     * const lease = await prisma.lease.findFirstOrThrow({
+     *   where: {
+     *     // ... provide filter here
+     *   }
+     * })
+     */
+    findFirstOrThrow<T extends LeaseFindFirstOrThrowArgs>(args?: SelectSubset<T, LeaseFindFirstOrThrowArgs<ExtArgs>>): Prisma__LeaseClient<$Result.GetResult<Prisma.$LeasePayload<ExtArgs>, T, "findFirstOrThrow">, never, ExtArgs>
+
+    /**
+     * Find zero or more Leases that matches the filter.
+     * Note, that providing `undefined` is treated as the value not being there.
+     * Read more here: https://pris.ly/d/null-undefined
+     * @param {LeaseFindManyArgs} args - Arguments to filter and select certain fields only.
+     * @example
+     * // Get all Leases
+     * const leases = await prisma.lease.findMany()
+     * 
+     * // Get first 10 Leases
+     * const leases = await prisma.lease.findMany({ take: 10 })
+     * 
+     * // Only select the `id`
+     * const leaseWithIdOnly = await prisma.lease.findMany({ select: { id: true } })
+     * 
+     */
+    findMany<T extends LeaseFindManyArgs>(args?: SelectSubset<T, LeaseFindManyArgs<ExtArgs>>): Prisma.PrismaPromise<$Result.GetResult<Prisma.$LeasePayload<ExtArgs>, T, "findMany">>
+
+    /**
+     * Create a Lease.
+     * @param {LeaseCreateArgs} args - Arguments to create a Lease.
+     * @example
+     * // Create one Lease
+     * const Lease = await prisma.lease.create({
+     *   data: {
+     *     // ... data to create a Lease
+     *   }
+     * })
+     * 
+     */
+    create<T extends LeaseCreateArgs>(args: SelectSubset<T, LeaseCreateArgs<ExtArgs>>): Prisma__LeaseClient<$Result.GetResult<Prisma.$LeasePayload<ExtArgs>, T, "create">, never, ExtArgs>
+
+    /**
+     * Create many Leases.
+     * @param {LeaseCreateManyArgs} args - Arguments to create many Leases.
+     * @example
+     * // Create many Leases
+     * const lease = await prisma.lease.createMany({
+     *   data: [
+     *     // ... provide data here
+     *   ]
+     * })
+     *     
+     */
+    createMany<T extends LeaseCreateManyArgs>(args?: SelectSubset<T, LeaseCreateManyArgs<ExtArgs>>): Prisma.PrismaPromise<BatchPayload>
+
+    /**
+     * Create many Leases and returns the data saved in the database.
+     * @param {LeaseCreateManyAndReturnArgs} args - Arguments to create many Leases.
+     * @example
+     * // Create many Leases
+     * const lease = await prisma.lease.createManyAndReturn({
+     *   data: [
+     *     // ... provide data here
+     *   ]
+     * })
+     * 
+     * // Create many Leases and only return the `id`
+     * const leaseWithIdOnly = await prisma.lease.createManyAndReturn({ 
+     *   select: { id: true },
+     *   data: [
+     *     // ... provide data here
+     *   ]
+     * })
+     * Note, that providing `undefined` is treated as the value not being there.
+     * Read more here: https://pris.ly/d/null-undefined
+     * 
+     */
+    createManyAndReturn<T extends LeaseCreateManyAndReturnArgs>(args?: SelectSubset<T, LeaseCreateManyAndReturnArgs<ExtArgs>>): Prisma.PrismaPromise<$Result.GetResult<Prisma.$LeasePayload<ExtArgs>, T, "createManyAndReturn">>
+
+    /**
+     * Delete a Lease.
+     * @param {LeaseDeleteArgs} args - Arguments to delete one Lease.
+     * @example
+     * // Delete one Lease
+     * const Lease = await prisma.lease.delete({
+     *   where: {
+     *     // ... filter to delete one Lease
+     *   }
+     * })
+     * 
+     */
+    delete<T extends LeaseDeleteArgs>(args: SelectSubset<T, LeaseDeleteArgs<ExtArgs>>): Prisma__LeaseClient<$Result.GetResult<Prisma.$LeasePayload<ExtArgs>, T, "delete">, never, ExtArgs>
+
+    /**
+     * Update one Lease.
+     * @param {LeaseUpdateArgs} args - Arguments to update one Lease.
+     * @example
+     * // Update one Lease
+     * const lease = await prisma.lease.update({
+     *   where: {
+     *     // ... provide filter here
+     *   },
+     *   data: {
+     *     // ... provide data here
+     *   }
+     * })
+     * 
+     */
+    update<T extends LeaseUpdateArgs>(args: SelectSubset<T, LeaseUpdateArgs<ExtArgs>>): Prisma__LeaseClient<$Result.GetResult<Prisma.$LeasePayload<ExtArgs>, T, "update">, never, ExtArgs>
+
+    /**
+     * Delete zero or more Leases.
+     * @param {LeaseDeleteManyArgs} args - Arguments to filter Leases to delete.
+     * @example
+     * // Delete a few Leases
+     * const { count } = await prisma.lease.deleteMany({
+     *   where: {
+     *     // ... provide filter here
+     *   }
+     * })
+     * 
+     */
+    deleteMany<T extends LeaseDeleteManyArgs>(args?: SelectSubset<T, LeaseDeleteManyArgs<ExtArgs>>): Prisma.PrismaPromise<BatchPayload>
+
+    /**
+     * Update zero or more Leases.
+     * Note, that providing `undefined` is treated as the value not being there.
+     * Read more here: https://pris.ly/d/null-undefined
+     * @param {LeaseUpdateManyArgs} args - Arguments to update one or more rows.
+     * @example
+     * // Update many Leases
+     * const lease = await prisma.lease.updateMany({
+     *   where: {
+     *     // ... provide filter here
+     *   },
+     *   data: {
+     *     // ... provide data here
+     *   }
+     * })
+     * 
+     */
+    updateMany<T extends LeaseUpdateManyArgs>(args: SelectSubset<T, LeaseUpdateManyArgs<ExtArgs>>): Prisma.PrismaPromise<BatchPayload>
+
+    /**
+     * Create or update one Lease.
+     * @param {LeaseUpsertArgs} args - Arguments to update or create a Lease.
+     * @example
+     * // Update or create a Lease
+     * const lease = await prisma.lease.upsert({
+     *   create: {
+     *     // ... data to create a Lease
+     *   },
+     *   update: {
+     *     // ... in case it already exists, update
+     *   },
+     *   where: {
+     *     // ... the filter for the Lease we want to update
+     *   }
+     * })
+     */
+    upsert<T extends LeaseUpsertArgs>(args: SelectSubset<T, LeaseUpsertArgs<ExtArgs>>): Prisma__LeaseClient<$Result.GetResult<Prisma.$LeasePayload<ExtArgs>, T, "upsert">, never, ExtArgs>
+
+
+    /**
+     * Count the number of Leases.
+     * Note, that providing `undefined` is treated as the value not being there.
+     * Read more here: https://pris.ly/d/null-undefined
+     * @param {LeaseCountArgs} args - Arguments to filter Leases to count.
+     * @example
+     * // Count the number of Leases
+     * const count = await prisma.lease.count({
+     *   where: {
+     *     // ... the filter for the Leases we want to count
+     *   }
+     * })
+    **/
+    count<T extends LeaseCountArgs>(
+      args?: Subset<T, LeaseCountArgs>,
+    ): Prisma.PrismaPromise<
+      T extends $Utils.Record<'select', any>
+        ? T['select'] extends true
+          ? number
+          : GetScalarType<T['select'], LeaseCountAggregateOutputType>
+        : number
+    >
+
+    /**
+     * Allows you to perform aggregations operations on a Lease.
+     * Note, that providing `undefined` is treated as the value not being there.
+     * Read more here: https://pris.ly/d/null-undefined
+     * @param {LeaseAggregateArgs} args - Select which aggregations you would like to apply and on what fields.
+     * @example
+     * // Ordered by age ascending
+     * // Where email contains prisma.io
+     * // Limited to the 10 users
+     * const aggregations = await prisma.user.aggregate({
+     *   _avg: {
+     *     age: true,
+     *   },
+     *   where: {
+     *     email: {
+     *       contains: "prisma.io",
+     *     },
+     *   },
+     *   orderBy: {
+     *     age: "asc",
+     *   },
+     *   take: 10,
+     * })
+    **/
+    aggregate<T extends LeaseAggregateArgs>(args: Subset<T, LeaseAggregateArgs>): Prisma.PrismaPromise<GetLeaseAggregateType<T>>
+
+    /**
+     * Group by Lease.
+     * Note, that providing `undefined` is treated as the value not being there.
+     * Read more here: https://pris.ly/d/null-undefined
+     * @param {LeaseGroupByArgs} args - Group by arguments.
+     * @example
+     * // Group by city, order by createdAt, get count
+     * const result = await prisma.user.groupBy({
+     *   by: ['city', 'createdAt'],
+     *   orderBy: {
+     *     createdAt: true
+     *   },
+     *   _count: {
+     *     _all: true
+     *   },
+     * })
+     * 
+    **/
+    groupBy<
+      T extends LeaseGroupByArgs,
+      HasSelectOrTake extends Or<
+        Extends<'skip', Keys<T>>,
+        Extends<'take', Keys<T>>
+      >,
+      OrderByArg extends True extends HasSelectOrTake
+        ? { orderBy: LeaseGroupByArgs['orderBy'] }
+        : { orderBy?: LeaseGroupByArgs['orderBy'] },
+      OrderFields extends ExcludeUnderscoreKeys<Keys<MaybeTupleToUnion<T['orderBy']>>>,
+      ByFields extends MaybeTupleToUnion<T['by']>,
+      ByValid extends Has<ByFields, OrderFields>,
+      HavingFields extends GetHavingFields<T['having']>,
+      HavingValid extends Has<ByFields, HavingFields>,
+      ByEmpty extends T['by'] extends never[] ? True : False,
+      InputErrors extends ByEmpty extends True
+      ? `Error: "by" must not be empty.`
+      : HavingValid extends False
+      ? {
+          [P in HavingFields]: P extends ByFields
+            ? never
+            : P extends string
+            ? `Error: Field "${P}" used in "having" needs to be provided in "by".`
+            : [
+                Error,
+                'Field ',
+                P,
+                ` in "having" needs to be provided in "by"`,
+              ]
+        }[HavingFields]
+      : 'take' extends Keys<T>
+      ? 'orderBy' extends Keys<T>
+        ? ByValid extends True
+          ? {}
+          : {
+              [P in OrderFields]: P extends ByFields
+                ? never
+                : `Error: Field "${P}" in "orderBy" needs to be provided in "by"`
+            }[OrderFields]
+        : 'Error: If you provide "take", you also need to provide "orderBy"'
+      : 'skip' extends Keys<T>
+      ? 'orderBy' extends Keys<T>
+        ? ByValid extends True
+          ? {}
+          : {
+              [P in OrderFields]: P extends ByFields
+                ? never
+                : `Error: Field "${P}" in "orderBy" needs to be provided in "by"`
+            }[OrderFields]
+        : 'Error: If you provide "skip", you also need to provide "orderBy"'
+      : ByValid extends True
+      ? {}
+      : {
+          [P in OrderFields]: P extends ByFields
+            ? never
+            : `Error: Field "${P}" in "orderBy" needs to be provided in "by"`
+        }[OrderFields]
+    >(args: SubsetIntersection<T, LeaseGroupByArgs, OrderByArg> & InputErrors): {} extends InputErrors ? GetLeaseGroupByPayload<T> : Prisma.PrismaPromise<InputErrors>
+  /**
+   * Fields of the Lease model
+   */
+  readonly fields: LeaseFieldRefs;
+  }
+
+  /**
+   * The delegate class that acts as a "Promise-like" for Lease.
+   * Why is this prefixed with `Prisma__`?
+   * Because we want to prevent naming conflicts as mentioned in
+   * https://github.com/prisma/prisma-client-js/issues/707
+   */
+  export interface Prisma__LeaseClient<T, Null = never, ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> extends Prisma.PrismaPromise<T> {
+    readonly [Symbol.toStringTag]: "PrismaPromise"
+    /**
+     * Attaches callbacks for the resolution and/or rejection of the Promise.
+     * @param onfulfilled The callback to execute when the Promise is resolved.
+     * @param onrejected The callback to execute when the Promise is rejected.
+     * @returns A Promise for the completion of which ever callback is executed.
+     */
+    then<TResult1 = T, TResult2 = never>(onfulfilled?: ((value: T) => TResult1 | PromiseLike<TResult1>) | undefined | null, onrejected?: ((reason: any) => TResult2 | PromiseLike<TResult2>) | undefined | null): $Utils.JsPromise<TResult1 | TResult2>
+    /**
+     * Attaches a callback for only the rejection of the Promise.
+     * @param onrejected The callback to execute when the Promise is rejected.
+     * @returns A Promise for the completion of the callback.
+     */
+    catch<TResult = never>(onrejected?: ((reason: any) => TResult | PromiseLike<TResult>) | undefined | null): $Utils.JsPromise<T | TResult>
+    /**
+     * Attaches a callback that is invoked when the Promise is settled (fulfilled or rejected). The
+     * resolved value cannot be modified from the callback.
+     * @param onfinally The callback to execute when the Promise is settled (fulfilled or rejected).
+     * @returns A Promise for the completion of the callback.
+     */
+    finally(onfinally?: (() => void) | undefined | null): $Utils.JsPromise<T>
+  }
+
+
+
+
+  /**
+   * Fields of the Lease model
+   */ 
+  interface LeaseFieldRefs {
+    readonly id: FieldRef<"Lease", 'String'>
+    readonly tokenHash: FieldRef<"Lease", 'String'>
+    readonly deviceUdid: FieldRef<"Lease", 'String'>
+    readonly deviceHost: FieldRef<"Lease", 'String'>
+    readonly actorId: FieldRef<"Lease", 'String'>
+    readonly teamId: FieldRef<"Lease", 'String'>
+    readonly buildId: FieldRef<"Lease", 'String'>
+    readonly reason: FieldRef<"Lease", 'String'>
+    readonly status: FieldRef<"Lease", 'String'>
+    readonly createdAt: FieldRef<"Lease", 'DateTime'>
+    readonly expiresAt: FieldRef<"Lease", 'Float'>
+    readonly heartbeatSeconds: FieldRef<"Lease", 'Int'>
+    readonly lastHeartbeatAt: FieldRef<"Lease", 'Float'>
+    readonly allocatedPorts: FieldRef<"Lease", 'String'>
+    readonly capabilityBag: FieldRef<"Lease", 'String'>
+  }
+    
+
+  // Custom InputTypes
+  /**
+   * Lease findUnique
+   */
+  export type LeaseFindUniqueArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the Lease
+     */
+    select?: LeaseSelect<ExtArgs> | null
+    /**
+     * Filter, which Lease to fetch.
+     */
+    where: LeaseWhereUniqueInput
+  }
+
+  /**
+   * Lease findUniqueOrThrow
+   */
+  export type LeaseFindUniqueOrThrowArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the Lease
+     */
+    select?: LeaseSelect<ExtArgs> | null
+    /**
+     * Filter, which Lease to fetch.
+     */
+    where: LeaseWhereUniqueInput
+  }
+
+  /**
+   * Lease findFirst
+   */
+  export type LeaseFindFirstArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the Lease
+     */
+    select?: LeaseSelect<ExtArgs> | null
+    /**
+     * Filter, which Lease to fetch.
+     */
+    where?: LeaseWhereInput
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/sorting Sorting Docs}
+     * 
+     * Determine the order of Leases to fetch.
+     */
+    orderBy?: LeaseOrderByWithRelationInput | LeaseOrderByWithRelationInput[]
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination#cursor-based-pagination Cursor Docs}
+     * 
+     * Sets the position for searching for Leases.
+     */
+    cursor?: LeaseWhereUniqueInput
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination Pagination Docs}
+     * 
+     * Take `±n` Leases from the position of the cursor.
+     */
+    take?: number
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination Pagination Docs}
+     * 
+     * Skip the first `n` Leases.
+     */
+    skip?: number
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/distinct Distinct Docs}
+     * 
+     * Filter by unique combinations of Leases.
+     */
+    distinct?: LeaseScalarFieldEnum | LeaseScalarFieldEnum[]
+  }
+
+  /**
+   * Lease findFirstOrThrow
+   */
+  export type LeaseFindFirstOrThrowArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the Lease
+     */
+    select?: LeaseSelect<ExtArgs> | null
+    /**
+     * Filter, which Lease to fetch.
+     */
+    where?: LeaseWhereInput
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/sorting Sorting Docs}
+     * 
+     * Determine the order of Leases to fetch.
+     */
+    orderBy?: LeaseOrderByWithRelationInput | LeaseOrderByWithRelationInput[]
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination#cursor-based-pagination Cursor Docs}
+     * 
+     * Sets the position for searching for Leases.
+     */
+    cursor?: LeaseWhereUniqueInput
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination Pagination Docs}
+     * 
+     * Take `±n` Leases from the position of the cursor.
+     */
+    take?: number
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination Pagination Docs}
+     * 
+     * Skip the first `n` Leases.
+     */
+    skip?: number
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/distinct Distinct Docs}
+     * 
+     * Filter by unique combinations of Leases.
+     */
+    distinct?: LeaseScalarFieldEnum | LeaseScalarFieldEnum[]
+  }
+
+  /**
+   * Lease findMany
+   */
+  export type LeaseFindManyArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the Lease
+     */
+    select?: LeaseSelect<ExtArgs> | null
+    /**
+     * Filter, which Leases to fetch.
+     */
+    where?: LeaseWhereInput
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/sorting Sorting Docs}
+     * 
+     * Determine the order of Leases to fetch.
+     */
+    orderBy?: LeaseOrderByWithRelationInput | LeaseOrderByWithRelationInput[]
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination#cursor-based-pagination Cursor Docs}
+     * 
+     * Sets the position for listing Leases.
+     */
+    cursor?: LeaseWhereUniqueInput
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination Pagination Docs}
+     * 
+     * Take `±n` Leases from the position of the cursor.
+     */
+    take?: number
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination Pagination Docs}
+     * 
+     * Skip the first `n` Leases.
+     */
+    skip?: number
+    distinct?: LeaseScalarFieldEnum | LeaseScalarFieldEnum[]
+  }
+
+  /**
+   * Lease create
+   */
+  export type LeaseCreateArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the Lease
+     */
+    select?: LeaseSelect<ExtArgs> | null
+    /**
+     * The data needed to create a Lease.
+     */
+    data: XOR<LeaseCreateInput, LeaseUncheckedCreateInput>
+  }
+
+  /**
+   * Lease createMany
+   */
+  export type LeaseCreateManyArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * The data used to create many Leases.
+     */
+    data: LeaseCreateManyInput | LeaseCreateManyInput[]
+  }
+
+  /**
+   * Lease createManyAndReturn
+   */
+  export type LeaseCreateManyAndReturnArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the Lease
+     */
+    select?: LeaseSelectCreateManyAndReturn<ExtArgs> | null
+    /**
+     * The data used to create many Leases.
+     */
+    data: LeaseCreateManyInput | LeaseCreateManyInput[]
+  }
+
+  /**
+   * Lease update
+   */
+  export type LeaseUpdateArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the Lease
+     */
+    select?: LeaseSelect<ExtArgs> | null
+    /**
+     * The data needed to update a Lease.
+     */
+    data: XOR<LeaseUpdateInput, LeaseUncheckedUpdateInput>
+    /**
+     * Choose, which Lease to update.
+     */
+    where: LeaseWhereUniqueInput
+  }
+
+  /**
+   * Lease updateMany
+   */
+  export type LeaseUpdateManyArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * The data used to update Leases.
+     */
+    data: XOR<LeaseUpdateManyMutationInput, LeaseUncheckedUpdateManyInput>
+    /**
+     * Filter which Leases to update
+     */
+    where?: LeaseWhereInput
+  }
+
+  /**
+   * Lease upsert
+   */
+  export type LeaseUpsertArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the Lease
+     */
+    select?: LeaseSelect<ExtArgs> | null
+    /**
+     * The filter to search for the Lease to update in case it exists.
+     */
+    where: LeaseWhereUniqueInput
+    /**
+     * In case the Lease found by the `where` argument doesn't exist, create a new Lease with this data.
+     */
+    create: XOR<LeaseCreateInput, LeaseUncheckedCreateInput>
+    /**
+     * In case the Lease was found with the provided `where` argument, update it with this data.
+     */
+    update: XOR<LeaseUpdateInput, LeaseUncheckedUpdateInput>
+  }
+
+  /**
+   * Lease delete
+   */
+  export type LeaseDeleteArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the Lease
+     */
+    select?: LeaseSelect<ExtArgs> | null
+    /**
+     * Filter which Lease to delete.
+     */
+    where: LeaseWhereUniqueInput
+  }
+
+  /**
+   * Lease deleteMany
+   */
+  export type LeaseDeleteManyArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Filter which Leases to delete
+     */
+    where?: LeaseWhereInput
+  }
+
+  /**
+   * Lease without action
+   */
+  export type LeaseDefaultArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the Lease
+     */
+    select?: LeaseSelect<ExtArgs> | null
   }
 
 
@@ -26812,12 +27960,35 @@ export namespace Prisma {
     port: 'port',
     purpose: 'purpose',
     leasedToUdid: 'leasedToUdid',
+    leasedToHost: 'leasedToHost',
+    leaseId: 'leaseId',
     leasedToPid: 'leasedToPid',
     leasedAt: 'leasedAt',
     expiresAt: 'expiresAt'
   };
 
   export type PortLeaseScalarFieldEnum = (typeof PortLeaseScalarFieldEnum)[keyof typeof PortLeaseScalarFieldEnum]
+
+
+  export const LeaseScalarFieldEnum: {
+    id: 'id',
+    tokenHash: 'tokenHash',
+    deviceUdid: 'deviceUdid',
+    deviceHost: 'deviceHost',
+    actorId: 'actorId',
+    teamId: 'teamId',
+    buildId: 'buildId',
+    reason: 'reason',
+    status: 'status',
+    createdAt: 'createdAt',
+    expiresAt: 'expiresAt',
+    heartbeatSeconds: 'heartbeatSeconds',
+    lastHeartbeatAt: 'lastHeartbeatAt',
+    allocatedPorts: 'allocatedPorts',
+    capabilityBag: 'capabilityBag'
+  };
+
+  export type LeaseScalarFieldEnum = (typeof LeaseScalarFieldEnum)[keyof typeof LeaseScalarFieldEnum]
 
 
   export const ApiKeyScalarFieldEnum: {
@@ -28234,6 +29405,8 @@ export namespace Prisma {
     port?: IntFilter<"PortLease"> | number
     purpose?: StringFilter<"PortLease"> | string
     leasedToUdid?: StringFilter<"PortLease"> | string
+    leasedToHost?: StringFilter<"PortLease"> | string
+    leaseId?: StringNullableFilter<"PortLease"> | string | null
     leasedToPid?: IntNullableFilter<"PortLease"> | number | null
     leasedAt?: FloatFilter<"PortLease"> | number
     expiresAt?: FloatFilter<"PortLease"> | number
@@ -28243,6 +29416,8 @@ export namespace Prisma {
     port?: SortOrder
     purpose?: SortOrder
     leasedToUdid?: SortOrder
+    leasedToHost?: SortOrder
+    leaseId?: SortOrderInput | SortOrder
     leasedToPid?: SortOrderInput | SortOrder
     leasedAt?: SortOrder
     expiresAt?: SortOrder
@@ -28255,6 +29430,8 @@ export namespace Prisma {
     NOT?: PortLeaseWhereInput | PortLeaseWhereInput[]
     purpose?: StringFilter<"PortLease"> | string
     leasedToUdid?: StringFilter<"PortLease"> | string
+    leasedToHost?: StringFilter<"PortLease"> | string
+    leaseId?: StringNullableFilter<"PortLease"> | string | null
     leasedToPid?: IntNullableFilter<"PortLease"> | number | null
     leasedAt?: FloatFilter<"PortLease"> | number
     expiresAt?: FloatFilter<"PortLease"> | number
@@ -28264,6 +29441,8 @@ export namespace Prisma {
     port?: SortOrder
     purpose?: SortOrder
     leasedToUdid?: SortOrder
+    leasedToHost?: SortOrder
+    leaseId?: SortOrderInput | SortOrder
     leasedToPid?: SortOrderInput | SortOrder
     leasedAt?: SortOrder
     expiresAt?: SortOrder
@@ -28281,9 +29460,115 @@ export namespace Prisma {
     port?: IntWithAggregatesFilter<"PortLease"> | number
     purpose?: StringWithAggregatesFilter<"PortLease"> | string
     leasedToUdid?: StringWithAggregatesFilter<"PortLease"> | string
+    leasedToHost?: StringWithAggregatesFilter<"PortLease"> | string
+    leaseId?: StringNullableWithAggregatesFilter<"PortLease"> | string | null
     leasedToPid?: IntNullableWithAggregatesFilter<"PortLease"> | number | null
     leasedAt?: FloatWithAggregatesFilter<"PortLease"> | number
     expiresAt?: FloatWithAggregatesFilter<"PortLease"> | number
+  }
+
+  export type LeaseWhereInput = {
+    AND?: LeaseWhereInput | LeaseWhereInput[]
+    OR?: LeaseWhereInput[]
+    NOT?: LeaseWhereInput | LeaseWhereInput[]
+    id?: StringFilter<"Lease"> | string
+    tokenHash?: StringFilter<"Lease"> | string
+    deviceUdid?: StringFilter<"Lease"> | string
+    deviceHost?: StringFilter<"Lease"> | string
+    actorId?: StringFilter<"Lease"> | string
+    teamId?: StringNullableFilter<"Lease"> | string | null
+    buildId?: StringNullableFilter<"Lease"> | string | null
+    reason?: StringNullableFilter<"Lease"> | string | null
+    status?: StringFilter<"Lease"> | string
+    createdAt?: DateTimeFilter<"Lease"> | Date | string
+    expiresAt?: FloatFilter<"Lease"> | number
+    heartbeatSeconds?: IntFilter<"Lease"> | number
+    lastHeartbeatAt?: FloatFilter<"Lease"> | number
+    allocatedPorts?: StringFilter<"Lease"> | string
+    capabilityBag?: StringFilter<"Lease"> | string
+  }
+
+  export type LeaseOrderByWithRelationInput = {
+    id?: SortOrder
+    tokenHash?: SortOrder
+    deviceUdid?: SortOrder
+    deviceHost?: SortOrder
+    actorId?: SortOrder
+    teamId?: SortOrderInput | SortOrder
+    buildId?: SortOrderInput | SortOrder
+    reason?: SortOrderInput | SortOrder
+    status?: SortOrder
+    createdAt?: SortOrder
+    expiresAt?: SortOrder
+    heartbeatSeconds?: SortOrder
+    lastHeartbeatAt?: SortOrder
+    allocatedPorts?: SortOrder
+    capabilityBag?: SortOrder
+  }
+
+  export type LeaseWhereUniqueInput = Prisma.AtLeast<{
+    id?: string
+    AND?: LeaseWhereInput | LeaseWhereInput[]
+    OR?: LeaseWhereInput[]
+    NOT?: LeaseWhereInput | LeaseWhereInput[]
+    tokenHash?: StringFilter<"Lease"> | string
+    deviceUdid?: StringFilter<"Lease"> | string
+    deviceHost?: StringFilter<"Lease"> | string
+    actorId?: StringFilter<"Lease"> | string
+    teamId?: StringNullableFilter<"Lease"> | string | null
+    buildId?: StringNullableFilter<"Lease"> | string | null
+    reason?: StringNullableFilter<"Lease"> | string | null
+    status?: StringFilter<"Lease"> | string
+    createdAt?: DateTimeFilter<"Lease"> | Date | string
+    expiresAt?: FloatFilter<"Lease"> | number
+    heartbeatSeconds?: IntFilter<"Lease"> | number
+    lastHeartbeatAt?: FloatFilter<"Lease"> | number
+    allocatedPorts?: StringFilter<"Lease"> | string
+    capabilityBag?: StringFilter<"Lease"> | string
+  }, "id">
+
+  export type LeaseOrderByWithAggregationInput = {
+    id?: SortOrder
+    tokenHash?: SortOrder
+    deviceUdid?: SortOrder
+    deviceHost?: SortOrder
+    actorId?: SortOrder
+    teamId?: SortOrderInput | SortOrder
+    buildId?: SortOrderInput | SortOrder
+    reason?: SortOrderInput | SortOrder
+    status?: SortOrder
+    createdAt?: SortOrder
+    expiresAt?: SortOrder
+    heartbeatSeconds?: SortOrder
+    lastHeartbeatAt?: SortOrder
+    allocatedPorts?: SortOrder
+    capabilityBag?: SortOrder
+    _count?: LeaseCountOrderByAggregateInput
+    _avg?: LeaseAvgOrderByAggregateInput
+    _max?: LeaseMaxOrderByAggregateInput
+    _min?: LeaseMinOrderByAggregateInput
+    _sum?: LeaseSumOrderByAggregateInput
+  }
+
+  export type LeaseScalarWhereWithAggregatesInput = {
+    AND?: LeaseScalarWhereWithAggregatesInput | LeaseScalarWhereWithAggregatesInput[]
+    OR?: LeaseScalarWhereWithAggregatesInput[]
+    NOT?: LeaseScalarWhereWithAggregatesInput | LeaseScalarWhereWithAggregatesInput[]
+    id?: StringWithAggregatesFilter<"Lease"> | string
+    tokenHash?: StringWithAggregatesFilter<"Lease"> | string
+    deviceUdid?: StringWithAggregatesFilter<"Lease"> | string
+    deviceHost?: StringWithAggregatesFilter<"Lease"> | string
+    actorId?: StringWithAggregatesFilter<"Lease"> | string
+    teamId?: StringNullableWithAggregatesFilter<"Lease"> | string | null
+    buildId?: StringNullableWithAggregatesFilter<"Lease"> | string | null
+    reason?: StringNullableWithAggregatesFilter<"Lease"> | string | null
+    status?: StringWithAggregatesFilter<"Lease"> | string
+    createdAt?: DateTimeWithAggregatesFilter<"Lease"> | Date | string
+    expiresAt?: FloatWithAggregatesFilter<"Lease"> | number
+    heartbeatSeconds?: IntWithAggregatesFilter<"Lease"> | number
+    lastHeartbeatAt?: FloatWithAggregatesFilter<"Lease"> | number
+    allocatedPorts?: StringWithAggregatesFilter<"Lease"> | string
+    capabilityBag?: StringWithAggregatesFilter<"Lease"> | string
   }
 
   export type ApiKeyWhereInput = {
@@ -30473,6 +31758,8 @@ export namespace Prisma {
     port: number
     purpose: string
     leasedToUdid: string
+    leasedToHost?: string
+    leaseId?: string | null
     leasedToPid?: number | null
     leasedAt: number
     expiresAt: number
@@ -30482,6 +31769,8 @@ export namespace Prisma {
     port: number
     purpose: string
     leasedToUdid: string
+    leasedToHost?: string
+    leaseId?: string | null
     leasedToPid?: number | null
     leasedAt: number
     expiresAt: number
@@ -30491,6 +31780,8 @@ export namespace Prisma {
     port?: IntFieldUpdateOperationsInput | number
     purpose?: StringFieldUpdateOperationsInput | string
     leasedToUdid?: StringFieldUpdateOperationsInput | string
+    leasedToHost?: StringFieldUpdateOperationsInput | string
+    leaseId?: NullableStringFieldUpdateOperationsInput | string | null
     leasedToPid?: NullableIntFieldUpdateOperationsInput | number | null
     leasedAt?: FloatFieldUpdateOperationsInput | number
     expiresAt?: FloatFieldUpdateOperationsInput | number
@@ -30500,6 +31791,8 @@ export namespace Prisma {
     port?: IntFieldUpdateOperationsInput | number
     purpose?: StringFieldUpdateOperationsInput | string
     leasedToUdid?: StringFieldUpdateOperationsInput | string
+    leasedToHost?: StringFieldUpdateOperationsInput | string
+    leaseId?: NullableStringFieldUpdateOperationsInput | string | null
     leasedToPid?: NullableIntFieldUpdateOperationsInput | number | null
     leasedAt?: FloatFieldUpdateOperationsInput | number
     expiresAt?: FloatFieldUpdateOperationsInput | number
@@ -30509,6 +31802,8 @@ export namespace Prisma {
     port: number
     purpose: string
     leasedToUdid: string
+    leasedToHost?: string
+    leaseId?: string | null
     leasedToPid?: number | null
     leasedAt: number
     expiresAt: number
@@ -30518,6 +31813,8 @@ export namespace Prisma {
     port?: IntFieldUpdateOperationsInput | number
     purpose?: StringFieldUpdateOperationsInput | string
     leasedToUdid?: StringFieldUpdateOperationsInput | string
+    leasedToHost?: StringFieldUpdateOperationsInput | string
+    leaseId?: NullableStringFieldUpdateOperationsInput | string | null
     leasedToPid?: NullableIntFieldUpdateOperationsInput | number | null
     leasedAt?: FloatFieldUpdateOperationsInput | number
     expiresAt?: FloatFieldUpdateOperationsInput | number
@@ -30527,9 +31824,137 @@ export namespace Prisma {
     port?: IntFieldUpdateOperationsInput | number
     purpose?: StringFieldUpdateOperationsInput | string
     leasedToUdid?: StringFieldUpdateOperationsInput | string
+    leasedToHost?: StringFieldUpdateOperationsInput | string
+    leaseId?: NullableStringFieldUpdateOperationsInput | string | null
     leasedToPid?: NullableIntFieldUpdateOperationsInput | number | null
     leasedAt?: FloatFieldUpdateOperationsInput | number
     expiresAt?: FloatFieldUpdateOperationsInput | number
+  }
+
+  export type LeaseCreateInput = {
+    id?: string
+    tokenHash: string
+    deviceUdid: string
+    deviceHost: string
+    actorId: string
+    teamId?: string | null
+    buildId?: string | null
+    reason?: string | null
+    status?: string
+    createdAt?: Date | string
+    expiresAt: number
+    heartbeatSeconds?: number
+    lastHeartbeatAt: number
+    allocatedPorts: string
+    capabilityBag: string
+  }
+
+  export type LeaseUncheckedCreateInput = {
+    id?: string
+    tokenHash: string
+    deviceUdid: string
+    deviceHost: string
+    actorId: string
+    teamId?: string | null
+    buildId?: string | null
+    reason?: string | null
+    status?: string
+    createdAt?: Date | string
+    expiresAt: number
+    heartbeatSeconds?: number
+    lastHeartbeatAt: number
+    allocatedPorts: string
+    capabilityBag: string
+  }
+
+  export type LeaseUpdateInput = {
+    id?: StringFieldUpdateOperationsInput | string
+    tokenHash?: StringFieldUpdateOperationsInput | string
+    deviceUdid?: StringFieldUpdateOperationsInput | string
+    deviceHost?: StringFieldUpdateOperationsInput | string
+    actorId?: StringFieldUpdateOperationsInput | string
+    teamId?: NullableStringFieldUpdateOperationsInput | string | null
+    buildId?: NullableStringFieldUpdateOperationsInput | string | null
+    reason?: NullableStringFieldUpdateOperationsInput | string | null
+    status?: StringFieldUpdateOperationsInput | string
+    createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
+    expiresAt?: FloatFieldUpdateOperationsInput | number
+    heartbeatSeconds?: IntFieldUpdateOperationsInput | number
+    lastHeartbeatAt?: FloatFieldUpdateOperationsInput | number
+    allocatedPorts?: StringFieldUpdateOperationsInput | string
+    capabilityBag?: StringFieldUpdateOperationsInput | string
+  }
+
+  export type LeaseUncheckedUpdateInput = {
+    id?: StringFieldUpdateOperationsInput | string
+    tokenHash?: StringFieldUpdateOperationsInput | string
+    deviceUdid?: StringFieldUpdateOperationsInput | string
+    deviceHost?: StringFieldUpdateOperationsInput | string
+    actorId?: StringFieldUpdateOperationsInput | string
+    teamId?: NullableStringFieldUpdateOperationsInput | string | null
+    buildId?: NullableStringFieldUpdateOperationsInput | string | null
+    reason?: NullableStringFieldUpdateOperationsInput | string | null
+    status?: StringFieldUpdateOperationsInput | string
+    createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
+    expiresAt?: FloatFieldUpdateOperationsInput | number
+    heartbeatSeconds?: IntFieldUpdateOperationsInput | number
+    lastHeartbeatAt?: FloatFieldUpdateOperationsInput | number
+    allocatedPorts?: StringFieldUpdateOperationsInput | string
+    capabilityBag?: StringFieldUpdateOperationsInput | string
+  }
+
+  export type LeaseCreateManyInput = {
+    id?: string
+    tokenHash: string
+    deviceUdid: string
+    deviceHost: string
+    actorId: string
+    teamId?: string | null
+    buildId?: string | null
+    reason?: string | null
+    status?: string
+    createdAt?: Date | string
+    expiresAt: number
+    heartbeatSeconds?: number
+    lastHeartbeatAt: number
+    allocatedPorts: string
+    capabilityBag: string
+  }
+
+  export type LeaseUpdateManyMutationInput = {
+    id?: StringFieldUpdateOperationsInput | string
+    tokenHash?: StringFieldUpdateOperationsInput | string
+    deviceUdid?: StringFieldUpdateOperationsInput | string
+    deviceHost?: StringFieldUpdateOperationsInput | string
+    actorId?: StringFieldUpdateOperationsInput | string
+    teamId?: NullableStringFieldUpdateOperationsInput | string | null
+    buildId?: NullableStringFieldUpdateOperationsInput | string | null
+    reason?: NullableStringFieldUpdateOperationsInput | string | null
+    status?: StringFieldUpdateOperationsInput | string
+    createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
+    expiresAt?: FloatFieldUpdateOperationsInput | number
+    heartbeatSeconds?: IntFieldUpdateOperationsInput | number
+    lastHeartbeatAt?: FloatFieldUpdateOperationsInput | number
+    allocatedPorts?: StringFieldUpdateOperationsInput | string
+    capabilityBag?: StringFieldUpdateOperationsInput | string
+  }
+
+  export type LeaseUncheckedUpdateManyInput = {
+    id?: StringFieldUpdateOperationsInput | string
+    tokenHash?: StringFieldUpdateOperationsInput | string
+    deviceUdid?: StringFieldUpdateOperationsInput | string
+    deviceHost?: StringFieldUpdateOperationsInput | string
+    actorId?: StringFieldUpdateOperationsInput | string
+    teamId?: NullableStringFieldUpdateOperationsInput | string | null
+    buildId?: NullableStringFieldUpdateOperationsInput | string | null
+    reason?: NullableStringFieldUpdateOperationsInput | string | null
+    status?: StringFieldUpdateOperationsInput | string
+    createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
+    expiresAt?: FloatFieldUpdateOperationsInput | number
+    heartbeatSeconds?: IntFieldUpdateOperationsInput | number
+    lastHeartbeatAt?: FloatFieldUpdateOperationsInput | number
+    allocatedPorts?: StringFieldUpdateOperationsInput | string
+    capabilityBag?: StringFieldUpdateOperationsInput | string
   }
 
   export type ApiKeyCreateInput = {
@@ -32379,6 +33804,8 @@ export namespace Prisma {
     port?: SortOrder
     purpose?: SortOrder
     leasedToUdid?: SortOrder
+    leasedToHost?: SortOrder
+    leaseId?: SortOrder
     leasedToPid?: SortOrder
     leasedAt?: SortOrder
     expiresAt?: SortOrder
@@ -32395,6 +33822,8 @@ export namespace Prisma {
     port?: SortOrder
     purpose?: SortOrder
     leasedToUdid?: SortOrder
+    leasedToHost?: SortOrder
+    leaseId?: SortOrder
     leasedToPid?: SortOrder
     leasedAt?: SortOrder
     expiresAt?: SortOrder
@@ -32404,6 +33833,8 @@ export namespace Prisma {
     port?: SortOrder
     purpose?: SortOrder
     leasedToUdid?: SortOrder
+    leasedToHost?: SortOrder
+    leaseId?: SortOrder
     leasedToPid?: SortOrder
     leasedAt?: SortOrder
     expiresAt?: SortOrder
@@ -32414,6 +33845,72 @@ export namespace Prisma {
     leasedToPid?: SortOrder
     leasedAt?: SortOrder
     expiresAt?: SortOrder
+  }
+
+  export type LeaseCountOrderByAggregateInput = {
+    id?: SortOrder
+    tokenHash?: SortOrder
+    deviceUdid?: SortOrder
+    deviceHost?: SortOrder
+    actorId?: SortOrder
+    teamId?: SortOrder
+    buildId?: SortOrder
+    reason?: SortOrder
+    status?: SortOrder
+    createdAt?: SortOrder
+    expiresAt?: SortOrder
+    heartbeatSeconds?: SortOrder
+    lastHeartbeatAt?: SortOrder
+    allocatedPorts?: SortOrder
+    capabilityBag?: SortOrder
+  }
+
+  export type LeaseAvgOrderByAggregateInput = {
+    expiresAt?: SortOrder
+    heartbeatSeconds?: SortOrder
+    lastHeartbeatAt?: SortOrder
+  }
+
+  export type LeaseMaxOrderByAggregateInput = {
+    id?: SortOrder
+    tokenHash?: SortOrder
+    deviceUdid?: SortOrder
+    deviceHost?: SortOrder
+    actorId?: SortOrder
+    teamId?: SortOrder
+    buildId?: SortOrder
+    reason?: SortOrder
+    status?: SortOrder
+    createdAt?: SortOrder
+    expiresAt?: SortOrder
+    heartbeatSeconds?: SortOrder
+    lastHeartbeatAt?: SortOrder
+    allocatedPorts?: SortOrder
+    capabilityBag?: SortOrder
+  }
+
+  export type LeaseMinOrderByAggregateInput = {
+    id?: SortOrder
+    tokenHash?: SortOrder
+    deviceUdid?: SortOrder
+    deviceHost?: SortOrder
+    actorId?: SortOrder
+    teamId?: SortOrder
+    buildId?: SortOrder
+    reason?: SortOrder
+    status?: SortOrder
+    createdAt?: SortOrder
+    expiresAt?: SortOrder
+    heartbeatSeconds?: SortOrder
+    lastHeartbeatAt?: SortOrder
+    allocatedPorts?: SortOrder
+    capabilityBag?: SortOrder
+  }
+
+  export type LeaseSumOrderByAggregateInput = {
+    expiresAt?: SortOrder
+    heartbeatSeconds?: SortOrder
+    lastHeartbeatAt?: SortOrder
   }
 
   export type UserRelationFilter = {
@@ -37360,6 +38857,10 @@ export namespace Prisma {
      * @deprecated Use PortLeaseDefaultArgs instead
      */
     export type PortLeaseArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = PortLeaseDefaultArgs<ExtArgs>
+    /**
+     * @deprecated Use LeaseDefaultArgs instead
+     */
+    export type LeaseArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = LeaseDefaultArgs<ExtArgs>
     /**
      * @deprecated Use ApiKeyDefaultArgs instead
      */
