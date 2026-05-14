@@ -235,16 +235,42 @@ model LocatorEtalon {
 }
 
 model PortLease {
-  port         Int    @id
+  port         Int     @id
   purpose      String
   leasedToUdid String
+  leasedToHost String  @default("")
+  leaseId      String?
   leasedToPid  Int?
   leasedAt     Float
   expiresAt    Float
 
   @@index([purpose, expiresAt])
   @@index([leasedToUdid])
+  @@index([leaseId])
   @@index([expiresAt])
+}
+
+model Lease {
+  id               String   @id @default(cuid())
+  tokenHash        String
+  deviceUdid       String
+  deviceHost       String
+  actorId          String
+  teamId           String?
+  buildId          String?
+  reason           String?
+  status           String   @default("active")
+  createdAt        DateTime @default(now())
+  expiresAt        Float
+  heartbeatSeconds Int      @default(30)
+  lastHeartbeatAt  Float
+  allocatedPorts   String
+  capabilityBag    String
+
+  @@index([status, expiresAt])
+  @@index([status, lastHeartbeatAt, heartbeatSeconds])
+  @@index([actorId])
+  @@index([deviceUdid, deviceHost])
 }
 
 model ApiKey {

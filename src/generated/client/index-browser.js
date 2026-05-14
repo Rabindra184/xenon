@@ -326,9 +326,29 @@ exports.Prisma.PortLeaseScalarFieldEnum = {
   port: 'port',
   purpose: 'purpose',
   leasedToUdid: 'leasedToUdid',
+  leasedToHost: 'leasedToHost',
+  leaseId: 'leaseId',
   leasedToPid: 'leasedToPid',
   leasedAt: 'leasedAt',
   expiresAt: 'expiresAt'
+};
+
+exports.Prisma.LeaseScalarFieldEnum = {
+  id: 'id',
+  tokenHash: 'tokenHash',
+  deviceUdid: 'deviceUdid',
+  deviceHost: 'deviceHost',
+  actorId: 'actorId',
+  teamId: 'teamId',
+  buildId: 'buildId',
+  reason: 'reason',
+  status: 'status',
+  createdAt: 'createdAt',
+  expiresAt: 'expiresAt',
+  heartbeatSeconds: 'heartbeatSeconds',
+  lastHeartbeatAt: 'lastHeartbeatAt',
+  allocatedPorts: 'allocatedPorts',
+  capabilityBag: 'capabilityBag'
 };
 
 exports.Prisma.ApiKeyScalarFieldEnum = {
@@ -470,6 +490,7 @@ exports.Prisma.ModelName = {
   WebConfig: 'WebConfig',
   LocatorEtalon: 'LocatorEtalon',
   PortLease: 'PortLease',
+  Lease: 'Lease',
   ApiKey: 'ApiKey',
   Team: 'Team',
   SelectorState: 'SelectorState',

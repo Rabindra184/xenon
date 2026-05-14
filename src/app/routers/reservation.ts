@@ -12,6 +12,20 @@ import { roleGuard } from '../../middleware/roleGuard';
 
 const router = express.Router();
 
+// Phase 2: legacy /reservation endpoints are deprecated in favor of
+// /xenon/api/sdk/leases. Per RFC 8594, advertise the deprecation + sunset
+// date + link to the migration path on every response.
+const SUNSET_DATE = '2027-01-01T00:00:00Z';
+const LEASE_DOC_URL =
+  'https://github.com/qasecret/xenon/blob/main/docs/superpowers/specs/2026-05-14-server-side-lease-api-design.md';
+
+router.use((_req, res, next) => {
+  res.setHeader('Deprecation', 'true');
+  res.setHeader('Sunset', SUNSET_DATE);
+  res.setHeader('Link', `<${LEASE_DOC_URL}>; rel="alternate"`);
+  next();
+});
+
 // MEMBER-tier baseline: reserving devices for yourself is a Member-tier operation
 router.use(roleGuard('MEMBER'));
 

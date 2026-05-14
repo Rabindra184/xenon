@@ -12,6 +12,7 @@ import semver from 'semver';
 import { XenonDatabase } from './db';
 import { PrismaDeviceStore, PrismaPendingSessionStore, PrismaCLIArgsStore } from './prisma-store';
 import { config } from '../config';
+import { prisma } from '../prisma';
 
 /**
  * LokiJS Implementation of Device Store (Legacy/Internal)
@@ -195,8 +196,21 @@ class LokiDeviceStore implements IDeviceStore {
   }
 
   async findAndLockDevice(filterOptions: IDeviceFilterOptions): Promise<IDevice | null> {
+    // Phase 2: exclude devices held by an active lease.
+    const activeLeases = await prisma.lease.findMany({
+      where: { status: 'active' },
+      select: { deviceUdid: true, deviceHost: true },
+    });
+    const blockedKeys = new Set(
+      (activeLeases as Array<{ deviceUdid: string; deviceHost: string }>).map(
+        (l) => `${l.deviceUdid}@${l.deviceHost}`,
+      ),
+    );
+
     const devices = await this.getDevices(filterOptions);
-    const available = devices.find((d) => !d.busy && !d.userBlocked);
+    const available = devices.find(
+      (d) => !d.busy && !d.userBlocked && !blockedKeys.has(`${d.udid}@${d.host}`),
+    );
     if (available) {
       await this.updateDevice(available.udid, available.host, { busy: true });
       return available;

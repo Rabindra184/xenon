@@ -117,6 +117,33 @@ export async function allocateDeviceForSession(
   callerTeamIds?: string[],
 ): Promise<IDevice> {
   const firstMatch = Object.assign({}, capability.firstMatch?.[0] ?? {}, capability.alwaysMatch);
+
+  // Lease-bound session: SDK acquired a lease via /xenon/api/sdk/leases and
+  // passes its id through caps. Resolve directly; skip findAndLockDevice
+  // (device is already locked) and skip port allocation in XenonCapabilityManager
+  // (ports are already in firstMatch).
+  const xenonOpts = (firstMatch['xenon:options'] ?? {}) as Record<string, unknown>;
+  const leaseIdCap = typeof xenonOpts.leaseId === 'string' ? xenonOpts.leaseId : undefined;
+  if (leaseIdCap) {
+    const { LeaseService } = await import('./services/lease/LeaseService');
+    const { Container } = await import('typedi');
+    const resolved = await Container.get(LeaseService).resolve(leaseIdCap);
+    if (!resolved) {
+      throw new Error(`lease ${leaseIdCap} is not active`);
+    }
+    const leaseStore = DeviceStoreFactory.getStore();
+    const leasedDevice = await leaseStore.findDevice({
+      udid: resolved.deviceUdid,
+      host: resolved.deviceHost,
+    });
+    if (!leasedDevice) {
+      throw new Error(
+        `lease ${leaseIdCap} references missing device ${resolved.deviceUdid}@${resolved.deviceHost}`,
+      );
+    }
+    return leasedDevice;
+  }
+
   const filters = getDeviceFiltersFromCapability(firstMatch, pluginArgs);
   // callerTeamIds === undefined → unscoped (admin / auth-disabled / back-compat).
   // callerTeamIds === []        → caller has no team, only shared pool visible.

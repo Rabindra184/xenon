@@ -99,6 +99,16 @@ export class ServerManager {
       this.logger.warn(`Startup orphan reconciliation failed: ${err.message}`);
     }
 
+    // Heartbeat-based lease orphan sweep (Phase 2): reaps leases that miss
+    // 3 × heartbeatSeconds, cascades to PortLease delete + device unlock.
+    const { LeaseOrphanSweeper } = await import('./lease/LeaseOrphanSweeper');
+    const leaseSweeper = Container.get(LeaseOrphanSweeper);
+    setInterval(() => {
+      leaseSweeper.sweep().catch((err: any) => {
+        log.warn(`LeaseOrphanSweeper tick failed: ${err?.message ?? err}`);
+      });
+    }, 30_000);
+
     // Cleanup any remaining zombie sessions (cross-node fallback)
     const { cleanupZombieSessions } = await import('../dashboard/services/session-service');
     await cleanupZombieSessions(recoveredSessionIds);
