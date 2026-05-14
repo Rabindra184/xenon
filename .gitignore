@@ -22,4 +22,5 @@ temp-appium/xenon-db.json
 temp-appium/xenon-test-*.json
 # Local dev runtime artifacts
 xenon.db
+xenon.db-journal
 selfIdentity.plist
