@@ -1,0 +1,27 @@
+appId: com.xenon.control
+productName: Xenon Control
+directories:
+  output: dist
+  buildResources: build
+files:
+  - out/**/*
+  - package.json
+# Bundle the schema snapshot next to the app so SchemaService can read it at runtime.
+extraResources:
+  - from: resources
+    to: resources
+    filter:
+      - '**/*'
+mac:
+  category: public.app-category.developer-tools
+  target:
+    - dmg
+    - zip
+  hardenedRuntime: true
+  gatekeeperAssess: false
+  entitlements: build/entitlements.mac.plist
+  entitlementsInherit: build/entitlements.mac.plist
+  # Notarization is enabled by setting APPLE_ID / APPLE_APP_SPECIFIC_PASSWORD / APPLE_TEAM_ID
+  # in the environment; electron-builder picks them up automatically.
+dmg:
+  title: Xenon Control

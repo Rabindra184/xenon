@@ -1,0 +1,8 @@
+node_modules/
+out/
+dist/
+# Synced at build time from ../schema.json — not source of truth.
+resources/schema.json
+resources/schema-meta.json
+.DS_Store
+*.log
