@@ -24,7 +24,10 @@ const api = {
     list: (): Promise<Profile[]> => ipcRenderer.invoke(IPC.profilesList),
     save: (p: Profile): Promise<Profile> => ipcRenderer.invoke(IPC.profileSave, p),
     delete: (id: string): Promise<Profile[]> => ipcRenderer.invoke(IPC.profileDelete, id),
-    duplicate: (id: string): Promise<Profile | null> => ipcRenderer.invoke(IPC.profileDuplicate, id)
+    duplicate: (id: string): Promise<Profile | null> => ipcRenderer.invoke(IPC.profileDuplicate, id),
+    export: (id: string): Promise<boolean> => ipcRenderer.invoke(IPC.profileExport, id),
+    import: (): Promise<{ profiles: Profile[]; importedIds: string[] }> => ipcRenderer.invoke(IPC.profileImport),
+    exportConfigYaml: (p: Profile): Promise<boolean> => ipcRenderer.invoke(IPC.exportConfigYaml, p)
   },
 
   secrets: {
@@ -38,7 +41,9 @@ const api = {
     start: (p: Profile): Promise<ServerState> => ipcRenderer.invoke(IPC.serverStart, p),
     stop: (): Promise<void> => ipcRenderer.invoke(IPC.serverStop),
     launchPreview: (p: Profile): Promise<LaunchSpec> => ipcRenderer.invoke(IPC.launchPreview, p),
-    openDashboard: (url: string): Promise<void> => ipcRenderer.invoke(IPC.openDashboard, url)
+    openDashboard: (url: string): Promise<void> => ipcRenderer.invoke(IPC.openDashboard, url),
+    openPath: (kind: 'logs' | 'appiumHome', p?: Profile): Promise<string> =>
+      ipcRenderer.invoke(IPC.openPath, kind, p)
   },
 
   toolchain: {

@@ -25,3 +25,10 @@ mac:
   # in the environment; electron-builder picks them up automatically.
 dmg:
   title: Xenon Control
+# Update feed for electron-updater. Point this at your release host (GitHub
+# Releases shown; swap owner/repo, or use a `generic` provider with a `url`).
+# electron-builder writes app-update.yml into the bundle from this block.
+publish:
+  provider: github
+  owner: Rabindra184
+  repo: xenon

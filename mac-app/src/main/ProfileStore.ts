@@ -25,9 +25,15 @@ export function defaultProfile(name = 'Local server'): Profile {
       keepAliveTimeout: 800
     },
     secretRefs: [],
+    env: {},
     createdAt: now,
     updatedAt: now
   };
+}
+
+/** Backfill fields added in later versions so older persisted profiles stay valid. */
+function migrate(profile: Profile): Profile {
+  return { ...profile, env: profile.env ?? {}, secretRefs: profile.secretRefs ?? [] };
 }
 
 export class ProfileStore {
@@ -44,7 +50,7 @@ export class ProfileStore {
       this.store.set('profiles', [seed]);
       return [seed];
     }
-    return profiles;
+    return profiles.map(migrate);
   }
 
   save(profile: Profile): Profile {
@@ -82,6 +88,43 @@ export class ProfileStore {
   }
 
   get(id: string): Profile | null {
-    return this.store.get('profiles').find((p) => p.id === id) ?? null;
+    const found = this.store.get('profiles').find((p) => p.id === id);
+    return found ? migrate(found) : null;
+  }
+
+  /** Serialize a profile for sharing. Contains no secret values — only secretRefs names. */
+  serialize(id: string): string | null {
+    const profile = this.get(id);
+    if (!profile) return null;
+    return JSON.stringify({ type: 'xenon-control-profile', version: 1, profile }, null, 2);
+  }
+
+  /**
+   * Import one or more profiles from parsed JSON (a single profile, an array, or
+   * an exported wrapper). Each gets a fresh id so imports never collide.
+   */
+  importFrom(parsed: unknown): Profile[] {
+    const candidates: unknown[] = [];
+    if (Array.isArray(parsed)) candidates.push(...parsed);
+    else if (parsed && typeof parsed === 'object' && 'profile' in (parsed as object))
+      candidates.push((parsed as { profile: unknown }).profile);
+    else candidates.push(parsed);
+
+    const imported: Profile[] = [];
+    for (const c of candidates) {
+      if (!c || typeof c !== 'object') continue;
+      const src = c as Partial<Profile>;
+      if (!src.settings || !src.server) continue; // not a profile
+      const now = Date.now();
+      const profile: Profile = migrate({
+        ...defaultProfile(src.name || 'Imported profile'),
+        ...src,
+        id: randomUUID(),
+        createdAt: now,
+        updatedAt: now
+      } as Profile);
+      imported.push(this.save(profile));
+    }
+    return imported;
   }
 }

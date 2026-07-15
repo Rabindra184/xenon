@@ -1,9 +1,11 @@
 import { spawn, ChildProcess } from 'node:child_process';
-import { writeFileSync } from 'node:fs';
+import { createWriteStream, writeFileSync, type WriteStream } from 'node:fs';
+import path from 'node:path';
 import { EventEmitter } from 'node:events';
 import type { LogLine, Profile, ServerState } from '@shared/types';
 import { buildLaunchPlan, type BuildContext } from './LaunchBuilder';
 import { buildEnv, which } from './env';
+import { logsDir } from './paths';
 
 const READY_MARKERS = [/Appium REST http interface listener started/i, /Could not start REST http/i];
 const STOP_GRACE_MS = 8000;
@@ -14,6 +16,8 @@ export interface SupervisorDeps {
   resolveConfigYamlPath(profile: Profile): string;
   /** Decrypt the secrets a profile references. Returns a partial map. */
   resolveSecrets(profile: Profile): BuildContext['secretValues'];
+  /** Defaults for schema-required keys, merged into the generated config. */
+  requiredDefaults(): Record<string, unknown>;
 }
 
 /**
@@ -26,6 +30,7 @@ export class ProcessSupervisor extends EventEmitter {
   private state: ServerState = ProcessSupervisor.idleState();
   private logs: LogLine[] = [];
   private stopTimer: NodeJS.Timeout | null = null;
+  private logStream: WriteStream | null = null;
 
   constructor(private deps: SupervisorDeps) {
     super();
@@ -39,6 +44,7 @@ export class ProcessSupervisor extends EventEmitter {
       port: null,
       dashboardUrl: null,
       startedAt: null,
+      logFile: null,
       exitCode: null,
       exitSignal: null,
       lastError: null
@@ -69,6 +75,7 @@ export class ProcessSupervisor extends EventEmitter {
       const entry: LogLine = { ts: Date.now(), stream, text: line };
       this.logs.push(entry);
       if (this.logs.length > MAX_BUFFERED_LOGS) this.logs.shift();
+      this.logStream?.write(`${new Date(entry.ts).toISOString()} [${stream}] ${line}\n`);
       this.emit('log', entry);
       this.maybeDetectReady(line);
     }
@@ -100,8 +107,19 @@ export class ProcessSupervisor extends EventEmitter {
     const configYamlPath = this.deps.resolveConfigYamlPath(profile);
     const secretValues = this.deps.resolveSecrets(profile);
 
-    const plan = buildLaunchPlan(profile, { appiumHome, configYamlPath, secretValues });
+    const plan = buildLaunchPlan(profile, {
+      appiumHome,
+      configYamlPath,
+      secretValues,
+      requiredDefaults: this.deps.requiredDefaults()
+    });
     writeFileSync(configYamlPath, plan.spec.configYaml, 'utf8');
+
+    // Open a per-run log file for audit/support (timestamped, profile-named).
+    const safeName = profile.name.replace(/[^a-z0-9-_]+/gi, '_').slice(0, 40) || 'server';
+    const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+    const logFile = path.join(logsDir(), `${safeName}-${stamp}.log`);
+    this.logStream = createWriteStream(logFile, { flags: 'a' });
 
     this.logs = [];
     this.setState({
@@ -110,6 +128,7 @@ export class ProcessSupervisor extends EventEmitter {
       port: profile.server.port,
       dashboardUrl: null,
       startedAt: Date.now(),
+      logFile,
       exitCode: null,
       exitSignal: null,
       lastError: null
@@ -180,5 +199,7 @@ export class ProcessSupervisor extends EventEmitter {
 
   private cleanup(): void {
     this.child = null;
+    this.logStream?.end();
+    this.logStream = null;
   }
 }

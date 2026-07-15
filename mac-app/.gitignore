@@ -1,8 +1,14 @@
 node_modules/
 out/
 dist/
+# Playwright e2e output
+test-results/
+test/e2e/report/
+test/e2e/screenshots/
+playwright/.cache/
 # Synced at build time from ../schema.json — not source of truth.
 resources/schema.json
 resources/schema-meta.json
 .DS_Store
 *.log
+*.tsbuildinfo

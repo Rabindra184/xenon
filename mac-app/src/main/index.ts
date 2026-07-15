@@ -1,4 +1,5 @@
-import { app, BrowserWindow, ipcMain, Menu, nativeImage, shell, Tray } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, shell, Tray } from 'electron';
+import { readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { IPC } from '@shared/ipc';
 import { SECRET_DESCRIPTORS } from '@shared/secrets';
@@ -9,8 +10,8 @@ import { ProfileStore } from './ProfileStore';
 import { ProcessSupervisor } from './ProcessSupervisor';
 import { ToolchainInspector } from './ToolchainInspector';
 import { SetupService, type SetupOptions } from './SetupService';
-import { buildLaunchPlan } from './LaunchBuilder';
-import { defaultAppiumHome, launchConfigDir } from './paths';
+import { buildConfigYaml, buildLaunchPlan } from './LaunchBuilder';
+import { defaultAppiumHome, launchConfigDir, logsDir } from './paths';
 
 const schemaService = new SchemaService();
 const secretsStore = new SecretsStore();
@@ -36,7 +37,12 @@ function resolveSecrets(profile: Profile): Partial<Record<SecretKey, string>> {
   return out;
 }
 
-const supervisor = new ProcessSupervisor({ resolveAppiumHome, resolveConfigYamlPath, resolveSecrets });
+const supervisor = new ProcessSupervisor({
+  resolveAppiumHome,
+  resolveConfigYamlPath,
+  resolveSecrets,
+  requiredDefaults: () => schemaService.requiredDefaults()
+});
 
 function broadcast(channel: string, payload: unknown): void {
   mainWindow?.webContents.send(channel, payload);
@@ -146,6 +152,51 @@ function registerIpc(): void {
   });
   ipcMain.handle(IPC.profileDuplicate, (_e, id: string) => profileStore.duplicate(id));
 
+  ipcMain.handle(IPC.profileExport, async (_e, id: string) => {
+    const json = profileStore.serialize(id);
+    if (!json) return false;
+    const profile = profileStore.get(id);
+    const { canceled, filePath } = await dialog.showSaveDialog({
+      title: 'Export profile',
+      defaultPath: `${(profile?.name || 'profile').replace(/[^a-z0-9-_]+/gi, '_')}.xenon-profile.json`,
+      filters: [{ name: 'Xenon profile', extensions: ['json'] }]
+    });
+    if (canceled || !filePath) return false;
+    writeFileSync(filePath, json, 'utf8');
+    return true;
+  });
+
+  ipcMain.handle(IPC.profileImport, async () => {
+    const { canceled, filePaths } = await dialog.showOpenDialog({
+      title: 'Import profile(s)',
+      properties: ['openFile', 'multiSelections'],
+      filters: [{ name: 'Xenon profile', extensions: ['json'] }]
+    });
+    if (canceled) return { profiles: profileStore.list(), importedIds: [] };
+    const importedIds: string[] = [];
+    for (const fp of filePaths) {
+      try {
+        const parsed = JSON.parse(readFileSync(fp, 'utf8'));
+        for (const p of profileStore.importFrom(parsed)) importedIds.push(p.id);
+      } catch {
+        /* skip unreadable/invalid files */
+      }
+    }
+    return { profiles: profileStore.list(), importedIds };
+  });
+
+  ipcMain.handle(IPC.exportConfigYaml, async (_e, profile: Profile) => {
+    const yamlText = buildConfigYaml(profile, schemaService.requiredDefaults());
+    const { canceled, filePath } = await dialog.showSaveDialog({
+      title: 'Export Appium config',
+      defaultPath: `${profile.name.replace(/[^a-z0-9-_]+/gi, '_')}.appium.yaml`,
+      filters: [{ name: 'Appium config', extensions: ['yaml', 'yml'] }]
+    });
+    if (canceled || !filePath) return false;
+    writeFileSync(filePath, yamlText, 'utf8');
+    return true;
+  });
+
   ipcMain.handle(IPC.secretsStatus, (_e, keys: SecretKey[]) => secretsStore.status(keys));
   ipcMain.handle(IPC.secretSet, (_e, key: SecretKey, value: string) => {
     secretsStore.set(key, value);
@@ -166,11 +217,16 @@ function registerIpc(): void {
     const plan = buildLaunchPlan(profile, {
       appiumHome: resolveAppiumHome(profile),
       configYamlPath: resolveConfigYamlPath(profile),
-      secretValues: {} // preview never reveals values
+      secretValues: {}, // preview never reveals values
+      requiredDefaults: schemaService.requiredDefaults()
     });
     return plan.spec;
   });
   ipcMain.handle(IPC.openDashboard, (_e, url: string) => shell.openExternal(url));
+  ipcMain.handle(IPC.openPath, (_e, kind: 'logs' | 'appiumHome', profile?: Profile) => {
+    const target = kind === 'logs' ? logsDir() : resolveAppiumHome(profile ?? ({ server: { appiumHome: '' } } as Profile));
+    return shell.openPath(target);
+  });
 
   ipcMain.handle(IPC.toolchainCheck, () => toolchain.checkAll());
   ipcMain.handle(IPC.preflight, (_e, profile: Profile) => toolchain.preflight(profile, resolveAppiumHome(profile)));
@@ -182,6 +238,26 @@ function registerIpc(): void {
       drivers: opts.drivers ?? ['uiautomator2', 'xcuitest']
     });
   });
+}
+
+/**
+ * Check for updates on launch. No-op in dev and when no publish channel is
+ * configured; electron-updater reads the update feed from the packaged
+ * app-update.yml (populated by electron-builder's `publish` config). Failures
+ * are swallowed so a missing/unreachable feed never blocks startup.
+ */
+async function maybeCheckForUpdates(): Promise<void> {
+  if (!app.isPackaged) return;
+  try {
+    const { autoUpdater } = await import('electron-updater');
+    autoUpdater.autoDownload = false;
+    autoUpdater.on('update-downloaded', () => {
+      broadcast(IPC.evtLog, { ts: Date.now(), stream: 'system', text: 'Update downloaded — restart to apply.' });
+    });
+    await autoUpdater.checkForUpdatesAndNotify();
+  } catch {
+    /* no update feed configured or offline — ignore */
+  }
 }
 
 // Single-instance lock so the tray/server stay authoritative.
@@ -202,6 +278,7 @@ if (!app.requestSingleInstanceLock()) {
     registerIpc();
     createTray();
     createWindow();
+    void maybeCheckForUpdates();
 
     app.on('activate', () => {
       if (BrowserWindow.getAllWindows().length === 0) createWindow();

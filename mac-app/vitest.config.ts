@@ -10,6 +10,8 @@ export default defineConfig({
   },
   test: {
     environment: 'node',
-    include: ['test/**/*.spec.ts']
+    // Unit tests only; Playwright drives the e2e suite under test/e2e.
+    include: ['test/*.spec.ts'],
+    exclude: ['test/e2e/**', 'node_modules/**']
   }
 });

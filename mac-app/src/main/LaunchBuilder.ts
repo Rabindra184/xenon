@@ -23,6 +23,12 @@ export interface BuildContext {
   configYamlPath: string;
   /** Decrypted secret values keyed by SecretKey. Missing keys are simply not injected. */
   secretValues: Partial<Record<SecretKey, string>>;
+  /**
+   * Defaults for schema-required keys. Merged UNDER the profile's settings so the
+   * generated config always satisfies Appium's `required` validation (a partial
+   * --config is rejected at startup). See SchemaService.requiredDefaults().
+   */
+  requiredDefaults?: Record<string, unknown>;
 }
 
 /** Strip secret-bearing and empty values from the settings before serialization. */
@@ -37,7 +43,11 @@ function sanitizeSettings(settings: SettingsValues): SettingsValues {
 }
 
 /** Build the Appium config-file document from a profile. */
-export function buildConfigYaml(profile: Profile): string {
+export function buildConfigYaml(profile: Profile, requiredDefaults: Record<string, unknown> = {}): string {
+  // Required-key defaults sit UNDERNEATH the user's settings so the config is
+  // always complete (Appium rejects a --config missing any required property),
+  // while any value the user changed still wins.
+  const merged = { ...requiredDefaults, ...profile.settings };
   const doc = {
     server: {
       port: profile.server.port,
@@ -45,7 +55,7 @@ export function buildConfigYaml(profile: Profile): string {
       'keep-alive-timeout': profile.server.keepAliveTimeout,
       'use-plugins': ['xenon'],
       plugin: {
-        xenon: sanitizeSettings(profile.settings)
+        xenon: sanitizeSettings(merged)
       }
     }
   };
@@ -54,12 +64,15 @@ export function buildConfigYaml(profile: Profile): string {
 
 /** Turn a profile + secrets into a full, runnable launch plan. Pure — writes nothing. */
 export function buildLaunchPlan(profile: Profile, ctx: BuildContext): LaunchPlan {
-  const configYaml = buildConfigYaml(profile);
+  const configYaml = buildConfigYaml(profile, ctx.requiredDefaults ?? {});
   const args = ['server', '--config', ctx.configYamlPath];
 
-  // Secrets → environment. Only inject the keys this profile references AND that
-  // actually have a stored value.
+  // Environment layering: APPIUM_HOME, then the profile's extra (non-secret) env
+  // vars, then secrets last so a secret always wins over a same-named plain var.
   const env: Record<string, string> = { APPIUM_HOME: ctx.appiumHome };
+  for (const [k, v] of Object.entries(profile.env ?? {})) {
+    if (k && v !== undefined && v !== null) env[k] = String(v);
+  }
   for (const key of profile.secretRefs) {
     const value = ctx.secretValues[key];
     if (value) env[key] = value;

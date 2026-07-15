@@ -10,6 +10,7 @@ function makeProfile(overrides: Partial<Profile> = {}): Profile {
     settings: { platform: 'android', enableDashboard: true, maxSessions: 4 },
     server: { port: 4723, basePath: '/wd/hub', appiumHome: '', keepAliveTimeout: 800 },
     secretRefs: [],
+    env: {},
     createdAt: 0,
     updatedAt: 0,
     ...overrides
@@ -42,6 +43,16 @@ describe('buildConfigYaml', () => {
     expect(doc.server.plugin.xenon.hub).toBeUndefined();
     expect('aiModel' in doc.server.plugin.xenon).toBe(false);
   });
+
+  it('fills required-key defaults so Appium --config validation passes, user values winning', () => {
+    // Appium rejects a --config missing any schema-required property.
+    const requiredDefaults = { enableJsonLogging: false, maxSessions: 8, platform: 'both' };
+    const p = makeProfile({ settings: { platform: 'android' } }); // overrides one default
+    const doc = yaml.load(buildConfigYaml(p, requiredDefaults)) as any;
+    expect(doc.server.plugin.xenon.enableJsonLogging).toBe(false); // required default present
+    expect(doc.server.plugin.xenon.maxSessions).toBe(8); // required default present
+    expect(doc.server.plugin.xenon.platform).toBe('android'); // user value wins over default
+  });
 });
 
 describe('buildLaunchPlan', () => {
@@ -54,6 +65,20 @@ describe('buildLaunchPlan', () => {
     expect(plan.command).toBe('appium');
     expect(plan.args).toEqual(['server', '--config', '/tmp/launch/p1.yaml']);
     expect(plan.env.APPIUM_HOME).toBe('/tmp/ah');
+  });
+
+  it('merges profile env vars, with secrets winning over same-named plain vars', () => {
+    const p = makeProfile({
+      env: { OTEL_EXPORTER_OTLP_ENDPOINT: 'http://otel:4318', XENON_HUB_TOKEN: 'plain' },
+      secretRefs: ['XENON_HUB_TOKEN']
+    });
+    const plan = buildLaunchPlan(p, {
+      appiumHome: '/tmp/ah',
+      configYamlPath: '/tmp/p.yaml',
+      secretValues: { XENON_HUB_TOKEN: 'secret-wins' }
+    });
+    expect(plan.env.OTEL_EXPORTER_OTLP_ENDPOINT).toBe('http://otel:4318');
+    expect(plan.env.XENON_HUB_TOKEN).toBe('secret-wins'); // secret overrides the plain env var
   });
 
   it('injects only referenced secrets that have a value, into env (not the spec values)', () => {

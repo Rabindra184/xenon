@@ -9,6 +9,9 @@ export const IPC = {
   profileSave: 'profiles:save',
   profileDelete: 'profiles:delete',
   profileDuplicate: 'profiles:duplicate',
+  profileExport: 'profiles:export',
+  profileImport: 'profiles:import',
+  exportConfigYaml: 'profiles:exportConfigYaml',
   // secrets (write + status only; raw values never returned to renderer)
   secretsStatus: 'secrets:status',
   secretSet: 'secrets:set',
@@ -19,6 +22,7 @@ export const IPC = {
   serverState: 'server:state',
   launchPreview: 'server:launchPreview',
   openDashboard: 'server:openDashboard',
+  openPath: 'server:openPath',
   // toolchain / setup
   toolchainCheck: 'toolchain:check',
   preflight: 'toolchain:preflight',

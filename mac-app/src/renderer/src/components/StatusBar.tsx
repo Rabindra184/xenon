@@ -1,13 +1,16 @@
 import type { PreflightResult, ServerState } from '@shared/types';
-import { ExternalLink, Loader2, Play, Square } from 'lucide-react';
+import { Eye, ExternalLink, Loader2, Play, Square } from 'lucide-react';
 import { cn } from '../cn';
 
 interface Props {
   state: ServerState;
   preflight: PreflightResult | null;
   busy: boolean;
+  /** Count of blocking validation issues; > 0 disables Start. */
+  invalidCount: number;
   onStart: () => void;
   onStop: () => void;
+  onPreview: () => void;
 }
 
 const STATUS_META: Record<ServerState['status'], { label: string; dot: string }> = {
@@ -18,10 +21,10 @@ const STATUS_META: Record<ServerState['status'], { label: string; dot: string }>
   crashed: { label: 'Crashed', dot: 'bg-rose-500' }
 };
 
-export function StatusBar({ state, preflight, busy, onStart, onStop }: Props) {
+export function StatusBar({ state, preflight, busy, invalidCount, onStart, onStop, onPreview }: Props) {
   const meta = STATUS_META[state.status];
   const active = state.status === 'running' || state.status === 'starting' || state.status === 'stopping';
-  const blocked = preflight ? !preflight.ok : false;
+  const blocked = (preflight ? !preflight.ok : false) || invalidCount > 0;
 
   return (
     <div className="flex items-center justify-between gap-3 border-t border-slate-200 bg-slate-50 px-4 py-2.5 dark:border-slate-700 dark:bg-slate-900/60">
@@ -37,6 +40,20 @@ export function StatusBar({ state, preflight, busy, onStart, onStop }: Props) {
       </div>
 
       <div className="flex items-center gap-2">
+        {invalidCount > 0 && !active && (
+          <span className="text-xs font-medium text-rose-500">
+            {invalidCount} validation {invalidCount === 1 ? 'issue' : 'issues'}
+          </span>
+        )}
+        {!active && (
+          <button
+            data-testid="preview-button"
+            onClick={onPreview}
+            className="inline-flex items-center gap-1.5 rounded-md border border-slate-300 px-2.5 py-1.5 text-sm dark:border-slate-600"
+          >
+            <Eye size={14} /> Preview
+          </button>
+        )}
         {state.status === 'running' && state.dashboardUrl && (
           <button
             onClick={() => window.xenon.server.openDashboard(state.dashboardUrl!)}
@@ -47,6 +64,7 @@ export function StatusBar({ state, preflight, busy, onStart, onStop }: Props) {
         )}
         {active ? (
           <button
+            data-testid="stop-button"
             onClick={onStop}
             disabled={busy || state.status === 'stopping'}
             className="inline-flex items-center gap-1.5 rounded-md bg-rose-600 px-3 py-1.5 text-sm font-medium text-white disabled:opacity-50"
@@ -55,6 +73,7 @@ export function StatusBar({ state, preflight, busy, onStart, onStop }: Props) {
           </button>
         ) : (
           <button
+            data-testid="start-button"
             onClick={onStart}
             disabled={busy || blocked}
             title={blocked ? 'Resolve preflight blockers first' : undefined}

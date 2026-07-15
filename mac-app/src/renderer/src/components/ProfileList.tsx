@@ -17,7 +17,12 @@ export function ProfileList({ profiles, activeId, runningId, onSelect, onCreate,
     <div className="flex flex-col">
       <div className="mb-2 flex items-center justify-between px-1">
         <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">Profiles</span>
-        <button onClick={onCreate} title="New profile" className="text-slate-400 hover:text-accent">
+        <button
+          data-testid="new-profile"
+          onClick={onCreate}
+          title="New profile"
+          className="text-slate-400 hover:text-accent"
+        >
           <Plus size={16} />
         </button>
       </div>

@@ -25,6 +25,11 @@ export function launchConfigDir(): string {
   return ensure(path.join(dataDir(), 'launch-configs'));
 }
 
+/** Directory where per-run server log files are written for audit/support. */
+export function logsDir(): string {
+  return ensure(path.join(dataDir(), 'logs'));
+}
+
 /** Location of the bundled schema snapshot, resolved for both dev and packaged builds. */
 export function resourcesDir(): string {
   // In dev, resources/ lives at the project root; when packaged, electron-builder

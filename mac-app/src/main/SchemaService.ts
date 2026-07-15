@@ -22,4 +22,21 @@ export class SchemaService {
     }
     return { schema: this.schema, meta: this.meta! };
   }
+
+  /**
+   * Defaults for every property Appium marks as `required`. Appium validates a
+   * --config file against the full schema (including `required`), so the
+   * generated launch config MUST carry all required keys or the server refuses
+   * to start. Filling them from schema defaults also makes each launch config
+   * complete and reproducible.
+   */
+  requiredDefaults(): Record<string, unknown> {
+    const { schema } = this.load();
+    const out: Record<string, unknown> = {};
+    for (const key of schema.required ?? []) {
+      const prop = schema.properties[key];
+      if (prop && prop.default !== undefined) out[key] = prop.default;
+    }
+    return out;
+  }
 }

@@ -7,6 +7,8 @@ interface Props {
   schema: XenonSchema;
   values: SettingsValues;
   onChange: (key: string, value: unknown) => void;
+  /** Validation messages keyed by setting key, shown inline under the field. */
+  issues?: Record<string, string>;
 }
 
 function labelFor(field: FormField) {
@@ -130,7 +132,12 @@ function FieldControl({
   }
 }
 
-export function SettingsForm({ schema, values, onChange }: Props) {
+function ErrorText({ msg }: { msg?: string }) {
+  if (!msg) return null;
+  return <p className="mt-1 text-xs font-medium text-rose-600 dark:text-rose-400">{msg}</p>;
+}
+
+export function SettingsForm({ schema, values, onChange, issues = {} }: Props) {
   const sections = useMemo(() => buildForm(schema), [schema]);
 
   return (
@@ -176,6 +183,7 @@ export function SettingsForm({ schema, values, onChange }: Props) {
                 <div key={field.key}>
                   {labelFor(field)}
                   <FieldControl field={field} value={values[field.key]} onChange={(v) => onChange(field.key, v)} />
+                  <ErrorText msg={issues[field.key]} />
                   <Help text={field.description} />
                 </div>
               );

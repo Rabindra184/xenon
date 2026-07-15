@@ -49,8 +49,18 @@ export interface Profile {
   };
   /** Which secret keys this profile expects to inject (values live in SecretsStore). */
   secretRefs: SecretKey[];
+  /** Extra non-secret environment variables (e.g. OTEL_*), injected at launch. */
+  env: Record<string, string>;
   createdAt: number;
   updatedAt: number;
+}
+
+/** A single field validation problem surfaced in the UI and used to gate Start. */
+export interface ValidationIssue {
+  /** Setting key or a synthetic key like 'server.port'. */
+  path: string;
+  label: string;
+  message: string;
 }
 
 /** Secret identifiers. Values are stored encrypted via Electron safeStorage, keyed by these. */
@@ -81,6 +91,8 @@ export interface ServerState {
   /** Full dashboard URL once known, e.g. http://127.0.0.1:4723/xenon/. */
   dashboardUrl: string | null;
   startedAt: number | null;
+  /** Absolute path to the per-run log file for this launch, when active. */
+  logFile: string | null;
   /** Populated on crash/stop. */
   exitCode: number | null;
   exitSignal: string | null;

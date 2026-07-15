@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import type {
   LogLine,
   PreflightResult,
@@ -11,16 +11,20 @@ import type {
 } from '@shared/types';
 import { SettingsForm } from './components/SettingsForm';
 import { SecretsPanel } from './components/SecretsPanel';
+import { EnvVarsEditor } from './components/EnvVarsEditor';
 import { HealthPanel } from './components/HealthPanel';
 import { LogConsole } from './components/LogConsole';
 import { ProfileList } from './components/ProfileList';
 import { StatusBar } from './components/StatusBar';
+import { LaunchPreview } from './components/LaunchPreview';
+import { validate } from './validation';
 import { cn } from './cn';
+import { Download, FolderOpen, Upload } from 'lucide-react';
 
 type Tab = 'settings' | 'secrets' | 'health' | 'logs';
 const TABS: { id: Tab; label: string }[] = [
   { id: 'settings', label: 'Settings' },
-  { id: 'secrets', label: 'Secrets' },
+  { id: 'secrets', label: 'Secrets & Env' },
   { id: 'health', label: 'Health' },
   { id: 'logs', label: 'Logs' }
 ];
@@ -32,6 +36,7 @@ const IDLE_STATE: ServerState = {
   port: null,
   dashboardUrl: null,
   startedAt: null,
+  logFile: null,
   exitCode: null,
   exitSignal: null,
   lastError: null
@@ -50,6 +55,7 @@ export default function App() {
   const [preflight, setPreflight] = useState<PreflightResult | null>(null);
   const [busy, setBusy] = useState(false);
   const [installing, setInstalling] = useState(false);
+  const [previewOpen, setPreviewOpen] = useState(false);
 
   // Initial load + event subscriptions.
   useEffect(() => {
@@ -113,6 +119,7 @@ export default function App() {
       settings: { platform: 'both', enableDashboard: true },
       server: { port: 4723, basePath: '/wd/hub', appiumHome: '', keepAliveTimeout: 800 },
       secretRefs: [],
+      env: {},
       createdAt: now,
       updatedAt: now
     };
@@ -184,6 +191,21 @@ export default function App() {
     }
   };
 
+  const importProfiles = async () => {
+    const { profiles: list, importedIds } = await window.xenon.profiles.import();
+    setProfiles(list);
+    if (importedIds.length) setActiveId(importedIds[0]);
+  };
+  const updateEnv = (env: Record<string, string>) => {
+    if (draft) persist({ ...draft, env });
+  };
+
+  const validationIssues = useMemo(() => (schema && draft ? validate(schema, draft) : []), [schema, draft]);
+  const settingIssueMap = useMemo(
+    () => Object.fromEntries(validationIssues.map((i) => [i.path, i.message])),
+    [validationIssues]
+  );
+
   const runningId = serverState.status !== 'stopped' && serverState.status !== 'crashed' ? serverState.profileId : null;
   const ready = schema && draft;
 
@@ -226,11 +248,28 @@ export default function App() {
             <>
               {/* Profile header */}
               <div className="border-b border-slate-200 px-6 py-3 dark:border-slate-800">
-                <input
-                  value={draft.name}
-                  onChange={(e) => persist({ ...draft, name: e.target.value })}
-                  className="w-full bg-transparent text-lg font-semibold outline-none"
-                />
+                <div className="flex items-center gap-3">
+                  <input
+                    data-testid="profile-name"
+                    value={draft.name}
+                    onChange={(e) => persist({ ...draft, name: e.target.value })}
+                    className="min-w-0 flex-1 bg-transparent text-lg font-semibold outline-none"
+                  />
+                  <div className="titlebar-no-drag flex shrink-0 items-center gap-1">
+                    <HeaderBtn onClick={() => window.xenon.profiles.export(draft.id)} icon={<Download size={14} />} label="Export" />
+                    <HeaderBtn onClick={importProfiles} icon={<Upload size={14} />} label="Import" />
+                    <HeaderBtn
+                      onClick={() => window.xenon.server.openPath('appiumHome', draft)}
+                      icon={<FolderOpen size={14} />}
+                      label="APPIUM_HOME"
+                    />
+                    <HeaderBtn
+                      onClick={() => window.xenon.server.openPath('logs')}
+                      icon={<FolderOpen size={14} />}
+                      label="Logs"
+                    />
+                  </div>
+                </div>
                 <div className="mt-2 flex flex-wrap items-center gap-4 text-xs text-slate-500">
                   <label className="flex items-center gap-1.5">
                     Port
@@ -283,14 +322,36 @@ export default function App() {
               {/* Tab content */}
               <div className="min-h-0 flex-1 overflow-auto px-6 py-5">
                 {tab === 'settings' && (
-                  <SettingsForm schema={schema} values={draft.settings} onChange={updateSetting} />
+                  <>
+                    {validationIssues.length > 0 && (
+                      <div className="mb-4 rounded-md border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700 dark:border-rose-900 dark:bg-rose-950/40 dark:text-rose-300">
+                        <strong>{validationIssues.length} validation {validationIssues.length === 1 ? 'issue' : 'issues'}:</strong>
+                        <ul className="mt-1 list-disc pl-5">
+                          {validationIssues.map((i, idx) => (
+                            <li key={idx}>
+                              {i.label}: {i.message}
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                    <SettingsForm
+                      schema={schema}
+                      values={draft.settings}
+                      onChange={updateSetting}
+                      issues={settingIssueMap}
+                    />
+                  </>
                 )}
                 {tab === 'secrets' && (
-                  <SecretsPanel
-                    descriptors={secretDescriptors}
-                    selected={draft.secretRefs}
-                    onToggleSelected={toggleSecretRef}
-                  />
+                  <div className="space-y-6">
+                    <SecretsPanel
+                      descriptors={secretDescriptors}
+                      selected={draft.secretRefs}
+                      onToggleSelected={toggleSecretRef}
+                    />
+                    <EnvVarsEditor env={draft.env ?? {}} onChange={updateEnv} />
+                  </div>
                 )}
                 {tab === 'health' && (
                   <>
@@ -323,11 +384,27 @@ export default function App() {
             state={serverState}
             preflight={runningId ? null : preflight}
             busy={busy}
+            invalidCount={validationIssues.length}
             onStart={handleStart}
             onStop={handleStop}
+            onPreview={() => setPreviewOpen(true)}
           />
         </main>
       </div>
+
+      {previewOpen && draft && <LaunchPreview profile={draft} onClose={() => setPreviewOpen(false)} />}
     </div>
+  );
+}
+
+function HeaderBtn({ onClick, icon, label }: { onClick: () => void; icon: ReactNode; label: string }) {
+  return (
+    <button
+      onClick={onClick}
+      className="inline-flex items-center gap-1 rounded-md border border-slate-200 px-2 py-1 text-xs text-slate-600 hover:bg-slate-100 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
+    >
+      {icon}
+      {label}
+    </button>
   );
 }

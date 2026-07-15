@@ -15,6 +15,28 @@ It owns the launch lifecycle and hands off to the existing dashboard once the se
   with a preflight gate that blocks a doomed launch.
 - **First-run setup** — install the Xenon plugin + platform drivers into `APPIUM_HOME`.
 
+### Enterprise features
+
+- **Launch preview (dry-run)** — see the exact `appium` command, `APPIUM_HOME`, env-var
+  **names** (never values), and the fully-resolved config YAML before starting. Copy or save it.
+- **Config validation** — schema-derived checks (numeric ranges like `maxConcurrentRecordings`
+  1–16, port 1–65535, base-path format, hub URL) surface inline and **gate Start**.
+- **Profile import/export** — share standardized launch configs across a lab as JSON
+  (secrets are never exported — only the *names* of secrets a profile injects).
+- **Config export** — write the generated Appium config YAML to a file for CI or audit.
+- **Extra env vars** — per-profile arbitrary `KEY=VALUE` (e.g. `OTEL_*`), injected at launch.
+- **Per-run log files** — every launch is written to a timestamped file under the app's
+  `logs/` folder; one-click "Open logs / APPIUM_HOME" from the header.
+- **Auto-update** — `electron-updater` wired for packaged builds (set a `publish` channel in
+  `electron-builder.yml`).
+
+### Config completeness (important)
+
+Appium validates a `--config` file against `schema.json`'s full `required` list, so a partial
+config is rejected at startup. LaunchBuilder therefore merges **schema defaults for all
+required keys** underneath the profile's settings — every generated config is complete and
+reproducible, and any value the user changed still wins.
+
 ## Architecture
 
 Standard Electron three-layer split. All Node / child-process / secret logic lives in the
@@ -51,7 +73,8 @@ cd mac-app
 npm install          # also rebuilds native deps for Electron
 npm run dev          # syncs schema.json, starts electron-vite dev
 npm run typecheck    # tsc for main + renderer
-npm test             # vitest (LaunchBuilder + schema->form model)
+npm test             # vitest unit tests (LaunchBuilder + schema->form model)
+npm run test:e2e     # Playwright drives the REAL built app (out/) end-to-end
 npm run build        # production build into out/
 npm run dist         # build + package a signed/notarized DMG (needs Apple creds)
 ```
