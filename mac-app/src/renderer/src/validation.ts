@@ -9,6 +9,22 @@ function isNum(v: unknown): v is number {
   return typeof v === 'number' && Number.isFinite(v);
 }
 
+export type PortParseResult = { ok: true; value: number } | { ok: false; error: string };
+
+/**
+ * Parse the port input's draft text. Keeps NaN out of the profile: the field
+ * commits only valid integers, and invalid drafts surface as an error instead.
+ */
+export function parsePort(text: string): PortParseResult {
+  const t = text.trim();
+  if (!t) return { ok: false, error: 'Port is required.' };
+  const n = Number(t);
+  if (!Number.isInteger(n) || n < 1 || n > 65535) {
+    return { ok: false, error: 'Port must be an integer between 1 and 65535.' };
+  }
+  return { ok: true, value: n };
+}
+
 export function validate(schema: XenonSchema, profile: Profile): ValidationIssue[] {
   const issues: ValidationIssue[] = [];
 
