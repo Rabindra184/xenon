@@ -1,0 +1,47 @@
+{
+  "name": "xenon-control",
+  "version": "0.1.0",
+  "description": "Desktop launcher & configuration app for the Xenon Appium plugin",
+  "main": "./out/main/index.js",
+  "author": "Xenon",
+  "license": "MIT",
+  "private": true,
+  "scripts": {
+    "sync:schema": "node scripts/sync-schema.mjs",
+    "dev": "npm run sync:schema && electron-vite dev",
+    "build": "npm run sync:schema && electron-vite build",
+    "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:e2e": "npm run build && playwright test",
+    "dist": "npm run build && electron-builder --mac",
+    "postinstall": "electron-builder install-app-deps"
+  },
+  "dependencies": {
+    "electron-store": "^8.2.0",
+    "electron-updater": "^6.3.9",
+    "js-yaml": "^4.1.0"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.61.1",
+    "@types/js-yaml": "^4.0.9",
+    "@types/node": "^20.11.0",
+    "@types/react": "^18.2.48",
+    "@types/react-dom": "^18.2.18",
+    "@vitejs/plugin-react": "^4.2.1",
+    "autoprefixer": "^10.4.17",
+    "clsx": "^2.1.1",
+    "electron": "^33.2.0",
+    "electron-builder": "^25.1.8",
+    "electron-vite": "^2.3.0",
+    "lucide-react": "^0.555.0",
+    "postcss": "^8.4.33",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "tailwind-merge": "^3.4.0",
+    "tailwindcss": "^3.4.19",
+    "typescript": "^5.5.4",
+    "vite": "^5.0.12",
+    "vitest": "^1.6.1"
+  }
+}

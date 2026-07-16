@@ -1,0 +1,179 @@
+import type { JsonSchemaProperty, XenonSchema } from '@shared/types';
+
+// Turns schema.json into a sectioned, typed form model. The section grouping
+// mirrors docs/server-args.md; anything not explicitly mapped lands in "Advanced".
+
+export type FieldKind = 'toggle' | 'number' | 'text' | 'select' | 'stringList' | 'nested' | 'json';
+
+export interface FormField {
+  key: string;
+  label: string;
+  kind: FieldKind;
+  description?: string;
+  required: boolean;
+  default?: unknown;
+  enum?: string[];
+  min?: number;
+  max?: number;
+  /** For nested objects (autowait, interceptor): the sub-fields. */
+  children?: FormField[];
+  /** Secret-bearing settings are hidden from the form and handled in the Secrets panel. */
+  secret?: boolean;
+}
+
+export interface FormSection {
+  id: string;
+  title: string;
+  fields: FormField[];
+}
+
+const SECTION_ORDER: Array<{ id: string; title: string; keys: string[] }> = [
+  {
+    id: 'platform',
+    title: 'Platform & Discovery',
+    keys: [
+      'platform',
+      'androidDeviceType',
+      'iosDeviceType',
+      'simulators',
+      'emulators',
+      'bootedSimulators',
+      'bootedEmulators',
+      'adbRemote',
+      'removeDevicesFromDatabaseBeforeRunningThePlugin',
+      'skipChromeDownload'
+    ]
+  },
+  { id: 'network', title: 'Networking', keys: ['bindHostOrIp', 'remoteMachineProxyIP', 'proxy'] },
+  {
+    id: 'session',
+    title: 'Session Control',
+    keys: [
+      'maxSessions',
+      'deviceAvailabilityTimeoutMs',
+      'deviceAvailabilityQueryIntervalMs',
+      'newCommandTimeoutSec',
+      'sessionHeartbeatIntervalMs'
+    ]
+  },
+  {
+    id: 'hub',
+    title: 'Hub ↔ Node',
+    keys: [
+      'hub',
+      'sendNodeDevicesToHubIntervalMs',
+      'checkStaleDevicesIntervalMs',
+      'checkBlockedDevicesIntervalMs',
+      'tlsRejectUnauthorized'
+    ]
+  },
+  { id: 'dashboard', title: 'Dashboard & Auth', keys: ['enableDashboard', 'authDisabled'] },
+  { id: 'health', title: 'Health & Lifecycle', keys: ['healthCheckIntervalMs', 'healthCheckSchedule'] },
+  {
+    id: 'retention',
+    title: 'Data Retention',
+    keys: ['buildCleanupDays', 'buildCleanupMaxCount', 'buildCleanupSchedule', 'deleteBuildAssets']
+  },
+  { id: 'db', title: 'Database', keys: ['databaseProvider', 'databaseUrl'] },
+  {
+    id: 'ai',
+    title: 'AI & Self-Healing',
+    keys: ['enableSelfHealing', 'aiProvider', 'aiModel', 'aiBaseUrl', 'geminiApiKey', 'openaiApiKey', 'anthropicApiKey']
+  },
+  { id: 'streaming', title: 'Streaming & Recording', keys: ['maxConcurrentRecordings', 'recordingsAssetsPath'] },
+  { id: 'autowait', title: 'Autowait', keys: ['autowait'] },
+  { id: 'interceptor', title: 'Network Interceptor', keys: ['interceptor'] },
+  { id: 'misc', title: 'Misc', keys: ['enableJsonLogging'] }
+];
+
+// These plugin args carry secrets; the launcher injects them as env vars via the
+// Secrets panel, so they are flagged (and skipped) in the settings form.
+const SECRET_KEYS = new Set(['geminiApiKey', 'openaiApiKey', 'anthropicApiKey']);
+
+function typeOf(p: JsonSchemaProperty): string | undefined {
+  return Array.isArray(p.type) ? p.type.find((t) => t !== 'null') : p.type;
+}
+
+function humanize(key: string): string {
+  return key
+    .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
+    .replace(/\bMs\b/, '(ms)')
+    .replace(/\bIp\b/, 'IP')
+    .replace(/^./, (c) => c.toUpperCase());
+}
+
+function fieldFromProperty(
+  key: string,
+  prop: JsonSchemaProperty,
+  required: Set<string>,
+  definitions: Record<string, JsonSchemaProperty>
+): FormField {
+  const base: FormField = {
+    key,
+    label: humanize(key),
+    kind: 'text',
+    description: prop.description,
+    required: required.has(key),
+    default: prop.default
+  };
+
+  if (SECRET_KEYS.has(key)) return { ...base, kind: 'text', secret: true };
+  if (prop.enum) return { ...base, kind: 'select', enum: prop.enum };
+
+  const t = typeOf(prop);
+  if (t === 'boolean') return { ...base, kind: 'toggle' };
+  if (t === 'number' || t === 'integer') return { ...base, kind: 'number', min: prop.minimum, max: prop.maximum };
+  if (t === 'string') return { ...base, kind: 'text' };
+
+  if (t === 'array') {
+    const items = prop.items as JsonSchemaProperty | undefined;
+    if (items && typeOf(items) === 'string') return { ...base, kind: 'stringList' };
+    // arrays of objects (simulators/emulators) → JSON editor for v1.
+    return { ...base, kind: 'json' };
+  }
+
+  if (t === 'object') {
+    // Resolve known nested definitions (autowait, interceptor) into sub-fields.
+    const defName = key.charAt(0).toUpperCase() + key.slice(1) + 'Config';
+    const def = definitions[defName];
+    if (def?.properties) {
+      const children = Object.entries(def.properties).map(([ck, cp]) =>
+        fieldFromProperty(ck, cp as JsonSchemaProperty, new Set(), definitions)
+      );
+      return { ...base, kind: 'nested', children };
+    }
+    return { ...base, kind: 'json' };
+  }
+
+  return base;
+}
+
+export function buildForm(schema: XenonSchema): FormSection[] {
+  const required = new Set(schema.required ?? []);
+  const definitions = schema.definitions ?? {};
+  const claimed = new Set<string>();
+  const sections: FormSection[] = [];
+
+  for (const sec of SECTION_ORDER) {
+    const fields: FormField[] = [];
+    for (const key of sec.keys) {
+      const prop = schema.properties[key];
+      if (!prop) continue;
+      claimed.add(key);
+      fields.push(fieldFromProperty(key, prop, required, definitions));
+    }
+    if (fields.length) sections.push({ id: sec.id, title: sec.title, fields });
+  }
+
+  // Sweep any unmapped properties into Advanced so the form never silently drops config.
+  const leftovers = Object.keys(schema.properties).filter((k) => !claimed.has(k));
+  if (leftovers.length) {
+    sections.push({
+      id: 'advanced',
+      title: 'Advanced',
+      fields: leftovers.map((k) => fieldFromProperty(k, schema.properties[k], required, definitions))
+    });
+  }
+
+  return sections;
+}
