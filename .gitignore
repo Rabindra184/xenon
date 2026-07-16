@@ -20,6 +20,9 @@ docs/reference
 # Runtime Loki DBs written under APPIUM_HOME (see src/data-service/db.ts)
 temp-appium/xenon-db.json
 temp-appium/xenon-test-*.json
+# Local hub/node test rigs — regenerable via npm install (file:../.. link + driver)
+temp-appium/hub/
+temp-appium/node/
 # Local dev runtime artifacts
 xenon.db
 xenon.db-journal
