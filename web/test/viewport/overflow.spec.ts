@@ -172,6 +172,56 @@ for (const width of WIDTHS) {
   }
 }
 
+// Landscape is pure client state (setIsPortrait(false)); no device command is
+// sent, so it runs against the mock. The portrait canvas is narrow and never
+// overflowed — the clip only appears in landscape, which the matrix above never
+// enters. Cover both ends of the supported range (before the fix: 113px LEFT clip
+// @1280, 33px LEFT clip @1440).
+for (const width of [1280, 1440]) {
+  test(`no overflow in LANDSCAPE at ${width}px on the control page`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 900 });
+    await page.goto('/xenon/devices/MOCK-ANDROID-01/control');
+    await page.waitForLoadState('networkidle');
+
+    // Enter landscape via the footer toggle (pure UI state, no backend call). The
+    // PORTRAIT button also exists; hasText 'LANDSCAPE' selects only the landscape one.
+    await page.locator('.footer-action-btn', { hasText: 'LANDSCAPE' }).click();
+
+    // Non-vacuous gate: prove landscape engaged AND the WIDE canvas painted, else the
+    // rect scan could pass on a still-portrait (narrow) or zero-size canvas — the exact
+    // false negative this guard must prevent.
+    const canvas = page.locator('.device-stream-canvas.landscape');
+    await expect(canvas).toBeVisible();
+    const box = await canvas.boundingBox();
+    expect(box, 'landscape canvas must have a measurable box').not.toBeNull();
+    // A landscape phone is wider than tall; width <= height means the toggle didn't take.
+    expect(box!.width).toBeGreaterThan(box!.height);
+
+    // Same both-edges rect scan as the matrix (body{overflow:hidden} makes
+    // scrollWidth === innerWidth, so document scroll can't detect this).
+    const offenders = await page.evaluate(() => {
+      const vw = window.innerWidth;
+      return Array.from(document.querySelectorAll('body *'))
+        .map((el) => ({ el, r: el.getBoundingClientRect() }))
+        .filter((x) => x.r.width > 0 && (x.r.right > vw + 1 || x.r.left < -1))
+        .map((x) => ({
+          tag: (x.el as HTMLElement).tagName,
+          cls: ((x.el as HTMLElement).className || '').toString().slice(0, 60),
+          rightOverflowPx: x.r.right > vw + 1 ? Math.round(x.r.right - vw) : 0,
+          leftOverflowPx: x.r.left < -1 ? Math.round(-x.r.left) : 0,
+        }));
+    });
+
+    expect(
+      offenders,
+      `Landscape elements escape the viewport at ${width}px:\n` +
+        offenders
+          .map((o) => `  ${o.tag}.${o.cls} rightOverflow=${o.rightOverflowPx}px leftOverflow=${o.leftOverflowPx}px`)
+          .join('\n'),
+    ).toEqual([]);
+  });
+}
+
 test('control page renders the Android toolbar (guards against a vacuous pass)', async ({
   page,
 }) => {
