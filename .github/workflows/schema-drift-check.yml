@@ -31,3 +31,13 @@ jobs:
 
       - name: Generated client freshness
         run: node scripts/check-client-freshness.js
+
+      # The launcher's palette is generated from the dashboard's tokens.css, so
+      # a change to one must not silently leave the other behind. The script has
+      # no dependencies, so it runs without installing mac-app/.
+      - name: Design token drift (dashboard ↔ mac-app)
+        run: |
+          node mac-app/scripts/sync-tokens.mjs --check || {
+            echo "::error::Design token drift. Run 'npm run sync:tokens' in mac-app/ and commit tokens.css."
+            exit 1
+          }
