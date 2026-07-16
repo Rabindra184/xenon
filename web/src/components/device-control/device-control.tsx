@@ -275,7 +275,30 @@ export default function DeviceControl({ device, onClose }: DeviceControlProps) {
     const availableHeight = isHorizontalLayout
       ? window.innerHeight * 0.55
       : window.innerHeight * 0.7;
-    const availableWidth = isHorizontalLayout ? window.innerWidth * 0.8 : window.innerWidth * 0.45;
+
+    // Horizontal budget the LANDSCAPE canvas must fit inside so it can't overflow
+    // its column and get clipped by .control-view-main { overflow: hidden }. In the
+    // row layout the width is shared by: sidebar rail (56, fixed w-14 overlay that
+    // main.pl-14 reserves) + main/row padding (24*2 = 48) + column gap (32) +
+    // interactions column (min-width 450) + .device-screen-wrapper chrome around the
+    // canvas (padding 12*2 + border 1*2 = 26). 8px is slack so the canvas never lands
+    // exactly on the edge. Global box-sizing is border-box, so canvasDimensions.width
+    // IS the rendered box width and the tap/swipe math stays correct. Only applied
+    // above the 900px stacking breakpoint (CSS @media max-width:900) — below it the
+    // columns stack, the full width is available, and this reservation would wrongly
+    // shrink (or, at small widths, negate) the canvas.
+    const LANDSCAPE_ROW_RESERVED = 56 + 48 + 32 + 450 + 26 + 8; // 620
+    const STACK_BREAKPOINT = 900;
+    const isRowLayout = window.innerWidth > STACK_BREAKPOINT;
+
+    let availableWidth;
+    if (isHorizontalLayout) {
+      availableWidth = isRowLayout
+        ? Math.min(window.innerWidth * 0.8, window.innerWidth - LANDSCAPE_ROW_RESERVED)
+        : window.innerWidth * 0.8;
+    } else {
+      availableWidth = window.innerWidth * 0.45;
+    }
 
     const targetRatio = isPortrait ? deviceScreenRatio : 1 / deviceScreenRatio;
 
