@@ -1,6 +1,6 @@
 import * as React from 'react';
 import { useEffect, useState } from 'react';
-import { Plus, Trash2, Edit, KeyRound } from 'lucide-react';
+import { Plus, Trash2, Edit, KeyRound, Users as UsersIcon } from 'lucide-react';
 import {
   listUsers,
   createUser,
@@ -11,6 +11,7 @@ import {
 import { forgotPassword } from '../api-service/auth';
 import { useAuth } from '../auth/auth-context';
 import { formatDateTime } from '../utils/time';
+import { PageHeader } from '../components/ui/page-header';
 
 const ROLE_LABELS: Record<UserRow['role'], string> = {
   SUPER_ADMIN: 'Super Admin',
@@ -63,86 +64,97 @@ export default function UsersPage() {
   }
 
   return (
-    <div className="px-8 py-6 max-w-5xl">
-      <div className="flex items-center justify-between mb-6">
-        <h1 className="text-2xl font-semibold">Users</h1>
-        <button
-          onClick={() => setShowInvite(true)}
-          className="h-9 px-4 rounded-md bg-[var(--green)] text-black font-medium text-sm flex items-center gap-1"
-        >
-          <Plus size={14} /> Invite User
-        </button>
-      </div>
+    <div>
+      <PageHeader
+        icon={UsersIcon}
+        title="Users"
+        subtitle="Dashboard accounts, roles, and access status."
+        action={
+          <button type="button" className="page-header-action" onClick={() => setShowInvite(true)}>
+            <Plus size={16} />
+            <span>Invite user</span>
+          </button>
+        }
+      />
 
-      {error && <div className="text-sm text-[var(--red)] mb-4">{error}</div>}
+      <div className="px-8 py-6 max-w-5xl">
+        {error && <div className="text-sm text-[var(--red)] mb-4">{error}</div>}
 
-      {loading ? (
-        <div className="text-sm text-[var(--text-dim)]">Loading…</div>
-      ) : rows.length === 0 ? (
-        <div className="text-sm text-[var(--text-dim)] py-8 text-center border border-dashed border-[var(--border)] rounded-md">
-          No users to show — invite the first one above.
-        </div>
-      ) : (
-        <table className="w-full text-sm">
-          <thead className="text-[11px] text-[var(--text-dim)] uppercase tracking-wide">
-            <tr>
-              <th className="text-left py-2">Name</th>
-              <th className="text-left py-2">Email</th>
-              <th className="text-left py-2">Role</th>
-              <th className="text-left py-2">Status</th>
-              <th className="text-left py-2">Last Login</th>
-              <th className="w-px"></th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((u) => {
-              const isSelf = me?.userId === u.id;
-              return (
-                <tr key={u.id} className="border-t border-[var(--border)]">
-                  <td className="py-2">{u.name}</td>
-                  <td className="py-2 text-[var(--text-muted)]">{u.email}</td>
-                  <td className="py-2">{ROLE_LABELS[u.role]}</td>
-                  <td className="py-2">
-                    {u.status === 'ACTIVE' ? (
-                      <span className="text-[var(--green)]">Active</span>
-                    ) : (
-                      <span className="text-[var(--text-dim)]">Inactive</span>
-                    )}
-                  </td>
-                  <td className="py-2 text-[var(--text-muted)]">
-                    {formatDateTime(u.lastLoginAt)}
-                  </td>
-                  <td className="py-2 text-right space-x-2">
-                    <button
-                      onClick={() => setEditing(u)}
-                      disabled={isSelf}
-                      title={isSelf ? 'Use a different super-admin to manage your own account' : 'Edit'}
-                      className="text-[var(--text-dim)] hover:text-[var(--text)] disabled:opacity-30"
-                    >
-                      <Edit size={14} />
-                    </button>
-                    <button
-                      onClick={() => onResetPassword(u)}
-                      title="Send password-reset link"
-                      className="text-[var(--text-dim)] hover:text-[var(--text)]"
-                    >
-                      <KeyRound size={14} />
-                    </button>
-                    <button
-                      onClick={() => onDelete(u)}
-                      disabled={isSelf}
-                      title={isSelf ? 'Use a different super-admin to manage your own account' : 'Delete'}
-                      className="text-[var(--red)] hover:opacity-80 disabled:opacity-30"
-                    >
-                      <Trash2 size={14} />
-                    </button>
-                  </td>
+        {loading ? (
+          <div className="text-sm text-[var(--text-dim)]">Loading…</div>
+        ) : rows.length === 0 ? (
+          <div className="text-sm text-[var(--text-dim)] py-8 text-center border border-dashed border-[var(--border)] rounded-md">
+            No users to show — invite the first one above.
+          </div>
+        ) : (
+          <div className="rounded-lg border border-[var(--border)] bg-[var(--surface)] overflow-hidden">
+            <table className="w-full text-sm">
+              <thead className="text-[11px] text-[var(--text-dim)] uppercase tracking-wide">
+                <tr>
+                  <th className="text-left py-2.5 px-4">Name</th>
+                  <th className="text-left py-2.5 px-4">Email</th>
+                  <th className="text-left py-2.5 px-4">Role</th>
+                  <th className="text-left py-2.5 px-4">Status</th>
+                  <th className="text-left py-2.5 px-4">Last Login</th>
+                  <th className="w-px"></th>
                 </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      )}
+              </thead>
+              <tbody>
+                {rows.map((u) => {
+                  const isSelf = me?.userId === u.id;
+                  return (
+                    <tr key={u.id} className="border-t border-[var(--border)]">
+                      <td className="py-2.5 px-4">{u.name}</td>
+                      <td className="py-2.5 px-4 text-[var(--text-muted)]">{u.email}</td>
+                      <td className="py-2.5 px-4">{ROLE_LABELS[u.role]}</td>
+                      <td className="py-2.5 px-4">
+                        {u.status === 'ACTIVE' ? (
+                          <span className="text-[var(--green)]">Active</span>
+                        ) : (
+                          <span className="text-[var(--text-dim)]">Inactive</span>
+                        )}
+                      </td>
+                      <td className="py-2.5 px-4 text-[var(--text-muted)]">
+                        {formatDateTime(u.lastLoginAt)}
+                      </td>
+                      <td className="py-2.5 px-4">
+                        <div className="flex items-center justify-end gap-2 whitespace-nowrap">
+                          <button
+                            onClick={() => setEditing(u)}
+                            disabled={isSelf}
+                            title={isSelf ? 'Use a different super-admin to manage your own account' : 'Edit'}
+                            aria-label="Edit user"
+                            className="text-[var(--text-dim)] hover:text-[var(--text)] disabled:opacity-30"
+                          >
+                            <Edit size={14} />
+                          </button>
+                          <button
+                            onClick={() => onResetPassword(u)}
+                            title="Send password-reset link"
+                            aria-label="Send password-reset link"
+                            className="text-[var(--text-dim)] hover:text-[var(--text)]"
+                          >
+                            <KeyRound size={14} />
+                          </button>
+                          <button
+                            onClick={() => onDelete(u)}
+                            disabled={isSelf}
+                            title={isSelf ? 'Use a different super-admin to manage your own account' : 'Delete'}
+                            aria-label="Delete user"
+                            className="text-[var(--red)] hover:opacity-80 disabled:opacity-30"
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
 
       {showInvite && (
         <InviteModal
