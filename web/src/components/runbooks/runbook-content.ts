@@ -38,8 +38,11 @@ heartbeat watchdog.
    history around the failure timestamp to confirm whether this was a manual
    restart, a crash, or a deploy.
 3. If restarts are frequent or unplanned, correlate them with recent deploys
-   and coordinate a maintenance window — any session in flight during a hub
-   restart is always killed, there's no graceful drain.
+   and coordinate a maintenance window — a clean restart or redeploy drains
+   active sessions first (bounded grace period to archive video, release
+   ports, and mark themselves finished), but a crash or a forced host reboot
+   skips that drain entirely. Sessions orphaned that way are marked \`FAILED\`
+   with \`fail_reason=server_restart\` the next time the hub boots.
 
 ## Related
 

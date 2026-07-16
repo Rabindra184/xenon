@@ -6,11 +6,11 @@ import { lookupRunbook } from './runbook-content';
 import './runbook-page.css';
 
 const markdownComponents = {
-  ul: ({ className, ...props }: React.ComponentPropsWithoutRef<'ul'>) => (
-    <ul className={`list-disc pl-5 space-y-1 ${className ?? ''}`.trim()} {...props} />
+  ul: ({ node, ordered, depth, className, ...props }: any) => (
+    <ul className={`list-disc space-y-1 ${className ?? ''}`.trim()} {...props} />
   ),
-  ol: ({ className, ...props }: React.ComponentPropsWithoutRef<'ol'>) => (
-    <ol className={`list-decimal pl-5 space-y-1 ${className ?? ''}`.trim()} {...props} />
+  ol: ({ node, ordered, depth, className, ...props }: any) => (
+    <ol className={`list-decimal space-y-1 ${className ?? ''}`.trim()} {...props} />
   ),
 };
 
