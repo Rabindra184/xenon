@@ -1,5 +1,6 @@
 import React, { useState, useCallback } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
+import { MonitorPlay } from 'lucide-react';
 import { useBuildsData } from './use-builds-data';
 import { BuildListRail, type TimeFilter } from './build-list-rail';
 import { BuildFilterBar } from './build-filter-bar';
@@ -9,6 +10,7 @@ import { buildStatusCounts, type StatusKey } from './derive';
 import type { ISession } from '../../interfaces/ISession';
 import { useToast } from '../ui/toast';
 import XenonApiService from '../../api-service';
+import { PageHeader } from '../ui/page-header';
 
 export const BuildsPage: React.FC = () => {
   const navigate = useNavigate();
@@ -85,53 +87,60 @@ export const BuildsPage: React.FC = () => {
   };
 
   return (
-    <div className="flex h-full">
-      <BuildListRail
-        builds={data.builds}
-        selectedBuildId={data.selectedBuildId}
-        onSelect={handleSelectBuild}
-        search={data.searchQuery}
-        onSearchChange={data.setSearchQuery}
-        timeFilter={timeFilter}
-        onTimeFilterChange={setTimeFilter}
+    <div className="flex flex-col h-full">
+      <PageHeader
+        icon={MonitorPlay}
+        title="Sessions"
+        subtitle="Builds and the test sessions recorded against them."
       />
+      <div className="flex flex-1 min-h-0">
+        <BuildListRail
+          builds={data.builds}
+          selectedBuildId={data.selectedBuildId}
+          onSelect={handleSelectBuild}
+          search={data.searchQuery}
+          onSearchChange={data.setSearchQuery}
+          timeFilter={timeFilter}
+          onTimeFilterChange={setTimeFilter}
+        />
 
-      <section className="flex-1 flex flex-col min-w-0">
-        {!selectedBuild ? (
-          <div className="flex-1 flex items-center justify-center text-xs text-[var(--text-dim)]">
-            Select a build from the left to see its sessions.
-          </div>
-        ) : (
-          <>
-            <BuildsHeader
-              build={selectedBuild}
-              failedCount={counts.failed}
-              selectedCount={selectedIds.size}
-              onRetryFailed={onRetryFailed}
-              onExport={onExport}
-            />
-            <BuildFilterBar
-              sessions={data.sessions}
-              active={statusFilter}
-              onChange={setStatusFilter}
-              search={sessionSearch}
-              onSearchChange={setSessionSearch}
-              totalMatching={data.sessions.length}
-              totalUnfiltered={data.sessions.length}
-            />
-            <SessionTable
-              sessions={data.sessions}
-              statusFilter={statusFilter}
-              searchQuery={sessionSearch}
-              selectedIds={selectedIds}
-              onToggleSelect={toggleSelect}
-              onToggleSelectAll={toggleSelectAll}
-              onOpenRow={handleOpenRow}
-              buildHasNoSessions={data.sessions.length === 0}
-            />
-          </>
-        )}
-      </section>
+        <section className="flex-1 flex flex-col min-w-0">
+          {!selectedBuild ? (
+            <div className="flex-1 flex items-center justify-center text-xs text-[var(--text-dim)]">
+              Select a build from the left to see its sessions.
+            </div>
+          ) : (
+            <>
+              <BuildsHeader
+                build={selectedBuild}
+                failedCount={counts.failed}
+                selectedCount={selectedIds.size}
+                onRetryFailed={onRetryFailed}
+                onExport={onExport}
+              />
+              <BuildFilterBar
+                sessions={data.sessions}
+                active={statusFilter}
+                onChange={setStatusFilter}
+                search={sessionSearch}
+                onSearchChange={setSessionSearch}
+                totalMatching={data.sessions.length}
+                totalUnfiltered={data.sessions.length}
+              />
+              <SessionTable
+                sessions={data.sessions}
+                statusFilter={statusFilter}
+                searchQuery={sessionSearch}
+                selectedIds={selectedIds}
+                onToggleSelect={toggleSelect}
+                onToggleSelectAll={toggleSelectAll}
+                onOpenRow={handleOpenRow}
+                buildHasNoSessions={data.sessions.length === 0}
+              />
+            </>
+          )}
+        </section>
+      </div>
     </div>
   );
 };
