@@ -1,9 +1,9 @@
 /**
- * Stub runbook content keyed by failure category.
+ * Runbook content keyed by failure category.
  *
- * Each entry is a one- to two-paragraph placeholder. Real remediation guidance
- * is a separate doc-writing task — these stubs exist so the "Open runbook"
- * link from the Failure Summary card lands somewhere useful instead of 404.
+ * Each entry gives on-call responders concrete remediation steps for a class of
+ * session failure, surfaced from the "Open runbook" link on the Failure Summary
+ * card.
  *
  * Lookup is case-insensitive; the page also normalizes hyphen / underscore /
  * space variants. Unknown categories fall back to the `unknown` runbook.
@@ -49,7 +49,7 @@ heartbeat watchdog.
 ## Related
 
 - Session lifecycle: see \`SessionLifecycleService.ts\`
-- Heartbeat watchdog: see \`SessionManager.checkHeartbeat\`
+- Heartbeat watchdog: see \`SessionHeartbeatService\` / \`OrphanSweeper.sweep\`
 `,
   },
   timeout: {
