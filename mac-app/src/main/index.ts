@@ -66,6 +66,18 @@ supervisor.on('state', (state: ServerState) => {
 });
 setupService.on('progress', (p: SetupProgress) => broadcast(IPC.evtSetupProgress, p));
 
+/**
+ * A packaged app takes its dock icon from the bundle, but `electron-vite dev`
+ * runs the stock Electron binary — which shows Electron's own icon unless we
+ * set it. Without this, the icon only appears after packaging.
+ */
+function applyDockIcon(): void {
+  if (app.isPackaged || !app.dock) return;
+  const icon = path.join(__dirname, '../../build/icon.png');
+  const img = nativeImage.createFromPath(icon);
+  if (!img.isEmpty()) app.dock.setIcon(img);
+}
+
 function createWindow(): void {
   mainWindow = new BrowserWindow({
     width: 1120,
@@ -294,6 +306,7 @@ if (!app.requestSingleInstanceLock()) {
   app.whenReady().then(async () => {
     // Resolve the automatic APPIUM_HOME before any window can ask for it.
     await warmAppiumHome();
+    applyDockIcon();
     registerIpc();
     refreshMenu(supervisor.getState());
     createTray();

@@ -14,6 +14,8 @@ extraResources:
       - '**/*'
 mac:
   category: public.app-category.developer-tools
+  # Generated from build/icon.svg by `npm run icon`.
+  icon: build/icon.icns
   target:
     - dmg
     - zip
