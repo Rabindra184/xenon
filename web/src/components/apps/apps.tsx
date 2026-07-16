@@ -20,6 +20,7 @@ import {
 import XenonApiService from '../../api-service';
 import { useToast } from '../ui/toast';
 import './apps.css';
+import '../device-explorer/device-explorer.css';
 import { IDevice } from '../../interfaces/IDevice';
 import { Badge } from '../ui/badge';
 import { Button } from '../ui/button';
@@ -180,8 +181,8 @@ const Apps: React.FC = () => {
       ></div>
       <PageHeader
         icon={Package}
-        title="App Repository"
-        subtitle="Manage signed builds available for installation across your device fleet."
+        title="Apps"
+        subtitle="Signed builds available for installation across your device fleet."
       />
       <div className="device-explorer-header-container">
         <div className="device-explorer-header-left-container">
@@ -405,13 +406,11 @@ const Apps: React.FC = () => {
                 <div className="empty-icon-container">
                   <Terminal size={48} className="text-primary opacity-40 animate-pulse" />
                 </div>
-                <h2 className="empty-title brand-font">Centralized Artifact Registry</h2>
+                <h2 className="empty-title brand-font">No apps yet</h2>
                 <p className="empty-description">
-                  The Xenon Registry is a secure, high-performance vault for your mobile binaries.
-                  Upload your <code className="text-primary">.apk</code> or{' '}
-                  <code className="text-primary">.ipa</code>
-                  artifacts to enable rapid deployment, version tracking, and instant installation
-                  across your entire device fleet.
+                  Upload <code className="text-primary">.apk</code> or{' '}
+                  <code className="text-primary">.ipa</code> artifacts to enable versioned installs
+                  across your device fleet.
                 </p>
                 <div className="empty-actions">
                   <label className="upload-trigger-massive">
@@ -423,7 +422,7 @@ const Apps: React.FC = () => {
                     />
                     <div className="massive-upload-content">
                       <Rocket size={24} className="mb-2" />
-                      <span>Ingest Your First Artifact</span>
+                      <span>Upload your first app</span>
                     </div>
                   </label>
                 </div>
