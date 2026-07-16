@@ -30,6 +30,7 @@ import {
   Square,
   Volume1,
   Volume2,
+  AlertTriangle,
 } from 'lucide-react';
 import { v4 as uuidv4 } from 'uuid';
 import { useToast } from '../ui/toast';
@@ -78,6 +79,8 @@ export default function DeviceControl({ device, onClose }: DeviceControlProps) {
   const [logStreamActive, setLogStreamActive] = useState(false); // true after first successful log batch
   const [logPollCount, setLogPollCount] = useState(0); // tracks how many polls have completed
   const [streamLoaded, setStreamLoaded] = useState(false);
+  const [streamFailed, setStreamFailed] = useState(false);
+  const MAX_STREAM_RETRIES = 10; // ~20s at the 2s retry cadence
   const [udidCopied, setUdidCopied] = useState(false);
 
   const copyUdid = () => {
@@ -413,6 +416,14 @@ export default function DeviceControl({ device, onClose }: DeviceControlProps) {
     }
   }, [streamRetryCount]);
 
+  // Watchdog: catches the never-fires-onLoad case (e.g. a hung connection that
+  // neither loads nor errors) so the UI doesn't wait forever.
+  useEffect(() => {
+    if (streamLoaded || streamFailed) return;
+    const t = setTimeout(() => setStreamFailed(true), 30000);
+    return () => clearTimeout(t);
+  }, [streamLoaded, streamFailed, streamRetryCount]);
+
   // Interaction handlers
   const handleMouseDown = useRef<{ x: number; y: number; time: number } | null>(null);
 
@@ -739,33 +750,59 @@ export default function DeviceControl({ device, onClose }: DeviceControlProps) {
               onMouseDown={onMouseDownHandler}
               onMouseUp={onMouseUpHandler}
             >
-              {(streamStarting || !streamLoaded) && (
+              {streamFailed ? (
                 <div
                   className="device-stream-placeholder"
                   style={{ position: 'absolute', zIndex: 10 }}
                 >
-                  <RotateCw size={40} className="animate-spin" color="var(--green)" />
-                  <p style={{ marginTop: 16 }}>
-                    {streamStarting ? 'ESTABLISHING TRACE...' : 'Waiting for stream…'}
-                  </p>
+                  <AlertTriangle size={40} color="var(--red, #f87171)" />
+                  <p style={{ marginTop: 16 }}>Stream unavailable</p>
+                  <button
+                    className="btn-premium btn-sm"
+                    style={{ marginTop: 12 }}
+                    onClick={() => {
+                      setStreamFailed(false);
+                      setStreamRetryCount(0);
+                    }}
+                  >
+                    Retry
+                  </button>
                 </div>
+              ) : (
+                (streamStarting || !streamLoaded) && (
+                  <div
+                    className="device-stream-placeholder"
+                    style={{ position: 'absolute', zIndex: 10 }}
+                  >
+                    <RotateCw size={40} className="animate-spin" color="var(--green)" />
+                    <p style={{ marginTop: 16 }}>
+                      {streamStarting ? 'ESTABLISHING TRACE...' : 'Waiting for stream…'}
+                    </p>
+                  </div>
+                )
               )}
-              <img
-                src={getStreamUrl()}
-                alt="Device Stream"
-                className="device-stream-image"
-                style={{
-                  width: '100%',
-                  height: '100%',
-                  objectFit: 'contain',
-                }}
-                onLoad={() => setStreamLoaded(true)}
-                onError={() => {
-                  console.warn('Stream failed to load, retrying...');
-                  setStreamLoaded(false);
-                  setTimeout(() => setStreamRetryCount((prev) => prev + 1), 2000);
-                }}
-              />
+              {!streamFailed && (
+                <img
+                  src={getStreamUrl()}
+                  alt="Device Stream"
+                  className="device-stream-image"
+                  style={{
+                    width: '100%',
+                    height: '100%',
+                    objectFit: 'contain',
+                  }}
+                  onLoad={() => setStreamLoaded(true)}
+                  onError={() => {
+                    console.warn('Stream failed to load, retrying...');
+                    setStreamLoaded(false);
+                    if (streamRetryCount >= MAX_STREAM_RETRIES) {
+                      setStreamFailed(true);
+                      return;
+                    }
+                    setTimeout(() => setStreamRetryCount((prev) => prev + 1), 2000);
+                  }}
+                />
+              )}
             </div>
           </div>
 

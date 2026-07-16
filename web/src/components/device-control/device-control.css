@@ -242,6 +242,8 @@
   outline: none;
   /* Hide default browser focus ring */
   border: 2px solid transparent;
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 .device-stream-canvas.focused {
