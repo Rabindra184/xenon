@@ -769,19 +769,6 @@ const ROUTE_CONTENT_CHECKS: Record<string, Setup> = {
 for (const width of WIDTHS) {
   for (const route of ROUTES) {
     test(`no overflow at ${width}px on ${route}`, async ({ page }) => {
-      // KNOWN PRE-EXISTING BUG (tracked follow-up, NOT a guard defect): on the
-      // builds session table, session-row.tsx renders the failed-session subtitle
-      // as `truncate max-w-[420px]` inside a `table-layout: auto` <table>.
-      // `truncate` clips the painted text but does not relax the column's
-      // min-content, so a long unbroken failure_reason / fully-qualified test name
-      // (routine in real CI data) pushes the whole table past the viewport. The
-      // guard correctly catches this. Marked expected-failure so the suite stays
-      // green until the session-table fix lands separately — Playwright reports it
-      // as "unexpectedly passed" once fixed, which forces removing this annotation.
-      test.fail(
-        route === `/xenon/builds/${BUILD_ID}`,
-        'tracked: builds session-table overflow (session-row.tsx subtitle vs table-layout:auto)',
-      );
       await page.setViewportSize({ width, height: 900 });
       // Route-mock this route's data endpoints (if any) BEFORE navigating, so
       // the very first render already has the populated/hostile payload.

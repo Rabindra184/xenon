@@ -71,7 +71,18 @@ export const SessionTable: React.FC<Props> = ({
 
   return (
     <div className="flex-1 overflow-y-auto">
-      <table className="w-full text-left">
+      {/*
+        table-fixed is load-bearing: under the browser default table-layout:auto,
+        column widths derive from each cell's min-content BEFORE the `truncate`
+        (overflow:hidden) on the Session subtitle is applied, so a long unbroken
+        failure_reason / test name forces the whole table past the viewport
+        (guarded by web/test/viewport/overflow.spec.ts on /builds/:buildId).
+        table-fixed makes the column widths authoritative, so `truncate`
+        actually constrains the Session cell. The predictable columns get fixed
+        widths; Session and Device·Node share the remainder (responsive across
+        1280-1440).
+      */}
+      <table className="w-full text-left table-fixed">
         <thead className="sticky top-0 bg-[var(--surface)] border-b border-[var(--border)] z-10">
           <tr>
             <th className="px-3 py-2 w-[36px]">
@@ -85,10 +96,10 @@ export const SessionTable: React.FC<Props> = ({
             </th>
             <th className="px-3 py-2 text-[10px] uppercase tracking-wider text-[var(--text-dim)] font-medium">Session</th>
             <th className="px-3 py-2 text-[10px] uppercase tracking-wider text-[var(--text-dim)] font-medium">Device · Node</th>
-            <th className="px-3 py-2 text-[10px] uppercase tracking-wider text-[var(--text-dim)] font-medium">Platform</th>
-            <th className="px-3 py-2 text-[10px] uppercase tracking-wider text-[var(--text-dim)] font-medium">Status</th>
-            <th className="px-3 py-2 text-[10px] uppercase tracking-wider text-[var(--text-dim)] font-medium">Start Time</th>
-            <th className="px-3 py-2 text-[10px] uppercase tracking-wider text-[var(--text-dim)] font-medium text-right">Duration</th>
+            <th className="px-3 py-2 text-[10px] uppercase tracking-wider text-[var(--text-dim)] font-medium w-[108px]">Platform</th>
+            <th className="px-3 py-2 text-[10px] uppercase tracking-wider text-[var(--text-dim)] font-medium w-[104px]">Status</th>
+            <th className="px-3 py-2 text-[10px] uppercase tracking-wider text-[var(--text-dim)] font-medium w-[160px]">Start Time</th>
+            <th className="px-3 py-2 text-[10px] uppercase tracking-wider text-[var(--text-dim)] font-medium text-right w-[92px]">Duration</th>
             <th className="px-3 py-2 w-[32px]"></th>
           </tr>
         </thead>
