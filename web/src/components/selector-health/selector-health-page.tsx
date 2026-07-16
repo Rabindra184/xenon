@@ -541,7 +541,7 @@ const SelectorHealthPage: React.FC = () => {
           <div className="sh-pending-list">
             {hotspots.map((h) => (
               <PendingRow
-                key={`${h.originalStrategy ?? ''} ${h.originalSelector}`}
+                key={`${h.originalStrategy ?? ''} ${h.originalSelector}`}
                 hotspot={h}
                 onCancel={(hot) => handleAction('cancel_verification', hot)}
                 onMute={(hot) => handleAction('mute', hot)}
