@@ -156,6 +156,41 @@ REST endpoints under `/xenon/api` (documented at `/xenon/api-docs`). All state c
 
 React 17 + Vite + Tailwind CSS dashboard. Talks to the backend over REST and Socket.io. Built artifacts are copied into `src/public/` and served as static files by the plugin server.
 
+#### Breakpoints
+
+Supported range is **1280–1440** (laptop + tablet landscape). No phone or
+tablet-portrait support: no hamburger, no drawer. The sidebar is a fixed 56px
+rail at every width.
+
+**Use Tailwind mobile-first `min-width` only.** Never add a `max-width` query.
+The codebase briefly had both — `max-width: 1024px` in `device-explorer.css` and
+`selector-health.css` alongside `min-width: 1024px` in `settings.css`, the same
+number meaning opposite things.
+
+Before choosing a breakpoint, **compute the layout's intrinsic minimum** (sum of
+fixed columns + gaps + padding + the 56px rail) and make sure the breakpoint sits
+*above* it. Selector Health shipped a `max-width: 1024px` override 121px below
+its own 1146px floor, leaving a dead zone at 1025–1145px that was invisible from
+either end.
+
+`web/test/viewport/overflow.spec.ts` (Playwright) guards this. It tests both
+sides of every breakpoint boundary. It renders a **route-mocked** Android device
+(`page.route('**/xenon/api/device*', …)`) rather than seeding the DB — the device
+manager reaps `Device` rows for unattached hardware (`removeStaleDevices`), so a
+seeded row is deleted before the page loads. Each per-route test also asserts the
+app shell actually rendered, because an empty/error page has nothing to overflow
+and would otherwise pass vacuously. Run it with `npm run test:viewport` against a
+running server (dashboard enabled, auth disabled).
+
+Note `index.css` sets `body { overflow: hidden }`, so `document.scrollWidth`
+always equals `innerWidth`. It cannot detect overflow. Measure element rects.
+A centered flex row (`justify-content: center`) overflows both edges, so the
+guard checks `rect.left < 0` as well as `rect.right > innerWidth`.
+
+CSS source lives in `web/src`, but the running server serves the built bundle
+from `lib/public`. A CSS change is not live until `npm run build:xenon &&
+npm run build:copy` (from the repo root) regenerates and copies it.
+
 ### Key Design Patterns
 
 - **Dependency Injection** — TypeDI `@Service()` decorators; use `Container.get(...)` to retrieve singletons
