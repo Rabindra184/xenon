@@ -239,7 +239,7 @@ function registerIpc(): void {
     return shell.openPath(target);
   });
 
-  ipcMain.handle(IPC.toolchainCheck, () => toolchain.checkAll());
+  ipcMain.handle(IPC.toolchainCheck, (_e, profile?: Profile) => toolchain.checkAll(profile));
   ipcMain.handle(IPC.preflight, (_e, profile: Profile) => toolchain.preflight(profile, resolveAppiumHome(profile)));
   ipcMain.handle(IPC.setupInstall, (_e, opts: Partial<SetupOptions> & { profileAppiumHome?: string }) => {
     const appiumHome = opts.appiumHome || opts.profileAppiumHome || defaultAppiumHome();

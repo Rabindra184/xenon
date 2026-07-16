@@ -304,6 +304,37 @@ test('health tab runs toolchain checks', async () => {
   await page.screenshot({ path: path.join(shotsDir, '05-health.png'), fullPage: true });
 });
 
+test('health surfaces the resolved ANDROID_HOME and a WDA port verdict', async () => {
+  await openTab('Health');
+  // adb check reports the SDK root the launcher injects, not just a version.
+  await expect(page.getByText(/ANDROID_HOME=|no Android SDK detected|SDK root could be resolved/)).toBeVisible({
+    timeout: 20_000
+  });
+  // The WDA-port check is always present and never blocking.
+  await expect(page.getByText('Simulator / WDA ports')).toBeVisible();
+  await expect(page.getByText(/WDA pool|Booted-only discovery|Not applicable/)).toBeVisible();
+});
+
+test('enabling bootedSimulators clears the WDA port warning', async () => {
+  // Only meaningful on a host with more simulators than the 100-port pool;
+  // on smaller hosts the check is already ok and this still passes.
+  await openTab('Settings');
+  await page.getByTestId('settings-search').fill('bootedSimulators');
+  const toggle = page.getByRole('switch').first();
+  const wasOn = (await toggle.getAttribute('aria-checked')) === 'true';
+  if (!wasOn) await toggle.click();
+  await expect(toggle).toHaveAttribute('aria-checked', 'true');
+
+  await openTab('Health');
+  await expect(page.getByText(/Booted-only discovery/)).toBeVisible({ timeout: 20_000 });
+  await expect(page.getByText(/available simulators exceed/)).not.toBeVisible();
+
+  // Restore.
+  await openTab('Settings');
+  if (!wasOn) await page.getByRole('switch').first().click();
+  await page.getByTestId('settings-search').fill('');
+});
+
 test('preflight blocks Start and surfaces blockers when the plugin is not installed', async () => {
   // Fresh user-data-dir => plugin not installed in the app-managed APPIUM_HOME,
   // so preflight must block and route the user to Health with a clear reason.

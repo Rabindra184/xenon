@@ -541,7 +541,7 @@ export default function App() {
                         </ul>
                       </div>
                     )}
-                    <HealthPanel onInstall={handleInstall} installing={installing} />
+                    <HealthPanel onInstall={handleInstall} installing={installing} profile={draft} />
                   </>
                 )}
                 {tab === 'logs' && (

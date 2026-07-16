@@ -4,7 +4,8 @@ import net from 'node:net';
 import path from 'node:path';
 import { existsSync } from 'node:fs';
 import type { PreflightResult, Profile, ToolCheck } from '@shared/types';
-import { buildEnv, which } from './env';
+import { buildEnv, resolveAndroidHome, which } from './env';
+import { assessWdaPressure } from './toolchainRules';
 import { xenonCacheDir } from './paths';
 
 const execFileAsync = promisify(execFile);
@@ -21,14 +22,16 @@ async function run(cmd: string, args: string[]): Promise<{ ok: boolean; out: str
 
 /** Inspects the host toolchain Xenon depends on and reports actionable status. */
 export class ToolchainInspector {
-  async checkAll(): Promise<ToolCheck[]> {
+  /** `profile` enables the checks whose verdict depends on profile settings. */
+  async checkAll(profile?: Profile): Promise<ToolCheck[]> {
     return Promise.all([
       this.checkNode(),
       this.checkAppium(),
       this.checkDrivers(),
       this.checkAdb(),
       this.checkXcode(),
-      this.checkGoIos()
+      this.checkGoIos(),
+      this.checkSimulatorPorts(profile)
     ]);
   }
 
@@ -115,20 +118,41 @@ export class ToolchainInspector {
   }
 
   private async checkAdb(): Promise<ToolCheck> {
-    const androidHome = process.env.ANDROID_HOME || process.env.ANDROID_SDK_ROOT;
+    const androidHome = await resolveAndroidHome();
     const bin = (await which('adb')) || (androidHome ? path.join(androidHome, 'platform-tools', 'adb') : null);
     if (!bin || !existsSync(bin)) {
       return {
         id: 'adb',
         label: 'Android SDK (adb)',
         status: 'warn',
-        detail: 'adb not found / ANDROID_HOME unset',
+        detail: 'adb not found and no Android SDK detected',
         blocking: false,
-        remediation: 'Only needed for Android. Install the Android SDK and set ANDROID_HOME.'
+        remediation:
+          'Only needed for local Android devices. Install the Android SDK (Android Studio) — Xenon finds it automatically at ~/Library/Android/sdk or via adb on your PATH.'
       };
     }
     const { out } = await run(bin, ['version']);
-    return { id: 'adb', label: 'Android SDK (adb)', status: 'ok', detail: out.split('\n')[0] || 'adb present', blocking: false };
+    const version = out.split('\n')[0] || 'adb present';
+    if (!androidHome) {
+      // adb works, but the plugin's discovery reads ANDROID_HOME directly and we
+      // could not resolve a root to inject — Android discovery will fail.
+      return {
+        id: 'adb',
+        label: 'Android SDK (adb)',
+        status: 'warn',
+        detail: `${version} — but no SDK root could be resolved`,
+        blocking: false,
+        remediation:
+          'adb is on PATH but its SDK root is unknown, so ANDROID_HOME cannot be injected and Android discovery will fail. Set ANDROID_HOME in this profile’s environment variables (Secrets & Env).'
+      };
+    }
+    return {
+      id: 'adb',
+      label: 'Android SDK (adb)',
+      status: 'ok',
+      detail: `${version} — ANDROID_HOME=${androidHome}`,
+      blocking: false
+    };
   }
 
   private async checkXcode(): Promise<ToolCheck> {
@@ -160,6 +184,51 @@ export class ToolchainInspector {
     };
   }
 
+  /**
+   * Xenon leases one WDA port per discovered simulator from a fixed pool, so a
+   * host with more simulators than the pool holds breaks iOS discovery before a
+   * test ever runs. Profile-dependent: the fix is a setting, not an install.
+   */
+  private async checkSimulatorPorts(profile?: Profile): Promise<ToolCheck> {
+    const label = 'Simulator / WDA ports';
+    const xcrun = await which('xcrun');
+    if (!xcrun) {
+      return { id: 'wda-ports', label, status: 'ok', detail: 'Not applicable — Xcode not installed.', blocking: false };
+    }
+
+    const { ok, out } = await run(xcrun, ['simctl', 'list', 'devices', 'available', '--json']);
+    if (!ok) {
+      return {
+        id: 'wda-ports',
+        label,
+        status: 'warn',
+        detail: 'could not list simulators',
+        blocking: false,
+        remediation: 'Run `xcrun simctl list devices available` to check your Xcode command-line tools.'
+      };
+    }
+
+    let available = 0;
+    try {
+      const parsed = JSON.parse(out) as { devices?: Record<string, Array<{ isAvailable?: boolean }>> };
+      for (const list of Object.values(parsed.devices ?? {})) {
+        available += list.filter((d) => d.isAvailable !== false).length;
+      }
+    } catch {
+      return { id: 'wda-ports', label, status: 'warn', detail: 'could not parse simctl output', blocking: false };
+    }
+
+    const settings = profile?.settings ?? {};
+    const verdict = assessWdaPressure({
+      platform: settings.platform as string | undefined,
+      availableSimulators: available,
+      bootedSimulators: settings.bootedSimulators === true,
+      simulatorAllowListCount: Array.isArray(settings.simulators) ? settings.simulators.length : 0
+    });
+
+    return { id: 'wda-ports', label, ...verdict, blocking: false };
+  }
+
   /** Whether the xenon plugin is installed into a given APPIUM_HOME. */
   async isPluginInstalled(appiumHome: string): Promise<boolean> {
     const bin = await which('appium');
@@ -189,7 +258,7 @@ export class ToolchainInspector {
 
   /** Full pre-launch gate: toolchain + port + plugin-installed. */
   async preflight(profile: Profile, appiumHome: string): Promise<PreflightResult> {
-    const checks = await this.checkAll();
+    const checks = await this.checkAll(profile);
     const blockers: string[] = [];
 
     if (await this.portInUse(profile.server.port)) {

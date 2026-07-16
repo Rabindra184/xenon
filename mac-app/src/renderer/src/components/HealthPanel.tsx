@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react';
-import type { SetupProgress, ToolCheck } from '@shared/types';
+import { useEffect, useRef, useState } from 'react';
+import type { Profile, SetupProgress, ToolCheck } from '@shared/types';
 import { cn } from '../cn';
 import { AlertTriangle, CheckCircle2, Loader2, RefreshCw, XCircle } from 'lucide-react';
 import { Button } from './ui/Button';
@@ -7,6 +7,8 @@ import { Button } from './ui/Button';
 interface Props {
   onInstall: () => void;
   installing: boolean;
+  /** Drives the checks whose verdict depends on profile settings (WDA ports). */
+  profile: Profile | null;
 }
 
 function StatusIcon({ status }: { status: ToolCheck['status'] }) {
@@ -23,7 +25,7 @@ const CHIP: Record<ToolCheck['status'], string> = {
   missing: 'bg-danger/10 text-danger border-danger/30'
 };
 
-export function HealthPanel({ onInstall, installing }: Props) {
+export function HealthPanel({ onInstall, installing, profile }: Props) {
   const [checks, setChecks] = useState<ToolCheck[]>([]);
   const [loading, setLoading] = useState(false);
   const [progress, setProgress] = useState<SetupProgress[]>([]);
@@ -31,15 +33,26 @@ export function HealthPanel({ onInstall, installing }: Props) {
   const refresh = async () => {
     setLoading(true);
     try {
-      setChecks(await window.xenon.toolchain.check());
+      setChecks(await window.xenon.toolchain.check(profileRef.current ?? undefined));
     } finally {
       setLoading(false);
     }
   };
 
+  // Re-check when the settings the verdicts depend on change, without
+  // re-running on every unrelated keystroke.
+  const profileRef = useRef(profile);
+  profileRef.current = profile;
+  const settingsKey = JSON.stringify([
+    profile?.settings.platform,
+    profile?.settings.bootedSimulators,
+    (profile?.settings.simulators as unknown[] | undefined)?.length ?? 0
+  ]);
+
   useEffect(() => {
     void refresh();
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [settingsKey]);
 
   // Live install progress from the main process.
   useEffect(() => window.xenon.onSetupProgress((p) => setProgress((prev) => [...prev, p])), []);
