@@ -1,5 +1,14 @@
 import { test, expect } from '@playwright/test';
 
+// COVERAGE BOUNDARY: only `/xenon/devices/MOCK-ANDROID-01/control` is hermetically
+// guarded — its device is fully mocked below and a dedicated test asserts the
+// 11-button toolbar rendered, so it cannot pass vacuously. The other routes mock
+// only the device list; their data tables render whatever the target server holds.
+// The per-route shell check (aside:has(nav)) catches a blank/crashed page but NOT
+// an empty-data one — a zero-row table has nothing to overflow. So for the
+// non-control routes this guard is only meaningful against a populated server.
+// Mocking those routes' data endpoints for full hermeticity is a tracked follow-up.
+
 // Real Android device JSON shape, per .superpowers/sdd/task-2-brief.md. Only the
 // fields the control page actually reads matter, but we keep the full shape so
 // the mock can't silently drift from what a live /xenon/api/device response looks

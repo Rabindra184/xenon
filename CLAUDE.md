@@ -179,10 +179,19 @@ either end.
 sides of every breakpoint boundary. It renders a **route-mocked** Android device
 (`page.route('**/xenon/api/device*', …)`) rather than seeding the DB — the device
 manager reaps `Device` rows for unattached hardware (`removeStaleDevices`), so a
-seeded row is deleted before the page loads. Each per-route test also asserts the
-app shell actually rendered, because an empty/error page has nothing to overflow
-and would otherwise pass vacuously. Run it with `npm run test:viewport` against a
-running server (dashboard enabled, auth disabled).
+seeded row is deleted before the page loads. Run it with `npm run test:viewport`
+against a running server (dashboard enabled, auth disabled).
+
+Coverage boundary — the device-control route is the only **hermetically**
+guarded one: its device is fully mocked, and a dedicated test asserts the 11-button
+toolbar rendered, so it cannot pass vacuously. The other routes mock only the device
+list; their data-heavy tables render whatever the target server's DB holds. Each
+per-route test asserts the app **shell** rendered (`aside:has(nav)` with buttons),
+which catches a blank or crashed page — but **not** an empty-data one: a table with
+zero rows has nothing to overflow and passes vacuously (Selector Health's 9-column
+grid, for instance, doesn't mount without rows). So for the non-control routes the
+guard is only meaningful against a populated server. Making those routes hermetic
+(mocking their data endpoints too) is tracked as follow-up.
 
 Note `index.css` sets `body { overflow: hidden }`, so `document.scrollWidth`
 always equals `innerWidth`. It cannot detect overflow. Measure element rects.
