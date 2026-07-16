@@ -8,8 +8,11 @@
   "private": true,
   "scripts": {
     "sync:schema": "node scripts/sync-schema.mjs",
-    "dev": "npm run sync:schema && electron-vite dev",
-    "build": "npm run sync:schema && electron-vite build",
+    "sync:tokens": "node scripts/sync-tokens.mjs",
+    "sync:tokens:check": "node scripts/sync-tokens.mjs --check",
+    "sync": "npm run sync:schema && npm run sync:tokens",
+    "dev": "npm run sync && electron-vite dev",
+    "build": "npm run sync && electron-vite build",
     "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json",
     "test": "vitest run",
     "test:watch": "vitest",
