@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { buildForm } from '../src/renderer/src/schemaForm';
+import { buildForm, parseJsonDraft } from '../src/renderer/src/schemaForm';
 import type { XenonSchema } from '../src/shared/types';
 
 const schema = JSON.parse(
@@ -42,9 +42,41 @@ describe('buildForm', () => {
     expect(byKey.interceptor.children?.some((c) => c.key === 'bufferSize')).toBe(true);
   });
 
+  it('casts proper nouns correctly in generated labels', () => {
+    const byKey = Object.fromEntries(allFields.map((f) => [f.key, f]));
+    expect(byKey.iosDeviceType.label).toBe('iOS Device Type');
+    expect(byKey.adbRemote.label).toBe('ADB Remote');
+    expect(byKey.aiProvider.label).toBe('AI Provider');
+    expect(byKey.aiBaseUrl.label).toBe('AI Base URL');
+    expect(byKey.databaseUrl.label).toBe('Database URL');
+    expect(byKey.tlsRejectUnauthorized.label).toBe('TLS Reject Unauthorized');
+    expect(byKey.enableJsonLogging.label).toBe('Enable JSON Logging');
+    expect(byKey.bindHostOrIp.label).toBe('Bind Host Or IP');
+  });
+
   it('marks required fields from the schema required[] list', () => {
     const byKey = Object.fromEntries(allFields.map((f) => [f.key, f]));
     expect(byKey.platform.required).toBe(true);
     expect(byKey.hub.required).toBe(false);
+  });
+});
+
+describe('parseJsonDraft', () => {
+  it('treats empty / whitespace-only input as "unset"', () => {
+    expect(parseJsonDraft('')).toEqual({ ok: true, value: undefined });
+    expect(parseJsonDraft('   \n')).toEqual({ ok: true, value: undefined });
+  });
+
+  it('parses valid JSON', () => {
+    expect(parseJsonDraft('[{"name":"iPhone 15","sdk":"17.0"}]')).toEqual({
+      ok: true,
+      value: [{ name: 'iPhone 15', sdk: '17.0' }]
+    });
+  });
+
+  it('reports an error for invalid JSON instead of swallowing it', () => {
+    const res = parseJsonDraft('[{"name": }]');
+    expect(res.ok).toBe(false);
+    if (!res.ok) expect(res.error).toMatch(/JSON/i);
   });
 });

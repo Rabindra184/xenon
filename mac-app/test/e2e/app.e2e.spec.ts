@@ -84,6 +84,47 @@ test('creates, renames, and deletes a profile', async () => {
   await page.screenshot({ path: path.join(shotsDir, '03-profiles.png') });
 });
 
+test('deleting a profile requires an inline confirmation', async () => {
+  await page.getByTestId('new-profile').click();
+  await page.getByTestId('profile-name').fill('Delete-me probe');
+  await expect(page.getByText('Delete-me probe')).toBeVisible();
+
+  const row = page.getByText('Delete-me probe').locator('..').locator('..');
+  await row.hover();
+  await row.getByRole('button', { name: 'Delete' }).click();
+  // First click arms the confirm state — nothing is deleted yet.
+  await expect(page.getByText('Delete-me probe')).toBeVisible();
+  await row.getByRole('button', { name: 'Confirm delete' }).click();
+  await expect(page.getByText('Delete-me probe')).not.toBeVisible();
+});
+
+test('logs tab is reachable and distinct from the Log Folder button', async () => {
+  // Exactly one button named "Logs" (the tab); the folder opener is "Log Folder".
+  await expect(page.getByRole('button', { name: 'Log Folder', exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Logs', exact: true }).click();
+  await expect(page.getByText('No output yet. Start the server to see logs.')).toBeVisible();
+});
+
+test('invalid JSON in a settings field shows an inline error and keeps the draft', async () => {
+  await openTab('Settings');
+  const jsonField = page.getByPlaceholder('JSON').first(); // Simulators editor
+  await jsonField.fill('[{"name": }]');
+  await jsonField.blur();
+  await expect(page.getByText(/Invalid JSON/).first()).toBeVisible();
+  // The draft is preserved so the user can fix it rather than losing their input.
+  await expect(jsonField).toHaveValue('[{"name": }]');
+  await jsonField.fill('');
+  await jsonField.blur();
+  await expect(page.getByText(/Invalid JSON/)).not.toBeVisible();
+});
+
+test('Escape closes the launch preview modal', async () => {
+  await page.getByTestId('preview-button').click();
+  await expect(page.getByText('Launch preview — dry run')).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(page.getByText('Launch preview — dry run')).not.toBeVisible();
+});
+
 test('secrets panel lists env-injected secrets and toggles injection', async () => {
   await openTab('Secrets & Env');
   await expect(page.getByText('Gemini API key')).toBeVisible();

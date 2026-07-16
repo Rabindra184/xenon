@@ -266,7 +266,7 @@ export default function App() {
                     <HeaderBtn
                       onClick={() => window.xenon.server.openPath('logs')}
                       icon={<FolderOpen size={14} />}
-                      label="Logs"
+                      label="Log Folder"
                     />
                   </div>
                 </div>
