@@ -1,6 +1,7 @@
 import Store from 'electron-store';
 import { randomUUID } from 'node:crypto';
 import type { Profile } from '@shared/types';
+import { SEED_PROFILE_NAME, makeDefaultProfile } from '@shared/profileDefaults';
 
 // Named launch profiles persisted as JSON in userData. Profiles never hold raw
 // secrets — only `secretRefs` naming which secrets to inject at launch.
@@ -8,27 +9,8 @@ interface ProfilesShape {
   profiles: Profile[];
 }
 
-export function defaultProfile(name = 'Local server'): Profile {
-  const now = Date.now();
-  return {
-    id: randomUUID(),
-    name,
-    settings: {
-      platform: 'both',
-      enableDashboard: true,
-      maxSessions: 8
-    },
-    server: {
-      port: 4723,
-      basePath: '/wd/hub',
-      appiumHome: '',
-      keepAliveTimeout: 800
-    },
-    secretRefs: [],
-    env: {},
-    createdAt: now,
-    updatedAt: now
-  };
+export function defaultProfile(name = SEED_PROFILE_NAME): Profile {
+  return makeDefaultProfile({ id: randomUUID(), now: Date.now(), name });
 }
 
 /** Backfill fields added in later versions so older persisted profiles stay valid. */
