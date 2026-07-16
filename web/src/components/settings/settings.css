@@ -1733,6 +1733,8 @@
     background: rgba(59, 130, 246, 0.05) !important;
     border-color: rgba(59, 130, 246, 0.25) !important;
     color: var(--blue) !important;
+    text-transform: none !important;
+    letter-spacing: normal !important;
 }
 
 /* ===========================================================================

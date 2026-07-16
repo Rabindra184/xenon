@@ -173,18 +173,11 @@
 
 .event-toggle__lead {
     flex-shrink: 0;
+    color: var(--text-dim);
 }
 
-.event-toggle--red.is-selected .event-toggle__lead {
-    color: var(--status-error-fg);
-}
-
-.event-toggle--green.is-selected .event-toggle__lead {
-    color: var(--green);
-}
-
-.event-toggle--amber.is-selected .event-toggle__lead {
-    color: var(--amber);
+.event-toggle.is-selected .event-toggle__lead {
+    color: inherit;
 }
 
 .event-toggle__check {
