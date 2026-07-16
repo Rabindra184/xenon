@@ -12,6 +12,7 @@ import { ToolchainInspector } from './ToolchainInspector';
 import { SetupService, type SetupOptions } from './SetupService';
 import { buildConfigYaml, buildLaunchPlan } from './LaunchBuilder';
 import { buildMenuTemplate } from './menu';
+import { invalidateAppiumHome, resolveAppiumHome, resolvedAppiumHomeInfo, warmAppiumHome } from './appiumHome';
 import { defaultAppiumHome, launchConfigDir, logsDir } from './paths';
 
 const schemaService = new SchemaService();
@@ -23,9 +24,8 @@ const setupService = new SetupService();
 let mainWindow: BrowserWindow | null = null;
 let tray: Tray | null = null;
 
-function resolveAppiumHome(profile: Profile): string {
-  return profile.server.appiumHome?.trim() || defaultAppiumHome();
-}
+// Auto-resolution lives in appiumHome.ts: a profile stores '' for "auto" so it
+// stays portable, and the host picks the first home that has the plugin.
 function resolveConfigYamlPath(profile: Profile): string {
   return path.join(launchConfigDir(), `${profile.id}.yaml`);
 }
@@ -241,14 +241,20 @@ function registerIpc(): void {
 
   ipcMain.handle(IPC.toolchainCheck, (_e, profile?: Profile) => toolchain.checkAll(profile));
   ipcMain.handle(IPC.preflight, (_e, profile: Profile) => toolchain.preflight(profile, resolveAppiumHome(profile)));
-  ipcMain.handle(IPC.setupInstall, (_e, opts: Partial<SetupOptions> & { profileAppiumHome?: string }) => {
+  ipcMain.handle(IPC.setupInstall, async (_e, opts: Partial<SetupOptions> & { profileAppiumHome?: string }) => {
     const appiumHome = opts.appiumHome || opts.profileAppiumHome || defaultAppiumHome();
-    return setupService.install({
+    const result = await setupService.install({
       appiumHome,
       pluginSource: opts.pluginSource ?? 'local',
       drivers: opts.drivers ?? ['uiautomator2', 'xcuitest']
     });
+    // A freshly installed home may now be the best auto choice.
+    invalidateAppiumHome();
+    await warmAppiumHome();
+    return result;
   });
+
+  ipcMain.handle(IPC.resolvedAppiumHome, (_e, profile: Profile) => resolvedAppiumHomeInfo(profile));
 }
 
 /**
@@ -285,7 +291,9 @@ if (!app.requestSingleInstanceLock()) {
     }
   });
 
-  app.whenReady().then(() => {
+  app.whenReady().then(async () => {
+    // Resolve the automatic APPIUM_HOME before any window can ask for it.
+    await warmAppiumHome();
     registerIpc();
     refreshMenu(supervisor.getState());
     createTray();

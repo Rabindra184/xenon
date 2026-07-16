@@ -44,7 +44,9 @@ const api = {
     launchPreview: (p: Profile): Promise<LaunchSpec> => ipcRenderer.invoke(IPC.launchPreview, p),
     openDashboard: (url: string): Promise<void> => ipcRenderer.invoke(IPC.openDashboard, url),
     openPath: (kind: 'logs' | 'appiumHome', p?: Profile): Promise<string> =>
-      ipcRenderer.invoke(IPC.openPath, kind, p)
+      ipcRenderer.invoke(IPC.openPath, kind, p),
+    resolvedAppiumHome: (p: Profile): Promise<{ path: string; source: string }> =>
+      ipcRenderer.invoke(IPC.resolvedAppiumHome, p)
   },
 
   toolchain: {

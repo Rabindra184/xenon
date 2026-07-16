@@ -38,7 +38,7 @@ let cachedAndroidHome: string | null | undefined;
 async function loginShellVars(): Promise<Record<string, string>> {
   if (cachedShellVars) return cachedShellVars;
   const shell = process.env.SHELL || '/bin/zsh';
-  const script = ['PATH', 'ANDROID_HOME', 'ANDROID_SDK_ROOT']
+  const script = ['PATH', 'ANDROID_HOME', 'ANDROID_SDK_ROOT', 'APPIUM_HOME']
     .map((v) => `echo "${SHELL_VAR_PREFIX}${v}__:$${v}"`)
     .join('; ');
   try {
@@ -98,6 +98,12 @@ export async function buildEnv(extra: Record<string, string> = {}): Promise<Node
   const androidHome = await resolveAndroidHome();
   const android = androidHome ? { ANDROID_HOME: androidHome, ANDROID_SDK_ROOT: androidHome } : {};
   return { ...process.env, PATH, ...android, ...extra };
+}
+
+/** $APPIUM_HOME as exported by the user's login shell, if any. */
+export async function shellAppiumHome(): Promise<string | null> {
+  const vars = await loginShellVars();
+  return vars.APPIUM_HOME?.trim() || process.env.APPIUM_HOME?.trim() || null;
 }
 
 /**
