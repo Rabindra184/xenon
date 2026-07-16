@@ -17,7 +17,8 @@ import { LogConsole } from './components/LogConsole';
 import { ProfileList } from './components/ProfileList';
 import { StatusBar } from './components/StatusBar';
 import { LaunchPreview } from './components/LaunchPreview';
-import { validate } from './validation';
+import { parsePort, validate } from './validation';
+import { createDebouncer } from './debounce';
 import { cn } from './cn';
 import { STATUS_DOT, STATUS_LABEL, formatUptime } from './serverStatus';
 import { Toaster } from './components/ui/Toaster';
@@ -32,6 +33,9 @@ const TABS: { id: Tab; label: string }[] = [
   { id: 'health', label: 'Health' },
   { id: 'logs', label: 'Logs' }
 ];
+
+/** How long typing settles before a profile is written to disk. */
+const SAVE_DEBOUNCE_MS = 300;
 
 const IDLE_STATE: ServerState = {
   status: 'stopped',
@@ -126,12 +130,61 @@ export default function App() {
     setDraft(p ? structuredClone(p) : null);
   }, [activeId, profiles]);
 
-  const persist = useCallback((next: Profile) => {
-    setDraft(next);
-    window.xenon.profiles.save(next).then((saved) => {
-      setProfiles((prev) => prev.map((p) => (p.id === saved.id ? saved : p)));
-    });
-  }, []);
+  // The port input holds its own text so a half-typed or cleared value never
+  // reaches the profile as NaN. Re-seeded when a different profile is selected.
+  const [portText, setPortText] = useState('');
+  useEffect(() => {
+    const p = profiles.find((x) => x.id === activeId) ?? null;
+    setPortText(p ? String(p.server.port) : '');
+  }, [activeId, profiles]);
+
+  const portParse = parsePort(portText);
+  const portError = portParse.ok ? null : portParse.error;
+
+  const onPortChange = (text: string) => {
+    setPortText(text);
+    const res = parsePort(text);
+    if (res.ok) updateServerField('port', res.value);
+  };
+
+  // The draft updates immediately (responsive typing); the disk write is
+  // debounced so we don't save a profile on every keystroke. Anything that
+  // could lose a pending edit — unmount, profile switch, server start —
+  // flushes first.
+  const saver = useRef(
+    createDebouncer((next: Profile) => {
+      window.xenon.profiles.save(next).then((saved) => {
+        setProfiles((prev) => prev.map((p) => (p.id === saved.id ? saved : p)));
+      });
+    }, SAVE_DEBOUNCE_MS)
+  ).current;
+
+  useEffect(() => {
+    // Window close / reload can tear the renderer down inside the debounce
+    // window; flush so the last keystrokes are never lost.
+    const flush = () => saver.flush();
+    window.addEventListener('beforeunload', flush);
+    return () => {
+      window.removeEventListener('beforeunload', flush);
+      saver.flush();
+    };
+  }, [saver]);
+
+  const persist = useCallback(
+    (next: Profile) => {
+      setDraft(next);
+      saver.call(next);
+    },
+    [saver]
+  );
+
+  const selectProfile = useCallback(
+    (id: string) => {
+      saver.flush(); // don't let in-flight edits to the old profile get dropped
+      setActiveId(id);
+    },
+    [saver]
+  );
 
   const updateSetting = (key: string, value: unknown) => {
     if (!draft) return;
@@ -192,6 +245,7 @@ export default function App() {
 
   const handleStart = async () => {
     if (!draft) return;
+    saver.flush(); // launch the config the user actually sees
     setBusy(true);
     try {
       const result = await runPreflight(draft);
@@ -261,7 +315,19 @@ export default function App() {
     stop: () => void handleStop()
   };
 
-  const validationIssues = useMemo(() => (schema && draft ? validate(schema, draft) : []), [schema, draft]);
+  const schemaIssues = useMemo(() => (schema && draft ? validate(schema, draft) : []), [schema, draft]);
+  // An unparseable port never reaches the profile, so it can't come back from
+  // validate() — surface it here so Start is still blocked while it's invalid.
+  const validationIssues = useMemo(
+    () =>
+      portError
+        ? [
+            ...schemaIssues.filter((i) => i.path !== 'server.port'),
+            { path: 'server.port', label: 'Port', message: portError }
+          ]
+        : schemaIssues,
+    [schemaIssues, portError]
+  );
   const settingIssueMap = useMemo(
     () => Object.fromEntries(validationIssues.map((i) => [i.path, i.message])),
     [validationIssues]
@@ -300,7 +366,7 @@ export default function App() {
               profiles={profiles}
               activeId={activeId}
               runningId={runningId}
-              onSelect={setActiveId}
+              onSelect={selectProfile}
               onCreate={createProfile}
               onDuplicate={duplicateProfile}
               onDelete={deleteProfile}
@@ -369,9 +435,15 @@ export default function App() {
                     Port
                     <input
                       type="number"
-                      value={draft.server.port}
-                      onChange={(e) => updateServerField('port', Number(e.target.value))}
-                      className="focus-ring w-20 rounded border border-line-strong bg-surface2 px-1.5 py-0.5 text-ink"
+                      value={portText}
+                      aria-invalid={!!portError}
+                      aria-label="Port"
+                      title={portError ?? undefined}
+                      onChange={(e) => onPortChange(e.target.value)}
+                      className={cn(
+                        'focus-ring w-20 rounded border bg-surface2 px-1.5 py-0.5 text-ink',
+                        portError ? 'border-danger/60' : 'border-line-strong'
+                      )}
                     />
                   </label>
                   <label className="flex items-center gap-1.5">

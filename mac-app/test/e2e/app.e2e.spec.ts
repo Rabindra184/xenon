@@ -169,6 +169,55 @@ test('Escape closes the launch preview modal', async () => {
   await expect(page.getByText('Launch preview — dry run')).not.toBeVisible();
 });
 
+test('launch preview traps Tab focus inside the dialog and restores it on close', async () => {
+  await page.getByTestId('preview-button').click();
+  await expect(page.getByText('Launch preview — dry run')).toBeVisible();
+
+  // Tab well past the number of controls in the dialog; focus must never escape.
+  for (let i = 0; i < 12; i++) {
+    await page.keyboard.press('Tab');
+    const inside = await page.evaluate(
+      () => !!document.activeElement?.closest('[role="dialog"]')
+    );
+    expect(inside, `focus escaped the dialog on Tab #${i + 1}`).toBe(true);
+  }
+  // Shift+Tab wraps backwards without escaping either.
+  await page.keyboard.press('Shift+Tab');
+  expect(await page.evaluate(() => !!document.activeElement?.closest('[role="dialog"]'))).toBe(true);
+
+  await page.keyboard.press('Escape');
+  await expect(page.getByText('Launch preview — dry run')).not.toBeVisible();
+  // Focus returns to the control that opened the modal.
+  expect(await page.evaluate(() => document.activeElement?.getAttribute('data-testid'))).toBe('preview-button');
+});
+
+test('clearing the port shows an error and blocks Start without storing NaN', async () => {
+  const port = page.getByRole('spinbutton', { name: 'Port' });
+  await port.fill('');
+  await expect(port).toHaveAttribute('aria-invalid', 'true');
+  await expect(page.getByText('Port: Port is required.')).toBeVisible();
+  await expect(page.getByTestId('start-button')).toBeDisabled();
+
+  // The invalid draft never reached the store: the sidebar badge keeps the last
+  // good port, and a reselect round-trip restores it rather than null/NaN.
+  await expect(page.getByTestId('profile-row').filter({ hasText: 'Local server' })).toContainText(':4723');
+  await port.fill('4723');
+  await expect(page.getByTestId('start-button')).toBeEnabled();
+});
+
+test('profile edits survive a rapid-typing debounce window', async () => {
+  const name = page.getByTestId('profile-name');
+  await name.fill('');
+  // pressSequentially fires one input event per character — the save is debounced.
+  await name.pressSequentially('Debounced name', { delay: 15 });
+  // Switching profiles flushes the pending write; coming back proves it landed.
+  await page.getByTestId('profile-row').filter({ hasText: 'QA Lab — iOS' }).click();
+  await expect(page.getByTestId('profile-name')).toHaveValue('QA Lab — iOS');
+  await page.getByTestId('profile-row').filter({ hasText: 'Debounced name' }).click();
+  await expect(page.getByTestId('profile-name')).toHaveValue('Debounced name');
+  await name.fill('Local server');
+});
+
 test('log console shows a line count, Clear button and start CTA when empty', async () => {
   await openTab('Logs');
   await expect(page.getByText(/0 lines/)).toBeVisible();
