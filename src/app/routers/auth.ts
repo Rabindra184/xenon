@@ -172,12 +172,32 @@ export function authAuthedRouter(): Router {
       | {
           userId: string;
           scopes: string;
+          role?: string;
           teamId?: string | null;
           teamIds?: string[];
           kind: string;
         }
       | undefined;
     if (!auth) return res.status(401).json({ error: 'unauthenticated' });
+
+    // authDisabled fabricates a synthetic SUPER_ADMIN (authMiddleware.ts) whose
+    // userId has no User row. Resolving it would 401 and strand the dashboard on
+    // /login — on a server that has auth switched off. Answer from the synthetic
+    // identity instead of the database.
+    if (config.authDisabled === true) {
+      return res.json({
+        userId: auth.userId,
+        email: 'auth-disabled@xenon.local',
+        name: 'Auth Disabled',
+        role: auth.role ?? 'SUPER_ADMIN',
+        accessKey: null,
+        scopes: auth.scopes,
+        teamId: auth.teamId ?? null,
+        kind: auth.kind,
+        teams: [],
+      });
+    }
+
     const user = await userSvc.findById(auth.userId);
     if (!user) return res.status(401).json({ error: 'unauthenticated' });
 
