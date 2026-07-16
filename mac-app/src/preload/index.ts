@@ -48,7 +48,7 @@ const api = {
   },
 
   toolchain: {
-    check: (): Promise<ToolCheck[]> => ipcRenderer.invoke(IPC.toolchainCheck),
+    check: (p?: Profile): Promise<ToolCheck[]> => ipcRenderer.invoke(IPC.toolchainCheck, p),
     preflight: (p: Profile): Promise<PreflightResult> => ipcRenderer.invoke(IPC.preflight, p)
   },
 
