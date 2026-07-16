@@ -10,6 +10,7 @@ import {
 } from '../api-service/users';
 import { forgotPassword } from '../api-service/auth';
 import { useAuth } from '../auth/auth-context';
+import { formatDateTime } from '../utils/time';
 
 const ROLE_LABELS: Record<UserRow['role'], string> = {
   SUPER_ADMIN: 'Super Admin',
@@ -109,7 +110,7 @@ export default function UsersPage() {
                     )}
                   </td>
                   <td className="py-2 text-[var(--text-muted)]">
-                    {u.lastLoginAt ? new Date(u.lastLoginAt).toLocaleString() : '—'}
+                    {formatDateTime(u.lastLoginAt)}
                   </td>
                   <td className="py-2 text-right space-x-2">
                     <button

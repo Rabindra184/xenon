@@ -67,9 +67,9 @@ describe('osVersionLabel', () => {
 });
 
 describe('formatAbsoluteTime', () => {
-  it('formats ISO string to dd/MM/yyyy, HH:mm:ss', () => {
+  it('formats ISO string to MMM d, HH:mm:ss', () => {
     const out = formatAbsoluteTime('2026-04-23T06:53:25Z');
-    expect(out).toMatch(/^\d{2}\/\d{2}\/2026, \d{2}:\d{2}:\d{2}$/);
+    expect(out).toMatch(/^[A-Z][a-z]{2} \d{1,2}, \d{2}:\d{2}:\d{2}$/);
   });
   it('returns em-dash for null', () => {
     expect(formatAbsoluteTime(null)).toBe('—');

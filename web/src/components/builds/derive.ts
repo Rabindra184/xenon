@@ -1,4 +1,5 @@
 import type { ISession } from '../../interfaces/ISession';
+import { formatDateTime } from '../../utils/time';
 
 export type StatusKey = 'all' | 'passed' | 'failed' | 'running';
 
@@ -31,16 +32,7 @@ export function osVersionLabel(s: ISession): string {
 }
 
 export function formatAbsoluteTime(iso: string | Date | null | undefined): string {
-  if (!iso) return '—';
-  const d = typeof iso === 'string' ? new Date(iso) : iso;
-  if (Number.isNaN(d.getTime())) return '—';
-  const dd = String(d.getDate()).padStart(2, '0');
-  const mm = String(d.getMonth() + 1).padStart(2, '0');
-  const yyyy = d.getFullYear();
-  const hh = String(d.getHours()).padStart(2, '0');
-  const mi = String(d.getMinutes()).padStart(2, '0');
-  const ss = String(d.getSeconds()).padStart(2, '0');
-  return `${dd}/${mm}/${yyyy}, ${hh}:${mi}:${ss}`;
+  return formatDateTime(iso);
 }
 
 export function sessionDurationMs(s: ISession): number | null {
