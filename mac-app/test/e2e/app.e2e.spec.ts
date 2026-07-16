@@ -31,7 +31,7 @@ test.afterAll(async () => {
 });
 
 async function openTab(name: 'Settings' | 'Secrets & Env' | 'Health' | 'Logs') {
-  await page.getByRole('button', { name, exact: true }).click();
+  await page.getByRole('tab', { name, exact: true }).click();
 }
 
 test('boots with a seeded profile and window chrome', async () => {
@@ -103,9 +103,9 @@ test('deleting a profile requires an inline confirmation', async () => {
 });
 
 test('logs tab is reachable and distinct from the Log Folder button', async () => {
-  // Exactly one button named "Logs" (the tab); the folder opener is "Log Folder".
+  // The tab has role=tab; the folder opener is a button named "Log Folder".
   await expect(page.getByRole('button', { name: 'Log Folder', exact: true })).toBeVisible();
-  await page.getByRole('button', { name: 'Logs', exact: true }).click();
+  await page.getByRole('tab', { name: 'Logs', exact: true }).click();
   await expect(page.getByText('No output yet. Start the server to see logs.')).toBeVisible();
 });
 

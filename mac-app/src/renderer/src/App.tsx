@@ -337,10 +337,12 @@ export default function App() {
               </div>
 
               {/* Tabs */}
-              <div className="flex gap-1 border-b border-line px-6">
+              <div role="tablist" aria-label="Profile sections" className="flex gap-1 border-b border-line px-6">
                 {TABS.map((t) => (
                   <button
                     key={t.id}
+                    role="tab"
+                    aria-selected={tab === t.id}
                     onClick={() => setTab(t.id)}
                     className={cn(
                       'focus-ring border-b-2 px-3 py-2 text-sm',
