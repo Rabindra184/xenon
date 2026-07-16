@@ -39,10 +39,12 @@ heartbeat watchdog.
    restart, a crash, or a deploy.
 3. If restarts are frequent or unplanned, correlate them with recent deploys
    and coordinate a maintenance window — a clean restart or redeploy drains
-   active sessions first (bounded grace period to archive video, release
-   ports, and mark themselves finished), but a crash or a forced host reboot
-   skips that drain entirely. Sessions orphaned that way are marked \`FAILED\`
-   with \`fail_reason=server_restart\` the next time the hub boots.
+   active sessions first (bounded grace period to archive video and release
+   ports); drained sessions are marked failed with reason "Hub shutdown". A
+   crash or forced host reboot skips the drain; orphaned sessions are reaped
+   by the heartbeat watchdog and marked failed ("Session orphaned"). Orphaned
+   live recordings are separately marked failed with \`fail_reason=server_restart\`
+   on next boot.
 
 ## Related
 
