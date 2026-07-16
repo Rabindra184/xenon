@@ -78,6 +78,16 @@ test.beforeEach(async ({ page }) => {
   // MJPEG is an endless multipart/x-mixed-replace response; letting it through
   // means networkidle never fires and every control-page test times out.
   await page.route('**/xenon/api/control/*/stream*', (route) => route.abort());
+  // useSocket.ts (web/src/hooks/useSocket.ts) connects socket.io-client with no
+  // transport override and path:'/socket.io' against window.location.origin —
+  // i.e. the HTTP endpoint is always `/socket.io/*`, never namespaced under the
+  // `/xenon` app base path. With no transport pinned, socket.io can fall back to
+  // continuous HTTP long-polling, which — exactly like the MJPEG stream above —
+  // can prevent networkidle from ever settling. It didn't manifest in the last
+  // run, but it's latent fragility in a guard whose whole value is reliability,
+  // so abort it the same way. 4 of the 13 routes use useSocket; aborting is safe
+  // because this guard tests layout, not realtime updates.
+  await page.route('**/socket.io/**', (route) => route.abort());
 });
 
 for (const width of WIDTHS) {
@@ -86,6 +96,24 @@ for (const width of WIDTHS) {
       await page.setViewportSize({ width, height: 900 });
       await page.goto(route);
       await page.waitForLoadState('networkidle');
+
+      // Guard against a vacuous pass: an overflow check over `body *` passes
+      // trivially on a blank or error-state render (uncaught JS exception,
+      // unmocked dependency) because there's simply nothing left to overflow.
+      // Every authenticated route mounts the app shell exactly once (see
+      // web/src/App.tsx — <Sidebar/> wraps <Outlet/>), so "the nav sidebar
+      // rendered its buttons" is a route-agnostic signal that this route
+      // actually painted real content, not an empty div. `aside:has(nav)`
+      // disambiguates the nav sidebar from other <aside> elements some routes
+      // render (e.g. the control page's `.device-footer-actions` toolbar,
+      // which has no <nav> inside it). The real sidebar renders 13 nav buttons
+      // (web/src/components/sidebar/sidebar.tsx) plus a 14th "API Docs"
+      // button; 5 is comfortably below that "shell mounted" floor while being
+      // nowhere close to the near-empty button counts (0-2) a broken page
+      // would exhibit, so it won't flake if role-based nav items change.
+      const shellNav = page.locator('aside').filter({ has: page.locator('nav') });
+      await expect(shellNav).toBeVisible();
+      expect(await shellNav.locator('button').count()).toBeGreaterThanOrEqual(5);
 
       // body{overflow:hidden} (index.css:32) forces scrollWidth === innerWidth,
       // so document scroll CANNOT detect this. Measure element rects instead.
