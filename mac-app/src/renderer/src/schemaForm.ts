@@ -94,12 +94,31 @@ function typeOf(p: JsonSchemaProperty): string | undefined {
   return Array.isArray(p.type) ? p.type.find((t) => t !== 'null') : p.type;
 }
 
+// Proper nouns / initialisms that naive Title-Casing would mangle ("Ios", "Adb"…).
+const PROPER_NOUNS: Record<string, string> = {
+  ios: 'iOS',
+  ip: 'IP',
+  adb: 'ADB',
+  ai: 'AI',
+  api: 'API',
+  url: 'URL',
+  tls: 'TLS',
+  json: 'JSON',
+  db: 'DB',
+  id: 'ID'
+};
+
 function humanize(key: string): string {
   return key
     .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
-    .replace(/\bMs\b/, '(ms)')
-    .replace(/\bIp\b/, 'IP')
-    .replace(/^./, (c) => c.toUpperCase());
+    .split(' ')
+    .map((word, i) => {
+      const proper = PROPER_NOUNS[word.toLowerCase()];
+      if (proper) return proper;
+      if (word === 'Ms' && i > 0) return '(ms)';
+      return i === 0 ? word.charAt(0).toUpperCase() + word.slice(1) : word;
+    })
+    .join(' ');
 }
 
 function fieldFromProperty(
@@ -146,6 +165,19 @@ function fieldFromProperty(
   }
 
   return base;
+}
+
+export type JsonDraftResult = { ok: true; value: unknown } | { ok: false; error: string };
+
+/** Parse a JSON-editor draft: empty = unset; invalid JSON returns the parse error. */
+export function parseJsonDraft(raw: string): JsonDraftResult {
+  const trimmed = raw.trim();
+  if (!trimmed) return { ok: true, value: undefined };
+  try {
+    return { ok: true, value: JSON.parse(trimmed) };
+  } catch (err) {
+    return { ok: false, error: `Invalid JSON: ${err instanceof Error ? err.message : String(err)}` };
+  }
 }
 
 export function buildForm(schema: XenonSchema): FormSection[] {

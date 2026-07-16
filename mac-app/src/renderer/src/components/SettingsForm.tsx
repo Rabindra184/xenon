@@ -1,6 +1,6 @@
-import { useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import type { XenonSchema, SettingsValues } from '@shared/types';
-import { buildForm, type FormField } from '../schemaForm';
+import { buildForm, parseJsonDraft, type FormField } from '../schemaForm';
 import { cn } from '../cn';
 
 interface Props {
@@ -98,26 +98,8 @@ function FieldControl({
         />
       );
     }
-    case 'json': {
-      const text = effective === undefined ? '' : JSON.stringify(effective, null, 2);
-      return (
-        <textarea
-          defaultValue={text}
-          placeholder="JSON"
-          onBlur={(e) => {
-            const raw = e.target.value.trim();
-            if (!raw) return onChange(undefined);
-            try {
-              onChange(JSON.parse(raw));
-            } catch {
-              /* keep last valid value; invalid JSON ignored on blur */
-            }
-          }}
-          rows={4}
-          className="w-full rounded-md border border-slate-300 bg-white px-2 py-1 font-mono text-xs dark:border-slate-600 dark:bg-slate-800"
-        />
-      );
-    }
+    case 'json':
+      return <JsonField value={effective} onChange={onChange} />;
     case 'nested':
       return null; // rendered by the section, not inline
     default:
@@ -130,6 +112,55 @@ function FieldControl({
         />
       );
   }
+}
+
+/**
+ * JSON editor with an explicit invalid state: the draft text is kept (never
+ * silently discarded) and a parse error is shown until the user fixes it.
+ * Commits on blur; empty text unsets the value.
+ */
+function JsonField({ value, onChange }: { value: unknown; onChange: (v: unknown) => void }) {
+  const committed = value === undefined ? '' : JSON.stringify(value, null, 2);
+  const [text, setText] = useState(committed);
+  const [error, setError] = useState<string | null>(null);
+  const [dirty, setDirty] = useState(false);
+
+  // Follow external value changes (e.g. profile switch) unless the user is mid-edit.
+  useEffect(() => {
+    if (!dirty) setText(committed);
+  }, [committed, dirty]);
+
+  const commit = () => {
+    const res = parseJsonDraft(text);
+    if (res.ok) {
+      setError(null);
+      setDirty(false);
+      onChange(res.value);
+    } else {
+      setError(res.error);
+    }
+  };
+
+  return (
+    <>
+      <textarea
+        value={text}
+        placeholder="JSON"
+        onChange={(e) => {
+          setText(e.target.value);
+          setDirty(true);
+        }}
+        onBlur={commit}
+        rows={4}
+        aria-invalid={!!error}
+        className={cn(
+          'w-full rounded-md border bg-white px-2 py-1 font-mono text-xs dark:bg-slate-800',
+          error ? 'border-rose-400 dark:border-rose-700' : 'border-slate-300 dark:border-slate-600'
+        )}
+      />
+      <ErrorText msg={error ?? undefined} />
+    </>
+  );
 }
 
 function ErrorText({ msg }: { msg?: string }) {

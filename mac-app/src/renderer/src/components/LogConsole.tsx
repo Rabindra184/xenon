@@ -1,6 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { LogLine } from '@shared/types';
+import { parseAnsi } from '../ansi';
 import { cn } from '../cn';
+
+/** Visible text of a log line, with ANSI escape sequences removed. */
+function stripAnsi(text: string): string {
+  return parseAnsi(text)
+    .map((s) => s.text)
+    .join('');
+}
 
 interface Props {
   logs: LogLine[];
@@ -20,14 +28,14 @@ export function LogConsole({ logs }: Props) {
   const filtered = useMemo(() => {
     if (!filter.trim()) return logs;
     const f = filter.toLowerCase();
-    return logs.filter((l) => l.text.toLowerCase().includes(f));
+    return logs.filter((l) => stripAnsi(l.text).toLowerCase().includes(f));
   }, [logs, filter]);
 
   useEffect(() => {
     if (autoscroll) endRef.current?.scrollIntoView({ block: 'end' });
   }, [filtered, autoscroll]);
 
-  const copyAll = () => navigator.clipboard.writeText(logs.map((l) => l.text).join('\n'));
+  const copyAll = () => navigator.clipboard.writeText(logs.map((l) => stripAnsi(l.text)).join('\n'));
 
   return (
     <div className="flex h-full flex-col">
@@ -52,7 +60,15 @@ export function LogConsole({ logs }: Props) {
         ) : (
           filtered.map((l, i) => (
             <div key={i} className={cn('whitespace-pre-wrap break-words', STREAM_COLOR[l.stream])}>
-              {l.text}
+              {parseAnsi(l.text).map((seg, j) =>
+                seg.color ? (
+                  <span key={j} style={{ color: seg.color }}>
+                    {seg.text}
+                  </span>
+                ) : (
+                  seg.text
+                )
+              )}
             </div>
           ))
         )}
