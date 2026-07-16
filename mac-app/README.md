@@ -89,6 +89,75 @@ picked up from the environment (`CSC_LINK`/`CSC_KEY_PASSWORD` for the certificat
 `APPLE_ID` / `APPLE_APP_SPECIFIC_PASSWORD` / `APPLE_TEAM_ID` for notarization). The entitlements
 in `build/entitlements.mac.plist` allow spawning the Appium child process and Keychain access.
 
+The app icon is generated from `build/icon.svg` by `npm run icon` (renders via the Electron
+we already depend on, then compiles `.icns` with macOS's own `sips`/`iconutil`). Re-run it
+after editing the SVG and commit the regenerated `icon.png` / `icon.icns`.
+
+> **Careful — electron-builder auto-discovers a signing identity.** If the only certificate in
+> your keychain is an *Apple Development* one, it will happily sign a "release" build with it.
+> That certificate is for local development, not distribution: Gatekeeper rejects it on other
+> machines just as it would an unsigned app. For a build other people install, either sign with
+> a **Developer ID Application** certificate and notarize (see Install below), or build
+> deliberately unsigned with `CSC_IDENTITY_AUTO_DISCOVERY=false`.
+
+## Install
+
+### Locally, on your own machine
+
+```bash
+cd mac-app
+./scripts/install-local.sh     # builds, copies to /Applications, clears quarantine
+```
+
+Or by hand:
+
+```bash
+npx electron-builder --mac --dir           # just the .app, no dmg — fastest
+cp -R "dist/mac-arm64/Xenon Control.app" /Applications/
+```
+
+### Giving it to someone else
+
+An app that hasn't been **notarized** by Apple gets stopped on arrival. Anything that travels
+through a browser, AirDrop, Slack or a zip picks up a `com.apple.quarantine` flag, and macOS
+refuses to open it — *"Xenon Control is damaged and can't be opened"* or *"cannot be opened
+because the developer cannot be verified"*. The app isn't damaged; that is Gatekeeper doing its
+job on an app Apple has never seen.
+
+The recipient can clear the flag:
+
+```bash
+xattr -dr com.apple.quarantine "/Applications/Xenon Control.app"
+open -a "Xenon Control"
+```
+
+**Understand what that does.** It removes the marker that tells macOS this bundle came from
+somewhere else, so Gatekeeper skips its checks entirely — signature, notarization, the lot. It
+is not a formality: it is the user vouching for the app *instead of* Apple. That is a reasonable
+trade for a build your own team produced and can trace, and it is the standard workflow for
+internal tools. It is not something to paste into a chat for a binary whose origin nobody can
+account for — the check being skipped is the one that would have caught a tampered bundle.
+
+Prefer `-d com.apple.quarantine` over `xattr -cr`: it drops the one attribute rather than
+stripping every extended attribute on the bundle.
+
+### The fix that means nobody needs `xattr`
+
+Notarize. Set the credentials and build — `electron-builder.yml` already reads them:
+
+```bash
+export CSC_LINK=/path/to/DeveloperID.p12      # Developer ID Application certificate
+export CSC_KEY_PASSWORD=...
+export APPLE_ID=you@example.com
+export APPLE_APP_SPECIFIC_PASSWORD=abcd-efgh-ijkl-mnop
+export APPLE_TEAM_ID=XXXXXXXXXX
+npm run dist
+```
+
+Apple staples the ticket to the DMG, Gatekeeper is satisfied on first launch, and installing is
+a drag-and-drop with no terminal step for anyone. This needs a paid Apple Developer account and
+a Developer ID certificate — an *Apple Development* certificate will not do.
+
 ## What it intentionally does NOT do
 
 Runtime device/session/user/analytics management stays in the web dashboard at `/xenon/`.
