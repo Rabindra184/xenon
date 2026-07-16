@@ -21,12 +21,22 @@ body {
   color: var(--text);
 }
 
+
 /* The draggable inset title bar region. */
 .titlebar-drag {
   -webkit-app-region: drag;
 }
 .titlebar-no-drag {
   -webkit-app-region: no-drag;
+}
+
+/* Native virtualization for the log console: the browser skips layout and paint
+   for rows outside the viewport. Works with wrapped, variable-height lines,
+   which JS windowing can't measure without rendering them first. The intrinsic
+   size is a hint for the scrollbar, not a constraint. */
+.log-row {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 18px;
 }
 
 @layer utilities {

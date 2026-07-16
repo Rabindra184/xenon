@@ -1,8 +1,9 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { memo, useEffect, useMemo, useRef, useState } from 'react';
 import type { LogLine } from '@shared/types';
 import { Play } from 'lucide-react';
 import { parseAnsi } from '../ansi';
 import { cn } from '../cn';
+import type { UiLogLine } from '../logBuffer';
 import { Button } from './ui/Button';
 import { toast } from './ui/toastStore';
 
@@ -14,11 +15,34 @@ function stripAnsi(text: string): string {
 }
 
 interface Props {
-  logs: LogLine[];
+  logs: UiLogLine[];
   onClear: () => void;
   /** Offered in the empty state when the server isn't running. */
   onStart?: () => void;
 }
+
+/**
+ * One log line. Memoised and keyed by a stable id, so a new line re-renders
+ * only itself rather than the whole buffer. `log-row` carries
+ * content-visibility, letting the browser skip layout/paint for offscreen rows
+ * — which handles wrapped, variable-height lines that JS windowing can't size.
+ */
+const LogRow = memo(function LogRow({ line }: { line: UiLogLine }) {
+  const segments = useMemo(() => parseAnsi(line.text), [line.text]);
+  return (
+    <div className={cn('log-row whitespace-pre-wrap break-words', STREAM_COLOR[line.stream])}>
+      {segments.map((seg, i) =>
+        seg.color ? (
+          <span key={i} style={{ color: seg.color }}>
+            {seg.text}
+          </span>
+        ) : (
+          seg.text
+        )
+      )}
+    </div>
+  );
+});
 
 const STREAM_COLOR: Record<LogLine['stream'], string> = {
   stdout: 'text-ink',
@@ -83,19 +107,7 @@ export function LogConsole({ logs, onClear, onStart }: Props) {
             )}
           </div>
         ) : (
-          filtered.map((l, i) => (
-            <div key={i} className={cn('whitespace-pre-wrap break-words', STREAM_COLOR[l.stream])}>
-              {parseAnsi(l.text).map((seg, j) =>
-                seg.color ? (
-                  <span key={j} style={{ color: seg.color }}>
-                    {seg.text}
-                  </span>
-                ) : (
-                  seg.text
-                )
-              )}
-            </div>
-          ))
+          filtered.map((l) => <LogRow key={l.id} line={l} />)
         )}
         <div ref={endRef} />
       </div>
