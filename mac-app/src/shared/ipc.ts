@@ -30,7 +30,8 @@ export const IPC = {
   // events (main -> renderer)
   evtLog: 'evt:log',
   evtServerState: 'evt:serverState',
-  evtSetupProgress: 'evt:setupProgress'
+  evtSetupProgress: 'evt:setupProgress',
+  evtMenuAction: 'evt:menuAction'
 } as const;
 
 export type IpcChannel = (typeof IPC)[keyof typeof IPC];

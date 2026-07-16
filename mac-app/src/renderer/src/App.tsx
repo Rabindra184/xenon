@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import type {
   LogLine,
   PreflightResult,
@@ -60,6 +60,12 @@ export default function App() {
   const [installing, setInstalling] = useState(false);
   const [previewOpen, setPreviewOpen] = useState(false);
 
+  // Menu actions arrive on a subscription that mounts once, so the handler
+  // reads live values through refs rather than stale closure captures.
+  const draftRef = useRef<Profile | null>(null);
+  const stateRef = useRef<ServerState>(IDLE_STATE);
+  const actionsRef = useRef<Record<string, () => void>>({});
+
   // Initial load + event subscriptions.
   useEffect(() => {
     (async () => {
@@ -75,9 +81,41 @@ export default function App() {
 
     const offLog = window.xenon.onLog((line) => setLogs((prev) => [...prev.slice(-4999), line]));
     const offState = window.xenon.onServerState((st) => setServerState(st));
+    const offMenu = window.xenon.onMenuAction((a) => {
+      switch (a) {
+        case 'tab-settings':
+          return setTab('settings');
+        case 'tab-secrets':
+          return setTab('secrets');
+        case 'tab-health':
+          return setTab('health');
+        case 'tab-logs':
+          return setTab('logs');
+        case 'new-profile':
+          return actionsRef.current.create?.();
+        case 'import-profiles':
+          return actionsRef.current.import?.();
+        case 'export-profile':
+          return actionsRef.current.export?.();
+        case 'launch-preview':
+          return setPreviewOpen(true);
+        case 'open-dashboard': {
+          const url = stateRef.current.dashboardUrl;
+          if (url) void window.xenon.server.openDashboard(url);
+          return;
+        }
+        case 'toggle-server': {
+          const s = stateRef.current.status;
+          if (s === 'stopped' || s === 'crashed') actionsRef.current.start?.();
+          else actionsRef.current.stop?.();
+          return;
+        }
+      }
+    });
     return () => {
       offLog();
       offState();
+      offMenu();
     };
   }, []);
 
@@ -209,6 +247,17 @@ export default function App() {
   };
   const updateEnv = (env: Record<string, string>) => {
     if (draft) persist({ ...draft, env });
+  };
+
+  // Keep the menu-action refs pointing at the current state and handlers.
+  draftRef.current = draft;
+  stateRef.current = serverState;
+  actionsRef.current = {
+    create: () => void createProfile(),
+    import: () => void importProfiles(),
+    export: () => draftRef.current && void exportProfile(draftRef.current.id),
+    start: () => void handleStart(),
+    stop: () => void handleStop()
   };
 
   const validationIssues = useMemo(() => (schema && draft ? validate(schema, draft) : []), [schema, draft]);
