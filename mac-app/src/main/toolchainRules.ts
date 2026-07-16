@@ -67,6 +67,41 @@ export function deriveAndroidHome(input: AndroidHomeInput): string | null {
   return clean(input.defaultSdkDir ?? undefined);
 }
 
+/** Relative path proving a given APPIUM_HOME has the Xenon plugin installed. */
+export const PLUGIN_MARKER = ['node_modules', 'xenon'];
+
+export type AppiumHomeSource = 'profile' | 'env' | 'app-managed' | 'convention' | 'fallback';
+
+export interface AppiumHomeCandidate {
+  path: string;
+  /** Cheap filesystem probe — preflight still does the authoritative check. */
+  hasPlugin: boolean;
+  source: Exclude<AppiumHomeSource, 'profile' | 'fallback'>;
+}
+
+/**
+ * Choose the APPIUM_HOME a profile launches against.
+ *
+ * A profile stores '' for "auto" rather than a resolved path: profiles are
+ * exportable, so baking one machine's home into it would break the next one.
+ * Auto therefore means "the first home that actually has the plugin", which is
+ * what makes a fresh profile start on a host that's already set up.
+ */
+export function pickAppiumHome(input: {
+  override?: string;
+  candidates: AppiumHomeCandidate[];
+  fallback: string;
+}): { path: string; source: AppiumHomeSource } {
+  const override = input.override?.trim();
+  if (override) return { path: override, source: 'profile' };
+
+  const installed = input.candidates.find((c) => c.hasPlugin);
+  if (installed) return { path: installed.path, source: installed.source };
+
+  // Nothing is set up yet — the app-managed home is where first-run setup installs.
+  return { path: input.fallback, source: 'fallback' };
+}
+
 export interface WdaPressureInput {
   /** Profile's `platform` setting. */
   platform: string | undefined;

@@ -355,11 +355,24 @@ test('enabling bootedSimulators clears the WDA port warning', async () => {
   await page.getByTestId('settings-search').fill('');
 });
 
+test('APPIUM_HOME auto-detects a home on this host', async () => {
+  const input = page.getByTestId('appium-home');
+  await expect(input).toHaveValue(''); // '' means auto — profiles stay portable
+  // The placeholder shows what auto actually resolved to, so it isn't magic.
+  await expect(input).toHaveAttribute('placeholder', /^auto: \//);
+});
+
 test('preflight blocks Start and surfaces blockers when the plugin is not installed', async () => {
-  // Fresh user-data-dir => plugin not installed in the app-managed APPIUM_HOME,
-  // so preflight must block and route the user to Health with a clear reason.
+  // Pin an APPIUM_HOME that definitely has no plugin. Without this the test is
+  // host-dependent: auto-detection finds a real plugin-bearing home on a
+  // developer machine, but not on CI.
+  const emptyHome = mkdtempSync(path.join(os.tmpdir(), 'xenon-empty-home-'));
+  await page.getByTestId('appium-home').fill(emptyHome);
+
   await page.getByTestId('start-button').click();
   await expect(page.getByText('Cannot start yet:')).toBeVisible({ timeout: 25_000 });
   await expect(page.getByText(/xenon plugin is not installed|Port .* in use|Appium/i).first()).toBeVisible();
   await page.screenshot({ path: path.join(shotsDir, '06-preflight-block.png'), fullPage: true });
+
+  await page.getByTestId('appium-home').fill(''); // back to auto
 });

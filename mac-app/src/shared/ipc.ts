@@ -23,6 +23,7 @@ export const IPC = {
   launchPreview: 'server:launchPreview',
   openDashboard: 'server:openDashboard',
   openPath: 'server:openPath',
+  resolvedAppiumHome: 'server:resolvedAppiumHome',
   // toolchain / setup
   toolchainCheck: 'toolchain:check',
   preflight: 'toolchain:preflight',
