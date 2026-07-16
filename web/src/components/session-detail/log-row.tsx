@@ -58,7 +58,7 @@ export const LogRow: React.FC<Props> = ({ log }) => {
         <span className="min-w-0 flex-1 flex items-baseline gap-2 truncate">
           <span className="text-[12px] text-[var(--text)] shrink-0">{logDisplayTitle(log)}</span>
           {logDisplaySubtitle(log) && (
-            <span className="font-mono text-[11px] text-[var(--text-dim)] truncate">
+            <span className="font-mono text-[11px] text-[var(--text-dim)] truncate min-w-0">
               {logDisplaySubtitle(log)}
             </span>
           )}

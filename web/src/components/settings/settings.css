@@ -13,6 +13,14 @@
     width: 100%;
 }
 
+/* PageHeader rendered inside a settings-container: the container already
+   provides the 32px page gutter, so zero the header's own horizontal padding
+   (px-6) to keep the title aligned with the content below it. */
+.settings-container > header {
+    padding-left: 0;
+    padding-right: 0;
+}
+
 .settings-header {
     margin-bottom: 24px;
     padding-bottom: 20px;

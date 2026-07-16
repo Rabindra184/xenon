@@ -2,7 +2,6 @@ import { describe, it, expect } from 'vitest';
 import {
   logTimestamp,
   logRowKind,
-  logInlinePreview,
   prettyJson,
   tokenizeJson,
   filterErrorsOnly,
@@ -44,26 +43,6 @@ describe('logRowKind', () => {
   it('falls back to neutral with label "log"', () => {
     expect(logRowKind({}).tone).to.equal('neutral');
     expect(logRowKind({}).label).to.equal('log');
-  });
-});
-
-describe('logInlinePreview', () => {
-  it('uses .body string when present', () => {
-    const out = logInlinePreview({ body: 'hello world' } as any);
-    expect(out).to.equal('hello world');
-  });
-  it('JSON-stringifies object .body', () => {
-    const out = logInlinePreview({ body: { a: 1 } } as any);
-    expect(out).to.equal('{"a":1}');
-  });
-  it('falls back to whole entry JSON', () => {
-    const out = logInlinePreview({ id: 'x', message: 'hi' } as any);
-    expect(out).to.contain('"id":"x"');
-  });
-  it('truncates long output with ellipsis', () => {
-    const out = logInlinePreview({ body: 'x'.repeat(500) } as any, 50);
-    expect(out.endsWith('…')).to.equal(true);
-    expect(out.length).to.equal(51);
   });
 });
 

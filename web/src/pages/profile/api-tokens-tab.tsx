@@ -38,12 +38,20 @@ export function ApiTokensTab() {
 
   async function rotate() {
     if (!confirm('Rotate access key? Existing tokens stay valid but the old accessKey will stop working immediately.')) return;
-    setAccessKey(await rotateAccessKey());
+    try {
+      setAccessKey(await rotateAccessKey());
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to rotate access key');
+    }
   }
   async function remove(id: string) {
     if (!confirm('Delete this token? It will stop working immediately.')) return;
-    await deleteToken(id);
-    setTokens((t) => t.filter((x) => x.id !== id));
+    try {
+      await deleteToken(id);
+      setTokens((t) => t.filter((x) => x.id !== id));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to delete token');
+    }
   }
 
   return (
