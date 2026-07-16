@@ -28,20 +28,20 @@ export function EnvVarsEditor({ env, onChange }: Props) {
   };
 
   return (
-    <div className="rounded-lg border border-slate-200 p-3 dark:border-slate-700">
+    <div className="rounded-lg border border-line bg-surface p-3">
       <div className="mb-2 flex items-center justify-between">
         <div>
           <h4 className="text-sm font-medium">Environment variables</h4>
-          <p className="text-xs text-slate-500 dark:text-slate-400">
+          <p className="text-xs text-muted">
             Extra non-secret vars (e.g. OTEL_EXPORTER_OTLP_ENDPOINT). Stored in the profile; injected at launch.
           </p>
         </div>
-        <button onClick={add} className="inline-flex items-center gap-1 text-xs text-accent">
+        <button onClick={add} className="focus-ring inline-flex items-center gap-1 rounded text-xs text-accent">
           <Plus size={14} /> Add
         </button>
       </div>
       {rows.length === 0 ? (
-        <p className="py-1 text-xs text-slate-400">No extra environment variables.</p>
+        <p className="py-1 text-xs text-dim">No extra environment variables.</p>
       ) : (
         <div className="space-y-1.5">
           {rows.map(([key, value], i) => (
@@ -50,16 +50,16 @@ export function EnvVarsEditor({ env, onChange }: Props) {
                 value={key}
                 placeholder="KEY"
                 onChange={(e) => setKey(key, e.target.value.trim())}
-                className="w-1/3 rounded-md border border-slate-300 bg-white px-2 py-1 font-mono text-xs dark:border-slate-600 dark:bg-slate-800"
+                className="focus-ring w-1/3 rounded-md border border-line-strong bg-surface2 px-2 py-1 font-mono text-xs text-ink"
               />
-              <span className="text-slate-400">=</span>
+              <span className="text-dim">=</span>
               <input
                 value={value}
                 placeholder="value"
                 onChange={(e) => setVal(key, e.target.value)}
-                className="flex-1 rounded-md border border-slate-300 bg-white px-2 py-1 font-mono text-xs dark:border-slate-600 dark:bg-slate-800"
+                className="focus-ring flex-1 rounded-md border border-line-strong bg-surface2 px-2 py-1 font-mono text-xs text-ink"
               />
-              <button onClick={() => remove(key)} className="text-slate-400 hover:text-rose-500" title="Remove">
+              <button onClick={() => remove(key)} className="focus-ring rounded text-dim hover:text-danger" title="Remove" aria-label="Remove variable">
                 <Trash2 size={14} />
               </button>
             </div>

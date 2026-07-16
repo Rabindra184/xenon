@@ -143,3 +143,16 @@ export interface SetupProgress {
   ok: boolean;
   detail: string;
 }
+
+/** Actions the application menu dispatches to the renderer, which owns the state. */
+export type MenuAction =
+  | 'new-profile'
+  | 'import-profiles'
+  | 'export-profile'
+  | 'toggle-server'
+  | 'open-dashboard'
+  | 'launch-preview'
+  | 'tab-settings'
+  | 'tab-secrets'
+  | 'tab-health'
+  | 'tab-logs';

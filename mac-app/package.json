@@ -18,6 +18,8 @@
     "postinstall": "electron-builder install-app-deps"
   },
   "dependencies": {
+    "@fontsource/inter": "^5.2.8",
+    "@fontsource/jetbrains-mono": "^5.2.8",
     "electron-store": "^8.2.0",
     "electron-updater": "^6.3.9",
     "js-yaml": "^4.1.0"

@@ -16,6 +16,11 @@ interface Props {
 /** How long the armed "Delete?" confirm state stays active before reverting. */
 const CONFIRM_TIMEOUT_MS = 4000;
 
+function platformLabel(p: Profile): string {
+  const v = p.settings.platform;
+  return v === 'ios' ? 'iOS' : v === 'android' ? 'Android' : 'Both';
+}
+
 export function ProfileList({ profiles, activeId, runningId, onSelect, onCreate, onDuplicate, onDelete }: Props) {
   // Deletion is a two-step inline confirm: first click arms, second click deletes.
   const [confirmingId, setConfirmingId] = useState<string | null>(null);
@@ -34,13 +39,13 @@ export function ProfileList({ profiles, activeId, runningId, onSelect, onCreate,
   return (
     <div className="flex flex-col">
       <div className="mb-2 flex items-center justify-between px-1">
-        <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">Profiles</span>
+        <span className="text-xs font-semibold uppercase tracking-wide text-muted">Profiles</span>
         <button
           data-testid="new-profile"
           onClick={onCreate}
           title="New profile"
           aria-label="New profile"
-          className="text-slate-400 hover:text-accent"
+          className="focus-ring rounded text-dim hover:text-accent"
         >
           <Plus size={16} />
         </button>
@@ -51,17 +56,32 @@ export function ProfileList({ profiles, activeId, runningId, onSelect, onCreate,
           return (
             <div
               key={p.id}
+              data-testid="profile-row"
               onClick={() => onSelect(p.id)}
               className={cn(
                 'group flex cursor-pointer items-center justify-between rounded-md px-2 py-1.5 text-sm',
-                p.id === activeId ? 'bg-accent/10 text-accent' : 'hover:bg-slate-100 dark:hover:bg-slate-800'
+                p.id === activeId ? 'bg-accent/10 text-accent' : 'hover:bg-surface2'
               )}
             >
-              <span className="flex items-center gap-2 truncate">
-                {p.id === runningId && <span className="h-2 w-2 shrink-0 rounded-full bg-emerald-500" />}
-                <span className="truncate">{p.name}</span>
+              <span className="flex min-w-0 flex-col gap-0.5">
+                <span className="flex items-center gap-2 truncate">
+                  {p.id === runningId && <span className="h-2 w-2 shrink-0 animate-pulse rounded-full bg-accent" />}
+                  <span className="truncate">{p.name}</span>
+                </span>
+                <span className="flex items-center gap-1.5 text-[10px] text-dim">
+                  <span className="rounded bg-surface2 px-1 py-px font-mono uppercase tracking-wide">
+                    {platformLabel(p)}
+                  </span>
+                  <span className="font-mono">:{p.server.port}</span>
+                </span>
               </span>
-              <span className={cn('items-center gap-1', confirming ? 'flex' : 'hidden group-hover:flex')}>
+              {/* Opacity (not `hidden`) keeps these focusable for keyboard users. */}
+              <span
+                className={cn(
+                  'flex items-center gap-1 transition-opacity',
+                  confirming ? 'opacity-100' : 'opacity-0 focus-within:opacity-100 group-hover:opacity-100'
+                )}
+              >
                 {confirming ? (
                   <button
                     onClick={(e) => {
@@ -71,7 +91,7 @@ export function ProfileList({ profiles, activeId, runningId, onSelect, onCreate,
                       onDelete(p.id);
                     }}
                     aria-label="Confirm delete"
-                    className="rounded bg-rose-600 px-1.5 py-0.5 text-[11px] font-medium text-white hover:bg-rose-700"
+                    className="focus-ring rounded bg-danger px-1.5 py-0.5 text-[11px] font-medium text-white hover:bg-danger/80"
                   >
                     Delete?
                   </button>
@@ -82,7 +102,7 @@ export function ProfileList({ profiles, activeId, runningId, onSelect, onCreate,
                         e.stopPropagation();
                         onDuplicate(p.id);
                       }}
-                      className="text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"
+                      className="focus-ring rounded text-dim hover:text-ink"
                       title="Duplicate"
                       aria-label="Duplicate"
                     >
@@ -93,7 +113,7 @@ export function ProfileList({ profiles, activeId, runningId, onSelect, onCreate,
                         e.stopPropagation();
                         armDelete(p.id);
                       }}
-                      className="text-slate-400 hover:text-rose-500"
+                      className="focus-ring rounded text-dim hover:text-danger"
                       title="Delete"
                       aria-label="Delete"
                     >

@@ -31,7 +31,7 @@ test.afterAll(async () => {
 });
 
 async function openTab(name: 'Settings' | 'Secrets & Env' | 'Health' | 'Logs') {
-  await page.getByRole('button', { name, exact: true }).click();
+  await page.getByRole('tab', { name, exact: true }).click();
 }
 
 test('boots with a seeded profile and window chrome', async () => {
@@ -44,9 +44,10 @@ test('boots with a seeded profile and window chrome', async () => {
 
 test('renders the schema-driven settings form with grouped sections', async () => {
   await openTab('Settings');
-  await expect(page.getByText('Platform & Discovery')).toBeVisible();
-  await expect(page.getByText('Session Control')).toBeVisible();
-  await expect(page.getByText('AI & Self-Healing')).toBeVisible();
+  // Section titles appear twice (nav + heading); assert on the headings.
+  await expect(page.getByRole('heading', { name: 'Platform & Discovery' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Session Control' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'AI & Self-Healing' })).toBeVisible();
   // A representative field auto-generated from schema.json (required → has a * marker).
   await expect(page.getByText('Max Sessions')).toBeVisible();
   // Secret-bearing settings are deferred to the Secrets panel, not shown as inputs
@@ -58,12 +59,16 @@ test('renders the schema-driven settings form with grouped sections', async () =
 
 test('persists a setting change through the store', async () => {
   await openTab('Settings');
-  const platform = page.locator('select').first();
-  await platform.selectOption('android');
+  const android = page.getByRole('radio', { name: 'android', exact: true }).first();
+  await android.click();
+  await expect(android).toHaveAttribute('aria-checked', 'true');
   // Re-read via a fresh selection round-trip: switch tabs and back.
   await openTab('Health');
   await openTab('Settings');
-  await expect(page.locator('select').first()).toHaveValue('android');
+  await expect(page.getByRole('radio', { name: 'android', exact: true }).first()).toHaveAttribute(
+    'aria-checked',
+    'true'
+  );
 });
 
 test('creates, renames, and deletes a profile', async () => {
@@ -89,7 +94,7 @@ test('deleting a profile requires an inline confirmation', async () => {
   await page.getByTestId('profile-name').fill('Delete-me probe');
   await expect(page.getByText('Delete-me probe')).toBeVisible();
 
-  const row = page.getByText('Delete-me probe').locator('..').locator('..');
+  const row = page.getByTestId('profile-row').filter({ hasText: 'Delete-me probe' });
   await row.hover();
   await row.getByRole('button', { name: 'Delete' }).click();
   // First click arms the confirm state — nothing is deleted yet.
@@ -99,15 +104,17 @@ test('deleting a profile requires an inline confirmation', async () => {
 });
 
 test('logs tab is reachable and distinct from the Log Folder button', async () => {
-  // Exactly one button named "Logs" (the tab); the folder opener is "Log Folder".
+  // The tab has role=tab; the folder opener is a button named "Log Folder".
   await expect(page.getByRole('button', { name: 'Log Folder', exact: true })).toBeVisible();
-  await page.getByRole('button', { name: 'Logs', exact: true }).click();
+  await page.getByRole('tab', { name: 'Logs', exact: true }).click();
   await expect(page.getByText('No output yet. Start the server to see logs.')).toBeVisible();
 });
 
 test('invalid JSON in a settings field shows an inline error and keeps the draft', async () => {
   await openTab('Settings');
-  const jsonField = page.getByPlaceholder('JSON').first(); // Simulators editor
+  // Object-array fields render a table editor; JSON is the escape hatch.
+  await page.getByRole('button', { name: 'Edit as JSON' }).first().click();
+  const jsonField = page.getByPlaceholder('JSON').first();
   await jsonField.fill('[{"name": }]');
   await jsonField.blur();
   await expect(page.getByText(/Invalid JSON/).first()).toBeVisible();
@@ -116,6 +123,43 @@ test('invalid JSON in a settings field shows an inline error and keeps the draft
   await jsonField.fill('');
   await jsonField.blur();
   await expect(page.getByText(/Invalid JSON/)).not.toBeVisible();
+  await page.getByRole('button', { name: 'Edit as table' }).first().click();
+});
+
+test('chip editor round-trips a string-array setting', async () => {
+  await openTab('Settings');
+  await page.getByTestId('settings-search').fill('adbRemote');
+  const chipInput = page.getByPlaceholder('add + Enter').first();
+  await chipInput.fill('192.168.1.50:5555');
+  await chipInput.press('Enter');
+  await expect(page.getByText('192.168.1.50:5555')).toBeVisible();
+
+  // Round-trip through the store: leave the tab and come back.
+  await openTab('Health');
+  await openTab('Settings');
+  await page.getByTestId('settings-search').fill('adbRemote');
+  await expect(page.getByText('192.168.1.50:5555')).toBeVisible();
+
+  await page.getByRole('button', { name: 'Remove 192.168.1.50:5555' }).click();
+  await expect(page.getByText('192.168.1.50:5555')).not.toBeVisible();
+  await page.getByTestId('settings-search').fill('');
+});
+
+test('table editor round-trips an object-array setting', async () => {
+  await openTab('Settings');
+  await page.getByTestId('settings-search').fill('simulators');
+  await page.getByRole('button', { name: 'Add row' }).first().click();
+  const cell = page.getByRole('textbox', { name: 'name row 1' });
+  await cell.fill('iPhone 15');
+  await cell.blur();
+
+  await openTab('Health');
+  await openTab('Settings');
+  await page.getByTestId('settings-search').fill('simulators');
+  await expect(page.getByRole('textbox', { name: 'name row 1' })).toHaveValue('iPhone 15');
+
+  await page.getByRole('button', { name: 'Remove row' }).first().click();
+  await page.getByTestId('settings-search').fill('');
 });
 
 test('Escape closes the launch preview modal', async () => {
@@ -123,6 +167,31 @@ test('Escape closes the launch preview modal', async () => {
   await expect(page.getByText('Launch preview — dry run')).toBeVisible();
   await page.keyboard.press('Escape');
   await expect(page.getByText('Launch preview — dry run')).not.toBeVisible();
+});
+
+test('log console shows a line count, Clear button and start CTA when empty', async () => {
+  await openTab('Logs');
+  await expect(page.getByText(/0 lines/)).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Clear', exact: true })).toBeDisabled();
+  await expect(page.getByRole('button', { name: 'Start server' })).toBeVisible();
+});
+
+test('settings search filters fields by key name', async () => {
+  await openTab('Settings');
+  const search = page.getByTestId('settings-search');
+  await search.fill('adbRemote');
+  await expect(page.getByText('ADB Remote')).toBeVisible();
+  await expect(page.getByText('Max Sessions')).not.toBeVisible();
+  await search.fill('zzz-no-match');
+  await expect(page.getByText(/No settings match/)).toBeVisible();
+  await search.fill('');
+  await expect(page.getByText('Max Sessions')).toBeVisible();
+});
+
+test('sidebar shows brand, platform badge and status card', async () => {
+  await expect(page.getByTestId('sidebar-brand')).toBeVisible();
+  await expect(page.getByTestId('sidebar-status')).toContainText('Stopped');
+  await expect(page.getByTestId('sidebar-status')).toContainText('plugin');
 });
 
 test('secrets panel lists env-injected secrets and toggles injection', async () => {
@@ -154,6 +223,15 @@ test('launch preview shows the resolved config with required defaults', async ()
   await expect(configBlock).toContainText('use-plugins');
   await page.screenshot({ path: path.join(shotsDir, '07-preview.png') });
   await page.getByRole('button', { name: 'Close', exact: true }).click();
+});
+
+test('copying the preview config shows a toast', async () => {
+  await page.getByTestId('preview-button').click();
+  await expect(page.getByText('Launch preview — dry run')).toBeVisible();
+  await page.getByRole('button', { name: 'Copy', exact: true }).click();
+  await expect(page.getByText('Config copied')).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(page.getByText('Launch preview — dry run')).not.toBeVisible();
 });
 
 test('invalid config produces a validation issue and disables Start', async () => {

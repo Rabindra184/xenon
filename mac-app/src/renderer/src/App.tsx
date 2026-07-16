@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import type {
   LogLine,
   PreflightResult,
@@ -19,7 +19,11 @@ import { StatusBar } from './components/StatusBar';
 import { LaunchPreview } from './components/LaunchPreview';
 import { validate } from './validation';
 import { cn } from './cn';
-import { Download, FolderOpen, Upload } from 'lucide-react';
+import { STATUS_DOT, STATUS_LABEL, formatUptime } from './serverStatus';
+import { Toaster } from './components/ui/Toaster';
+import { toast } from './components/ui/toastStore';
+import { Button } from './components/ui/Button';
+import { Download, FolderOpen, Plus, Upload } from 'lucide-react';
 
 type Tab = 'settings' | 'secrets' | 'health' | 'logs';
 const TABS: { id: Tab; label: string }[] = [
@@ -57,6 +61,12 @@ export default function App() {
   const [installing, setInstalling] = useState(false);
   const [previewOpen, setPreviewOpen] = useState(false);
 
+  // Menu actions arrive on a subscription that mounts once, so the handler
+  // reads live values through refs rather than stale closure captures.
+  const draftRef = useRef<Profile | null>(null);
+  const stateRef = useRef<ServerState>(IDLE_STATE);
+  const actionsRef = useRef<Record<string, () => void>>({});
+
   // Initial load + event subscriptions.
   useEffect(() => {
     (async () => {
@@ -72,9 +82,41 @@ export default function App() {
 
     const offLog = window.xenon.onLog((line) => setLogs((prev) => [...prev.slice(-4999), line]));
     const offState = window.xenon.onServerState((st) => setServerState(st));
+    const offMenu = window.xenon.onMenuAction((a) => {
+      switch (a) {
+        case 'tab-settings':
+          return setTab('settings');
+        case 'tab-secrets':
+          return setTab('secrets');
+        case 'tab-health':
+          return setTab('health');
+        case 'tab-logs':
+          return setTab('logs');
+        case 'new-profile':
+          return actionsRef.current.create?.();
+        case 'import-profiles':
+          return actionsRef.current.import?.();
+        case 'export-profile':
+          return actionsRef.current.export?.();
+        case 'launch-preview':
+          return setPreviewOpen(true);
+        case 'open-dashboard': {
+          const url = stateRef.current.dashboardUrl;
+          if (url) void window.xenon.server.openDashboard(url);
+          return;
+        }
+        case 'toggle-server': {
+          const s = stateRef.current.status;
+          if (s === 'stopped' || s === 'crashed') actionsRef.current.start?.();
+          else actionsRef.current.stop?.();
+          return;
+        }
+      }
+    });
     return () => {
       offLog();
       offState();
+      offMenu();
     };
   }, []);
 
@@ -194,10 +236,29 @@ export default function App() {
   const importProfiles = async () => {
     const { profiles: list, importedIds } = await window.xenon.profiles.import();
     setProfiles(list);
-    if (importedIds.length) setActiveId(importedIds[0]);
+    if (importedIds.length) {
+      setActiveId(importedIds[0]);
+      toast(`Imported ${importedIds.length} profile${importedIds.length === 1 ? '' : 's'}`);
+    }
+  };
+
+  const exportProfile = async (id: string) => {
+    const ok = await window.xenon.profiles.export(id);
+    if (ok) toast('Profile exported');
   };
   const updateEnv = (env: Record<string, string>) => {
     if (draft) persist({ ...draft, env });
+  };
+
+  // Keep the menu-action refs pointing at the current state and handlers.
+  draftRef.current = draft;
+  stateRef.current = serverState;
+  actionsRef.current = {
+    create: () => void createProfile(),
+    import: () => void importProfiles(),
+    export: () => draftRef.current && void exportProfile(draftRef.current.id),
+    start: () => void handleStart(),
+    stop: () => void handleStop()
   };
 
   const validationIssues = useMemo(() => (schema && draft ? validate(schema, draft) : []), [schema, draft]);
@@ -209,54 +270,87 @@ export default function App() {
   const runningId = serverState.status !== 'stopped' && serverState.status !== 'crashed' ? serverState.profileId : null;
   const ready = schema && draft;
 
+  // 1s uptime ticker, only while the server is running.
+  const [now, setNow] = useState(Date.now());
+  useEffect(() => {
+    if (serverState.status !== 'running') return;
+    const t = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(t);
+  }, [serverState.status]);
+
   const dashboardHint = useMemo(() => {
     if (!draft) return '';
     return `http://${draft.settings.bindHostOrIp || '127.0.0.1'}:${draft.server.port}/xenon/`;
   }, [draft]);
 
   return (
-    <div className="flex h-full flex-col bg-white text-slate-900 dark:bg-slate-950 dark:text-slate-100">
-      {/* Title bar (draggable). */}
-      <div className="titlebar-drag flex h-10 shrink-0 items-center justify-center border-b border-slate-200 dark:border-slate-800">
-        <span className="text-xs font-semibold tracking-wide text-slate-500">Xenon Control</span>
-      </div>
-
-      <div className="flex min-h-0 flex-1">
-        {/* Sidebar */}
-        <aside className="flex w-60 shrink-0 flex-col border-r border-slate-200 p-3 dark:border-slate-800">
-          <ProfileList
-            profiles={profiles}
-            activeId={activeId}
-            runningId={runningId}
-            onSelect={setActiveId}
-            onCreate={createProfile}
-            onDuplicate={duplicateProfile}
-            onDelete={deleteProfile}
-          />
-          <div className="mt-auto pt-3 text-[10px] text-slate-400">
-            schema: plugin {meta?.pluginVersion ?? '…'}
+    <div className="flex h-full bg-app text-ink">
+      {/* Sidebar spans the full window height; the top 40px is the traffic-light drag region. */}
+      <aside className="flex w-64 shrink-0 flex-col border-r border-line bg-surface">
+        <div className="titlebar-drag h-10 shrink-0" />
+        <div className="flex min-h-0 flex-1 flex-col p-3 pt-0">
+          <div data-testid="sidebar-brand" className="mb-4 flex items-center gap-2 px-1">
+            <div className="flex h-6 w-6 items-center justify-center rounded-md bg-accent/15 font-mono text-sm font-semibold text-accent">
+              X
+            </div>
+            <span className="text-sm font-semibold tracking-wide text-ink">Xenon Control</span>
           </div>
-        </aside>
+          <div className="min-h-0 flex-1 overflow-auto">
+            <ProfileList
+              profiles={profiles}
+              activeId={activeId}
+              runningId={runningId}
+              onSelect={setActiveId}
+              onCreate={createProfile}
+              onDuplicate={duplicateProfile}
+              onDelete={deleteProfile}
+            />
+          </div>
+          <div data-testid="sidebar-status" className="mt-3 rounded-lg border border-line bg-surface2 p-3 text-xs">
+            <div className="flex items-center gap-2">
+              <span className={cn('h-2 w-2 rounded-full', STATUS_DOT[serverState.status])} />
+              <span className="font-medium text-ink">{STATUS_LABEL[serverState.status]}</span>
+              {serverState.port != null && serverState.status === 'running' && (
+                <span className="font-mono text-muted">:{serverState.port}</span>
+              )}
+            </div>
+            {serverState.status === 'running' && serverState.startedAt && (
+              <div className="mt-1 text-dim">up {formatUptime(now - serverState.startedAt)}</div>
+            )}
+            <div className="mt-1 text-dim">plugin {meta?.pluginVersion ?? '…'}</div>
+          </div>
+        </div>
+      </aside>
 
-        {/* Main */}
-        <main className="flex min-w-0 flex-1 flex-col">
+      {/* Main */}
+      <main className="flex min-w-0 flex-1 flex-col">
+        <div className="titlebar-drag h-10 shrink-0" />
           {!ready ? (
-            <div className="flex flex-1 items-center justify-center text-sm text-slate-400">
-              {profiles.length === 0 ? 'Create a profile to begin.' : 'Loading…'}
+            <div className="flex flex-1 flex-col items-center justify-center gap-3">
+              {profiles.length === 0 ? (
+                <>
+                  <p className="text-sm text-muted">No profiles yet.</p>
+                  <Button variant="primary" onClick={createProfile} icon={<Plus size={14} />}>
+                    New Profile
+                  </Button>
+                </>
+              ) : (
+                <p className="text-sm text-dim">Loading…</p>
+              )}
             </div>
           ) : (
             <>
               {/* Profile header */}
-              <div className="border-b border-slate-200 px-6 py-3 dark:border-slate-800">
+              <div className="border-b border-line px-6 py-3">
                 <div className="flex items-center gap-3">
                   <input
                     data-testid="profile-name"
                     value={draft.name}
                     onChange={(e) => persist({ ...draft, name: e.target.value })}
-                    className="min-w-0 flex-1 bg-transparent text-lg font-semibold outline-none"
+                    className="focus-ring min-w-0 flex-1 rounded bg-transparent text-lg font-semibold"
                   />
                   <div className="titlebar-no-drag flex shrink-0 items-center gap-1">
-                    <HeaderBtn onClick={() => window.xenon.profiles.export(draft.id)} icon={<Download size={14} />} label="Export" />
+                    <HeaderBtn onClick={() => exportProfile(draft.id)} icon={<Download size={14} />} label="Export" />
                     <HeaderBtn onClick={importProfiles} icon={<Upload size={14} />} label="Import" />
                     <HeaderBtn
                       onClick={() => window.xenon.server.openPath('appiumHome', draft)}
@@ -270,14 +364,14 @@ export default function App() {
                     />
                   </div>
                 </div>
-                <div className="mt-2 flex flex-wrap items-center gap-4 text-xs text-slate-500">
+                <div className="mt-2 flex flex-wrap items-center gap-4 text-xs text-muted">
                   <label className="flex items-center gap-1.5">
                     Port
                     <input
                       type="number"
                       value={draft.server.port}
                       onChange={(e) => updateServerField('port', Number(e.target.value))}
-                      className="w-20 rounded border border-slate-300 bg-white px-1.5 py-0.5 dark:border-slate-600 dark:bg-slate-800"
+                      className="focus-ring w-20 rounded border border-line-strong bg-surface2 px-1.5 py-0.5 text-ink"
                     />
                   </label>
                   <label className="flex items-center gap-1.5">
@@ -285,7 +379,7 @@ export default function App() {
                     <input
                       value={draft.server.basePath}
                       onChange={(e) => updateServerField('basePath', e.target.value)}
-                      className="w-28 rounded border border-slate-300 bg-white px-1.5 py-0.5 dark:border-slate-600 dark:bg-slate-800"
+                      className="focus-ring w-28 rounded border border-line-strong bg-surface2 px-1.5 py-0.5 text-ink"
                     />
                   </label>
                   <label className="flex flex-1 items-center gap-1.5">
@@ -294,27 +388,30 @@ export default function App() {
                       value={draft.server.appiumHome}
                       placeholder="(app-managed default)"
                       onChange={(e) => updateServerField('appiumHome', e.target.value)}
-                      className="min-w-0 flex-1 rounded border border-slate-300 bg-white px-1.5 py-0.5 dark:border-slate-600 dark:bg-slate-800"
+                      className="focus-ring min-w-0 flex-1 rounded border border-line-strong bg-surface2 px-1.5 py-0.5 text-ink"
                     />
                   </label>
-                  <span className="text-slate-400">→ {dashboardHint}</span>
+                  <span className="font-mono text-dim">→ {dashboardHint}</span>
                 </div>
               </div>
 
               {/* Tabs */}
-              <div className="flex gap-1 border-b border-slate-200 px-6 dark:border-slate-800">
+              <div role="tablist" aria-label="Profile sections" className="flex gap-1 border-b border-line px-6">
                 {TABS.map((t) => (
                   <button
                     key={t.id}
+                    role="tab"
+                    aria-selected={tab === t.id}
                     onClick={() => setTab(t.id)}
                     className={cn(
-                      'border-b-2 px-3 py-2 text-sm',
-                      tab === t.id
-                        ? 'border-accent text-accent'
-                        : 'border-transparent text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
+                      'focus-ring border-b-2 px-3 py-2 text-sm',
+                      tab === t.id ? 'border-accent text-accent' : 'border-transparent text-muted hover:text-ink'
                     )}
                   >
                     {t.label}
+                    {t.id === 'logs' && serverState.status === 'crashed' && (
+                      <span className="ml-1.5 inline-block h-1.5 w-1.5 rounded-full bg-danger align-middle" />
+                    )}
                   </button>
                 ))}
               </div>
@@ -324,7 +421,7 @@ export default function App() {
                 {tab === 'settings' && (
                   <>
                     {validationIssues.length > 0 && (
-                      <div className="mb-4 rounded-md border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700 dark:border-rose-900 dark:bg-rose-950/40 dark:text-rose-300">
+                      <div className="mb-4 rounded-md border border-danger/30 bg-danger/10 p-3 text-sm text-danger">
                         <strong>{validationIssues.length} validation {validationIssues.length === 1 ? 'issue' : 'issues'}:</strong>
                         <ul className="mt-1 list-disc pl-5">
                           {validationIssues.map((i, idx) => (
@@ -356,7 +453,7 @@ export default function App() {
                 {tab === 'health' && (
                   <>
                     {preflight && !preflight.ok && (
-                      <div className="mb-4 rounded-md border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700 dark:border-rose-900 dark:bg-rose-950/40 dark:text-rose-300">
+                      <div className="mb-4 rounded-md border border-danger/30 bg-danger/10 p-3 text-sm text-danger">
                         <strong>Cannot start yet:</strong>
                         <ul className="mt-1 list-disc pl-5">
                           {preflight.blockers.map((b, i) => (
@@ -375,7 +472,13 @@ export default function App() {
                     <HealthPanel onInstall={handleInstall} installing={installing} />
                   </>
                 )}
-                {tab === 'logs' && <LogConsole logs={logs} />}
+                {tab === 'logs' && (
+                  <LogConsole
+                    logs={logs}
+                    onClear={() => setLogs([])}
+                    onStart={serverState.status === 'stopped' || serverState.status === 'crashed' ? handleStart : undefined}
+                  />
+                )}
               </div>
             </>
           )}
@@ -389,10 +492,10 @@ export default function App() {
             onStop={handleStop}
             onPreview={() => setPreviewOpen(true)}
           />
-        </main>
-      </div>
+      </main>
 
       {previewOpen && draft && <LaunchPreview profile={draft} onClose={() => setPreviewOpen(false)} />}
+      <Toaster />
     </div>
   );
 }
@@ -401,7 +504,7 @@ function HeaderBtn({ onClick, icon, label }: { onClick: () => void; icon: ReactN
   return (
     <button
       onClick={onClick}
-      className="inline-flex items-center gap-1 rounded-md border border-slate-200 px-2 py-1 text-xs text-slate-600 hover:bg-slate-100 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
+      className="focus-ring inline-flex items-center gap-1 rounded-md border border-line px-2 py-1 text-xs text-muted hover:bg-surface2 hover:text-ink"
     >
       {icon}
       {label}

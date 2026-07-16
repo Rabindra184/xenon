@@ -3,7 +3,7 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { IPC } from '@shared/ipc';
 import { SECRET_DESCRIPTORS } from '@shared/secrets';
-import type { Profile, SecretKey, ServerState, SetupProgress } from '@shared/types';
+import type { MenuAction, Profile, SecretKey, ServerState, SetupProgress } from '@shared/types';
 import { SchemaService } from './SchemaService';
 import { SecretsStore } from './SecretsStore';
 import { ProfileStore } from './ProfileStore';
@@ -11,6 +11,7 @@ import { ProcessSupervisor } from './ProcessSupervisor';
 import { ToolchainInspector } from './ToolchainInspector';
 import { SetupService, type SetupOptions } from './SetupService';
 import { buildConfigYaml, buildLaunchPlan } from './LaunchBuilder';
+import { buildMenuTemplate } from './menu';
 import { defaultAppiumHome, launchConfigDir, logsDir } from './paths';
 
 const schemaService = new SchemaService();
@@ -48,10 +49,20 @@ function broadcast(channel: string, payload: unknown): void {
   mainWindow?.webContents.send(channel, payload);
 }
 
+function refreshMenu(state: ServerState): void {
+  const template = buildMenuTemplate({
+    serverStatus: state.status,
+    hasDashboard: state.status === 'running' && !!state.dashboardUrl,
+    send: (a: MenuAction) => broadcast(IPC.evtMenuAction, a)
+  });
+  Menu.setApplicationMenu(Menu.buildFromTemplate(template));
+}
+
 supervisor.on('log', (line) => broadcast(IPC.evtLog, line));
 supervisor.on('state', (state: ServerState) => {
   broadcast(IPC.evtServerState, state);
   updateTray(state);
+  refreshMenu(state);
 });
 setupService.on('progress', (p: SetupProgress) => broadcast(IPC.evtSetupProgress, p));
 
@@ -276,6 +287,7 @@ if (!app.requestSingleInstanceLock()) {
 
   app.whenReady().then(() => {
     registerIpc();
+    refreshMenu(supervisor.getState());
     createTray();
     createWindow();
     void maybeCheckForUpdates();

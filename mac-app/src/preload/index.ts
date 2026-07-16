@@ -3,6 +3,7 @@ import { IPC } from '@shared/ipc';
 import type {
   LaunchSpec,
   LogLine,
+  MenuAction,
   PreflightResult,
   Profile,
   SchemaMeta,
@@ -62,7 +63,8 @@ const api = {
   // Event subscriptions. Each returns an unsubscribe function.
   onLog: (cb: (line: LogLine) => void) => subscribe(IPC.evtLog, cb),
   onServerState: (cb: (state: ServerState) => void) => subscribe(IPC.evtServerState, cb),
-  onSetupProgress: (cb: (p: SetupProgress) => void) => subscribe(IPC.evtSetupProgress, cb)
+  onSetupProgress: (cb: (p: SetupProgress) => void) => subscribe(IPC.evtSetupProgress, cb),
+  onMenuAction: (cb: (a: MenuAction) => void) => subscribe(IPC.evtMenuAction, cb)
 };
 
 function subscribe<T>(channel: string, cb: (payload: T) => void): () => void {
