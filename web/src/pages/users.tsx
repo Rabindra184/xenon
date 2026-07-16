@@ -77,7 +77,7 @@ export default function UsersPage() {
         }
       />
 
-      <div className="px-8 py-6 max-w-5xl">
+      <div className="px-6 py-6">
         {error && <div className="text-sm text-[var(--red)] mb-4">{error}</div>}
 
         {loading ? (
