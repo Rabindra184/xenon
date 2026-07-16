@@ -31,11 +31,15 @@ heartbeat watchdog.
 
 ## Remediation
 
-> TODO: document remediation steps for hub restart failures.
-
-In the meantime: re-trigger the affected sessions from your test runner. If
-restarts repeat, check \`/var/log/xenon-hub.log\` and the supervisor's
-restart history for a root cause before redeploying.
+1. Re-trigger the affected sessions from your test runner — the device was
+   released cleanly back into the pool, so a retry should land on a healthy
+   hub.
+2. Check \`/var/log/xenon-hub.log\` and the process supervisor's restart
+   history around the failure timestamp to confirm whether this was a manual
+   restart, a crash, or a deploy.
+3. If restarts are frequent or unplanned, correlate them with recent deploys
+   and coordinate a maintenance window — any session in flight during a hub
+   restart is always killed, there's no graceful drain.
 
 ## Related
 
@@ -59,11 +63,15 @@ could be released back into the pool.
 
 ## Remediation
 
-> TODO: document remediation steps for timeout failures.
+Increase \`newCommandTimeout\` only if the app legitimately needs long idle
+gaps. Otherwise:
 
-Check the last command in **Text Logs** to see what was in flight when the
-timeout fired. If the same command consistently times out across runs, file a
-bug against the test (or against the driver if the call obviously stalled).
+1. Check the last command in **Text Logs** — if it's a find, fix the selector
+   or add an explicit wait.
+2. Verify the device wasn't thermally throttled or offline during the run
+   (**Device health** badges).
+3. If the same command times out across runs, file a bug against the test —
+   or against the driver if the call obviously stalled.
 `,
   },
   infrastructure: {
@@ -82,11 +90,16 @@ node, the device, or the network underneath them.
 
 ## Remediation
 
-> TODO: document remediation steps for infrastructure failures.
-
-Cross-reference the **Device Logs** tab on this session and the node's own
-process metrics around the failure timestamp. Restart the affected node if
-its agent's heartbeat is missing.
+1. Cross-reference the **Device Logs** tab on this session with the node's
+   own process metrics around the failure timestamp to see which layer
+   dropped — hub connection, daemon, device, or storage.
+2. If the node's heartbeat is missing, restart its Xenon agent process; if
+   ADB/WDA crashed, bounce the daemon first.
+3. If the device shows offline in the device list, reseat or reconnect it
+   (USB or Wi-Fi debugging) and confirm it re-enumerates before re-queuing
+   sessions on it.
+4. For repeated storage/DB hiccups, check disk space and the Prisma
+   connection pool limits on the hub host.
 `,
   },
   unknown: {
@@ -105,7 +118,9 @@ We weren't able to attribute this failure to a known bucket. The session has
    \`SessionLifecycleService\`.
 3. For one-off oddities, re-run the session and watch for a pattern.
 
-> TODO: improve auto-categorization so this runbook is rarely used.
+If you keep landing on this fallback for the same kind of failure, that's a
+signal worth reporting — adding the right \`failure_category\` mapping
+upstream means future occurrences get a real runbook instead of this one.
 `,
   },
 };
