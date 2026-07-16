@@ -19,6 +19,7 @@ import { StatusBar } from './components/StatusBar';
 import { LaunchPreview } from './components/LaunchPreview';
 import { validate } from './validation';
 import { cn } from './cn';
+import { STATUS_DOT, STATUS_LABEL, formatUptime } from './serverStatus';
 import { Toaster } from './components/ui/Toaster';
 import { toast } from './components/ui/toastStore';
 import { Download, FolderOpen, Upload } from 'lucide-react';
@@ -219,37 +220,61 @@ export default function App() {
   const runningId = serverState.status !== 'stopped' && serverState.status !== 'crashed' ? serverState.profileId : null;
   const ready = schema && draft;
 
+  // 1s uptime ticker, only while the server is running.
+  const [now, setNow] = useState(Date.now());
+  useEffect(() => {
+    if (serverState.status !== 'running') return;
+    const t = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(t);
+  }, [serverState.status]);
+
   const dashboardHint = useMemo(() => {
     if (!draft) return '';
     return `http://${draft.settings.bindHostOrIp || '127.0.0.1'}:${draft.server.port}/xenon/`;
   }, [draft]);
 
   return (
-    <div className="flex h-full flex-col bg-app text-ink">
-      {/* Title bar (draggable). */}
-      <div className="titlebar-drag flex h-10 shrink-0 items-center justify-center border-b border-line">
-        <span className="text-xs font-semibold tracking-wide text-muted">Xenon Control</span>
-      </div>
-
-      <div className="flex min-h-0 flex-1">
-        {/* Sidebar */}
-        <aside className="flex w-60 shrink-0 flex-col border-r border-line bg-surface p-3">
-          <ProfileList
-            profiles={profiles}
-            activeId={activeId}
-            runningId={runningId}
-            onSelect={setActiveId}
-            onCreate={createProfile}
-            onDuplicate={duplicateProfile}
-            onDelete={deleteProfile}
-          />
-          <div className="mt-auto pt-3 text-[10px] text-dim">
-            schema: plugin {meta?.pluginVersion ?? '…'}
+    <div className="flex h-full bg-app text-ink">
+      {/* Sidebar spans the full window height; the top 40px is the traffic-light drag region. */}
+      <aside className="flex w-64 shrink-0 flex-col border-r border-line bg-surface">
+        <div className="titlebar-drag h-10 shrink-0" />
+        <div className="flex min-h-0 flex-1 flex-col p-3 pt-0">
+          <div data-testid="sidebar-brand" className="mb-4 flex items-center gap-2 px-1">
+            <div className="flex h-6 w-6 items-center justify-center rounded-md bg-accent/15 font-mono text-sm font-semibold text-accent">
+              X
+            </div>
+            <span className="text-sm font-semibold tracking-wide text-ink">Xenon Control</span>
           </div>
-        </aside>
+          <div className="min-h-0 flex-1 overflow-auto">
+            <ProfileList
+              profiles={profiles}
+              activeId={activeId}
+              runningId={runningId}
+              onSelect={setActiveId}
+              onCreate={createProfile}
+              onDuplicate={duplicateProfile}
+              onDelete={deleteProfile}
+            />
+          </div>
+          <div data-testid="sidebar-status" className="mt-3 rounded-lg border border-line bg-surface2 p-3 text-xs">
+            <div className="flex items-center gap-2">
+              <span className={cn('h-2 w-2 rounded-full', STATUS_DOT[serverState.status])} />
+              <span className="font-medium text-ink">{STATUS_LABEL[serverState.status]}</span>
+              {serverState.port != null && serverState.status === 'running' && (
+                <span className="font-mono text-muted">:{serverState.port}</span>
+              )}
+            </div>
+            {serverState.status === 'running' && serverState.startedAt && (
+              <div className="mt-1 text-dim">up {formatUptime(now - serverState.startedAt)}</div>
+            )}
+            <div className="mt-1 text-dim">plugin {meta?.pluginVersion ?? '…'}</div>
+          </div>
+        </div>
+      </aside>
 
-        {/* Main */}
-        <main className="flex min-w-0 flex-1 flex-col">
+      {/* Main */}
+      <main className="flex min-w-0 flex-1 flex-col">
+        <div className="titlebar-drag h-10 shrink-0" />
           {!ready ? (
             <div className="flex flex-1 items-center justify-center text-sm text-dim">
               {profiles.length === 0 ? 'Create a profile to begin.' : 'Loading…'}
@@ -397,8 +422,7 @@ export default function App() {
             onStop={handleStop}
             onPreview={() => setPreviewOpen(true)}
           />
-        </main>
-      </div>
+      </main>
 
       {previewOpen && draft && <LaunchPreview profile={draft} onClose={() => setPreviewOpen(false)} />}
       <Toaster />

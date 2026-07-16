@@ -93,7 +93,7 @@ test('deleting a profile requires an inline confirmation', async () => {
   await page.getByTestId('profile-name').fill('Delete-me probe');
   await expect(page.getByText('Delete-me probe')).toBeVisible();
 
-  const row = page.getByText('Delete-me probe').locator('..').locator('..');
+  const row = page.getByTestId('profile-row').filter({ hasText: 'Delete-me probe' });
   await row.hover();
   await row.getByRole('button', { name: 'Delete' }).click();
   // First click arms the confirm state — nothing is deleted yet.
@@ -127,6 +127,12 @@ test('Escape closes the launch preview modal', async () => {
   await expect(page.getByText('Launch preview — dry run')).toBeVisible();
   await page.keyboard.press('Escape');
   await expect(page.getByText('Launch preview — dry run')).not.toBeVisible();
+});
+
+test('sidebar shows brand, platform badge and status card', async () => {
+  await expect(page.getByTestId('sidebar-brand')).toBeVisible();
+  await expect(page.getByTestId('sidebar-status')).toContainText('Stopped');
+  await expect(page.getByTestId('sidebar-status')).toContainText('plugin');
 });
 
 test('secrets panel lists env-injected secrets and toggles injection', async () => {

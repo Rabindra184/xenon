@@ -16,6 +16,11 @@ interface Props {
 /** How long the armed "Delete?" confirm state stays active before reverting. */
 const CONFIRM_TIMEOUT_MS = 4000;
 
+function platformLabel(p: Profile): string {
+  const v = p.settings.platform;
+  return v === 'ios' ? 'iOS' : v === 'android' ? 'Android' : 'Both';
+}
+
 export function ProfileList({ profiles, activeId, runningId, onSelect, onCreate, onDuplicate, onDelete }: Props) {
   // Deletion is a two-step inline confirm: first click arms, second click deletes.
   const [confirmingId, setConfirmingId] = useState<string | null>(null);
@@ -51,15 +56,24 @@ export function ProfileList({ profiles, activeId, runningId, onSelect, onCreate,
           return (
             <div
               key={p.id}
+              data-testid="profile-row"
               onClick={() => onSelect(p.id)}
               className={cn(
                 'group flex cursor-pointer items-center justify-between rounded-md px-2 py-1.5 text-sm',
                 p.id === activeId ? 'bg-accent/10 text-accent' : 'hover:bg-surface2'
               )}
             >
-              <span className="flex items-center gap-2 truncate">
-                {p.id === runningId && <span className="h-2 w-2 shrink-0 rounded-full bg-accent" />}
-                <span className="truncate">{p.name}</span>
+              <span className="flex min-w-0 flex-col gap-0.5">
+                <span className="flex items-center gap-2 truncate">
+                  {p.id === runningId && <span className="h-2 w-2 shrink-0 animate-pulse rounded-full bg-accent" />}
+                  <span className="truncate">{p.name}</span>
+                </span>
+                <span className="flex items-center gap-1.5 text-[10px] text-dim">
+                  <span className="rounded bg-surface2 px-1 py-px font-mono uppercase tracking-wide">
+                    {platformLabel(p)}
+                  </span>
+                  <span className="font-mono">:{p.server.port}</span>
+                </span>
               </span>
               <span className={cn('items-center gap-1', confirming ? 'flex' : 'hidden group-hover:flex')}>
                 {confirming ? (
