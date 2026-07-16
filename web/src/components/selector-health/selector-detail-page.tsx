@@ -203,7 +203,7 @@ const SelectorDetailPage: React.FC = () => {
           <div className="sh-detail-banner">
             Showing every strategy that ever healed this selector value. To
             scope to a single tuple, append <code>?strategy=&lt;name&gt;</code>{' '}
-            to the URL or open this row from the Hotspots list.
+            to the URL or open this row from the Active tab on Selector Health.
           </div>
         )}
         {selectorState && (

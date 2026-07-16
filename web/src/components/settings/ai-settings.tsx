@@ -173,28 +173,28 @@ export const AISettings: React.FC = () => {
     {
       id: 'gemini',
       name: 'Google Gemini',
-      description: 'Gemini 1.5 Pro — Multimodal reasoning',
+      description: `${getModelDefault('gemini')} — Multimodal reasoning`,
       icon: <span className="ai-provider-glyph">G</span>,
       isConfigured: !!config.geminiSet,
     },
     {
       id: 'openai',
       name: 'OpenAI',
-      description: 'GPT-4o — OpenAI v1 compatible',
+      description: `${getModelDefault('openai')} — OpenAI v1 compatible`,
       icon: <Cpu size={18} />,
       isConfigured: !!config.openaiSet,
     },
     {
       id: 'anthropic',
       name: 'Anthropic',
-      description: 'Claude Sonnet 4.6 — Advanced analysis',
+      description: `${getModelDefault('anthropic')} — Advanced analysis`,
       icon: <ShieldCheck size={18} />,
       isConfigured: !!config.anthropicSet,
     },
     {
       id: 'ollama',
       name: 'Ollama',
-      description: 'Local / Self-hosted — No API key required',
+      description: 'Local / self-hosted — no API key required',
       icon: <Server size={18} />,
       isConfigured: !!config.ollamaModel || !!config.aiModel || !!config.aiBaseUrl,
     },
@@ -272,7 +272,12 @@ export const AISettings: React.FC = () => {
                         {isActive ? (
                           <span className="provider-status provider-status--active">
                             <CheckCircle2 size={11} />
-                            ACTIVE
+                            {provider.isConfigured ? 'ACTIVE' : 'ACTIVE — NO KEY'}
+                          </span>
+                        ) : provider.isConfigured ? (
+                          <span className="provider-status provider-status--ready">
+                            <CheckCircle2 size={11} />
+                            READY
                           </span>
                         ) : (
                           <span className="provider-status provider-status--off">

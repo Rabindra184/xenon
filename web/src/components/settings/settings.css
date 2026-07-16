@@ -1576,6 +1576,12 @@
     border-color: var(--border-strong);
 }
 
+.provider-status--ready {
+    color: var(--text-muted);
+    background: rgba(255, 255, 255, 0.04);
+    border-color: var(--border);
+}
+
 /* --- AI Settings: Model Parameters block --- */
 .model-params {
     display: flex;
