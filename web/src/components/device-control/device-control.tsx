@@ -845,20 +845,32 @@ export default function DeviceControl({ device, onClose }: DeviceControlProps) {
             <button className="footer-action-btn" onClick={pressVolumeDown} title="Volume Down">
               <Volume1 size={20} /> VOL−
             </button>
-            <button className="footer-action-btn" onClick={pressLock} title="Lock Device">
+            <button
+              className="footer-action-btn"
+              onClick={pressLock}
+              title="Lock Device"
+              aria-label="Lock device"
+            >
               <Lock size={20} />
             </button>
-            <button className="footer-action-btn" onClick={pressUnlock} title="Unlock Device">
+            <button
+              className="footer-action-btn"
+              onClick={pressUnlock}
+              title="Unlock Device"
+              aria-label="Unlock device"
+            >
               <Unlock size={20} />
             </button>
           </aside>
         </div>
 
         <div className="device-interactions-column">
-          <div className="interaction-tabs">
+          <div className="interaction-tabs" role="tablist">
             <button
               className={`tab-btn ${activeTab === 'actions' ? 'active' : ''}`}
               onClick={() => setActiveTab('actions')}
+              role="tab"
+              aria-selected={activeTab === 'actions'}
             >
               <Zap size={13} />
               <span>Actions</span>
@@ -866,6 +878,8 @@ export default function DeviceControl({ device, onClose }: DeviceControlProps) {
             <button
               className={`tab-btn ${activeTab === 'screenshot' ? 'active' : ''}`}
               onClick={() => setActiveTab('screenshot')}
+              role="tab"
+              aria-selected={activeTab === 'screenshot'}
             >
               <Camera size={13} />
               <span>Screenshot</span>
@@ -873,6 +887,8 @@ export default function DeviceControl({ device, onClose }: DeviceControlProps) {
             <button
               className={`tab-btn ${activeTab === 'logs' ? 'active' : ''}`}
               onClick={() => setActiveTab('logs')}
+              role="tab"
+              aria-selected={activeTab === 'logs'}
             >
               <ScrollText size={13} />
               <span>Debug Logs</span>
@@ -880,6 +896,8 @@ export default function DeviceControl({ device, onClose }: DeviceControlProps) {
             <button
               className={`tab-btn ${activeTab === 'terminal' ? 'active' : ''}`}
               onClick={() => setActiveTab('terminal')}
+              role="tab"
+              aria-selected={activeTab === 'terminal'}
             >
               <TerminalIcon size={13} />
               <span>Shell</span>
@@ -887,6 +905,8 @@ export default function DeviceControl({ device, onClose }: DeviceControlProps) {
             <button
               className={`tab-btn ${activeTab === 'omni' ? 'active' : ''}`}
               onClick={() => setActiveTab('omni')}
+              role="tab"
+              aria-selected={activeTab === 'omni'}
             >
               <Sparkles size={13} />
               <span>Omni-Vision</span>
@@ -1201,6 +1221,7 @@ export default function DeviceControl({ device, onClose }: DeviceControlProps) {
                           placeholder="Filter trace..."
                           value={logFilter}
                           onChange={(e) => setLogFilter(e.target.value)}
+                          aria-label="Filter debug logs"
                         />
                       </div>
                     </div>

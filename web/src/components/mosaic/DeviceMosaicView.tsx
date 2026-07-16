@@ -31,6 +31,7 @@ interface DeviceRow {
   mjpegServerPort?: number;
   screenWidth?: string | number;
   screenHeight?: string | number;
+  offline?: boolean;
 }
 
 // Derive a CSS aspect-ratio string from device data.
@@ -81,6 +82,7 @@ function asPickerDevice(d: DeviceRow, myUserId: string | null): PickerDevice {
     busy: d.busy,
     busyReason: inferReason(d, myUserId),
     mjpegServerPort: d.mjpegServerPort,
+    offline: !!d.offline,
   };
 }
 

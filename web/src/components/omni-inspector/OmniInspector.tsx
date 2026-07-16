@@ -1072,6 +1072,7 @@ const OmniInspector: React.FC<OmniInspectorProps> = ({ sessionId, udid, streamUr
               placeholder="Search elements... (try 'login button' or 'text field')"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
+              aria-label="Search elements"
             />
             {searchQuery && (
               <button onClick={() => setSearchQuery('')} className="omni-clear-btn">
@@ -1098,10 +1099,12 @@ const OmniInspector: React.FC<OmniInspectorProps> = ({ sessionId, udid, streamUr
         {/* ===== Right Panel: AI-Powered Details ===== */}
         <div className="omni-details-panel">
           {/* Tab header */}
-          <div className="omni-details-tabs">
+          <div className="omni-details-tabs" role="tablist">
             <button
               className={`omni-details-tab ${activeTab === 'info' ? 'active' : ''}`}
               onClick={() => setActiveTab('info')}
+              role="tab"
+              aria-selected={activeTab === 'info'}
             >
               <MapPin size={12} /> <span>Info</span>
             </button>
@@ -1110,6 +1113,8 @@ const OmniInspector: React.FC<OmniInspectorProps> = ({ sessionId, udid, streamUr
               onClick={() => setActiveTab('insight')}
               disabled={!selectedNode}
               title="AI Element Analysis"
+              role="tab"
+              aria-selected={activeTab === 'insight'}
             >
               <Lightbulb size={12} /> <span>AI Insight</span>
             </button>
@@ -1118,6 +1123,8 @@ const OmniInspector: React.FC<OmniInspectorProps> = ({ sessionId, udid, streamUr
               onClick={() => setActiveTab('code')}
               disabled={!selectedNode}
               title="Generate Test Code"
+              role="tab"
+              aria-selected={activeTab === 'code'}
             >
               <Code2 size={12} /> <span>Code Gen</span>
             </button>
