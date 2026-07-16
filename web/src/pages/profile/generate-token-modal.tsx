@@ -1,6 +1,7 @@
 import * as React from 'react';
 import { useState } from 'react';
 import { createToken } from '../../api-service/profile';
+import { formatDate } from '../../utils/time';
 
 type ExpiryPreset = '7d' | '30d' | '90d' | '1y' | 'never';
 
@@ -80,7 +81,7 @@ export function GenerateTokenModal({
         <p className="text-[11px] text-[var(--text-dim)] mb-4">
           {expiry === 'never'
             ? 'Token never expires. Rotate manually when needed.'
-            : `Token will stop working on ${new Date(presetToISO(expiry)!).toLocaleDateString()}.`}
+            : `Token will stop working on ${formatDate(presetToISO(expiry))}.`}
         </p>
         {error && <div className="text-xs text-[var(--red)] mb-2">{error}</div>}
         <div className="flex justify-end gap-2">

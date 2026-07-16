@@ -16,6 +16,7 @@ import {
   VolumeX,
 } from 'lucide-react';
 import XenonApiService from '../../api-service';
+import { formatDateTime } from '../../utils/time';
 import { PageHeader } from '../ui/page-header';
 import { useToast } from '../ui/toast';
 import {
@@ -302,13 +303,13 @@ const SelectorDetailPage: React.FC = () => {
             </div>
             <div className="sh-detail-state__meta">
               {selectorState.fixed_at && (
-                <span>Marked fixed: {new Date(selectorState.fixed_at).toLocaleString()}</span>
+                <span>Marked fixed: {formatDateTime(selectorState.fixed_at)}</span>
               )}
               {selectorState.resolved_at && (
-                <span>Resolved: {new Date(selectorState.resolved_at).toLocaleString()}</span>
+                <span>Resolved: {formatDateTime(selectorState.resolved_at)}</span>
               )}
               {selectorState.muted_at && (
-                <span>Muted: {new Date(selectorState.muted_at).toLocaleString()}</span>
+                <span>Muted: {formatDateTime(selectorState.muted_at)}</span>
               )}
               {selectorState.status === 'pending' && (
                 <span>Clean builds: {selectorState.clean_builds_count}/3</span>

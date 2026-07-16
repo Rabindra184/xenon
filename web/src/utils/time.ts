@@ -19,10 +19,18 @@ export function formatRelative(iso: string | null | undefined): string {
 
 const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 
-export function formatDateTime(iso: string | Date | null | undefined): string {
-  if (!iso) return '—';
-  const d = typeof iso === 'string' ? new Date(iso) : iso;
+export function formatDateTime(iso: string | number | Date | null | undefined): string {
+  if (iso === null || iso === undefined || iso === '') return '—';
+  const d = iso instanceof Date ? iso : new Date(iso);
   if (Number.isNaN(d.getTime())) return '—';
   const pad = (n: number) => String(n).padStart(2, '0');
   return `${MONTHS[d.getMonth()]} ${d.getDate()}, ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+}
+
+// Date-only sibling for expiry/anniversary values where a time would be noise.
+export function formatDate(iso: string | number | Date | null | undefined): string {
+  if (iso === null || iso === undefined || iso === '') return '—';
+  const d = iso instanceof Date ? iso : new Date(iso);
+  if (Number.isNaN(d.getTime())) return '—';
+  return `${MONTHS[d.getMonth()]} ${d.getDate()}, ${d.getFullYear()}`;
 }

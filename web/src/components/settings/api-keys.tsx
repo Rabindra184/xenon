@@ -11,6 +11,7 @@ import {
   AlertTriangle,
 } from 'lucide-react';
 import { useToast } from '../ui/toast';
+import { formatDate } from '../../utils/time';
 import { Table, THead, TBody, TR, TH, TD } from '../ui/Table';
 import { FieldGroup } from '../ui/FieldGroup';
 import { PageHeader } from '../ui/page-header';
@@ -338,7 +339,7 @@ export const ApiKeys: React.FC = () => {
                       {k.expiresAt
                         ? new Date(k.expiresAt).getTime() <= Date.now()
                           ? <span style={{ color: 'var(--red)' }}>expired</span>
-                          : new Date(k.expiresAt).toLocaleDateString()
+                          : formatDate(k.expiresAt)
                         : 'Never'}
                     </TD>
                     <TD style={{ textAlign: 'right' }}>
@@ -465,7 +466,7 @@ export const ApiKeys: React.FC = () => {
             description={
               newExpiry === 'never'
                 ? 'Key never expires. Rotate manually when needed.'
-                : `Key will stop working on ${new Date(expiryPresetToISO(newExpiry)!).toLocaleDateString()}.`
+                : `Key will stop working on ${formatDate(expiryPresetToISO(newExpiry))}.`
             }
             htmlFor="apikey-expiry"
           >

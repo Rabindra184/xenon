@@ -18,6 +18,7 @@ import {
   Package,
 } from 'lucide-react';
 import XenonApiService from '../../api-service';
+import { formatDateTime } from '../../utils/time';
 import { useToast } from '../ui/toast';
 import './apps.css';
 import { IDevice } from '../../interfaces/IDevice';
@@ -142,16 +143,7 @@ const Apps: React.FC = () => {
     return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + ['B', 'KB', 'MB', 'GB'][i];
   };
 
-  const formatDate = (dateString: string) => {
-    const d = new Date(dateString);
-    return d.toLocaleDateString(undefined, {
-      month: 'short',
-      day: 'numeric',
-      year: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-    });
-  };
+  const formatDate = (dateString: string) => formatDateTime(dateString);
 
   const togglePlatform = (platform: 'android' | 'ios') => {
     setPlatformFilter((prev) => ({

@@ -8,6 +8,7 @@ import {
   rotateAccessKey,
   TokenSummary,
 } from '../../api-service/profile';
+import { formatDate, formatDateTime } from '../../utils/time';
 import { GenerateTokenModal } from './generate-token-modal';
 
 export function ApiTokensTab() {
@@ -109,13 +110,13 @@ export function ApiTokensTab() {
               return (
                 <tr key={t.id} className="border-t border-[var(--border)]">
                   <td className="py-2">{t.name}</td>
-                  <td className="py-2 text-[var(--text-muted)]">{new Date(t.createdAt).toLocaleString()}</td>
+                  <td className="py-2 text-[var(--text-muted)]">{formatDateTime(t.createdAt)}</td>
                   <td className="py-2 text-[var(--text-muted)]">
-                    {t.lastUsedAt ? new Date(t.lastUsedAt).toLocaleString() : '—'}
+                    {t.lastUsedAt ? formatDateTime(t.lastUsedAt) : '—'}
                   </td>
                   <td className={`py-2 ${expired ? 'text-[var(--red)]' : 'text-[var(--text-muted)]'}`}>
                     {t.expiresAt
-                      ? `${new Date(t.expiresAt).toLocaleDateString()}${expired ? ' (expired)' : ''}`
+                      ? `${formatDate(t.expiresAt)}${expired ? ' (expired)' : ''}`
                       : 'Never'}
                   </td>
                   <td className="py-2 text-right">
@@ -155,7 +156,7 @@ export function ApiTokensTab() {
             </code>
             <p className="text-[11px] text-[var(--text-dim)] mb-4">
               {revealed.expiresAt
-                ? `Expires ${new Date(revealed.expiresAt).toLocaleDateString()}`
+                ? `Expires ${formatDate(revealed.expiresAt)}`
                 : 'No expiry — rotate manually.'}
             </p>
             <div className="flex justify-end">

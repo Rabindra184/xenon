@@ -33,6 +33,7 @@ import {
   AlertTriangle,
 } from 'lucide-react';
 import { v4 as uuidv4 } from 'uuid';
+import { formatDateTime } from '../../utils/time';
 import { useToast } from '../ui/toast';
 import './device-control.css';
 import { Terminal } from '../terminal/terminal';
@@ -1166,9 +1167,7 @@ export default function DeviceControl({ device, onClose }: DeviceControlProps) {
                               </span>
                               <span className="meta-divider">|</span>
                               <span className="meta-value">
-                                {new Date(
-                                  screenshots[selectedScreenshotIndex].timestamp,
-                                ).toLocaleString()}
+                                {formatDateTime(screenshots[selectedScreenshotIndex].timestamp)}
                               </span>
                             </div>
                             <div className="preview-actions">
