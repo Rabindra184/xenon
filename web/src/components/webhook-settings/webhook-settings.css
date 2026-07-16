@@ -185,6 +185,50 @@
     margin-left: auto;
 }
 
+/* Per-tone selected state — a selected chip shows its tone on the frame
+   (border + bg tint, matching the green pattern above) and on the check
+   + lead icons. Unselected chips stay neutral via the base rules above,
+   since every selector below requires `.is-selected`.
+   Specificity note: `.event-toggle--{tone}.is-selected` is 0-2-0, tying
+   `.event-toggle.is-selected` above, and the descendant icon rules are
+   0-3-0, tying `.event-toggle.is-selected .event-toggle__lead` above —
+   so these rules must stay AFTER the generic ones in source order to
+   win the tie. The check-icon override is 0-3-0 vs. the base
+   `.event-toggle__check`'s 0-1-0, so it wins on specificity regardless
+   of order; kept here for locality with its sibling tone rules. */
+.event-toggle--red.is-selected {
+    background: rgba(239, 68, 68, 0.06);
+    border-color: var(--red);
+    box-shadow: inset 0 0 0 1px rgba(239, 68, 68, 0.35);
+}
+
+.event-toggle--red.is-selected .event-toggle__check,
+.event-toggle--red.is-selected .event-toggle__lead {
+    color: var(--red);
+}
+
+.event-toggle--amber.is-selected {
+    background: rgba(245, 158, 11, 0.06);
+    border-color: var(--amber);
+    box-shadow: inset 0 0 0 1px rgba(245, 158, 11, 0.35);
+}
+
+.event-toggle--amber.is-selected .event-toggle__check,
+.event-toggle--amber.is-selected .event-toggle__lead {
+    color: var(--amber);
+}
+
+.event-toggle--green.is-selected {
+    background: rgba(34, 197, 94, 0.06);
+    border-color: var(--green);
+    box-shadow: inset 0 0 0 1px rgba(34, 197, 94, 0.35);
+}
+
+.event-toggle--green.is-selected .event-toggle__check,
+.event-toggle--green.is-selected .event-toggle__lead {
+    color: var(--green);
+}
+
 /* Custom payload section */
 .template-section {
     margin-top: var(--space-3);
