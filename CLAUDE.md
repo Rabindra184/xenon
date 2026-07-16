@@ -156,6 +156,52 @@ REST endpoints under `/xenon/api` (documented at `/xenon/api-docs`). All state c
 
 React 17 + Vite + Tailwind CSS dashboard. Talks to the backend over REST and Socket.io. Built artifacts are copied into `src/public/` and served as static files by the plugin server.
 
+#### Breakpoints
+
+Supported range is **1280–1440** (laptop + tablet landscape). No phone or
+tablet-portrait support: no hamburger, no drawer. The sidebar is a fixed 56px
+rail at every width.
+
+**Use Tailwind mobile-first `min-width` only** for new work. A few legacy
+`max-width` queries remain in component CSS (all firing below 1024px, i.e.
+outside the supported range) — don't add more, and prefer `min-width` when you
+touch one. Mixing directions is how bugs hide: the codebase has had
+`max-width: 1024px` (`device-explorer.css`, `selector-health.css`) alongside
+`min-width: 1024px` (`settings.css`), the same number meaning opposite things.
+
+Before choosing a breakpoint, **compute the layout's intrinsic minimum** (sum of
+fixed columns + gaps + padding + the 56px rail) and make sure the breakpoint sits
+*above* it. Selector Health shipped a `max-width: 1024px` override 121px below
+its own 1146px floor, leaving a dead zone at 1025–1145px that was invisible from
+either end.
+
+`web/test/viewport/overflow.spec.ts` (Playwright) guards this. It tests both
+sides of every breakpoint boundary. It renders a **route-mocked** Android device
+(`page.route('**/xenon/api/device*', …)`) rather than seeding the DB — the device
+manager reaps `Device` rows for unattached hardware (`removeStaleDevices`), so a
+seeded row is deleted before the page loads. Run it with `npm run test:viewport`
+against a running server (dashboard enabled, auth disabled).
+
+Coverage boundary — the device-control route is the only **hermetically**
+guarded one: its device is fully mocked, and a dedicated test asserts the 11-button
+toolbar rendered, so it cannot pass vacuously. The other routes mock only the device
+list; their data-heavy tables render whatever the target server's DB holds. Each
+per-route test asserts the app **shell** rendered (`aside:has(nav)` with buttons),
+which catches a blank or crashed page — but **not** an empty-data one: a table with
+zero rows has nothing to overflow and passes vacuously (Selector Health's 9-column
+grid, for instance, doesn't mount without rows). So for the non-control routes the
+guard is only meaningful against a populated server. Making those routes hermetic
+(mocking their data endpoints too) is tracked as follow-up.
+
+Note `index.css` sets `body { overflow: hidden }`, so `document.scrollWidth`
+always equals `innerWidth`. It cannot detect overflow. Measure element rects.
+A centered flex row (`justify-content: center`) overflows both edges, so the
+guard checks `rect.left < 0` as well as `rect.right > innerWidth`.
+
+CSS source lives in `web/src`, but the running server serves the built bundle
+from `lib/public`. A CSS change is not live until `npm run build:xenon &&
+npm run build:copy` (from the repo root) regenerates and copies it.
+
 ### Key Design Patterns
 
 - **Dependency Injection** — TypeDI `@Service()` decorators; use `Container.get(...)` to retrieve singletons

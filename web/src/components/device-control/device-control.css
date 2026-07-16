@@ -198,8 +198,12 @@
   flex-direction: column;
   align-items: center;
   gap: 24px;
-  flex-shrink: 0;
-  min-width: 400px;
+  /* Was flex-shrink: 0 / min-width: 400px, which pinned the column to its
+     toolbar's 829px max-content width and pushed the interactions column
+     off-screen at 1280. Allow it to shrink; the phone image is max-width:100%
+     so it scales down cleanly (verified: no clip even at a 300px column). */
+  flex-shrink: 1;
+  min-width: 0;
 }
 
 .device-screen-wrapper {
@@ -261,6 +265,12 @@
 
 .device-footer-actions {
   display: flex;
+  /* Wrap so the 11 buttons reflow to multiple rows when the column is narrow,
+     instead of spilling out of a shrunken column. Paired with the
+     flex-shrink:1 on .device-preview-column above — neither fixes the 1280
+     clip alone. */
+  flex-wrap: wrap;
+  justify-content: center;
   width: 100%;
   background: rgba(15, 23, 42, 0.8);
   backdrop-filter: blur(10px);
