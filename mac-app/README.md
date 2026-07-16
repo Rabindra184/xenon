@@ -124,12 +124,17 @@ refuses to open it — *"Xenon Control is damaged and can't be opened"* or *"can
 because the developer cannot be verified"*. The app isn't damaged; that is Gatekeeper doing its
 job on an app Apple has never seen.
 
-The recipient can clear the flag:
+Drag the app to `/Applications`, then run this once — first launch only:
 
 ```bash
-xattr -dr com.apple.quarantine "/Applications/Xenon Control.app"
+xattr -cr "/Applications/Xenon Control.app"
 open -a "Xenon Control"
 ```
+
+After that it opens by double-click like any other app; the flag is only applied on arrival.
+(`-cr` clears every extended attribute; `xattr -dr com.apple.quarantine "/Applications/Xenon
+Control.app"` removes just the quarantine one if you'd rather be surgical. Both leave the code
+signature valid — verified on this bundle with `codesign --verify --deep --strict`.)
 
 **Understand what that does.** It removes the marker that tells macOS this bundle came from
 somewhere else, so Gatekeeper skips its checks entirely — signature, notarization, the lot. It
@@ -137,9 +142,6 @@ is not a formality: it is the user vouching for the app *instead of* Apple. That
 trade for a build your own team produced and can trace, and it is the standard workflow for
 internal tools. It is not something to paste into a chat for a binary whose origin nobody can
 account for — the check being skipped is the one that would have caught a tampered bundle.
-
-Prefer `-d com.apple.quarantine` over `xattr -cr`: it drops the one attribute rather than
-stripping every extended attribute on the bundle.
 
 ### The fix that means nobody needs `xattr`
 

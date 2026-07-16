@@ -34,6 +34,6 @@ cp -R "${SRC}" "${DEST}"
 
 # Only meaningful if the bundle picked up a quarantine flag; harmless otherwise.
 echo "==> Clearing the quarantine flag"
-xattr -dr com.apple.quarantine "${DEST}" 2>/dev/null || true
+xattr -cr "${DEST}" 2>/dev/null || true
 
 echo "==> Done. Open it from /Applications or: open -a 'Xenon Control'"
