@@ -89,6 +89,26 @@ test('creates, renames, and deletes a profile', async () => {
   await page.screenshot({ path: path.join(shotsDir, '03-profiles.png') });
 });
 
+test('a new profile defaults to booted-only simulator discovery', async () => {
+  await page.getByTestId('new-profile').click();
+  await page.getByTestId('profile-name').fill('Booted default probe');
+  await openTab('Settings');
+  await page.getByTestId('settings-search').fill('bootedSimulators');
+  await expect(page.getByRole('switch').first()).toHaveAttribute('aria-checked', 'true');
+
+  // ...and Health therefore reports no WDA port pressure for it.
+  await openTab('Health');
+  await expect(page.getByText(/Booted-only discovery/)).toBeVisible({ timeout: 20_000 });
+
+  // Clean up: remove the probe profile.
+  const row = page.getByTestId('profile-row').filter({ hasText: 'Booted default probe' });
+  await row.hover();
+  await row.getByRole('button', { name: 'Delete' }).click();
+  await row.getByRole('button', { name: 'Confirm delete' }).click();
+  await openTab('Settings');
+  await page.getByTestId('settings-search').fill('');
+});
+
 test('deleting a profile requires an inline confirmation', async () => {
   await page.getByTestId('new-profile').click();
   await page.getByTestId('profile-name').fill('Delete-me probe');

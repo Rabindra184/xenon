@@ -17,6 +17,7 @@ import { LogConsole } from './components/LogConsole';
 import { ProfileList } from './components/ProfileList';
 import { StatusBar } from './components/StatusBar';
 import { LaunchPreview } from './components/LaunchPreview';
+import { makeDefaultProfile } from '@shared/profileDefaults';
 import { parsePort, validate } from './validation';
 import { createDebouncer } from './debounce';
 import { cn } from './cn';
@@ -207,17 +208,7 @@ export default function App() {
   };
 
   const createProfile = async () => {
-    const now = Date.now();
-    const fresh: Profile = {
-      id: crypto.randomUUID(),
-      name: 'New profile',
-      settings: { platform: 'both', enableDashboard: true },
-      server: { port: 4723, basePath: '/wd/hub', appiumHome: '', keepAliveTimeout: 800 },
-      secretRefs: [],
-      env: {},
-      createdAt: now,
-      updatedAt: now
-    };
+    const fresh = makeDefaultProfile({ id: crypto.randomUUID(), now: Date.now() });
     const saved = await window.xenon.profiles.save(fresh);
     setProfiles((prev) => [...prev, saved]);
     setActiveId(saved.id);
