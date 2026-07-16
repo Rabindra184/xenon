@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import type {
-  LogLine,
   PreflightResult,
   Profile,
   SchemaMeta,
@@ -18,6 +17,7 @@ import { ProfileList } from './components/ProfileList';
 import { StatusBar } from './components/StatusBar';
 import { LaunchPreview } from './components/LaunchPreview';
 import { makeDefaultProfile } from '@shared/profileDefaults';
+import { LOG_BUFFER_LIMIT, LOG_FLUSH_MS, appendCapped, type UiLogLine } from './logBuffer';
 import { parsePort, validate } from './validation';
 import { createDebouncer } from './debounce';
 import { cn } from './cn';
@@ -59,7 +59,10 @@ export default function App() {
   const [activeId, setActiveId] = useState<string | null>(null);
   const [draft, setDraft] = useState<Profile | null>(null);
   const [serverState, setServerState] = useState<ServerState>(IDLE_STATE);
-  const [logs, setLogs] = useState<LogLine[]>([]);
+  const [logs, setLogs] = useState<UiLogLine[]>([]);
+  const pendingLogs = useRef<UiLogLine[]>([]);
+  const flushTimer = useRef<number | null>(null);
+  const logSeq = useRef(0);
   const [tab, setTab] = useState<Tab>('settings');
   const [preflight, setPreflight] = useState<PreflightResult | null>(null);
   const [busy, setBusy] = useState(false);
@@ -85,7 +88,18 @@ export default function App() {
       setServerState(await window.xenon.server.state());
     })();
 
-    const offLog = window.xenon.onLog((line) => setLogs((prev) => [...prev.slice(-4999), line]));
+    // Coalesce incoming lines: a chatty server emits far faster than anyone can
+    // read, and one render per line re-reconciles the whole buffer.
+    const offLog = window.xenon.onLog((line) => {
+      pendingLogs.current.push({ ...line, id: logSeq.current++ });
+      if (flushTimer.current !== null) return;
+      flushTimer.current = window.setTimeout(() => {
+        flushTimer.current = null;
+        const batch = pendingLogs.current;
+        pendingLogs.current = [];
+        setLogs((prev) => appendCapped(prev, batch, LOG_BUFFER_LIMIT));
+      }, LOG_FLUSH_MS);
+    });
     const offState = window.xenon.onServerState((st) => setServerState(st));
     const offMenu = window.xenon.onMenuAction((a) => {
       switch (a) {
@@ -122,6 +136,7 @@ export default function App() {
       offLog();
       offState();
       offMenu();
+      if (flushTimer.current !== null) clearTimeout(flushTimer.current);
     };
   }, []);
 
