@@ -20,7 +20,6 @@ import {
 import XenonApiService from '../../api-service';
 import { useToast } from '../ui/toast';
 import './apps.css';
-import '../device-explorer/device-explorer.css';
 import { IDevice } from '../../interfaces/IDevice';
 import { Badge } from '../ui/badge';
 import { Button } from '../ui/button';

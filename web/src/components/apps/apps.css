@@ -502,3 +502,104 @@
     padding: 0 24px 24px;
   }
 }
+
+/* Styles for device-explorer-* classes reused by this page (apps.tsx does not import device-explorer.css to avoid header-class collisions) */
+
+.device-explorer-container {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  gap: var(--space-4);
+}
+
+.device-explorer-header-entry {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.device-explorer-header-value {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+/* Explicit horizontal margin keeps the platform pills from visually fusing
+   with adjacent toolbar items when flex gap is collapsed by box-shadow halos. */
+.device-explorer-header-value > .device-explorer-header__platform-btn + .device-explorer-header__platform-btn {
+  margin-left: 4px;
+}
+
+.device-explorer-header__platform-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.4);
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.device-explorer-header__platform-btn:hover {
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--text);
+  border-color: var(--border);
+}
+
+.device-explorer-header__platform-btn.selected {
+  background: rgba(0, 255, 136, 0.05);
+  color: var(--green);
+  border-color: rgba(0, 255, 136, 0.3);
+  box-shadow: 0 0 10px rgba(0, 255, 136, 0.1);
+}
+
+/* Search Wrapper */
+.device-explorer-search-wrapper {
+  position: relative;
+  width: 320px;
+}
+
+.device-explorer-search-icon {
+  position: absolute;
+  left: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  pointer-events: none;
+  opacity: 0.5;
+}
+
+.device-explorer-header-text-filter {
+  width: 100%;
+  height: 32px;
+  padding: 0 12px 0 36px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: rgba(0, 0, 0, 0.4);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 12px;
+  color: var(--text);
+  transition: all 0.2s ease;
+}
+
+.device-explorer-header-text-filter:focus {
+  outline: none;
+  border-color: var(--green);
+  background: rgba(0, 0, 0, 0.6);
+  box-shadow: 0 0 15px rgba(0, 255, 136, 0.1);
+}
+
+.device-explorer-header-text-filter::placeholder {
+  color: var(--text-dim);
+  text-transform: uppercase;
+  font-size: 11px;
+  letter-spacing: 0.1em;
+}
