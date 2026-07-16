@@ -31,6 +31,19 @@ export interface BuildContext {
   requiredDefaults?: Record<string, unknown>;
 }
 
+/**
+ * Some Xenon settings are only honored via an environment variable, NOT their
+ * plugin-arg equivalent. Bridge those so a setting the user flips actually takes
+ * effect. `authDisabled` is the key case: Xenon resolves it from
+ * XENON_AUTH_DISABLED (src/config.ts), so the plugin arg alone is a no-op and
+ * the dashboard would still demand an API key.
+ */
+function deriveEnvFromSettings(settings: SettingsValues): Record<string, string> {
+  const env: Record<string, string> = {};
+  if (settings.authDisabled === true) env.XENON_AUTH_DISABLED = 'true';
+  return env;
+}
+
 /** Strip secret-bearing and empty values from the settings before serialization. */
 function sanitizeSettings(settings: SettingsValues): SettingsValues {
   const out: SettingsValues = {};
@@ -67,9 +80,11 @@ export function buildLaunchPlan(profile: Profile, ctx: BuildContext): LaunchPlan
   const configYaml = buildConfigYaml(profile, ctx.requiredDefaults ?? {});
   const args = ['server', '--config', ctx.configYamlPath];
 
-  // Environment layering: APPIUM_HOME, then the profile's extra (non-secret) env
-  // vars, then secrets last so a secret always wins over a same-named plain var.
-  const env: Record<string, string> = { APPIUM_HOME: ctx.appiumHome };
+  // Environment layering, lowest → highest precedence:
+  //   APPIUM_HOME + settings-derived vars (e.g. XENON_AUTH_DISABLED) → the
+  //   profile's explicit env vars → secrets. So an explicit value always wins
+  //   over the auto-bridge, and a secret always wins over a plain var.
+  const env: Record<string, string> = { APPIUM_HOME: ctx.appiumHome, ...deriveEnvFromSettings(profile.settings) };
   for (const [k, v] of Object.entries(profile.env ?? {})) {
     if (k && v !== undefined && v !== null) env[k] = String(v);
   }

@@ -67,6 +67,29 @@ describe('buildLaunchPlan', () => {
     expect(plan.env.APPIUM_HOME).toBe('/tmp/ah');
   });
 
+  it('bridges authDisabled=true to XENON_AUTH_DISABLED env (plugin arg alone is a no-op)', () => {
+    const on = buildLaunchPlan(makeProfile({ settings: { platform: 'android', authDisabled: true } }), {
+      appiumHome: '/tmp/ah',
+      configYamlPath: '/tmp/p.yaml',
+      secretValues: {}
+    });
+    expect(on.env.XENON_AUTH_DISABLED).toBe('true');
+
+    // Not set when authDisabled is false/absent.
+    const off = buildLaunchPlan(makeProfile({ settings: { platform: 'android' } }), {
+      appiumHome: '/tmp/ah',
+      configYamlPath: '/tmp/p.yaml',
+      secretValues: {}
+    });
+    expect(off.env.XENON_AUTH_DISABLED).toBeUndefined();
+  });
+
+  it('lets an explicit profile env var override the settings-derived bridge', () => {
+    const p = makeProfile({ settings: { platform: 'android', authDisabled: true }, env: { XENON_AUTH_DISABLED: 'false' } });
+    const plan = buildLaunchPlan(p, { appiumHome: '/tmp/ah', configYamlPath: '/tmp/p.yaml', secretValues: {} });
+    expect(plan.env.XENON_AUTH_DISABLED).toBe('false'); // explicit profile.env wins over the bridge
+  });
+
   it('merges profile env vars, with secrets winning over same-named plain vars', () => {
     const p = makeProfile({
       env: { OTEL_EXPORTER_OTLP_ENDPOINT: 'http://otel:4318', XENON_HUB_TOKEN: 'plain' },
