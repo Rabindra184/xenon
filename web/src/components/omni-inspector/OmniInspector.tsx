@@ -1103,7 +1103,7 @@ const OmniInspector: React.FC<OmniInspectorProps> = ({ sessionId, udid, streamUr
               className={`omni-details-tab ${activeTab === 'info' ? 'active' : ''}`}
               onClick={() => setActiveTab('info')}
             >
-              <MapPin size={12} /> Info
+              <MapPin size={12} /> <span>Info</span>
             </button>
             <button
               className={`omni-details-tab ${activeTab === 'insight' ? 'active' : ''}`}
@@ -1111,7 +1111,7 @@ const OmniInspector: React.FC<OmniInspectorProps> = ({ sessionId, udid, streamUr
               disabled={!selectedNode}
               title="AI Element Analysis"
             >
-              <Lightbulb size={12} /> AI Insight
+              <Lightbulb size={12} /> <span>AI Insight</span>
             </button>
             <button
               className={`omni-details-tab ${activeTab === 'code' ? 'active' : ''}`}
@@ -1119,7 +1119,7 @@ const OmniInspector: React.FC<OmniInspectorProps> = ({ sessionId, udid, streamUr
               disabled={!selectedNode}
               title="Generate Test Code"
             >
-              <Code2 size={12} /> Code Gen
+              <Code2 size={12} /> <span>Code Gen</span>
             </button>
           </div>
 

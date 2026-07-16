@@ -438,20 +438,28 @@ export default function DeviceControl({ device, onClose }: DeviceControlProps) {
     const endCoords = getCursorCoordinates(event);
     const timeDiff = Date.now() - startCoords.time;
 
+    // Use the canvas's actual rendered size, not the canvasDimensions state value.
+    // CSS (e.g. `.control-view-main.omni-mode .device-stream-canvas { max-width: 100% }`)
+    // can clamp the rendered box smaller than the state, and the tap/swipe math must
+    // divide by whatever size the pointer coordinates were actually captured against.
+    const rect = canvasRef.current?.getBoundingClientRect();
+    const renderedWidth = rect?.width || canvasDimensions.width;
+    const renderedHeight = rect?.height || canvasDimensions.height;
+
     let startX, startY, endX, endY;
 
     if (isPortrait) {
-      startX = (startCoords.x / canvasDimensions.width) * deviceWidth;
-      startY = (startCoords.y / canvasDimensions.height) * deviceHeight;
-      endX = (endCoords.x / canvasDimensions.width) * deviceWidth;
-      endY = (endCoords.y / canvasDimensions.height) * deviceHeight;
+      startX = (startCoords.x / renderedWidth) * deviceWidth;
+      startY = (startCoords.y / renderedHeight) * deviceHeight;
+      endX = (endCoords.x / renderedWidth) * deviceWidth;
+      endY = (endCoords.y / renderedHeight) * deviceHeight;
     } else {
       // Landscape calculations
       // Image is rotated 90deg internally by CSS or WDA
-      startX = (startCoords.x / canvasDimensions.width) * deviceHeight;
-      startY = (startCoords.y / canvasDimensions.height) * deviceWidth;
-      endX = (endCoords.x / canvasDimensions.width) * deviceHeight;
-      endY = (endCoords.y / canvasDimensions.height) * deviceWidth;
+      startX = (startCoords.x / renderedWidth) * deviceHeight;
+      startY = (startCoords.y / renderedHeight) * deviceWidth;
+      endX = (endCoords.x / renderedWidth) * deviceHeight;
+      endY = (endCoords.y / renderedHeight) * deviceWidth;
     }
 
     const distanceX = Math.abs(endX - startX);

@@ -961,9 +961,17 @@
     font-family: 'JetBrains Mono', monospace;
     justify-content: center;
     min-width: 0;
+    white-space: nowrap;
+}
+
+.omni-details-tab > svg {
+    flex-shrink: 0;
+}
+
+.omni-details-tab > span {
+    min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
-    white-space: nowrap;
 }
 
 .omni-details-tab:hover:not(:disabled) {
