@@ -1,0 +1,46 @@
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
+  <!--
+    Xenon Control app icon. The mark is the dashboard's (web/public/favicon.svg):
+    a device outline carrying the Xenon X, with a live status dot. It sits on the
+    launcher's graphite palette (tokens.css) so icon, app and dashboard read as
+    one product.
+
+    Geometry follows Apple's macOS grid: an 824x824 squircle centred in a 1024
+    canvas, leaving the 100px margin the system expects for shadows.
+
+    The mark is drawn heavier than the dashboard's 64px favicon on purpose: this
+    art is downscaled to 32px and 16px for the dock and Finder, where the
+    original's hairlines vanish. Verified at 32px, not just at 1024.
+  -->
+  <defs>
+    <linearGradient id="surface" x1="512" y1="100" x2="512" y2="924" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#1d2523"/>
+      <stop offset="0.55" stop-color="#111514"/>
+      <stop offset="1" stop-color="#0a0d0c"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="512" cy="480" r="360" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#22c55e" stop-opacity="0.22"/>
+      <stop offset="1" stop-color="#22c55e" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+
+  <!-- Squircle body -->
+  <rect x="100" y="100" width="824" height="824" rx="185" fill="url(#surface)"/>
+  <rect x="100" y="100" width="824" height="824" rx="185" fill="url(#glow)"/>
+  <rect x="100.75" y="100.75" width="822.5" height="822.5" rx="184.25" fill="none" stroke="#2a3331" stroke-width="1.5"/>
+  <!-- Top light, the way macOS icons catch the light -->
+  <path d="M285 100h454c102 0 185 83 185 185v40c0-102-83-185-185-185H285c-102 0-185 83-185 185v-40c0-102 83-185 185-185z" fill="#ffffff" opacity="0.05"/>
+
+  <!-- Device body: 300x430 centred, bold enough to survive a 32px downscale -->
+  <rect x="362" y="297" width="300" height="430" rx="52" fill="rgba(34,197,94,0.07)" stroke="#22c55e" stroke-width="17"/>
+  <!-- Screen -->
+  <rect x="400" y="345" width="224" height="292" rx="16" fill="rgba(34,197,94,0.10)" stroke="rgba(34,197,94,0.30)" stroke-width="7"/>
+  <!-- The X -->
+  <line x1="443" y1="404" x2="581" y2="578" stroke="#22c55e" stroke-width="30" stroke-linecap="round"/>
+  <line x1="581" y1="404" x2="443" y2="578" stroke="#22c55e" stroke-width="30" stroke-linecap="round"/>
+  <!-- Home bar -->
+  <rect x="474" y="672" width="76" height="15" rx="7.5" fill="#22c55e" opacity="0.55"/>
+  <!-- Live status dot, on the device edge -->
+  <circle cx="662" cy="345" r="46" fill="#0a0d0c"/>
+  <circle cx="662" cy="345" r="32" fill="#22c55e"/>
+</svg>
