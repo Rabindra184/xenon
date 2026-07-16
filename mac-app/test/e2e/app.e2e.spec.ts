@@ -44,9 +44,10 @@ test('boots with a seeded profile and window chrome', async () => {
 
 test('renders the schema-driven settings form with grouped sections', async () => {
   await openTab('Settings');
-  await expect(page.getByText('Platform & Discovery')).toBeVisible();
-  await expect(page.getByText('Session Control')).toBeVisible();
-  await expect(page.getByText('AI & Self-Healing')).toBeVisible();
+  // Section titles appear twice (nav + heading); assert on the headings.
+  await expect(page.getByRole('heading', { name: 'Platform & Discovery' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Session Control' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'AI & Self-Healing' })).toBeVisible();
   // A representative field auto-generated from schema.json (required → has a * marker).
   await expect(page.getByText('Max Sessions')).toBeVisible();
   // Secret-bearing settings are deferred to the Secrets panel, not shown as inputs
@@ -127,6 +128,18 @@ test('Escape closes the launch preview modal', async () => {
   await expect(page.getByText('Launch preview — dry run')).toBeVisible();
   await page.keyboard.press('Escape');
   await expect(page.getByText('Launch preview — dry run')).not.toBeVisible();
+});
+
+test('settings search filters fields by key name', async () => {
+  await openTab('Settings');
+  const search = page.getByTestId('settings-search');
+  await search.fill('adbRemote');
+  await expect(page.getByText('ADB Remote')).toBeVisible();
+  await expect(page.getByText('Max Sessions')).not.toBeVisible();
+  await search.fill('zzz-no-match');
+  await expect(page.getByText(/No settings match/)).toBeVisible();
+  await search.fill('');
+  await expect(page.getByText('Max Sessions')).toBeVisible();
 });
 
 test('sidebar shows brand, platform badge and status card', async () => {

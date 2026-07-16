@@ -1,8 +1,11 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { XenonSchema, SettingsValues } from '@shared/types';
 import { buildForm, parseJsonDraft, type FormField } from '../schemaForm';
+import { filterSections } from '../settingsFilter';
 import { cn } from '../cn';
 import { Segmented } from './ui/Segmented';
+import { SettingsNav } from './SettingsNav';
+import { Search } from 'lucide-react';
 
 interface Props {
   schema: XenonSchema;
@@ -180,12 +183,77 @@ function ErrorText({ msg }: { msg?: string }) {
 }
 
 export function SettingsForm({ schema, values, onChange, issues = {} }: Props) {
-  const sections = useMemo(() => buildForm(schema), [schema]);
+  const allSections = useMemo(() => buildForm(schema), [schema]);
+  const [query, setQuery] = useState('');
+  const [activeSection, setActiveSection] = useState<string | null>(null);
+  const searching = query.trim().length > 0;
+  const sections = useMemo(() => filterSections(allSections, query), [allSections, query]);
 
+  // Scroll-spy: highlight the section nearest the top of the scroll area.
+  useEffect(() => {
+    if (searching) return;
+    const els = sections
+      .map((s) => document.getElementById(`settings-${s.id}`))
+      .filter((el): el is HTMLElement => !!el);
+    if (!els.length) return;
+    const io = new IntersectionObserver(
+      (entries) => {
+        const first = entries.find((e) => e.isIntersecting);
+        if (first) setActiveSection(first.target.id.replace('settings-', ''));
+      },
+      { rootMargin: '0px 0px -70% 0px' }
+    );
+    for (const el of els) io.observe(el);
+    return () => io.disconnect();
+  }, [sections, searching]);
+
+  const jump = (id: string) =>
+    document.getElementById(`settings-${id}`)?.scrollIntoView({ block: 'start', behavior: 'smooth' });
+
+  return (
+    <div className="flex gap-6">
+      {!searching && (
+        <div className="sticky top-0 hidden w-40 shrink-0 self-start lg:block">
+          <SettingsNav sections={sections} activeId={activeSection} onJump={jump} />
+        </div>
+      )}
+      <div className="min-w-0 flex-1">
+        <div className="relative mb-5">
+          <Search size={14} className="pointer-events-none absolute left-2.5 top-2 text-dim" />
+          <input
+            data-testid="settings-search"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search settings…"
+            aria-label="Search settings"
+            className="focus-ring w-full rounded-md border border-line-strong bg-surface2 py-1.5 pl-8 pr-2 text-sm text-ink placeholder:text-dim"
+          />
+        </div>
+        {sections.length === 0 ? (
+          <p className="text-sm text-muted">No settings match ‘{query.trim()}’.</p>
+        ) : (
+          <SectionList sections={sections} values={values} onChange={onChange} issues={issues} />
+        )}
+      </div>
+    </div>
+  );
+}
+
+function SectionList({
+  sections,
+  values,
+  onChange,
+  issues
+}: {
+  sections: ReturnType<typeof buildForm>;
+  values: SettingsValues;
+  onChange: (key: string, value: unknown) => void;
+  issues: Record<string, string>;
+}) {
   return (
     <div className="space-y-8">
       {sections.map((section) => (
-        <section key={section.id}>
+        <section key={section.id} id={`settings-${section.id}`} className="scroll-mt-4">
           <h3 className="mb-3 border-b border-line pb-1 text-xs font-semibold uppercase tracking-wide text-muted">
             {section.title}
           </h3>
