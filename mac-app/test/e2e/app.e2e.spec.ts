@@ -58,12 +58,16 @@ test('renders the schema-driven settings form with grouped sections', async () =
 
 test('persists a setting change through the store', async () => {
   await openTab('Settings');
-  const platform = page.locator('select').first();
-  await platform.selectOption('android');
+  const android = page.getByRole('radio', { name: 'android', exact: true }).first();
+  await android.click();
+  await expect(android).toHaveAttribute('aria-checked', 'true');
   // Re-read via a fresh selection round-trip: switch tabs and back.
   await openTab('Health');
   await openTab('Settings');
-  await expect(page.locator('select').first()).toHaveValue('android');
+  await expect(page.getByRole('radio', { name: 'android', exact: true }).first()).toHaveAttribute(
+    'aria-checked',
+    'true'
+  );
 });
 
 test('creates, renames, and deletes a profile', async () => {

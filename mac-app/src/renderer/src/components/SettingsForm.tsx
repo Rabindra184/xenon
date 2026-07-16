@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import type { XenonSchema, SettingsValues } from '@shared/types';
 import { buildForm, parseJsonDraft, type FormField } from '../schemaForm';
 import { cn } from '../cn';
+import { Segmented } from './ui/Segmented';
 
 interface Props {
   schema: XenonSchema;
@@ -72,6 +73,16 @@ function FieldControl({
         />
       );
     case 'select':
+      if (field.enum && field.enum.length <= 4) {
+        return (
+          <Segmented
+            options={field.enum}
+            value={effective as string | undefined}
+            onChange={onChange}
+            aria-label={field.label}
+          />
+        );
+      }
       return (
         <select
           value={(effective as string) ?? ''}
