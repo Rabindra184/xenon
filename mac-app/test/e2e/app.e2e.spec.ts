@@ -156,6 +156,15 @@ test('launch preview shows the resolved config with required defaults', async ()
   await page.getByRole('button', { name: 'Close', exact: true }).click();
 });
 
+test('copying the preview config shows a toast', async () => {
+  await page.getByTestId('preview-button').click();
+  await expect(page.getByText('Launch preview — dry run')).toBeVisible();
+  await page.getByRole('button', { name: 'Copy', exact: true }).click();
+  await expect(page.getByText('Config copied')).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(page.getByText('Launch preview — dry run')).not.toBeVisible();
+});
+
 test('invalid config produces a validation issue and disables Start', async () => {
   // Runs BEFORE any Start attempt, so preflight state is still clean and Start's
   // enabled/disabled transition is driven purely by validation.

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import type { LogLine } from '@shared/types';
 import { parseAnsi } from '../ansi';
 import { cn } from '../cn';
+import { toast } from './ui/toastStore';
 
 /** Visible text of a log line, with ANSI escape sequences removed. */
 function stripAnsi(text: string): string {
@@ -35,7 +36,10 @@ export function LogConsole({ logs }: Props) {
     if (autoscroll) endRef.current?.scrollIntoView({ block: 'end' });
   }, [filtered, autoscroll]);
 
-  const copyAll = () => navigator.clipboard.writeText(logs.map((l) => stripAnsi(l.text)).join('\n'));
+  const copyAll = () => {
+    void navigator.clipboard.writeText(logs.map((l) => stripAnsi(l.text)).join('\n'));
+    toast('Logs copied');
+  };
 
   return (
     <div className="flex h-full flex-col">

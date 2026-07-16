@@ -1,6 +1,7 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import type { LaunchSpec, Profile } from '@shared/types';
 import { Copy, Download, X } from 'lucide-react';
+import { toast } from './ui/toastStore';
 
 interface Props {
   profile: Profile;
@@ -71,7 +72,10 @@ export function LaunchPreview({ profile, onClose }: Props) {
                   {spec.configYaml}
                 </pre>
                 <button
-                  onClick={() => navigator.clipboard.writeText(spec.configYaml)}
+                  onClick={() => {
+                    void navigator.clipboard.writeText(spec.configYaml);
+                    toast('Config copied');
+                  }}
                   className="focus-ring absolute right-2 top-2 inline-flex items-center gap-1 rounded border border-line-strong bg-surface2 px-2 py-1 text-[11px] text-ink hover:bg-surface"
                 >
                   <Copy size={11} /> Copy
@@ -83,7 +87,7 @@ export function LaunchPreview({ profile, onClose }: Props) {
 
         <div className="flex items-center justify-end gap-2 border-t border-line px-5 py-3">
           <button
-            onClick={() => window.xenon.profiles.exportConfigYaml(profile)}
+            onClick={() => window.xenon.profiles.exportConfigYaml(profile).then((ok) => ok && toast('Config saved'))}
             className="focus-ring inline-flex items-center gap-1.5 rounded-md border border-line-strong px-3 py-1.5 text-sm hover:bg-surface2"
           >
             <Download size={14} /> Save config…

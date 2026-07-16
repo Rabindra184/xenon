@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { SecretDescriptor, SecretKey } from '@shared/types';
 import { Check, KeyRound, X } from 'lucide-react';
+import { toast } from './ui/toastStore';
 
 interface Props {
   descriptors: SecretDescriptor[];
@@ -29,11 +30,13 @@ export function SecretsPanel({ descriptors, selected, onToggleSelected }: Props)
     await window.xenon.secrets.set(key, value);
     setDrafts((d) => ({ ...d, [key]: '' }));
     await refresh();
+    toast('Secret stored in Keychain');
   };
 
   const clear = async (key: SecretKey) => {
     await window.xenon.secrets.clear(key);
     await refresh();
+    toast('Secret cleared');
   };
 
   return (

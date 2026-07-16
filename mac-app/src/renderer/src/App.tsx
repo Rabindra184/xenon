@@ -19,6 +19,8 @@ import { StatusBar } from './components/StatusBar';
 import { LaunchPreview } from './components/LaunchPreview';
 import { validate } from './validation';
 import { cn } from './cn';
+import { Toaster } from './components/ui/Toaster';
+import { toast } from './components/ui/toastStore';
 import { Download, FolderOpen, Upload } from 'lucide-react';
 
 type Tab = 'settings' | 'secrets' | 'health' | 'logs';
@@ -194,7 +196,15 @@ export default function App() {
   const importProfiles = async () => {
     const { profiles: list, importedIds } = await window.xenon.profiles.import();
     setProfiles(list);
-    if (importedIds.length) setActiveId(importedIds[0]);
+    if (importedIds.length) {
+      setActiveId(importedIds[0]);
+      toast(`Imported ${importedIds.length} profile${importedIds.length === 1 ? '' : 's'}`);
+    }
+  };
+
+  const exportProfile = async (id: string) => {
+    const ok = await window.xenon.profiles.export(id);
+    if (ok) toast('Profile exported');
   };
   const updateEnv = (env: Record<string, string>) => {
     if (draft) persist({ ...draft, env });
@@ -256,7 +266,7 @@ export default function App() {
                     className="focus-ring min-w-0 flex-1 rounded bg-transparent text-lg font-semibold"
                   />
                   <div className="titlebar-no-drag flex shrink-0 items-center gap-1">
-                    <HeaderBtn onClick={() => window.xenon.profiles.export(draft.id)} icon={<Download size={14} />} label="Export" />
+                    <HeaderBtn onClick={() => exportProfile(draft.id)} icon={<Download size={14} />} label="Export" />
                     <HeaderBtn onClick={importProfiles} icon={<Upload size={14} />} label="Import" />
                     <HeaderBtn
                       onClick={() => window.xenon.server.openPath('appiumHome', draft)}
@@ -391,6 +401,7 @@ export default function App() {
       </div>
 
       {previewOpen && draft && <LaunchPreview profile={draft} onClose={() => setPreviewOpen(false)} />}
+      <Toaster />
     </div>
   );
 }

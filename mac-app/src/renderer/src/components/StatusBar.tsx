@@ -1,6 +1,7 @@
 import type { PreflightResult, ServerState } from '@shared/types';
 import { Eye, ExternalLink, Loader2, Play, Square } from 'lucide-react';
 import { cn } from '../cn';
+import { Button } from './ui/Button';
 
 interface Props {
   state: ServerState;
@@ -46,41 +47,39 @@ export function StatusBar({ state, preflight, busy, invalidCount, onStart, onSto
           </span>
         )}
         {!active && (
-          <button
-            data-testid="preview-button"
-            onClick={onPreview}
-            className="focus-ring inline-flex items-center gap-1.5 rounded-md border border-line-strong px-2.5 py-1.5 text-sm hover:bg-surface2"
-          >
-            <Eye size={14} /> Preview
-          </button>
+          <Button data-testid="preview-button" onClick={onPreview} icon={<Eye size={14} />}>
+            Preview
+          </Button>
         )}
         {state.status === 'running' && state.dashboardUrl && (
-          <button
+          <Button
             onClick={() => window.xenon.server.openDashboard(state.dashboardUrl!)}
-            className="focus-ring inline-flex items-center gap-1.5 rounded-md border border-line-strong px-2.5 py-1.5 text-sm hover:bg-surface2"
+            icon={<ExternalLink size={14} />}
           >
-            <ExternalLink size={14} /> Dashboard
-          </button>
+            Dashboard
+          </Button>
         )}
         {active ? (
-          <button
+          <Button
             data-testid="stop-button"
+            variant="danger"
             onClick={onStop}
             disabled={busy || state.status === 'stopping'}
-            className="focus-ring inline-flex items-center gap-1.5 rounded-md bg-danger px-3 py-1.5 text-sm font-medium text-white hover:bg-danger/80 disabled:opacity-50"
+            icon={state.status === 'stopping' ? <Loader2 size={14} className="animate-spin" /> : <Square size={14} />}
           >
-            {state.status === 'stopping' ? <Loader2 size={14} className="animate-spin" /> : <Square size={14} />} Stop
-          </button>
+            Stop
+          </Button>
         ) : (
-          <button
+          <Button
             data-testid="start-button"
+            variant="primary"
             onClick={onStart}
             disabled={busy || blocked}
             title={blocked ? 'Resolve preflight blockers first' : undefined}
-            className="focus-ring inline-flex items-center gap-1.5 rounded-md bg-accent px-3 py-1.5 text-sm font-medium text-accent-fg hover:bg-accent-dim disabled:opacity-50"
+            icon={busy ? <Loader2 size={14} className="animate-spin" /> : <Play size={14} />}
           >
-            {busy ? <Loader2 size={14} className="animate-spin" /> : <Play size={14} />} Start
-          </button>
+            Start
+          </Button>
         )}
       </div>
     </div>

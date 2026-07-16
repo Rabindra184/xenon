@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { ToolCheck } from '@shared/types';
 import { AlertTriangle, CheckCircle2, Loader2, RefreshCw, XCircle } from 'lucide-react';
+import { Button } from './ui/Button';
 
 interface Props {
   onInstall: () => void;
@@ -37,12 +38,9 @@ export function HealthPanel({ onInstall, installing }: Props) {
         <p className="text-xs text-muted">
           Host toolchain Xenon depends on. Blocking items must be resolved before a server can start.
         </p>
-        <button
-          onClick={refresh}
-          className="focus-ring inline-flex items-center gap-1.5 rounded-md border border-line-strong px-2.5 py-1 text-xs hover:bg-surface2"
-        >
-          <RefreshCw size={13} className={loading ? 'animate-spin' : ''} /> Re-check
-        </button>
+        <Button size="sm" onClick={refresh} icon={<RefreshCw size={13} className={loading ? 'animate-spin' : ''} />}>
+          Re-check
+        </Button>
       </div>
 
       <div className="divide-y divide-line rounded-lg border border-line bg-surface">
@@ -72,14 +70,15 @@ export function HealthPanel({ onInstall, installing }: Props) {
         <p className="mt-1 text-xs text-muted">
           Install the Xenon plugin and platform drivers into this profile's APPIUM_HOME.
         </p>
-        <button
+        <Button
+          variant="primary"
+          className="mt-2"
           onClick={onInstall}
           disabled={installing}
-          className="focus-ring mt-2 inline-flex items-center gap-1.5 rounded-md bg-accent px-3 py-1.5 text-sm font-medium text-accent-fg hover:bg-accent-dim disabled:opacity-50"
+          icon={installing ? <Loader2 size={14} className="animate-spin" /> : undefined}
         >
-          {installing && <Loader2 size={14} className="animate-spin" />}
           {installing ? 'Installing…' : 'Install plugin + drivers'}
-        </button>
+        </Button>
       </div>
     </div>
   );
