@@ -169,6 +169,13 @@ test('Escape closes the launch preview modal', async () => {
   await expect(page.getByText('Launch preview — dry run')).not.toBeVisible();
 });
 
+test('log console shows a line count, Clear button and start CTA when empty', async () => {
+  await openTab('Logs');
+  await expect(page.getByText(/0 lines/)).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Clear', exact: true })).toBeDisabled();
+  await expect(page.getByRole('button', { name: 'Start server' })).toBeVisible();
+});
+
 test('settings search filters fields by key name', async () => {
   await openTab('Settings');
   const search = page.getByTestId('settings-search');

@@ -22,7 +22,8 @@ import { cn } from './cn';
 import { STATUS_DOT, STATUS_LABEL, formatUptime } from './serverStatus';
 import { Toaster } from './components/ui/Toaster';
 import { toast } from './components/ui/toastStore';
-import { Download, FolderOpen, Upload } from 'lucide-react';
+import { Button } from './components/ui/Button';
+import { Download, FolderOpen, Plus, Upload } from 'lucide-react';
 
 type Tab = 'settings' | 'secrets' | 'health' | 'logs';
 const TABS: { id: Tab; label: string }[] = [
@@ -325,8 +326,17 @@ export default function App() {
       <main className="flex min-w-0 flex-1 flex-col">
         <div className="titlebar-drag h-10 shrink-0" />
           {!ready ? (
-            <div className="flex flex-1 items-center justify-center text-sm text-dim">
-              {profiles.length === 0 ? 'Create a profile to begin.' : 'Loading…'}
+            <div className="flex flex-1 flex-col items-center justify-center gap-3">
+              {profiles.length === 0 ? (
+                <>
+                  <p className="text-sm text-muted">No profiles yet.</p>
+                  <Button variant="primary" onClick={createProfile} icon={<Plus size={14} />}>
+                    New Profile
+                  </Button>
+                </>
+              ) : (
+                <p className="text-sm text-dim">Loading…</p>
+              )}
             </div>
           ) : (
             <>
@@ -399,6 +409,9 @@ export default function App() {
                     )}
                   >
                     {t.label}
+                    {t.id === 'logs' && serverState.status === 'crashed' && (
+                      <span className="ml-1.5 inline-block h-1.5 w-1.5 rounded-full bg-danger align-middle" />
+                    )}
                   </button>
                 ))}
               </div>
@@ -459,7 +472,13 @@ export default function App() {
                     <HealthPanel onInstall={handleInstall} installing={installing} />
                   </>
                 )}
-                {tab === 'logs' && <LogConsole logs={logs} />}
+                {tab === 'logs' && (
+                  <LogConsole
+                    logs={logs}
+                    onClear={() => setLogs([])}
+                    onStart={serverState.status === 'stopped' || serverState.status === 'crashed' ? handleStart : undefined}
+                  />
+                )}
               </div>
             </>
           )}

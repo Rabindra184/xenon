@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { LogLine } from '@shared/types';
+import { Play } from 'lucide-react';
 import { parseAnsi } from '../ansi';
 import { cn } from '../cn';
+import { Button } from './ui/Button';
 import { toast } from './ui/toastStore';
 
 /** Visible text of a log line, with ANSI escape sequences removed. */
@@ -13,6 +15,9 @@ function stripAnsi(text: string): string {
 
 interface Props {
   logs: LogLine[];
+  onClear: () => void;
+  /** Offered in the empty state when the server isn't running. */
+  onStart?: () => void;
 }
 
 const STREAM_COLOR: Record<LogLine['stream'], string> = {
@@ -21,7 +26,7 @@ const STREAM_COLOR: Record<LogLine['stream'], string> = {
   system: 'text-info'
 };
 
-export function LogConsole({ logs }: Props) {
+export function LogConsole({ logs, onClear, onStart }: Props) {
   const [filter, setFilter] = useState('');
   const [autoscroll, setAutoscroll] = useState(true);
   const endRef = useRef<HTMLDivElement>(null);
@@ -50,17 +55,33 @@ export function LogConsole({ logs }: Props) {
           onChange={(e) => setFilter(e.target.value)}
           className="focus-ring flex-1 rounded-md border border-line-strong bg-surface2 px-2 py-1 text-sm text-ink"
         />
+        <span className="whitespace-nowrap font-mono text-[11px] text-dim">
+          {filtered.length.toLocaleString()}
+          {filter.trim() ? ` / ${logs.length.toLocaleString()}` : ''} lines
+        </span>
         <label className="flex items-center gap-1.5 text-xs text-muted">
           <input type="checkbox" checked={autoscroll} onChange={(e) => setAutoscroll(e.target.checked)} />
           auto-scroll
         </label>
-        <button onClick={copyAll} className="focus-ring rounded-md border border-line-strong px-2 py-1 text-xs hover:bg-surface2">
+        <Button size="sm" onClick={copyAll}>
           Copy
-        </button>
+        </Button>
+        <Button size="sm" onClick={onClear} disabled={logs.length === 0}>
+          Clear
+        </Button>
       </div>
       <div className="flex-1 overflow-auto rounded-lg border border-line bg-app p-3 font-mono text-xs leading-relaxed">
         {filtered.length === 0 ? (
-          <p className="text-dim">No output yet. Start the server to see logs.</p>
+          <div className="flex flex-col items-start gap-2">
+            <p className="text-dim">
+              {logs.length === 0 ? 'No output yet. Start the server to see logs.' : `No lines match ‘${filter.trim()}’.`}
+            </p>
+            {logs.length === 0 && onStart && (
+              <Button size="sm" variant="primary" onClick={onStart} icon={<Play size={12} />}>
+                Start server
+              </Button>
+            )}
+          </div>
         ) : (
           filtered.map((l, i) => (
             <div key={i} className={cn('whitespace-pre-wrap break-words', STREAM_COLOR[l.stream])}>

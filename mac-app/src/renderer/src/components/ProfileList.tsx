@@ -75,7 +75,13 @@ export function ProfileList({ profiles, activeId, runningId, onSelect, onCreate,
                   <span className="font-mono">:{p.server.port}</span>
                 </span>
               </span>
-              <span className={cn('items-center gap-1', confirming ? 'flex' : 'hidden group-hover:flex')}>
+              {/* Opacity (not `hidden`) keeps these focusable for keyboard users. */}
+              <span
+                className={cn(
+                  'flex items-center gap-1 transition-opacity',
+                  confirming ? 'opacity-100' : 'opacity-0 focus-within:opacity-100 group-hover:opacity-100'
+                )}
+              >
                 {confirming ? (
                   <button
                     onClick={(e) => {
