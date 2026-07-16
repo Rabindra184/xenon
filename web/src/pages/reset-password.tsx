@@ -2,6 +2,7 @@ import * as React from 'react';
 import { useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { checkResetToken, resetPassword } from '../api-service/auth';
+import { AuthShell } from './auth-shell';
 
 export default function ResetPasswordPage() {
   const { token } = useParams<{ token: string }>();
@@ -45,15 +46,15 @@ export default function ResetPasswordPage() {
 
   if (state === 'checking') {
     return (
-      <div className="min-h-screen flex items-center justify-center text-sm text-[var(--text-dim)]">
-        Checking link…
-      </div>
+      <AuthShell>
+        <div className="text-sm text-[var(--text-dim)] text-center">Checking link…</div>
+      </AuthShell>
     );
   }
   if (state === 'invalid') {
     return (
-      <div className="min-h-screen flex items-center justify-center text-center px-6">
-        <div>
+      <AuthShell>
+        <div className="text-center">
           <h1 className="text-xl font-semibold mb-3">This link is invalid or expired</h1>
           <p className="text-sm text-[var(--text-dim)] mb-6">
             Reset links are good for 1 hour and single-use. Request a new one.
@@ -65,23 +66,23 @@ export default function ResetPasswordPage() {
             Request a new link
           </Link>
         </div>
-      </div>
+      </AuthShell>
     );
   }
   if (state === 'done') {
     return (
-      <div className="min-h-screen flex items-center justify-center text-center px-6">
-        <div>
+      <AuthShell>
+        <div className="text-center">
           <h1 className="text-xl font-semibold mb-3">Password updated</h1>
           <p className="text-sm text-[var(--text-dim)]">Redirecting to sign in…</p>
         </div>
-      </div>
+      </AuthShell>
     );
   }
 
   return (
-    <div className="min-h-screen w-full flex items-center justify-center bg-[var(--bg)] text-[var(--text)]">
-      <form onSubmit={submit} className="w-full max-w-sm px-6">
+    <AuthShell>
+      <form onSubmit={submit}>
         <h1 className="text-2xl font-semibold mb-1">Reset your password</h1>
         <p className="text-sm text-[var(--text-dim)] mb-6">Choose a new password to sign in with.</p>
 
@@ -106,11 +107,11 @@ export default function ResetPasswordPage() {
         <button
           type="submit"
           disabled={state === 'submitting' || pw.length < 8}
-          className="w-full h-10 rounded-md bg-[var(--green)] text-black font-medium text-sm disabled:opacity-50"
+          className="mt-5 w-full h-10 rounded-md bg-[var(--green)] text-black font-medium text-sm disabled:opacity-50"
         >
           {state === 'submitting' ? 'Updating…' : 'Update password'}
         </button>
       </form>
-    </div>
+    </AuthShell>
   );
 }

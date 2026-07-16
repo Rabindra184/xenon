@@ -30,14 +30,20 @@ export const CommandPalette: React.FC = () => {
   // each open so newly-created entities appear.
   React.useEffect(() => {
     if (!open) return;
+    // Keys are intentionally left unindexed: XenonApiService has no
+    // getApiKeys/getKeys client method (settings/api-keys.tsx fetches
+    // '/xenon/api/apikeys' directly), and key secret material must never be
+    // searchable even if that changes.
     Promise.all([
       XenonApiService.getDevices().catch(() => []),
       XenonApiService.getSessions().catch(() => []),
       XenonApiService.getApps().catch(() => []),
-    ]).then(([d, s, a]: [any, any, any]) => {
+      XenonApiService.listTeams().catch(() => []),
+    ]).then(([d, s, a, t]: [any, any, any, any]) => {
       if (Array.isArray(d)) idxRef.current.setDevices(d);
       if (Array.isArray(s)) idxRef.current.setSessions(s);
       if (Array.isArray(a)) idxRef.current.setApps(a);
+      if (Array.isArray(t)) idxRef.current.setTeams(t);
     });
     // Focus the input after paint so placeholder is replaced.
     const t = setTimeout(() => inputRef.current?.focus(), 0);

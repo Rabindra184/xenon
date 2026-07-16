@@ -3,16 +3,22 @@ import { render } from '@testing-library/react';
 import { HealthBadges } from './health-badges';
 
 describe('HealthBadges', () => {
-  it('returns null when both values are absent', () => {
+  it('renders a neutral "No telemetry" pill when both values are absent', () => {
     const { container } = render(<HealthBadges device={{}} />);
-    expect(container.firstChild).toBeNull();
+    const pills = container.querySelectorAll('.pill');
+    expect(pills).toHaveLength(1);
+    expect(pills[0]).toHaveClass('pill-neutral');
+    expect(pills[0].textContent).toContain('No telemetry');
   });
 
-  it('returns null when only thermalStatus is "Unknown"', () => {
+  it('renders a neutral "No telemetry" pill when only thermalStatus is "Unknown"', () => {
     const { container } = render(
       <HealthBadges device={{ thermalStatus: 'Unknown' }} />,
     );
-    expect(container.firstChild).toBeNull();
+    const pills = container.querySelectorAll('.pill');
+    expect(pills).toHaveLength(1);
+    expect(pills[0]).toHaveClass('pill-neutral');
+    expect(pills[0].textContent).toContain('No telemetry');
   });
 
   it('renders a green battery pill when battery is healthy', () => {

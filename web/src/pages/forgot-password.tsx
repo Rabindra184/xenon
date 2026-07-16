@@ -2,6 +2,7 @@ import * as React from 'react';
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { forgotPassword } from '../api-service/auth';
+import { AuthShell } from './auth-shell';
 
 export default function ForgotPasswordPage() {
   const [email, setEmail] = useState('');
@@ -24,8 +25,8 @@ export default function ForgotPasswordPage() {
   }
 
   return (
-    <div className="min-h-screen w-full flex items-center justify-center bg-[var(--bg)] text-[var(--text)]">
-      <form onSubmit={submit} className="w-full max-w-sm px-6">
+    <AuthShell>
+      <form onSubmit={submit}>
         <h1 className="text-2xl font-semibold mb-1">Forgot password?</h1>
         <p className="text-sm text-[var(--text-dim)] mb-6">
           Enter your email and we'll send you a reset link if your account exists.
@@ -51,7 +52,7 @@ export default function ForgotPasswordPage() {
             <button
               type="submit"
               disabled={submitting || !email}
-              className="w-full h-10 rounded-md bg-[var(--green)] text-black font-medium text-sm disabled:opacity-50"
+              className="mt-5 w-full h-10 rounded-md bg-[var(--green)] text-black font-medium text-sm disabled:opacity-50"
             >
               {submitting ? 'Sending…' : 'Send reset link'}
             </button>
@@ -64,6 +65,6 @@ export default function ForgotPasswordPage() {
           </Link>
         </div>
       </form>
-    </div>
+    </AuthShell>
   );
 }

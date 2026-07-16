@@ -126,7 +126,7 @@ export const MaintenanceSettings: React.FC = () => {
       />
 
       <div className="settings-content">
-        <div className="settings-grid">
+        <div className="settings-grid settings-grid--two-equal">
           <SettingCard
             icon={<History size={16} />}
             title={

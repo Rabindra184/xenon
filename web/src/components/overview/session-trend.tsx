@@ -11,6 +11,7 @@ export const SessionTrend: React.FC<Props> = ({ data, totalSessions, totalHeals 
   const max = Math.max(1, ...data.map((d) => d.sessions));
   const lastIdx = data.length - 1;
   const midIdx = Math.floor(data.length / 2);
+  const isEmpty = data.every((d) => d.sessions === 0 && d.heals === 0);
 
   return (
     <section className="rounded-lg border border-[var(--border)] bg-[var(--surface)]">
@@ -32,32 +33,38 @@ export const SessionTrend: React.FC<Props> = ({ data, totalSessions, totalHeals 
       </header>
 
       <div className="p-4">
-        <div className="flex items-end gap-1 h-32">
-          {data.map((d, i) => {
-            const hPct = (d.sessions / max) * 100;
-            const healPct = (d.heals / max) * 100;
-            return (
-              <div key={i} className="group relative flex-1 h-full flex flex-col justify-end">
-                {d.heals > 0 && (
+        {isEmpty ? (
+          <div className="h-32 flex items-center justify-center text-xs text-[var(--text-dim)]">
+            No sessions in the last 24 hours — activity will chart here.
+          </div>
+        ) : (
+          <div className="flex items-end gap-1 h-32">
+            {data.map((d, i) => {
+              const hPct = (d.sessions / max) * 100;
+              const healPct = (d.heals / max) * 100;
+              return (
+                <div key={i} className="group relative flex-1 h-full flex flex-col justify-end">
+                  {d.heals > 0 && (
+                    <div
+                      className="absolute bottom-0 left-0 right-0 rounded-sm bg-[var(--green)]/40"
+                      style={{ height: `${healPct}%` }}
+                      aria-hidden
+                    />
+                  )}
                   <div
-                    className="absolute bottom-0 left-0 right-0 rounded-sm bg-[var(--green)]/40"
-                    style={{ height: `${healPct}%` }}
-                    aria-hidden
+                    className="relative w-full rounded-sm bg-[var(--border-strong)] group-hover:bg-[var(--green)] transition-colors"
+                    style={{ height: `${Math.max(hPct, 2)}%` }}
+                    aria-label={`${d.hour} — ${d.sessions} sessions, ${d.heals} heals`}
                   />
-                )}
-                <div
-                  className="relative w-full rounded-sm bg-[var(--border-strong)] group-hover:bg-[var(--green)] transition-colors"
-                  style={{ height: `${Math.max(hPct, 2)}%` }}
-                  aria-label={`${d.hour} — ${d.sessions} sessions, ${d.heals} heals`}
-                />
-                <div className="pointer-events-none absolute -top-12 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-md bg-[var(--surface-2)] border border-[var(--border-strong)] px-2 py-1 text-[10px] opacity-0 group-hover:opacity-100 transition-opacity z-10 shadow-lg">
-                  <div className="font-mono text-[var(--text-dim)]">{d.hour}</div>
-                  <div className="text-[var(--text)]">{d.sessions} sessions · {d.heals} heals</div>
+                  <div className="pointer-events-none absolute -top-12 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-md bg-[var(--surface-2)] border border-[var(--border-strong)] px-2 py-1 text-[10px] opacity-0 group-hover:opacity-100 transition-opacity z-10 shadow-lg">
+                    <div className="font-mono text-[var(--text-dim)]">{d.hour}</div>
+                    <div className="text-[var(--text)]">{d.sessions} sessions · {d.heals} heals</div>
+                  </div>
                 </div>
-              </div>
-            );
-          })}
-        </div>
+              );
+            })}
+          </div>
+        )}
         <div className="flex justify-between mt-2 text-[10px] font-mono text-[var(--text-dim)]">
           <span>{data[0]?.hour}</span>
           <span>{data[midIdx]?.hour}</span>

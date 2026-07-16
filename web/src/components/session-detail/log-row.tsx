@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { ChevronRight, Copy } from 'lucide-react';
 import type { LogLike } from './derive';
-import { logTimestamp, logRowKind, logInlinePreview } from './log-derive';
+import { logTimestamp, logRowKind, logDisplayTitle, logDisplaySubtitle } from './log-derive';
 import { JsonBlock } from './json-block';
 import { useToast } from '../ui/toast';
 
@@ -30,7 +30,6 @@ export const LogRow: React.FC<Props> = ({ log }) => {
   const { toast } = useToast();
   const ts = logTimestamp(log);
   const kind = logRowKind(log);
-  const preview = logInlinePreview(log);
 
   const copyJson = async (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -56,8 +55,13 @@ export const LogRow: React.FC<Props> = ({ log }) => {
         <span className="font-mono text-[11px] text-[var(--text-muted)] w-[64px] shrink-0">{ts}</span>
         <span className={`h-1.5 w-1.5 rounded-full shrink-0 ${dotCls[kind.tone]}`} />
         <span className={`font-mono text-[11px] font-medium shrink-0 ${labelCls[kind.tone]}`}>{kind.label}</span>
-        <span className="font-mono text-[11px] text-[var(--text-dim)] truncate min-w-0 flex-1">
-          {preview}
+        <span className="min-w-0 flex-1 flex items-baseline gap-2 truncate">
+          <span className="text-[12px] text-[var(--text)] shrink-0">{logDisplayTitle(log)}</span>
+          {logDisplaySubtitle(log) && (
+            <span className="font-mono text-[11px] text-[var(--text-dim)] truncate">
+              {logDisplaySubtitle(log)}
+            </span>
+          )}
         </span>
         <span
           role="button"

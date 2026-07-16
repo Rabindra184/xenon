@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { Battery, BatteryLow, BatteryWarning, Thermometer } from 'lucide-react';
+import { Activity, Battery, BatteryLow, BatteryWarning, Thermometer } from 'lucide-react';
 import { Pill, PillTone } from '../ui/Pill';
 import { IDevice } from '../../interfaces/IDevice';
 
@@ -32,7 +32,16 @@ export const HealthBadges: React.FC<Props> = ({ device }) => {
     device.thermalStatus.length > 0 &&
     device.thermalStatus !== 'Unknown';
 
-  if (!showBattery && !showThermal) return null;
+  if (!showBattery && !showThermal) {
+    return (
+      <div className="dc2-health">
+        <Pill tone="neutral" title="Device does not report battery or thermal data">
+          <Activity size={10} />
+          No telemetry
+        </Pill>
+      </div>
+    );
+  }
 
   return (
     <div className="dc2-health">

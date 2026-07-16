@@ -10,6 +10,7 @@ import {
   Smartphone,
 } from 'lucide-react';
 import { useToast } from '../ui/toast';
+import { formatDate } from '../../utils/time';
 import { Table, THead, TBody, TR, TH, TD } from '../ui/Table';
 import { FieldGroup } from '../ui/FieldGroup';
 import { PageHeader } from '../ui/page-header';
@@ -216,7 +217,7 @@ export const Teams: React.FC = () => {
                   </div>
                 </div>
                 <div className="team-card__footer">
-                  Created {new Date(t.createdAt).toLocaleDateString()}
+                  Created {formatDate(t.createdAt)}
                 </div>
               </button>
             ))}
@@ -494,7 +495,7 @@ const TeamDetail: React.FC<{ team: TeamRow; onBack: () => void }> = ({ team, onB
                           <code style={{ fontSize: '11px', color: 'var(--text-muted)' }}>{m.email}</code>
                         </TD>
                         <TD>{ROLE_LABELS[m.role]}</TD>
-                        <TD>{new Date(m.addedAt).toLocaleDateString()}</TD>
+                        <TD>{formatDate(m.addedAt)}</TD>
                         <TD style={{ textAlign: 'right' }}>
                           <button
                             className="reset-btn"

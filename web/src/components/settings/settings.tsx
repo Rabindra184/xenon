@@ -210,7 +210,7 @@ export const Settings: React.FC = () => {
     <div className="settings-container">
       <PageHeader
         icon={InfrastructureIcon}
-        title="Infrastructure Control"
+        title="Settings"
         subtitle="Manage core farm parameters, heartbeat frequency, and maintenance orchestrations across the global registry."
       />
 
@@ -279,7 +279,7 @@ export const Settings: React.FC = () => {
             <div className="setting-input-wrapper">
               <input
                 type="text"
-                placeholder="e.g. 0 * * * * (At internal min 0)"
+                placeholder="e.g. 0 * * * * (hourly, at minute 0)"
                 value={config.healthCheckSchedule}
                 onChange={(e) =>
                   setConfig({ ...config, healthCheckSchedule: e.target.value })
@@ -342,9 +342,9 @@ export const Settings: React.FC = () => {
               {config.enableSelfHealing ? 'ENABLED' : 'DISABLED'}
             </div>
             <p className="setting-card-description">
-              Automatically intercept and recover from failing locators using Xenon&apos;s 5-tier
-              strategy. When enabled, Xenon will attempt to find elements via Fuzzy XML, OCR,
-              Visual AI, and LLM before failing a test.
+              Automatically intercept and recover from failing locators using Xenon&apos;s 6-tier
+              strategy: etalon recovery, native retry, fuzzy XML, OCR, visual AI, and LLM —
+              before failing a test.
             </p>
 
             {config.enableSelfHealing && (

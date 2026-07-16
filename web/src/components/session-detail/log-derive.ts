@@ -128,6 +128,26 @@ export function tokenizeJson(src: string): JsonToken[] {
 }
 
 /**
+ * Human-facing title for a log row — prefers the structured `.title` field,
+ * falls back to `.command_name`, then a generic label. Never the raw JSON.
+ */
+export function logDisplayTitle(log: LogLike): string {
+  const l = log as any;
+  const t = typeof l.title === 'string' && l.title.trim() ? l.title.trim() : null;
+  const c = typeof l.command_name === 'string' && l.command_name.trim() ? l.command_name.trim() : null;
+  return t ?? c ?? 'Command';
+}
+
+/**
+ * Human-facing subtitle for a log row — the structured `.subtitle` field,
+ * or null when absent.
+ */
+export function logDisplaySubtitle(log: LogLike): string | null {
+  const s = (log as any).subtitle;
+  return typeof s === 'string' && s.trim() ? s.trim() : null;
+}
+
+/**
  * Filter logs by error-only toggle.
  */
 export function filterErrorsOnly(logs: LogLike[], on: boolean): LogLike[] {

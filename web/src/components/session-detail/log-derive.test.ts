@@ -6,6 +6,8 @@ import {
   prettyJson,
   tokenizeJson,
   filterErrorsOnly,
+  logDisplayTitle,
+  logDisplaySubtitle,
 } from './log-derive';
 
 describe('logTimestamp', () => {
@@ -111,5 +113,30 @@ describe('filterErrorsOnly', () => {
   it('keeps only is_success=false rows when on', () => {
     const logs = [{ is_success: true }, { is_success: false }, {}] as any;
     expect(filterErrorsOnly(logs, true)).to.have.lengthOf(1);
+  });
+});
+
+describe('log display derivation', () => {
+  const dbRow = {
+    id: 'slog-3',
+    session_id: 'sess-audit-2',
+    command_name: 'findElement',
+    title: 'Find Element',
+    subtitle: 'accessibility id: btn_place_order',
+    response: '{"error":"no such element"}',
+  };
+
+  it('prefers title over raw JSON', () => {
+    expect(logDisplayTitle(dbRow as any)).toBe('Find Element');
+  });
+
+  it('falls back to command_name then a generic label', () => {
+    expect(logDisplayTitle({ command_name: 'click' } as any)).toBe('click');
+    expect(logDisplayTitle({} as any)).toBe('Command');
+  });
+
+  it('exposes the subtitle when present', () => {
+    expect(logDisplaySubtitle(dbRow as any)).toBe('accessibility id: btn_place_order');
+    expect(logDisplaySubtitle({} as any)).toBeNull();
   });
 });

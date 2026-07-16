@@ -8,6 +8,7 @@ import {
   rotateAccessKey,
   TokenSummary,
 } from '../../api-service/profile';
+import { formatDate, formatDateTime } from '../../utils/time';
 import { GenerateTokenModal } from './generate-token-modal';
 
 export function ApiTokensTab() {
@@ -16,13 +17,20 @@ export function ApiTokensTab() {
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [revealed, setRevealed] = useState<{ name: string; token: string; expiresAt: string | null } | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   async function refresh() {
     setLoading(true);
-    const [ak, t] = await Promise.all([getAccessKey(), listTokens()]);
-    setAccessKey(ak);
-    setTokens(t);
-    setLoading(false);
+    setError(null);
+    try {
+      const [ak, t] = await Promise.all([getAccessKey(), listTokens()]);
+      setAccessKey(ak);
+      setTokens(t);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to load tokens');
+    } finally {
+      setLoading(false);
+    }
   }
   useEffect(() => {
     refresh();
@@ -74,6 +82,13 @@ export function ApiTokensTab() {
 
       {loading ? (
         <div className="text-sm text-[var(--text-dim)]">Loading…</div>
+      ) : error ? (
+        <div className="text-sm text-[var(--red)] py-6 text-center border border-dashed border-[var(--border)] rounded-md">
+          {error}{' '}
+          <button className="underline text-[var(--text)]" onClick={refresh}>
+            Retry
+          </button>
+        </div>
       ) : tokens.length === 0 ? (
         <div className="text-sm text-[var(--text-dim)] py-6 text-center border border-dashed border-[var(--border)] rounded-md">
           No tokens yet — generate one to use programmatically.
@@ -95,13 +110,13 @@ export function ApiTokensTab() {
               return (
                 <tr key={t.id} className="border-t border-[var(--border)]">
                   <td className="py-2">{t.name}</td>
-                  <td className="py-2 text-[var(--text-muted)]">{new Date(t.createdAt).toLocaleString()}</td>
+                  <td className="py-2 text-[var(--text-muted)]">{formatDateTime(t.createdAt)}</td>
                   <td className="py-2 text-[var(--text-muted)]">
-                    {t.lastUsedAt ? new Date(t.lastUsedAt).toLocaleString() : '—'}
+                    {t.lastUsedAt ? formatDateTime(t.lastUsedAt) : '—'}
                   </td>
                   <td className={`py-2 ${expired ? 'text-[var(--red)]' : 'text-[var(--text-muted)]'}`}>
                     {t.expiresAt
-                      ? `${new Date(t.expiresAt).toLocaleDateString()}${expired ? ' (expired)' : ''}`
+                      ? `${formatDate(t.expiresAt)}${expired ? ' (expired)' : ''}`
                       : 'Never'}
                   </td>
                   <td className="py-2 text-right">
@@ -141,7 +156,7 @@ export function ApiTokensTab() {
             </code>
             <p className="text-[11px] text-[var(--text-dim)] mb-4">
               {revealed.expiresAt
-                ? `Expires ${new Date(revealed.expiresAt).toLocaleDateString()}`
+                ? `Expires ${formatDate(revealed.expiresAt)}`
                 : 'No expiry — rotate manually.'}
             </p>
             <div className="flex justify-end">

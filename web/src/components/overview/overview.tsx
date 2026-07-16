@@ -38,7 +38,7 @@ const Overview: React.FC = () => {
               <span className="text-[var(--text-muted)]">Overview</span>
             </div>
             <h1 className="text-2xl font-semibold tracking-tight text-[var(--text)]">
-              {TENANT_NAME} <span className="text-[var(--text-dim)]">·</span> Overview
+              Overview
             </h1>
             <p className="text-sm text-[var(--text-muted)] mt-1">
               Real-time fleet health and session activity.

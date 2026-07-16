@@ -13,6 +13,7 @@ export interface PickerDevice {
     | 'recording_other_group'
     | string;
   mjpegServerPort?: number;
+  offline?: boolean;
 }
 
 interface Props {
@@ -134,8 +135,8 @@ export function DevicePicker({ devices, inMosaic, onToggle }: Props) {
                 {g.rows.map((d) => {
                   const isSelf = d.busyReason === 'manual_self';
                   const inMos = inMosaic.has(d.udid);
-                  const blocked = !!d.busy && !isSelf && !inMos;
-                  const reason = reasonLabel(d.busyReason);
+                  const blocked = (!!d.busy && !isSelf && !inMos) || !!d.offline;
+                  const reason = d.offline ? 'Offline' : reasonLabel(d.busyReason);
                   // Online status — green when not busy or only self-busy.
                   const online = !blocked;
                   return (
@@ -178,7 +179,11 @@ export function DevicePicker({ devices, inMosaic, onToggle }: Props) {
                         <span
                           aria-hidden
                           className={`inline-block w-1.5 h-1.5 rounded-full ${
-                            online ? 'bg-emerald-400 shadow-[0_0_4px_rgba(52,211,153,0.7)]' : 'bg-yellow-500'
+                            d.offline
+                              ? 'bg-zinc-600'
+                              : online
+                                ? 'bg-emerald-400 shadow-[0_0_4px_rgba(52,211,153,0.7)]'
+                                : 'bg-yellow-500'
                           }`}
                         />
                         <span className="font-medium flex-1 truncate text-[13px]">
@@ -204,6 +209,18 @@ export function DevicePicker({ devices, inMosaic, onToggle }: Props) {
           No devices match "{filter}".
         </div>
       )}
+
+      <div className="text-[10px] text-[var(--text-dim)] px-1 pt-2 flex items-center gap-3">
+        <span className="inline-flex items-center gap-1">
+          <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 inline-block" /> available
+        </span>
+        <span className="inline-flex items-center gap-1">
+          <span className="w-1.5 h-1.5 rounded-full bg-yellow-500 inline-block" /> in use
+        </span>
+        <span className="inline-flex items-center gap-1">
+          <span className="w-1.5 h-1.5 rounded-full bg-zinc-600 inline-block" /> offline
+        </span>
+      </div>
     </div>
   );
 }

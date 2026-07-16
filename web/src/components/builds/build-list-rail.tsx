@@ -48,6 +48,8 @@ export const BuildListRail: React.FC<Props> = ({
     return true;
   });
 
+  const hasActiveFilter = search.trim().length > 0 || timeFilter !== 'all';
+
   // Status summary across visible builds (aggregates per-build counts that
   // the backend already provides on IBuild).
   const summary = visible.reduce(
@@ -95,7 +97,11 @@ export const BuildListRail: React.FC<Props> = ({
       {/* Build cards */}
       <div className="flex-1 overflow-y-auto">
         {visible.length === 0 && (
-          <div className="px-4 py-8 text-center text-xs text-[var(--text-dim)]">No builds match.</div>
+          <div className="px-4 py-8 text-center text-xs text-[var(--text-dim)]">
+            {hasActiveFilter
+              ? 'No builds match.'
+              : 'No builds yet — sessions will appear here after your first test run.'}
+          </div>
         )}
         {visible.map((b) => {
           const active = b.id === selectedBuildId;
@@ -115,9 +121,9 @@ export const BuildListRail: React.FC<Props> = ({
                 {formatAbsoluteTime(b.createdAt)}
               </div>
               <div className="mt-1.5 flex items-center gap-1.5">
-                {b.passedCount  > 0 && <CountBadge value={b.passedCount}  tone="green" />}
-                {b.failedCount  > 0 && <CountBadge value={b.failedCount}  tone="red" />}
-                {b.runningCount > 0 && <CountBadge value={b.runningCount} tone="amber" />}
+                {b.passedCount  > 0 && <CountBadge value={b.passedCount}  tone="green" label={`${b.passedCount} passed`} />}
+                {b.failedCount  > 0 && <CountBadge value={b.failedCount}  tone="red"   label={`${b.failedCount} failed`} />}
+                {b.runningCount > 0 && <CountBadge value={b.runningCount} tone="amber" label={`${b.runningCount} running`} />}
                 {b.sessionCount === 0 && (
                   <span className="text-[10px] font-mono text-[var(--text-dim)]">empty</span>
                 )}
