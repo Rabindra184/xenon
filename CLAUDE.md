@@ -162,10 +162,12 @@ Supported range is **1280–1440** (laptop + tablet landscape). No phone or
 tablet-portrait support: no hamburger, no drawer. The sidebar is a fixed 56px
 rail at every width.
 
-**Use Tailwind mobile-first `min-width` only.** Never add a `max-width` query.
-The codebase briefly had both — `max-width: 1024px` in `device-explorer.css` and
-`selector-health.css` alongside `min-width: 1024px` in `settings.css`, the same
-number meaning opposite things.
+**Use Tailwind mobile-first `min-width` only** for new work. A few legacy
+`max-width` queries remain in component CSS (all firing below 1024px, i.e.
+outside the supported range) — don't add more, and prefer `min-width` when you
+touch one. Mixing directions is how bugs hide: the codebase has had
+`max-width: 1024px` (`device-explorer.css`, `selector-health.css`) alongside
+`min-width: 1024px` (`settings.css`), the same number meaning opposite things.
 
 Before choosing a breakpoint, **compute the layout's intrinsic minimum** (sum of
 fixed columns + gaps + padding + the 56px rail) and make sure the breakpoint sits
