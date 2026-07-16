@@ -89,24 +89,47 @@ for (const width of WIDTHS) {
 
       // body{overflow:hidden} (index.css:32) forces scrollWidth === innerWidth,
       // so document scroll CANNOT detect this. Measure element rects instead.
+      //
+      // A centered flex row (justify-content: center) that's too wide overflows
+      // BOTH edges roughly symmetrically, not just the right — a right-only check
+      // would miss the left clip entirely, and body{overflow:hidden} means it
+      // never shows up in a screenshot either. Same +1/-1 px tolerance on both
+      // edges so sub-pixel layout rounding doesn't cause flakes.
       const offenders = await page.evaluate(() => {
         const vw = window.innerWidth;
         return Array.from(document.querySelectorAll('body *'))
           .map((el) => ({ el, r: el.getBoundingClientRect() }))
-          .filter((x) => x.r.right > vw + 1 && x.r.width > 0)
-          .sort((a, b) => b.r.right - a.r.right)
+          .filter((x) => x.r.width > 0 && (x.r.right > vw + 1 || x.r.left < -1))
+          .map((x) => ({
+            el: x.el,
+            rightOverflowPx: x.r.right > vw + 1 ? Math.round(x.r.right - vw) : 0,
+            leftOverflowPx: x.r.left < -1 ? Math.round(-x.r.left) : 0,
+          }))
+          .sort(
+            (a, b) =>
+              Math.max(b.rightOverflowPx, b.leftOverflowPx) -
+              Math.max(a.rightOverflowPx, a.leftOverflowPx),
+          )
           .slice(0, 5)
           .map((x) => ({
             tag: (x.el as HTMLElement).tagName,
             cls: ((x.el as HTMLElement).className || '').toString().slice(0, 60),
-            overflowPx: Math.round(x.r.right - vw),
+            rightOverflowPx: x.rightOverflowPx,
+            leftOverflowPx: x.leftOverflowPx,
           }));
       });
 
       expect(
         offenders,
         `Elements escape the viewport at ${width}px on ${route}:\n` +
-          offenders.map((o) => `  ${o.tag}.${o.cls} overflows by ${o.overflowPx}px`).join('\n'),
+          offenders
+            .map((o) => {
+              const edges: string[] = [];
+              if (o.rightOverflowPx > 0) edges.push(`right edge by ${o.rightOverflowPx}px`);
+              if (o.leftOverflowPx > 0) edges.push(`left edge by ${o.leftOverflowPx}px`);
+              return `  ${o.tag}.${o.cls} escapes ${edges.join(' and ')}`;
+            })
+            .join('\n'),
       ).toEqual([]);
     });
   }
