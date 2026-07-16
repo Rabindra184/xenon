@@ -19,6 +19,8 @@ export interface FormField {
   children?: FormField[];
   /** Secret-bearing settings are hidden from the form and handled in the Secrets panel. */
   secret?: boolean;
+  /** For arrays of objects: the item property names, enabling a table editor. */
+  itemColumns?: string[];
 }
 
 export interface FormSection {
@@ -94,6 +96,16 @@ function typeOf(p: JsonSchemaProperty): string | undefined {
   return Array.isArray(p.type) ? p.type.find((t) => t !== 'null') : p.type;
 }
 
+/** Array item schemas are `$ref`s (SimulatorConfig, EmulatorConfig) — follow them. */
+function resolveRef(
+  p: JsonSchemaProperty | undefined,
+  definitions: Record<string, JsonSchemaProperty>
+): JsonSchemaProperty | undefined {
+  const ref = (p as { $ref?: string } | undefined)?.$ref;
+  if (ref?.startsWith('#/definitions/')) return definitions[ref.slice('#/definitions/'.length)];
+  return p;
+}
+
 // Proper nouns / initialisms that naive Title-Casing would mangle ("Ios", "Adb"…).
 const PROPER_NOUNS: Record<string, string> = {
   ios: 'iOS',
@@ -145,10 +157,12 @@ function fieldFromProperty(
   if (t === 'string') return { ...base, kind: 'text' };
 
   if (t === 'array') {
-    const items = prop.items as JsonSchemaProperty | undefined;
+    const items = resolveRef(prop.items as JsonSchemaProperty | undefined, definitions);
     if (items && typeOf(items) === 'string') return { ...base, kind: 'stringList' };
-    // arrays of objects (simulators/emulators) → JSON editor for v1.
-    return { ...base, kind: 'json' };
+    // Arrays of objects get a table editor when their item shape is known,
+    // otherwise the JSON editor.
+    const cols = items?.properties ? Object.keys(items.properties) : undefined;
+    return { ...base, kind: 'json', itemColumns: cols };
   }
 
   if (t === 'object') {

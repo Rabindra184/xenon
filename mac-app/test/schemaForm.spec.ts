@@ -54,6 +54,12 @@ describe('buildForm', () => {
     expect(byKey.bindHostOrIp.label).toBe('Bind Host Or IP');
   });
 
+  it('exposes item columns for object-array fields by resolving $ref items', () => {
+    const byKey = Object.fromEntries(allFields.map((f) => [f.key, f]));
+    expect(byKey.simulators.itemColumns).toEqual(['name', 'sdk']);
+    expect(byKey.emulators.itemColumns).toEqual(['avdName']);
+  });
+
   it('marks required fields from the schema required[] list', () => {
     const byKey = Object.fromEntries(allFields.map((f) => [f.key, f]));
     expect(byKey.platform.required).toBe(true);

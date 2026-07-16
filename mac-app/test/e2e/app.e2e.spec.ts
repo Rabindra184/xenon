@@ -112,7 +112,9 @@ test('logs tab is reachable and distinct from the Log Folder button', async () =
 
 test('invalid JSON in a settings field shows an inline error and keeps the draft', async () => {
   await openTab('Settings');
-  const jsonField = page.getByPlaceholder('JSON').first(); // Simulators editor
+  // Object-array fields render a table editor; JSON is the escape hatch.
+  await page.getByRole('button', { name: 'Edit as JSON' }).first().click();
+  const jsonField = page.getByPlaceholder('JSON').first();
   await jsonField.fill('[{"name": }]');
   await jsonField.blur();
   await expect(page.getByText(/Invalid JSON/).first()).toBeVisible();
@@ -121,6 +123,43 @@ test('invalid JSON in a settings field shows an inline error and keeps the draft
   await jsonField.fill('');
   await jsonField.blur();
   await expect(page.getByText(/Invalid JSON/)).not.toBeVisible();
+  await page.getByRole('button', { name: 'Edit as table' }).first().click();
+});
+
+test('chip editor round-trips a string-array setting', async () => {
+  await openTab('Settings');
+  await page.getByTestId('settings-search').fill('adbRemote');
+  const chipInput = page.getByPlaceholder('add + Enter').first();
+  await chipInput.fill('192.168.1.50:5555');
+  await chipInput.press('Enter');
+  await expect(page.getByText('192.168.1.50:5555')).toBeVisible();
+
+  // Round-trip through the store: leave the tab and come back.
+  await openTab('Health');
+  await openTab('Settings');
+  await page.getByTestId('settings-search').fill('adbRemote');
+  await expect(page.getByText('192.168.1.50:5555')).toBeVisible();
+
+  await page.getByRole('button', { name: 'Remove 192.168.1.50:5555' }).click();
+  await expect(page.getByText('192.168.1.50:5555')).not.toBeVisible();
+  await page.getByTestId('settings-search').fill('');
+});
+
+test('table editor round-trips an object-array setting', async () => {
+  await openTab('Settings');
+  await page.getByTestId('settings-search').fill('simulators');
+  await page.getByRole('button', { name: 'Add row' }).first().click();
+  const cell = page.getByRole('textbox', { name: 'name row 1' });
+  await cell.fill('iPhone 15');
+  await cell.blur();
+
+  await openTab('Health');
+  await openTab('Settings');
+  await page.getByTestId('settings-search').fill('simulators');
+  await expect(page.getByRole('textbox', { name: 'name row 1' })).toHaveValue('iPhone 15');
+
+  await page.getByRole('button', { name: 'Remove row' }).first().click();
+  await page.getByTestId('settings-search').fill('');
 });
 
 test('Escape closes the launch preview modal', async () => {
