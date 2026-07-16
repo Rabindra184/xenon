@@ -1,18 +1,26 @@
 /** @type {import('tailwindcss').Config} */
 export default {
   content: ['./src/renderer/index.html', './src/renderer/src/**/*.{ts,tsx}'],
-  darkMode: 'media',
   theme: {
     extend: {
+      // Semantic names mapped onto the Xenon design tokens (tokens.css).
+      // Components use only these — no raw palette classes.
       colors: {
-        // Neutral slate-based surface palette; accent kept restrained.
-        accent: {
-          DEFAULT: '#4f46e5',
-          fg: '#ffffff'
-        }
+        app: 'var(--bg)',
+        surface: 'var(--surface)',
+        surface2: 'var(--surface-2)',
+        line: { DEFAULT: 'var(--border)', strong: 'var(--border-strong)' },
+        ink: 'var(--text)',
+        muted: 'var(--text-muted)',
+        dim: 'var(--text-dim)',
+        accent: { DEFAULT: 'var(--green)', dim: 'var(--green-dim)', fg: '#052e14' },
+        warn: 'var(--amber)',
+        danger: 'var(--red)',
+        info: 'var(--blue)'
       },
       fontFamily: {
-        mono: ['ui-monospace', 'SFMono-Regular', 'Menlo', 'monospace']
+        sans: ['Inter', '-apple-system', 'BlinkMacSystemFont', 'system-ui', 'sans-serif'],
+        mono: ['JetBrains Mono', 'ui-monospace', 'SFMono-Regular', 'Menlo', 'monospace']
       }
     }
   },

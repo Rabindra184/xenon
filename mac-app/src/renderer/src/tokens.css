@@ -1,0 +1,21 @@
+/* Xenon design tokens — ported from web/src/tokens.css (keep in sync). */
+:root {
+  --bg: #0a0d0c;
+  --surface: #111514;
+  --surface-2: #161b1a;
+  --border: #1f2624;
+  --border-strong: #2a3331;
+
+  --text: #e6ebe9;
+  --text-muted: #8a938f;
+  --text-dim: #5b6460;
+
+  --green: #22c55e;
+  --green-dim: #16a34a;
+  --amber: #f59e0b;
+  --red: #ef4444;
+  --blue: #3b82f6;
+
+  --accent-subtle: rgba(34, 197, 94, 0.1);
+  --accent-border: rgba(34, 197, 94, 0.3);
+}
