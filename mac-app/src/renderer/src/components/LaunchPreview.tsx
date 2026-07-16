@@ -31,34 +31,34 @@ export function LaunchPreview({ profile, onClose }: Props) {
         role="dialog"
         aria-modal="true"
         aria-label="Launch preview"
-        className="flex max-h-[85vh] w-full max-w-3xl flex-col overflow-hidden rounded-xl bg-white shadow-2xl dark:bg-slate-900"
+        className="flex max-h-[85vh] w-full max-w-3xl flex-col overflow-hidden rounded-xl border border-line bg-surface shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-center justify-between border-b border-slate-200 px-5 py-3 dark:border-slate-700">
+        <div className="flex items-center justify-between border-b border-line px-5 py-3">
           <h2 className="text-sm font-semibold">Launch preview — dry run</h2>
-          <button onClick={onClose} className="text-slate-400 hover:text-slate-700 dark:hover:text-slate-200">
+          <button onClick={onClose} aria-label="Close preview" className="focus-ring rounded text-dim hover:text-ink">
             <X size={18} />
           </button>
         </div>
 
         {!spec ? (
-          <div className="p-6 text-sm text-slate-400">Building preview…</div>
+          <div className="p-6 text-sm text-dim">Building preview…</div>
         ) : (
           <div className="space-y-4 overflow-auto p-5">
             <Section title="Command">
-              <code className="block break-all rounded-md bg-slate-900 p-3 font-mono text-xs text-emerald-300">
+              <code className="block break-all rounded-md border border-line bg-app p-3 font-mono text-xs text-accent">
                 {spec.command} {spec.args.join(' ')}
               </code>
             </Section>
 
             <Section title="APPIUM_HOME">
-              <code className="block break-all text-xs text-slate-600 dark:text-slate-300">{spec.appiumHome}</code>
+              <code className="block break-all text-xs text-muted">{spec.appiumHome}</code>
             </Section>
 
             <Section title={`Environment variables (${spec.envKeys.length}) — names only`}>
               <div className="flex flex-wrap gap-1.5">
                 {spec.envKeys.map((k) => (
-                  <span key={k} className="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-[11px] dark:bg-slate-800">
+                  <span key={k} className="rounded bg-surface2 px-1.5 py-0.5 font-mono text-[11px]">
                     {k}
                   </span>
                 ))}
@@ -67,12 +67,12 @@ export function LaunchPreview({ profile, onClose }: Props) {
 
             <Section title="Generated Appium config (server.plugin.xenon)">
               <div className="relative">
-                <pre className="max-h-72 overflow-auto rounded-md bg-slate-900 p-3 font-mono text-[11px] leading-relaxed text-slate-200">
+                <pre className="max-h-72 overflow-auto rounded-md border border-line bg-app p-3 font-mono text-[11px] leading-relaxed text-ink">
                   {spec.configYaml}
                 </pre>
                 <button
                   onClick={() => navigator.clipboard.writeText(spec.configYaml)}
-                  className="absolute right-2 top-2 inline-flex items-center gap-1 rounded bg-slate-700 px-2 py-1 text-[11px] text-white"
+                  className="focus-ring absolute right-2 top-2 inline-flex items-center gap-1 rounded border border-line-strong bg-surface2 px-2 py-1 text-[11px] text-ink hover:bg-surface"
                 >
                   <Copy size={11} /> Copy
                 </button>
@@ -81,14 +81,17 @@ export function LaunchPreview({ profile, onClose }: Props) {
           </div>
         )}
 
-        <div className="flex items-center justify-end gap-2 border-t border-slate-200 px-5 py-3 dark:border-slate-700">
+        <div className="flex items-center justify-end gap-2 border-t border-line px-5 py-3">
           <button
             onClick={() => window.xenon.profiles.exportConfigYaml(profile)}
-            className="inline-flex items-center gap-1.5 rounded-md border border-slate-300 px-3 py-1.5 text-sm dark:border-slate-600"
+            className="focus-ring inline-flex items-center gap-1.5 rounded-md border border-line-strong px-3 py-1.5 text-sm hover:bg-surface2"
           >
             <Download size={14} /> Save config…
           </button>
-          <button onClick={onClose} className="rounded-md bg-accent px-3 py-1.5 text-sm font-medium text-accent-fg">
+          <button
+            onClick={onClose}
+            className="focus-ring rounded-md bg-accent px-3 py-1.5 text-sm font-medium text-accent-fg hover:bg-accent-dim"
+          >
             Close
           </button>
         </div>
@@ -100,7 +103,7 @@ export function LaunchPreview({ profile, onClose }: Props) {
 function Section({ title, children }: { title: string; children: ReactNode }) {
   return (
     <div>
-      <h3 className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-slate-500">{title}</h3>
+      <h3 className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-muted">{title}</h3>
       {children}
     </div>
   );

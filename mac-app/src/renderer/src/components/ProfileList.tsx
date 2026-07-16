@@ -34,13 +34,13 @@ export function ProfileList({ profiles, activeId, runningId, onSelect, onCreate,
   return (
     <div className="flex flex-col">
       <div className="mb-2 flex items-center justify-between px-1">
-        <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">Profiles</span>
+        <span className="text-xs font-semibold uppercase tracking-wide text-muted">Profiles</span>
         <button
           data-testid="new-profile"
           onClick={onCreate}
           title="New profile"
           aria-label="New profile"
-          className="text-slate-400 hover:text-accent"
+          className="focus-ring rounded text-dim hover:text-accent"
         >
           <Plus size={16} />
         </button>
@@ -54,11 +54,11 @@ export function ProfileList({ profiles, activeId, runningId, onSelect, onCreate,
               onClick={() => onSelect(p.id)}
               className={cn(
                 'group flex cursor-pointer items-center justify-between rounded-md px-2 py-1.5 text-sm',
-                p.id === activeId ? 'bg-accent/10 text-accent' : 'hover:bg-slate-100 dark:hover:bg-slate-800'
+                p.id === activeId ? 'bg-accent/10 text-accent' : 'hover:bg-surface2'
               )}
             >
               <span className="flex items-center gap-2 truncate">
-                {p.id === runningId && <span className="h-2 w-2 shrink-0 rounded-full bg-emerald-500" />}
+                {p.id === runningId && <span className="h-2 w-2 shrink-0 rounded-full bg-accent" />}
                 <span className="truncate">{p.name}</span>
               </span>
               <span className={cn('items-center gap-1', confirming ? 'flex' : 'hidden group-hover:flex')}>
@@ -71,7 +71,7 @@ export function ProfileList({ profiles, activeId, runningId, onSelect, onCreate,
                       onDelete(p.id);
                     }}
                     aria-label="Confirm delete"
-                    className="rounded bg-rose-600 px-1.5 py-0.5 text-[11px] font-medium text-white hover:bg-rose-700"
+                    className="focus-ring rounded bg-danger px-1.5 py-0.5 text-[11px] font-medium text-white hover:bg-danger/80"
                   >
                     Delete?
                   </button>
@@ -82,7 +82,7 @@ export function ProfileList({ profiles, activeId, runningId, onSelect, onCreate,
                         e.stopPropagation();
                         onDuplicate(p.id);
                       }}
-                      className="text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"
+                      className="focus-ring rounded text-dim hover:text-ink"
                       title="Duplicate"
                       aria-label="Duplicate"
                     >
@@ -93,7 +93,7 @@ export function ProfileList({ profiles, activeId, runningId, onSelect, onCreate,
                         e.stopPropagation();
                         armDelete(p.id);
                       }}
-                      className="text-slate-400 hover:text-rose-500"
+                      className="focus-ring rounded text-dim hover:text-danger"
                       title="Delete"
                       aria-label="Delete"
                     >

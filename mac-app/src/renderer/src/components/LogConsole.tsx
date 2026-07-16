@@ -15,9 +15,9 @@ interface Props {
 }
 
 const STREAM_COLOR: Record<LogLine['stream'], string> = {
-  stdout: 'text-slate-300',
-  stderr: 'text-rose-300',
-  system: 'text-sky-300'
+  stdout: 'text-ink',
+  stderr: 'text-danger',
+  system: 'text-info'
 };
 
 export function LogConsole({ logs }: Props) {
@@ -44,19 +44,19 @@ export function LogConsole({ logs }: Props) {
           placeholder="Filter logs…"
           value={filter}
           onChange={(e) => setFilter(e.target.value)}
-          className="flex-1 rounded-md border border-slate-300 bg-white px-2 py-1 text-sm dark:border-slate-600 dark:bg-slate-800"
+          className="focus-ring flex-1 rounded-md border border-line-strong bg-surface2 px-2 py-1 text-sm text-ink"
         />
-        <label className="flex items-center gap-1.5 text-xs text-slate-600 dark:text-slate-300">
+        <label className="flex items-center gap-1.5 text-xs text-muted">
           <input type="checkbox" checked={autoscroll} onChange={(e) => setAutoscroll(e.target.checked)} />
           auto-scroll
         </label>
-        <button onClick={copyAll} className="rounded-md border border-slate-300 px-2 py-1 text-xs dark:border-slate-600">
+        <button onClick={copyAll} className="focus-ring rounded-md border border-line-strong px-2 py-1 text-xs hover:bg-surface2">
           Copy
         </button>
       </div>
-      <div className="flex-1 overflow-auto rounded-lg bg-slate-900 p-3 font-mono text-xs leading-relaxed">
+      <div className="flex-1 overflow-auto rounded-lg border border-line bg-app p-3 font-mono text-xs leading-relaxed">
         {filtered.length === 0 ? (
-          <p className="text-slate-500">No output yet. Start the server to see logs.</p>
+          <p className="text-dim">No output yet. Start the server to see logs.</p>
         ) : (
           filtered.map((l, i) => (
             <div key={i} className={cn('whitespace-pre-wrap break-words', STREAM_COLOR[l.stream])}>

@@ -38,7 +38,7 @@ export function SecretsPanel({ descriptors, selected, onToggleSelected }: Props)
 
   return (
     <div className="space-y-4">
-      <p className="text-xs text-slate-500 dark:text-slate-400">
+      <p className="text-xs text-muted">
         Secrets are encrypted with the macOS Keychain (via Electron safeStorage) and injected as environment
         variables on the Appium process at launch. They are never written to the config file and never sent back to
         this window.
@@ -47,23 +47,23 @@ export function SecretsPanel({ descriptors, selected, onToggleSelected }: Props)
         const isSet = status[d.key];
         const inProfile = selected.includes(d.key);
         return (
-          <div key={d.key} className="rounded-lg border border-slate-200 p-3 dark:border-slate-700">
+          <div key={d.key} className="rounded-lg border border-line bg-surface p-3">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <KeyRound size={15} className="text-slate-400" />
+                <KeyRound size={15} className="text-dim" />
                 <span className="text-sm font-medium">{d.label}</span>
-                <code className="text-[11px] text-slate-400">{d.key}</code>
+                <code className="text-[11px] text-dim">{d.key}</code>
                 {isSet ? (
-                  <span className="inline-flex items-center gap-1 rounded bg-emerald-100 px-1.5 py-0.5 text-[10px] font-medium text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300">
+                  <span className="inline-flex items-center gap-1 rounded bg-accent/10 px-1.5 py-0.5 text-[10px] font-medium text-accent">
                     <Check size={10} /> stored
                   </span>
                 ) : (
-                  <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] text-slate-500 dark:bg-slate-800">
+                  <span className="rounded bg-surface2 px-1.5 py-0.5 text-[10px] text-muted">
                     not set
                   </span>
                 )}
               </div>
-              <label className="flex items-center gap-1.5 text-xs text-slate-600 dark:text-slate-300">
+              <label className="flex items-center gap-1.5 text-xs text-muted">
                 <input
                   type="checkbox"
                   checked={inProfile}
@@ -72,26 +72,26 @@ export function SecretsPanel({ descriptors, selected, onToggleSelected }: Props)
                 inject in this profile
               </label>
             </div>
-            <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">{d.description}</p>
+            <p className="mt-1 text-xs text-muted">{d.description}</p>
             <div className="mt-2 flex items-center gap-2">
               <input
                 type="password"
                 placeholder={isSet ? '•••••••• (enter to replace)' : 'paste value'}
                 value={drafts[d.key] ?? ''}
                 onChange={(e) => setDrafts((s) => ({ ...s, [d.key]: e.target.value }))}
-                className="flex-1 rounded-md border border-slate-300 bg-white px-2 py-1 text-sm dark:border-slate-600 dark:bg-slate-800"
+                className="focus-ring flex-1 rounded-md border border-line-strong bg-surface2 px-2 py-1 text-sm text-ink"
               />
               <button
                 onClick={() => save(d.key)}
                 disabled={!drafts[d.key]}
-                className="rounded-md bg-accent px-3 py-1 text-sm font-medium text-accent-fg disabled:opacity-40"
+                className="focus-ring rounded-md bg-accent px-3 py-1 text-sm font-medium text-accent-fg hover:bg-accent-dim disabled:opacity-40"
               >
                 Save
               </button>
               {isSet && (
                 <button
                   onClick={() => clear(d.key)}
-                  className="rounded-md border border-slate-300 px-2 py-1 text-slate-500 hover:text-rose-600 dark:border-slate-600"
+                  className="focus-ring rounded-md border border-line-strong px-2 py-1 text-muted hover:text-danger"
                   title="Clear secret"
                 >
                   <X size={15} />
