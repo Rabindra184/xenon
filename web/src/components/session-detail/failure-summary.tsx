@@ -110,12 +110,31 @@ export const FailureSummary: React.FC<Props> = ({ session, buildName, buildId, a
           <div className="text-[10px] font-mono font-semibold uppercase tracking-widest text-[var(--text-dim)] mb-1">
             First error
           </div>
-          <div className="text-sm text-[var(--text-muted)]">
-            {firstError?.message
-              ? firstError.message
-              : firstError
-              ? <code className="font-mono text-xs">{JSON.stringify(firstError).slice(0, 400)}</code>
-              : <span className="text-[var(--text-dim)]">(no logs captured before failure)</span>}
+          <div className="text-sm text-[var(--text-muted)] min-w-0">
+            {firstError?.message ? (
+              <span className="break-words">{firstError.message}</span>
+            ) : firstError ? (
+              <dl className="space-y-1 text-xs">
+                <div className="flex gap-2 min-w-0">
+                  <dt className="text-[var(--text-dim)] shrink-0 uppercase text-[10px] tracking-widest">Command</dt>
+                  <dd className="font-mono break-all">{(firstError as any).command_name || (firstError as any).title || '—'}</dd>
+                </div>
+                {(firstError as any).subtitle && (
+                  <div className="flex gap-2 min-w-0">
+                    <dt className="text-[var(--text-dim)] shrink-0 uppercase text-[10px] tracking-widest">Target</dt>
+                    <dd className="font-mono break-all">{(firstError as any).subtitle}</dd>
+                  </div>
+                )}
+                {(firstError as any).response && (
+                  <div className="flex gap-2 min-w-0">
+                    <dt className="text-[var(--text-dim)] shrink-0 uppercase text-[10px] tracking-widest">Response</dt>
+                    <dd className="font-mono break-all">{String((firstError as any).response).slice(0, 400)}</dd>
+                  </div>
+                )}
+              </dl>
+            ) : (
+              <span className="text-[var(--text-dim)]">(no logs captured before failure)</span>
+            )}
           </div>
         </div>
 

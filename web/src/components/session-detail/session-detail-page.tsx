@@ -153,7 +153,7 @@ export const SessionDetailPage: React.FC = () => {
     <div className="flex flex-col h-full min-h-0">
       <BreadcrumbHeader buildId={buildId} buildName={buildName} sessionId={s.id} />
 
-      <div className="flex-1 overflow-y-auto">
+      <div className="flex-1 overflow-y-auto overflow-x-hidden">
         <div className="px-4 py-4 space-y-4">
           <MetadataGrid identity={identityRows} run={runRows} result={resultRows} />
 
@@ -168,12 +168,14 @@ export const SessionDetailPage: React.FC = () => {
           )}
 
           <div className="grid grid-cols-1 lg:grid-cols-[1fr_340px] gap-4">
-            <LogViewer
-              sessionLogs={detail.sessionLogs}
-              deviceLogs={detail.deviceLogs}
-              debugLogs={detail.debugLogs}
-              profiling={detail.profiling}
-            />
+            <div className="min-w-0">
+              <LogViewer
+                sessionLogs={detail.sessionLogs}
+                deviceLogs={detail.deviceLogs}
+                debugLogs={detail.debugLogs}
+                profiling={detail.profiling}
+              />
+            </div>
 
             <div className="flex flex-col gap-4">
               <RecordingCard session={s} />
