@@ -120,6 +120,16 @@ function middleEllipsis(s: string, head = 10, tail = 4): string {
   return `${s.slice(0, head)}…${s.slice(-tail)}`;
 }
 
+function formatHost(raw?: string): string {
+  if (!raw) return '—';
+  try {
+    const u = new URL(raw.includes('://') ? raw : `http://${raw}`);
+    return u.port ? `${u.hostname}:${u.port}` : u.hostname;
+  } catch {
+    return raw;
+  }
+}
+
 export const DeviceCard: React.FC<Props> = ({ device, reloadDevices, navigate, teams }) => {
   const [showReservation, setShowReservation] = React.useState(false);
   const [showTagManager, setShowTagManager] = React.useState(false);
@@ -211,11 +221,15 @@ export const DeviceCard: React.FC<Props> = ({ device, reloadDevices, navigate, t
           </div>
         ) : (
           <KeyValueRow
-            label="Utilization"
-            value={prettyMilliseconds(device.totalUtilizationTimeMilliSec || 0, { compact: true })}
+            label="Time in use"
+            value={
+              device.totalUtilizationTimeMilliSec
+                ? prettyMilliseconds(device.totalUtilizationTimeMilliSec, { compact: true })
+                : '—'
+            }
           />
         )}
-        <KeyValueRow label="Host" value={device.ip || device.host} mono />
+        <KeyValueRow label="Host" value={formatHost(device.ip || device.host)} mono />
       </div>
 
       <div className="dc2-actions">
