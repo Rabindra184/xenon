@@ -589,8 +589,13 @@ const ROUTE_DATA_MOCKS: Record<string, Setup> = {
   },
 
   '/xenon/users': async (page) => {
-    // Fetched as '/xenon/api/users/' (trailing slash) — the `*` glob covers it.
-    await page.route('**/xenon/api/users*', (route) =>
+    // Fetched as '/xenon/api/users/' (trailing slash — listUsers does fetch(`${BASE}/`)).
+    // The glob MUST include the slash before the star: Playwright compiles a single `*`
+    // to `[^/]*`, so `users*` cannot consume the trailing `/` and never matches, which
+    // would silently fall back to ambient server data — the exact vacuous-pass this guard
+    // exists to prevent. `users/*` matches the trailing slash (and any `?query`) but not
+    // sub-resource paths like `/users/:id/...`.
+    await page.route('**/xenon/api/users/*', (route) =>
       route.fulfill({
         json: [
           {
