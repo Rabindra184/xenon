@@ -16,13 +16,20 @@ export function ApiTokensTab() {
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [revealed, setRevealed] = useState<{ name: string; token: string; expiresAt: string | null } | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   async function refresh() {
     setLoading(true);
-    const [ak, t] = await Promise.all([getAccessKey(), listTokens()]);
-    setAccessKey(ak);
-    setTokens(t);
-    setLoading(false);
+    setError(null);
+    try {
+      const [ak, t] = await Promise.all([getAccessKey(), listTokens()]);
+      setAccessKey(ak);
+      setTokens(t);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to load tokens');
+    } finally {
+      setLoading(false);
+    }
   }
   useEffect(() => {
     refresh();
@@ -74,6 +81,13 @@ export function ApiTokensTab() {
 
       {loading ? (
         <div className="text-sm text-[var(--text-dim)]">Loading…</div>
+      ) : error ? (
+        <div className="text-sm text-[var(--red)] py-6 text-center border border-dashed border-[var(--border)] rounded-md">
+          {error}{' '}
+          <button className="underline text-[var(--text)]" onClick={refresh}>
+            Retry
+          </button>
+        </div>
       ) : tokens.length === 0 ? (
         <div className="text-sm text-[var(--text-dim)] py-6 text-center border border-dashed border-[var(--border)] rounded-md">
           No tokens yet — generate one to use programmatically.
