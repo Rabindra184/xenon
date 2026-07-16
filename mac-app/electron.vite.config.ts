@@ -35,6 +35,10 @@ export default defineConfig({
     },
     plugins: [react()],
     build: {
+      // Emit fonts as real files instead of data: URIs — the renderer CSP is
+      // `default-src 'self'`, which rejects data: fonts. Nothing is fetched
+      // over the network either way; assets ship inside the bundle.
+      assetsInlineLimit: 0,
       rollupOptions: {
         input: { index: resolve(__dirname, 'src/renderer/index.html') }
       }
