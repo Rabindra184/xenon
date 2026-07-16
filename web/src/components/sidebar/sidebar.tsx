@@ -41,7 +41,7 @@ const items: NavItem[] = [
   { id: 'notifications', label: 'Notifications', icon: Bell, path: '/notifications' },
   // Admin-only management surfaces.
   { id: 'settings', label: 'Settings', icon: SettingsIcon, path: '/settings', minRole: 'ADMIN' },
-  { id: 'ai', label: 'AI', icon: Brain, path: '/ai-settings', minRole: 'ADMIN' },
+  { id: 'ai', label: 'AI Engine', icon: Brain, path: '/ai-settings', minRole: 'ADMIN' },
   { id: 'maintenance', label: 'Maintenance', icon: ShieldCheck, path: '/maintenance', minRole: 'ADMIN' },
   { id: 'teams', label: 'Teams', icon: Users, path: '/teams', minRole: 'ADMIN' },
   { id: 'users', label: 'Users', icon: Users, path: '/users', minRole: 'ADMIN' },

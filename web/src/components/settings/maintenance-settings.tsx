@@ -121,7 +121,7 @@ export const MaintenanceSettings: React.FC = () => {
     <div className="settings-container">
       <PageHeader
         icon={MaintenanceIcon}
-        title="Maintenance & Retention"
+        title="Maintenance"
         subtitle="Manage the lifecycle of test artifacts, automated purging schedules, and storage optimization across the global registry."
       />
 

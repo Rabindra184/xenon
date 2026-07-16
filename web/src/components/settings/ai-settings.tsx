@@ -217,7 +217,7 @@ export const AISettings: React.FC = () => {
     <div className="settings-container">
       <PageHeader
         icon={Brain}
-        title="AI Engine Configuration"
+        title="AI Engine"
         subtitle={
           <>
             All credentials and endpoints are managed via environment variables.
