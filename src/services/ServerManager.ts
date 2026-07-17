@@ -1,5 +1,6 @@
 import { Container, Service } from 'typedi';
 import * as os from 'os';
+import * as path from 'path';
 import { OrphanSweeper } from './OrphanSweeper';
 import { v4 as uuidv4 } from 'uuid';
 import { redactSecrets } from '../helpers';
@@ -37,6 +38,7 @@ import NodeDevices from '../device-managers/NodeDevices';
 import { config as xenonConfig } from '../config';
 import { SocketServer } from './SocketServer';
 import { SocketClient } from './SocketClient';
+import { EventLogService } from './EventLogService';
 import { TracingService } from './TracingService';
 import { ServerArgs, PluginConfig } from '@appium/types';
 import { XenonPlugin } from '../plugin';
@@ -108,6 +110,21 @@ export class ServerManager {
         log.warn(`LeaseOrphanSweeper tick failed: ${err?.message ?? err}`);
       });
     }, 30_000);
+
+    // Daily EventLog prune (transactional-outbox seed): keeps the append-only
+    // log from growing unbounded. Fire-and-forget interval, unref'd so it
+    // never keeps the process alive on its own.
+    const eventLog = Container.get(EventLogService);
+    setInterval(
+      () => {
+        const rawRet = Number(process.env.XENON_EVENT_LOG_RETENTION_DAYS);
+        const retentionDays = Number.isFinite(rawRet) && rawRet > 0 ? rawRet : 30;
+        eventLog
+          .prune(retentionDays)
+          .catch((err: any) => log.warn(`EventLog prune failed: ${err?.message ?? err}`));
+      },
+      24 * 60 * 60 * 1000,
+    ).unref();
 
     // Cleanup any remaining zombie sessions (cross-node fallback)
     const { cleanupZombieSessions } = await import('../dashboard/services/session-service');
@@ -207,6 +224,32 @@ export class ServerManager {
 
     const { startUserSessionCleanupCron } = await import('./identity/sessionCleanupCron');
     startUserSessionCleanupCron();
+
+    // Hub-issued JWT signing key (REST/MCP tokens, stream tickets) — key
+    // material lives next to the SQLite db file so it survives restarts
+    // without a new DB migration. Must finish before /auth/token or
+    // /auth/jwks.json can be mounted (registerRoutes runs right after this).
+    // Non-disruptive by design: a key-material failure (permissions, disk
+    // full, corrupt PEM) only degrades the two token routes — sign()/verify()
+    // throw "not initialized" and jwks() serves an empty set — it must never
+    // abort server boot.
+    try {
+      const { JwtKeyService } = await import('./token/JwtKeyService');
+      const jwtKeyDir = process.env.XENON_JWT_KEY_DIR || path.dirname(xenonConfig.databasePath);
+      await Container.get(JwtKeyService).init(jwtKeyDir);
+    } catch (err: any) {
+      log.error(
+        `JWT key init failed — /auth/token and /auth/jwks.json will be unavailable: ${err?.message}`,
+      );
+    }
+
+    // ARB foreclosure guard #2: every recording/proof-bundle artifact path
+    // flows through ArtifactStore so an S3/object-store backend later is an
+    // implementation swap, not a call-site migration. FsArtifactStore is
+    // byte-identical to the legacy path.join(recordingsAssetsPath, ...)
+    // concatenation it replaces.
+    const { FsArtifactStore, ARTIFACT_STORE } = await import('./artifacts/ArtifactStore');
+    Container.set(ARTIFACT_STORE, new FsArtifactStore(xenonConfig.recordingsAssetsPath));
   }
 
   private registerRoutes(expressApp: any, cliArgs: ServerArgs, pluginArgs: IPluginArgs) {

@@ -5,6 +5,7 @@ import log from '../logger';
 import { config as xenonConfig } from '../config';
 import { ApiKeyService } from './ApiKeyService';
 import { prisma } from '../prisma';
+import { EventLogService } from './EventLogService';
 import { SocketEvents, XENON_PROTOCOL_VERSION, HandshakeData } from '../enums/SocketEvents';
 
 // Socket principals mirror the two REST auth paths. 'auth-disabled' is a
@@ -171,6 +172,7 @@ export class SocketServer {
     if (this.io) {
       this.io.to('dashboard').emit(event, data);
     }
+    Container.get(EventLogService).appendSafe({ type: event, payload: data });
   }
 
   public emitToNodes(event: string, data: any) {

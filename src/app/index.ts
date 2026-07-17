@@ -31,6 +31,8 @@ import { authPublicRouter, authAuthedRouter } from './routers/auth';
 import { processesRouter } from './routers/processes';
 import { profileRouter } from './routers/profile';
 import { usersRouter } from './routers/users';
+import { capabilitiesRouter } from './routers/capabilities';
+import { projectsRouter } from './routers/projects';
 import { authMiddleware } from '../middleware/authMiddleware';
 import { rateLimitMiddleware } from '../middleware/rateLimitMiddleware';
 import { csrfMiddleware } from '../middleware/csrfMiddleware';
@@ -236,6 +238,10 @@ function createRouter(pluginArgs: IPluginArgs) {
   apiRouter.use('/teams', teamsRouter());
   // Admin: running process snapshot (ops debugging)
   apiRouter.use('/processes', processesRouter());
+  // Feature detection endpoint
+  apiRouter.use('/capabilities', capabilitiesRouter());
+  // Project entity skeleton — container for later runs/flows/secrets (ARB guard #4)
+  apiRouter.use('/projects', projectsRouter());
 
   // Exposes plugin CLI args (may include host, hub URL, etc.) — auth-gated.
   apiRouter.get('/cliArgs', async (_req, res) => {

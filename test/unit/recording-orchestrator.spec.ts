@@ -1,14 +1,30 @@
 import 'reflect-metadata';
 import { expect } from 'chai';
 import sinon from 'sinon';
+import os from 'os';
+import { Container } from 'typedi';
 import {
   RecordingOrchestrator,
   RecordingError,
 } from '../../src/services/recording/RecordingOrchestrator';
 import { ConcurrencyGate } from '../../src/services/recording/concurrency-gate';
+import { ARTIFACT_STORE, FsArtifactStore } from '../../src/services/artifacts/ArtifactStore';
 
 // Stub the device store factory (used to look up host).
 import * as deviceStoreModule from '../../src/data-service/device-store';
+
+// compositeOutputPath / per-device filePath construction resolve through
+// ArtifactStore now (Task 7) — register a store the same way ServerManager
+// does at boot, so RecordingOrchestrator's Container.get(ARTIFACT_STORE)
+// doesn't throw in this unit test context.
+before(() => {
+  Container.set(ARTIFACT_STORE, new FsArtifactStore(os.tmpdir()));
+});
+
+// Don't leave the global container polluted for later spec files in the run.
+after(() => {
+  Container.remove(ARTIFACT_STORE);
+});
 
 function makeOrch(overrides: any = {}) {
   const busyPrecheck = overrides.busyPrecheck ?? { findBusy: sinon.stub().resolves([]) };
