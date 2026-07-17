@@ -474,6 +474,13 @@ exports.Prisma.EventLogScalarFieldEnum = {
   occurredAt: 'occurredAt'
 };
 
+exports.Prisma.ProjectScalarFieldEnum = {
+  id: 'id',
+  name: 'name',
+  teamId: 'teamId',
+  createdAt: 'createdAt'
+};
+
 exports.Prisma.SortOrder = {
   asc: 'asc',
   desc: 'desc'
@@ -510,7 +517,8 @@ exports.Prisma.ModelName = {
   UserSession: 'UserSession',
   PasswordResetToken: 'PasswordResetToken',
   TeamMember: 'TeamMember',
-  EventLog: 'EventLog'
+  EventLog: 'EventLog',
+  Project: 'Project'
 };
 
 /**
