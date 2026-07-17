@@ -21,11 +21,23 @@ export class EventLogService {
   appendSafe(entry: EventLogEntry): void {
     if (process.env.XENON_EVENT_LOG === 'off') return;
     setImmediate(() => {
+      // Serialize defensively: a circular/unserializable payload must degrade
+      // to a placeholder, never throw. The throw would be uncaught here (it
+      // happens while building the .create() args, before the promise/.catch
+      // exists), and the global uncaughtException handler in src/index.ts would
+      // process.exit(1) — a single bad dashboard-event payload cannot be allowed
+      // to crash the whole plugin process.
+      let payloadStr: string;
+      try {
+        payloadStr = JSON.stringify(entry.payload ?? null);
+      } catch {
+        payloadStr = JSON.stringify({ _unserializable: true, type: entry.type });
+      }
       this.prismaService.client.eventLog
         .create({
           data: {
             type: entry.type,
-            payload: JSON.stringify(entry.payload ?? null),
+            payload: payloadStr,
             correlationId: entry.correlationId ?? null,
             teamId: entry.teamId ?? null,
           },

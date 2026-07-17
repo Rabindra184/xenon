@@ -26,6 +26,18 @@ describe('EventLogService', () => {
     await new Promise((r) => setImmediate(r));
   });
 
+  it('appendSafe degrades a circular payload to a placeholder instead of crashing', async () => {
+    const db = fakePrisma();
+    const svc = new EventLogService({ client: db } as any);
+    const c: any = {};
+    c.self = c;
+    expect(() => svc.appendSafe({ type: 'device_blocked', payload: c })).to.not.throw();
+    await new Promise((r) => setImmediate(r));
+    expect(db.eventLog.create.calledOnce).to.equal(true);
+    const arg = db.eventLog.create.firstCall.args[0].data;
+    expect(JSON.parse(arg.payload)).to.deep.equal({ _unserializable: true, type: 'device_blocked' });
+  });
+
   it('is a no-op when XENON_EVENT_LOG=off', async () => {
     process.env.XENON_EVENT_LOG = 'off';
     const db = fakePrisma();
