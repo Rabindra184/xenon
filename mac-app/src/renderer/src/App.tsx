@@ -54,6 +54,10 @@ const IDLE_STATE: ServerState = {
 export default function App() {
   const [schema, setSchema] = useState<XenonSchema | null>(null);
   const [meta, setMeta] = useState<SchemaMeta | null>(null);
+  // Live plugin version read from the active profile's APPIUM_HOME (null until
+  // resolved / when the plugin isn't installed). Preferred over the stale
+  // schema-sync meta.pluginVersion for the footer.
+  const [installedPluginVersion, setInstalledPluginVersion] = useState<string | null>(null);
   const [secretDescriptors, setSecretDescriptors] = useState<SecretDescriptor[]>([]);
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
@@ -145,6 +149,23 @@ export default function App() {
     const p = profiles.find((x) => x.id === activeId) ?? null;
     setDraft(p ? structuredClone(p) : null);
   }, [activeId, profiles]);
+
+  // Read the live installed plugin version for the active profile's APPIUM_HOME
+  // so the footer reflects what's actually installed (re-read on profile change;
+  // handleInstall also refreshes it after an install/update).
+  const activeProfileForVersion = profiles.find((x) => x.id === activeId) ?? null;
+  const refreshPluginVersion = useCallback(async () => {
+    if (!activeProfileForVersion) {
+      setInstalledPluginVersion(null);
+      return;
+    }
+    setInstalledPluginVersion(
+      await window.xenon.server.installedPluginVersion(activeProfileForVersion),
+    );
+  }, [activeProfileForVersion]);
+  useEffect(() => {
+    void refreshPluginVersion();
+  }, [refreshPluginVersion]);
 
   // The port input holds its own text so a half-typed or cleared value never
   // reaches the profile as NaN. Re-seeded when a different profile is selected.
@@ -300,6 +321,7 @@ export default function App() {
         drivers: ['uiautomator2', 'xcuitest']
       });
       await runPreflight(draft);
+      await refreshPluginVersion();
     } finally {
       setInstalling(false);
     }
@@ -401,7 +423,9 @@ export default function App() {
             {serverState.status === 'running' && serverState.startedAt && (
               <div className="mt-1 text-dim">up {formatUptime(now - serverState.startedAt)}</div>
             )}
-            <div className="mt-1 text-dim">plugin {meta?.pluginVersion ?? '…'}</div>
+            <div className="mt-1 text-dim">
+              plugin {installedPluginVersion ?? meta?.pluginVersion ?? '…'}
+            </div>
           </div>
         </div>
       </aside>
