@@ -94,8 +94,8 @@ export default function App() {
 
     // Coalesce incoming lines: a chatty server emits far faster than anyone can
     // read, and one render per line re-reconciles the whole buffer.
-    const offLog = window.xenon.onLog((line) => {
-      pendingLogs.current.push({ ...line, id: logSeq.current++ });
+    const offLog = window.xenon.onLog((lines) => {
+      for (const line of lines) pendingLogs.current.push({ ...line, id: logSeq.current++ });
       if (flushTimer.current !== null) return;
       flushTimer.current = window.setTimeout(() => {
         flushTimer.current = null;

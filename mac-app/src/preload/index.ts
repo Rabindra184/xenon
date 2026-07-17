@@ -65,7 +65,8 @@ const api = {
   },
 
   // Event subscriptions. Each returns an unsubscribe function.
-  onLog: (cb: (line: LogLine) => void) => subscribe(IPC.evtLog, cb),
+  // Log lines arrive coalesced as a batch (see ProcessSupervisor's LogBatcher).
+  onLog: (cb: (lines: LogLine[]) => void) => subscribe(IPC.evtLog, cb),
   onServerState: (cb: (state: ServerState) => void) => subscribe(IPC.evtServerState, cb),
   onSetupProgress: (cb: (p: SetupProgress) => void) => subscribe(IPC.evtSetupProgress, cb),
   onMenuAction: (cb: (a: MenuAction) => void) => subscribe(IPC.evtMenuAction, cb)

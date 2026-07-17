@@ -6,10 +6,16 @@ import type { LogLine, Profile, ServerState } from '@shared/types';
 import { buildLaunchPlan, type BuildContext } from './LaunchBuilder';
 import { buildEnv, which } from './env';
 import { logsDir } from './paths';
+import { LogBatcher } from './logBatcher';
 
 const READY_MARKERS = [/Appium REST http interface listener started/i, /Could not start REST http/i];
 const STOP_GRACE_MS = 8000;
 const MAX_BUFFERED_LOGS = 5000;
+// Log-emit coalescing. Appium's boot / iOS-streaming output is a firehose;
+// emitting (and IPC-serialising) one line at a time stalls the Electron main
+// thread. These bound it to at most one 'log' emit per window or per batch.
+const LOG_EMIT_FLUSH_MS = 80;
+const LOG_EMIT_MAX_BATCH = 250;
 
 export interface SupervisorDeps {
   resolveAppiumHome(profile: Profile): string;
@@ -22,7 +28,7 @@ export interface SupervisorDeps {
 
 /**
  * Owns the single supervised Appium+Xenon child process. Emits:
- *  - 'log'   (LogLine)      streamed stdout/stderr/system lines
+ *  - 'log'   (LogLine[])    streamed stdout/stderr/system lines, coalesced
  *  - 'state' (ServerState)  every lifecycle transition
  */
 export class ProcessSupervisor extends EventEmitter {
@@ -31,9 +37,15 @@ export class ProcessSupervisor extends EventEmitter {
   private logs: LogLine[] = [];
   private stopTimer: NodeJS.Timeout | null = null;
   private logStream: WriteStream | null = null;
+  private readonly logBatcher: LogBatcher<LogLine>;
 
   constructor(private deps: SupervisorDeps) {
     super();
+    this.logBatcher = new LogBatcher<LogLine>({
+      flushMs: LOG_EMIT_FLUSH_MS,
+      maxBatch: LOG_EMIT_MAX_BATCH,
+      onFlush: (batch) => this.emit('log', batch)
+    });
   }
 
   private static idleState(): ServerState {
@@ -76,7 +88,9 @@ export class ProcessSupervisor extends EventEmitter {
       this.logs.push(entry);
       if (this.logs.length > MAX_BUFFERED_LOGS) this.logs.shift();
       this.logStream?.write(`${new Date(entry.ts).toISOString()} [${stream}] ${line}\n`);
-      this.emit('log', entry);
+      // Coalesced for the renderer; readiness detection stays per-line + synchronous
+      // so the 'running' transition is never delayed by batching.
+      this.logBatcher.push(entry);
       this.maybeDetectReady(line);
     }
   }
@@ -199,6 +213,7 @@ export class ProcessSupervisor extends EventEmitter {
 
   private cleanup(): void {
     this.child = null;
+    this.logBatcher.flush(); // push any trailing lines (e.g. the exit notice) now
     this.logStream?.end();
     this.logStream = null;
   }
