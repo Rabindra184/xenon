@@ -109,7 +109,7 @@ flowchart TB
 
 **Hidden components — implied but undocumented (each is a future service in disguise):**
 
-1. **Scheduler** — QueueService is a FIFO poll loop wearing a scheduler's coat. No priority, no quotas, no preemption, no bin-packing. The platform's most important future component is currently ~a hundred lines of retry logic.
+1. **Scheduler** — QueueService is strictly arrival-ordered (`sort` by `createdAt`, verified) with no priority classes, quotas, preemption, or bin-packing. Credit where due: it computes queue position and an ETA from a rolling average of the last 20 session durations — real UX engineering. But arrival order alone cannot serve interactive-vs-CI workloads; the platform's most important future component currently has no notion of *who should go first*.
 2. **Artifact store** — recordings, screenshots, proof bundles, HAR exports live on the hub's local filesystem with ad-hoc paths. This is an object-storage service pretending to be a directory. **Foreclosure risk:** every new artifact written with path-assumptions makes S3-migration harder.
 3. **Event bus** — EventManager is a pub-sub with no durability, no replay, no schema, no tenancy. Analytics, audit, notifications, and the AI learning loop all need what it isn't.
 4. **Knowledge store** — Etalons + selector-health + AppClaw's App Guides are three disconnected fragments of one asset: a **UI-stability knowledge graph**. Nobody owns it; it is the company's most defensible data.
@@ -245,6 +245,7 @@ Target service map (with extraction triggers):
 | Event backbone | with first analytics/audit consumer | outbox now, broker later (§8) |
 | Notification | enterprise pilots | webhooks exist; add routing + channels |
 | Marketplace / Plugin framework | ecosystem phase | §14 |
+| Workflow engine | **deliberately deferred** — the execution DAG (§7) covers test workflows through Phase 3; a general engine earns existence in Phase 4+ only if customers chain non-test steps (build → deploy → test → notify). Until then it's a feature of the Run service, not a service | decision, not omission |
 
 **Coupling review:** worst coupling today is *everything-through-one-process + one-SQLite* (shared DB = shared fate); second-worst is artifacts-as-local-paths; third is Socket.io-as-only-events. None is hard to fix now; all are catastrophic to fix at 10k users. **Foreclosure guards for the wedge phase:** repository interfaces already exist (PrismaStore) — keep them clean of SQLite-isms (spec has this); introduce an `ArtifactStore` interface *now* even if backed by filesystem; introduce an outbox table *now* even if the only consumer is Socket.io.
 
@@ -273,7 +274,7 @@ Today: ephemeral Socket.io broadcast. Target: **durable event backbone with a gr
 
 - **Now (wedge):** transactional **outbox table** in the same DB write as the state change; a dispatcher fans out to Socket.io (existing consumers unchanged) and appends to an event log table. Cost: days. Buys: replay, audit, analytics, and the AI learning loop — without a broker.
 - **Later (≥1k users):** NATS JetStream (fits: lightweight, per-subject retention, works in single-lab installs) or Kafka at SaaS scale. Same envelope, same topics.
-- **Envelope:** `{eventId (uuid7), type, schemaVersion, tenantId, projectId, correlationId (runId/sessionId), causationId, occurredAt, actor, payload}`. At-least-once delivery; consumers dedupe on eventId.
+- **Envelope:** `{eventId (UUIDv7 — time-ordered, so the event log is range-scannable by time without a secondary index; Node's native `randomUUID` is v4, so this needs a small dep), type, schemaVersion, tenantId, projectId, correlationId (runId/sessionId), causationId, occurredAt, actor, payload}`. At-least-once delivery; consumers dedupe on eventId.
 - **Topics:** `device.*`, `run.*`, `healing.*`, `recording.*`, `artifact.*`, `identity.*`, `ai.*`, `tenant.*` — tenant-scoped subjects (`tenant.<id>.run.completed`) so isolation is structural.
 - **Catalog (normative, versioned in-repo):** the §5 event list, each with owner, schema, producers, consumers. Example rows:
 
@@ -344,7 +345,7 @@ Request →   │ Planner → Context Builder → Tool Router → Execution → 
 | Auth/token dance | client | correct; JetBrains repeats it via a shared spec, not shared code |
 | Flow language features | client (YAML schema, CodeLens) | correct; schema served from the hub (`/capabilities`) so language features version with the lab |
 
-**Client portfolio:** VS Code + Cursor (one codebase — now), **CLI (`xenon run`) — missing and urgent**: the moment a flow is authored, CI needs to run it; today that's "spawn appclaw-runner with env" folklore. A thin CLI over `POST /runs` + event stream is the highest-leverage missing client and the natural third consumer that keeps the server honest. JetBrains (Y2 — after the API is proven thin), Web (already exists as dashboard; grows report/analytics surface), Desktop (Xenon Control stays a launcher; resist feature creep).
+**Client portfolio:** VS Code + Cursor (one codebase — now), **CLI (`xenon run`) — missing and urgent**: the moment a flow is authored, CI needs to run it; today that's "spawn appclaw-runner with env" folklore. A thin CLI over `POST /runs` + event stream is the highest-leverage missing client and the natural third consumer that keeps the server honest. (This board elevates it to a GA condition — §19, roadmap Phase 1.) JetBrains (Y2 — after the API is proven thin), Web (already exists as dashboard; grows report/analytics surface), Desktop (Xenon Control stays a launcher; resist feature creep).
 
 ## 12. Device Lab Architecture
 
@@ -404,6 +405,22 @@ v5.1's security story is genuinely strong for its scope (JWT+JWKS, capability ga
 
 The physical nature of devices makes this platform *naturally cellular* — labs are already regional and stateful. That is an architectural gift: Xenon never needs a single global data plane, only a global brain.
 
+### 16.1 Product evolution — what should Xenon become?
+
+Answering the identity question directly, one candidate at a time:
+
+| Candidate identity | Verdict | Why |
+|---|---|---|
+| **Device platform** | **Yes — first** (Y1–2) | The wedge and the physical moat; everything else attaches to it |
+| **AI platform** | **Yes — second** (Y2–4) | The knowledge flywheel (§10) is the appreciating asset; devices generate the data, AI compounds it |
+| **Developer ecosystem** | **Yes — third** (Y4+) | Plugin SDK + marketplace + shared flows; defensibility once the first two exist |
+| Marketplace | Feature, not identity | A distribution surface of the ecosystem phase — never the center of gravity |
+| Workflow engine | Feature, not identity | The execution DAG serves test workflows; generalize only on demonstrated demand (§6) |
+| Cloud platform | **No** | Competing on generic compute/storage is a losing war against hyperscalers; Xenon *consumes* cloud primitives |
+| Operating system | **No** | There is no coherent sense in which a device lab becomes an OS; the ambition would dilute the moat |
+
+The natural evolution, in one sentence: **devices → intelligence → ecosystem** — the same arc as GitHub (repos → Actions/Copilot → marketplace), with the knowledge graph playing the role Copilot's training corpus played for GitHub. Each identity funds the next: the lab sells today, the intelligence retains tomorrow, the ecosystem defends in year five.
+
 ## 17. Missing Architecture (documents that must exist)
 
 | # | Document | Why it matters | Priority |
@@ -448,7 +465,9 @@ Scored twice — the honest way: **[W]** as the scoped GA wedge; **[P]** as a 10
 | Operational excellence | 6 | 3.5 | recoverOnBoot pattern + SLO seeds; no on-call model, DR, capacity/cost model |
 | Enterprise readiness | 6 | 3.5 | auth/audit strong; no SaaS, SSO deferred, no compliance, no tenancy tiers |
 | Innovation | 9 | 9 | etalon-locality scheduling, healing-as-labeled-data, cell-natural device labs — real novelty |
-| **Overall** | **7.5** | **4.9** | superb wedge; platform runway must be *installed*, not assumed |
+| **Overall (unweighted mean)** | **7.3** | **5.3** | superb wedge; platform runway must be *installed*, not assumed |
+
+*Scoring note: overall is the unweighted mean of the 13 dimensions. A platform-weighted view (doubling Scalability, Operational Excellence, and Enterprise Readiness — the dimensions that dominate a multi-year platform bet) yields **≈4.9 [P]**: the deficits are concentrated in exactly the load-bearing dimensions, which is why the verdict is conditional rather than the mean suggesting "slightly above average."*
 
 ## 19. Final Verdict — Architecture Review Board
 
