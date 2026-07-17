@@ -1,5 +1,6 @@
 import { Container, Service } from 'typedi';
 import * as os from 'os';
+import * as path from 'path';
 import { OrphanSweeper } from './OrphanSweeper';
 import { v4 as uuidv4 } from 'uuid';
 import { redactSecrets } from '../helpers';
@@ -207,6 +208,14 @@ export class ServerManager {
 
     const { startUserSessionCleanupCron } = await import('./identity/sessionCleanupCron');
     startUserSessionCleanupCron();
+
+    // Hub-issued JWT signing key (REST/MCP tokens, stream tickets) — key
+    // material lives next to the SQLite db file so it survives restarts
+    // without a new DB migration. Must finish before /auth/token or
+    // /auth/jwks.json can be mounted (registerRoutes runs right after this).
+    const { JwtKeyService } = await import('./token/JwtKeyService');
+    const jwtKeyDir = process.env.XENON_JWT_KEY_DIR || path.dirname(xenonConfig.databasePath);
+    await Container.get(JwtKeyService).init(jwtKeyDir);
   }
 
   private registerRoutes(expressApp: any, cliArgs: ServerArgs, pluginArgs: IPluginArgs) {

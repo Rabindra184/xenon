@@ -13,10 +13,31 @@ import {
 } from '../../middleware/loginRateLimiter';
 import { config } from '../../config';
 import { prisma } from '../../prisma';
+import { JwtKeyService } from '../../services/token/JwtKeyService';
 
 const SESSION_COOKIE = 'xenon_dashboard_session';
 const isSecureFromReq = (req: any) =>
   req.secure || (req.headers['x-forwarded-proto'] as string | undefined) === 'https';
+
+const MCP_TTL_SEC = Number(process.env.XENON_MCP_TOKEN_TTL_SEC || 86400);
+const REST_TTL_SEC = 3600;
+const MINTABLE_AUDIENCES = ['xenon-rest', 'xenon-mcp'] as const;
+
+export async function issueToken(
+  auth: { userId: string; role: string; scopes: string; teamId?: string | null },
+  body: { audience?: string },
+): Promise<{ token: string; expiresIn: number; audience: string }> {
+  const audience = body.audience ?? 'xenon-rest';
+  if (!MINTABLE_AUDIENCES.includes(audience as any)) {
+    throw new Error(`unsupported audience: ${audience}`);
+  }
+  const expiresIn = audience === 'xenon-mcp' ? MCP_TTL_SEC : REST_TTL_SEC;
+  const token = await Container.get(JwtKeyService).sign(
+    { sub: auth.userId, role: auth.role, scopes: auth.scopes, teamId: auth.teamId ?? null },
+    { audience, ttlSeconds: expiresIn },
+  );
+  return { token, expiresIn, audience };
+}
 
 // Public — anonymous-callable. Mounted before authMiddleware.
 export function authPublicRouter(): Router {
@@ -106,6 +127,10 @@ export function authPublicRouter(): Router {
     }
     const elapsed = Date.now() - t0;
     if (elapsed < 50) await new Promise((res2) => setTimeout(res2, 50 - elapsed));
+  });
+
+  r.get('/jwks.json', (_req, res) => {
+    res.json(Container.get(JwtKeyService).jwks());
   });
 
   r.get('/reset-password/check/:token', async (req, res) => {
@@ -225,6 +250,15 @@ export function authAuthedRouter(): Router {
       kind: auth.kind,
       teams,
     });
+  });
+
+  r.post('/token', async (req, res) => {
+    try {
+      const out = await issueToken(req.auth!, req.body ?? {});
+      res.json(out);
+    } catch (e: any) {
+      res.status(400).json({ error: e.message });
+    }
   });
 
   r.post('/dashboard-session', async (req, res) => {
