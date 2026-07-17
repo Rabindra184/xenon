@@ -1,9 +1,11 @@
 import { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, shell, Tray } from 'electron';
-import { readFileSync, writeFileSync } from 'node:fs';
+import { createWriteStream, readFileSync, writeFileSync, type WriteStream } from 'node:fs';
 import path from 'node:path';
+import { performance } from 'node:perf_hooks';
 import { IPC } from '@shared/ipc';
 import { SECRET_DESCRIPTORS } from '@shared/secrets';
-import type { MenuAction, Profile, SecretKey, ServerState, SetupProgress } from '@shared/types';
+import type { LogLine, MenuAction, Profile, SecretKey, ServerState, SetupProgress } from '@shared/types';
+import { startLagMonitor } from './eventLoopLag';
 import { SchemaService } from './SchemaService';
 import { SecretsStore } from './SecretsStore';
 import { ProfileStore } from './ProfileStore';
@@ -50,6 +52,54 @@ function broadcast(channel: string, payload: unknown): void {
   mainWindow?.webContents.send(channel, payload);
 }
 
+// --- Hang diagnostics -------------------------------------------------------
+// The app has frozen intermittently with no reproduction. These turn the next
+// freeze into a timestamped, attributable record: whether the *main* thread
+// stalled (event-loop lag) or a *child* process (GPU/renderer) died or went
+// unresponsive — the two distinct causes an Electron "hang" can have. Records
+// go to a persistent diagnostics.log (survives renderer death) and, when the
+// renderer is alive, into the in-app log console as system lines.
+let diagnosticsStream: WriteStream | null = null;
+
+function recordDiagnostic(text: string): void {
+  const ts = Date.now();
+  const stamped = `${new Date(ts).toISOString()} [diagnostic] ${text}\n`;
+  try {
+    if (!diagnosticsStream) diagnosticsStream = createWriteStream(path.join(logsDir(), 'diagnostics.log'), { flags: 'a' });
+    diagnosticsStream.write(stamped);
+  } catch {
+    /* logging must never throw */
+  }
+  // eslint-disable-next-line no-console
+  console.error(`[Xenon Control] ${text}`);
+  const line: LogLine = { ts, stream: 'system', text: `⚠ ${text}` };
+  broadcast(IPC.evtLog, [line]); // evtLog carries a batch (LogLine[])
+}
+
+function installHangDiagnostics(): void {
+  // 1. Main-thread stalls: a 1s heartbeat that reports whenever it fires ≥3s
+  //    late (a real freeze, not GC jitter).
+  startLagMonitor({
+    intervalMs: 1000,
+    thresholdMs: 3000,
+    now: () => performance.now(),
+    onStall: (lagMs) => recordDiagnostic(`Main thread stalled ~${lagMs}ms — the UI was frozen for that long.`)
+  });
+
+  // 2. A child process (GPU / renderer / utility) dying. On macOS the GPU
+  //    process wedging is a common cause of whole-app freezes; this names it.
+  app.on('child-process-gone', (_e, details) => {
+    recordDiagnostic(
+      `Child process gone: type=${details.type}${details.serviceName ? ` (${details.serviceName})` : ''} ` +
+        `reason=${details.reason} exitCode=${details.exitCode}`
+    );
+  });
+  app.on('render-process-gone', (_e, _wc, details) => {
+    recordDiagnostic(`Renderer process gone: reason=${details.reason} exitCode=${details.exitCode}`);
+  });
+}
+// ---------------------------------------------------------------------------
+
 function refreshMenu(state: ServerState): void {
   const template = buildMenuTemplate({
     serverStatus: state.status,
@@ -59,7 +109,7 @@ function refreshMenu(state: ServerState): void {
   Menu.setApplicationMenu(Menu.buildFromTemplate(template));
 }
 
-supervisor.on('log', (line) => broadcast(IPC.evtLog, line));
+supervisor.on('log', (batch: LogLine[]) => broadcast(IPC.evtLog, batch));
 supervisor.on('state', (state: ServerState) => {
   broadcast(IPC.evtServerState, state);
   updateTray(state);
@@ -99,6 +149,13 @@ function createWindow(): void {
   mainWindow.on('closed', () => {
     mainWindow = null;
   });
+
+  // The renderer stops pumping its event loop (heavy paint, stuck JS). Electron
+  // fires these on the window's webContents — record the freeze and recovery.
+  mainWindow.webContents.on('unresponsive', () =>
+    recordDiagnostic('Renderer became unresponsive (UI frozen).')
+  );
+  mainWindow.webContents.on('responsive', () => recordDiagnostic('Renderer responsive again.'));
 
   if (process.env.ELECTRON_RENDERER_URL) {
     mainWindow.loadURL(process.env.ELECTRON_RENDERER_URL);
@@ -285,7 +342,7 @@ async function maybeCheckForUpdates(): Promise<void> {
     const { autoUpdater } = await import('electron-updater');
     autoUpdater.autoDownload = false;
     autoUpdater.on('update-downloaded', () => {
-      broadcast(IPC.evtLog, { ts: Date.now(), stream: 'system', text: 'Update downloaded — restart to apply.' });
+      broadcast(IPC.evtLog, [{ ts: Date.now(), stream: 'system', text: 'Update downloaded — restart to apply.' }]);
     });
     await autoUpdater.checkForUpdatesAndNotify();
   } catch {
@@ -310,6 +367,7 @@ if (!app.requestSingleInstanceLock()) {
   app.whenReady().then(async () => {
     // Resolve the automatic APPIUM_HOME before any window can ask for it.
     await warmAppiumHome();
+    installHangDiagnostics();
     applyDockIcon();
     registerIpc();
     refreshMenu(supervisor.getState());
