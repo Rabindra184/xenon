@@ -22,6 +22,7 @@ import { DeviceStoreFactory } from '../../data-service/device-store';
 import {
   classifyTunnelStderr,
   isMissingWdaError,
+  isOwnStreamProcess,
   missingWdaMessage,
 } from './iosStreamDiagnostics';
 
@@ -922,17 +923,32 @@ class IOSStreamService {
       }
     }
 
-    // Port-based cleanup (more surgical)
+    // Port-based cleanup (more surgical). Only kill a process if it is *ours* —
+    // its command line must reference this udid. Ports can be shared across
+    // subsystems (e.g. an iOS device defaulting to mjpegServerPort 9100 collides
+    // with the Android stream's PortAllocator lease at 9100), and blindly killing
+    // every listener on the port would tear down a healthy neighbour's stream.
     const ports = [wdaPort, mjpegPort];
     for (const port of ports) {
       try {
         const { stdout } = await execPromise(`lsof -ti :${port}`);
-        const pids = stdout.trim().split('\n');
+        const pids = stdout.trim().split('\n').filter(Boolean);
         for (const pid of pids) {
-          if (pid) {
-            log.debug(`Killing stale process ${pid} on port ${port}`);
-            await execPromise(`kill -9 ${pid}`);
+          let command = '';
+          try {
+            const { stdout: cmd } = await execPromise(`ps -p ${pid} -o command=`);
+            command = cmd.trim();
+          } catch {
+            /* process already gone, or ps failed — treat as not-ours */
           }
+          if (!isOwnStreamProcess(command, udid)) {
+            log.debug(
+              `Leaving process ${pid} on port ${port} alone — not owned by ${udid} (cmd: ${command || 'unknown'})`,
+            );
+            continue;
+          }
+          log.debug(`Killing stale process ${pid} on port ${port} for ${udid}`);
+          await execPromise(`kill -9 ${pid}`);
         }
       } catch (err) {
         /* ignore - lsof returns 1 if no port found */

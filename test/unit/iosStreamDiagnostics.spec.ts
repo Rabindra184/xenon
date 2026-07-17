@@ -2,6 +2,7 @@ import { expect } from 'chai';
 import {
   classifyTunnelStderr,
   isMissingWdaError,
+  isOwnStreamProcess,
   missingWdaMessage,
 } from '../../src/device-managers/ios/iosStreamDiagnostics';
 
@@ -72,6 +73,35 @@ describe('iosStreamDiagnostics', () => {
 
     it('is safe on empty input', () => {
       expect(classifyTunnelStderr('')).to.deep.equal({ unsupported: false, udid: null });
+    });
+  });
+
+  describe('isOwnStreamProcess', () => {
+    const udid = '00008110-00084CE80E51401E';
+
+    it('claims an iproxy forward for this udid', () => {
+      expect(isOwnStreamProcess(`iproxy -u ${udid} 9101:9100`, udid)).to.equal(true);
+    });
+
+    it('claims a go-ios/WDA process for this udid', () => {
+      expect(
+        isOwnStreamProcess(`/root/.cache/xenon/goIOS/ios runwda --udid ${udid}`, udid),
+      ).to.equal(true);
+    });
+
+    it('does NOT claim a neighbour process bound to the same port under a different udid', () => {
+      // The Android stream leased port 9100; an iOS device defaulting to 9100
+      // must not kill it during cleanup.
+      expect(isOwnStreamProcess('iproxy -u 381103b720057ece 9100:9100', udid)).to.equal(false);
+    });
+
+    it('does NOT claim a process with no udid in its command', () => {
+      expect(isOwnStreamProcess('node /opt/app/android-stream-capture.js', udid)).to.equal(false);
+    });
+
+    it('is safe on empty command or udid', () => {
+      expect(isOwnStreamProcess('', udid)).to.equal(false);
+      expect(isOwnStreamProcess(`iproxy -u ${udid}`, '')).to.equal(false);
     });
   });
 });
