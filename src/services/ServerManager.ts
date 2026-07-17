@@ -237,6 +237,14 @@ export class ServerManager {
         `JWT key init failed — /auth/token and /auth/jwks.json will be unavailable: ${err?.message}`,
       );
     }
+
+    // ARB foreclosure guard #2: every recording/proof-bundle artifact path
+    // flows through ArtifactStore so an S3/object-store backend later is an
+    // implementation swap, not a call-site migration. FsArtifactStore is
+    // byte-identical to the legacy path.join(recordingsAssetsPath, ...)
+    // concatenation it replaces.
+    const { FsArtifactStore, ARTIFACT_STORE } = await import('./artifacts/ArtifactStore');
+    Container.set(ARTIFACT_STORE, new FsArtifactStore(xenonConfig.recordingsAssetsPath));
   }
 
   private registerRoutes(expressApp: any, cliArgs: ServerArgs, pluginArgs: IPluginArgs) {

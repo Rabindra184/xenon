@@ -1,9 +1,7 @@
 import { Service, Container } from 'typedi';
-import * as path from 'path';
 import * as fs from 'fs';
 import { v4 as uuidv4 } from 'uuid';
 import { trace, metrics, SpanStatusCode, Counter, Histogram, Span } from '@opentelemetry/api';
-import { config } from '../../config';
 import { VideoPipelineService } from '../VideoPipelineService';
 import { DashboardEventManager } from '../../dashboard/event-manager';
 import { BusyPrecheck, BusyEntry } from './busy-precheck';
@@ -17,6 +15,8 @@ import { DeviceStoreFactory } from '../../data-service/device-store';
 import { formatManualLock } from './manualLock';
 import { ATTR, METRIC, OUTCOME } from '../telemetry/attributes';
 import log from '../../logger';
+import { ARTIFACT_STORE } from '../artifacts/ArtifactStore';
+import type { ArtifactStore } from '../artifacts/ArtifactStore';
 
 const recLog = log.scope('RecordingOrchestrator');
 
@@ -60,7 +60,11 @@ function ensureOtelInstruments() {
  * stay clear of per-recording-id folders.
  */
 export function compositeOutputPath(groupId: string): string {
-  return path.join(config.recordingsAssetsPath, '_groups', groupId, 'composite.mp4');
+  return (Container.get(ARTIFACT_STORE) as ArtifactStore).resolve(
+    '_groups',
+    groupId,
+    'composite.mp4',
+  );
 }
 
 export class RecordingError extends Error {
@@ -246,7 +250,11 @@ export class RecordingOrchestrator {
       const id = recordingIds[i];
       const udid = udids[i];
       const host = deviceHosts[udid];
-      const filePath = path.join(config.recordingsAssetsPath, id, 'video', `${id}.mp4`);
+      const filePath = (Container.get(ARTIFACT_STORE) as ArtifactStore).resolve(
+        id,
+        'video',
+        `${id}.mp4`,
+      );
       try {
         await this.store.create({
           groupId,
@@ -561,8 +569,7 @@ export class RecordingOrchestrator {
       throw new RecordingError('device_busy', [{ udid, reason: 'unknown' }]);
     }
 
-    const filePath = path.join(
-      config.recordingsAssetsPath,
+    const filePath = (Container.get(ARTIFACT_STORE) as ArtifactStore).resolve(
       recordingId,
       'video',
       `${recordingId}.mp4`,
