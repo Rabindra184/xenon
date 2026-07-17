@@ -1,69 +1,34 @@
-import { useEffect, useState, useCallback, useRef } from 'react';
-import { io, Socket } from 'socket.io-client';
+import { useEffect, useState, useCallback } from 'react';
+import { getSharedSocket, subscribeToEvent } from './socket-manager';
 
+/**
+ * Access the app-wide socket. Every consumer shares a single connection (see
+ * socket-manager); this hook only tracks local connection state and exposes a
+ * stable `on()` for event subscriptions.
+ */
 export const useSocket = () => {
-  const [socket, setSocket] = useState<Socket | null>(null);
-  const [isConnected, setIsConnected] = useState(false);
-  const listeners = useRef<Map<string, ((data: any) => void)[]>>(new Map());
+  // Lazy initial state: getSharedSocket() runs once per mount but is idempotent,
+  // so all consumers receive the same singleton.
+  const [socket] = useState(getSharedSocket);
+  const [isConnected, setIsConnected] = useState(socket.connected);
 
   useEffect(() => {
-    // Determine the base URL for the socket connection
-    // In production, it's the same host
-    const socketUrl = window.location.origin;
-
-    const newSocket = io(socketUrl, {
-      path: '/socket.io',
-      reconnection: true,
-      withCredentials: true,
-    });
-
-    setSocket(newSocket);
-
-    newSocket.on('connect', () => {
-      console.log('[Socket] Connected to Hub');
-      setIsConnected(true);
-      newSocket.emit('register_dashboard');
-    });
-
-    newSocket.on('disconnect', () => {
-      console.log('[Socket] Disconnected from Hub');
-      setIsConnected(false);
-    });
-
-    // Handle incoming events and dispatch to registered listeners
-    const handleEvent = (event: string, data: any) => {
-      const eventListeners = listeners.current.get(event);
-      if (eventListeners) {
-        eventListeners.forEach((callback: (data: any) => void) => callback(data));
-      }
-    };
-
-    // Generic event listener for all registered events
-    newSocket.onAny((event: string, data: any) => {
-      handleEvent(event, data);
-    });
-
+    const onConnect = () => setIsConnected(true);
+    const onDisconnect = () => setIsConnected(false);
+    socket.on('connect', onConnect);
+    socket.on('disconnect', onDisconnect);
+    // Sync in case we connected between render and effect.
+    setIsConnected(socket.connected);
     return () => {
-      newSocket.close();
+      socket.off('connect', onConnect);
+      socket.off('disconnect', onDisconnect);
     };
-  }, []);
+  }, [socket]);
 
-  const on = useCallback((event: string, callback: (data: any) => void) => {
-    if (!listeners.current.has(event)) {
-      listeners.current.set(event, []);
-    }
-    listeners.current.get(event)?.push(callback);
-
-    return () => {
-      const eventListeners = listeners.current.get(event);
-      if (eventListeners) {
-        listeners.current.set(
-          event,
-          eventListeners.filter((cb: (data: any) => void) => cb !== callback),
-        );
-      }
-    };
-  }, []);
+  const on = useCallback(
+    (event: string, callback: (data: any) => void) => subscribeToEvent(event, callback),
+    [],
+  );
 
   return { socket, isConnected, on };
 };
