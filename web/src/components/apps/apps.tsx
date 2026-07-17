@@ -25,6 +25,7 @@ import { IDevice } from '../../interfaces/IDevice';
 import { Badge } from '../ui/badge';
 import { Button } from '../ui/button';
 import { PageHeader } from '../ui/page-header';
+import { Select } from '../ui/select';
 
 const Apps: React.FC = () => {
   const { toast, removeToast } = useToast();
@@ -346,8 +347,9 @@ const Apps: React.FC = () => {
                         <div className="deployment-flyout">
                           {availableDevices.length > 0 ? (
                             <div className="deploy-actions-group">
-                              <select
-                                className="target-device-select"
+                              <Select
+                                selectSize="sm"
+                                className="min-w-[280px]"
                                 autoFocus
                                 value={selectedUDID}
                                 onChange={(e) => setSelectedUDID(e.target.value)}
@@ -358,7 +360,7 @@ const Apps: React.FC = () => {
                                     {d.name.toUpperCase()} ({d.udid})
                                   </option>
                                 ))}
-                              </select>
+                              </Select>
                               <button
                                 className="confirm-deploy-btn"
                                 disabled={!selectedUDID}

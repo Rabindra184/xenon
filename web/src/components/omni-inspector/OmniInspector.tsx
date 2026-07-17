@@ -29,6 +29,7 @@ import XenonApiService from '../../api-service';
 import { matchSelector, type MatchResult } from './selector-matcher';
 import './omni-inspector.css';
 import React from 'react';
+import { Select } from '../ui/select';
 
 export interface LocatorSuggestion {
   strategy: string;
@@ -1447,7 +1448,8 @@ const OmniInspector: React.FC<OmniInspectorProps> = ({ sessionId, udid, streamUr
                       <>
                         <div className="omni-codegen-locator-selector">
                           <span className="omni-codegen-label">Locator:</span>
-                          <select
+                          <Select
+                            selectSize="sm"
                             value={selectedLocatorForCode.strategy}
                             onChange={(e) => {
                               const loc = selectedNode.suggestedLocators?.find(
@@ -1455,14 +1457,14 @@ const OmniInspector: React.FC<OmniInspectorProps> = ({ sessionId, udid, streamUr
                               );
                               if (loc) setSelectedLocatorForCode(loc);
                             }}
-                            className="omni-fw-select"
+                            className="flex-1"
                           >
                             {selectedNode.suggestedLocators?.map((l) => (
                               <option key={l.strategy} value={l.strategy}>
                                 {l.strategy} — {scoreLocatorStability(l.strategy, l.value).level}
                               </option>
                             ))}
-                          </select>
+                          </Select>
                         </div>
 
                         <div className="omni-codegen-output">

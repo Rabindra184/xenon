@@ -6,6 +6,7 @@ import { IDevice } from '../../../interfaces/IDevice';
 import XenonApiService from '../../../api-service';
 import { useAuth } from '../../../auth/auth-context';
 import { Button } from '../../ui/button';
+import { Select } from '../../ui/select';
 import { Pill } from '../../ui/Pill';
 import { StatusCode } from '../../ui/StatusCode';
 import { StatusKind } from '../../ui/StatusDot';
@@ -77,13 +78,13 @@ const DeviceTeamChip: React.FC<{
 
   if (editing) {
     return (
-      <select
+      <Select
+        selectSize="sm"
         autoFocus
         disabled={busy}
         defaultValue={currentTeamId ?? ''}
         onBlur={() => setEditing(false)}
         onChange={(e) => pick(e.target.value || null)}
-        className="dc2-team-select"
       >
         <option value="">(Unassigned)</option>
         {Array.from(teams.entries()).map(([id, name]) => (
@@ -91,7 +92,7 @@ const DeviceTeamChip: React.FC<{
             {name}
           </option>
         ))}
-      </select>
+      </Select>
     );
   }
 

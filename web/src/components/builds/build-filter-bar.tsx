@@ -1,6 +1,7 @@
 import React from 'react';
 import { Search } from 'lucide-react';
 import { FilterPill } from '../ui/filter-pill';
+import { Input } from '../ui/input';
 import { buildStatusCounts, type StatusKey } from './derive';
 import type { ISession } from '../../interfaces/ISession';
 
@@ -60,12 +61,12 @@ export const BuildFilterBar: React.FC<Props> = ({
       <div className="flex items-center gap-4 px-4 pb-3 border-b border-[var(--border)]">
         <div className="relative flex-1 max-w-xl">
           <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-[var(--text-dim)]" />
-          <input
+          <Input
             type="text"
             value={search}
             onChange={(e) => onSearchChange(e.target.value)}
             placeholder="Search sessions by ID, name, or device…"
-            className="w-full h-8 pl-8 pr-2 rounded-md bg-[var(--bg)] border border-[var(--border)] text-xs text-[var(--text)] placeholder:text-[var(--text-dim)] focus:outline-none focus:border-[var(--border-strong)]"
+            className="w-full h-8 pl-8 pr-2 text-xs"
           />
         </div>
         <span className="text-[10px] font-mono text-[var(--text-dim)] whitespace-nowrap">

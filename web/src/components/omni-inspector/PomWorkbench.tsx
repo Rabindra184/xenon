@@ -11,6 +11,7 @@ import {
   FileCode,
 } from 'lucide-react';
 import { Badge } from '../ui/badge';
+import { Select } from '../ui/select';
 
 export interface PomElement {
   id: string;
@@ -110,15 +111,15 @@ class ${pageName}:
           onChange={(e) => setPageName(e.target.value)}
           placeholder="Page Class Name"
         />
-        <select
-          className="pom-lang-select"
+        <Select
+          selectSize="sm"
           value={language}
           onChange={(e) => setLanguage(e.target.value as any)}
         >
           <option value="typescript">TypeScript</option>
           <option value="java">Java</option>
           <option value="python">Python</option>
-        </select>
+        </Select>
       </div>
 
       <div className="pom-element-list">

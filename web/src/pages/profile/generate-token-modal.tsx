@@ -2,6 +2,7 @@ import * as React from 'react';
 import { useState } from 'react';
 import { createToken } from '../../api-service/profile';
 import { formatDate } from '../../utils/time';
+import { Select } from '../../components/ui/select';
 
 type ExpiryPreset = '7d' | '30d' | '90d' | '1y' | 'never';
 
@@ -67,17 +68,17 @@ export function GenerateTokenModal({
           className="w-full mb-4 h-10 px-3 rounded-md bg-[var(--surface)] border border-[var(--border)] text-sm"
         />
         <label className="block text-xs text-[var(--text-dim)] mb-1">Expires after</label>
-        <select
+        <Select
           value={expiry}
           onChange={(e) => setExpiry(e.target.value as ExpiryPreset)}
-          className="w-full mb-1 h-10 px-3 rounded-md bg-[var(--surface)] border border-[var(--border)] text-sm"
+          className="mb-1"
         >
           {(Object.keys(PRESET_LABEL) as ExpiryPreset[]).map((p) => (
             <option key={p} value={p}>
               {PRESET_LABEL[p]}
             </option>
           ))}
-        </select>
+        </Select>
         <p className="text-[11px] text-[var(--text-dim)] mb-4">
           {expiry === 'never'
             ? 'Token never expires. Rotate manually when needed.'
