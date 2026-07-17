@@ -13,6 +13,7 @@ import { SetupService, type SetupOptions } from './SetupService';
 import { buildConfigYaml, buildLaunchPlan } from './LaunchBuilder';
 import { buildMenuTemplate } from './menu';
 import { invalidateAppiumHome, resolveAppiumHome, resolvedAppiumHomeInfo, warmAppiumHome } from './appiumHome';
+import { readInstalledPluginVersion } from './installedPluginVersion';
 import { defaultAppiumHome, launchConfigDir, logsDir } from './paths';
 
 const schemaService = new SchemaService();
@@ -250,6 +251,9 @@ function registerIpc(): void {
     const target = kind === 'logs' ? logsDir() : resolveAppiumHome(profile ?? ({ server: { appiumHome: '' } } as Profile));
     return shell.openPath(target);
   });
+  ipcMain.handle(IPC.installedPluginVersion, (_e, profile: Profile) =>
+    readInstalledPluginVersion(resolveAppiumHome(profile)),
+  );
 
   ipcMain.handle(IPC.toolchainCheck, (_e, profile?: Profile) => toolchain.checkAll(profile));
   ipcMain.handle(IPC.preflight, (_e, profile: Profile) => toolchain.preflight(profile, resolveAppiumHome(profile)));

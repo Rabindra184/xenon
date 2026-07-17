@@ -46,7 +46,9 @@ const api = {
     openPath: (kind: 'logs' | 'appiumHome', p?: Profile): Promise<string> =>
       ipcRenderer.invoke(IPC.openPath, kind, p),
     resolvedAppiumHome: (p: Profile): Promise<{ path: string; source: string }> =>
-      ipcRenderer.invoke(IPC.resolvedAppiumHome, p)
+      ipcRenderer.invoke(IPC.resolvedAppiumHome, p),
+    installedPluginVersion: (p: Profile): Promise<string | null> =>
+      ipcRenderer.invoke(IPC.installedPluginVersion, p)
   },
 
   toolchain: {

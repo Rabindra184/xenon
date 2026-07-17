@@ -24,6 +24,7 @@ export const IPC = {
   openDashboard: 'server:openDashboard',
   openPath: 'server:openPath',
   resolvedAppiumHome: 'server:resolvedAppiumHome',
+  installedPluginVersion: 'server:installedPluginVersion',
   // toolchain / setup
   toolchainCheck: 'toolchain:check',
   preflight: 'toolchain:preflight',
