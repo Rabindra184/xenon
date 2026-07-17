@@ -47,6 +47,7 @@
 ### 1.5 `xenon` (this repo)
 - Appium 3.x plugin: `CommandInterceptor` chokepoint, **6-tier self-healing** (Resilio → fuzzy XML → OCR → visual AI → LLM), autowait, device managers (ADB / go-ios+WDA), **MJPEG streaming** with `UniversalMjpegProxy` fan-out, **recording subsystem** with proof bundles, hub-node topology, SQLite/Prisma store.
 - **Identity already exists**: API keys with `{ id, scopes, teamId, rateLimit }`, `scopeGuard`/`mutationScopeGuard`, dashboard-session cookie exchange, `GET /xenon/api/auth/me`, manual device locks (`manual_<actorId>_<udid>`).
+- **Auth mechanics (verified in `src/middleware/authMiddleware.ts`):** programmatic clients authenticate with a header *pair* (`x-xenon-access-key` + `x-xenon-token`); browsers use the `xenon_dashboard_session` cookie (`SameSite=strict`). There is **no `Authorization: Bearer` or JWT path today** — the token service in §2.3 must add one. Existing scope vocabulary is flat: `admin`, `devices`, `sessions`, `read`.
 - Real-time surface: REST under `/xenon/api` + Socket.io broadcasts via `EventManager`.
 - AI Engine (`AICommandService`) and healing analytics (etalons, selector learning) are the raw material for the failure-analysis surface.
 - None of the other four repos reference Xenon → **all Xenon integration is new, additive work**, cleanly layered on existing APIs.
@@ -164,7 +165,8 @@ sequenceDiagram
 | Test Controller | discover/run/debug flows & specs | VS Code Test API ↔ NDJSON bridge | AppClaw CLI/runner |
 | Run Report | post-run analysis view | Xenon REST (healing/logs/recordings) | Auth Service |
 | `@xenon/appium-mcp-plugin` (new pkg) | expose Xenon to agents as MCP tools | appium-mcp Plugin API | Xenon REST |
-| Xenon token service (new, in this repo) | API key → JWT, JWKS | `POST /auth/token`, `GET /.well-known/jwks.json` | existing key store |
+| Xenon token service (new, in this repo) | API key → JWT issuance, JWKS, **and JWT acceptance**: a Bearer-JWT validation path added to `authMiddleware` so Xenon REST accepts its own tokens (required for per-user attribution when the MCP plugin calls Xenon on the caller's behalf) | `POST /auth/token`, `GET /.well-known/jwks.json`, `Authorization: Bearer` in `authMiddleware` | existing key store |
+| Xenon stream tickets (new, in this repo) | short-lived, single-use signed tokens for browser-context media (webview `<img>` can send neither auth headers nor the `SameSite=strict` cookie) | `POST /control/:udid/stream/ticket` → `?ticket=` query param accepted by the stream GET (short TTL, single-use, udid-bound) | token service |
 | Xenon orchestration service (new, in this repo) | server-side runs + failure analysis | `POST /orchestrations`, Socket.io progress | `@appclaw/core` agent-runtime |
 
 ---
@@ -177,7 +179,7 @@ sequenceDiagram
 | **`appium-mcp-auth`** | AuthN/Z for the hosted MCP. Gateway mode fronts header-based IDE clients; JWT validation pointed at **Xenon as issuer** (`issuer: hub URL`, `jwksUri: hub /.well-known/jwks.json`, claims: `sub`, `scopes`, `roles`, `teamId`). | Minor: a `teamId`/custom-claim passthrough into `Identity` if we want team-scoped tool behavior (or encode team into scopes). Later: Redis-backed ownership/rate-limit store for multi-replica (upstream already flags this). |
 | **`AppClaw`** | (a) `@appclaw/runner` + CLI = the local execution engine the Test Controller spawns; (b) `flow.schema.json` + `generate-appclaw-flow` SKILL.md = the authoring grammar; (c) `@appclaw/core` `agent-runtime` = the engine for Xenon's server-side orchestration; (d) `vscode-extension/` = reference code (NDJSON bridge, flow providers, device panel) for the new extension. | New: a `--mcp-url`/env path is already there (`MCP_TRANSPORT/URL`) — verify SSE-to-gateway with Bearer works; possibly add header support to its MCP client. Nothing structural. |
 | **`appclaw-agent-skill`** | Pattern donor: canonical `SKILL.md` → generated per-runtime wrappers + CI drift guard. Its behavioral rules (visual asserts, press/scroll verbs) migrate into the new skill set. | Superseded for this product by a new `xenon-skills` package (§4); the repo itself stays as-is for standalone CLI users. |
-| **`xenon` (this repo)** | The enterprise backend: devices, healing, streaming, recording, analytics, identity, and the new orchestration brain. | **New, additive:** (1) token service — `POST /xenon/api/auth/token` exchanging an API key for a short-lived RS256 JWT + `GET /.well-known/jwks.json`; (2) orchestration service + REST/Socket.io surface running `@appclaw/core` server-side; (3) failure-analysis endpoint composing healing events + logs + screenshots through the existing AI Engine; (4) (optional) CORS/scope additions for IDE origins. No changes to interception/healing internals. |
+| **`xenon` (this repo)** | The enterprise backend: devices, healing, streaming, recording, analytics, identity, and the new orchestration brain. | **New, additive:** (1) token service — `POST /xenon/api/auth/token` exchanging an API key for a short-lived RS256 JWT + `GET /.well-known/jwks.json`; (2) **Bearer-JWT acceptance in `authMiddleware`** — today it only accepts the `x-xenon-access-key`/`x-xenon-token` header pair or cookies, so Xenon REST must learn to validate its own JWTs, otherwise the MCP plugin would need a shared service key and per-user audit attribution breaks; (3) **stream tickets** — short-lived single-use signed query-param tokens for the MJPEG stream (webview `<img>` can't send headers, and the session cookie is `SameSite=strict`); (4) orchestration service + REST/Socket.io surface running `@appclaw/core` server-side; (5) failure-analysis endpoint composing healing events + logs + screenshots through the existing AI Engine; (6) (optional) CORS/scope additions for IDE origins. No changes to interception/healing internals. |
 | **New repo: `xenon-studio`** | The extension + `@xenon/appium-mcp-plugin` + `xenon-skills` (canonical skills + generators) — a small monorepo. | Greenfield, referencing `AppClaw/vscode-extension` heavily. |
 
 ---
@@ -206,15 +208,19 @@ All tools follow appium-mcp conventions (zod schemas, optional `sessionId`, `aut
 | `xenon_list_devices` | `platform?: 'android'\|'ios'`, `status?: 'free'\|'busy'\|'offline'`, `name?: string` | device[] `{udid, name, platform, os, busy, lockedBy?, teamId}` | `xenon:devices:read` |
 | `xenon_acquire_device` | `udid: string` | lock `{udid, lockId}` (manual lock as `manual_<subject>_<udid>`) | `xenon:devices:lock` |
 | `xenon_release_device` | `udid: string` | `{released: boolean}` | `xenon:devices:lock` |
-| `xenon_create_lab_session` | `udid?: string`, `deviceQuery?: {platform, name?}`, `capabilities?: string(JSON)` | delegates to `appium_session_management` with `remoteServerUrl` + Xenon caps injected → `{sessionId}` | `appium:use` |
 | `xenon_selector_health` | `appId?: string`, `selector?: string`, `limit?: number` | health records `{selector, strategy, failRate, lastHealedBy, etalonAge}` | `xenon:analytics:read` |
 | `xenon_healing_events` | `sessionId: string` | events `{selector, tierTried[], tierSucceeded, healedSelector?, durationMs}` | `xenon:analytics:read` |
 | `xenon_start_recording` / `xenon_stop_recording` | `udids: string[]` / `groupId: string` | `{groupId}` / `{proofBundleUrl}` | `xenon:recordings` |
 | `xenon_analyze_failure` | `sessionId: string`, `failureContext?: string` | structured analysis `{probableCause, evidence[], suggestedFix, healingSummary}` (server-side AI) | `xenon:analyze` |
 | `xenon_run_flow` | `flowYaml?: string`, `flowPath?: string`, `deviceQuery: {...}`, `count?: number` | `{orchestrationId}` (async, server-side run) | `xenon:orchestrate` |
+
+> `xenon_run_flow` is a server-side execution surface and is hardened accordingly: **deterministic flows only** (no LLM-goal execution in v1 — resolves D4), submitted YAML validated against `flow.schema.json`, hard caps on steps/duration/devices, and `${secrets.*}` resolved **exclusively from a Xenon-managed secret store** — never from the submitted YAML or the caller's environment.
+
 | `xenon_orchestration_status` | `orchestrationId: string` | `{state, steps[], progress, reportUrl?}` | `xenon:orchestrate` |
 
-Scope vocabulary extends Xenon's existing scopes; the auth plugin's `TOOL_SCOPES` map is generated from this table (single source in the plugin package, exported as JSON).
+**No session-creation wrapper tool.** The appium-mcp Plugin API was verified to be read-only with respect to sessions (`AppiumMcpCore` exposes only `getSessionId/getSessionInfo/getDriver/listSessions`; plugins cannot invoke other tools, and the package `exports` map blocks deep imports of `createSessionAction`). Lab sessions are therefore created by the **agent calling `appium_session_management` directly** with `remoteServerUrl` (the skill supplies the URL and Xenon capabilities; the gateway's `REMOTE_SERVER_URL_ALLOW_REGEX` pins it to lab hosts). This is also why ownership isolation needs zero extra config — appium-mcp-auth's `SESSION_TOOLS` already tracks `appium_session_management`. If a first-class wrapper ever proves necessary, the path is an upstream PR adding session creation to `AppiumMcpCore`, not a fork.
+
+**Scope vocabulary:** Xenon's existing scopes are flat (`admin`, `devices`, `sessions`, `read`). The `xenon:*` names above are the *MCP-layer* scope claims carried in the JWT; the token service maps flat key scopes → granular JWT claims at issuance (e.g. key scope `devices` → `xenon:devices:read` + `xenon:devices:lock`). Xenon REST continues to enforce its flat scopes unchanged. The auth plugin's `TOOL_SCOPES` map is generated from this table (single source in the plugin package, exported as JSON).
 
 ### 4.3 Skill set (`xenon-skills`, canonical → generated)
 
@@ -237,12 +243,13 @@ Behavioral invariants carried from `appclaw-agent-skill` into every skill: visua
 - Scaffold `xenon-studio` monorepo (extension, `@xenon/appium-mcp-plugin`, `xenon-skills`), esbuild bundling, CI, semantic-release.
 - Host detection + MCP registration: VS Code `McpServerDefinitionProvider`; Cursor `.cursor/mcp.json` writer/deeplink (with consent prompt).
 - Local mode: spawn `appium-mcp` stdio (Node ≥22 runtime discovery — see risk R6), first two skills installed by Skill Manager.
+- First-run **doctor check**: local mode has real prerequisites (Node ≥22, Android SDK/`adb` and/or Xcode + simulators). A `Xenon: Doctor` command validates them and links fixes — the free-tier on-ramp lives or dies on this.
 - **Milestone M0:** Copilot agent (VS Code) and Cursor agent each drive a local emulator through our registered MCP server using the authoring skill.
 
 ### Phase 1 — MVP: Xenon lab from the IDE (≈ 4–5 weeks)
 - Auth Service: API-key sign-in → Xenon; `/auth/me` entitlements; SecretStorage; feature gating skeleton.
-- Xenon: `POST /auth/token` (JWT) + JWKS endpoint (new, additive).
-- Device Explorer (REST + Socket.io live status, acquire/release locks) + Device Panel (MJPEG + tap/swipe/key passthrough via control API — port from mosaic patterns).
+- Xenon: `POST /auth/token` (JWT) + JWKS endpoint + Bearer-JWT acceptance in `authMiddleware` (new, additive).
+- Device Explorer (REST + Socket.io live status, acquire/release locks) + Device Panel (MJPEG + tap/swipe/key passthrough via control API — port from mosaic patterns). MJPEG in the webview authenticates via **stream tickets** (§2.3) — the Socket.io and REST calls run in the extension host, which can send auth headers, so only the `<img>` needs tickets.
 - Lab sessions: agent creates sessions via `remoteServerUrl` → hub (healing/autowait live end-to-end).
 - Flow authoring UX: YAML schema association, completion, CodeLens (ported/reworked from `atddevs.appclaw` providers).
 - Test Controller: VS Code Test API ↔ `@appclaw/runner`/CLI NDJSON bridge; basic run report.
@@ -264,14 +271,14 @@ Behavioral invariants carried from `appclaw-agent-skill` into every skill: visua
 - Marketplace launch: VS Code Marketplace + Open VSX listings, pre-release channel, docs site, sample repo.
 - **Milestone M3 (GA):** public listing; enterprise features gated by Xenon entitlements; airgapped VSIX channel documented.
 
-Rough total: **15–18 weeks** to GA with one focused engineer + review support; phases 1–2 parallelize across two people (extension vs backend) to compress ~30%.
+Rough total: **15–18 weeks** to GA. Phase 0–1 is feasible for one focused engineer; **phases 2–3 require a second person** (extension vs backend split) — the hosted deployment, SSO, and orchestration service are each real subsystems, and treating the second engineer as optional makes the GA date fiction.
 
 ---
 
 ## 6. Packaging, signing & distribution
 
 - **One codebase, one VSIX.** esbuild single-bundle (extension host code), assets (skills, schemas) packaged in. No native modules in the extension itself (SecretStorage covers keychain needs) — keeps the VSIX platform-neutral.
-- **Engines:** pin `engines.vscode` to the *lowest* API baseline Cursor's current fork supports (verify at Phase 0; Cursor tracks VS Code within a few minor versions). Avoid proposed APIs; feature-detect `vscode.lm`/MCP APIs at runtime since Cursor lags there.
+- **Engines:** two constraints pull against each other — `McpServerDefinitionProvider` requires a recent VS Code engine *plus* a `contributes.mcpServerDefinitionProviders` manifest entry, while Cursor's fork lags VS Code by some minors. Pin `engines.vscode` to the lowest baseline Cursor supports, declare the MCP contribution point, and **feature-detect the API at runtime** (Cursor ignores unknown contribution points; the `.cursor/mcp.json` writer is the fallback path there). Verify exact versions at Phase 0. Avoid proposed APIs.
 - **Channels:**
   - **VS Code Marketplace** — `vsce publish` under a verified publisher; Marketplace performs extension signing automatically; enable pre-release channel for early adopters.
   - **Open VSX** — same VSIX, `ovsx publish` (namespace + token). This is the channel Cursor/VSCodium users pull from.
@@ -286,6 +293,8 @@ Rough total: **15–18 weeks** to GA with one focused engineer + review support;
 
 ### 7.1 Security
 - **Credential flow:** API key or OIDC token lives only in VS Code **SecretStorage** (OS keychain). The extension exchanges it for a short-lived Xenon JWT; the JWT rides as `Authorization: Bearer` to the gateway, which injects `authToken` upstream. Nothing sensitive in `settings.json`, workspace files, or logs (Xenon and appium-mcp both already redact; auth plugin never audits credentials).
+- **JWT signing keys:** the token service signs RS256 with a dedicated keypair — generated at first boot, stored outside the SQLite DB (filesystem with `0600` or the deployment's secret manager), published via JWKS with a `kid`. Rotation: introduce the new key in JWKS, sign with it, keep the old key published for one max-token-TTL overlap window, then drop it. Stream tickets sign with the same key.
+- **Stream tickets are the one sanctioned query-param credential** (an `<img>` can't do better): mitigated by single-use semantics, ≤60 s TTL, binding to one `udid`, and exclusion from access logs. This is a deliberate, documented exception to the "no secrets in URLs" rule.
 - **Test secrets:** AppClaw's `.appclaw/env/*.yaml` model — `secrets:` values are `${SHELL_ENV}` placeholders, redacted as `***` in logs and reports. The extension surfaces a lint warning for literal secrets in flow files.
 - **Server hardening:** `REMOTE_SERVER_URL_ALLOW_REGEX` pinned to lab hosts (prevents SSRF-style pivoting via the session tool); appium-mcp policy allowlist hides unneeded tools in hosted mode; TLS everywhere; per-subject rate limits + session quotas; ownership enforcement isolates tenants on the shared MCP.
 - **RBAC:** Xenon scopes/teams → JWT claims → gateway `TOOL_SCOPES` (generated from the §4.2 table) → per-tool denial with typed codes. Admin role bypass reserved for lab operators. Device locks respect the existing `manual_<actor>_<udid>` semantics — another user's lock is only force-releasable by admin scope (already implemented in Xenon).
@@ -318,7 +327,7 @@ Rough total: **15–18 weeks** to GA with one focused engineer + review support;
 | R1 | **Cursor has no stable extension API for MCP registration or agent integration** — we rely on `.cursor/mcp.json` writes/deeplinks and behavior parity with VS Code APIs it hasn't adopted. | MCP setup UX may break across Cursor releases; no automated test harness. | Feature-detect; version-pin known-good behaviors; keep a manual Cursor smoke checklist per release; deeplink fallback. |
 | R2 | **Skill fidelity varies per agent** — Copilot instruction files are weaker than Claude skills; agents may ignore rules (e.g., visual-assert discipline). | Inconsistent authoring quality across IDEs. | Duplicate the critical invariants into the MCP server `instructions` (all agents read those); golden-task evals per agent runtime; keep skills short and imperative. |
 | R3 | **appium-mcp session state is process-global** — a shared hosted server multiplexes all users in one process. | Noisy-neighbor and capacity limits; a crash drops everyone's sessions. | Ownership plugin isolates access (not resources); run per-team MCP replicas behind the gateway; `APPIUM_MCP_ON_CLIENT_DISCONNECT=skip` + Xenon-side session reconciliation; Redis store (Phase 3) for auth state. |
-| R4 | **Xenon backend scope creep** — token service, orchestration, analysis are new subsystems in this repo. | Phase 2/3 schedule risk. | Strictly additive endpoints; orchestration reuses `@appclaw/core` rather than a new engine; failure analysis composes existing healing data + AI Engine. |
+| R4 | **Xenon backend scope creep** — token service (issuance *and* `authMiddleware` acceptance), stream tickets, orchestration, analysis are new subsystems in this repo. | Phase 2/3 schedule risk. | Strictly additive endpoints; orchestration reuses `@appclaw/core` rather than a new engine; failure analysis composes existing healing data + AI Engine; second engineer required for P2–3 (§5). |
 | R5 | **Two AI tiers could fight** — IDE agent (interactive) vs Xenon orchestrator (server-side) both "reason over failures." | Confusing UX, duplicated spend. | Clear boundary: IDE agent = authoring + interactive debugging; orchestrator = unattended/batch execution + post-hoc analysis surfaced *to* the IDE agent via `xenon_analyze_failure`. Skills encode this routing. |
 | R6 | **Node runtime matrix** — appium-mcp requires Node ≥22 <26; the extension host's Node is whatever Electron ships and can't run it in-process. | Local mode fails on machines without Node 22+. | Spawn external runtime: detect system Node ≥22, else guide install (or optionally download a pinned Node runtime with consent, Playwright-style). Lab mode has no local Node need. |
 | R7 | **Marketplace policy** — extensions that spawn external binaries/download runtimes must disclose; naming/trademark for "Xenon" is unverified. | Listing rejection or rename late in the game. | Disclose in listing + first-run; run a trademark/namespace check in Phase 0 (open decision D1). |
@@ -328,8 +337,13 @@ Rough total: **15–18 weeks** to GA with one focused engineer + review support;
 - **D1 — Naming & publisher:** "Xenon Studio"? Publisher id? Trademark check.
 - **D2 — Hosted MCP topology:** one shared MCP per lab vs per-team replicas (R3). Recommend starting shared, splitting by team when concurrency demands.
 - **D3 — OIDC IdP:** which IdP(s) first (Okta / Entra ID / Google)? Design is provider-agnostic; pick at Phase 3 start.
-- **D4 — Orchestrator engine depth:** Phase 3 server-side runs start with *deterministic* flows only (`xenon_run_flow`), or include LLM-driven goals (needs server-side LLM key management)? Recommend deterministic first.
+- ~~**D4 — Orchestrator engine depth**~~ — **resolved:** deterministic flows only in v1 (§4.2 hardening note); LLM-goal execution is a post-GA decision with its own key-management design.
 - **D5 — Free-tier boundary:** exactly which features are public (local mode + authoring + skills?) vs gated (lab, analytics, recordings, orchestration). Current assumption: everything touching the Xenon hub is gated.
+
+**Review-verified facts (2026-07-17)** — these were open assumptions in the first draft, now checked against code:
+- `authMiddleware` (not "apiKeyMiddleware" — CLAUDE.md's name is stale) has no JWT/Bearer path; JWT acceptance is scoped as new work (§3).
+- All `/xenon/api/*` routes require auth and the session cookie is `SameSite=strict` → webview MJPEG needs stream tickets (§2.3, §7.1).
+- appium-mcp's `AppiumMcpCore` is session-read-only and plugins cannot invoke other tools → no `xenon_create_lab_session` wrapper; session creation stays with `appium_session_management` at the skill layer (§4.2), which keeps appium-mcp-auth ownership tracking config-free.
 
 **Explicit assumptions made:**
 - A1: The new extension repo lives outside this repo (small monorepo `xenon-studio`); Xenon backend additions land here via normal PR flow.
