@@ -3,6 +3,12 @@ import { AnnotationOverlay, type NormalizedAnnotation } from './AnnotationOverla
 import type { AnnotationShape } from './recording-group-store';
 import XenonApiService from '../../api-service';
 import { ANDROID_KEYCODE, IOS_BUTTON } from '../device-control/keycodes';
+import {
+  CONNECT_TIMEOUT_MS,
+  canAutoRetry,
+  describeStreamFailure,
+  retryDelayMs,
+} from './stream-retry';
 
 interface Props {
   udid: string;
@@ -54,6 +60,14 @@ export function DeviceTile({
 }: Props) {
   const [streamState, setStreamState] = React.useState<StreamState>('connecting');
   const [retryKey, setRetryKey] = React.useState(0);
+  // Number of connect attempts that have failed (drives bounded auto-retry).
+  // A ref, not state — bumping it must not itself trigger a re-render/effect.
+  const attemptRef = React.useRef(0);
+  // Pending backoff timer between a failed attempt and its auto-retry.
+  const retryTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Human-readable reason shown on the terminal "unavailable" overlay, fetched
+  // from GET /stream/status once auto-retries are exhausted.
+  const [failureReason, setFailureReason] = React.useState<string>('');
   const [ripples, setRipples] = React.useState<Ripple[]>([]);
   // Whether this tile is the keyboard-input target. Click on the tile to
   // claim focus; clicks elsewhere on the page release it via blur.
@@ -238,21 +252,65 @@ export function DeviceTile({
   // Cache buster to ensure the browser doesn't reuse a failed/stale stream connection
   const proxyUrl = `/xenon/api/control/${encodeURIComponent(udid)}/stream?t=${retryKey}`;
 
-  // Timeout: if the image doesn't load within 90s, mark as unavailable.
-  // 90s matches realistic iOS 17+ WDA cold-start time (tunnel + go-ios runwda
-  // build/launch + readiness polling). The backend's startStream timeout is
-  // 120s — staying just under that gives users a "failed" signal slightly
-  // earlier than the request itself would resolve, without falsely failing
-  // healthy-but-slow first-time starts.
+  // Fetch the real failure reason from the backend once retries are exhausted,
+  // so the "unavailable" overlay explains *why* (WDA not installed, unsupported
+  // iOS, lost tunnel, …) instead of a hardcoded "port 9100" guess. Best-effort.
+  const loadFailureReason = React.useCallback(async () => {
+    try {
+      const r = await fetch(`/xenon/api/control/${encodeURIComponent(udid)}/stream/status`);
+      if (!r.ok) throw new Error(String(r.status));
+      const j = await r.json();
+      setFailureReason(describeStreamFailure({ lastError: j?.lastError, status: j?.status }));
+    } catch {
+      setFailureReason(describeStreamFailure({}));
+    }
+  }, [udid]);
+
+  // A single connect attempt failed (either the <img> errored, or it never
+  // produced a frame within the connect window). Auto-retry with backoff a
+  // bounded number of times before showing a terminal failure — a healthy
+  // device whose cold-start was slowed by a busy/broken neighbour recovers on a
+  // later attempt instead of getting stuck on "Connection Failed".
+  const onAttemptFailed = React.useCallback(() => {
+    const attempt = attemptRef.current;
+    if (canAutoRetry(attempt)) {
+      attemptRef.current = attempt + 1;
+      if (retryTimerRef.current) clearTimeout(retryTimerRef.current);
+      retryTimerRef.current = setTimeout(() => {
+        // Stay in 'connecting'; bumping retryKey re-opens the stream (fresh GET,
+        // cache-busted) and restarts the connect-window timer below.
+        setStreamState('connecting');
+        setRetryKey(Date.now());
+      }, retryDelayMs(attempt));
+    } else {
+      setStreamState('unavailable');
+      void loadFailureReason();
+    }
+  }, [loadFailureReason]);
+
+  // Connect-window watchdog: if the image hasn't loaded within CONNECT_TIMEOUT_MS
+  // of an attempt starting, treat it as a failed attempt and let onAttemptFailed
+  // decide retry vs. give-up. Re-armed on every (re)connect via retryKey.
   React.useEffect(() => {
     if (streamState !== 'connecting') return;
-    const timer = setTimeout(() => {
-      setStreamState((s) => (s === 'connecting' ? 'unavailable' : s));
-    }, 90000);
+    // If this timer fires, no onLoad/onError/retry intervened (any of those
+    // changes streamState or retryKey and clears it), so we're still connecting.
+    const timer = setTimeout(onAttemptFailed, CONNECT_TIMEOUT_MS);
     return () => clearTimeout(timer);
-  }, [streamState, retryKey]);
+  }, [streamState, retryKey, onAttemptFailed]);
 
+  // Clear any pending backoff timer on unmount.
+  React.useEffect(() => {
+    return () => {
+      if (retryTimerRef.current) clearTimeout(retryTimerRef.current);
+    };
+  }, []);
+
+  // Manual retry: reset the attempt budget and reconnect immediately.
   const handleRetry = () => {
+    if (retryTimerRef.current) clearTimeout(retryTimerRef.current);
+    attemptRef.current = 0;
+    setFailureReason('');
     setStreamState('connecting');
     setRetryKey(Date.now());
   };
@@ -293,8 +351,7 @@ export function DeviceTile({
             <div className="text-5xl mb-4 opacity-20">📵</div>
             <div className="font-bold text-white text-lg">Connection Failed</div>
             <p className="text-xs mt-2 text-neutral-500 leading-relaxed max-w-[240px] mx-auto">
-              We couldn't connect to the WDA MJPEG stream on port 9100. 
-              If automation is running, ensure it hasn't blocked the MJPEG port.
+              {failureReason || 'We couldn’t start the live stream for this device.'}
             </p>
             <button
               className="mt-6 text-sm font-semibold px-6 py-2.5 rounded-full bg-red-600 hover:bg-red-500 text-white transition-all shadow-[0_0_20px_rgba(220,38,38,0.3)] active:scale-95"
@@ -319,11 +376,17 @@ export function DeviceTile({
         }}
         onLoad={() => {
           console.log(`[DeviceTile] Image LOADED for ${udid}`);
+          // A frame arrived: healthy. Reset the retry budget so a later mid-
+          // stream drop gets its own fresh set of auto-retries.
+          attemptRef.current = 0;
+          if (retryTimerRef.current) clearTimeout(retryTimerRef.current);
           setStreamState('live');
         }}
         onError={(e) => {
           console.error(`[DeviceTile] Image ERROR for ${udid}`, e);
-          setStreamState('unavailable');
+          // Don't dead-end: let the retry policy decide (auto-retry with backoff,
+          // then a terminal failure with the real reason).
+          onAttemptFailed();
         }}
       />
 

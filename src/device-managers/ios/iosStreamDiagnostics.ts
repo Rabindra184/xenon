@@ -58,3 +58,22 @@ export function classifyTunnelStderr(text: string): { unsupported: boolean; udid
   }
   return { unsupported: true, udid };
 }
+
+/**
+ * Decide whether a process listening on one of this device's stream ports is
+ * actually *ours* to kill during stale-process cleanup.
+ *
+ * Port-based cleanup (`lsof -ti :PORT` → `kill -9`) is a footgun when two
+ * subsystems share a port number: an iOS device whose default mjpegServerPort is
+ * 9100 collides with the Android stream's PortAllocator lease at 9100, so a
+ * failing iOS device's cleanup would kill a *healthy* Android neighbour's stream.
+ *
+ * We only own a process if its command line references this device's udid — the
+ * iproxy forwards (`iproxy -u <udid> …`) and go-ios/WDA processes we spawn all
+ * carry it. A process on the port whose command mentions a *different* udid, or
+ * no udid at all, belongs to someone else and must be left alone.
+ */
+export function isOwnStreamProcess(processCommand: string, udid: string): boolean {
+  if (!processCommand || !udid) return false;
+  return processCommand.includes(udid);
+}

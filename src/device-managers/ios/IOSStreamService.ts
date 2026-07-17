@@ -22,6 +22,7 @@ import { DeviceStoreFactory } from '../../data-service/device-store';
 import {
   classifyTunnelStderr,
   isMissingWdaError,
+  isOwnStreamProcess,
   missingWdaMessage,
 } from './iosStreamDiagnostics';
 
@@ -58,6 +59,10 @@ class IOSStreamService {
   private startPromises: Map<string, Promise<{ wdaPort: number; mjpegPort: number }>> = new Map();
   private recoveryCooldowns: Map<string, number> = new Map(); // Track last recovery attempt time
   private readonly RECOVERY_COOLDOWN_MS = 30000; // 30s cooldown between recovery attempts
+  // Port-lease TTL for an active stream. Longer than the watchdog interval (1h),
+  // which refreshes it each tick, so a long-lived stream's port never expires
+  // and gets reallocated to another device; stopStream() releases it explicitly.
+  private readonly STREAM_PORT_TTL_MS = 90 * 60 * 1000; // 1.5h
   public goIOSPath: string;
 
   constructor() {
@@ -73,6 +78,16 @@ class IOSStreamService {
       for (const [udid, session] of this.sessions.entries()) {
         const now = Date.now();
         if (session.status === 'running') {
+          // Keep this stream's port leases alive so the allocator never hands
+          // its ports to another device mid-stream (TTL > this 1h interval).
+          try {
+            const portAllocator = Container.get(PortAllocator);
+            await portAllocator.touch(session.wdaPort, this.STREAM_PORT_TTL_MS);
+            await portAllocator.touch(session.mjpegPort, this.STREAM_PORT_TTL_MS);
+          } catch {
+            /* best-effort lease refresh */
+          }
+
           // Check for inactivity
           if (now - session.lastViewerAt > 600000 && session.viewerCount === 0) {
             // Principal Protection: Never stop a stream if the device is busy with an active session.
@@ -595,10 +610,18 @@ class IOSStreamService {
         const device = await DeviceStoreFactory.getStore().findDevice({ udid });
         if (!device) throw new Error(`Device ${udid} not found`);
 
-        const wdaPort =
-          device.wdaLocalPort || (await Container.get(PortAllocator).acquire('wda', udid));
-        const mjpegPort =
-          device.mjpegServerPort || (await Container.get(PortAllocator).acquire('mjpeg', udid));
+        // Always resolve stream ports through the PortAllocator — never a value
+        // persisted on the Device row. A stale persisted mjpegServerPort (e.g.
+        // 9100) bypassed the allocator and could collide with another device's
+        // live lease on the same port (the Android stream leases 9100 too),
+        // taking both streams down. The allocator's lease table + OS-free probe
+        // guarantee a non-colliding port; the lease is refreshed by the watchdog
+        // and released in stopStream().
+        const portAllocator = Container.get(PortAllocator);
+        const wdaPort = await portAllocator.acquire('wda', udid, { ttlMs: this.STREAM_PORT_TTL_MS });
+        const mjpegPort = await portAllocator.acquire('mjpeg', udid, {
+          ttlMs: this.STREAM_PORT_TTL_MS,
+        });
 
         // Principal Discovery: Check if WDA is already up (e.g. from an active Appium session)
         // If yes, and it belongs to our device, we simply attach to it instead of killing it.
@@ -922,17 +945,32 @@ class IOSStreamService {
       }
     }
 
-    // Port-based cleanup (more surgical)
+    // Port-based cleanup (more surgical). Only kill a process if it is *ours* —
+    // its command line must reference this udid. Ports can be shared across
+    // subsystems (e.g. an iOS device defaulting to mjpegServerPort 9100 collides
+    // with the Android stream's PortAllocator lease at 9100), and blindly killing
+    // every listener on the port would tear down a healthy neighbour's stream.
     const ports = [wdaPort, mjpegPort];
     for (const port of ports) {
       try {
         const { stdout } = await execPromise(`lsof -ti :${port}`);
-        const pids = stdout.trim().split('\n');
+        const pids = stdout.trim().split('\n').filter(Boolean);
         for (const pid of pids) {
-          if (pid) {
-            log.debug(`Killing stale process ${pid} on port ${port}`);
-            await execPromise(`kill -9 ${pid}`);
+          let command = '';
+          try {
+            const { stdout: cmd } = await execPromise(`ps -p ${pid} -o command=`);
+            command = cmd.trim();
+          } catch {
+            /* process already gone, or ps failed — treat as not-ours */
           }
+          if (!isOwnStreamProcess(command, udid)) {
+            log.debug(
+              `Leaving process ${pid} on port ${port} alone — not owned by ${udid} (cmd: ${command || 'unknown'})`,
+            );
+            continue;
+          }
+          log.debug(`Killing stale process ${pid} on port ${port} for ${udid}`);
+          await execPromise(`kill -9 ${pid}`);
         }
       } catch (err) {
         /* ignore - lsof returns 1 if no port found */
@@ -981,6 +1019,16 @@ class IOSStreamService {
 
     // Also clean up any orphan processes (belt and suspenders)
     await this.cleanupOrphanTunnels(udid);
+
+    // Release the port leases so the allocator can reuse these ports for other
+    // devices — they were held for the lifetime of this stream.
+    try {
+      const portAllocator = Container.get(PortAllocator);
+      await portAllocator.release(session.wdaPort);
+      await portAllocator.release(session.mjpegPort);
+    } catch (e) {
+      log.warn(`Failed to release port leases for ${udid}: ${e}`);
+    }
 
     this.sessions.delete(udid);
   }

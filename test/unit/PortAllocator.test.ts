@@ -85,6 +85,31 @@ describe('PortAllocator', () => {
     expect(call, 'expected deleteMany with leasedToUdid filter').to.exist;
   });
 
+  it('never hands out a port already leased to another device (the 9100 collision)', async () => {
+    // Regression: an iOS device must not be allocated port 9100 while the
+    // Android stream holds a live lease on it. The lease table's `taken` set
+    // must exclude it, so allocation moves to the next free port.
+    findManyStub.resolves([{ port: 9100 }] as any); // 9100 leased to someone else
+    createStub.callsFake(({ data }: any) => Promise.resolve({ port: data.port } as any));
+
+    const allocator = makeAllocator({ mjpeg: [9100, 9101] });
+    (allocator as any).isOsFree = async () => true;
+
+    const port = await allocator.acquire('mjpeg' as PortPurpose, 'ios-udid');
+    expect(port).to.equal(9101);
+    // It must never have attempted to create a lease on the taken port.
+    const attempted9100 = createStub.getCalls().some((c) => c.args[0]?.data?.port === 9100);
+    expect(attempted9100, 'must not try to lease the already-taken 9100').to.be.false;
+  });
+
+  it('touch extends the lease expiry on a specific port', async () => {
+    const allocator = makeAllocator({ mjpeg: [9100, 9101] });
+    await allocator.touch(9101, 90 * 60 * 1000);
+    expect(updateStub.calledOnce).to.be.true;
+    expect(updateStub.firstCall.args[0].where.port).to.equal(9101);
+    expect(updateStub.firstCall.args[0].data.expiresAt).to.be.a('number');
+  });
+
   it('skips ports that fail OS-level availability check', async () => {
     let attempt = 0;
     createStub.callsFake(({ data }: any) => {

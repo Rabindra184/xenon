@@ -103,6 +103,19 @@ export class PortAllocator {
     await prisma.portLease.delete({ where: { port } }).catch(() => undefined);
   }
 
+  /**
+   * Extend the lease on a specific port without re-running allocation. Used to
+   * keep a long-lived stream's port from expiring out from under it (which would
+   * let the allocator hand the same port to another device). No-op if the port
+   * isn't currently leased.
+   */
+  async touch(port: number, ttlMs = 60 * 60 * 1000): Promise<void> {
+    const now = Date.now();
+    await prisma.portLease
+      .update({ where: { port }, data: { leasedAt: now, expiresAt: now + ttlMs } })
+      .catch(() => undefined);
+  }
+
   async releaseForUdid(udid: string): Promise<void> {
     await prisma.portLease.deleteMany({ where: { leasedToUdid: udid } });
   }
