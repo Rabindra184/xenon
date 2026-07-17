@@ -4,6 +4,7 @@ import { Container } from 'typedi';
 import { ApiKeyService } from '../services/ApiKeyService';
 import { UserSessionService } from '../services/UserSessionService';
 import { UserService } from '../services/UserService';
+import { JwtKeyService } from '../services/token/JwtKeyService';
 import { config } from '../config';
 import { prisma } from '../prisma';
 
@@ -102,6 +103,39 @@ export async function authMiddleware(req: Request, res: Response, next: NextFunc
     };
     req.apiKey = { id: row.id, scopes: row.scopes, rateLimit: row.rateLimit, teamId: row.teamId ?? null };
     return next();
+  }
+
+  // Path 1.5: Authorization: Bearer <hub-issued JWT> (audience xenon-rest).
+  // Live user lookup on every request → revocation is instant on the REST
+  // surface even though the token itself is stateless (spec §7.1).
+  const authHeader = req.headers['authorization'];
+  if (typeof authHeader === 'string' && authHeader.startsWith('Bearer ')) {
+    try {
+      const payload = await Container.get(JwtKeyService).verify(authHeader.slice(7), {
+        audience: 'xenon-rest',
+      });
+      const user = await userSvc.findById(String(payload.sub));
+      if (!user || user.status !== 'ACTIVE') {
+        return res.status(401).json({ error: 'invalid token' });
+      }
+      const teamIds = await computeTeamIds({
+        role: user.role as any,
+        userId: user.id,
+        apiKeyTeamId: (payload.teamId as string | null) ?? null,
+      });
+      req.auth = {
+        kind: 'bearer',
+        userId: user.id,
+        role: user.role as any,
+        scopes: String(payload.scopes ?? ''),
+        teamId: (payload.teamId as string | null) ?? null,
+        rateLimit: 300,
+        teamIds,
+      };
+      return next();
+    } catch {
+      return res.status(401).json({ error: 'invalid token' });
+    }
   }
 
   // Path 2: cookie — UserSession first, then ApiKey (legacy issuance path).
