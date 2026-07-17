@@ -1,8 +1,11 @@
 import 'reflect-metadata';
 import { expect } from 'chai';
 import sinon from 'sinon';
+import os from 'os';
+import { Container } from 'typedi';
 import { metrics, trace } from '@opentelemetry/api';
 import { METRIC } from '../../src/services/telemetry/attributes';
+import { ARTIFACT_STORE, FsArtifactStore } from '../../src/services/artifacts/ArtifactStore';
 
 // Stub metrics + trace BEFORE the module loads so the module-level
 // ensureOtelInstruments() picks up our mocks. Inline import after stubbing.
@@ -53,6 +56,10 @@ describe('RecordingOrchestrator instrumentation', () => {
     // Pre-stub once to get clean instrument creation in the SUT.
     getMeterStub = sinon.stub(metrics, 'getMeter');
     getTracerStub = sinon.stub(trace, 'getTracer');
+    // RecordingOrchestrator resolves ARTIFACT_STORE from the container at
+    // runtime (registered at boot in ServerManager); register it here so the
+    // path-construction helpers work under test.
+    Container.set(ARTIFACT_STORE, new FsArtifactStore(os.tmpdir()));
     // Now import — module-level let bindings will populate against the stub.
     RecordingOrchestratorMod = require('../../src/services/recording/RecordingOrchestrator');
   });
@@ -60,6 +67,7 @@ describe('RecordingOrchestrator instrumentation', () => {
   after(() => {
     getMeterStub.restore();
     getTracerStub.restore();
+    Container.remove(ARTIFACT_STORE);
   });
 
   beforeEach(() => {
