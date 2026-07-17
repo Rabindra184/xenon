@@ -15,7 +15,11 @@ export async function createProject(client: typeof prisma, body: { name?: string
 export function projectsRouter(): Router {
   const r = Router();
   r.get('/', async (req, res) => {
-    res.json(await listProjects(prisma, req.auth?.teamIds));
+    try {
+      res.json(await listProjects(prisma, req.auth?.teamIds));
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
   });
   r.post('/', scopeGuard(['admin']), async (req, res) => {
     try { res.status(201).json(await createProject(prisma, req.body ?? {})); }
