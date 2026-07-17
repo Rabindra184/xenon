@@ -4,6 +4,7 @@ import { Container } from 'typedi';
 import { ApiKeyService, Scope } from '../../services/ApiKeyService';
 import { UserService } from '../../services/UserService';
 import { prisma } from '../../prisma';
+import { AUTH_DISABLED_USER_ID, resolveEffectiveUserId } from './profileIdentity';
 
 const ROLE_SCOPES: Record<string, Scope[]> = {
   SUPER_ADMIN: ['admin'],
@@ -34,10 +35,28 @@ export function profileRouter(): Router {
     return auth;
   }
 
+  // Map req.auth.userId to a real User id. Auth-disabled mode uses a synthetic
+  // userId with no User row; resolve it to the seeded bootstrap SUPER_ADMIN so
+  // access-key/token management works as that admin. Real users pass through.
+  async function effectiveUserId(rawUserId: string): Promise<string | null> {
+    const firstAdminId =
+      rawUserId === AUTH_DISABLED_USER_ID
+        ? (
+            await prisma.user.findFirst({
+              where: { role: 'SUPER_ADMIN' },
+              orderBy: { createdAt: 'asc' },
+              select: { id: true },
+            })
+          )?.id ?? null
+        : null;
+    return resolveEffectiveUserId(rawUserId, firstAdminId);
+  }
+
   r.get('/access-key', async (req, res) => {
     const auth = requireAuth(req, res);
     if (!auth) return;
-    const user = await userSvc.findById(auth.userId);
+    const userId = await effectiveUserId(auth.userId);
+    const user = userId ? await userSvc.findById(userId) : null;
     if (!user) return res.status(404).json({ error: 'user not found' });
     return res.json({ accessKey: user.accessKey });
   });
@@ -45,15 +64,19 @@ export function profileRouter(): Router {
   r.post('/access-key/rotate', async (req, res) => {
     const auth = requireAuth(req, res);
     if (!auth) return;
-    const updated = await userSvc.rotateAccessKey(auth.userId);
+    const userId = await effectiveUserId(auth.userId);
+    if (!userId) return res.status(404).json({ error: 'user not found' });
+    const updated = await userSvc.rotateAccessKey(userId);
     return res.json({ accessKey: updated.accessKey });
   });
 
   r.get('/tokens', async (req, res) => {
     const auth = requireAuth(req, res);
     if (!auth) return;
+    const userId = await effectiveUserId(auth.userId);
+    if (!userId) return res.json([]);
     const rows = await prisma.apiKey.findMany({
-      where: { userId: auth.userId, revokedAt: null },
+      where: { userId, revokedAt: null },
       select: { id: true, name: true, scopes: true, createdAt: true, lastUsedAt: true, expiresAt: true },
       orderBy: { createdAt: 'desc' },
     });
@@ -72,6 +95,8 @@ export function profileRouter(): Router {
   r.post('/tokens', async (req, res) => {
     const auth = requireAuth(req, res);
     if (!auth) return;
+    const userId = await effectiveUserId(auth.userId);
+    if (!userId) return res.status(404).json({ error: 'user not found' });
     const { name, scopes, expiresAt } = req.body as {
       name?: string;
       scopes?: Scope[];
@@ -99,7 +124,7 @@ export function profileRouter(): Router {
     const { id, raw } = await apiKeySvc.create({
       name,
       scopes: requested,
-      userId: auth.userId,
+      userId,
       expiresAt: expiresAtDate,
     });
     return res.status(201).json({
@@ -112,9 +137,10 @@ export function profileRouter(): Router {
   r.delete('/tokens/:id', async (req, res) => {
     const auth = requireAuth(req, res);
     if (!auth) return;
-    const row = await prisma.apiKey.findFirst({
-      where: { id: req.params.id, userId: auth.userId },
-    });
+    const userId = await effectiveUserId(auth.userId);
+    const row = userId
+      ? await prisma.apiKey.findFirst({ where: { id: req.params.id, userId } })
+      : null;
     if (!row) return res.status(404).json({ error: 'token not found' });
     await apiKeySvc.revoke(req.params.id);
     return res.status(204).end();
