@@ -43,6 +43,40 @@ export function buildStatusCounts(sessions: ISession[]): Record<StatusKey, numbe
   return out;
 }
 
+/** Does a session pass the given status-filter tab? 'all' matches everything. */
+export function sessionMatchesStatus(s: ISession, key: StatusKey): boolean {
+  if (key === 'all') return true;
+  return sessionStatusBucket(s.status) === key;
+}
+
+/**
+ * Apply the build-detail status filter + free-text search to a session list.
+ * Shared by the SessionTable (what it renders) and the filter bar's
+ * "X of Y sessions" counter so the two can never disagree.
+ */
+export function filterSessions(
+  sessions: ISession[],
+  statusFilter: StatusKey,
+  searchQuery: string,
+): ISession[] {
+  const q = searchQuery.trim().toLowerCase();
+  return sessions.filter((s) => {
+    if (!sessionMatchesStatus(s, statusFilter)) return false;
+    if (q) {
+      const hay = (
+        s.id + ' ' +
+        (s.name ?? '') + ' ' +
+        (s.device_name ?? '') + ' ' +
+        (s.device_platform ?? '') + ' ' +
+        (s.device_version ?? '') + ' ' +
+        (s.node_id ?? '')
+      ).toLowerCase();
+      if (!hay.includes(q)) return false;
+    }
+    return true;
+  });
+}
+
 export function deviceNameOrFallback(s: ISession): string {
   const n = s.device_name?.trim();
   return n && n.length > 0 ? n : 'Unknown Device';

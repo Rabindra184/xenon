@@ -6,7 +6,7 @@ import { BuildListRail, type TimeFilter } from './build-list-rail';
 import { BuildFilterBar } from './build-filter-bar';
 import { BuildsHeader } from './builds-header';
 import { SessionTable } from './session-table';
-import { buildStatusCounts, type StatusKey } from './derive';
+import { buildStatusCounts, filterSessions, type StatusKey } from './derive';
 import type { ISession } from '../../interfaces/ISession';
 import { useToast } from '../ui/toast';
 import XenonApiService from '../../api-service';
@@ -124,7 +124,7 @@ export const BuildsPage: React.FC = () => {
                 onChange={setStatusFilter}
                 search={sessionSearch}
                 onSearchChange={setSessionSearch}
-                totalMatching={data.sessions.length}
+                totalMatching={filterSessions(data.sessions, statusFilter, sessionSearch).length}
                 totalUnfiltered={data.sessions.length}
               />
               <SessionTable
