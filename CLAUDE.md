@@ -182,16 +182,29 @@ manager reaps `Device` rows for unattached hardware (`removeStaleDevices`), so a
 seeded row is deleted before the page loads. Run it with `npm run test:viewport`
 against a running server (dashboard enabled, auth disabled).
 
-Coverage boundary — the device-control route is the only **hermetically**
-guarded one: its device is fully mocked, and a dedicated test asserts the 11-button
-toolbar rendered, so it cannot pass vacuously. The other routes mock only the device
-list; their data-heavy tables render whatever the target server's DB holds. Each
-per-route test asserts the app **shell** rendered (`aside:has(nav)` with buttons),
-which catches a blank or crashed page — but **not** an empty-data one: a table with
-zero rows has nothing to overflow and passes vacuously (Selector Health's 9-column
-grid, for instance, doesn't mount without rows). So for the non-control routes the
-guard is only meaningful against a populated server. Making those routes hermetic
-(mocking their data endpoints too) is tracked as follow-up.
+Coverage boundary — all 15 routes in the matrix are now **hermetic**. The 11
+data-heavy routes (overview, devices, builds, builds/:buildId, apps,
+selector-health, selector-health/detail, teams, users, api-keys, notifications)
+route-mock their data endpoints via `ROUTE_DATA_MOCKS` with deliberately
+wide/hostile payloads — multiple rows plus a >100-char session subtitle, an
+>80-char selector XPath, a long bundle id, and long team/user names/emails — and
+a paired `ROUTE_CONTENT_CHECKS` assertion proves the route's real rows/grid
+actually mounted (e.g. `.sh-table__row` or `table tbody tr` `not.toHaveCount(0)`)
+rather than an `<EmptyState>` placeholder, before the overflow scan runs — a
+table with zero rows has nothing to overflow, so without this a broken mock
+would pass vacuously. The device-control route keeps its own dedicated device
+mock + 11-button toolbar test. The 3 static-form routes (settings, maintenance,
+ai-settings) render a fixed layout with no list data to gate on, so the
+app-**shell** check (`aside:has(nav)` with buttons) that every route runs is
+already non-vacuous for them, and they have no entry in either map.
+
+One dependency still passes through to the live server unmocked: `AuthProvider`
+(mounted app-wide, so every route pays this on mount) calls `GET
+/xenon/api/auth/me`. It isn't hermetic in the literal sense, but it's stable —
+with auth disabled the server always returns the same synthetic
+`SUPER_ADMIN`/`auth-disabled` identity regardless of DB state — and no route
+gates its row rendering on `me`, so it doesn't threaten the vacuous-pass
+guarantee above.
 
 Note `index.css` sets `body { overflow: hidden }`, so `document.scrollWidth`
 always equals `innerWidth`. It cannot detect overflow. Measure element rects.

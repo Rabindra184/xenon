@@ -716,7 +716,8 @@ const ROUTE_CONTENT_CHECKS: Record<string, Setup> = {
   },
 
   '/xenon/builds': async (page) => {
-    // Empty DB renders 'No builds match.' in the rail with no button.
+    // The route mock seeds builds, so the rail must render at least one
+    // build-row button (an empty rail would make the overflow check vacuous).
     await expect(page.locator('aside.w-\\[280px\\] button[type="button"]')).not.toHaveCount(0);
   },
 

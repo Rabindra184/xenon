@@ -16,7 +16,9 @@ export default function ProfilePage() {
       <PageHeader
         icon={UserCircle}
         title="Profile"
-        subtitle={me ? `${me.name || me.email} — ${me.role ?? ''}` : 'Your account settings.'}
+        subtitle={
+          me ? [me.name || me.email, me.role].filter(Boolean).join(' — ') : 'Your account settings.'
+        }
       />
       <div className="flex flex-1 min-h-0">
         <nav className="w-56 shrink-0 border-r border-[var(--border)] py-6 px-3">

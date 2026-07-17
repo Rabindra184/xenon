@@ -54,24 +54,6 @@ export function logRowKind(log: LogLike): LogRowKindStyle {
 }
 
 /**
- * One-line preview of the log entry's JSON payload — prefers `.body`, then
- * the whole entry, truncated to `maxLen`.
- */
-export function logInlinePreview(log: LogLike, maxLen = 220): string {
-  const body = (log as any).body;
-  let raw: string;
-  if (typeof body === 'string' && body.trim().length > 0) {
-    raw = body;
-  } else if (body && typeof body === 'object') {
-    try { raw = JSON.stringify(body); } catch { raw = String(body); }
-  } else {
-    try { raw = JSON.stringify(log); } catch { raw = String(log); }
-  }
-  raw = raw.replace(/\s+/g, ' ').trim();
-  return raw.length > maxLen ? raw.slice(0, maxLen) + '…' : raw;
-}
-
-/**
  * Pretty-print any value (object or string-of-JSON) for the expanded row.
  */
 export function prettyJson(value: unknown): string {
