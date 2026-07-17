@@ -38,6 +38,7 @@ import NodeDevices from '../device-managers/NodeDevices';
 import { config as xenonConfig } from '../config';
 import { SocketServer } from './SocketServer';
 import { SocketClient } from './SocketClient';
+import { EventLogService } from './EventLogService';
 import { TracingService } from './TracingService';
 import { ServerArgs, PluginConfig } from '@appium/types';
 import { XenonPlugin } from '../plugin';
@@ -109,6 +110,16 @@ export class ServerManager {
         log.warn(`LeaseOrphanSweeper tick failed: ${err?.message ?? err}`);
       });
     }, 30_000);
+
+    // Daily EventLog prune (transactional-outbox seed): keeps the append-only
+    // log from growing unbounded. Fire-and-forget interval, unref'd so it
+    // never keeps the process alive on its own.
+    const eventLog = Container.get(EventLogService);
+    setInterval(() => {
+      eventLog
+        .prune(Number(process.env.XENON_EVENT_LOG_RETENTION_DAYS || 30))
+        .catch((err: any) => log.warn(`EventLog prune failed: ${err?.message ?? err}`));
+    }, 24 * 60 * 60 * 1000).unref();
 
     // Cleanup any remaining zombie sessions (cross-node fallback)
     const { cleanupZombieSessions } = await import('../dashboard/services/session-service');
