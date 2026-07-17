@@ -132,7 +132,7 @@ Android-only in v1. Sessions opt in via any of the capability shapes accepted by
 
 ### Identity & Manual Locks
 
-API-key authentication: every dashboard request is gated by `apiKeyMiddleware` which sets `req.apiKey = { id, scopes, teamId, rateLimit }`. The same key can be exchanged for a `xenon_dashboard_session` cookie via `POST /auth/dashboard-session`. `scopeGuard(['devices'])` and `mutationScopeGuard(['devices'])` (mutations only — GETs always pass) enforce role-based access on routers like `/control`.
+Authentication: every `/xenon/api` request is gated by `authMiddleware` (`src/middleware/authMiddleware.ts`), which accepts either the (`x-xenon-access-key`, `x-xenon-token`) header pair or the `xenon_dashboard_session` cookie — a `UserSession` id, with a legacy raw-API-key fallback. There is no `Authorization: Bearer` path. It always sets `req.auth = { kind, userId, role, scopes, teamIds, rateLimit, … }`; `req.apiKey = { id, scopes, teamId, rateLimit }` is additionally set on the API-key paths only, never for cookie user-sessions. A raw API key can be exchanged for the cookie via `POST /auth/dashboard-session`, but only for SUPER_ADMIN owners. `scopeGuard(['devices'])` and `mutationScopeGuard(['devices'])` (mutations only — GETs always pass) enforce scope-based access on routers like `/control`.
 
 When the dashboard takes a soft lock on a device for live preview or recording, the `device.session_id` is written as `manual_<actorId>_<udid>` (encoded by `formatManualLock` in `src/services/recording/manualLock.ts`). All readers — `BusyPrecheck`, the `/stream/stop` route, the picker UI — call `inspectManualLock(blockId, actorId, udid)` to distinguish *self* from *another user* from *legacy `manual_<udid>`*. Locks owned by a different user can only be force-released by an admin-scope key.
 
@@ -240,7 +240,7 @@ npm run build:copy` (from the repo root) regenerates and copies it.
 | `src/helpers/UniversalMjpegProxy.ts` | One-upstream-to-many-clients MJPEG fan-out with backpressure |
 | `src/services/recording/RecordingOrchestrator.ts` | Per-device + composite recording lifecycle |
 | `src/services/recording/manualLock.ts` | `manual_<actorId>_<udid>` lock format helpers |
-| `src/middleware/apiKeyMiddleware.ts` | Populates `req.apiKey` from header or session cookie |
+| `src/middleware/authMiddleware.ts` | Populates `req.auth` (and `req.apiKey` on API-key paths) from the header pair or session cookie |
 | `web/src/App.tsx` | Frontend root component and routing |
 | `web/src/components/mosaic/DeviceMosaicView.tsx` | Live Devices / mosaic page entry point |
 
