@@ -115,11 +115,16 @@ export class ServerManager {
     // log from growing unbounded. Fire-and-forget interval, unref'd so it
     // never keeps the process alive on its own.
     const eventLog = Container.get(EventLogService);
-    setInterval(() => {
-      eventLog
-        .prune(Number(process.env.XENON_EVENT_LOG_RETENTION_DAYS || 30))
-        .catch((err: any) => log.warn(`EventLog prune failed: ${err?.message ?? err}`));
-    }, 24 * 60 * 60 * 1000).unref();
+    setInterval(
+      () => {
+        const rawRet = Number(process.env.XENON_EVENT_LOG_RETENTION_DAYS);
+        const retentionDays = Number.isFinite(rawRet) && rawRet > 0 ? rawRet : 30;
+        eventLog
+          .prune(retentionDays)
+          .catch((err: any) => log.warn(`EventLog prune failed: ${err?.message ?? err}`));
+      },
+      24 * 60 * 60 * 1000,
+    ).unref();
 
     // Cleanup any remaining zombie sessions (cross-node fallback)
     const { cleanupZombieSessions } = await import('../dashboard/services/session-service');

@@ -9,9 +9,9 @@ export function buildCapabilities() {
       bearerAuth: true,
       tokenIssuance: true,
       streamTickets: true,
-      leases: true,      // pre-existing: /sdk/leases
-      eventLog: true,    // Task 6
-      projects: true,    // Task 7
+      leases: true, // pre-existing: /sdk/leases
+      eventLog: true, // Task 6
+      projects: true, // Task 8
     },
   };
 }

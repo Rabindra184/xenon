@@ -7,9 +7,14 @@ export async function listProjects(client: typeof prisma, teamIds: string[] | un
   return client.project.findMany(where as any);
 }
 
-export async function createProject(client: typeof prisma, body: { name?: string; teamId?: string }) {
+export async function createProject(
+  client: typeof prisma,
+  body: { name?: string; teamId?: string },
+) {
   if (!body.name || !body.name.trim()) throw new Error('name is required');
-  return client.project.create({ data: { name: body.name.trim(), teamId: body.teamId ?? null } });
+  return client.project.create({
+    data: { name: body.name.trim(), teamId: body.teamId?.trim() || null },
+  });
 }
 
 export function projectsRouter(): Router {
@@ -22,8 +27,11 @@ export function projectsRouter(): Router {
     }
   });
   r.post('/', scopeGuard(['admin']), async (req, res) => {
-    try { res.status(201).json(await createProject(prisma, req.body ?? {})); }
-    catch (e: any) { res.status(400).json({ error: e.message }); }
+    try {
+      res.status(201).json(await createProject(prisma, req.body ?? {}));
+    } catch (e: any) {
+      res.status(400).json({ error: e.message });
+    }
   });
   return r;
 }

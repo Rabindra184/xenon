@@ -30,7 +30,10 @@ describe('JwtKeyService', () => {
   });
 
   it('signs and verifies a token round-trip with audience check', async () => {
-    const token = await svc.sign({ sub: 'user-1', scopes: 'devices,read' }, { audience: 'xenon-rest', ttlSeconds: 60 });
+    const token = await svc.sign(
+      { sub: 'user-1', scopes: 'devices,read' },
+      { audience: 'xenon-rest', ttlSeconds: 60 },
+    );
     const payload = await svc.verify(token, { audience: 'xenon-rest' });
     expect(payload.sub).to.equal('user-1');
     expect(payload.scopes).to.equal('devices,read');

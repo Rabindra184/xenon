@@ -17,6 +17,7 @@ const ISSUER = process.env.XENON_JWT_ISSUER || 'xenon-hub';
 export class JwtKeyService {
   private privateKey!: jose.KeyLike;
   private publicJwk!: jose.JWK;
+  private publicKey!: jose.KeyLike | Uint8Array;
   private kid!: string;
   // Boot degrades gracefully if key material is unavailable (bad perms, full
   // disk, corrupt PEM): the server still comes up, and only the token routes
@@ -38,6 +39,7 @@ export class JwtKeyService {
     // Public JWK derived from the private key; strip private fields.
     const fullJwk = await jose.exportJWK(this.privateKey);
     this.publicJwk = { kty: fullJwk.kty, n: fullJwk.n, e: fullJwk.e };
+    this.publicKey = await jose.importJWK({ ...this.publicJwk, alg: 'RS256' }, 'RS256');
     this.kid = createHash('sha256')
       .update(`${fullJwk.n}.${fullJwk.e}`)
       .digest('base64url')
@@ -62,8 +64,7 @@ export class JwtKeyService {
 
   async verify(token: string, opts: { audience: string }): Promise<jose.JWTPayload> {
     if (!this.initialized) throw new Error('JWT key service not initialized');
-    const publicKey = await jose.importJWK({ ...this.publicJwk, alg: 'RS256' }, 'RS256');
-    const { payload } = await jose.jwtVerify(token, publicKey, {
+    const { payload } = await jose.jwtVerify(token, this.publicKey, {
       issuer: ISSUER,
       audience: opts.audience,
       clockTolerance: 60, // spec §7.1: ±60 s skew, mirrors appium-mcp-auth
