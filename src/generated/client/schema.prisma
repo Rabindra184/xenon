@@ -437,3 +437,15 @@ model TeamMember {
   @@id([teamId, userId])
   @@index([userId])
 }
+
+model EventLog {
+  id            String   @id @default(cuid())
+  type          String
+  payload       String // JSON string — portable, no SQLite-isms
+  correlationId String?
+  teamId        String?
+  occurredAt    DateTime @default(now())
+
+  @@index([type, occurredAt])
+  @@index([occurredAt])
+}
