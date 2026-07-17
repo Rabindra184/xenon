@@ -18,11 +18,19 @@ export class FsArtifactStore implements ArtifactStore {
   constructor(private readonly rootDir: string) {}
 
   resolve(...segments: string[]): string {
-    const abs = path.resolve(this.rootDir, ...segments);
-    if (!abs.startsWith(path.resolve(this.rootDir) + path.sep) && abs !== path.resolve(this.rootDir)) {
-      throw new Error(`artifact path resolves outside the store root: ${abs}`);
+    // Byte-identical to the legacy `path.join(config.recordingsAssetsPath, ...)`
+    // this replaced — including under a RELATIVE root (e.g. a relative
+    // XENON_RECORDINGS_ASSETS_PATH override): path.join stays relative,
+    // path.resolve would silently absolutize it. path.resolve is used ONLY
+    // to compute an absolute form for the traversal guard, never for the
+    // returned value.
+    const joined = path.join(this.rootDir, ...segments);
+    const absRoot = path.resolve(this.rootDir);
+    const abs = path.resolve(joined);
+    if (abs !== absRoot && !abs.startsWith(absRoot + path.sep)) {
+      throw new Error(`artifact path escapes store root: ${joined}`);
     }
-    return abs;
+    return joined;
   }
 
   async ensureDir(...segments: string[]): Promise<string> {

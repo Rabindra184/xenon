@@ -17,9 +17,24 @@ describe('FsArtifactStore', () => {
     expect(store.resolve('_groups', 'g1', 'composite.mp4')).to.equal(legacy);
   });
 
+  it('resolve() stays byte-identical (relative, NOT absolutized) under a relative root', () => {
+    // config.recordingsAssetsPath is overridable via XENON_RECORDINGS_ASSETS_PATH
+    // with no absolute-path validation. Legacy code was path.join, which keeps a
+    // relative root relative; path.resolve would silently absolutize it and flip
+    // every persisted filePath relative→absolute. Byte-identical means path.join.
+    const store = new FsArtifactStore('rel/root');
+    const legacy = path.join('rel/root', '_groups', 'g1', 'composite.mp4');
+    expect(store.resolve('_groups', 'g1', 'composite.mp4')).to.equal(legacy);
+  });
+
+  it('resolve() with no segments returns the root and does not throw', () => {
+    const store = new FsArtifactStore(root);
+    expect(store.resolve()).to.equal(root);
+  });
+
   it('refuses path traversal outside the root', () => {
     const store = new FsArtifactStore(root);
-    expect(() => store.resolve('..', 'etc', 'passwd')).to.throw(/outside/);
+    expect(() => store.resolve('..', 'etc', 'passwd')).to.throw(/escapes store root/);
   });
 
   it('ensureDir creates nested directories and returns the absolute path', async () => {

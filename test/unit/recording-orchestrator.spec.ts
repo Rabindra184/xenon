@@ -21,6 +21,11 @@ before(() => {
   Container.set(ARTIFACT_STORE, new FsArtifactStore(os.tmpdir()));
 });
 
+// Don't leave the global container polluted for later spec files in the run.
+after(() => {
+  Container.remove(ARTIFACT_STORE);
+});
+
 function makeOrch(overrides: any = {}) {
   const busyPrecheck = overrides.busyPrecheck ?? { findBusy: sinon.stub().resolves([]) };
   const store =
