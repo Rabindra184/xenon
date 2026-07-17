@@ -31,6 +31,7 @@ import { authPublicRouter, authAuthedRouter } from './routers/auth';
 import { processesRouter } from './routers/processes';
 import { profileRouter } from './routers/profile';
 import { usersRouter } from './routers/users';
+import { capabilitiesRouter } from './routers/capabilities';
 import { authMiddleware } from '../middleware/authMiddleware';
 import { rateLimitMiddleware } from '../middleware/rateLimitMiddleware';
 import { csrfMiddleware } from '../middleware/csrfMiddleware';
@@ -236,6 +237,8 @@ function createRouter(pluginArgs: IPluginArgs) {
   apiRouter.use('/teams', teamsRouter());
   // Admin: running process snapshot (ops debugging)
   apiRouter.use('/processes', processesRouter());
+  // Feature detection endpoint
+  apiRouter.use('/capabilities', capabilitiesRouter());
 
   // Exposes plugin CLI args (may include host, hub URL, etc.) — auth-gated.
   apiRouter.get('/cliArgs', async (_req, res) => {
