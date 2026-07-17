@@ -5,7 +5,7 @@ declare global {
   namespace Express {
     interface Request {
       auth?: {
-        kind: 'user-session' | 'api-key' | 'bearer';
+        kind: 'user-session' | 'api-key' | 'bearer' | 'stream-ticket';
         userId: string;
         role: UserRole;
         scopes: string;

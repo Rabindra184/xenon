@@ -5,6 +5,7 @@ import { ApiKeyService } from '../services/ApiKeyService';
 import { UserSessionService } from '../services/UserSessionService';
 import { UserService } from '../services/UserService';
 import { JwtKeyService } from '../services/token/JwtKeyService';
+import { StreamTicketService } from '../services/token/StreamTicketService';
 import { config } from '../config';
 import { prisma } from '../prisma';
 
@@ -203,6 +204,32 @@ export async function authMiddleware(req: Request, res: Response, next: NextFunc
       };
       req.apiKey = { id: row.id, scopes: row.scopes, rateLimit: row.rateLimit, teamId: row.teamId ?? null };
       return next();
+    }
+  }
+
+  // Path 3: single-use stream ticket — ONLY for GET <control>/:udid/stream.
+  // req.path here is relative to apiRouter's own mount (authMiddleware is
+  // registered directly on apiRouter, before ControlRouter mounts '/control'
+  // onto it), so it is '/control/<udid>/stream' — not the full
+  // '/xenon/api/control/...' external URL. Verified against
+  // src/app/index.ts (apiRouter.use(authMiddleware) at line 223, then
+  // ControlRouter.register(apiRouter) -> parentRouter.use('/control', router)).
+  const ticket = req.query?.ticket;
+  const streamMatch = req.method === 'GET' && /^\/control\/([^/]+)\/stream$/.exec(req.path);
+  if (typeof ticket === 'string' && streamMatch) {
+    try {
+      const { actorId } = await Container.get(StreamTicketService).redeem(ticket, streamMatch[1]);
+      req.auth = {
+        kind: 'stream-ticket',
+        userId: actorId,
+        role: 'MEMBER',
+        scopes: 'read',
+        rateLimit: 300,
+        teamIds: undefined,
+      };
+      return next();
+    } catch {
+      return res.status(401).json({ error: 'invalid ticket' });
     }
   }
 

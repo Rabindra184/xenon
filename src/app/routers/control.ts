@@ -14,6 +14,7 @@ import os from 'os';
 import fs from 'fs-extra';
 import { OmniVisionService } from '../../services/omni-vision/OmniVisionService';
 import { InspectorService } from '../../services/InspectorService';
+import { StreamTicketService } from '../../services/token/StreamTicketService';
 import { mutationScopeGuard } from '../../middleware/scopeGuard';
 import { roleGuard } from '../../middleware/roleGuard';
 import {
@@ -571,6 +572,18 @@ router.post('/:udid/stream/start', async (req: Request, res: Response) => {
       error: err.message,
     });
   }
+});
+
+/**
+ * Mint a single-use, udid-bound stream ticket for the webview <img> MJPEG
+ * path (spec §2.3/§7.1) — a raw <img src> can carry neither auth headers nor
+ * the SameSite=strict dashboard cookie, so it authenticates via ?ticket=.
+ */
+router.post('/:udid/stream/ticket', async (req: Request, res: Response) => {
+  const actorId = req.apiKey?.id ?? req.auth?.userId;
+  if (!actorId) return res.status(401).json({ error: 'unauthenticated' });
+  const ticket = await Container.get(StreamTicketService).mint(req.params.udid, actorId);
+  res.json({ ticket, expiresIn: 60 });
 });
 
 /**
