@@ -46,8 +46,8 @@ describe('JwtKeyService', () => {
     }
   });
 
-  it('rejects expired tokens', async () => {
-    const token = await svc.sign({ sub: 'u' }, { audience: 'xenon-rest', ttlSeconds: -10 });
+  it('rejects tokens expired beyond the 60s clock tolerance', async () => {
+    const token = await svc.sign({ sub: 'u' }, { audience: 'xenon-rest', ttlSeconds: -120 });
     try {
       await svc.verify(token, { audience: 'xenon-rest' });
       expect.fail('should have thrown');

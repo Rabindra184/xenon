@@ -59,7 +59,7 @@ export class JwtKeyService {
     const { payload } = await jose.jwtVerify(token, publicKey, {
       issuer: ISSUER,
       audience: opts.audience,
-      clockTolerance: 0, // spec §7.1: ±60 s skew, mirrors appium-mcp-auth (use 0 for strict testing)
+      clockTolerance: 60, // spec §7.1: ±60 s skew, mirrors appium-mcp-auth
     });
     return payload;
   }
