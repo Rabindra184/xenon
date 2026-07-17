@@ -15,6 +15,7 @@ import { PluginContext } from '../PluginContext';
 import IOSStreamService from './ios/IOSStreamService';
 import { IOSDiscoveryService } from './ios/IOSDiscoveryService';
 import { WDAClient } from './ios/WDAClient';
+import { parseBatteryCapacity } from './ios/iosBattery';
 
 const execPromise = promisify(exec);
 
@@ -185,10 +186,12 @@ export default class IOSDeviceManager implements IDeviceManager {
     if (device.cloud) return { healthStatus: 'Healthy' };
     try {
       if (device.realDevice) {
+        // Best-effort battery telemetry (iOS exposes level but not thermal).
+        const batteryLevel = await this.collectBatteryLevel(device.udid);
         // Collect hardware stats via WDAClient (which uses go-ios if available)
         // For simplicity, we'll keep some health check logic here but use the client for WDA status
         const isReady = await Container.get(WDAClient).verifyWDAStatus(device.udid);
-        if (isReady) return { healthStatus: 'Healthy' };
+        if (isReady) return { healthStatus: 'Healthy', batteryLevel };
 
         // Principal Intelligence: If the device is IDLE (not busy) and WDA is down,
         // check if this is expected (e.g. watchdog stopped the stream).
@@ -199,11 +202,11 @@ export default class IOSDeviceManager implements IDeviceManager {
             !streamStatus ||
             (streamStatus.status !== 'running' && streamStatus.status !== 'starting')
           ) {
-            return { healthStatus: 'Healthy', healthCheckError: 'Idle (WDA Stopped)' };
+            return { healthStatus: 'Healthy', healthCheckError: 'Idle (WDA Stopped)', batteryLevel };
           }
         }
 
-        return { healthStatus: 'Unhealthy', healthCheckError: 'WDA not responding' };
+        return { healthStatus: 'Unhealthy', healthCheckError: 'WDA not responding', batteryLevel };
       } else {
         const simctl = new Simctl();
         const list = await simctl.list();
@@ -216,6 +219,24 @@ export default class IOSDeviceManager implements IDeviceManager {
       }
     } catch (err: any) {
       return { healthStatus: 'Unhealthy', healthCheckError: err.message };
+    }
+  }
+
+  /**
+   * Best-effort iOS battery level (0–100) via libimobiledevice. Returns
+   * undefined on any failure (tool missing, device locked, parse miss) so the
+   * health check never breaks over telemetry — the card just shows no battery,
+   * exactly as before this was collected.
+   */
+  private async collectBatteryLevel(udid: string): Promise<number | undefined> {
+    try {
+      const { stdout } = await execPromise(
+        `ideviceinfo -u ${udid} -q com.apple.mobile.battery`,
+      );
+      return parseBatteryCapacity(stdout);
+    } catch (e: any) {
+      this.log.debug(`Battery telemetry unavailable for ${udid}: ${e.message}`);
+      return undefined;
     }
   }
 
