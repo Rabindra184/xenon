@@ -1,7 +1,7 @@
 import React, { useMemo } from 'react';
 import type { ISession } from '../../interfaces/ISession';
 import type { StatusKey } from './derive';
-import { sessionStatusBucket } from './derive';
+import { filterSessions } from './derive';
 import { SessionRow } from './session-row';
 
 interface Props {
@@ -15,11 +15,6 @@ interface Props {
   buildHasNoSessions: boolean;
 }
 
-function matchesStatus(s: ISession, key: StatusKey): boolean {
-  if (key === 'all') return true;
-  return sessionStatusBucket(s.status) === key;
-}
-
 export const SessionTable: React.FC<Props> = ({
   sessions,
   statusFilter,
@@ -30,24 +25,10 @@ export const SessionTable: React.FC<Props> = ({
   onOpenRow,
   buildHasNoSessions,
 }) => {
-  const filtered = useMemo(() => {
-    const q = searchQuery.trim().toLowerCase();
-    return sessions.filter((s) => {
-      if (!matchesStatus(s, statusFilter)) return false;
-      if (q) {
-        const hay = (
-          s.id + ' ' +
-          (s.name ?? '') + ' ' +
-          (s.device_name ?? '') + ' ' +
-          (s.device_platform ?? '') + ' ' +
-          (s.device_version ?? '') + ' ' +
-          (s.node_id ?? '')
-        ).toLowerCase();
-        if (!hay.includes(q)) return false;
-      }
-      return true;
-    });
-  }, [sessions, statusFilter, searchQuery]);
+  const filtered = useMemo(
+    () => filterSessions(sessions, statusFilter, searchQuery),
+    [sessions, statusFilter, searchQuery],
+  );
 
   if (buildHasNoSessions) {
     return (

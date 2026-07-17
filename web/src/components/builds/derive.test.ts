@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   buildStatusCounts,
   sessionStatusBucket,
+  filterSessions,
   deviceNameOrFallback,
   platformLabel,
   osVersionLabel,
@@ -70,6 +71,44 @@ describe('buildStatusCounts', () => {
 
   it('handles empty array', () => {
     expect(buildStatusCounts([])).toEqual({ all: 0, passed: 0, failed: 0, running: 0 });
+  });
+});
+
+describe('filterSessions', () => {
+  const sessions = [
+    { id: 's1', status: 'success', device_name: 'Pixel 7', device_platform: 'android' },
+    { id: 's2', status: 'success', device_name: 'iPhone 15', device_platform: 'ios' },
+    { id: 's3', status: 'failed', device_name: 'Pixel 7', device_platform: 'android' },
+  ] as any;
+
+  it('returns all sessions for the "all" filter with no search', () => {
+    expect(filterSessions(sessions, 'all', '').length).toBe(3);
+  });
+
+  it('filters by status bucket (success counts as passed)', () => {
+    expect(filterSessions(sessions, 'passed', '').map((s) => s.id)).toEqual(['s1', 's2']);
+    expect(filterSessions(sessions, 'failed', '').map((s) => s.id)).toEqual(['s3']);
+  });
+
+  it('matches the count the "X of Y" label should show under a filter (regression)', () => {
+    // Was: label showed total (3) regardless of filter. Now: matches filtered rows.
+    expect(filterSessions(sessions, 'passed', '').length).toBe(2);
+    expect(filterSessions(sessions, 'running', '').length).toBe(0);
+  });
+
+  it('applies free-text search across id/name/platform, case-insensitively', () => {
+    expect(filterSessions(sessions, 'all', 'iphone').map((s) => s.id)).toEqual(['s2']);
+    expect(filterSessions(sessions, 'all', 'android').length).toBe(2);
+    expect(filterSessions(sessions, 'all', 's3').map((s) => s.id)).toEqual(['s3']);
+  });
+
+  it('combines status filter and search (both must match)', () => {
+    expect(filterSessions(sessions, 'passed', 'pixel').map((s) => s.id)).toEqual(['s1']);
+    expect(filterSessions(sessions, 'failed', 'iphone').length).toBe(0);
+  });
+
+  it('trims/ignores whitespace-only search', () => {
+    expect(filterSessions(sessions, 'all', '   ').length).toBe(3);
   });
 });
 

@@ -329,10 +329,8 @@ export function DeviceTile({
         <div
           className="flex flex-col items-center justify-center bg-neutral-900 text-neutral-400 absolute inset-0 z-20"
         >
-          {/* BIG RED CANARY SPINNER - Must be visible if code is active */}
           <div className="relative flex items-center justify-center">
-            <div className="w-12 h-12 border-4 border-neutral-800 border-t-red-500 rounded-full animate-spin" />
-            <div className="absolute text-[10px] text-red-500 font-bold">WDA</div>
+            <div className="w-12 h-12 border-4 border-neutral-800 border-t-neutral-400 rounded-full animate-spin" />
           </div>
           <div className="mt-4 font-bold text-neutral-200">Starting Stream…</div>
           <div className="text-[10px] mt-1 text-neutral-500 opacity-60 font-mono">{udid}</div>
