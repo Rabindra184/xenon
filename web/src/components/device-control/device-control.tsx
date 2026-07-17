@@ -35,6 +35,7 @@ import {
 import { v4 as uuidv4 } from 'uuid';
 import { formatDateTime } from '../../utils/time';
 import { useToast } from '../ui/toast';
+import { Select } from '../ui/select';
 import './device-control.css';
 import { Terminal } from '../terminal/terminal';
 import OmniInspector from '../omni-inspector/OmniInspector';
@@ -987,8 +988,9 @@ export default function DeviceControl({ device, onClose }: DeviceControlProps) {
                         <p className="compact-label">Quick Uninstall</p>
                         <div className="uninstall-controls-row">
                           <div className="select-wrapper">
-                            <select
-                              className="app-select-dropdown compact"
+                            <Select
+                              selectSize="sm"
+                              className="w-full"
                               value={uninstallBundleId}
                               onChange={(e) => setUninstallBundleId(e.target.value)}
                               disabled={fetchingApps}
@@ -1001,7 +1003,7 @@ export default function DeviceControl({ device, onClose }: DeviceControlProps) {
                                   {app}
                                 </option>
                               ))}
-                            </select>
+                            </Select>
                             {fetchingApps && (
                               <Loader2 className="animate-spin select-loader" size={12} />
                             )}

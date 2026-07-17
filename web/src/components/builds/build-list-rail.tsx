@@ -4,6 +4,8 @@ import type { IBuild } from '../../interfaces/IBuild';
 import { formatAbsoluteTime, shortId } from './derive';
 import { CountBadge } from '../ui/count-badge';
 import { StatusSummaryCard } from '../ui/status-summary-card';
+import { Input } from '../ui/input';
+import { Select } from '../ui/select';
 
 export type TimeFilter = 'all' | '24h' | '7d' | '30d';
 
@@ -68,23 +70,24 @@ export const BuildListRail: React.FC<Props> = ({
       <div className="p-3 space-y-2 border-b border-[var(--border)]">
         <div className="relative">
           <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-[var(--text-dim)]" />
-          <input
+          <Input
             type="text"
             value={search}
             onChange={(e) => onSearchChange(e.target.value)}
             placeholder="Find builds…"
-            className="w-full h-8 pl-8 pr-2 rounded-md bg-[var(--bg)] border border-[var(--border)] text-xs text-[var(--text)] placeholder:text-[var(--text-dim)] focus:outline-none focus:border-[var(--border-strong)]"
+            className="w-full h-8 pl-8 pr-2 text-xs"
           />
         </div>
-        <select
+        <Select
           value={timeFilter}
           onChange={(e) => onTimeFilterChange(e.target.value as TimeFilter)}
-          className="w-full h-8 px-2 rounded-md bg-[var(--bg)] border border-[var(--border)] text-xs text-[var(--text-muted)]"
+          selectSize="sm"
+          className="w-full text-xs text-[var(--text-muted)]"
         >
           {(Object.keys(TIME_LABEL) as TimeFilter[]).map((k) => (
             <option key={k} value={k}>{TIME_LABEL[k]}</option>
           ))}
-        </select>
+        </Select>
       </div>
 
       {/* Status summary strip */}

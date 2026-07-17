@@ -12,6 +12,9 @@ import { forgotPassword } from '../api-service/auth';
 import { useAuth } from '../auth/auth-context';
 import { formatDateTime } from '../utils/time';
 import { PageHeader } from '../components/ui/page-header';
+import { Button } from '../components/ui/button';
+import { Input } from '../components/ui/input';
+import { Select } from '../components/ui/select';
 
 const ROLE_LABELS: Record<UserRow['role'], string> = {
   SUPER_ADMIN: 'Super Admin',
@@ -192,12 +195,9 @@ export default function UsersPage() {
               {revealedPassword.password}
             </code>
             <div className="flex justify-end">
-              <button
-                onClick={() => setRevealedPassword(null)}
-                className="h-9 px-4 rounded-md bg-[var(--green)] text-black text-sm font-medium"
-              >
+              <Button variant="primary" onClick={() => setRevealedPassword(null)}>
                 Done
-              </button>
+              </Button>
             </div>
           </div>
         </div>
@@ -244,45 +244,41 @@ function InviteModal({
       <form onSubmit={submit} className="bg-[var(--bg)] border border-[var(--border)] rounded-lg w-full max-w-md p-6">
         <h3 className="text-lg font-semibold mb-4">Invite User</h3>
         <label className="block text-xs text-[var(--text-dim)] mb-1">Email</label>
-        <input
+        <Input
           type="email"
           value={email}
           onChange={(e) => setEmail(e.target.value)}
           autoFocus
           required
-          className="w-full mb-3 h-10 px-3 rounded-md bg-[var(--surface)] border border-[var(--border)] text-sm"
+          className="w-full mb-3"
         />
         <label className="block text-xs text-[var(--text-dim)] mb-1">Name</label>
-        <input
+        <Input
           value={name}
           onChange={(e) => setName(e.target.value)}
           required
-          className="w-full mb-3 h-10 px-3 rounded-md bg-[var(--surface)] border border-[var(--border)] text-sm"
+          className="w-full mb-3"
         />
         <label className="block text-xs text-[var(--text-dim)] mb-1">Role</label>
-        <select
+        <Select
           value={role}
           onChange={(e) => setRole(e.target.value as UserRow['role'])}
-          className="w-full mb-4 h-10 px-3 rounded-md bg-[var(--surface)] border border-[var(--border)] text-sm"
+          className="mb-4"
         >
           {allowedRoles.map((r) => (
             <option key={r} value={r}>
               {ROLE_LABELS[r]}
             </option>
           ))}
-        </select>
+        </Select>
         {error && <div className="text-xs text-[var(--red)] mb-2">{error}</div>}
         <div className="flex justify-end gap-2">
-          <button type="button" onClick={onClose} className="h-9 px-3 rounded-md border border-[var(--border)] text-sm">
+          <Button type="button" variant="secondary" onClick={onClose}>
             Cancel
-          </button>
-          <button
-            type="submit"
-            disabled={busy || !email || !name}
-            className="h-9 px-4 rounded-md bg-[var(--green)] text-black text-sm font-medium disabled:opacity-50"
-          >
+          </Button>
+          <Button type="submit" variant="primary" disabled={busy || !email || !name}>
             {busy ? 'Creating…' : 'Create'}
-          </button>
+          </Button>
         </div>
       </form>
     </div>
@@ -323,43 +319,39 @@ function EditModal({
       <form onSubmit={submit} className="bg-[var(--bg)] border border-[var(--border)] rounded-lg w-full max-w-md p-6">
         <h3 className="text-lg font-semibold mb-4">Edit User — {user.email}</h3>
         <label className="block text-xs text-[var(--text-dim)] mb-1">Name</label>
-        <input
+        <Input
           value={name}
           onChange={(e) => setName(e.target.value)}
           required
-          className="w-full mb-3 h-10 px-3 rounded-md bg-[var(--surface)] border border-[var(--border)] text-sm"
+          className="w-full mb-3"
         />
         <label className="block text-xs text-[var(--text-dim)] mb-1">Role</label>
-        <select
+        <Select
           value={role}
           onChange={(e) => setRole(e.target.value as UserRow['role'])}
-          className="w-full mb-3 h-10 px-3 rounded-md bg-[var(--surface)] border border-[var(--border)] text-sm"
+          className="mb-3"
         >
           <option value="SUPER_ADMIN">Super Admin</option>
           <option value="ADMIN">Admin</option>
           <option value="MEMBER">Member</option>
-        </select>
+        </Select>
         <label className="block text-xs text-[var(--text-dim)] mb-1">Status</label>
-        <select
+        <Select
           value={status}
           onChange={(e) => setStatus(e.target.value as UserRow['status'])}
-          className="w-full mb-4 h-10 px-3 rounded-md bg-[var(--surface)] border border-[var(--border)] text-sm"
+          className="mb-4"
         >
           <option value="ACTIVE">Active</option>
           <option value="INACTIVE">Inactive</option>
-        </select>
+        </Select>
         {error && <div className="text-xs text-[var(--red)] mb-2">{error}</div>}
         <div className="flex justify-end gap-2">
-          <button type="button" onClick={onClose} className="h-9 px-3 rounded-md border border-[var(--border)] text-sm">
+          <Button type="button" variant="secondary" onClick={onClose}>
             Cancel
-          </button>
-          <button
-            type="submit"
-            disabled={busy}
-            className="h-9 px-4 rounded-md bg-[var(--green)] text-black text-sm font-medium disabled:opacity-50"
-          >
+          </Button>
+          <Button type="submit" variant="primary" disabled={busy}>
             {busy ? 'Saving…' : 'Save'}
-          </button>
+          </Button>
         </div>
       </form>
     </div>

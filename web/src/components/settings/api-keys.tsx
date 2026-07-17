@@ -16,6 +16,9 @@ import { Table, THead, TBody, TR, TH, TD } from '../ui/Table';
 import { FieldGroup } from '../ui/FieldGroup';
 import { PageHeader } from '../ui/page-header';
 import { Modal } from '../ui/Modal';
+import { Button } from '../ui/button';
+import { Input } from '../ui/input';
+import { Select } from '../ui/select';
 
 type Scope = 'read' | 'sessions' | 'devices' | 'admin';
 const ALL_SCOPES: Scope[] = ['read', 'sessions', 'devices', 'admin'];
@@ -376,25 +379,25 @@ export const ApiKeys: React.FC = () => {
         onClose={() => setShowCreate(false)}
         footer={
           <>
-            <button className="reset-btn" onClick={() => setShowCreate(false)} disabled={submitting}>
+            <Button variant="secondary" onClick={() => setShowCreate(false)} disabled={submitting}>
               Cancel
-            </button>
-            <button className="save-btn" onClick={submitCreate} disabled={submitting}>
+            </Button>
+            <Button variant="primary" onClick={submitCreate} disabled={submitting}>
               {submitting ? <RefreshCw className="animate-spin" size={18} /> : <Plus size={18} />}
               {submitting ? 'Creating…' : 'Create key'}
-            </button>
+            </Button>
           </>
         }
       >
         <div style={{ display: 'flex', flexDirection: 'column' }}>
           <FieldGroup label="Name" htmlFor="apikey-name">
-            <input
+            <Input
               id="apikey-name"
               type="text"
               value={newName}
               onChange={(e) => setNewName(e.target.value)}
               placeholder="alice-laptop, ci-main, etc."
-              style={input}
+              className="w-full"
               autoFocus
             />
           </FieldGroup>
@@ -425,14 +428,14 @@ export const ApiKeys: React.FC = () => {
           </FieldGroup>
 
           <FieldGroup label="Rate limit (requests/min)" htmlFor="apikey-ratelimit">
-            <input
+            <Input
               id="apikey-ratelimit"
               type="number"
               min={10}
               step={10}
               value={newRateLimit}
               onChange={(e) => setNewRateLimit(parseInt(e.target.value) || 300)}
-              style={input}
+              className="w-full"
             />
           </FieldGroup>
 
@@ -446,11 +449,11 @@ export const ApiKeys: React.FC = () => {
             }
             htmlFor="apikey-team"
           >
-            <select
+            <Select
               id="apikey-team"
               value={newTeamId}
               onChange={(e) => setNewTeamId(e.target.value)}
-              style={input}
+              className="w-full"
             >
               <option value="">No team (shared pool only)</option>
               {teams.map((t) => (
@@ -458,7 +461,7 @@ export const ApiKeys: React.FC = () => {
                   {t.name}
                 </option>
               ))}
-            </select>
+            </Select>
           </FieldGroup>
 
           <FieldGroup
@@ -470,18 +473,18 @@ export const ApiKeys: React.FC = () => {
             }
             htmlFor="apikey-expiry"
           >
-            <select
+            <Select
               id="apikey-expiry"
               value={newExpiry}
               onChange={(e) => setNewExpiry(e.target.value as ExpiryPreset)}
-              style={input}
+              className="w-full"
             >
               {(Object.keys(EXPIRY_PRESET_LABEL) as ExpiryPreset[]).map((p) => (
                 <option key={p} value={p}>
                   {EXPIRY_PRESET_LABEL[p]}
                 </option>
               ))}
-            </select>
+            </Select>
           </FieldGroup>
         </div>
       </Modal>
@@ -494,17 +497,17 @@ export const ApiKeys: React.FC = () => {
         closeOnOverlayClick={false}
         footer={
           <>
-            <button
-              className="save-btn"
+            <Button
+              variant="primary"
               onClick={() => revealKey && copyKey(revealKey.raw)}
               disabled={!revealKey}
             >
               {copied ? <Check size={18} /> : <Copy size={18} />}
               {copied ? 'Copied' : 'Copy to clipboard'}
-            </button>
-            <button className="reset-btn" onClick={() => setRevealKey(null)}>
+            </Button>
+            <Button variant="secondary" onClick={() => setRevealKey(null)}>
               I've saved it
-            </button>
+            </Button>
           </>
         }
       >
@@ -546,16 +549,6 @@ export const ApiKeys: React.FC = () => {
   );
 };
 
-const input: React.CSSProperties = {
-  width: '100%',
-  padding: '8px 12px',
-  background: 'rgba(0,0,0,0.3)',
-  border: '1px solid rgba(255,255,255,0.1)',
-  borderRadius: 6,
-  color: 'inherit',
-  fontSize: '0.95em',
-  boxSizing: 'border-box',
-};
 const scopeLabel: React.CSSProperties = {
   display: 'flex',
   alignItems: 'center',

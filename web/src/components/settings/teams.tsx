@@ -15,6 +15,9 @@ import { Table, THead, TBody, TR, TH, TD } from '../ui/Table';
 import { FieldGroup } from '../ui/FieldGroup';
 import { PageHeader } from '../ui/page-header';
 import { Modal } from '../ui/Modal';
+import { Button } from '../ui/button';
+import { Input } from '../ui/input';
+import { Select } from '../ui/select';
 import { listUsers, UserRow } from '../../api-service/users';
 
 interface TeamRow {
@@ -271,25 +274,25 @@ const CreateTeamModal: React.FC<{ onClose: () => void; onCreated: () => void }> 
       title="New team"
       footer={
         <>
-          <button className="reset-btn" onClick={onClose} disabled={submitting}>
+          <Button variant="secondary" onClick={onClose} disabled={submitting}>
             Cancel
-          </button>
-          <button className="save-btn" onClick={submit} disabled={submitting}>
+          </Button>
+          <Button variant="primary" onClick={submit} disabled={submitting}>
             {submitting ? <RefreshCw className="animate-spin" size={18} /> : <Plus size={18} />}
             {submitting ? 'Creating…' : 'Create'}
-          </button>
+          </Button>
         </>
       }
     >
       <div style={{ display: 'flex', flexDirection: 'column' }}>
         <FieldGroup label="Name" htmlFor="team-name">
-          <input
+          <Input
             id="team-name"
             type="text"
             value={name}
             onChange={(e) => setName(e.target.value)}
             placeholder="android-team, qa-ios, …"
-            style={inputStyle}
+            className="w-full"
             autoFocus
           />
         </FieldGroup>
@@ -456,10 +459,10 @@ const TeamDetail: React.FC<{ team: TeamRow; onBack: () => void }> = ({ team, onB
             <h3 style={{ marginBottom: 12 }}>Members ({members.length})</h3>
             <div className="surface-card" style={{ padding: 12 }}>
               <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
-                <select
+                <Select
                   value={addUserId}
                   onChange={(e) => setAddUserId(e.target.value)}
-                  style={{ ...inputStyle, flex: 1 }}
+                  className="flex-1"
                 >
                   <option value="">Select a user to add…</option>
                   {availableUsers.map((u) => (
@@ -467,10 +470,10 @@ const TeamDetail: React.FC<{ team: TeamRow; onBack: () => void }> = ({ team, onB
                       {u.name} ({u.email}) — {ROLE_LABELS[u.role]}
                     </option>
                   ))}
-                </select>
-                <button className="save-btn" onClick={addMember} disabled={!addUserId}>
+                </Select>
+                <Button variant="primary" onClick={addMember} disabled={!addUserId}>
                   <Plus size={16} /> Add
-                </button>
+                </Button>
               </div>
               {members.length === 0 ? (
                 <p style={{ opacity: 0.6, textAlign: 'center', padding: 24 }}>
@@ -519,10 +522,10 @@ const TeamDetail: React.FC<{ team: TeamRow; onBack: () => void }> = ({ team, onB
             <h3 style={{ marginBottom: 12 }}>Devices ({devices.length})</h3>
             <div className="surface-card" style={{ padding: 12 }}>
               <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
-                <select
+                <Select
                   value={assignUdid}
                   onChange={(e) => setAssignUdid(e.target.value)}
-                  style={{ ...inputStyle, flex: 1 }}
+                  className="flex-1"
                 >
                   <option value="">Select a shared-pool device to assign…</option>
                   {sharedDevices.map((d) => (
@@ -530,10 +533,10 @@ const TeamDetail: React.FC<{ team: TeamRow; onBack: () => void }> = ({ team, onB
                       {d.name} ({d.platform}) — {d.udid.slice(0, 12)}…
                     </option>
                   ))}
-                </select>
-                <button className="save-btn" onClick={assignDevice} disabled={!assignUdid}>
+                </Select>
+                <Button variant="primary" onClick={assignDevice} disabled={!assignUdid}>
                   <Plus size={16} /> Assign
-                </button>
+                </Button>
               </div>
               {devices.length === 0 ? (
                 <p style={{ opacity: 0.6, textAlign: 'center', padding: 24 }}>
@@ -576,15 +579,4 @@ const TeamDetail: React.FC<{ team: TeamRow; onBack: () => void }> = ({ team, onB
       )}
     </div>
   );
-};
-
-const inputStyle: React.CSSProperties = {
-  width: '100%',
-  padding: '8px 12px',
-  background: 'rgba(0,0,0,0.3)',
-  border: '1px solid rgba(255,255,255,0.1)',
-  borderRadius: 6,
-  color: 'inherit',
-  fontSize: '0.95em',
-  boxSizing: 'border-box',
 };

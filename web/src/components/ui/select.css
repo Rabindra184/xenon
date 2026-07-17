@@ -1,0 +1,47 @@
+/* Shared Select — a native <select> with the OS chrome removed and the kit's
+   form-control styling applied, so every dropdown matches (and keeps native
+   keyboard/a11y behavior). Mirrors .input-base. */
+.select-base {
+  height: 36px;
+  width: 100%;
+  box-sizing: border-box;
+  padding: 0 30px 0 12px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background-color: rgba(0, 0, 0, 0.3);
+  color: var(--text);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 13px;
+  cursor: pointer;
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  /* chevron */
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%238b8b8b' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><polyline points='6 9 12 15 18 9'/></svg>");
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+  transition: border-color var(--motion-fast), background-color var(--motion-fast);
+}
+
+.select-base:focus {
+  outline: none;
+  border-color: var(--green);
+  background-color: rgba(0, 0, 0, 0.4);
+}
+
+.select-base:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Options render with native OS styling; force a dark background where honored. */
+.select-base option {
+  background: var(--surface);
+  color: var(--text);
+}
+
+.select-sm {
+  height: 32px;
+  font-size: 12px;
+  padding: 0 28px 0 10px;
+}

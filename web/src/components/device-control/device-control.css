@@ -474,8 +474,7 @@
   font-size: 11px;
 }
 
-.type-input-field.compact,
-.app-select-dropdown.compact {
+.type-input-field.compact {
   padding: 10px;
   font-size: 13px;
 }
@@ -577,8 +576,7 @@
   font-size: 11px !important;
 }
 
-.type-input-field,
-.app-select-dropdown {
+.type-input-field {
   width: 100%;
   padding: 10px 14px;
   border-radius: var(--radius-sm);

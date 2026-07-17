@@ -1,5 +1,6 @@
 import React from 'react';
 import { Save, RotateCcw, RefreshCw, LucideIcon } from 'lucide-react';
+import { Button } from './button';
 
 interface ActionBarProps {
   onSave: () => void;
@@ -32,24 +33,25 @@ export const ActionBar: React.FC<ActionBarProps> = ({
       )}
       {isDirty && onRestoreDefaults && <span className="footer-divider" aria-hidden="true" />}
       {onRestoreDefaults && (
-        <button
-          className="reset-to-defaults-btn"
+        <Button
+          variant="danger"
+          size="lg"
           onClick={onRestoreDefaults}
           disabled={isSaving || isValidating}
         >
           <RotateCcw size={16} />
           {restoreLabel}
-        </button>
+        </Button>
       )}
     </div>
     <div className="footer-right">
-      <button className="reset-btn" onClick={onDiscard} disabled={isSaving || isValidating}>
+      <Button variant="secondary" size="lg" onClick={onDiscard} disabled={isSaving || isValidating}>
         Discard
-      </button>
-      <button className="save-btn" onClick={onSave} disabled={isSaving || isValidating}>
+      </Button>
+      <Button variant="primary" size="lg" onClick={onSave} disabled={isSaving || isValidating}>
         {isSaving ? <RefreshCw className="animate-spin" size={18} /> : <Save size={18} />}
         {isSaving ? 'Saving...' : saveLabel}
-      </button>
+      </Button>
     </div>
   </div>
 );

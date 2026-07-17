@@ -1,6 +1,7 @@
 import React from 'react';
 import { RefreshCcw, Download } from 'lucide-react';
 import type { IBuild } from '../../interfaces/IBuild';
+import { Button } from '../ui/button';
 
 function shortBuildId(id: string): string {
   // Use the leading 8 chars (uppercased) matching the reference "BUILD #A70AC97A" look.
@@ -54,26 +55,30 @@ export const BuildsHeader: React.FC<Props> = ({
       </div>
 
       <div className="flex items-center gap-2" ref={wrap}>
-        <button
+        <Button
           type="button"
+          variant="secondary"
+          size="sm"
           onClick={onRetryFailed}
           disabled={!canRetry}
           title={retryTooltip}
-          className="inline-flex items-center gap-1.5 h-8 px-3 rounded-md border border-[var(--border)] text-xs text-[var(--text)] hover:border-[var(--border-strong)] hover:bg-[var(--surface-2)] transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+          className="gap-1.5"
         >
           <RefreshCcw className="h-3.5 w-3.5" />
           Retry failed
-        </button>
+        </Button>
 
         <div className="relative">
-          <button
+          <Button
             type="button"
+            variant="secondary"
+            size="sm"
             onClick={() => setExportOpen((o) => !o)}
-            className="inline-flex items-center gap-1.5 h-8 px-3 rounded-md border border-[var(--border)] text-xs text-[var(--text)] hover:border-[var(--border-strong)] hover:bg-[var(--surface-2)] transition-colors"
+            className="gap-1.5"
           >
             <Download className="h-3.5 w-3.5" />
             Export
-          </button>
+          </Button>
           {exportOpen && (
             <div className="absolute top-full right-0 mt-1 w-40 rounded-md border border-[var(--border)] bg-[var(--surface)] shadow-lg overflow-hidden z-20">
               <button
