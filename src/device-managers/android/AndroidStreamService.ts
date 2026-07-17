@@ -318,6 +318,18 @@ class AndroidStreamService {
       } catch (e) {
         /* Ignore unblocking failure on stop */
       }
+
+      // Release the mjpeg port lease this stream acquired in startStream, so the
+      // allocator can reuse the port immediately instead of waiting out the lease
+      // TTL. Symmetric with IOSStreamService.stopStream. Only the stream-owned
+      // 'mjpeg' lease is released here — the device-level 'system' port (leased
+      // by AndroidDeviceManager) belongs to the device lifecycle, not the stream.
+      try {
+        await Container.get(PortAllocator).release(session.mjpegPort);
+      } catch (e) {
+        log.warn(`[${udid}] Failed to release mjpeg port lease on stop: ${e}`);
+      }
+
       this.sessions.delete(udid);
       log.info(`[${udid}] Stream terminated.`);
     }
