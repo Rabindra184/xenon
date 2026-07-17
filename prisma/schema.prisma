@@ -449,3 +449,12 @@ model EventLog {
   @@index([type, occurredAt])
   @@index([occurredAt])
 }
+
+model Project {
+  id        String   @id @default(cuid())
+  name      String
+  teamId    String?
+  createdAt DateTime @default(now())
+
+  @@index([teamId])
+}

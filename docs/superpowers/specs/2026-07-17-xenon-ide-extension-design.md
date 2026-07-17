@@ -209,6 +209,17 @@ sequenceDiagram
 
 **Lock/session composition rule (verified failure).** `xenon_acquire_device` followed by `appium_session_management create` on the same udid *cannot work today*: the lock sets `busy: true`, allocation has no owner-awareness and rejects busy devices — the create call burns the full allocation timeout, then fails with `"Device is busy or blocked."` Resolution (Xenon work item): **allocation treats a self-owned manual lock as claimable** — when the requesting identity matches the lock's actor (`inspectManualLock`), the lock is atomically converted into the session allocation. This is a small, localized change to the busy-check (allocation already fail-fast diagnoses busy/blocked/reserved) and makes the natural agent flow — reserve, then automate — correct. Until it lands, skills must document lock-then-session as forbidden and treat locks as for manual control/streaming only.
 
+> **Implementation note (2026-07-17, verified during planning):** the lease
+> subsystem (`src/services/lease/`, `POST /xenon/api/sdk/leases`,
+> `LeaseOrphanSweeper`, lease-bound allocation via `xenon:options.leaseId`)
+> already implements this section's claim/lease/reaper contract for the agent
+> path — token-bound, with heartbeats. `xenon_acquire_device` maps to the
+> lease API; Xenon work items 7–8 (§3) are satisfied by existing code plus the
+> pre-existing idle reaper (`releaseBlockedDevices` on
+> `checkBlockedDevicesIntervalMs`). Manual locks remain the dashboard-only
+> convention. JWKS is served at `/xenon/api/auth/jwks.json` (the gateway's
+> `jwksUri` is explicit config, so the `/.well-known` path is not required).
+
 ### 2.5 Failure boundaries — restart matrix
 
 Four stateful parties (extension, hosted MCP+gateway, Xenon hub/nodes, device) fail independently. The contract per failure:

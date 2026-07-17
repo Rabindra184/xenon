@@ -136,6 +136,15 @@ Authentication: every `/xenon/api` request is gated by `authMiddleware` (`src/mi
 
 When the dashboard takes a soft lock on a device for live preview or recording, the `device.session_id` is written as `manual_<actorId>_<udid>` (encoded by `formatManualLock` in `src/services/recording/manualLock.ts`). All readers — `BusyPrecheck`, the `/stream/stop` route, the picker UI — call `inspectManualLock(blockId, actorId, udid)` to distinguish *self* from *another user* from *legacy `manual_<udid>`*. Locks owned by a different user can only be force-released by an admin-scope key.
 
+Device leases: programmatic clients (SDK, MCP tools) claim devices via
+`POST /xenon/api/sdk/leases` (`src/services/lease/LeaseService.ts`) — token-bound
+claims with TTL + heartbeat, swept by `LeaseOrphanSweeper`, resolved at
+allocation via the `xenon:options.leaseId` capability. Prefer leases over
+manual locks for anything non-interactive. Hub-issued JWTs: `POST /auth/token`
+mints RS256 tokens (`JwtKeyService`), `authMiddleware` accepts them as
+`Authorization: Bearer`, JWKS at `/auth/jwks.json`; single-use stream tickets
+(`?ticket=`) authenticate the webview MJPEG path.
+
 The frontend identity probe is `GET /xenon/api/auth/me` which returns `{ userId, scopes, teamId }`. The mosaic view fetches it on mount and uses it for the `manual_self`/`manual_other` distinction in the device picker.
 
 ### Mosaic / Live Devices UI (`web/src/components/mosaic/`)
