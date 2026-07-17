@@ -9,6 +9,7 @@ import {
   osVersionLabel,
   shortId,
   sessionDurationMs,
+  sessionStatusBucket,
 } from './derive';
 import { StatusPillOutline, type StatusTone } from '../ui/status-pill-outline';
 
@@ -28,14 +29,16 @@ function DeviceIcon({ platform }: { platform?: string }) {
 }
 
 function statusToPill(status: string): { label: string; tone: StatusTone } {
-  if (status === 'running') return { label: 'RUNNING', tone: 'running' };
-  if (status === 'failed')  return { label: 'FAILED',  tone: 'failed'  };
-  if (status === 'ended' || status === 'passed') return { label: 'PASSED', tone: 'passed' };
-  return { label: status.toUpperCase(), tone: 'offline' };
+  switch (sessionStatusBucket(status)) {
+    case 'running': return { label: 'RUNNING', tone: 'running' };
+    case 'failed':  return { label: 'FAILED',  tone: 'failed'  };
+    case 'passed':  return { label: 'PASSED',  tone: 'passed'  };
+    default:        return { label: (status || '').toUpperCase(), tone: 'offline' };
+  }
 }
 
 export const SessionRow: React.FC<Props> = ({ session, selected, onToggleSelect, onOpen }) => {
-  const failed = session.status === 'failed';
+  const failed = sessionStatusBucket(session.status) === 'failed';
   const pill = statusToPill(session.status);
   const deviceName = deviceNameOrFallback(session);
   const subtitleTop = failed && session.failure_reason

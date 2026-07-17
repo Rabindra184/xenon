@@ -1,6 +1,7 @@
 import React, { useMemo } from 'react';
 import type { ISession } from '../../interfaces/ISession';
 import type { StatusKey } from './derive';
+import { sessionStatusBucket } from './derive';
 import { SessionRow } from './session-row';
 
 interface Props {
@@ -16,10 +17,7 @@ interface Props {
 
 function matchesStatus(s: ISession, key: StatusKey): boolean {
   if (key === 'all') return true;
-  if (key === 'passed')  return s.status === 'ended' || s.status === 'passed';
-  if (key === 'failed')  return s.status === 'failed';
-  if (key === 'running') return s.status === 'running';
-  return true;
+  return sessionStatusBucket(s.status) === key;
 }
 
 export const SessionTable: React.FC<Props> = ({

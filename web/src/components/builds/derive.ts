@@ -3,12 +3,42 @@ import { formatDateTime } from '../../utils/time';
 
 export type StatusKey = 'all' | 'passed' | 'failed' | 'running';
 
+/** UI bucket for a session; 'other' = shown under "All" only (no pass/fail verdict). */
+export type StatusBucket = 'passed' | 'failed' | 'running' | 'other';
+
+/**
+ * Canonical map from the raw persisted `Session.status` to a UI bucket.
+ *
+ * The backend `SessionStatus` enum persists `success` / `failed` / `running`
+ * (plus `timeout` and `unmarked`), and error paths write `error`; older/aliased
+ * rows may use `ended` / `passed`. Every consumer — the count pills, the filter,
+ * and the row status pill — MUST route through here so they stay in agreement.
+ * Bucketing `success` as `passed` was the fix for the "Passed 0 / no sessions
+ * match" bug where successful sessions were invisible under the Passed filter.
+ */
+export function sessionStatusBucket(status: string | null | undefined): StatusBucket {
+  switch (status) {
+    case 'success':
+    case 'passed':
+    case 'ended':
+      return 'passed';
+    case 'failed':
+    case 'error':
+    case 'timeout':
+      return 'failed';
+    case 'running':
+      return 'running';
+    default:
+      // e.g. 'unmarked' or any unknown status: no pass/fail verdict.
+      return 'other';
+  }
+}
+
 export function buildStatusCounts(sessions: ISession[]): Record<StatusKey, number> {
   const out: Record<StatusKey, number> = { all: sessions.length, passed: 0, failed: 0, running: 0 };
   for (const s of sessions) {
-    if (s.status === 'ended' || s.status === 'passed') out.passed += 1;
-    else if (s.status === 'failed') out.failed += 1;
-    else if (s.status === 'running') out.running += 1;
+    const bucket = sessionStatusBucket(s.status);
+    if (bucket !== 'other') out[bucket] += 1;
   }
   return out;
 }

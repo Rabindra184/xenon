@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   buildStatusCounts,
+  sessionStatusBucket,
   deviceNameOrFallback,
   platformLabel,
   osVersionLabel,
@@ -11,20 +12,59 @@ import {
   humanizeFailureCategory,
 } from './derive';
 
+describe('sessionStatusBucket', () => {
+  // The canonical backend value is 'success' — this is the case the old
+  // 'ended'|'passed'-only logic missed, hiding every passed session under the
+  // Passed filter.
+  it('buckets the canonical success status as passed', () => {
+    expect(sessionStatusBucket('success')).toBe('passed');
+  });
+  it('treats ended/passed aliases as passed', () => {
+    expect(sessionStatusBucket('ended')).toBe('passed');
+    expect(sessionStatusBucket('passed')).toBe('passed');
+  });
+  it('buckets failed, error and timeout as failed', () => {
+    expect(sessionStatusBucket('failed')).toBe('failed');
+    expect(sessionStatusBucket('error')).toBe('failed');
+    expect(sessionStatusBucket('timeout')).toBe('failed');
+  });
+  it('buckets running as running', () => {
+    expect(sessionStatusBucket('running')).toBe('running');
+  });
+  it('buckets unmarked / unknown / nullish as other', () => {
+    expect(sessionStatusBucket('unmarked')).toBe('other');
+    expect(sessionStatusBucket('weird')).toBe('other');
+    expect(sessionStatusBucket(null)).toBe('other');
+    expect(sessionStatusBucket(undefined)).toBe('other');
+  });
+});
+
 describe('buildStatusCounts', () => {
-  it('counts passed/failed/running', () => {
+  it('counts passed/failed/running across canonical statuses', () => {
     const s = [
-      { status: 'ended' },
-      { status: 'ended' },
+      { status: 'success' },
+      { status: 'success' },
       { status: 'failed' },
       { status: 'running' },
     ] as any;
     expect(buildStatusCounts(s)).toEqual({ all: 4, passed: 2, failed: 1, running: 1 });
   });
 
-  it('treats "passed" status alias as passed', () => {
-    expect(buildStatusCounts([{ status: 'passed' }] as any)).toEqual({
+  it('counts success sessions as passed (regression: Passed filter was empty)', () => {
+    expect(buildStatusCounts([{ status: 'success' }] as any)).toEqual({
       all: 1, passed: 1, failed: 0, running: 0,
+    });
+  });
+
+  it('treats "passed"/"ended" aliases as passed', () => {
+    expect(buildStatusCounts([{ status: 'passed' }, { status: 'ended' }] as any)).toEqual({
+      all: 2, passed: 2, failed: 0, running: 0,
+    });
+  });
+
+  it('counts unmarked sessions under all only, not any verdict bucket', () => {
+    expect(buildStatusCounts([{ status: 'unmarked' }, { status: 'success' }] as any)).toEqual({
+      all: 2, passed: 1, failed: 0, running: 0,
     });
   });
 
