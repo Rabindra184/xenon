@@ -18,6 +18,10 @@ export class JwtKeyService {
   private privateKey!: jose.KeyLike;
   private publicJwk!: jose.JWK;
   private kid!: string;
+  // Boot degrades gracefully if key material is unavailable (bad perms, full
+  // disk, corrupt PEM): the server still comes up, and only the token routes
+  // fail. sign()/verify() throw a clear error; jwks() serves an empty set.
+  private initialized = false;
 
   async init(keyDir: string): Promise<void> {
     fs.mkdirSync(keyDir, { recursive: true });
@@ -38,12 +42,14 @@ export class JwtKeyService {
       .update(`${fullJwk.n}.${fullJwk.e}`)
       .digest('base64url')
       .slice(0, 16);
+    this.initialized = true;
   }
 
   async sign(
     claims: Record<string, unknown>,
     opts: { audience: string; ttlSeconds: number; jti?: string },
   ): Promise<string> {
+    if (!this.initialized) throw new Error('JWT key service not initialized');
     const jwt = new jose.SignJWT(claims)
       .setProtectedHeader({ alg: 'RS256', kid: this.kid })
       .setIssuer(ISSUER)
@@ -55,6 +61,7 @@ export class JwtKeyService {
   }
 
   async verify(token: string, opts: { audience: string }): Promise<jose.JWTPayload> {
+    if (!this.initialized) throw new Error('JWT key service not initialized');
     const publicKey = await jose.importJWK({ ...this.publicJwk, alg: 'RS256' }, 'RS256');
     const { payload } = await jose.jwtVerify(token, publicKey, {
       issuer: ISSUER,
@@ -65,6 +72,8 @@ export class JwtKeyService {
   }
 
   jwks(): { keys: Array<Record<string, unknown>> } {
+    // Empty JWKS when uninitialized — valid JSON, honest about having no keys.
+    if (!this.initialized) return { keys: [] };
     return { keys: [{ ...this.publicJwk, kid: this.kid, use: 'sig', alg: 'RS256' }] };
   }
 }

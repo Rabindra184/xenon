@@ -213,9 +213,19 @@ export class ServerManager {
     // material lives next to the SQLite db file so it survives restarts
     // without a new DB migration. Must finish before /auth/token or
     // /auth/jwks.json can be mounted (registerRoutes runs right after this).
-    const { JwtKeyService } = await import('./token/JwtKeyService');
-    const jwtKeyDir = process.env.XENON_JWT_KEY_DIR || path.dirname(xenonConfig.databasePath);
-    await Container.get(JwtKeyService).init(jwtKeyDir);
+    // Non-disruptive by design: a key-material failure (permissions, disk
+    // full, corrupt PEM) only degrades the two token routes — sign()/verify()
+    // throw "not initialized" and jwks() serves an empty set — it must never
+    // abort server boot.
+    try {
+      const { JwtKeyService } = await import('./token/JwtKeyService');
+      const jwtKeyDir = process.env.XENON_JWT_KEY_DIR || path.dirname(xenonConfig.databasePath);
+      await Container.get(JwtKeyService).init(jwtKeyDir);
+    } catch (err: any) {
+      log.error(
+        `JWT key init failed — /auth/token and /auth/jwks.json will be unavailable: ${err?.message}`,
+      );
+    }
   }
 
   private registerRoutes(expressApp: any, cliArgs: ServerArgs, pluginArgs: IPluginArgs) {

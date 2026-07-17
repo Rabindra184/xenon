@@ -56,6 +56,17 @@ describe('JwtKeyService', () => {
     }
   });
 
+  it('degrades gracefully when uninitialized: sign() rejects, jwks() is empty', async () => {
+    const fresh = new JwtKeyService(); // init() never called
+    try {
+      await fresh.sign({ sub: 'u' }, { audience: 'xenon-rest', ttlSeconds: 60 });
+      expect.fail('should have thrown');
+    } catch (e: any) {
+      expect(String(e.message)).to.match(/not initialized/);
+    }
+    expect(fresh.jwks()).to.deep.equal({ keys: [] });
+  });
+
   it('exposes a JWKS with kid, use=sig, alg=RS256 and no private material', () => {
     const jwk = svc.jwks().keys[0] as any;
     expect(jwk.kid).to.be.a('string');
