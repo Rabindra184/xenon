@@ -19,6 +19,37 @@ export function computeLag(intervalMs: number, actualElapsedMs: number, threshol
   return lag >= thresholdMs ? Math.round(lag) : null;
 }
 
+/**
+ * A late heartbeat does NOT always mean the main thread was blocked. macOS
+ * suspends the process during App Nap (idle background apps) and system/display
+ * sleep; when it resumes, the timer fires wildly late. Those are not UI freezes.
+ *
+ * A stall counts as a genuine freeze only when all hold:
+ *   - the window was focused (a napped app is never the focused, frontmost app)
+ *   - the stall did NOT span a wake — no resume/unlock/window-focus happened
+ *     within it (that transition IS the app coming back from nap/sleep)
+ *   - it is under a plausible ceiling (nobody sits through a 2-minute freeze;
+ *     that magnitude is always suspension)
+ * Pure so it's unit-testable.
+ */
+export interface StallContext {
+  lagMs: number;
+  /** Was the app's window focused/frontmost when the stall was reported? */
+  focused: boolean;
+  /** ms since the last resume / unlock / window-focus event (Infinity if none). */
+  msSinceWake: number;
+  /** Freezes longer than this are treated as suspension. Default 60000. */
+  maxPlausibleFreezeMs?: number;
+}
+
+export function isGenuineFreeze(ctx: StallContext): boolean {
+  const cap = ctx.maxPlausibleFreezeMs ?? 60_000;
+  if (ctx.lagMs > cap) return false; // implausibly long → suspension, not a freeze
+  if (!ctx.focused) return false; // background/napped app → not a user-visible freeze
+  if (ctx.msSinceWake <= ctx.lagMs + 1500) return false; // stall spanned a wake → nap/sleep
+  return true;
+}
+
 export interface LagMonitorDeps {
   intervalMs: number;
   thresholdMs: number;

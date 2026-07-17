@@ -1,11 +1,11 @@
-import { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, shell, Tray } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, powerMonitor, shell, Tray } from 'electron';
 import { createWriteStream, readFileSync, writeFileSync, type WriteStream } from 'node:fs';
 import path from 'node:path';
 import { performance } from 'node:perf_hooks';
 import { IPC } from '@shared/ipc';
 import { SECRET_DESCRIPTORS } from '@shared/secrets';
 import type { LogLine, MenuAction, Profile, SecretKey, ServerState, SetupProgress } from '@shared/types';
-import { startLagMonitor } from './eventLoopLag';
+import { isGenuineFreeze, startLagMonitor } from './eventLoopLag';
 import { SchemaService } from './SchemaService';
 import { SecretsStore } from './SecretsStore';
 import { ProfileStore } from './ProfileStore';
@@ -76,14 +76,34 @@ function recordDiagnostic(text: string): void {
   broadcast(IPC.evtLog, [line]); // evtLog carries a batch (LogLine[])
 }
 
+// The last time the process/window came back to life — from system sleep
+// (powerMonitor) or App Nap (window focus). A late heartbeat that spans one of
+// these is the app resuming, not a freeze. Updated by installHangDiagnostics
+// and the window's 'focus' handler (see createWindow).
+let lastWakeAt = Date.now();
+function markWake(): void {
+  lastWakeAt = Date.now();
+}
+
 function installHangDiagnostics(): void {
+  // System sleep / display sleep / screen lock all suspend the process.
+  powerMonitor.on('resume', markWake);
+  powerMonitor.on('unlock-screen', markWake);
+
   // 1. Main-thread stalls: a 1s heartbeat that reports whenever it fires ≥3s
-  //    late (a real freeze, not GC jitter).
+  //    late. A late tick is only a real freeze if the window was focused and the
+  //    lateness didn't come from the app resuming from nap/sleep — otherwise
+  //    macOS App Nap and system sleep flood this with multi-minute false
+  //    "freezes" (see isGenuineFreeze).
   startLagMonitor({
     intervalMs: 1000,
     thresholdMs: 3000,
     now: () => performance.now(),
-    onStall: (lagMs) => recordDiagnostic(`Main thread stalled ~${lagMs}ms — the UI was frozen for that long.`)
+    onStall: (lagMs) => {
+      const focused = mainWindow?.isFocused() ?? false;
+      if (!isGenuineFreeze({ lagMs, focused, msSinceWake: Date.now() - lastWakeAt })) return;
+      recordDiagnostic(`Main thread stalled ~${lagMs}ms while the window was focused — genuine UI freeze.`);
+    }
   });
 
   // 2. A child process (GPU / renderer / utility) dying. On macOS the GPU
@@ -149,6 +169,11 @@ function createWindow(): void {
   mainWindow.on('closed', () => {
     mainWindow = null;
   });
+
+  // Regaining focus ends App Nap; a heartbeat that was late because the app was
+  // napped fires right after this. Mark it a wake so it isn't miscounted as a
+  // freeze (see isGenuineFreeze / lastWakeAt).
+  mainWindow.on('focus', markWake);
 
   // The renderer stops pumping its event loop (heavy paint, stuck JS). Electron
   // fires these on the window's webContents — record the freeze and recovery.
