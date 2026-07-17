@@ -19,6 +19,11 @@ import log from '../../logger';
 import { cachePath } from '../../helpers';
 import { PortAllocator } from '../../services/PortAllocator';
 import { DeviceStoreFactory } from '../../data-service/device-store';
+import {
+  classifyTunnelStderr,
+  isMissingWdaError,
+  missingWdaMessage,
+} from './iosStreamDiagnostics';
 
 import { unblockDevice } from '../../data-service/device-service';
 
@@ -212,7 +217,25 @@ class IOSStreamService {
         Container.get(ProcessRegistry).track({ kind: 'other', udid, process: tunnelProcess });
 
         tunnelProcess.stdout?.on('data', (data) => log.debug(`Tunnel [${udid}]: ${data}`));
-        tunnelProcess.stderr?.on('data', (data) => log.debug(`Tunnel Err [${udid}]: ${data}`));
+        // go-ios repeatedly warns about any connected pre-iOS-17 device (which
+        // needs no tunnel). Log that once — attributed to the real target udid,
+        // not this tunnel's owner — and suppress the rest to avoid log spam.
+        const loggedUnsupported = new Set<string>();
+        tunnelProcess.stderr?.on('data', (data) => {
+          const text = String(data);
+          const { unsupported, udid: targetUdid } = classifyTunnelStderr(text);
+          if (unsupported) {
+            const key = targetUdid ?? 'unknown';
+            if (!loggedUnsupported.has(key)) {
+              loggedUnsupported.add(key);
+              log.debug(
+                `Tunnel [${udid}]: device ${key} is pre-iOS 17 and needs no tunnel; suppressing repeated go-ios warnings`,
+              );
+            }
+            return;
+          }
+          log.debug(`Tunnel Err [${udid}]: ${text}`);
+        });
 
         // Wait for tunnel to establish by checking the go-ios agent port
         log.info('Waiting for tunnel agent on port 60105 to be ready...');
@@ -528,6 +551,22 @@ class IOSStreamService {
       await this.stopStream(udid);
     }
 
+    // Startup-failure circuit-breaker: a failed start (e.g. WDA not installed on
+    // the device) sets a recovery cooldown. Until it elapses, short-circuit with
+    // a clear error instead of re-running the full, doomed startup on every
+    // stream request — otherwise a client polling the stream URL drives a
+    // resource-burning restart loop.
+    if (!existingSession || existingSession.status !== 'running') {
+      if (!this.canAttemptRecovery(udid)) {
+        const lastAttempt = this.recoveryCooldowns.get(udid);
+        const waitMs = this.RECOVERY_COOLDOWN_MS - (Date.now() - (lastAttempt || 0));
+        const reason = existingSession?.lastError ? ` Last error: ${existingSession.lastError}` : '';
+        throw new Error(
+          `Stream start is cooling down for ${Math.ceil(waitMs / 1000)}s after a failed attempt.${reason}`,
+        );
+      }
+    }
+
     // Define the core logic as an internal async function
     const performStartup = async () => {
       try {
@@ -822,6 +861,11 @@ class IOSStreamService {
 
           if (session.wdaProcess?.exitCode !== null) {
             const logContent = fs.existsSync(wdaRunLog) ? fs.readFileSync(wdaRunLog, 'utf8') : '';
+            // Missing WDA is permanent until the app is installed — surface an
+            // actionable reason instead of a raw exit code + log tail.
+            if (isMissingWdaError(logContent)) {
+              throw new Error(missingWdaMessage(udid));
+            }
             throw new Error(
               `WDA process exited with code ${session.wdaProcess?.exitCode
               }. Log: ${logContent.slice(-200)}`,
@@ -837,6 +881,9 @@ class IOSStreamService {
           session.status = 'error';
           session.lastError = error.message;
         }
+        // Back off before the next attempt so a polling client can't drive a
+        // restart loop against a device that keeps failing to start.
+        this.markRecoveryAttempt(udid);
         log.error(`Stream start failed for ${udid}: ${error.message}`);
         throw error;
       } finally {
