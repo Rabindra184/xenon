@@ -122,8 +122,13 @@ export function mosaicReducer(state: MosaicState, action: MosaicAction): MosaicS
         tiles,
       };
     }
-    case 'STOP_RECORDING':
-      return { ...state, recording: false };
+    case 'STOP_RECORDING': {
+      // Clear each tile's recordingId too — the per-tile REC badge is driven by
+      // recordingId (DeviceTile), so leaving it set keeps a stale "REC" overlay
+      // after the recording has stopped until the component remounts.
+      const tiles = state.tiles.map((t) => ({ ...t, recordingId: undefined }));
+      return { ...state, recording: false, tiles };
+    }
     case 'SET_ANNOTATE_MODE':
       return { ...state, annotateMode: action.enabled };
     case 'SET_SHAPE':

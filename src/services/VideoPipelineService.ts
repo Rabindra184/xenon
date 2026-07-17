@@ -20,6 +20,52 @@ export function resolveOutputPath(sessionId: string, override?: string): string 
   );
 }
 
+/**
+ * Build the ffmpeg argv for a single-device MJPEG → mp4 recording.
+ *
+ * Extracted as a pure function so it can be unit-tested without spawning ffmpeg.
+ *
+ * Timing correctness: an HTTP MJPEG stream carries no real timestamps, so the
+ * mjpeg demuxer assumes a fixed 25 fps and stamps frames 1/25 s apart. The
+ * recorded duration then becomes (frames received)/25, which drifts from real
+ * time whenever the source's actual rate differs from 25 fps — a ~12.5 fps
+ * stream records at 2× speed, a >25 fps stream at slow motion. Stamping each
+ * frame with its wall-clock arrival time (`-use_wallclock_as_timestamps`) and
+ * keeping variable frame timing on output (`-vsync vfr`) makes the mp4 duration
+ * track real elapsed time regardless of the source frame rate.
+ */
+export function buildRecordArgs(opts: {
+  mjpegUrl: string;
+  outputPath: string;
+  isMac: boolean;
+}): string[] {
+  const args = [
+    '-y',
+    '-loglevel', 'error',
+    '-reconnect', '1',
+    '-reconnect_at_eof', '1',
+    '-reconnect_streamed', '1',
+    '-reconnect_delay_max', '5',
+    '-probesize', '32',
+    '-analyzeduration', '0',
+    // Stamp frames with wall-clock arrival time (must precede -i).
+    '-use_wallclock_as_timestamps', '1',
+    '-f', 'mjpeg',
+    '-i', opts.mjpegUrl,
+    '-pix_fmt', 'yuv420p',
+  ];
+  if (opts.isMac) {
+    args.push('-c:v', 'h264_videotoolbox', '-realtime', '1', '-q:v', '50');
+  } else {
+    args.push('-c:v', 'libx264', '-preset', 'veryfast', '-crf', '25');
+  }
+  // Preserve the (variable) wall-clock timing rather than forcing constant fps.
+  args.push('-vsync', 'vfr');
+  args.push('-movflags', 'frag_keyframe+empty_moov+default_base_moof');
+  args.push(opts.outputPath);
+  return args;
+}
+
 export interface VideoPipelineOptions {
   sessionId: string;
   udid: string;
@@ -113,48 +159,8 @@ export class VideoPipelineService {
     // Small settlement delay to allow the source stream to prime
     await new Promise((r) => setTimeout(r, 500));
 
-    // 2. Construct FFMPEG Args
-    // -f mjpeg: Input format
-    // -i: Input source
-    // -c:v: Hardware accelerated encoder based on platform
-    // -movflags: fMP4 for instant playback and crash resiliency
-    const args = [
-      '-y',
-      '-loglevel',
-      'error', // Only log errors to keep console clean
-      '-reconnect',
-      '1',
-      '-reconnect_at_eof',
-      '1',
-      '-reconnect_streamed',
-      '1',
-      '-reconnect_delay_max',
-      '5',
-      '-probesize',
-      '32', // Fast startup for MJPEG
-      '-analyzeduration',
-      '0',
-      '-f',
-      'mjpeg',
-      '-i',
-      mjpegUrl,
-      '-pix_fmt',
-      'yuv420p',
-    ];
-
-    if (this.isMac) {
-      args.push('-c:v', 'h264_videotoolbox');
-      args.push('-realtime', '1'); // VideoToolbox optimization
-      args.push('-q:v', '50'); // High quality/efficiency balance
-    } else {
-      args.push('-c:v', 'libx264');
-      args.push('-preset', 'veryfast');
-      args.push('-crf', '25');
-    }
-
-    // Instant Playback Flags (fMP4)
-    args.push('-movflags', 'frag_keyframe+empty_moov+default_base_moof');
-    args.push(outputPath);
+    // 2. Construct FFMPEG Args (see buildRecordArgs for the timing rationale).
+    const args = buildRecordArgs({ mjpegUrl, outputPath, isMac: this.isMac });
 
     // 3. Wrap with Resource Isolation (Economy)
     const isolationService = Container.get(ResourceIsolationService);
@@ -254,7 +260,9 @@ export class VideoPipelineService {
       '-loglevel',
       'error',
     ];
-    // Per-input args: mjpeg + reconnect.
+    // Per-input args: mjpeg + reconnect. `-use_wallclock_as_timestamps` stamps
+    // each input's frames with real arrival time so the composite duration
+    // tracks wall-clock (see buildRecordArgs for the full rationale).
     for (const inp of inputs) {
       args.push(
         '-reconnect', '1',
@@ -263,6 +271,7 @@ export class VideoPipelineService {
         '-reconnect_delay_max', '5',
         '-probesize', '32',
         '-analyzeduration', '0',
+        '-use_wallclock_as_timestamps', '1',
         '-f', 'mjpeg',
         '-i', `http://127.0.0.1:${inp.mjpegPort}`,
       );
@@ -290,6 +299,8 @@ export class VideoPipelineService {
     } else {
       args.push('-c:v', 'libx264', '-preset', 'veryfast', '-crf', '25');
     }
+    // Preserve wall-clock frame timing rather than forcing constant fps.
+    args.push('-vsync', 'vfr');
     args.push('-movflags', 'frag_keyframe+empty_moov+default_base_moof');
     args.push(outputPath);
 
