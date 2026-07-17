@@ -157,9 +157,16 @@ export function useOverviewData(): OverviewData {
   useEffect(() => {
     let cancelled = false;
 
-    XenonApiService.getDevices()
-      .then((d: IDevice[]) => { if (!cancelled && Array.isArray(d)) setDevices(d); })
-      .catch(() => { /* ignore */ });
+    // Refresh the device list on mount AND on an interval. Without the poll the
+    // fleet counts (Devices online, OS breakdown) freeze at their mount-time
+    // value and drift from the Devices page when hardware joins/leaves later.
+    const loadDevices = () => {
+      XenonApiService.getDevices()
+        .then((d: IDevice[]) => { if (!cancelled && Array.isArray(d)) setDevices(d); })
+        .catch(() => { /* ignore */ });
+    };
+    loadDevices();
+    const devicePoll = setInterval(loadDevices, 30_000);
 
     XenonApiService.getSessions()
       .then((s: ISession[]) => { if (!cancelled && Array.isArray(s)) setSessions(s); })
@@ -196,7 +203,7 @@ export function useOverviewData(): OverviewData {
       })
       .catch(() => { /* ignore */ });
 
-    return () => { cancelled = true; };
+    return () => { cancelled = true; clearInterval(devicePoll); };
   }, []);
 
   useEffect(() => {

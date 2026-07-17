@@ -20,6 +20,7 @@ interface IDeviceExplorerState {
   queueSummary: any;
   statusFilter: StatusFilter;
   search: string;
+  loaded: boolean;
 }
 
 interface IDeviceExplorerProps {
@@ -42,6 +43,7 @@ export class DeviceExplorer extends React.Component<IDeviceExplorerProps, IDevic
       queueSummary: null,
       statusFilter: 'all',
       search: '',
+      loaded: false,
     };
   }
 
@@ -90,9 +92,12 @@ export class DeviceExplorer extends React.Component<IDeviceExplorerProps, IDevic
       const activeSessionsCount = this.getBusyDevicesCount(devices);
       const pendingSessionsCount = await XenonApiService.getPendingSessionsCount();
       const queueSummary = await XenonApiService.getQueueSummary();
-      this.setState({ devices, activeSessionsCount, pendingSessionsCount, queueSummary });
+      this.setState({ devices, activeSessionsCount, pendingSessionsCount, queueSummary, loaded: true });
     } catch (error) {
       console.log(error);
+      // Mark loaded even on failure so the UI leaves the loading state and shows
+      // the (empty/registry) view rather than spinning forever.
+      this.setState({ loaded: true });
     }
   }
 
@@ -186,9 +191,18 @@ export class DeviceExplorer extends React.Component<IDeviceExplorerProps, IDevic
         ) : (
           <div className="device-explorer-empty stagger-1">
             <div className="device-explorer-empty-icon">
-              <AndroidIcon size={32} />
+              {!this.state.loaded ? (
+                <RefreshCw size={32} className="animate-spin" />
+              ) : (
+                <AndroidIcon size={32} />
+              )}
             </div>
-            {this.state.devices.length === 0 ? (
+            {!this.state.loaded ? (
+              <>
+                <h3>Loading devices…</h3>
+                <p>Syncing the global device registry.</p>
+              </>
+            ) : this.state.devices.length === 0 ? (
               <>
                 <h3>Global Device Registry Empty</h3>
                 <p>

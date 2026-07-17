@@ -64,6 +64,10 @@ export const AppRoutes: React.FC = () => (
         <Route path="/devices" element={<DeviceExplorer />} />
         <Route path="/devices/:udid/control/:tab?" element={<DeviceExplorer />} />
         <Route path="/apps" element={<Apps />} />
+        {/* "Sessions" nav points at /builds; redirect the bare /sessions path
+            (typed or bookmarked) there instead of falling through to /overview. */}
+        <Route path="/sessions" element={<Navigate to="/builds" replace />} />
+        <Route path="/sessions/*" element={<Navigate to="/builds" replace />} />
         <Route path="/builds" element={<BuildsPage />} />
         <Route path="/builds/:buildId" element={<BuildsPage />} />
         <Route path="/builds/:buildId/sessions/:sessionId" element={<SessionDetailPage />} />
