@@ -5,21 +5,24 @@ import path from 'node:path';
 import { app } from 'electron';
 import type { SetupProgress } from '@shared/types';
 import { buildEnv, which } from './env';
-
-const NPM_PLUGIN = '@xenon-device-management/xenon';
+import { NPM_PLUGIN, partitionDrivers, planPluginSteps } from './setupPlan';
 
 export interface SetupOptions {
   appiumHome: string;
-  /** Install the plugin from the local repo checkout or from npm. */
+  /**
+   * Preferred plugin source. 'local' is used only when running from a source
+   * checkout; otherwise (e.g. the packaged app) it transparently falls back to
+   * npm — see planPluginSteps.
+   */
   pluginSource: 'local' | 'npm';
   /** Appium drivers to ensure are installed. */
   drivers: Array<'uiautomator2' | 'xcuitest'>;
 }
 
 /**
- * First-run / on-demand provisioning: installs the xenon plugin (and optionally
- * platform drivers) into a given APPIUM_HOME. Emits 'progress' (SetupProgress)
- * for each step so the renderer can show live status.
+ * First-run / on-demand provisioning: installs (or updates) the xenon plugin
+ * and platform drivers into a given APPIUM_HOME. Emits 'progress'
+ * (SetupProgress) for each step so the renderer can show live status.
  */
 export class SetupService extends EventEmitter {
   /** Best-effort path to the local repo root (present only in a source checkout). */
@@ -55,6 +58,50 @@ export class SetupService extends EventEmitter {
     });
   }
 
+  /** Run a command and collect its full stdout (used for `--json` queries). */
+  private capture(bin: string, args: string[], env: NodeJS.ProcessEnv): Promise<{ code: number; stdout: string }> {
+    return new Promise((resolve) => {
+      const child = spawn(bin, args, { env });
+      let stdout = '';
+      child.stdout?.on('data', (b: Buffer) => {
+        stdout += b.toString('utf8');
+      });
+      child.on('error', () => resolve({ code: -1, stdout }));
+      child.on('exit', (code) => resolve({ code: code ?? -1, stdout }));
+    });
+  }
+
+  /**
+   * Parse `appium <kind> list --installed --json` into the manifest object.
+   * Warnings are emitted on stderr, so stdout is (mostly) clean JSON; we still
+   * slice to the outermost braces to be defensive. Returns {} on any failure.
+   */
+  private async listInstalled(
+    kind: 'plugin' | 'driver',
+    bin: string,
+    env: NodeJS.ProcessEnv,
+  ): Promise<Record<string, { pkgName?: string; installed?: boolean }>> {
+    const { code, stdout } = await this.capture(bin, [kind, 'list', '--installed', '--json'], env);
+    if (code !== 0) return {};
+    const start = stdout.indexOf('{');
+    const end = stdout.lastIndexOf('}');
+    if (start === -1 || end === -1) return {};
+    try {
+      return JSON.parse(stdout.slice(start, end + 1));
+    } catch {
+      return {};
+    }
+  }
+
+  /** Registered name of our plugin if installed (matched by package), else null. */
+  private async installedPluginName(bin: string, env: NodeJS.ProcessEnv): Promise<string | null> {
+    const manifest = await this.listInstalled('plugin', bin, env);
+    for (const [name, info] of Object.entries(manifest)) {
+      if (info?.pkgName === NPM_PLUGIN && info.installed !== false) return name;
+    }
+    return null;
+  }
+
   async install(opts: SetupOptions): Promise<boolean> {
     const appiumBin = await which('appium');
     if (!appiumBin) {
@@ -63,24 +110,35 @@ export class SetupService extends EventEmitter {
     }
     const env = await buildEnv({ APPIUM_HOME: opts.appiumHome });
 
-    // 1) Install the plugin.
-    let source: string;
-    if (opts.pluginSource === 'local') {
-      const repo = this.localRepoRoot();
-      if (!repo) {
-        this.emitProgress({ step: 'install-plugin', done: true, ok: false, detail: 'local repo not found; use npm source' });
-        return false;
-      }
-      source = `--source=local ${repo}`;
-    } else {
-      source = `--source=npm ${NPM_PLUGIN}`;
+    // 1) Install or update the plugin. Falls back to npm when no local repo is
+    //    present (F2) and updates rather than reinstalling when already installed (F3).
+    const plan = planPluginSteps({
+      installedName: await this.installedPluginName(appiumBin, env),
+      pluginSource: opts.pluginSource,
+      repoRoot: opts.pluginSource === 'local' ? this.localRepoRoot() : null,
+    });
+    if (plan.fallbackToNpm) {
+      this.emitProgress({
+        step: 'plugin-source',
+        done: true,
+        ok: true,
+        detail: 'no local checkout found — installing from npm',
+      });
     }
-    const pluginOk = await this.runStep('install-plugin', appiumBin, ['plugin', 'install', ...source.split(' ')], env);
-    if (!pluginOk) return false;
+    for (const s of plan.steps) {
+      const ok = await this.runStep(s.step, appiumBin, s.args, env);
+      if (!ok) return false;
+    }
 
-    // 2) Install requested drivers (idempotent — Appium no-ops if present).
+    // 2) Install requested drivers, skipping ones already present (a bare
+    //    `driver install` errors on an installed driver).
+    const installedDrivers = Object.keys(await this.listInstalled('driver', appiumBin, env));
+    const { toInstall, skip } = partitionDrivers(opts.drivers, installedDrivers);
+    for (const driver of skip) {
+      this.emitProgress({ step: `install-driver:${driver}`, done: true, ok: true, detail: 'already installed' });
+    }
     let allOk = true;
-    for (const driver of opts.drivers) {
+    for (const driver of toInstall) {
       const ok = await this.runStep(`install-driver:${driver}`, appiumBin, ['driver', 'install', driver], env);
       allOk = allOk && ok;
     }
