@@ -327,11 +327,25 @@ export class CommandInterceptor {
         ['findElement', 'findElements'].includes(commandName) &&
         (pluginArgs.enableSelfHealing as boolean) !== false
       ) {
+        // §2.7 healing-tier capability gate: a session created with
+        // xenon:options.healingTiers restricts self-healing to those tier
+        // indices (1=Resilio, 2=Fuzzy XML, 3=OCR, 4=Visual AI, 5=LLM).
+        // Every optional hop is guarded — a missing/unrecoverable session,
+        // capability, or malformed value all fall back to "run all tiers"
+        // (today's unchanged behavior).
+        const rawHealingTiers = SESSION_MANAGER.getSession(sessionId)?.getCapabilities()?.[
+          'xenon:options'
+        ]?.healingTiers;
+        const allowedHealingTiers: number[] | undefined = Array.isArray(rawHealingTiers)
+          ? rawHealingTiers.filter((t: any) => typeof t === 'number')
+          : undefined;
+
         const healed = await Container.get(HealingOrchestrator).attemptHealing(
           sessionId,
           driver,
           args[0],
           args[1],
+          allowedHealingTiers,
         );
         if (healed) {
           await this.logHealingEvent(sessionId, commandName, driver, args, healed);
