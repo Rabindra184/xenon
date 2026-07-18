@@ -14,6 +14,7 @@ import {
 import { config } from '../../config';
 import { prisma } from '../../prisma';
 import { JwtKeyService } from '../../services/token/JwtKeyService';
+import { resolveMcpGrant, McpScopeError } from '../../services/token/mcpScopes';
 
 const SESSION_COOKIE = 'xenon_dashboard_session';
 const isSecureFromReq = (req: any) =>
@@ -25,14 +26,41 @@ const MINTABLE_AUDIENCES = ['xenon-rest', 'xenon-mcp'] as const;
 
 export async function issueToken(
   auth: { userId: string; role: string; scopes: string; teamId?: string | null },
-  body: { audience?: string },
-): Promise<{ token: string; expiresIn: number; audience: string }> {
+  body: { audience?: string; scopes?: string[] },
+): Promise<{
+  token: string;
+  expiresIn: number;
+  audience: string;
+  scopes?: string[];
+}> {
   const audience = body.audience ?? 'xenon-rest';
   if (!MINTABLE_AUDIENCES.includes(audience as any)) {
     throw new Error(`unsupported audience: ${audience}`);
   }
   const expiresIn = audience === 'xenon-mcp' ? MCP_TTL_SEC : REST_TTL_SEC;
-  const token = await Container.get(JwtKeyService).sign(
+  const svc = Container.get(JwtKeyService);
+
+  if (audience === 'xenon-mcp') {
+    // Granular MCP claims (spec §4.2): `scope` (space-joined, the gateway's
+    // scopeClaim) + `roles` for the gateway's admin bypass, and a DOWN-MAPPED
+    // flat `scopes` claim so this token's REST power matches its MCP grant
+    // (least privilege — an mcp token no longer carries the key's full flat set).
+    const grant = resolveMcpGrant(auth.scopes, body.scopes);
+    const token = await svc.sign(
+      {
+        sub: auth.userId,
+        role: auth.role,
+        scopes: grant.flat.join(','),
+        teamId: auth.teamId ?? null,
+        scope: grant.granular.join(' '),
+        roles: grant.roles,
+      },
+      { audience, ttlSeconds: expiresIn },
+    );
+    return { token, expiresIn, audience, scopes: grant.granular };
+  }
+
+  const token = await svc.sign(
     { sub: auth.userId, role: auth.role, scopes: auth.scopes, teamId: auth.teamId ?? null },
     { audience, ttlSeconds: expiresIn },
   );
@@ -256,8 +284,12 @@ export function authAuthedRouter(): Router {
     try {
       const out = await issueToken(req.auth!, req.body ?? {});
       res.json(out);
-    } catch (e: any) {
-      res.status(400).json({ error: e.message });
+    } catch (err: any) {
+      if (err instanceof McpScopeError) {
+        const status = err.code === 'scope_exceeds_key' ? 403 : 400;
+        return res.status(status).json({ error: err.code, details: err.message });
+      }
+      res.status(400).json({ error: 'bad_request', details: err.message });
     }
   });
 
