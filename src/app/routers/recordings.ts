@@ -47,7 +47,11 @@ router.post('/recordings', async (req: Request, res: Response) => {
       return res.status(400).json({ error: 'every udid must be a non-empty string' });
     }
   }
-  const actorId = req.apiKey?.id;
+  // CRITICAL 1 (Phase 2a review): the bearer-auth path sets req.auth (with
+  // req.auth.userId) but never req.apiKey, so req.apiKey?.id alone 401s every
+  // bearer-authed caller (e.g. xenon_start_recording via the MCP plugin).
+  // Fall back to req.auth.userId so bearer principals resolve an actorId too.
+  const actorId = req.apiKey?.id ?? (req as any).auth?.userId;
   if (!actorId) return res.status(401).json({ error: 'unauthenticated' });
   try {
     const out = await Container.get(RecordingOrchestrator).start({
@@ -84,7 +88,8 @@ router.post('/recordings/:groupId/add-device', async (req: Request, res: Respons
   if (typeof udid !== 'string' || udid.length === 0) {
     return res.status(400).json({ error: 'udid must be a non-empty string' });
   }
-  const actorId = req.apiKey?.id;
+  // CRITICAL 1 (Phase 2a review): same bearer-actor fallback as POST /recordings.
+  const actorId = req.apiKey?.id ?? (req as any).auth?.userId;
   if (!actorId) return res.status(401).json({ error: 'unauthenticated' });
   try {
     const out = await Container.get(RecordingOrchestrator).addDevice(

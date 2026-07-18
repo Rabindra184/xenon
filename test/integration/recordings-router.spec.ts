@@ -95,6 +95,53 @@ describe('Recordings router (integration)', () => {
     expect(bad.status).to.equal(400);
   });
 
+  // CRITICAL 1 (Phase 2a review): the bearer-auth path sets req.auth (with
+  // req.auth.userId) but never req.apiKey, so the pre-fix actorId derivation
+  // (`req.apiKey?.id` only) 401s every bearer-authed caller. These specs set
+  // up req.auth exactly like the bearer middleware would, WITHOUT req.apiKey,
+  // to prove bearer principals can reach the handler (no 401).
+  function makeBearerApp() {
+    const app = express();
+    app.use(express.json());
+    app.use((req: any, _res, next) => {
+      req.auth = {
+        kind: 'bearer',
+        userId: 'u1',
+        role: 'MEMBER',
+        scopes: 'devices',
+        rateLimit: 100,
+      };
+      next();
+    });
+    const r = express.Router();
+    RecordingsRouter.register(r);
+    app.use('/xenon/api', r);
+    return app;
+  }
+
+  it('POST /recordings: bearer principal (req.auth.userId, no req.apiKey) is not 401', async () => {
+    sinon.stub(Container.get(RecordingOrchestrator), 'start').resolves({
+      groupId: 'g-1',
+      recordings: [{ id: 'r-1', udid: 'U1', status: 'RECORDING' }],
+      startedAt: new Date(),
+    });
+    const r = await request(makeBearerApp())
+      .post('/xenon/api/recordings')
+      .send({ udids: ['U1'] });
+    expect(r.status).to.equal(202);
+  });
+
+  it('POST /recordings/:groupId/add-device: bearer principal (req.auth.userId, no req.apiKey) is not 401', async () => {
+    sinon.stub(Container.get(RecordingOrchestrator), 'addDevice').resolves({
+      groupId: 'g-1',
+      recordings: [{ id: 'r-2', udid: 'U2', status: 'RECORDING' }],
+    } as any);
+    const r = await request(makeBearerApp())
+      .post('/xenon/api/recordings/g-1/add-device')
+      .send({ udid: 'U2' });
+    expect(r.status).to.equal(201);
+  });
+
   it('POST /recordings/:groupId/annotation: 201 + 400 validation', async () => {
     sinon
       .stub(Container.get(RecordingOrchestrator), 'addAnnotation')
