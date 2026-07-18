@@ -120,6 +120,11 @@ export async function authMiddleware(req: Request, res: Response, next: NextFunc
   //
   // Live user lookup on every request → revocation is instant on the REST
   // surface even though the token itself is stateless (spec §7.1).
+  // Accepting the xenon-mcp audience here (not just xenon-rest) lets the MCP plugin's tools
+  // call REST with the gateway-injected authToken. Tradeoff (spec §7.1): mcp tokens carry a
+  // 12-24h TTL vs xenon-rest's 1h, so a stolen active-user mcp token has REST access for its
+  // full TTL. Mitigated — not eliminated — by the per-request live-user lookup below (a
+  // disabled/revoked account is rejected on the next call regardless of the token's remaining life).
   const ACCEPTED_BEARER_AUDIENCES = ['xenon-rest', 'xenon-mcp'] as const;
   const authHeader = req.headers['authorization'];
   if (typeof authHeader === 'string' && authHeader.startsWith('Bearer ')) {
