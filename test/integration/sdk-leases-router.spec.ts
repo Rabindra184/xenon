@@ -3,6 +3,15 @@ import { expect } from 'chai';
 import express from 'express';
 import request from 'supertest';
 import sinon from 'sinon';
+// Static imports (recordings-router.spec idiom): the previous extensionless
+// dynamic `await import(...)` fails to resolve when Node's native ESM loader
+// picks the spec up, breaking the whole file under bare `npx mocha`.
+import { makeRouter } from '../../src/app/routers/sdk-leases';
+import {
+  NoMatchingDevice,
+  LeaseTokenMismatch,
+  LeaseGone,
+} from '../../src/services/lease/LeaseService';
 
 describe('POST /xenon/api/sdk/leases', () => {
   let app: express.Express;
@@ -17,7 +26,6 @@ describe('POST /xenon/api/sdk/leases', () => {
       resolve: sinon.stub(),
     };
 
-    const router = await import('../../src/app/routers/sdk-leases');
     app = express();
     app.use(express.json());
     // Stub req.apiKey + req.auth that the auth middleware would normally set.
@@ -26,7 +34,7 @@ describe('POST /xenon/api/sdk/leases', () => {
       req.auth = { teamIds: ['team-1'] };
       next();
     });
-    app.use('/xenon/api/sdk/leases', router.makeRouter({ leaseService: leaseSvc }));
+    app.use('/xenon/api/sdk/leases', makeRouter({ leaseService: leaseSvc }));
   });
 
   it('returns 201 on happy path', async () => {
@@ -47,8 +55,51 @@ describe('POST /xenon/api/sdk/leases', () => {
     expect(res.body.leaseToken).to.match(/^t{64}$/);
   });
 
+  it('records the api-key principal as actor/team on create', async () => {
+    leaseSvc.create.resolves({ leaseId: 'lse_1', leaseToken: 't'.repeat(64) });
+    await request(app)
+      .post('/xenon/api/sdk/leases')
+      .send({ filters: { platform: 'android' } });
+    expect(leaseSvc.create.calledOnce).to.equal(true);
+    expect(leaseSvc.create.firstCall.args[0]).to.include({
+      actorId: 'actor-1',
+      teamId: 'team-1',
+    });
+  });
+
+  // IMPORTANT 4 (Phase 2a review): the bearer-auth path sets req.auth (with
+  // userId/teamId) but never req.apiKey — the pre-fix handler read req.apiKey
+  // only, so a bearer-authed xenon_acquire_device recorded actorId:'anonymous',
+  // teamId:null. Prove a bearer principal's identity is recorded on the lease.
+  it('records the bearer principal (req.auth, no req.apiKey) as actor/team on create', async () => {
+    const bearerApp = express();
+    bearerApp.use(express.json());
+    bearerApp.use((req: any, _res, next) => {
+      req.auth = {
+        kind: 'bearer',
+        userId: 'bearer-user-1',
+        role: 'MEMBER',
+        scopes: 'devices',
+        teamId: 'team-9',
+        rateLimit: 100,
+      };
+      next();
+    });
+    bearerApp.use('/xenon/api/sdk/leases', makeRouter({ leaseService: leaseSvc }));
+
+    leaseSvc.create.resolves({ leaseId: 'lse_2', leaseToken: 't'.repeat(64) });
+    const res = await request(bearerApp)
+      .post('/xenon/api/sdk/leases')
+      .send({ filters: { platform: 'android' } });
+    expect(res.status).to.equal(201);
+    expect(leaseSvc.create.calledOnce).to.equal(true);
+    expect(leaseSvc.create.firstCall.args[0]).to.include({
+      actorId: 'bearer-user-1',
+      teamId: 'team-9',
+    });
+  });
+
   it('returns 404 when no device matches', async () => {
-    const { NoMatchingDevice } = await import('../../src/services/lease/LeaseService');
     leaseSvc.create.rejects(new NoMatchingDevice('no device'));
     const res = await request(app)
       .post('/xenon/api/sdk/leases')
@@ -69,7 +120,6 @@ describe('POST /xenon/api/sdk/leases', () => {
   });
 
   it('heartbeat: 403 on token mismatch from service', async () => {
-    const { LeaseTokenMismatch } = await import('../../src/services/lease/LeaseService');
     leaseSvc.heartbeat.rejects(new LeaseTokenMismatch());
     const res = await request(app)
       .post('/xenon/api/sdk/leases/lse_1/heartbeat')
@@ -78,7 +128,6 @@ describe('POST /xenon/api/sdk/leases', () => {
   });
 
   it('heartbeat: 410 Gone on expired lease', async () => {
-    const { LeaseGone } = await import('../../src/services/lease/LeaseService');
     leaseSvc.heartbeat.rejects(new LeaseGone('expired'));
     const res = await request(app)
       .post('/xenon/api/sdk/leases/lse_1/heartbeat')

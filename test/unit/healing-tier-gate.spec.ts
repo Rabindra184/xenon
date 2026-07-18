@@ -3,6 +3,7 @@ import { Container } from 'typedi';
 import {
   HealingOrchestrator,
   filterProvidersByTier,
+  coerceHealingTiersCap,
 } from '../../src/services/healing/HealingOrchestrator';
 import { HealEtalonService } from '../../src/services/healing/HealEtalonService';
 import { HealedLocatorGenerator } from '../../src/services/healing/HealedLocatorGenerator';
@@ -47,6 +48,38 @@ describe('filterProvidersByTier (§2.7 healing-tier gate)', () => {
   it('returns no providers when allowedTiers is an empty array', () => {
     const result = filterProvidersByTier(providers, []);
     expect(result).to.deep.equal([]);
+  });
+
+  // MINOR fix (Phase 2a review): the capability accessor must fail OPEN on a
+  // malformed healingTiers cap. Pre-fix, an all-non-numeric array (e.g.
+  // ["1","2"]) filtered to [] and silently DISABLED healing; the contract is
+  // malformed → run all tiers. The cap is meant to RESTRICT healing, never to
+  // disable it — so an explicitly-empty [] also coerces to run-all (opting out
+  // of healing entirely is not a supported use case).
+  describe('coerceHealingTiersCap (malformed cap → fail open)', () => {
+    it('passes a numeric array through unchanged', () => {
+      expect(coerceHealingTiersCap([1, 3])).to.deep.equal([1, 3]);
+    });
+
+    it('keeps only the numeric entries of a mixed array', () => {
+      expect(coerceHealingTiersCap([1, '2'])).to.deep.equal([1]);
+    });
+
+    it('non-array (string/undefined/null) → undefined (run all)', () => {
+      expect(coerceHealingTiersCap('1,2')).to.equal(undefined);
+      expect(coerceHealingTiersCap(undefined)).to.equal(undefined);
+      expect(coerceHealingTiersCap(null)).to.equal(undefined);
+    });
+
+    it('all-non-numeric array ["1","2"] → undefined → ALL providers run (fail open)', () => {
+      const coerced = coerceHealingTiersCap(['1', '2']);
+      expect(coerced).to.equal(undefined);
+      expect(filterProvidersByTier(providers, coerced)).to.deep.equal(providers);
+    });
+
+    it('explicitly-empty [] also → undefined (run all; the cap restricts, it cannot disable)', () => {
+      expect(coerceHealingTiersCap([])).to.equal(undefined);
+    });
   });
 });
 

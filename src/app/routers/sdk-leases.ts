@@ -24,13 +24,18 @@ export function makeRouter(opts: MakeRouterOpts = {}): Router {
       return res.status(400).json({ error: 'bad_request', details: 'filters.platform required' });
     }
     const apiKey: any = (req as any).apiKey;
+    // IMPORTANT 4 (Phase 2a review): the bearer-auth path sets req.auth (with
+    // userId/teamId) but never req.apiKey. Without the req.auth fallback a
+    // bearer-authed lease create (e.g. xenon_acquire_device) was recorded as
+    // actorId:'anonymous', teamId:null — losing attribution.
+    const auth: any = (req as any).auth;
     try {
       const out = await svc.create({
         filters,
         durationMs: typeof durationMs === 'number' ? durationMs : 30 * 60 * 1000,
         heartbeatSeconds: typeof heartbeatSeconds === 'number' ? heartbeatSeconds : 30,
-        actorId: apiKey?.id ?? 'anonymous',
-        teamId: apiKey?.teamId ?? null,
+        actorId: apiKey?.id ?? auth?.userId ?? 'anonymous',
+        teamId: apiKey?.teamId ?? auth?.teamId ?? null,
         buildId,
         reason,
       });

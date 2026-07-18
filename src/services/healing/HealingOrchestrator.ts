@@ -29,6 +29,20 @@ export function filterProvidersByTier(
   return providers.filter((_, index) => allowed.has(index + 1));
 }
 
+// Coerce the raw xenon:options.healingTiers capability value into the
+// allowedTiers argument for attemptHealing. Fail-open contract (Phase 2a
+// review fix): a malformed cap must RUN ALL tiers, never silently disable
+// healing. Pre-fix, an all-non-numeric array (e.g. ["1","2"]) filtered to []
+// which filterProvidersByTier turned into "no providers" — healing silently
+// off. Now any coercion that yields no numeric tiers (non-array, all-non-
+// numeric, or an explicitly-empty []) returns undefined → run all tiers.
+// The cap is meant to restrict healing, not disable it, so an explicit []
+// opting out of healing entirely is deliberately NOT supported.
+export function coerceHealingTiersCap(raw: unknown): number[] | undefined {
+  const nums = Array.isArray(raw) ? raw.filter((t: any) => typeof t === 'number') : undefined;
+  return nums && nums.length === 0 ? undefined : nums;
+}
+
 @Service()
 export class HealingOrchestrator {
   private logger = log.scope('HealingOrchestrator');

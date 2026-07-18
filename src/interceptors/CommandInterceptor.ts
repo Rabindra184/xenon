@@ -3,7 +3,10 @@ import { Span } from '@opentelemetry/api';
 import { TracingService } from '../services/TracingService';
 import { DASHBORD_EVENT_MANAGER } from '../dashboard/event-manager';
 import { SESSION_MANAGER } from '../sessions/SessionManager';
-import { HealingOrchestrator } from '../services/healing/HealingOrchestrator';
+import {
+  HealingOrchestrator,
+  coerceHealingTiersCap,
+} from '../services/healing/HealingOrchestrator';
 import { HealEtalonService } from '../services/healing/HealEtalonService';
 import { OmniVisionService } from '../services/omni-vision/OmniVisionService';
 import { AICommandService } from '../services/AICommandService';
@@ -332,13 +335,13 @@ export class CommandInterceptor {
         // indices (1=Resilio, 2=Fuzzy XML, 3=OCR, 4=Visual AI, 5=LLM).
         // Every optional hop is guarded — a missing/unrecoverable session,
         // capability, or malformed value all fall back to "run all tiers"
-        // (today's unchanged behavior).
+        // (fail open). coerceHealingTiersCap enforces that: an all-non-numeric
+        // array (e.g. ["1","2"]) or an empty [] coerces to undefined instead
+        // of [] — pre-fix, [] silently disabled healing entirely.
         const rawHealingTiers = SESSION_MANAGER.getSession(sessionId)?.getCapabilities()?.[
           'xenon:options'
         ]?.healingTiers;
-        const allowedHealingTiers: number[] | undefined = Array.isArray(rawHealingTiers)
-          ? rawHealingTiers.filter((t: any) => typeof t === 'number')
-          : undefined;
+        const allowedHealingTiers = coerceHealingTiersCap(rawHealingTiers);
 
         const healed = await Container.get(HealingOrchestrator).attemptHealing(
           sessionId,
