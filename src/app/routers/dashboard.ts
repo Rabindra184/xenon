@@ -199,13 +199,14 @@ function startOfTodayUtc(): Date {
   return d;
 }
 
-async function getRecentHealingEvents(request: Request, response: Response) {
+export async function getRecentHealingEvents(request: Request, response: Response) {
   const limitRaw = parseInt((request.query.limit as string) || '50', 10);
   const limit = Number.isFinite(limitRaw) ? Math.min(Math.max(limitRaw, 1), 200) : 50;
+  const sessionId = (request.query.sessionId as string) || undefined;
 
   const [rows, todayCount] = await Promise.all([
     prisma.sessionLog.findMany({
-      where: { is_healed: true },
+      where: { is_healed: true, ...(sessionId ? { session_id: sessionId } : {}) },
       orderBy: { createdAt: 'desc' },
       take: limit,
       include: {
