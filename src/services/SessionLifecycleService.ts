@@ -33,10 +33,12 @@ import { TracingService } from './TracingService';
 import { PortAllocator } from './PortAllocator';
 import {
   extractAccessKeyTokenPair,
+  extractSessionToken,
   extractTeamCap,
   getXenonCapabilities,
   XENON_CAPABILITIES,
 } from '../XenonCapabilityManager';
+import { JwtKeyService } from './token/JwtKeyService';
 import { CircuitBreaker } from '../data-service/CircuitBreaker';
 import { addProxyHandler } from '../proxy/wd-command-proxy';
 import { DeviceStoreFactory } from '../data-service/device-store';
@@ -214,6 +216,20 @@ export class SessionLifecycleService {
     // df:options.{accessKey, token} pair — the only supported credential shape.
     const pair = extractAccessKeyTokenPair(caps);
     const row = pair ? await svc.verifyPair(pair.accessKey, pair.token) : null;
+
+    const { assertSessionTokenGate, sessionTokenGateEnabled } = await import('./sessionTokenGate');
+    try {
+      await assertSessionTokenGate({
+        enabled: sessionTokenGateEnabled(),
+        hasValidKeyPair: !!row,
+        token: extractSessionToken(caps),
+        verify: (t) =>
+          Container.get(JwtKeyService).verify(t, { audience: 'xenon-session' }),
+      });
+    } catch (err: any) {
+      this.logger.error(`❌ ${err.message}`);
+      throw new appiumErrors.InvalidArgumentError(err.message);
+    }
 
     if (!row) {
       this.logger.warn(

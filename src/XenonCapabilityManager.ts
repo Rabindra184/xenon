@@ -199,6 +199,20 @@ export function extractAccessKeyTokenPair(
   return { accessKey, token };
 }
 
+// Returns the xenon:options.sessionToken JWT (hub-minted, aud 'xenon-session'),
+// used by the opt-in session-token gate (spec §3 item 6, risk R9). Returns
+// null if absent — callers combine this with the df:options access-key/token
+// pair to decide whether createSession is authorized.
+export function extractSessionToken(caps: ISessionCapability): string | null {
+  const read = (obj: unknown): string | null => {
+    const xo = (obj as Record<string, unknown> | undefined)?.['xenon:options'];
+    const t = xo && typeof xo === 'object' ? (xo as Record<string, unknown>).sessionToken : undefined;
+    return typeof t === 'string' && t.length > 0 ? t : null;
+  };
+  const fm = Array.isArray(caps?.firstMatch) ? caps.firstMatch[0] : undefined;
+  return read(caps?.alwaysMatch) ?? read(fm);
+}
+
 export function getXenonCapabilities(caps: ISessionCapability) {
   const mergedCapabilites = Object.assign({}, caps.firstMatch?.[0] ?? {}, caps.alwaysMatch);
 
