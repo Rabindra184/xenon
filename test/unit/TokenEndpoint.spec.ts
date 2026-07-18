@@ -128,4 +128,16 @@ describe('issueToken (xenon-mcp granular claims)', () => {
     const out: any = await issueToken(auth, { audience: 'xenon-rest' });
     expect(out.sessionToken).to.equal(undefined);
   });
+
+  it('rejects a non-array scopes body with a typed McpScopeError (clean 400, no raw TypeError)', async () => {
+    try {
+      // untrusted body: a bare string instead of an array
+      await issueToken(auth, { audience: 'xenon-mcp', scopes: 'appium:use' as any });
+      throw new Error('should have thrown');
+    } catch (e: any) {
+      expect(e).to.be.instanceOf(McpScopeError);
+      expect(e.code).to.equal('unknown_scope');
+      expect(e.message).to.include('array');
+    }
+  });
 });

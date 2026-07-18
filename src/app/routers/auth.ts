@@ -42,6 +42,13 @@ export async function issueToken(
   const svc = Container.get(JwtKeyService);
 
   if (audience === 'xenon-mcp') {
+    // Validate the untrusted `scopes` body field before it reaches the mapper:
+    // a non-array truthy value (e.g. `"appium:use"`) would otherwise throw a
+    // raw TypeError inside resolveMcpGrant, leaking an internal message as the
+    // 400 detail. A typed McpScopeError gives a clean 400 instead.
+    if (body.scopes !== undefined && !Array.isArray(body.scopes)) {
+      throw new McpScopeError('unknown_scope', 'scopes must be an array of scope strings');
+    }
     // Granular MCP claims (spec §4.2): `scope` (space-joined, the gateway's
     // scopeClaim) + `roles` for the gateway's admin bypass, and a DOWN-MAPPED
     // flat `scopes` claim so this token's REST power matches its MCP grant
