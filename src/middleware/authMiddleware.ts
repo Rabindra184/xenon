@@ -106,15 +106,37 @@ export async function authMiddleware(req: Request, res: Response, next: NextFunc
     return next();
   }
 
-  // Path 1.5: Authorization: Bearer <hub-issued JWT> (audience xenon-rest).
+  // Path 1.5: Authorization: Bearer <hub-issued JWT> (audience xenon-rest or
+  // xenon-mcp). xenon-mcp tokens are the gateway-injected `authToken` the MCP
+  // plugin's tools present when calling this same REST surface, so both
+  // audiences must verify here.
+  //
+  // JwtKeyService.verify()'s current signature is `{ audience: string }`
+  // (single audience) — it does not accept an audience array, so we try each
+  // accepted audience in turn rather than widening that shared service's
+  // signature. jose's own jwtVerify does accept `string | string[]`; if
+  // JwtKeyService.verify is ever widened to expose that, this loop can
+  // collapse into a single call with `{ audience: ACCEPTED_BEARER_AUDIENCES }`.
+  //
   // Live user lookup on every request → revocation is instant on the REST
   // surface even though the token itself is stateless (spec §7.1).
+  const ACCEPTED_BEARER_AUDIENCES = ['xenon-rest', 'xenon-mcp'] as const;
   const authHeader = req.headers['authorization'];
   if (typeof authHeader === 'string' && authHeader.startsWith('Bearer ')) {
     try {
-      const payload = await Container.get(JwtKeyService).verify(authHeader.slice(7), {
-        audience: 'xenon-rest',
-      });
+      const bearer = authHeader.slice(7);
+      let payload: Awaited<ReturnType<JwtKeyService['verify']>> | undefined;
+      for (const audience of ACCEPTED_BEARER_AUDIENCES) {
+        try {
+          payload = await Container.get(JwtKeyService).verify(bearer, { audience });
+          break;
+        } catch {
+          // try next accepted audience
+        }
+      }
+      if (!payload) {
+        return res.status(401).json({ error: 'invalid token' });
+      }
       const user = await userSvc.findById(String(payload.sub));
       if (!user || user.status !== 'ACTIVE') {
         return res.status(401).json({ error: 'invalid token' });
