@@ -20,13 +20,16 @@ function fakeRes() {
   return res;
 }
 
-describe('authMiddleware — Bearer branch', () => {
+// The MCP plugin's tools call Xenon REST with a gateway-injected `authToken`
+// that carries audience `xenon-mcp` (not `xenon-rest`). The bearer branch of
+// authMiddleware must accept BOTH audiences so those REST calls don't 401.
+describe('authMiddleware — Bearer branch accepts xenon-mcp audience', () => {
   let dir: string;
   let keySvc: JwtKeyService;
   const user = { id: 'u1', role: 'MEMBER', status: 'ACTIVE' };
 
   beforeEach(async () => {
-    dir = fs.mkdtempSync(path.join(os.tmpdir(), 'xenon-bearer-'));
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), 'xenon-mcp-aud-'));
     keySvc = new JwtKeyService();
     await keySvc.init(dir);
     Container.set(JwtKeyService, keySvc);
@@ -41,10 +44,10 @@ describe('authMiddleware — Bearer branch', () => {
     fs.rmSync(dir, { recursive: true, force: true });
   });
 
-  it('accepts a valid xenon-rest Bearer token and sets req.auth', async () => {
+  it('accepts a valid xenon-mcp Bearer token (ACTIVE user) and sets req.auth.kind=bearer', async () => {
     const token = await keySvc.sign(
       { sub: 'u1', role: 'MEMBER', scopes: 'devices,read', teamId: 't1' },
-      { audience: 'xenon-rest', ttlSeconds: 60 },
+      { audience: 'xenon-mcp', ttlSeconds: 60 },
     );
     const req: any = { headers: { authorization: `Bearer ${token}` }, query: {} };
     const res = fakeRes();
@@ -56,51 +59,34 @@ describe('authMiddleware — Bearer branch', () => {
     expect(req.auth.scopes).to.equal('devices,read');
   });
 
-  // Widened by Phase 2a Task 1: the MCP plugin's tools call this same REST
-  // surface with a gateway-injected xenon-mcp-audience token, so it must be
-  // accepted here too (see authMiddleware.mcpAudience.spec.ts for the full
-  // coverage of the widened bearer branch).
-  it('accepts an xenon-mcp-audience token on the REST surface (widened for MCP plugin tool calls)', async () => {
-    const token = await keySvc.sign({ sub: 'u1' }, { audience: 'xenon-mcp', ttlSeconds: 60 });
+  it('still accepts a valid xenon-rest Bearer token (regression)', async () => {
+    const token = await keySvc.sign(
+      { sub: 'u1', role: 'MEMBER', scopes: 'devices,read', teamId: 't1' },
+      { audience: 'xenon-rest', ttlSeconds: 60 },
+    );
     const req: any = { headers: { authorization: `Bearer ${token}` }, query: {} };
     const res = fakeRes();
     const next = sinon.spy();
     await authMiddleware(req, res as any, next);
     expect(next.calledOnce).to.equal(true);
     expect(req.auth.kind).to.equal('bearer');
+    expect(req.auth.userId).to.equal('u1');
   });
 
-  it('rejects a token for a disabled user (live revocation)', async () => {
-    (Container.get(UserService).findById as sinon.SinonStub).resolves({ ...user, status: 'DISABLED' });
-    const token = await keySvc.sign({ sub: 'u1' }, { audience: 'xenon-rest', ttlSeconds: 60 });
+  it('rejects a token minted for neither xenon-rest nor xenon-mcp', async () => {
+    const token = await keySvc.sign({ sub: 'u1' }, { audience: 'xenon-stream', ttlSeconds: 60 });
     const req: any = { headers: { authorization: `Bearer ${token}` }, query: {} };
     const res = fakeRes();
     await authMiddleware(req, res as any, sinon.spy());
     expect(res.statusCode).to.equal(401);
   });
 
-  // ---- regression pins: old inputs behave exactly as before ----
-
-  it('REGRESSION: no credentials → 401 unauthenticated (unchanged)', async () => {
-    const req: any = { headers: {}, query: {} };
+  it('rejects an xenon-mcp token for a disabled user (live revocation preserved)', async () => {
+    (Container.get(UserService).findById as sinon.SinonStub).resolves({ ...user, status: 'DISABLED' });
+    const token = await keySvc.sign({ sub: 'u1' }, { audience: 'xenon-mcp', ttlSeconds: 60 });
+    const req: any = { headers: { authorization: `Bearer ${token}` }, query: {} };
     const res = fakeRes();
     await authMiddleware(req, res as any, sinon.spy());
     expect(res.statusCode).to.equal(401);
-    expect(res.body).to.deep.equal({ error: 'unauthenticated' });
-  });
-
-  it('REGRESSION: header pair still takes priority over a Bearer header', async () => {
-    const row = { id: 'k1', userId: 'u1', scopes: 'admin', rateLimit: 100, teamId: null };
-    (Container.get(ApiKeyService).verifyPair as sinon.SinonStub).resolves(row);
-    const token = await keySvc.sign({ sub: 'other' }, { audience: 'xenon-rest', ttlSeconds: 60 });
-    const req: any = {
-      headers: { 'x-xenon-access-key': 'ak', 'x-xenon-token': 'tk', authorization: `Bearer ${token}` },
-      query: {},
-    };
-    const res = fakeRes();
-    const next = sinon.spy();
-    await authMiddleware(req, res as any, next);
-    expect(next.calledOnce).to.equal(true);
-    expect(req.auth.kind).to.equal('api-key'); // pair wins, Bearer never evaluated
   });
 });

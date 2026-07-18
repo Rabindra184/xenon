@@ -11,6 +11,38 @@ import { ResilioTreeHealingProvider } from './ResilioTreeHealingProvider';
 import { HEALING_METRICS } from './HealingMetrics';
 import { ATTR } from '../telemetry/attributes';
 
+// §2.7 healing-tier capability gate. The tier numbering here is the
+// externally-facing capability contract (xenon:options.healingTiers),
+// which is array-position based: providers[i] is tier i+1 (1=Resilio,
+// 2=Fuzzy XML, 3=OCR, 4=Visual AI, 5=LLM). Tier 0 is the original/native
+// selector — it's implicit and never appears in the providers array, so
+// it needs no filtering. This is deliberately decoupled from the internal
+// HealingTier enum (whose numeric values don't line up 1:1 with position,
+// e.g. Resilio's enum value is 0), so the capability contract stays a
+// simple, stable 1-5 list regardless of internal enum churn.
+export function filterProvidersByTier(
+  providers: HealingProvider[],
+  allowedTiers?: number[],
+): HealingProvider[] {
+  if (allowedTiers === undefined) return providers;
+  const allowed = new Set(allowedTiers);
+  return providers.filter((_, index) => allowed.has(index + 1));
+}
+
+// Coerce the raw xenon:options.healingTiers capability value into the
+// allowedTiers argument for attemptHealing. Fail-open contract (Phase 2a
+// review fix): a malformed cap must RUN ALL tiers, never silently disable
+// healing. Pre-fix, an all-non-numeric array (e.g. ["1","2"]) filtered to []
+// which filterProvidersByTier turned into "no providers" — healing silently
+// off. Now any coercion that yields no numeric tiers (non-array, all-non-
+// numeric, or an explicitly-empty []) returns undefined → run all tiers.
+// The cap is meant to restrict healing, not disable it, so an explicit []
+// opting out of healing entirely is deliberately NOT supported.
+export function coerceHealingTiersCap(raw: unknown): number[] | undefined {
+  const nums = Array.isArray(raw) ? raw.filter((t: any) => typeof t === 'number') : undefined;
+  return nums && nums.length === 0 ? undefined : nums;
+}
+
 @Service()
 export class HealingOrchestrator {
   private logger = log.scope('HealingOrchestrator');
@@ -31,6 +63,7 @@ export class HealingOrchestrator {
     driver: any,
     strategy: string,
     selector: string,
+    allowedTiers?: number[],
   ): Promise<HealedElement | null> {
     this.logger.info(
       `🚨 Self-Healing triggered for session ${sessionId}. Broken locator: ${strategy}=${selector}`,
@@ -66,8 +99,11 @@ export class HealingOrchestrator {
       return null;
     }
 
-    // Tiered Execution: Try providers in order of cost/complexity
-    for (const provider of this.providers) {
+    // Tiered Execution: Try providers in order of cost/complexity.
+    // §2.7: when the session's xenon:options.healingTiers capability is set,
+    // restrict dispatch to the allowed tier indices; absent -> unchanged.
+    const activeProviders = filterProvidersByTier(this.providers, allowedTiers);
+    for (const provider of activeProviders) {
       const tierStart = Date.now();
       span.addEvent('tier_started', { tier: provider.name });
       try {
