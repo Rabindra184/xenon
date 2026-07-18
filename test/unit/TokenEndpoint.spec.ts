@@ -111,4 +111,21 @@ describe('issueToken (xenon-mcp granular claims)', () => {
       expect(e.code).to.equal('scope_exceeds_key');
     }
   });
+
+  it('xenon-mcp response includes a sessionToken with aud xenon-session and same TTL', async () => {
+    const out: any = await issueToken(auth, { audience: 'xenon-mcp' });
+    expect(out.sessionToken).to.be.a('string');
+    const p = await decode(out.sessionToken);
+    expect(p.aud).to.equal('xenon-session');
+    expect(p.sub).to.equal('u1');
+    expect(p.teamId).to.equal('t1');
+    expect((p.exp! - p.iat!)).to.equal(out.expiresIn);
+    // verifies against the hub key with the session audience
+    await Container.get(JwtKeyService).verify(out.sessionToken, { audience: 'xenon-session' });
+  });
+
+  it('xenon-rest responses do NOT include a sessionToken', async () => {
+    const out: any = await issueToken(auth, { audience: 'xenon-rest' });
+    expect(out.sessionToken).to.equal(undefined);
+  });
 });

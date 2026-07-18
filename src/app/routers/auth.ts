@@ -32,6 +32,7 @@ export async function issueToken(
   expiresIn: number;
   audience: string;
   scopes?: string[];
+  sessionToken?: string;
 }> {
   const audience = body.audience ?? 'xenon-rest';
   if (!MINTABLE_AUDIENCES.includes(audience as any)) {
@@ -57,7 +58,14 @@ export async function issueToken(
       },
       { audience, ttlSeconds: expiresIn },
     );
-    return { token, expiresIn, audience, scopes: grant.granular };
+    // Session-token capability (spec §3 item 6 / R9): a sibling credential the
+    // client injects as `xenon:options.sessionToken` so the Appium createSession
+    // interceptor can refuse tokenless direct-connect sessions when the gate is on.
+    const sessionToken = await svc.sign(
+      { sub: auth.userId, teamId: auth.teamId ?? null },
+      { audience: 'xenon-session', ttlSeconds: expiresIn },
+    );
+    return { token, expiresIn, audience, scopes: grant.granular, sessionToken };
   }
 
   const token = await svc.sign(
