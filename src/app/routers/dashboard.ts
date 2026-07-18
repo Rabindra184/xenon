@@ -13,6 +13,7 @@ import {
   SelectorStateConflictError,
 } from '../../services/SelectorStateService';
 import { filterRowsByVisibleDevice } from '../../data-service/device-service';
+import { HealEtalonService } from '../../services/healing/HealEtalonService';
 import log from '../../logger';
 
 const MJPEG_PROXY_CACHE: Map<string, any> = new Map();
@@ -802,6 +803,82 @@ async function getHealingSelectorDetail(request: Request, response: Response) {
   });
 }
 
+// Selector health feed for external/plugin consumers (the xenon-studio MCP
+// plugin's `xenon_selector_health` tool). Deliberately a thin data-shaping
+// layer: it reuses `aggregateHotspots` for the base rows (no new aggregation
+// SQL) and `HealEtalonService` for the "how stale is this locator's known-good
+// signature" enrichment (no new etalon lookup).
+//
+// `failRate` is intentionally NOT included — the underlying rows have no
+// attempt/failure denominator to compute it from (documented deferral).
+//
+// `appId` is accepted for forward-compatibility with the tool's filter
+// surface but ignored: `HotspotRow` (and the `SessionLog` rows it's built
+// from) carry no app id to filter on today.
+export async function getSelectorHealth(request: Request, response: Response) {
+  const selectorFilter =
+    typeof request.query.selector === 'string' && request.query.selector
+      ? request.query.selector
+      : null;
+  const limitRaw = parseInt((request.query.limit as string) || '50', 10);
+  const limit = Number.isFinite(limitRaw) ? Math.min(Math.max(limitRaw, 1), 200) : 50;
+
+  // Pull a wide window/limit from the shared aggregation so an exact
+  // `?selector=` match isn't starved by hotspots' own top-N cutoff, and so
+  // this "health" view (unlike the "active work queue" hotspots view)
+  // surfaces muted/pending/resolved selectors too — then apply the
+  // requested `limit` ourselves after filtering.
+  const agg = await aggregateHotspots({
+    windowDays: 365,
+    limit: 1000,
+    status: 'all',
+  });
+
+  let rows = agg.hotspots;
+  if (selectorFilter) {
+    rows = rows.filter((h) => h.originalSelector === selectorFilter);
+  }
+  rows = rows.slice(0, limit);
+
+  const etalonService = Container.get(HealEtalonService);
+  const now = Date.now();
+  const results = await Promise.all(
+    rows.map(async (h) => {
+      const out: {
+        selector: string;
+        strategy: string | null;
+        healCount: number;
+        topTier: string | null;
+        suggestedRewrite: string | null;
+        state: any | null;
+        lastHealedAt: string;
+        etalonAge?: number;
+      } = {
+        selector: h.originalSelector,
+        strategy: h.originalStrategy,
+        healCount: h.healCount,
+        topTier: h.topTier,
+        suggestedRewrite: h.suggestedRewrite,
+        state: h.state ?? null,
+        lastHealedAt: h.lastHealedAt,
+      };
+
+      // LocatorEtalon.selector is unique, so a lookup by selector alone
+      // already pins the row; the strategy check guards against treating a
+      // stale/unrelated etalon (selector reused under a different strategy)
+      // as a match for this hotspot's (selector, strategy) tuple.
+      const etalon = await etalonService.getSignature(h.originalSelector);
+      if (etalon && etalon.strategy === h.originalStrategy) {
+        out.etalonAge = now - etalon.lastSeen;
+      }
+
+      return out;
+    }),
+  );
+
+  return response.status(200).json(results);
+}
+
 // SelectorState lifecycle action endpoint — mark fixed / mute / unmute /
 // cancel verification. The action vocabulary is closed (any value not in
 // VALID_ACTIONS rejects with 400). A SelectorStateConflictError surfaces as
@@ -1041,6 +1118,7 @@ function register(router: Router) {
   router.get('/healing/hotspots', getHealingHotspots);
   router.get('/healing/hotspots/violations', getHealingViolations);
   router.get('/healing/selector', getHealingSelectorDetail);
+  router.get('/healing/selector-health', getSelectorHealth);
   // Outbound notification — admin only since it can fan out to every
   // configured webhook (Slack channels, etc.).
   router.post('/healing/digest/send', roleGuard('ADMIN'), scopeGuard(['admin']), sendHealingDigest);
