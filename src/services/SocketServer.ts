@@ -1,9 +1,11 @@
 import { Server as SocketIOServer, Socket } from 'socket.io';
 import { Server as HTTPServer } from 'http';
 import { Service, Container } from 'typedi';
+import type * as jose from 'jose';
 import log from '../logger';
 import { config as xenonConfig } from '../config';
 import { ApiKeyService } from './ApiKeyService';
+import { JwtKeyService } from './token/JwtKeyService';
 import { prisma } from '../prisma';
 import { EventLogService } from './EventLogService';
 import { SocketEvents, XENON_PROTOCOL_VERSION, HandshakeData } from '../enums/SocketEvents';
@@ -133,6 +135,25 @@ export class SocketServer {
 
     const auth = (socket.handshake.auth || {}) as Record<string, any>;
     const headers = socket.handshake.headers || {};
+
+    // Client path: short-lived hub-issued JWT (audience xenon-rest) — the
+    // IDE extension's path into the dashboard events room. Mirrors REST
+    // authMiddleware Path 1.5 including the live-user revocation check.
+    const bearer = typeof auth.bearer === 'string' ? auth.bearer : '';
+    if (bearer) {
+      let payload: jose.JWTPayload;
+      try {
+        payload = await Container.get(JwtKeyService).verify(bearer, { audience: 'xenon-rest' });
+      } catch {
+        throw new Error('invalid bearer token');
+      }
+      const owner = await prisma.user.findUnique({
+        where: { id: String(payload.sub) },
+        select: { status: true },
+      });
+      if (!owner || owner.status !== 'ACTIVE') throw new Error('inactive user');
+      return 'dashboard';
+    }
 
     // Node path: per-node (accessKey, token) pair. Resolves to a real
     // ApiKey row owned by a real User; we additionally enforce that the
