@@ -815,6 +815,8 @@ async function getHealingSelectorDetail(request: Request, response: Response) {
 // `appId` is accepted for forward-compatibility with the tool's filter
 // surface but ignored: `HotspotRow` (and the `SessionLog` rows it's built
 // from) carry no app id to filter on today.
+//
+// Bound: results come from the top-1000 hotspot buckets within the last 365 days, so a selector with very low heal volume or heals older than a year may return empty (not an error).
 export async function getSelectorHealth(request: Request, response: Response) {
   const selectorFilter =
     typeof request.query.selector === 'string' && request.query.selector

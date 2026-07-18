@@ -186,6 +186,21 @@ describe('GET /healing/selector-health — getSelectorHealth', () => {
     expect(body).to.have.length(1);
     expect(body[0].selector).to.equal('//a');
   });
+
+  it('?selector= + ?limit=1 returns the selector even if not first in aggregateHotspots order (filter before limit)', async () => {
+    findManyStub.resolves([
+      sessionLogRow({ session_id: 's-1', original_strategy: 'xpath', original_selector: '//a', createdAt: now }),
+      sessionLogRow({ session_id: 's-2', original_strategy: 'xpath', original_selector: '//target', createdAt: now }),
+      sessionLogRow({ session_id: 's-3', original_strategy: 'xpath', original_selector: '//c', createdAt: now }),
+    ]);
+
+    const { req, res, jsonStub } = mockReqRes({ query: { selector: '//target', limit: '1' } });
+    await getSelectorHealth(req, res);
+
+    const body = jsonStub.firstCall.args[0];
+    expect(body).to.have.length(1);
+    expect(body[0].selector).to.equal('//target');
+  });
 });
 
 describe('GET /healing/selector-health — MEMBER guard (router-level)', () => {
