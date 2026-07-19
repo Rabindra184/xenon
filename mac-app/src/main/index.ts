@@ -6,6 +6,7 @@ import { IPC } from '@shared/ipc';
 import { SECRET_DESCRIPTORS } from '@shared/secrets';
 import type { LogLine, MenuAction, Profile, SecretKey, ServerState, SetupProgress } from '@shared/types';
 import { isGenuineFreeze, startLagMonitor } from './eventLoopLag';
+import { isReportableProcessDeath } from './processDeath';
 import { SchemaService } from './SchemaService';
 import { SecretsStore } from './SecretsStore';
 import { ProfileStore } from './ProfileStore';
@@ -85,6 +86,23 @@ function markWake(): void {
   lastWakeAt = Date.now();
 }
 
+// Set once the app begins tearing down, so the child-process-gone flood that
+// teardown produces (renderer + GPU + utility all SIGTERM'd together) isn't
+// misread as a GPU crash. before-quit covers Cmd-Q / logout / restart;
+// SIGTERM/SIGINT cover a raw `kill` of the process.
+let isQuitting = false;
+function markQuitting(): void {
+  isQuitting = true;
+}
+process.once('SIGTERM', () => {
+  markQuitting();
+  app.quit();
+});
+process.once('SIGINT', () => {
+  markQuitting();
+  app.quit();
+});
+
 function installHangDiagnostics(): void {
   // System sleep / display sleep / screen lock all suspend the process.
   powerMonitor.on('resume', markWake);
@@ -106,15 +124,19 @@ function installHangDiagnostics(): void {
     }
   });
 
-  // 2. A child process (GPU / renderer / utility) dying. On macOS the GPU
-  //    process wedging is a common cause of whole-app freezes; this names it.
+  // 2. A child process (GPU / renderer / utility) dying — but only while the app
+  //    is running. During teardown the parent SIGTERMs its whole child tree, so
+  //    every death there is shutdown noise, not a GPU stall (see
+  //    isReportableProcessDeath / isQuitting).
   app.on('child-process-gone', (_e, details) => {
+    if (!isReportableProcessDeath(details.reason, isQuitting)) return;
     recordDiagnostic(
       `Child process gone: type=${details.type}${details.serviceName ? ` (${details.serviceName})` : ''} ` +
         `reason=${details.reason} exitCode=${details.exitCode}`
     );
   });
   app.on('render-process-gone', (_e, _wc, details) => {
+    if (!isReportableProcessDeath(details.reason, isQuitting)) return;
     recordDiagnostic(`Renderer process gone: reason=${details.reason} exitCode=${details.exitCode}`);
   });
 }
@@ -411,6 +433,7 @@ if (!app.requestSingleInstanceLock()) {
   });
 
   app.on('before-quit', () => {
+    markQuitting(); // suppress the teardown child-process-gone flood
     supervisor.killNow();
   });
 }
