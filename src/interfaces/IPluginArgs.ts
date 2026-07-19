@@ -61,7 +61,7 @@ export interface IPluginArgs {
    */
   deviceAvailabilityTimeoutMs: number;
   /**
-   * How often (ms) the session queue polls for a free device while waiting.
+   * How often (ms) the session queue polls for a free device while waiting. Runs only while a create is actively waiting for a busy/unsynced device, so a tighter interval cuts the wait without steady-state cost.
    */
   deviceAvailabilityQueryIntervalMs: number;
   /**
@@ -301,7 +301,13 @@ export const DefaultPluginArgs: IPluginArgs = {
   emulators: [],
   simulators: [],
   deviceAvailabilityTimeoutMs: 300000,
-  deviceAvailabilityQueryIntervalMs: 10000,
+  // Poll interval while a session-create waits for a busy/unsynced target device.
+  // Only runs during an active wait (the loop exits immediately when the device
+  // is available), so a tight interval costs nothing in steady state but avoids
+  // quantizing the wait into ~10s chunks — the misdiagnosed "~65s cold create"
+  // was mostly ~5 such 10s cycles, not uia2 APK install. Override per-request
+  // with appium:deviceRetryInterval.
+  deviceAvailabilityQueryIntervalMs: 1000,
   sendNodeDevicesToHubIntervalMs: 30000,
   checkStaleDevicesIntervalMs: 30000,
   checkBlockedDevicesIntervalMs: 30000,
