@@ -100,8 +100,8 @@
         },
         "deviceAvailabilityQueryIntervalMs": {
             "type": "number",
-            "default": 10000,
-            "description": "How often (ms) the session queue polls for a free device while waiting."
+            "default": 1000,
+            "description": "How often (ms) the session queue polls for a free device while waiting. Runs only while a create is actively waiting for a busy/unsynced device, so a tighter interval cuts the wait without steady-state cost."
         },
         "sendNodeDevicesToHubIntervalMs": {
             "type": "number",
