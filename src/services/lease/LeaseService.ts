@@ -21,6 +21,46 @@ export interface NodePairAuthProvider {
   nodePairAuth: (nodeHost: string) => Promise<{ accessKey: string; token: string }>;
 }
 
+/**
+ * Resolve the hub→node credentials the lease port-allocator RPC needs. These are
+ * the same per-node pair-auth credentials the rest of the hub uses for hub→node
+ * calls (`NodeDevices`/`AndroidDeviceManager`), provisioned via
+ * `XENON_HUB_ACCESS_KEY`/`XENON_HUB_TOKEN` (an ADMIN/devices token). With auth
+ * disabled the node accepts any credentials, so empty strings are fine and
+ * leasing works locally without provisioned keys.
+ */
+export function resolveNodePairAuth(cfg: {
+  hubAccessKey?: string;
+  hubToken?: string;
+  authDisabled: boolean;
+}): { accessKey: string; token: string } {
+  if (cfg.hubAccessKey && cfg.hubToken) {
+    return { accessKey: cfg.hubAccessKey, token: cfg.hubToken };
+  }
+  if (cfg.authDisabled) {
+    return { accessKey: '', token: '' };
+  }
+  throw new Error(
+    'lease port allocation needs the hub node-pair credentials: set ' +
+      'XENON_HUB_ACCESS_KEY and XENON_HUB_TOKEN (an ADMIN/devices token)',
+  );
+}
+
+/**
+ * Default provider wired into `LeaseService`. Previously the default threw
+ * unconditionally ("nodePairAuth provider not configured"), which made the SDK
+ * lease API (`POST /sdk/leases`, and therefore `xenon_acquire_device`) fail on
+ * every deployment. It now supplies the hub's configured node-pair credentials.
+ */
+export function defaultNodePairAuthProvider(): NodePairAuthProvider {
+  return {
+    nodePairAuth: async () => {
+      const { config } = await import('../../config');
+      return resolveNodePairAuth(config);
+    },
+  };
+}
+
 const MAX_LEASE_MS = 24 * 60 * 60 * 1000;
 const MIN_DURATION_MS = 60_000;
 const MIN_HEARTBEAT_SECONDS = 10;
@@ -42,9 +82,7 @@ export class LeaseService {
     private readonly db: any = defaultPrisma,
     private readonly store: any = DeviceStoreFactory.getStore(),
     private readonly portClient: any = new PortAllocatorClient(),
-    private readonly authProvider: NodePairAuthProvider = {
-      nodePairAuth: async () => { throw new Error('nodePairAuth provider not configured'); },
-    },
+    private readonly authProvider: NodePairAuthProvider = defaultNodePairAuthProvider(),
   ) {}
 
   async create(req: CreateLeaseRequest) {
