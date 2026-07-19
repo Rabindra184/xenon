@@ -24,6 +24,8 @@ import { takeScreenshot } from '../helpers';
 import { Container } from 'typedi';
 import { XenonManager } from '../device-managers';
 import AndroidDeviceManager from '../device-managers/AndroidDeviceManager';
+import IOSStreamService from '../device-managers/ios/IOSStreamService';
+import AndroidStreamService from '../device-managers/android/AndroidStreamService';
 import { SocketServer } from '../services/SocketServer';
 import { TracingService } from '../services/TracingService';
 import { MetricsService } from '../services/MetricsService';
@@ -135,6 +137,31 @@ export class DashboardEventManager {
     Container.get(MetricsService).incrementSessionStart();
   }
 
+  /**
+   * #150: on session teardown, stop a stream the session left running (e.g. the
+   * WDA/MJPEG stream started during iOS provisioning) so it doesn't linger after
+   * the device is released. Guarded by `viewerCount === 0`: if a developer is
+   * actively watching the same physical device via the Device Panel (shared-WDA
+   * coexistence), the stream is left alone — the device is already released here,
+   * and once the last viewer leaves the stream watchdog reclaims it. Best-effort:
+   * any failure is logged and swallowed so it never blocks session teardown.
+   */
+  private async stopIdleStreamForDevice(device: IDevice): Promise<void> {
+    try {
+      const isApple = device.platform === 'ios' || device.platform === 'tvos';
+      const svc = isApple
+        ? Container.get(IOSStreamService)
+        : Container.get(AndroidStreamService);
+      const status = svc.getStreamStatus(device.udid);
+      if (status && status.viewerCount === 0) {
+        await svc.stopStream(device.udid);
+        log.info(`🎥 [${device.udid}] Stopped idle session stream on teardown.`);
+      }
+    } catch (err) {
+      log.debug(`Non-fatal: idle-stream stop for ${device.udid} failed: ${err}`);
+    }
+  }
+
   async onSessionStopped(sessionId: string, status?: SessionStatus, failureReason?: string) {
     // Idempotency Guard: If this session is already being stopped by another actor
     // (heartbeat, stream watchdog, plugin.deleteSession), skip to avoid double-cleanup.
@@ -192,6 +219,9 @@ export class DashboardEventManager {
               unblockErr,
             );
           }
+          // #150: reclaim a stream the session left running so it doesn't linger
+          // after the device is released (only if nobody is watching — see method).
+          await this.stopIdleStreamForDevice(device);
         } else {
           const { unblockDeviceMatchingFilter } = await import('../data-service/device-service');
           try {

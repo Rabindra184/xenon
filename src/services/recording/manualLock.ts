@@ -75,3 +75,35 @@ export function isOwnedBy(
 ): boolean {
   return inspectManualLock(blockId, actorId, udid)?.self === true;
 }
+
+/** True iff `blockId` is any manual-stream lock (any actor, including legacy). */
+export function isManualLock(blockId: string | undefined | null): boolean {
+  return !!blockId && blockId.startsWith(PREFIX);
+}
+
+/**
+ * Decide the `session_id` `blockDevice` should persist when (re)blocking a device.
+ *
+ * A manual-stream lock must NEVER overwrite a live Appium session's ownership
+ * (#149). On the shared-WDA coexistence path, a viewer opening the Device Panel
+ * stream calls `blockDevice(udid, host, manual_<actor>_<udid>)` while an Appium
+ * session already owns the device. If the incoming lock is manual and a REAL
+ * (non-manual) session already owns the row, keep the real `session_id` — the
+ * manual stream coexists under the session's lock and tracks its own lifecycle
+ * in the stream service. Overwriting it would make the session's teardown
+ * (which matches on `session_id`) fail to release the device, leaving it stuck
+ * `busy: true`, and make the health monitor mis-classify the row as a manual
+ * stream and skip reclamation.
+ *
+ * A real session id always wins over a manual one (it is the authoritative
+ * allocation); manual-over-manual and the no-existing cases keep the incoming id.
+ */
+export function resolveBlockSessionId(
+  incoming: string | null | undefined,
+  existing: string | null | undefined,
+): string | null {
+  if (isManualLock(incoming) && !!existing && !isManualLock(existing)) {
+    return existing;
+  }
+  return incoming ?? null;
+}
