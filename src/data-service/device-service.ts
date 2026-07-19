@@ -10,6 +10,7 @@ import { NotificationService } from '../services/NotificationService';
 import { IDeviceStore } from './device-store.interface';
 import { SocketServer } from '../services/SocketServer';
 import { prisma } from '../prisma';
+import { isManualLock, resolveBlockSessionId } from '../services/recording/manualLock';
 
 // Use a Proxy to ensure we're always using the latest store from the factory,
 // which is critical for test isolation when the factory cache is cleared.
@@ -188,16 +189,24 @@ export async function userUnblockDevice(udid: string, host: string) {
  * @param host
  */
 export async function blockDevice(udid: string, host: string, sessionId?: string) {
+  let effectiveSessionId: string | null = sessionId ?? null;
+  // #149: a manual-stream lock must not overwrite a live Appium session's
+  // session_id (shared-WDA coexistence). Only read-before-write on the manual
+  // path — the normal session-block path keeps its single write.
+  if (isManualLock(sessionId)) {
+    const existing = await getDevice({ udid }); // udid uniquely identifies the device
+    effectiveSessionId = resolveBlockSessionId(sessionId, existing?.session_id);
+  }
   await store.updateDevice(udid, host, {
     busy: true,
     lastCmdExecutedAt: undefined,
     sessionProgress: '',
-    session_id: sessionId || (null as any),
+    session_id: effectiveSessionId ?? (null as any),
   });
   Container.get(SocketServer).emitToDashboard('device_blocked', {
     udid,
     host,
-    session_id: sessionId,
+    session_id: effectiveSessionId ?? undefined,
   });
 }
 
