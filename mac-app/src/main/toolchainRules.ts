@@ -13,6 +13,25 @@ import path from 'node:path';
 export const WDA_POOL_SIZE = 100;
 export const WDA_POOL_RANGE = '8100-8199';
 
+/**
+ * Node versions Appium 3.x accepts, mirrored from its `package.json` `engines`
+ * field: `"^20.19.0 || ^22.12.0 || >=24.0.0"`. Odd-numbered (non-LTS) majors
+ * such as 21 and 23 are excluded, as are 20.0–20.18 and 22.0–22.11.
+ *
+ * Kept here as a pure, unit-tested predicate rather than a bare `major >= 18`
+ * inline in ToolchainInspector: that older check went green on Node 23.x (and
+ * 18.x/21.x/older 20.x/22.x), which Appium then refuses to start on — the hub
+ * dies at launch with "Node version must be at least ^20.19.0 || ^22.12.0 ||
+ * >=24.0.0", turning a green preflight into a confusing runtime crash.
+ */
+export const APPIUM_NODE_RANGE = '^20.19 || ^22.12 || >=24';
+
+export function nodeSatisfiesAppium(version: string): boolean {
+  const [maj, min] = version.replace(/^v/, '').split('.').map(Number);
+  if (!Number.isFinite(maj) || !Number.isFinite(min)) return false;
+  return (maj === 20 && min >= 19) || (maj === 22 && min >= 12) || maj >= 24;
+}
+
 /** Marker prefix used to pull variables back out of a login-shell invocation. */
 export const SHELL_VAR_PREFIX = '__XENON_';
 

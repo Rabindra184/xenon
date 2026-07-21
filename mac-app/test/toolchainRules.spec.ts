@@ -3,6 +3,7 @@ import {
   WDA_POOL_SIZE,
   assessWdaPressure,
   deriveAndroidHome,
+  nodeSatisfiesAppium,
   parseShellVars
 } from '../src/main/toolchainRules';
 
@@ -70,6 +71,40 @@ describe('assessWdaPressure', () => {
 
   it('is ok when the simulator count fits the pool', () => {
     expect(assessWdaPressure({ ...base, availableSimulators: 12 }).status).toBe('ok');
+  });
+});
+
+describe('nodeSatisfiesAppium', () => {
+  // Appium 3.x engines: "^20.19.0 || ^22.12.0 || >=24.0.0".
+  it('accepts the in-range even-LTS lines', () => {
+    expect(nodeSatisfiesAppium('v20.19.0')).toBe(true);
+    expect(nodeSatisfiesAppium('v20.20.2')).toBe(true);
+    expect(nodeSatisfiesAppium('v22.12.0')).toBe(true);
+    expect(nodeSatisfiesAppium('v22.19.0')).toBe(true);
+    expect(nodeSatisfiesAppium('v24.0.0')).toBe(true);
+    expect(nodeSatisfiesAppium('v24.11.1')).toBe(true);
+    expect(nodeSatisfiesAppium('v26.5.0')).toBe(true);
+  });
+
+  it('rejects odd-numbered (non-LTS) majors that the old major>=18 check let through', () => {
+    expect(nodeSatisfiesAppium('v21.7.3')).toBe(false);
+    expect(nodeSatisfiesAppium('v23.6.0')).toBe(false); // the version that crashed the hub this session
+  });
+
+  it('rejects too-old majors and sub-minimum patch lines within an LTS major', () => {
+    expect(nodeSatisfiesAppium('v18.17.1')).toBe(false); // below the floor, but major>=18 called it ok
+    expect(nodeSatisfiesAppium('v20.18.9')).toBe(false); // 20.x but < 20.19
+    expect(nodeSatisfiesAppium('v22.11.0')).toBe(false); // 22.x but < 22.12
+  });
+
+  it('tolerates a bare version string without the leading v', () => {
+    expect(nodeSatisfiesAppium('24.11.1')).toBe(true);
+    expect(nodeSatisfiesAppium('23.6.0')).toBe(false);
+  });
+
+  it('returns false for unparseable output', () => {
+    expect(nodeSatisfiesAppium('not-a-version')).toBe(false);
+    expect(nodeSatisfiesAppium('')).toBe(false);
   });
 });
 
