@@ -328,23 +328,33 @@ export class SessionLifecycleService {
   }
 
   private injectWDAUrl(caps: ISessionCapability, wdaUrl: string, bundleId?: string | null) {
-    if (caps.alwaysMatch) {
-      caps.alwaysMatch['appium:webDriverAgentUrl'] = wdaUrl;
-      caps.alwaysMatch['appium:usePreinstalledWDA'] = true;
-      if (bundleId) caps.alwaysMatch['appium:updatedWDABundleId'] = bundleId;
-      delete caps.alwaysMatch['appium:derivedDataPath'];
-      delete caps.alwaysMatch['appium:usePrebuiltWDA'];
-      delete caps.alwaysMatch['appium:wdaLocalPort'];
-      delete caps.alwaysMatch['appium:mjpegServerPort'];
+    // W3C capability rules forbid a property from appearing in BOTH alwaysMatch
+    // and a firstMatch entry; appium rejects the session with "property
+    // 'webDriverAgentUrl' should not exist on both primary and secondary object".
+    // Write the injected WDA caps to exactly ONE bucket — prefer alwaysMatch,
+    // which applies to every firstMatch entry — and scrub the keys from the
+    // other so they can never collide.
+    const target = caps.alwaysMatch ?? caps.firstMatch?.[0];
+    if (!target) return;
+    const other = target === caps.alwaysMatch ? caps.firstMatch?.[0] : caps.alwaysMatch;
+
+    target['appium:webDriverAgentUrl'] = wdaUrl;
+    target['appium:usePreinstalledWDA'] = true;
+    if (bundleId) target['appium:updatedWDABundleId'] = bundleId;
+
+    // These conflict with a pre-installed WDA URL — strip from both buckets.
+    for (const bucket of [target, other]) {
+      if (!bucket) continue;
+      delete bucket['appium:derivedDataPath'];
+      delete bucket['appium:usePrebuiltWDA'];
+      delete bucket['appium:wdaLocalPort'];
+      delete bucket['appium:mjpegServerPort'];
     }
-    if (caps.firstMatch && caps.firstMatch[0]) {
-      caps.firstMatch[0]['appium:webDriverAgentUrl'] = wdaUrl;
-      caps.firstMatch[0]['appium:usePreinstalledWDA'] = true;
-      if (bundleId) caps.firstMatch[0]['appium:updatedWDABundleId'] = bundleId;
-      delete caps.firstMatch[0]['appium:derivedDataPath'];
-      delete caps.firstMatch[0]['appium:usePrebuiltWDA'];
-      delete caps.firstMatch[0]['appium:wdaLocalPort'];
-      delete caps.firstMatch[0]['appium:mjpegServerPort'];
+    // The injected WDA keys must live in `target` only.
+    if (other) {
+      delete other['appium:webDriverAgentUrl'];
+      delete other['appium:usePreinstalledWDA'];
+      delete other['appium:updatedWDABundleId'];
     }
   }
 
