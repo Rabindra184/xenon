@@ -5,7 +5,7 @@ import path from 'node:path';
 import { existsSync } from 'node:fs';
 import type { PreflightResult, Profile, ToolCheck } from '@shared/types';
 import { buildEnv, resolveAndroidHome, which } from './env';
-import { assessWdaPressure } from './toolchainRules';
+import { APPIUM_NODE_RANGE, assessWdaPressure, nodeSatisfiesAppium } from './toolchainRules';
 import { xenonCacheDir } from './paths';
 
 const execFileAsync = promisify(execFile);
@@ -44,19 +44,21 @@ export class ToolchainInspector {
         status: 'missing',
         detail: 'node not found on PATH',
         blocking: true,
-        remediation: 'Install Node.js ≥ 18 (e.g. via Homebrew: brew install node).'
+        remediation: `Install Node.js — Appium 3.x needs ${APPIUM_NODE_RANGE} (e.g. via Homebrew: brew install node@22).`
       };
     }
     const { out } = await run(bin, ['-v']);
-    const major = Number(out.replace(/^v/, '').split('.')[0]);
-    const ok = Number.isFinite(major) && major >= 18;
+    const ok = nodeSatisfiesAppium(out);
     return {
       id: 'node',
       label: 'Node.js',
       status: ok ? 'ok' : 'warn',
       detail: out,
       blocking: !ok,
-      remediation: ok ? undefined : 'Xenon requires Node ≥ 18. Upgrade your Node runtime.'
+      remediation: ok
+        ? undefined
+        : `Appium 3.x requires Node ${APPIUM_NODE_RANGE} (even-numbered LTS lines). ` +
+          `Odd majors like 21/23 and older 20.x/22.x are rejected at hub startup — upgrade or switch your Node runtime (e.g. brew install node@22).`
     };
   }
 
