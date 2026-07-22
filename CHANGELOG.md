@@ -6,6 +6,29 @@ This project follows [Semantic Versioning](https://semver.org/). Releases are
 published to npm automatically when `package.json`'s `version` changes on `main`
 (see `.github/workflows/npm-publish.yml`).
 
+## 1.8.1
+
+Patch release: two real-device iOS / session-lifecycle fixes found while
+verifying the hosted-MCP lab path end-to-end on real Android and iOS hardware.
+
+### Fixed
+
+- **Real-device iOS sessions** — `injectWDAUrl` wrote the WebDriverAgent
+  capabilities (`webDriverAgentUrl`, `usePreinstalledWDA`, `updatedWDABundleId`)
+  into **both** the W3C `alwaysMatch` and `firstMatch[0]` objects. The spec
+  forbids a capability appearing in both, so appium-xcuitest rejected every
+  real-device iOS session with "property 'webDriverAgentUrl' should not exist on
+  both primary and secondary object" — even though WebDriverAgent itself
+  launched fine. The injected WDA caps are now written to exactly one bucket.
+  (#160)
+- **Device stuck `busy` after a thrown session create** — when the driver's
+  `createSession` (or the remote forward) **threw**, the device allocated for
+  the session was left stuck `busy: true` with no session, unavailable until the
+  hub restarted: the throw skipped both `finalizeSession` and
+  `handleSessionFailure` (the latter only unblocks when `createSession`
+  *returns* an error object, not when it throws). The session-creation block now
+  releases the device on any thrown error before rethrowing. (#161)
+
 ## 1.8.0
 
 First release since 1.7.10, covering 11 merged PRs. The headline is **hosted-MCP
