@@ -153,16 +153,42 @@ export class SessionLifecycleService {
       `device.host: ${device.host} and pluginArgs.bindHostOrIp: ${pluginArgs.bindHostOrIp}`,
     );
 
-    if (isRemoteOrCloudSession) {
-      this.logger.debug(`📱 Forwarding session request to ${device.host}`);
-      await updateDeviceProgress(device.udid, device.host, 'Forwarding to remote node...');
-      session = await this.forwardSessionRequest(device, caps);
-    } else {
-      this.logger.debug('📱 Creating session on the same node');
-      await this.handleLocalWDAProvisioning(device, caps);
+    try {
+      if (isRemoteOrCloudSession) {
+        this.logger.debug(`📱 Forwarding session request to ${device.host}`);
+        await updateDeviceProgress(device.udid, device.host, 'Forwarding to remote node...');
+        session = await this.forwardSessionRequest(device, caps);
+      } else {
+        this.logger.debug('📱 Creating session on the same node');
+        await this.handleLocalWDAProvisioning(device, caps);
 
-      await updateDeviceProgress(device.udid, device.host, 'Finalizing session bootstrap...');
-      session = await next();
+        await updateDeviceProgress(device.udid, device.host, 'Finalizing session bootstrap...');
+        session = await next();
+      }
+    } catch (err: any) {
+      // A THROWN error from the driver's createSession (next()) or the remote
+      // forward leaves the device locked: allocateDeviceForSession already set
+      // busy=true, and on the throw path neither finalizeSession nor
+      // handleSessionFailure runs — so without this the device gets stuck busy
+      // with no session. Release it, then rethrow the original error.
+      // (handleSessionFailure below covers the separate case where next()
+      // RETURNS a W3C error object rather than throwing.)
+      this.logger.error(
+        `❌ Session creation failed for device ${device.udid}: ${err?.message ?? err}. Unblocking device.`,
+      );
+      try {
+        await removePendingSession(pendingSessionId);
+        await unblockDevice(device.udid, device.host);
+        await updateDeviceProgress(device.udid, device.host, '');
+        if (isRemoteOrCloudSession) {
+          (Container.get(CircuitBreaker) as CircuitBreaker).recordFailure(device.host);
+        }
+      } catch (cleanupErr: any) {
+        this.logger.warn(
+          `Cleanup after failed session creation had issues: ${cleanupErr?.message ?? cleanupErr}`,
+        );
+      }
+      throw err;
     }
 
     this.logger.debug('📱 Session response: ', JSON.stringify(session));
