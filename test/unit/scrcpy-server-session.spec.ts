@@ -1,5 +1,12 @@
 import { expect } from 'chai';
-import { buildScrcpyServerArgs, SCRCPY_DEVICE_JAR_PATH, scrcpyMaxSizeFromDims, parseAdbForwardPort } from '../../src/device-managers/android/ScrcpyServerSession';
+import {
+  buildScrcpyServerArgs,
+  SCRCPY_DEVICE_JAR_PATH,
+  SCRCPY_CMDLINE_BUDGET,
+  scrcpyCmdlineLength,
+  scrcpyMaxSizeFromDims,
+  parseAdbForwardPort,
+} from '../../src/device-managers/android/ScrcpyServerSession';
 
 describe('buildScrcpyServerArgs', () => {
   it('builds the exact video-only app_process argv', () => {
@@ -14,8 +21,6 @@ describe('buildScrcpyServerArgs', () => {
       'tunnel_forward=true',
       'audio=false',
       'control=false',
-      'video=true',
-      'video_codec=h264',
       'max_size=1560',
       'video_bit_rate=4000000',
       'max_fps=30',
@@ -23,8 +28,23 @@ describe('buildScrcpyServerArgs', () => {
       'send_codec_meta=false',
       'send_frame_meta=false',
       'send_dummy_byte=true',
-      'cleanup=true',
     ]);
+  });
+
+  it('does not restate scrcpy defaults (video/video_codec/cleanup) — every char counts toward the Samsung cap', () => {
+    const argv = buildScrcpyServerArgs({ version: '2.7', jarDevicePath: SCRCPY_DEVICE_JAR_PATH, maxSize: 1560 });
+    for (const restated of ['video=true', 'video_codec=h264', 'cleanup=true']) {
+      expect(argv, `${restated} restates a scrcpy 2.7 default`).to.not.include(restated);
+    }
+  });
+
+  it(`keeps the on-device cmdline under the ${SCRCPY_CMDLINE_BUDGET}-char Samsung stack-buffer budget`, () => {
+    // Samsung Android 10 libstagefright (ACodec::reconfigEncoder4OtherApps) SIGABRTs
+    // when the encoding process's cmdline hits a ~256-byte stack buffer. Observed on
+    // SM-G965F: streams at ≤248 chars, aborts at ≥267. Use the widest realistic
+    // max_size (5 digits) so this guard covers the worst case.
+    const argv = buildScrcpyServerArgs({ version: '2.7', jarDevicePath: SCRCPY_DEVICE_JAR_PATH, maxSize: 99999 });
+    expect(scrcpyCmdlineLength(argv)).to.be.at.most(SCRCPY_CMDLINE_BUDGET);
   });
 });
 
