@@ -85,11 +85,25 @@ class AndroidStreamService {
     }
   }
 
+  /**
+   * Whether the capture loop should idle this iteration instead of grabbing a
+   * frame. We idle only when the stream is live ('running') and nobody is
+   * watching. During 'starting' warmup we always capture, so the first frame is
+   * cached before any viewer attaches — otherwise startStream's first-frame
+   * wait times out against a loop that refuses to capture (the old ~5s dead
+   * startup).
+   */
+  private shouldIdleCapture(session: AndroidStreamSession): boolean {
+    return session.status === 'running' && session.viewerCount === 0;
+  }
+
   private async captureLoop(udid: string, session: AndroidStreamSession) {
     log.info(`[${udid}] Background capture loop started.`);
     while (session.status === 'running' || session.status === 'starting') {
-      if (session.viewerCount === 0 && session.status === 'running') {
-        await new Promise((r) => setTimeout(r, 1000));
+      if (this.shouldIdleCapture(session)) {
+        // Live but unwatched — idle briefly so the next frame resumes quickly
+        // once a viewer attaches.
+        await new Promise((r) => setTimeout(r, 250));
         continue;
       }
 
@@ -287,21 +301,24 @@ class AndroidStreamService {
           log.warn(`[${udid}] MJPEG port check timed out, proceeding anyway: ${e}`);
         }
 
-        session.status = 'running';
+        // Start capturing while status is still 'starting' so the loop warms
+        // the first frame eagerly. shouldIdleCapture() only idles once we're
+        // 'running', so keeping 'starting' here avoids the old ~5s dead startup
+        // where the loop skipped capture (0 viewers) until this wait timed out.
         this.captureLoop(udid, session);
 
-        // Principal Resilience: Wait for the FIRST FRAME to be captured
-        // FFMPEG often fails to "open" the input if there is no data immediately available
+        // Principal Resilience: Wait for the FIRST FRAME to be captured before
+        // serving the stream. FFMPEG often fails to "open" the input if there
+        // is no data immediately available.
         const firstFrameStartTime = Date.now();
         const firstFrameTimeout = 5000;
-        let frameCount = 0;
         while (Date.now() - firstFrameStartTime < firstFrameTimeout) {
-          if (session.latestFrame) {
-            frameCount++;
-            if (frameCount >= 1) break; // We have at least one frame ready to serve
-          }
-          await new Promise((r) => setTimeout(r, 200));
+          if (session.latestFrame) break; // We have a frame ready to serve
+          await new Promise((r) => setTimeout(r, 50));
         }
+
+        // Now go live: from here an unwatched stream idles between frames.
+        session.status = 'running';
 
         if (!session.latestFrame) {
           log.warn(
