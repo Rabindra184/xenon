@@ -9,6 +9,7 @@ import { blockDevice, unblockDevice } from '../../data-service/device-service';
 import { UniversalMjpegProxy } from '../../helpers/UniversalMjpegProxy';
 import IOSStreamService from '../../device-managers/ios/IOSStreamService';
 import AndroidStreamService from '../../device-managers/android/AndroidStreamService';
+import AndroidH264StreamService from '../../device-managers/android/AndroidH264StreamService';
 import path from 'path';
 import os from 'os';
 import fs from 'fs-extra';
@@ -19,10 +20,7 @@ import { PluginContext } from '../../PluginContext';
 import { resolveStreamType } from './streamType';
 import { mutationScopeGuard } from '../../middleware/scopeGuard';
 import { roleGuard } from '../../middleware/roleGuard';
-import {
-  formatManualLock,
-  inspectManualLock,
-} from '../../services/recording/manualLock';
+import { formatManualLock, inspectManualLock } from '../../services/recording/manualLock';
 
 const router = Router();
 
@@ -508,9 +506,10 @@ router.post('/:udid/stream/start', async (req: Request, res: Response) => {
   // If the device is already busy (e.g., Appium session or another Control session)
   // we must block new manual control requests.
   const isCurrentlyControlledManually =
-    (device.platform === 'ios' || device.platform === 'tvos'
-      ? Container.get(IOSStreamService).getStreamStatus(udid)
-      : Container.get(AndroidStreamService).getStreamStatus(udid)) !== undefined;
+    device.platform === 'ios' || device.platform === 'tvos'
+      ? Container.get(IOSStreamService).getStreamStatus(udid) !== undefined
+      : Container.get(AndroidStreamService).getStreamStatus(udid) !== undefined ||
+        Container.get(AndroidH264StreamService).getMultiplexer(udid) !== undefined;
 
   if (device.busy && !isCurrentlyControlledManually) {
     log.warn(`Manual Control refused for ${udid}: Device is already busy.`);
@@ -521,13 +520,18 @@ router.post('/:udid/stream/start', async (req: Request, res: Response) => {
   }
 
   try {
-    let result;
+    const flagOn = !!Container.get(PluginContext).pluginArgs.streaming?.androidH264;
+    const streamType = resolveStreamType(device.platform, flagOn, false);
+    let mjpegPort: number | undefined;
+
     if (device.platform === 'ios' || device.platform === 'tvos') {
-      const iosStreamService = Container.get(IOSStreamService);
-      result = await iosStreamService.startStream(udid);
+      mjpegPort = (await Container.get(IOSStreamService).startStream(udid)).mjpegPort;
+    } else if (streamType === 'h264') {
+      // H.264 preview: start the scrcpy/screenrecord service. Do NOT also start
+      // the MJPEG screencap loop — one capture pipeline per device.
+      await Container.get(AndroidH264StreamService).start(udid);
     } else {
-      const androidStreamService = Container.get(AndroidStreamService);
-      result = await androidStreamService.startStream(udid);
+      mjpegPort = (await Container.get(AndroidStreamService).startStream(udid)).mjpegPort;
     }
 
     // Refresh device info (Lazy loading of dimensions if missing)
@@ -560,11 +564,20 @@ router.post('/:udid/stream/start', async (req: Request, res: Response) => {
     await blockDevice(udid, device.host, manualSid);
     log.info(`Manual Control: Device ${udid} locked for active UI session (${manualSid}).`);
 
-    log.info(`Stream started for ${udid} - Port: ${result.mjpegPort}`);
+    if (streamType === 'h264') {
+      log.info(`H.264 stream started for ${udid}`);
+      return res.status(200).send({
+        success: true,
+        type: 'h264',
+        h264Path: `/xenon/api/control/${encodeURIComponent(udid)}/stream/h264`,
+      });
+    }
 
+    log.info(`Stream started for ${udid} - Port: ${mjpegPort}`);
     return res.status(200).send({
       success: true,
-      mjpegPort: result.mjpegPort,
+      type: 'mjpeg',
+      mjpegPort,
       streamUrl: `/xenon/api/control/${udid}/stream`,
     });
   } catch (err: any) {
@@ -616,6 +629,17 @@ router.post('/:udid/stream/stop', async (req: Request, res: Response) => {
       await Container.get(IOSStreamService).stopStream(udid);
     } else {
       await Container.get(AndroidStreamService).stopStream(udid);
+      // The H.264 path has no MJPEG session, so AndroidStreamService.stopStream
+      // won't release the manual lock — release it here for an H.264 device.
+      const hadH264 = Container.get(AndroidH264StreamService).getMultiplexer(udid) !== undefined;
+      await Container.get(AndroidH264StreamService).stop(udid);
+      if (hadH264 && (lockInfo?.self || lockInfo?.legacy)) {
+        try {
+          await unblockDevice(udid, device.host);
+        } catch {
+          /* best-effort lock release */
+        }
+      }
     }
 
     // Clear and stop MJPEG proxy
