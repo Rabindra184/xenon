@@ -38,3 +38,27 @@ export function buildScrcpyServerArgs(opts: {
     'cleanup=true',
   ];
 }
+
+/**
+ * scrcpy `max_size` caps the device's LONGER edge (single int, aspect preserved).
+ * Derive it so the SHORTER edge lands near `targetShortEdge` (matches today's
+ * ~720-wide screenrecord downscale). Never upscales.
+ */
+export function scrcpyMaxSizeFromDims(sw: number, sh: number, targetShortEdge = 720): number {
+  const shortE = Math.min(sw, sh);
+  const longE = Math.max(sw, sh);
+  if (!Number.isFinite(shortE) || !Number.isFinite(longE) || shortE <= 0 || longE <= 0) {
+    return targetShortEdge * 2; // safe default longer-edge cap
+  }
+  if (shortE <= targetShortEdge) return longE; // no upscale
+  return Math.round(longE * (targetShortEdge / shortE));
+}
+
+/** Parse the local TCP port that `adb forward tcp:0 …` prints on stdout. */
+export function parseAdbForwardPort(stdout: string): number {
+  const port = parseInt(String(stdout).trim(), 10);
+  if (!Number.isInteger(port) || port <= 0) {
+    throw new Error(`Unparseable adb forward port: ${JSON.stringify(stdout)}`);
+  }
+  return port;
+}
