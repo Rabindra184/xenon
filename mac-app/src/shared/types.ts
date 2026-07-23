@@ -5,6 +5,7 @@
 export interface JsonSchemaProperty {
   type?: string | string[];
   enum?: string[];
+  oneOf?: JsonSchemaProperty[];
   default?: unknown;
   description?: string;
   title?: string;

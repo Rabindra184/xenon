@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { NEW_PROFILE_NAME, SEED_PROFILE_NAME, makeDefaultProfile } from '../src/shared/profileDefaults';
+import type { Profile } from '../src/shared/types';
+import {
+  NEW_PROFILE_NAME,
+  SEED_PROFILE_NAME,
+  makeDefaultProfile,
+  migrateProfile
+} from '../src/shared/profileDefaults';
 
 describe('makeDefaultProfile', () => {
   const base = { id: 'id-1', now: 1_700_000_000_000 };
@@ -39,5 +45,45 @@ describe('makeDefaultProfile', () => {
     a.env.FOO = 'bar';
     expect(b.settings.platform).toBe('both');
     expect(b.env).toEqual({});
+  });
+
+  it('defaults Android H.264 (scrcpy) live preview on', () => {
+    expect(makeDefaultProfile(base).settings.streaming).toEqual({ androidH264: true });
+  });
+});
+
+describe('migrateProfile', () => {
+  const bare = (settings: Record<string, unknown>): Profile =>
+    ({
+      id: 'p',
+      name: 'p',
+      settings,
+      server: { port: 4723, basePath: '/wd/hub', appiumHome: '', keepAliveTimeout: 800 },
+      secretRefs: [],
+      env: {},
+      createdAt: 0,
+      updatedAt: 0
+    }) as Profile;
+
+  it('backfills streaming.androidH264 on for a profile that predates it', () => {
+    const migrated = migrateProfile(bare({ platform: 'android' }));
+    expect(migrated.settings.streaming).toEqual({ androidH264: true });
+    expect(migrated.settings.platform).toBe('android'); // existing settings preserved
+  });
+
+  it('does not override a profile that already set streaming (e.g. toggled off)', () => {
+    const migrated = migrateProfile(bare({ streaming: { androidH264: false } }));
+    expect(migrated.settings.streaming).toEqual({ androidH264: false });
+  });
+
+  it('backfills missing env/secretRefs without dropping settings', () => {
+    const p = bare({ maxSessions: 3 });
+    // simulate an even older profile missing these
+    delete (p as any).env;
+    delete (p as any).secretRefs;
+    const migrated = migrateProfile(p);
+    expect(migrated.env).toEqual({});
+    expect(migrated.secretRefs).toEqual([]);
+    expect(migrated.settings.maxSessions).toBe(3);
   });
 });
