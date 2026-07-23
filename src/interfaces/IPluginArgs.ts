@@ -292,9 +292,13 @@ export interface AutowaitConfig {
  */
 export interface StreamingConfig {
   /**
-   * Use scrcpy H.264 for Android live preview (WebCodecs in the browser) instead of the MJPEG screencap loop. Falls back to MJPEG when unsupported.
+   * Android live preview: false/omitted = MJPEG; true = H.264 via scrcpy; { "source": "scrcpy" | "screenrecord" } to pick the capture source explicitly. Falls back to MJPEG when unsupported.
    */
-  androidH264?: boolean;
+  androidH264?:
+    | boolean
+    | {
+        source?: 'scrcpy' | 'screenrecord';
+      };
 }
 
 export const DefaultPluginArgs: IPluginArgs = {
