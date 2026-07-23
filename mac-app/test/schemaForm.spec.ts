@@ -42,6 +42,15 @@ describe('buildForm', () => {
     expect(byKey.interceptor.children?.some((c) => c.key === 'bufferSize')).toBe(true);
   });
 
+  it('renders streaming.androidH264 (a boolean|object oneOf) as a toggle, not a text field', () => {
+    const byKey = Object.fromEntries(allFields.map((f) => [f.key, f]));
+    expect(byKey.streaming.kind).toBe('nested');
+    const androidH264 = byKey.streaming.children?.find((c) => c.key === 'androidH264');
+    // Without oneOf→toggle handling it would fall through to a text field and the
+    // user would store the string "true"/"false" instead of a real boolean.
+    expect(androidH264?.kind).toBe('toggle');
+  });
+
   it('casts proper nouns correctly in generated labels', () => {
     const byKey = Object.fromEntries(allFields.map((f) => [f.key, f]));
     expect(byKey.iosDeviceType.label).toBe('iOS Device Type');

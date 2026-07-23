@@ -1,7 +1,7 @@
 import Store from 'electron-store';
 import { randomUUID } from 'node:crypto';
 import type { Profile } from '@shared/types';
-import { SEED_PROFILE_NAME, makeDefaultProfile } from '@shared/profileDefaults';
+import { SEED_PROFILE_NAME, makeDefaultProfile, migrateProfile } from '@shared/profileDefaults';
 
 // Named launch profiles persisted as JSON in userData. Profiles never hold raw
 // secrets — only `secretRefs` naming which secrets to inject at launch.
@@ -11,11 +11,6 @@ interface ProfilesShape {
 
 export function defaultProfile(name = SEED_PROFILE_NAME): Profile {
   return makeDefaultProfile({ id: randomUUID(), now: Date.now(), name });
-}
-
-/** Backfill fields added in later versions so older persisted profiles stay valid. */
-function migrate(profile: Profile): Profile {
-  return { ...profile, env: profile.env ?? {}, secretRefs: profile.secretRefs ?? [] };
 }
 
 export class ProfileStore {
@@ -32,7 +27,7 @@ export class ProfileStore {
       this.store.set('profiles', [seed]);
       return [seed];
     }
-    return profiles.map(migrate);
+    return profiles.map(migrateProfile);
   }
 
   save(profile: Profile): Profile {
@@ -71,7 +66,7 @@ export class ProfileStore {
 
   get(id: string): Profile | null {
     const found = this.store.get('profiles').find((p) => p.id === id);
-    return found ? migrate(found) : null;
+    return found ? migrateProfile(found) : null;
   }
 
   /** Serialize a profile for sharing. Contains no secret values — only secretRefs names. */
@@ -98,7 +93,7 @@ export class ProfileStore {
       const src = c as Partial<Profile>;
       if (!src.settings || !src.server) continue; // not a profile
       const now = Date.now();
-      const profile: Profile = migrate({
+      const profile: Profile = migrateProfile({
         ...defaultProfile(src.name || 'Imported profile'),
         ...src,
         id: randomUUID(),

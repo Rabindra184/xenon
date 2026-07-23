@@ -151,6 +151,14 @@ function fieldFromProperty(
   if (SECRET_KEYS.has(key)) return { ...base, kind: 'text', secret: true };
   if (prop.enum) return { ...base, kind: 'select', enum: prop.enum };
 
+  // A oneOf union that includes a boolean branch (e.g. streaming.androidH264:
+  // boolean | { source }) renders as a simple on/off toggle — the common case.
+  // Without this it has no bare `type`, falls through to a text field, and a user
+  // ends up storing the string "true"/"false" instead of a real boolean.
+  if (Array.isArray(prop.oneOf) && prop.oneOf.some((b) => typeOf(b) === 'boolean')) {
+    return { ...base, kind: 'toggle' };
+  }
+
   const t = typeOf(prop);
   if (t === 'boolean') return { ...base, kind: 'toggle' };
   if (t === 'number' || t === 'integer') return { ...base, kind: 'number', min: prop.minimum, max: prop.maximum };
