@@ -1,3 +1,14 @@
+import { spawn, ChildProcess, execFile } from 'child_process';
+import { EventEmitter } from 'events';
+import net from 'net';
+import { promisify } from 'util';
+import { Container } from 'typedi';
+import log from '../../logger';
+import { SCRCPY_SERVER_VERSION, scrcpyServerJarPath } from './scrcpyVersion';
+
+const execFileAsync = promisify(execFile);
+const LOCAL_ABSTRACT = 'scrcpy'; // device-side socket name scrcpy listens on
+
 export const SCRCPY_DEVICE_JAR_PATH = '/data/local/tmp/scrcpy-server-manual.jar';
 
 /**
@@ -61,4 +72,77 @@ export function parseAdbForwardPort(stdout: string): number {
     throw new Error(`Unparseable adb forward port: ${JSON.stringify(stdout)}`);
   }
   return port;
+}
+
+export class ScrcpyServerSession extends EventEmitter {
+  private proc?: ChildProcess;
+  private socket?: net.Socket;
+  private forwardSpec?: string; // e.g. 'tcp:41337'
+  private stopped = false;
+  private adbPath = 'adb';
+  private hostArgs: string[] = [];
+  private base: string[] = []; // [...hostArgs, '-s', udid]
+
+  constructor(private udid: string) {
+    super();
+  }
+
+  async start(maxSize: number): Promise<void> {
+    const { default: AndroidDeviceManager } = await import('../AndroidDeviceManager');
+    const adb: any = await Container.get(AndroidDeviceManager).getAdbForDevice(this.udid);
+    this.adbPath = adb?.executable?.path || 'adb';
+    this.hostArgs = adb?.adbHost && adb?.adbPort ? ['-H', adb.adbHost, '-P', String(adb.adbPort)] : [];
+    this.base = [...this.hostArgs, '-s', this.udid];
+
+    // 1) push jar (idempotent enough; overwrite is cheap and safe)
+    await execFileAsync(this.adbPath, [...this.base, 'push', scrcpyServerJarPath(), '/data/local/tmp/scrcpy-server-manual.jar']);
+
+    // 2) app_process (long-lived). buildScrcpyServerArgs + SCRCPY_DEVICE_JAR_PATH
+    //    are defined in THIS file (Task 2) — reference them directly (no self-import).
+    const serverArgs = buildScrcpyServerArgs({
+      version: SCRCPY_SERVER_VERSION,
+      jarDevicePath: SCRCPY_DEVICE_JAR_PATH,
+      maxSize,
+    });
+    this.proc = spawn(this.adbPath, [...this.base, ...serverArgs]);
+    this.proc.stderr?.on('data', (d: Buffer) => log.debug(`[${this.udid}] scrcpy-server: ${d.toString().trim()}`));
+    this.proc.on('close', () => { if (!this.stopped) this.emit('close'); });
+
+    // 3) forward a local port to the device socket, then connect
+    //    (parseAdbForwardPort is defined in this file — Task 3 — so call it directly)
+    const { stdout } = await execFileAsync(this.adbPath, [...this.base, 'forward', 'tcp:0', `localabstract:${LOCAL_ABSTRACT}`]);
+    const port = parseAdbForwardPort(stdout);
+    this.forwardSpec = `tcp:${port}`;
+
+    await this.connectWithRetry(port);
+  }
+
+  private connectWithRetry(port: number, attempt = 0): Promise<void> {
+    return new Promise((resolve, reject) => {
+      const sock = net.connect(port, '127.0.0.1');
+      let dummySkipped = false;
+      sock.once('connect', () => { this.socket = sock; resolve(); });
+      sock.on('data', (chunk: Buffer) => {
+        // tunnel_forward=true sends a single readiness dummy byte (0x00) first.
+        if (!dummySkipped) { dummySkipped = true; chunk = chunk.subarray(1); }
+        if (chunk.length) this.emit('data', chunk);
+      });
+      sock.on('close', () => { if (!this.stopped) this.emit('close'); });
+      sock.on('error', (e) => {
+        // The server may not be listening yet immediately after spawn — retry briefly.
+        if (attempt < 20 && !this.stopped) {
+          setTimeout(() => this.connectWithRetry(port, attempt + 1).then(resolve, reject), 100);
+        } else reject(e);
+      });
+    });
+  }
+
+  stop(): void {
+    this.stopped = true;
+    try { this.socket?.destroy(); } catch { /* best-effort */ }
+    try { this.proc?.kill('SIGKILL'); } catch { /* best-effort */ }
+    if (this.forwardSpec) {
+      execFile(this.adbPath, [...this.base, 'forward', '--remove', this.forwardSpec], () => undefined);
+    }
+  }
 }
