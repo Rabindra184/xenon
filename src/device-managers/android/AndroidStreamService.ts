@@ -1,5 +1,6 @@
 import { spawn } from 'child_process';
 import http from 'http';
+import sharp from 'sharp';
 import log from '../../logger';
 import { DeviceStoreFactory } from '../../data-service/device-store';
 import { unblockDevice } from '../../data-service/device-service';
@@ -8,7 +9,11 @@ import { Service, Container } from 'typedi';
 import { ResourceIsolationService } from '../../services/ResourceIsolationService';
 import { PortAllocator } from '../../services/PortAllocator';
 
-// FFmpeg is optional - only used for raw-to-JPEG conversion
+// JPEG quality for the in-process sharp encoder (0-100). ~78 approximates the
+// old ffmpeg `-q:v 8` (mjpeg quantizer scale) — the low-lag/quality knob.
+const JPEG_QUALITY = 78;
+
+// FFmpeg is optional - only used for the rgb565 fallback raw-to-JPEG conversion
 let FFMPEG_PATH: string | null = null;
 try {
   // Dynamic require for optional dependency
@@ -39,6 +44,9 @@ interface AndroidStreamSession {
 class AndroidStreamService {
   private sessions: Map<string, AndroidStreamSession> = new Map();
   private startPromises: Map<string, Promise<{ mjpegPort: number }>> = new Map();
+  // UDIDs for which a sharp encode failure has already been warned, so a
+  // systemic problem is visible once without per-frame log spam.
+  private sharpFailureWarned: Set<string> = new Set();
 
   constructor() {
     this.startWatchdog();
@@ -166,13 +174,14 @@ class AndroidStreamService {
             if (targetW % 2 !== 0) targetW--;
             if (targetH % 2 !== 0) targetH--;
 
-            session.latestFrame = await this.convertRawToJpeg(
+            session.latestFrame = await this.encodeFrame(
               pixels,
               w,
               h,
               targetW,
               targetH,
               pixFmt,
+              udid,
             );
             if (!session.latestFrameTimestamp) {
               log.info(`[${udid}] First Android frame successfully captured and converted.`);
@@ -409,7 +418,56 @@ class AndroidStreamService {
     }
   }
 
-  private async convertRawToJpeg(
+  /**
+   * Encode one raw screencap frame to a JPEG buffer. RGBA (the modern screencap
+   * format, effectively all devices) is encoded in-process with sharp — no
+   * subprocess, no per-frame ffmpeg spawn. Legacy rgb565 keeps the proven ffmpeg
+   * path. Same raw-pixels-in / JPEG-buffer-out contract either way.
+   */
+  private async encodeFrame(
+    pixels: Buffer,
+    srcW: number,
+    srcH: number,
+    dstW: number,
+    dstH: number,
+    pixFmt: string,
+    udid: string,
+  ): Promise<Buffer> {
+    if (pixFmt === 'rgba') return this.encodeRgbaWithSharp(pixels, srcW, srcH, dstW, udid);
+    // rgb565 (legacy/rare) keeps the proven ffmpeg conversion, unchanged.
+    return this.convertRawToJpegFfmpeg(pixels, srcW, srcH, dstW, dstH, pixFmt);
+  }
+
+  /**
+   * In-process RGBA→JPEG via sharp (libvips threadpool, off the event loop).
+   * Handles per-frame dimensions natively, so rotation needs no special-casing.
+   */
+  private async encodeRgbaWithSharp(
+    pixels: Buffer,
+    srcW: number,
+    srcH: number,
+    dstW: number,
+    udid: string,
+  ): Promise<Buffer> {
+    try {
+      // screencap rows are tightly packed (w*4/row), matching the ffmpeg
+      // -video_size assumption; take exactly that many bytes for sharp's raw input.
+      return await sharp(pixels.subarray(0, srcW * srcH * 4), {
+        raw: { width: srcW, height: srcH, channels: 4 },
+      })
+        .resize({ width: dstW }) // height auto-derived; preserves aspect ratio
+        .jpeg({ quality: JPEG_QUALITY })
+        .toBuffer();
+    } catch (e: any) {
+      if (!this.sharpFailureWarned.has(udid)) {
+        this.sharpFailureWarned.add(udid);
+        log.warn(`[${udid}] sharp JPEG encode failed (${e.message}); skipping frames.`);
+      }
+      throw e; // let captureLoop's catch skip the frame and back off
+    }
+  }
+
+  private async convertRawToJpegFfmpeg(
     pixels: Buffer,
     srcW: number,
     srcH: number,
