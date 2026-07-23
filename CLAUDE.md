@@ -145,8 +145,10 @@ keyframe-gated join, GOP replay for late joiners) → authenticated WebSocket
 
 Selection: `resolveStreamType(platform, flagOn, recording)` (`streamType.ts`) — Android +
 flag on + not recording → `h264`, else `mjpeg`. `control.ts` `stream/start` starts the H.264
-service and, on any failure, the existing try/catch falls back to reporting `mjpeg`; the
-frontend `WsH264Player` `onFatal` also swaps a dying stream to the MJPEG `<img>`.
+service; a scrcpy start failure throws and the handler returns HTTP 500 (it does *not*
+downgrade the response to `mjpeg`). The effective MJPEG fallback is **player-level**:
+`WsH264Player`'s `onFatal` swaps a failed/dying H.264 stream to the MJPEG `<img>` (the same
+`stream-retry` path iOS uses), so a scrcpy-incapable device still ends up on MJPEG.
 
 ### Recording Subsystem (`src/services/recording/`)
 

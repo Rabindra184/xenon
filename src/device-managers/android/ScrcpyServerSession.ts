@@ -105,8 +105,10 @@ export class ScrcpyServerSession extends EventEmitter {
     this.base = [...this.hostArgs, '-s', this.udid];
 
     try {
-      // 1) push jar (idempotent enough; overwrite is cheap and safe)
-      await execFileAsync(this.adbPath, [...this.base, 'push', scrcpyServerJarPath(), '/data/local/tmp/scrcpy-server-manual.jar']);
+      // 1) push jar (idempotent enough; overwrite is cheap and safe). Push
+      //    destination and the CLASSPATH must be the same path — use the one
+      //    constant so editing it can never point CLASSPATH at an unpushed jar.
+      await execFileAsync(this.adbPath, [...this.base, 'push', scrcpyServerJarPath(), SCRCPY_DEVICE_JAR_PATH]);
       if (this.stopped) throw new Error('session stopped during start');
 
       // 2) app_process (long-lived). buildScrcpyServerArgs + SCRCPY_DEVICE_JAR_PATH
