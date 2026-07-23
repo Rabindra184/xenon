@@ -27,6 +27,12 @@ interface AndroidStreamSession {
   viewerCount: number;
   latestFrame?: Buffer;
   latestFrameTimestamp?: number;
+  // Resolved once at startup so the capture loop never spawns a PATH-relative
+  // 'adb' (which ENOENTs when the server is launched from a GUI without the
+  // Android SDK on PATH). adbHostArgs carries '-H <host> -P <port>' for a
+  // remote adb instance, or [] for local.
+  adbPath: string;
+  adbHostArgs: string[];
 }
 
 @Service({ name: 'AndroidStreamService' })
@@ -52,6 +58,33 @@ class AndroidStreamService {
     }, 3600000);
   }
 
+  /**
+   * Resolve the actual adb binary path (and remote-host args) via the same
+   * appium-adb instance every other ADB call uses. This avoids spawning a bare
+   * 'adb', which relies on the process PATH — absent when Xenon is launched from
+   * a GUI (e.g. the Xenon Control app), producing `spawn adb ENOENT` while
+   * device discovery still works (appium-adb resolves via ANDROID_HOME).
+   */
+  private async resolveAdbInvocation(
+    udid: string,
+  ): Promise<{ adbPath: string; adbHostArgs: string[] }> {
+    try {
+      const { default: AndroidDeviceManager } = await import('../AndroidDeviceManager');
+      const adb: any = await Container.get(AndroidDeviceManager).getAdbForDevice(udid);
+      const adbPath = adb?.executable?.path || 'adb';
+      const adbHostArgs =
+        adb?.adbHost && adb?.adbPort ? ['-H', adb.adbHost, '-P', String(adb.adbPort)] : [];
+      return { adbPath, adbHostArgs };
+    } catch (e: any) {
+      log.warn(
+        `[${udid}] Could not resolve adb binary path (${e.message}); falling back to a PATH ` +
+          "lookup. If streaming fails with 'spawn adb ENOENT', ensure ANDROID_HOME " +
+          '(or ANDROID_SDK_ROOT) is set so adb can be located.',
+      );
+      return { adbPath: 'adb', adbHostArgs: [] };
+    }
+  }
+
   private async captureLoop(udid: string, session: AndroidStreamSession) {
     log.info(`[${udid}] Background capture loop started.`);
     while (session.status === 'running' || session.status === 'starting') {
@@ -73,8 +106,8 @@ class AndroidStreamService {
           return await new Promise<Buffer>((resolve, reject) => {
             const isolationService = Container.get(ResourceIsolationService);
             const { command, args } = isolationService.wrapSpawn(
-              'adb',
-              ['-s', udid, 'exec-out', 'screencap'],
+              session.adbPath,
+              [...session.adbHostArgs, '-s', udid, 'exec-out', 'screencap'],
               'Performance',
             );
             const proc = spawn(command, args);
@@ -162,6 +195,10 @@ class AndroidStreamService {
         const device = await DeviceStoreFactory.getStore().findDevice({ udid });
         if (!device) throw new Error(`Device ${udid} not found in DB`);
 
+        // Resolve the real adb binary once, up front, so the capture loop never
+        // depends on the process PATH (see resolveAdbInvocation).
+        const { adbPath, adbHostArgs } = await this.resolveAdbInvocation(udid);
+
         const mjpegPort = await Container.get(PortAllocator).acquire('mjpeg', udid);
 
         // Aggressive cleanup: Kill any process already using this port
@@ -188,6 +225,8 @@ class AndroidStreamService {
           status: 'starting',
           lastViewerAt: Date.now(),
           viewerCount: 0,
+          adbPath,
+          adbHostArgs,
         };
         this.sessions.set(udid, session);
 
