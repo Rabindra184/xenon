@@ -3,11 +3,12 @@
  * MJPEG `UniversalMjpegProxy` role for the H.264 path).
  *
  * Join semantics: a new client immediately receives the latest `config`
- * (SPS/PPS) if one exists, then receives packets **starting at the next
- * keyframe** — delta packets before that first keyframe are withheld so the
- * client's WebCodecs decoder never sees a mid-GOP frame it can't decode.
- * `config` packets are always forwarded to every client (even not-yet-started
- * ones) so the decoder can be configured before the keyframe arrives.
+ * (SPS/PPS), then the **current GOP** — the most recent keyframe plus every
+ * delta since it — so its WebCodecs decoder can start rendering at once instead
+ * of waiting for the next keyframe. (screenrecord emits keyframes infrequently,
+ * so waiting would mean many seconds of blank preview on join.) If no keyframe
+ * has been seen yet, the client waits for the first one. `config` packets are
+ * always forwarded to every client so the decoder is configured before frames.
  */
 export type H264PacketType = 'config' | 'key' | 'delta';
 
@@ -17,11 +18,17 @@ export interface H264Packet {
   ptsMs: number;
 }
 
+// Bounds the replay buffer for late joiners (~10s at 90fps). If a GOP grows
+// past this (pathologically long keyframe interval), we stop buffering deltas;
+// a late joiner then gets a brief artifact until the next keyframe.
+const MAX_GOP_FRAMES = 900;
+
 type Client = { send: (p: H264Packet) => void; started: boolean };
 
 export class H264Multiplexer {
   private clients = new Set<Client>();
   private config?: H264Packet;
+  private gop: H264Packet[] = []; // current GOP: [keyframe, ...deltas-since]
 
   setConfig(p: H264Packet): void {
     this.config = p;
@@ -36,6 +43,11 @@ export class H264Multiplexer {
     const c: Client = { send, started: false };
     this.clients.add(c);
     if (this.config) send(this.config);
+    if (this.gop.length) {
+      // Replay the current GOP so the decoder starts immediately.
+      for (const pkt of this.gop) send(pkt);
+      c.started = true;
+    }
     return () => {
       this.clients.delete(c);
     };
@@ -48,12 +60,18 @@ export class H264Multiplexer {
       for (const c of this.clients) c.send(p); // config always forwarded
       return;
     }
-    for (const c of this.clients) {
-      if (!c.started) {
-        if (p.type === 'key') c.started = true;
-        else continue; // withhold deltas until this client's first keyframe
+    if (p.type === 'key') {
+      this.gop = [p]; // a keyframe starts a fresh GOP
+      for (const c of this.clients) {
+        c.started = true; // this keyframe (re)starts any waiting client
+        c.send(p);
       }
-      c.send(p);
+      return;
+    }
+    // delta
+    if (this.gop.length && this.gop.length < MAX_GOP_FRAMES) this.gop.push(p);
+    for (const c of this.clients) {
+      if (c.started) c.send(p); // withhold deltas from a client with no keyframe yet
     }
   }
 }
