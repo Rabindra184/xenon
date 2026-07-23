@@ -10,6 +10,7 @@ function make(): any {
   const svc: any = Object.create(AndroidH264StreamService.prototype);
   svc.sessions = new Map();
   svc.startPromises = new Map();
+  svc.scrcpyIncompatible = new Set();
   return svc;
 }
 
@@ -144,5 +145,41 @@ describe('AndroidH264StreamService', () => {
     };
     await svc.start('udid-ws-scrcpy'); // no opts
     expect(used).to.equal('scrcpy');
+  });
+
+  it('openScrcpyCapture uses scrcpy when it produces frames (startScrcpyOrThrow resolves)', async () => {
+    const svc = make();
+    let usedScreenrecord = false;
+    svc.startScrcpyOrThrow = async () => ({ kill: () => undefined });
+    svc.openScreenrecordCapture = async () => {
+      usedScreenrecord = true;
+      return { kill: () => undefined };
+    };
+    await svc.openScrcpyCapture('udid-ok', () => undefined);
+    expect(usedScreenrecord, 'must not fall back when scrcpy works').to.equal(false);
+    expect(svc.scrcpyIncompatible.has('udid-ok')).to.equal(false);
+  });
+
+  it('openScrcpyCapture falls back to screenrecord when scrcpy fails, and caches the incompatibility', async () => {
+    const svc = make();
+    let scrcpyAttempts = 0;
+    let screenrecordCalls = 0;
+    svc.startScrcpyOrThrow = async () => {
+      scrcpyAttempts++;
+      throw new Error('scrcpy closed before producing frames');
+    };
+    svc.openScreenrecordCapture = async () => {
+      screenrecordCalls++;
+      return { kill: () => undefined };
+    };
+    // First attempt: scrcpy tried, fails → screenrecord fallback + marked incompatible.
+    await svc.openScrcpyCapture('udid-bad', () => undefined);
+    expect(scrcpyAttempts).to.equal(1);
+    expect(screenrecordCalls).to.equal(1);
+    expect(svc.scrcpyIncompatible.has('udid-bad')).to.equal(true);
+    // Second attempt: skip scrcpy entirely, go straight to screenrecord.
+    await svc.openScrcpyCapture('udid-bad', () => undefined);
+    expect(scrcpyAttempts, 'scrcpy must not be retried once known-incompatible').to.equal(1);
+    expect(screenrecordCalls).to.equal(2);
   });
 });

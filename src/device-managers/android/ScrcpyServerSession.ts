@@ -18,7 +18,7 @@ export const SCRCPY_DEVICE_JAR_PATH = '/data/local/tmp/scrcpy-server-manual.jar'
  * so the socket carries plain Annex-B H.264 that the existing H264NalParser
  * consumes unchanged. `send_dummy_byte=true` (the tunnel_forward readiness byte)
  * is explicit because the socket reader skips exactly one leading byte.
- * Arg NAMES verified against the vendored scrcpy 3.3.4 jar's dex; the version
+ * Arg NAMES verified against the vendored scrcpy 2.7 jar's dex; the version
  * constant and this argv move together (see scrcpyVersion.ts / vendor/README.md).
  * No `scid` → the server listens on `localabstract:scrcpy` (per-device namespace).
  */

@@ -36,6 +36,10 @@ const MAX_CAPTURE_WIDTH = 720;
 class AndroidH264StreamService {
   private sessions: Map<string, H264Session> = new Map();
   private startPromises: Map<string, Promise<H264Multiplexer>> = new Map();
+  // udids where scrcpy proved incompatible (e.g. it aborts on init — the Exynos
+  // "stack corruption" crash). Once seen, skip scrcpy for that device and use the
+  // screenrecord H.264 source directly instead of re-crashing scrcpy every start.
+  private scrcpyIncompatible: Set<string> = new Set();
 
   constructor() {
     this.startWatchdog();
@@ -151,23 +155,82 @@ class AndroidH264StreamService {
     udid: string,
     onPacket: (p: H264Packet) => void,
   ): Promise<{ kill: () => void }> {
+    // A device where scrcpy already proved incompatible skips straight to the
+    // screenrecord H.264 source — no point re-crashing scrcpy every time.
+    if (this.scrcpyIncompatible.has(udid)) {
+      log.info(`[${udid}] scrcpy known-incompatible here; using screenrecord H.264 source.`);
+      return this.openScreenrecordCapture(udid, onPacket);
+    }
+    try {
+      return await this.startScrcpyOrThrow(udid, onPacket);
+    } catch (e: any) {
+      // scrcpy failed to produce frames (aborted on init, closed early, or timed
+      // out). Fall back to the screenrecord H.264 source — still real H.264
+      // (~30fps), far better than dropping all the way to ~1fps MJPEG.
+      this.scrcpyIncompatible.add(udid);
+      log.warn(
+        `[${udid}] scrcpy H.264 unavailable (${e?.message ?? e}); falling back to screenrecord H.264 source.`,
+      );
+      return this.openScreenrecordCapture(udid, onPacket);
+    }
+  }
+
+  /**
+   * Start scrcpy and resolve only once it produces its FIRST packet (proof it
+   * works). Reject if it closes/errors/times-out before that — the signal a
+   * device is scrcpy-incompatible (e.g. the Exynos `stack corruption` abort),
+   * which {@link openScrcpyCapture} turns into a screenrecord fallback.
+   */
+  protected async startScrcpyOrThrow(
+    udid: string,
+    onPacket: (p: H264Packet) => void,
+  ): Promise<{ kill: () => void }> {
     const { ScrcpyServerSession, scrcpyMaxSizeFromDims } = await import('./ScrcpyServerSession');
     const device = await DeviceStoreFactory.getStore().findDevice({ udid });
     const maxSize = scrcpyMaxSizeFromDims(Number(device?.screenWidth), Number(device?.screenHeight));
     const parser = new H264NalParser();
     const session = new ScrcpyServerSession(udid);
-    session.on('data', (b: Buffer) => {
-      for (const p of parser.push(b)) onPacket(p);
+    return new Promise<{ kill: () => void }>((resolve, reject) => {
+      let settled = false;
+      const fail = (e: unknown) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        try {
+          session.stop();
+        } catch {
+          /* best-effort */
+        }
+        reject(e instanceof Error ? e : new Error(String(e)));
+      };
+      // scrcpy forces an initial keyframe, so a healthy device produces its first
+      // packet within ~1–2s; this bound only catches a hung (never-frames) scrcpy.
+      const timer = setTimeout(() => fail(new Error('scrcpy produced no frames within 8s')), 8000);
+      session.on('data', (b: Buffer) => {
+        for (const p of parser.push(b)) {
+          onPacket(p);
+          if (!settled) {
+            settled = true;
+            clearTimeout(timer);
+            resolve({ kill: () => session.stop() });
+          }
+        }
+      });
+      session.on('close', () => {
+        if (!settled) {
+          fail(new Error('scrcpy closed before producing frames'));
+          return;
+        }
+        // Crash after it was streaming: stop the session. On the client's
+        // reconnect this device is now marked incompatible, so it gets screenrecord.
+        if (this.sessions.get(udid)?.status === 'running') {
+          log.warn(`[${udid}] scrcpy stream closed unexpectedly; stopping H.264 session.`);
+          this.scrcpyIncompatible.add(udid);
+          this.stop(udid);
+        }
+      });
+      session.start(maxSize).catch(fail);
     });
-    session.on('close', () => {
-      // Crash recovery: scrcpy has no time cap, so a close while running is unexpected.
-      if (this.sessions.get(udid)?.status === 'running') {
-        log.warn(`[${udid}] scrcpy stream closed unexpectedly; stopping H.264 session.`);
-        this.stop(udid);
-      }
-    });
-    await session.start(maxSize);
-    return { kill: () => session.stop() };
   }
 
   /**
