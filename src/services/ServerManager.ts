@@ -6,6 +6,9 @@ import { v4 as uuidv4 } from 'uuid';
 import { redactSecrets } from '../helpers';
 import ip from 'ip';
 import log from '../logger';
+import { attachH264Ws } from '../app/ws/h264StreamWs';
+import { StreamTicketService } from './token/StreamTicketService';
+import AndroidH264StreamService from '../device-managers/android/AndroidH264StreamService';
 // enable resolveJsonModule in tsconfig must be true for this to work
 import pkg from '../../package.json';
 import { IPluginArgs, DefaultPluginArgs, EmulatorConfig } from '../interfaces/IPluginArgs';
@@ -75,6 +78,15 @@ export class ServerManager {
 
     await this.setupHubOrNode(pluginArgs, cliArgs, httpServer, nodeId);
     await this.setupMaintenanceCrons(pluginArgs);
+
+    // Live H.264 preview WebSocket (Android; feature-flagged in the frontend).
+    // Only claims /stream/h264 — socket.io keeps its own upgrades. Ticket-auth'd.
+    if (httpServer) {
+      attachH264Ws(httpServer, {
+        redeem: (ticket, udid) => Container.get(StreamTicketService).redeem(ticket, udid),
+        startStream: (udid) => Container.get(AndroidH264StreamService).start(udid),
+      });
+    }
 
     // Principal Cleaning: Attempt to recover remote sessions before marking as failed
     const { SessionManager } = await import('../sessions/SessionManager');
