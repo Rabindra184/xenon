@@ -1,6 +1,8 @@
 import 'reflect-metadata';
 import { expect } from 'chai';
+import { Container } from 'typedi';
 import AndroidH264StreamService from '../../src/device-managers/android/AndroidH264StreamService';
+import { PluginContext } from '../../src/PluginContext';
 
 // Lifecycle/state only — the capture seam (openCapture) is stubbed so the test
 // drives packet flow without a real device or screenrecord process.
@@ -12,6 +14,14 @@ function make(): any {
 }
 
 describe('AndroidH264StreamService', () => {
+  // start(udid) with no opts reads the flag config from PluginContext. Seed a
+  // known default before each test (streaming undefined → source 'scrcpy'); the
+  // WS-source tests override it in-test. Set (not remove) so TypeDI never hits a
+  // ServiceNotFoundError on the next Container.get.
+  beforeEach(() => {
+    Container.set(PluginContext, { pluginArgs: {} });
+  });
+
   it('start() creates a multiplexer, seeds it with the config packet, and resolves', async () => {
     const svc = make();
     svc.openCapture = async (_udid: string, onPacket: any) => {
@@ -95,5 +105,44 @@ describe('AndroidH264StreamService', () => {
     };
     await svc.start('udid-r', { source: 'screenrecord' });
     expect(used).to.equal('screenrecord');
+  });
+
+  // The WebSocket auto-start path calls start(udid) with NO opts. It must still
+  // honour the configured capture source (read from PluginContext), not silently
+  // default to scrcpy — otherwise a { source: 'screenrecord' } rollback is bypassed.
+  it('start(udid) with no opts uses the source configured in PluginContext (screenrecord)', async () => {
+    const svc = make();
+    Container.set(PluginContext, {
+      pluginArgs: { streaming: { androidH264: { source: 'screenrecord' } } },
+    });
+    let used = '';
+    svc.openScrcpyCapture = async () => {
+      used = 'scrcpy';
+      return { kill: () => undefined };
+    };
+    svc.openScreenrecordCapture = async (_u: string, onPacket: any) => {
+      used = 'screenrecord';
+      onPacket({ type: 'config', data: Buffer.from([0]), ptsMs: 0 });
+      return { kill: () => undefined };
+    };
+    await svc.start('udid-ws-sr'); // no opts — mimics the WS startStream(udid) path
+    expect(used).to.equal('screenrecord');
+  });
+
+  it('start(udid) with no opts uses the source configured in PluginContext (scrcpy)', async () => {
+    const svc = make();
+    Container.set(PluginContext, { pluginArgs: { streaming: { androidH264: true } } });
+    let used = '';
+    svc.openScrcpyCapture = async (_u: string, onPacket: any) => {
+      used = 'scrcpy';
+      onPacket({ type: 'config', data: Buffer.from([0]), ptsMs: 0 });
+      return { kill: () => undefined };
+    };
+    svc.openScreenrecordCapture = async () => {
+      used = 'screenrecord';
+      return { kill: () => undefined };
+    };
+    await svc.start('udid-ws-scrcpy'); // no opts
+    expect(used).to.equal('scrcpy');
   });
 });

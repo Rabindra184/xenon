@@ -4,7 +4,8 @@ import log from '../../logger';
 import { DeviceStoreFactory } from '../../data-service/device-store';
 import { H264Multiplexer, H264Packet } from './H264Multiplexer';
 import { H264NalParser } from './h264NalParser';
-import { H264Source } from '../../app/routers/androidH264Config';
+import { H264Source, resolveAndroidH264 } from '../../app/routers/androidH264Config';
+import { PluginContext } from '../../PluginContext';
 
 interface H264Session {
   status: 'running' | 'stopped';
@@ -83,7 +84,15 @@ class AndroidH264StreamService {
           }
         };
 
-        session.capture = await this.openCapture(udid, onPacket, opts?.source ?? 'scrcpy');
+        // Resolve the capture source: an explicit opts.source wins; otherwise
+        // read the server-wide flag config. Resolving here (not just at the REST
+        // call site) means the WS auto-start path — start(udid) with no opts —
+        // also honours a configured { source: 'screenrecord' } instead of
+        // silently defaulting to scrcpy.
+        const source: H264Source =
+          opts?.source ??
+          resolveAndroidH264(Container.get(PluginContext).pluginArgs.streaming?.androidH264).source;
+        session.capture = await this.openCapture(udid, onPacket, source);
         // Give the first keyframe/config a moment so callers get a ready stream,
         // but never block start-up indefinitely.
         await Promise.race([firstConfig, new Promise((r) => setTimeout(r, 3000))]);
