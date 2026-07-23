@@ -5,6 +5,8 @@ interface WsH264PlayerProps {
   wsUrl: string;
   /** Called on any fatal condition so the tile can fall back to the MJPEG <img>. */
   onFatal?: () => void;
+  /** Called once when the first frame has decoded (so the tile can go 'live'). */
+  onReady?: () => void;
   className?: string;
 }
 
@@ -34,10 +36,12 @@ function codecFromConfig(data: Uint8Array): string {
  * first config frame. SPS/PPS reach the decoder inside each keyframe (Annex-B),
  * so only the codec string is needed to configure.
  */
-const WsH264Player: React.FC<WsH264PlayerProps> = ({ wsUrl, onFatal, className }) => {
+const WsH264Player: React.FC<WsH264PlayerProps> = ({ wsUrl, onFatal, onReady, className }) => {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const fatalRef = useRef(onFatal);
   fatalRef.current = onFatal;
+  const readyRef = useRef(onReady);
+  readyRef.current = onReady;
 
   useEffect(() => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -48,15 +52,16 @@ const WsH264Player: React.FC<WsH264PlayerProps> = ({ wsUrl, onFatal, className }
       return;
     }
     const ctx = canvas.getContext('2d');
-    let closed = false;
+    let closing = false; // set only on intentional unmount teardown
     let configured = false;
+    let firstFrame = true;
     let timestamp = 0; // client-side monotonic; survives server auto-restarts
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const decoder = new w.VideoDecoder({
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       output: (frame: any) => {
-        if (closed) {
+        if (closing) {
           frame.close();
           return;
         }
@@ -66,6 +71,10 @@ const WsH264Player: React.FC<WsH264PlayerProps> = ({ wsUrl, onFatal, className }
         }
         ctx?.drawImage(frame, 0, 0);
         frame.close();
+        if (firstFrame) {
+          firstFrame = false;
+          readyRef.current?.();
+        }
       },
       error: () => fatalRef.current?.(),
     });
@@ -73,14 +82,20 @@ const WsH264Player: React.FC<WsH264PlayerProps> = ({ wsUrl, onFatal, className }
     const ws = new WebSocket(wsUrl);
     ws.binaryType = 'arraybuffer';
     ws.onerror = () => fatalRef.current?.();
+    // Any close we didn't initiate (mid-stream drop, screenrecord ended) must
+    // fall back to MJPEG — otherwise the tile freezes on the last frame.
     ws.onclose = () => {
-      if (!configured) fatalRef.current?.();
+      if (!closing) fatalRef.current?.();
     };
     ws.onmessage = (ev) => {
       const buf = ev.data as ArrayBuffer;
       const type = new DataView(buf).getUint8(0); // 0 config, 1 key, 2 delta
-      const data = new Uint8Array(buf, 9);
+      const data = new Uint8Array(buf, 1);
       if (type === 0) {
+        // Configure once. SPS/PPS ride inside each Annex-B keyframe, so the
+        // decoder adapts to rotation/resolution changes on its own — no need to
+        // reconfigure a live decoder (which can drop queued frames or throw).
+        if (configured) return;
         try {
           decoder.configure({ codec: codecFromConfig(data), optimizeForLatency: true });
           configured = true;
@@ -101,7 +116,7 @@ const WsH264Player: React.FC<WsH264PlayerProps> = ({ wsUrl, onFatal, className }
     };
 
     return () => {
-      closed = true;
+      closing = true; // intentional teardown — onclose must NOT trigger onFatal
       try {
         ws.close();
       } catch {

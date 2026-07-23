@@ -36,6 +36,24 @@ describe('AndroidH264StreamService', () => {
     expect(opens).to.equal(1);
   });
 
+  it('cleans up the session (no zombie) when openCapture throws', async () => {
+    const svc = make();
+    svc.openCapture = async () => {
+      throw new Error('ADB is not available');
+    };
+    let threw = false;
+    try {
+      await svc.start('udid-fail');
+    } catch {
+      threw = true;
+    }
+    expect(threw, 'start() should reject when capture fails').to.equal(true);
+    // The failed session must not linger — else later start()/getMultiplexer
+    // hand back a mux that never produces frames.
+    expect(svc.getMultiplexer('udid-fail')).to.equal(undefined);
+    expect(svc.sessions.has('udid-fail')).to.equal(false);
+  });
+
   it('stop() kills the capture and clears the session', async () => {
     const svc = make();
     let killed = false;

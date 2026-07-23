@@ -18,6 +18,7 @@ import { InspectorService } from '../../services/InspectorService';
 import { StreamTicketService } from '../../services/token/StreamTicketService';
 import { PluginContext } from '../../PluginContext';
 import { resolveStreamType } from './streamType';
+import { RecordingStore } from '../../services/recording/recording-store';
 import { mutationScopeGuard } from '../../middleware/scopeGuard';
 import { roleGuard } from '../../middleware/roleGuard';
 import { formatManualLock, inspectManualLock } from '../../services/recording/manualLock';
@@ -521,7 +522,10 @@ router.post('/:udid/stream/start', async (req: Request, res: Response) => {
 
   try {
     const flagOn = !!Container.get(PluginContext).pluginArgs.streaming?.androidH264;
-    const streamType = resolveStreamType(device.platform, flagOn, false);
+    // A recording device keeps MJPEG preview so we never run screenrecord and
+    // the recording's screencap pipeline against the same device at once.
+    const recording = await Container.get(RecordingStore).isRecording(udid);
+    const streamType = resolveStreamType(device.platform, flagOn, recording);
     let mjpegPort: number | undefined;
 
     if (device.platform === 'ios' || device.platform === 'tvos') {
@@ -665,11 +669,11 @@ router.get('/:udid/stream/status', async (req: Request, res: Response) => {
   const device = await getDeviceInfo(udid);
   if (!device) return res.status(404).send('Device not found');
 
-  // Advertise which transport the frontend player should use. The recording
-  // rule (a recording device keeps MJPEG) is enforced at stream/start time
-  // (Task 10); here recording is treated as false for the capability hint.
+  // Advertise which transport the frontend player should use. A recording
+  // device keeps MJPEG (one capture pipeline per device).
   const flagOn = !!Container.get(PluginContext).pluginArgs.streaming?.androidH264;
-  const type = resolveStreamType(device.platform, flagOn, false);
+  const recording = await Container.get(RecordingStore).isRecording(udid);
+  const type = resolveStreamType(device.platform, flagOn, recording);
   const h264Path =
     type === 'h264' ? `/xenon/api/control/${encodeURIComponent(udid)}/stream/h264` : undefined;
 

@@ -1,24 +1,23 @@
 import { expect } from 'chai';
 import { encodeWsFrame, parseH264WsPath } from '../../src/app/ws/h264StreamWs';
 
-// Wire format for the H.264 video WebSocket: [1 byte type][8 bytes LE double
-// ptsMs][H.264 Annex-B payload]. type 0=config, 1=key, 2=delta.
+// Wire format for the H.264 video WebSocket: [1 byte type][H.264 Annex-B
+// payload]. type 0=config, 1=key, 2=delta.
 describe('encodeWsFrame', () => {
-  it('encodes config (0)', () => {
+  it('encodes config (0) with the payload at offset 1', () => {
     const f = encodeWsFrame({ type: 'config', data: Buffer.from([0x67, 0x42]), ptsMs: 0 });
     expect(f.readUInt8(0)).to.equal(0);
-    expect(f.readDoubleLE(1)).to.equal(0);
-    expect(f.subarray(9)).to.deep.equal(Buffer.from([0x67, 0x42]));
+    expect(f.subarray(1)).to.deep.equal(Buffer.from([0x67, 0x42]));
   });
-  it('encodes key (1) with ptsMs and payload', () => {
+  it('encodes key (1) with the payload at offset 1', () => {
     const f = encodeWsFrame({ type: 'key', data: Buffer.from([9, 9]), ptsMs: 5 });
     expect(f.readUInt8(0)).to.equal(1);
-    expect(f.readDoubleLE(1)).to.equal(5);
-    expect(f.subarray(9)).to.deep.equal(Buffer.from([9, 9]));
+    expect(f.subarray(1)).to.deep.equal(Buffer.from([9, 9]));
   });
   it('encodes delta (2)', () => {
     const f = encodeWsFrame({ type: 'delta', data: Buffer.from([1]), ptsMs: 33 });
     expect(f.readUInt8(0)).to.equal(2);
+    expect(f.subarray(1)).to.deep.equal(Buffer.from([1]));
   });
 });
 

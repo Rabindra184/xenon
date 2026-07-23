@@ -7,18 +7,16 @@ import type { H264Multiplexer } from '../../device-managers/android/H264Multiple
 /**
  * Authenticated H.264 video WebSocket.
  *
- * Wire format (binary): `[1 byte type][8 bytes LE double ptsMs][H.264 Annex-B]`
- * where type is 0=config, 1=key, 2=delta. The browser player configures its
- * WebCodecs decoder from the SPS/PPS in the `config` frame, then decodes key/
- * delta frames.
+ * Wire format (binary): `[1 byte type][H.264 Annex-B]` where type is
+ * 0=config, 1=key, 2=delta. The browser player configures its WebCodecs decoder
+ * from the SPS/PPS in the `config` frame, then decodes key/delta frames using
+ * its own monotonic timestamps (the upstream ptsMs resets on capture restart,
+ * so it is not put on the wire).
  */
 const TYPE_CODE: Record<H264Packet['type'], number> = { config: 0, key: 1, delta: 2 };
 
 export function encodeWsFrame(p: H264Packet): Buffer {
-  const header = Buffer.alloc(9);
-  header.writeUInt8(TYPE_CODE[p.type], 0);
-  header.writeDoubleLE(p.ptsMs, 1);
-  return Buffer.concat([header, p.data]);
+  return Buffer.concat([Buffer.from([TYPE_CODE[p.type]]), p.data]);
 }
 
 const H264_PATH_RE = /^\/xenon\/api\/control\/([^/]+)\/stream\/h264$/;
@@ -57,6 +55,19 @@ export function attachH264Ws(server: Server, deps: H264WsDeps): void {
     if (!parsed) return; // not our path — let other upgrade listeners handle it
 
     wss.handleUpgrade(req, socket as any, head, async (ws) => {
+      // Register cleanup BEFORE the awaits below. redeem + startStream can take
+      // seconds; if the client disconnects during that window we must still
+      // remove it from the multiplexer — otherwise clientCount stays inflated
+      // and the idle watchdog never stops the stream.
+      let closed = false;
+      let cleanup: () => void = () => undefined;
+      const onClose = () => {
+        closed = true;
+        cleanup();
+      };
+      ws.on('close', onClose);
+      ws.on('error', onClose);
+
       try {
         await deps.redeem(parsed.ticket, parsed.udid);
       } catch {
@@ -67,18 +78,11 @@ export function attachH264Ws(server: Server, deps: H264WsDeps): void {
         }
         return;
       }
+      if (closed) return; // disconnected during redeem
 
-      let remove = () => undefined as void;
+      let mux;
       try {
-        const mux = await deps.startStream(parsed.udid);
-        remove = mux.addClient((p) => {
-          if (ws.readyState !== WebSocket.OPEN) return;
-          // Backpressure: drop frames instead of buffering unboundedly. A brief
-          // drop self-heals at the next keyframe (delta gaps recover on the GOP).
-          if (ws.bufferedAmount > maxBuffered) return;
-          ws.send(encodeWsFrame(p));
-        });
-        log.info(`[${parsed.udid}] H.264 WS client connected`);
+        mux = await deps.startStream(parsed.udid);
       } catch (e: any) {
         log.warn(`[${parsed.udid}] H.264 WS start failed: ${e.message}`);
         try {
@@ -88,9 +92,17 @@ export function attachH264Ws(server: Server, deps: H264WsDeps): void {
         }
         return;
       }
+      if (closed) return; // disconnected during startStream
 
-      ws.on('close', () => remove());
-      ws.on('error', () => remove());
+      cleanup = mux.addClient((p) => {
+        if (ws.readyState !== WebSocket.OPEN) return;
+        // Backpressure: drop only deltas (never config/key) so a slow client
+        // doesn't lose the keyframe it needs to resync; deltas recover at the
+        // next keyframe.
+        if (p.type === 'delta' && ws.bufferedAmount > maxBuffered) return;
+        ws.send(encodeWsFrame(p));
+      });
+      log.info(`[${parsed.udid}] H.264 WS client connected`);
     });
   });
 }

@@ -1,6 +1,7 @@
 import { spawn, ChildProcess } from 'child_process';
 import { Service, Container } from 'typedi';
 import log from '../../logger';
+import { DeviceStoreFactory } from '../../data-service/device-store';
 import { H264Multiplexer, H264Packet } from './H264Multiplexer';
 import { H264NalParser } from './h264NalParser';
 
@@ -8,12 +9,16 @@ interface H264Session {
   status: 'running' | 'stopped';
   mux: H264Multiplexer;
   capture?: { kill: () => void };
-  lastRestart?: number;
   emptyAt?: number;
 }
 
 const IDLE_TIMEOUT_MS = 600_000; // stop a stream after 10 min with zero viewers
-const RESTART_MIN_INTERVAL_MS = 300; // rate-limit auto-restarts (3-min cap / rotation)
+const RESTART_MIN_INTERVAL_MS = 300; // fast restart after a healthy stream hits the cap/rotation
+// After this many consecutive restarts that produced no frames (device gone,
+// unsupported size, …) give up instead of spin-looping forever.
+const MAX_RESTART_FAILURES = 5;
+const DEFAULT_CAPTURE_SIZE = '720x1560';
+const MAX_CAPTURE_WIDTH = 720;
 
 /**
  * Continuous H.264 live-stream capture for Android via `adb screenrecord`,
@@ -65,23 +70,29 @@ class AndroidH264StreamService {
       const mux = new H264Multiplexer();
       const session: H264Session = { status: 'running', mux };
       this.sessions.set(udid, session);
+      try {
+        let resolveConfig: () => void = () => undefined;
+        const firstConfig = new Promise<void>((r) => (resolveConfig = r));
+        let seenConfig = false;
+        const onPacket = (p: H264Packet) => {
+          mux.push(p);
+          if (p.type === 'config' && !seenConfig) {
+            seenConfig = true;
+            resolveConfig();
+          }
+        };
 
-      let resolveConfig: () => void = () => undefined;
-      const firstConfig = new Promise<void>((r) => (resolveConfig = r));
-      let seenConfig = false;
-      const onPacket = (p: H264Packet) => {
-        mux.push(p);
-        if (p.type === 'config' && !seenConfig) {
-          seenConfig = true;
-          resolveConfig();
-        }
-      };
-
-      session.capture = await this.openCapture(udid, onPacket);
-      // Give the first keyframe/config a moment so callers get a ready stream,
-      // but never block start-up indefinitely.
-      await Promise.race([firstConfig, new Promise((r) => setTimeout(r, 3000))]);
-      return mux;
+        session.capture = await this.openCapture(udid, onPacket);
+        // Give the first keyframe/config a moment so callers get a ready stream,
+        // but never block start-up indefinitely.
+        await Promise.race([firstConfig, new Promise((r) => setTimeout(r, 3000))]);
+        return mux;
+      } catch (e) {
+        // Don't leave a zombie 'running' session with no capture — later
+        // start()/getMultiplexer would hand back a mux that never produces frames.
+        if (this.sessions.get(udid) === session) this.sessions.delete(udid);
+        throw e;
+      }
     })();
 
     this.startPromises.set(udid, promise);
@@ -120,12 +131,15 @@ class AndroidH264StreamService {
     const adbPath: string = adb?.executable?.path || 'adb';
     const hostArgs: string[] =
       adb?.adbHost && adb?.adbPort ? ['-H', adb.adbHost, '-P', String(adb.adbPort)] : [];
+    const size = await this.resolveCaptureSize(udid);
 
     let killed = false;
     let proc: ChildProcess | undefined;
+    let restartFailures = 0; // consecutive restarts that produced no frames
 
     const spawnOnce = () => {
       const parser = new H264NalParser();
+      let producedFrame = false;
       proc = spawn(adbPath, [
         ...hostArgs,
         '-s',
@@ -134,7 +148,7 @@ class AndroidH264StreamService {
         'screenrecord',
         '--output-format=h264',
         '--size',
-        '720x1560',
+        size,
         '--bit-rate',
         '4000000',
         '--time-limit',
@@ -142,15 +156,27 @@ class AndroidH264StreamService {
         '-',
       ]);
       proc.stdout?.on('data', (d: Buffer) => {
+        producedFrame = true;
         for (const p of parser.push(d)) onPacket(p);
       });
       proc.on('error', (e) => log.warn(`[${udid}] H.264 capture spawn error: ${e.message}`));
       proc.on('close', () => {
-        const session = this.sessions.get(udid);
-        if (killed || !session || session.status !== 'running') return;
-        const now = Date.now();
-        const wait = Math.max(0, RESTART_MIN_INTERVAL_MS - (now - (session.lastRestart || 0)));
-        session.lastRestart = now + wait;
+        if (killed || this.sessions.get(udid)?.status !== 'running') return;
+        // A stream that produced frames just hit the ~3-min cap (or rotation) —
+        // restart fast. A spawn that produced nothing is failing; count it and
+        // back off, then give up so we never spin-loop forever.
+        if (producedFrame) {
+          restartFailures = 0;
+        } else if (++restartFailures > MAX_RESTART_FAILURES) {
+          log.error(
+            `[${udid}] H.264 capture failed ${restartFailures}x without frames (size ${size}); giving up.`,
+          );
+          this.stop(udid);
+          return;
+        }
+        const wait = producedFrame
+          ? RESTART_MIN_INTERVAL_MS
+          : Math.min(5000, RESTART_MIN_INTERVAL_MS * 2 ** restartFailures);
         setTimeout(() => {
           if (!killed && this.sessions.get(udid)?.status === 'running') spawnOnce();
         }, wait);
@@ -168,6 +194,29 @@ class AndroidH264StreamService {
         }
       },
     };
+  }
+
+  /**
+   * screenrecord `--size`, derived from the device's real resolution so the
+   * aspect ratio is preserved (a hardcoded size distorts non-2.166 devices and
+   * can be rejected by the AVC encoder). Downscales to a max width, even dims.
+   */
+  private async resolveCaptureSize(udid: string): Promise<string> {
+    try {
+      const device = await DeviceStoreFactory.getStore().findDevice({ udid });
+      const sw = Number(device?.screenWidth);
+      const sh = Number(device?.screenHeight);
+      if (Number.isFinite(sw) && Number.isFinite(sh) && sw > 0 && sh > 0) {
+        let w = Math.min(MAX_CAPTURE_WIDTH, sw);
+        let h = Math.round((sh / sw) * w);
+        if (w % 2 !== 0) w -= 1;
+        if (h % 2 !== 0) h -= 1;
+        return `${w}x${h}`;
+      }
+    } catch {
+      /* fall through to default */
+    }
+    return DEFAULT_CAPTURE_SIZE;
   }
 }
 

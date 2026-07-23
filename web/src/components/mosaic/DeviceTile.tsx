@@ -112,7 +112,9 @@ export function DeviceTile({
         const proto = window.location.protocol === 'https:' ? 'wss' : 'ws';
         const url = `${proto}://${window.location.host}${status.h264Path}?ticket=${encodeURIComponent(ticket)}`;
         setH264WsUrl(url);
-        setStreamState('live');
+        // Stay 'connecting' until the first frame decodes (WsH264Player.onReady)
+        // — otherwise the tile is interactive over a black canvas during
+        // screenrecord's multi-second cold start.
       } catch {
         /* leave MJPEG in place */
       }
@@ -397,6 +399,7 @@ export function DeviceTile({
           <WsH264Player
             wsUrl={h264WsUrl}
             className="absolute inset-0 w-full h-full object-contain bg-black select-none pointer-events-none"
+            onReady={() => setStreamState('live')}
             onFatal={() => {
               console.warn(`[DeviceTile] H.264 fatal for ${udid}; falling back to MJPEG`);
               setH264WsUrl(null);
