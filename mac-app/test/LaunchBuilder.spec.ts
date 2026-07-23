@@ -53,6 +53,25 @@ describe('buildConfigYaml', () => {
     expect(doc.server.plugin.xenon.maxSessions).toBe(8); // required default present
     expect(doc.server.plugin.xenon.platform).toBe('android'); // user value wins over default
   });
+
+  it('enables Android H.264 (scrcpy) live preview by default for every profile', () => {
+    // A profile with no streaming setting still launches with androidH264 on —
+    // the equivalent of --plugin-xenon-streaming=\'{"androidH264":true}\'.
+    const doc = yaml.load(buildConfigYaml(makeProfile())) as any;
+    expect(doc.server.plugin.xenon.streaming).toEqual({ androidH264: true });
+  });
+
+  it('lets a profile override the streaming default (disable, or pick the source)', () => {
+    const off = yaml.load(
+      buildConfigYaml(makeProfile({ settings: { streaming: { androidH264: false } } }))
+    ) as any;
+    expect(off.server.plugin.xenon.streaming.androidH264).toBe(false);
+
+    const sr = yaml.load(
+      buildConfigYaml(makeProfile({ settings: { streaming: { androidH264: { source: 'screenrecord' } } } }))
+    ) as any;
+    expect(sr.server.plugin.xenon.streaming.androidH264).toEqual({ source: 'screenrecord' });
+  });
 });
 
 describe('buildLaunchPlan', () => {

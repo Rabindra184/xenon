@@ -55,12 +55,24 @@ function sanitizeSettings(settings: SettingsValues): SettingsValues {
   return out;
 }
 
+// Mac-app launch defaults that aren't schema-required but we want ON out of the
+// box. Like requiredDefaults, they sit UNDER the profile's settings so a profile
+// that sets the same key explicitly always wins.
+//   - streaming.androidH264: use the faster scrcpy H.264 Android live preview by
+//     default; scrcpy-incompatible devices auto-fall back to MJPEG at the player
+//     level, so this is safe to default on. A profile overrides by setting its own
+//     `streaming` (shallow-replaces this default): `{ androidH264: false }` to turn
+//     it off, or `{ androidH264: { source: 'screenrecord' } }` for the rollback source.
+const MAC_APP_SETTING_DEFAULTS: Record<string, unknown> = {
+  streaming: { androidH264: true }
+};
+
 /** Build the Appium config-file document from a profile. */
 export function buildConfigYaml(profile: Profile, requiredDefaults: Record<string, unknown> = {}): string {
-  // Required-key defaults sit UNDERNEATH the user's settings so the config is
-  // always complete (Appium rejects a --config missing any required property),
-  // while any value the user changed still wins.
-  const merged = { ...requiredDefaults, ...profile.settings };
+  // Defaults sit UNDERNEATH the user's settings so the config is always complete
+  // (Appium rejects a --config missing any required property) and our launch
+  // defaults are ON, while any value the user changed still wins.
+  const merged = { ...MAC_APP_SETTING_DEFAULTS, ...requiredDefaults, ...profile.settings };
   const doc = {
     server: {
       port: profile.server.port,
