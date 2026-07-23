@@ -108,11 +108,45 @@ A Xenon hub instance can orchestrate remote Xenon node instances. `NodeDevices.t
 Independent of Appium sessions, each platform has a stream service that brings up an MJPEG feed for live preview / recording:
 
 - **iOS**: `IOSStreamService` shells `go-ios` to start a tunnel (iOS 17+), launches WebDriverAgent via `runwda`, and forwards local ports `wdaPort:8100` and `mjpegPort:9100` with `iproxy`. WDA's MJPEG server is enabled via `/appium/settings`. Stream sessions are tracked in `this.sessions` with a watchdog that idles out streams after 10 min of zero viewers (unless the device is busy with an Appium session).
-- **Android**: `AndroidStreamService` uses ADB + a built-in capture pipeline.
+- **Android**: `AndroidStreamService` uses ADB + a built-in capture pipeline (MJPEG). A faster, flagged **H.264 live-preview** path also exists — see "Android H.264 live preview (scrcpy)" below.
 
 `UniversalMjpegProxy` (`src/helpers/UniversalMjpegProxy.ts`) multiplexes a single upstream MJPEG to many browser clients. It speaks both standard HTTP MJPEG and a raw-socket fallback for WDA's headerless variant, drops lagging clients (>4 MB kernel backlog) to prevent OOM, and uses bounded retries with exponential backoff (max 10 attempts, 500ms→10s).
 
 The browser-facing URL is always `/xenon/api/control/:udid/stream` (proxy URL). Hitting it auto-starts the underlying stream service if the device is iOS — the GET handler dedupes concurrent starts via `IOSStreamService.startPromises`.
+
+#### Android H.264 live preview (scrcpy) — flagged, MJPEG fallback
+
+The MJPEG path above tops out at ~1 fps on Android (per-frame `screencap`). When
+`pluginArgs.streaming.androidH264` is on (**default OFF**), Android live *preview*
+(not recording — see the phase-1 coexistence rule) uses a continuous, hardware-encoded
+H.264 stream instead. The flag is a union: `true` → scrcpy (default source);
+`{ source: 'scrcpy' | 'screenrecord' }` → pick the source explicitly (`resolveAndroidH264`
+in `src/app/routers/androidH264Config.ts` normalizes all three shapes to
+`{ enabled, source }`). iOS is untouched.
+
+Pipeline (source-agnostic downstream): capture producer → `H264NalParser` (Annex-B →
+config/key/delta packets) → `H264Multiplexer` (one upstream → many clients, config +
+keyframe-gated join, GOP replay for late joiners) → authenticated WebSocket
+`/xenon/api/control/:udid/stream/h264?ticket=` → `WsH264Player` (WebCodecs
+`VideoDecoder` → `<canvas>`).
+
+- **scrcpy source** (`ScrcpyServerSession`, `src/device-managers/android/ScrcpyServerSession.ts`):
+  pushes the vendored `scrcpy-server-<ver>.jar` (`vendor/`, pinned by `SCRCPY_SERVER_VERSION`
+  in `scrcpyVersion.ts`) with the resolved adb (never a bare `adb`), starts it via
+  `app_process` in raw-stream mode (all three `send_*_meta=false` → pure Annex-B), and
+  connects over `adb forward` + `localabstract:scrcpy`. **`adb forward` accepts the local
+  TCP immediately — before the device socket is bound — so `connectWithRetry` treats a
+  connection as real only when the first byte (scrcpy's `send_dummy_byte` readiness byte)
+  arrives; a close/error before any byte retries.** No time cap, forced initial keyframe →
+  near-instant first frame.
+- **screenrecord source** (`openScreenrecordCapture` in `AndroidH264StreamService`): the
+  prior 1.9.x path, kept as a code-level rollback. `adb screenrecord --output-format=h264`
+  with a ~3-min cap (auto-restart) and a several-second cold start on a static screen.
+
+Selection: `resolveStreamType(platform, flagOn, recording)` (`streamType.ts`) — Android +
+flag on + not recording → `h264`, else `mjpeg`. `control.ts` `stream/start` starts the H.264
+service and, on any failure, the existing try/catch falls back to reporting `mjpeg`; the
+frontend `WsH264Player` `onFatal` also swaps a dying stream to the MJPEG `<img>`.
 
 ### Recording Subsystem (`src/services/recording/`)
 
@@ -247,6 +281,8 @@ npm run build:copy` (from the repo root) regenerates and copies it.
 | `src/device-managers/IOSDeviceManager.ts` | simctl + ios-device control |
 | `src/device-managers/ios/IOSStreamService.ts` | go-ios + WDA + iproxy lifecycle for live MJPEG |
 | `src/helpers/UniversalMjpegProxy.ts` | One-upstream-to-many-clients MJPEG fan-out with backpressure |
+| `src/device-managers/android/ScrcpyServerSession.ts` | scrcpy-server lifecycle (push jar + `app_process` + `adb forward` + first-byte-gated connect) for the Android H.264 source |
+| `src/app/routers/androidH264Config.ts` | Normalizes the `streaming.androidH264` flag union (`bool \| { source }`) to `{ enabled, source }` |
 | `src/services/recording/RecordingOrchestrator.ts` | Per-device + composite recording lifecycle |
 | `src/services/recording/manualLock.ts` | `manual_<actorId>_<udid>` lock format helpers |
 | `src/middleware/authMiddleware.ts` | Populates `req.auth` (and `req.apiKey` on API-key paths) from the header pair or session cookie |
