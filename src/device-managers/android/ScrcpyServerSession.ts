@@ -21,6 +21,17 @@ export const SCRCPY_DEVICE_JAR_PATH = '/data/local/tmp/scrcpy-server-manual.jar'
  * Arg NAMES verified against the vendored scrcpy 2.7 jar's dex; the version
  * constant and this argv move together (see scrcpyVersion.ts / vendor/README.md).
  * No `scid` → the server listens on `localabstract:scrcpy` (per-device namespace).
+ *
+ * KEEP THIS ARGV SHORT — hard cap enforced below. Samsung's Android 10
+ * libstagefright patch (`ACodec::reconfigEncoder4OtherApps`) copies the
+ * encoder process's cmdline into a fixed ~256-byte stack buffer; if the
+ * app_process command line reaches that length, the copy trips the stack
+ * canary and the server dies at MediaCodec configure with
+ * `stack corruption detected (-fstack-protector)` (SIGABRT). Verified on
+ * SM-G965F/Android 10: identical options stream at ≤248 chars and abort at
+ * ≥267 — the abort depends only on total length, never on which options.
+ * That is why args that merely restate scrcpy 2.7 defaults (`video=true`,
+ * `video_codec=h264`, `cleanup=true`) are omitted rather than spelled out.
  */
 export function buildScrcpyServerArgs(opts: {
   version: string;
@@ -37,8 +48,6 @@ export function buildScrcpyServerArgs(opts: {
     'tunnel_forward=true',
     'audio=false',
     'control=false',
-    'video=true',
-    'video_codec=h264',
     `max_size=${opts.maxSize}`,
     'video_bit_rate=4000000',
     'max_fps=30',
@@ -46,8 +55,20 @@ export function buildScrcpyServerArgs(opts: {
     'send_codec_meta=false',
     'send_frame_meta=false',
     'send_dummy_byte=true',
-    'cleanup=true',
   ];
+}
+
+/**
+ * Samsung's buggy cmdline copy (see buildScrcpyServerArgs doc) aborts at
+ * ~256 chars; crash observed at 267, clean at 248. Budget 240 leaves margin
+ * for a wider `max_size` while staying safely under the observed floor.
+ */
+export const SCRCPY_CMDLINE_BUDGET = 240;
+
+/** The on-device `app_process …` cmdline length for a built argv (drops the host-side `shell` + CLASSPATH env prefix). */
+export function scrcpyCmdlineLength(argv: string[]): number {
+  const appProcessIdx = argv.indexOf('app_process');
+  return argv.slice(appProcessIdx).join(' ').length;
 }
 
 /**
