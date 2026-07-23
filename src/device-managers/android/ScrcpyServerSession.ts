@@ -145,31 +145,47 @@ export class ScrcpyServerSession extends EventEmitter {
     return new Promise((resolve, reject) => {
       if (this.stopped) { reject(new Error('stopped')); return; }
       const sock = net.connect(port, '127.0.0.1');
-      const onConnectError = (e: Error) => {
+      let settled = false;
+      // `adb forward` accepts the LOCAL tcp connection immediately (~5ms) and only
+      // THEN dials the device-side scrcpy socket; if scrcpy-server hasn't bound it
+      // yet, adb closes us with zero bytes. So 'connect' is NOT proof the server is
+      // ready — a connect that closes/errors before any byte means "not ready yet"
+      // and we retry. A connection counts as real only once scrcpy's readiness
+      // dummy byte (send_dummy_byte=true) arrives. This is why the dummy byte exists.
+      const retry = (reason: string) => {
+        if (settled) return;
+        settled = true;
+        sock.removeListener('data', onFirstData);
+        sock.removeListener('error', retryErr);
+        sock.removeListener('close', retryClose);
         sock.destroy(); // don't leak the failed socket
-        // The server may not be listening yet immediately after spawn — retry briefly.
         if (attempt < 19 && !this.stopped) { // 20 attempts total (0..19)
           setTimeout(() => this.connectWithRetry(port, attempt + 1).then(resolve, reject), 100);
         } else {
-          reject(e);
+          reject(new Error(`scrcpy connect failed after ${attempt + 1} attempts: ${reason}`));
         }
       };
-      sock.once('error', onConnectError);
-      sock.once('connect', () => {
-        sock.removeListener('error', onConnectError); // leave connection phase — steady-state handlers take over below
+      const retryErr = (e: Error) => retry(e.message || 'socket error');
+      const retryClose = () => retry('closed before data');
+      const onFirstData = (first: Buffer) => {
+        if (settled) return;
+        settled = true;
+        sock.removeListener('error', retryErr);
+        sock.removeListener('close', retryClose);
         if (this.stopped) { sock.destroy(); reject(new Error('stopped during connect')); return; }
         this.socket = sock;
-        let dummySkipped = false;
-        sock.on('data', (chunk: Buffer) => {
-          if (this.stopped) return; // belt-and-suspenders against a data event racing a stop
-          // tunnel_forward=true sends a single readiness dummy byte (0x00) first.
-          if (!dummySkipped) { dummySkipped = true; chunk = chunk.subarray(1); }
-          if (chunk.length) this.emit('data', chunk);
-        });
+        // The first byte is scrcpy's readiness dummy byte; the raw H.264 Annex-B
+        // stream (SPS/PPS/IDR…) begins at byte 1 of this same chunk.
+        const rest = first.subarray(1);
+        sock.on('data', (chunk: Buffer) => { if (!this.stopped) this.emit('data', chunk); });
         sock.on('error', (e) => log.warn(`[${this.udid}] scrcpy socket error: ${e.message}`)); // steady-state: log; 'close' follows
         sock.on('close', () => { this.emitClosedOnce(); });
+        if (rest.length && !this.stopped) this.emit('data', rest);
         resolve();
-      });
+      };
+      sock.once('error', retryErr);
+      sock.once('close', retryClose);
+      sock.once('data', onFirstData);
     });
   }
 
