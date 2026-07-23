@@ -168,6 +168,21 @@ regardless). **Phase 2** migrates recording to remux the H.264 access units to m
 - Reversible: flag off → pure MJPEG behavior; the new service/endpoint/player are
   inert.
 
+## Known limitations (v1 screenrecord source)
+
+Validated end-to-end on a Pixel 5 (H.264 → authenticated WS → WebCodecs → live
+render, hundreds of frames decoded). Two `screenrecord`-source limits remain,
+both of which the future scrcpy upgrade removes (keyframe-on-demand, forced
+initial IDR):
+
+- **Late-joiner start** — fixed here by replaying the current GOP from the
+  multiplexer, so a 2nd+ viewer starts immediately instead of waiting for the
+  next (infrequent) keyframe.
+- **First-client cold start** — the *first* viewer still waits for screenrecord's
+  initial keyframe, which on a static screen can take several seconds (MediaCodec
+  holds output until content changes). Acceptable for a flagged v1; the scrcpy
+  source or a screenrecord keyframe-nudge would cut it.
+
 ## Risks
 
 - **WebCodecs coverage.** Chrome/Edge/recent Safari support `VideoDecoder`; the
