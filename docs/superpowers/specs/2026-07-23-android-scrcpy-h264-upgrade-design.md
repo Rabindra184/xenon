@@ -91,8 +91,11 @@ byte stream of raw Annex-B H.264. Owns nothing about multiplexing or NAL semanti
    `adb [-s udid] shell CLASSPATH=/data/local/tmp/scrcpy-server-<ver>.jar app_process /
    com.genymobile.scrcpy.Server <ver> tunnel_forward=true audio=false control=false
    video=true video_codec=h264 max_size=<M> video_bit_rate=4000000 max_fps=30
-   send_device_meta=false send_frame_meta=false cleanup=true`
-   (Exact arg **names are version-specific** — pinned.)
+   send_device_meta=false send_codec_meta=false send_frame_meta=false
+   send_dummy_byte=true cleanup=true`
+   (Exact arg **names are version-specific — verified against the vendored scrcpy
+   3.3.4 jar's dex.** All three meta channels off → pure Annex-B; the explicit
+   dummy byte is the tunnel_forward readiness byte the reader skips.)
 
    > **`max_size` is a single integer capping the device's *longer* edge, aspect
    > preserved — not `screenrecord`'s width-capped `WxH` string.** A hard-coded
