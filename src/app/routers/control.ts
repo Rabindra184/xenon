@@ -15,6 +15,8 @@ import fs from 'fs-extra';
 import { OmniVisionService } from '../../services/omni-vision/OmniVisionService';
 import { InspectorService } from '../../services/InspectorService';
 import { StreamTicketService } from '../../services/token/StreamTicketService';
+import { PluginContext } from '../../PluginContext';
+import { resolveStreamType } from './streamType';
 import { mutationScopeGuard } from '../../middleware/scopeGuard';
 import { roleGuard } from '../../middleware/roleGuard';
 import {
@@ -639,6 +641,14 @@ router.get('/:udid/stream/status', async (req: Request, res: Response) => {
   const device = await getDeviceInfo(udid);
   if (!device) return res.status(404).send('Device not found');
 
+  // Advertise which transport the frontend player should use. The recording
+  // rule (a recording device keeps MJPEG) is enforced at stream/start time
+  // (Task 10); here recording is treated as false for the capability hint.
+  const flagOn = !!Container.get(PluginContext).pluginArgs.streaming?.androidH264;
+  const type = resolveStreamType(device.platform, flagOn, false);
+  const h264Path =
+    type === 'h264' ? `/xenon/api/control/${encodeURIComponent(udid)}/stream/h264` : undefined;
+
   if (device.platform === 'ios' || device.platform === 'tvos') {
     const iosStreamService = Container.get(IOSStreamService);
     const session = iosStreamService.getStreamStatus(udid);
@@ -647,6 +657,7 @@ router.get('/:udid/stream/status', async (req: Request, res: Response) => {
       return res.status(200).send({
         udid,
         status: session.status,
+        type,
         wdaPort: session.wdaPort,
         mjpegPort: session.mjpegPort,
         startedAt: session.startedAt,
@@ -660,6 +671,8 @@ router.get('/:udid/stream/status', async (req: Request, res: Response) => {
       return res.status(200).send({
         udid,
         status: session.status,
+        type,
+        h264Path,
         mjpegPort: session.mjpegPort,
       });
     }
@@ -668,6 +681,8 @@ router.get('/:udid/stream/status', async (req: Request, res: Response) => {
   return res.status(200).send({
     udid,
     status: 'stopped',
+    type,
+    h264Path,
     mjpegPort: device.mjpegServerPort,
   });
 });
