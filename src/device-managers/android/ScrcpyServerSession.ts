@@ -79,12 +79,20 @@ export class ScrcpyServerSession extends EventEmitter {
   private socket?: net.Socket;
   private forwardSpec?: string; // e.g. 'tcp:41337'
   private stopped = false;
+  private closeEmitted = false;
   private adbPath = 'adb';
   private hostArgs: string[] = [];
   private base: string[] = []; // [...hostArgs, '-s', udid]
 
   constructor(private udid: string) {
     super();
+  }
+
+  /** Guarantees at most one public 'close' event, and none once the session was intentionally stopped. */
+  private emitClosedOnce(): void {
+    if (this.closeEmitted || this.stopped) return;
+    this.closeEmitted = true;
+    this.emit('close');
   }
 
   async start(maxSize: number): Promise<void> {
@@ -111,11 +119,11 @@ export class ScrcpyServerSession extends EventEmitter {
       this.proc = spawn(this.adbPath, [...this.base, ...serverArgs]);
       this.proc.stdout?.resume(); // scrcpy-server writes video to the socket, not stdout; drain so it can't backpressure
       this.proc.stderr?.on('data', (d: Buffer) => log.debug(`[${this.udid}] scrcpy-server: ${d.toString().trim()}`));
-      this.proc.on('close', () => { if (!this.stopped) this.emit('close'); });
+      this.proc.on('close', () => { this.emitClosedOnce(); });
       this.proc.on('error', (e) => {
         // A ChildProcess emitting 'error' with zero listeners crashes the process — always have one.
         log.warn(`[${this.udid}] scrcpy-server proc error: ${e.message}`);
-        if (!this.stopped) this.emit('close');
+        this.emitClosedOnce();
       });
 
       // 3) forward a local port to the device socket, then connect
@@ -126,6 +134,7 @@ export class ScrcpyServerSession extends EventEmitter {
       if (this.stopped) throw new Error('session stopped during start');
 
       await this.connectWithRetry(port);
+      if (this.stopped) throw new Error('stopped during start');
     } catch (e) {
       this.cleanup();
       throw e;
@@ -148,21 +157,24 @@ export class ScrcpyServerSession extends EventEmitter {
       sock.once('error', onConnectError);
       sock.once('connect', () => {
         sock.removeListener('error', onConnectError); // leave connection phase — steady-state handlers take over below
+        if (this.stopped) { sock.destroy(); reject(new Error('stopped during connect')); return; }
         this.socket = sock;
         let dummySkipped = false;
         sock.on('data', (chunk: Buffer) => {
+          if (this.stopped) return; // belt-and-suspenders against a data event racing a stop
           // tunnel_forward=true sends a single readiness dummy byte (0x00) first.
           if (!dummySkipped) { dummySkipped = true; chunk = chunk.subarray(1); }
           if (chunk.length) this.emit('data', chunk);
         });
         sock.on('error', (e) => log.warn(`[${this.udid}] scrcpy socket error: ${e.message}`)); // steady-state: log; 'close' follows
-        sock.on('close', () => { if (!this.stopped) this.emit('close'); });
+        sock.on('close', () => { this.emitClosedOnce(); });
         resolve();
       });
     });
   }
 
   private cleanup(): void {
+    this.stopped = true; // must be first: gates emitClosedOnce + connectWithRetry + connect-handler against a proc/socket event racing this cleanup
     try { this.socket?.destroy(); } catch { /* best-effort */ }
     try { this.proc?.kill('SIGKILL'); } catch { /* best-effort */ }
     if (this.forwardSpec) {
