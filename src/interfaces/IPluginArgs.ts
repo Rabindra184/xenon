@@ -186,15 +186,7 @@ export interface IPluginArgs {
    */
   recordingsAssetsPath?: string;
   autowait?: AutowaitConfig;
-  /**
-   * Live-streaming options.
-   */
-  streaming?: {
-    /**
-     * Use scrcpy H.264 for Android live preview (WebCodecs in the browser) instead of the MJPEG screencap loop. Falls back to MJPEG when unsupported.
-     */
-    androidH264?: boolean;
-  };
+  streaming?: StreamingConfig;
 }
 export interface SimulatorConfig {
   name: string;
@@ -294,6 +286,15 @@ export interface AutowaitConfig {
    * Action commands (click, setValue, clear) for which the pre-action elementEnabled check should be skipped.
    */
   excludeEnabledCheck?: string[];
+}
+/**
+ * Live-streaming options.
+ */
+export interface StreamingConfig {
+  /**
+   * Use scrcpy H.264 for Android live preview (WebCodecs in the browser) instead of the MJPEG screencap loop. Falls back to MJPEG when unsupported.
+   */
+  androidH264?: boolean;
 }
 
 export const DefaultPluginArgs: IPluginArgs = {

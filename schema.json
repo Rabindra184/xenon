@@ -265,15 +265,7 @@
         },
         "streaming": {
             "type": "object",
-            "description": "Live-streaming options.",
-            "properties": {
-                "androidH264": {
-                    "type": "boolean",
-                    "default": false,
-                    "description": "Use scrcpy H.264 for Android live preview (WebCodecs in the browser) instead of the MJPEG screencap loop. Falls back to MJPEG when unsupported."
-                }
-            },
-            "additionalProperties": false
+            "description": "Live-streaming options. See StreamingConfig interface for details."
         }
     },
     "required": [
@@ -473,6 +465,19 @@
                     "type": "boolean",
                     "default": true,
                     "description": "Whether to capture request/response bodies. Disable for privacy or to reduce memory usage."
+                }
+            }
+        },
+        "StreamingConfig": {
+            "type": "object",
+            "title": "StreamingConfig",
+            "additionalProperties": false,
+            "description": "Live-streaming options.",
+            "properties": {
+                "androidH264": {
+                    "type": "boolean",
+                    "default": false,
+                    "description": "Use scrcpy H.264 for Android live preview (WebCodecs in the browser) instead of the MJPEG screencap loop. Falls back to MJPEG when unsupported."
                 }
             }
         }
