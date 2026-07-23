@@ -423,8 +423,8 @@ export class ScrcpyServerSession extends EventEmitter {
     // 1) push jar (idempotent enough; overwrite is cheap and safe)
     await execFileAsync(this.adbPath, [...this.base, 'push', scrcpyServerJarPath(), '/data/local/tmp/scrcpy-server-manual.jar']);
 
-    // 2) app_process (long-lived). Import the builder lazily to avoid a cycle.
-    const { buildScrcpyServerArgs, SCRCPY_DEVICE_JAR_PATH } = await import('./ScrcpyServerSession');
+    // 2) app_process (long-lived). buildScrcpyServerArgs + SCRCPY_DEVICE_JAR_PATH
+    //    are defined in THIS file (Task 2) — reference them directly (no self-import).
     const serverArgs = buildScrcpyServerArgs({
       version: SCRCPY_SERVER_VERSION,
       jarDevicePath: SCRCPY_DEVICE_JAR_PATH,
@@ -435,7 +435,7 @@ export class ScrcpyServerSession extends EventEmitter {
     this.proc.on('close', () => { if (!this.stopped) this.emit('close'); });
 
     // 3) forward a local port to the device socket, then connect
-    const { parseAdbForwardPort } = await import('./ScrcpyServerSession');
+    //    (parseAdbForwardPort is defined in this file — Task 3 — so call it directly)
     const { stdout } = await execFileAsync(this.adbPath, [...this.base, 'forward', 'tcp:0', `localabstract:${LOCAL_ABSTRACT}`]);
     const port = parseAdbForwardPort(stdout);
     this.forwardSpec = `tcp:${port}`;
