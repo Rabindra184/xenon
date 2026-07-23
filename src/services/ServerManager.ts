@@ -84,6 +84,9 @@ export class ServerManager {
     if (httpServer) {
       attachH264Ws(httpServer, {
         redeem: (ticket, udid) => Container.get(StreamTicketService).redeem(ticket, udid),
+        // No source opt on purpose: start() resolves the capture source from the
+        // streaming.androidH264 config itself, so this WS auto-start honours a
+        // { source: 'screenrecord' } rollback just like the REST stream/start.
         startStream: (udid) => Container.get(AndroidH264StreamService).start(udid),
       });
     }

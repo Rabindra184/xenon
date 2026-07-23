@@ -475,9 +475,16 @@
             "description": "Live-streaming options.",
             "properties": {
                 "androidH264": {
-                    "type": "boolean",
                     "default": false,
-                    "description": "Use scrcpy H.264 for Android live preview (WebCodecs in the browser) instead of the MJPEG screencap loop. Falls back to MJPEG when unsupported."
+                    "description": "Android live preview: false/omitted = MJPEG; true = H.264 via scrcpy; { \"source\": \"scrcpy\" | \"screenrecord\" } to pick the capture source explicitly. Falls back to MJPEG when unsupported.",
+                    "oneOf": [
+                        { "type": "boolean" },
+                        {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "properties": { "source": { "type": "string", "enum": ["scrcpy", "screenrecord"] } }
+                        }
+                    ]
                 }
             }
         }

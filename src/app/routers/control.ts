@@ -18,6 +18,7 @@ import { InspectorService } from '../../services/InspectorService';
 import { StreamTicketService } from '../../services/token/StreamTicketService';
 import { PluginContext } from '../../PluginContext';
 import { resolveStreamType } from './streamType';
+import { resolveAndroidH264 } from './androidH264Config';
 import { RecordingStore } from '../../services/recording/recording-store';
 import { mutationScopeGuard } from '../../middleware/scopeGuard';
 import { roleGuard } from '../../middleware/roleGuard';
@@ -521,7 +522,10 @@ router.post('/:udid/stream/start', async (req: Request, res: Response) => {
   }
 
   try {
-    const flagOn = !!Container.get(PluginContext).pluginArgs.streaming?.androidH264;
+    const h264Cfg = resolveAndroidH264(
+      Container.get(PluginContext).pluginArgs.streaming?.androidH264,
+    );
+    const flagOn = h264Cfg.enabled;
     // A recording device keeps MJPEG preview so we never run screenrecord and
     // the recording's screencap pipeline against the same device at once.
     const recording = await Container.get(RecordingStore).isRecording(udid);
@@ -533,7 +537,7 @@ router.post('/:udid/stream/start', async (req: Request, res: Response) => {
     } else if (streamType === 'h264') {
       // H.264 preview: start the scrcpy/screenrecord service. Do NOT also start
       // the MJPEG screencap loop — one capture pipeline per device.
-      await Container.get(AndroidH264StreamService).start(udid);
+      await Container.get(AndroidH264StreamService).start(udid, { source: h264Cfg.source });
     } else {
       mjpegPort = (await Container.get(AndroidStreamService).startStream(udid)).mjpegPort;
     }
@@ -671,7 +675,9 @@ router.get('/:udid/stream/status', async (req: Request, res: Response) => {
 
   // Advertise which transport the frontend player should use. A recording
   // device keeps MJPEG (one capture pipeline per device).
-  const flagOn = !!Container.get(PluginContext).pluginArgs.streaming?.androidH264;
+  const flagOn = resolveAndroidH264(
+    Container.get(PluginContext).pluginArgs.streaming?.androidH264,
+  ).enabled;
   const recording = await Container.get(RecordingStore).isRecording(udid);
   const type = resolveStreamType(device.platform, flagOn, recording);
   const h264Path =
