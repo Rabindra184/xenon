@@ -186,6 +186,15 @@ export interface IPluginArgs {
    */
   recordingsAssetsPath?: string;
   autowait?: AutowaitConfig;
+  /**
+   * Live-streaming options.
+   */
+  streaming?: {
+    /**
+     * Use scrcpy H.264 for Android live preview (WebCodecs in the browser) instead of the MJPEG screencap loop. Falls back to MJPEG when unsupported.
+     */
+    androidH264?: boolean;
+  };
 }
 export interface SimulatorConfig {
   name: string;
@@ -249,6 +258,23 @@ export interface AxiosProxy {
   [k: string]: unknown;
 }
 /**
+ * Network request interceptor configuration.
+ */
+export interface InterceptorConfig {
+  /**
+   * Enable the network interceptor. Sessions still need to opt in via any of: xenon:options.interceptor.enabled=true, xe:interceptor.enabled=true, appium:interceptor.enabled=true, a bare interceptor.enabled=true cap, or the flat interceptorEnabled cap.
+   */
+  enabled?: boolean;
+  /**
+   * Maximum number of captured requests to retain in-memory per session before evicting oldest.
+   */
+  bufferSize?: number;
+  /**
+   * Whether to capture request/response bodies. Disable for privacy or to reduce memory usage.
+   */
+  captureBodies?: boolean;
+}
+/**
  * Implicit-wait configuration for findElement/findElements and pre-action enabled checks.
  */
 export interface AutowaitConfig {
@@ -268,23 +294,6 @@ export interface AutowaitConfig {
    * Action commands (click, setValue, clear) for which the pre-action elementEnabled check should be skipped.
    */
   excludeEnabledCheck?: string[];
-}
-/**
- * Network request interceptor configuration.
- */
-export interface InterceptorConfig {
-  /**
-   * Enable the network interceptor. Sessions still need to opt in via any of: xenon:options.interceptor.enabled=true, xe:interceptor.enabled=true, appium:interceptor.enabled=true, a bare interceptor.enabled=true cap, or the flat interceptorEnabled cap.
-   */
-  enabled?: boolean;
-  /**
-   * Maximum number of captured requests to retain in-memory per session before evicting oldest.
-   */
-  bufferSize?: number;
-  /**
-   * Whether to capture request/response bodies. Disable for privacy or to reduce memory usage.
-   */
-  captureBodies?: boolean;
 }
 
 export const DefaultPluginArgs: IPluginArgs = {

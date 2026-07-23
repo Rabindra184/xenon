@@ -262,6 +262,18 @@
         "autowait": {
             "type": "object",
             "description": "Implicit-wait behavior for findElement/findElements and pre-action enabled checks. See AutowaitConfig interface for details."
+        },
+        "streaming": {
+            "type": "object",
+            "description": "Live-streaming options.",
+            "properties": {
+                "androidH264": {
+                    "type": "boolean",
+                    "default": false,
+                    "description": "Use scrcpy H.264 for Android live preview (WebCodecs in the browser) instead of the MJPEG screencap loop. Falls back to MJPEG when unsupported."
+                }
+            },
+            "additionalProperties": false
         }
     },
     "required": [
