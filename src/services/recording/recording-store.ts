@@ -51,6 +51,14 @@ export class RecordingStore {
     return prisma.recording.findMany({ where: { status: 'RECORDING' } });
   }
 
+  /** Whether a device currently has an in-progress recording. */
+  async isRecording(udid: string): Promise<boolean> {
+    const count = await prisma.recording.count({
+      where: { status: 'RECORDING', device_udid: udid },
+    });
+    return count > 0;
+  }
+
   async listGroup(groupId: string) {
     return prisma.recording.findMany({
       where: { group_id: groupId },

@@ -17,6 +17,7 @@ async function generate() {
         schema.properties.proxy = { '$ref': '#/definitions/AxiosProxy' };
         schema.properties.interceptor = { '$ref': '#/definitions/InterceptorConfig' };
         schema.properties.autowait = { '$ref': '#/definitions/AutowaitConfig' };
+        schema.properties.streaming = { '$ref': '#/definitions/StreamingConfig' };
 
         const { compile } = require('json-schema-to-typescript');
         const ts = await compile(schema, 'IPluginArgs', {

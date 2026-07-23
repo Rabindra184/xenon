@@ -9,6 +9,8 @@ import {
   describeStreamFailure,
   retryDelayMs,
 } from './stream-retry';
+import WsH264Player from './WsH264Player';
+import { pickStreamPlayer } from './pickStreamPlayer';
 
 interface Props {
   udid: string;
@@ -60,6 +62,9 @@ export function DeviceTile({
 }: Props) {
   const [streamState, setStreamState] = React.useState<StreamState>('connecting');
   const [retryKey, setRetryKey] = React.useState(0);
+  // When set, this Android tile renders the WebCodecs H.264 player instead of
+  // the MJPEG <img>. Cleared on fatal error to fall back to MJPEG.
+  const [h264WsUrl, setH264WsUrl] = React.useState<string | null>(null);
   // Number of connect attempts that have failed (drives bounded auto-retry).
   // A ref, not state — bumping it must not itself trigger a re-render/effect.
   const attemptRef = React.useRef(0);
@@ -83,6 +88,41 @@ export function DeviceTile({
 
   const isAndroid = platform === 'android' || platform === 'androidtv' || platform === 'android-tv';
   const isIOS = platform === 'ios' || platform === 'tvos';
+
+  // Decide MJPEG vs H.264 for this tile. The backend advertises `type` on
+  // /stream/status (flag-gated, Android-only); if H.264 and the browser has
+  // WebCodecs, mint a stream ticket and switch to the WebCodecs player. Any
+  // failure silently leaves the MJPEG <img> in place.
+  React.useEffect(() => {
+    let cancelled = false;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const hasWebCodecs = typeof (window as any).VideoDecoder !== 'undefined';
+    (async () => {
+      try {
+        const enc = encodeURIComponent(udid);
+        const sr = await fetch(`/xenon/api/control/${enc}/stream/status`);
+        if (!sr.ok) return;
+        const status = await sr.json();
+        if (pickStreamPlayer(platform || '', status?.type, hasWebCodecs) !== 'h264') return;
+        if (!status?.h264Path) return;
+        const tr = await fetch(`/xenon/api/control/${enc}/stream/ticket`, { method: 'POST' });
+        if (!tr.ok) return;
+        const { ticket } = await tr.json();
+        if (cancelled || !ticket) return;
+        const proto = window.location.protocol === 'https:' ? 'wss' : 'ws';
+        const url = `${proto}://${window.location.host}${status.h264Path}?ticket=${encodeURIComponent(ticket)}`;
+        setH264WsUrl(url);
+        // Stay 'connecting' until the first frame decodes (WsH264Player.onReady)
+        // — otherwise the tile is interactive over a black canvas during
+        // screenrecord's multi-second cold start.
+      } catch {
+        /* leave MJPEG in place */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [udid, platform]);
 
   // Tap/swipe interaction. Disabled in annotate mode (overlay handles that)
   // and when device dimensions are unknown (we can't translate pointer →
@@ -143,12 +183,7 @@ export function DeviceTile({
         await XenonApiService.tap(udid, from.x, from.y);
       } else if (isStationary) {
         // Stationary press held longer than the long-press threshold.
-        await (XenonApiService as any).touchAndHold?.(
-          udid,
-          from.x,
-          from.y,
-          elapsedMs,
-        );
+        await (XenonApiService as any).touchAndHold?.(udid, from.x, from.y, elapsedMs);
       } else {
         const to = toDeviceCoords(e.clientX, e.clientY, start.rect);
         await XenonApiService.swipe(udid, from.x, from.y, to.x, to.y);
@@ -320,162 +355,170 @@ export function DeviceTile({
 
   return (
     <div className="flex items-stretch justify-center w-full h-full min-h-0 min-w-0 gap-2">
-    <div
-      className="relative bg-[#000] rounded-lg overflow-hidden border border-[var(--border)] group max-h-full max-w-full self-center"
-      style={{ aspectRatio: aspect, height: '100%' }}
-    >
-      {/* Connecting state Overlay */}
-      {streamState === 'connecting' && (
-        <div
-          className="flex flex-col items-center justify-center bg-neutral-900 text-neutral-400 absolute inset-0 z-20"
-        >
-          <div className="relative flex items-center justify-center">
-            <div className="w-12 h-12 border-4 border-neutral-800 border-t-neutral-400 rounded-full animate-spin" />
+      <div
+        className="relative bg-[#000] rounded-lg overflow-hidden border border-[var(--border)] group max-h-full max-w-full self-center"
+        style={{ aspectRatio: aspect, height: '100%' }}
+      >
+        {/* Connecting state Overlay */}
+        {streamState === 'connecting' && (
+          <div className="flex flex-col items-center justify-center bg-neutral-900 text-neutral-400 absolute inset-0 z-20">
+            <div className="relative flex items-center justify-center">
+              <div className="w-12 h-12 border-4 border-neutral-800 border-t-neutral-400 rounded-full animate-spin" />
+            </div>
+            <div className="mt-4 font-bold text-neutral-200">Starting Stream…</div>
+            <div className="text-[10px] mt-1 text-neutral-500 opacity-60 font-mono">{udid}</div>
+            <div className="text-[10px] mt-4 text-neutral-400 bg-white/5 px-2 py-1 rounded">
+              Waiting for device connection...
+            </div>
           </div>
-          <div className="mt-4 font-bold text-neutral-200">Starting Stream…</div>
-          <div className="text-[10px] mt-1 text-neutral-500 opacity-60 font-mono">{udid}</div>
-          <div className="text-[10px] mt-4 text-neutral-400 bg-white/5 px-2 py-1 rounded">
-             Waiting for device connection...
+        )}
+
+        {/* Unavailable state Overlay */}
+        {streamState === 'unavailable' && (
+          <div className="flex items-center justify-center bg-black text-neutral-400 absolute inset-0 z-20">
+            <div className="text-center p-6">
+              <div className="text-5xl mb-4 opacity-20">📵</div>
+              <div className="font-bold text-white text-lg">Connection Failed</div>
+              <p className="text-xs mt-2 text-neutral-500 leading-relaxed max-w-[240px] mx-auto">
+                {failureReason || 'We couldn’t start the live stream for this device.'}
+              </p>
+              <button
+                className="mt-6 text-sm font-semibold px-6 py-2.5 rounded-full bg-red-600 hover:bg-red-500 text-white transition-all shadow-[0_0_20px_rgba(220,38,38,0.3)] active:scale-95"
+                onClick={handleRetry}
+              >
+                Retry Connection
+              </button>
+            </div>
           </div>
-        </div>
-      )}
+        )}
 
-      {/* Unavailable state Overlay */}
-      {streamState === 'unavailable' && (
-        <div
-          className="flex items-center justify-center bg-black text-neutral-400 absolute inset-0 z-20"
-        >
-          <div className="text-center p-6">
-            <div className="text-5xl mb-4 opacity-20">📵</div>
-            <div className="font-bold text-white text-lg">Connection Failed</div>
-            <p className="text-xs mt-2 text-neutral-500 leading-relaxed max-w-[240px] mx-auto">
-              {failureReason || 'We couldn’t start the live stream for this device.'}
-            </p>
-            <button
-              className="mt-6 text-sm font-semibold px-6 py-2.5 rounded-full bg-red-600 hover:bg-red-500 text-white transition-all shadow-[0_0_20px_rgba(220,38,38,0.3)] active:scale-95"
-              onClick={handleRetry}
-            >
-              Retry Connection
-            </button>
-          </div>
-        </div>
-      )}
+        {/* H.264 (WebCodecs) player when active; otherwise the MJPEG <img>.
+          onFatal clears the ws url so we fall back to MJPEG (which resumes its
+          own connect/retry machine). */}
+        {h264WsUrl ? (
+          <WsH264Player
+            wsUrl={h264WsUrl}
+            className="absolute inset-0 w-full h-full object-contain bg-black select-none pointer-events-none"
+            onReady={() => setStreamState('live')}
+            onFatal={() => {
+              console.warn(`[DeviceTile] H.264 fatal for ${udid}; falling back to MJPEG`);
+              setH264WsUrl(null);
+              setStreamState('connecting');
+              setRetryKey(Date.now());
+            }}
+          />
+        ) : (
+          <img
+            key={retryKey}
+            src={proxyUrl}
+            alt={displayName}
+            className="absolute inset-0 w-full h-full object-contain bg-black select-none pointer-events-none"
+            draggable={false}
+            style={{
+              opacity: streamState === 'live' ? 1 : 0,
+              transition: 'opacity 0.3s ease-in-out',
+            }}
+            onLoad={() => {
+              console.log(`[DeviceTile] Image LOADED for ${udid}`);
+              // A frame arrived: healthy. Reset the retry budget so a later mid-
+              // stream drop gets its own fresh set of auto-retries.
+              attemptRef.current = 0;
+              if (retryTimerRef.current) clearTimeout(retryTimerRef.current);
+              setStreamState('live');
+            }}
+            onError={(e) => {
+              console.error(`[DeviceTile] Image ERROR for ${udid}`, e);
+              // Don't dead-end: let the retry policy decide (auto-retry with backoff,
+              // then a terminal failure with the real reason).
+              onAttemptFailed();
+            }}
+          />
+        )}
 
-      {/* MJPEG stream image */}
-      <img
-        key={retryKey}
-        src={proxyUrl}
-        alt={displayName}
-        className="absolute inset-0 w-full h-full object-contain bg-black select-none pointer-events-none"
-        draggable={false}
-        style={{
-          opacity: streamState === 'live' ? 1 : 0,
-          transition: 'opacity 0.3s ease-in-out',
-        }}
-        onLoad={() => {
-          console.log(`[DeviceTile] Image LOADED for ${udid}`);
-          // A frame arrived: healthy. Reset the retry budget so a later mid-
-          // stream drop gets its own fresh set of auto-retries.
-          attemptRef.current = 0;
-          if (retryTimerRef.current) clearTimeout(retryTimerRef.current);
-          setStreamState('live');
-        }}
-        onError={(e) => {
-          console.error(`[DeviceTile] Image ERROR for ${udid}`, e);
-          // Don't dead-end: let the retry policy decide (auto-retry with backoff,
-          // then a terminal failure with the real reason).
-          onAttemptFailed();
-        }}
-      />
-
-      {/* Interaction surface: layered above the image, below HUD overlays.
+        {/* Interaction surface: layered above the image, below HUD overlays.
           Captures pointer events for tap/swipe and keyboard events for text
           input. Disabled while annotating so the AnnotationOverlay can grab
           events instead. Default cursor — matches the single-device control
           page (no crosshair). */}
-      {interactive && streamState === 'live' && (
-        <div
-          ref={interactionRef}
-          className={`absolute inset-0 z-10 touch-none outline-none ${
-            keyboardActive ? 'ring-2 ring-emerald-400/60 ring-inset rounded-lg' : ''
-          }`}
-          tabIndex={0}
-          onPointerDown={onPointerDown}
-          onPointerUp={onPointerUp}
-          onPointerCancel={onPointerCancel}
-          onKeyDown={onKeyDown}
-          onFocus={() => setKeyboardActive(true)}
-          onBlur={() => setKeyboardActive(false)}
-        />
-      )}
-
-      {/* Tap ripples — quick visual confirmation that the gesture registered,
-          shown above the interaction surface but below HUD elements. */}
-      <div className="absolute inset-0 z-20 pointer-events-none overflow-hidden">
-        {ripples.map((r) => (
-          <span
-            key={r.id}
-            className="absolute block w-10 h-10 rounded-full border-2 border-emerald-300/80 animate-ping"
-            style={{ left: r.x - 20, top: r.y - 20 }}
+        {interactive && streamState === 'live' && (
+          <div
+            ref={interactionRef}
+            className={`absolute inset-0 z-10 touch-none outline-none ${
+              keyboardActive ? 'ring-2 ring-emerald-400/60 ring-inset rounded-lg' : ''
+            }`}
+            tabIndex={0}
+            onPointerDown={onPointerDown}
+            onPointerUp={onPointerUp}
+            onPointerCancel={onPointerCancel}
+            onKeyDown={onKeyDown}
+            onFocus={() => setKeyboardActive(true)}
+            onBlur={() => setKeyboardActive(false)}
           />
-        ))}
-      </div>
+        )}
 
-      {recording && annotateMode && (
-        <AnnotationOverlay
-          enabled
-          shape={shape}
-          color={color}
-          onCommit={(a) =>
-            onAnnotation(recordingId!, a)
-          }
-        />
-      )}
+        {/* Tap ripples — quick visual confirmation that the gesture registered,
+          shown above the interaction surface but below HUD elements. */}
+        <div className="absolute inset-0 z-20 pointer-events-none overflow-hidden">
+          {ripples.map((r) => (
+            <span
+              key={r.id}
+              className="absolute block w-10 h-10 rounded-full border-2 border-emerald-300/80 animate-ping"
+              style={{ left: r.x - 20, top: r.y - 20 }}
+            />
+          ))}
+        </div>
 
-      {/* REC badge — always visible while recording so the user can see at
+        {recording && annotateMode && (
+          <AnnotationOverlay
+            enabled
+            shape={shape}
+            color={color}
+            onCommit={(a) => onAnnotation(recordingId!, a)}
+          />
+        )}
+
+        {/* REC badge — always visible while recording so the user can see at
           a glance which devices are being captured. Sits above the
           interaction surface but doesn't capture events. */}
-      {recording && (
-        <div className="absolute top-3 left-3 z-30 pointer-events-none">
-          <span className="px-2 py-0.5 rounded-sm bg-red-600 text-white text-[9px] font-black shadow-lg">
-            REC
-          </span>
-        </div>
-      )}
+        {recording && (
+          <div className="absolute top-3 left-3 z-30 pointer-events-none">
+            <span className="px-2 py-0.5 rounded-sm bg-red-600 text-white text-[9px] font-black shadow-lg">
+              REC
+            </span>
+          </div>
+        )}
 
-      {/* Hover HUD — LIVE badge + device name fade in only when the user
+        {/* Hover HUD — LIVE badge + device name fade in only when the user
           moves over the tile, so the device screen is unobstructed during
           normal interaction. */}
-      <div
-        className="absolute top-3 left-3 z-30 flex flex-col gap-1.5 pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity duration-150"
-      >
-        {streamState === 'live' && !recording && (
-          <span className="px-2 py-0.5 rounded-sm bg-emerald-500 text-black text-[9px] font-black shadow-lg w-fit">
-            LIVE
+        <div className="absolute top-3 left-3 z-30 flex flex-col gap-1.5 pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity duration-150">
+          {streamState === 'live' && !recording && (
+            <span className="px-2 py-0.5 rounded-sm bg-emerald-500 text-black text-[9px] font-black shadow-lg w-fit">
+              LIVE
+            </span>
+          )}
+          <span className="px-2 py-1 rounded bg-black/80 text-white text-[11px] font-medium backdrop-blur-md border border-white/10 shadow-xl truncate max-w-[180px]">
+            {displayName}
           </span>
-        )}
-        <span className="px-2 py-1 rounded bg-black/80 text-white text-[11px] font-medium backdrop-blur-md border border-white/10 shadow-xl truncate max-w-[180px]">
-          {displayName}
-        </span>
+        </div>
       </div>
-    </div>
 
-    {/* Side-rail action column — sits to the right of the device, sized to
+      {/* Side-rail action column — sits to the right of the device, sized to
         the device's height. Buttons distribute evenly across the available
         height so they stay reachable on small grid cells. */}
-    <ActionColumn
-      streamState={streamState}
-      recording={recording}
-      isIOS={isIOS}
-      isAndroid={isAndroid}
-      platform={platform}
-      onClose={!recording && onRemove ? () => onRemove(udid) : undefined}
-      sendHome={sendHome}
-      sendBack={sendBack}
-      sendAppSwitch={sendAppSwitch}
-      captureScreenshot={captureScreenshot}
-      displayName={displayName}
-    />
+      <ActionColumn
+        streamState={streamState}
+        recording={recording}
+        isIOS={isIOS}
+        isAndroid={isAndroid}
+        platform={platform}
+        onClose={!recording && onRemove ? () => onRemove(udid) : undefined}
+        sendHome={sendHome}
+        sendBack={sendBack}
+        sendAppSwitch={sendAppSwitch}
+        captureScreenshot={captureScreenshot}
+        displayName={displayName}
+      />
     </div>
   );
 }
@@ -513,9 +556,7 @@ function ActionColumn({
   if (!onClose && !live) return null;
 
   return (
-    <div
-      className="self-stretch w-9 flex flex-col items-center justify-between gap-1 py-2 rounded-lg bg-black/40 border border-white/10 backdrop-blur-md text-white"
-    >
+    <div className="self-stretch w-9 flex flex-col items-center justify-between gap-1 py-2 rounded-lg bg-black/40 border border-white/10 backdrop-blur-md text-white">
       {/* Top group: close button */}
       <div className="flex flex-col items-center gap-1">
         {onClose && (
