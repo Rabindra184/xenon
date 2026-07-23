@@ -4,17 +4,19 @@
 
 **Goal:** Replace the ~1 fps Android screencap preview with a smooth (~30–90 fps) continuous H.264 stream from scrcpy, decoded in-browser with WebCodecs, feature-flagged with MJPEG fallback.
 
-**Architecture:** A new backend `AndroidH264StreamService` starts scrcpy on the device via `@yume-chan/adb-scrcpy` and fans its H.264 access units out through an `H264Multiplexer` to browser clients over an authenticated WebSocket. The frontend `DeviceTile` picks a WebCodecs `<canvas>` player for Android when the flag is on, scrcpy started, and the browser supports `VideoDecoder`; otherwise it uses the existing MJPEG `<img>`. iOS and recording are untouched.
+**Architecture:** A new backend `AndroidH264StreamService` captures the device's H.264 stream via `adb exec-out screenrecord --output-format=h264`, parses its Annex-B NAL units into access units, and fans them through an `H264Multiplexer` to browser clients over an authenticated WebSocket. The frontend `DeviceTile` picks a WebCodecs `<canvas>` player for Android when the flag is on, capture started, and the browser supports `VideoDecoder`; otherwise it uses the existing MJPEG `<img>`. iOS and recording are untouched.
 
-**Tech Stack:** TypeScript (CommonJS), TypeDI, Express, `ws`, `@yume-chan/{adb,adb-server-node-tcp,adb-scrcpy,scrcpy,fetch-scrcpy-server}` (ESM — loaded via dynamic `import()`), React 17, browser WebCodecs.
+**Tech Stack:** TypeScript (CommonJS), TypeDI, Express, `ws`, `adb screenrecord` (H.264 source), React 17, browser WebCodecs.
+
+> **v1 source decision (2026-07-23):** A spike showed `@yume-chan/scrcpy` for Node is heavier than expected (download/vendor a version-pinned server jar, multi-step connect/push/start, cross-package version alignment). `adb screenrecord` — already proven in the prototype — is the v1 source: zero deps, zero jar. Its limits are handled in Task 5 (auto-restart before the ~3-min cap, restart-on-rotation). `@yume-chan/scrcpy` remains a documented future upgrade (instant start, keyframe-on-demand, no cap). **The source only affects `AndroidH264StreamService`'s packet producer — the multiplexer, WS endpoint, WebCodecs player, flag, and fallback are source-agnostic and unchanged.**
 
 ## Global Constraints
 
-- **@yume-chan packages are ESM-only** (`type: module`); Xenon is CommonJS. Import them **only** via `await import('@yume-chan/…')` inside async methods. Never `require()` or top-level `import` them.
 - **Feature flag default OFF.** `pluginArgs.streaming.androidH264` defaults `false`. With it off, behavior is byte-for-byte the current MJPEG path.
 - **Do not touch the iOS path** (`IOSStreamService`, WDA MJPEG) or the recording pipeline (`RecordingOrchestrator`). A recording device uses MJPEG preview (spec phase-1 rule).
 - **WS auth:** every video WebSocket must `StreamTicketService.redeem(ticket, udid)` before streaming — no unauthenticated video socket.
-- **scrcpy-server binary** is fetched/bundled via `@yume-chan/fetch-scrcpy-server`, pinned to the `@yume-chan/scrcpy` version in `package.json`. Record the pin in code comments.
+- **screenrecord limits are handled, not ignored:** the ~3-min `--time-limit` cap → seamless auto-restart; device rotation ends the stream → restart on exit. Both live in `AndroidH264StreamService`.
+- **Resolve adb, never bare-spawn** — use `AndroidDeviceManager.getAdbForDevice(udid).executable.path` (the GUI-launch PATH trap; see 1.8.2).
 - Preserve the raw-pixels contract of the existing MJPEG path; H.264 is an additive, parallel service.
 
 ## File Structure
@@ -105,20 +107,24 @@ export function resolveStreamType(platform: string, flagOn: boolean, recording: 
 
 ---
 
-## Phase 2 — Backend H.264 acquisition (scrcpy via @yume-chan)
+## Phase 2 — Backend H.264 acquisition (adb screenrecord)
 
-Delivers: `AndroidH264StreamService.start(udid)` produces H.264 access units and an `H264Multiplexer`. Highest integration risk — **starts with an API-verification spike**.
+Delivers: `AndroidH264StreamService.start(udid)` produces H.264 access units and an `H264Multiplexer`. **v1 source: `adb screenrecord` (proven in the prototype).** No spike/deps needed — the NAL parser is adapted from `scratchpad/scrcpy-proto/proto-server.js`.
 
-### Task 3: Install deps + pin scrcpy-server + verify the @yume-chan v2 API (spike)
+### Task 3: H.264 NAL access-unit parser (pure, tested)
 
 **Files:**
-- Modify: `package.json` (deps)
-- Create: `scripts/spikes/yume-scrcpy-api.mjs` (throwaway verification, ESM)
+- Create: `src/device-managers/android/h264NalParser.ts`
+- Test: `test/unit/h264-nal-parser.spec.ts`
 
-- [ ] **Step 1:** `npm i @yume-chan/adb @yume-chan/adb-server-node-tcp @yume-chan/adb-scrcpy @yume-chan/scrcpy @yume-chan/fetch-scrcpy-server @yume-chan/stream-extra`.
-- [ ] **Step 2:** Write `scripts/spikes/yume-scrcpy-api.mjs` that: connects to the local adb server (`@yume-chan/adb-server-node-tcp` `AdbServerNodeTcpConnector`, default 127.0.0.1:5037), gets the device by serial (env `UDID`), starts scrcpy via `AdbScrcpyClient.start(...)` with the bundled server bin from `@yume-chan/fetch-scrcpy-server`, options `{ videoCodec:'h264', maxSize:720, maxFps:30 }`, control disabled, audio disabled; reads the video stream and logs: the config packet (codec + SPS/PPS bytes) and the first 30 frame packets (keyframe flag, byteLength).
-- [ ] **Step 3:** Run `UDID=08121FDD40001U node scripts/spikes/yume-scrcpy-api.mjs`. Expected: logs a config packet then ~30 frame packets, keyframe flag on the first. **Record in the plan/PR the exact class names, method signatures, and packet shape observed** — Tasks 4–5 use these verbatim.
-- [ ] **Step 4:** Commit: `git add package.json package-lock.json scripts/spikes && git commit -m "chore(streaming): add @yume-chan scrcpy deps + API spike"`.
+**Interfaces:**
+- Produces: `class H264NalParser { push(chunk: Buffer): H264Packet[] }` — buffers Annex-B bytes across chunks, splits on start codes (`00 00 01` / `00 00 00 01`), groups non-VCL NALs (SPS 7 / PPS 8 / SEI 6 / AUD 9) as `pending`, and on a VCL slice (IDR 5 → `key` with `pending` prepended; non-IDR 1 → `delta`) emits one `H264Packet` (`data` keeps start codes, Annex-B). Also emits a `config` packet (SPS+PPS) the first time both are seen so late WS joiners can configure their decoder. `ptsMs` is a monotonic counter × (1000/90).
+
+- [ ] **Step 1: Write failing tests** feeding hand-built NAL byte sequences (SPS+PPS+IDR → a `config` then a `key`; a following non-IDR slice → a `delta`; a start code split across two `push` calls still parses). Assert packet `type`s and that key payloads contain the SPS/PPS bytes.
+- [ ] **Step 2:** Run `npx mocha test/unit/h264-nal-parser.spec.ts` — FAIL.
+- [ ] **Step 3:** Implement `H264NalParser` (adapt the proven `findStart`/`nalType`/`handleNal` logic from the prototype server; `H264Packet` type imported from `H264Multiplexer`).
+- [ ] **Step 4:** Run — PASS.
+- [ ] **Step 5:** Commit: `git add -A && git commit -m "feat(streaming): H.264 Annex-B NAL access-unit parser"`.
 
 ### Task 4: `H264Multiplexer` (pure, tested)
 
@@ -195,21 +201,22 @@ export class H264Multiplexer {
 - [ ] **Step 4:** Run tests — PASS.
 - [ ] **Step 5:** Commit: `git add -A && git commit -m "feat(streaming): H264Multiplexer with keyframe-gated join"`.
 
-### Task 5: `AndroidH264StreamService` (scrcpy lifecycle, dynamic import)
+### Task 5: `AndroidH264StreamService` (screenrecord lifecycle + auto-restart)
 
 **Files:**
 - Create: `src/device-managers/android/AndroidH264StreamService.ts`
-- Test: `test/unit/android-h264-service.spec.ts` (lifecycle/state only; scrcpy stubbed)
+- Test: `test/unit/android-h264-service.spec.ts` (lifecycle/state only; capture seam stubbed)
 
 **Interfaces:**
 - Produces (TypeDI `@Service`):
-  - `start(udid: string): Promise<H264Multiplexer>` — idempotent per udid (dedupe concurrent starts like `IOSStreamService.startPromises`), starts scrcpy, wires its packets into a per-udid multiplexer, resolves once the config packet arrives.
+  - `start(udid: string): Promise<H264Multiplexer>` — idempotent per udid (dedupe concurrent starts like `IOSStreamService.startPromises`), begins capture, wires packets into a per-udid multiplexer, resolves once the first `config` packet arrives.
   - `getMultiplexer(udid: string): H264Multiplexer | undefined`
-  - `stop(udid: string): Promise<void>` — kills scrcpy, clears state.
+  - `stop(udid: string): Promise<void>` — kills the capture process, clears state.
   - Idle watchdog: stop when `multiplexer.clientCount === 0` for N minutes (unless device busy), mirroring `AndroidStreamService`.
-- Consumes: `H264Multiplexer` (Task 4); the verified @yume-chan API (Task 3); `AndroidDeviceManager.getAdbForDevice` for the adb server host/port.
+  - **Auto-restart:** the capture process ends on the `--time-limit` cap or on rotation; while the session is still `running` and has viewers, transparently restart it (a fresh keyframe resumes decoders). Cap restart frequency to avoid a spin loop.
+- Consumes: `H264Multiplexer` (Task 4), `H264NalParser` (Task 3), `AndroidDeviceManager.getAdbForDevice` (resolved adb path).
 
-- [ ] **Step 1: Write failing test** (stub the scrcpy start via a protected `openScrcpy(udid)` seam so the test drives packet flow without a device):
+- [ ] **Step 1: Write failing test** (stub the capture via a protected `openCapture(udid, onPacket)` seam so the test drives packet flow without a device):
 
 ```ts
 import 'reflect-metadata';
@@ -219,8 +226,7 @@ function make() { return Object.create(AndroidH264StreamService.prototype) as an
 describe('AndroidH264StreamService', () => {
   it('exposes the multiplexer created for a udid', async () => {
     const svc = make(); svc.sessions = new Map(); svc.startPromises = new Map();
-    // stub the scrcpy seam to emit a config packet then hand back a killer
-    svc.openScrcpy = async (_udid: string, onPacket: any) => { onPacket({ type: 'config', data: Buffer.from([0]), ptsMs: 0 }); return { kill: () => {} }; };
+    svc.openCapture = async (_udid: string, onPacket: any) => { onPacket({ type: 'config', data: Buffer.from([0]), ptsMs: 0 }); return { kill: () => {} }; };
     const mux = await svc.start('udid-x');
     expect(mux).to.equal(svc.getMultiplexer('udid-x'));
     expect(mux.clientCount).to.equal(0);
@@ -229,23 +235,28 @@ describe('AndroidH264StreamService', () => {
 ```
 
 - [ ] **Step 2:** Run — FAIL.
-- [ ] **Step 3:** Implement the service. `start()` dedupes via `startPromises`, creates an `H264Multiplexer`, calls the protected `openScrcpy(udid, onPacket)` seam, resolves on first `config`. `openScrcpy` is where the **dynamic `import()`** lives:
+- [ ] **Step 3:** Implement the service. `start()` dedupes via `startPromises`, creates an `H264Multiplexer`, calls the protected `openCapture(udid, onPacket)` seam, resolves on first `config`. `openCapture` spawns screenrecord with the **resolved adb path** and feeds an `H264NalParser`:
 
 ```ts
-protected async openScrcpy(udid: string, onPacket: (p: H264Packet) => void): Promise<{ kill: () => void }> {
-  const { AdbServerClient } = await import('@yume-chan/adb');
-  const { AdbServerNodeTcpConnector } = await import('@yume-chan/adb-server-node-tcp');
-  const { AdbScrcpyClient, AdbScrcpyOptionsLatest } = await import('@yume-chan/adb-scrcpy');
-  const { ScrcpyOptions3_1 /* or the version Task-3 pins */ } = await import('@yume-chan/scrcpy');
-  const { BIN } = await import('@yume-chan/fetch-scrcpy-server');
-  // …connect to adb server, select device by serial=udid, start scrcpy,
-  //   iterate the video stream; map each packet to H264Packet and call onPacket;
-  //   return { kill } that stops the client. Exact calls per Task-3 spike output.
+protected async openCapture(udid: string, onPacket: (p: H264Packet) => void): Promise<{ kill: () => void }> {
+  const adb = await Container.get(AndroidDeviceManager).getAdbForDevice(udid);
+  const adbPath = adb.executable?.path || 'adb';
+  const hostArgs = adb.adbHost && adb.adbPort ? ['-H', adb.adbHost, '-P', String(adb.adbPort)] : [];
+  const parser = new H264NalParser();
+  const spawnOnce = () => {
+    const proc = spawn(adbPath, [...hostArgs, '-s', udid, 'exec-out', 'screenrecord',
+      '--output-format=h264', '--size', '720x1560', '--bit-rate', '4000000', '--time-limit', '180', '-']);
+    proc.stdout.on('data', (d: Buffer) => { for (const p of parser.push(d)) onPacket(p); });
+    proc.on('close', () => { if (this.sessions.get(udid)?.status === 'running') /* restart, rate-limited */ spawnOnce(); });
+    return proc;
+  };
+  const proc = spawnOnce();
+  return { kill: () => { this.sessions.get(udid)!.status = 'stopped'; try { proc.kill('SIGKILL'); } catch {} } };
 }
 ```
 
 - [ ] **Step 4:** Run test — PASS. Build: `npm run build`.
-- [ ] **Step 5:** Commit: `git add -A && git commit -m "feat(streaming): AndroidH264StreamService scrcpy lifecycle"`.
+- [ ] **Step 5:** Commit: `git add -A && git commit -m "feat(streaming): AndroidH264StreamService screenrecord lifecycle + auto-restart"`.
 
 ---
 
