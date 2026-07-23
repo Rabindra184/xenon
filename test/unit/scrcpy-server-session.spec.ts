@@ -39,6 +39,11 @@ describe('scrcpyMaxSizeFromDims', () => {
   it('never upscales when the short edge is already below target', () => {
     expect(scrcpyMaxSizeFromDims(480, 800)).to.equal(800);
   });
+  it('returns safe default (1440) for non-finite or non-positive dimensions', () => {
+    expect(scrcpyMaxSizeFromDims(NaN, 800)).to.equal(1440);
+    expect(scrcpyMaxSizeFromDims(0, 800)).to.equal(1440);
+    expect(scrcpyMaxSizeFromDims(-100, 800)).to.equal(1440);
+  });
 });
 
 describe('parseAdbForwardPort', () => {
@@ -47,5 +52,9 @@ describe('parseAdbForwardPort', () => {
   });
   it('throws on non-numeric output', () => {
     expect(() => parseAdbForwardPort('error: device offline')).to.throw();
+  });
+  it('throws on zero or negative port numbers', () => {
+    expect(() => parseAdbForwardPort('0')).to.throw();
+    expect(() => parseAdbForwardPort('-1')).to.throw();
   });
 });
