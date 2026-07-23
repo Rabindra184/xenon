@@ -11,7 +11,6 @@ export function pickStreamPlayer(
   backendType: 'mjpeg' | 'h264' | undefined,
   hasWebCodecs: boolean,
 ): StreamPlayer {
-  const isAndroid =
-    platform === 'android' || platform === 'androidtv' || platform === 'android-tv';
+  const isAndroid = platform === 'android' || platform === 'androidtv' || platform === 'android-tv';
   return isAndroid && backendType === 'h264' && hasWebCodecs ? 'h264' : 'mjpeg';
 }
