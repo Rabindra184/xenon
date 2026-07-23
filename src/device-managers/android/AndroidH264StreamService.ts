@@ -4,6 +4,7 @@ import log from '../../logger';
 import { DeviceStoreFactory } from '../../data-service/device-store';
 import { H264Multiplexer, H264Packet } from './H264Multiplexer';
 import { H264NalParser } from './h264NalParser';
+import { H264Source } from '../../app/routers/androidH264Config';
 
 interface H264Session {
   status: 'running' | 'stopped';
@@ -60,7 +61,7 @@ class AndroidH264StreamService {
     return this.sessions.get(udid)?.mux;
   }
 
-  async start(udid: string): Promise<H264Multiplexer> {
+  async start(udid: string, opts?: { source?: H264Source }): Promise<H264Multiplexer> {
     const inflight = this.startPromises.get(udid);
     if (inflight) return inflight;
     const existing = this.sessions.get(udid);
@@ -82,7 +83,7 @@ class AndroidH264StreamService {
           }
         };
 
-        session.capture = await this.openCapture(udid, onPacket);
+        session.capture = await this.openCapture(udid, onPacket, opts?.source ?? 'scrcpy');
         // Give the first keyframe/config a moment so callers get a ready stream,
         // but never block start-up indefinitely.
         await Promise.race([firstConfig, new Promise((r) => setTimeout(r, 3000))]);
@@ -117,12 +118,56 @@ class AndroidH264StreamService {
   }
 
   /**
+   * Select the capture source: `screenrecord` (legacy, rollback path) or
+   * `scrcpy` (default). Dispatches to the matching producer.
+   */
+  protected async openCapture(
+    udid: string,
+    onPacket: (p: H264Packet) => void,
+    source: H264Source,
+  ): Promise<{ kill: () => void }> {
+    return source === 'screenrecord'
+      ? this.openScreenrecordCapture(udid, onPacket)
+      : this.openScrcpyCapture(udid, onPacket);
+  }
+
+  /**
+   * scrcpy-server capture: pushes/launches the vendored server jar over adb
+   * and streams its Annex-B H.264 socket output through a fresh
+   * {@link H264NalParser}. Unlike screenrecord, scrcpy has no time cap, so a
+   * 'close' while the session is still 'running' is unexpected — treat it as
+   * a crash and stop the session rather than silently going dark.
+   */
+  protected async openScrcpyCapture(
+    udid: string,
+    onPacket: (p: H264Packet) => void,
+  ): Promise<{ kill: () => void }> {
+    const { ScrcpyServerSession, scrcpyMaxSizeFromDims } = await import('./ScrcpyServerSession');
+    const device = await DeviceStoreFactory.getStore().findDevice({ udid });
+    const maxSize = scrcpyMaxSizeFromDims(Number(device?.screenWidth), Number(device?.screenHeight));
+    const parser = new H264NalParser();
+    const session = new ScrcpyServerSession(udid);
+    session.on('data', (b: Buffer) => {
+      for (const p of parser.push(b)) onPacket(p);
+    });
+    session.on('close', () => {
+      // Crash recovery: scrcpy has no time cap, so a close while running is unexpected.
+      if (this.sessions.get(udid)?.status === 'running') {
+        log.warn(`[${udid}] scrcpy stream closed unexpectedly; stopping H.264 session.`);
+        this.stop(udid);
+      }
+    });
+    await session.start(maxSize);
+    return { kill: () => session.stop() };
+  }
+
+  /**
    * Spawn screenrecord with the resolved adb binary (never a bare `adb` — the
    * GUI-launch PATH trap; see 1.8.2) and feed its Annex-B output through a
    * fresh {@link H264NalParser}. Restarts on process exit (cap/rotation) while
    * the session is still running.
    */
-  protected async openCapture(
+  protected async openScreenrecordCapture(
     udid: string,
     onPacket: (p: H264Packet) => void,
   ): Promise<{ kill: () => void }> {

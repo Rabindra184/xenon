@@ -70,4 +70,30 @@ describe('AndroidH264StreamService', () => {
     expect(killed).to.equal(true);
     expect(svc.getMultiplexer('udid-z')).to.equal(undefined);
   });
+
+  it('start({source:"scrcpy"}) uses the scrcpy capture seam', async () => {
+    const svc = make();
+    let used = '';
+    svc.openScrcpyCapture = async (_u: string, onPacket: any) => {
+      used = 'scrcpy';
+      onPacket({ type: 'config', data: Buffer.from([0]), ptsMs: 0 });
+      return { kill: () => undefined };
+    };
+    svc.openScreenrecordCapture = async () => { used = 'screenrecord'; return { kill: () => undefined }; };
+    await svc.start('udid-s', { source: 'scrcpy' });
+    expect(used).to.equal('scrcpy');
+  });
+
+  it('start({source:"screenrecord"}) uses the legacy capture seam', async () => {
+    const svc = make();
+    let used = '';
+    svc.openScrcpyCapture = async () => { used = 'scrcpy'; return { kill: () => undefined }; };
+    svc.openScreenrecordCapture = async (_u: string, onPacket: any) => {
+      used = 'screenrecord';
+      onPacket({ type: 'config', data: Buffer.from([0]), ptsMs: 0 });
+      return { kill: () => undefined };
+    };
+    await svc.start('udid-r', { source: 'screenrecord' });
+    expect(used).to.equal('screenrecord');
+  });
 });
