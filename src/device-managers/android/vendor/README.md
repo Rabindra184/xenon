@@ -4,10 +4,18 @@ This directory contains the vendored `scrcpy-server` jar used for direct H.264 s
 
 ## Pinned Version
 
-- **Version**: `3.3.4` (latest scrcpy 3.x)
-- **SHA256**: `8588238c9a5a00aa542906b6ec7e6d5541d9ffb9b5d0f6e1bc0e365e2303079e`
-- **Source URL**: `https://github.com/Genymobile/scrcpy/releases/download/v3.3.4/scrcpy-server-v3.3.4`
-- **File**: `scrcpy-server-3.3.4.jar`
+- **Version**: `2.7`
+- **SHA256**: `a23c5659f36c260f105c022d27bcb3eafffa26070e7baa9eda66d01377a1adba`
+- **Source URL**: `https://github.com/Genymobile/scrcpy/releases/download/v2.7/scrcpy-server-v2.7`
+- **File**: `scrcpy-server-2.7.jar`
+
+> **Why 2.7 and not 3.x/4.x:** scrcpy **3.x** aborts on init (`stack corruption
+> detected (-fstack-protector)`) on some devices — reproduced on a Samsung Galaxy
+> S9+ (Exynos, Android 10) — which forced a fallback to the slower screenrecord/MJPEG
+> path. scrcpy **2.7** is stable across the lab's mix (verified on Pixel 5 **and**
+> Galaxy S9+). All of Xenon's launch args are present in the 2.7 server (dex-verified),
+> so no arg changes are needed. Re-evaluate 3.x/4.x only after confirming the
+> stack-corruption regression is fixed across the device fleet.
 
 ## Bump Procedure
 
@@ -23,4 +31,6 @@ To update the scrcpy-server version:
 
 ## Future Bump Candidates
 
-Scrcpy 4.0 and 4.1 are available as future upgrade targets. Version 3.3.4 was chosen as the latest stable 3.x release for this initial implementation.
+scrcpy 3.x/4.x are newer but currently **regressed** for us: 3.x aborts on init on
+some Exynos/older-Android devices (see the "Why 2.7" note above). Only move off 2.7
+once a newer version is confirmed stable on the full device fleet (esp. Exynos Samsung).

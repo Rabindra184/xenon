@@ -94,7 +94,7 @@ byte stream of raw Annex-B H.264. Owns nothing about multiplexing or NAL semanti
    send_device_meta=false send_codec_meta=false send_frame_meta=false
    send_dummy_byte=true cleanup=true`
    (Exact arg **names are version-specific — verified against the vendored scrcpy
-   3.3.4 jar's dex.** All three meta channels off → pure Annex-B; the explicit
+   2.7 jar's dex.** All three meta channels off → pure Annex-B; the explicit
    dummy byte is the tunnel_forward readiness byte the reader skips.)
 
    > **`max_size` is a single integer capping the device's *longer* edge, aspect

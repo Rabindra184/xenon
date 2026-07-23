@@ -3,14 +3,14 @@ import { buildScrcpyServerArgs, SCRCPY_DEVICE_JAR_PATH, scrcpyMaxSizeFromDims, p
 
 describe('buildScrcpyServerArgs', () => {
   it('builds the exact video-only app_process argv', () => {
-    const argv = buildScrcpyServerArgs({ version: '3.3.4', jarDevicePath: SCRCPY_DEVICE_JAR_PATH, maxSize: 1560 });
+    const argv = buildScrcpyServerArgs({ version: '2.7', jarDevicePath: SCRCPY_DEVICE_JAR_PATH, maxSize: 1560 });
     expect(argv).to.deep.equal([
       'shell',
       `CLASSPATH=${SCRCPY_DEVICE_JAR_PATH}`,
       'app_process',
       '/',
       'com.genymobile.scrcpy.Server',
-      '3.3.4',
+      '2.7',
       'tunnel_forward=true',
       'audio=false',
       'control=false',
