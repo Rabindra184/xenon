@@ -9,7 +9,17 @@ import { SCRCPY_SERVER_VERSION, scrcpyServerJarPath } from './scrcpyVersion';
 const execFileAsync = promisify(execFile);
 const LOCAL_ABSTRACT = 'scrcpy'; // device-side socket name scrcpy listens on
 
-export const SCRCPY_DEVICE_JAR_PATH = '/data/local/tmp/scrcpy-server-manual.jar';
+/**
+ * Device-side path we push the vendored scrcpy-server jar to.
+ *
+ * Deliberately xenon-namespaced rather than scrcpy's own default
+ * (`/data/local/tmp/scrcpy-server.jar`): other tools on the same device — the
+ * real scrcpy client, Device Studio, any other mirroring app — push their own,
+ * differently-versioned server to that default path. Sharing it means whichever
+ * pushed last wins and the other aborts on a version mismatch, so keep our jar
+ * in our own namespace. Don't "simplify" this to the default.
+ */
+export const SCRCPY_DEVICE_JAR_PATH = '/data/local/tmp/xenon-scrcpy-server.jar';
 
 /**
  * The argv passed to the resolved adb AFTER any `-s <udid>` — a headless,

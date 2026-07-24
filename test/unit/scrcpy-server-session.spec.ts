@@ -48,6 +48,16 @@ describe('buildScrcpyServerArgs', () => {
   });
 });
 
+describe('SCRCPY_DEVICE_JAR_PATH', () => {
+  it('stays out of scrcpy\'s default path so co-installed tools cannot clobber our jar', () => {
+    // The real scrcpy client and Device Studio both push their own (possibly
+    // differently-versioned) server to /data/local/tmp/scrcpy-server.jar. Sharing
+    // that path means last-push-wins and the loser aborts on a version mismatch.
+    expect(SCRCPY_DEVICE_JAR_PATH).to.not.equal('/data/local/tmp/scrcpy-server.jar');
+    expect(SCRCPY_DEVICE_JAR_PATH).to.match(/\/xenon-[^/]+\.jar$/);
+  });
+});
+
 describe('scrcpyMaxSizeFromDims', () => {
   it('caps the LONGER edge so the shorter edge lands near the target', () => {
     // 1080x2340: short=1080 → scale 720/1080; long=2340*0.6667 ≈ 1560
