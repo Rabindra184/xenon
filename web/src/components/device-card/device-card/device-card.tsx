@@ -18,6 +18,11 @@ import TagManagerModal from '../../tag-manager-modal/tag-manager-modal';
 import { HealthBadges } from '../health-badges';
 import { useToast } from '../../ui/toast';
 import { formatDeviceNetworkAddress } from './formatDeviceNetworkAddress';
+import {
+  deviceTypeLabel,
+  formatAppiumServerUrl,
+  formatSessionCapabilitiesJson,
+} from './sessionConnection';
 import './device-card.css';
 
 const SHARED_POOL_LABEL = 'Shared';
@@ -152,14 +157,17 @@ export const DeviceCard: React.FC<Props> = ({ device, reloadDevices, navigate, t
     device.busy && device.session_id && !String(device.session_id).startsWith('manual_'),
   );
 
-  const copyUdid = async () => {
+  const copyText = async (text: string, successMsg: string) => {
     try {
-      await navigator.clipboard?.writeText(device.udid);
-      toast('UDID copied', 'success');
+      await navigator.clipboard?.writeText(text);
+      toast(successMsg, 'success');
     } catch {
-      toast('Failed to copy UDID', 'error');
+      toast('Failed to copy', 'error');
     }
   };
+
+  const serverUrl = formatAppiumServerUrl(device.host);
+  const typeLabel = deviceTypeLabel(device.deviceType);
 
   const release = async () => {
     await XenonApiService.releaseReservation(device.udid, device.host);
@@ -197,7 +205,7 @@ export const DeviceCard: React.FC<Props> = ({ device, reloadDevices, navigate, t
         <button
           type="button"
           className="dc2-udid-copy"
-          onClick={copyUdid}
+          onClick={() => copyText(device.udid, 'UDID copied')}
           aria-label="Copy UDID"
           title="Copy UDID"
         >
@@ -208,6 +216,11 @@ export const DeviceCard: React.FC<Props> = ({ device, reloadDevices, navigate, t
       <HealthBadges device={device} />
 
       <div className="dc2-tags">
+        {typeLabel && (
+          <Pill tone="neutral" title={`Device type: ${typeLabel}`}>
+            {typeLabel}
+          </Pill>
+        )}
         <DeviceTeamChip
           udid={device.udid}
           currentTeamId={device.teamId ?? null}
@@ -252,7 +265,29 @@ export const DeviceCard: React.FC<Props> = ({ device, reloadDevices, navigate, t
             }
           />
         )}
-        <KeyValueRow label="Host" value={formatDeviceNetworkAddress(device)} mono />
+        <KeyValueRow label="Network" value={formatDeviceNetworkAddress(device)} mono />
+        <KeyValueRow
+          label="Server"
+          mono
+          value={
+            <span className="dc2-copyable">
+              <span className="dc2-copyable-text" title={serverUrl}>
+                {serverUrl}
+              </span>
+              {serverUrl !== '—' && (
+                <button
+                  type="button"
+                  className="dc2-udid-copy"
+                  onClick={() => copyText(serverUrl, 'Server URL copied')}
+                  aria-label="Copy Appium server URL"
+                  title="Copy Appium server URL"
+                >
+                  <Copy size={12} />
+                </button>
+              )}
+            </span>
+          }
+        />
       </div>
 
       <div className="dc2-actions">
@@ -289,6 +324,15 @@ export const DeviceCard: React.FC<Props> = ({ device, reloadDevices, navigate, t
         </button>
         <Popover open={menuOpen} onClose={() => setMenuOpen(false)} anchorRef={moreRef}>
           <Menu>
+            <MenuItem
+              icon={<Copy size={12} />}
+              onClick={() => {
+                setMenuOpen(false);
+                copyText(formatSessionCapabilitiesJson(device), 'Session capabilities copied');
+              }}
+            >
+              Copy caps…
+            </MenuItem>
             <MenuItem
               onClick={() => {
                 setMenuOpen(false);

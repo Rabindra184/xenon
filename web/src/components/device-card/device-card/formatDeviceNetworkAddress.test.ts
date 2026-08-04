@@ -26,4 +26,13 @@ describe('formatDeviceNetworkAddress', () => {
       }),
     ).toBe('192.168.0.5:4723');
   });
+
+  it('rejects MAC addresses stored in device.ip', () => {
+    expect(
+      formatDeviceNetworkAddress({
+        ip: '88:1e:5a:d6:7b:47',
+        host: 'http://192.168.0.104:4723',
+      }),
+    ).toBe('192.168.0.104:4723');
+  });
 });
