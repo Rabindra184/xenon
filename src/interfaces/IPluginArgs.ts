@@ -81,7 +81,7 @@ export interface IPluginArgs {
    */
   newCommandTimeoutSec: number;
   /**
-   * Host/IP the Xenon REST and WebSocket server binds to. Set to 0.0.0.0 to expose on all interfaces.
+   * Host/IP advertised in device URLs and the dashboard. Use auto (default), 0.0.0.0, 127.0.0.1, or localhost to pick the best LAN-reachable IPv4 (e.g. 192.168.x.x). Set an explicit address to override.
    */
   bindHostOrIp: string;
   /**
@@ -327,7 +327,7 @@ export const DefaultPluginArgs: IPluginArgs = {
   checkBlockedDevicesIntervalMs: 30000,
   newCommandTimeoutSec: 60,
   cloud: undefined,
-  bindHostOrIp: ip.address(),
+  bindHostOrIp: 'auto',
   enableDashboard: false,
   bootedSimulators: false,
   healthCheckIntervalMs: 86400000,

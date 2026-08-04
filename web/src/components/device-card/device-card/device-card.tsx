@@ -12,11 +12,16 @@ import { StatusCode } from '../../ui/StatusCode';
 import { StatusKind } from '../../ui/StatusDot';
 import { KeyValueRow } from '../../ui/KeyValueRow';
 import { Popover } from '../../ui/Popover';
-import { Menu, MenuItem, MenuDivider } from '../../ui/Menu';
+import { Menu, MenuItem } from '../../ui/Menu';
 import ReservationModal from '../../reservation-modal/reservation-modal';
 import TagManagerModal from '../../tag-manager-modal/tag-manager-modal';
 import { HealthBadges } from '../health-badges';
+import { useToast } from '../../ui/toast';
+import { formatDeviceNetworkAddress } from './formatDeviceNetworkAddress';
 import './device-card.css';
+
+const SHARED_POOL_LABEL = 'Shared';
+const SHARED_POOL_TITLE = 'Shared pool — visible to all authenticated users';
 
 interface Props {
   device: IDevice;
@@ -32,43 +37,54 @@ interface Props {
 }
 
 /**
- * Inline team chip rendered on each device card. Read-only for non-admins;
- * admins see a click-to-edit `<select>` with all teams + an
- * "(Unassigned)" option. PUTs /xenon/api/grid/device/:udid/team and triggers
- * the parent's `reloadDevices` on success so the new team-id is reflected.
+ * Inline team chip on each device card. Read-only for non-admins (Shared or
+ * team name). Admins see a click-to-edit `<select>` with all teams plus a
+ * shared-pool option. PUTs /xenon/api/grid/device/:udid/team and triggers
+ * the parent's `reloadDevices` on success.
  */
 const DeviceTeamChip: React.FC<{
   udid: string;
   currentTeamId: string | null;
+  resolvedTeamName?: string | null;
   teams: Map<string, string>;
   canEdit: boolean;
   onChanged: () => void;
-}> = ({ udid, currentTeamId, teams, canEdit, onChanged }) => {
+}> = ({ udid, currentTeamId, resolvedTeamName, teams, canEdit, onChanged }) => {
+  const { toast } = useToast();
   const [editing, setEditing] = React.useState(false);
   const [busy, setBusy] = React.useState(false);
   const teamName = currentTeamId
-    ? teams.get(currentTeamId) ?? `Team ${currentTeamId.slice(0, 6)}`
-    : 'Unassigned';
+    ? teams.get(currentTeamId) ??
+      resolvedTeamName ??
+      `Team ${currentTeamId.slice(0, 6)}`
+    : SHARED_POOL_LABEL;
 
   async function pick(teamId: string | null) {
     setBusy(true);
     try {
       await XenonApiService.setDeviceTeam(udid, teamId);
+      toast(
+        teamId ? 'Device assigned' : 'Device returned to shared pool',
+        'success',
+      );
       onChanged();
       setEditing(false);
     } catch (e: any) {
-      // 403s are surfaced as a toast by the api-client; for everything else
-      // (5xx, network) we alert and revert by simply not changing displayed
-      // state (server is the source of truth on the next reload).
-      alert(e?.message || 'Failed to update team');
+      // 403s are surfaced as a toast by the api-client.
+      toast(e?.message || 'Failed to update team', 'error');
     } finally {
       setBusy(false);
     }
   }
 
-  // Non-admin viewers: read-only chip when assigned, hidden otherwise.
   if (!canEdit) {
-    if (!currentTeamId) return null;
+    if (!currentTeamId) {
+      return (
+        <Pill tone="neutral" title={SHARED_POOL_TITLE}>
+          {SHARED_POOL_LABEL}
+        </Pill>
+      );
+    }
     return (
       <Pill tone="accent" title={`Team: ${teamName}`}>
         {teamName}
@@ -86,7 +102,7 @@ const DeviceTeamChip: React.FC<{
         onBlur={() => setEditing(false)}
         onChange={(e) => pick(e.target.value || null)}
       >
-        <option value="">(Unassigned)</option>
+        <option value="">(Shared pool)</option>
         {Array.from(teams.entries()).map(([id, name]) => (
           <option key={id} value={id}>
             {name}
@@ -101,7 +117,7 @@ const DeviceTeamChip: React.FC<{
       type="button"
       onClick={() => setEditing(true)}
       className="dc2-team-pill"
-      title="Click to change team"
+      title={currentTeamId ? 'Click to change team' : 'Click to assign to a team'}
     >
       {teamName}
     </button>
@@ -121,22 +137,13 @@ function middleEllipsis(s: string, head = 10, tail = 4): string {
   return `${s.slice(0, head)}…${s.slice(-tail)}`;
 }
 
-function formatHost(raw?: string): string {
-  if (!raw) return '—';
-  try {
-    const u = new URL(raw.includes('://') ? raw : `http://${raw}`);
-    return u.port ? `${u.hostname}:${u.port}` : u.hostname;
-  } catch {
-    return raw;
-  }
-}
-
 export const DeviceCard: React.FC<Props> = ({ device, reloadDevices, navigate, teams }) => {
   const [showReservation, setShowReservation] = React.useState(false);
   const [showTagManager, setShowTagManager] = React.useState(false);
   const [menuOpen, setMenuOpen] = React.useState(false);
   const moreRef = React.useRef<HTMLButtonElement>(null);
   const { me } = useAuth();
+  const { toast } = useToast();
   const canEditTeam = me?.role === 'ADMIN' || me?.role === 'SUPER_ADMIN';
 
   const kind = deriveKind(device);
@@ -145,7 +152,14 @@ export const DeviceCard: React.FC<Props> = ({ device, reloadDevices, navigate, t
     device.busy && device.session_id && !String(device.session_id).startsWith('manual_'),
   );
 
-  const copyUdid = () => navigator.clipboard?.writeText(device.udid);
+  const copyUdid = async () => {
+    try {
+      await navigator.clipboard?.writeText(device.udid);
+      toast('UDID copied', 'success');
+    } catch {
+      toast('Failed to copy UDID', 'error');
+    }
+  };
 
   const release = async () => {
     await XenonApiService.releaseReservation(device.udid, device.host);
@@ -176,33 +190,41 @@ export const DeviceCard: React.FC<Props> = ({ device, reloadDevices, navigate, t
       <div className="dc2-name" title={device.name}>
         {device.name}
       </div>
-      <div className="dc2-udid" title={device.udid}>
-        {middleEllipsis(device.udid)}
+      <div className="dc2-udid-row">
+        <div className="dc2-udid" title={device.udid}>
+          {middleEllipsis(device.udid)}
+        </div>
+        <button
+          type="button"
+          className="dc2-udid-copy"
+          onClick={copyUdid}
+          aria-label="Copy UDID"
+          title="Copy UDID"
+        >
+          <Copy size={12} />
+        </button>
       </div>
 
       <HealthBadges device={device} />
 
-      {(device.teamId || canEditTeam || (device.tags && device.tags.length > 0)) && (
-        <div className="dc2-tags">
-          {(device.teamId || canEditTeam) && (
-            <DeviceTeamChip
-              udid={device.udid}
-              currentTeamId={device.teamId ?? null}
-              teams={teams ?? new Map()}
-              canEdit={canEditTeam}
-              onChanged={reloadDevices}
-            />
-          )}
-          {device.tags?.slice(0, 3).map((t) => (
-            <Pill key={t} tone="neutral" title={t}>
-              {t}
-            </Pill>
-          ))}
-          {(device.tags?.length || 0) > 3 && (
-            <Pill tone="neutral">+{(device.tags?.length || 0) - 3}</Pill>
-          )}
-        </div>
-      )}
+      <div className="dc2-tags">
+        <DeviceTeamChip
+          udid={device.udid}
+          currentTeamId={device.teamId ?? null}
+          resolvedTeamName={device.teamName ?? null}
+          teams={teams ?? new Map()}
+          canEdit={canEditTeam}
+          onChanged={reloadDevices}
+        />
+        {device.tags?.slice(0, 3).map((t) => (
+          <Pill key={t} tone="neutral" title={t}>
+            {t}
+          </Pill>
+        ))}
+        {(device.tags?.length || 0) > 3 && (
+          <Pill tone="neutral">+{(device.tags?.length || 0) - 3}</Pill>
+        )}
+      </div>
 
       <div className="dc2-metrics">
         {reserved ? (
@@ -230,7 +252,7 @@ export const DeviceCard: React.FC<Props> = ({ device, reloadDevices, navigate, t
             }
           />
         )}
-        <KeyValueRow label="Host" value={formatHost(device.ip || device.host)} mono />
+        <KeyValueRow label="Host" value={formatDeviceNetworkAddress(device)} mono />
       </div>
 
       <div className="dc2-actions">
@@ -294,16 +316,6 @@ export const DeviceCard: React.FC<Props> = ({ device, reloadDevices, navigate, t
                 Enter maintenance
               </MenuItem>
             )}
-            <MenuDivider />
-            <MenuItem
-              icon={<Copy size={12} />}
-              onClick={() => {
-                setMenuOpen(false);
-                copyUdid();
-              }}
-            >
-              Copy UDID
-            </MenuItem>
           </Menu>
         </Popover>
       </div>

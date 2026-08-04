@@ -31,4 +31,5 @@ export interface IDevice {
   ip?: string;
   cpuArchitecture?: string;
   teamId?: string | null;
+  teamName?: string | null;
 }

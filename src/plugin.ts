@@ -8,7 +8,7 @@ import AsyncLock from 'async-lock';
 import { unblockDeviceMatchingFilter } from './data-service/device-service';
 import { Container } from 'typedi';
 import log, { XenonLogger } from './logger';
-import ip from 'ip';
+import { resolveAdvertisedBindHost, shouldAutoResolveBindHost } from './helpers/networkAddresses';
 import _ from 'lodash';
 import { SessionStatus } from './types/SessionStatus';
 import { HealingOrchestrator } from './services/healing/HealingOrchestrator';
@@ -88,8 +88,8 @@ class XenonPlugin extends BasePlugin {
 
     XenonLogger.configure({ enableJsonLogging: this.pluginArgs.enableJsonLogging });
 
-    if (this.pluginArgs.bindHostOrIp === undefined) {
-      this.pluginArgs.bindHostOrIp = ip.address();
+    if (shouldAutoResolveBindHost(this.pluginArgs.bindHostOrIp)) {
+      this.pluginArgs.bindHostOrIp = resolveAdvertisedBindHost(this.pluginArgs.bindHostOrIp);
     }
   }
 
