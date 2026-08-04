@@ -17,6 +17,7 @@ import NodeDevices from '../NodeDevices';
 import { config as xenonConfig } from '../../config';
 import { addNewDevice, removeDevice } from '../../data-service/device-service';
 import { IosTracker } from '../iOSTracker';
+import { resolveAdvertisedBindHost } from '../../helpers/networkAddresses';
 
 @Service()
 export class IOSDiscoveryService {
@@ -79,10 +80,13 @@ export class IOSDiscoveryService {
       try {
         const existingDevice = existingDeviceDetails.find((device) => device.udid === udid);
         if (existingDevice) {
-          return { ...existingDevice };
-        } else {
-          return await this.getDeviceInfo(udid);
+          const networkIp = await this.fetchRealDeviceNetworkIp(udid);
+          return {
+            ...existingDevice,
+            ip: networkIp || existingDevice.ip || '',
+          };
         }
+        return await this.getDeviceInfo(udid);
       } catch (e: any) {
         this.log.error(`Failed to initialize iOS device ${udid}: ${e.message}`);
         return null;
@@ -112,28 +116,10 @@ export class IOSDiscoveryService {
 
     let sdk = 'Unknown';
     let name = 'iPhone';
-    let ip = '';
+    const ipAddress = await this.fetchRealDeviceNetworkIp(udid);
 
     try {
       [sdk, name] = await Promise.all([IOSUtils.getOSVersion(udid), IOSUtils.getDeviceName(udid)]);
-
-      // Principal Intelligence: Fetch network IP for health resilience
-      const goIOSDir = cachePath('goIOS');
-      const goIOSPath = path.join(goIOSDir, 'ios');
-      if (fs.existsSync(goIOSPath)) {
-        const { exec } = await import('child_process');
-        const { promisify } = await import('util');
-        const execPromise = promisify(exec);
-        try {
-          const { stdout } = await execPromise(`"${goIOSPath}" info --udid ${udid}`, {
-            env: { ...process.env, ENABLE_GO_IOS_AGENT: 'yes' },
-          });
-          const info = JSON.parse(stdout);
-          ip = info.IPAddress || '';
-        } catch (e) {
-          log.debug(`Failed to fetch IP via go-ios for ${udid}: ${e}`);
-        }
-      }
     } catch (e: any) {
       this.log.error(`Metadata discovery failed for ${udid}: ${e.message}`);
     }
@@ -144,7 +130,7 @@ export class IOSDiscoveryService {
       udid,
       sdk,
       name,
-      ip, // Store detected network IP
+      ip: ipAddress,
       busy: false,
       realDevice: true,
       deviceType: 'real',
@@ -209,6 +195,7 @@ export class IOSDiscoveryService {
     }
 
     const store = DeviceStoreFactory.getStore();
+    const nodeLanIp = this.resolveNodeLanIp();
     return await Promise.all(
       simulators.map(async (d) => {
         const storeDevice = await store.findDevice({ udid: d.udid });
@@ -227,11 +214,58 @@ export class IOSDiscoveryService {
             | 'tvos',
           deviceType: 'simulator',
           host: `http://${this.pluginArgs.bindHostOrIp}:${this.hostPort}`,
+          ip: nodeLanIp,
           totalUtilizationTimeMilliSec: await getUtilizationTime(d.udid),
           sessionStartTime: 0,
         } as IDevice;
       }),
     );
+  }
+
+  private resolveNodeLanIp(): string {
+    return resolveAdvertisedBindHost(this.pluginArgs.bindHostOrIp);
+  }
+
+  private async fetchRealDeviceNetworkIp(udid: string): Promise<string> {
+    const viaGoIos = await this.fetchIpViaGoIos(udid);
+    if (viaGoIos) return viaGoIos;
+    return this.fetchIpViaIdeviceInfo(udid);
+  }
+
+  private async fetchIpViaGoIos(udid: string): Promise<string> {
+    const goIOSDir = cachePath('goIOS');
+    const goIOSPath = path.join(goIOSDir, 'ios');
+    if (!fs.existsSync(goIOSPath)) return '';
+
+    const { exec } = await import('child_process');
+    const { promisify } = await import('util');
+    const execPromise = promisify(exec);
+    try {
+      const { stdout } = await execPromise(`"${goIOSPath}" info --udid ${udid}`, {
+        env: { ...process.env, ENABLE_GO_IOS_AGENT: 'yes' },
+      });
+      const info = JSON.parse(stdout);
+      return info.IPAddress || '';
+    } catch (e) {
+      log.debug(`Failed to fetch IP via go-ios for ${udid}: ${e}`);
+      return '';
+    }
+  }
+
+  private async fetchIpViaIdeviceInfo(udid: string): Promise<string> {
+    const { exec } = await import('child_process');
+    const { promisify } = await import('util');
+    const execPromise = promisify(exec);
+    try {
+      const { stdout } = await execPromise(`ideviceinfo -u ${udid} -k WiFiAddress`, {
+        timeout: 5000,
+      });
+      const value = stdout.trim();
+      return value && value.toLowerCase() !== 'n/a' ? value : '';
+    } catch (e) {
+      log.debug(`Failed to fetch IP via ideviceinfo for ${udid}: ${e}`);
+      return '';
+    }
   }
 
   trackIOSDevices() {

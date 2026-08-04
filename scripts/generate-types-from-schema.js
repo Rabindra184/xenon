@@ -60,7 +60,7 @@ export const DefaultPluginArgs: IPluginArgs = {
   checkBlockedDevicesIntervalMs: 30000,
   newCommandTimeoutSec: 60,
   cloud: undefined,
-  bindHostOrIp: ip.address(),
+  bindHostOrIp: 'auto',
   enableDashboard: false,
   bootedSimulators: false,
   healthCheckIntervalMs: 86400000,

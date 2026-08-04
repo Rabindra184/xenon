@@ -55,4 +55,6 @@ export interface IDevice {
 
   // Phase 2: team ownership (null = shared pool). See docs/teams.md.
   teamId?: string | null;
+  /** Resolved on read from Team.name; omitted when unassigned or unknown. */
+  teamName?: string | null;
 }

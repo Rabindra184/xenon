@@ -75,6 +75,29 @@ export async function getAllDevices(): Promise<IDevice[]> {
   return await store.getAllDevices();
 }
 
+/** Attach Team.name for each assigned device (one batched query). */
+export async function enrichDevicesWithTeamNames<T extends { teamId?: string | null }>(
+  devices: T[],
+): Promise<(T & { teamName: string | null })[]> {
+  const teamIds = [
+    ...new Set(
+      devices.map((d) => d.teamId).filter((id): id is string => typeof id === 'string' && id.length > 0),
+    ),
+  ];
+  if (teamIds.length === 0) {
+    return devices.map((d) => ({ ...d, teamName: null }));
+  }
+  const rows = await prisma.team.findMany({
+    where: { id: { in: teamIds } },
+    select: { id: true, name: true },
+  });
+  const nameById = new Map(rows.map((r) => [r.id, r.name]));
+  return devices.map((d) => ({
+    ...d,
+    teamName: d.teamId ? nameById.get(d.teamId) ?? null : null,
+  }));
+}
+
 // Filter an array of rows down to those whose `udidField` references a
 // device visible to the caller. Visibility:
 //   teamIds === undefined → no filter (admin / unscoped) → return as-is.

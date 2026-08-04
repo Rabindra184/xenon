@@ -13,6 +13,7 @@ import {
   userUnblockDevice,
   updateDeviceTags,
   filterRowsByVisibleDevice,
+  enrichDevicesWithTeamNames,
 } from '../../data-service/device-service';
 import { scopeGuard } from '../../middleware/scopeGuard';
 import { roleGuard } from '../../middleware/roleGuard';
@@ -45,7 +46,10 @@ async function getDevices(request: Request, response: Response) {
   }
   const { sessionId } = request.query;
   if (sessionId) {
-    return response.json(devices.find((value) => value.session_id === sessionId));
+    const match = devices.find((value) => value.session_id === sessionId);
+    if (!match) return response.json(undefined);
+    const [enriched] = await enrichDevicesWithTeamNames([match]);
+    return response.json(enriched);
   }
   /* dashboard-plugin-url is the base url for opening the appium-dashboard-plugin
    * This value will be attached to all express request via middleware
@@ -69,7 +73,7 @@ async function getDevices(request: Request, response: Response) {
       return d;
     });
   }
-  return response.json(devices);
+  return response.json(await enrichDevicesWithTeamNames(devices));
 }
 
 async function getDeviceByPlatform(request: Request, response: Response) {
@@ -101,7 +105,7 @@ async function getDeviceByPlatform(request: Request, response: Response) {
     }
   }
 
-  return response.status(200).send(devices);
+  return response.status(200).send(await enrichDevicesWithTeamNames(devices));
 }
 
 async function registerNode(request: Request, response: Response) {

@@ -4,7 +4,11 @@ import * as path from 'path';
 import { OrphanSweeper } from './OrphanSweeper';
 import { v4 as uuidv4 } from 'uuid';
 import { redactSecrets } from '../helpers';
-import ip from 'ip';
+import {
+  listReachableBaseUrls,
+  resolveAdvertisedBindHost,
+  shouldAutoResolveBindHost,
+} from '../helpers/networkAddresses';
 import log from '../logger';
 import { attachH264Ws } from '../app/ws/h264StreamWs';
 import { StreamTicketService } from './token/StreamTicketService';
@@ -158,6 +162,11 @@ export class ServerManager {
     this.logger.info(
       `🚀 Xenon will be served at http://${pluginArgs.bindHostOrIp}:${cliArgs.port}/xenon with id ${nodeId}`,
     );
+    this.logger.info('You can provide the following URLs to access Xenon:');
+    for (const url of listReachableBaseUrls(cliArgs.port)) {
+      const note = url.includes('127.0.0.1') ? ' (only accessible from the same host)' : '';
+      this.logger.info(`  ${url}${note}`);
+    }
   }
 
   private async resolvePluginArgs(cliArgs: ServerArgs): Promise<IPluginArgs> {
@@ -178,8 +187,14 @@ export class ServerManager {
       this.logger.warn(`Failed to load persisted config: ${err}`);
     }
 
-    if (pluginArgs.bindHostOrIp === undefined) {
-      pluginArgs.bindHostOrIp = ip.address();
+    if (shouldAutoResolveBindHost(pluginArgs.bindHostOrIp)) {
+      const resolved = resolveAdvertisedBindHost(pluginArgs.bindHostOrIp);
+      if (resolved !== pluginArgs.bindHostOrIp) {
+        this.logger.info(
+          `Resolved bindHostOrIp ${JSON.stringify(pluginArgs.bindHostOrIp)} -> ${resolved}`,
+        );
+      }
+      pluginArgs.bindHostOrIp = resolved;
     }
 
     return pluginArgs;

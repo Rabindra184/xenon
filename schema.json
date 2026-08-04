@@ -125,8 +125,8 @@
         },
         "bindHostOrIp": {
             "type": "string",
-            "default": "127.0.0.1",
-            "description": "Host/IP the Xenon REST and WebSocket server binds to. Set to 0.0.0.0 to expose on all interfaces."
+            "default": "auto",
+            "description": "Host/IP advertised in device URLs and the dashboard. Use auto (default), 0.0.0.0, 127.0.0.1, or localhost to pick the best LAN-reachable IPv4 (e.g. 192.168.x.x). Set an explicit address to override."
         },
         "enableDashboard": {
             "type": "boolean",

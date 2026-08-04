@@ -50,10 +50,41 @@
   overflow: hidden;
   text-overflow: ellipsis;
 }
+.dc2-udid-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
 .dc2-udid {
   color: var(--text-dim);
   font-family: 'JetBrains Mono', monospace;
   font-size: 11px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.dc2-udid-copy {
+  flex-shrink: 0;
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  padding: 2px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: color var(--motion-fast), background var(--motion-fast);
+}
+.dc2-udid-copy:hover {
+  color: var(--text);
+  background: var(--surface-2);
+}
+.dc2-udid-copy:focus-visible {
+  outline: 2px solid var(--accent, var(--border-strong));
+  outline-offset: 1px;
 }
 
 .dc2-tags {
