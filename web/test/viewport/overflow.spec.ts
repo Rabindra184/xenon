@@ -145,8 +145,8 @@ const ROUTE_DATA_MOCKS: Record<string, Setup> = {
     const now = Date.now();
     // Overrides the shared control-route device* mock for THIS page only
     // (fresh page + beforeEach re-registration per test, so it never leaks
-    // into the control tests). Two hostile devices so FleetStatus/
-    // DeviceBreakdown have real rows to render.
+    // into the control tests). Two hostile devices so FleetStatus has real
+    // rows to render.
     await page.route('**/xenon/api/device*', (route) =>
       route.fulfill({
         json: [
@@ -181,8 +181,7 @@ const ROUTE_DATA_MOCKS: Record<string, Setup> = {
         ],
       }),
     );
-    // Timestamps computed at mock time so SessionTrend/KPI bucketing (which
-    // windows on "last 24h") always finds these sessions in range.
+    // Sessions feed Active sessions KPI + Recent activity.
     await page.route('**/xenon/api/session*', (route) =>
       route.fulfill({
         json: [
