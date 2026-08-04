@@ -87,6 +87,20 @@
   outline-offset: 1px;
 }
 
+.dc2-copyable {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  max-width: 100%;
+}
+.dc2-copyable-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
 .dc2-tags {
   display: flex;
   gap: 4px;

@@ -7,6 +7,8 @@ import {
   pickAdvertisedLanIp,
   resolveAdvertisedBindHost,
   shouldAutoResolveBindHost,
+  isDeviceNetworkIp,
+  sanitizeDeviceNetworkIp,
 } from '../../src/helpers/networkAddresses';
 
 describe('networkAddresses', () => {
@@ -39,5 +41,12 @@ describe('networkAddresses', () => {
       en0: [{ address: '192.168.0.104', family: 'IPv4', internal: false } as any],
     });
     expect(resolveAdvertisedBindHost('10.0.0.8')).to.equal('10.0.0.8');
+  });
+
+  it('isDeviceNetworkIp accepts IPv4 and rejects MAC addresses', () => {
+    expect(isDeviceNetworkIp('192.168.0.106')).to.equal(true);
+    expect(isDeviceNetworkIp('88:1e:5a:d6:7b:47')).to.equal(false);
+    expect(sanitizeDeviceNetworkIp('88:1e:5a:d6:7b:47')).to.equal('');
+    expect(sanitizeDeviceNetworkIp('192.168.0.106')).to.equal('192.168.0.106');
   });
 });

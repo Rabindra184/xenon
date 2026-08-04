@@ -1,5 +1,6 @@
 import { IDeviceManager } from '../interfaces/IDeviceManager';
 import { asyncForEach } from '../helpers';
+import { sanitizeDeviceNetworkIp } from '../helpers/networkAddresses';
 import { spawn } from 'child_process';
 import { ADB, getSdkRootFromEnv } from 'appium-adb';
 import log from '../logger';
@@ -245,7 +246,7 @@ export default class AndroidDeviceManager implements IDeviceManager {
       totalUtilizationTimeMilliSec: totalUtilizationTimeMilliSec,
       sessionStartTime: 0,
       userBlocked: false,
-      ip: await this.getDeviceIp(adbInstance, device.udid),
+      ip: sanitizeDeviceNetworkIp(await this.getDeviceIp(adbInstance, device.udid)),
       cpuArchitecture: await this.getCpuArchitecture(adbInstance, device.udid),
     };
   }
@@ -311,7 +312,7 @@ export default class AndroidDeviceManager implements IDeviceManager {
         chromeDriverPath,
         screenWidth: screenSize?.width,
         screenHeight: screenSize?.height,
-        ip: await this.getDeviceIp(adb, device.udid),
+        ip: sanitizeDeviceNetworkIp(await this.getDeviceIp(adb, device.udid)),
         cpuArchitecture,
       };
     } catch (err) {

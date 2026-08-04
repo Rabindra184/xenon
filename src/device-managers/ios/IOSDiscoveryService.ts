@@ -17,7 +17,7 @@ import NodeDevices from '../NodeDevices';
 import { config as xenonConfig } from '../../config';
 import { addNewDevice, removeDevice } from '../../data-service/device-service';
 import { IosTracker } from '../iOSTracker';
-import { resolveAdvertisedBindHost } from '../../helpers/networkAddresses';
+import { resolveAdvertisedBindHost, sanitizeDeviceNetworkIp } from '../../helpers/networkAddresses';
 
 @Service()
 export class IOSDiscoveryService {
@@ -83,7 +83,7 @@ export class IOSDiscoveryService {
           const networkIp = await this.fetchRealDeviceNetworkIp(udid);
           return {
             ...existingDevice,
-            ip: networkIp || existingDevice.ip || '',
+            ip: networkIp || sanitizeDeviceNetworkIp(existingDevice.ip) || '',
           };
         }
         return await this.getDeviceInfo(udid);
@@ -227,9 +227,7 @@ export class IOSDiscoveryService {
   }
 
   private async fetchRealDeviceNetworkIp(udid: string): Promise<string> {
-    const viaGoIos = await this.fetchIpViaGoIos(udid);
-    if (viaGoIos) return viaGoIos;
-    return this.fetchIpViaIdeviceInfo(udid);
+    return sanitizeDeviceNetworkIp(await this.fetchIpViaGoIos(udid));
   }
 
   private async fetchIpViaGoIos(udid: string): Promise<string> {
@@ -248,22 +246,6 @@ export class IOSDiscoveryService {
       return info.IPAddress || '';
     } catch (e) {
       log.debug(`Failed to fetch IP via go-ios for ${udid}: ${e}`);
-      return '';
-    }
-  }
-
-  private async fetchIpViaIdeviceInfo(udid: string): Promise<string> {
-    const { exec } = await import('child_process');
-    const { promisify } = await import('util');
-    const execPromise = promisify(exec);
-    try {
-      const { stdout } = await execPromise(`ideviceinfo -u ${udid} -k WiFiAddress`, {
-        timeout: 5000,
-      });
-      const value = stdout.trim();
-      return value && value.toLowerCase() !== 'n/a' ? value : '';
-    } catch (e) {
-      log.debug(`Failed to fetch IP via ideviceinfo for ${udid}: ${e}`);
       return '';
     }
   }

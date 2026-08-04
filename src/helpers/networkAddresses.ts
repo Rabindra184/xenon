@@ -88,3 +88,23 @@ export function listReachableBaseUrls(port: number, basePath = '/xenon'): string
   }
   return urls;
 }
+
+const MAC_ADDRESS_RE = /^([0-9a-f]{2}:){5}[0-9a-f]{2}$/i;
+const IPV4_RE = /^(?:\d{1,3}\.){3}\d{1,3}$/;
+
+/** True for dotted-decimal IPv4; rejects MAC addresses and other non-IP strings. */
+export function isDeviceNetworkIp(value: string): boolean {
+  const trimmed = value.trim();
+  if (!trimmed || MAC_ADDRESS_RE.test(trimmed)) return false;
+  if (!IPV4_RE.test(trimmed)) return false;
+  return trimmed.split('.').every((octet) => {
+    const n = Number(octet);
+    return Number.isInteger(n) && n >= 0 && n <= 255;
+  });
+}
+
+export function sanitizeDeviceNetworkIp(value?: string | null): string {
+  if (!value) return '';
+  const trimmed = value.trim();
+  return isDeviceNetworkIp(trimmed) ? trimmed : '';
+}
