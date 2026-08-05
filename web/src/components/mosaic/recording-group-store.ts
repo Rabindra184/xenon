@@ -19,6 +19,9 @@ export function effectiveLayout(layout: Layout, tileCount: number): Exclude<Layo
 }
 export type AnnotationShape = 'RECT' | 'CIRCLE' | 'ARROW' | 'TEXT' | 'FREEHAND';
 
+/** Toolbar / recording lifecycle — prevents double-submit during start/stop. */
+export type RecordingPhase = 'idle' | 'starting' | 'recording' | 'stopping';
+
 export interface MosaicTile {
   udid: string;
   name?: string;
@@ -36,17 +39,30 @@ export interface MosaicTile {
   platform?: string;
 }
 
+export interface MosaicBanner {
+  tone: 'error' | 'info';
+  message: string;
+}
+
 export interface MosaicState {
   selected: Set<string>;
   layout: Layout;
   tiles: MosaicTile[];
   groupId: string | null;
+  /** True when the server actually started a composite ffmpeg for this group. */
+  compositeEnabled: boolean;
+  /** How many playable per-device videos the last stop reported. */
+  downloadableVideoCount: number;
+  recordingPhase: RecordingPhase;
+  /** Convenience: true while actively recording or stopping. */
   recording: boolean;
   startedAt: number | null;
   annotateMode: boolean;
   shape: AnnotationShape;
   color: string;
+  /** @deprecated Prefer `banner` — kept so older dispatches still type-check via SET_ERROR_BANNER. */
   errorBanner: string | null;
+  banner: MosaicBanner | null;
 }
 
 export const initialMosaicState: MosaicState = {
@@ -54,12 +70,16 @@ export const initialMosaicState: MosaicState = {
   layout: '2x2',
   tiles: [],
   groupId: null,
+  compositeEnabled: false,
+  downloadableVideoCount: 0,
+  recordingPhase: 'idle',
   recording: false,
   startedAt: null,
   annotateMode: false,
   shape: 'RECT',
   color: '#ff3333',
   errorBanner: null,
+  banner: null,
 };
 
 export type MosaicAction =
@@ -70,17 +90,24 @@ export type MosaicAction =
   | { type: 'ADD_TILE'; tile: MosaicTile }
   | { type: 'REMOVE_TILE'; udid: string }
   | { type: 'BIND_RECORDING_IDS'; map: Record<string, string> }
+  | { type: 'SET_RECORDING_PHASE'; phase: RecordingPhase }
   | {
       type: 'START_RECORDING';
       groupId: string;
       startedAt: number;
       tileIds: Record<string, string>;
+      compositeEnabled?: boolean;
     }
-  | { type: 'STOP_RECORDING' }
+  | {
+      type: 'STOP_RECORDING';
+      downloadableVideoCount?: number;
+      compositeEnabled?: boolean;
+    }
   | { type: 'SET_ANNOTATE_MODE'; enabled: boolean }
   | { type: 'SET_SHAPE'; shape: AnnotationShape }
   | { type: 'SET_COLOR'; color: string }
-  | { type: 'SET_ERROR_BANNER'; message: string | null };
+  | { type: 'SET_ERROR_BANNER'; message: string | null }
+  | { type: 'SET_BANNER'; banner: MosaicBanner | null };
 
 export function mosaicReducer(state: MosaicState, action: MosaicAction): MosaicState {
   switch (action.type) {
@@ -101,6 +128,9 @@ export function mosaicReducer(state: MosaicState, action: MosaicAction): MosaicS
       if (state.tiles.some((t) => t.udid === action.tile.udid)) return state;
       return { ...state, tiles: [...state.tiles, action.tile] };
     case 'REMOVE_TILE':
+      // Block remove while a recording is in flight — avoids tearing down MJPEG
+      // under a live ffmpeg.
+      if (state.recordingPhase !== 'idle') return state;
       return { ...state, tiles: state.tiles.filter((t) => t.udid !== action.udid) };
     case 'BIND_RECORDING_IDS': {
       const tiles = state.tiles.map((t) => ({
@@ -108,6 +138,14 @@ export function mosaicReducer(state: MosaicState, action: MosaicAction): MosaicS
         recordingId: action.map[t.udid] ?? t.recordingId,
       }));
       return { ...state, tiles };
+    }
+    case 'SET_RECORDING_PHASE': {
+      const phase = action.phase;
+      return {
+        ...state,
+        recordingPhase: phase,
+        recording: phase === 'recording' || phase === 'stopping',
+      };
     }
     case 'START_RECORDING': {
       const tiles = state.tiles.map((t) => ({
@@ -117,6 +155,9 @@ export function mosaicReducer(state: MosaicState, action: MosaicAction): MosaicS
       return {
         ...state,
         groupId: action.groupId,
+        compositeEnabled: action.compositeEnabled === true,
+        downloadableVideoCount: 0,
+        recordingPhase: 'recording',
         recording: true,
         startedAt: action.startedAt,
         tiles,
@@ -126,8 +167,21 @@ export function mosaicReducer(state: MosaicState, action: MosaicAction): MosaicS
       // Clear each tile's recordingId too — the per-tile REC badge is driven by
       // recordingId (DeviceTile), so leaving it set keeps a stale "REC" overlay
       // after the recording has stopped until the component remounts.
+      // Keep groupId + compositeEnabled so download links still work.
       const tiles = state.tiles.map((t) => ({ ...t, recordingId: undefined }));
-      return { ...state, recording: false, tiles };
+      return {
+        ...state,
+        recording: false,
+        recordingPhase: 'idle',
+        annotateMode: false,
+        downloadableVideoCount:
+          action.downloadableVideoCount ?? state.downloadableVideoCount,
+        compositeEnabled:
+          action.compositeEnabled !== undefined
+            ? action.compositeEnabled
+            : state.compositeEnabled,
+        tiles,
+      };
     }
     case 'SET_ANNOTATE_MODE':
       return { ...state, annotateMode: action.enabled };
@@ -136,7 +190,17 @@ export function mosaicReducer(state: MosaicState, action: MosaicAction): MosaicS
     case 'SET_COLOR':
       return { ...state, color: action.color };
     case 'SET_ERROR_BANNER':
-      return { ...state, errorBanner: action.message };
+      return {
+        ...state,
+        errorBanner: action.message,
+        banner: action.message ? { tone: 'error', message: action.message } : null,
+      };
+    case 'SET_BANNER':
+      return {
+        ...state,
+        banner: action.banner,
+        errorBanner: action.banner?.tone === 'error' ? action.banner.message : null,
+      };
     default:
       return state;
   }
@@ -155,4 +219,16 @@ export function useMosaic() {
 
 export function useMosaicReducer() {
   return useReducer(mosaicReducer, initialMosaicState);
+}
+
+/** Format elapsed ms as m:ss or h:mm:ss for the REC timer. */
+export function formatElapsed(ms: number): string {
+  const totalSec = Math.max(0, Math.floor(ms / 1000));
+  const h = Math.floor(totalSec / 3600);
+  const m = Math.floor((totalSec % 3600) / 60);
+  const s = totalSec % 60;
+  if (h > 0) {
+    return `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+  }
+  return `${m}:${String(s).padStart(2, '0')}`;
 }

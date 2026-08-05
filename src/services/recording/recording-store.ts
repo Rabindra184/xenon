@@ -2,6 +2,8 @@ import { Service } from 'typedi';
 import { prisma } from '../../prisma';
 
 export interface CreateRecordingInput {
+  /** Explicit primary key — must match the ffmpeg session key / file path. */
+  id: string;
   groupId: string;
   deviceUdid: string;
   deviceHost: string;
@@ -22,6 +24,7 @@ export class RecordingStore {
   async create(input: CreateRecordingInput) {
     return prisma.recording.create({
       data: {
+        id: input.id,
         group_id: input.groupId,
         device_udid: input.deviceUdid,
         device_host: input.deviceHost,

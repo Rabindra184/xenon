@@ -217,6 +217,73 @@ router.get('/recordings/:groupId/composite.mp4', async (req: Request, res: Respo
   fs.createReadStream(compositePath).pipe(res);
 });
 
+/**
+ * Videos-only zip (mp4 files). Prefer this over proof bundle for dashboard
+ * downloads — no manifest / bookmarks / device JSON.
+ */
+router.get('/recordings/:groupId/videos.zip', async (req: Request, res: Response) => {
+  const auth = (req as Request & { auth?: { teamIds?: string[] } }).auth;
+  if (!(await isGroupVisibleToAuth(req.params.groupId, auth?.teamIds))) {
+    return res.status(404).json({ error: 'not_found' });
+  }
+  try {
+    const archive = await Container.get(ProofBundleService).buildVideosZip(req.params.groupId);
+    res.setHeader('Content-Type', 'application/zip');
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename="videos-${req.params.groupId}.zip"`,
+    );
+    archive.on('error', (err) => {
+      recLog.error(`videos.zip stream error: ${err.message}`);
+      if (!res.headersSent) {
+        res.status(500).json({ error: 'internal', message: err.message });
+      } else {
+        res.destroy();
+      }
+    });
+    archive.pipe(res);
+  } catch (e: any) {
+    if (e?.code === 'no_videos' || e?.message === 'no_videos') {
+      return res.status(404).json({ error: 'no_videos', message: 'No playable videos in this group' });
+    }
+    recLog.error(`videos.zip failed: ${e?.message}`);
+    return res.status(500).json({ error: 'internal', message: e?.message });
+  }
+});
+
+/**
+ * Direct mp4 download. Optional `?udid=` selects a device in a multi-device
+ * group; without it, works when the group has exactly one playable video.
+ */
+router.get('/recordings/:groupId/video.mp4', async (req: Request, res: Response) => {
+  const auth = (req as Request & { auth?: { teamIds?: string[] } }).auth;
+  if (!(await isGroupVisibleToAuth(req.params.groupId, auth?.teamIds))) {
+    return res.status(404).json({ error: 'not_found' });
+  }
+  const udid = typeof req.query.udid === 'string' ? req.query.udid : undefined;
+  try {
+    const hit = await Container.get(ProofBundleService).resolveVideoFile(
+      req.params.groupId,
+      udid,
+    );
+    if (!hit) {
+      return res.status(404).json({
+        error: 'video_not_found',
+        message: udid
+          ? 'No playable video for that device'
+          : 'Use videos.zip when the group has multiple recordings',
+      });
+    }
+    res.setHeader('Content-Type', 'video/mp4');
+    res.setHeader('Accept-Ranges', 'bytes');
+    res.setHeader('Content-Disposition', `attachment; filename="${hit.downloadName}"`);
+    fs.createReadStream(hit.filePath).pipe(res);
+  } catch (e: any) {
+    recLog.error(`video.mp4 failed: ${e?.message}`);
+    return res.status(500).json({ error: 'internal', message: e?.message });
+  }
+});
+
 router.get('/recordings/:groupId/bundle.zip', async (req: Request, res: Response) => {
   // Phase 4A: 404 if none of the group's devices are visible to the caller.
   const auth = (req as Request & { auth?: { teamIds?: string[] } }).auth;

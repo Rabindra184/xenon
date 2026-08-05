@@ -351,15 +351,20 @@ export default function DeviceMosaicView() {
           />
         </header>
 
-        {state.errorBanner && (
+        {state.banner && (
           <div
             role="alert"
-            className="text-sm rounded border border-red-500/40 bg-red-500/10 text-red-100 px-3 py-2 flex items-center gap-2"
+            className={`text-sm rounded border px-3 py-2 flex items-center gap-2 ${
+              state.banner.tone === 'error'
+                ? 'border-red-500/40 bg-red-500/10 text-red-100'
+                : 'border-emerald-500/40 bg-emerald-500/10 text-emerald-100'
+            }`}
           >
-            <span className="flex-1">{state.errorBanner}</span>
+            <span className="flex-1">{state.banner.message}</span>
             <button
+              type="button"
               className="text-xs opacity-80 hover:opacity-100"
-              onClick={() => dispatch({ type: 'SET_ERROR_BANNER', message: null })}
+              onClick={() => dispatch({ type: 'SET_BANNER', banner: null })}
             >
               Dismiss
             </button>
@@ -385,8 +390,9 @@ export default function DeviceMosaicView() {
               onToggle={onTogglePickerRow}
             />
             <p className="mt-2 text-[11px] text-[var(--text-dim)] leading-relaxed">
-              Click a device to add it to the mosaic. Click again (or use the
-              × on the tile) to remove it.
+              Click a device to add it to the mosaic. Record captures every device
+              in the mosaic. After Stop, download the video (mp4) — not a proof
+              bundle.
             </p>
           </aside>
 

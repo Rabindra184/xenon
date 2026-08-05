@@ -13,12 +13,16 @@ import {
 } from '../../data-service/device-service';
 import { DeviceStoreFactory } from '../../data-service/device-store';
 import { formatManualLock } from './manualLock';
+import { ensureMjpegForRecording } from './ensureMjpegForRecording';
 import { ATTR, METRIC, OUTCOME } from '../telemetry/attributes';
 import log from '../../logger';
 import { ARTIFACT_STORE } from '../artifacts/ArtifactStore';
 import type { ArtifactStore } from '../artifacts/ArtifactStore';
 
 const recLog = log.scope('RecordingOrchestrator');
+
+/** Below this size after stop, treat the mp4 as empty/corrupt. */
+const MIN_PLAYABLE_MP4_BYTES = 1024;
 
 // Lazy-init OTel instruments. Module-load order vs. TracingService init does
 // not matter — the OTel API returns Noop instruments until a real
@@ -112,6 +116,11 @@ export interface OrchestratorDeps {
   blockDeviceFn?: BlockDeviceFn;
   eventMgr?: DashboardEventManager;
   unblockDeviceFn?: UnblockDeviceFn;
+  /**
+   * Resolves a live MJPEG loopback port before ffmpeg starts. Injected in
+   * unit tests so stream services need not be registered in the DI container.
+   */
+  ensureMjpegPortFn?: (udid: string) => Promise<number>;
 }
 
 @Service()
@@ -119,7 +128,10 @@ export class RecordingOrchestrator {
   // All deps are public so tests can rebind a single one without rebuilding.
   public unblockDeviceFn: UnblockDeviceFn;
   public blockDeviceFn: BlockDeviceFn;
-  private readonly _deps: Required<Omit<OrchestratorDeps, 'blockDeviceFn' | 'unblockDeviceFn'>>;
+  public ensureMjpegPortFn: (udid: string) => Promise<number>;
+  private readonly _deps: Required<
+    Omit<OrchestratorDeps, 'blockDeviceFn' | 'unblockDeviceFn' | 'ensureMjpegPortFn'>
+  >;
 
   constructor(deps: OrchestratorDeps = {}) {
     this._deps = {
@@ -131,6 +143,7 @@ export class RecordingOrchestrator {
     };
     this.blockDeviceFn = deps.blockDeviceFn ?? defaultBlockDevice;
     this.unblockDeviceFn = deps.unblockDeviceFn ?? defaultUnblockDevice;
+    this.ensureMjpegPortFn = deps.ensureMjpegPortFn ?? ensureMjpegForRecording;
   }
 
   private get busyPrecheck() {
@@ -158,6 +171,7 @@ export class RecordingOrchestrator {
     groupId: string;
     recordings: StartedRecording[];
     startedAt: Date;
+    compositeEnabled: boolean;
   }> {
     ensureOtelInstruments();
     const { udids, actorId } = input;
@@ -190,7 +204,12 @@ export class RecordingOrchestrator {
   private async _startInternal(
     input: StartInput,
     span: Span,
-  ): Promise<{ groupId: string; recordings: StartedRecording[]; startedAt: Date }> {
+  ): Promise<{
+    groupId: string;
+    recordings: StartedRecording[];
+    startedAt: Date;
+    compositeEnabled: boolean;
+  }> {
     const { udids, sessionId, actorId } = input;
 
     // Layer 2 atomic pre-check: busy state.
@@ -244,8 +263,10 @@ export class RecordingOrchestrator {
       throw new RecordingError('device_busy', [{ udid: 'unknown', reason: 'unknown' }]);
     }
 
-    // Create rows and spawn ffmpeg per device.
+    // Create rows and spawn ffmpeg per device. MJPEG must be live first —
+    // Android H.264 preview does not open an MJPEG port.
     const recordings: StartedRecording[] = [];
+    const mjpegPorts: Record<string, number> = {};
     for (let i = 0; i < udids.length; i++) {
       const id = recordingIds[i];
       const udid = udids[i];
@@ -256,7 +277,10 @@ export class RecordingOrchestrator {
         `${id}.mp4`,
       );
       try {
+        const mjpegPort = await this.ensureMjpegPortFn(udid);
+        mjpegPorts[udid] = mjpegPort;
         await this.store.create({
+          id,
           groupId,
           deviceUdid: udid,
           deviceHost: host,
@@ -268,6 +292,7 @@ export class RecordingOrchestrator {
           sessionId: id,
           udid,
           outputPath: filePath,
+          mjpegPort,
         });
         recordings.push({ id, udid, status: 'RECORDING' });
       } catch (err: any) {
@@ -304,9 +329,11 @@ export class RecordingOrchestrator {
       try {
         const compositeInputs: { mjpegPort: number; udid: string }[] = [];
         for (const r of recordings) {
-          const dev = await DeviceStoreFactory.getStore().findDevice({ udid: r.udid });
-          if (dev?.mjpegServerPort) {
-            compositeInputs.push({ udid: r.udid, mjpegPort: dev.mjpegServerPort });
+          const port =
+            mjpegPorts[r.udid] ??
+            (await DeviceStoreFactory.getStore().findDevice({ udid: r.udid }))?.mjpegServerPort;
+          if (port) {
+            compositeInputs.push({ udid: r.udid, mjpegPort: port });
           }
         }
         if (compositeInputs.length >= 2) {
@@ -341,7 +368,7 @@ export class RecordingOrchestrator {
       recordings: recordings.map((r) => ({ id: r.id, udid: r.udid })),
       startedAt,
     });
-    return { groupId, recordings, startedAt };
+    return { groupId, recordings, startedAt, compositeEnabled };
   }
 
   /**
@@ -397,6 +424,17 @@ export class RecordingOrchestrator {
           sizeBytes = fs.statSync(r.file_path).size;
         } catch {
           // File may not exist on FAIL; leave size undefined.
+        }
+        if (
+          status === 'STOPPED' &&
+          (sizeBytes === undefined || sizeBytes < MIN_PLAYABLE_MP4_BYTES)
+        ) {
+          status = 'FAILED';
+          failReason = 'empty_or_corrupt_mp4';
+          recLog.warn(
+            `Recording ${r.id} for ${r.device_udid} produced unusable file ` +
+              `(size=${sizeBytes ?? 'missing'} bytes)`,
+          );
         }
         try {
           await this.store.finalize(r.id, { status, durationMs, sizeBytes, failReason });
@@ -575,7 +613,9 @@ export class RecordingOrchestrator {
       `${recordingId}.mp4`,
     );
     try {
+      const mjpegPort = await this.ensureMjpegPortFn(udid);
       await this.store.create({
+        id: recordingId,
         groupId,
         deviceUdid: udid,
         deviceHost: host,
@@ -587,6 +627,7 @@ export class RecordingOrchestrator {
         sessionId: recordingId,
         udid,
         outputPath: filePath,
+        mjpegPort,
       });
     } catch (err: any) {
       recLog.error(`Failed to add device ${udid} to group ${groupId}: ${err?.message}`);

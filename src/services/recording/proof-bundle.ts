@@ -4,6 +4,14 @@ import * as fs from 'fs';
 import { RecordingStore } from './recording-store';
 import { compositeOutputPath } from './RecordingOrchestrator';
 
+/** Safe zip / download filename fragment from a UDID. */
+export function safeVideoFileStem(udid: string): string {
+  const cleaned = String(udid || 'device')
+    .replace(/[^a-zA-Z0-9._-]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+  return cleaned.slice(0, 64) || 'device';
+}
+
 /**
  * Builds a self-contained zip for one recording group: manifest, README,
  * per-device subdirs with video.mp4, bookmarks.json, annotations.json,
@@ -24,6 +32,109 @@ export class ProofBundleService {
     const archive = archiver('zip', { zlib: { level: 6 } });
     this.populate(archive, groupId).catch((err) => archive.emit('error', err));
     return archive;
+  }
+
+  /**
+   * Videos-only zip: one `<udid>.mp4` per device (when present on disk), plus
+   * `composite.mp4` when the mosaic composite exists. No manifest / JSON extras.
+   * Throws Error('no_videos') when nothing playable exists.
+   */
+  async buildVideosZip(groupId: string): Promise<Archiver> {
+    const entries = await this.collectVideoEntries(groupId);
+    if (entries.length === 0) {
+      throw Object.assign(new Error('no_videos'), { code: 'no_videos' as const });
+    }
+    const archive = archiver('zip', { zlib: { level: 6 } });
+    for (const e of entries) {
+      archive.file(e.filePath, { name: e.name });
+    }
+    void archive.finalize();
+    return archive;
+  }
+
+  /** @deprecated Prefer {@link buildVideosZip} — kept for call-site clarity. */
+  streamVideosZip(groupId: string): Archiver {
+    const archive = archiver('zip', { zlib: { level: 6 } });
+    this.populateVideosOnly(archive, groupId).catch((err) => archive.emit('error', err));
+    return archive;
+  }
+
+  private async collectVideoEntries(
+    groupId: string,
+  ): Promise<Array<{ filePath: string; name: string }>> {
+    const recordings = (await this.store.listGroup(groupId)) as any[];
+    const entries: Array<{ filePath: string; name: string }> = [];
+
+    try {
+      const compositePath = compositeOutputPath(groupId);
+      if (fs.existsSync(compositePath) && fs.statSync(compositePath).size > 0) {
+        entries.push({ filePath: compositePath, name: 'composite.mp4' });
+      }
+    } catch {
+      /* ArtifactStore may be unset in unit tests; skip composite. */
+    }
+
+    for (const r of recordings) {
+      try {
+        if (r.file_path && fs.existsSync(r.file_path) && fs.statSync(r.file_path).size > 0) {
+          entries.push({
+            filePath: r.file_path,
+            name: `${safeVideoFileStem(r.device_udid)}.mp4`,
+          });
+        }
+      } catch {
+        /* skip */
+      }
+    }
+    return entries;
+  }
+
+  /**
+   * Resolve a playable on-disk mp4 for download.
+   * - With `udid`: that device's recording in the group.
+   * - Without: the sole playable recording if the group has exactly one file;
+   *   otherwise null (caller should use videos.zip).
+   */
+  async resolveVideoFile(
+    groupId: string,
+    udid?: string,
+  ): Promise<{ filePath: string; downloadName: string } | null> {
+    const recordings = (await this.store.listGroup(groupId)) as any[];
+    const playable = recordings.filter((r) => {
+      try {
+        return r.file_path && fs.existsSync(r.file_path) && fs.statSync(r.file_path).size > 0;
+      } catch {
+        return false;
+      }
+    });
+    if (udid) {
+      const hit = playable.find((r) => r.device_udid === udid);
+      if (!hit) return null;
+      return {
+        filePath: hit.file_path,
+        downloadName: `${safeVideoFileStem(hit.device_udid)}.mp4`,
+      };
+    }
+    if (playable.length === 1) {
+      const hit = playable[0];
+      return {
+        filePath: hit.file_path,
+        downloadName: `${safeVideoFileStem(hit.device_udid)}.mp4`,
+      };
+    }
+    return null;
+  }
+
+  private async populateVideosOnly(archive: Archiver, groupId: string): Promise<void> {
+    const entries = await this.collectVideoEntries(groupId);
+    if (entries.length === 0) {
+      archive.emit('error', new Error('no_videos'));
+      return;
+    }
+    for (const e of entries) {
+      archive.file(e.filePath, { name: e.name });
+    }
+    await archive.finalize();
   }
 
   private async populate(archive: Archiver, groupId: string): Promise<void> {

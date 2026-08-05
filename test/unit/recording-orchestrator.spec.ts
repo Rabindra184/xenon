@@ -47,6 +47,8 @@ function makeOrch(overrides: any = {}) {
     };
   const blockDeviceFn = overrides.blockDeviceFn ?? sinon.stub().resolves();
   const unblockDeviceFn = overrides.unblockDeviceFn ?? sinon.stub().resolves();
+  const ensureMjpegPortFn =
+    overrides.ensureMjpegPortFn ?? sinon.stub().callsFake(async () => 9100);
   const eventMgr =
     overrides.eventMgr ?? {
       emitRecordingStarted: sinon.stub(),
@@ -63,8 +65,19 @@ function makeOrch(overrides: any = {}) {
     blockDeviceFn,
     eventMgr: eventMgr as any,
     unblockDeviceFn,
+    ensureMjpegPortFn,
   });
-  return { orch, busyPrecheck, store, gate, videoPipeline, blockDeviceFn, unblockDeviceFn, eventMgr };
+  return {
+    orch,
+    busyPrecheck,
+    store,
+    gate,
+    videoPipeline,
+    blockDeviceFn,
+    unblockDeviceFn,
+    eventMgr,
+    ensureMjpegPortFn,
+  };
 }
 
 describe('RecordingOrchestrator.start', () => {
@@ -117,11 +130,14 @@ describe('RecordingOrchestrator.start', () => {
   });
 
   it('happy path: creates one row per UDID, spawns ffmpeg, takes blocks, emits started', async () => {
-    const { orch, store, videoPipeline, blockDeviceFn, eventMgr } = makeOrch();
+    const { orch, store, videoPipeline, blockDeviceFn, eventMgr, ensureMjpegPortFn } = makeOrch();
     const out = await orch.start({ udids: ['U1', 'U2'], actorId: 'actor-1' });
     expect(out.recordings).to.have.length(2);
+    expect(out.compositeEnabled).to.equal(true);
     expect(store.create.callCount).to.equal(2);
+    expect((ensureMjpegPortFn as any).callCount).to.equal(2);
     expect(videoPipeline.startRecording.callCount).to.equal(2);
+    expect(videoPipeline.startRecording.firstCall.args[0].mjpegPort).to.equal(9100);
     expect((blockDeviceFn as any).callCount).to.equal(2);
     expect(
       (blockDeviceFn as any).calledWith(
@@ -131,6 +147,19 @@ describe('RecordingOrchestrator.start', () => {
       ),
     ).to.equal(true);
     expect(eventMgr.emitRecordingStarted.callCount).to.equal(1);
+  });
+
+  it('fails a device when MJPEG cannot be resolved, continues the rest', async () => {
+    const ensureMjpegPortFn = sinon.stub();
+    ensureMjpegPortFn.onFirstCall().rejects(new Error('no mjpeg'));
+    ensureMjpegPortFn.onSecondCall().resolves(9101);
+    const { orch, store, videoPipeline, eventMgr } = makeOrch({ ensureMjpegPortFn });
+    const out = await orch.start({ udids: ['U1', 'U2'], actorId: 'actor-1' });
+    expect(out.recordings).to.have.length(1);
+    expect(out.recordings[0].udid).to.equal('U2');
+    expect(store.finalize.calledOnce).to.equal(true);
+    expect(videoPipeline.startRecording.callCount).to.equal(1);
+    expect(eventMgr.emitRecordingFailed.callCount).to.equal(1);
   });
 });
 
@@ -159,6 +188,7 @@ describe('RecordingOrchestrator.stop', () => {
     const videoPipeline = {
       startRecording: sinon.stub(),
       stopRecording: sinon.stub().resolves('/tmp/x.mp4'),
+      stopComposite: sinon.stub().resolves(null),
     };
     const unblockDeviceFn = sinon.stub().resolves();
     const eventMgr = { emitRecordingStopped: sinon.stub() };
@@ -187,6 +217,7 @@ describe('RecordingOrchestrator.stop', () => {
     const videoPipeline = {
       startRecording: sinon.stub(),
       stopRecording: sinon.stub().rejects(new Error('ffmpeg died')),
+      stopComposite: sinon.stub().resolves(null),
     };
     const unblockDeviceFn = sinon.stub().resolves();
     const { orch } = makeOrch({ store, videoPipeline, unblockDeviceFn });
