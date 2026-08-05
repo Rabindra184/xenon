@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   effectiveLayout,
+  formatElapsed,
   initialMosaicState,
   mosaicReducer,
   type MosaicState,
@@ -19,6 +20,7 @@ function recordingState(): MosaicState {
     groupId: 'g1',
     startedAt: 1000,
     tileIds: { u1: 'rec-1', u2: 'rec-2' },
+    compositeEnabled: true,
   });
 }
 
@@ -27,6 +29,7 @@ describe('mosaicReducer — recording lifecycle', () => {
     const s = recordingState();
     expect(s.recording).to.equal(true);
     expect(s.groupId).to.equal('g1');
+    expect(s.compositeEnabled).to.equal(true);
     expect(s.tiles.map((t) => t.recordingId)).to.deep.equal(['rec-1', 'rec-2']);
   });
 
@@ -41,6 +44,20 @@ describe('mosaicReducer — recording lifecycle', () => {
   it('STOP_RECORDING keeps groupId so the proof-bundle download stays available', () => {
     const stopped = mosaicReducer(recordingState(), { type: 'STOP_RECORDING' });
     expect(stopped.groupId).to.equal('g1');
+    expect(stopped.compositeEnabled).to.equal(true);
+    expect(stopped.recordingPhase).to.equal('idle');
+  });
+
+  it('REMOVE_TILE is ignored while recording', () => {
+    const s = recordingState();
+    const next = mosaicReducer(s, { type: 'REMOVE_TILE', udid: 'u1' });
+    expect(next.tiles).to.have.length(2);
+  });
+
+  it('formatElapsed pads minutes and seconds', () => {
+    expect(formatElapsed(0)).to.equal('0:00');
+    expect(formatElapsed(65_000)).to.equal('1:05');
+    expect(formatElapsed(3_661_000)).to.equal('1:01:01');
   });
 
   it('a fresh mosaic has no recording state to leak', () => {

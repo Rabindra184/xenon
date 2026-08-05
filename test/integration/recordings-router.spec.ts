@@ -27,6 +27,7 @@ describe('Recordings router (integration)', () => {
       groupId: 'g-1',
       recordings: [{ id: 'r-1', udid: 'U1', status: 'RECORDING' }],
       startedAt: new Date(),
+      compositeEnabled: false,
     });
     const r = await request(makeApp())
       .post('/xenon/api/recordings')
@@ -124,6 +125,7 @@ describe('Recordings router (integration)', () => {
       groupId: 'g-1',
       recordings: [{ id: 'r-1', udid: 'U1', status: 'RECORDING' }],
       startedAt: new Date(),
+      compositeEnabled: false,
     });
     const r = await request(makeBearerApp())
       .post('/xenon/api/recordings')

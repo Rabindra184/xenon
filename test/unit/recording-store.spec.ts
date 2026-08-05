@@ -14,6 +14,7 @@ describe('RecordingStore (Prisma round-trip)', () => {
 
   it('creates a recording row with status=RECORDING', async () => {
     const rec = await store.create({
+      id: 'test-rec-1',
       groupId: 'test-g1',
       deviceUdid: 'TEST-U1',
       deviceHost: '127.0.0.1',
@@ -28,6 +29,7 @@ describe('RecordingStore (Prisma round-trip)', () => {
 
   it('finalizes a recording with duration and size', async () => {
     const rec = await store.create({
+      id: 'test-rec-2',
       groupId: 'test-g2',
       deviceUdid: 'TEST-U2',
       deviceHost: '127.0.0.1',
@@ -48,6 +50,7 @@ describe('RecordingStore (Prisma round-trip)', () => {
 
   it('listActive returns RECORDING rows globally', async () => {
     await store.create({
+      id: 'test-rec-3',
       groupId: 'test-g3',
       deviceUdid: 'TEST-U3',
       deviceHost: '127.0.0.1',
@@ -61,6 +64,7 @@ describe('RecordingStore (Prisma round-trip)', () => {
 
   it('listGroup includes bookmarks and annotations', async () => {
     const rec = await store.create({
+      id: 'test-rec-4',
       groupId: 'test-g4',
       deviceUdid: 'TEST-U4',
       deviceHost: '127.0.0.1',

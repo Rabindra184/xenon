@@ -150,3 +150,81 @@ describe('ProofBundleService.streamBundleZip', () => {
     expect(manifest.devices[0].udid).to.equal('U-A');
   });
 });
+
+describe('ProofBundleService.buildVideosZip', () => {
+  let tmp: string;
+  beforeEach(() => {
+    tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'videos-zip-'));
+  });
+  afterEach(() => {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  });
+
+  it('zips only mp4 files with udid filenames (no JSON extras)', async () => {
+    const a = path.join(tmp, 'a.mp4');
+    const b = path.join(tmp, 'b.mp4');
+    fs.writeFileSync(a, 'AAAA');
+    fs.writeFileSync(b, 'BBBB');
+    const store = {
+      listGroup: async () => [
+        {
+          id: 'r1',
+          device_udid: 'device-A',
+          file_path: a,
+          bookmarks: [],
+          annotations: [],
+        },
+        {
+          id: 'r2',
+          device_udid: 'device-B',
+          file_path: b,
+          bookmarks: [],
+          annotations: [],
+        },
+      ],
+    };
+    const svc = new ProofBundleService(store as any);
+    const outZip = path.join(tmp, 'videos.zip');
+    await new Promise<void>((resolve, reject) => {
+      svc
+        .buildVideosZip('g')
+        .then((archive) => {
+          archive.pipe(fs.createWriteStream(outZip)).on('finish', () => resolve()).on('error', reject);
+        })
+        .catch(reject);
+    });
+    const dir = await unzipper.Open.file(outZip);
+    const names = dir.files.map((f: any) => f.path).sort();
+    expect(names).to.deep.equal(['device-A.mp4', 'device-B.mp4']);
+    expect(names.some((n: string) => n.endsWith('.json'))).to.equal(false);
+  });
+
+  it('throws no_videos when nothing is on disk', async () => {
+    const store = {
+      listGroup: async () => [
+        { id: 'r1', device_udid: 'U', file_path: '/missing/x.mp4', bookmarks: [], annotations: [] },
+      ],
+    };
+    const svc = new ProofBundleService(store as any);
+    try {
+      await svc.buildVideosZip('g');
+      expect.fail('expected throw');
+    } catch (e: any) {
+      expect(e.message).to.equal('no_videos');
+    }
+  });
+
+  it('resolveVideoFile returns the sole playable file', async () => {
+    const a = path.join(tmp, 'only.mp4');
+    fs.writeFileSync(a, 'VIDEO');
+    const store = {
+      listGroup: async () => [
+        { id: 'r1', device_udid: 'solo-device', file_path: a },
+      ],
+    };
+    const svc = new ProofBundleService(store as any);
+    const hit = await svc.resolveVideoFile('g');
+    expect(hit?.downloadName).to.equal('solo-device.mp4');
+    expect(hit?.filePath).to.equal(a);
+  });
+});

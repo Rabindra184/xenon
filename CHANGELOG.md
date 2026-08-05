@@ -6,6 +6,28 @@ This project follows [Semantic Versioning](https://semver.org/). Releases are
 published to npm automatically when `package.json`'s `version` changes on `main`
 (see `.github/workflows/npm-publish.yml`).
 
+## 1.10.5
+
+Patch release: Live Devices recording reliability and video-only downloads.
+
+### Fixed
+
+- **Empty / unplayable mosaic recordings** — ensure MJPEG is running before ffmpeg
+  (stop Android H.264 preview when needed); persist orchestrator recording IDs in
+  the DB so Stop targets the correct ffmpeg; avoid macOS `taskpolicy` Economy wrap
+  that broke VideoToolbox; remux to standard faststart mp4 on stop.
+- **Composite download gate** — only offer side-by-side when the server actually
+  started a composite.
+
+### Added
+
+- **Video-only downloads** — `GET /recordings/:groupId/video.mp4` and
+  `GET /recordings/:groupId/videos.zip` (mp4 files only; proof bundle remains for
+  API clients).
+- **Live Devices recording UX** — elapsed `REC` timer, Starting/Stopping states,
+  clearer Record N devices label, success/error banners, Download video /
+  Download videos / Side-by-side actions.
+
 ## 1.8.1
 
 Patch release: two real-device iOS / session-lifecycle fixes found while

@@ -21,6 +21,8 @@ export interface StartResponse {
   groupId: string;
   recordings: StartedRecording[];
   startedAt: string;
+  /** True when the server started a multi-device composite ffmpeg. */
+  compositeEnabled?: boolean;
 }
 
 export interface ConflictBody {
@@ -59,7 +61,16 @@ export function startRecording(
   return postJson(BASE, { udids, ...opts });
 }
 
-export function stopRecording(groupId: string) {
+export function stopRecording(groupId: string): Promise<{
+  groupId: string;
+  recordings: Array<{
+    id: string;
+    udid: string;
+    status: string;
+    durationMs?: number;
+    sizeBytes?: number;
+  }>;
+}> {
   return postJson(`${BASE}/${encodeURIComponent(groupId)}/stop`);
 }
 
@@ -128,6 +139,17 @@ export async function getGroup(
 
 export function bundleZipUrl(groupId: string): string {
   return `${BASE}/${encodeURIComponent(groupId)}/bundle.zip`;
+}
+
+/** Videos-only zip (mp4 files — no manifest / JSON extras). */
+export function videosZipUrl(groupId: string): string {
+  return `${BASE}/${encodeURIComponent(groupId)}/videos.zip`;
+}
+
+/** Single-file mp4 when the group has exactly one playable video. */
+export function videoMp4Url(groupId: string, udid?: string): string {
+  const q = udid ? `?udid=${encodeURIComponent(udid)}` : '';
+  return `${BASE}/${encodeURIComponent(groupId)}/video.mp4${q}`;
 }
 
 export function compositeMp4Url(groupId: string): string {

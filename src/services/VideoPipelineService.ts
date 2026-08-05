@@ -61,9 +61,113 @@ export function buildRecordArgs(opts: {
   }
   // Preserve the (variable) wall-clock timing rather than forcing constant fps.
   args.push('-vsync', 'vfr');
+  // Fragmented mp4 during capture: instant playback + crash resiliency.
+  // stopRecording remuxes to a standard (faststart) mp4 so QuickTime / Finder
+  // Preview can open the file after Stop.
   args.push('-movflags', 'frag_keyframe+empty_moov+default_base_moof');
   args.push(opts.outputPath);
   return args;
+}
+
+/** Graceful ffmpeg stop: SIGINT, then SIGKILL if still alive. */
+const FFMPEG_STOP_TIMEOUT_MS = 15_000;
+
+/**
+ * Remux a fragmented recording into a standard mp4 (`+faststart`) so common
+ * desktop players can open it. No-op if the file is missing/tiny or remux fails
+ * (leaves the original fMP4 in place).
+ */
+export async function remuxToStandardMp4(filePath: string): Promise<void> {
+  if (!filePath || !fs.existsSync(filePath)) return;
+  let size = 0;
+  try {
+    size = fs.statSync(filePath).size;
+  } catch {
+    return;
+  }
+  // Empty / header-only stubs aren't worth remuxing.
+  if (size < 1024) return;
+
+  const tmpPath = `${filePath}.remux.tmp.mp4`;
+  try {
+    if (fs.existsSync(tmpPath)) fs.unlinkSync(tmpPath);
+  } catch {
+    /* ignore */
+  }
+
+  const args = [
+    '-y',
+    '-loglevel',
+    'error',
+    '-i',
+    filePath,
+    '-c',
+    'copy',
+    '-movflags',
+    '+faststart',
+    tmpPath,
+  ];
+
+  await new Promise<void>((resolve, reject) => {
+    let isolation: { command: string; args: string[] };
+    try {
+      const isolationService = Container.get(ResourceIsolationService);
+      isolation = isolationService.wrapSpawn('ffmpeg', args, 'Performance');
+    } catch {
+      isolation = { command: 'ffmpeg', args };
+    }
+    const proc = spawn(isolation.command, isolation.args, {
+      stdio: ['ignore', 'ignore', 'pipe'],
+    });
+    let stderr = '';
+    proc.stderr?.on('data', (d) => {
+      stderr += d.toString();
+    });
+    proc.on('error', reject);
+    proc.on('exit', (code) => {
+      if (code === 0) resolve();
+      else reject(new Error(`remux exited ${code}: ${stderr.trim() || 'no stderr'}`));
+    });
+  });
+
+  try {
+    fs.renameSync(tmpPath, filePath);
+  } catch (err: any) {
+    try {
+      fs.unlinkSync(tmpPath);
+    } catch {
+      /* ignore */
+    }
+    throw err;
+  }
+}
+
+function waitForFfmpegExit(proc: ChildProcess, label: string): Promise<void> {
+  return new Promise((resolve) => {
+    let settled = false;
+    const finish = () => {
+      if (settled) return;
+      settled = true;
+      resolve();
+    };
+    proc.once('exit', finish);
+    try {
+      proc.kill('SIGINT');
+    } catch {
+      finish();
+      return;
+    }
+    setTimeout(() => {
+      if (settled) return;
+      log.warn(`[VideoPipeline] ${label} still running after SIGINT — sending SIGKILL`);
+      try {
+        proc.kill('SIGKILL');
+      } catch {
+        /* ignore */
+      }
+    }, FFMPEG_STOP_TIMEOUT_MS);
+    setTimeout(finish, FFMPEG_STOP_TIMEOUT_MS + 2_000);
+  });
 }
 
 export interface VideoPipelineOptions {
@@ -162,9 +266,15 @@ export class VideoPipelineService {
     // 2. Construct FFMPEG Args (see buildRecordArgs for the timing rationale).
     const args = buildRecordArgs({ mjpegUrl, outputPath, isMac: this.isMac });
 
-    // 3. Wrap with Resource Isolation (Economy)
+    // Do not wrap recording ffmpeg in Economy/taskpolicy on macOS: background
+    // QoS breaks VideoToolbox (no frames written → empty mp4 after Stop).
+    // Recording is an explicit user action; leave it at default priority.
     const isolationService = Container.get(ResourceIsolationService);
-    const { command, args: wrappedArgs } = isolationService.wrapSpawn('ffmpeg', args, 'Economy');
+    const { command, args: wrappedArgs } = isolationService.wrapSpawn(
+      'ffmpeg',
+      args,
+      'Performance',
+    );
 
     const ffmpegProc = spawn(command, wrappedArgs, {
       stdio: ['ignore', 'ignore', 'pipe'], // Only capture stderr for errors
@@ -208,16 +318,21 @@ export class VideoPipelineService {
     }
 
     log.info(`[VideoPipeline] Stopping recording for ${sessionId}`);
+    await waitForFfmpegExit(proc, `recording ${sessionId}`);
+    this.activeRecordings.delete(sessionId);
+    this.recordingPaths.delete(sessionId);
 
-    return new Promise((resolve) => {
-      proc.on('exit', () => {
-        const relativePath = path.relative(config.sessionAssetsPath, recordedPath!);
-        this.activeRecordings.delete(sessionId);
-        this.recordingPaths.delete(sessionId);
-        resolve(relativePath);
-      });
-      proc.kill('SIGINT'); // Graceful termination to ensure header finalization
-    });
+    if (recordedPath) {
+      try {
+        await remuxToStandardMp4(recordedPath);
+      } catch (err: any) {
+        log.warn(
+          `[VideoPipeline] Remux failed for ${sessionId} (leaving fMP4): ${err?.message ?? err}`,
+        );
+      }
+    }
+
+    return recordedPath ? path.relative(config.sessionAssetsPath, recordedPath) : null;
   }
 
   public isRecording(sessionId: string): boolean {
@@ -312,7 +427,7 @@ export class VideoPipelineService {
     const { command, args: wrappedArgs } = isolationService.wrapSpawn(
       'ffmpeg',
       args,
-      'Economy',
+      'Performance',
     );
     const proc = spawn(command, wrappedArgs, {
       stdio: ['ignore', 'ignore', 'pipe'],
@@ -355,14 +470,20 @@ export class VideoPipelineService {
       return outPath;
     }
     log.info(`[VideoPipeline] Stopping composite for ${groupId}`);
-    return new Promise((resolve) => {
-      proc.on('exit', () => {
-        this.activeComposites.delete(groupId);
-        this.compositePaths.delete(groupId);
-        resolve(outPath);
-      });
-      proc.kill('SIGINT');
-    });
+    await waitForFfmpegExit(proc, `composite ${groupId}`);
+    this.activeComposites.delete(groupId);
+    this.compositePaths.delete(groupId);
+
+    if (outPath) {
+      try {
+        await remuxToStandardMp4(outPath);
+      } catch (err: any) {
+        log.warn(
+          `[VideoPipeline] Composite remux failed for ${groupId} (leaving fMP4): ${err?.message ?? err}`,
+        );
+      }
+    }
+    return outPath;
   }
 
   public getCompositePath(groupId: string): string | null {
