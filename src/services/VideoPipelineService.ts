@@ -34,6 +34,17 @@ export function resolveOutputPath(sessionId: string, override?: string): string 
  * frame with its wall-clock arrival time (`-use_wallclock_as_timestamps`) and
  * keeping variable frame timing on output (`-vsync vfr`) makes the mp4
  * duration track real elapsed time regardless of the source frame rate.
+ *
+ * Regression note (D1 follow-up, verified 2026-08-06 live on a real Samsung
+ * Galaxy S9+ `star2ltexx`, source ~15.6 fps, Homebrew ffmpeg 8.0.1): with these
+ * flags the mp4 duration tracks wall-clock — 60.72 s for 60.9 s wall (1.00×),
+ * and 180.68 s for 181.7 s wall (1.01×, no drift at 3-min scale), both through
+ * the full RecordingOrchestrator path. Dropping `-use_wallclock_as_timestamps`
+ * reproduces the bug on the same source: 38.96 s for 60.7 s wall (1.56× fast,
+ * = 25/15.6). The earlier "294.72 s for ~9:25 (1.92×)" report was a pre-flag /
+ * stale-`lib` build, not a live defect in this argv. Guarded by
+ * `test/unit/video-pipeline-args.spec.ts`. Do NOT add a constant
+ * `-r`/`-framerate` here — that forces a fixed fps and reintroduces the 2× bug.
  */
 export function buildRecordArgs(opts: {
   mjpegUrl: string;
@@ -69,6 +80,62 @@ export function buildRecordArgs(opts: {
   // Fragmented mp4 during capture: instant playback + crash resiliency.
   // stopRecording remuxes to a standard (faststart) mp4 so QuickTime / Finder
   // Preview can open the file after Stop.
+  args.push('-movflags', 'frag_keyframe+empty_moov+default_base_moof');
+  args.push(opts.outputPath);
+  return args;
+}
+
+/**
+ * Build the ffmpeg argv for a composite (mosaic) recording that stacks N MJPEG
+ * inputs into a single mp4. Extracted as a pure function (mirroring
+ * buildRecordArgs) so the timing-critical flags on the multi-device mosaic path
+ * are unit-testable without spawning ffmpeg.
+ *
+ * Same wall-clock timing contract as buildRecordArgs: every input is stamped
+ * with `-use_wallclock_as_timestamps 1` (before its own `-i`) and the output
+ * keeps `-vsync vfr`, so the composite duration tracks real elapsed time on
+ * ~13–16 fps Android MJPEG sources instead of the demuxer's 25 fps assumption
+ * (the 1.9×/2× fast-playback bug). See buildRecordArgs for the full rationale
+ * and the live regression numbers. The filtergraph (scale/pad/stack) is built
+ * by the caller and passed through verbatim as `-filter_complex`.
+ */
+export function buildCompositeArgs(opts: {
+  inputs: CompositeInput[];
+  filterGraph: string;
+  outputPath: string;
+  isMac: boolean;
+}): string[] {
+  const args: string[] = ['-y', '-loglevel', 'error'];
+  // Per-input args: mjpeg + reconnect. `-use_wallclock_as_timestamps` stamps
+  // each input's frames with real arrival time so the composite duration tracks
+  // wall-clock (see buildRecordArgs for the full rationale).
+  for (const inp of opts.inputs) {
+    args.push(
+      '-reconnect', '1',
+      '-reconnect_at_eof', '1',
+      '-reconnect_streamed', '1',
+      '-reconnect_delay_max', '5',
+      '-probesize', '32',
+      '-analyzeduration', '0',
+      '-use_wallclock_as_timestamps', '1',
+      '-f', 'mjpeg',
+      '-i', `http://127.0.0.1:${inp.mjpegPort}`,
+    );
+  }
+  args.push(
+    '-filter_complex', opts.filterGraph,
+    '-map', '[v]',
+    '-pix_fmt', 'yuv420p',
+  );
+  if (opts.isMac) {
+    args.push('-c:v', 'h264_videotoolbox', '-realtime', '1', '-q:v', '50');
+  } else {
+    args.push('-c:v', 'libx264', '-preset', 'veryfast', '-crf', '25');
+  }
+  // Preserve wall-clock frame timing rather than forcing constant fps. Keep the
+  // deprecated `-vsync vfr` (NOT `-fps_mode vfr`) for ffmpeg-version compat —
+  // `-fps_mode` is fatal on ffmpeg <5.1 (see buildRecordArgs for the rationale).
+  args.push('-vsync', 'vfr');
   args.push('-movflags', 'frag_keyframe+empty_moov+default_base_moof');
   args.push(opts.outputPath);
   return args;
@@ -413,28 +480,6 @@ export class VideoPipelineService {
     // Settle so all sources have primed at least one frame.
     await new Promise((r) => setTimeout(r, 750));
 
-    const args: string[] = [
-      '-y',
-      '-loglevel',
-      'error',
-    ];
-    // Per-input args: mjpeg + reconnect. `-use_wallclock_as_timestamps` stamps
-    // each input's frames with real arrival time so the composite duration
-    // tracks wall-clock (see buildRecordArgs for the full rationale).
-    for (const inp of inputs) {
-      args.push(
-        '-reconnect', '1',
-        '-reconnect_at_eof', '1',
-        '-reconnect_streamed', '1',
-        '-reconnect_delay_max', '5',
-        '-probesize', '32',
-        '-analyzeduration', '0',
-        '-use_wallclock_as_timestamps', '1',
-        '-f', 'mjpeg',
-        '-i', `http://127.0.0.1:${inp.mjpegPort}`,
-      );
-    }
-
     // Build the filtergraph: scale+pad each input to a uniform cell, then stack.
     const filterParts: string[] = [];
     for (let i = 0; i < inputs.length; i++) {
@@ -446,23 +491,9 @@ export class VideoPipelineService {
     filterParts.push(buildStackFilter(inputs.length, layout, cellW, cellH));
     const filterGraph = filterParts.join(';');
 
-    args.push(
-      '-filter_complex', filterGraph,
-      '-map', '[v]',
-      '-pix_fmt', 'yuv420p',
-    );
-
-    if (this.isMac) {
-      args.push('-c:v', 'h264_videotoolbox', '-realtime', '1', '-q:v', '50');
-    } else {
-      args.push('-c:v', 'libx264', '-preset', 'veryfast', '-crf', '25');
-    }
-    // Preserve wall-clock frame timing rather than forcing constant fps. Keep
-    // the deprecated `-vsync vfr` for ffmpeg-version compat — `-fps_mode` is
-    // fatal on ffmpeg <5.1 (see buildRecordArgs for the rationale).
-    args.push('-vsync', 'vfr');
-    args.push('-movflags', 'frag_keyframe+empty_moov+default_base_moof');
-    args.push(outputPath);
+    // Same wall-clock timing contract as the single-device recorder; see
+    // buildCompositeArgs / buildRecordArgs for the rationale + regression numbers.
+    const args = buildCompositeArgs({ inputs, filterGraph, outputPath, isMac: this.isMac });
 
     log.info(
       `[VideoPipeline] Composite [${groupId}] starting: ${inputs.length} inputs, layout=${layout}, ${cellW}×${cellH}/cell → ${outputPath}`,
