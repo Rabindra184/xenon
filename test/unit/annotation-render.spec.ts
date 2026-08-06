@@ -73,6 +73,19 @@ describe('AnnotationRenderService.buildFilterParts', () => {
     expect(parts).to.deep.equal([]);
   });
 
+  it('disables drawtext expansion so % / %{...} in text render literally', () => {
+    const parts = svc.buildFilterParts([
+      {
+        shape: 'TEXT',
+        geometry: JSON.stringify({ x: 0.1, y: 0.1 }),
+        color: 'white',
+        text: '50% done %{pts}',
+        timecode_ms: 0,
+      },
+    ]);
+    expect(parts[0]).to.include('expansion=none');
+  });
+
   // D2 — clamp late annotation timecodes into the recorded video's span.
   // A mark drawn after the (possibly short) capture ended would otherwise use
   // enable='gte(t,15)' on a 10s video and never render.
@@ -108,6 +121,23 @@ describe('AnnotationRenderService.buildFilterParts', () => {
         10,
       );
       expect(parts[1]).to.include("enable='gte(t\\,3)'");
+    });
+
+    it('does not shift an in-range annotation in the final seconds', () => {
+      // 9.8s on a 10s video is a real, renderable frame — keep its timecode,
+      // do NOT pull it back to duration-margin (that would move a legit mark).
+      const parts = svc.buildFilterParts(
+        [
+          {
+            shape: 'RECT',
+            geometry: JSON.stringify({ x: 0.1, y: 0.2, w: 0.3, h: 0.4 }),
+            color: 'red',
+            timecode_ms: 9800,
+          },
+        ],
+        10,
+      );
+      expect(parts[1]).to.include("enable='gte(t\\,9.8)'");
     });
 
     it('does not clamp when no duration is provided (back-compat)', () => {

@@ -1,5 +1,5 @@
 import { Service, Container } from 'typedi';
-import { spawn } from 'child_process';
+import { spawn, ChildProcess } from 'child_process';
 import * as fs from 'fs';
 import * as path from 'path';
 import { Readable } from 'stream';
@@ -7,6 +7,23 @@ import { RecordingStore } from './recording-store';
 import log from '../../logger';
 
 const renderLog = log.scope('AnnotationRender');
+
+/**
+ * Resolve the bundled ffmpeg binary once (@ffmpeg-installer/ffmpeg, the same
+ * source AndroidStreamService uses). A bare `ffmpeg`/`ffprobe` ENOENTs when the
+ * server is launched from the Mac app (no inherited shell PATH), so never spawn
+ * bare names. ffprobe is not bundled, so duration is derived from ffmpeg itself.
+ */
+let FFMPEG_BIN: string | null = null;
+function ffmpegBin(): string {
+  if (FFMPEG_BIN) return FFMPEG_BIN;
+  try {
+    FFMPEG_BIN = require('@ffmpeg-installer/ffmpeg').path as string;
+  } catch {
+    FFMPEG_BIN = 'ffmpeg';
+  }
+  return FFMPEG_BIN;
+}
 
 /**
  * A late annotation (drawn after the capture ended — e.g. while the ~2×-speed
@@ -196,7 +213,7 @@ export class AnnotationRenderService {
       if (a.shape === 'TEXT' && a.text) {
         const safe = String(a.text).replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/:/g, '\\:');
         parts.push(
-          `drawtext=text='${safe}':x=iw*${this.f(g.x)}:y=ih*${this.f(g.y)}:fontcolor=${color}:fontsize=28:${enable}`,
+          `drawtext=text='${safe}':expansion=none:x=iw*${this.f(g.x)}:y=ih*${this.f(g.y)}:fontcolor=${color}:fontsize=28:${enable}`,
         );
         continue;
       }
@@ -249,7 +266,7 @@ export class AnnotationRenderService {
       outPath,
     ];
     await new Promise<void>((resolve, reject) => {
-      const p = spawn('ffmpeg', args);
+      const p = this.spawnFfmpeg(args, `annotate:${path.basename(outPath)}`);
       let stderr = '';
       p.stderr?.on('data', (d) => (stderr += d.toString()));
       p.on('error', reject);
@@ -264,35 +281,103 @@ export class AnnotationRenderService {
   }
 
   /**
-   * Clamp an annotation start time (seconds) into `[0, duration - margin]` so a
-   * mark whose wall-clock timecode overshoots the recorded video still renders
-   * near the end. With no (or non-positive) duration the raw value is preserved
-   * — the caller couldn't probe it, so don't guess.
+   * Spawn the bundled ffmpeg and register it with ProcessRegistry so a server
+   * shutdown terminates it — burn-in/probe jobs are fired off the recording-stop
+   * path (Fix E prewarm) and would otherwise be orphaned. Auto-untracks on
+   * close/error. The registry is lazily required so unit tests that never spawn
+   * don't pull the DI graph.
    */
-  private clampTimecodeSec(rawSec: number, durationSec?: number): number {
-    if (!Number.isFinite(durationSec as number) || (durationSec as number) <= 0) {
-      return Math.max(0, rawSec);
+  private spawnFfmpeg(args: string[], label: string): ChildProcess {
+    const proc = spawn(ffmpegBin(), args);
+    let registry: any;
+    let trackId: string | undefined;
+    try {
+      registry = Container.get(require('../ProcessRegistry').ProcessRegistry);
+      trackId = registry.track({ kind: 'ffmpeg', sessionId: label, process: proc });
+    } catch {
+      /* registry not wired — best-effort tracking only */
     }
-    const ceil = Math.max(0, (durationSec as number) - LATE_ANNOTATION_MARGIN_SEC);
-    return Math.min(Math.max(0, rawSec), ceil);
+    const untrack = () => {
+      if (!trackId || !registry) return;
+      try {
+        registry.untrack(trackId);
+      } catch {
+        /* ignore */
+      }
+      trackId = undefined;
+    };
+    proc.once('close', untrack);
+    proc.once('error', untrack);
+    return proc;
   }
 
-  /** Probe a video's duration (seconds) via ffprobe. Undefined on any failure. */
-  private probeDurationSec(filePath: string): Promise<number | undefined> {
+  /**
+   * Clamp an annotation start time (seconds). In-range marks (including the
+   * final seconds) pass through unchanged; only a mark whose timecode overshoots
+   * the recorded video — a wall-clock timecode past a short capture's EOF — is
+   * pinned to `duration - margin` so it still renders near the end instead of
+   * never. With no (or non-positive) duration the raw value is preserved: the
+   * caller couldn't probe it, so don't guess.
+   */
+  private clampTimecodeSec(rawSec: number, durationSec?: number): number {
+    const t = Math.max(0, rawSec);
+    if (!Number.isFinite(durationSec as number) || (durationSec as number) <= 0) {
+      return t;
+    }
+    if (t <= (durationSec as number)) return t;
+    return Math.max(0, (durationSec as number) - LATE_ANNOTATION_MARGIN_SEC);
+  }
+
+  /**
+   * Probe a video's duration (seconds) using the bundled ffmpeg (no ffprobe
+   * dependency): read the container header first, then fall back to a decode
+   * pass for fragmented mp4s (e.g. a failed remux) whose header carries no
+   * duration. Undefined on any failure — the clamp then degrades to unclamped.
+   */
+  private async probeDurationSec(filePath: string): Promise<number | undefined> {
+    const fromHeader = await this.ffmpegHeaderDurationSec(filePath);
+    if (fromHeader !== undefined) return fromHeader;
+    return this.ffmpegDecodeDurationSec(filePath);
+  }
+
+  /** Duration from ffmpeg's "Duration: HH:MM:SS.ss" header line (fast path). */
+  private ffmpegHeaderDurationSec(filePath: string): Promise<number | undefined> {
     return new Promise((resolve) => {
       try {
-        const p = spawn('ffprobe', [
-          '-v', 'error',
-          '-show_entries', 'format=duration',
-          '-of', 'default=nokey=1:noprint_wrappers=1',
-          filePath,
-        ]);
+        // `ffmpeg -i <file>` with no output prints stream info then exits
+        // non-zero; we only want the Duration line on stderr.
+        const p = this.spawnFfmpeg(['-hide_banner', '-i', filePath], `probe:${path.basename(filePath)}`);
+        let stderr = '';
+        p.stderr?.on('data', (d) => (stderr += d.toString()));
+        p.on('error', () => resolve(undefined));
+        p.on('close', () => {
+          const m = stderr.match(/Duration:\s*(\d+):(\d+):(\d+(?:\.\d+)?)/);
+          if (!m) return resolve(undefined);
+          const sec = Number(m[1]) * 3600 + Number(m[2]) * 60 + parseFloat(m[3]);
+          resolve(Number.isFinite(sec) && sec > 0 ? sec : undefined);
+        });
+      } catch {
+        resolve(undefined);
+      }
+    });
+  }
+
+  /** Duration by decoding to null — reliable for fragmented mp4 with no header. */
+  private ffmpegDecodeDurationSec(filePath: string): Promise<number | undefined> {
+    return new Promise((resolve) => {
+      try {
+        const p = this.spawnFfmpeg(
+          ['-hide_banner', '-nostats', '-i', filePath, '-f', 'null', '-progress', 'pipe:1', '-'],
+          `probe-decode:${path.basename(filePath)}`,
+        );
         let out = '';
         p.stdout?.on('data', (d) => (out += d.toString()));
         p.on('error', () => resolve(undefined));
         p.on('close', () => {
-          const n = parseFloat(out.trim());
-          resolve(Number.isFinite(n) && n > 0 ? n : undefined);
+          const matches = [...out.matchAll(/out_time_us=(\d+)/g)];
+          if (!matches.length) return resolve(undefined);
+          const sec = Number(matches[matches.length - 1][1]) / 1e6;
+          resolve(Number.isFinite(sec) && sec > 0 ? sec : undefined);
         });
       } catch {
         resolve(undefined);
