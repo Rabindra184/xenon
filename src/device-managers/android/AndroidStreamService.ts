@@ -8,20 +8,11 @@ import { deviceLock } from './DeviceLockManager';
 import { Service, Container } from 'typedi';
 import { ResourceIsolationService } from '../../services/ResourceIsolationService';
 import { PortAllocator } from '../../services/PortAllocator';
+import { resolveFfmpegPath } from '../../helpers/ffmpegPath';
 
 // JPEG quality for the in-process sharp encoder (0-100). ~78 approximates the
 // old ffmpeg `-q:v 8` (mjpeg quantizer scale) — the low-lag/quality knob.
 const JPEG_QUALITY = 78;
-
-// FFmpeg is optional - only used for the rgb565 fallback raw-to-JPEG conversion
-let FFMPEG_PATH: string | null = null;
-try {
-  // Dynamic require for optional dependency
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
-  FFMPEG_PATH = require('@ffmpeg-installer/ffmpeg').path;
-} catch {
-  // ffmpeg not installed - streaming will be unavailable
-}
 
 interface AndroidStreamSession {
   udid: string;
@@ -510,10 +501,9 @@ class AndroidStreamService {
     pixFmt: string,
   ): Promise<Buffer> {
     return new Promise((resolve, reject) => {
-      if (!FFMPEG_PATH) return reject(new Error('No FFmpeg on path'));
       const isolationService = Container.get(ResourceIsolationService);
       const { command, args } = isolationService.wrapSpawn(
-        FFMPEG_PATH,
+        resolveFfmpegPath(),
         [
           '-f',
           'rawvideo',
