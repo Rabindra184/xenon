@@ -25,6 +25,12 @@ import {
   isOwnStreamProcess,
   missingWdaMessage,
 } from './iosStreamDiagnostics';
+import {
+  killProcessGroup,
+  reapAllOrphanTunnels,
+  reapTunnelsForUdid,
+  tunnelSpawnOptions,
+} from './tunnelProcess';
 
 import { unblockDevice } from '../../data-service/device-service';
 
@@ -225,10 +231,14 @@ class IOSStreamService {
           'Performance', // Performance mode for critical tunnel stability
         );
 
-        const tunnelProcess = spawn(command, args, {
-          stdio: ['pipe', 'pipe', 'pipe'],
-          env: { ...process.env, ENABLE_GO_IOS_AGENT: 'yes' },
-        });
+        // detached: the go-ios tunnel leads its own process group so its
+        // self-forking agent children are reaped as a group on cleanup instead
+        // of orphaning into a runaway respawn storm. See ./tunnelProcess.
+        const tunnelProcess = spawn(
+          command,
+          args,
+          tunnelSpawnOptions({ ...process.env, ENABLE_GO_IOS_AGENT: 'yes' }),
+        );
         Container.get(ProcessRegistry).track({ kind: 'other', udid, process: tunnelProcess });
 
         tunnelProcess.stdout?.on('data', (data) => log.debug(`Tunnel [${udid}]: ${data}`));
@@ -291,19 +301,11 @@ class IOSStreamService {
   private async cleanupOrphanTunnels(udid: string): Promise<void> {
     log.debug(`Cleaning up orphan tunnels for ${udid}...`);
 
-    const pkillCmds = [
-      // Kill any existing tunnel for this specific device
-      `pkill -9 -f "ios tunnel.*${udid}"`,
-      `pkill -9 -f "go-ios.*tunnel.*${udid}"`,
-    ];
-
-    for (const cmd of pkillCmds) {
-      try {
-        await execPromise(cmd);
-      } catch (err) {
-        /* ignore - process might not exist */
-      }
-    }
+    // Reap the tunnel process *group* for this udid so the self-forking go-ios
+    // agent children (whose argv carries no udid, so a udid-scoped pkill can't
+    // see them) die with their parent instead of orphaning. Group-scoped, so a
+    // second device's tunnel is left untouched. See ./tunnelProcess.
+    await reapTunnelsForUdid(udid, execPromise);
 
     // Check common go-ios agent ports (60105, 60106) and kill if bound
     const agentPorts = [60105, 60106];
@@ -985,13 +987,10 @@ class IOSStreamService {
     const session = this.sessions.get(udid);
     if (!session) return;
 
-    // Kill all processes including tunnel (CRITICAL: tunnel was missing from cleanup!)
-    [
-      session.wdaProcess,
-      session.forwardWDAProcess,
-      session.forwardMJPEGProcess,
-      session.tunnelProcess,
-    ].forEach((p) => {
+    // Kill sidecar processes. The go-ios tunnel is detached (its own process
+    // group), so reap the whole group — a plain p.kill() would leave the
+    // self-forking agent children behind to respawn. See ./tunnelProcess.
+    [session.wdaProcess, session.forwardWDAProcess, session.forwardMJPEGProcess].forEach((p) => {
       if (p)
         try {
           p.kill('SIGKILL');
@@ -999,6 +998,7 @@ class IOSStreamService {
           // ignore
         }
     });
+    killProcessGroup(session.tunnelProcess?.pid);
 
     // Principal Fix: Only release the device lock if THIS STREAM SERVICE owns it.
     // The lock could belong to an Appium automation session (session_id is a real UUID).
@@ -1122,6 +1122,27 @@ class IOSStreamService {
 
   public async cleanup(): Promise<void> {
     for (const udid of this.sessions.keys()) await this.stopStream(udid);
+    // Full shutdown: sweep any go-ios tunnels/agents that escaped per-session
+    // teardown (e.g. a detached agent child that setsid'd into a new group).
+    await this.reapOrphanTunnels();
+  }
+
+  /**
+   * Reap every process running the vendored go-ios binary. Safe only when the
+   * server owns no legitimate tunnel — i.e. on fresh boot (orphans from a
+   * previous run, or a hard-killed / crashed process whose graceful cleanup
+   * never ran) or during full shutdown. This is the catch-all that stops the
+   * self-forking go-ios agent storm from surviving across restarts.
+   */
+  public async reapOrphanTunnels(): Promise<void> {
+    try {
+      const reaped = await reapAllOrphanTunnels(this.goIOSPath, execPromise);
+      if (reaped > 0) {
+        log.info(`[IOSStreamService] Reaped ${reaped} orphan go-ios tunnel process(es)`);
+      }
+    } catch (err: any) {
+      log.warn(`[IOSStreamService] Orphan tunnel reap failed: ${err?.message ?? err}`);
+    }
   }
 
   /**
