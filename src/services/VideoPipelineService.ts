@@ -8,6 +8,7 @@ import * as fs from 'fs';
 import { config } from '../config';
 import { DeviceStoreFactory } from '../data-service/device-store';
 import { ResourceIsolationService } from './ResourceIsolationService';
+import { resolveFfmpegPath } from '../helpers/ffmpegPath';
 
 /**
  * Resolve the on-disk path the recorder will write to.
@@ -31,8 +32,8 @@ export function resolveOutputPath(sessionId: string, override?: string): string 
  * time whenever the source's actual rate differs from 25 fps — a ~12.5 fps
  * stream records at 2× speed, a >25 fps stream at slow motion. Stamping each
  * frame with its wall-clock arrival time (`-use_wallclock_as_timestamps`) and
- * keeping variable frame timing on output (`-vsync vfr`) makes the mp4 duration
- * track real elapsed time regardless of the source frame rate.
+ * keeping variable frame timing on output (`-vsync vfr`) makes the mp4
+ * duration track real elapsed time regardless of the source frame rate.
  */
 export function buildRecordArgs(opts: {
   mjpegUrl: string;
@@ -60,6 +61,10 @@ export function buildRecordArgs(opts: {
     args.push('-c:v', 'libx264', '-preset', 'veryfast', '-crf', '25');
   }
   // Preserve the (variable) wall-clock timing rather than forcing constant fps.
+  // Keep the deprecated `-vsync vfr` (NOT `-fps_mode vfr`): `-vsync` is accepted
+  // by all ffmpeg 4–8 builds, whereas `-fps_mode` is fatal ("Unrecognized
+  // option") on ffmpeg <5.1 — still shipped by some Linux nodes. The deprecation
+  // warning is suppressed by the `-loglevel error` above.
   args.push('-vsync', 'vfr');
   // Fragmented mp4 during capture: instant playback + crash resiliency.
   // stopRecording remuxes to a standard (faststart) mp4 so QuickTime / Finder
@@ -69,8 +74,10 @@ export function buildRecordArgs(opts: {
   return args;
 }
 
-/** Graceful ffmpeg stop: SIGINT, then SIGKILL if still alive. */
+/** Graceful ffmpeg stop: write `q` to stdin, then SIGINT, then SIGKILL. */
 const FFMPEG_STOP_TIMEOUT_MS = 15_000;
+/** Grace after `q` (or the initial SIGINT) before escalating to the next signal. */
+const FFMPEG_QUIT_GRACE_MS = 2_000;
 
 /**
  * Remux a fragmented recording into a standard mp4 (`+faststart`) so common
@@ -112,9 +119,9 @@ export async function remuxToStandardMp4(filePath: string): Promise<void> {
     let isolation: { command: string; args: string[] };
     try {
       const isolationService = Container.get(ResourceIsolationService);
-      isolation = isolationService.wrapSpawn('ffmpeg', args, 'Performance');
+      isolation = isolationService.wrapSpawn(resolveFfmpegPath(), args, 'Performance');
     } catch {
-      isolation = { command: 'ffmpeg', args };
+      isolation = { command: resolveFfmpegPath(), args };
     }
     const proc = spawn(isolation.command, isolation.args, {
       stdio: ['ignore', 'ignore', 'pipe'],
@@ -145,28 +152,63 @@ export async function remuxToStandardMp4(filePath: string): Promise<void> {
 function waitForFfmpegExit(proc: ChildProcess, label: string): Promise<void> {
   return new Promise((resolve) => {
     let settled = false;
+    const timers: NodeJS.Timeout[] = [];
     const finish = () => {
       if (settled) return;
       settled = true;
+      for (const t of timers) clearTimeout(t);
       resolve();
     };
     proc.once('exit', finish);
+
+    // Primary: ask ffmpeg to finalize gracefully. Writing `q` to its stdin makes
+    // ffmpeg stop reading input and flush the mp4 trailer right away, instead of
+    // sitting in the `-reconnect_at_eof` retry loop until the SIGKILL timeout
+    // (the ~16s stop hang). Needs the process spawned with a writable stdin pipe.
+    let sentQuit = false;
     try {
-      proc.kill('SIGINT');
-    } catch {
-      finish();
-      return;
-    }
-    setTimeout(() => {
-      if (settled) return;
-      log.warn(`[VideoPipeline] ${label} still running after SIGINT — sending SIGKILL`);
-      try {
-        proc.kill('SIGKILL');
-      } catch {
-        /* ignore */
+      const stdin = proc.stdin;
+      if (stdin && !stdin.destroyed && stdin.writable) {
+        // ffmpeg may exit (closing the read end) as we write — swallow EPIPE.
+        stdin.on('error', () => {});
+        stdin.write('q');
+        sentQuit = true;
       }
-    }, FFMPEG_STOP_TIMEOUT_MS);
-    setTimeout(finish, FFMPEG_STOP_TIMEOUT_MS + 2_000);
+    } catch {
+      /* fall through to signals */
+    }
+
+    // Escalation 1: SIGINT. Immediately if `q` couldn't be sent, otherwise after
+    // a short grace so a responsive ffmpeg exits on `q` alone (no signal needed).
+    timers.push(
+      setTimeout(
+        () => {
+          if (settled) return;
+          try {
+            proc.kill('SIGINT');
+          } catch {
+            finish();
+          }
+        },
+        sentQuit ? FFMPEG_QUIT_GRACE_MS : 0,
+      ),
+    );
+
+    // Escalation 2: SIGKILL if still alive at the hard timeout.
+    timers.push(
+      setTimeout(() => {
+        if (settled) return;
+        log.warn(`[VideoPipeline] ${label} still running after graceful stop — sending SIGKILL`);
+        try {
+          proc.kill('SIGKILL');
+        } catch {
+          /* ignore */
+        }
+      }, FFMPEG_STOP_TIMEOUT_MS),
+    );
+
+    // Absolute backstop so the promise always resolves.
+    timers.push(setTimeout(finish, FFMPEG_STOP_TIMEOUT_MS + 2_000));
   });
 }
 
@@ -271,13 +313,14 @@ export class VideoPipelineService {
     // Recording is an explicit user action; leave it at default priority.
     const isolationService = Container.get(ResourceIsolationService);
     const { command, args: wrappedArgs } = isolationService.wrapSpawn(
-      'ffmpeg',
+      resolveFfmpegPath(),
       args,
       'Performance',
     );
 
     const ffmpegProc = spawn(command, wrappedArgs, {
-      stdio: ['ignore', 'ignore', 'pipe'], // Only capture stderr for errors
+      // stdin pipe so stop can send `q` for a graceful finalize; stderr for errors.
+      stdio: ['pipe', 'ignore', 'pipe'],
     });
     Container.get(ProcessRegistry).track({ kind: 'ffmpeg', sessionId, udid, process: ffmpegProc });
 
@@ -414,7 +457,9 @@ export class VideoPipelineService {
     } else {
       args.push('-c:v', 'libx264', '-preset', 'veryfast', '-crf', '25');
     }
-    // Preserve wall-clock frame timing rather than forcing constant fps.
+    // Preserve wall-clock frame timing rather than forcing constant fps. Keep
+    // the deprecated `-vsync vfr` for ffmpeg-version compat — `-fps_mode` is
+    // fatal on ffmpeg <5.1 (see buildRecordArgs for the rationale).
     args.push('-vsync', 'vfr');
     args.push('-movflags', 'frag_keyframe+empty_moov+default_base_moof');
     args.push(outputPath);
@@ -425,12 +470,13 @@ export class VideoPipelineService {
 
     const isolationService = Container.get(ResourceIsolationService);
     const { command, args: wrappedArgs } = isolationService.wrapSpawn(
-      'ffmpeg',
+      resolveFfmpegPath(),
       args,
       'Performance',
     );
     const proc = spawn(command, wrappedArgs, {
-      stdio: ['ignore', 'ignore', 'pipe'],
+      // stdin pipe so stopComposite can send `q` for a graceful finalize.
+      stdio: ['pipe', 'ignore', 'pipe'],
     });
     Container.get(ProcessRegistry).track({
       kind: 'ffmpeg',

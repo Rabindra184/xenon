@@ -22,9 +22,22 @@ import { resolveAndroidH264 } from './androidH264Config';
 import { RecordingStore } from '../../services/recording/recording-store';
 import { mutationScopeGuard } from '../../middleware/scopeGuard';
 import { roleGuard } from '../../middleware/roleGuard';
-import { formatManualLock, inspectManualLock } from '../../services/recording/manualLock';
+import {
+  formatManualLock,
+  inspectManualLock,
+  isManualLock,
+} from '../../services/recording/manualLock';
 
 const router = Router();
+
+/** True when an in-memory iOS/Android (MJPEG or H.264) stream session exists. */
+function hasActiveManualStream(udid: string): boolean {
+  const ios = Container.get(IOSStreamService).getStreamStatus(udid);
+  if (ios) return true;
+  const android = Container.get(AndroidStreamService).getStreamStatus(udid);
+  if (android) return true;
+  return Container.get(AndroidH264StreamService).getMultiplexer(udid) !== undefined;
+}
 
 // MEMBER-tier baseline: per-device interaction (tap, swipe, install, etc.) is a Member action
 router.use(roleGuard('MEMBER'));
@@ -507,18 +520,29 @@ router.post('/:udid/stream/start', async (req: Request, res: Response) => {
   // Principal Insight: Automation Protection
   // If the device is already busy (e.g., Appium session or another Control session)
   // we must block new manual control requests.
-  const isCurrentlyControlledManually =
-    device.platform === 'ios' || device.platform === 'tvos'
-      ? Container.get(IOSStreamService).getStreamStatus(udid) !== undefined
-      : Container.get(AndroidStreamService).getStreamStatus(udid) !== undefined ||
-        Container.get(AndroidH264StreamService).getMultiplexer(udid) !== undefined;
+  //
+  // Exception: a `manual_*` lock with no live stream is an orphan (server
+  // restart, crashed stop, H.264 stop that skipped unlock). Reclaim it so the
+  // mosaic is not stuck on "Starting Stream…" forever.
+  const isCurrentlyControlledManually = hasActiveManualStream(udid);
 
   if (device.busy && !isCurrentlyControlledManually) {
-    log.warn(`Manual Control refused for ${udid}: Device is already busy.`);
-    return res.status(409).send({
-      success: false,
-      error: 'Device is currently busy with another session.',
-    });
+    if (isManualLock(device.session_id)) {
+      log.warn(
+        `Reclaiming orphaned manual lock on ${udid} (${device.session_id}) — no live stream.`,
+      );
+      try {
+        await unblockDevice(udid, device.host);
+      } catch (e: any) {
+        log.warn(`Failed to clear orphaned lock on ${udid}: ${e?.message ?? e}`);
+      }
+    } else {
+      log.warn(`Manual Control refused for ${udid}: Device is already busy.`);
+      return res.status(409).send({
+        success: false,
+        error: 'Device is currently busy with another session.',
+      });
+    }
   }
 
   try {
@@ -564,7 +588,8 @@ router.post('/:udid/stream/start', async (req: Request, res: Response) => {
     // Mark device as "Busy" so automation sessions don't pick it up. The
     // block-id encodes the calling user's API-key id so other users can
     // distinguish their own manual sessions from this one.
-    const actorId = req.apiKey?.id;
+    const actorId =
+      req.apiKey?.id ?? (req as Request & { auth?: { userId?: string } }).auth?.userId;
     if (!actorId) {
       return res.status(401).json({ success: false, error: 'unauthenticated' });
     }
@@ -582,6 +607,12 @@ router.post('/:udid/stream/start', async (req: Request, res: Response) => {
     }
 
     log.info(`Stream started for ${udid} - Port: ${mjpegPort}`);
+    // NOTE: do NOT stop/replace the cached MJPEG proxy here. The GET /stream
+    // handler already rebinds it only when the upstream port actually changed
+    // (`existingProxy.url !== videoUrl`) — the "Android briefly aliased to iOS's
+    // 9100" case. Stopping it on every start tore down the live preview mid-
+    // recording (the warm-fetch stream/start ran right after the browser
+    // connected), flapping the tile back to "Starting Stream…".
     return res.status(200).send({
       success: true,
       type: 'mjpeg',
@@ -619,10 +650,11 @@ router.post('/:udid/stream/stop', async (req: Request, res: Response) => {
 
   // Multi-user safety: refuse to release a manual lock owned by another user.
   // Admin scope bypasses this so support can clear stuck sessions.
-  const actorId = req.apiKey?.id;
+  const actorId = req.apiKey?.id ?? (req as Request & { auth?: { userId?: string } }).auth?.userId;
   const lockInfo = inspectManualLock(device.session_id, actorId, udid);
   const isAdmin =
-    req.apiKey && (req.apiKey.scopes === 'admin' || req.apiKey.scopes?.includes('admin'));
+    (req.apiKey && (req.apiKey.scopes === 'admin' || req.apiKey.scopes?.includes('admin'))) ||
+    (req as Request & { auth?: { role?: string } }).auth?.role === 'SUPER_ADMIN';
   if (lockInfo && !lockInfo.legacy && !lockInfo.self && !isAdmin) {
     return res.status(403).json({
       success: false,
@@ -637,17 +669,7 @@ router.post('/:udid/stream/stop', async (req: Request, res: Response) => {
       await Container.get(IOSStreamService).stopStream(udid);
     } else {
       await Container.get(AndroidStreamService).stopStream(udid);
-      // The H.264 path has no MJPEG session, so AndroidStreamService.stopStream
-      // won't release the manual lock — release it here for an H.264 device.
-      const hadH264 = Container.get(AndroidH264StreamService).getMultiplexer(udid) !== undefined;
       await Container.get(AndroidH264StreamService).stop(udid);
-      if (hadH264 && (lockInfo?.self || lockInfo?.legacy)) {
-        try {
-          await unblockDevice(udid, device.host);
-        } catch {
-          /* best-effort lock release */
-        }
-      }
     }
 
     // Clear and stop MJPEG proxy
@@ -655,6 +677,19 @@ router.post('/:udid/stream/stop', async (req: Request, res: Response) => {
     if (existingProxy) {
       existingProxy.stop();
       MJPEG_PROXY_CACHE.delete(udid);
+    }
+
+    // Always release an owned/legacy/admin manual lock after stop — even when
+    // no in-memory session survived a process restart (orphaned busy flag).
+    if (
+      isManualLock(device.session_id) &&
+      (lockInfo?.self || lockInfo?.legacy || isAdmin)
+    ) {
+      try {
+        await unblockDevice(udid, device.host);
+      } catch {
+        /* best-effort lock release */
+      }
     }
 
     log.info(`Stream stopped for ${udid}`);
@@ -708,6 +743,17 @@ router.get('/:udid/stream/status', async (req: Request, res: Response) => {
         type,
         h264Path,
         mjpegPort: session.mjpegPort,
+      });
+    }
+    // H.264 preview has no MJPEG session — still advertise running so the
+    // dashboard doesn't treat a live WebCodecs stream as stopped.
+    if (Container.get(AndroidH264StreamService).getMultiplexer(udid)) {
+      return res.status(200).send({
+        udid,
+        status: 'running',
+        type,
+        h264Path,
+        mjpegPort: device.mjpegServerPort,
       });
     }
   }

@@ -30,6 +30,7 @@ describe('mosaicReducer — recording lifecycle', () => {
     expect(s.recording).to.equal(true);
     expect(s.groupId).to.equal('g1');
     expect(s.compositeEnabled).to.equal(true);
+    expect(s.annotateMode).to.equal(true);
     expect(s.tiles.map((t) => t.recordingId)).to.deep.equal(['rec-1', 'rec-2']);
   });
 
@@ -63,6 +64,52 @@ describe('mosaicReducer — recording lifecycle', () => {
   it('a fresh mosaic has no recording state to leak', () => {
     expect(initialMosaicState.recording).to.equal(false);
     expect(initialMosaicState.tiles).to.deep.equal([]);
+  });
+});
+
+describe('mosaicReducer — PATCH_TILE_DIMS', () => {
+  const withTile = mosaicReducer(initialMosaicState, {
+    type: 'ADD_TILE',
+    tile: { udid: 'u1', mjpegPort: 0 },
+  });
+
+  it('fills in screen dimensions that were unknown at tile creation', () => {
+    const next = mosaicReducer(withTile, {
+      type: 'PATCH_TILE_DIMS',
+      udid: 'u1',
+      screenWidth: 1080,
+      screenHeight: 2220,
+    });
+    const t = next.tiles.find((x) => x.udid === 'u1');
+    expect(t?.screenWidth).to.equal(1080);
+    expect(t?.screenHeight).to.equal(2220);
+  });
+
+  it('does NOT overwrite dimensions that are already known', () => {
+    const seeded = mosaicReducer(initialMosaicState, {
+      type: 'ADD_TILE',
+      tile: { udid: 'u1', mjpegPort: 0, screenWidth: 100, screenHeight: 200 },
+    });
+    const next = mosaicReducer(seeded, {
+      type: 'PATCH_TILE_DIMS',
+      udid: 'u1',
+      screenWidth: 1080,
+      screenHeight: 2220,
+    });
+    const t = next.tiles.find((x) => x.udid === 'u1');
+    expect(t?.screenWidth).to.equal(100);
+    expect(t?.screenHeight).to.equal(200);
+  });
+
+  it('returns the SAME state reference when nothing changes (avoids re-render)', () => {
+    // No matching tile, and a tile that already has dims → identity return.
+    const noMatch = mosaicReducer(withTile, {
+      type: 'PATCH_TILE_DIMS',
+      udid: 'nope',
+      screenWidth: 1,
+      screenHeight: 2,
+    });
+    expect(noMatch).to.equal(withTile);
   });
 });
 

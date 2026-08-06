@@ -28,6 +28,9 @@ interface Props {
   // Drives the platform-aware action strip (Back on Android, etc.).
   platform?: string;
   onAnnotation: (recordingId: string, ann: NormalizedAnnotation) => void;
+  /** Persistent strokes for this tile's recording (from mosaic store). */
+  overlayAnnotations?: NormalizedAnnotation[];
+  onOverlayAnnotationsChange?: (next: NormalizedAnnotation[]) => void;
   onRemove?: (udid: string) => void;
 }
 
@@ -58,6 +61,8 @@ export function DeviceTile({
   screenHeight,
   platform,
   onAnnotation,
+  overlayAnnotations,
+  onOverlayAnnotationsChange,
   onRemove,
 }: Props) {
   const [streamState, setStreamState] = React.useState<StreamState>('connecting');
@@ -93,8 +98,25 @@ export function DeviceTile({
   // /stream/status (flag-gated, Android-only); if H.264 and the browser has
   // WebCodecs, mint a stream ticket and switch to the WebCodecs player. Any
   // failure silently leaves the MJPEG <img> in place.
+  //
+  // While this tile is being recorded, always use MJPEG: the recording
+  // pipeline stops H.264 and feeds ffmpeg from the MJPEG server. Staying on
+  // a dead WebSocket freezes the live preview and blocks tap/swipe (gated on
+  // streamState === 'live').
   React.useEffect(() => {
     let cancelled = false;
+    if (recordingId) {
+      setH264WsUrl(null);
+      setStreamState('connecting');
+      setRetryKey(Date.now());
+      // Warm / confirm MJPEG so the <img> gets frames quickly after the switch.
+      fetch(`/xenon/api/control/${encodeURIComponent(udid)}/stream/start`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: '{}',
+      }).catch(() => undefined);
+      return;
+    }
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const hasWebCodecs = typeof (window as any).VideoDecoder !== 'undefined';
     (async () => {
@@ -122,11 +144,13 @@ export function DeviceTile({
     return () => {
       cancelled = true;
     };
-  }, [udid, platform]);
+  }, [udid, platform, recordingId]);
 
   // Tap/swipe interaction. Disabled in annotate mode (overlay handles that)
   // and when device dimensions are unknown (we can't translate pointer →
   // device coords reliably without screenWidth/screenHeight).
+  // Keep interaction available during recording so browser taps are captured
+  // on the device and appear in both the live preview and the mp4.
   const interactive = !annotateMode && !!screenWidth && !!screenHeight;
 
   const toDeviceCoords = (clientX: number, clientY: number, rect: DOMRect) => {
@@ -148,7 +172,7 @@ export function DeviceTile({
   };
 
   const onPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
-    if (!interactive || streamState !== 'live') return;
+    if (!interactive || streamState === 'unavailable') return;
     if (e.button !== 0) return; // only left/primary
     const target = e.currentTarget;
     target.setPointerCapture(e.pointerId);
@@ -202,7 +226,7 @@ export function DeviceTile({
   // buttons, so most editing keys go through the text endpoint with
   // their string representation (e.g., '\b', '\n').
   const onKeyDown = async (e: React.KeyboardEvent<HTMLDivElement>) => {
-    if (!interactive || streamState !== 'live') return;
+    if (!interactive || streamState === 'unavailable') return;
     // Allow native browser shortcuts to pass through.
     if (e.metaKey || e.ctrlKey || e.altKey) return;
     const k = e.key;
@@ -361,7 +385,7 @@ export function DeviceTile({
       >
         {/* Connecting state Overlay */}
         {streamState === 'connecting' && (
-          <div className="flex flex-col items-center justify-center bg-neutral-900 text-neutral-400 absolute inset-0 z-20">
+          <div className="flex flex-col items-center justify-center bg-neutral-900/80 text-neutral-400 absolute inset-0 z-20 pointer-events-none">
             <div className="relative flex items-center justify-center">
               <div className="w-12 h-12 border-4 border-neutral-800 border-t-neutral-400 rounded-full animate-spin" />
             </div>
@@ -435,15 +459,13 @@ export function DeviceTile({
           />
         )}
 
-        {/* Interaction surface: layered above the image, below HUD overlays.
-          Captures pointer events for tap/swipe and keyboard events for text
-          input. Disabled while annotating so the AnnotationOverlay can grab
-          events instead. Default cursor — matches the single-device control
-          page (no crosshair). */}
-        {interactive && streamState === 'live' && (
+        {/* Interaction surface: above the inert annotation canvas (z-25) so
+          tap/swipe resume immediately after Annotate is toggled off. While
+          annotateMode is on this layer unmounts and the overlay (z-40) draws. */}
+        {interactive && streamState !== 'unavailable' && (
           <div
             ref={interactionRef}
-            className={`absolute inset-0 z-10 touch-none outline-none ${
+            className={`absolute inset-0 z-[35] touch-none outline-none ${
               keyboardActive ? 'ring-2 ring-emerald-400/60 ring-inset rounded-lg' : ''
             }`}
             tabIndex={0}
@@ -468,13 +490,26 @@ export function DeviceTile({
           ))}
         </div>
 
-        {recording && annotateMode && (
+        {/* Keep the overlay mounted for the whole recording so strokes survive
+          annotate toggle / stream reconnect remounts of sibling UI. */}
+        {recording && (
           <AnnotationOverlay
-            enabled
+            enabled={annotateMode}
             shape={shape}
             color={color}
+            committed={overlayAnnotations}
+            onCommittedChange={onOverlayAnnotationsChange}
             onCommit={(a) => onAnnotation(recordingId!, a)}
           />
+        )}
+
+        {recording && annotateMode && streamState === 'live' && (
+          <div className="absolute bottom-3 left-3 right-3 z-30 pointer-events-none">
+            <div className="px-2 py-1 rounded bg-black/70 text-[10px] text-amber-100 border border-amber-500/40 text-center">
+              Annotate on — drag on the preview. Shapes stay on screen and appear in
+              Download video from that moment. Toggle Annotate off to tap the device.
+            </div>
+          </div>
         )}
 
         {/* REC badge — always visible while recording so the user can see at
@@ -492,7 +527,7 @@ export function DeviceTile({
           moves over the tile, so the device screen is unobstructed during
           normal interaction. */}
         <div className="absolute top-3 left-3 z-30 flex flex-col gap-1.5 pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity duration-150">
-          {streamState === 'live' && !recording && (
+          {streamState === 'live' && (
             <span className="px-2 py-0.5 rounded-sm bg-emerald-500 text-black text-[9px] font-black shadow-lg w-fit">
               LIVE
             </span>

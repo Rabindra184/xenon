@@ -233,8 +233,18 @@ export async function blockDevice(udid: string, host: string, sessionId?: string
   });
 }
 
-export async function unblockDevice(udid: string, host: string) {
-  await unblockDeviceMatchingFilter({ udid, host });
+export async function unblockDevice(udid: string, host?: string) {
+  // Prefer udid-only: device.host can be `http://IP:port` while callers pass
+  // `127.0.0.1` / bindHostOrIp, and a host mismatch silently no-ops (0 rows).
+  // UDID uniquely identifies a device in this store.
+  const byUdid = await store.getDevices({ udid } as IDeviceFilterOptions);
+  if (byUdid.length > 0) {
+    await unblockDeviceMatchingFilter({ udid });
+    return;
+  }
+  if (host) {
+    await unblockDeviceMatchingFilter({ udid, host });
+  }
 }
 
 export async function unblockDeviceMatchingFilter(filter: object) {

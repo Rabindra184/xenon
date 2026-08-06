@@ -77,6 +77,22 @@ describe('PortAllocator', () => {
     expect(updateStub.firstCall.args[0].where.port).to.equal(8101);
   });
 
+  it('drops a stale existing lease when the OS port is already taken (Android→iOS collision)', async () => {
+    // Regression: Android still holds mjpeg@9100 in PortLease while iOS iproxy
+    // is the real listener. Reusing that lease without an OS probe made the
+    // Android tile proxy the iPhone feed.
+    findFirstStub.resolves({ port: 9100 } as any);
+    createStub.callsFake(({ data }: any) => Promise.resolve({ port: data.port } as any));
+
+    const allocator = makeAllocator({ mjpeg: [9100, 9101] });
+    (allocator as any).isOsFree = async (port: number) => port !== 9100;
+
+    const port = await allocator.acquire('mjpeg' as PortPurpose, 'android-udid');
+    expect(port).to.equal(9101);
+    expect(deleteStub.calledWith({ where: { port: 9100 } })).to.be.true;
+    expect(createStub.called, 'should allocate a replacement lease').to.be.true;
+  });
+
   it('releaseForUdid deletes all leases for that UDID', async () => {
     deleteManyStub.resolves({ count: 2 } as any);
     const allocator = makeAllocator({ wda: [8100, 8102] });

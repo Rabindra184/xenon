@@ -34,6 +34,8 @@ interface Props {
   shape: AnnotationShape;
   color: string;
   onAnnotation: (recordingId: string, ann: NormalizedAnnotation) => void;
+  overlayAnnotationsByRecording?: Record<string, NormalizedAnnotation[]>;
+  onOverlayAnnotationsChange?: (recordingId: string, next: NormalizedAnnotation[]) => void;
   onRemove?: (udid: string) => void;
   /** Called when a device row from the picker is dropped on an empty cell. */
   onDropDevice?: (udid: string) => void;
@@ -46,6 +48,8 @@ export function DeviceMosaic({
   shape,
   color,
   onAnnotation,
+  overlayAnnotationsByRecording,
+  onOverlayAnnotationsChange,
   onRemove,
   onDropDevice,
 }: Props) {
@@ -88,6 +92,14 @@ export function DeviceMosaic({
           annotateMode={annotateMode}
           shape={shape}
           color={color}
+          overlayAnnotations={
+            t.recordingId ? overlayAnnotationsByRecording?.[t.recordingId] : undefined
+          }
+          onOverlayAnnotationsChange={
+            t.recordingId && onOverlayAnnotationsChange
+              ? (next) => onOverlayAnnotationsChange(t.recordingId!, next)
+              : undefined
+          }
           onAnnotation={onAnnotation}
           onRemove={onRemove}
         />

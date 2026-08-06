@@ -452,6 +452,12 @@ export class RecordingOrchestrator {
           failuresCounter.add(1, { fail_reason: failReason ?? 'ffmpeg_stop_failed' });
         }
         out.push({ id: r.id, udid: r.device_udid, status, durationMs, sizeBytes });
+        // Fix E: warm the annotated-mp4 cache off the critical path so a later
+        // Download is served from cache instead of an on-demand burn-in. Only
+        // for finalized recordings that actually carry annotations.
+        if (status === 'STOPPED' && ((r.annotations?.length as number) ?? 0) > 0) {
+          this.prewarmAnnotatedRender(r.id);
+        }
       }
       this.eventMgr.emitRecordingStopped({ groupId, recordings: out });
       span.setStatus({ code: SpanStatusCode.OK });
@@ -463,6 +469,24 @@ export class RecordingOrchestrator {
     } finally {
       span.end();
     }
+  }
+
+  /**
+   * Fire-and-forget: burn annotations into `<id>.annotated.mp4` right after
+   * stop so the dashboard Download is served from a warm cache instead of an
+   * on-demand encode. Best-effort — a Download that races this render falls
+   * back to the same on-demand path, and any failure is logged, not thrown.
+   */
+  private prewarmAnnotatedRender(recordingId: string): void {
+    void (async () => {
+      try {
+        const { AnnotationRenderService } = await import('./annotation-render');
+        await Container.get(AnnotationRenderService).resolvePlayablePath(recordingId);
+        recLog.info(`Pre-rendered annotated mp4 for ${recordingId}`);
+      } catch (err: any) {
+        recLog.warn(`Annotated pre-render failed for ${recordingId}: ${err?.message ?? err}`);
+      }
+    })();
   }
 
   /**
@@ -492,6 +516,19 @@ export class RecordingOrchestrator {
         const android = Container.get(AndroidStreamService);
         const aSession = android.getStreamStatus(udid);
         if (aSession?.status === 'running') mosaicStreamRunning = true;
+      } catch {
+        /* ignore */
+      }
+    }
+    // H.264 preview (androidH264) has no MJPEG session — check it too or we
+    // drop the mosaic lock underneath a live WebCodecs tile.
+    if (!mosaicStreamRunning) {
+      try {
+        const { default: AndroidH264StreamService } =
+          await import('../../device-managers/android/AndroidH264StreamService');
+        if (Container.get(AndroidH264StreamService).getMultiplexer(udid)) {
+          mosaicStreamRunning = true;
+        }
       } catch {
         /* ignore */
       }
@@ -688,6 +725,50 @@ export class RecordingOrchestrator {
     }
     if (orphans.length > 0) {
       recLog.warn(`Recovered ${orphans.length} orphan recordings on boot.`);
+    }
+
+    // Also free devices that still hold a manual_* lock with no live stream
+    // (e.g. process death after stream/start but before stream/stop).
+    try {
+      const { DeviceStoreFactory } = await import('../../data-service/device-store');
+      const { isManualLock } = await import('./manualLock');
+      const devices = await DeviceStoreFactory.getStore().getDevices({});
+      for (const d of devices) {
+        if (!d.busy || !isManualLock(d.session_id)) continue;
+        let live = false;
+        try {
+          const { default: IOSStreamService } =
+            await import('../../device-managers/ios/IOSStreamService');
+          if (Container.get(IOSStreamService).getStreamStatus(d.udid)) live = true;
+        } catch {
+          /* ignore */
+        }
+        if (!live) {
+          try {
+            const { default: AndroidStreamService } =
+              await import('../../device-managers/android/AndroidStreamService');
+            if (Container.get(AndroidStreamService).getStreamStatus(d.udid)) live = true;
+          } catch {
+            /* ignore */
+          }
+        }
+        if (!live) {
+          try {
+            const { default: AndroidH264StreamService } =
+              await import('../../device-managers/android/AndroidH264StreamService');
+            if (Container.get(AndroidH264StreamService).getMultiplexer(d.udid)) live = true;
+          } catch {
+            /* ignore */
+          }
+        }
+        if (live) continue;
+        recLog.warn(
+          `recoverOnBoot: releasing orphaned manual lock on ${d.udid} (${d.session_id})`,
+        );
+        await this.tryUnblock(d.udid, d.host);
+      }
+    } catch (err: any) {
+      recLog.warn(`recoverOnBoot manual-lock sweep failed: ${err?.message}`);
     }
   }
 

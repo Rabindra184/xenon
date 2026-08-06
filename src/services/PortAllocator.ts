@@ -53,13 +53,23 @@ export class PortAllocator {
       select: { port: true },
     });
     if (existing) {
-      await prisma.portLease
-        .update({
-          where: { port: existing.port },
-          data: { leasedAt: now, expiresAt: now + ttlMs, leasedToPid: opts.pid },
-        })
-        .catch(() => undefined);
-      return existing.port;
+      // Stale reuse is a footgun: Android may still hold an mjpeg lease on 9100
+      // while iOS iproxy is the real listener. Returning that lease without an
+      // OS probe makes the Android tile proxy the iPhone feed.
+      const osOk = await this.isOsFree(existing.port);
+      if (osOk) {
+        await prisma.portLease
+          .update({
+            where: { port: existing.port },
+            data: { leasedAt: now, expiresAt: now + ttlMs, leasedToPid: opts.pid },
+          })
+          .catch(() => undefined);
+        return existing.port;
+      }
+      this.log.warn(
+        `Dropping stale ${purpose} lease on ${existing.port} for ${udid} — port is in use by another process`,
+      );
+      await prisma.portLease.delete({ where: { port: existing.port } }).catch(() => undefined);
     }
 
     const active = await prisma.portLease.findMany({
@@ -97,6 +107,33 @@ export class PortAllocator {
     }
 
     throw new PortRangeExhaustedError(purpose);
+  }
+
+  /**
+   * Soft-block a port so the next `acquire` for the same purpose skips it.
+   * Used when bind fails (EADDRINUSE) even though our lease owned the number —
+   * typically another process (e.g. iOS iproxy) is the real listener.
+   */
+  async blockPort(port: number, purpose: PortPurpose, ttlMs = 60_000): Promise<void> {
+    const now = Date.now();
+    await prisma.portLease
+      .upsert({
+        where: { port },
+        create: {
+          port,
+          purpose,
+          leasedToUdid: `__blocked__:${port}`,
+          leasedAt: now,
+          expiresAt: now + ttlMs,
+        },
+        update: {
+          purpose,
+          leasedToUdid: `__blocked__:${port}`,
+          leasedAt: now,
+          expiresAt: now + ttlMs,
+        },
+      })
+      .catch(() => undefined);
   }
 
   async release(port: number): Promise<void> {
