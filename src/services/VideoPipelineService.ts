@@ -8,6 +8,7 @@ import * as fs from 'fs';
 import { config } from '../config';
 import { DeviceStoreFactory } from '../data-service/device-store';
 import { ResourceIsolationService } from './ResourceIsolationService';
+import { resolveFfmpegPath } from '../helpers/ffmpegPath';
 
 /**
  * Resolve the on-disk path the recorder will write to.
@@ -118,9 +119,9 @@ export async function remuxToStandardMp4(filePath: string): Promise<void> {
     let isolation: { command: string; args: string[] };
     try {
       const isolationService = Container.get(ResourceIsolationService);
-      isolation = isolationService.wrapSpawn('ffmpeg', args, 'Performance');
+      isolation = isolationService.wrapSpawn(resolveFfmpegPath(), args, 'Performance');
     } catch {
-      isolation = { command: 'ffmpeg', args };
+      isolation = { command: resolveFfmpegPath(), args };
     }
     const proc = spawn(isolation.command, isolation.args, {
       stdio: ['ignore', 'ignore', 'pipe'],
@@ -312,7 +313,7 @@ export class VideoPipelineService {
     // Recording is an explicit user action; leave it at default priority.
     const isolationService = Container.get(ResourceIsolationService);
     const { command, args: wrappedArgs } = isolationService.wrapSpawn(
-      'ffmpeg',
+      resolveFfmpegPath(),
       args,
       'Performance',
     );
@@ -469,7 +470,7 @@ export class VideoPipelineService {
 
     const isolationService = Container.get(ResourceIsolationService);
     const { command, args: wrappedArgs } = isolationService.wrapSpawn(
-      'ffmpeg',
+      resolveFfmpegPath(),
       args,
       'Performance',
     );

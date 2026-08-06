@@ -4,26 +4,14 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { Readable } from 'stream';
 import { RecordingStore } from './recording-store';
+import { resolveFfmpegPath } from '../../helpers/ffmpegPath';
 import log from '../../logger';
 
 const renderLog = log.scope('AnnotationRender');
 
-/**
- * Resolve the bundled ffmpeg binary once (@ffmpeg-installer/ffmpeg, the same
- * source AndroidStreamService uses). A bare `ffmpeg`/`ffprobe` ENOENTs when the
- * server is launched from the Mac app (no inherited shell PATH), so never spawn
- * bare names. ffprobe is not bundled, so duration is derived from ffmpeg itself.
- */
-let FFMPEG_BIN: string | null = null;
-function ffmpegBin(): string {
-  if (FFMPEG_BIN) return FFMPEG_BIN;
-  try {
-    FFMPEG_BIN = require('@ffmpeg-installer/ffmpeg').path as string;
-  } catch {
-    FFMPEG_BIN = 'ffmpeg';
-  }
-  return FFMPEG_BIN;
-}
+// All ffmpeg spawns go through the bundled binary (resolveFfmpegPath) — a bare
+// name ENOENTs under the Mac-app launch (no shell PATH). ffprobe is not bundled,
+// so duration is derived from ffmpeg itself (see probeDurationSec).
 
 /**
  * A late annotation (drawn after the capture ended — e.g. while the ~2×-speed
@@ -288,7 +276,7 @@ export class AnnotationRenderService {
    * don't pull the DI graph.
    */
   private spawnFfmpeg(args: string[], label: string): ChildProcess {
-    const proc = spawn(ffmpegBin(), args);
+    const proc = spawn(resolveFfmpegPath(), args);
     let registry: any;
     let trackId: string | undefined;
     try {
