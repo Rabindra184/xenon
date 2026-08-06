@@ -35,6 +35,14 @@ export class AnnotationRenderService {
   ) {}
 
   /**
+   * In-flight renders keyed by output path. The E prewarm and a user Download
+   * can both reach {@link resolvePlayablePath} before the annotated mp4 is
+   * finalized; coalescing here keeps them on one `ffmpeg` pass instead of two
+   * `-y` writers clobbering the same file (which would serve a corrupt video).
+   */
+  private readonly renderInFlight = new Map<string, Promise<void>>();
+
+  /**
    * Return a playable file path for download. If the recording has annotations,
    * burns them into `<id>.annotated.mp4` (cached when newer than the source).
    * Otherwise returns the clean source path.
@@ -73,10 +81,44 @@ export class AnnotationRenderService {
       needsRender = true;
     }
     if (needsRender) {
-      await this.renderToFile(rec.file_path, outPath, annotations);
-      fs.writeFileSync(stampPath, stamp, 'utf8');
+      await this.renderCached(outPath, stampPath, stamp, rec.file_path, annotations);
     }
     return { filePath: outPath, annotated: true };
+  }
+
+  /**
+   * Render `outPath` at most once across concurrent callers (keyed by outPath).
+   * Prevents two `ffmpeg -y` processes from writing the same annotated mp4 while
+   * a download streams it — see {@link renderInFlight}.
+   */
+  private renderCached(
+    outPath: string,
+    stampPath: string,
+    stamp: string,
+    sourcePath: string,
+    annotations: AnnotationRow[],
+  ): Promise<void> {
+    const existing = this.renderInFlight.get(outPath);
+    if (existing) return existing;
+    const task = (async () => {
+      // A render that finished between the caller's cache check and now may have
+      // already produced a valid file — re-check before spending another pass.
+      try {
+        if (
+          fs.existsSync(outPath) &&
+          fs.existsSync(stampPath) &&
+          fs.readFileSync(stampPath, 'utf8') === stamp
+        ) {
+          return;
+        }
+      } catch {
+        /* fall through to render */
+      }
+      await this.renderToFile(sourcePath, outPath, annotations);
+      fs.writeFileSync(stampPath, stamp, 'utf8');
+    })().finally(() => this.renderInFlight.delete(outPath));
+    this.renderInFlight.set(outPath, task);
+    return task;
   }
 
   async renderForRecording(

@@ -21,13 +21,13 @@ describe('VideoPipelineService.buildRecordArgs — F7 wall-clock timing', () => 
     expect(wallIdx).to.be.lessThan(inputIdx);
   });
 
-  it('keeps variable frame timing on output (-fps_mode vfr, ffmpeg-8 form)', () => {
+  it('keeps variable frame timing on output (-vsync vfr, kept for ffmpeg<5.1 compat)', () => {
     const args = buildRecordArgs({ ...base, isMac: true });
-    const fpsIdx = args.indexOf('-fps_mode');
-    expect(fpsIdx).to.be.greaterThan(-1);
-    expect(args[fpsIdx + 1]).to.equal('vfr');
-    // The deprecated -vsync spelling must not linger (ffmpeg 8 warns on it).
-    expect(args).to.not.include('-vsync');
+    const vsyncIdx = args.indexOf('-vsync');
+    expect(vsyncIdx).to.be.greaterThan(-1);
+    expect(args[vsyncIdx + 1]).to.equal('vfr');
+    // `-fps_mode` is fatal on ffmpeg <5.1, so it must NOT be used here.
+    expect(args).to.not.include('-fps_mode');
   });
 
   it('feeds the mjpeg source and writes the output path last', () => {

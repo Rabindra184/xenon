@@ -1,4 +1,8 @@
 import { expect } from 'chai';
+import * as sinon from 'sinon';
+import * as fs from 'fs';
+import * as os from 'os';
+import * as path from 'path';
 import { AnnotationRenderService } from '../../src/services/recording/annotation-render';
 
 describe('AnnotationRenderService.buildFilterParts', () => {
@@ -115,5 +119,49 @@ describe('AnnotationRenderService.buildFilterParts', () => {
       const parts = svc.buildFilterParts(lateRect(), 0);
       expect(parts[1]).to.include("enable='gte(t\\,15)'");
     });
+  });
+});
+
+describe('AnnotationRenderService.resolvePlayablePath — concurrency', () => {
+  let tmpDir: string;
+  let source: string;
+
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'annrender-'));
+    source = path.join(tmpDir, 'video.mp4');
+    fs.writeFileSync(source, 'x'.repeat(2048));
+  });
+  afterEach(() => {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it('coalesces concurrent renders into a single ffmpeg pass (no double -y writer)', async () => {
+    // The E prewarm and a user Download can both hit resolvePlayablePath before
+    // the annotated mp4 is finalized. Without an in-flight guard both would spawn
+    // `ffmpeg -y` to the same path → a corrupt/truncated download.
+    const store = {
+      findById: async () => ({
+        id: 'rec1',
+        file_path: source,
+        annotations: [
+          { shape: 'RECT', geometry: JSON.stringify({ x: 0.1, y: 0.1, w: 0.2, h: 0.2 }), timecode_ms: 0 },
+        ],
+      }),
+    };
+    const svc = new AnnotationRenderService(store as any);
+    // Stub the actual ffmpeg burn-in so no real process runs; make it slow so the
+    // two calls genuinely overlap.
+    const renderStub = sinon
+      .stub(svc as any, 'renderToFile')
+      .callsFake(() => new Promise((r) => setTimeout(r, 40)));
+
+    const [a, b] = await Promise.all([
+      svc.resolvePlayablePath('rec1'),
+      svc.resolvePlayablePath('rec1'),
+    ]);
+
+    expect(renderStub.calledOnce).to.equal(true);
+    expect(a.filePath).to.equal(b.filePath);
+    expect(a.annotated).to.equal(true);
   });
 });

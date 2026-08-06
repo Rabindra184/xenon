@@ -31,7 +31,7 @@ export function resolveOutputPath(sessionId: string, override?: string): string 
  * time whenever the source's actual rate differs from 25 fps — a ~12.5 fps
  * stream records at 2× speed, a >25 fps stream at slow motion. Stamping each
  * frame with its wall-clock arrival time (`-use_wallclock_as_timestamps`) and
- * keeping variable frame timing on output (`-fps_mode vfr`) makes the mp4
+ * keeping variable frame timing on output (`-vsync vfr`) makes the mp4
  * duration track real elapsed time regardless of the source frame rate.
  */
 export function buildRecordArgs(opts: {
@@ -60,8 +60,11 @@ export function buildRecordArgs(opts: {
     args.push('-c:v', 'libx264', '-preset', 'veryfast', '-crf', '25');
   }
   // Preserve the (variable) wall-clock timing rather than forcing constant fps.
-  // `-fps_mode vfr` is the ffmpeg-7+ spelling of the deprecated `-vsync vfr`.
-  args.push('-fps_mode', 'vfr');
+  // Keep the deprecated `-vsync vfr` (NOT `-fps_mode vfr`): `-vsync` is accepted
+  // by all ffmpeg 4–8 builds, whereas `-fps_mode` is fatal ("Unrecognized
+  // option") on ffmpeg <5.1 — still shipped by some Linux nodes. The deprecation
+  // warning is suppressed by the `-loglevel error` above.
+  args.push('-vsync', 'vfr');
   // Fragmented mp4 during capture: instant playback + crash resiliency.
   // stopRecording remuxes to a standard (faststart) mp4 so QuickTime / Finder
   // Preview can open the file after Stop.
@@ -453,9 +456,10 @@ export class VideoPipelineService {
     } else {
       args.push('-c:v', 'libx264', '-preset', 'veryfast', '-crf', '25');
     }
-    // Preserve wall-clock frame timing rather than forcing constant fps
-    // (`-fps_mode vfr` = the ffmpeg-7+ spelling of the deprecated `-vsync vfr`).
-    args.push('-fps_mode', 'vfr');
+    // Preserve wall-clock frame timing rather than forcing constant fps. Keep
+    // the deprecated `-vsync vfr` for ffmpeg-version compat — `-fps_mode` is
+    // fatal on ffmpeg <5.1 (see buildRecordArgs for the rationale).
+    args.push('-vsync', 'vfr');
     args.push('-movflags', 'frag_keyframe+empty_moov+default_base_moof');
     args.push(outputPath);
 
