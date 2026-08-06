@@ -186,6 +186,30 @@ export default function DeviceMosaicView() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Backfill screen dimensions for tiles added before the device reported them.
+  // Android populates screenWidth/height lazily (~first stream via `wm size`);
+  // a tile added earlier caches `undefined`, which leaves it non-interactive
+  // (tap/swipe need device coords). PATCH_TILE_DIMS only fills missing values
+  // and no-ops (same state ref) once known, so this converges without churn.
+  useEffect(() => {
+    for (const t of state.tiles) {
+      if (t.screenWidth && t.screenHeight) continue;
+      const d = devices.find((dev) => dev.udid === t.udid);
+      if (!d) continue;
+      const sw = Number(d.screenWidth);
+      const sh = Number(d.screenHeight);
+      if (Number.isFinite(sw) && sw > 0 && Number.isFinite(sh) && sh > 0) {
+        dispatch({
+          type: 'PATCH_TILE_DIMS',
+          udid: t.udid,
+          screenWidth: sw,
+          screenHeight: sh,
+          aspect: tileAspect(d),
+        });
+      }
+    }
+  }, [devices, state.tiles, dispatch]);
+
 
   // Hotkey: B to add a bookmark mid-recording (spec requirement).
   useEffect(() => {
@@ -403,6 +427,10 @@ export default function DeviceMosaicView() {
               annotateMode={state.annotateMode}
               shape={state.shape}
               color={state.color}
+              overlayAnnotationsByRecording={state.overlayAnnotations}
+              onOverlayAnnotationsChange={(recordingId, annotations) =>
+                dispatch({ type: 'SET_OVERLAY_ANNOTATIONS', recordingId, annotations })
+              }
               onAnnotation={onAnnotation}
               onRemove={onRemoveTile}
               onDropDevice={onTogglePickerRow}

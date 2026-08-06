@@ -496,6 +496,19 @@ export class RecordingOrchestrator {
         /* ignore */
       }
     }
+    // H.264 preview (androidH264) has no MJPEG session — check it too or we
+    // drop the mosaic lock underneath a live WebCodecs tile.
+    if (!mosaicStreamRunning) {
+      try {
+        const { default: AndroidH264StreamService } =
+          await import('../../device-managers/android/AndroidH264StreamService');
+        if (Container.get(AndroidH264StreamService).getMultiplexer(udid)) {
+          mosaicStreamRunning = true;
+        }
+      } catch {
+        /* ignore */
+      }
+    }
     if (mosaicStreamRunning) {
       recLog.info(
         `Recording stop: keeping manual lock on ${udid} because the mosaic preview is still active.`,
@@ -688,6 +701,50 @@ export class RecordingOrchestrator {
     }
     if (orphans.length > 0) {
       recLog.warn(`Recovered ${orphans.length} orphan recordings on boot.`);
+    }
+
+    // Also free devices that still hold a manual_* lock with no live stream
+    // (e.g. process death after stream/start but before stream/stop).
+    try {
+      const { DeviceStoreFactory } = await import('../../data-service/device-store');
+      const { isManualLock } = await import('./manualLock');
+      const devices = await DeviceStoreFactory.getStore().getDevices({});
+      for (const d of devices) {
+        if (!d.busy || !isManualLock(d.session_id)) continue;
+        let live = false;
+        try {
+          const { default: IOSStreamService } =
+            await import('../../device-managers/ios/IOSStreamService');
+          if (Container.get(IOSStreamService).getStreamStatus(d.udid)) live = true;
+        } catch {
+          /* ignore */
+        }
+        if (!live) {
+          try {
+            const { default: AndroidStreamService } =
+              await import('../../device-managers/android/AndroidStreamService');
+            if (Container.get(AndroidStreamService).getStreamStatus(d.udid)) live = true;
+          } catch {
+            /* ignore */
+          }
+        }
+        if (!live) {
+          try {
+            const { default: AndroidH264StreamService } =
+              await import('../../device-managers/android/AndroidH264StreamService');
+            if (Container.get(AndroidH264StreamService).getMultiplexer(d.udid)) live = true;
+          } catch {
+            /* ignore */
+          }
+        }
+        if (live) continue;
+        recLog.warn(
+          `recoverOnBoot: releasing orphaned manual lock on ${d.udid} (${d.session_id})`,
+        );
+        await this.tryUnblock(d.udid, d.host);
+      }
+    } catch (err: any) {
+      recLog.warn(`recoverOnBoot manual-lock sweep failed: ${err?.message}`);
     }
   }
 

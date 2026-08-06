@@ -45,7 +45,13 @@ export function RecordingControls({ selectedUdids }: Props) {
     state.recordingPhase === 'starting' || state.recordingPhase === 'stopping';
   const canStart =
     state.recordingPhase === 'idle' && selectedUdids.length > 0 && !busy;
-  const canStopOrMark = state.recordingPhase === 'recording' && !busy;
+  // True once Record has succeeded — prefer phase, fall back to per-tile ids
+  // so Annotate stays usable if phase and tile state ever diverge.
+  const isActivelyRecording =
+    state.recordingPhase === 'recording' ||
+    (state.recording && state.tiles.some((t) => !!t.recordingId));
+  const canStopOrMark = isActivelyRecording && !busy;
+  const canAnnotate = canStopOrMark;
   const showDownload = !!state.groupId && state.recordingPhase === 'idle';
   const multiDevice = selectedUdids.length > 1 || state.downloadableVideoCount > 1;
   const showCompositeDownload = showDownload && state.compositeEnabled;
@@ -203,9 +209,25 @@ export function RecordingControls({ selectedUdids }: Props) {
   };
 
   const toggleAnnotate = () => {
-    if (state.recordingPhase !== 'recording') return;
+    if (!canAnnotate) return;
     dispatch({ type: 'SET_ANNOTATE_MODE', enabled: !state.annotateMode });
   };
+
+  const clearAnnotations = () => {
+    if (!canAnnotate) return;
+    dispatch({ type: 'CLEAR_OVERLAY_ANNOTATIONS' });
+  };
+
+  const hasOverlayAnnotations = Object.values(state.overlayAnnotations).some(
+    (list) => (list?.length ?? 0) > 0,
+  );
+
+  const shapes: Array<{ id: typeof state.shape; label: string }> = [
+    { id: 'RECT', label: 'Rect' },
+    { id: 'CIRCLE', label: 'Circle' },
+    { id: 'ARROW', label: 'Arrow' },
+    { id: 'FREEHAND', label: 'Draw' },
+  ];
 
   return (
     <div className="flex items-center gap-2 flex-wrap justify-end">
@@ -252,7 +274,14 @@ export function RecordingControls({ selectedUdids }: Props) {
       <button
         type="button"
         onClick={toggleAnnotate}
-        disabled={state.recordingPhase !== 'recording'}
+        disabled={!canAnnotate}
+        title={
+          canAnnotate
+            ? state.annotateMode
+              ? 'Exit annotate mode (tap/swipe resumes)'
+              : 'Draw on the live screen — saved with the recording'
+            : 'Start recording to annotate'
+        }
         className={`px-3 py-1.5 text-sm rounded border ${
           state.annotateMode
             ? 'bg-[var(--accent,#3b82f6)] text-white border-transparent'
@@ -261,6 +290,43 @@ export function RecordingControls({ selectedUdids }: Props) {
       >
         ✎ Annotate
       </button>
+
+      {state.annotateMode && canAnnotate && (
+        <div className="flex items-center gap-1 ml-1 pl-2 border-l border-[var(--border)]">
+          {shapes.map((s) => (
+            <button
+              key={s.id}
+              type="button"
+              onClick={() => dispatch({ type: 'SET_SHAPE', shape: s.id })}
+              className={`px-2 py-1 text-xs rounded border ${
+                state.shape === s.id
+                  ? 'bg-[var(--surface-2,#1a1a1a)] border-[var(--accent,#3b82f6)] text-white'
+                  : 'border-[var(--border)] opacity-80 hover:opacity-100'
+              }`}
+            >
+              {s.label}
+            </button>
+          ))}
+          <input
+            type="color"
+            value={state.color}
+            onChange={(e) => dispatch({ type: 'SET_COLOR', color: e.target.value })}
+            title="Annotation color"
+            className="w-7 h-7 rounded border border-[var(--border)] bg-transparent cursor-pointer"
+          />
+        </div>
+      )}
+
+      {canAnnotate && hasOverlayAnnotations && (
+        <button
+          type="button"
+          onClick={clearAnnotations}
+          title="Clear drawn annotations from the live preview"
+          className="px-2 py-1.5 text-sm rounded border border-[var(--border)] hover:bg-[var(--surface-2,#1a1a1a)]"
+        >
+          Clear marks
+        </button>
+      )}
 
       {showDownload && useDirectMp4 && (
         <a

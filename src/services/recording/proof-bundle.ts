@@ -77,8 +77,18 @@ export class ProofBundleService {
     for (const r of recordings) {
       try {
         if (r.file_path && fs.existsSync(r.file_path) && fs.statSync(r.file_path).size > 0) {
+          let filePath = r.file_path as string;
+          try {
+            const { AnnotationRenderService } = await import('./annotation-render');
+            const rendered = await Container.get(AnnotationRenderService).resolvePlayablePath(
+              r.id,
+            );
+            filePath = rendered.filePath;
+          } catch {
+            /* keep clean source */
+          }
           entries.push({
-            filePath: r.file_path,
+            filePath,
             name: `${safeVideoFileStem(r.device_udid)}.mp4`,
           });
         }
@@ -94,11 +104,12 @@ export class ProofBundleService {
    * - With `udid`: that device's recording in the group.
    * - Without: the sole playable recording if the group has exactly one file;
    *   otherwise null (caller should use videos.zip).
+   * When the recording has annotations, returns the burned-in annotated file.
    */
   async resolveVideoFile(
     groupId: string,
     udid?: string,
-  ): Promise<{ filePath: string; downloadName: string } | null> {
+  ): Promise<{ filePath: string; downloadName: string; recordingId?: string } | null> {
     const recordings = (await this.store.listGroup(groupId)) as any[];
     const playable = recordings.filter((r) => {
       try {
@@ -107,22 +118,34 @@ export class ProofBundleService {
         return false;
       }
     });
+    let hit: any;
     if (udid) {
-      const hit = playable.find((r) => r.device_udid === udid);
-      if (!hit) return null;
-      return {
-        filePath: hit.file_path,
-        downloadName: `${safeVideoFileStem(hit.device_udid)}.mp4`,
-      };
+      hit = playable.find((r) => r.device_udid === udid);
+    } else if (playable.length === 1) {
+      hit = playable[0];
+    } else {
+      return null;
     }
-    if (playable.length === 1) {
-      const hit = playable[0];
-      return {
-        filePath: hit.file_path,
-        downloadName: `${safeVideoFileStem(hit.device_udid)}.mp4`,
-      };
+    if (!hit) return null;
+
+    let filePath = hit.file_path as string;
+    try {
+      const { AnnotationRenderService } = await import('./annotation-render');
+      const rendered = await Container.get(AnnotationRenderService).resolvePlayablePath(hit.id);
+      filePath = rendered.filePath;
+    } catch (err: any) {
+      // Fall back to the clean source if burn-in fails.
+      const { default: log } = await import('../../logger');
+      log.scope('ProofBundle').warn(
+        `Annotation burn-in skipped for ${hit.id}: ${err?.message ?? err}`,
+      );
     }
-    return null;
+
+    return {
+      filePath,
+      downloadName: `${safeVideoFileStem(hit.device_udid)}.mp4`,
+      recordingId: hit.id,
+    };
   }
 
   private async populateVideosOnly(archive: Archiver, groupId: string): Promise<void> {

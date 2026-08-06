@@ -19,6 +19,14 @@ export function effectiveLayout(layout: Layout, tileCount: number): Exclude<Layo
 }
 export type AnnotationShape = 'RECT' | 'CIRCLE' | 'ARROW' | 'TEXT' | 'FREEHAND';
 
+/** Stroke drawn on the live mosaic preview (also POSTed to the recording API). */
+export interface OverlayAnnotation {
+  shape: AnnotationShape;
+  geometry: { x: number; y: number; w?: number; h?: number };
+  color: string;
+  text?: string;
+}
+
 /** Toolbar / recording lifecycle — prevents double-submit during start/stop. */
 export type RecordingPhase = 'idle' | 'starting' | 'recording' | 'stopping';
 
@@ -60,6 +68,8 @@ export interface MosaicState {
   annotateMode: boolean;
   shape: AnnotationShape;
   color: string;
+  /** Live preview strokes keyed by recording id (survive tile remounts). */
+  overlayAnnotations: Record<string, OverlayAnnotation[]>;
   /** @deprecated Prefer `banner` — kept so older dispatches still type-check via SET_ERROR_BANNER. */
   errorBanner: string | null;
   banner: MosaicBanner | null;
@@ -78,6 +88,7 @@ export const initialMosaicState: MosaicState = {
   annotateMode: false,
   shape: 'RECT',
   color: '#ff3333',
+  overlayAnnotations: {},
   errorBanner: null,
   banner: null,
 };
@@ -88,6 +99,16 @@ export type MosaicAction =
   | { type: 'CLEAR_SELECTED' }
   | { type: 'SET_TILES'; tiles: MosaicTile[] }
   | { type: 'ADD_TILE'; tile: MosaicTile }
+  | {
+      // Fill in device screen dimensions discovered after the tile was created
+      // (Android reports them lazily ~first stream). Enables tap/swipe on tiles
+      // added before their dimensions were known.
+      type: 'PATCH_TILE_DIMS';
+      udid: string;
+      screenWidth: number;
+      screenHeight: number;
+      aspect?: string;
+    }
   | { type: 'REMOVE_TILE'; udid: string }
   | { type: 'BIND_RECORDING_IDS'; map: Record<string, string> }
   | { type: 'SET_RECORDING_PHASE'; phase: RecordingPhase }
@@ -106,6 +127,12 @@ export type MosaicAction =
   | { type: 'SET_ANNOTATE_MODE'; enabled: boolean }
   | { type: 'SET_SHAPE'; shape: AnnotationShape }
   | { type: 'SET_COLOR'; color: string }
+  | {
+      type: 'SET_OVERLAY_ANNOTATIONS';
+      recordingId: string;
+      annotations: OverlayAnnotation[];
+    }
+  | { type: 'CLEAR_OVERLAY_ANNOTATIONS' }
   | { type: 'SET_ERROR_BANNER'; message: string | null }
   | { type: 'SET_BANNER'; banner: MosaicBanner | null };
 
@@ -127,6 +154,23 @@ export function mosaicReducer(state: MosaicState, action: MosaicAction): MosaicS
       // Idempotent: don't duplicate if the tile is already in the mosaic.
       if (state.tiles.some((t) => t.udid === action.tile.udid)) return state;
       return { ...state, tiles: [...state.tiles, action.tile] };
+    case 'PATCH_TILE_DIMS': {
+      // Only fill dims that are currently missing; never overwrite known values.
+      // Return the same state reference when nothing changes so the store
+      // doesn't re-render on every device poll.
+      let changed = false;
+      const tiles = state.tiles.map((t) => {
+        if (t.udid !== action.udid || (t.screenWidth && t.screenHeight)) return t;
+        changed = true;
+        return {
+          ...t,
+          screenWidth: action.screenWidth,
+          screenHeight: action.screenHeight,
+          aspect: t.aspect ?? action.aspect,
+        };
+      });
+      return changed ? { ...state, tiles } : state;
+    }
     case 'REMOVE_TILE':
       // Block remove while a recording is in flight — avoids tearing down MJPEG
       // under a live ffmpeg.
@@ -159,7 +203,11 @@ export function mosaicReducer(state: MosaicState, action: MosaicAction): MosaicS
         downloadableVideoCount: 0,
         recordingPhase: 'recording',
         recording: true,
+        // Turn annotate on so the user can draw on the live preview immediately.
+        // Toggle off to resume tap/swipe.
+        annotateMode: true,
         startedAt: action.startedAt,
+        overlayAnnotations: {},
         tiles,
       };
     }
@@ -174,6 +222,7 @@ export function mosaicReducer(state: MosaicState, action: MosaicAction): MosaicS
         recording: false,
         recordingPhase: 'idle',
         annotateMode: false,
+        overlayAnnotations: {},
         downloadableVideoCount:
           action.downloadableVideoCount ?? state.downloadableVideoCount,
         compositeEnabled:
@@ -189,6 +238,16 @@ export function mosaicReducer(state: MosaicState, action: MosaicAction): MosaicS
       return { ...state, shape: action.shape };
     case 'SET_COLOR':
       return { ...state, color: action.color };
+    case 'SET_OVERLAY_ANNOTATIONS':
+      return {
+        ...state,
+        overlayAnnotations: {
+          ...state.overlayAnnotations,
+          [action.recordingId]: action.annotations,
+        },
+      };
+    case 'CLEAR_OVERLAY_ANNOTATIONS':
+      return { ...state, overlayAnnotations: {} };
     case 'SET_ERROR_BANNER':
       return {
         ...state,

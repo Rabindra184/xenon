@@ -222,92 +222,51 @@ class AndroidStreamService {
         // depends on the process PATH (see resolveAdbInvocation).
         const { adbPath, adbHostArgs } = await this.resolveAdbInvocation(udid);
 
-        const mjpegPort = await Container.get(PortAllocator).acquire('mjpeg', udid);
+        const portAllocator = Container.get(PortAllocator);
+        let mjpegPort = 0;
+        let session: AndroidStreamSession | null = null;
 
-        // Aggressive cleanup: Kill any process already using this port
-        try {
-          const { exec } = require('child_process');
-          const { promisify } = require('util');
-          const execPromise = promisify(exec);
-          const { stdout } = await execPromise(`lsof -ti :${mjpegPort}`);
-          const pids = stdout.trim().split('\n');
-          for (const pid of pids) {
-            if (pid) {
-              log.debug(`[${udid}] Killing stale process ${pid} on port ${mjpegPort}`);
-              await execPromise(`kill -9 ${pid}`);
+        // Bind our own HTTP MJPEG server. Never kill foreign listeners (iOS
+        // iproxy often sits on 9100) — that made Android tiles show the iPhone
+        // feed when a stale lease pointed at a busy port and waitUntilUsed
+        // succeeded for someone else's socket. If bind fails, block the port
+        // briefly and acquire a fresh one.
+        for (let attempt = 0; attempt < 5; attempt++) {
+          mjpegPort = await portAllocator.acquire('mjpeg', udid);
+          const candidate: AndroidStreamSession = {
+            udid,
+            mjpegPort,
+            server: null,
+            status: 'starting',
+            lastViewerAt: Date.now(),
+            viewerCount: 0,
+            adbPath,
+            adbHostArgs,
+          };
+          this.sessions.set(udid, candidate);
+
+          try {
+            candidate.server = await this.createAndListenMjpegServer(candidate, mjpegPort);
+            session = candidate;
+            log.info(`[${udid}] MJPEG stream listening on port ${mjpegPort}`);
+            break;
+          } catch (bindErr: any) {
+            log.warn(
+              `[${udid}] MJPEG bind failed on ${mjpegPort} (attempt ${attempt + 1}): ${bindErr?.message ?? bindErr}`,
+            );
+            this.sessions.delete(udid);
+            try {
+              candidate.server?.close();
+            } catch {
+              /* ignore */
             }
+            await portAllocator.release(mjpegPort).catch(() => undefined);
+            await portAllocator.blockPort(mjpegPort, 'mjpeg').catch(() => undefined);
           }
-        } catch (e) {
-          /* ignore */
         }
 
-        const session: AndroidStreamSession = {
-          udid,
-          mjpegPort,
-          server: null,
-          status: 'starting',
-          lastViewerAt: Date.now(),
-          viewerCount: 0,
-          adbPath,
-          adbHostArgs,
-        };
-        this.sessions.set(udid, session);
-
-        session.server = http.createServer((req, res) => {
-          session.viewerCount++;
-          session.lastViewerAt = Date.now();
-
-          res.writeHead(200, {
-            'Content-Type': 'multipart/x-mixed-replace; boundary="BoundaryString"',
-            'Cache-Control': 'no-cache',
-            Connection: 'close',
-            Pragma: 'no-cache',
-          });
-
-          const lastFrameTime = 0;
-          const writeFrame = async () => {
-            // Principle: Handle both starting and running states to avoid race conditions
-            if (
-              session.status === 'stopped' ||
-              session.status === 'error' ||
-              res.writableEnded ||
-              !res.writable
-            )
-              return;
-
-            if (session.latestFrame) {
-              try {
-                res.write('--BoundaryString\r\n');
-                res.write('Content-Type: image/jpeg\r\n');
-                res.write(`Content-Length: ${session.latestFrame.length}\r\n\r\n`);
-                res.write(session.latestFrame);
-                res.write('\r\n');
-              } catch (e) {
-                return; // Stop if socket broke
-              }
-            }
-
-            setTimeout(writeFrame, 60);
-          };
-
-          writeFrame();
-
-          req.on('close', () => {
-            session.viewerCount = Math.max(0, session.viewerCount - 1);
-            session.lastViewerAt = Date.now();
-          });
-        });
-
-        session.server!.listen(mjpegPort, '127.0.0.1');
-
-        // Principal Resilience: Wait for port to be actually listening
-        // This prevents FFMPEG race conditions where it tries to connect before the socket is open
-        const tcpPortUsed = require('tcp-port-used');
-        try {
-          await tcpPortUsed.waitUntilUsed(mjpegPort, 200, 2000);
-          log.info(`[${udid}] MJPEG stream confirmed active on port ${mjpegPort}`);
-        } catch (e) {
-          log.warn(`[${udid}] MJPEG port check timed out, proceeding anyway: ${e}`);
+        if (!session || !session.server) {
+          throw new Error(`Unable to bind Android MJPEG server for ${udid} after retries`);
         }
 
         // Start capturing while status is still 'starting' so the loop warms
@@ -402,6 +361,81 @@ class AndroidStreamService {
 
   public getStreamStatus(udid: string) {
     return this.sessions.get(udid);
+  }
+
+  /**
+   * Create the MJPEG HTTP server and wait until it is actually listening on
+   * `port`. Rejects on EADDRINUSE / other bind errors so the caller can
+   * release the lease and retry — never treat "something is listening" as
+   * success when it isn't our server.
+   */
+  private createAndListenMjpegServer(
+    session: AndroidStreamSession,
+    port: number,
+  ): Promise<http.Server> {
+    return new Promise((resolve, reject) => {
+      const server = http.createServer((req, res) => {
+        session.viewerCount++;
+        session.lastViewerAt = Date.now();
+
+        res.writeHead(200, {
+          'Content-Type': 'multipart/x-mixed-replace; boundary="BoundaryString"',
+          'Cache-Control': 'no-cache',
+          Connection: 'close',
+          Pragma: 'no-cache',
+        });
+
+        const writeFrame = () => {
+          if (
+            session.status === 'stopped' ||
+            session.status === 'error' ||
+            res.writableEnded ||
+            !res.writable
+          ) {
+            return;
+          }
+
+          if (session.latestFrame) {
+            try {
+              res.write('--BoundaryString\r\n');
+              res.write('Content-Type: image/jpeg\r\n');
+              res.write(`Content-Length: ${session.latestFrame.length}\r\n\r\n`);
+              res.write(session.latestFrame);
+              res.write('\r\n');
+            } catch {
+              return;
+            }
+          }
+
+          setTimeout(writeFrame, 60);
+        };
+
+        writeFrame();
+
+        req.on('close', () => {
+          session.viewerCount = Math.max(0, session.viewerCount - 1);
+          session.lastViewerAt = Date.now();
+        });
+      });
+
+      const onError = (err: Error) => {
+        server.removeListener('listening', onListening);
+        try {
+          server.close();
+        } catch {
+          /* ignore */
+        }
+        reject(err);
+      };
+      const onListening = () => {
+        server.removeListener('error', onError);
+        resolve(server);
+      };
+
+      server.once('error', onError);
+      server.once('listening', onListening);
+      server.listen(port, '127.0.0.1');
+    });
   }
 
   public updateViewerCount(udid: string, delta: number): void {
