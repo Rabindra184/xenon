@@ -8,6 +8,13 @@ import log from '../../logger';
 
 const renderLog = log.scope('AnnotationRender');
 
+/**
+ * A late annotation (drawn after the capture ended — e.g. while the ~2×-speed
+ * bug shortened the mp4) is pinned this many seconds before EOF so
+ * `gte(t,tStart)` still fires on a real frame instead of never rendering.
+ */
+const LATE_ANNOTATION_MARGIN_SEC = 0.5;
+
 export interface AnnotationRow {
   shape: string;
   geometry: string;
@@ -89,7 +96,7 @@ export class AnnotationRenderService {
   }
 
   /** Pure helper — exported for unit tests. */
-  buildFilterParts(annotations: AnnotationRow[]): string[] {
+  buildFilterParts(annotations: AnnotationRow[], videoDurationSec?: number): string[] {
     const parts: string[] = [];
     for (const a of annotations) {
       let g: any = {};
@@ -98,7 +105,7 @@ export class AnnotationRenderService {
       } catch {
         continue;
       }
-      const tStart = (a.timecode_ms ?? 0) / 1000;
+      const tStart = this.clampTimecodeSec((a.timecode_ms ?? 0) / 1000, videoDurationSec);
       const color = this.sanitizeColor(a.color || 'red');
       const enable = `enable='gte(t\\,${tStart})'`;
 
@@ -169,7 +176,11 @@ export class AnnotationRenderService {
     outPath: string,
     annotations: AnnotationRow[],
   ): Promise<void> {
-    const parts = this.buildFilterParts(annotations);
+    // Probe the recorded span so late marks (timecode past EOF) get clamped in
+    // instead of vanishing. Best-effort: on failure, buildFilterParts falls
+    // back to unclamped timecodes (prior behavior).
+    const durationSec = await this.probeDurationSec(sourcePath);
+    const parts = this.buildFilterParts(annotations, durationSec);
     if (parts.length === 0) {
       fs.copyFileSync(sourcePath, outPath);
       return;
@@ -207,6 +218,43 @@ export class AnnotationRenderService {
           reject(new Error(`ffmpeg exited ${code}: ${stderr.slice(-200)}`));
         }
       });
+    });
+  }
+
+  /**
+   * Clamp an annotation start time (seconds) into `[0, duration - margin]` so a
+   * mark whose wall-clock timecode overshoots the recorded video still renders
+   * near the end. With no (or non-positive) duration the raw value is preserved
+   * — the caller couldn't probe it, so don't guess.
+   */
+  private clampTimecodeSec(rawSec: number, durationSec?: number): number {
+    if (!Number.isFinite(durationSec as number) || (durationSec as number) <= 0) {
+      return Math.max(0, rawSec);
+    }
+    const ceil = Math.max(0, (durationSec as number) - LATE_ANNOTATION_MARGIN_SEC);
+    return Math.min(Math.max(0, rawSec), ceil);
+  }
+
+  /** Probe a video's duration (seconds) via ffprobe. Undefined on any failure. */
+  private probeDurationSec(filePath: string): Promise<number | undefined> {
+    return new Promise((resolve) => {
+      try {
+        const p = spawn('ffprobe', [
+          '-v', 'error',
+          '-show_entries', 'format=duration',
+          '-of', 'default=nokey=1:noprint_wrappers=1',
+          filePath,
+        ]);
+        let out = '';
+        p.stdout?.on('data', (d) => (out += d.toString()));
+        p.on('error', () => resolve(undefined));
+        p.on('close', () => {
+          const n = parseFloat(out.trim());
+          resolve(Number.isFinite(n) && n > 0 ? n : undefined);
+        });
+      } catch {
+        resolve(undefined);
+      }
     });
   }
 

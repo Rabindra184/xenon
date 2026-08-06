@@ -452,6 +452,12 @@ export class RecordingOrchestrator {
           failuresCounter.add(1, { fail_reason: failReason ?? 'ffmpeg_stop_failed' });
         }
         out.push({ id: r.id, udid: r.device_udid, status, durationMs, sizeBytes });
+        // Fix E: warm the annotated-mp4 cache off the critical path so a later
+        // Download is served from cache instead of an on-demand burn-in. Only
+        // for finalized recordings that actually carry annotations.
+        if (status === 'STOPPED' && ((r.annotations?.length as number) ?? 0) > 0) {
+          this.prewarmAnnotatedRender(r.id);
+        }
       }
       this.eventMgr.emitRecordingStopped({ groupId, recordings: out });
       span.setStatus({ code: SpanStatusCode.OK });
@@ -463,6 +469,24 @@ export class RecordingOrchestrator {
     } finally {
       span.end();
     }
+  }
+
+  /**
+   * Fire-and-forget: burn annotations into `<id>.annotated.mp4` right after
+   * stop so the dashboard Download is served from a warm cache instead of an
+   * on-demand encode. Best-effort — a Download that races this render falls
+   * back to the same on-demand path, and any failure is logged, not thrown.
+   */
+  private prewarmAnnotatedRender(recordingId: string): void {
+    void (async () => {
+      try {
+        const { AnnotationRenderService } = await import('./annotation-render');
+        await Container.get(AnnotationRenderService).resolvePlayablePath(recordingId);
+        recLog.info(`Pre-rendered annotated mp4 for ${recordingId}`);
+      } catch (err: any) {
+        recLog.warn(`Annotated pre-render failed for ${recordingId}: ${err?.message ?? err}`);
+      }
+    })();
   }
 
   /**
