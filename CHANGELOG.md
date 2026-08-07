@@ -6,6 +6,51 @@ This project follows [Semantic Versioning](https://semver.org/). Releases are
 published to npm automatically when `package.json`'s `version` changes on `main`
 (see `.github/workflows/npm-publish.yml`).
 
+## 1.11.2
+
+Patch release: what a real device disconnected mid-recording turned up. The
+1.11.1 fix worked, but it stopped one step short — and it made two dormant
+recording-bookkeeping gaps reachable.
+
+### Fixed
+
+- **A device that stopped answering served a frozen frame indefinitely** — the
+  reuse health check in 1.11.1 tested whether a frame *existed*, not whether it
+  was recent, and `latestFrame` is only ever assigned. The capture loop swallows
+  capture errors without changing the session status, so a device that went away
+  (unplugged, adb killed, reboot) left the MJPEG server rewriting the last good
+  JPEG every 60ms: a frozen preview, and a recording that `ffprobe` calls
+  perfectly healthy and which is a still photograph. That is worse than the
+  0-byte failure 1.11.1 addressed, because it looks valid. Capture health is now
+  measured as how long the device has been silent — time, not a failure count,
+  since a fast `ADB Exit` and a 15s `ADB Timeout` are very different amounts of
+  frozen video. Past a 10s grace window the session is refused for reuse and
+  stream clients are disconnected, so ffmpeg finalises the footage it actually
+  captured. Verified on hardware by disconnecting a device mid-recording: the
+  frozen tail is bounded to the grace window instead of running until someone
+  presses Stop.
+- **A stalled device could still go unlogged** — the warning for the above was
+  emitted from the capture loop, but disconnecting clients is precisely what
+  idles that loop, so the failure that would have crossed the threshold never
+  happened. Measured on the device: 10 failures spanning 9.214s against a 10s
+  threshold, then silence. Either path now claims the announcement, so a stall is
+  logged exactly once no matter which notices it first.
+- **A recording stayed `RECORDING` when its ffmpeg exited on its own** — nothing
+  reconciled the row, so it kept no `ended_at`, duration or size until a manual
+  Stop, or until a server restart marked it `FAILED`. This was near-unreachable
+  before — ffmpeg only exited early if it crashed — and the stall fix above makes
+  a clean early exit a designed outcome. The row is now finalized from the exit
+  (`fail_reason=source_ended`, so a short recording is visible as such rather
+  than silently truncated), and the file gets the faststart remux the normal stop
+  path performs.
+- **Recording duration was wall-clock, not video** — `duration_ms` measured the
+  time between start and Stop, which matches the file only while capture keeps
+  up. A disconnected device produced 335964ms for a 35.16s mp4, and the same
+  number fed the recording-duration metric and the proof-bundle manifest. The
+  finished file is now probed (via the bundled ffmpeg — there is deliberately no
+  `ffprobe` dependency), falling back to wall-clock when it cannot be read.
+  Nothing is lost: wall-clock remains derivable from `started_at` and `ended_at`.
+
 ## 1.11.1
 
 Patch release: the Android counterpart to the stale-stream-session fixes that
