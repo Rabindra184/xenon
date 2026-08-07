@@ -30,7 +30,7 @@
     "format": "prettier --write \"{src,web,test}/**/*.{ts,tsx,json,md}\" --single-quote",
     "db:migrate": "path-exists lib/src/scripts/initialize-database.js && node lib/src/scripts/initialize-database.js || ts-node src/scripts/initialize-database.ts",
     "db:generate": "ts-node src/scripts/generate-database-migration.ts",
-    "prepare": "npx prisma generate",
+    "prepare": "node scripts/generate-prisma.js",
     "prepublishOnly": "npm run build:all"
   },
   "repository": {
