@@ -6,7 +6,7 @@ import { Container } from 'typedi';
 import log from '../../logger';
 import { InternalHttpClient } from '../../InternalHttpClient';
 import { blockDevice, unblockDevice } from '../../data-service/device-service';
-import { UniversalMjpegProxy } from '../../helpers/UniversalMjpegProxy';
+import { UniversalMjpegProxy, shouldRecreateMjpegProxy } from '../../helpers/UniversalMjpegProxy';
 import IOSStreamService from '../../device-managers/ios/IOSStreamService';
 import AndroidStreamService from '../../device-managers/android/AndroidStreamService';
 import AndroidH264StreamService from '../../device-managers/android/AndroidH264StreamService';
@@ -825,16 +825,16 @@ router.get('/:udid/stream', async (req: Request, res: Response) => {
 
   const videoUrl = `http://127.0.0.1:${mjpegPort}`;
 
-  // UniversalMjpegProxy will handle connectivity and retries internally
-  if (!MJPEG_PROXY_CACHE.has(udid)) {
+  // UniversalMjpegProxy will handle connectivity and retries internally.
+  // Recreate when there's no cached proxy, the upstream url changed, OR the
+  // cached proxy has permanently stopped. That last case is the fix for the iOS
+  // preview "503 forever" bug: a proxy that exhausted its retries and called
+  // stop() otherwise lingered in the cache and 503'd every request even after
+  // WDA recovered on the same port. See shouldRecreateMjpegProxy.
+  const existingProxy = MJPEG_PROXY_CACHE.get(udid);
+  if (shouldRecreateMjpegProxy(existingProxy, videoUrl)) {
+    existingProxy?.stop();
     MJPEG_PROXY_CACHE.set(udid, new UniversalMjpegProxy(videoUrl));
-  } else {
-    // Check if URL changed and update proxy
-    const existingProxy = MJPEG_PROXY_CACHE.get(udid);
-    if (existingProxy.url !== videoUrl) {
-      existingProxy.stop();
-      MJPEG_PROXY_CACHE.set(udid, new UniversalMjpegProxy(videoUrl));
-    }
   }
 
   try {
