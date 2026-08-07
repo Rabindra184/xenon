@@ -1,7 +1,7 @@
 import { Request, Response, Router, NextFunction } from 'express';
 import { prisma } from '../../prisma';
 import { SESSION_MANAGER } from '../../sessions/SessionManager';
-import { UniversalMjpegProxy } from '../../helpers/UniversalMjpegProxy';
+import { UniversalMjpegProxy, shouldRecreateMjpegProxy } from '../../helpers/UniversalMjpegProxy';
 import { WebConfigService } from '../../data-service/web-config-service';
 import { Container } from 'typedi';
 import { scopeGuard } from '../../middleware/scopeGuard';
@@ -1017,13 +1017,13 @@ async function streamLiveSessionVideo(request: Request, response: Response) {
 
   const videoUrl = session?.getLiveVideoUrl();
   if (videoUrl) {
-    if (!MJPEG_PROXY_CACHE.has(sessionId)) {
-      MJPEG_PROXY_CACHE.set(sessionId, new UniversalMjpegProxy(videoUrl));
-    }
-
-    // Principal Robustness: Ensure proxy is updated if URL changes
+    // Recreate when there's no cached proxy, the upstream url changed, OR the
+    // cached proxy has permanently stopped (a stopped proxy 503s every request
+    // — see shouldRecreateMjpegProxy). Evict the old one first so a url change
+    // doesn't leak its upstream connection.
     const existingProxy = MJPEG_PROXY_CACHE.get(sessionId);
-    if (existingProxy && (existingProxy as any).mjpegUrl !== videoUrl) {
+    if (shouldRecreateMjpegProxy(existingProxy, videoUrl)) {
+      existingProxy?.stop();
       MJPEG_PROXY_CACHE.set(sessionId, new UniversalMjpegProxy(videoUrl));
     }
 

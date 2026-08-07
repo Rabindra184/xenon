@@ -14,6 +14,26 @@ import log from '../logger';
  * This proxy sniffs high-level response headers and gracefully handles raw streams
  * by injecting consistent HTTP headers for the client browser.
  */
+/**
+ * Decide whether a per-device MJPEG proxy cache must create a fresh proxy.
+ *
+ * Recreate when: (a) nothing is cached, (b) the upstream url changed, or
+ * (c) the cached proxy is stopped. Case (c) is the fix for the iOS preview
+ * "503 forever" bug — a proxy that exhausted its retries and called stop()
+ * stays in the cache, and because the upstream url is unchanged (same mjpeg
+ * port) the old url-only check reused the dead object, 503-ing every request
+ * even after WDA fully recovered.
+ */
+export function shouldRecreateMjpegProxy(
+  existing: { url: string; stopped: boolean } | undefined | null,
+  videoUrl: string,
+): boolean {
+  if (!existing) return true;
+  if (existing.url !== videoUrl) return true;
+  if (existing.stopped) return true;
+  return false;
+}
+
 export class UniversalMjpegProxy {
   private mjpegUrl: string;
   private boundary = 'BoundaryString';
@@ -55,6 +75,16 @@ export class UniversalMjpegProxy {
 
   public get url(): string {
     return this.mjpegUrl;
+  }
+
+  /**
+   * True once this proxy has permanently torn itself down (explicit stop() or
+   * MAX_RETRIES exhausted). A stopped proxy can never reconnect — every
+   * proxyRequest short-circuits to 503 — so cache holders must evict + recreate
+   * rather than reuse it. See shouldRecreateMjpegProxy.
+   */
+  public get stopped(): boolean {
+    return this.isStopped;
   }
 
   public async proxyRequest(req: Request, res: Response) {
