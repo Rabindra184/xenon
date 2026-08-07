@@ -161,6 +161,18 @@ export interface IPluginArgs {
    */
   deleteBuildAssets: boolean;
   /**
+   * Live Devices recordings older than this many days are purged (DB row + files) by the cleanup job. Runs on `buildCleanupSchedule`.
+   */
+  recordingCleanupDays: number;
+  /**
+   * Maximum number of recordings to retain. Oldest-first eviction beyond this cap regardless of `recordingCleanupDays`.
+   */
+  recordingCleanupMaxCount: number;
+  /**
+   * Failed recordings hold no playable file, so they are purged on this much shorter window than `recordingCleanupDays`.
+   */
+  recordingFailedCleanupDays: number;
+  /**
    * How often (ms) each active session writes a heartbeat. The orphan sweeper uses ~3× this interval to detect abandoned sessions.
    */
   sessionHeartbeatIntervalMs: number;
@@ -346,6 +358,9 @@ export const DefaultPluginArgs: IPluginArgs = {
   buildCleanupMaxCount: 100,
   buildCleanupSchedule: '0 0 * * *',
   deleteBuildAssets: true,
+  recordingCleanupDays: 30,
+  recordingCleanupMaxCount: 100,
+  recordingFailedCleanupDays: 2,
   sessionHeartbeatIntervalMs: 30000,
   enableJsonLogging: false,
   autowait: {

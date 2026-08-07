@@ -5,18 +5,28 @@ import fs from 'fs';
 import path from 'path';
 import { config } from '../config';
 import { IPluginArgs } from '../interfaces/IPluginArgs';
+import {
+  selectExpiredRecordings,
+  selectOrphanDirectories,
+  isRecordingSweepSafe,
+} from './recording/recordingCleanup';
+
+/** Subdirectory holding composite (multi-device) outputs, keyed by group id. */
+const GROUPS_DIR = '_groups';
 
 @Service()
 export class CleanupService {
   private readonly log = log.scope('CleanupService');
 
   /**
-   * Orchestrates build + session cleanup based on retention policy.
+   * Orchestrates build + session + recording cleanup based on retention policy.
    *
-   * Two phases:
+   * Phases:
    *  1. Purge old builds (by age AND count cap) together with their sessions.
    *  2. Sweep orphan sessions (no build_id) older than the retention window —
    *     otherwise ad-hoc sessions accumulate forever.
+   *  3. Purge expired Live Devices recordings and sweep unreachable recording
+   *     directories (issue #209) — the one asset class nothing used to remove.
    */
   public async runCleanup(pluginArgs: IPluginArgs): Promise<void> {
     const {
@@ -79,9 +89,146 @@ export class CleanupService {
       //    never cleaned up — their assets accumulate on disk forever.
       await this.purgeOrphanSessions(expirationDate, deleteBuildAssets);
 
+      // 4. Recordings have their own windows — a failed recording holds no
+      //    playable file, so it need not linger as long as real footage.
+      await this.purgeRecordings(pluginArgs);
+
       this.log.info('✅ Build cleanup completed successfully.');
     } catch (err: any) {
       this.log.error(`❌ Cleanup failed: ${err.message}`);
+    }
+  }
+
+  /**
+   * Retention for Live Devices recordings (issue #209).
+   *
+   * Two halves, in order — expiring rows first means their directories are
+   * unreachable by the time the sweep runs, so both are reclaimed in one pass:
+   *  a. delete rows past the age/count policy, and their files;
+   *  b. remove directories no surviving row points into.
+   *
+   * Bookmarks and annotations cascade on the row delete, so no child cleanup
+   * is needed here.
+   */
+  private async purgeRecordings(pluginArgs: IPluginArgs): Promise<void> {
+    const {
+      recordingCleanupDays = 30,
+      recordingCleanupMaxCount = 100,
+      recordingFailedCleanupDays = 2,
+    } = pluginArgs;
+
+    const rows = await prisma.recording.findMany({
+      select: { id: true, status: true, started_at: true, file_path: true, group_id: true },
+    });
+
+    const expiredIds = selectExpiredRecordings({
+      rows,
+      now: Date.now(),
+      days: recordingCleanupDays,
+      maxCount: recordingCleanupMaxCount,
+      failedDays: recordingFailedCleanupDays,
+    });
+
+    if (expiredIds.length > 0) {
+      const expired = new Set(expiredIds);
+      for (const r of rows) {
+        if (expired.has(r.id) && r.file_path) this.unlinkSilently(r.file_path);
+      }
+      await prisma.recording.deleteMany({ where: { id: { in: expiredIds } } });
+      this.log.info(
+        `Purged ${expiredIds.length} expired recording(s) ` +
+          `(retention ${recordingCleanupDays}d / max ${recordingCleanupMaxCount}, ` +
+          `failed ${recordingFailedCleanupDays}d).`,
+      );
+    } else {
+      this.log.info('No recordings past their retention window.');
+    }
+
+    this.sweepOrphanRecordingDirs(
+      rows.filter((r) => !expiredIds.includes(r.id)),
+      rows.length,
+    );
+  }
+
+  /**
+   * Remove recording directories nothing in the DB can reach.
+   *
+   * Reachability is decided by `file_path`, never by the directory name — see
+   * selectOrphanDirectories for why the name is not a safe key.
+   */
+  private sweepOrphanRecordingDirs(
+    survivors: Array<{ file_path: string | null; group_id: string | null }>,
+    totalRowsRead: number,
+  ): void {
+    const base = config.recordingsAssetsPath;
+    let deviceDirs: string[] = [];
+    let groupDirs: string[] = [];
+    try {
+      if (!fs.existsSync(base)) return;
+      deviceDirs = fs
+        .readdirSync(base, { withFileTypes: true })
+        .filter((e) => e.isDirectory() && e.name !== GROUPS_DIR)
+        .map((e) => path.join(base, e.name));
+      const groupsBase = path.join(base, GROUPS_DIR);
+      if (fs.existsSync(groupsBase)) {
+        groupDirs = fs
+          .readdirSync(groupsBase, { withFileTypes: true })
+          .filter((e) => e.isDirectory())
+          .map((e) => path.join(groupsBase, e.name));
+      }
+    } catch (err: any) {
+      this.log.warn(`Could not list recording directories: ${err.message}`);
+      return;
+    }
+
+    if (
+      !isRecordingSweepSafe({
+        rowCount: totalRowsRead,
+        dirCount: deviceDirs.length + groupDirs.length,
+      })
+    ) {
+      this.log.warn(
+        `Refusing to sweep ${deviceDirs.length + groupDirs.length} recording directories: the ` +
+          'Recording table read returned no rows. That is what a failed or mis-scoped query ' +
+          'looks like, and sweeping on it would delete the whole tree. Sweep manually if the ' +
+          'table really is empty.',
+      );
+      return;
+    }
+
+    const orphans = selectOrphanDirectories({
+      deviceDirs,
+      groupDirs,
+      livePaths: survivors.map((r) => r.file_path).filter((p): p is string => !!p),
+      liveGroupIds: survivors.map((r) => r.group_id).filter((g): g is string => !!g),
+    });
+
+    let removed = 0;
+    for (const dir of orphans) {
+      if (this.removeRecordingDirectory(dir)) removed++;
+    }
+    if (removed > 0) {
+      this.log.info(
+        `Swept ${removed} unreachable recording director${removed === 1 ? 'y' : 'ies'}.`,
+      );
+    }
+  }
+
+  /** rm -rf a recording directory, refusing anything outside the tree. */
+  private removeRecordingDirectory(dir: string): boolean {
+    const base = path.resolve(config.recordingsAssetsPath);
+    const target = path.resolve(dir);
+    if (!target.startsWith(base + path.sep)) {
+      this.log.warn(`Refusing to remove recording dir outside the tree: ${dir}`);
+      return false;
+    }
+    try {
+      fs.rmSync(target, { recursive: true, force: true });
+      this.log.debug(`Removed orphan recording directory: ${target}`);
+      return true;
+    } catch (err: any) {
+      this.log.warn(`Failed to remove recording dir ${target}: ${err.message}`);
+      return false;
     }
   }
 

@@ -79,6 +79,9 @@ export const DefaultPluginArgs: IPluginArgs = {
   buildCleanupMaxCount: 100,
   buildCleanupSchedule: '0 0 * * *',
   deleteBuildAssets: true,
+  recordingCleanupDays: 30,
+  recordingCleanupMaxCount: 100,
+  recordingFailedCleanupDays: 2,
   sessionHeartbeatIntervalMs: 30000,
   enableJsonLogging: false,
   autowait: {
