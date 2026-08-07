@@ -1,4 +1,5 @@
 import path from 'node:path';
+import { NPM_PLUGIN } from './setupPlan';
 
 // Pure decision logic behind the toolchain checks. Deliberately free of any
 // electron / fs / spawn dependency so it stays unit-testable — the IO lives in
@@ -86,8 +87,28 @@ export function deriveAndroidHome(input: AndroidHomeInput): string | null {
   return clean(input.defaultSdkDir ?? undefined);
 }
 
-/** Relative path proving a given APPIUM_HOME has the Xenon plugin installed. */
-export const PLUGIN_MARKER = ['node_modules', 'xenon'];
+/**
+ * Relative path proving a given APPIUM_HOME has the Xenon plugin installed.
+ *
+ * Derived from NPM_PLUGIN so the probe can never drift from the package we
+ * actually install. This previously hard-coded the *unscoped* `node_modules/
+ * xenon`, which is a different, unrelated public npm package — older setups can
+ * leave one behind. That made the probe wrong in both directions: a home holding
+ * only the real scoped install was reported as having no plugin, while a home
+ * holding only the stale unscoped leftover was reported as having one. Because
+ * pickAppiumHome returns the first candidate whose `hasPlugin` is true, that
+ * decided which APPIUM_HOME the server launched from — i.e. potentially an older
+ * plugin build than the one just installed.
+ *
+ * Deliberately does NOT also accept the legacy unscoped path: doing so would
+ * preserve the false positive this fixes.
+ */
+export const PLUGIN_MARKER = ['node_modules', NPM_PLUGIN];
+
+/** Absolute path whose existence proves `home` has the Xenon plugin installed. */
+export function pluginMarkerPath(home: string): string {
+  return path.join(home, ...PLUGIN_MARKER);
+}
 
 export type AppiumHomeSource = 'profile' | 'env' | 'app-managed' | 'convention' | 'fallback';
 
