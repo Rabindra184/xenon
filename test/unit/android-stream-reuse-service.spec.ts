@@ -4,6 +4,10 @@ import sinon from 'sinon';
 import { Container } from 'typedi';
 import AndroidStreamService from '../../src/device-managers/android/AndroidStreamService';
 import { SingleFlight } from '../../src/helpers/singleFlight';
+import {
+  CaptureHealth,
+  CAPTURE_STALL_MS,
+} from '../../src/device-managers/android/androidStreamReuse';
 import { PortAllocator } from '../../src/services/PortAllocator';
 import { DeviceStoreFactory } from '../../src/data-service/device-store';
 
@@ -31,8 +35,17 @@ function session(udid: string, mjpegPort: number, overrides: any = {}) {
     latestFrame: Buffer.from([0xff, 0xd8]),
     lastViewerAt: Date.now(),
     viewerCount: 0,
+    captureHealth: new CaptureHealth(),
     ...overrides,
   };
+}
+
+/** A CaptureHealth that has been failing long enough to count as stalled. */
+function stalledHealth() {
+  const h = new CaptureHealth();
+  const now = Date.now();
+  h.recordFailure(now - CAPTURE_STALL_MS * 2, now);
+  return h;
 }
 
 describe('AndroidStreamService.startStream session reuse', () => {
@@ -66,6 +79,7 @@ describe('AndroidStreamService.startStream session reuse', () => {
     ['the server is no longer listening', { server: { listening: false, close: sinon.spy() } }],
     ['it never captured a frame', { latestFrame: undefined }],
     ['it is still starting', { status: 'starting' }],
+    ['the device stopped answering screencap', { captureHealth: stalledHealth() }],
   ] as const) {
     it(`discards a session and restarts when ${label}`, async () => {
       const dead = session('android-1', 9100, overrides);

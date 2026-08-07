@@ -10,7 +10,7 @@ import { ResourceIsolationService } from '../../services/ResourceIsolationServic
 import { PortAllocator } from '../../services/PortAllocator';
 import { resolveFfmpegPath } from '../../helpers/ffmpegPath';
 import { SingleFlight } from '../../helpers/singleFlight';
-import { decideAndroidStreamReuse } from './androidStreamReuse';
+import { decideAndroidStreamReuse, CaptureHealth } from './androidStreamReuse';
 
 // JPEG quality for the in-process sharp encoder (0-100). ~78 approximates the
 // old ffmpeg `-q:v 8` (mjpeg quantizer scale) — the low-lag/quality knob.
@@ -31,6 +31,9 @@ interface AndroidStreamSession {
   // remote adb instance, or [] for local.
   adbPath: string;
   adbHostArgs: string[];
+  // Whether the device is still answering screencap. Drives both the reuse
+  // decision and whether clients get served a cached (i.e. frozen) frame.
+  captureHealth: CaptureHealth;
 }
 
 @Service({ name: 'AndroidStreamService' })
@@ -114,8 +117,11 @@ class AndroidStreamService {
         continue;
       }
 
+      // Hoisted out of the try so the catch can date a failure from when the
+      // attempt began: a 15s ADB timeout means the device had already been
+      // silent for 15s by the time we reach the catch.
+      const startTime = Date.now();
       try {
-        const startTime = Date.now();
         // High-Speed Binary Snapshot
         const screenshot = await deviceLock.acquire(udid, async () => {
           return await new Promise<Buffer>((resolve, reject) => {
@@ -180,6 +186,7 @@ class AndroidStreamService {
               log.info(`[${udid}] First Android frame successfully captured and converted.`);
             }
             session.latestFrameTimestamp = Date.now();
+            session.captureHealth.recordSuccess();
           }
         } else {
           log.warn(
@@ -191,7 +198,22 @@ class AndroidStreamService {
         const delay = Math.max(5, 70 - elapsed); // Target ~14 FPS
         await new Promise((r) => setTimeout(r, delay));
       } catch (e: any) {
-        log.debug(`[${udid}] Capture failure: ${e.message}`);
+        const now = Date.now();
+        const { consecutive, shouldWarn } = session.captureHealth.recordFailure(startTime, now);
+        if (shouldWarn) {
+          // Once per episode. A dead device fails every second, and this used to
+          // be debug-only — so a device that had stopped answering produced no
+          // output at all at the default log level (issue #200).
+          log.warn(
+            `[${udid}] Device has not answered screencap for ` +
+              `${Math.round(session.captureHealth.failingForMs(now) / 1000)}s ` +
+              `(${consecutive} consecutive failures, last: ${e.message}). Stream clients are ` +
+              'being disconnected rather than served a frozen frame; the stream restarts on ' +
+              'the next request once the device recovers.',
+          );
+        } else {
+          log.debug(`[${udid}] Capture failure: ${e.message}`);
+        }
         await new Promise((r) => setTimeout(r, 1000));
       }
     }
@@ -211,6 +233,7 @@ class AndroidStreamService {
             status: existing.status,
             serverListening: existing.server?.listening === true,
             hasFrame: existing.latestFrame !== undefined,
+            captureStalled: existing.captureHealth.isStalled(Date.now()),
           },
         );
         if (decision.reuse) {
@@ -250,6 +273,7 @@ class AndroidStreamService {
             viewerCount: 0,
             adbPath,
             adbHostArgs,
+            captureHealth: new CaptureHealth(),
           };
           this.sessions.set(udid, candidate);
 
@@ -428,6 +452,21 @@ class AndroidStreamService {
             res.writableEnded ||
             !res.writable
           ) {
+            return;
+          }
+
+          // The device has gone silent, so `latestFrame` is now a still image.
+          // End the response instead of rewriting it forever: ffmpeg finalises
+          // the mp4 with the real footage it captured, and browser clients fall
+          // into their normal stream-retry — which re-enters startStream, whose
+          // health check restarts the stream. Serving on would have produced a
+          // recording that looks valid and is a photograph (issue #200).
+          if (session.captureHealth.isStalled(Date.now())) {
+            try {
+              res.end();
+            } catch {
+              /* ignore */
+            }
             return;
           }
 
