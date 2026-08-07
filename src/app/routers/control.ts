@@ -812,18 +812,17 @@ router.get('/:udid/stream', async (req: Request, res: Response) => {
       });
     }
   } else {
-    // Android auto-start
-    const androidStreamService = Container.get(AndroidStreamService);
-    const session = androidStreamService.getStreamStatus(udid);
-    if (session && session.status === 'running') {
-      mjpegPort = session.mjpegPort;
-    } else {
-      try {
-        const result = await androidStreamService.startStream(udid);
-        mjpegPort = result.mjpegPort;
-      } catch (err: any) {
-        return res.status(503).send({ error: 'Android stream failed', message: err.message });
-      }
+    // Android auto-start. Always go through startStream: it health-checks an
+    // existing session before reusing it (decideAndroidStreamReuse) and dedupes
+    // concurrent starts. The short-circuit that used to live here — hand back
+    // any session marked 'running' — bypassed both, re-introducing the very
+    // stale-port bug the service now guards against. Reuse stays just as cheap;
+    // the health check is an in-process property read, not a request.
+    try {
+      const result = await Container.get(AndroidStreamService).startStream(udid);
+      mjpegPort = result.mjpegPort;
+    } catch (err: any) {
+      return res.status(503).send({ error: 'Android stream failed', message: err.message });
     }
   }
 
