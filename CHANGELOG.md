@@ -6,6 +6,48 @@ This project follows [Semantic Versioning](https://semver.org/). Releases are
 published to npm automatically when `package.json`'s `version` changes on `main`
 (see `.github/workflows/npm-publish.yml`).
 
+## 1.11.0
+
+Minor release: iOS live-streaming reliability, including the root-cause fix for
+WebDriverAgent being terminated a few minutes after launch.
+
+### Fixed
+
+- **WebDriverAgent terminated minutes after launch (iOS 17+)** — the vendored
+  go-ios was pinned at v1.0.134, which does not keep the XCTest session alive.
+  iOS terminates the runner while the host-side `runwda` process stays alive with
+  `exitCode === null`, so nothing on the host notices and it presents as a hang.
+  Isolated by holding one WebDriverAgent build constant and varying only the
+  launcher: v1.0.134 died at 2m51s, `xcodebuild` survived 11m+, v1.2.1 survived
+  12m+. Note the version bump alone would not have reached existing installs —
+  the installer's cache check was version-blind — so it now records the installed
+  version and upgrades in place.
+- **iOS preview stuck on "Connection Failed" until a manual stop or restart** — a
+  `UniversalMjpegProxy` that exhausted its reconnect budget stayed in the
+  per-device cache, and because the upstream URL was unchanged it was reused
+  indefinitely, short-circuiting every request to 503 even after the device
+  recovered. Stopped proxies are now evicted and recreated.
+- **A dead WDA went undetected for up to an hour** — `GET /:udid/stream` reused any
+  session marked `running` without checking it, so recovery waited on the hourly
+  watchdog. The stream path now health-checks before reuse and restarts on demand.
+- **Android recordings silently produced 0-byte files until a server restart** —
+  `startStream` registered its in-flight promise *after* invoking the task while
+  releasing the key from inside the task's own `finally`. On the early-return path,
+  which never awaited, the release ran before the registration and left a settled
+  promise stuck in the map, so every later call returned a stale port for the life
+  of the process. Both stream services now dedupe through a `SingleFlight` helper
+  in which the release cannot precede registration.
+- **Perpetual empty-diff churn on the committed Prisma client** — `@prisma/client`
+  ships some runtime `.d.ts` files with CRLF while the client is committed as LF,
+  so every `prisma generate` rewrote them. Generated output is normalised to LF and
+  the freshness check now compares EOL-insensitively.
+
+### Changed
+
+- Vendored go-ios pinned to **v1.2.1** (was v1.0.134); the installer records the
+  installed version in `.go-ios-version` so existing caches upgrade rather than
+  being skipped.
+
 ## 1.10.5
 
 Patch release: Live Devices recording reliability and video-only downloads.
