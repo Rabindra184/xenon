@@ -290,6 +290,14 @@ export interface VideoPipelineOptions {
   // config.sessionAssetsPath is used. Used by the free-form RecordingOrchestrator
   // to keep mosaic recordings out of the session asset tree.
   outputPath?: string;
+  /**
+   * Called when ffmpeg exits *without* stopRecording having asked it to —
+   * typically because the source ended (the device stopped answering, so the
+   * MJPEG server disconnected its clients) or because ffmpeg crashed. The
+   * caller owns whatever bookkeeping it wrote when the recording started;
+   * nothing else will tell it the process is gone. See issue #203.
+   */
+  onExit?: (code: number | null) => void;
 }
 
 export interface CompositeInput {
@@ -398,15 +406,45 @@ export class VideoPipelineService {
       }
     });
 
-    ffmpegProc.on('exit', (code) => {
-      if (code !== 0 && code !== null) {
-        log.warn(`[VideoPipeline] FFMPEG for ${sessionId} exited with code ${code}`);
-      }
-      this.activeRecordings.delete(sessionId);
-    });
+    ffmpegProc.on('exit', (code) => this.handleProcessExit(sessionId, code, options.onExit));
 
     this.activeRecordings.set(sessionId, ffmpegProc);
     this.recordingPaths.set(sessionId, outputPath);
+  }
+
+  /**
+   * A recording's ffmpeg exited. Reports it to `onExit` only when nobody asked
+   * for it.
+   *
+   * `stopRecording` drops the handle *before* awaiting the exit, so a still
+   * present entry is the signal that this exit was not requested — the source
+   * ended or ffmpeg died. Getting that backwards would run the caller's
+   * source-ended path on every ordinary Stop as well.
+   *
+   * Split out from the listener so the decision is testable without spawning a
+   * process.
+   */
+  private handleProcessExit(
+    sessionId: string,
+    code: number | null,
+    onExit?: (code: number | null) => void,
+  ): void {
+    if (code !== 0 && code !== null) {
+      log.warn(`[VideoPipeline] FFMPEG for ${sessionId} exited with code ${code}`);
+    }
+    const unrequested = this.activeRecordings.delete(sessionId);
+    if (!unrequested || !onExit) return;
+
+    log.info(
+      `[VideoPipeline] FFMPEG for ${sessionId} exited on its own (${
+        code === null ? 'signal' : `code ${code}`
+      })`,
+    );
+    try {
+      onExit(code);
+    } catch (err: any) {
+      log.warn(`[VideoPipeline] onExit handler threw for ${sessionId}: ${err?.message ?? err}`);
+    }
   }
 
   /**
@@ -420,6 +458,18 @@ export class VideoPipelineService {
       log.info(
         `[VideoPipeline] No active recording process for ${sessionId}, returning stored path if any.`,
       );
+      // ffmpeg already exited on its own. The file still needs the faststart
+      // remux the normal stop path performs, or it stays a fragmented mp4 that
+      // some players will not scrub.
+      if (recordedPath) {
+        try {
+          await remuxToStandardMp4(recordedPath);
+        } catch (err: any) {
+          log.warn(
+            `[VideoPipeline] Remux failed for ${sessionId} (leaving fMP4): ${err?.message ?? err}`,
+          );
+        }
+      }
       const relativePath = recordedPath
         ? path.relative(config.sessionAssetsPath, recordedPath)
         : null;
@@ -428,8 +478,10 @@ export class VideoPipelineService {
     }
 
     log.info(`[VideoPipeline] Stopping recording for ${sessionId}`);
-    await waitForFfmpegExit(proc, `recording ${sessionId}`);
+    // Drop the handle before awaiting: the exit that follows is one we asked
+    // for, and the exit listener must not report it as a source-initiated end.
     this.activeRecordings.delete(sessionId);
+    await waitForFfmpegExit(proc, `recording ${sessionId}`);
     this.recordingPaths.delete(sessionId);
 
     if (recordedPath) {
