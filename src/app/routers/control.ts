@@ -18,6 +18,7 @@ import { InspectorService } from '../../services/InspectorService';
 import { StreamTicketService } from '../../services/token/StreamTicketService';
 import { PluginContext } from '../../PluginContext';
 import { resolveStreamType } from './streamType';
+import { resolveIosMjpegPort } from './iosStreamPort';
 import { resolveAndroidH264 } from './androidH264Config';
 import { RecordingStore } from '../../services/recording/recording-store';
 import { mutationScopeGuard } from '../../middleware/scopeGuard';
@@ -781,24 +782,34 @@ router.get('/:udid/stream', async (req: Request, res: Response) => {
   // For iOS devices, try to auto-start the stream if not available
   if (device.platform === 'ios' || device.platform === 'tvos') {
     const iosStreamService = Container.get(IOSStreamService);
-    const session = iosStreamService.getStreamStatus(udid);
 
-    if (session && session.status === 'running') {
-      mjpegPort = session.mjpegPort;
-    } else {
-      try {
-        log.info(
-          `Stream for iOS device ${udid} requested (Status: ${session?.status || 'idle'})...`,
-        );
-        const result = await iosStreamService.startStream(udid);
-        mjpegPort = result.mjpegPort;
-      } catch (err: any) {
-        log.error(`Failed to start stream for ${udid}: ${err.message}`);
-        return res.status(503).send({
-          error: 'Stream not available',
-          message: err.message,
-        });
-      }
+    try {
+      // A session marked `running` is only reused when WDA actually answers.
+      // WDA dies on-device while the host `runwda` process stays alive
+      // (exitCode null), leaving the session 'running' over a dead upstream —
+      // previously unrecoverable until the watchdog's hourly tick. See
+      // resolveIosMjpegPort.
+      mjpegPort = await resolveIosMjpegPort(udid, {
+        getSession: (id) => iosStreamService.getStreamStatus(id),
+        // Single attempt (retries = 0): a healthy WDA answers in milliseconds,
+        // so this costs nothing on the happy path and stays bounded by the
+        // 2.5s /status timeout when WDA is dead.
+        isWdaHealthy: (wdaPort, id) => iosStreamService.isWDARunning(wdaPort, id, 0),
+        startStream: async (id) => {
+          log.info(
+            `Stream for iOS device ${id} requested (Status: ${
+              iosStreamService.getStreamStatus(id)?.status || 'idle'
+            })...`,
+          );
+          return iosStreamService.startStream(id);
+        },
+      });
+    } catch (err: any) {
+      log.error(`Failed to start stream for ${udid}: ${err.message}`);
+      return res.status(503).send({
+        error: 'Stream not available',
+        message: err.message,
+      });
     }
   } else {
     // Android auto-start
