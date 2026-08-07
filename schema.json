@@ -305,9 +305,6 @@
         "buildCleanupMaxCount",
         "buildCleanupSchedule",
         "deleteBuildAssets",
-        "recordingCleanupDays",
-        "recordingCleanupMaxCount",
-        "recordingFailedCleanupDays",
         "sessionHeartbeatIntervalMs",
         "enableJsonLogging"
     ],
