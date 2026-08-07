@@ -4,7 +4,7 @@ import path from 'node:path';
 import type { Profile } from '@shared/types';
 import { shellAppiumHome } from './env';
 import { defaultAppiumHome } from './paths';
-import { PLUGIN_MARKER, pickAppiumHome, type AppiumHomeCandidate, type AppiumHomeSource } from './toolchainRules';
+import { pluginMarkerPath, pickAppiumHome, type AppiumHomeCandidate, type AppiumHomeSource } from './toolchainRules';
 
 // Which APPIUM_HOME a profile launches against. A profile stores '' for "auto"
 // so it stays portable across machines; auto is resolved here, per host.
@@ -14,7 +14,7 @@ const CONVENTIONAL_HOME = path.join(os.homedir(), '.appium');
 
 /** Cheap probe: the plugin's directory exists in this home's node_modules. */
 function hasXenonPlugin(home: string): boolean {
-  return existsSync(path.join(home, ...PLUGIN_MARKER));
+  return existsSync(pluginMarkerPath(home));
 }
 
 let auto: { path: string; source: AppiumHomeSource } | null = null;
