@@ -1,6 +1,8 @@
 import 'reflect-metadata';
 import http from 'http';
 import { expect } from 'chai';
+import sinon from 'sinon';
+import log from '../../src/logger';
 import AndroidStreamService from '../../src/device-managers/android/AndroidStreamService';
 import {
   CaptureHealth,
@@ -30,6 +32,50 @@ describe('Android MJPEG server: a stalled capture ends client responses', () => 
       /* ignore */
     }
     server = undefined;
+    sinon.restore();
+  });
+
+  it('logs the stall itself, without depending on the capture loop', async () => {
+    // The cable-pull run on a real S9+ found this. Ending the response drops
+    // viewerCount to 0; shouldIdleCapture then stops the capture loop attempting
+    // anything more, so the failure that would have crossed the threshold never
+    // happens and the catch never warns. Live numbers: 10 failures spanning
+    // 9.214s against a 10s threshold, then silence — a device that had vanished
+    // produced no warning at all, which is precisely what the warn exists for.
+    //
+    // There is deliberately no capture loop in this test: the announcement must
+    // come from the path that actually notices.
+    const warn = sinon.stub(log, 'warn');
+    const svc = makeService();
+    const session: any = {
+      udid: 'android-3',
+      mjpegPort: 0,
+      server: null,
+      status: 'running',
+      latestFrame: Buffer.from([0xff, 0xd8, 0xff, 0xd9]),
+      latestFrameTimestamp: Date.now(),
+      lastViewerAt: Date.now(),
+      viewerCount: 0,
+      captureHealth: new CaptureHealth(),
+    };
+    const now = Date.now();
+    session.captureHealth.recordFailure(now - CAPTURE_STALL_MS * 2, now);
+
+    server = await svc.createAndListenMjpegServer(session, 0);
+    const port = (server as http.Server).address() as any;
+
+    await new Promise((resolve, reject) => {
+      const req = http.get({ host: '127.0.0.1', port: port.port, path: '/' }, resolve);
+      req.on('error', reject);
+    });
+    await delay(200);
+
+    const stallWarnings = warn
+      .getCalls()
+      .map((c) => String(c.args[0]))
+      .filter((m) => /has not answered screencap/.test(m));
+    expect(stallWarnings.length, 'the stall must be logged exactly once').to.equal(1);
+    expect(stallWarnings[0]).to.match(/android-3/);
   });
 
   it('serves frames while healthy, then EOFs once the device goes silent', async () => {

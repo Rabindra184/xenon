@@ -90,13 +90,13 @@ export class CaptureHealth {
   /** Start of the earliest attempt in the current run of failures. */
   private failingSince?: number;
   private consecutive = 0;
-  private warned = false;
+  private announced = false;
 
   /** A frame was captured — the device is answering. */
   recordSuccess(): void {
     this.failingSince = undefined;
     this.consecutive = 0;
-    this.warned = false;
+    this.announced = false;
   }
 
   /**
@@ -104,22 +104,36 @@ export class CaptureHealth {
    *
    * `attemptStartedAt` (not `now`) dates the stall, because a 15s ADB timeout
    * means the device had already been silent for 15s by the time we got here.
-   * Returns what the caller needs to decide how loudly to log.
    */
-  recordFailure(
-    attemptStartedAt: number,
-    now: number,
-  ): { consecutive: number; stalled: boolean; shouldWarn: boolean } {
+  recordFailure(attemptStartedAt: number, now: number): { consecutive: number; stalled: boolean } {
     if (this.failingSince === undefined) this.failingSince = attemptStartedAt;
     this.consecutive += 1;
+    return { consecutive: this.consecutive, stalled: this.isStalled(now) };
+  }
 
-    const stalled = this.isStalled(now);
-    // Warn once per episode: the loop retries every second, and a device that
-    // is gone would otherwise fill the log at 1 line/s.
-    const shouldWarn = stalled && !this.warned;
-    if (shouldWarn) this.warned = true;
+  /**
+   * Claim the right to announce this stall episode: true for the first caller
+   * that observes the session stalled, false for every caller after it until a
+   * successful frame resets the episode.
+   *
+   * Why a claim rather than a flag computed inside `recordFailure`: ending
+   * client responses on a stall drops `viewerCount` to 0, `shouldIdleCapture`
+   * then stops the capture loop attempting anything more, and so the failure
+   * that would have crossed the threshold never happens — the catch never gets
+   * to warn. A live cable-pull run showed exactly that: 10 failures spanning
+   * 9.214s against a 10s threshold, then silence, so a device that had vanished
+   * produced no warning at all. Either path can claim it now, and neither
+   * double-logs.
+   */
+  takeStallAnnouncement(now: number): boolean {
+    if (!this.isStalled(now) || this.announced) return false;
+    this.announced = true;
+    return true;
+  }
 
-    return { consecutive: this.consecutive, stalled, shouldWarn };
+  /** Consecutive failed capture attempts in the current episode, for logging. */
+  get consecutiveFailures(): number {
+    return this.consecutive;
   }
 
   /** Capture has been failing long enough that any cached frame is a still. */

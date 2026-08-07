@@ -101,6 +101,35 @@ class AndroidStreamService {
     return session.status === 'running' && session.viewerCount === 0;
   }
 
+  /**
+   * Log a stall once per episode, whichever path notices it first.
+   *
+   * Both the capture loop's catch and the MJPEG writer call this. The writer
+   * matters most: ending responses on a stall drops the viewer count to zero,
+   * which makes `shouldIdleCapture` true, which stops the loop attempting
+   * further captures — so the catch may never run again. A live cable-pull run
+   * hit exactly that and logged nothing at all.
+   *
+   * Returns whether this call did the logging, so the caller can decide what to
+   * say instead.
+   */
+  private announceStallOnce(
+    session: AndroidStreamSession,
+    now: number,
+    lastError?: string,
+  ): boolean {
+    if (!session.captureHealth.takeStallAnnouncement(now)) return false;
+    const seconds = Math.round(session.captureHealth.failingForMs(now) / 1000);
+    log.warn(
+      `[${session.udid}] Device has not answered screencap for ${seconds}s ` +
+        `(${session.captureHealth.consecutiveFailures} consecutive failures` +
+        `${lastError ? `, last: ${lastError}` : ''}). Stream clients are being disconnected ` +
+        'rather than served a frozen frame; the stream restarts on the next request once the ' +
+        'device recovers.',
+    );
+    return true;
+  }
+
   private async captureLoop(udid: string, session: AndroidStreamSession) {
     log.info(`[${udid}] Background capture loop started.`);
     while (session.status === 'running' || session.status === 'starting') {
@@ -199,20 +228,9 @@ class AndroidStreamService {
         await new Promise((r) => setTimeout(r, delay));
       } catch (e: any) {
         const now = Date.now();
-        const { consecutive, shouldWarn } = session.captureHealth.recordFailure(startTime, now);
-        if (shouldWarn) {
-          // Once per episode. A dead device fails every second, and this used to
-          // be debug-only — so a device that had stopped answering produced no
-          // output at all at the default log level (issue #200).
-          log.warn(
-            `[${udid}] Device has not answered screencap for ` +
-              `${Math.round(session.captureHealth.failingForMs(now) / 1000)}s ` +
-              `(${consecutive} consecutive failures, last: ${e.message}). Stream clients are ` +
-              'being disconnected rather than served a frozen frame; the stream restarts on ' +
-              'the next request once the device recovers.',
-          );
-        } else {
-          log.debug(`[${udid}] Capture failure: ${e.message}`);
+        const { consecutive } = session.captureHealth.recordFailure(startTime, now);
+        if (!this.announceStallOnce(session, now, e.message)) {
+          log.debug(`[${udid}] Capture failure (${consecutive} consecutive): ${e.message}`);
         }
         await new Promise((r) => setTimeout(r, 1000));
       }
@@ -461,7 +479,12 @@ class AndroidStreamService {
           // into their normal stream-retry — which re-enters startStream, whose
           // health check restarts the stream. Serving on would have produced a
           // recording that looks valid and is a photograph (issue #200).
-          if (session.captureHealth.isStalled(Date.now())) {
+          const nowMs = Date.now();
+          if (session.captureHealth.isStalled(nowMs)) {
+            // Announce from here too: this path is often the only one that gets
+            // to notice, because the disconnect below is what idles the capture
+            // loop in the first place.
+            this.announceStallOnce(session, nowMs);
             try {
               res.end();
             } catch {

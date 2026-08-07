@@ -152,24 +152,53 @@ describe('CaptureHealth', () => {
     expect(h.failingForMs(T0 + CAPTURE_STALL_MS)).to.equal(0);
   });
 
-  it('warns exactly once per stall episode, and again after a recovery', () => {
+  it('announces a stall exactly once per episode, and again after a recovery', () => {
     const h = new CaptureHealth();
-    expect(h.recordFailure(T0, T0).shouldWarn, 'not yet stalled').to.equal(false);
-    expect(h.recordFailure(T0, T0 + CAPTURE_STALL_MS).shouldWarn, 'crossing the line').to.equal(
-      true,
-    );
+    h.recordFailure(T0, T0);
+    expect(h.takeStallAnnouncement(T0), 'not yet stalled').to.equal(false);
+    expect(h.takeStallAnnouncement(T0 + CAPTURE_STALL_MS), 'crossing the line').to.equal(true);
     expect(
-      h.recordFailure(T0, T0 + CAPTURE_STALL_MS + 1).shouldWarn,
-      'already warned — must not spam once per second',
+      h.takeStallAnnouncement(T0 + CAPTURE_STALL_MS + 1),
+      'already announced — must not spam once per second',
     ).to.equal(false);
 
     h.recordSuccess();
     const T1 = T0 + 60_000;
     h.recordFailure(T1, T1);
     expect(
-      h.recordFailure(T1, T1 + CAPTURE_STALL_MS).shouldWarn,
-      'a new episode deserves its own warning',
+      h.takeStallAnnouncement(T1 + CAPTURE_STALL_MS),
+      'a new episode deserves its own announcement',
     ).to.equal(true);
+  });
+
+  it('lets whichever path notices the stall first claim the announcement', () => {
+    // The live cable-pull run exposed this: ending client responses drops
+    // viewerCount to 0, shouldIdleCapture then stops the capture loop attempting
+    // anything, and the failure that would have crossed the threshold never
+    // happens. Observed: 10 failures spanning 9.214s against a 10s threshold,
+    // then silence — the EOF path silenced the warn the catch was going to emit.
+    // A claim, rather than a flag computed inside recordFailure, means either
+    // path can announce and neither double-logs.
+    const h = new CaptureHealth();
+    h.recordFailure(T0, T0);
+    const stalledAt = T0 + CAPTURE_STALL_MS;
+
+    // writeFrame notices first (no further capture attempt ever happens).
+    expect(h.takeStallAnnouncement(stalledAt), 'EOF path claims it').to.equal(true);
+    // A later capture attempt, if one does happen, must not log it a second time.
+    h.recordFailure(T0, stalledAt + 1000);
+    expect(h.takeStallAnnouncement(stalledAt + 1000), 'capture loop must not re-log').to.equal(
+      false,
+    );
+  });
+
+  it('exposes the consecutive failure count for the log line', () => {
+    const h = new CaptureHealth();
+    h.recordFailure(T0, T0);
+    h.recordFailure(T0, T0 + 1000);
+    expect(h.consecutiveFailures).to.equal(2);
+    h.recordSuccess();
+    expect(h.consecutiveFailures).to.equal(0);
   });
 
   it('counts consecutive failures for the log line and resets them on success', () => {
