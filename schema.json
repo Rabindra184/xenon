@@ -224,6 +224,21 @@
             "default": true,
             "description": "When true, the cleanup job also deletes session video recordings and screenshots from disk (not just DB rows)."
         },
+        "recordingCleanupDays": {
+            "type": "number",
+            "default": 30,
+            "description": "Live Devices recordings older than this many days are purged (DB row + files) by the cleanup job. Runs on `buildCleanupSchedule`."
+        },
+        "recordingCleanupMaxCount": {
+            "type": "number",
+            "default": 100,
+            "description": "Maximum number of recordings to retain. Oldest-first eviction beyond this cap regardless of `recordingCleanupDays`."
+        },
+        "recordingFailedCleanupDays": {
+            "type": "number",
+            "default": 2,
+            "description": "Failed recordings hold no playable file, so they are purged on this much shorter window than `recordingCleanupDays`."
+        },
         "sessionHeartbeatIntervalMs": {
             "type": "number",
             "default": 30000,
@@ -290,6 +305,9 @@
         "buildCleanupMaxCount",
         "buildCleanupSchedule",
         "deleteBuildAssets",
+        "recordingCleanupDays",
+        "recordingCleanupMaxCount",
+        "recordingFailedCleanupDays",
         "sessionHeartbeatIntervalMs",
         "enableJsonLogging"
     ],
