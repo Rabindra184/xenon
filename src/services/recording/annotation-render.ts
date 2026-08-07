@@ -5,6 +5,7 @@ import * as path from 'path';
 import { Readable } from 'stream';
 import { RecordingStore } from './recording-store';
 import { resolveFfmpegPath } from '../../helpers/ffmpegPath';
+import { probeVideoDurationSec } from './probeDuration';
 import log from '../../logger';
 
 const renderLog = log.scope('AnnotationRender');
@@ -317,60 +318,13 @@ export class AnnotationRenderService {
   }
 
   /**
-   * Probe a video's duration (seconds) using the bundled ffmpeg (no ffprobe
-   * dependency): read the container header first, then fall back to a decode
-   * pass for fragmented mp4s (e.g. a failed remux) whose header carries no
-   * duration. Undefined on any failure — the clamp then degrades to unclamped.
+   * Probe a video's duration (seconds). Lives in probeDuration.ts now — the
+   * recording-stop path needs the same number to persist a real duration
+   * instead of wall-clock (issue #204), and two copies of a two-stage ffmpeg
+   * probe would drift.
    */
   private async probeDurationSec(filePath: string): Promise<number | undefined> {
-    const fromHeader = await this.ffmpegHeaderDurationSec(filePath);
-    if (fromHeader !== undefined) return fromHeader;
-    return this.ffmpegDecodeDurationSec(filePath);
-  }
-
-  /** Duration from ffmpeg's "Duration: HH:MM:SS.ss" header line (fast path). */
-  private ffmpegHeaderDurationSec(filePath: string): Promise<number | undefined> {
-    return new Promise((resolve) => {
-      try {
-        // `ffmpeg -i <file>` with no output prints stream info then exits
-        // non-zero; we only want the Duration line on stderr.
-        const p = this.spawnFfmpeg(['-hide_banner', '-i', filePath], `probe:${path.basename(filePath)}`);
-        let stderr = '';
-        p.stderr?.on('data', (d) => (stderr += d.toString()));
-        p.on('error', () => resolve(undefined));
-        p.on('close', () => {
-          const m = stderr.match(/Duration:\s*(\d+):(\d+):(\d+(?:\.\d+)?)/);
-          if (!m) return resolve(undefined);
-          const sec = Number(m[1]) * 3600 + Number(m[2]) * 60 + parseFloat(m[3]);
-          resolve(Number.isFinite(sec) && sec > 0 ? sec : undefined);
-        });
-      } catch {
-        resolve(undefined);
-      }
-    });
-  }
-
-  /** Duration by decoding to null — reliable for fragmented mp4 with no header. */
-  private ffmpegDecodeDurationSec(filePath: string): Promise<number | undefined> {
-    return new Promise((resolve) => {
-      try {
-        const p = this.spawnFfmpeg(
-          ['-hide_banner', '-nostats', '-i', filePath, '-f', 'null', '-progress', 'pipe:1', '-'],
-          `probe-decode:${path.basename(filePath)}`,
-        );
-        let out = '';
-        p.stdout?.on('data', (d) => (out += d.toString()));
-        p.on('error', () => resolve(undefined));
-        p.on('close', () => {
-          const matches = [...out.matchAll(/out_time_us=(\d+)/g)];
-          if (!matches.length) return resolve(undefined);
-          const sec = Number(matches[matches.length - 1][1]) / 1e6;
-          resolve(Number.isFinite(sec) && sec > 0 ? sec : undefined);
-        });
-      } catch {
-        resolve(undefined);
-      }
-    });
+    return probeVideoDurationSec(filePath);
   }
 
   private sanitizeColor(c: string): string {

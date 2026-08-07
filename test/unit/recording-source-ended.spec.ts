@@ -76,7 +76,11 @@ function makeOrch(row: any, overrides: any = {}) {
     emitRecordingAnnotation: sinon.stub(),
   };
   const unblockDeviceFn = sinon.stub().resolves();
+  // Never spawn ffmpeg from a unit test; individual cases override this.
+  const probeDurationMsFn =
+    overrides.probeDurationMsFn ?? sinon.stub().resolves(undefined as number | undefined);
   const orch: any = new RecordingOrchestrator({
+    probeDurationMsFn,
     busyPrecheck: { findBusy: sinon.stub().resolves([]) } as any,
     store: store as any,
     gate,
@@ -86,7 +90,7 @@ function makeOrch(row: any, overrides: any = {}) {
     unblockDeviceFn,
     ensureMjpegPortFn: sinon.stub().resolves(9100),
   });
-  return { orch, store, gate, videoPipeline, eventMgr, unblockDeviceFn };
+  return { orch, store, gate, videoPipeline, eventMgr, unblockDeviceFn, probeDurationMsFn };
 }
 
 describe('RecordingOrchestrator: ffmpeg exiting on its own', () => {
@@ -162,6 +166,58 @@ describe('RecordingOrchestrator: ffmpeg exiting on its own', () => {
     await orch.handleSourceEnded('rec-1', 0);
 
     expect(store.finalize.called).to.be.false;
+  });
+
+  it('persists how long the video is, not how long the session was open', async () => {
+    // Issue #204. This is the exact live shape: the device died early, the file
+    // is 35.16s, and Stop came 5m36s after start. Wall-clock would report the
+    // latter — a 9.5x overstatement of a file anyone can play and check.
+    const row = makeRow({ started_at: new Date(Date.now() - 335_964).toISOString() });
+    const { orch, store } = makeOrch(row, {
+      probeDurationMsFn: sinon.stub().resolves(35_160),
+    });
+
+    await orch.handleSourceEnded('rec-1', 0);
+
+    expect(store.finalize.firstCall.args[1].durationMs).to.equal(35_160);
+  });
+
+  it('probes the recording file, after the stop path has remuxed it', async () => {
+    const row = makeRow();
+    const probe = sinon.stub().resolves(1234);
+    const { orch, videoPipeline } = makeOrch(row, { probeDurationMsFn: probe });
+
+    await orch.handleSourceEnded('rec-1', 0);
+
+    expect(probe.calledOnceWith(row.file_path)).to.be.true;
+    expect(
+      videoPipeline.stopRecording.calledBefore(probe),
+      'the faststart remux must happen before we read the header',
+    ).to.be.true;
+  });
+
+  it('falls back to wall-clock when the file cannot be probed', async () => {
+    const row = makeRow({ started_at: new Date(Date.now() - 5_000).toISOString() });
+    const { orch, store } = makeOrch(row, {
+      probeDurationMsFn: sinon.stub().resolves(undefined),
+    });
+
+    await orch.handleSourceEnded('rec-1', 0);
+
+    const { durationMs } = store.finalize.firstCall.args[1];
+    expect(durationMs, 'a rough number beats no number').to.be.closeTo(5_000, 500);
+  });
+
+  it('falls back to wall-clock when the probe throws', async () => {
+    const row = makeRow({ started_at: new Date(Date.now() - 5_000).toISOString() });
+    const { orch, store } = makeOrch(row, {
+      probeDurationMsFn: sinon.stub().rejects(new Error('ffmpeg missing')),
+    });
+
+    await orch.handleSourceEnded('rec-1', 0);
+
+    expect(store.finalize.called, 'a probe failure must not abort finalization').to.be.true;
+    expect(store.finalize.firstCall.args[1].durationMs).to.be.closeTo(5_000, 500);
   });
 
   it('survives an unknown recording id', async () => {
