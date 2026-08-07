@@ -6,6 +6,34 @@ This project follows [Semantic Versioning](https://semver.org/). Releases are
 published to npm automatically when `package.json`'s `version` changes on `main`
 (see `.github/workflows/npm-publish.yml`).
 
+## 1.11.3
+
+Adds a retention policy for Live Devices recordings — the one asset class
+nothing ever removed.
+
+### Added
+
+- **Recording retention and orphan sweep** — `CleanupService` covers Builds and
+  Sessions (`session.video_recording` is the Appium session video, a different
+  model), and there is no `DELETE` route for recordings, so the tree grew without
+  bound. On one developer machine it had reached 313 MB across 78 directories,
+  the oldest three months past the 30-day build window, with **265 MB of it
+  unreachable** — directories no DB row pointed at, left behind by failed starts.
+  A third phase now runs on the existing `buildCleanupSchedule` cron: expire rows
+  by age and count, then sweep directories no surviving row can reach. Expiring
+  first leaves those directories unreachable, so one pass reclaims both.
+
+### Changed
+
+- New plugin args, shaped like their build counterparts:
+  `recordingCleanupDays` (30), `recordingCleanupMaxCount` (100), and
+  `recordingFailedCleanupDays` (2) — a failed recording holds no playable file,
+  so it need not linger as long as real footage.
+- **Recordings are now deleted automatically.** Nothing was ever removed before,
+  so this is a behavioural change on existing installs: raise
+  `recordingCleanupDays`, or set it very high, if recordings are retained as
+  evidence. In-flight recordings are never touched by either rule.
+
 ## 1.11.2
 
 Patch release: what a real device disconnected mid-recording turned up. The
