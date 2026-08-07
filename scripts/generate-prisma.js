@@ -1,6 +1,7 @@
 const { execSync } = require('child_process');
 const path = require('path');
 const fs = require('fs');
+const { normalizeDirToLf } = require('./lib/normalize-eol');
 
 /**
  * Robust Prisma Client Generator (v1.1.9)
@@ -40,7 +41,17 @@ function generate() {
 
         console.log('✅ [Xenon] Prisma client generated in src/generated/client.');
 
-        // CRITICAL: If we are in an installed environment (lib exists), 
+        // Normalize generated text to LF before anything else copies it.
+        // @prisma/client ships some runtime *.d.ts with CRLF, so a raw generate
+        // leaves the committed (LF) client dirty on every build and fails
+        // check-client-freshness.js. Native query-engine .node binaries are
+        // skipped by the normalizer.
+        const normalizedCount = normalizeDirToLf(srcOutputDir);
+        if (normalizedCount > 0) {
+            console.log(`🧹 [Xenon] Normalized ${normalizedCount} generated file(s) to LF.`);
+        }
+
+        // CRITICAL: If we are in an installed environment (lib exists),
         // we must copy the generated client to lib/src/generated/client 
         // because the compiled code imports from there.
         if (fs.existsSync(path.resolve(rootDir, 'lib'))) {

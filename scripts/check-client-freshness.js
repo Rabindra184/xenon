@@ -14,6 +14,7 @@ const { execFileSync } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
+const { isNormalizableTextFile, stripCrlfToLf } = require('./lib/normalize-eol');
 
 const rootDir = path.resolve(__dirname, '..');
 const clientDir = path.join(rootDir, 'src/generated/client');
@@ -57,7 +58,11 @@ function hashDir(dir) {
   for (const f of walkFiles(dir)) {
     h.update(path.relative(dir, f));
     h.update('\0');
-    h.update(fs.readFileSync(f));
+    // Hash generated text EOL-insensitively: @prisma/client ships some runtime
+    // *.d.ts with CRLF, so a raw `prisma generate` here would otherwise read as
+    // "stale" against the LF-committed client. Binaries are hashed verbatim.
+    const bytes = fs.readFileSync(f);
+    h.update(isNormalizableTextFile(f) ? stripCrlfToLf(bytes) : bytes);
     h.update('\0');
   }
   return h.digest('hex');
