@@ -10,6 +10,7 @@ import { ResourceIsolationService } from '../../services/ResourceIsolationServic
 import { PortAllocator } from '../../services/PortAllocator';
 import { resolveFfmpegPath } from '../../helpers/ffmpegPath';
 import { SingleFlight } from '../../helpers/singleFlight';
+import { decideAndroidStreamReuse } from './androidStreamReuse';
 
 // JPEG quality for the in-process sharp encoder (0-100). ~78 approximates the
 // old ffmpeg `-q:v 8` (mjpeg quantizer scale) — the low-lag/quality knob.
@@ -200,9 +201,26 @@ class AndroidStreamService {
   public async startStream(udid: string): Promise<{ mjpegPort: number }> {
     const performStartup = async () => {
       try {
+        // A session is handed back only when it is actually serving. A closed
+        // server, or one that went live without ever capturing a frame, was
+        // otherwise reused indefinitely and every consumer — recording included
+        // — got a port that yields nothing. See androidStreamReuse / issue #196.
         const existing = this.sessions.get(udid);
-        if (existing && (existing.status === 'running' || existing.status === 'starting')) {
-          return { mjpegPort: existing.mjpegPort };
+        const decision = decideAndroidStreamReuse(
+          existing && {
+            status: existing.status,
+            serverListening: existing.server?.listening === true,
+            hasFrame: existing.latestFrame !== undefined,
+          },
+        );
+        if (decision.reuse) {
+          if (existing) return { mjpegPort: existing.mjpegPort };
+        } else if (existing) {
+          log.warn(
+            `[${udid}] Stream session on port ${existing.mjpegPort} is not usable ` +
+              `(${decision.reason}); discarding it and starting fresh.`,
+          );
+          await this.disposeSession(udid, existing);
         }
 
         const device = await DeviceStoreFactory.getStore().findDevice({ udid });
@@ -309,6 +327,32 @@ class AndroidStreamService {
     // promise stuck in the map so every later call returned a stale port for
     // the life of the process. See issue #194 and helpers/singleFlight.ts.
     return this.startFlight.run(udid, performStartup);
+  }
+
+  /**
+   * Release a dead session's resources so a fresh one can replace it.
+   *
+   * Deliberately *not* stopStream(): that also unblocks the device when the
+   * lock is a manual one, which would drop the caller's own hold on the device
+   * halfway through a restart. Only stream-owned resources are touched here.
+   */
+  private async disposeSession(udid: string, session: AndroidStreamSession): Promise<void> {
+    // The capture loop and every writeFrame loop poll this, so flipping it
+    // first stops them before the server goes away.
+    session.status = 'stopped';
+    try {
+      session.server?.close();
+    } catch {
+      /* ignore */
+    }
+    session.server = null;
+    // Only drop our own entry — never evict a newer session for this udid.
+    if (this.sessions.get(udid) === session) this.sessions.delete(udid);
+    try {
+      await Container.get(PortAllocator).release(session.mjpegPort);
+    } catch (e) {
+      log.warn(`[${udid}] Failed to release mjpeg port lease while restarting stream: ${e}`);
+    }
   }
 
   public async stopStream(udid: string): Promise<void> {
