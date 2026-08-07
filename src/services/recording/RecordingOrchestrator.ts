@@ -132,6 +132,12 @@ export class RecordingOrchestrator {
   private readonly _deps: Required<
     Omit<OrchestratorDeps, 'blockDeviceFn' | 'unblockDeviceFn' | 'ensureMjpegPortFn'>
   >;
+  /**
+   * Recording ids currently being closed out. Both the user-initiated stop and
+   * an ffmpeg self-exit finalize rows, and they can land at the same instant —
+   * this keeps exactly one of them doing it.
+   */
+  private readonly finalizing = new Set<string>();
 
   constructor(deps: OrchestratorDeps = {}) {
     this._deps = {
@@ -293,6 +299,9 @@ export class RecordingOrchestrator {
           udid,
           outputPath: filePath,
           mjpegPort,
+          // ffmpeg can end before anyone presses Stop — most often because the
+          // device stopped answering and the MJPEG server disconnected it.
+          onExit: (code) => void this.handleSourceEnded(id, code),
         });
         recordings.push({ id, udid, status: 'RECORDING' });
       } catch (err: any) {
@@ -372,6 +381,110 @@ export class RecordingOrchestrator {
   }
 
   /**
+   * Close out one recording: stop its ffmpeg, size the file, decide the terminal
+   * status, persist it, release the gate slot and the device lock, and record
+   * the metrics. Shared by the user-initiated stop path and by
+   * handleSourceEnded, so the two can never drift.
+   */
+  private async finalizeRecording(
+    r: any,
+    opts: { endedBySource?: boolean } = {},
+  ): Promise<{
+    id: string;
+    udid: string;
+    status: string;
+    durationMs?: number;
+    sizeBytes?: number;
+  }> {
+    // Both entry points land here and this is where the instruments are used;
+    // handleSourceEnded has no reason to know they are lazily created.
+    ensureOtelInstruments();
+    let status: 'STOPPED' | 'FAILED' = 'STOPPED';
+    let failReason: string | undefined;
+    try {
+      await this.videoPipeline.stopRecording(r.id);
+    } catch (err: any) {
+      status = 'FAILED';
+      failReason = err?.message ?? 'ffmpeg_stop_failed';
+    }
+    const durationMs = r.started_at ? Date.now() - new Date(r.started_at).getTime() : undefined;
+    let sizeBytes: number | undefined;
+    try {
+      sizeBytes = fs.statSync(r.file_path).size;
+    } catch {
+      // File may not exist on FAIL; leave size undefined.
+    }
+    if (status === 'STOPPED' && (sizeBytes === undefined || sizeBytes < MIN_PLAYABLE_MP4_BYTES)) {
+      status = 'FAILED';
+      failReason = 'empty_or_corrupt_mp4';
+      recLog.warn(
+        `Recording ${r.id} for ${r.device_udid} produced unusable file ` +
+          `(size=${sizeBytes ?? 'missing'} bytes)`,
+      );
+    }
+    // A recording whose source ended still produced valid video — just less of
+    // it than was asked for. Keeping it STOPPED leaves the mp4 downloadable;
+    // recording why it ended keeps "this is shorter than you expected" visible
+    // in the data rather than only in the log.
+    if (opts.endedBySource && status === 'STOPPED') {
+      failReason = 'source_ended';
+    }
+    try {
+      await this.store.finalize(r.id, { status, durationMs, sizeBytes, failReason });
+    } catch (err: any) {
+      recLog.warn(`finalize failed for ${r.id}: ${err?.message}`);
+    }
+    this.gate.release(r.id);
+    await this.releaseLockIfNotInheritedFromMosaic(r.device_udid, r.device_host ?? '127.0.0.1');
+    if (durationMs !== undefined) {
+      durationHistogram.record(durationMs, {
+        outcome: status === 'STOPPED' ? OUTCOME.SUCCESS : OUTCOME.FAILURE,
+      });
+    }
+    if (status === 'FAILED') {
+      failuresCounter.add(1, { fail_reason: failReason ?? 'ffmpeg_stop_failed' });
+    }
+    // Fix E: warm the annotated-mp4 cache off the critical path so a later
+    // Download is served from cache instead of an on-demand burn-in. Only
+    // for finalized recordings that actually carry annotations.
+    if (status === 'STOPPED' && ((r.annotations?.length as number) ?? 0) > 0) {
+      this.prewarmAnnotatedRender(r.id);
+    }
+    return { id: r.id, udid: r.device_udid, status, durationMs, sizeBytes };
+  }
+
+  /**
+   * The ffmpeg for one recording exited without us asking it to.
+   *
+   * The usual cause is the source ending: the device stopped answering, so the
+   * MJPEG server disconnected its clients (see AndroidStreamService and issue
+   * #200) and ffmpeg saw end-of-input. The mp4 is valid, just shorter than
+   * requested. Nothing else reconciles the row, so without this it sits at
+   * RECORDING — no ended_at, no duration, no size — until a manual Stop or
+   * until recoverOnBoot marks it FAILED on the next server restart, which is
+   * both late and wrong for a recording that ended cleanly. See issue #203.
+   */
+  private async handleSourceEnded(recordingId: string, code: number | null): Promise<void> {
+    if (this.finalizing.has(recordingId)) return; // a stop is already on it
+    this.finalizing.add(recordingId);
+    try {
+      const r: any = await this.store.findById(recordingId);
+      if (!r || r.status !== 'RECORDING') return;
+      recLog.warn(
+        `Recording ${recordingId} for ${r.device_udid}: ffmpeg exited on its own ` +
+          `(${code === null ? 'signal' : `code ${code}`}); finalizing it here rather than ` +
+          'leaving the row open until someone presses Stop.',
+      );
+      const one = await this.finalizeRecording(r, { endedBySource: true });
+      this.eventMgr.emitRecordingStopped({ groupId: r.group_id, recordings: [one] });
+    } catch (err: any) {
+      recLog.warn(`source-ended finalize failed for ${recordingId}: ${err?.message ?? err}`);
+    } finally {
+      this.finalizing.delete(recordingId);
+    }
+  }
+
+  /**
    * Stop all recordings in a group. Each recording is finalized independently
    * (one ffmpeg failure does not abort the others), the gate slot is released,
    * and the manual block is released. Idempotent.
@@ -410,53 +523,13 @@ export class RecordingOrchestrator {
         sizeBytes?: number;
       }> = [];
       for (const r of recordings as any[]) {
-        let status: 'STOPPED' | 'FAILED' = 'STOPPED';
-        let failReason: string | undefined;
+        // Claim it so an ffmpeg exit landing mid-stop doesn't finalize the same
+        // row from handleSourceEnded at the same time.
+        this.finalizing.add(r.id);
         try {
-          await this.videoPipeline.stopRecording(r.id);
-        } catch (err: any) {
-          status = 'FAILED';
-          failReason = err?.message ?? 'ffmpeg_stop_failed';
-        }
-        const durationMs = r.started_at ? Date.now() - new Date(r.started_at).getTime() : undefined;
-        let sizeBytes: number | undefined;
-        try {
-          sizeBytes = fs.statSync(r.file_path).size;
-        } catch {
-          // File may not exist on FAIL; leave size undefined.
-        }
-        if (
-          status === 'STOPPED' &&
-          (sizeBytes === undefined || sizeBytes < MIN_PLAYABLE_MP4_BYTES)
-        ) {
-          status = 'FAILED';
-          failReason = 'empty_or_corrupt_mp4';
-          recLog.warn(
-            `Recording ${r.id} for ${r.device_udid} produced unusable file ` +
-              `(size=${sizeBytes ?? 'missing'} bytes)`,
-          );
-        }
-        try {
-          await this.store.finalize(r.id, { status, durationMs, sizeBytes, failReason });
-        } catch (err: any) {
-          recLog.warn(`finalize failed for ${r.id}: ${err?.message}`);
-        }
-        this.gate.release(r.id);
-        await this.releaseLockIfNotInheritedFromMosaic(r.device_udid, r.device_host ?? '127.0.0.1');
-        if (durationMs !== undefined) {
-          durationHistogram.record(durationMs, {
-            outcome: status === 'STOPPED' ? OUTCOME.SUCCESS : OUTCOME.FAILURE,
-          });
-        }
-        if (status === 'FAILED') {
-          failuresCounter.add(1, { fail_reason: failReason ?? 'ffmpeg_stop_failed' });
-        }
-        out.push({ id: r.id, udid: r.device_udid, status, durationMs, sizeBytes });
-        // Fix E: warm the annotated-mp4 cache off the critical path so a later
-        // Download is served from cache instead of an on-demand burn-in. Only
-        // for finalized recordings that actually carry annotations.
-        if (status === 'STOPPED' && ((r.annotations?.length as number) ?? 0) > 0) {
-          this.prewarmAnnotatedRender(r.id);
+          out.push(await this.finalizeRecording(r));
+        } finally {
+          this.finalizing.delete(r.id);
         }
       }
       this.eventMgr.emitRecordingStopped({ groupId, recordings: out });
