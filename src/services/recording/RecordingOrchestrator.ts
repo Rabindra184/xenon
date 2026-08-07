@@ -14,6 +14,7 @@ import {
 import { DeviceStoreFactory } from '../../data-service/device-store';
 import { formatManualLock } from './manualLock';
 import { ensureMjpegForRecording } from './ensureMjpegForRecording';
+import { probeVideoDurationMs } from './probeDuration';
 import { ATTR, METRIC, OUTCOME } from '../telemetry/attributes';
 import log from '../../logger';
 import { ARTIFACT_STORE } from '../artifacts/ArtifactStore';
@@ -121,6 +122,11 @@ export interface OrchestratorDeps {
    * unit tests so stream services need not be registered in the DI container.
    */
   ensureMjpegPortFn?: (udid: string) => Promise<number>;
+  /**
+   * Reads how long the finished mp4 actually is. Injected in unit tests so
+   * finalizing a recording never spawns ffmpeg.
+   */
+  probeDurationMsFn?: (filePath: string) => Promise<number | undefined>;
 }
 
 @Service()
@@ -129,8 +135,12 @@ export class RecordingOrchestrator {
   public unblockDeviceFn: UnblockDeviceFn;
   public blockDeviceFn: BlockDeviceFn;
   public ensureMjpegPortFn: (udid: string) => Promise<number>;
+  public probeDurationMsFn: (filePath: string) => Promise<number | undefined>;
   private readonly _deps: Required<
-    Omit<OrchestratorDeps, 'blockDeviceFn' | 'unblockDeviceFn' | 'ensureMjpegPortFn'>
+    Omit<
+      OrchestratorDeps,
+      'blockDeviceFn' | 'unblockDeviceFn' | 'ensureMjpegPortFn' | 'probeDurationMsFn'
+    >
   >;
   /**
    * Recording ids currently being closed out. Both the user-initiated stop and
@@ -150,6 +160,7 @@ export class RecordingOrchestrator {
     this.blockDeviceFn = deps.blockDeviceFn ?? defaultBlockDevice;
     this.unblockDeviceFn = deps.unblockDeviceFn ?? defaultUnblockDevice;
     this.ensureMjpegPortFn = deps.ensureMjpegPortFn ?? ensureMjpegForRecording;
+    this.probeDurationMsFn = deps.probeDurationMsFn ?? probeVideoDurationMs;
   }
 
   private get busyPrecheck() {
@@ -407,7 +418,22 @@ export class RecordingOrchestrator {
       status = 'FAILED';
       failReason = err?.message ?? 'ffmpeg_stop_failed';
     }
-    const durationMs = r.started_at ? Date.now() - new Date(r.started_at).getTime() : undefined;
+    // How long the video actually is, not how long the session was open. Those
+    // agree only while capture keeps up: a recording whose device died at 26s
+    // and was stopped 5 minutes later reported 5m36s for a 35s file (#204).
+    // Wall-clock is not lost — started_at and ended_at are both persisted, so
+    // it stays derivable, while the media duration is not recoverable later
+    // without re-reading the file. Probed after stopRecording so the faststart
+    // remux has happened and the header carries a duration; falls back to
+    // wall-clock whenever the probe can't answer.
+    const wallClockMs = r.started_at ? Date.now() - new Date(r.started_at).getTime() : undefined;
+    let durationMs = wallClockMs;
+    try {
+      const probed = await this.probeDurationMsFn(r.file_path);
+      if (probed !== undefined) durationMs = probed;
+    } catch (err: any) {
+      recLog.debug(`duration probe failed for ${r.id}, using wall-clock: ${err?.message ?? err}`);
+    }
     let sizeBytes: number | undefined;
     try {
       sizeBytes = fs.statSync(r.file_path).size;
