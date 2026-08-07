@@ -9,6 +9,7 @@ import { Service, Container } from 'typedi';
 import { ResourceIsolationService } from '../../services/ResourceIsolationService';
 import { PortAllocator } from '../../services/PortAllocator';
 import { resolveFfmpegPath } from '../../helpers/ffmpegPath';
+import { SingleFlight } from '../../helpers/singleFlight';
 
 // JPEG quality for the in-process sharp encoder (0-100). ~78 approximates the
 // old ffmpeg `-q:v 8` (mjpeg quantizer scale) — the low-lag/quality knob.
@@ -34,7 +35,7 @@ interface AndroidStreamSession {
 @Service({ name: 'AndroidStreamService' })
 class AndroidStreamService {
   private sessions: Map<string, AndroidStreamSession> = new Map();
-  private startPromises: Map<string, Promise<{ mjpegPort: number }>> = new Map();
+  private startFlight = new SingleFlight<{ mjpegPort: number }>();
   // UDIDs for which a sharp encode failure has already been warned, so a
   // systemic problem is visible once without per-frame log spam.
   private sharpFailureWarned: Set<string> = new Set();
@@ -197,8 +198,6 @@ class AndroidStreamService {
   }
 
   public async startStream(udid: string): Promise<{ mjpegPort: number }> {
-    if (this.startPromises.has(udid)) return this.startPromises.get(udid)!;
-
     const performStartup = async () => {
       try {
         const existing = this.sessions.get(udid);
@@ -300,14 +299,16 @@ class AndroidStreamService {
         log.error(`[${udid}] Stream failed to start: ${error.message}`);
         this.stopStream(udid);
         throw error;
-      } finally {
-        this.startPromises.delete(udid);
       }
     };
 
-    const promise = performStartup();
-    this.startPromises.set(udid, promise);
-    return promise;
+    // Dedupe via SingleFlight rather than a hand-rolled map. The previous code
+    // registered the promise *after* invoking performStartup and released the
+    // key in performStartup's own `finally`; on the early-return path (which
+    // never awaits) that released before it registered, leaving a settled
+    // promise stuck in the map so every later call returned a stale port for
+    // the life of the process. See issue #194 and helpers/singleFlight.ts.
+    return this.startFlight.run(udid, performStartup);
   }
 
   public async stopStream(udid: string): Promise<void> {
