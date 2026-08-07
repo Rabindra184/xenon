@@ -17,6 +17,7 @@ import tcpPortUsed from 'tcp-port-used';
 import { InternalHttpClient } from '../../InternalHttpClient';
 import log from '../../logger';
 import { cachePath } from '../../helpers';
+import { SingleFlight } from '../../helpers/singleFlight';
 import { PortAllocator } from '../../services/PortAllocator';
 import { DeviceStoreFactory } from '../../data-service/device-store';
 import {
@@ -62,7 +63,7 @@ interface StreamSession {
 @Service({ name: 'IOSStreamService' })
 class IOSStreamService {
   private sessions: Map<string, StreamSession> = new Map();
-  private startPromises: Map<string, Promise<{ wdaPort: number; mjpegPort: number }>> = new Map();
+  private startFlight = new SingleFlight<{ wdaPort: number; mjpegPort: number }>();
   private recoveryCooldowns: Map<string, number> = new Map(); // Track last recovery attempt time
   private readonly RECOVERY_COOLDOWN_MS = 30000; // 30s cooldown between recovery attempts
   // Port-lease TTL for an active stream. Longer than the watchdog interval (1h),
@@ -538,12 +539,6 @@ class IOSStreamService {
   }
 
   public async startStream(udid: string): Promise<{ wdaPort: number; mjpegPort: number }> {
-    // Return existing promise if already starting
-    if (this.startPromises.has(udid)) {
-      const existingPromise = this.startPromises.get(udid);
-      if (existingPromise) return existingPromise;
-    }
-
     // Check if stream is already running - avoid unnecessary restarts
     const existingSession = this.sessions.get(udid);
     if (existingSession && existingSession.status === 'running') {
@@ -911,15 +906,13 @@ class IOSStreamService {
         this.markRecoveryAttempt(udid);
         log.error(`Stream start failed for ${udid}: ${error.message}`);
         throw error;
-      } finally {
-        this.startPromises.delete(udid);
       }
     };
 
-    // Set the promise in the map IMMEDIATELY before awaiting anything
-    const startPromise = performStartup();
-    this.startPromises.set(udid, startPromise);
-    return startPromise;
+    // Dedupe through SingleFlight so registration cannot race the release.
+    // This path happened to be safe only because every early return awaited
+    // first; Android's did not, and silently poisoned its map (issue #194).
+    return this.startFlight.run(udid, performStartup);
   }
 
   private async killStaleProcesses(
