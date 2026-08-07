@@ -6,6 +6,26 @@ This project follows [Semantic Versioning](https://semver.org/). Releases are
 published to npm automatically when `package.json`'s `version` changes on `main`
 (see `.github/workflows/npm-publish.yml`).
 
+## 1.11.1
+
+Patch release: the Android counterpart to the stale-stream-session fixes that
+1.11.0 made on the iOS side.
+
+### Fixed
+
+- **Android preview and recording could be handed a stream port that serves
+  nothing** — `startStream` reused any session marked `running` *or* `starting`
+  without checking that anything was still serving it. A session whose HTTP server
+  had closed, or one that went live without ever capturing a frame (startup warns
+  after a 5s first-frame wait and continues anyway), was therefore reused
+  indefinitely: ffmpeg exited 1 against the port and left a 0-byte mp4 — the same
+  silent symptom as the 1.11.0 promise-map fix, reached by a different route.
+  Reuse now requires the session to be `running`, its own server to still be
+  listening, and at least one frame to have been captured; anything else is torn
+  down and restarted. `GET /:udid/stream` kept a second copy of the same
+  short-circuit, so it now routes through `startStream` as well — the Android
+  analogue of the iOS route fix in 1.11.0.
+
 ## 1.11.0
 
 Minor release: iOS live-streaming reliability, including the root-cause fix for
