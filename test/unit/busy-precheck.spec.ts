@@ -45,6 +45,34 @@ describe('BusyPrecheck', () => {
     expect(out).to.deep.equal([]);
   });
 
+  it('recognises a lock keyed on the caller’s api-key id as self (upgrade tolerance)', async () => {
+    // Locks written by versions that keyed on apiKey.id must still resolve to
+    // their owner, exactly as isSelfManualLock does for /control. Without the
+    // second identity this classifies as manual_other and the caller is
+    // refused their own device.
+    const pc = new BusyPrecheck(
+      withDevices({
+        U1: { udid: 'U1', busy: true, session_id: 'manual_key_abc_U1' },
+      }),
+    );
+    expect(await pc.findBusy(['U1'], 'usr_alice', 'key_abc')).to.deep.equal([]);
+    // ...and without it, it is still (correctly) foreign.
+    expect((await pc.findBusy(['U1'], 'usr_alice'))[0]).to.deep.include({
+      udid: 'U1',
+      reason: 'manual_other',
+    });
+  });
+
+  it('does not treat someone else’s api-key lock as self', async () => {
+    const pc = new BusyPrecheck(
+      withDevices({
+        U1: { udid: 'U1', busy: true, session_id: 'manual_key_bob_U1' },
+      }),
+    );
+    const out = await pc.findBusy(['U1'], 'usr_alice', 'key_abc');
+    expect(out[0]).to.deep.include({ udid: 'U1', reason: 'manual_other' });
+  });
+
   it('flags a manual lock owned by a different actor as manual_other', async () => {
     const pc = new BusyPrecheck(
       withDevices({

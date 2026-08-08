@@ -1,6 +1,7 @@
 import { Service } from 'typedi';
 import { DeviceStoreFactory } from '../../data-service/device-store';
 import { inspectManualLock } from './manualLock';
+import { isSelfManualLock } from '../device-access/deviceAccessPolicy';
 
 export type BusyReason =
   | 'automation'
@@ -39,12 +40,19 @@ export class BusyPrecheck {
 
   /**
    * @param udids   Devices to inspect.
-   * @param actorId Identity of the caller (api-key id). When provided, manual
-   *                locks owned by this actor are treated as self and skipped.
-   *                Omit only for legacy/internal call sites that don't have a
-   *                user identity available.
+   * @param actorId Identity of the caller — the USER id (see
+   *                src/services/device-access/deviceAccessPolicy.ts; locks are
+   *                keyed on the user, not the credential). When provided,
+   *                manual locks owned by this actor are treated as self and
+   *                skipped. Omit only for legacy/internal call sites that
+   *                don't have a user identity available.
+   * @param actorApiKeyId The caller's API-key id, when they have one. Purely
+   *                an upgrade tolerance: locks written by versions that keyed
+   *                on apiKey.id are still recognised as this caller's, exactly
+   *                as isSelfManualLock does for /control. Droppable a release
+   *                after ship — locks are ephemeral device-row state.
    */
-  async findBusy(udids: string[], actorId?: string): Promise<BusyEntry[]> {
+  async findBusy(udids: string[], actorId?: string, actorApiKeyId?: string): Promise<BusyEntry[]> {
     const store = this.storeProvider();
     const out: BusyEntry[] = [];
     for (const udid of udids) {
@@ -56,7 +64,10 @@ export class BusyPrecheck {
       if (!device.busy) continue;
       const blockId: string | undefined = device.session_id ?? undefined;
       const lock = inspectManualLock(blockId, actorId, udid);
-      if (lock?.self) {
+      // Single source of truth for "is this lock mine" — the same helper
+      // /control's guard, stream/start and stream/stop use. Checking only
+      // `lock.self` here was a fourth, narrower variant of that question.
+      if (isSelfManualLock(blockId, udid, actorId, actorApiKeyId)) {
         // Self-owned manual lock — caller can take it over.
         continue;
       }
