@@ -26,6 +26,21 @@ export const UNGUARDED_CONTROL_MUTATIONS: readonly string[] = [
   'stream/ticket', // mints a viewing credential; viewing is a read
 ];
 
+/**
+ * Reads that take the ownership check anyway.
+ *
+ * The guard is mutations-only by design — screenshots, the MJPEG stream, logs
+ * and page source stay open so the mosaic picker and monitoring can look at a
+ * busy device. The clipboard is the documented exception: every other read
+ * exposes device *state*, while this one returns whatever the holder most
+ * recently copied, which is routinely a password, a 2FA code or a token. There
+ * is no monitoring use for reading a stranger's pasteboard.
+ *
+ * Keep this list short and justify every entry. Widening it re-opens the
+ * "reads are cheap" assumption the mosaic depends on.
+ */
+export const OWNERSHIP_CHECKED_READS: readonly string[] = ['clipboard'];
+
 export interface DeviceAccessGuardDeps {
   findDevice?: (
     udid: string,
@@ -53,11 +68,22 @@ export function deviceAccessGuard(deps: DeviceAccessGuardDeps = {}) {
   const unavailable = (res: Response) => res.status(503).json(ownershipUnavailableBody());
 
   return async function (req: Request, res: Response, next: NextFunction) {
-    if (!STATE_CHANGING.has(req.method)) return next();
-
     // Router-level middleware has no req.params, so read the path directly.
     // Inside the /control router req.path is `/<udid>/<action…>`.
+    // Express routes case-insensitively; match the lists the same way so e.g.
+    // `Stream/Start` still reaches stream/start's own richer handling, and
+    // `Clipboard` cannot slip past the read check below.
     const parts = req.path.split('/').filter(Boolean);
+    const action = parts.slice(1).join('/').toLowerCase();
+
+    // Decide whether this request is in scope BEFORE touching the udid, so an
+    // ordinary read (screenshot, stream, logs, page source) short-circuits here
+    // exactly as it did when this guard was mutations-only.
+    const inScope = STATE_CHANGING.has(req.method)
+      ? !UNGUARDED_CONTROL_MUTATIONS.includes(action)
+      : req.method === 'GET' && OWNERSHIP_CHECKED_READS.includes(action);
+    if (!action || !inScope) return next();
+
     let udid: string;
     try {
       udid = decodeURIComponent(parts[0] ?? '');
@@ -68,12 +94,7 @@ export function deviceAccessGuard(deps: DeviceAccessGuardDeps = {}) {
       log.warn(`deviceAccessGuard: malformed udid segment in ${req.path}: ${e?.message ?? e}`);
       return res.status(400).json({ success: false, error: 'invalid_udid' });
     }
-    const action = parts.slice(1).join('/');
-    if (!udid || !action) return next();
-    // Express routes case-insensitively; match the allowlist the same way so
-    // e.g. `Stream/Start` still reaches stream/start's own richer handling
-    // instead of falling into the generic ownership check below.
-    if (UNGUARDED_CONTROL_MUTATIONS.includes(action.toLowerCase())) return next();
+    if (!udid) return next();
 
     const actor = resolveActor(req);
     if (!actor.userId) {

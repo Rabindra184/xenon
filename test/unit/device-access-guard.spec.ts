@@ -51,6 +51,8 @@ function appWith(opts: {
   );
   router.post('/:udid/tap', (_req, res) => res.json({ success: true, reached: true }));
   router.get('/:udid/screenshot', (_req, res) => res.json({ reached: true }));
+  router.get('/:udid/clipboard', (_req, res) => res.json({ reached: true, content: 'hunter2' }));
+  router.get('/:udid/logs', (_req, res) => res.json({ reached: true }));
   router.post('/:udid/stream/start', (_req, res) => res.json({ reached: true }));
   router.post('/:udid/stream/stop', (_req, res) => res.json({ reached: true }));
   router.post('/:udid/stream/ticket', (_req, res) => res.json({ reached: true }));
@@ -76,6 +78,59 @@ describe('deviceAccessGuard', () => {
   it('never blocks a GET', async () => {
     const res = await request(appWith({ actorUserId: BOB })).get(`/control/${UDID}/screenshot`);
     expect(res.status).to.equal(200);
+  });
+
+  // The clipboard is the one read that is credential-shaped: it routinely holds
+  // a password, a 2FA code or a token the holder just copied. Every other read
+  // under /control exposes device *state*; this one exposes whatever the holder
+  // most recently put on their pasteboard. There is no monitoring use for
+  // reading a stranger's clipboard, so it takes the ownership check despite
+  // being a GET.
+  it('blocks reading the clipboard of a device another user holds', async () => {
+    const res = await request(appWith({ actorUserId: BOB })).get(`/control/${UDID}/clipboard`);
+    expect(res.status).to.equal(409);
+    expect(res.body.error).to.equal('device_held_by_another_user');
+    expect(JSON.stringify(res.body)).to.not.contain('hunter2');
+  });
+
+  it('lets the holder read their own clipboard', async () => {
+    const res = await request(appWith({ actorUserId: ALICE })).get(`/control/${UDID}/clipboard`);
+    expect(res.status, JSON.stringify(res.body)).to.equal(200);
+    expect(res.body.content).to.equal('hunter2');
+  });
+
+  it('lets an admin read the clipboard', async () => {
+    const res = await request(appWith({ actorUserId: BOB, scopes: 'admin' })).get(
+      `/control/${UDID}/clipboard`,
+    );
+    expect(res.status).to.equal(200);
+  });
+
+  it('allows the clipboard read when the device is free', async () => {
+    const res = await request(appWith({ actorUserId: BOB, busy: false })).get(
+      `/control/${UDID}/clipboard`,
+    );
+    expect(res.status).to.equal(200);
+  });
+
+  it('blocks the clipboard of a device running another user’s Appium session', async () => {
+    const res = await request(
+      appWith({ actorUserId: BOB, sessionId: 'appium-1', sessionOwner: ALICE }),
+    ).get(`/control/${UDID}/clipboard`);
+    expect(res.status).to.equal(409);
+    expect(res.body.error).to.equal('device_in_use_by_session');
+  });
+
+  // Deliberately NOT extended to the other reads: screenshot and the MJPEG
+  // stream are load-bearing for the mosaic and monitoring, and the design
+  // decision for this guard was mutations-only. Clipboard is the documented
+  // exception, so this pins the boundary.
+  it('does not extend the ownership check to other reads', async () => {
+    const app = appWith({ actorUserId: BOB });
+    for (const p of ['screenshot', 'logs']) {
+      const res = await request(app).get(`/control/${UDID}/${p}`);
+      expect(res.status, p).to.equal(200);
+    }
   });
 
   it('skips stream/start, stream/stop and stream/ticket', async () => {
