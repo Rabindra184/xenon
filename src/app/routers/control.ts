@@ -681,9 +681,14 @@ router.post('/:udid/stream/start', async (req: Request, res: Response) => {
  * the SameSite=strict dashboard cookie, so it authenticates via ?ticket=.
  */
 router.post('/:udid/stream/ticket', async (req: Request, res: Response) => {
-  const actorId = req.apiKey?.id ?? req.auth?.userId;
-  if (!actorId) return res.status(401).json({ error: 'unauthenticated' });
-  const ticket = await Container.get(StreamTicketService).mint(req.params.udid, actorId);
+  // Mint on the USER identity. req.apiKey.id is an ApiKey row id — a different
+  // id space — and authMiddleware's redeem branch assigns the ticket's actor
+  // straight into req.auth.userId. Minting a key id therefore made that field
+  // hold something that is not a user, while every ownership reader added in
+  // #216/#217 trusts that it is.
+  const actor = resolveActor(req);
+  if (!actor.userId) return res.status(401).json({ error: 'unauthenticated' });
+  const ticket = await Container.get(StreamTicketService).mint(req.params.udid, actor.userId);
   res.json({ ticket, expiresIn: 60 });
 });
 
