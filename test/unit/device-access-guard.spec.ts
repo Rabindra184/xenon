@@ -2,7 +2,7 @@ import 'reflect-metadata';
 import { expect } from 'chai';
 import express from 'express';
 import request from 'supertest';
-import { deviceAccessGuard } from '../../src/middleware/deviceAccessGuard';
+import { deviceAccessGuard, DeviceAccessGuardDeps } from '../../src/middleware/deviceAccessGuard';
 
 const UDID = 'DEV-1';
 const ALICE = 'usr_alice';
@@ -16,6 +16,9 @@ function appWith(opts: {
   busy?: boolean;
   sessionId?: string | null;
   sessionOwner?: string | null;
+  findDeviceImpl?: DeviceAccessGuardDeps['findDevice'];
+  resolveSessionOwnerImpl?: DeviceAccessGuardDeps['resolveSessionOwner'];
+  describeHolderImpl?: DeviceAccessGuardDeps['describeHolder'];
 }) {
   const app = express();
   app.use(express.json());
@@ -34,12 +37,16 @@ function appWith(opts: {
   const router = express.Router();
   router.use(
     deviceAccessGuard({
-      findDevice: async () => ({
-        busy: opts.busy ?? true,
-        session_id: opts.sessionId === undefined ? `manual_${ALICE}_${UDID}` : opts.sessionId,
-      }),
-      resolveSessionOwner: async () => opts.sessionOwner ?? null,
-      describeHolder: async (id: string) => (id === ALICE ? 'alice@example.com' : null),
+      findDevice:
+        opts.findDeviceImpl ??
+        (async () => ({
+          busy: opts.busy ?? true,
+          session_id: opts.sessionId === undefined ? `manual_${ALICE}_${UDID}` : opts.sessionId,
+        })),
+      resolveSessionOwner: opts.resolveSessionOwnerImpl ?? (async () => opts.sessionOwner ?? null),
+      describeHolder:
+        opts.describeHolderImpl ??
+        (async (id: string) => (id === ALICE ? 'alice@example.com' : null)),
     }),
   );
   router.post('/:udid/tap', (_req, res) => res.json({ success: true, reached: true }));
@@ -138,5 +145,73 @@ describe('deviceAccessGuard', () => {
     app.use('/control', router);
     const res = await request(app).post(`/control/${UDID}/tap`);
     expect(res.status).to.equal(404);
+  });
+
+  it('responds instead of hanging on a malformed-percent udid', async function () {
+    // Against the pre-fix code this request never resolves: decodeURIComponent
+    // throws a raw URIError, Express 4 doesn't catch rejections from async
+    // middleware, and the request gets neither a response nor a next(). Keep
+    // this test's timeout well under the file default so a regression fails
+    // fast instead of silently eating the full 60s.
+    this.timeout(5000);
+    const res = await request(appWith({ actorUserId: ALICE })).post('/control/100%/tap');
+    expect(res.status).to.equal(400);
+    expect(res.body.success).to.equal(false);
+  });
+
+  it('fails closed with 503 when the device lookup throws, never reaching the handler', async () => {
+    const res = await request(
+      appWith({
+        actorUserId: ALICE,
+        findDeviceImpl: async () => {
+          throw new Error('store hiccup');
+        },
+      }),
+    ).post(`/control/${UDID}/tap`);
+    expect(res.status).to.equal(503);
+    expect(res.body).to.deep.equal({
+      success: false,
+      error: 'device_ownership_unavailable',
+      message: 'Could not verify device ownership. Try again.',
+    });
+    expect(res.body.reached).to.equal(undefined);
+  });
+
+  it('fails closed with 503 when resolveSessionOwner throws, never reaching the handler', async () => {
+    const res = await request(
+      appWith({
+        actorUserId: BOB,
+        sessionId: 'appium-1',
+        resolveSessionOwnerImpl: async () => {
+          throw new Error('db hiccup');
+        },
+      }),
+    ).post(`/control/${UDID}/tap`);
+    expect(res.status).to.equal(503);
+    expect(res.body.error).to.equal('device_ownership_unavailable');
+    expect(res.body.reached).to.equal(undefined);
+  });
+
+  it('still denies with 409 (no holder name) when describeHolder throws', async () => {
+    const res = await request(
+      appWith({
+        actorUserId: BOB,
+        describeHolderImpl: async () => {
+          throw new Error('lookup hiccup');
+        },
+      }),
+    ).post(`/control/${UDID}/tap`);
+    expect(res.status).to.equal(409);
+    expect(res.body.error).to.equal('device_held_by_another_user');
+    // JSON drops keys with an undefined value, so a missing name comes back
+    // as no `name` property at all rather than `name: undefined`.
+    expect(res.body.holder).to.deep.equal({ userId: ALICE });
+    expect(res.body.holder.name).to.equal(undefined);
+  });
+
+  it('skips a mixed-case allowlisted action like Stream/Start', async () => {
+    const res = await request(appWith({ actorUserId: BOB })).post(`/control/${UDID}/Stream/Start`);
+    expect(res.status).to.equal(200);
+    expect(res.body.reached).to.equal(true);
   });
 });

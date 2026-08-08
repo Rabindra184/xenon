@@ -46,16 +46,35 @@ export function deviceAccessGuard(deps: DeviceAccessGuardDeps = {}) {
   const describeHolder =
     deps.describeHolder ?? ((id: string) => Container.get(SessionOwnerResolver).displayName(id));
 
+  const unavailable = (res: Response) =>
+    res.status(503).json({
+      success: false,
+      error: 'device_ownership_unavailable',
+      message: 'Could not verify device ownership. Try again.',
+    });
+
   return async function (req: Request, res: Response, next: NextFunction) {
     if (!STATE_CHANGING.has(req.method)) return next();
 
     // Router-level middleware has no req.params, so read the path directly.
     // Inside the /control router req.path is `/<udid>/<action…>`.
     const parts = req.path.split('/').filter(Boolean);
-    const udid = decodeURIComponent(parts[0] ?? '');
+    let udid: string;
+    try {
+      udid = decodeURIComponent(parts[0] ?? '');
+    } catch (e: any) {
+      // A udid segment that can't be percent-decoded is a malformed request,
+      // not a server fault — respond here so it can't fall through unhandled
+      // (Express 4 doesn't catch rejections thrown by async middleware).
+      log.warn(`deviceAccessGuard: malformed udid segment in ${req.path}: ${e?.message ?? e}`);
+      return res.status(400).json({ success: false, error: 'invalid_udid' });
+    }
     const action = parts.slice(1).join('/');
     if (!udid || !action) return next();
-    if (UNGUARDED_CONTROL_MUTATIONS.includes(action)) return next();
+    // Express routes case-insensitively; match the allowlist the same way so
+    // e.g. `Stream/Start` still reaches stream/start's own richer handling
+    // instead of falling into the generic ownership check below.
+    if (UNGUARDED_CONTROL_MUTATIONS.includes(action.toLowerCase())) return next();
 
     const actor = resolveActor(req);
     if (!actor.userId) {
@@ -66,14 +85,31 @@ export function deviceAccessGuard(deps: DeviceAccessGuardDeps = {}) {
     try {
       device = await findDevice(udid);
     } catch (e: any) {
-      log.warn(`deviceAccessGuard: device lookup failed for ${udid}: ${e?.message ?? e}`);
-      return next(); // never break control on a store hiccup; the handler 404s or errors
+      // An authorization guard that cannot determine ownership must not allow
+      // the request through: the handler runs its own separate device lookup,
+      // so failing open here would skip the ownership check entirely whenever
+      // this lookup — and only this lookup — has a transient hiccup.
+      log.error(`deviceAccessGuard: device lookup failed for ${udid}: ${e?.message ?? e}`);
+      return unavailable(res);
     }
-    if (!device) return next(); // handler owns the 404
+    // Unknown device: there's no lock to violate, so the handler's own 404 is
+    // the right answer. This is the one branch that intentionally falls
+    // through instead of failing closed — every branch below needs a
+    // resolved device to reason about ownership at all.
+    if (!device) return next();
 
     let sessionOwnerUserId: string | null = null;
     if (device.busy && device.session_id && !isManualLock(device.session_id)) {
-      sessionOwnerUserId = await resolveSessionOwner(device.session_id);
+      try {
+        sessionOwnerUserId = await resolveSessionOwner(device.session_id);
+      } catch (e: any) {
+        // Same reasoning as the device lookup above: not knowing who owns a
+        // live session is exactly the case where we must not guess allow.
+        log.error(
+          `deviceAccessGuard: session owner lookup failed for ${device.session_id}: ${e?.message ?? e}`,
+        );
+        return unavailable(res);
+      }
     }
 
     const decision = evaluateDeviceAccess({
@@ -87,7 +123,19 @@ export function deviceAccessGuard(deps: DeviceAccessGuardDeps = {}) {
     });
     if (decision.allow) return next();
 
-    const holderName = decision.holderId ? await describeHolder(decision.holderId) : null;
+    // describeHolder is cosmetic — it only resolves a display name for the
+    // deny message. A failure here must still deny (never flip to allow) but
+    // must not hang the request either; fall back to no holder name.
+    let holderName: string | null = null;
+    if (decision.holderId) {
+      try {
+        holderName = await describeHolder(decision.holderId);
+      } catch (e: any) {
+        log.warn(
+          `deviceAccessGuard: holder name lookup failed for ${decision.holderId}: ${e?.message ?? e}`,
+        );
+      }
+    }
     log.warn(
       `Device access denied: ${actor.userId} -> ${req.method} ${req.originalUrl} ` +
         `on ${udid} (${decision.code}, holder=${decision.holderId || 'unknown'})`,
