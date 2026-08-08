@@ -13,6 +13,8 @@ import { DeviceMosaic } from './DeviceMosaic';
 import { RecordingControls } from './RecordingControls';
 import { IdleWarningModal } from './IdleWarningModal';
 import XenonApiService from '../../api-service';
+import { isDeviceConflictBody } from '../../api-service/api-client';
+import { isRehydratableTile, isSelfManualLock } from './manual-lock';
 import { addAnnotation, addBookmark } from '../../api-service/recordings';
 import { useIdleDetector } from '../../hooks/useIdleDetector';
 
@@ -54,15 +56,6 @@ function tileAspect(d?: Partial<DeviceRow>): string {
  * actor portion, this is *our* lock. Legacy `manual_<udid>` (no actor)
  * is treated as foreign — we can't prove ownership.
  */
-function isSelfManualLock(
-  blockId: string,
-  udid: string,
-  myUserId: string | null,
-): boolean {
-  if (!myUserId) return false;
-  return blockId === `manual_${myUserId}_${udid}`;
-}
-
 function inferReason(d: DeviceRow, myUserId: string | null): string | undefined {
   if (!d.busy) return undefined;
   if (!d.session_id) return 'unknown';
@@ -93,6 +86,8 @@ export default function DeviceMosaicView() {
   // Identity of the dashboard caller — drives the self/other distinction
   // for manual-control locks. Fetched once on mount from /auth/me.
   const [myUserId, setMyUserId] = useState<string | null>(null);
+  // Guards the one-shot tile rehydration below, which is keyed on myUserId.
+  const rehydratedRef = React.useRef(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -135,11 +130,19 @@ export default function DeviceMosaicView() {
   // a page refresh leaves the device "busy" with no UI to release it.
   useEffect(() => {
     let cancelled = false;
+    // Ownership is now part of the filter, so this must wait for /auth/me to
+    // resolve — at mount myUserId is still null and nothing would match.
+    // Runs once, on the transition to a known identity.
+    if (!myUserId || rehydratedRef.current) return;
+    rehydratedRef.current = true;
     (async () => {
       try {
         const list: DeviceRow[] = await XenonApiService.getDevices();
-        const candidates = (Array.isArray(list) ? list : []).filter(
-          (d) => d.busy && d.session_id?.startsWith('manual_'),
+        // Only re-adopt devices *I* hold. Matching any `manual_` lock meant a
+        // second user's mosaic silently adopted a device the first user was
+        // streaming, × button and all.
+        const candidates = (Array.isArray(list) ? list : []).filter((d) =>
+          isRehydratableTile(d, myUserId),
         );
         if (candidates.length === 0) return;
         const checks = await Promise.all(
@@ -181,10 +184,10 @@ export default function DeviceMosaicView() {
     return () => {
       cancelled = true;
     };
-    // Mount-only: rehydrate once. Re-running on every devices[] change would
-    // resurrect tiles the user just removed.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+    // Keyed on identity, not on devices[]: re-running when the device list
+    // changes would resurrect tiles the user just removed. rehydratedRef keeps
+    // it to a single pass even if myUserId settles more than once.
+  }, [myUserId, dispatch]);
 
   // Backfill screen dimensions for tiles added before the device reported them.
   // Android populates screenWidth/height lazily (~first stream via `wm size`);
@@ -282,12 +285,18 @@ export default function DeviceMosaicView() {
     const device = devices.find((d) => d.udid === udid);
     if (!device) return;
     dispatch({ type: 'ADD_TILE', tile: tileFromDevice(device) });
-    // Fire-and-forget stream pre-warm; the GET /stream proxy auto-starts too.
-    fetch(`/xenon/api/control/${encodeURIComponent(udid)}/stream/start`, {
-      method: 'POST',
-    }).catch(() => {
-      /* best-effort */
-    });
+    // Pre-warm the stream. Go through XenonApiService rather than a raw fetch:
+    // a raw fetch swallows a 409 (it isn't a rejection), which left the tile
+    // stuck on "Starting Stream…" with no explanation when another user held
+    // the device. The api-client raises the toast that says who holds it.
+    //
+    // Only roll the optimistic tile back on a genuine ownership conflict. A
+    // network blip or a retryable 503 must keep the tile — GET /stream
+    // auto-starts the service, so those recover on their own.
+    const started = await XenonApiService.startStream(udid).catch(() => null);
+    if (isDeviceConflictBody(started)) {
+      dispatch({ type: 'REMOVE_TILE', udid });
+    }
   };
 
   const onRemoveTile = async (udid: string) => {

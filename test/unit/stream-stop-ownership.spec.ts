@@ -55,7 +55,11 @@ function buildApp(caller: Caller) {
         kind: caller.kind ?? (caller.apiKeyId ? 'api-key' : 'user-session'),
         userId: caller.userId,
         role,
-        scopes: caller.scopes ?? (role === 'MEMBER' ? 'devices' : scopesForRole(role)),
+        // Use the REAL role→scope map. This used to special-case MEMBER to
+        // 'devices' because scopesForRole('MEMBER') did not grant it — an
+        // override that hid the fact that no member could reach these routes
+        // at all. If MEMBER ever loses `devices` again, these tests 403.
+        scopes: caller.scopes ?? scopesForRole(role),
         apiKeyId: caller.apiKeyId,
         rateLimit: 100,
       };
@@ -184,5 +188,23 @@ describe('POST /control/:udid/stream/stop — lock ownership round-trip', () => 
     expect(res.status).to.equal(200);
     expect(androidStop.calledOnce).to.equal(true);
     expect(unblock.called).to.equal(false);
+  });
+
+  // The ownership guard is only meaningful if a non-admin can actually reach
+  // it. A MEMBER cookie session is the whole dashboard population once device
+  // control is not admin-only, so it must be refused BY OWNERSHIP (403
+  // lock_owned_by_another_user), not bounced earlier by mutationScopeGuard
+  // with 'insufficient scope'. Those two look alike to a user and are wired
+  // completely differently.
+  it('a MEMBER is refused by ownership, not by scope', async () => {
+    const res = await stop({ userId: BOB, role: 'MEMBER' });
+    expect(res.status).to.equal(403);
+    expect(res.body.error, JSON.stringify(res.body)).to.equal('lock_owned_by_another_user');
+  });
+
+  it('a MEMBER who owns the lock can stop it', async () => {
+    const res = await stop({ userId: ALICE, role: 'MEMBER' });
+    expect(res.status, JSON.stringify(res.body)).to.equal(200);
+    expect(unblock.calledOnce).to.equal(true);
   });
 });

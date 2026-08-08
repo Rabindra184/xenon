@@ -27,7 +27,17 @@ const SESSION_TTL_MS = 24 * 60 * 60 * 1000;
 // and inherit their full role grant.
 export function scopesForRole(role: 'SUPER_ADMIN' | 'ADMIN' | 'MEMBER'): string {
   if (role === 'SUPER_ADMIN' || role === 'ADMIN') return 'admin,devices,sessions,read';
-  return 'sessions,read';
+  // MEMBER carries `devices`. /control already declares per-device interaction
+  // a Member action via roleGuard('MEMBER'), but mutationScopeGuard(['devices'])
+  // on the next line contradicted it and 403'd every member — so device control
+  // was admin-only in practice, and admins bypass the ownership guard, meaning
+  // no dashboard user could ever be told a device was held by someone else.
+  //
+  // This widens MEMBER to: /control mutations, reservations, and SDK leases.
+  // The destructive surfaces stay ADMIN-gated by their own roleGuard — app
+  // upload/delete (apps.ts), node register/block/tags (grid.ts), and the whole
+  // of ports.ts — so `devices` alone grants no new privilege there.
+  return 'devices,sessions,read';
 }
 
 function readCookie(req: Request, name: string): string | undefined {
