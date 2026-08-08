@@ -100,7 +100,14 @@ describe('authMiddleware', () => {
       // pass. Token-default scopes (in /profile/tokens) stay narrower.
       expect(scopesForRole('SUPER_ADMIN')).to.equal('admin,devices,sessions,read');
       expect(scopesForRole('ADMIN')).to.equal('admin,devices,sessions,read');
-      expect(scopesForRole('MEMBER')).to.equal('sessions,read');
+      // MEMBER carries `devices` so the role can actually do what
+      // roleGuard('MEMBER') on /control already declares it may ("per-device
+      // interaction (tap, swipe, install, etc.) is a Member action"). Without
+      // it, mutationScopeGuard(['devices']) 403s every member before the
+      // ownership guard runs — which left device control admin-only, and
+      // admins bypass the ownership guard, so no dashboard user could ever be
+      // told a device was held by someone else.
+      expect(scopesForRole('MEMBER')).to.equal('devices,sessions,read');
     });
   });
 
