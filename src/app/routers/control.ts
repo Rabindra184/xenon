@@ -29,6 +29,10 @@ import {
   inspectManualLock,
   isManualLock,
 } from '../../services/recording/manualLock';
+import { decideStreamStartConflict } from './streamStartConflict';
+import { SessionOwnerResolver } from '../../services/device-access/SessionOwnerResolver';
+import { resolveActor } from '../../services/device-access/actor';
+import { denyBody } from '../../services/device-access/deviceAccessPolicy';
 
 const router = Router();
 
@@ -524,31 +528,72 @@ router.post('/:udid/stream/start', async (req: Request, res: Response) => {
   const device = await getDeviceInfo(udid);
   if (!device) return res.status(404).send('Device not found');
 
-  // Principal Insight: Automation Protection
-  // If the device is already busy (e.g., Appium session or another Control session)
-  // we must block new manual control requests.
-  //
-  // Exception: a `manual_*` lock with no live stream is an orphan (server
-  // restart, crashed stop, H.264 stop that skipped unlock). Reclaim it so the
-  // mosaic is not stuck on "Starting Stream…" forever.
-  const isCurrentlyControlledManually = hasActiveManualStream(udid);
+  // Ownership at stream-start time. A manual lock with no live stream is an
+  // orphan to reclaim; a live foreign stream is a conflict we must refuse.
+  // Refusing is what stops one user's start from silently rewriting another
+  // user's lock (which then locked the original holder out of their own stop).
+  const actor = resolveActor(req);
+  if (!actor.userId) {
+    return res.status(401).json({ success: false, error: 'unauthenticated' });
+  }
+  // Bind to a local so the non-undefined narrowing survives the awaits below.
+  const actorUserId: string = actor.userId;
 
-  if (device.busy && !isCurrentlyControlledManually) {
-    if (isManualLock(device.session_id)) {
-      log.warn(
-        `Reclaiming orphaned manual lock on ${udid} (${device.session_id}) — no live stream.`,
+  const ownerResolver = Container.get(SessionOwnerResolver);
+  let sessionOwnerUserId: string | null = null;
+  if (device.busy && device.session_id && !isManualLock(device.session_id)) {
+    try {
+      sessionOwnerUserId = await ownerResolver.ownerOf(device.session_id);
+    } catch (e: any) {
+      // Same reasoning as deviceAccessGuard: not knowing who owns a live
+      // session is exactly the case where we must not guess allow.
+      log.error(
+        `stream/start: session owner lookup failed for ${device.session_id}: ${e?.message ?? e}`,
       );
-      try {
-        await unblockDevice(udid, device.host);
-      } catch (e: any) {
-        log.warn(`Failed to clear orphaned lock on ${udid}: ${e?.message ?? e}`);
-      }
-    } else {
-      log.warn(`Manual Control refused for ${udid}: Device is already busy.`);
-      return res.status(409).send({
+      return res.status(503).json({
         success: false,
-        error: 'Device is currently busy with another session.',
+        error: 'device_ownership_unavailable',
+        message: 'Could not verify device ownership. Try again.',
       });
+    }
+  }
+
+  const conflict = decideStreamStartConflict({
+    udid,
+    busy: !!device.busy,
+    sessionId: device.session_id,
+    hasLiveManualStream: hasActiveManualStream(udid),
+    sessionOwnerUserId,
+    actorUserId,
+    actorApiKeyId: actor.apiKeyId,
+    isAdmin: actor.isAdmin,
+  });
+
+  if (conflict.action === 'deny') {
+    // holderName lookup is cosmetic — a failure here must still deny (never
+    // flip to allow) but must not hang the request; fall back to no name.
+    let holderName: string | null = null;
+    if (conflict.holderId) {
+      try {
+        holderName = await ownerResolver.displayName(conflict.holderId);
+      } catch (e: any) {
+        log.warn(
+          `stream/start: holder name lookup failed for ${conflict.holderId}: ${e?.message ?? e}`,
+        );
+      }
+    }
+    log.warn(
+      `Manual Control refused for ${udid}: ${conflict.code} (holder=${conflict.holderId || 'unknown'})`,
+    );
+    return res.status(409).send(denyBody(conflict.code, conflict.holderId, holderName));
+  }
+
+  if (conflict.action === 'reclaim') {
+    log.warn(`Reclaiming orphaned manual lock on ${udid} (${device.session_id}) — no live stream.`);
+    try {
+      await unblockDevice(udid, device.host);
+    } catch (e: any) {
+      log.warn(`Failed to clear orphaned lock on ${udid}: ${e?.message ?? e}`);
     }
   }
 
@@ -592,15 +637,10 @@ router.post('/:udid/stream/start', async (req: Request, res: Response) => {
     }
 
     // Principal Insight: Concurrency Protection
-    // Mark device as "Busy" so automation sessions don't pick it up. The
-    // block-id encodes the calling user's API-key id so other users can
-    // distinguish their own manual sessions from this one.
-    const actorId =
-      req.apiKey?.id ?? (req as Request & { auth?: { userId?: string } }).auth?.userId;
-    if (!actorId) {
-      return res.status(401).json({ success: false, error: 'unauthenticated' });
-    }
-    const manualSid = formatManualLock(actorId, udid);
+    // Mark device as "Busy" so automation sessions don't pick it up.
+    // Lock is keyed on the user, not the credential — see
+    // src/services/device-access/deviceAccessPolicy.ts.
+    const manualSid = formatManualLock(actorUserId, udid);
     await blockDevice(udid, device.host, manualSid);
     log.info(`Manual Control: Device ${udid} locked for active UI session (${manualSid}).`);
 
