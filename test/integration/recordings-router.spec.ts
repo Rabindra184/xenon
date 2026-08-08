@@ -5,14 +5,47 @@ import express from 'express';
 import request from 'supertest';
 import { Container } from 'typedi';
 import RecordingsRouter from '../../src/app/routers/recordings';
+import { scopesForRole } from '../../src/middleware/authMiddleware';
 import {
   RecordingOrchestrator,
   RecordingError,
 } from '../../src/services/recording/RecordingOrchestrator';
 
-function makeApp() {
+interface Caller {
+  userId?: string;
+  role?: 'MEMBER' | 'ADMIN' | 'SUPER_ADMIN';
+  apiKeyId?: string;
+}
+
+/**
+ * The recordings router carries `roleGuard('MEMBER')` (recordings.ts:39), added
+ * in 27fd825 — after this spec was written in 3430928. Mounting the router with
+ * no `req.auth` therefore 401s at the guard before any handler runs, which left
+ * these tests red. Stand in for authMiddleware the same way makeBearerApp below
+ * does, so they exercise the handlers they were written to cover.
+ *
+ * Scopes come from the real `scopesForRole` map rather than a literal: a
+ * hardcoded scope string in a test is how #217's gap stayed hidden — MEMBER was
+ * granted `devices` only inside the test harness, never by the product.
+ */
+function makeApp(caller: Caller = {}) {
   const app = express();
   app.use(express.json());
+  app.use((req: any, _res, next) => {
+    const role = caller.role ?? 'MEMBER';
+    req.auth = {
+      kind: caller.apiKeyId ? 'api-key' : 'user-session',
+      userId: caller.userId ?? 'u1',
+      role,
+      scopes: scopesForRole(role),
+      apiKeyId: caller.apiKeyId,
+      rateLimit: 100,
+    };
+    if (caller.apiKeyId) {
+      req.apiKey = { id: caller.apiKeyId, scopes: scopesForRole(role), rateLimit: 100 };
+    }
+    next();
+  });
   const r = express.Router();
   RecordingsRouter.register(r);
   app.use('/xenon/api', r);
