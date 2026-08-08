@@ -32,7 +32,11 @@ import {
 import { decideStreamStartConflict } from './streamStartConflict';
 import { SessionOwnerResolver } from '../../services/device-access/SessionOwnerResolver';
 import { resolveActor } from '../../services/device-access/actor';
-import { denyBody } from '../../services/device-access/deviceAccessPolicy';
+import {
+  denyBody,
+  isSelfManualLock,
+  ownershipUnavailableBody,
+} from '../../services/device-access/deviceAccessPolicy';
 
 const router = Router();
 
@@ -550,11 +554,7 @@ router.post('/:udid/stream/start', async (req: Request, res: Response) => {
       log.error(
         `stream/start: session owner lookup failed for ${device.session_id}: ${e?.message ?? e}`,
       );
-      return res.status(503).json({
-        success: false,
-        error: 'device_ownership_unavailable',
-        message: 'Could not verify device ownership. Try again.',
-      });
+      return res.status(503).json(ownershipUnavailableBody());
     }
   }
 
@@ -697,12 +697,29 @@ router.post('/:udid/stream/stop', async (req: Request, res: Response) => {
 
   // Multi-user safety: refuse to release a manual lock owned by another user.
   // Admin scope bypasses this so support can clear stuck sessions.
-  const actorId = req.apiKey?.id ?? (req as Request & { auth?: { userId?: string } }).auth?.userId;
-  const lockInfo = inspectManualLock(device.session_id, actorId, udid);
-  const isAdmin =
-    (req.apiKey && (req.apiKey.scopes === 'admin' || req.apiKey.scopes?.includes('admin'))) ||
-    (req as Request & { auth?: { role?: string } }).auth?.role === 'SUPER_ADMIN';
-  if (lockInfo && !lockInfo.legacy && !lockInfo.self && !isAdmin) {
+  //
+  // Ownership is judged with the SAME primitives as stream/start and the
+  // /control mutation guard (resolveActor + isSelfManualLock). Hand-rolling it
+  // here is what broke stop: start writes manual_<userId>_<udid>, while this
+  // handler used to read `req.apiKey?.id ?? auth.userId` — on the header-pair
+  // credential path BOTH are set and they are different id spaces, so the
+  // caller who had just started the stream 403'd on their own lock and the
+  // capture pipeline was left running (permanently, on iOS).
+  const actor = resolveActor(req);
+  const lockInfo = inspectManualLock(device.session_id, actor.userId, udid);
+  // Admin comes from resolveActor too: it splits scopes on ',' (so a scope
+  // literally named `nonadmin` can't grant a bypass) and honours the `admin`
+  // scope that scopesForRole() grants a cookie ADMIN — the previous check read
+  // req.apiKey.scopes, which is never populated for a cookie session, so a
+  // dashboard ADMIN could not use the documented force-release path.
+  const isAdmin = actor.isAdmin;
+  // One decision, used for both the 403 below and the unblock further down, so
+  // the two can never disagree about who is allowed to release the lock.
+  const mayRelease =
+    isSelfManualLock(device.session_id, udid, actor.userId, actor.apiKeyId) ||
+    !!lockInfo?.legacy ||
+    isAdmin;
+  if (lockInfo && !mayRelease) {
     return res.status(403).json({
       success: false,
       error: 'lock_owned_by_another_user',
@@ -728,10 +745,7 @@ router.post('/:udid/stream/stop', async (req: Request, res: Response) => {
 
     // Always release an owned/legacy/admin manual lock after stop — even when
     // no in-memory session survived a process restart (orphaned busy flag).
-    if (
-      isManualLock(device.session_id) &&
-      (lockInfo?.self || lockInfo?.legacy || isAdmin)
-    ) {
+    if (isManualLock(device.session_id) && mayRelease) {
       try {
         await unblockDevice(udid, device.host);
       } catch {

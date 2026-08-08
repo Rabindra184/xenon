@@ -92,6 +92,28 @@ export function evaluateDeviceAccess(input: DeviceAccessInput): DeviceAccessDeci
   return { allow: false, code: 'device_in_use_by_session', holderId: owner };
 }
 
+export interface OwnershipUnavailableBody {
+  success: false;
+  error: 'device_ownership_unavailable';
+  message: string;
+}
+
+/**
+ * 503 body for "we could not work out who owns this device".
+ *
+ * Two endpoints fail closed on the same fault (the /control mutation guard and
+ * stream/start), and they must answer identically — a client that special-cases
+ * `device_ownership_unavailable` should not have to care which one it hit. Kept
+ * next to denyBody so the whole deny/unavailable vocabulary lives in one file.
+ */
+export function ownershipUnavailableBody(): OwnershipUnavailableBody {
+  return {
+    success: false,
+    error: 'device_ownership_unavailable',
+    message: 'Could not verify device ownership. Try again.',
+  };
+}
+
 export function denyBody(
   code: DeviceAccessDenyCode,
   holderId: string,

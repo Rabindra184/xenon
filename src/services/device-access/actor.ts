@@ -15,8 +15,15 @@ export interface DeviceAccessActor {
  * apiKey.id are still recognised as their owner's.
  *
  * Admin detection splits scopes on ',' rather than using String.includes, so a
- * scope like 'nonadmin' cannot grant a bypass. (control.ts's stream/stop check
- * still uses the substring form — noted as a follow-up in the spec.)
+ * scope like 'nonadmin' cannot grant a bypass. It also reads scopes from
+ * req.auth first, which is the only place a cookie session's grant appears —
+ * req.apiKey is never populated for one, so an ADMIN on the dashboard would
+ * otherwise fail an admin check.
+ *
+ * Every ownership decision in the codebase resolves its actor here:
+ * deviceAccessGuard, stream/start, stream/stop and the recordings router. If
+ * you are about to derive an actor some other way, you are re-introducing the
+ * split-brain this exists to remove.
  */
 export function resolveActor(req: Request): DeviceAccessActor {
   const auth = req.auth;

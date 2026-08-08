@@ -5,7 +5,11 @@ import log from '../logger';
 import { DeviceStoreFactory } from '../data-service/device-store';
 import { isManualLock } from '../services/recording/manualLock';
 import { SessionOwnerResolver } from '../services/device-access/SessionOwnerResolver';
-import { evaluateDeviceAccess, denyBody } from '../services/device-access/deviceAccessPolicy';
+import {
+  evaluateDeviceAccess,
+  denyBody,
+  ownershipUnavailableBody,
+} from '../services/device-access/deviceAccessPolicy';
 import { resolveActor } from '../services/device-access/actor';
 
 const STATE_CHANGING = new Set(['POST', 'PUT', 'DELETE', 'PATCH']);
@@ -46,12 +50,7 @@ export function deviceAccessGuard(deps: DeviceAccessGuardDeps = {}) {
   const describeHolder =
     deps.describeHolder ?? ((id: string) => Container.get(SessionOwnerResolver).displayName(id));
 
-  const unavailable = (res: Response) =>
-    res.status(503).json({
-      success: false,
-      error: 'device_ownership_unavailable',
-      message: 'Could not verify device ownership. Try again.',
-    });
+  const unavailable = (res: Response) => res.status(503).json(ownershipUnavailableBody());
 
   return async function (req: Request, res: Response, next: NextFunction) {
     if (!STATE_CHANGING.has(req.method)) return next();
