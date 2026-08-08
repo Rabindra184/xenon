@@ -6,6 +6,25 @@ This project follows [Semantic Versioning](https://semver.org/). Releases are
 published to npm automatically when `package.json`'s `version` changes on `main`
 (see `.github/workflows/npm-publish.yml`).
 
+## 1.12.1
+
+Patch release. **Upgrade straight to this if you are on 1.12.0** — that release
+prevents the server from starting against an existing config file.
+
+### Fixed
+
+- **1.12.0 would not start with a pre-existing config** — its three new
+  retention args were added to `schema.json`'s `required` list. Appium validates
+  the config file against that schema and refuses to start when a required key is
+  absent, so any install upgrading into a config written before 1.12.0 died at
+  boot with `REQUIRED must have required property 'recordingFailedCleanupDays'`
+  and exit code 2, with nothing in the message to suggest the fix was to hand-edit
+  a YAML file. The args were never meant to be mandatory: all three declare a
+  default and `CleanupService` destructures with its own fallbacks. They are now
+  optional and existing configs load unchanged. A guard test pins the count of
+  args that are required *despite* declaring a default so the set cannot grow —
+  each addition breaks every config written before it.
+
 ## 1.12.0
 
 Minor release: a retention policy for Live Devices recordings — the one asset
