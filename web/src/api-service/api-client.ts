@@ -12,6 +12,23 @@ export function setApiToastEmitter(fn: ToastFn | null): void {
   toastEmitter = fn;
 }
 
+const DEVICE_CONFLICT_CODES = new Set(['device_held_by_another_user', 'device_in_use_by_session']);
+
+// A held device usually produces a burst of denials (a swipe is several
+// gestures, a keystroke run is one call per character). Show each distinct
+// message at most once per interval so the toast stack stays readable.
+const CONFLICT_TOAST_INTERVAL_MS = 5000;
+const lastConflictToastAt = new Map<string, number>();
+
+function notifyDeviceConflict(message: string): void {
+  if (!toastEmitter) return;
+  const now = Date.now();
+  const last = lastConflictToastAt.get(message) ?? 0;
+  if (now - last < CONFLICT_TOAST_INTERVAL_MS) return;
+  lastConflictToastAt.set(message, now);
+  toastEmitter(message, 'error');
+}
+
 class ApiClient {
   public makeGETRequest(url: string) {
     return fetch(this.formatUrl(url)).then(this.jsonResult);
@@ -44,6 +61,18 @@ class ApiClient {
         'You do not have permission for this action.';
       if (toastEmitter) {
         toastEmitter(msg, 'error');
+      }
+    }
+    // 409 from /control means another user (or their Appium session) holds the
+    // device. Without this a blocked tap is a silent no-op — the user sees a
+    // frozen tile and assumes the stream broke.
+    if (res.status === 409) {
+      const body = await res
+        .clone()
+        .json()
+        .catch(() => ({}) as any);
+      if (body && DEVICE_CONFLICT_CODES.has(body.error)) {
+        notifyDeviceConflict(body.message || 'This device is in use by another user.');
       }
     }
     return res.json();
