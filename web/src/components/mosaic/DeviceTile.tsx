@@ -110,11 +110,9 @@ export function DeviceTile({
       setStreamState('connecting');
       setRetryKey(Date.now());
       // Warm / confirm MJPEG so the <img> gets frames quickly after the switch.
-      fetch(`/xenon/api/control/${encodeURIComponent(udid)}/stream/start`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: '{}',
-      }).catch(() => undefined);
+      // Via XenonApiService, not a raw fetch: a 409 here means someone else
+      // took the device, and a raw fetch would swallow it silently.
+      XenonApiService.startStream(udid).catch(() => undefined);
       return;
     }
     // eslint-disable-next-line @typescript-eslint/no-explicit-any

@@ -13,6 +13,7 @@ import { DeviceMosaic } from './DeviceMosaic';
 import { RecordingControls } from './RecordingControls';
 import { IdleWarningModal } from './IdleWarningModal';
 import XenonApiService from '../../api-service';
+import { isDeviceConflictBody } from '../../api-service/api-client';
 import { addAnnotation, addBookmark } from '../../api-service/recordings';
 import { useIdleDetector } from '../../hooks/useIdleDetector';
 
@@ -282,12 +283,18 @@ export default function DeviceMosaicView() {
     const device = devices.find((d) => d.udid === udid);
     if (!device) return;
     dispatch({ type: 'ADD_TILE', tile: tileFromDevice(device) });
-    // Fire-and-forget stream pre-warm; the GET /stream proxy auto-starts too.
-    fetch(`/xenon/api/control/${encodeURIComponent(udid)}/stream/start`, {
-      method: 'POST',
-    }).catch(() => {
-      /* best-effort */
-    });
+    // Pre-warm the stream. Go through XenonApiService rather than a raw fetch:
+    // a raw fetch swallows a 409 (it isn't a rejection), which left the tile
+    // stuck on "Starting Stream…" with no explanation when another user held
+    // the device. The api-client raises the toast that says who holds it.
+    //
+    // Only roll the optimistic tile back on a genuine ownership conflict. A
+    // network blip or a retryable 503 must keep the tile — GET /stream
+    // auto-starts the service, so those recover on their own.
+    const started = await XenonApiService.startStream(udid).catch(() => null);
+    if (isDeviceConflictBody(started)) {
+      dispatch({ type: 'REMOVE_TILE', udid });
+    }
   };
 
   const onRemoveTile = async (udid: string) => {

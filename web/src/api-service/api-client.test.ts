@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import apiClient, { setApiToastEmitter } from './api-client';
+import apiClient, { isDeviceConflictBody, setApiToastEmitter } from './api-client';
 
 // Minimal stand-in for the fetch Response the api-client actually consumes:
 // `jsonResult` calls `res.clone().json()` to peek at the body on 403/409,
@@ -91,5 +91,46 @@ describe('api-client device-conflict toast', () => {
 
     expect(toast).toHaveBeenCalledTimes(1);
     expect(toast).toHaveBeenCalledWith('forbidden', 'error');
+  });
+});
+
+// The mosaic optimistically adds a tile, then fires stream/start. When the
+// device turns out to be held by someone else, the tile must be rolled back —
+// otherwise it sits on "Starting Stream…" forever. But a rollback on ANY
+// failure would be a regression: a network blip is survivable because
+// GET /stream auto-starts the underlying service, so the tile should stay.
+// Hence a predicate that is true for device conflicts and nothing else.
+describe('isDeviceConflictBody', () => {
+  it('is true for a lock held by another user', () => {
+    expect(isDeviceConflictBody({ success: false, error: 'device_held_by_another_user' })).toBe(
+      true,
+    );
+  });
+
+  it('is true for a device busy with another user\'s Appium session', () => {
+    expect(isDeviceConflictBody({ success: false, error: 'device_in_use_by_session' })).toBe(true);
+  });
+
+  it('is false for a successful stream start', () => {
+    expect(isDeviceConflictBody({ success: true, type: 'mjpeg', mjpegPort: 9100 })).toBe(false);
+  });
+
+  it('is false when ownership could not be verified (503) — that is retryable, not a conflict', () => {
+    expect(isDeviceConflictBody({ success: false, error: 'device_ownership_unavailable' })).toBe(
+      false,
+    );
+  });
+
+  it('is false for an unrelated error body', () => {
+    expect(isDeviceConflictBody({ success: false, error: 'some_other_conflict' })).toBe(false);
+  });
+
+  it('is false for null/undefined — a rejected fetch must not roll the tile back', () => {
+    expect(isDeviceConflictBody(null)).toBe(false);
+    expect(isDeviceConflictBody(undefined)).toBe(false);
+  });
+
+  it('is false for a non-object body', () => {
+    expect(isDeviceConflictBody('device_held_by_another_user')).toBe(false);
   });
 });

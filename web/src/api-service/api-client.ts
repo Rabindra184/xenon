@@ -14,6 +14,21 @@ export function setApiToastEmitter(fn: ToastFn | null): void {
 
 const DEVICE_CONFLICT_CODES = new Set(['device_held_by_another_user', 'device_in_use_by_session']);
 
+/**
+ * True when a response body says the device is held by someone else.
+ *
+ * Callers that optimistically show state before the request lands (the mosaic
+ * adds a tile, then fires stream/start) use this to decide whether to roll
+ * that state back. It is deliberately narrow: a plain network failure or a
+ * retryable `device_ownership_unavailable` must NOT roll back, because
+ * GET /stream auto-starts the underlying service and the tile recovers on its
+ * own. Only a genuine ownership conflict is unrecoverable without user action.
+ */
+export function isDeviceConflictBody(body: unknown): boolean {
+  if (!body || typeof body !== 'object') return false;
+  return DEVICE_CONFLICT_CODES.has((body as { error?: string }).error ?? '');
+}
+
 // A held device usually produces a burst of denials (a swipe is several
 // gestures, a keystroke run is one call per character). Show each distinct
 // message at most once per interval so the toast stack stays readable.
@@ -71,7 +86,7 @@ class ApiClient {
         .clone()
         .json()
         .catch(() => ({}) as any);
-      if (body && DEVICE_CONFLICT_CODES.has(body.error)) {
+      if (isDeviceConflictBody(body)) {
         notifyDeviceConflict(body.message || 'This device is in use by another user.');
       }
     }
