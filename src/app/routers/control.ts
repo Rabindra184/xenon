@@ -23,6 +23,7 @@ import { resolveAndroidH264 } from './androidH264Config';
 import { RecordingStore } from '../../services/recording/recording-store';
 import { mutationScopeGuard } from '../../middleware/scopeGuard';
 import { roleGuard } from '../../middleware/roleGuard';
+import { deviceAccessGuard } from '../../middleware/deviceAccessGuard';
 import {
   formatManualLock,
   inspectManualLock,
@@ -47,6 +48,11 @@ router.use(roleGuard('MEMBER'));
 // requires devices scope. Read endpoints (screenshots, page source) stay
 // open to any authenticated key.
 router.use(mutationScopeGuard(['devices']));
+
+// Ownership: refuse mutations against a device held by another user or by
+// another user's Appium session. Mounted here so every current and future
+// mutation is covered without per-handler opt-in.
+router.use(deviceAccessGuard());
 
 // Cloud metadata endpoints — never proxy to these regardless of caller.
 const FORBIDDEN_PROXY_HOSTS = new Set([
