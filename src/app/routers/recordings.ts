@@ -10,6 +10,7 @@ import { ProofBundleService } from '../../services/recording/proof-bundle';
 import { AnnotationRenderService } from '../../services/recording/annotation-render';
 import { RecordingStore } from '../../services/recording/recording-store';
 import { roleGuard } from '../../middleware/roleGuard';
+import { resolveActor } from '../../services/device-access/actor';
 import { filterRowsByVisibleDevice } from '../../data-service/device-service';
 import { prisma } from '../../prisma';
 import log from '../../logger';
@@ -47,11 +48,15 @@ router.post('/recordings', async (req: Request, res: Response) => {
       return res.status(400).json({ error: 'every udid must be a non-empty string' });
     }
   }
-  // CRITICAL 1 (Phase 2a review): the bearer-auth path sets req.auth (with
-  // req.auth.userId) but never req.apiKey, so req.apiKey?.id alone 401s every
-  // bearer-authed caller (e.g. xenon_start_recording via the MCP plugin).
-  // Fall back to req.auth.userId so bearer principals resolve an actorId too.
-  const actorId = req.apiKey?.id ?? (req as any).auth?.userId;
+  // Manual locks are keyed on the USER, not the credential — the same basis
+  // stream/start writes and deviceAccessGuard reads. Keying on req.apiKey.id
+  // here made a recording started from the SDK unreachable to the same human
+  // on the dashboard (409 device_held_by_another_user naming a key id), and
+  // no upgrade tolerance can close that while this path keeps writing them.
+  // resolveActor().userId is populated on every credential path (api-key
+  // header pair, cookie session, hub-issued bearer), so the old
+  // `req.apiKey?.id ?? auth.userId` fallback is no longer needed.
+  const actorId = resolveActor(req).userId;
   if (!actorId) return res.status(401).json({ error: 'unauthenticated' });
   try {
     const out = await Container.get(RecordingOrchestrator).start({
@@ -88,8 +93,8 @@ router.post('/recordings/:groupId/add-device', async (req: Request, res: Respons
   if (typeof udid !== 'string' || udid.length === 0) {
     return res.status(400).json({ error: 'udid must be a non-empty string' });
   }
-  // CRITICAL 1 (Phase 2a review): same bearer-actor fallback as POST /recordings.
-  const actorId = req.apiKey?.id ?? (req as any).auth?.userId;
+  // Same user-keyed actor basis as POST /recordings above.
+  const actorId = resolveActor(req).userId;
   if (!actorId) return res.status(401).json({ error: 'unauthenticated' });
   try {
     const out = await Container.get(RecordingOrchestrator).addDevice(

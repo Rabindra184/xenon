@@ -144,6 +144,62 @@ describe('Recordings router (integration)', () => {
     expect(r.status).to.equal(201);
   });
 
+  // Manual locks are keyed on the USER (see deviceAccessPolicy.ts). This path
+  // used to key them on req.apiKey.id, so a recording started from the SDK
+  // wrote manual_<keyId>_<udid> and the SAME human on the dashboard — who
+  // arrives with a cookie session and no req.apiKey — got 409
+  // device_held_by_another_user naming a key id they'd never seen.
+  function makeHeaderPairApp() {
+    const app = express();
+    app.use(express.json());
+    app.use((req: any, _res, next) => {
+      // authMiddleware's api-key header-pair branch sets BOTH, in different
+      // id spaces. The old `req.apiKey?.id ?? auth.userId` picked the key id.
+      req.auth = {
+        kind: 'api-key',
+        userId: 'usr_alice',
+        role: 'MEMBER',
+        scopes: 'devices',
+        apiKeyId: 'key_abc',
+        rateLimit: 100,
+      };
+      req.apiKey = { id: 'key_abc', scopes: 'devices', rateLimit: 100 };
+      next();
+    });
+    const r = express.Router();
+    RecordingsRouter.register(r);
+    app.use('/xenon/api', r);
+    return app;
+  }
+
+  it('POST /recordings: locks on the userId, not the api-key id', async () => {
+    const start = sinon.stub(Container.get(RecordingOrchestrator), 'start').resolves({
+      groupId: 'g-1',
+      recordings: [{ id: 'r-1', udid: 'U1', status: 'RECORDING' }],
+      startedAt: new Date(),
+      compositeEnabled: false,
+    });
+    const r = await request(makeHeaderPairApp())
+      .post('/xenon/api/recordings')
+      .send({ udids: ['U1'] });
+    expect(r.status).to.equal(202);
+    expect(start.calledOnce).to.equal(true);
+    expect(start.firstCall.args[0].actorId).to.equal('usr_alice');
+  });
+
+  it('POST /recordings/:groupId/add-device: locks on the userId, not the api-key id', async () => {
+    const addDevice = sinon.stub(Container.get(RecordingOrchestrator), 'addDevice').resolves({
+      groupId: 'g-1',
+      recordings: [{ id: 'r-2', udid: 'U2', status: 'RECORDING' }],
+    } as any);
+    const r = await request(makeHeaderPairApp())
+      .post('/xenon/api/recordings/g-1/add-device')
+      .send({ udid: 'U2' });
+    expect(r.status).to.equal(201);
+    expect(addDevice.calledOnce).to.equal(true);
+    expect(addDevice.firstCall.args[2]).to.equal('usr_alice');
+  });
+
   it('POST /recordings/:groupId/annotation: 201 + 400 validation', async () => {
     sinon
       .stub(Container.get(RecordingOrchestrator), 'addAnnotation')
