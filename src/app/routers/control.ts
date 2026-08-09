@@ -688,7 +688,15 @@ router.post('/:udid/stream/ticket', async (req: Request, res: Response) => {
   // #216/#217 trusts that it is.
   const actor = resolveActor(req);
   if (!actor.userId) return res.status(401).json({ error: 'unauthenticated' });
-  const ticket = await Container.get(StreamTicketService).mint(req.params.udid, actor.userId);
+  // Carry the two other things `evaluateDeviceAccess` needs alongside the user
+  // id. A ticket consumer (the logcat WS) has no Express request to run
+  // resolveActor against, and re-deriving them from a User row at redeem time
+  // would miss an admin-scoped API key entirely. Signed claims, so the client
+  // cannot forge them — see StreamTicketService.
+  const ticket = await Container.get(StreamTicketService).mint(req.params.udid, actor.userId, {
+    isAdmin: actor.isAdmin,
+    apiKeyId: actor.apiKeyId,
+  });
   res.json({ ticket, expiresIn: 60 });
 });
 

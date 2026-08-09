@@ -16,17 +16,32 @@ export function parseLogcatWsPath(url: string): { udid: string; ticket: string }
   return { udid: decodeURIComponent(m[1]), ticket };
 }
 
+/**
+ * Who the redeemed ticket says is calling. Structurally the ticket service's
+ * `StreamTicketActor`; declared here so this module stays injectable and does
+ * not import the token service.
+ */
+export interface LogcatWsActor {
+  actorId: string;
+  isAdmin?: boolean;
+  apiKeyId?: string;
+}
+
 export interface LogcatWsDeps {
   /** Redeem a single-use stream ticket; throws if invalid. */
-  redeem: (ticket: string, udid: string) => Promise<{ actorId: string }>;
+  redeem: (ticket: string, udid: string) => Promise<LogcatWsActor>;
   /**
    * Resolve the ownership decision for this actor + device — the same policy
    * `deviceAccessGuard` evaluates for REST reads/mutations. Throws on lookup
    * failure (never resolves `false` for "I don't know"): device logs carry
    * auth tokens and PII, so an undetermined owner must fail closed like every
    * other consumer of `evaluateDeviceAccess`.
+   *
+   * Takes the whole actor, not just its id: the admin flag and the api-key id
+   * are part of the same decision (admin bypass, and recognising a pre-1.13.0
+   * `manual_<apiKeyId>_<udid>` lock as the caller's own).
    */
-  authorize: (udid: string, actorId: string) => Promise<boolean>;
+  authorize: (udid: string, actor: LogcatWsActor) => Promise<boolean>;
   /** Start (or reuse) the device's logcat stream and return its multiplexer. */
   startStream: (udid: string) => Promise<LogcatMultiplexer>;
   /** Drop a record when the socket's kernel backlog exceeds this (OOM guard). */
@@ -70,9 +85,9 @@ export function attachLogcatWs(server: Server, deps: LogcatWsDeps): void {
       ws.on('close', onClose);
       ws.on('error', onClose);
 
-      let actorId: string;
+      let actor: LogcatWsActor;
       try {
-        ({ actorId } = await deps.redeem(parsed.ticket, parsed.udid));
+        actor = await deps.redeem(parsed.ticket, parsed.udid);
       } catch {
         try {
           ws.close(1008, 'unauthorized');
@@ -85,7 +100,7 @@ export function attachLogcatWs(server: Server, deps: LogcatWsDeps): void {
 
       let allowed: boolean;
       try {
-        allowed = await deps.authorize(parsed.udid, actorId);
+        allowed = await deps.authorize(parsed.udid, actor);
       } catch (e: any) {
         // Ownership could not be determined — fail closed, exactly as
         // deviceAccessGuard does when its own lookups throw (503 there; here
@@ -100,7 +115,9 @@ export function attachLogcatWs(server: Server, deps: LogcatWsDeps): void {
         return;
       }
       if (!allowed) {
-        log.warn(`[${parsed.udid}] logcat WS denied: actor ${actorId} does not hold this device`);
+        log.warn(
+          `[${parsed.udid}] logcat WS denied: actor ${actor.actorId} does not hold this device`,
+        );
         try {
           ws.close(1008, 'device held by another user');
         } catch {
@@ -128,19 +145,36 @@ export function attachLogcatWs(server: Server, deps: LogcatWsDeps): void {
       // reports "N lines dropped" on the next record THIS client accepts
       // (LogcatMultiplexer.push) — a client that disconnects while backed up
       // never gets one more accepted record to carry that marker, so its
-      // final gap would otherwise vanish with no record of it anywhere. This
-      // counter is incremented under exactly the same two conditions the mux
-      // itself counts a drop (a refused canAccept(), or a failed send), so it
-      // stays in lockstep with the mux's real internal count, and is logged
-      // server-side on teardown since there is no client left to show it to.
+      // final gap would otherwise vanish with no record of it anywhere. It is
+      // logged server-side on teardown, since there is no client left to show
+      // it to.
+      //
+      // It counts every record this sink loses, which is a strict superset of
+      // what the mux counts:
+      //   1. canAccept() refuses — the mux counts this too;
+      //   2. send() throws — the mux counts this too;
+      //   3. send() is called on a socket that is no longer OPEN. `ws`
+      //      swallows that silently (no throw, no 'error' event — it just
+      //      charges the bytes to bufferedAmount), so the mux believes the
+      //      record was delivered and this layer is the only place the loss
+      //      can be recorded. Only reachable from the replay burst in
+      //      addClient, which does not consult canAccept, and from a push
+      //      landing after a server-initiated close() has moved the socket to
+      //      CLOSING but before its 'close' event fires.
+      // Because canAccept() also refuses a non-OPEN socket, case 3 can never
+      // be reached through push()'s normal path — a drop there is counted on
+      // both sides, in lockstep.
       let pendingDrops = 0;
       const canAccept = (): boolean => {
-        const ok = ws.bufferedAmount < maxBuffered;
+        const ok = ws.readyState === WebSocket.OPEN && ws.bufferedAmount < maxBuffered;
         if (!ok) pendingDrops += 1;
         return ok;
       };
       const send = (r: LogcatRecord): void => {
-        if (ws.readyState !== WebSocket.OPEN) return;
+        if (ws.readyState !== WebSocket.OPEN) {
+          pendingDrops += 1;
+          return;
+        }
         try {
           ws.send(JSON.stringify(r));
           pendingDrops = 0;
@@ -159,8 +193,34 @@ export function attachLogcatWs(server: Server, deps: LogcatWsDeps): void {
         }
       };
 
-      const remove = mux.addClient(send, canAccept);
+      // The third argument is not optional in practice: when `adb logcat`
+      // exits (or stop() is called) LogcatStreamService pushes its synthetic
+      // "log stream ended" record and then drops the multiplexer, which
+      // detaches every client. Without an onClose the browser socket stays
+      // OPEN, attached to nothing — the mux simply stops calling send(), and
+      // "not being called" is not a signal a browser can observe. The tab sits
+      // on a frozen buffer, still badged LIVE, and the client's
+      // reconnect-on-unexpected-close never fires because there is no close.
+      // One leaked socket per dead stream.
+      //
+      // 1012 (service restart) rather than 1011: the upstream ending is not an
+      // error — an operator stop() takes this path too — and it tells the
+      // client to come back, which is exactly right since the next connect
+      // spawns a fresh logcat.
+      const remove = mux.addClient(send, canAccept, () => {
+        try {
+          ws.close(1012, 'stream ended');
+        } catch {
+          /* already gone */
+        }
+      });
+      let cleanedUp = false;
       cleanup = () => {
+        // 'close' and 'error' can both fire for one socket. remove() is
+        // idempotent, but the warn below is not — without this guard a single
+        // disconnect reports its drop count twice.
+        if (cleanedUp) return;
+        cleanedUp = true;
         remove();
         if (pendingDrops > 0) {
           log.warn(

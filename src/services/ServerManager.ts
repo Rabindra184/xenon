@@ -15,9 +15,8 @@ import { attachLogcatWs } from '../app/ws/logcatWs';
 import { StreamTicketService } from './token/StreamTicketService';
 import AndroidH264StreamService from '../device-managers/android/AndroidH264StreamService';
 import { LogcatStreamService } from '../device-managers/android/LogcatStreamService';
-import { isManualLock } from './recording/manualLock';
 import { SessionOwnerResolver } from './device-access/SessionOwnerResolver';
-import { evaluateDeviceAccess } from './device-access/deviceAccessPolicy';
+import { makeTicketActorAuthorizer } from './device-access/ticketActorAccess';
 // enable resolveJsonModule in tsconfig must be true for this to work
 import pkg from '../../package.json';
 import { IPluginArgs, DefaultPluginArgs, EmulatorConfig } from '../interfaces/IPluginArgs';
@@ -105,29 +104,18 @@ export class ServerManager {
       // doesn't need: logcat routinely carries auth tokens and PII from
       // whatever app is under test, so it's an ownership-checked read, not
       // an open one — see docs/superpowers/specs/2026-08-09-logcat-stream-design.md
-      // "Authorisation". A stream ticket only carries a userId (no role), so
-      // isAdmin is fixed false here: an admin holding their own device still
-      // passes via the self-lock branch of evaluateDeviceAccess, but an admin
-      // watching *another* user's device over this WS is not supported yet —
-      // that would need a role on the ticket, which is out of scope here.
+      // "Authorisation". The decision itself lives in
+      // makeTicketActorAuthorizer so it is tested directly rather than
+      // through a hand-written near-copy in a spec; the ticket carries the
+      // caller's admin flag and api-key id (captured from resolveActor at
+      // mint time) so this reaches the same verdict /control does.
       attachLogcatWs(httpServer, {
         redeem: (ticket, udid) => Container.get(StreamTicketService).redeem(ticket, udid),
-        authorize: async (udid, actorId) => {
-          const device = await DeviceStoreFactory.getStore().findDevice({ udid });
-          if (!device) return true; // unknown device: startStream fails on its own
-          const sessionOwner =
-            device.busy && device.session_id && !isManualLock(device.session_id)
-              ? await Container.get(SessionOwnerResolver).ownerOf(device.session_id)
-              : null;
-          return evaluateDeviceAccess({
-            udid,
-            busy: !!device.busy,
-            sessionId: device.session_id,
-            sessionOwnerUserId: sessionOwner,
-            actorUserId: actorId,
-            isAdmin: false,
-          }).allow;
-        },
+        authorize: makeTicketActorAuthorizer({
+          findDevice: (udid) => DeviceStoreFactory.getStore().findDevice({ udid }),
+          resolveSessionOwner: (sessionId) =>
+            Container.get(SessionOwnerResolver).ownerOf(sessionId),
+        }),
         startStream: (udid) => Container.get(LogcatStreamService).start(udid),
       });
     }
