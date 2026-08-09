@@ -209,6 +209,25 @@
      so it scales down cleanly (verified: no clip even at a 300px column). */
   flex-shrink: 1;
   min-width: 0;
+  /* Shrinking was allowed but never demanded: flex-basis:auto resolves to the
+     widest child, and the 11-button footer toolbar's max-content width is
+     829px. So at 1440 the phone (306px) sat in an 829px column — 70% empty —
+     while the interactions panel was squeezed to 531px, which is why its cards
+     were cramped enough to need wrapping. Cap the column so the device, not
+     the toolbar, decides the split; the toolbar already wraps.
+
+     Portrait only — see the landscape reset below. */
+  max-width: 42%;
+}
+
+/* A landscape device is wider than tall, so 42% cannot contain it. The column
+   centres its children, so the oversized canvas spilled out BOTH sides and the
+   left spill escaped the viewport by ~107px at 1440 (caught by
+   web/test/viewport/overflow.spec.ts, which checks rect.left < 0 precisely
+   because a centred flex row overflows symmetrically). Landscape keeps the
+   room it needs. */
+.control-view-main.is-landscape .device-preview-column {
+  max-width: none;
 }
 
 .device-screen-wrapper {
@@ -949,6 +968,40 @@
   min-height: 0;
 }
 
+/* With no captures the tab showed TWO empty states at once — "No captures yet"
+   in the 180px sidebar and "Capture a screenshot to begin analysis" in the
+   preview pane beside it — saying the same thing twice, in a split that has
+   nothing to split. Collapse to a single centred state; the two-pane layout
+   returns as soon as there is something to browse. */
+.screenshot-workspace.is-empty .screenshot-main-preview {
+  display: none;
+}
+
+.screenshot-workspace.is-empty .screenshot-gallery-sidebar {
+  width: 100%;
+  align-items: center;
+  justify-content: center;
+  gap: 24px;
+}
+
+/* Order flipped: message first, action after. The sidebar's DOM order puts the
+   button above the list, which is right for a populated gallery but reads
+   backwards as an empty state. */
+.screenshot-workspace.is-empty .screenshot-thumbnails-list {
+  order: 1;
+  flex: none;
+  overflow: visible;
+}
+
+.screenshot-workspace.is-empty .take-screenshot-btn {
+  order: 2;
+  /* The base rule is width:100%, which stretched this to the full 775px panel
+     once the sidebar was no longer 180px wide. */
+  width: auto;
+  min-width: 200px;
+  flex: none;
+}
+
 .take-screenshot-btn {
   display: flex;
   align-items: center;
@@ -1129,15 +1182,6 @@
   background: rgba(239, 68, 68, 0.05);
 }
 
-.preview-empty-placeholder {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  color: var(--text-muted);
-  font-size: 13px;
-  opacity: 0.6;
-}
 
 .empty-gallery-state {
   display: flex;

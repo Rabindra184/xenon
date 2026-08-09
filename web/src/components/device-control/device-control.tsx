@@ -971,7 +971,9 @@ export default function DeviceControl({ device, onClose }: DeviceControlProps) {
                     )}
                   </header>
 
-                  <div className="screenshot-workspace">
+                  <div
+                    className={`screenshot-workspace ${screenshots.length === 0 ? 'is-empty' : ''}`}
+                  >
                     {/* Gallery Sidebar */}
                     <div className="screenshot-gallery-sidebar">
                       <button
@@ -993,7 +995,7 @@ export default function DeviceControl({ device, onClose }: DeviceControlProps) {
                             <Camera size={20} className="empty-gallery-icon" />
                             <p className="empty-gallery-title">No captures yet</p>
                             <p className="empty-gallery-hint">
-                              Click <strong>New Capture</strong> above to grab a screenshot.
+                              Grab a screenshot of the device to begin analysis.
                             </p>
                           </div>
                         )}
@@ -1067,12 +1069,7 @@ export default function DeviceControl({ device, onClose }: DeviceControlProps) {
                             </div>
                           </footer>
                         </div>
-                      ) : (
-                        <div className="preview-empty-placeholder">
-                          <Camera size={48} style={{ opacity: 0.1, marginBottom: 16 }} />
-                          <p>Capture a screenshot to begin analysis</p>
-                        </div>
-                      )}
+                      ) : null}
                     </div>
                   </div>
                 </div>
