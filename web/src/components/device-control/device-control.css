@@ -711,9 +711,27 @@
 .app-mgmt-content {
   display: flex;
   flex-direction: row;
-  /* Side-by-side */
-  gap: var(--space-8);
-  align-items: flex-start;
+  gap: var(--space-6);
+  /* stretch (not flex-start) so both halves share a height and the divider
+     spans the full card — previously the install half was 102px against the
+     uninstall half's 130px, leaving a ragged gap under the left column. */
+  align-items: stretch;
+  /* Shared control height for this card. The dashed upload launcher, the two
+     buttons and the select were rendering at 61 / 29 / 32 / 31px. */
+  --app-mgmt-control-h: 34px;
+}
+
+/* Equal halves. Neither section had any rule, so each sized to its content and
+   the split moved whenever an app id or file name changed length. min-width:0
+   lets the select actually shrink and grow — inside an auto-width parent its
+   flex:1 collapsed it to 40px. */
+.install-section,
+.uninstall-section {
+  flex: 1 1 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }
 
 .upload-box-row,
@@ -721,15 +739,55 @@
   display: flex;
   gap: 12px;
   align-items: center;
-  margin-top: 8px;
+  /* Spacing comes from the section's column gap; a margin here as well made
+     the two halves drift apart whenever one label wrapped. */
+}
+
+.upload-box-row > *,
+.uninstall-controls-row > * {
+  height: var(--app-mgmt-control-h);
+}
+
+/* The interactions column is ~451px at 1360, so each half is ~170px. A 115px
+   UNINSTALL button beside the select left it 43px wide — unreadable for bundle
+   ids like com.google.android.apps.photos. Let the row wrap intrinsically
+   rather than at a viewport breakpoint: the column is narrow at every
+   supported width, so a media query would not help. The select claims a full
+   line whenever the button cannot sit beside it. */
+.upload-box-row,
+.uninstall-controls-row {
+  flex-wrap: wrap;
+  row-gap: 8px;
+}
+
+.uninstall-controls-row .select-wrapper,
+.upload-box-row .file-upload-launcher {
+  flex: 1 1 150px;
+  min-width: 0;
+}
+
+.upload-box-row > button,
+.uninstall-controls-row > button {
+  flex: 0 0 auto;
+}
+
+.app-mgmt-content .hint-text {
+  /* Pin the hints to the bottom so both halves end on the same line. */
+  margin-top: auto;
 }
 
 .file-upload-launcher {
   flex: 1;
+  min-width: 0;
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 10px 16px;
+  /* A chosen file name used to wrap and double this box to 61px against the
+     29px INSTALL button beside it. Truncate instead; the full name is on the
+     title attribute. */
+  white-space: nowrap;
+  overflow: hidden;
+  padding: 0 16px;
   background: rgba(255, 255, 255, 0.03);
   border: 1px dashed var(--border);
   border-radius: var(--radius-md);
@@ -737,6 +795,17 @@
   font-size: 13px;
   color: var(--text-muted);
   transition: all 0.2s ease;
+}
+
+/* The icon must keep its size; only the file name truncates. */
+.file-upload-launcher > svg {
+  flex: none;
+}
+
+.file-upload-launcher > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .file-upload-launcher:hover {

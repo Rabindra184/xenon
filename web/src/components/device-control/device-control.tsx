@@ -833,9 +833,14 @@ export default function DeviceControl({ device, onClose }: DeviceControlProps) {
                     </h4>
                     <div className="app-mgmt-content">
                       <div className="install-section">
-                        <p className="compact-label">Install Package (.apk, .ipa, .app)</p>
+                        <p className="compact-label">Install Package</p>
                         <div className="upload-box-row">
-                          <label className="file-upload-launcher">
+                          <label
+                            className="file-upload-launcher"
+                            title={
+                              uploadFile ? uploadFile.name : 'Select an .apk, .ipa or .app file'
+                            }
+                          >
                             <Upload size={14} />
                             <span>{uploadFile ? uploadFile.name : 'Select File'}</span>
                             <input
@@ -857,6 +862,7 @@ export default function DeviceControl({ device, onClose }: DeviceControlProps) {
                             )}
                           </button>
                         </div>
+                        <p className="hint-text">Accepts .apk, .ipa or .app</p>
                       </div>
 
                       <div className="divider-v" />
