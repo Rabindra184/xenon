@@ -252,6 +252,63 @@ describe('LogcatMultiplexer', () => {
     expect(healthy.map((r) => r.message)).to.deep.equal(['one', 'two']);
   });
 
+  // The test above never checks what the throwing sink itself is owed. A
+  // thrown send loses the record exactly as surely as a refused one
+  // (canAccept() === false), so it must be counted the same way. Pure
+  // refusals or pure throws each pass under either of the two mutants this
+  // guards against (dropped not incremented on throw; dropped cleared before
+  // the send that's supposed to prove it succeeded) — only a run that mixes
+  // failure modes and then recovers forces the count to be carried correctly
+  // across attempts, which is what both cases below drive.
+  it('coalesces a run of throwing sends into the full drop count once it recovers', () => {
+    const mux = new LogcatMultiplexer();
+    const seen: LogcatRecord[] = [];
+    let sending: 'throw' | 'ok' = 'throw';
+    mux.addClient(
+      (r) => {
+        if (sending === 'throw') throw new Error('sink boom');
+        seen.push(r);
+      },
+      () => true,
+    );
+
+    mux.push(rec('lost one'));
+    mux.push(rec('lost two'));
+    mux.push(rec('lost three'));
+    sending = 'ok';
+    mux.push(rec('recovered'));
+
+    expect(seen.map((r) => r.message)).to.deep.equal([
+      '3 lines dropped (slow client)',
+      'recovered',
+    ]);
+  });
+
+  it('coalesces refusals and a throw together into one full drop count', () => {
+    const mux = new LogcatMultiplexer();
+    const seen: LogcatRecord[] = [];
+    let accepting = true;
+    let sending: 'throw' | 'ok' = 'ok';
+    mux.addClient(
+      (r) => {
+        if (sending === 'throw') throw new Error('sink boom');
+        seen.push(r);
+      },
+      () => accepting,
+    );
+
+    accepting = false;
+    mux.push(rec('lost one')); // refused: canAccept() === false
+    mux.push(rec('lost two')); // refused: canAccept() === false
+    accepting = true;
+    sending = 'throw';
+    mux.push(rec('lost three')); // accepted, but the sink throws on send
+    sending = 'ok';
+    mux.push(rec('closing'));
+
+    expect(seen.map((r) => r.message)).to.deep.equal(['3 lines dropped (slow client)', 'closing']);
+  });
+
   // addClient added the client to the Set before replaying history to it. A
   // throw mid-replay left the client in the Set with no remover ever handed
   // back to the caller, so clientCount stayed permanently elevated — pinning
