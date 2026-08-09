@@ -584,7 +584,10 @@
   padding: 10px 14px;
   border-radius: var(--radius-sm);
   border: 1px solid var(--border);
-  background: rgba(0, 0, 0, 0.2);
+  /* Match the shared form controls. .select-base and .input-base both use 0.3;
+     this local class sat at 0.2, so the manual-entry input read a shade lighter
+     than the select directly above it in the App Management card. */
+  background: rgba(0, 0, 0, 0.3);
   font-size: 13px;
   color: var(--text);
   transition: all 0.2s ease;
