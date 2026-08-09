@@ -84,14 +84,20 @@ describe('parseThreadtimeLine', () => {
     expect(new Date(r!.ts).getFullYear()).to.equal(2025);
   });
 
-  // Pins `> oneDayMs` (not `> 0`) as the rollback threshold. A few seconds of
-  // clock skew — the record's timestamp landing slightly ahead of `now` — is
-  // well within one day and must not trigger a year rollback. Without this
-  // case, nothing in the suite distinguishes the two thresholds: every other
-  // "future" input here is many months out.
-  it('does not roll back for a few seconds of clock skew', () => {
-    const now = new Date(2026, 6, 15, 12, 0, 0); // local: 15 Jul 2026 12:00:00
-    const r = parseThreadtimeLine('07-15 12:00:05.000  1  1 D T: m', now); // 5s ahead
+  // Pins `> oneDayMs` (not `> 0`) as the rollback threshold.
+  //
+  // `inferYear` only ever receives `month`/`day` — it never sees the record's
+  // time of day, so `candidate` is always *midnight* of that calendar day. If
+  // the record shares `now`'s calendar day (as a "few seconds ahead" record
+  // naturally would), `candidate - now` is structurally confined to
+  // `[-24h, 0]` and can never land inside the `(0, oneDayMs]` window where
+  // `> oneDayMs` and `> 0` disagree — no matter how many seconds "in the
+  // future" the record claims to be. To actually land in that window, the
+  // record must sit on the *following* calendar day, with `now` sitting just
+  // before that day's midnight.
+  it('does not roll back when the record is a few seconds into the next calendar day', () => {
+    const now = new Date(2026, 6, 15, 23, 59, 59); // local: 15 Jul 2026 23:59:59
+    const r = parseThreadtimeLine('07-16 00:00:04.000  1  1 D T: m', now); // 16 Jul, 5s after now
     expect(new Date(r!.ts).getFullYear()).to.equal(2026);
   });
 });
