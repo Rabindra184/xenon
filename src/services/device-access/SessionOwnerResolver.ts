@@ -31,15 +31,22 @@ export class SessionOwnerResolver {
 
     const session = await this.db.session.findUnique({
       where: { id: sessionId },
-      select: { api_key_id: true },
+      select: { api_key_id: true, user_id: true },
     });
-    if (!session?.api_key_id) return null;
 
-    const key = await this.db.apiKey.findUnique({
-      where: { id: session.api_key_id },
-      select: { userId: true },
-    });
-    const owner: string | null = key?.userId ?? null;
+    // Preferred: the session recorded its owner directly (written from either
+    // credential path since the attribution change). Rows created before that
+    // have user_id null and still resolve through the ApiKey hop below.
+    let owner: string | null = session?.user_id ?? null;
+
+    if (!owner && session?.api_key_id) {
+      const key = await this.db.apiKey.findUnique({
+        where: { id: session.api_key_id },
+        select: { userId: true },
+      });
+      owner = key?.userId ?? null;
+    }
+
     if (owner) this.remember(this.ownerCache, sessionId, owner);
     return owner;
   }

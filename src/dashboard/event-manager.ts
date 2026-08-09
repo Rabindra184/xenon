@@ -120,6 +120,7 @@ export class DashboardEventManager {
       trace_id: traceId,
       status: 'running', // Principal Polish: Set status explicitly
       api_key_id: session.apiKeyId ?? null,
+      user_id: session.userId ?? null,
     };
 
     await prisma.session.create({
