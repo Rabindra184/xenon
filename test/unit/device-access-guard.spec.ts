@@ -52,7 +52,12 @@ function appWith(opts: {
   router.post('/:udid/tap', (_req, res) => res.json({ success: true, reached: true }));
   router.get('/:udid/screenshot', (_req, res) => res.json({ reached: true }));
   router.get('/:udid/clipboard', (_req, res) => res.json({ reached: true, content: 'hunter2' }));
-  router.get('/:udid/logs', (_req, res) => res.json({ reached: true }));
+  // The payload is token-shaped on purpose: a logcat dump routinely carries
+  // exactly this, and asserting the status alone would not prove the bytes
+  // stayed put.
+  router.get('/:udid/logs', (_req, res) =>
+    res.json({ reached: true, logs: ['D/Auth: Bearer eyJhbGciOi.SECRETLOGLINE'] }),
+  );
   router.post('/:udid/stream/start', (_req, res) => res.json({ reached: true }));
   router.post('/:udid/stream/stop', (_req, res) => res.json({ reached: true }));
   router.post('/:udid/stream/ticket', (_req, res) => res.json({ reached: true }));
@@ -121,16 +126,55 @@ describe('deviceAccessGuard', () => {
     expect(res.body.error).to.equal('device_in_use_by_session');
   });
 
+  // `adb logcat` carries auth tokens, deep-link URLs and PII from whatever app
+  // is under test — the same exposure class as the clipboard, not the
+  // state-only exposure of a screenshot. It was left open when this guard
+  // shipped; the logcat WebSocket then ownership-checked the same data, which
+  // made that check decorative, since a reader refused at the socket could GET
+  // the identical bytes here.
+  it('blocks reading the logs of a device another user holds', async () => {
+    const res = await request(appWith({ actorUserId: BOB })).get(`/control/${UDID}/logs`);
+    expect(res.status).to.equal(409);
+    expect(res.body.error).to.equal('device_held_by_another_user');
+    expect(JSON.stringify(res.body)).to.not.contain('SECRETLOGLINE');
+  });
+
+  it('blocks the logs of a device running another user’s Appium session', async () => {
+    const res = await request(
+      appWith({ actorUserId: BOB, sessionId: 'appium-1', sessionOwner: ALICE }),
+    ).get(`/control/${UDID}/logs`);
+    expect(res.status).to.equal(409);
+    expect(res.body.error).to.equal('device_in_use_by_session');
+    expect(JSON.stringify(res.body)).to.not.contain('SECRETLOGLINE');
+  });
+
+  it('lets the holder read their own logs', async () => {
+    const res = await request(appWith({ actorUserId: ALICE })).get(`/control/${UDID}/logs`);
+    expect(res.status, JSON.stringify(res.body)).to.equal(200);
+    expect(res.body.logs[0]).to.contain('SECRETLOGLINE');
+  });
+
+  it('lets an admin read the logs', async () => {
+    const res = await request(appWith({ actorUserId: BOB, scopes: 'admin' })).get(
+      `/control/${UDID}/logs`,
+    );
+    expect(res.status).to.equal(200);
+  });
+
+  it('allows the logs read when the device is free', async () => {
+    const res = await request(appWith({ actorUserId: BOB, busy: false })).get(
+      `/control/${UDID}/logs`,
+    );
+    expect(res.status).to.equal(200);
+  });
+
   // Deliberately NOT extended to the other reads: screenshot and the MJPEG
   // stream are load-bearing for the mosaic and monitoring, and the design
-  // decision for this guard was mutations-only. Clipboard is the documented
-  // exception, so this pins the boundary.
+  // decision for this guard was mutations-only. Clipboard and logs are the
+  // documented exceptions, so this pins the boundary.
   it('does not extend the ownership check to other reads', async () => {
-    const app = appWith({ actorUserId: BOB });
-    for (const p of ['screenshot', 'logs']) {
-      const res = await request(app).get(`/control/${UDID}/${p}`);
-      expect(res.status, p).to.equal(200);
-    }
+    const res = await request(appWith({ actorUserId: BOB })).get(`/control/${UDID}/screenshot`);
+    expect(res.status).to.equal(200);
   });
 
   it('skips stream/start, stream/stop and stream/ticket', async () => {
