@@ -957,19 +957,17 @@ export default function DeviceControl({ device, onClose }: DeviceControlProps) {
 
               {activeTab === 'screenshot' && (
                 <div className="action-card screenshot-card">
-                  <header className="action-card-header">
-                    <div className="title-group">
-                      <h4 className="action-card-title">
-                        <Camera size={20} color="var(--green)" /> Captured Evidence
-                      </h4>
-                      <p className="hint-text">Relay screenshots from device to host.</p>
-                    </div>
-                    {screenshots.length > 0 && (
+                  {/* No card title here: the tab bar already says SCREENSHOT, so a
+                      "Captured Evidence" heading plus a hint restated the same thing
+                      twice. The Actions tab keeps its titles because they distinguish
+                      four cards from each other; this tab has one. */}
+                  {screenshots.length > 0 && (
+                    <header className="action-card-header">
                       <button className="btn-text-only" onClick={clearAllScreenshots}>
                         CLEAR ALL
                       </button>
-                    )}
-                  </header>
+                    </header>
+                  )}
 
                   <div
                     className={`screenshot-workspace ${screenshots.length === 0 ? 'is-empty' : ''}`}

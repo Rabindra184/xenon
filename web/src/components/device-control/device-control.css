@@ -946,7 +946,10 @@
 
 .action-card-header {
   display: flex;
-  justify-content: space-between;
+  /* flex-end, not space-between: the header used to hold a title on the left
+     and CLEAR ALL on the right. The title is gone (the tab bar already names
+     the tab), so space-between would strand the lone action on the left. */
+  justify-content: flex-end;
   align-items: flex-start;
   margin-bottom: 12px;
 }
