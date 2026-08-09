@@ -172,24 +172,64 @@ describe('PackageResolver', () => {
     expect(calls, 'the unknown pid is marked, not re-queried per line').to.equal(1);
   });
 
-  it('runs ps once per window while ps is broken, not once per line', async () => {
+  // Distinct pids, not a repeated one: with a single repeated pid this test
+  // never leaves the cold path (`loadedAt` never advances because `ps` never
+  // succeeds), so it only pins the cold-path attempt throttle. A real burst
+  // of *different* unknown pids all hit the warm-miss branch instead, which
+  // has its own, separate throttle — this must exercise that one.
+  it('runs ps once per window while ps is broken, not once per distinct pid', async () => {
     let calls = 0;
+    let ok = true;
     let clock = 0;
     const r = new PackageResolver(
       async () => {
         calls += 1;
-        throw new Error('device offline');
+        if (!ok) throw new Error('device offline');
+        return psOutput([[1408, 'com.android.systemui']]);
       },
       10_000,
       () => clock,
     );
 
-    for (let i = 0; i < 20; i += 1) {
-      clock += 100;
-      expect(await r.resolve(1408)).to.equal(undefined);
+    await r.resolve(1408); // one good load, so later misses are warm, not cold
+    expect(calls).to.equal(1);
+    ok = false;
+
+    for (let i = 0; i < 50; i += 1) {
+      clock += 100; // 50 distinct pids, all inside the same TTL window
+      expect(await r.resolve(9000 + i)).to.equal(undefined);
     }
 
-    expect(calls, 'a failing ps must not be re-spawned per log line').to.equal(1);
+    expect(
+      calls,
+      'ps is known broken after the first failure; the other 49 distinct pids must not re-spawn it',
+    ).to.equal(2);
+  });
+
+  // Companion to the test above: a HEALTHY ps must NOT be throttled on the
+  // warm-miss path. Each distinct pid might be a process that just started,
+  // so spawning ps per distinct pid here is real behaviour, not a bug.
+  it('spawns ps once per distinct warm-miss pid while ps stays healthy', async () => {
+    let calls = 0;
+    let clock = 0;
+    const r = new PackageResolver(
+      async () => {
+        calls += 1;
+        return psOutput([[1408, 'com.android.systemui']]);
+      },
+      10_000,
+      () => clock,
+    );
+
+    await r.resolve(1408); // good load
+    calls = 0; // isolate the warm-miss calls that follow
+
+    for (let i = 0; i < 50; i += 1) {
+      clock += 100; // 50 distinct pids, all inside the same TTL window
+      expect(await r.resolve(9000 + i)).to.equal(undefined);
+    }
+
+    expect(calls, 'a healthy ps is worth spawning once per distinct warm miss').to.equal(50);
   });
 
   // A warm miss is a DIFFERENT path from the cold miss above: the table is
@@ -218,6 +258,37 @@ describe('PackageResolver', () => {
 
     expect(await r.resolve(2000)).to.equal('com.new.app');
     expect(calls, 'exactly one extra ps for the warm miss').to.equal(2);
+  });
+
+  // A warm miss that refreshes successfully but still doesn't find the pid
+  // (a genuinely nonexistent pid, ps healthy throughout) must mark it absent
+  // too — the negative cache is storm protection independent of `degraded`,
+  // which only fires once ps has actually failed.
+  it('marks a warm-miss pid absent so it does not storm ps on the next line', async () => {
+    let calls = 0;
+    let clock = 0;
+    const r = new PackageResolver(
+      async () => {
+        calls += 1;
+        return psOutput([[1408, 'com.android.systemui']]);
+      },
+      10_000,
+      () => clock,
+    );
+
+    await r.resolve(1408); // good load
+    expect(calls).to.equal(1);
+
+    clock = 5_000; // still fresh — a miss here is a warm miss
+    expect(await r.resolve(9999)).to.equal(undefined);
+    expect(calls, 'the truly-unknown pid triggers exactly one warm-miss refresh').to.equal(2);
+
+    clock = 6_000; // same window, ps is still healthy (not degraded)
+    expect(await r.resolve(9999)).to.equal(undefined);
+    expect(
+      calls,
+      'the warm-miss mark must stop a second refresh for the same still-unknown pid',
+    ).to.equal(2);
   });
 
   // --- A failing refresh must not extend freshness -------------------------
@@ -304,7 +375,10 @@ describe('PackageResolver', () => {
   });
 
   it('frees the inflight slot when a slow refresh finally settles', async () => {
-    let release: ((v: string) => void) | undefined;
+    // Default no-op instead of `| undefined`, so freeing the slot below needs
+    // no non-null assertion; `calls` (not this variable's type) is what
+    // actually proves ps was entered.
+    let release: (v: string) => void = () => undefined;
     let calls = 0;
     let clock = 0;
     const r = new PackageResolver(
@@ -319,9 +393,9 @@ describe('PackageResolver', () => {
 
     const first = r.resolve(1408);
     await tick();
-    expect(release, 'ps was entered').to.be.a('function');
+    expect(calls, 'ps was entered').to.equal(1);
 
-    release!(psOutput([[1408, 'com.stuck.app']]));
+    release(psOutput([[1408, 'com.stuck.app']]));
     expect(await first).to.equal('com.stuck.app');
 
     // If the settled promise were left in `inflight`, this would join it and
@@ -329,6 +403,33 @@ describe('PackageResolver', () => {
     clock = 10_001;
     expect(await r.resolve(1408)).to.equal('com.new.app');
     expect(calls).to.equal(2);
+  });
+
+  // A `runPs` that isn't `async` (e.g. one that builds an adb command and
+  // throws while resolving `adb.executable.path`) throws SYNCHRONOUSLY. The
+  // whole IIFE body then runs inside `refresh()`'s synchronous prefix, so
+  // without a forced suspension before the call, `inflight` gets cleared
+  // (in `finally`) before it is ever assigned — permanently wedging it with
+  // a settled promise that every later `resolve()` short-circuits on.
+  it('recovers from a runPs that throws synchronously instead of rejecting', async () => {
+    let calls = 0;
+    let clock = 0;
+    const r = new PackageResolver(
+      () => {
+        calls += 1;
+        throw new Error('adb.executable.path is undefined');
+      },
+      10_000,
+      () => clock,
+    );
+
+    expect(await r.resolve(1408)).to.equal(undefined);
+    // Past the attempt throttle, so this call is a real second attempt, not
+    // one suppressed by the (unrelated, legitimate) once-per-TTL-window rule.
+    clock = 10_001;
+    expect(await r.resolve(1408)).to.equal(undefined);
+
+    expect(calls, 'a synchronous throw must not wedge inflight forever').to.equal(2);
   });
 
   // --- Observability -------------------------------------------------------

@@ -48,8 +48,6 @@ export class PackageResolver {
    */
   private attemptedAt = -Infinity;
   private inflight?: Promise<void>;
-  /** Identifies the newest refresh, so a late settler cannot free a newer slot. */
-  private refreshSeq = 0;
   /** True while `ps` is unusable, so the warning fires per transition, not per call. */
   private degraded = false;
 
@@ -80,6 +78,15 @@ export class PackageResolver {
     }
     if (this.missed.has(pid)) return undefined; // proven absent from this snapshot
 
+    // `ps` is already known broken — another spawn would fail too. Without
+    // this, every distinct unknown pid in the window storms a doomed `ps`
+    // call; a healthy `ps` is deliberately NOT throttled here, since a warm
+    // miss picking up a newly-started process is real, load-bearing behaviour.
+    if (this.degraded) {
+      this.missed.add(pid);
+      return undefined;
+    }
+
     // Table was fresh but the pid is missing — the process may have started
     // since. Try exactly once more, then mark it unknown for this snapshot.
     await this.refresh();
@@ -100,10 +107,17 @@ export class PackageResolver {
 
   private async refresh(): Promise<void> {
     if (this.inflight) return this.inflight;
-    const seq = ++this.refreshSeq;
     this.inflight = (async () => {
       try {
-        const out = await this.runPs();
+        // Force a suspension before invoking the runner. Without this, a
+        // `runPs` that throws SYNCHRONOUSLY (e.g. building an adb command
+        // from an undefined path) runs entirely within this IIFE's
+        // synchronous prefix: catch/finally clear `inflight` before the
+        // assignment below ever executes, so the assignment then overwrites
+        // it with the already-settled promise — wedging `resolve()` behind
+        // `if (this.inflight) return this.inflight` forever. An `async`
+        // runner is naturally immune; a plain function is not.
+        const out = await Promise.resolve().then(() => this.runPs());
         const parsed = parsePs(out);
         if (parsed.size === 0) {
           // `ps` can exit 0 and still be useless: `error: device offline` on
@@ -129,12 +143,14 @@ export class PackageResolver {
         );
       } finally {
         this.attemptedAt = this.now();
-        // Identity-guarded release. Whatever `runPs` does, the slot is freed
-        // the moment this attempt settles, so one bad call cannot poison every
-        // later one; the sequence check means a late settler can never clear a
-        // newer refresh's promise. A `runPs` that never settles at all can
-        // only be bounded by a timeout inside the runner itself, not here.
-        if (seq === this.refreshSeq) this.inflight = undefined;
+        // Whatever `runPs` does, the slot is freed the moment this attempt
+        // settles, so one bad call cannot poison every later one. `refresh()`
+        // returns early whenever `inflight` is set and `inflight` is only
+        // ever cleared here, so two refresh bodies can never overlap — there
+        // is no "newer refresh" this release could ever clear out from under.
+        // A `runPs` that never settles at all can only be bounded by a
+        // timeout inside the runner itself, not here.
+        this.inflight = undefined;
       }
     })();
     return this.inflight;
