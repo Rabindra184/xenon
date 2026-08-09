@@ -40,7 +40,7 @@
 | `web/src/components/device-control/logcat/useLogcatStream.ts` | Ticket → WS → bounded buffer, bounded reconnect. |
 | `web/src/components/device-control/logcat/LogcatView.tsx` | Columns, badges, toolbar. |
 | `web/src/components/device-control/logcat/logcat.css` | Styles for the above. |
-| Tests | `test/unit/logcat-parse.spec.ts`, `logcat-multiplexer.spec.ts`, `package-resolver.spec.ts`, `logcat-ws.spec.ts`, `web/src/components/device-control/logcat/logcatFilter.test.ts` |
+| Tests | `test/unit/logcat-parse.spec.ts`, `logcat-multiplexer.spec.ts`, `package-resolver.spec.ts`, `logcat-stream-service.spec.ts`, `logcat-ws.spec.ts`, `web/src/components/device-control/logcat/logcatFilter.test.ts`, `LogcatView.test.tsx` |
 
 **Modify:**
 
@@ -1966,6 +1966,108 @@ import LogcatView from './logcat/LogcatView';
 
 5. Remove any imports that are now unused (`Wifi`, `Search`, `Download` and `Terminal as TerminalIcon` may still be used elsewhere — check each with grep before deleting; `tsc` will not flag unused imports but eslint will).
 
+- [ ] **Step 4b: Write the component test**
+
+`web/` has `@testing-library/react` + `jsdom` and existing component tests
+(`web/src/App.test.tsx`, `web/src/components/ui/button.test.tsx`) — follow their
+style. Create `web/src/components/device-control/logcat/LogcatView.test.tsx`:
+
+```tsx
+import { describe, expect, it, vi, beforeEach } from 'vitest';
+import { render, screen } from '@testing-library/react';
+import LogcatView from './LogcatView';
+
+// The hook owns the socket; the view's job is rendering and filtering.
+const mockStream = vi.fn();
+vi.mock('./useLogcatStream', () => ({
+  useLogcatStream: (...args: unknown[]) => mockStream(...args),
+}));
+
+const rec = (over: Record<string, unknown> = {}) => ({
+  ts: Date.UTC(2026, 7, 9, 16, 11, 0),
+  pid: 1408,
+  tid: 1408,
+  level: 'D',
+  tag: 'Tile.WifiTile',
+  message: 'handleUpdateState',
+  pkg: 'com.android.systemui',
+  ...over,
+});
+
+beforeEach(() => {
+  mockStream.mockReset();
+  mockStream.mockReturnValue({ records: [], connected: true, clear: vi.fn() });
+});
+
+describe('LogcatView', () => {
+  it('renders an unsupported state for a non-Android device', () => {
+    render(<LogcatView udid="DEV-1" platform="ios" />);
+    expect(screen.getByText(/Android only/i)).toBeTruthy();
+  });
+
+  it('does not open a stream for a non-Android device', () => {
+    render(<LogcatView udid="DEV-1" platform="ios" />);
+    // second arg is `enabled`
+    expect(mockStream).toHaveBeenCalledWith('DEV-1', false);
+  });
+
+  it('opens a stream for an Android device', () => {
+    render(<LogcatView udid="DEV-1" platform="android" />);
+    expect(mockStream).toHaveBeenCalledWith('DEV-1', true);
+  });
+
+  it('renders a record across its columns', () => {
+    mockStream.mockReturnValue({ records: [rec()], connected: true, clear: vi.fn() });
+    render(<LogcatView udid="DEV-1" platform="android" />);
+    expect(screen.getByText('Tile.WifiTile')).toBeTruthy();
+    expect(screen.getByText('com.android.systemui')).toBeTruthy();
+    expect(screen.getByText('handleUpdateState')).toBeTruthy();
+    expect(screen.getByText('1408-1408')).toBeTruthy();
+  });
+
+  it('shows LIVE when connected and CONNECTING when not', () => {
+    mockStream.mockReturnValue({ records: [], connected: false, clear: vi.fn() });
+    const { unmount } = render(<LogcatView udid="DEV-1" platform="android" />);
+    expect(screen.getByText('CONNECTING')).toBeTruthy();
+    unmount();
+
+    mockStream.mockReturnValue({ records: [], connected: true, clear: vi.fn() });
+    render(<LogcatView udid="DEV-1" platform="android" />);
+    expect(screen.getByText('LIVE')).toBeTruthy();
+  });
+
+  it('shows the visible / total counts', () => {
+    mockStream.mockReturnValue({
+      records: [rec(), rec({ tag: 'Other' })],
+      connected: true,
+      clear: vi.fn(),
+    });
+    render(<LogcatView udid="DEV-1" platform="android" />);
+    expect(screen.getByText('2 / 2')).toBeTruthy();
+  });
+
+  it('marks synthetic records so they are not mistaken for device output', () => {
+    mockStream.mockReturnValue({
+      records: [rec({ synthetic: true, level: 'W', tag: 'xenon', message: '3 lines dropped' })],
+      connected: true,
+      clear: vi.fn(),
+    });
+    const { container } = render(<LogcatView udid="DEV-1" platform="android" />);
+    expect(container.querySelector('.logcat-row.is-synthetic')).toBeTruthy();
+  });
+});
+```
+
+Run it:
+
+```bash
+cd web && npx vitest run src/components/device-control/logcat/LogcatView.test.tsx
+```
+
+Expected: PASS, 7 passing. Then verify non-vacuously: temporarily change the
+`isAndroid` check to `const isAndroid = true;` and confirm the two
+platform tests go red. Restore.
+
 - [ ] **Step 5: Typecheck, lint, build**
 
 ```bash
@@ -1994,10 +2096,11 @@ git commit -m "feat(web): stream logcat into a parsed, filterable Debug Logs tab
 ```bash
 npx tsc --noEmit
 npx mocha test/unit/logcat-parse.spec.ts test/unit/logcat-multiplexer.spec.ts test/unit/package-resolver.spec.ts test/unit/logcat-stream-service.spec.ts test/unit/logcat-ws.spec.ts
-cd web && npx vitest run src/components/device-control/logcat/logcatFilter.test.ts
+cd web && npx vitest run src/components/device-control/logcat
 ```
 
-Expected: no type errors, 0 failing.
+Expected: no type errors, 0 failing. The vitest run covers both
+`logcatFilter.test.ts` and `LogcatView.test.tsx`.
 
 - [ ] **Step 2: Confirm no new lint**
 
@@ -2085,5 +2188,11 @@ Do not merge, and do not bump the version.
 
 **Known deliberate gaps, stated rather than hidden:**
 - `authorize` passes `isAdmin: false` (Task 5, Step 5): a stream ticket carries a userId, not a role, so an admin cannot watch another user's device over this WS. Called out in the task.
-- `LogcatView` has no component test — the repo has no component-test harness for this view, and the behaviour is covered by Task 6's pure filter tests plus Task 8's hardware pass. Do not add a snapshot test to fill the gap.
+- ~~`LogcatView` has no component test~~ — **corrected before execution.** That
+  claim was wrong: `web/` has `@testing-library/react` + `jsdom` and existing
+  component tests (`App.test.tsx`, `button.test.tsx`, `auth.smoke.test.tsx`).
+  Task 7 Step 4b now requires one. Left visible rather than deleted because the
+  same mistake — a confident, unverified claim telling implementers *not* to do
+  something — produced this repo's last Critical (#216, where the plan said to
+  leave `stream/stop` alone on a false premise).
 - Ordering risk flagged inline in Task 4, Step 4: records are pushed after an async package resolution, so a continuation line can arrive before its parent is pushed. The test will catch it; the fix is to buffer, not to weaken the test.
