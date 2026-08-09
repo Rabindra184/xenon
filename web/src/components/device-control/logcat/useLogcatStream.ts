@@ -11,8 +11,21 @@ export interface LogcatRecord {
   synthetic?: boolean;
 }
 
+/**
+ * A wire record plus a client-side ingest sequence number.
+ *
+ * The wire type carries no id and no sequence (see `logcatParse.ts`), and the
+ * buffer trims from the FRONT once it is full — so a list index is not a
+ * stable identity: every trim shifts every index by one and React would patch
+ * all 5000 rows. `seq` is assigned once, on ingest, and never reused for the
+ * life of the hook, which gives the row list a key that survives trimming.
+ */
+export interface BufferedLogcatRecord extends LogcatRecord {
+  seq: number;
+}
+
 export interface LogcatStreamState {
-  records: LogcatRecord[];
+  records: BufferedLogcatRecord[];
   connected: boolean;
   clear: () => void;
   /**
@@ -54,7 +67,7 @@ const FLUSH_INTERVAL_MS = 50;
  * cannot help (1008) or explicitly invites an immediate reconnect (1012).
  */
 export function useLogcatStream(udid: string, enabled: boolean): LogcatStreamState {
-  const [records, setRecords] = useState<LogcatRecord[]>([]);
+  const [records, setRecords] = useState<BufferedLogcatRecord[]>([]);
   const [connected, setConnected] = useState(false);
   const [deniedReason, setDeniedReason] = useState<string | null>(null);
   const [exhausted, setExhausted] = useState(false);
@@ -70,8 +83,12 @@ export function useLogcatStream(udid: string, enabled: boolean): LogcatStreamSta
 
   // Frames arrive one at a time from the socket but are applied to state in
   // batches — see FLUSH_INTERVAL_MS above.
-  const pendingRef = useRef<LogcatRecord[]>([]);
+  const pendingRef = useRef<BufferedLogcatRecord[]>([]);
   const flushTimerRef = useRef<number | undefined>(undefined);
+  // Monotonic for the life of the hook — never reset by clear(), a reconnect
+  // or a buffer trim, so a `seq` can never collide with one React still has
+  // mounted. See BufferedLogcatRecord.
+  const seqRef = useRef(0);
 
   const flush = useCallback(() => {
     if (pendingRef.current.length === 0) return;
@@ -158,12 +175,29 @@ export function useLogcatStream(udid: string, enabled: boolean): LogcatStreamSta
 
         ws.onopen = () => {
           attemptsRef.current = 0;
+          // Start the buffer over on EVERY successful open, not just the
+          // first. The server replays its whole buffer to any joining client
+          // (`LogcatMultiplexer.addClient`, REPLAY_BUFFER_SIZE = 2000) and the
+          // mux outlives a client disconnect by IDLE_TIMEOUT_MS = 30s, while
+          // this hook reconnects in 0.5–10s. So a reconnect inside that window
+          // — a wifi blip, a sleep/wake, a proxy timeout, all of which arrive
+          // as an abnormal 1006 close we now retry up to 10 times — lands on a
+          // still-live mux and replays records this client already has. Left
+          // unreset, two or three blips fill the 5000-record buffer with
+          // duplicates and evict the real history: exactly the duplicate bug
+          // the 3-second `adb logcat -d` poll had, which this stream exists to
+          // kill. The wire record carries no id or sequence, so exact
+          // client-side dedup is impossible; discarding and re-taking the
+          // server's replay is the only correct option. Cost: history older
+          // than the server's 2000-record replay is lost on a reconnect.
+          pendingRef.current = [];
+          setRecords([]);
           setConnected(true);
         };
         ws.onmessage = (e) => {
           try {
             const r: LogcatRecord = JSON.parse(e.data);
-            pendingRef.current.push(r);
+            pendingRef.current.push({ ...r, seq: seqRef.current++ });
             scheduleFlush();
           } catch {
             /* ignore a malformed frame rather than tearing down the stream */

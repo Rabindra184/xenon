@@ -283,6 +283,36 @@ describe('useLogcatStream — close-code branching (correction 1)', () => {
   });
 });
 
+describe('useLogcatStream — ticket freshness', () => {
+  it('mints a FRESH ticket for every reconnect', async () => {
+    let minted = 0;
+    fetchMock.mockImplementation(async () => ({
+      ok: true,
+      json: async () => ({ ticket: `tkt-${++minted}` }),
+    }));
+
+    renderProbe('DEV-1');
+    await tick();
+    act(() => FakeWebSocket.instances[0].serverOpen());
+    expect(FakeWebSocket.instances[0].url).toContain('ticket=tkt-1');
+
+    act(() => FakeWebSocket.instances[0].serverClose(1006, ''));
+    await tick(600);
+
+    // Stream tickets are single-use. Caching the first one and replaying it
+    // on reconnect would hand the server a spent ticket, which it rejects
+    // with 1008 — a code this hook treats as TERMINAL — so the pane would go
+    // permanently DENIED after the first wifi blip. The reconnect tests
+    // above only count sockets, and every test that asserts a ticket value
+    // follows a FAILED first mint, so no ticket ever existed to be cached:
+    // nothing else here can see a regression to caching.
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(FakeWebSocket.instances).toHaveLength(2);
+    expect(FakeWebSocket.instances[1].url).toContain('ticket=tkt-2');
+    expect(FakeWebSocket.instances[1].url).not.toContain('ticket=tkt-1');
+  });
+});
+
 describe('useLogcatStream — retry exhaustion (correction 3)', () => {
   it('goes exhausted after MAX_ATTEMPTS failed connects, and stays disconnected quietly no longer', async () => {
     fetchMock.mockImplementation(async () => ({ ok: false, json: async () => ({}) }));
@@ -326,6 +356,60 @@ describe('useLogcatStream — retry exhaustion (correction 3)', () => {
 
     await tick();
     expect(FakeWebSocket.instances[FakeWebSocket.instances.length - 1].url).toContain('tkt-9');
+  });
+
+  // The test above makes the FIRST retry succeed, so `onopen` resets the
+  // attempt counter and `retry()`'s own reset never has to do anything — the
+  // input cannot reach the boundary this pins. Keep both: that one covers the
+  // happy path, this one covers the budget.
+  it('retry() refills the attempt budget: a retry that keeps failing runs a full fresh ladder', async () => {
+    fetchMock.mockImplementation(async () => ({ ok: false, json: async () => ({}) }));
+    const probe = renderProbe('DEV-1');
+    await tick(600_000);
+    expect(probe.state.exhausted).toBe(true);
+    // 1 immediate attempt + MAX_ATTEMPTS (10) scheduled retries.
+    expect(fetchMock).toHaveBeenCalledTimes(11);
+
+    act(() => probe.state.retry());
+    expect(probe.state.exhausted).toBe(false);
+    await tick(600_000);
+
+    // Without resetting the counter, retry() would make exactly ONE attempt
+    // and re-exhaust on it (the counter is still parked at MAX_ATTEMPTS), so
+    // the RECONNECT button would silently degrade to a single try after its
+    // first use. A fresh ladder is another 11 attempts, not 1.
+    expect(fetchMock).toHaveBeenCalledTimes(22);
+    expect(probe.state.exhausted).toBe(true);
+  });
+
+  it('a successful open replenishes the budget: MAX_ATTEMPTS means 10 CONSECUTIVE failures', async () => {
+    const probe = renderProbe('DEV-1');
+    await tick();
+
+    // A long-lived tab: ten disconnects that each RECONNECT SUCCESSFULLY.
+    // None of them may count against the retry budget.
+    for (let i = 0; i < 10; i++) {
+      const ws = FakeWebSocket.instances[FakeWebSocket.instances.length - 1];
+      act(() => ws.serverOpen());
+      act(() => ws.serverClose(1006, ''));
+      // Deliberately generous: a hook that never reset the counter would
+      // climb to the 10s backoff cap, and this must still give it its socket
+      // — the assertion below is about the BUDGET, not about timing out.
+      await tick(20_000);
+      expect(probe.state.exhausted).toBe(false);
+      expect(FakeWebSocket.instances).toHaveLength(i + 2);
+    }
+
+    // The 11th disconnect. Without the reset in `onopen` the counter now sits
+    // at MAX_ATTEMPTS, so this one goes straight to OFFLINE and never
+    // reconnects — even though every single reconnect so far worked.
+    const last = FakeWebSocket.instances[FakeWebSocket.instances.length - 1];
+    act(() => last.serverOpen());
+    act(() => last.serverClose(1006, ''));
+    await tick(20_000);
+
+    expect(probe.state.exhausted).toBe(false);
+    expect(FakeWebSocket.instances).toHaveLength(12);
   });
 
   it('retry() also clears a 1008 denial and restarts the connect loop', async () => {
@@ -417,6 +501,80 @@ describe('useLogcatStream — frame batching (correction 4)', () => {
     expect(probe.state.records).toHaveLength(5000);
     expect(probe.state.records[0].message).toBe('line-5');
     expect(probe.state.records[4999].message).toBe('line-5004');
+  });
+});
+
+describe('useLogcatStream — reconnect must not duplicate the server replay', () => {
+  // The whole point of replacing the 3-second `adb logcat -d` poll was that
+  // the poll re-appended the same lines every tick until the buffer held them
+  // twice. The stream reintroduces that on reconnect unless the buffer is
+  // reset: `LogcatMultiplexer.addClient` replays its whole buffer
+  // (REPLAY_BUFFER_SIZE = 2000) to every joining client, and the mux outlives
+  // a client disconnect by IDLE_TIMEOUT_MS = 30s — longer than this hook's
+  // entire 0.5–10s backoff ladder. So a reconnect inside that window lands on
+  // a LIVE mux and is handed the same records again.
+  //
+  // 1006 (a wifi blip, sleep/wake, a proxy timeout) is the reachable path:
+  // the 1012 path tears the mux down upstream, so its replay is empty and the
+  // existing 1012 reconnect test structurally cannot catch this.
+  it('drops the old buffer on reconnect instead of appending the replay twice', async () => {
+    const probe = renderProbe('DEV-1');
+    await tick();
+    const first = FakeWebSocket.instances[0];
+    act(() => first.serverOpen());
+
+    // The fixture MUST actually hold records before the reconnect, or the
+    // no-duplication assertion below is vacuous.
+    act(() => {
+      first.serverMessage(rec({ message: 'replayed-1' }));
+      first.serverMessage(rec({ message: 'replayed-2' }));
+    });
+    await tick(50);
+    expect(probe.state.records.map((r) => r.message)).toEqual(['replayed-1', 'replayed-2']);
+
+    act(() => first.serverClose(1006, ''));
+    await tick(600);
+    expect(FakeWebSocket.instances).toHaveLength(2);
+
+    // The still-live mux replays what this client already has, then carries on.
+    const second = FakeWebSocket.instances[1];
+    act(() => second.serverOpen());
+    act(() => {
+      second.serverMessage(rec({ message: 'replayed-1' }));
+      second.serverMessage(rec({ message: 'replayed-2' }));
+      second.serverMessage(rec({ message: 'new-after-reconnect' }));
+    });
+    await tick(50);
+
+    expect(probe.state.records.map((r) => r.message)).toEqual([
+      'replayed-1',
+      'replayed-2',
+      'new-after-reconnect',
+    ]);
+  });
+
+  it('gives every record a unique, monotonic seq across clear() and a reconnect', async () => {
+    const probe = renderProbe('DEV-1');
+    await tick();
+    const first = FakeWebSocket.instances[0];
+    act(() => first.serverOpen());
+    act(() => first.serverMessage(rec({ message: 'a' })));
+    await tick(50);
+    act(() => probe.state.clear());
+    act(() => first.serverClose(1006, ''));
+    await tick(600);
+    const second = FakeWebSocket.instances[1];
+    act(() => second.serverOpen());
+    act(() => {
+      second.serverMessage(rec({ message: 'b' }));
+      second.serverMessage(rec({ message: 'c' }));
+    });
+    await tick(50);
+
+    // Rows are keyed on `seq`, so a counter that restarted on clear() or on a
+    // reconnect could hand React two mounted rows the same key.
+    const seqs = probe.state.records.map((r) => r.seq);
+    expect(seqs).toEqual([1, 2]);
   });
 });
 
