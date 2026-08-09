@@ -223,6 +223,48 @@ describe('attachLogcatWs handshake', () => {
     await h.close();
   });
 
+  // makeTicketActorAuthorizer denies both a device the store cannot resolve
+  // at all (reaped by removeStaleDevices, or not yet seen by the next
+  // discovery poll) and a device genuinely held by someone else through the
+  // same `false` — this layer cannot tell which just from the boolean. But
+  // evaluateDeviceAccess's *first* check unconditionally allows an admin,
+  // before it ever looks at who holds the device, so a KNOWN device can
+  // never deny an admin actor. An admin who is still denied can therefore
+  // only be here because the device itself is unresolvable: "held by another
+  // user" would be a guaranteed lie for them, which used to be exactly what
+  // they were told.
+  it('gives an admin actor a distinct, accurate reason for an unresolvable device', async () => {
+    const h = await harness({
+      redeem: async () => ({ actorId: 'usr_admin', isAdmin: true }),
+      authorize: async () => false,
+    });
+    const ws = new WebSocket(url(h.port));
+    const [code, reason] = await new Promise<[number, string]>((resolve) => {
+      ws.on('close', (c, r) => resolve([c, r.toString()]));
+    });
+    expect(code).to.equal(1008);
+    expect(reason).to.equal('device not found');
+    await h.close();
+  });
+
+  // For a non-admin actor a real conflicting holder is possible, so the
+  // reason must stay the original, still-accurate one — guards against a
+  // mutation that broadens the distinct reason to every denial regardless of
+  // actor.isAdmin.
+  it("keeps the original reason for a non-admin actor's denial", async () => {
+    const h = await harness({
+      redeem: async () => ({ actorId: 'usr_bob' }),
+      authorize: async () => false,
+    });
+    const ws = new WebSocket(url(h.port));
+    const [code, reason] = await new Promise<[number, string]>((resolve) => {
+      ws.on('close', (c, r) => resolve([c, r.toString()]));
+    });
+    expect(code).to.equal(1008);
+    expect(reason).to.equal('device held by another user');
+    await h.close();
+  });
+
   it('closes 1011 when ownership cannot be determined, and delivers nothing', async () => {
     const h = await harness({
       authorize: async () => {

@@ -115,11 +115,28 @@ export function attachLogcatWs(server: Server, deps: LogcatWsDeps): void {
         return;
       }
       if (!allowed) {
+        // Two different reasons collapse into this one boolean:
+        // makeTicketActorAuthorizer denies both a device the store cannot
+        // resolve at all (reaped by removeStaleDevices, or not yet seen by
+        // the next discovery poll) and a device genuinely held by someone
+        // else — `authorize` has no way to tell this layer which. But
+        // evaluateDeviceAccess's *first* check unconditionally allows an
+        // admin, before it ever looks at who holds the device — so a known,
+        // busy device can never deny an admin actor. An admin who still
+        // lands here can only be here because the device itself is
+        // unresolvable: "held by another user" is a guaranteed lie for an
+        // admin, which is exactly the diagnosability bug this branch used to
+        // have (an admin hitting a transiently-lost device was told someone
+        // else had it). For a non-admin actor a real conflict is possible, so
+        // the generic reason stays accurate there and is left alone.
+        const unresolvable = !!actor.isAdmin;
         log.warn(
-          `[${parsed.udid}] logcat WS denied: actor ${actor.actorId} does not hold this device`,
+          `[${parsed.udid}] logcat WS denied: actor ${actor.actorId} ${
+            unresolvable ? 'device is unresolvable by the store' : 'does not hold this device'
+          }`,
         );
         try {
-          ws.close(1008, 'device held by another user');
+          ws.close(1008, unresolvable ? 'device not found' : 'device held by another user');
         } catch {
           /* noop */
         }
