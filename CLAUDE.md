@@ -219,12 +219,38 @@ interactive, so "watch the test I started" works.
   because "busy" differs at start time: an orphaned manual lock with no live
   stream is reclaimed rather than refused.
 
-**Operational note:** sessions created without the
-`df:options.accessKey`/`token` pair persist `api_key_id = null`
-(`SessionLifecycleService` warns, it does not reject). Those are unattributable,
-so the fail-closed rule denies everyone non-admin — including the engineer who
-started the run. Confirm `Session.api_key_id` is populated before relying on the
-own-session path in a lab with auth enabled.
+### Session attribution
+
+A session's owner is resolved by `SessionOwnerResolver.ownerOf`, which prefers
+`Session.user_id` and falls back to `Session.api_key_id → ApiKey.userId` for
+rows written before 1.13.1. Two columns because two id spaces: `api_key_id` is
+the `ApiKey` row that created the session, `user_id` is the human.
+
+`resolveSessionIdentity` (`src/services/session/sessionIdentity.ts`, pure)
+derives both from whichever credential `createSession` presented:
+
+| Credential | `api_key_id` | `user_id` |
+|---|---|---|
+| `df:options.{accessKey,token}` pair | ApiKey row id | `ApiKey.userId` |
+| `xenon:options.sessionToken` (JWT `sub`) | null | the token's subject |
+| neither | null | null |
+| `authDisabled` | null | null — every caller is a synthetic SUPER_ADMIN |
+
+**Attribution is decoupled from enforcement.** A session token is read for
+identity whenever one is present, whether or not
+`XENON_REQUIRE_SESSION_TOKEN` is on, and a token that fails verification is
+*ignored*, never rejected. `assertSessionTokenGate` (`src/services/sessionTokenGate.ts`)
+remains the sole decider of whether a session is admitted. When the gate is on
+the token is verified twice — once to admit, once to attribute; `jose.jwtVerify`
+is stateless so the second verify is harmless.
+
+**Operational note:** a session created with **no** credentials is still
+admitted (`SessionLifecycleService` warns, it does not reject) and stays
+unattributable, so the fail-closed rule denies everyone non-admin on that
+device — including the engineer who started the run. If your clients cannot
+pass `df:options` credentials, have them present a `xenon:options.sessionToken`
+instead (minted by `POST /xenon/api/auth/token` with `audience: 'xenon-mcp'`),
+or enforce credentials with `XENON_REQUIRE_SESSION_TOKEN`.
 
 Device leases: programmatic clients (SDK, MCP tools) claim devices via
 `POST /xenon/api/sdk/leases` (`src/services/lease/LeaseService.ts`) — token-bound
@@ -344,7 +370,8 @@ npm run build:copy` (from the repo root) regenerates and copies it.
 | `src/middleware/authMiddleware.ts` | Populates `req.auth` (and `req.apiKey` on API-key paths) from the header pair or session cookie; `scopesForRole` maps a cookie role to its scopes |
 | `src/middleware/deviceAccessGuard.ts` | Ownership guard on `/control` — method-scoped, with the mutation allowlist and `OWNERSHIP_CHECKED_READS` |
 | `src/services/device-access/deviceAccessPolicy.ts` | Pure access decision + deny bodies + the shared `isSelfManualLock` / `isOwnSession` primitives |
-| `src/services/device-access/SessionOwnerResolver.ts` | `Session.api_key_id → ApiKey.userId`, positive-results-only cache |
+| `src/services/device-access/SessionOwnerResolver.ts` | Session owner: prefers `Session.user_id`, falls back to `api_key_id → ApiKey.userId`. Caches **positive results only** — a null may mean the row isn't written yet, and caching it would deny the owner for the life of the process |
+| `src/services/session/sessionIdentity.ts` | Pure `resolveSessionIdentity` — derives `{ apiKeyId, userId }` from the presented credential; ignores an unverifiable token rather than rejecting it |
 | `src/services/device-access/actor.ts` | `resolveActor(req)` — the one place an identity is derived from a request |
 | `src/app/routers/streamStartConflict.ts` | `stream/start`'s own conflict decision (proceed / reclaim orphan / deny) |
 | `web/src/App.tsx` | Frontend root component and routing |
