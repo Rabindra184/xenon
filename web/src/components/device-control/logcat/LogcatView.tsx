@@ -1,9 +1,18 @@
 import * as React from 'react';
-import { useMemo, useRef, useState, useEffect } from 'react';
+import { memo, useCallback, useMemo, useRef, useState, useEffect } from 'react';
 import { AlertTriangle, Download, RotateCw, Trash2, Wifi } from 'lucide-react';
 import { Select } from '../../ui/select';
-import { useLogcatStream } from './useLogcatStream';
+import { useLogcatStream, type BufferedLogcatRecord } from './useLogcatStream';
 import { matches, parseQuery, setLevelTerm, LEVEL_ORDER } from './logcatFilter';
+// This view renders four classes it does not own: `.type-input-field`,
+// `.btn-sm` and `.btn-premium` (device-control.css) and `.btn-secondary`
+// (ui/button.css). It used to get them only because its parent happened to
+// import device-control.css — the view was one refactor away from rendering
+// unstyled, with nothing to point at. Both sheets are already in the bundle
+// and Rollup dedupes a repeated module import, so these cost nothing.
+// Imported BEFORE ./logcat.css so its overrides still win.
+import '../device-control.css';
+import '../../ui/button.css';
 import './logcat.css';
 
 interface Props {
@@ -11,29 +20,105 @@ interface Props {
   platform?: string;
 }
 
+/**
+ * Level choices offered by the dropdown.
+ *
+ * 'V' is deliberately absent: V is the lowest level, so "V and above" selects
+ * every record — which is what "All levels" already says, only twice. 'F' is
+ * the highest, so "and above" would be a lie about a set with nothing above
+ * it; it is labelled for what it is.
+ */
+const LEVEL_OPTIONS = LEVEL_ORDER.filter((l) => l !== 'V').map((l) => ({
+  value: l as string,
+  label: l === 'F' ? 'F only' : `${l} and above`,
+}));
+
+/**
+ * Built once, not per row. `new Date(ts).toLocaleTimeString(...)` constructs a
+ * Date AND a fresh Intl formatter on every call; at a full 5000-record buffer
+ * flushing every 50ms that is the single most expensive thing in the render
+ * path. `Intl.DateTimeFormat#format` takes the epoch millis directly.
+ */
+const TIME_FORMAT = new Intl.DateTimeFormat([], {
+  hour: '2-digit',
+  minute: '2-digit',
+  second: '2-digit',
+  hour12: false,
+});
+
+/**
+ * One log row, memoized on the record. `visible` is a fresh array on every
+ * flush, so without this the parent's re-render walks every row's render
+ * function even when the row's own data is unchanged. With a stable `seq` key
+ * (see BufferedLogcatRecord) React can also *move* a row's DOM node through a
+ * front-trim instead of repatching every row after the trim point.
+ */
+const LogcatRow = memo(function LogcatRow({ record }: { record: BufferedLogcatRecord }) {
+  return (
+    <div className={`logcat-row ${record.synthetic ? 'is-synthetic' : ''}`}>
+      <span className="logcat-time">{TIME_FORMAT.format(record.ts)}</span>
+      <span className="logcat-pid">
+        {record.pid}-{record.tid}
+      </span>
+      <span className="logcat-pkg" title={record.pkg}>
+        {record.pkg ?? ''}
+      </span>
+      <span className={`logcat-level lvl-${record.level}`}>{record.level}</span>
+      <span className="logcat-tag" title={record.tag}>
+        {record.tag}
+      </span>
+      <span className="logcat-msg">{record.message}</span>
+    </div>
+  );
+});
+
 export default function LogcatView({ udid, platform }: Props) {
   const isAndroid = (platform || '').toLowerCase() === 'android';
   const { records, connected, clear, deniedReason, exhausted, retry } = useLogcatStream(
     udid,
     isAndroid,
   );
+  // The query string is the ONE source of truth for filtering. The level
+  // dropdown does not hold its own state: it writes a `level:` term into this
+  // string via setLevelTerm and reads its displayed value back out of it via
+  // parseQuery. Two independent states reconciled at filter time is what made
+  // the documented `level:` grammar unreachable from the text box (a falsy
+  // dropdown value made setLevelTerm strip the term the user had just typed)
+  // and let the two controls display contradicting levels.
   const [query, setQuery] = useState('');
-  const [minLevel, setMinLevel] = useState('');
   const [following, setFollowing] = useState(true);
   const endRef = useRef<HTMLDivElement>(null);
 
-  // setLevelTerm keeps the dropdown authoritative over a stray level: term
-  // the user typed by hand — a naive `level:${minLevel} ${query}` prepend
-  // does not, because parseQuery is last-token-wins and a user-typed level:
-  // term later in the string would silently out-vote the dropdown.
-  const effectiveQuery = useMemo(
-    () => parseQuery(setLevelTerm(query, minLevel)),
-    [minLevel, query],
-  );
-  const visible = useMemo(
-    () => records.filter((r) => matches(r, effectiveQuery)),
-    [records, effectiveQuery],
-  );
+  const parsed = useMemo(() => parseQuery(query), [query]);
+  const visible = useMemo(() => records.filter((r) => matches(r, parsed)), [records, parsed]);
+
+  // A level the dropdown cannot represent — a typo'd `level:X`, or `level:V`
+  // which filters nothing — shows as "All levels". That is not a disagreement:
+  // `matches` ignores an unrecognized level entirely, and V admits every
+  // record, so in both cases no level filtering is in effect and "All levels"
+  // is the honest reading of the query.
+  const levelValue = LEVEL_OPTIONS.some((o) => o.value === parsed.minLevel)
+    ? (parsed.minLevel as string)
+    : '';
+
+  const onExport = useCallback(() => {
+    const text = visible
+      .map((r) => `${new Date(r.ts).toISOString()} ${r.pid} ${r.level}/${r.tag}: ${r.message}`)
+      .join('\n');
+    const url = URL.createObjectURL(new Blob([text], { type: 'text/plain' }));
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `logcat-${udid}-${Date.now()}.txt`;
+    // Firefox ignores a click on an anchor that is not in the document, so
+    // the anchor has to be attached for the duration of the click.
+    a.style.display = 'none';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    // Revoking in the same task can cancel a download that has not started
+    // reading the blob yet (Firefox, Safari). Defer to the next task.
+    setTimeout(() => URL.revokeObjectURL(url), 0);
+  }, [visible, udid]);
 
   useEffect(() => {
     if (following) endRef.current?.scrollIntoView({ block: 'end' });
@@ -74,14 +159,14 @@ export default function LogcatView({ udid, platform }: Props) {
           </div>
           <Select
             selectSize="sm"
-            value={minLevel}
-            onChange={(e) => setMinLevel(e.target.value)}
+            value={levelValue}
+            onChange={(e) => setQuery(setLevelTerm(query, e.target.value))}
             aria-label="Minimum log level"
           >
             <option value="">All levels</option>
-            {LEVEL_ORDER.map((l) => (
-              <option key={l} value={l}>
-                {l} and above
+            {LEVEL_OPTIONS.map((o) => (
+              <option key={o.value} value={o.value}>
+                {o.label}
               </option>
             ))}
           </Select>
@@ -106,24 +191,7 @@ export default function LogcatView({ udid, platform }: Props) {
           >
             <Wifi size={14} /> {following ? 'FREEZE' : 'FOLLOW'}
           </button>
-          <button
-            className="btn-premium btn-sm"
-            disabled={visible.length === 0}
-            onClick={() => {
-              const text = visible
-                .map(
-                  (r) =>
-                    `${new Date(r.ts).toISOString()} ${r.pid} ${r.level}/${r.tag}: ${r.message}`,
-                )
-                .join('\n');
-              const url = URL.createObjectURL(new Blob([text], { type: 'text/plain' }));
-              const a = document.createElement('a');
-              a.href = url;
-              a.download = `logcat-${udid}-${Date.now()}.txt`;
-              a.click();
-              URL.revokeObjectURL(url);
-            }}
-          >
+          <button className="btn-premium btn-sm" disabled={visible.length === 0} onClick={onExport}>
             <Download size={14} /> EXPORT
           </button>
           <button className="btn-secondary btn-sm" onClick={clear}>
@@ -134,34 +202,19 @@ export default function LogcatView({ udid, platform }: Props) {
 
       <div className="logcat-rows">
         {deniedReason && (
-          <div className="logcat-status-banner is-denied">
+          <div className="logcat-status-banner is-denied" role="alert">
             <AlertTriangle size={14} />
             <span>Access denied — {deniedReason}</span>
           </div>
         )}
         {!deniedReason && exhausted && (
-          <div className="logcat-status-banner is-exhausted">
+          <div className="logcat-status-banner is-exhausted" role="alert">
             <AlertTriangle size={14} />
             <span>Connection lost after repeated attempts. Use Reconnect above to try again.</span>
           </div>
         )}
-        {visible.map((r, i) => (
-          <div className={`logcat-row ${r.synthetic ? 'is-synthetic' : ''}`} key={i}>
-            <span className="logcat-time">
-              {new Date(r.ts).toLocaleTimeString([], { hour12: false })}
-            </span>
-            <span className="logcat-pid">
-              {r.pid}-{r.tid}
-            </span>
-            <span className="logcat-pkg" title={r.pkg}>
-              {r.pkg ?? ''}
-            </span>
-            <span className={`logcat-level lvl-${r.level}`}>{r.level}</span>
-            <span className="logcat-tag" title={r.tag}>
-              {r.tag}
-            </span>
-            <span className="logcat-msg">{r.message}</span>
-          </div>
+        {visible.map((r) => (
+          <LogcatRow key={r.seq} record={r} />
         ))}
         <div ref={endRef} />
       </div>
