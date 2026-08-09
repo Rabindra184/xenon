@@ -156,7 +156,8 @@ exports.Prisma.SessionScalarFieldEnum = {
   last_heartbeat_at: 'last_heartbeat_at',
   heartbeat_pid: 'heartbeat_pid',
   heartbeat_host: 'heartbeat_host',
-  api_key_id: 'api_key_id'
+  api_key_id: 'api_key_id',
+  user_id: 'user_id'
 };
 
 exports.Prisma.SessionLogScalarFieldEnum = {

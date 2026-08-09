@@ -42,6 +42,10 @@ export abstract class XenonSession {
   // Phase 2 audit: which API key created this session (null when auth is
   // disabled or the client didn't present xenon:accessKey).
   public apiKeyId: string | null = null;
+  // The human who created this session, resolved from either the API-key
+  // pair or a bare xenon:options.sessionToken (see resolveSessionIdentity).
+  // Null when auth is disabled or the caller couldn't be attributed.
+  public userId: string | null = null;
 
   constructor(private options: XenonSessionOptions) {
     this.sessionId = options.sessionId;

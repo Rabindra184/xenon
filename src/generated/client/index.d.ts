@@ -4213,6 +4213,7 @@ export namespace Prisma {
     heartbeat_pid: number | null
     heartbeat_host: string | null
     api_key_id: string | null
+    user_id: string | null
   }
 
   export type SessionMaxAggregateOutputType = {
@@ -4246,6 +4247,7 @@ export namespace Prisma {
     heartbeat_pid: number | null
     heartbeat_host: string | null
     api_key_id: string | null
+    user_id: string | null
   }
 
   export type SessionCountAggregateOutputType = {
@@ -4279,6 +4281,7 @@ export namespace Prisma {
     heartbeat_pid: number
     heartbeat_host: number
     api_key_id: number
+    user_id: number
     _all: number
   }
 
@@ -4322,6 +4325,7 @@ export namespace Prisma {
     heartbeat_pid?: true
     heartbeat_host?: true
     api_key_id?: true
+    user_id?: true
   }
 
   export type SessionMaxAggregateInputType = {
@@ -4355,6 +4359,7 @@ export namespace Prisma {
     heartbeat_pid?: true
     heartbeat_host?: true
     api_key_id?: true
+    user_id?: true
   }
 
   export type SessionCountAggregateInputType = {
@@ -4388,6 +4393,7 @@ export namespace Prisma {
     heartbeat_pid?: true
     heartbeat_host?: true
     api_key_id?: true
+    user_id?: true
     _all?: true
   }
 
@@ -4508,6 +4514,7 @@ export namespace Prisma {
     heartbeat_pid: number | null
     heartbeat_host: string | null
     api_key_id: string | null
+    user_id: string | null
     _count: SessionCountAggregateOutputType | null
     _avg: SessionAvgAggregateOutputType | null
     _sum: SessionSumAggregateOutputType | null
@@ -4560,6 +4567,7 @@ export namespace Prisma {
     heartbeat_pid?: boolean
     heartbeat_host?: boolean
     api_key_id?: boolean
+    user_id?: boolean
     Log?: boolean | Session$LogArgs<ExtArgs>
     Profiling?: boolean | Session$ProfilingArgs<ExtArgs>
     build?: boolean | Session$buildArgs<ExtArgs>
@@ -4599,6 +4607,7 @@ export namespace Prisma {
     heartbeat_pid?: boolean
     heartbeat_host?: boolean
     api_key_id?: boolean
+    user_id?: boolean
     build?: boolean | Session$buildArgs<ExtArgs>
   }, ExtArgs["result"]["session"]>
 
@@ -4633,6 +4642,7 @@ export namespace Prisma {
     heartbeat_pid?: boolean
     heartbeat_host?: boolean
     api_key_id?: boolean
+    user_id?: boolean
   }
 
   export type SessionInclude<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
@@ -4687,6 +4697,7 @@ export namespace Prisma {
       heartbeat_pid: number | null
       heartbeat_host: string | null
       api_key_id: string | null
+      user_id: string | null
     }, ExtArgs["result"]["session"]>
     composites: {}
   }
@@ -5115,6 +5126,7 @@ export namespace Prisma {
     readonly heartbeat_pid: FieldRef<"Session", 'Int'>
     readonly heartbeat_host: FieldRef<"Session", 'String'>
     readonly api_key_id: FieldRef<"Session", 'String'>
+    readonly user_id: FieldRef<"Session", 'String'>
   }
     
 
@@ -29681,7 +29693,8 @@ export namespace Prisma {
     last_heartbeat_at: 'last_heartbeat_at',
     heartbeat_pid: 'heartbeat_pid',
     heartbeat_host: 'heartbeat_host',
-    api_key_id: 'api_key_id'
+    api_key_id: 'api_key_id',
+    user_id: 'user_id'
   };
 
   export type SessionScalarFieldEnum = (typeof SessionScalarFieldEnum)[keyof typeof SessionScalarFieldEnum]
@@ -30224,6 +30237,7 @@ export namespace Prisma {
     heartbeat_pid?: IntNullableFilter<"Session"> | number | null
     heartbeat_host?: StringNullableFilter<"Session"> | string | null
     api_key_id?: StringNullableFilter<"Session"> | string | null
+    user_id?: StringNullableFilter<"Session"> | string | null
     Log?: LogListRelationFilter
     Profiling?: ProfilingListRelationFilter
     build?: XOR<BuildNullableRelationFilter, BuildWhereInput> | null
@@ -30262,6 +30276,7 @@ export namespace Prisma {
     heartbeat_pid?: SortOrderInput | SortOrder
     heartbeat_host?: SortOrderInput | SortOrder
     api_key_id?: SortOrderInput | SortOrder
+    user_id?: SortOrderInput | SortOrder
     Log?: LogOrderByRelationAggregateInput
     Profiling?: ProfilingOrderByRelationAggregateInput
     build?: BuildOrderByWithRelationInput
@@ -30303,6 +30318,7 @@ export namespace Prisma {
     heartbeat_pid?: IntNullableFilter<"Session"> | number | null
     heartbeat_host?: StringNullableFilter<"Session"> | string | null
     api_key_id?: StringNullableFilter<"Session"> | string | null
+    user_id?: StringNullableFilter<"Session"> | string | null
     Log?: LogListRelationFilter
     Profiling?: ProfilingListRelationFilter
     build?: XOR<BuildNullableRelationFilter, BuildWhereInput> | null
@@ -30341,6 +30357,7 @@ export namespace Prisma {
     heartbeat_pid?: SortOrderInput | SortOrder
     heartbeat_host?: SortOrderInput | SortOrder
     api_key_id?: SortOrderInput | SortOrder
+    user_id?: SortOrderInput | SortOrder
     _count?: SessionCountOrderByAggregateInput
     _avg?: SessionAvgOrderByAggregateInput
     _max?: SessionMaxOrderByAggregateInput
@@ -30382,6 +30399,7 @@ export namespace Prisma {
     heartbeat_pid?: IntNullableWithAggregatesFilter<"Session"> | number | null
     heartbeat_host?: StringNullableWithAggregatesFilter<"Session"> | string | null
     api_key_id?: StringNullableWithAggregatesFilter<"Session"> | string | null
+    user_id?: StringNullableWithAggregatesFilter<"Session"> | string | null
   }
 
   export type SessionLogWhereInput = {
@@ -32460,6 +32478,7 @@ export namespace Prisma {
     heartbeat_pid?: number | null
     heartbeat_host?: string | null
     api_key_id?: string | null
+    user_id?: string | null
     Log?: LogCreateNestedManyWithoutSessionInput
     Profiling?: ProfilingCreateNestedManyWithoutSessionInput
     build?: BuildCreateNestedOneWithoutSessionsInput
@@ -32498,6 +32517,7 @@ export namespace Prisma {
     heartbeat_pid?: number | null
     heartbeat_host?: string | null
     api_key_id?: string | null
+    user_id?: string | null
     Log?: LogUncheckedCreateNestedManyWithoutSessionInput
     Profiling?: ProfilingUncheckedCreateNestedManyWithoutSessionInput
     SessionLog?: SessionLogUncheckedCreateNestedManyWithoutSessionInput
@@ -32534,6 +32554,7 @@ export namespace Prisma {
     heartbeat_pid?: NullableIntFieldUpdateOperationsInput | number | null
     heartbeat_host?: NullableStringFieldUpdateOperationsInput | string | null
     api_key_id?: NullableStringFieldUpdateOperationsInput | string | null
+    user_id?: NullableStringFieldUpdateOperationsInput | string | null
     Log?: LogUpdateManyWithoutSessionNestedInput
     Profiling?: ProfilingUpdateManyWithoutSessionNestedInput
     build?: BuildUpdateOneWithoutSessionsNestedInput
@@ -32572,6 +32593,7 @@ export namespace Prisma {
     heartbeat_pid?: NullableIntFieldUpdateOperationsInput | number | null
     heartbeat_host?: NullableStringFieldUpdateOperationsInput | string | null
     api_key_id?: NullableStringFieldUpdateOperationsInput | string | null
+    user_id?: NullableStringFieldUpdateOperationsInput | string | null
     Log?: LogUncheckedUpdateManyWithoutSessionNestedInput
     Profiling?: ProfilingUncheckedUpdateManyWithoutSessionNestedInput
     SessionLog?: SessionLogUncheckedUpdateManyWithoutSessionNestedInput
@@ -32609,6 +32631,7 @@ export namespace Prisma {
     heartbeat_pid?: number | null
     heartbeat_host?: string | null
     api_key_id?: string | null
+    user_id?: string | null
   }
 
   export type SessionUpdateManyMutationInput = {
@@ -32641,6 +32664,7 @@ export namespace Prisma {
     heartbeat_pid?: NullableIntFieldUpdateOperationsInput | number | null
     heartbeat_host?: NullableStringFieldUpdateOperationsInput | string | null
     api_key_id?: NullableStringFieldUpdateOperationsInput | string | null
+    user_id?: NullableStringFieldUpdateOperationsInput | string | null
   }
 
   export type SessionUncheckedUpdateManyInput = {
@@ -32674,6 +32698,7 @@ export namespace Prisma {
     heartbeat_pid?: NullableIntFieldUpdateOperationsInput | number | null
     heartbeat_host?: NullableStringFieldUpdateOperationsInput | string | null
     api_key_id?: NullableStringFieldUpdateOperationsInput | string | null
+    user_id?: NullableStringFieldUpdateOperationsInput | string | null
   }
 
   export type SessionLogCreateInput = {
@@ -35170,6 +35195,7 @@ export namespace Prisma {
     heartbeat_pid?: SortOrder
     heartbeat_host?: SortOrder
     api_key_id?: SortOrder
+    user_id?: SortOrder
   }
 
   export type SessionAvgOrderByAggregateInput = {
@@ -35207,6 +35233,7 @@ export namespace Prisma {
     heartbeat_pid?: SortOrder
     heartbeat_host?: SortOrder
     api_key_id?: SortOrder
+    user_id?: SortOrder
   }
 
   export type SessionMinOrderByAggregateInput = {
@@ -35240,6 +35267,7 @@ export namespace Prisma {
     heartbeat_pid?: SortOrder
     heartbeat_host?: SortOrder
     api_key_id?: SortOrder
+    user_id?: SortOrder
   }
 
   export type SessionSumOrderByAggregateInput = {
@@ -37733,6 +37761,7 @@ export namespace Prisma {
     heartbeat_pid?: number | null
     heartbeat_host?: string | null
     api_key_id?: string | null
+    user_id?: string | null
     Log?: LogCreateNestedManyWithoutSessionInput
     Profiling?: ProfilingCreateNestedManyWithoutSessionInput
     SessionLog?: SessionLogCreateNestedManyWithoutSessionInput
@@ -37769,6 +37798,7 @@ export namespace Prisma {
     heartbeat_pid?: number | null
     heartbeat_host?: string | null
     api_key_id?: string | null
+    user_id?: string | null
     Log?: LogUncheckedCreateNestedManyWithoutSessionInput
     Profiling?: ProfilingUncheckedCreateNestedManyWithoutSessionInput
     SessionLog?: SessionLogUncheckedCreateNestedManyWithoutSessionInput
@@ -37834,6 +37864,7 @@ export namespace Prisma {
     heartbeat_pid?: IntNullableFilter<"Session"> | number | null
     heartbeat_host?: StringNullableFilter<"Session"> | string | null
     api_key_id?: StringNullableFilter<"Session"> | string | null
+    user_id?: StringNullableFilter<"Session"> | string | null
   }
 
   export type LogCreateWithoutSessionInput = {
@@ -38218,6 +38249,7 @@ export namespace Prisma {
     heartbeat_pid?: number | null
     heartbeat_host?: string | null
     api_key_id?: string | null
+    user_id?: string | null
     Log?: LogCreateNestedManyWithoutSessionInput
     Profiling?: ProfilingCreateNestedManyWithoutSessionInput
     build?: BuildCreateNestedOneWithoutSessionsInput
@@ -38255,6 +38287,7 @@ export namespace Prisma {
     heartbeat_pid?: number | null
     heartbeat_host?: string | null
     api_key_id?: string | null
+    user_id?: string | null
     Log?: LogUncheckedCreateNestedManyWithoutSessionInput
     Profiling?: ProfilingUncheckedCreateNestedManyWithoutSessionInput
     Recording?: RecordingUncheckedCreateNestedManyWithoutSessionInput
@@ -38306,6 +38339,7 @@ export namespace Prisma {
     heartbeat_pid?: NullableIntFieldUpdateOperationsInput | number | null
     heartbeat_host?: NullableStringFieldUpdateOperationsInput | string | null
     api_key_id?: NullableStringFieldUpdateOperationsInput | string | null
+    user_id?: NullableStringFieldUpdateOperationsInput | string | null
     Log?: LogUpdateManyWithoutSessionNestedInput
     Profiling?: ProfilingUpdateManyWithoutSessionNestedInput
     build?: BuildUpdateOneWithoutSessionsNestedInput
@@ -38343,6 +38377,7 @@ export namespace Prisma {
     heartbeat_pid?: NullableIntFieldUpdateOperationsInput | number | null
     heartbeat_host?: NullableStringFieldUpdateOperationsInput | string | null
     api_key_id?: NullableStringFieldUpdateOperationsInput | string | null
+    user_id?: NullableStringFieldUpdateOperationsInput | string | null
     Log?: LogUncheckedUpdateManyWithoutSessionNestedInput
     Profiling?: ProfilingUncheckedUpdateManyWithoutSessionNestedInput
     Recording?: RecordingUncheckedUpdateManyWithoutSessionNestedInput
@@ -38378,6 +38413,7 @@ export namespace Prisma {
     heartbeat_pid?: number | null
     heartbeat_host?: string | null
     api_key_id?: string | null
+    user_id?: string | null
     Profiling?: ProfilingCreateNestedManyWithoutSessionInput
     build?: BuildCreateNestedOneWithoutSessionsInput
     SessionLog?: SessionLogCreateNestedManyWithoutSessionInput
@@ -38415,6 +38451,7 @@ export namespace Prisma {
     heartbeat_pid?: number | null
     heartbeat_host?: string | null
     api_key_id?: string | null
+    user_id?: string | null
     Profiling?: ProfilingUncheckedCreateNestedManyWithoutSessionInput
     SessionLog?: SessionLogUncheckedCreateNestedManyWithoutSessionInput
     Recording?: RecordingUncheckedCreateNestedManyWithoutSessionInput
@@ -38466,6 +38503,7 @@ export namespace Prisma {
     heartbeat_pid?: NullableIntFieldUpdateOperationsInput | number | null
     heartbeat_host?: NullableStringFieldUpdateOperationsInput | string | null
     api_key_id?: NullableStringFieldUpdateOperationsInput | string | null
+    user_id?: NullableStringFieldUpdateOperationsInput | string | null
     Profiling?: ProfilingUpdateManyWithoutSessionNestedInput
     build?: BuildUpdateOneWithoutSessionsNestedInput
     SessionLog?: SessionLogUpdateManyWithoutSessionNestedInput
@@ -38503,6 +38541,7 @@ export namespace Prisma {
     heartbeat_pid?: NullableIntFieldUpdateOperationsInput | number | null
     heartbeat_host?: NullableStringFieldUpdateOperationsInput | string | null
     api_key_id?: NullableStringFieldUpdateOperationsInput | string | null
+    user_id?: NullableStringFieldUpdateOperationsInput | string | null
     Profiling?: ProfilingUncheckedUpdateManyWithoutSessionNestedInput
     SessionLog?: SessionLogUncheckedUpdateManyWithoutSessionNestedInput
     Recording?: RecordingUncheckedUpdateManyWithoutSessionNestedInput
@@ -38538,6 +38577,7 @@ export namespace Prisma {
     heartbeat_pid?: number | null
     heartbeat_host?: string | null
     api_key_id?: string | null
+    user_id?: string | null
     Log?: LogCreateNestedManyWithoutSessionInput
     build?: BuildCreateNestedOneWithoutSessionsInput
     SessionLog?: SessionLogCreateNestedManyWithoutSessionInput
@@ -38575,6 +38615,7 @@ export namespace Prisma {
     heartbeat_pid?: number | null
     heartbeat_host?: string | null
     api_key_id?: string | null
+    user_id?: string | null
     Log?: LogUncheckedCreateNestedManyWithoutSessionInput
     SessionLog?: SessionLogUncheckedCreateNestedManyWithoutSessionInput
     Recording?: RecordingUncheckedCreateNestedManyWithoutSessionInput
@@ -38626,6 +38667,7 @@ export namespace Prisma {
     heartbeat_pid?: NullableIntFieldUpdateOperationsInput | number | null
     heartbeat_host?: NullableStringFieldUpdateOperationsInput | string | null
     api_key_id?: NullableStringFieldUpdateOperationsInput | string | null
+    user_id?: NullableStringFieldUpdateOperationsInput | string | null
     Log?: LogUpdateManyWithoutSessionNestedInput
     build?: BuildUpdateOneWithoutSessionsNestedInput
     SessionLog?: SessionLogUpdateManyWithoutSessionNestedInput
@@ -38663,6 +38705,7 @@ export namespace Prisma {
     heartbeat_pid?: NullableIntFieldUpdateOperationsInput | number | null
     heartbeat_host?: NullableStringFieldUpdateOperationsInput | string | null
     api_key_id?: NullableStringFieldUpdateOperationsInput | string | null
+    user_id?: NullableStringFieldUpdateOperationsInput | string | null
     Log?: LogUncheckedUpdateManyWithoutSessionNestedInput
     SessionLog?: SessionLogUncheckedUpdateManyWithoutSessionNestedInput
     Recording?: RecordingUncheckedUpdateManyWithoutSessionNestedInput
@@ -39237,6 +39280,7 @@ export namespace Prisma {
     heartbeat_pid?: number | null
     heartbeat_host?: string | null
     api_key_id?: string | null
+    user_id?: string | null
     Log?: LogCreateNestedManyWithoutSessionInput
     Profiling?: ProfilingCreateNestedManyWithoutSessionInput
     build?: BuildCreateNestedOneWithoutSessionsInput
@@ -39274,6 +39318,7 @@ export namespace Prisma {
     heartbeat_pid?: number | null
     heartbeat_host?: string | null
     api_key_id?: string | null
+    user_id?: string | null
     Log?: LogUncheckedCreateNestedManyWithoutSessionInput
     Profiling?: ProfilingUncheckedCreateNestedManyWithoutSessionInput
     SessionLog?: SessionLogUncheckedCreateNestedManyWithoutSessionInput
@@ -39384,6 +39429,7 @@ export namespace Prisma {
     heartbeat_pid?: NullableIntFieldUpdateOperationsInput | number | null
     heartbeat_host?: NullableStringFieldUpdateOperationsInput | string | null
     api_key_id?: NullableStringFieldUpdateOperationsInput | string | null
+    user_id?: NullableStringFieldUpdateOperationsInput | string | null
     Log?: LogUpdateManyWithoutSessionNestedInput
     Profiling?: ProfilingUpdateManyWithoutSessionNestedInput
     build?: BuildUpdateOneWithoutSessionsNestedInput
@@ -39421,6 +39467,7 @@ export namespace Prisma {
     heartbeat_pid?: NullableIntFieldUpdateOperationsInput | number | null
     heartbeat_host?: NullableStringFieldUpdateOperationsInput | string | null
     api_key_id?: NullableStringFieldUpdateOperationsInput | string | null
+    user_id?: NullableStringFieldUpdateOperationsInput | string | null
     Log?: LogUncheckedUpdateManyWithoutSessionNestedInput
     Profiling?: ProfilingUncheckedUpdateManyWithoutSessionNestedInput
     SessionLog?: SessionLogUncheckedUpdateManyWithoutSessionNestedInput
@@ -40121,6 +40168,7 @@ export namespace Prisma {
     heartbeat_pid?: number | null
     heartbeat_host?: string | null
     api_key_id?: string | null
+    user_id?: string | null
   }
 
   export type SessionUpdateWithoutBuildInput = {
@@ -40153,6 +40201,7 @@ export namespace Prisma {
     heartbeat_pid?: NullableIntFieldUpdateOperationsInput | number | null
     heartbeat_host?: NullableStringFieldUpdateOperationsInput | string | null
     api_key_id?: NullableStringFieldUpdateOperationsInput | string | null
+    user_id?: NullableStringFieldUpdateOperationsInput | string | null
     Log?: LogUpdateManyWithoutSessionNestedInput
     Profiling?: ProfilingUpdateManyWithoutSessionNestedInput
     SessionLog?: SessionLogUpdateManyWithoutSessionNestedInput
@@ -40189,6 +40238,7 @@ export namespace Prisma {
     heartbeat_pid?: NullableIntFieldUpdateOperationsInput | number | null
     heartbeat_host?: NullableStringFieldUpdateOperationsInput | string | null
     api_key_id?: NullableStringFieldUpdateOperationsInput | string | null
+    user_id?: NullableStringFieldUpdateOperationsInput | string | null
     Log?: LogUncheckedUpdateManyWithoutSessionNestedInput
     Profiling?: ProfilingUncheckedUpdateManyWithoutSessionNestedInput
     SessionLog?: SessionLogUncheckedUpdateManyWithoutSessionNestedInput
@@ -40225,6 +40275,7 @@ export namespace Prisma {
     heartbeat_pid?: NullableIntFieldUpdateOperationsInput | number | null
     heartbeat_host?: NullableStringFieldUpdateOperationsInput | string | null
     api_key_id?: NullableStringFieldUpdateOperationsInput | string | null
+    user_id?: NullableStringFieldUpdateOperationsInput | string | null
   }
 
   export type LogCreateManySessionInput = {

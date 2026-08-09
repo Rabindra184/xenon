@@ -39,6 +39,7 @@ import {
   XENON_CAPABILITIES,
 } from '../XenonCapabilityManager';
 import { JwtKeyService } from './token/JwtKeyService';
+import { resolveSessionIdentity } from './session/sessionIdentity';
 import { CircuitBreaker } from '../data-service/CircuitBreaker';
 import { addProxyHandler } from '../proxy/wd-command-proxy';
 import { DeviceStoreFactory } from '../data-service/device-store';
@@ -203,6 +204,7 @@ export class SessionLifecycleService {
         driver,
         isRemoteOrCloudSession,
         authResult.apiKeyId,
+        authResult.userId,
       );
     } else {
       await this.handleSessionFailure(session, device, isRemoteOrCloudSession);
@@ -224,16 +226,19 @@ export class SessionLifecycleService {
   // array when the apiKey is narrowed to one team. The widening to a set is
   // for Phase 4A's multi-team membership; today an apiKey can bind to at
   // most one team, so this is always 0- or 1-element.
-  private async authorizeSessionRequest(
-    caps: ISessionCapability,
-  ): Promise<{ apiKeyId: string | null; callerTeamIds: string[] | undefined; scoped: boolean }> {
+  private async authorizeSessionRequest(caps: ISessionCapability): Promise<{
+    apiKeyId: string | null;
+    userId: string | null;
+    callerTeamIds: string[] | undefined;
+    scoped: boolean;
+  }> {
     const { config: xenonConfig } = await import('../config');
     // `scoped` tells the allocator whether to restrict device candidates by
     // team. False = see everything (admin, authDisabled, back-compat path);
     // true = filter to { null, ...callerTeamIds }; when callerTeamIds is
     // empty, only the shared pool is visible.
     if (xenonConfig.authDisabled === true) {
-      return { apiKeyId: null, callerTeamIds: undefined, scoped: false };
+      return { apiKeyId: null, userId: null, callerTeamIds: undefined, scoped: false };
     }
 
     const { ApiKeyService } = await import('./ApiKeyService');
@@ -258,10 +263,21 @@ export class SessionLifecycleService {
     }
 
     if (!row) {
-      this.logger.warn(
-        'Session created without valid credentials. Pass `df:options.accessKey` + `df:options.token`.',
-      );
-      return { apiKeyId: null, callerTeamIds: undefined, scoped: false };
+      // No key pair. A xenon:options.sessionToken still identifies the caller,
+      // so read it for attribution even when the gate is off — otherwise the
+      // ownership guard fails closed on a session whose owner we actually know.
+      // Enforcement is assertSessionTokenGate's job and is unchanged.
+      const identity = await resolveSessionIdentity({
+        row: null,
+        sessionToken: extractSessionToken(caps),
+        verify: (t) => Container.get(JwtKeyService).verify(t, { audience: 'xenon-session' }),
+      });
+      if (!identity.userId) {
+        this.logger.warn(
+          'Session created without valid credentials. Pass `df:options.accessKey` + `df:options.token`.',
+        );
+      }
+      return { ...identity, callerTeamIds: undefined, scoped: false };
     }
     if (!svc.hasScope(row, ['sessions'])) {
       this.logger.error('Rejecting session: credentials lack the `sessions` scope');
@@ -286,10 +302,15 @@ export class SessionLifecycleService {
           `xenon:team '${requestedTeam}' is not allowed for this API key`,
         );
       }
-      return { apiKeyId: row.id, callerTeamIds: [requestedTeam], scoped: !isAdmin };
+      return {
+        apiKeyId: row.id,
+        userId: row.userId,
+        callerTeamIds: [requestedTeam],
+        scoped: !isAdmin,
+      };
     }
 
-    return { apiKeyId: row.id, callerTeamIds, scoped: !isAdmin };
+    return { apiKeyId: row.id, userId: row.userId, callerTeamIds, scoped: !isAdmin };
   }
 
   private async handleLocalWDAProvisioning(device: IDevice, caps: ISessionCapability) {
@@ -391,6 +412,7 @@ export class SessionLifecycleService {
     driver: any,
     isRemote: boolean,
     apiKeyId: string | null = null,
+    userId: string | null = null,
   ) {
     const sessionId = session.value[0];
     const sessionResponse = session.value[1];
@@ -433,6 +455,7 @@ export class SessionLifecycleService {
       driver,
     );
     sessionInstance.apiKeyId = apiKeyId;
+    sessionInstance.userId = userId;
 
     await this.applyPostSessionLogic(sessionInstance, xenonCapabilities, freshDevice);
   }

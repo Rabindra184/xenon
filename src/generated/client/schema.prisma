@@ -48,6 +48,7 @@ model Session {
   heartbeat_pid           Int?
   heartbeat_host          String?
   api_key_id              String?
+  user_id                 String?
   Log                     Log[]
   Profiling               Profiling[]
   build                   Build?       @relation(fields: [build_id], references: [id])
