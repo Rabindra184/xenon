@@ -185,13 +185,20 @@ export class LogcatStreamService {
     this.flushPending(session);
     session.pending = rec;
     // Close THIS record out at the end of the current turn unless something
-    // already did (the next record line, process end, or stop()). Continuation
-    // lines for the same message arrive as part of the same synchronous
-    // readline burst as their parent line, so they are always applied before
-    // this fires; process.nextTick reliably runs after that burst finishes and
-    // before any timer/immediate, so a trailing record (nothing after it in
-    // the stream) still reaches clients almost immediately instead of waiting
-    // indefinitely for a line that may never come.
+    // already did (the next record line, process end, or stop()).
+    // process.nextTick runs after the current synchronous readline burst
+    // finishes and before any timer/immediate, so a trailing record — nothing
+    // after it in the stream — still reaches clients almost immediately
+    // instead of waiting indefinitely for a line that may never come.
+    //
+    // KNOWN LIMIT, measured: this holds only WITHIN a pipe chunk. A
+    // continuation line landing in a different chunk from its parent (~64KB
+    // boundary, so roughly 0.1-0.2% of continuations) arrives after this tick
+    // has already closed the record out, finds `pending` undefined, and is
+    // discarded — not appended, not emitted on its own. Fixing it means
+    // flushing on a short timer instead of nextTick, trading a few ms of
+    // latency on every trailing line; not worth it at that rate, but do not
+    // read this tick as a guarantee that continuations are never lost.
     process.nextTick(() => {
       // Identity check, not just a null check: a redundant flush is harmless
       // (flushPending is a no-op with nothing pending, and never emits a
@@ -227,11 +234,19 @@ export class LogcatStreamService {
     const s = this.sessions.get(udid);
     if (!s) return;
     this.sessions.delete(udid);
-    // Redundant with the nextTick flush in onLine (verified: no input reaches
-    // stop() with a record still pending that the tick would not have
-    // flushed). Kept as defence in depth so a change to the tick scheduling
-    // cannot silently start dropping the last line before a stop.
+    // Load-bearing together with the chained close below: without it the last
+    // pending line is closed out AFTER the mux has dropped its clients, so it
+    // reaches nobody.
     this.flushPending(s);
+    // Release the viewers, exactly as the process-exit path does. An
+    // operator-initiated stop needs no synthetic error record, but it does
+    // need the sockets closed — otherwise an explicit stop with viewers
+    // attached leaves them on a frozen mux forever, since the killed child's
+    // own 'close' hits the stray-suppression guard in end() and returns.
+    //
+    // Must be CHAINED, not called directly: a bare s.mux.close() here runs
+    // before flushChain has drained and silently swallows the last line.
+    s.flushChain = s.flushChain.then(() => s.mux.close());
     try {
       s.proc.kill();
     } catch {

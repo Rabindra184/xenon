@@ -354,6 +354,36 @@ describe('LogcatStreamService', () => {
     expect(mux.clientCount).to.equal(0);
   });
 
+  // An explicit stop() must release its viewers too, not just the process-exit
+  // path — the killed child's own 'close' hits the stray-suppression guard, so
+  // nothing else ever tells them. No synthetic record here: an
+  // operator-initiated stop is not an error.
+  //
+  // The ordering assertion is the point. A bare `s.mux.close()` in stop()
+  // (rather than one chained onto flushChain) runs before the chain drains and
+  // SWALLOWS the last line — measured `[]` instead of `['record:...', 'closed']`
+  // — and every other test in this file stays green. Assert the record and the
+  // close together, in order, or the regression is invisible.
+  it('flushes the last pending line before closing its clients on stop()', async () => {
+    const proc = fakeProc();
+    const svc = makeService(async () => proc as any);
+    const mux = await svc.start('DEV-1');
+    const events: string[] = [];
+    mux.addClient(
+      (r) => events.push(`record:${r.message}`),
+      () => true,
+      () => events.push('closed'),
+    );
+
+    // Same tick: the nextTick flush has not run when stop() is called.
+    proc.stdout.write('08-09 16:11:00.005  1408  1408 D Tag: last words\n');
+    await svc.stop('DEV-1');
+    await wait();
+
+    expect(events).to.deep.equal(['record:last words', 'closed']);
+    expect(mux.clientCount).to.equal(0);
+  });
+
   it('kills the process on stop and forgets the session', async () => {
     const proc = fakeProc();
     const svc = makeService(async () => proc as any);
