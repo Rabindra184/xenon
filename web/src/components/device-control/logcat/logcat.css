@@ -1,0 +1,116 @@
+.logcat-root {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+
+.logcat-query {
+  flex: 1;
+  min-width: 160px;
+}
+
+.logcat-count {
+  opacity: 0.6;
+}
+
+.logcat-rows {
+  flex: 1;
+  overflow-y: auto;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11.5px;
+  line-height: 1.6;
+  padding: 8px 12px;
+}
+
+.logcat-row {
+  display: grid;
+  grid-template-columns: 68px 84px 150px 18px 150px 1fr;
+  gap: 10px;
+  align-items: baseline;
+}
+
+.logcat-row:hover {
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.logcat-time,
+.logcat-pid,
+.logcat-pkg,
+.logcat-tag {
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.logcat-tag {
+  color: #7dd3fc;
+}
+
+/* Message wraps; every other column is fixed so the grid stays aligned. */
+.logcat-msg {
+  color: var(--text);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.logcat-level {
+  font-weight: 700;
+  text-align: center;
+  border-radius: 3px;
+}
+
+.lvl-V,
+.lvl-D {
+  color: var(--text-muted);
+}
+.lvl-I {
+  color: var(--green);
+}
+.lvl-W {
+  color: #fbbf24;
+}
+.lvl-E,
+.lvl-F {
+  color: #f87171;
+}
+
+/* Records Xenon injected (drops, end-of-stream) — visibly not device output. */
+.logcat-row.is-synthetic .logcat-msg {
+  color: #fbbf24;
+  font-style: italic;
+}
+
+/* Connection pill in an error terminal state (ownership denied / retries
+   exhausted) — distinct from the default "not yet connected" grey. */
+.log-live-dot.is-error {
+  background: #f87171;
+  box-shadow: 0 0 8px rgba(248, 113, 113, 0.6);
+}
+
+/* Banner surfaced above the row list for a terminal connection state. The
+   row list itself is left alone so already-buffered lines stay visible. */
+.logcat-status-banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  margin-bottom: 8px;
+  border-radius: var(--radius-sm);
+  font-family: 'Outfit', sans-serif;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.logcat-status-banner.is-denied {
+  background: rgba(248, 113, 113, 0.1);
+  border: 1px solid rgba(248, 113, 113, 0.3);
+  color: #fecdd3;
+}
+
+.logcat-status-banner.is-exhausted {
+  background: rgba(251, 191, 36, 0.1);
+  border: 1px solid rgba(251, 191, 36, 0.3);
+  color: #fde68a;
+}
