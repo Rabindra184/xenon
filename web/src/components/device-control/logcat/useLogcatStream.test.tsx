@@ -553,6 +553,45 @@ describe('useLogcatStream — reconnect must not duplicate the server replay', (
     ]);
   });
 
+  // The mirror of the test above, and the reason the reset is conditional
+  // rather than unconditional. 1012 means the upstream logcat died;
+  // LogcatStreamService deletes the session BEFORE closing the mux, so the
+  // reconnect gets a NEW multiplexer with an empty replay. Clearing there
+  // discards up to 5000 records and gets nothing back — blanking the pane at
+  // the one moment the preceding lines matter most, and erasing the server's
+  // synthetic end-of-stream marker roughly 500ms after it arrived. That marker
+  // is deliberately unfilterable so that loss is never silent; wiping it here
+  // would reintroduce silent loss by the back door.
+  it('keeps the buffer across a 1012 reconnect, where the server has no replay left', async () => {
+    const probe = renderProbe('DEV-1');
+    await tick();
+    const first = FakeWebSocket.instances[0];
+    act(() => first.serverOpen());
+
+    act(() => {
+      first.serverMessage(rec({ message: 'before-the-device-died' }));
+      first.serverMessage(
+        rec({ message: 'log stream ended (process exited)', level: 'E', synthetic: true }),
+      );
+    });
+    await tick(50);
+    expect(probe.state.records).toHaveLength(2);
+
+    act(() => first.serverClose(1012, 'stream ended'));
+    await tick(600);
+    expect(FakeWebSocket.instances).toHaveLength(2);
+
+    // The new mux replays nothing. If onopen cleared here, the pane would go
+    // blank and the end-of-stream marker would be gone.
+    act(() => FakeWebSocket.instances[1].serverOpen());
+    await tick(50);
+
+    expect(probe.state.records.map((r) => r.message)).toEqual([
+      'before-the-device-died',
+      'log stream ended (process exited)',
+    ]);
+  });
+
   it('gives every record a unique, monotonic seq across clear() and a reconnect', async () => {
     const probe = renderProbe('DEV-1');
     await tick();

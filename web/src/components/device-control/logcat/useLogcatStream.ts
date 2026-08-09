@@ -89,6 +89,12 @@ export function useLogcatStream(udid: string, enabled: boolean): LogcatStreamSta
   // or a buffer trim, so a `seq` can never collide with one React still has
   // mounted. See BufferedLogcatRecord.
   const seqRef = useRef(0);
+  /**
+   * Close code of the socket this one is replacing, or undefined on a first
+   * connect. Read once by the next `onopen` to decide whether the server still
+   * has a replay buffer for us — see the reset there.
+   */
+  const lastCloseCodeRef = useRef<number | undefined>(undefined);
 
   const flush = useCallback(() => {
     if (pendingRef.current.length === 0) return;
@@ -190,8 +196,23 @@ export function useLogcatStream(udid: string, enabled: boolean): LogcatStreamSta
           // client-side dedup is impossible; discarding and re-taking the
           // server's replay is the only correct option. Cost: history older
           // than the server's 2000-record replay is lost on a reconnect.
-          pendingRef.current = [];
-          setRecords([]);
+          //
+          // EXCEPT after 1012. That code means the upstream logcat died, and
+          // `LogcatStreamService` deletes the session BEFORE closing the mux,
+          // so the reconnect gets a brand-new multiplexer with an EMPTY replay
+          // — there is nothing coming back to replace what we drop. Clearing
+          // there would blank the pane at exactly the moment the preceding
+          // lines matter most (reboot, cable pull, adb hiccup) and would erase
+          // the server's synthetic `E/xenon "log stream ended (…)"` marker
+          // about 500ms after it arrived — a marker the filter is deliberately
+          // unable to hide, precisely so loss is never silent. 1012 is the one
+          // code where the server guarantees a fresh buffer, so it is the one
+          // code that must not reset.
+          if (lastCloseCodeRef.current !== 1012) {
+            pendingRef.current = [];
+            setRecords([]);
+          }
+          lastCloseCodeRef.current = undefined;
           setConnected(true);
         };
         ws.onmessage = (e) => {
@@ -205,6 +226,10 @@ export function useLogcatStream(udid: string, enabled: boolean): LogcatStreamSta
         };
         ws.onclose = (event) => {
           setConnected(false);
+          // Remembered for the next onopen's reset decision — whether the
+          // server will still be holding a replay buffer for us depends on
+          // why this socket died.
+          lastCloseCodeRef.current = event.code;
           // Surface whatever arrived before the close immediately rather
           // than waiting for the next scheduled flush.
           flush();
