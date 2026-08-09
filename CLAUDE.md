@@ -170,7 +170,61 @@ Android-only in v1. Sessions opt in via any of the capability shapes accepted by
 
 Authentication: every `/xenon/api` request is gated by `authMiddleware` (`src/middleware/authMiddleware.ts`), which accepts either the (`x-xenon-access-key`, `x-xenon-token`) header pair or the `xenon_dashboard_session` cookie — a `UserSession` id, with a legacy raw-API-key fallback. It also accepts a hub-issued RS256 JWT as `Authorization: Bearer` (audience `xenon-rest`, minted by `POST /auth/token`, validated against the hub's JWKS) — the same middleware, a third credential path with a live user lookup so REST revocation is instant. It always sets `req.auth = { kind, userId, role, scopes, teamIds, rateLimit, … }`; `req.apiKey = { id, scopes, teamId, rateLimit }` is additionally set on the API-key paths only, never for cookie user-sessions. A raw API key can be exchanged for the cookie via `POST /auth/dashboard-session`, but only for SUPER_ADMIN owners. `scopeGuard(['devices'])` and `mutationScopeGuard(['devices'])` (mutations only — GETs always pass) enforce scope-based access on routers like `/control`.
 
-When the dashboard takes a soft lock on a device for live preview or recording, the `device.session_id` is written as `manual_<actorId>_<udid>` (encoded by `formatManualLock` in `src/services/recording/manualLock.ts`). All readers — `BusyPrecheck`, the `/stream/stop` route, the picker UI — call `inspectManualLock(blockId, actorId, udid)` to distinguish *self* from *another user* from *legacy `manual_<udid>`*. Locks owned by a different user can only be force-released by an admin-scope key.
+`scopesForRole` maps a **cookie** session's role to its scopes: ADMIN/SUPER_ADMIN
+get `admin,devices,sessions,read`, MEMBER gets `devices,sessions,read`. MEMBER
+carries `devices` deliberately — `/control` declares per-device interaction a
+Member action via `roleGuard('MEMBER')`, and without the scope
+`mutationScopeGuard` 403'd every member on the line below, making device control
+admin-only. Since admins bypass the ownership guard, that combination meant no
+dashboard user could ever be told a device was held by someone else. API keys
+carry their own explicit scopes and are unaffected by this map.
+
+When the dashboard takes a soft lock on a device for live preview or recording, the `device.session_id` is written as `manual_<userId>_<udid>` (encoded by `formatManualLock` in `src/services/recording/manualLock.ts`). All readers — `BusyPrecheck`, the `/stream/stop` route, the picker UI — call `inspectManualLock(blockId, actorId, udid)` to distinguish *self* from *another user* from *legacy `manual_<udid>`*. Locks owned by a different user can only be force-released by an admin-scope key.
+
+**Ownership is keyed on the user (`req.auth.userId`), never the credential.**
+`req.apiKey` is never populated for cookie sessions, so a credential-keyed lock
+denies users their own devices and can never match a session's owner. Every
+writer and reader of the lock uses `resolveActor(req)` +
+`isSelfManualLock(...)`; the only tolerance is that a lock matching the caller's
+*current* `apiKey.id` also counts as self, absorbing locks written before 1.13.0.
+Getting this half-right is what made a user's own `stream/stop` return 403 on
+their own device — migrate every reader and writer together or none.
+
+### Device access guard (`src/middleware/deviceAccessGuard.ts`)
+
+Mounted once on the `/control` router, after `roleGuard` and
+`mutationScopeGuard`. Refuses a request against a device held by another user,
+or running another user's Appium session. Your own Appium session stays
+interactive, so "watch the test I started" works.
+
+- **Scope is chosen by HTTP method, not a path list** — every non-GET is guarded
+  minus `UNGUARDED_CONTROL_MUTATIONS` (`stream/start`, `stream/stop`,
+  `stream/ticket`, each with a stated reason). That is what makes an endpoint
+  added later protected by default; the hole this closed existed because
+  ownership had to be remembered in ~20 handlers and was remembered in none.
+- **Reads stay open** so the mosaic picker and monitoring can look at a busy
+  device — except `OWNERSHIP_CHECKED_READS` (currently just `clipboard`, which
+  returns whatever the holder last copied). Keep that list short.
+- `evaluateDeviceAccess` (`src/services/device-access/deviceAccessPolicy.ts`) is
+  pure: admin → allow; not busy → allow; manual lock self or legacy → allow;
+  foreign → deny; otherwise compare the Appium session's owner
+  (`Session.api_key_id → ApiKey.userId`, memoized positive-only by
+  `SessionOwnerResolver`). An unattributable session **denies** — fail closed.
+- Denials are `409` with `device_held_by_another_user` /
+  `device_in_use_by_session`, a message naming the holder, and a `warn` log. If
+  ownership cannot be determined at all (store or resolver throws) it is `503
+  device_ownership_unavailable` — never a silent allow, because the handler runs
+  its own device lookup and would otherwise skip the check entirely.
+- `stream/start` has its own decision (`src/app/routers/streamStartConflict.ts`)
+  because "busy" differs at start time: an orphaned manual lock with no live
+  stream is reclaimed rather than refused.
+
+**Operational note:** sessions created without the
+`df:options.accessKey`/`token` pair persist `api_key_id = null`
+(`SessionLifecycleService` warns, it does not reject). Those are unattributable,
+so the fail-closed rule denies everyone non-admin — including the engineer who
+started the run. Confirm `Session.api_key_id` is populated before relying on the
+own-session path in a lab with auth enabled.
 
 Device leases: programmatic clients (SDK, MCP tools) claim devices via
 `POST /xenon/api/sdk/leases` (`src/services/lease/LeaseService.ts`) — token-bound
@@ -287,7 +341,12 @@ npm run build:copy` (from the repo root) regenerates and copies it.
 | `src/app/routers/androidH264Config.ts` | Normalizes the `streaming.androidH264` flag union (`bool \| { source }`) to `{ enabled, source }` |
 | `src/services/recording/RecordingOrchestrator.ts` | Per-device + composite recording lifecycle |
 | `src/services/recording/manualLock.ts` | `manual_<actorId>_<udid>` lock format helpers |
-| `src/middleware/authMiddleware.ts` | Populates `req.auth` (and `req.apiKey` on API-key paths) from the header pair or session cookie |
+| `src/middleware/authMiddleware.ts` | Populates `req.auth` (and `req.apiKey` on API-key paths) from the header pair or session cookie; `scopesForRole` maps a cookie role to its scopes |
+| `src/middleware/deviceAccessGuard.ts` | Ownership guard on `/control` — method-scoped, with the mutation allowlist and `OWNERSHIP_CHECKED_READS` |
+| `src/services/device-access/deviceAccessPolicy.ts` | Pure access decision + deny bodies + the shared `isSelfManualLock` / `isOwnSession` primitives |
+| `src/services/device-access/SessionOwnerResolver.ts` | `Session.api_key_id → ApiKey.userId`, positive-results-only cache |
+| `src/services/device-access/actor.ts` | `resolveActor(req)` — the one place an identity is derived from a request |
+| `src/app/routers/streamStartConflict.ts` | `stream/start`'s own conflict decision (proceed / reclaim orphan / deny) |
 | `web/src/App.tsx` | Frontend root component and routing |
 | `web/src/components/mosaic/DeviceMosaicView.tsx` | Live Devices / mosaic page entry point |
 
