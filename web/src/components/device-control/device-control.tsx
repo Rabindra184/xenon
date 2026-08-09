@@ -1081,7 +1081,7 @@ export default function DeviceControl({ device, onClose }: DeviceControlProps) {
               )}
 
               {activeTab === 'logs' && (
-                <div className="action-card screenshot-card logcat-card">
+                <div className="action-card screenshot-card">
                   <LogcatView udid={currentDevice.udid} platform={currentDevice.platform} />
                 </div>
               )}
