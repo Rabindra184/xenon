@@ -267,7 +267,7 @@
   width: 100%;
   color: var(--text-muted);
   gap: 16px;
-  background: radial-gradient(circle at center, #0f172a 0%, #020617 100%);
+  background: radial-gradient(circle at center, var(--surface) 0%, var(--bg) 100%);
 }
 
 .device-footer-actions {
@@ -279,7 +279,10 @@
   flex-wrap: wrap;
   justify-content: center;
   width: 100%;
-  background: rgba(15, 23, 42, 0.8);
+  /* Track the app's surface token. This was slate-900 (rgba(15,23,42)), which
+     is blue-tinted, against a green-tinted neutral palette (--surface-2 is
+     #161b1a) — it read as a blue bar floating on a near-black page. */
+  background: color-mix(in srgb, var(--surface-2) 80%, transparent);
   backdrop-filter: blur(10px);
   border-radius: 16px;
   border: 1px solid rgba(255, 255, 255, 0.08);
