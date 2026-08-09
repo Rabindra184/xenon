@@ -73,34 +73,100 @@ describe('logcat filter', () => {
     expect(matches(rec(), parseQuery('handleUpdateState isTransient'))).toBe(true);
   });
 
-  // synthetic records (Xenon-injected drop/end-of-stream markers) are not
-  // part of LogRecordLike and get no special-case bypass: they carry a real
-  // level/tag and are expected to interact with the grammar exactly like any
-  // other record, in both directions (hidden by a non-matching filter, kept
-  // by a matching or empty one).
-  it('filters a synthetic-shaped record the same as device output', () => {
+  // synthetic records (Xenon-injected drop/end-of-stream markers) ALWAYS
+  // match, checked first and unconditionally in `matches`. Reversed from an
+  // earlier decision to filter them like any other record: the multiplexer
+  // cannot know what level dropped lines were, so a `level:E` reader could
+  // have the W-level "N lines dropped" marker hidden and believe every error
+  // was captured while errors were silently discarded. Covers both marker
+  // kinds against several filter types that would otherwise hide them.
+  it('always matches a synthetic record, regardless of the active filter', () => {
     const dropped = rec({
       level: 'W',
       tag: 'xenon',
       message: '3 lines dropped (slow client)',
       pkg: undefined,
+      synthetic: true,
     });
     const ended = rec({
       level: 'E',
       tag: 'xenon',
       message: 'log stream ended (reset)',
       pkg: undefined,
+      synthetic: true,
     });
 
     expect(matches(dropped, parseQuery(''))).toBe(true);
     expect(matches(ended, parseQuery(''))).toBe(true);
-    // A level:E filter hides the W-level drop marker just like it would hide
-    // any other W-level line.
-    expect(matches(dropped, parseQuery('level:E'))).toBe(false);
-    expect(matches(ended, parseQuery('level:E'))).toBe(true);
-    // A tag/text filter unrelated to "xenon" hides both, same as it would
-    // hide any non-matching device line.
-    expect(matches(dropped, parseQuery('tag:wifi'))).toBe(false);
+    // A level:E filter would otherwise hide the W-level drop marker.
+    expect(matches(dropped, parseQuery('level:E'))).toBe(true);
+    // A tag/text filter unrelated to "xenon" would otherwise hide both.
+    expect(matches(dropped, parseQuery('tag:wifi'))).toBe(true);
+    expect(matches(ended, parseQuery('nonsense text'))).toBe(true);
+  });
+
+  // Guards `if (r.synthetic) return true` against a mutant that returns true
+  // unconditionally: a real device record that merely happens to share the
+  // marker's level/tag/message must still be filtered normally.
+  it('does not bypass the filter for a non-synthetic record with the same level and tag', () => {
+    const lookalike = rec({
+      level: 'W',
+      tag: 'xenon',
+      message: '3 lines dropped (slow client)',
+      pkg: undefined,
+    });
+    expect(matches(lookalike, parseQuery('level:E'))).toBe(false);
+  });
+
+  // Malformed-level guard (`want >= 0 && have >= 0`): a record whose own
+  // level is unrecognized (index -1) must never be excluded by a valid
+  // level:X filter. Deleting the `have >= 0 &&` half of the guard turns
+  // `have < want` into `-1 < want`, true for any valid want, wrongly hiding
+  // the record — exactly what the guard's own comment says never happens.
+  it('does not filter out a record with an unrecognized level', () => {
+    expect(matches(rec({ level: 'Z' }), parseQuery('level:W'))).toBe(true);
+  });
+
+  // parseQuery's three `value &&` guards: a `key:` typed with no value must
+  // degrade to a bare-text term rather than vanishing, per the file's own
+  // doc comment. One case per key, since each is a separate `value &&` check.
+  it('treats a valueless level: term as bare text instead of dropping it', () => {
+    const q = parseQuery('level:');
+    expect(q.minLevel).toBeUndefined();
+    expect(q.text).toBe('level:');
+  });
+
+  it('treats a valueless tag: term as bare text instead of dropping it', () => {
+    const q = parseQuery('tag:');
+    expect(q.tag).toBeUndefined();
+    expect(q.text).toBe('tag:');
+  });
+
+  it('treats a valueless package: term as bare text instead of dropping it', () => {
+    const q = parseQuery('package:');
+    expect(q.pkg).toBeUndefined();
+    expect(q.text).toBe('package:');
+  });
+
+  // tag:/package: key case-insensitivity — only level: casing was exercised
+  // before this.
+  it('parses the tag key case-insensitively', () => {
+    expect(matches(rec(), parseQuery('TAG:wifi'))).toBe(true);
+  });
+
+  it('parses the package key case-insensitively', () => {
+    expect(matches(rec(), parseQuery('PACKAGE:systemui'))).toBe(true);
+  });
+
+  // tag:/package: query-side *value* case-insensitivity — matches() lowercases
+  // the record side, but parseQuery must also lowercase the query side, or an
+  // uppercase query value never matches a lowercase record field.
+  it('matches a tag: query value case-insensitively', () => {
+    expect(matches(rec(), parseQuery('tag:WIFI'))).toBe(true);
+  });
+
+  it('matches a package: query value case-insensitively', () => {
+    expect(matches(rec(), parseQuery('package:SYSTEMUI'))).toBe(true);
   });
 });
 
@@ -128,6 +194,15 @@ describe('setLevelTerm', () => {
 
   it('removes the level: term for a falsy level, leaving the rest untouched', () => {
     expect(setLevelTerm('level:D tag:wifi', '')).toBe('tag:wifi');
+  });
+
+  // A bare `level` word (no colon, so no value) is text the user typed, not
+  // a filter control — parseQuery treats it as bare text (its `value &&`
+  // gate), so this must too. The buggy version stripped any token whose
+  // pre-colon key was `level` regardless of whether a value followed it,
+  // silently deleting the word whenever the level dropdown fired.
+  it('leaves a bare "level" word untouched — only a level:value term is a level term', () => {
+    expect(setLevelTerm('foo level bar', 'W')).toBe('level:W foo level bar');
   });
 
   it('collapses more than one level: term to the single new one', () => {

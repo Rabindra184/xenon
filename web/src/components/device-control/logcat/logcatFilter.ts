@@ -17,16 +17,21 @@
  *   non-empty (it always is: an empty-value `package:` token falls through
  *   `parseQuery` to a bare word, never becomes `q.pkg`).
  * - `synthetic` (records Xenon injects itself — a dropped-lines warning, an
- *   end-of-stream marker) is intentionally *not* part of `LogRecordLike` and
- *   gets no bypass here. These markers carry a real level and a real tag
- *   (`W`/`xenon`, `E`/`xenon`), so they already interact with the query
- *   grammar exactly like device output would: a `level:E` filter still shows
- *   "log stream ended" but hides "N lines dropped", a `tag:` or bare-text
- *   filter can hide either. Silently exempting them from a query the user
- *   typed would break "all terms ANDed" for a subset of rows with no way to
- *   turn it off. If a caller wants data-loss markers to always be visible
- *   regardless of the active filter, that's a rendering decision (e.g. a
- *   banner outside the filtered list), not a change to this predicate.
+ *   end-of-stream marker) ALWAYS matches, checked first in `matches`,
+ *   unconditionally, regardless of the active query. This is the opposite of
+ *   an earlier decision to filter them like any other record. Reversed
+ *   because the multiplexer cannot know what level the dropped lines were:
+ *   a reader running `level:E` could have the W-level "N lines dropped (slow
+ *   client)" marker hidden and believe every error was captured while errors
+ *   were silently discarded — exactly the failure the marker exists to
+ *   prevent, reintroduced at the last layer. Dropped records must be visible;
+ *   a missing log line is data loss the reader cannot detect otherwise.
+ *   Applies to the end-of-stream marker too: its information is arguably
+ *   duplicated by the connection pill, but the record carries no
+ *   marker-kind discriminator, so exempting one marker but not the other
+ *   would mean sniffing level/tag text — fragile. An occasional harmless
+ *   "log stream ended" line surviving a `tag:Wifi` filter is the cheaper
+ *   mistake.
  */
 export const LEVEL_ORDER = ['V', 'D', 'I', 'W', 'E', 'F'] as const;
 
@@ -35,6 +40,12 @@ export interface LogRecordLike {
   tag: string;
   message: string;
   pkg?: string;
+  /**
+   * True for records Xenon injects itself rather than reads from the device
+   * (a dropped-lines warning, an end-of-stream marker). Always matches,
+   * regardless of the active query — see `matches` below.
+   */
+  synthetic?: boolean;
 }
 
 export interface LogcatQuery {
@@ -73,6 +84,11 @@ export function parseQuery(raw: string): LogcatQuery {
 }
 
 export function matches(r: LogRecordLike, q: LogcatQuery): boolean {
+  // Dropped-lines and end-of-stream markers must always be visible: the
+  // multiplexer cannot know what level the dropped lines were, so hiding
+  // this marker behind an active filter would hide the only evidence that
+  // lines were lost. Checked first, unconditionally, for both marker kinds.
+  if (r.synthetic) return true;
   if (q.minLevel) {
     const want = LEVEL_ORDER.indexOf(q.minLevel as (typeof LEVEL_ORDER)[number]);
     const have = LEVEL_ORDER.indexOf(r.level as (typeof LEVEL_ORDER)[number]);
@@ -105,8 +121,13 @@ export function setLevelTerm(query: string, level: string): string {
     .split(/\s+/)
     .filter(Boolean)
     .filter((token) => {
-      const [key] = token.split(':');
-      return key.toLowerCase() !== 'level';
+      const [key, ...restParts] = token.split(':');
+      const value = restParts.join(':');
+      // Mirror parseQuery's own `value &&` gate: only a `level:<value>` term
+      // is a level term. A bare `level` word (no colon, or a colon with
+      // nothing after it) is text the user typed, not a filter control, and
+      // must survive a dropdown-driven rewrite untouched.
+      return !(value && key.toLowerCase() === 'level');
     });
   if (!level) return rest.join(' ');
   return ['level:' + level.toUpperCase(), ...rest].join(' ');
