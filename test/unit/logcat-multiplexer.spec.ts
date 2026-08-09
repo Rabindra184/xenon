@@ -1,4 +1,5 @@
 import { expect } from 'chai';
+import sinon from 'sinon';
 import {
   LogcatMultiplexer,
   REPLAY_BUFFER_SIZE,
@@ -328,5 +329,127 @@ describe('LogcatMultiplexer', () => {
     ).to.throw();
 
     expect(mux.clientCount).to.equal(0);
+  });
+
+  // Spec error table: on `adb logcat` exiting, the service must "close
+  // clients, drop the multiplexer". Dropping alone leaves the sockets attached
+  // to an orphaned mux showing a frozen log, and those tabs never recover.
+  describe('close()', () => {
+    it('notifies every client and detaches them all', () => {
+      const mux = new LogcatMultiplexer();
+      const closed: string[] = [];
+      const a: LogcatRecord[] = [];
+      mux.addClient(
+        (r) => a.push(r),
+        () => true,
+        () => closed.push('a'),
+      );
+      mux.addClient(
+        () => undefined,
+        () => true,
+        () => closed.push('b'),
+      );
+
+      mux.close();
+
+      expect(closed).to.deep.equal(['a', 'b']);
+      expect(mux.clientCount).to.equal(0);
+      mux.push(rec('after close'));
+      expect(a.map((r) => r.message)).to.deep.equal([]);
+    });
+
+    // Same hazard as the fan-out loop: one bad sink must not strand the
+    // clients that come after it in the Set.
+    it('keeps closing the remaining clients when one onClose throws', () => {
+      const mux = new LogcatMultiplexer();
+      let healthyClosed = false;
+      mux.addClient(
+        () => undefined,
+        () => true,
+        () => {
+          throw new Error('close boom');
+        },
+      );
+      mux.addClient(
+        () => undefined,
+        () => true,
+        () => (healthyClosed = true),
+      );
+
+      expect(() => mux.close()).to.not.throw();
+      expect(healthyClosed).to.equal(true);
+      expect(mux.clientCount).to.equal(0);
+    });
+
+    it('tolerates a client that registered no onClose', () => {
+      const mux = new LogcatMultiplexer();
+      mux.addClient(
+        () => undefined,
+        () => true,
+      );
+      expect(() => mux.close()).to.not.throw();
+      expect(mux.clientCount).to.equal(0);
+    });
+  });
+
+  // The idle watchdog reads emptySince instead of polling clientCount, so the
+  // idle window is measured from the departure itself rather than from
+  // whenever a poller next happened to look.
+  describe('emptySince', () => {
+    it('is stamped at construction, cleared on join, and restamped on the last leave', () => {
+      const before = Date.now();
+      const mux = new LogcatMultiplexer();
+      // A stream whose only viewer dies mid-handshake never had a client; it
+      // still has to be reclaimable.
+      expect(mux.emptySince, 'a mux with no client yet is already empty').to.be.at.least(before);
+
+      const a = mux.addClient(
+        () => undefined,
+        () => true,
+      );
+      const b = mux.addClient(
+        () => undefined,
+        () => true,
+      );
+      expect(mux.emptySince).to.equal(undefined);
+
+      a();
+      expect(mux.emptySince, 'one client left, one still attached').to.equal(undefined);
+      b();
+      expect(mux.emptySince).to.be.a('number');
+    });
+
+    // A socket that emits both 'close' and 'error' runs its remover twice.
+    // Restamping on the second call pushes the idle deadline out by the gap
+    // between them, every time.
+    it('is not restamped by a remover called twice', () => {
+      const clock = sinon.useFakeTimers();
+      try {
+        const mux = new LogcatMultiplexer();
+        const remove = mux.addClient(
+          () => undefined,
+          () => true,
+        );
+        clock.tick(1_000);
+        remove();
+        expect(mux.emptySince).to.equal(1_000);
+        clock.tick(5_000);
+        remove(); // same socket, second teardown signal
+        expect(mux.emptySince).to.equal(1_000);
+      } finally {
+        clock.restore();
+      }
+    });
+
+    it('is stamped by close()', () => {
+      const mux = new LogcatMultiplexer();
+      mux.addClient(
+        () => undefined,
+        () => true,
+      );
+      expect(mux.emptySince).to.equal(undefined);
+      mux.close();
+      expect(mux.emptySince).to.be.a('number');
+    });
   });
 });

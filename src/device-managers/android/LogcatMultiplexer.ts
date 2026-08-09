@@ -19,20 +19,46 @@ interface Client {
   send: (r: LogcatRecord) => void;
   /** False when the socket is backed up; the mux then counts a drop. */
   canAccept: () => boolean;
+  /** Told when the upstream is gone for good; see {@link LogcatMultiplexer.close}. */
+  onClose?: () => void;
   dropped: number;
 }
 
 export class LogcatMultiplexer {
   private clients = new Set<Client>();
   private replay: LogcatRecord[] = [];
+  /**
+   * When this mux last dropped to zero clients, or `undefined` while at least
+   * one is attached.
+   *
+   * Recorded at the moment the set empties rather than left for the idle
+   * watchdog to infer by polling `clientCount`: a poller can only notice
+   * emptiness at its own granularity, so the window it measures is the real
+   * window plus up to one whole poll interval. Stamping it here makes the poll
+   * interval bound detection latency only, not the idle budget itself.
+   *
+   * A freshly built mux has never had a client, so it counts as empty from
+   * construction — otherwise a stream whose only viewer dies mid-handshake
+   * would never be reclaimed.
+   */
+  private emptyAt: number | undefined = Date.now();
 
   get clientCount(): number {
     return this.clients.size;
   }
 
+  /** When the mux last had zero clients, or `undefined` while one is attached. */
+  get emptySince(): number | undefined {
+    return this.emptyAt;
+  }
+
   /** Register a client sink. Returns a remover. */
-  addClient(send: (r: LogcatRecord) => void, canAccept: () => boolean): () => void {
-    const c: Client = { send, canAccept, dropped: 0 };
+  addClient(
+    send: (r: LogcatRecord) => void,
+    canAccept: () => boolean,
+    onClose?: () => void,
+  ): () => void {
+    const c: Client = { send, canAccept, onClose, dropped: 0 };
     // Replay BEFORE joining the Set — a throw mid-replay must not leave a
     // phantom client registered with no remover ever handed back to the
     // caller (see the push() catch below for why an unguarded send is
@@ -40,9 +66,33 @@ export class LogcatMultiplexer {
     // least the caller then holds a working remover).
     for (const r of this.replay) send(r);
     this.clients.add(c);
+    this.emptyAt = undefined;
     return () => {
-      this.clients.delete(c);
+      // Only a remove that actually removed something may restamp the clock.
+      // A remover called twice (a socket that emits both 'close' and 'error'
+      // is the ordinary case) would otherwise push the idle deadline out by
+      // the gap between the two calls, every time.
+      if (!this.clients.delete(c)) return;
+      if (this.clients.size === 0) this.emptyAt = Date.now();
     };
+  }
+
+  /**
+   * The upstream is gone for good: tell every client and detach them all.
+   * Callers push their final record BEFORE calling this, so a client learns
+   * why it is being closed.
+   */
+  close(): void {
+    for (const c of this.clients) {
+      try {
+        c.onClose?.();
+      } catch {
+        // One bad sink must not strand the clients after it in the Set — the
+        // same reason push() guards its own send (see below).
+      }
+    }
+    this.clients.clear();
+    this.emptyAt = Date.now();
   }
 
   push(record: LogcatRecord): void {
