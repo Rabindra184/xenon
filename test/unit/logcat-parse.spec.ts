@@ -71,9 +71,27 @@ describe('parseThreadtimeLine', () => {
 
   // Without this, a log written on 31 Dec and read on 1 Jan lands twelve
   // months in the future.
+  //
+  // `inferYear` computes in host-local time (`now.getFullYear()`, and
+  // `new Date(year, month - 1, day)`), so the clock here must be built from
+  // local components rather than a `Z`-suffixed ISO string. A UTC instant of
+  // '2026-01-01T00:05:00.000Z' is still 31 December 2025 in any timezone
+  // behind UTC, which makes `now.getFullYear()` already 2025 and the
+  // rollback branch a no-op that never gets exercised.
   it('rolls back a year when the date would be in the future', () => {
-    const jan1 = new Date('2026-01-01T00:05:00.000Z');
+    const jan1 = new Date(2026, 0, 1, 0, 5, 0); // local: 1 Jan 2026 00:05:00
     const r = parseThreadtimeLine('12-31 23:59:00.000  1  1 D T: m', jan1);
     expect(new Date(r!.ts).getFullYear()).to.equal(2025);
+  });
+
+  // Pins `> oneDayMs` (not `> 0`) as the rollback threshold. A few seconds of
+  // clock skew — the record's timestamp landing slightly ahead of `now` — is
+  // well within one day and must not trigger a year rollback. Without this
+  // case, nothing in the suite distinguishes the two thresholds: every other
+  // "future" input here is many months out.
+  it('does not roll back for a few seconds of clock skew', () => {
+    const now = new Date(2026, 6, 15, 12, 0, 0); // local: 15 Jul 2026 12:00:00
+    const r = parseThreadtimeLine('07-15 12:00:05.000  1  1 D T: m', now); // 5s ahead
+    expect(new Date(r!.ts).getFullYear()).to.equal(2026);
   });
 });
