@@ -917,17 +917,11 @@ export default function DeviceControl({ device, onClose }: DeviceControlProps) {
                     <h4 className="action-card-title">
                       <Clipboard size={18} color="var(--green)" /> Clipboard
                     </h4>
-                    <div style={{ display: 'flex', gap: '12px', alignItems: 'flex-start' }}>
-                      <button
-                        className="btn-premium btn-sm"
-                        style={{ width: '140px', flexShrink: 0 }}
-                        onClick={fetchClipboard}
-                      >
+                    <div className="clipboard-row">
+                      <button className="btn-premium btn-sm" onClick={fetchClipboard}>
                         FETCH VALUE
                       </button>
-                      <div className="clipboard-display compact" style={{ marginTop: 0, flex: 1 }}>
-                        {clipboardContent}
-                      </div>
+                      <div className="clipboard-display compact">{clipboardContent}</div>
                     </div>
                   </div>
 
@@ -955,9 +949,7 @@ export default function DeviceControl({ device, onClose }: DeviceControlProps) {
                         </button>
                         <div />
                       </div>
-                      <p className="compact-label" style={{ opacity: 0.5 }}>
-                        Quick swipe in a direction
-                      </p>
+                      <p className="compact-label dpad-caption">Quick swipe in a direction</p>
                     </div>
                   </div>
                 </div>

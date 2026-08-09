@@ -459,7 +459,10 @@
 }
 
 .action-card-hint {
-  margin: -4px 0 4px;
+  /* The -4px pulled the hint up against the title, so Smart Input's
+     title-to-content gap measured 12px where every other action card is 16px.
+     Sit on the same rhythm as the rest. */
+  margin: 0 0 4px;
   font-size: 12px;
   color: var(--text-muted);
   line-height: 1.5;
@@ -493,7 +496,33 @@
   overflow-y: auto;
   padding: 8px;
   font-size: 11px;
-  background: rgba(0, 0, 0, 0.4);
+  /* 0.3 is the shared form-control background (.select-base, .input-base,
+     .type-input-field). This was a fourth value at 0.4. */
+  background: rgba(0, 0, 0, 0.3);
+}
+
+/* Was three inline styles on the JSX. The button stretched to the display's
+   height so the row reads as one control instead of a 29px button floating
+   beside a 48px box. */
+.clipboard-row {
+  display: flex;
+  gap: 12px;
+  align-items: stretch;
+}
+
+.clipboard-row > button {
+  width: 140px;
+  flex-shrink: 0;
+}
+
+.clipboard-row > .clipboard-display.compact {
+  flex: 1;
+  margin-top: 0;
+}
+
+/* Was an inline opacity on the JSX. */
+.dpad-caption {
+  opacity: 0.5;
 }
 
 .actions-row {
@@ -767,6 +796,12 @@
 .upload-box-row .file-upload-launcher {
   flex: 1 1 150px;
   min-width: 0;
+}
+
+/* The height above lands on .select-wrapper, but .select-sm sets its own 32px,
+   so the control sat 2px short of its own wrapper. */
+.uninstall-controls-row .select-wrapper > select {
+  height: 100%;
 }
 
 .upload-box-row > button,
