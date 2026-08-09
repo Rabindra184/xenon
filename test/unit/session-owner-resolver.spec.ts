@@ -5,7 +5,7 @@ import { SessionOwnerResolver } from '../../src/services/device-access/SessionOw
 // A stub shaped like the two Prisma delegates the resolver touches, counting
 // calls so the caching contract is observable.
 function stubDb(opts: {
-  session?: { api_key_id: string | null } | null;
+  session?: { api_key_id: string | null; user_id?: string | null } | null;
   apiKey?: { userId: string } | null;
   user?: { email: string; name: string } | null;
 }) {
@@ -73,6 +73,40 @@ describe('SessionOwnerResolver.ownerOf', () => {
     await r.ownerOf('sess-1');
     await r.ownerOf('sess-1');
     expect(db.calls.session).to.equal(2);
+  });
+
+  it('prefers user_id and skips the ApiKey hop entirely', async () => {
+    const db = stubDb({
+      session: { api_key_id: 'key_1', user_id: 'usr_direct' },
+      apiKey: { userId: 'usr_via_key' },
+    });
+    const r = new SessionOwnerResolver(db);
+    expect(await r.ownerOf('sess-1')).to.equal('usr_direct');
+    expect(db.calls.apiKey, 'ApiKey should not be queried when user_id is set').to.equal(0);
+  });
+
+  it('falls back to the ApiKey hop for rows written before user_id existed', async () => {
+    const db = stubDb({
+      session: { api_key_id: 'key_1', user_id: null },
+      apiKey: { userId: 'usr_legacy' },
+    });
+    const r = new SessionOwnerResolver(db);
+    expect(await r.ownerOf('sess-1')).to.equal('usr_legacy');
+    expect(db.calls.apiKey).to.equal(1);
+  });
+
+  it('returns null when neither column resolves an owner', async () => {
+    const db = stubDb({ session: { api_key_id: null, user_id: null } });
+    const r = new SessionOwnerResolver(db);
+    expect(await r.ownerOf('sess-1')).to.equal(null);
+  });
+
+  it('caches an owner resolved from user_id', async () => {
+    const db = stubDb({ session: { api_key_id: null, user_id: 'usr_direct' } });
+    const r = new SessionOwnerResolver(db);
+    await r.ownerOf('sess-1');
+    await r.ownerOf('sess-1');
+    expect(db.calls.session).to.equal(1);
   });
 });
 
