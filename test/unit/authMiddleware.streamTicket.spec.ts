@@ -78,6 +78,33 @@ describe('authMiddleware — stream-ticket branch', () => {
     expect(req.auth.userId).to.equal('actor-1');
   });
 
+  // Stream tickets carry a signed `isAdmin` claim (StreamTicketService.mint's
+  // third argument), used by the logcat WebSocket's ownership re-check. This
+  // REST-facing branch deliberately does NOT read it: it destructures only
+  // `{ actorId }` from the redeemed payload and hardcodes `role: 'MEMBER'`,
+  // `scopes: 'read'`. That constraint currently lives only in the shape of a
+  // destructuring pattern -- one careless line ("const { actorId, isAdmin }"
+  // piped into role/scopes) turns a diagnostic claim into a privilege
+  // escalation path. Mint a ticket that actually claims admin and assert the
+  // resulting req.auth still comes out as a plain, unprivileged member.
+  it("never elevates req.auth from an admin-minted ticket's isAdmin claim", async () => {
+    const ticket = await ticketSvc.mint('UDID-1', 'actor-1', { isAdmin: true });
+    const req: any = {
+      method: 'GET',
+      path: '/control/UDID-1/stream',
+      query: { ticket },
+      headers: {},
+    };
+    const res = fakeRes();
+    const next = sinon.spy();
+    await authMiddleware(req, res as any, next);
+    expect(next.calledOnce).to.equal(true);
+    expect(req.auth.kind).to.equal('stream-ticket');
+    expect(req.auth.userId).to.equal('actor-1');
+    expect(req.auth.role).to.equal('MEMBER');
+    expect(req.auth.scopes).to.equal('read');
+  });
+
   it('rejects a ticket minted for a different udid with 401 invalid ticket', async () => {
     const ticket = await ticketSvc.mint('UDID-1', 'actor-1');
     const req: any = {

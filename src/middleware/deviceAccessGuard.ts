@@ -29,17 +29,24 @@ export const UNGUARDED_CONTROL_MUTATIONS: readonly string[] = [
 /**
  * Reads that take the ownership check anyway.
  *
- * The guard is mutations-only by design — screenshots, the MJPEG stream, logs
- * and page source stay open so the mosaic picker and monitoring can look at a
- * busy device. The clipboard is the documented exception: every other read
- * exposes device *state*, while this one returns whatever the holder most
- * recently copied, which is routinely a password, a 2FA code or a token. There
- * is no monitoring use for reading a stranger's pasteboard.
+ * The guard is mutations-only by design — screenshots, the MJPEG stream and
+ * page source stay open so the mosaic picker and monitoring can look at a busy
+ * device. The entries here are the exceptions: every other read exposes device
+ * *state*, while these return the contents of somebody else's work.
+ *
+ * - `clipboard` returns whatever the holder most recently copied, which is
+ *   routinely a password, a 2FA code or a token. There is no monitoring use
+ *   for reading a stranger's pasteboard.
+ * - `logs` dumps `adb logcat`, which routinely carries auth tokens, deep-link
+ *   URLs and PII from whatever app is under test. It was left open when this
+ *   guard shipped; the logcat WebSocket then treated the same data as
+ *   ownership-checked, which made that check decorative — a reader denied at
+ *   the socket could just GET the identical bytes here.
  *
  * Keep this list short and justify every entry. Widening it re-opens the
  * "reads are cheap" assumption the mosaic depends on.
  */
-export const OWNERSHIP_CHECKED_READS: readonly string[] = ['clipboard'];
+export const OWNERSHIP_CHECKED_READS: readonly string[] = ['clipboard', 'logs'];
 
 export interface DeviceAccessGuardDeps {
   findDevice?: (

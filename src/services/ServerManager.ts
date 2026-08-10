@@ -11,8 +11,12 @@ import {
 } from '../helpers/networkAddresses';
 import log from '../logger';
 import { attachH264Ws } from '../app/ws/h264StreamWs';
+import { attachLogcatWs } from '../app/ws/logcatWs';
 import { StreamTicketService } from './token/StreamTicketService';
 import AndroidH264StreamService from '../device-managers/android/AndroidH264StreamService';
+import { LogcatStreamService } from '../device-managers/android/LogcatStreamService';
+import { SessionOwnerResolver } from './device-access/SessionOwnerResolver';
+import { makeTicketActorAuthorizer } from './device-access/ticketActorAccess';
 // enable resolveJsonModule in tsconfig must be true for this to work
 import pkg from '../../package.json';
 import { IPluginArgs, DefaultPluginArgs, EmulatorConfig } from '../interfaces/IPluginArgs';
@@ -92,6 +96,27 @@ export class ServerManager {
         // streaming.androidH264 config itself, so this WS auto-start honours a
         // { source: 'screenrecord' } rollback just like the REST stream/start.
         startStream: (udid) => Container.get(AndroidH264StreamService).start(udid),
+      });
+
+      // Continuous logcat WebSocket (Android; replaces the 3s dump-poll).
+      // Only claims /logcat — socket.io and the h264 WS keep their own
+      // upgrades. Ticket-auth'd like h264, plus an ownership check h264
+      // doesn't need: logcat routinely carries auth tokens and PII from
+      // whatever app is under test, so it's an ownership-checked read, not
+      // an open one — see docs/superpowers/specs/2026-08-09-logcat-stream-design.md
+      // "Authorisation". The decision itself lives in
+      // makeTicketActorAuthorizer so it is tested directly rather than
+      // through a hand-written near-copy in a spec; the ticket carries the
+      // caller's admin flag and api-key id (captured from resolveActor at
+      // mint time) so this reaches the same verdict /control does.
+      attachLogcatWs(httpServer, {
+        redeem: (ticket, udid) => Container.get(StreamTicketService).redeem(ticket, udid),
+        authorize: makeTicketActorAuthorizer({
+          findDevice: (udid) => DeviceStoreFactory.getStore().findDevice({ udid }),
+          resolveSessionOwner: (sessionId) =>
+            Container.get(SessionOwnerResolver).ownerOf(sessionId),
+        }),
+        startStream: (udid) => Container.get(LogcatStreamService).start(udid),
       });
     }
 

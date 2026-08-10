@@ -18,9 +18,6 @@ import {
   Package,
   Loader2,
   Trash2,
-  Wifi,
-  Download,
-  Search,
   Terminal as TerminalIcon,
   Zap,
   ScrollText,
@@ -41,6 +38,7 @@ import { Terminal } from '../terminal/terminal';
 import OmniInspector from '../omni-inspector/OmniInspector';
 import { BugReportButton } from '../bug-report/BugReportButton';
 import { ANDROID_KEYCODE, IOS_BUTTON } from './keycodes';
+import LogcatView from './logcat/LogcatView';
 
 interface DeviceControlProps {
   device: IDevice;
@@ -56,7 +54,6 @@ export default function DeviceControl({ device, onClose }: DeviceControlProps) {
   const navigate = useNavigate();
   const { tab } = useParams();
   const canvasRef = useRef<HTMLDivElement>(null);
-  const logContainerRef = useRef<HTMLDivElement>(null);
   const [canvasDimensions, setCanvasDimensions] = useState({ width: 0, height: 0 });
   const [activeTab, setActiveTab] = useState<TabType>((tab as TabType) || 'actions');
   const [textInput, setTextInput] = useState('');
@@ -75,11 +72,6 @@ export default function DeviceControl({ device, onClose }: DeviceControlProps) {
   const [fetchingApps, setFetchingApps] = useState(false);
   const [installing, setInstalling] = useState(false);
   const [uploadFile, setUploadFile] = useState<File | null>(null);
-  const [deviceLogs, setDeviceLogs] = useState<string[]>([]);
-  const [isFollowing, setIsFollowing] = useState(true);
-  const [logFilter, setLogFilter] = useState('');
-  const [logStreamActive, setLogStreamActive] = useState(false); // true after first successful log batch
-  const [logPollCount, setLogPollCount] = useState(0); // tracks how many polls have completed
   const [streamLoaded, setStreamLoaded] = useState(false);
   const [streamFailed, setStreamFailed] = useState(false);
   const MAX_STREAM_RETRIES = 10; // ~20s at the 2s retry cadence
@@ -103,121 +95,6 @@ export default function DeviceControl({ device, onClose }: DeviceControlProps) {
       navigate(`/devices/${device.udid}/control/${activeTab}`, { replace: true });
     }
   }, [activeTab, tab, device.udid, navigate]);
-
-  // Log Polling for real-time logs
-  useEffect(() => {
-    let interval: NodeJS.Timeout;
-    if (activeTab === 'logs') {
-      setLogStreamActive(false);
-      setLogPollCount(0);
-
-      const fetchLogs = async () => {
-        try {
-          const response = await XenonApiService.getLogs(currentDevice.udid);
-          setLogPollCount((c) => c + 1);
-          if (response && response.logs && response.logs.trim().length > 0) {
-            setLogStreamActive(true);
-            // High-performance log cleaning: Remove JSON formatting and ANSI/Unicode escapes
-            const cleanLines = response.logs
-              .replace(/\\u[0-9a-fA-F]{4}/g, (match: string) => JSON.parse(`"${match}"`))
-              .replace(
-                // eslint-disable-next-line no-control-regex
-                /[\u001b\u009b][[()#;?]*(?:[0-9]{1,4}(?:;[0-9]{0,4})*)?[0-9A-ORZcf-nqry=><]/g,
-                '',
-              )
-              .split('\n')
-              .filter((l: string) => l.trim().length > 0);
-
-            if (cleanLines.length > 0) {
-              setDeviceLogs((prev) => {
-                const combined = [...prev, ...cleanLines];
-                return combined.slice(-1000); // 1000 line ring buffer for performance
-              });
-            }
-          } else {
-            // After 3+ empty polls, mark stream as active but empty (device is quiet)
-            setLogPollCount((c) => {
-              if (c >= 3) setLogStreamActive(true);
-              return c;
-            });
-          }
-        } catch (err) {
-          console.error('Failed to fetch logs:', err);
-          setLogPollCount((c) => {
-            if (c >= 3) setLogStreamActive(true);
-            return c;
-          });
-        }
-      };
-
-      fetchLogs();
-      interval = setInterval(fetchLogs, 3000); // 3s poll - backend returns instantly now
-    }
-
-    return () => clearInterval(interval);
-  }, [activeTab, currentDevice.udid]);
-
-  const renderLogLines = () => {
-    if (deviceLogs.length === 0) {
-      return (
-        <div className="log-empty-state">
-          {!logStreamActive ? (
-            <>
-              <Loader2 size={28} className="animate-spin" style={{ color: 'var(--green)', marginBottom: 12 }} />
-              <p className="log-empty-title">Connecting to device syslog...</p>
-              <p className="log-empty-subtitle">Initializing persistent log stream for {currentDevice.name}</p>
-            </>
-          ) : (
-            <>
-              <TerminalIcon size={28} style={{ color: 'var(--text-muted)', marginBottom: 12, opacity: 0.4 }} />
-              <p className="log-empty-title">No log output yet</p>
-              <p className="log-empty-subtitle">
-                The log stream is active but the device is quiet. Interact with the device to generate logs.
-              </p>
-            </>
-          )}
-        </div>
-      );
-    }
-
-    const filtered = deviceLogs.filter(
-      (line) => !logFilter || line.toLowerCase().includes(logFilter.toLowerCase()),
-    );
-
-    if (filtered.length === 0 && logFilter) {
-      return (
-        <div className="log-empty-state">
-          <Search size={28} style={{ color: 'var(--text-muted)', marginBottom: 12, opacity: 0.4 }} />
-          <p className="log-empty-title">No matches for "{logFilter}"</p>
-          <p className="log-empty-subtitle">
-            {deviceLogs.length} lines in buffer. Try a different search term.
-          </p>
-        </div>
-      );
-    }
-
-    return filtered.map((line, i) => {
-      let typeClass = 'log-debug';
-      const cleanLine = line.toLowerCase();
-      if (cleanLine.includes('error') || cleanLine.includes('fail')) typeClass = 'log-error';
-      else if (cleanLine.includes('warning') || cleanLine.includes('warn')) typeClass = 'log-warn';
-      else if (cleanLine.includes('notice') || cleanLine.includes('info')) typeClass = 'log-notice';
-
-      return (
-        <div key={`${i}-${line.substring(0, 10)}`} className={`log-line ${typeClass}`}>
-          <span className="log-index">{i + 1}</span>
-          <span className="log-content">{line}</span>
-        </div>
-      );
-    });
-  };
-
-  // Auto-scroll logs
-  useEffect(() => {
-    if (activeTab === 'logs' && isFollowing && logContainerRef.current) {
-      logContainerRef.current.scrollTop = logContainerRef.current.scrollHeight;
-    }
-  }, [deviceLogs, activeTab, isFollowing]);
 
   // Auto-start stream on mount
   useEffect(() => {
@@ -1204,67 +1081,8 @@ export default function DeviceControl({ device, onClose }: DeviceControlProps) {
               )}
 
               {activeTab === 'logs' && (
-                <div className="action-card screenshot-card" style={{ padding: 0, gap: 0 }}>
-                  <div className="log-toolbar">
-                    <div className="log-filter-group">
-                      <div className="log-stat-pill">
-                        <span className={`log-live-dot ${logStreamActive ? 'active' : ''}`} />
-                        {logStreamActive ? 'LIVE' : 'CONNECTING'}
-                      </div>
-                      <div className="log-stat-pill" style={{ opacity: 0.6 }}>
-                        {deviceLogs.length} LINES
-                      </div>
-                      <div className="log-search-box">
-                        <Search size={14} className="search-icon-inline" />
-                        <input
-                          type="text"
-                          className="type-input-field tiny"
-                          placeholder="Filter trace..."
-                          value={logFilter}
-                          onChange={(e) => setLogFilter(e.target.value)}
-                          aria-label="Filter debug logs"
-                        />
-                      </div>
-                    </div>
-                    <div className="log-actions-group">
-                      <button
-                        className={`btn-secondary btn-sm ${isFollowing ? 'active' : ''}`}
-                        onClick={() => setIsFollowing(!isFollowing)}
-                        title={isFollowing ? 'Freeze Logs' : 'Follow Logs'}
-                      >
-                        <Wifi size={14} className={isFollowing ? 'animate-pulse' : ''} />
-                        {isFollowing ? 'FREEZE' : 'FOLLOW'}
-                      </button>
-                      <button
-                        className="btn-premium btn-sm"
-                        onClick={() => {
-                          const blob = new Blob([deviceLogs.join('\n')], { type: 'text/plain' });
-                          const url = URL.createObjectURL(blob);
-                          const link = document.createElement('a');
-                          link.href = url;
-                          link.download = `logs-${currentDevice.udid}-${Date.now()}.txt`;
-                          link.click();
-                          URL.revokeObjectURL(url);
-                        }}
-                        disabled={deviceLogs.length === 0}
-                      >
-                        <Download size={14} />
-                        EXPORT
-                      </button>
-                      <button
-                        className="btn-secondary btn-sm"
-                        onClick={() => setDeviceLogs([])}
-                        title="Clear Logs"
-                      >
-                        <Trash2 size={14} />
-                        CLEAR
-                      </button>
-                    </div>
-                  </div>
-
-                  <div className="log-display-area" ref={logContainerRef} style={{ flex: 1 }}>
-                    {renderLogLines()}
-                  </div>
+                <div className="action-card screenshot-card">
+                  <LogcatView udid={currentDevice.udid} platform={currentDevice.platform} />
                 </div>
               )}
 
