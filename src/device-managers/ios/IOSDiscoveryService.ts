@@ -19,6 +19,24 @@ import { addNewDevice, removeDevice } from '../../data-service/device-service';
 import { IosTracker } from '../iOSTracker';
 import { resolveAdvertisedBindHost, sanitizeDeviceNetworkIp } from '../../helpers/networkAddresses';
 
+/**
+ * Should this simulator be given wda/mjpeg ports the moment we notice it?
+ *
+ * Every simulator installed on the machine is discovered, booted or not, and a
+ * Mac carries far more of them than the port ranges hold — 158 against 100
+ * where this surfaced. A shut-down simulator is not running WebDriverAgent and
+ * will not until someone boots it, so it gets nothing here; `iOSCapabilities`
+ * acquires a port at session time for whichever device is actually chosen.
+ *
+ * Draining the range did not merely waste ports. Discovery threw once it ran
+ * dry, so IOSDeviceManager returned no devices at all, and the physically
+ * attached iPhone on the same Mac was reaped as stale for not being in its own
+ * device list.
+ */
+export function simulatorNeedsPortNow(state: string | undefined): boolean {
+  return state === 'Booted';
+}
+
 @Service()
 export class IOSDiscoveryService {
   private log = log.scope('IOSDiscovery');
@@ -110,8 +128,13 @@ export class IOSDiscoveryService {
       ? String(this.pluginArgs.remoteMachineProxyIP)
       : `http://${this.pluginArgs.bindHostOrIp}:${this.hostPort}`;
 
-    const wdaLocalPort = storeDevice?.wdaLocalPort || (await Container.get(PortAllocator).acquire('wda', udid));
-    const mjpegServerPort = storeDevice?.mjpegServerPort || (await Container.get(PortAllocator).acquire('mjpeg', udid));
+    // A real device is going to want these, so ask now — but not at the cost
+    // of the whole discovery pass. See tryAcquire: an exhausted range used to
+    // throw out of here and take the device list with it.
+    const wdaLocalPort =
+      storeDevice?.wdaLocalPort || (await Container.get(PortAllocator).tryAcquire('wda', udid));
+    const mjpegServerPort =
+      storeDevice?.mjpegServerPort || (await Container.get(PortAllocator).tryAcquire('mjpeg', udid));
     const totalUtilizationTimeMilliSec = await getUtilizationTime(udid);
 
     let sdk = 'Unknown';
@@ -199,13 +222,19 @@ export class IOSDiscoveryService {
     return await Promise.all(
       simulators.map(async (d) => {
         const storeDevice = await store.findDevice({ udid: d.udid });
+        const willRunWda = simulatorNeedsPortNow(d.state);
         return {
           ...d,
           wdaLocalPort:
-            storeDevice?.wdaLocalPort || (await Container.get(PortAllocator).acquire('wda', d.udid)),
+            storeDevice?.wdaLocalPort ||
+            (willRunWda
+              ? await Container.get(PortAllocator).tryAcquire('wda', d.udid)
+              : undefined),
           mjpegServerPort:
             storeDevice?.mjpegServerPort ||
-            (await Container.get(PortAllocator).acquire('mjpeg', d.udid)),
+            (willRunWda
+              ? await Container.get(PortAllocator).tryAcquire('mjpeg', d.udid)
+              : undefined),
           busy: false,
           realDevice: false,
           platform: (d.name?.toLowerCase().includes('tv') ? 'tvos' : 'ios') as
