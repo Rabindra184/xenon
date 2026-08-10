@@ -131,6 +131,35 @@ class AndroidH264StreamService {
   }
 
   /**
+   * Kill every capture child, synchronously. Called from the process 'exit'
+   * hook in `src/index.ts`.
+   *
+   * This service is not registered with ProcessRegistry, and its async
+   * teardown would not help anyway: on SIGTERM Appium's own handler exits the
+   * process before the plugin's async cleanup phase runs — measured against a
+   * real device for the sibling logcat service, which orphaned both its host
+   * `adb` child and the device-side reader on every restart. `scrcpy` and
+   * `screenrecord` are long-lived children in exactly the same position.
+   *
+   * 'exit' forbids async work, so this is synchronous by necessity;
+   * `capture.kill()` is a syscall and is safe there.
+   */
+  killAllSync(): number {
+    let killed = 0;
+    for (const session of this.sessions.values()) {
+      session.status = 'stopped';
+      try {
+        session.capture?.kill();
+        killed += 1;
+      } catch {
+        /* already gone is the desired state; never throw from an exit hook */
+      }
+    }
+    this.sessions.clear();
+    return killed;
+  }
+
+  /**
    * Select the capture source: `screenrecord` (legacy, rollback path) or
    * `scrcpy` (default). Dispatches to the matching producer.
    */
