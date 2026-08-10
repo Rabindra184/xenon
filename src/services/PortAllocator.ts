@@ -110,6 +110,37 @@ export class PortAllocator {
   }
 
   /**
+   * `acquire`, but exhaustion is `undefined` rather than a throw.
+   *
+   * For callers where a port is nice-to-have rather than required — device
+   * discovery being the one that matters. A device that cannot get a port yet
+   * is still a device, and must still be listed: when an exhausted range threw
+   * out of the discovery pass, the whole platform's device list came back
+   * empty and `removeStaleDevices` then deleted a physically-attached iPhone
+   * for not being in it.
+   *
+   * Only exhaustion is swallowed. A database or probe failure is a different
+   * kind of problem and still raises.
+   */
+  async tryAcquire(
+    purpose: PortPurpose,
+    udid: string,
+    opts: { pid?: number; ttlMs?: number } = {},
+  ): Promise<number | undefined> {
+    try {
+      return await this.acquire(purpose, udid, opts);
+    } catch (err: any) {
+      if (err instanceof PortRangeExhaustedError) {
+        this.log.warn(
+          `No ${purpose} port available for ${udid}; continuing without one. It will be acquired when the device actually needs it.`,
+        );
+        return undefined;
+      }
+      throw err;
+    }
+  }
+
+  /**
    * Soft-block a port so the next `acquire` for the same purpose skips it.
    * Used when bind fails (EADDRINUSE) even though our lease owned the number —
    * typically another process (e.g. iOS iproxy) is the real listener.

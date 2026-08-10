@@ -3,6 +3,7 @@ import { ISessionCapability } from './interfaces/ISessionCapability';
 import _ from 'lodash';
 import { IDevice } from './interfaces/IDevice';
 import { Container } from 'typedi';
+import { PortAllocator } from './services/PortAllocator';
 import log from './logger';
 
 export enum XENON_CAPABILITIES {
@@ -96,13 +97,14 @@ export async function iOSCapabilities(
   fm['platformName'] = freeDevice.platform;
   fm['appium:deviceName'] = freeDevice.name;
   fm['appium:platformVersion'] = freeDevice.sdk;
-  if (!fm['appium:wdaLocalPort']) {
-    fm['appium:wdaLocalPort'] = freeDevice.wdaLocalPort;
-  }
-  if (!fm['appium:mjpegServerPort']) {
-    fm['appium:mjpegServerPort'] = freeDevice.mjpegServerPort;
-  }
   fm['appium:derivedDataPath'] = freeDevice.derivedDataPath;
+
+  // Whether this session will stand up its own WebDriverAgent, or ride the one
+  // the stream service already has. Decided before any port is assigned: a
+  // session that reuses the stream's WDA must not be handed ports, and
+  // acquiring them first only to delete them below would burn a lease out of a
+  // hundred on every such session.
+  let reusingStreamWda = false;
 
   // Technical Optimization: Reuse existing WDA tunnel if Stream Service is active
   // This prevents "Port Occupied" errors when the dashboard is open and speeds up startup by 15-30s
@@ -118,6 +120,7 @@ export async function iOSCapabilities(
     if (streamStatus && (streamStatus.status === 'running' || streamStatus.status === 'starting')) {
       const wdaUrl = `http://127.0.0.1:${streamStatus.wdaPort}`;
       fm['appium:webDriverAgentUrl'] = wdaUrl;
+      reusingStreamWda = true;
 
       // If we are reusing the WDA, we MUST NOT pass wdaLocalPort or mjpegServerPort
       // as XCUITestDriver will still try to verify they are free and fail if busy.
@@ -134,6 +137,30 @@ export async function iOSCapabilities(
     }
   } catch (e: any) {
     log.warn(`[Xenon] ⚠️ Failed to check Stream Service: ${e.message}`);
+  }
+
+  // Ports, at the one moment we know they are needed and by which device.
+  //
+  // Discovery no longer leases one to every simulator on the machine — it
+  // cannot, there are more simulators than ports — so the device picked for
+  // this session may arrive without one. Acquiring here is deliberate: it is
+  // the first point at which a specific device has been chosen.
+  //
+  // Exhaustion raises rather than passing undefined through. Without a port
+  // XCUITest falls back to its own default of 8100, which is the same number
+  // for every device, so a silent skip trades a clear failure for two sessions
+  // quietly fighting over one port.
+  if (!reusingStreamWda) {
+    if (!fm['appium:wdaLocalPort']) {
+      fm['appium:wdaLocalPort'] =
+        freeDevice.wdaLocalPort ??
+        (await Container.get(PortAllocator).acquire('wda', freeDevice.udid));
+    }
+    if (!fm['appium:mjpegServerPort']) {
+      fm['appium:mjpegServerPort'] =
+        freeDevice.mjpegServerPort ??
+        (await Container.get(PortAllocator).acquire('mjpeg', freeDevice.udid));
+    }
   }
 
   // Senior Resiliency: Inject higher defaults for WebDriverAgent in enterprise environments
