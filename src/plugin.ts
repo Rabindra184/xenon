@@ -1,4 +1,9 @@
 /* eslint-disable no-prototype-builtins */
+import {
+  verifyLocator,
+  type DriverLike,
+  type VerifyAction,
+} from './services/inspector/verifyLocator';
 import 'reflect-metadata';
 import commands from './commands/index';
 import BasePlugin from '@appium/base-plugin';
@@ -47,6 +52,12 @@ class XenonPlugin extends BasePlugin {
     },
     '/session/:sessionId/xenon/test-locator': {
       POST: { command: 'testAiLocator' },
+    },
+    // Verify a STANDARD Appium locator against the live driver. Distinct from
+    // test-locator above, which only handles the -custom:ai-* strategies: this
+    // is the one that answers "will Appium find this", because it asks Appium.
+    '/session/:sessionId/xenon/verify-locator': {
+      POST: { command: 'verifyLocator' },
     },
     // Xenon Omni-Interaction: Enterprise-grade AI/OCR actions
     '/session/:sessionId/xenon/omni-click': {
@@ -224,6 +235,19 @@ class XenonPlugin extends BasePlugin {
 
   async testAiLocator(driver: any, locator: { strategy: string; selector: string }) {
     return await this.aiCommandService.testAiLocator(driver, locator);
+  }
+
+  /**
+   * Resolve a locator through the real driver and optionally act on what came
+   * back. The inspector's own badges match a locator against captured XML,
+   * which cannot evaluate `-android uiautomator` or `-ios predicate string` at
+   * all and can disagree with Appium even when it can. This asks Appium.
+   */
+  async verifyLocator(
+    driver: any,
+    payload: { strategy: string; selector: string; action?: VerifyAction; text?: string },
+  ) {
+    return await verifyLocator(driver as DriverLike, payload);
   }
 
   /**
