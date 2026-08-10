@@ -46,7 +46,7 @@ import IOSDeviceManager from '../device-managers/IOSDeviceManager';
 import { XenonManager } from '../device-managers';
 import { addCLIArgs } from '../data-service/pluginArgs';
 import NodeDevices from '../device-managers/NodeDevices';
-import { config as xenonConfig } from '../config';
+import { config as xenonConfig, updateConfig, resolveAuthDisabled } from '../config';
 import { SocketServer } from './SocketServer';
 import { SocketClient } from './SocketClient';
 import { EventLogService } from './EventLogService';
@@ -76,6 +76,28 @@ export class ServerManager {
 
     const context = Container.get(PluginContext);
     context.setContext(pluginArgs, cliArgs.port, nodeId, cliArgs.basePath || '');
+
+    // `authDisabled` is declared in schema.json, so `--plugin-xenon-auth-disabled`
+    // is accepted on the command line — but every consumer reads
+    // `config.authDisabled`, which src/config.ts sources from the
+    // XENON_AUTH_DISABLED env var. Nothing bridged the two, so the documented
+    // flag silently did nothing and only the env var worked. Bridge it here,
+    // before any route is registered or a request can be served.
+    //
+    // Precedence lives in resolveAuthDisabled so it is testable without
+    // booting a server; see its docblock for why it is `=== true` and OR.
+    updateConfig({
+      authDisabled: resolveAuthDisabled(
+        (pluginArgs as { authDisabled?: unknown }).authDisabled,
+        xenonConfig.authDisabled,
+      ),
+    });
+    if (xenonConfig.authDisabled) {
+      this.logger.warn(
+        'Authentication is DISABLED — every /xenon/api caller is treated as a ' +
+          'synthetic SUPER_ADMIN. Local development only.',
+      );
+    }
 
     await this.syncDatabaseAndAIConfig(pluginArgs);
     await this.initializeCoreSubsystems(pluginArgs, cliArgs.port);

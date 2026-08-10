@@ -105,3 +105,23 @@ export const config: Config = {
 export function updateConfig(newConfig: Partial<Config>) {
   Object.assign(config, newConfig);
 }
+
+/**
+ * Whether authentication should be off, given the `--plugin-xenon-auth-disabled`
+ * CLI arg and the XENON_AUTH_DISABLED env var.
+ *
+ * Both exist because `authDisabled` is declared in schema.json (so Appium
+ * accepts the flag) while every consumer reads `config.authDisabled`, which is
+ * populated from the env var. Nothing bridged them, so the documented flag
+ * silently did nothing — this is that bridge, kept pure so the precedence is
+ * testable without booting a server.
+ *
+ * Two deliberate choices:
+ * - `=== true` only. The schema types it boolean, and a loose check would let a
+ *   stray `"false"` string disable authentication for the whole server.
+ * - OR, not override. Either source can turn auth off; neither can turn it back
+ *   on, so the more restrictive of the two never loses to the other.
+ */
+export function resolveAuthDisabled(pluginArgValue: unknown, envDisabled: boolean): boolean {
+  return pluginArgValue === true || envDisabled === true;
+}
