@@ -1,5 +1,6 @@
 import { IDevice } from './IDevice';
 import { DeviceTypeToInclude } from './IPluginArgs';
+import { DisplayState } from '../device-managers/android/displayState';
 
 export interface IDeviceManager {
   getDevices(
@@ -33,4 +34,10 @@ export interface IDeviceManager {
   readyForSession?(device: IDevice): Promise<boolean>;
   executeShell?(udid: string, command: string): Promise<string>;
   getPageSource?(udid: string): Promise<string>;
+  /**
+   * Android only for now. iOS has no equivalent read wired up, so it simply
+   * does not implement this and the dashboard shows no display-state hint
+   * there rather than a guessed one.
+   */
+  getDisplayState?(udid: string): Promise<DisplayState>;
 }

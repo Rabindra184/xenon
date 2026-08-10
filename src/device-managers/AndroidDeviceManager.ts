@@ -1,4 +1,5 @@
 import { IDeviceManager } from '../interfaces/IDeviceManager';
+import { DisplayState, parseDisplayState } from './android/displayState';
 import { asyncForEach } from '../helpers';
 import { sanitizeDeviceNetworkIp } from '../helpers/networkAddresses';
 import { spawn } from 'child_process';
@@ -979,6 +980,25 @@ export default class AndroidDeviceManager implements IDeviceManager {
     if (!adbInstance) return;
     // 26 is POWER button, usually locks if screen is on
     await adbInstance.adbExec(['-s', udid, 'shell', 'input', 'keyevent', '26']);
+  }
+
+  /**
+   * Whether the panel is lit. Never throws — an unreadable device reports
+   * `unknown`, and the dashboard shows nothing for that.
+   */
+  async getDisplayState(udid: string): Promise<DisplayState> {
+    try {
+      const adb = await this.getAdbForDevice(udid);
+      // The whole of `dumpsys power` rather than a piped grep: the pipe has to
+      // survive being quoted through adb and one shell's worth of quoting
+      // difference would silently return nothing, which reads as `unknown`
+      // forever. It is a ~50ms call either way.
+      const out = await adb.adbExec(['-s', udid, 'shell', 'dumpsys', 'power'], { timeout: 5000 });
+      return parseDisplayState(out || '');
+    } catch (err: any) {
+      log.warn(`Could not read display state for ${udid}: ${err.message}`);
+      return 'unknown';
+    }
   }
 
   async unlock(udid: string): Promise<void> {
