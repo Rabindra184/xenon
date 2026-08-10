@@ -498,3 +498,156 @@ describe('LogcatView — Android Studio parity controls', () => {
     });
   });
 });
+
+/**
+ * Recording: capture the raw stream between an explicit start and stop, then
+ * download it. Distinct from EXPORT, which saves the filtered view as-is.
+ */
+describe('LogcatView — recording', () => {
+  let created: { href: string; download: string; clicked: boolean };
+  let captured: string;
+
+  beforeEach(() => {
+    nextSeq = 0;
+    vi.clearAllMocks();
+    captured = '';
+    created = { href: '', download: '', clicked: false };
+
+    // Capture the Blob's text instead of letting jsdom attempt a download.
+    (globalThis.URL as any).createObjectURL = vi.fn((blob: Blob) => {
+      // Blob#text() is async; read the parts synchronously via the mock arg.
+      captured = (blob as any).__text ?? captured;
+      return 'blob:mock';
+    });
+    (globalThis.URL as any).revokeObjectURL = vi.fn();
+
+    const RealBlob = globalThis.Blob;
+    (globalThis as any).Blob = function (parts: any[], opts: any) {
+      const b = new RealBlob(parts, opts);
+      (b as any).__text = parts.join('');
+      return b;
+    };
+
+    const realCreate = document.createElement.bind(document);
+    vi.spyOn(document, 'createElement').mockImplementation((tag: string) => {
+      const el = realCreate(tag);
+      if (tag === 'a') {
+        Object.defineProperty(el, 'click', {
+          value: () => {
+            created.clicked = true;
+            created.href = (el as HTMLAnchorElement).href;
+            created.download = (el as HTMLAnchorElement).download;
+          },
+        });
+      }
+      return el;
+    });
+  });
+
+  const mount = (records: ReturnType<typeof rec>[]) => {
+    mockStream.mockReturnValue(streamState({ records }));
+    return render(<LogcatView udid="DEV-1" platform="android" />);
+  };
+
+  const recordBtn = () => screen.getByRole('button', { name: /record|stop ·/i });
+
+  it('starts and stops, and only downloads on stop', () => {
+    mount([rec({ message: 'before' })]);
+    expect(created.clicked).toBe(false);
+
+    fireEvent.click(recordBtn());
+    expect(recordBtn().getAttribute('aria-pressed')).toBe('true');
+    expect(created.clicked, 'starting must not download').toBe(false);
+
+    fireEvent.click(recordBtn());
+    expect(recordBtn().getAttribute('aria-pressed')).toBe('false');
+    expect(created.clicked).toBe(true);
+    expect(created.download).toMatch(/^logcat-DEV-1-.*\.txt$/);
+  });
+
+  // The window is what you asked for. Buffered history from before you pressed
+  // RECORD is not part of it, or the file silently answers a different question.
+  it('captures only records that arrive after start, not the existing buffer', () => {
+    const before = [rec({ message: 'OLD-LINE' })];
+    const { rerender } = mount(before);
+    fireEvent.click(recordBtn());
+
+    mockStream.mockReturnValue(streamState({ records: [...before, rec({ message: 'NEW-LINE' })] }));
+    rerender(<LogcatView udid="DEV-1" platform="android" />);
+    fireEvent.click(recordBtn());
+
+    expect(captured).toContain('NEW-LINE');
+    expect(captured).not.toContain('OLD-LINE');
+  });
+
+  // A capture can be filtered afterwards; it cannot be unfiltered.
+  it('captures unfiltered, even while a filter hides rows on screen', () => {
+    const base = [rec({ tag: 'Keep' })];
+    const { rerender } = mount(base);
+    fireEvent.change(screen.getByLabelText('Filter logs'), { target: { value: 'tag:Keep' } });
+    fireEvent.click(recordBtn());
+
+    mockStream.mockReturnValue(
+      streamState({ records: [...base, rec({ tag: 'Hidden', message: 'HIDDEN-BY-FILTER' })] }),
+    );
+    rerender(<LogcatView udid="DEV-1" platform="android" />);
+
+    // Filtered out of the view...
+    expect(screen.queryByText('HIDDEN-BY-FILTER')).toBeNull();
+    fireEvent.click(recordBtn());
+    // ...but present in the capture.
+    expect(captured).toContain('HIDDEN-BY-FILTER');
+  });
+
+  it('shows a live line count while recording', () => {
+    const base = [rec()];
+    const { rerender } = mount(base);
+    fireEvent.click(recordBtn());
+    mockStream.mockReturnValue(
+      streamState({ records: [...base, rec({ message: 'a' }), rec({ message: 'b' })] }),
+    );
+    rerender(<LogcatView udid="DEV-1" platform="android" />);
+    // Asserted on the visible label, not the accessible name: the button's
+    // accname comes from its `title` ("Stop recording and download the
+    // capture"), which deliberately does not carry the count.
+    expect(recordBtn().textContent).toContain('STOP · 2');
+  });
+
+  it('writes a header naming the window', () => {
+    const base = [rec()];
+    const { rerender } = mount(base);
+    fireEvent.click(recordBtn());
+    mockStream.mockReturnValue(streamState({ records: [...base, rec({ message: 'x' })] }));
+    rerender(<LogcatView udid="DEV-1" platform="android" />);
+    fireEvent.click(recordBtn());
+
+    expect(captured).toContain('# Xenon logcat recording');
+    expect(captured).toContain('# device:   DEV-1');
+    expect(captured).toContain('# lines:    1');
+  });
+
+  it('a second recording does not carry over the first', () => {
+    // The fixtures are built ONCE and reused. `rec()` assigns a fresh `seq`
+    // per call, so re-creating a "same" record between the two recordings
+    // would hand the second capture a record it has genuinely never seen —
+    // the test would fail on its own fixture rather than on the behaviour.
+    const base = rec();
+    const first = rec({ message: 'FIRST' });
+    const second = rec({ message: 'SECOND' });
+    const { rerender } = mount([base]);
+
+    fireEvent.click(recordBtn());
+    mockStream.mockReturnValue(streamState({ records: [base, first] }));
+    rerender(<LogcatView udid="DEV-1" platform="android" />);
+    fireEvent.click(recordBtn());
+    expect(captured).toContain('FIRST');
+
+    fireEvent.click(recordBtn());
+    mockStream.mockReturnValue(streamState({ records: [base, first, second] }));
+    rerender(<LogcatView udid="DEV-1" platform="android" />);
+    fireEvent.click(recordBtn());
+
+    expect(captured).toContain('SECOND');
+    expect(captured).not.toContain('FIRST');
+  });
+});

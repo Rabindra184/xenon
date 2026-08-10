@@ -5,8 +5,10 @@ import {
   ArrowDown,
   ArrowUp,
   CaseSensitive,
+  Circle,
   Download,
   RotateCw,
+  Square,
   Trash2,
   Wifi,
   WrapText,
@@ -16,6 +18,14 @@ import { Select } from '../../ui/select';
 import { useLogcatStream, type BufferedLogcatRecord } from './useLogcatStream';
 import { matches, parseQuery, setLevelTerm, LEVEL_ORDER } from './logcatFilter';
 import { tagColor } from './tagColor';
+import {
+  appendToRecording,
+  formatLine,
+  recordingFilename,
+  serializeRecording,
+  startRecording,
+  type RecordingState,
+} from './logcatRecording';
 // This view renders four classes it does not own: `.type-input-field`,
 // `.btn-sm` and `.btn-premium` (device-control.css) and `.btn-secondary`
 // (ui/button.css). It used to get them only because its parent happened to
@@ -57,6 +67,26 @@ const TIME_FORMAT = new Intl.DateTimeFormat([], {
   second: '2-digit',
   hour12: false,
 });
+
+/**
+ * Save text as a file. Both browser workarounds below were established by the
+ * original EXPORT and are shared rather than duplicated for RECORD.
+ */
+function download(text: string, filename: string): void {
+  const url = URL.createObjectURL(new Blob([text], { type: 'text/plain' }));
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  // Firefox ignores a click on an anchor that is not in the document, so the
+  // anchor has to be attached for the duration of the click.
+  a.style.display = 'none';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  // Revoking in the same task can cancel a download that has not started
+  // reading the blob yet (Firefox, Safari). Defer to the next task.
+  setTimeout(() => URL.revokeObjectURL(url), 0);
+}
 
 /**
  * One log row, memoized on the record. `visible` is a fresh array on every
@@ -127,6 +157,19 @@ export default function LogcatView({ udid, platform }: Props) {
   const endRef = useRef<HTMLDivElement>(null);
   const rowsRef = useRef<HTMLDivElement>(null);
 
+  // Recording. The state object is mutated in place by appendToRecording (it
+  // grows to hundreds of thousands of lines; copying it per flush would be the
+  // most expensive thing on the page), so it lives in a ref. `recLines` exists
+  // purely to drive the counter in the toolbar — rendering off the ref would
+  // never update.
+  const recordingRef = useRef<RecordingState | null>(null);
+  const [recording, setRecording] = useState(false);
+  const [recLines, setRecLines] = useState(0);
+  // Highest `seq` already captured. Appending `records` wholesale on every
+  // change would re-capture the entire buffer each flush; seq is monotonic per
+  // stream, so it is the cheap and exact way to take only what is new.
+  const lastSeqRef = useRef(-1);
+
   const parsed = useMemo(() => parseQuery(query, { caseSensitive }), [query, caseSensitive]);
   const visible = useMemo(() => records.filter((r) => matches(r, parsed)), [records, parsed]);
 
@@ -174,23 +217,53 @@ export default function LogcatView({ udid, platform }: Props) {
     : '';
 
   const onExport = useCallback(() => {
-    const text = visible
-      .map((r) => `${new Date(r.ts).toISOString()} ${r.pid} ${r.level}/${r.tag}: ${r.message}`)
-      .join('\n');
-    const url = URL.createObjectURL(new Blob([text], { type: 'text/plain' }));
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `logcat-${udid}-${Date.now()}.txt`;
-    // Firefox ignores a click on an anchor that is not in the document, so
-    // the anchor has to be attached for the duration of the click.
-    a.style.display = 'none';
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    // Revoking in the same task can cancel a download that has not started
-    // reading the blob yet (Firefox, Safari). Defer to the next task.
-    setTimeout(() => URL.revokeObjectURL(url), 0);
+    // The filtered view on purpose — EXPORT saves what you are looking at.
+    // RECORD is the one that captures unfiltered.
+    download(visible.map(formatLine).join('\n'), `logcat-${udid}-${Date.now()}.txt`);
   }, [visible, udid]);
+
+  // Capture on arrival, from `records` (unfiltered) rather than `visible`: a
+  // capture can always be filtered afterwards, never unfiltered.
+  useEffect(() => {
+    const state = recordingRef.current;
+    if (!state || !records.length) return;
+
+    const fresh = records.filter((r) => r.seq > lastSeqRef.current);
+    if (!fresh.length) return;
+
+    // A gap means records were evicted from the 5000-record display buffer
+    // between two flushes — only possible if a burst outran the flush, but if
+    // it happens the capture is incomplete and must say so rather than look
+    // whole. Same rule as the cap.
+    const expectedFirst = lastSeqRef.current + 1;
+    if (lastSeqRef.current >= 0 && fresh[0].seq > expectedFirst) {
+      state.dropped += fresh[0].seq - expectedFirst;
+    }
+
+    appendToRecording(state, fresh);
+    lastSeqRef.current = fresh[fresh.length - 1].seq;
+    setRecLines(state.lines.length);
+  }, [records]);
+
+  const toggleRecording = useCallback(() => {
+    const state = recordingRef.current;
+    if (!state) {
+      // Start from the newest record already in the buffer, not from -1: the
+      // buffer holds history from before you pressed RECORD, and a recording
+      // is the window you asked for, not everything that happened to be open.
+      lastSeqRef.current = records.length ? records[records.length - 1].seq : -1;
+      recordingRef.current = startRecording(Date.now());
+      setRecLines(0);
+      setRecording(true);
+      return;
+    }
+
+    const text = serializeRecording(state, Date.now(), udid);
+    recordingRef.current = null;
+    setRecording(false);
+    setRecLines(0);
+    download(text, recordingFilename(udid, state.startedAt));
+  }, [records, udid]);
 
   useEffect(() => {
     if (following) endRef.current?.scrollIntoView({ block: 'end' });
@@ -339,6 +412,23 @@ export default function LogcatView({ udid, platform }: Props) {
             onClick={() => setFollowing(!following)}
           >
             <Wifi size={14} /> {following ? 'FREEZE' : 'FOLLOW'}
+          </button>
+          {/* Distinct from EXPORT: EXPORT saves the filtered view you are
+              looking at right now; RECORD captures the raw stream between an
+              explicit start and stop, independent of the filter and of the
+              5000-record display cap. */}
+          <button
+            className={`btn-secondary btn-sm ${recording ? 'is-recording' : ''}`}
+            onClick={toggleRecording}
+            aria-pressed={recording}
+            title={
+              recording
+                ? 'Stop recording and download the capture'
+                : 'Record the raw log stream to a file'
+            }
+          >
+            {recording ? <Square size={12} /> : <Circle size={12} />}{' '}
+            {recording ? `STOP · ${recLines.toLocaleString()}` : 'RECORD'}
           </button>
           <button className="btn-premium btn-sm" disabled={visible.length === 0} onClick={onExport}>
             <Download size={14} /> EXPORT

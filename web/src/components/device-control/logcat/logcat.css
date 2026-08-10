@@ -296,6 +296,19 @@
   pointer-events: none;
 }
 
+/* Recording is a state the page is IN, not a button that was clicked, so it
+   stays visibly on for as long as it lasts. Red rather than the app's green:
+   this is the one control that keeps consuming memory until you stop it. */
+.btn-secondary.is-recording {
+  color: #f87171;
+  border-color: color-mix(in srgb, #f87171 45%, transparent);
+  background: color-mix(in srgb, #f87171 12%, transparent);
+}
+
+.btn-secondary.is-recording svg {
+  fill: currentColor;
+}
+
 /* Square, so an icon-only control does not read as a truncated text button. */
 .logcat-icon-btn {
   padding: 4px 6px;
