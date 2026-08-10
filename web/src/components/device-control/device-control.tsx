@@ -833,9 +833,14 @@ export default function DeviceControl({ device, onClose }: DeviceControlProps) {
                     </h4>
                     <div className="app-mgmt-content">
                       <div className="install-section">
-                        <p className="compact-label">Install Package (.apk, .ipa, .app)</p>
+                        <p className="compact-label">Install Package</p>
                         <div className="upload-box-row">
-                          <label className="file-upload-launcher">
+                          <label
+                            className="file-upload-launcher"
+                            title={
+                              uploadFile ? uploadFile.name : 'Select an .apk, .ipa or .app file'
+                            }
+                          >
                             <Upload size={14} />
                             <span>{uploadFile ? uploadFile.name : 'Select File'}</span>
                             <input
@@ -857,6 +862,7 @@ export default function DeviceControl({ device, onClose }: DeviceControlProps) {
                             )}
                           </button>
                         </div>
+                        <p className="hint-text">Accepts .apk, .ipa or .app</p>
                       </div>
 
                       <div className="divider-v" />
@@ -911,17 +917,11 @@ export default function DeviceControl({ device, onClose }: DeviceControlProps) {
                     <h4 className="action-card-title">
                       <Clipboard size={18} color="var(--green)" /> Clipboard
                     </h4>
-                    <div style={{ display: 'flex', gap: '12px', alignItems: 'flex-start' }}>
-                      <button
-                        className="btn-premium btn-sm"
-                        style={{ width: '140px', flexShrink: 0 }}
-                        onClick={fetchClipboard}
-                      >
+                    <div className="clipboard-row">
+                      <button className="btn-premium btn-sm" onClick={fetchClipboard}>
                         FETCH VALUE
                       </button>
-                      <div className="clipboard-display compact" style={{ marginTop: 0, flex: 1 }}>
-                        {clipboardContent}
-                      </div>
+                      <div className="clipboard-display compact">{clipboardContent}</div>
                     </div>
                   </div>
 
@@ -949,9 +949,7 @@ export default function DeviceControl({ device, onClose }: DeviceControlProps) {
                         </button>
                         <div />
                       </div>
-                      <p className="compact-label" style={{ opacity: 0.5 }}>
-                        Quick swipe in a direction
-                      </p>
+                      <p className="compact-label dpad-caption">Quick swipe in a direction</p>
                     </div>
                   </div>
                 </div>
@@ -959,21 +957,21 @@ export default function DeviceControl({ device, onClose }: DeviceControlProps) {
 
               {activeTab === 'screenshot' && (
                 <div className="action-card screenshot-card">
-                  <header className="action-card-header">
-                    <div className="title-group">
-                      <h4 className="action-card-title">
-                        <Camera size={20} color="var(--green)" /> Captured Evidence
-                      </h4>
-                      <p className="hint-text">Relay screenshots from device to host.</p>
-                    </div>
-                    {screenshots.length > 0 && (
+                  {/* No card title here: the tab bar already says SCREENSHOT, so a
+                      "Captured Evidence" heading plus a hint restated the same thing
+                      twice. The Actions tab keeps its titles because they distinguish
+                      four cards from each other; this tab has one. */}
+                  {screenshots.length > 0 && (
+                    <header className="action-card-header">
                       <button className="btn-text-only" onClick={clearAllScreenshots}>
                         CLEAR ALL
                       </button>
-                    )}
-                  </header>
+                    </header>
+                  )}
 
-                  <div className="screenshot-workspace">
+                  <div
+                    className={`screenshot-workspace ${screenshots.length === 0 ? 'is-empty' : ''}`}
+                  >
                     {/* Gallery Sidebar */}
                     <div className="screenshot-gallery-sidebar">
                       <button
@@ -995,7 +993,7 @@ export default function DeviceControl({ device, onClose }: DeviceControlProps) {
                             <Camera size={20} className="empty-gallery-icon" />
                             <p className="empty-gallery-title">No captures yet</p>
                             <p className="empty-gallery-hint">
-                              Click <strong>New Capture</strong> above to grab a screenshot.
+                              Grab a screenshot of the device to begin analysis.
                             </p>
                           </div>
                         )}
@@ -1069,12 +1067,7 @@ export default function DeviceControl({ device, onClose }: DeviceControlProps) {
                             </div>
                           </footer>
                         </div>
-                      ) : (
-                        <div className="preview-empty-placeholder">
-                          <Camera size={48} style={{ opacity: 0.1, marginBottom: 16 }} />
-                          <p>Capture a screenshot to begin analysis</p>
-                        </div>
-                      )}
+                      ) : null}
                     </div>
                   </div>
                 </div>
