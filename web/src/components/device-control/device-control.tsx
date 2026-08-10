@@ -57,7 +57,15 @@ export default function DeviceControl({ device, onClose }: DeviceControlProps) {
   const { tab } = useParams();
   const canvasRef = useRef<HTMLDivElement>(null);
   const [canvasDimensions, setCanvasDimensions] = useState({ width: 0, height: 0 });
+  // Reported by OmniInspector. In inspect mode a click on the canvas selects an
+  // element, so the host must NOT also send it to the device as a tap.
+  const [omniMode, setOmniMode] = useState<'inspect' | 'interact'>('inspect');
+  // Forces a re-render once the canvas element exists, so the overlay portal
+  // has a target on the first paint of the Omni tab rather than the second.
+  const [canvasEl, setCanvasEl] = useState<HTMLDivElement | null>(null);
   const [activeTab, setActiveTab] = useState<TabType>((tab as TabType) || 'actions');
+  // Only the Omni tab inspects; every other tab keeps the device interactive.
+  const inspecting = activeTab === 'omni' && omniMode === 'inspect';
   const [textInput, setTextInput] = useState('');
   const [clipboardContent, setClipboardContent] = useState('');
   const [uninstallBundleId, setUninstallBundleId] = useState('');
@@ -617,9 +625,16 @@ export default function DeviceControl({ device, onClose }: DeviceControlProps) {
         <div className="device-preview-column">
           <div className="device-screen-wrapper">
             <div
-              ref={canvasRef}
+              // Callback ref, not just canvasRef: a ref object's `.current`
+              // assignment does not re-render, so the Omni overlay portal would
+              // have had a null target on the paint where the tab opens and
+              // would only appear after some unrelated state change.
+              ref={(el) => {
+                (canvasRef as React.MutableRefObject<HTMLDivElement | null>).current = el;
+                setCanvasEl(el);
+              }}
               className={`device-stream-canvas ${!isPortrait ? 'landscape' : ''} ${isCanvasFocused ? 'focused' : ''
-                }`}
+                } ${inspecting ? 'is-inspecting' : ''}`}
               style={{
                 width: canvasDimensions.width,
                 height: canvasDimensions.height,
@@ -628,8 +643,8 @@ export default function DeviceControl({ device, onClose }: DeviceControlProps) {
               tabIndex={0}
               onFocus={() => setIsCanvasFocused(true)}
               onBlur={() => setIsCanvasFocused(false)}
-              onMouseDown={onMouseDownHandler}
-              onMouseUp={onMouseUpHandler}
+              onMouseDown={inspecting ? undefined : onMouseDownHandler}
+              onMouseUp={inspecting ? undefined : onMouseUpHandler}
             >
               {streamFailed ? (
                 <div
@@ -845,6 +860,8 @@ export default function DeviceControl({ device, onClose }: DeviceControlProps) {
                     udid={currentDevice.udid}
                     streamUrl={getStreamUrl()}
                     embedded
+                    overlayTarget={canvasEl}
+                    onModeChange={setOmniMode}
                   />
                 </div>
               )}

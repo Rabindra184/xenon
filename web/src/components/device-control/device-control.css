@@ -1349,3 +1349,10 @@
     min-width: 0;
   }
 }
+
+/* Inspect mode: the canvas selects elements rather than tapping the device, so
+   the cursor must say so. The overlay's hit areas sit on top of this and set
+   their own pointer cursor. */
+.device-stream-canvas.is-inspecting {
+  cursor: crosshair;
+}
