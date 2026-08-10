@@ -8,6 +8,7 @@ import log from '../../logger';
 import { InternalHttpClient } from '../../InternalHttpClient';
 import { blockDevice, unblockDevice } from '../../data-service/device-service';
 import { UniversalMjpegProxy, shouldRecreateMjpegProxy } from '../../helpers/UniversalMjpegProxy';
+import { DisplayStateService } from '../../services/DisplayStateService';
 import IOSStreamService from '../../device-managers/ios/IOSStreamService';
 import AndroidStreamService from '../../device-managers/android/AndroidStreamService';
 import AndroidH264StreamService from '../../device-managers/android/AndroidH264StreamService';
@@ -385,6 +386,33 @@ router.post('/:udid/unlock', async (req: Request, res: Response) => {
     }
   }
   res.status(400).send('Manager not found or unlock not supported');
+});
+
+/**
+ * Is the device's panel lit?
+ *
+ * A sleeping device streams a perfectly black frame, which looks exactly like
+ * a broken stream or a black-themed app. The preview polls this so it can say
+ * which it is and offer the wake that already exists at POST /unlock.
+ *
+ * An open read on purpose: on/off carries none of the screen's contents, and
+ * the mosaic wants it for devices held by other people. Platforms with no
+ * reader — iOS today — answer `unknown`, and the UI shows nothing for that
+ * rather than guessing from pixels, which would call a black-themed app a
+ * sleeping device.
+ */
+router.get('/:udid/display', async (req: Request, res: Response) => {
+  const { udid } = req.params;
+  const device = await getDeviceInfo(udid);
+  if (!device) return res.status(404).send({ status: 'error', message: 'Device not found' });
+
+  const manager = await getDeviceManagerForPlatform(device.platform);
+  if (!manager?.getDisplayState) return res.status(200).send({ state: 'unknown' });
+
+  const state = await Container.get(DisplayStateService).get(udid, () =>
+    manager.getDisplayState!(udid),
+  );
+  return res.status(200).send({ state });
 });
 
 router.post('/:udid/install', async (req: Request, res: Response) => {

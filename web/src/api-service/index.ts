@@ -78,6 +78,11 @@ export default class XenonApiService {
     );
   }
 
+  /** Whether the device's panel is lit — 'on' | 'off' | 'doze' | 'unknown'. */
+  public static getDisplayState(udid: string) {
+    return apiClient.makeGETRequest(`/control/${udid}/display`);
+  }
+
   /** Live Appium session id for a device, plus the server's -pa base path. */
   public static getAppiumSession(udid: string) {
     return apiClient.makeGETRequest(`/control/${udid}/appium-session`);

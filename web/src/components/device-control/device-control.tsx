@@ -30,6 +30,7 @@ import {
   Volume1,
   Volume2,
   AlertTriangle,
+  MoonStar,
 } from 'lucide-react';
 import { v4 as uuidv4 } from 'uuid';
 import { formatDateTime } from '../../utils/time';
@@ -40,6 +41,7 @@ import { Terminal } from '../terminal/terminal';
 import OmniInspector from '../omni-inspector/OmniInspector';
 import { BugReportButton } from '../bug-report/BugReportButton';
 import { ANDROID_KEYCODE, IOS_BUTTON } from './keycodes';
+import { useDisplayState } from './useDisplayState';
 import LogcatView from './logcat/LogcatView';
 
 interface DeviceControlProps {
@@ -86,6 +88,10 @@ export default function DeviceControl({ device, onClose }: DeviceControlProps) {
   const [streamFailed, setStreamFailed] = useState(false);
   const MAX_STREAM_RETRIES = 10; // ~20s at the 2s retry cadence
   const [udidCopied, setUdidCopied] = useState(false);
+  const [waking, setWaking] = useState(false);
+  // Only worth asking while there is a stream to explain. A failed stream has
+  // its own message and does not need a second one underneath it.
+  const displayState = useDisplayState(currentDevice?.udid, !streamFailed);
 
   const copyUdid = () => {
     navigator.clipboard.writeText(currentDevice.udid).catch(() => { });
@@ -411,7 +417,17 @@ export default function DeviceControl({ device, onClose }: DeviceControlProps) {
       currentDevice.platform === 'android' ? ANDROID_KEYCODE.VOLUME_DOWN : IOS_BUTTON.VOLUME_DOWN,
     );
   const pressLock = () => XenonApiService.lock(currentDevice.udid);
-  const pressUnlock = () => XenonApiService.unlock(currentDevice.udid);
+  const pressUnlock = async () => {
+    setWaking(true);
+    try {
+      await XenonApiService.unlock(currentDevice.udid);
+    } finally {
+      // The display poll is on a 5s interval and the server caches for 2s, so
+      // hold the button briefly rather than letting it snap back to "Wake
+      // device" over a screen that is already lit.
+      setTimeout(() => setWaking(false), 2500);
+    }
+  };
 
   const sendText = async () => {
     if (textInput.trim()) {
@@ -698,6 +714,27 @@ export default function DeviceControl({ device, onClose }: DeviceControlProps) {
                     setTimeout(() => setStreamRetryCount((prev) => prev + 1), 2000);
                   }}
                 />
+              )}
+              {/* A sleeping device streams a perfectly black frame, which is
+                  indistinguishable from a broken stream or a black-themed app.
+                  Only shown for a confirmed 'off' read from the device — never
+                  for 'doze' (always-on display is lit) or 'unknown' (iOS, or
+                  an unreadable device), because telling someone their screen
+                  is off while they are looking at it is the worse error. */}
+              {displayState === 'off' && !streamFailed && (
+                <div className="device-screen-off" role="status">
+                  <MoonStar size={32} />
+                  <p>Display is off</p>
+                  <span>The stream is fine — the device is asleep.</span>
+                  <button
+                    type="button"
+                    className="btn-premium btn-sm"
+                    onClick={pressUnlock}
+                    disabled={waking}
+                  >
+                    {waking ? 'Waking…' : 'Wake device'}
+                  </button>
+                </div>
               )}
             </div>
           </div>
