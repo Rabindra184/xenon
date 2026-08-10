@@ -17,7 +17,11 @@
   align-items: center;
   flex-wrap: wrap;
   row-gap: 6px;
-  background: rgba(15, 23, 42, 0.6);
+  /* Surface token, not a hardcoded slate: rgba(15,23,42,.6) is a blue-black
+     that reads as foreign against the app's green-tinted surfaces. This rule
+     moved here from device-control.css during the WebSocket cutover, which
+     carried the pre-tokenised version across and silently undid the fix. */
+  background: color-mix(in srgb, var(--surface-2) 60%, transparent);
   backdrop-filter: blur(8px);
   padding: 8px 16px;
   border-radius: var(--radius-md) var(--radius-md) 0 0;
