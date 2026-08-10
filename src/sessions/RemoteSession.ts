@@ -36,6 +36,18 @@ export class RemoteSession extends XenonSession {
     }).then((response) => (response.data ? response.data.value : ''));
   }
 
+  async getPageSource(): Promise<string> {
+    // Generous timeout on purpose: serialising a deep hierarchy on a slow
+    // real device is seconds, not milliseconds, and a truncated read here
+    // reads to the caller as "this screen has no elements".
+    const response = await axios({
+      method: 'get',
+      url: `${this.baseUrl}/session/${this.sessionId}/source`,
+      timeout: 60000,
+    });
+    return response?.data?.value || '';
+  }
+
   async stopVideoRecording(_driver?: any) {
     log.info(
       `[RemoteSession] stopVideoRecording called for session ${this.sessionId}. isVideoAvailable: ${this.isVideoAvailable}`,
