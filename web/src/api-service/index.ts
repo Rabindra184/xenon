@@ -78,6 +78,36 @@ export default class XenonApiService {
     );
   }
 
+  /** Live Appium session id for a device, plus the server's -pa base path. */
+  public static getAppiumSession(udid: string) {
+    return apiClient.makeGETRequest(`/control/${udid}/appium-session`);
+  }
+
+  /**
+   * Resolve a locator through the live Appium driver, optionally acting on it.
+   *
+   * Goes straight to the Appium session route rather than through apiClient:
+   * that prefixes /xenon/api, which is correct for Xenon's REST API and wrong
+   * for a session-scoped plugin command. (XenonApiService.testAiLocator has
+   * that bug today; it is unused, which is why nobody hit it.)
+   */
+  public static async verifyLocator(
+    basePath: string,
+    sessionId: string,
+    body: { strategy: string; selector: string; action?: string; text?: string },
+  ) {
+    const base = basePath.startsWith('/') ? basePath : `/${basePath}`;
+    const res = await fetch(`${base}/session/${sessionId}/xenon/verify-locator`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    const json = await res.json().catch(() => ({}));
+    // Appium wraps plugin command results in { value }.
+    return (json?.value ?? json) as Record<string, any>;
+  }
+
   public static testAiLocatorControl(udid: string, strategy: string, selector: string) {
     return apiClient.makePOSTRequest(`/control/${udid}/test-locator`, {}, { strategy, selector });
   }

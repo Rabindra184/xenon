@@ -45,6 +45,38 @@ export class LocalSession extends RemoteSession {
     this.appiumBaseUrl = `http://${safeAddress}:${port}${basePath || ''}`;
   }
 
+  /**
+   * A local session's driver is in this process, so ask it directly instead of
+   * looping back over HTTP. The loopback works, but it re-enters the Appium
+   * route chain and therefore the plugin, posting a phantom `getPageSource`
+   * into the session's own command log for a read the user never issued.
+   *
+   * Falls back to the inherited HTTP call, which is what a driver that does
+   * not expose the method in-process (or one that throws) needs.
+   */
+  async getPageSource(): Promise<string> {
+    const sessionDriver =
+      this.driver?.sessions?.[this.sessionId]?.proxydriver ||
+      this.driver?.sessions?.[this.sessionId];
+    const targetDriver = sessionDriver || this.driver;
+
+    if (targetDriver && typeof targetDriver.getPageSource === 'function') {
+      try {
+        const source = await targetDriver.getPageSource();
+        if (source) return source;
+        log.warn(
+          `[LocalSession] In-process getPageSource returned nothing for ${this.sessionId}; retrying over HTTP.`,
+        );
+      } catch (err: any) {
+        log.warn(
+          `[LocalSession] In-process getPageSource failed for ${this.sessionId}: ${err.message}. Retrying over HTTP.`,
+        );
+      }
+    }
+
+    return super.getPageSource();
+  }
+
   async getScreenShot(): Promise<string> {
     const device = this.getDevice();
     const sessionId = this.sessionId;

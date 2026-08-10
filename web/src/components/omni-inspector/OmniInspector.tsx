@@ -59,6 +59,13 @@ export interface InspectorSnapshot {
   timestamp: string;
   screenshot: string;
   hierarchy: InspectorNode;
+  /**
+   * Which tree this is. `appium-session` means it came from the driver, so it
+   * is the same tree a locator will be resolved against; `device` means a
+   * `uiautomator dump` / WDA read, which can differ from what Appium sees.
+   */
+  hierarchySource?: 'appium-session' | 'device';
+  sessionId?: string | null;
   metadata: { screenWidth: number; screenHeight: number };
 }
 
@@ -563,6 +570,18 @@ const OmniInspector: React.FC<OmniInspectorProps> = ({
   // the selected node changes so stale match badges don't follow you across
   // elements.
   const [locatorTests, setLocatorTests] = useState<Record<string, MatchResult>>({});
+  /**
+   * Live-driver verification, keyed by strategy. Distinct from `locatorTests`
+   * above, which matches against the captured XML: that answers "does this
+   * select something in that tree", this answers "will Appium find it".
+   */
+  const [verifyResults, setVerifyResults] = useState<Record<string, any>>({});
+  const [verifying, setVerifying] = useState<string | null>(null);
+  // null = no Appium session driving this device, so there is no driver to ask.
+  const [appiumSession, setAppiumSession] = useState<{
+    sessionId: string | null;
+    basePath: string;
+  } | null>(null);
   const [activeLocatorTest, setActiveLocatorTest] = useState<string | null>(null);
 
   const containerRef = useRef<HTMLDivElement>(null);
@@ -608,6 +627,51 @@ const OmniInspector: React.FC<OmniInspectorProps> = ({
     if (udid) loadSnapshot();
   }, [udid]);
 
+  // Which session (if any) can answer a verification, and where to reach it.
+  useEffect(() => {
+    if (!udid) return;
+    let cancelled = false;
+    XenonApiService.getAppiumSession(udid)
+      .then((r: any) => {
+        if (!cancelled) {
+          setAppiumSession({ sessionId: r?.sessionId ?? null, basePath: r?.basePath ?? '' });
+        }
+      })
+      .catch(() => {
+        // Treated as "no session": verification is simply unavailable, which
+        // the UI states. Failing loudly here would be noise on a panel whose
+        // main job (the tree) is unaffected.
+        if (!cancelled) setAppiumSession({ sessionId: null, basePath: '' });
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [udid]);
+
+  const runVerify = useCallback(
+    async (strategy: string, value: string, action: 'none' | 'tap') => {
+      if (!appiumSession?.sessionId) return;
+      setVerifying(strategy);
+      try {
+        const result = await XenonApiService.verifyLocator(
+          appiumSession.basePath,
+          appiumSession.sessionId,
+          { strategy, selector: value, action },
+        );
+        setVerifyResults((prev) => ({ ...prev, [strategy]: result }));
+      } catch (e: any) {
+        setVerifyResults((prev) => ({
+          ...prev,
+          [strategy]: { found: false, count: 0, error: e?.message || String(e) },
+        }));
+      } finally {
+        setVerifying(null);
+      }
+    },
+    [appiumSession],
+  );
+
+
   // Auto-select best locator when node changes
   useEffect(() => {
     if (selectedNode?.suggestedLocators?.length) {
@@ -620,6 +684,7 @@ const OmniInspector: React.FC<OmniInspectorProps> = ({
       setSelectedLocatorForCode(null);
     }
     setLocatorTests({});
+    setVerifyResults({});
     setActiveLocatorTest(null);
   }, [selectedNode]);
 
@@ -639,17 +704,30 @@ const OmniInspector: React.FC<OmniInspectorProps> = ({
     setError(null);
     try {
       const data = await XenonApiService.getInspectorSnapshot(udid);
+      // The api client resolves on any status, so a 500 arrives here as a
+      // body with `error` and no hierarchy. Without this the panel just went
+      // quietly blank — which is how the "session blocks uiautomator dump"
+      // conflict presented for as long as it did.
+      if (!data?.hierarchy) {
+        setSnapshot(null);
+        setError(data?.error || 'Failed to capture snapshot');
+        return;
+      }
       setSnapshot(data);
       const expanded = new Set<string>(['/']);
+      // Android trees are rooted at the <hierarchy> document element, one
+      // level above the app's own root, so this opens the same amount of the
+      // tree there as it does on iOS.
       const expandLevel = (node: InspectorNode, level: number) => {
-        if (level < 2) {
+        if (level < 3) {
           expanded.add(node.xpath);
           node.children?.forEach((c) => expandLevel(c, level + 1));
         }
       };
-      if (data.hierarchy) expandLevel(data.hierarchy, 0);
+      expandLevel(data.hierarchy, 0);
       setExpandedNodes(expanded);
     } catch (err: any) {
+      setSnapshot(null);
       setError(err.message || 'Failed to capture snapshot');
     } finally {
       setLoading(false);
@@ -1099,6 +1177,24 @@ const OmniInspector: React.FC<OmniInspectorProps> = ({
               {totalElements > 0 && (
                 <span className="omni-count-badge">{totalElements} elements</span>
               )}
+              {/* Which tree this is decides how much the locator suggestions
+                  are worth: one taken from the driver is the tree Appium will
+                  resolve them against, one taken from the device only
+                  resembles it. */}
+              {snapshot?.hierarchySource && (
+                <span
+                  className={`omni-source-badge ${
+                    snapshot.hierarchySource === 'appium-session' ? 'is-session' : 'is-device'
+                  }`}
+                  title={
+                    snapshot.hierarchySource === 'appium-session'
+                      ? `From Appium session ${snapshot.sessionId} — the same tree the driver resolves locators against`
+                      : 'Read from the device. No Appium session is driving it.'
+                  }
+                >
+                  {snapshot.hierarchySource === 'appium-session' ? 'Appium session' : 'Device'}
+                </span>
+              )}
             </div>
             <div className="omni-tree-actions">
               <button onClick={expandAll} className="omni-action-btn" title="Expand All">
@@ -1144,6 +1240,18 @@ const OmniInspector: React.FC<OmniInspectorProps> = ({
               )}
             </div>
           </div>
+          {/* A snapshot that failed used to leave an empty panel and no reason.
+              The commonest cause is actionable — the device is asleep, or the
+              hierarchy could not be read — so it has to be said out loud. */}
+          {error && !loading && (
+            <div className="omni-tree-error" role="alert">
+              <ShieldAlert size={12} />
+              <span>{error}</span>
+              <button type="button" onClick={loadSnapshot} className="omni-tree-error-retry">
+                Retry
+              </button>
+            </div>
+          )}
           <div className="omni-tree-search">
             <Search size={14} />
             <input
@@ -1380,6 +1488,47 @@ const OmniInspector: React.FC<OmniInspectorProps> = ({
                                 </div>
                                 <code className="omni-locator-value">{loc.value}</code>
                                 <span className="omni-stability-reason">{stability.reason}</span>
+                                {(() => {
+                                  const v = verifyResults[loc.strategy];
+                                  if (!v) return null;
+                                  // Four outcomes, kept distinct because they
+                                  // lead to different fixes: driver error,
+                                  // no match, ambiguous, and found (with or
+                                  // without a failed action).
+                                  if (v.error) {
+                                    return (
+                                      <span className="omni-verify-line is-error">
+                                        <ShieldAlert size={10} /> Appium error: {v.error}
+                                      </span>
+                                    );
+                                  }
+                                  if (!v.found) {
+                                    return (
+                                      <span className="omni-verify-line is-error">
+                                        <ShieldAlert size={10} /> Appium found 0 elements
+                                      </span>
+                                    );
+                                  }
+                                  if (v.count > 1) {
+                                    return (
+                                      <span className="omni-verify-line is-warn">
+                                        <AlertTriangle size={10} /> Ambiguous — Appium found{' '}
+                                        {v.count} elements
+                                        {v.actionError ? ` · ${v.actionError}` : ''}
+                                      </span>
+                                    );
+                                  }
+                                  return (
+                                    <span className="omni-verify-line is-ok">
+                                      <ShieldCheck size={10} /> Appium found 1 element
+                                      {v.elapsedMs != null ? ` in ${v.elapsedMs}ms` : ''}
+                                      {v.actionPerformed && v.actionPerformed !== 'none'
+                                        ? ` · ${v.actionPerformed} ok`
+                                        : ''}
+                                      {v.actionError ? ` · action failed: ${v.actionError}` : ''}
+                                    </span>
+                                  );
+                                })()}
                               </div>
                               <div className="omni-locator-actions">
                                 <button
@@ -1392,6 +1541,48 @@ const OmniInspector: React.FC<OmniInspectorProps> = ({
                                   title="Test this locator against the current snapshot"
                                 >
                                   <Crosshair size={12} />
+                                </button>
+                                {/* Verification through the real driver, as
+                                    opposed to the snapshot match above. Needs a
+                                    session — disabled with the reason rather
+                                    than hidden, so the capability is
+                                    discoverable and its precondition is
+                                    stated. */}
+                                <button
+                                  type="button"
+                                  disabled={!appiumSession?.sessionId || verifying === loc.strategy}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    runVerify(loc.strategy, loc.value, 'none');
+                                  }}
+                                  className="omni-test-btn"
+                                  title={
+                                    appiumSession?.sessionId
+                                      ? 'Verify with Appium — does the driver actually find this?'
+                                      : 'Needs an active Appium session on this device'
+                                  }
+                                >
+                                  {verifying === loc.strategy ? (
+                                    <RotateCw size={12} className="animate-spin" />
+                                  ) : (
+                                    <ShieldCheck size={12} />
+                                  )}
+                                </button>
+                                <button
+                                  type="button"
+                                  disabled={!appiumSession?.sessionId || verifying === loc.strategy}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    runVerify(loc.strategy, loc.value, 'tap');
+                                  }}
+                                  className="omni-test-btn"
+                                  title={
+                                    appiumSession?.sessionId
+                                      ? 'Find with Appium and tap the element it returns'
+                                      : 'Needs an active Appium session on this device'
+                                  }
+                                >
+                                  <Zap size={12} />
                                 </button>
                                 <button
                                   onClick={(e) => {

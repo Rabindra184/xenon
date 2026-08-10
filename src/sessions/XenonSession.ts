@@ -74,6 +74,19 @@ export abstract class XenonSession {
 
   abstract getScreenShot(): Promise<string>;
 
+  /**
+   * The UI hierarchy as the *driver* sees it.
+   *
+   * Deliberately separate from `IDeviceManager.getPageSource`, which asks the
+   * device directly. On Android that means `uiautomator dump`, and Android
+   * permits only one UiAutomator instrumentation at a time — while
+   * io.appium.uiautomator2.server holds it the dump is SIGKILLed, so a device
+   * with a live session cannot be inspected that way at all. Asking the
+   * session is also the only way to see the tree Appium will actually resolve
+   * a locator against.
+   */
+  abstract getPageSource(): Promise<string>;
+
   abstract stopVideoRecording(driver?: any): Promise<string | null>;
 
   abstract startVideoRecording(
