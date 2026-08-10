@@ -1,6 +1,14 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { fireEvent, render, screen } from '@testing-library/react';
 import LogcatView from './LogcatView';
+import { tagColor } from './tagColor';
+
+/** jsdom reports style.color as rgb(); the palette is hex. */
+const toRgb = (hex: string) => {
+  const m = /^#(..)(..)(..)$/.exec(hex);
+  if (!m) return hex;
+  return `rgb(${parseInt(m[1], 16)}, ${parseInt(m[2], 16)}, ${parseInt(m[3], 16)})`;
+};
 
 // jsdom does not implement scrollIntoView; LogcatView's follow-mode effect
 // calls it on every render, so every test needs a stub or the component
@@ -351,5 +359,142 @@ describe('LogcatView', () => {
       delete (URL as unknown as Record<string, unknown>).revokeObjectURL;
       vi.useRealTimers();
     }
+  });
+});
+
+/**
+ * Android Studio parity controls: match-case, clear-filter, find with
+ * prev/next, and the soft-wrap toggle.
+ */
+describe('LogcatView — Android Studio parity controls', () => {
+  beforeEach(() => {
+    nextSeq = 0;
+    vi.clearAllMocks();
+  });
+
+  const mount = (records: ReturnType<typeof rec>[]) => {
+    mockStream.mockReturnValue(streamState({ records }));
+    return render(<LogcatView udid="DEV-1" platform="android" />);
+  };
+
+  it('clears the filter with the × button, and the button only exists when there is something to clear', () => {
+    mount([rec()]);
+    const box = screen.getByLabelText('Filter logs') as HTMLInputElement;
+
+    // Absent while empty: a permanently visible clear button is a lie about
+    // there being state to discard.
+    expect(screen.queryByLabelText('Clear filter')).toBeNull();
+
+    fireEvent.change(box, { target: { value: 'tag:nope' } });
+    expect(screen.queryAllByText(/handleUpdateState/)).toHaveLength(0);
+
+    fireEvent.click(screen.getByLabelText('Clear filter'));
+    expect(box.value).toBe('');
+    expect(screen.queryAllByText(/handleUpdateState/).length).toBeGreaterThan(0);
+  });
+
+  it('match case narrows the filter, and toggling it back off widens it again', () => {
+    mount([rec({ tag: 'WifiService' })]);
+    fireEvent.change(screen.getByLabelText('Filter logs'), { target: { value: 'tag:wifi' } });
+    // Insensitive by default -> matches.
+    expect(screen.queryAllByText('WifiService').length).toBeGreaterThan(0);
+
+    const cc = screen.getByLabelText('Match case');
+    fireEvent.click(cc);
+    expect(cc.getAttribute('aria-pressed')).toBe('true');
+    expect(screen.queryAllByText('WifiService')).toHaveLength(0);
+
+    // Both directions: a one-way toggle would pass a test that only asserts
+    // the narrowing.
+    fireEvent.click(cc);
+    expect(cc.getAttribute('aria-pressed')).toBe('false');
+    expect(screen.queryAllByText('WifiService').length).toBeGreaterThan(0);
+  });
+
+  it('find reports a hit count without hiding non-matching rows', () => {
+    mount([rec({ message: 'alpha' }), rec({ message: 'beta' }), rec({ message: 'alpha again' })]);
+    fireEvent.change(screen.getByLabelText('Find in logs'), { target: { value: 'alpha' } });
+
+    expect(screen.getByText('1/2')).toBeTruthy();
+    // The distinction from the filter: `beta` is still on screen.
+    expect(screen.queryAllByText(/beta/).length).toBeGreaterThan(0);
+  });
+
+  it('next/prev step through hits and wrap around', () => {
+    mount([rec({ message: 'alpha' }), rec({ message: 'beta' }), rec({ message: 'alpha again' })]);
+    fireEvent.change(screen.getByLabelText('Find in logs'), { target: { value: 'alpha' } });
+
+    fireEvent.click(screen.getByLabelText('Next match'));
+    expect(screen.getByText('2/2')).toBeTruthy();
+    // Wraps rather than dead-ending at the last hit.
+    fireEvent.click(screen.getByLabelText('Next match'));
+    expect(screen.getByText('1/2')).toBeTruthy();
+    fireEvent.click(screen.getByLabelText('Previous match'));
+    expect(screen.getByText('2/2')).toBeTruthy();
+  });
+
+  it('disables the step buttons when nothing matches, and reports 0/0', () => {
+    mount([rec({ message: 'alpha' })]);
+    fireEvent.change(screen.getByLabelText('Find in logs'), { target: { value: 'zzz' } });
+
+    expect(screen.getByText('0/0')).toBeTruthy();
+    expect((screen.getByLabelText('Next match') as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByLabelText('Previous match') as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it('Enter steps forward and Shift+Enter steps back', () => {
+    mount([rec({ message: 'alpha' }), rec({ message: 'alpha again' })]);
+    const box = screen.getByLabelText('Find in logs');
+    fireEvent.change(box, { target: { value: 'alpha' } });
+
+    fireEvent.keyDown(box, { key: 'Enter' });
+    expect(screen.getByText('2/2')).toBeTruthy();
+    fireEvent.keyDown(box, { key: 'Enter', shiftKey: true });
+    expect(screen.getByText('1/2')).toBeTruthy();
+  });
+
+  it('stepping to a hit turns follow off, so auto-scroll stops fighting the jump', () => {
+    mount([rec({ message: 'alpha' }), rec({ message: 'alpha again' })]);
+    expect(screen.getByText('FREEZE')).toBeTruthy(); // following
+
+    fireEvent.change(screen.getByLabelText('Find in logs'), { target: { value: 'alpha' } });
+    fireEvent.click(screen.getByLabelText('Next match'));
+
+    expect(screen.getByText('FOLLOW')).toBeTruthy(); // no longer following
+  });
+
+  it('soft wrap is on by default and toggles the row container', () => {
+    const { container } = mount([rec()]);
+    const rows = container.querySelector('.logcat-rows')!;
+    const btn = screen.getByLabelText('Soft wrap');
+
+    expect(btn.getAttribute('aria-pressed')).toBe('true');
+    expect(rows.className).not.toContain('no-wrap');
+
+    fireEvent.click(btn);
+    expect(btn.getAttribute('aria-pressed')).toBe('false');
+    expect(rows.className).toContain('no-wrap');
+  });
+
+  // Asserts the view derives each tag's colour FROM THE TAG, which is the
+  // view's whole responsibility here. It deliberately does not assert that
+  // two given tags differ: with a 12-colour palette collisions are inherent
+  // (`WifiService` and `ActivityManager` genuinely collide), so that would be
+  // asserting a property the design does not offer — Android Studio's palette
+  // collides too. Palette spread is pinned in tagColor.test.ts, where it
+  // belongs.
+  it('colours each tag from the tag itself, not a single shared colour', () => {
+    const tags = ['WifiService', 'QSClockBellTower', 'dalvikvm'];
+    const { container } = mount(tags.map((t) => rec({ tag: t })));
+    const rendered = Array.from(container.querySelectorAll('.logcat-tag')).map(
+      (e) => (e as HTMLElement).style.color,
+    );
+
+    expect(rendered).toHaveLength(3);
+    rendered.forEach((color, i) => {
+      expect(color, tags[i]).toBeTruthy();
+      // toBe on a raw hex would fail: jsdom normalises style.color to rgb().
+      expect(toRgb(tagColor(tags[i]))).toBe(color);
+    });
   });
 });

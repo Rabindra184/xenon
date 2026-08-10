@@ -53,6 +53,22 @@ export interface LogcatQuery {
   tag?: string;
   pkg?: string;
   text?: string;
+  /**
+   * Whether `tag`/`pkg`/`text` above were left in their typed case.
+   *
+   * Carried on the query rather than passed separately to `matches` on
+   * purpose: the two halves must agree. `parseQuery` normalises the needle and
+   * `matches` normalises the haystack, so a query parsed case-insensitively
+   * (needle lowercased) but matched case-sensitively (haystack not) silently
+   * stops matching anything with a capital in it. Keeping the flag on the
+   * value it describes makes that pairing impossible to get wrong.
+   */
+  caseSensitive?: boolean;
+}
+
+export interface ParseOptions {
+  /** Default false — `tag:wifi` finds `WifiService`, as Android Studio does. */
+  caseSensitive?: boolean;
 }
 
 /**
@@ -67,19 +83,25 @@ export interface LogcatQuery {
  * tokens (including a `level:`/`tag:`/`package:` typed with no value) fall
  * through to the bare-word bucket rather than being dropped, so a malformed
  * term degrades to a text search instead of silently vanishing.
+ *
+ * `caseSensitive` applies to the VALUES only — the `tag:`/`package:`/`level:`
+ * keys themselves are always case-insensitive, and `level:` values are always
+ * upper-cased, because a level is an enum rather than text being searched.
  */
-export function parseQuery(raw: string): LogcatQuery {
-  const q: LogcatQuery = {};
+export function parseQuery(raw: string, opts: ParseOptions = {}): LogcatQuery {
+  const cs = opts.caseSensitive === true;
+  const norm = (s: string) => (cs ? s : s.toLowerCase());
+  const q: LogcatQuery = cs ? { caseSensitive: true } : {};
   const words: string[] = [];
   for (const token of raw.trim().split(/\s+/).filter(Boolean)) {
     const [key, ...rest] = token.split(':');
     const value = rest.join(':');
     if (value && key.toLowerCase() === 'level') q.minLevel = value.toUpperCase();
-    else if (value && key.toLowerCase() === 'tag') q.tag = value.toLowerCase();
-    else if (value && key.toLowerCase() === 'package') q.pkg = value.toLowerCase();
+    else if (value && key.toLowerCase() === 'tag') q.tag = norm(value);
+    else if (value && key.toLowerCase() === 'package') q.pkg = norm(value);
     else words.push(token);
   }
-  if (words.length) q.text = words.join(' ').toLowerCase();
+  if (words.length) q.text = norm(words.join(' '));
   return q;
 }
 
@@ -96,9 +118,13 @@ export function matches(r: LogRecordLike, q: LogcatQuery): boolean {
     // anything out, rather than throwing or matching nothing.
     if (want >= 0 && have >= 0 && have < want) return false;
   }
-  if (q.tag && !r.tag.toLowerCase().includes(q.tag)) return false;
-  if (q.pkg && !(r.pkg ?? '').toLowerCase().includes(q.pkg)) return false;
-  if (q.text && !r.message.toLowerCase().includes(q.text)) return false;
+  // Must use the same normalisation parseQuery applied to the needle — see
+  // LogcatQuery.caseSensitive. Reading the flag off the query rather than a
+  // separate argument is what keeps the two halves from drifting apart.
+  const norm = (s: string) => (q.caseSensitive ? s : s.toLowerCase());
+  if (q.tag && !norm(r.tag).includes(q.tag)) return false;
+  if (q.pkg && !norm(r.pkg ?? '').includes(q.pkg)) return false;
+  if (q.text && !norm(r.message).includes(q.text)) return false;
   return true;
 }
 
