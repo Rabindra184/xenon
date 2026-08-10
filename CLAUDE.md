@@ -162,6 +162,81 @@ Live recordings are independent of Appium "session video" — the mosaic page ca
 
 `VideoPipelineService` is hardware-accelerated (`h264_videotoolbox` on Mac, `libx264` elsewhere) and writes fragmented mp4 (`frag_keyframe+empty_moov+default_base_moof`) for instant playback / crash resiliency.
 
+### Logcat Streaming (`src/services/logcat/`, `src/device-managers/android/Logcat*`)
+
+Android only. The Debug Logs tab streams a continuous `adb logcat` over a
+WebSocket. It replaced a 3-second `logcat -d -t 500` poll that appended without
+dedup, so the 1000-line buffer held roughly the same 500 lines twice.
+
+Pipeline: one `adb logcat -v threadtime -T 2000` child per device →
+`parseThreadtimeLine` (pure) → `PackageResolver` fills `pkg` at emit time →
+`LogcatMultiplexer` fans out → authenticated WS `/xenon/api/control/:udid/logcat?ticket=`
+→ `useLogcatStream` → `LogcatView`. Modelled on the H.264 stack so it reuses
+those lifecycle lessons; `attachLogcatWs` mounts beside `attachH264Ws`.
+
+Things that are load-bearing and were each a real bug first:
+
+- **`-T` on the spawn.** Without it logcat replays the device's whole ring
+  buffer before reaching live output — measured 94-minute-stale records at
+  ~84/sec, overrunning both buffers with history under a green LIVE pill.
+  Bound to `REPLAY_BUFFER_SIZE` so a first viewer sees the same window a late
+  joiner gets from the multiplexer.
+- **Dropped records are visible.** When a client can't keep up the mux emits a
+  synthetic `W/xenon  "N lines dropped (slow client)"` in its place, coalescing
+  a run of drops into one record. The drop counter is **per client** — sharing
+  it inverts who gets warned. Synthetic records also bypass the client filter,
+  so a `level:E` view can't hide the marker.
+- **The client buffer resets on reconnect, except after 1012.** The server
+  replays to any joining client and the mux outlives a disconnect by 30s, so a
+  reconnect inside that window re-appends the replay — the original duplicate
+  bug. But 1012 means the upstream died and `LogcatStreamService` drops the
+  session *before* closing the mux, so that reconnect gets an empty replay and
+  clearing would blank the pane. Close code decides.
+- **Ownership, not just a ticket.** Logcat carries auth tokens, deep-link URLs
+  and PII, so it is an ownership-checked read: the WS evaluates
+  `evaluateDeviceAccess` at **connect** time, and `logs` is in
+  `OWNERSHIP_CHECKED_READS` so the REST dump of the same bytes can't be used to
+  walk around it. The ticket carries the minting caller's `isAdmin` and
+  `apiKeyId` as signed claims so the WS reaches the same verdict `/control`
+  does — a `User.role` lookup would miss admin-scoped API keys.
+- **`PackageResolver` never blocks or drops a line.** Negative cache (a PID
+  absent from `ps` is marked unknown, not re-queried per line), two clocks
+  (`attemptedAt` throttles retries, `loadedAt` alone drives freshness so a
+  failing `ps` can't extend it), and no timeout of its own — the timeout
+  belongs with the process spawn, in `LogcatStreamService`. Use exactly
+  `ps -A -o PID,NAME`; plain `ps -A` returns nine columns, parses to zero rows,
+  and every label silently vanishes.
+
+Sizing lives in one place per constant: `IDLE_TIMEOUT_MS` 30s, `IDLE_POLL_MS`
+2s, `REPLAY_BUFFER_SIZE` 2000, client buffer 5000, `DEFAULT_TTL_MS` 10s,
+`PS_TIMEOUT_MS` 5s.
+
+### Process shutdown (`src/index.ts`)
+
+`cleanup()` runs on SIGINT/SIGTERM and is **not reliable on SIGTERM**: Appium's
+own handler closes the HTTP server and exits the process before Phase 2
+(per-service cleanups) or Phase 3 (`ProcessRegistry.terminateAll`) run — the
+log reaches "Shutdown signal received" and Appium's "Received SIGTERM", then
+the process is gone without ever logging "sanitized".
+
+So long-lived sidecars are also killed synchronously from a `process.on('exit')`
+hook, the last hook that always runs. It forbids async work, which is why each
+service exposes a separate `killAllSync()` rather than an await inside
+`cleanup()` — `kill()` is a syscall and is safe there. Covered:
+`LogcatStreamService`, `AndroidH264StreamService`, and `ProcessRegistry`
+(go-ios, WDA, iproxy, ffmpeg). `ProcessRegistry.killAllSync` goes straight to
+SIGKILL and targets the process **group**, since 'exit' gives no later tick in
+which to observe a graceful wait.
+
+**Do not fix this by registering a stream service with `ProcessRegistry`.** That
+registry is also keyed by udid and session, so its children would then be killed
+by `terminateForUdid` / `terminateForSession` — ending a session would tear down
+a live preview meant to outlive it.
+
+`AndroidStreamService` is deliberately uncovered: its MJPEG capture spawns a
+short-lived `adb exec-out screencap` per frame rather than holding a long-lived
+child.
+
 ### Network Interception (`src/services/interceptor/`, `InterceptorService.ts`)
 
 Android-only in v1. Sessions opt in via any of the capability shapes accepted by `pluginArgs.interceptor.enabled` — see the schema description for the full alias list. Once enabled, an MITM proxy captures requests/responses (capped by `bufferSize`), and `xenon: addMock` / `removeMock` / `clearMocks` / `getRequests` / `getMocks` / `exportHar` execute scripts manipulate per-session state. HAR export is the canonical way to ship captured traffic to clients.
@@ -365,6 +440,14 @@ npm run build:copy` (from the repo root) regenerates and copies it.
 | `src/helpers/UniversalMjpegProxy.ts` | One-upstream-to-many-clients MJPEG fan-out with backpressure |
 | `src/device-managers/android/ScrcpyServerSession.ts` | scrcpy-server lifecycle (push jar + `app_process` + `adb forward` + first-byte-gated connect) for the Android H.264 source |
 | `src/app/routers/androidH264Config.ts` | Normalizes the `streaming.androidH264` flag union (`bool \| { source }`) to `{ enabled, source }` |
+| `src/services/logcat/logcatParse.ts` | Pure `parseThreadtimeLine`; returns null for continuation lines, banners and malformed input. Infers the year logcat omits, in host-local time |
+| `src/services/logcat/PackageResolver.ts` | PID → process name via `ps -A -o PID,NAME`. Negative cache, split `attemptedAt`/`loadedAt` clocks, never throws or blocks a log line |
+| `src/device-managers/android/LogcatMultiplexer.ts` | One upstream → many clients, 2000-record replay, **per-client** drop accounting with a visible synthetic marker |
+| `src/device-managers/android/LogcatStreamService.ts` | One `adb logcat -v threadtime -T 2000` child per device; idle watchdog, `killAllSync()` for the exit hook |
+| `src/app/ws/logcatWs.ts` | Ticket + `evaluateDeviceAccess` at connect time; 1008 denies, 1012 on upstream death |
+| `src/services/device-access/ticketActorAccess.ts` | `makeTicketActorAuthorizer` — the WS's ownership decision, extracted so it is tested directly rather than through a copy in a spec |
+| `web/src/components/device-control/logcat/logcatFilter.ts` | Pure filter grammar (`level:` minimum, `tag:`, `package:`, text, ANDed) plus `setLevelTerm` so the dropdown and the text box share one query |
+| `web/src/components/device-control/logcat/useLogcatStream.ts` | Mints a ticket per connect, batches frames (React 17 does not auto-batch outside events), resets the buffer on reconnect **except** after 1012 |
 | `src/services/recording/RecordingOrchestrator.ts` | Per-device + composite recording lifecycle |
 | `src/services/recording/manualLock.ts` | `manual_<actorId>_<udid>` lock format helpers |
 | `src/middleware/authMiddleware.ts` | Populates `req.auth` (and `req.apiKey` on API-key paths) from the header pair or session cookie; `scopesForRole` maps a cookie role to its scopes |

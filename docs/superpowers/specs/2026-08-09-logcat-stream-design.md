@@ -251,6 +251,67 @@ Android device:
 
 - iOS log streaming.
 - The Shell tab.
-- `GET /:udid/logs` — left in place; other callers may depend on it.
+- ~~`GET /:udid/logs` — left in place; other callers may depend on it.~~
+  **Reversed during implementation.** Leaving it open made the WebSocket's
+  ownership check decorative — the same `adb logcat` bytes were readable by
+  anyone with `devices` scope, so a reader refused at the socket could just GET
+  them. `logs` joined `OWNERSHIP_CHECKED_READS`. External SDK clients polling
+  logs on someone else's busy device now get 409.
 - Persisting logs server-side or attaching them to recordings.
 - Regex or saved filters.
+
+---
+
+## Known follow-ups
+
+Raised by review or hardware validation, deliberately not fixed in the
+implementation. Recorded here because the working ledger they were tracked in
+is git-ignored scratch. Nothing here is a known-broken path — each is a
+judgement call someone should make on purpose rather than inherit.
+
+### Needs a decision, not a fix
+
+**Ticket-borne `isAdmin` has a ≤120s revocation lag, and a WS connection is
+authorised once.** The stream ticket carries the minting caller's admin flag
+(60s TTL plus `jose`'s 60s `clockTolerance`), and the socket's authorisation is
+never re-evaluated after connect. So a demoted admin keeps the bypass for that
+socket's life, and a device taken *after* a viewer connects keeps streaming to
+them. This matches every other stream in the product (h264, MJPEG) and the spec
+only ever required the mint-time property — but this codebase deliberately
+re-reads the DB per REST request so revocation is instant, and logcat is now
+classed with the clipboard. The asymmetry is worth choosing rather than
+drifting into.
+
+**The ownership preamble is triplicated.** `findDevice → isManualLock →
+ownerOf → evaluateDeviceAccess` now exists in `deviceAccessGuard.ts`,
+`control.ts`, and `ticketActorAccess.ts`. It has already drifted once — the WS
+copy shipped without `actorApiKeyId`, denying holders of pre-1.13.0 locks their
+own device over the socket while `/control` admitted them. Consolidating means
+touching two live REST call sites, which is why it wasn't done here.
+
+### Small, safe, unowned
+
+- **`LogcatMultiplexer.addClient`'s replay loop bypasses `canAccept`** — up to
+  2000 sends with no backpressure check and no drop accounting, the only path
+  in the file with neither. Bounded well under the 4MB guard, and it mirrors
+  `H264Multiplexer`.
+- **`replay.splice(0, …)` is O(n) per push at steady state** — a 2000-element
+  memmove per line where an index-based ring is O(1). The spec's word is "ring
+  buffer"; this is an array shift. Not a practical problem at logcat rates.
+- **Two class docblocks are anchored to a constant, not the class** —
+  `LogcatMultiplexer`'s sits above `REPLAY_BUFFER_SIZE` and `PackageResolver`'s
+  above `DEFAULT_TTL_MS`, so editors surface them on hover over the constant.
+  `H264Multiplexer` has the same quirk, which is where it was inherited from.
+- **A missing (not invalid) ticket leaves the TCP socket open** rather than
+  closing 1008. Matches `h264StreamWs` exactly. On a hub engine.io sweeps it
+  after ~1s; on a **node** instance `socketServer.initialize` never runs, so
+  nothing does. Pre-existing and not worsened here.
+
+### Beyond this feature
+
+**The SIGTERM race is not logcat-specific.** Appium's own handler exits the
+process before the plugin's async cleanup phases run, so `cleanup()` and
+`ProcessRegistry.terminateAll()` are both unreliable on SIGTERM. Long-lived
+sidecars are now killed synchronously from a `process.on('exit')` hook, but the
+underlying ordering problem remains — anything added to the async phases in
+future will silently not run on SIGTERM. See "Process shutdown" in `CLAUDE.md`.
