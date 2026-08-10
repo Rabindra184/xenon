@@ -59,29 +59,72 @@ const cleanup = async () => {
 process.on('SIGINT', cleanup);
 process.on('SIGTERM', cleanup);
 
-// Last-resort synchronous net for the logcat children.
+// Last-resort synchronous net for every long-lived sidecar.
 //
 // `cleanup()` above is async, and on SIGTERM Appium's own handler closes the
-// HTTP server and exits the process before Phase 2 runs — measured against a
-// real device: "Shutdown signal received" is logged, then Appium's "Received
-// SIGTERM", then the process is gone without ever reaching "sanitized". The
-// orphaned `adb logcat` and its device-side reader then survive the restart,
-// and another pair leaks on the next one.
+// HTTP server and exits the process before Phases 2 and 3 run — measured
+// against a real device: "Shutdown signal received" is logged, then Appium's
+// "Received SIGTERM", then the process is gone without ever reaching
+// "sanitized". So neither the per-service cleanups nor ProcessRegistry's
+// terminateAll() can be relied on for the case that matters, and their
+// children survive the restart. Another set leaks on the next one, which adds
+// up fastest on the desktop launcher where restarts are routine.
 //
-// 'exit' always runs and forbids async work, so this can only call something
-// synchronous — `kill()` is a syscall, so it qualifies. Scoped to logcat
-// deliberately: the same race affects the iOS/Android MJPEG cleanups, but
-// giving them the same treatment is a separate change with its own testing.
+// 'exit' always runs and forbids async work, so everything below must be
+// synchronous — `kill()` is a syscall, so it qualifies. Each entry is
+// independently guarded: one throwing service must not stop the others, and
+// nothing here may mask the real exit reason.
+//
+// Not covered, deliberately: AndroidStreamService's MJPEG capture spawns a
+// short-lived `adb exec-out screencap` per frame rather than holding a
+// long-lived child, so at worst a single in-flight frame is orphaned and it
+// exits on its own. Its http.Server dies with the process.
 process.on('exit', () => {
-  try {
-    // require, not await import: 'exit' handlers cannot await.
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
-    const mod = require('./device-managers/android/LogcatStreamService') as {
-      LogcatStreamService: new () => { killAllSync(): void };
-    };
-    Container.get(mod.LogcatStreamService).killAllSync();
-  } catch {
-    /* never let a shutdown-path failure mask the real exit reason */
+  // require, not await import: 'exit' handlers cannot await.
+  /* eslint-disable @typescript-eslint/no-var-requires */
+  const nets: [string, () => unknown][] = [
+    [
+      'logcat',
+      () =>
+        Container.get(
+          (
+            require('./device-managers/android/LogcatStreamService') as {
+              LogcatStreamService: new () => { killAllSync(): number | void };
+            }
+          ).LogcatStreamService,
+        ).killAllSync(),
+    ],
+    [
+      'h264',
+      () =>
+        Container.get(
+          (
+            require('./device-managers/android/AndroidH264StreamService') as {
+              default: new () => { killAllSync(): number };
+            }
+          ).default,
+        ).killAllSync(),
+    ],
+    [
+      'tracked processes',
+      () =>
+        Container.get(
+          (
+            require('./services/ProcessRegistry') as {
+              ProcessRegistry: new () => { killAllSync(): number };
+            }
+          ).ProcessRegistry,
+        ).killAllSync(),
+    ],
+  ];
+  /* eslint-enable @typescript-eslint/no-var-requires */
+
+  for (const [, kill] of nets) {
+    try {
+      kill();
+    } catch {
+      /* never let a shutdown-path failure mask the real exit reason */
+    }
   }
 });
 
