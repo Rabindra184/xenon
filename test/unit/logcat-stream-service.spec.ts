@@ -394,6 +394,71 @@ describe('LogcatStreamService', () => {
     expect(svc.getMultiplexer('DEV-1')).to.equal(undefined);
   });
 
+  // Called from the SIGTERM handler in src/index.ts. Verified on a Galaxy S9
+  // that without it a server kill left a host `adb … logcat` running and two
+  // device-side readers alive — ProcessRegistry.terminateAll() misses them
+  // because this service spawns its child directly rather than registering it.
+  // Every restart leaked another pair, which adds up fast on the desktop
+  // launcher where restarts are routine.
+  it('cleanup() stops every device, not just one', async () => {
+    const procs = [fakeProc(), fakeProc(), fakeProc()];
+    let i = 0;
+    const svc = makeService(async () => procs[i++] as any);
+    await svc.start('DEV-1');
+    await svc.start('DEV-2');
+    await svc.start('DEV-3');
+
+    await svc.cleanup();
+
+    // All three, not merely the first — a cleanup that breaks out of its loop
+    // or awaits sequentially and throws would still pass a single-device test.
+    expect(procs.map((p) => p.killed())).to.deep.equal([true, true, true]);
+    for (const udid of ['DEV-1', 'DEV-2', 'DEV-3']) {
+      expect(svc.getMultiplexer(udid), udid).to.equal(undefined);
+    }
+  });
+
+  // The safety net for the above. On SIGTERM, Appium's own handler exits the
+  // process before this plugin's async cleanup runs — measured against a real
+  // device — so the only hook left is 'exit', which forbids async work.
+  // kill() is a syscall and is safe there; nothing else in stop() is.
+  it('killAllSync() kills every child synchronously, without awaiting', async () => {
+    const procs = [fakeProc(), fakeProc()];
+    let i = 0;
+    const svc = makeService(async () => procs[i++] as any);
+    await svc.start('DEV-1');
+    await svc.start('DEV-2');
+
+    svc.killAllSync(); // deliberately not awaited — an 'exit' handler cannot
+
+    // Asserted on the same tick: anything deferred to a microtask would be
+    // dropped when the process exits, so a promise-based teardown would pass
+    // a test that awaited here while still leaking in production.
+    expect(procs.map((p) => p.killed())).to.deep.equal([true, true]);
+    expect(svc.getMultiplexer('DEV-1')).to.equal(undefined);
+    expect(svc.getMultiplexer('DEV-2')).to.equal(undefined);
+  });
+
+  it('killAllSync() survives a child that throws on kill', () => {
+    const bad = {
+      ...fakeProc(),
+      kill: () => {
+        throw new Error('ESRCH');
+      },
+    };
+    const svc = makeService(async () => bad as any);
+    return svc.start('DEV-1').then(() => {
+      expect(() => svc.killAllSync()).to.not.throw();
+      expect(svc.getMultiplexer('DEV-1')).to.equal(undefined);
+    });
+  });
+
+  it('cleanup() is a no-op when nothing is streaming', async () => {
+    const svc = makeService(async () => fakeProc() as any);
+    await svc.cleanup();
+    expect(svc.getMultiplexer('DEV-1')).to.equal(undefined);
+  });
+
   // The real ChildProcess we killed in stop() still emits its own 'close'
   // once the signal lands. That must not surface as a second, stray
   // "log stream ended" after we already told everyone the stream stopped.

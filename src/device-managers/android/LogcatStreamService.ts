@@ -230,6 +230,50 @@ export class LogcatStreamService {
     });
   }
 
+  /**
+   * Stop every stream. Called from the process-level shutdown handler in
+   * `src/index.ts`, alongside the iOS and Android MJPEG services.
+   *
+   * Without this, a SIGTERM orphaned one `adb logcat` per streamed device AND
+   * its device-side `logcat` reader — verified on a Galaxy S9: killing the
+   * server left a host `adb … logcat` running and two readers alive on the
+   * device. `ProcessRegistry.terminateAll()` does not catch them because this
+   * service spawns its child directly rather than registering it, the same
+   * shape as the other stream services. Every server restart leaked another
+   * pair, which matters most on the desktop launcher where restarts are
+   * routine.
+   */
+  async cleanup(): Promise<void> {
+    await Promise.all([...this.sessions.keys()].map((udid) => this.stop(udid)));
+  }
+
+  /**
+   * Synchronously kill every logcat child. The safety net for `cleanup()`.
+   *
+   * Measured on a Galaxy S9: on SIGTERM, Appium's own handler closes the HTTP
+   * server and exits the process before this plugin's async Phase 2 cleanup
+   * gets to run — the log shows "Shutdown signal received", then Appium's
+   * "Received SIGTERM", then the process is gone, with cleanup never reaching
+   * its "sanitized" line. So an async cleanup alone cannot be relied on here.
+   * (That race is pre-existing and affects the iOS/Android MJPEG cleanups
+   * equally; this only guards logcat's own children.)
+   *
+   * `process.on('exit')` is the last hook that always runs, and it forbids
+   * async work — which is exactly why this is a separate synchronous method
+   * rather than an await inside `cleanup()`. `kill()` is a synchronous
+   * syscall, so it is safe there; nothing else in `stop()` is.
+   */
+  killAllSync(): void {
+    for (const s of this.sessions.values()) {
+      try {
+        s.proc.kill();
+      } catch {
+        /* best-effort: a child that is already gone is the desired state */
+      }
+    }
+    this.sessions.clear();
+  }
+
   async stop(udid: string): Promise<void> {
     const s = this.sessions.get(udid);
     if (!s) return;
