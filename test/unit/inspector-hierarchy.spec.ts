@@ -166,6 +166,40 @@ describe('InspectorService hierarchy parsing', () => {
     });
   });
 
+  describe('attribute typing', () => {
+    // The parser runs with parseAttributeValue, so text="22" arrives as the
+    // number 22. Every consumer treats text and name as strings — the tree
+    // view slices them — and a lock-screen clock was enough to crash the
+    // panel with `text.slice is not a function`.
+    const NUMERIC_TEXT = `<hierarchy rotation="0">
+      <node index="0" class="android.widget.FrameLayout" bounds="[0,0][1080,2094]">
+        <node index="0" text="22" resource-id="" class="android.widget.TextView" bounds="[0,0][100,50]" />
+        <node index="1" text="0" resource-id="" class="android.widget.TextView" bounds="[0,50][100,100]" />
+      </node>
+    </hierarchy>`;
+
+    it('hands back text as a string even when the value looks numeric', () => {
+      const root = parse(NUMERIC_TEXT, 'android');
+      const texts = find(root, (n) => n.type === 'android.widget.TextView').map((n) => n.text);
+      expect(texts).to.deep.equal(['22', '0']);
+      texts.forEach((t) => expect(t).to.be.a('string'));
+    });
+
+    it('hands back name as a string too', () => {
+      const root = parse(NUMERIC_TEXT, 'android');
+      find(root, (n) => n.type === 'android.widget.TextView').forEach((n) =>
+        expect(n.name).to.be.a('string'),
+      );
+    });
+
+    it('coerces iOS label and value the same way', () => {
+      const xml = `<AppiumAUT><XCUIElementTypeApplication type="XCUIElementTypeApplication" name="1" label="22" x="0" y="0" width="10" height="10" /></AppiumAUT>`;
+      const root = parse(xml, 'ios');
+      expect(root.text).to.equal('22');
+      expect(root.name).to.equal('1');
+    });
+  });
+
   describe('iOS', () => {
     it('parses the XCUIElementType tree unchanged', () => {
       const root = parse(IOS_XML, 'ios');

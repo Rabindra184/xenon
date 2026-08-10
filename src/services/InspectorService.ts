@@ -24,6 +24,24 @@ export type HierarchySource = 'appium-session' | 'device';
  */
 type UniquenessIndex = Map<string, number>;
 
+/**
+ * An attribute as a string, or undefined when it is absent.
+ *
+ * The XML parser runs with `parseAttributeValue`, so a TextView reading "22"
+ * — a clock, a badge, a count — arrives as the NUMBER 22. `InspectorNode.text`
+ * and `.name` are declared string, and every consumer takes them at their
+ * word: the tree view calls `.slice`, the code generator calls `.replace`. A
+ * lock-screen clock was enough to throw `text.slice is not a function` and
+ * take the whole panel down with it.
+ *
+ * Coerced here, at the one place these fields are produced, rather than
+ * defended against at each of the places they are read.
+ */
+function asText(value: unknown): string | undefined {
+  if (value === undefined || value === null) return undefined;
+  return typeof value === 'string' ? value : String(value);
+}
+
 export interface LocatorSuggestion {
   strategy: string;
   value: string;
@@ -299,7 +317,8 @@ export class InspectorService {
     className: string,
   ): InspectorNode {
     const type = className || node.class || 'Unknown';
-    const name = node.resourceId || node.text || type.split('.').pop() || 'node';
+    const text = asText(node.text);
+    const name = asText(node.resourceId) || text || type.split('.').pop() || 'node';
     const bounds = this.parseAndroidBounds(node.bounds || '[0,0][0,0]');
 
     // Build children with positional xpath segments so siblings of the same
@@ -327,7 +346,7 @@ export class InspectorService {
     const nodeObj: InspectorNode = {
       name,
       type,
-      text: node.text,
+      text,
       rect: bounds,
       xpath,
       suggestedLocators: [],
@@ -354,7 +373,7 @@ export class InspectorService {
     const type = Object.keys(node).find((k) => k.startsWith('XCUIElement')) || 'Unknown';
     const data = node[type];
 
-    const name = data?.name || data?.label || type;
+    const name = asText(data?.name) || asText(data?.label) || type;
     const rect = {
       x: data?.x || 0,
       y: data?.y || 0,
@@ -397,7 +416,7 @@ export class InspectorService {
     const nodeObj: InspectorNode = {
       name,
       type,
-      text: data?.label || data?.value,
+      text: asText(data?.label) || asText(data?.value),
       rect,
       xpath,
       suggestedLocators: [],
