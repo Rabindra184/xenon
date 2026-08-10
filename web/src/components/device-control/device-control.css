@@ -198,10 +198,28 @@
   max-height: 100%;
 }
 
+/* Orientation-aware control placement.
+ *
+ * A portrait device is tall and narrow: it leaves width unused at its sides
+ * and no height beneath it. A landscape device is the reverse. So the controls
+ * sit BESIDE a portrait device and BELOW a landscape one (see the .is-landscape
+ * override), occupying space the device itself is not using.
+ *
+ * The payoff is the log pane: the preview column no longer has to be as wide
+ * as a horizontal control bar, and the width it gives back goes to the
+ * interactions column beside it.
+ *
+ * `row-reverse`, not `row`: the strip comes after the device in the DOM, which
+ * is the right reading and tab order — the device is the subject and the
+ * controls act on it — but it belongs on the left visually, mirroring the
+ * physical buttons on a handset. Reversing here keeps both, where reordering
+ * the JSX would have traded one for the other.
+ */
 .device-preview-column {
   display: flex;
-  flex-direction: column;
+  flex-direction: row-reverse;
   align-items: center;
+  justify-content: center;
   gap: 24px;
   /* Was flex-shrink: 0 / min-width: 400px, which pinned the column to its
      toolbar's 829px max-content width and pushed the interactions column
@@ -228,6 +246,9 @@
    room it needs. */
 .control-view-main.is-landscape .device-preview-column {
   max-width: none;
+  /* Landscape: device on top, controls in a horizontal bar beneath — the
+     orientation-aware placement described on .device-preview-column above. */
+  flex-direction: column;
 }
 
 .device-screen-wrapper {
@@ -291,13 +312,19 @@
 
 .device-footer-actions {
   display: flex;
-  /* Wrap so the 11 buttons reflow to multiple rows when the column is narrow,
-     instead of spilling out of a shrunken column. Paired with the
-     flex-shrink:1 on .device-preview-column above — neither fixes the 1280
-     clip alone. */
+  /* Portrait default: a vertical strip beside the device. Wrapping into
+     columns keeps it inside the viewport if the pane is ever short enough that
+     11 children do not fit in one column — the vertical analogue of the row
+     wrapping this had as a bar. */
+  flex-direction: column;
   flex-wrap: wrap;
+  align-content: center;
   justify-content: center;
-  width: 100%;
+  /* Was width:100%, which is what made the preview column as wide as the bar.
+     A vertical strip must be only as wide as its buttons, or it gives back
+     none of the space this placement exists to reclaim. */
+  width: auto;
+  flex-shrink: 0;
   /* Track the app's surface token. This was slate-900 (rgba(15,23,42)), which
      is blue-tinted, against a green-tinted neutral palette (--surface-2 is
      #161b1a) — it read as a blue bar floating on a near-black page. */
@@ -313,12 +340,20 @@
 }
 
 .footer-action-btn {
-  flex: 1;
+  /* Icon-only, so square and fixed rather than flex:1 — in a vertical strip
+     `flex: 1` would stretch every button to fill the column height. */
+  flex: 0 0 auto;
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 8px;
-  padding: 12px;
+  /* 36px sits under the 44px touch-target guidance, which governs touch
+     surfaces; this panel is pointer-driven at a 1280-1440 desktop breakpoint
+     and sits beside a ~306px phone render, where a 44px grid would be taller
+     than the device it controls. */
+  width: 36px;
+  height: 36px;
+  padding: 0;
   color: var(--text-muted);
   font-size: 11px;
   text-transform: uppercase;
@@ -341,10 +376,27 @@
   box-shadow: inset 0 -2px 0 0 var(--green);
 }
 
+/* The portrait strip is vertical, so the divider is a horizontal rule;
+   landscape flips it back. Left unflipped it stays a 1px vertical hairline
+   stacked between rows, reading as a rendering artefact rather than a group
+   separator. */
 .footer-divider {
+  width: 24px;
+  height: 1px;
+  background: var(--border);
+  margin: 4px auto;
+  flex-shrink: 0;
+}
+
+/* Landscape: back to a horizontal bar under the device. */
+.control-view-main.is-landscape .device-footer-actions {
+  flex-direction: row;
+  width: 100%;
+}
+
+.control-view-main.is-landscape .footer-divider {
   width: 1px;
   height: 24px;
-  background: var(--border);
   margin: auto 4px;
 }
 

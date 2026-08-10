@@ -14,6 +14,8 @@ import {
   ChevronUp,
   ChevronDown,
   RotateCw,
+  RectangleVertical,
+  RectangleHorizontal,
   Move,
   Package,
   Loader2,
@@ -685,44 +687,83 @@ export default function DeviceControl({ device, onClose }: DeviceControlProps) {
             </div>
           </div>
 
-          <aside className="device-footer-actions">
+          {/* Orientation-aware: a vertical strip beside a PORTRAIT device (which
+              leaves width unused at its sides and no height below it), a
+              horizontal bar under a LANDSCAPE one (the reverse). Icons only —
+              the labelled version's max-content width was what pinned the
+              preview column wide and squeezed the log pane. Every button
+              therefore carries both `title` (pointer) and `aria-label`
+              (assistive tech); an icon-only control with neither is
+              unidentifiable. */}
+          <aside
+            className="device-footer-actions"
+            role="toolbar"
+            aria-label="Device controls"
+            aria-orientation={isPortrait ? 'vertical' : 'horizontal'}
+          >
             <button
               className={`footer-action-btn ${isPortrait ? 'active' : ''}`}
               onClick={() => setIsPortrait(true)}
+              title="Portrait"
+              aria-label="Portrait orientation"
+              aria-pressed={isPortrait}
             >
-              <RotateCw size={14} style={{ transform: isPortrait ? 'none' : 'rotate(-90deg)' }} />{' '}
-              PORTRAIT
+              <RectangleVertical size={18} />
             </button>
             <button
               className={`footer-action-btn ${!isPortrait ? 'active' : ''}`}
               onClick={() => setIsPortrait(false)}
+              title="Landscape"
+              aria-label="Landscape orientation"
+              aria-pressed={!isPortrait}
             >
-              <RotateCw size={14} style={{ transform: 'rotate(90deg)' }} /> LANDSCAPE
+              <RectangleHorizontal size={18} />
             </button>
             <div className="footer-divider" />
-            <button className="footer-action-btn" onClick={pressHome}>
-              <Home size={20} /> HOME
+            <button
+              className="footer-action-btn"
+              onClick={pressHome}
+              title="Home"
+              aria-label="Home"
+            >
+              <Home size={18} />
             </button>
             {currentDevice.platform === 'android' && (
               <>
-                <button className="footer-action-btn" onClick={pressBack} title="Back">
-                  <ChevronLeft size={20} /> BACK
+                <button
+                  className="footer-action-btn"
+                  onClick={pressBack}
+                  title="Back"
+                  aria-label="Back"
+                >
+                  <ChevronLeft size={18} />
                 </button>
                 <button
                   className="footer-action-btn"
                   onClick={pressAppSwitcher}
                   title="App Switcher"
+                  aria-label="App switcher"
                 >
-                  <Square size={20} /> APPS
+                  <Square size={18} />
                 </button>
               </>
             )}
             <div className="footer-divider" />
-            <button className="footer-action-btn" onClick={pressVolumeUp} title="Volume Up">
-              <Volume2 size={20} /> VOL+
+            <button
+              className="footer-action-btn"
+              onClick={pressVolumeUp}
+              title="Volume Up"
+              aria-label="Volume up"
+            >
+              <Volume2 size={18} />
             </button>
-            <button className="footer-action-btn" onClick={pressVolumeDown} title="Volume Down">
-              <Volume1 size={20} /> VOL−
+            <button
+              className="footer-action-btn"
+              onClick={pressVolumeDown}
+              title="Volume Down"
+              aria-label="Volume down"
+            >
+              <Volume1 size={18} />
             </button>
             <button
               className="footer-action-btn"
@@ -730,7 +771,7 @@ export default function DeviceControl({ device, onClose }: DeviceControlProps) {
               title="Lock Device"
               aria-label="Lock device"
             >
-              <Lock size={20} />
+              <Lock size={18} />
             </button>
             <button
               className="footer-action-btn"
@@ -738,7 +779,7 @@ export default function DeviceControl({ device, onClose }: DeviceControlProps) {
               title="Unlock Device"
               aria-label="Unlock device"
             >
-              <Unlock size={20} />
+              <Unlock size={18} />
             </button>
           </aside>
         </div>

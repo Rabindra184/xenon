@@ -860,9 +860,12 @@ for (const width of [1280, 1440]) {
     await page.goto('/xenon/devices/MOCK-ANDROID-01/control');
     await page.waitForLoadState('networkidle');
 
-    // Enter landscape via the footer toggle (pure UI state, no backend call). The
-    // PORTRAIT button also exists; hasText 'LANDSCAPE' selects only the landscape one.
-    await page.locator('.footer-action-btn', { hasText: 'LANDSCAPE' }).click();
+    // Enter landscape via the footer toggle (pure UI state, no backend call).
+    // Selected by aria-label, not text: the toolbar is icon-only, so there is
+    // no text to match on — and the label is the button's accessible name, so
+    // this breaks loudly if that name is ever dropped, which is the failure
+    // that would leave the control unidentifiable to assistive tech.
+    await page.locator('.footer-action-btn[aria-label="Landscape orientation"]').click();
 
     // Non-vacuous gate: prove landscape engaged AND the WIDE canvas painted, else the
     // rect scan could pass on a still-portrait (narrow) or zero-size canvas — the exact
@@ -916,8 +919,23 @@ test('control page renders the Android toolbar (guards against a vacuous pass)',
   await page.waitForLoadState('networkidle');
   const toolbar = page.locator('.device-footer-actions');
   await expect(toolbar).toBeVisible();
-  // Android renders 11 buttons; that count is what drives the 829px toolbar
-  // width that causes the overflow. If this drops to 9 the mock is rendering as
-  // iOS and the rest of this suite is not exercising the bug it claims to guard.
+  // 11 children: 9 buttons plus 2 group dividers. Android-only buttons (Back,
+  // App Switcher) are inside that count, so a drop to 9 means the mock rendered
+  // as iOS and the rest of this suite is not exercising what it claims to.
+  //
+  // This used to be justified by the toolbar's 829px max-content width driving
+  // the overflow. That rationale is dead: the toolbar is a vertical icon strip
+  // beside the device in portrait and no longer sets the column width. The
+  // count still earns its place as an is-it-really-Android gate — but it is no
+  // longer a width guard, and reading it as one would mislead.
   await expect(toolbar.locator('> *')).toHaveCount(11);
+
+  // Icon-only controls are unusable without an accessible name, and nothing
+  // else in this suite would notice their absence.
+  const buttons = toolbar.locator('.footer-action-btn');
+  await expect(buttons).toHaveCount(9);
+  for (let i = 0; i < 9; i++) {
+    await expect(buttons.nth(i)).toHaveAttribute('aria-label', /.+/);
+    await expect(buttons.nth(i)).toHaveAttribute('title', /.+/);
+  }
 });
