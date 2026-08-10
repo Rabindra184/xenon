@@ -57,7 +57,18 @@ class XenonPlugin extends BasePlugin {
     // test-locator above, which only handles the -custom:ai-* strategies: this
     // is the one that answers "will Appium find this", because it asks Appium.
     '/session/:sessionId/xenon/verify-locator': {
-      POST: { command: 'verifyLocator' },
+      POST: {
+        command: 'verifyLocator',
+        // payloadParams is REQUIRED for Appium to map the JSON body onto the
+        // command's arguments. Without it the command is called with none and
+        // every request fails validation regardless of what was sent — which
+        // is what `test-locator` above does today; it is unused, so nobody
+        // hit it.
+        payloadParams: {
+          required: ['strategy', 'selector'],
+          optional: ['action', 'text'],
+        },
+      },
     },
     // Xenon Omni-Interaction: Enterprise-grade AI/OCR actions
     '/session/:sessionId/xenon/omni-click': {
@@ -244,10 +255,18 @@ class XenonPlugin extends BasePlugin {
    * all and can disagree with Appium even when it can. This asks Appium.
    */
   async verifyLocator(
+    _next: any,
     driver: any,
-    payload: { strategy: string; selector: string; action?: VerifyAction; text?: string },
+    strategy: string,
+    selector: string,
+    action?: VerifyAction,
+    text?: string,
   ) {
-    return await verifyLocator(driver as DriverLike, payload);
+    // Signature is (next, driver, ...payloadParams) — Appium invokes plugin
+    // commands as `plugin[cmd](_next, driver, ...args)` (appium/lib/appium.js).
+    // Taking the driver first silently binds `next` to it, and every driver
+    // call then fails with "not a function".
+    return await verifyLocator(driver as DriverLike, { strategy, selector, action, text });
   }
 
   /**

@@ -563,6 +563,18 @@ const OmniInspector: React.FC<OmniInspectorProps> = ({
   // the selected node changes so stale match badges don't follow you across
   // elements.
   const [locatorTests, setLocatorTests] = useState<Record<string, MatchResult>>({});
+  /**
+   * Live-driver verification, keyed by strategy. Distinct from `locatorTests`
+   * above, which matches against the captured XML: that answers "does this
+   * select something in that tree", this answers "will Appium find it".
+   */
+  const [verifyResults, setVerifyResults] = useState<Record<string, any>>({});
+  const [verifying, setVerifying] = useState<string | null>(null);
+  // null = no Appium session driving this device, so there is no driver to ask.
+  const [appiumSession, setAppiumSession] = useState<{
+    sessionId: string | null;
+    basePath: string;
+  } | null>(null);
   const [activeLocatorTest, setActiveLocatorTest] = useState<string | null>(null);
 
   const containerRef = useRef<HTMLDivElement>(null);
@@ -608,6 +620,51 @@ const OmniInspector: React.FC<OmniInspectorProps> = ({
     if (udid) loadSnapshot();
   }, [udid]);
 
+  // Which session (if any) can answer a verification, and where to reach it.
+  useEffect(() => {
+    if (!udid) return;
+    let cancelled = false;
+    XenonApiService.getAppiumSession(udid)
+      .then((r: any) => {
+        if (!cancelled) {
+          setAppiumSession({ sessionId: r?.sessionId ?? null, basePath: r?.basePath ?? '' });
+        }
+      })
+      .catch(() => {
+        // Treated as "no session": verification is simply unavailable, which
+        // the UI states. Failing loudly here would be noise on a panel whose
+        // main job (the tree) is unaffected.
+        if (!cancelled) setAppiumSession({ sessionId: null, basePath: '' });
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [udid]);
+
+  const runVerify = useCallback(
+    async (strategy: string, value: string, action: 'none' | 'tap') => {
+      if (!appiumSession?.sessionId) return;
+      setVerifying(strategy);
+      try {
+        const result = await XenonApiService.verifyLocator(
+          appiumSession.basePath,
+          appiumSession.sessionId,
+          { strategy, selector: value, action },
+        );
+        setVerifyResults((prev) => ({ ...prev, [strategy]: result }));
+      } catch (e: any) {
+        setVerifyResults((prev) => ({
+          ...prev,
+          [strategy]: { found: false, count: 0, error: e?.message || String(e) },
+        }));
+      } finally {
+        setVerifying(null);
+      }
+    },
+    [appiumSession],
+  );
+
+
   // Auto-select best locator when node changes
   useEffect(() => {
     if (selectedNode?.suggestedLocators?.length) {
@@ -620,6 +677,7 @@ const OmniInspector: React.FC<OmniInspectorProps> = ({
       setSelectedLocatorForCode(null);
     }
     setLocatorTests({});
+    setVerifyResults({});
     setActiveLocatorTest(null);
   }, [selectedNode]);
 
@@ -1380,6 +1438,47 @@ const OmniInspector: React.FC<OmniInspectorProps> = ({
                                 </div>
                                 <code className="omni-locator-value">{loc.value}</code>
                                 <span className="omni-stability-reason">{stability.reason}</span>
+                                {(() => {
+                                  const v = verifyResults[loc.strategy];
+                                  if (!v) return null;
+                                  // Four outcomes, kept distinct because they
+                                  // lead to different fixes: driver error,
+                                  // no match, ambiguous, and found (with or
+                                  // without a failed action).
+                                  if (v.error) {
+                                    return (
+                                      <span className="omni-verify-line is-error">
+                                        <ShieldAlert size={10} /> Appium error: {v.error}
+                                      </span>
+                                    );
+                                  }
+                                  if (!v.found) {
+                                    return (
+                                      <span className="omni-verify-line is-error">
+                                        <ShieldAlert size={10} /> Appium found 0 elements
+                                      </span>
+                                    );
+                                  }
+                                  if (v.count > 1) {
+                                    return (
+                                      <span className="omni-verify-line is-warn">
+                                        <AlertTriangle size={10} /> Ambiguous — Appium found{' '}
+                                        {v.count} elements
+                                        {v.actionError ? ` · ${v.actionError}` : ''}
+                                      </span>
+                                    );
+                                  }
+                                  return (
+                                    <span className="omni-verify-line is-ok">
+                                      <ShieldCheck size={10} /> Appium found 1 element
+                                      {v.elapsedMs != null ? ` in ${v.elapsedMs}ms` : ''}
+                                      {v.actionPerformed && v.actionPerformed !== 'none'
+                                        ? ` · ${v.actionPerformed} ok`
+                                        : ''}
+                                      {v.actionError ? ` · action failed: ${v.actionError}` : ''}
+                                    </span>
+                                  );
+                                })()}
                               </div>
                               <div className="omni-locator-actions">
                                 <button
@@ -1392,6 +1491,48 @@ const OmniInspector: React.FC<OmniInspectorProps> = ({
                                   title="Test this locator against the current snapshot"
                                 >
                                   <Crosshair size={12} />
+                                </button>
+                                {/* Verification through the real driver, as
+                                    opposed to the snapshot match above. Needs a
+                                    session — disabled with the reason rather
+                                    than hidden, so the capability is
+                                    discoverable and its precondition is
+                                    stated. */}
+                                <button
+                                  type="button"
+                                  disabled={!appiumSession?.sessionId || verifying === loc.strategy}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    runVerify(loc.strategy, loc.value, 'none');
+                                  }}
+                                  className="omni-test-btn"
+                                  title={
+                                    appiumSession?.sessionId
+                                      ? 'Verify with Appium — does the driver actually find this?'
+                                      : 'Needs an active Appium session on this device'
+                                  }
+                                >
+                                  {verifying === loc.strategy ? (
+                                    <RotateCw size={12} className="animate-spin" />
+                                  ) : (
+                                    <ShieldCheck size={12} />
+                                  )}
+                                </button>
+                                <button
+                                  type="button"
+                                  disabled={!appiumSession?.sessionId || verifying === loc.strategy}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    runVerify(loc.strategy, loc.value, 'tap');
+                                  }}
+                                  className="omni-test-btn"
+                                  title={
+                                    appiumSession?.sessionId
+                                      ? 'Find with Appium and tap the element it returns'
+                                      : 'Needs an active Appium session on this device'
+                                  }
+                                >
+                                  <Zap size={12} />
                                 </button>
                                 <button
                                   onClick={(e) => {

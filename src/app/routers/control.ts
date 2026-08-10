@@ -1,3 +1,4 @@
+import { XenonPlugin } from '../../plugin';
 import { Request, Response, Router } from 'express';
 import { DeviceStoreFactory } from '../../data-service/device-store';
 
@@ -1025,6 +1026,40 @@ router.get('/:udid/inspector/snapshot', async (req: Request, res: Response) => {
     log.error(`Inspector snapshot failed for ${udid}: ${err.message}`);
     return res.status(500).send({ error: err.message });
   }
+});
+
+/**
+ * What the dashboard needs to reach a session-scoped Appium route for this
+ * device — the live session id, and the base path this server was started
+ * with (`-pa`).
+ *
+ * The base path is not otherwise discoverable by the frontend: the device card
+ * hardcodes '/wd/hub', which is silently wrong on any server started
+ * differently, and the value lives only on the plugin. GET /config would be
+ * the obvious home but sits behind roleGuard('ADMIN') while device control is
+ * a MEMBER action, so a member would get the feature and no way to use it.
+ * Device-scoped and MEMBER-readable here, alongside the inspector's other
+ * calls.
+ *
+ * `sessionId` is null when nothing is driving the device. That is a normal
+ * state, not an error — locator verification needs a real driver, and the UI
+ * has to say so plainly rather than fail obscurely.
+ */
+router.get('/:udid/appium-session', async (req: Request, res: Response) => {
+  const { udid } = req.params;
+  const device = await getDeviceInfo(udid);
+  if (!device) return res.status(404).send({ status: 'error', message: 'Device not found' });
+
+  // A manual lock is the dashboard holding the device for preview/recording,
+  // not an Appium session — it cannot resolve locators, so it is not one.
+  const sessionId =
+    device.session_id && !isManualLock(device.session_id) ? String(device.session_id) : null;
+
+  return res.status(200).send({
+    status: 'success',
+    sessionId,
+    basePath: XenonPlugin.nodeBasePath || '',
+  });
 });
 
 /**

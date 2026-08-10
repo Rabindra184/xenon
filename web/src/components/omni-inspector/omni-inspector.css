@@ -1500,3 +1500,27 @@
     font-size: inherit;
     color: inherit;
 }
+/* Live-driver verification result, under the locator value. Distinct colours
+   per outcome because they lead to different fixes: not-found means rewrite
+   the locator, ambiguous means narrow it, found-but-action-failed means the
+   element is there and something else is wrong. */
+.omni-verify-line {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    margin-top: 3px;
+    font-size: 10px;
+    line-height: 1.4;
+}
+
+.omni-verify-line.is-ok {
+    color: var(--green);
+}
+
+.omni-verify-line.is-warn {
+    color: #fbbf24;
+}
+
+.omni-verify-line.is-error {
+    color: #f87171;
+}
