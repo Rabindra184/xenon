@@ -244,7 +244,15 @@ export class InspectorService {
         // several sibling roots under it; anchoring on the first one silently
         // hid every other window.
         const doc = jsonObj.hierarchy ?? jsonObj;
-        return this.transformAndroidNode(doc, uniqueness, '/hierarchy[1]', 'hierarchy');
+        const root = this.transformAndroidNode(doc, uniqueness, '/hierarchy[1]', 'hierarchy');
+        // <hierarchy> is the XML document element, not a UI element. Appium's
+        // XPath engine returns nothing for `/hierarchy[1]` — verified against a
+        // driver — so offering it as a locator, badged unique no less, is a
+        // claim that the Verify button will always contradict. Say nothing
+        // instead; the UI explains why the list is empty.
+        root.suggestedLocators = [];
+        root.suggestedActions = [];
+        return root;
       } else {
         // iOS hierarchy usually starts with <AppiumAUT>
         const root = jsonObj.AppiumAUT || jsonObj;

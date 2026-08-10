@@ -293,10 +293,23 @@
     scrollbar-color: var(--border) transparent;
 }
 
+/* The tree panel is ~309px in the embedded layout, and this row wants a
+   title, two pills and four buttons. It does not fit on one line and never
+   did: before the source badge existed the count pill was already breaking
+   mid-word into "66 / ELEMENTS". Adding a third pill pushed all four action
+   buttons — including the inspect toggle and refresh, which are only
+   reachable here in embedded mode — clean outside the panel.
+
+   So it wraps deliberately: the pills keep their shape, the actions keep
+   theirs, and the row takes a second line when the panel is narrow rather
+   than shedding controls off its edge. */
 .omni-tree-header {
     display: flex;
     align-items: center;
     justify-content: space-between;
+    flex-wrap: wrap;
+    row-gap: 8px;
+    column-gap: 8px;
     padding: 12px;
     background: rgba(0, 0, 0, 0.4);
     border-bottom: 2px solid var(--border);
@@ -316,6 +329,8 @@
 }
 
 .omni-count-badge {
+    /* Or it breaks into "66 / ELEMENTS" the moment the row is tight. */
+    white-space: nowrap;
     font-size: 11px;
     background: rgba(0, 255, 136, 0.05);
     color: var(--green);
@@ -508,6 +523,10 @@
     display: flex;
     gap: 6px;
     align-items: center;
+    /* Never squeezed, never pushed past the panel edge — these are the only
+       route to inspect mode and refresh when the inspector is embedded. */
+    flex-shrink: 0;
+    margin-left: auto;
 }
 
 .omni-clear-btn {
@@ -1546,6 +1565,14 @@
 .omni-source-badge.is-device {
     background: rgba(148, 163, 184, 0.1);
     color: #94a3b8;
+}
+
+.omni-locators-empty {
+    padding: 10px 12px;
+    font-size: 11px;
+    line-height: 1.6;
+    color: var(--text);
+    opacity: 0.6;
 }
 
 .omni-tree-error {

@@ -142,6 +142,24 @@ describe('InspectorService hierarchy parsing', () => {
       );
     });
 
+    it('offers no locator for the document root', () => {
+      // `/hierarchy[1]` resolves to 0 elements through a real driver — the
+      // document element is not selectable. Suggesting it, badged unique, is
+      // a claim the Verify button contradicts every time.
+      [parse(APPIUM_XML, 'android'), parse(DUMP_XML, 'android')].forEach((root) => {
+        expect(root.type).to.equal('hierarchy');
+        expect(root.suggestedLocators).to.deep.equal([]);
+        expect(root.suggestedActions).to.deep.equal([]);
+      });
+    });
+
+    it('still offers locators for every element beneath it', () => {
+      const root = parse(APPIUM_XML, 'android');
+      const elements = find(root, (n) => n !== root);
+      expect(elements.length).to.be.greaterThan(0);
+      elements.forEach((n) => expect(n.suggestedLocators.length).to.be.greaterThan(0));
+    });
+
     it('marks a resource-id shared by two elements as not unique', () => {
       const root = parse(APPIUM_XML, 'android');
       const go = find(root, (n) => n.text === 'Go')[0];
