@@ -1192,7 +1192,10 @@ const OmniInspector: React.FC<OmniInspectorProps> = ({
                       : 'Read from the device. No Appium session is driving it.'
                   }
                 >
-                  {snapshot.hierarchySource === 'appium-session' ? 'Appium session' : 'Device'}
+                  {/* One word: this row is 309px wide in the embedded layout
+                      and already holds a title, a count and four buttons. The
+                      tooltip carries the full meaning. */}
+                  {snapshot.hierarchySource === 'appium-session' ? 'Session' : 'Device'}
                 </span>
               )}
             </div>
@@ -1429,6 +1432,17 @@ const OmniInspector: React.FC<OmniInspectorProps> = ({
                         <span className="omni-section-badge">Stability Scored</span>
                       </div>
                       <div className="omni-locators-list">
+                        {/* Only the document root reaches this — every real
+                            element gets at least the positional xpath. An
+                            empty list under a "Stability Scored" header reads
+                            as a bug, so it says which case this is. */}
+                        {!selectedNode.suggestedLocators?.length && (
+                          <div className="omni-locators-empty">
+                            {selectedNode === snapshot?.hierarchy
+                              ? 'This is the XML document root, not a UI element — no Appium locator can select it. Pick a node beneath it.'
+                              : 'No locator could be derived for this node.'}
+                          </div>
+                        )}
                         {selectedNode.suggestedLocators?.map((loc) => {
                           const stability = scoreLocatorStability(loc.strategy, loc.value);
                           const cfg = stabilityLevelConfig[stability.level];
