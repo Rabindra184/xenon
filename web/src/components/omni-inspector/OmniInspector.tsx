@@ -27,6 +27,7 @@ import {
 import { useState, useEffect, useRef, useCallback } from 'react';
 import XenonApiService from '../../api-service';
 import { matchSelector, type MatchResult } from './selector-matcher';
+import { createPortal } from 'react-dom';
 import './omni-inspector.css';
 import React from 'react';
 import { Select } from '../ui/select';
@@ -67,6 +68,24 @@ interface OmniInspectorProps {
   streamUrl?: string | null;
   /** When true, hide the inspector's own screenshot panel — host renders the device. */
   embedded?: boolean;
+  /**
+   * Where to draw the inspection overlay when the host renders the device.
+   *
+   * `embedded` hid this component's own preview panel — and with it the hit
+   * areas, hover/select frames and the Inspect/Interact toggle, which live
+   * inside that panel. Since this component is only ever rendered embedded,
+   * the whole click-to-inspect capability was unreachable in the product: a
+   * tree and a details pane beside a device you could not click.
+   *
+   * Passing the host's canvas element here portals the overlay onto it. The
+   * frames are positioned in PERCENTAGES of the device rect, so they need no
+   * scale conversion — they only need a container that is the device's aspect
+   * ratio, which the host canvas already is (it sizes itself from
+   * `deviceScreenRatio` exactly as this component sizes its own).
+   */
+  overlayTarget?: HTMLElement | null;
+  /** Lets the host suppress its own tap handling while in inspect mode. */
+  onModeChange?: (mode: 'inspect' | 'interact') => void;
 }
 
 // =====================================================================
@@ -509,7 +528,14 @@ function smartSearch(node: InspectorNode, query: string): boolean {
 // =====================================================================
 // MAIN COMPONENT
 // =====================================================================
-const OmniInspector: React.FC<OmniInspectorProps> = ({ sessionId, udid, streamUrl, embedded = false }) => {
+const OmniInspector: React.FC<OmniInspectorProps> = ({
+  sessionId,
+  udid,
+  streamUrl,
+  embedded = false,
+  overlayTarget = null,
+  onModeChange,
+}) => {
   const [loading, setLoading] = useState(true);
   const [snapshot, setSnapshot] = useState<InspectorSnapshot | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -527,6 +553,12 @@ const OmniInspector: React.FC<OmniInspectorProps> = ({ sessionId, udid, streamUr
   const [canvasDimensions, setCanvasDimensions] = useState({ width: 0, height: 0 });
   const [streamError, setStreamError] = useState(false);
   const [inspectorMode, setInspectorMode] = useState<'inspect' | 'interact'>('inspect');
+  // The host renders the device in embedded mode, so it — not this component —
+  // owns the tap handlers on the canvas. Without this it would tap the phone on
+  // the same click that selects an element.
+  useEffect(() => {
+    onModeChange?.(inspectorMode);
+  }, [inspectorMode, onModeChange]);
   // Per-locator test results, keyed by the locator strategy. Cleared when
   // the selected node changes so stale match badges don't follow you across
   // elements.
@@ -828,17 +860,30 @@ const OmniInspector: React.FC<OmniInspectorProps> = ({ sessionId, udid, streamUr
     );
   };
 
-  const renderHighlights = (node: InspectorNode): React.ReactNode[] => {
-    if (!naturalDimensions.width) return [];
-    const nodes: React.ReactNode[] = [];
+  /**
+   * Device-space dimensions the overlay's percentage coords are relative to.
+   *
+   * Prefers the snapshot's own numbers over `naturalDimensions`, which comes
+   * from this component's <img> — hidden in embedded mode, so it stays 0 there.
+   * Gating the renderers on it made every hit area and frame return nothing
+   * whenever the host owned the device render, which is the only way this
+   * component is actually used.
+   */
+  const deviceSpace = (): { w: number; h: number } | null => {
     const rootRect = snapshot?.hierarchy?.rect;
-    let deviceW = snapshot?.metadata?.screenWidth || naturalDimensions.width;
-    let deviceH = snapshot?.metadata?.screenHeight || naturalDimensions.height;
-
     if (rootRect && rootRect.width > 0 && rootRect.height > 0) {
-      deviceW = rootRect.width;
-      deviceH = rootRect.height;
+      return { w: rootRect.width, h: rootRect.height };
     }
+    const w = snapshot?.metadata?.screenWidth || naturalDimensions.width;
+    const h = snapshot?.metadata?.screenHeight || naturalDimensions.height;
+    return w > 0 && h > 0 ? { w, h } : null;
+  };
+
+  const renderHighlights = (node: InspectorNode): React.ReactNode[] => {
+    const space = deviceSpace();
+    if (!space) return [];
+    const nodes: React.ReactNode[] = [];
+    const { w: deviceW, h: deviceH } = space;
 
     // Only leaf nodes get hit areas to prevent multi-highlight
     const processNode = (n: InspectorNode, depth: number) => {
@@ -901,14 +946,9 @@ const OmniInspector: React.FC<OmniInspectorProps> = ({ sessionId, udid, streamUr
   };
 
   const renderOverlayFrame = (node: InspectorNode | null, type: 'hover' | 'select') => {
-    if (!node?.rect || !naturalDimensions.width) return null;
-    const rootRect = snapshot?.hierarchy?.rect;
-    let deviceW = snapshot?.metadata?.screenWidth || naturalDimensions.width;
-    let deviceH = snapshot?.metadata?.screenHeight || naturalDimensions.height;
-    if (rootRect && rootRect.width > 0 && rootRect.height > 0) {
-      deviceW = rootRect.width;
-      deviceH = rootRect.height;
-    }
+    const space = deviceSpace();
+    if (!node?.rect || !space) return null;
+    const { w: deviceW, h: deviceH } = space;
     return (
       <div
         className={`omni-frame-${type}`}
@@ -925,6 +965,22 @@ const OmniInspector: React.FC<OmniInspectorProps> = ({ sessionId, udid, streamUr
   const totalElements = snapshot?.hierarchy ? countNodes(snapshot.hierarchy) : 0;
   const insight = selectedNode ? analyzeElement(selectedNode) : null;
 
+  /**
+   * The inspection overlay, rendered onto whichever element is showing the
+   * device. Identical markup either way — only its parent differs — so the
+   * embedded path cannot drift from the standalone one.
+   */
+  const overlay =
+    snapshot?.hierarchy && inspectorMode === 'inspect' ? (
+      <div className="omni-overlay">
+        {renderHighlights(snapshot.hierarchy)}
+        {renderMatchFrames()}
+        {renderOverlayFrame(hoveredNode, 'hover')}
+        {renderOverlayFrame(selectedNode, 'select')}
+      </div>
+    ) : null;
+
+
   const stabilityLevelConfig: Record<StabilityLevel, { icon: React.ReactNode; cls: string }> = {
     stable: { icon: <ShieldCheck size={10} />, cls: 'stable' },
     moderate: { icon: <AlertTriangle size={10} />, cls: 'moderate' },
@@ -936,6 +992,10 @@ const OmniInspector: React.FC<OmniInspectorProps> = ({ sessionId, udid, streamUr
 
   return (
     <div className={`omni-inspector-container ${embedded ? 'omni-embedded' : ''}`}>
+      {/* Host renders the device; draw the overlay onto its canvas. Percentage
+          coords need no conversion — the canvas is already the device's aspect
+          ratio. */}
+      {embedded && overlayTarget && overlay ? createPortal(overlay, overlayTarget) : null}
       <div className="omni-main-content">
         {/* ===== Left Panel: Device Preview (hidden in embedded mode) ===== */}
         {!embedded && (
@@ -997,14 +1057,7 @@ const OmniInspector: React.FC<OmniInspectorProps> = ({ sessionId, udid, streamUr
                   draggable={false}
                   alt="Live Device Stream"
                 />
-                {snapshot?.hierarchy && inspectorMode === 'inspect' && (
-                  <div className="omni-overlay">
-                    {renderHighlights(snapshot.hierarchy)}
-                    {renderMatchFrames()}
-                    {renderOverlayFrame(hoveredNode, 'hover')}
-                    {renderOverlayFrame(selectedNode, 'select')}
-                  </div>
-                )}
+                {overlay}
               </div>
             )}
             {!useStream && snapshot?.screenshot && (
@@ -1054,15 +1107,40 @@ const OmniInspector: React.FC<OmniInspectorProps> = ({ sessionId, udid, streamUr
               <button onClick={collapseAll} className="omni-action-btn" title="Collapse All">
                 <Layout size={12} />
               </button>
+              {/* The Inspect/Interact toggle lives in the preview panel, which
+                  embedded mode hides — so embedded had no way to reach either
+                  mode. Surfaced here instead, beside the refresh it already
+                  relocates. Inspect makes the host canvas select elements;
+                  Interact hands clicks back to the device. */}
               {embedded && (
-                <button
-                  onClick={loadSnapshot}
-                  className="omni-action-btn"
-                  title={loading ? 'Capturing…' : 'Refresh snapshot'}
-                  disabled={loading}
-                >
-                  <RotateCw size={12} className={loading ? 'animate-spin' : ''} />
-                </button>
+                <>
+                  <button
+                    onClick={() =>
+                      setInspectorMode(inspectorMode === 'inspect' ? 'interact' : 'inspect')
+                    }
+                    className={`omni-action-btn ${inspectorMode === 'inspect' ? 'active' : ''}`}
+                    title={
+                      inspectorMode === 'inspect'
+                        ? 'Inspect mode — click the device to select an element'
+                        : 'Interact mode — clicks control the device'
+                    }
+                    aria-pressed={inspectorMode === 'inspect'}
+                  >
+                    {inspectorMode === 'inspect' ? (
+                      <MousePointer2 size={12} />
+                    ) : (
+                      <Touchpad size={12} />
+                    )}
+                  </button>
+                  <button
+                    onClick={loadSnapshot}
+                    className="omni-action-btn"
+                    title={loading ? 'Capturing…' : 'Refresh snapshot'}
+                    disabled={loading}
+                  >
+                    <RotateCw size={12} className={loading ? 'animate-spin' : ''} />
+                  </button>
+                </>
               )}
             </div>
           </div>
