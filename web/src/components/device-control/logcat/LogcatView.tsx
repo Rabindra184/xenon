@@ -1,9 +1,21 @@
 import * as React from 'react';
 import { memo, useCallback, useMemo, useRef, useState, useEffect } from 'react';
-import { AlertTriangle, Download, RotateCw, Trash2, Wifi } from 'lucide-react';
+import {
+  AlertTriangle,
+  ArrowDown,
+  ArrowUp,
+  CaseSensitive,
+  Download,
+  RotateCw,
+  Trash2,
+  Wifi,
+  WrapText,
+  X,
+} from 'lucide-react';
 import { Select } from '../../ui/select';
 import { useLogcatStream, type BufferedLogcatRecord } from './useLogcatStream';
 import { matches, parseQuery, setLevelTerm, LEVEL_ORDER } from './logcatFilter';
+import { tagColor } from './tagColor';
 // This view renders four classes it does not own: `.type-input-field`,
 // `.btn-sm` and `.btn-premium` (device-control.css) and `.btn-secondary`
 // (ui/button.css). It used to get them only because its parent happened to
@@ -53,20 +65,37 @@ const TIME_FORMAT = new Intl.DateTimeFormat([], {
  * (see BufferedLogcatRecord) React can also *move* a row's DOM node through a
  * front-trim instead of repatching every row after the trim point.
  */
-const LogcatRow = memo(function LogcatRow({ record }: { record: BufferedLogcatRecord }) {
+const LogcatRow = memo(function LogcatRow({
+  record,
+  index,
+  isHit,
+  isActiveHit,
+}: {
+  record: BufferedLogcatRecord;
+  index: number;
+  isHit: boolean;
+  isActiveHit: boolean;
+}) {
   return (
-    <div className={`logcat-row ${record.synthetic ? 'is-synthetic' : ''}`}>
+    <div
+      data-row-index={index}
+      className={`logcat-row ${record.synthetic ? 'is-synthetic' : ''} ${
+        isHit ? 'is-hit' : ''
+      } ${isActiveHit ? 'is-active-hit' : ''}`}
+    >
       <span className="logcat-time">{TIME_FORMAT.format(record.ts)}</span>
       <span className="logcat-pid">
         {record.pid}-{record.tid}
+      </span>
+      {/* Tag before package, matching Android Studio's column order: the tag
+          is the field you scan by, so it sits closest to the identifiers. */}
+      <span className="logcat-tag" title={record.tag} style={{ color: tagColor(record.tag) }}>
+        {record.tag}
       </span>
       <span className="logcat-pkg" title={record.pkg}>
         {record.pkg ?? ''}
       </span>
       <span className={`logcat-level lvl-${record.level}`}>{record.level}</span>
-      <span className="logcat-tag" title={record.tag}>
-        {record.tag}
-      </span>
       <span className="logcat-msg">{record.message}</span>
     </div>
   );
@@ -87,10 +116,53 @@ export default function LogcatView({ udid, platform }: Props) {
   // and let the two controls display contradicting levels.
   const [query, setQuery] = useState('');
   const [following, setFollowing] = useState(true);
+  const [caseSensitive, setCaseSensitive] = useState(false);
+  const [wrap, setWrap] = useState(true);
+  // Find is deliberately NOT the filter. The filter hides non-matches; find
+  // keeps every row and walks between hits, which is what you want when the
+  // lines around a hit are the point. Android Studio has both for the same
+  // reason.
+  const [find, setFind] = useState('');
+  const [hitIndex, setHitIndex] = useState(0);
   const endRef = useRef<HTMLDivElement>(null);
+  const rowsRef = useRef<HTMLDivElement>(null);
 
-  const parsed = useMemo(() => parseQuery(query), [query]);
+  const parsed = useMemo(() => parseQuery(query, { caseSensitive }), [query, caseSensitive]);
   const visible = useMemo(() => records.filter((r) => matches(r, parsed)), [records, parsed]);
+
+  // Positions within `visible`, not record ids: the list is what the user is
+  // looking at and scrolling through, so a hit is a position in it.
+  const hits = useMemo(() => {
+    if (!find) return [] as number[];
+    const needle = caseSensitive ? find : find.toLowerCase();
+    const out: number[] = [];
+    visible.forEach((r, i) => {
+      const hay = caseSensitive ? `${r.tag} ${r.message}` : `${r.tag} ${r.message}`.toLowerCase();
+      if (hay.includes(needle)) out.push(i);
+    });
+    return out;
+  }, [visible, find, caseSensitive]);
+
+  // Clamp rather than reset: rows stream in constantly, so recomputing hits
+  // must not keep yanking the user back to the first match while they are
+  // stepping through.
+  const activeHit = hits.length ? Math.min(hitIndex, hits.length - 1) : 0;
+  // Set, not Array#includes per row: at a 5000-row buffer the linear scan runs
+  // 5000 times per flush, 20 flushes a second.
+  const hitSet = useMemo(() => new Set(hits), [hits]);
+
+  const jump = useCallback(
+    (delta: number) => {
+      if (!hits.length) return;
+      const next = (activeHit + delta + hits.length) % hits.length;
+      setHitIndex(next);
+      setFollowing(false); // stepping through history and auto-scrolling fight
+      rowsRef.current
+        ?.querySelector(`[data-row-index="${hits[next]}"]`)
+        ?.scrollIntoView({ block: 'center' });
+    },
+    [hits, activeHit],
+  );
 
   // A level the dropdown cannot represent — a typo'd `level:X`, or `level:V`
   // which filters nothing — shows as "All levels". That is not a disagreement:
@@ -170,14 +242,91 @@ export default function LogcatView({ udid, platform }: Props) {
               </option>
             ))}
           </Select>
-          <input
-            type="text"
-            className="type-input-field tiny logcat-query"
-            placeholder="tag:Wifi package:com.android.systemui free text"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            aria-label="Filter logs"
-          />
+          <div className="logcat-input-wrap">
+            <input
+              type="text"
+              className="type-input-field tiny logcat-query"
+              placeholder="tag:Wifi package:com.android.systemui free text"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              aria-label="Filter logs"
+            />
+            {query && (
+              <button
+                type="button"
+                className="logcat-input-btn"
+                onClick={() => setQuery('')}
+                aria-label="Clear filter"
+                title="Clear filter"
+              >
+                <X size={12} />
+              </button>
+            )}
+          </div>
+          <div className="logcat-input-wrap">
+            <input
+              type="text"
+              className="type-input-field tiny logcat-find"
+              placeholder="Find…"
+              value={find}
+              onChange={(e) => {
+                setFind(e.target.value);
+                setHitIndex(0);
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  jump(e.shiftKey ? -1 : 1);
+                }
+              }}
+              aria-label="Find in logs"
+            />
+            {find && (
+              <span className="logcat-hit-count" aria-live="polite">
+                {hits.length ? `${activeHit + 1}/${hits.length}` : '0/0'}
+              </span>
+            )}
+          </div>
+          <button
+            type="button"
+            className="btn-secondary btn-sm logcat-icon-btn"
+            onClick={() => jump(-1)}
+            disabled={!hits.length}
+            aria-label="Previous match"
+            title="Previous match (Shift+Enter)"
+          >
+            <ArrowUp size={14} />
+          </button>
+          <button
+            type="button"
+            className="btn-secondary btn-sm logcat-icon-btn"
+            onClick={() => jump(1)}
+            disabled={!hits.length}
+            aria-label="Next match"
+            title="Next match (Enter)"
+          >
+            <ArrowDown size={14} />
+          </button>
+          <button
+            type="button"
+            className={`btn-secondary btn-sm logcat-icon-btn ${caseSensitive ? 'active' : ''}`}
+            onClick={() => setCaseSensitive(!caseSensitive)}
+            aria-pressed={caseSensitive}
+            aria-label="Match case"
+            title="Match case"
+          >
+            <CaseSensitive size={15} />
+          </button>
+          <button
+            type="button"
+            className={`btn-secondary btn-sm logcat-icon-btn ${wrap ? 'active' : ''}`}
+            onClick={() => setWrap(!wrap)}
+            aria-pressed={wrap}
+            aria-label="Soft wrap"
+            title="Soft wrap long messages"
+          >
+            <WrapText size={14} />
+          </button>
         </div>
         <div className="log-actions-group">
           {(deniedReason || exhausted) && (
@@ -200,7 +349,7 @@ export default function LogcatView({ udid, platform }: Props) {
         </div>
       </div>
 
-      <div className="logcat-rows">
+      <div className={`logcat-rows ${wrap ? '' : 'no-wrap'}`} ref={rowsRef}>
         {deniedReason && (
           <div className="logcat-status-banner is-denied" role="alert">
             <AlertTriangle size={14} />
@@ -213,8 +362,14 @@ export default function LogcatView({ udid, platform }: Props) {
             <span>Connection lost after repeated attempts. Use Reconnect above to try again.</span>
           </div>
         )}
-        {visible.map((r) => (
-          <LogcatRow key={r.seq} record={r} />
+        {visible.map((r, i) => (
+          <LogcatRow
+            key={r.seq}
+            record={r}
+            index={i}
+            isHit={hitSet.has(i)}
+            isActiveHit={hits.length > 0 && hits[activeHit] === i}
+          />
         ))}
         <div ref={endRef} />
       </div>

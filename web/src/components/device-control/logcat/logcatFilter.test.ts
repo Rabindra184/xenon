@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { matches, parseQuery, setLevelTerm } from './logcatFilter';
+import { matches, parseQuery, setLevelTerm, type LogRecordLike } from './logcatFilter';
 
 const rec = (over: Partial<Parameters<typeof matches>[0]> = {}) => ({
   level: 'D',
@@ -217,5 +217,70 @@ describe('setLevelTerm', () => {
     expect(q.minLevel).toBe('E');
     expect(q.tag).toBe('wifi');
     expect(q.text).toBe('handleupdate');
+  });
+});
+
+/**
+ * Match-case, the `Cc` toggle in Android Studio's filter bar.
+ *
+ * The flag rides on the parsed query rather than being passed to `matches`
+ * separately, because the two halves have to agree: `parseQuery` normalises
+ * the needle and `matches` normalises the haystack. A query parsed
+ * case-insensitively (needle lowercased) but matched case-sensitively
+ * (haystack untouched) silently stops matching anything containing a capital.
+ * These tests pin that pairing, not just the two directions.
+ */
+describe('case sensitivity', () => {
+  const rec = (over: Partial<LogRecordLike> = {}): LogRecordLike => ({
+    level: 'D',
+    tag: 'WifiService',
+    message: 'Connected to SSID',
+    pkg: 'com.android.SystemUI',
+    ...over,
+  });
+
+  it('is insensitive by default, matching Android Studio', () => {
+    expect(matches(rec(), parseQuery('tag:wifi'))).toBe(true);
+    expect(matches(rec(), parseQuery('connected'))).toBe(true);
+    expect(matches(rec(), parseQuery('package:systemui'))).toBe(true);
+  });
+
+  it('respects case on tag, package and text when enabled', () => {
+    const cs = { caseSensitive: true };
+    expect(matches(rec(), parseQuery('tag:Wifi', cs))).toBe(true);
+    expect(matches(rec(), parseQuery('tag:wifi', cs))).toBe(false);
+    expect(matches(rec(), parseQuery('package:SystemUI', cs))).toBe(true);
+    expect(matches(rec(), parseQuery('package:systemui', cs))).toBe(false);
+    expect(matches(rec(), parseQuery('Connected', cs))).toBe(true);
+    expect(matches(rec(), parseQuery('connected', cs))).toBe(false);
+  });
+
+  // The mismatch the flag-on-the-query design exists to prevent. Parsing
+  // case-insensitively lowercases the needle; matching case-sensitively would
+  // then compare 'wifi' against 'WifiService' and find nothing.
+  it('never pairs a lowercased needle with an un-normalised haystack', () => {
+    const insensitive = parseQuery('tag:WIFI');
+    expect(insensitive.caseSensitive).toBeUndefined();
+    expect(insensitive.tag).toBe('wifi');
+    expect(matches(rec(), insensitive)).toBe(true);
+
+    const sensitive = parseQuery('tag:WIFI', { caseSensitive: true });
+    expect(sensitive.caseSensitive).toBe(true);
+    expect(sensitive.tag).toBe('WIFI');
+    expect(matches(rec(), sensitive)).toBe(false);
+  });
+
+  // Keys and levels are not searched text: a level is an enum, and the key
+  // prefixes are grammar. Neither should follow the toggle.
+  it('leaves key prefixes and level values case-insensitive regardless', () => {
+    const cs = { caseSensitive: true };
+    expect(parseQuery('TAG:Wifi', cs).tag).toBe('Wifi');
+    expect(parseQuery('PACKAGE:com.x', cs).pkg).toBe('com.x');
+    expect(parseQuery('level:w', cs).minLevel).toBe('W');
+  });
+
+  it('still lets a synthetic marker through a case-sensitive filter', () => {
+    const marker = rec({ synthetic: true, tag: 'xenon', message: '3 lines dropped' });
+    expect(matches(marker, parseQuery('tag:NOPE', { caseSensitive: true }))).toBe(true);
   });
 });
