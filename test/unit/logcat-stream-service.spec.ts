@@ -9,6 +9,7 @@ import {
   PS_TIMEOUT_MS,
   type ChildProcessLike,
 } from '../../src/device-managers/android/LogcatStreamService';
+import { REPLAY_BUFFER_SIZE } from '../../src/device-managers/android/LogcatMultiplexer';
 import { PackageResolver, PS_COMMAND } from '../../src/services/logcat/PackageResolver';
 import type { LogcatRecord } from '../../src/services/logcat/logcatParse';
 
@@ -476,7 +477,14 @@ describe('LogcatStreamService', () => {
     // A server launched from the Mac app has no shell PATH, so a bare
     // spawn('adb') ENOENTs. And `-d` is the one-shot dump-and-exit poll this
     // whole feature replaces.
-    it('spawns the resolved adb binary with a continuous `logcat -v threadtime`', async () => {
+    //
+    // `-T` is the one that only hardware caught: without it logcat replays the
+    // device's whole ring buffer before reaching live output. Measured on a
+    // Galaxy S9 — records 94 minutes stale, arriving at ~84/sec, overrunning
+    // both the server replay and the client buffer with history while the pane
+    // claimed LIVE. Bounding it to REPLAY_BUFFER_SIZE also makes the first
+    // viewer's window match what a later viewer gets from the multiplexer.
+    it('spawns the resolved adb binary tailing a bounded `logcat -v threadtime`', async () => {
       const svc = new ArgvProbe(fakeProc(), {
         executable: { path: '/opt/sdk/platform-tools/adb' },
       });
@@ -484,7 +492,29 @@ describe('LogcatStreamService', () => {
 
       expect(svc.spawned).to.have.length(1);
       expect(svc.spawned[0].command, 'never a bare `adb`').to.equal('/opt/sdk/platform-tools/adb');
-      expect(svc.spawned[0].args).to.deep.equal(['-s', 'DEV-1', 'logcat', '-v', 'threadtime']);
+      expect(svc.spawned[0].args).to.deep.equal([
+        '-s',
+        'DEV-1',
+        'logcat',
+        '-v',
+        'threadtime',
+        '-T',
+        '2000',
+      ]);
+      await svc.stop('DEV-1');
+    });
+
+    // The tail bound and the replay bound are the same number on purpose: a
+    // first viewer and a late joiner must see the same window. Drifting them
+    // apart is silent, so pin the relationship, not just the literal.
+    it('bounds the logcat tail to exactly the multiplexer replay size', async () => {
+      const svc = new ArgvProbe(fakeProc(), {
+        executable: { path: '/opt/sdk/platform-tools/adb' },
+      });
+      await svc.start('DEV-1');
+
+      const args = svc.spawned[0].args;
+      expect(args[args.indexOf('-T') + 1]).to.equal(String(REPLAY_BUFFER_SIZE));
       await svc.stop('DEV-1');
     });
 
@@ -506,6 +536,8 @@ describe('LogcatStreamService', () => {
         'logcat',
         '-v',
         'threadtime',
+        '-T',
+        '2000',
       ]);
       await svc.stop('DEV-1');
     });

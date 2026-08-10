@@ -4,7 +4,7 @@ import { promisify } from 'util';
 import readline from 'readline';
 import log from '../../logger';
 import { SingleFlight } from '../../helpers/singleFlight';
-import { LogcatMultiplexer } from './LogcatMultiplexer';
+import { LogcatMultiplexer, REPLAY_BUFFER_SIZE } from './LogcatMultiplexer';
 import { PackageResolver } from '../../services/logcat/PackageResolver';
 import { parseThreadtimeLine, type LogcatRecord } from '../../services/logcat/logcatParse';
 
@@ -261,9 +261,30 @@ export class LogcatStreamService {
   /** The whole logcat child for a device. */
   protected async spawnLogcat(udid: string): Promise<ChildProcessLike> {
     const { path, base } = await this.adbFor(udid);
-    // `logcat -v threadtime` with no `-d`: `-d` dumps and exits, which is the
-    // duplicate-producing poll this whole feature exists to replace.
-    const proc = this.spawnProcess(path, [...base, 'logcat', '-v', 'threadtime']);
+    // No `-d`: that dumps and exits, which is the duplicate-producing poll this
+    // whole feature exists to replace.
+    //
+    // `-T` is equally load-bearing, and its absence was only visible on real
+    // hardware. Plain `logcat` replays the device's ENTIRE ring buffer from the
+    // beginning before it reaches live output. Measured on a Galaxy S9: records
+    // arriving 94 minutes stale, tens of thousands of lines at ~84/sec, which
+    // overruns the 2000-record server replay and the 5000-record client buffer
+    // with history before a single live line lands. The pane says LIVE and
+    // shows last hour's logs — worse than the poll it replaces, because at
+    // least that was current.
+    //
+    // `-T <n>` starts from the last n lines and then follows. Matching the
+    // multiplexer's REPLAY_BUFFER_SIZE is deliberate: the first viewer gets
+    // exactly the history a later viewer would get from the replay buffer, so
+    // both see the same window instead of the first viewer seeing hours more.
+    const proc = this.spawnProcess(path, [
+      ...base,
+      'logcat',
+      '-v',
+      'threadtime',
+      '-T',
+      String(REPLAY_BUFFER_SIZE),
+    ]);
     // A ChildProcess emitting 'error' with zero listeners crashes the process —
     // always have one (same guard as ScrcpyServerSession / AndroidH264StreamService).
     proc.on('error', (e) => log.warn(`[${udid}] logcat process error: ${e.message}`));
