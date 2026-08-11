@@ -60,6 +60,28 @@ const commandsQueueGuard = new AsyncLock();
 // that onSessionStopped events don't fire twice if two clients race.
 const sessionCleanupLock = new AsyncLock();
 
+/** The suffix appium-webdriveragent appends to `updatedWDABundleId`. */
+export const XCTRUNNER_SUFFIX = '.xctrunner';
+
+/**
+ * Normalise an installed WebDriverAgent bundle id for `appium:updatedWDABundleId`.
+ *
+ * The driver derives its keep-list entry as
+ * `${updatedWDABundleId ?? WDA_RUNNER_BUNDLE_ID}${'.xctrunner'}`, so the
+ * capability wants the id *without* the runner suffix — it puts it back. Handing
+ * it the id exactly as installed yields `…xctrunner.xctrunner`, which matches
+ * nothing, and the app the keep-list was meant to protect is uninstalled.
+ *
+ * Only a trailing occurrence is removed: a bundle id may legitimately contain
+ * the word elsewhere, and `String.replace` without an anchor would cut the
+ * first one it found.
+ */
+export function stripXctrunnerSuffix(bundleId: string): string {
+  return bundleId.endsWith(XCTRUNNER_SUFFIX)
+    ? bundleId.slice(0, -XCTRUNNER_SUFFIX.length)
+    : bundleId;
+}
+
 @Service()
 export class SessionLifecycleService {
   private logger = log.scope('SessionLifecycleService');
@@ -409,9 +431,19 @@ export class SessionLifecycleService {
     // `webDriverAgentUrl` alone is enough to reuse a running WDA, and it does
     // not enter that cleanup path — so when the bundle id is unknown, the safe
     // move is to say less, not more.
+    //
+    // The suffix matters as much as the value. The keep-list entry is
+    // `bundleIdForXctest`, which the driver builds as
+    // `${updatedWDABundleId ?? WDA_RUNNER_BUNDLE_ID}${'.xctrunner'}` — so this
+    // capability wants the id WITHOUT the runner suffix, and the driver adds
+    // it back. Passing the installed id verbatim produced a keep-list of
+    // `com.qasecret.WebDriverAgentRunner.xctrunner.xctrunner`, which matched
+    // nothing on the device, and the real runner was uninstalled anyway. That
+    // is the same normalisation the driver applies to its own prebuilt path:
+    // `updatedWDABundleId = candidateBundleId.replace('.xctrunner', '')`.
     if (bundleId) {
       target['appium:usePreinstalledWDA'] = true;
-      target['appium:updatedWDABundleId'] = bundleId;
+      target['appium:updatedWDABundleId'] = stripXctrunnerSuffix(bundleId);
     } else {
       log.warn(
         `[Xenon] Could not identify the WebDriverAgent bundle on this device; reusing it by URL only. ` +
