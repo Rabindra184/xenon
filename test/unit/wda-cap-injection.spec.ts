@@ -1,6 +1,10 @@
 import 'reflect-metadata';
 import { expect } from 'chai';
-import { SessionLifecycleService } from '../../src/services/SessionLifecycleService';
+import {
+  SessionLifecycleService,
+  stripXctrunnerSuffix,
+  XCTRUNNER_SUFFIX,
+} from '../../src/services/SessionLifecycleService';
 
 /**
  * `appium:usePreinstalledWDA` sends appium-xcuitest-driver down
@@ -41,7 +45,26 @@ describe('WDA capability injection', () => {
     const caps: any = { alwaysMatch: {}, firstMatch: [{}] };
     inject(caps, WDA_URL, BUNDLE);
     expect(caps.alwaysMatch['appium:usePreinstalledWDA']).to.equal(true);
-    expect(caps.alwaysMatch['appium:updatedWDABundleId']).to.equal(BUNDLE);
+    expect(caps.alwaysMatch['appium:updatedWDABundleId']).to.equal(
+      'com.qasecret.WebDriverAgentRunner',
+    );
+  });
+
+  it('sends the id the driver will rebuild into the installed one', () => {
+    // This is the whole contract, and getting it wrong is not a near miss:
+    // the driver's keep-list is `updatedWDABundleId + '.xctrunner'`, so an
+    // id that is off by that suffix protects a bundle that does not exist
+    // and the real runner is uninstalled from the device.
+    const caps: any = { alwaysMatch: {}, firstMatch: [{}] };
+    inject(caps, WDA_URL, BUNDLE);
+    const keepListEntry = caps.alwaysMatch['appium:updatedWDABundleId'] + XCTRUNNER_SUFFIX;
+    expect(keepListEntry).to.equal(BUNDLE);
+  });
+
+  it('leaves an id that already lacks the suffix alone', () => {
+    const caps: any = { alwaysMatch: {}, firstMatch: [{}] };
+    inject(caps, WDA_URL, 'com.qasecret.WebDriverAgentRunner');
+    expect(caps.alwaysMatch['appium:updatedWDABundleId'] + XCTRUNNER_SUFFIX).to.equal(BUNDLE);
   });
 
   it('never claims a preinstalled WDA it cannot name', () => {
@@ -83,6 +106,15 @@ describe('WDA capability injection', () => {
     expect(caps.firstMatch[0]['appium:webDriverAgentUrl']).to.equal(undefined);
     expect(caps.firstMatch[0]['appium:usePreinstalledWDA']).to.equal(undefined);
     expect(caps.alwaysMatch['appium:webDriverAgentUrl']).to.equal(WDA_URL);
+  });
+
+  it('only strips a trailing suffix, never one embedded in the id', () => {
+    expect(stripXctrunnerSuffix('com.x.xctrunner.WebDriverAgentRunner.xctrunner')).to.equal(
+      'com.x.xctrunner.WebDriverAgentRunner',
+    );
+    expect(stripXctrunnerSuffix('com.x.WebDriverAgentRunner')).to.equal(
+      'com.x.WebDriverAgentRunner',
+    );
   });
 
   it('strips the caps that conflict with reusing a WDA by URL', () => {
