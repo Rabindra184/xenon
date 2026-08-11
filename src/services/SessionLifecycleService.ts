@@ -356,7 +356,12 @@ export class SessionLifecycleService {
         }
       } else if (isWdaActive) {
         const wdaUrl = `http://127.0.0.1:${streamStatus!.wdaPort}`;
-        this.injectWDAUrl(caps, wdaUrl);
+        // The bundle id matters as much here as on the branch above, and this
+        // is the branch that runs in the ordinary case — a preview already
+        // open when a test starts. Omitting it told Appium to manage "the
+        // preinstalled WDA" without saying which, and it removed ours.
+        const bundleId = await streamService.detectWDABundleId(device.udid);
+        this.injectWDAUrl(caps, wdaUrl, bundleId);
       }
 
       const hasWdaUrl =
@@ -386,8 +391,35 @@ export class SessionLifecycleService {
     const other = target === caps.alwaysMatch ? caps.firstMatch?.[0] : caps.alwaysMatch;
 
     target['appium:webDriverAgentUrl'] = wdaUrl;
-    target['appium:usePreinstalledWDA'] = true;
-    if (bundleId) target['appium:updatedWDABundleId'] = bundleId;
+
+    // `usePreinstalledWDA` and `updatedWDABundleId` travel together or not at
+    // all. On its own, the first one sends the driver down
+    // `preparePreinstalled`, which calls `cleanupApps(driver,
+    // [driver.wda.bundleIdForXctest])` — that removes every installed app
+    // whose CFBundleName is WebDriverAgentRunner except the one bundle id it
+    // was told to keep. Without `updatedWDABundleId` that keep-list is the
+    // driver's own default, `com.facebook.WebDriverAgentRunner.xctrunner`, so
+    // the WDA Xenon just launched (`com.qasecret.…` here) is not on it and is
+    // uninstalled from the device mid-session. Observed twice on a real
+    // iPhone: "Removing WebDriverAgent runner app
+    // 'com.qasecret.WebDriverAgentRunner.xctrunner'", after which every iOS
+    // feature fails with "WebDriverAgent is not installed" until someone
+    // re-signs and reinstalls it by hand.
+    //
+    // `webDriverAgentUrl` alone is enough to reuse a running WDA, and it does
+    // not enter that cleanup path — so when the bundle id is unknown, the safe
+    // move is to say less, not more.
+    if (bundleId) {
+      target['appium:usePreinstalledWDA'] = true;
+      target['appium:updatedWDABundleId'] = bundleId;
+    } else {
+      log.warn(
+        `[Xenon] Could not identify the WebDriverAgent bundle on this device; reusing it by URL only. ` +
+          `Sending usePreinstalledWDA without a bundle id would let the driver uninstall it.`,
+      );
+      delete target['appium:usePreinstalledWDA'];
+      delete target['appium:updatedWDABundleId'];
+    }
 
     // These conflict with a pre-installed WDA URL — strip from both buckets.
     for (const bucket of [target, other]) {
