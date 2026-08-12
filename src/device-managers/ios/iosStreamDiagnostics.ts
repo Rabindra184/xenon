@@ -28,6 +28,39 @@ export function missingWdaMessage(udid: string): string {
 }
 
 /**
+ * True when WDA is installed but the runner could not be *started*.
+ *
+ * go-ios reports the two conditions quite differently, and conflating them
+ * sends people to reinstall an app that is already there:
+ *
+ *   missing:  cannot get test app information: Did not find test app for '…'
+ *   present:  cannot start test runner: LaunchAppWithStdIo: failed to launch
+ *             app: launchApp: failed to get PID
+ *
+ * The second is nearly always the device refusing to run the binary — an
+ * untrusted developer certificate, a locked screen, or a lapsed signature —
+ * none of which reinstalling addresses on its own.
+ */
+export function isWdaLaunchFailure(logContent: string): boolean {
+  if (!logContent) return false;
+  return (
+    /failed to launch app/i.test(logContent) ||
+    /LaunchAppWithStdIo/i.test(logContent) ||
+    /cannot start test runner/i.test(logContent)
+  );
+}
+
+/** Human-facing, actionable message for the installed-but-unlaunchable case. */
+export function wdaLaunchFailureMessage(udid: string): string {
+  return (
+    `WebDriverAgent is installed on ${udid} but would not start. ` +
+    `This is usually the device refusing to run it: trust the developer certificate under ` +
+    `Settings → General → VPN & Device Management, unlock the screen, and check the signing ` +
+    `profile has not expired. Launching WebDriverAgentRunner once by hand confirms it.`
+  );
+}
+
+/**
  * Classify a chunk of go-ios `tunnel start` stderr.
  *
  * When a connected device runs iOS < 17 (which needs no tunnel), go-ios emits a

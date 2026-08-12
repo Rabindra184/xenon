@@ -24,7 +24,9 @@ import {
   classifyTunnelStderr,
   isMissingWdaError,
   isOwnStreamProcess,
+  isWdaLaunchFailure,
   missingWdaMessage,
+  wdaLaunchFailureMessage,
 } from './iosStreamDiagnostics';
 import {
   killProcessGroup,
@@ -791,6 +793,12 @@ class IOSStreamService {
         const logDir = path.join(os.tmpdir(), 'xenon-logs');
         if (!fs.existsSync(logDir)) fs.mkdirSync(logDir);
         const wdaRunLog = path.join(logDir, `runwda-${udid}.log`);
+        // Truncated per run, because this file is also the evidence the failure
+        // is classified from. Appending across runs meant a "Did not find test
+        // app" line from a day earlier was still matched today, so every later
+        // failure of any kind — including one where WDA was demonstrably
+        // installed — was reported as "WebDriverAgent is not installed".
+        fs.writeFileSync(wdaRunLog, '');
         session.wdaProcess.stdout?.on('data', (d) => fs.appendFileSync(wdaRunLog, d));
         session.wdaProcess.stderr?.on('data', (d) => fs.appendFileSync(wdaRunLog, d));
 
@@ -881,10 +889,15 @@ class IOSStreamService {
 
           if (session.wdaProcess?.exitCode !== null) {
             const logContent = fs.existsSync(wdaRunLog) ? fs.readFileSync(wdaRunLog, 'utf8') : '';
-            // Missing WDA is permanent until the app is installed — surface an
-            // actionable reason instead of a raw exit code + log tail.
+            // Both of these are permanent until a human acts, and they call for
+            // opposite actions — install the app, versus trust the app that is
+            // already installed. Surface which, rather than a raw exit code and
+            // a log tail.
             if (isMissingWdaError(logContent)) {
               throw new Error(missingWdaMessage(udid));
+            }
+            if (isWdaLaunchFailure(logContent)) {
+              throw new Error(wdaLaunchFailureMessage(udid));
             }
             throw new Error(
               `WDA process exited with code ${session.wdaProcess?.exitCode
