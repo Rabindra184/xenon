@@ -2,6 +2,7 @@ const { execSync } = require('child_process');
 const path = require('path');
 const fs = require('fs');
 const { normalizeDirToLf } = require('./lib/normalize-eol');
+const { syncDirectory, verifyGeneratedClient } = require('./lib/sync-dir');
 
 /**
  * Robust Prisma Client Generator (v1.1.9)
@@ -61,9 +62,34 @@ function generate() {
                 fs.mkdirSync(path.dirname(libOutputDir), { recursive: true });
             }
 
-            // Simple recursive copy
-            copyRecursiveSync(srcOutputDir, libOutputDir);
+            // Replaces the destination rather than overwriting file by file.
+            // The regenerated client is a different size from the one the
+            // tarball shipped, so a per-file copy can leave remnants of the
+            // version it replaced — see scripts/lib/sync-dir.js.
+            syncDirectory(srcOutputDir, libOutputDir);
             console.log('✅ [Xenon] Prisma client synced to lib/src/generated/client.');
+        }
+
+        // The plugin cannot start without this, and a damaged client is valid
+        // JavaScript that only fails when required — so it is loaded here,
+        // while the install is still on screen, rather than discovered later
+        // as "Could not load plugin 'xenon'" with an unrelated-looking
+        // TypeError.
+        const verifyTarget = fs.existsSync(path.resolve(rootDir, 'lib'))
+            ? libOutputDir
+            : srcOutputDir;
+        const verdict = verifyGeneratedClient(verifyTarget);
+        if (!verdict.ok) {
+            console.error('');
+            console.error('❌ [Xenon] The generated Prisma client is present but cannot be loaded.');
+            console.error(`❌ [Xenon] ${verifyTarget}`);
+            console.error(`❌ [Xenon] ${verdict.error}`);
+            console.error('❌ [Xenon] Xenon will fail to start. Reinstall the plugin into a clean');
+            console.error('❌ [Xenon] directory to rebuild it:');
+            console.error('❌ [Xenon]   appium plugin uninstall xenon');
+            console.error('❌ [Xenon]   rm -rf "$APPIUM_HOME/node_modules/@xenon-device-management"');
+            console.error('❌ [Xenon]   appium plugin install --source=npm @xenon-device-management/xenon');
+            console.error('');
         }
 
     } catch (error) {
@@ -73,22 +99,6 @@ function generate() {
 
         // Always exit 0 to prevent npm install failure
         process.exit(0);
-    }
-}
-
-function copyRecursiveSync(src, dest) {
-    const exists = fs.existsSync(src);
-    const stats = exists && fs.statSync(src);
-    const isDirectory = exists && stats.isDirectory();
-    if (isDirectory) {
-        if (!fs.existsSync(dest)) {
-            fs.mkdirSync(dest, { recursive: true });
-        }
-        fs.readdirSync(src).forEach((childItemName) => {
-            copyRecursiveSync(path.join(src, childItemName), path.join(dest, childItemName));
-        });
-    } else {
-        fs.copyFileSync(src, dest);
     }
 }
 
