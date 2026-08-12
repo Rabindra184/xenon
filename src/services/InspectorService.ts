@@ -523,30 +523,48 @@ export class InspectorService {
       });
     }
 
+    // On iOS `node.text` is `label || value`, so every locator that selects on
+    // it — predicate and xpath alike — has to name whichever of the two
+    // actually supplied it. Hardcoding `label` sends a page indicator, whose
+    // text lives in `value`, to a predicate that matches nothing.
+    const iosTextAttr = asText(node.attributes.label) === node.text ? 'label' : 'value';
+
     // 3. Platform Specific - Performance Tier
     if (platform === 'ios') {
       // iOS Predicate String - High Performance
-      const predicate = `type == "${node.type}" AND label == "${node.text || node.label || ''}"`;
+      const predicateValue = node.text || node.label || '';
       if (node.text || node.label) {
         suggestions.push({
           strategy: '-ios predicate string',
-          value: predicate,
-          unique: true,
+          value: `type == "${node.type}" AND ${iosTextAttr} == "${predicateValue}"`,
+          // A compound predicate is at least as selective as its label term, so
+          // a unique label makes it unique. The converse does not hold — two
+          // elements sharing a label may differ by type — which makes this
+          // conservative rather than exact, and that is the right direction:
+          // it was previously hardcoded true, and a predicate badged unique
+          // was measured against a real device matching two elements.
+          unique: this.isUnique(uniqueness, 'text', predicateValue),
           score: 90,
         });
       }
 
       // iOS Class Chain - High Precision
-      const classChain =
-        `**/${node.type}[` +
-        (node.attributes.name
-          ? `name == "${node.attributes.name}"`
-          : `label == "${node.text || ''}"`) +
-        ']';
+      //
+      // The predicate MUST be wrapped in backticks. Without them Appium
+      // resolves nothing at all: measured against a real iPhone,
+      // `**/XCUIElementTypePageIndicator[name == "Page control"]` found 0
+      // elements and the same chain with backticks found 1. Every class chain
+      // this service produced was unusable, and each was badged unique — 280
+      // of them in a single snapshot of a home screen.
+      const chainValue = node.attributes.name ? String(node.attributes.name) : node.text || '';
+      const chainTerm = node.attributes.name ? 'name' : 'label';
       suggestions.push({
         strategy: '-ios class chain',
-        value: classChain,
-        unique: true,
+        value: `**/${node.type}[\`${chainTerm} == "${chainValue}"\`]`,
+        // Same index the accessibility-id suggestion uses, and the same value:
+        // a node's identity there is `name || label`, which is exactly what
+        // the chain selects on.
+        unique: this.isUnique(uniqueness, 'accessibility id', chainValue),
         score: 85,
       });
     } else {
@@ -588,9 +606,15 @@ export class InspectorService {
         score: 70,
       });
     } else if (node.text) {
+      // `@text` is an Android attribute. An XCUIElement has name, label and
+      // value and no text at all, so every iOS suggestion in this shape
+      // resolved to nothing: measured on a real iPhone,
+      // `//XCUIElementTypePageIndicator[@text="Page control"]` found 0 and the
+      // same path with `@label` found 1.
+      const textAttr = platform === 'ios' ? iosTextAttr : 'text';
       suggestions.push({
         strategy: 'xpath',
-        value: `//${tagName}[@text="${node.text}"]`,
+        value: `//${tagName}[@${textAttr}="${node.text}"]`,
         unique: this.isUnique(uniqueness, 'text', node.text),
         score: 60,
       });

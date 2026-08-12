@@ -1,6 +1,6 @@
 {
   "name": "@xenon-device-management/xenon",
-  "version": "1.17.5",
+  "version": "1.18.0",
   "description": "Xenon - Intelligent Mobile Infrastructure. A self-healing device orchestration platform for Appium.",
   "main": "./lib/src/index.js",
   "exports": {
