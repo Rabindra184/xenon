@@ -3,8 +3,25 @@ import {
   classifyTunnelStderr,
   isMissingWdaError,
   isOwnStreamProcess,
+  isWdaLaunchFailure,
   missingWdaMessage,
+  wdaLaunchFailureMessage,
 } from '../../src/device-managers/ios/iosStreamDiagnostics';
+
+/**
+ * Both verbatim from a real go-ios run log, and the whole point is that they
+ * mean opposite things: reinstall the app, versus trust the app that is
+ * already installed.
+ */
+const GO_IOS_MISSING =
+  `{"level":"ERROR","msg":"Failed running WDA","error":"runXUITestWithBundleIdsXcode15Ctx: ` +
+  `cannot get test app information: Did not find test app for ` +
+  `'com.qasecret.WebDriverAgentRunner.xctrunner' on device. Is it installed?"}`;
+
+const GO_IOS_WONT_LAUNCH =
+  `{"level":"ERROR","msg":"Failed running WDA","error":"runXUITestWithBundleIdsXcode15Ctx: ` +
+  `cannot start test runner: LaunchAppWithStdIo: failed to launch app: launchApp: ` +
+  `failed to get PID: pidFromResponse: could not get pid"}`;
 
 describe('iosStreamDiagnostics', () => {
   describe('isMissingWdaError', () => {
@@ -34,6 +51,50 @@ describe('iosStreamDiagnostics', () => {
       expect(msg).to.contain('c008789a75');
       expect(msg).to.contain('WebDriverAgent');
       expect(msg.toLowerCase()).to.contain('install');
+    });
+  });
+
+  describe('telling "not installed" apart from "would not start"', () => {
+    it('reads the real missing-app log as missing', () => {
+      expect(isMissingWdaError(GO_IOS_MISSING)).to.equal(true);
+      expect(isWdaLaunchFailure(GO_IOS_MISSING)).to.equal(false);
+    });
+
+    it('reads the real launch-failure log as a launch failure, not as missing', () => {
+      // This is the one that was reported as "WebDriverAgent is not installed"
+      // against a device where it demonstrably was installed, sending the
+      // reader off to reinstall an app that was already there.
+      expect(isWdaLaunchFailure(GO_IOS_WONT_LAUNCH)).to.equal(true);
+      expect(isMissingWdaError(GO_IOS_WONT_LAUNCH)).to.equal(false);
+    });
+
+    it('gives the two cases opposite advice', () => {
+      expect(missingWdaMessage('udid-1')).to.contain('not installed');
+      const launch = wdaLaunchFailureMessage('udid-1');
+      expect(launch).to.contain('is installed');
+      expect(launch).to.contain('VPN & Device Management');
+      expect(launch).to.not.contain('not installed');
+    });
+
+    it('is safe on empty input', () => {
+      expect(isWdaLaunchFailure('')).to.equal(false);
+    });
+
+    it('is why the run log must be truncated per run', () => {
+      // These classifiers read a file, and the file used to be appended to
+      // across runs. A stale "Did not find test app" from a previous day still
+      // wins over today's launch failure — which is exactly how an installed
+      // WDA came to be reported as missing. IOSStreamService now empties the
+      // log before each spawn; this pins what happens if it stops.
+      const stale = `${GO_IOS_MISSING}\n${GO_IOS_WONT_LAUNCH}`;
+      expect(isMissingWdaError(stale)).to.equal(true);
+      expect(isWdaLaunchFailure(stale)).to.equal(true);
+    });
+
+    it('does not flag an unrelated crash as either', () => {
+      const crash = 'WDA crashed: signal 11 (SIGSEGV)';
+      expect(isMissingWdaError(crash)).to.equal(false);
+      expect(isWdaLaunchFailure(crash)).to.equal(false);
     });
   });
 
