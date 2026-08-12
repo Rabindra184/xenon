@@ -60,28 +60,6 @@ const commandsQueueGuard = new AsyncLock();
 // that onSessionStopped events don't fire twice if two clients race.
 const sessionCleanupLock = new AsyncLock();
 
-/** The suffix appium-webdriveragent appends to `updatedWDABundleId`. */
-export const XCTRUNNER_SUFFIX = '.xctrunner';
-
-/**
- * Normalise an installed WebDriverAgent bundle id for `appium:updatedWDABundleId`.
- *
- * The driver derives its keep-list entry as
- * `${updatedWDABundleId ?? WDA_RUNNER_BUNDLE_ID}${'.xctrunner'}`, so the
- * capability wants the id *without* the runner suffix — it puts it back. Handing
- * it the id exactly as installed yields `…xctrunner.xctrunner`, which matches
- * nothing, and the app the keep-list was meant to protect is uninstalled.
- *
- * Only a trailing occurrence is removed: a bundle id may legitimately contain
- * the word elsewhere, and `String.replace` without an anchor would cut the
- * first one it found.
- */
-export function stripXctrunnerSuffix(bundleId: string): string {
-  return bundleId.endsWith(XCTRUNNER_SUFFIX)
-    ? bundleId.slice(0, -XCTRUNNER_SUFFIX.length)
-    : bundleId;
-}
-
 @Service()
 export class SessionLifecycleService {
   private logger = log.scope('SessionLifecycleService');
@@ -366,8 +344,7 @@ export class SessionLifecycleService {
           await updateDeviceProgress(device.udid, device.host, 'WDA active, finalizing session...');
           await new Promise((resolve) => setTimeout(resolve, 2000));
 
-          const bundleId = await streamService.detectWDABundleId(device.udid);
-          this.injectWDAUrl(caps, wdaUrl, bundleId);
+          this.injectWDAUrl(caps, wdaUrl);
         } catch (err: any) {
           this.logger.warn(`⚠️ Artisan WDA: Pre-session boot failed: ${err.message}`);
           await updateDeviceProgress(
@@ -378,12 +355,7 @@ export class SessionLifecycleService {
         }
       } else if (isWdaActive) {
         const wdaUrl = `http://127.0.0.1:${streamStatus!.wdaPort}`;
-        // The bundle id matters as much here as on the branch above, and this
-        // is the branch that runs in the ordinary case — a preview already
-        // open when a test starts. Omitting it told Appium to manage "the
-        // preinstalled WDA" without saying which, and it removed ours.
-        const bundleId = await streamService.detectWDABundleId(device.udid);
-        this.injectWDAUrl(caps, wdaUrl, bundleId);
+        this.injectWDAUrl(caps, wdaUrl);
       }
 
       const hasWdaUrl =
@@ -401,7 +373,7 @@ export class SessionLifecycleService {
     }
   }
 
-  private injectWDAUrl(caps: ISessionCapability, wdaUrl: string, bundleId?: string | null) {
+  private injectWDAUrl(caps: ISessionCapability, wdaUrl: string) {
     // W3C capability rules forbid a property from appearing in BOTH alwaysMatch
     // and a firstMatch entry; appium rejects the session with "property
     // 'webDriverAgentUrl' should not exist on both primary and secondary object".
@@ -412,46 +384,36 @@ export class SessionLifecycleService {
     if (!target) return;
     const other = target === caps.alwaysMatch ? caps.firstMatch?.[0] : caps.alwaysMatch;
 
+    // The URL, and only the URL. Xenon owns this WebDriverAgent: it launched
+    // it through go-ios and keeps the XCTest session alive for the stream. The
+    // driver is a guest here, and `webDriverAgentUrl` is precisely how you say
+    // that — `selectWdaStartupStrategyName` returns 'existing-url' on it before
+    // considering anything else, and that strategy's own quit() reads
+    // "Stopping neither xcodebuild nor XCTest session since WDA lifecycle is
+    // not managed by this driver".
     target['appium:webDriverAgentUrl'] = wdaUrl;
 
-    // `usePreinstalledWDA` and `updatedWDABundleId` travel together or not at
-    // all. On its own, the first one sends the driver down
-    // `preparePreinstalled`, which calls `cleanupApps(driver,
-    // [driver.wda.bundleIdForXctest])` — that removes every installed app
-    // whose CFBundleName is WebDriverAgentRunner except the one bundle id it
-    // was told to keep. Without `updatedWDABundleId` that keep-list is the
-    // driver's own default, `com.facebook.WebDriverAgentRunner.xctrunner`, so
-    // the WDA Xenon just launched (`com.qasecret.…` here) is not on it and is
-    // uninstalled from the device mid-session. Observed twice on a real
-    // iPhone: "Removing WebDriverAgent runner app
-    // 'com.qasecret.WebDriverAgentRunner.xctrunner'", after which every iOS
-    // feature fails with "WebDriverAgent is not installed" until someone
-    // re-signs and reinstalls it by hand.
+    // `usePreinstalledWDA` is removed, never added, and this is the whole fix.
     //
-    // `webDriverAgentUrl` alone is enough to reuse a running WDA, and it does
-    // not enter that cleanup path — so when the bundle id is unknown, the safe
-    // move is to say less, not more.
+    // It does not change which strategy runs — the URL already won that — it
+    // only makes `launchOnce` call `preparePreinstalled` first, which is:
     //
-    // The suffix matters as much as the value. The keep-list entry is
-    // `bundleIdForXctest`, which the driver builds as
-    // `${updatedWDABundleId ?? WDA_RUNNER_BUNDLE_ID}${'.xctrunner'}` — so this
-    // capability wants the id WITHOUT the runner suffix, and the driver adds
-    // it back. Passing the installed id verbatim produced a keep-list of
-    // `com.qasecret.WebDriverAgentRunner.xctrunner.xctrunner`, which matched
-    // nothing on the device, and the real runner was uninstalled anyway. That
-    // is the same normalisation the driver applies to its own prebuilt path:
-    // `updatedWDABundleId = candidateBundleId.replace('.xctrunner', '')`.
-    if (bundleId) {
-      target['appium:usePreinstalledWDA'] = true;
-      target['appium:updatedWDABundleId'] = stripXctrunnerSuffix(bundleId);
-    } else {
-      log.warn(
-        `[Xenon] Could not identify the WebDriverAgent bundle on this device; reusing it by URL only. ` +
-          `Sending usePreinstalledWDA without a bundle id would let the driver uninstall it.`,
-      );
-      delete target['appium:usePreinstalledWDA'];
-      delete target['appium:updatedWDABundleId'];
-    }
+    //   await driver.mobileKillApp(driver.wda.bundleIdForXctest);
+    //   await cleanupApps(driver, [driver.wda.bundleIdForXctest]);
+    //
+    // Kill the app, then uninstall every WebDriverAgentRunner not on a
+    // one-entry keep-list. Against a WDA that Xenon is hosting that is
+    // exactly wrong twice over, and both halves were observed on a real
+    // iPhone: the uninstall as "Removing WebDriverAgent runner app
+    // 'com.qasecret.WebDriverAgentRunner.xctrunner'", leaving the device with
+    // no WDA until someone re-signs one by hand; and the kill as the driver's
+    // own next request failing with ECONNRESET, because go-ios's runwda was
+    // gone while iproxy still held the port.
+    //
+    // Getting the keep-list right only converts the uninstall into the kill.
+    // The driver must not be invited to manage this app at all.
+    delete target['appium:usePreinstalledWDA'];
+    delete target['appium:updatedWDABundleId'];
 
     // These conflict with a pre-installed WDA URL — strip from both buckets.
     for (const bucket of [target, other]) {
