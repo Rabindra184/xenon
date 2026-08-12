@@ -218,6 +218,80 @@ describe('InspectorService hierarchy parsing', () => {
     });
   });
 
+  describe('iOS locator syntax', () => {
+    // Two StaticTexts share the label "Done" and neither has a name, so both a
+    // predicate and a class chain built from that label are genuinely
+    // ambiguous. The button carries a name and is genuinely unique. The text
+    // field has a value and no label.
+    const XML = `<AppiumAUT>
+      <XCUIElementTypeApplication type="XCUIElementTypeApplication" name="MyApp" label="MyApp" x="0" y="0" width="390" height="844">
+        <XCUIElementTypeButton type="XCUIElementTypeButton" name="done-btn" label="Save" x="0" y="0" width="10" height="10" />
+        <XCUIElementTypeStaticText type="XCUIElementTypeStaticText" label="Done" x="0" y="20" width="10" height="10" />
+        <XCUIElementTypeStaticText type="XCUIElementTypeStaticText" label="Done" x="0" y="30" width="10" height="10" />
+        <XCUIElementTypeTextField type="XCUIElementTypeTextField" value="typed text" x="0" y="40" width="10" height="10" />
+      </XCUIElementTypeApplication>
+    </AppiumAUT>`;
+
+    const root = () => parse(XML, 'ios');
+    const byType = (t: string) => find(root(), (n) => n.type === t)[0];
+
+    it('wraps the class chain predicate in backticks', () => {
+      // Measured on a real iPhone: without backticks Appium resolves 0
+      // elements, with them it resolves 1. Every chain this produced was
+      // unusable — 280 of them in one home-screen snapshot.
+      expect(locator(byType('XCUIElementTypeButton'), '-ios class chain')!.value).to.equal(
+        '**/XCUIElementTypeButton[`name == "done-btn"`]',
+      );
+    });
+
+    it('selects on label in the class chain when there is no name', () => {
+      expect(locator(byType('XCUIElementTypeStaticText'), '-ios class chain')!.value).to.equal(
+        '**/XCUIElementTypeStaticText[`label == "Done"`]',
+      );
+    });
+
+    it('uses an attribute an XCUIElement actually has in xpath', () => {
+      // `@text` is Android's. iOS has name, label and value — and `@text`
+      // resolved to nothing on a real device.
+      const xpath = locator(byType('XCUIElementTypeStaticText'), 'xpath')!.value;
+      expect(xpath).to.equal('//XCUIElementTypeStaticText[@label="Done"]');
+      expect(xpath).to.not.contain('@text');
+    });
+
+    it('names value rather than label when value is what supplied the text', () => {
+      expect(locator(byType('XCUIElementTypeTextField'), 'xpath')!.value).to.equal(
+        '//XCUIElementTypeTextField[@value="typed text"]',
+      );
+    });
+
+    it('names the same attribute in the predicate as in the xpath', () => {
+      // A page indicator carries its text in `value` and has no label at all.
+      // The predicate hardcoded `label ==`, so it matched nothing — measured
+      // against a real iPhone as the last surviving miss after the other
+      // fixes landed.
+      const field = byType('XCUIElementTypeTextField');
+      expect(locator(field, '-ios predicate string')!.value).to.equal(
+        'type == "XCUIElementTypeTextField" AND value == "typed text"',
+      );
+      expect(locator(byType('XCUIElementTypeStaticText'), '-ios predicate string')!.value).to.equal(
+        'type == "XCUIElementTypeStaticText" AND label == "Done"',
+      );
+    });
+
+    it('stops claiming every predicate and class chain is unique', () => {
+      // Both were hardcoded true. On a real device a predicate badged unique
+      // matched two elements.
+      const shared = byType('XCUIElementTypeStaticText'); // label "Done", shared
+      expect(locator(shared, '-ios predicate string')!.unique).to.equal(false);
+      expect(locator(shared, '-ios class chain')!.unique).to.equal(false);
+    });
+
+    it('still reports a genuinely unique one as unique', () => {
+      const named = byType('XCUIElementTypeButton'); // name "done-btn", unique
+      expect(locator(named, '-ios class chain')!.unique).to.equal(true);
+    });
+  });
+
   describe('iOS', () => {
     it('parses the XCUIElementType tree unchanged', () => {
       const root = parse(IOS_XML, 'ios');
