@@ -34,6 +34,24 @@ const LEVELS: Record<string, LogLevel> = {
   fault: 'F',
 };
 
+/**
+ * The record levels an os_log level request admits.
+ *
+ * A viewer's request is expressed in os_log names but records carry the mapped
+ * letter, so narrowing a shared stream for one socket has to translate back.
+ * `Info` and `Default` both map to `I`, so asking for either admits both —
+ * which is the honest consequence of a mapping that refuses to render an
+ * ordinary message as a warning.
+ */
+export function iosLevelsToLetters(levels: string[]): Set<string> {
+  const out = new Set<string>();
+  for (const name of levels) {
+    const letter = LEVELS[name.toLowerCase()];
+    if (letter) out.add(letter);
+  }
+  return out;
+}
+
 /** The trailing path component — process and image arrive as absolute paths. */
 function basename(p: string | undefined): string {
   if (!p) return '';

@@ -88,12 +88,50 @@ export interface ParseOptions {
  * keys themselves are always case-insensitive, and `level:` values are always
  * upper-cased, because a level is an enum rather than text being searched.
  */
+/**
+ * Split a query into terms, treating a double-quoted run as one term.
+ *
+ * Splitting on whitespace alone cannot express a value that contains a space,
+ * and iOS process names routinely do: `package:Food Truck` parsed as
+ * `package:food` plus a search for `truck`, so filtering to an app called
+ * "Food Truck" silently matched nothing. Android package names are dotted and
+ * never hit this, which is why it went unnoticed until iOS logs arrived.
+ *
+ * The quotes are removed, so `package:"Food Truck"` yields the single term
+ * `package:Food Truck`, and a bare `"disk full"` yields one text term. An
+ * unterminated quote runs to the end of the string rather than being an error
+ * — the box is filtered on every keystroke, so half-typed input has to behave.
+ */
+export function tokenize(raw: string): string[] {
+  const out: string[] = [];
+  let cur = '';
+  let quoted = false;
+  let open = false; // a term exists even if empty, e.g. `tag:""`
+  for (const ch of raw) {
+    if (ch === '"') {
+      quoted = !quoted;
+      open = true;
+      continue;
+    }
+    if (!quoted && /\s/.test(ch)) {
+      if (open || cur) out.push(cur);
+      cur = '';
+      open = false;
+      continue;
+    }
+    cur += ch;
+    open = true;
+  }
+  if (open || cur) out.push(cur);
+  return out.filter((t) => t.length > 0);
+}
+
 export function parseQuery(raw: string, opts: ParseOptions = {}): LogcatQuery {
   const cs = opts.caseSensitive === true;
   const norm = (s: string) => (cs ? s : s.toLowerCase());
   const q: LogcatQuery = cs ? { caseSensitive: true } : {};
   const words: string[] = [];
-  for (const token of raw.trim().split(/\s+/).filter(Boolean)) {
+  for (const token of tokenize(raw)) {
     const [key, ...rest] = token.split(':');
     const value = rest.join(':');
     if (value && key.toLowerCase() === 'level') q.minLevel = value.toUpperCase();

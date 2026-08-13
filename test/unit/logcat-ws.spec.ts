@@ -102,7 +102,10 @@ interface Harness {
 async function harness(over: {
   redeem?: (ticket: string, udid: string) => Promise<LogcatWsActor>;
   authorize?: (udid: string, actor: LogcatWsActor) => Promise<boolean>;
-  startStream?: (udid: string) => Promise<LogcatMultiplexer>;
+  startStream?: (
+    udid: string,
+    filter: { levels?: string[]; process?: string },
+  ) => Promise<{ mux: LogcatMultiplexer; levels?: string[] }>;
   maxBufferedBytes?: number;
 }): Promise<Harness> {
   const mux = new LogcatMultiplexer();
@@ -120,7 +123,10 @@ async function harness(over: {
       over.startStream ??
       (async () => {
         state.startCalls += 1;
-        return mux;
+        // The stream reports which levels this client gets, because the
+        // multiplexer is shared on iOS; Android returns none and is filtered
+        // in the browser.
+        return { mux };
       }),
   };
   if (over.maxBufferedBytes !== undefined) deps.maxBufferedBytes = over.maxBufferedBytes;
@@ -377,7 +383,7 @@ describe('attachLogcatWs handshake', () => {
     const h = await harness({
       startStream: async () => {
         await gate;
-        return gatedMux;
+        return { mux: gatedMux };
       },
     });
     const ws = new WebSocket(url(h.port));
@@ -866,7 +872,7 @@ describe('attachLogcatWs sink', () => {
   async function sinkHarness(maxBufferedBytes?: number) {
     const cap = capturingMux();
     const h = await harness({
-      startStream: async () => cap.fake,
+      startStream: async () => ({ mux: cap.fake }),
       ...(maxBufferedBytes === undefined ? {} : { maxBufferedBytes }),
     });
     const ws = new WebSocket(url(h.port));
@@ -953,5 +959,110 @@ describe('attachLogcatWs sink', () => {
     } finally {
       warnSpy.restore();
     }
+  });
+});
+
+/**
+ * Per-socket narrowing of a stream that cannot be narrowed at the source.
+ *
+ * os_trace_relay serves one consumer per device, so a second child spawned to
+ * satisfy a second filter silences both — measured, three concurrent readers
+ * and all of them mute. The child therefore emits the union of what every
+ * viewer asked for and each socket takes its own slice here.
+ */
+describe('attachLogcatWs per-client filtering', () => {
+  const at = (level: LogcatRecord['level'], message: string, pkg?: string): LogcatRecord => ({
+    ts: 1,
+    pid: 1,
+    tid: 1,
+    level,
+    tag: 'T',
+    message,
+    ...(pkg ? { pkg } : {}),
+  });
+
+  /** Connect with an explicit query, collect what arrives, return the messages. */
+  async function received(
+    h: Harness,
+    query: string,
+    push: (mux: LogcatMultiplexer) => void,
+  ): Promise<string[]> {
+    const ws = new WebSocket(`${url(h.port)}${query}`);
+    const got: LogcatRecord[] = [];
+    ws.on('message', (d) => got.push(JSON.parse(d.toString())));
+    ws.on('error', () => undefined);
+    await new Promise((r) => ws.on('open', r));
+    await new Promise((r) => setTimeout(r, 50));
+    push(h.mux);
+    await new Promise((r) => setTimeout(r, 100));
+    ws.terminate();
+    return got.map((r) => r.message);
+  }
+
+  it('drops records outside the levels the stream granted this client', async () => {
+    const h = await harness({
+      startStream: async (_udid, filter) => ({ mux: h!.mux, levels: filter.levels }),
+    });
+    const msgs = await received(h, '&levels=Error', (mux) => {
+      mux.push(at('D', 'debug'));
+      mux.push(at('I', 'info'));
+      mux.push(at('E', 'error'));
+    });
+    expect(msgs).to.deep.equal(['error']);
+    await h.close();
+  });
+
+  // The hardware bug this exists for: two viewers, one asking for Debug and one
+  // asking for nothing. They share a child, so "asked for nothing" cannot mean
+  // "unfiltered" — it would hand the second viewer the first one's 102,809
+  // Debug records. The stream reports the default it applied and that governs.
+  it('filters a client that named no levels by the default the stream applied', async () => {
+    const h = await harness({
+      startStream: async (_udid, filter) => ({
+        mux: h!.mux,
+        levels: filter.levels?.length ? filter.levels : ['Info', 'Error', 'Fault'],
+      }),
+    });
+    const msgs = await received(h, '', (mux) => {
+      mux.push(at('D', 'someone-elses-debug'));
+      mux.push(at('I', 'mine'));
+    });
+    expect(msgs).to.deep.equal(['mine']);
+    await h.close();
+  });
+
+  it('leaves everything through when the stream reports no levels (Android)', async () => {
+    const h = await harness({});
+    const msgs = await received(h, '', (mux) => {
+      mux.push(at('D', 'debug'));
+      mux.push(at('E', 'error'));
+    });
+    expect(msgs).to.deep.equal(['debug', 'error']);
+    await h.close();
+  });
+
+  it('drops records from other processes when one is named', async () => {
+    const h = await harness({});
+    const msgs = await received(h, '&process=Food%20Truck', (mux) => {
+      mux.push(at('D', 'theirs', 'backboardd'));
+      mux.push(at('D', 'mine', 'Food Truck'));
+      mux.push(at('D', 'unattributed'));
+    });
+    expect(msgs).to.deep.equal(['mine']);
+    await h.close();
+  });
+
+  // A reader narrowed to one app still needs to know records went missing, so
+  // the drop marker outranks both filters — the same rule the browser filter
+  // follows.
+  it('always delivers synthetic markers, whatever the filters say', async () => {
+    const h = await harness({
+      startStream: async () => ({ mux: h!.mux, levels: ['Error'] }),
+    });
+    const msgs = await received(h, '&process=Food%20Truck&levels=Error', (mux) => {
+      mux.push({ ...at('W', '3 lines dropped (slow client)', 'xenon'), synthetic: true });
+    });
+    expect(msgs).to.deep.equal(['3 lines dropped (slow client)']);
+    await h.close();
   });
 });
