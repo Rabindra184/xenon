@@ -6,7 +6,34 @@ This project follows [Semantic Versioning](https://semver.org/). Releases are
 published to npm automatically when `package.json`'s `version` changes on `main`
 (see `.github/workflows/npm-publish.yml`).
 
-## 1.20.0
+## 1.20.1
+
+Patch release. Found by using the Debug Logs toolbar rather than by testing it.
+
+### Fixed
+
+- **Every filter change leaked a WebSocket, and the leaked one was
+  unfiltered.** Changing the level or the `package:` term closed the old socket
+  and opened a new one — but `close()` delivers its event asynchronously, and
+  the effect's cancellation token was a ref shared across runs, which the next
+  run had already reset. The dying socket's `onclose` therefore read as an
+  unexpected close, retried on the 500ms backoff, and reconnected from its own
+  closure carrying the previous filter. That socket overwrote the reference to
+  the correctly-filtered one, which no later cleanup could reach. Measured on
+  an iPhone 14: two sockets opened per change, and the survivor was always the
+  one with no filter at all.
+
+  The pane still looked right, because the browser filters locally as well —
+  but the device firehose kept arriving, which is exactly what pushing
+  `--process` down to `ostrace` exists to prevent. The visible symptoms were a
+  RECORD that captured every process on the device while a single app was
+  selected, a pane that churned through its 5000-record buffer in seconds, and
+  a FREEZE whose content scrolled away underneath a held scroll position.
+
+  The token is now created per effect run. Verified against the same device: a
+  10-second recording filtered to one process went from 10,606 lines spanning
+  many processes to 769 lines from a single PID, and five filter changes opened
+  four sockets and closed three — one live, none stranded.
 
 Minor release. The Debug Logs filter now means the same thing on both
 platforms, and the iOS stream stops fighting itself when two people watch it.
