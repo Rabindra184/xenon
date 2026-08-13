@@ -1,5 +1,6 @@
 import * as React from 'react';
 import prettyMilliseconds from 'pretty-ms';
+import { formatReservationRemaining } from './reservationTime';
 import { Copy, MoreHorizontal, Clock, Terminal } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { IDevice } from '../../../interfaces/IDevice';
@@ -246,7 +247,7 @@ export const DeviceCard: React.FC<Props> = ({ device, reloadDevices, navigate, t
             <span>
               RES · {device.reservedBy || 'anon'}
               {device.reservedUntil
-                ? ` (${prettyMilliseconds(device.reservedUntil - Date.now(), { compact: true })})`
+                ? ` (${formatReservationRemaining(device.reservedUntil - Date.now())})`
                 : ''}
             </span>
           </div>
