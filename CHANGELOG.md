@@ -6,6 +6,28 @@ This project follows [Semantic Versioning](https://semver.org/). Releases are
 published to npm automatically when `package.json`'s `version` changes on `main`
 (see `.github/workflows/npm-publish.yml`).
 
+## 1.20.3
+
+Patch release.
+
+### Fixed
+
+- **Downloading an app from the Apps registry returned 404.** The row was
+  found and the file was on disk, but `res.download` refused it and answered
+  with an HTML error page instead. Uploaded apps live under
+  `~/.cache/xenon/apps/`, and `.cache` is a dot-segment, which `send` hides
+  unless told otherwise. It began failing when Appium 3 moved to Express 5:
+  `send` 0.19 read an unspecified `dotfiles` as legacy and its legacy branch
+  looked at the last path segment alone, so a file named `<uuid>.ipa` was
+  served regardless of the directories above it; `send` 1.2.0 dropped that
+  branch, so `dotfiles` defaults to `ignore` and a dot anywhere in the path is
+  now fatal. Measured against the same `.ipa`: Express 4.22.1 → 200, Express
+  5.1.0 → 404, Express 5.1.0 with `dotfiles: 'allow'` → 200 and all 6,579,953
+  bytes. No traversal risk: the path comes from the App row Xenon wrote at
+  upload time, never from the request. `express.static` was unaffected — with a
+  `root` set, `send` dot-checks only the request path — so this was the one
+  caller that needed it.
+
 ## 1.20.2
 
 Patch release. One label; no behaviour change.
