@@ -631,3 +631,95 @@ describe('useLogcatStream — clear()', () => {
     expect(probe.state.records).toHaveLength(0);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Per-run cancellation. The effect's cancellation token used to be a ref
+// shared across runs, so the socket a filter change had just closed came back
+// from the dead — see the docblock on `run` in useLogcatStream.ts.
+// ---------------------------------------------------------------------------
+/** First retry lands at BACKOFF_START_MS; overshoot so the timer has fired. */
+const BACKOFF_AFTER_FIRST_ATTEMPT_MS = 600;
+
+describe('useLogcatStream — changing the source filter', () => {
+  interface FilterProbeProps {
+    sourceFilter: { levels?: string[]; process?: string };
+  }
+  function FilterProbe({ sourceFilter }: FilterProbeProps) {
+    useLogcatStream('DEV-1', true, sourceFilter);
+    return null;
+  }
+  const renderFilterProbe = (sourceFilter: FilterProbeProps['sourceFilter']) =>
+    render(React.createElement(FilterProbe, { sourceFilter }));
+
+  const params = (ws: FakeWebSocket) => {
+    const q = new URLSearchParams(ws.url.split('?')[1]);
+    return { levels: q.get('levels'), process: q.get('process') };
+  };
+
+  it('serialises the filter into the upgrade URL and reconnects when it changes', async () => {
+    const utils = renderFilterProbe({ levels: ['Info'], process: 'wifid' });
+    await tick();
+    expect(params(FakeWebSocket.instances[0])).to.deep.equal({
+      levels: 'Info',
+      process: 'wifid',
+    });
+
+    utils.rerender(
+      React.createElement(FilterProbe, { sourceFilter: { levels: ['Fault'], process: 'wifid' } }),
+    );
+    await tick();
+    expect(FakeWebSocket.instances).to.have.length(2);
+    expect(params(FakeWebSocket.instances[1])).to.deep.equal({
+      levels: 'Fault',
+      process: 'wifid',
+    });
+    expect(FakeWebSocket.instances[0].closeCalls, 'the old socket is closed').to.have.length(1);
+  });
+
+  // The leak. A real browser delivers `onclose` on a later turn, so the socket
+  // cleanup closed still reports its death AFTER the next effect run has
+  // started. With a shared token that run had already reset it to false, so
+  // this close read as unexpected, retried on the 500ms backoff, and opened a
+  // THIRD socket carrying the FIRST run's filter — which then overwrote
+  // wsRef.current and orphaned the correct one. Measured on hardware as 16
+  // connects against 4 disconnects from one tab.
+  it('does not resurrect the socket a filter change closed', async () => {
+    const utils = renderFilterProbe({ levels: ['Info'], process: 'wifid' });
+    await tick();
+    const first = FakeWebSocket.instances[0];
+
+    utils.rerender(
+      React.createElement(FilterProbe, { sourceFilter: { levels: ['Fault'], process: 'wifid' } }),
+    );
+    await tick();
+
+    // The close event for the socket cleanup already closed, arriving late as
+    // a real one does. 1006 is the abnormal code a dropped connection gives.
+    await act(async () => {
+      first.serverClose(1006);
+    });
+    await tick(BACKOFF_AFTER_FIRST_ATTEMPT_MS);
+
+    expect(
+      FakeWebSocket.instances,
+      'a late close on a superseded socket must not open another',
+    ).to.have.length(2);
+    expect(
+      params(FakeWebSocket.instances[1]),
+      'the surviving socket keeps the new filter',
+    ).to.deep.equal({ levels: 'Fault', process: 'wifid' });
+  });
+
+  // The other half of the same token: cancellation must still apply WITHIN a
+  // run, or a genuinely dropped socket would never come back.
+  it('still reconnects when the live socket drops', async () => {
+    renderFilterProbe({ levels: ['Info'], process: 'wifid' });
+    await tick();
+    await act(async () => {
+      FakeWebSocket.instances[0].serverOpen();
+      FakeWebSocket.instances[0].serverClose(1006);
+    });
+    await tick(BACKOFF_AFTER_FIRST_ATTEMPT_MS);
+    expect(FakeWebSocket.instances).to.have.length(2);
+  });
+});

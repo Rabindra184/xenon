@@ -89,7 +89,6 @@ export function useLogcatStream(
 
   const wsRef = useRef<WebSocket | null>(null);
   const attemptsRef = useRef(0);
-  const cancelledRef = useRef(false);
   const retryTimerRef = useRef<number | undefined>(undefined);
   // Populated by the effect below on every (re)run; retry() calls through
   // this ref so a manual retry can restart the *current* connect loop
@@ -145,13 +144,33 @@ export function useLogcatStream(
       return;
     }
 
-    cancelledRef.current = false;
     setDeniedReason(null);
     setExhausted(false);
     attemptsRef.current = 0;
 
+    /**
+     * This run's cancellation token. Deliberately a fresh object per effect
+     * run rather than a ref shared across runs.
+     *
+     * A shared ref is what leaked a socket on every filter change. Cleanup set
+     * it true and closed the socket — but `close()` delivers its event
+     * asynchronously, and by then the NEXT run had reset the same ref to
+     * false. The dying socket's `onclose` therefore read as an unexpected
+     * close, called `scheduleRetry()`, and BACKOFF_START_MS later reconnected
+     * from ITS closure — carrying the previous filter. That socket overwrote
+     * `wsRef.current`, orphaning the correctly-filtered one, which no later
+     * cleanup could reach.
+     *
+     * Measured against an iPhone 14 before the fix: 16 connects to 4
+     * disconnects from a single tab, and the survivor was always the
+     * unfiltered one — so `package:` looked right in the pane (the browser
+     * still filters locally) while the device firehose kept arriving, which is
+     * exactly what pushing `--process` down to ostrace exists to prevent.
+     */
+    const run = { cancelled: false };
+
     const scheduleRetry = () => {
-      if (cancelledRef.current) return;
+      if (run.cancelled) return;
       if (attemptsRef.current >= MAX_ATTEMPTS) {
         // Previously returned silently: `connected` stayed false forever and
         // the toolbar pill sat on CONNECTING with no way out but a remount.
@@ -164,13 +183,13 @@ export function useLogcatStream(
     };
 
     const connect = async () => {
-      if (cancelledRef.current) return;
+      if (run.cancelled) return;
       try {
         const res = await fetch(`/xenon/api/control/${encodeURIComponent(udid)}/stream/ticket`, {
           method: 'POST',
           credentials: 'include',
         });
-        if (cancelledRef.current) return;
+        if (run.cancelled) return;
         // A non-2xx (e.g. a transient 500) used to fall through the
         // `!ticket` check below and return with no retry scheduled,
         // stranding the pane silently until remount. Treat it like a thrown
@@ -180,7 +199,7 @@ export function useLogcatStream(
           return;
         }
         const { ticket } = await res.json();
-        if (cancelledRef.current) return;
+        if (run.cancelled) return;
         if (!ticket) {
           scheduleRetry();
           return;
@@ -258,7 +277,7 @@ export function useLogcatStream(
             // Authorization will not change on its own — stop the loop and
             // tell the user why instead of retrying into the same denial 10
             // times and then going quiet.
-            cancelledRef.current = true;
+            run.cancelled = true;
             setDeniedReason(event.reason || 'access denied');
             return;
           }
@@ -291,7 +310,7 @@ export function useLogcatStream(
     };
 
     connectRef.current = () => {
-      cancelledRef.current = false;
+      run.cancelled = false;
       attemptsRef.current = 0;
       setDeniedReason(null);
       setExhausted(false);
@@ -300,7 +319,7 @@ export function useLogcatStream(
     connect();
 
     return () => {
-      cancelledRef.current = true;
+      run.cancelled = true;
       if (retryTimerRef.current !== undefined) window.clearTimeout(retryTimerRef.current);
       if (flushTimerRef.current !== undefined) {
         window.clearTimeout(flushTimerRef.current);
