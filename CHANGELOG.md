@@ -6,6 +6,17 @@ This project follows [Semantic Versioning](https://semver.org/). Releases are
 published to npm automatically when `package.json`'s `version` changes on `main`
 (see `.github/workflows/npm-publish.yml`).
 
+## 1.20.2
+
+Patch release. One label; no behaviour change.
+
+### Changed
+
+- **The device-control tab now reads "Logs" rather than "Debug Logs".** It
+  matches the tab's own state key, which has always been `logs`, and the four
+  labels beside it — Actions, Screenshot, Shell, Omni-Vision — none of which
+  qualify what they show.
+
 ## 1.20.1
 
 Patch release. Found by using the Debug Logs toolbar rather than by testing it.
