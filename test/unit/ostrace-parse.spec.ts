@@ -1,6 +1,7 @@
 import { expect } from 'chai';
 import { parseOstraceLine } from '../../src/services/logcat/ostraceParse';
 import { resolveLogSource } from '../../src/services/logcat/logSource';
+import { appIdForProcess, parseInstalledApps } from '../../src/device-managers/ios/iosAppIds';
 
 /**
  * Verbatim from `go-ios ostrace` against an iPhone 14 on iOS 26.5.2.
@@ -101,5 +102,75 @@ describe('resolveLogSource', () => {
     // missing one, which is the truth.
     expect(resolveLogSource('tvos')).to.equal('unsupported');
     expect(resolveLogSource(undefined)).to.equal('unsupported');
+  });
+});
+
+/**
+ * An os_trace record names the binary that logged, never the app it belongs
+ * to. Android has no such gap — a process name there IS the package name, so
+ * `package:com.google.android.gms` already filters by app id (verified on a
+ * Galaxy S9). Translating the executable back to its bundle id is what makes
+ * one filter grammar mean the same thing on both platforms.
+ */
+describe('iOS app id attribution', () => {
+  // Verbatim shape from `ios apps` against an iPhone 14.
+  const APPS = JSON.stringify([
+    {
+      CFBundleExecutable: 'Food Truck',
+      CFBundleIdentifier: 'com.example.apple-samplecode.Food-TruckJM7967FMBS',
+    },
+    {
+      CFBundleExecutable: 'WebDriverAgentRunner-Runner',
+      CFBundleIdentifier: 'com.qasecret.WebDriverAgentRunner.xctrunner',
+    },
+  ]);
+
+  it('maps an executable to its bundle id', () => {
+    const m = parseInstalledApps(APPS);
+    expect(m.get('Food Truck')).to.equal('com.example.apple-samplecode.Food-TruckJM7967FMBS');
+    expect(m.size).to.equal(2);
+  });
+
+  it('reports an app by its app id', () => {
+    const m = parseInstalledApps(APPS);
+    expect(appIdForProcess('Food Truck', m)).to.equal(
+      'com.example.apple-samplecode.Food-TruckJM7967FMBS',
+    );
+  });
+
+  it('leaves a daemon as itself, exactly as Android leaves surfaceflinger', () => {
+    const m = parseInstalledApps(APPS);
+    expect(appIdForProcess('backboardd', m)).to.equal('backboardd');
+    expect(appIdForProcess(undefined, m)).to.equal(undefined);
+  });
+
+  it('degrades to executable names when the device cannot list apps', () => {
+    // This runs at stream start; a listing failure must not take the log
+    // stream down, it must only cost the translation.
+    ['', 'not json', '{}', '[]', 'null'].forEach((bad) => {
+      const m = parseInstalledApps(bad);
+      expect(m.size, bad).to.equal(0);
+      expect(appIdForProcess('Food Truck', m), bad).to.equal('Food Truck');
+    });
+  });
+
+  it('ignores a half-populated entry rather than mapping to undefined', () => {
+    const m = parseInstalledApps(
+      JSON.stringify([{ CFBundleExecutable: 'Ghost' }, { CFBundleIdentifier: 'com.no.exe' }]),
+    );
+    expect(m.size).to.equal(0);
+    expect(appIdForProcess('Ghost', m)).to.equal('Ghost');
+  });
+
+  it('keeps the first mapping when two apps share an executable name', () => {
+    // Nothing here can tell them apart from a name, and silently switching
+    // which one a filter means is worse than picking one and staying put.
+    const m = parseInstalledApps(
+      JSON.stringify([
+        { CFBundleExecutable: 'Dup', CFBundleIdentifier: 'com.first' },
+        { CFBundleExecutable: 'Dup', CFBundleIdentifier: 'com.second' },
+      ]),
+    );
+    expect(m.get('Dup')).to.equal('com.first');
   });
 });

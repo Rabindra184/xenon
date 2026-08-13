@@ -1,6 +1,8 @@
 import { Service, Container } from 'typedi';
-import { spawn, type ChildProcess } from 'child_process';
+import { spawn, execFile, type ChildProcess } from 'child_process';
+import { promisify } from 'util';
 import readline from 'readline';
+import { appIdForProcess, parseInstalledApps } from './iosAppIds';
 import log from '../../logger';
 import { SingleFlight } from '../../helpers/singleFlight';
 import { LogcatMultiplexer } from '../android/LogcatMultiplexer';
@@ -13,6 +15,8 @@ import { IDLE_TIMEOUT_MS, IDLE_POLL_MS } from '../android/LogcatStreamService';
  * rather than applied after the fact, because the unfiltered firehose cannot be
  * read at the rate it arrives — see DEFAULT_LEVELS.
  */
+const execFileAsync = promisify(execFile);
+
 export interface IOSLogOptions {
   /** os_log level names to include. Omitted means DEFAULT_LEVELS. */
   levels?: string[];
@@ -97,6 +101,11 @@ export class IOSLogStreamService {
 
     return this.starts.run(key, async () => {
       const mux = new LogcatMultiplexer();
+      // Read once, here, rather than per record. Android resolves pid →
+      // package asynchronously for every line and needs a flushChain to stop
+      // the varying latency reordering them; a start-time snapshot keeps the
+      // hot path synchronous and needs none of that.
+      const appIds = await this.loadAppIds(udid);
       const proc = await this.spawnOstrace(udid, opts);
       const session: Session = { mux, proc };
       this.sessions.set(key, session);
@@ -109,7 +118,18 @@ export class IOSLogStreamService {
           // a line that is not a record is simply not one — there is no
           // continuation to append it to, unlike logcat.
           if (!rec) return;
-          if (opts.process && rec.pkg !== opts.process) return;
+
+          // An os_trace record names the binary, never the app. Translating it
+          // here is what lets `package:com.example.app` mean the same thing on
+          // iOS as it already does on Android.
+          const executable = rec.pkg;
+          rec.pkg = appIdForProcess(executable, appIds);
+
+          // Accept either form. The app id is what the filter is documented
+          // around, but a user reading the pane sees whatever is in front of
+          // them, and refusing the name they can actually see would be a poor
+          // way to reward them for typing it.
+          if (opts.process && rec.pkg !== opts.process && executable !== opts.process) return;
           mux.push(rec);
         });
       }
@@ -221,5 +241,34 @@ export class IOSLogStreamService {
 
   protected spawnProcess(command: string, args: string[]): ChildProcess {
     return spawn(command, args);
+  }
+
+  /**
+   * Executable → bundle id for the installed apps.
+   *
+   * `ios apps` needs no tunnel, unlike `ios ps`, which is why the map is built
+   * from installed apps rather than running processes: the log stream must not
+   * acquire a dependency on tunnel state it does not otherwise need.
+   *
+   * Never throws. A device that cannot list its apps yields an empty map and
+   * the stream falls back to executable names — the behaviour before app ids
+   * existed — rather than failing to start.
+   */
+  protected async loadAppIds(udid: string): Promise<Map<string, string>> {
+    try {
+      const goIOS = await this.goIOSPath();
+      const stdout = await this.execCapture(goIOS, ['apps', `--udid=${udid}`]);
+      const map = parseInstalledApps(stdout);
+      log.debug(`[${udid}] resolved ${map.size} app id(s) for log attribution`);
+      return map;
+    } catch (err: any) {
+      log.warn(`[${udid}] could not list apps for log attribution: ${err?.message ?? err}`);
+      return new Map();
+    }
+  }
+
+  protected async execCapture(command: string, args: string[]): Promise<string> {
+    const { stdout } = await execFileAsync(command, args, { maxBuffer: 8 * 1024 * 1024 });
+    return stdout;
   }
 }
