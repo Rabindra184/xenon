@@ -17,6 +17,7 @@ import {
 import { Select } from '../../ui/select';
 import { useLogcatStream, type BufferedLogcatRecord } from './useLogcatStream';
 import { matches, parseQuery, setLevelTerm, LEVEL_ORDER } from './logcatFilter';
+import { iosSourceFilter } from './iosSourceFilter';
 import { tagColor } from './tagColor';
 import {
   appendToRecording,
@@ -132,11 +133,9 @@ const LogcatRow = memo(function LogcatRow({
 });
 
 export default function LogcatView({ udid, platform }: Props) {
-  const isAndroid = (platform || '').toLowerCase() === 'android';
-  const { records, connected, clear, deniedReason, exhausted, retry } = useLogcatStream(
-    udid,
-    isAndroid,
-  );
+  const os = (platform || '').toLowerCase();
+  const isIOS = os === 'ios';
+  const supported = os === 'android' || isIOS;
   // The query string is the ONE source of truth for filtering. The level
   // dropdown does not hold its own state: it writes a `level:` term into this
   // string via setLevelTerm and reads its displayed value back out of it via
@@ -145,6 +144,23 @@ export default function LogcatView({ udid, platform }: Props) {
   // dropdown value made setLevelTerm strip the term the user had just typed)
   // and let the two controls display contradicting levels.
   const [query, setQuery] = useState('');
+
+  // On iOS the same query ALSO narrows the device-side stream: os_trace at
+  // Debug is 5,485 lines/sec device-wide, so the level dropdown and a
+  // `package:` term are pushed down to `go-ios ostrace` rather than applied
+  // only in the browser. Android is unchanged — it streams everything and
+  // filters here. Either way the records are still filtered locally below, so
+  // the pane shows the same thing on both platforms.
+  const sourceFilter = useMemo(
+    () => (isIOS ? iosSourceFilter(query) : undefined),
+    [isIOS, query],
+  );
+  const { records, connected, clear, deniedReason, exhausted, retry } = useLogcatStream(
+    udid,
+    supported,
+    sourceFilter,
+  );
+
   const [following, setFollowing] = useState(true);
   const [caseSensitive, setCaseSensitive] = useState(false);
   const [wrap, setWrap] = useState(true);
@@ -269,12 +285,13 @@ export default function LogcatView({ udid, platform }: Props) {
     if (following) endRef.current?.scrollIntoView({ block: 'end' });
   }, [visible.length, following]);
 
-  if (!isAndroid) {
+  if (!supported) {
     return (
       <div className="log-empty-state">
-        <p className="log-empty-title">Live logs are Android only</p>
+        <p className="log-empty-title">Live logs are not available here</p>
         <p className="log-empty-subtitle">
-          logcat streaming is not available for this device&apos;s platform.
+          Streaming is wired up for Android (logcat) and iOS (os_trace), not for this
+          device&apos;s platform.
         </p>
       </div>
     );

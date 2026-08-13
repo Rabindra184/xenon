@@ -27,6 +27,7 @@ const cleanup = async () => {
     const { default: AndroidStreamService } =
       await import('./device-managers/android/AndroidStreamService');
     const { LogcatStreamService } = await import('./device-managers/android/LogcatStreamService');
+    const { IOSLogStreamService } = await import('./device-managers/ios/IOSLogStreamService');
     const { stopAllTimers } = await import('./device-utils');
     const { VideoPipelineService } = await import('./services/VideoPipelineService');
 
@@ -41,6 +42,7 @@ const cleanup = async () => {
     // orphans one per streamed device plus its device-side reader, and every
     // restart leaks another pair.
     await Container.get(LogcatStreamService).cleanup();
+    await Container.get(IOSLogStreamService).cleanup();
     await Container.get(VideoPipelineService).cleanup();
 
     // Phase 3: kill anything that's still running
@@ -92,6 +94,17 @@ process.on('exit', () => {
               LogcatStreamService: new () => { killAllSync(): number | void };
             }
           ).LogcatStreamService,
+        ).killAllSync(),
+    ],
+    [
+      'ostrace',
+      () =>
+        Container.get(
+          (
+            require('./device-managers/ios/IOSLogStreamService') as {
+              IOSLogStreamService: new () => { killAllSync(): number | void };
+            }
+          ).IOSLogStreamService,
         ).killAllSync(),
     ],
     [
