@@ -52,20 +52,34 @@ beforeEach(() => {
 });
 
 describe('LogcatView', () => {
-  it('renders an unsupported state for a non-Android device', () => {
-    render(<LogcatView udid="DEV-1" platform="ios" />);
-    expect(screen.getByText(/Android only/i)).toBeTruthy();
+  it('renders an unsupported state for a platform with no transport', () => {
+    // These three cases asserted "Android only" until iOS gained os_trace.
+    // tvOS is now the platform with nothing wired up.
+    render(<LogcatView udid="DEV-1" platform="tvos" />);
+    expect(screen.getByText(/not available here/i)).toBeTruthy();
   });
 
-  it('does not open a stream for a non-Android device', () => {
-    render(<LogcatView udid="DEV-1" platform="ios" />);
+  it('does not open a stream for a platform with no transport', () => {
+    render(<LogcatView udid="DEV-1" platform="tvos" />);
     // second arg is `enabled`
-    expect(mockStream).toHaveBeenCalledWith('DEV-1', false);
+    expect(mockStream).toHaveBeenCalledWith('DEV-1', false, undefined);
   });
 
-  it('opens a stream for an Android device', () => {
+  it('opens a stream for an Android device, filtered in the browser', () => {
     render(<LogcatView udid="DEV-1" platform="android" />);
-    expect(mockStream).toHaveBeenCalledWith('DEV-1', true);
+    // No source filter: logcat streams everything and the pane narrows it.
+    expect(mockStream).toHaveBeenCalledWith('DEV-1', true, undefined);
+  });
+
+  it('opens a stream for an iOS device, narrowed at the source', () => {
+    // os_trace at Debug is 5,485 lines/sec device-wide, so the level has to be
+    // pushed down to the device or the pane is unreadable. Debug is absent
+    // until the dropdown asks for it.
+    render(<LogcatView udid="DEV-1" platform="ios" />);
+    const [, enabled, filter] = mockStream.mock.calls[mockStream.mock.calls.length - 1];
+    expect(enabled).toBe(true);
+    expect(filter.levels).toContain('Error');
+    expect(filter.levels).not.toContain('Debug');
   });
 
   it('renders a record across its columns', () => {

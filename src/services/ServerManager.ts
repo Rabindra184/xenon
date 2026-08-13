@@ -15,6 +15,8 @@ import { attachLogcatWs } from '../app/ws/logcatWs';
 import { StreamTicketService } from './token/StreamTicketService';
 import AndroidH264StreamService from '../device-managers/android/AndroidH264StreamService';
 import { LogcatStreamService } from '../device-managers/android/LogcatStreamService';
+import { IOSLogStreamService } from '../device-managers/ios/IOSLogStreamService';
+import { resolveLogSource } from './logcat/logSource';
 import { SessionOwnerResolver } from './device-access/SessionOwnerResolver';
 import { makeTicketActorAuthorizer } from './device-access/ticketActorAccess';
 // enable resolveJsonModule in tsconfig must be true for this to work
@@ -138,7 +140,23 @@ export class ServerManager {
           resolveSessionOwner: (sessionId) =>
             Container.get(SessionOwnerResolver).ownerOf(sessionId),
         }),
-        startStream: (udid) => Container.get(LogcatStreamService).start(udid),
+        // One WebSocket, two transports. The device's platform picks which —
+        // see resolveLogSource. The filter is only meaningful for ostrace,
+        // whose unfiltered rate is far past what a pane can show.
+        startStream: async (udid, filter) => {
+          const device = await DeviceStoreFactory.getStore().findDevice({ udid });
+          const source = resolveLogSource(device?.platform);
+          if (source === 'ostrace') {
+            return Container.get(IOSLogStreamService).start(udid, {
+              levels: filter.levels,
+              process: filter.process,
+            });
+          }
+          if (source === 'unsupported') {
+            throw new Error(`Log streaming is not supported on ${device?.platform ?? 'unknown'}`);
+          }
+          return Container.get(LogcatStreamService).start(udid);
+        },
       });
     }
 

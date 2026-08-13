@@ -66,7 +66,22 @@ const FLUSH_INTERVAL_MS = 50;
  * caps its retries) — except when the server's close code says retrying
  * cannot help (1008) or explicitly invites an immediate reconnect (1012).
  */
-export function useLogcatStream(udid: string, enabled: boolean): LogcatStreamState {
+export function useLogcatStream(
+  udid: string,
+  enabled: boolean,
+  /**
+   * Source-side narrowing, for platforms that filter before sending (iOS).
+   * Serialised into the upgrade URL, so a change here reconnects — which is
+   * the point: on iOS the level dropdown genuinely changes what the device
+   * sends, rather than what the browser shows. Android passes nothing and
+   * filters client-side as before.
+   */
+  sourceFilter?: { levels?: string[]; process?: string },
+): LogcatStreamState {
+  // A string, not the object: an object literal rebuilt on every render would
+  // re-run the effect and reconnect the socket on every keystroke in the
+  // filter box.
+  const filterKey = `${(sourceFilter?.levels ?? []).join(',')}|${sourceFilter?.process ?? ''}`;
   const [records, setRecords] = useState<BufferedLogcatRecord[]>([]);
   const [connected, setConnected] = useState(false);
   const [deniedReason, setDeniedReason] = useState<string | null>(null);
@@ -172,10 +187,14 @@ export function useLogcatStream(udid: string, enabled: boolean): LogcatStreamSta
         }
 
         const proto = window.location.protocol === 'https:' ? 'wss' : 'ws';
+        const [levelsPart, processPart] = filterKey.split('|');
+        const extra =
+          (levelsPart ? `&levels=${encodeURIComponent(levelsPart)}` : '') +
+          (processPart ? `&process=${encodeURIComponent(processPart)}` : '');
         const ws = new WebSocket(
           `${proto}://${window.location.host}/xenon/api/control/${encodeURIComponent(
             udid,
-          )}/logcat?ticket=${encodeURIComponent(ticket)}`,
+          )}/logcat?ticket=${encodeURIComponent(ticket)}${extra}`,
         );
         wsRef.current = ws;
 
@@ -294,7 +313,7 @@ export function useLogcatStream(udid: string, enabled: boolean): LogcatStreamSta
       wsRef.current?.close();
       wsRef.current = null;
     };
-  }, [udid, enabled, flush, scheduleFlush]);
+  }, [udid, enabled, filterKey, flush, scheduleFlush]);
 
   const retry = useCallback(() => {
     connectRef.current();

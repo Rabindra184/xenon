@@ -6,14 +6,41 @@ import type { LogcatRecord } from '../../services/logcat/logcatParse';
 
 const LOGCAT_PATH_RE = /^\/xenon\/api\/control\/([^/]+)\/logcat$/;
 
+/** What the client asked to stream, beyond which device. */
+export interface LogStreamFilter {
+  /** os_log level names (iOS only). Ignored on Android, which filters client-side. */
+  levels?: string[];
+  /** Process name (iOS only), so an app's own logs can be selected at the source. */
+  process?: string;
+}
+
 /** Parse the logcat stream upgrade path; returns null for any non-matching URL. */
-export function parseLogcatWsPath(url: string): { udid: string; ticket: string } | null {
+export function parseLogcatWsPath(
+  url: string,
+): ({ udid: string; ticket: string } & LogStreamFilter) | null {
   const [pathname, query = ''] = url.split('?');
   const m = LOGCAT_PATH_RE.exec(pathname);
   if (!m) return null;
-  const ticket = new URLSearchParams(query).get('ticket');
+  const params = new URLSearchParams(query);
+  const ticket = params.get('ticket');
   if (!ticket) return null;
-  return { udid: decodeURIComponent(m[1]), ticket };
+
+  // iOS streams are filtered at the source because the unfiltered firehose is
+  // 5,485 lines/sec; Android streams everything and filters in the browser.
+  // Both arrive here, and the service for the device's platform decides which
+  // of these it can honour.
+  const levels = (params.get('levels') ?? '')
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
+  const process = params.get('process')?.trim() || undefined;
+
+  return {
+    udid: decodeURIComponent(m[1]),
+    ticket,
+    ...(levels.length ? { levels } : {}),
+    ...(process ? { process } : {}),
+  };
 }
 
 /**
@@ -42,8 +69,12 @@ export interface LogcatWsDeps {
    * `manual_<apiKeyId>_<udid>` lock as the caller's own).
    */
   authorize: (udid: string, actor: LogcatWsActor) => Promise<boolean>;
-  /** Start (or reuse) the device's logcat stream and return its multiplexer. */
-  startStream: (udid: string) => Promise<LogcatMultiplexer>;
+  /**
+   * Start (or reuse) the device's log stream and return its multiplexer. The
+   * filter is honoured by platforms that filter at the source (iOS) and
+   * ignored by those that do not (Android).
+   */
+  startStream: (udid: string, filter: LogStreamFilter) => Promise<LogcatMultiplexer>;
   /** Drop a record when the socket's kernel backlog exceeds this (OOM guard). */
   maxBufferedBytes?: number;
 }
@@ -146,7 +177,10 @@ export function attachLogcatWs(server: Server, deps: LogcatWsDeps): void {
 
       let mux: LogcatMultiplexer;
       try {
-        mux = await deps.startStream(parsed.udid);
+        mux = await deps.startStream(parsed.udid, {
+          levels: parsed.levels,
+          process: parsed.process,
+        });
       } catch (e: any) {
         log.warn(`[${parsed.udid}] logcat WS start failed: ${e?.message ?? e}`);
         try {
