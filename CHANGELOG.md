@@ -6,6 +6,65 @@ This project follows [Semantic Versioning](https://semver.org/). Releases are
 published to npm automatically when `package.json`'s `version` changes on `main`
 (see `.github/workflows/npm-publish.yml`).
 
+## 1.20.0
+
+Minor release. The Debug Logs filter now means the same thing on both
+platforms, and the iOS stream stops fighting itself when two people watch it.
+
+### Added
+
+- **Filter iOS logs by app id.** An os_trace record names the binary that
+  logged (`/…/Food Truck`), never the app it belongs to, so `package:` meant
+  something different on each platform — on Android a process name already _is_
+  the package name. The executable is now translated to its bundle id from
+  `ios apps`, read once at stream start rather than per record, and both forms
+  are accepted: the app id the filter is documented around, and the name a
+  reader can actually see in the pane. Apps that are not installed apps —
+  `backboardd`, `locationd` — keep their own names, exactly as
+  `surfaceflinger` does on Android. Verified against an iPhone 14: a viewer
+  filtered to `com.example.apple-samplecode.Food-TruckJM7967FMBS` received the
+  app's 4 launch records and none of the other 173,768.
+
+### Fixed
+
+- **Two viewers of one iOS device silenced each other.** A log session was
+  keyed by device _and_ filter, so two people wanting different slices got two
+  `ios ostrace` children — and os_trace_relay serves exactly one consumer.
+  Measured against an iPhone 14, three concurrent children left every one of
+  them mute, including a fresh capture taken from a shell; killing them
+  restored 2,223 lines in 10s immediately. There is now one child per device.
+  A viewer needing levels it does not emit widens it in place, keeping the
+  multiplexer and every attached socket, and each socket narrows the shared
+  stream to its own slice.
+- **A viewer that named no levels inherited another viewer's Debug.** On a
+  shared child, "asked for nothing" cannot mean "unfiltered" — measured, 102,809
+  Debug records nobody requested. The stream now reports which levels it
+  granted, and that is what the socket filters to.
+- **A filter value could not contain a space.** `package:Food Truck` parsed as
+  `package:Food` plus a text term `Truck`, which is not what anyone typing it
+  meant. Double-quoted values are now one term.
+
+## 1.19.0
+
+Minor release: the Debug Logs tab works on iOS.
+
+### Added
+
+- **iOS device logs in the Debug Logs tab.** Previously Android-only — the tab
+  told an iOS user their platform was unsupported. It now streams over the same
+  WebSocket, the same multiplexer and the same pane, with the transport chosen
+  by the device's platform. The source is `go-ios ostrace` rather than `syslog`:
+  syslog carries only Notice and Error, and Debug is what a developer opens the
+  tab for. Records arrive as structured JSON, so the subsystem becomes the tag —
+  which is what Xcode's console groups by — and os_log's levels are mapped onto
+  the set the UI already speaks, with `Default` folded into `I` rather than
+  promoted to `W`, because rendering an ordinary message as a warning is a lie
+  the colour scheme then repeats.
+- **A level filter applied at the source on iOS.** The unfiltered firehose was
+  measured at 5,485 lines/sec, past what a pane can show and past what a browser
+  can hold; the default excludes Debug and the dropdown widens the running
+  stream when a viewer asks for more.
+
 ## 1.18.1
 
 Patch release. Install hardening; no runtime behaviour changes.
