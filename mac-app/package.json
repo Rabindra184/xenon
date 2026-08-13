@@ -1,6 +1,6 @@
 {
   "name": "xenon-control",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "description": "Desktop launcher & configuration app for the Xenon Appium plugin",
   "main": "./out/main/index.js",
   "author": "Xenon",
