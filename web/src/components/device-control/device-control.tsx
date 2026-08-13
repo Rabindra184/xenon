@@ -863,7 +863,7 @@ export default function DeviceControl({ device, onClose }: DeviceControlProps) {
               aria-selected={activeTab === 'logs'}
             >
               <ScrollText size={13} />
-              <span>Debug Logs</span>
+              <span>Logs</span>
             </button>
             <button
               className={`tab-btn ${activeTab === 'terminal' ? 'active' : ''}`}
