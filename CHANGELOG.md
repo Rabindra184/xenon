@@ -6,6 +6,33 @@ This project follows [Semantic Versioning](https://semver.org/). Releases are
 published to npm automatically when `package.json`'s `version` changes on `main`
 (see `.github/workflows/npm-publish.yml`).
 
+## 1.20.4
+
+Patch release. Three defects on the Apps registry page, all found by clicking
+every control on it.
+
+### Fixed
+
+- **Deleting an artifact left the row on screen.** The delete had already
+  succeeded — the server returned zero apps — but `DELETE /apps/:id` answers
+  `204 No Content` and the api-client ended in an unconditional `res.json()`,
+  which throws `Unexpected end of JSON input` on an empty body. The caller's
+  `catch` swallowed it into a console error, so nothing on screen changed and
+  clicking again re-asked "Permanently remove …?" about an artifact that no
+  longer existed. 204 and 205 now resolve instead of parsing, in the shared
+  client, so every bodiless response is safe rather than just this one.
+- **A filter that matched nothing claimed the registry was empty.** The
+  condition was `filteredApps.length === 0`, which conflates "you have no apps"
+  with "your filter excluded them", so a full registry rendered the first-run
+  state — "No apps yet … Upload your first app" — offering the one action that
+  could not help. The two cases are now distinct, and the filtered-empty one
+  reports how many artifacts exist and offers to clear the filter.
+- **The copy-bundle-id control copied an empty string.** `internal.bundle` is a
+  placeholder for a null `packageName`, not a value, so the click put nothing
+  on the clipboard — and its confirmation tick never appeared either, because
+  it stored `pkg-` while the check compared against `pkg-null`. The control is
+  now only offered when there is something to copy.
+
 ## 1.20.3
 
 Patch release.
