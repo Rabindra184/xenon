@@ -284,3 +284,68 @@ describe('case sensitivity', () => {
     expect(matches(marker, parseQuery('tag:NOPE', { caseSensitive: true }))).toBe(true);
   });
 });
+
+/**
+ * Splitting on whitespace alone cannot express a value containing a space, and
+ * iOS process names routinely do — `Food Truck` is a real one. Before quoting,
+ * `package:Food Truck` parsed as `package:food` plus a search for `truck`, so
+ * filtering to that app matched nothing and said so silently. Android package
+ * names are dotted and never hit this.
+ */
+describe('quoted values', () => {
+  it('keeps a quoted value together as one term', () => {
+    expect(parseQuery('package:"Food Truck"').pkg).toBe('food truck');
+  });
+
+  it('still reads the other terms around it', () => {
+    const q = parseQuery('level:D package:"Food Truck"');
+    expect(q.minLevel).toBe('D');
+    expect(q.pkg).toBe('food truck');
+    expect(q.text).toBeUndefined();
+  });
+
+  it('matches the record the user meant', () => {
+    const app = rec({ pkg: 'Food Truck', message: 'order placed' });
+    const other = rec({ pkg: 'backboardd', message: 'order placed' });
+    const q = parseQuery('package:"Food Truck"');
+    expect(matches(app, q)).toBe(true);
+    expect(matches(other, q)).toBe(false);
+  });
+
+  it('does not match on the first word alone, which is what used to happen', () => {
+    const q = parseQuery('package:"Food Truck"');
+    expect(matches(rec({ pkg: 'Food Court' }), q)).toBe(false);
+  });
+
+  it('quotes a bare phrase into a single text search', () => {
+    expect(parseQuery('"disk full"').text).toBe('disk full');
+    // Unquoted, the same words are still ANDed into one text term, as before.
+    expect(parseQuery('disk full').text).toBe('disk full');
+  });
+
+  it('quotes a tag containing a space', () => {
+    expect(parseQuery('tag:"com.apple.dt xctest" crash').tag).toBe('com.apple.dt xctest');
+    expect(parseQuery('tag:"com.apple.dt xctest" crash').text).toBe('crash');
+  });
+
+  it('preserves case in a quoted value when asked to', () => {
+    // The iOS source filter parses case-sensitively, because the value becomes
+    // a process name compared against what the device reports.
+    expect(parseQuery('package:"Food Truck"', { caseSensitive: true }).pkg).toBe('Food Truck');
+  });
+
+  it('tolerates an unterminated quote, since it filters as you type', () => {
+    expect(parseQuery('package:"Food').pkg).toBe('food');
+  });
+
+  it('leaves unquoted queries parsing exactly as before', () => {
+    expect(parseQuery('level:W tag:Wifi package:com.example boom')).toEqual(
+      parseQuery('level:W tag:Wifi package:com.example boom'),
+    );
+    const q = parseQuery('level:W tag:Wifi package:com.example boom');
+    expect(q.minLevel).toBe('W');
+    expect(q.tag).toBe('wifi');
+    expect(q.pkg).toBe('com.example');
+    expect(q.text).toBe('boom');
+  });
+});
