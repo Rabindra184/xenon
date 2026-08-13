@@ -2,7 +2,6 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import type {
   PreflightResult,
   Profile,
-  SchemaMeta,
   SecretDescriptor,
   SecretKey,
   ServerState,
@@ -22,6 +21,11 @@ import { parsePort, validate } from './validation';
 import { createDebouncer } from './debounce';
 import { cn } from './cn';
 import { STATUS_DOT, STATUS_LABEL, formatUptime } from './serverStatus';
+import {
+  pluginVersionLabel,
+  statusInvalidatesPluginVersion,
+  type PluginVersion
+} from './pluginVersion';
 import { Toaster } from './components/ui/Toaster';
 import { toast } from './components/ui/toastStore';
 import { Button } from './components/ui/Button';
@@ -53,11 +57,10 @@ const IDLE_STATE: ServerState = {
 
 export default function App() {
   const [schema, setSchema] = useState<XenonSchema | null>(null);
-  const [meta, setMeta] = useState<SchemaMeta | null>(null);
-  // Live plugin version read from the active profile's APPIUM_HOME (null until
-  // resolved / when the plugin isn't installed). Preferred over the stale
-  // schema-sync meta.pluginVersion for the footer.
-  const [installedPluginVersion, setInstalledPluginVersion] = useState<string | null>(null);
+  // Live plugin version read from the active profile's APPIUM_HOME. `undefined`
+  // until the first read lands, `null` when the plugin isn't installed there —
+  // see pluginVersionLabel for why those are not the same thing.
+  const [installedPluginVersion, setInstalledPluginVersion] = useState<PluginVersion>(undefined);
   const [secretDescriptors, setSecretDescriptors] = useState<SecretDescriptor[]>([]);
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
@@ -84,7 +87,6 @@ export default function App() {
     (async () => {
       const s = await window.xenon.getSchema();
       setSchema(s.schema);
-      setMeta(s.meta);
       setSecretDescriptors(s.secretDescriptors);
       const list = await window.xenon.profiles.list();
       setProfiles(list);
@@ -165,6 +167,26 @@ export default function App() {
   }, [activeProfileForVersion]);
   useEffect(() => {
     void refreshPluginVersion();
+  }, [refreshPluginVersion]);
+
+  // The read above happens on mount and on profile change, which is not when
+  // the answer changes. A launcher left open across a plugin upgrade kept
+  // showing the version it read at launch — measured, `plugin 1.18.1` beside a
+  // server whose own banner said v1.20.0. Two more triggers, for the two ways
+  // the plugin gets replaced:
+  //
+  //   - a start, because that is when Appium loads the plugin from disk and
+  //     therefore when the footer is supposed to agree with the banner;
+  //   - regaining focus, because an upgrade run in a terminal changes nothing
+  //     this window can observe until the user comes back to it.
+  const serverStatus = serverState.status;
+  useEffect(() => {
+    if (statusInvalidatesPluginVersion(serverStatus)) void refreshPluginVersion();
+  }, [serverStatus, refreshPluginVersion]);
+  useEffect(() => {
+    const onFocus = () => void refreshPluginVersion();
+    window.addEventListener('focus', onFocus);
+    return () => window.removeEventListener('focus', onFocus);
   }, [refreshPluginVersion]);
 
   // The port input holds its own text so a half-typed or cleared value never
@@ -423,9 +445,7 @@ export default function App() {
             {serverState.status === 'running' && serverState.startedAt && (
               <div className="mt-1 text-dim">up {formatUptime(now - serverState.startedAt)}</div>
             )}
-            <div className="mt-1 text-dim">
-              plugin {installedPluginVersion ?? meta?.pluginVersion ?? '…'}
-            </div>
+            <div className="mt-1 text-dim">plugin {pluginVersionLabel(installedPluginVersion)}</div>
           </div>
         </div>
       </aside>
