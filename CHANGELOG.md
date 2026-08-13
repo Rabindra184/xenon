@@ -6,6 +6,338 @@ This project follows [Semantic Versioning](https://semver.org/). Releases are
 published to npm automatically when `package.json`'s `version` changes on `main`
 (see `.github/workflows/npm-publish.yml`).
 
+## 1.18.1
+
+Patch release. Install hardening; no runtime behaviour changes.
+
+### Fixed
+
+- **A reinstall could leave a Prisma client that cannot load** — and therefore a
+  plugin that silently does not start. An installed client was found holding a
+  fragment of its own previous version: `path.join(…)` on one line continued by
+  a bare `.join(…)` on the next. That is valid JavaScript, so nothing caught it
+  until `require()` failed with `path.join(...).join is not a function`, at
+  which point Appium logged "Could not load plugin 'xenon'" and carried on
+  serving 404s. The splice itself could not be reproduced — six reinstalls
+  across `--source=npm` and `--source=local` came out clean — so what is fixed
+  is what is demonstrably wrong. `postinstall` regenerates the client inside
+  the installed package and copies it over the one the tarball shipped, and the
+  two are never the same size (110180 shipped, 110172 regenerated) because the
+  embedded engine paths differ between a checkout and a package under
+  `node_modules`. A per-file copy leaves whatever the new generation did not
+  overwrite; the destination is now replaced outright. And nothing checked the
+  result: the client is now loaded at the end of generation, while the install
+  is still on screen, and a failure prints the file, the error and the way out.
+
+## 1.18.0
+
+Minor release: every iOS locator the inspector suggests changes value, and many
+`unique` badges change with them. Nothing breaks — the old ones did not resolve
+— but saved locators will look different.
+
+### Fixed
+
+- **iOS class chains were missing their backticks, so none of them worked.**
+  Appium's class-chain grammar requires them around the predicate. Measured
+  against a real iPhone:
+  `**/XCUIElementTypePageIndicator[name == "Page control"]` resolves 0 elements
+  and ``**/XCUIElementTypePageIndicator[`name == "Page control"`]`` resolves 1.
+  Every chain this service had ever produced was unusable — 280 in a single
+  home-screen snapshot, each badged unique. Xenon's own frontend matcher already
+  expected the backticked form, so the generator had been out of step with its
+  own parser.
+- **iOS XPath selected on `@text`**, which is an Android attribute. An
+  XCUIElement has `name`, `label` and `value` and no text at all.
+- **Both XPath and the predicate hardcoded which attribute they named.** On iOS
+  `node.text` is `label || value`, so an element that keeps its text in `value`
+  and has no label — a page indicator, for instance — got `label == "Page 2 of
+  2"` and matched nothing. Both now name whichever of the two supplied it.
+- **`-ios predicate string` and `-ios class chain` hardcoded `unique: true`.** A
+  predicate badged unique was measured matching two elements. Both now consult
+  the same uniqueness index as every other strategy, which also reduced the
+  unique-badged class chains in one snapshot from 280 to 51 — the difference
+  between a claim and a count. Predicate uniqueness is deliberately
+  conservative: a compound is at least as selective as its label term, so a
+  unique label implies a unique predicate but not the reverse.
+
+Verified end to end against a real iPhone. Across the four strategies, locators
+badged unique went from `class chain 0/10, xpath 9/10, accessibility id 10/10,
+predicate 8/10` to **60/60**.
+
+## 1.17.5
+
+Patch release.
+
+### Fixed
+
+- **An installed WebDriverAgent was reported as missing**, sending readers off
+  to reinstall an app that was already there. Two causes. The run log was
+  appended to across runs and never truncated, and that same file is the
+  evidence the failure is classified from — so a "Did not find test app" line
+  written on one day was still matched the next, and once a device had
+  genuinely missed WDA even once, every later failure of any kind reported it
+  as missing forever. The log is now emptied before each spawn. And there was
+  no way to say the other thing: go-ios distinguishes `cannot get test app
+  information: Did not find test app` from `cannot start test runner:
+  LaunchAppWithStdIo: failed to launch app`, but only the first had a
+  classifier. The second now has one, and it points somewhere useful — an app
+  that will not start is nearly always the device refusing to run it (untrusted
+  developer certificate, locked screen, lapsed signature), none of which
+  reinstalling fixes.
+
+## 1.17.4
+
+Patch release. **Upgrade straight to this if you are on 1.17.2 or 1.17.3** —
+neither of those fixes works, and the damage they were meant to prevent still
+occurs.
+
+### Fixed
+
+- **An iOS session could uninstall WebDriverAgent from the device**, and could
+  not complete. Both symptoms had one cause: Xenon sent
+  `appium:usePreinstalledWDA` alongside `appium:webDriverAgentUrl`. The
+  capability does not choose the startup strategy — the URL already does;
+  `selectWdaStartupStrategyName` returns `existing-url` on it before looking at
+  anything else, and that strategy is explicitly hands-off. All the extra
+  capability adds is a detour through `preparePreinstalled`, which kills the
+  runner and then uninstalls every WebDriverAgentRunner not on a one-entry
+  keep-list. Against a WDA that Xenon hosts through go-ios, each half produced
+  one of the symptoms — both observed on a real iPhone: the uninstall as
+  "Removing WebDriverAgent runner app 'com.qasecret.WebDriverAgentRunner
+  .xctrunner'", leaving the device with no WDA until one is re-signed by hand,
+  and the kill as the driver's own next request failing with ECONNRESET while
+  `iproxy` still held the port. The capability is now deleted from both
+  capability buckets rather than merely not added, including when a caller
+  supplies it: on this path honouring it would kill the WDA Xenon is hosting.
+
+## 1.17.3
+
+Patch release. **Superseded by 1.17.4 — this fix does not work.** It corrected
+the format of `appium:updatedWDABundleId` (the capability wants the id without
+the `.xctrunner` suffix, which the driver appends when building its keep-list),
+but a correct keep-list only converts the uninstall into a kill: the session
+still fails and the device's WebDriverAgent is still stopped. The argument was
+right; the call should not have been happening at all.
+
+## 1.17.2
+
+Patch release. **Superseded by 1.17.4 — this fix does not work.** It stopped
+Xenon claiming a preinstalled WebDriverAgent it could not name, but named it
+wrongly, so the device's runner was still uninstalled on the next session
+attempt.
+
+## 1.17.1
+
+Patch release.
+
+### Fixed
+
+- **A Mac with more simulators than the port range holds could not see its own
+  attached iPhone.** Discovery leased a `wda` and an `mjpeg` port to every
+  simulator installed on the machine, booted or not — 158 of them against
+  ranges of 100 where this surfaced. Both ranges drained, `acquire` threw, and
+  the throw escaped the whole discovery pass, so IOSDeviceManager returned no
+  devices at all and `removeStaleDevices` deleted the physically attached
+  iPhone for not appearing in its own device list; it vanished from the
+  dashboard about thirty seconds after appearing. Three changes: ports are only
+  leased to a device that can use one now (a real device, or a booted
+  simulator); `PortAllocator.tryAcquire` reports exhaustion as `undefined`
+  rather than throwing, because a device that cannot get a port is still a
+  device and must still be listed; and `iOSCapabilities` acquires just-in-time,
+  after the stream-reuse check rather than before, since that branch deletes
+  both ports. Measured with the default `iosDeviceType=both`: real devices
+  listed at t+115s went 0 → 2, exhaustion errors constant → 0, and port leases
+  held from a drained range → 3, with 0 of 113 simulators holding one.
+
+## 1.17.0
+
+Minor release.
+
+### Added
+
+- **The device preview says when the device is merely asleep.** A sleeping
+  device streams a perfectly black frame, indistinguishable from a broken
+  stream or a black-themed app, and the wake control sat two panes away with
+  nothing connecting them. The preview now says so over the black frame, with a
+  Wake button wired to the existing unlock route. It asks the device rather
+  than looking at the picture: sampling the frame for black is the obvious
+  implementation and the wrong one, because plenty of real app screens on an
+  AMOLED panel are pure black and telling someone their display is off while
+  they are looking at it is the worse failure. Keyed on `Display Power: state=`
+  rather than `mWakefulness=` — measured on a Galaxy S9, a screen turned off by
+  the power button reports `mWakefulness=Dozing` while the panel is genuinely
+  off. `doze` (always-on display is lit) and `unknown` both show nothing; every
+  ambiguity resolves toward silence. A 2s read-through cache shares its
+  in-flight promise, so six concurrent requests cost one `dumpsys power`. iOS
+  implements no reader and the overlay never appears there.
+
+## 1.16.1
+
+Patch release. **Upgrade straight to this if you are on 1.16.0** — that release
+puts the Omni-Vision tree controls out of reach.
+
+### Fixed
+
+- **The source badge pushed every action button outside the panel.** The tree
+  header is 309px wide in the embedded layout and holds a title, a count pill
+  and four buttons. It did not fit on one line before 1.16.0 either — the count
+  pill was already breaking mid-word into "66 / ELEMENTS" — and adding a third
+  pill pushed Expand All, Collapse All, the inspect-mode toggle and Refresh
+  past the panel's right edge, off screen. The last two exist in that header
+  only because embedded mode has no other route to them, so 1.16.0 removed the
+  only way to reach inspect mode or refresh a snapshot from the device page.
+  The row now wraps deliberately and the actions never shrink or leave the
+  panel.
+- **The document root offered a locator that can never resolve.** `<hierarchy>`
+  is the XML document element, not a UI element, and Appium's XPath engine
+  returns nothing for `/hierarchy[1]`. It was the first row anyone clicks
+  Verify on, badged unique and answering "found 0". It now offers none, and the
+  panel says why instead of showing an empty list.
+
+## 1.16.0
+
+Minor release. One new capability, and the fix that makes it usable.
+
+### Added
+
+- **Locator verification.** Every suggested locator gets a Verify button that
+  resolves it through the real Appium driver and reports what came back: found,
+  not found, or ambiguous with a count. A second button finds and taps, so you
+  can prove a locator drives the element you meant rather than the one above
+  it. Ambiguous locators are refused rather than acted on. This answers a
+  different question from the match badges beside it, which test a locator
+  against the captured XML and cannot evaluate `-android uiautomator` or an iOS
+  predicate at all.
+
+### Fixed
+
+- **The inspector now works while a test is running.** Android permits one
+  UiAutomator instrumentation at a time, so `uiautomator dump` — how the
+  inspector read the hierarchy — is SIGKILLed while
+  `io.appium.uiautomator2.server` holds it. Verification needs a driver. You
+  could inspect a device or drive it, never both. The hierarchy now comes from
+  the session when there is one, which is also the only tree a suggested
+  locator can honestly be judged by, and from the device otherwise.
+- **Four locator defects that only surface once a Verify button can contradict
+  them**, each measured against a live driver: an XPath tag is the
+  fully-qualified class (`//Button[@resource-id=…]` found 0,
+  `//android.widget.Button[…]` finds 1); absolute XPaths are rooted at
+  `/hierarchy[1]`, which also means a screen with more than one window no
+  longer shows only the first; uniqueness is counted once per document instead
+  of walked per suggestion, replacing several hardcoded `unique: true`; and
+  `text`/`name` are stringified at the parser, since `parseAttributeValue`
+  turns a clock reading "22" into the number 22 and the tree view slices it.
+- A failed snapshot states its reason in the panel instead of leaving it blank,
+  and a badge says whether the tree came from the session or the device.
+
+Generated absolute XPaths change form, but the old ones resolved to nothing, so
+no working saved locator is affected. The Android tree gains a `hierarchy` root
+row.
+
+## 1.15.0
+
+Minor release: three additive features, no breaking changes.
+
+### Added
+
+- **Debug Logs recording.** RECORD captures the raw log stream between an
+  explicit start and stop and writes it to a file. Its own buffer, independent
+  of the 5000-record display cap and of the active filter, because that cap
+  holds only about a minute of a chatty device. Records are serialised on
+  arrival, and at the 500k cap the newest are dropped so the window you chose
+  keeps its beginning; truncation is declared in both the file header and its
+  trailer.
+- **Click-to-inspect in Omni-Vision.** Clicking an element on the live device
+  selects it and shows its bounds, attributes and ranked locators. The overlay
+  already existed but was hidden behind the embedded flag in the only place the
+  component is used, so the capability was unreachable.
+- **Orientation-aware, icon-only device controls** — a vertical strip beside a
+  portrait device, a horizontal bar under a landscape one, so the controls sit
+  where the device is not. At 1440 the preview column drops 683px → 406px and
+  the log pane gains it.
+
+All three verified against a Galaxy S9, not only in unit tests.
+
+## 1.14.0
+
+Minor release: the Debug Logs tab gains a feature, and one behaviour change is
+visible to existing API clients.
+
+### Added
+
+- **Continuous logcat streaming.** The Debug Logs tab streams a parsed,
+  filterable logcat over an authenticated WebSocket (Android only; iOS renders
+  an unsupported state). Replaces a 3-second `logcat -d -t 500` poll that
+  appended without dedup, so the 1000-line buffer held roughly the same 500
+  lines twice. Adds per-tag colouring, field-aware filtering, find with
+  prev/next, match case and a soft-wrap toggle.
+
+### Changed
+
+- **BREAKING for API clients: `GET /control/:udid/logs` is now
+  ownership-checked.** It served the same `adb logcat` bytes as the new
+  WebSocket with no ownership check, which made that check decorative — a
+  reader refused at the socket could GET the identical data. It joins
+  `clipboard` in `OWNERSHIP_CHECKED_READS`. Only denies when the device is held
+  by **another** user; your own and unheld devices are unaffected and admins
+  bypass. An external SDK client polling logs on someone else's busy device
+  will now see 409.
+
+### Fixed
+
+- **`--plugin-xenon-auth-disabled` did nothing.** It is declared in
+  `schema.json` so Appium accepted and echoed it, but every consumer reads
+  `config.authDisabled`, which comes from `XENON_AUTH_DISABLED`. Nothing
+  bridged the two.
+- **Long-lived sidecars were orphaned on every SIGTERM.** Appium's own handler
+  exits before the plugin's async cleanup phases run, so `adb logcat`, scrcpy,
+  go-ios, WDA, iproxy and ffmpeg all survived shutdown and another set leaked
+  on the next restart. Now killed synchronously from a `process.on('exit')`
+  hook.
+- Three status indicators returned to their intended animation:
+  `device-control.css` defined its own `@keyframes pulse-dot`, a global name
+  `index.css` also defines, so loading that sheet silently redefined the
+  animation app-wide.
+
+## 1.13.1
+
+Patch release. Nothing here changes a caller-visible contract: a new
+`Session.user_id` column is populated and preferred when reading, so callers
+who were previously denied start being allowed — the bug being fixed rather
+than a change of behaviour anyone depended on.
+
+### Fixed
+
+- **A session authenticated by `xenon:options.sessionToken` was
+  unattributable.** The gate verified that token and discarded the payload, so
+  the ownership guard denied the caller their own device for being
+  unidentifiable.
+- A `df:options` key pair now records the user alongside the ApiKey id, so new
+  rows resolve their owner without the ApiKey hop. `SessionOwnerResolver`
+  prefers `Session.user_id` and falls back to `api_key_id → ApiKey.userId` for
+  rows written before this release.
+
+## 1.13.0
+
+Minor release, not patch: this changes behaviour visible to callers.
+
+### Changed
+
+- **`/control` mutations against a device held by another user, or running
+  another user's Appium session, now return 409.** Your own session stays
+  interactive.
+- **MEMBER cookie sessions gain the `devices` scope.** Device control was
+  admin-only in practice before this, which also meant no dashboard user could
+  ever receive the 409 — admins bypass the guard.
+- **`GET /control/:udid/clipboard` now requires ownership.** Other reads stay
+  open.
+- `stream/start` no longer overwrites a lock held by someone else.
+
+Note: sessions created without the `df:options.accessKey`/`token` pair persist
+`api_key_id = null` and are unattributable, so the fail-closed rule denies
+everyone non-admin on that device — including the engineer who started the run.
+1.13.1 extends attribution to `xenon:options.sessionToken` callers.
+
 ## 1.12.1
 
 Patch release. **Upgrade straight to this if you are on 1.12.0** — that release
