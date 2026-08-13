@@ -1,5 +1,5 @@
 import { test, expect, _electron as electron, type ElectronApplication, type Page } from '@playwright/test';
-import { mkdtempSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
@@ -260,7 +260,12 @@ test('settings search filters fields by key name', async () => {
 test('sidebar shows brand, platform badge and status card', async () => {
   await expect(page.getByTestId('sidebar-brand')).toBeVisible();
   await expect(page.getByTestId('sidebar-status')).toContainText('Stopped');
-  await expect(page.getByTestId('sidebar-status')).toContainText('plugin');
+  // A definite answer, not the pending placeholder: either a version read from
+  // this machine's APPIUM_HOME or an explicit "not installed". `toContainText('plugin')`
+  // alone passed while the footer sat on '…' forever.
+  await expect(page.getByTestId('sidebar-status')).toContainText(
+    /plugin (\d+\.\d+\.\d+|not installed)/
+  );
 });
 
 test('secrets panel lists env-injected secrets and toggles injection', async () => {
@@ -375,4 +380,32 @@ test('preflight blocks Start and surfaces blockers when the plugin is not instal
   await page.screenshot({ path: path.join(shotsDir, '06-preflight-block.png'), fullPage: true });
 
   await page.getByTestId('appium-home').fill(''); // back to auto
+});
+
+test('footer re-reads the plugin version when it changes underneath the app', async () => {
+  // The reported bug: a launcher left open across `appium plugin update xenon`
+  // in a terminal kept showing the version it read at launch — `plugin 1.18.1`
+  // beside a server whose own banner said v1.20.0. Nothing re-read it.
+  const home = mkdtempSync(path.join(os.tmpdir(), 'xenon-ver-home-'));
+  const pkgDir = path.join(home, 'node_modules', '@xenon-device-management', 'xenon');
+  mkdirSync(pkgDir, { recursive: true });
+  const pkgJson = path.join(pkgDir, 'package.json');
+  writeFileSync(pkgJson, JSON.stringify({ name: '@xenon-device-management/xenon', version: '1.0.0' }));
+
+  await page.getByTestId('appium-home').fill(home);
+  await expect(page.getByTestId('sidebar-status')).toContainText('plugin 1.0.0');
+
+  // Upgrade it the way a terminal would — behind the app's back.
+  writeFileSync(pkgJson, JSON.stringify({ name: '@xenon-device-management/xenon', version: '2.0.0' }));
+  await expect(page.getByTestId('sidebar-status')).toContainText('plugin 1.0.0'); // still stale…
+  await page.evaluate(() => window.dispatchEvent(new FocusEvent('focus')));
+  await expect(page.getByTestId('sidebar-status')).toContainText('plugin 2.0.0'); // …until focus
+
+  // And an APPIUM_HOME with no plugin says so, rather than naming a version.
+  rmSync(pkgDir, { recursive: true, force: true });
+  await page.evaluate(() => window.dispatchEvent(new FocusEvent('focus')));
+  await expect(page.getByTestId('sidebar-status')).toContainText('plugin not installed');
+
+  await page.getByTestId('appium-home').fill(''); // back to auto
+  rmSync(home, { recursive: true, force: true });
 });
