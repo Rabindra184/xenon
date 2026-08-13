@@ -300,16 +300,28 @@ const Apps: React.FC = () => {
                         </div>
                         <div className="app-package-id">
                           <code>{app.packageName || 'internal.bundle'}</code>
-                          <div
-                            className="copy-hint"
-                            onClick={() => handleCopy(app.packageName || '', 'pkg')}
-                          >
-                            {copiedId === `pkg-${app.packageName}` ? (
-                              <Check size={10} className="text-primary" />
-                            ) : (
-                              <Copy size={10} />
-                            )}
-                          </div>
+                          {/*
+                            Only offered when there is something to copy.
+                            `internal.bundle` is a placeholder for a null
+                            packageName, not a value: the control used to copy
+                            `''` and stay on the copy icon forever, because it
+                            stored `pkg-` while the check compared against
+                            `pkg-null`. Silently putting an empty string on the
+                            clipboard is worse than not offering the button.
+                          */}
+                          {app.packageName && (
+                            <div
+                              className="copy-hint"
+                              title={`Copy ${app.packageName}`}
+                              onClick={() => handleCopy(app.packageName, 'pkg')}
+                            >
+                              {copiedId === `pkg-${app.packageName}` ? (
+                                <Check size={10} className="text-primary" />
+                              ) : (
+                                <Copy size={10} />
+                              )}
+                            </div>
+                          )}
                         </div>
                       </div>
                     </div>
@@ -394,7 +406,38 @@ const Apps: React.FC = () => {
               })}
             </div>
 
-            {filteredApps.length === 0 && !loading && (
+            {/*
+              A filter that matches nothing is not an empty registry. Both used
+              to render "No apps yet — upload your first app", which told
+              someone with a full registry that they had never uploaded
+              anything, and offered the one action that could not help.
+            */}
+            {filteredApps.length === 0 && apps.length > 0 && !loading && (
+              <div className="empty-registry-technical">
+                <div className="empty-icon-container">
+                  <Terminal size={48} className="text-primary opacity-40" />
+                </div>
+                <h2 className="empty-title brand-font">No matching artifacts</h2>
+                <p className="empty-description">
+                  {apps.length} {apps.length === 1 ? 'artifact is' : 'artifacts are'} registered,
+                  but none match the current filter.
+                </p>
+                <div className="empty-actions">
+                  <Button
+                    size="sm"
+                    variant="default"
+                    onClick={() => {
+                      setSearchTerm('');
+                      setPlatformFilter({ android: true, ios: true });
+                    }}
+                  >
+                    Clear filters
+                  </Button>
+                </div>
+              </div>
+            )}
+
+            {apps.length === 0 && !loading && (
               <div className="empty-registry-technical">
                 <div className="empty-icon-container">
                   <Terminal size={48} className="text-primary opacity-40 animate-pulse" />

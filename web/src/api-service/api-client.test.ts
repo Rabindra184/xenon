@@ -134,3 +134,54 @@ describe('isDeviceConflictBody', () => {
     expect(isDeviceConflictBody('device_held_by_another_user')).toBe(false);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Bodiless responses. `jsonResult` used to end in an unconditional
+// `res.json()`, which throws on a 204 — see the comment there.
+// ---------------------------------------------------------------------------
+describe('api-client responses with no body', () => {
+  /** A 204 the way the platform builds it: reading it as JSON throws. */
+  function emptyResponse(status: number) {
+    return {
+      status,
+      clone() {
+        return this;
+      },
+      json: async () => {
+        throw new SyntaxError('Unexpected end of JSON input');
+      },
+    };
+  }
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  // The bug this exists for: DELETE /apps/:id answers 204, the delete really
+  // happened, but the parse threw on the way back — so the caller's catch
+  // swallowed it and the row stayed on screen looking undeletable.
+  it('resolves instead of throwing on a 204', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(emptyResponse(204)));
+    expect(await apiClient.makeDELETERequest('/apps/abc')).to.equal(null);
+  });
+
+  it('resolves on a 205 too', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(emptyResponse(205)));
+    expect(await apiClient.makeDELETERequest('/apps/abc')).to.equal(null);
+  });
+
+  // Still parses a real body — the fix must not swallow every response.
+  it('parses a 200 body as before', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        status: 200,
+        clone() {
+          return this;
+        },
+        json: async () => ({ ok: true }),
+      }),
+    );
+    expect(await apiClient.makeDELETERequest('/apps/abc')).to.deep.equal({ ok: true });
+  });
+});

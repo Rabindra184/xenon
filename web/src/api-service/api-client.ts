@@ -90,6 +90,16 @@ class ApiClient {
         notifyDeviceConflict(body.message || 'This device is in use by another user.');
       }
     }
+    // 204 and 205 carry no body by definition, and `res.json()` throws
+    // `Unexpected end of JSON input` on an empty one.
+    //
+    // Deleting an app hit exactly this. `DELETE /apps/:id` answers
+    // `sendStatus(204)`, so the request succeeded — the row really was gone
+    // from the server — but the parse threw on the way back, the caller's
+    // catch swallowed it into a console error, and the row stayed on screen.
+    // The artifact looked undeletable, and clicking again re-asked
+    // "Permanently remove …?" about something that no longer existed.
+    if (res.status === 204 || res.status === 205) return null;
     return res.json();
   }
 }
