@@ -3,6 +3,7 @@ import { WebSocketServer, WebSocket } from 'ws';
 import log from '../../logger';
 import type { LogcatMultiplexer } from '../../device-managers/android/LogcatMultiplexer';
 import type { LogcatRecord } from '../../services/logcat/logcatParse';
+import { iosLevelsToLetters } from '../../services/logcat/ostraceParse';
 
 const LOGCAT_PATH_RE = /^\/xenon\/api\/control\/([^/]+)\/logcat$/;
 
@@ -70,11 +71,19 @@ export interface LogcatWsDeps {
    */
   authorize: (udid: string, actor: LogcatWsActor) => Promise<boolean>;
   /**
-   * Start (or reuse) the device's log stream and return its multiplexer. The
-   * filter is honoured by platforms that filter at the source (iOS) and
-   * ignored by those that do not (Android).
+   * Start (or reuse) the device's log stream.
+   *
+   * Returns the multiplexer plus the levels THIS client should see. The second
+   * half matters because the multiplexer is shared: on iOS one child serves
+   * every viewer and emits the union of what they asked for, so a client that
+   * requested less must be narrowed here or it silently inherits another
+   * viewer's Debug. Android returns no levels and is filtered in the browser,
+   * as it always has been.
    */
-  startStream: (udid: string, filter: LogStreamFilter) => Promise<LogcatMultiplexer>;
+  startStream: (
+    udid: string,
+    filter: LogStreamFilter,
+  ) => Promise<{ mux: LogcatMultiplexer; levels?: string[] }>;
   /** Drop a record when the socket's kernel backlog exceeds this (OOM guard). */
   maxBufferedBytes?: number;
 }
@@ -176,11 +185,14 @@ export function attachLogcatWs(server: Server, deps: LogcatWsDeps): void {
       if (closed) return; // disconnected during authorize
 
       let mux: LogcatMultiplexer;
+      let effectiveLevels: string[] | undefined;
       try {
-        mux = await deps.startStream(parsed.udid, {
+        const started = await deps.startStream(parsed.udid, {
           levels: parsed.levels,
           process: parsed.process,
         });
+        mux = started.mux;
+        effectiveLevels = started.levels;
       } catch (e: any) {
         log.warn(`[${parsed.udid}] logcat WS start failed: ${e?.message ?? e}`);
         try {
@@ -221,7 +233,36 @@ export function attachLogcatWs(server: Server, deps: LogcatWsDeps): void {
         if (!ok) pendingDrops += 1;
         return ok;
       };
+      // This socket's own slice of a stream shared with every other viewer of
+      // the device. It cannot be applied upstream: os_trace_relay serves one
+      // consumer, so a second child spawned to satisfy a second filter
+      // silences both — measured, three concurrent readers and all of them
+      // mute. The child therefore emits a superset and each socket narrows it
+      // here.
+      //
+      // Android sends neither field and is unaffected: it streams everything
+      // and filters in the browser, as it always has.
+      // The levels the stream decided this client gets — which is what it
+      // asked for, or the platform's default when it asked for nothing. Using
+      // the raw request here instead would leave a client that named no levels
+      // unfiltered, and therefore showing another viewer's Debug.
+      const allowedLevels = effectiveLevels?.length
+        ? iosLevelsToLetters(effectiveLevels)
+        : undefined;
+      const wanted = (r: LogcatRecord): boolean => {
+        // Dropped-line and end-of-stream markers are always shown, for the
+        // same reason the browser-side filter always shows them: a reader
+        // narrowed to one app still needs to know records went missing.
+        if (r.synthetic) return true;
+        if (parsed.process && r.pkg !== parsed.process) return false;
+        if (allowedLevels && !allowedLevels.has(r.level)) return false;
+        return true;
+      };
+
       const send = (r: LogcatRecord): void => {
+        // Not for this client — not a drop. Counting it would report a gap
+        // that never existed.
+        if (!wanted(r)) return;
         if (ws.readyState !== WebSocket.OPEN) {
           pendingDrops += 1;
           return;

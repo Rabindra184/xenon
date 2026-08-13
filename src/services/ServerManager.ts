@@ -15,7 +15,7 @@ import { attachLogcatWs } from '../app/ws/logcatWs';
 import { StreamTicketService } from './token/StreamTicketService';
 import AndroidH264StreamService from '../device-managers/android/AndroidH264StreamService';
 import { LogcatStreamService } from '../device-managers/android/LogcatStreamService';
-import { IOSLogStreamService } from '../device-managers/ios/IOSLogStreamService';
+import { DEFAULT_LEVELS, IOSLogStreamService } from '../device-managers/ios/IOSLogStreamService';
 import { resolveLogSource } from './logcat/logSource';
 import { SessionOwnerResolver } from './device-access/SessionOwnerResolver';
 import { makeTicketActorAuthorizer } from './device-access/ticketActorAccess';
@@ -147,15 +147,23 @@ export class ServerManager {
           const device = await DeviceStoreFactory.getStore().findDevice({ udid });
           const source = resolveLogSource(device?.platform);
           if (source === 'ostrace') {
-            return Container.get(IOSLogStreamService).start(udid, {
-              levels: filter.levels,
+            // The levels handed back are what this client sees. A client that
+            // named none gets the default rather than everything: the child is
+            // shared, so "unfiltered" would mean inheriting whatever the
+            // widest viewer asked for.
+            const levels = filter.levels?.length ? filter.levels : DEFAULT_LEVELS;
+            const mux = await Container.get(IOSLogStreamService).start(udid, {
+              levels,
               process: filter.process,
             });
+            return { mux, levels };
           }
           if (source === 'unsupported') {
             throw new Error(`Log streaming is not supported on ${device?.platform ?? 'unknown'}`);
           }
-          return Container.get(LogcatStreamService).start(udid);
+          // Android streams everything and narrows in the browser; no
+          // server-side level filter applies.
+          return { mux: await Container.get(LogcatStreamService).start(udid) };
         },
       });
     }

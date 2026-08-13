@@ -2,6 +2,12 @@ import { expect } from 'chai';
 import { parseOstraceLine } from '../../src/services/logcat/ostraceParse';
 import { resolveLogSource } from '../../src/services/logcat/logSource';
 import { appIdForProcess, parseInstalledApps } from '../../src/device-managers/ios/iosAppIds';
+import { iosLevelsToLetters } from '../../src/services/logcat/ostraceParse';
+import {
+  DEFAULT_LEVELS,
+  levelsCovered,
+  widenLevels,
+} from '../../src/device-managers/ios/IOSLogStreamService';
 
 /**
  * Verbatim from `go-ios ostrace` against an iPhone 14 on iOS 26.5.2.
@@ -172,5 +178,56 @@ describe('iOS app id attribution', () => {
       ]),
     );
     expect(m.get('Dup')).to.equal('com.first');
+  });
+});
+
+/**
+ * os_trace_relay serves ONE consumer. Measured against an iPhone 14: three
+ * concurrent `ostrace` processes left every one of them silent — including a
+ * capture started fresh from a shell — and killing them restored 2,223 lines
+ * in 10s immediately. A second child is not a second view of the logs, it is
+ * the end of the first.
+ *
+ * So one child per device, emitting a superset, and each socket narrows what
+ * it is sent. These are the two halves of that: what the child must emit, and
+ * what a socket may keep.
+ */
+describe('sharing one os_trace child between viewers', () => {
+  it('keeps the running child when it already covers the request', () => {
+    expect(levelsCovered(['Info', 'Default', 'Error', 'Fault'], ['Info', 'Error'])).to.equal(true);
+  });
+
+  it('does not consider Debug covered by the default set', () => {
+    // The case that must respawn: Debug is exactly what the default omits.
+    expect(levelsCovered(DEFAULT_LEVELS, ['Debug'])).to.equal(false);
+  });
+
+  it('widens to the union, never the intersection', () => {
+    // A viewer wanting less is served by filtering downstream; a viewer
+    // wanting more cannot be served by a child never told to emit it.
+    const widened = widenLevels(DEFAULT_LEVELS, ['Debug']);
+    expect(widened).to.include('Debug');
+    DEFAULT_LEVELS.forEach((l) => expect(widened).to.include(l));
+  });
+
+  it('does not duplicate levels when widening twice', () => {
+    const once = widenLevels(DEFAULT_LEVELS, ['Debug']);
+    expect(widenLevels(once, ['Debug'])).to.deep.equal(once);
+  });
+
+  it('translates a viewer request back to the letters records carry', () => {
+    const letters = iosLevelsToLetters(['Debug', 'Error']);
+    expect([...letters].sort()).to.deep.equal(['D', 'E']);
+  });
+
+  it('admits both Info and Default for either, since both map to I', () => {
+    // The honest consequence of refusing to render an ordinary message as a
+    // warning: the two are indistinguishable once mapped.
+    expect([...iosLevelsToLetters(['Info'])]).to.deep.equal(['I']);
+    expect([...iosLevelsToLetters(['Default'])]).to.deep.equal(['I']);
+  });
+
+  it('ignores a level name it does not know rather than admitting everything', () => {
+    expect(iosLevelsToLetters(['Nonsense']).size).to.equal(0);
   });
 });

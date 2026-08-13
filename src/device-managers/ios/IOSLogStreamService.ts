@@ -39,19 +39,30 @@ export const DEFAULT_LEVELS = ['Info', 'Default', 'Error', 'Fault'];
 interface Session {
   mux: LogcatMultiplexer;
   proc: ChildProcessLike;
+  /** Levels the running child was spawned with — only ever widened. */
+  levels: string[];
+  appIds: Map<string, string>;
+  /**
+   * Bumped whenever the child is replaced. The exit handlers of a child we
+   * deliberately killed must not tear the session down, and comparing the
+   * session object is not enough because widening keeps the same object.
+   */
+  generation: number;
 }
 
 /**
- * A session is keyed by device AND filter, not by device alone.
- *
- * The filter lives in the child process's arguments, so two viewers wanting
- * different slices genuinely need different processes; sharing one mux between
- * them would silently give the second viewer the first viewer's filter.
- * Viewers asking for the same slice still share, which is the common case.
+ * Levels the child must run with to satisfy both what it already streams and
+ * what a new viewer wants. Union, never intersection: a viewer asking for less
+ * is served by filtering downstream, but a viewer asking for more cannot be
+ * served by a child that was never told to emit it.
  */
-export function sessionKey(udid: string, opts: IOSLogOptions = {}): string {
-  const levels = [...(opts.levels ?? DEFAULT_LEVELS)].sort().join(',');
-  return `${udid}|${levels}|${opts.process ?? ''}`;
+export function widenLevels(current: string[], wanted: string[]): string[] {
+  return [...new Set([...current, ...wanted])];
+}
+
+/** True when the running child already emits everything `wanted` needs. */
+export function levelsCovered(current: string[], wanted: string[]): boolean {
+  return wanted.every((l) => current.includes(l));
 }
 
 /**
@@ -90,72 +101,118 @@ export class IOSLogStreamService {
     timer.unref?.();
   }
 
-  getMultiplexer(udid: string, opts?: IOSLogOptions): LogcatMultiplexer | undefined {
-    return this.sessions.get(sessionKey(udid, opts))?.mux;
+  getMultiplexer(udid: string): LogcatMultiplexer | undefined {
+    return this.sessions.get(udid)?.mux;
   }
 
+  /**
+   * The device's log stream, widened if this caller needs levels the running
+   * child does not emit.
+   *
+   * ONE child per device, never one per filter. os_trace_relay serves a single
+   * consumer: measured against an iPhone 14, three concurrent `ostrace`
+   * processes left every one of them silent — including a fresh capture taken
+   * from a shell — and killing them restored 2,223 lines in 10s immediately.
+   * A second child is not a second view of the logs, it is the end of the
+   * first.
+   *
+   * So the per-viewer filter cannot live in the child's arguments. Only the
+   * level does, because that is where 97% of the volume is and every viewer
+   * can be served from a superset; process and level narrowing for a
+   * particular socket happen where that socket is written to.
+   */
   async start(udid: string, opts: IOSLogOptions = {}): Promise<LogcatMultiplexer> {
-    const key = sessionKey(udid, opts);
-    const existing = this.sessions.get(key);
-    if (existing) return existing.mux;
+    const wanted = opts.levels ?? DEFAULT_LEVELS;
+    const existing = this.sessions.get(udid);
+    if (existing) {
+      if (levelsCovered(existing.levels, wanted)) return existing.mux;
+      // Widen in place: replace the child, keep the multiplexer, so viewers
+      // already attached keep their sockets and their buffers and see only a
+      // gap. Never narrowed again while the session lives — the idle watchdog
+      // tears it down 30s after the last viewer leaves, which resets it.
+      await this.respawn(udid, existing, widenLevels(existing.levels, wanted));
+      return existing.mux;
+    }
 
-    return this.starts.run(key, async () => {
+    return this.starts.run(udid, async () => {
+      const already = this.sessions.get(udid);
+      if (already) return already.mux;
+
       const mux = new LogcatMultiplexer();
       // Read once, here, rather than per record. Android resolves pid →
       // package asynchronously for every line and needs a flushChain to stop
       // the varying latency reordering them; a start-time snapshot keeps the
       // hot path synchronous and needs none of that.
       const appIds = await this.loadAppIds(udid);
-      const proc = await this.spawnOstrace(udid, opts);
-      const session: Session = { mux, proc };
-      this.sessions.set(key, session);
-
-      if (proc.stdout) {
-        const rl = readline.createInterface({ input: proc.stdout });
-        rl.on('line', (line: string) => {
-          const rec = parseOstraceLine(line);
-          // go-ios writes its own progress and warnings to the same stream, and
-          // a line that is not a record is simply not one — there is no
-          // continuation to append it to, unlike logcat.
-          if (!rec) return;
-
-          // An os_trace record names the binary, never the app. Translating it
-          // here is what lets `package:com.example.app` mean the same thing on
-          // iOS as it already does on Android.
-          const executable = rec.pkg;
-          rec.pkg = appIdForProcess(executable, appIds);
-
-          // Accept either form. The app id is what the filter is documented
-          // around, but a user reading the pane sees whatever is in front of
-          // them, and refusing the name they can actually see would be a poor
-          // way to reward them for typing it.
-          if (opts.process && rec.pkg !== opts.process && executable !== opts.process) return;
-          mux.push(rec);
-        });
-      }
-
-      const end = (reason: string) => {
-        // An intentional stop() already removed this session and killed the
-        // process; the 'close' that follows is expected, not a failure.
-        if (this.sessions.get(key) !== session) return;
-        this.sessions.delete(key);
-        session.mux.push({
-          ts: Date.now(),
-          pid: 0,
-          tid: 0,
-          level: 'E',
-          tag: 'xenon',
-          message: `log stream ended (${reason})`,
-          synthetic: true,
-        });
-        // Close AFTER the record, so a client sees why it is being dropped.
-        session.mux.close();
-      };
-      proc.on('close', () => end('process exited'));
-      proc.on('error', () => end('process error'));
-
+      const proc = await this.spawnOstrace(udid, { levels: wanted });
+      const session: Session = { mux, proc, levels: wanted, appIds, generation: 0 };
+      this.sessions.set(udid, session);
+      this.wire(udid, session);
       return mux;
     });
+  }
+
+  /** Attach the reader and exit handlers to the session's current child. */
+  private wire(udid: string, session: Session): void {
+    const generation = session.generation;
+    const proc = session.proc;
+
+    if (proc.stdout) {
+      const rl = readline.createInterface({ input: proc.stdout });
+      rl.on('line', (line: string) => {
+        const rec = parseOstraceLine(line);
+        // go-ios writes its own progress and warnings to the same stream, and
+        // a line that is not a record is simply not one — there is no
+        // continuation to append it to, unlike logcat.
+        if (!rec) return;
+        // An os_trace record names the binary, never the app. Translating it
+        // here is what lets `package:com.example.app` mean the same thing on
+        // iOS as it already does on Android.
+        rec.pkg = appIdForProcess(rec.pkg, session.appIds);
+        session.mux.push(rec);
+      });
+    }
+
+    const end = (reason: string) => {
+      // A child we replaced ourselves exits on cue; that is not the stream
+      // ending. The session object survives a widen, so the generation is what
+      // distinguishes them.
+      if (this.sessions.get(udid) !== session || session.generation !== generation) return;
+      this.sessions.delete(udid);
+      session.mux.push({
+        ts: Date.now(),
+        pid: 0,
+        tid: 0,
+        level: 'E',
+        tag: 'xenon',
+        message: `log stream ended (${reason})`,
+        synthetic: true,
+      });
+      // Close AFTER the record, so a client sees why it is being dropped.
+      session.mux.close();
+    };
+    proc.on('close', () => end('process exited'));
+    proc.on('error', () => end('process error'));
+  }
+
+  /**
+   * Replace the child with one emitting `levels`, keeping the multiplexer.
+   *
+   * The generation is bumped BEFORE the old child is killed, so its exit
+   * handler recognises itself as superseded and leaves the session alone.
+   */
+  private async respawn(udid: string, session: Session, levels: string[]): Promise<void> {
+    log.info(`[${udid}] widening os_trace levels to ${levels.join(',')}`);
+    const old = session.proc;
+    session.generation += 1;
+    try {
+      old.kill();
+    } catch {
+      /* already gone */
+    }
+    session.levels = levels;
+    session.proc = await this.spawnOstrace(udid, { levels });
+    this.wire(udid, session);
   }
 
   /** Stop every stream. Called from the process-level shutdown in src/index.ts. */
@@ -195,10 +252,12 @@ export class IOSLogStreamService {
     }
   }
 
-  /** Stop every stream for a device, whatever filter each was started with. */
+  /**
+   * Stop the device's stream. There is exactly one — filters no longer fork
+   * the session, so this is `stop` under the name callers already use.
+   */
   async stopDevice(udid: string): Promise<void> {
-    const keys = [...this.sessions.keys()].filter((k) => k.startsWith(`${udid}|`));
-    await Promise.all(keys.map((k) => this.stop(k)));
+    await this.stop(udid);
   }
 
   // ---------------------------------------------------------------------
@@ -212,14 +271,13 @@ export class IOSLogStreamService {
     // is and where dropping it costs nothing.
     const levels = opts.levels ?? DEFAULT_LEVELS;
     if (levels.length) args.push(`--level=${levels.join(',')}`);
-    // The process deliberately does NOT. go-ios 1.2.1 accepts `--process=<name>`
-    // and then matches nothing at all: measured against an iPhone 14, every
-    // value tried — bare name, full path, altered case — returned 0 lines,
-    // while `--level` alone returned 48,195 and `--pid` returned 58,960 for the
-    // same process. Passing a flag that silently empties the stream is worse
-    // than not passing it, so the process filter is applied when records are
-    // read instead. `--pid` works, but a name maps to a pid that changes on
-    // every relaunch, which is exactly what a log filter must survive.
+    // The process deliberately does NOT, for two independent reasons. This
+    // child is shared by every viewer of the device, so a per-viewer process
+    // filter here would be one viewer's filter imposed on all of them. And
+    // go-ios 1.2.1 accepts `--process=<name>` and then matches nothing at all:
+    // measured against an iPhone 14, every value tried — bare name, full path,
+    // altered case — returned 0 lines, while `--level` alone returned 48,195
+    // and `--pid` returned 58,960 for that same process.
 
     const proc = this.spawnProcess(goIOS, args);
     // A ChildProcess emitting 'error' with no listener crashes the process.
