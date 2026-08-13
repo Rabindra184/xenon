@@ -6,6 +6,31 @@ This project follows [Semantic Versioning](https://semver.org/). Releases are
 published to npm automatically when `package.json`'s `version` changes on `main`
 (see `.github/workflows/npm-publish.yml`).
 
+## 1.20.5
+
+Patch release. Found by clicking every control on the Devices page.
+
+### Fixed
+
+- **A reservation's remaining time displayed an hour short.** Reserving a
+  device for 2 hours rendered `RES · alice (1h)`. The server was right —
+  `reservedUntil` was 120 minutes away — but the card formatted the remainder
+  with `prettyMilliseconds(…, { compact: true })`, which keeps only the largest
+  unit and floors it, so the banner was a whole hour low for all but the first
+  millisecond of a reservation: 2h showed 1h, 4h showed 3h, 8h showed 7h. It is
+  the number someone reads to decide whether they have time to finish, so it
+  either rushed them or had the device re-reserved for nothing. It now reads
+  `1h 59m`, and an expired remainder renders `expiring` rather than `-5s`.
+
+### Known
+
+- A device in maintenance still shows a red **ERROR** badge and matches no
+  status filter, because `userBlocked` maps to the `error` status kind and
+  there is no maintenance bucket. A deliberately parked device therefore looks
+  broken and cannot be found through the filters. Unchanged here — adding a
+  status kind, its label, colour and filter bucket is a product decision rather
+  than a defect fix.
+
 ## 1.20.4
 
 Patch release. Three defects on the Apps registry page, all found by clicking
