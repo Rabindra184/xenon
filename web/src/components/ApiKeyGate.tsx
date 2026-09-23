@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { SENSITIVE_BODY } from '../api-service/sensitive';
 
 interface Props {
   children: React.ReactNode;
@@ -24,7 +25,7 @@ export function ApiKeyGate({ children }: Props) {
     setError(null);
     const res = await fetch('/xenon/api/auth/dashboard-session', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...SENSITIVE_BODY },
       credentials: 'include',
       body: JSON.stringify({ apiKey: value.trim() }),
     });

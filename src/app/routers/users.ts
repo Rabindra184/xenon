@@ -11,6 +11,12 @@ import {
 } from '../../services/identity/userAuthorization';
 import { prisma } from '../../prisma';
 import type { UserRole } from '../../types/identity';
+import { PasswordResetService } from '../../services/PasswordResetService';
+import { EmailService } from '../../services/EmailService';
+import { buildResetLink, resetEmail } from '../../services/passwordResetLink';
+import log from '../../logger';
+
+const auditLog = log.scope('Users');
 
 function isUserRole(v: unknown): v is UserRole {
   return v === 'SUPER_ADMIN' || v === 'ADMIN' || v === 'MEMBER';
@@ -138,6 +144,50 @@ export function usersRouter(): Router {
       role: updated.role,
       status: updated.status,
     });
+  });
+
+  // Admin-issued password reset. Replaces relaying a link out of the server
+  // log: with SMTP the link is emailed to the user as before; without it the
+  // link is returned once, to the admin who asked, and never logged.
+  r.post('/:id/reset-link', async (req, res) => {
+    const auth = getAuth(req);
+    const targetId = req.params.id;
+    try {
+      // Your own password goes through change-password. Also stops a hijacked
+      // admin session from quietly minting itself a fresh credential.
+      assertNotSelf(auth.userId, targetId, 'issue a reset link for');
+    } catch (e: any) {
+      return res.status(400).json({ error: e.message });
+    }
+    const target = await prisma.user.findUnique({ where: { id: targetId } });
+    if (!target) return res.status(404).json({ error: 'user not found' });
+    // ADMIN may act only on MEMBERs. Without this an ADMIN could obtain a link
+    // for a SUPER_ADMIN and take the account over.
+    if (!canActOn(auth.role, target.role as UserRole)) {
+      return res.status(403).json({ error: 'insufficient permissions for this target' });
+    }
+    if (target.status !== 'ACTIVE') {
+      return res.status(409).json({ error: 'user is not active' });
+    }
+
+    const resetSvc = Container.get(PasswordResetService);
+    const emailSvc = Container.get(EmailService);
+    const { raw } = await resetSvc.createToken(target.id);
+    const link = buildResetLink(req, raw);
+    const expiresAt = new Date(Date.now() + resetSvc.ttlMs()).toISOString();
+
+    if (emailSvc.hasSmtp()) {
+      await emailSvc.send(resetEmail(target, link));
+      auditLog.info(`${auth.userId} emailed a password-reset link to user ${target.id}`);
+      return res.json({ emailed: true, expiresAt });
+    }
+    // Audit who issued a link for whom — never the link itself.
+    auditLog.warn(
+      `${auth.userId} issued a password-reset link for user ${target.id} (returned to the admin)`,
+    );
+    // The body is a credential: keep it out of browser and proxy caches.
+    res.set('Cache-Control', 'no-store');
+    return res.json({ emailed: false, link, expiresAt });
   });
 
   r.delete('/:id', async (req, res) => {

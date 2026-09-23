@@ -8,10 +8,7 @@ vi.mock('../api-service/users', () => ({
   createUser: vi.fn(),
   updateUser: vi.fn(),
   deleteUser: vi.fn(),
-}));
-
-vi.mock('../api-service/auth', () => ({
-  forgotPassword: vi.fn(),
+  createResetLink: vi.fn(),
 }));
 
 vi.mock('../auth/auth-context', () => ({

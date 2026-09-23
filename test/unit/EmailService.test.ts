@@ -59,4 +59,54 @@ describe('EmailService', () => {
       (config as any).passwordResetLogFallback = orig.fb;
     }
   });
+
+  describe('log fallback is opt-in (1.20.7)', () => {
+    it('defaults off when XENON_PASSWORD_RESET_LOG_FALLBACK is unset', function () {
+      if (process.env.XENON_PASSWORD_RESET_LOG_FALLBACK !== undefined) this.skip();
+      expect((config as any).passwordResetLogFallback).to.equal(false);
+    });
+
+    it('canDeliver: SMTP or explicit fallback, nothing else', () => {
+      const orig = { url: (config as any).smtpUrl, fb: (config as any).passwordResetLogFallback };
+      const svc = new EmailService();
+      try {
+        (config as any).smtpUrl = undefined;
+        (config as any).passwordResetLogFallback = false;
+        expect(svc.canDeliver()).to.equal(false);
+        (config as any).passwordResetLogFallback = true;
+        expect(svc.canDeliver()).to.equal(true);
+        (config as any).passwordResetLogFallback = false;
+        (config as any).smtpUrl = 'smtp://mail.example.com:587';
+        expect(svc.canDeliver()).to.equal(true);
+      } finally {
+        (config as any).smtpUrl = orig.url;
+        (config as any).passwordResetLogFallback = orig.fb;
+      }
+    });
+
+    it('warns at startup only when the fallback would actually log links', () => {
+      const orig = { url: (config as any).smtpUrl, fb: (config as any).passwordResetLogFallback };
+      const svc = new EmailService();
+      const warn = sinon.stub(svc as any, 'warnLog');
+      try {
+        (config as any).smtpUrl = undefined;
+        (config as any).passwordResetLogFallback = false;
+        svc.warnIfLogFallbackEnabled();
+        expect(warn.called).to.equal(false);
+
+        (config as any).smtpUrl = 'smtp://mail.example.com:587';
+        (config as any).passwordResetLogFallback = true;
+        svc.warnIfLogFallbackEnabled();
+        expect(warn.called, 'SMTP wins, so nothing is logged').to.equal(false);
+
+        (config as any).smtpUrl = undefined;
+        svc.warnIfLogFallbackEnabled();
+        expect(warn.calledOnce).to.equal(true);
+        expect(warn.firstCall.args[0]).to.match(/plaintext/);
+      } finally {
+        (config as any).smtpUrl = orig.url;
+        (config as any).passwordResetLogFallback = orig.fb;
+      }
+    });
+  });
 });

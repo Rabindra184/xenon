@@ -47,6 +47,20 @@ export class PasswordResetService {
     });
   }
 
+  /**
+   * Kill every outstanding reset link for a user. Call whenever their password
+   * changes: a link issued earlier (and possibly leaked, e.g. into a log)
+   * must not still work afterwards. Previously it stayed live for its full hour
+   * even after the password had been reset with a newer link.
+   */
+  async revokeAllForUser(userId: string): Promise<number> {
+    const r = await prisma.passwordResetToken.updateMany({
+      where: { userId, usedAt: null },
+      data: { usedAt: new Date() },
+    });
+    return r.count;
+  }
+
   async cleanupExpired(): Promise<number> {
     const r = await prisma.passwordResetToken.deleteMany({
       where: {
