@@ -19,7 +19,10 @@ const FACTS = [
  */
 export function AuthShell({ children }: { children: React.ReactNode }) {
   return (
-    <div className="relative min-h-screen w-full overflow-hidden bg-[#050807] text-[var(--text)]">
+    // overflow-clip, not overflow-hidden: a hidden box is still scrollable
+    // from script, and autofocusing the email field scrolled it 114px
+    // sideways at 1280px, shifting the whole page left.
+    <div className="relative min-h-screen w-full overflow-clip bg-[#050807] text-[var(--text)]">
       <Backdrop />
       <Spotlight size={520} />
 
@@ -72,7 +75,7 @@ export function AuthShell({ children }: { children: React.ReactNode }) {
         </div>
 
         <footer className="flex items-center justify-between border-t border-white/5 py-5 text-[11px] text-neutral-500">
-          <span>Xenon · Mobile device lab</span>
+          <span>Xenon v{__XENON_VERSION__}</span>
           <a
             href={`${import.meta.env.BASE_URL}api-docs`}
             target="_blank"
@@ -89,7 +92,7 @@ export function AuthShell({ children }: { children: React.ReactNode }) {
 
 function Backdrop() {
   return (
-    <div aria-hidden="true" className="pointer-events-none absolute inset-0">
+    <div aria-hidden="true" className="pointer-events-none absolute inset-0 overflow-hidden">
       <div className="absolute inset-0 bg-[linear-gradient(to_right,rgba(255,255,255,0.035)_1px,transparent_1px),linear-gradient(to_bottom,rgba(255,255,255,0.035)_1px,transparent_1px)] bg-[size:56px_56px] [mask-image:radial-gradient(ellipse_80%_70%_at_40%_40%,black,transparent)]" />
       <div className="xe-aurora absolute -left-40 top-1/4 h-[520px] w-[520px] rounded-full bg-[radial-gradient(circle,rgba(34,197,94,0.16),transparent_65%)] blur-2xl" />
       <div
