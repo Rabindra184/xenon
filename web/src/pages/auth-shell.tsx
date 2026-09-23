@@ -1,34 +1,45 @@
 import * as React from 'react';
+import { Spotlight, SpotlightBeam } from '../components/ui/spotlight';
+import { AuthHero } from './auth-hero';
+import './auth.css';
 
 export function AuthShell({ children }: { children: React.ReactNode }) {
   return (
     <div className="min-h-screen w-full grid grid-cols-1 md:grid-cols-2 bg-[var(--bg)] text-[var(--text)]">
-      <aside className="relative hidden md:flex flex-col justify-center px-12 overflow-hidden bg-gradient-to-br from-[#0a0e1a] via-[#131a2e] to-[#1a2548]">
-        <div className="absolute inset-0 pointer-events-none"
-             style={{ background: 'radial-gradient(circle at 80% 20%, rgba(99,102,241,0.18), transparent 60%)' }} />
-        <div className="relative">
+      <aside className="relative hidden md:flex flex-col justify-center gap-10 overflow-hidden bg-black/[0.96] px-12 py-12 bg-[linear-gradient(to_right,rgba(255,255,255,0.03)_1px,transparent_1px),linear-gradient(to_bottom,rgba(255,255,255,0.03)_1px,transparent_1px)] bg-[size:48px_48px]">
+        <SpotlightBeam className="-top-40 left-0 md:left-60 md:-top-20" />
+        <Spotlight />
+
+        <div className="relative z-10 xe-rise">
           <img
             src={`${import.meta.env.BASE_URL}logo.svg`}
-            alt="Xenon Logo"
-            className="h-8 w-auto object-contain mb-4"
+            alt="Xenon"
+            className="mb-8 h-8 w-auto object-contain"
           />
-          <div className="text-3xl font-semibold tracking-tight mb-2">Xenon</div>
-          <p className="text-sm text-[var(--text-dim)] max-w-sm leading-relaxed mb-8">
-            Enterprise-grade Appium device lab orchestration with AI self-healing,
-            live device streaming, and proof-pack recording.
+          <h2 className="bg-gradient-to-b from-neutral-50 to-neutral-400 bg-clip-text text-4xl font-bold leading-tight tracking-tight text-transparent lg:text-5xl">
+            Your device lab,
+            <br />
+            live.
+          </h2>
+          <p className="mt-4 max-w-md text-sm leading-relaxed text-neutral-400">
+            Appium orchestration with self-healing selectors, real-time device streaming, and
+            proof-pack recording — on hardware you own.
           </p>
-          <div className="flex flex-wrap gap-2 max-w-sm">
-            {['Self-healing tests', 'Live device streaming', 'Hub-node scaling', 'Proof-pack recording'].map((t) => (
-              <span key={t} className="text-[11px] px-2.5 py-1 rounded-full bg-white/5 border border-white/10 text-[var(--text-muted)]">
-                {t}
-              </span>
-            ))}
-          </div>
+        </div>
+
+        <div className="relative z-10 xe-rise" style={{ animationDelay: '0.15s' }}>
+          <AuthHero />
         </div>
       </aside>
 
-      <main className="flex items-center justify-center">
-        <div className="w-full max-w-sm px-6">{children}</div>
+      <main className="relative flex items-center justify-center overflow-hidden">
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute -top-32 right-0 h-80 w-80 rounded-full bg-[radial-gradient(circle,rgba(34,197,94,0.08),transparent_70%)]"
+        />
+        <div className="relative w-full max-w-sm px-6 xe-rise" style={{ animationDelay: '0.1s' }}>
+          {children}
+        </div>
       </main>
     </div>
   );

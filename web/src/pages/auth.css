@@ -1,0 +1,93 @@
+/* Motion for the sign-in pages (AuthShell, AuthHero). Decorative only. */
+
+@keyframes xe-beam-in {
+  from {
+    opacity: 0;
+    transform: translate(-72%, -62%) scale(0.5);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, -40%) scale(1);
+  }
+}
+
+@keyframes xe-float {
+  0%,
+  100% {
+    translate: 0 0;
+  }
+  50% {
+    translate: 0 -10px;
+  }
+}
+
+@keyframes xe-scan {
+  from {
+    top: -20%;
+  }
+  to {
+    top: 110%;
+  }
+}
+
+@keyframes xe-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.35;
+  }
+}
+
+@keyframes xe-rise {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.xe-beam {
+  opacity: 0;
+  animation: xe-beam-in 2s cubic-bezier(0.2, 0, 0, 1) 0.4s forwards;
+}
+
+.xe-float {
+  animation: xe-float 6s ease-in-out infinite;
+}
+
+.xe-scan {
+  animation: xe-scan 3.2s linear infinite;
+}
+
+.xe-pulse {
+  animation: xe-pulse 1.6s ease-in-out infinite;
+}
+
+.xe-rise {
+  opacity: 0;
+  animation: xe-rise 0.6s cubic-bezier(0.2, 0, 0, 1) forwards;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .xe-beam,
+  .xe-rise {
+    animation: none;
+    opacity: 1;
+  }
+  .xe-beam {
+    transform: translate(-50%, -40%);
+  }
+  .xe-float,
+  .xe-scan,
+  .xe-pulse {
+    animation: none;
+  }
+  .xe-scan {
+    display: none;
+  }
+}
