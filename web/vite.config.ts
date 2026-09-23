@@ -1,7 +1,10 @@
 /// <reference types="vitest" />
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
-import pkg from './package.json';
+// The plugin's package.json, not web/'s. web/package.json is a private
+// workspace manifest that is never bumped (it read 0.3.0 while the plugin
+// was 1.20.5); the root one is what every release bumps and publishes.
+import pluginPkg from '../package.json';
 
 // https://vitejs.dev/config/
 export default defineConfig({
@@ -15,7 +18,7 @@ export default defineConfig({
     open: true,
   },
   define: {
-    __XENON_VERSION__: JSON.stringify(pkg.version),
+    __XENON_VERSION__: JSON.stringify(pluginPkg.version),
   },
   test: {
     globals: true,
