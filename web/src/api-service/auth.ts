@@ -39,6 +39,24 @@ export async function login(email: string, password: string): Promise<void> {
   }
 }
 
+export type PasswordResetMode = 'email' | 'admin';
+
+/**
+ * What the sign-in page may offer. Falls back to 'admin' if the server can't
+ * be asked: better to send someone to an administrator than to promise an
+ * email that may never arrive.
+ */
+export async function getAuthOptions(): Promise<{ passwordReset: PasswordResetMode }> {
+  try {
+    const r = await fetch(`${BASE}/options`, { credentials: 'include' });
+    if (!r.ok) return { passwordReset: 'admin' };
+    const body = await r.json();
+    return { passwordReset: body.passwordReset === 'email' ? 'email' : 'admin' };
+  } catch {
+    return { passwordReset: 'admin' };
+  }
+}
+
 export async function logout(): Promise<void> {
   await fetch(`${BASE}/logout`, { method: 'POST', credentials: 'include' });
 }

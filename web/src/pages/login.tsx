@@ -16,6 +16,7 @@ import { login } from '../api-service/auth';
 import { cn } from '../lib/utils';
 import { useAuth } from '../auth/auth-context';
 import { clearSessionHint } from '../auth/session-hint';
+import { usePasswordResetMode } from '../auth/use-password-reset-mode';
 import { describeLoginError, formatWait } from './login-errors';
 import { AuthShell } from './auth-shell';
 
@@ -32,6 +33,7 @@ export default function LoginPage() {
   const params = new URLSearchParams(loc.search);
   const next = params.get('next') || '/overview';
   const expired = params.get('reason') === 'expired';
+  const resetMode = usePasswordResetMode();
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -140,12 +142,16 @@ export default function LoginPage() {
           <label htmlFor="login-password" className="block text-sm font-medium text-[var(--text)]">
             Password
           </label>
-          <Link
-            to="/forgot-password"
-            className="text-sm text-[var(--green)] underline-offset-4 hover:underline"
-          >
-            Forgot password?
-          </Link>
+          {/* Only when the server can really email a link — see
+              passwordResetMode on the server. Otherwise the fallback below. */}
+          {resetMode === 'email' && (
+            <Link
+              to="/forgot-password"
+              className="text-sm text-[var(--green)] underline-offset-4 hover:underline"
+            >
+              Forgot password?
+            </Link>
+          )}
         </div>
         <div className="relative">
           <Lock className={ICON} aria-hidden="true" />
@@ -227,6 +233,12 @@ export default function LoginPage() {
             </>
           )}
         </button>
+
+        {resetMode === 'admin' && (
+          <p className="mt-5 text-center text-sm text-[var(--text-muted)]">
+            Forgot your password? Ask a Xenon administrator to send you a reset link.
+          </p>
+        )}
       </form>
     </AuthShell>
   );

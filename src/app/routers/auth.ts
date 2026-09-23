@@ -15,6 +15,7 @@ import { config } from '../../config';
 import { prisma } from '../../prisma';
 import { JwtKeyService } from '../../services/token/JwtKeyService';
 import { resolveMcpGrant, McpScopeError } from '../../services/token/mcpScopes';
+import { passwordResetMode } from '../../services/passwordResetMode';
 
 const SESSION_COOKIE = 'xenon_dashboard_session';
 const isSecureFromReq = (req: any) =>
@@ -91,6 +92,12 @@ export function authPublicRouter(): Router {
   const resetLimiter = new LoginRateLimiter({
     attempts: (config as any).resetRateLimitAttempts ?? 3,
     windowMs: (config as any).resetRateLimitWindowMs ?? 15 * 60 * 1000,
+  });
+
+  // What the sign-in page may offer before anyone is authenticated. Reveals
+  // only whether SMTP is configured — not the server, sender or credentials.
+  r.get('/options', (_req, res) => {
+    res.json({ passwordReset: passwordResetMode(config as any) });
   });
 
   r.post('/login', loginRateLimitMiddleware(limiter), async (req, res) => {

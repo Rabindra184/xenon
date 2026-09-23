@@ -2,6 +2,7 @@ import * as React from 'react';
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { forgotPassword } from '../api-service/auth';
+import { usePasswordResetMode } from '../auth/use-password-reset-mode';
 import { AuthShell } from './auth-shell';
 
 export default function ForgotPasswordPage() {
@@ -9,6 +10,7 @@ export default function ForgotPasswordPage() {
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const mode = usePasswordResetMode();
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -22,6 +24,27 @@ export default function ForgotPasswordPage() {
     } finally {
       setSubmitting(false);
     }
+  }
+
+  // Without SMTP the form would accept an email and promise a link that only
+  // ever reaches the server log. Say who can actually help instead.
+  if (mode !== 'email') {
+    return (
+      <AuthShell>
+        <h1 className="text-2xl font-semibold mb-1">Forgot password?</h1>
+        {mode === 'admin' && (
+          <p className="text-sm text-[var(--text-muted)] mb-6">
+            This Xenon server can't send email, so passwords are reset by an administrator.
+            Ask a Xenon admin to send you a reset link from the Users page.
+          </p>
+        )}
+        <div className="mt-6 text-center">
+          <Link to="/login" className="text-sm text-[var(--green)] underline-offset-4 hover:underline">
+            Back to sign in
+          </Link>
+        </div>
+      </AuthShell>
+    );
   }
 
   return (

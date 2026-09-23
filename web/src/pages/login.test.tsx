@@ -11,11 +11,13 @@ import LoginPage from './login';
 const auth = vi.hoisted(() => ({
   calls: [] as Array<[string, string]>,
   reject: null as Error | null,
+  resetMode: 'email' as 'email' | 'admin',
 }));
 vi.mock('../api-service/auth', async (importOriginal) => {
   const real = await importOriginal<typeof import('../api-service/auth')>();
   return {
     LoginError: real.LoginError,
+    getAuthOptions: () => Promise.resolve({ passwordReset: auth.resetMode }),
     login: (email: string, password: string) => {
       auth.calls.push([email, password]);
       return auth.reject ? Promise.reject(auth.reject) : Promise.resolve();
@@ -44,6 +46,7 @@ describe('LoginPage', () => {
   beforeEach(() => {
     auth.calls = [];
     auth.reject = null;
+    auth.resetMode = 'email';
     localStorage.clear();
   });
   afterEach(() => {
@@ -112,6 +115,22 @@ describe('LoginPage', () => {
   it('shows no expiry notice on a normal visit', () => {
     renderLogin('/login?next=%2Fdevices');
     expect(screen.queryByRole('status')).toBeNull();
+  });
+
+  it('offers self-service reset only when the server can email', async () => {
+    renderLogin();
+    expect(await screen.findByRole('link', { name: 'Forgot password?' })).toHaveAttribute(
+      'href',
+      '/forgot-password',
+    );
+    expect(screen.queryByText(/Ask a Xenon administrator/)).toBeNull();
+  });
+
+  it('sends people to an administrator when the server cannot email', async () => {
+    auth.resetMode = 'admin';
+    renderLogin();
+    expect(await screen.findByText(/Ask a Xenon administrator/)).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Forgot password?' })).toBeNull();
   });
 
   it('warns while Caps Lock is on in the password field', () => {

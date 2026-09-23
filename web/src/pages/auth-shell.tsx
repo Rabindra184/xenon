@@ -76,31 +76,28 @@ export function AuthShell({ children }: { children: React.ReactNode }) {
             </ul>
           </div>
 
-          {/* Not "your data stays on your hardware": the LLM healing tier sends
-              page source to an external provider when one is configured. */}
-          <div className="text-xs text-neutral-400">Self-hosted device lab orchestration</div>
+          {/* One footer, in the panel. Not "your data stays on your hardware":
+              the LLM healing tier sends page source to an external provider
+              when one is configured. */}
+          <footer className="flex items-center justify-between border-t border-white/[0.06] pt-5 text-xs text-neutral-400">
+            <span>Xenon v{__XENON_VERSION__} · Self-hosted device lab</span>
+            <a
+              href={`${import.meta.env.BASE_URL}api-docs`}
+              target="_blank"
+              rel="noreferrer"
+              className="text-neutral-400 underline-offset-4 hover:text-[var(--text)] hover:underline"
+            >
+              API docs
+            </a>
+          </footer>
         </div>
       </aside>
 
-      <div className="flex flex-col">
-        <main className="flex flex-1 items-center justify-center px-6 py-10">
-          <div className="w-full max-w-[400px] rounded-xl border border-[var(--border)] bg-[var(--surface)] px-8 py-9 shadow-[var(--shadow-lg)]">
-            {children}
-          </div>
-        </main>
-
-        <footer className="flex items-center justify-between px-8 py-5 text-xs text-[var(--text-muted)]">
-          <span>Xenon v{__XENON_VERSION__}</span>
-          <a
-            href={`${import.meta.env.BASE_URL}api-docs`}
-            target="_blank"
-            rel="noreferrer"
-            className="text-[var(--text-muted)] underline-offset-4 hover:text-[var(--text)] hover:underline"
-          >
-            API docs
-          </a>
-        </footer>
-      </div>
+      <main className="flex items-center justify-center px-6 py-10">
+        <div className="w-full max-w-[400px] rounded-xl border border-[var(--border)] bg-[var(--surface)] px-8 py-9 shadow-[var(--shadow-lg)]">
+          {children}
+        </div>
+      </main>
     </div>
   );
 }
