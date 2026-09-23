@@ -1,6 +1,7 @@
 import * as React from 'react';
 import { createContext, useContext, useEffect, useState } from 'react';
 import { getMe, MePayload, logout as apiLogout } from '../api-service/auth';
+import { clearSessionHint, markSignedIn } from './session-hint';
 
 interface AuthState {
   loading: boolean;
@@ -17,13 +18,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   async function refresh() {
     try {
-      setMe(await getMe());
+      const next = await getMe();
+      if (next) markSignedIn();
+      setMe(next);
     } finally {
       setLoading(false);
     }
   }
 
   async function signOut() {
+    clearSessionHint();
     await apiLogout();
     setMe(null);
     window.location.href = '/xenon/login';
@@ -33,9 +37,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     refresh();
   }, []);
 
-  return (
-    <AuthCtx.Provider value={{ loading, me, refresh, signOut }}>{children}</AuthCtx.Provider>
-  );
+  return <AuthCtx.Provider value={{ loading, me, refresh, signOut }}>{children}</AuthCtx.Provider>;
 }
 
 export function useAuth(): AuthState {

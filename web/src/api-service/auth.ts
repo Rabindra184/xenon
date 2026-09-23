@@ -1,15 +1,41 @@
 const BASE = '/xenon/api/auth';
 
+/**
+ * A failed sign-in, keeping what the page needs to explain it: the HTTP
+ * status (0 when the server was never reached) and, for a 429, how long the
+ * server's rate limiter asked the client to wait.
+ */
+export class LoginError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+    readonly retryAfterSec: number | null = null,
+  ) {
+    super(message);
+    this.name = 'LoginError';
+  }
+}
+
 export async function login(email: string, password: string): Promise<void> {
-  const r = await fetch(`${BASE}/login`, {
-    method: 'POST',
-    credentials: 'include',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ email, password }),
-  });
+  let r: Response;
+  try {
+    r = await fetch(`${BASE}/login`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password }),
+    });
+  } catch (err) {
+    throw new LoginError((err as Error).message || 'Network error', 0);
+  }
   if (!r.ok) {
     const body = await r.json().catch(() => ({}));
-    throw new Error(body.error || `Login failed (${r.status})`);
+    const retryAfter = Number(r.headers.get('Retry-After'));
+    throw new LoginError(
+      body.error || `Login failed (${r.status})`,
+      r.status,
+      Number.isFinite(retryAfter) && retryAfter > 0 ? retryAfter : null,
+    );
   }
 }
 

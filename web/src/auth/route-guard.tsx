@@ -1,6 +1,7 @@
 import * as React from 'react';
 import { useLocation, Navigate } from 'react-router-dom';
 import { useAuth } from './auth-context';
+import { hadSession } from './session-hint';
 
 export function RouteGuard({ children }: { children: React.ReactNode }) {
   const { loading, me } = useAuth();
@@ -13,7 +14,8 @@ export function RouteGuard({ children }: { children: React.ReactNode }) {
   }
   if (!me) {
     const next = encodeURIComponent(location.pathname + location.search);
-    return <Navigate to={`/login?next=${next}`} replace />;
+    const reason = hadSession() ? '&reason=expired' : '';
+    return <Navigate to={`/login?next=${next}${reason}`} replace />;
   }
   return <>{children}</>;
 }

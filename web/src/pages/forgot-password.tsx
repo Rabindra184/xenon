@@ -28,7 +28,7 @@ export default function ForgotPasswordPage() {
     <AuthShell>
       <form onSubmit={submit}>
         <h1 className="text-2xl font-semibold mb-1">Forgot password?</h1>
-        <p className="text-sm text-[var(--text-dim)] mb-6">
+        <p className="text-sm text-[var(--text-muted)] mb-6">
           Enter your email and we'll send you a reset link if your account exists.
         </p>
 
@@ -39,16 +39,20 @@ export default function ForgotPasswordPage() {
           </div>
         ) : (
           <>
-            <label className="block text-xs text-[var(--text-dim)] mb-1">Email</label>
+            <label htmlFor="forgot-email" className="block text-sm font-medium text-[var(--text)] mb-1.5">
+              Email
+            </label>
             <input
+              id="forgot-email"
               type="email"
+              autoComplete="username"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               autoFocus
               required
-              className="w-full mb-4 h-10 px-3 rounded-md bg-[var(--surface)] border border-[var(--border)] text-sm focus:border-[var(--green)] outline-none"
+              className="w-full mb-4 h-10 px-3 rounded-lg bg-[var(--bg)] border border-[var(--border-strong)] text-sm text-[var(--text)] outline-none focus:border-[var(--green)] focus:shadow-[0_0_0_3px_var(--accent-subtle)]"
             />
-            {error && <div className="text-xs text-[var(--red)] mb-3">{error}</div>}
+            {error && <div role="alert" className="text-sm text-[var(--red)] mb-3">{error}</div>}
             <button
               type="submit"
               disabled={submitting || !email}
@@ -60,7 +64,7 @@ export default function ForgotPasswordPage() {
         )}
 
         <div className="mt-6 text-center">
-          <Link to="/login" className="text-xs text-[var(--text-dim)] hover:text-[var(--text)]">
+          <Link to="/login" className="text-sm text-[var(--green)] underline-offset-4 hover:underline">
             Back to sign in
           </Link>
         </div>

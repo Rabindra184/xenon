@@ -47,7 +47,7 @@ export default function ResetPasswordPage() {
   if (state === 'checking') {
     return (
       <AuthShell>
-        <div className="text-sm text-[var(--text-dim)] text-center">Checking link…</div>
+        <div className="text-sm text-[var(--text-muted)] text-center">Checking link…</div>
       </AuthShell>
     );
   }
@@ -56,7 +56,7 @@ export default function ResetPasswordPage() {
       <AuthShell>
         <div className="text-center">
           <h1 className="text-xl font-semibold mb-3">This link is invalid or expired</h1>
-          <p className="text-sm text-[var(--text-dim)] mb-6">
+          <p className="text-sm text-[var(--text-muted)] mb-6">
             Reset links are good for 1 hour and single-use. Request a new one.
           </p>
           <Link
@@ -74,7 +74,7 @@ export default function ResetPasswordPage() {
       <AuthShell>
         <div className="text-center">
           <h1 className="text-xl font-semibold mb-3">Password updated</h1>
-          <p className="text-sm text-[var(--text-dim)]">Redirecting to sign in…</p>
+          <p className="text-sm text-[var(--text-muted)]">Redirecting to sign in…</p>
         </div>
       </AuthShell>
     );
@@ -84,26 +84,34 @@ export default function ResetPasswordPage() {
     <AuthShell>
       <form onSubmit={submit}>
         <h1 className="text-2xl font-semibold mb-1">Reset your password</h1>
-        <p className="text-sm text-[var(--text-dim)] mb-6">Choose a new password to sign in with.</p>
+        <p className="text-sm text-[var(--text-muted)] mb-6">Choose a new password to sign in with.</p>
 
-        <label className="block text-xs text-[var(--text-dim)] mb-1">New password</label>
+        <label htmlFor="reset-password" className="block text-sm font-medium text-[var(--text)] mb-1.5">
+          New password
+        </label>
         <input
+          id="reset-password"
           type="password"
+          autoComplete="new-password"
           value={pw}
           onChange={(e) => setPw(e.target.value)}
           autoFocus
           required
-          className="w-full mb-3 h-10 px-3 rounded-md bg-[var(--surface)] border border-[var(--border)] text-sm focus:border-[var(--green)] outline-none"
+          className="w-full mb-3 h-10 px-3 rounded-lg bg-[var(--bg)] border border-[var(--border-strong)] text-sm text-[var(--text)] outline-none focus:border-[var(--green)] focus:shadow-[0_0_0_3px_var(--accent-subtle)]"
         />
-        <label className="block text-xs text-[var(--text-dim)] mb-1">Confirm new password</label>
+        <label htmlFor="reset-confirm" className="block text-sm font-medium text-[var(--text)] mb-1.5">
+          Confirm new password
+        </label>
         <input
+          id="reset-confirm"
           type="password"
+          autoComplete="new-password"
           value={confirm}
           onChange={(e) => setConfirm(e.target.value)}
           required
-          className="w-full mb-3 h-10 px-3 rounded-md bg-[var(--surface)] border border-[var(--border)] text-sm focus:border-[var(--green)] outline-none"
+          className="w-full mb-3 h-10 px-3 rounded-lg bg-[var(--bg)] border border-[var(--border-strong)] text-sm text-[var(--text)] outline-none focus:border-[var(--green)] focus:shadow-[0_0_0_3px_var(--accent-subtle)]"
         />
-        {error && <div className="text-xs text-[var(--red)] mb-3">{error}</div>}
+        {error && <div role="alert" className="text-sm text-[var(--red)] mb-3">{error}</div>}
         <button
           type="submit"
           disabled={state === 'submitting' || pw.length < 8}
