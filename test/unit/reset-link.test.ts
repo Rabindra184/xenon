@@ -149,19 +149,31 @@ describe('password-reset links', () => {
       app.use('/auth', authPublicRouter());
       return app;
     }
-    // The route answers 204 first and does the work after (anti-enumeration),
-    // holding a 50ms floor — wait past it before asserting.
-    const settle = () => new Promise((r) => setTimeout(r, 120));
+    // The route answers 204 first and does the work afterwards
+    // (anti-enumeration), so wait for the work itself rather than a fixed
+    // sleep: a 120ms sleep occasionally lost to a cold ts-node start.
+    async function until(pred: () => boolean, ms = 3000) {
+      const t0 = Date.now();
+      while (!pred()) {
+        if (Date.now() - t0 > ms) throw new Error('timed out waiting for the route to finish');
+        await new Promise((r) => setTimeout(r, 5));
+      }
+    }
 
     it('mints no token when nothing can deliver it', async () => {
       restore = withConfig({ smtpUrl: undefined, passwordResetLogFallback: false });
       sinon
         .stub(Container.get(UserService), 'findByEmail')
         .resolves({ id: 'u1', email: 'u@x.local', name: 'U', status: 'ACTIVE' } as any);
+      const find = Container.get(UserService).findByEmail as sinon.SinonStub;
       const create = sinon.stub(Container.get(PasswordResetService), 'createToken');
 
       const r = await request(authApp()).post('/auth/forgot-password').send({ email: 'u@x.local' });
-      await settle();
+      // The mint-or-skip decision runs in the same continuation as the user
+      // lookup, so once the lookup has resolved and a macrotask has passed,
+      // createToken has either been called or never will be.
+      await until(() => find.called);
+      await new Promise((r) => setImmediate(r));
 
       expect(r.status).to.equal(204);
       expect(create.called).to.equal(false);
@@ -178,7 +190,7 @@ describe('password-reset links', () => {
       const send = sinon.stub(Container.get(EmailService), 'send').resolves();
 
       await request(authApp()).post('/auth/forgot-password').send({ email: 'u@x.local' });
-      await settle();
+      await until(() => send.called);
 
       expect(send.calledOnce).to.equal(true);
       expect(send.firstCall.args[0].text).to.include(`/xenon/reset-password#${RAW}`);

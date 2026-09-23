@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&display=swap');
+/* JetBrains Mono is self-hosted; see the font imports in index.tsx. */
 
 .terminal-container {
     display: flex;

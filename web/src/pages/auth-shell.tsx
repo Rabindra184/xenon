@@ -1,119 +1,103 @@
 import * as React from 'react';
-import { Network, Smartphone, Wand2 } from 'lucide-react';
-import { Spotlight, SpotlightBeam } from '../components/ui/spotlight';
-import { AuthHero } from './auth-hero';
-import './auth.css';
+import { MonitorSmartphone, Network, ShieldCheck } from 'lucide-react';
 
-// Only claims the product can back up — no throughput numbers that vary by
-// device and would go stale.
-const FACTS = [
-  { icon: Wand2, label: '6-tier self-healing' },
-  { icon: Smartphone, label: 'Android & iOS' },
-  { icon: Network, label: 'Hub–node scaling' },
+// Each line is something the product does today. No figures (fps, latency)
+// that vary by device and would go stale on a page people see every day.
+const CAPABILITIES = [
+  {
+    icon: ShieldCheck,
+    title: 'Self-healing selectors',
+    body: 'Broken locators recover through six escalating tiers before a test fails.',
+  },
+  {
+    icon: MonitorSmartphone,
+    title: 'Live Android & iOS devices',
+    body: 'Watch, drive and record real devices from the browser.',
+  },
+  {
+    icon: Network,
+    title: 'Hub–node scaling',
+    body: 'One hub orchestrates device labs across machines.',
+  },
 ];
 
 /**
- * Layout shared by the sign-in, forgot-password and reset-password pages:
- * one continuous canvas (grid, aurora, light beam, pointer glow) with the
- * product story on the left and the page's form in a glass card on the right.
+ * Layout shared by sign-in, forgot-password and reset-password.
+ *
+ * Deliberately still. The people on this page are existing users signing in
+ * daily, so it is built for trust and speed rather than to sell: no looping
+ * animation, no invented product data, no blur layers (expensive on thin
+ * clients and remote-desktop sessions), and nothing fetched from a third
+ * party before authentication. Every text colour clears WCAG AA (4.5:1).
  */
 export function AuthShell({ children }: { children: React.ReactNode }) {
   return (
-    // overflow-clip, not overflow-hidden: a hidden box is still scrollable
-    // from script, and autofocusing the email field scrolled it 114px
-    // sideways at 1280px, shifting the whole page left.
-    <div className="relative min-h-screen w-full overflow-clip bg-[#050807] text-[var(--text)]">
-      <Backdrop />
-      <Spotlight size={520} />
+    <div className="grid min-h-screen w-full grid-cols-1 bg-[var(--bg)] text-[var(--text)] md:grid-cols-[minmax(0,5fr)_minmax(0,7fr)]">
+      <aside className="relative hidden overflow-hidden border-r border-white/[0.06] bg-[#070b09] md:flex md:flex-col">
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_90%_60%_at_0%_0%,rgba(34,197,94,0.14),transparent_60%)]"
+        />
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-0 bg-[linear-gradient(to_right,rgba(255,255,255,0.03)_1px,transparent_1px),linear-gradient(to_bottom,rgba(255,255,255,0.03)_1px,transparent_1px)] bg-[size:48px_48px] [mask-image:linear-gradient(to_bottom,black,transparent_85%)]"
+        />
 
-      <div className="relative z-10 mx-auto flex min-h-screen max-w-6xl flex-col px-10">
-        <header className="flex items-center pt-8 xe-rise">
+        <div className="relative flex flex-1 flex-col justify-between px-12 py-10">
           <img
             src={`${import.meta.env.BASE_URL}logo.svg`}
             alt="Xenon"
-            className="h-8 w-auto object-contain"
+            className="h-8 w-auto self-start object-contain"
           />
-        </header>
 
-        <div className="grid flex-1 grid-cols-1 items-center gap-12 py-6 md:grid-cols-[1.15fr_1fr]">
-          <section className="hidden md:block xe-rise" style={{ animationDelay: '0.05s' }}>
-            <h2 className="text-5xl font-bold leading-[1.05] tracking-tight">
-              <span className="bg-gradient-to-b from-neutral-50 to-neutral-400 bg-clip-text text-transparent">
-                Your device lab,
-              </span>
+          <div className="max-w-md">
+            <h2 className="text-4xl font-semibold leading-tight tracking-tight">
+              Your device lab,
               <br />
-              <span className="bg-gradient-to-r from-[#4ade80] via-[#22c55e] to-[#14b8a6] bg-clip-text text-transparent">
-                live.
-              </span>
-              <span className="xe-pulse ml-2 inline-block h-3 w-3 rounded-full bg-[var(--green)] align-middle shadow-[0_0_16px_rgba(34,197,94,0.8)]" />
+              <span className="text-[var(--green)]">under control.</span>
             </h2>
-            <p className="mt-4 max-w-md text-sm leading-relaxed text-neutral-400">
-              Appium orchestration with self-healing selectors, real-time device streaming, and
-              proof-pack recording — on hardware you own.
+            <p className="mt-4 text-sm leading-relaxed text-neutral-400">
+              Appium orchestration for the devices you own — with self-healing tests, live streaming
+              and recordable proof of what ran.
             </p>
 
-            <div className="mt-8">
-              <AuthHero />
-            </div>
-
-            <ul className="mt-8 flex flex-wrap items-center gap-x-6 gap-y-2 text-xs text-neutral-400">
-              {FACTS.map(({ icon: Icon, label }) => (
-                <li key={label} className="flex items-center gap-2">
-                  <Icon className="h-3.5 w-3.5 text-[var(--green)]" aria-hidden="true" />
-                  {label}
+            <ul className="mt-10 space-y-6">
+              {CAPABILITIES.map(({ icon: Icon, title, body }) => (
+                <li key={title} className="flex gap-4">
+                  <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg border border-[var(--accent-border)] bg-[var(--accent-subtle)]">
+                    <Icon className="h-4 w-4 text-[var(--green)]" aria-hidden="true" />
+                  </span>
+                  <div>
+                    <div className="text-sm font-medium text-[var(--text)]">{title}</div>
+                    <div className="mt-0.5 text-sm text-neutral-400">{body}</div>
+                  </div>
                 </li>
               ))}
             </ul>
-          </section>
+          </div>
 
-          <main
-            className="flex justify-center md:justify-end xe-rise"
-            style={{ animationDelay: '0.12s' }}
-          >
-            <GlassCard>{children}</GlassCard>
-          </main>
+          {/* One footer, in the panel. Not "your data stays on your hardware":
+              the LLM healing tier sends page source to an external provider
+              when one is configured. */}
+          <footer className="flex items-center justify-between border-t border-white/[0.06] pt-5 text-xs text-neutral-400">
+            <span>Xenon v{__XENON_VERSION__} · Self-hosted device lab</span>
+            <a
+              href={`${import.meta.env.BASE_URL}api-docs`}
+              target="_blank"
+              rel="noreferrer"
+              className="text-neutral-400 underline-offset-4 hover:text-[var(--text)] hover:underline"
+            >
+              API docs
+            </a>
+          </footer>
         </div>
+      </aside>
 
-        <footer className="flex items-center justify-between border-t border-white/5 py-5 text-[11px] text-neutral-500">
-          <span>Xenon v{__XENON_VERSION__}</span>
-          <a
-            href={`${import.meta.env.BASE_URL}api-docs`}
-            target="_blank"
-            rel="noreferrer"
-            className="text-neutral-500 transition-colors hover:text-[var(--text)]"
-          >
-            API docs
-          </a>
-        </footer>
-      </div>
-    </div>
-  );
-}
-
-function Backdrop() {
-  return (
-    <div aria-hidden="true" className="pointer-events-none absolute inset-0 overflow-hidden">
-      <div className="absolute inset-0 bg-[linear-gradient(to_right,rgba(255,255,255,0.035)_1px,transparent_1px),linear-gradient(to_bottom,rgba(255,255,255,0.035)_1px,transparent_1px)] bg-[size:56px_56px] [mask-image:radial-gradient(ellipse_80%_70%_at_40%_40%,black,transparent)]" />
-      <div className="xe-aurora absolute -left-40 top-1/4 h-[520px] w-[520px] rounded-full bg-[radial-gradient(circle,rgba(34,197,94,0.16),transparent_65%)] blur-2xl" />
-      <div
-        className="xe-aurora absolute -right-32 -top-24 h-[480px] w-[480px] rounded-full bg-[radial-gradient(circle,rgba(20,184,166,0.12),transparent_65%)] blur-2xl"
-        style={{ animationDelay: '-9s' }}
-      />
-      <SpotlightBeam className="-top-40 left-0 md:-top-20 md:left-60" />
-    </div>
-  );
-}
-
-function GlassCard({ children }: { children: React.ReactNode }) {
-  return (
-    <div className="relative w-full max-w-[400px]">
-      <div
-        aria-hidden="true"
-        className="absolute -inset-8 rounded-[40px] bg-[radial-gradient(ellipse_at_top,rgba(34,197,94,0.14),transparent_70%)] blur-2xl"
-      />
-      <div className="relative rounded-2xl bg-gradient-to-b from-[rgba(34,197,94,0.45)] via-white/10 to-white/[0.04] p-px shadow-[0_40px_100px_-20px_rgba(0,0,0,0.85)]">
-        <div className="rounded-[15px] bg-[#0b0f0e]/80 px-8 py-9 backdrop-blur-xl">{children}</div>
-      </div>
+      <main className="flex items-center justify-center px-6 py-10">
+        <div className="w-full max-w-[400px] rounded-xl border border-[var(--border)] bg-[var(--surface)] px-8 py-9 shadow-[var(--shadow-lg)]">
+          {children}
+        </div>
+      </main>
     </div>
   );
 }

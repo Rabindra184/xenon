@@ -2,16 +2,60 @@ import { SENSITIVE_BODY } from './sensitive';
 
 const BASE = '/xenon/api/auth';
 
+/**
+ * A failed sign-in, keeping what the page needs to explain it: the HTTP
+ * status (0 when the server was never reached) and, for a 429, how long the
+ * server's rate limiter asked the client to wait.
+ */
+export class LoginError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+    readonly retryAfterSec: number | null = null,
+  ) {
+    super(message);
+    this.name = 'LoginError';
+  }
+}
+
 export async function login(email: string, password: string): Promise<void> {
-  const r = await fetch(`${BASE}/login`, {
-    method: 'POST',
-    credentials: 'include',
-    headers: { 'Content-Type': 'application/json', ...SENSITIVE_BODY },
-    body: JSON.stringify({ email, password }),
-  });
+  let r: Response;
+  try {
+    r = await fetch(`${BASE}/login`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json', ...SENSITIVE_BODY },
+      body: JSON.stringify({ email, password }),
+    });
+  } catch (err) {
+    throw new LoginError((err as Error).message || 'Network error', 0);
+  }
   if (!r.ok) {
     const body = await r.json().catch(() => ({}));
-    throw new Error(body.error || `Login failed (${r.status})`);
+    const retryAfter = Number(r.headers.get('Retry-After'));
+    throw new LoginError(
+      body.error || `Login failed (${r.status})`,
+      r.status,
+      Number.isFinite(retryAfter) && retryAfter > 0 ? retryAfter : null,
+    );
+  }
+}
+
+export type PasswordResetMode = 'email' | 'admin';
+
+/**
+ * What the sign-in page may offer. Falls back to 'admin' if the server can't
+ * be asked: better to send someone to an administrator than to promise an
+ * email that may never arrive.
+ */
+export async function getAuthOptions(): Promise<{ passwordReset: PasswordResetMode }> {
+  try {
+    const r = await fetch(`${BASE}/options`, { credentials: 'include' });
+    if (!r.ok) return { passwordReset: 'admin' };
+    const body = await r.json();
+    return { passwordReset: body.passwordReset === 'email' ? 'email' : 'admin' };
+  } catch {
+    return { passwordReset: 'admin' };
   }
 }
 
