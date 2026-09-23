@@ -18,6 +18,34 @@ export class EmailService {
     this.log.warn(line);
   }
 
+  /** SMTP is configured, so mail really reaches the recipient. */
+  hasSmtp(): boolean {
+    const smtpUrl = (config as any).smtpUrl as string | undefined;
+    return !!(smtpUrl && smtpUrl.trim());
+  }
+
+  /**
+   * Whether send() will do anything other than throw: SMTP, or the opt-in log
+   * fallback. Callers use it to avoid minting a credential nobody receives.
+   */
+  canDeliver(): boolean {
+    return this.hasSmtp() || !!(config as any).passwordResetLogFallback;
+  }
+
+  /**
+   * Startup notice when the log fallback is on. It writes reset links — which
+   * are credentials for the account — to the server log in plaintext.
+   */
+  warnIfLogFallbackEnabled(): void {
+    if (this.hasSmtp() || !(config as any).passwordResetLogFallback) return;
+    this.warnLog(
+      'XENON_PASSWORD_RESET_LOG_FALLBACK=true: password-reset links will be written to this ' +
+        'log in plaintext. Anyone who can read the log (or a system it is shipped to) can take ' +
+        'over the account for the link lifetime. Configure XENON_SMTP_URL, or unset this and ' +
+        'issue links from the dashboard Users page.',
+    );
+  }
+
   async send(mail: Mail): Promise<void> {
     const smtpUrl = (config as any).smtpUrl as string | undefined;
     const fallback = (config as any).passwordResetLogFallback as boolean | undefined;

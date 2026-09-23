@@ -1,3 +1,5 @@
+import { SENSITIVE_BODY } from './sensitive';
+
 const BASE = '/xenon/api/users';
 
 export interface UserRow {
@@ -37,7 +39,8 @@ export async function createUser(input: {
   const r = await fetch(`${BASE}/`, {
     method: 'POST',
     credentials: 'include',
-    headers: { 'Content-Type': 'application/json' },
+    // input.password is optional but, when set, is a secret.
+    headers: { 'Content-Type': 'application/json', ...SENSITIVE_BODY },
     body: JSON.stringify(input),
   });
   if (!r.ok) {
@@ -73,4 +76,22 @@ export async function deleteUser(id: string): Promise<void> {
     const body = await r.json().catch(() => ({}));
     throw new Error(body.error || `deleteUser failed (${r.status})`);
   }
+}
+
+export type ResetLinkResult =
+  | { emailed: true; expiresAt: string }
+  | { emailed: false; link: string; expiresAt: string };
+
+/**
+ * Admin-issued password reset. With SMTP the server emails the user; without
+ * it the link comes back here, once — show it to the admin and don't keep it.
+ */
+export async function createResetLink(userId: string): Promise<ResetLinkResult> {
+  const r = await fetch(`${BASE}/${encodeURIComponent(userId)}/reset-link`, {
+    method: 'POST',
+    credentials: 'include',
+  });
+  const body = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(body.error || `Reset link failed (${r.status})`);
+  return body as ResetLinkResult;
 }

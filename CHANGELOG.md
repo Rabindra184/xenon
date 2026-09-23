@@ -6,6 +6,72 @@ This project follows [Semantic Versioning](https://semver.org/). Releases are
 published to npm automatically when `package.json`'s `version` changes on `main`
 (see `.github/workflows/npm-publish.yml`).
 
+## Unreleased
+
+### Security
+
+- **Password-reset links were written to the server log in plaintext by
+  default.** With no SMTP configured, `XENON_PASSWORD_RESET_LOG_FALLBACK`
+  defaulted to on, and every reset (self-service or admin-triggered) logged
+  the full link, `/xenon/reset-password/<raw token>`, at `warn` level. The
+  token is a credential for the account until it is used or expires (1 hour).
+  Anyone who could read the log, or any system it was shipped to, could reset
+  that account's password, including a SUPER_ADMIN's. The logger's secret
+  redaction did not catch it.
+- **Opening a reset link also logged the token, even with SMTP.** The
+  token was a path segment (`/xenon/reset-password/<token>`), and the page
+  then checked it with `GET …/reset-password/check/<token>`. Both URLs were
+  written to the server log on every open (Appium's `[HTTP]` request lines
+  and Xenon's UI-fallback line), about five times per open, while the token
+  was still valid. Links now carry the token in the URL fragment
+  (`/xenon/reset-password#<token>`), which browsers never send to the server.
+  The validity check is `POST /xenon/api/auth/reset-password/check` with the
+  token in the body, and the page removes the token from the address bar and
+  browser history. Links issued before this release still work; their first
+  page load is logged as before, and they expire within an hour.
+- **Dashboard sign-in wrote the user's password to the server log.** Appium
+  logs every request body (`[HTTP] --> POST /xenon/api/auth/login
+  {"email":…,"password":…}`), and Xenon's routes share Appium's server. The
+  same applied to change-password, the reset calls, creating a user with a
+  password, and API-key sign-in. The dashboard now sends
+  `X-Appium-Is-Sensitive: true` on each of those requests, and Appium logs a
+  placeholder in place of the body.
+  **Scripted clients** (SDK, CI, `curl`) calling these endpoints are not
+  covered by this change. Send the same header, or add a redaction rule with
+  Appium's `logFilters` server option. **Rotate** any password or API key
+  that may have been logged, and purge old server logs, including copies
+  shipped to a log aggregator.
+- **A reset link stayed valid after the password changed.** Resetting with
+  one link, or changing the password, left every other outstanding link for
+  that user usable for the rest of its hour. That included one that had
+  leaked into a log. A successful reset or a password change now revokes all
+  of the user's outstanding links.
+
+### Changed — operator action may be needed
+
+- **`XENON_PASSWORD_RESET_LOG_FALLBACK` is now opt-in (default `false`).**
+  If you ran without SMTP and relayed reset links out of the log, that stops
+  on upgrade. Use the Users page instead (below). To keep the old behaviour,
+  set `XENON_PASSWORD_RESET_LOG_FALLBACK=true` explicitly; the server then logs
+  a startup warning that reset links will be written to the log in
+  plaintext. Configuring `XENON_SMTP_URL` remains the recommended setup.
+- **Admins issue reset links from the Users page** (`POST
+  /xenon/api/users/:id/reset-link`). With SMTP the link is emailed to the
+  user, as before. Without SMTP it is returned once, to the admin who asked,
+  shown in a copy-once dialog, sent with `Cache-Control: no-store`, and never
+  logged. The audit line records who issued a link for whom, not the link.
+  Role rules apply: an ADMIN can issue links only for MEMBERs, a SUPER_ADMIN
+  for anyone, and nobody for themselves (use Change password).
+- **Self-service forgot-password no longer creates tokens it cannot
+  deliver.** With neither SMTP nor the opt-in fallback, the request still
+  returns `204` (so it still doesn't reveal whether an email exists) but
+  creates no token.
+
+A SUPER_ADMIN locked out with no other admin and no SMTP can still recover:
+start the server with `XENON_BOOTSTRAP_RESET_PASSWORD=true`. That sets the
+oldest active SUPER_ADMIN's password to `XENON_BOOTSTRAP_ADMIN_PASSWORD` and
+signs out their sessions. Remove the variable afterwards.
+
 ## 1.20.6
 
 Patch release. A redesigned sign-in page, and the dashboard now shows the
