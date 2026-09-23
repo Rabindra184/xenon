@@ -8,7 +8,7 @@ import { useAuth } from '../auth/auth-context';
 import { AuthShell } from './auth-shell';
 
 const FIELD =
-  'w-full h-11 pl-10 pr-3 rounded-lg bg-[var(--surface)] border border-[var(--border)] text-sm text-[var(--text)] placeholder:text-[var(--text-dim)] outline-none transition-[border-color,box-shadow] duration-150 hover:border-[var(--border-strong)] focus:border-[var(--green)] focus:shadow-[0_0_0_3px_var(--accent-subtle)]';
+  'w-full h-11 pl-10 pr-3 rounded-lg bg-black/30 border border-white/10 text-sm text-[var(--text)] placeholder:text-[var(--text-dim)] outline-none transition-[border-color,box-shadow] duration-150 hover:border-white/20 focus:border-[var(--green)] focus:shadow-[0_0_0_3px_var(--accent-subtle)]';
 const ICON =
   'pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--text-dim)] transition-colors group-focus-within:text-[var(--green)]';
 
