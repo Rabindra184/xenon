@@ -7,8 +7,8 @@ import {
   updateUser,
   deleteUser,
   UserRow,
+  createResetLink,
 } from '../api-service/users';
-import { forgotPassword } from '../api-service/auth';
 import { useAuth } from '../auth/auth-context';
 import { formatDateTime } from '../utils/time';
 import { PageHeader } from '../components/ui/page-header';
@@ -29,7 +29,9 @@ export default function UsersPage() {
   const [error, setError] = useState<string | null>(null);
   const [showInvite, setShowInvite] = useState(false);
   const [editing, setEditing] = useState<UserRow | null>(null);
-  const [revealedPassword, setRevealedPassword] = useState<{ email: string; password: string } | null>(null);
+  // A secret shown once for the admin to copy: a new user's temporary
+  // password, or a reset link when the server can't email it.
+  const [revealed, setRevealed] = useState<{ title: string; note: string; secret: string } | null>(null);
 
   async function refresh() {
     setLoading(true);
@@ -57,10 +59,20 @@ export default function UsersPage() {
   }
 
   async function onResetPassword(u: UserRow) {
-    if (!confirm(`Send a password-reset link to ${u.email}?`)) return;
+    if (!confirm(`Create a password-reset link for ${u.email}?`)) return;
     try {
-      await forgotPassword(u.email);
-      alert(`Reset link sent (or logged) for ${u.email}.`);
+      const result = await createResetLink(u.id);
+      if (result.emailed) {
+        alert(`A password-reset link was emailed to ${u.email}.`);
+      } else {
+        setRevealed({
+          title: 'Password-reset link',
+          note: `Send this link to ${u.email} over a channel you trust. It works once and expires ${new Date(
+            result.expiresAt,
+          ).toLocaleString()}. Copy it now — it will not be shown again.`,
+          secret: result.link,
+        });
+      }
     } catch (e: any) {
       alert(e.message);
     }
@@ -133,9 +145,10 @@ export default function UsersPage() {
                           </button>
                           <button
                             onClick={() => onResetPassword(u)}
-                            title="Send password-reset link"
-                            aria-label="Send password-reset link"
-                            className="text-[var(--text-dim)] hover:text-[var(--text)]"
+                            disabled={isSelf}
+                            title={isSelf ? 'Use Change password for your own account' : 'Reset password'}
+                            aria-label="Reset password"
+                            className="text-[var(--text-dim)] hover:text-[var(--text)] disabled:opacity-30"
                           >
                             <KeyRound size={14} />
                           </button>
@@ -165,7 +178,11 @@ export default function UsersPage() {
           onCreated={(result) => {
             setShowInvite(false);
             if (result.temporaryPassword) {
-              setRevealedPassword({ email: result.email, password: result.temporaryPassword });
+              setRevealed({
+                title: 'User created',
+                note: `Temporary password for ${result.email}. Copy now — it will not be shown again.`,
+                secret: result.temporaryPassword,
+              });
             }
             refresh();
           }}
@@ -184,18 +201,19 @@ export default function UsersPage() {
         />
       )}
 
-      {revealedPassword && (
-        <div className="fixed inset-0 z-30 bg-black/50 flex items-center justify-center" role="dialog">
+      {revealed && (
+        <div className="fixed inset-0 z-30 bg-black/50 flex items-center justify-center" role="dialog" aria-labelledby="revealed-title">
           <div className="bg-[var(--bg)] border border-[var(--border)] rounded-lg w-full max-w-md p-6">
-            <h3 className="text-base font-semibold mb-2">User created</h3>
-            <p className="text-xs text-[var(--text-dim)] mb-3">
-              Temporary password for {revealedPassword.email}. Copy now — it will not be shown again.
-            </p>
-            <code className="block break-all px-3 py-2 rounded bg-[var(--surface)] border border-[var(--border)] text-xs mb-3">
-              {revealedPassword.password}
+            <h3 id="revealed-title" className="text-base font-semibold mb-2">{revealed.title}</h3>
+            <p className="text-xs text-[var(--text-muted)] mb-3">{revealed.note}</p>
+            <code className="block break-all px-3 py-2 rounded bg-[var(--surface)] border border-[var(--border)] text-xs mb-3 select-all">
+              {revealed.secret}
             </code>
-            <div className="flex justify-end">
-              <Button variant="primary" onClick={() => setRevealedPassword(null)}>
+            <div className="flex justify-end gap-2">
+              <Button variant="secondary" onClick={() => navigator.clipboard?.writeText(revealed.secret)}>
+                Copy
+              </Button>
+              <Button variant="primary" onClick={() => setRevealed(null)}>
                 Done
               </Button>
             </div>

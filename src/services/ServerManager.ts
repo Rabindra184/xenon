@@ -55,6 +55,7 @@ import { EventLogService } from './EventLogService';
 import { TracingService } from './TracingService';
 import { ServerArgs, PluginConfig } from '@appium/types';
 import { XenonPlugin } from '../plugin';
+import { EmailService } from './EmailService';
 
 @Service()
 export class ServerManager {
@@ -324,6 +325,7 @@ export class ServerManager {
 
     const { bootstrapIdentity } = await import('./identity/bootstrap');
     await bootstrapIdentity();
+    Container.get(EmailService).warnIfLogFallbackEnabled();
 
     const { startUserSessionCleanupCron } = await import('./identity/sessionCleanupCron');
     startUserSessionCleanupCron();

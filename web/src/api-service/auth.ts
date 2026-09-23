@@ -1,10 +1,12 @@
+import { SENSITIVE_BODY } from './sensitive';
+
 const BASE = '/xenon/api/auth';
 
 export async function login(email: string, password: string): Promise<void> {
   const r = await fetch(`${BASE}/login`, {
     method: 'POST',
     credentials: 'include',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', ...SENSITIVE_BODY },
     body: JSON.stringify({ email, password }),
   });
   if (!r.ok) {
@@ -40,7 +42,7 @@ export async function changePassword(oldPassword: string, newPassword: string): 
   const r = await fetch(`${BASE}/change-password`, {
     method: 'POST',
     credentials: 'include',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', ...SENSITIVE_BODY },
     body: JSON.stringify({ oldPassword, newPassword }),
   });
   if (!r.ok) {
@@ -61,15 +63,20 @@ export async function forgotPassword(email: string): Promise<void> {
   }
 }
 
+// POST, token in the body: a token in a request URL lands in the server log.
 export async function checkResetToken(token: string): Promise<boolean> {
-  const r = await fetch(`${BASE}/reset-password/check/${encodeURIComponent(token)}`);
+  const r = await fetch(`${BASE}/reset-password/check`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...SENSITIVE_BODY },
+    body: JSON.stringify({ token }),
+  });
   return r.ok;
 }
 
 export async function resetPassword(token: string, newPassword: string): Promise<void> {
   const r = await fetch(`${BASE}/reset-password`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', ...SENSITIVE_BODY },
     body: JSON.stringify({ token, newPassword }),
   });
   if (!r.ok && r.status !== 204) {

@@ -39,6 +39,8 @@ function App() {
           <Routes>
             <Route path="/login" element={<LoginPage />} />
             <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+            <Route path="/reset-password" element={<ResetPasswordPage />} />
+            {/* Links issued before 1.20.7 carried the token in the path. */}
             <Route path="/reset-password/:token" element={<ResetPasswordPage />} />
             <Route
               path="/api-key-gate"

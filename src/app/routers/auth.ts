@@ -15,6 +15,7 @@ import { config } from '../../config';
 import { prisma } from '../../prisma';
 import { JwtKeyService } from '../../services/token/JwtKeyService';
 import { resolveMcpGrant, McpScopeError } from '../../services/token/mcpScopes';
+import { buildResetLink, resetEmail } from '../../services/passwordResetLink';
 
 const SESSION_COOKIE = 'xenon_dashboard_session';
 const isSecureFromReq = (req: any) =>
@@ -146,24 +147,14 @@ export function authPublicRouter(): Router {
     const t0 = Date.now();
     try {
       const user = await userSvc.findByEmail(email);
-      if (user && user.status === 'ACTIVE') {
+      const emailSvc = Container.get(EmailService);
+      // No SMTP and no opt-in log fallback: nothing can reach the user, so
+      // don't mint a live credential. Admins issue links from the Users page.
+      if (user && user.status === 'ACTIVE' && emailSvc.canDeliver()) {
         const resetSvc = Container.get(PasswordResetService);
-        const emailSvc = Container.get(EmailService);
         const { raw } = await resetSvc.createToken(user.id);
-        const proto =
-          req.secure || (req.headers['x-forwarded-proto'] as string) === 'https' ? 'https' : 'http';
-        const host = req.headers.host || 'localhost';
-        const link = `${proto}://${host}/xenon/reset-password/${raw}`;
-        await emailSvc.send({
-          to: user.email,
-          subject: 'Reset your Xenon password',
-          text:
-            `Hi ${user.name},\n\n` +
-            `Someone requested a password reset for your Xenon account. ` +
-            `If that was you, click the link below to choose a new password:\n\n` +
-            `${link}\n\n` +
-            `This link expires in 1 hour. If you did not request this, ignore this email — no action is needed.\n`,
-        });
+        const link = buildResetLink(req, raw);
+        await emailSvc.send(resetEmail(user, link));
       }
     } catch (e) {
       // Swallow — anti-enumeration. The operator log catches the cause.
@@ -176,9 +167,13 @@ export function authPublicRouter(): Router {
     res.json(Container.get(JwtKeyService).jwks());
   });
 
-  r.get('/reset-password/check/:token', async (req, res) => {
+  // POST with the token in the body, not GET with it in the path: request
+  // URLs are written to the server log (Appium's [HTTP] line), and a token
+  // there is a live credential until it's used.
+  r.post('/reset-password/check', async (req, res) => {
     const resetSvc = Container.get(PasswordResetService);
-    const row = await resetSvc.verifyToken(req.params.token);
+    const { token } = req.body as { token?: string };
+    const row = await resetSvc.verifyToken(token ?? '');
     if (!row) return res.status(404).json({ error: 'invalid or expired token' });
     return res.json({ ok: true });
   });
@@ -203,6 +198,8 @@ export function authPublicRouter(): Router {
       data: { passwordHash, passwordChangedAt: new Date() },
     });
     await resetSvc.consume(row.id);
+    // Any other outstanding link for this user dies with the old password.
+    await resetSvc.revokeAllForUser(row.userId);
     await sessionSvc.revokeAllForUser(row.userId);
 
     return res.status(204).end();
@@ -232,6 +229,7 @@ export function authAuthedRouter(): Router {
       return res.status(400).json({ error: e.message });
     }
     if (auth.sessionId) await sessionSvc.revokeAllForUserExcept(auth.userId, auth.sessionId);
+    await Container.get(PasswordResetService).revokeAllForUser(auth.userId);
     return res.status(204).end();
   });
 

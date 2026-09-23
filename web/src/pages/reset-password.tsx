@@ -4,8 +4,20 @@ import { Link, useNavigate, useParams } from 'react-router-dom';
 import { checkResetToken, resetPassword } from '../api-service/auth';
 import { AuthShell } from './auth-shell';
 
+/**
+ * The token arrives in the URL fragment (#…), which browsers never send to
+ * the server, so it can't reach a server log. Links issued before 1.20.7 put
+ * it in the path instead; those still work.
+ */
+function readToken(pathToken: string | undefined): string | undefined {
+  const fromHash = window.location.hash.replace(/^#/, '');
+  return fromHash || pathToken || undefined;
+}
+
 export default function ResetPasswordPage() {
-  const { token } = useParams<{ token: string }>();
+  const params = useParams<{ token: string }>();
+  // Read once: the effect below strips it from the address bar.
+  const [token] = useState(() => readToken(params.token));
   const nav = useNavigate();
   const [state, setState] = useState<'checking' | 'invalid' | 'ready' | 'submitting' | 'done'>(
     'checking',
@@ -13,6 +25,16 @@ export default function ResetPasswordPage() {
   const [pw, setPw] = useState('');
   const [confirm, setConfirm] = useState('');
   const [error, setError] = useState<string | null>(null);
+
+  // Take the token out of the address bar and browser history — a
+  // credential shouldn't sit in either. replaceState, not a router
+  // navigation, so this page doesn't remount and lose it.
+  useEffect(() => {
+    if (window.location.hash || params.token) {
+      window.history.replaceState(null, '', `${import.meta.env.BASE_URL}reset-password`);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     if (!token) {
