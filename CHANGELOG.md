@@ -6,6 +6,32 @@ This project follows [Semantic Versioning](https://semver.org/). Releases are
 published to npm automatically when `package.json`'s `version` changes on `main`
 (see `.github/workflows/npm-publish.yml`).
 
+## 1.20.6
+
+Patch release. A redesigned sign-in page, and the dashboard now shows the
+right version number.
+
+### Changed
+
+- **Sign-in pages redesigned** (#261). Login, forgot-password and
+  reset-password share a new layout: one dark background, a frosted-glass
+  card for the form, and a hero that shows three devices streaming live, with
+  a short loop in which a selector fails and then heals. Nothing is loaded
+  from a third party, no dependencies are added, and all motion is CSS that
+  stops under `prefers-reduced-motion`. The login form gains a show/hide
+  password toggle and an error box that screen readers announce. Sign-in
+  behaviour and the `?next=` redirect are unchanged.
+
+### Fixed
+
+- **The header showed `v0.3.0` on every release** (#262). `__XENON_VERSION__`
+  was read from `web/package.json`, a private manifest that is never bumped,
+  instead of the plugin's own `package.json`. The account menu now shows the
+  published version, and a test pins the two together.
+- **Login fields had no accessible names.** Their labels were not linked with
+  `htmlFor`, so screen readers read the inputs without names and clicking a
+  label did not focus its field.
+
 ## 1.20.5
 
 Patch release. Found by clicking every control on the Devices page.
