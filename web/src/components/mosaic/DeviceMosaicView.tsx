@@ -391,7 +391,7 @@ export default function DeviceMosaicView() {
             role="alert"
             className={`text-sm rounded border px-3 py-2 flex items-center gap-2 ${
               state.banner.tone === 'error'
-                ? 'border-red-500/40 bg-red-500/10 text-red-100'
+                ? 'border-[rgb(var(--rgb-red)/0.4)] bg-[rgb(var(--rgb-red)/0.1)] text-[var(--red-100)]'
                 : 'border-[rgb(var(--rgb-success)/0.4)] bg-[rgb(var(--rgb-success)/0.1)] text-[var(--text)]'
             }`}
           >

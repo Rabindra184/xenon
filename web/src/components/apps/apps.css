@@ -21,7 +21,7 @@
   color: var(--text-dim);
   font-size: 11px;
   font-weight: 700;
-  background: rgb(var(--rgb-black) / 0.2);
+  background: rgb(var(--rgb-well) / calc(0.2 * var(--well-k)));
 }
 
 .registry-list {
@@ -35,14 +35,14 @@
   grid-template-columns: 3fr 1fr 1fr 1.5fr 1.5fr;
   align-items: center;
   padding: 12px 24px;
-  background: rgb(var(--rgb-black) / 0.1);
+  background: rgb(var(--rgb-well) / calc(0.1 * var(--well-k)));
   border-bottom: 1px solid var(--border);
   transition: all 0.2s ease;
   position: relative;
 }
 
 .artifact-row:hover {
-  background: rgb(var(--rgb-white) / 0.02);
+  background: rgb(var(--rgb-fg) / 0.02);
 }
 
 .artifact-row.active {
@@ -60,7 +60,7 @@
 .app-platform-badge {
   width: 32px;
   height: 32px;
-  background: rgb(var(--rgb-black) / 0.4);
+  background: rgb(var(--rgb-well) / calc(0.4 * var(--well-k)));
   border: 1px solid var(--border);
   border-radius: 6px;
   display: flex;
@@ -157,7 +157,7 @@
 .utility-icon-btn {
   width: 28px;
   height: 28px;
-  background: rgb(var(--rgb-black) / 0.3);
+  background: rgb(var(--rgb-well) / calc(0.3 * var(--well-k)));
   border: 1px solid var(--border);
   border-radius: 6px;
   display: flex;
@@ -236,7 +236,7 @@
 .icon-btn-secondary {
   width: 32px;
   height: 32px;
-  background: rgb(var(--rgb-white) / 0.03);
+  background: rgb(var(--rgb-fg) / 0.03);
   border: 1px solid var(--border);
   border-radius: 6px;
   display: flex;
@@ -248,7 +248,7 @@
 }
 
 .icon-btn-secondary:hover {
-  background: rgb(var(--rgb-white) / 0.08);
+  background: rgb(var(--rgb-fg) / 0.08);
   color: var(--text);
   border-color: var(--border);
 }
@@ -263,7 +263,7 @@
   background: var(--surface);
   border: 1px solid var(--color-accent);
   border-radius: 8px;
-  box-shadow: 0 10px 40px rgb(var(--rgb-black) / 0.6);
+  box-shadow: 0 10px 40px rgb(var(--rgb-black) / calc(0.6 * var(--shadow-k)));
   z-index: 110;
   display: flex;
   gap: 4px;
@@ -284,7 +284,7 @@
 
 .target-device-select {
   height: 32px;
-  background: rgb(var(--rgb-black) / 0.25);
+  background: rgb(var(--rgb-well) / calc(0.25 * var(--well-k)));
   border: 1px solid var(--border);
   border-radius: 6px;
   color: var(--text);
@@ -303,7 +303,7 @@
 
 .target-device-select:hover {
   border-color: var(--color-accent);
-  background-color: rgb(var(--rgb-black) / 0.4);
+  background-color: rgb(var(--rgb-well) / calc(0.4 * var(--well-k)));
 }
 
 .target-device-select option {
@@ -338,7 +338,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  color: var(--black);
+  color: var(--color-on-accent);
   cursor: pointer;
   transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
 }
@@ -350,8 +350,8 @@
 }
 
 .confirm-deploy-btn:disabled {
-  background: rgb(var(--rgb-white) / 0.1);
-  color: rgb(var(--rgb-white) / 0.2);
+  background: rgb(var(--rgb-fg) / 0.1);
+  color: rgb(var(--rgb-fg) / 0.2);
   cursor: not-allowed;
 }
 
@@ -374,7 +374,7 @@
   border-radius: 16px;
   padding: 40px;
   text-align: center;
-  box-shadow: 0 30px 60px rgb(var(--rgb-black) / 0.6);
+  box-shadow: 0 30px 60px rgb(var(--rgb-black) / calc(0.6 * var(--shadow-k)));
 }
 
 .processing-loader {
@@ -530,7 +530,7 @@
   gap: 6px;
   padding: 6px 12px;
   border-radius: 6px;
-  background: rgb(var(--rgb-black) / 0.4);
+  background: rgb(var(--rgb-well) / calc(0.4 * var(--well-k)));
   border: 1px solid var(--border);
   color: var(--text-muted);
   font-size: 12px;
@@ -540,7 +540,7 @@
 }
 
 .device-explorer-header__platform-btn:hover {
-  background: rgb(var(--rgb-white) / 0.03);
+  background: rgb(var(--rgb-fg) / 0.03);
   color: var(--text);
   border-color: var(--border);
 }
@@ -573,7 +573,7 @@
   padding: 0 12px 0 36px;
   border-radius: 6px;
   border: 1px solid var(--border);
-  background: rgb(var(--rgb-black) / 0.4);
+  background: rgb(var(--rgb-well) / calc(0.4 * var(--well-k)));
   font-family: 'JetBrains Mono', monospace;
   font-size: 12px;
   color: var(--text);
@@ -583,11 +583,18 @@
 .device-explorer-header-text-filter:focus {
   outline: none;
   border-color: var(--color-accent);
-  background: rgb(var(--rgb-black) / 0.6);
+  background: rgb(var(--rgb-well) / calc(0.6 * var(--well-k)));
   box-shadow: none;
 }
 
 .device-explorer-header-text-filter::placeholder {
   color: var(--text-dim);
   font-size: 11px;
+}
+
+/* --- Light theme ---------------------------------------------------
+   Scoped overrides for literals tuned for the dark surface, so the dark
+   theme renders byte-for-byte as before. */
+:root[data-theme='light'] .device-explorer-header-container {
+  background: rgb(var(--rgb-white) / 0.7);
 }

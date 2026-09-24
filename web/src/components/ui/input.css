@@ -10,7 +10,7 @@
   width: 100%;
   border-radius: 6px;
   border: 1px solid var(--border);
-  background: rgb(var(--rgb-black) / 0.3);
+  background: rgb(var(--rgb-well) / calc(0.3 * var(--well-k)));
   padding: 0 12px;
   font-family: 'JetBrains Mono', monospace;
   font-size: 13px;
@@ -28,7 +28,7 @@
   outline: none;
   border-color: var(--color-accent);
   box-shadow: none;
-  background: rgb(var(--rgb-black) / 0.4);
+  background: rgb(var(--rgb-well) / calc(0.4 * var(--well-k)));
 }
 
 .input-base:disabled {

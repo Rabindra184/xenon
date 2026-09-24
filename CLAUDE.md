@@ -363,8 +363,37 @@ Colours live in three layers: **primitives** named by hue (`--green`, `--red-400
 `rgb(var(--rgb-green) / 0.1)`), and **roles** that say what a colour means
 (`--color-accent`, `--color-on-accent`, `--color-success`, `--color-warning`,
 `--color-danger`, `--color-info`, `--color-highlight`, `--color-focus-ring`).
-New UI should use roles. A theme is `[data-theme]` on `<html>` (`index.html`,
-only `dark` today) re-pointing these variables.
+New UI should use roles.
+
+**Themes.** `<html data-theme>` is `dark` (default) or `light`, chosen in the
+account menu (Dark / Light / System) and stored in `localStorage['xenon.theme']`.
+An inline script in `web/index.html` applies it before first paint;
+`web/src/lib/theme.ts` owns the preference and follows the OS while it is
+`system`. The light values live in one `:root[data-theme='light']` block in
+`tokens.css`. To keep dark byte-for-byte stable, theme-dependent colours are
+written so they compute to the old dark value:
+
+- Neutral washes use `rgb(var(--rgb-fg) / A)` (white in dark, near-black in
+  light), never `--rgb-white`.
+- Dark wells use `rgb(var(--rgb-well) / calc(A * var(--well-k)))`, and heavy
+  drop shadows use `rgb(var(--rgb-black) / calc(A * var(--shadow-k)))`. Both
+  `k` values are 1 in dark and scaled down in light.
+- A component literal that only works on dark gets a scoped
+  `:root[data-theme='light'] .x { … }` override beside it. Don't edit the
+  dark rule.
+- Text on a filled accent or success colour uses `--color-on-accent` /
+  `--color-on-success` (black in dark, white in light). Never use `--black` or
+  `text-black`.
+- **Dark islands:** `class="theme-dark"` re-declares the whole dark palette
+  on a subtree, because it shares the two `:root` blocks. The terminal, the
+  logcat rows (their tag palette only works on dark) and Omni's generated
+  code use it. An island with a translucent or absent background needs an
+  opaque one in light.
+
+Verify a theme change on both sides. Dark should be pixel-identical at
+Playwright `threshold: 0`: the default 0.2 hides small colour shifts. Light
+should pass a contrast probe on every route, plus device control, which needs
+a route-mocked device.
 
 Don't add raw hex or `rgba()` literals. `web/src/design/color-literals.test.ts`
 is a ratchet against `color-literals.baseline.json`: a file may lose literals
@@ -375,8 +404,10 @@ colours and the logcat tag palette are exempt, with reasons in
 `--color-highlight`, `--color-info` and `--border-strong`.
 
 **Changing a value in `web/src/tokens.css` also changes the Mac launcher.**
-`mac-app/src/renderer/src/tokens.css` is generated from it (surfaces, borders
-and text, with `-rgb` triples) by `mac-app/scripts/sync-tokens.mjs`, and the
+`mac-app/src/renderer/src/tokens.css` is generated from the *first* `:root {`
+block (surfaces, borders and text, with `-rgb` triples; `--accent-subtle` /
+`--accent-border` are copied verbatim, so keep them literal there) by
+`mac-app/scripts/sync-tokens.mjs`, and the
 Schema Drift Check workflow fails on any difference. After editing a token
 value run `node mac-app/scripts/sync-tokens.mjs` and commit the generated
 file in the same PR. #268 missed this and turned main's drift check red.

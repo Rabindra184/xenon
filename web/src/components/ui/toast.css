@@ -21,7 +21,7 @@
   background: var(--surface);
   backdrop-filter: blur(16px);
   border: 1px solid var(--border);
-  box-shadow: 0 20px 40px rgb(var(--rgb-black) / 0.4);
+  box-shadow: 0 20px 40px rgb(var(--rgb-black) / calc(0.4 * var(--shadow-k)));
   color: var(--text);
   font-size: 13px;
   font-weight: 600;
@@ -67,7 +67,7 @@
 }
 
 .toast-close:hover {
-  background: rgb(var(--rgb-white) / 0.05);
+  background: rgb(var(--rgb-fg) / 0.05);
   color: var(--text);
 }
 
@@ -121,4 +121,16 @@
 
 .animate-slide-in {
   animation: slide-in 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+/* --- Light theme ---------------------------------------------------
+   Scoped overrides for literals tuned for the dark surface, so the dark
+   theme renders byte-for-byte as before. */
+:root[data-theme='light'] .toast-info {
+  border-color: rgb(var(--rgb-blue) / 0.3);
+  color: var(--color-info);
+}
+
+:root[data-theme='light'] .toast-info .toast-icon {
+  color: var(--color-info);
 }

@@ -1782,7 +1782,7 @@ const OmniInspector: React.FC<OmniInspectorProps> = ({
                               {copiedLocator === 'code' ? <Check size={12} /> : <Copy size={12} />}
                             </button>
                           </div>
-                          <pre className="omni-codegen-pre">
+                          <pre className="omni-codegen-pre theme-dark">
                             <code>
                               {generateTestCode(
                                 selectedNode,

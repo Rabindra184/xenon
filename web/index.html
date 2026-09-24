@@ -3,6 +3,18 @@
 
 <head>
   <meta charset="utf-8" />
+  <!-- Apply the saved theme before the first paint, so a light-theme user
+       never sees a dark flash. Keep in sync with src/lib/theme.ts. -->
+  <script>
+    (function () {
+      var pref = 'dark';
+      try { pref = localStorage.getItem('xenon.theme') || 'dark'; } catch (e) {}
+      var dark = pref === 'system'
+        ? !(window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches)
+        : pref !== 'light';
+      document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light');
+    })();
+  </script>
   <link rel="icon" href="favicon.png" />
   <link rel="icon" type="image/svg+xml" href="favicon.svg" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />

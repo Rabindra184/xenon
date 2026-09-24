@@ -173,7 +173,7 @@ export default function LoginPage() {
             onClick={() => setShowPassword((v) => !v)}
             aria-label={showPassword ? 'Hide password' : 'Show password'}
             aria-pressed={showPassword}
-            className="absolute right-1.5 top-1/2 -translate-y-1/2 grid h-8 w-8 place-items-center rounded-md text-[var(--text-muted)] hover:text-[var(--text)] hover:bg-white/5"
+            className="absolute right-1.5 top-1/2 -translate-y-1/2 grid h-8 w-8 place-items-center rounded-md text-[var(--text-muted)] hover:text-[var(--text)] hover:bg-[rgb(var(--rgb-fg)/0.05)]"
           >
             {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
           </button>
@@ -217,7 +217,7 @@ export default function LoginPage() {
         <button
           type="submit"
           disabled={submitting || locked}
-          className="mt-6 flex w-full h-11 items-center justify-center gap-2 rounded-lg bg-[var(--color-accent)] text-black font-medium text-sm transition-colors hover:bg-[var(--color-accent-strong)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-accent)] disabled:opacity-60 disabled:cursor-not-allowed"
+          className="mt-6 flex w-full h-11 items-center justify-center gap-2 rounded-lg bg-[var(--color-accent)] text-[var(--color-on-accent)] font-medium text-sm transition-colors hover:bg-[var(--color-accent-strong)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-accent)] disabled:opacity-60 disabled:cursor-not-allowed"
         >
           {submitting ? (
             <>

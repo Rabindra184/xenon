@@ -57,7 +57,7 @@ export function PasswordTab() {
           </div>
         ))}
       <form onSubmit={submit}>
-        <h2 className="text-xl font-semibold mb-4">Update Password</h2>
+        <h2 className="text-xl font-semibold mb-4">Update password</h2>
         {(['oldPassword', 'newPassword', 'confirm'] as const).map((id) => (
           <div key={id} className="mb-3">
             <label className="block text-xs text-[var(--text-dim)] mb-1">
@@ -83,9 +83,9 @@ export function PasswordTab() {
         <button
           type="submit"
           disabled={busy || newPassword.length < 8}
-          className="h-10 px-4 rounded-md bg-[var(--color-accent)] text-black font-medium text-sm disabled:opacity-50"
+          className="h-10 px-4 rounded-md bg-[var(--color-accent)] text-[var(--color-on-accent)] font-medium text-sm disabled:opacity-50"
         >
-          {busy ? 'Updating…' : 'Update Password'}
+          {busy ? 'Updating…' : 'Update password'}
         </button>
       </form>
     </div>

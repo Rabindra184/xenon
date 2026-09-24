@@ -83,7 +83,7 @@ export default function ResetPasswordPage() {
           </p>
           <Link
             to="/forgot-password"
-            className="inline-block h-10 px-4 rounded-md bg-[var(--color-accent)] text-black text-sm font-medium leading-10"
+            className="inline-block h-10 px-4 rounded-md bg-[var(--color-accent)] text-[var(--color-on-accent)] text-sm font-medium leading-10"
           >
             Request a new link
           </Link>
@@ -137,7 +137,7 @@ export default function ResetPasswordPage() {
         <button
           type="submit"
           disabled={state === 'submitting' || pw.length < 8}
-          className="mt-5 w-full h-10 rounded-md bg-[var(--color-accent)] text-black font-medium text-sm disabled:opacity-50"
+          className="mt-5 w-full h-10 rounded-md bg-[var(--color-accent)] text-[var(--color-on-accent)] font-medium text-sm disabled:opacity-50"
         >
           {state === 'submitting' ? 'Updating…' : 'Update password'}
         </button>

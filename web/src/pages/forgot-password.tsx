@@ -79,7 +79,7 @@ export default function ForgotPasswordPage() {
             <button
               type="submit"
               disabled={submitting || !email}
-              className="mt-5 w-full h-10 rounded-md bg-[var(--color-accent)] text-black font-medium text-sm disabled:opacity-50"
+              className="mt-5 w-full h-10 rounded-md bg-[var(--color-accent)] text-[var(--color-on-accent)] font-medium text-sm disabled:opacity-50"
             >
               {submitting ? 'Sending…' : 'Send reset link'}
             </button>

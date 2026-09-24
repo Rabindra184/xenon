@@ -27,10 +27,10 @@
   z-index: 0;
   background: linear-gradient(
     to bottom,
-    rgb(var(--rgb-white) / 0),
-    rgb(var(--rgb-white) / 0) 50%,
-    rgb(var(--rgb-black) / 0.15) 50%,
-    rgb(var(--rgb-black) / 0.15)
+    rgb(var(--rgb-fg) / 0),
+    rgb(var(--rgb-fg) / 0) 50%,
+    rgb(var(--rgb-well) / calc(0.15 * var(--well-k))) 50%,
+    rgb(var(--rgb-well) / calc(0.15 * var(--well-k)))
   );
   background-size: 100% 4px;
   border-radius: inherit;
@@ -42,7 +42,7 @@
   inset: 0;
   border-radius: var(--radius-lg);
   padding: 1px;
-  background: linear-gradient(180deg, rgb(var(--rgb-white) / 0.06), rgb(var(--rgb-white) / 0));
+  background: linear-gradient(180deg, rgb(var(--rgb-fg) / 0.06), rgb(var(--rgb-fg) / 0));
   -webkit-mask:
     linear-gradient(var(--white) 0 0) content-box,
     linear-gradient(var(--white) 0 0);

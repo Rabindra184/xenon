@@ -526,7 +526,7 @@ export function DeviceTile({
           normal interaction. */}
         <div className="absolute top-3 left-3 z-30 flex flex-col gap-1.5 pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity duration-150">
           {streamState === 'live' && (
-            <span className="px-2 py-0.5 rounded-sm bg-[var(--color-success)] text-black text-[11px] font-semibold shadow-lg w-fit">
+            <span className="px-2 py-0.5 rounded-sm bg-[var(--color-success)] text-[var(--color-on-success)] text-[11px] font-semibold shadow-lg w-fit">
               Live
             </span>
           )}

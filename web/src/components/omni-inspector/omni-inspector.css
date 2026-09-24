@@ -51,7 +51,7 @@
 
 .omni-mode-toggle {
     display: flex;
-    background: rgb(var(--rgb-black) / 0.3);
+    background: rgb(var(--rgb-well) / calc(0.3 * var(--well-k)));
     padding: 2px;
     border-radius: 6px;
     border: 1px solid var(--border);
@@ -267,7 +267,7 @@
     min-width: 0;
     display: flex;
     flex-direction: column;
-    background: rgb(var(--rgb-black) / 0.2);
+    background: rgb(var(--rgb-well) / calc(0.2 * var(--well-k)));
     border-radius: 6px;
     border: 1px solid var(--border);
     overflow: hidden;
@@ -302,7 +302,7 @@
     row-gap: 8px;
     column-gap: 8px;
     padding: 12px;
-    background: rgb(var(--rgb-black) / 0.4);
+    background: rgb(var(--rgb-well) / calc(0.4 * var(--well-k)));
     border-bottom: 2px solid var(--border);
 }
 
@@ -333,7 +333,7 @@
     justify-content: center;
     width: 28px;
     height: 28px;
-    background: rgb(var(--rgb-white) / 0.02);
+    background: rgb(var(--rgb-fg) / 0.02);
     border: 1px solid var(--border);
     border-radius: 6px;
     color: var(--text-dim);
@@ -342,7 +342,7 @@
 }
 
 .omni-action-btn:hover {
-    background: rgb(var(--rgb-white) / 0.05);
+    background: rgb(var(--rgb-fg) / 0.05);
     color: var(--color-accent);
     border-color: var(--color-accent);
 }
@@ -353,7 +353,7 @@
     gap: 8px;
     margin: 12px;
     padding: 8px 12px;
-    background: rgb(var(--rgb-black) / 0.4);
+    background: rgb(var(--rgb-well) / calc(0.4 * var(--well-k)));
     border: 1px solid var(--border);
     border-radius: 6px;
     transition: all 0.2s;
@@ -387,11 +387,11 @@
     transition: all 0.15s;
     border: 1px solid transparent;
     min-height: 36px;
-    background: rgb(var(--rgb-black) / 0.1);
+    background: rgb(var(--rgb-well) / calc(0.1 * var(--well-k)));
 }
 
 .tree-item:hover {
-    background: rgb(var(--rgb-white) / 0.02);
+    background: rgb(var(--rgb-fg) / 0.02);
     color: var(--text);
 }
 
@@ -403,8 +403,8 @@
 }
 
 .tree-item.hovered:not(.selected) {
-    background: rgb(var(--rgb-white) / 0.04);
-    border-color: rgb(var(--rgb-white) / 0.1);
+    background: rgb(var(--rgb-fg) / 0.04);
+    border-color: rgb(var(--rgb-fg) / 0.1);
     color: var(--text);
 }
 
@@ -466,7 +466,7 @@
 .tree-badge {
     font-size: 10px;
     font-weight: 700;
-    background: rgb(var(--rgb-white) / 0.06);
+    background: rgb(var(--rgb-fg) / 0.06);
     color: var(--text-muted);
     padding: 1px 5px;
     border-radius: 4px;
@@ -528,7 +528,7 @@
 
 .omni-clear-btn:hover {
     color: var(--text);
-    background: rgb(var(--rgb-white) / 0.08);
+    background: rgb(var(--rgb-fg) / 0.08);
 }
 
 .omni-info-table {
@@ -548,7 +548,7 @@
     align-items: center;
     gap: 8px;
     padding: 12px 16px;
-    background: rgb(var(--rgb-black) / 0.4);
+    background: rgb(var(--rgb-well) / calc(0.4 * var(--well-k)));
     border-bottom: 2px solid var(--border);
     font-size: 11px;
     font-weight: 800;
@@ -574,7 +574,7 @@
     display: flex;
     gap: 16px;
     padding: 12px 16px;
-    background: rgb(var(--rgb-black) / 0.4);
+    background: rgb(var(--rgb-well) / calc(0.4 * var(--well-k)));
     border-radius: 6px;
     border: 1px solid var(--border);
     min-height: 44px;
@@ -608,7 +608,7 @@
     flex-direction: column;
     gap: 6px;
     padding: 12px 8px;
-    background: rgb(var(--rgb-black) / 0.4);
+    background: rgb(var(--rgb-well) / calc(0.4 * var(--well-k)));
     border-radius: 6px;
     border: 1px solid var(--border);
     text-align: center;
@@ -635,7 +635,7 @@
     align-items: center;
     gap: 12px;
     padding: 12px 16px;
-    background: rgb(var(--rgb-black) / 0.6);
+    background: rgb(var(--rgb-well) / calc(0.6 * var(--well-k)));
     border-radius: 6px;
     border: 1px solid var(--border);
     border-left: 3px solid var(--color-accent);
@@ -644,7 +644,7 @@
 }
 
 .omni-locator-row:hover {
-    background: rgb(var(--rgb-white) / 0.02);
+    background: rgb(var(--rgb-fg) / 0.02);
     border-color: var(--color-accent);
 }
 
@@ -674,7 +674,7 @@
     justify-content: center;
     width: 24px;
     height: 24px;
-    background: rgb(var(--rgb-white) / 0.03);
+    background: rgb(var(--rgb-fg) / 0.03);
     border: 1px solid var(--border);
     border-radius: var(--radius-sm);
     color: var(--text-muted);
@@ -685,7 +685,7 @@
 .omni-copy-btn:hover {
     background: var(--color-accent);
     border-color: var(--color-accent);
-    color: var(--black);
+    color: var(--color-on-accent);
 }
 
 .omni-locator-actions {
@@ -701,7 +701,7 @@
     justify-content: center;
     width: 24px;
     height: 24px;
-    background: rgb(var(--rgb-white) / 0.03);
+    background: rgb(var(--rgb-fg) / 0.03);
     border: 1px solid var(--border);
     border-radius: var(--radius-sm);
     color: var(--text-muted);
@@ -718,7 +718,7 @@
 .omni-test-btn.active {
     background: var(--color-accent);
     border-color: var(--color-accent);
-    color: var(--black);
+    color: var(--color-on-accent);
 }
 
 .omni-match-badge {
@@ -753,7 +753,7 @@
 }
 
 .omni-match-badge.unsupported {
-    background: rgb(var(--rgb-white) / 0.04);
+    background: rgb(var(--rgb-fg) / 0.04);
     border-color: var(--border);
     color: var(--text-dim);
 }
@@ -761,7 +761,7 @@
 .omni-copy-btn.copied {
     background: var(--color-accent);
     border-color: var(--color-accent);
-    color: var(--black);
+    color: var(--color-on-accent);
 }
 
 /* Attributes Table */
@@ -787,7 +787,7 @@
 }
 
 .omni-attr-row:hover {
-    background: rgb(var(--rgb-white) / 0.03);
+    background: rgb(var(--rgb-fg) / 0.03);
 }
 
 .omni-attr-key {
@@ -848,7 +848,7 @@
 
 .omni-input-field {
     width: 100%;
-    background: rgb(var(--rgb-black) / 0.3);
+    background: rgb(var(--rgb-well) / calc(0.3 * var(--well-k)));
     border: 1px solid var(--border);
     border-radius: var(--radius-sm);
     padding: 8px 12px;
@@ -860,7 +860,7 @@
 
 .omni-input-field:focus {
     border-color: var(--color-accent);
-    background: rgb(var(--rgb-black) / 0.5);
+    background: rgb(var(--rgb-well) / calc(0.5 * var(--well-k)));
 }
 
 .omni-gestures-container {
@@ -869,7 +869,7 @@
     align-items: center;
     gap: 12px;
     padding: 16px;
-    background: rgb(var(--rgb-black) / 0.2);
+    background: rgb(var(--rgb-well) / calc(0.2 * var(--well-k)));
     border-radius: var(--radius-md);
     border: 1px solid var(--border);
 }
@@ -887,8 +887,8 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    background: rgb(var(--rgb-white) / 0.03);
-    border: 1px solid rgb(var(--rgb-white) / 0.05);
+    background: rgb(var(--rgb-fg) / 0.03);
+    border: 1px solid rgb(var(--rgb-fg) / 0.05);
     border-radius: 8px;
     color: var(--text-muted);
     cursor: pointer;
@@ -897,7 +897,7 @@
 
 .omni-dpad-btn:hover {
     background: var(--color-accent);
-    color: var(--black);
+    color: var(--color-on-accent);
     transform: scale(1.1);
 }
 
@@ -927,7 +927,7 @@
    =================================================== */
 .omni-details-tabs {
     display: flex;
-    background: rgb(var(--rgb-black) / 0.5);
+    background: rgb(var(--rgb-well) / calc(0.5 * var(--well-k)));
     border-bottom: 1px solid var(--border);
     flex-shrink: 0;
 }
@@ -963,7 +963,7 @@
 
 .omni-details-tab:hover:not(:disabled) {
     color: var(--text);
-    background: rgb(var(--rgb-white) / 0.03);
+    background: rgb(var(--rgb-fg) / 0.03);
 }
 
 .omni-details-tab.active {
@@ -985,7 +985,7 @@
     align-items: flex-start;
     gap: 10px;
     padding: 10px 14px;
-    background: rgb(var(--rgb-black) / 0.4);
+    background: rgb(var(--rgb-well) / calc(0.4 * var(--well-k)));
     border-radius: 6px;
     border: 1px solid var(--border);
     border-left: 3px solid var(--color-accent);
@@ -994,7 +994,7 @@
 }
 
 .omni-locator-row:hover {
-    background: rgb(var(--rgb-white) / 0.02);
+    background: rgb(var(--rgb-fg) / 0.02);
     border-color: var(--color-accent);
 }
 
@@ -1085,7 +1085,7 @@
     font-size: 9px;
     font-weight: 700;
     color: var(--text-dim);
-    background: rgb(var(--rgb-white) / 0.04);
+    background: rgb(var(--rgb-fg) / 0.04);
     padding: 1px 5px;
     border-radius: 3px;
     flex-shrink: 0;
@@ -1170,7 +1170,7 @@
     flex-direction: column;
     gap: 4px;
     padding: 10px 12px;
-    background: rgb(var(--rgb-black) / 0.4);
+    background: rgb(var(--rgb-well) / calc(0.4 * var(--well-k)));
     border: 1px solid var(--border);
     border-radius: 6px;
 }
@@ -1200,7 +1200,7 @@
     align-items: center;
     gap: 10px;
     padding: 8px 10px;
-    background: rgb(var(--rgb-black) / 0.25);
+    background: rgb(var(--rgb-well) / calc(0.25 * var(--well-k)));
     border: 1px solid var(--border);
     border-radius: 6px;
 }
@@ -1299,7 +1299,7 @@
     font-size: 10px;
     font-weight: 700;
     color: var(--text-muted);
-    background: rgb(var(--rgb-white) / 0.04);
+    background: rgb(var(--rgb-fg) / 0.04);
     padding: 2px 8px;
     border-radius: 4px;
     border: 1px solid var(--border);
@@ -1319,7 +1319,7 @@
     gap: 10px;
     align-items: flex-start;
     padding: 12px;
-    background: rgb(var(--rgb-black) / 0.3);
+    background: rgb(var(--rgb-well) / calc(0.3 * var(--well-k)));
     border-radius: 6px;
     border: 1px solid var(--border);
 }
@@ -1361,7 +1361,7 @@
     align-items: center;
     padding: 6px 10px;
     border-radius: 4px;
-    background: rgb(var(--rgb-black) / 0.2);
+    background: rgb(var(--rgb-well) / calc(0.2 * var(--well-k)));
 }
 
 .omni-quick-fact-label {
@@ -1399,7 +1399,7 @@
 .omni-fw-btn {
     flex: 1;
     padding: 6px 4px;
-    background: rgb(var(--rgb-white) / 0.03);
+    background: rgb(var(--rgb-fg) / 0.03);
     border: 1px solid var(--border);
     border-radius: 6px;
     color: var(--text-muted);
@@ -1411,7 +1411,7 @@
 }
 
 .omni-fw-btn:hover {
-    background: rgb(var(--rgb-white) / 0.06);
+    background: rgb(var(--rgb-fg) / 0.06);
     color: var(--text);
 }
 
@@ -1447,7 +1447,7 @@
     justify-content: space-between;
     align-items: center;
     padding: 8px 12px;
-    background: rgb(var(--rgb-black) / 0.5);
+    background: rgb(var(--rgb-well) / calc(0.5 * var(--well-k)));
     border-bottom: 1px solid var(--border);
 }
 
@@ -1561,4 +1561,34 @@
 
 .omni-tree-error-retry:hover {
     background: rgb(var(--rgb-red-400) / 0.15);
+}
+
+/* --- Light theme ---------------------------------------------------
+   Scoped overrides for literals tuned for the dark surface, so the dark
+   theme renders byte-for-byte as before. */
+:root[data-theme='light'] .omni-screenshot-container,
+:root[data-theme='light'] .omni-attributes-table,
+:root[data-theme='light'] .omni-clipboard-val {
+    background: var(--surface-2);
+}
+
+:root[data-theme='light'] .omni-attr-value {
+    color: var(--text);
+}
+
+:root[data-theme='light'] .omni-stability-badge.fragile {
+    background: rgb(var(--rgb-red) / 0.08);
+    color: var(--red);
+    border-color: rgb(var(--rgb-red) / 0.25);
+}
+
+:root[data-theme='light'] .omni-source-badge.is-device {
+    background: rgb(var(--rgb-fg) / 0.05);
+    color: var(--text-dim);
+}
+
+/* .omni-codegen-pre is a .theme-dark island; its translucent fill would
+   show the light panel through it. */
+:root[data-theme='light'] .omni-codegen-pre {
+    background: var(--surface);
 }
