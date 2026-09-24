@@ -17,6 +17,8 @@ import { isDeviceConflictBody } from '../../api-service/api-client';
 import { isRehydratableTile, isSelfManualLock } from './manual-lock';
 import { addAnnotation, addBookmark } from '../../api-service/recordings';
 import { useIdleDetector } from '../../hooks/useIdleDetector';
+import { Tv } from 'lucide-react';
+import { PageTitle } from '../ui/page-header';
 
 // Idle thresholds for the manual-session warning + release.
 // 5 min total — same shape ADF uses; matches the hub-side OrphanSweeper's
@@ -373,7 +375,7 @@ export default function DeviceMosaicView() {
       <div className="flex flex-col h-full p-4 gap-3">
         <header className="flex items-center justify-between gap-3">
           <div className="flex items-center gap-3">
-            <h1 className="text-base font-semibold">Live Devices</h1>
+            <PageTitle icon={Tv}>Live devices</PageTitle>
             <LayoutSelector
               value={state.layout}
               onChange={(l) => dispatch({ type: 'SET_LAYOUT', layout: l })}

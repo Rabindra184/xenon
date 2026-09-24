@@ -394,7 +394,7 @@ const SelectorHealthPage: React.FC = () => {
       <PageHeader
         icon={HeartPulse}
         eyebrow="Test quality"
-        title="Selector Health"
+        title="Selector health"
         subtitle={headerSubtitle}
         action={
           <>
@@ -670,7 +670,7 @@ const SelectorHealthPage: React.FC = () => {
                           }}
                           title="Move to Pending Verification"
                         >
-                          Mark Fixed
+                          Mark fixed
                         </button>
                         <button
                           type="button"

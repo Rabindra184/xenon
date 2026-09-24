@@ -149,12 +149,12 @@ const SelectorDetailPage: React.FC = () => {
         <PageHeader
           icon={HeartPulse}
           eyebrow="Test quality"
-          title="Selector Detail"
+          title="Selector detail"
           subtitle="No selector specified."
         />
         <div className="sh-content">
           <button className="sh-back-btn" onClick={() => navigate('/selector-health')}>
-            <ChevronLeft size={12} /> Back to Selector Health
+            <ChevronLeft size={12} /> Back to Selector health
           </button>
         </div>
       </div>
@@ -252,7 +252,7 @@ const SelectorDetailPage: React.FC = () => {
                       className="sh-action-btn sh-action-btn--primary"
                       onClick={() => action('mark_fixed')}
                     >
-                      Mark Fixed
+                      Mark fixed
                     </button>
                     <button
                       type="button"

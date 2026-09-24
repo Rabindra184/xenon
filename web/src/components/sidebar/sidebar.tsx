@@ -34,18 +34,18 @@ const items: NavItem[] = [
   // Read-style pages — visible to every authenticated user.
   { id: 'overview', label: 'Overview', icon: LayoutGrid, path: '/overview' },
   { id: 'devices', label: 'Devices', icon: Smartphone, path: '/devices' },
-  { id: 'live-devices', label: 'Live Devices', icon: Tv, path: '/devices/live' },
+  { id: 'live-devices', label: 'Live devices', icon: Tv, path: '/devices/live' },
   { id: 'apps', label: 'Apps', icon: AppWindow, path: '/apps' },
   { id: 'sessions', label: 'Sessions', icon: MonitorPlay, path: '/builds' },
-  { id: 'selector-health', label: 'Selector Health', icon: HeartPulse, path: '/selector-health' },
+  { id: 'selector-health', label: 'Selector health', icon: HeartPulse, path: '/selector-health' },
   { id: 'notifications', label: 'Notifications', icon: Bell, path: '/notifications' },
   // Admin-only management surfaces.
   { id: 'settings', label: 'Settings', icon: SettingsIcon, path: '/settings', minRole: 'ADMIN' },
-  { id: 'ai', label: 'AI Engine', icon: Brain, path: '/ai-settings', minRole: 'ADMIN' },
+  { id: 'ai', label: 'AI engine', icon: Brain, path: '/ai-settings', minRole: 'ADMIN' },
   { id: 'maintenance', label: 'Maintenance', icon: ShieldCheck, path: '/maintenance', minRole: 'ADMIN' },
   { id: 'teams', label: 'Teams', icon: Users, path: '/teams', minRole: 'ADMIN' },
   { id: 'users', label: 'Users', icon: Users, path: '/users', minRole: 'ADMIN' },
-  { id: 'apikeys', label: 'API Keys', icon: Key, path: '/api-keys', minRole: 'ADMIN' },
+  { id: 'apikeys', label: 'API keys', icon: Key, path: '/api-keys', minRole: 'ADMIN' },
 ];
 
 const RANK = { SUPER_ADMIN: 3, ADMIN: 2, MEMBER: 1 } as const;
@@ -107,12 +107,12 @@ const Sidebar: React.FC = () => {
       <button
         type="button"
         className="group relative w-full flex justify-center py-2.5 mt-2"
-        aria-label="API Docs"
+        aria-label="API docs"
         onClick={() => window.open(window.location.origin + '/xenon/api-docs', '_blank')}
       >
         <BookOpen className="h-[18px] w-[18px] text-[var(--text-dim)] group-hover:text-[var(--text)] transition-colors" />
         <span className="pointer-events-none absolute left-full ml-2 top-1/2 -translate-y-1/2 whitespace-nowrap rounded-md bg-[var(--surface-2)] border border-[var(--border-strong)] px-2 py-1 text-xs text-[var(--text)] opacity-0 group-hover:opacity-100 transition-opacity z-50 shadow-lg">
-          API Docs
+          API docs
         </span>
       </button>
     </aside>

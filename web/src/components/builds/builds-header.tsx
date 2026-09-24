@@ -49,9 +49,10 @@ export const BuildsHeader: React.FC<Props> = ({
             #{shortBuildId(build.id)}
           </span>
         </div>
-        <h1 className="mt-0.5 text-sm font-semibold text-[var(--text)]">
+        {/* h2: the page's h1 is "Sessions" in the PageHeader above. */}
+        <h2 className="mt-0.5 text-sm font-semibold text-[var(--text)]">
           {build.name || 'Unnamed build'}
-        </h1>
+        </h2>
       </div>
 
       <div className="flex items-center gap-2" ref={wrap}>

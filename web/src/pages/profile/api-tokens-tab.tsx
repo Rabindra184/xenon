@@ -84,7 +84,7 @@ export function ApiTokensTab() {
           onClick={() => setShowModal(true)}
           className="h-9 px-4 rounded-md bg-[var(--color-accent)] text-black font-medium text-sm"
         >
-          Generate New Token
+          Generate new token
         </button>
       </div>
 

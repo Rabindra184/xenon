@@ -13,7 +13,7 @@ const Header: React.FC = () => {
 
   const initials = (me?.name ?? 'A').split(' ').map((p) => p[0]).slice(0, 2).join('').toUpperCase();
   const roleLabel =
-    me?.role === 'SUPER_ADMIN' ? 'Super Admin' :
+    me?.role === 'SUPER_ADMIN' ? 'Super admin' :
     me?.role === 'ADMIN'       ? 'Admin'       :
                                  'Member';
 

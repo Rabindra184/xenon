@@ -218,7 +218,7 @@ export const AISettings: React.FC = () => {
     <div className="settings-container">
       <PageHeader
         icon={Brain}
-        title="AI Engine"
+        title="AI engine"
         subtitle={
           <>
             All credentials and endpoints are managed via environment variables.
@@ -234,7 +234,7 @@ export const AISettings: React.FC = () => {
         <div className="settings-grid settings-grid--two-equal">
           <SettingCard
             icon={<ShieldCheck size={16} />}
-            title="Provider Registry"
+            title="Provider registry"
             titleExtra={
               <span
                 className={`provider-count-pill ${configuredCount > 0 ? 'is-ok' : 'is-empty'}`}
@@ -296,7 +296,7 @@ export const AISettings: React.FC = () => {
 
           <SettingCard
             icon={<Globe size={16} />}
-            title="Runtime Configuration"
+            title="Runtime configuration"
             description="Environmental overrides for AI model endpoints and identifiers."
           >
             <div className="ai-config-display">
@@ -423,7 +423,7 @@ export const AISettings: React.FC = () => {
           onDiscard={() => setConfig(baseline)}
           isSaving={saving}
           isDirty={isDirty}
-          saveLabel="Save Configuration"
+          saveLabel="Save configuration"
         />
       )}
     </div>

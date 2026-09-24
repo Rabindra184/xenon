@@ -793,7 +793,7 @@ export default function DeviceControl({ device, onClose }: DeviceControlProps) {
                 <button
                   className="footer-action-btn"
                   onClick={pressAppSwitcher}
-                  title="App Switcher"
+                  title="App switcher"
                   aria-label="App switcher"
                 >
                   <Square size={18} />
@@ -804,7 +804,7 @@ export default function DeviceControl({ device, onClose }: DeviceControlProps) {
             <button
               className="footer-action-btn"
               onClick={pressVolumeUp}
-              title="Volume Up"
+              title="Volume up"
               aria-label="Volume up"
             >
               <Volume2 size={18} />
@@ -812,7 +812,7 @@ export default function DeviceControl({ device, onClose }: DeviceControlProps) {
             <button
               className="footer-action-btn"
               onClick={pressVolumeDown}
-              title="Volume Down"
+              title="Volume down"
               aria-label="Volume down"
             >
               <Volume1 size={18} />
@@ -820,7 +820,7 @@ export default function DeviceControl({ device, onClose }: DeviceControlProps) {
             <button
               className="footer-action-btn"
               onClick={pressLock}
-              title="Lock Device"
+              title="Lock device"
               aria-label="Lock device"
             >
               <Lock size={18} />
@@ -828,7 +828,7 @@ export default function DeviceControl({ device, onClose }: DeviceControlProps) {
             <button
               className="footer-action-btn"
               onClick={pressUnlock}
-              title="Unlock Device"
+              title="Unlock device"
               aria-label="Unlock device"
             >
               <Unlock size={18} />

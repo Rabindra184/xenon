@@ -170,7 +170,7 @@ iOS Allowed Commands:
           <button
             className="terminal-action-btn"
             onClick={() => setHistory([])}
-            title="Clear Terminal"
+            title="Clear terminal"
           >
             CLEAR
           </button>

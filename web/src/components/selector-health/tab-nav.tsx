@@ -43,7 +43,7 @@ export function TabNav({ current, counts = {} }: Props) {
   };
 
   return (
-    <nav className="sh-tab-nav" role="tablist" aria-label="Selector Health tabs">
+    <nav className="sh-tab-nav" role="tablist" aria-label="Selector health tabs">
       {TABS.map((t) => {
         const count = counts[t.id];
         const Icon = t.icon;

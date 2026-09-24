@@ -3,6 +3,8 @@ import { useOverviewData } from './use-overview-data';
 import { KpiCard, type KpiState } from './kpi-card';
 import { FleetStatus } from './fleet-status';
 import { RecentActivity } from './recent-activity';
+import { LayoutGrid } from 'lucide-react';
+import { PageHeader } from '../ui/page-header';
 
 const EM_DASH = '—';
 
@@ -18,11 +20,12 @@ const Overview: React.FC = () => {
 
   return (
     <div className="flex-1 min-w-0 overflow-y-auto">
+      <PageHeader
+        icon={LayoutGrid}
+        title="Overview"
+        subtitle="Devices, sessions and healing activity across your lab."
+      />
       <div className="max-w-7xl mx-auto px-6 py-6">
-        <div className="mb-6">
-          <h1 className="text-2xl font-semibold tracking-tight text-[var(--text)]">Overview</h1>
-        </div>
-
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-6">
           <KpiCard
             label="Devices online"

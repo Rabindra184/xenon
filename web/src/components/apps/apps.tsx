@@ -16,6 +16,7 @@ import {
   Rocket,
   X,
   Package,
+  AppWindow,
 } from 'lucide-react';
 import XenonApiService from '../../api-service';
 import { formatDateTime } from '../../utils/time';
@@ -172,7 +173,7 @@ const Apps: React.FC = () => {
         }}
       ></div>
       <PageHeader
-        icon={Package}
+        icon={AppWindow}
         title="Apps"
         subtitle="Signed builds available for installation across your device fleet."
       />
@@ -246,7 +247,7 @@ const Apps: React.FC = () => {
             />
             <Button size="sm" variant="default" className="upload-button">
               <Upload size={14} className="mr-1" />
-              Upload App
+              Upload app
             </Button>
           </label>
         </div>
@@ -377,7 +378,7 @@ const Apps: React.FC = () => {
                                 className="confirm-deploy-btn"
                                 disabled={!selectedUDID}
                                 onClick={() => handleInstall(app.id, selectedUDID)}
-                                title="Confirm Deployment"
+                                title="Confirm deployment"
                               >
                                 <Rocket size={14} />
                               </button>
@@ -473,7 +474,7 @@ const Apps: React.FC = () => {
           <div className="upload-card-technical">
             <div className="processing-loader" />
             <h2 className="brand-font" style={{ fontSize: '20px', marginBottom: '8px' }}>
-              Artifact Ingestion
+              Artifact ingestion
             </h2>
             <p className="text-muted text-xs">VERIFYING CHECKSUM & DEPLOYING TO REGISTRY...</p>
           </div>

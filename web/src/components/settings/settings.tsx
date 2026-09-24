@@ -6,7 +6,7 @@ import { ActionBar } from '../ui/Layouts';
 import { Modal } from '../ui/Modal';
 import { Button } from '../ui/button';
 import {
-  Shield as InfrastructureIcon,
+  Settings as InfrastructureIcon,
   RefreshCw,
   Clock,
   Calendar,
@@ -42,7 +42,7 @@ const MIN_INTERVAL_MS = 5000;
 
 const PRESETS = [
   { label: 'Battery saver (2 AM)', value: '0 2 * * *' },
-  { label: 'Standard (Hourly)', value: '0 * * * *' },
+  { label: 'Standard (hourly)', value: '0 * * * *' },
   { label: 'Operational coverage (30m)', value: '*/30 * * * *' },
   { label: 'High performance (10m)', value: '*/10 * * * *' },
 ];
@@ -224,7 +224,7 @@ export const Settings: React.FC = () => {
             icon={<Clock size={16} />}
             title={
               <span className="card-title-row">
-                Idle Health Frequency
+                Idle health frequency
                 {dirty.interval && <span className="modified-dot" aria-label="Modified" />}
               </span>
             }
@@ -266,7 +266,7 @@ export const Settings: React.FC = () => {
             icon={<Calendar size={16} />}
             title={
               <span className="card-title-row">
-                Deep Diagnostic Schedule
+                Deep diagnostic schedule
                 {dirty.schedule && <span className="modified-dot" aria-label="Modified" />}
               </span>
             }
@@ -320,7 +320,7 @@ export const Settings: React.FC = () => {
             icon={<Brain size={16} />}
             title={
               <span className="card-title-row">
-                AI Self-Healing
+                AI self-healing
                 {dirty.healing && <span className="modified-dot" aria-label="Modified" />}
               </span>
             }
@@ -332,7 +332,7 @@ export const Settings: React.FC = () => {
                   onChange={(e) =>
                     setConfig({ ...config, enableSelfHealing: e.target.checked })
                   }
-                  aria-label="Toggle AI Self-Healing"
+                  aria-label="Toggle AI self-healing"
                 />
                 <span className="slider round"></span>
               </label>
@@ -357,7 +357,7 @@ export const Settings: React.FC = () => {
                   <FileText size={11} />
                   <span>Recent healing events</span>
                   <Link to="/selector-health" className="healing-events__link">
-                    Selector Health <ArrowUpRight size={10} />
+                    Selector health <ArrowUpRight size={10} />
                   </Link>
                 </div>
                 {healingEvents.length > 0 ? (

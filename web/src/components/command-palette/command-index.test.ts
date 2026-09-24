@@ -80,8 +80,8 @@ describe('CommandIndex — builds and the destinations it used to miss', () => {
   });
 
   it.each([
-    ['Live Devices', '/devices/live'],
-    ['Selector Health', '/selector-health'],
+    ['Live devices', '/devices/live'],
+    ['Selector health', '/selector-health'],
     ['Users', '/users'],
     ['Profile', '/profile'],
   ])('navigates to %s', (label, path) => {

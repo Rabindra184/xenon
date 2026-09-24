@@ -38,7 +38,7 @@ export function PasswordTab() {
         (me.teams.length > 0 ? (
           <div className="mb-6">
             <div className="text-xs text-[var(--text-dim)] mb-2">
-              Your Teams
+              Your teams
             </div>
             <div className="flex flex-wrap gap-2">
               {me.teams.map((t) => (

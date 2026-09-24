@@ -4,7 +4,7 @@ import { titleForPath } from './document-title';
 describe('titleForPath', () => {
   it.each([
     ['/overview', 'Overview · Xenon'],
-    ['/devices/live', 'Live Devices · Xenon'],
+    ['/devices/live', 'Live devices · Xenon'],
     ['/builds', 'Sessions · Xenon'],
     ['/builds/abc123', 'Sessions · Xenon'],
     ['/builds/abc123/sessions/s-1', 'Session · Xenon'],

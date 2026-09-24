@@ -94,7 +94,7 @@ export const SessionDetailPage: React.FC = () => {
     { label: 'Device', value: deviceNameOrFallback(s) },
     { label: 'Node ID', value: s.node_id || '—', mono: true },
     { label: 'Platform', value: platformLabel(s) },
-    { label: 'OS Version', value: s.device_version ? osVersionLabel(s) : '—', mono: true },
+    { label: 'OS version', value: s.device_version ? osVersionLabel(s) : '—', mono: true },
   ];
 
   const runRows: MetadataRow[] = [
@@ -115,7 +115,7 @@ export const SessionDetailPage: React.FC = () => {
       ),
       mono: true,
     },
-    { label: 'Start Time', value: formatAbsoluteTime(s.startTime), mono: true },
+    { label: 'Start time', value: formatAbsoluteTime(s.startTime), mono: true },
     { label: 'Duration', value: durationText, mono: true },
   ];
 
@@ -144,7 +144,7 @@ export const SessionDetailPage: React.FC = () => {
   }
   if (failed && s.failure_reason) {
     resultRows.push({
-      label: 'Failure Reason',
+      label: 'Failure reason',
       value: s.failure_reason,
       tone: 'red',
     });

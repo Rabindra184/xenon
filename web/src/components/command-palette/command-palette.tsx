@@ -12,7 +12,7 @@ const KIND_LABEL: Record<CommandKind, string> = {
   build: 'Builds',
   session: 'Running sessions',
   team: 'Teams',
-  key: 'API Keys',
+  key: 'API keys',
   app: 'Apps',
 };
 

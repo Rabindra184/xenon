@@ -42,7 +42,7 @@ interface DeviceRow {
 }
 
 const ROLE_LABELS: Record<MemberRow['role'], string> = {
-  SUPER_ADMIN: 'Super Admin',
+  SUPER_ADMIN: 'Super admin',
   ADMIN: 'Admin',
   MEMBER: 'Member',
 };
@@ -95,7 +95,7 @@ export const Teams: React.FC = () => {
     return (
       <div className="settings-container">
         <PageHeader
-          icon={ShieldAlert}
+          icon={Users}
           title="Teams"
           subtitle={
             <>

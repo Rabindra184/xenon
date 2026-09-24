@@ -17,7 +17,7 @@ import { Input } from '../components/ui/input';
 import { Select } from '../components/ui/select';
 
 const ROLE_LABELS: Record<UserRow['role'], string> = {
-  SUPER_ADMIN: 'Super Admin',
+  SUPER_ADMIN: 'Super admin',
   ADMIN: 'Admin',
   MEMBER: 'Member',
 };
@@ -349,7 +349,7 @@ function EditModal({
           onChange={(e) => setRole(e.target.value as UserRow['role'])}
           className="mb-3"
         >
-          <option value="SUPER_ADMIN">Super Admin</option>
+          <option value="SUPER_ADMIN">Super admin</option>
           <option value="ADMIN">Admin</option>
           <option value="MEMBER">Member</option>
         </Select>

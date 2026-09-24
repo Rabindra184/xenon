@@ -408,7 +408,7 @@ export function DeviceTile({
                 className="mt-6 text-sm font-semibold px-6 py-2.5 rounded-full bg-red-600 hover:bg-red-500 text-white transition-all active:scale-95"
                 onClick={handleRetry}
               >
-                Retry Connection
+                Retry connection
               </button>
             </div>
           </div>

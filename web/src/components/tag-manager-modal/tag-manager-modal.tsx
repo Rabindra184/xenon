@@ -66,7 +66,7 @@ const TagManagerModal: React.FC<TagManagerModalProps> = ({ device, onClose, onUp
       title={
         <>
           <TagIcon size={16} className="title-icon" />
-          Manage Device Tags
+          Manage device tags
         </>
       }
       footer={
@@ -87,7 +87,7 @@ const TagManagerModal: React.FC<TagManagerModalProps> = ({ device, onClose, onUp
         </div>
 
         <FieldGroup
-          label="Add New Tag"
+          label="Add new tag"
           description="Press Enter to add multiple tags"
           htmlFor="tag-input"
         >
