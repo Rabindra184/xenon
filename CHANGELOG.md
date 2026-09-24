@@ -6,6 +6,19 @@ This project follows [Semantic Versioning](https://semver.org/). Releases are
 published to npm automatically when `package.json`'s `version` changes on `main`
 (see `.github/workflows/npm-publish.yml`).
 
+## 1.21.1
+
+Patch release. It fixes one light-theme defect found after 1.21.0 shipped.
+
+### Fixed
+
+- **The disabled Record button rendered as a pink block in the light theme**
+  (#272). On Live devices, Record stays disabled until a device is in the
+  mosaic, and in light its faded red fill blended to pink. The white label
+  measured about 1.9:1, and the button read as an alert. When disabled it now
+  looks like the Stop, Bookmark and Annotate buttons beside it. Enabled, it is
+  still solid red. The dark theme is unchanged.
+
 ## 1.21.0
 
 Minor release. It adds a light theme, a calmer and more accessible sign-in,
