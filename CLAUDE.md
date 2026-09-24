@@ -380,7 +380,8 @@ written so they compute to the old dark value:
   `k` values are 1 in dark and scaled down in light.
 - A component literal that only works on dark gets a scoped
   `:root[data-theme='light'] .x { … }` override beside it. Don't edit the
-  dark rule.
+  dark rule. In TSX, use the `light:` Tailwind variant defined in
+  `web/tailwind.config.js` (e.g. `light:disabled:bg-transparent`).
 - Text on a filled accent or success colour uses `--color-on-accent` /
   `--color-on-success` (black in dark, white in light). Never use `--black` or
   `text-black`.
