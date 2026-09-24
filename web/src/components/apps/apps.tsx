@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Upload,
   Trash2,
@@ -43,6 +43,7 @@ const Apps: React.FC = () => {
   const [sortOrder, setSortOrder] = useState<'desc' | 'asc'>('desc');
   const [deployingAppId, setDeployingAppId] = useState<string | null>(null);
   const [selectedUDID, setSelectedUDID] = useState<string>('');
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const fetchApps = useCallback(async () => {
     setLoading(true);
@@ -233,23 +234,30 @@ const Apps: React.FC = () => {
             {sortOrder === 'desc' ? <SortDesc size={18} /> : <SortAsc size={18} />}
           </button>
 
-          <Button size="sm" variant="default" onClick={() => fetchApps()} disabled={loading}>
+          <Button size="sm" variant="secondary" onClick={() => fetchApps()} disabled={loading}>
             <RefreshCw size={14} className={`mr-1 ${loading && 'animate-spin'}`} />
             Refresh
           </Button>
 
-          <label className="upload-trigger">
-            <input
-              type="file"
-              accept=".apk,.ipa"
-              onChange={handleUpload}
-              style={{ display: 'none' }}
-            />
-            <Button size="sm" variant="default" className="upload-button">
-              <Upload size={14} className="mr-1" />
-              Upload app
-            </Button>
-          </label>
+          {/* Opened from the button's onClick rather than by wrapping both in a
+              <label>: a button is interactive content, so a click on it never
+              reaches the label's input, and the upload did nothing. */}
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".apk,.ipa"
+            onChange={handleUpload}
+            hidden
+          />
+          <Button
+            size="sm"
+            variant="primary"
+            onClick={() => fileInputRef.current?.click()}
+            disabled={uploadLoading}
+          >
+            <Upload size={14} className="mr-1" />
+            Upload app
+          </Button>
         </div>
       </div>
 
