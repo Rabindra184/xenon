@@ -458,18 +458,20 @@ const Apps: React.FC = () => {
                   across your device fleet.
                 </p>
                 <div className="empty-actions">
-                  <label className="upload-trigger-massive">
-                    <input
-                      type="file"
-                      accept=".apk,.ipa"
-                      onChange={handleUpload}
-                      style={{ display: 'none' }}
-                    />
-                    <div className="massive-upload-content">
+                  {/* A button, not a <label> around a hidden input: the label
+                      was clickable but never focusable, so keyboard users
+                      could not reach it. Uses the header's file input. */}
+                  <button
+                    type="button"
+                    className="upload-trigger-massive"
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={uploadLoading}
+                  >
+                    <span className="massive-upload-content">
                       <Rocket size={24} className="mb-2" />
                       <span>Upload your first app</span>
-                    </div>
-                  </label>
+                    </span>
+                  </button>
                 </div>
               </div>
             )}

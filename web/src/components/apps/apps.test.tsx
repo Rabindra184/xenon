@@ -33,7 +33,7 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-describe('Apps header actions', () => {
+describe('Apps upload actions', () => {
   it('has one primary action: Upload app. Refresh is secondary', async () => {
     renderApps();
     const refresh = await screen.findByRole('button', { name: /Refresh/ });
@@ -58,5 +58,17 @@ describe('Apps header actions', () => {
     const file = new File(['x'], 'app.apk');
     fireEvent.change(input, { target: { files: [file] } });
     await waitFor(() => expect(XenonApiService.uploadApp).toHaveBeenCalledWith(file));
+  });
+
+  it('the empty-state upload card is a focusable button that opens the picker', async () => {
+    vi.mocked(XenonApiService.getApps).mockResolvedValueOnce([]);
+    const pick = vi.spyOn(HTMLInputElement.prototype, 'click').mockImplementation(() => {});
+    renderApps();
+    const card = await screen.findByRole('button', { name: /Upload your first app/ });
+    card.focus();
+    expect(card).toHaveFocus();
+    fireEvent.click(card);
+    expect(pick).toHaveBeenCalledTimes(1);
+    expect(pick.mock.instances[0]).toMatchObject({ type: 'file', accept: '.apk,.ipa' });
   });
 });
