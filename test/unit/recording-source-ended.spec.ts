@@ -4,10 +4,9 @@ import sinon from 'sinon';
 import os from 'os';
 import fs from 'fs';
 import path from 'path';
-import { Container } from 'typedi';
 import { RecordingOrchestrator } from '../../src/services/recording/RecordingOrchestrator';
 import { ConcurrencyGate } from '../../src/services/recording/concurrency-gate';
-import { ARTIFACT_STORE, FsArtifactStore } from '../../src/services/artifacts/ArtifactStore';
+import { useArtifactStore } from '../helpers/artifact-store';
 
 // Issue #203. When the ffmpeg process for a recording exits on its own nothing
 // told the orchestrator, so the row sat at RECORDING — no ended_at, no duration,
@@ -18,13 +17,6 @@ import { ARTIFACT_STORE, FsArtifactStore } from '../../src/services/artifacts/Ar
 //
 // It was near-unreachable before #201, because ffmpeg only exited early if it
 // crashed. #201 made a clean early exit a designed outcome.
-
-before(() => {
-  Container.set(ARTIFACT_STORE, new FsArtifactStore(os.tmpdir()));
-});
-after(() => {
-  Container.remove(ARTIFACT_STORE);
-});
 
 const PLAYABLE_BYTES = 200_000;
 
@@ -94,6 +86,9 @@ function makeOrch(row: any, overrides: any = {}) {
 }
 
 describe('RecordingOrchestrator: ffmpeg exiting on its own', () => {
+
+  // compositeOutputPath and per-device paths resolve through ArtifactStore.
+  useArtifactStore();
   afterEach(() => sinon.restore());
 
   it('finalizes the row instead of leaving it at RECORDING', async () => {

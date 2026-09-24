@@ -1,3 +1,4 @@
+/// <reference path="../types/express.d.ts" />
 import { Request, Response, NextFunction } from 'express';
 
 // Per-category token buckets so a burst in one class of traffic can't starve

@@ -2,8 +2,10 @@ import { expect } from 'chai';
 import sinon from 'sinon';
 import { rateLimitMiddleware, __resetBucketsForTests } from '../../src/middleware/rateLimitMiddleware';
 
+// A non-GET, non-heavy path lands in the 'control' bucket, whose capacity is
+// the key's rateLimit. The middleware reads method and path to pick a bucket.
 function mockReq(keyId: string, rateLimit: number) {
-  return { apiKey: { id: keyId, rateLimit } } as any;
+  return { apiKey: { id: keyId, rateLimit }, method: 'POST', path: '/control/u1/tap' } as any;
 }
 function mockRes() {
   const json = sinon.stub();

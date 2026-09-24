@@ -27,7 +27,7 @@ npm run test:ios          # iOS integration tests (real device)
 npm run test:coverage     # Generate NYC coverage report
 ```
 
-Run a single test file (`.mocharc.json` already wires up `ts-node/register`):
+Run a single test file (`.mocharc.js` already wires up `ts-node/register`, and turns off Node's own TypeScript type stripping on Node >= 22.18 so ts-node stays in charge):
 ```bash
 npx mocha test/unit/your-test.spec.ts
 ```
@@ -38,6 +38,12 @@ npx mocha test/unit/recording-orchestrator.spec.ts -g "happy path"
 ```
 
 Tests that import `CommandInterceptor` or anything that pulls in `SessionManager` need `import 'reflect-metadata'` at the top — TypeDI Container.get is invoked at module-load time and will throw `_a.getMetadata is not a function` without it.
+
+`npm run test:all` runs the whole unit suite in one process and should be green on Node 20 and 22. Every spec must also pass on its own (`npx mocha <file>`). Most breakage here came from a spec that only worked because another one ran first:
+
+- Import what you use (`reflect-metadata`, `chai.should()`). Don't rely on another spec having loaded it.
+- Never declare `before`/`beforeEach`/`after`/`afterEach` at the top of a file. Mocha attaches those to the root suite, so they run around every test in the process. Put them inside your `describe`. Register `ARTIFACT_STORE` with `useArtifactStore()` from `test/helpers/artifact-store.ts`, which restores what was there before.
+- Stub `process.kill` in any test that can reach it. `ProcessRegistry` signals process groups, and an unstubbed fake pid 1 meant `kill(-1)`, which killed every process the user owned.
 
 ### Code Quality
 ```bash

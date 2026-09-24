@@ -1,3 +1,4 @@
+import 'reflect-metadata';
 import { cleanPendingSessions, getDeviceFiltersFromCapability } from '../../src/device-utils';
 import { expect } from 'chai';
 import { addCLIArgs } from '../../src/data-service/pluginArgs';

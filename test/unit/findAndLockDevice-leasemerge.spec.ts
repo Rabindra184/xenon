@@ -1,6 +1,11 @@
 import 'reflect-metadata';
 import { expect } from 'chai';
 import sinon from 'sinon';
+// Static imports, not `await import()`: on Node >=22.18 Node strips the TS
+// types itself and runs this file as ESM, where an extensionless dynamic
+// import() can't resolve. These are the same module instances the store uses.
+import * as prismaModule from '../../src/prisma';
+import * as deviceStoreModule from '../../src/data-service/device-store';
 
 /**
  * Verifies that findAndLockDevice skips devices held by an active Lease row.
@@ -19,9 +24,7 @@ describe('findAndLockDevice excludes active-lease devices', () => {
 
   it('skips a device that has an active Lease row, picks the next one', async () => {
     // Stub prisma.lease.findMany to simulate one active lease on u1@h1.
-    // The LokiDeviceStore imports `prisma` from '../../src/prisma' at module level;
-    // because this is CJS, the dynamic import below hits the same module cache.
-    const prismaModule = await import('../../src/prisma');
+    // LokiDeviceStore uses the same `prisma` object from '../../src/prisma'.
     const leaseStub = sinon.stub(prismaModule.prisma.lease as any, 'findMany').resolves([
       { deviceUdid: 'u1', deviceHost: 'h1' },
     ]);
@@ -29,7 +32,6 @@ describe('findAndLockDevice excludes active-lease devices', () => {
     // Import and directly instantiate LokiDeviceStore to avoid the factory
     // singleton which may have been initialised as PrismaDeviceStore in other
     // environments (NODE_ENV != 'test').
-    const deviceStoreModule = await import('../../src/data-service/device-store');
     // LokiDeviceStore is not exported — access it through the factory reset trick:
     // force the factory to create a fresh Loki store by clearing the singleton.
     (deviceStoreModule.DeviceStoreFactory as any)._deviceStore = undefined;

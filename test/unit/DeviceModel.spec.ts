@@ -1,3 +1,5 @@
+import 'reflect-metadata';
+import chai from 'chai';
 import { XenonDatabase } from '../../src/data-service/db';
 import { getAllDevices } from '../../src/data-service/device-service';
 import { deviceMock } from './fixtures/devices';
@@ -9,6 +11,7 @@ import {
 } from '../../src/data-service/device-service';
 import sinon from 'sinon';
 import { IDevice } from '../../src/interfaces/IDevice';
+chai.should();
 const sandbox = sinon.createSandbox();
 
 import { createTestAndroidManager, resetTestContainer } from '../helpers/test-container';

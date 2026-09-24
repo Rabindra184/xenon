@@ -5,8 +5,11 @@ import * as os from 'os';
 import * as path from 'path';
 import * as unzipper from 'unzipper';
 import { ProofBundleService } from '../../src/services/recording/proof-bundle';
+import { useArtifactStore } from '../helpers/artifact-store';
 
 describe('ProofBundleService.streamBundleZip', () => {
+  // The bundle looks up the composite path through ARTIFACT_STORE.
+  useArtifactStore();
   let tmp: string;
   beforeEach(() => {
     tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'proof-test-'));

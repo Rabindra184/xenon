@@ -2,10 +2,11 @@ import 'reflect-metadata';
 import { expect } from 'chai';
 import sinon from 'sinon';
 import os from 'os';
-import { Container } from 'typedi';
+import fs from 'fs';
+import path from 'path';
 import { metrics, trace } from '@opentelemetry/api';
 import { METRIC } from '../../src/services/telemetry/attributes';
-import { ARTIFACT_STORE, FsArtifactStore } from '../../src/services/artifacts/ArtifactStore';
+import { useArtifactStore } from '../helpers/artifact-store';
 
 // Stub metrics + trace BEFORE the module loads so the module-level
 // ensureOtelInstruments() picks up our mocks. Inline import after stubbing.
@@ -44,6 +45,8 @@ function makeMockSpan() {
 }
 
 describe('RecordingOrchestrator instrumentation', () => {
+  // RecordingOrchestrator resolves ARTIFACT_STORE from the container at runtime.
+  useArtifactStore();
   let getMeterStub: sinon.SinonStub;
   let getTracerStub: sinon.SinonStub;
   let mockSpan: ReturnType<typeof makeMockSpan>;
@@ -56,10 +59,6 @@ describe('RecordingOrchestrator instrumentation', () => {
     // Pre-stub once to get clean instrument creation in the SUT.
     getMeterStub = sinon.stub(metrics, 'getMeter');
     getTracerStub = sinon.stub(trace, 'getTracer');
-    // RecordingOrchestrator resolves ARTIFACT_STORE from the container at
-    // runtime (registered at boot in ServerManager); register it here so the
-    // path-construction helpers work under test.
-    Container.set(ARTIFACT_STORE, new FsArtifactStore(os.tmpdir()));
     // Now import — module-level let bindings will populate against the stub.
     RecordingOrchestratorMod = require('../../src/services/recording/RecordingOrchestrator');
   });
@@ -67,7 +66,6 @@ describe('RecordingOrchestrator instrumentation', () => {
   after(() => {
     getMeterStub.restore();
     getTracerStub.restore();
-    Container.remove(ARTIFACT_STORE);
   });
 
   beforeEach(() => {
@@ -175,26 +173,36 @@ describe('RecordingOrchestrator instrumentation', () => {
   });
 
   it('stop() emits duration histogram per finalized recording', async () => {
-    const startedAt = new Date(Date.now() - 5000);
-    const orch = makeOrchestrator({
-      store: {
-        listGroup: sinon.stub().resolves([
-          {
-            id: 'rec-1',
-            device_udid: 'udid-1',
-            device_host: '127.0.0.1',
-            file_path: '/tmp/nonexistent.mp4',
-            started_at: startedAt,
-          },
-        ]),
-      },
-    });
-    await orch.stop('group-x');
-    const duration = mockMeterCtx.histograms.get(METRIC.RECORDING_DURATION_MS)!;
-    expect(duration.record.calledOnce).to.equal(true);
-    const [val, labels] = duration.record.firstCall.args;
-    expect(val).to.be.greaterThanOrEqual(4000);
-    expect(labels).to.deep.equal({ outcome: 'success' });
+    // A successful stop needs an output file of at least MIN_PLAYABLE_MP4_BYTES
+    // (1 KiB); a missing file is correctly recorded as a failure. This used to
+    // point at /tmp/nonexistent.mp4 and so expected 'success' for a failure.
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'rec-instr-'));
+    const filePath = path.join(dir, 'rec-1.mp4');
+    fs.writeFileSync(filePath, Buffer.alloc(2048));
+    try {
+      const startedAt = new Date(Date.now() - 5000);
+      const orch = makeOrchestrator({
+        store: {
+          listGroup: sinon.stub().resolves([
+            {
+              id: 'rec-1',
+              device_udid: 'udid-1',
+              device_host: '127.0.0.1',
+              file_path: filePath,
+              started_at: startedAt,
+            },
+          ]),
+        },
+      });
+      await orch.stop('group-x');
+      const duration = mockMeterCtx.histograms.get(METRIC.RECORDING_DURATION_MS)!;
+      expect(duration.record.calledOnce).to.equal(true);
+      const [val, labels] = duration.record.firstCall.args;
+      expect(val).to.be.greaterThanOrEqual(4000);
+      expect(labels).to.deep.equal({ outcome: 'success' });
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
   });
 
   it('stop() marks outcome=failure when ffmpeg stop throws', async () => {

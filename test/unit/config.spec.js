@@ -1,3 +1,4 @@
+import 'reflect-metadata';
 import path from 'path';
 import { isDeviceConfigPathAbsolute } from '../../src/device-utils';
 import { expect } from 'chai';

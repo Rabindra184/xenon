@@ -1,3 +1,4 @@
+import 'reflect-metadata';
 import { expect } from 'chai';
 import { HealingTier } from '../../src/services/healing/types';
 import { HealEtalonService } from '../../src/services/healing/HealEtalonService';
