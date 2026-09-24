@@ -11,17 +11,6 @@ import { DefaultPluginArgs } from '../../src/interfaces/IPluginArgs';
 
 let sandbox = sinon.createSandbox();
 
-beforeEach(() => {
-  if (IOSDiscoveryService.prototype.getDevices.restore) {
-    IOSDiscoveryService.prototype.getDevices.restore();
-  }
-  sinon.restore();
-  sandbox = sinon.createSandbox();
-});
-
-afterEach(function () {
-  sandbox.restore();
-});
 
 const pluginArgs = Object.assign({}, DefaultPluginArgs, {
   remote: [`http://${ip.address()}:4723`],
@@ -29,6 +18,20 @@ const pluginArgs = Object.assign({}, DefaultPluginArgs, {
 });
 
 describe('IOS Device Manager', () => {
+  // Scoped to this describe. At the top of the file these hooks joined mocha's
+  // root suite and restored every other spec's sinon stubs before each test.
+  beforeEach(() => {
+    if (IOSDiscoveryService.prototype.getDevices.restore) {
+      IOSDiscoveryService.prototype.getDevices.restore();
+    }
+    sinon.restore();
+    sandbox = sinon.createSandbox();
+  });
+
+  afterEach(function () {
+    sandbox.restore();
+  });
+
 
   it('IOS Device List to have added state', async () => {
     const iosDevices = new IOSDeviceManager(pluginArgs, 4723);

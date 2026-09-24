@@ -6,18 +6,6 @@ import IOSDeviceManager from '../../src/device-managers/IOSDeviceManager';
 import { IOSDiscoveryService } from '../../src/device-managers/ios/IOSDiscoveryService';
 
 let sandbox = Sinon.createSandbox();
-beforeEach(function () {
-  if (IOSDiscoveryService.prototype.getDevices.restore) {
-    IOSDiscoveryService.prototype.getDevices.restore();
-  }
-  Sinon.restore();
-  sandbox = Sinon.createSandbox();
-});
-
-afterEach(function () {
-  Sinon.restore();
-  sandbox.restore();
-});
 
 const stubResponse = {
   data: [
@@ -39,6 +27,21 @@ const stubResponse = {
 };
 
 describe('Remote IOS', async () => {
+  // Scoped to this describe. At the top of the file these hooks joined mocha's
+  // root suite and restored every other spec's sinon stubs before each test.
+  beforeEach(function () {
+    if (IOSDiscoveryService.prototype.getDevices.restore) {
+      IOSDiscoveryService.prototype.getDevices.restore();
+    }
+    Sinon.restore();
+    sandbox = Sinon.createSandbox();
+  });
+
+  afterEach(function () {
+    Sinon.restore();
+    sandbox.restore();
+  });
+
   it('Fetch remote devices', async function () {
     let stub = Sinon.stub(axios, 'post').resolves(stubResponse);
     const iosDevices = new IOSDeviceManager({});

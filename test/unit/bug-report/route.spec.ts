@@ -6,14 +6,27 @@ import sinon from 'sinon';
 import { BugReportService } from '../../../src/services/bug-report/BugReportService';
 import bugReportRouter from '../../../src/app/routers/bug-report';
 
-function makeApp() {
+// The router is behind roleGuard('MEMBER'), which reads the req.auth that
+// authMiddleware sets in the real app. Stand in for it with a signed-in member.
+function makeApp({ signedIn = true } = {}) {
   const app = express();
+  if (signedIn) {
+    app.use((req: any, _res, next) => {
+      req.auth = { kind: 'user-session', userId: 'u1', role: 'MEMBER', scopes: ['devices', 'sessions', 'read'], teamIds: [] };
+      next();
+    });
+  }
   bugReportRouter.register(app as any);
   return app;
 }
 
 describe('bug-report route', () => {
   afterEach(() => sinon.restore());
+
+  it('401 when the caller is not signed in', async () => {
+    const res = await request(makeApp({ signedIn: false })).post('/sessions/sess-1/bug-report?mode=full');
+    expect(res.status).to.equal(401);
+  });
 
   it('400 on invalid mode', async () => {
     const res = await request(makeApp()).post('/sessions/sess-1/bug-report?mode=bogus');

@@ -55,12 +55,15 @@ function fakeRes(): { res: any; cap: Captured } {
   return { res, cap };
 }
 
-afterEach(() => {
-  sinon.restore();
-  while (created.length) rmSync(created.pop() as string, { recursive: true, force: true });
-});
 
 describe('apps download handler', () => {
+  // Scoped to this describe. At the top of the file these hooks joined mocha's
+  // root suite and restored every other spec's sinon stubs before each test.
+  afterEach(() => {
+    sinon.restore();
+    while (created.length) rmSync(created.pop() as string, { recursive: true, force: true });
+  });
+
   it('serves a file that lives under a dot-directory', async () => {
     const app = appInDotDir();
     sinon.stub(APP_SERVICE, 'getAppById').resolves(app as any);

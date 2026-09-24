@@ -1,3 +1,4 @@
+import 'reflect-metadata';
 import { expect } from 'chai';
 import { sessionsToJson, sessionsToCsv } from '../../src/app/routers/build-export';
 
