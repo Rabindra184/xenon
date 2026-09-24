@@ -251,7 +251,10 @@ export function RecordingControls({ selectedUdids }: Props) {
             ? 'Add a device to the mosaic first'
             : 'Record every device currently in the mosaic'
         }
-        className="px-3 py-1.5 text-sm rounded bg-[var(--red-600)] text-white disabled:opacity-40 disabled:cursor-not-allowed"
+        // In light, 40% of a red fill is a pink block that reads as an alert.
+        // Disabled, it takes the outlined look of the Stop/Bookmark buttons beside it;
+        // the ring is inset so enabling it doesn't change its size.
+        className="px-3 py-1.5 text-sm rounded bg-[var(--red-600)] text-white disabled:opacity-40 disabled:cursor-not-allowed light:disabled:bg-transparent light:disabled:text-[var(--text)] light:disabled:ring-1 light:disabled:ring-inset light:disabled:ring-[color:var(--border)]"
       >
         {recordButtonLabel(selectedUdids.length, state.recordingPhase)}
       </button>
