@@ -107,11 +107,8 @@
 }
 
 .sh-kpi__label {
-  font-family: 'JetBrains Mono', monospace;
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.1em;
   color: var(--text-dim);
 }
 
@@ -191,11 +188,8 @@
 }
 
 .sh-filter-bar__lead {
-  font-family: 'JetBrains Mono', monospace;
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.1em;
   color: var(--text-muted);
   margin-right: 6px;
 }
@@ -207,11 +201,8 @@
 }
 
 .sh-filter-bar__label {
-  font-family: 'JetBrains Mono', monospace;
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.1em;
   color: var(--text-dim);
 }
 
@@ -390,11 +381,8 @@
 }
 
 .sh-th {
-  font-family: 'JetBrains Mono', monospace;
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.1em;
   color: var(--text-dim);
 }
 
@@ -606,11 +594,8 @@
 }
 
 .sh-detail-stat__label {
-  font-family: 'JetBrains Mono', monospace;
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.1em;
   color: var(--text-dim);
 }
 
@@ -647,11 +632,8 @@
   padding: 10px 14px;
   border-bottom: 1px solid var(--border);
   background: var(--surface-2);
-  font-family: 'JetBrains Mono', monospace;
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.1em;
   color: var(--text);
 }
 
@@ -741,11 +723,8 @@
 }
 
 .sh-breakdown__label {
-  font-family: 'JetBrains Mono', monospace;
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.1em;
   color: var(--text-dim);
   margin-bottom: 4px;
 }
@@ -996,8 +975,6 @@
   font-size: 0.72rem;
   color: var(--text-muted);
   margin-bottom: 0.3rem;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
 }
 .sh-copy-modal__preview {
   background: var(--bg, #0a0a0a);

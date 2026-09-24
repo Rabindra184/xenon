@@ -148,7 +148,7 @@ const SelectorDetailPage: React.FC = () => {
       <div className="selector-health-page">
         <PageHeader
           icon={HeartPulse}
-          eyebrow="Test Quality"
+          eyebrow="Test quality"
           title="Selector Detail"
           subtitle="No selector specified."
         />
@@ -165,7 +165,7 @@ const SelectorDetailPage: React.FC = () => {
     <div className="selector-health-page">
       <PageHeader
         icon={HeartPulse}
-        eyebrow="Test Quality / Selector"
+        eyebrow="Test quality / Selector"
         title={
           <span className="sh-detail-title">
             <code title={value}>{value}</code>

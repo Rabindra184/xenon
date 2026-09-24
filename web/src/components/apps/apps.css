@@ -21,10 +21,7 @@
   color: var(--text-dim);
   font-size: 11px;
   font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.1em;
   background: rgb(var(--rgb-black) / 0.2);
-  font-family: 'JetBrains Mono', monospace;
 }
 
 .registry-list {
@@ -98,7 +95,6 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  text-transform: uppercase;
 }
 
 .app-package-id {
@@ -127,8 +123,6 @@
 .col-timestamp {
   font-size: 11px;
   color: var(--text-dim);
-  font-family: 'JetBrains Mono', monospace;
-  text-transform: uppercase;
 }
 
 .col-actions {
@@ -150,8 +144,6 @@
   color: var(--color-accent);
   font-size: 11px;
   font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
   transition: all 0.2s;
   cursor: pointer;
 }
@@ -543,8 +535,6 @@
   color: var(--text-muted);
   font-size: 12px;
   font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
   cursor: pointer;
   transition: all 0.2s ease;
 }
@@ -599,7 +589,5 @@
 
 .device-explorer-header-text-filter::placeholder {
   color: var(--text-dim);
-  text-transform: uppercase;
   font-size: 11px;
-  letter-spacing: 0.1em;
 }

@@ -25,6 +25,7 @@ import {
   formatSessionCapabilitiesJson,
 } from './sessionConnection';
 import './device-card.css';
+import { platformLabel } from '../../../lib/labels';
 
 const SHARED_POOL_LABEL = 'Shared';
 const SHARED_POOL_TITLE = 'Shared pool — visible to all authenticated users';
@@ -189,7 +190,7 @@ export const DeviceCard: React.FC<Props> = ({ device, reloadDevices, navigate, t
 
       <div className="dc2-header">
         <span className="dc2-platform">
-          {device.platform.toUpperCase()} · {device.sdk}
+          {platformLabel(device.platform)} · {device.sdk}
         </span>
         <StatusCode kind={kind} showDot>
           {kind}

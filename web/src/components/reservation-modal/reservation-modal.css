@@ -31,9 +31,8 @@
 
 .device-id-badge .label {
     color: var(--text-dim);
-    text-transform: uppercase;
     font-weight: 800;
-    font-size: 10px;
+    font-size: 11px;
 }
 
 .device-id-badge .value {
@@ -103,8 +102,6 @@
     font-weight: 700;
     cursor: pointer;
     transition: all 0.2s;
-    text-transform: uppercase;
-    font-family: 'JetBrains Mono', monospace;
 }
 
 .btn-cancel:hover {
@@ -122,8 +119,6 @@
     font-weight: 800;
     cursor: pointer;
     transition: all 0.2s;
-    text-transform: uppercase;
-    font-family: 'JetBrains Mono', monospace;
     box-shadow: none;
 }
 

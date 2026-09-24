@@ -94,12 +94,12 @@ describe('LogcatView', () => {
   it('shows LIVE when connected and CONNECTING when not', () => {
     mockStream.mockReturnValue(streamState({ connected: false }));
     const { unmount } = render(<LogcatView udid="DEV-1" platform="android" />);
-    expect(screen.getByText('CONNECTING')).toBeTruthy();
+    expect(screen.getByText('Connecting')).toBeTruthy();
     unmount();
 
     mockStream.mockReturnValue(streamState({ connected: true }));
     render(<LogcatView udid="DEV-1" platform="android" />);
-    expect(screen.getByText('LIVE')).toBeTruthy();
+    expect(screen.getByText('Live')).toBeTruthy();
   });
 
   it('shows the visible / total counts', () => {
@@ -127,8 +127,8 @@ describe('LogcatView', () => {
       streamState({ connected: false, deniedReason: 'device held by another user' }),
     );
     render(<LogcatView udid="DEV-1" platform="android" />);
-    expect(screen.getByText('DENIED')).toBeTruthy();
-    expect(screen.queryByText('CONNECTING')).toBeNull();
+    expect(screen.getByText('Denied')).toBeTruthy();
+    expect(screen.queryByText('Connecting')).toBeNull();
     expect(screen.getByText(/device held by another user/)).toBeTruthy();
   });
 
@@ -139,8 +139,8 @@ describe('LogcatView', () => {
     const retry = vi.fn();
     mockStream.mockReturnValue(streamState({ connected: false, exhausted: true, retry }));
     render(<LogcatView udid="DEV-1" platform="android" />);
-    expect(screen.getByText('OFFLINE')).toBeTruthy();
-    expect(screen.queryByText('CONNECTING')).toBeNull();
+    expect(screen.getByText('Offline')).toBeTruthy();
+    expect(screen.queryByText('Connecting')).toBeNull();
     const reconnectBtn = screen.getByRole('button', { name: /reconnect/i });
     fireEvent.click(reconnectBtn);
     expect(retry).toHaveBeenCalledTimes(1);

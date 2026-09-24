@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import './terminal.css';
+import { platformLabel } from '../../lib/labels';
 
 interface TerminalLine {
   type: 'command' | 'output' | 'error' | 'system';
@@ -164,7 +165,7 @@ iOS Allowed Commands:
           <div className="dot yellow" />
           <div className="dot green" />
         </div>
-        <div className="terminal-title">{platform.toUpperCase()} INTERNAL SHELL</div>
+        <div className="terminal-title">{platformLabel(platform)} shell</div>
         <div className="terminal-actions">
           <button
             className="terminal-action-btn"

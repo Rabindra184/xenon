@@ -262,10 +262,10 @@ const Apps: React.FC = () => {
           <>
             {filteredApps.length > 0 && (
               <div className="registry-table-header">
-                <div>Artifact Bundle</div>
+                <div>Artifact bundle</div>
                 <div>Version</div>
                 <div>Size</div>
-                <div>Registry Date</div>
+                <div>Registry date</div>
                 <div style={{ textAlign: 'right' }}>Management</div>
               </div>
             )}
@@ -350,7 +350,7 @@ const Apps: React.FC = () => {
                           </>
                         ) : (
                           <>
-                            <Zap size={12} /> DEPLOY
+                            <Zap size={12} /> Deploy
                           </>
                         )}
                       </button>
@@ -369,7 +369,7 @@ const Apps: React.FC = () => {
                                 <option value="">SELECT TARGET...</option>
                                 {availableDevices.map((d) => (
                                   <option key={d.udid} value={d.udid}>
-                                    {d.name.toUpperCase()} ({d.udid})
+                                    {d.name} ({d.udid})
                                   </option>
                                 ))}
                               </Select>

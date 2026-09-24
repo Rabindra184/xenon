@@ -616,7 +616,7 @@ export default function DeviceControl({ device, onClose }: DeviceControlProps) {
               title={`Reserved by ${currentDevice.reservedBy}${currentDevice.reservationReason ? `: ${currentDevice.reservationReason}` : ''
                 }`}
             >
-              RESERVED BY {currentDevice.reservedBy?.toUpperCase() || 'ANONYMOUS'}
+              Reserved by {currentDevice.reservedBy || 'someone'}
             </span>
           )}
           <h2 className="device-name-text">{currentDevice.name}</h2>

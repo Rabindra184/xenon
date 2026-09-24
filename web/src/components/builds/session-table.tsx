@@ -73,12 +73,12 @@ export const SessionTable: React.FC<Props> = ({
                 onChange={() => onToggleSelectAll(filtered.map((s) => s.id))}
               />
             </th>
-            <th className="px-3 py-2 text-[10px] uppercase tracking-wider text-[var(--text-dim)] font-medium">Session</th>
-            <th className="px-3 py-2 text-[10px] uppercase tracking-wider text-[var(--text-dim)] font-medium">Device · Node</th>
-            <th className="px-3 py-2 text-[10px] uppercase tracking-wider text-[var(--text-dim)] font-medium w-[108px]">Platform</th>
-            <th className="px-3 py-2 text-[10px] uppercase tracking-wider text-[var(--text-dim)] font-medium w-[104px]">Status</th>
-            <th className="px-3 py-2 text-[10px] uppercase tracking-wider text-[var(--text-dim)] font-medium w-[160px]">Start Time</th>
-            <th className="px-3 py-2 text-[10px] uppercase tracking-wider text-[var(--text-dim)] font-medium text-right w-[92px]">Duration</th>
+            <th className="px-3 py-2 text-[11px] text-[var(--text-dim)] font-medium">Session</th>
+            <th className="px-3 py-2 text-[11px] text-[var(--text-dim)] font-medium">Device · Node</th>
+            <th className="px-3 py-2 text-[11px] text-[var(--text-dim)] font-medium w-[108px]">Platform</th>
+            <th className="px-3 py-2 text-[11px] text-[var(--text-dim)] font-medium w-[104px]">Status</th>
+            <th className="px-3 py-2 text-[11px] text-[var(--text-dim)] font-medium w-[160px]">Start Time</th>
+            <th className="px-3 py-2 text-[11px] text-[var(--text-dim)] font-medium text-right w-[92px]">Duration</th>
             <th className="px-3 py-2 w-[32px]"></th>
           </tr>
         </thead>

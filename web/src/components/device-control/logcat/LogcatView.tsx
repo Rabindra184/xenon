@@ -298,12 +298,12 @@ export default function LogcatView({ udid, platform }: Props) {
   }
 
   const statusLabel = deniedReason
-    ? 'DENIED'
+    ? 'Denied'
     : exhausted
-      ? 'OFFLINE'
+      ? 'Offline'
       : connected
-        ? 'LIVE'
-        : 'CONNECTING';
+        ? 'Live'
+        : 'Connecting';
   const isErrorStatus = !connected && (!!deniedReason || exhausted);
 
   return (

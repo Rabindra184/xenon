@@ -34,6 +34,7 @@ import {
 } from '../../interfaces/IHealingEvent';
 import { useSocket } from '../../hooks/useSocket';
 import './selector-health.css';
+import { platformLabel } from '../../lib/labels';
 
 type WindowDays = 7 | 30 | 90;
 type TierFilter = '' | 'Native' | 'Resilio' | 'Fuzzy XML' | 'OCR' | 'Visual AI' | 'LLM';
@@ -392,7 +393,7 @@ const SelectorHealthPage: React.FC = () => {
     <div className="selector-health-page">
       <PageHeader
         icon={HeartPulse}
-        eyebrow="Test Quality"
+        eyebrow="Test quality"
         title="Selector Health"
         subtitle={headerSubtitle}
         action={
@@ -472,7 +473,7 @@ const SelectorHealthPage: React.FC = () => {
             >
               {PLATFORM_OPTIONS.map((p) => (
                 <option key={p || 'all'} value={p}>
-                  {p ? p.toUpperCase() : 'All platforms'}
+                  {p ? platformLabel(p) : 'All platforms'}
                 </option>
               ))}
             </select>

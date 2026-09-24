@@ -104,13 +104,13 @@ export default function UsersPage() {
         ) : (
           <div className="rounded-lg border border-[var(--border)] bg-[var(--surface)] overflow-hidden">
             <table className="w-full text-sm">
-              <thead className="text-[11px] text-[var(--text-dim)] uppercase tracking-wide">
+              <thead className="text-[11px] text-[var(--text-dim)]">
                 <tr>
                   <th className="text-left py-2.5 px-4">Name</th>
                   <th className="text-left py-2.5 px-4">Email</th>
                   <th className="text-left py-2.5 px-4">Role</th>
                   <th className="text-left py-2.5 px-4">Status</th>
-                  <th className="text-left py-2.5 px-4">Last Login</th>
+                  <th className="text-left py-2.5 px-4">Last login</th>
                   <th className="w-px"></th>
                 </tr>
               </thead>

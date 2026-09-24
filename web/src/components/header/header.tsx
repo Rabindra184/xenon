@@ -102,7 +102,7 @@ const Header: React.FC = () => {
             {dropdownOpen && (
               <div className="absolute top-full right-0 mt-2 w-64 rounded-md border border-[var(--border)] bg-[var(--surface)] shadow-lg overflow-hidden">
                 <div className="px-3 py-2">
-                  <div className="text-[10px] uppercase tracking-wider text-[var(--text-dim)] mb-1">
+                  <div className="text-[11px] text-[var(--text-dim)] mb-1">
                     System
                   </div>
                   {/* Only facts the client actually knows. The static "Registry ·

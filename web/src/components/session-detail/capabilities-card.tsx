@@ -25,7 +25,7 @@ export const CapabilitiesCard: React.FC<Props> = ({ session }) => {
             type="button"
             onClick={() => setTab(t)}
             aria-pressed={tab === t}
-            className={`flex-1 h-9 text-[10px] font-mono font-semibold uppercase tracking-widest transition-colors border-b-2 ${
+            className={`flex-1 h-9 text-[11px] font-semibold transition-colors border-b-2 ${
               tab === t
                 ? 'border-[var(--color-accent)] text-[var(--text)]'
                 : 'border-transparent text-[var(--text-muted)] hover:text-[var(--text)]'

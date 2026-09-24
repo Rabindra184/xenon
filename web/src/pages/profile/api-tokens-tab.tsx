@@ -103,7 +103,7 @@ export function ApiTokensTab() {
         </div>
       ) : (
         <table className="w-full text-sm">
-          <thead className="text-[11px] text-[var(--text-dim)] uppercase tracking-wide">
+          <thead className="text-[11px] text-[var(--text-dim)]">
             <tr>
               <th className="text-left py-2">Name</th>
               <th className="text-left py-2">Issued</th>

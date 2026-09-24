@@ -25,9 +25,7 @@ export const PageHeader: React.FC<Props> = ({ icon: Icon, eyebrow, title, subtit
     <div className="flex items-start justify-between gap-4">
       <div className="min-w-0">
         {eyebrow && (
-          <div className="text-[10px] font-mono font-semibold uppercase tracking-widest text-[var(--text-dim)] mb-1.5">
-            {eyebrow}
-          </div>
+          <div className="text-[11px] font-semibold text-[var(--text-dim)] mb-1.5">{eyebrow}</div>
         )}
         <h1 className="flex items-center gap-2 text-xl font-semibold tracking-tight text-[var(--text)]">
           {Icon && <Icon className="h-5 w-5 text-[var(--color-accent)] shrink-0" />}

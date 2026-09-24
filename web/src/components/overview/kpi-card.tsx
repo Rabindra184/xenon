@@ -36,7 +36,7 @@ const subtitleCls: Record<KpiState, string> = {
 export const KpiCard: React.FC<Props> = ({ label, value, secondaryValue, subtitle, state = 'neutral' }) => (
   <div className="relative overflow-hidden rounded-lg border border-[var(--border)] bg-[var(--surface)] p-4 hover:border-[var(--border-strong)] transition-colors">
     <span className={`absolute left-0 top-0 bottom-0 w-[2px] ${accentBarCls[state]}`} />
-    <div className="text-[10px] font-mono font-semibold uppercase tracking-widest text-[var(--text-muted)]">
+    <div className="text-[11px] font-semibold text-[var(--text-muted)]">
       {label}
     </div>
     <div className="mt-3 flex items-baseline gap-2">

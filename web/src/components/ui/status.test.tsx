@@ -11,9 +11,9 @@ describe('StatusDot', () => {
 });
 
 describe('StatusCode', () => {
-  it('renders uppercase label with status class', () => {
+  it('renders a sentence-case label with status class', () => {
     render(<StatusCode kind="busy">busy</StatusCode>);
-    const code = screen.getByText(/BUSY/);
+    const code = screen.getByText('Busy');
     expect(code).toHaveClass('status-code-label');
     expect(code.parentElement).toHaveClass('status-code-busy');
   });

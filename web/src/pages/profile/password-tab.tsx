@@ -37,7 +37,7 @@ export function PasswordTab() {
       {me?.role === 'MEMBER' &&
         (me.teams.length > 0 ? (
           <div className="mb-6">
-            <div className="text-xs text-[var(--text-dim)] uppercase tracking-wide mb-2">
+            <div className="text-xs text-[var(--text-dim)] mb-2">
               Your Teams
             </div>
             <div className="flex flex-wrap gap-2">

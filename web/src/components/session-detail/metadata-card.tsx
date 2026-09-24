@@ -23,15 +23,11 @@ const toneCls: Record<NonNullable<MetadataRow['tone']>, string> = {
 
 export const MetadataCard: React.FC<Props> = ({ label, rows }) => (
   <div className="flex-1 min-w-0 p-4">
-    <div className="text-[10px] font-mono font-semibold uppercase tracking-widest text-[var(--text-dim)] mb-3">
-      {label}
-    </div>
+    <div className="text-[11px] font-semibold text-[var(--text-dim)] mb-3">{label}</div>
     <dl className="space-y-2">
       {rows.map((r, i) => (
         <div key={`${r.label}-${i}`} className="flex items-baseline justify-between gap-3">
-          <dt className="text-[10px] font-mono uppercase tracking-wider text-[var(--text-dim)] shrink-0">
-            {r.label}
-          </dt>
+          <dt className="text-[11px] text-[var(--text-dim)] shrink-0">{r.label}</dt>
           <dd
             className={`text-xs text-right truncate min-w-0 ${r.mono ? 'font-mono' : ''} ${toneCls[r.tone ?? 'default']}`}
           >

@@ -33,8 +33,6 @@
     font-weight: 700;
     font-family: 'Outfit', sans-serif;
     color: var(--text);
-    letter-spacing: -0.01em;
-    text-transform: uppercase;
 }
 
 .settings-title-group {
@@ -62,16 +60,13 @@
 }
 
 .badge-elite {
-    font-size: 10px;
+    font-size: 11px;
     padding: 3px 8px;
     border-radius: 4px;
     background: rgb(var(--rgb-accent) / 0.08);
     color: var(--color-accent);
     border: 1px solid rgb(var(--rgb-accent) / 0.25);
-    font-family: 'JetBrains Mono', monospace;
     font-weight: 500;
-    text-transform: uppercase;
-    letter-spacing: 0.08em;
 }
 
 .status-pill {
@@ -82,11 +77,8 @@
     border-radius: 6px;
     font-size: 11px;
     font-weight: 800;
-    font-family: 'JetBrains Mono', monospace;
     background: rgb(var(--rgb-black) / 0.4);
     border: 1px solid var(--border);
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
 }
 
 .status-pill.success {
@@ -286,8 +278,6 @@
     color: var(--status-busy-fg);
     font-size: 11px;
     font-weight: 500;
-    font-family: 'JetBrains Mono', monospace;
-    text-transform: uppercase;
 }
 
 .status-banner {
@@ -299,8 +289,6 @@
     font-size: 11px;
     animation: slideIn 0.3s ease;
     margin-top: 16px;
-    font-family: 'JetBrains Mono', monospace;
-    text-transform: uppercase;
     font-weight: 500;
 }
 
@@ -339,11 +327,9 @@
     display: flex;
     align-items: center;
     gap: 6px;
-    font-size: 10px;
+    font-size: 11px;
     font-weight: 500;
     color: var(--text-dim);
-    text-transform: uppercase;
-    letter-spacing: 0.1em;
     margin-bottom: 10px;
 }
 
@@ -359,14 +345,11 @@
     background: var(--bg);
     border: 1px solid var(--border);
     color: var(--text-muted);
-    font-size: 10px;
+    font-size: 11px;
     font-weight: 500;
     border-radius: 4px;
     cursor: pointer;
     transition: all 0.2s ease;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-    font-family: 'JetBrains Mono', monospace;
     white-space: nowrap;
 }
 
@@ -451,8 +434,6 @@
     display: flex;
     align-items: center;
     gap: 6px;
-    text-transform: uppercase;
-    font-family: 'JetBrains Mono', monospace;
 }
 
 .save-btn:hover:not(:disabled) {
@@ -474,8 +455,6 @@
     font-weight: 500;
     font-size: 11px;
     transition: all 0.2s;
-    text-transform: uppercase;
-    font-family: 'JetBrains Mono', monospace;
 }
 
 .reset-btn:hover:not(:disabled) {
@@ -490,14 +469,12 @@
     color: #ff4444;
     padding: 9px 20px;
     border-radius: 6px;
-    font-size: 10px;
+    font-size: 11px;
     font-weight: 500;
     display: flex;
     align-items: center;
     gap: 6px;
     transition: all 0.2s;
-    text-transform: uppercase;
-    font-family: 'JetBrains Mono', monospace;
 }
 
 .reset-to-defaults-btn:hover:not(:disabled) {
@@ -846,8 +823,6 @@
     font-size: 0.75rem;
     font-weight: 700;
     color: var(--text-muted);
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
     padding-left: 2px;
 }
 
@@ -1022,8 +997,6 @@
     font-size: 0.8rem;
     font-weight: 600;
     color: var(--text-muted);
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
 }
 
 .ai-config-value {
@@ -1047,9 +1020,6 @@
     color: var(--text-dim);
     padding: 2px 6px;
     border-radius: 4px;
-    font-family: 'JetBrains Mono', monospace;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
 }
 
 /* --- Toggle Switch (used by SettingCard boolean toggles) --- */
@@ -1113,12 +1083,9 @@
 }
 
 .toggle-label {
-    font-family: 'JetBrains Mono', monospace;
     font-size: 11px;
     font-weight: 700;
-    letter-spacing: 0.12em;
     color: var(--text-muted);
-    text-transform: uppercase;
 }
 
 /* --- Cron Preview (Deep Diagnostic Schedule card) --- */
@@ -1135,11 +1102,8 @@
 }
 
 .cron-preview .preview-label {
-    font-family: 'JetBrains Mono', monospace;
     font-size: 11px;
     font-weight: 700;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
     color: var(--text-dim);
 }
 
@@ -1158,12 +1122,9 @@
     display: flex;
     align-items: center;
     gap: 6px;
-    font-family: 'JetBrains Mono', monospace;
     font-size: 11px;
     font-weight: 600;
     color: var(--text-dim);
-    text-transform: uppercase;
-    letter-spacing: 0.08em;
     margin-bottom: 8px;
 }
 
@@ -1179,11 +1140,8 @@
     border: 1px solid var(--border);
     background: rgb(var(--rgb-white) / 0.03);
     color: var(--text-muted);
-    font-family: 'JetBrains Mono', monospace;
     font-size: 11px;
     font-weight: 600;
-    letter-spacing: 0.05em;
-    text-transform: uppercase;
     cursor: pointer;
     transition: all 0.2s ease;
 }
@@ -1289,11 +1247,8 @@
 
 /* AI Self-Healing on/off label */
 .healing-state {
-    font-family: 'JetBrains Mono', monospace;
     font-size: 11px;
     font-weight: 700;
-    letter-spacing: 0.12em;
-    text-transform: uppercase;
     margin-top: -4px;
 }
 
@@ -1345,12 +1300,9 @@
     display: flex;
     align-items: center;
     gap: 6px;
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 10px;
+    font-size: 11px;
     font-weight: 700;
-    letter-spacing: 0.12em;
     color: var(--text-dim);
-    text-transform: uppercase;
 }
 
 .healing-events__list {
@@ -1448,11 +1400,8 @@
     margin-left: auto;
     padding: 4px 10px;
     border-radius: 6px;
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 10px;
+    font-size: 11px;
     font-weight: 700;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
 }
 
 .provider-count-pill.is-ok {
@@ -1562,11 +1511,8 @@
     gap: 5px;
     padding: 3px 8px;
     border-radius: 4px;
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 10px;
+    font-size: 11px;
     font-weight: 700;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
     border: 1px solid transparent;
 }
 
@@ -1624,12 +1570,9 @@
 }
 
 .model-param__label-row label {
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 10px;
+    font-size: 11px;
     font-weight: 700;
-    letter-spacing: 0.12em;
     color: var(--text-dim);
-    text-transform: uppercase;
 }
 
 .model-param__value {
@@ -1819,12 +1762,9 @@
 }
 
 .stat-strip__label {
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 10px;
+    font-size: 11px;
     font-weight: 600;
     color: var(--text-dim);
-    text-transform: uppercase;
-    letter-spacing: 0.12em;
 }
 
 /* Generic data card (wraps tables / sticky lists) */
@@ -1908,11 +1848,8 @@
     background: transparent;
     border: 1px solid var(--border-strong);
     color: var(--text-muted);
-    font-family: 'JetBrains Mono', monospace;
     font-size: 11px;
     font-weight: 600;
-    letter-spacing: 0.05em;
-    text-transform: uppercase;
     cursor: pointer;
     transition: all 150ms ease;
 }

@@ -22,13 +22,14 @@ import { humanizeFailureCategory } from './derive';
 import { Copy } from 'lucide-react';
 import { useToast } from '../ui/toast';
 import type { MetadataRow } from './metadata-card';
+import { sentenceCase } from '../../lib/labels';
 
 function statusTone(status: string | null | undefined): { label: string; tone: StatusTone } {
-  if (status === 'running') return { label: 'RUNNING', tone: 'running' };
-  if (status === 'failed') return { label: 'FAILED', tone: 'failed' };
-  if (status === 'ended' || status === 'passed') return { label: 'PASSED', tone: 'passed' };
+  if (status === 'running') return { label: 'Running', tone: 'running' };
+  if (status === 'failed') return { label: 'Failed', tone: 'failed' };
+  if (status === 'ended' || status === 'passed') return { label: 'Passed', tone: 'passed' };
   const s = typeof status === 'string' ? status : '';
-  return { label: (s || 'UNKNOWN').toUpperCase(), tone: 'offline' };
+  return { label: sentenceCase(s || 'unknown'), tone: 'offline' };
 }
 
 export const SessionDetailPage: React.FC = () => {

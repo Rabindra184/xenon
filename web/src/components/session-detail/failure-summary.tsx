@@ -69,7 +69,7 @@ export const FailureSummary: React.FC<Props> = ({ session, buildName, buildId, a
           <AlertTriangle className="h-4 w-4 text-[var(--red)]" />
           <span className="text-sm font-semibold text-[var(--red)]">Failure summary</span>
           {category && (
-            <span className="text-[10px] font-mono uppercase tracking-widest text-[var(--text-dim)] ml-2">
+            <span className="text-[11px] text-[var(--text-dim)] ml-2">
               {category}
             </span>
           )}
@@ -98,7 +98,7 @@ export const FailureSummary: React.FC<Props> = ({ session, buildName, buildId, a
 
       <div className="px-4 py-4 space-y-4">
         <div>
-          <div className="text-[10px] font-mono font-semibold uppercase tracking-widest text-[var(--text-dim)] mb-1">
+          <div className="text-[11px] font-semibold text-[var(--text-dim)] mb-1">
             Reason
           </div>
           <div className="text-sm text-[var(--text)]">
@@ -107,7 +107,7 @@ export const FailureSummary: React.FC<Props> = ({ session, buildName, buildId, a
         </div>
 
         <div>
-          <div className="text-[10px] font-mono font-semibold uppercase tracking-widest text-[var(--text-dim)] mb-1">
+          <div className="text-[11px] font-semibold text-[var(--text-dim)] mb-1">
             First error
           </div>
           <div className="text-sm text-[var(--text-muted)] min-w-0">
@@ -116,18 +116,18 @@ export const FailureSummary: React.FC<Props> = ({ session, buildName, buildId, a
             ) : firstError ? (
               <dl className="space-y-1 text-xs">
                 <div className="flex gap-2 min-w-0">
-                  <dt className="text-[var(--text-dim)] shrink-0 uppercase text-[10px] tracking-widest">Command</dt>
+                  <dt className="text-[var(--text-dim)] shrink-0 text-[11px]">Command</dt>
                   <dd className="font-mono break-all">{(firstError as any).command_name || (firstError as any).title || '—'}</dd>
                 </div>
                 {(firstError as any).subtitle && (
                   <div className="flex gap-2 min-w-0">
-                    <dt className="text-[var(--text-dim)] shrink-0 uppercase text-[10px] tracking-widest">Target</dt>
+                    <dt className="text-[var(--text-dim)] shrink-0 text-[11px]">Target</dt>
                     <dd className="font-mono break-all">{(firstError as any).subtitle}</dd>
                   </div>
                 )}
                 {(firstError as any).response && (
                   <div className="flex gap-2 min-w-0">
-                    <dt className="text-[var(--text-dim)] shrink-0 uppercase text-[10px] tracking-widest">Response</dt>
+                    <dt className="text-[var(--text-dim)] shrink-0 text-[11px]">Response</dt>
                     <dd className="font-mono break-all">{String((firstError as any).response).slice(0, 400)}</dd>
                   </div>
                 )}
@@ -140,7 +140,7 @@ export const FailureSummary: React.FC<Props> = ({ session, buildName, buildId, a
 
         {showStack && (
           <div>
-            <div className="text-[10px] font-mono font-semibold uppercase tracking-widest text-[var(--text-dim)] mb-1">
+            <div className="text-[11px] font-semibold text-[var(--text-dim)] mb-1">
               Stack trace
             </div>
             <pre className="rounded-md border border-[var(--border)] bg-[var(--bg)] p-3 font-mono text-[11px] leading-relaxed text-[var(--color-accent)] overflow-x-auto">

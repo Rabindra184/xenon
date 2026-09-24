@@ -239,7 +239,7 @@ export const AISettings: React.FC = () => {
               <span
                 className={`provider-count-pill ${configuredCount > 0 ? 'is-ok' : 'is-empty'}`}
               >
-                {configuredCount} / {providers.length} CONFIGURED
+                {configuredCount} / {providers.length} configured
               </span>
             }
             description="Providers are activated via environment variables. Select a configured engine to activate."
@@ -273,7 +273,7 @@ export const AISettings: React.FC = () => {
                         {isActive ? (
                           <span className="provider-status provider-status--active">
                             <CheckCircle2 size={11} />
-                            {provider.isConfigured ? 'ACTIVE' : 'ACTIVE — NO KEY'}
+                            {provider.isConfigured ? 'Active' : 'Active — no key'}
                           </span>
                         ) : provider.isConfigured ? (
                           <span className="provider-status provider-status--ready">
@@ -283,7 +283,7 @@ export const AISettings: React.FC = () => {
                         ) : (
                           <span className="provider-status provider-status--off">
                             <Lock size={10} />
-                            NOT SET
+                            Not set
                           </span>
                         )}
                       </div>
@@ -301,7 +301,7 @@ export const AISettings: React.FC = () => {
           >
             <div className="ai-config-display">
               <div className="ai-config-row">
-                <span className="ai-config-label">Active Provider</span>
+                <span className="ai-config-label">Active provider</span>
                 <span className="ai-config-value">
                   {activeProvider?.icon}
                   {activeProvider?.name || '—'}
@@ -322,14 +322,14 @@ export const AISettings: React.FC = () => {
                     {config.aiProvider === 'ollama' &&
                       (config.ollamaModel || config.aiModel || getModelDefault('ollama'))}
                   </span>
-                  <span className="ai-config-default">DEFAULT</span>
+                  <span className="ai-config-default">Default</span>
                 </span>
               </div>
               <div className="ai-config-row">
                 <span className="ai-config-label">Base URL</span>
                 <span className="ai-config-value mono">
                   <span>{config.aiBaseUrl || getBaseUrlDefault(config.aiProvider)}</span>
-                  {!config.aiBaseUrl && <span className="ai-config-default">DEFAULT</span>}
+                  {!config.aiBaseUrl && <span className="ai-config-default">Default</span>}
                 </span>
               </div>
             </div>
@@ -342,7 +342,7 @@ export const AISettings: React.FC = () => {
 
               <div className="model-param">
                 <div className="model-param__label-row">
-                  <label htmlFor="ai-temp">TEMPERATURE</label>
+                  <label htmlFor="ai-temp">Temperature</label>
                   <span className="model-param__value">{config.aiTemperature.toFixed(1)}</span>
                 </div>
                 <input
@@ -361,7 +361,7 @@ export const AISettings: React.FC = () => {
 
               <div className="model-param">
                 <div className="model-param__label-row">
-                  <label htmlFor="ai-max-tokens">MAX TOKENS</label>
+                  <label htmlFor="ai-max-tokens">Max tokens</label>
                 </div>
                 <div className="setting-input-wrapper">
                   <input
@@ -382,7 +382,7 @@ export const AISettings: React.FC = () => {
 
               <div className="model-param">
                 <div className="model-param__label-row">
-                  <label htmlFor="ai-top-p">TOP P</label>
+                  <label htmlFor="ai-top-p">Top P</label>
                   <span className="model-param__value">{config.aiTopP.toFixed(2)}</span>
                 </div>
                 <input

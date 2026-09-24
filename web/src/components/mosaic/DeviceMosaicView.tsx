@@ -407,7 +407,7 @@ export default function DeviceMosaicView() {
         <div className="grid grid-cols-[260px_1fr] gap-3 flex-1 min-h-0">
           <aside className="flex flex-col gap-2 border border-[var(--border)] rounded p-3 overflow-y-auto min-h-0">
             <div className="flex items-center justify-between">
-              <span className="text-xs uppercase tracking-wide text-[var(--text-dim)]">
+              <span className="text-xs text-[var(--text-dim)]">
                 Devices
               </span>
               <button

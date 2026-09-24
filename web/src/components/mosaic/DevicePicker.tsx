@@ -1,4 +1,5 @@
 import * as React from 'react';
+import { platformLabel } from '../../lib/labels';
 
 export interface PickerDevice {
   udid: string;
@@ -51,9 +52,7 @@ const GROUP_DEFS: Array<{ id: string; label: string; match: (p: string) => boole
 ];
 
 function platformBadge(p?: string): string {
-  if (!p) return '';
-  if (p === 'androidtv' || p === 'android-tv') return 'ANDROID TV';
-  return p.toUpperCase();
+  return platformLabel(p);
 }
 
 export function DevicePicker({ devices, inMosaic, onToggle }: Props) {
@@ -115,7 +114,7 @@ export function DevicePicker({ devices, inMosaic, onToggle }: Props) {
             <button
               type="button"
               onClick={() => setCollapsed((c) => ({ ...c, [g.id]: !c[g.id] }))}
-              className="flex items-center justify-between w-full text-[10px] uppercase tracking-wider text-[var(--text-dim)] hover:text-white px-1 py-0.5"
+              className="flex items-center justify-between w-full text-[11px] text-[var(--text-dim)] hover:text-white px-1 py-0.5"
             >
               <span className="flex items-center gap-1.5">
                 <span
@@ -190,7 +189,7 @@ export function DevicePicker({ devices, inMosaic, onToggle }: Props) {
                           {d.name ?? d.udid}
                         </span>
                         {d.platform && (
-                          <span className="text-[9px] uppercase tracking-wider px-1.5 py-0.5 rounded bg-[var(--surface-2)] text-[var(--text-dim)]">
+                          <span className="text-[11px] px-1.5 py-0.5 rounded bg-[var(--surface-2)] text-[var(--text-dim)]">
                             {platformBadge(d.platform)}
                           </span>
                         )}
