@@ -849,6 +849,45 @@ for (const width of WIDTHS) {
   }
 }
 
+// The account menu (theme, Profile, Logout) lives in the fixed app header,
+// whose stacking layer is z-index 20. A page element stacked above that layer
+// covers the whole header, menu included: Devices' and Apps' sticky toolbars
+// sat at 1002 / 100, so on those pages the menu opened *behind* the toolbar
+// and Profile/Logout couldn't be clicked. Assert every item is the topmost
+// element at its own centre, which is what a real click needs. The control
+// route is skipped: its full-screen overlay covers the header by design.
+for (const width of [1280, 1440]) {
+  for (const route of ROUTES.filter((r) => !r.includes('/control'))) {
+    test(`account menu is clickable at ${width}px on ${route}`, async ({ page }) => {
+      await page.setViewportSize({ width, height: 900 });
+      await (ROUTE_DATA_MOCKS[route]?.(page) ?? Promise.resolve());
+      await page.goto(route);
+      await page.waitForLoadState('networkidle');
+      await page.locator('header button[aria-haspopup="true"]').click();
+      await expect(page.getByRole('radiogroup', { name: 'Theme' })).toBeVisible();
+
+      const blocked = await page.evaluate(() => {
+        const items = [
+          ...document.querySelectorAll('header [role=radiogroup] [role=radio]'),
+          ...[...document.querySelectorAll('header button')].filter((b) =>
+            ['Profile', 'Logout'].includes((b.textContent || '').trim()),
+          ),
+        ];
+        return items
+          .map((el) => {
+            const r = el.getBoundingClientRect();
+            const top = document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2);
+            return top && (top === el || el.contains(top))
+              ? null
+              : `${(el.textContent || '').trim()} is covered by ${top?.tagName.toLowerCase()}.${String(top?.className || '').slice(0, 60)}`;
+          })
+          .filter(Boolean);
+      });
+      expect(blocked, `Account menu items unreachable at ${width}px on ${route}`).toEqual([]);
+    });
+  }
+}
+
 // Landscape is pure client state (setIsPortrait(false)); no device command is
 // sent, so it runs against the mock. The portrait canvas is narrow and never
 // overflowed — the clip only appears in landscape, which the matrix above never

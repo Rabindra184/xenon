@@ -30,6 +30,8 @@ export default function ProfilePage() {
             <button
               key={t.id}
               onClick={() => setTab(t.id)}
+              // The highlight alone told only sighted users which view is open.
+              aria-current={tab === t.id ? 'page' : undefined}
               className={`block w-full text-left px-3 py-2 text-sm rounded-md mb-1 ${
                 tab === t.id
                   ? 'bg-[var(--color-accent)]/10 text-[var(--color-accent)]'

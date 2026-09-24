@@ -56,10 +56,16 @@ export const FleetStatus: React.FC<Props> = ({ devices, maxRows = 6 }) => {
           <span className="text-xs font-mono text-[var(--text-dim)]">{devices.length} devices</span>
         </div>
         <div className="flex items-center gap-2">
-          <div className="flex items-center gap-0.5 bg-[var(--surface-2)] border border-[var(--border)] rounded-md p-0.5">
+          <div
+            role="group"
+            aria-label="Filter devices"
+            className="flex items-center gap-0.5 bg-[var(--surface-2)] border border-[var(--border)] rounded-md p-0.5"
+          >
+            {/* aria-pressed exposes which filter is on; the fill alone was visual only. */}
             <button
               type="button"
               onClick={() => setFilter('all')}
+              aria-pressed={filter === 'all'}
               className={`px-2 py-1 text-[11px] rounded transition-colors ${filter === 'all' ? 'bg-[var(--border-strong)] text-[var(--text)]' : 'text-[var(--text-dim)] hover:text-[var(--text)]'}`}
             >
               All
@@ -67,6 +73,7 @@ export const FleetStatus: React.FC<Props> = ({ devices, maxRows = 6 }) => {
             <button
               type="button"
               onClick={() => setFilter('issues')}
+              aria-pressed={filter === 'issues'}
               className={`px-2 py-1 text-[11px] rounded transition-colors flex items-center gap-1 ${filter === 'issues' ? 'bg-[var(--border-strong)] text-[var(--text)]' : 'text-[var(--text-dim)] hover:text-[var(--text)]'}`}
             >
               <Filter className="h-3 w-3" />

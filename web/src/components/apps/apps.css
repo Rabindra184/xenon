@@ -185,7 +185,9 @@
   background: rgba(15, 15, 26, 0.4);
   backdrop-filter: blur(12px);
   border-bottom: 1px solid var(--border);
-  z-index: 100;
+  /* Below the app header (z-index 20) so its account menu can open over this
+     toolbar. At 100 the menu was cut off and Profile/Logout couldn't be clicked. */
+  z-index: 15;
   gap: 16px;
   flex-wrap: wrap;
 }
