@@ -2,36 +2,12 @@ import React, { useEffect, useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ChevronDown, Search, LogOut, User as UserIcon } from 'lucide-react';
 import { useAuth } from '../../auth/auth-context';
-
-type Staleness = 'fresh' | 'aging' | 'stale';
-
-// Tracks elapsed time since this Header mounted. It's a rough proxy for
-// "time since you last saw a data update" — resets on page reload but
-// not on websocket events (Phase 4 will wire a real last-event timestamp
-// via a ConnectionContext once the dashboard data layer is refactored).
-function useRelativeTime(): { label: string; staleness: Staleness } {
-  const [tick, setTick] = useState(0);
-  const [startedAt] = useState(() => Date.now());
-  useEffect(() => {
-    const id = setInterval(() => setTick((t) => t + 1), 5000);
-    return () => clearInterval(id);
-  }, []);
-  const secs = Math.floor((Date.now() - startedAt) / 1000) + tick * 0;
-  const mins = Math.floor(secs / 60);
-  const hrs = Math.floor(mins / 60);
-  const label =
-    secs < 10 ? 'Updated just now' :
-    secs < 60 ? `Updated ${secs}s ago` :
-    mins < 60 ? `Updated ${mins}m ago` :
-                `Updated ${hrs}h ago`;
-  const staleness: Staleness = mins >= 10 ? 'stale' : mins >= 2 ? 'aging' : 'fresh';
-  return { label, staleness };
-}
+import { useConnectionStatus } from '../../hooks/useConnectionStatus';
 
 const Header: React.FC = () => {
   const navigate = useNavigate();
   const { me, signOut } = useAuth();
-  const { label: rel, staleness } = useRelativeTime();
+  const connection = useConnectionStatus();
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const ddRef = useRef<HTMLDivElement>(null);
 
@@ -86,27 +62,25 @@ const Header: React.FC = () => {
 
         {/* Right */}
         <div className="flex items-center gap-3">
-          <span
-            className={`hidden md:inline text-xs font-mono transition-colors ${
-              staleness === 'stale'
-                ? 'text-[var(--red)]'
-                : staleness === 'aging'
-                  ? 'text-[var(--amber)]'
-                  : 'text-[var(--text-dim)]'
+          {/* Driven by the real socket connection. Replaced a hardcoded
+              "Online" pill and an "Updated Xm ago" timer that counted from
+              when this header mounted and went red after 10 minutes. */}
+          <div
+            role="status"
+            title={connection.title}
+            className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full border ${
+              connection.tone === 'live'
+                ? 'bg-[var(--green)]/10 border-[var(--green)]/20 text-[var(--green)]'
+                : connection.tone === 'reconnecting'
+                  ? 'bg-[var(--amber)]/10 border-[var(--amber)]/25 text-[var(--amber)]'
+                  : 'bg-[var(--red)]/10 border-[var(--red)]/25 text-[var(--red)]'
             }`}
-            title={
-              staleness === 'stale'
-                ? 'Data is stale — reconnection may be needed.'
-                : staleness === 'aging'
-                  ? 'Data hasn’t updated in a while.'
-                  : 'Live data.'
-            }
           >
-            {rel}
-          </span>
-          <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-[var(--green)]/10 border border-[var(--green)]/20">
-            <span className="h-1.5 w-1.5 rounded-full bg-[var(--green)] pulse-dot" />
-            <span className="text-[11px] font-medium text-[var(--green)]">Online</span>
+            <span
+              className={`h-1.5 w-1.5 rounded-full bg-current ${connection.tone === 'live' ? 'pulse-dot' : ''}`}
+              aria-hidden="true"
+            />
+            <span className="text-[11px] font-medium">{connection.label}</span>
           </div>
           <div className="relative" ref={ddRef}>
             <button
@@ -129,30 +103,14 @@ const Header: React.FC = () => {
               <div className="absolute top-full right-0 mt-2 w-64 rounded-md border border-[var(--border)] bg-[var(--surface)] shadow-lg overflow-hidden">
                 <div className="px-3 py-2">
                   <div className="text-[10px] uppercase tracking-wider text-[var(--text-dim)] mb-1">
-                    Workspace
-                  </div>
-                  <div className="flex items-center justify-between text-xs text-[var(--text)]">
-                    <span className="text-[var(--text-muted)]">Registry</span>
-                    <span>Default</span>
-                  </div>
-                  <div className="flex items-center justify-between text-xs text-[var(--text)] mt-1">
-                    <span className="text-[var(--text-muted)]">Node</span>
-                    <span>Root · Primary</span>
-                  </div>
-                </div>
-                <div className="h-px bg-[var(--border)]" />
-                <div className="px-3 py-2">
-                  <div className="text-[10px] uppercase tracking-wider text-[var(--text-dim)] mb-1">
                     System
                   </div>
+                  {/* Only facts the client actually knows. The static "Registry ·
+                      Default", "Node · Root · Primary" and "Stable" rows that
+                      used to sit here described nothing real. */}
                   <div className="flex items-center justify-between text-xs text-[var(--text)]">
-                    <span className="flex items-center gap-1.5">
-                      <span className="h-1.5 w-1.5 rounded-full bg-[var(--green)]" />
-                      Stable
-                    </span>
-                    <span className="font-mono text-[var(--text-muted)]">
-                      v{__XENON_VERSION__}
-                    </span>
+                    <span className="text-[var(--text-muted)]">Version</span>
+                    <span className="font-mono text-[var(--text-muted)]">v{__XENON_VERSION__}</span>
                   </div>
                 </div>
                 <div className="h-px bg-[var(--border)]" />

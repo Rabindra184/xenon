@@ -63,3 +63,29 @@ describe('CommandIndex', () => {
     expect(settingsItem?.path).toBe('/settings');
   });
 });
+
+describe('CommandIndex — builds and the destinations it used to miss', () => {
+  it('finds a build by name and opens it', () => {
+    const idx = new CommandIndex();
+    idx.setBuilds([
+      { id: 'b-1', name: 'author-appium-java skill', sessionCount: 2, failedCount: 1 },
+    ]);
+    const [hit] = idx.search('author-appium');
+    expect(hit).toMatchObject({
+      kind: 'build',
+      label: 'author-appium-java skill',
+      sub: '2 sessions · 1 failed',
+      path: '/builds/b-1',
+    });
+  });
+
+  it.each([
+    ['Live Devices', '/devices/live'],
+    ['Selector Health', '/selector-health'],
+    ['Users', '/users'],
+    ['Profile', '/profile'],
+  ])('navigates to %s', (label, path) => {
+    const idx = new CommandIndex();
+    expect(idx.search(label)[0]).toMatchObject({ kind: 'nav', label, path });
+  });
+});

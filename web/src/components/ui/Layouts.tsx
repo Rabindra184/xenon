@@ -45,7 +45,9 @@ export const ActionBar: React.FC<ActionBarProps> = ({
       )}
     </div>
     <div className="footer-right">
-      <Button variant="secondary" size="lg" onClick={onDiscard} disabled={isSaving || isValidating}>
+      {/* Not disabled while invalid: an invalid edit is exactly the one you
+          most want to throw away. Only a save in flight blocks it. */}
+      <Button variant="secondary" size="lg" onClick={onDiscard} disabled={isSaving}>
         Discard
       </Button>
       <Button variant="primary" size="lg" onClick={onSave} disabled={isSaving || isValidating}>

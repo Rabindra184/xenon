@@ -3,6 +3,8 @@ import { Link } from 'react-router-dom';
 import XenonApiService from '../../api-service';
 import './settings.css';
 import { ActionBar } from '../ui/Layouts';
+import { Modal } from '../ui/Modal';
+import { Button } from '../ui/button';
 import {
   Shield as InfrastructureIcon,
   RefreshCw,
@@ -22,6 +24,7 @@ import { PageHeader } from '../ui/page-header';
 import { useToast } from '../ui/toast';
 import { IHealingEvent, IHealingEventsResponse } from '../../interfaces/IHealingEvent';
 import { useSocket } from '../../hooks/useSocket';
+import { describeSaveError } from '../../api-service/api-client';
 
 interface InfraConfig {
   healthCheckIntervalMs: number;
@@ -93,6 +96,7 @@ export const Settings: React.FC = () => {
   const [baseline, setBaseline] = useState<InfraConfig>(DEFAULTS);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [confirmingReset, setConfirmingReset] = useState(false);
   const [healingEvents, setHealingEvents] = useState<IHealingEvent[]>([]);
   const [healingLoaded, setHealingLoaded] = useState(false);
   const { on } = useSocket();
@@ -175,7 +179,7 @@ export const Settings: React.FC = () => {
       toast('Infrastructure parameters synchronized across fleet.', 'success');
     } catch (error) {
       console.error('Failed to save settings', error);
-      toast('Synchronization failed. Check network integrity.', 'error');
+      toast(describeSaveError(error), 'error');
     } finally {
       setSaving(false);
     }
@@ -390,13 +394,45 @@ export const Settings: React.FC = () => {
         <ActionBar
           onSave={() => handleSave()}
           onDiscard={handleDiscard}
-          onRestoreDefaults={handleResetToDefaults}
+          // Confirm first: it writes the server config and zeroes metrics,
+          // and it sits one button away from Discard.
+          onRestoreDefaults={() => setConfirmingReset(true)}
           isSaving={saving}
           isValidating={!!intervalError}
           isDirty={isDirty}
           saveLabel={canSave ? 'Save Configuration' : 'Resolve errors to save'}
         />
       )}
+
+      <Modal
+        open={confirmingReset}
+        onClose={() => setConfirmingReset(false)}
+        title="Restore default settings?"
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setConfirmingReset(false)}>
+              Cancel
+            </Button>
+            <Button
+              variant="danger"
+              onClick={async () => {
+                setConfirmingReset(false);
+                await handleResetToDefaults();
+              }}
+            >
+              Restore defaults
+            </Button>
+          </>
+        }
+      >
+        <p className="text-sm text-[var(--text-muted)]">This saves immediately and can't be undone:</p>
+        <ul className="mt-2 list-disc pl-5 text-sm text-[var(--text)] space-y-1">
+          <li>Idle health frequency goes back to {DEFAULTS.healthCheckIntervalMs.toLocaleString()} ms</li>
+          <li>The diagnostic schedule is cleared</li>
+          <li>AI self-healing is turned on</li>
+          <li>Every device's healed-selector count is reset to zero</li>
+        </ul>
+      </Modal>
     </div>
   );
 };

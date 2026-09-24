@@ -1,5 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import apiClient, { isDeviceConflictBody, setApiToastEmitter } from './api-client';
+import apiClient, {
+  ApiError,
+  describeSaveError,
+  isDeviceConflictBody,
+  setApiToastEmitter,
+} from './api-client';
 
 // Minimal stand-in for the fetch Response the api-client actually consumes:
 // `jsonResult` calls `res.clone().json()` to peek at the body on 403/409,
@@ -183,5 +188,65 @@ describe('api-client responses with no body', () => {
       }),
     );
     expect(await apiClient.makeDELETERequest('/apps/abc')).to.deep.equal({ ok: true });
+  });
+});
+
+describe('api-client: mutations reject on a refused request', () => {
+  afterEach(() => {
+    setApiToastEmitter(null);
+    vi.unstubAllGlobals();
+  });
+
+  it('a POST answered 400 rejects with the server reason, not a resolved body', async () => {
+    stubFetch(400, { error: 'interval below minimum' });
+    await expect(apiClient.makePOSTRequest('/config', {}, {})).rejects.toMatchObject({
+      name: 'ApiError',
+      status: 400,
+      message: 'interval below minimum',
+    });
+  });
+
+  it('a DELETE answered 500 rejects, falling back to the status when there is no reason', async () => {
+    stubFetch(500, {});
+    await expect(apiClient.makeDELETERequest('/apps/x')).rejects.toMatchObject({
+      status: 500,
+      message: 'Request failed (500)',
+    });
+  });
+
+  it('a 403 still toasts, and now also rejects so the caller cannot report success', async () => {
+    const toast = vi.fn();
+    setApiToastEmitter(toast);
+    stubFetch(403, { error: 'admin scope required' });
+    await expect(apiClient.makePOSTRequest('/config', {}, {})).rejects.toBeInstanceOf(ApiError);
+    expect(toast).toHaveBeenCalledWith('admin scope required', 'error');
+  });
+
+  it('resolveErrors keeps the old contract for callers that read the body', async () => {
+    stubFetch(409, { success: false, error: 'device_held_by_another_user', message: 'held' });
+    await expect(
+      apiClient.makePOSTRequest('/control/u/stream/start', {}, {}, {}, { resolveErrors: true }),
+    ).resolves.toMatchObject({ error: 'device_held_by_another_user' });
+  });
+
+  it('GETs still resolve with error bodies (loaders read them; changing that is separate work)', async () => {
+    stubFetch(404, { error: 'not found' });
+    await expect(apiClient.makeGETRequest('/builds/x')).resolves.toEqual({ error: 'not found' });
+  });
+
+  it('2xx and 204 are unchanged', async () => {
+    stubFetch(200, { ok: 1 });
+    await expect(apiClient.makePOSTRequest('/config', {}, {})).resolves.toEqual({ ok: 1 });
+    stubFetch(204, undefined);
+    await expect(apiClient.makeDELETERequest('/apps/x')).resolves.toBeNull();
+  });
+});
+
+describe('describeSaveError', () => {
+  it('shows the server reason for a refusal and blames the network only for a network failure', () => {
+    expect(describeSaveError(new ApiError('interval below minimum', 400, {}))).toBe(
+      'The server rejected the change: interval below minimum',
+    );
+    expect(describeSaveError(new TypeError('Failed to fetch'))).toMatch(/Couldn't reach/);
   });
 });

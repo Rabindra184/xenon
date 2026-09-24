@@ -8,6 +8,7 @@ import Sidebar from './components/sidebar/sidebar';
 import CommandPalette from './components/command-palette/command-palette';
 import { AuthProvider } from './auth/auth-context';
 import { RouteGuard } from './auth/route-guard';
+import { DocumentTitle } from './lib/document-title';
 
 const LoginPage = lazy(() => import('./pages/login'));
 const ForgotPasswordPage = lazy(() => import('./pages/forgot-password'));
@@ -34,6 +35,7 @@ function Shell() {
 function App() {
   return (
     <BrowserRouter basename="/xenon">
+      <DocumentTitle />
       <AuthProvider>
         <Suspense fallback={<div style={{ padding: 40 }}>Loading…</div>}>
           <Routes>

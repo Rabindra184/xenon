@@ -15,6 +15,7 @@ import { ActionBar } from '../ui/Layouts';
 import { SettingCard } from '../ui/SettingCard';
 import { PageHeader } from '../ui/page-header';
 import { useToast } from '../ui/toast';
+import { describeSaveError } from '../../api-service/api-client';
 
 interface MaintenanceConfig {
   buildCleanupDays: number;
@@ -85,7 +86,7 @@ export const MaintenanceSettings: React.FC = () => {
       toast('Maintenance parameters synchronized across fleet.', 'success');
     } catch (error) {
       console.error('Failed to save maintenance settings', error);
-      toast('Synchronization failed. Check network integrity.', 'error');
+      toast(describeSaveError(error), 'error');
     } finally {
       setSaving(false);
     }

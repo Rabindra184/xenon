@@ -1,4 +1,10 @@
-.input-base {
+/* :where() gives the base style zero specificity, so a utility passed via
+   <Input className> always wins. Without it this rule, which loads after
+   Tailwind's utilities, beat same-specificity classes by source order:
+   `pl-8` on the Sessions search rendered as 12px and the search icon sat on
+   top of the first letters. States (:focus, ::placeholder) keep their own
+   selectors below. */
+:where(.input-base) {
   display: flex;
   height: 36px;
   width: 100%;
