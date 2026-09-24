@@ -39,7 +39,7 @@ export default function ForgotPasswordPage() {
           </p>
         )}
         <div className="mt-6 text-center">
-          <Link to="/login" className="text-sm text-[var(--green)] underline-offset-4 hover:underline">
+          <Link to="/login" className="text-sm text-[var(--color-accent)] underline-offset-4 hover:underline">
             Back to sign in
           </Link>
         </div>
@@ -73,13 +73,13 @@ export default function ForgotPasswordPage() {
               onChange={(e) => setEmail(e.target.value)}
               autoFocus
               required
-              className="w-full mb-4 h-10 px-3 rounded-lg bg-[var(--bg)] border border-[var(--border-strong)] text-sm text-[var(--text)] outline-none focus:border-[var(--green)] focus:shadow-[0_0_0_3px_var(--accent-subtle)]"
+              className="w-full mb-4 h-10 px-3 rounded-lg bg-[var(--bg)] border border-[var(--border-strong)] text-sm text-[var(--text)] outline-none focus:border-[var(--color-accent)] focus:shadow-[0_0_0_3px_var(--accent-subtle)]"
             />
             {error && <div role="alert" className="text-sm text-[var(--red)] mb-3">{error}</div>}
             <button
               type="submit"
               disabled={submitting || !email}
-              className="mt-5 w-full h-10 rounded-md bg-[var(--green)] text-black font-medium text-sm disabled:opacity-50"
+              className="mt-5 w-full h-10 rounded-md bg-[var(--color-accent)] text-black font-medium text-sm disabled:opacity-50"
             >
               {submitting ? 'Sending…' : 'Send reset link'}
             </button>
@@ -87,7 +87,7 @@ export default function ForgotPasswordPage() {
         )}
 
         <div className="mt-6 text-center">
-          <Link to="/login" className="text-sm text-[var(--green)] underline-offset-4 hover:underline">
+          <Link to="/login" className="text-sm text-[var(--color-accent)] underline-offset-4 hover:underline">
             Back to sign in
           </Link>
         </div>

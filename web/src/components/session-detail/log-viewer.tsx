@@ -17,12 +17,12 @@ export const LogViewer: React.FC<Props> = ({ sessionLogs, deviceLogs, debugLogs,
 
   const tabs: LogTab[] = useMemo(
     () => [
-      { key: 'text', label: 'Text Logs', count: sessionLogs.length },
-      { key: 'performance', label: 'Performance Trace', count: 0 },
+      { key: 'text', label: 'Text logs', count: sessionLogs.length },
+      { key: 'performance', label: 'Performance trace', count: 0 },
       { key: 'evidence', label: 'Evidence', count: 0 },
-      { key: 'device', label: 'Device Logs', count: deviceLogs.length },
-      { key: 'debug', label: 'Debug Logs', count: debugLogs.length },
-      { key: 'profiling', label: 'System Profiling', count: profiling.length, hideWhenEmpty: true },
+      { key: 'device', label: 'Device logs', count: deviceLogs.length },
+      { key: 'debug', label: 'Debug logs', count: debugLogs.length },
+      { key: 'profiling', label: 'System profiling', count: profiling.length, hideWhenEmpty: true },
     ],
     [sessionLogs.length, deviceLogs.length, debugLogs.length, profiling.length],
   );

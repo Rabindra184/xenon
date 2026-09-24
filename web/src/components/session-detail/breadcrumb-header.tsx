@@ -34,12 +34,12 @@ export const BreadcrumbHeader: React.FC<Props> = ({ buildId, buildName, sessionI
       <ChevronRight className="h-3 w-3 text-[var(--text-dim)]" />
       <Link
         to={`/builds/${buildId}`}
-        className="text-[10px] uppercase tracking-widest font-mono text-[var(--green)] hover:underline"
+        className="text-[11px] text-[var(--color-accent)] hover:underline"
       >
         {buildName}
       </Link>
       <ChevronRight className="h-3 w-3 text-[var(--text-dim)]" />
-      <span className="text-[10px] uppercase tracking-widest text-[var(--text-dim)]">Sessions</span>
+      <span className="text-[11px] text-[var(--text-dim)]">Sessions</span>
       <ChevronRight className="h-3 w-3 text-[var(--text-dim)]" />
       <span className="font-mono text-xs text-[var(--text)]" title={sessionId}>
         #{sessionId}

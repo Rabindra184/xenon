@@ -67,7 +67,7 @@ const ReservationModal: React.FC<ReservationModalProps> = ({ device, onClose, on
       title={
         <>
           <CalendarPlus size={16} className="title-icon" />
-          Reserve Device
+          Reserve device
         </>
       }
       footer={
@@ -101,9 +101,9 @@ const ReservationModal: React.FC<ReservationModalProps> = ({ device, onClose, on
             <>
               <User
                 size={14}
-                style={{ marginRight: 6, verticalAlign: 'middle', color: 'var(--green)' }}
+                style={{ marginRight: 6, verticalAlign: 'middle', color: 'var(--color-accent)' }}
               />
-              Reserved By
+              Reserved by
             </>
           }
           htmlFor="reservation-reserved-by"
@@ -135,7 +135,7 @@ const ReservationModal: React.FC<ReservationModalProps> = ({ device, onClose, on
             <>
               <Clock
                 size={14}
-                style={{ marginRight: 6, verticalAlign: 'middle', color: 'var(--green)' }}
+                style={{ marginRight: 6, verticalAlign: 'middle', color: 'var(--color-accent)' }}
               />
               Duration
             </>
@@ -159,9 +159,9 @@ const ReservationModal: React.FC<ReservationModalProps> = ({ device, onClose, on
             <>
               <MessageSquare
                 size={14}
-                style={{ marginRight: 6, verticalAlign: 'middle', color: 'var(--green)' }}
+                style={{ marginRight: 6, verticalAlign: 'middle', color: 'var(--color-accent)' }}
               />
-              Reason (Optional)
+              Reason (optional)
             </>
           }
           htmlFor="reservation-reason"

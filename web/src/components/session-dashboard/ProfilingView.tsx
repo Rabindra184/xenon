@@ -168,7 +168,7 @@ const ProfilingView: React.FC<ProfilingViewProps> = ({ data, session }) => {
 
       <div className="profiling-chart-container">
         <h4 className="chart-title">
-          CPU & Memory Timeline
+          CPU & memory timeline
           <span className="chart-subtitle">({data.length} samples)</span>
         </h4>
         <div className="svg-chart-wrapper">

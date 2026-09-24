@@ -23,7 +23,7 @@
 }
 
 .webhook-row-card:hover {
-    border-color: rgb(var(--rgb-green) / 0.3);
+    border-color: rgb(var(--rgb-accent) / 0.3);
 }
 
 .webhook-row-card__header {
@@ -78,9 +78,9 @@
 }
 
 .event-pill--green {
-    background: rgb(var(--rgb-green) / 0.1);
-    color: var(--green);
-    border-color: rgb(var(--rgb-green) / 0.3);
+    background: rgb(var(--rgb-accent) / 0.1);
+    color: var(--color-accent);
+    border-color: rgb(var(--rgb-accent) / 0.3);
 }
 
 .event-pill--amber {
@@ -110,14 +110,11 @@
     align-items: center;
     gap: 8px;
     padding: 14px 20px;
-    color: var(--green);
-    font-family: 'JetBrains Mono', monospace;
+    color: var(--color-accent);
     font-size: 11px;
     font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.12em;
     border-bottom: 1px solid var(--border);
-    background: rgb(var(--rgb-green) / 0.04);
+    background: rgb(var(--rgb-accent) / 0.04);
 }
 
 .add-webhook-card__body {
@@ -166,9 +163,9 @@
 
 .event-toggle.is-selected {
     color: var(--text);
-    background: rgb(var(--rgb-green) / 0.06);
-    border-color: var(--green);
-    box-shadow: inset 0 0 0 1px rgb(var(--rgb-green) / 0.35);
+    background: rgb(var(--rgb-accent) / 0.06);
+    border-color: var(--color-accent);
+    box-shadow: inset 0 0 0 1px rgb(var(--rgb-accent) / 0.35);
 }
 
 .event-toggle__lead {
@@ -181,7 +178,7 @@
 }
 
 .event-toggle__check {
-    color: var(--green);
+    color: var(--color-accent);
     margin-left: auto;
 }
 
@@ -219,14 +216,14 @@
 }
 
 .event-toggle--green.is-selected {
-    background: rgb(var(--rgb-green) / 0.06);
-    border-color: var(--green);
-    box-shadow: inset 0 0 0 1px rgb(var(--rgb-green) / 0.35);
+    background: rgb(var(--rgb-accent) / 0.06);
+    border-color: var(--color-accent);
+    box-shadow: inset 0 0 0 1px rgb(var(--rgb-accent) / 0.35);
 }
 
 .event-toggle--green.is-selected .event-toggle__check,
 .event-toggle--green.is-selected .event-toggle__lead {
-    color: var(--green);
+    color: var(--color-accent);
 }
 
 /* Custom payload section */
@@ -299,9 +296,9 @@
 .template-editor__chip {
     padding: 4px 10px;
     border-radius: 999px;
-    background: rgb(var(--rgb-green) / 0.06);
-    border: 1px solid rgb(var(--rgb-green) / 0.25);
-    color: var(--green);
+    background: rgb(var(--rgb-accent) / 0.06);
+    border: 1px solid rgb(var(--rgb-accent) / 0.25);
+    color: var(--color-accent);
     font-family: 'JetBrains Mono', monospace;
     font-size: 10.5px;
     cursor: pointer;
@@ -331,6 +328,6 @@
 
 .template-editor__textarea:focus {
     outline: none;
-    border-color: var(--green);
-    box-shadow: 0 0 0 1px var(--green);
+    border-color: var(--color-accent);
+    box-shadow: 0 0 0 1px var(--color-accent);
 }

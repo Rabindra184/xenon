@@ -17,6 +17,8 @@ import { isDeviceConflictBody } from '../../api-service/api-client';
 import { isRehydratableTile, isSelfManualLock } from './manual-lock';
 import { addAnnotation, addBookmark } from '../../api-service/recordings';
 import { useIdleDetector } from '../../hooks/useIdleDetector';
+import { Tv } from 'lucide-react';
+import { PageTitle } from '../ui/page-header';
 
 // Idle thresholds for the manual-session warning + release.
 // 5 min total — same shape ADF uses; matches the hub-side OrphanSweeper's
@@ -373,7 +375,7 @@ export default function DeviceMosaicView() {
       <div className="flex flex-col h-full p-4 gap-3">
         <header className="flex items-center justify-between gap-3">
           <div className="flex items-center gap-3">
-            <h1 className="text-base font-semibold">Live Devices</h1>
+            <PageTitle icon={Tv}>Live devices</PageTitle>
             <LayoutSelector
               value={state.layout}
               onChange={(l) => dispatch({ type: 'SET_LAYOUT', layout: l })}
@@ -390,7 +392,7 @@ export default function DeviceMosaicView() {
             className={`text-sm rounded border px-3 py-2 flex items-center gap-2 ${
               state.banner.tone === 'error'
                 ? 'border-red-500/40 bg-red-500/10 text-red-100'
-                : 'border-emerald-500/40 bg-emerald-500/10 text-emerald-100'
+                : 'border-[rgb(var(--rgb-success)/0.4)] bg-[rgb(var(--rgb-success)/0.1)] text-[var(--text)]'
             }`}
           >
             <span className="flex-1">{state.banner.message}</span>
@@ -407,7 +409,7 @@ export default function DeviceMosaicView() {
         <div className="grid grid-cols-[260px_1fr] gap-3 flex-1 min-h-0">
           <aside className="flex flex-col gap-2 border border-[var(--border)] rounded p-3 overflow-y-auto min-h-0">
             <div className="flex items-center justify-between">
-              <span className="text-xs uppercase tracking-wide text-[var(--text-dim)]">
+              <span className="text-xs text-[var(--text-dim)]">
                 Devices
               </span>
               <button

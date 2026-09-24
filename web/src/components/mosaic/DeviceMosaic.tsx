@@ -133,13 +133,15 @@ function EmptyCell({ onDropDevice }: { onDropDevice?: (udid: string) => void }) 
       }}
       className={`flex flex-col items-center justify-center gap-2 rounded-lg border border-dashed transition-colors ${
         hover
-          ? 'border-emerald-500/60 bg-emerald-500/5'
+          ? 'border-[rgb(var(--rgb-accent)/0.6)] bg-[rgb(var(--rgb-accent)/0.05)]'
           : 'border-[var(--border)] bg-[rgb(var(--rgb-white)/0.02)]'
       } text-[var(--text-dim)] min-h-[120px]`}
     >
       <div
         className={`w-8 h-8 rounded-full flex items-center justify-center text-xl ${
-          hover ? 'bg-emerald-500/15 text-emerald-300' : 'bg-white/5 text-white/60'
+          hover
+            ? 'bg-[rgb(var(--rgb-accent)/0.15)] text-[var(--color-accent-soft)]'
+            : 'bg-white/5 text-white/60'
         }`}
       >
         +

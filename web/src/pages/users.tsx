@@ -17,7 +17,7 @@ import { Input } from '../components/ui/input';
 import { Select } from '../components/ui/select';
 
 const ROLE_LABELS: Record<UserRow['role'], string> = {
-  SUPER_ADMIN: 'Super Admin',
+  SUPER_ADMIN: 'Super admin',
   ADMIN: 'Admin',
   MEMBER: 'Member',
 };
@@ -104,13 +104,13 @@ export default function UsersPage() {
         ) : (
           <div className="rounded-lg border border-[var(--border)] bg-[var(--surface)] overflow-hidden">
             <table className="w-full text-sm">
-              <thead className="text-[11px] text-[var(--text-dim)] uppercase tracking-wide">
+              <thead className="text-[11px] text-[var(--text-dim)]">
                 <tr>
                   <th className="text-left py-2.5 px-4">Name</th>
                   <th className="text-left py-2.5 px-4">Email</th>
                   <th className="text-left py-2.5 px-4">Role</th>
                   <th className="text-left py-2.5 px-4">Status</th>
-                  <th className="text-left py-2.5 px-4">Last Login</th>
+                  <th className="text-left py-2.5 px-4">Last login</th>
                   <th className="w-px"></th>
                 </tr>
               </thead>
@@ -124,7 +124,7 @@ export default function UsersPage() {
                       <td className="py-2.5 px-4">{ROLE_LABELS[u.role]}</td>
                       <td className="py-2.5 px-4">
                         {u.status === 'ACTIVE' ? (
-                          <span className="text-[var(--green)]">Active</span>
+                          <span className="text-[var(--color-success)]">Active</span>
                         ) : (
                           <span className="text-[var(--text-dim)]">Inactive</span>
                         )}
@@ -349,7 +349,7 @@ function EditModal({
           onChange={(e) => setRole(e.target.value as UserRow['role'])}
           className="mb-3"
         >
-          <option value="SUPER_ADMIN">Super Admin</option>
+          <option value="SUPER_ADMIN">Super admin</option>
           <option value="ADMIN">Admin</option>
           <option value="MEMBER">Member</option>
         </Select>

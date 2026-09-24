@@ -50,13 +50,12 @@ export class ErrorBoundary extends Component<Props, State> {
             <div
               style={{
                 color: 'var(--accent-red)',
-                filter: 'drop-shadow(0 0 10px rgb(var(--rgb-red) / 0.3))',
               }}
             >
               <AlertTriangle size={64} />
             </div>
             <h2 style={{ fontSize: '2rem', fontWeight: 700, margin: 0 }}>
-              Component Exception Detected
+              Component exception detected
             </h2>
             <p style={{ color: 'var(--text-muted)', maxWidth: '500px', lineHeight: 1.6 }}>
               An unexpected error occurred while rendering this section. Xenon's isolation engine
@@ -80,7 +79,7 @@ export class ErrorBoundary extends Component<Props, State> {
             <button
               onClick={this.handleReset}
               style={{
-                background: 'var(--green)',
+                background: 'var(--color-accent)',
                 color: 'var(--secondary)',
                 border: 'none',
                 padding: '0.75rem 2rem',
@@ -96,7 +95,7 @@ export class ErrorBoundary extends Component<Props, State> {
               onMouseOut={(e) => (e.currentTarget.style.transform = 'translateY(0)')}
             >
               <RefreshCw size={18} />
-              Reload Application
+              Reload application
             </button>
           </div>
         )

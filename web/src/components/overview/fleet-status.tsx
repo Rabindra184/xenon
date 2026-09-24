@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ArrowRight, Smartphone, Tv, Tablet, Monitor, Filter } from 'lucide-react';
 import type { IDevice } from '../../interfaces/IDevice';
+import { platformLabel } from '../../lib/labels';
 
 interface Props {
   devices: IDevice[];
@@ -28,10 +29,10 @@ function deviceIcon(d: IDevice) {
 }
 
 const statusStyle: Record<DeviceStatus, { dot: string; text: string; label: string }> = {
-  ready:    { dot: 'bg-[var(--green)]', text: 'text-[var(--green)]', label: 'READY' },
-  busy:     { dot: 'bg-[var(--amber)]', text: 'text-[var(--amber)]', label: 'BUSY' },
-  reserved: { dot: 'bg-[var(--blue)]',  text: 'text-[var(--blue)]',  label: 'RESERVED' },
-  offline:  { dot: 'bg-[var(--text-dim)]', text: 'text-[var(--text-dim)]', label: 'OFFLINE' },
+  ready:    { dot: 'bg-[var(--color-success)]', text: 'text-[var(--color-success)]', label: 'Ready' },
+  busy:     { dot: 'bg-[var(--amber)]', text: 'text-[var(--amber)]', label: 'Busy' },
+  reserved: { dot: 'bg-[var(--blue)]',  text: 'text-[var(--blue)]',  label: 'Reserved' },
+  offline:  { dot: 'bg-[var(--text-dim)]', text: 'text-[var(--text-dim)]', label: 'Offline' },
 };
 
 function shortUdid(udid?: string): string {
@@ -105,7 +106,7 @@ export const FleetStatus: React.FC<Props> = ({ devices, maxRows = 6 }) => {
                     <div className="text-xs text-[var(--text)] truncate">{d.name || d.udid}</div>
                   </div>
                   <div className="hidden md:block text-[11px] font-mono text-[var(--text-dim)] w-24 text-right">
-                    {(d.platform || '').toUpperCase()} {d.sdk || ''}
+                    {platformLabel(d.platform)} {d.sdk || ''}
                   </div>
                   <div className="hidden lg:block text-[11px] font-mono text-[var(--text-dim)] w-32 text-right">
                     {shortUdid(d.udid)}

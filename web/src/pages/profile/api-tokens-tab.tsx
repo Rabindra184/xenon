@@ -82,9 +82,9 @@ export function ApiTokensTab() {
         <h2 className="text-base font-semibold">Identity Tokens</h2>
         <button
           onClick={() => setShowModal(true)}
-          className="h-9 px-4 rounded-md bg-[var(--green)] text-black font-medium text-sm"
+          className="h-9 px-4 rounded-md bg-[var(--color-accent)] text-black font-medium text-sm"
         >
-          Generate New Token
+          Generate new token
         </button>
       </div>
 
@@ -103,7 +103,7 @@ export function ApiTokensTab() {
         </div>
       ) : (
         <table className="w-full text-sm">
-          <thead className="text-[11px] text-[var(--text-dim)] uppercase tracking-wide">
+          <thead className="text-[11px] text-[var(--text-dim)]">
             <tr>
               <th className="text-left py-2">Name</th>
               <th className="text-left py-2">Issued</th>
@@ -170,7 +170,7 @@ export function ApiTokensTab() {
             <div className="flex justify-end">
               <button
                 onClick={() => setRevealed(null)}
-                className="h-9 px-4 rounded-md bg-[var(--green)] text-black text-sm font-medium"
+                className="h-9 px-4 rounded-md bg-[var(--color-accent)] text-black text-sm font-medium"
               >
                 Done
               </button>

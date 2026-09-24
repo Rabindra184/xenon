@@ -72,9 +72,7 @@ export const NetworkRequestModal: React.FC<Props> = ({ request, onClose }) => {
       <div className="space-y-4 text-xs">
         {request.failed && (
           <div className="border border-[var(--red)] rounded p-2 bg-[rgb(var(--rgb-red-600)/0.08)]">
-            <div className="text-[var(--red)] uppercase tracking-wide text-[10px] mb-1">
-              Failure
-            </div>
+            <div className="text-[var(--red)] text-[11px] mb-1">Failure</div>
             <div className="text-xs">{request.failureReason || 'Request failed'}</div>
             {request.failureKind && (
               <div className="font-mono text-[10px] text-[var(--text-dim)] mt-1">
@@ -87,15 +85,11 @@ export const NetworkRequestModal: React.FC<Props> = ({ request, onClose }) => {
         {!request.failed && (
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <div className="text-[var(--text-dim)] uppercase tracking-wide text-[10px] mb-1">
-                Duration
-              </div>
+              <div className="text-[var(--text-dim)] text-[11px] mb-1">Duration</div>
               <div className="font-mono">{request.durationMs} ms</div>
             </div>
             <div>
-              <div className="text-[var(--text-dim)] uppercase tracking-wide text-[10px] mb-1">
-                Flags
-              </div>
+              <div className="text-[var(--text-dim)] text-[11px] mb-1">Flags</div>
               <div className="flex gap-1">
                 {request.mocked && <Pill tone="accent">mocked</Pill>}
                 {request.modified && <Pill tone="busy">modified</Pill>}
@@ -109,9 +103,7 @@ export const NetworkRequestModal: React.FC<Props> = ({ request, onClose }) => {
 
         {request.commandHint && (
           <div>
-            <div className="text-[var(--text-dim)] uppercase tracking-wide text-[10px] mb-1">
-              Triggered by
-            </div>
+            <div className="text-[var(--text-dim)] text-[11px] mb-1">Triggered by</div>
             <div className="font-mono">{request.commandHint.commandName}</div>
           </div>
         )}
@@ -119,30 +111,22 @@ export const NetworkRequestModal: React.FC<Props> = ({ request, onClose }) => {
         {!request.failed && (
           <>
             <div>
-              <div className="text-[var(--text-dim)] uppercase tracking-wide text-[10px] mb-1">
-                Request Headers
-              </div>
+              <div className="text-[var(--text-dim)] text-[11px] mb-1">Request Headers</div>
               <HeaderList headers={request.reqHeaders} />
             </div>
 
             <div>
-              <div className="text-[var(--text-dim)] uppercase tracking-wide text-[10px] mb-1">
-                Request Body
-              </div>
+              <div className="text-[var(--text-dim)] text-[11px] mb-1">Request Body</div>
               <BodyBlock body={request.reqBody} />
             </div>
 
             <div>
-              <div className="text-[var(--text-dim)] uppercase tracking-wide text-[10px] mb-1">
-                Response Headers
-              </div>
+              <div className="text-[var(--text-dim)] text-[11px] mb-1">Response Headers</div>
               <HeaderList headers={request.resHeaders} />
             </div>
 
             <div>
-              <div className="text-[var(--text-dim)] uppercase tracking-wide text-[10px] mb-1">
-                Response Body
-              </div>
+              <div className="text-[var(--text-dim)] text-[11px] mb-1">Response Body</div>
               <BodyBlock body={request.resBody} />
             </div>
           </>

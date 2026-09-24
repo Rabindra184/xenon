@@ -13,21 +13,21 @@ interface Props {
 }
 
 const accentBarCls: Record<KpiState, string> = {
-  healthy:  'bg-[var(--green)]',
+  healthy:  'bg-[var(--color-success)]',
   neutral:  'bg-[var(--border-strong)]',
   warn:     'bg-[var(--amber)]',
   critical: 'bg-[var(--red)]',
 };
 
 const dotCls: Record<KpiState, string> = {
-  healthy:  'bg-[var(--green)]',
+  healthy:  'bg-[var(--color-success)]',
   neutral:  'bg-[var(--text-dim)]',
   warn:     'bg-[var(--amber)]',
   critical: 'bg-[var(--red)]',
 };
 
 const subtitleCls: Record<KpiState, string> = {
-  healthy:  'text-[var(--green)]',
+  healthy:  'text-[var(--color-success)]',
   neutral:  'text-[var(--text-muted)]',
   warn:     'text-[var(--amber)]',
   critical: 'text-[var(--red)]',
@@ -36,7 +36,7 @@ const subtitleCls: Record<KpiState, string> = {
 export const KpiCard: React.FC<Props> = ({ label, value, secondaryValue, subtitle, state = 'neutral' }) => (
   <div className="relative overflow-hidden rounded-lg border border-[var(--border)] bg-[var(--surface)] p-4 hover:border-[var(--border-strong)] transition-colors">
     <span className={`absolute left-0 top-0 bottom-0 w-[2px] ${accentBarCls[state]}`} />
-    <div className="text-[10px] font-mono font-semibold uppercase tracking-widest text-[var(--text-muted)]">
+    <div className="text-[11px] font-semibold text-[var(--text-muted)]">
       {label}
     </div>
     <div className="mt-3 flex items-baseline gap-2">

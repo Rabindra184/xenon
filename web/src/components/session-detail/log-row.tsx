@@ -10,7 +10,7 @@ interface Props {
 }
 
 const dotCls: Record<ReturnType<typeof logRowKind>['tone'], string> = {
-  green:   'bg-[var(--green)]',
+  green:   'bg-[var(--color-success)]',
   red:     'bg-[var(--red)]',
   amber:   'bg-[var(--amber)]',
   blue:    'bg-[var(--blue)]',
@@ -18,7 +18,7 @@ const dotCls: Record<ReturnType<typeof logRowKind>['tone'], string> = {
 };
 
 const labelCls: Record<ReturnType<typeof logRowKind>['tone'], string> = {
-  green:   'text-[var(--green)]',
+  green:   'text-[var(--color-success)]',
   red:     'text-[var(--red)]',
   amber:   'text-[var(--amber)]',
   blue:    'text-[var(--blue)]',

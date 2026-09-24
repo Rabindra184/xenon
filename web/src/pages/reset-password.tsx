@@ -83,7 +83,7 @@ export default function ResetPasswordPage() {
           </p>
           <Link
             to="/forgot-password"
-            className="inline-block h-10 px-4 rounded-md bg-[var(--green)] text-black text-sm font-medium leading-10"
+            className="inline-block h-10 px-4 rounded-md bg-[var(--color-accent)] text-black text-sm font-medium leading-10"
           >
             Request a new link
           </Link>
@@ -119,7 +119,7 @@ export default function ResetPasswordPage() {
           onChange={(e) => setPw(e.target.value)}
           autoFocus
           required
-          className="w-full mb-3 h-10 px-3 rounded-lg bg-[var(--bg)] border border-[var(--border-strong)] text-sm text-[var(--text)] outline-none focus:border-[var(--green)] focus:shadow-[0_0_0_3px_var(--accent-subtle)]"
+          className="w-full mb-3 h-10 px-3 rounded-lg bg-[var(--bg)] border border-[var(--border-strong)] text-sm text-[var(--text)] outline-none focus:border-[var(--color-accent)] focus:shadow-[0_0_0_3px_var(--accent-subtle)]"
         />
         <label htmlFor="reset-confirm" className="block text-sm font-medium text-[var(--text)] mb-1.5">
           Confirm new password
@@ -131,13 +131,13 @@ export default function ResetPasswordPage() {
           value={confirm}
           onChange={(e) => setConfirm(e.target.value)}
           required
-          className="w-full mb-3 h-10 px-3 rounded-lg bg-[var(--bg)] border border-[var(--border-strong)] text-sm text-[var(--text)] outline-none focus:border-[var(--green)] focus:shadow-[0_0_0_3px_var(--accent-subtle)]"
+          className="w-full mb-3 h-10 px-3 rounded-lg bg-[var(--bg)] border border-[var(--border-strong)] text-sm text-[var(--text)] outline-none focus:border-[var(--color-accent)] focus:shadow-[0_0_0_3px_var(--accent-subtle)]"
         />
         {error && <div role="alert" className="text-sm text-[var(--red)] mb-3">{error}</div>}
         <button
           type="submit"
           disabled={state === 'submitting' || pw.length < 8}
-          className="mt-5 w-full h-10 rounded-md bg-[var(--green)] text-black font-medium text-sm disabled:opacity-50"
+          className="mt-5 w-full h-10 rounded-md bg-[var(--color-accent)] text-black font-medium text-sm disabled:opacity-50"
         >
           {state === 'submitting' ? 'Updating…' : 'Update password'}
         </button>

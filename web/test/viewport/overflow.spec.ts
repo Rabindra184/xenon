@@ -699,7 +699,7 @@ const ROUTE_CONTENT_CHECKS: Record<string, Setup> = {
     // registered.' with zero devices, so this fails loudly without the mock.
     const fleetRows = page
       .locator('section', { hasText: 'Fleet status' })
-      .getByRole('button', { name: /READY|BUSY|OFFLINE|RESERVED/ });
+      .getByRole('button', { name: /ready|busy|offline|reserved/i });
     await expect(fleetRows).not.toHaveCount(0);
     // Secondary: RecentActivity renders 'No activity yet' with zero heals.
     const activityRows = page

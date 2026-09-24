@@ -205,8 +205,8 @@ export const ApiKeys: React.FC = () => {
     return (
       <div className="settings-container">
         <PageHeader
-          icon={ShieldAlert}
-          title="API Keys"
+          icon={Key}
+          title="API keys"
           subtitle={
             <>
               Your key lacks the <code>admin</code> scope. Ask an administrator to issue an admin
@@ -229,7 +229,7 @@ export const ApiKeys: React.FC = () => {
     <div className="settings-container">
       <PageHeader
         icon={Key}
-        title="API Keys"
+        title="API keys"
         subtitle={
           <>
             Issue scoped credentials for humans (dashboard login) and machines (CI, WebDriver

@@ -34,6 +34,7 @@ import {
 } from '../../interfaces/IHealingEvent';
 import { useSocket } from '../../hooks/useSocket';
 import './selector-health.css';
+import { platformLabel } from '../../lib/labels';
 
 type WindowDays = 7 | 30 | 90;
 type TierFilter = '' | 'Native' | 'Resilio' | 'Fuzzy XML' | 'OCR' | 'Visual AI' | 'LLM';
@@ -392,8 +393,8 @@ const SelectorHealthPage: React.FC = () => {
     <div className="selector-health-page">
       <PageHeader
         icon={HeartPulse}
-        eyebrow="Test Quality"
-        title="Selector Health"
+        eyebrow="Test quality"
+        title="Selector health"
         subtitle={headerSubtitle}
         action={
           <>
@@ -472,7 +473,7 @@ const SelectorHealthPage: React.FC = () => {
             >
               {PLATFORM_OPTIONS.map((p) => (
                 <option key={p || 'all'} value={p}>
-                  {p ? p.toUpperCase() : 'All platforms'}
+                  {p ? platformLabel(p) : 'All platforms'}
                 </option>
               ))}
             </select>
@@ -498,7 +499,7 @@ const SelectorHealthPage: React.FC = () => {
             icon={
               <HeartPulse
                 size={32}
-                color={tab === 'active' ? 'var(--green)' : 'var(--text-dim)'}
+                color={tab === 'active' ? 'var(--color-accent)' : 'var(--text-dim)'}
               />
             }
             title={
@@ -669,7 +670,7 @@ const SelectorHealthPage: React.FC = () => {
                           }}
                           title="Move to Pending Verification"
                         >
-                          Mark Fixed
+                          Mark fixed
                         </button>
                         <button
                           type="button"

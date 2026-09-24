@@ -148,13 +148,13 @@ const SelectorDetailPage: React.FC = () => {
       <div className="selector-health-page">
         <PageHeader
           icon={HeartPulse}
-          eyebrow="Test Quality"
-          title="Selector Detail"
+          eyebrow="Test quality"
+          title="Selector detail"
           subtitle="No selector specified."
         />
         <div className="sh-content">
           <button className="sh-back-btn" onClick={() => navigate('/selector-health')}>
-            <ChevronLeft size={12} /> Back to Selector Health
+            <ChevronLeft size={12} /> Back to Selector health
           </button>
         </div>
       </div>
@@ -165,7 +165,7 @@ const SelectorDetailPage: React.FC = () => {
     <div className="selector-health-page">
       <PageHeader
         icon={HeartPulse}
-        eyebrow="Test Quality / Selector"
+        eyebrow="Test quality / Selector"
         title={
           <span className="sh-detail-title">
             <code title={value}>{value}</code>
@@ -221,7 +221,7 @@ const SelectorDetailPage: React.FC = () => {
                 )}
                 {selectorState.status === 'resolved' && (
                   <>
-                    <CheckCircle2 size={16} style={{ color: 'var(--green)' }} />
+                    <CheckCircle2 size={16} style={{ color: 'var(--color-success)' }} />
                     <span>Resolved</span>
                   </>
                 )}
@@ -252,7 +252,7 @@ const SelectorDetailPage: React.FC = () => {
                       className="sh-action-btn sh-action-btn--primary"
                       onClick={() => action('mark_fixed')}
                     >
-                      Mark Fixed
+                      Mark fixed
                     </button>
                     <button
                       type="button"

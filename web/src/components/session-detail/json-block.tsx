@@ -9,7 +9,7 @@ interface Props {
 
 const tokenCls: Record<JsonToken['kind'], string> = {
   key:     'text-[var(--blue)]',
-  string:  'text-[var(--green)]',
+  string:  'text-[var(--color-accent)]',
   number:  'text-[var(--amber)]',
   boolean: 'text-[var(--amber)]',
   null:    'text-[var(--text-dim)] italic',

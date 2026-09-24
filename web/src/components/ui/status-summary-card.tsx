@@ -9,9 +9,9 @@ interface Props {
 }
 
 const map: Record<SummaryKind, { Icon: LucideIcon; label: string; tint: string }> = {
-  passed:  { Icon: CheckCircle2, label: 'PASSED',  tint: 'text-[var(--green)]' },
-  failed:  { Icon: XCircle,      label: 'FAILED',  tint: 'text-[var(--red)]'   },
-  running: { Icon: Activity,     label: 'RUNNING', tint: 'text-[var(--amber)]' },
+  passed:  { Icon: CheckCircle2, label: 'Passed',  tint: 'text-[var(--color-success)]' },
+  failed:  { Icon: XCircle,      label: 'Failed',  tint: 'text-[var(--red)]'   },
+  running: { Icon: Activity,     label: 'Running', tint: 'text-[var(--amber)]' },
 };
 
 export const StatusSummaryCard: React.FC<Props> = ({ kind, value }) => {

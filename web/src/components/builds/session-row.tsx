@@ -12,6 +12,7 @@ import {
   sessionStatusBucket,
 } from './derive';
 import { StatusPillOutline, type StatusTone } from '../ui/status-pill-outline';
+import { sentenceCase } from '../../lib/labels';
 
 interface Props {
   session: ISession;
@@ -30,10 +31,10 @@ function DeviceIcon({ platform }: { platform?: string }) {
 
 function statusToPill(status: string): { label: string; tone: StatusTone } {
   switch (sessionStatusBucket(status)) {
-    case 'running': return { label: 'RUNNING', tone: 'running' };
-    case 'failed':  return { label: 'FAILED',  tone: 'failed'  };
-    case 'passed':  return { label: 'PASSED',  tone: 'passed'  };
-    default:        return { label: (status || '').toUpperCase(), tone: 'offline' };
+    case 'running': return { label: 'Running', tone: 'running' };
+    case 'failed':  return { label: 'Failed',  tone: 'failed'  };
+    case 'passed':  return { label: 'Passed',  tone: 'passed'  };
+    default:        return { label: sentenceCase(status), tone: 'offline' };
   }
 }
 
@@ -59,7 +60,7 @@ export const SessionRow: React.FC<Props> = ({ session, selected, onToggleSelect,
         />
       </td>
       <td className="px-3 py-3">
-        <div className="font-mono text-xs text-[var(--green)]" title={session.id}>
+        <div className="font-mono text-xs text-[var(--color-accent)]" title={session.id}>
           #{shortId(session.id, 14, 4)}
         </div>
         {subtitleTop && (

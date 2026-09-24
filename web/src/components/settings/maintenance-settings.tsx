@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import XenonApiService from '../../api-service';
 import './settings.css';
 import {
-  Shield as MaintenanceIcon,
+  ShieldCheck as MaintenanceIcon,
   RefreshCw,
   Calendar,
   Info,
@@ -32,9 +32,9 @@ const DEFAULTS: MaintenanceConfig = {
 };
 
 const SCHEDULE_PRESETS = [
-  { label: 'Daily (Midnight)', value: '0 0 * * *' },
+  { label: 'Daily (midnight)', value: '0 0 * * *' },
   { label: 'Weekly (Sunday)', value: '0 0 * * 0' },
-  { label: 'Bi-Daily (12h)', value: '0 */12 * * *' },
+  { label: 'Every 12 hours', value: '0 */12 * * *' },
 ];
 
 const cfgEqual = (a: MaintenanceConfig, b: MaintenanceConfig) =>
@@ -132,7 +132,7 @@ export const MaintenanceSettings: React.FC = () => {
             icon={<History size={16} />}
             title={
               <span className="card-title-row">
-                Retention Window
+                Retention window
                 {dirty.days && <span className="modified-dot" aria-label="Modified" />}
               </span>
             }
@@ -148,7 +148,7 @@ export const MaintenanceSettings: React.FC = () => {
                 }
                 min={1}
               />
-              <span className="code-font">DAYS</span>
+              <span className="code-font">days</span>
             </div>
           </SettingCard>
 
@@ -156,7 +156,7 @@ export const MaintenanceSettings: React.FC = () => {
             icon={<Trash2 size={16} />}
             title={
               <span className="card-title-row">
-                Max Build Capacity
+                Max build capacity
                 {dirty.max && <span className="modified-dot" aria-label="Modified" />}
               </span>
             }
@@ -175,7 +175,7 @@ export const MaintenanceSettings: React.FC = () => {
                 }
                 min={1}
               />
-              <span className="code-font">BUILDS</span>
+              <span className="code-font">builds</span>
             </div>
           </SettingCard>
 
@@ -183,7 +183,7 @@ export const MaintenanceSettings: React.FC = () => {
             icon={<ShieldCheck size={16} />}
             title={
               <span className="card-title-row">
-                Asset Purge Strategy
+                Asset purge strategy
                 {dirty.purge && <span className="modified-dot" aria-label="Modified" />}
               </span>
             }
@@ -202,7 +202,7 @@ export const MaintenanceSettings: React.FC = () => {
                 <span className="slider round"></span>
               </label>
               <span className="toggle-label">
-                {config.deleteBuildAssets ? 'ENABLED' : 'DISABLED'}
+                {config.deleteBuildAssets ? 'Enabled' : 'Disabled'}
               </span>
             </div>
           </SettingCard>
@@ -211,7 +211,7 @@ export const MaintenanceSettings: React.FC = () => {
             icon={<Calendar size={16} />}
             title={
               <span className="card-title-row">
-                Cleanup Orchestration
+                Cleanup orchestration
                 {dirty.schedule && <span className="modified-dot" aria-label="Modified" />}
               </span>
             }
@@ -268,7 +268,7 @@ export const MaintenanceSettings: React.FC = () => {
           onRestoreDefaults={handleResetToDefaults}
           isSaving={saving}
           isDirty={isDirty}
-          saveLabel="Save Configuration"
+          saveLabel="Save configuration"
         />
       )}
     </div>

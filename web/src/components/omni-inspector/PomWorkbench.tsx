@@ -97,7 +97,7 @@ class ${pageName}:
       <div className="omni-ai-header" style={{ justifyContent: 'space-between' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
           <Code size={14} />
-          POM Workbench
+          POM workbench
         </div>
         <Badge variant="outline" className="enterprise-badge-green">
           {elements.length} Elements

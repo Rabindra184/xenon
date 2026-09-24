@@ -41,7 +41,7 @@ export const LogTabBar: React.FC<Props> = ({ tabs, active, onChange, errorsOnly,
                 {t.count}
               </span>
               {isActive && (
-                <span className="absolute left-2 right-2 bottom-0 h-[2px] bg-[var(--green)] rounded-t" />
+                <span className="absolute left-2 right-2 bottom-0 h-[2px] bg-[var(--color-accent)] rounded-t" />
               )}
             </button>
           );

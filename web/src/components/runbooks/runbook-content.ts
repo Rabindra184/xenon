@@ -16,7 +16,7 @@ export interface RunbookContent {
 
 export const RUNBOOKS: Record<string, RunbookContent> = {
   hub_restart: {
-    title: 'Hub Restart',
+    title: 'Hub restart',
     markdown: `# Hub Restart
 
 A session was terminated because the Xenon hub restarted while the test was

@@ -1,17 +1,23 @@
 /* Xenon design tokens — reference palette. */
 
 :root {
-  /* ===== Primary surface palette (reference names) ===== */
-  --bg: #0a0d0c;
-  --surface: #111514;
-  --surface-2: #161b1a;
-  --border: #1f2624;
-  --border-strong: #2a3331;
+  color-scheme: dark;
 
-  /* Text */
-  --text: #e6ebe9;
-  --text-muted: #8a938f;
-  --text-dim: #5b6460;
+  /* ===== Primary surface palette (reference names) =====
+     Graphite (Stage 1): neutral, slightly cool greys, so colour is left to
+     carry meaning. Was green-tinted near-black (#0a0d0c / #111514 / …). */
+  --bg: #0e1013;
+  --surface: #15181d;
+  --surface-2: #1b1f25;
+  --surface-sunken: #0b0d10;
+  --border: #262b33;
+  --border-strong: #333a44;
+
+  /* Text — every step clears WCAG AA (4.5:1) on bg, surface and surface-2.
+     --text-dim was #5b6460 at ~3.1:1, the app-wide contrast failure. */
+  --text: #e7e9ee; /* 13.6:1 */
+  --text-muted: #a3a9b5; /* 7.0:1 */
+  --text-dim: #868d99; /* 5.0:1 */
 
   /* Accents */
   --green: #22c55e;
@@ -31,21 +37,21 @@
   --accent-border: rgba(34, 197, 94, 0.3);
 
   /* Status — foreground */
-  --status-ready-fg: var(--green);
+  --status-ready-fg: var(--color-success);
   --status-busy-fg: var(--amber);
   --status-reserved-fg: var(--blue);
   --status-error-fg: var(--red);
   --status-offline-fg: var(--text-muted);
 
   /* Status — background */
-  --status-ready-bg: rgba(34, 197, 94, 0.1);
+  --status-ready-bg: rgb(var(--rgb-success) / 0.1);
   --status-busy-bg: rgba(245, 158, 11, 0.1);
   --status-reserved-bg: rgba(59, 130, 246, 0.1);
   --status-error-bg: rgba(239, 68, 68, 0.1);
   --status-offline-bg: rgba(138, 147, 143, 0.08);
 
   /* Status — border */
-  --status-ready-border: rgba(34, 197, 94, 0.3);
+  --status-ready-border: rgb(var(--rgb-success) / 0.3);
   --status-busy-border: rgba(245, 158, 11, 0.3);
   --status-reserved-border: rgba(59, 130, 246, 0.3);
   --status-error-border: rgba(239, 68, 68, 0.3);
@@ -125,16 +131,24 @@
   --rgb-blue-400: 96 165 250;
   --rgb-sky-400: 56 189 248;
 
-  /* 3. Roles — today's mapping. Stage 1 retunes these, e.g. success moves
-     off the brand green so a status never reads as a button. */
-  --color-accent: var(--green); /* brand: primary actions, selection */
-  --color-on-accent: var(--black); /* text on --color-accent (9.2:1) */
-  --color-success: var(--green);
+  /* 3. Roles. Green means "do this" (actions, selection, focus); status
+     "good" (ready, passed, healed, live) is teal, so a status never reads as
+     a button. The neon #00ff88 and emerald #10b981 the old theme mixed in
+     now resolve to one of these two by meaning. */
+  --color-accent: #22c55e; /* brand: primary actions, selection */
+  --color-accent-strong: #16a34a; /* pressed / hover on filled accent */
+  --color-accent-soft: #4ade80; /* hover on accent text */
+  --rgb-accent: 34 197 94;
+  --color-on-accent: var(--black); /* 9.2:1 on --color-accent */
+  --color-success: #2dd4bf; /* 8.9:1 on --bg */
+  --color-success-strong: #14b8a6;
+  --color-success-soft: #5eead4;
+  --rgb-success: 45 212 191;
   --color-warning: var(--amber);
   --color-danger: var(--red);
   --color-info: var(--blue);
   --color-highlight: var(--blue-400); /* active tab / focused row accents */
-  --color-focus-ring: var(--green);
+  --color-focus-ring: var(--color-accent);
 
   /* Type scale. Defined now, adopted in Stage 1 (today ~38 sizes are in use). */
   --font-size-2xs: 11px;

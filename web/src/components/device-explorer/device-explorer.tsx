@@ -211,7 +211,7 @@ export class DeviceExplorer extends React.Component<IDeviceExplorerProps, IDevic
                 </p>
                 <Button variant="primary" onClick={() => this.fetchDevices()}>
                   <RefreshCw size={14} />
-                  Manual Sync
+                  Manual sync
                 </Button>
               </>
             ) : (

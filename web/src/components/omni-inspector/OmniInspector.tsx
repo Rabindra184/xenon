@@ -1085,7 +1085,7 @@ const OmniInspector: React.FC<OmniInspectorProps> = ({
                 <button
                   className={`omni-mode-btn ${inspectorMode === 'inspect' ? 'active' : ''}`}
                   onClick={() => setInspectorMode('inspect')}
-                  title="Inspection Mode (Highlight Elements)"
+                  title="Inspection mode (highlight elements)"
                 >
                   <MousePointer2 size={12} />
                   <span>Inspect</span>
@@ -1093,7 +1093,7 @@ const OmniInspector: React.FC<OmniInspectorProps> = ({
                 <button
                   className={`omni-mode-btn ${inspectorMode === 'interact' ? 'active' : ''}`}
                   onClick={() => setInspectorMode('interact')}
-                  title="Interaction Mode (Direct Control)"
+                  title="Interaction mode (direct control)"
                 >
                   <Touchpad size={12} />
                   <span>Interact</span>
@@ -1200,10 +1200,10 @@ const OmniInspector: React.FC<OmniInspectorProps> = ({
               )}
             </div>
             <div className="omni-tree-actions">
-              <button onClick={expandAll} className="omni-action-btn" title="Expand All">
+              <button onClick={expandAll} className="omni-action-btn" title="Expand all">
                 <Grid3x3 size={12} />
               </button>
-              <button onClick={collapseAll} className="omni-action-btn" title="Collapse All">
+              <button onClick={collapseAll} className="omni-action-btn" title="Collapse all">
                 <Layout size={12} />
               </button>
               {/* The Inspect/Interact toggle lives in the preview panel, which
@@ -1302,7 +1302,7 @@ const OmniInspector: React.FC<OmniInspectorProps> = ({
               className={`omni-details-tab ${activeTab === 'insight' ? 'active' : ''}`}
               onClick={() => setActiveTab('insight')}
               disabled={!selectedNode}
-              title="AI Element Analysis"
+              title="AI element analysis"
               role="tab"
               aria-selected={activeTab === 'insight'}
             >
@@ -1312,7 +1312,7 @@ const OmniInspector: React.FC<OmniInspectorProps> = ({
               className={`omni-details-tab ${activeTab === 'code' ? 'active' : ''}`}
               onClick={() => setActiveTab('code')}
               disabled={!selectedNode}
-              title="Generate Test Code"
+              title="Generate test code"
               role="tab"
               aria-selected={activeTab === 'code'}
             >

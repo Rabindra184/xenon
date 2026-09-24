@@ -89,7 +89,7 @@ export function GenerateTokenModal({
           <button type="button" onClick={onClose} className="h-9 px-3 rounded-md border border-[var(--border)] text-sm">
             Cancel
           </button>
-          <button type="submit" disabled={busy || !name} className="h-9 px-4 rounded-md bg-[var(--green)] text-black text-sm font-medium disabled:opacity-50">
+          <button type="submit" disabled={busy || !name} className="h-9 px-4 rounded-md bg-[var(--color-accent)] text-black text-sm font-medium disabled:opacity-50">
             {busy ? 'Creating…' : 'Create'}
           </button>
         </div>

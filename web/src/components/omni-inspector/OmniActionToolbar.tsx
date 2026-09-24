@@ -21,7 +21,7 @@ const OmniActionToolbar: React.FC<OmniActionToolbarProps> = ({
         <button
           className={`tool-btn ${activeTool === 'select' ? 'active' : ''}`}
           onClick={() => onToolSelect('select')}
-          title="Select Element"
+          title="Select element"
         >
           <MousePointer2 size={18} />
         </button>
@@ -35,7 +35,7 @@ const OmniActionToolbar: React.FC<OmniActionToolbarProps> = ({
         <button
           className={`tool-btn ${activeTool === 'swipe' ? 'active' : ''}`}
           onClick={() => onToolSelect('swipe')}
-          title="Swipe / Drag"
+          title="Swipe / drag"
         >
           <Move size={18} />
         </button>
@@ -47,14 +47,14 @@ const OmniActionToolbar: React.FC<OmniActionToolbarProps> = ({
         <button
           className={`tool-btn ${activeTool === 'search' ? 'active' : ''}`}
           onClick={() => onToolSelect('search')}
-          title="Search Elements"
+          title="Search elements"
         >
           <Search size={18} />
         </button>
         <button
           className={`tool-btn ${activeTool === 'record' ? 'active' : ''}`}
           onClick={() => onToolSelect('record')}
-          title="Record Session"
+          title="Record session"
         >
           <Video size={18} />
         </button>

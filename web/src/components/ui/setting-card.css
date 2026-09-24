@@ -13,7 +13,7 @@
 }
 
 .setting-card:hover {
-  border-color: rgb(var(--rgb-green) / 0.25);
+  border-color: rgb(var(--rgb-accent) / 0.25);
   background: var(--surface-2);
   box-shadow: var(--shadow-md);
 }
@@ -58,7 +58,7 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  color: var(--green);
+  color: var(--color-accent);
   width: 100%;
 }
 

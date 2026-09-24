@@ -11,6 +11,12 @@ export interface StatusCodeProps {
 export const StatusCode: React.FC<StatusCodeProps> = ({ kind, showDot, children }) => (
   <span className={`status-code status-code-${kind}`}>
     {showDot && <StatusDot kind={kind} />}
-    <span className="status-code-label">{String(children).toUpperCase()}</span>
+    <span className="status-code-label">{sentenceCase(String(children))}</span>
   </span>
 );
+
+/** "busy" / "BUSY" → "Busy": labels are sentence case, not shouted. */
+function sentenceCase(s: string): string {
+  const t = s.trim().toLowerCase();
+  return t.charAt(0).toUpperCase() + t.slice(1);
+}

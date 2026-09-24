@@ -1,4 +1,5 @@
 import * as React from 'react';
+import { platformLabel } from '../../lib/labels';
 
 export interface PickerDevice {
   udid: string;
@@ -51,9 +52,7 @@ const GROUP_DEFS: Array<{ id: string; label: string; match: (p: string) => boole
 ];
 
 function platformBadge(p?: string): string {
-  if (!p) return '';
-  if (p === 'androidtv' || p === 'android-tv') return 'ANDROID TV';
-  return p.toUpperCase();
+  return platformLabel(p);
 }
 
 export function DevicePicker({ devices, inMosaic, onToggle }: Props) {
@@ -115,7 +114,7 @@ export function DevicePicker({ devices, inMosaic, onToggle }: Props) {
             <button
               type="button"
               onClick={() => setCollapsed((c) => ({ ...c, [g.id]: !c[g.id] }))}
-              className="flex items-center justify-between w-full text-[10px] uppercase tracking-wider text-[var(--text-dim)] hover:text-white px-1 py-0.5"
+              className="flex items-center justify-between w-full text-[11px] text-[var(--text-dim)] hover:text-white px-1 py-0.5"
             >
               <span className="flex items-center gap-1.5">
                 <span
@@ -155,7 +154,7 @@ export function DevicePicker({ devices, inMosaic, onToggle }: Props) {
                           blocked
                             ? 'opacity-60 cursor-not-allowed border-transparent'
                             : inMos
-                              ? 'border-emerald-500/40 bg-emerald-500/5 hover:bg-emerald-500/10'
+                              ? 'border-[rgb(var(--rgb-accent)/0.4)] bg-[rgb(var(--rgb-accent)/0.05)] hover:bg-[rgb(var(--rgb-accent)/0.1)]'
                               : 'border-transparent hover:border-[var(--border)] hover:bg-[var(--surface-2)]'
                         }`}
                         title={
@@ -170,7 +169,7 @@ export function DevicePicker({ devices, inMosaic, onToggle }: Props) {
                         <span
                           aria-hidden
                           className={`inline-flex items-center justify-center w-4 h-4 text-xs ${
-                            inMos ? 'text-emerald-400' : 'text-[var(--text-dim)]'
+                            inMos ? 'text-[var(--color-accent-soft)]' : 'text-[var(--text-dim)]'
                           }`}
                         >
                           {inMos ? '●' : '○'}
@@ -182,7 +181,7 @@ export function DevicePicker({ devices, inMosaic, onToggle }: Props) {
                             d.offline
                               ? 'bg-zinc-600'
                               : online
-                                ? 'bg-emerald-400 shadow-[0_0_4px_rgba(52,211,153,0.7)]'
+                                ? 'bg-[var(--color-success)]'
                                 : 'bg-yellow-500'
                           }`}
                         />
@@ -190,7 +189,7 @@ export function DevicePicker({ devices, inMosaic, onToggle }: Props) {
                           {d.name ?? d.udid}
                         </span>
                         {d.platform && (
-                          <span className="text-[9px] uppercase tracking-wider px-1.5 py-0.5 rounded bg-[var(--surface-2)] text-[var(--text-dim)]">
+                          <span className="text-[11px] px-1.5 py-0.5 rounded bg-[var(--surface-2)] text-[var(--text-dim)]">
                             {platformBadge(d.platform)}
                           </span>
                         )}
@@ -212,7 +211,7 @@ export function DevicePicker({ devices, inMosaic, onToggle }: Props) {
 
       <div className="text-[10px] text-[var(--text-dim)] px-1 pt-2 flex items-center gap-3">
         <span className="inline-flex items-center gap-1">
-          <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 inline-block" /> available
+          <span className="w-1.5 h-1.5 rounded-full bg-[var(--color-success)] inline-block" /> available
         </span>
         <span className="inline-flex items-center gap-1">
           <span className="w-1.5 h-1.5 rounded-full bg-yellow-500 inline-block" /> in use

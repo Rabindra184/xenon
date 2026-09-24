@@ -30,20 +30,20 @@ interface WebhookConfig {
 const AVAILABLE_EVENTS = [
   {
     id: 'device_offline',
-    label: 'Device Offline',
+    label: 'Device offline',
     icon: AlertCircle,
     tone: 'red' as const,
   },
-  { id: 'device_new', label: 'New Device', icon: Plus, tone: 'green' as const },
+  { id: 'device_new', label: 'New device', icon: Plus, tone: 'green' as const },
   {
     id: 'session_failed',
-    label: 'Session Failed',
+    label: 'Session failed',
     icon: XCircle,
     tone: 'amber' as const,
   },
   {
     id: 'selector_health_digest',
-    label: 'Selector Health Digest',
+    label: 'Selector health digest',
     icon: HeartPulse,
     tone: 'green' as const,
   },
@@ -258,7 +258,7 @@ export const WebhookSettings: React.FC = () => {
               </div>
             </FieldGroup>
 
-            <FieldGroup label="Trigger Events">
+            <FieldGroup label="Trigger events">
               <div className="event-toggle-grid">
                 {AVAILABLE_EVENTS.map((event) => {
                   const isSelected = selectedEvents.includes(event.id);

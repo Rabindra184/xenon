@@ -22,13 +22,14 @@ import { humanizeFailureCategory } from './derive';
 import { Copy } from 'lucide-react';
 import { useToast } from '../ui/toast';
 import type { MetadataRow } from './metadata-card';
+import { sentenceCase } from '../../lib/labels';
 
 function statusTone(status: string | null | undefined): { label: string; tone: StatusTone } {
-  if (status === 'running') return { label: 'RUNNING', tone: 'running' };
-  if (status === 'failed') return { label: 'FAILED', tone: 'failed' };
-  if (status === 'ended' || status === 'passed') return { label: 'PASSED', tone: 'passed' };
+  if (status === 'running') return { label: 'Running', tone: 'running' };
+  if (status === 'failed') return { label: 'Failed', tone: 'failed' };
+  if (status === 'ended' || status === 'passed') return { label: 'Passed', tone: 'passed' };
   const s = typeof status === 'string' ? status : '';
-  return { label: (s || 'UNKNOWN').toUpperCase(), tone: 'offline' };
+  return { label: sentenceCase(s || 'unknown'), tone: 'offline' };
 }
 
 export const SessionDetailPage: React.FC = () => {
@@ -93,7 +94,7 @@ export const SessionDetailPage: React.FC = () => {
     { label: 'Device', value: deviceNameOrFallback(s) },
     { label: 'Node ID', value: s.node_id || '—', mono: true },
     { label: 'Platform', value: platformLabel(s) },
-    { label: 'OS Version', value: s.device_version ? osVersionLabel(s) : '—', mono: true },
+    { label: 'OS version', value: s.device_version ? osVersionLabel(s) : '—', mono: true },
   ];
 
   const runRows: MetadataRow[] = [
@@ -114,7 +115,7 @@ export const SessionDetailPage: React.FC = () => {
       ),
       mono: true,
     },
-    { label: 'Start Time', value: formatAbsoluteTime(s.startTime), mono: true },
+    { label: 'Start time', value: formatAbsoluteTime(s.startTime), mono: true },
     { label: 'Duration', value: durationText, mono: true },
   ];
 
@@ -143,7 +144,7 @@ export const SessionDetailPage: React.FC = () => {
   }
   if (failed && s.failure_reason) {
     resultRows.push({
-      label: 'Failure Reason',
+      label: 'Failure reason',
       value: s.failure_reason,
       tone: 'red',
     });

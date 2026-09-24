@@ -41,7 +41,7 @@ export const RunbookPage: React.FC = () => {
         </button>
         <div className="flex items-center gap-2 text-xs text-[var(--text-dim)]">
           <BookOpen className="h-3.5 w-3.5" />
-          <span className="font-mono uppercase tracking-widest">Runbook</span>
+          <span className="">Runbook</span>
         </div>
       </header>
 

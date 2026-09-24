@@ -107,11 +107,8 @@
 }
 
 .sh-kpi__label {
-  font-family: 'JetBrains Mono', monospace;
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.1em;
   color: var(--text-dim);
 }
 
@@ -155,9 +152,9 @@
 }
 
 .sh-delta.good {
-  background: rgb(var(--rgb-emerald) / 0.1);
-  border-color: rgb(var(--rgb-emerald) / 0.3);
-  color: var(--green);
+  background: rgb(var(--rgb-success) / 0.1);
+  border-color: rgb(var(--rgb-success) / 0.3);
+  color: var(--color-success);
 }
 
 .sh-delta.bad {
@@ -191,11 +188,8 @@
 }
 
 .sh-filter-bar__lead {
-  font-family: 'JetBrains Mono', monospace;
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.1em;
   color: var(--text-muted);
   margin-right: 6px;
 }
@@ -207,11 +201,8 @@
 }
 
 .sh-filter-bar__label {
-  font-family: 'JetBrains Mono', monospace;
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.1em;
   color: var(--text-dim);
 }
 
@@ -232,7 +223,7 @@
 }
 
 .sh-select:hover { border-color: var(--border-strong); }
-.sh-select:focus { outline: none; border-color: var(--green); }
+.sh-select:focus { outline: none; border-color: var(--color-accent); }
 
 .sh-filter-bar__clear {
   display: inline-flex;
@@ -274,8 +265,8 @@
 .sh-refresh-btn:hover,
 .sh-back-btn:hover {
   background: var(--surface-2);
-  border-color: var(--green);
-  color: var(--green);
+  border-color: var(--color-accent);
+  color: var(--color-accent);
 }
 
 .sh-refresh-btn:disabled {
@@ -390,11 +381,8 @@
 }
 
 .sh-th {
-  font-family: 'JetBrains Mono', monospace;
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.1em;
   color: var(--text-dim);
 }
 
@@ -418,7 +406,7 @@
 }
 
 .sh-table__row:focus-visible {
-  outline: 2px solid var(--green);
+  outline: 2px solid var(--color-accent);
   outline-offset: -2px;
 }
 
@@ -469,8 +457,8 @@
 .sh-rewrite-share {
   font-size: 9.5px;
   font-weight: 700;
-  color: var(--green);
-  background: rgb(var(--rgb-emerald) / 0.12);
+  color: var(--color-accent);
+  background: rgb(var(--rgb-accent) / 0.12);
   padding: 1px 5px;
   border-radius: 3px;
   white-space: nowrap;
@@ -524,9 +512,9 @@
   font-size: 10px;
   font-weight: 600;
   letter-spacing: 0.04em;
-  background: rgb(var(--rgb-emerald) / 0.06);
-  border: 1px solid rgb(var(--rgb-emerald) / 0.25);
-  color: var(--green);
+  background: rgb(var(--rgb-accent) / 0.06);
+  border: 1px solid rgb(var(--rgb-accent) / 0.25);
+  color: var(--color-accent);
   white-space: nowrap;
 }
 
@@ -564,8 +552,8 @@
 }
 
 .sh-icon-btn.copied {
-  background: var(--green);
-  border-color: var(--green);
+  background: var(--color-accent);
+  border-color: var(--color-accent);
   color: var(--black);
 }
 
@@ -606,11 +594,8 @@
 }
 
 .sh-detail-stat__label {
-  font-family: 'JetBrains Mono', monospace;
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.1em;
   color: var(--text-dim);
 }
 
@@ -647,11 +632,8 @@
   padding: 10px 14px;
   border-bottom: 1px solid var(--border);
   background: var(--surface-2);
-  font-family: 'JetBrains Mono', monospace;
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.1em;
   color: var(--text);
 }
 
@@ -700,8 +682,8 @@
   font-family: 'JetBrains Mono', monospace;
   font-size: 11px;
   font-weight: 700;
-  color: var(--green);
-  background: rgb(var(--rgb-emerald) / 0.1);
+  color: var(--color-accent);
+  background: rgb(var(--rgb-accent) / 0.1);
   padding: 1px 6px;
   border-radius: 4px;
   flex-shrink: 0;
@@ -741,11 +723,8 @@
 }
 
 .sh-breakdown__label {
-  font-family: 'JetBrains Mono', monospace;
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.1em;
   color: var(--text-dim);
   margin-bottom: 4px;
 }
@@ -814,7 +793,7 @@
 
 .sh-timeline__conf {
   font-family: 'JetBrains Mono', monospace;
-  color: var(--green);
+  color: var(--color-accent);
   font-size: 11px;
   text-align: right;
 }
@@ -834,8 +813,8 @@
 }
 
 .sh-timeline__link:hover {
-  color: var(--green);
-  border-color: var(--green);
+  color: var(--color-accent);
+  border-color: var(--color-accent);
 }
 
 /* Compact stack on small viewports */
@@ -963,8 +942,8 @@
   letter-spacing: 0.02em;
 }
 .sh-copy-btn--copied {
-  color: var(--green, var(--green-400));
-  border-color: var(--green, var(--green-400));
+  color: var(--green, var(--color-accent-soft));
+  border-color: var(--green, var(--color-accent-soft));
 }
 .sh-copy-chevron {
   border-top-left-radius: 0;
@@ -996,8 +975,6 @@
   font-size: 0.72rem;
   color: var(--text-muted);
   margin-bottom: 0.3rem;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
 }
 .sh-copy-modal__preview {
   background: var(--bg, #0a0a0a);
@@ -1099,7 +1076,7 @@
   flex-wrap: wrap;
 }
 .sh-resolved-row__icon {
-  color: var(--green, var(--green-400));
+  color: var(--green, var(--color-success-soft));
 }
 .sh-resolved-row__selector {
   flex: 1 1 auto;
@@ -1245,7 +1222,7 @@
   border-left: 4px solid var(--color-highlight);
 }
 .sh-detail-state--resolved {
-  border-left: 4px solid var(--green, var(--green-400));
+  border-left: 4px solid var(--green, var(--color-success-soft));
 }
 .sh-detail-state--muted {
   border-left: 4px solid var(--text-muted);

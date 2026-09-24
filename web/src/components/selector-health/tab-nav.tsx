@@ -25,7 +25,7 @@ interface Props {
 const TABS: Array<{ id: Tab; label: string; icon: LucideIcon; color?: string }> = [
   { id: 'active', label: 'Active', icon: Zap },
   { id: 'pending', label: 'Pending', icon: Hourglass, color: 'var(--color-highlight)' },
-  { id: 'resolved', label: 'Resolved', icon: CheckCircle2, color: 'var(--green)' },
+  { id: 'resolved', label: 'Resolved', icon: CheckCircle2, color: 'var(--color-success)' },
   { id: 'muted', label: 'Muted', icon: VolumeX, color: 'var(--text-muted)' },
 ];
 
@@ -43,7 +43,7 @@ export function TabNav({ current, counts = {} }: Props) {
   };
 
   return (
-    <nav className="sh-tab-nav" role="tablist" aria-label="Selector Health tabs">
+    <nav className="sh-tab-nav" role="tablist" aria-label="Selector health tabs">
       {TABS.map((t) => {
         const count = counts[t.id];
         const Icon = t.icon;

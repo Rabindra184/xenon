@@ -41,7 +41,7 @@
   font-family: 'JetBrains Mono', ui-monospace, monospace;
   font-size: 12px;
   background: var(--surface-2);
-  color: var(--green);
+  color: var(--color-accent);
   padding: 1px 5px;
   border-radius: 4px;
 }

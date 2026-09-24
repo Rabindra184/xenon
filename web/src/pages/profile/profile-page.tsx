@@ -24,15 +24,15 @@ export default function ProfilePage() {
         <nav className="w-56 shrink-0 border-r border-[var(--border)] py-6 px-3">
           <div className="text-sm font-semibold mb-4 px-2">Profile Settings</div>
           {[
-            { id: 'password', label: 'Password & Authentication' } as const,
-            { id: 'tokens', label: 'API Tokens' } as const,
+            { id: 'password', label: 'Password & authentication' } as const,
+            { id: 'tokens', label: 'API tokens' } as const,
           ].map((t) => (
             <button
               key={t.id}
               onClick={() => setTab(t.id)}
               className={`block w-full text-left px-3 py-2 text-sm rounded-md mb-1 ${
                 tab === t.id
-                  ? 'bg-[var(--green)]/10 text-[var(--green)]'
+                  ? 'bg-[var(--color-accent)]/10 text-[var(--color-accent)]'
                   : 'text-[var(--text)] hover:bg-[var(--surface)]'
               }`}
             >
