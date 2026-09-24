@@ -374,6 +374,13 @@ colours and the logcat tag palette are exempt, with reasons in
 (blue for Selector Health and the mosaic, border for device cards) are now
 `--color-highlight`, `--color-info` and `--border-strong`.
 
+**Changing a value in `web/src/tokens.css` also changes the Mac launcher.**
+`mac-app/src/renderer/src/tokens.css` is generated from it (surfaces, borders
+and text, with `-rgb` triples) by `mac-app/scripts/sync-tokens.mjs`, and the
+Schema Drift Check workflow fails on any difference. After editing a token
+value run `node mac-app/scripts/sync-tokens.mjs` and commit the generated
+file in the same PR. #268 missed this and turned main's drift check red.
+
 #### Breakpoints
 
 Supported range is **1280–1440** (laptop + tablet landscape). No phone or
