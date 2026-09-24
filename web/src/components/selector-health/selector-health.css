@@ -164,7 +164,7 @@
 }
 
 .sh-delta.neutral {
-  background: rgb(var(--rgb-white) / 0.04);
+  background: rgb(var(--rgb-fg) / 0.04);
   border-color: var(--border);
   color: var(--text-dim);
 }
@@ -500,7 +500,7 @@
 }
 
 .sh-count-badge.mild {
-  background: rgb(var(--rgb-white) / 0.04);
+  background: rgb(var(--rgb-fg) / 0.04);
   border-color: var(--border);
   color: var(--text-muted);
 }
@@ -554,7 +554,7 @@
 .sh-icon-btn.copied {
   background: var(--color-accent);
   border-color: var(--color-accent);
-  color: var(--black);
+  color: var(--color-on-accent);
 }
 
 /* ── Selector Detail page ────────────────────────────────────────── */
@@ -667,7 +667,7 @@
   gap: 4px;
   padding: 10px;
   border-radius: var(--radius-sm);
-  background: rgb(var(--rgb-black) / 0.25);
+  background: rgb(var(--rgb-well) / calc(0.25 * var(--well-k)));
   border: 1px solid var(--border);
 }
 
@@ -1256,4 +1256,11 @@
   flex-wrap: wrap;
   font-size: 0.8rem;
   color: var(--text-muted);
+}
+
+/* --- Light theme ---------------------------------------------------
+   Scoped overrides for literals tuned for the dark surface, so the dark
+   theme renders byte-for-byte as before. */
+:root[data-theme='light'] .sh-resolved-row__regression {
+  color: var(--amber);
 }

@@ -147,7 +147,7 @@ iOS Allowed Commands:
   };
 
   return (
-    <div className="terminal-container">
+    <div className="terminal-container theme-dark">
       {/* Mission Control Scanline Overlay */}
       <div
         className="scanline"

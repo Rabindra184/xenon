@@ -138,10 +138,11 @@ function EmptyCell({ onDropDevice }: { onDropDevice?: (udid: string) => void }) 
       } text-[var(--text-dim)] min-h-[120px]`}
     >
       <div
+        aria-hidden="true"
         className={`w-8 h-8 rounded-full flex items-center justify-center text-xl ${
           hover
             ? 'bg-[rgb(var(--rgb-accent)/0.15)] text-[var(--color-accent-soft)]'
-            : 'bg-white/5 text-white/60'
+            : 'bg-[rgb(var(--rgb-fg)/0.05)] text-[rgb(var(--rgb-fg)/0.6)]'
         }`}
       >
         +

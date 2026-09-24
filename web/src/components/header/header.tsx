@@ -3,11 +3,23 @@ import { useNavigate } from 'react-router-dom';
 import { ChevronDown, Search, LogOut, User as UserIcon } from 'lucide-react';
 import { useAuth } from '../../auth/auth-context';
 import { useConnectionStatus } from '../../hooks/useConnectionStatus';
+import { useThemePreference, type ThemePreference } from '../../lib/theme';
+import { Logo } from '../ui/Logo';
+// The theme control uses the segmented-control look; that sheet otherwise
+// loads only with SegmentedControl, which the header doesn't render.
+import '../ui/segmented-control.css';
+
+const THEME_OPTIONS: { value: ThemePreference; label: string }[] = [
+  { value: 'dark', label: 'Dark' },
+  { value: 'light', label: 'Light' },
+  { value: 'system', label: 'System' },
+];
 
 const Header: React.FC = () => {
   const navigate = useNavigate();
   const { me, signOut } = useAuth();
   const connection = useConnectionStatus();
+  const [themePref, setThemePref] = useThemePreference();
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const ddRef = useRef<HTMLDivElement>(null);
 
@@ -38,7 +50,7 @@ const Header: React.FC = () => {
           aria-label="Xenon home"
         >
           <div className="flex items-center gap-2">
-            <img src={`${import.meta.env.BASE_URL}logo.svg`} alt="Xenon Logo" className="h-8 w-auto object-contain" />
+            <Logo alt="Xenon Logo" className="h-8 w-auto object-contain" />
           </div>
         </button>
 
@@ -111,6 +123,27 @@ const Header: React.FC = () => {
                   <div className="flex items-center justify-between text-xs text-[var(--text)]">
                     <span className="text-[var(--text-muted)]">Version</span>
                     <span className="font-mono text-[var(--text-muted)]">v{__XENON_VERSION__}</span>
+                  </div>
+                </div>
+                <div className="h-px bg-[var(--border)]" />
+                <div className="px-3 py-2 flex items-center justify-between gap-2">
+                  <span id="theme-label" className="text-xs text-[var(--text-muted)]">
+                    Theme
+                  </span>
+                  {/* A setting, so a radio group — not SegmentedControl's tablist. */}
+                  <div className="seg seg-sm" role="radiogroup" aria-labelledby="theme-label">
+                    {THEME_OPTIONS.map((o) => (
+                      <button
+                        key={o.value}
+                        type="button"
+                        role="radio"
+                        aria-checked={themePref === o.value}
+                        className={`seg-btn${themePref === o.value ? ' seg-btn-active' : ''}`}
+                        onClick={() => setThemePref(o.value)}
+                      >
+                        {o.label}
+                      </button>
+                    ))}
                   </div>
                 </div>
                 <div className="h-px bg-[var(--border)]" />

@@ -156,7 +156,7 @@
 }
 
 .logcat-row:hover {
-  background: rgb(var(--rgb-white) / 0.03);
+  background: rgb(var(--rgb-fg) / 0.03);
 }
 
 /* min-width: 0 is load-bearing on the two flexible columns: a grid item
@@ -282,7 +282,7 @@
 
 .logcat-input-btn:hover {
   color: var(--text);
-  background: rgb(var(--rgb-white) / 0.08);
+  background: rgb(var(--rgb-fg) / 0.08);
 }
 
 .logcat-hit-count {
@@ -354,4 +354,12 @@
   background: rgb(var(--rgb-amber-400) / 0.1);
   border: 1px solid rgb(var(--rgb-amber-400) / 0.3);
   color: #fde68a;
+}
+
+/* --- Light theme ---------------------------------------------------
+   The rows are a .theme-dark island (the tag palette is tuned for a dark
+   surface), so give them the island's own background. */
+:root[data-theme='light'] .logcat-rows {
+  background: var(--bg);
+  border-radius: 0 0 var(--radius-md) var(--radius-md);
 }

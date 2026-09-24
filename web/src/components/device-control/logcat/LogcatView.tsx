@@ -456,7 +456,7 @@ export default function LogcatView({ udid, platform }: Props) {
         </div>
       </div>
 
-      <div className={`logcat-rows ${wrap ? '' : 'no-wrap'}`} ref={rowsRef}>
+      <div className={`logcat-rows theme-dark ${wrap ? '' : 'no-wrap'}`} ref={rowsRef}>
         {deniedReason && (
           <div className="logcat-status-banner is-denied" role="alert">
             <AlertTriangle size={14} />

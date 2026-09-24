@@ -8,7 +8,7 @@
   padding: 0 30px 0 12px;
   border: 1px solid var(--border);
   border-radius: 6px;
-  background-color: rgb(var(--rgb-black) / 0.3);
+  background-color: rgb(var(--rgb-well) / calc(0.3 * var(--well-k)));
   color: var(--text);
   font-family: 'JetBrains Mono', monospace;
   font-size: 13px;
@@ -26,7 +26,7 @@
 .select-base:focus {
   outline: none;
   border-color: var(--color-accent);
-  background-color: rgb(var(--rgb-black) / 0.4);
+  background-color: rgb(var(--rgb-well) / calc(0.4 * var(--well-k)));
 }
 
 .select-base:disabled {

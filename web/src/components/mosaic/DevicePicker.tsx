@@ -114,7 +114,7 @@ export function DevicePicker({ devices, inMosaic, onToggle }: Props) {
             <button
               type="button"
               onClick={() => setCollapsed((c) => ({ ...c, [g.id]: !c[g.id] }))}
-              className="flex items-center justify-between w-full text-[11px] text-[var(--text-dim)] hover:text-white px-1 py-0.5"
+              className="flex items-center justify-between w-full text-[11px] text-[var(--text-dim)] hover:text-[rgb(var(--rgb-fg))] px-1 py-0.5"
             >
               <span className="flex items-center gap-1.5">
                 <span

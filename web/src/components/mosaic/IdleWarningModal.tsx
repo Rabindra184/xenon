@@ -39,7 +39,7 @@ export function IdleWarningModal({ remainingSec, onContinue, onReleaseNow }: Idl
             type="button"
             autoFocus
             onClick={onContinue}
-            className="h-9 px-4 rounded-md bg-[var(--color-accent)] text-black text-sm font-medium"
+            className="h-9 px-4 rounded-md bg-[var(--color-accent)] text-[var(--color-on-accent)] text-sm font-medium"
           >
             Continue session
           </button>

@@ -133,8 +133,8 @@ input[type="checkbox"]:focus {
 /* Subtle grid utility */
 .bg-grid {
   background-image:
-    linear-gradient(to right, rgb(var(--rgb-white) / 0.02) 1px, transparent 1px),
-    linear-gradient(to bottom, rgb(var(--rgb-white) / 0.02) 1px, transparent 1px);
+    linear-gradient(to right, rgb(var(--rgb-fg) / 0.02) 1px, transparent 1px),
+    linear-gradient(to bottom, rgb(var(--rgb-fg) / 0.02) 1px, transparent 1px);
   background-size: 32px 32px;
 }
 
@@ -154,4 +154,22 @@ input[type="checkbox"]:focus {
 @keyframes fadeIn {
   from { opacity: 0; transform: translateY(4px); }
   to { opacity: 1; transform: translateY(0); }
+}
+
+/* Theme-specific logo (components/ui/Logo.tsx) */
+.logo-for-light {
+  display: none;
+}
+:root[data-theme='light'] .logo-for-dark {
+  display: none;
+}
+:root[data-theme='light'] .logo-for-light {
+  display: inline-block;
+}
+
+/* --- Light theme ---------------------------------------------------
+   Scoped overrides for literals tuned for the dark surface, so the dark
+   theme renders byte-for-byte as before. */
+:root[data-theme='light'] a:hover {
+  color: var(--blue-400);
 }

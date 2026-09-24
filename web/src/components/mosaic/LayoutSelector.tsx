@@ -30,8 +30,8 @@ export function LayoutSelector({ value, onChange }: Props) {
             onClick={() => onChange(l.id)}
             className={`flex items-center gap-1.5 px-2.5 py-1.5 border-r border-[var(--border)] last:border-r-0 transition-colors ${
               active
-                ? 'bg-[var(--surface-2)] text-white'
-                : 'text-[var(--text-dim)] hover:bg-[var(--surface-2)] hover:text-white'
+                ? 'bg-[var(--surface-2)] text-[rgb(var(--rgb-fg))]'
+                : 'text-[var(--text-dim)] hover:bg-[var(--surface-2)] hover:text-[rgb(var(--rgb-fg))]'
             }`}
             title={`Layout: ${l.label}`}
           >

@@ -77,7 +77,7 @@
     border-radius: 6px;
     font-size: 11px;
     font-weight: 800;
-    background: rgb(var(--rgb-black) / 0.4);
+    background: rgb(var(--rgb-well) / calc(0.4 * var(--well-k)));
     border: 1px solid var(--border);
 }
 
@@ -102,7 +102,7 @@
 }
 
 .locked-indicator code {
-    background: rgb(var(--rgb-white) / 0.05);
+    background: rgb(var(--rgb-fg) / 0.05);
     color: var(--text-muted);
     padding: 2px 6px;
     border-radius: 4px;
@@ -733,8 +733,8 @@
 }
 
 .copy-btn-critical {
-    background: rgb(var(--rgb-white) / 0.1);
-    border: 1px solid rgb(var(--rgb-white) / 0.2);
+    background: rgb(var(--rgb-fg) / 0.1);
+    border: 1px solid rgb(var(--rgb-fg) / 0.2);
     color: var(--white);
     width: 32px;
     height: 32px;
@@ -747,7 +747,7 @@
 }
 
 .copy-btn-critical:hover {
-    background: rgb(var(--rgb-white) / 0.2);
+    background: rgb(var(--rgb-fg) / 0.2);
     transform: scale(1.05);
 }
 
@@ -791,9 +791,9 @@
 
 /* --- Fix: Input Contrast & Alignment --- */
 .input-container {
-    background: rgb(var(--rgb-white) / 0.05);
+    background: rgb(var(--rgb-fg) / 0.05);
     /* Increased contrast from 0.03 */
-    border: 1px solid rgb(var(--rgb-white) / 0.1);
+    border: 1px solid rgb(var(--rgb-fg) / 0.1);
     height: 42px;
     /* Force consistent height */
 }
@@ -801,13 +801,13 @@
 .status-pill {
     height: 42px;
     /* Match input height */
-    background: rgb(var(--rgb-white) / 0.05);
-    border: 1px solid rgb(var(--rgb-white) / 0.1);
+    background: rgb(var(--rgb-fg) / 0.05);
+    border: 1px solid rgb(var(--rgb-fg) / 0.1);
 }
 
 /* --- Hierarchy Polish: Dense Layout --- */
 .card-header-dense {
-    border-bottom: 1px solid rgb(var(--rgb-white) / 0.05);
+    border-bottom: 1px solid rgb(var(--rgb-fg) / 0.05);
     padding-bottom: 16px;
     margin-bottom: 24px;
 }
@@ -858,7 +858,7 @@
 /* --- Footer Dock Refinement --- */
 .ghost-btn {
     background: transparent;
-    border: 1px solid rgb(var(--rgb-white) / 0.1);
+    border: 1px solid rgb(var(--rgb-fg) / 0.1);
     color: var(--text-muted);
     padding: 0 20px;
     height: 40px;
@@ -872,9 +872,9 @@
 }
 
 .ghost-btn:hover {
-    background: rgb(var(--rgb-white) / 0.05);
+    background: rgb(var(--rgb-fg) / 0.05);
     color: var(--text);
-    border-color: rgb(var(--rgb-white) / 0.2);
+    border-color: rgb(var(--rgb-fg) / 0.2);
 }
 
 .save-btn.primary {
@@ -896,8 +896,8 @@
     gap: 12px;
     padding: 16px 20px;
     border-radius: 8px;
-    border: 1px solid rgb(var(--rgb-white) / 0.08);
-    background: rgb(var(--rgb-white) / 0.03);
+    border: 1px solid rgb(var(--rgb-fg) / 0.08);
+    background: rgb(var(--rgb-fg) / 0.03);
     cursor: pointer;
     transition: all 0.2s ease;
     text-align: left;
@@ -905,8 +905,8 @@
 }
 
 .ai-provider-card:hover:not(.disabled) {
-    border-color: rgb(var(--rgb-white) / 0.2);
-    background: rgb(var(--rgb-white) / 0.06);
+    border-color: rgb(var(--rgb-fg) / 0.2);
+    background: rgb(var(--rgb-fg) / 0.06);
 }
 
 .ai-provider-card.active {
@@ -931,7 +931,7 @@
     width: 36px;
     height: 36px;
     border-radius: 8px;
-    background: rgb(var(--rgb-white) / 0.06);
+    background: rgb(var(--rgb-fg) / 0.06);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -975,10 +975,10 @@
     display: flex;
     flex-direction: column;
     gap: 1px;
-    background: rgb(var(--rgb-white) / 0.04);
+    background: rgb(var(--rgb-fg) / 0.04);
     border-radius: 8px;
     overflow: hidden;
-    border: 1px solid rgb(var(--rgb-white) / 0.06);
+    border: 1px solid rgb(var(--rgb-fg) / 0.06);
 }
 
 .ai-config-row {
@@ -990,7 +990,7 @@
 }
 
 .ai-config-row+.ai-config-row {
-    border-top: 1px solid rgb(var(--rgb-white) / 0.04);
+    border-top: 1px solid rgb(var(--rgb-fg) / 0.04);
 }
 
 .ai-config-label {
@@ -1016,7 +1016,7 @@
 
 .ai-config-default {
     font-size: 11px;
-    background: rgb(var(--rgb-white) / 0.06);
+    background: rgb(var(--rgb-fg) / 0.06);
     color: var(--text-dim);
     padding: 2px 6px;
     border-radius: 4px;
@@ -1046,7 +1046,7 @@
 .slider {
     position: absolute;
     inset: 0;
-    background: rgb(var(--rgb-white) / 0.08);
+    background: rgb(var(--rgb-fg) / 0.08);
     border: 1px solid var(--border);
     transition: all 0.2s ease;
     cursor: pointer;
@@ -1092,7 +1092,7 @@
 .cron-preview {
     margin-top: 12px;
     padding: 10px 12px;
-    background: rgb(var(--rgb-black) / 0.25);
+    background: rgb(var(--rgb-well) / calc(0.25 * var(--well-k)));
     border: 1px solid var(--border);
     border-radius: 6px;
     display: flex;
@@ -1138,7 +1138,7 @@
     padding: 6px 12px;
     border-radius: 6px;
     border: 1px solid var(--border);
-    background: rgb(var(--rgb-white) / 0.03);
+    background: rgb(var(--rgb-fg) / 0.03);
     color: var(--text-muted);
     font-size: 11px;
     font-weight: 600;
@@ -1265,7 +1265,7 @@
     margin-top: auto;
     padding: 12px;
     border-radius: var(--radius-md);
-    background: rgb(var(--rgb-white) / 0.025);
+    background: rgb(var(--rgb-fg) / 0.025);
     border: 1px solid var(--border);
     display: flex;
     flex-direction: column;
@@ -1430,7 +1430,7 @@
     padding: 14px 16px;
     border-radius: var(--radius-md);
     border: 1px solid var(--border);
-    background: rgb(var(--rgb-white) / 0.02);
+    background: rgb(var(--rgb-fg) / 0.02);
     color: var(--text);
     text-align: left;
     cursor: pointer;
@@ -1440,7 +1440,7 @@
 
 .provider-row:hover:not(:disabled):not(.is-active) {
     border-color: var(--border-strong);
-    background: rgb(var(--rgb-white) / 0.04);
+    background: rgb(var(--rgb-fg) / 0.04);
 }
 
 .provider-row.is-active {
@@ -1461,7 +1461,7 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    background: rgb(var(--rgb-white) / 0.05);
+    background: rgb(var(--rgb-fg) / 0.05);
     color: var(--text-muted);
     flex-shrink: 0;
     font-family: 'Outfit', sans-serif;
@@ -1524,13 +1524,13 @@
 
 .provider-status--off {
     color: var(--text-dim);
-    background: rgb(var(--rgb-white) / 0.04);
+    background: rgb(var(--rgb-fg) / 0.04);
     border-color: var(--border-strong);
 }
 
 .provider-status--ready {
     color: var(--text-muted);
-    background: rgb(var(--rgb-white) / 0.04);
+    background: rgb(var(--rgb-fg) / 0.04);
     border-color: var(--border);
 }
 
@@ -1542,7 +1542,7 @@
     margin-top: 8px;
     padding: 14px;
     border-radius: var(--radius-md);
-    background: rgb(var(--rgb-white) / 0.025);
+    background: rgb(var(--rgb-fg) / 0.025);
     border: 1px solid var(--border);
 }
 
@@ -1588,7 +1588,7 @@
     appearance: none;
     width: 100%;
     height: 4px;
-    background: rgb(var(--rgb-white) / 0.08);
+    background: rgb(var(--rgb-fg) / 0.08);
     border-radius: 999px;
     outline: none;
     cursor: pointer;
@@ -1600,15 +1600,15 @@
         to right,
         var(--color-accent) 0%,
         var(--color-accent) var(--slider-pct, 50%),
-        rgb(var(--rgb-white) / 0.08) var(--slider-pct, 50%),
-        rgb(var(--rgb-white) / 0.08) 100%
+        rgb(var(--rgb-fg) / 0.08) var(--slider-pct, 50%),
+        rgb(var(--rgb-fg) / 0.08) 100%
     );
     border-radius: 999px;
 }
 
 .model-param__slider::-moz-range-track {
     height: 4px;
-    background: rgb(var(--rgb-white) / 0.08);
+    background: rgb(var(--rgb-fg) / 0.08);
     border-radius: 999px;
 }
 
@@ -1650,7 +1650,7 @@
     gap: 8px;
     padding: 12px 16px;
     border-radius: var(--radius-md);
-    background: rgb(var(--rgb-white) / 0.04);
+    background: rgb(var(--rgb-fg) / 0.04);
     border: 1px solid var(--border-strong);
     color: var(--text);
     font-family: 'Inter', sans-serif;
@@ -1724,7 +1724,7 @@
 }
 
 .page-header-action--ghost:hover:not(:disabled) {
-    background: rgb(var(--rgb-white) / 0.04);
+    background: rgb(var(--rgb-fg) / 0.04);
     border-color: rgb(var(--rgb-accent) / 0.4);
     color: var(--color-accent);
 }
@@ -1777,7 +1777,7 @@
 }
 
 .data-card .table-row:hover {
-    background: rgb(var(--rgb-white) / 0.03);
+    background: rgb(var(--rgb-fg) / 0.03);
 }
 
 /* Pill chips inside table cells */
@@ -1795,7 +1795,7 @@
 }
 
 .pill-chip--shared {
-    background: rgb(var(--rgb-white) / 0.04);
+    background: rgb(var(--rgb-fg) / 0.04);
     color: var(--text-muted);
     border-color: var(--border-strong);
 }
@@ -1855,8 +1855,8 @@
 }
 
 .row-action:hover:not(:disabled) {
-    background: rgb(var(--rgb-white) / 0.04);
-    border-color: rgb(var(--rgb-white) / 0.2);
+    background: rgb(var(--rgb-fg) / 0.04);
+    border-color: rgb(var(--rgb-fg) / 0.2);
     color: var(--text);
 }
 
@@ -2036,4 +2036,24 @@
     font-size: 10.5px;
     color: var(--text-dim);
     letter-spacing: 0.04em;
+}
+
+/* --- Light theme ---------------------------------------------------
+   Scoped overrides for literals tuned for the dark surface, so the dark
+   theme renders byte-for-byte as before. */
+:root[data-theme='light'] .ai-config-row {
+    background: var(--surface-2);
+}
+
+:root[data-theme='light'] .setting-input-wrapper select {
+    color-scheme: light;
+}
+
+:root[data-theme='light'] .reset-to-defaults-btn {
+    border-color: rgb(var(--rgb-red) / 0.3);
+    color: var(--red);
+}
+
+:root[data-theme='light'] .row-action--danger:hover:not(:disabled) {
+    color: var(--red-100);
 }

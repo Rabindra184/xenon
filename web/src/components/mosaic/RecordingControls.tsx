@@ -233,10 +233,10 @@ export function RecordingControls({ selectedUdids }: Props) {
     <div className="flex items-center gap-2 flex-wrap justify-end">
       {(state.recordingPhase === 'recording' || state.recordingPhase === 'stopping') && (
         <span
-          className="inline-flex items-center gap-1.5 px-2 py-1 rounded text-xs font-mono tabular-nums bg-red-600/20 text-red-200 border border-red-500/40"
+          className="inline-flex items-center gap-1.5 px-2 py-1 rounded text-xs font-mono tabular-nums bg-[rgb(var(--rgb-red-600)/0.2)] text-[var(--red-200)] border border-[rgb(var(--rgb-red)/0.4)]"
           title="Recording elapsed time"
         >
-          <span className="inline-block w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" />
+          <span className="inline-block w-1.5 h-1.5 rounded-full bg-[var(--red)] animate-pulse" />
           REC {formatElapsed(elapsedMs)}
           {state.recordingPhase === 'stopping' ? ' · Stopping…' : ''}
         </span>
@@ -251,7 +251,7 @@ export function RecordingControls({ selectedUdids }: Props) {
             ? 'Add a device to the mosaic first'
             : 'Record every device currently in the mosaic'
         }
-        className="px-3 py-1.5 text-sm rounded bg-red-600 text-white disabled:opacity-40 disabled:cursor-not-allowed"
+        className="px-3 py-1.5 text-sm rounded bg-[var(--red-600)] text-white disabled:opacity-40 disabled:cursor-not-allowed"
       >
         {recordButtonLabel(selectedUdids.length, state.recordingPhase)}
       </button>
@@ -300,7 +300,7 @@ export function RecordingControls({ selectedUdids }: Props) {
               onClick={() => dispatch({ type: 'SET_SHAPE', shape: s.id })}
               className={`px-2 py-1 text-xs rounded border ${
                 state.shape === s.id
-                  ? 'bg-[var(--surface-2)] border-[var(--color-info)] text-white'
+                  ? 'bg-[var(--surface-2)] border-[var(--color-info)] text-[rgb(var(--rgb-fg))]'
                   : 'border-[var(--border)] opacity-80 hover:opacity-100'
               }`}
             >

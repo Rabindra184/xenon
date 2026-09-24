@@ -90,7 +90,7 @@
 }
 
 .event-pill--gray {
-    background: rgb(var(--rgb-white) / 0.04);
+    background: rgb(var(--rgb-fg) / 0.04);
     color: var(--text-muted);
     border-color: var(--border-strong);
 }
@@ -130,7 +130,7 @@
     gap: 10px;
     padding: 16px 24px;
     border-top: 1px solid var(--border);
-    background: rgb(var(--rgb-black) / 0.15);
+    background: rgb(var(--rgb-well) / calc(0.15 * var(--well-k)));
 }
 
 /* Trigger toggles in form */
@@ -146,7 +146,7 @@
     gap: 10px;
     padding: 10px 14px;
     border-radius: var(--radius-md);
-    background: rgb(var(--rgb-white) / 0.025);
+    background: rgb(var(--rgb-fg) / 0.025);
     border: 1px solid var(--border-strong);
     color: var(--text-muted);
     font-size: 13px;
@@ -157,7 +157,7 @@
 }
 
 .event-toggle:hover:not(.is-selected) {
-    border-color: rgb(var(--rgb-white) / 0.2);
+    border-color: rgb(var(--rgb-fg) / 0.2);
     color: var(--text);
 }
 
@@ -232,7 +232,7 @@
     border: 1px solid var(--border);
     border-radius: var(--radius-md);
     overflow: hidden;
-    background: rgb(var(--rgb-black) / 0.15);
+    background: rgb(var(--rgb-well) / calc(0.15 * var(--well-k)));
 }
 
 .template-section__toggle {
@@ -253,7 +253,7 @@
 }
 
 .template-section__toggle:hover {
-    background: rgb(var(--rgb-white) / 0.03);
+    background: rgb(var(--rgb-fg) / 0.03);
 }
 
 .template-section__toggle .tone-amber {
@@ -274,7 +274,7 @@
 .template-editor {
     padding: 16px;
     border-top: 1px solid var(--border);
-    background: rgb(var(--rgb-black) / 0.1);
+    background: rgb(var(--rgb-well) / calc(0.1 * var(--well-k)));
     display: flex;
     flex-direction: column;
     gap: 12px;
@@ -312,7 +312,7 @@
 
 .template-editor__textarea {
     width: 100%;
-    background: rgb(var(--rgb-black) / 0.3);
+    background: rgb(var(--rgb-well) / calc(0.3 * var(--well-k)));
     border: 1px solid var(--border);
     border-radius: var(--radius-md);
     color: var(--text);

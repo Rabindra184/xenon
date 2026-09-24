@@ -12,7 +12,7 @@
 }
 
 .badge-variant-default {
-  background: rgb(var(--rgb-black) / 0.3);
+  background: rgb(var(--rgb-well) / calc(0.3 * var(--well-k)));
   color: var(--text-dim);
   border-color: var(--border);
 }
@@ -50,4 +50,13 @@
 .badge-variant-outline:hover {
   color: var(--text);
   border-color: var(--text-muted);
+}
+
+/* --- Light theme ---------------------------------------------------
+   Scoped overrides for literals tuned for the dark surface, so the dark
+   theme renders byte-for-byte as before. */
+:root[data-theme='light'] .badge-variant-warning {
+  background: rgb(var(--rgb-amber) / 0.08);
+  color: var(--amber);
+  border-color: rgb(var(--rgb-amber) / 0.3);
 }

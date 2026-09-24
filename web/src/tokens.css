@@ -1,5 +1,11 @@
 /* Xenon design tokens — reference palette. */
 
+/* Dark islands. `.theme-dark` re-declares the whole dark palette on a
+   subtree (it shares this :root block and the one below), so the terminal, the live
+   log and code blocks stay dark in every theme, like an editor's console.
+   Tokens are inherited, so declaring them on the island is enough; the
+   island only has to paint its own background where it had none. */
+.theme-dark,
 :root {
   color-scheme: dark;
 
@@ -33,7 +39,7 @@
      a useful semantic (status colors) or a literal rgba value that's
      awkward to inline at every callsite (--accent-subtle / --accent-border). */
 
-  --accent-subtle: rgba(34, 197, 94, 0.1);
+  --accent-subtle: rgba(34, 197, 94, 0.1); /* literal: synced verbatim to mac-app */
   --accent-border: rgba(34, 197, 94, 0.3);
 
   /* Status — foreground */
@@ -45,17 +51,17 @@
 
   /* Status — background */
   --status-ready-bg: rgb(var(--rgb-success) / 0.1);
-  --status-busy-bg: rgba(245, 158, 11, 0.1);
-  --status-reserved-bg: rgba(59, 130, 246, 0.1);
-  --status-error-bg: rgba(239, 68, 68, 0.1);
-  --status-offline-bg: rgba(138, 147, 143, 0.08);
+  --status-busy-bg: rgb(var(--rgb-amber) / 0.1);
+  --status-reserved-bg: rgb(var(--rgb-blue) / 0.1);
+  --status-error-bg: rgb(var(--rgb-red) / 0.1);
+  --status-offline-bg: rgb(var(--rgb-offline) / 0.08);
 
   /* Status — border */
   --status-ready-border: rgb(var(--rgb-success) / 0.3);
-  --status-busy-border: rgba(245, 158, 11, 0.3);
-  --status-reserved-border: rgba(59, 130, 246, 0.3);
-  --status-error-border: rgba(239, 68, 68, 0.3);
-  --status-offline-border: rgba(138, 147, 143, 0.25);
+  --status-busy-border: rgb(var(--rgb-amber) / 0.3);
+  --status-reserved-border: rgb(var(--rgb-blue) / 0.3);
+  --status-error-border: rgb(var(--rgb-red) / 0.3);
+  --status-offline-border: rgb(var(--rgb-offline) / 0.25);
 
   /* Spacing (4px grid) */
   --space-1: 4px;
@@ -94,8 +100,9 @@
                        rgb(var(--rgb-green) / 0.1)  ==  rgba(34, 197, 94, 0.1)
      3. Roles        — what a colour means. Components should use these.
 
-   A theme ([data-theme] on <html>, set in index.html) will re-point these
-   variables; nothing else needs to change. Only "dark" exists today. */
+   A theme ([data-theme] on <html>, set in index.html) re-points these
+   variables: see the light block below. */
+.theme-dark,
 :root {
   /* 1. Primitives */
   --white: #ffffff;
@@ -107,6 +114,8 @@
   --red-400: #f87171;
   --red-600: #dc2626;
   --red-alt: #ff4d4d;
+  --red-100: #fee2e2; /* text on red tints (mosaic banners) */
+  --red-200: #fecaca;
   --red-flat: #e74c3c;
   --amber-400: #fbbf24;
   --amber-alt: #ffb800;
@@ -131,6 +140,19 @@
   --rgb-blue-400: 96 165 250;
   --rgb-sky-400: 56 189 248;
 
+  /* Theme-aware channels (Stage 2). In dark these equal the literals they
+     replaced, so dark pixels are unchanged:
+       --rgb-fg      foreground washes: rgb(var(--rgb-fg) / 0.05) lifts a surface
+       --rgb-well    sunken wells; alpha is scaled by --well-k, because a
+                     well that reads at 30% black on dark would be far too
+                     heavy on white
+       --rgb-offline the "offline" status grey */
+  --rgb-fg: 255 255 255;
+  --rgb-well: 0 0 0;
+  --well-k: 1;
+  --shadow-k: 1; /* scales the heavy drop shadows tuned for dark */
+  --rgb-offline: 138 147 143;
+
   /* 3. Roles. Green means "do this" (actions, selection, focus); status
      "good" (ready, passed, healed, live) is teal, so a status never reads as
      a button. The neon #00ff88 and emerald #10b981 the old theme mixed in
@@ -144,6 +166,7 @@
   --color-success-strong: #14b8a6;
   --color-success-soft: #5eead4;
   --rgb-success: 45 212 191;
+  --color-on-success: var(--black);
   --color-warning: var(--amber);
   --color-danger: var(--red);
   --color-info: var(--blue);
@@ -158,6 +181,93 @@
   --font-size-lg: 16px;
   --font-size-xl: 20px;
   --font-size-2xl: 24px;
+}
+
+/* ===== Light theme (Stage 2) =====
+   Chosen in the account menu (Dark / Light / System) and applied to
+   <html data-theme> before first paint by the inline script in index.html.
+   Every text colour clears WCAG AA on --bg, --surface and --surface-2.
+   Primitives are re-pointed too: components still use some directly
+   (var(--red), var(--amber)…), and the dark values fail on white. */
+:root[data-theme='light'] {
+  color-scheme: light;
+
+  --bg: #f6f7f9;
+  --surface: #ffffff;
+  --surface-2: #f1f3f6;
+  --surface-sunken: #eceff3;
+  --border: #e3e6eb;
+  --border-strong: #d3d8df;
+
+  --text: #14171c; /* 16.2:1 */
+  --text-muted: #4b5260; /* 7.1:1 */
+  --text-dim: #5f6673; /* 5.2:1 */
+  --text-placeholder: #6b7280;
+
+  --rgb-fg: 20 23 28;
+  --rgb-well: 20 23 28;
+  --well-k: 0.12;
+  --shadow-k: 0.3;
+  --rgb-offline: 95 102 115;
+
+  /* Primitives, darkened to hold 4.5:1 as text on white */
+  --green: #146c35;
+  --green-dim: #0f5a2c;
+  --green-400: #146c35;
+  --emerald: #047857;
+  --neon-green: #146c35;
+  --neon-green-dim: #0f5a2c;
+  --red: #c62828;
+  --red-400: #b91c1c;
+  --red-600: #b91c1c;
+  --red-alt: #c62828;
+  --red-flat: #c62828;
+  --red-100: #7f1d1d;
+  --red-200: #991b1b;
+  --amber: #b45309;
+  --amber-400: #a16207;
+  --amber-alt: #a16207;
+  --blue: #1d4ed8;
+  --blue-400: #2563eb;
+  --sky-400: #0369a1;
+  --rgb-green: 20 108 53;
+  --rgb-emerald: 4 120 87;
+  --rgb-neon-green: 20 108 53;
+  --rgb-red: 198 40 40;
+  --rgb-red-400: 185 28 28;
+  --rgb-red-600: 185 28 28;
+  --rgb-red-alt: 198 40 40;
+  --rgb-amber: 180 83 9;
+  --rgb-amber-400: 161 98 7;
+  --rgb-amber-alt: 161 98 7;
+  --rgb-blue: 29 78 216;
+  --rgb-blue-400: 37 99 235;
+  --rgb-sky-400: 3 105 161;
+
+  /* Roles */
+  --color-accent: #146c35; /* white on it 6.5:1; as text on a 20% accent tint 4.8:1 */
+  --color-accent-strong: #0b4222;
+  --color-accent-soft: #0f5a2c; /* hover: darker on light, lighter on dark */
+  --rgb-accent: 20 108 53;
+  --color-on-accent: var(--white);
+  --color-success: #0f766e;
+  --color-success-strong: #134e4a;
+  --color-success-soft: #115e59;
+  --rgb-success: 15 118 110;
+  --color-on-success: var(--white); /* 5.5:1 on --color-success */
+  --accent-subtle: rgb(var(--rgb-accent) / 0.1);
+  --accent-border: rgb(var(--rgb-accent) / 0.3);
+
+  --shadow-sm: 0 1px 2px rgba(16, 24, 40, 0.06);
+  --shadow-md: 0 4px 12px rgba(16, 24, 40, 0.08);
+  --shadow-lg: 0 12px 32px rgba(16, 24, 40, 0.12);
+}
+
+/* Inside an island `color` is still inherited from the light page, so set
+   it for text that has no colour of its own. :where() keeps this at zero
+   specificity: component colours still win. */
+:where(:root[data-theme='light'] .theme-dark) {
+  color: var(--text);
 }
 
 /* Legacy glow suppressions kept from previous tokens.css */

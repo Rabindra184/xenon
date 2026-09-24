@@ -22,7 +22,7 @@ export default function ProfilePage() {
       />
       <div className="flex flex-1 min-h-0">
         <nav className="w-56 shrink-0 border-r border-[var(--border)] py-6 px-3">
-          <div className="text-sm font-semibold mb-4 px-2">Profile Settings</div>
+          <div className="text-sm font-semibold mb-4 px-2">Profile settings</div>
           {[
             { id: 'password', label: 'Password & authentication' } as const,
             { id: 'tokens', label: 'API tokens' } as const,
