@@ -215,13 +215,13 @@ const SelectorDetailPage: React.FC = () => {
               <span className="sh-detail-state__badge">
                 {selectorState.status === 'pending' && (
                   <>
-                    <Hourglass size={16} style={{ color: 'var(--accent, #60a5fa)' }} />
+                    <Hourglass size={16} style={{ color: 'var(--color-highlight)' }} />
                     <span>Pending verification</span>
                   </>
                 )}
                 {selectorState.status === 'resolved' && (
                   <>
-                    <CheckCircle2 size={16} style={{ color: 'var(--green, #4ade80)' }} />
+                    <CheckCircle2 size={16} style={{ color: 'var(--green)' }} />
                     <span>Resolved</span>
                   </>
                 )}
@@ -234,7 +234,7 @@ const SelectorDetailPage: React.FC = () => {
                 {selectorState.status === 'active' &&
                   (selectorState.regression_count > 0 ? (
                     <>
-                      <AlertCircle size={16} style={{ color: 'var(--amber, #f59e0b)' }} />
+                      <AlertCircle size={16} style={{ color: 'var(--amber)' }} />
                       <span>Active — regressed {selectorState.regression_count}×</span>
                     </>
                   ) : (

@@ -104,7 +104,7 @@ export function DevicePicker({ devices, inMosaic, onToggle }: Props) {
           value={filter}
           placeholder="Filter devices..."
           onChange={(e) => setFilter(e.target.value)}
-          className="w-full pl-7 pr-2 py-1.5 text-xs rounded border border-[var(--border)] bg-transparent placeholder:text-[var(--text-dim)] focus:outline-none focus:border-[var(--accent,#3b82f6)]"
+          className="w-full pl-7 pr-2 py-1.5 text-xs rounded border border-[var(--border)] bg-transparent placeholder:text-[var(--text-dim)] focus:outline-none focus:border-[var(--color-info)]"
         />
       </div>
 
@@ -156,7 +156,7 @@ export function DevicePicker({ devices, inMosaic, onToggle }: Props) {
                             ? 'opacity-60 cursor-not-allowed border-transparent'
                             : inMos
                               ? 'border-emerald-500/40 bg-emerald-500/5 hover:bg-emerald-500/10'
-                              : 'border-transparent hover:border-[var(--border)] hover:bg-[var(--surface-2,rgba(255,255,255,0.04))]'
+                              : 'border-transparent hover:border-[var(--border)] hover:bg-[var(--surface-2)]'
                         }`}
                         title={
                           blocked
@@ -190,7 +190,7 @@ export function DevicePicker({ devices, inMosaic, onToggle }: Props) {
                           {d.name ?? d.udid}
                         </span>
                         {d.platform && (
-                          <span className="text-[9px] uppercase tracking-wider px-1.5 py-0.5 rounded bg-[var(--surface-2,rgba(255,255,255,0.06))] text-[var(--text-dim)]">
+                          <span className="text-[9px] uppercase tracking-wider px-1.5 py-0.5 rounded bg-[var(--surface-2)] text-[var(--text-dim)]">
                             {platformBadge(d.platform)}
                           </span>
                         )}

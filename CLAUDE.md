@@ -356,6 +356,24 @@ REST endpoints under `/xenon/api` (documented at `/xenon/api-docs`). All state c
 
 React 17 + Vite + Tailwind CSS dashboard. Talks to the backend over REST and Socket.io. Built artifacts are copied into `src/public/` and served as static files by the plugin server.
 
+#### Design tokens (`web/src/tokens.css`)
+
+Colours live in three layers: **primitives** named by hue (`--green`, `--red-400`,
+`--neon-green`), **channels** for alpha tints (`--rgb-green: 34 197 94`, used as
+`rgb(var(--rgb-green) / 0.1)`), and **roles** that say what a colour means
+(`--color-accent`, `--color-on-accent`, `--color-success`, `--color-warning`,
+`--color-danger`, `--color-info`, `--color-highlight`, `--color-focus-ring`).
+New UI should use roles. A theme is `[data-theme]` on `<html>` (`index.html`,
+only `dark` today) re-pointing these variables.
+
+Don't add raw hex or `rgba()` literals. `web/src/design/color-literals.test.ts`
+is a ratchet against `color-literals.baseline.json`: a file may lose literals
+(lower its number there) but never gain one. Canvas code, persisted annotation
+colours and the logcat tag palette are exempt, with reasons in
+`color-literals.ts`. The `--accent` variable never existed; its old fallbacks
+(blue for Selector Health and the mosaic, border for device cards) are now
+`--color-highlight`, `--color-info` and `--border-strong`.
+
 #### Breakpoints
 
 Supported range is **1280–1440** (laptop + tablet landscape). No phone or

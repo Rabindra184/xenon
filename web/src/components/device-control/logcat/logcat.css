@@ -40,7 +40,7 @@
 
 .log-stat-pill {
   font-size: 11px;
-  background: rgba(16, 185, 129, 0.1);
+  background: rgb(var(--rgb-emerald) / 0.1);
   color: var(--green);
   padding: 3px 8px;
   border-radius: 4px;
@@ -66,8 +66,8 @@
    device-control.css silently redefined the one every `.pulse-dot` in the app
    animates with, for as long as that sheet was loaded. */
 .log-live-dot.active {
-  background: #22c55e;
-  box-shadow: 0 0 8px rgba(34, 197, 94, 0.6);
+  background: var(--green);
+  box-shadow: 0 0 8px rgb(var(--rgb-green) / 0.6);
   animation: logcat-live-pulse 2s infinite;
 }
 
@@ -75,12 +75,12 @@
   0%,
   100% {
     opacity: 1;
-    box-shadow: 0 0 8px rgba(34, 197, 94, 0.6);
+    box-shadow: 0 0 8px rgb(var(--rgb-green) / 0.6);
   }
 
   50% {
     opacity: 0.6;
-    box-shadow: 0 0 16px rgba(34, 197, 94, 0.4);
+    box-shadow: 0 0 16px rgb(var(--rgb-green) / 0.4);
   }
 }
 
@@ -158,7 +158,7 @@
 }
 
 .logcat-row:hover {
-  background: rgba(255, 255, 255, 0.03);
+  background: rgb(var(--rgb-white) / 0.03);
 }
 
 /* min-width: 0 is load-bearing on the two flexible columns: a grid item
@@ -204,11 +204,11 @@
   color: var(--green);
 }
 .lvl-W {
-  color: #fbbf24;
+  color: var(--amber-400);
 }
 .lvl-E,
 .lvl-F {
-  color: #f87171;
+  color: var(--red-400);
 }
 
 /* --- find-in-results ------------------------------------------------- */
@@ -284,7 +284,7 @@
 
 .logcat-input-btn:hover {
   color: var(--text);
-  background: rgba(255, 255, 255, 0.08);
+  background: rgb(var(--rgb-white) / 0.08);
 }
 
 .logcat-hit-count {
@@ -300,9 +300,9 @@
    stays visibly on for as long as it lasts. Red rather than the app's green:
    this is the one control that keeps consuming memory until you stop it. */
 .btn-secondary.is-recording {
-  color: #f87171;
-  border-color: color-mix(in srgb, #f87171 45%, transparent);
-  background: color-mix(in srgb, #f87171 12%, transparent);
+  color: var(--red-400);
+  border-color: color-mix(in srgb, var(--red-400) 45%, transparent);
+  background: color-mix(in srgb, var(--red-400) 12%, transparent);
 }
 
 .btn-secondary.is-recording svg {
@@ -321,15 +321,15 @@
 
 /* Records Xenon injected (drops, end-of-stream) — visibly not device output. */
 .logcat-row.is-synthetic .logcat-msg {
-  color: #fbbf24;
+  color: var(--amber-400);
   font-style: italic;
 }
 
 /* Connection pill in an error terminal state (ownership denied / retries
    exhausted) — distinct from the default "not yet connected" grey. */
 .log-live-dot.is-error {
-  background: #f87171;
-  box-shadow: 0 0 8px rgba(248, 113, 113, 0.6);
+  background: var(--red-400);
+  box-shadow: 0 0 8px rgb(var(--rgb-red-400) / 0.6);
 }
 
 /* Banner surfaced above the row list for a terminal connection state. The
@@ -347,13 +347,13 @@
 }
 
 .logcat-status-banner.is-denied {
-  background: rgba(248, 113, 113, 0.1);
-  border: 1px solid rgba(248, 113, 113, 0.3);
+  background: rgb(var(--rgb-red-400) / 0.1);
+  border: 1px solid rgb(var(--rgb-red-400) / 0.3);
   color: #fecdd3;
 }
 
 .logcat-status-banner.is-exhausted {
-  background: rgba(251, 191, 36, 0.1);
-  border: 1px solid rgba(251, 191, 36, 0.3);
+  background: rgb(var(--rgb-amber-400) / 0.1);
+  border: 1px solid rgb(var(--rgb-amber-400) / 0.3);
   color: #fde68a;
 }

@@ -99,11 +99,11 @@
 }
 
 .sh-kpi--warn {
-  border-color: rgba(245, 158, 11, 0.3);
+  border-color: rgb(var(--rgb-amber) / 0.3);
 }
 
 .sh-kpi--critical {
-  border-color: rgba(239, 68, 68, 0.35);
+  border-color: rgb(var(--rgb-red) / 0.35);
 }
 
 .sh-kpi__label {
@@ -155,19 +155,19 @@
 }
 
 .sh-delta.good {
-  background: rgba(16, 185, 129, 0.1);
-  border-color: rgba(16, 185, 129, 0.3);
+  background: rgb(var(--rgb-emerald) / 0.1);
+  border-color: rgb(var(--rgb-emerald) / 0.3);
   color: var(--green);
 }
 
 .sh-delta.bad {
-  background: rgba(239, 68, 68, 0.1);
-  border-color: rgba(239, 68, 68, 0.3);
-  color: var(--red, #ef4444);
+  background: rgb(var(--rgb-red) / 0.1);
+  border-color: rgb(var(--rgb-red) / 0.3);
+  color: var(--red, var(--red));
 }
 
 .sh-delta.neutral {
-  background: rgba(255, 255, 255, 0.04);
+  background: rgb(var(--rgb-white) / 0.04);
   border-color: var(--border);
   color: var(--text-dim);
 }
@@ -470,7 +470,7 @@
   font-size: 9.5px;
   font-weight: 700;
   color: var(--green);
-  background: rgba(16, 185, 129, 0.12);
+  background: rgb(var(--rgb-emerald) / 0.12);
   padding: 1px 5px;
   border-radius: 3px;
   white-space: nowrap;
@@ -500,19 +500,19 @@
 }
 
 .sh-count-badge.severe {
-  background: rgba(239, 68, 68, 0.12);
-  border-color: rgba(239, 68, 68, 0.4);
-  color: var(--red, #ef4444);
+  background: rgb(var(--rgb-red) / 0.12);
+  border-color: rgb(var(--rgb-red) / 0.4);
+  color: var(--red, var(--red));
 }
 
 .sh-count-badge.warn {
-  background: rgba(245, 158, 11, 0.12);
-  border-color: rgba(245, 158, 11, 0.4);
-  color: var(--amber, #f59e0b);
+  background: rgb(var(--rgb-amber) / 0.12);
+  border-color: rgb(var(--rgb-amber) / 0.4);
+  color: var(--amber, var(--amber));
 }
 
 .sh-count-badge.mild {
-  background: rgba(255, 255, 255, 0.04);
+  background: rgb(var(--rgb-white) / 0.04);
   border-color: var(--border);
   color: var(--text-muted);
 }
@@ -524,8 +524,8 @@
   font-size: 10px;
   font-weight: 600;
   letter-spacing: 0.04em;
-  background: rgba(16, 185, 129, 0.06);
-  border: 1px solid rgba(16, 185, 129, 0.25);
+  background: rgb(var(--rgb-emerald) / 0.06);
+  border: 1px solid rgb(var(--rgb-emerald) / 0.25);
   color: var(--green);
   white-space: nowrap;
 }
@@ -566,7 +566,7 @@
 .sh-icon-btn.copied {
   background: var(--green);
   border-color: var(--green);
-  color: #000;
+  color: var(--black);
 }
 
 /* ── Selector Detail page ────────────────────────────────────────── */
@@ -685,7 +685,7 @@
   gap: 4px;
   padding: 10px;
   border-radius: var(--radius-sm);
-  background: rgba(0, 0, 0, 0.25);
+  background: rgb(var(--rgb-black) / 0.25);
   border: 1px solid var(--border);
 }
 
@@ -701,7 +701,7 @@
   font-size: 11px;
   font-weight: 700;
   color: var(--green);
-  background: rgba(16, 185, 129, 0.1);
+  background: rgb(var(--rgb-emerald) / 0.1);
   padding: 1px 6px;
   border-radius: 4px;
   flex-shrink: 0;
@@ -880,7 +880,7 @@
 }
 .sh-tab--active {
   color: var(--text);
-  border-bottom-color: var(--accent, #60a5fa);
+  border-bottom-color: var(--color-highlight);
   border-bottom-width: 3px;
 }
 .sh-tab__icon {
@@ -934,11 +934,11 @@
   border-color: var(--text-dim);
 }
 .sh-action-btn--primary {
-  color: var(--accent, #60a5fa);
-  border-color: var(--accent, #60a5fa);
+  color: var(--color-highlight);
+  border-color: var(--color-highlight);
 }
 .sh-action-btn--primary:hover {
-  background: var(--accent, #60a5fa);
+  background: var(--color-highlight);
   color: white;
 }
 
@@ -963,8 +963,8 @@
   letter-spacing: 0.02em;
 }
 .sh-copy-btn--copied {
-  color: var(--green, #4ade80);
-  border-color: var(--green, #4ade80);
+  color: var(--green, var(--green-400));
+  border-color: var(--green, var(--green-400));
 }
 .sh-copy-chevron {
   border-top-left-radius: 0;
@@ -1036,7 +1036,7 @@
   gap: var(--space-2);
 }
 .sh-pending-row__icon {
-  color: var(--accent, #60a5fa);
+  color: var(--color-highlight);
 }
 .sh-pending-row__selector {
   flex: 1 1 auto;
@@ -1066,11 +1066,11 @@
   width: 14px;
   height: 14px;
   border-radius: 999px;
-  border: 2px solid var(--accent, #60a5fa);
+  border: 2px solid var(--color-highlight);
   background: transparent;
 }
 .sh-pending-progress__dot--filled {
-  background: var(--accent, #60a5fa);
+  background: var(--color-highlight);
 }
 .sh-pending-progress__legend {
   font-size: 0.85rem;
@@ -1099,7 +1099,7 @@
   flex-wrap: wrap;
 }
 .sh-resolved-row__icon {
-  color: var(--green, #4ade80);
+  color: var(--green, var(--green-400));
 }
 .sh-resolved-row__selector {
   flex: 1 1 auto;
@@ -1180,21 +1180,21 @@
   gap: var(--space-3);
   padding: var(--space-3) var(--space-4);
   background: rgba(231, 76, 60, 0.08);
-  border-left: 4px solid #e74c3c;
+  border-left: 4px solid var(--red-flat);
   border-radius: 4px;
   margin-bottom: var(--space-4);
   font-size: 0.88rem;
   color: var(--text);
 }
 .sh-regression-banner__icon {
-  color: #e74c3c;
+  color: var(--red-flat);
   flex-shrink: 0;
 }
 .sh-regression-banner__action {
   margin-left: auto;
   background: transparent;
-  border: 1px solid #e74c3c;
-  color: #e74c3c;
+  border: 1px solid var(--red-flat);
+  color: var(--red-flat);
   padding: 0.2rem 0.55rem;
   border-radius: 4px;
   font-size: 0.76rem;
@@ -1226,8 +1226,8 @@
   font-size: 0.9rem;
 }
 .sh-detail-banner {
-  background: rgba(96, 165, 250, 0.06);
-  border-left: 3px solid var(--accent, #60a5fa);
+  background: rgb(var(--rgb-blue-400) / 0.06);
+  border-left: 3px solid var(--color-highlight);
   padding: var(--space-3) var(--space-4);
   border-radius: 4px;
   margin-bottom: var(--space-3);
@@ -1242,17 +1242,17 @@
   margin-bottom: var(--space-4);
 }
 .sh-detail-state--pending {
-  border-left: 4px solid var(--accent, #60a5fa);
+  border-left: 4px solid var(--color-highlight);
 }
 .sh-detail-state--resolved {
-  border-left: 4px solid var(--green, #4ade80);
+  border-left: 4px solid var(--green, var(--green-400));
 }
 .sh-detail-state--muted {
   border-left: 4px solid var(--text-muted);
   opacity: 0.85;
 }
 .sh-detail-state--active {
-  border-left: 4px solid #e74c3c;
+  border-left: 4px solid var(--red-flat);
 }
 .sh-detail-state__head {
   display: flex;

@@ -12,7 +12,7 @@
     display: inline-flex;
     align-items: center;
     gap: 8px;
-    background: rgba(0, 0, 0, 0.4);
+    background: rgb(var(--rgb-black) / 0.4);
     padding: 8px 16px;
     border-radius: 6px;
     border: 1px solid var(--border);
@@ -50,7 +50,7 @@
 
 .input-with-button input {
     flex: 1;
-    background: rgba(0, 0, 0, 0.3);
+    background: rgb(var(--rgb-black) / 0.3);
     border: 1px solid var(--border);
     border-radius: 6px;
     padding: 10px 14px;
@@ -63,7 +63,7 @@
 .input-with-button input:focus {
     outline: none;
     border-color: var(--green);
-    box-shadow: 0 0 15px rgba(0, 255, 136, 0.2);
+    box-shadow: 0 0 15px rgb(var(--rgb-neon-green) / 0.2);
 }
 
 .add-inline-btn {
@@ -80,8 +80,8 @@
 }
 
 .add-inline-btn:hover:not(:disabled) {
-    background: #00e67a;
-    box-shadow: 0 0 15px rgba(0, 255, 136, 0.3);
+    background: var(--neon-green-dim);
+    box-shadow: 0 0 15px rgb(var(--rgb-neon-green) / 0.3);
 }
 
 .add-inline-btn:disabled {
@@ -98,7 +98,7 @@
     gap: 8px;
     min-height: 48px;
     padding: 12px;
-    background: rgba(0, 0, 0, 0.4);
+    background: rgb(var(--rgb-black) / 0.4);
     border-radius: 6px;
     border: 1px dashed var(--border);
 }
@@ -107,17 +107,17 @@
     display: flex;
     align-items: center;
     gap: 6px;
-    background: rgba(0, 255, 136, 0.05);
+    background: rgb(var(--rgb-neon-green) / 0.05);
     color: var(--green);
     padding: 6px 12px;
     border-radius: 6px;
     font-size: 11px;
     font-weight: 800;
-    border: 1px solid rgba(0, 255, 136, 0.3);
+    border: 1px solid rgb(var(--rgb-neon-green) / 0.3);
     font-family: 'JetBrains Mono', monospace;
     text-transform: uppercase;
     letter-spacing: 0.05em;
-    box-shadow: 0 0 10px rgba(0, 255, 136, 0.05);
+    box-shadow: 0 0 10px rgb(var(--rgb-neon-green) / 0.05);
 }
 
 .remove-tag {
@@ -135,7 +135,7 @@
 }
 
 .remove-tag:hover {
-    background: rgba(0, 255, 136, 0.2);
+    background: rgb(var(--rgb-neon-green) / 0.2);
     opacity: 1;
 }
 
@@ -167,15 +167,15 @@
     font-weight: 800;
     cursor: pointer;
     transition: all 0.2s;
-    box-shadow: 0 0 15px rgba(0, 255, 136, 0.2);
+    box-shadow: 0 0 15px rgb(var(--rgb-neon-green) / 0.2);
     text-transform: uppercase;
     font-size: 12px;
     font-family: 'JetBrains Mono', monospace;
 }
 
 .btn-save:hover:not(:disabled) {
-    background: #00e67a;
-    box-shadow: 0 0 25px rgba(0, 255, 136, 0.4);
+    background: var(--neon-green-dim);
+    box-shadow: 0 0 25px rgb(var(--rgb-neon-green) / 0.4);
 }
 
 .btn-save:disabled {

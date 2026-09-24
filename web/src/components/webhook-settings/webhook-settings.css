@@ -23,7 +23,7 @@
 }
 
 .webhook-row-card:hover {
-    border-color: rgba(34, 197, 94, 0.3);
+    border-color: rgb(var(--rgb-green) / 0.3);
 }
 
 .webhook-row-card__header {
@@ -72,25 +72,25 @@
 }
 
 .event-pill--red {
-    background: rgba(239, 68, 68, 0.1);
+    background: rgb(var(--rgb-red) / 0.1);
     color: var(--status-error-fg);
-    border-color: rgba(239, 68, 68, 0.3);
+    border-color: rgb(var(--rgb-red) / 0.3);
 }
 
 .event-pill--green {
-    background: rgba(34, 197, 94, 0.1);
+    background: rgb(var(--rgb-green) / 0.1);
     color: var(--green);
-    border-color: rgba(34, 197, 94, 0.3);
+    border-color: rgb(var(--rgb-green) / 0.3);
 }
 
 .event-pill--amber {
-    background: rgba(245, 158, 11, 0.12);
+    background: rgb(var(--rgb-amber) / 0.12);
     color: var(--amber);
-    border-color: rgba(245, 158, 11, 0.35);
+    border-color: rgb(var(--rgb-amber) / 0.35);
 }
 
 .event-pill--gray {
-    background: rgba(255, 255, 255, 0.04);
+    background: rgb(var(--rgb-white) / 0.04);
     color: var(--text-muted);
     border-color: var(--border-strong);
 }
@@ -117,7 +117,7 @@
     text-transform: uppercase;
     letter-spacing: 0.12em;
     border-bottom: 1px solid var(--border);
-    background: rgba(34, 197, 94, 0.04);
+    background: rgb(var(--rgb-green) / 0.04);
 }
 
 .add-webhook-card__body {
@@ -133,7 +133,7 @@
     gap: 10px;
     padding: 16px 24px;
     border-top: 1px solid var(--border);
-    background: rgba(0, 0, 0, 0.15);
+    background: rgb(var(--rgb-black) / 0.15);
 }
 
 /* Trigger toggles in form */
@@ -149,7 +149,7 @@
     gap: 10px;
     padding: 10px 14px;
     border-radius: var(--radius-md);
-    background: rgba(255, 255, 255, 0.025);
+    background: rgb(var(--rgb-white) / 0.025);
     border: 1px solid var(--border-strong);
     color: var(--text-muted);
     font-size: 13px;
@@ -160,15 +160,15 @@
 }
 
 .event-toggle:hover:not(.is-selected) {
-    border-color: rgba(255, 255, 255, 0.2);
+    border-color: rgb(var(--rgb-white) / 0.2);
     color: var(--text);
 }
 
 .event-toggle.is-selected {
     color: var(--text);
-    background: rgba(34, 197, 94, 0.06);
+    background: rgb(var(--rgb-green) / 0.06);
     border-color: var(--green);
-    box-shadow: inset 0 0 0 1px rgba(34, 197, 94, 0.35);
+    box-shadow: inset 0 0 0 1px rgb(var(--rgb-green) / 0.35);
 }
 
 .event-toggle__lead {
@@ -197,9 +197,9 @@
    `.event-toggle__check`'s 0-1-0, so it wins on specificity regardless
    of order; kept here for locality with its sibling tone rules. */
 .event-toggle--red.is-selected {
-    background: rgba(239, 68, 68, 0.06);
+    background: rgb(var(--rgb-red) / 0.06);
     border-color: var(--red);
-    box-shadow: inset 0 0 0 1px rgba(239, 68, 68, 0.35);
+    box-shadow: inset 0 0 0 1px rgb(var(--rgb-red) / 0.35);
 }
 
 .event-toggle--red.is-selected .event-toggle__check,
@@ -208,9 +208,9 @@
 }
 
 .event-toggle--amber.is-selected {
-    background: rgba(245, 158, 11, 0.06);
+    background: rgb(var(--rgb-amber) / 0.06);
     border-color: var(--amber);
-    box-shadow: inset 0 0 0 1px rgba(245, 158, 11, 0.35);
+    box-shadow: inset 0 0 0 1px rgb(var(--rgb-amber) / 0.35);
 }
 
 .event-toggle--amber.is-selected .event-toggle__check,
@@ -219,9 +219,9 @@
 }
 
 .event-toggle--green.is-selected {
-    background: rgba(34, 197, 94, 0.06);
+    background: rgb(var(--rgb-green) / 0.06);
     border-color: var(--green);
-    box-shadow: inset 0 0 0 1px rgba(34, 197, 94, 0.35);
+    box-shadow: inset 0 0 0 1px rgb(var(--rgb-green) / 0.35);
 }
 
 .event-toggle--green.is-selected .event-toggle__check,
@@ -235,7 +235,7 @@
     border: 1px solid var(--border);
     border-radius: var(--radius-md);
     overflow: hidden;
-    background: rgba(0, 0, 0, 0.15);
+    background: rgb(var(--rgb-black) / 0.15);
 }
 
 .template-section__toggle {
@@ -256,7 +256,7 @@
 }
 
 .template-section__toggle:hover {
-    background: rgba(255, 255, 255, 0.03);
+    background: rgb(var(--rgb-white) / 0.03);
 }
 
 .template-section__toggle .tone-amber {
@@ -277,7 +277,7 @@
 .template-editor {
     padding: 16px;
     border-top: 1px solid var(--border);
-    background: rgba(0, 0, 0, 0.1);
+    background: rgb(var(--rgb-black) / 0.1);
     display: flex;
     flex-direction: column;
     gap: 12px;
@@ -299,8 +299,8 @@
 .template-editor__chip {
     padding: 4px 10px;
     border-radius: 999px;
-    background: rgba(34, 197, 94, 0.06);
-    border: 1px solid rgba(34, 197, 94, 0.25);
+    background: rgb(var(--rgb-green) / 0.06);
+    border: 1px solid rgb(var(--rgb-green) / 0.25);
     color: var(--green);
     font-family: 'JetBrains Mono', monospace;
     font-size: 10.5px;
@@ -315,7 +315,7 @@
 
 .template-editor__textarea {
     width: 100%;
-    background: rgba(0, 0, 0, 0.3);
+    background: rgb(var(--rgb-black) / 0.3);
     border: 1px solid var(--border);
     border-radius: var(--radius-md);
     color: var(--text);

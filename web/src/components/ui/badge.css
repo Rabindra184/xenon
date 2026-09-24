@@ -15,15 +15,15 @@
 }
 
 .badge-variant-default {
-  background: rgba(0, 0, 0, 0.3);
+  background: rgb(var(--rgb-black) / 0.3);
   color: var(--text-dim);
   border-color: var(--border);
 }
 
 .badge-variant-success {
-  background: rgba(0, 255, 136, 0.05);
+  background: rgb(var(--rgb-neon-green) / 0.05);
   color: var(--green);
-  border-color: rgba(0, 255, 136, 0.2);
+  border-color: rgb(var(--rgb-neon-green) / 0.2);
 }
 
 .badge-variant-warning {
@@ -33,9 +33,9 @@
 }
 
 .badge-variant-error {
-  background: rgba(255, 77, 77, 0.05);
-  color: #ff4d4d;
-  border-color: rgba(255, 77, 77, 0.2);
+  background: rgb(var(--rgb-red-alt) / 0.05);
+  color: var(--red-alt);
+  border-color: rgb(var(--rgb-red-alt) / 0.2);
 }
 
 .badge-variant-secondary {

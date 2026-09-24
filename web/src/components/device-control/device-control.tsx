@@ -654,7 +654,7 @@ export default function DeviceControl({ device, onClose }: DeviceControlProps) {
               style={{
                 width: canvasDimensions.width,
                 height: canvasDimensions.height,
-                background: '#000',
+                background: 'var(--black)',
               }}
               tabIndex={0}
               onFocus={() => setIsCanvasFocused(true)}

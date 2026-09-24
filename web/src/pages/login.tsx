@@ -20,9 +20,9 @@ import { usePasswordResetMode } from '../auth/use-password-reset-mode';
 import { describeLoginError, formatWait } from './login-errors';
 import { AuthShell } from './auth-shell';
 
-// Placeholder #7a837f is 5.0:1 on the field; the old --text-dim was 3.2:1.
+// Placeholder --text-placeholder (#7a837f) is 5.0:1 on the field; the old --text-dim was 3.2:1.
 const FIELD =
-  'w-full h-11 pl-10 pr-3 rounded-lg bg-[var(--bg)] border border-[var(--border-strong)] text-sm text-[var(--text)] placeholder:text-[#7a837f] outline-none transition-[border-color,box-shadow] duration-150 hover:border-[#3a4542] focus:border-[var(--green)] focus:shadow-[0_0_0_3px_var(--accent-subtle)]';
+  'w-full h-11 pl-10 pr-3 rounded-lg bg-[var(--bg)] border border-[var(--border-strong)] text-sm text-[var(--text)] placeholder:text-[var(--text-placeholder)] outline-none transition-[border-color,box-shadow] duration-150 hover:border-[#3a4542] focus:border-[var(--green)] focus:shadow-[0_0_0_3px_var(--accent-subtle)]';
 const ICON =
   'pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--text-muted)]';
 

@@ -534,7 +534,7 @@ export const ApiKeys: React.FC = () => {
               style={{
                 fontFamily: 'monospace',
                 padding: 12,
-                background: 'rgba(0,0,0,0.3)',
+                background: 'rgb(var(--rgb-black) / 0.3)',
                 borderRadius: 6,
                 wordBreak: 'break-all',
                 fontSize: '0.9em',
@@ -554,7 +554,7 @@ const scopeLabel: React.CSSProperties = {
   alignItems: 'center',
   gap: 6,
   padding: '6px 12px',
-  background: 'rgba(255,255,255,0.04)',
+  background: 'rgb(var(--rgb-white) / 0.04)',
   borderRadius: 6,
   cursor: 'pointer',
   fontFamily: 'monospace',

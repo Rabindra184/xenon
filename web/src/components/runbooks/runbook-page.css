@@ -64,7 +64,7 @@
 
 .runbook-prose blockquote {
   border-left: 3px solid var(--amber);
-  background: rgba(245, 158, 11, 0.05);
+  background: rgb(var(--rgb-amber) / 0.05);
   padding: 8px 12px;
   margin: 12px 0;
   color: var(--amber);

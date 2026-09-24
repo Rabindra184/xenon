@@ -378,7 +378,7 @@ export function DeviceTile({
   return (
     <div className="flex items-stretch justify-center w-full h-full min-h-0 min-w-0 gap-2">
       <div
-        className="relative bg-[#000] rounded-lg overflow-hidden border border-[var(--border)] group max-h-full max-w-full self-center"
+        className="relative bg-[var(--black)] rounded-lg overflow-hidden border border-[var(--border)] group max-h-full max-w-full self-center"
         style={{ aspectRatio: aspect, height: '100%' }}
       >
         {/* Connecting state Overlay */}
@@ -405,7 +405,7 @@ export function DeviceTile({
                 {failureReason || 'We couldn’t start the live stream for this device.'}
               </p>
               <button
-                className="mt-6 text-sm font-semibold px-6 py-2.5 rounded-full bg-red-600 hover:bg-red-500 text-white transition-all shadow-[0_0_20px_rgba(220,38,38,0.3)] active:scale-95"
+                className="mt-6 text-sm font-semibold px-6 py-2.5 rounded-full bg-red-600 hover:bg-red-500 text-white transition-all shadow-[0_0_20px_rgb(var(--rgb-red-600)/0.3)] active:scale-95"
                 onClick={handleRetry}
               >
                 Retry Connection

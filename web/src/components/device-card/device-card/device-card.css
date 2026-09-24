@@ -83,7 +83,7 @@
   background: var(--surface-2);
 }
 .dc2-udid-copy:focus-visible {
-  outline: 2px solid var(--accent, var(--border-strong));
+  outline: 2px solid var(--border-strong);
   outline-offset: 1px;
 }
 
@@ -124,7 +124,7 @@
   border-color: var(--border-strong);
 }
 .dc2-team-pill:focus-visible {
-  outline: 2px solid var(--accent, var(--border-strong));
+  outline: 2px solid var(--border-strong);
   outline-offset: 1px;
 }
 
