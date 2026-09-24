@@ -45,7 +45,7 @@ export const BuildsHeader: React.FC<Props> = ({
       <div>
         <div className="flex items-center gap-2 text-[10px] uppercase tracking-widest text-[var(--text-dim)]">
           <span>Build</span>
-          <span className="font-mono text-[var(--green)]" title={build.id}>
+          <span className="font-mono text-[var(--color-accent)]" title={build.id}>
             #{shortBuildId(build.id)}
           </span>
         </div>

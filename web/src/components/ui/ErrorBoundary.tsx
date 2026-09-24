@@ -50,7 +50,6 @@ export class ErrorBoundary extends Component<Props, State> {
             <div
               style={{
                 color: 'var(--accent-red)',
-                filter: 'drop-shadow(0 0 10px rgb(var(--rgb-red) / 0.3))',
               }}
             >
               <AlertTriangle size={64} />
@@ -80,7 +79,7 @@ export class ErrorBoundary extends Component<Props, State> {
             <button
               onClick={this.handleReset}
               style={{
-                background: 'var(--green)',
+                background: 'var(--color-accent)',
                 color: 'var(--secondary)',
                 border: 'none',
                 padding: '0.75rem 2rem',

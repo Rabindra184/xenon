@@ -26,8 +26,8 @@
 
 .input-base:focus {
   outline: none;
-  border-color: var(--green);
-  box-shadow: 0 0 10px rgb(var(--rgb-neon-green) / 0.1);
+  border-color: var(--color-accent);
+  box-shadow: none;
   background: rgb(var(--rgb-black) / 0.4);
 }
 

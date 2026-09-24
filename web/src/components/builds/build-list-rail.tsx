@@ -115,7 +115,7 @@ export const BuildListRail: React.FC<Props> = ({
               onClick={() => onSelect(b.id)}
               className={`w-full text-left relative px-4 py-3 border-b border-[var(--border)] transition-colors ${active ? 'bg-[var(--surface-2)]' : 'hover:bg-[var(--surface-2)]/60'}`}
             >
-              {active && <span className="absolute left-0 top-2 bottom-2 w-[3px] rounded-r bg-[var(--green)]" />}
+              {active && <span className="absolute left-0 top-2 bottom-2 w-[3px] rounded-r bg-[var(--color-accent)]" />}
               <div className="text-xs font-semibold text-[var(--text)] truncate">
                 {b.name || 'Unnamed build'}
               </div>

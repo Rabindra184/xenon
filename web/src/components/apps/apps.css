@@ -49,8 +49,8 @@
 }
 
 .artifact-row.active {
-  background: rgb(var(--rgb-neon-green) / 0.05);
-  border-left: 3px solid var(--green);
+  background: rgb(var(--rgb-accent) / 0.05);
+  border-left: 3px solid var(--color-accent);
 }
 
 .col-app-info {
@@ -74,8 +74,8 @@
 }
 
 .artifact-row.android .app-platform-badge {
-  color: var(--green);
-  border-color: rgb(var(--rgb-neon-green) / 0.2);
+  color: var(--color-accent);
+  border-color: rgb(var(--rgb-accent) / 0.2);
 }
 
 .artifact-row.ios .app-platform-badge {
@@ -114,7 +114,7 @@
 .col-version {
   font-family: 'JetBrains Mono', monospace;
   font-size: 11px;
-  color: var(--green);
+  color: var(--color-accent);
   font-weight: 600;
 }
 
@@ -140,14 +140,14 @@
 
 .instant-deploy-trigger {
   height: 28px;
-  background: rgb(var(--rgb-neon-green) / 0.05);
-  border: 1px solid var(--green);
+  background: rgb(var(--rgb-accent) / 0.05);
+  border: 1px solid var(--color-accent);
   border-radius: 6px;
   padding: 0 12px;
   display: flex;
   align-items: center;
   gap: 8px;
-  color: var(--green);
+  color: var(--color-accent);
   font-size: 11px;
   font-weight: 700;
   text-transform: uppercase;
@@ -157,9 +157,9 @@
 }
 
 .instant-deploy-trigger:hover:not(:disabled) {
-  background: var(--green);
+  background: var(--color-accent);
   color: var(--bg);
-  box-shadow: 0 0 20px rgb(var(--rgb-neon-green) / 0.2);
+  box-shadow: none;
 }
 
 .utility-icon-btn {
@@ -269,7 +269,7 @@
   right: 180px;
   transform: translateY(-50%);
   background: var(--surface);
-  border: 1px solid var(--green);
+  border: 1px solid var(--color-accent);
   border-radius: 8px;
   box-shadow: 0 10px 40px rgb(var(--rgb-black) / 0.6);
   z-index: 110;
@@ -310,7 +310,7 @@
 }
 
 .target-device-select:hover {
-  border-color: var(--green);
+  border-color: var(--color-accent);
   background-color: rgb(var(--rgb-black) / 0.4);
 }
 
@@ -340,7 +340,7 @@
 .confirm-deploy-btn {
   width: 32px;
   height: 32px;
-  background: var(--green);
+  background: var(--color-accent);
   border: none;
   border-radius: 6px;
   display: flex;
@@ -352,9 +352,9 @@
 }
 
 .confirm-deploy-btn:hover:not(:disabled) {
-  background: var(--green-dim);
+  background: var(--color-accent-strong);
   transform: scale(1.05);
-  box-shadow: 0 0 15px var(--accent-subtle);
+  box-shadow: none;
 }
 
 .confirm-deploy-btn:disabled {
@@ -388,8 +388,8 @@
 .processing-loader {
   width: 40px;
   height: 40px;
-  border: 2px solid rgb(var(--rgb-green) / 0.1);
-  border-top-color: var(--green);
+  border: 2px solid rgb(var(--rgb-accent) / 0.1);
+  border-top-color: var(--color-accent);
   border-radius: 50%;
   margin: 0 auto 20px;
   animation: spin 1s linear infinite;
@@ -450,10 +450,10 @@
   align-items: center;
   padding: 30px 60px;
   background: var(--surface);
-  border: 1px solid var(--green);
-  box-shadow: 0 0 15px rgb(var(--rgb-neon-green) / 0.1);
+  border: 1px solid var(--color-accent);
+  box-shadow: none;
   border-radius: 8px;
-  color: var(--green);
+  color: var(--color-accent);
   font-weight: 700;
   font-size: 16px;
   transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
@@ -463,7 +463,7 @@
 .massive-upload-content:hover {
   background: rgb(var(--rgb-blue) / 0.05);
   transform: translateY(-4px);
-  box-shadow: 0 10px 30px rgb(var(--rgb-blue) / 0.15);
+  box-shadow: none;
   border-style: solid;
 }
 
@@ -556,10 +556,10 @@
 }
 
 .device-explorer-header__platform-btn.selected {
-  background: rgb(var(--rgb-neon-green) / 0.05);
-  color: var(--green);
-  border-color: rgb(var(--rgb-neon-green) / 0.3);
-  box-shadow: 0 0 10px rgb(var(--rgb-neon-green) / 0.1);
+  background: rgb(var(--rgb-accent) / 0.05);
+  color: var(--color-accent);
+  border-color: rgb(var(--rgb-accent) / 0.3);
+  box-shadow: none;
 }
 
 /* Search Wrapper */
@@ -592,9 +592,9 @@
 
 .device-explorer-header-text-filter:focus {
   outline: none;
-  border-color: var(--green);
+  border-color: var(--color-accent);
   background: rgb(var(--rgb-black) / 0.6);
-  box-shadow: 0 0 15px rgb(var(--rgb-neon-green) / 0.1);
+  box-shadow: none;
 }
 
 .device-explorer-header-text-filter::placeholder {

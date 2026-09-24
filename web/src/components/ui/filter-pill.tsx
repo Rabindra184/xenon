@@ -13,7 +13,7 @@ interface Props {
 
 const dotCls: Record<Tone, string> = {
   neutral: 'bg-[var(--text-dim)]',
-  green:   'bg-[var(--green)]',
+  green:   'bg-[var(--color-success)]',
   red:     'bg-[var(--red)]',
   amber:   'bg-[var(--amber)]',
   blue:    'bg-[var(--blue)]',

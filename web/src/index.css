@@ -54,7 +54,7 @@ code,
   background: var(--surface-2);
   padding: 2px 6px;
   border-radius: var(--radius-sm);
-  color: var(--green);
+  color: var(--color-accent);
 }
 
 button {
@@ -110,12 +110,12 @@ input[type="checkbox"] {
 }
 
 input[type="checkbox"]:hover {
-  border-color: var(--green);
+  border-color: var(--color-accent);
 }
 
 input[type="checkbox"]:checked {
-  background: var(--green);
-  border-color: var(--green);
+  background: var(--color-accent);
+  border-color: var(--color-accent);
 }
 
 input[type="checkbox"]:checked::after {
@@ -127,7 +127,7 @@ input[type="checkbox"]:checked::after {
 
 input[type="checkbox"]:focus {
   outline: none;
-  box-shadow: 0 0 0 2px rgb(var(--rgb-green) / 0.25);
+  box-shadow: 0 0 0 2px rgb(var(--rgb-accent) / 0.25);
 }
 
 /* Subtle grid utility */

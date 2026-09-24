@@ -221,7 +221,7 @@ const SelectorDetailPage: React.FC = () => {
                 )}
                 {selectorState.status === 'resolved' && (
                   <>
-                    <CheckCircle2 size={16} style={{ color: 'var(--green)' }} />
+                    <CheckCircle2 size={16} style={{ color: 'var(--color-success)' }} />
                     <span>Resolved</span>
                   </>
                 )}

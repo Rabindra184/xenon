@@ -143,7 +143,7 @@ export const FailureSummary: React.FC<Props> = ({ session, buildName, buildId, a
             <div className="text-[10px] font-mono font-semibold uppercase tracking-widest text-[var(--text-dim)] mb-1">
               Stack trace
             </div>
-            <pre className="rounded-md border border-[var(--border)] bg-[var(--bg)] p-3 font-mono text-[11px] leading-relaxed text-[var(--green)] overflow-x-auto">
+            <pre className="rounded-md border border-[var(--border)] bg-[var(--bg)] p-3 font-mono text-[11px] leading-relaxed text-[var(--color-accent)] overflow-x-auto">
               {stack.join('\n')}
             </pre>
           </div>

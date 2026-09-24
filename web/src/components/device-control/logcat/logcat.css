@@ -40,8 +40,8 @@
 
 .log-stat-pill {
   font-size: 11px;
-  background: rgb(var(--rgb-emerald) / 0.1);
-  color: var(--green);
+  background: rgb(var(--rgb-accent) / 0.1);
+  color: var(--color-accent);
   padding: 3px 8px;
   border-radius: 4px;
   font-weight: 700;
@@ -66,8 +66,8 @@
    device-control.css silently redefined the one every `.pulse-dot` in the app
    animates with, for as long as that sheet was loaded. */
 .log-live-dot.active {
-  background: var(--green);
-  box-shadow: 0 0 8px rgb(var(--rgb-green) / 0.6);
+  background: var(--color-success);
+  box-shadow: none;
   animation: logcat-live-pulse 2s infinite;
 }
 
@@ -75,12 +75,12 @@
   0%,
   100% {
     opacity: 1;
-    box-shadow: 0 0 8px rgb(var(--rgb-green) / 0.6);
+    box-shadow: none;
   }
 
   50% {
     opacity: 0.6;
-    box-shadow: 0 0 16px rgb(var(--rgb-green) / 0.4);
+    box-shadow: none;
   }
 }
 
@@ -201,7 +201,7 @@
   color: var(--text-muted);
 }
 .lvl-I {
-  color: var(--green);
+  color: var(--color-accent);
 }
 .lvl-W {
   color: var(--amber-400);
@@ -218,12 +218,12 @@
    synthetic marker) and would be invisible to anyone who cannot separate
    these hues. */
 .logcat-row.is-hit {
-  background: color-mix(in srgb, var(--green) 12%, transparent);
+  background: color-mix(in srgb, var(--color-accent) 12%, transparent);
 }
 
 .logcat-row.is-active-hit {
-  background: color-mix(in srgb, var(--green) 22%, transparent);
-  box-shadow: inset 2px 0 0 var(--green);
+  background: color-mix(in srgb, var(--color-accent) 22%, transparent);
+  box-shadow: inset 2px 0 0 var(--color-accent);
 }
 
 /* --- soft wrap -------------------------------------------------------- */
@@ -329,7 +329,7 @@
    exhausted) — distinct from the default "not yet connected" grey. */
 .log-live-dot.is-error {
   background: var(--red-400);
-  box-shadow: 0 0 8px rgb(var(--rgb-red-400) / 0.6);
+  box-shadow: none;
 }
 
 /* Banner surfaced above the row list for a terminal connection state. The

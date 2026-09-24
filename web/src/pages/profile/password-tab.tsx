@@ -76,14 +76,14 @@ export function PasswordTab() {
           </div>
         ))}
         {msg && (
-          <div className={`text-xs mb-3 ${msg.kind === 'ok' ? 'text-[var(--green)]' : 'text-[var(--red)]'}`}>
+          <div className={`text-xs mb-3 ${msg.kind === 'ok' ? 'text-[var(--color-success)]' : 'text-[var(--red)]'}`}>
             {msg.text}
           </div>
         )}
         <button
           type="submit"
           disabled={busy || newPassword.length < 8}
-          className="h-10 px-4 rounded-md bg-[var(--green)] text-black font-medium text-sm disabled:opacity-50"
+          className="h-10 px-4 rounded-md bg-[var(--color-accent)] text-black font-medium text-sm disabled:opacity-50"
         >
           {busy ? 'Updating…' : 'Update Password'}
         </button>

@@ -9,7 +9,7 @@ interface Props {
 
 const toneCls: Record<NonNullable<Props['tone']>, string> = {
   neutral: 'bg-[var(--surface-2)] text-[var(--text-muted)] border-[var(--border)]',
-  green:   'bg-[var(--green)]/15 text-[var(--green)] border-[var(--green)]/30',
+  green:   'bg-[var(--color-success)]/15 text-[var(--color-success)] border-[var(--color-success)]/30',
   red:     'bg-[var(--red)]/15   text-[var(--red)]   border-[var(--red)]/30',
   amber:   'bg-[var(--amber)]/15 text-[var(--amber)] border-[var(--amber)]/30',
 };

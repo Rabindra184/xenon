@@ -30,7 +30,7 @@ export const PageHeader: React.FC<Props> = ({ icon: Icon, eyebrow, title, subtit
           </div>
         )}
         <h1 className="flex items-center gap-2 text-xl font-semibold tracking-tight text-[var(--text)]">
-          {Icon && <Icon className="h-5 w-5 text-[var(--green)] shrink-0" />}
+          {Icon && <Icon className="h-5 w-5 text-[var(--color-accent)] shrink-0" />}
           <span className="truncate">{title}</span>
         </h1>
         {subtitle && (

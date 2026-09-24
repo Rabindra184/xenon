@@ -13,21 +13,21 @@ interface Props {
 }
 
 const accentBarCls: Record<KpiState, string> = {
-  healthy:  'bg-[var(--green)]',
+  healthy:  'bg-[var(--color-success)]',
   neutral:  'bg-[var(--border-strong)]',
   warn:     'bg-[var(--amber)]',
   critical: 'bg-[var(--red)]',
 };
 
 const dotCls: Record<KpiState, string> = {
-  healthy:  'bg-[var(--green)]',
+  healthy:  'bg-[var(--color-success)]',
   neutral:  'bg-[var(--text-dim)]',
   warn:     'bg-[var(--amber)]',
   critical: 'bg-[var(--red)]',
 };
 
 const subtitleCls: Record<KpiState, string> = {
-  healthy:  'text-[var(--green)]',
+  healthy:  'text-[var(--color-success)]',
   neutral:  'text-[var(--text-muted)]',
   warn:     'text-[var(--amber)]',
   critical: 'text-[var(--red)]',

@@ -74,12 +74,12 @@
 }
 
 .toast-success {
-  border-color: rgb(var(--rgb-neon-green) / 0.3);
-  color: var(--green);
+  border-color: rgb(var(--rgb-success) / 0.3);
+  color: var(--color-success);
 }
 
 .toast-success .toast-icon {
-  color: var(--green);
+  color: var(--color-success);
 }
 
 .toast-error {

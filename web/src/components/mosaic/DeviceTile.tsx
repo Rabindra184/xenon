@@ -405,7 +405,7 @@ export function DeviceTile({
                 {failureReason || 'We couldn’t start the live stream for this device.'}
               </p>
               <button
-                className="mt-6 text-sm font-semibold px-6 py-2.5 rounded-full bg-red-600 hover:bg-red-500 text-white transition-all shadow-[0_0_20px_rgb(var(--rgb-red-600)/0.3)] active:scale-95"
+                className="mt-6 text-sm font-semibold px-6 py-2.5 rounded-full bg-red-600 hover:bg-red-500 text-white transition-all active:scale-95"
                 onClick={handleRetry}
               >
                 Retry Connection
@@ -464,7 +464,7 @@ export function DeviceTile({
           <div
             ref={interactionRef}
             className={`absolute inset-0 z-[35] touch-none outline-none ${
-              keyboardActive ? 'ring-2 ring-emerald-400/60 ring-inset rounded-lg' : ''
+              keyboardActive ? 'ring-2 ring-[rgb(var(--rgb-accent)/0.6)] ring-inset rounded-lg' : ''
             }`}
             tabIndex={0}
             onPointerDown={onPointerDown}
@@ -482,7 +482,7 @@ export function DeviceTile({
           {ripples.map((r) => (
             <span
               key={r.id}
-              className="absolute block w-10 h-10 rounded-full border-2 border-emerald-300/80 animate-ping"
+              className="absolute block w-10 h-10 rounded-full border-2 border-[var(--color-accent-soft)] animate-ping"
               style={{ left: r.x - 20, top: r.y - 20 }}
             />
           ))}
@@ -526,7 +526,7 @@ export function DeviceTile({
           normal interaction. */}
         <div className="absolute top-3 left-3 z-30 flex flex-col gap-1.5 pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity duration-150">
           {streamState === 'live' && (
-            <span className="px-2 py-0.5 rounded-sm bg-emerald-500 text-black text-[9px] font-black shadow-lg w-fit">
+            <span className="px-2 py-0.5 rounded-sm bg-[var(--color-success)] text-black text-[9px] font-black shadow-lg w-fit">
               LIVE
             </span>
           )}

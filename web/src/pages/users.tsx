@@ -124,7 +124,7 @@ export default function UsersPage() {
                       <td className="py-2.5 px-4">{ROLE_LABELS[u.role]}</td>
                       <td className="py-2.5 px-4">
                         {u.status === 'ACTIVE' ? (
-                          <span className="text-[var(--green)]">Active</span>
+                          <span className="text-[var(--color-success)]">Active</span>
                         ) : (
                           <span className="text-[var(--text-dim)]">Inactive</span>
                         )}

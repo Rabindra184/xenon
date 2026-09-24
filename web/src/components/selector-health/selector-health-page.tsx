@@ -498,7 +498,7 @@ const SelectorHealthPage: React.FC = () => {
             icon={
               <HeartPulse
                 size={32}
-                color={tab === 'active' ? 'var(--green)' : 'var(--text-dim)'}
+                color={tab === 'active' ? 'var(--color-accent)' : 'var(--text-dim)'}
               />
             }
             title={

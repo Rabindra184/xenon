@@ -33,10 +33,10 @@ const CAPABILITIES = [
 export function AuthShell({ children }: { children: React.ReactNode }) {
   return (
     <div className="grid min-h-screen w-full grid-cols-1 bg-[var(--bg)] text-[var(--text)] md:grid-cols-[minmax(0,5fr)_minmax(0,7fr)]">
-      <aside className="relative hidden overflow-hidden border-r border-white/[0.06] bg-[#070b09] md:flex md:flex-col">
+      <aside className="relative hidden overflow-hidden border-r border-white/[0.06] bg-[var(--surface-sunken)] md:flex md:flex-col">
         <div
           aria-hidden="true"
-          className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_90%_60%_at_0%_0%,rgb(var(--rgb-green)/0.14),transparent_60%)]"
+          className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_90%_60%_at_0%_0%,rgb(var(--rgb-accent)/0.14),transparent_60%)]"
         />
         <div
           aria-hidden="true"
@@ -54,7 +54,7 @@ export function AuthShell({ children }: { children: React.ReactNode }) {
             <h2 className="text-4xl font-semibold leading-tight tracking-tight">
               Your device lab,
               <br />
-              <span className="text-[var(--green)]">under control.</span>
+              <span className="text-[var(--color-accent)]">under control.</span>
             </h2>
             <p className="mt-4 text-sm leading-relaxed text-neutral-400">
               Appium orchestration for the devices you own — with self-healing tests, live streaming
@@ -65,7 +65,7 @@ export function AuthShell({ children }: { children: React.ReactNode }) {
               {CAPABILITIES.map(({ icon: Icon, title, body }) => (
                 <li key={title} className="flex gap-4">
                   <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg border border-[var(--accent-border)] bg-[var(--accent-subtle)]">
-                    <Icon className="h-4 w-4 text-[var(--green)]" aria-hidden="true" />
+                    <Icon className="h-4 w-4 text-[var(--color-accent)]" aria-hidden="true" />
                   </span>
                   <div>
                     <div className="text-sm font-medium text-[var(--text)]">{title}</div>

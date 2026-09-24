@@ -22,7 +22,7 @@ import { AuthShell } from './auth-shell';
 
 // Placeholder --text-placeholder (#7a837f) is 5.0:1 on the field; the old --text-dim was 3.2:1.
 const FIELD =
-  'w-full h-11 pl-10 pr-3 rounded-lg bg-[var(--bg)] border border-[var(--border-strong)] text-sm text-[var(--text)] placeholder:text-[var(--text-placeholder)] outline-none transition-[border-color,box-shadow] duration-150 hover:border-[#3a4542] focus:border-[var(--green)] focus:shadow-[0_0_0_3px_var(--accent-subtle)]';
+  'w-full h-11 pl-10 pr-3 rounded-lg bg-[var(--bg)] border border-[var(--border-strong)] text-sm text-[var(--text)] placeholder:text-[var(--text-placeholder)] outline-none transition-[border-color,box-shadow] duration-150 hover:border-[#3a4542] focus:border-[var(--color-accent)] focus:shadow-[0_0_0_3px_var(--accent-subtle)]';
 const ICON =
   'pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--text-muted)]';
 
@@ -147,7 +147,7 @@ export default function LoginPage() {
           {resetMode === 'email' && (
             <Link
               to="/forgot-password"
-              className="text-sm text-[var(--green)] underline-offset-4 hover:underline"
+              className="text-sm text-[var(--color-accent)] underline-offset-4 hover:underline"
             >
               Forgot password?
             </Link>
@@ -217,7 +217,7 @@ export default function LoginPage() {
         <button
           type="submit"
           disabled={submitting || locked}
-          className="mt-6 flex w-full h-11 items-center justify-center gap-2 rounded-lg bg-[var(--green)] text-black font-medium text-sm transition-colors hover:bg-[var(--green-dim)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--green)] disabled:opacity-60 disabled:cursor-not-allowed"
+          className="mt-6 flex w-full h-11 items-center justify-center gap-2 rounded-lg bg-[var(--color-accent)] text-black font-medium text-sm transition-colors hover:bg-[var(--color-accent-strong)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-accent)] disabled:opacity-60 disabled:cursor-not-allowed"
         >
           {submitting ? (
             <>

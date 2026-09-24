@@ -155,7 +155,7 @@ export function DevicePicker({ devices, inMosaic, onToggle }: Props) {
                           blocked
                             ? 'opacity-60 cursor-not-allowed border-transparent'
                             : inMos
-                              ? 'border-emerald-500/40 bg-emerald-500/5 hover:bg-emerald-500/10'
+                              ? 'border-[rgb(var(--rgb-accent)/0.4)] bg-[rgb(var(--rgb-accent)/0.05)] hover:bg-[rgb(var(--rgb-accent)/0.1)]'
                               : 'border-transparent hover:border-[var(--border)] hover:bg-[var(--surface-2)]'
                         }`}
                         title={
@@ -170,7 +170,7 @@ export function DevicePicker({ devices, inMosaic, onToggle }: Props) {
                         <span
                           aria-hidden
                           className={`inline-flex items-center justify-center w-4 h-4 text-xs ${
-                            inMos ? 'text-emerald-400' : 'text-[var(--text-dim)]'
+                            inMos ? 'text-[var(--color-accent-soft)]' : 'text-[var(--text-dim)]'
                           }`}
                         >
                           {inMos ? '●' : '○'}
@@ -182,7 +182,7 @@ export function DevicePicker({ devices, inMosaic, onToggle }: Props) {
                             d.offline
                               ? 'bg-zinc-600'
                               : online
-                                ? 'bg-emerald-400 shadow-[0_0_4px_rgba(52,211,153,0.7)]'
+                                ? 'bg-[var(--color-success)]'
                                 : 'bg-yellow-500'
                           }`}
                         />
@@ -212,7 +212,7 @@ export function DevicePicker({ devices, inMosaic, onToggle }: Props) {
 
       <div className="text-[10px] text-[var(--text-dim)] px-1 pt-2 flex items-center gap-3">
         <span className="inline-flex items-center gap-1">
-          <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 inline-block" /> available
+          <span className="w-1.5 h-1.5 rounded-full bg-[var(--color-success)] inline-block" /> available
         </span>
         <span className="inline-flex items-center gap-1">
           <span className="w-1.5 h-1.5 rounded-full bg-yellow-500 inline-block" /> in use

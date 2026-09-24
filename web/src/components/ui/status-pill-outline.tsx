@@ -8,8 +8,8 @@ interface Props {
 }
 
 const toneCls: Record<StatusTone, string> = {
-  ready:   'border-[var(--green)]/40 text-[var(--green)]',
-  passed:  'border-[var(--green)]/40 text-[var(--green)]',
+  ready:   'border-[var(--color-success)]/40 text-[var(--color-success)]',
+  passed:  'border-[var(--color-success)]/40 text-[var(--color-success)]',
   running: 'border-[var(--amber)]/40 text-[var(--amber)]',
   failed:  'border-[var(--red)]/40   text-[var(--red)]',
   offline: 'border-[var(--text-dim)]/40 text-[var(--text-dim)]',

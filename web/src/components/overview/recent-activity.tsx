@@ -9,7 +9,7 @@ interface Props {
 }
 
 const dotCls: Record<ActivityEventKind, string> = {
-  session: 'bg-[var(--green)]',
+  session: 'bg-[var(--color-accent)]',
   'session-end': 'bg-[var(--text-dim)]',
   'session-failed': 'bg-[var(--red)]',
   node: 'bg-[var(--blue)]',
@@ -29,7 +29,7 @@ export const RecentActivity: React.FC<Props> = ({ events, live = true }) => (
         <span className="flex items-center gap-1 text-[10px] font-mono text-[var(--text-dim)] uppercase tracking-widest">
           <span
             className={`h-1.5 w-1.5 rounded-full ${
-              live ? 'bg-[var(--green)] pulse-dot' : 'bg-[var(--text-dim)]'
+              live ? 'bg-[var(--color-success)] pulse-dot' : 'bg-[var(--text-dim)]'
             }`}
           />
           {live ? 'Live' : 'Offline'}

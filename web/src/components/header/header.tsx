@@ -70,7 +70,7 @@ const Header: React.FC = () => {
             title={connection.title}
             className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full border ${
               connection.tone === 'live'
-                ? 'bg-[var(--green)]/10 border-[var(--green)]/20 text-[var(--green)]'
+                ? 'bg-[var(--color-success)]/10 border-[var(--color-success)]/20 text-[var(--color-success)]'
                 : connection.tone === 'reconnecting'
                   ? 'bg-[var(--amber)]/10 border-[var(--amber)]/25 text-[var(--amber)]'
                   : 'bg-[var(--red)]/10 border-[var(--red)]/25 text-[var(--red)]'
@@ -90,7 +90,7 @@ const Header: React.FC = () => {
               aria-haspopup="true"
               aria-expanded={dropdownOpen}
             >
-              <span className="h-6 w-6 rounded-full bg-[var(--green)]/15 text-[var(--green)] text-[11px] font-semibold flex items-center justify-center">
+              <span className="h-6 w-6 rounded-full bg-[var(--color-accent)]/15 text-[var(--color-accent)] text-[11px] font-semibold flex items-center justify-center">
                 {initials}
               </span>
               <span className="flex flex-col items-start leading-tight">

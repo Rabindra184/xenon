@@ -79,9 +79,9 @@
 }
 
 .omni-mode-btn.active {
-    background: var(--green);
+    background: var(--color-accent);
     color: var(--bg);
-    box-shadow: 0 0 10px rgb(var(--rgb-neon-green) / 0.3);
+    box-shadow: none;
 }
 
 .omni-refresh-btn {
@@ -89,7 +89,7 @@
     align-items: center;
     gap: 6px;
     padding: 6px 12px;
-    background: var(--green);
+    background: var(--color-accent);
     color: var(--bg);
     border: none;
     border-radius: 6px;
@@ -103,8 +103,8 @@
 }
 
 .omni-refresh-btn:hover:not(:disabled) {
-    background: var(--neon-green-dim);
-    box-shadow: 0 0 15px rgb(var(--rgb-neon-green) / 0.4);
+    background: var(--color-accent);
+    box-shadow: none;
 }
 
 .omni-refresh-btn:disabled {
@@ -167,23 +167,23 @@
 }
 
 .omni-hit-area:hover {
-    background: rgb(var(--rgb-emerald) / 0.2);
+    background: rgb(var(--rgb-accent) / 0.2);
 }
 
 .omni-frame-hover {
     position: absolute;
-    border: 2px solid var(--green);
-    background: rgb(var(--rgb-emerald) / 0.1);
+    border: 2px solid var(--color-accent);
+    background: rgb(var(--rgb-accent) / 0.1);
     pointer-events: none;
     border-radius: 6px;
 }
 
 .omni-frame-select {
     position: absolute;
-    border: 2px solid var(--green);
-    background: rgb(var(--rgb-emerald) / 0.2);
+    border: 2px solid var(--color-accent);
+    background: rgb(var(--rgb-accent) / 0.2);
     pointer-events: none;
-    box-shadow: 0 0 20px var(--accent-subtle);
+    box-shadow: none;
     border-radius: 6px;
 }
 
@@ -200,15 +200,15 @@
 }
 
 .omni-frame-match.unique {
-    border-color: var(--green);
-    background: rgb(var(--rgb-emerald) / 0.12);
-    box-shadow: 0 0 18px rgb(var(--rgb-emerald) / 0.35);
+    border-color: var(--color-success);
+    background: rgb(var(--rgb-success) / 0.12);
+    box-shadow: none;
 }
 
 .omni-frame-match.multi {
     border-color: var(--amber, var(--amber));
     background: rgb(var(--rgb-amber) / 0.1);
-    box-shadow: 0 0 14px rgb(var(--rgb-amber) / 0.3);
+    box-shadow: none;
 }
 
 @keyframes omni-match-pulse {
@@ -234,7 +234,7 @@
     width: 24px;
     height: 24px;
     border: 2px solid var(--border);
-    border-top-color: var(--green);
+    border-top-color: var(--color-accent);
     border-radius: 50%;
     animation: spin 1s linear infinite;
 }
@@ -332,8 +332,8 @@
     /* Or it breaks into "66 / ELEMENTS" the moment the row is tight. */
     white-space: nowrap;
     font-size: 11px;
-    background: rgb(var(--rgb-neon-green) / 0.05);
-    color: var(--green);
+    background: rgb(var(--rgb-accent) / 0.05);
+    color: var(--color-accent);
     padding: 2px 8px;
     border-radius: 6px;
     font-weight: 800;
@@ -357,8 +357,8 @@
 
 .omni-action-btn:hover {
     background: rgb(var(--rgb-white) / 0.05);
-    color: var(--green);
-    border-color: var(--green);
+    color: var(--color-accent);
+    border-color: var(--color-accent);
 }
 
 .omni-tree-search {
@@ -374,8 +374,8 @@
 }
 
 .omni-tree-search:focus-within {
-    border-color: var(--green);
-    box-shadow: 0 0 10px rgb(var(--rgb-neon-green) / 0.1);
+    border-color: var(--color-accent);
+    box-shadow: none;
 }
 
 .omni-tree-search input {
@@ -410,10 +410,10 @@
 }
 
 .tree-item.selected {
-    background: rgb(var(--rgb-neon-green) / 0.08);
-    color: var(--green);
-    border-color: rgb(var(--rgb-neon-green) / 0.4);
-    box-shadow: inset 0 0 0 1px rgb(var(--rgb-neon-green) / 0.2);
+    background: rgb(var(--rgb-accent) / 0.08);
+    color: var(--color-accent);
+    border-color: rgb(var(--rgb-accent) / 0.4);
+    box-shadow: inset 0 0 0 1px rgb(var(--rgb-accent) / 0.2);
 }
 
 .tree-item.hovered:not(.selected) {
@@ -448,8 +448,8 @@
 }
 
 .tree-toggle:hover {
-    color: var(--green);
-    background: rgb(var(--rgb-neon-green) / 0.1);
+    color: var(--color-accent);
+    background: rgb(var(--rgb-accent) / 0.1);
 }
 
 .tree-toggle-spacer {
@@ -649,7 +649,7 @@
 .omni-layout-value {
     font-size: 12px;
     font-weight: 800;
-    color: var(--green);
+    color: var(--color-accent);
     font-family: 'JetBrains Mono', monospace;
 }
 
@@ -662,14 +662,14 @@
     background: rgb(var(--rgb-black) / 0.6);
     border-radius: 6px;
     border: 1px solid var(--border);
-    border-left: 3px solid var(--green);
+    border-left: 3px solid var(--color-accent);
     transition: all 0.2s;
     min-height: 48px;
 }
 
 .omni-locator-row:hover {
     background: rgb(var(--rgb-white) / 0.02);
-    border-color: var(--green);
+    border-color: var(--color-accent);
 }
 
 .omni-locator-strategy {
@@ -677,8 +677,8 @@
     font-size: 11px;
     font-weight: 800;
     text-transform: uppercase;
-    background: rgb(var(--rgb-neon-green) / 0.05);
-    color: var(--green);
+    background: rgb(var(--rgb-accent) / 0.05);
+    color: var(--color-accent);
     padding: 2px 6px;
     border-radius: 6px;
     letter-spacing: 0.05em;
@@ -710,8 +710,8 @@
 }
 
 .omni-copy-btn:hover {
-    background: var(--green);
-    border-color: var(--green);
+    background: var(--color-accent);
+    border-color: var(--color-accent);
     color: var(--black);
 }
 
@@ -737,14 +737,14 @@
 }
 
 .omni-test-btn:hover {
-    background: rgb(var(--rgb-emerald) / 0.12);
-    border-color: var(--green);
-    color: var(--green);
+    background: rgb(var(--rgb-accent) / 0.12);
+    border-color: var(--color-accent);
+    color: var(--color-accent);
 }
 
 .omni-test-btn.active {
-    background: var(--green);
-    border-color: var(--green);
+    background: var(--color-accent);
+    border-color: var(--color-accent);
     color: var(--black);
 }
 
@@ -764,9 +764,9 @@
 }
 
 .omni-match-badge.unique {
-    background: rgb(var(--rgb-emerald) / 0.12);
-    border-color: rgb(var(--rgb-emerald) / 0.4);
-    color: var(--green);
+    background: rgb(var(--rgb-success) / 0.12);
+    border-color: rgb(var(--rgb-success) / 0.4);
+    color: var(--color-success);
 }
 
 .omni-match-badge.multi {
@@ -788,8 +788,8 @@
 }
 
 .omni-copy-btn.copied {
-    background: var(--green);
-    border-color: var(--green);
+    background: var(--color-accent);
+    border-color: var(--color-accent);
     color: var(--black);
 }
 
@@ -888,7 +888,7 @@
 }
 
 .omni-input-field:focus {
-    border-color: var(--green);
+    border-color: var(--color-accent);
     background: rgb(var(--rgb-black) / 0.5);
 }
 
@@ -925,7 +925,7 @@
 }
 
 .omni-dpad-btn:hover {
-    background: var(--green);
+    background: var(--color-accent);
     color: var(--black);
     transform: scale(1.1);
 }
@@ -999,9 +999,9 @@
 }
 
 .omni-details-tab.active {
-    color: var(--green);
-    border-bottom-color: var(--green);
-    background: rgb(var(--rgb-neon-green) / 0.04);
+    color: var(--color-accent);
+    border-bottom-color: var(--color-accent);
+    background: rgb(var(--rgb-accent) / 0.04);
 }
 
 .omni-details-tab:disabled {
@@ -1020,20 +1020,20 @@
     background: rgb(var(--rgb-black) / 0.4);
     border-radius: 6px;
     border: 1px solid var(--border);
-    border-left: 3px solid var(--green);
+    border-left: 3px solid var(--color-accent);
     transition: all 0.15s;
     cursor: pointer;
 }
 
 .omni-locator-row:hover {
     background: rgb(var(--rgb-white) / 0.02);
-    border-color: var(--green);
+    border-color: var(--color-accent);
 }
 
 .omni-locator-row.selected-for-code {
-    border-color: var(--green);
-    background: rgb(var(--rgb-neon-green) / 0.06);
-    box-shadow: 0 0 12px rgb(var(--rgb-neon-green) / 0.08);
+    border-color: var(--color-accent);
+    background: rgb(var(--rgb-accent) / 0.06);
+    box-shadow: none;
 }
 
 .omni-locator-left {
@@ -1065,9 +1065,9 @@
 }
 
 .omni-stability-badge.stable {
-    background: rgb(var(--rgb-emerald) / 0.12);
-    color: var(--emerald);
-    border: 1px solid rgb(var(--rgb-emerald) / 0.25);
+    background: rgb(var(--rgb-accent) / 0.12);
+    color: var(--color-accent);
+    border: 1px solid rgb(var(--rgb-accent) / 0.25);
 }
 
 .omni-stability-badge.moderate {
@@ -1092,8 +1092,8 @@
 .omni-section-badge {
     font-size: 9px;
     font-weight: 600;
-    background: rgb(var(--rgb-neon-green) / 0.08);
-    color: var(--green);
+    background: rgb(var(--rgb-accent) / 0.08);
+    color: var(--color-accent);
     padding: 2px 6px;
     border-radius: 4px;
     margin-left: 6px;
@@ -1172,10 +1172,10 @@
     align-items: flex-start;
     gap: 12px;
     padding: 14px;
-    background: rgb(var(--rgb-neon-green) / 0.04);
-    border: 1px solid rgb(var(--rgb-neon-green) / 0.15);
+    background: rgb(var(--rgb-accent) / 0.04);
+    border: 1px solid rgb(var(--rgb-accent) / 0.15);
     border-radius: 8px;
-    color: var(--green);
+    color: var(--color-accent);
 }
 
 .omni-summary-hero > svg {
@@ -1224,7 +1224,7 @@
 .omni-summary-stat__value {
     font-size: 14px;
     font-weight: 700;
-    color: var(--green);
+    color: var(--color-accent);
     font-family: 'JetBrains Mono', monospace;
     word-break: break-all;
 }
@@ -1259,8 +1259,8 @@
 .omni-summary-role__count {
     font-size: 11px;
     font-weight: 700;
-    color: var(--green);
-    background: rgb(var(--rgb-neon-green) / 0.06);
+    color: var(--color-accent);
+    background: rgb(var(--rgb-accent) / 0.06);
     padding: 2px 8px;
     border-radius: 4px;
     font-family: 'JetBrains Mono', monospace;
@@ -1275,11 +1275,11 @@
     gap: 5px;
     padding: 4px 14px;
     font-size: 10px;
-    color: var(--green);
+    color: var(--color-accent);
     opacity: 0.7;
     font-style: italic;
-    background: rgb(var(--rgb-neon-green) / 0.03);
-    border-bottom: 1px solid rgb(var(--rgb-neon-green) / 0.08);
+    background: rgb(var(--rgb-accent) / 0.03);
+    border-bottom: 1px solid rgb(var(--rgb-accent) / 0.08);
 }
 
 /* ===================================================
@@ -1296,9 +1296,9 @@
     align-items: center;
     gap: 14px;
     padding: 16px;
-    background: rgb(var(--rgb-neon-green) / 0.04);
+    background: rgb(var(--rgb-accent) / 0.04);
     border-radius: 8px;
-    border: 1px solid rgb(var(--rgb-neon-green) / 0.12);
+    border: 1px solid rgb(var(--rgb-accent) / 0.12);
 }
 
 .omni-insight-emoji {
@@ -1325,11 +1325,11 @@
     gap: 4px;
     font-size: 10px;
     font-weight: 700;
-    color: var(--emerald);
-    background: rgb(var(--rgb-emerald) / 0.1);
+    color: var(--color-success);
+    background: rgb(var(--rgb-success) / 0.1);
     padding: 2px 8px;
     border-radius: 4px;
-    border: 1px solid rgb(var(--rgb-emerald) / 0.2);
+    border: 1px solid rgb(var(--rgb-success) / 0.2);
 }
 
 .omni-badge-gray {
@@ -1365,7 +1365,7 @@
 }
 
 .omni-insight-icon {
-    color: var(--green);
+    color: var(--color-accent);
     flex-shrink: 0;
     margin-top: 2px;
 }
@@ -1417,7 +1417,7 @@
 }
 
 .omni-quick-fact-value.true {
-    color: var(--emerald);
+    color: var(--color-accent);
     font-weight: 700;
 }
 
@@ -1456,9 +1456,9 @@
 }
 
 .omni-fw-btn.active {
-    background: rgb(var(--rgb-neon-green) / 0.08);
-    border-color: rgb(var(--rgb-neon-green) / 0.4);
-    color: var(--green);
+    background: rgb(var(--rgb-accent) / 0.08);
+    border-color: rgb(var(--rgb-accent) / 0.4);
+    color: var(--color-accent);
 }
 
 .omni-codegen-locator-selector {
@@ -1498,7 +1498,7 @@
     font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 0.06em;
-    color: var(--green);
+    color: var(--color-accent);
     font-family: 'JetBrains Mono', monospace;
 }
 
@@ -1533,7 +1533,7 @@
 }
 
 .omni-verify-line.is-ok {
-    color: var(--green);
+    color: var(--color-success);
 }
 
 .omni-verify-line.is-warn {

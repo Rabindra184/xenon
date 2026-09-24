@@ -32,7 +32,7 @@ export default function ProfilePage() {
               onClick={() => setTab(t.id)}
               className={`block w-full text-left px-3 py-2 text-sm rounded-md mb-1 ${
                 tab === t.id
-                  ? 'bg-[var(--green)]/10 text-[var(--green)]'
+                  ? 'bg-[var(--color-accent)]/10 text-[var(--color-accent)]'
                   : 'text-[var(--text)] hover:bg-[var(--surface)]'
               }`}
             >

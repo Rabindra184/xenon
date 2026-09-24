@@ -9,7 +9,7 @@ interface Props {
 }
 
 const map: Record<SummaryKind, { Icon: LucideIcon; label: string; tint: string }> = {
-  passed:  { Icon: CheckCircle2, label: 'PASSED',  tint: 'text-[var(--green)]' },
+  passed:  { Icon: CheckCircle2, label: 'PASSED',  tint: 'text-[var(--color-success)]' },
   failed:  { Icon: XCircle,      label: 'FAILED',  tint: 'text-[var(--red)]'   },
   running: { Icon: Activity,     label: 'RUNNING', tint: 'text-[var(--amber)]' },
 };

@@ -59,7 +59,7 @@ export const SessionRow: React.FC<Props> = ({ session, selected, onToggleSelect,
         />
       </td>
       <td className="px-3 py-3">
-        <div className="font-mono text-xs text-[var(--green)]" title={session.id}>
+        <div className="font-mono text-xs text-[var(--color-accent)]" title={session.id}>
           #{shortId(session.id, 14, 4)}
         </div>
         {subtitleTop && (

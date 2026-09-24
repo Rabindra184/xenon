@@ -686,7 +686,7 @@ export default function DeviceControl({ device, onClose }: DeviceControlProps) {
                     className="device-stream-placeholder"
                     style={{ position: 'absolute', zIndex: 10 }}
                   >
-                    <RotateCw size={40} className="animate-spin" color="var(--green)" />
+                    <RotateCw size={40} className="animate-spin" color="var(--color-accent)" />
                     <p style={{ marginTop: 16 }}>
                       {streamStarting ? 'ESTABLISHING TRACE...' : 'Waiting for stream…'}
                     </p>
@@ -907,7 +907,7 @@ export default function DeviceControl({ device, onClose }: DeviceControlProps) {
                 <div className="actions-grid">
                   <div className="action-card full-width">
                     <h4 className="action-card-title">
-                      <FileText size={18} color="var(--green)" /> Smart Input
+                      <FileText size={18} color="var(--color-accent)" /> Smart Input
                     </h4>
                     <p className="action-card-hint">
                       Relay keystrokes to the focused element on the device.
@@ -924,7 +924,7 @@ export default function DeviceControl({ device, onClose }: DeviceControlProps) {
 
                   <div className="action-card full-width">
                     <h4 className="action-card-title">
-                      <Package size={18} color="var(--green)" /> App Management
+                      <Package size={18} color="var(--color-accent)" /> App Management
                     </h4>
                     <div className="app-mgmt-content">
                       <div className="install-section">
@@ -1010,7 +1010,7 @@ export default function DeviceControl({ device, onClose }: DeviceControlProps) {
 
                   <div className="action-card full-width">
                     <h4 className="action-card-title">
-                      <Clipboard size={18} color="var(--green)" /> Clipboard
+                      <Clipboard size={18} color="var(--color-accent)" /> Clipboard
                     </h4>
                     <div className="clipboard-row">
                       <button className="btn-premium btn-sm" onClick={fetchClipboard}>
@@ -1022,7 +1022,7 @@ export default function DeviceControl({ device, onClose }: DeviceControlProps) {
 
                   <div className="action-card full-width">
                     <h4 className="action-card-title">
-                      <Move size={18} color="var(--green)" /> Directional Gestures
+                      <Move size={18} color="var(--color-accent)" /> Directional Gestures
                     </h4>
                     <div className="gestures-grid-container">
                       <div className="gestures-dpad">

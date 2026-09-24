@@ -17,7 +17,7 @@ interface Props {
 const toneCls: Record<NonNullable<MetadataRow['tone']>, string> = {
   default: 'text-[var(--text)]',
   red: 'text-[var(--red)]',
-  green: 'text-[var(--green)]',
+  green: 'text-[var(--color-success)]',
   amber: 'text-[var(--amber)]',
 };
 

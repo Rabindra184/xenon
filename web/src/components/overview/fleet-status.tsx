@@ -28,7 +28,7 @@ function deviceIcon(d: IDevice) {
 }
 
 const statusStyle: Record<DeviceStatus, { dot: string; text: string; label: string }> = {
-  ready:    { dot: 'bg-[var(--green)]', text: 'text-[var(--green)]', label: 'READY' },
+  ready:    { dot: 'bg-[var(--color-success)]', text: 'text-[var(--color-success)]', label: 'READY' },
   busy:     { dot: 'bg-[var(--amber)]', text: 'text-[var(--amber)]', label: 'BUSY' },
   reserved: { dot: 'bg-[var(--blue)]',  text: 'text-[var(--blue)]',  label: 'RESERVED' },
   offline:  { dot: 'bg-[var(--text-dim)]', text: 'text-[var(--text-dim)]', label: 'OFFLINE' },

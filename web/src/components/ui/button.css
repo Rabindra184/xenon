@@ -21,13 +21,15 @@
 .btn-size-icon { height: 32px; width: 32px; padding: 0; }
 
 .btn-primary {
-  background: var(--green-dim);
-  color: var(--white);
-  border-color: var(--green-dim);
+  /* Black on the brand green: 9.2:1. Was white on #16a34a at 3.3:1, below
+     AA on the most-used button in the app. */
+  background: var(--color-accent);
+  color: var(--color-on-accent);
+  border-color: var(--color-accent);
 }
 .btn-primary:hover:not(:disabled) {
-  background: #2ea043;
-  border-color: #2ea043;
+  background: var(--color-accent-soft);
+  border-color: var(--color-accent-soft);
 }
 
 .btn-secondary {

@@ -27,7 +27,7 @@ export const CapabilitiesCard: React.FC<Props> = ({ session }) => {
             aria-pressed={tab === t}
             className={`flex-1 h-9 text-[10px] font-mono font-semibold uppercase tracking-widest transition-colors border-b-2 ${
               tab === t
-                ? 'border-[var(--green)] text-[var(--text)]'
+                ? 'border-[var(--color-accent)] text-[var(--text)]'
                 : 'border-transparent text-[var(--text-muted)] hover:text-[var(--text)]'
             }`}
           >

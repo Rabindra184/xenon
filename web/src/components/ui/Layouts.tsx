@@ -74,7 +74,9 @@ export const SettingSection: React.FC<SettingSectionProps> = ({
   <div className="settings-section">
     <div className="section-header">
       <h3>
-        {Icon && <Icon size={20} className="section-icon" style={{ color: 'var(--green)' }} />}
+        {Icon && (
+          <Icon size={20} className="section-icon" style={{ color: 'var(--color-accent)' }} />
+        )}
         {title}
       </h3>
       {description && <p className="section-description">{description}</p>}

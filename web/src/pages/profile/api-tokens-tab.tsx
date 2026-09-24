@@ -82,7 +82,7 @@ export function ApiTokensTab() {
         <h2 className="text-base font-semibold">Identity Tokens</h2>
         <button
           onClick={() => setShowModal(true)}
-          className="h-9 px-4 rounded-md bg-[var(--green)] text-black font-medium text-sm"
+          className="h-9 px-4 rounded-md bg-[var(--color-accent)] text-black font-medium text-sm"
         >
           Generate New Token
         </button>
@@ -170,7 +170,7 @@ export function ApiTokensTab() {
             <div className="flex justify-end">
               <button
                 onClick={() => setRevealed(null)}
-                className="h-9 px-4 rounded-md bg-[var(--green)] text-black text-sm font-medium"
+                className="h-9 px-4 rounded-md bg-[var(--color-accent)] text-black text-sm font-medium"
               >
                 Done
               </button>

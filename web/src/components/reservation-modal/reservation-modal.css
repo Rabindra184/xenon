@@ -1,5 +1,5 @@
 .title-icon {
-    color: var(--green);
+    color: var(--color-accent);
 }
 
 .reservation-modal-body {
@@ -37,7 +37,7 @@
 }
 
 .device-id-badge .value {
-    color: var(--green);
+    color: var(--color-accent);
     font-weight: 800;
 }
 
@@ -56,8 +56,8 @@
 
 .reservation-input:focus {
     outline: none;
-    border-color: var(--green);
-    box-shadow: 0 0 10px rgb(var(--rgb-neon-green) / 0.1);
+    border-color: var(--color-accent);
+    box-shadow: none;
 }
 
 .duration-selector {
@@ -87,10 +87,10 @@
 }
 
 .duration-option.active {
-    background-color: rgb(var(--rgb-neon-green) / 0.05);
-    border-color: var(--green);
-    color: var(--green);
-    box-shadow: 0 0 10px rgb(var(--rgb-neon-green) / 0.1);
+    background-color: rgb(var(--rgb-accent) / 0.05);
+    border-color: var(--color-accent);
+    color: var(--color-accent);
+    box-shadow: none;
 }
 
 .btn-cancel {
@@ -113,7 +113,7 @@
 }
 
 .btn-reserve {
-    background: var(--green);
+    background: var(--color-accent);
     color: var(--bg);
     border: none;
     padding: 10px 24px;
@@ -124,12 +124,12 @@
     transition: all 0.2s;
     text-transform: uppercase;
     font-family: 'JetBrains Mono', monospace;
-    box-shadow: 0 0 15px rgb(var(--rgb-neon-green) / 0.2);
+    box-shadow: none;
 }
 
 .btn-reserve:hover:not(:disabled) {
-    background: var(--neon-green-dim);
-    box-shadow: 0 0 25px rgb(var(--rgb-neon-green) / 0.4);
+    background: var(--color-accent);
+    box-shadow: none;
 }
 
 .btn-reserve:disabled {
