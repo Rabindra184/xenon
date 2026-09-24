@@ -25,6 +25,29 @@ export interface TerminateOptions {
   gracefulMs?: number;
 }
 
+/**
+ * Signal a tracked child's process GROUP (-pid), so its own children (iproxy
+ * under go-ios) go with it. Falls back to the child itself when the group
+ * can't be signalled, and always on Windows.
+ *
+ * Never group-signals a pid below 2. kill(-1) is not "group 1": it signals
+ * every process the user owns, and kill(0) signals our own group. The pid
+ * can be -1 too, since track() stores that for a child that never started,
+ * and -(-1) is kill(1), init, which succeeds as root (in a container). No
+ * sidecar has a pid below 2, so those only ever mean "no real group".
+ */
+function signalGroup(child: ChildProcess, pid: number, signal: NodeJS.Signals): void {
+  if (process.platform === 'win32' || !Number.isInteger(pid) || pid < 2) {
+    child.kill(signal);
+    return;
+  }
+  try {
+    process.kill(-pid, signal);
+  } catch {
+    child.kill(signal);
+  }
+}
+
 @Service()
 export class ProcessRegistry {
   private log = log.scope('ProcessRegistry');
@@ -64,15 +87,7 @@ export class ProcessRegistry {
     });
 
     try {
-      if (process.platform === 'win32') {
-        child.kill('SIGTERM');
-      } else {
-        try {
-          process.kill(-pid, 'SIGTERM');
-        } catch {
-          child.kill('SIGTERM');
-        }
-      }
+      signalGroup(child, pid, 'SIGTERM');
     } catch (err: any) {
       this.log.debug(`SIGTERM failed for ${kind}/${pid}: ${err.message}`);
     }
@@ -84,15 +99,7 @@ export class ProcessRegistry {
 
     if (timedOut) {
       try {
-        if (process.platform === 'win32') {
-          child.kill('SIGKILL');
-        } else {
-          try {
-            process.kill(-pid, 'SIGKILL');
-          } catch {
-            child.kill('SIGKILL');
-          }
-        }
+        signalGroup(child, pid, 'SIGKILL');
       } catch (err: any) {
         this.log.warn(`SIGKILL failed for ${kind}/${pid}: ${err.message}`);
       }
@@ -140,15 +147,7 @@ export class ProcessRegistry {
     let killed = 0;
     for (const { process: child, pid, kind } of this.processes.values()) {
       try {
-        if (process.platform === 'win32') {
-          child.kill('SIGKILL');
-        } else {
-          try {
-            process.kill(-pid, 'SIGKILL');
-          } catch {
-            child.kill('SIGKILL');
-          }
-        }
+        signalGroup(child, pid, 'SIGKILL');
         killed += 1;
       } catch {
         /* already gone is the desired state; never throw from an exit hook */
