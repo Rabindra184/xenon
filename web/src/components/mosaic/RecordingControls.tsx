@@ -284,7 +284,7 @@ export function RecordingControls({ selectedUdids }: Props) {
         }
         className={`px-3 py-1.5 text-sm rounded border ${
           state.annotateMode
-            ? 'bg-[var(--accent,#3b82f6)] text-white border-transparent'
+            ? 'bg-[var(--color-info)] text-white border-transparent'
             : 'border-[var(--border)]'
         } disabled:opacity-40 disabled:cursor-not-allowed`}
       >
@@ -300,7 +300,7 @@ export function RecordingControls({ selectedUdids }: Props) {
               onClick={() => dispatch({ type: 'SET_SHAPE', shape: s.id })}
               className={`px-2 py-1 text-xs rounded border ${
                 state.shape === s.id
-                  ? 'bg-[var(--surface-2,#1a1a1a)] border-[var(--accent,#3b82f6)] text-white'
+                  ? 'bg-[var(--surface-2)] border-[var(--color-info)] text-white'
                   : 'border-[var(--border)] opacity-80 hover:opacity-100'
               }`}
             >
@@ -322,7 +322,7 @@ export function RecordingControls({ selectedUdids }: Props) {
           type="button"
           onClick={clearAnnotations}
           title="Clear drawn annotations from the live preview"
-          className="px-2 py-1.5 text-sm rounded border border-[var(--border)] hover:bg-[var(--surface-2,#1a1a1a)]"
+          className="px-2 py-1.5 text-sm rounded border border-[var(--border)] hover:bg-[var(--surface-2)]"
         >
           Clear marks
         </button>
@@ -331,7 +331,7 @@ export function RecordingControls({ selectedUdids }: Props) {
       {showDownload && useDirectMp4 && (
         <a
           href={videoMp4Url(state.groupId!)}
-          className="ml-1 px-3 py-1.5 text-sm rounded border border-[var(--border)] hover:bg-[var(--surface-2,#1a1a1a)]"
+          className="ml-1 px-3 py-1.5 text-sm rounded border border-[var(--border)] hover:bg-[var(--surface-2)]"
           download
         >
           ⤓ Download video
@@ -340,7 +340,7 @@ export function RecordingControls({ selectedUdids }: Props) {
       {showDownload && !useDirectMp4 && (
         <a
           href={videosZipUrl(state.groupId!)}
-          className="ml-1 px-3 py-1.5 text-sm rounded border border-[var(--border)] hover:bg-[var(--surface-2,#1a1a1a)]"
+          className="ml-1 px-3 py-1.5 text-sm rounded border border-[var(--border)] hover:bg-[var(--surface-2)]"
           download={`videos-${state.groupId}.zip`}
           title="ZIP of mp4 files only (no JSON extras)"
         >
@@ -350,7 +350,7 @@ export function RecordingControls({ selectedUdids }: Props) {
       {showCompositeDownload && (
         <a
           href={compositeMp4Url(state.groupId!)}
-          className="px-3 py-1.5 text-sm rounded border border-[var(--border)] hover:bg-[var(--surface-2,#1a1a1a)]"
+          className="px-3 py-1.5 text-sm rounded border border-[var(--border)] hover:bg-[var(--surface-2)]"
           download={`side-by-side-${state.groupId}.mp4`}
           title="All devices in one side-by-side video"
         >

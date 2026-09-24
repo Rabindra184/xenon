@@ -71,8 +71,8 @@ export const NetworkRequestModal: React.FC<Props> = ({ request, onClose }) => {
     <Modal open={!!request} title={title} onClose={onClose} width={720}>
       <div className="space-y-4 text-xs">
         {request.failed && (
-          <div className="border border-[var(--red,#dc2626)] rounded p-2 bg-[var(--red-soft,rgba(220,38,38,0.08))]">
-            <div className="text-[var(--red,#dc2626)] uppercase tracking-wide text-[10px] mb-1">
+          <div className="border border-[var(--red)] rounded p-2 bg-[rgb(var(--rgb-red-600)/0.08)]">
+            <div className="text-[var(--red)] uppercase tracking-wide text-[10px] mb-1">
               Failure
             </div>
             <div className="text-xs">{request.failureReason || 'Request failed'}</div>

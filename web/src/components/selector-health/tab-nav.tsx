@@ -24,8 +24,8 @@ interface Props {
 
 const TABS: Array<{ id: Tab; label: string; icon: LucideIcon; color?: string }> = [
   { id: 'active', label: 'Active', icon: Zap },
-  { id: 'pending', label: 'Pending', icon: Hourglass, color: 'var(--accent, #60a5fa)' },
-  { id: 'resolved', label: 'Resolved', icon: CheckCircle2, color: 'var(--green, #4ade80)' },
+  { id: 'pending', label: 'Pending', icon: Hourglass, color: 'var(--color-highlight)' },
+  { id: 'resolved', label: 'Resolved', icon: CheckCircle2, color: 'var(--green)' },
   { id: 'muted', label: 'Muted', icon: VolumeX, color: 'var(--text-muted)' },
 ];
 

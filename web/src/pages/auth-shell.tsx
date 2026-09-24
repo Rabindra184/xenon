@@ -36,11 +36,11 @@ export function AuthShell({ children }: { children: React.ReactNode }) {
       <aside className="relative hidden overflow-hidden border-r border-white/[0.06] bg-[#070b09] md:flex md:flex-col">
         <div
           aria-hidden="true"
-          className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_90%_60%_at_0%_0%,rgba(34,197,94,0.14),transparent_60%)]"
+          className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_90%_60%_at_0%_0%,rgb(var(--rgb-green)/0.14),transparent_60%)]"
         />
         <div
           aria-hidden="true"
-          className="pointer-events-none absolute inset-0 bg-[linear-gradient(to_right,rgba(255,255,255,0.03)_1px,transparent_1px),linear-gradient(to_bottom,rgba(255,255,255,0.03)_1px,transparent_1px)] bg-[size:48px_48px] [mask-image:linear-gradient(to_bottom,black,transparent_85%)]"
+          className="pointer-events-none absolute inset-0 bg-[linear-gradient(to_right,rgb(var(--rgb-white)/0.03)_1px,transparent_1px),linear-gradient(to_bottom,rgb(var(--rgb-white)/0.03)_1px,transparent_1px)] bg-[size:48px_48px] [mask-image:linear-gradient(to_bottom,black,transparent_85%)]"
         />
 
         <div className="relative flex flex-1 flex-col justify-between px-12 py-10">

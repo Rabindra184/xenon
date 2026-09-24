@@ -222,7 +222,7 @@ const KpiStrip: React.FC<{ summary: IHealingSummaryResponse | null; loading: boo
         delta={
           !loading && typeof summary?.pendingCount === 'number' ? (
             <span className="sh-kpi__delta sh-kpi__delta--with-icon">
-              <Hourglass size={11} style={{ color: 'var(--accent, #60a5fa)' }} />
+              <Hourglass size={11} style={{ color: 'var(--color-highlight)' }} />
               {summary.pendingCount} pending
             </span>
           ) : undefined

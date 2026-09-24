@@ -18,7 +18,7 @@ export function LayoutSelector({ value, onChange }: Props) {
   return (
     <div
       role="tablist"
-      className="inline-flex border border-[var(--border)] rounded-md overflow-hidden text-xs bg-[var(--surface-1,rgba(255,255,255,0.02))]"
+      className="inline-flex border border-[var(--border)] rounded-md overflow-hidden text-xs bg-[rgb(var(--rgb-white)/0.02)]"
     >
       {LAYOUTS.map((l) => {
         const active = value === l.id;
@@ -30,8 +30,8 @@ export function LayoutSelector({ value, onChange }: Props) {
             onClick={() => onChange(l.id)}
             className={`flex items-center gap-1.5 px-2.5 py-1.5 border-r border-[var(--border)] last:border-r-0 transition-colors ${
               active
-                ? 'bg-[var(--surface-2,#2a2a2a)] text-white'
-                : 'text-[var(--text-dim)] hover:bg-[var(--surface-2,rgba(255,255,255,0.04))] hover:text-white'
+                ? 'bg-[var(--surface-2)] text-white'
+                : 'text-[var(--text-dim)] hover:bg-[var(--surface-2)] hover:text-white'
             }`}
             title={`Layout: ${l.label}`}
           >

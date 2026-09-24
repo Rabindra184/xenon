@@ -62,21 +62,21 @@
 }
 
 .platform-pill {
-  background: rgba(0, 255, 136, 0.05);
+  background: rgb(var(--rgb-neon-green) / 0.05);
   color: var(--green);
-  border: 1px solid rgba(0, 255, 136, 0.2);
+  border: 1px solid rgb(var(--rgb-neon-green) / 0.2);
 }
 
 .version-pill {
-  background: rgba(255, 184, 0, 0.05);
+  background: rgb(var(--rgb-amber-alt) / 0.05);
   color: var(--status-busy-fg);
-  border: 1px solid rgba(255, 184, 0, 0.2);
+  border: 1px solid rgb(var(--rgb-amber-alt) / 0.2);
 }
 
 .reserved-pill {
-  background: rgba(56, 189, 248, 0.1);
-  color: #38bdf8;
-  border: 1px solid rgba(56, 189, 248, 0.3);
+  background: rgb(var(--rgb-sky-400) / 0.1);
+  color: var(--sky-400);
+  border: 1px solid rgb(var(--rgb-sky-400) / 0.3);
   animation: pulse-reserved-pill 2s infinite ease-in-out;
 }
 
@@ -93,7 +93,7 @@
   font-family: 'JetBrains Mono', monospace;
   font-size: 11px;
   color: var(--text-dim);
-  background: rgba(0, 0, 0, 0.4);
+  background: rgb(var(--rgb-black) / 0.4);
   padding: 4px 10px;
   border-radius: 6px;
   border: 1px solid var(--border);
@@ -108,7 +108,7 @@
   font-family: 'JetBrains Mono', monospace;
   font-size: 11px;
   color: var(--text-dim);
-  background: rgba(0, 0, 0, 0.4);
+  background: rgb(var(--rgb-black) / 0.4);
   border-radius: 6px;
   border: 1px solid var(--border);
   max-width: 280px;
@@ -137,12 +137,12 @@
 }
 
 .udid-chip__copy:hover {
-  background: rgba(255, 255, 255, 0.05);
+  background: rgb(var(--rgb-white) / 0.05);
   color: var(--green);
 }
 
 .back-to-devices-btn {
-  background: rgba(0, 0, 0, 0.4);
+  background: rgb(var(--rgb-black) / 0.4);
   color: var(--text-dim);
   border: 1px solid var(--border);
   padding: 8px 16px;
@@ -159,7 +159,7 @@
 }
 
 .back-to-devices-btn:hover {
-  background: rgba(255, 255, 255, 0.03);
+  background: rgb(var(--rgb-white) / 0.03);
   border-color: var(--green);
   color: var(--green);
 }
@@ -254,13 +254,13 @@
 .device-screen-wrapper {
   position: relative;
   padding: 12px;
-  background: #000;
+  background: var(--black);
   border-radius: 48px;
   box-shadow:
     0 0 0 2px #334155,
-    0 20px 50px rgba(0, 0, 0, 0.6),
-    0 0 80px rgba(16, 185, 129, 0.05);
-  border: 1px solid rgba(255, 255, 255, 0.1);
+    0 20px 50px rgb(var(--rgb-black) / 0.6),
+    0 0 80px rgb(var(--rgb-emerald) / 0.05);
+  border: 1px solid rgb(var(--rgb-white) / 0.1);
   transition: all 0.5s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
@@ -268,13 +268,13 @@
   transform: translateY(-4px) scale(1.005);
   box-shadow:
     0 0 0 2px var(--green),
-    0 30px 60px rgba(0, 0, 0, 0.8),
-    0 0 100px rgba(16, 185, 129, 0.1);
+    0 30px 60px rgb(var(--rgb-black) / 0.8),
+    0 0 100px rgb(var(--rgb-emerald) / 0.1);
 }
 
 .device-stream-canvas {
   position: relative;
-  background: #000;
+  background: var(--black);
   border-radius: 28px;
   overflow: hidden;
   cursor: crosshair;
@@ -326,7 +326,7 @@
   padding: 16px;
   text-align: center;
   color: var(--text-muted);
-  background: rgba(0, 0, 0, 0.55);
+  background: rgb(var(--rgb-black) / 0.55);
   backdrop-filter: blur(2px);
 }
 
@@ -365,16 +365,16 @@
   flex-shrink: 0;
   /* Track the app's surface token. This was slate-900 (rgba(15,23,42)), which
      is blue-tinted, against a green-tinted neutral palette (--surface-2 is
-     #161b1a) — it read as a blue bar floating on a near-black page. */
+     var(--surface-2)) — it read as a blue bar floating on a near-black page. */
   background: color-mix(in srgb, var(--surface-2) 80%, transparent);
   backdrop-filter: blur(10px);
   border-radius: 16px;
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  border: 1px solid rgb(var(--rgb-white) / 0.08);
   padding: 6px;
   gap: 6px;
   box-shadow:
-    0 10px 25px -5px rgba(0, 0, 0, 0.4),
-    0 0 15px rgba(16, 185, 129, 0.05);
+    0 10px 25px -5px rgb(var(--rgb-black) / 0.4),
+    0 0 15px rgb(var(--rgb-emerald) / 0.05);
 }
 
 .footer-action-btn {
@@ -404,12 +404,12 @@
 }
 
 .footer-action-btn:hover {
-  background: rgba(255, 255, 255, 0.05);
+  background: rgb(var(--rgb-white) / 0.05);
   color: var(--text);
 }
 
 .footer-action-btn.active {
-  background: rgba(255, 255, 255, 0.04);
+  background: rgb(var(--rgb-white) / 0.04);
   color: var(--green);
   box-shadow: inset 0 -2px 0 0 var(--green);
 }
@@ -511,13 +511,13 @@
 
 .tab-btn:hover {
   color: var(--text);
-  background: rgba(255, 255, 255, 0.02);
+  background: rgb(var(--rgb-white) / 0.02);
 }
 
 .tab-btn.active {
   color: var(--bg);
   background: var(--green);
-  box-shadow: 0 0 15px rgba(0, 255, 136, 0.3);
+  box-shadow: 0 0 15px rgb(var(--rgb-neon-green) / 0.3);
 }
 
 .interactions-scroll-area {
@@ -530,7 +530,7 @@
 }
 
 .action-card {
-  background: rgba(0, 0, 0, 0.2);
+  background: rgb(var(--rgb-black) / 0.2);
   border-radius: 6px;
   padding: 20px;
   border: 1px solid var(--border);
@@ -541,9 +541,9 @@
 }
 
 .action-card:hover {
-  background: rgba(255, 255, 255, 0.01);
+  background: rgb(var(--rgb-white) / 0.01);
   border-color: var(--green);
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+  box-shadow: 0 4px 20px rgb(var(--rgb-black) / 0.4);
 }
 
 .action-card-title {
@@ -607,7 +607,7 @@
   font-size: 11px;
   /* 0.3 is the shared form-control background (.select-base, .input-base,
      .type-input-field). This was a fourth value at 0.4. */
-  background: rgba(0, 0, 0, 0.3);
+  background: rgb(var(--rgb-black) / 0.3);
 }
 
 /* Was three inline styles on the JSX. The button stretched to the display's
@@ -649,7 +649,7 @@
 }
 
 .file-select-box {
-  background: rgba(255, 255, 255, 0.03);
+  background: rgb(var(--rgb-white) / 0.03);
   border: 2px dashed var(--border);
   border-radius: var(--radius-md);
   padding: var(--space-8);
@@ -662,7 +662,7 @@
 }
 
 .file-select-box:hover {
-  background: rgba(16, 185, 129, 0.05);
+  background: rgb(var(--rgb-emerald) / 0.05);
   border-color: var(--green);
 }
 
@@ -685,7 +685,7 @@
 
 .btn-premium {
   background: var(--green);
-  color: #000;
+  color: var(--black);
 }
 
 .btn-premium:hover:not(:disabled) {
@@ -695,13 +695,13 @@
 }
 
 .btn-secondary {
-  background: rgba(255, 255, 255, 0.05);
+  background: rgb(var(--rgb-white) / 0.05);
   color: var(--text);
   border: 1px solid var(--border);
 }
 
 .btn-secondary:hover:not(:disabled) {
-  background: rgba(255, 255, 255, 0.1);
+  background: rgb(var(--rgb-white) / 0.1);
   color: var(--text);
   border-color: var(--text-muted);
 }
@@ -725,7 +725,7 @@
   /* Match the shared form controls. .select-base and .input-base both use 0.3;
      this local class sat at 0.2, so the manual-entry input read a shade lighter
      than the select directly above it in the App Management card. */
-  background: rgba(0, 0, 0, 0.3);
+  background: rgb(var(--rgb-black) / 0.3);
   font-size: 13px;
   color: var(--text);
   transition: all 0.2s ease;
@@ -734,7 +734,7 @@
 .type-input-field:focus {
   outline: none;
   border-color: var(--green);
-  background: rgba(0, 0, 0, 0.4);
+  background: rgb(var(--rgb-black) / 0.4);
   box-shadow: 0 0 0 3px var(--primary-soft);
 }
 
@@ -747,9 +747,9 @@
   margin-top: var(--space-4);
   font-family: 'Fira Code', monospace;
   font-size: 12px;
-  color: #38bdf8;
+  color: var(--sky-400);
   min-height: 80px;
-  box-shadow: inset 0 2px 10px rgba(0, 0, 0, 0.5);
+  box-shadow: inset 0 2px 10px rgb(var(--rgb-black) / 0.5);
 }
 
 /* The Debug Logs tab's own rules (`.log-toolbar`, `.log-stat-pill`,
@@ -812,17 +812,17 @@
   width: 140px;
   height: 140px;
   padding: 12px;
-  background: rgba(0, 0, 0, 0.2);
+  background: rgb(var(--rgb-black) / 0.2);
   border-radius: 50%;
-  border: 1px solid rgba(255, 255, 255, 0.05);
+  border: 1px solid rgb(var(--rgb-white) / 0.05);
 }
 
 .dpad-btn {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(255, 255, 255, 0.03);
-  border: 1px solid rgba(255, 255, 255, 0.05);
+  background: rgb(var(--rgb-white) / 0.03);
+  border: 1px solid rgb(var(--rgb-white) / 0.05);
   border-radius: 8px;
   color: var(--text-muted);
   cursor: pointer;
@@ -935,7 +935,7 @@
   white-space: nowrap;
   overflow: hidden;
   padding: 0 16px;
-  background: rgba(255, 255, 255, 0.03);
+  background: rgb(var(--rgb-white) / 0.03);
   border: 1px dashed var(--border);
   border-radius: var(--radius-md);
   cursor: pointer;
@@ -956,7 +956,7 @@
 }
 
 .file-upload-launcher:hover {
-  background: rgba(16, 185, 129, 0.05);
+  background: rgb(var(--rgb-emerald) / 0.05);
   border-color: var(--green);
   color: var(--text);
 }
@@ -982,7 +982,7 @@
 
 .btn-destructive {
   background: var(--status-error-fg);
-  color: #fff;
+  color: var(--white);
   border: 1px solid transparent;
   padding: 10px 20px;
   border-radius: var(--radius-sm);
@@ -998,9 +998,9 @@
 }
 
 .btn-destructive:hover:not(:disabled) {
-  background: #dc2626;
+  background: var(--red-600);
   transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(239, 68, 68, 0.35);
+  box-shadow: 0 4px 12px rgb(var(--rgb-red) / 0.35);
 }
 
 .btn-destructive:disabled {
@@ -1011,7 +1011,7 @@
 .manual-input-box {
   margin-top: 8px;
   padding-top: 8px;
-  border-top: 1px solid rgba(255, 255, 255, 0.05);
+  border-top: 1px solid rgb(var(--rgb-white) / 0.05);
 }
 
 .type-input-field.tiny {
@@ -1118,7 +1118,7 @@
   border-radius: 8px;
   overflow: hidden;
   aspect-ratio: 9/16;
-  background: rgba(0, 0, 0, 0.4);
+  background: rgb(var(--rgb-black) / 0.4);
   border: 2px solid transparent;
   cursor: pointer;
   transition: all 0.2s ease;
@@ -1126,7 +1126,7 @@
 }
 
 .screenshot-thumb-item:hover {
-  border-color: rgba(16, 185, 129, 0.4);
+  border-color: rgb(var(--rgb-emerald) / 0.4);
 }
 
 .screenshot-thumb-item.active {
@@ -1152,7 +1152,7 @@
   bottom: 0;
   left: 0;
   right: 0;
-  background: rgba(0, 0, 0, 0.7);
+  background: rgb(var(--rgb-black) / 0.7);
   color: white;
   font-size: 11px;
   padding: 2px 4px;
@@ -1167,7 +1167,7 @@
   width: 20px;
   height: 20px;
   border-radius: 4px;
-  background: rgba(239, 68, 68, 0.8);
+  background: rgb(var(--rgb-red) / 0.8);
   color: white;
   border: none;
   display: flex;
@@ -1187,14 +1187,14 @@
 
 .screenshot-main-preview {
   flex: 1;
-  background: rgba(0, 0, 0, 0.3);
+  background: rgb(var(--rgb-black) / 0.3);
   border-radius: 8px;
   display: flex;
   align-items: center;
   justify-content: center;
   overflow: hidden;
   position: relative;
-  border: 1px solid rgba(255, 255, 255, 0.05);
+  border: 1px solid rgb(var(--rgb-white) / 0.05);
   min-height: 0;
 }
 
@@ -1223,13 +1223,13 @@
   object-fit: contain;
   margin: auto;
   border-radius: 4px;
-  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
+  box-shadow: 0 10px 40px rgb(var(--rgb-black) / 0.5);
 }
 
 .preview-footer {
   padding: 16px 24px;
-  background: rgba(0, 0, 0, 0.4);
-  border-top: 1px solid rgba(255, 255, 255, 0.05);
+  background: rgb(var(--rgb-black) / 0.4);
+  border-top: 1px solid rgb(var(--rgb-white) / 0.05);
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -1271,8 +1271,8 @@
 }
 
 .btn-text-only:hover {
-  color: #ef4444;
-  background: rgba(239, 68, 68, 0.05);
+  color: var(--red);
+  background: rgb(var(--rgb-red) / 0.05);
 }
 
 

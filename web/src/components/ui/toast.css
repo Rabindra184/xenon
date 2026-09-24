@@ -21,7 +21,7 @@
   background: var(--surface);
   backdrop-filter: blur(16px);
   border: 1px solid var(--border);
-  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4);
+  box-shadow: 0 20px 40px rgb(var(--rgb-black) / 0.4);
   color: var(--text);
   font-size: 13px;
   font-weight: 600;
@@ -69,12 +69,12 @@
 }
 
 .toast-close:hover {
-  background: rgba(255, 255, 255, 0.05);
+  background: rgb(var(--rgb-white) / 0.05);
   color: var(--text);
 }
 
 .toast-success {
-  border-color: rgba(0, 255, 136, 0.3);
+  border-color: rgb(var(--rgb-neon-green) / 0.3);
   color: var(--green);
 }
 
@@ -83,12 +83,12 @@
 }
 
 .toast-error {
-  border-color: rgba(255, 77, 77, 0.3);
-  color: #ff4d4d;
+  border-color: rgb(var(--rgb-red-alt) / 0.3);
+  color: var(--red-alt);
 }
 
 .toast-error .toast-icon {
-  color: #ff4d4d;
+  color: var(--red-alt);
 }
 
 .toast-info {

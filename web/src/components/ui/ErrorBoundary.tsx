@@ -50,7 +50,7 @@ export class ErrorBoundary extends Component<Props, State> {
             <div
               style={{
                 color: 'var(--accent-red)',
-                filter: 'drop-shadow(0 0 10px rgba(239, 68, 68, 0.3))',
+                filter: 'drop-shadow(0 0 10px rgb(var(--rgb-red) / 0.3))',
               }}
             >
               <AlertTriangle size={64} />
@@ -65,7 +65,7 @@ export class ErrorBoundary extends Component<Props, State> {
             {this.state.error && (
               <pre
                 style={{
-                  background: 'rgba(0,0,0,0.3)',
+                  background: 'rgb(var(--rgb-black) / 0.3)',
                   padding: '1rem',
                   borderRadius: '8px',
                   fontSize: '0.8rem',

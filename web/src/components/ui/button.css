@@ -22,7 +22,7 @@
 
 .btn-primary {
   background: var(--green-dim);
-  color: #ffffff;
+  color: var(--white);
   border-color: var(--green-dim);
 }
 .btn-primary:hover:not(:disabled) {

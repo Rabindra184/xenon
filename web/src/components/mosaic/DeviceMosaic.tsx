@@ -134,7 +134,7 @@ function EmptyCell({ onDropDevice }: { onDropDevice?: (udid: string) => void }) 
       className={`flex flex-col items-center justify-center gap-2 rounded-lg border border-dashed transition-colors ${
         hover
           ? 'border-emerald-500/60 bg-emerald-500/5'
-          : 'border-[var(--border)] bg-[var(--surface-1,rgba(255,255,255,0.02))]'
+          : 'border-[var(--border)] bg-[rgb(var(--rgb-white)/0.02)]'
       } text-[var(--text-dim)] min-h-[120px]`}
     >
       <div
