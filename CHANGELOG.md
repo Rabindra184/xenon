@@ -6,6 +6,22 @@ This project follows [Semantic Versioning](https://semver.org/). Releases are
 published to npm automatically when `package.json`'s `version` changes on `main`
 (see `.github/workflows/npm-publish.yml`).
 
+## 1.21.2
+
+Patch release. The Apps page's Upload app button works again.
+
+### Fixed
+
+- **Upload app on the Apps page did nothing** (#274). The button sat inside a
+  label around the hidden file input, and browsers don't pass a click on a
+  button through to a label's input, so the file picker never opened. It now
+  opens the picker itself and works from the keyboard too. It is disabled
+  while an upload is in progress. The empty-page "Upload your first app" card
+  was not affected.
+- **The Apps page had two primary buttons** (#274). Refresh is now a
+  secondary button, as on the Devices page, leaving Upload app as the page's
+  one primary action.
+
 ## 1.21.1
 
 Patch release. It fixes one light-theme defect found after 1.21.0 shipped.
