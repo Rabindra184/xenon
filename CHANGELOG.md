@@ -6,7 +6,12 @@ This project follows [Semantic Versioning](https://semver.org/). Releases are
 published to npm automatically when `package.json`'s `version` changes on `main`
 (see `.github/workflows/npm-publish.yml`).
 
-## Unreleased
+## 1.21.0
+
+Minor release. It adds a light theme, a calmer and more accessible sign-in,
+honest save errors across the dashboard, and fixes that keep passwords and
+reset links out of the server log (#265). **If you run without SMTP, read
+"Changed — operator action may be needed" before upgrading.**
 
 ### Security
 
@@ -71,6 +76,64 @@ A SUPER_ADMIN locked out with no other admin and no SMTP can still recover:
 start the server with `XENON_BOOTSTRAP_RESET_PASSWORD=true`. That sets the
 oldest active SUPER_ADMIN's password to `XENON_BOOTSTRAP_ADMIN_PASSWORD` and
 signs out their sessions. Remove the variable afterwards.
+
+### Added
+
+- **Light theme** (#270). A Theme control in the account menu offers Dark,
+  Light or System. System follows the operating system's setting and
+  switches live when it changes. The choice is saved per browser and applied
+  before the page first paints, so there is no dark flash. Dark stays the
+  default. All light text meets WCAG AA contrast. The terminal, the live log
+  and Omni-Vision's generated code stay dark in both themes.
+
+### Changed
+
+- **Graphite dashboard theme** (#268). Surfaces are neutral graphite, not
+  green-tinted black. Green now means "an action you can take" and teal means
+  "healthy". Before, one green meant both.
+  - Secondary text meets WCAG AA; the old dim text measured about 3.1:1.
+  - The primary button measures 9.2:1, up from 3.3:1.
+  - All-caps labels and Title Case headings are now sentence case.
+  - Coloured glows are gone.
+- **Sign-in pages** (#264). A still, plain layout replaces the animated hero.
+  - All text meets WCAG AA contrast.
+  - Errors are readable ("Incorrect email or password.", an unreachable
+    server, a server error).
+  - A rate-limited sign-in counts down from the server's `Retry-After`.
+  - A session-expired notice appears only after a real session expiry.
+  - The password field warns when Caps Lock is on.
+  - Inter and JetBrains Mono are now bundled with the dashboard, so the
+    dashboard no longer requests Google Fonts. That matters for air-gapped
+    labs.
+- **Restore Defaults asks first** (#266). It resets the server config and
+  zeroes every device's healed-selector count, and it now opens a
+  confirmation that lists these effects.
+
+### Fixed
+
+- **Refused saves reported success** (#266). The dashboard treated a 400/500
+  response to a save as success. Settings said the change had synchronized
+  while the server had rejected it. Saves now fail visibly and show the
+  server's reason. The network is blamed only for a real network failure.
+- **The header status was hardcoded** (#266). The pill always read "Online",
+  and its "Updated Xm ago" timer turned red after 10 minutes on any open tab.
+  It now reflects the real connection: Live, Connecting…, Reconnecting…, or
+  Disconnected since a given time.
+- **Settings "Discard" was disabled while a field was invalid** (#266),
+  exactly when you would want it.
+- **Smaller dashboard fixes** (#266):
+  - The Sessions search icon no longer covers the typed text.
+  - Each page has its own browser-tab title.
+  - ⌘K now searches builds, and reaches Live devices, Selector health, Users
+    and Profile.
+- **Xenon Control matches the dashboard palette again** (#269). The Mac
+  launcher's generated colours had not been regenerated after #268.
+
+### Internal
+
+- Colours moved into design tokens (`web/src/tokens.css`), with no visual
+  change (#267). A test ratchets the remaining hard-coded colours (54, down
+  from about 590), so they can only go down.
 
 ## 1.20.6
 
