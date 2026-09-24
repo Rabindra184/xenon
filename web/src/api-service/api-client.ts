@@ -4,7 +4,7 @@
 //
 // The ToastProvider (web/src/components/ui/toast.tsx) registers its
 // `toast(...)` callback here on mount via `setApiToastEmitter`, and the
-// api-client invokes it from `jsonResult` when a 403 comes back.
+// api-client invokes it from `parseResponse` when a 403 comes back.
 type ToastFn = (message: string, type?: 'success' | 'error' | 'info' | 'loading') => void;
 let toastEmitter: ToastFn | null = null;
 
@@ -44,64 +44,118 @@ function notifyDeviceConflict(message: string): void {
   toastEmitter(message, 'error');
 }
 
+/**
+ * A request that reached the server and was refused (non-2xx). Carries the
+ * status and the parsed body so a caller can show the server's own reason.
+ */
+export class ApiError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+    readonly body: unknown,
+  ) {
+    super(message);
+    this.name = 'ApiError';
+  }
+}
+
+export interface RequestBehaviour {
+  /**
+   * Resolve with the error body instead of rejecting on a non-2xx response.
+   * Only for callers that read `success`/`error` off the result themselves
+   * (install, reserve, shell, AI test, stream start's 409 rollback). Everything
+   * else must let the failure reject, or a refused save reads as a success.
+   */
+  resolveErrors?: boolean;
+}
+
+async function parseResponse(res: Response, rejectErrors: boolean): Promise<any> {
+  if (res.status === 403) {
+    const body = await res.clone().json().catch(() => ({}) as any);
+    const msg =
+      (body && (body.error || body.message)) ||
+      'You do not have permission for this action.';
+    if (toastEmitter) {
+      toastEmitter(msg, 'error');
+    }
+  }
+  // 409 from /control means another user (or their Appium session) holds the
+  // device. Without this a blocked tap is a silent no-op — the user sees a
+  // frozen tile and assumes the stream broke.
+  if (res.status === 409) {
+    const body = await res
+      .clone()
+      .json()
+      .catch(() => ({}) as any);
+    if (isDeviceConflictBody(body)) {
+      notifyDeviceConflict(body.message || 'This device is in use by another user.');
+    }
+  }
+  // 204 and 205 carry no body by definition, and `res.json()` throws
+  // `Unexpected end of JSON input` on an empty one.
+  //
+  // Deleting an app hit exactly this. `DELETE /apps/:id` answers
+  // `sendStatus(204)`, so the request succeeded — the row really was gone
+  // from the server — but the parse threw on the way back, the caller's
+  // catch swallowed it into a console error, and the row stayed on screen.
+  // The artifact looked undeletable, and clicking again re-asked
+  // "Permanently remove …?" about something that no longer existed.
+  if (res.status === 204 || res.status === 205) return null;
+
+  // Before this, every status resolved with its body, so a 400/500 from a
+  // save was indistinguishable from success: Settings toasted "synchronized
+  // across fleet" and marked the form clean while the server had refused it.
+  if (rejectErrors && (res.status < 200 || res.status >= 300)) {
+    const body = await res.json().catch(() => null);
+    const reason =
+      (body && typeof body === 'object' && ((body as any).error || (body as any).message)) ||
+      `Request failed (${res.status})`;
+    throw new ApiError(String(reason), res.status, body);
+  }
+  return res.json();
+}
+
 class ApiClient {
+  // GETs still resolve with error bodies: loaders across the app read them,
+  // and making reads reject belongs with giving every page an error state.
+  // Mutations reject by default — see RequestBehaviour.
   public makeGETRequest(url: string) {
-    return fetch(this.formatUrl(url)).then(this.jsonResult);
+    return fetch(this.formatUrl(url)).then((res) => parseResponse(res, false));
   }
 
-  public makePOSTRequest(url: string, queryParams: any, body: any, options: RequestInit = {}) {
+  public makePOSTRequest(
+    url: string,
+    queryParams: any,
+    body: any,
+    options: RequestInit = {},
+    behaviour: RequestBehaviour = {},
+  ) {
     return fetch(this.formatUrl(url), {
       method: 'POST',
       body: JSON.stringify(body || {}),
       headers: { 'Content-Type': 'application/json' },
       ...options,
-    }).then(this.jsonResult);
+    }).then((res) => parseResponse(res, !behaviour.resolveErrors));
   }
 
-  public makeDELETERequest(url: string) {
+  public makeDELETERequest(url: string, behaviour: RequestBehaviour = {}) {
     return fetch(this.formatUrl(url), {
       method: 'DELETE',
-    }).then(this.jsonResult);
+    }).then((res) => parseResponse(res, !behaviour.resolveErrors));
   }
 
   public formatUrl(url: string) {
     return `/xenon/api${url}`;
   }
-
-  private async jsonResult(res: Response) {
-    if (res.status === 403) {
-      const body = await res.clone().json().catch(() => ({}) as any);
-      const msg =
-        (body && (body.error || body.message)) ||
-        'You do not have permission for this action.';
-      if (toastEmitter) {
-        toastEmitter(msg, 'error');
-      }
-    }
-    // 409 from /control means another user (or their Appium session) holds the
-    // device. Without this a blocked tap is a silent no-op — the user sees a
-    // frozen tile and assumes the stream broke.
-    if (res.status === 409) {
-      const body = await res
-        .clone()
-        .json()
-        .catch(() => ({}) as any);
-      if (isDeviceConflictBody(body)) {
-        notifyDeviceConflict(body.message || 'This device is in use by another user.');
-      }
-    }
-    // 204 and 205 carry no body by definition, and `res.json()` throws
-    // `Unexpected end of JSON input` on an empty one.
-    //
-    // Deleting an app hit exactly this. `DELETE /apps/:id` answers
-    // `sendStatus(204)`, so the request succeeded — the row really was gone
-    // from the server — but the parse threw on the way back, the caller's
-    // catch swallowed it into a console error, and the row stayed on screen.
-    // The artifact looked undeletable, and clicking again re-asked
-    // "Permanently remove …?" about something that no longer existed.
-    if (res.status === 204 || res.status === 205) return null;
-    return res.json();
-  }
 }
 
 export default new ApiClient();
+
+/**
+ * A save failure a person can act on: the server's own reason when it
+ * refused, and "couldn't reach" only when the request never got an answer.
+ */
+export function describeSaveError(err: unknown): string {
+  if (err instanceof ApiError) return `The server rejected the change: ${err.message}`;
+  return "Couldn't reach the Xenon server. Check your connection and try again.";
+}

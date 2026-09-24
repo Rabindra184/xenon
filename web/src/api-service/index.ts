@@ -166,10 +166,13 @@ export default class XenonApiService {
     duration: string | number,
     reason?: string,
   ) {
+    // resolveErrors: ReservationModal shows `response.error` inline.
     return apiClient.makePOSTRequest(
       '/reservation',
       {},
       { udid, host, reservedBy, duration, reason },
+      {},
+      { resolveErrors: true },
     );
   }
 
@@ -238,7 +241,9 @@ export default class XenonApiService {
   }
 
   public static startStream(udid: string) {
-    return apiClient.makePOSTRequest(`/control/${udid}/stream/start`, {}, {});
+    // resolveErrors: DeviceMosaicView reads a 409 body (isDeviceConflictBody)
+    // to roll back an optimistically added tile.
+    return apiClient.makePOSTRequest(`/control/${udid}/stream/start`, {}, {}, {}, { resolveErrors: true });
   }
 
   public static stopStream(udid: string) {
@@ -285,11 +290,19 @@ export default class XenonApiService {
   }
 
   public static installRepositoryApp(udid: string, appId: string) {
-    return apiClient.makePOSTRequest(`/control/${udid}/install-repository-app`, {}, { appId });
+    // resolveErrors: Apps shows `res.error` in its "Deployment failed" toast.
+    return apiClient.makePOSTRequest(
+      `/control/${udid}/install-repository-app`,
+      {},
+      { appId },
+      {},
+      { resolveErrors: true },
+    );
   }
 
   public static executeShell(udid: string, command: string) {
-    return apiClient.makePOSTRequest(`/control/${udid}/shell`, {}, { command });
+    // resolveErrors: the shell console prints `res.error`.
+    return apiClient.makePOSTRequest(`/control/${udid}/shell`, {}, { command }, {}, { resolveErrors: true });
   }
 
   public static getInspectorSnapshot(udid: string) {
@@ -328,7 +341,8 @@ export default class XenonApiService {
   }
 
   public static testAIConfig(config: any) {
-    return apiClient.makePOSTRequest('/config/test-ai', {}, config);
+    // resolveErrors: AI Engine shows the provider's `message` on a failed test.
+    return apiClient.makePOSTRequest('/config/test-ai', {}, config, {}, { resolveErrors: true });
   }
 
   public static resetMetrics() {

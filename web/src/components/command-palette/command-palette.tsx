@@ -9,14 +9,15 @@ import './command-palette.css';
 const KIND_LABEL: Record<CommandKind, string> = {
   nav: 'Navigation',
   device: 'Devices',
-  session: 'Sessions',
+  build: 'Builds',
+  session: 'Running sessions',
   team: 'Teams',
   key: 'API Keys',
   app: 'Apps',
 };
 
 // Display ordering for groups.
-const KIND_ORDER: CommandKind[] = ['nav', 'device', 'session', 'team', 'key', 'app'];
+const KIND_ORDER: CommandKind[] = ['nav', 'device', 'build', 'session', 'team', 'key', 'app'];
 
 export const CommandPalette: React.FC = () => {
   const { open, setOpen } = useCommandPalette();
@@ -39,8 +40,10 @@ export const CommandPalette: React.FC = () => {
       XenonApiService.getSessions().catch(() => []),
       XenonApiService.getApps().catch(() => []),
       XenonApiService.listTeams().catch(() => []),
-    ]).then(([d, s, a, t]: [any, any, any, any]) => {
+      XenonApiService.getBuilds().catch(() => []),
+    ]).then(([d, s, a, t, b]: [any, any, any, any, any]) => {
       if (Array.isArray(d)) idxRef.current.setDevices(d);
+      if (Array.isArray(b)) idxRef.current.setBuilds(b);
       if (Array.isArray(s)) idxRef.current.setSessions(s);
       if (Array.isArray(a)) idxRef.current.setApps(a);
       if (Array.isArray(t)) idxRef.current.setTeams(t);

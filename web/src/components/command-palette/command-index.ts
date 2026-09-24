@@ -1,6 +1,6 @@
 import { fuzzyScore } from './fuzzy';
 
-export type CommandKind = 'nav' | 'device' | 'session' | 'team' | 'key' | 'app';
+export type CommandKind = 'nav' | 'device' | 'build' | 'session' | 'team' | 'key' | 'app';
 
 export interface CommandItem {
   id: string;
@@ -13,18 +13,23 @@ export interface CommandItem {
 const NAV_ITEMS: CommandItem[] = [
   { id: 'nav:overview', kind: 'nav', label: 'Overview', path: '/overview' },
   { id: 'nav:devices', kind: 'nav', label: 'Devices', path: '/devices' },
+  { id: 'nav:live', kind: 'nav', label: 'Live Devices', path: '/devices/live' },
   { id: 'nav:builds', kind: 'nav', label: 'Sessions', path: '/builds' },
   { id: 'nav:apps', kind: 'nav', label: 'Apps', path: '/apps' },
+  { id: 'nav:selector-health', kind: 'nav', label: 'Selector Health', path: '/selector-health' },
   { id: 'nav:notifications', kind: 'nav', label: 'Notifications', path: '/notifications' },
   { id: 'nav:settings', kind: 'nav', label: 'Settings', path: '/settings' },
   { id: 'nav:ai-settings', kind: 'nav', label: 'AI Engine', path: '/ai-settings' },
   { id: 'nav:maintenance', kind: 'nav', label: 'Maintenance', path: '/maintenance' },
   { id: 'nav:teams', kind: 'nav', label: 'Teams', path: '/teams' },
   { id: 'nav:api-keys', kind: 'nav', label: 'API Keys', path: '/api-keys' },
+  { id: 'nav:users', kind: 'nav', label: 'Users', path: '/users' },
+  { id: 'nav:profile', kind: 'nav', label: 'Profile', path: '/profile' },
 ];
 
 export class CommandIndex {
   private devices: CommandItem[] = [];
+  private builds: CommandItem[] = [];
   private sessions: CommandItem[] = [];
   private teams: CommandItem[] = [];
   private keys: CommandItem[] = [];
@@ -37,6 +42,27 @@ export class CommandIndex {
       label: d.name || d.udid,
       sub: d.udid,
       path: `/devices/${d.udid}/control`,
+    }));
+  }
+
+  // Builds are what the Sessions page lists, and what people remember by name.
+  // Only `sessions` (currently running ones, from GET /session) used to be
+  // indexed, so searching a build from the Sessions page found nothing even
+  // though the placeholder promises "Search devices, sessions…".
+  setBuilds(
+    list: Array<{ id: string; name?: string | null; sessionCount?: number; failedCount?: number }>,
+  ): void {
+    this.builds = list.map((b) => ({
+      id: `build:${b.id}`,
+      kind: 'build',
+      label: b.name || b.id,
+      sub:
+        typeof b.sessionCount === 'number'
+          ? `${b.sessionCount} session${b.sessionCount === 1 ? '' : 's'}${
+              b.failedCount ? ` · ${b.failedCount} failed` : ''
+            }`
+          : b.id,
+      path: `/builds/${encodeURIComponent(b.id)}`,
     }));
   }
 
@@ -85,6 +111,7 @@ export class CommandIndex {
     const all = [
       ...NAV_ITEMS,
       ...this.devices,
+      ...this.builds,
       ...this.sessions,
       ...this.teams,
       ...this.keys,
