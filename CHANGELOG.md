@@ -6,6 +6,28 @@ This project follows [Semantic Versioning](https://semver.org/). Releases are
 published to npm automatically when `package.json`'s `version` changes on `main`
 (see `.github/workflows/npm-publish.yml`).
 
+## 1.21.7
+
+Patch release. Two small fixes in the dashboard sidebar and on the Users page.
+
+### Fixed
+
+- **The Invite user button on the Users page was unstyled** (#291). It
+  showed as plain text with the "+" stacked above it, at every width. Its
+  styles lived in the Settings page's stylesheet, which the Users page never
+  loads. They now live with the shared page header, so every page that
+  shows a header button gets them.
+- **Users and Teams had the same icon in the sidebar** (#290), so the two
+  entries couldn't be told apart in the icon rail. Users now has its own
+  icon (a person with a cog), matching its page header.
+
+### Development
+
+- **The control sweep now tests the Save, Discard and Restore Defaults
+  buttons on Settings and Maintenance** (#289). It had silently skipped
+  them. It also names any control it couldn't test instead of only counting
+  it.
+
 ## 1.21.6
 
 Patch release. Finishes the auth-disabled clean-up started in 1.21.5.
