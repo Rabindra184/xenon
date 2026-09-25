@@ -6,6 +6,31 @@ This project follows [Semantic Versioning](https://semver.org/). Releases are
 published to npm automatically when `package.json`'s `version` changes on `main`
 (see `.github/workflows/npm-publish.yml`).
 
+## 1.21.4
+
+Patch release. Device control behaves like a proper dialog for keyboard and
+screen-reader users.
+
+### Fixed
+
+- **The device-control view was not announced as a dialog** (#282), and
+  keyboard focus could Tab onto the Devices page, sidebar and header hidden
+  behind it. It is now a modal dialog named after the device.
+  - The page behind can't be focused or clicked.
+  - Focus moves into it when it opens and returns to the Control button when
+    it closes.
+  - Escape closes it, except while typing in a field.
+  - Toasts raised from device control are still announced and clickable.
+
+### Development
+
+- **`npm run test:sweep`** (#281) runs the control sweep that found the dead
+  Upload app button and the hidden account menu. On every page it clicks
+  each control with a real mouse click and fails if one does nothing or
+  can't be clicked. It runs against a live server without changing
+  anything: writes are stubbed and devices mocked. It takes about 18
+  minutes; run it before a release.
+
 ## 1.21.3
 
 Patch release. The account menu works on the Devices and Apps pages again, and
