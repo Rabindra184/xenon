@@ -1,4 +1,4 @@
-import { describe, expect, it, vi, beforeEach } from 'vitest';
+import { describe, expect, it, vi, beforeEach, afterEach, type MockInstance } from 'vitest';
 import { fireEvent, render, screen } from '@testing-library/react';
 import LogcatView from './LogcatView';
 import { tagColor } from './tagColor';
@@ -520,10 +520,15 @@ describe('LogcatView — Android Studio parity controls', () => {
 describe('LogcatView — recording', () => {
   let created: { href: string; download: string; clicked: boolean };
   let captured: string;
+  let RealBlob: typeof Blob;
+  let clickSpy: MockInstance;
 
   beforeEach(() => {
     nextSeq = 0;
     vi.clearAllMocks();
+    // The download revokes its blob URL on a deferred timer. Fake timers keep
+    // that call inside the test that caused it; see afterEach.
+    vi.useFakeTimers();
     captured = '';
     created = { href: '', download: '', clicked: false };
 
@@ -535,27 +540,33 @@ describe('LogcatView — recording', () => {
     });
     (globalThis.URL as any).revokeObjectURL = vi.fn();
 
-    const RealBlob = globalThis.Blob;
+    RealBlob = globalThis.Blob;
     (globalThis as any).Blob = function (parts: any[], opts: any) {
       const b = new RealBlob(parts, opts);
       (b as any).__text = parts.join('');
       return b;
     };
 
-    const realCreate = document.createElement.bind(document);
-    vi.spyOn(document, 'createElement').mockImplementation((tag: string) => {
-      const el = realCreate(tag);
-      if (tag === 'a') {
-        Object.defineProperty(el, 'click', {
-          value: () => {
-            created.clicked = true;
-            created.href = (el as HTMLAnchorElement).href;
-            created.download = (el as HTMLAnchorElement).download;
-          },
-        });
-      }
-      return el;
+    clickSpy = vi.spyOn(HTMLAnchorElement.prototype, 'click');
+    clickSpy.mockImplementation(function (this: HTMLAnchorElement) {
+      created.clicked = true;
+      created.href = this.href;
+      created.download = this.download;
     });
+  });
+
+  // Undo every stub, or the next test's setup wraps this one's. A leaked
+  // createElement spy did exactly that: each anchor went through one wrapper
+  // per earlier test, the second defined `click` again, and the throw
+  // surfaced as an unhandled error from inside the click handler.
+  // Flush the deferred revoke first, while its stub still exists.
+  afterEach(() => {
+    vi.runOnlyPendingTimers();
+    vi.useRealTimers();
+    clickSpy.mockRestore();
+    globalThis.Blob = RealBlob;
+    delete (URL as unknown as Record<string, unknown>).createObjectURL;
+    delete (URL as unknown as Record<string, unknown>).revokeObjectURL;
   });
 
   const mount = (records: ReturnType<typeof rec>[]) => {
