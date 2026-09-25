@@ -6,6 +6,18 @@ This project follows [Semantic Versioning](https://semver.org/). Releases are
 published to npm automatically when `package.json`'s `version` changes on `main`
 (see `.github/workflows/npm-publish.yml`).
 
+## 1.21.6
+
+Patch release. Finishes the auth-disabled clean-up started in 1.21.5.
+
+### Fixed
+
+- **With auth disabled, Profile opened on a password form that could only
+  fail** (#287). In that mode you are a synthetic admin with no account
+  password, so "Update password" always returned an error. Profile now leaves
+  that view out and opens on API tokens. Those work in this mode, acting as
+  the bootstrap admin. With auth enabled, nothing changes.
+
 ## 1.21.5
 
 Patch release. No Logout when authentication is disabled.
