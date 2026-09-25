@@ -1690,45 +1690,6 @@
    CRUD page primitives (API Keys, Teams, Webhooks)
    =========================================================================== */
 
-/* Primary action button used in PageHeader's `action` slot */
-.page-header-action {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    padding: 8px 16px;
-    border-radius: var(--radius-md);
-    background: var(--color-accent);
-    color: var(--bg);
-    font-family: 'Inter', sans-serif;
-    font-size: 13px;
-    font-weight: 700;
-    border: 1px solid transparent;
-    cursor: pointer;
-    transition: filter 150ms, transform 150ms;
-}
-
-.page-header-action:hover:not(:disabled) {
-    filter: brightness(1.1);
-    transform: translateY(-1px);
-}
-
-.page-header-action:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
-}
-
-.page-header-action--ghost {
-    background: transparent;
-    color: var(--text);
-    border-color: var(--border-strong);
-}
-
-.page-header-action--ghost:hover:not(:disabled) {
-    background: rgb(var(--rgb-fg) / 0.04);
-    border-color: rgb(var(--rgb-accent) / 0.4);
-    color: var(--color-accent);
-}
-
 /* Stat strip across the top of CRUD pages */
 .stat-strip {
     display: grid;

@@ -1,5 +1,6 @@
 import React from 'react';
 import type { LucideIcon } from 'lucide-react';
+import './page-header.css';
 
 interface TitleProps {
   /** Lucide icon shown left of the title, matching the page's sidebar icon. */
