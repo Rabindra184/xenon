@@ -97,7 +97,10 @@ const INIT = () => {
   ].join(', ');
   const visible = (e: Element) => {
     const r = e.getBoundingClientRect(); const cs = getComputedStyle(e);
-    return r.width > 0 && r.height > 0 && cs.visibility !== 'hidden' && cs.display !== 'none' && !e.closest('[aria-hidden=true]');
+    // Skip what can't be reached by design: hidden from AT, or behind a modal
+    // dialog that made the rest of the page inert.
+    return r.width > 0 && r.height > 0 && cs.visibility !== 'hidden' && cs.display !== 'none'
+      && !e.closest('[aria-hidden=true]') && !e.closest('[inert]');
   };
   const label = (e: Element) =>
     `${e.getAttribute('aria-label') || (e as HTMLElement).innerText || e.getAttribute('title') || (e as HTMLInputElement).value || ''}`

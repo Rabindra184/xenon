@@ -8,6 +8,7 @@ import XenonApiService from '../../api-service';
 import DeviceControl from '../device-control/device-control';
 import { IDevice } from '../../interfaces/IDevice';
 import { Button } from '../ui/button';
+import { InPlaceDialog } from '../ui/InPlaceDialog';
 import { SegmentedControl } from '../ui/SegmentedControl';
 import { useSocket } from '../../hooks/useSocket';
 
@@ -232,14 +233,19 @@ export class DeviceExplorer extends React.Component<IDeviceExplorerProps, IDevic
           </div>
         )}
         {selectedDevice && (
-          <div className="device-control-modal-overlay">
+          <InPlaceDialog
+            className="device-control-modal-overlay"
+            labelledBy="device-control-title"
+            onClose={() => this.props.navigate('/devices')}
+          >
             <div className="device-control-modal">
               <DeviceControl
                 device={selectedDevice}
+                titleId="device-control-title"
                 onClose={() => this.props.navigate('/devices')}
               />
             </div>
-          </div>
+          </InPlaceDialog>
         )}
       </div>
     );
