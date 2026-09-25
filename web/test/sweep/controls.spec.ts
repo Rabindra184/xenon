@@ -183,6 +183,25 @@ async function openPage(browser: Browser, path: string, mockDevice: boolean, can
   return { ctx, page, net, writes };
 }
 
+/**
+ * Click the tagged element as a user would: directly, or through its label when
+ * a custom switch's slider covers the input. Used to replay a level-2 opener;
+ * a missed replay means the controls it reveals are never tested.
+ */
+async function clickAsUser(page: Page): Promise<void> {
+  try {
+    await page.locator('[data-sweep="1"]').click({ timeout: 2500 });
+  } catch {
+    const hasLabel = await page.evaluate(() => {
+      const t = document.querySelector('[data-sweep]');
+      const lab = t instanceof HTMLInputElement ? t.closest('label') || t.labels?.[0] : null;
+      lab?.setAttribute('data-sweep-label', '1');
+      return !!lab;
+    });
+    if (hasLabel) await page.locator('[data-sweep-label="1"]').click({ timeout: 2500 }).catch(() => {});
+  }
+}
+
 /** Click the tagged control and report what it did. */
 async function measure(page: Page, ctx: BrowserContext, net: string[], writes: string[]) {
   const seen = { dialogs: 0, choosers: 0, downloads: 0, popups: 0 };
@@ -324,7 +343,7 @@ async function sweep(browser: Browser, path: string, mockDevice: boolean, opts: 
     for (const a of added) {
       const l2 = await openPage(browser, path, mockDevice, canary);
       if (await l2.page.evaluate(([k, n]) => (window as any).__tag(k, n), [c.key, c.nth] as const)) {
-        await l2.page.locator('[data-sweep="1"]').click({ timeout: 2500 }).catch(() => {});
+        await clickAsUser(l2.page);
         await l2.page.waitForTimeout(700);
         const inner = await l2.page.evaluate(([k, n]) => (window as any).__tag(k, n), [a.key, a.nth] as const);
         let r2: Omit<Result, 'level' | 'key'> = inner ? await measure(l2.page, l2.ctx, l2.net, l2.writes) : { status: 'vanished' };
@@ -368,6 +387,10 @@ test.describe('control sweep', () => {
       const summary = `${results.length} controls: ${Object.entries(counts).map(([k, v]) => `${v} ${k}`).join(', ')}`;
       testInfo.annotations.push({ type: 'summary', description: summary });
       console.log(`${r.path}: ${summary}`);
+      // A vanished control was found once but never tested; say which.
+      for (const x of results.filter((y) => y.status === 'vanished')) {
+        console.log(`  not tested (vanished): ${x.opener ? `[${x.opener.split('|')[2]}] > ` : ''}${x.key}`);
+      }
       expect(results.length, `no controls found on ${r.path}`).toBeGreaterThan(0);
       expect(bad.map(describeLine), `Controls on ${r.path} that did nothing or could not be clicked`).toEqual([]);
     });
