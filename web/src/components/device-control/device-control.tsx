@@ -47,13 +47,15 @@ import LogcatView from './logcat/LogcatView';
 interface DeviceControlProps {
   device: IDevice;
   onClose: () => void;
+  /** id for the device-name heading, so an enclosing dialog can be named by it. */
+  titleId?: string;
 }
 
 type TabType = 'actions' | 'screenshot' | 'logs' | 'terminal' | 'omni';
 
 import { useNavigate, useParams } from 'react-router-dom';
 
-export default function DeviceControl({ device, onClose }: DeviceControlProps) {
+export default function DeviceControl({ device, onClose, titleId }: DeviceControlProps) {
   const { toast, removeToast } = useToast();
   const navigate = useNavigate();
   const { tab } = useParams();
@@ -619,7 +621,7 @@ export default function DeviceControl({ device, onClose }: DeviceControlProps) {
               Reserved by {currentDevice.reservedBy || 'someone'}
             </span>
           )}
-          <h2 className="device-name-text">{currentDevice.name}</h2>
+          <h2 id={titleId} className="device-name-text">{currentDevice.name}</h2>
           <span className="udid-chip" title={currentDevice.udid}>
             <span className="udid-chip__value">{currentDevice.udid}</span>
             <button

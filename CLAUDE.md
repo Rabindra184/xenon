@@ -362,6 +362,13 @@ REST endpoints under `/xenon/api` (documented at `/xenon/api-docs`). All state c
 
 React 17 + Vite + Tailwind CSS dashboard. Talks to the backend over REST and Socket.io. Built artifacts are copied into `src/public/` and served as static files by the plugin server.
 
+Dialogs: use `ui/Modal` (Radix) for ordinary dialogs. A full-screen view that is
+also a route, like device control, uses `ui/InPlaceDialog` instead. Radix's modal
+mode hides and blocks everything outside the dialog, which would silence the toast
+live region and make toasts unclickable. `InPlaceDialog` marks the background
+`inert` (except live regions), moves focus in, closes on Escape except while
+typing in a field, and returns focus on close.
+
 #### Design tokens (`web/src/tokens.css`)
 
 Colours live in three layers: **primitives** named by hue (`--green`, `--red-400`,
@@ -490,8 +497,9 @@ aborted, and device control uses a mocked device.
 - It explains the legitimate no-ops itself: an already selected tab or filter
   (it must expose `aria-selected`/`aria-pressed`/`aria-current`), a control
   under a full-screen overlay, a switch whose slider covers its input, and a
-  label whose field already has focus. Anything else needs an entry, with a
-  reason, in `EXPECTED_NO_EFFECT`.
+  label whose field already has focus. It skips `inert` content (the
+  background of a modal dialog). Anything else needs an entry, with a reason,
+  in `EXPECTED_NO_EFFECT`.
 - A self-test injects a dead and a live button and checks that the dead one
   fails. Run the sweep before a release, not on every change.
 
