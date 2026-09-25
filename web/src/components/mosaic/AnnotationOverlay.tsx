@@ -329,6 +329,11 @@ export function AnnotationOverlay({
       style={{
         position: 'absolute',
         inset: 0,
+        // A canvas is a replaced element: `inset` alone leaves it at its
+        // intrinsic 300x150, so geometry was normalized to that band instead
+        // of the tile and landed in the wrong place in the recorded video.
+        width: '100%',
+        height: '100%',
         // When disabled, must not intercept taps — interaction layer sits below
         // and needs the events after Annotate is toggled off.
         pointerEvents: enabled ? 'auto' : 'none',
