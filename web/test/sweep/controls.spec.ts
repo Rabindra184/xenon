@@ -35,12 +35,23 @@ const MOCK_DEVICE = {
 };
 
 const CONTROL = `/devices/${MOCK_DEVICE.udid}/control`;
-const ROUTES: { path: string; mockDevice?: boolean }[] = [
+type Route = {
+  path: string;
+  /** Serve MOCK_DEVICE as the device list (device-control routes). */
+  mockDevice?: boolean;
+  /** Visit as a signed-out user: /auth/me answers 401. */
+  signedOut?: boolean;
+};
+const ROUTES: Route[] = [
   '/overview', '/devices', '/devices/live', '/apps', '/builds', '/selector-health', '/notifications',
   '/settings', '/ai-settings', '/maintenance', '/teams', '/users', '/api-keys', '/profile',
-  '/runbooks/timeout', '/login', '/forgot-password', '/reset-password',
+  '/runbooks/timeout',
 ]
-  .map((path) => ({ path }))
+  .map((path): Route => ({ path }))
+  // Sign-in pages are for signed-out visitors. On an auth-disabled server
+  // everyone is signed in and /login redirects to the dashboard (#285), so
+  // without this the sweep would test Overview a second time under /login.
+  .concat(['/login', '/forgot-password', '/reset-password'].map((path) => ({ path, signedOut: true })))
   .concat(['', '/screenshot', '/logs', '/terminal', '/omni'].map((t) => ({ path: CONTROL + t, mockDevice: true })));
 
 // Legitimate no-ops the sweep can't tell apart from a dead control. Keep short,
@@ -139,14 +150,17 @@ const INIT = () => {
   };
 };
 
-async function guard(page: Page, mockDevice: boolean, net: string[], writes: string[]) {
+async function guard(page: Page, target: Route, net: string[], writes: string[]) {
   await page.route('**/*', async (route) => {
     const req = route.request(); const method = req.method();
     const { pathname } = new URL(req.url());
     if (!pathname.startsWith('/xenon/api')) return route.continue();
     if (/\/stream(\/|$)|\/logcat/.test(pathname)) return route.abort();
-    if (mockDevice && method === 'GET' && /^\/xenon\/api\/devices?$/.test(pathname)) {
+    if (target.mockDevice && method === 'GET' && /^\/xenon\/api\/devices?$/.test(pathname)) {
       return route.fulfill({ json: [MOCK_DEVICE] });
+    }
+    if (target.signedOut && pathname === '/xenon/api/auth/me') {
+      return route.fulfill({ status: 401, json: { error: 'unauthenticated' } });
     }
     if (pathname.startsWith('/xenon/api/control/') || !['GET', 'HEAD', 'OPTIONS'].includes(method)) {
       if (method !== 'GET') writes.push(`${method} ${pathname}`);
@@ -160,7 +174,7 @@ async function guard(page: Page, mockDevice: boolean, net: string[], writes: str
   });
 }
 
-async function openPage(browser: Browser, path: string, mockDevice: boolean, canary: boolean) {
+async function openPage(browser: Browser, target: Route, canary: boolean) {
   const net: string[] = []; const writes: string[] = [];
   const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 } });
   await ctx.addInitScript(INIT);
@@ -176,8 +190,8 @@ async function openPage(browser: Browser, path: string, mockDevice: boolean, can
     }));
   }
   const page = await ctx.newPage();
-  await guard(page, mockDevice, net, writes);
-  await page.goto('/xenon' + path);
+  await guard(page, target, net, writes);
+  await page.goto('/xenon' + target.path);
   await page.waitForLoadState('networkidle', { timeout: 4000 }).catch(() => {});
   await page.waitForTimeout(700);
   return { ctx, page, net, writes };
@@ -312,11 +326,15 @@ async function measure(page: Page, ctx: BrowserContext, net: string[], writes: s
   }
 }
 
-async function sweep(browser: Browser, path: string, mockDevice: boolean, opts: { canary?: boolean; only?: RegExp } = {}) {
+async function sweep(browser: Browser, target: Route, opts: { canary?: boolean; only?: RegExp } = {}) {
   const results: Result[] = [];
   const canary = !!opts.canary;
-  const inventory = await openPage(browser, path, mockDevice, canary);
+  const inventory = await openPage(browser, target, canary);
   const finalUrl = inventory.page.url();
+  // Sweep the page that was asked for. A redirect to a different page would
+  // otherwise quietly test that page under this one's name.
+  const landed = new URL(finalUrl).pathname;
+  expect(landed.startsWith('/xenon' + target.path), `${target.path} redirected to ${landed}`).toBe(true);
   const controls: { key: string; nth: number; disabled: boolean; active: boolean }[] = (
     await inventory.page.evaluate(() => (window as any).__enum())
   ).filter((c: { key: string }) => !opts.only || opts.only.test(c.key));
@@ -324,7 +342,7 @@ async function sweep(browser: Browser, path: string, mockDevice: boolean, opts: 
 
   for (const c of controls) {
     if (c.disabled) { results.push({ level: 1, key: c.key, status: 'disabled' }); continue; }
-    const { ctx, page, net, writes } = await openPage(browser, path, mockDevice, canary);
+    const { ctx, page, net, writes } = await openPage(browser, target, canary);
     const before: { key: string; nth: number }[] = await page.evaluate(() => (window as any).__enum());
     const found = await page.evaluate(([k, n]) => (window as any).__tag(k, n), [c.key, c.nth] as const);
     let r: Omit<Result, 'level' | 'key'> = found ? await measure(page, ctx, net, writes) : { status: 'vanished' };
@@ -341,7 +359,7 @@ async function sweep(browser: Browser, path: string, mockDevice: boolean, opts: 
     }
     await ctx.close();
     for (const a of added) {
-      const l2 = await openPage(browser, path, mockDevice, canary);
+      const l2 = await openPage(browser, target, canary);
       if (await l2.page.evaluate(([k, n]) => (window as any).__tag(k, n), [c.key, c.nth] as const)) {
         await clickAsUser(l2.page);
         await l2.page.waitForTimeout(700);
@@ -371,14 +389,14 @@ const describeLine = (r: Result) =>
 test.describe('control sweep', () => {
   // The harness must be able to fail: a button that does nothing has to be caught.
   test('harness self-test: catches a dead control, passes a live one', async ({ browser }) => {
-    const results = await sweep(browser, '/overview', false, { canary: true, only: /Canary/ });
+    const results = await sweep(browser, { path: '/overview' }, { canary: true, only: /Canary/ });
     const byLabel = Object.fromEntries(results.map((r) => [r.key.split('|')[2], r.status]));
     expect(byLabel).toEqual({ 'Canary dead': 'NO-EFFECT', 'Canary live': 'ok' });
   });
 
   for (const r of ROUTES) {
     test(`every control on ${r.path} does something`, async ({ browser }, testInfo) => {
-      const results = await sweep(browser, r.path, !!r.mockDevice);
+      const results = await sweep(browser, r);
       const bad = unexplained(r.path, results);
       await testInfo.attach('results.json', { body: JSON.stringify(results, null, 2), contentType: 'application/json' });
       // Say how much was actually checked, so a pass can't hide an empty sweep.
