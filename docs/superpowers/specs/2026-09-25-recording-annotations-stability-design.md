@@ -67,9 +67,11 @@ These failed:
 
 ### 2. One recording per device (P0 #2)
 
-- `BusyPrecheck` adds a new `BusyReason`, `'recording'`, for any udid where
-  `RecordingStore.isRecording(udid)` is true. This is checked before the
-  manual-lock rules, so an owner cannot start a duplicate either.
+- `BusyPrecheck` reports `recording_other_group` for any udid where
+  `RecordingStore.isRecording(udid)` is true. That reason already exists in
+  `BusyReason`, and the picker already labels it "Recording in another
+  group". The check comes before the manual-lock rules, so an owner cannot
+  start a duplicate either.
 - It applies to `start` and to `add-device`.
 - `recoverOnBoot` already turns orphan `RECORDING` rows into `FAILED`, so a
   stale row cannot block a device after a restart.
@@ -100,9 +102,10 @@ These failed:
     verified on the bundled ffmpeg 4.4, where `main_w` did not scale.
   - A mark without an image, meaning a legacy row or an API client, keeps the
     `drawbox` rendering.
-  - A `TEXT` mark without an image is **skipped with a warning** instead of
-    failing the render. One mark that cannot be drawn must never cost the
-    others.
+  - A `TEXT` mark without an image is still attempted, because a build
+    with fontconfig can draw it. If the render fails and text was present,
+    it re-renders once without those marks and logs a warning. One mark that
+    cannot be drawn must never cost the others.
   - The graph goes through `-filter_complex_script`, a temp file beside the
     output. This removes command-line length limits with many marks, and
     shell-style escaping.
@@ -144,7 +147,7 @@ These failed:
   - `busy-precheck`: a self-locked device that is already recording is
     refused with `recording`, and an idle self-locked device is allowed.
   - `annotation-render`: an overlay graph for image marks, the
-    `scale2ref=w=iw:h=ih` form, a `TEXT` mark without an image skipped, a
+    `scale2ref=w=iw:h=ih` form, a failing `TEXT` mark retried without text, a
     mix of image and `drawbox` marks, and the stamp including the image.
   - The annotation route: image validation (bad prefix, bad signature,
     oversize) and the image written to the right path.
