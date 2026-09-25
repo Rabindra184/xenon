@@ -30,7 +30,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:ui": "vitest --ui",
-    "test:viewport": "playwright test"
+    "test:viewport": "playwright test",
+    "test:sweep": "playwright test --config playwright.sweep.config.ts"
   },
   "browserslist": {
     "production": [
