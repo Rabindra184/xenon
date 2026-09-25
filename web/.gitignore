@@ -28,4 +28,5 @@ yarn-error.log*
 # Playwright viewport guard output
 test-results/
 test/viewport/report/
+test/sweep/report/
 playwright/.cache/

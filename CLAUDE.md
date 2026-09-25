@@ -474,6 +474,27 @@ always equals `innerWidth`. It cannot detect overflow. Measure element rects.
 A centered flex row (`justify-content: center`) overflows both edges, so the
 guard checks `rect.left < 0` as well as `rect.right > innerWidth`.
 
+`web/test/sweep/controls.spec.ts` (`npm run test:sweep`, about 20 minutes) is
+the control sweep. On every page it clicks each visible control with a real
+mouse click on a fresh load, plus every control inside the menus and dialogs
+they open, and fails if one does nothing or can't be clicked. It caught the
+dead "Upload app" button (#274) and the account menu hidden behind the Devices
+and Apps toolbars (#279). It runs against the live server but changes nothing:
+writes and every `/control` request are answered in the browser, streams are
+aborted, and device control uses a mocked device.
+
+- A control counts as working if it causes a request, navigation, a DOM change
+  to something the page wasn't already changing, a checked-state change, form
+  validation, a dialog, file chooser, download, clipboard write or popup, or
+  moves focus elsewhere.
+- It explains the legitimate no-ops itself: an already selected tab or filter
+  (it must expose `aria-selected`/`aria-pressed`/`aria-current`), a control
+  under a full-screen overlay, a switch whose slider covers its input, and a
+  label whose field already has focus. Anything else needs an entry, with a
+  reason, in `EXPECTED_NO_EFFECT`.
+- A self-test injects a dead and a live button and checks that the dead one
+  fails. Run the sweep before a release, not on every change.
+
 CSS source lives in `web/src`, but the running server serves the built bundle
 from `lib/public`. A CSS change is not live until `npm run build:xenon &&
 npm run build:copy` (from the repo root) regenerates and copies it.
