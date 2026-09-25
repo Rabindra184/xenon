@@ -2,7 +2,7 @@ import * as React from 'react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { MemoryRouter } from 'react-router-dom';
+import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import LoginPage from './login';
 
 // A plain function, not vi.fn(): the spy wrapper in this vitest version
@@ -12,6 +12,7 @@ const auth = vi.hoisted(() => ({
   calls: [] as Array<[string, string]>,
   reject: null as Error | null,
   resetMode: 'email' as 'email' | 'admin',
+  me: null as null | { authDisabled?: boolean },
 }));
 vi.mock('../api-service/auth', async (importOriginal) => {
   const real = await importOriginal<typeof import('../api-service/auth')>();
@@ -24,7 +25,7 @@ vi.mock('../api-service/auth', async (importOriginal) => {
     },
   };
 });
-vi.mock('../auth/auth-context', () => ({ useAuth: () => ({ refresh: async () => {} }) }));
+vi.mock('../auth/auth-context', () => ({ useAuth: () => ({ refresh: async () => {}, me: auth.me }) }));
 
 import { LoginError } from '../api-service/auth';
 
@@ -141,5 +142,25 @@ describe('LoginPage', () => {
     expect(pw).toHaveAttribute('aria-describedby', 'login-capslock');
     fireEvent.blur(pw);
     expect(screen.queryByText('Caps Lock is on')).toBeNull();
+  });
+});
+
+describe('LoginPage with auth disabled', () => {
+  afterEach(() => {
+    auth.me = null;
+  });
+
+  it('goes straight to where the visitor was headed; there is no account to sign in to', () => {
+    auth.me = { authDisabled: true };
+    render(
+      <MemoryRouter initialEntries={['/login?next=/devices']}>
+        <Routes>
+          <Route path="/login" element={<LoginPage />} />
+          <Route path="/devices" element={<div>devices page</div>} />
+        </Routes>
+      </MemoryRouter>,
+    );
+    expect(screen.getByText('devices page')).toBeInTheDocument();
+    expect(screen.queryByLabelText('Email')).not.toBeInTheDocument();
   });
 });

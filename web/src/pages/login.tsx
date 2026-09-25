@@ -1,6 +1,6 @@
 import * as React from 'react';
 import { useEffect, useState } from 'react';
-import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { Link, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import {
   AlertCircle,
   ArrowRight,
@@ -29,7 +29,7 @@ const ICON =
 export default function LoginPage() {
   const nav = useNavigate();
   const loc = useLocation();
-  const { refresh } = useAuth();
+  const { refresh, me } = useAuth();
   const params = new URLSearchParams(loc.search);
   const next = params.get('next') || '/overview';
   const expired = params.get('reason') === 'expired';
@@ -100,6 +100,10 @@ export default function LoginPage() {
   function trackCapsLock(e: React.KeyboardEvent<HTMLInputElement>) {
     setCapsLock(e.getModifierState('CapsLock'));
   }
+
+  // With auth disabled there's no account to sign in to; go to the dashboard
+  // instead of stranding the visitor on a form that can't work.
+  if (me?.authDisabled) return <Navigate to={next} replace />;
 
   return (
     <AuthShell>

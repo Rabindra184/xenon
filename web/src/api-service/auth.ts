@@ -73,6 +73,8 @@ export interface MePayload {
   teamId: string | null;
   kind: 'user-session' | 'api-key';
   teams: { id: string; name: string }[];
+  /** True when the server runs with auth disabled and this is its synthetic admin. */
+  authDisabled?: boolean;
 }
 
 export async function getMe(): Promise<MePayload | null> {

@@ -158,17 +158,26 @@ const Header: React.FC = () => {
                   <UserIcon className="h-3.5 w-3.5 text-[var(--text-dim)]" />
                   Profile
                 </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setDropdownOpen(false);
-                    signOut();
-                  }}
-                  className="w-full flex items-center gap-2 px-3 py-2 text-xs text-[var(--red)] hover:bg-[var(--bg)] text-left"
-                >
-                  <LogOut className="h-3.5 w-3.5" />
-                  Logout
-                </button>
+                {me?.authDisabled ? (
+                  // With auth off every visitor is this synthetic admin, so
+                  // there's no session to end: Logout only led to a sign-in
+                  // page with no account behind it.
+                  <p className="px-3 py-2 text-xs text-[var(--text-muted)]">
+                    Sign-in is off on this server.
+                  </p>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setDropdownOpen(false);
+                      signOut();
+                    }}
+                    className="w-full flex items-center gap-2 px-3 py-2 text-xs text-[var(--red)] hover:bg-[var(--bg)] text-left"
+                  >
+                    <LogOut className="h-3.5 w-3.5" />
+                    Logout
+                  </button>
+                )}
               </div>
             )}
           </div>

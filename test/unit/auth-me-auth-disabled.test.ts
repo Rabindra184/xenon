@@ -57,8 +57,22 @@ describe('GET /auth/me with authDisabled', () => {
     expect(res.body.role).to.equal('SUPER_ADMIN');
     expect(res.body.scopes).to.equal('admin');
     expect(res.body.teams).to.deep.equal([]);
+    // The dashboard hides Logout and skips /login on this flag.
+    expect(res.body.authDisabled).to.equal(true);
     // The synthetic id must never be looked up — there is nothing to find.
     expect(findById.called, 'findById should not be called when auth is disabled').to.be.false;
+  });
+
+  it('reports authDisabled: false for a real user when auth is enabled', async () => {
+    config.authDisabled = false;
+    sinon.stub(Container.get(UserService), 'findById').resolves({
+      id: 'auth-disabled', email: 'u@x.local', name: 'U', role: 'SUPER_ADMIN', accessKey: 'ak',
+    } as any);
+
+    const res = await request(appWithSyntheticAuth()).get('/auth/me');
+
+    expect(res.status).to.equal(200);
+    expect(res.body.authDisabled).to.equal(false);
   });
 
   it('still 401s when auth is enabled and the user does not exist', async () => {
