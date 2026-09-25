@@ -849,6 +849,27 @@ for (const width of WIDTHS) {
   }
 }
 
+// PageHeader's action button is styled by page-header.css, which loads with
+// PageHeader. Its rules used to live in settings.css, which only some pages
+// load, so on Users "Invite user" rendered unstyled (display: block, icon
+// stacked over the text). Any page that renders the button must style it.
+for (const route of ROUTES) {
+  test(`page-header actions are styled on ${route}`, async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await (ROUTE_DATA_MOCKS[route]?.(page) ?? Promise.resolve());
+    await page.goto(route);
+    await page.waitForLoadState('networkidle');
+    const unstyled = await page.evaluate(() =>
+      [...document.querySelectorAll('.page-header-action')]
+        // Styled, it's inline-flex, which computes to flex inside the header's
+        // flex action slot. Unstyled, it was a plain block with the icon stacked.
+        .filter((el) => !getComputedStyle(el).display.includes('flex'))
+        .map((el) => `${(el.textContent || '').trim()} (display: ${getComputedStyle(el).display})`),
+    );
+    expect(unstyled, `Unstyled page-header actions on ${route}`).toEqual([]);
+  });
+}
+
 // The account menu (theme, Profile, Logout) lives in the fixed app header,
 // whose stacking layer is z-index 20. A page element stacked above that layer
 // covers the whole header, menu included: Devices' and Apps' sticky toolbars
