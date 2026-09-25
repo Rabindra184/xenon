@@ -6,6 +6,7 @@ import { Readable } from 'stream';
 import { RecordingStore } from './recording-store';
 import { resolveFfmpegPath } from '../../helpers/ffmpegPath';
 import { probeVideoDurationSec } from './probeDuration';
+import { annotationImagePath } from './annotationImage';
 import log from '../../logger';
 
 const renderLog = log.scope('AnnotationRender');
@@ -22,11 +23,24 @@ const renderLog = log.scope('AnnotationRender');
 const LATE_ANNOTATION_MARGIN_SEC = 0.5;
 
 export interface AnnotationRow {
+  id?: string;
   shape: string;
   geometry: string;
   color?: string | null;
   text?: string | null;
   timecode_ms?: number | null;
+  /** When "Clear marks" ended the mark; null = visible to the end of the video. */
+  end_timecode_ms?: number | null;
+}
+
+export interface RenderGraph {
+  /** Extra ffmpeg inputs after the source video, in order (input index = position + 1). */
+  inputs: string[];
+  graph: string;
+  /** Label of the final video stream to `-map`. */
+  output: string;
+  /** True when a drawtext is present; the bundled ffmpeg has no fontconfig. */
+  hasText: boolean;
 }
 
 /**
@@ -153,9 +167,9 @@ export class AnnotationRenderService {
       } catch {
         continue;
       }
-      const tStart = this.clampTimecodeSec((a.timecode_ms ?? 0) / 1000, videoDurationSec);
+      const enable = this.enableExpr(a, videoDurationSec);
+      if (!enable) continue;
       const color = this.sanitizeColor(a.color || 'red');
-      const enable = `enable='gte(t\\,${tStart})'`;
 
       if (a.shape === 'CIRCLE') {
         // geometry: center (x,y), radii (w,h). Prefer drawbox over drawellipse —
@@ -219,28 +233,111 @@ export class AnnotationRenderService {
     return parts;
   }
 
+  /** `enable=` expression for a mark, or null when its window is empty. */
+  private enableExpr(a: AnnotationRow, videoDurationSec?: number): string | null {
+    const start = this.clampTimecodeSec((a.timecode_ms ?? 0) / 1000, videoDurationSec);
+    if (a.end_timecode_ms === null || a.end_timecode_ms === undefined) {
+      return `enable='gte(t\\,${start})'`;
+    }
+    const end = Math.max(0, a.end_timecode_ms / 1000);
+    // Half-open: `between` would still show the mark on the frame it was cleared.
+    if (end <= start) return null;
+    return `enable='gte(t\\,${start})*lt(t\\,${end})'`;
+  }
+
+  /**
+   * The full filtergraph. Marks with an image are composited exactly as the
+   * preview drew them. Marks without one (API clients, rows from before
+   * images) fall back to drawbox. The fallback runs first so image marks,
+   * which are what the user saw, sit on top.
+   */
+  buildRenderGraph(
+    annotations: AnnotationRow[],
+    videoDurationSec: number | undefined,
+    imageFor: (a: AnnotationRow) => string | undefined,
+  ): RenderGraph | null {
+    const withImage: Array<{ file: string; enable: string }> = [];
+    const drawn: AnnotationRow[] = [];
+    for (const a of annotations) {
+      const file = imageFor(a);
+      if (!file) {
+        drawn.push(a);
+        continue;
+      }
+      const enable = this.enableExpr(a, videoDurationSec);
+      if (enable) withImage.push({ file, enable });
+    }
+    const parts = this.buildFilterParts(drawn, videoDurationSec);
+    const hasText = parts.some((p) => p.startsWith('drawtext='));
+    const chunks: string[] = [];
+    let cur = '[0:v]';
+    if (parts.length > 0) {
+      chunks.push(`[0:v]${parts.join(',')}[d0]`);
+      cur = '[d0]';
+    }
+    withImage.forEach(({ enable }, i) => {
+      const k = i + 1;
+      // In scale2ref, iw/ih are the REFERENCE's size. main_w/main_h did not
+      // scale on the bundled ffmpeg 4.4.
+      chunks.push(`[${k}:v]${cur}scale2ref=w=iw:h=ih[o${k}][b${k}]`);
+      chunks.push(`[b${k}][o${k}]overlay=0:0:${enable}[v${k}]`);
+      cur = `[v${k}]`;
+    });
+    if (cur === '[0:v]') return null;
+    return { inputs: withImage.map((w) => w.file), graph: chunks.join(';'), output: cur, hasText };
+  }
+
   private async renderToFile(
     sourcePath: string,
     outPath: string,
     annotations: AnnotationRow[],
   ): Promise<void> {
     // Probe the recorded span so late marks (timecode past EOF) get clamped in
-    // instead of vanishing. Best-effort: on failure, buildFilterParts falls
-    // back to unclamped timecodes (prior behavior).
+    // instead of vanishing. Best-effort: without a duration the timecodes are
+    // used unclamped (prior behavior).
     const durationSec = await this.probeDurationSec(sourcePath);
-    const parts = this.buildFilterParts(annotations, durationSec);
-    if (parts.length === 0) {
+    const imageFor = (a: AnnotationRow) => this.imageFor(sourcePath, a);
+    const plan = this.buildRenderGraph(annotations, durationSec, imageFor);
+    if (!plan) {
       fs.copyFileSync(sourcePath, outPath);
       return;
     }
-    const args = [
-      '-y',
-      '-loglevel',
-      'error',
-      '-i',
-      sourcePath,
-      '-vf',
-      parts.join(','),
+    try {
+      await this.runGraph(sourcePath, outPath, plan);
+    } catch (err: any) {
+      if (!plan.hasText) throw err;
+      // One undrawable text mark must not cost every other mark: the bundled
+      // ffmpeg has freetype but no fontconfig, so drawtext cannot find a font.
+      renderLog.warn(
+        `Text marks could not be drawn, rendering without them: ${err?.message ?? err}`,
+      );
+      const noText = annotations.filter((a) => a.shape !== 'TEXT' || !!imageFor(a));
+      const retry = this.buildRenderGraph(noText, durationSec, imageFor);
+      if (!retry) {
+        fs.copyFileSync(sourcePath, outPath);
+        return;
+      }
+      await this.runGraph(sourcePath, outPath, retry);
+    }
+  }
+
+  private imageFor(sourcePath: string, a: AnnotationRow): string | undefined {
+    if (!a.id) return undefined;
+    const p = annotationImagePath(sourcePath, a.id);
+    return fs.existsSync(p) ? p : undefined;
+  }
+
+  private async runGraph(sourcePath: string, outPath: string, plan: RenderGraph): Promise<void> {
+    // A script file: no argv length limit with many marks, no shell quoting.
+    const scriptPath = `${outPath}.filter.txt`;
+    fs.writeFileSync(scriptPath, plan.graph, 'utf8');
+    const args = ['-y', '-loglevel', 'error', '-i', sourcePath];
+    for (const input of plan.inputs) args.push('-i', input);
+    args.push(
+      '-filter_complex_script',
+      scriptPath,
+      '-map',
+      plan.output,
       '-c:v',
       'libx264',
       '-preset',
@@ -253,20 +350,24 @@ export class AnnotationRenderService {
       '+faststart',
       '-an',
       outPath,
-    ];
-    await new Promise<void>((resolve, reject) => {
-      const p = this.spawnFfmpeg(args, `annotate:${path.basename(outPath)}`);
-      let stderr = '';
-      p.stderr?.on('data', (d) => (stderr += d.toString()));
-      p.on('error', reject);
-      p.on('close', (code) => {
-        if (code === 0) resolve();
-        else {
-          renderLog.warn(`ffmpeg exited ${code}: ${stderr.slice(-400)}`);
-          reject(new Error(`ffmpeg exited ${code}: ${stderr.slice(-200)}`));
-        }
+    );
+    try {
+      await new Promise<void>((resolve, reject) => {
+        const p = this.spawnFfmpeg(args, `annotate:${path.basename(outPath)}`);
+        let stderr = '';
+        p.stderr?.on('data', (d) => (stderr += d.toString()));
+        p.on('error', reject);
+        p.on('close', (code) => {
+          if (code === 0) resolve();
+          else {
+            renderLog.warn(`ffmpeg exited ${code}: ${stderr.slice(-400)}`);
+            reject(new Error(`ffmpeg exited ${code}: ${stderr.slice(-200)}`));
+          }
+        });
       });
-    });
+    } finally {
+      fs.rmSync(scriptPath, { force: true });
+    }
   }
 
   /**
@@ -337,12 +438,15 @@ export class AnnotationRenderService {
 
   private cacheStamp(sourcePath: string, annotations: AnnotationRow[]): string {
     const srcMtime = fs.statSync(sourcePath).mtimeMs;
-    const parts = annotations.map(
-      (a: any) =>
-        `${a.id ?? ''}:${a.timecode_ms ?? 0}:${a.shape}:${a.geometry}:${a.color ?? ''}:${a.text ?? ''}`,
-    );
+    const parts = annotations.map((a) => {
+      // A late-arriving image or a later clear must bust the cache.
+      const img = this.imageFor(sourcePath, a);
+      const imgMtime = img ? fs.statSync(img).mtimeMs : 0;
+      return `${a.id ?? ''}:${a.timecode_ms ?? 0}:${a.end_timecode_ms ?? ''}:${a.shape}:${a.geometry}:${a.color ?? ''}:${a.text ?? ''}:${imgMtime}`;
+    });
     // Bump prefix when burn-in style changes so cached .annotated.mp4 is rebuilt.
-    return `v2|${srcMtime}|${parts.join('|')}`;
+    // v3: time windows + image overlays.
+    return `v3|${srcMtime}|${parts.join('|')}`;
   }
 
   private f(n: any): string {

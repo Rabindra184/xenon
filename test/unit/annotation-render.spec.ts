@@ -195,3 +195,75 @@ describe('AnnotationRenderService.resolvePlayablePath — concurrency', () => {
     expect(a.annotated).to.equal(true);
   });
 });
+
+describe('AnnotationRenderService — time windows (Clear marks)', () => {
+  const svc = new AnnotationRenderService({} as any);
+  const rect = (extra: any) => ({
+    shape: 'RECT',
+    geometry: JSON.stringify({ x: 0.1, y: 0.1, w: 0.2, h: 0.2 }),
+    color: 'red',
+    timecode_ms: 1000,
+    ...extra,
+  });
+
+  it('closes a cleared mark with a half-open window', () => {
+    const parts = svc.buildFilterParts([rect({ end_timecode_ms: 4000 })]);
+    expect(parts[0]).to.include("enable='gte(t\\,1)*lt(t\\,4)'");
+  });
+
+  it('leaves an open mark exactly as before', () => {
+    expect(svc.buildFilterParts([rect({ end_timecode_ms: null })])[0]).to.include(
+      "enable='gte(t\\,1)'",
+    );
+  });
+
+  it('drops a mark that ends when it starts (never visible)', () => {
+    expect(svc.buildFilterParts([rect({ end_timecode_ms: 1000 })])).to.deep.equal([]);
+  });
+});
+
+describe('AnnotationRenderService.buildRenderGraph', () => {
+  const svc = new AnnotationRenderService({} as any);
+  const mark = (id: string, extra: any = {}) => ({
+    id,
+    shape: 'CIRCLE',
+    geometry: JSON.stringify({ x: 0.5, y: 0.5, w: 0.1, h: 0.1 }),
+    color: 'red',
+    timecode_ms: 1000,
+    ...extra,
+  });
+
+  it('overlays an image mark scaled to the frame, inside its window', () => {
+    const g = svc.buildRenderGraph([mark('a', { end_timecode_ms: 3000 })], 10, () => '/x/a.png')!;
+    expect(g.inputs).to.deep.equal(['/x/a.png']);
+    expect(g.graph).to.equal(
+      "[1:v][0:v]scale2ref=w=iw:h=ih[o1][b1];[b1][o1]overlay=0:0:enable='gte(t\\,1)*lt(t\\,3)'[v1]",
+    );
+    expect(g.output).to.equal('[v1]');
+    expect(g.hasText).to.equal(false);
+  });
+
+  it('chains drawbox fallback marks first, then image overlays on top', () => {
+    const g = svc.buildRenderGraph([mark('a'), mark('b', { shape: 'RECT' })], 10, (a) =>
+      a.id === 'a' ? '/x/a.png' : undefined,
+    )!;
+    expect(g.graph.startsWith('[0:v]drawbox=')).to.equal(true);
+    expect(g.graph).to.include('[d0];[1:v][d0]scale2ref=w=iw:h=ih[o1][b1]');
+    expect(g.output).to.equal('[v1]');
+  });
+
+  it('flags graphs that contain text so the caller can retry without it', () => {
+    const text = mark('t', {
+      shape: 'TEXT',
+      text: 'hi',
+      geometry: JSON.stringify({ x: 0.1, y: 0.1 }),
+    });
+    expect(svc.buildRenderGraph([text], 10, () => undefined)!.hasText).to.equal(true);
+  });
+
+  it('returns null when nothing is drawable', () => {
+    expect(
+      svc.buildRenderGraph([mark('a', { end_timecode_ms: 500 })], 10, () => '/x/a.png'),
+    ).to.equal(null);
+  });
+});
