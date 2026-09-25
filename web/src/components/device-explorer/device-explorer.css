@@ -16,8 +16,10 @@
   border-bottom: 2px solid var(--border);
   position: sticky;
   top: 0;
-  /* Set below header */
-  z-index: 1002;
+  /* Below the app header (z-index 20) so its account menu can open over this
+     toolbar; above page content, which stays at 10 or less. At 1002 the menu
+     opened behind it and Profile/Logout couldn't be clicked. */
+  z-index: 15;
   gap: var(--space-8);
   flex-wrap: nowrap;
   box-shadow: 0 10px 30px rgb(var(--rgb-black) / calc(0.4 * var(--shadow-k)));
@@ -313,7 +315,10 @@
 .de2-sticky-group {
   position: sticky;
   top: 0;
-  z-index: 1002;
+  /* Below the app header (z-index 20) so its account menu can open over this
+     toolbar; above page content, which stays at 10 or less. At 1002 the menu
+     opened behind it and Profile/Logout couldn't be clicked. */
+  z-index: 15;
   background: var(--bg);
   /* Match the global header's translucent dark blur so they read as one surface. */
   backdrop-filter: blur(16px);
