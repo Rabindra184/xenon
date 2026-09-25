@@ -14,6 +14,7 @@ import { resolveActor } from '../../services/device-access/actor';
 import { filterRowsByVisibleDevice } from '../../data-service/device-service';
 import { prisma } from '../../prisma';
 import { parseClearBody } from './recordingRequests';
+import { decodeAnnotationImage } from '../../services/recording/annotationImage';
 import log from '../../logger';
 
 // Phase 4A: a recording group is visible if at least one of its rows runs on
@@ -171,11 +172,14 @@ router.post('/recordings/:groupId/annotation', async (req: Request, res: Respons
       error: 'recordingId, timecodeMs, shape, geometry, color are required',
     });
   }
+  const image = decodeAnnotationImage(req.body?.image);
+  if (image && !image.ok) return res.status(400).json({ error: image.error });
   try {
     const out = await Container.get(RecordingOrchestrator).addAnnotation(
       req.params.groupId,
       recordingId,
       { timecodeMs, shape, geometry, color, text, author },
+      image?.ok ? image.png : undefined,
     );
     res.status(201).json(out);
   } catch (e: any) {
