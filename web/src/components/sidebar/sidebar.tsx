@@ -12,6 +12,7 @@ import {
   ShieldCheck,
   HeartPulse,
   Users,
+  UserCog,
   Key,
   BookOpen,
   type LucideIcon,
@@ -44,7 +45,9 @@ const items: NavItem[] = [
   { id: 'ai', label: 'AI engine', icon: Brain, path: '/ai-settings', minRole: 'ADMIN' },
   { id: 'maintenance', label: 'Maintenance', icon: ShieldCheck, path: '/maintenance', minRole: 'ADMIN' },
   { id: 'teams', label: 'Teams', icon: Users, path: '/teams', minRole: 'ADMIN' },
-  { id: 'users', label: 'Users', icon: Users, path: '/users', minRole: 'ADMIN' },
+  // Teams is a group (Users); Users is account management (UserCog). The
+  // single-person icon is Profile's, in the account menu.
+  { id: 'users', label: 'Users', icon: UserCog, path: '/users', minRole: 'ADMIN' },
   { id: 'apikeys', label: 'API keys', icon: Key, path: '/api-keys', minRole: 'ADMIN' },
 ];
 
