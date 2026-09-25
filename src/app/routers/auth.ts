@@ -268,6 +268,9 @@ export function authAuthedRouter(): Router {
         teamId: auth.teamId ?? null,
         kind: auth.kind,
         teams: [],
+        // Lets the dashboard hide sign-out/sign-in, which have no meaning when
+        // every caller is this synthetic admin.
+        authDisabled: true,
       });
     }
 
@@ -297,6 +300,7 @@ export function authAuthedRouter(): Router {
       teamId: auth.teamId ?? null,
       kind: auth.kind,
       teams,
+      authDisabled: false,
     });
   });
 
