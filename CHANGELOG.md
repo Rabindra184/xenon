@@ -6,6 +6,26 @@ This project follows [Semantic Versioning](https://semver.org/). Releases are
 published to npm automatically when `package.json`'s `version` changes on `main`
 (see `.github/workflows/npm-publish.yml`).
 
+## 1.21.5
+
+Patch release. No Logout when authentication is disabled.
+
+### Fixed
+
+- **With auth disabled, the account menu offered Logout** (#285). There is no
+  session to end in that mode: every visitor is a synthetic super admin.
+  Logout sent you to a sign-in page with no account behind it, and the only
+  way back was to type a URL. The menu now says "Sign-in is off on this
+  server." instead. The sign-in page itself redirects to the dashboard while
+  auth is disabled. With auth enabled, nothing changes.
+- **`GET /xenon/api/auth/me` includes `authDisabled`** (#285): `true` for the
+  synthetic auth-disabled identity, `false` otherwise.
+
+### Documentation
+
+- The 2026-09-23 dashboard UI audit is now in the repo as
+  `website-audit.md` (#284).
+
 ## 1.21.4
 
 Patch release. Device control behaves like a proper dialog for keyboard and
