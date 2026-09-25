@@ -1,7 +1,8 @@
-import { Service } from 'typedi';
+import { Container, Service } from 'typedi';
 import { DeviceStoreFactory } from '../../data-service/device-store';
 import { inspectManualLock } from './manualLock';
 import { isSelfManualLock } from '../device-access/deviceAccessPolicy';
+import { RecordingStore } from './recording-store';
 
 export type BusyReason =
   | 'automation'
@@ -34,8 +35,11 @@ export interface BusyEntry {
 export class BusyPrecheck {
   // Allow injection in tests; default to the real device store.
   private readonly storeProvider: () => any;
-  constructor(store?: any) {
+  private readonly isRecording: (udid: string) => Promise<boolean>;
+  constructor(store?: any, isRecording?: (udid: string) => Promise<boolean>) {
     this.storeProvider = store ? () => store : () => DeviceStoreFactory.getStore();
+    this.isRecording =
+      isRecording ?? ((udid: string) => Container.get(RecordingStore).isRecording(udid));
   }
 
   /**
@@ -59,6 +63,12 @@ export class BusyPrecheck {
       const device = await store.findDevice({ udid });
       if (!device) {
         out.push({ udid, reason: 'unknown' });
+        continue;
+      }
+      // One capture per device. Checked before the lock rules: the owner of
+      // the lock is exactly who a lost page state lets start a duplicate.
+      if (await this.isRecording(udid)) {
+        out.push({ udid, reason: 'recording_other_group' });
         continue;
       }
       if (!device.busy) continue;

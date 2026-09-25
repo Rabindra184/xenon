@@ -6,6 +6,10 @@ import { BusyPrecheck } from '../../src/services/recording/busy-precheck';
 describe('BusyPrecheck', () => {
   afterEach(() => sinon.restore());
 
+  // The recording check defaults to Prisma; unit tests must never reach it.
+  const precheck = (store: any, recording: string[] = []) =>
+    new BusyPrecheck(store, async (udid: string) => recording.includes(udid));
+
   function withDevices(rows: Record<string, any>) {
     return {
       findDevice: async ({ udid }: any) => rows[udid] ?? null,
@@ -13,7 +17,7 @@ describe('BusyPrecheck', () => {
   }
 
   it('returns empty list when all UDIDs are free', async () => {
-    const pc = new BusyPrecheck(
+    const pc = precheck(
       withDevices({
         U1: { udid: 'U1', busy: false },
         U2: { udid: 'U2', busy: false },
@@ -23,7 +27,7 @@ describe('BusyPrecheck', () => {
   });
 
   it('flags automation-busy devices with sessionId', async () => {
-    const pc = new BusyPrecheck(
+    const pc = precheck(
       withDevices({
         U1: { udid: 'U1', busy: true, session_id: 'sess-abc' },
       }),
@@ -36,7 +40,7 @@ describe('BusyPrecheck', () => {
   it('treats a manual lock owned by the calling actor as self, not a blocker', async () => {
     // manual_<actorId>_<udid> is owned by the same dashboard caller, so the
     // recording can take it over.
-    const pc = new BusyPrecheck(
+    const pc = precheck(
       withDevices({
         U1: { udid: 'U1', busy: true, session_id: 'manual_actor-1_U1' },
       }),
@@ -50,7 +54,7 @@ describe('BusyPrecheck', () => {
     // their owner, exactly as isSelfManualLock does for /control. Without the
     // second identity this classifies as manual_other and the caller is
     // refused their own device.
-    const pc = new BusyPrecheck(
+    const pc = precheck(
       withDevices({
         U1: { udid: 'U1', busy: true, session_id: 'manual_key_abc_U1' },
       }),
@@ -64,7 +68,7 @@ describe('BusyPrecheck', () => {
   });
 
   it('does not treat someone else’s api-key lock as self', async () => {
-    const pc = new BusyPrecheck(
+    const pc = precheck(
       withDevices({
         U1: { udid: 'U1', busy: true, session_id: 'manual_key_bob_U1' },
       }),
@@ -74,7 +78,7 @@ describe('BusyPrecheck', () => {
   });
 
   it('flags a manual lock owned by a different actor as manual_other', async () => {
-    const pc = new BusyPrecheck(
+    const pc = precheck(
       withDevices({
         U1: { udid: 'U1', busy: true, session_id: 'manual_actor-2_U1' },
       }),
@@ -90,7 +94,7 @@ describe('BusyPrecheck', () => {
   it('treats legacy manual_<udid> (no actor) as foreign — never self', async () => {
     // Locks written by older code carry no actor identity. They must NOT
     // be silently treated as self under the new model.
-    const pc = new BusyPrecheck(
+    const pc = precheck(
       withDevices({
         U1: { udid: 'U1', busy: true, session_id: 'manual_U1' },
       }),
@@ -100,13 +104,13 @@ describe('BusyPrecheck', () => {
   });
 
   it('returns reason=unknown for missing devices', async () => {
-    const pc = new BusyPrecheck(withDevices({}));
+    const pc = precheck(withDevices({}));
     const out = await pc.findBusy(['MISSING']);
     expect(out[0]).to.deep.include({ udid: 'MISSING', reason: 'unknown' });
   });
 
   it('partial busy: only the busy UDID is in the list', async () => {
-    const pc = new BusyPrecheck(
+    const pc = precheck(
       withDevices({
         U1: { udid: 'U1', busy: false },
         U2: { udid: 'U2', busy: true, session_id: 'sess-x' },
@@ -116,5 +120,25 @@ describe('BusyPrecheck', () => {
     const out = await pc.findBusy(['U1', 'U2', 'U3']);
     expect(out).to.have.length(1);
     expect(out[0].udid).to.equal('U2');
+  });
+
+  it('refuses a self-locked device that is already recording (no duplicate capture)', async () => {
+    // A reload used to forget the running recording; Record then started a
+    // second ffmpeg on the same device because the lock was the caller's own.
+    const pc = precheck(
+      withDevices({ U1: { udid: 'U1', busy: true, session_id: 'manual_actor-1_U1' } }),
+      ['U1'],
+    );
+    expect(await pc.findBusy(['U1'], 'actor-1')).to.deep.equal([
+      { udid: 'U1', reason: 'recording_other_group' },
+    ]);
+  });
+
+  it('refuses a device with an active recording even if it is not marked busy', async () => {
+    const pc = precheck(withDevices({ U1: { udid: 'U1', busy: false } }), ['U1']);
+    expect((await pc.findBusy(['U1']))[0]).to.deep.include({
+      udid: 'U1',
+      reason: 'recording_other_group',
+    });
   });
 });
