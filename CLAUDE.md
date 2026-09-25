@@ -500,6 +500,10 @@ aborted, and device control uses a mocked device.
   label whose field already has focus. It skips `inert` content (the
   background of a modal dialog). Anything else needs an entry, with a reason,
   in `EXPECTED_NO_EFFECT`.
+- Sign-in pages are swept as a signed-out visitor (`/auth/me` answers 401),
+  since on an auth-disabled server `/login` redirects to the dashboard. Every
+  route must still be at the requested path after loading, so a redirect can't
+  quietly sweep a different page under another's name.
 - A self-test injects a dead and a live button and checks that the dead one
   fails. Run the sweep before a release, not on every change.
 
