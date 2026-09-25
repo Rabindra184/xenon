@@ -1,6 +1,6 @@
 import * as React from 'react';
 import { useEffect, useState } from 'react';
-import { Plus, Trash2, Edit, KeyRound, Users as UsersIcon } from 'lucide-react';
+import { Plus, Trash2, Edit, KeyRound, UserCog } from 'lucide-react';
 import {
   listUsers,
   createUser,
@@ -81,7 +81,7 @@ export default function UsersPage() {
   return (
     <div>
       <PageHeader
-        icon={UsersIcon}
+        icon={UserCog}
         title="Users"
         subtitle="Dashboard accounts, roles, and access status."
         action={
