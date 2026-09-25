@@ -363,16 +363,17 @@ model Bookmark {
 }
 
 model Annotation {
-  id           String    @id @default(uuid())
-  recording_id String
-  timecode_ms  Int
-  shape        String
-  geometry     String
-  color        String
-  text         String?
-  author       String?
-  created_at   DateTime  @default(now())
-  Recording    Recording @relation(fields: [recording_id], references: [id], onDelete: Cascade)
+  id              String    @id @default(uuid())
+  recording_id    String
+  timecode_ms     Int
+  end_timecode_ms Int?
+  shape           String
+  geometry        String
+  color           String
+  text            String?
+  author          String?
+  created_at      DateTime  @default(now())
+  Recording       Recording @relation(fields: [recording_id], references: [id], onDelete: Cascade)
 
   @@index([recording_id, timecode_ms])
 }

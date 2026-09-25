@@ -13,6 +13,7 @@ import { roleGuard } from '../../middleware/roleGuard';
 import { resolveActor } from '../../services/device-access/actor';
 import { filterRowsByVisibleDevice } from '../../data-service/device-service';
 import { prisma } from '../../prisma';
+import { parseClearBody } from './recordingRequests';
 import log from '../../logger';
 
 // Phase 4A: a recording group is visible if at least one of its rows runs on
@@ -180,6 +181,25 @@ router.post('/recordings/:groupId/annotation', async (req: Request, res: Respons
   } catch (e: any) {
     recLog.error(`annotation failed: ${e?.message}`);
     res.status(500).json({ error: 'internal', message: e?.message });
+  }
+});
+
+router.post('/recordings/:groupId/annotations/clear', async (req: Request, res: Response) => {
+  const parsed = parseClearBody(req.body);
+  if (!parsed.ok) return res.status(400).json({ error: parsed.error });
+  const auth = (req as Request & { auth?: { teamIds?: string[] } }).auth;
+  if (!(await isGroupVisibleToAuth(req.params.groupId, auth?.teamIds))) {
+    return res.status(404).json({ error: 'not_found' });
+  }
+  try {
+    const out = await Container.get(RecordingOrchestrator).clearAnnotations(
+      req.params.groupId,
+      parsed.timecodeMs,
+    );
+    return res.json(out);
+  } catch (e: any) {
+    recLog.error(`annotations/clear failed: ${e?.message}`);
+    return res.status(500).json({ error: 'internal', message: e?.message });
   }
 });
 

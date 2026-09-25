@@ -84,4 +84,39 @@ describe('RecordingStore (Prisma round-trip)', () => {
     expect((list[0] as any).bookmarks).to.have.length(1);
     expect((list[0] as any).annotations).to.have.length(1);
   });
+
+  it('clearAnnotations closes only open marks that started by the clear time', async () => {
+    const rec = (id: string, groupId: string, udid: string) =>
+      store.create({
+        id,
+        groupId,
+        deviceUdid: udid,
+        deviceHost: '127.0.0.1',
+        filePath: `/tmp/${id}.mp4`,
+        sessionId: null,
+        deviceSnapshot: null,
+      });
+    await rec('test-rec-clr', 'test-gclr', 'TEST-UC');
+    await rec('test-rec-oth', 'test-goth', 'TEST-UO');
+    const base = { shape: 'RECT', geometry: '{}', color: 'red' };
+    const before = await store.addAnnotation('test-rec-clr', { ...base, timecodeMs: 1000 });
+    const after = await store.addAnnotation('test-rec-clr', { ...base, timecodeMs: 9000 });
+    const other = await store.addAnnotation('test-rec-oth', { ...base, timecodeMs: 1000 });
+
+    expect(await store.clearAnnotations(['test-rec-clr'], 5000)).to.equal(1);
+    // A second clear must not move an already-closed mark.
+    expect(await store.clearAnnotations(['test-rec-clr'], 7000)).to.equal(0);
+
+    const rows = await prisma.annotation.findMany({
+      where: { id: { in: [before.id, after.id, other.id] } },
+    });
+    const endOf = Object.fromEntries(rows.map((r: any) => [r.id, r.end_timecode_ms]));
+    expect(endOf[before.id]).to.equal(5000);
+    expect(endOf[after.id]).to.equal(null); // started after the clear
+    expect(endOf[other.id]).to.equal(null); // another group
+  });
+
+  it('clearAnnotations with no recordings is a no-op', async () => {
+    expect(await store.clearAnnotations([], 5000)).to.equal(0);
+  });
 });

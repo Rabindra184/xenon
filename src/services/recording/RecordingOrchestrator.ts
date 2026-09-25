@@ -670,6 +670,16 @@ export class RecordingOrchestrator {
     return a;
   }
 
+  /** "Clear marks" for the whole group, which is what the button does. */
+  async clearAnnotations(groupId: string, timecodeMs: number): Promise<{ cleared: number }> {
+    const rows = await this.store.listGroup(groupId);
+    const cleared = await this.store.clearAnnotations(
+      rows.map((r: any) => r.id),
+      timecodeMs,
+    );
+    return { cleared };
+  }
+
   /**
    * Add a single device to a running recording group. Atomic — if the UDID is
    * busy or the concurrency cap would be exceeded, no row is written and no
