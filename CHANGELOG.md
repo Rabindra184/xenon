@@ -6,6 +6,36 @@ This project follows [Semantic Versioning](https://semver.org/). Releases are
 published to npm automatically when `package.json`'s `version` changes on `main`
 (see `.github/workflows/npm-publish.yml`).
 
+## 1.21.3
+
+Patch release. The account menu works on the Devices and Apps pages again, and
+the unit tests are safe and green.
+
+### Fixed
+
+- **The account menu was unusable on the Devices and Apps pages** (#279). The
+  menu opened behind those pages' toolbars, so Theme, Profile and Logout
+  couldn't be clicked. It has been like this since the top bar was rebuilt in
+  April. The toolbars now sit below the header.
+- **Some selected states were shown only by colour** (#279). Screen readers
+  now hear which Profile view is open and which Overview fleet filter (All /
+  Non-ready) is on.
+
+### Development
+
+- **Running the unit tests killed every process the user owned** (#277). A
+  test gave `ProcessRegistry` a fake process ID of 1. `ProcessRegistry`
+  signals process groups, so this became `kill(-1)`, which on macOS signals
+  every process the user owns: the test runner, the Xenon server and every
+  open app. The test now stubs `process.kill`, and `ProcessRegistry` never
+  group-signals a process ID below 2. That also keeps a device helper that
+  failed to start from signalling init when Xenon runs as root in a container.
+- **`npm run test:all` passes in one run on Node 20 and 22** (#278): 1,247
+  tests. `.mocharc.json` became `.mocharc.js`, which turns off Node's
+  built-in TypeScript type stripping on Node 22.18+ so ts-node stays in
+  charge. Specs no longer depend on another spec having run first, and three
+  out-of-date tests were brought up to date.
+
 ## 1.21.2
 
 Patch release. The Apps page's Upload app button works again.
