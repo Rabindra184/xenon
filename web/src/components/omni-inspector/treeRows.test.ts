@@ -136,7 +136,7 @@ describe('initialExpanded', () => {
     const l2 = el('/1/2', {}, [l3, btn('/1/2/w')]);
     const l1 = el('/1', {}, [l2, btn('/1/v')]);
     const open = initialExpanded(l1);
-    expect([...open].sort()).toEqual(['/1', '/1/2', '/1/2/3']);
+    expect(Array.from(open).sort()).toEqual(['/1', '/1/2', '/1/2/3']);
   });
 });
 
