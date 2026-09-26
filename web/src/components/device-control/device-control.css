@@ -425,6 +425,8 @@
 }
 
 .hint-text {
+  /* Block: it is a <label> for the manual package field now. */
+  display: block;
   font-size: 11px;
   color: var(--text-muted);
   font-style: italic;
@@ -541,6 +543,8 @@
 }
 
 .compact-label {
+  /* Block: some are <label>s now (Quick Uninstall names its picker). */
+  display: block;
   font-size: 11px;
   color: var(--text-muted);
   font-weight: 600;
@@ -710,6 +714,11 @@
   font-size: 13px;
   color: var(--text);
   transition: all 0.2s ease;
+}
+
+.type-input-field::placeholder {
+  /* The browser's default grey measured 2.11:1 on the light-theme well. */
+  color: var(--text-dim);
 }
 
 .type-input-field:focus {
@@ -996,7 +1005,6 @@
 .type-input-field.tiny {
   padding: 8px 12px;
   font-size: 12px;
-  opacity: 0.6;
 }
 
 .animate-spin {
@@ -1378,4 +1386,46 @@
    theme renders byte-for-byte as before. */
 :root[data-theme='light'] .clipboard-display {
   background: var(--surface-2);
+}
+
+/* Smart Input: the field, a Send button, and a brief "Sent" after it. Enter
+   was the only way to send, and nothing said whether it had worked. */
+.smart-input-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.smart-input-row .type-input-field {
+  flex: 1;
+  min-width: 0;
+}
+.send-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 40px;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+.send-status svg {
+  color: var(--color-success);
+}
+
+/* The file input is sr-only inside this label, so show focus on the label. */
+.file-upload-launcher:focus-within {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: 2px;
+}
+
+.uninstall-confirm-text {
+  margin: 0;
+  line-height: 1.6;
+}
+.uninstall-confirm-device {
+  white-space: nowrap;
+}
+.uninstall-confirm-text code {
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  font-size: 12px;
+  word-break: break-all;
 }
