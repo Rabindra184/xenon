@@ -101,4 +101,18 @@ describe('selectOwnActiveGroups', () => {
       }),
     ).to.deep.equal([]);
   });
+
+  // A reload must keep the dashboard's timebase: its t=0 is when start()
+  // returned, not when the first device's ffmpeg spawned (about 1.2 s earlier
+  // with two devices), or marks drawn after a reload land late.
+  it("resumes on the group's recorded t=0 when there is one", () => {
+    const t0 = Date.parse('2026-09-25T10:00:02.350Z');
+    const out = selectOwnActiveGroups(
+      [row('r1', 'g1', 'U1', '2026-09-25T10:00:01Z')],
+      lockOf,
+      { userId: 'alice' },
+      () => t0,
+    );
+    expect(out[0].startedAt).to.equal('2026-09-25T10:00:02.350Z');
+  });
 });

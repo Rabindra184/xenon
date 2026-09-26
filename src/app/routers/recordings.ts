@@ -16,6 +16,7 @@ import { prisma } from '../../prisma';
 import { parseClearBody } from './recordingRequests';
 import { decodeAnnotationImage } from '../../services/recording/annotationImage';
 import { selectOwnActiveGroups } from '../../services/recording/activeRecordings';
+import { readRecordingTiming } from '../../services/recording/recordingTiming';
 import { DeviceStoreFactory } from '../../data-service/device-store';
 import log from '../../logger';
 
@@ -204,7 +205,12 @@ router.get('/recordings/active', async (req: Request, res: Response) => {
       const d = await DeviceStoreFactory.getStore().findDevice({ udid });
       locks.set(udid, d?.session_id ?? null);
     }
-    const groups = selectOwnActiveGroups(rows as any, (u) => locks.get(u), actor).map((g) => ({
+    const groups = selectOwnActiveGroups(
+      rows as any,
+      (u) => locks.get(u),
+      actor,
+      (r) => (r.file_path ? readRecordingTiming(r.file_path)?.groupT0Ms : undefined),
+    ).map((g) => ({
       ...g,
       compositeEnabled: fs.existsSync(compositeOutputPath(g.groupId)),
     }));
