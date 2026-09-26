@@ -1,13 +1,11 @@
 import * as React from 'react';
-import { render, screen } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
+import { fireEvent, render, screen } from '@testing-library/react';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { IDevice } from '../../../interfaces/IDevice';
 
-vi.mock('../../../auth/auth-context', () => ({
-  useAuth: () => ({
-    me: { userId: 'me', email: 'me@acme.com', name: 'Me', role: 'MEMBER', teams: [] },
-  }),
-}));
+const MEMBER = { userId: 'me', email: 'me@acme.com', name: 'Me', role: 'MEMBER', teams: [] };
+const auth = vi.hoisted(() => ({ me: null as any }));
+vi.mock('../../../auth/auth-context', () => ({ useAuth: () => ({ me: auth.me ?? MEMBER }) }));
 vi.mock('../../ui/toast', () => ({ useToast: () => ({ toast: vi.fn() }) }));
 vi.mock('../../../api-service', () => ({ default: {} }));
 
@@ -118,5 +116,48 @@ describe('DeviceCard', () => {
     const { container } = card();
     expect(container).not.toHaveTextContent('Real');
     expect(container).not.toHaveTextContent('Shared');
+  });
+
+  describe('the ⋯ menu', () => {
+    afterEach(() => {
+      auth.me = null;
+    });
+
+    const menuItems = () => {
+      fireEvent.click(screen.getByRole('button', { name: 'More actions' }));
+      return screen.getAllByRole('menuitem').map((m) => m.textContent?.trim());
+    };
+
+    it('gives a member the copy actions only', () => {
+      card({ ip: '192.168.0.100' });
+      expect(menuItems()).toEqual([
+        'Copy UDID',
+        'Copy server URL',
+        'Copy IP address',
+        'Copy capabilities',
+      ]);
+    });
+
+    // Tags, maintenance and teams are admin-only on the server: a member who
+    // picked them got a 403.
+    it('adds tags, team and maintenance for an admin', () => {
+      auth.me = { ...MEMBER, role: 'ADMIN' };
+      card({ ip: '192.168.0.100' });
+      expect(menuItems()).toEqual([
+        'Copy UDID',
+        'Copy server URL',
+        'Copy IP address',
+        'Copy capabilities',
+        'Manage tags…',
+        'Assign team…',
+        'Enter maintenance',
+      ]);
+    });
+
+    // The old Network row only ever showed a valid IPv4, never a MAC address.
+    it('offers Copy IP address only for a valid address', () => {
+      card({ ip: 'a4:83:e7:12:34:56' });
+      expect(menuItems()).not.toContain('Copy IP address');
+    });
   });
 });

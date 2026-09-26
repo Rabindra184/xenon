@@ -27,6 +27,11 @@ function formatHostUrl(raw?: string): string | null {
   }
 }
 
+/** The device's own IPv4 address, or null (never a MAC address or junk). */
+export function deviceNetworkIp(device: Pick<IDevice, 'ip'>): string | null {
+  return device.ip && isDeviceNetworkIp(device.ip) ? device.ip.trim() : null;
+}
+
 /** Prefer the device network IP; never show MAC addresses or loopback Xenon URLs. */
 export function formatDeviceNetworkAddress(device: Pick<IDevice, 'ip' | 'host'>): string {
   if (device.ip && isDeviceNetworkIp(device.ip)) return device.ip;

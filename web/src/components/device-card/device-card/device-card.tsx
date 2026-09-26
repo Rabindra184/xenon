@@ -8,19 +8,15 @@ import { Button } from '../../ui/button';
 import { Select } from '../../ui/select';
 import { Pill } from '../../ui/Pill';
 import { Popover } from '../../ui/Popover';
-import { Menu, MenuItem } from '../../ui/Menu';
+import { Menu, MenuDivider, MenuItem } from '../../ui/Menu';
 import ReservationModal from '../../reservation-modal/reservation-modal';
 import TagManagerModal from '../../tag-manager-modal/tag-manager-modal';
 import { HealthBadges } from '../health-badges';
 import { useToast } from '../../ui/toast';
 import { formatAppiumServerUrl, formatSessionCapabilitiesJson } from './sessionConnection';
+import { deviceNetworkIp } from './formatDeviceNetworkAddress';
 import './device-card.css';
-import {
-  activityLabel,
-  controlAvailability,
-  deviceState,
-  type DeviceState,
-} from './deviceState';
+import { activityLabel, controlAvailability, deviceState, type DeviceState } from './deviceState';
 import { deviceFormFactor, deviceSubtitle, deviceTitle } from './deviceIdentity';
 
 interface Props {
@@ -106,6 +102,8 @@ export const DeviceCard: React.FC<Props> = ({ device, reloadDevices, navigate, t
   const moreRef = React.useRef<HTMLButtonElement>(null);
   const { me } = useAuth();
   const { toast } = useToast();
+  // Tags, maintenance and teams are admin-only routes on the server.
+  const isAdmin = me?.role === 'ADMIN' || me?.role === 'SUPER_ADMIN';
 
   const now = Date.now();
   const kind = deviceState(device, now);
@@ -115,8 +113,11 @@ export const DeviceCard: React.FC<Props> = ({ device, reloadDevices, navigate, t
   const reasonId = `dc2-reason-${device.udid}`;
   const title = deviceTitle(device);
   const teamName = device.teamId
-    ? teams?.get(device.teamId) ?? device.teamName ?? `Team ${device.teamId.slice(0, 6)}`
+    ? (teams?.get(device.teamId) ?? device.teamName ?? `Team ${device.teamId.slice(0, 6)}`)
     : null;
+
+  const serverUrl = formatAppiumServerUrl(device.host);
+  const ip = deviceNetworkIp(device);
 
   const copyText = async (text: string, successMsg: string) => {
     try {
@@ -237,7 +238,39 @@ export const DeviceCard: React.FC<Props> = ({ device, reloadDevices, navigate, t
           <MoreHorizontal size={14} />
         </button>
         <Popover open={menuOpen} onClose={() => setMenuOpen(false)} anchorRef={moreRef}>
+          {/* The device's IDs and addresses live here, not on the card face. */}
           <Menu>
+            <MenuItem
+              icon={<Copy size={12} />}
+              onClick={() => {
+                setMenuOpen(false);
+                copyText(device.udid, 'UDID copied');
+              }}
+            >
+              Copy UDID
+            </MenuItem>
+            {serverUrl !== '—' && (
+              <MenuItem
+                icon={<Copy size={12} />}
+                onClick={() => {
+                  setMenuOpen(false);
+                  copyText(serverUrl, 'Server URL copied');
+                }}
+              >
+                Copy server URL
+              </MenuItem>
+            )}
+            {ip && (
+              <MenuItem
+                icon={<Copy size={12} />}
+                onClick={() => {
+                  setMenuOpen(false);
+                  copyText(ip, 'IP address copied');
+                }}
+              >
+                Copy IP address
+              </MenuItem>
+            )}
             <MenuItem
               icon={<Copy size={12} />}
               onClick={() => {
@@ -245,34 +278,37 @@ export const DeviceCard: React.FC<Props> = ({ device, reloadDevices, navigate, t
                 copyText(formatSessionCapabilitiesJson(device), 'Session capabilities copied');
               }}
             >
-              Copy caps…
+              Copy capabilities
             </MenuItem>
-            <MenuItem
-              onClick={() => {
-                setMenuOpen(false);
-                setShowTagManager(true);
-              }}
-            >
-              Manage tags…
-            </MenuItem>
-            {device.userBlocked ? (
-              <MenuItem
-                onClick={() => {
-                  setMenuOpen(false);
-                  unblock();
-                }}
-              >
-                Exit maintenance
-              </MenuItem>
-            ) : (
-              <MenuItem
-                onClick={() => {
-                  setMenuOpen(false);
-                  block();
-                }}
-              >
-                Enter maintenance
-              </MenuItem>
+            {isAdmin && (
+              <>
+                <MenuDivider />
+                <MenuItem
+                  onClick={() => {
+                    setMenuOpen(false);
+                    setShowTagManager(true);
+                  }}
+                >
+                  Manage tags…
+                </MenuItem>
+                <MenuItem
+                  onClick={() => {
+                    setMenuOpen(false);
+                    setEditingTeam(true);
+                  }}
+                >
+                  Assign team…
+                </MenuItem>
+                <MenuItem
+                  onClick={() => {
+                    setMenuOpen(false);
+                    if (device.userBlocked) unblock();
+                    else block();
+                  }}
+                >
+                  {device.userBlocked ? 'Exit maintenance' : 'Enter maintenance'}
+                </MenuItem>
+              </>
             )}
           </Menu>
         </Popover>
