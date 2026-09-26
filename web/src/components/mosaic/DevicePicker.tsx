@@ -5,6 +5,8 @@ import { platformLabel } from '../../lib/labels';
 export interface PickerDevice {
   udid: string;
   name?: string;
+  /** Another name the device goes by (its codename); matched by the filter. */
+  altName?: string;
   platform?: string;
   busy?: boolean;
   // Computed from device.session_id by the page; we only render the label here.
@@ -81,6 +83,7 @@ export function DevicePicker({ devices, inMosaic, onToggle, status = 'ready' }: 
       (d) =>
         d.udid.toLowerCase().includes(q) ||
         (d.name ?? '').toLowerCase().includes(q) ||
+        (d.altName ?? '').toLowerCase().includes(q) ||
         (d.platform ?? '').toLowerCase().includes(q),
     );
   }, [devices, filter]);
