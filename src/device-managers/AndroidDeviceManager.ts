@@ -26,6 +26,8 @@ import { DeviceUpdate } from '../types/DeviceUpdate';
 import Tracker from '@devicefarmer/adbkit/dist/src/adb/tracker';
 import { deviceLock } from './android/DeviceLockManager';
 import AndroidStreamService from './android/AndroidStreamService';
+import { ANDROID_IDENTITY_COMMAND, parseAndroidIdentity } from './android/androidIdentity';
+import { EMPTY_IDENTITY, type DeviceIdentity } from './deviceIdentity';
 interface ExtendedADB extends ADB {
   adbHost?: string;
   adbPort?: number;
@@ -222,6 +224,8 @@ export default class AndroidDeviceManager implements IDeviceManager {
       log.info(`Cannot get base device info for ${device.udid}. Skipping`);
       return undefined;
     }
+    // Optional: a device that can't say still registers, as before.
+    const identity = await this.getIdentity(adbInstance, device.udid, realDevice);
 
     let host;
     if (adbInstance.adbHost != null) {
@@ -249,6 +253,7 @@ export default class AndroidDeviceManager implements IDeviceManager {
       userBlocked: false,
       ip: sanitizeDeviceNetworkIp(await this.getDeviceIp(adbInstance, device.udid)),
       cpuArchitecture: await this.getCpuArchitecture(adbInstance, device.udid),
+      ...identity,
     };
   }
 
@@ -274,6 +279,23 @@ export default class AndroidDeviceManager implements IDeviceManager {
     } catch (e) {
       log.debug(`Failed to fetch IP for android device ${udid}: ${e}`);
       return '';
+    }
+  }
+
+  /** Name, model, maker and form factor. Never throws; all null on failure. */
+  private async getIdentity(
+    adbInstance: ExtendedADB,
+    udid: string,
+    realDevice: boolean,
+  ): Promise<DeviceIdentity> {
+    try {
+      const stdout = await deviceLock.acquire(udid, async () =>
+        adbInstance.adbExec(['-s', udid, 'shell', ANDROID_IDENTITY_COMMAND], { timeout: 5000 }),
+      );
+      return parseAndroidIdentity(stdout, { realDevice });
+    } catch (e) {
+      log.debug(`Failed to read identity for ${udid}: ${e}`);
+      return EMPTY_IDENTITY;
     }
   }
 

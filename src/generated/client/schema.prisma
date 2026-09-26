@@ -178,6 +178,10 @@ model Device {
   storageFree                  String?
   tags                         String?
   thermalStatus                String?
+  marketingName                String?
+  model                        String?
+  manufacturer                 String?
+  formFactor                   String?
   sessionProgress              String?  @default("")
   totalHealedCount             Int?     @default(0)
   ip                           String?  @default("")
