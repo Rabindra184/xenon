@@ -120,6 +120,16 @@ export type MosaicAction =
       compositeEnabled?: boolean;
     }
   | {
+      // A reload or navigation lost the page state while the server kept
+      // recording; pick the running group back up from GET /recordings/active.
+      type: 'REHYDRATE_RECORDING';
+      groupId: string;
+      startedAt: number;
+      tileIds: Record<string, string>;
+      compositeEnabled: boolean;
+      overlayAnnotations: Record<string, OverlayAnnotation[]>;
+    }
+  | {
       type: 'STOP_RECORDING';
       downloadableVideoCount?: number;
       compositeEnabled?: boolean;
@@ -208,6 +218,25 @@ export function mosaicReducer(state: MosaicState, action: MosaicAction): MosaicS
         annotateMode: true,
         startedAt: action.startedAt,
         overlayAnnotations: {},
+        tiles,
+      };
+    }
+    case 'REHYDRATE_RECORDING': {
+      const tiles = state.tiles.map((t) => ({
+        ...t,
+        recordingId: action.tileIds[t.udid] ?? t.recordingId,
+      }));
+      return {
+        ...state,
+        groupId: action.groupId,
+        compositeEnabled: action.compositeEnabled,
+        downloadableVideoCount: 0,
+        recordingPhase: 'recording',
+        recording: true,
+        // Land able to tap the device; Annotate is one click away.
+        annotateMode: false,
+        startedAt: action.startedAt,
+        overlayAnnotations: action.overlayAnnotations,
         tiles,
       };
     }

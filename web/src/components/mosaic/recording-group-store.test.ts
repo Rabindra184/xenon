@@ -122,3 +122,30 @@ describe('effectiveLayout', () => {
     expect(effectiveLayout('2x2', 1)).to.equal('2x2');
   });
 });
+
+describe('mosaicReducer — REHYDRATE_RECORDING', () => {
+  it('restores the running recording, its timer origin and its open marks', () => {
+    const base = mosaicReducer(initialMosaicState, { type: 'ADD_TILE', tile: tile('u1') });
+    const marks = {
+      'rec-1': [
+        { shape: 'RECT' as const, color: 'red', geometry: { x: 0.1, y: 0.1, w: 0.2, h: 0.2 } },
+      ],
+    };
+    const s = mosaicReducer(base, {
+      type: 'REHYDRATE_RECORDING',
+      groupId: 'g1',
+      startedAt: 5000,
+      tileIds: { u1: 'rec-1' },
+      compositeEnabled: false,
+      overlayAnnotations: marks,
+    });
+    expect(s.recording).to.equal(true);
+    expect(s.recordingPhase).to.equal('recording');
+    expect(s.groupId).to.equal('g1');
+    expect(s.startedAt).to.equal(5000);
+    expect(s.tiles[0].recordingId).to.equal('rec-1');
+    expect(s.overlayAnnotations).to.deep.equal(marks);
+    // A reload lands you able to tap the device; Annotate is one click away.
+    expect(s.annotateMode).to.equal(false);
+  });
+});

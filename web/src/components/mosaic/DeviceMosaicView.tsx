@@ -3,9 +3,11 @@ import { useEffect, useMemo, useState } from 'react';
 import {
   MosaicContext,
   useMosaicReducer,
+  type AnnotationShape,
   type MosaicAction,
   type MosaicState,
   type MosaicTile,
+  type OverlayAnnotation,
 } from './recording-group-store';
 import { DevicePicker, type PickerDevice } from './DevicePicker';
 import { LayoutSelector } from './LayoutSelector';
@@ -15,7 +17,12 @@ import { IdleWarningModal } from './IdleWarningModal';
 import XenonApiService from '../../api-service';
 import { isDeviceConflictBody } from '../../api-service/api-client';
 import { isRehydratableTile, isSelfManualLock } from './manual-lock';
-import { addAnnotation, addBookmark, clearAnnotations } from '../../api-service/recordings';
+import {
+  addAnnotation,
+  addBookmark,
+  clearAnnotations,
+  getActiveRecordings,
+} from '../../api-service/recordings';
 import { createWriteQueue } from './writeQueue';
 import { useIdleDetector } from '../../hooks/useIdleDetector';
 import { Tv } from 'lucide-react';
@@ -140,16 +147,31 @@ export default function DeviceMosaicView() {
     // Runs once, on the transition to a known identity.
     if (!myUserId || rehydratedRef.current) return;
     rehydratedRef.current = true;
+    // Use the same tile-builder as the click-to-add path so platform/aspect/
+    // screen dimensions are consistent regardless of how the tile entered.
+    const tileFor = (d: DeviceRow): MosaicTile => {
+      const sw = Number(d.screenWidth);
+      const sh = Number(d.screenHeight);
+      return {
+        udid: d.udid,
+        name: d.name,
+        mjpegPort: 0,
+        aspect: tileAspect(d),
+        screenWidth: Number.isFinite(sw) && sw > 0 ? sw : undefined,
+        screenHeight: Number.isFinite(sh) && sh > 0 ? sh : undefined,
+        platform: d.platform,
+      };
+    };
     (async () => {
+      let list: DeviceRow[] = [];
+      let tiles: MosaicTile[] = [];
       try {
-        const list: DeviceRow[] = await XenonApiService.getDevices();
+        const rows = await XenonApiService.getDevices();
+        list = Array.isArray(rows) ? rows : [];
         // Only re-adopt devices *I* hold. Matching any `manual_` lock meant a
         // second user's mosaic silently adopted a device the first user was
         // streaming, × button and all.
-        const candidates = (Array.isArray(list) ? list : []).filter((d) =>
-          isRehydratableTile(d, myUserId),
-        );
-        if (candidates.length === 0) return;
+        const candidates = list.filter((d) => isRehydratableTile(d, myUserId));
         const checks = await Promise.all(
           candidates.map(async (d) => {
             try {
@@ -164,26 +186,53 @@ export default function DeviceMosaicView() {
             }
           }),
         );
-        const active = checks.filter((d): d is DeviceRow => d !== null);
-        if (cancelled || active.length === 0) return;
-        // Use the same tile-builder as the click-to-add path so platform/aspect/
-        // screen dimensions are consistent regardless of how the tile entered.
-        const tiles: MosaicTile[] = active.map((d) => {
-          const sw = Number(d.screenWidth);
-          const sh = Number(d.screenHeight);
-          return {
-            udid: d.udid,
-            name: d.name,
-            mjpegPort: 0,
-            aspect: tileAspect(d),
-            screenWidth: Number.isFinite(sw) && sw > 0 ? sw : undefined,
-            screenHeight: Number.isFinite(sh) && sh > 0 ? sh : undefined,
-            platform: d.platform,
-          };
-        });
-        dispatch({ type: 'SET_TILES', tiles });
+        tiles = checks.filter((d): d is DeviceRow => d !== null).map(tileFor);
+        if (cancelled) return;
+        if (tiles.length > 0) dispatch({ type: 'SET_TILES', tiles });
       } catch {
         /* swallow — rehydration is best-effort */
+      }
+      // A running recording outlives the page. Without picking it back up, a
+      // reload left it recording with no Stop button, and Record started a
+      // second capture of the same device.
+      try {
+        const { serverNow, groups } = await getActiveRecordings();
+        const g = groups[0];
+        if (cancelled || !g) return;
+        const known = new Set(tiles.map((t) => t.udid));
+        const missing = g.recordings
+          .filter((r) => !known.has(r.udid))
+          .map((r) => list.find((d) => d.udid === r.udid))
+          .filter((d): d is DeviceRow => !!d)
+          .map(tileFor);
+        if (missing.length > 0) dispatch({ type: 'SET_TILES', tiles: [...tiles, ...missing] });
+        const overlayAnnotations: Record<string, OverlayAnnotation[]> = {};
+        for (const a of g.annotations) {
+          let geometry: OverlayAnnotation['geometry'];
+          try {
+            geometry = JSON.parse(a.geometry);
+          } catch {
+            continue;
+          }
+          (overlayAnnotations[a.recordingId] ??= []).push({
+            shape: a.shape as AnnotationShape,
+            color: a.color,
+            geometry,
+            text: a.text ?? undefined,
+          });
+        }
+        dispatch({
+          type: 'REHYDRATE_RECORDING',
+          groupId: g.groupId,
+          // Rebase onto this browser's clock, so skew between client and
+          // server cannot shift new marks' timecodes.
+          startedAt: Date.now() - (serverNow - Date.parse(g.startedAt)),
+          tileIds: Object.fromEntries(g.recordings.map((r) => [r.udid, r.id])),
+          compositeEnabled: g.compositeEnabled,
+          overlayAnnotations,
+        });
+      } catch {
+        /* best-effort: the recording can still be stopped server-side */
       }
     })();
     return () => {
