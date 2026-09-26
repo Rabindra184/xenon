@@ -378,6 +378,68 @@
     scrollbar-color: var(--border) transparent;
 }
 
+/* ===== Tree | divider | details ===== */
+.omni-split {
+    flex: 1;
+    display: flex;
+    min-width: 0;
+    min-height: 0;
+}
+
+.omni-split > .omni-tree-panel {
+    flex: 0 0 auto;
+    min-width: 0;
+}
+
+.omni-split > .omni-details-panel {
+    flex: 1 1 0;
+    min-width: 0;
+    max-width: none;
+}
+
+.omni-split-divider {
+    position: relative;
+    flex: 0 0 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: col-resize;
+    touch-action: none;
+    outline: none;
+}
+
+.omni-split-divider::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 5px;
+    width: 2px;
+    background: transparent;
+}
+
+.omni-split-divider:hover::before,
+.omni-split-divider.is-dragging::before {
+    background: var(--border-strong);
+}
+
+.omni-split-divider:focus-visible::before {
+    background: var(--color-focus-ring);
+}
+
+.omni-split-divider__grip {
+    position: relative;
+    width: 4px;
+    height: 28px;
+    border-radius: 2px;
+    background: var(--border-strong);
+}
+
+.omni-split-divider:hover .omni-split-divider__grip,
+.omni-split-divider.is-dragging .omni-split-divider__grip {
+    background: var(--text-muted);
+}
+
 .omni-header-left {
     display: flex;
     align-items: center;
@@ -955,17 +1017,6 @@
 .omni-inspector-container.omni-embedded .omni-main-content {
     padding: 0;
     gap: 12px;
-}
-
-.omni-inspector-container.omni-embedded .omni-tree-panel {
-    flex: 1 1 50%;
-    min-width: 180px;
-}
-
-.omni-inspector-container.omni-embedded .omni-details-panel {
-    flex: 1 1 50%;
-    min-width: 230px;
-    max-width: none;
 }
 
 /* ===================================================

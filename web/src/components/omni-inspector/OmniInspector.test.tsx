@@ -234,3 +234,33 @@ describe('OmniInspector — tree', () => {
     expect(await screen.findByText('No element selected')).toBeInTheDocument();
   });
 });
+
+describe('OmniInspector — divider', () => {
+  beforeEach(() => localStorage.removeItem('xenon.omni.split'));
+
+  it('resizes the tree from the keyboard, remembers it, and resets on double-click', async () => {
+    render(<OmniInspector udid="U1" embedded />);
+    await screen.findByRole('tree');
+    const sep = screen.getByRole('separator', { name: 'Resize element tree' });
+    expect(sep).toHaveAttribute('aria-valuenow', '40');
+    fireEvent.keyDown(sep, { key: 'ArrowRight' });
+    expect(sep).toHaveAttribute('aria-valuenow', '42');
+    fireEvent.keyDown(sep, { key: 'ArrowLeft' });
+    fireEvent.keyDown(sep, { key: 'ArrowLeft' });
+    expect(sep).toHaveAttribute('aria-valuenow', '38');
+    expect(localStorage.getItem('xenon.omni.split')).toBe('0.38');
+    fireEvent.keyDown(sep, { key: 'End' });
+    expect(sep).toHaveAttribute('aria-valuenow', sep.getAttribute('aria-valuemax')!);
+    fireEvent.keyDown(sep, { key: 'Home' });
+    expect(sep).toHaveAttribute('aria-valuenow', sep.getAttribute('aria-valuemin')!);
+    fireEvent.doubleClick(sep);
+    expect(sep).toHaveAttribute('aria-valuenow', '40');
+  });
+
+  it('starts from the remembered share', async () => {
+    localStorage.setItem('xenon.omni.split', '0.5');
+    render(<OmniInspector udid="U1" embedded />);
+    await screen.findByRole('tree');
+    expect(screen.getByRole('separator')).toHaveAttribute('aria-valuenow', '50');
+  });
+});

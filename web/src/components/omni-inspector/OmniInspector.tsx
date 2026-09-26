@@ -37,6 +37,16 @@ import { Select } from '../ui/select';
 import { analyzeElement, ROLE_ICON, type RoleKey } from './elementRole';
 import { initialExpanded, matchSet, pathTo, visibleRows } from './treeRows';
 import ElementTree from './ElementTree';
+import SplitDivider from './SplitDivider';
+import {
+  browserStorage,
+  clampSplit,
+  DEFAULT_SPLIT,
+  DIVIDER_PX,
+  loadSplit,
+  saveSplit,
+  splitLimits,
+} from './splitPane';
 
 export interface LocatorSuggestion {
   strategy: string;
@@ -345,6 +355,27 @@ const OmniInspector: React.FC<OmniInspectorProps> = ({
   const imgRef = useRef<HTMLImageElement>(null);
   const streamRef = useRef<HTMLImageElement>(null);
   const handleMouseDownRef = useRef<{ x: number; y: number; time: number } | null>(null);
+
+  // The tree's share of the tree+details row. `split` is the raw stored/dragged
+  // value; `splitShown` is it clamped to what the row's current width allows —
+  // jsdom has no layout, so `splitWidth` stays 0 there and nothing is clamped.
+  const splitRef = useRef<HTMLDivElement>(null);
+  const [split, setSplit] = useState(() => loadSplit(browserStorage()));
+  const [splitWidth, setSplitWidth] = useState(0);
+  useEffect(() => {
+    const el = splitRef.current;
+    if (!el || typeof ResizeObserver === 'undefined') return;
+    const ro = new ResizeObserver(([entry]) =>
+      setSplitWidth(Math.max(0, entry.contentRect.width - DIVIDER_PX)),
+    );
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+  const splitShown = clampSplit(split, splitWidth);
+  const commitSplit = (s: number) => {
+    setSplit(s);
+    saveSplit(browserStorage(), s);
+  };
 
   const updateCanvasDimensions = useCallback(() => {
     if (!containerRef.current) return;
@@ -904,664 +935,687 @@ const OmniInspector: React.FC<OmniInspectorProps> = ({
 
         {/* In embedded mode, expose a refresh button on the tree header instead. */}
 
-        {/* ===== Center Panel: Source Tree ===== */}
-        <div className="omni-tree-panel">
-          <div className="omni-tree-header">
-            <div className="omni-tree-title">
-              <Layers size={14} />
-              <span>Source</span>
+        {/* ===== Tree | divider | details ===== */}
+        <div className="omni-split" ref={splitRef}>
+          {/* ===== Center Panel: Source Tree ===== */}
+          <div
+            className="omni-tree-panel"
+            style={{ flexBasis: `calc(${splitShown * 100}% - ${splitShown * DIVIDER_PX}px)` }}
+          >
+            <div className="omni-tree-header">
+              <div className="omni-tree-title">
+                <Layers size={14} />
+                <span>Source</span>
+              </div>
+              <div className="omni-tree-actions">
+                <button
+                  onClick={expandAll}
+                  className="omni-action-btn"
+                  title="Expand all"
+                  aria-label="Expand all"
+                >
+                  <ChevronsUpDown size={12} />
+                </button>
+                <button
+                  onClick={collapseAll}
+                  className="omni-action-btn"
+                  title="Collapse all"
+                  aria-label="Collapse all"
+                >
+                  <ChevronsDownUp size={12} />
+                </button>
+                {/* The Inspect/Interact toggle lives in the preview panel, which
+                    embedded mode hides — so embedded had no way to reach either
+                    mode. Surfaced here instead, beside the refresh it already
+                    relocates. Inspect makes the host canvas select elements;
+                    Interact hands clicks back to the device. */}
+                {embedded && (
+                  <>
+                    <button
+                      onClick={() =>
+                        setInspectorMode(inspectorMode === 'inspect' ? 'interact' : 'inspect')
+                      }
+                      className={`omni-action-btn ${inspectorMode === 'inspect' ? 'active' : ''}`}
+                      title={
+                        inspectorMode === 'inspect'
+                          ? 'Inspect mode — click the device to select an element'
+                          : 'Interact mode — clicks control the device'
+                      }
+                      aria-label={inspectorMode === 'inspect' ? 'Inspect mode' : 'Interact mode'}
+                      aria-pressed={inspectorMode === 'inspect'}
+                    >
+                      {inspectorMode === 'inspect' ? (
+                        <MousePointer2 size={12} />
+                      ) : (
+                        <Touchpad size={12} />
+                      )}
+                    </button>
+                    <button
+                      onClick={loadSnapshot}
+                      className="omni-action-btn"
+                      title={loading ? 'Capturing…' : 'Refresh snapshot'}
+                      aria-label="Refresh snapshot"
+                      disabled={loading}
+                    >
+                      <RotateCw size={12} className={loading ? 'animate-spin' : ''} />
+                    </button>
+                  </>
+                )}
+              </div>
             </div>
-            <div className="omni-tree-actions">
-              <button
-                onClick={expandAll}
-                className="omni-action-btn"
-                title="Expand all"
-                aria-label="Expand all"
-              >
-                <ChevronsUpDown size={12} />
-              </button>
-              <button
-                onClick={collapseAll}
-                className="omni-action-btn"
-                title="Collapse all"
-                aria-label="Collapse all"
-              >
-                <ChevronsDownUp size={12} />
-              </button>
-              {/* The Inspect/Interact toggle lives in the preview panel, which
-                  embedded mode hides — so embedded had no way to reach either
-                  mode. Surfaced here instead, beside the refresh it already
-                  relocates. Inspect makes the host canvas select elements;
-                  Interact hands clicks back to the device. */}
-              {embedded && (
-                <>
-                  <button
-                    onClick={() =>
-                      setInspectorMode(inspectorMode === 'inspect' ? 'interact' : 'inspect')
-                    }
-                    className={`omni-action-btn ${inspectorMode === 'inspect' ? 'active' : ''}`}
-                    title={
-                      inspectorMode === 'inspect'
-                        ? 'Inspect mode — click the device to select an element'
-                        : 'Interact mode — clicks control the device'
-                    }
-                    aria-label={inspectorMode === 'inspect' ? 'Inspect mode' : 'Interact mode'}
-                    aria-pressed={inspectorMode === 'inspect'}
-                  >
-                    {inspectorMode === 'inspect' ? (
-                      <MousePointer2 size={12} />
-                    ) : (
-                      <Touchpad size={12} />
-                    )}
+            {/* A snapshot that failed used to leave an empty panel and no reason.
+                The commonest cause is actionable — the device is asleep, or the
+                hierarchy could not be read — so it has to be said out loud. */}
+            {error && !loading && (
+              <div className="omni-tree-error" role="alert">
+                <ShieldAlert size={12} />
+                <span>{error}</span>
+                <button type="button" onClick={loadSnapshot} className="omni-tree-error-retry">
+                  Retry
+                </button>
+              </div>
+            )}
+            {/* The tree, highlights and locators describe the screen at capture
+                time. After any input to the device they may not, and nothing
+                used to say so: highlights pointed confidently at the old screen. */}
+            {snapshot &&
+              !loading &&
+              !error &&
+              (stale ? (
+                <div className="omni-capture-meta is-stale" role="status">
+                  <AlertTriangle size={12} aria-hidden="true" />
+                  <span>The screen may have changed since this capture.</span>
+                  <button type="button" onClick={loadSnapshot} className="omni-capture-refresh">
+                    Refresh
                   </button>
-                  <button
-                    onClick={loadSnapshot}
-                    className="omni-action-btn"
-                    title={loading ? 'Capturing…' : 'Refresh snapshot'}
-                    aria-label="Refresh snapshot"
-                    disabled={loading}
-                  >
-                    <RotateCw size={12} className={loading ? 'animate-spin' : ''} />
-                  </button>
-                </>
+                </div>
+              ) : (
+                <div className="omni-capture-meta">
+                  <span>
+                    {totalElements} {totalElements === 1 ? 'element' : 'elements'}
+                  </span>
+                  {/* Which tree this is decides how much the locator suggestions
+                      are worth: one taken from the driver is the tree Appium will
+                      resolve them against, one taken from the device only
+                      resembles it. */}
+                  {snapshot.hierarchySource && (
+                    <>
+                      <span aria-hidden="true">·</span>
+                      <span
+                        className="omni-capture-source"
+                        title={
+                          snapshot.hierarchySource === 'appium-session'
+                            ? `From Appium session ${snapshot.sessionId} — the same tree the driver resolves locators against`
+                            : 'Read from the device. No Appium session is driving it.'
+                        }
+                      >
+                        {snapshot.hierarchySource === 'appium-session' ? 'Session' : 'Device'}
+                      </span>
+                    </>
+                  )}
+                  <span aria-hidden="true">·</span>
+                  <span>{captureAge(capturedAt, now)}</span>
+                </div>
+              ))}
+            <div className="omni-tree-search">
+              <Search size={14} />
+              <input
+                type="text"
+                placeholder="Search elements"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                aria-label="Search elements"
+              />
+              {searchQuery && (
+                <button
+                  onClick={() => setSearchQuery('')}
+                  className="omni-clear-btn"
+                  aria-label="Clear search"
+                >
+                  ×
+                </button>
+              )}
+            </div>
+            {searchQuery.trim() && (
+              <div className="omni-search-hint" role="status">
+                {matches.size === 0
+                  ? 'No matches'
+                  : matches.size === 1
+                    ? '1 match'
+                    : `${matches.size} matches`}{' '}
+                · try a role: button, input, image
+              </div>
+            )}
+            <div className="omni-tree-content">
+              {snapshot?.hierarchy ? (
+                <ElementTree
+                  rows={rows}
+                  selectedXpath={selectedNode?.xpath ?? null}
+                  hoveredXpath={hoveredNode?.xpath ?? null}
+                  matches={matches}
+                  onToggle={toggleExpand}
+                  onSelect={selectNode}
+                  onHover={setHoveredNode}
+                />
+              ) : (
+                <div className="omni-empty-state small">
+                  <span>No hierarchy loaded</span>
+                </div>
               )}
             </div>
           </div>
-          {/* A snapshot that failed used to leave an empty panel and no reason.
-              The commonest cause is actionable — the device is asleep, or the
-              hierarchy could not be read — so it has to be said out loud. */}
-          {error && !loading && (
-            <div className="omni-tree-error" role="alert">
-              <ShieldAlert size={12} />
-              <span>{error}</span>
-              <button type="button" onClick={loadSnapshot} className="omni-tree-error-retry">
-                Retry
-              </button>
-            </div>
-          )}
-          {/* The tree, highlights and locators describe the screen at capture
-              time. After any input to the device they may not, and nothing
-              used to say so: highlights pointed confidently at the old screen. */}
-          {snapshot &&
-            !loading &&
-            !error &&
-            (stale ? (
-              <div className="omni-capture-meta is-stale" role="status">
-                <AlertTriangle size={12} aria-hidden="true" />
-                <span>The screen may have changed since this capture.</span>
-                <button type="button" onClick={loadSnapshot} className="omni-capture-refresh">
-                  Refresh
-                </button>
-              </div>
-            ) : (
-              <div className="omni-capture-meta">
-                <span>
-                  {totalElements} {totalElements === 1 ? 'element' : 'elements'}
-                </span>
-                {/* Which tree this is decides how much the locator suggestions
-                    are worth: one taken from the driver is the tree Appium will
-                    resolve them against, one taken from the device only
-                    resembles it. */}
-                {snapshot.hierarchySource && (
-                  <>
-                    <span aria-hidden="true">·</span>
-                    <span
-                      className="omni-capture-source"
-                      title={
-                        snapshot.hierarchySource === 'appium-session'
-                          ? `From Appium session ${snapshot.sessionId} — the same tree the driver resolves locators against`
-                          : 'Read from the device. No Appium session is driving it.'
-                      }
-                    >
-                      {snapshot.hierarchySource === 'appium-session' ? 'Session' : 'Device'}
-                    </span>
-                  </>
-                )}
-                <span aria-hidden="true">·</span>
-                <span>{captureAge(capturedAt, now)}</span>
-              </div>
-            ))}
-          <div className="omni-tree-search">
-            <Search size={14} />
-            <input
-              type="text"
-              placeholder="Search elements"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              aria-label="Search elements"
-            />
-            {searchQuery && (
+
+          <SplitDivider
+            share={splitShown}
+            limits={splitLimits(splitWidth)}
+            containerRef={splitRef}
+            onChange={setSplit}
+            onCommit={commitSplit}
+            onReset={() => commitSplit(DEFAULT_SPLIT)}
+          />
+
+          {/* ===== Right panel: details ===== */}
+          <div className="omni-details-panel">
+            {/* Tab header */}
+            <div className="omni-details-tabs" role="tablist">
               <button
-                onClick={() => setSearchQuery('')}
-                className="omni-clear-btn"
-                aria-label="Clear search"
+                className={`omni-details-tab ${activeTab === 'info' ? 'active' : ''}`}
+                onClick={() => setActiveTab('info')}
+                role="tab"
+                aria-selected={activeTab === 'info'}
               >
-                ×
+                <MapPin size={12} /> <span>Info</span>
               </button>
-            )}
-          </div>
-          {searchQuery.trim() && (
-            <div className="omni-search-hint" role="status">
-              {matches.size === 0
-                ? 'No matches'
-                : matches.size === 1
-                  ? '1 match'
-                  : `${matches.size} matches`}{' '}
-              · try a role: button, input, image
+              <button
+                className={`omni-details-tab ${activeTab === 'checks' ? 'active' : ''}`}
+                onClick={() => setActiveTab('checks')}
+                disabled={!selectedNode}
+                title="Checks for this element"
+                aria-label="Checks"
+                role="tab"
+                aria-selected={activeTab === 'checks'}
+              >
+                <ListChecks size={12} /> <span>Checks</span>
+              </button>
+              <button
+                className={`omni-details-tab ${activeTab === 'code' ? 'active' : ''}`}
+                onClick={() => setActiveTab('code')}
+                disabled={!selectedNode}
+                title="Generate test code"
+                aria-label="Code gen"
+                role="tab"
+                aria-selected={activeTab === 'code'}
+              >
+                <Code2 size={12} /> <span>Code gen</span>
+              </button>
             </div>
-          )}
-          <div className="omni-tree-content">
-            {snapshot?.hierarchy ? (
-              <ElementTree
-                rows={rows}
-                selectedXpath={selectedNode?.xpath ?? null}
-                hoveredXpath={hoveredNode?.xpath ?? null}
-                matches={matches}
-                onToggle={toggleExpand}
-                onSelect={selectNode}
-                onHover={setHoveredNode}
-              />
-            ) : (
-              <div className="omni-empty-state small">
-                <span>No hierarchy loaded</span>
-              </div>
-            )}
-          </div>
-        </div>
 
-        {/* ===== Right panel: details ===== */}
-        <div className="omni-details-panel">
-          {/* Tab header */}
-          <div className="omni-details-tabs" role="tablist">
-            <button
-              className={`omni-details-tab ${activeTab === 'info' ? 'active' : ''}`}
-              onClick={() => setActiveTab('info')}
-              role="tab"
-              aria-selected={activeTab === 'info'}
-            >
-              <MapPin size={12} /> <span>Info</span>
-            </button>
-            <button
-              className={`omni-details-tab ${activeTab === 'checks' ? 'active' : ''}`}
-              onClick={() => setActiveTab('checks')}
-              disabled={!selectedNode}
-              title="Checks for this element"
-              aria-label="Checks"
-              role="tab"
-              aria-selected={activeTab === 'checks'}
-            >
-              <ListChecks size={12} /> <span>Checks</span>
-            </button>
-            <button
-              className={`omni-details-tab ${activeTab === 'code' ? 'active' : ''}`}
-              onClick={() => setActiveTab('code')}
-              disabled={!selectedNode}
-              title="Generate test code"
-              aria-label="Code gen"
-              role="tab"
-              aria-selected={activeTab === 'code'}
-            >
-              <Code2 size={12} /> <span>Code gen</span>
-            </button>
-          </div>
-
-          <div className="omni-details-content">
-            {!selectedNode ? (
-              snapshot?.hierarchy ? (
-                <div className="omni-summary-panel">
-                  <div className="omni-summary-hero">
-                    <Target size={28} />
-                    <div>
-                      <div className="omni-summary-title">No element selected</div>
-                      <div className="omni-summary-subtitle">
-                        Click any node in the tree (or use Inspect mode on the device) to drill in.
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="omni-section">
-                    <div className="omni-section-header">Snapshot stats</div>
-                    <div className="omni-summary-stats">
-                      <div className="omni-summary-stat">
-                        <span className="omni-summary-stat__label">Elements</span>
-                        <span className="omni-summary-stat__value">{totalElements}</span>
-                      </div>
-                      <div className="omni-summary-stat">
-                        <span className="omni-summary-stat__label">Width</span>
-                        <span className="omni-summary-stat__value">
-                          {snapshot.metadata?.screenWidth ?? naturalDimensions.width ?? '—'}
-                        </span>
-                      </div>
-                      <div className="omni-summary-stat">
-                        <span className="omni-summary-stat__label">Height</span>
-                        <span className="omni-summary-stat__value">
-                          {snapshot.metadata?.screenHeight ?? naturalDimensions.height ?? '—'}
-                        </span>
-                      </div>
-                      <div className="omni-summary-stat">
-                        <span className="omni-summary-stat__label">Platform</span>
-                        <span className="omni-summary-stat__value">
-                          {snapshot.platform || '—'}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-
-                  {roleSummary.length > 0 && (
-                    <div className="omni-section">
-                      <div className="omni-section-header">By role</div>
-                      <div className="omni-summary-roles">
-                        {roleSummary.slice(0, 8).map((r) => (
-                          <div key={r.role} className="omni-summary-role">
-                            <span className="omni-summary-role__icon" aria-hidden="true">
-                              {ROLE_ICON[r.key]}
-                            </span>
-                            <span className="omni-summary-role__name">{r.role}</span>
-                            <span className="omni-summary-role__count">{r.count}</span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              ) : (
-                <div className="omni-empty-state">
-                  <Target size={32} />
-                  <span>
-                    {loading ? 'Capturing snapshot…' : 'Select an element from the tree or screenshot'}
-                  </span>
-                </div>
-              )
-            ) : (
-              <>
-                {/* === TAB: INFO === */}
-                {activeTab === 'info' && (
-                  <>
-                    <div className="omni-section">
-                      <div className="omni-section-header">Element info</div>
-                      <div className="omni-info-table">
-                        <div className="omni-info-row">
-                          <span className="omni-info-key">Type</span>
-                          <span className="omni-info-value mono">{selectedNode.type}</span>
+            <div className="omni-details-content">
+              {!selectedNode ? (
+                snapshot?.hierarchy ? (
+                  <div className="omni-summary-panel">
+                    <div className="omni-summary-hero">
+                      <Target size={28} />
+                      <div>
+                        <div className="omni-summary-title">No element selected</div>
+                        <div className="omni-summary-subtitle">
+                          Click any node in the tree (or use Inspect mode on the device) to drill in.
                         </div>
-                        {selectedNode.text && (
-                          <div className="omni-info-row">
-                            <span className="omni-info-key">Text</span>
-                            <span className="omni-info-value">{selectedNode.text}</span>
-                          </div>
-                        )}
-                        <div className="omni-info-row">
-                          <span className="omni-info-key">Path</span>
-                          <span className="omni-info-value mono small">
-                            {getElementPath(selectedNode).join(' › ')}
+                      </div>
+                    </div>
+
+                    <div className="omni-section">
+                      <div className="omni-section-header">Snapshot stats</div>
+                      <div className="omni-summary-stats">
+                        <div className="omni-summary-stat">
+                          <span className="omni-summary-stat__label">Elements</span>
+                          <span className="omni-summary-stat__value">{totalElements}</span>
+                        </div>
+                        <div className="omni-summary-stat">
+                          <span className="omni-summary-stat__label">Width</span>
+                          <span className="omni-summary-stat__value">
+                            {snapshot.metadata?.screenWidth ?? naturalDimensions.width ?? '—'}
+                          </span>
+                        </div>
+                        <div className="omni-summary-stat">
+                          <span className="omni-summary-stat__label">Height</span>
+                          <span className="omni-summary-stat__value">
+                            {snapshot.metadata?.screenHeight ?? naturalDimensions.height ?? '—'}
+                          </span>
+                        </div>
+                        <div className="omni-summary-stat">
+                          <span className="omni-summary-stat__label">Platform</span>
+                          <span className="omni-summary-stat__value">
+                            {snapshot.platform || '—'}
                           </span>
                         </div>
                       </div>
                     </div>
 
-                    <div className="omni-section">
-                      <div className="omni-section-header">Layout</div>
-                      <div className="omni-layout-grid">
-                        {['x', 'y', 'width', 'height'].map((k) => (
-                          <div className="omni-layout-item" key={k}>
-                            <span className="omni-layout-label">{k.toUpperCase()}</span>
-                            <span className="omni-layout-value">
-                              {(selectedNode.rect as any)[k]}
-                            </span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-
-                    <div className="omni-section">
-                      <div className="omni-section-header">
-                        Locators
-                        <span className="omni-section-badge">Stability scored</span>
-                      </div>
-                      <div className="omni-locators-list">
-                        {/* Only the document root reaches this — every real
-                            element gets at least the positional xpath. An
-                            empty list under a "Stability Scored" header reads
-                            as a bug, so it says which case this is. */}
-                        {!selectedNode.suggestedLocators?.length && (
-                          <div className="omni-locators-empty">
-                            {selectedNode === snapshot?.hierarchy
-                              ? 'This is the XML document root, not a UI element — no Appium locator can select it. Pick a node beneath it.'
-                              : 'No locator could be derived for this node.'}
-                          </div>
-                        )}
-                        {selectedNode.suggestedLocators?.map((loc) => {
-                          const stability = scoreLocatorStability(loc.strategy, loc.value);
-                          const cfg = stabilityLevelConfig[stability.level];
-                          const test = locatorTests[loc.strategy];
-                          let matchBadge: React.ReactNode = null;
-                          if (test) {
-                            if (test.kind === 'unsupported') {
-                              matchBadge = (
-                                <span
-                                  className="omni-match-badge unsupported"
-                                  title={test.reason || 'Cannot evaluate without a real driver'}
-                                >
-                                  <HelpCircle size={10} /> preview unavailable
-                                </span>
-                              );
-                            } else if (test.nodes.length === 0) {
-                              matchBadge = (
-                                <span className="omni-match-badge zero" title="No element matches this selector in the current snapshot">
-                                  <ShieldAlert size={10} /> 0 matches
-                                </span>
-                              );
-                            } else if (test.nodes.length === 1) {
-                              matchBadge = (
-                                <span className="omni-match-badge unique" title="Selector is unique in the current snapshot">
-                                  <ShieldCheck size={10} /> unique
-                                </span>
-                              );
-                            } else {
-                              matchBadge = (
-                                <span
-                                  className="omni-match-badge multi"
-                                  title={`${test.nodes.length} elements match — selector is not unique`}
-                                >
-                                  <AlertTriangle size={10} /> {test.nodes.length} matches
-                                </span>
-                              );
-                            }
-                          }
-                          return (
-                            <div
-                              key={loc.strategy}
-                              className={`omni-locator-row ${selectedLocatorForCode?.strategy === loc.strategy ? 'selected-for-code' : ''}`}
-                              onClick={() => setSelectedLocatorForCode(loc)}
-                              title="Click to use in Code gen"
-                            >
-                              <div className="omni-locator-left">
-                                <div className="omni-locator-top">
-                                  <span className="omni-locator-strategy">{loc.strategy}</span>
-                                  <span
-                                    className={`omni-stability-badge ${cfg.cls}`}
-                                    title={stability.reason}
-                                  >
-                                    {cfg.icon}
-                                    {stability.level}
-                                  </span>
-                                  {matchBadge}
-                                </div>
-                                <code className="omni-locator-value">{loc.value}</code>
-                                <span className="omni-stability-reason">{stability.reason}</span>
-                                {(() => {
-                                  const v = verifyResults[loc.strategy];
-                                  if (!v) return null;
-                                  // Four outcomes, kept distinct because they
-                                  // lead to different fixes: driver error,
-                                  // no match, ambiguous, and found (with or
-                                  // without a failed action).
-                                  if (v.error) {
-                                    return (
-                                      <span className="omni-verify-line is-error">
-                                        <ShieldAlert size={10} /> Appium error: {v.error}
-                                      </span>
-                                    );
-                                  }
-                                  if (!v.found) {
-                                    return (
-                                      <span className="omni-verify-line is-error">
-                                        <ShieldAlert size={10} /> Appium found 0 elements
-                                      </span>
-                                    );
-                                  }
-                                  if (v.count > 1) {
-                                    return (
-                                      <span className="omni-verify-line is-warn">
-                                        <AlertTriangle size={10} /> Ambiguous — Appium found{' '}
-                                        {v.count} elements
-                                        {v.actionError ? ` · ${v.actionError}` : ''}
-                                      </span>
-                                    );
-                                  }
-                                  return (
-                                    <span className="omni-verify-line is-ok">
-                                      <ShieldCheck size={10} /> Appium found 1 element
-                                      {v.elapsedMs != null ? ` in ${v.elapsedMs}ms` : ''}
-                                      {v.actionPerformed && v.actionPerformed !== 'none'
-                                        ? ` · ${v.actionPerformed} ok`
-                                        : ''}
-                                      {v.actionError ? ` · action failed: ${v.actionError}` : ''}
-                                    </span>
-                                  );
-                                })()}
-                              </div>
-                              <div className="omni-locator-actions">
-                                <button
-                                  type="button"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    runLocatorTest(loc.strategy, loc.value);
-                                  }}
-                                  className={`omni-test-btn ${activeLocatorTest === loc.strategy ? 'active' : ''}`}
-                                  title="Test this locator against the current snapshot"
-                                  aria-label="Test locator"
-                                >
-                                  <Crosshair size={12} />
-                                </button>
-                                {/* Verification through the real driver, as
-                                    opposed to the snapshot match above. Needs a
-                                    session — disabled with the reason rather
-                                    than hidden, so the capability is
-                                    discoverable and its precondition is
-                                    stated. */}
-                                <button
-                                  type="button"
-                                  disabled={!appiumSession?.sessionId || verifying === loc.strategy}
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    runVerify(loc.strategy, loc.value, 'none');
-                                  }}
-                                  className="omni-test-btn"
-                                  title={
-                                    appiumSession?.sessionId
-                                      ? 'Verify with Appium — does the driver actually find this?'
-                                      : 'Needs an active Appium session on this device'
-                                  }
-                                  aria-label="Verify with Appium"
-                                >
-                                  {verifying === loc.strategy ? (
-                                    <RotateCw size={12} className="animate-spin" />
-                                  ) : (
-                                    <ShieldCheck size={12} />
-                                  )}
-                                </button>
-                                <button
-                                  type="button"
-                                  disabled={!appiumSession?.sessionId || verifying === loc.strategy}
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    runVerify(loc.strategy, loc.value, 'tap');
-                                  }}
-                                  className="omni-test-btn"
-                                  title={
-                                    appiumSession?.sessionId
-                                      ? 'Find with Appium and tap the element it returns'
-                                      : 'Needs an active Appium session on this device'
-                                  }
-                                  aria-label="Find and tap with Appium"
-                                >
-                                  <Zap size={12} />
-                                </button>
-                                <button
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    copyToClipboard(loc.value, loc.strategy);
-                                  }}
-                                  className={`omni-copy-btn ${copiedLocator === loc.strategy ? 'copied' : ''}`}
-                                  title="Copy locator"
-                                  aria-label={
-                                    copiedLocator === loc.strategy ? 'Copied' : 'Copy locator'
-                                  }
-                                >
-                                  {copiedLocator === loc.strategy ? (
-                                    <Check size={12} />
-                                  ) : (
-                                    <Copy size={12} />
-                                  )}
-                                </button>
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </div>
-
-                    <div className="omni-section">
-                      <div className="omni-section-header">Attributes</div>
-                      <div className="omni-attributes-table">
-                        {Object.entries(selectedNode.attributes || {})
-                          .filter(([_, v]) => v != null && v !== '')
-                          .map(([key, value]) => (
-                            <div key={key} className="omni-attr-row">
-                              <span className="omni-attr-key">{key}</span>
-                              <span className="omni-attr-value">{String(value)}</span>
+                    {roleSummary.length > 0 && (
+                      <div className="omni-section">
+                        <div className="omni-section-header">By role</div>
+                        <div className="omni-summary-roles">
+                          {roleSummary.slice(0, 8).map((r) => (
+                            <div key={r.role} className="omni-summary-role">
+                              <span className="omni-summary-role__icon" aria-hidden="true">
+                                {ROLE_ICON[r.key]}
+                              </span>
+                              <span className="omni-summary-role__name">{r.role}</span>
+                              <span className="omni-summary-role__count">{r.count}</span>
                             </div>
                           ))}
-                      </div>
-                    </div>
-                  </>
-                )}
-
-                {/* === TAB: AI INSIGHT === */}
-                {activeTab === 'checks' && checks && summary && (
-                  <div className="omni-checks-panel">
-                    <p className="omni-checks-summary">
-                      <span className="is-pass">
-                        <CheckCircle2 size={12} aria-hidden="true" /> {summary.pass} passed
-                      </span>
-                      {summary.warn > 0 && (
-                        <span className="is-warn">
-                          <AlertTriangle size={12} aria-hidden="true" /> {summary.warn}{' '}
-                          {summary.warn === 1 ? 'warning' : 'warnings'}
-                        </span>
-                      )}
-                      {summary.fail > 0 && (
-                        <span className="is-fail">
-                          <XCircle size={12} aria-hidden="true" /> {summary.fail} failed
-                        </span>
-                      )}
-                    </p>
-                    <ul className="omni-checks-list">
-                      {checks.map((c) => (
-                        <li key={c.id} className={`omni-check is-${c.status}`}>
-                          <span className="omni-check-icon" aria-hidden="true">
-                            {CHECK_ICON[c.status]}
-                          </span>
-                          <div className="omni-check-body">
-                            <div className="omni-check-label">
-                              {c.label}
-                              <span className="sr-only">: {CHECK_WORD[c.status]}</span>
-                            </div>
-                            <div className="omni-check-detail">{c.detail}</div>
-                          </div>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-
-                {/* === TAB: CODE GENERATOR === */}
-                {activeTab === 'code' && (
-                  <div className="omni-codegen-panel">
-                    <div className="omni-codegen-frameworks">
-                      {(['java', 'python', 'javascript', 'wdio'] as CodeFramework[]).map((fw) => (
-                        <button
-                          key={fw}
-                          className={`omni-fw-btn ${codeFramework === fw ? 'active' : ''}`}
-                          onClick={() => setCodeFramework(fw)}
-                        >
-                          {FRAMEWORK_LABEL[fw]}
-                        </button>
-                      ))}
-                    </div>
-
-                    {selectedLocatorForCode ? (
-                      <>
-                        <div className="omni-codegen-locator-selector">
-                          <span className="omni-codegen-label">Locator:</span>
-                          <Select
-                            selectSize="sm"
-                            value={selectedLocatorForCode.strategy}
-                            onChange={(e) => {
-                              const loc = selectedNode.suggestedLocators?.find(
-                                (l) => l.strategy === e.target.value,
-                              );
-                              if (loc) setSelectedLocatorForCode(loc);
-                            }}
-                            className="flex-1"
-                          >
-                            {selectedNode.suggestedLocators?.map((l) => (
-                              <option key={l.strategy} value={l.strategy}>
-                                {l.strategy} — {scoreLocatorStability(l.strategy, l.value).level}
-                              </option>
-                            ))}
-                          </Select>
                         </div>
-
-                        <div className="omni-codegen-output">
-                          <div className="omni-codegen-header">
-                            <span className="omni-codegen-lang">
-                              {codeFramework === 'java'
-                                ? 'Java / TestNG'
-                                : codeFramework === 'python'
-                                  ? 'Python / unittest'
-                                  : codeFramework === 'javascript'
-                                    ? 'JavaScript / Mocha'
-                                    : 'WebdriverIO'}
-                            </span>
-                            <button
-                              className="omni-copy-btn"
-                              onClick={() =>
-                                copyToClipboard(
-                                  generateTestCode(
-                                    selectedNode,
-                                    snapshot?.platform === 'android'
-                                      ? 'android'
-                                      : snapshot?.platform === 'ios'
-                                        ? 'ios'
-                                        : 'unknown',
-                                    codeFramework,
-                                    selectedLocatorForCode!,
-                                  ),
-                                  'code',
-                                )
-                              }
-                            >
-                              {copiedLocator === 'code' ? <Check size={12} /> : <Copy size={12} />}
-                            </button>
-                          </div>
-                          <pre className="omni-codegen-pre theme-dark">
-                            <code>
-                              {generateTestCode(
-                                selectedNode,
-                                snapshot?.platform === 'android'
-                                  ? 'android'
-                                  : snapshot?.platform === 'ios'
-                                    ? 'ios'
-                                    : 'unknown',
-                                codeFramework,
-                                selectedLocatorForCode!,
-                              )}
-                            </code>
-                          </pre>
-                        </div>
-                      </>
-                    ) : (
-                      <div className="omni-empty-state small">
-                        <Code2 size={24} />
-                        <span>No locators available for this element</span>
                       </div>
                     )}
                   </div>
-                )}
-              </>
-            )}
+                ) : (
+                  <div className="omni-empty-state">
+                    <Target size={32} />
+                    <span>
+                      {loading ? 'Capturing snapshot…' : 'Select an element from the tree or screenshot'}
+                    </span>
+                  </div>
+                )
+              ) : (
+                <>
+                  {/* === TAB: INFO === */}
+                  {activeTab === 'info' && (
+                    <>
+                      <div className="omni-section">
+                        <div className="omni-section-header">Element info</div>
+                        <div className="omni-info-table">
+                          <div className="omni-info-row">
+                            <span className="omni-info-key">Type</span>
+                            <span className="omni-info-value mono">{selectedNode.type}</span>
+                          </div>
+                          {selectedNode.text && (
+                            <div className="omni-info-row">
+                              <span className="omni-info-key">Text</span>
+                              <span className="omni-info-value">{selectedNode.text}</span>
+                            </div>
+                          )}
+                          <div className="omni-info-row">
+                            <span className="omni-info-key">Path</span>
+                            <span className="omni-info-value mono small">
+                              {getElementPath(selectedNode).join(' › ')}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="omni-section">
+                        <div className="omni-section-header">Layout</div>
+                        <div className="omni-layout-grid">
+                          {['x', 'y', 'width', 'height'].map((k) => (
+                            <div className="omni-layout-item" key={k}>
+                              <span className="omni-layout-label">{k.toUpperCase()}</span>
+                              <span className="omni-layout-value">
+                                {(selectedNode.rect as any)[k]}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+
+                      <div className="omni-section">
+                        <div className="omni-section-header">
+                          Locators
+                          <span className="omni-section-badge">Stability scored</span>
+                        </div>
+                        <div className="omni-locators-list">
+                          {/* Only the document root reaches this — every real
+                              element gets at least the positional xpath. An
+                              empty list under a "Stability Scored" header reads
+                              as a bug, so it says which case this is. */}
+                          {!selectedNode.suggestedLocators?.length && (
+                            <div className="omni-locators-empty">
+                              {selectedNode === snapshot?.hierarchy
+                                ? 'This is the XML document root, not a UI element — no Appium locator can select it. Pick a node beneath it.'
+                                : 'No locator could be derived for this node.'}
+                            </div>
+                          )}
+                          {selectedNode.suggestedLocators?.map((loc) => {
+                            const stability = scoreLocatorStability(loc.strategy, loc.value);
+                            const cfg = stabilityLevelConfig[stability.level];
+                            const test = locatorTests[loc.strategy];
+                            let matchBadge: React.ReactNode = null;
+                            if (test) {
+                              if (test.kind === 'unsupported') {
+                                matchBadge = (
+                                  <span
+                                    className="omni-match-badge unsupported"
+                                    title={test.reason || 'Cannot evaluate without a real driver'}
+                                  >
+                                    <HelpCircle size={10} /> preview unavailable
+                                  </span>
+                                );
+                              } else if (test.nodes.length === 0) {
+                                matchBadge = (
+                                  <span className="omni-match-badge zero" title="No element matches this selector in the current snapshot">
+                                    <ShieldAlert size={10} /> 0 matches
+                                  </span>
+                                );
+                              } else if (test.nodes.length === 1) {
+                                matchBadge = (
+                                  <span className="omni-match-badge unique" title="Selector is unique in the current snapshot">
+                                    <ShieldCheck size={10} /> unique
+                                  </span>
+                                );
+                              } else {
+                                matchBadge = (
+                                  <span
+                                    className="omni-match-badge multi"
+                                    title={`${test.nodes.length} elements match — selector is not unique`}
+                                  >
+                                    <AlertTriangle size={10} /> {test.nodes.length} matches
+                                  </span>
+                                );
+                              }
+                            }
+                            return (
+                              <div
+                                key={loc.strategy}
+                                className={`omni-locator-row ${selectedLocatorForCode?.strategy === loc.strategy ? 'selected-for-code' : ''}`}
+                                onClick={() => setSelectedLocatorForCode(loc)}
+                                title="Click to use in Code gen"
+                              >
+                                <div className="omni-locator-left">
+                                  <div className="omni-locator-top">
+                                    <span className="omni-locator-strategy">{loc.strategy}</span>
+                                    <span
+                                      className={`omni-stability-badge ${cfg.cls}`}
+                                      title={stability.reason}
+                                    >
+                                      {cfg.icon}
+                                      {stability.level}
+                                    </span>
+                                    {matchBadge}
+                                  </div>
+                                  <code className="omni-locator-value">{loc.value}</code>
+                                  <span className="omni-stability-reason">{stability.reason}</span>
+                                  {(() => {
+                                    const v = verifyResults[loc.strategy];
+                                    if (!v) return null;
+                                    // Four outcomes, kept distinct because they
+                                    // lead to different fixes: driver error,
+                                    // no match, ambiguous, and found (with or
+                                    // without a failed action).
+                                    if (v.error) {
+                                      return (
+                                        <span className="omni-verify-line is-error">
+                                          <ShieldAlert size={10} /> Appium error: {v.error}
+                                        </span>
+                                      );
+                                    }
+                                    if (!v.found) {
+                                      return (
+                                        <span className="omni-verify-line is-error">
+                                          <ShieldAlert size={10} /> Appium found 0 elements
+                                        </span>
+                                      );
+                                    }
+                                    if (v.count > 1) {
+                                      return (
+                                        <span className="omni-verify-line is-warn">
+                                          <AlertTriangle size={10} /> Ambiguous — Appium found{' '}
+                                          {v.count} elements
+                                          {v.actionError ? ` · ${v.actionError}` : ''}
+                                        </span>
+                                      );
+                                    }
+                                    return (
+                                      <span className="omni-verify-line is-ok">
+                                        <ShieldCheck size={10} /> Appium found 1 element
+                                        {v.elapsedMs != null ? ` in ${v.elapsedMs}ms` : ''}
+                                        {v.actionPerformed && v.actionPerformed !== 'none'
+                                          ? ` · ${v.actionPerformed} ok`
+                                          : ''}
+                                        {v.actionError ? ` · action failed: ${v.actionError}` : ''}
+                                      </span>
+                                    );
+                                  })()}
+                                </div>
+                                <div className="omni-locator-actions">
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      runLocatorTest(loc.strategy, loc.value);
+                                    }}
+                                    className={`omni-test-btn ${activeLocatorTest === loc.strategy ? 'active' : ''}`}
+                                    title="Test this locator against the current snapshot"
+                                    aria-label="Test locator"
+                                  >
+                                    <Crosshair size={12} />
+                                  </button>
+                                  {/* Verification through the real driver, as
+                                      opposed to the snapshot match above. Needs a
+                                      session — disabled with the reason rather
+                                      than hidden, so the capability is
+                                      discoverable and its precondition is
+                                      stated. */}
+                                  <button
+                                    type="button"
+                                    disabled={
+                                      !appiumSession?.sessionId || verifying === loc.strategy
+                                    }
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      runVerify(loc.strategy, loc.value, 'none');
+                                    }}
+                                    className="omni-test-btn"
+                                    title={
+                                      appiumSession?.sessionId
+                                        ? 'Verify with Appium — does the driver actually find this?'
+                                        : 'Needs an active Appium session on this device'
+                                    }
+                                    aria-label="Verify with Appium"
+                                  >
+                                    {verifying === loc.strategy ? (
+                                      <RotateCw size={12} className="animate-spin" />
+                                    ) : (
+                                      <ShieldCheck size={12} />
+                                    )}
+                                  </button>
+                                  <button
+                                    type="button"
+                                    disabled={
+                                      !appiumSession?.sessionId || verifying === loc.strategy
+                                    }
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      runVerify(loc.strategy, loc.value, 'tap');
+                                    }}
+                                    className="omni-test-btn"
+                                    title={
+                                      appiumSession?.sessionId
+                                        ? 'Find with Appium and tap the element it returns'
+                                        : 'Needs an active Appium session on this device'
+                                    }
+                                    aria-label="Find and tap with Appium"
+                                  >
+                                    <Zap size={12} />
+                                  </button>
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      copyToClipboard(loc.value, loc.strategy);
+                                    }}
+                                    className={`omni-copy-btn ${copiedLocator === loc.strategy ? 'copied' : ''}`}
+                                    title="Copy locator"
+                                    aria-label={
+                                      copiedLocator === loc.strategy ? 'Copied' : 'Copy locator'
+                                    }
+                                  >
+                                    {copiedLocator === loc.strategy ? (
+                                      <Check size={12} />
+                                    ) : (
+                                      <Copy size={12} />
+                                    )}
+                                  </button>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+
+                      <div className="omni-section">
+                        <div className="omni-section-header">Attributes</div>
+                        <div className="omni-attributes-table">
+                          {Object.entries(selectedNode.attributes || {})
+                            .filter(([_, v]) => v != null && v !== '')
+                            .map(([key, value]) => (
+                              <div key={key} className="omni-attr-row">
+                                <span className="omni-attr-key">{key}</span>
+                                <span className="omni-attr-value">{String(value)}</span>
+                              </div>
+                            ))}
+                        </div>
+                      </div>
+                    </>
+                  )}
+
+                  {/* === TAB: AI INSIGHT === */}
+                  {activeTab === 'checks' && checks && summary && (
+                    <div className="omni-checks-panel">
+                      <p className="omni-checks-summary">
+                        <span className="is-pass">
+                          <CheckCircle2 size={12} aria-hidden="true" /> {summary.pass} passed
+                        </span>
+                        {summary.warn > 0 && (
+                          <span className="is-warn">
+                            <AlertTriangle size={12} aria-hidden="true" /> {summary.warn}{' '}
+                            {summary.warn === 1 ? 'warning' : 'warnings'}
+                          </span>
+                        )}
+                        {summary.fail > 0 && (
+                          <span className="is-fail">
+                            <XCircle size={12} aria-hidden="true" /> {summary.fail} failed
+                          </span>
+                        )}
+                      </p>
+                      <ul className="omni-checks-list">
+                        {checks.map((c) => (
+                          <li key={c.id} className={`omni-check is-${c.status}`}>
+                            <span className="omni-check-icon" aria-hidden="true">
+                              {CHECK_ICON[c.status]}
+                            </span>
+                            <div className="omni-check-body">
+                              <div className="omni-check-label">
+                                {c.label}
+                                <span className="sr-only">: {CHECK_WORD[c.status]}</span>
+                              </div>
+                              <div className="omni-check-detail">{c.detail}</div>
+                            </div>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+
+                  {/* === TAB: CODE GENERATOR === */}
+                  {activeTab === 'code' && (
+                    <div className="omni-codegen-panel">
+                      <div className="omni-codegen-frameworks">
+                        {(['java', 'python', 'javascript', 'wdio'] as CodeFramework[]).map((fw) => (
+                          <button
+                            key={fw}
+                            className={`omni-fw-btn ${codeFramework === fw ? 'active' : ''}`}
+                            onClick={() => setCodeFramework(fw)}
+                          >
+                            {FRAMEWORK_LABEL[fw]}
+                          </button>
+                        ))}
+                      </div>
+
+                      {selectedLocatorForCode ? (
+                        <>
+                          <div className="omni-codegen-locator-selector">
+                            <span className="omni-codegen-label">Locator:</span>
+                            <Select
+                              selectSize="sm"
+                              value={selectedLocatorForCode.strategy}
+                              onChange={(e) => {
+                                const loc = selectedNode.suggestedLocators?.find(
+                                  (l) => l.strategy === e.target.value,
+                                );
+                                if (loc) setSelectedLocatorForCode(loc);
+                              }}
+                              className="flex-1"
+                            >
+                              {selectedNode.suggestedLocators?.map((l) => (
+                                <option key={l.strategy} value={l.strategy}>
+                                  {l.strategy} — {scoreLocatorStability(l.strategy, l.value).level}
+                                </option>
+                              ))}
+                            </Select>
+                          </div>
+
+                          <div className="omni-codegen-output">
+                            <div className="omni-codegen-header">
+                              <span className="omni-codegen-lang">
+                                {codeFramework === 'java'
+                                  ? 'Java / TestNG'
+                                  : codeFramework === 'python'
+                                    ? 'Python / unittest'
+                                    : codeFramework === 'javascript'
+                                      ? 'JavaScript / Mocha'
+                                      : 'WebdriverIO'}
+                              </span>
+                              <button
+                                className="omni-copy-btn"
+                                onClick={() =>
+                                  copyToClipboard(
+                                    generateTestCode(
+                                      selectedNode,
+                                      snapshot?.platform === 'android'
+                                        ? 'android'
+                                        : snapshot?.platform === 'ios'
+                                          ? 'ios'
+                                          : 'unknown',
+                                      codeFramework,
+                                      selectedLocatorForCode!,
+                                    ),
+                                    'code',
+                                  )
+                                }
+                              >
+                                {copiedLocator === 'code' ? (
+                                  <Check size={12} />
+                                ) : (
+                                  <Copy size={12} />
+                                )}
+                              </button>
+                            </div>
+                            <pre className="omni-codegen-pre theme-dark">
+                              <code>
+                                {generateTestCode(
+                                  selectedNode,
+                                  snapshot?.platform === 'android'
+                                    ? 'android'
+                                    : snapshot?.platform === 'ios'
+                                      ? 'ios'
+                                      : 'unknown',
+                                  codeFramework,
+                                  selectedLocatorForCode!,
+                                )}
+                              </code>
+                            </pre>
+                          </div>
+                        </>
+                      ) : (
+                        <div className="omni-empty-state small">
+                          <Code2 size={24} />
+                          <span>No locators available for this element</span>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
           </div>
         </div>
       </div>
