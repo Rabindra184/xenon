@@ -6,6 +6,49 @@ This project follows [Semantic Versioning](https://semver.org/). Releases are
 published to npm automatically when `package.json`'s `version` changes on `main`
 (see `.github/workflows/npm-publish.yml`).
 
+## 1.26.0
+
+Minor release. The Devices page can filter by platform and by real or virtual
+device, and its search finds a device by the name its card shows. Filters
+live in the link. Secondary buttons on the Devices page, such as Reserve and
+Release, look as designed again. No server changes.
+
+### Added
+
+- **Platform and Type filters** (#321). A second toolbar row, under the
+  status tabs, holds:
+  - **Search.** Press `/` to jump to it.
+  - **Platform and Type menus.** Each is a quiet "+ Platform" button until
+    set, then a chip such as "Platform: iOS" with an × to clear it. The
+    menus show counts:
+    - **Platform:** Android and iOS, plus tvOS when the lab has one;
+    - **Type:** real devices, or virtual ("simulators and emulators").
+  - **Clear**, shown only while something is filtered.
+  - A count such as "2 of 5 devices", and an icon Refresh.
+- **Every count accounts for the other filters** (#321). With iOS
+  selected, "Ready 3" means 3 ready iOS devices, so a number is always what
+  you'd get by choosing it.
+- **Filters live in the link** (#321), for example
+  `/devices?status=ready&platform=ios&q=galaxy`. They survive a reload, and
+  opening a device and closing it returns to the same filtered list. Back
+  leaves the page rather than stepping through each change.
+
+### Fixed
+
+- **Search couldn't find the name on the card** (#321). It matched the raw
+  name and UDID only, so "Galaxy" didn't find a Galaxy S9+ whose raw name is
+  "star2ltexx". Search now matches every word you type anywhere in the
+  shown name, the codename, the maker, the model, the platform and OS
+  version, "Emulator" or "Simulator", the team or the UDID.
+- **Device control's stylesheet restyled buttons on the Devices page**
+  (#322). Its own secondary-button rule shared a class with the app's
+  Button. On the Devices page it made Reserve and Release bold and
+  over-padded, and squeezed an icon button's icon to nothing. The class is
+  now renamed. A new test fails if a stylesheet outside the Button's own
+  restyles every Button again.
+- **Nothing matching the filters** now reads "No devices match these
+  filters", with a **Clear filters** button (#321).
+
 ## 1.25.0
 
 Minor release. Live Devices recordings can no longer be lost by stopping the
