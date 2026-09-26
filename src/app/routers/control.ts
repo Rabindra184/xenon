@@ -1,6 +1,8 @@
 import { XenonPlugin } from '../../plugin';
 import { Request, Response, Router } from 'express';
 import { DeviceStoreFactory } from '../../data-service/device-store';
+import { fillMissingScreenSize } from '../../services/fillMissingScreenSize';
+import type { IDevice } from '../../interfaces/IDevice';
 
 import { XenonManager } from '../../device-managers';
 import { Container } from 'typedi';
@@ -98,6 +100,16 @@ function buildProxyUrl(deviceHost: string, req: Request): string | null {
 async function getDeviceInfo(udid: string) {
   return await DeviceStoreFactory.getStore().findDevice({ udid });
 }
+
+/**
+ * The ways into fillMissingScreenSize. A reload restores a tile through the
+ * ticket and the stream, never stream/start, so all three fill a missing size.
+ */
+const screenSizeDeps = {
+  managerFor: (platform: string) => getDeviceManagerForPlatform(platform),
+  updateDevice: (udid: string, host: string, patch: Partial<IDevice>) =>
+    DeviceStoreFactory.getStore().updateDevice(udid, host, patch),
+};
 
 async function getDeviceManagerForPlatform(platform: string) {
   const dfm = Container.get(XenonManager);
@@ -647,22 +659,9 @@ router.post('/:udid/stream/start', async (req: Request, res: Response) => {
       mjpegPort = (await Container.get(AndroidStreamService).startStream(udid)).mjpegPort;
     }
 
-    // Refresh device info (Lazy loading of dimensions if missing)
-    try {
-      const manager = await getDeviceManagerForPlatform(device.platform);
-      if (
-        manager &&
-        manager.getAdditionalDeviceInfo &&
-        (!device.screenWidth || !device.screenHeight)
-      ) {
-        log.info(`Fetching missing dimensions for ${udid} on stream start`);
-        const additionalInfo = await manager.getAdditionalDeviceInfo(device);
-        if (additionalInfo && Object.keys(additionalInfo).length > 0) {
-          await DeviceStoreFactory.getStore().updateDevice(udid, device.host, additionalInfo);
-        }
-      }
-    } catch (e) {
-      log.warn(`Non-critical: Failed to fetch additional device info during stream start: ${e}`);
+    // Lazy-load the screen size if missing: tiles need it to accept taps.
+    if (await fillMissingScreenSize(device, screenSizeDeps)) {
+      log.info(`Fetched missing dimensions for ${udid} on stream start`);
     }
 
     // Principal Insight: Concurrency Protection
@@ -727,6 +726,10 @@ router.post('/:udid/stream/ticket', async (req: Request, res: Response) => {
     apiKeyId: actor.apiKeyId,
   });
   res.json({ ticket, expiresIn: 60 });
+  // The H.264 preview attaches here on a reload; see screenSizeDeps.
+  void getDeviceInfo(req.params.udid)
+    .then((device) => device && fillMissingScreenSize(device, screenSizeDeps))
+    .catch(() => undefined);
 });
 
 /**
@@ -878,6 +881,8 @@ router.get('/:udid/stream', async (req: Request, res: Response) => {
   const { udid } = req.params;
   const device = await getDeviceInfo(udid);
   if (!device) return res.status(404).send('Device not found');
+  // The MJPEG preview attaches here on a reload; see screenSizeDeps.
+  void fillMissingScreenSize(device, screenSizeDeps);
 
   let mjpegPort = device.mjpegServerPort;
 
