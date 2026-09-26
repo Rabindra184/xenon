@@ -6,6 +6,32 @@ This project follows [Semantic Versioning](https://semver.org/). Releases are
 published to npm automatically when `package.json`'s `version` changes on `main`
 (see `.github/workflows/npm-publish.yml`).
 
+## 1.22.1
+
+Patch release. Completes 1.22.0's annotation work for multi-device
+recordings: the side-by-side video now carries every mark, and each device's
+own video shows its marks at the right moment.
+
+### Fixed
+
+- **The side-by-side video of a multi-device recording had no marks**
+  (#299). Each device's marks are now drawn into its own cell, in the right
+  place and for the right time window, exactly as in that device's own
+  video. This applies to `composite.mp4`, `videos.zip` and `bundle.zip`, and
+  the download is prepared in the background when you press Stop.
+  Recordings made before this version have no layout record, so their
+  side-by-side video is served without marks, as before.
+- **Marks appeared early in each device's own video in multi-device
+  recordings** (#300). By about 1–3 seconds, depending on how long the
+  devices took to start. Each device's video starts recording before the
+  dashboard's timer does. Xenon now records that head start per device and
+  moves the marks to match, so they line up with the screen as they do in
+  the side-by-side video. Single-device recordings were not affected.
+- **Marks drawn after a page reload used a different timebase** (#300). A
+  reload restarted the recording timer from the first device's start rather
+  than the original start, so in multi-device recordings those marks were
+  off by the same head start. A reload now resumes on the original start.
+
 ## 1.22.0
 
 Minor release. Annotations on Live Devices recordings now come out in the
