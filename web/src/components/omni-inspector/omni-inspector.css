@@ -1569,3 +1569,117 @@
     line-height: 1.45;
     overflow-wrap: anywhere;
 }
+
+/* ===== Element tree (ElementTree.tsx) =====
+   Rows are 26px; parts, separators and the type are direct flex children so
+   the shrink weights read: earlier parts first, then the type, the target's
+   name last. */
+.omni-tree {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+}
+
+.omni-tree-row {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    height: 26px;
+    min-width: 0;
+    padding: 0 8px 0 6px;
+    border-radius: 4px;
+    font-size: 12px;
+    color: var(--text-dim);
+    white-space: nowrap;
+    overflow: hidden;
+    cursor: pointer;
+    flex-shrink: 0;
+}
+
+.omni-tree-row:hover,
+.omni-tree-row.is-hovered {
+    background: rgb(var(--rgb-fg) / 0.05);
+}
+
+.omni-tree-row.is-selected {
+    background: rgb(var(--rgb-accent) / 0.12);
+    box-shadow: inset 2px 0 0 var(--color-accent);
+}
+
+.omni-tree-row:focus {
+    outline: none;
+}
+
+.omni-tree-row:focus-visible {
+    outline: 2px solid var(--color-focus-ring);
+    outline-offset: -2px;
+}
+
+/* One guide per ancestor level, under that ancestor's caret. */
+.omni-tree-row__indent {
+    flex-shrink: 0;
+    align-self: stretch;
+    background-image: linear-gradient(to right, var(--border) 1px, transparent 1px);
+    background-size: 10px 100%;
+    background-position: 6px 0;
+    background-repeat: repeat-x;
+}
+
+.omni-tree-row__caret,
+.omni-tree-row__icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    color: var(--text-muted);
+}
+
+.omni-tree-row__caret {
+    width: 12px;
+}
+
+.omni-tree-row__part,
+.omni-tree-row__type {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.omni-tree-row__part {
+    font-family: 'JetBrains Mono', 'Fira Code', monospace;
+    flex: 0 1000 auto;
+}
+
+.omni-tree-row__part.is-target {
+    flex: 0 1 auto;
+    color: var(--text);
+}
+
+.omni-tree-row__part.is-match {
+    color: var(--color-highlight);
+}
+
+.omni-tree-row__part.is-current {
+    text-decoration: underline;
+    text-underline-offset: 3px;
+}
+
+.omni-tree-row__sep {
+    flex-shrink: 0;
+    color: var(--text-dim);
+}
+
+.omni-tree-row__type {
+    flex: 0 100 auto;
+    font-size: 11px;
+    color: var(--text-dim);
+}
+
+.omni-tree-row__count {
+    flex-shrink: 0;
+    margin-left: auto;
+    padding-left: 6px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    color: var(--text-dim);
+}
