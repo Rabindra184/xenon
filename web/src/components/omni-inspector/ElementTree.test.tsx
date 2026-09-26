@@ -115,30 +115,33 @@ describe('ElementTree', () => {
       'omni-tree-row__caret',
       'omni-tree-row__icon',
     ]);
-    // A run of one: no head.
+    // A run of one: no head, and no separator before the target.
     expect(classes(cardRow.children[1])).toEqual(['omni-tree-row__tail']);
-    expect(classes(cardRow.children[1].children[0])).toEqual([
+    expect(classes(cardRow.children[1].children[0])).toEqual(['omni-tree-row__name']);
+    expect(classes(cardRow.children[1].children[0].children[0])).toEqual([
       'omni-tree-row__part',
       'omni-tree-row__type',
     ]);
 
-    // hierarchy › content › list: each earlier part carries its own "›", so
-    // the separator goes with its part rather than before it.
+    // hierarchy › content › list. The head is one ellipsizing run of inline
+    // parts and separators, so a narrow head ends in a single "…" instead of
+    // a sliver of every part; the last "›" opens the tail, so the target
+    // stays visibly apart from that "…".
     const label = item(/hierarchy.*content/).children[1];
     expect(classes(label)).toEqual(['omni-tree-row__head', 'omni-tree-row__tail']);
     const [head, tail] = Array.from(label.children);
-    expect(classes(head)).toEqual(['omni-tree-row__step', 'omni-tree-row__step']);
-    for (const step of Array.from(head.children)) {
-      expect(classes(step)).toEqual(['omni-tree-row__part', 'omni-tree-row__sep']);
-      expect(step.children[0]).not.toHaveClass('is-target');
-      expect(step.children[1]).toHaveAttribute('aria-hidden', 'true');
-    }
-    expect(Array.from(head.children).map((st) => st.children[0].textContent)).toEqual([
-      'hierarchy',
-      'content',
+    expect(classes(head)).toEqual([
+      'omni-tree-row__part',
+      'omni-tree-row__sep',
+      'omni-tree-row__part',
     ]);
-    expect(classes(tail)).toEqual(['omni-tree-row__part']);
-    expect(tail.children[0]).toHaveClass('is-target');
+    expect(head.textContent).toBe('hierarchy›content');
+    expect(head.children[1]).toHaveAttribute('aria-hidden', 'true');
+    expect(head.querySelector('.is-target')).toBeNull();
+    expect(classes(tail)).toEqual(['omni-tree-row__sep', 'omni-tree-row__name']);
+    expect(tail.children[0]).toHaveAttribute('aria-hidden', 'true');
+    expect(classes(tail.children[1])).toEqual(['omni-tree-row__part']);
+    expect(tail.children[1].children[0]).toHaveClass('is-target');
   });
 
   it('selects and outlines an earlier part’s own node from inside the head', () => {

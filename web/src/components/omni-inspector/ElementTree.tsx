@@ -186,11 +186,16 @@ export default function ElementTree({
             </span>
             <span className="omni-tree-row__label">
               {row.nodes.length > 1 && (
+                // One ellipsizing run of inline parts: a narrow head ends in
+                // a single "…" rather than a sliver of every part.
                 <span className="omni-tree-row__head">
-                  {row.nodes.slice(0, -1).map((n) => (
-                    // A part and its "›" go together, so the separator
-                    // disappears with its part rather than before it.
-                    <span key={n.xpath} className="omni-tree-row__step">
+                  {row.nodes.slice(0, -1).map((n, j) => (
+                    <React.Fragment key={n.xpath}>
+                      {j > 0 && (
+                        <span className="omni-tree-row__sep" aria-hidden="true">
+                          ›
+                        </span>
+                      )}
                       <span
                         className={partClass(n, false)}
                         title={nodeTooltip(n)}
@@ -203,18 +208,23 @@ export default function ElementTree({
                       >
                         {shortName(n)}
                       </span>
-                      <span className="omni-tree-row__sep" aria-hidden="true">
-                        ›
-                      </span>
-                    </span>
+                    </React.Fragment>
                   ))}
                 </span>
               )}
               <span className="omni-tree-row__tail">
-                <span className={partClass(target, true)} title={nodeTooltip(target)}>
-                  {shortName(target)}
+                {/* Opens the tail, so the target stays apart from the head's "…". */}
+                {row.nodes.length > 1 && (
+                  <span className="omni-tree-row__sep" aria-hidden="true">
+                    ›
+                  </span>
+                )}
+                <span className="omni-tree-row__name">
+                  <span className={partClass(target, true)} title={nodeTooltip(target)}>
+                    {shortName(target)}
+                  </span>
+                  {showType && <span className="omni-tree-row__type">{type}</span>}
                 </span>
-                {showType && <span className="omni-tree-row__type">{type}</span>}
               </span>
             </span>
             {row.hasChildren && !row.expanded && (

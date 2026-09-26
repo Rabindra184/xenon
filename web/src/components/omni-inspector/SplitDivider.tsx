@@ -38,7 +38,11 @@ export default function SplitDivider({
   // click's jitter count: the pointer must first travel DRAG_THRESHOLD_PX
   // from where it went down.
   const moved = useRef(false);
+  // Where the pointer went down, and the share then: a drag moves the share
+  // by the pointer's travel, so grabbing the 12px handle off-centre doesn't
+  // make it jump to centre itself under the pointer.
   const startX = useRef(0);
+  const startShare = useRef(share);
   const clamp = (s: number) => Math.min(limits.max, Math.max(limits.min, s));
   const pct = (s: number) => Math.round(s * 100);
 
@@ -52,7 +56,7 @@ export default function SplitDivider({
   const fromPointer = (clientX: number) => {
     const rect = containerRef.current?.getBoundingClientRect();
     if (!rect || rect.width <= DIVIDER_PX) return latest.current;
-    return clamp((clientX - rect.left - DIVIDER_PX / 2) / (rect.width - DIVIDER_PX));
+    return clamp(startShare.current + (clientX - startX.current) / (rect.width - DIVIDER_PX));
   };
 
   const onKeyDown = (e: React.KeyboardEvent) => {
@@ -89,6 +93,7 @@ export default function SplitDivider({
         ended.current = false;
         moved.current = false;
         startX.current = e.clientX;
+        startShare.current = latest.current;
         setDragging(true);
       }}
       onPointerMove={(e) => {

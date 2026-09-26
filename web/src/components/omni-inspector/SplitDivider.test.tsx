@@ -76,6 +76,26 @@ describe('SplitDivider — drag interruption', () => {
   });
 });
 
+const lastShare = (onChange: ReturnType<typeof vi.fn>) =>
+  onChange.mock.calls[onChange.mock.calls.length - 1][0] as number;
+
+describe('SplitDivider — follows the drag', () => {
+  // The handle is 12px wide. Mapping the pointer to the handle's centre made
+  // a drag that grabbed it off-centre jump (up to 6px) once it began.
+  it('moves the share by the pointer’s travel, wherever the handle was grabbed', () => {
+    const onChange = vi.fn();
+    const { sep } = renderDivider({ onChange });
+    // At a share of 0.4 the handle spans x 400–412; grab its left edge.
+    pointerDown(sep, 400);
+    for (const dx of [4, 7, 10]) {
+      pointerMove(sep, 400 + dx);
+      // (1012 - 12) px of travel spans the whole share.
+      expect(lastShare(onChange) - 0.4).toBeCloseTo(dx / 1000, 10);
+    }
+    expect(Math.min(...onChange.mock.calls.map((c) => c[0] as number))).toBeGreaterThan(0.4);
+  });
+});
+
 describe('SplitDivider — a click is not a drag', () => {
   // On a narrow window the shown share is clamped below the stored one;
   // committing it on a plain click overwrote the wider preference.
@@ -88,15 +108,16 @@ describe('SplitDivider — a click is not a drag', () => {
     expect(onCommit).not.toHaveBeenCalled();
   });
 
-  it('does not commit a move that lands on the same share', () => {
+  // A real drag (10px of travel) pinned at a limit: the share can't change,
+  // so there is nothing to commit over the stored preference.
+  it('does not commit a drag that leaves the share where it was', () => {
     const onCommit = vi.fn();
     const onChange = vi.fn();
-    // x = 406 maps to (406 - 6) / 1000 = 0.4, the current share: a real
-    // drag (10px of travel) that ends where it began.
-    const { sep } = renderDivider({ onCommit, onChange });
-    pointerDown(sep, 396);
-    pointerMove(sep, 406);
+    const { sep } = renderDivider({ onCommit, onChange, limits: { min: 0, max: 0.4 } });
+    pointerDown(sep, 400);
+    pointerMove(sep, 410);
     fireEvent.pointerUp(sep, { pointerId: 1 });
+    expect(onChange).not.toHaveBeenCalled();
     expect(onCommit).not.toHaveBeenCalled();
   });
 
@@ -120,7 +141,7 @@ describe('SplitDivider — a click is not a drag', () => {
     const { sep } = renderDivider({ onCommit, onChange });
     pointerDown(sep, 406);
     pointerMove(sep, 416);
-    expect(onChange).toHaveBeenLastCalledWith(0.41);
+    expect(lastShare(onChange)).toBeCloseTo(0.41, 10);
     // Past the threshold, small moves count, even back near the start.
     pointerMove(sep, 408);
     expect(onChange).toHaveBeenLastCalledWith(0.402);

@@ -1533,12 +1533,11 @@
 /* ===== Element tree (ElementTree.tsx) =====
    A row is 26px: the lead (indent, caret, icon), the label, and the child
    count on a collapsed row. The label is a head and a tail, which makes what
-   gives way strictly ordered: the head (a folded run's earlier parts, each
-   with its "›") is the only thing that shrinks while it has any width; then
-   the target's type; then the target's name, only when it alone is too long.
-   Shrink weights between siblings can't order this strictly: any weight
-   hands an item a sub-pixel share of the overflow, and any overflow at all
-   draws "…". */
+   gives way strictly ordered: the head (a folded run's earlier parts) is the
+   only thing that shrinks while it has any width; then the target's type;
+   then the target's name, only when it alone is too long. Shrink weights
+   between siblings can't order this strictly: any weight hands an item a
+   sub-pixel share of the overflow, and any overflow at all draws "…". */
 .omni-tree {
     display: flex;
     flex-direction: column;
@@ -1632,33 +1631,38 @@
     overflow: hidden;
 }
 
-/* The earlier parts: the label's only shrinkable item. */
+/* The earlier parts and the "›" between them, as one line of inline text:
+   the label's only shrinkable item. It ends in a single "…" when short of
+   room; per-part boxes shrank in proportion and left each a clipped sliver
+   of a glyph. */
 .omni-tree-row__head {
-    display: flex;
+    display: block;
     flex: 0 1 auto;
-    align-items: center;
     min-width: 0;
     overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
 }
 
-/* One earlier part and its "›": the part shrinks and ellipsizes, and the
-   separator is clipped only once its part is gone. */
-.omni-tree-row__step {
-    display: flex;
-    flex: 0 1 auto;
-    align-items: center;
-    min-width: 0;
-    overflow: hidden;
-}
-
-/* The target and its type: never shrinks, and is capped at the label only
-   when it alone is too long. Inside it the type gives way first. */
+/* The "›" after the head, then the target and its type: never shrinks, and
+   is capped at the label only when it alone is too long. */
 .omni-tree-row__tail {
     display: flex;
     flex: 0 0 auto;
     align-items: center;
     min-width: 0;
     max-width: 100%;
+}
+
+/* The target and its type, after the tail's "›". Its own box so that the
+   target's max-width of 100% leaves room for that "›": with both in the
+   tail, a target too long on its own would push its "…" past the label's
+   edge. Inside it the type gives way first. */
+.omni-tree-row__name {
+    display: flex;
+    flex: 0 1 auto;
+    align-items: center;
+    min-width: 0;
 }
 
 .omni-tree-row__part,
