@@ -6,6 +6,28 @@ This project follows [Semantic Versioning](https://semver.org/). Releases are
 published to npm automatically when `package.json`'s `version` changes on `main`
 (see `.github/workflows/npm-publish.yml`).
 
+## 1.23.1
+
+Patch release. Two polish fixes on the Devices page. No server changes.
+
+### Fixed
+
+- **Control and Reserve looked like plain text** (#312). Control was a grey
+  outline and Reserve had no border at all.
+  - Control is now a green-tinted button in the theme's accent colour, and
+    fills solid green on hover.
+  - Reserve and Release are outlined buttons.
+  - The tinted style is available to the rest of the app as the Button's
+    `tonal` variant.
+- **The status filters read flat** (#313).
+  - The selected filter now uses the accent colour.
+  - Ready, Busy, Reserved, Maintenance and Offline each have a dot in the
+    colour of that state's cards.
+  - A filter with no devices fades back, so the others stand out.
+  - Selector Health's Window filter gets the same selected style.
+- **Refresh wrapped onto a line of its own** in narrow windows (#313). Search
+  and Refresh now wrap together.
+
 ## 1.23.0
 
 Minor release. The Devices page shows each device by the name people know it
