@@ -6,6 +6,34 @@ This project follows [Semantic Versioning](https://semver.org/). Releases are
 published to npm automatically when `package.json`'s `version` changes on `main`
 (see `.github/workflows/npm-publish.yml`).
 
+## 1.26.2
+
+Patch release. Device control's Actions tab asks before uninstalling an
+app, reports the result of every action, and works with a keyboard and a
+screen reader. No server changes.
+
+### Fixed
+
+- **Uninstall ran on one click** (#326). It removed the app and its data
+  straight away. A dialog now asks first, naming the app and the device, and
+  Cancel or Esc closes only the dialog. The result says what happened
+  ("Uninstalled com.foo from Galaxy S9+") or why it failed.
+- **Actions failed silently** (#326).
+  - **Smart Input** has a Send button (Enter still works) and shows "Sent"
+    when the text goes through. A failure shows the reason and keeps your
+    text so you can resend it.
+  - **Swipe buttons** say why a swipe failed.
+  - **Clipboard errors fit the platform:** the Android hint about the
+    Appium Settings app no longer shows on iOS, which gives the actual reason
+    instead.
+  - **Install messages** name the device and the file, not the UDID.
+- **Keyboard and screen readers** (#326).
+  - The four swipe buttons, the text field, the app picker and the manual
+    package field now have names.
+  - Tab now reaches the "Select File" chooser, which shows a focus ring.
+- **Light theme** (#326). Placeholder text measured 2.11:1 and now passes
+  (4.80:1), and the manual package field no longer looks disabled.
+
 ## 1.26.1
 
 Patch release. Device control names a device the way its Devices card does.
