@@ -96,9 +96,6 @@ describe('SegmentedControl', () => {
         onChange={() => {}}
       />,
     );
-    expect(screen.getByRole('tab', { name: 'A' })).toHaveAttribute(
-      'aria-keyshortcuts',
-      'Escape',
-    );
+    expect(screen.getByRole('tab', { name: 'A' })).toHaveAttribute('aria-keyshortcuts', 'Escape');
   });
 });

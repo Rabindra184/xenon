@@ -163,9 +163,7 @@ describe('Interact / Annotate switch', () => {
     });
     mount(s);
     expect(tab('Interact')).toHaveAttribute('aria-selected', 'true');
-    expect((screen.getByRole('button', { name: 'Rect' }) as HTMLButtonElement).disabled).toBe(
-      true,
-    );
+    expect((screen.getByRole('button', { name: 'Rect' }) as HTMLButtonElement).disabled).toBe(true);
   });
 
   it('switches to Annotate on click', () => {
