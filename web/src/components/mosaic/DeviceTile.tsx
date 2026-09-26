@@ -1,5 +1,6 @@
 import * as React from 'react';
 import { AnnotationOverlay, type NormalizedAnnotation } from './AnnotationOverlay';
+import { pointerToDevice } from './tileInput';
 import type { AnnotationShape } from './recording-group-store';
 import XenonApiService from '../../api-service';
 import { ANDROID_KEYCODE, IOS_BUTTON } from '../device-control/keycodes';
@@ -160,13 +161,18 @@ export function DeviceTile({
   // on the device and appear in both the live preview and the mp4.
   const interactive = !annotateMode && !!screenWidth && !!screenHeight;
 
-  const toDeviceCoords = (clientX: number, clientY: number, rect: DOMRect) => {
-    const w = screenWidth as number;
-    const h = screenHeight as number;
-    const nx = Math.min(1, Math.max(0, (clientX - rect.left) / rect.width));
-    const ny = Math.min(1, Math.max(0, (clientY - rect.top) / rect.height));
-    return { x: Math.round(nx * w), y: Math.round(ny * h) };
-  };
+  // Measured against the video picture, not this tile: the tile can be
+  // letterboxed (see pointerToDevice). Null on the black bars unless clamped.
+  const toDeviceCoords = (clientX: number, clientY: number, rect: DOMRect, clamp = false) =>
+    pointerToDevice(
+      clientX,
+      clientY,
+      rect,
+      screenWidth as number,
+      screenHeight as number,
+      mediaAspect,
+      clamp,
+    );
 
   const spawnRipple = (clientX: number, clientY: number, rect: DOMRect) => {
     const id = Date.now() + Math.random();
@@ -182,6 +188,10 @@ export function DeviceTile({
     if (!interactive || streamState === 'unavailable') return;
     if (e.button !== 0) return; // only left/primary
     const target = e.currentTarget;
+    // Claim keyboard focus so subsequent typing is routed to this device.
+    target.focus();
+    // A press on the bars around the picture is not on the device.
+    if (!toDeviceCoords(e.clientX, e.clientY, target.getBoundingClientRect())) return;
     target.setPointerCapture(e.pointerId);
     pointerDownRef.current = {
       startX: e.clientX,
@@ -190,8 +200,6 @@ export function DeviceTile({
       rect: target.getBoundingClientRect(),
     };
     spawnRipple(e.clientX, e.clientY, pointerDownRef.current.rect);
-    // Claim keyboard focus so subsequent typing is routed to this device.
-    target.focus();
   };
 
   const onPointerUp = async (e: React.PointerEvent<HTMLDivElement>) => {
@@ -207,7 +215,8 @@ export function DeviceTile({
     const dy = e.clientY - start.startY;
     const distance = Math.hypot(dx, dy);
     const elapsedMs = Date.now() - start.startTime;
-    const from = toDeviceCoords(start.startX, start.startY, start.rect);
+    // The press started on the picture (onPointerDown checked), so this maps.
+    const from = toDeviceCoords(start.startX, start.startY, start.rect, true)!;
     const isStationary = distance < TAP_THRESHOLD_PX;
     try {
       if (isStationary && elapsedMs < LONG_PRESS_MS) {
@@ -216,7 +225,8 @@ export function DeviceTile({
         // Stationary press held longer than the long-press threshold.
         await (XenonApiService as any).touchAndHold?.(udid, from.x, from.y, elapsedMs);
       } else {
-        const to = toDeviceCoords(e.clientX, e.clientY, start.rect);
+        // A swipe may run off the picture: pin its end to the screen edge.
+        const to = toDeviceCoords(e.clientX, e.clientY, start.rect, true)!;
         await XenonApiService.swipe(udid, from.x, from.y, to.x, to.y);
       }
     } catch (err) {
