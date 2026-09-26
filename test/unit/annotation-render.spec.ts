@@ -18,6 +18,7 @@ import {
   compositeOutputPath,
 } from '../../src/services/recording/RecordingOrchestrator';
 import { useArtifactStore } from '../helpers/artifact-store';
+import { writeRecordingTiming } from '../../src/services/recording/recordingTiming';
 
 describe('AnnotationRenderService.buildFilterParts', () => {
   const svc = new AnnotationRenderService({} as any);
@@ -592,5 +593,48 @@ describe('AnnotationRenderService — composite burn-in on the real ffmpeg', () 
     const [rn, , bn] = px(100, 100);
     expect(rn < 50 && bn > 80, `navy outside the mark, got ${px(100, 100)}`).to.equal(true);
     expect(Math.max(...px(810, 100)) < 40, `black letterbox, got ${px(810, 100)}`).to.equal(true);
+  });
+});
+
+describe('AnnotationRenderService — marks on a device video that started before t=0', () => {
+  // Measured 2026-09-26 with two devices: the same screen change was at 42.64 s
+  // in the composite but 43.84 s in the S9+'s own video, whose ffmpeg spawned
+  // 1.2 s before the dashboard's t=0. Its marks must move 1.2 s later.
+  let dir: string;
+  beforeEach(() => {
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mark-shift-'));
+  });
+  afterEach(() => {
+    sinon.restore();
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+
+  const render = async (withTiming: boolean) => {
+    const video = path.join(dir, 'rec-s', 'video', 'rec-s.mp4');
+    fs.mkdirSync(path.dirname(video), { recursive: true });
+    fs.writeFileSync(video, 'x'.repeat(2048));
+    if (withTiming) writeRecordingTiming(video, { spawnedAtMs: 10_000, groupT0Ms: 11_200 });
+    const store = {
+      findById: async () => ({
+        id: 'rec-s',
+        file_path: video,
+        annotations: [
+          { id: 'm', shape: 'RECT', geometry: '{}', timecode_ms: 1000, end_timecode_ms: 3000 },
+        ],
+      }),
+    };
+    const svc = new AnnotationRenderService(store as any);
+    const renderStub = sinon.stub(svc as any, 'renderToFile').resolves();
+    await svc.resolvePlayablePath('rec-s');
+    const [a] = renderStub.firstCall.args[2] as any[];
+    return [a.timecode_ms, a.end_timecode_ms];
+  };
+
+  it('shifts start and end by t0 - spawn', async () => {
+    expect(await render(true)).to.deep.equal([2200, 4200]);
+  });
+
+  it('leaves marks alone when the video has no timing record (older recordings)', async () => {
+    expect(await render(false)).to.deep.equal([1000, 3000]);
   });
 });
