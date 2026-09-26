@@ -39,25 +39,31 @@ function Harness({ onSelect = () => {} }: { onSelect?: (n: InspectorNode) => voi
   const [open, setOpen] = React.useState(() => new Set(['/h/c/l']));
   const [selected, setSelected] = React.useState<string | null>(null);
   return (
-    <ElementTree
-      rows={visibleRows(root, open)}
-      selectedXpath={selected}
-      hoveredXpath={null}
-      matches={new Set()}
-      onToggle={(x) =>
-        setOpen((prev) => {
-          const next = new Set(prev);
-          if (next.has(x)) next.delete(x);
-          else next.add(x);
-          return next;
-        })
-      }
-      onSelect={(n) => {
-        setSelected(n.xpath);
-        onSelect(n);
-      }}
-      onHover={() => {}}
-    />
+    <>
+      <ElementTree
+        rows={visibleRows(root, open)}
+        selectedXpath={selected}
+        hoveredXpath={null}
+        matches={new Set()}
+        onToggle={(x) =>
+          setOpen((prev) => {
+            const next = new Set(prev);
+            if (next.has(x)) next.delete(x);
+            else next.add(x);
+            return next;
+          })
+        }
+        onSelect={(n) => {
+          setSelected(n.xpath);
+          onSelect(n);
+        }}
+        onHover={() => {}}
+      />
+      {/* Another route to a selection, outside the tree (the phone, the breadcrumb). */}
+      <button type="button" onClick={() => setSelected('/h/c/l/2')}>
+        Select Two
+      </button>
+    </>
   );
 }
 
@@ -157,6 +163,43 @@ describe('ElementTree', () => {
     render(<Harness onSelect={onSelect} />);
     fireEvent.click(screen.getByText('hierarchy'));
     expect(onSelect).toHaveBeenLastCalledWith(expect.objectContaining({ xpath: '/h' }));
+  });
+
+  it('gives the tab stop to a selection made outside the tree after focus left it', () => {
+    render(<Harness />);
+    item(/One/).focus();
+    const outside = screen.getByRole('button', { name: 'Select Two' });
+    outside.focus();
+    fireEvent.click(outside);
+    expect(item(/Two/).tabIndex).toBe(0);
+    expect(item(/One/).tabIndex).toBe(-1);
+  });
+
+  // The browser scrolls a focused element into view with its own alignment;
+  // the tree scrolls with block: 'nearest' itself, so focus must not.
+  it('moves focus without the browser scrolling on focus', () => {
+    const focus = vi.spyOn(HTMLElement.prototype, 'focus');
+    try {
+      render(<Harness />);
+      const top = item(/content/);
+      top.focus();
+      focus.mockClear();
+      fireEvent.keyDown(top, { key: 'ArrowDown' });
+      expect(document.activeElement).toBe(item(/One/));
+      expect(focus).toHaveBeenLastCalledWith({ preventScroll: true });
+
+      // The recovery path: the focused row is collapsed away.
+      fireEvent.keyDown(item(/Card/), { key: 'ArrowRight' });
+      screen.getByRole('treeitem', { name: /Three/ }).focus();
+      focus.mockClear();
+      // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+      fireEvent.click(item(/Card/).querySelector('.omni-tree-row__caret')!);
+      expect(document.activeElement?.getAttribute('role')).toBe('treeitem');
+      expect(focus).toHaveBeenCalled();
+      for (const call of focus.mock.calls) expect(call).toEqual([{ preventScroll: true }]);
+    } finally {
+      focus.mockRestore();
+    }
   });
 
   it('keeps focus in the tree when the focused row is collapsed away', () => {

@@ -23,6 +23,12 @@ interface ElementTreeProps {
   onToggle: (xpath: string) => void;
   onSelect: (node: InspectorNode) => void;
   onHover: (node: InspectorNode | null) => void;
+  /**
+   * Bumped by the host whenever the selected row must be shown again, even if
+   * the selection itself didn't change (a cleared search, a new capture, the
+   * same node picked on the phone after its row was closed).
+   */
+  revealSeq?: number;
 }
 
 /**
@@ -38,6 +44,7 @@ export default function ElementTree({
   onToggle,
   onSelect,
   onHover,
+  revealSeq = 0,
 }: ElementTreeProps) {
   const treeRef = useRef<HTMLDivElement>(null);
   const [focusKey, setFocusKey] = useState<string | null>(null);
@@ -58,7 +65,9 @@ export default function ElementTree({
     setFocusKey(row.key);
     lastIndex.current = i;
     const el = rowEl(i);
-    el?.focus();
+    // The browser would scroll on focus with its own alignment; the tree
+    // scrolls itself, to the nearest edge.
+    el?.focus({ preventScroll: true });
     el?.scrollIntoView?.({ block: 'nearest' });
   };
 
@@ -66,7 +75,7 @@ export default function ElementTree({
   // opens the rows on the way to it, so it may appear a render later.
   useEffect(() => {
     pendingReveal.current = selectedXpath;
-  }, [selectedXpath]);
+  }, [selectedXpath, revealSeq]);
   useEffect(() => {
     const xpath = pendingReveal.current;
     if (!xpath) return;
@@ -83,7 +92,7 @@ export default function ElementTree({
     const i = Math.min(lastIndex.current, rows.length - 1);
     const lost = !document.activeElement || document.activeElement === document.body;
     setFocusKey(rows[i]?.key ?? null);
-    if (lost && i >= 0) rowEl(i)?.focus();
+    if (lost && i >= 0) rowEl(i)?.focus({ preventScroll: true });
   });
 
   const onKeyDown = (e: React.KeyboardEvent) => {
@@ -98,7 +107,12 @@ export default function ElementTree({
   };
 
   const onBlur = (e: React.FocusEvent) => {
-    if (!treeRef.current?.contains(e.relatedTarget as Node | null)) onHover(null);
+    if (treeRef.current?.contains(e.relatedTarget as Node | null)) return;
+    onHover(null);
+    // Focus left the tree, so the selection may change by another route (the
+    // phone, the breadcrumb) before it comes back: the tab stop follows the
+    // selection again instead of the row that was left.
+    setFocusKey(null);
   };
 
   return (

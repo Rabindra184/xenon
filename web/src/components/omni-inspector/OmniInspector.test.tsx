@@ -1,6 +1,6 @@
 import * as React from 'react';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { InspectorNode, InspectorSnapshot } from './OmniInspector';
 
 const api = vi.hoisted(() => ({
@@ -229,9 +229,74 @@ describe('OmniInspector — tree', () => {
       'aria-selected',
       'true',
     );
+    // The row is selected by xpath either way; Info shows the node object, so
+    // only this proves the selection is the new capture's node.
+    expect(screen.getByText('Sign in', { selector: '.omni-info-value' })).toBeInTheDocument();
     api.getInspectorSnapshot.mockResolvedValueOnce(snapshot('com.app:id/other'));
     fireEvent.click(screen.getByRole('button', { name: 'Refresh snapshot' }));
     expect(await screen.findByText('No element selected')).toBeInTheDocument();
+  });
+});
+
+describe('OmniInspector — the selected row scrolls into view', () => {
+  // jsdom has no scrollIntoView; record which elements are asked to scroll.
+  const hadScroll = 'scrollIntoView' in Element.prototype;
+  const originalScroll = Element.prototype.scrollIntoView;
+  let scrolled: Element[] = [];
+  beforeEach(() => {
+    scrolled = [];
+    Element.prototype.scrollIntoView = vi.fn(function (this: Element) {
+      scrolled.push(this);
+    });
+  });
+  afterEach(() => {
+    if (hadScroll) Element.prototype.scrollIntoView = originalScroll;
+    else delete (Element.prototype as Partial<Element>).scrollIntoView;
+  });
+
+  it('after the search is cleared', async () => {
+    api.getInspectorSnapshot.mockResolvedValue(deepSnapshot());
+    render(<OmniInspector udid="U1" embedded />);
+    await screen.findByRole('tree');
+    fireEvent.change(screen.getByRole('textbox', { name: 'Search elements' }), {
+      target: { value: 'Voice' },
+    });
+    fireEvent.click(await screen.findByRole('treeitem', { name: /Voice search/ }));
+    scrolled = [];
+    fireEvent.click(screen.getByRole('button', { name: 'Clear search' }));
+    expect(scrolled).toContain(screen.getByRole('treeitem', { name: /Voice search/ }));
+  });
+
+  it('after Refresh', async () => {
+    render(<OmniInspector udid="U1" embedded />);
+    fireEvent.click(await screen.findByRole('treeitem', { name: /login/ }));
+    scrolled = [];
+    fireEvent.click(screen.getByRole('button', { name: 'Refresh snapshot' }));
+    await waitFor(() => expect(api.getInspectorSnapshot).toHaveBeenCalledTimes(2));
+    await waitFor(() =>
+      expect(scrolled).toContain(screen.getByRole('treeitem', { name: /login/ })),
+    );
+  });
+
+  it('when the selected node is picked on the phone again after its row was hidden', async () => {
+    api.getInspectorSnapshot.mockResolvedValue(deepSnapshot());
+    const target = document.createElement('div');
+    document.body.appendChild(target);
+    render(<OmniInspector udid="U1" embedded overlayTarget={target} />);
+    await screen.findByRole('tree');
+    const mic = () => {
+      const areas = target.querySelectorAll('.omni-hit-area');
+      return areas[areas.length - 1];
+    };
+    fireEvent.click(mic());
+    await screen.findByRole('treeitem', { name: /Voice search/ });
+    fireEvent.click(screen.getByRole('button', { name: 'Collapse all' }));
+    expect(screen.queryByRole('treeitem', { name: /Voice search/ })).toBeNull();
+    scrolled = [];
+    fireEvent.click(mic());
+    const row = await screen.findByRole('treeitem', { name: /Voice search/ });
+    expect(scrolled).toContain(row);
+    target.remove();
   });
 });
 
@@ -250,9 +315,9 @@ describe('OmniInspector — divider', () => {
     expect(sep).toHaveAttribute('aria-valuenow', '38');
     expect(localStorage.getItem('xenon.omni.split')).toBe('0.38');
     fireEvent.keyDown(sep, { key: 'End' });
-    expect(sep).toHaveAttribute('aria-valuenow', sep.getAttribute('aria-valuemax')!);
+    expect(sep).toHaveAttribute('aria-valuenow', sep.getAttribute('aria-valuemax') as string);
     fireEvent.keyDown(sep, { key: 'Home' });
-    expect(sep).toHaveAttribute('aria-valuenow', sep.getAttribute('aria-valuemin')!);
+    expect(sep).toHaveAttribute('aria-valuenow', sep.getAttribute('aria-valuemin') as string);
     fireEvent.doubleClick(sep);
     expect(sep).toHaveAttribute('aria-valuenow', '40');
   });
@@ -284,5 +349,34 @@ describe('OmniInspector — breadcrumb', () => {
       'aria-selected',
       'true',
     );
+  });
+
+  // The breadcrumb is the keyboard's way to a node in the middle of a folded
+  // row, so neither of its buttons may drop focus to <body> (WCAG 2.4.3).
+  it('keeps keyboard focus in the breadcrumb', async () => {
+    api.getInspectorSnapshot.mockResolvedValue(deepSnapshot());
+    render(<OmniInspector udid="U1" embedded />);
+    await screen.findByRole('tree');
+    fireEvent.change(screen.getByRole('textbox', { name: 'Search elements' }), {
+      target: { value: 'Voice' },
+    });
+    const row = await screen.findByRole('treeitem', { name: /Voice search/ });
+    row.focus();
+    fireEvent.keyDown(row, { key: 'Enter' });
+    // Selecting from the tree leaves focus in the tree.
+    expect(document.activeElement).toBe(screen.getByRole('treeitem', { name: /Voice search/ }));
+
+    let nav = screen.getByRole('navigation', { name: 'Element path' });
+    fireEvent.click(within(nav).getByRole('button', { name: 'Show all 5 ancestors' }));
+    // "…" is gone; focus moves to the first ancestor it revealed.
+    expect(document.activeElement).toBe(within(nav).getByRole('button', { name: 'hierarchy' }));
+
+    // level2's crumb: hierarchy, level1, level2, … — all but the root are FrameLayouts.
+    fireEvent.click(within(nav).getAllByRole('button', { name: 'FrameLayout' })[1]);
+    nav = screen.getByRole('navigation', { name: 'Element path' });
+    const current = nav.querySelector('[aria-current="location"]');
+    expect(current).not.toBeNull();
+    expect(document.activeElement).toBe(current);
+    expect(within(nav).getAllByRole('button')).toHaveLength(2);
   });
 });

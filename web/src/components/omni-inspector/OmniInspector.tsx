@@ -306,6 +306,13 @@ const OmniInspector: React.FC<OmniInspectorProps> = ({
   const [snapshot, setSnapshot] = useState<InspectorSnapshot | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [selectedNode, setSelectedNode] = useState<InspectorNode | null>(null);
+  // Bumped whenever the selected row must be shown again: a new selection, a
+  // new capture, or a cleared search. Also bumped when the same node is picked
+  // again, which leaves `selectedNode` unchanged (React bails out on it).
+  const [revealSeq, setRevealSeq] = useState(0);
+  // Set when a breadcrumb crumb makes the selection, so the breadcrumb that
+  // remounts for it keeps focus; cleared after every commit (below).
+  const focusCrumb = useRef(false);
   const [hoveredNode, setHoveredNode] = useState<InspectorNode | null>(null);
   const [expandedNodes, setExpandedNodes] = useState<Set<string>>(new Set(['/']));
   const [searchQuery, setSearchQuery] = useState('');
@@ -520,6 +527,7 @@ const OmniInspector: React.FC<OmniInspectorProps> = ({
         setSelectedNode((prev) =>
           prev ? (pathTo(data.hierarchy, prev.xpath)?.pop() ?? null) : null,
         );
+        setRevealSeq((n) => n + 1);
       });
     } catch (err: any) {
       if (!latest()) return;
@@ -676,10 +684,9 @@ const OmniInspector: React.FC<OmniInspectorProps> = ({
     [snapshot, searchQuery],
   );
 
-  // The selection is always visible: whenever it changes, or a new capture
-  // arrives with the same node re-selected at a different path, open every
-  // ancestor on the way to it. Rows the user opened or closed elsewhere keep
-  // their state — this only ever adds xpaths, never removes them.
+  // The selection is always visible: on every reveal (see revealSeq), open
+  // every ancestor on the way to it. Rows the user opened or closed elsewhere
+  // keep their state — this only ever adds xpaths, never removes them.
   useEffect(() => {
     if (!selectedNode || !snapshot?.hierarchy) return;
     const path = pathTo(snapshot.hierarchy, selectedNode.xpath);
@@ -691,13 +698,31 @@ const OmniInspector: React.FC<OmniInspectorProps> = ({
       missing.forEach((n) => next.add(n.xpath));
       return next;
     });
-  }, [selectedNode, snapshot]);
+  }, [revealSeq]);
 
-  // Used by the tree, the hit areas (below) and, once wired, the breadcrumb —
-  // one place that selects a node and switches Info into view for it.
+  // The breadcrumb reads focusCrumb while rendering and acts on it in its
+  // mount effect, which runs before this one; after that it is spent.
+  useEffect(() => {
+    focusCrumb.current = false;
+  });
+
+  // Used by the tree, the hit areas (below) and the breadcrumb — one place
+  // that selects a node, reveals its row and switches Info into view for it.
   const selectNode = (n: InspectorNode) => {
     setSelectedNode(n);
+    setRevealSeq((s) => s + 1);
     setActiveTab('info');
+  };
+
+  const selectFromCrumb = (n: InspectorNode) => {
+    focusCrumb.current = true;
+    selectNode(n);
+  };
+
+  // Clearing the search can leave the selection inside a closed branch.
+  const changeQuery = (q: string) => {
+    if (searchQuery.trim() && !q.trim()) setRevealSeq((s) => s + 1);
+    setSearchQuery(q);
   };
 
   /**
@@ -1059,12 +1084,12 @@ const OmniInspector: React.FC<OmniInspectorProps> = ({
                 type="text"
                 placeholder="Search elements"
                 value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
+                onChange={(e) => changeQuery(e.target.value)}
                 aria-label="Search elements"
               />
               {searchQuery && (
                 <button
-                  onClick={() => setSearchQuery('')}
+                  onClick={() => changeQuery('')}
                   className="omni-clear-btn"
                   aria-label="Clear search"
                 >
@@ -1092,6 +1117,7 @@ const OmniInspector: React.FC<OmniInspectorProps> = ({
                   onToggle={toggleExpand}
                   onSelect={selectNode}
                   onHover={setHoveredNode}
+                  revealSeq={revealSeq}
                 />
               ) : (
                 <div className="omni-empty-state small">
@@ -1239,7 +1265,8 @@ const OmniInspector: React.FC<OmniInspectorProps> = ({
                                 (snapshot?.hierarchy &&
                                   pathTo(snapshot.hierarchy, selectedNode.xpath)) || [selectedNode]
                               }
-                              onSelect={selectNode}
+                              onSelect={selectFromCrumb}
+                              focusCurrent={focusCrumb.current}
                             />
                           </div>
                         </div>
