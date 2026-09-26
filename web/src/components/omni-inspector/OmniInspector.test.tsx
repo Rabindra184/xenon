@@ -190,6 +190,23 @@ describe('OmniInspector — tree', () => {
     expect(screen.getByText(/^No matches · try a role/)).toBeInTheDocument();
   });
 
+  // A live region that mounts with its first text is often not announced,
+  // and one holding the tip re-read it on every keystroke.
+  it('announces only the match count, from a status that is always there', async () => {
+    render(<OmniInspector udid="U1" embedded />);
+    await screen.findByRole('tree');
+    const live = screen.getByRole('status');
+    expect(live.textContent).toBe('');
+    const box = screen.getByRole('textbox', { name: 'Search elements' });
+    fireEvent.change(box, { target: { value: 'login' } });
+    expect(screen.getByRole('status')).toBe(live);
+    expect(live.textContent).toBe('1 match');
+    fireEvent.change(box, { target: { value: 'zzz' } });
+    expect(live.textContent).toBe('No matches');
+    fireEvent.change(box, { target: { value: '' } });
+    expect(live.textContent).toBe('');
+  });
+
   it('keeps a node selected from search visible after the search is cleared', async () => {
     api.getInspectorSnapshot.mockResolvedValue(deepSnapshot());
     render(<OmniInspector udid="U1" embedded />);
@@ -235,6 +252,80 @@ describe('OmniInspector — tree', () => {
     api.getInspectorSnapshot.mockResolvedValueOnce(snapshot('com.app:id/other'));
     fireEvent.click(screen.getByRole('button', { name: 'Refresh snapshot' }));
     expect(await screen.findByText('No element selected')).toBeInTheDocument();
+  });
+});
+
+describe('OmniInspector — another device', () => {
+  // The same xpath on another device is an unrelated element.
+  it('clears the selection instead of following its xpath', async () => {
+    const { rerender } = render(<OmniInspector udid="U1" embedded />);
+    fireEvent.click(await screen.findByRole('treeitem', { name: /login/ }));
+    const other = snapshot();
+    other.udid = 'U2';
+    api.getInspectorSnapshot.mockResolvedValueOnce(other);
+    rerender(<OmniInspector udid="U2" embedded />);
+    expect(await screen.findByText('No element selected')).toBeInTheDocument();
+    expect(screen.getByRole('treeitem', { name: /login/ })).toHaveAttribute(
+      'aria-selected',
+      'false',
+    );
+  });
+});
+
+describe('OmniInspector — Code gen', () => {
+  // Every locator for a node: its id first (the best), then an xpath.
+  function withXpath(snap: InspectorSnapshot, value: string): InspectorSnapshot {
+    snap.hierarchy.children.forEach((b) =>
+      b.suggestedLocators.push({ strategy: 'xpath', value, unique: true, score: 0 }),
+    );
+    return snap;
+  }
+  function twoButtons(value: string): InspectorSnapshot {
+    const snap = snapshot();
+    snap.hierarchy.children.push(button('com.app:id/other'));
+    return withXpath(snap, value);
+  }
+  const picker = () => screen.getByRole('combobox') as HTMLSelectElement;
+  const refresh = async () => {
+    fireEvent.click(screen.getByRole('button', { name: 'Refresh snapshot' }));
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Refresh snapshot' })).not.toBeDisabled(),
+    );
+  };
+
+  it('keeps the chosen locator across a Refresh, with the new capture’s value', async () => {
+    api.getInspectorSnapshot.mockResolvedValue(twoButtons('//old'));
+    render(<OmniInspector udid="U1" embedded />);
+    fireEvent.click(await screen.findByRole('treeitem', { name: /login/ }));
+    fireEvent.click(screen.getByRole('tab', { name: 'Code gen' }));
+    expect(picker().value).toBe('id');
+    fireEvent.change(picker(), { target: { value: 'xpath' } });
+    expect(screen.getByText(/\/\/old/)).toBeInTheDocument();
+
+    api.getInspectorSnapshot.mockResolvedValue(twoButtons('//new'));
+    await refresh();
+    expect(picker().value).toBe('xpath');
+    expect(screen.getByText(/\/\/new/)).toBeInTheDocument();
+    expect(screen.queryByText(/\/\/old/)).toBeNull();
+  });
+
+  it('goes back to the best locator for another element, or when the choice is gone', async () => {
+    api.getInspectorSnapshot.mockResolvedValue(twoButtons('//x'));
+    render(<OmniInspector udid="U1" embedded />);
+    fireEvent.click(await screen.findByRole('treeitem', { name: /login/ }));
+    fireEvent.click(screen.getByRole('tab', { name: 'Code gen' }));
+    fireEvent.change(picker(), { target: { value: 'xpath' } });
+    // Another element, which also offers an xpath: its best, not the last choice.
+    fireEvent.click(screen.getByRole('treeitem', { name: /other/ }));
+    fireEvent.click(screen.getByRole('tab', { name: 'Code gen' }));
+    expect(picker().value).toBe('id');
+
+    fireEvent.change(picker(), { target: { value: 'xpath' } });
+    const idOnly = snapshot();
+    idOnly.hierarchy.children.push(button('com.app:id/other'));
+    api.getInspectorSnapshot.mockResolvedValue(idOnly);
+    await refresh();
+    expect(picker().value).toBe('id');
   });
 });
 
@@ -348,6 +439,25 @@ describe('OmniInspector — breadcrumb', () => {
     expect(screen.getByRole('treeitem', { name: /hierarchy/ })).toHaveAttribute(
       'aria-selected',
       'true',
+    );
+  });
+
+  // A crumb cuts its name off at 16ch; the tooltip has the whole node.
+  it('gives each crumb the node’s full type, resource id and text', async () => {
+    const snap = snapshot();
+    const login = snap.hierarchy.children[0];
+    login.children = [{ ...button('com.app:id/badge'), xpath: `${login.xpath}/badge` }];
+    api.getInspectorSnapshot.mockResolvedValue(snap);
+    render(<OmniInspector udid="U1" embedded />);
+    fireEvent.click(await screen.findByRole('treeitem', { name: /badge/ }));
+    const nav = screen.getByRole('navigation', { name: 'Element path' });
+    expect(within(nav).getByRole('button', { name: 'login' })).toHaveAttribute(
+      'title',
+      'android.widget.Button\ncom.app:id/login\nlogin',
+    );
+    expect(nav.querySelector('[aria-current="location"]')).toHaveAttribute(
+      'title',
+      'android.widget.Button\ncom.app:id/badge\nbadge',
     );
   });
 

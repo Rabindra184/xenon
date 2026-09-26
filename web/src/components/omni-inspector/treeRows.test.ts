@@ -5,6 +5,7 @@ import {
   initialExpanded,
   isPlainWrapper,
   matchSet,
+  nodeTooltip,
   pathTo,
   rowIndexOf,
   shortName,
@@ -38,6 +39,16 @@ describe('names', () => {
     expect(shortResourceId('android:id/content')).toBe('content');
     expect(shortResourceId('plain')).toBe('plain');
     expect(shortResourceId(undefined)).toBe('');
+  });
+
+  it('describes a node for a tooltip: full type, resource id and text, one per line', () => {
+    const b = el('/b', {
+      type: 'android.widget.Button',
+      text: 'Sign in',
+      attributes: { 'resource-id': 'com.app:id/login' },
+    });
+    expect(nodeTooltip(b)).toBe('android.widget.Button\ncom.app:id/login\nSign in');
+    expect(nodeTooltip(el('/a', { text: '  ' }))).toBe('android.widget.FrameLayout');
   });
 
   it('names a node by text, content-desc, label, id, iOS name, then type', () => {
@@ -113,6 +124,27 @@ describe('visibleRows', () => {
     expect(rows.map((r) => r.key)).toEqual(['/r/a/l', '/r/a/l/2']);
     expect(rows[0].expanded).toBe(true);
     expect(rows[1]).toMatchObject({ setSize: 1, posInSet: 1 });
+  });
+
+  // ← and the caret would toggle the open set with nothing changing on screen,
+  // and the row would then flip closed once the search was cleared.
+  it('marks a row the search holds open as not collapsible', () => {
+    expect(visibleRows(root, new Set(), 'Two')[0]).toMatchObject({
+      expanded: true,
+      collapsible: false,
+    });
+    // Open in the user's set too: closing it still changes nothing on screen.
+    expect(visibleRows(root, new Set(['/r/a/l']), 'Two')[0]).toMatchObject({
+      expanded: true,
+      collapsible: false,
+    });
+    expect(visibleRows(root, new Set(['/r/a/l']))[0]).toMatchObject({
+      expanded: true,
+      collapsible: true,
+    });
+    // Nothing to collapse: a closed row, a leaf.
+    expect(visibleRows(root, new Set())[0].collapsible).toBe(false);
+    expect(visibleRows(root, new Set(['/r/a/l']))[1].collapsible).toBe(false);
   });
 
   it('treats a blank query as none', () => {

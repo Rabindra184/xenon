@@ -35,13 +35,19 @@ const root = el('/h', { type: 'hierarchy' }, [
   el('/h/c', { attributes: { 'resource-id': 'android:id/content' } }, [list]),
 ]);
 
-function Harness({ onSelect = () => {} }: { onSelect?: (n: InspectorNode) => void }) {
+function Harness({
+  onSelect = () => {},
+  query = '',
+}: {
+  onSelect?: (n: InspectorNode) => void;
+  query?: string;
+}) {
   const [open, setOpen] = React.useState(() => new Set(['/h/c/l']));
   const [selected, setSelected] = React.useState<string | null>(null);
   return (
     <>
       <ElementTree
-        rows={visibleRows(root, open)}
+        rows={visibleRows(root, open, query)}
         selectedXpath={selected}
         hoveredXpath={null}
         matches={new Set()}
@@ -228,6 +234,23 @@ describe('ElementTree', () => {
     } finally {
       focus.mockRestore();
     }
+  });
+
+  it('ignores a caret click on a row only the search holds open', () => {
+    const { rerender } = render(<Harness query="Three" />);
+    // Card is closed; the search holds it open to show Three.
+    expect(item(/Card/)).toHaveAttribute('aria-expanded', 'true');
+    // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+    fireEvent.click(item(/Card/).querySelector('.omni-tree-row__caret')!);
+    // Ignored: not a toggle, and not a click on the row either.
+    expect(item(/Card/)).toHaveAttribute('aria-selected', 'false');
+    rerender(<Harness query="" />);
+    expect(item(/Card/)).toHaveAttribute('aria-expanded', 'false');
+  });
+
+  it('gives each part the node’s full tooltip', () => {
+    render(<Harness />);
+    expect(screen.getByText('Two')).toHaveAttribute('title', 'android.widget.Button\nTwo');
   });
 
   it('keeps focus in the tree when the focused row is collapsed away', () => {

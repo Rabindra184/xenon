@@ -19,8 +19,17 @@ function renderDivider(overrides: Partial<React.ComponentProps<typeof SplitDivid
       <SplitDivider {...props} />
     </div>,
   );
+  // jsdom has no layout: give the row a width so a pointer position maps to
+  // a share (x = 506 is the middle of 1012, i.e. a share of 0.5).
+  const row = containerRef.current as HTMLDivElement;
+  row.getBoundingClientRect = () => ({ left: 0, top: 0, width: 1012, height: 400 }) as DOMRect;
   return { ...props, sep: screen.getByRole('separator') };
 }
+
+// jsdom has no PointerEvent, and fireEvent's pointermove falls back to a
+// plain Event that drops clientX; a MouseEvent of the same type carries it.
+const pointerMove = (el: Element, clientX: number) =>
+  fireEvent(el, new MouseEvent('pointermove', { bubbles: true, clientX }));
 
 describe('SplitDivider — drag interruption', () => {
   // A drag that never sees pointerup (a competing touch/pen gesture firing
@@ -47,6 +56,7 @@ describe('SplitDivider — drag interruption', () => {
     const onCommit = vi.fn();
     const { sep } = renderDivider({ onCommit });
     fireEvent.pointerDown(sep, { pointerId: 1 });
+    pointerMove(sep, 506);
     fireEvent.pointerCancel(sep, { pointerId: 1 });
     expect(onCommit).toHaveBeenCalledTimes(1);
   });
@@ -57,8 +67,41 @@ describe('SplitDivider — drag interruption', () => {
     const onCommit = vi.fn();
     const { sep } = renderDivider({ onCommit });
     fireEvent.pointerDown(sep, { pointerId: 1 });
+    pointerMove(sep, 506);
     fireEvent.pointerUp(sep, { pointerId: 1 });
     fireEvent.lostPointerCapture(sep, { pointerId: 1 });
     expect(onCommit).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('SplitDivider — a click is not a drag', () => {
+  // On a narrow window the shown share is clamped below the stored one;
+  // committing it on a plain click overwrote the wider preference.
+  it('does not commit a press and release that never moved it', () => {
+    const onCommit = vi.fn();
+    const { sep } = renderDivider({ onCommit });
+    fireEvent.pointerDown(sep, { pointerId: 1 });
+    fireEvent.pointerUp(sep, { pointerId: 1 });
+    fireEvent.lostPointerCapture(sep, { pointerId: 1 });
+    expect(onCommit).not.toHaveBeenCalled();
+  });
+
+  it('does not commit a move that lands on the same share', () => {
+    const onCommit = vi.fn();
+    const onChange = vi.fn();
+    // x = 406 maps to (406 - 6) / 1000 = 0.4, the current share.
+    const { sep } = renderDivider({ onCommit, onChange });
+    fireEvent.pointerDown(sep, { pointerId: 1 });
+    pointerMove(sep, 406);
+    fireEvent.pointerUp(sep, { pointerId: 1 });
+    expect(onCommit).not.toHaveBeenCalled();
+  });
+
+  it('passes a moved share on while dragging', () => {
+    const onChange = vi.fn();
+    const { sep } = renderDivider({ onChange });
+    fireEvent.pointerDown(sep, { pointerId: 1 });
+    pointerMove(sep, 506);
+    expect(onChange).toHaveBeenLastCalledWith(0.5);
   });
 });

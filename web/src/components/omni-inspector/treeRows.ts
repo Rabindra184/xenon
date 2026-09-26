@@ -17,6 +17,12 @@ export interface Row {
   hasChildren: boolean;
   /** the target is open, or held open by search */
   expanded: boolean;
+  /**
+   * Open, and closing it would close it: false for a row the search holds
+   * open (toggling the open set would change nothing on screen, then flip the
+   * row once the search is cleared), and for a closed row or a leaf.
+   */
+  collapsible: boolean;
   parentKey: string | null;
 }
 
@@ -73,6 +79,13 @@ export function shortResourceId(id: unknown): string {
 /** The type's last segment: `android.widget.FrameLayout` → `FrameLayout`. */
 export function shortType(node: InspectorNode): string {
   return (node.type || '').split('.').pop() || '';
+}
+
+/** The full type, resource id and text, those that exist, one per line. */
+export function nodeTooltip(node: InspectorNode): string {
+  return [node.type, node.attributes?.['resource-id'], node.text]
+    .filter((v): v is string => typeof v === 'string' && v.trim() !== '')
+    .join('\n');
 }
 
 /**
@@ -167,9 +180,9 @@ export function visibleRows(
     runs.forEach((run, i) => {
       const target = run[run.length - 1];
       const hasChildren = (target.children?.length ?? 0) > 0;
-      const expandedNow =
-        // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
-        hasChildren && (expanded.has(target.xpath) || (searching && leads!.has(target.xpath)));
+      // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+      const heldBySearch = searching && leads!.has(target.xpath);
+      const expandedNow = hasChildren && (expanded.has(target.xpath) || heldBySearch);
       out.push({
         key: target.xpath,
         nodes: run,
@@ -178,6 +191,7 @@ export function visibleRows(
         posInSet: i + 1,
         hasChildren,
         expanded: expandedNow,
+        collapsible: expandedNow && !heldBySearch,
         parentKey,
       });
       if (expandedNow) emit(target.children, level + 1, target.xpath);

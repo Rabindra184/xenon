@@ -17,7 +17,8 @@ export function treeKeyAction(rows: Row[], index: number, key: string): TreeKeyA
       if (!row.expanded) return { toggle: row.key };
       return rows[index + 1]?.parentKey === row.key ? { focus: index + 1 } : null;
     case 'ArrowLeft': {
-      if (row.hasChildren && row.expanded) return { toggle: row.key };
+      // A row the search holds open can't close, so ← goes up instead.
+      if (row.collapsible) return { toggle: row.key };
       const parent = rows.findIndex((r) => r.key === row.parentKey);
       return parent >= 0 ? { focus: parent } : null;
     }

@@ -29,6 +29,10 @@ export default function SplitDivider({
   // or the browser simply dropping capture) instead of pointerup. Whichever
   // fires first wins; the rest are no-ops.
   const ended = useRef(true);
+  // Whether this drag changed the share. A press and release that didn't
+  // commits nothing: the shown share may be clamped to a narrow window, and
+  // committing it would overwrite a wider stored preference.
+  const moved = useRef(false);
   const clamp = (s: number) => Math.min(limits.max, Math.max(limits.min, s));
   const pct = (s: number) => Math.round(s * 100);
 
@@ -36,7 +40,7 @@ export default function SplitDivider({
     if (ended.current) return;
     ended.current = true;
     setDragging(false);
-    onCommit(latest.current);
+    if (moved.current) onCommit(latest.current);
   };
 
   const fromPointer = (clientX: number) => {
@@ -77,10 +81,15 @@ export default function SplitDivider({
       onPointerDown={(e) => {
         e.currentTarget.setPointerCapture?.(e.pointerId);
         ended.current = false;
+        moved.current = false;
         setDragging(true);
       }}
       onPointerMove={(e) => {
-        if (dragging) onChange(fromPointer(e.clientX));
+        if (!dragging) return;
+        const next = fromPointer(e.clientX);
+        if (next === latest.current) return;
+        moved.current = true;
+        onChange(next);
       }}
       onPointerUp={(e) => {
         e.currentTarget.releasePointerCapture?.(e.pointerId);

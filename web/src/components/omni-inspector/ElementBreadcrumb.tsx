@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import type { InspectorNode } from './OmniInspector';
-import { shortName } from './treeRows';
+import { nodeTooltip, shortName } from './treeRows';
 
 const SHOWN_ANCESTORS = 4;
 
@@ -63,7 +63,7 @@ export default function ElementBreadcrumb({
               ref={i === 0 ? firstRef : undefined}
               type="button"
               className="omni-crumb"
-              title={n.type}
+              title={nodeTooltip(n)}
               aria-label={shortName(n)}
               onClick={() => onSelect(n)}
             >
@@ -77,7 +77,7 @@ export default function ElementBreadcrumb({
             tabIndex={-1}
             className="omni-crumb is-current"
             aria-current="location"
-            title={node.type}
+            title={nodeTooltip(node)}
           >
             {shortName(node)}
           </span>

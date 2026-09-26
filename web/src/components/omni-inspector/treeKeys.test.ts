@@ -12,12 +12,18 @@ const row = (key: string, over: Partial<Row> = {}): Row => ({
   posInSet: 1,
   hasChildren: false,
   expanded: false,
+  collapsible: false,
   parentKey: null,
   ...over,
 });
 // 0 /a (open) › 1 /a/b (closed, has children) · 2 /a/c (leaf)
 const rows = [
-  row('/a', { hasChildren: true, expanded: true, nodes: [node('/'), node('/a')] }),
+  row('/a', {
+    hasChildren: true,
+    expanded: true,
+    collapsible: true,
+    nodes: [node('/'), node('/a')],
+  }),
   row('/a/b', { level: 2, hasChildren: true, parentKey: '/a' }),
   row('/a/c', { level: 2, parentKey: '/a' }),
 ];
@@ -40,6 +46,17 @@ describe('treeKeyAction', () => {
     expect(treeKeyAction(rows, 0, 'ArrowLeft')).toEqual({ toggle: '/a' });
     expect(treeKeyAction(rows, 2, 'ArrowLeft')).toEqual({ focus: 0 });
     expect(treeKeyAction([row('/x')], 0, 'ArrowLeft')).toBeNull();
+  });
+
+  it('← on a row only the search holds open moves to its parent', () => {
+    const held = [
+      row('/a', { hasChildren: true, expanded: true, collapsible: true }),
+      row('/a/b', { level: 2, hasChildren: true, expanded: true, parentKey: '/a' }),
+      row('/a/b/c', { level: 3, parentKey: '/a/b' }),
+    ];
+    expect(treeKeyAction(held, 1, 'ArrowLeft')).toEqual({ focus: 0 });
+    // → still enters it.
+    expect(treeKeyAction(held, 1, 'ArrowRight')).toEqual({ focus: 2 });
   });
 
   it('Home and End jump to the ends', () => {

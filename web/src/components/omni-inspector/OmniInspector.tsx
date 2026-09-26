@@ -314,7 +314,7 @@ const OmniInspector: React.FC<OmniInspectorProps> = ({
   // remounts for it keeps focus; cleared after every commit (below).
   const focusCrumb = useRef(false);
   const [hoveredNode, setHoveredNode] = useState<InspectorNode | null>(null);
-  const [expandedNodes, setExpandedNodes] = useState<Set<string>>(new Set(['/']));
+  const [expandedNodes, setExpandedNodes] = useState<Set<string>>(() => new Set());
   const [searchQuery, setSearchQuery] = useState('');
   const [copiedLocator, setCopiedLocator] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'info' | 'code' | 'checks'>('info');
@@ -327,6 +327,9 @@ const OmniInspector: React.FC<OmniInspectorProps> = ({
   // Numbers each capture request, so a slow answer for an earlier request
   // (the previous device, a superseded refresh) can't replace a newer one.
   const loadSeq = useRef(0);
+  // The device of the capture on screen: a selection follows its xpath into a
+  // new capture of the same device only.
+  const capturedUdid = useRef<string | null>(null);
   const [codeFramework, setCodeFramework] = useState<CodeFramework>('java');
   const [selectedLocatorForCode, setSelectedLocatorForCode] = useState<LocatorSuggestion | null>(
     null,
@@ -468,18 +471,22 @@ const OmniInspector: React.FC<OmniInspectorProps> = ({
     [appiumSession],
   );
 
+  // The xpath of the selection the Code gen locator was last chosen for.
+  const locatorFor = useRef<string | null>(null);
 
-  // Auto-select best locator when node changes
+  // A new selection gets its best locator for Code gen. A new capture of the
+  // same node keeps the strategy the user chose, if the node still offers it,
+  // taking the new capture's suggestion so the value is fresh.
   useEffect(() => {
-    if (selectedNode?.suggestedLocators?.length) {
-      const best =
-        selectedNode.suggestedLocators.find(
-          (l) => l.strategy === 'accessibility id' || l.strategy === 'id',
-        ) || selectedNode.suggestedLocators[0];
-      setSelectedLocatorForCode(best);
-    } else {
-      setSelectedLocatorForCode(null);
-    }
+    const sameNode = !!selectedNode && selectedNode.xpath === locatorFor.current;
+    locatorFor.current = selectedNode?.xpath ?? null;
+    const locators = selectedNode?.suggestedLocators ?? [];
+    setSelectedLocatorForCode((prev) => {
+      const kept = sameNode && prev ? locators.find((l) => l.strategy === prev.strategy) : null;
+      const best = locators.find((l) => l.strategy === 'accessibility id' || l.strategy === 'id');
+      return kept || best || locators[0] || null;
+    });
+    // These describe the previous node or capture.
     setLocatorTests({});
     setVerifyResults({});
     setActiveLocatorTest(null);
@@ -513,6 +520,10 @@ const OmniInspector: React.FC<OmniInspectorProps> = ({
         setError(data?.error || 'Failed to capture snapshot');
         return;
       }
+      // The same xpath on another device is an unrelated element.
+      const device = data.udid || udid;
+      const sameDevice = device === capturedUdid.current;
+      capturedUdid.current = device;
       // React 17 does not batch setState calls made after an `await`, so
       // without this each of the following renders separately — and the
       // reveal effect (which opens ancestors of the selection) could run
@@ -525,7 +536,7 @@ const OmniInspector: React.FC<OmniInspectorProps> = ({
         // The selection follows its xpath into the new capture; the old node
         // object described the old screen.
         setSelectedNode((prev) =>
-          prev ? (pathTo(data.hierarchy, prev.xpath)?.pop() ?? null) : null,
+          prev && sameDevice ? (pathTo(data.hierarchy, prev.xpath)?.pop() ?? null) : null,
         );
         setRevealSeq((n) => n + 1);
       });
@@ -683,6 +694,8 @@ const OmniInspector: React.FC<OmniInspectorProps> = ({
     () => matchSet(snapshot?.hierarchy, searchQuery),
     [snapshot, searchQuery],
   );
+  const matchCount =
+    matches.size === 0 ? 'No matches' : matches.size === 1 ? '1 match' : `${matches.size} matches`;
 
   // The selection is always visible: on every reveal (see revealSeq), open
   // every ancestor on the way to it. Rows the user opened or closed elsewhere
@@ -1097,14 +1110,14 @@ const OmniInspector: React.FC<OmniInspectorProps> = ({
                 </button>
               )}
             </div>
+            {/* Announces the count alone. Always mounted: a live region that
+                appears with its first text is often not announced. */}
+            <div role="status" className="sr-only">
+              {searchQuery.trim() ? matchCount : ''}
+            </div>
             {searchQuery.trim() && (
-              <div className="omni-search-hint" role="status">
-                {matches.size === 0
-                  ? 'No matches'
-                  : matches.size === 1
-                    ? '1 match'
-                    : `${matches.size} matches`}{' '}
-                · try a role: button, input, image
+              <div className="omni-search-hint">
+                {matchCount} · try a role: button, input, image
               </div>
             )}
             <div className="omni-tree-content">

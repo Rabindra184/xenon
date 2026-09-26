@@ -1,19 +1,11 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { ChevronDown, ChevronRight } from 'lucide-react';
 import type { InspectorNode } from './OmniInspector';
-import { rowIndexOf, shortName, shortType, type Row } from './treeRows';
+import { nodeTooltip, rowIndexOf, shortName, shortType, type Row } from './treeRows';
 import { treeKeyAction } from './treeKeys';
 import { analyzeElement, ROLE_ICON } from './elementRole';
 
 const INDENT_PX = 10;
-
-/** The full type, resource id and text, one per line, for the tooltip. */
-function tooltip(node: InspectorNode): string {
-  const id = node.attributes?.['resource-id'];
-  return [node.type, id, node.text]
-    .filter((v): v is string => typeof v === 'string' && v.trim() !== '')
-    .join('\n');
-}
 
 interface ElementTreeProps {
   rows: Row[];
@@ -176,6 +168,9 @@ export default function ElementTree({
                   row.hasChildren
                     ? (e) => {
                         e.stopPropagation();
+                        // A row the search holds open can't close (see
+                        // Row.collapsible); the click does nothing.
+                        if (row.expanded && !row.collapsible) return;
                         onToggle(row.key);
                       }
                     : undefined
@@ -202,7 +197,7 @@ export default function ElementTree({
                       className={`omni-tree-row__part${last ? ' is-target' : ''}${
                         matches.has(n.xpath) ? ' is-match' : ''
                       }${n.xpath === selectedXpath ? ' is-current' : ''}`}
-                      title={tooltip(n)}
+                      title={nodeTooltip(n)}
                       onClick={
                         last
                           ? undefined
