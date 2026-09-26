@@ -6,6 +6,33 @@ This project follows [Semantic Versioning](https://semver.org/). Releases are
 published to npm automatically when `package.json`'s `version` changes on `main`
 (see `.github/workflows/npm-publish.yml`).
 
+## 1.22.2
+
+Patch release. Live Devices tiles respond where you tap, and a tile whose
+stream ends reconnects by itself instead of going blank or freezing.
+
+### Fixed
+
+- **Taps near the top or bottom of a Live Devices tile landed off target**
+  (#302). A tile is often letterboxed, as in the 3×2 layout, so the picture
+  fills only part of it. Taps were mapped against the whole tile, which put a
+  tap near an edge about 220 px (Android) or 75 points (iPhone) toward the
+  middle. Taps are now mapped against the picture, and a press on the black
+  bars around it is ignored. A swipe that ends off the picture stops at the
+  screen edge.
+- **After a server restart, a reopened Android tile couldn't be tapped**
+  (#302). Only the "start stream" request fetched the screen size, and
+  reopening a tile never sends it. The size is now fetched by every request a
+  tile uses to connect to the stream.
+- **A tile went blank or froze when its stream ended** (#303). This affected
+  iPhone tiles, and Android tiles on the MJPEG stream (for example while
+  recording). After a server restart the tile went blank; after the stream was
+  stopped it froze on the last frame. Either way it stayed "live" and never
+  retried, because the browser reports nothing when such a stream ends. A live
+  tile now asks the server every 5 seconds whether its stream is still running
+  and reconnects if not. While the server is unreachable, for example
+  mid-restart, the tile waits instead of giving up.
+
 ## 1.22.1
 
 Patch release. Completes 1.22.0's annotation work for multi-device
