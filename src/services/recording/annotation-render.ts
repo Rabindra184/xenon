@@ -53,6 +53,26 @@ export interface AnnotationRow {
   end_timecode_ms?: number | null;
 }
 
+/** A rectangle in output pixels. */
+export interface PixelBox {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
+/**
+ * Where the composite's `scale=W:H:force_original_aspect_ratio=decrease,
+ * pad=W:H:(ow-iw)/2:(oh-ih)/2` puts a srcW x srcH picture inside a W x H cell.
+ * Measured against the bundled ffmpeg: sizes round to nearest, offsets
+ * truncate (no rounding to even).
+ */
+export function containBoxPx(cellW: number, cellH: number, srcW: number, srcH: number): PixelBox {
+  const w = Math.min(cellW, Math.round((cellH * srcW) / srcH));
+  const h = Math.min(cellH, Math.round((cellW * srcH) / srcW));
+  return { x: Math.trunc((cellW - w) / 2), y: Math.trunc((cellH - h) / 2), w, h };
+}
+
 export interface RenderGraph {
   /** Extra ffmpeg inputs after the source video, in order (input index = position + 1). */
   inputs: string[];

@@ -32,6 +32,18 @@ export function parseFfmpegHeaderDurationSec(stderr: string): number | undefined
   return Number.isFinite(sec) && sec > 0 ? sec : undefined;
 }
 
+/**
+ * Frame size from the first video stream line of `ffmpeg -i`, e.g.
+ * `Video: h264 (High) (avc1 / 0x31637661), yuv420p(tv, …), 720x1480, …`. The
+ * size is the first `, WxH` followed by a separator, which skips codec tags
+ * like `0x31637661`.
+ */
+export function parseFfmpegFrameSize(stderr: string): { w: number; h: number } | undefined {
+  const m = stderr.match(/Video: .*?, (\d{2,5})x(\d{2,5})(?=[,\s\]])/);
+  if (!m) return undefined;
+  return { w: Number(m[1]), h: Number(m[2]) };
+}
+
 /** Duration from the last `out_time_us` of an `-f null` decode pass. */
 export function parseFfmpegProgressDurationSec(stdout: string): number | undefined {
   const matches = [...stdout.matchAll(/out_time_us=(\d+)/g)];
@@ -68,12 +80,12 @@ function spawnFfmpeg(args: string[], label: string): ChildProcess {
   return proc;
 }
 
-function runProbe(
+function runProbe<T>(
   args: string[],
   label: string,
-  parse: (io: { stdout: string; stderr: string }) => number | undefined,
+  parse: (io: { stdout: string; stderr: string }) => T | undefined,
   timeoutMs: number,
-): Promise<number | undefined> {
+): Promise<T | undefined> {
   return new Promise((resolve) => {
     let proc: ChildProcess;
     try {
@@ -91,7 +103,7 @@ function runProbe(
       }
       done(undefined);
     }, timeoutMs);
-    const done = (value?: number) => {
+    const done = (value?: T) => {
       if (settled) return;
       settled = true;
       clearTimeout(timer);
@@ -145,4 +157,17 @@ export async function probeVideoDurationMs(
 ): Promise<number | undefined> {
   const sec = await probeVideoDurationSec(filePath, opts);
   return sec === undefined ? undefined : Math.round(sec * 1000);
+}
+
+/** A video's frame size, from its container header. Undefined on failure. */
+export async function probeVideoFrameSize(
+  filePath: string,
+  opts: { timeoutMs?: number } = {},
+): Promise<{ w: number; h: number } | undefined> {
+  return runProbe(
+    ['-hide_banner', '-i', filePath],
+    `probe-size:${path.basename(filePath)}`,
+    ({ stderr }) => parseFfmpegFrameSize(stderr),
+    opts.timeoutMs ?? PROBE_TIMEOUT_MS,
+  );
 }

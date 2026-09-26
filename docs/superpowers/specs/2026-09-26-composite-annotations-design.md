@@ -73,7 +73,8 @@ change, is served raw exactly as today.
   share the frame size.
 - `containBoxPx(cellW, cellH, srcW, srcH)` mirrors ffmpeg:
   - scaled size `min(cell, round(other × aspect))`
-  - pad offset rounded down to an even pixel, as `pad` does for 4:2:0
+  - pad offset truncated, with no rounding to even. Measured on the bundled
+    ffmpeg: a 1024×768 source lands at y=277.
 - The result is offset by the cell origin.
 - If the size can't be probed, the box falls back to the whole cell.
 
@@ -116,7 +117,7 @@ each device.
 - **Unit:**
   - `compositeGrid` and `cellOrigin` for n=2..6, matching the xstack
     layouts.
-  - `containBoxPx` (tall and wide sources, odd widths, the even pad).
+  - `containBoxPx`, checked against boxes measured from ffmpeg.
   - Frame-size parsing, including `0x31637661`-style codec tags that must
     not match.
   - `buildFilterParts` with a box produces absolute pixels.

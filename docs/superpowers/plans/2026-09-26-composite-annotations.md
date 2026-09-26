@@ -26,7 +26,8 @@ cell, exactly as the per-device videos do.
 - **Scale.** `force_original_aspect_ratio=decrease` gives
   `w = min(cellW, round(cellH·srcW/srcH))` and
   `h = min(cellH, round(cellW·srcH/srcW))`, rounded half away from zero.
-- **Pad offsets.** `floor((cell − size)/2)` rounded **down to even**.
+- **Pad offsets.** `trunc((cell − size)/2)`, with no rounding to even. This
+  was measured on the bundled ffmpeg: a 1024×768 source lands at y=277.
 - **Missing inputs.** No layout file, no marks, or any render error: serve
   the raw composite.
 - **Mocha.** Hooks go inside `describe`. Specs must pass on their own. No
@@ -105,10 +106,9 @@ cell, exactly as the per-device videos do.
 - [ ] **Step 1: Write the failing tests.**
   - Parse the real stream line: `… (avc1 / 0x31637661), yuv420p(tv, …), 720x1480, 61 kb/s …`
     gives 720×1480.
-  - `containBoxPx(540,960,720,1480)` gives `{ x: 36, y: 0, w: 467, h: 960 }`.
-    Here `round(960·720/1480)=467`, and `(540−467)/2=36.5` floors to 36, which
-    rounds down to even as 36. Verify against the real ffmpeg test before
-    fixing the literal.
+  - `containBoxPx` matches the boxes measured from the bundled ffmpeg for six
+    source shapes, e.g. 720×1480 gives `{ x: 36, y: 0, w: 467, h: 960 }` and
+    1024×768 gives `{ x: 0, y: 277, w: 540, h: 405 }`.
   - A wide source such as 1480×720 is letterboxed vertically.
   - An equal aspect gives the full cell.
 - [ ] **Step 2: Run them and check that they fail.**
