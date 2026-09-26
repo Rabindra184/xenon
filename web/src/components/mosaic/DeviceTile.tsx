@@ -66,6 +66,15 @@ export function DeviceTile({
   onRemove,
 }: Props) {
   const [streamState, setStreamState] = React.useState<StreamState>('connecting');
+  // Width / height of the frames actually being shown. The annotation overlay
+  // fits itself to this picture, so marks line up with the recording even
+  // when the tile's own aspect is a fallback or the app is in landscape.
+  const [mediaAspect, setMediaAspect] = React.useState<number | undefined>();
+  const noteMediaSize = React.useCallback((w: number, h: number) => {
+    if (!(w > 0) || !(h > 0)) return;
+    const next = w / h;
+    setMediaAspect((prev) => (prev !== undefined && Math.abs(prev - next) < 1e-3 ? prev : next));
+  }, []);
   const [retryKey, setRetryKey] = React.useState(0);
   // When set, this Android tile renders the WebCodecs H.264 player instead of
   // the MJPEG <img>. Cleared on fatal error to fall back to MJPEG.
@@ -422,6 +431,7 @@ export function DeviceTile({
             wsUrl={h264WsUrl}
             className="absolute inset-0 w-full h-full object-contain bg-black select-none pointer-events-none"
             onReady={() => setStreamState('live')}
+            onFrameSize={noteMediaSize}
             onFatal={() => {
               console.warn(`[DeviceTile] H.264 fatal for ${udid}; falling back to MJPEG`);
               setH264WsUrl(null);
@@ -440,8 +450,9 @@ export function DeviceTile({
               opacity: streamState === 'live' ? 1 : 0,
               transition: 'opacity 0.3s ease-in-out',
             }}
-            onLoad={() => {
+            onLoad={(e) => {
               console.log(`[DeviceTile] Image LOADED for ${udid}`);
+              noteMediaSize(e.currentTarget.naturalWidth, e.currentTarget.naturalHeight);
               // A frame arrived: healthy. Reset the retry budget so a later mid-
               // stream drop gets its own fresh set of auto-retries.
               attemptRef.current = 0;
@@ -496,6 +507,7 @@ export function DeviceTile({
             shape={shape}
             color={color}
             committed={overlayAnnotations}
+            mediaAspect={mediaAspect}
             onCommittedChange={onOverlayAnnotationsChange}
             onCommit={(a, image) => onAnnotation(recordingId!, a, image)}
           />

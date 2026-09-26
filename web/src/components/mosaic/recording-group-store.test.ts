@@ -149,3 +149,23 @@ describe('mosaicReducer — REHYDRATE_RECORDING', () => {
     expect(s.annotateMode).to.equal(false);
   });
 });
+
+describe('mosaicReducer — PATCH_TILE_DIMS', () => {
+  it('replaces the fallback aspect once the real screen size is known', () => {
+    // A tile added before the device reported its size got the 9/16 fallback;
+    // keeping it letterboxed the preview for the tile's whole life.
+    const added = mosaicReducer(initialMosaicState, {
+      type: 'ADD_TILE',
+      tile: { udid: 'u1', mjpegPort: 0, aspect: '9 / 16' },
+    });
+    const s = mosaicReducer(added, {
+      type: 'PATCH_TILE_DIMS',
+      udid: 'u1',
+      screenWidth: 1080,
+      screenHeight: 2220,
+      aspect: '1080 / 2220',
+    });
+    expect(s.tiles[0].aspect).to.equal('1080 / 2220');
+    expect(s.tiles[0].screenWidth).to.equal(1080);
+  });
+});

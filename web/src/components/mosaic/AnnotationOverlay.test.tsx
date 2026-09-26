@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render } from '@testing-library/react';
-import { AnnotationOverlay, appendPoint, paintAnnotation } from './AnnotationOverlay';
+import { AnnotationOverlay, appendPoint, fitContain, paintAnnotation } from './AnnotationOverlay';
 
 describe('AnnotationOverlay', () => {
   beforeEach(() => {
@@ -26,6 +26,32 @@ describe('AnnotationOverlay', () => {
   // with auto width/height it keeps its intrinsic 300x150 size. Marks were
   // then normalized to that 300x150 band and landed far from where they were
   // drawn once rendered into the recording.
+  // Marks are measured against the canvas and burned into the recorded frame,
+  // so in a letterboxed tile (late screen size, an iPhone with none, a
+  // landscape app) the canvas must cover the picture, not the black bars.
+  it('fits the canvas to the video picture inside a letterboxed tile', () => {
+    const parent = document.createElement('div');
+    Object.defineProperty(parent, 'clientWidth', { value: 400 });
+    Object.defineProperty(parent, 'clientHeight', { value: 800 });
+    document.body.appendChild(parent);
+    const { container } = render(
+      <AnnotationOverlay
+        enabled
+        shape="RECT"
+        color="#ff3333"
+        onCommit={() => {}}
+        mediaAspect={1}
+      />,
+      { container: parent },
+    );
+    const canvas = container.querySelector('canvas') as HTMLCanvasElement;
+    expect(canvas.style.left).toBe('0px');
+    expect(canvas.style.top).toBe('200px');
+    expect(canvas.style.width).toBe('400px');
+    expect(canvas.style.height).toBe('400px');
+    parent.remove();
+  });
+
   it('stretches the canvas over the whole tile, not its default 300x150', () => {
     const { container } = render(
       <AnnotationOverlay enabled shape="RECT" color="#ff3333" onCommit={() => {}} />,
@@ -96,5 +122,18 @@ describe('paintAnnotation FREEHAND', () => {
       geometry: { x: 0.1, y: 0.1, w: 0.5, h: 0.5 },
     });
     expect(calls).toContain('strokeRect');
+  });
+});
+
+describe('fitContain (object-fit: contain)', () => {
+  it('pillarboxes a tall picture in a wide box', () => {
+    expect(fitContain(400, 200, 0.5)).toEqual({ left: 150, top: 0, width: 100, height: 200 });
+  });
+  it('letterboxes a wide picture in a tall box', () => {
+    expect(fitContain(400, 800, 2)).toEqual({ left: 0, top: 300, width: 400, height: 200 });
+  });
+  it('fills the box when the aspects match or the picture aspect is unknown', () => {
+    expect(fitContain(300, 600, 0.5)).toEqual({ left: 0, top: 0, width: 300, height: 600 });
+    expect(fitContain(300, 600, undefined)).toEqual({ left: 0, top: 0, width: 300, height: 600 });
   });
 });

@@ -7,6 +7,8 @@ interface WsH264PlayerProps {
   onFatal?: () => void;
   /** Called once when the first frame has decoded (so the tile can go 'live'). */
   onReady?: () => void;
+  /** Called when the decoded frame size changes (first frame, rotation). */
+  onFrameSize?: (width: number, height: number) => void;
   className?: string;
 }
 
@@ -36,12 +38,20 @@ function codecFromConfig(data: Uint8Array): string {
  * first config frame. SPS/PPS reach the decoder inside each keyframe (Annex-B),
  * so only the codec string is needed to configure.
  */
-const WsH264Player: React.FC<WsH264PlayerProps> = ({ wsUrl, onFatal, onReady, className }) => {
+const WsH264Player: React.FC<WsH264PlayerProps> = ({
+  wsUrl,
+  onFatal,
+  onReady,
+  onFrameSize,
+  className,
+}) => {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const fatalRef = useRef(onFatal);
   fatalRef.current = onFatal;
   const readyRef = useRef(onReady);
   readyRef.current = onReady;
+  const frameSizeRef = useRef(onFrameSize);
+  frameSizeRef.current = onFrameSize;
 
   useEffect(() => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -65,9 +75,10 @@ const WsH264Player: React.FC<WsH264PlayerProps> = ({ wsUrl, onFatal, onReady, cl
           frame.close();
           return;
         }
-        if (canvas.width !== frame.displayWidth) {
+        if (canvas.width !== frame.displayWidth || canvas.height !== frame.displayHeight) {
           canvas.width = frame.displayWidth;
           canvas.height = frame.displayHeight;
+          frameSizeRef.current?.(frame.displayWidth, frame.displayHeight);
         }
         ctx?.drawImage(frame, 0, 0);
         frame.close();

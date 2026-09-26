@@ -14,7 +14,43 @@ interface Props {
   /** Survives remounts when the parent keeps this list (keyed by recording). */
   committed?: NormalizedAnnotation[];
   onCommittedChange?: (next: NormalizedAnnotation[]) => void;
+  /**
+   * Width / height of the video picture. The tile can be letterboxed (screen
+   * size not reported yet, a landscape app), and marks must be measured
+   * against the picture that gets recorded, not the black bars around it.
+   */
+  mediaAspect?: number;
 }
+
+export interface Box {
+  left: number;
+  top: number;
+  width: number;
+  height: number;
+}
+
+/** Where `object-fit: contain` puts a picture of `aspect` inside a box. */
+export function fitContain(boxW: number, boxH: number, aspect: number | undefined): Box {
+  const full = { left: 0, top: 0, width: boxW, height: boxH };
+  if (!aspect || !(aspect > 0) || boxW <= 0 || boxH <= 0) return full;
+  const boxAspect = boxW / boxH;
+  if (Math.abs(boxAspect - aspect) < 1e-6) return full;
+  if (aspect > boxAspect) {
+    const height = boxW / aspect;
+    return { left: 0, top: (boxH - height) / 2, width: boxW, height };
+  }
+  const width = boxH * aspect;
+  return { left: (boxW - width) / 2, top: 0, width, height: boxH };
+}
+
+const sameBox = (a: Box | null, b: Box | null) =>
+  a === b ||
+  (!!a &&
+    !!b &&
+    a.left === b.left &&
+    a.top === b.top &&
+    a.width === b.width &&
+    a.height === b.height);
 
 interface DragState {
   startX: number;
@@ -232,10 +268,12 @@ export function AnnotationOverlay({
   onCommit,
   committed: controlledCommitted,
   onCommittedChange,
+  mediaAspect,
 }: Props) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const [drag, setDrag] = useState<DragState | null>(null);
   const [localCommitted, setLocalCommitted] = useState<NormalizedAnnotation[]>([]);
+  const [box, setBox] = useState<Box | null>(null);
   const committed = controlledCommitted ?? localCommitted;
 
   // Refs so ResizeObserver / paint always see the latest strokes (setting
@@ -301,6 +339,23 @@ export function AnnotationOverlay({
   useEffect(() => {
     paint();
   }, [drag, committed, paint]);
+
+  // Cover the video picture, not the whole tile: re-fit whenever the tile
+  // resizes or the stream's frame shape changes.
+  useEffect(() => {
+    const parent = canvasRef.current?.parentElement;
+    if (!parent) return;
+    const place = () => {
+      const next = mediaAspect
+        ? fitContain(parent.clientWidth, parent.clientHeight, mediaAspect)
+        : null;
+      setBox((prev) => (sameBox(prev, next) ? prev : next));
+    };
+    place();
+    const ro = new ResizeObserver(place);
+    ro.observe(parent);
+    return () => ro.disconnect();
+  }, [mediaAspect]);
 
   // Leaving annotate mid-drag must drop capture so tap/swipe can resume.
   useEffect(() => {
@@ -388,12 +443,21 @@ export function AnnotationOverlay({
       ref={canvasRef}
       style={{
         position: 'absolute',
-        inset: 0,
-        // A canvas is a replaced element: `inset` alone leaves it at its
-        // intrinsic 300x150, so geometry was normalized to that band instead
-        // of the tile and landed in the wrong place in the recorded video.
-        width: '100%',
-        height: '100%',
+        ...(box
+          ? {
+              left: `${box.left}px`,
+              top: `${box.top}px`,
+              width: `${box.width}px`,
+              height: `${box.height}px`,
+            }
+          : {
+              inset: 0,
+              // A canvas is a replaced element: `inset` alone leaves it at its
+              // intrinsic 300x150, so geometry was normalized to that band
+              // instead of the tile and landed in the wrong place in the video.
+              width: '100%',
+              height: '100%',
+            }),
         // When disabled, must not intercept taps — interaction layer sits below
         // and needs the events after Annotate is toggled off.
         pointerEvents: enabled ? 'auto' : 'none',

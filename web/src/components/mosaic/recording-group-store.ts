@@ -180,7 +180,9 @@ export function mosaicReducer(state: MosaicState, action: MosaicAction): MosaicS
           ...t,
           screenWidth: action.screenWidth,
           screenHeight: action.screenHeight,
-          aspect: t.aspect ?? action.aspect,
+          // The tile only lacked dims if it was built from the fallback
+          // aspect, so the real one replaces it.
+          aspect: action.aspect ?? t.aspect,
         };
       });
       return changed ? { ...state, tiles } : state;
