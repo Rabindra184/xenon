@@ -6,6 +6,49 @@ This project follows [Semantic Versioning](https://semver.org/). Releases are
 published to npm automatically when `package.json`'s `version` changes on `main`
 (see `.github/workflows/npm-publish.yml`).
 
+## 1.25.0
+
+Minor release. Live Devices recordings can no longer be lost by stopping the
+device's stream underneath them. When the idle timeout releases your devices,
+a notice says so and can put them back. Live Devices also shows the same
+device names as the Devices page.
+
+### Fixed
+
+- **A recording left alone for 5 minutes was lost** (#317). The idle timeout
+  ran during recordings, and its release stopped the device's stream under
+  the recording. Stopping the recording then gave FAILED with 28 bytes, so
+  everything was lost, including unattended runs such as an automated test.
+  The timeout is now paused while recording. After Stop, the 5 minutes start
+  again.
+- **The server stopped a stream that a recording was reading** (#318).
+  `POST /control/:udid/stream/stop` now answers **409** `device_recording`
+  while the device is being recorded, and leaves the stream and the lock
+  alone. The answer includes the recording's `groupId`.
+  - Admins are refused too: recordings stop by group, so forcing one device
+    would end the whole group. `POST /recordings/:groupId/stop` does that
+    cleanly, keeping the video and releasing the devices.
+  - A caller who may not use the device still gets the usual 403 and learns
+    nothing about the recording.
+- **Clicking a recorded device in the Live Devices list did nothing visible**
+  (#319). It now shows "Stop recording before changing the devices on the
+  grid.", as adding a device already did, and sends no request.
+- **Live Devices showed codenames** such as "star2ltexx" (#319). The device
+  list, the tile's label and the Remove button now use the name the Devices
+  page shows, such as "Galaxy S9+". Searching the list by codename still
+  finds the device.
+
+### Added
+
+- **A notice after an idle release** (#317): "Released N device(s) after 5
+  minutes without activity.", with **Restore devices** and **Dismiss**. It
+  stays until you dismiss it.
+  - **Restore devices** puts the same devices back, the same as clicking them
+    in the list.
+  - A device someone else now holds, or one that's offline or no longer
+    connected, is skipped, and the notice names it.
+  - Choosing **Release now** in the warning shows no notice.
+
 ## 1.24.0
 
 Minor release. On Live Devices, recording no longer switches Annotate on, so
