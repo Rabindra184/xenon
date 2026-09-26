@@ -1,6 +1,8 @@
 import Simctl from 'node-simctl';
 import { flatten } from 'lodash';
 import { utilities as IOSUtils } from 'appium-ios-device';
+import { appleIdentity, simulatorIdentity } from './appleIdentity';
+import { EMPTY_IDENTITY, nonNullIdentity } from '../deviceIdentity';
 import { IDevice } from '../../interfaces/IDevice';
 import { cachePath } from '../../helpers';
 import log from '../../logger';
@@ -146,6 +148,13 @@ export class IOSDiscoveryService {
     } catch (e: any) {
       this.log.error(`Metadata discovery failed for ${udid}: ${e.message}`);
     }
+    // Optional: model name and form factor. A failure leaves the device as before.
+    let identity = EMPTY_IDENTITY;
+    try {
+      identity = appleIdentity(await IOSUtils.getDeviceInfo(udid));
+    } catch (e: any) {
+      this.log.debug(`Identity lookup failed for ${udid}: ${e.message}`);
+    }
 
     return {
       wdaLocalPort,
@@ -165,6 +174,9 @@ export class IOSDiscoveryService {
       state: storeDevice?.state || 'Unknown',
       userBlocked: storeDevice?.userBlocked || false,
       ...(storeDevice || {}),
+      // After the stored row, so fresh values win and a failed lookup keeps
+      // the stored ones.
+      ...nonNullIdentity(identity),
     } as IDevice;
   }
 
@@ -225,6 +237,7 @@ export class IOSDiscoveryService {
         const willRunWda = simulatorNeedsPortNow(d.state);
         return {
           ...d,
+          ...simulatorIdentity(d.name),
           wdaLocalPort:
             storeDevice?.wdaLocalPort ||
             (willRunWda

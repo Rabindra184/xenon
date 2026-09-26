@@ -96,9 +96,9 @@ lockdown values including `ProductType` (`iPhone18,2`) and `DeviceClass`
 - `model` = `ProductType`; `manufacturer` = `Apple`.
 - `formFactor`: `iPhone` → phone, `iPad` → tablet, `AppleTV` → tv.
 - `marketingName`: a lookup in a new built-in table,
-  `src/device-managers/ios/appleModelNames.ts` (`ProductType` → name). It
-  covers iPhone 11 through iPhone 17 and the iPads released in the same
-  years. An unknown code gives `null`. It never guesses from the code's
+  `src/device-managers/ios/appleIdentity.ts` (`APPLE_MODEL_NAMES`, `ProductType` → name). It covers iPhone 11 through the iPhone 16 family and recent iPads,
+  plus any code read off a lab device. Newer codes are added once
+  confirmed. An unknown code gives `null`. It never guesses from the code's
   numbers.
 - A failed `getDeviceInfo` gives all-null fields. The existing name and OS
   lookups are unaffected.
