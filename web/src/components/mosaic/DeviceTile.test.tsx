@@ -35,7 +35,19 @@ const goLive = (container: HTMLElement) =>
   fireEvent.load(container.querySelector('img') as HTMLImageElement);
 
 describe('DeviceTile', () => {
+  let getContext: { mockRestore: () => void };
+
   beforeEach(() => {
+    // A recording tile mounts the drawing overlay, which needs these; jsdom
+    // has neither (the overlay tolerates a null 2d context).
+    vi.stubGlobal(
+      'ResizeObserver',
+      class {
+        observe() {}
+        disconnect() {}
+      },
+    );
+    getContext = vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(null);
     vi.stubGlobal(
       'fetch',
       vi.fn(async () => new Response(JSON.stringify({ status: 'running', type: 'mjpeg' }))),
@@ -45,6 +57,8 @@ describe('DeviceTile', () => {
   afterEach(() => {
     cleanup();
     vi.unstubAllGlobals();
+    // Only this spy: restoring every mock would also wipe the api-service mock.
+    getContext.mockRestore();
   });
 
   // The side buttons used text symbols (⌂ ‹ ▢ ⎙), and a button's text is its
@@ -55,6 +69,12 @@ describe('DeviceTile', () => {
     for (const name of ['Remove star2ltexx', 'Home', 'Back', 'Recent apps', 'Screenshot']) {
       expect(screen.getByRole('button', { name })).toBeInTheDocument();
     }
+  });
+
+  it('tells an annotating user how to stop', () => {
+    const { container } = tile({ recordingId: 'r1', annotateMode: true });
+    goLive(container);
+    expect(screen.getByText('Annotating · Esc to stop')).toBeInTheDocument();
   });
 
   it('shows the device name, not its ID, while the stream starts', () => {

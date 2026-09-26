@@ -221,9 +221,8 @@ export function mosaicReducer(state: MosaicState, action: MosaicAction): MosaicS
         downloadableVideoCount: 0,
         recordingPhase: 'recording',
         recording: true,
-        // Turn annotate on so the user can draw on the live preview immediately.
-        // Toggle off to resume tap/swipe.
-        annotateMode: true,
+        // Start on Interact: taps reach the phone. Annotate is one click away.
+        annotateMode: false,
         startedAt: action.startedAt,
         overlayAnnotations: {},
         tiles,

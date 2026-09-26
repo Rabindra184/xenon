@@ -68,4 +68,34 @@ describe('SegmentedControl', () => {
     expect(screen.getByText('0')).toHaveClass('seg-count-zero');
     expect(screen.getByText('3')).not.toHaveClass('seg-count-zero');
   });
+
+  it('disables a segment, explains why, and ignores clicks on it', () => {
+    const fn = vi.fn();
+    render(
+      <SegmentedControl
+        segments={[
+          { value: 'a', label: 'A' },
+          { value: 'b', label: 'B', disabled: true, title: 'Not yet' },
+        ]}
+        value="a"
+        onChange={fn}
+      />,
+    );
+    const b = screen.getByRole('tab', { name: 'B' });
+    expect(b).toBeDisabled();
+    expect(b).toHaveAttribute('title', 'Not yet');
+    fireEvent.click(b);
+    expect(fn).not.toHaveBeenCalled();
+  });
+
+  it('declares a keyboard shortcut on a segment', () => {
+    render(
+      <SegmentedControl
+        segments={[{ value: 'a', label: 'A', keyShortcuts: 'Escape' }]}
+        value="a"
+        onChange={() => {}}
+      />,
+    );
+    expect(screen.getByRole('tab', { name: 'A' })).toHaveAttribute('aria-keyshortcuts', 'Escape');
+  });
 });

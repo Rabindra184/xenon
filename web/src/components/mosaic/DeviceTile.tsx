@@ -553,7 +553,7 @@ export function DeviceTile({
         {recording && annotateMode && streamState === 'live' && (
           <div className="absolute top-3 left-14 right-3 z-30 flex justify-end pointer-events-none">
             <span className="px-2 py-0.5 rounded-sm bg-[var(--color-info)] text-white text-[10px] font-semibold shadow-lg whitespace-nowrap overflow-hidden text-ellipsis">
-              Annotating · drag to mark
+              Annotating · Esc to stop
             </span>
           </div>
         )}

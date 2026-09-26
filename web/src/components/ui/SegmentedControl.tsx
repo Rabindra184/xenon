@@ -8,6 +8,12 @@ export interface Segment<T extends string> {
   count?: number;
   /** A status dot before the label, in that state's colour (e.g. device filters). */
   tone?: StatusKind;
+  /** Unavailable for now; `title` should say why. */
+  disabled?: boolean;
+  /** Tooltip. A string label stays the accessible name. */
+  title?: string;
+  /** Announced shortcut, e.g. "Escape" (aria-keyshortcuts). */
+  keyShortcuts?: string;
 }
 
 export interface SegmentedControlProps<T extends string> {
@@ -30,8 +36,14 @@ export function SegmentedControl<T extends string>({
           key={s.value}
           role="tab"
           aria-selected={s.value === value}
+          aria-label={s.title && typeof s.label === 'string' ? s.label : undefined}
+          aria-keyshortcuts={s.keyShortcuts}
+          title={s.title}
+          disabled={s.disabled}
           className={`seg-btn${s.value === value ? ' seg-btn-active' : ''}`}
-          onClick={() => onChange(s.value)}
+          onClick={() => {
+            if (!s.disabled) onChange(s.value);
+          }}
           type="button"
         >
           {s.tone && <StatusDot kind={s.tone} />}
