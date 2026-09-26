@@ -259,6 +259,8 @@ const ROUTE_DATA_MOCKS: Record<string, Setup> = {
             name: "Rabindra's iPhone 15 Pro Max (Engineering Lab, Desk 14, Rack B)",
             platform: 'ios',
             sdk: '26.5.2',
+            deviceType: 'real',
+            realDevice: true,
             state: 'Booted',
             busy: false,
             offline: false,
@@ -275,6 +277,8 @@ const ROUTE_DATA_MOCKS: Record<string, Setup> = {
             name: 'Pixel Tablet 11-inch — Android 14 QA Farm Node 7 (Shared)',
             platform: 'android',
             sdk: '14',
+            deviceType: 'emulator',
+            realDevice: false,
             state: 'device',
             busy: true,
             offline: false,
@@ -285,6 +289,24 @@ const ROUTE_DATA_MOCKS: Record<string, Setup> = {
             host: 'http://10.0.0.42:4723',
             screenWidth: '1600',
             screenHeight: '2560',
+          },
+          {
+            udid: '5C2E7A31-9F7B-4D2B-8E7A-1B2C3D4E5F60',
+            name: 'iPhone 16 Pro Max Simulator (Xcode 26, CI Node 3 — Shared Pool)',
+            platform: 'ios',
+            sdk: '26.0',
+            deviceType: 'simulator',
+            realDevice: false,
+            state: 'Booted',
+            busy: false,
+            offline: false,
+            userBlocked: false,
+            teamId: null,
+            tags: [],
+            session_id: null,
+            host: 'http://127.0.0.1:4723',
+            screenWidth: '440',
+            screenHeight: '956',
           },
         ],
       }),
@@ -712,6 +734,9 @@ const ROUTE_CONTENT_CHECKS: Record<string, Setup> = {
     // Empty DB renders .device-explorer-empty instead of the card grid.
     await expect(page.locator('.device-explorer-card-container')).toHaveCount(1);
     await expect(page.locator('.device-explorer-card-container .dc2')).not.toHaveCount(0);
+    // The two-row toolbar is what's being measured.
+    await expect(page.getByRole('tablist', { name: 'Platform' })).toBeVisible();
+    await expect(page.getByRole('tablist', { name: 'Device type' })).toBeVisible();
   },
 
   '/xenon/builds': async (page) => {
