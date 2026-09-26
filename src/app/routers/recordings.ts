@@ -264,8 +264,11 @@ router.get('/recordings/:groupId/composite.mp4', async (req: Request, res: Respo
   if (!(await isGroupVisibleToAuth(req.params.groupId, auth?.teamIds))) {
     return res.status(404).json({ error: 'composite_not_found' });
   }
-  const compositePath = compositeOutputPath(req.params.groupId);
-  if (!fs.existsSync(compositePath)) {
+  // With the devices' marks burned in when that works, otherwise raw.
+  const compositePath = await Container.get(ProofBundleService).resolveCompositeFile(
+    req.params.groupId,
+  );
+  if (!compositePath) {
     return res.status(404).json({ error: 'composite_not_found' });
   }
   res.setHeader('Content-Type', 'video/mp4');

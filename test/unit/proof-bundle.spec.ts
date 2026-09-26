@@ -4,7 +4,10 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import * as unzipper from 'unzipper';
+import sinon from 'sinon';
 import { ProofBundleService } from '../../src/services/recording/proof-bundle';
+import { AnnotationRenderService } from '../../src/services/recording/annotation-render';
+import { compositeOutputPath } from '../../src/services/recording/RecordingOrchestrator';
 import { useArtifactStore } from '../helpers/artifact-store';
 
 describe('ProofBundleService.streamBundleZip', () => {
@@ -229,5 +232,78 @@ describe('ProofBundleService.buildVideosZip', () => {
     const hit = await svc.resolveVideoFile('g');
     expect(hit?.downloadName).to.equal('solo-device.mp4');
     expect(hit?.filePath).to.equal(a);
+  });
+});
+
+describe('ProofBundleService — the composite that downloads get', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'composite-dl-'));
+  useArtifactStore(root);
+  let annotated: string;
+  const store = { listGroup: async () => [] };
+
+  beforeEach(() => {
+    const raw = compositeOutputPath('g1');
+    fs.mkdirSync(path.dirname(raw), { recursive: true });
+    fs.writeFileSync(raw, 'RAW-COMPOSITE');
+    annotated = path.join(path.dirname(raw), 'composite.annotated.mp4');
+    fs.writeFileSync(annotated, 'MARKED-COMPOSITE');
+  });
+  afterEach(() => sinon.restore());
+  after(() => fs.rmSync(root, { recursive: true, force: true }));
+
+  const zipEntry = async (zipFile: string, name: string) => {
+    const dir = await unzipper.Open.file(zipFile);
+    const f = dir.files.find((e: any) => e.path === name);
+    return f ? (await f.buffer()).toString() : undefined;
+  };
+
+  it('serves the composite with marks when the render succeeds', async () => {
+    sinon
+      .stub(AnnotationRenderService.prototype, 'resolveCompositePath')
+      .resolves({ filePath: annotated, annotated: true });
+    expect(await new ProofBundleService(store as any).resolveCompositeFile('g1')).to.equal(
+      annotated,
+    );
+  });
+
+  it('falls back to the raw composite when the render fails', async () => {
+    sinon
+      .stub(AnnotationRenderService.prototype, 'resolveCompositePath')
+      .rejects(new Error('boom'));
+    expect(await new ProofBundleService(store as any).resolveCompositeFile('g1')).to.equal(
+      compositeOutputPath('g1'),
+    );
+  });
+
+  it('returns null when the group has no composite', async () => {
+    expect(await new ProofBundleService(store as any).resolveCompositeFile('g-none')).to.equal(
+      null,
+    );
+  });
+
+  it('puts the marked composite in videos.zip and bundle.zip', async () => {
+    sinon
+      .stub(AnnotationRenderService.prototype, 'resolveCompositePath')
+      .resolves({ filePath: annotated, annotated: true });
+    const svc = new ProofBundleService(store as any);
+    const videos = path.join(root, 'videos.zip');
+    const archive = await svc.buildVideosZip('g1');
+    await new Promise<void>((resolve, reject) => {
+      archive
+        .pipe(fs.createWriteStream(videos))
+        .on('finish', () => resolve())
+        .on('error', reject);
+    });
+    expect(await zipEntry(videos, 'composite.mp4')).to.equal('MARKED-COMPOSITE');
+
+    const bundle = path.join(root, 'bundle.zip');
+    await new Promise<void>((resolve, reject) => {
+      svc
+        .streamBundleZip('g1')
+        .pipe(fs.createWriteStream(bundle))
+        .on('finish', () => resolve())
+        .on('error', reject);
+    });
+    expect(await zipEntry(bundle, 'composite.mp4')).to.equal('MARKED-COMPOSITE');
   });
 });

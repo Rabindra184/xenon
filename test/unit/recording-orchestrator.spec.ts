@@ -4,6 +4,7 @@ import sinon from 'sinon';
 import {
   RecordingOrchestrator,
   RecordingError,
+  compositeLayoutPath,
 } from '../../src/services/recording/RecordingOrchestrator';
 import { ConcurrencyGate } from '../../src/services/recording/concurrency-gate';
 
@@ -119,6 +120,43 @@ describe('RecordingOrchestrator.start', () => {
       expect(e.limit).to.equal(0);
     }
     expect(store.create.callCount).to.equal(0);
+  });
+
+  // Burning marks into the composite needs to know which recording is in
+  // which cell; the composite's own geometry is only known at start.
+  it('records which recording sits in which composite cell', async () => {
+    const pipeline = {
+      startRecording: sinon.stub().resolves(),
+      stopRecording: sinon.stub().resolves('/tmp/x.mp4'),
+      startComposite: sinon.stub().resolves({ cellW: 540, cellH: 960, cols: 2, rows: 1 }),
+      stopComposite: sinon.stub().resolves(null),
+    };
+    const { orch } = makeOrch({ videoPipeline: pipeline });
+    const out = await orch.start({ udids: ['U1', 'U2'], actorId: 'actor-1' });
+    const file = compositeLayoutPath(out.groupId);
+    try {
+      const layout = JSON.parse(fs.readFileSync(file, 'utf8'));
+      expect(layout).to.deep.equal({
+        version: 1,
+        cellW: 540,
+        cellH: 960,
+        cols: 2,
+        rows: 1,
+        cells: [
+          { index: 0, udid: 'U1', recordingId: out.recordings[0].id },
+          { index: 1, udid: 'U2', recordingId: out.recordings[1].id },
+        ],
+      });
+    } finally {
+      fs.rmSync(path.dirname(file), { recursive: true, force: true });
+    }
+  });
+
+  it('writes no layout when the pipeline reports no geometry', async () => {
+    const { orch } = makeOrch(); // legacy stub: startComposite resolves undefined
+    const out = await orch.start({ udids: ['U1', 'U2'], actorId: 'actor-1' });
+    expect(out.compositeEnabled).to.equal(true);
+    expect(fs.existsSync(compositeLayoutPath(out.groupId))).to.equal(false);
   });
 
   it('happy path: creates one row per UDID, spawns ffmpeg, takes blocks, emits started', async () => {

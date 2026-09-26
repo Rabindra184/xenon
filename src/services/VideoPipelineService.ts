@@ -307,6 +307,18 @@ export interface CompositeInput {
   udid: string;
 }
 
+/** Default composite cell, portrait; each input is letterboxed into one. */
+export const COMPOSITE_CELL_W = 540;
+export const COMPOSITE_CELL_H = 960;
+
+/** The grid a composite was laid out in, as startComposite reports it. */
+export interface CompositeGeometry {
+  cellW: number;
+  cellH: number;
+  cols: number;
+  rows: number;
+}
+
 export interface CompositeOptions {
   /** Group identifier; serves as the ffmpeg-process key for stop(). */
   groupId: string;
@@ -509,11 +521,11 @@ export class VideoPipelineService {
    * Returns immediately once ffmpeg is spawned. The output may take a moment
    * to start growing as ffmpeg waits for the first frame from each input.
    */
-  public async startComposite(options: CompositeOptions): Promise<void> {
+  public async startComposite(options: CompositeOptions): Promise<CompositeGeometry> {
     const { groupId, inputs, outputPath } = options;
     if (this.activeComposites.has(groupId)) {
       log.warn(`[VideoPipeline] Composite already running for group ${groupId}`);
-      return;
+      return compositeGeometryFor(inputs.length, options);
     }
     if (inputs.length < 2) {
       throw new Error(
@@ -521,8 +533,7 @@ export class VideoPipelineService {
       );
     }
     const layout = pickLayout(inputs.length);
-    const cellW = options.cellWidth ?? 540;
-    const cellH = options.cellHeight ?? 960;
+    const { cellW, cellH } = compositeGeometryFor(inputs.length, options);
 
     const outputDir = path.dirname(outputPath);
     if (!fs.existsSync(outputDir)) {
@@ -532,16 +543,7 @@ export class VideoPipelineService {
     // Settle so all sources have primed at least one frame.
     await new Promise((r) => setTimeout(r, 750));
 
-    // Build the filtergraph: scale+pad each input to a uniform cell, then stack.
-    const filterParts: string[] = [];
-    for (let i = 0; i < inputs.length; i++) {
-      filterParts.push(
-        `[${i}:v]scale=${cellW}:${cellH}:force_original_aspect_ratio=decrease,` +
-          `pad=${cellW}:${cellH}:(ow-iw)/2:(oh-ih)/2:black,setsar=1[v${i}]`,
-      );
-    }
-    filterParts.push(buildStackFilter(inputs.length, layout, cellW, cellH));
-    const filterGraph = filterParts.join(';');
+    const filterGraph = buildCompositeFilterGraph(inputs.length, cellW, cellH);
 
     // Same wall-clock timing contract as the single-device recorder; see
     // buildCompositeArgs / buildRecordArgs for the rationale + regression numbers.
@@ -583,6 +585,7 @@ export class VideoPipelineService {
 
     this.activeComposites.set(groupId, proc);
     this.compositePaths.set(groupId, outputPath);
+    return { cellW, cellH, ...compositeGrid(inputs.length) };
   }
 
   /**
@@ -643,6 +646,49 @@ function pickLayout(n: number): CompositeLayout {
   if (n === 2) return '2x1'; // side-by-side
   if (n <= 4) return '2x2';
   return '3x2'; // up to 6
+}
+
+/** Grid for N inputs, row-major, as buildStackFilter lays the cells out. */
+export function compositeGrid(n: number): { cols: number; rows: number } {
+  const layout = pickLayout(n);
+  if (layout === '2x1') return { cols: 2, rows: 1 };
+  if (layout === '2x2') return { cols: 2, rows: 2 };
+  return { cols: 3, rows: 2 };
+}
+
+/** Top-left pixel of cell `i`, matching the hstack/xstack layouts. */
+export function cellOrigin(
+  i: number,
+  cols: number,
+  cellW: number,
+  cellH: number,
+): { x: number; y: number } {
+  return { x: (i % cols) * cellW, y: Math.floor(i / cols) * cellH };
+}
+
+/**
+ * The composite filtergraph: scale+pad each input to a uniform cell, then
+ * stack. Burn-in reads the same geometry (compositeGrid / cellOrigin) to put
+ * each device's marks in its cell.
+ */
+export function buildCompositeFilterGraph(n: number, cellW: number, cellH: number): string {
+  const parts: string[] = [];
+  for (let i = 0; i < n; i++) {
+    parts.push(
+      `[${i}:v]scale=${cellW}:${cellH}:force_original_aspect_ratio=decrease,` +
+        `pad=${cellW}:${cellH}:(ow-iw)/2:(oh-ih)/2:black,setsar=1[v${i}]`,
+    );
+  }
+  parts.push(buildStackFilter(n, pickLayout(n), cellW, cellH));
+  return parts.join(';');
+}
+
+function compositeGeometryFor(n: number, options: CompositeOptions): CompositeGeometry {
+  return {
+    cellW: options.cellWidth ?? COMPOSITE_CELL_W,
+    cellH: options.cellHeight ?? COMPOSITE_CELL_H,
+    ...compositeGrid(n),
+  };
 }
 
 /**

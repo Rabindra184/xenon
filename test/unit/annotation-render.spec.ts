@@ -1,3 +1,4 @@
+import 'reflect-metadata';
 import { expect } from 'chai';
 import * as sinon from 'sinon';
 import * as fs from 'fs';
@@ -10,6 +11,13 @@ import {
   escapeFilterValue,
 } from '../../src/services/recording/annotation-render';
 import { resolveFfmpegPath } from '../../src/helpers/ffmpegPath';
+import { annotationImagePath } from '../../src/services/recording/annotationImage';
+import { buildCompositeFilterGraph } from '../../src/services/VideoPipelineService';
+import {
+  compositeLayoutPath,
+  compositeOutputPath,
+} from '../../src/services/recording/RecordingOrchestrator';
+import { useArtifactStore } from '../helpers/artifact-store';
 
 describe('AnnotationRenderService.buildFilterParts', () => {
   const svc = new AnnotationRenderService({} as any);
@@ -376,5 +384,213 @@ describe('AnnotationRenderService — TEXT burn-in on the real ffmpeg', () => {
       if (frame.stdout[i] > 200 && frame.stdout[i + 1] > 200 && frame.stdout[i + 2] > 200) bright++;
     }
     expect(bright).to.be.greaterThan(200);
+  });
+});
+
+describe('AnnotationRenderService — marks placed in a composite cell', () => {
+  const svc = new AnnotationRenderService({} as any);
+  const rect = { shape: 'RECT', color: '#ff0000', timecode_ms: 0 };
+
+  it('uses absolute pixels inside the given box', () => {
+    const parts = svc.buildFilterParts(
+      [{ ...rect, geometry: JSON.stringify({ x: 0.1, y: 0.1, w: 0.5, h: 0.5 }) }],
+      undefined,
+      { x: 10, y: 20, w: 100, h: 200 },
+    );
+    expect(parts[0]).to.include('drawbox=x=20:y=40:w=50:h=100:');
+  });
+
+  it('draws composite marks first as boxes, then image marks scaled into their cell', () => {
+    const g = svc.buildCompositeGraph(
+      [
+        {
+          box: { x: 36, y: 0, w: 467, h: 960 },
+          annotations: [{ id: 'a', ...rect, geometry: '{}', end_timecode_ms: 3000 }],
+          imageFor: () => '/x/a.png',
+        },
+        {
+          box: { x: 540, y: 345, w: 540, h: 270 },
+          annotations: [{ id: 'b', ...rect, geometry: JSON.stringify({ x: 0, y: 0, w: 1, h: 1 }) }],
+          imageFor: () => undefined,
+        },
+      ],
+      10,
+    )!;
+    expect(g.inputs).to.deep.equal(['/x/a.png']);
+    expect(g.graph.startsWith('[0:v]drawbox=x=540:y=345:w=540:h=270:')).to.equal(true);
+    expect(g.graph).to.include(
+      "[d0];[1:v]scale=467:960[o1];[d0][o1]overlay=36:0:enable='gte(t\\,0)*lt(t\\,3)'[v1]",
+    );
+    expect(g.output).to.equal('[v1]');
+  });
+});
+
+describe('AnnotationRenderService.resolveCompositePath', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'xenon-composite-'));
+  useArtifactStore(root);
+  after(() => fs.rmSync(root, { recursive: true, force: true }));
+
+  const makeComposite = (groupId: string) => {
+    const file = compositeOutputPath(groupId);
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, 'x'.repeat(2048));
+    return file;
+  };
+
+  it('serves the raw composite when it has no layout file (recorded before marks)', async () => {
+    const raw = makeComposite('g-nolayout');
+    const svc = new AnnotationRenderService({ listGroup: async () => [] } as any);
+    expect(await svc.resolveCompositePath('g-nolayout')).to.deep.equal({
+      filePath: raw,
+      annotated: false,
+    });
+  });
+
+  it('serves the raw composite when no cell has marks', async () => {
+    const raw = makeComposite('g-nomarks');
+    fs.writeFileSync(
+      compositeLayoutPath('g-nomarks'),
+      JSON.stringify({
+        version: 1,
+        cellW: 540,
+        cellH: 960,
+        cols: 2,
+        rows: 1,
+        cells: [{ index: 0, udid: 'U1', recordingId: 'r1' }],
+      }),
+    );
+    const svc = new AnnotationRenderService({
+      listGroup: async () => [{ id: 'r1', file_path: '/nope.mp4', annotations: [] }],
+    } as any);
+    expect(await svc.resolveCompositePath('g-nomarks')).to.deep.equal({
+      filePath: raw,
+      annotated: false,
+    });
+  });
+});
+
+describe('AnnotationRenderService — composite burn-in on the real ffmpeg', () => {
+  const ffmpeg = resolveFfmpegPath();
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'xenon-composite-real-'));
+  useArtifactStore(root);
+  const groupId = 'g-real';
+  const video = (id: string) => path.join(root, id, 'video', `${id}.mp4`);
+  const run = (args: string[]) => {
+    const r = spawnSync(ffmpeg, ['-y', '-loglevel', 'error', ...args]);
+    expect(r.status, String(r.stderr)).to.equal(0);
+  };
+
+  before(function () {
+    if (spawnSync(ffmpeg, ['-version']).status !== 0) this.skip();
+    for (const id of ['rec-a', 'rec-b']) fs.mkdirSync(path.dirname(video(id)), { recursive: true });
+    // Cell 0 gets a tall navy device, cell 1 a wide dark-green one, so both
+    // letterbox differently inside their 540x960 cells.
+    run([
+      ...'-f lavfi -i color=c=navy:s=360x720:d=2:r=10 -pix_fmt yuv420p'.split(' '),
+      video('rec-a'),
+    ]);
+    run([
+      ...'-f lavfi -i color=c=0x004000:s=720x360:d=2:r=10 -pix_fmt yuv420p'.split(' '),
+      video('rec-b'),
+    ]);
+    const composite = compositeOutputPath(groupId);
+    fs.mkdirSync(path.dirname(composite), { recursive: true });
+    run([
+      '-i',
+      video('rec-a'),
+      '-i',
+      video('rec-b'),
+      '-filter_complex',
+      buildCompositeFilterGraph(2, 540, 960),
+      ...'-map [v] -pix_fmt yuv420p'.split(' '),
+      composite,
+    ]);
+    fs.writeFileSync(
+      compositeLayoutPath(groupId),
+      JSON.stringify({
+        version: 1,
+        cellW: 540,
+        cellH: 960,
+        cols: 2,
+        rows: 1,
+        cells: [
+          { index: 0, udid: 'U-A', recordingId: 'rec-a' },
+          { index: 1, udid: 'U-B', recordingId: 'rec-b' },
+        ],
+      }),
+    );
+    // The mark image for cell 0: an opaque red block over the middle of the
+    // picture (x 25-75%, y 37.5-62.5%), transparent elsewhere. Built with geq:
+    // drawbox on an RGBA canvas leaves alpha at 0, a fully transparent image.
+    const png = annotationImagePath(video('rec-a'), 'ann-img');
+    fs.mkdirSync(path.dirname(png), { recursive: true });
+    run([
+      '-f',
+      'lavfi',
+      '-i',
+      "color=c=black:s=200x400,format=rgba,geq=r=255:g=0:b=0:a='255*between(X\\,50\\,149)*between(Y\\,150\\,249)'",
+      ...'-frames:v 1'.split(' '),
+      png,
+    ]);
+  });
+
+  after(() => fs.rmSync(root, { recursive: true, force: true }));
+
+  it("puts each device's marks inside its own cell, where the preview drew them", async () => {
+    const store: any = {
+      listGroup: async () => [
+        {
+          id: 'rec-a',
+          file_path: video('rec-a'),
+          annotations: [
+            { id: 'ann-img', shape: 'RECT', geometry: '{}', color: '#ff0000', timecode_ms: 0 },
+          ],
+        },
+        {
+          id: 'rec-b',
+          file_path: video('rec-b'),
+          annotations: [
+            {
+              id: 'ann-box',
+              shape: 'RECT',
+              geometry: JSON.stringify({ x: 0.25, y: 0.25, w: 0.5, h: 0.5 }),
+              color: '#ff00ff',
+              timecode_ms: 0,
+            },
+          ],
+        },
+      ],
+    };
+    const out = await new AnnotationRenderService(store).resolveCompositePath(groupId);
+    expect(out.annotated).to.equal(true);
+
+    // A 1080x960 RGB frame is ~3 MB, over spawnSync's 1 MB default buffer.
+    const frame = spawnSync(
+      ffmpeg,
+      [
+        ...'-loglevel error -ss 1 -i'.split(' '),
+        out.filePath,
+        ...'-frames:v 1 -f rawvideo -pix_fmt rgb24 pipe:1'.split(' '),
+      ],
+      { maxBuffer: 16 * 1024 * 1024 },
+    );
+    expect(frame.status, String(frame.stderr)).to.equal(0);
+    const px = (x: number, y: number) => {
+      const i = (y * 1080 + x) * 3;
+      return [frame.stdout[i], frame.stdout[i + 1], frame.stdout[i + 2]];
+    };
+    // Cell 0 picture: 480x960 at x=30. The red block covers x 150-390, y 360-600.
+    const [r0, g0, b0] = px(270, 480);
+    expect(r0 > 180 && g0 < 70 && b0 < 70, `red in cell 0, got ${[r0, g0, b0]}`).to.equal(true);
+    // Cell 1 picture: 540x270 at (540, 345). The box's 6px border starts at x=675.
+    const [r1, g1, b1] = px(678, 480);
+    expect(
+      r1 > 180 && g1 < 90 && b1 > 180,
+      `magenta border in cell 1, got ${[r1, g1, b1]}`,
+    ).to.equal(true);
+    // Outside the marks: navy picture in cell 0, black letterbox above cell 1's picture.
+    const [rn, , bn] = px(100, 100);
+    expect(rn < 50 && bn > 80, `navy outside the mark, got ${px(100, 100)}`).to.equal(true);
+    expect(Math.max(...px(810, 100)) < 40, `black letterbox, got ${px(810, 100)}`).to.equal(true);
   });
 });
