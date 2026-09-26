@@ -59,8 +59,12 @@ Decisions made in brainstorming:
   - moves **2 percentage points** per ← or → press; **Home** and **End** jump
     to the limits;
   - resets to 0.4 on double-click;
-  - shows a 1 px line, 4 px on hover, focus or drag, in `--color-focus-ring`
-    while focused. Its hit area is 8 px wide.
+  - is 12 px wide, the same as the gap it replaces, and all of it is the hit
+    area; the cursor is `col-resize`;
+  - at rest shows a 4×28 px grip in `--border-strong`, centred vertically; on
+    hover or drag a full-height 2 px line in `--border-strong` appears and the
+    grip turns `--text-muted`; on keyboard focus (`:focus-visible`) the line
+    is `--color-focus-ring`.
 - The share is stored in `localStorage['xenon.omni.split']` on release (not on
   every move). Reads and writes are wrapped in try/catch, and a missing,
   unparsable or out-of-range value falls back to 0.4.
@@ -96,7 +100,10 @@ Decisions made in brainstorming:
   ancestor level.
 - **Name** (for each part): the first non-empty of text, content-desc, label,
   the resource id without its package (`scrim_view`; `android:id/content`
-  becomes `content`), then the type's last segment (`FrameLayout`).
+  becomes `content`), the iOS `name` attribute (its accessibility
+  identifier), then the type's last segment (`FrameLayout`). `node.name` is
+  not used: on Android the server fills it from the resource id, text or
+  type, so it is never empty.
 - **After the name**, in muted text, the type's last segment, when the name
   isn't already the type. Only the target's type is shown on a folded row.
 - **What gives way first** when a row is short of room: the earlier parts of
@@ -184,7 +191,7 @@ mostly wrappers, so the same rule now shows more of the screen.
 | File | Change |
 |---|---|
 | `omni-inspector/elementRole.tsx` (new) | `RoleKey`, `analyzeElement`, `ROLE_ICON`, moved verbatim from `OmniInspector.tsx` and exported |
-| `omni-inspector/treeRows.ts` (new, pure) | `shortName(node)`, `shortResourceId(id)`, `isPlainWrapper(node)`, `foldRun(node)` (the run from a node), `smartSearch` (moved verbatim), `matchSet(root, query)` (xpaths that match) and `pathToMatch(root, query)` (xpaths leading to one), `visibleRows(root, expanded, query)` (flat rows), `initialExpanded(root)`, `ancestorsOf(root, xpath)` (root-first nodes), `rowIndexOf(rows, xpath)` |
+| `omni-inspector/treeRows.ts` (new, pure) | `shortName(node)`, `shortResourceId(id)`, `isPlainWrapper(node)`, `foldRun(node)` (the run from a node), `smartSearch` (moved verbatim), `matchSet(root, query)` (xpaths that match) and `pathToMatch(root, query)` (xpaths leading to one), `visibleRows(root, expanded, query)` (flat rows), `initialExpanded(root)`, `pathTo(root, xpath)` (root first, ending with the node; `null` if absent), `rowIndexOf(rows, xpath)` (the row holding that node, or −1) |
 | `omni-inspector/treeKeys.ts` (new, pure) | `treeKeyAction(rows, index, key)` → `{ focus?: number; toggle?: string; select?: InspectorNode } \| null` |
 | `omni-inspector/splitPane.ts` (new, pure) | `DEFAULT_SPLIT`, `MIN_TREE_PX`, `MIN_DETAILS_PX`, `clampSplit(share, width)`, `splitLimits(width)`, `loadSplit(storage)`, `saveSplit(storage, share)` |
 | `omni-inspector/ElementTree.tsx` (new) | The rows (not the header): roving focus, keys, and scrolling the selected row into view when `selectedXpath` changes. Props: `rows`, `selectedXpath`, `query`, `onToggle(xpath)`, `onSelect(node)`, `onHover(node \| null)` |
@@ -214,8 +221,10 @@ interface Row {
   a failed save is ignored.
 - A snapshot with no hierarchy renders the existing empty state; `visibleRows`
   returns `[]` for a missing root.
-- A selected xpath that is not in the new capture (after Refresh): the
-  selection clears as today, and the reveal does nothing.
+- **After a new capture, the selection follows the xpath.** It moves to the
+  node with the same xpath in the new capture, which the reveal then shows,
+  and clears if there is none. Today it keeps the old capture's node object,
+  so after Refresh the Info tab still shows the old screen's text and bounds.
 - A focused row that disappears (collapsed away by its parent, or a new
   capture) moves focus to the nearest remaining row, or to the tree.
 
@@ -231,8 +240,8 @@ TDD: each test is written first and watched fail.
     a folded row's children are its target's;
   - search keeps rows that match or lead to a match, opened;
   - `initialExpanded` opens three row levels;
-  - `ancestorsOf` returns root-first ancestors, `[]` for the root or an
-    unknown xpath.
+  - `pathTo` returns the path root first, `[root]` for the root and `null`
+    for an unknown xpath; `rowIndexOf` finds a node in the middle of a run.
 - `treeKeys.test.ts`: every row of the key table, including the ends and a
   folded row.
 - `splitPane.test.ts`: clamping at both limits, a row too narrow for both,
@@ -246,6 +255,8 @@ TDD: each test is written first and watched fail.
   - the divider's ← → Home End change `aria-valuenow` and double-click
     resets it;
   - the search hint counts matches;
+  - after Refresh the selection is the new capture's node with the same
+    xpath (its new text shows in Info), and clears when there is none;
   - the #331 tests keep passing.
 - Live on the S9+, built dashboard, 1280×800 and 1440×900, dark and light:
   - cut-off names with everything expanded: 48 today. The target, at
