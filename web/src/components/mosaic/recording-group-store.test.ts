@@ -30,7 +30,9 @@ describe('mosaicReducer — recording lifecycle', () => {
     expect(s.recording).to.equal(true);
     expect(s.groupId).to.equal('g1');
     expect(s.compositeEnabled).to.equal(true);
-    expect(s.annotateMode).to.equal(true);
+    // Recording starts on Interact: most people record to capture themselves
+    // using the phone, and Annotate blocked every tap until turned off.
+    expect(s.annotateMode).to.equal(false);
     expect(s.tiles.map((t) => t.recordingId)).to.deep.equal(['rec-1', 'rec-2']);
   });
 
