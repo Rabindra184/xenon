@@ -102,7 +102,7 @@ export function TextClipboardSection({ udid, platform }: Props) {
           onChange={(e) => setText(e.target.value)}
           onKeyDown={(e) => e.key === 'Enter' && send()}
         />
-        <Button variant="secondary" size="sm" onClick={send} disabled={!text.trim() || sending}>
+        <Button variant="secondary" size="md" onClick={send} disabled={!text.trim() || sending}>
           {sending && <Loader2 className="animate-spin" size={13} aria-hidden="true" />}
           Send
         </Button>
@@ -120,11 +120,11 @@ export function TextClipboardSection({ udid, platform }: Props) {
           value={clip}
           onChange={(e) => setClip(e.target.value)}
         />
-        <Button variant="secondary" size="sm" onClick={read} disabled={busy !== null}>
+        <Button variant="secondary" size="md" onClick={read} disabled={busy !== null}>
           {busy === 'read' && <Loader2 className="animate-spin" size={13} aria-hidden="true" />}
           Read
         </Button>
-        <Button variant="secondary" size="sm" onClick={write} disabled={!clip || busy !== null}>
+        <Button variant="secondary" size="md" onClick={write} disabled={!clip || busy !== null}>
           {busy === 'write' && <Loader2 className="animate-spin" size={13} aria-hidden="true" />}
           Write to device
         </Button>

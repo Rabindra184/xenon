@@ -136,6 +136,14 @@
   flex: 1;
   min-width: 0;
 }
+/* One height per row: fields at 32px beside the 32px buttons and icon buttons
+   (the shared .type-input-field.compact alone renders 40px). */
+.actions-field-row .type-input-field,
+.actions-search .type-input-field {
+  height: 32px;
+  padding-top: 0;
+  padding-bottom: 0;
+}
 .actions-status {
   min-height: 16px;
   margin: 0;
