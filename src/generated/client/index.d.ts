@@ -22990,16 +22990,19 @@ export namespace Prisma {
 
   export type AnnotationAvgAggregateOutputType = {
     timecode_ms: number | null
+    end_timecode_ms: number | null
   }
 
   export type AnnotationSumAggregateOutputType = {
     timecode_ms: number | null
+    end_timecode_ms: number | null
   }
 
   export type AnnotationMinAggregateOutputType = {
     id: string | null
     recording_id: string | null
     timecode_ms: number | null
+    end_timecode_ms: number | null
     shape: string | null
     geometry: string | null
     color: string | null
@@ -23012,6 +23015,7 @@ export namespace Prisma {
     id: string | null
     recording_id: string | null
     timecode_ms: number | null
+    end_timecode_ms: number | null
     shape: string | null
     geometry: string | null
     color: string | null
@@ -23024,6 +23028,7 @@ export namespace Prisma {
     id: number
     recording_id: number
     timecode_ms: number
+    end_timecode_ms: number
     shape: number
     geometry: number
     color: number
@@ -23036,16 +23041,19 @@ export namespace Prisma {
 
   export type AnnotationAvgAggregateInputType = {
     timecode_ms?: true
+    end_timecode_ms?: true
   }
 
   export type AnnotationSumAggregateInputType = {
     timecode_ms?: true
+    end_timecode_ms?: true
   }
 
   export type AnnotationMinAggregateInputType = {
     id?: true
     recording_id?: true
     timecode_ms?: true
+    end_timecode_ms?: true
     shape?: true
     geometry?: true
     color?: true
@@ -23058,6 +23066,7 @@ export namespace Prisma {
     id?: true
     recording_id?: true
     timecode_ms?: true
+    end_timecode_ms?: true
     shape?: true
     geometry?: true
     color?: true
@@ -23070,6 +23079,7 @@ export namespace Prisma {
     id?: true
     recording_id?: true
     timecode_ms?: true
+    end_timecode_ms?: true
     shape?: true
     geometry?: true
     color?: true
@@ -23169,6 +23179,7 @@ export namespace Prisma {
     id: string
     recording_id: string
     timecode_ms: number
+    end_timecode_ms: number | null
     shape: string
     geometry: string
     color: string
@@ -23200,6 +23211,7 @@ export namespace Prisma {
     id?: boolean
     recording_id?: boolean
     timecode_ms?: boolean
+    end_timecode_ms?: boolean
     shape?: boolean
     geometry?: boolean
     color?: boolean
@@ -23213,6 +23225,7 @@ export namespace Prisma {
     id?: boolean
     recording_id?: boolean
     timecode_ms?: boolean
+    end_timecode_ms?: boolean
     shape?: boolean
     geometry?: boolean
     color?: boolean
@@ -23226,6 +23239,7 @@ export namespace Prisma {
     id?: boolean
     recording_id?: boolean
     timecode_ms?: boolean
+    end_timecode_ms?: boolean
     shape?: boolean
     geometry?: boolean
     color?: boolean
@@ -23250,6 +23264,7 @@ export namespace Prisma {
       id: string
       recording_id: string
       timecode_ms: number
+      end_timecode_ms: number | null
       shape: string
       geometry: string
       color: string
@@ -23653,6 +23668,7 @@ export namespace Prisma {
     readonly id: FieldRef<"Annotation", 'String'>
     readonly recording_id: FieldRef<"Annotation", 'String'>
     readonly timecode_ms: FieldRef<"Annotation", 'Int'>
+    readonly end_timecode_ms: FieldRef<"Annotation", 'Int'>
     readonly shape: FieldRef<"Annotation", 'String'>
     readonly geometry: FieldRef<"Annotation", 'String'>
     readonly color: FieldRef<"Annotation", 'String'>
@@ -30010,6 +30026,7 @@ export namespace Prisma {
     id: 'id',
     recording_id: 'recording_id',
     timecode_ms: 'timecode_ms',
+    end_timecode_ms: 'end_timecode_ms',
     shape: 'shape',
     geometry: 'geometry',
     color: 'color',
@@ -31953,6 +31970,7 @@ export namespace Prisma {
     id?: StringFilter<"Annotation"> | string
     recording_id?: StringFilter<"Annotation"> | string
     timecode_ms?: IntFilter<"Annotation"> | number
+    end_timecode_ms?: IntNullableFilter<"Annotation"> | number | null
     shape?: StringFilter<"Annotation"> | string
     geometry?: StringFilter<"Annotation"> | string
     color?: StringFilter<"Annotation"> | string
@@ -31966,6 +31984,7 @@ export namespace Prisma {
     id?: SortOrder
     recording_id?: SortOrder
     timecode_ms?: SortOrder
+    end_timecode_ms?: SortOrderInput | SortOrder
     shape?: SortOrder
     geometry?: SortOrder
     color?: SortOrder
@@ -31982,6 +32001,7 @@ export namespace Prisma {
     NOT?: AnnotationWhereInput | AnnotationWhereInput[]
     recording_id?: StringFilter<"Annotation"> | string
     timecode_ms?: IntFilter<"Annotation"> | number
+    end_timecode_ms?: IntNullableFilter<"Annotation"> | number | null
     shape?: StringFilter<"Annotation"> | string
     geometry?: StringFilter<"Annotation"> | string
     color?: StringFilter<"Annotation"> | string
@@ -31995,6 +32015,7 @@ export namespace Prisma {
     id?: SortOrder
     recording_id?: SortOrder
     timecode_ms?: SortOrder
+    end_timecode_ms?: SortOrderInput | SortOrder
     shape?: SortOrder
     geometry?: SortOrder
     color?: SortOrder
@@ -32015,6 +32036,7 @@ export namespace Prisma {
     id?: StringWithAggregatesFilter<"Annotation"> | string
     recording_id?: StringWithAggregatesFilter<"Annotation"> | string
     timecode_ms?: IntWithAggregatesFilter<"Annotation"> | number
+    end_timecode_ms?: IntNullableWithAggregatesFilter<"Annotation"> | number | null
     shape?: StringWithAggregatesFilter<"Annotation"> | string
     geometry?: StringWithAggregatesFilter<"Annotation"> | string
     color?: StringWithAggregatesFilter<"Annotation"> | string
@@ -34492,6 +34514,7 @@ export namespace Prisma {
   export type AnnotationCreateInput = {
     id?: string
     timecode_ms: number
+    end_timecode_ms?: number | null
     shape: string
     geometry: string
     color: string
@@ -34505,6 +34528,7 @@ export namespace Prisma {
     id?: string
     recording_id: string
     timecode_ms: number
+    end_timecode_ms?: number | null
     shape: string
     geometry: string
     color: string
@@ -34516,6 +34540,7 @@ export namespace Prisma {
   export type AnnotationUpdateInput = {
     id?: StringFieldUpdateOperationsInput | string
     timecode_ms?: IntFieldUpdateOperationsInput | number
+    end_timecode_ms?: NullableIntFieldUpdateOperationsInput | number | null
     shape?: StringFieldUpdateOperationsInput | string
     geometry?: StringFieldUpdateOperationsInput | string
     color?: StringFieldUpdateOperationsInput | string
@@ -34529,6 +34554,7 @@ export namespace Prisma {
     id?: StringFieldUpdateOperationsInput | string
     recording_id?: StringFieldUpdateOperationsInput | string
     timecode_ms?: IntFieldUpdateOperationsInput | number
+    end_timecode_ms?: NullableIntFieldUpdateOperationsInput | number | null
     shape?: StringFieldUpdateOperationsInput | string
     geometry?: StringFieldUpdateOperationsInput | string
     color?: StringFieldUpdateOperationsInput | string
@@ -34541,6 +34567,7 @@ export namespace Prisma {
     id?: string
     recording_id: string
     timecode_ms: number
+    end_timecode_ms?: number | null
     shape: string
     geometry: string
     color: string
@@ -34552,6 +34579,7 @@ export namespace Prisma {
   export type AnnotationUpdateManyMutationInput = {
     id?: StringFieldUpdateOperationsInput | string
     timecode_ms?: IntFieldUpdateOperationsInput | number
+    end_timecode_ms?: NullableIntFieldUpdateOperationsInput | number | null
     shape?: StringFieldUpdateOperationsInput | string
     geometry?: StringFieldUpdateOperationsInput | string
     color?: StringFieldUpdateOperationsInput | string
@@ -34564,6 +34592,7 @@ export namespace Prisma {
     id?: StringFieldUpdateOperationsInput | string
     recording_id?: StringFieldUpdateOperationsInput | string
     timecode_ms?: IntFieldUpdateOperationsInput | number
+    end_timecode_ms?: NullableIntFieldUpdateOperationsInput | number | null
     shape?: StringFieldUpdateOperationsInput | string
     geometry?: StringFieldUpdateOperationsInput | string
     color?: StringFieldUpdateOperationsInput | string
@@ -36402,6 +36431,7 @@ export namespace Prisma {
     id?: SortOrder
     recording_id?: SortOrder
     timecode_ms?: SortOrder
+    end_timecode_ms?: SortOrder
     shape?: SortOrder
     geometry?: SortOrder
     color?: SortOrder
@@ -36412,12 +36442,14 @@ export namespace Prisma {
 
   export type AnnotationAvgOrderByAggregateInput = {
     timecode_ms?: SortOrder
+    end_timecode_ms?: SortOrder
   }
 
   export type AnnotationMaxOrderByAggregateInput = {
     id?: SortOrder
     recording_id?: SortOrder
     timecode_ms?: SortOrder
+    end_timecode_ms?: SortOrder
     shape?: SortOrder
     geometry?: SortOrder
     color?: SortOrder
@@ -36430,6 +36462,7 @@ export namespace Prisma {
     id?: SortOrder
     recording_id?: SortOrder
     timecode_ms?: SortOrder
+    end_timecode_ms?: SortOrder
     shape?: SortOrder
     geometry?: SortOrder
     color?: SortOrder
@@ -36440,6 +36473,7 @@ export namespace Prisma {
 
   export type AnnotationSumOrderByAggregateInput = {
     timecode_ms?: SortOrder
+    end_timecode_ms?: SortOrder
   }
 
   export type UserSessionListRelationFilter = {
@@ -39222,6 +39256,7 @@ export namespace Prisma {
   export type AnnotationCreateWithoutRecordingInput = {
     id?: string
     timecode_ms: number
+    end_timecode_ms?: number | null
     shape: string
     geometry: string
     color: string
@@ -39233,6 +39268,7 @@ export namespace Prisma {
   export type AnnotationUncheckedCreateWithoutRecordingInput = {
     id?: string
     timecode_ms: number
+    end_timecode_ms?: number | null
     shape: string
     geometry: string
     color: string
@@ -39380,6 +39416,7 @@ export namespace Prisma {
     id?: StringFilter<"Annotation"> | string
     recording_id?: StringFilter<"Annotation"> | string
     timecode_ms?: IntFilter<"Annotation"> | number
+    end_timecode_ms?: IntNullableFilter<"Annotation"> | number | null
     shape?: StringFilter<"Annotation"> | string
     geometry?: StringFilter<"Annotation"> | string
     color?: StringFilter<"Annotation"> | string
@@ -40832,6 +40869,7 @@ export namespace Prisma {
   export type AnnotationCreateManyRecordingInput = {
     id?: string
     timecode_ms: number
+    end_timecode_ms?: number | null
     shape: string
     geometry: string
     color: string
@@ -40867,6 +40905,7 @@ export namespace Prisma {
   export type AnnotationUpdateWithoutRecordingInput = {
     id?: StringFieldUpdateOperationsInput | string
     timecode_ms?: IntFieldUpdateOperationsInput | number
+    end_timecode_ms?: NullableIntFieldUpdateOperationsInput | number | null
     shape?: StringFieldUpdateOperationsInput | string
     geometry?: StringFieldUpdateOperationsInput | string
     color?: StringFieldUpdateOperationsInput | string
@@ -40878,6 +40917,7 @@ export namespace Prisma {
   export type AnnotationUncheckedUpdateWithoutRecordingInput = {
     id?: StringFieldUpdateOperationsInput | string
     timecode_ms?: IntFieldUpdateOperationsInput | number
+    end_timecode_ms?: NullableIntFieldUpdateOperationsInput | number | null
     shape?: StringFieldUpdateOperationsInput | string
     geometry?: StringFieldUpdateOperationsInput | string
     color?: StringFieldUpdateOperationsInput | string
@@ -40889,6 +40929,7 @@ export namespace Prisma {
   export type AnnotationUncheckedUpdateManyWithoutRecordingInput = {
     id?: StringFieldUpdateOperationsInput | string
     timecode_ms?: IntFieldUpdateOperationsInput | number
+    end_timecode_ms?: NullableIntFieldUpdateOperationsInput | number | null
     shape?: StringFieldUpdateOperationsInput | string
     geometry?: StringFieldUpdateOperationsInput | string
     color?: StringFieldUpdateOperationsInput | string

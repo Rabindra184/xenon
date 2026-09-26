@@ -13,6 +13,10 @@ import { roleGuard } from '../../middleware/roleGuard';
 import { resolveActor } from '../../services/device-access/actor';
 import { filterRowsByVisibleDevice } from '../../data-service/device-service';
 import { prisma } from '../../prisma';
+import { parseClearBody } from './recordingRequests';
+import { decodeAnnotationImage } from '../../services/recording/annotationImage';
+import { selectOwnActiveGroups } from '../../services/recording/activeRecordings';
+import { DeviceStoreFactory } from '../../data-service/device-store';
 import log from '../../logger';
 
 // Phase 4A: a recording group is visible if at least one of its rows runs on
@@ -170,16 +174,63 @@ router.post('/recordings/:groupId/annotation', async (req: Request, res: Respons
       error: 'recordingId, timecodeMs, shape, geometry, color are required',
     });
   }
+  const image = decodeAnnotationImage(req.body?.image);
+  if (image && !image.ok) return res.status(400).json({ error: image.error });
   try {
     const out = await Container.get(RecordingOrchestrator).addAnnotation(
       req.params.groupId,
       recordingId,
       { timecodeMs, shape, geometry, color, text, author },
+      image?.ok ? image.png : undefined,
     );
     res.status(201).json(out);
   } catch (e: any) {
     recLog.error(`annotation failed: ${e?.message}`);
     res.status(500).json({ error: 'internal', message: e?.message });
+  }
+});
+
+// Registered before GET /recordings/:groupId, which would otherwise read
+// "active" as a group id.
+router.get('/recordings/active', async (req: Request, res: Response) => {
+  try {
+    const actor = resolveActor(req);
+    const rows = await prisma.recording.findMany({
+      where: { status: 'RECORDING' },
+      include: { annotations: true },
+    });
+    const locks = new Map<string, string | null>();
+    for (const udid of new Set(rows.map((r) => r.device_udid))) {
+      const d = await DeviceStoreFactory.getStore().findDevice({ udid });
+      locks.set(udid, d?.session_id ?? null);
+    }
+    const groups = selectOwnActiveGroups(rows as any, (u) => locks.get(u), actor).map((g) => ({
+      ...g,
+      compositeEnabled: fs.existsSync(compositeOutputPath(g.groupId)),
+    }));
+    return res.json({ serverNow: Date.now(), groups });
+  } catch (e: any) {
+    recLog.error(`GET /recordings/active failed: ${e?.message}`);
+    return res.status(500).json({ error: 'internal', message: e?.message });
+  }
+});
+
+router.post('/recordings/:groupId/annotations/clear', async (req: Request, res: Response) => {
+  const parsed = parseClearBody(req.body);
+  if (!parsed.ok) return res.status(400).json({ error: parsed.error });
+  const auth = (req as Request & { auth?: { teamIds?: string[] } }).auth;
+  if (!(await isGroupVisibleToAuth(req.params.groupId, auth?.teamIds))) {
+    return res.status(404).json({ error: 'not_found' });
+  }
+  try {
+    const out = await Container.get(RecordingOrchestrator).clearAnnotations(
+      req.params.groupId,
+      parsed.timecodeMs,
+    );
+    return res.json(out);
+  } catch (e: any) {
+    recLog.error(`annotations/clear failed: ${e?.message}`);
+    return res.status(500).json({ error: 'internal', message: e?.message });
   }
 });
 

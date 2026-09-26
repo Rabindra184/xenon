@@ -105,4 +105,22 @@ export class RecordingStore {
       },
     });
   }
+
+  /**
+   * End every still-open mark in these recordings at `timecodeMs`. Marks that
+   * started after it, or were already closed, are left alone, so repeating a
+   * clear changes nothing.
+   */
+  async clearAnnotations(recordingIds: string[], timecodeMs: number): Promise<number> {
+    if (recordingIds.length === 0) return 0;
+    const out = await prisma.annotation.updateMany({
+      where: {
+        recording_id: { in: recordingIds },
+        end_timecode_ms: null,
+        timecode_ms: { lte: timecodeMs },
+      },
+      data: { end_timecode_ms: timecodeMs },
+    });
+    return out.count;
+  }
 }

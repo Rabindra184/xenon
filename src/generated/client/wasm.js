@@ -419,6 +419,7 @@ exports.Prisma.AnnotationScalarFieldEnum = {
   id: 'id',
   recording_id: 'recording_id',
   timecode_ms: 'timecode_ms',
+  end_timecode_ms: 'end_timecode_ms',
   shape: 'shape',
   geometry: 'geometry',
   color: 'color',

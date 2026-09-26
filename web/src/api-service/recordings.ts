@@ -74,21 +74,6 @@ export function stopRecording(groupId: string): Promise<{
   return postJson(`${BASE}/${encodeURIComponent(groupId)}/stop`);
 }
 
-export function addBookmark(
-  groupId: string,
-  recordingId: string,
-  timecodeMs: number,
-  label: string,
-  note?: string,
-) {
-  return postJson(`${BASE}/${encodeURIComponent(groupId)}/bookmark`, {
-    recordingId,
-    timecodeMs,
-    label,
-    note,
-  });
-}
-
 export interface AnnotationInput {
   recordingId: string;
   timecodeMs: number;
@@ -96,6 +81,8 @@ export interface AnnotationInput {
   geometry: string;
   color: string;
   text?: string;
+  /** PNG data URL of the mark as the preview drew it; burned into the video as-is. */
+  image?: string;
 }
 
 export function addDevice(
@@ -107,6 +94,41 @@ export function addDevice(
 
 export function addAnnotation(groupId: string, ann: AnnotationInput) {
   return postJson(`${BASE}/${encodeURIComponent(groupId)}/annotation`, ann);
+}
+
+/** Ends every mark still on screen at `timecodeMs`, in the video as in the preview. */
+export function clearAnnotations(
+  groupId: string,
+  timecodeMs: number,
+): Promise<{ cleared: number }> {
+  return postJson(`${BASE}/${encodeURIComponent(groupId)}/annotations/clear`, { timecodeMs });
+}
+
+export interface ActiveRecordingGroup {
+  groupId: string;
+  startedAt: string;
+  compositeEnabled: boolean;
+  recordings: Array<{ id: string; udid: string }>;
+  annotations: Array<{
+    recordingId: string;
+    shape: string;
+    geometry: string;
+    color: string;
+    text: string | null;
+    timecodeMs: number;
+  }>;
+}
+
+export interface ActiveRecordingsResponse {
+  serverNow: number;
+  groups: ActiveRecordingGroup[];
+}
+
+/** The caller's running recordings, so a reloaded page can pick one back up. */
+export async function getActiveRecordings(): Promise<ActiveRecordingsResponse> {
+  const r = await fetch(`${BASE}/active`);
+  if (!r.ok) throw new Error(`HTTP ${r.status}`);
+  return r.json();
 }
 
 export interface RecordingRow {

@@ -1,5 +1,6 @@
 import { Service, Container } from 'typedi';
 import * as fs from 'fs';
+import * as path from 'path';
 import { v4 as uuidv4 } from 'uuid';
 import { trace, metrics, SpanStatusCode, Counter, Histogram, Span } from '@opentelemetry/api';
 import { VideoPipelineService } from '../VideoPipelineService';
@@ -15,6 +16,7 @@ import { DeviceStoreFactory } from '../../data-service/device-store';
 import { formatManualLock } from './manualLock';
 import { ensureMjpegForRecording } from './ensureMjpegForRecording';
 import { probeVideoDurationMs } from './probeDuration';
+import { annotationImagePath } from './annotationImage';
 import { ATTR, METRIC, OUTCOME } from '../telemetry/attributes';
 import log from '../../logger';
 import { ARTIFACT_STORE } from '../artifacts/ArtifactStore';
@@ -664,10 +666,35 @@ export class RecordingOrchestrator {
       text?: string;
       author?: string;
     },
+    /** The mark as the preview drew it; burned in instead of the drawbox fallback. */
+    png?: Buffer,
   ) {
     const a = await this.store.addAnnotation(recordingId, ann);
+    if (png) {
+      try {
+        const rec: any = await this.store.findById(recordingId);
+        if (rec?.file_path) {
+          const file = annotationImagePath(rec.file_path, a.id);
+          await fs.promises.mkdir(path.dirname(file), { recursive: true });
+          await fs.promises.writeFile(file, png);
+        }
+      } catch (err: any) {
+        // The row is saved, so the mark still renders, just with the drawbox fallback.
+        recLog.warn(`annotation image not saved for ${a.id}: ${err?.message ?? err}`);
+      }
+    }
     this.eventMgr.emitRecordingAnnotation({ groupId, annotation: a });
     return a;
+  }
+
+  /** "Clear marks" for the whole group, which is what the button does. */
+  async clearAnnotations(groupId: string, timecodeMs: number): Promise<{ cleared: number }> {
+    const rows = await this.store.listGroup(groupId);
+    const cleared = await this.store.clearAnnotations(
+      rows.map((r: any) => r.id),
+      timecodeMs,
+    );
+    return { cleared };
   }
 
   /**

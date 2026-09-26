@@ -10,6 +10,9 @@ import { ConcurrencyGate } from '../../src/services/recording/concurrency-gate';
 // Stub the device store factory (used to look up host).
 import * as deviceStoreModule from '../../src/data-service/device-store';
 import { useArtifactStore } from '../helpers/artifact-store';
+import * as fs from 'fs';
+import * as os from 'os';
+import * as path from 'path';
 
 
 function makeOrch(overrides: any = {}) {
@@ -262,6 +265,46 @@ describe('RecordingOrchestrator.addBookmark / addAnnotation', () => {
     await orch.addBookmark('grp', 'rec-1', 1500, 'bug here');
     expect(store.addBookmark.calledWith('rec-1', 'bug here', 1500)).to.equal(true);
     expect(eventMgr.emitRecordingBookmark.callCount).to.equal(1);
+  });
+
+  it('addAnnotation writes the mark image beside the recording video', async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ann-'));
+    const video = path.join(dir, 'rec-1', 'video', 'rec-1.mp4');
+    const store = {
+      addAnnotation: sinon.stub().resolves({ id: 'ann-1', recording_id: 'rec-1' }),
+      findById: sinon.stub().resolves({ id: 'rec-1', file_path: video }),
+    };
+    const { orch } = makeOrch({ store, eventMgr: { emitRecordingAnnotation: sinon.stub() } });
+    const png = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2]);
+    try {
+      await orch.addAnnotation(
+        'grp',
+        'rec-1',
+        { timecodeMs: 1, shape: 'RECT', geometry: '{}', color: 'red' },
+        png,
+      );
+      const written = fs.readFileSync(path.join(dir, 'rec-1', 'annotations', 'ann-1.png'));
+      expect(written.equals(png)).to.equal(true);
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('addAnnotation still saves the mark when the image cannot be written', async () => {
+    const store = {
+      addAnnotation: sinon.stub().resolves({ id: 'ann-2' }),
+      findById: sinon.stub().rejects(new Error('db down')),
+    };
+    const eventMgr = { emitRecordingAnnotation: sinon.stub() };
+    const { orch } = makeOrch({ store, eventMgr });
+    const out = await orch.addAnnotation(
+      'grp',
+      'rec-1',
+      { timecodeMs: 1, shape: 'RECT', geometry: '{}', color: 'red' },
+      Buffer.from([1]),
+    );
+    expect(out).to.deep.include({ id: 'ann-2' });
+    expect(eventMgr.emitRecordingAnnotation.callCount).to.equal(1);
   });
 
   it('addAnnotation persists and emits', async () => {

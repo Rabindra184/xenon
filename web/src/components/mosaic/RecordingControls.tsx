@@ -3,7 +3,6 @@ import { formatElapsed, useMosaic } from './recording-group-store';
 import {
   startRecording,
   stopRecording,
-  addBookmark,
   videosZipUrl,
   videoMp4Url,
   compositeMp4Url,
@@ -13,6 +12,8 @@ import {
 interface Props {
   /** UDIDs currently in the mosaic (Record targets every tile). */
   selectedUdids: string[];
+  /** Clears the marks from the preview and, in order with the marks, from the recording. */
+  onClearMarks: () => void;
 }
 
 function recordButtonLabel(count: number, phase: string): string {
@@ -22,7 +23,7 @@ function recordButtonLabel(count: number, phase: string): string {
   return `● Record ${count} devices`;
 }
 
-export function RecordingControls({ selectedUdids }: Props) {
+export function RecordingControls({ selectedUdids, onClearMarks }: Props) {
   const { state, dispatch } = useMosaic();
   const [now, setNow] = React.useState(() => Date.now());
 
@@ -52,6 +53,7 @@ export function RecordingControls({ selectedUdids }: Props) {
     (state.recording && state.tiles.some((t) => !!t.recordingId));
   const canStopOrMark = isActivelyRecording && !busy;
   const canAnnotate = canStopOrMark;
+  const canDraw = canAnnotate && state.annotateMode;
   const showDownload = !!state.groupId && state.recordingPhase === 'idle';
   const multiDevice = selectedUdids.length > 1 || state.downloadableVideoCount > 1;
   const showCompositeDownload = showDownload && state.compositeEnabled;
@@ -191,23 +193,6 @@ export function RecordingControls({ selectedUdids }: Props) {
     }
   };
 
-  const onBookmark = async () => {
-    if (!state.groupId || state.recordingPhase !== 'recording') return;
-    const label = window.prompt('Bookmark label?');
-    if (!label) return;
-    const elapsed = state.startedAt ? Date.now() - state.startedAt : 0;
-    const firstId = state.tiles.find((t) => t.recordingId)?.recordingId;
-    if (!firstId) return;
-    try {
-      await addBookmark(state.groupId, firstId, elapsed, label);
-    } catch (e: any) {
-      dispatch({
-        type: 'SET_BANNER',
-        banner: { tone: 'error', message: `Bookmark failed: ${e.message}` },
-      });
-    }
-  };
-
   const toggleAnnotate = () => {
     if (!canAnnotate) return;
     dispatch({ type: 'SET_ANNOTATE_MODE', enabled: !state.annotateMode });
@@ -215,7 +200,7 @@ export function RecordingControls({ selectedUdids }: Props) {
 
   const clearAnnotations = () => {
     if (!canAnnotate) return;
-    dispatch({ type: 'CLEAR_OVERLAY_ANNOTATIONS' });
+    onClearMarks();
   };
 
   const hasOverlayAnnotations = Object.values(state.overlayAnnotations).some(
@@ -252,7 +237,7 @@ export function RecordingControls({ selectedUdids }: Props) {
             : 'Record every device currently in the mosaic'
         }
         // In light, 40% of a red fill is a pink block that reads as an alert.
-        // Disabled, it takes the outlined look of the Stop/Bookmark buttons beside it;
+        // Disabled, it takes the outlined look of the Stop button beside it;
         // the ring is inset so enabling it doesn't change its size.
         className="px-3 py-1.5 text-sm rounded bg-[var(--red-600)] text-white disabled:opacity-40 disabled:cursor-not-allowed light:disabled:bg-transparent light:disabled:text-[var(--text)] light:disabled:ring-1 light:disabled:ring-inset light:disabled:ring-[color:var(--border)]"
       >
@@ -265,14 +250,6 @@ export function RecordingControls({ selectedUdids }: Props) {
         className="px-3 py-1.5 text-sm rounded border border-[var(--border)] disabled:opacity-40 disabled:cursor-not-allowed"
       >
         {state.recordingPhase === 'stopping' ? 'Stopping…' : '⏹ Stop'}
-      </button>
-      <button
-        type="button"
-        onClick={onBookmark}
-        disabled={!canStopOrMark}
-        className="px-3 py-1.5 text-sm rounded border border-[var(--border)] disabled:opacity-40 disabled:cursor-not-allowed"
-      >
-        🔖 Bookmark
       </button>
       <button
         type="button"
@@ -294,14 +271,19 @@ export function RecordingControls({ selectedUdids }: Props) {
         ✎ Annotate
       </button>
 
-      {state.annotateMode && canAnnotate && (
+      {/* Rendered for the whole recording and disabled rather than hidden:
+          controls appearing in this right-aligned row slid every button under
+          the cursor. */}
+      {isActivelyRecording && (
         <div className="flex items-center gap-1 ml-1 pl-2 border-l border-[var(--border)]">
           {shapes.map((s) => (
             <button
               key={s.id}
               type="button"
+              disabled={!canDraw}
+              aria-pressed={state.shape === s.id}
               onClick={() => dispatch({ type: 'SET_SHAPE', shape: s.id })}
-              className={`px-2 py-1 text-xs rounded border ${
+              className={`px-2 py-1 text-xs rounded border disabled:opacity-40 disabled:cursor-not-allowed ${
                 state.shape === s.id
                   ? 'bg-[var(--surface-2)] border-[var(--color-info)] text-[rgb(var(--rgb-fg))]'
                   : 'border-[var(--border)] opacity-80 hover:opacity-100'
@@ -313,22 +295,22 @@ export function RecordingControls({ selectedUdids }: Props) {
           <input
             type="color"
             value={state.color}
+            disabled={!canDraw}
             onChange={(e) => dispatch({ type: 'SET_COLOR', color: e.target.value })}
             title="Annotation color"
-            className="w-7 h-7 rounded border border-[var(--border)] bg-transparent cursor-pointer"
+            aria-label="Annotation color"
+            className="w-7 h-7 rounded border border-[var(--border)] bg-transparent cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
           />
+          <button
+            type="button"
+            onClick={clearAnnotations}
+            disabled={!canAnnotate || !hasOverlayAnnotations}
+            title="Clear marks from the preview and the recording"
+            className="px-2 py-1 text-xs rounded border border-[var(--border)] hover:bg-[var(--surface-2)] disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            Clear marks
+          </button>
         </div>
-      )}
-
-      {canAnnotate && hasOverlayAnnotations && (
-        <button
-          type="button"
-          onClick={clearAnnotations}
-          title="Clear drawn annotations from the live preview"
-          className="px-2 py-1.5 text-sm rounded border border-[var(--border)] hover:bg-[var(--surface-2)]"
-        >
-          Clear marks
-        </button>
       )}
 
       {showDownload && useDirectMp4 && (
