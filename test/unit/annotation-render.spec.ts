@@ -3,7 +3,13 @@ import * as sinon from 'sinon';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { AnnotationRenderService } from '../../src/services/recording/annotation-render';
+import { spawnSync } from 'child_process';
+import {
+  AnnotationRenderService,
+  ANNOTATION_FONT_PATH,
+  escapeFilterValue,
+} from '../../src/services/recording/annotation-render';
+import { resolveFfmpegPath } from '../../src/helpers/ffmpegPath';
 
 describe('AnnotationRenderService.buildFilterParts', () => {
   const svc = new AnnotationRenderService({} as any);
@@ -63,7 +69,38 @@ describe('AnnotationRenderService.buildFilterParts', () => {
       },
     ]);
     expect(parts[0]).to.include('drawtext=');
-    expect(parts[0]).to.include("text='bug\\: can\\'t click'");
+    // Two levels, no quotes: drawtext's option parser, then the graph parser.
+    // The old quoted form ended the quote at the apostrophe and crashed ffmpeg.
+    expect(parts[0]).to.include(`text=${escapeFilterValue("bug: can't click")}`);
+  });
+
+  it('positions TEXT with drawtext variables (w/h), which it accepts, not iw/ih', () => {
+    const parts = svc.buildFilterParts([
+      {
+        shape: 'TEXT',
+        geometry: JSON.stringify({ x: 0.1, y: 0.95 }),
+        color: 'white',
+        text: 'hi',
+        timecode_ms: 0,
+      },
+    ]);
+    expect(parts[0]).to.include(':x=w*0.1000:y=h*0.9500:');
+    expect(parts[0]).to.not.match(/[:=]i[wh]\*/);
+  });
+
+  it('gives drawtext the vendored font, since the bundled ffmpeg has no fontconfig', () => {
+    const parts = svc.buildFilterParts([
+      {
+        shape: 'TEXT',
+        geometry: JSON.stringify({ x: 0.1, y: 0.1 }),
+        color: 'white',
+        text: 'hi',
+        timecode_ms: 0,
+      },
+    ]);
+    expect(parts[0]).to.include(`fontfile=${escapeFilterValue(ANNOTATION_FONT_PATH)}:`);
+    const sfnt = fs.readFileSync(ANNOTATION_FONT_PATH).readUInt32BE(0);
+    expect(sfnt, 'a TrueType font').to.equal(0x00010000);
   });
 
   it('skips malformed geometry', () => {
@@ -265,5 +302,79 @@ describe('AnnotationRenderService.buildRenderGraph', () => {
     expect(
       svc.buildRenderGraph([mark('a', { end_timecode_ms: 500 })], 10, () => '/x/a.png'),
     ).to.equal(null);
+  });
+});
+
+describe('escapeFilterValue', () => {
+  it('escapes for the option parser, then again for the graph parser', () => {
+    expect(escapeFilterValue('a:b')).to.equal('a\\\\:b');
+    expect(escapeFilterValue("it's")).to.equal("it\\\\\\'s");
+    expect(escapeFilterValue('a\\b')).to.equal('a\\\\\\\\b');
+    expect(escapeFilterValue('[x], y;')).to.equal('\\[x\\]\\, y\\;');
+  });
+
+  it('leaves plain text and plain paths alone', () => {
+    expect(escapeFilterValue('/opt/xenon/Inter-Regular.ttf')).to.equal(
+      '/opt/xenon/Inter-Regular.ttf',
+    );
+    expect(escapeFilterValue('50% done é')).to.equal('50% done é');
+  });
+});
+
+describe('AnnotationRenderService — TEXT burn-in on the real ffmpeg', () => {
+  // The bundled ffmpeg is the one production uses; skip only if it is absent.
+  const ffmpeg = resolveFfmpegPath();
+  let dir: string;
+
+  before(function () {
+    if (spawnSync(ffmpeg, ['-version']).status !== 0) this.skip();
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), 'xenon-text-'));
+    fs.mkdirSync(path.join(dir, 'rec-t', 'video'), { recursive: true });
+    const made = spawnSync(ffmpeg, [
+      ...'-y -loglevel error -f lavfi'.split(' '),
+      ...'-i color=c=navy:s=320x640:d=2:r=10 -pix_fmt yuv420p'.split(' '),
+      path.join(dir, 'rec-t', 'video', 'rec-t.mp4'),
+    ]);
+    expect(made.status, String(made.stderr)).to.equal(0);
+  });
+
+  after(() => {
+    if (dir) fs.rmSync(dir, { recursive: true, force: true });
+  });
+
+  it('draws a TEXT mark with hostile characters instead of falling back to no text', async () => {
+    const file = path.join(dir, 'rec-t', 'video', 'rec-t.mp4');
+    const store: any = {
+      findById: async () => ({
+        id: 'rec-t',
+        file_path: file,
+        annotations: [
+          {
+            id: 'ann-t',
+            shape: 'TEXT',
+            text: "it's 10:30, [ok]; a\\b = 50%",
+            geometry: JSON.stringify({ x: 0.05, y: 0.45 }),
+            color: '#ffffff',
+            timecode_ms: 0,
+          },
+        ],
+      }),
+    };
+    const out = await new AnnotationRenderService(store).resolvePlayablePath('rec-t');
+    expect(out.annotated).to.equal(true);
+
+    // One raw RGB frame: with the text drawn there are bright pixels on navy;
+    // the no-text fallback would leave none.
+    const frame = spawnSync(ffmpeg, [
+      ...'-loglevel error -ss 1 -i'.split(' '),
+      out.filePath,
+      ...'-frames:v 1 -f rawvideo -pix_fmt rgb24 pipe:1'.split(' '),
+    ]);
+    expect(frame.status, String(frame.stderr)).to.equal(0);
+    let bright = 0;
+    for (let i = 0; i + 2 < frame.stdout.length; i += 3) {
+      if (frame.stdout[i] > 200 && frame.stdout[i + 1] > 200 && frame.stdout[i + 2] > 200) bright++;
+    }
+    expect(bright).to.be.greaterThan(200);
   });
 });
