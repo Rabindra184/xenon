@@ -4,12 +4,12 @@ import { Pill, PillTone } from '../ui/Pill';
 import { IDevice } from '../../interfaces/IDevice';
 
 interface Props {
-  device: Pick<IDevice, 'batteryLevel' | 'thermalStatus'>;
+  device: Partial<Pick<IDevice, 'batteryLevel' | 'thermalStatus' | 'deviceType' | 'offline'>>;
 }
 
 function batteryTone(level: number): PillTone {
   if (level >= 50) return 'ready';
-  if (level >= 20) return 'reserved';
+  if (level >= 20) return 'warning';
   return 'error';
 }
 
@@ -22,10 +22,15 @@ function batteryIcon(level: number): React.ReactNode {
 function thermalTone(status: string): PillTone {
   if (status === 'Normal') return 'ready';
   if (status === 'Critical') return 'error';
-  return 'reserved';
+  return 'warning';
 }
 
 export const HealthBadges: React.FC<Props> = ({ device }) => {
+  // An emulator's battery and temperature are synthetic (always 100%, Normal),
+  // and an offline device's last reading is stale. Neither is worth a badge.
+  const emulated = device.deviceType === 'emulator' || device.deviceType === 'simulator';
+  if (emulated || device.offline) return null;
+
   const showBattery = typeof device.batteryLevel === 'number';
   const showThermal =
     typeof device.thermalStatus === 'string' &&

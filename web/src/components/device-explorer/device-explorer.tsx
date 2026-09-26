@@ -11,8 +11,10 @@ import { Button } from '../ui/button';
 import { InPlaceDialog } from '../ui/InPlaceDialog';
 import { SegmentedControl } from '../ui/SegmentedControl';
 import { useSocket } from '../../hooks/useSocket';
+import { deviceState, type DeviceState } from '../device-card/device-card/deviceState';
 
-type StatusFilter = 'all' | 'ready' | 'busy' | 'reserved' | 'offline';
+// One state per device, shared with the cards, so the filters add up to All.
+type StatusFilter = 'all' | DeviceState;
 
 interface IDeviceExplorerState {
   devices: IDevice[];
@@ -104,48 +106,22 @@ export class DeviceExplorer extends React.Component<IDeviceExplorerProps, IDevic
 
   getFiltered(): IDevice[] {
     const now = Date.now();
-    const isReserved = (d: IDevice) => Boolean(d.reservedUntil && now < d.reservedUntil);
     const q = this.state.search.trim().toLowerCase();
+    const filter = this.state.statusFilter;
 
     return this.state.devices.filter((d) => {
       if (q) {
         const hay = `${d.name} ${d.udid}`.toLowerCase();
         if (!hay.includes(q)) return false;
       }
-      switch (this.state.statusFilter) {
-        case 'all':
-          return true;
-        case 'offline':
-          return d.offline;
-        case 'busy':
-          return d.busy && !d.offline;
-        case 'reserved':
-          return isReserved(d) && !d.busy && !d.offline;
-        case 'ready':
-          return !d.offline && !d.busy && !isReserved(d) && !d.userBlocked;
-        default:
-          return true;
-      }
+      return filter === 'all' || deviceState(d, now) === filter;
     });
   }
 
   statusCount(kind: StatusFilter): number {
+    if (kind === 'all') return this.state.devices.length;
     const now = Date.now();
-    const isReserved = (d: IDevice) => Boolean(d.reservedUntil && now < d.reservedUntil);
-    switch (kind) {
-      case 'all':
-        return this.state.devices.length;
-      case 'offline':
-        return this.state.devices.filter((d) => d.offline).length;
-      case 'busy':
-        return this.state.devices.filter((d) => d.busy && !d.offline).length;
-      case 'reserved':
-        return this.state.devices.filter((d) => isReserved(d) && !d.busy && !d.offline).length;
-      case 'ready':
-        return this.state.devices.filter(
-          (d) => !d.offline && !d.busy && !isReserved(d) && !d.userBlocked,
-        ).length;
-    }
+    return this.state.devices.filter((d) => deviceState(d, now) === kind).length;
   }
 
   render() {
@@ -162,28 +138,33 @@ export class DeviceExplorer extends React.Component<IDeviceExplorerProps, IDevic
             subtitle={`${this.state.devices.length} device${this.state.devices.length === 1 ? '' : 's'} registered across the global pool.`}
           />
           <div className="de2-toolbar">
-          <SegmentedControl
-            size="sm"
-            value={this.state.statusFilter}
-            onChange={(v) => this.setState({ statusFilter: v })}
-            segments={[
-              { value: 'all', label: 'All', count: this.statusCount('all') },
-              { value: 'ready', label: 'Ready', count: this.statusCount('ready') },
-              { value: 'busy', label: 'Busy', count: this.statusCount('busy') },
-              { value: 'reserved', label: 'Reserved', count: this.statusCount('reserved') },
-              { value: 'offline', label: 'Offline', count: this.statusCount('offline') },
-            ]}
-          />
-          <input
-            type="text"
-            className="de2-search"
-            placeholder="Search by name or UDID…"
-            value={this.state.search}
-            onChange={(e) => this.setState({ search: e.target.value })}
-          />
-          <Button variant="secondary" size="sm" onClick={() => this.fetchDevices()}>
-            <RefreshCw size={12} /> Refresh
-          </Button>
+            <SegmentedControl
+              size="sm"
+              value={this.state.statusFilter}
+              onChange={(v) => this.setState({ statusFilter: v })}
+              segments={[
+                { value: 'all', label: 'All', count: this.statusCount('all') },
+                { value: 'ready', label: 'Ready', count: this.statusCount('ready') },
+                { value: 'busy', label: 'Busy', count: this.statusCount('busy') },
+                { value: 'reserved', label: 'Reserved', count: this.statusCount('reserved') },
+                {
+                  value: 'maintenance',
+                  label: 'Maintenance',
+                  count: this.statusCount('maintenance'),
+                },
+                { value: 'offline', label: 'Offline', count: this.statusCount('offline') },
+              ]}
+            />
+            <input
+              type="text"
+              className="de2-search"
+              placeholder="Search by name or UDID…"
+              value={this.state.search}
+              onChange={(e) => this.setState({ search: e.target.value })}
+            />
+            <Button variant="secondary" size="sm" onClick={() => this.fetchDevices()}>
+              <RefreshCw size={12} /> Refresh
+            </Button>
           </div>
         </div>
 

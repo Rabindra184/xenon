@@ -1,7 +1,9 @@
 import prettyMilliseconds from 'pretty-ms';
 
+const MINUTE = 60_000;
+
 /**
- * How long is left on a reservation, for the card's `RES ·` banner.
+ * How long is left on a reservation, for the card's "Reserved by … left" line.
  *
  * Two units, not `compact`. `compact: true` keeps only the largest unit and
  * floors it, so a reservation reads a whole hour short for all but the first
@@ -24,5 +26,10 @@ import prettyMilliseconds from 'pretty-ms';
  */
 export function formatReservationRemaining(remainingMs: number): string {
   if (!Number.isFinite(remainingMs) || remainingMs <= 0) return 'expiring';
-  return prettyMilliseconds(remainingMs, { unitCount: 2 });
+  // Whole minutes. The card is redrawn by a 10 s device poll and does not
+  // tick, so seconds were stale on screen, and pretty-ms printed them with a
+  // decimal ("46m 16.1s"). Flooring keeps the rule above: never more time
+  // than actually remains.
+  if (remainingMs < MINUTE) return 'under 1m';
+  return prettyMilliseconds(Math.floor(remainingMs / MINUTE) * MINUTE, { unitCount: 2 });
 }

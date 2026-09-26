@@ -29,6 +29,7 @@
 .dc2-reserved .dc2-stripe { background: var(--status-reserved-fg); }
 .dc2-error .dc2-stripe { background: var(--status-error-fg); }
 .dc2-offline .dc2-stripe { background: var(--status-offline-fg); }
+.dc2-maintenance .dc2-stripe { background: var(--status-offline-fg); }
 
 .dc2-header {
   display: flex;
@@ -156,6 +157,12 @@
 .dc2-banner-session {
   color: var(--status-busy-fg);
   background: var(--status-busy-bg);
+}
+
+.dc2-unavailable {
+  margin: 0;
+  color: var(--text-dim);
+  font-size: 11px;
 }
 
 .dc2-actions {

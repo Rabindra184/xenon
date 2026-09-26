@@ -29,11 +29,12 @@ describe('HealthBadges', () => {
     expect(pills[0].textContent).toContain('87%');
   });
 
-  it('renders a yellow battery pill when battery is in the warning range', () => {
+  // It asked for pill-reserved, which is the blue of a reservation, not yellow.
+  it('renders an amber battery pill when battery is in the warning range', () => {
     const { container } = render(<HealthBadges device={{ batteryLevel: 35 }} />);
     const pills = container.querySelectorAll('.pill');
     expect(pills).toHaveLength(1);
-    expect(pills[0]).toHaveClass('pill-reserved');
+    expect(pills[0]).toHaveClass('pill-warning');
   });
 
   it('renders a red battery pill when battery is critical', () => {
@@ -62,13 +63,13 @@ describe('HealthBadges', () => {
     expect(pills[0]).toHaveClass('pill-error');
   });
 
-  it('renders a yellow thermal pill for any other non-empty value', () => {
+  it('renders an amber thermal pill for any other non-empty value', () => {
     const { container } = render(
       <HealthBadges device={{ thermalStatus: 'Hot' }} />,
     );
     const pills = container.querySelectorAll('.pill');
     expect(pills).toHaveLength(1);
-    expect(pills[0]).toHaveClass('pill-reserved');
+    expect(pills[0]).toHaveClass('pill-warning');
   });
 
   it('renders both pills when both values are present', () => {
@@ -79,5 +80,24 @@ describe('HealthBadges', () => {
     expect(pills).toHaveLength(2);
     expect(pills[0]).toHaveClass('pill-error');
     expect(pills[1]).toHaveClass('pill-error');
+  });
+
+  // An emulator reports a synthetic 100% battery and a "Normal" temperature.
+  it('shows nothing for an emulator or simulator', () => {
+    for (const deviceType of ['emulator', 'simulator'] as const) {
+      const { container, unmount } = render(
+        <HealthBadges device={{ batteryLevel: 100, thermalStatus: 'Normal', deviceType }} />,
+      );
+      expect(container.querySelectorAll('.pill')).toHaveLength(0);
+      unmount();
+    }
+  });
+
+  // An offline device's last reading is stale: a red "0%" said nothing current.
+  it('shows nothing for an offline device', () => {
+    const { container } = render(
+      <HealthBadges device={{ batteryLevel: 0, thermalStatus: 'Normal', offline: true }} />,
+    );
+    expect(container.querySelectorAll('.pill')).toHaveLength(0);
   });
 });

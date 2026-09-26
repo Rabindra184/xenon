@@ -1,7 +1,7 @@
 import * as React from 'react';
 import './status.css';
 
-export type StatusKind = 'ready' | 'busy' | 'reserved' | 'error' | 'offline';
+export type StatusKind = 'ready' | 'busy' | 'reserved' | 'error' | 'offline' | 'maintenance';
 
 export interface StatusDotProps {
   kind: StatusKind;
