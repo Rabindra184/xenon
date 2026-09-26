@@ -27,7 +27,7 @@ describe('formatReservationRemaining', () => {
   });
 
   it('still reads naturally under an hour', () => {
-    expect(formatReservationRemaining(HOUR - 1000)).to.equal('59m 59s');
+    expect(formatReservationRemaining(HOUR - 1000)).to.equal('59m');
   });
 
   // pretty-ms renders a negative as "-5s"; the banner must never print that.
@@ -35,5 +35,15 @@ describe('formatReservationRemaining', () => {
     expect(formatReservationRemaining(-5000)).to.equal('expiring');
     expect(formatReservationRemaining(0)).to.equal('expiring');
     expect(formatReservationRemaining(Number.NaN)).to.equal('expiring');
+  });
+
+  // The card polls every 10 s and does not tick, so seconds were stale, and
+  // pretty-ms printed them with a decimal: "46m 16.1s".
+  it('shows whole minutes, never fractional seconds', () => {
+    expect(formatReservationRemaining(46 * 60_000 + 16_100)).to.equal('46m');
+  });
+
+  it('says under a minute for the last minute', () => {
+    expect(formatReservationRemaining(42_000)).to.equal('under 1m');
   });
 });

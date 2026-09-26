@@ -21,3 +21,4 @@
 .pill-reserved { background: var(--status-reserved-bg); color: var(--status-reserved-fg); border-color: var(--status-reserved-border); }
 .pill-error    { background: var(--status-error-bg); color: var(--status-error-fg);   border-color: var(--status-error-border); }
 .pill-offline  { background: var(--status-offline-bg); color: var(--status-offline-fg); border-color: var(--status-offline-border); }
+.pill-warning  { background: var(--status-busy-bg);  color: var(--status-busy-fg);    border-color: var(--status-busy-border); }

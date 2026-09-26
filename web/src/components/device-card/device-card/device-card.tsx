@@ -1,6 +1,5 @@
 import * as React from 'react';
 import prettyMilliseconds from 'pretty-ms';
-import { formatReservationRemaining } from './reservationTime';
 import { Copy, MoreHorizontal, Clock, Terminal } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { IDevice } from '../../../interfaces/IDevice';
@@ -10,7 +9,6 @@ import { Button } from '../../ui/button';
 import { Select } from '../../ui/select';
 import { Pill } from '../../ui/Pill';
 import { StatusCode } from '../../ui/StatusCode';
-import { StatusKind } from '../../ui/StatusDot';
 import { KeyValueRow } from '../../ui/KeyValueRow';
 import { Popover } from '../../ui/Popover';
 import { Menu, MenuItem } from '../../ui/Menu';
@@ -26,6 +24,7 @@ import {
 } from './sessionConnection';
 import './device-card.css';
 import { platformLabel } from '../../../lib/labels';
+import { activityLabel, controlAvailability, deviceState } from './deviceState';
 
 const SHARED_POOL_LABEL = 'Shared';
 const SHARED_POOL_TITLE = 'Shared pool — visible to all authenticated users';
@@ -131,14 +130,6 @@ const DeviceTeamChip: React.FC<{
   );
 };
 
-function deriveKind(d: IDevice): StatusKind {
-  if (d.offline) return 'offline';
-  if (d.userBlocked) return 'error';
-  if (d.busy) return 'busy';
-  if (d.reservedUntil && Date.now() < d.reservedUntil) return 'reserved';
-  return 'ready';
-}
-
 function middleEllipsis(s: string, head = 10, tail = 4): string {
   if (!s || s.length <= head + tail + 1) return s;
   return `${s.slice(0, head)}…${s.slice(-tail)}`;
@@ -153,11 +144,12 @@ export const DeviceCard: React.FC<Props> = ({ device, reloadDevices, navigate, t
   const { toast } = useToast();
   const canEditTeam = me?.role === 'ADMIN' || me?.role === 'SUPER_ADMIN';
 
-  const kind = deriveKind(device);
+  const now = Date.now();
+  const kind = deviceState(device, now);
   const reserved = kind === 'reserved';
-  const busyLocked = Boolean(
-    device.busy && device.session_id && !String(device.session_id).startsWith('manual_'),
-  );
+  const activity = activityLabel(device, me, now);
+  const control = controlAvailability(device, me);
+  const reasonId = `dc2-reason-${device.udid}`;
 
   const copyText = async (text: string, successMsg: string) => {
     try {
@@ -242,20 +234,10 @@ export const DeviceCard: React.FC<Props> = ({ device, reloadDevices, navigate, t
       </div>
 
       <div className="dc2-metrics">
-        {reserved ? (
-          <div className="dc2-banner dc2-banner-reserved">
-            <Clock size={12} />
-            <span>
-              RES · {device.reservedBy || 'anon'}
-              {device.reservedUntil
-                ? ` (${formatReservationRemaining(device.reservedUntil - Date.now())})`
-                : ''}
-            </span>
-          </div>
-        ) : device.session_id ? (
-          <div className="dc2-banner dc2-banner-session">
-            <Terminal size={12} />
-            <span>SID · {String(device.session_id).slice(0, 10)}</span>
+        {activity ? (
+          <div className={`dc2-banner dc2-banner-${reserved ? 'reserved' : 'session'}`}>
+            {reserved ? <Clock size={12} aria-hidden /> : <Terminal size={12} aria-hidden />}
+            <span>{activity}</span>
           </div>
         ) : (
           <KeyValueRow
@@ -292,16 +274,24 @@ export const DeviceCard: React.FC<Props> = ({ device, reloadDevices, navigate, t
         />
       </div>
 
+      {/* Said on the card, not only in a tooltip: a disabled button gave no
+          reason unless you hovered it. */}
+      {!control.enabled && (
+        <p id={reasonId} className="dc2-unavailable">
+          {control.reason}
+        </p>
+      )}
+
       <div className="dc2-actions">
         <Button
           variant="primary"
           size="sm"
-          disabled={busyLocked}
+          disabled={!control.enabled}
+          aria-describedby={control.enabled ? undefined : reasonId}
           onClick={() => {
-            if (busyLocked) return;
+            if (!control.enabled) return;
             navigate(`/devices/${device.udid}/control`);
           }}
-          title={busyLocked ? 'Locked: Appium session running' : 'Take control'}
           className="dc2-primary"
         >
           Control
@@ -310,7 +300,7 @@ export const DeviceCard: React.FC<Props> = ({ device, reloadDevices, navigate, t
           <Button variant="secondary" size="sm" onClick={release}>
             Release
           </Button>
-        ) : !device.userBlocked && !device.busy ? (
+        ) : kind === 'ready' ? (
           <Button variant="secondary" size="sm" onClick={() => setShowReservation(true)}>
             Reserve
           </Button>
