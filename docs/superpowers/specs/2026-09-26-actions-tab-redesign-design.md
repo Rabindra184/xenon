@@ -66,7 +66,8 @@ following the existing `.action-card` rhythm, and there is at most one tinted
   - Choosing a file installs it at once through
     `uploadAndInstallApp`, with the same three messages using the file name.
     Today's separate INSTALL step goes.
-  - The input stays `sr-only`, so the keyboard reaches it (#326).
+  - It is a `Button` that opens a `hidden` file input, so the keyboard reaches
+    the Button. A hidden input still opens when clicked programmatically.
 - While an install runs, both buttons are disabled and Install from library
   shows a spinner.
 
@@ -107,13 +108,14 @@ following the existing `.action-card` rhythm, and there is at most one tinted
 Two rows, each with a fixed-width label on the left.
 
 - **Send text:**
-  - The field is named "Text to send to the device", with the placeholder
-    "Type text for the focused field…".
+  - The field is labelled and named "Send text", so its accessible name
+    matches its visible label (WCAG 2.5.3). The placeholder is "Type text for
+    the focused field…".
   - A **Send** button (`secondary`) sends it, and so does Enter.
   - The "Sent" status and the failure behaviour are as in #326: the text is
     kept, with "Couldn’t send the text: <reason>".
-- **Clipboard:** one editable field named "Device clipboard", then three
-  buttons.
+- **Clipboard:** one editable field, labelled and named "Clipboard", then
+  three buttons.
   - **Read** (`secondary`) fetches the phone's clipboard into the field. An
     empty clipboard leaves the field empty with a status "The device
     clipboard is empty". Failures use `clipboardError(platform, err)` from
