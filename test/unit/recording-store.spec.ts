@@ -48,6 +48,27 @@ describe('RecordingStore (Prisma round-trip)', () => {
     expect(updated.ended_at).to.be.instanceOf(Date);
   });
 
+  // stream/stop asks this before tearing a stream down: stopping the stream
+  // under a live recording lost the whole recording (FAILED, 28 bytes).
+  it('activeRecordingFor finds the in-progress recording of a device, and its group', async () => {
+    await store.create({
+      id: 'test-rec-act',
+      groupId: 'test-g-act',
+      deviceUdid: 'TEST-UA',
+      deviceHost: '127.0.0.1',
+      filePath: '/tmp/ra.mp4',
+      sessionId: null,
+      deviceSnapshot: null,
+    });
+    expect(await store.activeRecordingFor('TEST-UA')).to.deep.equal({
+      id: 'test-rec-act',
+      groupId: 'test-g-act',
+    });
+    expect(await store.activeRecordingFor('TEST-OTHER')).to.equal(null);
+    await store.finalize('test-rec-act', { status: 'STOPPED', durationMs: 1, sizeBytes: 1 });
+    expect(await store.activeRecordingFor('TEST-UA')).to.equal(null);
+  });
+
   it('listActive returns RECORDING rows globally', async () => {
     await store.create({
       id: 'test-rec-3',

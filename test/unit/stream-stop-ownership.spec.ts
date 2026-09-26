@@ -8,6 +8,7 @@ import ControlRouter from '../../src/app/routers/control';
 import { DeviceStoreFactory } from '../../src/data-service/device-store';
 import * as deviceService from '../../src/data-service/device-service';
 import { ApiKeyService } from '../../src/services/ApiKeyService';
+import { RecordingStore } from '../../src/services/recording/recording-store';
 import IOSStreamService from '../../src/device-managers/ios/IOSStreamService';
 import AndroidStreamService from '../../src/device-managers/android/AndroidStreamService';
 import AndroidH264StreamService from '../../src/device-managers/android/AndroidH264StreamService';
@@ -108,6 +109,8 @@ describe('POST /control/:udid/stream/stop — lock ownership round-trip', () => 
     Container.set(AndroidStreamService, { stopStream: androidStop } as any);
     Container.set(AndroidH264StreamService, { stop: h264Stop } as any);
     Container.set(IOSStreamService, { stopStream: sinon.stub().resolves() } as any);
+    // Nothing is being recorded here (see stream-stop-recording.spec.ts).
+    Container.set(RecordingStore, { activeRecordingFor: async () => null } as any);
   });
 
   afterEach(() => {

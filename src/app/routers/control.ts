@@ -773,6 +773,22 @@ router.post('/:udid/stream/stop', async (req: Request, res: Response) => {
     });
   }
 
+  // Never under a live recording: the recording reads this stream, and
+  // stopping it here lost the whole recording (measured: FAILED, 28 bytes for
+  // 38 s) and dropped the lock. Admins are refused too; forcing would mean
+  // stopping the whole recording group. POST /recordings/:groupId/stop is the
+  // clean way: it keeps the video and releases the devices. Checked after
+  // ownership, so a caller who may not touch the device learns nothing here.
+  const recording = await Container.get(RecordingStore).activeRecordingFor(udid);
+  if (recording) {
+    return res.status(409).json({
+      success: false,
+      error: 'device_recording',
+      message: 'This device is being recorded. Stop the recording first.',
+      groupId: recording.groupId,
+    });
+  }
+
   try {
     if (device.platform === 'ios' || device.platform === 'tvos') {
       await Container.get(IOSStreamService).stopStream(udid);

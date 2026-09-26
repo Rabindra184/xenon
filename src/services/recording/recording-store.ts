@@ -54,6 +54,18 @@ export class RecordingStore {
     return prisma.recording.findMany({ where: { status: 'RECORDING' } });
   }
 
+  /**
+   * The device's in-progress recording and its group, or null. stream/stop
+   * checks this: stopping the stream under a live recording loses all of it.
+   */
+  async activeRecordingFor(udid: string): Promise<{ id: string; groupId: string } | null> {
+    const rec = await prisma.recording.findFirst({
+      where: { status: 'RECORDING', device_udid: udid },
+      select: { id: true, group_id: true },
+    });
+    return rec ? { id: rec.id, groupId: rec.group_id } : null;
+  }
+
   /** Whether a device currently has an in-progress recording. */
   async isRecording(udid: string): Promise<boolean> {
     const count = await prisma.recording.count({
