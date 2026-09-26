@@ -164,60 +164,63 @@ export default function ElementTree({
             onMouseEnter={() => onHover(target)}
             onMouseLeave={() => onHover(null)}
           >
-            <span
-              className="omni-tree-row__indent"
-              style={{ width: (row.level - 1) * INDENT_PX }}
-              aria-hidden="true"
-            />
-            <span
-              className="omni-tree-row__caret"
-              aria-hidden="true"
-              onClick={
-                row.hasChildren
-                  ? (e) => {
-                      e.stopPropagation();
-                      onToggle(row.key);
-                    }
-                  : undefined
-              }
-            >
-              {row.hasChildren &&
-                (row.expanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />)}
+            {/* Lead, label, count: see "Element tree" in omni-inspector.css. */}
+            <span className="omni-tree-row__lead" aria-hidden="true">
+              <span
+                className="omni-tree-row__indent"
+                style={{ width: (row.level - 1) * INDENT_PX }}
+              />
+              <span
+                className="omni-tree-row__caret"
+                onClick={
+                  row.hasChildren
+                    ? (e) => {
+                        e.stopPropagation();
+                        onToggle(row.key);
+                      }
+                    : undefined
+                }
+              >
+                {row.hasChildren &&
+                  (row.expanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />)}
+              </span>
+              <span className="omni-tree-row__icon">{ROLE_ICON[analyzeElement(target).key]}</span>
             </span>
-            <span className="omni-tree-row__icon" aria-hidden="true">
-              {ROLE_ICON[analyzeElement(target).key]}
-            </span>
-            {row.nodes.map((n, j) => {
-              const last = j === row.nodes.length - 1;
-              return (
-                <React.Fragment key={n.xpath}>
-                  {j > 0 && (
-                    <span className="omni-tree-row__sep" aria-hidden="true">
-                      ›
+            <span className="omni-tree-row__label">
+              {row.nodes.map((n, j) => {
+                const last = j === row.nodes.length - 1;
+                return (
+                  <React.Fragment key={n.xpath}>
+                    {j > 0 && (
+                      // The glyph's spacing sits inside the separator so it
+                      // shrinks away with it; a flex item's padding can't.
+                      <span className="omni-tree-row__sep" aria-hidden="true">
+                        <span>›</span>
+                      </span>
+                    )}
+                    <span
+                      className={`omni-tree-row__part${last ? ' is-target' : ''}${
+                        matches.has(n.xpath) ? ' is-match' : ''
+                      }${n.xpath === selectedXpath ? ' is-current' : ''}`}
+                      title={tooltip(n)}
+                      onClick={
+                        last
+                          ? undefined
+                          : (e) => {
+                              e.stopPropagation();
+                              onSelect(n);
+                            }
+                      }
+                      onMouseEnter={last ? undefined : () => onHover(n)}
+                      onMouseLeave={last ? undefined : () => onHover(target)}
+                    >
+                      {shortName(n)}
                     </span>
-                  )}
-                  <span
-                    className={`omni-tree-row__part${last ? ' is-target' : ''}${
-                      matches.has(n.xpath) ? ' is-match' : ''
-                    }${n.xpath === selectedXpath ? ' is-current' : ''}`}
-                    title={tooltip(n)}
-                    onClick={
-                      last
-                        ? undefined
-                        : (e) => {
-                            e.stopPropagation();
-                            onSelect(n);
-                          }
-                    }
-                    onMouseEnter={last ? undefined : () => onHover(n)}
-                    onMouseLeave={last ? undefined : () => onHover(target)}
-                  >
-                    {shortName(n)}
-                  </span>
-                </React.Fragment>
-              );
-            })}
-            {showType && <span className="omni-tree-row__type">{type}</span>}
+                  </React.Fragment>
+                );
+              })}
+              {showType && <span className="omni-tree-row__type">{type}</span>}
+            </span>
             {row.hasChildren && !row.expanded && (
               <span className="omni-tree-row__count" aria-hidden="true">
                 {target.children.length}

@@ -440,6 +440,24 @@
     background: var(--text-muted);
 }
 
+/* Forced colours replace author backgrounds, and the line and the grip are
+   backgrounds, so they would vanish. System colours are kept; every state
+   is listed because the hover and drag rules above outrank a plain one. */
+@media (forced-colors: active) {
+    .omni-split-divider::before,
+    .omni-split-divider:hover::before,
+    .omni-split-divider.is-dragging::before,
+    .omni-split-divider__grip,
+    .omni-split-divider:hover .omni-split-divider__grip,
+    .omni-split-divider.is-dragging .omni-split-divider__grip {
+        background: CanvasText;
+    }
+
+    .omni-split-divider:focus-visible::before {
+        background: Highlight;
+    }
+}
+
 .omni-header-left {
     display: flex;
     align-items: center;
@@ -569,6 +587,9 @@
 
 .omni-crumbs li + li::before {
     content: '›';
+    /* Decorative: empty alternative text, so it isn't read aloud. The line
+       above is the fallback where the alt syntax isn't supported. */
+    content: '›' / '';
     padding: 0 4px;
     color: var(--text-dim);
 }
@@ -1185,9 +1206,7 @@
     font-family: 'JetBrains Mono', monospace;
 }
 
-/* ===================================================
-   AI FEATURES: Smart Search Hint
-   =================================================== */
+/* The match count and a tip, under the search box. */
 .omni-search-hint {
     display: flex;
     align-items: center;
@@ -1195,7 +1214,7 @@
     padding: 4px 14px;
     font-size: 10px;
     color: var(--text-muted);
-    border-bottom: 1px solid rgb(var(--rgb-accent) / 0.08);
+    border-bottom: 1px solid var(--border);
 }
 
 /* ===================================================
@@ -1512,9 +1531,11 @@
 }
 
 /* ===== Element tree (ElementTree.tsx) =====
-   Rows are 26px; parts, separators and the type are direct flex children so
-   the shrink weights read: earlier parts first, then the type, the target's
-   name last. */
+   A row is 26px: the lead (indent, caret, icon), the label, and the child
+   count on a collapsed row. The label holds the run's parts, the separators
+   and the target's type with no gap, so the shrink weights alone decide what
+   gives way: earlier parts and separators first, then the type, and the
+   target only when it is too long on its own. */
 .omni-tree {
     display: flex;
     flex-direction: column;
@@ -1556,13 +1577,24 @@
     outline-offset: -2px;
 }
 
-/* One guide per ancestor level, under that ancestor's caret. */
+.omni-tree-row__lead {
+    display: flex;
+    align-items: center;
+    align-self: stretch;
+    flex-shrink: 0;
+}
+
+/* One guide per ancestor level, under that ancestor's caret. The indent
+   starts where a top-level row's caret does, and each level moves the caret
+   10px right, so ancestor n's 12px caret starts at 10(n - 1) and is centred
+   6px in; the 1px guide covers [5, 6) of each 10px column, the nearest pixel
+   column to that centre. */
 .omni-tree-row__indent {
     flex-shrink: 0;
     align-self: stretch;
     background-image: linear-gradient(to right, var(--border) 1px, transparent 1px);
     background-size: 10px 100%;
-    background-position: 6px 0;
+    background-position: 5px 0;
     background-repeat: repeat-x;
 }
 
@@ -1579,6 +1611,19 @@
     width: 12px;
 }
 
+.omni-tree-row__icon {
+    margin-left: 4px;
+}
+
+.omni-tree-row__label {
+    display: flex;
+    flex: 1 1 auto;
+    align-items: center;
+    gap: 0;
+    min-width: 0;
+    overflow: hidden;
+}
+
 .omni-tree-row__part,
 .omni-tree-row__type {
     min-width: 0;
@@ -1591,8 +1636,12 @@
     flex: 0 1000 auto;
 }
 
+/* Doesn't shrink while anything else can: any shrink weight at all hands it
+   a sub-pixel share of the overflow, and any overflow draws "…". Capped at
+   the label only when it alone is too long. */
 .omni-tree-row__part.is-target {
-    flex: 0 1 auto;
+    flex: 0 0 auto;
+    max-width: 100%;
     color: var(--text);
 }
 
@@ -1606,12 +1655,21 @@
 }
 
 .omni-tree-row__sep {
-    flex-shrink: 0;
+    flex: 0 1000 auto;
+    min-width: 0;
+    overflow: hidden;
     color: var(--text-dim);
+}
+
+/* The spacing is inside the separator so it shrinks away with it: a flex
+   item's own padding never shrinks. */
+.omni-tree-row__sep > span {
+    padding: 0 4px;
 }
 
 .omni-tree-row__type {
     flex: 0 100 auto;
+    margin-left: 4px;
     font-size: 11px;
     color: var(--text-dim);
 }
@@ -1623,4 +1681,19 @@
     font-family: 'JetBrains Mono', monospace;
     font-size: 10px;
     color: var(--text-dim);
+}
+
+/* Light: on a hovered or selected row the match blue (--color-highlight,
+   4.16:1 hovered, 3.87:1 selected) and --text-dim (4.33:1 selected) fall
+   under 4.5:1. --color-info and --text-muted clear it (5.02:1 and 5.88:1 on
+   a selected row, the darkest). */
+:root[data-theme='light'] .omni-tree-row__part.is-match {
+    color: var(--color-info);
+}
+
+:root[data-theme='light'] .omni-tree-row.is-selected,
+:root[data-theme='light'] .omni-tree-row.is-selected .omni-tree-row__sep,
+:root[data-theme='light'] .omni-tree-row.is-selected .omni-tree-row__type,
+:root[data-theme='light'] .omni-tree-row.is-selected .omni-tree-row__count {
+    color: var(--text-muted);
 }

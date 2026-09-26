@@ -89,6 +89,34 @@ describe('ElementTree', () => {
     expect(item(/hierarchy.*content/)).toBeInTheDocument();
   });
 
+  // The shrink order in omni-inspector.css depends on this structure: the lead
+  // never shrinks, one gap-less label holds the run and the type, and the
+  // count sits outside it. (jsdom can't measure the widths themselves.)
+  it('lays a row out as lead, label and count', () => {
+    render(<Harness />);
+    const classes = (el: Element) => Array.from(el.children).map((c) => c.classList[0]);
+    const cardRow = item(/Card/);
+    expect(classes(cardRow)).toEqual([
+      'omni-tree-row__lead',
+      'omni-tree-row__label',
+      'omni-tree-row__count',
+    ]);
+    expect(classes(cardRow.children[0])).toEqual([
+      'omni-tree-row__indent',
+      'omni-tree-row__caret',
+      'omni-tree-row__icon',
+    ]);
+    expect(classes(cardRow.children[1])).toEqual(['omni-tree-row__part', 'omni-tree-row__type']);
+    const folded = item(/hierarchy.*content/);
+    expect(classes(folded.children[1])).toEqual([
+      'omni-tree-row__part',
+      'omni-tree-row__sep',
+      'omni-tree-row__part',
+      'omni-tree-row__sep',
+      'omni-tree-row__part',
+    ]);
+  });
+
   it('names a row in plain words, with the type only when it is shown', () => {
     render(<Harness />);
     // Two's name differs from its type ('Button'), so the type is appended.
