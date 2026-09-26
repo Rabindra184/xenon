@@ -28,14 +28,13 @@ import {
   type RecordingState,
 } from './logcatRecording';
 // This view renders four classes it does not own: `.type-input-field`,
-// `.btn-sm` and `.btn-premium` (device-control.css) and `.btn-secondary`
-// (ui/button.css). It used to get them only because its parent happened to
-// import device-control.css — the view was one refactor away from rendering
-// unstyled, with nothing to point at. Both sheets are already in the bundle
-// and Rollup dedupes a repeated module import, so these cost nothing.
+// `.btn-sm`, `.btn-premium` and `.dc-btn-secondary` (device-control.css). It
+// used to get them only because its parent happened to import
+// device-control.css — the view was one refactor away from rendering
+// unstyled, with nothing to point at. The sheet is already in the bundle and
+// Rollup dedupes a repeated module import, so this costs nothing.
 // Imported BEFORE ./logcat.css so its overrides still win.
 import '../device-control.css';
-import '../../ui/button.css';
 import './logcat.css';
 
 interface Props {
@@ -379,7 +378,7 @@ export default function LogcatView({ udid, platform }: Props) {
           </div>
           <button
             type="button"
-            className="btn-secondary btn-sm logcat-icon-btn"
+            className="dc-btn-secondary btn-sm logcat-icon-btn"
             onClick={() => jump(-1)}
             disabled={!hits.length}
             aria-label="Previous match"
@@ -389,7 +388,7 @@ export default function LogcatView({ udid, platform }: Props) {
           </button>
           <button
             type="button"
-            className="btn-secondary btn-sm logcat-icon-btn"
+            className="dc-btn-secondary btn-sm logcat-icon-btn"
             onClick={() => jump(1)}
             disabled={!hits.length}
             aria-label="Next match"
@@ -399,7 +398,7 @@ export default function LogcatView({ udid, platform }: Props) {
           </button>
           <button
             type="button"
-            className={`btn-secondary btn-sm logcat-icon-btn ${caseSensitive ? 'active' : ''}`}
+            className={`dc-btn-secondary btn-sm logcat-icon-btn ${caseSensitive ? 'active' : ''}`}
             onClick={() => setCaseSensitive(!caseSensitive)}
             aria-pressed={caseSensitive}
             aria-label="Match case"
@@ -409,7 +408,7 @@ export default function LogcatView({ udid, platform }: Props) {
           </button>
           <button
             type="button"
-            className={`btn-secondary btn-sm logcat-icon-btn ${wrap ? 'active' : ''}`}
+            className={`dc-btn-secondary btn-sm logcat-icon-btn ${wrap ? 'active' : ''}`}
             onClick={() => setWrap(!wrap)}
             aria-pressed={wrap}
             aria-label="Soft wrap"
@@ -420,12 +419,12 @@ export default function LogcatView({ udid, platform }: Props) {
         </div>
         <div className="log-actions-group">
           {(deniedReason || exhausted) && (
-            <button className="btn-secondary btn-sm" onClick={retry}>
+            <button className="dc-btn-secondary btn-sm" onClick={retry}>
               <RotateCw size={14} /> RECONNECT
             </button>
           )}
           <button
-            className={`btn-secondary btn-sm ${following ? 'active' : ''}`}
+            className={`dc-btn-secondary btn-sm ${following ? 'active' : ''}`}
             onClick={() => setFollowing(!following)}
           >
             <Wifi size={14} /> {following ? 'FREEZE' : 'FOLLOW'}
@@ -435,7 +434,7 @@ export default function LogcatView({ udid, platform }: Props) {
               explicit start and stop, independent of the filter and of the
               5000-record display cap. */}
           <button
-            className={`btn-secondary btn-sm ${recording ? 'is-recording' : ''}`}
+            className={`dc-btn-secondary btn-sm ${recording ? 'is-recording' : ''}`}
             onClick={toggleRecording}
             aria-pressed={recording}
             title={
@@ -450,7 +449,7 @@ export default function LogcatView({ udid, platform }: Props) {
           <button className="btn-premium btn-sm" disabled={visible.length === 0} onClick={onExport}>
             <Download size={14} /> EXPORT
           </button>
-          <button className="btn-secondary btn-sm" onClick={clear}>
+          <button className="dc-btn-secondary btn-sm" onClick={clear}>
             <Trash2 size={14} /> CLEAR
           </button>
         </div>

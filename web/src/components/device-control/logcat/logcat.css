@@ -1,6 +1,6 @@
-/* Rules used ONLY by LogcatView. The three classes it borrows from elsewhere
-   (`.type-input-field` / `.btn-sm` / `.btn-premium` from device-control.css,
-   `.btn-secondary` from ui/button.css) are imported by LogcatView.tsx itself
+/* Rules used ONLY by LogcatView. The four classes it borrows from elsewhere
+   (`.type-input-field` / `.btn-sm` / `.btn-premium` / `.dc-btn-secondary`
+   from device-control.css) are imported by LogcatView.tsx itself
    — as JS module imports, not a CSS `@import`, which the bundler inlines and
    so emits a second copy of a sheet that is already its own chunk. */
 
@@ -297,13 +297,13 @@
 /* Recording is a state the page is IN, not a button that was clicked, so it
    stays visibly on for as long as it lasts. Red rather than the app's green:
    this is the one control that keeps consuming memory until you stop it. */
-.btn-secondary.is-recording {
+.dc-btn-secondary.is-recording {
   color: var(--red-400);
   border-color: color-mix(in srgb, var(--red-400) 45%, transparent);
   background: color-mix(in srgb, var(--red-400) 12%, transparent);
 }
 
-.btn-secondary.is-recording svg {
+.dc-btn-secondary.is-recording svg {
   fill: currentColor;
 }
 
