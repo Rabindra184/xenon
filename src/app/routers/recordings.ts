@@ -15,6 +15,8 @@ import { filterRowsByVisibleDevice } from '../../data-service/device-service';
 import { prisma } from '../../prisma';
 import { parseClearBody } from './recordingRequests';
 import { decodeAnnotationImage } from '../../services/recording/annotationImage';
+import { selectOwnActiveGroups } from '../../services/recording/activeRecordings';
+import { DeviceStoreFactory } from '../../data-service/device-store';
 import log from '../../logger';
 
 // Phase 4A: a recording group is visible if at least one of its rows runs on
@@ -185,6 +187,31 @@ router.post('/recordings/:groupId/annotation', async (req: Request, res: Respons
   } catch (e: any) {
     recLog.error(`annotation failed: ${e?.message}`);
     res.status(500).json({ error: 'internal', message: e?.message });
+  }
+});
+
+// Registered before GET /recordings/:groupId, which would otherwise read
+// "active" as a group id.
+router.get('/recordings/active', async (req: Request, res: Response) => {
+  try {
+    const actor = resolveActor(req);
+    const rows = await prisma.recording.findMany({
+      where: { status: 'RECORDING' },
+      include: { annotations: true },
+    });
+    const locks = new Map<string, string | null>();
+    for (const udid of new Set(rows.map((r) => r.device_udid))) {
+      const d = await DeviceStoreFactory.getStore().findDevice({ udid });
+      locks.set(udid, d?.session_id ?? null);
+    }
+    const groups = selectOwnActiveGroups(rows as any, (u) => locks.get(u), actor).map((g) => ({
+      ...g,
+      compositeEnabled: fs.existsSync(compositeOutputPath(g.groupId)),
+    }));
+    return res.json({ serverNow: Date.now(), groups });
+  } catch (e: any) {
+    recLog.error(`GET /recordings/active failed: ${e?.message}`);
+    return res.status(500).json({ error: 'internal', message: e?.message });
   }
 });
 
