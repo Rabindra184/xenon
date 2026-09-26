@@ -30,6 +30,11 @@ export interface IDevice {
   totalHealedCount?: number;
   ip?: string;
   cpuArchitecture?: string;
+  // Device identity, read by the server at discovery; null when unknown.
+  marketingName?: string | null;
+  model?: string | null;
+  manufacturer?: string | null;
+  formFactor?: 'phone' | 'tablet' | 'tv' | null;
   teamId?: string | null;
   teamName?: string | null;
 }
