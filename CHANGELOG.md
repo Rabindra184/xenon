@@ -6,6 +6,79 @@ This project follows [Semantic Versioning](https://semver.org/). Releases are
 published to npm automatically when `package.json`'s `version` changes on `main`
 (see `.github/workflows/npm-publish.yml`).
 
+## 1.22.0
+
+Minor release. Annotations on Live Devices recordings now come out in the
+downloaded video exactly as drawn: same place, same shape, same colour, gone
+when you press Clear marks. A recording also survives a page reload. The
+Bookmark button is removed. Includes a database migration that is applied
+automatically at startup.
+
+### Changed — operator action may be needed
+
+- **Database migration: one nullable column, `Annotation.end_timecode_ms`**
+  (#296). `runMigrations` applies it at startup (`db push` on SQLite,
+  `migrate deploy` on PostgreSQL), and existing rows need no backfill. If you
+  run with `XENON_AUTO_MIGRATE=false`, apply
+  `20260925120000_annotation_end_timecode` yourself before starting this
+  version.
+
+### Fixed
+
+- **Marks appeared in the wrong place in the recorded video** (#295). The
+  drawing layer was stuck at the browser's default 300×150 canvas instead of
+  covering the tile, so marks were measured against the wrong box. Nothing
+  below the top 150 pixels of the tile could be drawn at all.
+- **Marks were also off-target when the tile was letterboxed** (#296). A tile
+  added before the device reported its screen size kept a 9:16 fallback, and
+  a narrow 3×2 cell squeezes a tile out of shape. Marks are now measured
+  against the video picture itself, not the tile.
+- **A page reload lost a running recording** (#296). So did closing the tab
+  or navigating away. The server kept recording and nothing in the dashboard
+  could stop it. The page now picks the recording back up (REC timer, Stop,
+  and the marks on screen) from the new `GET /xenon/api/recordings/active`.
+- **The same device could be recorded twice at once** (#296). Record after a
+  reload started a second capture; four of those used up
+  `maxConcurrentRecordings` until a restart. A device that is already
+  recording is now refused with the busy reason `recording_other_group`.
+- **Clear marks only cleared the browser** (#296). Every mark stayed in the
+  video until the end. Clear marks now removes the marks from the video from
+  that moment on, and it can no longer overtake a mark that is still being
+  saved.
+- **Circles and arrows came out as filled boxes, and Draw was just another
+  rectangle** (#296). Each mark is now rendered by the browser with the same
+  code as the live preview and composited over the video. Draw is real
+  freehand.
+- **One text mark wiped every mark from the download, and text marks never
+  appeared** (#296, #297). Text marks can only be created through the API.
+  The bundled ffmpeg has no font lookup, the text position used the wrong
+  variables, and an apostrophe broke the filter. Xenon now ships a font
+  (Inter, OFL-1.1) and escapes text correctly. If text ever fails to render
+  anyway, the other marks still do.
+- **The annotation toolbar moved under the cursor** (#296). Buttons appeared
+  and disappeared as marks were drawn, so clicks landed on the wrong control.
+  They now stay in place and grey out instead. The on-screen hint is now a
+  small label, not a banner covering a third of a small tile.
+
+### Added
+
+- `POST /xenon/api/recordings/:groupId/annotations/clear` with
+  `{ timecodeMs }` (#296).
+- An optional `image` (PNG data URL) on `POST …/annotation`, burned into the
+  video as-is. Marks without one keep the previous box rendering (#296).
+
+### Removed
+
+- **The Bookmark button and its `B` shortcut** (#296). Existing bookmarks,
+  `POST …/bookmark` and `bookmarks.json` in proof bundles are unchanged.
+
+### Development
+
+- **LogcatView's recording specs leaked stubs between tests** (#294). The
+  suite passed but reported 5 unhandled errors; it now reports none.
+- **The control sweep covers the sign-in pages as a signed-out visitor**
+  (#293).
+
 ## 1.21.7
 
 Patch release. Two small fixes in the dashboard sidebar and on the Users page.
