@@ -22,8 +22,22 @@ export default function SplitDivider({
   const [dragging, setDragging] = useState(false);
   const latest = useRef(share);
   latest.current = share;
+  // Guards against ending (and committing) the same drag twice: pointerup
+  // calls releasePointerCapture, which fires its own lostpointercapture right
+  // behind it, and a drag can also end via pointercancel (a competing
+  // touch/pen gesture — touch-action: none makes touch drags possible here —
+  // or the browser simply dropping capture) instead of pointerup. Whichever
+  // fires first wins; the rest are no-ops.
+  const ended = useRef(true);
   const clamp = (s: number) => Math.min(limits.max, Math.max(limits.min, s));
   const pct = (s: number) => Math.round(s * 100);
+
+  const endDrag = () => {
+    if (ended.current) return;
+    ended.current = true;
+    setDragging(false);
+    onCommit(latest.current);
+  };
 
   const fromPointer = (clientX: number) => {
     const rect = containerRef.current?.getBoundingClientRect();
@@ -62,17 +76,21 @@ export default function SplitDivider({
       onDoubleClick={onReset}
       onPointerDown={(e) => {
         e.currentTarget.setPointerCapture?.(e.pointerId);
+        ended.current = false;
         setDragging(true);
       }}
       onPointerMove={(e) => {
         if (dragging) onChange(fromPointer(e.clientX));
       }}
       onPointerUp={(e) => {
-        if (!dragging) return;
         e.currentTarget.releasePointerCapture?.(e.pointerId);
-        setDragging(false);
-        onCommit(latest.current);
+        endDrag();
       }}
+      onPointerCancel={(e) => {
+        e.currentTarget.releasePointerCapture?.(e.pointerId);
+        endDrag();
+      }}
+      onLostPointerCapture={endDrag}
     >
       <span className="omni-split-divider__grip" aria-hidden="true" />
     </div>
