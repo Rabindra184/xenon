@@ -645,8 +645,12 @@
   border-color: var(--color-accent);
 }
 
+/* Device control's own raw buttons. The secondary one is `dc-btn-secondary`,
+   not `btn-secondary`: that is the shared <Button>'s class, and this sheet
+   loads on the Devices page too, where a global `.btn-secondary` bolded and
+   padded every secondary Button (src/design/button-classes.test.ts). */
 .btn-premium,
-.btn-secondary {
+.dc-btn-secondary {
   padding: 10px 20px;
   border-radius: var(--radius-sm);
   font-weight: 700;
@@ -671,19 +675,19 @@
   box-shadow: none;
 }
 
-.btn-secondary {
+.dc-btn-secondary {
   background: rgb(var(--rgb-fg) / 0.05);
   color: var(--text);
   border: 1px solid var(--border);
 }
 
-.btn-secondary:hover:not(:disabled) {
+.dc-btn-secondary:hover:not(:disabled) {
   background: rgb(var(--rgb-fg) / 0.1);
   color: var(--text);
   border-color: var(--text-muted);
 }
 
-.btn-secondary.active {
+.dc-btn-secondary.active {
   background: var(--primary-soft);
   color: var(--color-accent);
   border-color: var(--color-accent);
