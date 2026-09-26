@@ -5,6 +5,12 @@ import { sanitizeDeviceNetworkIp } from '../helpers/networkAddresses';
 import { spawn } from 'child_process';
 import { ADB, getSdkRootFromEnv } from 'appium-adb';
 import log from '../logger';
+import {
+  CLIPBOARD_GET_ACTION,
+  CLIPBOARD_RECEIVER,
+  parseClipboardBroadcast,
+} from './android/clipboardBroadcast';
+import { ClipboardUnsupportedError } from './clipboardErrors';
 import _ from 'lodash';
 import { fs } from '@appium/support';
 import ChromeDriverManager from './ChromeDriverManager';
@@ -872,107 +878,43 @@ export default class AndroidDeviceManager implements IDeviceManager {
     }
   }
 
+  /**
+   * Reads the clipboard through Appium Settings. Android 10+ lets only the
+   * default input method read it, so Appium Settings is the IME for the length
+   * of one broadcast (see withAppiumIME). Failures are thrown, not swallowed:
+   * an empty string used to stand for both "empty" and "couldn't read".
+   */
   async getClipboard(udid: string): Promise<string> {
     const { adbInstance } = await this.getAdb();
-    if (!adbInstance) return '';
-    try {
-      // Wrap the targeted broadcast in the Appium IME context
-      return await this.withAppiumIME(adbInstance, udid, async () => {
-        // 1. Try Targeted Broadcast method (Reliable for modern Android)
-        const result = await adbInstance.adbExec([
-          '-s',
-          udid,
-          'shell',
-          'am',
-          'broadcast',
-          '-a',
-          'com.appium.settings.clipboard.get',
-          '-n',
-          'io.appium.settings/.receivers.ClipboardReceiver',
-        ]);
-
-        // Parse result like: Broadcast completed: result=-1, data="BASE64_DATA"
-        const dataMatch = /data="([^"]*)"/.exec(result);
-        if (dataMatch) {
-          const rawData = dataMatch[1];
-          if (!rawData) return '';
-
-          // Appium Settings returns Base64 for robustness
-          try {
-            const decoded = Buffer.from(rawData, 'base64').toString('utf8');
-            // If it looks like printable text after decoding, use it
-            if (/^[\x20-\x7E\s\u00A0-\uFFFF]*$/.test(decoded)) return decoded;
-            return rawData;
-          } catch (e) {
-            return rawData;
-          }
-        }
-
-        // 2. Fallback: Query the content provider (Legacy/Alternative)
-        const queryResult = await adbInstance.adbExec([
-          '-s',
-          udid,
-          'shell',
-          'content',
-          'query',
-          '--uri',
-          'content://io.appium.settings.clipboard/clipboard',
-        ]);
-
-        // Extract value using a more flexible regex that handles different formats
-        const valMatch = /value=([^\s,]*)/i.exec(queryResult);
-        if (valMatch) {
-          const val = valMatch[1];
-          // Most content providers return base64 for safety
-          try {
-            const decoded = Buffer.from(val, 'base64').toString('utf8');
-            // Basic sanity check: if it contains non-printable characters, it might not have been base64
-            if (/^[\x20-\x7E\s]*$/.test(decoded)) return decoded;
-            return val;
-          } catch (e) {
-            return val;
-          }
-        }
-        return '';
-      });
-    } catch (err: unknown) {
-      log.warn(
-        `Failed to fetch Android clipboard for ${udid}: ${err instanceof Error ? err.message : err
-        }`,
-      );
-    }
-
-    return '';
+    if (!adbInstance) throw new Error('ADB is not available');
+    const output = await this.withAppiumIME(adbInstance, udid, () =>
+      adbInstance.adbExec([
+        '-s',
+        udid,
+        'shell',
+        'am',
+        'broadcast',
+        '-n',
+        CLIPBOARD_RECEIVER,
+        '-a',
+        CLIPBOARD_GET_ACTION,
+      ]),
+    );
+    return parseClipboardBroadcast(output);
   }
 
-  async setClipboard(udid: string, content: string): Promise<void> {
-    const { adbInstance } = await this.getAdb();
-    if (!adbInstance) return;
-    try {
-      await this.withAppiumIME(adbInstance, udid, async () => {
-        await adbInstance.adbExec([
-          '-s',
-          udid,
-          'shell',
-          'am',
-          'broadcast',
-          '-a',
-          'com.appium.settings.clipboard.set',
-          '-n',
-          'io.appium.settings/.receivers.ClipboardReceiver',
-          '--es',
-          'label',
-          'clipboard',
-          '--es',
-          'content',
-          Buffer.from(content).toString('base64'), // Send as Base64 for safety
-        ]);
-      });
-    } catch (err: unknown) {
-      log.warn(
-        `Failed to set Android clipboard for ${udid}: ${err instanceof Error ? err.message : err}`,
-      );
-    }
+  /**
+   * Not possible on Android outside a test session. Appium Settings, the only
+   * helper Xenon can use here, has no clipboard-set action (8.0.5 holds just
+   * io.appium.settings.clipboard.get), and Appium itself sets the clipboard
+   * through a running UiAutomator2 session. The old broadcast reached the
+   * *read* receiver, which answered OK, so writes reported success and changed
+   * nothing.
+   */
+  async setClipboard(): Promise<void> {
+    throw new ClipboardUnsupportedError(
+      'Android doesn’t allow setting the clipboard from here: Appium Settings can only read it.',
+    );
   }
 
   async touchAndHold(udid: string, x: number, y: number, duration: number): Promise<void> {
