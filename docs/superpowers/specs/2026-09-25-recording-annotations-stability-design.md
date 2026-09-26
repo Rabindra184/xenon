@@ -185,3 +185,31 @@ These failed:
 - The missing group-visibility check on the existing `POST /annotation` and
   `/bookmark` routes.
 - Undoing one mark, or clearing one tile.
+
+## Found during live verification (2026-09-26)
+
+Three issues surfaced only on the real server and device. Each was fixed, and
+each now has a test.
+
+- **Every recording start returned HTTP 500.** Task 1 gave `BusyPrecheck` a
+  function-typed constructor parameter. TypeDI injects constructor parameters
+  by emitted type, so it looked up `Function` in the container. The unit
+  tests passed because they all used `new BusyPrecheck(...)`. The seam is
+  now an object interface, and a `Container.get(BusyPrecheck)` test guards
+  it.
+- **Marks were measured against a letterboxed tile.** A tile added before
+  the device reported its size kept the `9 / 16` fallback forever:
+  `PATCH_TILE_DIMS` used `t.aspect ?? action.aspect`. A narrow 3×2 cell also
+  squeezes the tile out of its aspect ratio. The overlay now fits itself to
+  the video picture (`fitContain`), using frame sizes reported by the H.264
+  player and the MJPEG `<img>`, and the reducer replaces the fallback aspect.
+  Measured on 3×2: the canvas matches the picture within 0.5 px, where the
+  tile is 16% taller.
+- **The annotate chip overlapped the REC badge in 3×2.** It now starts clear
+  of the badge and truncates.
+
+Also seen, and left alone because it is not in scope:
+- The drawtext fallback positions text with `iw*…`, which `drawtext` does
+  not accept (it uses `w`/`h`), so API `TEXT` marks could never have
+  rendered, even with fonts. The retry keeps them from breaking the other
+  marks.
