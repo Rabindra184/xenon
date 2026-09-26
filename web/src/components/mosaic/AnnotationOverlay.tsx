@@ -1,6 +1,7 @@
 import * as React from 'react';
 import { useEffect, useRef, useState } from 'react';
 import type { AnnotationShape, OverlayAnnotation } from './recording-group-store';
+import { rasterizeAnnotation } from './rasterizeAnnotation';
 
 export type NormalizedAnnotation = OverlayAnnotation;
 
@@ -8,7 +9,8 @@ interface Props {
   enabled: boolean;
   shape: AnnotationShape;
   color: string;
-  onCommit: (a: NormalizedAnnotation) => void;
+  /** `image` is the mark rendered as the preview draws it; null if it could not be. */
+  onCommit: (a: NormalizedAnnotation, image: string | null) => void;
   /** Survives remounts when the parent keeps this list (keyed by recording). */
   committed?: NormalizedAnnotation[];
   onCommittedChange?: (next: NormalizedAnnotation[]) => void;
@@ -19,6 +21,23 @@ interface DragState {
   startY: number;
   curX: number;
   curY: number;
+  /** Pointer path in canvas px; only FREEHAND uses it. */
+  points: Array<[number, number]>;
+}
+
+const MIN_POINT_DIST = 2;
+const MAX_POINTS = 2000;
+
+/** Append a freehand point, dropping jitter under 2px and capping the path. */
+export function appendPoint(
+  points: Array<[number, number]>,
+  x: number,
+  y: number,
+): Array<[number, number]> {
+  if (points.length >= MAX_POINTS) return points;
+  const last = points[points.length - 1];
+  if (last && Math.hypot(x - last[0], y - last[1]) < MIN_POINT_DIST) return points;
+  return [...points, [x, y]];
 }
 
 function withAlpha(color: string, alpha: number): string {
@@ -109,7 +128,25 @@ export function paintAnnotation(
     return;
   }
 
-  // RECT + FREEHAND
+  if (ann.shape === 'FREEHAND' && (g.points?.length ?? 0) >= 2) {
+    const pts = g.points!;
+    const trace = () => {
+      ctx.beginPath();
+      ctx.moveTo(pts[0][0] * canvasW, pts[0][1] * canvasH);
+      for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i][0] * canvasW, pts[i][1] * canvasH);
+    };
+    ctx.lineWidth = stroke + 2;
+    ctx.strokeStyle = 'rgba(0,0,0,0.55)';
+    trace();
+    ctx.stroke();
+    ctx.lineWidth = stroke;
+    ctx.strokeStyle = color;
+    trace();
+    ctx.stroke();
+    return;
+  }
+
+  // RECT, and FREEHAND rows saved before paths existed
   const x = (g.x ?? 0) * canvasW;
   const y = (g.y ?? 0) * canvasH;
   const w = Math.max(2, (g.w ?? 0) * canvasW);
@@ -158,6 +195,25 @@ function annotationFromDrag(
         y: drag.startY / canvasH,
         w: dx / canvasW,
         h: dy / canvasH,
+      },
+    };
+  }
+  if (shape === 'FREEHAND') {
+    if (drag.points.length < 2) return null;
+    const xs = drag.points.map((p) => p[0]);
+    const ys = drag.points.map((p) => p[1]);
+    const minX = Math.min(...xs);
+    const minY = Math.min(...ys);
+    return {
+      shape,
+      color,
+      geometry: {
+        // Bounding box: what the drawbox fallback and older readers use.
+        x: minX / canvasW,
+        y: minY / canvasH,
+        w: Math.max(0.005, (Math.max(...xs) - minX) / canvasW),
+        h: Math.max(0.005, (Math.max(...ys) - minY) / canvasH),
+        points: drag.points.map(([px, py]) => [px / canvasW, py / canvasH] as [number, number]),
       },
     };
   }
@@ -289,13 +345,13 @@ export function AnnotationOverlay({
     const ann = annotationFromDrag(
       shapeRef.current,
       colorRef.current,
-      { ...d, curX: n.px, curY: n.py },
+      { ...d, curX: n.px, curY: n.py, points: appendPoint(d.points, n.px, n.py) },
       n.w,
       n.h,
     );
     if (ann) {
       setCommitted((prev) => [...prev, ann]);
-      onCommit(ann);
+      onCommit(ann, rasterizeAnnotation(ann, n.w, n.h));
     }
     setDrag(null);
   };
@@ -305,13 +361,17 @@ export function AnnotationOverlay({
     e.preventDefault();
     e.currentTarget.setPointerCapture(e.pointerId);
     const n = localPoint(e);
-    setDrag({ startX: n.px, startY: n.py, curX: n.px, curY: n.py });
+    setDrag({ startX: n.px, startY: n.py, curX: n.px, curY: n.py, points: [[n.px, n.py]] });
   };
 
   const onPointerMove = (e: React.PointerEvent) => {
     if (!dragRef.current) return;
     const n = localPoint(e);
-    setDrag((prev) => (prev ? { ...prev, curX: n.px, curY: n.py } : prev));
+    setDrag((prev) =>
+      prev
+        ? { ...prev, curX: n.px, curY: n.py, points: appendPoint(prev.points, n.px, n.py) }
+        : prev,
+    );
   };
 
   const onPointerUp = (e: React.PointerEvent) => {

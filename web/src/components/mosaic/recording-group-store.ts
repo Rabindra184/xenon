@@ -22,7 +22,11 @@ export type AnnotationShape = 'RECT' | 'CIRCLE' | 'ARROW' | 'TEXT' | 'FREEHAND';
 /** Stroke drawn on the live mosaic preview (also POSTed to the recording API). */
 export interface OverlayAnnotation {
   shape: AnnotationShape;
-  geometry: { x: number; y: number; w?: number; h?: number };
+  /**
+   * Normalized to the tile (0..1). FREEHAND also carries its path; x/y/w/h stay
+   * its bounding box for readers that only draw boxes.
+   */
+  geometry: { x: number; y: number; w?: number; h?: number; points?: Array<[number, number]> };
   color: string;
   text?: string;
 }

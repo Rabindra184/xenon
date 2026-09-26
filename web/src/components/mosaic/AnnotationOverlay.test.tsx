@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render } from '@testing-library/react';
-import { AnnotationOverlay } from './AnnotationOverlay';
+import { AnnotationOverlay, appendPoint, paintAnnotation } from './AnnotationOverlay';
 
 describe('AnnotationOverlay', () => {
   beforeEach(() => {
@@ -33,5 +33,68 @@ describe('AnnotationOverlay', () => {
     const canvas = container.querySelector('canvas') as HTMLCanvasElement;
     expect(canvas.style.width).toBe('100%');
     expect(canvas.style.height).toBe('100%');
+  });
+});
+
+describe('appendPoint (freehand path)', () => {
+  it('drops points closer than 2px to the last one', () => {
+    const p = appendPoint([[0, 0]], 1, 1);
+    expect(p).toEqual([[0, 0]]);
+    expect(appendPoint(p, 3, 0)).toEqual([
+      [0, 0],
+      [3, 0],
+    ]);
+  });
+
+  it('caps the path at 2000 points', () => {
+    const full = Array.from({ length: 2000 }, (_, i) => [i * 3, 0] as [number, number]);
+    expect(appendPoint(full, 99999, 0)).toHaveLength(2000);
+  });
+});
+
+describe('paintAnnotation FREEHAND', () => {
+  const recordingCtx = () => {
+    const calls: string[] = [];
+    const drawing = ['beginPath', 'moveTo', 'lineTo', 'stroke', 'strokeRect', 'fillRect'];
+    const ctx = new Proxy(
+      {},
+      {
+        get: (_t, k) =>
+          typeof k === 'string' && drawing.includes(k) ? () => calls.push(k) : undefined,
+        set: () => true,
+      },
+    ) as unknown as CanvasRenderingContext2D;
+    return { ctx, calls };
+  };
+
+  it('strokes the recorded path instead of a rectangle', () => {
+    const { ctx, calls } = recordingCtx();
+    paintAnnotation(ctx, 100, 200, {
+      shape: 'FREEHAND',
+      color: '#ff0000',
+      geometry: {
+        x: 0.1,
+        y: 0.1,
+        w: 0.5,
+        h: 0.5,
+        points: [
+          [0.1, 0.1],
+          [0.3, 0.4],
+          [0.6, 0.6],
+        ],
+      },
+    });
+    expect(calls).toContain('lineTo');
+    expect(calls).not.toContain('strokeRect');
+  });
+
+  it('still draws a legacy freehand row without points as its box', () => {
+    const { ctx, calls } = recordingCtx();
+    paintAnnotation(ctx, 100, 200, {
+      shape: 'FREEHAND',
+      color: '#ff0000',
+      geometry: { x: 0.1, y: 0.1, w: 0.5, h: 0.5 },
+    });
+    expect(calls).toContain('strokeRect');
   });
 });

@@ -27,7 +27,7 @@ interface Props {
   screenHeight?: number;
   // Drives the platform-aware action strip (Back on Android, etc.).
   platform?: string;
-  onAnnotation: (recordingId: string, ann: NormalizedAnnotation) => void;
+  onAnnotation: (recordingId: string, ann: NormalizedAnnotation, image?: string | null) => void;
   /** Persistent strokes for this tile's recording (from mosaic store). */
   overlayAnnotations?: NormalizedAnnotation[];
   onOverlayAnnotationsChange?: (next: NormalizedAnnotation[]) => void;
@@ -497,7 +497,7 @@ export function DeviceTile({
             color={color}
             committed={overlayAnnotations}
             onCommittedChange={onOverlayAnnotationsChange}
-            onCommit={(a) => onAnnotation(recordingId!, a)}
+            onCommit={(a, image) => onAnnotation(recordingId!, a, image)}
           />
         )}
 

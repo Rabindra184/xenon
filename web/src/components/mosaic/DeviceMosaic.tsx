@@ -33,7 +33,7 @@ interface Props {
   annotateMode: boolean;
   shape: AnnotationShape;
   color: string;
-  onAnnotation: (recordingId: string, ann: NormalizedAnnotation) => void;
+  onAnnotation: (recordingId: string, ann: NormalizedAnnotation, image?: string | null) => void;
   overlayAnnotationsByRecording?: Record<string, NormalizedAnnotation[]>;
   onOverlayAnnotationsChange?: (recordingId: string, next: NormalizedAnnotation[]) => void;
   onRemove?: (udid: string) => void;
