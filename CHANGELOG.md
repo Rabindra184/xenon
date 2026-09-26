@@ -6,6 +6,51 @@ This project follows [Semantic Versioning](https://semver.org/). Releases are
 published to npm automatically when `package.json`'s `version` changes on `main`
 (see `.github/workflows/npm-publish.yml`).
 
+## 1.27.0
+
+Minor release. Device control's Actions tab is redesigned around apps: you
+can install builds from the Apps library, and search and uninstall
+installed apps from a list. The Android clipboard now reports honestly: it
+can be read, and a write says plainly that it isn't possible.
+
+### Added
+
+- **Install from the Apps library** (#328). The Actions tab lists the
+  library's builds for the device's platform, with version and package, and
+  installs the one you choose. Before, it could only upload a file from your
+  computer. With nothing for this platform, the menu says so and links to
+  the Apps page.
+- **A searchable list of installed apps** (#328), replacing the dropdown of
+  package IDs.
+  - Each app has **Copy** and **Uninstall**, and uninstalling still asks
+    first.
+  - Typing a package ID the list doesn't show, such as a system app, offers
+    to uninstall it. This replaces "Or enter manually".
+- **Write text to the device's clipboard** (#328), next to **Read** and
+  **Copy**. This works on iOS; on Android see below.
+
+### Changed
+
+- **The Actions tab has three sections** (#328): **Apps**, **Text and
+  clipboard**, and **Swipe**. It uses the app's standard buttons and fits
+  without scrolling.
+  - **Upload file** installs as soon as you pick a file.
+  - The round D-pad is now a row of four swipe buttons, which keyboard and
+    screen-reader users can still use.
+- **Copying falls back when the browser blocks it** (#328). A dashboard
+  served over plain `http://` on a network address can't copy. The text is
+  selected instead, with a hint to press ⌘C or Ctrl+C.
+
+### Fixed
+
+- **Android clipboard writes reported success and did nothing** (#329).
+  Appium Settings, which Xenon uses to reach the clipboard outside a test
+  session, can only read it. `POST /control/:udid/clipboard` now answers
+  **501** on Android with that reason, and the dashboard shows it.
+- **Android clipboard reads couldn't fail** (#329). Any error came back as
+  an empty clipboard. A failed read now answers 500 with the reason, and a
+  successful one uses the documented Appium Settings action.
+
 ## 1.26.2
 
 Patch release. Device control's Actions tab asks before uninstalling an
