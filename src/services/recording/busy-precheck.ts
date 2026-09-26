@@ -10,6 +10,11 @@ export type BusyReason =
   | 'recording_other_group'
   | 'unknown';
 
+/** Whether a device already has a capture running. */
+export interface RecordingLookup {
+  isRecording(udid: string): Promise<boolean>;
+}
+
 export interface BusyEntry {
   udid: string;
   reason: BusyReason;
@@ -35,11 +40,15 @@ export interface BusyEntry {
 export class BusyPrecheck {
   // Allow injection in tests; default to the real device store.
   private readonly storeProvider: () => any;
-  private readonly isRecording: (udid: string) => Promise<boolean>;
-  constructor(store?: any, isRecording?: (udid: string) => Promise<boolean>) {
+  private readonly recordings: RecordingLookup;
+  // Both parameters must emit `Object` metadata: TypeDI injects constructor
+  // parameters by type, and a function type made it look up `Function` in the
+  // container, failing every recording start.
+  constructor(store?: any, recordings?: RecordingLookup) {
     this.storeProvider = store ? () => store : () => DeviceStoreFactory.getStore();
-    this.isRecording =
-      isRecording ?? ((udid: string) => Container.get(RecordingStore).isRecording(udid));
+    this.recordings = recordings ?? {
+      isRecording: (udid: string) => Container.get(RecordingStore).isRecording(udid),
+    };
   }
 
   /**
@@ -67,7 +76,7 @@ export class BusyPrecheck {
       }
       // One capture per device. Checked before the lock rules: the owner of
       // the lock is exactly who a lost page state lets start a duplicate.
-      if (await this.isRecording(udid)) {
+      if (await this.recordings.isRecording(udid)) {
         out.push({ udid, reason: 'recording_other_group' });
         continue;
       }

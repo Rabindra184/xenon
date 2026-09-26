@@ -1,6 +1,7 @@
 import 'reflect-metadata';
 import { expect } from 'chai';
 import sinon from 'sinon';
+import { Container } from 'typedi';
 import { BusyPrecheck } from '../../src/services/recording/busy-precheck';
 
 describe('BusyPrecheck', () => {
@@ -8,13 +9,21 @@ describe('BusyPrecheck', () => {
 
   // The recording check defaults to Prisma; unit tests must never reach it.
   const precheck = (store: any, recording: string[] = []) =>
-    new BusyPrecheck(store, async (udid: string) => recording.includes(udid));
+    new BusyPrecheck(store, { isRecording: async (udid: string) => recording.includes(udid) });
 
   function withDevices(rows: Record<string, any>) {
     return {
       findDevice: async ({ udid }: any) => rows[udid] ?? null,
     };
   }
+
+  // Production builds it through TypeDI, which injects every constructor
+  // parameter by its emitted type. A function-typed parameter made it look up
+  // `Function` in the container, so every recording start returned 500 while
+  // all the direct `new BusyPrecheck(...)` tests passed.
+  it('can be constructed by the DI container, as the orchestrator does', () => {
+    expect(() => Container.get(BusyPrecheck)).to.not.throw();
+  });
 
   it('returns empty list when all UDIDs are free', async () => {
     const pc = precheck(
