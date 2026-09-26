@@ -138,3 +138,14 @@ export function facetCounts(devices: IDevice[], f: DeviceFilters, now: number): 
 export function hasTvos(devices: IDevice[]): boolean {
   return devices.some((d) => platformOf(d) === 'tvos');
 }
+
+/** Anything other than every device: Clear shows only then. */
+export function isFiltered(f: DeviceFilters): boolean {
+  return f.status !== 'all' || f.platform !== 'all' || f.type !== 'all' || f.q.trim() !== '';
+}
+
+/** "5 devices" when every device shows, else "2 of 5 devices". */
+export function resultLabel(shown: number, total: number): string {
+  const noun = (n: number) => (n === 1 ? 'device' : 'devices');
+  return shown === total ? `${total} ${noun(total)}` : `${shown} of ${total} ${noun(total)}`;
+}

@@ -5,9 +5,11 @@ import {
   facetCounts,
   filtersToParams,
   hasTvos,
+  isFiltered,
   isVirtual,
   NO_FILTERS,
   parseFilters,
+  resultLabel,
   type DeviceFilters,
 } from './deviceFilters';
 
@@ -192,5 +194,31 @@ describe('hasTvos', () => {
   it('is true only when the list has a tvOS device', () => {
     expect(hasTvos(ALL)).toBe(false);
     expect(hasTvos([...ALL, TV])).toBe(true);
+  });
+});
+
+describe('isFiltered', () => {
+  it('is false with nothing filtered, or only a blank search', () => {
+    expect(isFiltered(NO_FILTERS)).toBe(false);
+    expect(isFiltered(f({ q: '   ' }))).toBe(false);
+  });
+
+  it('is true for each filter on its own', () => {
+    const each = [
+      f({ status: 'ready' }),
+      f({ platform: 'ios' }),
+      f({ type: 'virtual' }),
+      f({ q: 'galaxy' }),
+    ];
+    for (const x of each) expect(isFiltered(x)).toBe(true);
+  });
+});
+
+describe('resultLabel', () => {
+  it('says how many devices show', () => {
+    expect(resultLabel(5, 5)).toBe('5 devices');
+    expect(resultLabel(1, 1)).toBe('1 device');
+    expect(resultLabel(2, 5)).toBe('2 of 5 devices');
+    expect(resultLabel(0, 5)).toBe('0 of 5 devices');
   });
 });
