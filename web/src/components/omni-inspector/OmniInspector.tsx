@@ -34,7 +34,7 @@ import {
   Crosshair,
   HelpCircle,
 } from 'lucide-react';
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import XenonApiService from '../../api-service';
 import { matchSelector, type MatchResult } from './selector-matcher';
 import { scoreLocatorStability, type StabilityLevel } from './locatorRules';
@@ -743,6 +743,22 @@ const OmniInspector: React.FC<OmniInspectorProps> = ({
     return parts.slice(-3);
   };
 
+  // While searching, the branches that lead to a match. They render open
+  // whatever their collapsed state: a match inside a collapsed branch used to
+  // stay hidden, so search looked like it had found nothing.
+  const searchOpen = useMemo(() => {
+    const open = new Set<string>();
+    if (!searchQuery || !snapshot?.hierarchy) return open;
+    const visit = (n: InspectorNode): boolean => {
+      let below = false;
+      for (const c of n.children || []) if (visit(c)) below = true;
+      if (below) open.add(n.xpath);
+      return below || smartSearch(n, searchQuery);
+    };
+    visit(snapshot.hierarchy);
+    return open;
+  }, [searchQuery, snapshot]);
+
   const renderTree = (node: InspectorNode, depth = 0): React.ReactNode => {
     if (!node) return null;
     const isExpanded = expandedNodes.has(node.xpath);
@@ -760,18 +776,12 @@ const OmniInspector: React.FC<OmniInspectorProps> = ({
         : null;
     const displayName = accessibleLabel || shortType;
 
-    // Smart search: uses natural language matching
+    // Smart search: uses natural language matching. While searching, show
+    // this node if it matches or leads to a match, and open its branch.
     const matchesSearch = !searchQuery || smartSearch(node, searchQuery);
-
-    if (!matchesSearch && !hasChildren) return null;
-    // If searching, only show if this node or a descendant matches
-    if (searchQuery && !matchesSearch) {
-      const hasMatchingChild = (n: InspectorNode): boolean => {
-        if (smartSearch(n, searchQuery)) return true;
-        return n.children?.some(hasMatchingChild) || false;
-      };
-      if (!hasMatchingChild(node)) return null;
-    }
+    const leadsToMatch = searchOpen.has(node.xpath);
+    if (searchQuery && !matchesSearch && !leadsToMatch) return null;
+    const showChildren = hasChildren && (isExpanded || leadsToMatch);
 
     return (
       <div key={node.xpath} className="tree-node">
@@ -792,10 +802,10 @@ const OmniInspector: React.FC<OmniInspectorProps> = ({
                 toggleExpand(node.xpath);
               }}
               className="tree-toggle"
-              aria-label={isExpanded ? 'Collapse' : 'Expand'}
-              aria-expanded={isExpanded}
+              aria-label={showChildren ? 'Collapse' : 'Expand'}
+              aria-expanded={showChildren}
             >
-              {isExpanded ? <ChevronDown size={11} /> : <ChevronRight size={11} />}
+              {showChildren ? <ChevronDown size={11} /> : <ChevronRight size={11} />}
             </button>
           ) : (
             <span className="tree-toggle-spacer" />
@@ -812,7 +822,7 @@ const OmniInspector: React.FC<OmniInspectorProps> = ({
           {node.text && <span className="tree-text-preview">"{node.text.slice(0, 20)}"</span>}
           {hasChildren && <span className="tree-badge">{node.children.length}</span>}
         </div>
-        {isExpanded && hasChildren && (
+        {showChildren && (
           <div className="tree-children">{node.children.map((c) => renderTree(c, depth + 1))}</div>
         )}
       </div>

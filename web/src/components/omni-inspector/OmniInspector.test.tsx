@@ -127,3 +127,35 @@ describe('OmniInspector — names', () => {
     }
   });
 });
+
+describe('OmniInspector — search', () => {
+  // A match deep in a collapsed branch stayed hidden: search filtered the tree
+  // but didn't open the branches that led to the match.
+  it('opens the branches that lead to a match', async () => {
+    const deep = snapshot();
+    const leaf = {
+      ...button('com.app:id/mic'),
+      text: '',
+      attributes: { clickable: 'true', 'content-desc': 'Voice search' },
+    };
+    const wrap = (child: InspectorNode, depth: number): InspectorNode => ({
+      name: '',
+      type: 'android.widget.FrameLayout',
+      rect: { x: 0, y: 0, width: 1080, height: 2220 },
+      xpath: `/hierarchy/level${depth}`,
+      suggestedLocators: [],
+      suggestedActions: [],
+      attributes: {},
+      children: [child],
+    });
+    deep.hierarchy.children = [wrap(wrap(wrap(wrap(leaf, 4), 3), 2), 1)];
+    api.getInspectorSnapshot.mockResolvedValue(deep);
+    render(<OmniInspector udid="U1" embedded />);
+    await screen.findByText(/^Captured /);
+    expect(screen.queryByText('Voice search')).toBeNull();
+    fireEvent.change(screen.getByRole('textbox', { name: 'Search elements' }), {
+      target: { value: 'Voice' },
+    });
+    expect(await screen.findByText('Voice search')).toBeInTheDocument();
+  });
+});
