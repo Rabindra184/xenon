@@ -6,6 +6,36 @@ This project follows [Semantic Versioning](https://semver.org/). Releases are
 published to npm automatically when `package.json`'s `version` changes on `main`
 (see `.github/workflows/npm-publish.yml`).
 
+## 1.22.4
+
+Patch release. The device cards on the Devices page show each device's real
+state and offer only actions that can work. No server changes.
+
+### Fixed
+
+- **A device in maintenance showed as a red "Error"** (#307), and no status
+  filter included it: the filters added up to one fewer than All. It now
+  reads "Maintenance" and has its own filter, and every device counts in
+  exactly one filter.
+- **Cards offered actions that could not work** (#307). Control was enabled
+  on offline devices, devices in maintenance and devices another user was
+  controlling, and Reserve showed on offline devices. Control is now disabled
+  in those cases, with the reason shown on the card ("Device is offline",
+  "In maintenance", "A test is running on this device", "Another user is
+  controlling this device"). Admins can still control a device in
+  maintenance or one another user holds, as the server allows.
+- **Internal IDs on the cards** (#307). "SID · manual_u42" and "RES · …" now
+  read "Live control by another user", "Test session · 12m" and "Reserved by
+  you · 46m left".
+- **The reservation countdown showed fractions of a second** (#307), such as
+  "46m 16.1s", and did not change between refreshes. It now shows whole
+  minutes.
+- **Low battery and high temperature were blue** (#307), the colour of a
+  reservation. They are now amber.
+- **Emulators showed a battery and temperature** (#307), which are
+  synthetic, and offline devices showed their last, stale reading. Neither
+  shows a badge any more.
+
 ## 1.22.3
 
 Patch release. A polish pass on Live Devices: clearer layout, proper icons,
