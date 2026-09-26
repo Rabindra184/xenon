@@ -5,19 +5,11 @@ import {
   Home,
   Lock,
   Unlock,
-  Upload,
-  Clipboard,
   Camera,
-  FileText,
   ChevronLeft,
-  ChevronRight,
-  ChevronUp,
-  ChevronDown,
   RotateCw,
   RectangleVertical,
   RectangleHorizontal,
-  Move,
-  Package,
   Loader2,
   Trash2,
   Terminal as TerminalIcon,
@@ -35,7 +27,6 @@ import {
 import { v4 as uuidv4 } from 'uuid';
 import { formatDateTime } from '../../utils/time';
 import { useToast } from '../ui/toast';
-import { Select } from '../ui/select';
 import './device-control.css';
 import { Terminal } from '../terminal/terminal';
 import OmniInspector from '../omni-inspector/OmniInspector';
@@ -44,9 +35,7 @@ import { ANDROID_KEYCODE, IOS_BUTTON } from './keycodes';
 import { useDisplayState } from './useDisplayState';
 import LogcatView from './logcat/LogcatView';
 import { deviceTitle } from '../device-card/device-card/deviceIdentity';
-import { Modal } from '../ui/Modal';
-import { Button } from '../ui/button';
-import { clipboardError, failed } from './actionMessages';
+import { ActionsPanel } from './actions/ActionsPanel';
 
 interface DeviceControlProps {
   device: IDevice;
@@ -60,7 +49,7 @@ type TabType = 'actions' | 'screenshot' | 'logs' | 'terminal' | 'omni';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 
 export default function DeviceControl({ device, onClose, titleId }: DeviceControlProps) {
-  const { toast, removeToast } = useToast();
+  const { toast } = useToast();
   const navigate = useNavigate();
   const { tab } = useParams();
   // The tab lives in the path; the query holds the Devices filters to return to.
@@ -76,13 +65,6 @@ export default function DeviceControl({ device, onClose, titleId }: DeviceContro
   const [activeTab, setActiveTab] = useState<TabType>((tab as TabType) || 'actions');
   // Only the Omni tab inspects; every other tab keeps the device interactive.
   const inspecting = activeTab === 'omni' && omniMode === 'inspect';
-  const [textInput, setTextInput] = useState('');
-  const [sending, setSending] = useState(false);
-  const [justSent, setJustSent] = useState(false);
-  // The package awaiting confirmation; null while no uninstall is being asked.
-  const [confirmUninstall, setConfirmUninstall] = useState<string | null>(null);
-  const [clipboardContent, setClipboardContent] = useState('');
-  const [uninstallBundleId, setUninstallBundleId] = useState('');
   const [isPortrait, setIsPortrait] = useState(true);
   const [screenshots, setScreenshots] = useState<
     { id: string; base64: string; timestamp: number }[]
@@ -94,10 +76,6 @@ export default function DeviceControl({ device, onClose, titleId }: DeviceContro
   const [currentDevice, setCurrentDevice] = useState(device);
   // The name its Devices card shows, for the header and every message.
   const deviceName = deviceTitle(currentDevice);
-  const [installedApps, setInstalledApps] = useState<string[]>([]);
-  const [fetchingApps, setFetchingApps] = useState(false);
-  const [installing, setInstalling] = useState(false);
-  const [uploadFile, setUploadFile] = useState<File | null>(null);
   const [streamLoaded, setStreamLoaded] = useState(false);
   const [streamFailed, setStreamFailed] = useState(false);
   const MAX_STREAM_RETRIES = 10; // ~20s at the 2s retry cadence
@@ -155,24 +133,6 @@ export default function DeviceControl({ device, onClose, titleId }: DeviceContro
       XenonApiService.stopStream(currentDevice.udid).catch(() => { });
     };
   }, [device.udid]); // Only run once for this udid
-
-  const loadInstalledApps = useCallback(async () => {
-    try {
-      setFetchingApps(true);
-      const apps = await XenonApiService.listApps(currentDevice.udid);
-      if (Array.isArray(apps)) setInstalledApps(apps);
-    } catch (err) {
-      console.error('Failed to load apps:', err);
-    } finally {
-      setFetchingApps(false);
-    }
-  }, [currentDevice.udid]);
-
-  useEffect(() => {
-    if (activeTab === 'actions') {
-      loadInstalledApps();
-    }
-  }, [activeTab, loadInstalledApps]);
 
   // Use values from device or defaults
   const dw = parseInt(currentDevice.screenWidth || '1080', 10);
@@ -445,43 +405,6 @@ export default function DeviceControl({ device, onClose, titleId }: DeviceContro
     }
   };
 
-  // Typing used to fail silently: no feedback on success, and an uncaught
-  // rejection on failure. On failure the text stays, so it can be resent.
-  const sendText = async () => {
-    const text = textInput;
-    if (!text.trim() || sending) return;
-    setSending(true);
-    try {
-      await XenonApiService.typeText(currentDevice.udid, text);
-      setTextInput('');
-      setJustSent(true);
-    } catch (err) {
-      toast(failed('send the text', err), 'error');
-    } finally {
-      setSending(false);
-    }
-  };
-
-  useEffect(() => {
-    if (!justSent) return;
-    const t = setTimeout(() => setJustSent(false), 2000);
-    return () => clearTimeout(t);
-  }, [justSent]);
-
-  const fetchClipboard = async () => {
-    try {
-      setClipboardContent('Fetching...');
-      const result = await XenonApiService.getClipboard(currentDevice.udid);
-      if (result && result.content !== undefined) {
-        setClipboardContent(result.content || '(Clipboard is empty)');
-      } else {
-        setClipboardContent('No content received');
-      }
-    } catch (error) {
-      setClipboardContent(clipboardError(currentDevice.platform, error));
-    }
-  };
-
   const takeScreenshot = async () => {
     setLoading(true);
     try {
@@ -528,104 +451,6 @@ export default function DeviceControl({ device, onClose, titleId }: DeviceContro
     link.href = `data:image/png;base64,${base64}`;
     link.download = `screenshot-${currentDevice.udid}-${Date.now()}.png`;
     link.click();
-  };
-
-  const quickSwipe = async (direction: 'left' | 'right' | 'up' | 'down') => {
-    const centerW = deviceWidth / 2;
-    const centerH = deviceHeight / 2;
-    const offsetW = deviceWidth * 0.4;
-    const offsetH = deviceHeight * 0.4;
-
-    let sX, sY, eX, eY;
-
-    switch (direction) {
-      case 'left':
-        sX = centerW + offsetW;
-        sY = centerH;
-        eX = centerW - offsetW;
-        eY = centerH;
-        break;
-      case 'right':
-        sX = centerW - offsetW;
-        sY = centerH;
-        eX = centerW + offsetW;
-        eY = centerH;
-        break;
-      case 'up':
-        sX = centerW;
-        sY = centerH + offsetH;
-        eX = centerW;
-        eY = centerH - offsetH;
-        break;
-      case 'down':
-        sX = centerW;
-        sY = centerH - offsetH;
-        eX = centerW;
-        eY = centerH + offsetH;
-        break;
-    }
-
-    try {
-      await XenonApiService.swipe(
-        currentDevice.udid,
-        Math.round(sX),
-        Math.round(sY),
-        Math.round(eX),
-        Math.round(eY),
-      );
-    } catch (err) {
-      toast(failed(`swipe ${direction}`, err), 'error');
-    }
-  };
-
-  // An uninstall deletes the app and its data, so it's confirmed first.
-  const requestUninstall = () => {
-    const bundleId = uninstallBundleId.trim();
-    if (bundleId) setConfirmUninstall(bundleId);
-  };
-
-  const uninstallConfirmed = async () => {
-    const bundleId = confirmUninstall;
-    setConfirmUninstall(null);
-    if (!bundleId) return;
-    const toastId = toast(`Uninstalling ${bundleId} from ${deviceName}…`, 'loading', 0);
-    try {
-      setFetchingApps(true);
-      await XenonApiService.uninstallApp(currentDevice.udid, bundleId);
-      setUninstallBundleId('');
-      toast(`Uninstalled ${bundleId} from ${deviceName}`, 'success');
-      // Reload list after short delay
-      setTimeout(loadInstalledApps, 3000);
-    } catch (err) {
-      toast(failed(`uninstall ${bundleId}`, err), 'error');
-    } finally {
-      setFetchingApps(false);
-      removeToast(toastId);
-    }
-  };
-
-  const handleInstall = async () => {
-    if (!uploadFile) return;
-    const fileName = uploadFile.name;
-    let toastId: string | undefined;
-    try {
-      setInstalling(true);
-      toastId = toast(`Installing ${fileName} on ${deviceName}…`, 'loading', 0);
-      const result = await XenonApiService.uploadAndInstallApp(currentDevice.udid, uploadFile);
-      if (result.success) {
-        toast(`Installed ${fileName} on ${deviceName}`, 'success');
-        setUploadFile(null);
-        // Reload list
-        setTimeout(loadInstalledApps, 5000);
-      } else {
-        toast(failed(`install ${fileName}`, { message: result.error }), 'error');
-      }
-    } catch (err) {
-      toast(failed(`install ${fileName}`, err), 'error');
-    } finally {
-      if (toastId) removeToast(toastId);
-      setInstalling(false);
-    }
   };
 
   return (
@@ -947,197 +772,13 @@ export default function DeviceControl({ device, onClose, titleId }: DeviceContro
               )}
 
               {activeTab === 'actions' && (
-                <div className="actions-grid">
-                  <div className="action-card full-width">
-                    <h4 className="action-card-title">
-                      <FileText size={18} color="var(--color-accent)" /> Smart Input
-                    </h4>
-                    <p className="action-card-hint" id="dc-smart-input-hint">
-                      Relay keystrokes to the focused element on the device.
-                    </p>
-                    <div className="smart-input-row">
-                      <input
-                        type="text"
-                        className="type-input-field compact"
-                        aria-label="Text to send to the device"
-                        aria-describedby="dc-smart-input-hint"
-                        placeholder="Type and press Enter to send…"
-                        value={textInput}
-                        onChange={(e) => setTextInput(e.target.value)}
-                        onKeyDown={(e) => e.key === 'Enter' && sendText()}
-                      />
-                      <button
-                        className="dc-btn-secondary btn-sm"
-                        onClick={sendText}
-                        disabled={!textInput.trim() || sending}
-                      >
-                        {sending && <Loader2 className="animate-spin" size={14} />}
-                        SEND
-                      </button>
-                      <span className="send-status" role="status">
-                        {justSent && (
-                          <>
-                            <Check size={12} aria-hidden="true" /> Sent
-                          </>
-                        )}
-                      </span>
-                    </div>
-                  </div>
-
-                  <div className="action-card full-width">
-                    <h4 className="action-card-title">
-                      <Package size={18} color="var(--color-accent)" /> App Management
-                    </h4>
-                    <div className="app-mgmt-content">
-                      <div className="install-section">
-                        <p className="compact-label">Install Package</p>
-                        <div className="upload-box-row">
-                          <label
-                            className="file-upload-launcher"
-                            title={
-                              uploadFile ? uploadFile.name : 'Select an .apk, .ipa or .app file'
-                            }
-                          >
-                            <Upload size={14} />
-                            <span>{uploadFile ? uploadFile.name : 'Select File'}</span>
-                            {/* sr-only, not `hidden`: a hidden input can't take focus,
-                                so the keyboard never reached this control. */}
-                            <input
-                              type="file"
-                              className="sr-only"
-                              accept=".apk,.ipa,.app"
-                              onChange={(e) => setUploadFile(e.target.files?.[0] || null)}
-                            />
-                          </label>
-                          <button
-                            className="btn-premium btn-sm"
-                            disabled={!uploadFile || installing}
-                            onClick={handleInstall}
-                          >
-                            {installing ? (
-                              <Loader2 className="animate-spin" size={14} />
-                            ) : (
-                              'INSTALL'
-                            )}
-                          </button>
-                        </div>
-                        <p className="hint-text">Accepts .apk, .ipa or .app</p>
-                      </div>
-
-                      <div className="divider-v" />
-
-                      <div className="uninstall-section">
-                        <label className="compact-label" htmlFor="dc-uninstall-app">
-                          Quick Uninstall
-                        </label>
-                        <div className="uninstall-controls-row">
-                          <div className="select-wrapper">
-                            <Select
-                              id="dc-uninstall-app"
-                              selectSize="sm"
-                              className="w-full"
-                              value={uninstallBundleId}
-                              onChange={(e) => setUninstallBundleId(e.target.value)}
-                              disabled={fetchingApps}
-                            >
-                              <option value="">
-                                {fetchingApps ? 'Loading apps...' : '-- Select App to Remove --'}
-                              </option>
-                              {installedApps.map((app) => (
-                                <option key={app} value={app}>
-                                  {app}
-                                </option>
-                              ))}
-                            </Select>
-                            {fetchingApps && (
-                              <Loader2 className="animate-spin select-loader" size={12} />
-                            )}
-                          </div>
-                          <button
-                            className="btn-destructive btn-sm"
-                            onClick={requestUninstall}
-                            disabled={!uninstallBundleId || fetchingApps}
-                          >
-                            <Trash2 size={14} /> UNINSTALL
-                          </button>
-                        </div>
-                        <div className="manual-input-box">
-                          <label className="hint-text" htmlFor="dc-uninstall-manual">
-                            Or enter manually:
-                          </label>
-                          <input
-                            id="dc-uninstall-manual"
-                            type="text"
-                            className="type-input-field tiny"
-                            placeholder="com.example.app"
-                            value={uninstallBundleId}
-                            onChange={(e) => setUninstallBundleId(e.target.value)}
-                          />
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="action-card full-width">
-                    <h4 className="action-card-title">
-                      <Clipboard size={18} color="var(--color-accent)" /> Clipboard
-                    </h4>
-                    <div className="clipboard-row">
-                      <button className="btn-premium btn-sm" onClick={fetchClipboard}>
-                        FETCH VALUE
-                      </button>
-                      <div className="clipboard-display compact">{clipboardContent}</div>
-                    </div>
-                  </div>
-
-                  <div className="action-card full-width">
-                    <h4 className="action-card-title">
-                      <Move size={18} color="var(--color-accent)" /> Directional Gestures
-                    </h4>
-                    <div className="gestures-grid-container">
-                      <div className="gestures-dpad">
-                        <div />
-                        <button
-                          className="dpad-btn"
-                          aria-label="Swipe up"
-                          title="Swipe up"
-                          onClick={() => quickSwipe('up')}
-                        >
-                          <ChevronUp size={24} />
-                        </button>
-                        <div />
-                        <button
-                          className="dpad-btn"
-                          aria-label="Swipe left"
-                          title="Swipe left"
-                          onClick={() => quickSwipe('left')}
-                        >
-                          <ChevronLeft size={24} />
-                        </button>
-                        <div className="dpad-center" />
-                        <button
-                          className="dpad-btn"
-                          aria-label="Swipe right"
-                          title="Swipe right"
-                          onClick={() => quickSwipe('right')}
-                        >
-                          <ChevronRight size={24} />
-                        </button>
-                        <div />
-                        <button
-                          className="dpad-btn"
-                          aria-label="Swipe down"
-                          title="Swipe down"
-                          onClick={() => quickSwipe('down')}
-                        >
-                          <ChevronDown size={24} />
-                        </button>
-                        <div />
-                      </div>
-                      <p className="compact-label dpad-caption">Quick swipe in a direction</p>
-                    </div>
-                  </div>
-                </div>
+                <ActionsPanel
+                  udid={currentDevice.udid}
+                  platform={currentDevice.platform}
+                  deviceName={deviceName}
+                  screenWidth={deviceWidth}
+                  screenHeight={deviceHeight}
+                />
               )}
 
               {activeTab === 'screenshot' && (
@@ -1294,27 +935,6 @@ export default function DeviceControl({ device, onClose, titleId }: DeviceContro
             variant="floating"
           />
         )}
-      <Modal
-        open={confirmUninstall !== null}
-        title="Uninstall app?"
-        onClose={() => setConfirmUninstall(null)}
-        footer={
-          <>
-            <Button variant="secondary" onClick={() => setConfirmUninstall(null)}>
-              Cancel
-            </Button>
-            <Button variant="danger" onClick={uninstallConfirmed}>
-              Uninstall
-            </Button>
-          </>
-        }
-      >
-        <p className="uninstall-confirm-text">
-          Uninstall <code>{confirmUninstall}</code> from{' '}
-          <span className="uninstall-confirm-device">{deviceName}</span>? The app and its data are
-          removed from the device.
-        </p>
-      </Modal>
     </div>
   );
 }

@@ -170,7 +170,6 @@
   min-height: 0;
 }
 
-
 .control-view-main.is-landscape {
   /* Focus on horizontal real estate */
   align-items: flex-start;
@@ -446,7 +445,6 @@
   min-height: 0;
 }
 
-
 .interaction-tabs {
   display: flex;
   gap: 4px;
@@ -531,42 +529,6 @@
   box-shadow: 0 4px 20px rgb(var(--rgb-black) / calc(0.4 * var(--shadow-k)));
 }
 
-.action-card-title {
-  font-family: 'Outfit', sans-serif;
-  font-size: 13px;
-  font-weight: 800;
-  color: var(--text);
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  opacity: 0.9;
-}
-
-.compact-label {
-  /* Block: some are <label>s now (Quick Uninstall names its picker). */
-  display: block;
-  font-size: 11px;
-  color: var(--text-muted);
-  font-weight: 600;
-}
-
-.action-card-hint {
-  /* The -4px pulled the hint up against the title, so Smart Input's
-     title-to-content gap measured 12px where every other action card is 16px.
-     Sit on the same rhythm as the rest. */
-  margin: 0 0 4px;
-  font-size: 12px;
-  color: var(--text-muted);
-  line-height: 1.5;
-}
-
-/* Normalize vertical rhythm across action cards */
-.actions-grid {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-}
-
 .btn-sm {
   padding: 8px 16px;
   font-size: 11px;
@@ -577,51 +539,6 @@
   font-size: 13px;
 }
 
-.file-select-box.compact {
-  padding: var(--space-4);
-  margin-bottom: 8px;
-}
-
-.clipboard-display.compact {
-  min-height: 48px;
-  max-height: 80px;
-  overflow-y: auto;
-  padding: 8px;
-  font-size: 11px;
-  /* 0.3 is the shared form-control background (.select-base, .input-base,
-     .type-input-field). This was a fourth value at 0.4. */
-  background: rgb(var(--rgb-well) / calc(0.3 * var(--well-k)));
-}
-
-/* Was three inline styles on the JSX. The button stretched to the display's
-   height so the row reads as one control instead of a 29px button floating
-   beside a 48px box. */
-.clipboard-row {
-  display: flex;
-  gap: 12px;
-  align-items: stretch;
-}
-
-.clipboard-row > button {
-  width: 140px;
-  flex-shrink: 0;
-}
-
-.clipboard-row > .clipboard-display.compact {
-  flex: 1;
-  margin-top: 0;
-}
-
-/* Was an inline opacity on the JSX. */
-.dpad-caption {
-  opacity: 0.5;
-}
-
-.actions-row {
-  display: flex;
-  gap: var(--space-8);
-}
-
 .install-app-section,
 .uninstall-app-section {
   flex: 1;
@@ -629,24 +546,6 @@
   flex-direction: column;
   gap: 12px;
   min-width: 0;
-}
-
-.file-select-box {
-  background: rgb(var(--rgb-fg) / 0.03);
-  border: 2px dashed var(--border);
-  border-radius: var(--radius-md);
-  padding: var(--space-8);
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: var(--space-4);
-  transition: all 0.3s ease;
-}
-
-.file-select-box:hover {
-  background: rgb(var(--rgb-accent) / 0.05);
-  border-color: var(--color-accent);
 }
 
 /* Device control's own raw buttons. The secondary one is `dc-btn-secondary`,
@@ -728,20 +627,6 @@
   box-shadow: 0 0 0 3px var(--primary-soft);
 }
 
-.clipboard-display {
-  background: rgba(22, 27, 34, 0.7);
-  backdrop-filter: blur(8px);
-  border-radius: var(--radius-md);
-  border: 1px solid var(--border);
-  padding: var(--space-4);
-  margin-top: var(--space-4);
-  font-family: 'Fira Code', monospace;
-  font-size: 12px;
-  color: var(--sky-400);
-  min-height: 80px;
-  box-shadow: inset 0 2px 10px rgb(var(--rgb-black) / calc(0.5 * var(--shadow-k)));
-}
-
 /* The Debug Logs tab's own rules (`.log-toolbar`, `.log-stat-pill`,
    `.log-live-dot`, `.log-empty-*`, …) used to live here, and the polled
    log viewer they were written for (`.log-line`, `.log-index`,
@@ -787,189 +672,6 @@
   }
 }
 
-.gestures-grid-container {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 12px;
-}
-
-.gestures-dpad {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  grid-template-rows: repeat(3, 1fr);
-  gap: 8px;
-  width: 140px;
-  height: 140px;
-  padding: 12px;
-  background: rgb(var(--rgb-well) / calc(0.2 * var(--well-k)));
-  border-radius: 50%;
-  border: 1px solid rgb(var(--rgb-fg) / 0.05);
-}
-
-.dpad-btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: rgb(var(--rgb-fg) / 0.03);
-  border: 1px solid rgb(var(--rgb-fg) / 0.05);
-  border-radius: 8px;
-  color: var(--text-muted);
-  cursor: pointer;
-  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-}
-
-.dpad-btn:hover {
-  background: var(--color-accent);
-  border-color: var(--color-accent);
-  color: var(--color-on-accent);
-  transform: scale(1.1);
-  box-shadow: none;
-  z-index: 2;
-}
-
-.dpad-btn:active {
-  transform: scale(0.95);
-}
-
-.dpad-center {
-  background: radial-gradient(circle, var(--accent-subtle) 0%, transparent 70%);
-  border-radius: 50%;
-  opacity: 0.2;
-}
-
-/* App Management UI */
-.app-mgmt-content {
-  display: flex;
-  flex-direction: row;
-  gap: var(--space-6);
-  /* stretch (not flex-start) so both halves share a height and the divider
-     spans the full card — previously the install half was 102px against the
-     uninstall half's 130px, leaving a ragged gap under the left column. */
-  align-items: stretch;
-  /* Shared control height for this card. The dashed upload launcher, the two
-     buttons and the select were rendering at 61 / 29 / 32 / 31px. */
-  --app-mgmt-control-h: 34px;
-}
-
-/* Equal halves. Neither section had any rule, so each sized to its content and
-   the split moved whenever an app id or file name changed length. min-width:0
-   lets the select actually shrink and grow — inside an auto-width parent its
-   flex:1 collapsed it to 40px. */
-.install-section,
-.uninstall-section {
-  flex: 1 1 0;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.upload-box-row,
-.uninstall-controls-row {
-  display: flex;
-  gap: 12px;
-  align-items: center;
-  /* Spacing comes from the section's column gap; a margin here as well made
-     the two halves drift apart whenever one label wrapped. */
-}
-
-.upload-box-row > *,
-.uninstall-controls-row > * {
-  height: var(--app-mgmt-control-h);
-}
-
-/* The interactions column is ~451px at 1360, so each half is ~170px. A 115px
-   UNINSTALL button beside the select left it 43px wide — unreadable for bundle
-   ids like com.google.android.apps.photos. Let the row wrap intrinsically
-   rather than at a viewport breakpoint: the column is narrow at every
-   supported width, so a media query would not help. The select claims a full
-   line whenever the button cannot sit beside it. */
-.upload-box-row,
-.uninstall-controls-row {
-  flex-wrap: wrap;
-  row-gap: 8px;
-}
-
-.uninstall-controls-row .select-wrapper,
-.upload-box-row .file-upload-launcher {
-  flex: 1 1 150px;
-  min-width: 0;
-}
-
-/* The height above lands on .select-wrapper, but .select-sm sets its own 32px,
-   so the control sat 2px short of its own wrapper. */
-.uninstall-controls-row .select-wrapper > select {
-  height: 100%;
-}
-
-.upload-box-row > button,
-.uninstall-controls-row > button {
-  flex: 0 0 auto;
-}
-
-.app-mgmt-content .hint-text {
-  /* Pin the hints to the bottom so both halves end on the same line. */
-  margin-top: auto;
-}
-
-.file-upload-launcher {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  /* A chosen file name used to wrap and double this box to 61px against the
-     29px INSTALL button beside it. Truncate instead; the full name is on the
-     title attribute. */
-  white-space: nowrap;
-  overflow: hidden;
-  padding: 0 16px;
-  background: rgb(var(--rgb-fg) / 0.03);
-  border: 1px dashed var(--border);
-  border-radius: var(--radius-md);
-  cursor: pointer;
-  font-size: 13px;
-  color: var(--text-muted);
-  transition: all 0.2s ease;
-}
-
-/* The icon must keep its size; only the file name truncates. */
-.file-upload-launcher > svg {
-  flex: none;
-}
-
-.file-upload-launcher > span {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.file-upload-launcher:hover {
-  background: rgb(var(--rgb-accent) / 0.05);
-  border-color: var(--color-accent);
-  color: var(--text);
-}
-
-.divider-v {
-  width: 1px;
-  align-self: stretch;
-  background: linear-gradient(180deg, transparent, var(--border), transparent);
-}
-
-.select-wrapper {
-  flex: 1;
-  position: relative;
-  display: flex;
-  align-items: center;
-}
-
-.select-loader {
-  position: absolute;
-  right: 32px;
-  color: var(--color-accent);
-}
-
 .btn-destructive {
   background: var(--status-error-fg);
   color: var(--white);
@@ -994,12 +696,6 @@
 .btn-destructive:disabled {
   opacity: 0.5;
   cursor: not-allowed;
-}
-
-.manual-input-box {
-  margin-top: 8px;
-  padding-top: 8px;
-  border-top: 1px solid rgb(var(--rgb-fg) / 0.05);
 }
 
 .type-input-field.tiny {
@@ -1261,7 +957,6 @@
   background: rgb(var(--rgb-red) / 0.05);
 }
 
-
 .empty-gallery-state {
   display: flex;
   flex-direction: column;
@@ -1381,51 +1076,3 @@
   cursor: crosshair;
 }
 
-/* --- Light theme ---------------------------------------------------
-   Scoped overrides for literals tuned for the dark surface, so the dark
-   theme renders byte-for-byte as before. */
-:root[data-theme='light'] .clipboard-display {
-  background: var(--surface-2);
-}
-
-/* Smart Input: the field, a Send button, and a brief "Sent" after it. Enter
-   was the only way to send, and nothing said whether it had worked. */
-.smart-input-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-.smart-input-row .type-input-field {
-  flex: 1;
-  min-width: 0;
-}
-.send-status {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  min-width: 40px;
-  font-size: 11px;
-  color: var(--text-muted);
-}
-.send-status svg {
-  color: var(--color-success);
-}
-
-/* The file input is sr-only inside this label, so show focus on the label. */
-.file-upload-launcher:focus-within {
-  outline: 2px solid var(--color-focus-ring);
-  outline-offset: 2px;
-}
-
-.uninstall-confirm-text {
-  margin: 0;
-  line-height: 1.6;
-}
-.uninstall-confirm-device {
-  white-space: nowrap;
-}
-.uninstall-confirm-text code {
-  font-family: 'JetBrains Mono', ui-monospace, monospace;
-  font-size: 12px;
-  word-break: break-all;
-}

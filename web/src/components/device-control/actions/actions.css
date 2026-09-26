@@ -1,0 +1,180 @@
+/* Device control's Actions tab. Sections share the old .action-card surface
+   (the well tint and border) without its whole-card hover highlight. */
+.actions-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.actions-section {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: rgb(var(--rgb-well) / calc(0.2 * var(--well-k)));
+}
+.actions-section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.actions-section-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  color: var(--text);
+  font-family: 'Inter', sans-serif;
+  font-size: 13px;
+  font-weight: 600;
+}
+.actions-section-title svg {
+  color: var(--color-accent);
+}
+.actions-section-tools {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+/* While an install runs the header buttons keep focus but do nothing. */
+.actions-section-tools [aria-disabled='true'] {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.actions-apps-tools {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.actions-search {
+  position: relative;
+  flex: 1;
+  display: flex;
+  align-items: center;
+}
+.actions-search .type-input-field {
+  padding-left: 28px;
+}
+.actions-search-icon {
+  position: absolute;
+  left: 9px;
+  color: var(--text-dim);
+  pointer-events: none;
+}
+.actions-apps-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: calc(6 * 36px);
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+.actions-apps-list:empty {
+  display: none;
+}
+.actions-app-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 36px;
+  padding: 0 4px 0 10px;
+  border-bottom: 1px solid var(--border);
+}
+.actions-app-row:last-child {
+  border-bottom: none;
+}
+.actions-app-row:hover {
+  background: rgb(var(--rgb-fg) / 0.03);
+}
+.actions-app-id {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text);
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  font-size: 12px;
+}
+.actions-app-note {
+  color: var(--text-muted);
+  font-size: 11px;
+}
+.actions-app-tools {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+.actions-app-uninstall {
+  color: var(--status-error-fg);
+}
+.actions-list-note {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+.actions-library-menu {
+  min-width: 240px;
+  max-height: 320px;
+  overflow-y: auto;
+}
+
+.actions-field-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.actions-field-label {
+  flex: 0 0 76px;
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 500;
+}
+.actions-field-row .type-input-field {
+  flex: 1;
+  min-width: 0;
+}
+/* One height per row: fields at 32px beside the 32px buttons and icon buttons
+   (the shared .type-input-field.compact alone renders 40px). */
+.actions-field-row .type-input-field,
+.actions-search .type-input-field {
+  height: 32px;
+  padding-top: 0;
+  padding-bottom: 0;
+}
+.actions-status {
+  min-height: 16px;
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
+.actions-swipe {
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+}
+.actions-swipe-buttons {
+  display: flex;
+  gap: 6px;
+}
+
+.actions-confirm-text {
+  margin: 0;
+  line-height: 1.6;
+}
+.actions-confirm-text code {
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  font-size: 12px;
+  word-break: break-all;
+}
+.actions-confirm-device {
+  white-space: nowrap;
+}
