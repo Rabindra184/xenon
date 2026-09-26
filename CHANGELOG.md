@@ -6,6 +6,69 @@ This project follows [Semantic Versioning](https://semver.org/). Releases are
 published to npm automatically when `package.json`'s `version` changes on `main`
 (see `.github/workflows/npm-publish.yml`).
 
+## 1.23.0
+
+Minor release. The Devices page shows each device by the name people know it
+by, with a phone or tablet outline, in a redesigned card that leads with the
+device's state. The server now reads each device's name, model, maker and form
+factor. Includes a database migration that is applied automatically at
+startup.
+
+### Changed — operator action may be needed
+
+- **Upgrade the hub before its nodes** (#309). A node running this version
+  sends four new device fields. A hub on an earlier version stores a node's
+  devices exactly as sent, so it rejects them and the node's devices do not
+  register. This hub ignores device fields it cannot store, so later upgrades
+  in either order are safe.
+- **Database migration: four nullable columns on `Device`** (#309):
+  `marketingName`, `model`, `manufacturer` and `formFactor`. `runMigrations`
+  applies them at startup (`db push` on SQLite, `migrate deploy` on
+  PostgreSQL), and existing rows need no backfill. If you run with
+  `XENON_AUTO_MIGRATE=false`, apply `20260926120000_device_identity` yourself
+  before starting this version.
+
+### Added
+
+- **Friendly device names** (#309). The server reads them when it discovers
+  a device, and never holds up discovery (5 s limit):
+  - **Android:** the name on the phone's About screen ("Galaxy S9+", or
+    whatever your lab renamed it to), plus model, maker, and phone, tablet or
+    TV. Emulators use their AVD name.
+  - **iPhone and iPad:** the model name from a built-in table (iPhone 11
+    through the iPhone 16 family, and recent iPads). A model the table
+    doesn't know shows the device's own name rather than a guess.
+  - **iOS simulators:** keep their name.
+
+  A device that can't report these fields registers exactly as before.
+
+### Changed
+
+- **Redesigned device card** (#310). The card is about 200 px tall instead of
+  320, with four parts:
+  - **Status band** across the top, showing the state and what the device is
+    doing ("Busy · Test session · 12m", "Reserved · 46m left · by priya@…").
+    Ready is a quiet grey band, so the unusual states stand out.
+  - **Name block:** a phone, tablet or TV outline (dashed for emulators), the
+    friendly name, and maker · model · OS.
+  - **Badges:** battery, temperature and team, with tags as quiet text.
+  - **Footer:** a quieter Control button, with the reason beside it when
+    Control is disabled.
+
+  The "Real" and "Shared" labels, the server URL, the network address and
+  "Time in use" are no longer on the card.
+- **The ⋯ menu holds the copy actions** (#310): Copy UDID, Copy server URL,
+  Copy IP address and Copy capabilities.
+- **Admin-only menu items** (#310). Manage tags, Assign team (which replaces
+  the clickable team chip) and Enter/Exit maintenance now appear for admins
+  only. The server has always refused them to members, who got an error.
+
+### Fixed
+
+- **Card text below 4.5:1 contrast** (#310). The reserved band in dark theme,
+  the busy band in light theme and an offline card's details now all read at
+  4.5:1 or better.
+
 ## 1.22.4
 
 Patch release. The device cards on the Devices page show each device's real
