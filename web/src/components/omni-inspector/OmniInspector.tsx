@@ -20,13 +20,6 @@ import {
   CheckCircle2,
   XCircle,
   Info,
-  MousePointerClick,
-  TextCursorInput,
-  Image as ImageIcon,
-  ScrollText,
-  Type,
-  ToggleLeft,
-  PanelTop,
   ShieldCheck,
   ShieldAlert,
   AlertTriangle,
@@ -44,6 +37,8 @@ import { createPortal } from 'react-dom';
 import './omni-inspector.css';
 import React from 'react';
 import { Select } from '../ui/select';
+import { analyzeElement, ROLE_ICON, type RoleKey } from './elementRole';
+import { smartSearch } from './treeRows';
 
 export interface LocatorSuggestion {
   strategy: string;
@@ -264,73 +259,6 @@ ${interaction}
 // Assert with expect(element).toBeDisplayed()`;
 }
 
-// =====================================================================
-// Element role (for the summary's "By role" counts)
-// =====================================================================
-type RoleKey =
-  | 'button'
-  | 'input'
-  | 'image'
-  | 'list'
-  | 'text'
-  | 'toggle'
-  | 'nav'
-  | 'container'
-  | 'element';
-
-interface ElementRole {
-  role: string;
-  key: RoleKey;
-}
-
-/** What kind of element this looks like, from its type and flags. */
-function analyzeElement(node: InspectorNode): ElementRole {
-  const type = (node.type || '').toLowerCase();
-  const isClickable = node.attributes?.clickable === 'true' || node.attributes?.clickable === true;
-  const isScrollable =
-    node.attributes?.scrollable === 'true' || node.attributes?.scrollable === true;
-  const childCount = node.children?.length || 0;
-
-  if (type.includes('button') || type.includes('btn') || (isClickable && childCount === 0)) {
-    return { role: 'Button', key: 'button' };
-  }
-  if (type.includes('edit') || type.includes('input') || type.includes('field')) {
-    return { role: 'Text input', key: 'input' };
-  }
-  if (type.includes('image') || type.includes('img') || type.includes('imageview')) {
-    return { role: 'Image', key: 'image' };
-  }
-  if (
-    type.includes('scroll') ||
-    type.includes('recyclerview') ||
-    type.includes('listview') ||
-    isScrollable
-  ) {
-    return { role: 'Scrollable list', key: 'list' };
-  }
-  if (type.includes('text') || type.includes('label')) return { role: 'Text label', key: 'text' };
-  if (type.includes('switch') || type.includes('toggle') || type.includes('checkbox')) {
-    return { role: 'Toggle or checkbox', key: 'toggle' };
-  }
-  if (type.includes('nav') || type.includes('toolbar') || type.includes('tabbar')) {
-    return { role: 'Navigation bar', key: 'nav' };
-  }
-  if (childCount > 0) return { role: 'Container', key: 'container' };
-  return { role: 'Element', key: 'element' };
-}
-
-const ROLE_ICON: Record<RoleKey, React.ReactNode> = {
-  button: <MousePointerClick size={13} />,
-  input: <TextCursorInput size={13} />,
-  image: <ImageIcon size={13} />,
-  list: <ScrollText size={13} />,
-  text: <Type size={13} />,
-  toggle: <ToggleLeft size={13} />,
-  nav: <PanelTop size={13} />,
-  container: <Layers size={13} />,
-  element: <Box size={13} />,
-};
-
 const CHECK_ICON: Record<CheckStatus, React.ReactNode> = {
   pass: <CheckCircle2 size={13} />,
   warn: <AlertTriangle size={13} />,
@@ -352,42 +280,6 @@ const FRAMEWORK_LABEL: Record<CodeFramework, string> = {
   javascript: 'JavaScript',
   wdio: 'WebdriverIO',
 };
-
-// =====================================================================
-// Search: plain-language matching over types, text and ids
-// =====================================================================
-function smartSearch(node: InspectorNode, query: string): boolean {
-  if (!query) return true;
-  const q = query.toLowerCase().trim();
-
-  // Semantic role mappings
-  const semanticMap: Record<string, string[]> = {
-    button: ['button', 'btn', 'clickable', 'tapable'],
-    input: ['edittext', 'input', 'field', 'textfield', 'textinput', 'edit'],
-    image: ['image', 'imageview', 'img', 'picture', 'photo', 'icon'],
-    text: ['textview', 'label', 'text', 'statictext'],
-    list: ['listview', 'recyclerview', 'scrollview', 'tableview', 'collectionview', 'scroll'],
-    toggle: ['switch', 'checkbox', 'toggle', 'radiobutton'],
-    nav: ['toolbar', 'navigationbar', 'tabbar', 'actionbar', 'navbar'],
-  };
-
-  const typeStr = (node.type || '').toLowerCase();
-  const textStr = (node.text || node.label || node.value || '').toLowerCase();
-  const nameStr = (node.name || '').toLowerCase();
-  const attrsStr = Object.values(node.attributes || {})
-    .join(' ')
-    .toLowerCase();
-
-  // Check semantic aliases
-  for (const [alias, variants] of Object.entries(semanticMap)) {
-    if (q.includes(alias) && variants.some((v) => typeStr.includes(v))) {
-      return true;
-    }
-  }
-
-  // Direct match on type, text, name, or attributes
-  return typeStr.includes(q) || textStr.includes(q) || nameStr.includes(q) || attrsStr.includes(q);
-}
 
 // =====================================================================
 // MAIN COMPONENT
