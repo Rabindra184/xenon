@@ -43,6 +43,7 @@ import { BugReportButton } from '../bug-report/BugReportButton';
 import { ANDROID_KEYCODE, IOS_BUTTON } from './keycodes';
 import { useDisplayState } from './useDisplayState';
 import LogcatView from './logcat/LogcatView';
+import { deviceTitle } from '../device-card/device-card/deviceIdentity';
 
 interface DeviceControlProps {
   device: IDevice;
@@ -625,7 +626,10 @@ export default function DeviceControl({ device, onClose, titleId }: DeviceContro
               Reserved by {currentDevice.reservedBy || 'someone'}
             </span>
           )}
-          <h2 id={titleId} className="device-name-text">{currentDevice.name}</h2>
+          {/* The name its Devices card shows ("Galaxy S9+"), not the codename. */}
+          <h2 id={titleId} className="device-name-text">
+            {deviceTitle(currentDevice)}
+          </h2>
           <span className="udid-chip" title={currentDevice.udid}>
             <span className="udid-chip__value">{currentDevice.udid}</span>
             <button
@@ -1188,7 +1192,7 @@ export default function DeviceControl({ device, onClose, titleId }: DeviceContro
                     }
                     prompt={`${(currentDevice.platform || '').toLowerCase() === 'ios' ? 'ios' : 'adb'
                       } $`}
-                    welcomeMessage={`Connected to ${currentDevice.name} (${currentDevice.udid}).\nInternal Shell Environment.`}
+                    welcomeMessage={`Connected to ${deviceTitle(currentDevice)} (${currentDevice.udid}).\nInternal Shell Environment.`}
                     onCommand={async (cmd) => {
                       const res = await XenonApiService.executeShell(currentDevice.udid, cmd);
                       if (res.error) throw new Error(res.error);
