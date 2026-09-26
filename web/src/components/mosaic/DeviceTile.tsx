@@ -501,12 +501,13 @@ export function DeviceTile({
           />
         )}
 
+        {/* A chip, not a banner: on a 2x2 or 3x2 tile the old banner covered
+          about a third of the screen being annotated. */}
         {recording && annotateMode && streamState === 'live' && (
-          <div className="absolute bottom-3 left-3 right-3 z-30 pointer-events-none">
-            <div className="px-2 py-1 rounded bg-black/70 text-[10px] text-amber-100 border border-amber-500/40 text-center">
-              Annotate on — drag on the preview. Shapes stay on screen and appear in
-              Download video from that moment. Toggle Annotate off to tap the device.
-            </div>
+          <div className="absolute top-3 right-3 z-30 pointer-events-none">
+            <span className="px-2 py-0.5 rounded-sm bg-[var(--color-info)] text-white text-[10px] font-semibold shadow-lg whitespace-nowrap">
+              Annotating · drag to mark
+            </span>
           </div>
         )}
 

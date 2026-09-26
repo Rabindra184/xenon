@@ -74,21 +74,6 @@ export function stopRecording(groupId: string): Promise<{
   return postJson(`${BASE}/${encodeURIComponent(groupId)}/stop`);
 }
 
-export function addBookmark(
-  groupId: string,
-  recordingId: string,
-  timecodeMs: number,
-  label: string,
-  note?: string,
-) {
-  return postJson(`${BASE}/${encodeURIComponent(groupId)}/bookmark`, {
-    recordingId,
-    timecodeMs,
-    label,
-    note,
-  });
-}
-
 export interface AnnotationInput {
   recordingId: string;
   timecodeMs: number;

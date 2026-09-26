@@ -17,12 +17,7 @@ import { IdleWarningModal } from './IdleWarningModal';
 import XenonApiService from '../../api-service';
 import { isDeviceConflictBody } from '../../api-service/api-client';
 import { isRehydratableTile, isSelfManualLock } from './manual-lock';
-import {
-  addAnnotation,
-  addBookmark,
-  clearAnnotations,
-  getActiveRecordings,
-} from '../../api-service/recordings';
+import { addAnnotation, clearAnnotations, getActiveRecordings } from '../../api-service/recordings';
 import { createWriteQueue } from './writeQueue';
 import { useIdleDetector } from '../../hooks/useIdleDetector';
 import { Tv } from 'lucide-react';
@@ -267,29 +262,6 @@ export default function DeviceMosaicView() {
     }
   }, [devices, state.tiles, dispatch]);
 
-
-  // Hotkey: B to add a bookmark mid-recording (spec requirement).
-  useEffect(() => {
-    const handler = async (e: KeyboardEvent) => {
-      if (e.key !== 'b' && e.key !== 'B') return;
-      // Don't fire if the user is typing in an input or textarea.
-      const tag = (e.target as HTMLElement)?.tagName;
-      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
-      if (!state.recording || !state.groupId) return;
-      const label = window.prompt('Bookmark label?');
-      if (!label) return;
-      const elapsed = state.startedAt ? Date.now() - state.startedAt : 0;
-      const firstId = state.tiles.find((t) => t.recordingId)?.recordingId;
-      if (!firstId) return;
-      try {
-        await addBookmark(state.groupId, firstId, elapsed, label);
-      } catch (err: any) {
-        dispatch({ type: 'SET_ERROR_BANNER', message: `Bookmark failed: ${err.message}` });
-      }
-    };
-    window.addEventListener('keydown', handler);
-    return () => window.removeEventListener('keydown', handler);
-  }, [state.recording, state.groupId, state.startedAt, state.tiles, dispatch]);
 
   // Tile-membership set drives the picker's "is in mosaic" highlight; it's
   // independent of the manual-lock identity check (a device may be in our
