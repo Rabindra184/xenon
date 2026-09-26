@@ -9,7 +9,12 @@ describe('pickDeviceColumns', () => {
       marketingName: 'Galaxy S9+',
       formFactor: 'phone',
     });
-    expect(out).to.deep.equal({ udid: 'U1', host: 'h', marketingName: 'Galaxy S9+', formFactor: 'phone' });
+    expect(out).to.deep.equal({
+      udid: 'U1',
+      host: 'h',
+      marketingName: 'Galaxy S9+',
+      formFactor: 'phone',
+    });
   });
 
   // The hub upserts a node's devices as sent. A field the hub's schema lacks
