@@ -1,6 +1,7 @@
 import * as React from 'react';
 import { AnnotationOverlay, type NormalizedAnnotation } from './AnnotationOverlay';
 import { pointerToDevice } from './tileInput';
+import { useStreamLiveness } from './streamLiveness';
 import type { AnnotationShape } from './recording-group-store';
 import XenonApiService from '../../api-service';
 import { ANDROID_KEYCODE, IOS_BUTTON } from '../device-control/keycodes';
@@ -374,6 +375,14 @@ export function DeviceTile({
     const timer = setTimeout(onAttemptFailed, CONNECT_TIMEOUT_MS);
     return () => clearTimeout(timer);
   }, [streamState, retryKey, onAttemptFailed]);
+
+  // A live MJPEG <img> gets no event when its stream ends, so ask the server
+  // (see useStreamLiveness). The H.264 player reports its own end via onFatal.
+  useStreamLiveness(udid, streamState === 'live' && !h264WsUrl, () => {
+    console.warn(`[DeviceTile] MJPEG stream ended for ${udid}; reconnecting`);
+    setStreamState('connecting');
+    setRetryKey(Date.now());
+  });
 
   // Clear any pending backoff timer on unmount.
   React.useEffect(() => {
