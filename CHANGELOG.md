@@ -6,6 +6,38 @@ This project follows [Semantic Versioning](https://semver.org/). Releases are
 published to npm automatically when `package.json`'s `version` changes on `main`
 (see `.github/workflows/npm-publish.yml`).
 
+## 1.22.3
+
+Patch release. A polish pass on Live Devices: clearer layout, proper icons,
+plainer wording, and better screen-reader support. No server changes.
+
+### Changed
+
+- **The grid starts on Auto** (#305). It sizes itself to the devices on it,
+  so one or two phones fill the space instead of sitting in a 2×2 grid with
+  empty cells. The other layouts are still one click away.
+- **Real icons replace text symbols and an emoji** (#305) on the recording
+  toolbar, the tile's side buttons and the device list, matching the rest of
+  the app.
+- **While recording, the REC timer takes Record's place** (#305) instead of
+  sitting next to a greyed-out Record button.
+- **Clearer tile messages** (#305). "Starting stream…" shows the device name
+  instead of its ID, and on an iPhone says a start can take up to 20 seconds.
+  The "Connection failed" screen and the tile's side buttons now follow the
+  light and dark themes.
+- **Plainer wording** (#305). "Grid" instead of "mosaic", "Home" instead of
+  "Home (android)", and the video-ready message points up to the download
+  button, which is where it is. The device list says it is loading (or that
+  loading failed) instead of showing "No devices online." before the list
+  arrives.
+
+### Fixed
+
+- **Screen readers** (#305). Each device in the list is announced by its name
+  and platform and says whether it is on the grid; the iOS / Android groups
+  say whether they are expanded; the tile's side buttons are announced as
+  Home, Back, Recent apps, Screenshot and Remove instead of by their symbol.
+
 ## 1.22.2
 
 Patch release. Live Devices tiles respond where you tap, and a tile whose
