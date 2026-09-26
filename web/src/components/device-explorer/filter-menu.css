@@ -1,0 +1,66 @@
+/* A filter as a menu button: dashed while unset, the accent chip once set
+   (the same tint, text and edge as the selected status segment). */
+.fm {
+  display: inline-flex;
+  align-items: center;
+  height: 28px;
+  border-radius: var(--radius-md);
+}
+.fm-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 28px;
+  padding: 0 10px;
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--text-muted);
+  font-family: 'Inter', sans-serif;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.fm-trigger:hover {
+  color: var(--text);
+  border-color: var(--text-dim);
+}
+.fm-set {
+  background: rgb(var(--rgb-accent) / 0.12);
+  box-shadow: inset 0 0 0 1px rgb(var(--rgb-accent) / 0.35);
+}
+.fm-set .fm-trigger {
+  border: none;
+  color: var(--color-accent);
+  padding-right: 4px;
+}
+.fm-name {
+  color: var(--text-muted);
+}
+.fm-clear {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  margin-right: 3px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--color-accent);
+  cursor: pointer;
+}
+.fm-clear:hover {
+  background: rgb(var(--rgb-accent) / 0.16);
+}
+.fm-trigger:focus-visible,
+.fm-clear:focus-visible {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: 1px;
+}
+.fm-count {
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  font-size: 11px;
+  color: var(--text-muted);
+}
