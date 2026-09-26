@@ -117,14 +117,16 @@ export default function ElementTree({
         const hovered = !selected && inRow(hoveredXpath);
         const name = shortName(target);
         const type = shortType(target);
+        const showType = !!type && type !== name;
         // An explicit name: the row's visible content is a run of parts plus
         // icons, separators and a muted type/count, and per-part `title`
         // tooltips make content-based name computation unreliable (some
         // accessible-name implementations resolve a title before descending
         // into content). aria-label keeps the row's name equal to what it
-        // shows, independent of that markup.
-        const runNames = row.nodes.map((n) => shortName(n)).join(' › ');
-        const ariaLabel = type && type !== name ? `${runNames}, ${type}` : runNames;
+        // shows, independent of that markup — joined in plain words, not the
+        // "›" glyph, which is decorative (aria-hidden) and reads unpredictably.
+        const runNames = row.nodes.map((n) => shortName(n)).join(', ');
+        const ariaLabel = showType ? `${runNames}, ${type}` : runNames;
         return (
           <div
             key={row.key}
@@ -201,7 +203,7 @@ export default function ElementTree({
                 </React.Fragment>
               );
             })}
-            {type && type !== name && <span className="omni-tree-row__type">{type}</span>}
+            {showType && <span className="omni-tree-row__type">{type}</span>}
             {row.hasChildren && !row.expanded && (
               <span className="omni-tree-row__count" aria-hidden="true">
                 {target.children.length}

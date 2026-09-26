@@ -83,10 +83,31 @@ describe('ElementTree', () => {
     expect(item(/hierarchy.*content/)).toBeInTheDocument();
   });
 
+  it('names a row in plain words, with the type only when it is shown', () => {
+    render(<Harness />);
+    // Two's name differs from its type ('Button'), so the type is appended.
+    expect(screen.getByRole('treeitem', { name: 'Two, Button' })).toBeInTheDocument();
+    // The folded row's target (the list) has no name of its own, so its name
+    // falls back to its type ('FrameLayout') — equal to the shown name, so no
+    // suffix is appended.
+    expect(
+      screen.getByRole('treeitem', { name: 'hierarchy, content, FrameLayout' }),
+    ).toBeInTheDocument();
+  });
+
   it('has one tab stop', () => {
     render(<Harness />);
     const stops = screen.getAllByRole('treeitem').filter((r) => r.tabIndex === 0);
     expect(stops).toHaveLength(1);
+  });
+
+  it('moves the tab stop to a row selected by click', () => {
+    render(<Harness />);
+    // jsdom's click doesn't move focus, so this exercises the tabIndex-from-
+    // selection fallback rather than the roving-focus-from-keyboard path.
+    fireEvent.click(item(/Two/));
+    const stops = screen.getAllByRole('treeitem').filter((r) => r.tabIndex === 0);
+    expect(stops).toEqual([item(/Two/)]);
   });
 
   it('moves with the arrow keys, Home and End', () => {
