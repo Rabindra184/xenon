@@ -55,8 +55,22 @@
   background: var(--status-busy-bg);
   color: var(--status-busy-fg);
 }
+/* Light amber text on its own tint measured 4.39:1, under the 4.5 floor, and
+   no darker amber token exists. The text goes neutral; the dot and the tint
+   still say "busy". */
+:root[data-theme='light'] .dc2-band-busy {
+  color: var(--text);
+}
+:root[data-theme='light'] .dc2-band-busy .dc2-band-dot {
+  background: var(--status-busy-fg);
+}
+/* --status-reserved-fg on its tint measured 4.29:1 in dark; the 400 shade
+   reads 6.2:1. Light keeps the base blue (5.7:1). */
 .dc2-band-reserved {
   background: var(--status-reserved-bg);
+  color: var(--blue-400);
+}
+:root[data-theme='light'] .dc2-band-reserved {
   color: var(--status-reserved-fg);
 }
 /* Deliberate downtime and no connection: neutral, never the red of an error. */
@@ -73,9 +87,14 @@
   gap: 10px;
   padding: 12px;
 }
-/* An offline device's details are its last known ones. */
-.dc2-dim {
+/* An offline device's details are its last known ones. The picture and the
+   badges fade; the words stay readable (fading them too measured 2.6:1). */
+.dc2-dim .dc2-icon,
+.dc2-dim .dc2-meta {
   opacity: 0.55;
+}
+.dc2-dim .dc2-title {
+  color: var(--text-muted);
 }
 .dc2-head {
   display: flex;

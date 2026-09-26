@@ -101,9 +101,10 @@ export function controlAvailability(
   if (d.offline) return { enabled: false, reason: 'Device is offline' };
   if (d.userBlocked && !isAdmin(viewer)) return { enabled: false, reason: 'In maintenance' };
   const h = holder(d, viewer);
-  if (h === 'session') return { enabled: false, reason: 'A test is running on this device' };
+  // Short: the reason sits beside Control in the card's footer.
+  if (h === 'session') return { enabled: false, reason: 'A test is running' };
   if (h === 'other' && !isAdmin(viewer)) {
-    return { enabled: false, reason: 'Another user is controlling this device' };
+    return { enabled: false, reason: 'Another user has control' };
   }
   return { enabled: true };
 }

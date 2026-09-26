@@ -124,7 +124,7 @@ describe('controlAvailability', () => {
   it('refuses a device running a test', () => {
     expect(controlAvailability(dev({ busy: true, session_id: 'abc' }), member)).toEqual({
       enabled: false,
-      reason: 'A test is running on this device',
+      reason: 'A test is running',
     });
   });
 
@@ -134,7 +134,7 @@ describe('controlAvailability', () => {
     const theirs = dev({ busy: true, session_id: 'manual_u42_U1' });
     expect(controlAvailability(theirs, member)).toEqual({
       enabled: false,
-      reason: 'Another user is controlling this device',
+      reason: 'Another user has control',
     });
     expect(controlAvailability(theirs, admin).enabled).toBe(true);
   });

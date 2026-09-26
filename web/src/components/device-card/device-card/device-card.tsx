@@ -223,7 +223,7 @@ export const DeviceCard: React.FC<Props> = ({ device, reloadDevices, navigate, t
         {/* Said on the card, not only in a tooltip: a disabled button gave no
             reason unless you hovered it. */}
         {!control.enabled && (
-          <span id={reasonId} className="dc2-unavailable">
+          <span id={reasonId} className="dc2-unavailable" title={control.reason}>
             {control.reason}
           </span>
         )}
