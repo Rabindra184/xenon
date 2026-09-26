@@ -9828,6 +9828,10 @@ export namespace Prisma {
     storageFree: string | null
     tags: string | null
     thermalStatus: string | null
+    marketingName: string | null
+    model: string | null
+    manufacturer: string | null
+    formFactor: string | null
     sessionProgress: string | null
     totalHealedCount: number | null
     ip: string | null
@@ -9882,6 +9886,10 @@ export namespace Prisma {
     storageFree: string | null
     tags: string | null
     thermalStatus: string | null
+    marketingName: string | null
+    model: string | null
+    manufacturer: string | null
+    formFactor: string | null
     sessionProgress: string | null
     totalHealedCount: number | null
     ip: string | null
@@ -9936,6 +9944,10 @@ export namespace Prisma {
     storageFree: number
     tags: number
     thermalStatus: number
+    marketingName: number
+    model: number
+    manufacturer: number
+    formFactor: number
     sessionProgress: number
     totalHealedCount: number
     ip: number
@@ -10028,6 +10040,10 @@ export namespace Prisma {
     storageFree?: true
     tags?: true
     thermalStatus?: true
+    marketingName?: true
+    model?: true
+    manufacturer?: true
+    formFactor?: true
     sessionProgress?: true
     totalHealedCount?: true
     ip?: true
@@ -10082,6 +10098,10 @@ export namespace Prisma {
     storageFree?: true
     tags?: true
     thermalStatus?: true
+    marketingName?: true
+    model?: true
+    manufacturer?: true
+    formFactor?: true
     sessionProgress?: true
     totalHealedCount?: true
     ip?: true
@@ -10136,6 +10156,10 @@ export namespace Prisma {
     storageFree?: true
     tags?: true
     thermalStatus?: true
+    marketingName?: true
+    model?: true
+    manufacturer?: true
+    formFactor?: true
     sessionProgress?: true
     totalHealedCount?: true
     ip?: true
@@ -10277,6 +10301,10 @@ export namespace Prisma {
     storageFree: string | null
     tags: string | null
     thermalStatus: string | null
+    marketingName: string | null
+    model: string | null
+    manufacturer: string | null
+    formFactor: string | null
     sessionProgress: string | null
     totalHealedCount: number | null
     ip: string | null
@@ -10350,6 +10378,10 @@ export namespace Prisma {
     storageFree?: boolean
     tags?: boolean
     thermalStatus?: boolean
+    marketingName?: boolean
+    model?: boolean
+    manufacturer?: boolean
+    formFactor?: boolean
     sessionProgress?: boolean
     totalHealedCount?: boolean
     ip?: boolean
@@ -10405,6 +10437,10 @@ export namespace Prisma {
     storageFree?: boolean
     tags?: boolean
     thermalStatus?: boolean
+    marketingName?: boolean
+    model?: boolean
+    manufacturer?: boolean
+    formFactor?: boolean
     sessionProgress?: boolean
     totalHealedCount?: boolean
     ip?: boolean
@@ -10460,6 +10496,10 @@ export namespace Prisma {
     storageFree?: boolean
     tags?: boolean
     thermalStatus?: boolean
+    marketingName?: boolean
+    model?: boolean
+    manufacturer?: boolean
+    formFactor?: boolean
     sessionProgress?: boolean
     totalHealedCount?: boolean
     ip?: boolean
@@ -10526,6 +10566,10 @@ export namespace Prisma {
       storageFree: string | null
       tags: string | null
       thermalStatus: string | null
+      marketingName: string | null
+      model: string | null
+      manufacturer: string | null
+      formFactor: string | null
       sessionProgress: string | null
       totalHealedCount: number | null
       ip: string | null
@@ -10971,6 +11015,10 @@ export namespace Prisma {
     readonly storageFree: FieldRef<"Device", 'String'>
     readonly tags: FieldRef<"Device", 'String'>
     readonly thermalStatus: FieldRef<"Device", 'String'>
+    readonly marketingName: FieldRef<"Device", 'String'>
+    readonly model: FieldRef<"Device", 'String'>
+    readonly manufacturer: FieldRef<"Device", 'String'>
+    readonly formFactor: FieldRef<"Device", 'String'>
     readonly sessionProgress: FieldRef<"Device", 'String'>
     readonly totalHealedCount: FieldRef<"Device", 'Int'>
     readonly ip: FieldRef<"Device", 'String'>
@@ -29839,6 +29887,10 @@ export namespace Prisma {
     storageFree: 'storageFree',
     tags: 'tags',
     thermalStatus: 'thermalStatus',
+    marketingName: 'marketingName',
+    model: 'model',
+    manufacturer: 'manufacturer',
+    formFactor: 'formFactor',
     sessionProgress: 'sessionProgress',
     totalHealedCount: 'totalHealedCount',
     ip: 'ip',
@@ -30860,6 +30912,10 @@ export namespace Prisma {
     storageFree?: StringNullableFilter<"Device"> | string | null
     tags?: StringNullableFilter<"Device"> | string | null
     thermalStatus?: StringNullableFilter<"Device"> | string | null
+    marketingName?: StringNullableFilter<"Device"> | string | null
+    model?: StringNullableFilter<"Device"> | string | null
+    manufacturer?: StringNullableFilter<"Device"> | string | null
+    formFactor?: StringNullableFilter<"Device"> | string | null
     sessionProgress?: StringNullableFilter<"Device"> | string | null
     totalHealedCount?: IntNullableFilter<"Device"> | number | null
     ip?: StringNullableFilter<"Device"> | string | null
@@ -30915,6 +30971,10 @@ export namespace Prisma {
     storageFree?: SortOrderInput | SortOrder
     tags?: SortOrderInput | SortOrder
     thermalStatus?: SortOrderInput | SortOrder
+    marketingName?: SortOrderInput | SortOrder
+    model?: SortOrderInput | SortOrder
+    manufacturer?: SortOrderInput | SortOrder
+    formFactor?: SortOrderInput | SortOrder
     sessionProgress?: SortOrderInput | SortOrder
     totalHealedCount?: SortOrderInput | SortOrder
     ip?: SortOrderInput | SortOrder
@@ -30974,6 +31034,10 @@ export namespace Prisma {
     storageFree?: StringNullableFilter<"Device"> | string | null
     tags?: StringNullableFilter<"Device"> | string | null
     thermalStatus?: StringNullableFilter<"Device"> | string | null
+    marketingName?: StringNullableFilter<"Device"> | string | null
+    model?: StringNullableFilter<"Device"> | string | null
+    manufacturer?: StringNullableFilter<"Device"> | string | null
+    formFactor?: StringNullableFilter<"Device"> | string | null
     sessionProgress?: StringNullableFilter<"Device"> | string | null
     totalHealedCount?: IntNullableFilter<"Device"> | number | null
     ip?: StringNullableFilter<"Device"> | string | null
@@ -31029,6 +31093,10 @@ export namespace Prisma {
     storageFree?: SortOrderInput | SortOrder
     tags?: SortOrderInput | SortOrder
     thermalStatus?: SortOrderInput | SortOrder
+    marketingName?: SortOrderInput | SortOrder
+    model?: SortOrderInput | SortOrder
+    manufacturer?: SortOrderInput | SortOrder
+    formFactor?: SortOrderInput | SortOrder
     sessionProgress?: SortOrderInput | SortOrder
     totalHealedCount?: SortOrderInput | SortOrder
     ip?: SortOrderInput | SortOrder
@@ -31091,6 +31159,10 @@ export namespace Prisma {
     storageFree?: StringNullableWithAggregatesFilter<"Device"> | string | null
     tags?: StringNullableWithAggregatesFilter<"Device"> | string | null
     thermalStatus?: StringNullableWithAggregatesFilter<"Device"> | string | null
+    marketingName?: StringNullableWithAggregatesFilter<"Device"> | string | null
+    model?: StringNullableWithAggregatesFilter<"Device"> | string | null
+    manufacturer?: StringNullableWithAggregatesFilter<"Device"> | string | null
+    formFactor?: StringNullableWithAggregatesFilter<"Device"> | string | null
     sessionProgress?: StringNullableWithAggregatesFilter<"Device"> | string | null
     totalHealedCount?: IntNullableWithAggregatesFilter<"Device"> | number | null
     ip?: StringNullableWithAggregatesFilter<"Device"> | string | null
@@ -33224,6 +33296,10 @@ export namespace Prisma {
     storageFree?: string | null
     tags?: string | null
     thermalStatus?: string | null
+    marketingName?: string | null
+    model?: string | null
+    manufacturer?: string | null
+    formFactor?: string | null
     sessionProgress?: string | null
     totalHealedCount?: number | null
     ip?: string | null
@@ -33278,6 +33354,10 @@ export namespace Prisma {
     storageFree?: string | null
     tags?: string | null
     thermalStatus?: string | null
+    marketingName?: string | null
+    model?: string | null
+    manufacturer?: string | null
+    formFactor?: string | null
     sessionProgress?: string | null
     totalHealedCount?: number | null
     ip?: string | null
@@ -33332,6 +33412,10 @@ export namespace Prisma {
     storageFree?: NullableStringFieldUpdateOperationsInput | string | null
     tags?: NullableStringFieldUpdateOperationsInput | string | null
     thermalStatus?: NullableStringFieldUpdateOperationsInput | string | null
+    marketingName?: NullableStringFieldUpdateOperationsInput | string | null
+    model?: NullableStringFieldUpdateOperationsInput | string | null
+    manufacturer?: NullableStringFieldUpdateOperationsInput | string | null
+    formFactor?: NullableStringFieldUpdateOperationsInput | string | null
     sessionProgress?: NullableStringFieldUpdateOperationsInput | string | null
     totalHealedCount?: NullableIntFieldUpdateOperationsInput | number | null
     ip?: NullableStringFieldUpdateOperationsInput | string | null
@@ -33386,6 +33470,10 @@ export namespace Prisma {
     storageFree?: NullableStringFieldUpdateOperationsInput | string | null
     tags?: NullableStringFieldUpdateOperationsInput | string | null
     thermalStatus?: NullableStringFieldUpdateOperationsInput | string | null
+    marketingName?: NullableStringFieldUpdateOperationsInput | string | null
+    model?: NullableStringFieldUpdateOperationsInput | string | null
+    manufacturer?: NullableStringFieldUpdateOperationsInput | string | null
+    formFactor?: NullableStringFieldUpdateOperationsInput | string | null
     sessionProgress?: NullableStringFieldUpdateOperationsInput | string | null
     totalHealedCount?: NullableIntFieldUpdateOperationsInput | number | null
     ip?: NullableStringFieldUpdateOperationsInput | string | null
@@ -33440,6 +33528,10 @@ export namespace Prisma {
     storageFree?: string | null
     tags?: string | null
     thermalStatus?: string | null
+    marketingName?: string | null
+    model?: string | null
+    manufacturer?: string | null
+    formFactor?: string | null
     sessionProgress?: string | null
     totalHealedCount?: number | null
     ip?: string | null
@@ -33494,6 +33586,10 @@ export namespace Prisma {
     storageFree?: NullableStringFieldUpdateOperationsInput | string | null
     tags?: NullableStringFieldUpdateOperationsInput | string | null
     thermalStatus?: NullableStringFieldUpdateOperationsInput | string | null
+    marketingName?: NullableStringFieldUpdateOperationsInput | string | null
+    model?: NullableStringFieldUpdateOperationsInput | string | null
+    manufacturer?: NullableStringFieldUpdateOperationsInput | string | null
+    formFactor?: NullableStringFieldUpdateOperationsInput | string | null
     sessionProgress?: NullableStringFieldUpdateOperationsInput | string | null
     totalHealedCount?: NullableIntFieldUpdateOperationsInput | number | null
     ip?: NullableStringFieldUpdateOperationsInput | string | null
@@ -33547,6 +33643,10 @@ export namespace Prisma {
     storageFree?: NullableStringFieldUpdateOperationsInput | string | null
     tags?: NullableStringFieldUpdateOperationsInput | string | null
     thermalStatus?: NullableStringFieldUpdateOperationsInput | string | null
+    marketingName?: NullableStringFieldUpdateOperationsInput | string | null
+    model?: NullableStringFieldUpdateOperationsInput | string | null
+    manufacturer?: NullableStringFieldUpdateOperationsInput | string | null
+    formFactor?: NullableStringFieldUpdateOperationsInput | string | null
     sessionProgress?: NullableStringFieldUpdateOperationsInput | string | null
     totalHealedCount?: NullableIntFieldUpdateOperationsInput | number | null
     ip?: NullableStringFieldUpdateOperationsInput | string | null
@@ -35703,6 +35803,10 @@ export namespace Prisma {
     storageFree?: SortOrder
     tags?: SortOrder
     thermalStatus?: SortOrder
+    marketingName?: SortOrder
+    model?: SortOrder
+    manufacturer?: SortOrder
+    formFactor?: SortOrder
     sessionProgress?: SortOrder
     totalHealedCount?: SortOrder
     ip?: SortOrder
@@ -35775,6 +35879,10 @@ export namespace Prisma {
     storageFree?: SortOrder
     tags?: SortOrder
     thermalStatus?: SortOrder
+    marketingName?: SortOrder
+    model?: SortOrder
+    manufacturer?: SortOrder
+    formFactor?: SortOrder
     sessionProgress?: SortOrder
     totalHealedCount?: SortOrder
     ip?: SortOrder
@@ -35829,6 +35937,10 @@ export namespace Prisma {
     storageFree?: SortOrder
     tags?: SortOrder
     thermalStatus?: SortOrder
+    marketingName?: SortOrder
+    model?: SortOrder
+    manufacturer?: SortOrder
+    formFactor?: SortOrder
     sessionProgress?: SortOrder
     totalHealedCount?: SortOrder
     ip?: SortOrder
@@ -38970,6 +39082,10 @@ export namespace Prisma {
     storageFree?: string | null
     tags?: string | null
     thermalStatus?: string | null
+    marketingName?: string | null
+    model?: string | null
+    manufacturer?: string | null
+    formFactor?: string | null
     sessionProgress?: string | null
     totalHealedCount?: number | null
     ip?: string | null
@@ -39023,6 +39139,10 @@ export namespace Prisma {
     storageFree?: string | null
     tags?: string | null
     thermalStatus?: string | null
+    marketingName?: string | null
+    model?: string | null
+    manufacturer?: string | null
+    formFactor?: string | null
     sessionProgress?: string | null
     totalHealedCount?: number | null
     ip?: string | null
@@ -39160,6 +39280,10 @@ export namespace Prisma {
     storageFree?: StringNullableFilter<"Device"> | string | null
     tags?: StringNullableFilter<"Device"> | string | null
     thermalStatus?: StringNullableFilter<"Device"> | string | null
+    marketingName?: StringNullableFilter<"Device"> | string | null
+    model?: StringNullableFilter<"Device"> | string | null
+    manufacturer?: StringNullableFilter<"Device"> | string | null
+    formFactor?: StringNullableFilter<"Device"> | string | null
     sessionProgress?: StringNullableFilter<"Device"> | string | null
     totalHealedCount?: IntNullableFilter<"Device"> | number | null
     ip?: StringNullableFilter<"Device"> | string | null
@@ -40615,6 +40739,10 @@ export namespace Prisma {
     storageFree?: string | null
     tags?: string | null
     thermalStatus?: string | null
+    marketingName?: string | null
+    model?: string | null
+    manufacturer?: string | null
+    formFactor?: string | null
     sessionProgress?: string | null
     totalHealedCount?: number | null
     ip?: string | null
@@ -40687,6 +40815,10 @@ export namespace Prisma {
     storageFree?: NullableStringFieldUpdateOperationsInput | string | null
     tags?: NullableStringFieldUpdateOperationsInput | string | null
     thermalStatus?: NullableStringFieldUpdateOperationsInput | string | null
+    marketingName?: NullableStringFieldUpdateOperationsInput | string | null
+    model?: NullableStringFieldUpdateOperationsInput | string | null
+    manufacturer?: NullableStringFieldUpdateOperationsInput | string | null
+    formFactor?: NullableStringFieldUpdateOperationsInput | string | null
     sessionProgress?: NullableStringFieldUpdateOperationsInput | string | null
     totalHealedCount?: NullableIntFieldUpdateOperationsInput | number | null
     ip?: NullableStringFieldUpdateOperationsInput | string | null
@@ -40740,6 +40872,10 @@ export namespace Prisma {
     storageFree?: NullableStringFieldUpdateOperationsInput | string | null
     tags?: NullableStringFieldUpdateOperationsInput | string | null
     thermalStatus?: NullableStringFieldUpdateOperationsInput | string | null
+    marketingName?: NullableStringFieldUpdateOperationsInput | string | null
+    model?: NullableStringFieldUpdateOperationsInput | string | null
+    manufacturer?: NullableStringFieldUpdateOperationsInput | string | null
+    formFactor?: NullableStringFieldUpdateOperationsInput | string | null
     sessionProgress?: NullableStringFieldUpdateOperationsInput | string | null
     totalHealedCount?: NullableIntFieldUpdateOperationsInput | number | null
     ip?: NullableStringFieldUpdateOperationsInput | string | null
@@ -40793,6 +40929,10 @@ export namespace Prisma {
     storageFree?: NullableStringFieldUpdateOperationsInput | string | null
     tags?: NullableStringFieldUpdateOperationsInput | string | null
     thermalStatus?: NullableStringFieldUpdateOperationsInput | string | null
+    marketingName?: NullableStringFieldUpdateOperationsInput | string | null
+    model?: NullableStringFieldUpdateOperationsInput | string | null
+    manufacturer?: NullableStringFieldUpdateOperationsInput | string | null
+    formFactor?: NullableStringFieldUpdateOperationsInput | string | null
     sessionProgress?: NullableStringFieldUpdateOperationsInput | string | null
     totalHealedCount?: NullableIntFieldUpdateOperationsInput | number | null
     ip?: NullableStringFieldUpdateOperationsInput | string | null

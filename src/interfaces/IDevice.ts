@@ -53,6 +53,13 @@ export interface IDevice {
   ip?: string;
   cpuArchitecture?: string;
 
+  // Device identity, read at discovery. Null when the device could not say,
+  // e.g. an Apple model code not in appleIdentity's table.
+  marketingName?: string | null;
+  model?: string | null;
+  manufacturer?: string | null;
+  formFactor?: 'phone' | 'tablet' | 'tv' | null;
+
   // Phase 2: team ownership (null = shared pool). See docs/teams.md.
   teamId?: string | null;
   /** Resolved on read from Team.name; omitted when unassigned or unknown. */
