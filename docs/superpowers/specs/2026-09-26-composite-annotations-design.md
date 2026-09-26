@@ -140,3 +140,36 @@ each device.
   either.
 - Frame-shape changes mid-recording (rotation). One shape per device is
   assumed, taken from its video.
+
+## Verified live (2026-09-26)
+
+The test recorded a Galaxy S9+ and a Pixel 6 emulator together (2×1) on the
+restarted Postgres-backed server.
+
+**Layout and placement**
+
+- `composite.json` held both cells in order with the right recording ids.
+- The Stop pre-render produced `composite.annotated.mp4`, and the download
+  was served instantly.
+- Placement in each cell's picture box:
+  - S9+ (720×1480): box 467×960 at x=36.
+  - Emulator (720×1560): box 443×960 at x=588.
+- Frames matched the preview: a red box on "21°" (cell 0), a blue circle
+  around Chrome (cell 1, identical in a crop of the emulator's own video),
+  and a green box at the top of Settings.
+- Clear marks at 67.7 s left both cells clean at 70 s, and a mark drawn
+  after the clear appeared at 76 s.
+
+**Timing.** Settings was opened at client-relative ≈41.8 s.
+
+- In the composite's S9+ cell it appears at 42.64 s, which is the device's
+  own transition and capture latency. Marks line up with the composite.
+- In the S9+'s own video it appears at 43.84 s. That file started earlier
+  than the composite (85.8 s vs 84.3 s), so **per-device videos in
+  multi-device groups show marks about 1.2 s early** (about 0.8 s on the
+  device that started later).
+- Single-device groups are unaffected: the start request returns right after
+  that device's ffmpeg spawns.
+- This is a follow-up, not in scope here. The server knows both the spawn
+  time of each ffmpeg and the time `start()` returns, which is the browser's
+  t=0, so it can shift each per-device burn-in by the difference.
