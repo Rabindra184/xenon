@@ -37,9 +37,11 @@ const root = el('/h', { type: 'hierarchy' }, [
 
 function Harness({
   onSelect = () => {},
+  onHover = () => {},
   query = '',
 }: {
   onSelect?: (n: InspectorNode) => void;
+  onHover?: (n: InspectorNode | null) => void;
   query?: string;
 }) {
   const [open, setOpen] = React.useState(() => new Set(['/h/c/l']));
@@ -63,7 +65,7 @@ function Harness({
           setSelected(n.xpath);
           onSelect(n);
         }}
-        onHover={() => {}}
+        onHover={onHover}
       />
       {/* Another route to a selection, outside the tree (the phone, the breadcrumb). */}
       <button type="button" onClick={() => setSelected('/h/c/l/2')}>
@@ -95,10 +97,11 @@ describe('ElementTree', () => {
     expect(item(/hierarchy.*content/)).toBeInTheDocument();
   });
 
-  // The shrink order in omni-inspector.css depends on this structure: the lead
-  // never shrinks, one gap-less label holds the run and the type, and the
-  // count sits outside it. (jsdom can't measure the widths themselves.)
-  it('lays a row out as lead, label and count', () => {
+  // The shrink order in omni-inspector.css depends on this structure (jsdom
+  // can't measure the widths themselves): the lead never shrinks; the label
+  // is a head of earlier parts, the only thing that shrinks while it has
+  // width, then a tail of the target and its type; the count sits outside.
+  it('lays a row out as lead, label (head and tail) and count', () => {
     render(<Harness />);
     const classes = (el: Element) => Array.from(el.children).map((c) => c.classList[0]);
     const cardRow = item(/Card/);
@@ -112,15 +115,43 @@ describe('ElementTree', () => {
       'omni-tree-row__caret',
       'omni-tree-row__icon',
     ]);
-    expect(classes(cardRow.children[1])).toEqual(['omni-tree-row__part', 'omni-tree-row__type']);
-    const folded = item(/hierarchy.*content/);
-    expect(classes(folded.children[1])).toEqual([
+    // A run of one: no head.
+    expect(classes(cardRow.children[1])).toEqual(['omni-tree-row__tail']);
+    expect(classes(cardRow.children[1].children[0])).toEqual([
       'omni-tree-row__part',
-      'omni-tree-row__sep',
-      'omni-tree-row__part',
-      'omni-tree-row__sep',
-      'omni-tree-row__part',
+      'omni-tree-row__type',
     ]);
+
+    // hierarchy › content › list: each earlier part carries its own "›", so
+    // the separator goes with its part rather than before it.
+    const label = item(/hierarchy.*content/).children[1];
+    expect(classes(label)).toEqual(['omni-tree-row__head', 'omni-tree-row__tail']);
+    const [head, tail] = Array.from(label.children);
+    expect(classes(head)).toEqual(['omni-tree-row__step', 'omni-tree-row__step']);
+    for (const step of Array.from(head.children)) {
+      expect(classes(step)).toEqual(['omni-tree-row__part', 'omni-tree-row__sep']);
+      expect(step.children[0]).not.toHaveClass('is-target');
+      expect(step.children[1]).toHaveAttribute('aria-hidden', 'true');
+    }
+    expect(Array.from(head.children).map((st) => st.children[0].textContent)).toEqual([
+      'hierarchy',
+      'content',
+    ]);
+    expect(classes(tail)).toEqual(['omni-tree-row__part']);
+    expect(tail.children[0]).toHaveClass('is-target');
+  });
+
+  it('selects and outlines an earlier part’s own node from inside the head', () => {
+    const onSelect = vi.fn();
+    const onHover = vi.fn();
+    render(<Harness onSelect={onSelect} onHover={onHover} />);
+    const part = screen.getByText('content');
+    expect(part.closest('.omni-tree-row__head')).not.toBeNull();
+    expect(part).toHaveAttribute('title', 'android.widget.FrameLayout\nandroid:id/content');
+    fireEvent.mouseEnter(part);
+    expect(onHover).toHaveBeenLastCalledWith(expect.objectContaining({ xpath: '/h/c' }));
+    fireEvent.click(part);
+    expect(onSelect).toHaveBeenLastCalledWith(expect.objectContaining({ xpath: '/h/c' }));
   });
 
   it('names a row in plain words, with the type only when it is shown', () => {
@@ -246,6 +277,18 @@ describe('ElementTree', () => {
     expect(item(/Card/)).toHaveAttribute('aria-selected', 'false');
     rerender(<Harness query="" />);
     expect(item(/Card/)).toHaveAttribute('aria-expanded', 'false');
+  });
+
+  it('marks the caret of a row the search holds open as locked', () => {
+    const caret = () => item(/Card/).querySelector('.omni-tree-row__caret');
+    const { rerender } = render(<Harness query="Three" />);
+    expect(caret()).toHaveClass('is-locked');
+    rerender(<Harness query="" />);
+    expect(caret()).not.toHaveClass('is-locked');
+    // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+    fireEvent.click(caret()!);
+    expect(item(/Card/)).toHaveAttribute('aria-expanded', 'true');
+    expect(caret()).not.toHaveClass('is-locked');
   });
 
   it('gives each part the node’s full tooltip', () => {

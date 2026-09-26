@@ -1,6 +1,9 @@
 import React, { useRef, useState } from 'react';
 import { DIVIDER_PX, SPLIT_STEP, type SplitLimits } from './splitPane';
 
+/** How far the pointer travels before a press is a drag, not a click. */
+const DRAG_THRESHOLD_PX = 3;
+
 interface SplitDividerProps {
   share: number;
   limits: SplitLimits;
@@ -31,8 +34,11 @@ export default function SplitDivider({
   const ended = useRef(true);
   // Whether this drag changed the share. A press and release that didn't
   // commits nothing: the shown share may be clamped to a narrow window, and
-  // committing it would overwrite a wider stored preference.
+  // committing it would overwrite a wider stored preference. Nor does a
+  // click's jitter count: the pointer must first travel DRAG_THRESHOLD_PX
+  // from where it went down.
   const moved = useRef(false);
+  const startX = useRef(0);
   const clamp = (s: number) => Math.min(limits.max, Math.max(limits.min, s));
   const pct = (s: number) => Math.round(s * 100);
 
@@ -82,10 +88,12 @@ export default function SplitDivider({
         e.currentTarget.setPointerCapture?.(e.pointerId);
         ended.current = false;
         moved.current = false;
+        startX.current = e.clientX;
         setDragging(true);
       }}
       onPointerMove={(e) => {
         if (!dragging) return;
+        if (!moved.current && Math.abs(e.clientX - startX.current) < DRAG_THRESHOLD_PX) return;
         const next = fromPointer(e.clientX);
         if (next === latest.current) return;
         moved.current = true;

@@ -1532,10 +1532,13 @@
 
 /* ===== Element tree (ElementTree.tsx) =====
    A row is 26px: the lead (indent, caret, icon), the label, and the child
-   count on a collapsed row. The label holds the run's parts, the separators
-   and the target's type with no gap, so the shrink weights alone decide what
-   gives way: earlier parts and separators first, then the type, and the
-   target only when it is too long on its own. */
+   count on a collapsed row. The label is a head and a tail, which makes what
+   gives way strictly ordered: the head (a folded run's earlier parts, each
+   with its "›") is the only thing that shrinks while it has any width; then
+   the target's type; then the target's name, only when it alone is too long.
+   Shrink weights between siblings can't order this strictly: any weight
+   hands an item a sub-pixel share of the overflow, and any overflow at all
+   draws "…". */
 .omni-tree {
     display: flex;
     flex-direction: column;
@@ -1615,13 +1618,47 @@
     margin-left: 4px;
 }
 
+/* Held open by the search, so the caret can't close the row. */
+.omni-tree-row__caret.is-locked {
+    cursor: default;
+    opacity: 0.4;
+}
+
 .omni-tree-row__label {
     display: flex;
     flex: 1 1 auto;
     align-items: center;
-    gap: 0;
     min-width: 0;
     overflow: hidden;
+}
+
+/* The earlier parts: the label's only shrinkable item. */
+.omni-tree-row__head {
+    display: flex;
+    flex: 0 1 auto;
+    align-items: center;
+    min-width: 0;
+    overflow: hidden;
+}
+
+/* One earlier part and its "›": the part shrinks and ellipsizes, and the
+   separator is clipped only once its part is gone. */
+.omni-tree-row__step {
+    display: flex;
+    flex: 0 1 auto;
+    align-items: center;
+    min-width: 0;
+    overflow: hidden;
+}
+
+/* The target and its type: never shrinks, and is capped at the label only
+   when it alone is too long. Inside it the type gives way first. */
+.omni-tree-row__tail {
+    display: flex;
+    flex: 0 0 auto;
+    align-items: center;
+    min-width: 0;
+    max-width: 100%;
 }
 
 .omni-tree-row__part,
@@ -1633,12 +1670,9 @@
 
 .omni-tree-row__part {
     font-family: 'JetBrains Mono', 'Fira Code', monospace;
-    flex: 0 1000 auto;
+    flex: 0 1 auto;
 }
 
-/* Doesn't shrink while anything else can: any shrink weight at all hands it
-   a sub-pixel share of the overflow, and any overflow draws "…". Capped at
-   the label only when it alone is too long. */
 .omni-tree-row__part.is-target {
     flex: 0 0 auto;
     max-width: 100%;
@@ -1655,20 +1689,13 @@
 }
 
 .omni-tree-row__sep {
-    flex: 0 1000 auto;
-    min-width: 0;
-    overflow: hidden;
+    flex: 0 0 auto;
+    padding: 0 4px;
     color: var(--text-dim);
 }
 
-/* The spacing is inside the separator so it shrinks away with it: a flex
-   item's own padding never shrinks. */
-.omni-tree-row__sep > span {
-    padding: 0 4px;
-}
-
 .omni-tree-row__type {
-    flex: 0 100 auto;
+    flex: 0 1 auto;
     margin-left: 4px;
     font-size: 11px;
     color: var(--text-dim);

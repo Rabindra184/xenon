@@ -133,6 +133,12 @@ export default function ElementTree({
         // "›" glyph, which is decorative (aria-hidden) and reads unpredictably.
         const runNames = row.nodes.map((n) => shortName(n)).join(', ');
         const ariaLabel = showType ? `${runNames}, ${type}` : runNames;
+        // Held open by the search: the caret can't close it (Row.collapsible).
+        const locked = row.expanded && !row.collapsible;
+        const partClass = (n: InspectorNode, isTarget: boolean) =>
+          `omni-tree-row__part${isTarget ? ' is-target' : ''}${
+            matches.has(n.xpath) ? ' is-match' : ''
+          }${n.xpath === selectedXpath ? ' is-current' : ''}`;
         return (
           <div
             key={row.key}
@@ -163,15 +169,12 @@ export default function ElementTree({
                 style={{ width: (row.level - 1) * INDENT_PX }}
               />
               <span
-                className="omni-tree-row__caret"
+                className={`omni-tree-row__caret${locked ? ' is-locked' : ''}`}
                 onClick={
                   row.hasChildren
                     ? (e) => {
                         e.stopPropagation();
-                        // A row the search holds open can't close (see
-                        // Row.collapsible); the click does nothing.
-                        if (row.expanded && !row.collapsible) return;
-                        onToggle(row.key);
+                        if (!locked) onToggle(row.key);
                       }
                     : undefined
                 }
@@ -182,39 +185,37 @@ export default function ElementTree({
               <span className="omni-tree-row__icon">{ROLE_ICON[analyzeElement(target).key]}</span>
             </span>
             <span className="omni-tree-row__label">
-              {row.nodes.map((n, j) => {
-                const last = j === row.nodes.length - 1;
-                return (
-                  <React.Fragment key={n.xpath}>
-                    {j > 0 && (
-                      // The glyph's spacing sits inside the separator so it
-                      // shrinks away with it; a flex item's padding can't.
-                      <span className="omni-tree-row__sep" aria-hidden="true">
-                        <span>›</span>
+              {row.nodes.length > 1 && (
+                <span className="omni-tree-row__head">
+                  {row.nodes.slice(0, -1).map((n) => (
+                    // A part and its "›" go together, so the separator
+                    // disappears with its part rather than before it.
+                    <span key={n.xpath} className="omni-tree-row__step">
+                      <span
+                        className={partClass(n, false)}
+                        title={nodeTooltip(n)}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onSelect(n);
+                        }}
+                        onMouseEnter={() => onHover(n)}
+                        onMouseLeave={() => onHover(target)}
+                      >
+                        {shortName(n)}
                       </span>
-                    )}
-                    <span
-                      className={`omni-tree-row__part${last ? ' is-target' : ''}${
-                        matches.has(n.xpath) ? ' is-match' : ''
-                      }${n.xpath === selectedXpath ? ' is-current' : ''}`}
-                      title={nodeTooltip(n)}
-                      onClick={
-                        last
-                          ? undefined
-                          : (e) => {
-                              e.stopPropagation();
-                              onSelect(n);
-                            }
-                      }
-                      onMouseEnter={last ? undefined : () => onHover(n)}
-                      onMouseLeave={last ? undefined : () => onHover(target)}
-                    >
-                      {shortName(n)}
+                      <span className="omni-tree-row__sep" aria-hidden="true">
+                        ›
+                      </span>
                     </span>
-                  </React.Fragment>
-                );
-              })}
-              {showType && <span className="omni-tree-row__type">{type}</span>}
+                  ))}
+                </span>
+              )}
+              <span className="omni-tree-row__tail">
+                <span className={partClass(target, true)} title={nodeTooltip(target)}>
+                  {shortName(target)}
+                </span>
+                {showType && <span className="omni-tree-row__type">{type}</span>}
+              </span>
             </span>
             {row.hasChildren && !row.expanded && (
               <span className="omni-tree-row__count" aria-hidden="true">
