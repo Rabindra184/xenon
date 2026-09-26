@@ -144,27 +144,48 @@ export class DeviceExplorer extends React.Component<IDeviceExplorerProps, IDevic
               onChange={(v) => this.setState({ statusFilter: v })}
               segments={[
                 { value: 'all', label: 'All', count: this.statusCount('all') },
-                { value: 'ready', label: 'Ready', count: this.statusCount('ready') },
-                { value: 'busy', label: 'Busy', count: this.statusCount('busy') },
-                { value: 'reserved', label: 'Reserved', count: this.statusCount('reserved') },
+                // Each dot is the colour of that state's cards.
+                {
+                  value: 'ready',
+                  label: 'Ready',
+                  tone: 'ready',
+                  count: this.statusCount('ready'),
+                },
+                { value: 'busy', label: 'Busy', tone: 'busy', count: this.statusCount('busy') },
+                {
+                  value: 'reserved',
+                  label: 'Reserved',
+                  tone: 'reserved',
+                  count: this.statusCount('reserved'),
+                },
                 {
                   value: 'maintenance',
                   label: 'Maintenance',
+                  tone: 'maintenance',
                   count: this.statusCount('maintenance'),
                 },
-                { value: 'offline', label: 'Offline', count: this.statusCount('offline') },
+                {
+                  value: 'offline',
+                  label: 'Offline',
+                  tone: 'offline',
+                  count: this.statusCount('offline'),
+                },
               ]}
             />
-            <input
-              type="text"
-              className="de2-search"
-              placeholder="Search by name or UDID…"
-              value={this.state.search}
-              onChange={(e) => this.setState({ search: e.target.value })}
-            />
-            <Button variant="secondary" size="sm" onClick={() => this.fetchDevices()}>
-              <RefreshCw size={12} /> Refresh
-            </Button>
+            {/* Search and Refresh wrap together: alone on a line, Refresh looked
+                stranded. */}
+            <div className="de2-find">
+              <input
+                type="text"
+                className="de2-search"
+                placeholder="Search by name or UDID…"
+                value={this.state.search}
+                onChange={(e) => this.setState({ search: e.target.value })}
+              />
+              <Button variant="secondary" size="sm" onClick={() => this.fetchDevices()}>
+                <RefreshCw size={12} /> Refresh
+              </Button>
+            </div>
           </div>
         </div>
 
