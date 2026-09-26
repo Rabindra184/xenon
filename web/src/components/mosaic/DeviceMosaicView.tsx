@@ -14,6 +14,8 @@ import { LayoutSelector } from './LayoutSelector';
 import { DeviceMosaic } from './DeviceMosaic';
 import { RecordingControls } from './RecordingControls';
 import { IdleWarningModal } from './IdleWarningModal';
+import { IdleReleaseBanner } from './IdleReleaseBanner';
+import { idleWatchEnabled, planRestore, releaseMessage, restoreMessage } from './idleRestore';
 import XenonApiService from '../../api-service';
 import { isDeviceConflictBody } from '../../api-service/api-client';
 import { isRehydratableTile, isSelfManualLock } from './manual-lock';
@@ -295,6 +297,23 @@ export default function DeviceMosaicView() {
     };
   };
 
+  // One add path for the device list and Restore after an idle release.
+  const addDevice = async (device: DeviceRow) => {
+    dispatch({ type: 'ADD_TILE', tile: tileFromDevice(device) });
+    // Pre-warm the stream. Go through XenonApiService rather than a raw fetch:
+    // a raw fetch swallows a 409 (it isn't a rejection), which left the tile
+    // stuck on "Starting Stream…" with no explanation when another user held
+    // the device. The api-client raises the toast that says who holds it.
+    //
+    // Only roll the optimistic tile back on a genuine ownership conflict. A
+    // network blip or a retryable 503 must keep the tile — GET /stream
+    // auto-starts the service, so those recover on their own.
+    const started = await XenonApiService.startStream(device.udid).catch(() => null);
+    if (isDeviceConflictBody(started)) {
+      dispatch({ type: 'REMOVE_TILE', udid: device.udid });
+    }
+  };
+
   // Click-to-toggle: a single click on a picker row adds the device to the
   // mosaic (if not present) or removes it (if present). Replaces the prior
   // checkbox + "Add to mosaic" two-step flow.
@@ -314,19 +333,7 @@ export default function DeviceMosaicView() {
     }
     const device = devices.find((d) => d.udid === udid);
     if (!device) return;
-    dispatch({ type: 'ADD_TILE', tile: tileFromDevice(device) });
-    // Pre-warm the stream. Go through XenonApiService rather than a raw fetch:
-    // a raw fetch swallows a 409 (it isn't a rejection), which left the tile
-    // stuck on "Starting Stream…" with no explanation when another user held
-    // the device. The api-client raises the toast that says who holds it.
-    //
-    // Only roll the optimistic tile back on a genuine ownership conflict. A
-    // network blip or a retryable 503 must keep the tile — GET /stream
-    // auto-starts the service, so those recover on their own.
-    const started = await XenonApiService.startStream(udid).catch(() => null);
-    if (isDeviceConflictBody(started)) {
-      dispatch({ type: 'REMOVE_TILE', udid });
-    }
+    await addDevice(device);
   };
 
   const onRemoveTile = async (udid: string) => {
@@ -410,18 +417,43 @@ export default function DeviceMosaicView() {
     state.tiles.forEach((t) => dispatch({ type: 'REMOVE_TILE', udid: t.udid }));
   };
 
+  // After an automatic release: what to say, and the tiles Restore can bring
+  // back (null once Restore has run). The person was away when it happened,
+  // so it stays until dismissed rather than fading like a toast.
+  const [idleNotice, setIdleNotice] = useState<{
+    message: string;
+    tiles: MosaicTile[] | null;
+  } | null>(null);
+
+  const onRestoreReleased = async () => {
+    const saved = idleNotice?.tiles;
+    if (!saved) return;
+    const plan = planRestore(saved, devices, myUserId);
+    for (const d of plan.restore) await addDevice(d);
+    const note = restoreMessage(plan.restore.length, plan.skipped);
+    setIdleNotice(note ? { message: note, tiles: null } : null);
+    setRefreshKey((k) => k + 1);
+  };
+
   // Only run the idle watchdog when the user has at least one device tiled.
   // No tiles → nothing to release → no warning.
   const idle = useIdleDetector({
     idleAfterMs: IDLE_TOTAL_MS,
     warningSec: IDLE_WARNING_SEC,
-    enabled: state.tiles.length > 0,
+    // Never during a recording: the release stops the streams the recording
+    // reads from, and the whole recording is lost.
+    enabled: idleWatchEnabled(state.tiles.length, state.recordingPhase),
     onWarning: () => {
       // Surface the warning banner; the modal renders below based on
       // idle.warning. Nothing else to do here.
     },
     onTimeout: () => {
+      const released = state.tiles;
       releaseAll();
+      setIdleNotice({
+        message: releaseMessage(released.length, IDLE_TOTAL_MS / 60_000),
+        tiles: released,
+      });
     },
   });
 
@@ -460,6 +492,14 @@ export default function DeviceMosaicView() {
               Dismiss
             </button>
           </div>
+        )}
+
+        {idleNotice && (
+          <IdleReleaseBanner
+            message={idleNotice.message}
+            onRestore={idleNotice.tiles && !state.recording ? onRestoreReleased : undefined}
+            onDismiss={() => setIdleNotice(null)}
+          />
         )}
 
         <div className="grid grid-cols-[260px_1fr] gap-3 flex-1 min-h-0">
