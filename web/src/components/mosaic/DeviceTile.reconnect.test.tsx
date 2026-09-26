@@ -91,7 +91,7 @@ describe('DeviceTile reconnects an MJPEG stream that ended', () => {
     await wait(5000);
 
     expect(streamSrc(view)).not.toBe(before);
-    expect(view.getByText('Starting Stream…')).toBeInTheDocument();
+    expect(view.getByText('Starting stream…')).toBeInTheDocument();
   });
 
   it('reconnects when the stream was restarted underneath it', async () => {
@@ -113,7 +113,7 @@ describe('DeviceTile reconnects an MJPEG stream that ended', () => {
     statusAnswer = 'unreachable';
     await wait(30000);
     expect(streamSrc(view)).toBe(before);
-    expect(view.queryByText('Connection Failed')).toBeNull();
+    expect(view.queryByText('Connection failed')).toBeNull();
 
     // Back after a restart: the stream is gone.
     statusAnswer = mjpeg({ status: 'stopped' });
@@ -129,6 +129,6 @@ describe('DeviceTile reconnects an MJPEG stream that ended', () => {
 
     expect(statusCalls).toBeGreaterThan(5);
     expect(streamSrc(view)).toBe(before);
-    expect(view.queryByText('Starting Stream…')).toBeNull();
+    expect(view.queryByText('Starting stream…')).toBeNull();
   });
 });

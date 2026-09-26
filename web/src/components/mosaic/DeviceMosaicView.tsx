@@ -87,6 +87,7 @@ function asPickerDevice(d: DeviceRow, myUserId: string | null): PickerDevice {
 export default function DeviceMosaicView() {
   const [state, dispatch] = useMosaicReducer();
   const [devices, setDevices] = useState<DeviceRow[]>([]);
+  const [devicesStatus, setDevicesStatus] = useState<'loading' | 'ready' | 'error'>('loading');
   const [refreshKey, setRefreshKey] = useState(0);
   // Identity of the dashboard caller — drives the self/other distinction
   // for manual-control locks. Fetched once on mount from /auth/me.
@@ -119,9 +120,12 @@ export default function DeviceMosaicView() {
     const load = async () => {
       try {
         const list: DeviceRow[] = await XenonApiService.getDevices();
-        if (!cancelled) setDevices(Array.isArray(list) ? list : []);
+        if (cancelled) return;
+        setDevices(Array.isArray(list) ? list : []);
+        setDevicesStatus('ready');
       } catch {
-        /* swallow */
+        // Keeps the last list; an empty one now says why instead of "none online".
+        if (!cancelled) setDevicesStatus('error');
       }
     };
     load();
@@ -304,7 +308,7 @@ export default function DeviceMosaicView() {
     if (state.recording) {
       dispatch({
         type: 'SET_ERROR_BANNER',
-        message: 'Stop recording before changing the mosaic layout.',
+        message: 'Stop recording before changing the devices on the grid.',
       });
       return;
     }
@@ -475,11 +479,11 @@ export default function DeviceMosaicView() {
               devices={pickerDevices}
               inMosaic={inMosaic}
               onToggle={onTogglePickerRow}
+              status={devicesStatus}
             />
             <p className="mt-2 text-[11px] text-[var(--text-dim)] leading-relaxed">
-              Click a device to add it to the mosaic. Record captures every device
-              in the mosaic. After Stop, download the video (mp4) — not a proof
-              bundle.
+              Click a device to add it to the grid. Record captures every device on the grid; after
+              Stop, download the video.
             </p>
           </aside>
 

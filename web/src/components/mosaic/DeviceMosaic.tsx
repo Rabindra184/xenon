@@ -1,4 +1,5 @@
 import * as React from 'react';
+import { Plus } from 'lucide-react';
 import {
   effectiveLayout,
   type Layout,
@@ -134,21 +135,21 @@ function EmptyCell({ onDropDevice }: { onDropDevice?: (udid: string) => void }) 
       className={`flex flex-col items-center justify-center gap-2 rounded-lg border border-dashed transition-colors ${
         hover
           ? 'border-[rgb(var(--rgb-accent)/0.6)] bg-[rgb(var(--rgb-accent)/0.05)]'
-          : 'border-[var(--border)] bg-[rgb(var(--rgb-white)/0.02)]'
+          : 'border-[var(--border)] bg-[rgb(var(--rgb-fg)/0.02)]'
       } text-[var(--text-dim)] min-h-[120px]`}
     >
       <div
         aria-hidden="true"
-        className={`w-8 h-8 rounded-full flex items-center justify-center text-xl ${
+        className={`w-8 h-8 rounded-full flex items-center justify-center ${
           hover
             ? 'bg-[rgb(var(--rgb-accent)/0.15)] text-[var(--color-accent-soft)]'
             : 'bg-[rgb(var(--rgb-fg)/0.05)] text-[rgb(var(--rgb-fg)/0.6)]'
         }`}
       >
-        +
+        <Plus size={16} />
       </div>
-      <div className="text-xs font-medium">Drag device here</div>
-      <div className="text-[10px] opacity-70">or click one in the panel</div>
+      <div className="text-xs font-medium">Drag a device here</div>
+      <div className="text-[10px] opacity-70">or click one in the list</div>
     </div>
   );
 }

@@ -1,4 +1,5 @@
 import * as React from 'react';
+import { Camera, ChevronLeft, House, Square, VideoOff, X } from 'lucide-react';
 import { AnnotationOverlay, type NormalizedAnnotation } from './AnnotationOverlay';
 import { pointerToDevice } from './tileInput';
 import { useStreamLiveness } from './streamLiveness';
@@ -406,37 +407,51 @@ export function DeviceTile({
   return (
     <div className="flex items-stretch justify-center w-full h-full min-h-0 min-w-0 gap-2">
       <div
-        className="relative bg-[var(--black)] rounded-lg overflow-hidden border border-[var(--border)] group max-h-full max-w-full self-center"
+        // A dark island: everything drawn here sits on the device's video, so
+        // it keeps the dark palette in the light theme too.
+        className="theme-dark relative bg-[var(--black)] rounded-lg overflow-hidden border border-[var(--border)] group max-h-full max-w-full self-center"
         style={{ aspectRatio: aspect, height: '100%' }}
       >
         {/* Connecting state Overlay */}
         {streamState === 'connecting' && (
-          <div className="flex flex-col items-center justify-center bg-neutral-900/80 text-neutral-400 absolute inset-0 z-20 pointer-events-none">
-            <div className="relative flex items-center justify-center">
-              <div className="w-12 h-12 border-4 border-neutral-800 border-t-neutral-400 rounded-full animate-spin" />
-            </div>
-            <div className="mt-4 font-bold text-neutral-200">Starting Stream…</div>
-            <div className="text-[10px] mt-1 text-neutral-500 opacity-60 font-mono">{udid}</div>
-            <div className="text-[10px] mt-4 text-neutral-400 bg-white/5 px-2 py-1 rounded">
-              Waiting for device connection...
+          <div
+            role="status"
+            aria-live="polite"
+            className="flex flex-col items-center justify-center gap-1 px-4 text-center bg-[rgb(var(--rgb-well)/0.8)] text-[var(--text-dim)] absolute inset-0 z-20 pointer-events-none"
+          >
+            <div
+              aria-hidden
+              className="w-10 h-10 mb-3 border-4 border-[var(--border)] border-t-[var(--text-dim)] rounded-full animate-spin"
+            />
+            <div className="font-semibold text-[var(--text)]">Starting stream…</div>
+            <div className="text-xs text-[var(--text-dim)] truncate max-w-full">{displayName}</div>
+            {/* An iPhone opens a tunnel, then starts WebDriverAgent. */}
+            <div className="text-[11px] mt-3 text-[var(--text-dim)] leading-snug">
+              {isIOS
+                ? 'iPhone streams can take up to 20 seconds to start.'
+                : 'Connecting to the device…'}
             </div>
           </div>
         )}
 
         {/* Unavailable state Overlay */}
         {streamState === 'unavailable' && (
-          <div className="flex items-center justify-center bg-black text-neutral-400 absolute inset-0 z-20">
+          <div
+            role="alert"
+            className="flex items-center justify-center bg-[var(--black)] text-[var(--text-dim)] absolute inset-0 z-20"
+          >
             <div className="text-center p-6">
-              <div className="text-5xl mb-4 opacity-20">📵</div>
-              <div className="font-bold text-white text-lg">Connection Failed</div>
-              <p className="text-xs mt-2 text-neutral-500 leading-relaxed max-w-[240px] mx-auto">
+              <VideoOff aria-hidden size={36} className="mx-auto mb-3 text-[var(--text-dim)]" />
+              <div className="font-semibold text-[var(--text)]">Connection failed</div>
+              <p className="text-xs mt-2 text-[var(--text-dim)] leading-relaxed max-w-[240px] mx-auto">
                 {failureReason || 'We couldn’t start the live stream for this device.'}
               </p>
               <button
-                className="mt-6 text-sm font-semibold px-6 py-2.5 rounded-full bg-red-600 hover:bg-red-500 text-white transition-all active:scale-95"
+                type="button"
+                className="mt-5 text-sm font-semibold px-4 py-2 rounded bg-[var(--color-accent)] hover:bg-[var(--color-accent-strong)] text-[var(--color-on-accent)] transition-colors"
                 onClick={handleRetry}
               >
-                Retry connection
+                Retry
               </button>
             </div>
           </div>
@@ -548,7 +563,7 @@ export function DeviceTile({
           interaction surface but doesn't capture events. */}
         {recording && (
           <div className="absolute top-3 left-3 z-30 pointer-events-none">
-            <span className="px-2 py-0.5 rounded-sm bg-red-600 text-white text-[9px] font-black shadow-lg">
+            <span className="px-2 py-0.5 rounded-sm bg-[var(--red-600)] text-white text-[9px] font-black shadow-lg">
               REC
             </span>
           </div>
@@ -563,7 +578,7 @@ export function DeviceTile({
               Live
             </span>
           )}
-          <span className="px-2 py-1 rounded bg-black/80 text-white text-[11px] font-medium backdrop-blur-md border border-white/10 shadow-xl truncate max-w-[180px]">
+          <span className="px-2 py-1 rounded bg-[rgb(var(--rgb-well)/0.8)] text-[var(--text)] text-[11px] font-medium backdrop-blur-md border border-[rgb(var(--rgb-fg)/0.1)] shadow-xl truncate max-w-[180px]">
             {displayName}
           </span>
         </div>
@@ -577,7 +592,6 @@ export function DeviceTile({
         recording={recording}
         isIOS={isIOS}
         isAndroid={isAndroid}
-        platform={platform}
         onClose={!recording && onRemove ? () => onRemove(udid) : undefined}
         sendHome={sendHome}
         sendBack={sendBack}
@@ -594,7 +608,6 @@ interface ActionColumnProps {
   recording: boolean;
   isIOS: boolean;
   isAndroid: boolean;
-  platform?: string;
   onClose?: () => void;
   sendHome: () => void | Promise<void>;
   sendBack: () => void | Promise<void>;
@@ -603,12 +616,14 @@ interface ActionColumnProps {
   displayName: string;
 }
 
+const sideButton =
+  'w-7 h-7 flex items-center justify-center rounded-md hover:bg-[var(--surface-2)] hover:text-[var(--text)] transition-colors';
+
 function ActionColumn({
   streamState,
   recording,
   isIOS,
   isAndroid,
-  platform,
   onClose,
   sendHome,
   sendBack,
@@ -622,18 +637,18 @@ function ActionColumn({
   if (!onClose && !live) return null;
 
   return (
-    <div className="self-stretch w-9 flex flex-col items-center justify-between gap-1 py-2 rounded-lg bg-black/40 border border-white/10 backdrop-blur-md text-white">
+    <div className="self-stretch w-9 flex flex-col items-center justify-between gap-1 py-2 rounded-lg bg-[var(--surface)] border border-[var(--border)] text-[var(--text-dim)]">
       {/* Top group: close button */}
       <div className="flex flex-col items-center gap-1">
         {onClose && (
           <button
             type="button"
-            aria-label={`Remove ${displayName} from mosaic`}
-            title="Remove from mosaic"
+            aria-label={`Remove ${displayName}`}
+            title="Remove from the grid"
             onClick={onClose}
-            className="w-7 h-7 flex items-center justify-center rounded-md hover:bg-red-600/70 transition-colors text-base leading-none"
+            className="w-7 h-7 flex items-center justify-center rounded-md hover:bg-[rgb(var(--rgb-red)/0.15)] hover:text-[var(--color-danger)] transition-colors"
           >
-            ×
+            <X aria-hidden size={16} />
           </button>
         )}
       </div>
@@ -646,31 +661,34 @@ function ActionColumn({
           {(isAndroid || isIOS) && (
             <button
               type="button"
-              title={`Home${platform ? ` (${platform})` : ''}`}
+              aria-label="Home"
+              title="Home"
               onClick={sendHome}
-              className="w-7 h-7 flex items-center justify-center rounded-md hover:bg-white/15 transition-colors text-sm"
+              className={sideButton}
             >
-              ⌂
+              <House aria-hidden size={15} />
             </button>
           )}
           {isAndroid && (
             <button
               type="button"
+              aria-label="Back"
               title="Back"
               onClick={sendBack}
-              className="w-7 h-7 flex items-center justify-center rounded-md hover:bg-white/15 transition-colors text-sm"
+              className={sideButton}
             >
-              ‹
+              <ChevronLeft aria-hidden size={16} />
             </button>
           )}
           {isAndroid && (
             <button
               type="button"
+              aria-label="Recent apps"
               title="Recent apps"
               onClick={sendAppSwitch}
-              className="w-7 h-7 flex items-center justify-center rounded-md hover:bg-white/15 transition-colors text-sm"
+              className={sideButton}
             >
-              ▢
+              <Square aria-hidden size={13} />
             </button>
           )}
         </div>
@@ -681,11 +699,12 @@ function ActionColumn({
         <div className="flex flex-col items-center gap-1">
           <button
             type="button"
+            aria-label="Screenshot"
             title="Screenshot"
             onClick={captureScreenshot}
-            className="w-7 h-7 flex items-center justify-center rounded-md hover:bg-white/15 transition-colors text-sm"
+            className={sideButton}
           >
-            ⎙
+            <Camera aria-hidden size={15} />
           </button>
         </div>
       )}

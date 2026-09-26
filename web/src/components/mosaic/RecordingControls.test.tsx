@@ -1,6 +1,13 @@
 import { describe, expect, it, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen } from '@testing-library/react';
 import { RecordingControls } from './RecordingControls';
+
+vi.mock('../../api-service/recordings', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../api-service/recordings')>()),
+  stopRecording: vi.fn().mockResolvedValue({
+    recordings: [{ status: 'STOPPED', sizeBytes: 4096 }],
+  }),
+}));
 import {
   MosaicContext,
   initialMosaicState,
@@ -30,9 +37,24 @@ function recording(annotateMode: boolean, withMarks: boolean): MosaicState {
   return s;
 }
 
-function mount(state: MosaicState) {
+function idleWithTile(): MosaicState {
+  return mosaicReducer(initialMosaicState, {
+    type: 'ADD_TILE',
+    tile: { udid: 'u1', mjpegPort: 0 },
+  });
+}
+
+function stopped(): MosaicState {
+  return mosaicReducer(recording(false, false), {
+    type: 'STOP_RECORDING',
+    downloadableVideoCount: 1,
+    compositeEnabled: false,
+  });
+}
+
+function mount(state: MosaicState, dispatch = vi.fn()) {
   return render(
-    <MosaicContext.Provider value={{ state, dispatch: vi.fn() }}>
+    <MosaicContext.Provider value={{ state, dispatch }}>
       <RecordingControls selectedUdids={['u1']} onClearMarks={vi.fn()} />
     </MosaicContext.Provider>,
   );
@@ -75,5 +97,48 @@ describe('RecordingControls toolbar', () => {
   it('has no Bookmark option', () => {
     mount(recording(true, true));
     expect(screen.queryByRole('button', { name: /bookmark/i })).toBeNull();
+  });
+});
+
+describe('RecordingControls labels', () => {
+  // The buttons used text symbols as icons (⏹ Stop, ✎ Annotate), which a
+  // screen reader reads out as part of the name.
+  it('labels its buttons in words', () => {
+    mount(idleWithTile());
+    expect(buttonNames()).toEqual(['Record', 'Stop', 'Annotate']);
+  });
+
+  it('labels the download link in words', () => {
+    const { container } = mount(stopped());
+    expect(container.querySelector('a[download]')?.textContent?.trim()).toBe('Download video');
+  });
+
+  // A greyed-out Record button sat beside the timer for the whole recording.
+  it('shows the REC timer in place of Record while recording', () => {
+    mount(recording(false, false));
+    expect(buttonNames()).not.toContain('Record');
+    expect(screen.getByText(/REC/)).toBeInTheDocument();
+  });
+
+  // The download button is in the toolbar above the banner, not below it.
+  it('points up to the download button when the video is ready', async () => {
+    const dispatch = vi.fn();
+    mount(recording(false, false), dispatch);
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Stop' }));
+    });
+    const messages = dispatch.mock.calls
+      .map(([a]) => a)
+      .filter((a) => a.type === 'SET_BANNER' && a.banner)
+      .map((a) => a.banner.message as string);
+    expect(messages).toEqual(['Video ready. Download it with the button above.']);
+  });
+
+  it('does not call the grid a mosaic', () => {
+    const { container } = mount(idleWithTile());
+    const titles = Array.from(container.querySelectorAll('[title]')).map((e) =>
+      e.getAttribute('title'),
+    );
+    expect(titles.filter((t) => /mosaic/i.test(t ?? ''))).toEqual([]);
   });
 });

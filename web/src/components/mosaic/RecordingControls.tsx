@@ -1,4 +1,5 @@
 import * as React from 'react';
+import { Circle, Download, Pencil, Square } from 'lucide-react';
 import { formatElapsed, useMosaic } from './recording-group-store';
 import {
   startRecording,
@@ -18,10 +19,12 @@ interface Props {
 
 function recordButtonLabel(count: number, phase: string): string {
   if (phase === 'starting') return 'Starting…';
-  if (count <= 0) return 'Record';
-  if (count === 1) return '● Record';
-  return `● Record ${count} devices`;
+  if (count <= 1) return 'Record';
+  return `Record ${count} devices`;
 }
+
+// Icons are decorative: the button's text names it.
+const icon = { 'aria-hidden': true, size: 14, className: 'shrink-0' } as const;
 
 export function RecordingControls({ selectedUdids, onClearMarks }: Props) {
   const { state, dispatch } = useMosaic();
@@ -168,7 +171,7 @@ export function RecordingControls({ selectedUdids, onClearMarks }: Props) {
           type: 'SET_BANNER',
           banner: {
             tone: 'info',
-            message: `${ok.length} video(s) ready · ${failed.length} failed. Use Download below.`,
+            message: `${ok.length} ready, ${failed.length} failed. Download with the button above.`,
           },
         });
       } else {
@@ -178,8 +181,8 @@ export function RecordingControls({ selectedUdids, onClearMarks }: Props) {
             tone: 'info',
             message:
               ok.length === 1
-                ? 'Video ready — download below.'
-                : `${ok.length} videos ready — download below.`,
+                ? 'Video ready. Download it with the button above.'
+                : `${ok.length} videos ready. Download them with the button above.`,
           },
         });
       }
@@ -216,7 +219,10 @@ export function RecordingControls({ selectedUdids, onClearMarks }: Props) {
 
   return (
     <div className="flex items-center gap-2 flex-wrap justify-end">
-      {(state.recordingPhase === 'recording' || state.recordingPhase === 'stopping') && (
+      {/* While recording, the timer takes Record's place: a greyed-out Record
+          button beside it said nothing the timer didn't. Same slot, so nothing
+          to its right moves. */}
+      {state.recordingPhase === 'recording' || state.recordingPhase === 'stopping' ? (
         <span
           className="inline-flex items-center gap-1.5 px-2 py-1 rounded text-xs font-mono tabular-nums bg-[rgb(var(--rgb-red-600)/0.2)] text-[var(--red-200)] border border-[rgb(var(--rgb-red)/0.4)]"
           title="Recording elapsed time"
@@ -225,31 +231,33 @@ export function RecordingControls({ selectedUdids, onClearMarks }: Props) {
           REC {formatElapsed(elapsedMs)}
           {state.recordingPhase === 'stopping' ? ' · Stopping…' : ''}
         </span>
+      ) : (
+        <button
+          type="button"
+          onClick={onStart}
+          disabled={!canStart}
+          title={
+            selectedUdids.length === 0
+              ? 'Add a device to the grid first'
+              : 'Record every device on the grid'
+          }
+          // In light, 40% of a red fill is a pink block that reads as an alert.
+          // Disabled, it takes the outlined look of the Stop button beside it;
+          // the ring is inset so enabling it doesn't change its size.
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm rounded bg-[var(--red-600)] text-white disabled:opacity-40 disabled:cursor-not-allowed light:disabled:bg-transparent light:disabled:text-[var(--text)] light:disabled:ring-1 light:disabled:ring-inset light:disabled:ring-[color:var(--border)]"
+        >
+          <Circle {...icon} size={10} fill="currentColor" />
+          {recordButtonLabel(selectedUdids.length, state.recordingPhase)}
+        </button>
       )}
-
-      <button
-        type="button"
-        onClick={onStart}
-        disabled={!canStart}
-        title={
-          selectedUdids.length === 0
-            ? 'Add a device to the mosaic first'
-            : 'Record every device currently in the mosaic'
-        }
-        // In light, 40% of a red fill is a pink block that reads as an alert.
-        // Disabled, it takes the outlined look of the Stop button beside it;
-        // the ring is inset so enabling it doesn't change its size.
-        className="px-3 py-1.5 text-sm rounded bg-[var(--red-600)] text-white disabled:opacity-40 disabled:cursor-not-allowed light:disabled:bg-transparent light:disabled:text-[var(--text)] light:disabled:ring-1 light:disabled:ring-inset light:disabled:ring-[color:var(--border)]"
-      >
-        {recordButtonLabel(selectedUdids.length, state.recordingPhase)}
-      </button>
       <button
         type="button"
         onClick={onStop}
         disabled={!canStopOrMark}
-        className="px-3 py-1.5 text-sm rounded border border-[var(--border)] disabled:opacity-40 disabled:cursor-not-allowed"
+        className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm rounded border border-[var(--border)] disabled:opacity-40 disabled:cursor-not-allowed"
       >
-        {state.recordingPhase === 'stopping' ? 'Stopping…' : '⏹ Stop'}
+        <Square {...icon} size={12} />
+        {state.recordingPhase === 'stopping' ? 'Stopping…' : 'Stop'}
       </button>
       <button
         type="button"
@@ -262,13 +270,14 @@ export function RecordingControls({ selectedUdids, onClearMarks }: Props) {
               : 'Draw on the live screen — saved with the recording'
             : 'Start recording to annotate'
         }
-        className={`px-3 py-1.5 text-sm rounded border ${
+        className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-sm rounded border ${
           state.annotateMode
             ? 'bg-[var(--color-info)] text-white border-transparent'
             : 'border-[var(--border)]'
         } disabled:opacity-40 disabled:cursor-not-allowed`}
       >
-        ✎ Annotate
+        <Pencil {...icon} />
+        Annotate
       </button>
 
       {/* Rendered for the whole recording and disabled rather than hidden:
@@ -316,30 +325,33 @@ export function RecordingControls({ selectedUdids, onClearMarks }: Props) {
       {showDownload && useDirectMp4 && (
         <a
           href={videoMp4Url(state.groupId!)}
-          className="ml-1 px-3 py-1.5 text-sm rounded border border-[var(--border)] hover:bg-[var(--surface-2)]"
+          className="ml-1 inline-flex items-center gap-1.5 px-3 py-1.5 text-sm rounded border border-[var(--border)] hover:bg-[var(--surface-2)]"
           download
         >
-          ⤓ Download video
+          <Download {...icon} />
+          Download video
         </a>
       )}
       {showDownload && !useDirectMp4 && (
         <a
           href={videosZipUrl(state.groupId!)}
-          className="ml-1 px-3 py-1.5 text-sm rounded border border-[var(--border)] hover:bg-[var(--surface-2)]"
+          className="ml-1 inline-flex items-center gap-1.5 px-3 py-1.5 text-sm rounded border border-[var(--border)] hover:bg-[var(--surface-2)]"
           download={`videos-${state.groupId}.zip`}
           title="ZIP of mp4 files only (no JSON extras)"
         >
-          ⤓ Download {multiDevice ? 'videos' : 'video'}
+          <Download {...icon} />
+          Download {multiDevice ? 'videos' : 'video'}
         </a>
       )}
       {showCompositeDownload && (
         <a
           href={compositeMp4Url(state.groupId!)}
-          className="px-3 py-1.5 text-sm rounded border border-[var(--border)] hover:bg-[var(--surface-2)]"
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm rounded border border-[var(--border)] hover:bg-[var(--surface-2)]"
           download={`side-by-side-${state.groupId}.mp4`}
           title="All devices in one side-by-side video"
         >
-          ⤓ Side-by-side
+          <Download {...icon} />
+          Side-by-side
         </a>
       )}
     </div>
