@@ -11,6 +11,10 @@ import { Device, PrismaClient, PendingSession, CLIArgs, LocatorEtalon } from '..
 import { Container } from 'typedi';
 import * as semver from 'semver';
 import log from '../logger';
+import { pickDeviceColumns } from './deviceColumns';
+
+/** Logged once per key, so a chatty node doesn't flood the log. */
+const droppedDeviceKeys = new Set<string>();
 
 export class PrismaDeviceStore implements IDeviceStore {
   private get prisma(): PrismaClient {
@@ -68,7 +72,11 @@ export class PrismaDeviceStore implements IDeviceStore {
     if (data.chromeDriverPath && typeof data.chromeDriverPath === 'object')
       data.chromeDriverPath = JSON.stringify(data.chromeDriverPath);
     if (data.tags && Array.isArray(data.tags)) data.tags = JSON.stringify(data.tags);
-    return data;
+    return pickDeviceColumns(data, (key) => {
+      if (droppedDeviceKeys.has(key)) return;
+      droppedDeviceKeys.add(key);
+      log.debug(`[PrismaStore] Ignoring device field "${key}": not a Device column`);
+    });
   }
 
   async getAllDevices(): Promise<IDevice[]> {
