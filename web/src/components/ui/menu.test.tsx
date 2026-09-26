@@ -80,4 +80,46 @@ describe('Menu', () => {
     fireEvent.click(items[0]);
     expect(onFirst).toHaveBeenCalled();
   });
+
+  // Filter menus: a single choice, with the chosen one marked.
+  it('a MenuItem with checked is a single choice', () => {
+    render(
+      <Menu>
+        <MenuItem checked onClick={() => {}}>
+          iOS
+        </MenuItem>
+        <MenuItem checked={false} onClick={() => {}}>
+          Android
+        </MenuItem>
+      </Menu>,
+    );
+    expect(screen.getByRole('menuitemradio', { name: /iOS/ })).toHaveAttribute(
+      'aria-checked',
+      'true',
+    );
+    expect(screen.getByRole('menuitemradio', { name: /Android/ })).toHaveAttribute(
+      'aria-checked',
+      'false',
+    );
+    expect(screen.queryByRole('menuitem')).toBeNull();
+  });
+
+  it('shows a note and trailing content', () => {
+    render(
+      <Menu>
+        <MenuItem
+          checked={false}
+          note="Simulators and emulators"
+          trailing={<span>2</span>}
+          onClick={() => {}}
+        >
+          Virtual
+        </MenuItem>
+      </Menu>,
+    );
+    const item = screen.getByRole('menuitemradio');
+    expect(item).toHaveTextContent('Virtual');
+    expect(item).toHaveTextContent('Simulators and emulators');
+    expect(item).toHaveTextContent('2');
+  });
 });
