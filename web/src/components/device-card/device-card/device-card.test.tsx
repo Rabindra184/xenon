@@ -118,6 +118,19 @@ describe('DeviceCard', () => {
     expect(container).not.toHaveTextContent('Shared');
   });
 
+  // Control was a grey outline and Reserve a borderless ghost: both read as
+  // plain text rather than buttons.
+  it('draws Control in the accent colour and Reserve as a button', () => {
+    card();
+    expect(control()).toHaveClass('btn-tonal');
+    expect(screen.getByRole('button', { name: 'Reserve' })).toHaveClass('btn-secondary');
+  });
+
+  it('draws Release as a button too', () => {
+    card({ reservedBy: 'priya@acme.com', reservedUntil: Date.now() + 60 * 60_000 });
+    expect(screen.getByRole('button', { name: 'Release' })).toHaveClass('btn-secondary');
+  });
+
   describe('the ⋯ menu', () => {
     afterEach(() => {
       auth.me = null;

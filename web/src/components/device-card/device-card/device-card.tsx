@@ -200,7 +200,7 @@ export const DeviceCard: React.FC<Props> = ({ device, reloadDevices, navigate, t
 
       <div className="dc2-foot">
         <Button
-          variant="secondary"
+          variant="tonal"
           size="sm"
           disabled={!control.enabled}
           aria-describedby={control.enabled ? undefined : reasonId}
@@ -212,11 +212,11 @@ export const DeviceCard: React.FC<Props> = ({ device, reloadDevices, navigate, t
           Control
         </Button>
         {reserved ? (
-          <Button variant="ghost" size="sm" onClick={release}>
+          <Button variant="secondary" size="sm" onClick={release}>
             Release
           </Button>
         ) : kind === 'ready' ? (
-          <Button variant="ghost" size="sm" onClick={() => setShowReservation(true)}>
+          <Button variant="secondary" size="sm" onClick={() => setShowReservation(true)}>
             Reserve
           </Button>
         ) : null}

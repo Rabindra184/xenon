@@ -11,6 +11,7 @@ const buttonVariants = cva('btn-base', {
       secondary: 'btn-secondary',
       outline: 'btn-secondary',
       ghost: 'btn-ghost',
+      tonal: 'btn-tonal',
       link: 'btn-link',
       destructive: 'btn-danger',
       danger: 'btn-danger',
