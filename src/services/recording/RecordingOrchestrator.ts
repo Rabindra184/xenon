@@ -3,7 +3,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { v4 as uuidv4 } from 'uuid';
 import { trace, metrics, SpanStatusCode, Counter, Histogram, Span } from '@opentelemetry/api';
-import { VideoPipelineService } from '../VideoPipelineService';
+import { VideoPipelineService, type CompositeGeometry } from '../VideoPipelineService';
 import { DashboardEventManager } from '../../dashboard/event-manager';
 import { BusyPrecheck, BusyEntry } from './busy-precheck';
 import { RecordingStore } from './recording-store';
@@ -72,6 +72,20 @@ export function compositeOutputPath(groupId: string): string {
     groupId,
     'composite.mp4',
   );
+}
+
+/** Which recording sits in which composite cell, beside the composite. */
+export function compositeLayoutPath(groupId: string): string {
+  return path.join(path.dirname(compositeOutputPath(groupId)), 'composite.json');
+}
+
+export interface CompositeLayoutFile {
+  version: 1;
+  cellW: number;
+  cellH: number;
+  cols: number;
+  rows: number;
+  cells: Array<{ index: number; udid: string; recordingId: string }>;
 }
 
 export class RecordingError extends Error {
@@ -360,13 +374,14 @@ export class RecordingOrchestrator {
         }
         if (compositeInputs.length >= 2) {
           const compositePath = compositeOutputPath(groupId);
-          await this.videoPipeline.startComposite({
+          const geometry = await this.videoPipeline.startComposite({
             groupId,
             inputs: compositeInputs,
             outputPath: compositePath,
           });
           recLog.info(`Composite recording started for group ${groupId} → ${compositePath}`);
           compositeEnabled = true;
+          this.writeCompositeLayout(groupId, geometry, compositeInputs, recordings);
         } else {
           recLog.warn(
             `Composite skipped for group ${groupId}: not enough MJPEG ports resolved (${compositeInputs.length}/${recordings.length}).`,
@@ -569,6 +584,38 @@ export class RecordingOrchestrator {
       throw err;
     } finally {
       span.end();
+    }
+  }
+
+  /**
+   * Record the composite's cells so marks can be burned into it later. Best
+   * effort: without the file the composite is simply served without marks.
+   */
+  private writeCompositeLayout(
+    groupId: string,
+    geometry: CompositeGeometry | undefined,
+    inputs: Array<{ udid: string }>,
+    recordings: StartedRecording[],
+  ): void {
+    if (!geometry) return;
+    try {
+      const layout: CompositeLayoutFile = {
+        version: 1,
+        cellW: geometry.cellW,
+        cellH: geometry.cellH,
+        cols: geometry.cols,
+        rows: geometry.rows,
+        cells: inputs.map((input, index) => ({
+          index,
+          udid: input.udid,
+          recordingId: recordings.find((r) => r.udid === input.udid)!.id,
+        })),
+      };
+      const file = compositeLayoutPath(groupId);
+      fs.mkdirSync(path.dirname(file), { recursive: true });
+      fs.writeFileSync(file, JSON.stringify(layout, null, 2));
+    } catch (err: any) {
+      recLog.warn(`Composite layout not recorded for ${groupId}: ${err?.message ?? err}`);
     }
   }
 
