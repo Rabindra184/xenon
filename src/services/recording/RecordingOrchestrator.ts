@@ -575,6 +575,7 @@ export class RecordingOrchestrator {
           this.finalizing.delete(r.id);
         }
       }
+      this.prewarmCompositeRender(groupId);
       this.eventMgr.emitRecordingStopped({ groupId, recordings: out });
       span.setStatus({ code: SpanStatusCode.OK });
       return { groupId, recordings: out };
@@ -585,6 +586,24 @@ export class RecordingOrchestrator {
     } finally {
       span.end();
     }
+  }
+
+  /**
+   * Fire-and-forget, like the per-device pre-render: burn marks into the
+   * composite now so its download is served warm. Only groups whose composite
+   * has a layout record and marks do any work.
+   */
+  private prewarmCompositeRender(groupId: string): void {
+    void (async () => {
+      try {
+        if (!fs.existsSync(compositeLayoutPath(groupId))) return;
+        const { AnnotationRenderService } = await import('./annotation-render');
+        const out = await Container.get(AnnotationRenderService).resolveCompositePath(groupId);
+        if (out.annotated) recLog.info(`Pre-rendered annotated composite for ${groupId}`);
+      } catch (err: any) {
+        recLog.warn(`Composite pre-render failed for ${groupId}: ${err?.message ?? err}`);
+      }
+    })();
   }
 
   /**

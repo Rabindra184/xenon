@@ -59,20 +59,39 @@ export class ProofBundleService {
     return archive;
   }
 
+  /**
+   * The composite every download gets: with the devices' marks burned in when
+   * that render works, otherwise the raw composite. Null when the group has
+   * none (single-device groups never do).
+   */
+  async resolveCompositeFile(groupId: string): Promise<string | null> {
+    let compositePath: string;
+    try {
+      compositePath = compositeOutputPath(groupId);
+    } catch {
+      return null; // ArtifactStore unset (unit tests)
+    }
+    if (!fs.existsSync(compositePath) || fs.statSync(compositePath).size === 0) return null;
+    try {
+      const { AnnotationRenderService } = await import('./annotation-render');
+      return (await Container.get(AnnotationRenderService).resolveCompositePath(groupId)).filePath;
+    } catch (err: any) {
+      const { default: log } = await import('../../logger');
+      log
+        .scope('ProofBundle')
+        .warn(`Composite burn-in skipped for ${groupId}: ${err?.message ?? err}`);
+      return compositePath;
+    }
+  }
+
   private async collectVideoEntries(
     groupId: string,
   ): Promise<Array<{ filePath: string; name: string }>> {
     const recordings = (await this.store.listGroup(groupId)) as any[];
     const entries: Array<{ filePath: string; name: string }> = [];
 
-    try {
-      const compositePath = compositeOutputPath(groupId);
-      if (fs.existsSync(compositePath) && fs.statSync(compositePath).size > 0) {
-        entries.push({ filePath: compositePath, name: 'composite.mp4' });
-      }
-    } catch {
-      /* ArtifactStore may be unset in unit tests; skip composite. */
-    }
+    const composite = await this.resolveCompositeFile(groupId);
+    if (composite) entries.push({ filePath: composite, name: 'composite.mp4' });
 
     for (const r of recordings) {
       try {
@@ -182,10 +201,8 @@ export class ProofBundleService {
     });
 
     // Mosaic-wide composite mp4 (only present for multi-device groups).
-    const compositePath = compositeOutputPath(groupId);
-    if (fs.existsSync(compositePath)) {
-      archive.file(compositePath, { name: 'composite.mp4' });
-    }
+    const composite = await this.resolveCompositeFile(groupId);
+    if (composite) archive.file(composite, { name: 'composite.mp4' });
 
     for (const r of recordings as any[]) {
       const base = `devices/${r.device_udid}`;
