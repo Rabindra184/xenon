@@ -15,7 +15,8 @@ import { IdleWarningModal } from './IdleWarningModal';
 import XenonApiService from '../../api-service';
 import { isDeviceConflictBody } from '../../api-service/api-client';
 import { isRehydratableTile, isSelfManualLock } from './manual-lock';
-import { addAnnotation, addBookmark } from '../../api-service/recordings';
+import { addAnnotation, addBookmark, clearAnnotations } from '../../api-service/recordings';
+import { createWriteQueue } from './writeQueue';
 import { useIdleDetector } from '../../hooks/useIdleDetector';
 import { Tv } from 'lucide-react';
 import { PageTitle } from '../ui/page-header';
@@ -90,6 +91,8 @@ export default function DeviceMosaicView() {
   const [myUserId, setMyUserId] = useState<string | null>(null);
   // Guards the one-shot tile rehydration below, which is keyed on myUserId.
   const rehydratedRef = React.useRef(false);
+  // One ordered lane for mark and clear writes; see createWriteQueue.
+  const writes = React.useRef(createWriteQueue());
 
   useEffect(() => {
     let cancelled = false;
@@ -317,20 +320,47 @@ export default function DeviceMosaicView() {
     setRefreshKey((k) => k + 1);
   };
 
-  const onAnnotation = async (recordingId: string, ann: any) => {
+  const onAnnotation = (recordingId: string, ann: any, image?: string | null) => {
     if (!state.groupId) return;
-    try {
-      await addAnnotation(state.groupId, {
-        recordingId,
-        timecodeMs: state.startedAt ? Date.now() - state.startedAt : 0,
-        shape: ann.shape,
-        geometry: JSON.stringify(ann.geometry),
-        color: ann.color,
-        text: ann.text,
-      });
-    } catch (e: any) {
-      dispatch({ type: 'SET_ERROR_BANNER', message: `Annotation failed: ${e.message}` });
-    }
+    const groupId = state.groupId;
+    // Stamp at the moment of drawing, not when the queued request finally leaves.
+    const timecodeMs = state.startedAt ? Date.now() - state.startedAt : 0;
+    const body = {
+      recordingId,
+      timecodeMs,
+      shape: ann.shape,
+      geometry: JSON.stringify(ann.geometry),
+      color: ann.color,
+      text: ann.text,
+    };
+    void writes.current
+      .enqueue(async () => {
+        try {
+          return await addAnnotation(groupId, image ? { ...body, image } : body);
+        } catch (e) {
+          // An image the server refuses must not lose the mark: it still renders, as a box.
+          if (!image) throw e;
+          return addAnnotation(groupId, body);
+        }
+      })
+      .catch((e: any) =>
+        dispatch({ type: 'SET_ERROR_BANNER', message: `Annotation failed: ${e.message}` }),
+      );
+  };
+
+  const onClearMarks = () => {
+    if (!state.groupId) return;
+    const groupId = state.groupId;
+    const timecodeMs = state.startedAt ? Date.now() - state.startedAt : 0;
+    dispatch({ type: 'CLEAR_OVERLAY_ANNOTATIONS' });
+    void writes.current
+      .enqueue(() => clearAnnotations(groupId, timecodeMs))
+      .catch(() =>
+        dispatch({
+          type: 'SET_ERROR_BANNER',
+          message: "Couldn't clear marks from the recording. They will still appear in the video.",
+        }),
+      );
   };
 
   // Release every locked device. Used both by the user's "Release now" click
@@ -383,6 +413,7 @@ export default function DeviceMosaicView() {
           </div>
           <RecordingControls
             selectedUdids={state.tiles.map((t) => t.udid)}
+            onClearMarks={onClearMarks}
           />
         </header>
 

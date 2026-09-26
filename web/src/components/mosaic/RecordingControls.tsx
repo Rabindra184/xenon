@@ -13,6 +13,8 @@ import {
 interface Props {
   /** UDIDs currently in the mosaic (Record targets every tile). */
   selectedUdids: string[];
+  /** Clears the marks from the preview and, in order with the marks, from the recording. */
+  onClearMarks: () => void;
 }
 
 function recordButtonLabel(count: number, phase: string): string {
@@ -22,7 +24,7 @@ function recordButtonLabel(count: number, phase: string): string {
   return `● Record ${count} devices`;
 }
 
-export function RecordingControls({ selectedUdids }: Props) {
+export function RecordingControls({ selectedUdids, onClearMarks }: Props) {
   const { state, dispatch } = useMosaic();
   const [now, setNow] = React.useState(() => Date.now());
 
@@ -215,7 +217,7 @@ export function RecordingControls({ selectedUdids }: Props) {
 
   const clearAnnotations = () => {
     if (!canAnnotate) return;
-    dispatch({ type: 'CLEAR_OVERLAY_ANNOTATIONS' });
+    onClearMarks();
   };
 
   const hasOverlayAnnotations = Object.values(state.overlayAnnotations).some(
@@ -324,7 +326,7 @@ export function RecordingControls({ selectedUdids }: Props) {
         <button
           type="button"
           onClick={clearAnnotations}
-          title="Clear drawn annotations from the live preview"
+          title="Clear marks from the preview and the recording"
           className="px-2 py-1.5 text-sm rounded border border-[var(--border)] hover:bg-[var(--surface-2)]"
         >
           Clear marks
