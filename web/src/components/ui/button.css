@@ -18,7 +18,10 @@
 .btn-size-sm   { height: 26px; padding: 0 10px; font-size: 11px; }
 .btn-size-md   { height: 32px; padding: 0 14px; font-size: 12px; }
 .btn-size-lg   { height: 40px; padding: 0 18px; font-size: 14px; }
-.btn-size-icon { height: 32px; width: 32px; padding: 0; }
+/* Two classes: device-control.css declares a global .btn-secondary with
+   `padding: 10px 20px`, which squeezed a 32px icon to zero width wherever
+   that stylesheet is loaded. */
+.btn-base.btn-size-icon { height: 32px; width: 32px; padding: 0; }
 
 .btn-primary {
   /* Black on the brand green: 9.2:1. Was white on #16a34a at 3.3:1, below

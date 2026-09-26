@@ -370,6 +370,11 @@
   line-height: 16px;
   pointer-events: none;
 }
+/* Refresh matches the row's 28px controls. */
+.de2-result .btn-base.btn-size-icon {
+  width: 28px;
+  height: 28px;
+}
 .de2-result {
   margin-left: auto;
   display: flex;
