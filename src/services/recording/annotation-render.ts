@@ -5,9 +5,10 @@ import * as path from 'path';
 import { Readable } from 'stream';
 import { RecordingStore } from './recording-store';
 import { resolveFfmpegPath } from '../../helpers/ffmpegPath';
-import { probeVideoDurationSec } from './probeDuration';
+import { probeVideoDurationSec, probeVideoFrameSize } from './probeDuration';
 import { annotationImagePath } from './annotationImage';
 import log from '../../logger';
+import type { CompositeLayoutFile } from './RecordingOrchestrator';
 
 const renderLog = log.scope('AnnotationRender');
 
@@ -73,6 +74,13 @@ export function containBoxPx(cellW: number, cellH: number, srcW: number, srcH: n
   return { x: Math.trunc((cellW - w) / 2), y: Math.trunc((cellH - h) / 2), w, h };
 }
 
+/** One composite cell's marks and where its picture sits in the composite. */
+export interface CompositeCell {
+  box: PixelBox;
+  annotations: AnnotationRow[];
+  imageFor: (a: AnnotationRow) => string | undefined;
+}
+
 export interface RenderGraph {
   /** Extra ffmpeg inputs after the source video, in order (input index = position + 1). */
   inputs: string[];
@@ -128,22 +136,93 @@ export class AnnotationRenderService {
     // Invalidate when source or annotation set changes (annotations land after
     // the mp4 is finalized, so source mtime alone is not enough).
     const stamp = this.cacheStamp(rec.file_path, annotations);
-    let needsRender = true;
+    if (!this.isFresh(outPath, stampPath, stamp)) {
+      await this.renderCached(outPath, stampPath, stamp, () =>
+        this.renderToFile(rec.file_path, outPath, annotations),
+      );
+    }
+    return { filePath: outPath, annotated: true };
+  }
+
+  /**
+   * The group's composite with every device's marks burned into its own cell.
+   * Raw when the composite has no layout record (recorded before marks could
+   * be placed in it) or no cell has marks.
+   */
+  async resolveCompositePath(groupId: string): Promise<{
+    filePath: string;
+    annotated: boolean;
+  }> {
+    // Lazy: keeps the orchestrator and pipeline graphs out of this module's load.
+    const { compositeOutputPath, compositeLayoutPath } = await import('./RecordingOrchestrator');
+    const { cellOrigin } = await import('../VideoPipelineService');
+    const compositePath = compositeOutputPath(groupId);
+    if (!fs.existsSync(compositePath)) throw new Error(`Composite missing for ${groupId}`);
+    const raw = { filePath: compositePath, annotated: false };
+
+    let layout: CompositeLayoutFile;
     try {
-      if (
+      layout = JSON.parse(fs.readFileSync(compositeLayoutPath(groupId), 'utf8'));
+    } catch {
+      return raw;
+    }
+    const recordings = (await this.store.listGroup(groupId)) as any[];
+    const byId = new Map(recordings.map((r) => [r.id, r]));
+    const cells: CompositeCell[] = [];
+    for (const cell of layout.cells ?? []) {
+      const rec = byId.get(cell.recordingId);
+      const annotations = (rec?.annotations ?? []) as AnnotationRow[];
+      if (!rec || annotations.length === 0) continue;
+      // The per-device video and the composite read the same source, so its
+      // frame size is the size the composite scaled into this cell.
+      const size =
+        rec.file_path && fs.existsSync(rec.file_path)
+          ? await this.probeFrameSize(rec.file_path)
+          : undefined;
+      const inner = size
+        ? containBoxPx(layout.cellW, layout.cellH, size.w, size.h)
+        : { x: 0, y: 0, w: layout.cellW, h: layout.cellH };
+      const origin = cellOrigin(cell.index, layout.cols, layout.cellW, layout.cellH);
+      cells.push({
+        box: { x: origin.x + inner.x, y: origin.y + inner.y, w: inner.w, h: inner.h },
+        annotations,
+        imageFor: (a) => this.imageFor(rec.file_path, a),
+      });
+    }
+    if (cells.length === 0) return raw;
+
+    const outPath = path.join(path.dirname(compositePath), 'composite.annotated.mp4');
+    const stampPath = `${outPath}.stamp`;
+    const stamp = this.compositeStamp(compositePath, cells);
+    if (!this.isFresh(outPath, stampPath, stamp)) {
+      await this.renderCached(outPath, stampPath, stamp, async () => {
+        const durationSec = await this.probeDurationSec(compositePath);
+        await this.renderPlan(compositePath, outPath, (withText) =>
+          this.buildCompositeGraph(
+            withText
+              ? cells
+              : cells.map((c) => ({
+                  ...c,
+                  annotations: this.withoutUndrawableText(c.annotations, c.imageFor),
+                })),
+            durationSec,
+          ),
+        );
+      });
+    }
+    return { filePath: outPath, annotated: true };
+  }
+
+  private isFresh(outPath: string, stampPath: string, stamp: string): boolean {
+    try {
+      return (
         fs.existsSync(outPath) &&
         fs.existsSync(stampPath) &&
         fs.readFileSync(stampPath, 'utf8') === stamp
-      ) {
-        needsRender = false;
-      }
+      );
     } catch {
-      needsRender = true;
+      return false;
     }
-    if (needsRender) {
-      await this.renderCached(outPath, stampPath, stamp, rec.file_path, annotations);
-    }
-    return { filePath: outPath, annotated: true };
   }
 
   /**
@@ -155,26 +234,15 @@ export class AnnotationRenderService {
     outPath: string,
     stampPath: string,
     stamp: string,
-    sourcePath: string,
-    annotations: AnnotationRow[],
+    render: () => Promise<void>,
   ): Promise<void> {
     const existing = this.renderInFlight.get(outPath);
     if (existing) return existing;
     const task = (async () => {
       // A render that finished between the caller's cache check and now may have
       // already produced a valid file — re-check before spending another pass.
-      try {
-        if (
-          fs.existsSync(outPath) &&
-          fs.existsSync(stampPath) &&
-          fs.readFileSync(stampPath, 'utf8') === stamp
-        ) {
-          return;
-        }
-      } catch {
-        /* fall through to render */
-      }
-      await this.renderToFile(sourcePath, outPath, annotations);
+      if (this.isFresh(outPath, stampPath, stamp)) return;
+      await render();
       fs.writeFileSync(stampPath, stamp, 'utf8');
     })().finally(() => this.renderInFlight.delete(outPath));
     this.renderInFlight.set(outPath, task);
@@ -198,7 +266,17 @@ export class AnnotationRenderService {
   }
 
   /** Pure helper — exported for unit tests. */
-  buildFilterParts(annotations: AnnotationRow[], videoDurationSec?: number): string[] {
+  buildFilterParts(
+    annotations: AnnotationRow[],
+    videoDurationSec?: number,
+    /** Draw inside this pixel box (a composite cell's picture); default: the whole frame. */
+    box?: PixelBox,
+  ): string[] {
+    // Frame-relative expressions by default; absolute pixels inside a box.
+    const X = (v: number) => (box ? `${Math.round(box.x + v * box.w)}` : `iw*${this.f(v)}`);
+    const Y = (v: number) => (box ? `${Math.round(box.y + v * box.h)}` : `ih*${this.f(v)}`);
+    const W = (v: number) => (box ? `${Math.round(v * box.w)}` : `iw*${this.f(v)}`);
+    const H = (v: number) => (box ? `${Math.round(v * box.h)}` : `ih*${this.f(v)}`);
     const parts: string[] = [];
     for (const a of annotations) {
       let g: any = {};
@@ -223,10 +301,10 @@ export class AnnotationRenderService {
         const bw = Math.min(1, rx * 2);
         const bh = Math.min(1, ry * 2);
         parts.push(
-          `drawbox=x=iw*${this.f(left)}:y=ih*${this.f(top)}:w=iw*${this.f(bw)}:h=ih*${this.f(bh)}:color=${color}@0.35:t=fill:${enable}`,
+          `drawbox=x=${X(left)}:y=${Y(top)}:w=${W(bw)}:h=${H(bh)}:color=${color}@0.35:t=fill:${enable}`,
         );
         parts.push(
-          `drawbox=x=iw*${this.f(left)}:y=ih*${this.f(top)}:w=iw*${this.f(bw)}:h=ih*${this.f(bh)}:color=${color}:t=6:${enable}`,
+          `drawbox=x=${X(left)}:y=${Y(top)}:w=${W(bw)}:h=${H(bh)}:color=${color}:t=6:${enable}`,
         );
         continue;
       }
@@ -242,14 +320,12 @@ export class AnnotationRenderService {
         const bw = Math.max(0.01, Math.abs(x1 - x0));
         const bh = Math.max(0.01, Math.abs(y1 - y0));
         parts.push(
-          `drawbox=x=iw*${this.f(left)}:y=ih*${this.f(top)}:w=iw*${this.f(bw)}:h=ih*${this.f(bh)}:color=${color}@0.35:t=fill:${enable}`,
+          `drawbox=x=${X(left)}:y=${Y(top)}:w=${W(bw)}:h=${H(bh)}:color=${color}@0.35:t=fill:${enable}`,
         );
         parts.push(
-          `drawbox=x=iw*${this.f(left)}:y=ih*${this.f(top)}:w=iw*${this.f(bw)}:h=ih*${this.f(bh)}:color=${color}:t=6:${enable}`,
+          `drawbox=x=${X(left)}:y=${Y(top)}:w=${W(bw)}:h=${H(bh)}:color=${color}:t=6:${enable}`,
         );
-        parts.push(
-          `drawbox=x=iw*${this.f(x1)}-14:y=ih*${this.f(y1)}-14:w=28:h=28:color=${color}:t=fill:${enable}`,
-        );
+        parts.push(`drawbox=x=${X(x1)}-14:y=${Y(y1)}-14:w=28:h=28:color=${color}:t=fill:${enable}`);
         continue;
       }
 
@@ -258,18 +334,22 @@ export class AnnotationRenderService {
         // explicit font file on this ffmpeg.
         const font = escapeFilterValue(ANNOTATION_FONT_PATH);
         const text = escapeFilterValue(String(a.text));
+        const gx = Number(g.x) || 0;
+        const gy = Number(g.y) || 0;
+        const tx = box ? `x=${X(gx)}` : `x=w*${this.f(gx)}`;
+        const ty = box ? `y=${Y(gy)}` : `y=h*${this.f(gy)}`;
         parts.push(
-          `drawtext=fontfile=${font}:text=${text}:expansion=none:x=w*${this.f(g.x)}:y=h*${this.f(g.y)}:fontcolor=${color}:fontsize=28:${enable}`,
+          `drawtext=fontfile=${font}:text=${text}:expansion=none:${tx}:${ty}:fontcolor=${color}:fontsize=28:${enable}`,
         );
         continue;
       }
 
       // RECT + FREEHAND (bounding box) — filled wash + thick border so burn-in
       // stays obvious after yuv420 / downscale.
-      const x = `iw*${this.f(g.x)}`;
-      const y = `ih*${this.f(g.y)}`;
-      const w = `iw*${this.f(g.w)}`;
-      const h = `ih*${this.f(g.h)}`;
+      const x = X(Number(g.x) || 0);
+      const y = Y(Number(g.y) || 0);
+      const w = W(Number(g.w) || 0);
+      const h = H(Number(g.h) || 0);
       parts.push(`drawbox=x=${x}:y=${y}:w=${w}:h=${h}:color=${color}@0.35:t=fill:${enable}`);
       parts.push(`drawbox=x=${x}:y=${y}:w=${w}:h=${h}:color=${color}:t=6:${enable}`);
     }
@@ -340,7 +420,26 @@ export class AnnotationRenderService {
     // used unclamped (prior behavior).
     const durationSec = await this.probeDurationSec(sourcePath);
     const imageFor = (a: AnnotationRow) => this.imageFor(sourcePath, a);
-    const plan = this.buildRenderGraph(annotations, durationSec, imageFor);
+    await this.renderPlan(sourcePath, outPath, (withText) =>
+      this.buildRenderGraph(
+        withText ? annotations : this.withoutUndrawableText(annotations, imageFor),
+        durationSec,
+        imageFor,
+      ),
+    );
+  }
+
+  /**
+   * Run a graph, or copy the source when there is nothing to draw. If it fails
+   * with text in it, retry once without the text marks: one undrawable text
+   * mark must not cost every other mark.
+   */
+  private async renderPlan(
+    sourcePath: string,
+    outPath: string,
+    build: (withText: boolean) => RenderGraph | null,
+  ): Promise<void> {
+    const plan = build(true);
     if (!plan) {
       fs.copyFileSync(sourcePath, outPath);
       return;
@@ -349,19 +448,64 @@ export class AnnotationRenderService {
       await this.runGraph(sourcePath, outPath, plan);
     } catch (err: any) {
       if (!plan.hasText) throw err;
-      // One undrawable text mark must not cost every other mark: the bundled
-      // ffmpeg has freetype but no fontconfig, so drawtext cannot find a font.
       renderLog.warn(
         `Text marks could not be drawn, rendering without them: ${err?.message ?? err}`,
       );
-      const noText = annotations.filter((a) => a.shape !== 'TEXT' || !!imageFor(a));
-      const retry = this.buildRenderGraph(noText, durationSec, imageFor);
+      const retry = build(false);
       if (!retry) {
         fs.copyFileSync(sourcePath, outPath);
         return;
       }
       await this.runGraph(sourcePath, outPath, retry);
     }
+  }
+
+  private withoutUndrawableText(
+    annotations: AnnotationRow[],
+    imageFor: (a: AnnotationRow) => string | undefined,
+  ): AnnotationRow[] {
+    return annotations.filter((a) => a.shape !== 'TEXT' || !!imageFor(a));
+  }
+
+  /**
+   * One graph over the whole composite: every cell's box-drawn marks first,
+   * then each image mark scaled to its cell's picture and overlaid there.
+   */
+  buildCompositeGraph(cells: CompositeCell[], videoDurationSec?: number): RenderGraph | null {
+    const parts: string[] = [];
+    const images: Array<{ file: string; enable: string; box: PixelBox }> = [];
+    for (const cell of cells) {
+      const drawn: AnnotationRow[] = [];
+      for (const a of cell.annotations) {
+        const file = cell.imageFor(a);
+        if (!file) {
+          drawn.push(a);
+          continue;
+        }
+        const enable = this.enableExpr(a, videoDurationSec);
+        if (enable) images.push({ file, enable, box: cell.box });
+      }
+      parts.push(...this.buildFilterParts(drawn, videoDurationSec, cell.box));
+    }
+    const hasText = parts.some((p) => p.startsWith('drawtext='));
+    const chunks: string[] = [];
+    let cur = '[0:v]';
+    if (parts.length > 0) {
+      chunks.push(`[0:v]${parts.join(',')}[d0]`);
+      cur = '[d0]';
+    }
+    images.forEach(({ enable, box }, i) => {
+      const k = i + 1;
+      chunks.push(`[${k}:v]scale=${box.w}:${box.h}[o${k}]`);
+      chunks.push(`${cur}[o${k}]overlay=${box.x}:${box.y}:${enable}[v${k}]`);
+      cur = `[v${k}]`;
+    });
+    if (cur === '[0:v]') return null;
+    return { inputs: images.map((i) => i.file), graph: chunks.join(';'), output: cur, hasText };
+  }
+
+  private async probeFrameSize(filePath: string): Promise<{ w: number; h: number } | undefined> {
+    return probeVideoFrameSize(filePath);
   }
 
   private imageFor(sourcePath: string, a: AnnotationRow): string | undefined {
@@ -481,15 +625,27 @@ export class AnnotationRenderService {
 
   private cacheStamp(sourcePath: string, annotations: AnnotationRow[]): string {
     const srcMtime = fs.statSync(sourcePath).mtimeMs;
-    const parts = annotations.map((a) => {
-      // A late-arriving image or a later clear must bust the cache.
-      const img = this.imageFor(sourcePath, a);
-      const imgMtime = img ? fs.statSync(img).mtimeMs : 0;
-      return `${a.id ?? ''}:${a.timecode_ms ?? 0}:${a.end_timecode_ms ?? ''}:${a.shape}:${a.geometry}:${a.color ?? ''}:${a.text ?? ''}:${imgMtime}`;
-    });
+    const parts = annotations.map((a) => this.markStamp(a, (m) => this.imageFor(sourcePath, m)));
     // Bump prefix when burn-in style changes so cached .annotated.mp4 is rebuilt.
     // v3: time windows + image overlays.
     return `v3|${srcMtime}|${parts.join('|')}`;
+  }
+
+  /** Composite cache stamp: the source, each cell's box, and every mark in it. */
+  private compositeStamp(compositePath: string, cells: CompositeCell[]): string {
+    const srcMtime = fs.statSync(compositePath).mtimeMs;
+    const perCell = cells.map((c) => {
+      const b = `${c.box.x},${c.box.y},${c.box.w},${c.box.h}`;
+      return `${b}|${c.annotations.map((a) => this.markStamp(a, c.imageFor)).join('|')}`;
+    });
+    return `c1|${srcMtime}|${perCell.join('#')}`;
+  }
+
+  /** A late-arriving image or a later clear must bust the cache. */
+  private markStamp(a: AnnotationRow, imageFor: (a: AnnotationRow) => string | undefined): string {
+    const img = imageFor(a);
+    const imgMtime = img ? fs.statSync(img).mtimeMs : 0;
+    return `${a.id ?? ''}:${a.timecode_ms ?? 0}:${a.end_timecode_ms ?? ''}:${a.shape}:${a.geometry}:${a.color ?? ''}:${a.text ?? ''}:${imgMtime}`;
   }
 
   private f(n: any): string {
