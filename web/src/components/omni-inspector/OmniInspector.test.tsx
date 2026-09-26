@@ -264,3 +264,25 @@ describe('OmniInspector — divider', () => {
     expect(screen.getByRole('separator')).toHaveAttribute('aria-valuenow', '50');
   });
 });
+
+describe('OmniInspector — breadcrumb', () => {
+  it('shows the path, folds early ancestors, and selects one when clicked', async () => {
+    api.getInspectorSnapshot.mockResolvedValue(deepSnapshot());
+    render(<OmniInspector udid="U1" embedded />);
+    await screen.findByRole('tree');
+    fireEvent.change(screen.getByRole('textbox', { name: 'Search elements' }), {
+      target: { value: 'Voice' },
+    });
+    fireEvent.click(await screen.findByRole('treeitem', { name: /Voice search/ }));
+    const nav = screen.getByRole('navigation', { name: 'Element path' });
+    expect(within(nav).getByText('Voice search')).toHaveAttribute('aria-current', 'location');
+    // hierarchy, level1…level4: five ancestors, so the first one folds away.
+    expect(within(nav).queryByRole('button', { name: 'hierarchy' })).toBeNull();
+    fireEvent.click(within(nav).getByRole('button', { name: 'Show all 5 ancestors' }));
+    fireEvent.click(within(nav).getByRole('button', { name: 'hierarchy' }));
+    expect(screen.getByRole('treeitem', { name: /hierarchy/ })).toHaveAttribute(
+      'aria-selected',
+      'true',
+    );
+  });
+});

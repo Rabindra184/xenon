@@ -37,6 +37,7 @@ import { Select } from '../ui/select';
 import { analyzeElement, ROLE_ICON, type RoleKey } from './elementRole';
 import { initialExpanded, matchSet, pathTo, visibleRows } from './treeRows';
 import ElementTree from './ElementTree';
+import ElementBreadcrumb from './ElementBreadcrumb';
 import SplitDivider from './SplitDivider';
 import {
   browserStorage,
@@ -662,11 +663,6 @@ const OmniInspector: React.FC<OmniInspectorProps> = ({
       .sort((a, b) => b.count - a.count);
   };
 
-  const getElementPath = (node: InspectorNode): string[] => {
-    const parts = node.xpath.split('/').filter(Boolean);
-    return parts.slice(-3);
-  };
-
   // The tree as flat, rendered rows — folding plain wrapper runs into one row
   // each — and the set of nodes the current search matches. Both derive from
   // the same (snapshot, expandedNodes, searchQuery) inputs the tree renders
@@ -1235,11 +1231,16 @@ const OmniInspector: React.FC<OmniInspectorProps> = ({
                               <span className="omni-info-value">{selectedNode.text}</span>
                             </div>
                           )}
-                          <div className="omni-info-row">
+                          <div className="omni-info-row omni-info-row--path">
                             <span className="omni-info-key">Path</span>
-                            <span className="omni-info-value mono small">
-                              {getElementPath(selectedNode).join(' › ')}
-                            </span>
+                            <ElementBreadcrumb
+                              key={selectedNode.xpath}
+                              path={
+                                (snapshot?.hierarchy &&
+                                  pathTo(snapshot.hierarchy, selectedNode.xpath)) || [selectedNode]
+                              }
+                              onSelect={selectNode}
+                            />
                           </div>
                         </div>
                       </div>
