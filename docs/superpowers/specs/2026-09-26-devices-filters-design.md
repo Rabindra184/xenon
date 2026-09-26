@@ -59,7 +59,8 @@ At laptop width (1280–1440) the toolbar has two rows. A wrapper with
   no "/" is typed. It doesn't when:
   - focus is already in an `input`, a `textarea`, a `select` or a
     contenteditable;
-  - a modifier key is held;
+  - Ctrl, Alt or Cmd is held (Shift is allowed, since some keyboards need
+    it to type "/");
   - a device is open (`params.udid` is set), since device control sends
     keys to the phone.
 
@@ -94,7 +95,7 @@ A new `FilterMenu` component draws each one as a button that opens a menu.
   - Choosing an item closes the menu and puts focus back on the trigger.
   - Esc closes the menu (the Popover's dismissable layer) and returns focus
     the same way.
-  - An outside click closes it without moving focus.
+  - An outside click closes it, and focus goes wherever the click puts it.
 - A device is **virtual** when `deviceType` is `simulator` or `emulator`,
   or when `deviceType` is missing and `realDevice` is `false`. Otherwise it
   is **real**. A device with a platform other than Android, iOS or tvOS
