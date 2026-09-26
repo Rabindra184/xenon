@@ -1,5 +1,6 @@
 import * as React from 'react';
-import { Circle, Download, Pencil, Square } from 'lucide-react';
+import { Circle, Download, Square } from 'lucide-react';
+import { SegmentedControl } from '../ui/SegmentedControl';
 import { formatElapsed, useMosaic } from './recording-group-store';
 import {
   startRecording,
@@ -196,10 +197,25 @@ export function RecordingControls({ selectedUdids, onClearMarks }: Props) {
     }
   };
 
-  const toggleAnnotate = () => {
-    if (!canAnnotate) return;
-    dispatch({ type: 'SET_ANNOTATE_MODE', enabled: !state.annotateMode });
+  const setMode = (mode: 'interact' | 'annotate') => {
+    const enabled = mode === 'annotate';
+    if (enabled && !canAnnotate) return;
+    if (enabled !== state.annotateMode) dispatch({ type: 'SET_ANNOTATE_MODE', enabled });
   };
+
+  // Esc returns to Interact, only while annotating: in Interact mode a
+  // focused Android tile sends Esc to the phone as Back.
+  React.useEffect(() => {
+    if (!state.annotateMode) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape' || e.repeat) return;
+      const t = e.target as HTMLElement | null;
+      if (t && (t.closest?.('input, textarea, select') || t.isContentEditable)) return;
+      dispatch({ type: 'SET_ANNOTATE_MODE', enabled: false });
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [state.annotateMode, dispatch]);
 
   const clearAnnotations = () => {
     if (!canAnnotate) return;
@@ -259,26 +275,27 @@ export function RecordingControls({ selectedUdids, onClearMarks }: Props) {
         <Square {...icon} size={12} />
         {state.recordingPhase === 'stopping' ? 'Stopping…' : 'Stop'}
       </button>
-      <button
-        type="button"
-        onClick={toggleAnnotate}
-        disabled={!canAnnotate}
-        title={
-          canAnnotate
-            ? state.annotateMode
-              ? 'Exit annotate mode (tap/swipe resumes)'
-              : 'Draw on the live screen — saved with the recording'
-            : 'Start recording to annotate'
-        }
-        className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-sm rounded border ${
-          state.annotateMode
-            ? 'bg-[var(--color-info)] text-white border-transparent'
-            : 'border-[var(--border)]'
-        } disabled:opacity-40 disabled:cursor-not-allowed`}
-      >
-        <Pencil {...icon} />
-        Annotate
-      </button>
+      {/* Always rendered: controls that appear in this row slide others under
+          the cursor. Annotate only works inside a recording. */}
+      <SegmentedControl<'interact' | 'annotate'>
+        size="sm"
+        value={state.annotateMode ? 'annotate' : 'interact'}
+        onChange={setMode}
+        segments={[
+          {
+            value: 'interact',
+            label: 'Interact',
+            title: 'Tap, swipe and type on the devices (Esc)',
+            keyShortcuts: 'Escape',
+          },
+          {
+            value: 'annotate',
+            label: 'Annotate',
+            title: canAnnotate ? 'Draw marks on the recording' : 'Start recording to annotate',
+            disabled: !canAnnotate,
+          },
+        ]}
+      />
 
       {/* Rendered for the whole recording and disabled rather than hidden:
           controls appearing in this right-aligned row slid every button under

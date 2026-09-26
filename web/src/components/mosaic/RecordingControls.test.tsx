@@ -105,7 +105,8 @@ describe('RecordingControls labels', () => {
   // screen reader reads out as part of the name.
   it('labels its buttons in words', () => {
     mount(idleWithTile());
-    expect(buttonNames()).toEqual(['Record', 'Stop', 'Annotate']);
+    // Interact / Annotate are the switch's tabs, not buttons.
+    expect(buttonNames()).toEqual(['Record', 'Stop']);
   });
 
   it('labels the download link in words', () => {
@@ -140,5 +141,67 @@ describe('RecordingControls labels', () => {
       e.getAttribute('title'),
     );
     expect(titles.filter((t) => /mosaic/i.test(t ?? ''))).toEqual([]);
+  });
+});
+
+describe('Interact / Annotate switch', () => {
+  const tab = (name: string) => screen.getByRole('tab', { name }) as HTMLButtonElement;
+
+  it('shows Interact selected and Annotate unavailable before recording', () => {
+    mount(idleWithTile());
+    expect(tab('Interact')).toHaveAttribute('aria-selected', 'true');
+    expect(tab('Annotate')).toBeDisabled();
+    expect(tab('Annotate')).toHaveAttribute('title', 'Start recording to annotate');
+  });
+
+  it('starts a recording on Interact, with the drawing tools off', () => {
+    const s = mosaicReducer(idleWithTile(), {
+      type: 'START_RECORDING',
+      groupId: 'g',
+      startedAt: Date.now(),
+      tileIds: { u1: 'r1' },
+    });
+    mount(s);
+    expect(tab('Interact')).toHaveAttribute('aria-selected', 'true');
+    expect((screen.getByRole('button', { name: 'Rect' }) as HTMLButtonElement).disabled).toBe(
+      true,
+    );
+  });
+
+  it('switches to Annotate on click', () => {
+    const dispatch = vi.fn();
+    mount(recording(false, false), dispatch);
+    fireEvent.click(tab('Annotate'));
+    expect(dispatch).toHaveBeenCalledWith({ type: 'SET_ANNOTATE_MODE', enabled: true });
+  });
+
+  it('declares Esc as the way back to Interact', () => {
+    mount(recording(true, false));
+    expect(tab('Interact')).toHaveAttribute('aria-keyshortcuts', 'Escape');
+  });
+
+  it('returns to Interact on Esc while annotating', () => {
+    const dispatch = vi.fn();
+    mount(recording(true, false), dispatch);
+    fireEvent.keyDown(document.body, { key: 'Escape' });
+    expect(dispatch).toHaveBeenCalledWith({ type: 'SET_ANNOTATE_MODE', enabled: false });
+  });
+
+  it('ignores Esc typed into a text field', () => {
+    const dispatch = vi.fn();
+    mount(recording(true, false), dispatch);
+    const input = document.createElement('input');
+    document.body.appendChild(input);
+    fireEvent.keyDown(input, { key: 'Escape' });
+    input.remove();
+    expect(dispatch).not.toHaveBeenCalled();
+  });
+
+  // In Interact mode a focused Android tile sends Esc to the phone as Back.
+  it('leaves Esc alone when not annotating', () => {
+    const dispatch = vi.fn();
+    mount(recording(false, false), dispatch);
+    fireEvent.keyDown(document.body, { key: 'Escape' });
+    expect(dispatch).not.toHaveBeenCalled();
   });
 });
