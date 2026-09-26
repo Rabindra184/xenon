@@ -5,7 +5,9 @@ const setClipboard = (value: unknown) =>
   Object.defineProperty(navigator, 'clipboard', { value, configurable: true });
 
 describe('copyText', () => {
-  afterEach(() => setClipboard(undefined));
+  afterEach(() => {
+    setClipboard(undefined);
+  });
 
   it('is true when the browser wrote it', async () => {
     const writeText = vi.fn().mockResolvedValue(undefined);
