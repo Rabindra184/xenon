@@ -6,6 +6,19 @@ This project follows [Semantic Versioning](https://semver.org/). Releases are
 published to npm automatically when `package.json`'s `version` changes on `main`
 (see `.github/workflows/npm-publish.yml`).
 
+## 1.26.1
+
+Patch release. Device control names a device the way its Devices card does.
+No server changes.
+
+### Fixed
+
+- **Device control showed the codename** (#324). Opening the Galaxy S9+
+  from the Devices page showed "star2ltexx" in the header. The header now
+  reads "Galaxy S9+", falling back to the reported name when a device has
+  no friendly one, and screen readers announce the view by that name too.
+  The Shell tab's greeting uses it as well.
+
 ## 1.26.0
 
 Minor release. The Devices page can filter by platform and by real or virtual
