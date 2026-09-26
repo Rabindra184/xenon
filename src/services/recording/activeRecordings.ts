@@ -5,6 +5,7 @@ export interface ActiveRow {
   group_id: string;
   device_udid: string;
   started_at: Date;
+  file_path?: string;
   annotations?: Array<{
     recording_id: string;
     shape: string;
@@ -41,6 +42,8 @@ export function selectOwnActiveGroups(
   rows: ActiveRow[],
   lockOf: (udid: string) => string | null | undefined,
   actor: { userId?: string; apiKeyId?: string },
+  /** The group's recorded t=0 for a row, when its timing record exists. */
+  t0Of: (row: ActiveRow) => number | undefined = () => undefined,
 ): ActiveGroup[] {
   const groups = new Map<string, ActiveRow[]>();
   for (const r of rows) {
@@ -54,7 +57,11 @@ export function selectOwnActiveGroups(
       isSelfManualLock(lockOf(r.device_udid), r.device_udid, actor.userId, actor.apiKeyId),
     );
     if (!mine) continue;
-    const started = Math.min(...list.map((r) => new Date(r.started_at).getTime()));
+    // Resume on the dashboard's original t=0 (when start() returned) so marks
+    // drawn after a reload share a timebase with those drawn before it. Older
+    // recordings have no timing record; their earliest start is close enough.
+    const recordedT0 = list.map(t0Of).find((v) => v !== undefined);
+    const started = recordedT0 ?? Math.min(...list.map((r) => new Date(r.started_at).getTime()));
     out.push({
       groupId,
       startedAt: new Date(started).toISOString(),

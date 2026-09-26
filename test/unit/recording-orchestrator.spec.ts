@@ -11,6 +11,13 @@ import { ConcurrencyGate } from '../../src/services/recording/concurrency-gate';
 // Stub the device store factory (used to look up host).
 import * as deviceStoreModule from '../../src/data-service/device-store';
 import { useArtifactStore } from '../helpers/artifact-store';
+import { Container } from 'typedi';
+import { ARTIFACT_STORE } from '../../src/services/artifacts/ArtifactStore';
+import {
+  readRecordingTiming,
+  recordingTimingPath,
+  writeRecordingTiming,
+} from '../../src/services/recording/recordingTiming';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
@@ -56,6 +63,7 @@ function makeOrch(overrides: any = {}) {
     eventMgr: eventMgr as any,
     unblockDeviceFn,
     ensureMjpegPortFn,
+    now: overrides.now,
   });
   return {
     orch,
@@ -157,6 +165,63 @@ describe('RecordingOrchestrator.start', () => {
     const out = await orch.start({ udids: ['U1', 'U2'], actorId: 'actor-1' });
     expect(out.compositeEnabled).to.equal(true);
     expect(fs.existsSync(compositeLayoutPath(out.groupId))).to.equal(false);
+  });
+
+  const videoOf = (id: string) =>
+    (Container.get(ARTIFACT_STORE) as any).resolve(id, 'video', `${id}.mp4`) as string;
+  const clock = (...ticks: number[]) => {
+    let i = 0;
+    return () => ticks[Math.min(i++, ticks.length - 1)];
+  };
+
+  // Marks count from the dashboard's t=0, stamped when start() returns; each
+  // device's video starts when its ffmpeg spawns, before that.
+  it('records when each video started relative to t=0', async () => {
+    // U1 spawns at 1000, U2 at 1600, start() returns at 2350.
+    const { orch } = makeOrch({ now: clock(1000, 1600, 2350) });
+    const out = await orch.start({ udids: ['U1', 'U2'], actorId: 'actor-1' });
+    try {
+      expect(readRecordingTiming(videoOf(out.recordings[0].id))).to.deep.equal({
+        version: 1,
+        spawnedAtMs: 1000,
+        groupT0Ms: 2350,
+      });
+      expect(readRecordingTiming(videoOf(out.recordings[1].id))).to.deep.equal({
+        version: 1,
+        spawnedAtMs: 1600,
+        groupT0Ms: 2350,
+      });
+    } finally {
+      for (const r of out.recordings) {
+        fs.rmSync(path.dirname(recordingTimingPath(videoOf(r.id))), {
+          recursive: true,
+          force: true,
+        });
+      }
+    }
+  });
+
+  it("gives a device added later the group's t=0, so its marks shift back", async () => {
+    const existing = videoOf('rec-existing');
+    writeRecordingTiming(existing, { spawnedAtMs: 1000, groupT0Ms: 2350 });
+    const store = {
+      create: sinon.stub().resolves({}),
+      listGroup: sinon.stub().resolves([{ id: 'rec-existing', file_path: existing }]),
+      finalize: sinon.stub().resolves({}),
+    };
+    const { orch } = makeOrch({ store, now: clock(9000) });
+    const out = await orch.addDevice('grp-1', 'U3', 'actor-1');
+    try {
+      expect(readRecordingTiming(videoOf(out.recording.id))).to.deep.equal({
+        version: 1,
+        spawnedAtMs: 9000,
+        groupT0Ms: 2350,
+      });
+    } finally {
+      for (const id of ['rec-existing', out.recording.id]) {
+        fs.rmSync(path.dirname(recordingTimingPath(videoOf(id))), { recursive: true, force: true });
+      }
+    }
   });
 
   it('happy path: creates one row per UDID, spawns ffmpeg, takes blocks, emits started', async () => {

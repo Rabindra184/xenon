@@ -17,6 +17,7 @@ import { formatManualLock } from './manualLock';
 import { ensureMjpegForRecording } from './ensureMjpegForRecording';
 import { probeVideoDurationMs } from './probeDuration';
 import { annotationImagePath } from './annotationImage';
+import { readRecordingTiming, writeRecordingTiming } from './recordingTiming';
 import { ATTR, METRIC, OUTCOME } from '../telemetry/attributes';
 import log from '../../logger';
 import { ARTIFACT_STORE } from '../artifacts/ArtifactStore';
@@ -143,6 +144,8 @@ export interface OrchestratorDeps {
    * finalizing a recording never spawns ffmpeg.
    */
   probeDurationMsFn?: (filePath: string) => Promise<number | undefined>;
+  /** Wall clock for recording timings. Injected in unit tests. */
+  now?: () => number;
 }
 
 @Service()
@@ -152,10 +155,11 @@ export class RecordingOrchestrator {
   public blockDeviceFn: BlockDeviceFn;
   public ensureMjpegPortFn: (udid: string) => Promise<number>;
   public probeDurationMsFn: (filePath: string) => Promise<number | undefined>;
+  public now: () => number;
   private readonly _deps: Required<
     Omit<
       OrchestratorDeps,
-      'blockDeviceFn' | 'unblockDeviceFn' | 'ensureMjpegPortFn' | 'probeDurationMsFn'
+      'blockDeviceFn' | 'unblockDeviceFn' | 'ensureMjpegPortFn' | 'probeDurationMsFn' | 'now'
     >
   >;
   /**
@@ -177,6 +181,7 @@ export class RecordingOrchestrator {
     this.unblockDeviceFn = deps.unblockDeviceFn ?? defaultUnblockDevice;
     this.ensureMjpegPortFn = deps.ensureMjpegPortFn ?? ensureMjpegForRecording;
     this.probeDurationMsFn = deps.probeDurationMsFn ?? probeVideoDurationMs;
+    this.now = deps.now ?? Date.now;
   }
 
   private get busyPrecheck() {
@@ -300,6 +305,7 @@ export class RecordingOrchestrator {
     // Android H.264 preview does not open an MJPEG port.
     const recordings: StartedRecording[] = [];
     const mjpegPorts: Record<string, number> = {};
+    const spawned: Array<{ filePath: string; spawnedAtMs: number }> = [];
     for (let i = 0; i < udids.length; i++) {
       const id = recordingIds[i];
       const udid = udids[i];
@@ -330,6 +336,8 @@ export class RecordingOrchestrator {
           // device stopped answering and the MJPEG server disconnected it.
           onExit: (code) => void this.handleSourceEnded(id, code),
         });
+        // startRecording resolves as its ffmpeg spawns: this video's t=0.
+        spawned.push({ filePath, spawnedAtMs: this.now() });
         recordings.push({ id, udid, status: 'RECORDING' });
       } catch (err: any) {
         recLog.error(`Failed to start recording for ${udid}: ${err?.message}`);
@@ -405,6 +413,10 @@ export class RecordingOrchestrator {
       recordings: recordings.map((r) => ({ id: r.id, udid: r.udid })),
       startedAt,
     });
+    // The dashboard stamps its t=0 when this returns, and every mark's
+    // timecode counts from it. The per-device videos started earlier.
+    const groupT0Ms = this.now();
+    for (const s of spawned) this.recordTiming(s.filePath, s.spawnedAtMs, groupT0Ms);
     return { groupId, recordings, startedAt, compositeEnabled };
   }
 
@@ -604,6 +616,29 @@ export class RecordingOrchestrator {
         recLog.warn(`Composite pre-render failed for ${groupId}: ${err?.message ?? err}`);
       }
     })();
+  }
+
+  /** Best effort: without it the video's marks are simply not shifted. */
+  private recordTiming(filePath: string, spawnedAtMs: number, groupT0Ms: number): void {
+    try {
+      writeRecordingTiming(filePath, { spawnedAtMs, groupT0Ms });
+    } catch (err: any) {
+      recLog.warn(`Recording timing not saved for ${filePath}: ${err?.message ?? err}`);
+    }
+  }
+
+  /** The group's t=0, from any of its recordings that has a timing record. */
+  private async groupT0Ms(groupId: string, exceptId: string): Promise<number | undefined> {
+    try {
+      for (const r of (await this.store.listGroup(groupId)) as any[]) {
+        if (r.id === exceptId || !r.file_path) continue;
+        const t0 = readRecordingTiming(r.file_path)?.groupT0Ms;
+        if (t0 !== undefined) return t0;
+      }
+    } catch {
+      /* unknown t=0: leave this device unshifted */
+    }
+    return undefined;
   }
 
   /**
@@ -858,6 +893,10 @@ export class RecordingOrchestrator {
         outputPath: filePath,
         mjpegPort,
       });
+      // Joined after t=0: its marks shift back by how late it started.
+      const spawnedAtMs = this.now();
+      const groupT0Ms = await this.groupT0Ms(groupId, recordingId);
+      if (groupT0Ms !== undefined) this.recordTiming(filePath, spawnedAtMs, groupT0Ms);
     } catch (err: any) {
       recLog.error(`Failed to add device ${udid} to group ${groupId}: ${err?.message}`);
       this.gate.release(recordingId);

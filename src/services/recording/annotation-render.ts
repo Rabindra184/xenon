@@ -7,6 +7,7 @@ import { RecordingStore } from './recording-store';
 import { resolveFfmpegPath } from '../../helpers/ffmpegPath';
 import { probeVideoDurationSec, probeVideoFrameSize } from './probeDuration';
 import { annotationImagePath } from './annotationImage';
+import { markShiftMs, readRecordingTiming, shiftAnnotations } from './recordingTiming';
 import log from '../../logger';
 import type { CompositeLayoutFile } from './RecordingOrchestrator';
 
@@ -124,7 +125,13 @@ export class AnnotationRenderService {
     if (!rec.file_path || !fs.existsSync(rec.file_path)) {
       throw new Error(`Source video missing for ${recordingId}`);
     }
-    const annotations = (rec.annotations ?? []) as AnnotationRow[];
+    // Timecodes count from the dashboard's t=0; this video may have started
+    // before it (multi-device groups) or after it (added devices). Only the
+    // per-device video needs this: the composite starts at t=0.
+    const annotations = shiftAnnotations(
+      (rec.annotations ?? []) as AnnotationRow[],
+      markShiftMs(readRecordingTiming(rec.file_path)),
+    );
     if (annotations.length === 0) {
       return { filePath: rec.file_path, annotated: false };
     }
