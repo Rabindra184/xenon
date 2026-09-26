@@ -84,14 +84,16 @@ describe('activityLabel', () => {
     expect(activityLabel(theirs, member, NOW)).toBe('Live control by another user');
   });
 
-  it('says who reserved the device and for how much longer', () => {
+  // The band already says "Reserved", and an ellipsis cuts the end: the time
+  // left comes first so a long name is what gets cut.
+  it('says how long is left on a reservation, then who holds it', () => {
     const d = dev({ reservedBy: 'priya@acme.com', reservedUntil: NOW + 46 * MIN + 16_100 });
-    expect(activityLabel(d, member, NOW)).toBe('Reserved by priya@acme.com · 46m left');
+    expect(activityLabel(d, member, NOW)).toBe('46m left · by priya@acme.com');
   });
 
   it('says "you" for your own reservation', () => {
     const d = dev({ reservedBy: 'me@acme.com', reservedUntil: NOW + 90 * MIN });
-    expect(activityLabel(d, member, NOW)).toBe('Reserved by you · 1h 30m left');
+    expect(activityLabel(d, member, NOW)).toBe('1h 30m left · by you');
   });
 
   it('has nothing to say about an idle device', () => {
@@ -122,7 +124,7 @@ describe('controlAvailability', () => {
   it('refuses a device running a test', () => {
     expect(controlAvailability(dev({ busy: true, session_id: 'abc' }), member)).toEqual({
       enabled: false,
-      reason: 'A test is running on this device',
+      reason: 'A test is running',
     });
   });
 
@@ -132,7 +134,7 @@ describe('controlAvailability', () => {
     const theirs = dev({ busy: true, session_id: 'manual_u42_U1' });
     expect(controlAvailability(theirs, member)).toEqual({
       enabled: false,
-      reason: 'Another user is controlling this device',
+      reason: 'Another user has control',
     });
     expect(controlAvailability(theirs, admin).enabled).toBe(true);
   });

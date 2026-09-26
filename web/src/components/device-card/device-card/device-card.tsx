@@ -1,6 +1,5 @@
 import * as React from 'react';
-import prettyMilliseconds from 'pretty-ms';
-import { Copy, MoreHorizontal, Clock, Terminal } from 'lucide-react';
+import { Copy, MoreHorizontal, Smartphone, Tablet, Tv } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { IDevice } from '../../../interfaces/IDevice';
 import XenonApiService from '../../../api-service';
@@ -8,26 +7,17 @@ import { useAuth } from '../../../auth/auth-context';
 import { Button } from '../../ui/button';
 import { Select } from '../../ui/select';
 import { Pill } from '../../ui/Pill';
-import { StatusCode } from '../../ui/StatusCode';
-import { KeyValueRow } from '../../ui/KeyValueRow';
 import { Popover } from '../../ui/Popover';
-import { Menu, MenuItem } from '../../ui/Menu';
+import { Menu, MenuDivider, MenuItem } from '../../ui/Menu';
 import ReservationModal from '../../reservation-modal/reservation-modal';
 import TagManagerModal from '../../tag-manager-modal/tag-manager-modal';
 import { HealthBadges } from '../health-badges';
 import { useToast } from '../../ui/toast';
-import { formatDeviceNetworkAddress } from './formatDeviceNetworkAddress';
-import {
-  deviceTypeLabel,
-  formatAppiumServerUrl,
-  formatSessionCapabilitiesJson,
-} from './sessionConnection';
+import { formatAppiumServerUrl, formatSessionCapabilitiesJson } from './sessionConnection';
+import { deviceNetworkIp } from './formatDeviceNetworkAddress';
 import './device-card.css';
-import { platformLabel } from '../../../lib/labels';
-import { activityLabel, controlAvailability, deviceState } from './deviceState';
-
-const SHARED_POOL_LABEL = 'Shared';
-const SHARED_POOL_TITLE = 'Shared pool — visible to all authenticated users';
+import { activityLabel, controlAvailability, deviceState, type DeviceState } from './deviceState';
+import { deviceFormFactor, deviceSubtitle, deviceTitle } from './deviceIdentity';
 
 interface Props {
   device: IDevice;
@@ -42,39 +32,40 @@ interface Props {
   teams?: Map<string, string>;
 }
 
+const STATE_LABEL: Record<DeviceState, string> = {
+  ready: 'Ready',
+  busy: 'Busy',
+  reserved: 'Reserved',
+  maintenance: 'Maintenance',
+  offline: 'Offline',
+};
+
+/** Phone, tablet or TV outline; dashed for emulators and simulators. */
+const FormFactorIcon: React.FC<{ device: IDevice }> = ({ device }) => {
+  const Icon = { phone: Smartphone, tablet: Tablet, tv: Tv }[deviceFormFactor(device)];
+  const virtual = device.deviceType === 'emulator' || device.deviceType === 'simulator';
+  return <Icon size={26} strokeWidth={1.5} strokeDasharray={virtual ? '3 2' : undefined} />;
+};
+
 /**
- * Inline team chip on each device card. Read-only for non-admins (Shared or
- * team name). Admins see a click-to-edit `<select>` with all teams plus a
- * shared-pool option. PUTs /xenon/api/grid/device/:udid/team and triggers
- * the parent's `reloadDevices` on success.
+ * Admin-only team picker, opened from the ⋯ menu. PUTs
+ * /xenon/api/grid/device/:udid/team; `onDone(true)` after a change.
  */
-const DeviceTeamChip: React.FC<{
+const TeamPicker: React.FC<{
   udid: string;
   currentTeamId: string | null;
-  resolvedTeamName?: string | null;
   teams: Map<string, string>;
-  canEdit: boolean;
-  onChanged: () => void;
-}> = ({ udid, currentTeamId, resolvedTeamName, teams, canEdit, onChanged }) => {
+  onDone: (changed: boolean) => void;
+}> = ({ udid, currentTeamId, teams, onDone }) => {
   const { toast } = useToast();
-  const [editing, setEditing] = React.useState(false);
   const [busy, setBusy] = React.useState(false);
-  const teamName = currentTeamId
-    ? teams.get(currentTeamId) ??
-      resolvedTeamName ??
-      `Team ${currentTeamId.slice(0, 6)}`
-    : SHARED_POOL_LABEL;
 
   async function pick(teamId: string | null) {
     setBusy(true);
     try {
       await XenonApiService.setDeviceTeam(udid, teamId);
-      toast(
-        teamId ? 'Device assigned' : 'Device returned to shared pool',
-        'success',
-      );
-      onChanged();
-      setEditing(false);
+      toast(teamId ? 'Device assigned' : 'Device returned to shared pool', 'success');
+      onDone(true);
     } catch (e: any) {
       // 403s are surfaced as a toast by the api-client.
       toast(e?.message || 'Failed to update team', 'error');
@@ -83,66 +74,36 @@ const DeviceTeamChip: React.FC<{
     }
   }
 
-  if (!canEdit) {
-    if (!currentTeamId) {
-      return (
-        <Pill tone="neutral" title={SHARED_POOL_TITLE}>
-          {SHARED_POOL_LABEL}
-        </Pill>
-      );
-    }
-    return (
-      <Pill tone="accent" title={`Team: ${teamName}`}>
-        {teamName}
-      </Pill>
-    );
-  }
-
-  if (editing) {
-    return (
-      <Select
-        selectSize="sm"
-        autoFocus
-        disabled={busy}
-        defaultValue={currentTeamId ?? ''}
-        onBlur={() => setEditing(false)}
-        onChange={(e) => pick(e.target.value || null)}
-      >
-        <option value="">(Shared pool)</option>
-        {Array.from(teams.entries()).map(([id, name]) => (
-          <option key={id} value={id}>
-            {name}
-          </option>
-        ))}
-      </Select>
-    );
-  }
-
   return (
-    <button
-      type="button"
-      onClick={() => setEditing(true)}
-      className="dc2-team-pill"
-      title={currentTeamId ? 'Click to change team' : 'Click to assign to a team'}
+    <Select
+      selectSize="sm"
+      autoFocus
+      aria-label="Team"
+      disabled={busy}
+      defaultValue={currentTeamId ?? ''}
+      onBlur={() => onDone(false)}
+      onChange={(e) => pick(e.target.value || null)}
     >
-      {teamName}
-    </button>
+      <option value="">(Shared pool)</option>
+      {Array.from(teams.entries()).map(([id, name]) => (
+        <option key={id} value={id}>
+          {name}
+        </option>
+      ))}
+    </Select>
   );
 };
-
-function middleEllipsis(s: string, head = 10, tail = 4): string {
-  if (!s || s.length <= head + tail + 1) return s;
-  return `${s.slice(0, head)}…${s.slice(-tail)}`;
-}
 
 export const DeviceCard: React.FC<Props> = ({ device, reloadDevices, navigate, teams }) => {
   const [showReservation, setShowReservation] = React.useState(false);
   const [showTagManager, setShowTagManager] = React.useState(false);
+  const [editingTeam, setEditingTeam] = React.useState(false);
   const [menuOpen, setMenuOpen] = React.useState(false);
   const moreRef = React.useRef<HTMLButtonElement>(null);
   const { me } = useAuth();
   const { toast } = useToast();
-  const canEditTeam = me?.role === 'ADMIN' || me?.role === 'SUPER_ADMIN';
+  // Tags, maintenance and teams are admin-only routes on the server.
+  const isAdmin = me?.role === 'ADMIN' || me?.role === 'SUPER_ADMIN';
 
   const now = Date.now();
   const kind = deviceState(device, now);
@@ -150,6 +111,13 @@ export const DeviceCard: React.FC<Props> = ({ device, reloadDevices, navigate, t
   const activity = activityLabel(device, me, now);
   const control = controlAvailability(device, me);
   const reasonId = `dc2-reason-${device.udid}`;
+  const title = deviceTitle(device);
+  const teamName = device.teamId
+    ? (teams?.get(device.teamId) ?? device.teamName ?? `Team ${device.teamId.slice(0, 6)}`)
+    : null;
+
+  const serverUrl = formatAppiumServerUrl(device.host);
+  const ip = deviceNetworkIp(device);
 
   const copyText = async (text: string, successMsg: string) => {
     try {
@@ -159,9 +127,6 @@ export const DeviceCard: React.FC<Props> = ({ device, reloadDevices, navigate, t
       toast('Failed to copy', 'error');
     }
   };
-
-  const serverUrl = formatAppiumServerUrl(device.host);
-  const typeLabel = deviceTypeLabel(device.deviceType);
 
   const release = async () => {
     await XenonApiService.releaseReservation(device.udid, device.host);
@@ -178,113 +143,64 @@ export const DeviceCard: React.FC<Props> = ({ device, reloadDevices, navigate, t
 
   return (
     <div className={`dc2 dc2-${kind}`}>
-      <div className="dc2-stripe" />
-
-      <div className="dc2-header">
-        <span className="dc2-platform">
-          {platformLabel(device.platform)} · {device.sdk}
+      {/* The state first: what you need to know before anything else. */}
+      <div className={`dc2-band dc2-band-${kind}`}>
+        <span className="dc2-band-label">
+          <span className="dc2-band-dot" aria-hidden />
+          {STATE_LABEL[kind]}
         </span>
-        <StatusCode kind={kind} showDot>
-          {kind}
-        </StatusCode>
-      </div>
-
-      <div className="dc2-name" title={device.name}>
-        {device.name}
-      </div>
-      <div className="dc2-udid-row">
-        <div className="dc2-udid" title={device.udid}>
-          {middleEllipsis(device.udid)}
-        </div>
-        <button
-          type="button"
-          className="dc2-udid-copy"
-          onClick={() => copyText(device.udid, 'UDID copied')}
-          aria-label="Copy UDID"
-          title="Copy UDID"
-        >
-          <Copy size={12} />
-        </button>
-      </div>
-
-      <HealthBadges device={device} />
-
-      <div className="dc2-tags">
-        {typeLabel && (
-          <Pill tone="neutral" title={`Device type: ${typeLabel}`}>
-            {typeLabel}
-          </Pill>
-        )}
-        <DeviceTeamChip
-          udid={device.udid}
-          currentTeamId={device.teamId ?? null}
-          resolvedTeamName={device.teamName ?? null}
-          teams={teams ?? new Map()}
-          canEdit={canEditTeam}
-          onChanged={reloadDevices}
-        />
-        {device.tags?.slice(0, 3).map((t) => (
-          <Pill key={t} tone="neutral" title={t}>
-            {t}
-          </Pill>
-        ))}
-        {(device.tags?.length || 0) > 3 && (
-          <Pill tone="neutral">+{(device.tags?.length || 0) - 3}</Pill>
+        {activity && (
+          <span className="dc2-band-activity" title={activity}>
+            {activity}
+          </span>
         )}
       </div>
 
-      <div className="dc2-metrics">
-        {activity ? (
-          <div className={`dc2-banner dc2-banner-${reserved ? 'reserved' : 'session'}`}>
-            {reserved ? <Clock size={12} aria-hidden /> : <Terminal size={12} aria-hidden />}
-            <span>{activity}</span>
+      <div className={`dc2-body${kind === 'offline' ? ' dc2-dim' : ''}`}>
+        <div className="dc2-head">
+          <div className="dc2-icon" aria-hidden>
+            <FormFactorIcon device={device} />
           </div>
-        ) : (
-          <KeyValueRow
-            label="Time in use"
-            value={
-              device.totalUtilizationTimeMilliSec
-                ? prettyMilliseconds(device.totalUtilizationTimeMilliSec, { compact: true })
-                : '—'
-            }
-          />
-        )}
-        <KeyValueRow label="Network" value={formatDeviceNetworkAddress(device)} mono />
-        <KeyValueRow
-          label="Server"
-          mono
-          value={
-            <span className="dc2-copyable">
-              <span className="dc2-copyable-text" title={serverUrl}>
-                {serverUrl}
-              </span>
-              {serverUrl !== '—' && (
-                <button
-                  type="button"
-                  className="dc2-udid-copy"
-                  onClick={() => copyText(serverUrl, 'Server URL copied')}
-                  aria-label="Copy Appium server URL"
-                  title="Copy Appium server URL"
-                >
-                  <Copy size={12} />
-                </button>
-              )}
+          <div className="dc2-id">
+            <div className="dc2-title" title={`${title}\n${device.udid}`}>
+              {title}
+            </div>
+            <div className="dc2-subtitle">{deviceSubtitle(device)}</div>
+          </div>
+        </div>
+        <div className="dc2-meta">
+          <HealthBadges device={device} />
+          {editingTeam ? (
+            <TeamPicker
+              udid={device.udid}
+              currentTeamId={device.teamId ?? null}
+              teams={teams ?? new Map()}
+              onDone={(changed) => {
+                setEditingTeam(false);
+                if (changed) reloadDevices();
+              }}
+            />
+          ) : (
+            teamName && (
+              <Pill tone="accent" title={`Team: ${teamName}`}>
+                {teamName}
+              </Pill>
+            )
+          )}
+          {device.tags?.slice(0, 2).map((t) => (
+            <span key={t} className="dc2-tag" title={t}>
+              #{t}
             </span>
-          }
-        />
+          ))}
+          {(device.tags?.length || 0) > 2 && (
+            <span className="dc2-tag">+{(device.tags?.length || 0) - 2}</span>
+          )}
+        </div>
       </div>
 
-      {/* Said on the card, not only in a tooltip: a disabled button gave no
-          reason unless you hovered it. */}
-      {!control.enabled && (
-        <p id={reasonId} className="dc2-unavailable">
-          {control.reason}
-        </p>
-      )}
-
-      <div className="dc2-actions">
+      <div className="dc2-foot">
         <Button
-          variant="primary"
+          variant="secondary"
           size="sm"
           disabled={!control.enabled}
           aria-describedby={control.enabled ? undefined : reasonId}
@@ -292,19 +208,26 @@ export const DeviceCard: React.FC<Props> = ({ device, reloadDevices, navigate, t
             if (!control.enabled) return;
             navigate(`/devices/${device.udid}/control`);
           }}
-          className="dc2-primary"
         >
           Control
         </Button>
         {reserved ? (
-          <Button variant="secondary" size="sm" onClick={release}>
+          <Button variant="ghost" size="sm" onClick={release}>
             Release
           </Button>
         ) : kind === 'ready' ? (
-          <Button variant="secondary" size="sm" onClick={() => setShowReservation(true)}>
+          <Button variant="ghost" size="sm" onClick={() => setShowReservation(true)}>
             Reserve
           </Button>
         ) : null}
+        {/* Said on the card, not only in a tooltip: a disabled button gave no
+            reason unless you hovered it. */}
+        {!control.enabled && (
+          <span id={reasonId} className="dc2-unavailable" title={control.reason}>
+            {control.reason}
+          </span>
+        )}
+        <span className="dc2-spacer" />
         <button
           ref={moreRef}
           type="button"
@@ -315,7 +238,39 @@ export const DeviceCard: React.FC<Props> = ({ device, reloadDevices, navigate, t
           <MoreHorizontal size={14} />
         </button>
         <Popover open={menuOpen} onClose={() => setMenuOpen(false)} anchorRef={moreRef}>
+          {/* The device's IDs and addresses live here, not on the card face. */}
           <Menu>
+            <MenuItem
+              icon={<Copy size={12} />}
+              onClick={() => {
+                setMenuOpen(false);
+                copyText(device.udid, 'UDID copied');
+              }}
+            >
+              Copy UDID
+            </MenuItem>
+            {serverUrl !== '—' && (
+              <MenuItem
+                icon={<Copy size={12} />}
+                onClick={() => {
+                  setMenuOpen(false);
+                  copyText(serverUrl, 'Server URL copied');
+                }}
+              >
+                Copy server URL
+              </MenuItem>
+            )}
+            {ip && (
+              <MenuItem
+                icon={<Copy size={12} />}
+                onClick={() => {
+                  setMenuOpen(false);
+                  copyText(ip, 'IP address copied');
+                }}
+              >
+                Copy IP address
+              </MenuItem>
+            )}
             <MenuItem
               icon={<Copy size={12} />}
               onClick={() => {
@@ -323,34 +278,37 @@ export const DeviceCard: React.FC<Props> = ({ device, reloadDevices, navigate, t
                 copyText(formatSessionCapabilitiesJson(device), 'Session capabilities copied');
               }}
             >
-              Copy caps…
+              Copy capabilities
             </MenuItem>
-            <MenuItem
-              onClick={() => {
-                setMenuOpen(false);
-                setShowTagManager(true);
-              }}
-            >
-              Manage tags…
-            </MenuItem>
-            {device.userBlocked ? (
-              <MenuItem
-                onClick={() => {
-                  setMenuOpen(false);
-                  unblock();
-                }}
-              >
-                Exit maintenance
-              </MenuItem>
-            ) : (
-              <MenuItem
-                onClick={() => {
-                  setMenuOpen(false);
-                  block();
-                }}
-              >
-                Enter maintenance
-              </MenuItem>
+            {isAdmin && (
+              <>
+                <MenuDivider />
+                <MenuItem
+                  onClick={() => {
+                    setMenuOpen(false);
+                    setShowTagManager(true);
+                  }}
+                >
+                  Manage tags…
+                </MenuItem>
+                <MenuItem
+                  onClick={() => {
+                    setMenuOpen(false);
+                    setEditingTeam(true);
+                  }}
+                >
+                  Assign team…
+                </MenuItem>
+                <MenuItem
+                  onClick={() => {
+                    setMenuOpen(false);
+                    if (device.userBlocked) unblock();
+                    else block();
+                  }}
+                >
+                  {device.userBlocked ? 'Exit maintenance' : 'Enter maintenance'}
+                </MenuItem>
+              </>
             )}
           </Menu>
         </Popover>
