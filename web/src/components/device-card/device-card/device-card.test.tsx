@@ -154,6 +154,15 @@ describe('DeviceCard', () => {
       ]);
     });
 
+    // The clickable team chip is gone; admins reach the same picker here.
+    it('opens the team picker from Assign team…', () => {
+      auth.me = { ...MEMBER, role: 'ADMIN' };
+      card();
+      fireEvent.click(screen.getByRole('button', { name: 'More actions' }));
+      fireEvent.click(screen.getByRole('menuitem', { name: 'Assign team…' }));
+      expect(screen.getByRole('combobox', { name: 'Team' })).toBeInTheDocument();
+    });
+
     // The old Network row only ever showed a valid IPv4, never a MAC address.
     it('offers Copy IP address only for a valid address', () => {
       card({ ip: 'a4:83:e7:12:34:56' });
