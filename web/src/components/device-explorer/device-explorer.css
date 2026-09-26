@@ -336,6 +336,13 @@
   box-shadow: none;
   flex-wrap: wrap;
 }
+.de2-find {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 1 1 300px;
+  min-width: 300px;
+}
 .de2-search {
   flex: 1;
   min-width: 200px;
