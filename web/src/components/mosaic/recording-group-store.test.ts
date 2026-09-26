@@ -114,6 +114,11 @@ describe('mosaicReducer — PATCH_TILE_DIMS', () => {
 });
 
 describe('effectiveLayout', () => {
+  // A fixed 2x2 grid gave two portrait phones about a third of the space.
+  it('starts on the Auto layout', () => {
+    expect(initialMosaicState.layout).to.equal('auto');
+  });
+
   it('resolves auto by tile count and passes explicit layouts through', () => {
     expect(effectiveLayout('auto', 1)).to.equal('1');
     expect(effectiveLayout('auto', 2)).to.equal('2x1');

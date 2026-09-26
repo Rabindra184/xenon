@@ -81,7 +81,9 @@ export interface MosaicState {
 
 export const initialMosaicState: MosaicState = {
   selected: new Set(),
-  layout: '2x2',
+  // Auto sizes the grid to the devices on it; a fixed 2x2 gave two portrait
+  // phones about a third of the space.
+  layout: 'auto',
   tiles: [],
   groupId: null,
   compositeEnabled: false,

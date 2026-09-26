@@ -1,4 +1,5 @@
 import * as React from 'react';
+import { ChevronDown, Circle, CircleCheck, Search } from 'lucide-react';
 import { platformLabel } from '../../lib/labels';
 
 export interface PickerDevice {
@@ -23,6 +24,8 @@ interface Props {
   inMosaic: Set<string>;
   /** Click handler — single click toggles add/remove. */
   onToggle: (udid: string) => void;
+  /** Whether the device list has loaded. An empty list only means "none online" once it has. */
+  status?: 'loading' | 'ready' | 'error';
 }
 
 function reasonLabel(r?: string): string | null {
@@ -32,7 +35,7 @@ function reasonLabel(r?: string): string | null {
     case 'manual_other':
       return 'Manual control by another user';
     case 'manual_self':
-      return 'In your mosaic';
+      return 'On your grid';
     case 'recording_other_group':
       return 'Recording in another group';
     default:
@@ -51,11 +54,23 @@ const GROUP_DEFS: Array<{ id: string; label: string; match: (p: string) => boole
   { id: 'other', label: 'Other', match: () => true },
 ];
 
+const STATUS_DOT = {
+  available: 'bg-[var(--color-success)]',
+  inUse: 'bg-[var(--color-warning)]',
+  offline: 'bg-[rgb(var(--rgb-offline))]',
+};
+
+const LEGEND: Array<[string, string]> = [
+  ['available', STATUS_DOT.available],
+  ['in use', STATUS_DOT.inUse],
+  ['offline', STATUS_DOT.offline],
+];
+
 function platformBadge(p?: string): string {
   return platformLabel(p);
 }
 
-export function DevicePicker({ devices, inMosaic, onToggle }: Props) {
+export function DevicePicker({ devices, inMosaic, onToggle, status = 'ready' }: Props) {
   const [filter, setFilter] = React.useState('');
   const [collapsed, setCollapsed] = React.useState<Record<string, boolean>>({});
 
@@ -84,20 +99,27 @@ export function DevicePicker({ devices, inMosaic, onToggle }: Props) {
   }, [filtered]);
 
   if (devices.length === 0) {
+    const message =
+      status === 'loading'
+        ? 'Loading devices…'
+        : status === 'error'
+          ? 'Couldn’t load devices. Retrying…'
+          : 'No devices online.';
     return (
-      <div className="text-xs text-[var(--text-dim)] p-3">No devices online.</div>
+      <div role="status" className="text-xs text-[var(--text-dim)] p-3">
+        {message}
+      </div>
     );
   }
 
   return (
     <div className="flex flex-col gap-2">
       <div className="relative">
-        <span
+        <Search
           aria-hidden
-          className="absolute left-2 top-1/2 -translate-y-1/2 text-[var(--text-dim)] text-xs"
-        >
-          ⌕
-        </span>
+          size={12}
+          className="absolute left-2 top-1/2 -translate-y-1/2 text-[var(--text-dim)]"
+        />
         <input
           type="text"
           value={filter}
@@ -113,18 +135,16 @@ export function DevicePicker({ devices, inMosaic, onToggle }: Props) {
           <section key={g.id} className="flex flex-col gap-1">
             <button
               type="button"
+              aria-expanded={!isCollapsed}
               onClick={() => setCollapsed((c) => ({ ...c, [g.id]: !c[g.id] }))}
               className="flex items-center justify-between w-full text-[11px] text-[var(--text-dim)] hover:text-[rgb(var(--rgb-fg))] px-1 py-0.5"
             >
               <span className="flex items-center gap-1.5">
-                <span
+                <ChevronDown
                   aria-hidden
-                  className={`inline-block transition-transform ${
-                    isCollapsed ? '-rotate-90' : 'rotate-0'
-                  }`}
-                >
-                  ▾
-                </span>
+                  size={12}
+                  className={`transition-transform ${isCollapsed ? '-rotate-90' : 'rotate-0'}`}
+                />
                 {g.label}
               </span>
               <span>{g.rows.length}</span>
@@ -138,6 +158,10 @@ export function DevicePicker({ devices, inMosaic, onToggle }: Props) {
                   const reason = d.offline ? 'Offline' : reasonLabel(d.busyReason);
                   // Online status — green when not busy or only self-busy.
                   const online = !blocked;
+                  const label = [d.name ?? d.udid, d.platform && platformBadge(d.platform)]
+                    .concat(blocked && reason ? [reason] : [])
+                    .filter(Boolean)
+                    .join(', ');
                   return (
                     <li key={d.udid}>
                       <button
@@ -150,6 +174,8 @@ export function DevicePicker({ devices, inMosaic, onToggle }: Props) {
                           e.dataTransfer.setData('text/plain', d.udid);
                         }}
                         onClick={() => onToggle(d.udid)}
+                        aria-label={label}
+                        aria-pressed={inMos}
                         className={`w-full flex items-center gap-2 px-2 py-1.5 rounded text-left border transition-colors ${
                           blocked
                             ? 'opacity-60 cursor-not-allowed border-transparent'
@@ -161,28 +187,33 @@ export function DevicePicker({ devices, inMosaic, onToggle }: Props) {
                           blocked
                             ? `${reason} — release first`
                             : inMos
-                              ? 'Click to remove from mosaic (or drag to a cell)'
-                              : 'Click to add to mosaic (or drag to a cell)'
+                              ? 'Click to remove from the grid'
+                              : 'Click to add to the grid (or drag to a cell)'
                         }
                       >
-                        {/* Selection toggle (●/○) */}
-                        <span
-                          aria-hidden
-                          className={`inline-flex items-center justify-center w-4 h-4 text-xs ${
-                            inMos ? 'text-[var(--color-accent-soft)]' : 'text-[var(--text-dim)]'
-                          }`}
-                        >
-                          {inMos ? '●' : '○'}
-                        </span>
+                        {/* On the grid or not */}
+                        {inMos ? (
+                          <CircleCheck
+                            aria-hidden
+                            size={14}
+                            className="shrink-0 text-[var(--color-accent-soft)]"
+                          />
+                        ) : (
+                          <Circle
+                            aria-hidden
+                            size={14}
+                            className="shrink-0 text-[var(--text-dim)]"
+                          />
+                        )}
                         {/* Online status dot */}
                         <span
                           aria-hidden
                           className={`inline-block w-1.5 h-1.5 rounded-full ${
                             d.offline
-                              ? 'bg-zinc-600'
+                              ? STATUS_DOT.offline
                               : online
-                                ? 'bg-[var(--color-success)]'
-                                : 'bg-yellow-500'
+                                ? STATUS_DOT.available
+                                : STATUS_DOT.inUse
                           }`}
                         />
                         <span className="font-medium flex-1 truncate text-[13px]">
@@ -210,15 +241,12 @@ export function DevicePicker({ devices, inMosaic, onToggle }: Props) {
       )}
 
       <div className="text-[10px] text-[var(--text-dim)] px-1 pt-2 flex items-center gap-3">
-        <span className="inline-flex items-center gap-1">
-          <span className="w-1.5 h-1.5 rounded-full bg-[var(--color-success)] inline-block" /> available
-        </span>
-        <span className="inline-flex items-center gap-1">
-          <span className="w-1.5 h-1.5 rounded-full bg-yellow-500 inline-block" /> in use
-        </span>
-        <span className="inline-flex items-center gap-1">
-          <span className="w-1.5 h-1.5 rounded-full bg-zinc-600 inline-block" /> offline
-        </span>
+        {LEGEND.map(([label, dot]) => (
+          <span key={label} className="inline-flex items-center gap-1">
+            <span className={`w-1.5 h-1.5 rounded-full inline-block ${dot}`} />
+            {label}
+          </span>
+        ))}
       </div>
     </div>
   );
