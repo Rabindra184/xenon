@@ -18,6 +18,12 @@ describe('Button v2', () => {
     expect(screen.getByRole('button')).toHaveClass('btn-ghost');
   });
 
+  // A tinted accent button: clearly an action, quieter than a solid fill.
+  it('supports tonal variant', () => {
+    render(<Button variant="tonal">Go</Button>);
+    expect(screen.getByRole('button')).toHaveClass('btn-tonal');
+  });
+
   it('supports danger variant', () => {
     render(<Button variant="danger">Go</Button>);
     expect(screen.getByRole('button')).toHaveClass('btn-danger');

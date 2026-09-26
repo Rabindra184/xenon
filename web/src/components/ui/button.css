@@ -52,6 +52,19 @@
   color: var(--text);
 }
 
+/* A tinted accent button, for a main action repeated across a page (one per
+   device card): clearly a button, quieter than a solid fill. Fills on hover. */
+.btn-tonal {
+  background: rgb(var(--rgb-accent) / 0.12);
+  color: var(--color-accent);
+  border-color: rgb(var(--rgb-accent) / 0.35);
+}
+.btn-tonal:hover:not(:disabled) {
+  background: var(--color-accent);
+  color: var(--color-on-accent);
+  border-color: var(--color-accent);
+}
+
 .btn-link {
   background: transparent;
   color: var(--status-reserved-fg);
