@@ -20,6 +20,8 @@
   transition: background var(--motion-fast), color var(--motion-fast);
 }
 .seg-btn:hover { color: var(--text); }
+.seg-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+.seg-btn:disabled:hover { color: var(--text-muted); }
 /* The selected segment in the accent, the theme's selection colour: the same
    tint, text and edge as a tonal button. */
 .seg-btn.seg-btn-active {
