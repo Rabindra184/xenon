@@ -1,6 +1,6 @@
 import * as React from 'react';
 import { Copy, MoreHorizontal, Smartphone, Tablet, Tv } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { IDevice } from '../../../interfaces/IDevice';
 import XenonApiService from '../../../api-service';
 import { useAuth } from '../../../auth/auth-context';
@@ -338,11 +338,13 @@ export default function DeviceCardWrapper(props: {
   teams?: Map<string, string>;
 }) {
   const navigate = useNavigate();
+  // Opening a device keeps the Devices filters, so closing it returns to them.
+  const { search } = useLocation();
   return (
     <DeviceCard
       device={props.device}
       reloadDevices={props.reloadDevices}
-      navigate={navigate}
+      navigate={(path) => navigate(`${path}${search}`)}
       teams={props.teams}
     />
   );
