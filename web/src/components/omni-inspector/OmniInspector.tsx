@@ -4,10 +4,7 @@ import {
   Copy,
   RotateCw,
   Check,
-  ChevronRight,
   Target,
-  ChevronDown,
-  Box,
   Search,
   ChevronsUpDown,
   ChevronsDownUp,
@@ -23,11 +20,11 @@ import {
   ShieldCheck,
   ShieldAlert,
   AlertTriangle,
-  Sparkles,
   Crosshair,
   HelpCircle,
 } from 'lucide-react';
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { unstable_batchedUpdates } from 'react-dom';
 import XenonApiService from '../../api-service';
 import { matchSelector, type MatchResult } from './selector-matcher';
 import { scoreLocatorStability, type StabilityLevel } from './locatorRules';
@@ -38,7 +35,8 @@ import './omni-inspector.css';
 import React from 'react';
 import { Select } from '../ui/select';
 import { analyzeElement, ROLE_ICON, type RoleKey } from './elementRole';
-import { smartSearch } from './treeRows';
+import { initialExpanded, matchSet, pathTo, visibleRows } from './treeRows';
+import ElementTree from './ElementTree';
 
 export interface LocatorSuggestion {
   strategy: string;
@@ -476,20 +474,21 @@ const OmniInspector: React.FC<OmniInspectorProps> = ({
         setError(data?.error || 'Failed to capture snapshot');
         return;
       }
-      setSnapshot(data);
-      setCapturedAt(Date.now());
-      const expanded = new Set<string>(['/']);
-      // Android trees are rooted at the <hierarchy> document element, one
-      // level above the app's own root, so this opens the same amount of the
-      // tree there as it does on iOS.
-      const expandLevel = (node: InspectorNode, level: number) => {
-        if (level < 3) {
-          expanded.add(node.xpath);
-          node.children?.forEach((c) => expandLevel(c, level + 1));
-        }
-      };
-      expandLevel(data.hierarchy, 0);
-      setExpandedNodes(expanded);
+      // React 17 does not batch setState calls made after an `await`, so
+      // without this each of the following renders separately — and the
+      // reveal effect (which opens ancestors of the selection) could run
+      // between them, against a half-updated snapshot/expandedNodes pair,
+      // and then be overwritten by the next setState in this sequence.
+      unstable_batchedUpdates(() => {
+        setSnapshot(data);
+        setCapturedAt(Date.now());
+        setExpandedNodes(initialExpanded(data.hierarchy));
+        // The selection follows its xpath into the new capture; the old node
+        // object described the old screen.
+        setSelectedNode((prev) =>
+          prev ? (pathTo(data.hierarchy, prev.xpath)?.pop() ?? null) : null,
+        );
+      });
     } catch (err: any) {
       if (!latest()) return;
       setSnapshot(null);
@@ -582,10 +581,12 @@ const OmniInspector: React.FC<OmniInspectorProps> = ({
   };
 
   const toggleExpand = (xpath: string) => {
-    const next = new Set(expandedNodes);
-    if (next.has(xpath)) next.delete(xpath);
-    else next.add(xpath);
-    setExpandedNodes(next);
+    setExpandedNodes((prev) => {
+      const next = new Set(prev);
+      if (next.has(xpath)) next.delete(xpath);
+      else next.add(xpath);
+      return next;
+    });
   };
 
   const expandAll = () => {
@@ -598,7 +599,7 @@ const OmniInspector: React.FC<OmniInspectorProps> = ({
     setExpandedNodes(all);
   };
 
-  const collapseAll = () => setExpandedNodes(new Set(['/']));
+  const collapseAll = () => setExpandedNodes(new Set());
 
   const copyToClipboard = (text: string, strategy: string) => {
     navigator.clipboard.writeText(text);
@@ -635,90 +636,41 @@ const OmniInspector: React.FC<OmniInspectorProps> = ({
     return parts.slice(-3);
   };
 
-  // While searching, the branches that lead to a match. They render open
-  // whatever their collapsed state: a match inside a collapsed branch used to
-  // stay hidden, so search looked like it had found nothing.
-  const searchOpen = useMemo(() => {
-    const open = new Set<string>();
-    if (!searchQuery || !snapshot?.hierarchy) return open;
-    const visit = (n: InspectorNode): boolean => {
-      let below = false;
-      for (const c of n.children || []) if (visit(c)) below = true;
-      if (below) open.add(n.xpath);
-      return below || smartSearch(n, searchQuery);
-    };
-    visit(snapshot.hierarchy);
-    return open;
-  }, [searchQuery, snapshot]);
+  // The tree as flat, rendered rows — folding plain wrapper runs into one row
+  // each — and the set of nodes the current search matches. Both derive from
+  // the same (snapshot, expandedNodes, searchQuery) inputs the tree renders
+  // from, so they can never disagree with what's on screen.
+  const rows = useMemo(
+    () => visibleRows(snapshot?.hierarchy, expandedNodes, searchQuery),
+    [snapshot, expandedNodes, searchQuery],
+  );
+  const matches = useMemo(
+    () => matchSet(snapshot?.hierarchy, searchQuery),
+    [snapshot, searchQuery],
+  );
 
-  const renderTree = (node: InspectorNode, depth = 0): React.ReactNode => {
-    if (!node) return null;
-    const isExpanded = expandedNodes.has(node.xpath);
-    const hasChildren = node.children?.length > 0;
-    const isSelected = selectedNode?.xpath === node.xpath;
-    const isHovered = hoveredNode?.xpath === node.xpath;
-    const shortType = node.type?.split('.').pop() || 'Element';
-    // Prefer accessible label/text/name over the raw type so the tree isn't
-    // a wall of "XCUIElementTypeOther" rows. Only count it as "accessible"
-    // if it's actually different from the type itself.
-    const candidate = node.label || node.attributes?.['content-desc'] || node.attributes?.['resource-id'] || node.name;
-    const accessibleLabel =
-      typeof candidate === 'string' && candidate && candidate !== shortType && candidate !== node.type
-        ? candidate
-        : null;
-    const displayName = accessibleLabel || shortType;
+  // The selection is always visible: whenever it changes, or a new capture
+  // arrives with the same node re-selected at a different path, open every
+  // ancestor on the way to it. Rows the user opened or closed elsewhere keep
+  // their state — this only ever adds xpaths, never removes them.
+  useEffect(() => {
+    if (!selectedNode || !snapshot?.hierarchy) return;
+    const path = pathTo(snapshot.hierarchy, selectedNode.xpath);
+    if (!path || path.length < 2) return;
+    setExpandedNodes((prev) => {
+      const missing = path.slice(0, -1).filter((n) => !prev.has(n.xpath));
+      if (!missing.length) return prev;
+      const next = new Set(prev);
+      missing.forEach((n) => next.add(n.xpath));
+      return next;
+    });
+  }, [selectedNode, snapshot]);
 
-    // Smart search: uses natural language matching. While searching, show
-    // this node if it matches or leads to a match, and open its branch.
-    const matchesSearch = !searchQuery || smartSearch(node, searchQuery);
-    const leadsToMatch = searchOpen.has(node.xpath);
-    if (searchQuery && !matchesSearch && !leadsToMatch) return null;
-    const showChildren = hasChildren && (isExpanded || leadsToMatch);
-
-    return (
-      <div key={node.xpath} className="tree-node">
-        <div
-          className={`tree-item ${isSelected ? 'selected' : ''} ${isHovered && !isSelected ? 'hovered' : ''}`}
-          onClick={() => {
-            setSelectedNode(node);
-            setActiveTab('info');
-          }}
-          onMouseEnter={() => setHoveredNode(node)}
-          onMouseLeave={() => setHoveredNode(null)}
-        >
-          <div className="tree-item-indent" style={{ width: `${depth * 14}px` }} />
-          {hasChildren ? (
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                toggleExpand(node.xpath);
-              }}
-              className="tree-toggle"
-              aria-label={showChildren ? 'Collapse' : 'Expand'}
-              aria-expanded={showChildren}
-            >
-              {showChildren ? <ChevronDown size={11} /> : <ChevronRight size={11} />}
-            </button>
-          ) : (
-            <span className="tree-toggle-spacer" />
-          )}
-          <Box size={11} className="tree-icon" />
-          <span className="tree-label" title={`${shortType}${accessibleLabel ? ` — ${accessibleLabel}` : ''}`}>
-            {displayName}
-          </span>
-          {accessibleLabel && (
-            <span className="tree-type-tag" title={shortType}>
-              {shortType}
-            </span>
-          )}
-          {node.text && <span className="tree-text-preview">"{node.text.slice(0, 20)}"</span>}
-          {hasChildren && <span className="tree-badge">{node.children.length}</span>}
-        </div>
-        {showChildren && (
-          <div className="tree-children">{node.children.map((c) => renderTree(c, depth + 1))}</div>
-        )}
-      </div>
-    );
+  // Used by the tree, the hit areas (below) and, once wired, the breadcrumb —
+  // one place that selects a node and switches Info into view for it.
+  const selectNode = (n: InspectorNode) => {
+    setSelectedNode(n);
+    setActiveTab('info');
   };
 
   /**
@@ -763,8 +715,7 @@ const OmniInspector: React.FC<OmniInspectorProps> = ({
             }}
             onClick={(e) => {
               e.stopPropagation();
-              setSelectedNode(n);
-              setActiveTab('info');
+              selectNode(n);
             }}
             onMouseEnter={() => setHoveredNode(n)}
             onMouseLeave={() => setHoveredNode(null)}
@@ -959,30 +910,6 @@ const OmniInspector: React.FC<OmniInspectorProps> = ({
             <div className="omni-tree-title">
               <Layers size={14} />
               <span>Source</span>
-              {totalElements > 0 && (
-                <span className="omni-count-badge">{totalElements} elements</span>
-              )}
-              {/* Which tree this is decides how much the locator suggestions
-                  are worth: one taken from the driver is the tree Appium will
-                  resolve them against, one taken from the device only
-                  resembles it. */}
-              {snapshot?.hierarchySource && (
-                <span
-                  className={`omni-source-badge ${
-                    snapshot.hierarchySource === 'appium-session' ? 'is-session' : 'is-device'
-                  }`}
-                  title={
-                    snapshot.hierarchySource === 'appium-session'
-                      ? `From Appium session ${snapshot.sessionId} — the same tree the driver resolves locators against`
-                      : 'Read from the device. No Appium session is driving it.'
-                  }
-                >
-                  {/* One word: this row is 309px wide in the embedded layout
-                      and already holds a title, a count and four buttons. The
-                      tooltip carries the full meaning. */}
-                  {snapshot.hierarchySource === 'appium-session' ? 'Session' : 'Device'}
-                </span>
-              )}
             </div>
             <div className="omni-tree-actions">
               <button
@@ -1067,13 +994,38 @@ const OmniInspector: React.FC<OmniInspectorProps> = ({
                 </button>
               </div>
             ) : (
-              <div className="omni-capture-meta">{captureAge(capturedAt, now)}</div>
+              <div className="omni-capture-meta">
+                <span>
+                  {totalElements} {totalElements === 1 ? 'element' : 'elements'}
+                </span>
+                {/* Which tree this is decides how much the locator suggestions
+                    are worth: one taken from the driver is the tree Appium will
+                    resolve them against, one taken from the device only
+                    resembles it. */}
+                {snapshot.hierarchySource && (
+                  <>
+                    <span aria-hidden="true">·</span>
+                    <span
+                      className="omni-capture-source"
+                      title={
+                        snapshot.hierarchySource === 'appium-session'
+                          ? `From Appium session ${snapshot.sessionId} — the same tree the driver resolves locators against`
+                          : 'Read from the device. No Appium session is driving it.'
+                      }
+                    >
+                      {snapshot.hierarchySource === 'appium-session' ? 'Session' : 'Device'}
+                    </span>
+                  </>
+                )}
+                <span aria-hidden="true">·</span>
+                <span>{captureAge(capturedAt, now)}</span>
+              </div>
             ))}
           <div className="omni-tree-search">
             <Search size={14} />
             <input
               type="text"
-              placeholder="Search elements... (try 'login button' or 'text field')"
+              placeholder="Search elements"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               aria-label="Search elements"
@@ -1088,14 +1040,27 @@ const OmniInspector: React.FC<OmniInspectorProps> = ({
               </button>
             )}
           </div>
-          {searchQuery && (
-            <div className="omni-search-hint">
-              <Sparkles size={10} /> Smart search active — try "button", "input", "image"
+          {searchQuery.trim() && (
+            <div className="omni-search-hint" role="status">
+              {matches.size === 0
+                ? 'No matches'
+                : matches.size === 1
+                  ? '1 match'
+                  : `${matches.size} matches`}{' '}
+              · try a role: button, input, image
             </div>
           )}
           <div className="omni-tree-content">
             {snapshot?.hierarchy ? (
-              renderTree(snapshot.hierarchy)
+              <ElementTree
+                rows={rows}
+                selectedXpath={selectedNode?.xpath ?? null}
+                hoveredXpath={hoveredNode?.xpath ?? null}
+                matches={matches}
+                onToggle={toggleExpand}
+                onSelect={selectNode}
+                onHover={setHoveredNode}
+              />
             ) : (
               <div className="omni-empty-state small">
                 <span>No hierarchy loaded</span>

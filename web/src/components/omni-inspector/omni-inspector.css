@@ -279,21 +279,12 @@
     flex: 1;
     min-height: 0;
     overflow-y: auto;
-    padding: 8px;
+    overflow-x: hidden;
+    padding: 4px;
     scrollbar-width: thin;
     scrollbar-color: var(--border) transparent;
 }
 
-/* The tree panel is ~309px in the embedded layout, and this row wants a
-   title, two pills and four buttons. It does not fit on one line and never
-   did: before the source badge existed the count pill was already breaking
-   mid-word into "66 / ELEMENTS". Adding a third pill pushed all four action
-   buttons — including the inspect toggle and refresh, which are only
-   reachable here in embedded mode — clean outside the panel.
-
-   So it wraps deliberately: the pills keep their shape, the actions keep
-   theirs, and the row takes a second line when the panel is narrow rather
-   than shedding controls off its edge. */
 .omni-tree-header {
     display: flex;
     align-items: center;
@@ -314,17 +305,6 @@
     font-weight: 800;
     color: var(--text);
     opacity: 0.9;
-}
-
-.omni-count-badge {
-    /* Or it breaks into "66 / ELEMENTS" the moment the row is tight. */
-    white-space: nowrap;
-    font-size: 11px;
-    background: rgb(var(--rgb-accent) / 0.05);
-    color: var(--color-accent);
-    padding: 2px 8px;
-    border-radius: 6px;
-    font-weight: 800;
 }
 
 .omni-action-btn {
@@ -371,106 +351,6 @@
     color: var(--text);
     font-size: 11px;
     outline: none;
-    font-family: 'JetBrains Mono', monospace;
-}
-
-.tree-item {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 8px 12px;
-    margin-bottom: 2px;
-    border-radius: 4px;
-    cursor: pointer;
-    font-size: 12px;
-    color: var(--text-dim);
-    transition: all 0.15s;
-    border: 1px solid transparent;
-    min-height: 36px;
-    background: rgb(var(--rgb-well) / calc(0.1 * var(--well-k)));
-}
-
-.tree-item:hover {
-    background: rgb(var(--rgb-fg) / 0.02);
-    color: var(--text);
-}
-
-.tree-item.selected {
-    background: rgb(var(--rgb-accent) / 0.08);
-    color: var(--color-accent);
-    border-color: rgb(var(--rgb-accent) / 0.4);
-    box-shadow: inset 0 0 0 1px rgb(var(--rgb-accent) / 0.2);
-}
-
-.tree-item.hovered:not(.selected) {
-    background: rgb(var(--rgb-fg) / 0.04);
-    border-color: rgb(var(--rgb-fg) / 0.1);
-    color: var(--text);
-}
-
-.tree-node {
-    display: flex;
-    flex-direction: column;
-}
-
-.tree-children {
-    margin-left: 0;
-}
-
-.tree-toggle {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 18px;
-    height: 18px;
-    border: none;
-    background: transparent;
-    color: var(--text-muted);
-    cursor: pointer;
-    border-radius: 3px;
-    flex-shrink: 0;
-    padding: 0;
-    transition: color 0.15s, background 0.15s;
-}
-
-.tree-toggle:hover {
-    color: var(--color-accent);
-    background: rgb(var(--rgb-accent) / 0.1);
-}
-
-.tree-toggle-spacer {
-    display: inline-block;
-    width: 18px;
-    flex-shrink: 0;
-}
-
-.tree-item-indent {
-    flex-shrink: 0;
-}
-
-.tree-icon {
-    color: var(--text-muted);
-    flex-shrink: 0;
-    opacity: 0.6;
-}
-
-.tree-label {
-    flex: 1;
-    font-size: 12px;
-    font-family: 'JetBrains Mono', 'Fira Code', monospace;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-}
-
-.tree-badge {
-    font-size: 10px;
-    font-weight: 700;
-    background: rgb(var(--rgb-fg) / 0.06);
-    color: var(--text-muted);
-    padding: 1px 5px;
-    border-radius: 4px;
-    flex-shrink: 0;
     font-family: 'JetBrains Mono', monospace;
 }
 
@@ -1066,39 +946,6 @@
 }
 
 /* ===================================================
-   AI FEATURES: Tree text preview
-   =================================================== */
-.tree-text-preview {
-    font-size: 10px;
-    color: var(--text-muted);
-    font-style: italic;
-    max-width: 80px;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    flex-shrink: 0;
-}
-
-/* Compact type tag shown next to accessible labels so the raw element type
-   stays visible without flooding the tree with XCUIElementTypeOther rows. */
-.tree-type-tag {
-    font-size: 9px;
-    font-weight: 700;
-    color: var(--text-dim);
-    background: rgb(var(--rgb-fg) / 0.04);
-    padding: 1px 5px;
-    border-radius: 3px;
-    flex-shrink: 0;
-    font-family: 'JetBrains Mono', monospace;
-    text-transform: none;
-    letter-spacing: 0.02em;
-    max-width: 110px;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-
-/* ===================================================
    Embedded mode (host renders the device preview)
    =================================================== */
 .omni-inspector-container.omni-embedded {
@@ -1230,10 +1077,7 @@
     gap: 5px;
     padding: 4px 14px;
     font-size: 10px;
-    color: var(--color-accent);
-    opacity: 0.7;
-    font-style: italic;
-    background: rgb(var(--rgb-accent) / 0.03);
+    color: var(--text-muted);
     border-bottom: 1px solid rgb(var(--rgb-accent) / 0.08);
 }
 
@@ -1355,27 +1199,6 @@
     color: var(--red-400);
 }
 
-/* Provenance of the tree, next to the element count it qualifies. Same shape
-   as .omni-count-badge; only the accent separates the two states, because the
-   distinction is informational, not a warning. */
-.omni-source-badge {
-    font-size: 11px;
-    padding: 2px 8px;
-    border-radius: 6px;
-    font-weight: 800;
-    white-space: nowrap;
-}
-
-.omni-source-badge.is-session {
-    background: rgb(var(--rgb-blue-400) / 0.08);
-    color: var(--blue-400);
-}
-
-.omni-source-badge.is-device {
-    background: rgba(148, 163, 184, 0.1);
-    color: #94a3b8;
-}
-
 .omni-locators-empty {
     padding: 10px 12px;
     font-size: 11px;
@@ -1438,11 +1261,6 @@
     border-color: rgb(var(--rgb-red) / 0.25);
 }
 
-:root[data-theme='light'] .omni-source-badge.is-device {
-    background: rgb(var(--rgb-fg) / 0.05);
-    color: var(--text-dim);
-}
-
 /* .omni-codegen-pre is a .theme-dark island; its translucent fill would
    show the light panel through it. */
 :root[data-theme='light'] .omni-codegen-pre {
@@ -1463,6 +1281,11 @@
     padding: 4px 12px;
     color: var(--text-muted);
     font-size: 11px;
+}
+.omni-capture-source {
+    text-decoration: underline dotted;
+    text-underline-offset: 3px;
+    cursor: help;
 }
 .omni-capture-meta.is-stale {
     margin: 6px 10px 0;
