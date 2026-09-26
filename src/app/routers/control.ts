@@ -25,6 +25,7 @@ import { resolveStreamType } from './streamType';
 import { resolveIosMjpegPort } from './iosStreamPort';
 import { resolveAndroidH264 } from './androidH264Config';
 import { RecordingStore } from '../../services/recording/recording-store';
+import { ClipboardUnsupportedError } from '../../device-managers/clipboardErrors';
 import { mutationScopeGuard } from '../../middleware/scopeGuard';
 import { roleGuard } from '../../middleware/roleGuard';
 import { deviceAccessGuard } from '../../middleware/deviceAccessGuard';
@@ -326,6 +327,10 @@ router.post('/:udid/clipboard', async (req: Request, res: Response) => {
       await manager.setClipboard(udid, content);
       return res.status(200).send({ success: true });
     } catch (err: any) {
+      // The device can't do it at all (Android): 501, not a failure to retry.
+      if (err instanceof ClipboardUnsupportedError) {
+        return res.status(501).send({ error: err.message });
+      }
       log.error(`Manual control setClipboard failed: ${err.message}`);
       return res.status(500).send({ error: err.message });
     }
