@@ -53,12 +53,14 @@ interface DeviceControlProps {
 
 type TabType = 'actions' | 'screenshot' | 'logs' | 'terminal' | 'omni';
 
-import { useNavigate, useParams } from 'react-router-dom';
+import { useLocation, useNavigate, useParams } from 'react-router-dom';
 
 export default function DeviceControl({ device, onClose, titleId }: DeviceControlProps) {
   const { toast, removeToast } = useToast();
   const navigate = useNavigate();
   const { tab } = useParams();
+  // The tab lives in the path; the query holds the Devices filters to return to.
+  const location = useLocation();
   const canvasRef = useRef<HTMLDivElement>(null);
   const [canvasDimensions, setCanvasDimensions] = useState({ width: 0, height: 0 });
   // Reported by OmniInspector. In inspect mode a click on the canvas selects an
@@ -110,9 +112,11 @@ export default function DeviceControl({ device, onClose, titleId }: DeviceContro
   // Synchronize Tab switch with URL
   useEffect(() => {
     if (activeTab && (!tab || tab !== activeTab)) {
-      navigate(`/devices/${device.udid}/control/${activeTab}`, { replace: true });
+      navigate(`/devices/${device.udid}/control/${activeTab}${location.search}`, {
+        replace: true,
+      });
     }
-  }, [activeTab, tab, device.udid, navigate]);
+  }, [activeTab, tab, device.udid, navigate, location.search]);
 
   // Auto-start stream on mount
   useEffect(() => {

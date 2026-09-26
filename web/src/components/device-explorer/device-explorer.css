@@ -336,6 +336,15 @@
   box-shadow: none;
   flex-wrap: wrap;
 }
+/* Takes a line of its own inside the wrapping toolbar, under the statuses. */
+.de2-toolbar-row {
+  flex: 1 1 100%;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
 .de2-find {
   display: flex;
   align-items: center;
