@@ -22,6 +22,26 @@ const renderLog = log.scope('AnnotationRender');
  */
 const LATE_ANNOTATION_MARGIN_SEC = 0.5;
 
+/**
+ * Font for TEXT marks. The bundled ffmpeg has libfreetype but no fontconfig,
+ * so drawtext cannot find a font by name and must be given a file. Vendored
+ * (see vendor/README.md) and copied beside the compiled module by build:copy,
+ * so the same relative path works from src/ under ts-node and from lib/.
+ */
+export const ANNOTATION_FONT_PATH = path.join(__dirname, 'vendor', 'Inter-Regular.ttf');
+
+/**
+ * Escape a value for a filter option inside a filtergraph. ffmpeg unescapes
+ * twice: the graph parser first (special: \ ' [ ] , ;), then the filter's
+ * option parser (special: \ ' :). So escape for the option parser, then again
+ * for the graph parser. Quoting instead is not enough: the graph parser strips
+ * the quotes, and an apostrophe inside them ends the quote early.
+ */
+export function escapeFilterValue(value: string): string {
+  const forOptions = value.replace(/[\\':]/g, '\\$&');
+  return forOptions.replace(/[\\'[\],;]/g, '\\$&');
+}
+
 export interface AnnotationRow {
   id?: string;
   shape: string;
@@ -214,9 +234,12 @@ export class AnnotationRenderService {
       }
 
       if (a.shape === 'TEXT' && a.text) {
-        const safe = String(a.text).replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/:/g, '\\:');
+        // drawtext's size variables are w/h (it rejects iw/ih), and it needs an
+        // explicit font file on this ffmpeg.
+        const font = escapeFilterValue(ANNOTATION_FONT_PATH);
+        const text = escapeFilterValue(String(a.text));
         parts.push(
-          `drawtext=text='${safe}':expansion=none:x=iw*${this.f(g.x)}:y=ih*${this.f(g.y)}:fontcolor=${color}:fontsize=28:${enable}`,
+          `drawtext=fontfile=${font}:text=${text}:expansion=none:x=w*${this.f(g.x)}:y=h*${this.f(g.y)}:fontcolor=${color}:fontsize=28:${enable}`,
         );
         continue;
       }
