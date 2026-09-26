@@ -38,8 +38,8 @@ const control = () => screen.getByRole('button', { name: 'Control' }) as HTMLBut
 describe('DeviceCard', () => {
   it('labels a device in maintenance as maintenance, not error', () => {
     const { container } = card({ userBlocked: true });
-    expect(container.querySelector('.dc2-header')).toHaveTextContent(/maintenance/i);
-    expect(container.querySelector('.dc2-header')).not.toHaveTextContent(/error/i);
+    expect(container.querySelector('.dc2-band')).toHaveTextContent(/maintenance/i);
+    expect(container.querySelector('.dc2-band')).not.toHaveTextContent(/error/i);
   });
 
   it('disables Control on an offline device and says why, on the card', () => {
@@ -63,5 +63,60 @@ describe('DeviceCard', () => {
     });
     expect(container).toHaveTextContent('46m left · by priya@acme.com');
     expect(container).not.toHaveTextContent('RES ·');
+  });
+
+  it('puts the state and what the device is doing in the band', () => {
+    const { container } = card({
+      busy: true,
+      session_id: 'abc',
+      sessionStartTime: Date.now() - 12 * 60_000,
+    });
+    const band = container.querySelector('.dc2-band') as HTMLElement;
+    expect(band).toHaveClass('dc2-band-busy');
+    expect(band).toHaveTextContent('Busy');
+    expect(band).toHaveTextContent('Test session · 12m');
+  });
+
+  it('shows the friendly name and maker · model · OS', () => {
+    const { container } = card({
+      marketingName: 'Galaxy S9+',
+      manufacturer: 'samsung',
+      model: 'SM-G965F',
+      sdk: '10',
+    });
+    expect(container.querySelector('.dc2-title')).toHaveTextContent('Galaxy S9+');
+    expect(container.querySelector('.dc2-subtitle')).toHaveTextContent(
+      'Samsung SM-G965F · Android 10',
+    );
+  });
+
+  it('falls back to today’s name when the device reported none', () => {
+    const { container } = card({ name: 'star2ltexx' });
+    expect(container.querySelector('.dc2-title')).toHaveTextContent('star2ltexx');
+  });
+
+  // The UDID, server URL and IP moved into the ⋯ menu; "Time in use" had no
+  // period the server could name.
+  it('keeps the UDID in the name’s tooltip, not on the card face', () => {
+    const { container } = card({ udid: '381103b720057ece' });
+    expect(container.querySelector('.dc2-title')?.getAttribute('title')).toContain(
+      '381103b720057ece',
+    );
+    expect(container.querySelector('.dc2-body')).not.toHaveTextContent('381103b7');
+    expect(container).not.toHaveTextContent('Server');
+    expect(container).not.toHaveTextContent('Network');
+    expect(container).not.toHaveTextContent('Time in use');
+  });
+
+  it('dims an offline device’s details', () => {
+    const { container } = card({ offline: true });
+    expect(container.querySelector('.dc2-body')).toHaveClass('dc2-dim');
+  });
+
+  // They were on nearly every card, so they said nothing.
+  it('drops the Real and Shared labels', () => {
+    const { container } = card();
+    expect(container).not.toHaveTextContent('Real');
+    expect(container).not.toHaveTextContent('Shared');
   });
 });

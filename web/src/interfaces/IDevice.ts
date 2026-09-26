@@ -13,6 +13,8 @@ export interface IDevice {
   total_session_count?: number;
   totalUtilizationTimeMilliSec?: any;
   session_id?: any;
+  /** Epoch ms when the running test session took the device; 0 when none. */
+  sessionStartTime?: number;
   screenWidth?: string;
   screenHeight?: string;
   mjpegServerPort?: number;

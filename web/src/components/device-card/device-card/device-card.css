@@ -3,12 +3,9 @@
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
-  padding: 12px 14px 14px 16px;
   font-family: 'Inter', sans-serif;
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  min-height: 200px;
   transition: border-color var(--motion-fast), box-shadow var(--motion-fast);
 }
 .dc2:hover {
@@ -16,33 +13,89 @@
   box-shadow: var(--shadow-md);
 }
 
-.dc2-stripe {
-  position: absolute;
-  left: 0;
-  top: 12px;
-  bottom: 12px;
-  width: 2px;
-  border-radius: 0 2px 2px 0;
-}
-.dc2-ready .dc2-stripe { background: var(--status-ready-fg); }
-.dc2-busy .dc2-stripe { background: var(--status-busy-fg); }
-.dc2-reserved .dc2-stripe { background: var(--status-reserved-fg); }
-.dc2-error .dc2-stripe { background: var(--status-error-fg); }
-.dc2-offline .dc2-stripe { background: var(--status-offline-fg); }
-.dc2-maintenance .dc2-stripe { background: var(--status-offline-fg); }
-
-.dc2-header {
+/* Status band: the state, and what the device is doing. */
+.dc2-band {
   display: flex;
   justify-content: space-between;
   align-items: center;
-}
-.dc2-platform {
-  color: var(--text-muted);
+  gap: 10px;
+  min-height: 30px;
+  padding: 7px 12px;
   font-size: 11px;
+  font-weight: 600;
+  border-radius: var(--radius-md) var(--radius-md) 0 0;
+}
+.dc2-band-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+.dc2-band-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+}
+.dc2-band-activity {
+  min-width: 0;
   font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* Ready is quiet on purpose, so the unusual states stand out. */
+.dc2-band-ready {
+  background: var(--surface-2);
+  color: var(--status-ready-fg);
+}
+.dc2-band-busy {
+  background: var(--status-busy-bg);
+  color: var(--status-busy-fg);
+}
+.dc2-band-reserved {
+  background: var(--status-reserved-bg);
+  color: var(--status-reserved-fg);
+}
+/* Deliberate downtime and no connection: neutral, never the red of an error. */
+.dc2-band-maintenance,
+.dc2-band-offline {
+  background: var(--status-offline-bg);
+  color: var(--status-offline-fg);
 }
 
-.dc2-name {
+.dc2-body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+}
+/* An offline device's details are its last known ones. */
+.dc2-dim {
+  opacity: 0.55;
+}
+.dc2-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+.dc2-icon {
+  flex: none;
+  width: 44px;
+  height: 56px;
+  border-radius: 10px;
+  background: var(--surface-2);
+  color: var(--text-muted);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.dc2-id {
+  min-width: 0;
+}
+.dc2-title {
   color: var(--text);
   font-size: 15px;
   font-weight: 600;
@@ -51,136 +104,53 @@
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.dc2-udid-row {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  min-width: 0;
-}
-.dc2-udid {
-  color: var(--text-dim);
-  font-family: 'JetBrains Mono', monospace;
-  font-size: 11px;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.dc2-udid-copy {
-  flex-shrink: 0;
-  background: transparent;
-  border: none;
+.dc2-subtitle {
+  margin-top: 2px;
   color: var(--text-muted);
-  padding: 2px;
-  border-radius: var(--radius-sm);
-  cursor: pointer;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  transition: color var(--motion-fast), background var(--motion-fast);
-}
-.dc2-udid-copy:hover {
-  color: var(--text);
-  background: var(--surface-2);
-}
-.dc2-udid-copy:focus-visible {
-  outline: 2px solid var(--border-strong);
-  outline-offset: 1px;
-}
-
-.dc2-copyable {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  min-width: 0;
-  max-width: 100%;
-}
-.dc2-copyable-text {
+  font-size: 12px;
+  white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  white-space: nowrap;
-  min-width: 0;
 }
-
-.dc2-tags {
+.dc2-meta {
   display: flex;
-  gap: 4px;
   flex-wrap: wrap;
   align-items: center;
-}
-
-.dc2-team-pill {
-  background: transparent;
-  border: 1px solid var(--border);
-  font-size: 11px;
-  padding: 2px 8px;
-  border-radius: 999px;
-  color: var(--text);
-  cursor: pointer;
-  font-family: 'Inter', sans-serif;
-  line-height: 1.4;
-  transition: border-color var(--motion-fast);
-}
-.dc2-team-pill:hover {
-  border-color: var(--border-strong);
-}
-.dc2-team-pill:focus-visible {
-  outline: 2px solid var(--border-strong);
-  outline-offset: 1px;
-}
-
-.dc2-metrics {
-  background: var(--bg);
-  border-radius: var(--radius-sm);
-  padding: 10px 12px;
-  display: flex;
-  flex-direction: column;
   gap: 6px;
-  margin-top: auto;
+  min-height: 20px;
+}
+.dc2-tag {
+  color: var(--text-dim);
+  font-size: 11px;
 }
 
-.dc2-banner {
-  display: inline-flex;
+.dc2-foot {
+  display: flex;
   align-items: center;
   gap: 6px;
-  font-size: 11px;
-  font-weight: 600;
-  padding: 3px 8px;
-  border-radius: var(--radius-sm);
-  font-family: 'Inter', sans-serif;
-  width: fit-content;
+  padding: 10px 12px;
+  border-top: 1px solid var(--border);
 }
-.dc2-banner-reserved {
-  color: var(--status-reserved-fg);
-  background: var(--status-reserved-bg);
+.dc2-spacer {
+  flex: 1;
 }
-.dc2-banner-session {
-  color: var(--status-busy-fg);
-  background: var(--status-busy-bg);
-}
-
 .dc2-unavailable {
+  min-width: 0;
   margin: 0;
   color: var(--text-dim);
   font-size: 11px;
-}
-
-.dc2-actions {
-  display: flex;
-  gap: 6px;
-  align-items: center;
-}
-.dc2-primary {
-  flex: 1;
-  justify-content: center;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .dc2-more {
+  flex: none;
   background: transparent;
   border: 1px solid var(--border);
   color: var(--text-muted);
   border-radius: var(--radius-md);
-  width: 32px;
-  height: 26px;
+  width: 28px;
+  height: 28px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -195,6 +165,5 @@
 .dc2-health {
   display: flex;
   gap: 6px;
-  margin-top: 4px;
   flex-wrap: wrap;
 }
