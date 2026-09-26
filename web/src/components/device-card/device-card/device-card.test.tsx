@@ -61,7 +61,7 @@ describe('DeviceCard', () => {
       reservedBy: 'priya@acme.com',
       reservedUntil: Date.now() + 46 * 60_000 + 30_000,
     });
-    expect(container).toHaveTextContent('Reserved by priya@acme.com · 46m left');
+    expect(container).toHaveTextContent('46m left · by priya@acme.com');
     expect(container).not.toHaveTextContent('RES ·');
   });
 });

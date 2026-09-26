@@ -59,7 +59,8 @@ const isAdmin = (viewer: Viewer | null) =>
 
 /**
  * What the device is doing, in words, or null when idle. Never an internal
- * id: the card used to print "SID · manual_u42" and "RES · <who>".
+ * id: the card used to print "SID · manual_u42" and "RES · <who>". Shown in
+ * the card's status band, beside the state's own label.
  */
 export function activityLabel(
   d: DeviceStateInput,
@@ -80,7 +81,9 @@ export function activityLabel(
     const mine =
       !!d.reservedBy && (d.reservedBy === viewer?.email || d.reservedBy === viewer?.name);
     const who = mine ? 'you' : d.reservedBy || 'another user';
-    return `Reserved by ${who} · ${formatReservationRemaining(d.reservedUntil - now)} left`;
+    // The band already says "Reserved". The time comes first, so a long name
+    // is what an ellipsis cuts, not the time left.
+    return `${formatReservationRemaining(d.reservedUntil - now)} left · by ${who}`;
   }
   return null;
 }
