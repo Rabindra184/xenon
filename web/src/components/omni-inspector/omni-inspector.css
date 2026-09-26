@@ -1205,11 +1205,6 @@
     border-radius: 6px;
 }
 
-.omni-summary-role__emoji {
-    font-size: 16px;
-    line-height: 1;
-}
-
 .omni-summary-role__name {
     flex: 1;
     font-size: 12px;
@@ -1240,145 +1235,6 @@
     font-style: italic;
     background: rgb(var(--rgb-accent) / 0.03);
     border-bottom: 1px solid rgb(var(--rgb-accent) / 0.08);
-}
-
-/* ===================================================
-   AI FEATURES: Element Insight Panel
-   =================================================== */
-.omni-insight-panel {
-    display: flex;
-    flex-direction: column;
-    gap: 16px;
-}
-
-.omni-insight-role {
-    display: flex;
-    align-items: center;
-    gap: 14px;
-    padding: 16px;
-    background: rgb(var(--rgb-accent) / 0.04);
-    border-radius: 8px;
-    border: 1px solid rgb(var(--rgb-accent) / 0.12);
-}
-
-.omni-insight-emoji {
-    font-size: 28px;
-    line-height: 1;
-}
-
-.omni-insight-role-name {
-    font-size: 14px;
-    font-weight: 700;
-    color: var(--text);
-    font-family: 'JetBrains Mono', monospace;
-}
-
-.omni-insight-interactable {
-    margin-top: 4px;
-    display: flex;
-    gap: 6px;
-}
-
-.omni-badge-green {
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
-    font-size: 10px;
-    font-weight: 700;
-    color: var(--color-success);
-    background: rgb(var(--rgb-success) / 0.1);
-    padding: 2px 8px;
-    border-radius: 4px;
-    border: 1px solid rgb(var(--rgb-success) / 0.2);
-}
-
-.omni-badge-gray {
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
-    font-size: 10px;
-    font-weight: 700;
-    color: var(--text-muted);
-    background: rgb(var(--rgb-fg) / 0.04);
-    padding: 2px 8px;
-    border-radius: 4px;
-    border: 1px solid var(--border);
-}
-
-.omni-insight-warning {
-    padding: 10px 12px;
-    background: rgb(var(--rgb-amber-400) / 0.06);
-    border: 1px solid rgb(var(--rgb-amber-400) / 0.2);
-    border-radius: 6px;
-    font-size: 11px;
-    color: var(--amber-400);
-}
-
-.omni-insight-description {
-    display: flex;
-    gap: 10px;
-    align-items: flex-start;
-    padding: 12px;
-    background: rgb(var(--rgb-well) / calc(0.3 * var(--well-k)));
-    border-radius: 6px;
-    border: 1px solid var(--border);
-}
-
-.omni-insight-icon {
-    color: var(--color-accent);
-    flex-shrink: 0;
-    margin-top: 2px;
-}
-
-.omni-insight-description p {
-    font-size: 12px;
-    color: var(--text);
-    line-height: 1.6;
-    margin: 0;
-}
-
-.omni-insight-best-locator {
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-}
-
-.omni-insight-attributes {
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-}
-
-.omni-quick-facts {
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-}
-
-.omni-quick-fact-row {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 6px 10px;
-    border-radius: 4px;
-    background: rgb(var(--rgb-well) / calc(0.2 * var(--well-k)));
-}
-
-.omni-quick-fact-label {
-    font-size: 11px;
-    color: var(--text-muted);
-    font-weight: 600;
-}
-
-.omni-quick-fact-value {
-    font-size: 11px;
-    color: var(--text);
-    font-family: 'JetBrains Mono', monospace;
-}
-
-.omni-quick-fact-value.true {
-    color: var(--color-accent);
-    font-weight: 700;
 }
 
 /* ===================================================
@@ -1591,4 +1447,125 @@
    show the light panel through it. */
 :root[data-theme='light'] .omni-codegen-pre {
     background: var(--surface);
+}
+
+/* ---- By role: icons in place of emoji -------------------------------- */
+.omni-summary-role__icon {
+    display: inline-flex;
+    color: var(--text-muted);
+}
+
+/* ---- Capture age, and the notice once input may have changed the screen ---- */
+.omni-capture-meta {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 12px;
+    color: var(--text-muted);
+    font-size: 11px;
+}
+.omni-capture-meta.is-stale {
+    margin: 6px 10px 0;
+    padding: 6px 8px 6px 10px;
+    border: 1px solid rgb(var(--rgb-amber) / 0.35);
+    border-radius: var(--radius-sm);
+    background: rgb(var(--rgb-amber) / 0.1);
+    color: var(--text);
+}
+.omni-capture-meta.is-stale svg {
+    flex: none;
+    color: var(--color-warning);
+}
+.omni-capture-meta.is-stale span {
+    flex: 1;
+    min-width: 0;
+}
+.omni-capture-refresh {
+    flex: none;
+    height: 24px;
+    padding: 0 8px;
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius-sm);
+    background: var(--surface);
+    color: var(--text);
+    font-size: 11px;
+    font-weight: 600;
+    cursor: pointer;
+}
+.omni-capture-refresh:hover {
+    background: var(--surface-2);
+}
+.omni-capture-refresh:focus-visible {
+    outline: 2px solid var(--color-focus-ring);
+    outline-offset: 1px;
+}
+
+/* Highlights from an out-of-date capture may point at the wrong things. */
+.omni-overlay.is-stale {
+    opacity: 0.35;
+}
+
+/* ---- Checks ---------------------------------------------------------- */
+.omni-checks-panel {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+.omni-checks-summary {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    margin: 0;
+    font-size: 12px;
+    font-weight: 600;
+}
+.omni-checks-summary span {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+}
+.omni-checks-summary .is-pass { color: var(--color-success); }
+.omni-checks-summary .is-warn { color: var(--color-warning); }
+.omni-checks-summary .is-fail { color: var(--color-danger); }
+.omni-checks-list {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+.omni-check {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    padding: 8px 10px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: rgb(var(--rgb-well) / calc(0.25 * var(--well-k)));
+}
+.omni-check-icon {
+    display: inline-flex;
+    flex: none;
+    margin-top: 1px;
+    color: var(--text-muted);
+}
+.omni-check.is-pass .omni-check-icon { color: var(--color-success); }
+.omni-check.is-warn .omni-check-icon { color: var(--color-warning); }
+.omni-check.is-fail .omni-check-icon { color: var(--color-danger); }
+.omni-check.is-fail { border-color: var(--status-error-border); }
+.omni-check-body {
+    min-width: 0;
+}
+.omni-check-label {
+    color: var(--text);
+    font-size: 12px;
+    font-weight: 600;
+}
+.omni-check-detail {
+    margin-top: 2px;
+    color: var(--text-muted);
+    font-size: 11px;
+    line-height: 1.45;
+    overflow-wrap: anywhere;
 }

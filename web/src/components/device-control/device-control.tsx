@@ -74,6 +74,10 @@ export default function DeviceControl({ device, onClose, titleId }: DeviceContro
   const [streamStarting, setStreamStarting] = useState(false);
   const [streamRetryCount, setStreamRetryCount] = useState(0);
   const [currentDevice, setCurrentDevice] = useState(device);
+  // When input last reached the device. Omni-Vision compares its capture to
+  // this: after a tap, key or swipe the tree may describe a screen that's gone.
+  const [deviceActionAt, setDeviceActionAt] = useState(0);
+  const noteDeviceAction = useCallback(() => setDeviceActionAt(Date.now()), []);
   // The name its Devices card shows, for the header and every message.
   const deviceName = deviceTitle(currentDevice);
   const [streamLoaded, setStreamLoaded] = useState(false);
@@ -212,6 +216,8 @@ export default function DeviceControl({ device, onClose, titleId }: DeviceContro
           await XenonApiService.typeText(currentDevice.udid, textToType);
         } catch (err) {
           console.error('Keyboard buffering flush failed:', err);
+        } finally {
+          noteDeviceAction();
         }
       }
     };
@@ -239,14 +245,14 @@ export default function DeviceControl({ device, onClose, titleId }: DeviceContro
         XenonApiService.pressKey(
           currentDevice.udid,
           currentDevice.platform === 'android' ? 66 : 'enter',
-        );
+        ).finally(noteDeviceAction);
       } else if (key === 'Backspace') {
         if (inputTimer.current) clearTimeout(inputTimer.current);
         flushBuffer();
         XenonApiService.pressKey(
           currentDevice.udid,
           currentDevice.platform === 'android' ? 67 : 'backspace',
-        );
+        ).finally(noteDeviceAction);
       }
       // 2. Printable Characters - Buffer them
       else if (key.length === 1) {
@@ -263,7 +269,7 @@ export default function DeviceControl({ device, onClose, titleId }: DeviceContro
       window.removeEventListener('keydown', handleKeyDown);
       if (inputTimer.current) clearTimeout(inputTimer.current);
     };
-  }, [currentDevice.udid, currentDevice.platform, isCanvasFocused, activeTab]);
+  }, [currentDevice.udid, currentDevice.platform, isCanvasFocused, activeTab, noteDeviceAction]);
 
   const [streamTimestamp, setStreamTimestamp] = useState(Date.now());
 
@@ -368,6 +374,8 @@ export default function DeviceControl({ device, onClose, titleId }: DeviceContro
       }
     } catch (error) {
       console.error('Action failed:', error);
+    } finally {
+      noteDeviceAction();
     }
 
     handleMouseDown.current = null;
@@ -377,27 +385,30 @@ export default function DeviceControl({ device, onClose, titleId }: DeviceContro
     XenonApiService.pressKey(
       currentDevice.udid,
       currentDevice.platform === 'android' ? ANDROID_KEYCODE.HOME : IOS_BUTTON.HOME,
-    );
+    ).finally(noteDeviceAction);
   const pressBack = () =>
-    XenonApiService.pressKey(currentDevice.udid, ANDROID_KEYCODE.BACK);
+    XenonApiService.pressKey(currentDevice.udid, ANDROID_KEYCODE.BACK).finally(noteDeviceAction);
   const pressAppSwitcher = () =>
-    XenonApiService.pressKey(currentDevice.udid, ANDROID_KEYCODE.APP_SWITCH);
+    XenonApiService.pressKey(currentDevice.udid, ANDROID_KEYCODE.APP_SWITCH).finally(
+      noteDeviceAction,
+    );
   const pressVolumeUp = () =>
     XenonApiService.pressKey(
       currentDevice.udid,
       currentDevice.platform === 'android' ? ANDROID_KEYCODE.VOLUME_UP : IOS_BUTTON.VOLUME_UP,
-    );
+    ).finally(noteDeviceAction);
   const pressVolumeDown = () =>
     XenonApiService.pressKey(
       currentDevice.udid,
       currentDevice.platform === 'android' ? ANDROID_KEYCODE.VOLUME_DOWN : IOS_BUTTON.VOLUME_DOWN,
-    );
-  const pressLock = () => XenonApiService.lock(currentDevice.udid);
+    ).finally(noteDeviceAction);
+  const pressLock = () => XenonApiService.lock(currentDevice.udid).finally(noteDeviceAction);
   const pressUnlock = async () => {
     setWaking(true);
     try {
       await XenonApiService.unlock(currentDevice.udid);
     } finally {
+      noteDeviceAction();
       // The display poll is on a 5s interval and the server caches for 2s, so
       // hold the button briefly rather than letting it snap back to "Wake
       // device" over a screen that is already lit.
@@ -767,6 +778,7 @@ export default function DeviceControl({ device, onClose, titleId }: DeviceContro
                     embedded
                     overlayTarget={canvasEl}
                     onModeChange={setOmniMode}
+                    deviceActionAt={deviceActionAt}
                   />
                 </div>
               )}

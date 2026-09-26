@@ -9,14 +9,24 @@ import {
   ChevronDown,
   Box,
   Search,
-  Layout,
-  Grid3x3,
+  ChevronsUpDown,
+  ChevronsDownUp,
   MapPin,
   MousePointer2,
   Touchpad,
   Zap,
   Code2,
-  Lightbulb,
+  ListChecks,
+  CheckCircle2,
+  XCircle,
+  Info,
+  MousePointerClick,
+  TextCursorInput,
+  Image as ImageIcon,
+  ScrollText,
+  Type,
+  ToggleLeft,
+  PanelTop,
   ShieldCheck,
   ShieldAlert,
   AlertTriangle,
@@ -24,9 +34,12 @@ import {
   Crosshair,
   HelpCircle,
 } from 'lucide-react';
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import XenonApiService from '../../api-service';
 import { matchSelector, type MatchResult } from './selector-matcher';
+import { scoreLocatorStability, type StabilityLevel } from './locatorRules';
+import { checkSummary, elementChecks, type CheckStatus } from './elementChecks';
+import { captureAge, isStale } from './captureState';
 import { createPortal } from 'react-dom';
 import './omni-inspector.css';
 import React from 'react';
@@ -93,179 +106,15 @@ interface OmniInspectorProps {
   overlayTarget?: HTMLElement | null;
   /** Lets the host suppress its own tap handling while in inspect mode. */
   onModeChange?: (mode: 'inspect' | 'interact') => void;
+  /**
+   * When the host last sent input to the device (tap, swipe, typing, keys).
+   * A capture older than this may no longer match the screen.
+   */
+  deviceActionAt?: number;
 }
 
 // =====================================================================
-// AI ENGINE 1: Smart Locator Stability Scorer (Appium 2.x Best Practices)
-// Based on official Appium docs: https://appium.io/docs/en/latest/guides/locator-strategies/
-// XPath is ~10x slower on iOS. accessibility id is ALWAYS preferred.
-// =====================================================================
-type StabilityLevel = 'stable' | 'moderate' | 'fragile' | 'very-fragile';
-
-/**
- * Returns a priority rank for Appium locator strategies (lower = better).
- * Aligned with official Appium 2.x recommended priority.
- */
-function getLocatorPriority(strategy: string): number {
-  const priorityMap: Record<string, number> = {
-    'accessibility id': 1, // #1 - portable, fast, works on both platforms
-    id: 2, // #2 - resource-id (Android) or bundleId-prefixed (iOS)
-    '-ios predicate string': 3, // #3 - iOS-only, native, very fast
-    '-ios class chain': 4, // #4 - iOS-only, native
-    '-android uiautomator': 3, // #3 - Android-only, native UIAutomator2
-    'class name': 8, // Rarely unique
-    xpath: 9, // Last resort — slow, fragile
-    name: 10, // Deprecated in Appium 2.x
-    'link text': 10, // Web-only, not for mobile
-  };
-  return priorityMap[strategy.toLowerCase()] ?? 7;
-}
-
-/**
- * Platform context inferred from locator strategy.
- */
-function getLocatorPlatform(strategy: string): 'ios' | 'android' | 'both' | null {
-  const lv = strategy.toLowerCase();
-  if (lv.startsWith('-ios')) return 'ios';
-  if (lv.startsWith('-android')) return 'android';
-  if (lv === 'accessibility id' || lv === 'id' || lv === 'xpath' || lv === 'class name')
-    return 'both';
-  return null;
-}
-
-function scoreLocatorStability(
-  strategy: string,
-  value: string,
-): { level: StabilityLevel; reason: string } {
-  const lv = strategy.toLowerCase();
-
-  // ── Accessibility ID: #1 recommended by Appium docs ──
-  if (lv === 'accessibility id') {
-    if (/[0-9a-f]{8}-[0-9a-f]{4}/i.test(value)) {
-      return {
-        level: 'fragile',
-        reason: 'UUID in accessibility ID — dynamically generated, unreliable',
-      };
-    }
-    return { level: 'stable', reason: '#1 recommended by Appium — portable across Android & iOS' };
-  }
-
-  // ── ID (resource-id on Android / bundled on iOS): #2 ──
-  if (lv === 'id') {
-    if (/[0-9a-f]{8}-[0-9a-f]{4}/i.test(value)) {
-      return { level: 'fragile', reason: 'UUID in resource ID — dynamically generated' };
-    }
-    if (/\d{6,}/.test(value) && !value.includes(':id/')) {
-      return {
-        level: 'moderate',
-        reason: 'Long numeric ID without package prefix — may not be unique',
-      };
-    }
-    // Android resource ID pattern: com.package:id/element_name
-    if (/^[a-z][a-z0-9.]+:id\//.test(value)) {
-      return {
-        level: 'stable',
-        reason: 'Android resource-id with package prefix — #2 by Appium priority',
-      };
-    }
-    return { level: 'stable', reason: 'Element ID — #2 by Appium 2.x recommended priority' };
-  }
-
-  // ── XPath: LAST RESORT — 10x slower on iOS per Appium docs ──
-  if (lv === 'xpath') {
-    // Absolute XPath (no descendant-or-self shorthand) — worst possible
-    if (value.startsWith('/hierarchy') || (value.startsWith('/') && !value.startsWith('//'))) {
-      return {
-        level: 'very-fragile',
-        reason: 'ABSOLUTE XPath — breaks on any layout change. Avoid entirely',
-      };
-    }
-    if (/\[\d+\]/.test(value)) {
-      return {
-        level: 'very-fragile',
-        reason: 'Index-based XPath [n] — breaks when element order changes',
-      };
-    }
-    const slashCount = (value.match(/\//g) || []).length;
-    if (slashCount > 7) {
-      return {
-        level: 'fragile',
-        reason: `${slashCount}-level deep XPath — brittle to layout changes, 10x slower on iOS`,
-      };
-    }
-    if (
-      value.includes('@content-desc') ||
-      value.includes('@resource-id') ||
-      value.includes('@text')
-    ) {
-      return {
-        level: 'moderate',
-        reason: 'XPath with semantic attribute — more stable, but still prefer ID/accessibility id',
-      };
-    }
-    return {
-      level: 'fragile',
-      reason: 'XPath is a LAST RESORT per Appium docs — 10x slower on iOS, breaks on UI changes',
-    };
-  }
-
-  // ── iOS-native: Very fast and stable (iOS only) ──
-  if (lv === '-ios predicate string') {
-    return {
-      level: 'stable',
-      reason: 'iOS NSPredicate — native engine, excellent performance on iOS',
-    };
-  }
-  if (lv === '-ios class chain') {
-    return { level: 'stable', reason: 'iOS Class Chain — native iOS, faster than XPath' };
-  }
-
-  // ── Android UIAutomator2: Native, fast (Android only) ──
-  if (lv === '-android uiautomator') {
-    if (value.includes('resourceId') || value.includes('description')) {
-      return {
-        level: 'stable',
-        reason: 'UIAutomator2 with resourceId/description — Android native, very reliable',
-      };
-    }
-    if (value.includes('textContains') || value.includes('text(')) {
-      return {
-        level: 'moderate',
-        reason: 'UIAutomator2 with text matching — breaks if copy changes',
-      };
-    }
-    return {
-      level: 'stable',
-      reason: 'UIAutomator2 — Android native engine, preferred over XPath on Android',
-    };
-  }
-
-  // ── Class name: Not unique, fragile ──
-  if (lv === 'class name') {
-    return {
-      level: 'fragile',
-      reason:
-        'Class name alone is almost never unique — use with explicit index or prefer accessibility id',
-    };
-  }
-
-  // ── name: DEPRECATED in Appium 2.x ──
-  if (lv === 'name') {
-    return {
-      level: 'fragile',
-      reason: '⚠️ Deprecated in Appium 2.x — replace with accessibility id or id',
-    };
-  }
-
-  if (lv === 'link text') {
-    return { level: 'moderate', reason: 'Text-based locator — breaks if copy/label changes' };
-  }
-
-  return { level: 'moderate', reason: 'Verify reliability for your target platform' };
-}
-
-// =====================================================================
-// AI ENGINE 2: Code Generator (Multi-Framework, Appium 2.x aligned)
+// Code generator (Multi-Framework, Appium 2.x aligned)
 // References:
 //   Java: io.appium:java-client:9.x + Selenium 4
 //   Python: Appium-Python-Client 4.x
@@ -415,89 +264,97 @@ ${interaction}
 // Assert with expect(element).toBeDisplayed()`;
 }
 
-/**
- * Sorts locators by the official Appium recommended priority:
- * accessibility id > id > iOS predicate > UIAutomator > class chain > xpath > deprecated
- */
-function sortLocatorsByPriority(locators: LocatorSuggestion[]): LocatorSuggestion[] {
-  return [...locators].sort(
-    (a, b) => getLocatorPriority(a.strategy) - getLocatorPriority(b.strategy),
-  );
-}
+// =====================================================================
+// Element role (for the summary's "By role" counts)
+// =====================================================================
+type RoleKey =
+  | 'button'
+  | 'input'
+  | 'image'
+  | 'list'
+  | 'text'
+  | 'toggle'
+  | 'nav'
+  | 'container'
+  | 'element';
 
-// =====================================================================
-// AI ENGINE 3: Element Insight (Client-side Semantic Analysis)
-// =====================================================================
-interface ElementInsight {
+interface ElementRole {
   role: string;
-  description: string;
-  interactable: boolean;
-  bestLocator?: LocatorSuggestion;
-  warning?: string;
-  emoji: string;
+  key: RoleKey;
 }
 
-function analyzeElement(node: InspectorNode): ElementInsight {
+/** What kind of element this looks like, from its type and flags. */
+function analyzeElement(node: InspectorNode): ElementRole {
   const type = (node.type || '').toLowerCase();
   const isClickable = node.attributes?.clickable === 'true' || node.attributes?.clickable === true;
-  const isEnabled = node.attributes?.enabled !== 'false' && node.attributes?.enabled !== false;
   const isScrollable =
     node.attributes?.scrollable === 'true' || node.attributes?.scrollable === true;
-  const text = node.text || node.label || node.value || '';
   const childCount = node.children?.length || 0;
 
-  // Determine semantic role
-  let role = 'Element';
-  let emoji = '📦';
   if (type.includes('button') || type.includes('btn') || (isClickable && childCount === 0)) {
-    role = 'Button';
-    emoji = '🔘';
-  } else if (type.includes('edit') || type.includes('input') || type.includes('field')) {
-    role = 'Text Input';
-    emoji = '✏️';
-  } else if (type.includes('image') || type.includes('img') || type.includes('imageview')) {
-    role = 'Image';
-    emoji = '🖼️';
-  } else if (
+    return { role: 'Button', key: 'button' };
+  }
+  if (type.includes('edit') || type.includes('input') || type.includes('field')) {
+    return { role: 'Text input', key: 'input' };
+  }
+  if (type.includes('image') || type.includes('img') || type.includes('imageview')) {
+    return { role: 'Image', key: 'image' };
+  }
+  if (
     type.includes('scroll') ||
     type.includes('recyclerview') ||
     type.includes('listview') ||
     isScrollable
   ) {
-    role = 'Scrollable List';
-    emoji = '📜';
-  } else if (type.includes('text') || type.includes('label')) {
-    role = 'Text Label';
-    emoji = '📝';
-  } else if (type.includes('switch') || type.includes('toggle') || type.includes('checkbox')) {
-    role = 'Toggle / Checkbox';
-    emoji = '☑️';
-  } else if (type.includes('nav') || type.includes('toolbar') || type.includes('tabbar')) {
-    role = 'Navigation Bar';
-    emoji = '🧭';
-  } else if (childCount > 0) {
-    role = `Container (${childCount} children)`;
-    emoji = '🗂️';
+    return { role: 'Scrollable list', key: 'list' };
   }
-
-  const bestLocator =
-    node.suggestedLocators?.find((l) => l.strategy === 'accessibility id' || l.strategy === 'id') ||
-    node.suggestedLocators?.[0];
-
-  const warning = !isEnabled
-    ? '⚠️ Element is disabled'
-    : node.rect?.width === 0 || node.rect?.height === 0
-      ? '⚠️ Zero-size element — may not be interactable'
-      : undefined;
-
-  const textDesc = text ? ` with text "${text.slice(0, 30)}"` : '';
-  const description = `This is a ${role.toLowerCase()}${textDesc}. ${isClickable ? 'It can be tapped/clicked.' : isScrollable ? 'It supports scrolling.' : 'It is a visual container.'}${childCount > 0 ? ` Contains ${childCount} child element${childCount > 1 ? 's' : ''}.` : ''}`;
-
-  return { role, description, interactable: isClickable || isEnabled, bestLocator, warning, emoji };
+  if (type.includes('text') || type.includes('label')) return { role: 'Text label', key: 'text' };
+  if (type.includes('switch') || type.includes('toggle') || type.includes('checkbox')) {
+    return { role: 'Toggle or checkbox', key: 'toggle' };
+  }
+  if (type.includes('nav') || type.includes('toolbar') || type.includes('tabbar')) {
+    return { role: 'Navigation bar', key: 'nav' };
+  }
+  if (childCount > 0) return { role: 'Container', key: 'container' };
+  return { role: 'Element', key: 'element' };
 }
 
+const ROLE_ICON: Record<RoleKey, React.ReactNode> = {
+  button: <MousePointerClick size={13} />,
+  input: <TextCursorInput size={13} />,
+  image: <ImageIcon size={13} />,
+  list: <ScrollText size={13} />,
+  text: <Type size={13} />,
+  toggle: <ToggleLeft size={13} />,
+  nav: <PanelTop size={13} />,
+  container: <Layers size={13} />,
+  element: <Box size={13} />,
+};
+
+const CHECK_ICON: Record<CheckStatus, React.ReactNode> = {
+  pass: <CheckCircle2 size={13} />,
+  warn: <AlertTriangle size={13} />,
+  fail: <XCircle size={13} />,
+  info: <Info size={13} />,
+};
+
+/** Read after each check's label, since its status is otherwise only an icon. */
+const CHECK_WORD: Record<CheckStatus, string> = {
+  pass: 'passed',
+  warn: 'warning',
+  fail: 'failed',
+  info: 'note',
+};
+
+const FRAMEWORK_LABEL: Record<CodeFramework, string> = {
+  java: 'Java',
+  python: 'Python',
+  javascript: 'JavaScript',
+  wdio: 'WebdriverIO',
+};
+
 // =====================================================================
-// AI ENGINE 4: Smart Natural Language Search
+// Search: plain-language matching over types, text and ids
 // =====================================================================
 function smartSearch(node: InspectorNode, query: string): boolean {
   if (!query) return true;
@@ -542,6 +399,7 @@ const OmniInspector: React.FC<OmniInspectorProps> = ({
   embedded = false,
   overlayTarget = null,
   onModeChange,
+  deviceActionAt = 0,
 }) => {
   const [loading, setLoading] = useState(true);
   const [snapshot, setSnapshot] = useState<InspectorSnapshot | null>(null);
@@ -551,7 +409,16 @@ const OmniInspector: React.FC<OmniInspectorProps> = ({
   const [expandedNodes, setExpandedNodes] = useState<Set<string>>(new Set(['/']));
   const [searchQuery, setSearchQuery] = useState('');
   const [copiedLocator, setCopiedLocator] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<'info' | 'code' | 'insight'>('info');
+  const [activeTab, setActiveTab] = useState<'info' | 'code' | 'checks'>('info');
+  // When the tree was captured, and when this panel last sent input to the
+  // device itself (Interact mode, "find and tap"). Either input, or the host's
+  // deviceActionAt, can leave the capture describing a screen that is gone.
+  const [capturedAt, setCapturedAt] = useState(0);
+  const [localActionAt, setLocalActionAt] = useState(0);
+  const [now, setNow] = useState(() => Date.now());
+  // Numbers each capture request, so a slow answer for an earlier request
+  // (the previous device, a superseded refresh) can't replace a newer one.
+  const loadSeq = useRef(0);
   const [codeFramework, setCodeFramework] = useState<CodeFramework>('java');
   const [selectedLocatorForCode, setSelectedLocatorForCode] = useState<LocatorSuggestion | null>(
     null,
@@ -659,6 +526,7 @@ const OmniInspector: React.FC<OmniInspectorProps> = ({
           { strategy, selector: value, action },
         );
         setVerifyResults((prev) => ({ ...prev, [strategy]: result }));
+        if (action === 'tap') setLocalActionAt(Date.now());
       } catch (e: any) {
         setVerifyResults((prev) => ({
           ...prev,
@@ -700,10 +568,13 @@ const OmniInspector: React.FC<OmniInspectorProps> = ({
 
   const loadSnapshot = async () => {
     if (!udid) return;
+    const seq = ++loadSeq.current;
+    const latest = () => seq === loadSeq.current;
     setLoading(true);
     setError(null);
     try {
       const data = await XenonApiService.getInspectorSnapshot(udid);
+      if (!latest()) return;
       // The api client resolves on any status, so a 500 arrives here as a
       // body with `error` and no hierarchy. Without this the panel just went
       // quietly blank — which is how the "session blocks uiautomator dump"
@@ -714,6 +585,7 @@ const OmniInspector: React.FC<OmniInspectorProps> = ({
         return;
       }
       setSnapshot(data);
+      setCapturedAt(Date.now());
       const expanded = new Set<string>(['/']);
       // Android trees are rooted at the <hierarchy> document element, one
       // level above the app's own root, so this opens the same amount of the
@@ -727,12 +599,19 @@ const OmniInspector: React.FC<OmniInspectorProps> = ({
       expandLevel(data.hierarchy, 0);
       setExpandedNodes(expanded);
     } catch (err: any) {
+      if (!latest()) return;
       setSnapshot(null);
       setError(err.message || 'Failed to capture snapshot');
     } finally {
-      setLoading(false);
+      if (latest()) setLoading(false);
     }
   };
+
+  // Keeps "Captured 12 s ago" honest without re-rendering every second.
+  useEffect(() => {
+    const t = setInterval(() => setNow(Date.now()), 10_000);
+    return () => clearInterval(t);
+  }, []);
 
   const onImageLoad = (e: React.SyntheticEvent<HTMLImageElement>) => {
     const { naturalWidth, naturalHeight } = e.currentTarget;
@@ -803,6 +682,7 @@ const OmniInspector: React.FC<OmniInspectorProps> = ({
       } else if (dist >= 10) {
         await XenonApiService.swipe(udid, startDevice.x, startDevice.y, endDevice.x, endDevice.y);
       }
+      setLocalActionAt(Date.now());
     } catch (err) {
       console.error('Interaction failed:', err);
     }
@@ -841,19 +721,20 @@ const OmniInspector: React.FC<OmniInspectorProps> = ({
   };
 
   // Roll up element counts by semantic role for the default summary view.
-  const summarizeByRole = (root: InspectorNode | undefined | null): Array<{ role: string; emoji: string; count: number }> => {
+  const summarizeByRole = (
+    root: InspectorNode | undefined | null,
+  ): Array<{ role: string; key: RoleKey; count: number }> => {
     if (!root) return [];
-    const counts: Record<string, { emoji: string; count: number }> = {};
+    const counts: Record<string, { key: RoleKey; count: number }> = {};
     const visit = (n: InspectorNode) => {
       const i = analyzeElement(n);
-      const key = i.role.replace(/\s*\(.*?\)\s*/, '');
-      if (!counts[key]) counts[key] = { emoji: i.emoji, count: 0 };
-      counts[key].count += 1;
+      if (!counts[i.role]) counts[i.role] = { key: i.key, count: 0 };
+      counts[i.role].count += 1;
       n.children?.forEach(visit);
     };
     visit(root);
     return Object.entries(counts)
-      .map(([role, v]) => ({ role, emoji: v.emoji, count: v.count }))
+      .map(([role, v]) => ({ role, key: v.key, count: v.count }))
       .sort((a, b) => b.count - a.count);
   };
 
@@ -861,6 +742,22 @@ const OmniInspector: React.FC<OmniInspectorProps> = ({
     const parts = node.xpath.split('/').filter(Boolean);
     return parts.slice(-3);
   };
+
+  // While searching, the branches that lead to a match. They render open
+  // whatever their collapsed state: a match inside a collapsed branch used to
+  // stay hidden, so search looked like it had found nothing.
+  const searchOpen = useMemo(() => {
+    const open = new Set<string>();
+    if (!searchQuery || !snapshot?.hierarchy) return open;
+    const visit = (n: InspectorNode): boolean => {
+      let below = false;
+      for (const c of n.children || []) if (visit(c)) below = true;
+      if (below) open.add(n.xpath);
+      return below || smartSearch(n, searchQuery);
+    };
+    visit(snapshot.hierarchy);
+    return open;
+  }, [searchQuery, snapshot]);
 
   const renderTree = (node: InspectorNode, depth = 0): React.ReactNode => {
     if (!node) return null;
@@ -879,20 +776,12 @@ const OmniInspector: React.FC<OmniInspectorProps> = ({
         : null;
     const displayName = accessibleLabel || shortType;
 
-    // Smart search: uses natural language matching
+    // Smart search: uses natural language matching. While searching, show
+    // this node if it matches or leads to a match, and open its branch.
     const matchesSearch = !searchQuery || smartSearch(node, searchQuery);
-
-    if (!matchesSearch && !hasChildren) return null;
-    // If searching, only show if this node or a descendant matches
-    if (searchQuery && !matchesSearch) {
-      const hasMatchingChild = (n: InspectorNode): boolean => {
-        if (smartSearch(n, searchQuery)) return true;
-        return n.children?.some(hasMatchingChild) || false;
-      };
-      if (!hasMatchingChild(node)) return null;
-    }
-
-    const insight = node === selectedNode ? null : null; // Only compute for selected
+    const leadsToMatch = searchOpen.has(node.xpath);
+    if (searchQuery && !matchesSearch && !leadsToMatch) return null;
+    const showChildren = hasChildren && (isExpanded || leadsToMatch);
 
     return (
       <div key={node.xpath} className="tree-node">
@@ -913,8 +802,10 @@ const OmniInspector: React.FC<OmniInspectorProps> = ({
                 toggleExpand(node.xpath);
               }}
               className="tree-toggle"
+              aria-label={showChildren ? 'Collapse' : 'Expand'}
+              aria-expanded={showChildren}
             >
-              {isExpanded ? <ChevronDown size={11} /> : <ChevronRight size={11} />}
+              {showChildren ? <ChevronDown size={11} /> : <ChevronRight size={11} />}
             </button>
           ) : (
             <span className="tree-toggle-spacer" />
@@ -931,7 +822,7 @@ const OmniInspector: React.FC<OmniInspectorProps> = ({
           {node.text && <span className="tree-text-preview">"{node.text.slice(0, 20)}"</span>}
           {hasChildren && <span className="tree-badge">{node.children.length}</span>}
         </div>
-        {isExpanded && hasChildren && (
+        {showChildren && (
           <div className="tree-children">{node.children.map((c) => renderTree(c, depth + 1))}</div>
         )}
       </div>
@@ -1041,7 +932,9 @@ const OmniInspector: React.FC<OmniInspectorProps> = ({
   };
 
   const totalElements = snapshot?.hierarchy ? countNodes(snapshot.hierarchy) : 0;
-  const insight = selectedNode ? analyzeElement(selectedNode) : null;
+  const checks = selectedNode && snapshot?.hierarchy ? elementChecks(selectedNode, snapshot) : null;
+  const summary = checks ? checkSummary(checks) : null;
+  const stale = isStale(capturedAt, Math.max(deviceActionAt, localActionAt));
 
   /**
    * The inspection overlay, rendered onto whichever element is showing the
@@ -1050,7 +943,7 @@ const OmniInspector: React.FC<OmniInspectorProps> = ({
    */
   const overlay =
     snapshot?.hierarchy && inspectorMode === 'inspect' ? (
-      <div className="omni-overlay">
+      <div className={`omni-overlay${stale ? ' is-stale' : ''}`}>
         {renderHighlights(snapshot.hierarchy)}
         {renderMatchFrames()}
         {renderOverlayFrame(hoveredNode, 'hover')}
@@ -1080,7 +973,7 @@ const OmniInspector: React.FC<OmniInspectorProps> = ({
         <div className="omni-screenshot-panel">
           <div className="omni-screenshot-header">
             <div className="omni-header-left">
-              <span className="omni-screenshot-title">Device Preview</span>
+              <span className="omni-screenshot-title">Device preview</span>
               <div className="omni-mode-toggle">
                 <button
                   className={`omni-mode-btn ${inspectorMode === 'inspect' ? 'active' : ''}`}
@@ -1153,7 +1046,7 @@ const OmniInspector: React.FC<OmniInspectorProps> = ({
                   draggable={false}
                 />
                 {inspectorMode === 'inspect' && (
-                  <div className="omni-overlay">
+                  <div className={`omni-overlay${stale ? ' is-stale' : ''}`}>
                     {renderHighlights(snapshot.hierarchy)}
                     {renderMatchFrames()}
                     {renderOverlayFrame(hoveredNode, 'hover')}
@@ -1200,11 +1093,21 @@ const OmniInspector: React.FC<OmniInspectorProps> = ({
               )}
             </div>
             <div className="omni-tree-actions">
-              <button onClick={expandAll} className="omni-action-btn" title="Expand all">
-                <Grid3x3 size={12} />
+              <button
+                onClick={expandAll}
+                className="omni-action-btn"
+                title="Expand all"
+                aria-label="Expand all"
+              >
+                <ChevronsUpDown size={12} />
               </button>
-              <button onClick={collapseAll} className="omni-action-btn" title="Collapse all">
-                <Layout size={12} />
+              <button
+                onClick={collapseAll}
+                className="omni-action-btn"
+                title="Collapse all"
+                aria-label="Collapse all"
+              >
+                <ChevronsDownUp size={12} />
               </button>
               {/* The Inspect/Interact toggle lives in the preview panel, which
                   embedded mode hides — so embedded had no way to reach either
@@ -1223,6 +1126,7 @@ const OmniInspector: React.FC<OmniInspectorProps> = ({
                         ? 'Inspect mode — click the device to select an element'
                         : 'Interact mode — clicks control the device'
                     }
+                    aria-label={inspectorMode === 'inspect' ? 'Inspect mode' : 'Interact mode'}
                     aria-pressed={inspectorMode === 'inspect'}
                   >
                     {inspectorMode === 'inspect' ? (
@@ -1235,6 +1139,7 @@ const OmniInspector: React.FC<OmniInspectorProps> = ({
                     onClick={loadSnapshot}
                     className="omni-action-btn"
                     title={loading ? 'Capturing…' : 'Refresh snapshot'}
+                    aria-label="Refresh snapshot"
                     disabled={loading}
                   >
                     <RotateCw size={12} className={loading ? 'animate-spin' : ''} />
@@ -1255,6 +1160,23 @@ const OmniInspector: React.FC<OmniInspectorProps> = ({
               </button>
             </div>
           )}
+          {/* The tree, highlights and locators describe the screen at capture
+              time. After any input to the device they may not, and nothing
+              used to say so: highlights pointed confidently at the old screen. */}
+          {snapshot &&
+            !loading &&
+            !error &&
+            (stale ? (
+              <div className="omni-capture-meta is-stale" role="status">
+                <AlertTriangle size={12} aria-hidden="true" />
+                <span>The screen may have changed since this capture.</span>
+                <button type="button" onClick={loadSnapshot} className="omni-capture-refresh">
+                  Refresh
+                </button>
+              </div>
+            ) : (
+              <div className="omni-capture-meta">{captureAge(capturedAt, now)}</div>
+            ))}
           <div className="omni-tree-search">
             <Search size={14} />
             <input
@@ -1265,7 +1187,11 @@ const OmniInspector: React.FC<OmniInspectorProps> = ({
               aria-label="Search elements"
             />
             {searchQuery && (
-              <button onClick={() => setSearchQuery('')} className="omni-clear-btn">
+              <button
+                onClick={() => setSearchQuery('')}
+                className="omni-clear-btn"
+                aria-label="Clear search"
+              >
                 ×
               </button>
             )}
@@ -1286,7 +1212,7 @@ const OmniInspector: React.FC<OmniInspectorProps> = ({
           </div>
         </div>
 
-        {/* ===== Right Panel: AI-Powered Details ===== */}
+        {/* ===== Right panel: details ===== */}
         <div className="omni-details-panel">
           {/* Tab header */}
           <div className="omni-details-tabs" role="tablist">
@@ -1299,24 +1225,26 @@ const OmniInspector: React.FC<OmniInspectorProps> = ({
               <MapPin size={12} /> <span>Info</span>
             </button>
             <button
-              className={`omni-details-tab ${activeTab === 'insight' ? 'active' : ''}`}
-              onClick={() => setActiveTab('insight')}
+              className={`omni-details-tab ${activeTab === 'checks' ? 'active' : ''}`}
+              onClick={() => setActiveTab('checks')}
               disabled={!selectedNode}
-              title="AI element analysis"
+              title="Checks for this element"
+              aria-label="Checks"
               role="tab"
-              aria-selected={activeTab === 'insight'}
+              aria-selected={activeTab === 'checks'}
             >
-              <Lightbulb size={12} /> <span>AI Insight</span>
+              <ListChecks size={12} /> <span>Checks</span>
             </button>
             <button
               className={`omni-details-tab ${activeTab === 'code' ? 'active' : ''}`}
               onClick={() => setActiveTab('code')}
               disabled={!selectedNode}
               title="Generate test code"
+              aria-label="Code gen"
               role="tab"
               aria-selected={activeTab === 'code'}
             >
-              <Code2 size={12} /> <span>Code Gen</span>
+              <Code2 size={12} /> <span>Code gen</span>
             </button>
           </div>
 
@@ -1335,7 +1263,7 @@ const OmniInspector: React.FC<OmniInspectorProps> = ({
                   </div>
 
                   <div className="omni-section">
-                    <div className="omni-section-header">Snapshot Stats</div>
+                    <div className="omni-section-header">Snapshot stats</div>
                     <div className="omni-summary-stats">
                       <div className="omni-summary-stat">
                         <span className="omni-summary-stat__label">Elements</span>
@@ -1364,11 +1292,13 @@ const OmniInspector: React.FC<OmniInspectorProps> = ({
 
                   {roleSummary.length > 0 && (
                     <div className="omni-section">
-                      <div className="omni-section-header">By Role</div>
+                      <div className="omni-section-header">By role</div>
                       <div className="omni-summary-roles">
                         {roleSummary.slice(0, 8).map((r) => (
                           <div key={r.role} className="omni-summary-role">
-                            <span className="omni-summary-role__emoji">{r.emoji}</span>
+                            <span className="omni-summary-role__icon" aria-hidden="true">
+                              {ROLE_ICON[r.key]}
+                            </span>
                             <span className="omni-summary-role__name">{r.role}</span>
                             <span className="omni-summary-role__count">{r.count}</span>
                           </div>
@@ -1391,7 +1321,7 @@ const OmniInspector: React.FC<OmniInspectorProps> = ({
                 {activeTab === 'info' && (
                   <>
                     <div className="omni-section">
-                      <div className="omni-section-header">Element Info</div>
+                      <div className="omni-section-header">Element info</div>
                       <div className="omni-info-table">
                         <div className="omni-info-row">
                           <span className="omni-info-key">Type</span>
@@ -1429,7 +1359,7 @@ const OmniInspector: React.FC<OmniInspectorProps> = ({
                     <div className="omni-section">
                       <div className="omni-section-header">
                         Locators
-                        <span className="omni-section-badge">Stability Scored</span>
+                        <span className="omni-section-badge">Stability scored</span>
                       </div>
                       <div className="omni-locators-list">
                         {/* Only the document root reaches this — every real
@@ -1486,7 +1416,7 @@ const OmniInspector: React.FC<OmniInspectorProps> = ({
                               key={loc.strategy}
                               className={`omni-locator-row ${selectedLocatorForCode?.strategy === loc.strategy ? 'selected-for-code' : ''}`}
                               onClick={() => setSelectedLocatorForCode(loc)}
-                              title="Click to use in Code Generator"
+                              title="Click to use in Code gen"
                             >
                               <div className="omni-locator-left">
                                 <div className="omni-locator-top">
@@ -1553,6 +1483,7 @@ const OmniInspector: React.FC<OmniInspectorProps> = ({
                                   }}
                                   className={`omni-test-btn ${activeLocatorTest === loc.strategy ? 'active' : ''}`}
                                   title="Test this locator against the current snapshot"
+                                  aria-label="Test locator"
                                 >
                                   <Crosshair size={12} />
                                 </button>
@@ -1575,6 +1506,7 @@ const OmniInspector: React.FC<OmniInspectorProps> = ({
                                       ? 'Verify with Appium — does the driver actually find this?'
                                       : 'Needs an active Appium session on this device'
                                   }
+                                  aria-label="Verify with Appium"
                                 >
                                   {verifying === loc.strategy ? (
                                     <RotateCw size={12} className="animate-spin" />
@@ -1595,6 +1527,7 @@ const OmniInspector: React.FC<OmniInspectorProps> = ({
                                       ? 'Find with Appium and tap the element it returns'
                                       : 'Needs an active Appium session on this device'
                                   }
+                                  aria-label="Find and tap with Appium"
                                 >
                                   <Zap size={12} />
                                 </button>
@@ -1604,6 +1537,10 @@ const OmniInspector: React.FC<OmniInspectorProps> = ({
                                     copyToClipboard(loc.value, loc.strategy);
                                   }}
                                   className={`omni-copy-btn ${copiedLocator === loc.strategy ? 'copied' : ''}`}
+                                  title="Copy locator"
+                                  aria-label={
+                                    copiedLocator === loc.strategy ? 'Copied' : 'Copy locator'
+                                  }
                                 >
                                   {copiedLocator === loc.strategy ? (
                                     <Check size={12} />
@@ -1635,74 +1572,40 @@ const OmniInspector: React.FC<OmniInspectorProps> = ({
                 )}
 
                 {/* === TAB: AI INSIGHT === */}
-                {activeTab === 'insight' && insight && (
-                  <div className="omni-insight-panel">
-                    <div className="omni-insight-role">
-                      <span className="omni-insight-emoji">{insight.emoji}</span>
-                      <div>
-                        <div className="omni-insight-role-name">{insight.role}</div>
-                        <div className="omni-insight-interactable">
-                          {insight.interactable ? (
-                            <span className="omni-badge-green">
-                              <Zap size={10} /> Interactable
-                            </span>
-                          ) : (
-                            <span className="omni-badge-gray">Visual Only</span>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-
-                    {insight.warning && (
-                      <div className="omni-insight-warning">{insight.warning}</div>
-                    )}
-
-                    <div className="omni-insight-description">
-                      <Sparkles size={12} className="omni-insight-icon" />
-                      <p>{insight.description}</p>
-                    </div>
-
-                    {insight.bestLocator && (
-                      <div className="omni-insight-best-locator">
-                        <div className="omni-section-header">Recommended Locator</div>
-                        <div className="omni-locator-row">
-                          <div className="omni-locator-left">
-                            <span className="omni-locator-strategy">
-                              {insight.bestLocator.strategy}
-                            </span>
-                            <code className="omni-locator-value">{insight.bestLocator.value}</code>
+                {activeTab === 'checks' && checks && summary && (
+                  <div className="omni-checks-panel">
+                    <p className="omni-checks-summary">
+                      <span className="is-pass">
+                        <CheckCircle2 size={12} aria-hidden="true" /> {summary.pass} passed
+                      </span>
+                      {summary.warn > 0 && (
+                        <span className="is-warn">
+                          <AlertTriangle size={12} aria-hidden="true" /> {summary.warn}{' '}
+                          {summary.warn === 1 ? 'warning' : 'warnings'}
+                        </span>
+                      )}
+                      {summary.fail > 0 && (
+                        <span className="is-fail">
+                          <XCircle size={12} aria-hidden="true" /> {summary.fail} failed
+                        </span>
+                      )}
+                    </p>
+                    <ul className="omni-checks-list">
+                      {checks.map((c) => (
+                        <li key={c.id} className={`omni-check is-${c.status}`}>
+                          <span className="omni-check-icon" aria-hidden="true">
+                            {CHECK_ICON[c.status]}
+                          </span>
+                          <div className="omni-check-body">
+                            <div className="omni-check-label">
+                              {c.label}
+                              <span className="sr-only">: {CHECK_WORD[c.status]}</span>
+                            </div>
+                            <div className="omni-check-detail">{c.detail}</div>
                           </div>
-                          <button
-                            onClick={() => copyToClipboard(insight.bestLocator!.value, 'best')}
-                            className={`omni-copy-btn ${copiedLocator === 'best' ? 'copied' : ''}`}
-                          >
-                            {copiedLocator === 'best' ? <Check size={12} /> : <Copy size={12} />}
-                          </button>
-                        </div>
-                      </div>
-                    )}
-
-                    <div className="omni-insight-attributes">
-                      <div className="omni-section-header">Quick Facts</div>
-                      <div className="omni-quick-facts">
-                        {[
-                          { label: 'Clickable', value: selectedNode.attributes?.clickable },
-                          { label: 'Enabled', value: selectedNode.attributes?.enabled },
-                          { label: 'Scrollable', value: selectedNode.attributes?.scrollable },
-                          { label: 'Focusable', value: selectedNode.attributes?.focusable },
-                          { label: 'Children', value: selectedNode.children?.length || 0 },
-                        ].map(({ label, value }) => (
-                          <div key={label} className="omni-quick-fact-row">
-                            <span className="omni-quick-fact-label">{label}</span>
-                            <span
-                              className={`omni-quick-fact-value ${value === 'true' || value === true ? 'true' : ''}`}
-                            >
-                              {String(value ?? '—')}
-                            </span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
+                        </li>
+                      ))}
+                    </ul>
                   </div>
                 )}
 
@@ -1716,13 +1619,7 @@ const OmniInspector: React.FC<OmniInspectorProps> = ({
                           className={`omni-fw-btn ${codeFramework === fw ? 'active' : ''}`}
                           onClick={() => setCodeFramework(fw)}
                         >
-                          {fw === 'java'
-                            ? '☕ Java'
-                            : fw === 'python'
-                              ? '🐍 Python'
-                              : fw === 'javascript'
-                                ? '🟨 JS'
-                                : '🔷 WD.io'}
+                          {FRAMEWORK_LABEL[fw]}
                         </button>
                       ))}
                     </div>
