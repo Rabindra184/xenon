@@ -6,6 +6,31 @@ This project follows [Semantic Versioning](https://semver.org/). Releases are
 published to npm automatically when `package.json`'s `version` changes on `main`
 (see `.github/workflows/npm-publish.yml`).
 
+## 1.24.0
+
+Minor release. On Live Devices, recording no longer switches Annotate on, so
+you can use the phone as soon as you press Record. An Interact / Annotate
+switch replaces the Annotate button. No server changes.
+
+### Changed
+
+- **A recording starts on Interact** (#315). Pressing Record used to turn
+  Annotate on, which paused taps and swipes until you found and turned off
+  the Annotate button. Taps now reach the phone straight away. Marks you
+  draw still stay on screen when you switch back.
+- **An Interact / Annotate switch replaces the Annotate button** (#315).
+  - It always shows which mode you're in.
+  - Annotate is unavailable until you start recording, and its tooltip says
+    so.
+  - The drawing tools work only on the Annotate side, as before.
+
+### Added
+
+- **Esc returns to Interact while annotating** (#315). It's ignored while
+  you type in a text field, and it isn't intercepted in Interact mode, so a
+  focused Android device still receives Esc as Back. The on-tile label now
+  reads "Annotating · Esc to stop".
+
 ## 1.23.1
 
 Patch release. Two polish fixes on the Devices page. No server changes.
