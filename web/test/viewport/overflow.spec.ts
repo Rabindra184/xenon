@@ -735,8 +735,9 @@ const ROUTE_CONTENT_CHECKS: Record<string, Setup> = {
     await expect(page.locator('.device-explorer-card-container')).toHaveCount(1);
     await expect(page.locator('.device-explorer-card-container .dc2')).not.toHaveCount(0);
     // The two-row toolbar is what's being measured.
-    await expect(page.getByRole('tablist', { name: 'Platform' })).toBeVisible();
-    await expect(page.getByRole('tablist', { name: 'Device type' })).toBeVisible();
+    await expect(page.getByRole('tablist', { name: 'Status' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Platform' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Type' })).toBeVisible();
   },
 
   '/xenon/builds': async (page) => {

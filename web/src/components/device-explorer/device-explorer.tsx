@@ -1,5 +1,5 @@
 import React from 'react';
-import { Smartphone as AndroidIcon, RefreshCw } from 'lucide-react';
+import { RefreshCw, Search, Smartphone as AndroidIcon } from 'lucide-react';
 import { PageHeader } from '../ui/page-header';
 import { useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import CardView from './card-view/card-view';
@@ -9,20 +9,23 @@ import DeviceControl from '../device-control/device-control';
 import { IDevice } from '../../interfaces/IDevice';
 import { Button } from '../ui/button';
 import { InPlaceDialog } from '../ui/InPlaceDialog';
-import { SegmentedControl, type Segment } from '../ui/SegmentedControl';
+import { SegmentedControl } from '../ui/SegmentedControl';
 import { useSocket } from '../../hooks/useSocket';
 import {
   deviceMatches,
   facetCounts,
   filtersToParams,
   hasTvos,
+  isFiltered,
   NO_FILTERS,
   parseFilters,
+  resultLabel,
   type DeviceFilters,
   type PlatformFilter,
   type StatusFilter,
   type TypeFilter,
 } from './deviceFilters';
+import { FilterMenu, type FilterOption } from './FilterMenu';
 
 interface IDeviceExplorerState {
   devices: IDevice[];
@@ -47,6 +50,7 @@ export class DeviceExplorer extends React.Component<IDeviceExplorerProps, IDevic
   private devicePolling: any;
   private socketCleanups: (() => void)[] = [];
   private refreshTimeout: NodeJS.Timeout | null = null;
+  private searchRef = React.createRef<HTMLInputElement>();
 
   constructor(props: any) {
     super(props);
@@ -72,6 +76,7 @@ export class DeviceExplorer extends React.Component<IDeviceExplorerProps, IDevic
       this.fetchDevicesDebounced();
     });
     this.socketCleanups.push(unblockedCleanup, blockedCleanup);
+    document.addEventListener('keydown', this.onSlash);
   }
 
   componentWillUnmount() {
@@ -84,7 +89,26 @@ export class DeviceExplorer extends React.Component<IDeviceExplorerProps, IDevic
       this.refreshTimeout = null;
     }
     this.socketCleanups.forEach((cleanup) => cleanup());
+    document.removeEventListener('keydown', this.onSlash);
   }
+
+  // "/" jumps to search, as in most list tools. Not while typing, not with
+  // Ctrl/Alt/Cmd, and not while a device is open: device control sends keys
+  // to the phone.
+  onSlash = (e: KeyboardEvent) => {
+    if (e.key !== '/' || e.ctrlKey || e.altKey || e.metaKey) return;
+    if (this.props.params.udid) return;
+    const target = e.target as HTMLElement | null;
+    const typing = 'input, textarea, select, [contenteditable]:not([contenteditable="false"])';
+    if (target?.closest?.(typing)) return;
+    e.preventDefault();
+    this.searchRef.current?.focus();
+  };
+
+  clearFilters = () => {
+    this.props.onFiltersChange(NO_FILTERS);
+    this.searchRef.current?.focus();
+  };
 
   fetchDevicesDebounced() {
     if (this.refreshTimeout) clearTimeout(this.refreshTimeout);
@@ -128,14 +152,24 @@ export class DeviceExplorer extends React.Component<IDeviceExplorerProps, IDevic
     const selectedDevice = udid ? this.state.devices.find((d) => d.udid === udid) : null;
     const { filters } = this.props;
     const counts = facetCounts(this.state.devices, filters, Date.now());
-    const platformSegments: Segment<PlatformFilter>[] = [
-      { value: 'all', label: 'All', count: counts.platform.all },
+    const platformOptions: FilterOption<PlatformFilter>[] = [
+      { value: 'all', label: 'Any platform', count: counts.platform.all },
       { value: 'android', label: 'Android', count: counts.platform.android },
       { value: 'ios', label: 'iOS', count: counts.platform.ios },
     ];
     if (hasTvos(this.state.devices) || filters.platform === 'tvos') {
-      platformSegments.push({ value: 'tvos', label: 'tvOS', count: counts.platform.tvos });
+      platformOptions.push({ value: 'tvos', label: 'tvOS', count: counts.platform.tvos });
     }
+    const typeOptions: FilterOption<TypeFilter>[] = [
+      { value: 'all', label: 'Any type', count: counts.type.all },
+      { value: 'real', label: 'Real devices', count: counts.type.real },
+      {
+        value: 'virtual',
+        label: 'Virtual',
+        note: 'Simulators and emulators',
+        count: counts.type.virtual,
+      },
+    ];
     const closeTo = `/devices${this.props.locationSearch}`;
 
     return (
@@ -177,35 +211,13 @@ export class DeviceExplorer extends React.Component<IDeviceExplorerProps, IDevic
                 },
               ]}
             />
-            {/* Platform and type sit with the search on a row of their own. */}
+            {/* Search leads the second row; Platform and Type are menus, so the
+                bar says in words what's filtered without a wall of pills. */}
             <div className="de2-toolbar-row">
-              <SegmentedControl<PlatformFilter>
-                size="sm"
-                label="Platform"
-                value={filters.platform}
-                onChange={(v) => this.setFilters({ platform: v })}
-                segments={platformSegments}
-              />
-              <SegmentedControl<TypeFilter>
-                size="sm"
-                label="Device type"
-                value={filters.type}
-                onChange={(v) => this.setFilters({ type: v })}
-                segments={[
-                  { value: 'all', label: 'All', count: counts.type.all },
-                  { value: 'real', label: 'Real', count: counts.type.real },
-                  {
-                    value: 'virtual',
-                    label: 'Virtual',
-                    title: 'Simulators and emulators',
-                    count: counts.type.virtual,
-                  },
-                ]}
-              />
-              {/* Search and Refresh wrap together: alone on a line, Refresh looked
-                  stranded. */}
-              <div className="de2-find">
+              <div className="de2-search-wrap">
+                <Search size={13} className="de2-search-icon" aria-hidden="true" />
                 <input
+                  ref={this.searchRef}
                   type="text"
                   className="de2-search"
                   aria-label="Search devices"
@@ -213,8 +225,43 @@ export class DeviceExplorer extends React.Component<IDeviceExplorerProps, IDevic
                   value={filters.q}
                   onChange={(e) => this.setFilters({ q: e.target.value })}
                 />
-                <Button variant="secondary" size="sm" onClick={() => this.fetchDevices()}>
-                  <RefreshCw size={12} /> Refresh
+                <kbd className="de2-key" aria-hidden="true">
+                  /
+                </kbd>
+              </div>
+              <FilterMenu<PlatformFilter>
+                name="Platform"
+                value={filters.platform}
+                anyValue="all"
+                options={platformOptions}
+                onChange={(v) => this.setFilters({ platform: v })}
+              />
+              <FilterMenu<TypeFilter>
+                name="Type"
+                value={filters.type}
+                anyValue="all"
+                options={typeOptions}
+                onChange={(v) => this.setFilters({ type: v })}
+              />
+              {isFiltered(filters) && (
+                <Button variant="ghost" size="sm" onClick={this.clearFilters}>
+                  Clear
+                </Button>
+              )}
+              <div className="de2-result">
+                {this.state.loaded && (
+                  <span aria-live="polite">
+                    {resultLabel(devices.length, this.state.devices.length)}
+                  </span>
+                )}
+                <Button
+                  variant="secondary"
+                  size="icon"
+                  aria-label="Refresh devices"
+                  title="Refresh"
+                  onClick={() => this.fetchDevices()}
+                >
+                  <RefreshCw size={13} aria-hidden="true" />
                 </Button>
               </div>
             </div>
@@ -253,7 +300,7 @@ export class DeviceExplorer extends React.Component<IDeviceExplorerProps, IDevic
               <>
                 <h3>No devices match these filters</h3>
                 <p>Try another filter or search, or clear them to see every device.</p>
-                <Button variant="secondary" onClick={() => this.props.onFiltersChange(NO_FILTERS)}>
+                <Button variant="secondary" onClick={this.clearFilters}>
                   Clear filters
                 </Button>
               </>

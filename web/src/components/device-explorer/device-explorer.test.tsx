@@ -86,8 +86,6 @@ const renderAt = (url: string) =>
     </MemoryRouter>,
   );
 const where = () => screen.getByTestId('where').textContent;
-const tab = (control: string, name: RegExp) =>
-  within(screen.getByRole('tablist', { name: control })).getByRole('tab', { name });
 
 describe('Devices page filters', () => {
   it('opens pre-filtered from the link', async () => {
@@ -95,16 +93,53 @@ describe('Devices page filters', () => {
     expect(await screen.findByText('iPhone 17 Pro')).toBeInTheDocument();
     expect(screen.getByText('iPhone 16 Simulator')).toBeInTheDocument();
     expect(screen.queryByText('Galaxy S9+')).toBeNull();
+    expect(screen.getByRole('button', { name: 'Platform: iOS' })).toBeInTheDocument();
   });
 
-  it('writes a clicked filter into the link', async () => {
+  it('writes a menu choice into the link', async () => {
     renderAt('/devices');
     await screen.findByText('Galaxy S9+');
-    fireEvent.click(tab('Platform', /^Android/));
+    fireEvent.click(screen.getByRole('button', { name: 'Platform' }));
+    fireEvent.click(await screen.findByRole('menuitemradio', { name: /Android/ }));
     expect(where()).toBe('/devices?platform=android');
     expect(screen.queryByText('iPhone 17 Pro')).toBeNull();
-    fireEvent.click(tab('Device type', /^Virtual/));
+    fireEvent.click(screen.getByRole('button', { name: 'Type' }));
+    fireEvent.click(await screen.findByRole('menuitemradio', { name: /Virtual/ }));
     expect(where()).toBe('/devices?platform=android&type=virtual');
+  });
+
+  it('the chip’s × removes that filter from the link', async () => {
+    renderAt('/devices?platform=ios&type=real');
+    fireEvent.click(await screen.findByRole('button', { name: 'Clear platform filter' }));
+    expect(where()).toBe('/devices?type=real');
+  });
+
+  it('shows Clear only while filtered, and it resets everything', async () => {
+    renderAt('/devices');
+    await screen.findByText('Galaxy S9+');
+    expect(screen.queryByRole('button', { name: 'Clear' })).toBeNull();
+    const status = screen.getByRole('tablist', { name: 'Status' });
+    fireEvent.click(within(status).getByRole('tab', { name: /^Ready/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'Clear' }));
+    expect(where()).toBe('/devices');
+    expect(screen.getByRole('textbox', { name: 'Search devices' })).toHaveFocus();
+  });
+
+  it('says how many devices show', async () => {
+    renderAt('/devices?platform=ios');
+    expect(await screen.findByText('2 of 3 devices')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Clear platform filter' }));
+    expect(screen.getByText('3 devices')).toBeInTheDocument();
+  });
+
+  it('focuses the search on /, but not while typing in it', async () => {
+    renderAt('/devices');
+    await screen.findByText('Galaxy S9+');
+    const search = screen.getByRole('textbox', { name: 'Search devices' });
+    // fireEvent returns false when the handler prevented the default.
+    expect(fireEvent.keyDown(document.body, { key: '/' })).toBe(false);
+    expect(search).toHaveFocus();
+    expect(fireEvent.keyDown(search, { key: '/' })).toBe(true);
   });
 
   it('searches the name the card shows', async () => {
