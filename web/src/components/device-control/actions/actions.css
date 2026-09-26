@@ -38,6 +38,11 @@
   align-items: center;
   gap: 8px;
 }
+/* While an install runs the header buttons keep focus but do nothing. */
+.actions-section-tools [aria-disabled='true'] {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
 
 .actions-apps-tools {
   display: flex;

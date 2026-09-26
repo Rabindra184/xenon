@@ -88,6 +88,7 @@ export function AppsSection({ udid, platform, deviceName }: Props) {
   };
 
   const openLibrary = () => {
+    if (installing) return;
     setMenuOpen(true);
     loadLibrary();
   };
@@ -124,7 +125,7 @@ export function AppsSection({ udid, platform, deviceName }: Props) {
   };
 
   const installFromLibrary = (app: LibraryApp) => {
-    setMenuOpen(false);
+    closeMenu();
     install(app.name, () => XenonApiService.installRepositoryApp(udid, app.id));
   };
 
@@ -213,7 +214,9 @@ export function AppsSection({ udid, platform, deviceName }: Props) {
             size="sm"
             aria-haspopup="menu"
             aria-expanded={menuOpen}
-            disabled={installing}
+            // aria-disabled, not disabled: focus comes back here after an
+            // install is chosen, and a disabled button would drop it.
+            aria-disabled={installing || undefined}
             onClick={openLibrary}
           >
             {installing ? (
@@ -226,8 +229,8 @@ export function AppsSection({ udid, platform, deviceName }: Props) {
           <Button
             variant="secondary"
             size="sm"
-            disabled={installing}
-            onClick={() => fileInput.current?.click()}
+            aria-disabled={installing || undefined}
+            onClick={() => !installing && fileInput.current?.click()}
           >
             <Upload size={13} aria-hidden="true" /> Upload file
           </Button>

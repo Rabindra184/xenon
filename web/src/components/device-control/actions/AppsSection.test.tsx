@@ -149,6 +149,22 @@ describe('install from library', () => {
     await waitFor(() => expect(told('success')).toContain('Installed Shop on Galaxy S9+'));
   });
 
+  // Keyboard users lost their place: the menu closed and focus fell to the page.
+  it('returns focus to the button, which ignores clicks while installing', async () => {
+    let finish: (v: unknown) => void = () => {};
+    api.installRepositoryApp.mockReturnValue(new Promise((r) => (finish = r)));
+    open('android');
+    const button = screen.getByRole('button', { name: 'Install from library' });
+    fireEvent.click(button);
+    fireEvent.click(await screen.findByRole('menuitem', { name: /Shop/ }));
+    expect(button).toHaveFocus();
+    expect(button).toHaveAttribute('aria-disabled', 'true');
+    fireEvent.click(button);
+    expect(screen.queryByRole('menu')).toBeNull();
+    finish({ success: true });
+    await waitFor(() => expect(button).not.toHaveAttribute('aria-disabled'));
+  });
+
   it('says why a library install failed', async () => {
     api.installRepositoryApp.mockResolvedValue({
       success: false,
