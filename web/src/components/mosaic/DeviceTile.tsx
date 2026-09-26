@@ -514,10 +514,11 @@ export function DeviceTile({
         )}
 
         {/* A chip, not a banner: on a 2x2 or 3x2 tile the old banner covered
-          about a third of the screen being annotated. */}
+          about a third of the screen being annotated. It starts clear of the
+          REC badge and truncates, so a narrow tile never stacks the two. */}
         {recording && annotateMode && streamState === 'live' && (
-          <div className="absolute top-3 right-3 z-30 pointer-events-none">
-            <span className="px-2 py-0.5 rounded-sm bg-[var(--color-info)] text-white text-[10px] font-semibold shadow-lg whitespace-nowrap">
+          <div className="absolute top-3 left-14 right-3 z-30 flex justify-end pointer-events-none">
+            <span className="px-2 py-0.5 rounded-sm bg-[var(--color-info)] text-white text-[10px] font-semibold shadow-lg whitespace-nowrap overflow-hidden text-ellipsis">
               Annotating · drag to mark
             </span>
           </div>
