@@ -21,6 +21,8 @@ export interface SegmentedControlProps<T extends string> {
   value: T;
   onChange: (value: T) => void;
   size?: 'sm' | 'md';
+  /** Names the control for screen readers, e.g. "Platform". */
+  label?: string;
 }
 
 export function SegmentedControl<T extends string>({
@@ -28,9 +30,10 @@ export function SegmentedControl<T extends string>({
   value,
   onChange,
   size = 'md',
+  label,
 }: SegmentedControlProps<T>) {
   return (
-    <div className={`seg seg-${size}`} role="tablist">
+    <div className={`seg seg-${size}`} role="tablist" aria-label={label}>
       {segments.map((s) => (
         <button
           key={s.value}

@@ -98,4 +98,18 @@ describe('SegmentedControl', () => {
     );
     expect(screen.getByRole('tab', { name: 'A' })).toHaveAttribute('aria-keyshortcuts', 'Escape');
   });
+
+  // Devices has three filter controls; unnamed, a screen reader hears three
+  // identical tab lists.
+  it('names the control when given a label', () => {
+    render(
+      <SegmentedControl
+        label="Platform"
+        segments={[{ value: 'a', label: 'A' }]}
+        value="a"
+        onChange={() => {}}
+      />,
+    );
+    expect(screen.getByRole('tablist', { name: 'Platform' })).toBeInTheDocument();
+  });
 });
