@@ -15,6 +15,13 @@ import { DeviceMosaic } from './DeviceMosaic';
 import { RecordingControls } from './RecordingControls';
 import { IdleWarningModal } from './IdleWarningModal';
 import { IdleReleaseBanner } from './IdleReleaseBanner';
+import {
+  deviceLabel,
+  pickerToggle,
+  tileAspect,
+  tileFromDevice,
+  type DeviceRow,
+} from './mosaicDevices';
 import { idleWatchEnabled, planRestore, releaseMessage, restoreMessage } from './idleRestore';
 import XenonApiService from '../../api-service';
 import { isDeviceConflictBody } from '../../api-service/api-client';
@@ -30,33 +37,6 @@ import { PageTitle } from '../ui/page-header';
 // session-heartbeat-driven release floor (default ~120 s).
 const IDLE_TOTAL_MS = 5 * 60 * 1000;
 const IDLE_WARNING_SEC = 30;
-
-interface DeviceRow {
-  udid: string;
-  name?: string;
-  platform?: string;
-  busy?: boolean;
-  session_id?: string;
-  mjpegServerPort?: number;
-  screenWidth?: string | number;
-  screenHeight?: string | number;
-  offline?: boolean;
-}
-
-// Derive a CSS aspect-ratio string from device data.
-// Prefers the WDA-reported screen dimensions (set during stream start);
-// falls back to platform conventions (tvos/androidtv → 16:9, else 9:16).
-function tileAspect(d?: Partial<DeviceRow>): string {
-  if (!d) return '9 / 16';
-  const w = Number(d.screenWidth);
-  const h = Number(d.screenHeight);
-  if (Number.isFinite(w) && Number.isFinite(h) && w > 0 && h > 0) {
-    return `${w} / ${h}`;
-  }
-  const p = (d.platform || '').toLowerCase();
-  if (p === 'tvos' || p === 'androidtv' || p === 'android-tv') return '16 / 9';
-  return '9 / 16';
-}
 
 /**
  * A manual lock is `manual_<actorId>_<udid>`. If our userId matches the
@@ -77,7 +57,9 @@ function inferReason(d: DeviceRow, myUserId: string | null): string | undefined 
 function asPickerDevice(d: DeviceRow, myUserId: string | null): PickerDevice {
   return {
     udid: d.udid,
-    name: d.name,
+    name: deviceLabel(d),
+    // The codename still finds it when typed into the filter.
+    altName: d.name,
     platform: d.platform,
     busy: d.busy,
     busyReason: inferReason(d, myUserId),
@@ -148,21 +130,6 @@ export default function DeviceMosaicView() {
     // Runs once, on the transition to a known identity.
     if (!myUserId || rehydratedRef.current) return;
     rehydratedRef.current = true;
-    // Use the same tile-builder as the click-to-add path so platform/aspect/
-    // screen dimensions are consistent regardless of how the tile entered.
-    const tileFor = (d: DeviceRow): MosaicTile => {
-      const sw = Number(d.screenWidth);
-      const sh = Number(d.screenHeight);
-      return {
-        udid: d.udid,
-        name: d.name,
-        mjpegPort: 0,
-        aspect: tileAspect(d),
-        screenWidth: Number.isFinite(sw) && sw > 0 ? sw : undefined,
-        screenHeight: Number.isFinite(sh) && sh > 0 ? sh : undefined,
-        platform: d.platform,
-      };
-    };
     (async () => {
       let list: DeviceRow[] = [];
       let tiles: MosaicTile[] = [];
@@ -187,7 +154,7 @@ export default function DeviceMosaicView() {
             }
           }),
         );
-        tiles = checks.filter((d): d is DeviceRow => d !== null).map(tileFor);
+        tiles = checks.filter((d): d is DeviceRow => d !== null).map(tileFromDevice);
         if (cancelled) return;
         if (tiles.length > 0) dispatch({ type: 'SET_TILES', tiles });
       } catch {
@@ -205,7 +172,7 @@ export default function DeviceMosaicView() {
           .filter((r) => !known.has(r.udid))
           .map((r) => list.find((d) => d.udid === r.udid))
           .filter((d): d is DeviceRow => !!d)
-          .map(tileFor);
+          .map(tileFromDevice);
         if (missing.length > 0) dispatch({ type: 'SET_TILES', tiles: [...tiles, ...missing] });
         const overlayAnnotations: Record<string, OverlayAnnotation[]> = {};
         for (const a of g.annotations) {
@@ -282,21 +249,6 @@ export default function DeviceMosaicView() {
     [devices, myUserId],
   );
 
-  // Build a MosaicTile from a DeviceRow — shared by direct-add and rehydration.
-  const tileFromDevice = (device: DeviceRow): MosaicTile => {
-    const sw = Number(device.screenWidth);
-    const sh = Number(device.screenHeight);
-    return {
-      udid: device.udid,
-      name: device.name,
-      mjpegPort: 0,
-      aspect: tileAspect(device),
-      screenWidth: Number.isFinite(sw) && sw > 0 ? sw : undefined,
-      screenHeight: Number.isFinite(sh) && sh > 0 ? sh : undefined,
-      platform: device.platform,
-    };
-  };
-
   // One add path for the device list and Restore after an idle release.
   const addDevice = async (device: DeviceRow) => {
     dispatch({ type: 'ADD_TILE', tile: tileFromDevice(device) });
@@ -318,17 +270,20 @@ export default function DeviceMosaicView() {
   // mosaic (if not present) or removes it (if present). Replaces the prior
   // checkbox + "Add to mosaic" two-step flow.
   const onTogglePickerRow = async (udid: string) => {
-    const inMosaic = state.tiles.some((t) => t.udid === udid);
-    if (inMosaic) {
-      // Removing — same path as the tile's × button.
-      await onRemoveTile(udid);
-      return;
-    }
-    if (state.recording) {
+    const action = pickerToggle(
+      state.tiles.some((t) => t.udid === udid),
+      state.recording,
+    );
+    if (action === 'blocked') {
       dispatch({
         type: 'SET_ERROR_BANNER',
         message: 'Stop recording before changing the devices on the grid.',
       });
+      return;
+    }
+    if (action === 'remove') {
+      // Same path as the tile's × button.
+      await onRemoveTile(udid);
       return;
     }
     const device = devices.find((d) => d.udid === udid);

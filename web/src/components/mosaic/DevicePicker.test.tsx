@@ -55,4 +55,20 @@ describe('DevicePicker', () => {
     );
     expect(titles.filter((t) => /mosaic/i.test(t ?? ''))).toEqual([]);
   });
+
+  // Rows now show the friendly name; the codename people may still type has
+  // to keep finding the device.
+  it('finds a device by its codename as well as its name', () => {
+    mount({
+      devices: [
+        { udid: 'A1', name: 'Galaxy S9+', altName: 'star2ltexx', platform: 'android' },
+        { udid: 'I1', name: 'iPhone', platform: 'ios' },
+      ],
+    });
+    fireEvent.change(screen.getByPlaceholderText('Filter devices...'), {
+      target: { value: 'star2' },
+    });
+    expect(screen.getByRole('button', { name: 'Galaxy S9+, Android' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /iPhone/ })).toBeNull();
+  });
 });
