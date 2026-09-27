@@ -20,6 +20,7 @@ import { PluginContext } from '../../src/PluginContext';
 import {
   compositeOutputPath,
   compositeLayoutPath,
+  RecordingOrchestrator,
 } from '../../src/services/recording/RecordingOrchestrator';
 import { useArtifactStore } from '../helpers/artifact-store';
 import { saveRegistrations } from '../helpers/container-registration';
@@ -745,6 +746,138 @@ describe('recordings library routes', () => {
         404,
       );
       expect(store.deleteGroupRows.called).to.equal(false);
+    });
+  });
+
+  // stop() still stops every phone in the group; only the response is
+  // scoped, the same visibility rule GET /recordings/:groupId and the
+  // downloads use.
+  describe('POST /recordings/:groupId/stop', () => {
+    // RecordingOrchestrator is a real @Service() with heavy deps (ffmpeg
+    // pipeline, concurrency gate, ...) that nothing here needs. `@Service()`
+    // registers the class's metadata at import time, so `Container.has`
+    // cannot tell "never touched" from "not yet constructed" for it - unlike
+    // a plain injection token (e.g. ARTIFACT_STORE). So each test swaps in a
+    // fake, and afterEach puts back a fresh, unconstructed class
+    // registration - the same state a class this file never touches is
+    // already in - rather than ever calling Container.remove.
+    let stop: sinon.SinonStub;
+
+    beforeEach(() => {
+      stop = sinon.stub();
+      Container.set(RecordingOrchestrator, { stop } as any);
+    });
+
+    afterEach(() => {
+      Container.set({ id: RecordingOrchestrator, type: RecordingOrchestrator } as any);
+    });
+
+    const groupStop = (recordings: any[]) => ({ groupId: 'g1', recordings });
+
+    const twoTeamRows = () => {
+      rows = [
+        rec({ id: 'r-a', device_udid: 'U1', started_by: 'usr_bob' }),
+        rec({
+          id: 'r-b',
+          device_udid: 'U2',
+          started_by: 'usr_bob',
+          started_at: new Date(T0 + 500),
+        }),
+      ];
+    };
+
+    it("a member's stop response contains only r-a, and the orchestrator was still asked to stop the whole group", async () => {
+      twoTeamRows();
+      visible = new Set(['U1']); // U2 is another team's phone
+      stop.resolves(
+        groupStop([
+          { id: 'r-a', udid: 'U1', status: 'STOPPED', durationMs: 1000, sizeBytes: 10 },
+          { id: 'r-b', udid: 'U2', status: 'STOPPED', durationMs: 2000, sizeBytes: 20 },
+        ]),
+      );
+      const res = await request(buildApp(alice)).post('/xenon/api/recordings/g1/stop');
+      expect(res.status, JSON.stringify(res.body)).to.equal(200);
+      expect(res.body.groupId).to.equal('g1');
+      expect(res.body.recordings.map((r: any) => r.id)).to.deep.equal(['r-a']);
+      // The whole group was still asked to stop, unfiltered.
+      expect(stop.calledOnceWith('g1')).to.equal(true);
+    });
+
+    it("an admin's response contains both", async () => {
+      twoTeamRows();
+      visible = new Set(['U1']); // irrelevant to an admin; seesEverything short-circuits
+      stop.resolves(
+        groupStop([
+          { id: 'r-a', udid: 'U1', status: 'STOPPED' },
+          { id: 'r-b', udid: 'U2', status: 'STOPPED' },
+        ]),
+      );
+      const res = await request(buildApp(admin)).post('/xenon/api/recordings/g1/stop');
+      expect(res.status, JSON.stringify(res.body)).to.equal(200);
+      expect(res.body.recordings.map((r: any) => r.id).sort()).to.deep.equal(['r-a', 'r-b']);
+    });
+
+    it('the owner of an unplugged phone still sees it', async () => {
+      // Both rows started by alice, so she owns the group; U2 has no Device
+      // row any more (not in `devices`) and is not on her visible team.
+      rows = [
+        rec({ id: 'r-a', device_udid: 'U1', started_by: 'usr_alice' }),
+        rec({
+          id: 'r-b',
+          device_udid: 'U2',
+          started_by: 'usr_alice',
+          started_at: new Date(T0 + 500),
+        }),
+      ];
+      visible = new Set(['U1']);
+      stop.resolves(
+        groupStop([
+          { id: 'r-a', udid: 'U1', status: 'STOPPED' },
+          { id: 'r-b', udid: 'U2', status: 'STOPPED' },
+        ]),
+      );
+      const res = await request(buildApp(alice)).post('/xenon/api/recordings/g1/stop');
+      expect(res.status, JSON.stringify(res.body)).to.equal(200);
+      expect(res.body.recordings.map((r: any) => r.id).sort()).to.deep.equal(['r-a', 'r-b']);
+    });
+
+    it('a member who owns neither row of an unplugged phone stays scoped to their team', async () => {
+      // Same unplugged U2, but owned by someone else: the owner exemption
+      // must not leak to a non-owner.
+      twoTeamRows();
+      visible = new Set(['U1']);
+      stop.resolves(
+        groupStop([
+          { id: 'r-a', udid: 'U1', status: 'STOPPED' },
+          { id: 'r-b', udid: 'U2', status: 'STOPPED' },
+        ]),
+      );
+      const res = await request(buildApp(alice)).post('/xenon/api/recordings/g1/stop');
+      expect(res.body.recordings.map((r: any) => r.id)).to.deep.equal(['r-a']);
+    });
+
+    it('still 500s when the orchestrator throws, without ever filtering', async () => {
+      twoTeamRows();
+      visible = new Set(['U1']);
+      stop.rejects(new Error('ffmpeg exploded'));
+      const res = await request(buildApp(alice)).post('/xenon/api/recordings/g1/stop');
+      expect(res.status).to.equal(500);
+      expect(res.body).to.deep.equal({ error: 'internal', message: 'ffmpeg exploded' });
+    });
+
+    it('a group with no visible phones at all comes back empty, not 404', async () => {
+      twoTeamRows();
+      visible = new Set(); // neither U1 nor U2 is on alice's team
+      stop.resolves(
+        groupStop([
+          { id: 'r-a', udid: 'U1', status: 'STOPPED' },
+          { id: 'r-b', udid: 'U2', status: 'STOPPED' },
+        ]),
+      );
+      const res = await request(buildApp(alice)).post('/xenon/api/recordings/g1/stop');
+      expect(res.status, JSON.stringify(res.body)).to.equal(200);
+      expect(res.body.recordings).to.deep.equal([]);
+      expect(stop.calledOnceWith('g1')).to.equal(true);
     });
   });
 
