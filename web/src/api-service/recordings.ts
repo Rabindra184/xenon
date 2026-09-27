@@ -181,3 +181,134 @@ export function compositeMp4Url(groupId: string): string {
 export function annotatedMp4Url(groupId: string, recordingId: string): string {
   return `${BASE}/${encodeURIComponent(groupId)}/exports/annotated.mp4?recordingId=${encodeURIComponent(recordingId)}`;
 }
+
+// ---------------------------------------------------------------------------
+// Recordings library: browsing, filtering and deleting past recording groups.
+// ---------------------------------------------------------------------------
+
+export type GroupStatus = 'recording' | 'done' | 'failed';
+
+export interface PhoneSummary {
+  recordingId: string;
+  udid: string;
+  name: string;
+  platform: string | null;
+  status: string;
+  offsetMs: number;
+  durationMs: number | null;
+  failReason: string | null;
+  annotationCount: number;
+}
+
+export interface RecordingSummary {
+  groupId: string;
+  startedAt: string;
+  endedAt: string | null;
+  durationMs: number | null;
+  status: GroupStatus;
+  phones: PhoneSummary[];
+  startedBy: { id: string; name: string } | null;
+  bookmarkCount: number;
+  annotationCount: number;
+  keptUntil: string;
+  sizeBytes: number;
+  hasComposite: boolean;
+}
+
+export interface LibraryFacets {
+  phones: Array<{ udid: string; name: string; count: number }>;
+  people: Array<{ id: string; name: string; count: number }>;
+  unknownCount: number;
+  when: { any: number; '24h': number; '7d': number; '30d': number };
+}
+
+export interface LibraryResponse {
+  recordings: RecordingSummary[];
+  nextCursor: string | null;
+  total: number;
+  facets: LibraryFacets;
+  retention: { days: number; maxCount: number };
+}
+
+export interface LibraryQuery {
+  udid?: string;
+  startedBy?: string;
+  since?: string;
+  q?: string;
+  cursor?: string;
+  limit?: number;
+}
+
+export interface GroupBookmark {
+  id: string;
+  recordingId: string;
+  timecodeMs: number;
+  label: string;
+  note: string | null;
+}
+
+export interface GroupAnnotation {
+  id: string;
+  recordingId: string;
+  timecodeMs: number;
+  endTimecodeMs: number | null;
+  shape: string;
+  geometry: string;
+  color: string;
+  text: string | null;
+}
+
+export interface RecordingDetail {
+  groupId: string;
+  summary: RecordingSummary;
+  bookmarks: GroupBookmark[];
+  annotations: GroupAnnotation[];
+}
+
+/** A request the server refused; `code` is its `error` field when it sent one. */
+export class RecordingRequestError extends Error {
+  constructor(
+    public readonly status: number,
+    public readonly code?: string,
+  ) {
+    super(code ?? `HTTP ${status}`);
+  }
+}
+
+async function refusal(r: Response): Promise<RecordingRequestError> {
+  let code: string | undefined;
+  try {
+    code = (await r.json())?.error;
+  } catch {
+    // Not JSON.
+  }
+  return new RecordingRequestError(r.status, code);
+}
+
+export async function listRecordings(q: LibraryQuery = {}): Promise<LibraryResponse> {
+  const params = new URLSearchParams();
+  (Object.keys(q) as Array<keyof LibraryQuery>).forEach((k) => {
+    const v = q[k];
+    if (v !== undefined && v !== '') params.set(k, String(v));
+  });
+  const qs = params.toString();
+  const r = await fetch(qs ? `${BASE}?${qs}` : BASE);
+  if (!r.ok) throw await refusal(r);
+  return r.json();
+}
+
+export async function getRecording(groupId: string): Promise<RecordingDetail> {
+  const r = await fetch(`${BASE}/${encodeURIComponent(groupId)}`);
+  if (!r.ok) throw await refusal(r);
+  return r.json();
+}
+
+export async function deleteRecording(groupId: string): Promise<void> {
+  const r = await fetch(`${BASE}/${encodeURIComponent(groupId)}`, { method: 'DELETE' });
+  if (!r.ok) throw await refusal(r);
+}
+
+/** The clean video (no burned-in marks), seekable; `download` makes it an attachment. */
+export function sourceMp4Url(groupId: string, recordingId: string, download = false): string {
+  return `${BASE}/${encodeURIComponent(groupId)}/source.mp4?recordingId=${encodeURIComponent(recordingId)}${download ? '&download=1' : ''}`;
+}
