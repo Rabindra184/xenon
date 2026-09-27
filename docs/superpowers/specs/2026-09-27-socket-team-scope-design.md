@@ -31,7 +31,7 @@ It is the same rule as REST and device control:
 ## Design
 
 1. **The socket keeps who it is.** `authenticate()` returns `{ principal, userId, role, teamIds }`, stored on `socket.data`.
-   - It uses one shared `computeTeamIds`, exported from `authMiddleware` or moved to a shared module, so REST and sockets agree.
+   - It uses the one shared `computeTeamIds` (`src/services/device-access/callerTeamIds.ts`), so REST and sockets agree.
    - An auth-disabled socket gets `teamIds: undefined`.
    - Identity is fixed at connect. A membership change applies when the dashboard reconnects, which happens on reload. That's documented.
 2. **A scoped emit.** `SocketServer.emitToDashboardForDevices(event, data, scope)`, where `scope` is one of:
