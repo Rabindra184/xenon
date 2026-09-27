@@ -865,19 +865,13 @@ describe('recordings library routes', () => {
       expect(res.body).to.deep.equal({ error: 'internal', message: 'ffmpeg exploded' });
     });
 
-    it('a group with no visible phones at all comes back empty, not 404', async () => {
+    it('a group with no visible phones is not found, and is not stopped', async () => {
       twoTeamRows();
       visible = new Set(); // neither U1 nor U2 is on alice's team
-      stop.resolves(
-        groupStop([
-          { id: 'r-a', udid: 'U1', status: 'STOPPED' },
-          { id: 'r-b', udid: 'U2', status: 'STOPPED' },
-        ]),
-      );
       const res = await request(buildApp(alice)).post('/xenon/api/recordings/g1/stop');
-      expect(res.status, JSON.stringify(res.body)).to.equal(200);
-      expect(res.body.recordings).to.deep.equal([]);
-      expect(stop.calledOnceWith('g1')).to.equal(true);
+      expect(res.status, JSON.stringify(res.body)).to.equal(404);
+      expect(res.body).to.deep.equal({ error: 'not_found' });
+      expect(stop.called).to.equal(false);
     });
   });
 
