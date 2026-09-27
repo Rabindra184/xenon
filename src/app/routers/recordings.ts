@@ -492,7 +492,10 @@ router.delete('/recordings/:groupId', devicesScope, async (req: Request, res: Re
     const store = Container.get(RecordingStore);
     const recs: any[] = await store.listGroup(groupId);
     const visible = await visibleRows(req, recs);
+    // 404 before 409 before 403, on purpose: a 409 ahead of the 404 would tell
+    // a caller who sees none of the group that it exists.
     if (visible.length === 0) return res.status(404).json({ error: 'not_found' });
+    // Any phone still recording blocks the delete, including one the caller can't see.
     if (recs.some((r) => r.status === 'RECORDING')) {
       return res.status(409).json({
         error: 'recording_in_progress',
@@ -510,6 +513,8 @@ router.delete('/recordings/:groupId', devicesScope, async (req: Request, res: Re
     // Only what the caller can see: a phone on another team stays with that
     // team, and so does the composite, which shows it, until no row of the
     // group is left. An admin sees every row, so deletes the whole group.
+    // After a partial delete the owner is recomputed from the rows left (the
+    // earliest with a started_by): it can pass to whoever added one of them.
     // Rows first: if removing a file fails, no row points at it and the
     // orphan sweep reclaims it; the reverse would leave rows with no videos.
     await store.deleteGroupRows(
