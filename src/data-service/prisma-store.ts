@@ -1,6 +1,7 @@
 import { IDevice } from '../interfaces/IDevice';
 import { IDeviceFilterOptions } from '../interfaces/IDeviceFilterOptions';
 import {
+  AddDevicesOptions,
   IDeviceStore,
   IPendingSessionStore,
   ICLIArgsStore,
@@ -12,6 +13,7 @@ import { Container } from 'typedi';
 import * as semver from 'semver';
 import log from '../logger';
 import { pickDeviceColumns } from './deviceColumns';
+import { pickDiscoveryFields } from './deviceFieldOwners';
 
 /** Logged once per key, so a chatty node doesn't flood the log. */
 const droppedDeviceKeys = new Set<string>();
@@ -216,17 +218,26 @@ export class PrismaDeviceStore implements IDeviceStore {
     }
   }
 
-  async addDevices(devices: IDevice[]): Promise<IDevice[]> {
+  async addDevices(devices: IDevice[], options: AddDevicesOptions = {}): Promise<IDevice[]> {
+    if (devices.length === 0) return [];
+    const existing = await this.prisma.device.findMany({
+      where: { OR: devices.map((d) => ({ udid: d.udid, host: d.host })) },
+      select: { udid: true, host: true },
+    });
+    const known = new Set(
+      existing.map((d: { udid: string; host: string }) => `${d.udid}@${d.host}`),
+    );
     const added: IDevice[] = [];
     for (const device of devices) {
       const data = this.fromIDevice(device);
-      // Use upsert to avoid race conditions and unique constraint errors
+      // Use upsert to avoid race conditions and unique constraint errors. A
+      // phone already here gets only its discovery columns (AddDevicesOptions).
       const d = await this.prisma.device.upsert({
         where: { udid_host: { udid: device.udid, host: device.host } },
-        update: data,
+        update: options.mirror ? data : pickDiscoveryFields(data),
         create: data,
       });
-      added.push(this.toIDevice(d));
+      if (!known.has(`${device.udid}@${device.host}`)) added.push(this.toIDevice(d));
     }
     return added;
   }

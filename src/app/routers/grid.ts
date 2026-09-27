@@ -112,7 +112,9 @@ async function registerNode(request: Request, response: Response) {
   const requestBody = request.body;
   const { type } = request.query;
   if (type === 'add') {
-    const addedDevices = await addNewDevice(requestBody);
+    // A node's own report of its phones: it is their source of truth, so the
+    // hub writes every column (AddDevicesOptions.mirror).
+    const addedDevices = await addNewDevice(requestBody, undefined, { mirror: true });
     if (addedDevices.length > 0) {
       log.info(`Added new devices: ${JSON.stringify(addedDevices)}`);
     }
