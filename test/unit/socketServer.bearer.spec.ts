@@ -9,6 +9,9 @@ import { SocketServer } from '../../src/services/SocketServer';
 import { JwtKeyService } from '../../src/services/token/JwtKeyService';
 import { ApiKeyService } from '../../src/services/ApiKeyService';
 import { prisma } from '../../src/prisma';
+import { config as xenonConfig } from '../../src/config';
+import { saveRegistrations } from '../helpers/container-registration';
+import { authMiddleware } from '../../src/middleware/authMiddleware';
 
 // Test seam: `authenticate()` is private and there is no existing SocketServer
 // spec to mirror, so — consistent with how authMiddleware.bearer.spec.ts
@@ -24,7 +27,7 @@ describe('SocketServer — authenticate() bearer path', () => {
   let dir: string;
   let keySvc: JwtKeyService;
   let server: SocketServer;
-  let authenticate: (socket: any) => Promise<string>;
+  let authenticate: (socket: any) => Promise<{ principal: string }>;
 
   beforeEach(async () => {
     dir = fs.mkdtempSync(path.join(os.tmpdir(), 'xenon-socket-bearer-'));
@@ -46,9 +49,9 @@ describe('SocketServer — authenticate() bearer path', () => {
   });
 
   it('1. valid xenon-rest bearer JWT for an ACTIVE user → principal dashboard', async () => {
-    sinon.stub(prisma.user, 'findUnique').resolves({ status: 'ACTIVE' } as any);
+    sinon.stub(prisma.user, 'findUnique').resolves({ status: 'ACTIVE', role: 'ADMIN' } as any);
     const token = await keySvc.sign({ sub: 'u1' }, { audience: 'xenon-rest', ttlSeconds: 60 });
-    const principal = await authenticate(fakeSocket({ bearer: token }));
+    const { principal } = await authenticate(fakeSocket({ bearer: token }));
     expect(principal).to.equal('dashboard');
   });
 
@@ -79,10 +82,8 @@ describe('SocketServer — authenticate() bearer path', () => {
       id: 'k1',
       userId: 'u1',
     } as any);
-    sinon.stub(prisma.user, 'findUnique').resolves({ status: 'ACTIVE' } as any);
-    const principal = await authenticate(
-      fakeSocket({ accessKey: 'xen_ak', token: 'xen_tok' }),
-    );
+    sinon.stub(prisma.user, 'findUnique').resolves({ status: 'ACTIVE', role: 'ADMIN' } as any);
+    const { principal } = await authenticate(fakeSocket({ accessKey: 'xen_ak', token: 'xen_tok' }));
     expect(principal).to.equal('node');
   });
 
@@ -91,9 +92,9 @@ describe('SocketServer — authenticate() bearer path', () => {
       id: 'k1',
       userId: 'other-user',
     } as any);
-    sinon.stub(prisma.user, 'findUnique').resolves({ status: 'ACTIVE' } as any);
+    sinon.stub(prisma.user, 'findUnique').resolves({ status: 'ACTIVE', role: 'ADMIN' } as any);
     const token = await keySvc.sign({ sub: 'u1' }, { audience: 'xenon-rest', ttlSeconds: 60 });
-    const principal = await authenticate(
+    const { principal } = await authenticate(
       fakeSocket({ bearer: token, accessKey: 'xen_ak', token: 'xen_tok' }),
     );
     expect(principal).to.equal('dashboard');
@@ -105,6 +106,179 @@ describe('SocketServer — authenticate() bearer path', () => {
       expect.fail('should have thrown');
     } catch (e: any) {
       expect(String(e.message)).to.match(/missing credentials/i);
+    }
+  });
+});
+
+// The socket keeps who it is, so the dashboard events can be scoped by team.
+// teamIds is computed exactly as REST's computeTeamIds (callerTeamIds.ts) does:
+// ADMIN/SUPER_ADMIN → undefined (sees everything), a team-narrowed key or
+// bearer → [thatTeam], otherwise the user's TeamMember teams.
+describe('SocketServer — authenticate() identity', () => {
+  let dir: string;
+  let keySvc: JwtKeyService;
+  let server: SocketServer;
+  let restore: () => void;
+  let apiKeys: { verifyPair: sinon.SinonStub; verify: sinon.SinonStub };
+  let authDisabled: boolean;
+  const authenticate = (socket: any) => (server as any).authenticate(socket);
+
+  function users(byId: Record<string, { status: string; role: string }>) {
+    return sinon
+      .stub(prisma.user, 'findUnique')
+      .callsFake(((args: any) => Promise.resolve(byId[args.where.id] ?? null)) as any);
+  }
+
+  beforeEach(async () => {
+    authDisabled = xenonConfig.authDisabled;
+    xenonConfig.authDisabled = false;
+    restore = saveRegistrations(JwtKeyService, ApiKeyService);
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), 'xenon-socket-identity-'));
+    keySvc = new JwtKeyService();
+    await keySvc.init(dir);
+    Container.set(JwtKeyService, keySvc);
+    apiKeys = { verifyPair: sinon.stub().resolves(null), verify: sinon.stub().resolves(null) };
+    Container.set(ApiKeyService, apiKeys as any);
+    server = new SocketServer();
+  });
+
+  afterEach(() => {
+    sinon.restore();
+    restore();
+    xenonConfig.authDisabled = authDisabled;
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+
+  it('an auth-disabled server: every socket is unscoped', async () => {
+    xenonConfig.authDisabled = true;
+    const identity = await authenticate(fakeSocket());
+    expect(identity).to.deep.equal({
+      principal: 'auth-disabled',
+      userId: 'auth-disabled',
+      role: 'SUPER_ADMIN',
+      teamIds: undefined,
+    });
+  });
+
+  it('an admin bearer: unscoped, and no TeamMember lookup', async () => {
+    users({ 'u-admin': { status: 'ACTIVE', role: 'ADMIN' } });
+    const members = sinon.stub(prisma.teamMember, 'findMany').resolves([] as any);
+    const token = await keySvc.sign({ sub: 'u-admin' }, { audience: 'xenon-rest', ttlSeconds: 60 });
+    const identity = await authenticate(fakeSocket({ bearer: token }));
+    expect(identity).to.deep.equal({
+      principal: 'dashboard',
+      userId: 'u-admin',
+      role: 'ADMIN',
+      teamIds: undefined,
+    });
+    expect(members.called).to.equal(false);
+  });
+
+  it("a member bearer: the user's TeamMember teams", async () => {
+    users({ 'u-member': { status: 'ACTIVE', role: 'MEMBER' } });
+    const members = sinon
+      .stub(prisma.teamMember, 'findMany')
+      .resolves([{ teamId: 'team-a' }, { teamId: 'team-c' }] as any);
+    const token = await keySvc.sign(
+      { sub: 'u-member' },
+      { audience: 'xenon-rest', ttlSeconds: 60 },
+    );
+    const identity = await authenticate(fakeSocket({ bearer: token }));
+    expect(identity).to.deep.equal({
+      principal: 'dashboard',
+      userId: 'u-member',
+      role: 'MEMBER',
+      teamIds: ['team-a', 'team-c'],
+    });
+    expect(members.firstCall.args[0]).to.deep.include({ where: { userId: 'u-member' } });
+  });
+
+  it('a member in no team: an empty list, which still sees the shared pool', async () => {
+    users({ 'u-lonely': { status: 'ACTIVE', role: 'MEMBER' } });
+    sinon.stub(prisma.teamMember, 'findMany').resolves([] as any);
+    const token = await keySvc.sign(
+      { sub: 'u-lonely' },
+      { audience: 'xenon-rest', ttlSeconds: 60 },
+    );
+    const identity = await authenticate(fakeSocket({ bearer: token }));
+    expect(identity.teamIds).to.deep.equal([]);
+  });
+
+  it("a team-narrowed bearer: just the token's team", async () => {
+    users({ 'u-member': { status: 'ACTIVE', role: 'MEMBER' } });
+    const members = sinon
+      .stub(prisma.teamMember, 'findMany')
+      .resolves([{ teamId: 'team-a' }] as any);
+    const token = await keySvc.sign(
+      { sub: 'u-member', teamId: 'team-b' },
+      { audience: 'xenon-rest', ttlSeconds: 60 },
+    );
+    const identity = await authenticate(fakeSocket({ bearer: token }));
+    expect(identity.teamIds).to.deep.equal(['team-b']);
+    expect(members.called).to.equal(false);
+  });
+
+  it("a bearer's teamId claim narrows exactly as REST narrows it, whatever its type", async () => {
+    users({ 'u-member': { status: 'ACTIVE', role: 'MEMBER' } });
+    sinon.stub(prisma.teamMember, 'findMany').resolves([{ teamId: 'team-a' }] as any);
+    const rest = async (bearer: string) => {
+      const req: any = { headers: { authorization: `Bearer ${bearer}` }, query: {} };
+      const res: any = { status: () => res, json: () => res, cookie: () => res };
+      let called = false;
+      await authMiddleware(req, res, () => (called = true));
+      expect(called, 'REST accepted the token').to.equal(true);
+      return req.auth.teamIds;
+    };
+    for (const teamId of ['team-b', null, undefined, 42, '']) {
+      const claims: Record<string, unknown> = { sub: 'u-member' };
+      if (teamId !== undefined) claims.teamId = teamId;
+      const token = await keySvc.sign(claims, { audience: 'xenon-rest', ttlSeconds: 60 });
+      const socket = await authenticate(fakeSocket({ bearer: token }));
+      expect(socket.teamIds, `teamId claim ${JSON.stringify(teamId)}`).to.deep.equal(
+        await rest(token),
+      );
+    }
+  });
+
+  it("a team-narrowed (accessKey, token) pair: node principal, the key's team", async () => {
+    apiKeys.verifyPair.resolves({ id: 'k1', userId: 'u-member', teamId: 'team-b' });
+    users({ 'u-member': { status: 'ACTIVE', role: 'MEMBER' } });
+    const members = sinon
+      .stub(prisma.teamMember, 'findMany')
+      .resolves([{ teamId: 'team-a' }] as any);
+    const identity = await authenticate(fakeSocket({ accessKey: 'xen_ak', token: 'xen_tok' }));
+    expect(identity).to.deep.equal({
+      principal: 'node',
+      userId: 'u-member',
+      role: 'MEMBER',
+      teamIds: ['team-b'],
+    });
+    expect(members.called).to.equal(false);
+  });
+
+  it("a dashboard cookie (raw key): the key owner's identity", async () => {
+    apiKeys.verify.resolves({ id: 'k2', userId: 'u-super', teamId: null });
+    users({ 'u-super': { status: 'ACTIVE', role: 'SUPER_ADMIN' } });
+    const identity = await authenticate(
+      fakeSocket({}, { cookie: 'other=1; xenon_dashboard_session=raw-key' }),
+    );
+    expect(apiKeys.verify.firstCall.args[0]).to.equal('raw-key');
+    expect(identity).to.deep.equal({
+      principal: 'dashboard',
+      userId: 'u-super',
+      role: 'SUPER_ADMIN',
+      teamIds: undefined,
+    });
+  });
+
+  it('a dashboard cookie whose owner is inactive is refused, as REST refuses it', async () => {
+    apiKeys.verify.resolves({ id: 'k2', userId: 'u-gone', teamId: null });
+    users({ 'u-gone': { status: 'DISABLED', role: 'ADMIN' } });
+    try {
+      await authenticate(fakeSocket({}, { cookie: 'xenon_dashboard_session=raw-key' }));
+      expect.fail('should have thrown');
+    } catch (e: any) {
+      expect(String(e.message)).to.match(/inactive/i);
     }
   });
 });

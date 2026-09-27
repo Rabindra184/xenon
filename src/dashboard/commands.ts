@@ -105,7 +105,7 @@ export class DashboardCommands {
     }
     // Normalize 'passed' to 'success' for consistency with SessionStatus enum
     const normalizedStatus = inputStatus === 'passed' ? 'success' : inputStatus;
-    await updateSessionDetails(sessionId, {
+    const updated = await updateSessionDetails(sessionId, {
       status: normalizedStatus,
       failure_reason: statusArg.reason || undefined,
     });
@@ -116,11 +116,15 @@ export class DashboardCommands {
     const { Container } = await import('typedi');
     const { SocketEvents } = await import('../enums/SocketEvents');
 
-    Container.get(SocketServer).emitToDashboard(SocketEvents.SESSION_STOPPED, {
-      id: sessionId,
-      status: normalizedStatus,
-      failure_reason: args.reason || undefined,
-    });
+    void Container.get(SocketServer).emitToDashboardForDevices(
+      SocketEvents.SESSION_STOPPED,
+      {
+        id: sessionId,
+        status: normalizedStatus,
+        failure_reason: args.reason || undefined,
+      },
+      { udid: updated?.device_udid },
+    );
 
     return this.sendSuccessResponse(response);
   }

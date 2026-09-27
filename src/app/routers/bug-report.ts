@@ -65,12 +65,18 @@ router.post('/sessions/:sessionId/bug-report', async (req: Request, res: Respons
   const startedAt = Date.now();
   res.on('finish', () => {
     try {
-      Container.get(SocketServer).broadcast(SocketEvents.BUG_REPORT_GENERATED, {
-        sessionId,
-        mode,
-        durationMs: Date.now() - startedAt,
-        warnings: bundle.manifest.warnings,
-      });
+      // To the dashboards that can see the session's phone, not to every
+      // socket: a broadcast also reached other teams and the nodes.
+      void Container.get(SocketServer).emitToDashboardForDevices(
+        SocketEvents.BUG_REPORT_GENERATED,
+        {
+          sessionId,
+          mode,
+          durationMs: Date.now() - startedAt,
+          warnings: bundle.manifest.warnings,
+        },
+        { udid: bundle.manifest.device?.udid },
+      );
     } catch (e: any) {
       log.warn(`[BugReport] broadcast failed: ${e.message}`);
     }
