@@ -164,4 +164,60 @@ describe('RecordingStore (Prisma round-trip)', () => {
     expect(a.started_by).to.equal('usr_alice');
     expect(b.started_by).to.equal(null);
   });
+
+  it('libraryRows carries bookmark labels and a mark count', async () => {
+    await store.create({
+      id: 'test-lib-1',
+      groupId: 'test-g-lib',
+      deviceUdid: 'TEST-L1',
+      deviceHost: '127.0.0.1',
+      filePath: '/tmp/l1.mp4',
+      sessionId: null,
+      deviceSnapshot: null,
+      startedBy: 'usr_a',
+    });
+    await store.addBookmark('test-lib-1', 'Login', 1000);
+    await store.addAnnotation('test-lib-1', {
+      timecodeMs: 5,
+      shape: 'RECT',
+      geometry: '{}',
+      color: 'red',
+    });
+    const rows = await store.libraryRows();
+    const r = rows.find((x) => x.id === 'test-lib-1');
+    if (!r) throw new Error('expected test-lib-1 in libraryRows()');
+    expect(r.bookmarks.map((b) => b.label)).to.deep.equal(['Login']);
+    expect(r._count.annotations).to.equal(1);
+    expect(r.started_by).to.equal('usr_a');
+  });
+
+  it('deleteGroupRows removes the group’s rows, and their bookmarks and marks with them', async () => {
+    for (const id of ['test-del-1', 'test-del-2']) {
+      await store.create({
+        id,
+        groupId: 'test-g-del',
+        deviceUdid: id.toUpperCase(),
+        deviceHost: '127.0.0.1',
+        filePath: `/tmp/${id}.mp4`,
+        sessionId: null,
+        deviceSnapshot: null,
+      });
+    }
+    await store.addBookmark('test-del-1', 'x', 1);
+    await store.addAnnotation('test-del-2', {
+      timecodeMs: 1,
+      shape: 'RECT',
+      geometry: '{}',
+      color: 'red',
+    });
+    expect(await store.deleteGroupRows('test-g-del')).to.equal(2);
+    expect(await store.listGroup('test-g-del')).to.deep.equal([]);
+    expect(await prisma.bookmark.count({ where: { recording_id: 'test-del-1' } })).to.equal(0);
+    expect(await prisma.annotation.count({ where: { recording_id: 'test-del-2' } })).to.equal(0);
+  });
+
+  it('names users by name, then email', async () => {
+    const names = await store.userNames([]);
+    expect(names.size).to.equal(0);
+  });
 });

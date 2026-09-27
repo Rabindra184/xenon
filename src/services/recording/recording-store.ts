@@ -138,4 +138,53 @@ export class RecordingStore {
     });
     return out.count;
   }
+
+  /** Every recording, with what the library lists: bookmark labels and a mark count. */
+  async libraryRows() {
+    return prisma.recording.findMany({
+      include: {
+        bookmarks: { select: { label: true } },
+        _count: { select: { annotations: true } },
+      },
+    });
+  }
+
+  /** Delete a group's rows; bookmarks and annotations cascade. Returns how many went. */
+  async deleteGroupRows(groupId: string): Promise<number> {
+    const out = await prisma.recording.deleteMany({ where: { group_id: groupId } });
+    return out.count;
+  }
+
+  /** What to call each device: its marketing name, else its own name. */
+  async deviceNames(
+    udids: string[],
+  ): Promise<Map<string, { name: string; platform: string | null }>> {
+    const out = new Map<string, { name: string; platform: string | null }>();
+    if (udids.length === 0) return out;
+    const rows = await prisma.device.findMany({
+      where: { udid: { in: udids } },
+      select: { udid: true, name: true, marketingName: true, platform: true },
+    });
+    rows.forEach((d) => {
+      if (out.has(d.udid)) return;
+      const name = d.marketingName?.trim() || (d.name && d.name !== 'unknown' ? d.name : d.udid);
+      out.set(d.udid, {
+        name,
+        platform: d.platform && d.platform !== 'unknown' ? d.platform : null,
+      });
+    });
+    return out;
+  }
+
+  /** What to call each user: their name, else their email. */
+  async userNames(ids: string[]): Promise<Map<string, string>> {
+    const out = new Map<string, string>();
+    if (ids.length === 0) return out;
+    const rows = await prisma.user.findMany({
+      where: { id: { in: ids } },
+      select: { id: true, name: true, email: true },
+    });
+    rows.forEach((u) => out.set(u.id, u.name?.trim() || u.email));
+    return out;
+  }
 }
