@@ -1,7 +1,7 @@
 import * as React from 'react';
 import { fireEvent, render, screen, within } from '@testing-library/react';
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { IDevice } from '../../interfaces/IDevice';
 import { VIEW_KEY } from './deviceView';
 
@@ -223,5 +223,41 @@ describe('Devices page view', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Platform', expanded: false }));
     fireEvent.click(await screen.findByRole('menuitemradio', { name: /Android/ }));
     expect(where()).toBe('/devices?platform=android&view=table&sort=device');
+  });
+
+  // A `?view=cards` link has to beat a stored `table`, or the first filter
+  // change drops it and the page flips to the table underneath the user.
+  it('keeps a cards link over a stored table when a filter changes', async () => {
+    window.localStorage.setItem(VIEW_KEY, 'table');
+    renderAt('/devices?view=cards');
+    await screen.findByText('Galaxy S9+');
+    expect(screen.queryByRole('table')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Platform' }));
+    fireEvent.click(await screen.findByRole('menuitemradio', { name: /Android/ }));
+    expect(where()).toBe('/devices?platform=android&view=cards');
+    expect(screen.queryByRole('table')).toBeNull();
+  });
+
+  it('opens a device from the table and returns to it, keeping view and sort', async () => {
+    renderAt('/devices?view=table&sort=device');
+    const table = await screen.findByRole('table', { name: 'Devices, 3 shown' });
+    const row = within(table)
+      .getAllByRole('row')
+      .find((r) => r.textContent?.includes('Galaxy S9+')) as HTMLElement;
+    fireEvent.click(within(row).getByRole('button', { name: 'Control' }));
+    expect(where()).toBe('/devices/U-S9/control?view=table&sort=device');
+    fireEvent.click(await screen.findByRole('button', { name: 'Close device' }));
+    expect(where()).toBe('/devices?view=table&sort=device');
+    expect(screen.getByRole('table', { name: 'Devices, 3 shown' })).toBeInTheDocument();
+  });
+
+  it('switching back to Cards removes view from the link and stores cards', async () => {
+    renderAt('/devices?view=table');
+    await screen.findByRole('table', { name: 'Devices, 3 shown' });
+    const view = screen.getByRole('tablist', { name: 'View' });
+    fireEvent.click(within(view).getByRole('tab', { name: 'Cards' }));
+    expect(screen.queryByRole('table')).toBeNull();
+    expect(where()).toBe('/devices');
+    expect(window.localStorage.getItem(VIEW_KEY)).toBe('cards');
   });
 });

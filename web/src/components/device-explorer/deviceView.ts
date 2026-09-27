@@ -15,9 +15,15 @@ export function parseView(params: URLSearchParams, stored: DeviceView): DeviceVi
   return v === 'table' || v === 'cards' ? v : stored;
 }
 
-/** Only the table goes in the URL; cards is the default. */
-export function viewToParams(params: URLSearchParams, view: DeviceView): void {
-  if (view === 'table') params.set('view', 'table');
+/**
+ * The table always goes in the URL. Cards only goes in when it disagrees
+ * with the stored preference — otherwise a `?view=cards` link can't outlive
+ * the first filter change or keystroke: with `table` stored, writing the URL
+ * from `view` alone would drop `view=cards` on the next `write()` and the
+ * page would flip to the table underneath the user.
+ */
+export function viewToParams(params: URLSearchParams, view: DeviceView, stored: DeviceView): void {
+  if (view === 'table' || view !== stored) params.set('view', view);
   else params.delete('view');
 }
 

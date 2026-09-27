@@ -387,7 +387,11 @@ export default function DeviceExplorerWrapper() {
   const sort = parseSort(searchParams);
   const write = (f: DeviceFilters, v: DeviceView, s: DeviceSort) => {
     const params = filtersToParams(f);
-    viewToParams(params, v);
+    // Read fresh rather than closing over `view`: on a filter or sort change
+    // this is the stored preference the URL's view may be overriding (kept
+    // in the link rather than dropped), and on a view change it's already
+    // been updated by the `saveView` below, so it agrees with `v`.
+    viewToParams(params, v, loadView());
     sortToParams(params, s);
     // Replace, so Back leaves the page instead of replaying every keystroke.
     setSearchParams(params, { replace: true });

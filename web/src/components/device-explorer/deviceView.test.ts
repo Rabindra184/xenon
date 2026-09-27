@@ -9,11 +9,24 @@ describe('device view', () => {
     expect(parseView(new URLSearchParams('view=grid'), 'cards')).toBe('cards');
   });
 
-  it('puts only the table in the URL', () => {
+  it('always writes the table, whatever is stored', () => {
     const p = new URLSearchParams('q=pixel');
-    viewToParams(p, 'table');
+    viewToParams(p, 'table', 'cards');
     expect(p.toString()).toBe('q=pixel&view=table');
-    viewToParams(p, 'cards');
+  });
+
+  it('writes cards too, when it disagrees with the stored preference', () => {
+    // Otherwise a `?view=cards` link can't outlive the first filter change:
+    // with `table` stored, dropping the param here would flip the page to
+    // the table on the very next write.
+    const p = new URLSearchParams('q=pixel');
+    viewToParams(p, 'cards', 'table');
+    expect(p.toString()).toBe('q=pixel&view=cards');
+  });
+
+  it('leaves cards out of the URL when it already matches storage', () => {
+    const p = new URLSearchParams('q=pixel&view=cards');
+    viewToParams(p, 'cards', 'cards');
     expect(p.toString()).toBe('q=pixel');
   });
 
@@ -23,7 +36,19 @@ describe('device view', () => {
     expect(saved[VIEW_KEY]).toBe('table');
     expect(loadView({ getItem: () => 'table' })).toBe('table');
     expect(loadView({ getItem: () => 'nonsense' })).toBe('cards');
-    expect(loadView({ getItem: () => { throw new Error('blocked'); } })).toBe('cards');
-    expect(() => saveView('table', { setItem: () => { throw new Error('full'); } })).not.toThrow();
+    expect(
+      loadView({
+        getItem: () => {
+          throw new Error('blocked');
+        },
+      }),
+    ).toBe('cards');
+    expect(() =>
+      saveView('table', {
+        setItem: () => {
+          throw new Error('full');
+        },
+      }),
+    ).not.toThrow();
   });
 });
