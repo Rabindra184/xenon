@@ -29,6 +29,8 @@ import { ClipboardUnsupportedError } from '../../device-managers/clipboardErrors
 import { mutationScopeGuard } from '../../middleware/scopeGuard';
 import { roleGuard } from '../../middleware/roleGuard';
 import { deviceAccessGuard } from '../../middleware/deviceAccessGuard';
+import { deviceTeamGuard, restoreHiddenDeviceUrl } from '../../middleware/deviceTeamGuard';
+import { HIDDEN_DEVICE_UDID } from '../../middleware/controlDevice';
 import {
   formatManualLock,
   inspectManualLock,
@@ -62,6 +64,12 @@ router.use(roleGuard('MEMBER'));
 // requires devices scope. Read endpoints (screenshots, page source) stay
 // open to any authenticated key.
 router.use(mutationScopeGuard(['devices']));
+
+// Teams: a phone outside the caller's teams is handed on as a udid no device
+// has, so every request, routed or not, gets exactly its unknown-udid answer.
+// Before the ownership guard, whose 409 would name the holder of a phone the
+// caller must not know exists.
+router.use(deviceTeamGuard());
 
 // Ownership: refuse mutations against a device held by another user or by
 // another user's Appium session. Mounted here so every current and future
@@ -100,7 +108,10 @@ function buildProxyUrl(deviceHost: string, req: Request): string | null {
 }
 
 async function getDeviceInfo(udid: string) {
-  return await DeviceStoreFactory.getStore().findDevice({ udid });
+  const device = await DeviceStoreFactory.getStore().findDevice({ udid });
+  // deviceTeamGuard's stand-in for a hidden phone is never a device. Still
+  // query first, so a hidden phone costs the same query as an unknown udid.
+  return udid === HIDDEN_DEVICE_UDID ? null : device;
 }
 
 /**
@@ -725,6 +736,19 @@ router.post('/:udid/stream/ticket', async (req: Request, res: Response) => {
   // #216/#217 trusts that it is.
   const actor = resolveActor(req);
   if (!actor.userId) return res.status(401).json({ error: 'unauthenticated' });
+  // No ticket for a udid that isn't a device. Another team's phone arrives
+  // here as one (see deviceTeamGuard) and gets this same 404.
+  let device;
+  try {
+    device = await getDeviceInfo(req.params.udid);
+  } catch (e: any) {
+    // Express 4 doesn't catch a rejected async handler: answer, don't hang.
+    // originalUrl, not the udid param: for a hidden phone the param is the
+    // guard's placeholder, which means nothing to whoever reads the log.
+    log.error(`Device lookup failed for ${req.method} ${req.originalUrl}: ${e?.message ?? e}`);
+    return res.status(503).json(ownershipUnavailableBody());
+  }
+  if (!device) return res.status(404).send('Device not found');
   // Carry the two other things `evaluateDeviceAccess` needs alongside the user
   // id. A ticket consumer (the logcat WS) has no Express request to run
   // resolveActor against, and re-deriving them from a User row at redeem time
@@ -736,9 +760,7 @@ router.post('/:udid/stream/ticket', async (req: Request, res: Response) => {
   });
   res.json({ ticket, expiresIn: 60 });
   // The H.264 preview attaches here on a reload; see screenSizeDeps.
-  void getDeviceInfo(req.params.udid)
-    .then((device) => device && fillMissingScreenSize(device, screenSizeDeps))
-    .catch(() => undefined);
+  void fillMissingScreenSize(device, screenSizeDeps);
 });
 
 /**
@@ -1136,6 +1158,18 @@ router.get('/:udid/omni-scan', async (req: Request, res: Response) => {
  */
 router.get('/:udid/inspector/snapshot', async (req: Request, res: Response) => {
   const { udid } = req.params;
+  // The same 404 as every other route here for an unknown udid, which is
+  // also what another team's phone reaches here as. The service's own "not
+  // found" was a 500.
+  let device;
+  try {
+    device = await getDeviceInfo(udid);
+  } catch (e: any) {
+    // Express 4 doesn't catch a rejected async handler: answer, don't hang.
+    log.error(`Device lookup failed for ${req.method} ${req.originalUrl}: ${e?.message ?? e}`);
+    return res.status(503).json(ownershipUnavailableBody());
+  }
+  if (!device) return res.status(404).send('Device not found');
   try {
     const inspectorService = Container.get(InspectorService);
     const snapshot = await inspectorService.getSnapshot(udid);
@@ -1225,7 +1259,9 @@ router.post('/:udid/test-locator', async (req: Request, res: Response) => {
 });
 
 function register(parentRouter: Router) {
-  parentRouter.use('/control', router);
+  // restoreHiddenDeviceUrl runs only if the router falls through, and gives
+  // the layers after /control the real req.url back; see deviceTeamGuard.
+  parentRouter.use('/control', router, restoreHiddenDeviceUrl);
 }
 
 export default {

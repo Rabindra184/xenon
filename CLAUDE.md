@@ -300,6 +300,45 @@ interactive, so "watch the test I started" works.
   because "busy" differs at start time: an orphaned manual lock with no live
   stream is reclaimed rather than refused.
 
+**Team guard** (`src/middleware/deviceTeamGuard.ts`) runs just before it. Teams
+are a device boundary: a member may use a shared-pool phone (`teamId` null) or
+one of their teams' phones, nothing else. The rule is `isDeviceVisible`
+(`src/services/device-access/deviceVisibility.ts`), and its only input is
+`req.auth.teamIds`: `undefined` means admin or auth disabled, never
+`resolveActor().isAdmin`, so the guard and the device list always agree.
+Every method and action is checked, with no exception list.
+
+- **A hidden phone looks unknown on every request.** The guard answers nothing
+  itself: it swaps the udid in `req.url` for `HIDDEN_DEVICE_UDID`, which no
+  lookup ever resolves, and calls `next()`. Every later layer then gives its
+  unknown-udid answer with the same number of lookups: the ownership guard,
+  each handler's own 404 body, and Express's 404 and automatic OPTIONS reply
+  for requests no route handles. `req.originalUrl` is untouched, so an answer
+  that echoes the path echoes the real one, never the placeholder. Express 4
+  doesn't restore `req.url` when a router falls through, so `register()`
+  mounts `restoreHiddenDeviceUrl` after the router, at the parent, to put it
+  back; never as a trailing `router.use`, where a later route would get the
+  real hidden udid. Layers after `/control` should still read
+  `req.originalUrl` when they need the requested path.
+  `test/integration/team-visibility-control.spec.ts` reads the routes from the
+  router's own stack and holds all of them, plus unrouted actions, the wrong
+  method and OPTIONS, to identical answers. That is also why `stream/ticket`
+  and `inspector/snapshot` 404 an unknown udid.
+- **It runs first** because the ownership guard's 409 names the holder, which
+  would confirm the phone exists and say who has it.
+- **One lookup for both guards.** Both parse the udid and look the device up
+  through `src/middleware/controlDevice.ts`, memoized on `res.locals`, so a
+  member's request costs one query across the two.
+- **Tickets are team-checked only when minted.** `GET /control/:udid/stream?ticket=`
+  authenticates by ticket with `teamIds: undefined`, so the team guard passes
+  it. The H.264 and logcat WebSockets redeem tickets outside Express and never
+  reach the guard at all. What covers all three is that minting a ticket
+  (`POST stream/ticket`) is team-checked. A second route that accepts tickets,
+  or a second way to mint one, needs its own team check.
+- Reservations apply the same rule, and so do SDK leases: `LeaseService.create`
+  matches with the caller's `callerTeamIds`, never a team list from the
+  client's `filters`.
+
 ### Session attribution
 
 A session's owner is resolved by `SessionOwnerResolver.ownerOf`, which prefers
@@ -548,6 +587,9 @@ npm run build:copy` (from the repo root) regenerates and copies it.
 | `src/services/recording/manualLock.ts` | `manual_<actorId>_<udid>` lock format helpers |
 | `src/middleware/authMiddleware.ts` | Populates `req.auth` (and `req.apiKey` on API-key paths) from the header pair or session cookie; `scopesForRole` maps a cookie role to its scopes |
 | `src/middleware/deviceAccessGuard.ts` | Ownership guard on `/control` — method-scoped, with the mutation allowlist and `OWNERSHIP_CHECKED_READS` |
+| `src/middleware/deviceTeamGuard.ts` | Team guard on `/control` — every request; a hidden phone is handed on as `HIDDEN_DEVICE_UDID` so it answers exactly like an unknown udid |
+| `src/middleware/controlDevice.ts` | The one udid parser and per-request memoized device lookup both `/control` guards share; defines `HIDDEN_DEVICE_UDID` |
+| `src/services/device-access/deviceVisibility.ts` | Pure `isDeviceVisible(deviceTeamId, teamIds)` — the team rule; `teamIds === undefined` is the only admin |
 | `src/services/device-access/deviceAccessPolicy.ts` | Pure access decision + deny bodies + the shared `isSelfManualLock` / `isOwnSession` primitives |
 | `src/services/device-access/SessionOwnerResolver.ts` | Session owner: prefers `Session.user_id`, falls back to `api_key_id → ApiKey.userId`. Caches **positive results only** — a null may mean the row isn't written yet, and caching it would deny the owner for the life of the process |
 | `src/services/session/sessionIdentity.ts` | Pure `resolveSessionIdentity` — derives `{ apiKeyId, userId }` from the presented credential; ignores an unverifiable token rather than rejecting it |

@@ -14,6 +14,7 @@ import { authMiddleware, scopesForRole } from '../../src/middleware/authMiddlewa
 import { UserService } from '../../src/services/UserService';
 import { ApiKeyService } from '../../src/services/ApiKeyService';
 import { UserSessionService } from '../../src/services/UserSessionService';
+import { DeviceStoreFactory } from '../../src/data-service/device-store';
 
 /**
  * `req.auth.userId` must always hold a User id.
@@ -80,6 +81,14 @@ describe('stream/ticket carries the user identity, not the credential', () => {
     // presented in these tests, so verifyPair/verify are never exercised.
     Container.set(ApiKeyService, new ApiKeyService());
     Container.set(UserSessionService, { resolve: sinon.stub().resolves(null) } as any);
+    // stream/ticket mints only for a device that exists. A known screen size
+    // keeps the after-response size fetch from reaching for a device manager.
+    sinon.stub(DeviceStoreFactory, 'getStore').returns({
+      findDevice: async ({ udid }: { udid: string }) =>
+        udid === UDID
+          ? { udid, host: 'h', platform: 'android', screenWidth: '1080', screenHeight: '1920' }
+          : null,
+    } as any);
   });
 
   afterEach(() => {
@@ -135,6 +144,17 @@ describe('stream/ticket carries the user identity, not the credential', () => {
     expect(req.auth.kind).to.equal('stream-ticket');
     // The invariant: this is a User id, never an ApiKey id.
     expect(req.auth.userId).to.equal(ALICE_USER);
+  });
+
+  // The team guard answers another team's phone with this same 404, so the
+  // two must match: minting for any udid would mark the ones that 404 as
+  // phones another team owns.
+  it("404s a udid that isn't a device, and mints nothing", async () => {
+    const res = await request(buildApp({ userId: ALICE_USER })).post(
+      '/xenon/api/control/NO-SUCH-DEVICE/stream/ticket',
+    );
+    expect(res.status).to.equal(404);
+    expect(res.text).to.equal('Device not found');
   });
 
   it('401s an unauthenticated mint', async () => {

@@ -13,6 +13,12 @@ export interface CreateLeaseRequest {
   heartbeatSeconds: number;
   actorId: string;
   teamId: string | null;
+  /**
+   * The caller's teams (`req.auth.teamIds`), which bound the device match.
+   * undefined = unscoped (admin, auth disabled). Taken from the credential,
+   * never from `filters`, which is client input.
+   */
+  callerTeamIds?: string[];
   buildId?: string;
   reason?: string;
 }
@@ -61,6 +67,21 @@ export function defaultNodePairAuthProvider(): NodePairAuthProvider {
   };
 }
 
+/**
+ * The caller's teams as a device-store filter. Unscoped (admin, auth disabled)
+ * is no key at all: the stores treat a present `callerTeamIds` as a list.
+ */
+function teamScope(callerTeamIds: string[] | undefined): { callerTeamIds?: string[] } {
+  return callerTeamIds === undefined ? {} : { callerTeamIds };
+}
+
+/** The client's filters without a team list, which only the credential may set. */
+function clientFilters(filters: CreateLeaseRequest['filters']): Record<string, unknown> {
+  const out: Record<string, unknown> = { ...filters };
+  delete out.callerTeamIds;
+  return out;
+}
+
 const MAX_LEASE_MS = 24 * 60 * 60 * 1000;
 const MIN_DURATION_MS = 60_000;
 const MIN_HEARTBEAT_SECONDS = 10;
@@ -89,12 +110,15 @@ export class LeaseService {
     const durationMs = Math.max(MIN_DURATION_MS, Math.min(req.durationMs, MAX_LEASE_MS));
     const heartbeatSeconds = Math.max(MIN_HEARTBEAT_SECONDS, Math.min(req.heartbeatSeconds, MAX_HEARTBEAT_SECONDS));
 
-    // Step 1: atomic find + lock
-    const device = await this.store.findAndLockDevice(req.filters);
+    // Step 1: atomic find + lock, among the phones the caller can see.
+    const teams = teamScope(req.callerTeamIds);
+    const device = await this.store.findAndLockDevice({ ...clientFilters(req.filters), ...teams });
     if (!device) {
       // Distinguish "no device matches the filter" (404) from "matching
       // devices exist but are all busy or already leased" (409). Spec §4.2.
-      const anyMatching = await this.store.getDevices({ platform: req.filters.platform });
+      // Counted within the caller's teams too, so the answer can't reveal
+      // that another team has a phone of this platform.
+      const anyMatching = await this.store.getDevices({ platform: req.filters.platform, ...teams });
       if (anyMatching && anyMatching.length > 0) {
         throw new AllMatchingBusy(`all devices matching ${JSON.stringify(req.filters)} are busy`);
       }

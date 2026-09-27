@@ -30,10 +30,20 @@ describe('team filter SQL shape (Phase 4A)', () => {
     expect(captured.value?.teamId).to.equal(null);
   });
 
-  it('callerTeamIds === ["t1", "t2"] → teamId IN (null, t1, t2)', async () => {
+  // Not `teamId: { in: [null, 't1', 't2'] }`: Prisma rejects a null inside
+  // `in`, so that shape threw on every real query. This test used to pin it,
+  // which is how the bug survived, since findMany is stubbed here;
+  // test/integration/prisma-device-store-team-filter.spec.ts runs the real
+  // query. The clause sits in AND, not the top-level OR, so another filter
+  // that sets `where.OR` later can't overwrite it and widen the match.
+  it('callerTeamIds === ["t1", "t2"] → AND (teamId IS NULL OR teamId IN (t1, t2))', async () => {
     const captured = captureWhere();
     const { PrismaDeviceStore } = await import('../../src/data-service/prisma-store');
     await new PrismaDeviceStore().getDevices({ callerTeamIds: ['t1', 't2'] } as any);
-    expect(captured.value?.teamId).to.deep.equal({ in: [null, 't1', 't2'] });
+    expect(captured.value?.teamId).to.equal(undefined);
+    expect(captured.value?.OR).to.equal(undefined);
+    expect(captured.value?.AND).to.deep.equal([
+      { OR: [{ teamId: null }, { teamId: { in: ['t1', 't2'] } }] },
+    ]);
   });
 });
