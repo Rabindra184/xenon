@@ -28,7 +28,13 @@ describe('sortDevices', () => {
       d('rdy-z', { name: 'Zeta' }),
       d('rdy-a', { name: 'Alpha' }),
     ];
-    expect(ids(sortDevices(list, DEFAULT_SORT, ctx))).toEqual(['rdy-a', 'rdy-z', 'b', 'maint', 'off']);
+    expect(ids(sortDevices(list, DEFAULT_SORT, ctx))).toEqual([
+      'rdy-a',
+      'rdy-z',
+      'b',
+      'maint',
+      'off',
+    ]);
   });
 
   it('reverses on desc but keeps the name tie-break ascending', () => {
@@ -47,7 +53,11 @@ describe('sortDevices', () => {
       d('a10', { sdk: '10' }),
       d('a9', { sdk: '9' }),
     ];
-    expect(ids(sortDevices(list, { key: 'platform', dir: 'asc' }, ctx))).toEqual(['a9', 'a10', 'i']);
+    expect(ids(sortDevices(list, { key: 'platform', dir: 'asc' }, ctx))).toEqual([
+      'a9',
+      'a10',
+      'i',
+    ]);
   });
 
   it('puts real before virtual', () => {
@@ -56,7 +66,10 @@ describe('sortDevices', () => {
   });
 
   it('sorts teams by name, with Shared last in both directions', () => {
-    const teams = new Map([['t1', 'QA'], ['t2', 'Mobile']]);
+    const teams = new Map([
+      ['t1', 'QA'],
+      ['t2', 'Mobile'],
+    ]);
     const list = [d('shared'), d('qa', { teamId: 't1' }), d('mob', { teamId: 't2' })];
     expect(ids(sortDevices(list, { key: 'team', dir: 'asc' }, { ...ctx, teams }))).toEqual([
       'mob',
@@ -89,7 +102,10 @@ describe('sortDevices', () => {
 
 describe('sort in the URL', () => {
   it('reads a sort, and falls back to the default for anything else', () => {
-    expect(parseSort(new URLSearchParams('sort=team&dir=desc'))).toEqual({ key: 'team', dir: 'desc' });
+    expect(parseSort(new URLSearchParams('sort=team&dir=desc'))).toEqual({
+      key: 'team',
+      dir: 'desc',
+    });
     expect(parseSort(new URLSearchParams('sort=team'))).toEqual({ key: 'team', dir: 'asc' });
     expect(parseSort(new URLSearchParams('sort=nope&dir=desc'))).toEqual(DEFAULT_SORT);
     expect(parseSort(new URLSearchParams(''))).toEqual(DEFAULT_SORT);
