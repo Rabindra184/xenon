@@ -36,6 +36,8 @@ import {
 } from './tunnelProcess';
 
 import { unblockDevice } from '../../data-service/device-service';
+import { isManualLock } from '../../services/recording/manualLock';
+import { RecordingStore } from '../../services/recording/recording-store';
 
 const execPromise = promisify(exec);
 import { Container } from 'typedi';
@@ -62,6 +64,25 @@ interface StreamSession {
   screenHeight?: number;
 }
 
+/** A preview nobody has watched for this long is stopped and its hold released. */
+export const IOS_IDLE_STOP_MS = 600_000;
+
+/**
+ * Whether the watchdog may stop an idle iOS stream: nobody has watched it for
+ * 10 minutes, no recording reads it (a recording reads the stream directly,
+ * so it isn't counted as a viewer), and no Appium session relies on it. A
+ * live-preview hold is not an Appium session, so an abandoned one goes.
+ */
+export function shouldStopIdleIosStream(use: {
+  idleMs: number;
+  viewers: number;
+  sessionId?: string | null;
+  recording: boolean;
+}): boolean {
+  if (use.viewers > 0 || use.idleMs <= IOS_IDLE_STOP_MS || use.recording) return false;
+  return !use.sessionId || isManualLock(use.sessionId);
+}
+
 @Service({ name: 'IOSStreamService' })
 class IOSStreamService {
   private sessions: Map<string, StreamSession> = new Map();
@@ -83,9 +104,12 @@ class IOSStreamService {
    * Watchdog: Periodically monitors running streams and cleans up idle ones
    */
   private startWatchdog() {
+    // Every minute, and cheap: an unwatched preview's hold was held for good,
+    // because the only idle check ran hourly and kept every busy device.
+    setInterval(() => void this.sweepIdle(), 60_000);
+    // Hourly: port leases and the stream health check, which probes WDA.
     setInterval(async () => {
       for (const [udid, session] of this.sessions.entries()) {
-        const now = Date.now();
         if (session.status === 'running') {
           // Keep this stream's port leases alive so the allocator never hands
           // its ports to another device mid-stream (TTL > this 1h interval).
@@ -95,24 +119,6 @@ class IOSStreamService {
             await portAllocator.touch(session.mjpegPort, this.STREAM_PORT_TTL_MS);
           } catch {
             /* best-effort lease refresh */
-          }
-
-          // Check for inactivity
-          if (now - session.lastViewerAt > 600000 && session.viewerCount === 0) {
-            // Principal Protection: Never stop a stream if the device is busy with an active session.
-            // This prevents the watchdog from killing WDA while a test is running.
-            const device = await DeviceStoreFactory.getStore().findDevice({ udid });
-            if (device && device.busy) {
-              log.debug(
-                `🛡️ [${udid}] [Watchdog] Stream is idle but device is BUSY. Keeping alive.`,
-              );
-              session.lastViewerAt = Date.now(); // Refresh timer to avoid constant DB checks
-              continue;
-            }
-
-            log.info(`[${udid}] [Watchdog] Stopping idle iOS stream (No viewers for 30s)`);
-            this.stopStream(udid);
-            continue;
           }
 
           // 2. Health check & Self-Healing
@@ -155,6 +161,38 @@ class IOSStreamService {
         }
       }
     }, 3600000); // 1hr interval for background stability
+  }
+
+  /**
+   * Stop streams nobody has watched for 10 minutes, which releases an
+   * abandoned live-preview hold. A stream an Appium session or a recording
+   * relies on is kept, and checked again 10 minutes later.
+   */
+  private async sweepIdle(): Promise<void> {
+    const now = Date.now();
+    for (const [udid, session] of this.sessions.entries()) {
+      if (session.status !== 'running') continue;
+      const idleMs = now - session.lastViewerAt;
+      if (session.viewerCount > 0 || idleMs <= IOS_IDLE_STOP_MS) continue;
+      try {
+        const device = await DeviceStoreFactory.getStore().findDevice({ udid });
+        const recording = await Container.get(RecordingStore).isRecording(udid);
+        const stop = shouldStopIdleIosStream({
+          idleMs,
+          viewers: session.viewerCount,
+          sessionId: device?.session_id,
+          recording,
+        });
+        if (!stop) {
+          session.lastViewerAt = now;
+          continue;
+        }
+        log.info(`[${udid}] [Watchdog] Stopping idle iOS stream (no viewers for 10 min)`);
+        await this.stopStream(udid);
+      } catch (e: any) {
+        log.warn(`[${udid}] [Watchdog] Idle check failed: ${e?.message ?? e}`);
+      }
+    }
   }
 
   private getGoIOSPath(): string {
