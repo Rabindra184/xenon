@@ -193,7 +193,13 @@ export class SocketServer {
         select: { status: true, role: true },
       });
       if (!owner || owner.status !== 'ACTIVE') throw new Error('inactive user');
-      return this.identify('dashboard', String(payload.sub), owner.role, payload.teamId);
+      // The team claim is read exactly as REST's bearer path reads it.
+      return this.identify(
+        'dashboard',
+        String(payload.sub),
+        owner.role,
+        (payload.teamId as string | null) ?? null,
+      );
     }
 
     // Node path: per-node (accessKey, token) pair. Resolves to a real
@@ -241,14 +247,10 @@ export class SocketServer {
     principal: Principal,
     userId: string,
     role: string,
-    apiKeyTeamId: unknown,
+    apiKeyTeamId: string | null | undefined,
   ): Promise<SocketIdentity> {
     const r = role as Role;
-    const teamIds = await computeTeamIds({
-      role: r,
-      userId,
-      apiKeyTeamId: typeof apiKeyTeamId === 'string' ? apiKeyTeamId : null,
-    });
+    const teamIds = await computeTeamIds({ role: r, userId, apiKeyTeamId });
     return { principal, userId, role: r, teamIds };
   }
 

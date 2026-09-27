@@ -11,6 +11,7 @@ import { ApiKeyService } from '../../src/services/ApiKeyService';
 import { prisma } from '../../src/prisma';
 import { config as xenonConfig } from '../../src/config';
 import { saveRegistrations } from '../helpers/container-registration';
+import { authMiddleware } from '../../src/middleware/authMiddleware';
 
 // Test seam: `authenticate()` is private and there is no existing SocketServer
 // spec to mirror, so — consistent with how authMiddleware.bearer.spec.ts
@@ -215,6 +216,28 @@ describe('SocketServer — authenticate() identity', () => {
     const identity = await authenticate(fakeSocket({ bearer: token }));
     expect(identity.teamIds).to.deep.equal(['team-b']);
     expect(members.called).to.equal(false);
+  });
+
+  it("a bearer's teamId claim narrows exactly as REST narrows it, whatever its type", async () => {
+    users({ 'u-member': { status: 'ACTIVE', role: 'MEMBER' } });
+    sinon.stub(prisma.teamMember, 'findMany').resolves([{ teamId: 'team-a' }] as any);
+    const rest = async (bearer: string) => {
+      const req: any = { headers: { authorization: `Bearer ${bearer}` }, query: {} };
+      const res: any = { status: () => res, json: () => res, cookie: () => res };
+      let called = false;
+      await authMiddleware(req, res, () => (called = true));
+      expect(called, 'REST accepted the token').to.equal(true);
+      return req.auth.teamIds;
+    };
+    for (const teamId of ['team-b', null, undefined, 42, '']) {
+      const claims: Record<string, unknown> = { sub: 'u-member' };
+      if (teamId !== undefined) claims.teamId = teamId;
+      const token = await keySvc.sign(claims, { audience: 'xenon-rest', ttlSeconds: 60 });
+      const socket = await authenticate(fakeSocket({ bearer: token }));
+      expect(socket.teamIds, `teamId claim ${JSON.stringify(teamId)}`).to.deep.equal(
+        await rest(token),
+      );
+    }
   });
 
   it("a team-narrowed (accessKey, token) pair: node principal, the key's team", async () => {
