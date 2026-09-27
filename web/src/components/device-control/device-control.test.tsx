@@ -90,6 +90,11 @@ describe('DeviceControl header', () => {
     expect(screen.queryByRole('heading', { name: 'star2ltexx' })).toBeNull();
   });
 
+  it('names the browser tab after the device, not its UDID', () => {
+    open(S9);
+    expect(document.title).toBe('Galaxy S9+ · Device · Xenon');
+  });
+
   it('falls back to the reported name when the friendly one is unknown', () => {
     open({ ...S9, marketingName: null });
     expect(screen.getByRole('heading', { name: 'star2ltexx' })).toBeInTheDocument();

@@ -149,6 +149,13 @@
   padding-top: 0;
   padding-bottom: 0;
 }
+/* A standing note under a field, aligned with the field rather than its label
+   (label 76px + row gap 8px). */
+.actions-field-hint {
+  margin: 0 0 0 84px;
+  color: var(--text-muted);
+  font-size: 11px;
+}
 .actions-status {
   min-height: 16px;
   margin: 0;

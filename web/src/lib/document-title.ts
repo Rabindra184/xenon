@@ -25,6 +25,16 @@ const EXACT: Record<string, string> = {
   '/reset-password': 'Reset password',
 };
 
+// Friendly device names, so a device's control tab reads "Galaxy S9+ · Device"
+// rather than "381103b720057ece · Device". The path only carries the UDID;
+// the device control page supplies the name.
+const deviceNames = new Map<string, string>();
+
+/** Name a device's control tab after the device; `titleForPath` uses it. */
+export function nameDevice(udid: string, name: string): void {
+  if (name) deviceNames.set(udid, name);
+}
+
 /**
  * The browser-tab title for a router path (basename already stripped).
  * Every tab used to read just "Xenon", so several open pages — a normal way to
@@ -36,9 +46,10 @@ export function titleForPath(pathname: string): string {
   let page = EXACT[path];
   if (!page) {
     let m: RegExpMatchArray | null;
-    if ((m = path.match(/^\/devices\/([^/]+)\/control/)))
-      page = `${decodeURIComponent(m[1])} · Device`;
-    else if (/^\/builds\/[^/]+\/sessions\//.test(path)) page = 'Session';
+    if ((m = path.match(/^\/devices\/([^/]+)\/control/))) {
+      const udid = decodeURIComponent(m[1]);
+      page = `${deviceNames.get(udid) || udid} · Device`;
+    } else if (/^\/builds\/[^/]+\/sessions\//.test(path)) page = 'Session';
     else if (/^\/builds\/[^/]+$/.test(path)) page = 'Sessions';
     else if ((m = path.match(/^\/runbooks\/([^/]+)/)))
       page = `Runbook · ${decodeURIComponent(m[1])}`;
