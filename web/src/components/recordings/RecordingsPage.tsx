@@ -55,32 +55,44 @@ export default function RecordingsPage() {
   const [error, setError] = React.useState<string | null>(null);
   const [loadingMore, setLoadingMore] = React.useState(false);
   const [reloadKey, setReloadKey] = React.useState(0);
+  // Generation counter: bumped on every fetch effect run, so a stale
+  // response (older filter, or a Load-more that lost a race with a newer
+  // first page) can be told apart from the latest one.
   const request = React.useRef(0);
+  // Flips false in the fetch effect's cleanup and stays false only when that
+  // cleanup ran because the component unmounted (a dep change immediately
+  // flips it back true at the top of the next effect run).
+  const mounted = React.useRef(true);
 
   const write = (next: LibraryFilters) =>
     setParams(libraryFiltersToParams(next), { replace: true });
 
   React.useEffect(() => {
+    mounted.current = true;
     const id = ++request.current;
     const t = window.setTimeout(() => {
       listRecordings({ ...libraryQuery(filters, Date.now()), limit: PAGE_SIZE })
         .then((res) => {
-          if (id !== request.current) return;
+          if (!mounted.current || id !== request.current) return;
           setData(res);
           setRows(res.recordings);
           setError(null);
         })
         .catch((e) => {
-          if (id !== request.current) return;
+          if (!mounted.current || id !== request.current) return;
           setError(e instanceof Error ? e.message : String(e));
         });
     }, SEARCH_DEBOUNCE_MS);
-    return () => window.clearTimeout(t);
+    return () => {
+      window.clearTimeout(t);
+      mounted.current = false;
+    };
     // queryKey is the filters; reloadKey is Retry.
   }, [queryKey, reloadKey]);
 
   const loadMore = async () => {
     if (!data?.nextCursor) return;
+    const id = request.current;
     setLoadingMore(true);
     try {
       const res = await listRecordings({
@@ -88,12 +100,14 @@ export default function RecordingsPage() {
         limit: PAGE_SIZE,
         cursor: data.nextCursor,
       });
+      if (!mounted.current || id !== request.current) return;
       setData(res);
       setRows((prev) => prev.concat(res.recordings));
     } catch (e) {
+      if (!mounted.current || id !== request.current) return;
       setError(e instanceof Error ? e.message : String(e));
     } finally {
-      setLoadingMore(false);
+      if (mounted.current) setLoadingMore(false);
     }
   };
 

@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import type { LibraryResponse, RecordingSummary } from '../../api-service/recordings';
@@ -245,5 +245,78 @@ describe('RecordingsPage', () => {
     expect(
       await screen.findByText('Recordings are kept for 30 days, up to the newest 100.'),
     ).toBeInTheDocument();
+  });
+
+  it('drops a Load-more response that resolves after the filter has changed', async () => {
+    let resolveLoadMore!: (value: LibraryResponse) => void;
+    const loadMoreDeferred = new Promise<LibraryResponse>((resolve) => {
+      resolveLoadMore = resolve;
+    });
+    const g3: RecordingSummary = { ...g1, groupId: 'g3', status: 'done', durationMs: 1000 };
+    const newFilterRow: RecordingSummary = {
+      ...g2,
+      groupId: 'gNew',
+      phones: [{ ...g2.phones[0], udid: 'U9', name: 'OnePlus 5' }],
+      startedBy: { id: 'bob', name: 'Bob' },
+    };
+
+    listRecordings
+      .mockResolvedValueOnce(response({ nextCursor: 'c1' })) // initial page
+      .mockImplementationOnce(() => loadMoreDeferred) // Load more, held open
+      .mockResolvedValueOnce(response({ recordings: [newFilterRow], nextCursor: null, total: 1 })); // new filter's first page
+
+    renderAt('/recordings');
+    await screen.findByText('Galaxy S9+, iPhone 17 +1');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Load more' }));
+    await waitFor(() =>
+      expect(listRecordings).toHaveBeenLastCalledWith(expect.objectContaining({ cursor: 'c1' })),
+    );
+
+    // Change the filter before the Load-more response arrives; its first page resolves normally.
+    fireEvent.click(screen.getByRole('button', { name: 'Phone' }));
+    fireEvent.click(await screen.findByRole('menuitemradio', { name: /Galaxy/ }));
+
+    expect(await screen.findByText('Bob')).toBeInTheDocument();
+    expect(screen.getAllByRole('row')).toHaveLength(2); // header + the new filter's one row
+
+    // Now the stale Load-more finally resolves, for the filter that's no longer selected.
+    await act(async () => {
+      resolveLoadMore(response({ recordings: [g3], nextCursor: null }));
+      await loadMoreDeferred;
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(screen.getByText('Bob')).toBeInTheDocument();
+    expect(within(screen.getByRole('table')).queryByText('Galaxy S9+')).not.toBeInTheDocument();
+    expect(screen.getAllByRole('row')).toHaveLength(2);
+  });
+
+  it('ignores a response that arrives after the page has unmounted', async () => {
+    let resolveList!: (value: LibraryResponse) => void;
+    const deferred = new Promise<LibraryResponse>((resolve) => {
+      resolveList = resolve;
+    });
+    listRecordings.mockImplementationOnce(() => deferred);
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    const { unmount } = renderAt('/recordings');
+    await waitFor(() => expect(listRecordings).toHaveBeenCalledTimes(1));
+
+    unmount();
+
+    await act(async () => {
+      resolveList(response());
+      await deferred;
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    const unmountedWarning = errorSpy.mock.calls.some((args) =>
+      String(args[0]).includes('unmounted'),
+    );
+    expect(unmountedWarning).toBe(false);
+    errorSpy.mockRestore();
   });
 });
