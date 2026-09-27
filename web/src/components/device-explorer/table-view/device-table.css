@@ -1,0 +1,114 @@
+.devtable.tbl {
+  table-layout: fixed;
+  width: 100%;
+}
+
+/* Column widths, set on the <colgroup> rather than per-cell. Device is left
+   auto so it absorbs whatever width the fixed columns don't use. */
+.devtable-col-status {
+  width: 150px;
+}
+.devtable-col-platform {
+  width: 120px;
+}
+.devtable-col-type {
+  width: 80px;
+}
+.devtable-col-team {
+  width: 120px;
+}
+.devtable-col-tags {
+  width: 150px;
+}
+.devtable-col-host {
+  width: 150px;
+}
+.devtable-col-actions {
+  width: 220px;
+}
+
+/* Row height is a function of cell padding, not an explicit min-height on
+   the row itself: 8px top/bottom padding plus ~28px of line-boxed content
+   lands close to 44px without fighting the table's own layout. */
+.devtable.tbl thead th,
+.devtable.tbl tbody td {
+  padding: 8px 12px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* The Actions cell holds buttons, not text: it must not truncate them. */
+.devtable.tbl tbody td.devtable-actions {
+  white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
+}
+
+.devtable.tbl thead th {
+  position: sticky;
+  top: 0;
+  background: var(--surface);
+  z-index: 1;
+}
+
+.devtable-muted {
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
+.devtable-row.is-offline {
+  opacity: 0.6;
+}
+
+.devtable-sort {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: none;
+  border: none;
+  padding: 0;
+  margin: 0;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+.devtable-sort:focus-visible {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: 1px;
+}
+
+.devtable-tag {
+  display: inline-block;
+  margin-right: 4px;
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
+.devtable-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* Matches .dc2-more's look with the table's own class, same tokens. */
+.devtable-more {
+  flex: none;
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  border-radius: var(--radius-md);
+  width: 28px;
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition:
+    background var(--motion-fast),
+    color var(--motion-fast);
+}
+.devtable-more:hover {
+  background: var(--surface-2);
+  color: var(--text);
+}
