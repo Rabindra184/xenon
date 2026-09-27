@@ -101,27 +101,17 @@ export class ProofBundleService {
    * The cells come from composite.json, written when the composite started.
    * The group's current rows are no stand-in for them: retention purges rows
    * one at a time while the composite lives on, and a device added later
-   * never joins the composite. Only a composite with no layout file (older
-   * than composite.json, or its write failed) falls back to "sees every
-   * current row". A layout file that cannot be read denies.
+   * never joins the composite. So without a readable layout there is no
+   * telling who is in the composite, and only an admin gets it. (Layouts
+   * arrived on 2026-09-26; composites older than that age out with their
+   * 30-day retention.)
    */
-  compositeAllowed(
-    groupId: string,
-    only: RecordingFilter,
-    groupRows: ReadonlyArray<{ id: string }>,
-  ): boolean {
+  compositeAllowed(groupId: string, only: RecordingFilter): boolean {
     if (only === undefined) return true;
     const allowed = new Set(only);
-    let layoutPath: string;
-    try {
-      layoutPath = compositeLayoutPath(groupId);
-    } catch {
-      return false; // ArtifactStore unset (unit tests): there is no composite either
-    }
-    if (!fs.existsSync(layoutPath)) return groupRows.every((r) => allowed.has(r.id));
     try {
       const layout = JSON.parse(
-        fs.readFileSync(layoutPath, 'utf8'),
+        fs.readFileSync(compositeLayoutPath(groupId), 'utf8'),
       ) as Partial<CompositeLayoutFile>;
       const cells = Array.isArray(layout.cells) ? layout.cells : [];
       return (
@@ -129,23 +119,21 @@ export class ProofBundleService {
         cells.every((c) => typeof c?.recordingId === 'string' && allowed.has(c.recordingId))
       );
     } catch {
+      // No layout file, an unreadable one, or no ArtifactStore (unit tests).
       return false;
     }
   }
 
-  /**
-   * The whole group (`all`, for {@link compositeAllowed}) and its recordings
-   * narrowed to `only`, which is all a download may carry.
-   */
+  /** The group's recordings narrowed to `only`: all a download may carry. */
   private async listVisible(
     groupId: string,
     only: RecordingFilter,
     groupRows?: GroupRows,
-  ): Promise<{ all: any[]; recordings: any[] }> {
+  ): Promise<{ recordings: any[] }> {
     const all = [...(groupRows ?? (await this.store.listGroup(groupId)))] as any[];
-    if (only === undefined) return { all, recordings: all };
+    if (only === undefined) return { recordings: all };
     const allowed = new Set(only);
-    return { all, recordings: all.filter((r) => allowed.has(r.id)) };
+    return { recordings: all.filter((r) => allowed.has(r.id)) };
   }
 
   /**
@@ -178,10 +166,10 @@ export class ProofBundleService {
     only?: RecordingFilter,
     groupRows?: GroupRows,
   ): Promise<Array<{ filePath: string; name: string }>> {
-    const { all, recordings } = await this.listVisible(groupId, only, groupRows);
+    const { recordings } = await this.listVisible(groupId, only, groupRows);
     const entries: Array<{ filePath: string; name: string }> = [];
 
-    const composite = this.compositeAllowed(groupId, only, all)
+    const composite = this.compositeAllowed(groupId, only)
       ? await this.resolveCompositeFile(groupId)
       : null;
     if (composite) entries.push({ filePath: composite, name: 'composite.mp4' });
@@ -286,7 +274,7 @@ export class ProofBundleService {
     only?: RecordingFilter,
     groupRows?: GroupRows,
   ): Promise<void> {
-    const { all, recordings } = await this.listVisible(groupId, only, groupRows);
+    const { recordings } = await this.listVisible(groupId, only, groupRows);
 
     const manifest = {
       groupId,
@@ -308,7 +296,7 @@ export class ProofBundleService {
 
     // Mosaic-wide composite mp4 (only present for multi-device groups), and
     // only for a caller who may see every device in it.
-    const composite = this.compositeAllowed(groupId, only, all)
+    const composite = this.compositeAllowed(groupId, only)
       ? await this.resolveCompositeFile(groupId)
       : null;
     if (composite) archive.file(composite, { name: 'composite.mp4' });

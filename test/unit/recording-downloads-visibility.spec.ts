@@ -322,18 +322,28 @@ describe('recording downloads serve only the phones the caller can see', () => {
     });
   });
 
+  // composite.json arrived on 2026-09-26. Without it there is no telling
+  // which phones a composite shows, so only an admin gets one.
   describe('a composite without a layout file', () => {
-    it('falls back to "sees every row": not for a member who sees one', async () => {
-      writeLayout(null);
-      expect((await get(MEMBER, 'composite.mp4')).status).to.equal(404);
-      const videos = await get(MEMBER, 'videos.zip');
-      expect(await zipNames(videos.body)).to.deep.equal(['U-A.mp4']);
-    });
-
-    it('falls back to "sees every row": yes for a member who sees both', async () => {
+    beforeEach(() => {
       writeLayout(null);
       memberSees = ['U-A', 'U-B'];
-      expect((await get(MEMBER, 'composite.mp4')).status).to.equal(200);
+    });
+
+    it('denies a member even when they see every row', async () => {
+      expect((await get(MEMBER, 'composite.mp4')).status).to.equal(404);
+      const videos = await get(MEMBER, 'videos.zip');
+      expect(await zipNames(videos.body)).to.deep.equal(['U-A.mp4', 'U-B.mp4']);
+      const bundle = await get(MEMBER, 'bundle.zip');
+      expect(await zipNames(bundle.body)).to.not.include('composite.mp4');
+    });
+
+    it('still gives an admin the composite', async () => {
+      const res = await get(ADMIN, 'composite.mp4');
+      expect(res.status).to.equal(200);
+      expect(res.body.toString('utf8')).to.equal(COMPOSITE_BYTES);
+      const videos = await get(ADMIN, 'videos.zip');
+      expect(await zipNames(videos.body)).to.include('composite.mp4');
     });
 
     it('denies a member when the layout file cannot be read', async () => {

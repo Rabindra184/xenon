@@ -279,7 +279,7 @@ router.get('/recordings/:groupId/composite.mp4', async (req: Request, res: Respo
   const auth = (req as Request & { auth?: { teamIds?: string[] } }).auth;
   const v = await visibleRecordings(req.params.groupId, auth?.teamIds);
   const bundle = Container.get(ProofBundleService);
-  if (seesNone(v) || !bundle.compositeAllowed(req.params.groupId, v.ids, v.rows)) {
+  if (seesNone(v) || !bundle.compositeAllowed(req.params.groupId, v.ids)) {
     return res.status(404).json({ error: 'composite_not_found' });
   }
   // With the devices' marks burned in when that works, otherwise raw.
