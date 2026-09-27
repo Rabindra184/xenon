@@ -166,6 +166,10 @@ describe('Device sync keeps writes made while it ran (lost update)', () => {
       id: SocketServer,
       value: {
         emitToDashboard: (event: string, data: any) => emits.push([event, data]),
+        emitToDashboardForDevices: async (event: string, data: any) => {
+          emits.push([event, data]);
+        },
+        hasScopedDashboard: () => false,
       },
     });
     Container.set({
@@ -369,7 +373,13 @@ describe('Device sync keeps writes made while it ran, on the Loki test store', (
     });
     Container.set({
       id: SocketServer,
-      value: { emitToDashboard: (event: string, data: any) => emits.push([event, data]) },
+      value: {
+        emitToDashboard: (event: string, data: any) => emits.push([event, data]),
+        emitToDashboardForDevices: async (event: string, data: any) => {
+          emits.push([event, data]);
+        },
+        hasScopedDashboard: () => false,
+      },
     });
     Container.set({ id: NotificationService, value: { dispatchEvent: async () => undefined } });
     sinon.stub(prisma.lease as any, 'findMany').resolves([]);
