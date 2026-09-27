@@ -18,6 +18,7 @@ import { decodeAnnotationImage } from '../../services/recording/annotationImage'
 import { selectOwnActiveGroups } from '../../services/recording/activeRecordings';
 import { readRecordingTiming } from '../../services/recording/recordingTiming';
 import { DeviceStoreFactory } from '../../data-service/device-store';
+import { DOWNLOAD_OPTIONS } from './apps';
 import log from '../../logger';
 
 /**
@@ -353,10 +354,32 @@ router.get('/recordings/:groupId/video.mp4', async (req: Request, res: Response)
           : 'Use videos.zip when the group has multiple recordings',
       });
     }
-    res.setHeader('Content-Type', 'video/mp4');
-    res.setHeader('Accept-Ranges', 'bytes');
-    res.setHeader('Content-Disposition', `attachment; filename="${hit.downloadName}"`);
-    fs.createReadStream(hit.filePath).pipe(res);
+    // res.download sets the attachment disposition and video/mp4, and answers
+    // Range requests (206), which a piped read stream never did. The options
+    // matter on Appium 3's Express 5: recordings live under ~/.cache, and
+    // without `dotfiles: 'allow'` every such path 404s. See DOWNLOAD_OPTIONS.
+    res.download(hit.filePath, hit.downloadName, DOWNLOAD_OPTIONS, (err: any) => {
+      if (!err || err.code === 'ECONNABORTED') return;
+      if (res.headersSent) {
+        recLog.warn(`video.mp4 send failed mid-stream: ${err.message}`);
+        res.destroy();
+        return;
+      }
+      // Nothing was sent yet: answer JSON, not an empty "attachment".
+      res.removeHeader('Content-Disposition');
+      res.removeHeader('Content-Type');
+      const status = err.status ?? err.statusCode;
+      if (status === 404) {
+        recLog.warn(`video.mp4 file missing: ${err.message}`);
+        res.status(404).json({ error: 'video_not_found' });
+      } else if (status === 416) {
+        recLog.warn(`video.mp4 range not satisfiable: ${err.message}`);
+        res.status(416).json({ error: 'range_not_satisfiable' });
+      } else {
+        recLog.error(`video.mp4 send failed: ${err.message}`);
+        res.status(500).json({ error: 'internal' });
+      }
+    });
   } catch (e: any) {
     recLog.error(`video.mp4 failed: ${e?.message}`);
     return res.status(500).json({ error: 'internal', message: e?.message });

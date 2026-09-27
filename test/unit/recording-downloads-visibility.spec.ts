@@ -256,4 +256,47 @@ describe('recording downloads serve only the phones the caller can see', () => {
       });
     }
   });
+
+  describe('video.mp4 as a file download', () => {
+    it('answers a Range request with 206 and just those bytes', async () => {
+      const res = await get(MEMBER, 'video.mp4?udid=U-A', { Range: 'bytes=0-2' });
+      expect(res.status).to.equal(206);
+      expect(res.body.toString('utf8')).to.equal(A_BYTES.slice(0, 3));
+      expect(res.headers['content-range']).to.equal(`bytes 0-2/${A_BYTES.length}`);
+    });
+
+    it('answers an unsatisfiable Range with 416 JSON', async () => {
+      const res = await get(MEMBER, 'video.mp4?udid=U-A', { Range: 'bytes=9999-10000' });
+      expect(res.status).to.equal(416);
+      expect(res.headers['content-disposition']).to.equal(undefined);
+      expect(res.json()).to.deep.equal({ error: 'range_not_satisfiable' });
+    });
+
+    it('answers a file gone from disk with 404 JSON, not an attachment', async () => {
+      const gone = path.join(root, 'gone.mp4');
+      const svc = Container.get(ProofBundleService);
+      sinon
+        .stub(svc, 'resolveVideoFile')
+        .resolves({ filePath: gone, downloadName: 'U-A.mp4', recordingId: 'r-a' });
+      const res = await get(MEMBER, 'video.mp4?udid=U-A');
+      expect(res.status).to.equal(404);
+      expect(res.headers['content-disposition']).to.equal(undefined);
+      expect(res.json()).to.deep.equal({ error: 'video_not_found' });
+    });
+
+    // The repo dev-depends on Express 4, whose `send` serves a path with a
+    // dot-segment anyway, so a plain request passes with or without the
+    // option. Appium 3 runs the plugin on Express 5, which refuses every file
+    // under ~/.cache without it. See DOWNLOAD_OPTIONS in routers/apps.ts.
+    it('sends with dotfiles allowed, so ~/.cache paths survive Express 5', async () => {
+      const download = sinon.spy(express.response, 'download');
+      const res = await get(MEMBER, 'video.mp4?udid=U-A');
+      expect(res.status).to.equal(200);
+      expect(download.calledOnce, 'served through res.download').to.equal(true);
+      const [sentPath, sentName, opts] = download.firstCall.args as unknown[];
+      expect(sentPath).to.equal(files['r-a']);
+      expect(sentName).to.equal('U-A.mp4');
+      expect(opts).to.deep.include({ dotfiles: 'allow' });
+    });
+  });
 });
