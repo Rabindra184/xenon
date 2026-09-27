@@ -255,6 +255,23 @@ describe('OmniInspector — tree', () => {
   });
 });
 
+describe('OmniInspector — Test locator', () => {
+  // Device control draws the phone itself, so this component's own <img>
+  // never loads there; the outline must not wait for its size.
+  it('outlines the matching element on the phone', async () => {
+    const target = document.createElement('div');
+    document.body.appendChild(target);
+    try {
+      render(<OmniInspector udid="U1" embedded overlayTarget={target} />);
+      fireEvent.click(await screen.findByRole('treeitem', { name: /login/ }));
+      fireEvent.click(screen.getByRole('button', { name: 'Test locator' }));
+      expect(target.querySelectorAll('.omni-frame-match.unique')).toHaveLength(1);
+    } finally {
+      target.remove();
+    }
+  });
+});
+
 describe('OmniInspector — another device', () => {
   // The same xpath on another device is an unrelated element.
   it('clears the selection instead of following its xpath', async () => {

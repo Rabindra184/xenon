@@ -794,16 +794,13 @@ const OmniInspector: React.FC<OmniInspectorProps> = ({
   };
 
   const renderMatchFrames = (): React.ReactNode[] => {
-    if (!activeLocatorTest || !naturalDimensions.width) return [];
+    // deviceSpace(), not naturalDimensions: embedded, this component's own
+    // <img> never loads, so gating on it drew nothing in device control.
+    const space = deviceSpace();
+    if (!activeLocatorTest || !space) return [];
     const result = locatorTests[activeLocatorTest];
     if (!result || result.kind !== 'matched' || result.nodes.length === 0) return [];
-    const rootRect = snapshot?.hierarchy?.rect;
-    let deviceW = snapshot?.metadata?.screenWidth || naturalDimensions.width;
-    let deviceH = snapshot?.metadata?.screenHeight || naturalDimensions.height;
-    if (rootRect && rootRect.width > 0 && rootRect.height > 0) {
-      deviceW = rootRect.width;
-      deviceH = rootRect.height;
-    }
+    const { w: deviceW, h: deviceH } = space;
     const matchClass =
       result.nodes.length === 1 ? 'omni-frame-match unique' : 'omni-frame-match multi';
     return result.nodes
