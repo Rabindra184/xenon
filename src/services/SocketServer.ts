@@ -5,6 +5,7 @@ import type * as jose from 'jose';
 import log from '../logger';
 import { config as xenonConfig } from '../config';
 import { ApiKeyService } from './ApiKeyService';
+import { UserSessionService } from './UserSessionService';
 import { JwtKeyService } from './token/JwtKeyService';
 import { prisma } from '../prisma';
 import { EventLogService } from './EventLogService';
@@ -224,11 +225,24 @@ export class SocketServer {
       return this.identify('node', row.userId, owner.role, row.teamId);
     }
 
-    // Dashboard path: session cookie set by /auth/login.
+    // Dashboard path: the cookie. As in REST's authMiddleware, it is first a
+    // UserSession id (set by /auth/login), then a raw API key (the older
+    // /api-key-gate cookie). A session whose user is disabled is refused, not
+    // retried as a key.
     const cookieValue = readCookie(headers.cookie as string | undefined, SESSION_COOKIE) ?? '';
 
     if (!cookieValue) {
       throw new Error('missing credentials (need (accessKey, token) pair or dashboard cookie)');
+    }
+
+    const session = await Container.get(UserSessionService).resolve(cookieValue);
+    if (session) {
+      const user = await prisma.user.findUnique({
+        where: { id: session.userId },
+        select: { status: true, role: true },
+      });
+      if (!user || user.status !== 'ACTIVE') throw new Error('inactive user');
+      return this.identify('dashboard', session.userId, user.role, null);
     }
 
     const row = await Container.get(ApiKeyService).verify(cookieValue);
