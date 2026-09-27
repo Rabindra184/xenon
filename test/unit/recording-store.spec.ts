@@ -276,6 +276,30 @@ describe('RecordingStore (Prisma round-trip)', () => {
     expect(await store.listGroupStarts('test-g-none')).to.deep.equal([]);
   });
 
+  it('listActiveWithMarks reads the in-progress recordings with their marks', async () => {
+    for (const id of ['test-live-1', 'test-live-2']) {
+      await store.create({
+        id,
+        groupId: 'test-g-live',
+        deviceUdid: id.toUpperCase(),
+        deviceHost: '127.0.0.1',
+        filePath: `/tmp/${id}.mp4`,
+        sessionId: null,
+        deviceSnapshot: null,
+      });
+    }
+    await store.finalize('test-live-2', { status: 'STOPPED' });
+    await store.addAnnotation('test-live-1', {
+      timecodeMs: 1,
+      shape: 'RECT',
+      geometry: '{}',
+      color: 'red',
+    });
+    const live = (await store.listActiveWithMarks()).filter((r) => r.group_id === 'test-g-live');
+    expect(live.map((r) => r.id)).to.deep.equal(['test-live-1']);
+    expect(live[0].annotations.map((a) => a.color)).to.deep.equal(['red']);
+  });
+
   it('names users by name, then email', async () => {
     const names = await store.userNames([]);
     expect(names.size).to.equal(0);

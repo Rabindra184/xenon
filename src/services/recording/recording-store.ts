@@ -57,6 +57,14 @@ export class RecordingStore {
     return prisma.recording.findMany({ where: { status: 'RECORDING' } });
   }
 
+  /** In-progress recordings with their marks, for Live devices to pick back up. */
+  async listActiveWithMarks() {
+    return prisma.recording.findMany({
+      where: { status: 'RECORDING' },
+      include: { annotations: true },
+    });
+  }
+
   /**
    * The device's in-progress recording and its group, or null. stream/stop
    * checks this: stopping the stream under a live recording loses all of it.

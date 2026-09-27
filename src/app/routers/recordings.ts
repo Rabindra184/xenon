@@ -24,7 +24,6 @@ import { roleGuard } from '../../middleware/roleGuard';
 import { mutationScopeGuard } from '../../middleware/scopeGuard';
 import { resolveActor } from '../../services/device-access/actor';
 import * as deviceService from '../../data-service/device-service';
-import { prisma } from '../../prisma';
 import { parseClearBody, parseLibraryQuery } from './recordingRequests';
 import { AUTH_DISABLED_USER_ID } from './profileIdentity';
 import { decodeAnnotationImage } from '../../services/recording/annotationImage';
@@ -149,6 +148,13 @@ function toSummaryRow(r: any): SummaryRow {
     bookmarkLabels: (r.bookmarks ?? []).map((b: { label: string }) => b.label),
     annotationCount: r._count?.annotations ?? (r.annotations ?? []).length,
   };
+}
+
+/** The caller's visible recordings in one group, read leanly; undefined for an admin. */
+async function visibleIdsIn(req: Request, groupId: string): Promise<RecordingFilter> {
+  if (seesEverything(req)) return undefined;
+  const rows = await Container.get(RecordingStore).listGroupStarts(groupId);
+  return (await visibleRows(req, rows)).map((r) => r.id);
 }
 
 /**
@@ -373,24 +379,29 @@ router.post('/recordings/:groupId/annotation', async (req: Request, res: Respons
 router.get('/recordings/active', async (req: Request, res: Response) => {
   try {
     const actor = resolveActor(req);
-    const rows = await prisma.recording.findMany({
-      where: { status: 'RECORDING' },
-      include: { annotations: true },
-    });
+    const rows = await Container.get(RecordingStore).listActiveWithMarks();
     const locks = new Map<string, string | null>();
     for (const udid of new Set(rows.map((r) => r.device_udid))) {
       const d = await DeviceStoreFactory.getStore().findDevice({ udid });
       locks.set(udid, d?.session_id ?? null);
     }
-    const groups = selectOwnActiveGroups(
+    const own = selectOwnActiveGroups(
       rows as any,
       (u) => locks.get(u),
       actor,
       (r) => (r.file_path ? readRecordingTiming(r.file_path)?.groupT0Ms : undefined),
-    ).map((g) => ({
-      ...g,
-      compositeEnabled: fs.existsSync(compositeOutputPath(g.groupId)),
-    }));
+    );
+    // Side-by-side only for a caller composite.mp4 will serve: holding one
+    // phone of a group is not seeing every phone in its composite.
+    const bundle = Container.get(ProofBundleService);
+    const groups = await Promise.all(
+      own.map(async (g) => ({
+        ...g,
+        compositeEnabled:
+          fs.existsSync(compositeOutputPath(g.groupId)) &&
+          bundle.compositeAllowed(g.groupId, await visibleIdsIn(req, g.groupId)),
+      })),
+    );
     return res.json({ serverNow: Date.now(), groups });
   } catch (e: any) {
     recLog.error(`GET /recordings/active failed: ${e?.message}`);

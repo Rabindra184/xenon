@@ -13,6 +13,8 @@ import { RecordingStore } from '../../src/services/recording/recording-store';
 import { AnnotationRenderService } from '../../src/services/recording/annotation-render';
 import * as deviceService from '../../src/data-service/device-service';
 import * as recordingFiles from '../../src/services/recording/recordingFiles';
+import { formatManualLock } from '../../src/services/recording/manualLock';
+import { DeviceStoreFactory } from '../../src/data-service/device-store';
 import { scopesForRole } from '../../src/middleware/authMiddleware';
 import { PluginContext } from '../../src/PluginContext';
 import {
@@ -159,6 +161,7 @@ describe('recordings library routes', () => {
           })),
       ),
       findById: sinon.spy(async (id: string) => rows.find((r) => r.id === id) ?? null),
+      listActiveWithMarks: async () => rows.filter((r) => r.status === 'RECORDING'),
       deleteGroupRows: sinon.stub().callsFake(async (g: string, ids?: string[]) => {
         const gone = rows.filter((r) => r.group_id === g && (!ids || ids.includes(r.id)));
         rows = rows.filter((r) => !gone.includes(r));
@@ -423,6 +426,35 @@ describe('recordings library routes', () => {
     it('is true for an admin', async () => {
       visible = new Set();
       expect(await reported(admin)).to.deep.equal([true, true]);
+    });
+
+    // Live devices offers Side-by-side on a running recording the caller
+    // holds a phone of: only when composite.mp4 would serve them.
+    describe('compositeEnabled on /recordings/active', () => {
+      beforeEach(() => {
+        rows = rows.map((r) => ({ ...r, status: 'RECORDING', ended_at: null, duration_ms: null }));
+        sinon.stub(DeviceStoreFactory, 'getStore').returns({
+          findDevice: async ({ udid }: { udid: string }) => ({
+            session_id: udid === 'U1' ? formatManualLock('usr_alice', 'U1') : null,
+          }),
+        } as any);
+      });
+
+      const enabled = async (who: Caller) => {
+        const res = await request(buildApp(who)).get('/xenon/api/recordings/active');
+        expect(res.status, JSON.stringify(res.body)).to.equal(200);
+        return res.body.groups.map((g: any) => [g.groupId, g.compositeEnabled]);
+      };
+
+      it('is false when the caller cannot see a phone in it', async () => {
+        devices.set('U2', { name: 'Team B phone', platform: 'android' });
+        visible = new Set(['U1']);
+        expect(await enabled(alice)).to.deep.equal([['g1', false]]);
+      });
+
+      it('is true when the caller sees every phone in it', async () => {
+        expect(await enabled(alice)).to.deep.equal([['g1', true]]);
+      });
     });
   });
 
