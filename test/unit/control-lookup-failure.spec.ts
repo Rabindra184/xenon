@@ -7,6 +7,7 @@ import { Container } from 'typedi';
 import ControlRouter from '../../src/app/routers/control';
 import { DeviceStoreFactory } from '../../src/data-service/device-store';
 import { ApiKeyService } from '../../src/services/ApiKeyService';
+import { saveRegistrations } from '../helpers/container-registration';
 
 /**
  * stream/ticket and inspector/snapshot look the device up before anything
@@ -35,11 +36,11 @@ describe('stream/ticket and inspector/snapshot answer a failed device lookup', (
     return app;
   }
 
-  let previousKeys: unknown;
+  let restoreRegistrations: () => void;
 
   beforeEach(() => {
     // mutationScopeGuard asks ApiKeyService.hasScope.
-    previousKeys = Container.has(ApiKeyService) ? Container.get(ApiKeyService) : undefined;
+    restoreRegistrations = saveRegistrations(ApiKeyService);
     Container.set(ApiKeyService, new ApiKeyService());
     sinon.stub(DeviceStoreFactory, 'getStore').returns({
       findDevice: async () => {
@@ -50,8 +51,7 @@ describe('stream/ticket and inspector/snapshot answer a failed device lookup', (
 
   afterEach(() => {
     sinon.restore();
-    if (previousKeys === undefined) Container.remove(ApiKeyService);
-    else Container.set(ApiKeyService, previousKeys);
+    restoreRegistrations();
   });
 
   const UNAVAILABLE = {

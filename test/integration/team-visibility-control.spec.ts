@@ -15,6 +15,7 @@ import { JwtKeyService } from '../../src/services/token/JwtKeyService';
 import { XenonManager } from '../../src/device-managers';
 import { prisma } from '../../src/prisma';
 import { seedUser, SeededUser } from '../helpers/seedUser';
+import { saveRegistrations } from '../helpers/container-registration';
 import { DeviceStoreFactory } from '../../src/data-service/device-store';
 
 /**
@@ -69,17 +70,6 @@ const METHODS_BY_ACTION = CONTROL_ROUTES.reduce((acc, { method, action }) => {
   return acc;
 }, new Map<string, string[]>());
 
-/** Register `value` under `id` for this suite; returns what puts the old one back. */
-function swapService(id: any, value: unknown): () => void {
-  const had = Container.has(id);
-  const previous = had ? Container.get(id) : undefined;
-  Container.set(id, value);
-  return () => {
-    if (had) Container.set(id, previous);
-    else Container.remove(id);
-  };
-}
-
 describe('team boundary on /control (integration)', function () {
   this.timeout(60_000);
 
@@ -106,10 +96,9 @@ describe('team boundary on /control (integration)', function () {
     keyDir = fs.mkdtempSync(path.join(os.tmpdir(), 'xenon-team-boundary-'));
     const keys = new JwtKeyService();
     await keys.init(keyDir);
-    restores.push(swapService(JwtKeyService, keys));
-    restores.push(
-      swapService(XenonManager, { deviceInstances: async () => [new IOSDeviceManager()] }),
-    );
+    restores.push(saveRegistrations(JwtKeyService, XenonManager));
+    Container.set(JwtKeyService, keys);
+    Container.set(XenonManager, { deviceInstances: async () => [new IOSDeviceManager()] });
 
     sa = await seedUser('SUPER_ADMIN', { name: 'TB SA' });
     alice = await seedUser('MEMBER', { name: 'Alice (team A)' });
