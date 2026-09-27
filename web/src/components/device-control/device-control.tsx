@@ -33,6 +33,7 @@ import OmniInspector from '../omni-inspector/OmniInspector';
 import { BugReportButton } from '../bug-report/BugReportButton';
 import { ANDROID_KEYCODE, IOS_BUTTON } from './keycodes';
 import { useDisplayState } from './useDisplayState';
+import { useReleaseOnPageHide } from '../../hooks/useReleaseOnPageHide';
 import LogcatView from './logcat/LogcatView';
 import { deviceTitle } from '../device-card/device-card/deviceIdentity';
 import { ActionsPanel } from './actions/ActionsPanel';
@@ -110,6 +111,18 @@ export default function DeviceControl({ device, onClose, titleId }: DeviceContro
     }
   }, [activeTab, tab, device.udid, navigate, location.search]);
 
+  // Leaving through the app runs the cleanup below. Closing the tab,
+  // reloading or typing another address doesn't, and left the phone held, so
+  // tests queued for it failed "Device is busy". pagehide covers those; a page
+  // restored from the back/forward cache takes the device back.
+  const [streamEpoch, setStreamEpoch] = useState(0);
+  useReleaseOnPageHide(
+    () => {
+      XenonApiService.stopStream(currentDevice.udid).catch(() => {});
+    },
+    () => setStreamEpoch((n) => n + 1),
+  );
+
   // Auto-start stream on mount
   useEffect(() => {
     const startAutoStream = async () => {
@@ -136,7 +149,7 @@ export default function DeviceControl({ device, onClose, titleId }: DeviceContro
       // Principal cleanup: Stop the stream when user leaves Control view
       XenonApiService.stopStream(currentDevice.udid).catch(() => { });
     };
-  }, [device.udid]); // Only run once for this udid
+  }, [device.udid, streamEpoch]); // Once per udid, and again after a cache restore
 
   // Use values from device or defaults
   const dw = parseInt(currentDevice.screenWidth || '1080', 10);
