@@ -66,6 +66,8 @@ function readCookie(cookieHeader: string | undefined, name: string): string | un
 export class SocketServer {
   private io: SocketIOServer | null = null;
   private nodes: Map<string, string> = new Map(); // socketId -> nodeHost
+  /** The tail of each phone's pending event deliveries (see emitToDashboardForDevices). */
+  private readonly deliveries = new Map<string, Promise<void>>();
 
   public initialize(server: HTTPServer) {
     this.io = new SocketIOServer(server, {
@@ -267,11 +269,16 @@ export class SocketServer {
    * only if its caller can see the phone ({@link DeviceEventScope}), by the
    * same team rule as REST. The event log records it once, unscoped.
    *
-   * Delivery is asynchronous while a scoped socket is connected, since a
-   * phone's team may need a (cached) lookup; the returned promise settles
-   * when it's done and never rejects. With no socket, or only unscoped ones
-   * (an auth-disabled server), it broadcasts to the room as emitToDashboard
-   * does, with no lookup.
+   * Each phone's events are delivered through one chain, in the order they
+   * were emitted, whatever their scope shape: one that waits on a team lookup
+   * holds back the phone's later events, including a group event naming the
+   * phone. A lookup is bounded by DeviceTeamResolver's timeout, after which
+   * that event goes to admins only and the chain moves on.
+   *
+   * With no scoped socket connected (an auth-disabled server, or admins only)
+   * and nothing pending for these phones, it is emitToDashboard's synchronous
+   * room broadcast, with no lookup. The returned promise settles once the
+   * event is delivered and never rejects.
    */
   public emitToDashboardForDevices(
     event: string,
@@ -279,53 +286,86 @@ export class SocketServer {
     scope: DeviceEventScope,
   ): Promise<void> {
     Container.get(EventLogService).appendSafe({ type: event, payload: data });
-    const resolver = Container.get(DeviceTeamResolver);
-    if ('teamId' in scope && scope.udid && scope.teamId !== undefined) {
-      resolver.note(scope.udid, scope.teamId);
-    }
+    const udids = 'udids' in scope ? scope.udids : [scope.udid ?? ''];
 
-    const sockets = this.dashboardSockets();
-    if (sockets.length === 0) return Promise.resolve();
-    if (sockets.every((s) => teamIdsOf(s) === undefined)) {
+    if (!this.hasScopedDashboard() && udids.every((udid) => !this.deliveries.has(udid))) {
+      this.noteRow(scope);
       this.io?.to('dashboard').emit(event, data);
       return Promise.resolve();
     }
+    // The row's team is noted in its turn, so an earlier event still waiting
+    // on a lookup is scoped by what was known when it was emitted.
+    return this.enqueue(event, udids, () => {
+      this.noteRow(scope);
+      return this.deliver(event, data, scope);
+    });
+  }
 
-    if ('udids' in scope) {
-      return Promise.all(scope.udids.map((udid) => resolver.resolve(udid)))
-        .then((teams) => {
-          for (const socket of this.dashboardSockets()) {
-            const teamIds = teamIdsOf(socket);
-            if (teamIds === undefined) {
-              socket.emit(event, data);
-              continue;
-            }
-            const visible = scope.udids.filter((_, i) => canSeeDeviceTeam(teams[i], teamIds));
-            if (visible.length === 0) continue;
-            socket.emit(
-              event,
-              visible.length === scope.udids.length ? data : scope.strip(data, visible),
-            );
-          }
-        })
-        .catch((err: any) =>
-          log.warn(`[SocketServer] ${event} not delivered: ${err?.message ?? err}`),
-        );
+  /** A device row in hand refreshes the resolver (see DeviceEventScope). */
+  private noteRow(scope: DeviceEventScope): void {
+    if ('teamId' in scope && scope.udid && scope.teamId !== undefined) {
+      Container.get(DeviceTeamResolver).note(scope.udid, scope.teamId);
     }
+  }
 
-    const team: Promise<DeviceTeam> =
-      scope.teamId !== undefined
-        ? Promise.resolve({ known: true, teamId: scope.teamId })
-        : resolver.resolve(scope.udid);
-    return team
-      .then((t) => {
-        for (const socket of this.dashboardSockets()) {
-          if (canSeeDeviceTeam(t, teamIdsOf(socket))) socket.emit(event, data);
-        }
-      })
+  /**
+   * Whether any dashboard socket is team-scoped. When none is, a caller can
+   * skip a lookup it would only make to scope an event (auth disabled).
+   */
+  public hasScopedDashboard(): boolean {
+    return this.dashboardSockets().some((socket) => teamIdsOf(socket) !== undefined);
+  }
+
+  /** Runs `step` after every pending delivery for `udids`, and makes it their new tail. */
+  private enqueue(event: string, udids: string[], step: () => Promise<void>): Promise<void> {
+    const before = udids.map((udid) => this.deliveries.get(udid) ?? Promise.resolve());
+    const done = Promise.all(before)
+      .then(step)
       .catch((err: any) =>
         log.warn(`[SocketServer] ${event} not delivered: ${err?.message ?? err}`),
       );
+    for (const udid of udids) this.deliveries.set(udid, done);
+    void done.then(() => {
+      for (const udid of udids) {
+        if (this.deliveries.get(udid) === done) this.deliveries.delete(udid);
+      }
+    });
+    return done;
+  }
+
+  private async deliver(event: string, data: any, scope: DeviceEventScope): Promise<void> {
+    // The scoped sockets may have left while this waited its turn.
+    if (!this.hasScopedDashboard()) {
+      this.io?.to('dashboard').emit(event, data);
+      return;
+    }
+    const resolver = Container.get(DeviceTeamResolver);
+
+    if ('udids' in scope) {
+      const teams = await Promise.all(scope.udids.map((udid) => resolver.resolve(udid)));
+      for (const socket of this.dashboardSockets()) {
+        const teamIds = teamIdsOf(socket);
+        if (teamIds === undefined) {
+          socket.emit(event, data);
+          continue;
+        }
+        const visible = scope.udids.filter((_, i) => canSeeDeviceTeam(teams[i], teamIds));
+        if (visible.length === 0) continue;
+        socket.emit(
+          event,
+          visible.length === scope.udids.length ? data : scope.strip(data, visible),
+        );
+      }
+      return;
+    }
+
+    const team: DeviceTeam =
+      scope.teamId !== undefined
+        ? { known: true, teamId: scope.teamId }
+        : await resolver.resolve(scope.udid);
+    for (const socket of this.dashboardSockets()) {
+      if (canSeeDeviceTeam(team, teamIdsOf(socket))) socket.emit(event, data);
+    }
   }
 
   /** The sockets in this server's local 'dashboard' room. */

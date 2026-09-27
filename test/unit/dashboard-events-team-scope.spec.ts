@@ -37,7 +37,7 @@ describe('Dashboard events name their phone (team-scoped call sites)', () => {
   let socket: {
     emitToDashboard: sinon.SinonStub;
     emitToDashboardForDevices: sinon.SinonStub;
-    broadcast: sinon.SinonStub;
+    hasScopedDashboard: sinon.SinonStub;
   };
   let lookups: string[];
   let teams: Record<string, string | null>;
@@ -56,7 +56,8 @@ describe('Dashboard events name their phone (team-scoped call sites)', () => {
     socket = {
       emitToDashboard: sinon.stub(),
       emitToDashboardForDevices: sinon.stub().resolves(),
-      broadcast: sinon.stub(),
+      // A member is connected, so the call sites look phones up.
+      hasScopedDashboard: sinon.stub().returns(true),
     };
     Container.set(SocketServer, socket as any);
     Container.set(NotificationService, { dispatchEvent: () => undefined } as any);
@@ -194,6 +195,23 @@ describe('Dashboard events name their phone (team-scoped call sites)', () => {
       expect(find.firstCall.args[0]).to.equal('rec-1');
     });
 
+    it('marks with no scoped dashboard connected: sent at once, with no recording lookup', () => {
+      socket.hasScopedDashboard.returns(false);
+      const find = sinon.spy(async () => ({ device_udid: 'phone-a' }));
+      Container.set(RecordingStore, { findVideo: find } as any);
+      DASHBORD_EVENT_MANAGER.emitRecordingBookmark({
+        groupId: 'g',
+        bookmark: { recording_id: 'r' },
+      });
+      DASHBORD_EVENT_MANAGER.emitRecordingAnnotation({
+        groupId: 'g',
+        annotation: { recording_id: 'r' },
+      });
+      expect(find.called).to.equal(false);
+      expect(scoped(SocketEvents.RECORDING_BOOKMARK_ADDED)).to.have.length(1);
+      expect(scoped(SocketEvents.RECORDING_ANNOTATION_ADDED)).to.have.length(1);
+    });
+
     it('a bookmark whose recording lookup fails is still sent, to admins only', async () => {
       Container.set(RecordingStore, {
         findVideo: async () => Promise.reject(new Error('db down')),
@@ -222,7 +240,11 @@ describe('Dashboard events name their phone (team-scoped call sites)', () => {
           .callsFake(async (rows: any[]) =>
             rows.map((r) => ({ ...r, teamId: teams[r.udid] ?? null })),
           ),
-        removeDevices: sinon.stub().resolves(),
+        // Deletes for real from the rows the resolver reads, so a team read
+        // after the delete finds nothing.
+        removeDevices: sinon.stub().callsFake(async (filter: { udid: string }) => {
+          delete teams[filter.udid];
+        }),
         updateDevice: sinon.stub().resolves(),
         getDevices: sinon.stub().resolves([
           {
@@ -256,6 +278,13 @@ describe('Dashboard events name their phone (team-scoped call sites)', () => {
         udid: 'phone-b',
         teamId: 'team-b',
       });
+    });
+
+    it('device_removed with no scoped dashboard connected: no team read at all', async () => {
+      socket.hasScopedDashboard.returns(false);
+      await deviceService.removeDevice([{ udid: 'phone-b', host: 'h' }]);
+      expect(lookups).to.deep.equal([]);
+      expect(scoped('device_removed')[0].args[2]).to.deep.equal({ udid: 'phone-b' });
     });
 
     it('device_removed for a phone the store never had: no team, so it fails closed', async () => {
@@ -372,7 +401,7 @@ describe('Dashboard events name their phone (team-scoped call sites)', () => {
         r.on('end', () => cb(null, null));
       });
     await new Promise((r) => setImmediate(r));
-    expect(socket.broadcast.called).to.equal(false);
+    expect(socket.emitToDashboard.called, 'never the unscoped emit').to.equal(false);
     const [call] = scoped(SocketEvents.BUG_REPORT_GENERATED);
     expect(call.args[1]).to.include({ sessionId: 's5', mode: 'full' });
     expect(call.args[2]).to.deep.equal({ udid: 'phone-b' });

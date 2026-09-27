@@ -1,4 +1,5 @@
 import { Service } from 'typedi';
+import log from '../../logger';
 import { findControlDeviceInStore } from '../../middleware/controlDevice';
 import { isDeviceVisible } from './deviceVisibility';
 
@@ -9,10 +10,18 @@ export interface DeviceTeamResolverDeps {
   /** Finds one device. Defaults to the store lookup the /control guards use. */
   findDevice?(udid: string): Promise<{ teamId?: string | null } | null | undefined>;
   now?(): number;
+  /** Overrides DEVICE_TEAM_LOOKUP_TIMEOUT_MS. */
+  lookupTimeoutMs?: number;
 }
 
 /** How long an answer is reused. A team change made outside assignDeviceToTeam shows after this. */
 export const DEVICE_TEAM_TTL_MS = 5_000;
+
+/**
+ * How long one store lookup may take. Past it the event fails closed (admins
+ * only) and the phone's delivery chain moves on; the answer isn't cached.
+ */
+export const DEVICE_TEAM_LOOKUP_TIMEOUT_MS = 2_000;
 
 /** Bound so stray udids can't grow the cache without limit. */
 const MAX_ENTRIES = 1_000;
@@ -42,12 +51,13 @@ export function canSeeDeviceTeam(team: DeviceTeam, teamIds: string[] | undefined
  * seconds, never one per command. Concurrent lookups of one udid share a
  * single call, and unknown udids are cached too.
  *
- * Every caller of one udid gets the same promise until it expires, so events
- * for one phone are delivered in the order they were emitted.
+ * It keeps no delivery order: SocketServer delivers each phone's events
+ * through one chain, in the order they were emitted.
  *
  * Device events and team changes call {@link note} with the row they hold, so
- * the cache doesn't wait out its TTL. A failed lookup resolves to unknown
- * (hidden from members) and isn't cached.
+ * the cache doesn't wait out its TTL. A lookup that fails, or outlasts
+ * {@link DEVICE_TEAM_LOOKUP_TIMEOUT_MS}, resolves to unknown (hidden from
+ * members) and isn't cached.
  */
 @Service()
 export class DeviceTeamResolver {
@@ -77,16 +87,35 @@ export class DeviceTeamResolver {
 
   private load(udid: string): Promise<DeviceTeam> {
     const entry: Entry = { team: Promise.resolve(UNKNOWN) };
-    entry.team = new Promise<{ teamId?: string | null } | null | undefined>((resolve) =>
+    const forget = (): DeviceTeam => {
+      if (this.entries.get(udid) === entry) this.entries.delete(udid);
+      return UNKNOWN;
+    };
+    const timeoutMs = this.deps.lookupTimeoutMs ?? DEVICE_TEAM_LOOKUP_TIMEOUT_MS;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const timedOut = new Promise<'timeout'>((resolve) => {
+      timer = setTimeout(() => resolve('timeout'), timeoutMs);
+      timer.unref?.();
+    });
+    const lookup = new Promise<{ teamId?: string | null } | null | undefined>((resolve) =>
       resolve(this.findDevice(udid)),
-    ).then(
+    );
+    entry.team = Promise.race([lookup, timedOut]).then(
       (row): DeviceTeam => {
+        clearTimeout(timer);
+        if (row === 'timeout') {
+          log.warn(
+            `[DeviceTeamResolver] team lookup for ${udid} took over ${timeoutMs} ms; ` +
+              'its event went to admins only',
+          );
+          return forget();
+        }
         entry.settledAt = this.now();
         return row ? { known: true, teamId: row.teamId ?? null } : UNKNOWN;
       },
       (): DeviceTeam => {
-        if (this.entries.get(udid) === entry) this.entries.delete(udid);
-        return UNKNOWN;
+        clearTimeout(timer);
+        return forget();
       },
     );
     this.remember(udid, entry);

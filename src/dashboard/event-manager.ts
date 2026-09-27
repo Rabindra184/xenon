@@ -928,6 +928,13 @@ export class DashboardEventManager {
    * (fail closed).
    */
   private emitForRecording(event: string, payload: unknown, mark: unknown): void {
+    const socket = Container.get(SocketServer);
+    // Without a team-scoped dashboard (auth disabled) the udid would only be
+    // looked up to be ignored: send it now, as the old broadcast did.
+    if (!socket.hasScopedDashboard()) {
+      void socket.emitToDashboardForDevices(event, payload, { udid: undefined });
+      return;
+    }
     const recordingId = (mark as { recording_id?: unknown } | null)?.recording_id;
     const udid: Promise<string | undefined> =
       typeof recordingId === 'string'
@@ -938,9 +945,7 @@ export class DashboardEventManager {
               () => undefined,
             )
         : Promise.resolve(undefined);
-    void udid.then((u) =>
-      Container.get(SocketServer).emitToDashboardForDevices(event, payload, { udid: u }),
-    );
+    void udid.then((u) => socket.emitToDashboardForDevices(event, payload, { udid: u }));
   }
 
   public emitRecordingFailed(payload: {

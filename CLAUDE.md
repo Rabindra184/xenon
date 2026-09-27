@@ -419,12 +419,20 @@ only. The event log still records each event once, unscoped.
 - Session commands and intercepted requests emit once each, so the resolver
   caches a udid's team for 5 s (`DEVICE_TEAM_TTL_MS`): one lookup per phone,
   never one per command. Device events and `PUT /device/:udid/team` refresh
-  it through `note()`.
+  it through `note()`. A lookup that outlasts 2 s
+  (`DEVICE_TEAM_LOOKUP_TIMEOUT_MS`) fails closed for that event.
+- Each phone's events go through one delivery chain, so they arrive in the
+  order they were emitted whatever their scope shape; a group event waits
+  for every phone it names. Different phones' events may interleave.
 - A new emitter about a phone must name the phone. The plain
   `emitToDashboard` is unscoped and reserved for events that aren't one
   phone's data: selector events and `NODE_*`.
-- With only unscoped sockets connected (an auth-disabled server) it
-  broadcasts to the room as before, with no lookup.
+- With no team-scoped socket connected (an auth-disabled server, or admins
+  only) and nothing pending for the phone, it is the old synchronous room
+  broadcast, with no lookup. The two call sites that look a phone up only
+  to scope its event, `removeDevice`'s team read and the recording marks'
+  `findVideo`, check `SocketServer.hasScopedDashboard()` first, so an
+  auth-disabled server makes no lookup at all.
 
 ### Frontend (`web/`)
 
@@ -618,7 +626,7 @@ npm run build:copy` (from the repo root) regenerates and copies it.
 | `src/middleware/deviceAccessGuard.ts` | Ownership guard on `/control` — method-scoped, with the mutation allowlist and `OWNERSHIP_CHECKED_READS` |
 | `src/middleware/deviceTeamGuard.ts` | Team guard on `/control` — every request; a hidden phone is handed on as `HIDDEN_DEVICE_UDID` so it answers exactly like an unknown udid |
 | `src/middleware/controlDevice.ts` | The one udid parser and per-request memoized device lookup both `/control` guards share; defines `HIDDEN_DEVICE_UDID` |
-| `src/services/device-access/DeviceTeamResolver.ts` | udid → team for the live events, 5 s TTL cache; `canSeeDeviceTeam` fails closed on an unknown phone |
+| `src/services/device-access/DeviceTeamResolver.ts` | udid → team for the live events, 5 s TTL cache, 2 s lookup timeout; `canSeeDeviceTeam` fails closed on an unknown phone |
 | `src/services/device-access/deviceVisibility.ts` | Pure `isDeviceVisible(deviceTeamId, teamIds)` — the team rule; `teamIds === undefined` is the only admin |
 | `src/services/device-access/deviceAccessPolicy.ts` | Pure access decision + deny bodies + the shared `isSelfManualLock` / `isOwnSession` primitives |
 | `src/services/device-access/SessionOwnerResolver.ts` | Session owner: prefers `Session.user_id`, falls back to `api_key_id → ApiKey.userId`. Caches **positive results only** — a null may mean the row isn't written yet, and caching it would deny the owner for the life of the process |

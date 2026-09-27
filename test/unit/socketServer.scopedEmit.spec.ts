@@ -5,6 +5,18 @@ import { Container } from 'typedi';
 import { SocketServer } from '../../src/services/SocketServer';
 import { EventLogService } from '../../src/services/EventLogService';
 import { DeviceTeamResolver } from '../../src/services/device-access/DeviceTeamResolver';
+import { RecordingStore } from '../../src/services/recording/recording-store';
+import { NotificationService } from '../../src/services/NotificationService';
+import { DeviceStoreFactory } from '../../src/data-service/device-store';
+import {
+  addNewDevice,
+  blockDevice,
+  removeDevice,
+  unblockDeviceMatchingFilter,
+  updateDeviceProgress,
+} from '../../src/data-service/device-service';
+import { DASHBORD_EVENT_MANAGER } from '../../src/dashboard/event-manager';
+import { config } from '../../src/config';
 import { saveRegistrations } from '../helpers/container-registration';
 
 type Received = Array<[string, any]>;
@@ -57,7 +69,9 @@ function fakeIo(specs: FakeSocketSpec[]) {
     },
   };
   const inbox = (id: string): Received => received.get(id) ?? [];
-  return { io, inbox, roomBroadcasts };
+  /** The socket leaves the dashboard room, as a disconnect does. */
+  const leave = (id: string) => dashboard.delete(id);
+  return { io, inbox, roomBroadcasts, leave };
 }
 
 const events = (r: Received) => r.map(([e]) => e);
@@ -73,6 +87,12 @@ describe('SocketServer.emitToDashboardForDevices — events reach only the teams
   let server: SocketServer;
   let appendSafe: sinon.SinonSpy;
   let lookups: string[];
+  /** While set, every store lookup waits for it. */
+  let gate: Promise<void> | undefined;
+  let openGate: () => void;
+  function holdLookups() {
+    gate = new Promise<void>((resolve) => (openGate = resolve));
+  }
 
   function connect(specs: FakeSocketSpec[]) {
     const fake = fakeIo(specs);
@@ -85,11 +105,13 @@ describe('SocketServer.emitToDashboardForDevices — events reach only the teams
     appendSafe = sinon.spy();
     Container.set(EventLogService, { appendSafe } as any);
     lookups = [];
+    gate = undefined;
     Container.set(
       DeviceTeamResolver,
       new DeviceTeamResolver({
         findDevice: async (udid: string) => {
           lookups.push(udid);
+          if (gate) await gate;
           return DEVICES[udid] ? { udid, ...DEVICES[udid] } : null;
         },
       }),
@@ -277,6 +299,101 @@ describe('SocketServer.emitToDashboardForDevices — events reach only the teams
     );
   });
 
+  describe('one phone, one delivery order', () => {
+    it('device_blocked then device_unblocked arrive in that order, though the first waits on a lookup', async () => {
+      const { inbox } = connect(EVERYONE);
+      holdLookups();
+      const blocked = server.emitToDashboardForDevices('device_blocked', {}, { udid: 'phone-a' });
+      // The row is in hand, so this one needs no lookup; it must still wait its turn.
+      const unblocked = server.emitToDashboardForDevices(
+        'device_unblocked',
+        {},
+        { udid: 'phone-a', teamId: 'team-a' },
+      );
+      await new Promise((r) => setImmediate(r));
+      expect(inbox('admin'), 'nothing overtakes the pending event').to.deep.equal([]);
+      openGate();
+      await Promise.all([blocked, unblocked]);
+      for (const id of ['admin', 'member-a']) {
+        expect(events(inbox(id)), id).to.deep.equal(['device_blocked', 'device_unblocked']);
+      }
+      expect(inbox('member-b')).to.deep.equal([]);
+    });
+
+    it('session_command then session_stopped arrive in order after the only member disconnects', async () => {
+      const { inbox, leave } = connect([
+        { id: 'admin', teamIds: undefined },
+        { id: 'member-a', teamIds: ['team-a'] },
+      ]);
+      holdLookups();
+      const command = server.emitToDashboardForDevices('session_command', {}, { udid: 'phone-a' });
+      leave('member-a');
+      // No scoped socket is left, but the command ahead of it is still pending.
+      const stopped = server.emitToDashboardForDevices('session_stopped', {}, { udid: 'phone-a' });
+      expect(inbox('admin'), 'no synchronous overtake').to.deep.equal([]);
+      openGate();
+      await Promise.all([command, stopped]);
+      expect(events(inbox('admin'))).to.deep.equal(['session_command', 'session_stopped']);
+    });
+
+    it('a group event waits for its phones, and their next events wait for it', async () => {
+      const { inbox } = connect(EVERYONE);
+      holdLookups();
+      const failed = server.emitToDashboardForDevices('recording_failed', {}, { udid: 'phone-a' });
+      const stopped = server.emitToDashboardForDevices(
+        'recording_stopped',
+        { recordings: [] },
+        { udids: ['phone-a', 'phone-s'], strip: (d: any) => d },
+      );
+      const unblocked = server.emitToDashboardForDevices(
+        'device_unblocked',
+        {},
+        { udid: 'phone-s', teamId: null },
+      );
+      openGate();
+      await Promise.all([failed, stopped, unblocked]);
+      expect(events(inbox('admin'))).to.deep.equal([
+        'recording_failed',
+        'recording_stopped',
+        'device_unblocked',
+      ]);
+    });
+
+    it('once nothing is pending and no scoped socket is left, it is the synchronous broadcast again', async () => {
+      const { inbox, leave, roomBroadcasts } = connect([
+        { id: 'admin', teamIds: undefined },
+        { id: 'member-a', teamIds: ['team-a'] },
+      ]);
+      await server.emitToDashboardForDevices('session_command', {}, { udid: 'phone-a' });
+      leave('member-a');
+      void server.emitToDashboardForDevices('session_stopped', {}, { udid: 'phone-a' });
+      expect(events(inbox('admin'))).to.deep.equal(['session_command', 'session_stopped']);
+      expect(roomBroadcasts).to.deep.equal(['dashboard']);
+    });
+  });
+
+  describe('a lookup that hangs', () => {
+    it("times out: that event fails closed (admins only), and the phone's next event follows it", async () => {
+      Container.set(
+        DeviceTeamResolver,
+        new DeviceTeamResolver({
+          findDevice: () => new Promise(() => undefined), // never settles
+          lookupTimeoutMs: 20,
+        }),
+      );
+      const { inbox } = connect(EVERYONE);
+      const command = server.emitToDashboardForDevices('session_command', {}, { udid: 'phone-a' });
+      const unblocked = server.emitToDashboardForDevices(
+        'device_unblocked',
+        {},
+        { udid: 'phone-a', teamId: 'team-a' },
+      );
+      await Promise.all([command, unblocked]);
+      expect(events(inbox('admin'))).to.deep.equal(['session_command', 'device_unblocked']);
+      expect(events(inbox('member-a'))).to.deep.equal(['device_unblocked']);
+    });
+  });
+
   it('emitToDashboard (selector events, nodes) stays unscoped', () => {
     const { inbox } = connect(EVERYONE);
     server.emitToDashboard('selector_fixed', { selector: '//x' });
@@ -284,5 +401,85 @@ describe('SocketServer.emitToDashboardForDevices — events reach only the teams
       expect(events(inbox(id)), id).to.deep.equal(['selector_fixed']);
     }
     expect(lookups).to.deep.equal([]);
+  });
+});
+
+describe('Auth disabled: the lab path looks nothing up', () => {
+  let restore: () => void;
+  let authDisabled: boolean;
+  let findDevice: sinon.SinonSpy;
+  let findVideo: sinon.SinonSpy;
+  let fake: ReturnType<typeof fakeIo>;
+
+  beforeEach(() => {
+    authDisabled = config.authDisabled;
+    config.authDisabled = true;
+    restore = saveRegistrations(
+      SocketServer,
+      EventLogService,
+      DeviceTeamResolver,
+      RecordingStore,
+      NotificationService,
+      'LocalStorage',
+    );
+    Container.set(EventLogService, { appendSafe: () => undefined } as any);
+    Container.set(NotificationService, { dispatchEvent: () => undefined } as any);
+    Container.set('LocalStorage', { getItem: () => null, setItem: () => undefined });
+    findDevice = sinon.spy(async () => ({ teamId: 'team-a' }));
+    Container.set(DeviceTeamResolver, new DeviceTeamResolver({ findDevice }));
+    findVideo = sinon.spy(async () => ({ device_udid: 'phone-a' }));
+    Container.set(RecordingStore, { findVideo } as any);
+    const row = { udid: 'phone-a', host: 'h', teamId: 'team-a' };
+    sinon.stub(DeviceStoreFactory, 'getStore').returns({
+      removeDevices: async () => undefined,
+      addDevices: async () => [row],
+      updateDevice: async () => undefined,
+      getDevices: async () => [{ ...row, sessionStartTime: 0, totalUtilizationTimeMilliSec: 0 }],
+    } as any);
+    const server = new SocketServer();
+    Container.set(SocketServer, server);
+    // Every socket on an auth-disabled server is unscoped.
+    fake = fakeIo([
+      { id: 'lab-1', teamIds: undefined },
+      { id: 'lab-2', teamIds: undefined },
+    ]);
+    (server as any).io = fake.io;
+  });
+
+  afterEach(() => {
+    sinon.restore();
+    restore();
+    config.authDisabled = authDisabled;
+  });
+
+  it('device and mark events: no store or recording lookup, each broadcast as it is emitted', async () => {
+    await removeDevice([{ udid: 'phone-a', host: 'h' }]);
+    await addNewDevice([{ udid: 'phone-a', host: 'h' } as any]);
+    await blockDevice('phone-a', 'h', 'sess-1');
+    await updateDeviceProgress('phone-a', 'h', 'installing');
+    await unblockDeviceMatchingFilter({ udid: 'phone-a' });
+    DASHBORD_EVENT_MANAGER.emitRecordingBookmark({
+      groupId: 'g',
+      bookmark: { recording_id: 'r1' },
+    });
+    DASHBORD_EVENT_MANAGER.emitRecordingAnnotation({
+      groupId: 'g',
+      annotation: { recording_id: 'r1' },
+    });
+
+    expect(findDevice.callCount, 'device store lookups').to.equal(0);
+    expect(findVideo.callCount, 'recording lookups').to.equal(0);
+    const expected = [
+      'device_removed',
+      'device_added',
+      'device_blocked',
+      'device_progress',
+      'device_unblocked',
+      'recording_bookmark_added',
+      'recording_annotation_added',
+    ];
+    expect(events(fake.inbox('lab-1'))).to.deep.equal(expected);
+    expect(events(fake.inbox('lab-2'))).to.deep.equal(expected);
+    expect(fake.roomBroadcasts).to.have.length(expected.length);
   });
 });

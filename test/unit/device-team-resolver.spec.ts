@@ -4,6 +4,7 @@ import { Container } from 'typedi';
 import {
   DeviceTeamResolver,
   DEVICE_TEAM_TTL_MS,
+  DEVICE_TEAM_LOOKUP_TIMEOUT_MS,
   canSeeDeviceTeam,
 } from '../../src/services/device-access/DeviceTeamResolver';
 
@@ -165,6 +166,36 @@ describe('DeviceTeamResolver', () => {
     fail = false;
     expect(await r.resolve('phone-a')).to.deep.equal({ known: true, teamId: 'team-a' });
     expect(calls).to.have.length(2);
+  });
+
+  it('a lookup that outlasts the timeout resolves to unknown, and is not remembered', async () => {
+    let hang = true;
+    const calls: string[] = [];
+    const r = new DeviceTeamResolver({
+      findDevice: (udid: string) => {
+        calls.push(udid);
+        return hang ? new Promise(() => undefined) : Promise.resolve({ teamId: 'team-a' });
+      },
+      lookupTimeoutMs: 20,
+    });
+    const started = Date.now();
+    expect(await r.resolve('phone-a')).to.deep.equal({ known: false });
+    expect(Date.now() - started).to.be.lessThan(1_000);
+    hang = false;
+    expect(await r.resolve('phone-a')).to.deep.equal({ known: true, teamId: 'team-a' });
+    expect(calls).to.have.length(2);
+  });
+
+  it('a lookup inside the timeout is answered normally', async () => {
+    const r = new DeviceTeamResolver({
+      findDevice: () => new Promise((res) => setTimeout(() => res({ teamId: 'team-b' }), 5)),
+      lookupTimeoutMs: 200,
+    });
+    expect(await r.resolve('phone-b')).to.deep.equal({ known: true, teamId: 'team-b' });
+  });
+
+  it('times out after a few seconds by default', () => {
+    expect(DEVICE_TEAM_LOOKUP_TIMEOUT_MS).to.be.within(1_000, 5_000);
   });
 
   it('builds through Container.get (TypeDI must not try to inject the deps object)', () => {

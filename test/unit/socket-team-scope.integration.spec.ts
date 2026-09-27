@@ -30,8 +30,9 @@ import { saveRegistrations } from '../helpers/container-registration';
  * afterSessionCommand), so this covers the handshake identity, the room, the
  * scoped emit and the call sites together.
  *
- * "Did not receive" is proved by order: each hidden event is followed by one
- * the member may see, and the member's first event must be that one.
+ * "Did not receive" is proved by delivery: one step sends a phone's event to
+ * every socket that may see it, so once the admin holds all four events, a
+ * team-B event the member was going to get would already be there.
  */
 describe('Live dashboard events are team-scoped (real Socket.io, two clients)', () => {
   const USERS: Record<string, { status: string; role: string }> = {
@@ -183,17 +184,15 @@ describe('Live dashboard events are team-scoped (real Socket.io, two clients)', 
     // Give any stray delivery a moment to land before asserting its absence.
     await new Promise((r) => setTimeout(r, 50));
 
-    const summary = (inbox: Array<[string, any]>) =>
-      inbox.map(([event, data]) => `${event}:${data.udid ?? data.session_id}`);
-    expect(summary(admin.inbox)).to.deep.equal([
-      'device_added:phone-b',
-      'session_command:session-on-phone-b',
-      'device_added:phone-a',
-      'session_command:session-on-phone-a',
-    ]);
-    expect(summary(member.inbox)).to.deep.equal([
-      'device_added:phone-a',
-      'session_command:session-on-phone-a',
-    ]);
+    // Order is kept per phone; two phones' events may interleave.
+    const onPhone = (inbox: Array<[string, any]>, udid: string) =>
+      inbox
+        .filter(([, data]) => data.udid === udid || data.session_id === `session-on-${udid}`)
+        .map(([event]) => event);
+    expect(admin.inbox).to.have.length(4);
+    expect(onPhone(admin.inbox, 'phone-b')).to.deep.equal(['device_added', 'session_command']);
+    expect(onPhone(admin.inbox, 'phone-a')).to.deep.equal(['device_added', 'session_command']);
+    expect(member.inbox).to.have.length(2);
+    expect(onPhone(member.inbox, 'phone-a')).to.deep.equal(['device_added', 'session_command']);
   });
 });

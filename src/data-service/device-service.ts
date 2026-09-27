@@ -35,15 +35,20 @@ function deviceScope(udid: string, teamId: string | null | undefined) {
 export async function removeDevice(devices: { udid: string; host: string }[]) {
   for (const device of devices) {
     log.info(`Removing device ${device.udid} from host ${device.host}`);
+    const socket = Container.get(SocketServer);
     // Read the phone's team while its row still exists, so the removal
-    // reaches the dashboards that could see it (an unknown phone fails closed).
-    const team = await Container.get(DeviceTeamResolver).resolve(device.udid);
+    // reaches the dashboards that could see it (an unknown phone fails
+    // closed). Only a team-scoped dashboard needs it: with auth disabled
+    // there is no lookup.
+    const team = socket.hasScopedDashboard()
+      ? await Container.get(DeviceTeamResolver).resolve(device.udid)
+      : undefined;
     await store.removeDevices({ udid: device.udid, host: device.host });
     Container.get(NotificationService).dispatchEvent('device_offline', device);
-    void Container.get(SocketServer).emitToDashboardForDevices(
+    void socket.emitToDashboardForDevices(
       'device_removed',
       device,
-      deviceScope(device.udid, team.known ? team.teamId : undefined),
+      deviceScope(device.udid, team?.known ? team.teamId : undefined),
     );
   }
 }
