@@ -271,7 +271,7 @@ describe('recording write routes: team visibility', () => {
   });
 
   describe('an admin', () => {
-    it('starts, adds, stops and marks any phone, as before, with no lookup', async () => {
+    it('starts, adds, stops and marks any phone, as before, with no visibility lookup', async () => {
       expect((await post(admin, '', { udids: ['OTHER', 'NOPE'] })).status).to.equal(202);
       expect((await post(admin, '/g2/add-device', { udid: 'OTHER' })).status).to.equal(201);
       expect((await post(admin, '/g2/stop')).status).to.equal(200);
@@ -286,9 +286,21 @@ describe('recording write routes: team visibility', () => {
       expect(an.status).to.equal(201);
       expect(orchCalls()).to.equal(6);
       expect(filter.called, 'no device lookup').to.equal(false);
-      expect(
-        store.findVideo.called || store.listGroup.called || store.listGroupStarts.called,
-      ).to.equal(false);
+      expect(store.listGroup.called || store.listGroupStarts.called, 'no group read').to.equal(
+        false,
+      );
+    });
+
+    // Visibility aside, a mark is written to its own group: the event that
+    // announces it carries :groupId.
+    it('cannot bookmark or annotate a recording from another group, or none', async () => {
+      const bm = { timecodeMs: 1000, label: 'bug' };
+      notFound(await post(admin, '/g1/bookmark', { ...bm, recordingId: 'r3' }));
+      notFound(await post(admin, '/g1/annotation', { ...RECT, recordingId: 'r3' }));
+      notFound(await post(admin, '/g1/bookmark', { ...bm, recordingId: 'nope' }));
+      notFound(await post(admin, '/g1/annotation', { ...RECT, recordingId: 'nope' }));
+      expect(orchCalls()).to.equal(0);
+      expect(filter.called, 'no device lookup').to.equal(false);
     });
 
     it('clears the whole group', async () => {

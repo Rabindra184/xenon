@@ -161,7 +161,7 @@ async function visibleIdsIn(req: Request, groupId: string): Promise<RecordingFil
 /*
  * The write routes answer what they won't do for a caller with a generic 404
  * `not_found`, as the reads do: a 403 would tell them the phone or the group
- * exists. An admin writes as before, with no lookup.
+ * exists. An admin sees every phone, so skips the team checks.
  */
 
 /**
@@ -182,15 +182,16 @@ async function groupHidden(req: Request, groupId: string): Promise<boolean> {
 }
 
 /**
- * Whether the caller may mark `recordingId` through `groupId`: it exists, is
- * in that group, and is on a phone they can see ({@link visibleRows}, so the
- * owner of an unplugged phone still can).
+ * Whether the caller may mark `recordingId` through `groupId`: it exists and
+ * is in that group, for everyone, admins included, since the mark is announced
+ * under `groupId`; and it is on a phone they can see ({@link visibleRows}, so
+ * the owner of an unplugged phone still can).
  */
 async function canMark(req: Request, groupId: string, recordingId: string): Promise<boolean> {
-  if (seesEverything(req)) return true;
   const store = Container.get(RecordingStore);
   const rec = await store.findVideo(recordingId);
   if (!rec || rec.group_id !== groupId) return false;
+  if (seesEverything(req)) return true;
   return (await visibleRows(req, [rec], () => store.listGroupStarts(groupId))).length > 0;
 }
 
