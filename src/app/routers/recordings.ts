@@ -24,27 +24,30 @@ import log from '../../logger';
 /**
  * The group's recordings this caller may see. `ids` is undefined for an
  * admin (no filter). `all` counts the group's rows, so a caller who sees only
- * some phones can be told apart from one who sees them all.
+ * some phones can be told apart from one who sees them all. `rows` is the
+ * group as read here, handed on so a download reads the group only once.
  *
  * A group can mix teams' phones (an admin recorded several teams at once, or a
  * phone moved team afterwards), so a download must carry only these rows:
  * seeing one phone of a group is not seeing the group.
  */
-async function visibleRecordings(
-  groupId: string,
-  teamIds: string[] | undefined,
-): Promise<{ all: number; ids: string[] | undefined }> {
-  const rows = (await Container.get(RecordingStore).listGroup(groupId)).map((r) => ({
-    id: r.id,
-    device_udid: r.device_udid,
-  }));
-  if (teamIds === undefined) return { all: rows.length, ids: undefined };
+async function visibleRecordings(groupId: string, teamIds: string[] | undefined) {
+  const rows = await Container.get(RecordingStore).listGroup(groupId);
+  if (teamIds === undefined) return { rows, all: rows.length, ids: undefined };
   const visible = await deviceService.filterRowsByVisibleDevice(rows, teamIds, 'device_udid');
-  return { all: rows.length, ids: visible.map((r) => r.id) };
+  return { rows, all: rows.length, ids: visible.map((r) => r.id) };
 }
-type Visible = { all: number; ids?: string[] };
+type Visible = Awaited<ReturnType<typeof visibleRecordings>>;
 const seesNone = (v: Visible) => v.all === 0 || (v.ids !== undefined && v.ids.length === 0);
-const seesAll = (v: Visible) => v.ids === undefined || v.ids.length === v.all;
+
+/** Headers `send` may already have set for the file, wrong on a JSON error. */
+const JSON_ERROR_STRIPS = [
+  'Content-Disposition',
+  'Content-Type',
+  'ETag',
+  'Last-Modified',
+  'Cache-Control',
+];
 
 const recLog = log.scope('RecordingsRouter');
 const router = Router();
@@ -270,18 +273,17 @@ router.get('/recordings/:groupId', async (req: Request, res: Response) => {
 /**
  * Stream the mosaic-wide composite mp4 for a group. 404s when no composite
  * exists (single-device groups skip composite by design), and for a caller
- * who cannot see every device in the group: the composite shows them all.
+ * who cannot see every device in it: the composite shows them all.
  */
 router.get('/recordings/:groupId/composite.mp4', async (req: Request, res: Response) => {
   const auth = (req as Request & { auth?: { teamIds?: string[] } }).auth;
   const v = await visibleRecordings(req.params.groupId, auth?.teamIds);
-  if (seesNone(v) || !seesAll(v)) {
+  const bundle = Container.get(ProofBundleService);
+  if (seesNone(v) || !bundle.compositeAllowed(req.params.groupId, v.ids, v.rows)) {
     return res.status(404).json({ error: 'composite_not_found' });
   }
   // With the devices' marks burned in when that works, otherwise raw.
-  const compositePath = await Container.get(ProofBundleService).resolveCompositeFile(
-    req.params.groupId,
-  );
+  const compositePath = await bundle.resolveCompositeFile(req.params.groupId);
   if (!compositePath) {
     return res.status(404).json({ error: 'composite_not_found' });
   }
@@ -304,6 +306,7 @@ router.get('/recordings/:groupId/videos.zip', async (req: Request, res: Response
     const archive = await Container.get(ProofBundleService).buildVideosZip(
       req.params.groupId,
       v.ids,
+      v.rows,
     );
     res.setHeader('Content-Type', 'application/zip');
     res.setHeader(
@@ -345,6 +348,7 @@ router.get('/recordings/:groupId/video.mp4', async (req: Request, res: Response)
       req.params.groupId,
       udid,
       v.ids,
+      v.rows,
     );
     if (!hit) {
       return res.status(404).json({
@@ -365,15 +369,18 @@ router.get('/recordings/:groupId/video.mp4', async (req: Request, res: Response)
         res.destroy();
         return;
       }
-      // Nothing was sent yet: answer JSON, not an empty "attachment".
-      res.removeHeader('Content-Disposition');
-      res.removeHeader('Content-Type');
+      // Nothing was sent yet: answer JSON, not an empty "attachment", and
+      // without the file's validators and caching, which describe the video.
+      for (const h of JSON_ERROR_STRIPS) res.removeHeader(h);
       const status = err.status ?? err.statusCode;
       if (status === 404) {
         recLog.warn(`video.mp4 file missing: ${err.message}`);
         res.status(404).json({ error: 'video_not_found' });
       } else if (status === 416) {
         recLog.warn(`video.mp4 range not satisfiable: ${err.message}`);
+        // `bytes */<size>` tells the client the length it can ask within.
+        const range = err.headers?.['Content-Range'];
+        if (range) res.setHeader('Content-Range', range);
         res.status(416).json({ error: 'range_not_satisfiable' });
       } else {
         recLog.error(`video.mp4 send failed: ${err.message}`);
@@ -399,7 +406,11 @@ router.get('/recordings/:groupId/bundle.zip', async (req: Request, res: Response
     'Content-Disposition',
     `attachment; filename="proof-${req.params.groupId}.zip"`,
   );
-  const archive = Container.get(ProofBundleService).streamBundleZip(req.params.groupId, v.ids);
+  const archive = Container.get(ProofBundleService).streamBundleZip(
+    req.params.groupId,
+    v.ids,
+    v.rows,
+  );
   archive.on('error', (err) => {
     recLog.error(`bundle stream error: ${err.message}`);
     if (!res.headersSent) {

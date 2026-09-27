@@ -13,7 +13,10 @@ import * as deviceService from '../../src/data-service/device-service';
 import { RecordingStore } from '../../src/services/recording/recording-store';
 import { ProofBundleService } from '../../src/services/recording/proof-bundle';
 import { AnnotationRenderService } from '../../src/services/recording/annotation-render';
-import { compositeOutputPath } from '../../src/services/recording/RecordingOrchestrator';
+import {
+  compositeOutputPath,
+  compositeLayoutPath,
+} from '../../src/services/recording/RecordingOrchestrator';
 import { scopesForRole } from '../../src/middleware/authMiddleware';
 import { useArtifactStore } from '../helpers/artifact-store';
 
@@ -34,7 +37,8 @@ const ADMIN: Caller = { userId: 'usr_admin', role: 'ADMIN' };
 const GROUP = 'g1';
 const A_BYTES = 'AAAA-video-of-phone-a';
 const B_BYTES = 'BBBB-video-of-phone-b';
-const COMPOSITE_BYTES = 'CCCC-composite-of-both';
+const C_BYTES = 'CCCC-video-of-phone-c';
+const COMPOSITE_BYTES = 'MMMM-composite-of-a-and-b';
 
 function buildApp(caller: Caller) {
   const app = express();
@@ -96,6 +100,31 @@ describe('recording downloads serve only the phones the caller can see', () => {
   let composite: string;
   /** Udids the member's team can see; an admin sees everything. */
   let memberSees: string[];
+  /** The group's rows as the store returns them now. */
+  let rows: any[];
+  let listGroup: sinon.SinonSpy;
+
+  /**
+   * composite.json, as the orchestrator writes it when the composite starts:
+   * which recording sits in which cell. `null` removes it, like a composite
+   * recorded before the layout file existed.
+   */
+  const writeLayout = (cells: Array<[string, string]> | null) => {
+    const file = compositeLayoutPath(GROUP);
+    if (cells === null) {
+      fs.rmSync(file, { force: true });
+      return;
+    }
+    const layout = {
+      version: 1,
+      cellW: 360,
+      cellH: 640,
+      cols: cells.length,
+      rows: 1,
+      cells: cells.map(([recordingId, udid], index) => ({ index, udid, recordingId })),
+    };
+    fs.writeFileSync(file, JSON.stringify(layout));
+  };
 
   const row = (id: string, udid: string) => ({
     id,
@@ -118,8 +147,10 @@ describe('recording downloads serve only the phones the caller can see', () => {
   before(() => {
     files['r-a'] = path.join(root, 'a.mp4');
     files['r-b'] = path.join(root, 'b.mp4');
+    files['r-c'] = path.join(root, 'c.mp4');
     fs.writeFileSync(files['r-a'], A_BYTES);
     fs.writeFileSync(files['r-b'], B_BYTES);
+    fs.writeFileSync(files['r-c'], C_BYTES);
     composite = compositeOutputPath(GROUP);
     fs.mkdirSync(path.dirname(composite), { recursive: true });
     fs.writeFileSync(composite, COMPOSITE_BYTES);
@@ -127,12 +158,17 @@ describe('recording downloads serve only the phones the caller can see', () => {
 
   beforeEach(() => {
     memberSees = ['U-A'];
-    const rows = [row('r-a', 'U-A'), row('r-b', 'U-B')];
+    rows = [row('r-a', 'U-A'), row('r-b', 'U-B')];
+    writeLayout([
+      ['r-a', 'U-A'],
+      ['r-b', 'U-B'],
+    ]);
     // The routes' visibility check and ProofBundleService both read the group
     // through this store; `prisma.recording` itself cannot be stubbed (it is
     // not one of the wrapped delegates in src/prisma.ts).
+    listGroup = sinon.spy(async (groupId: string) => (groupId === GROUP ? rows : []));
     const store = {
-      listGroup: async (groupId: string) => (groupId === GROUP ? rows : []),
+      listGroup,
       findById: async (id: string) => rows.find((r) => r.id === id) ?? null,
     };
     Container.set(RecordingStore, store as any);
@@ -237,6 +273,87 @@ describe('recording downloads serve only the phones the caller can see', () => {
     });
   });
 
+  describe('a member who sees every phone in the composite', () => {
+    beforeEach(() => {
+      memberSees = ['U-A', 'U-B'];
+    });
+
+    it('gets composite.mp4', async () => {
+      const res = await get(MEMBER, 'composite.mp4');
+      expect(res.status).to.equal(200);
+      expect(res.body.toString('utf8')).to.equal(COMPOSITE_BYTES);
+    });
+
+    it('gets the composite in videos.zip and bundle.zip', async () => {
+      const videos = await get(MEMBER, 'videos.zip');
+      expect(await zipNames(videos.body)).to.deep.equal(['U-A.mp4', 'U-B.mp4', 'composite.mp4']);
+      const bundle = await get(MEMBER, 'bundle.zip');
+      expect(await zipText(bundle.body, 'composite.mp4')).to.equal(COMPOSITE_BYTES);
+    });
+  });
+
+  // Retention purges rows one at a time while the composite lives on, and a
+  // phone added to a running recording never joins the composite. Seeing
+  // every row that is left is not seeing every phone the composite shows.
+  describe('a group whose composite shows a phone that has no row any more', () => {
+    beforeEach(() => {
+      // The composite has cells for r-a and r-b; r-b's row was purged, and
+      // r-c was added to the recording after the composite started.
+      rows = [row('r-a', 'U-A'), row('r-c', 'U-C')];
+      memberSees = ['U-A', 'U-C'];
+    });
+
+    it('404s composite.mp4 for a member who sees every row that is left', async () => {
+      const res = await get(MEMBER, 'composite.mp4');
+      expect(res.status).to.equal(404);
+      expect(res.json()).to.deep.equal({ error: 'composite_not_found' });
+    });
+
+    it('leaves the composite out of videos.zip and bundle.zip', async () => {
+      const videos = await get(MEMBER, 'videos.zip');
+      expect(await zipNames(videos.body)).to.deep.equal(['U-A.mp4', 'U-C.mp4']);
+      const bundle = await get(MEMBER, 'bundle.zip');
+      expect(await zipNames(bundle.body)).to.not.include('composite.mp4');
+    });
+
+    it('still gives an admin the composite', async () => {
+      const res = await get(ADMIN, 'composite.mp4');
+      expect(res.status).to.equal(200);
+    });
+  });
+
+  describe('a composite without a layout file', () => {
+    it('falls back to "sees every row": not for a member who sees one', async () => {
+      writeLayout(null);
+      expect((await get(MEMBER, 'composite.mp4')).status).to.equal(404);
+      const videos = await get(MEMBER, 'videos.zip');
+      expect(await zipNames(videos.body)).to.deep.equal(['U-A.mp4']);
+    });
+
+    it('falls back to "sees every row": yes for a member who sees both', async () => {
+      writeLayout(null);
+      memberSees = ['U-A', 'U-B'];
+      expect((await get(MEMBER, 'composite.mp4')).status).to.equal(200);
+    });
+
+    it('denies a member when the layout file cannot be read', async () => {
+      fs.writeFileSync(compositeLayoutPath(GROUP), 'not json');
+      memberSees = ['U-A', 'U-B'];
+      expect((await get(MEMBER, 'composite.mp4')).status).to.equal(404);
+      const videos = await get(MEMBER, 'videos.zip');
+      expect(await zipNames(videos.body)).to.deep.equal(['U-A.mp4', 'U-B.mp4']);
+    });
+  });
+
+  it('reads the group once per download', async () => {
+    for (const url of ['video.mp4?udid=U-A', 'videos.zip', 'bundle.zip']) {
+      listGroup.resetHistory();
+      const res = await get(MEMBER, url);
+      expect(res.status, url).to.equal(200);
+      expect(listGroup.callCount, url).to.equal(1);
+    }
+  });
+
   describe('a member who sees neither phone', () => {
     beforeEach(() => {
       memberSees = [];
@@ -265,9 +382,20 @@ describe('recording downloads serve only the phones the caller can see', () => {
       expect(res.headers['content-range']).to.equal(`bytes 0-2/${A_BYTES.length}`);
     });
 
-    it('answers an unsatisfiable Range with 416 JSON', async () => {
+    // `send` sets the file's Content-Type and validators before it finds the
+    // range unsatisfiable. Left in place, the JSON would go out as video/mp4
+    // with the video's ETag.
+    it('answers an unsatisfiable Range with 416 JSON and the size it can ask within', async () => {
+      const fileEtag = (await get(MEMBER, 'video.mp4?udid=U-A')).headers.etag;
+      expect(fileEtag, "the file's own ETag").to.be.a('string');
       const res = await get(MEMBER, 'video.mp4?udid=U-A', { Range: 'bytes=9999-10000' });
       expect(res.status).to.equal(416);
+      expect(res.headers['content-type']).to.match(/^application\/json/);
+      expect(res.headers['content-range']).to.equal(`bytes */${A_BYTES.length}`);
+      // Express tags the JSON body itself; it must not reuse the video's tag.
+      expect(res.headers.etag).to.not.equal(fileEtag);
+      expect(res.headers).to.not.have.any.keys('last-modified', 'cache-control');
+      // A JSON error is never an attachment. The old hand-set headers made it one.
       expect(res.headers['content-disposition']).to.equal(undefined);
       expect(res.json()).to.deep.equal({ error: 'range_not_satisfiable' });
     });
@@ -280,6 +408,7 @@ describe('recording downloads serve only the phones the caller can see', () => {
         .resolves({ filePath: gone, downloadName: 'U-A.mp4', recordingId: 'r-a' });
       const res = await get(MEMBER, 'video.mp4?udid=U-A');
       expect(res.status).to.equal(404);
+      expect(res.headers['content-type']).to.match(/^application\/json/);
       expect(res.headers['content-disposition']).to.equal(undefined);
       expect(res.json()).to.deep.equal({ error: 'video_not_found' });
     });
