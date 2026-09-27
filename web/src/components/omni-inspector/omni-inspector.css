@@ -717,37 +717,32 @@
     color: var(--color-on-accent);
 }
 
+/* A row of labelled buttons under the locator's value (shared Button, sm). */
 .omni-locator-actions {
     display: flex;
-    flex-direction: column;
-    gap: 4px;
-    flex-shrink: 0;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 4px;
 }
 
-.omni-test-btn {
+/* Said once above the list, rather than eight greyed-out buttons explaining
+   nothing: Verify and Tap need an Appium session on the device. */
+.omni-locators-note {
     display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 24px;
-    height: 24px;
-    background: rgb(var(--rgb-fg) / 0.03);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-sm);
+    align-items: flex-start;
+    gap: 6px;
+    margin: 0 0 8px;
+    padding: 8px 10px;
+    border: 1px dashed var(--border-strong);
+    border-radius: 6px;
+    font-size: 11px;
+    line-height: 1.5;
     color: var(--text-muted);
-    cursor: pointer;
-    transition: all 0.2s ease;
 }
 
-.omni-test-btn:hover {
-    background: rgb(var(--rgb-accent) / 0.12);
-    border-color: var(--color-accent);
-    color: var(--color-accent);
-}
-
-.omni-test-btn.active {
-    background: var(--color-accent);
-    border-color: var(--color-accent);
-    color: var(--color-on-accent);
+.omni-locators-note > svg {
+    flex-shrink: 0;
+    margin-top: 2px;
 }
 
 .omni-match-badge {

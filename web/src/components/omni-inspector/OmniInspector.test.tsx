@@ -272,6 +272,58 @@ describe('OmniInspector — Test locator', () => {
   });
 });
 
+describe('OmniInspector — locator actions', () => {
+  const NO_SESSION = /Verify and Tap need an Appium test running on this device/;
+
+  // Four unlabelled icons left people guessing what each one did.
+  it('labels each action in words', async () => {
+    render(<OmniInspector udid="U1" embedded />);
+    fireEvent.click(await screen.findByRole('treeitem', { name: /login/ }));
+    expect(screen.getByRole('button', { name: 'Test locator' })).toHaveTextContent('Test');
+    expect(screen.getByRole('button', { name: 'Verify with Appium' })).toHaveTextContent('Verify');
+    expect(screen.getByRole('button', { name: 'Find and tap with Appium' })).toHaveTextContent(
+      'Tap',
+    );
+    const copy = screen.getByRole('button', { name: 'Copy locator' });
+    expect(copy).toHaveTextContent('Copy');
+    Object.assign(navigator, { clipboard: { writeText: vi.fn() } });
+    fireEvent.click(copy);
+    expect(screen.getByRole('button', { name: 'Copied' })).toHaveTextContent('Copied');
+  });
+
+  it('says once, not per card, why Verify and Tap are unavailable', async () => {
+    render(<OmniInspector udid="U1" embedded />);
+    fireEvent.click(await screen.findByRole('treeitem', { name: /login/ }));
+    expect(screen.getAllByText(NO_SESSION)).toHaveLength(1);
+    expect(screen.getByRole('button', { name: 'Verify with Appium' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Find and tap with Appium' })).toBeDisabled();
+  });
+
+  it('offers Verify and Tap, without the note, while a session runs', async () => {
+    api.getAppiumSession.mockResolvedValue({ sessionId: 'S1', basePath: '/wd/hub' });
+    render(<OmniInspector udid="U1" embedded />);
+    fireEvent.click(await screen.findByRole('treeitem', { name: /login/ }));
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Verify with Appium' })).toBeEnabled(),
+    );
+    expect(screen.queryByText(NO_SESSION)).toBeNull();
+  });
+
+  // The session was read once, when the tab opened, so Verify and Tap didn't
+  // follow a test that started or ended afterwards.
+  it('checks for a session again on each capture', async () => {
+    render(<OmniInspector udid="U1" embedded />);
+    fireEvent.click(await screen.findByRole('treeitem', { name: /login/ }));
+    expect(screen.getByRole('button', { name: 'Verify with Appium' })).toBeDisabled();
+    api.getAppiumSession.mockResolvedValue({ sessionId: 'S1', basePath: '/wd/hub' });
+    fireEvent.click(screen.getByRole('button', { name: 'Refresh snapshot' }));
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Verify with Appium' })).toBeEnabled(),
+    );
+    expect(screen.queryByText(NO_SESSION)).toBeNull();
+  });
+});
+
 describe('OmniInspector — another device', () => {
   // The same xpath on another device is an unrelated element.
   it('clears the selection instead of following its xpath', async () => {

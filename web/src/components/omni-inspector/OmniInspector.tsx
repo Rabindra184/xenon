@@ -34,6 +34,7 @@ import { createPortal } from 'react-dom';
 import './omni-inspector.css';
 import React from 'react';
 import { Select } from '../ui/select';
+import { Button } from '../ui/button';
 import { analyzeElement, ROLE_ICON, type RoleKey } from './elementRole';
 import { initialExpanded, matchSet, pathTo, visibleRows } from './treeRows';
 import ElementTree from './ElementTree';
@@ -426,27 +427,6 @@ const OmniInspector: React.FC<OmniInspectorProps> = ({
     if (udid) loadSnapshot();
   }, [udid]);
 
-  // Which session (if any) can answer a verification, and where to reach it.
-  useEffect(() => {
-    if (!udid) return;
-    let cancelled = false;
-    XenonApiService.getAppiumSession(udid)
-      .then((r: any) => {
-        if (!cancelled) {
-          setAppiumSession({ sessionId: r?.sessionId ?? null, basePath: r?.basePath ?? '' });
-        }
-      })
-      .catch(() => {
-        // Treated as "no session": verification is simply unavailable, which
-        // the UI states. Failing loudly here would be noise on a panel whose
-        // main job (the tree) is unaffected.
-        if (!cancelled) setAppiumSession({ sessionId: null, basePath: '' });
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [udid]);
-
   const runVerify = useCallback(
     async (strategy: string, value: string, action: 'none' | 'tap') => {
       if (!appiumSession?.sessionId) return;
@@ -508,6 +488,21 @@ const OmniInspector: React.FC<OmniInspectorProps> = ({
     const latest = () => seq === loadSeq.current;
     setLoading(true);
     setError(null);
+    // Which session (if any) can answer a verification, and where to reach
+    // it. Asked with every capture rather than once, when the tab opened, so
+    // Verify and Tap follow a test that ends (or starts) while the tab is open.
+    XenonApiService.getAppiumSession(udid)
+      .then((r: any) => {
+        if (latest()) {
+          setAppiumSession({ sessionId: r?.sessionId ?? null, basePath: r?.basePath ?? '' });
+        }
+      })
+      .catch(() => {
+        // Treated as "no session": verification is simply unavailable, which
+        // the UI states. Failing loudly here would be noise on a panel whose
+        // main job (the tree) is unaffected.
+        if (latest()) setAppiumSession({ sessionId: null, basePath: '' });
+      });
     try {
       const data = await XenonApiService.getInspectorSnapshot(udid);
       if (!latest()) return;
@@ -1301,6 +1296,15 @@ const OmniInspector: React.FC<OmniInspectorProps> = ({
                           Locators
                           <span className="omni-section-badge">Stability scored</span>
                         </div>
+                        {!appiumSession?.sessionId &&
+                          selectedNode.suggestedLocators?.length > 0 && (
+                            <p className="omni-locators-note">
+                              <Info size={12} aria-hidden="true" />
+                              Verify and Tap need an Appium test running on this device. Start the
+                              test first, then open this page: while it’s open, the live preview
+                              holds the device and a new test can’t start.
+                            </p>
+                          )}
                         <div className="omni-locators-list">
                           {/* Only the document root reaches this — every real
                               element gets at least the positional xpath. An
@@ -1413,85 +1417,90 @@ const OmniInspector: React.FC<OmniInspectorProps> = ({
                                       </span>
                                     );
                                   })()}
-                                </div>
-                                <div className="omni-locator-actions">
-                                  <button
-                                    type="button"
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      runLocatorTest(loc.strategy, loc.value);
-                                    }}
-                                    className={`omni-test-btn ${activeLocatorTest === loc.strategy ? 'active' : ''}`}
-                                    title="Test this locator against the current snapshot"
-                                    aria-label="Test locator"
-                                  >
-                                    <Crosshair size={12} />
-                                  </button>
-                                  {/* Verification through the real driver, as
-                                      opposed to the snapshot match above. Needs a
-                                      session — disabled with the reason rather
-                                      than hidden, so the capability is
-                                      discoverable and its precondition is
-                                      stated. */}
-                                  <button
-                                    type="button"
-                                    disabled={
-                                      !appiumSession?.sessionId || verifying === loc.strategy
-                                    }
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      runVerify(loc.strategy, loc.value, 'none');
-                                    }}
-                                    className="omni-test-btn"
-                                    title={
-                                      appiumSession?.sessionId
-                                        ? 'Verify with Appium — does the driver actually find this?'
-                                        : 'Needs an active Appium session on this device'
-                                    }
-                                    aria-label="Verify with Appium"
-                                  >
-                                    {verifying === loc.strategy ? (
-                                      <RotateCw size={12} className="animate-spin" />
-                                    ) : (
-                                      <ShieldCheck size={12} />
-                                    )}
-                                  </button>
-                                  <button
-                                    type="button"
-                                    disabled={
-                                      !appiumSession?.sessionId || verifying === loc.strategy
-                                    }
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      runVerify(loc.strategy, loc.value, 'tap');
-                                    }}
-                                    className="omni-test-btn"
-                                    title={
-                                      appiumSession?.sessionId
-                                        ? 'Find with Appium and tap the element it returns'
-                                        : 'Needs an active Appium session on this device'
-                                    }
-                                    aria-label="Find and tap with Appium"
-                                  >
-                                    <Zap size={12} />
-                                  </button>
-                                  <button
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      copyToClipboard(loc.value, loc.strategy);
-                                    }}
-                                    className={`omni-copy-btn ${copiedLocator === loc.strategy ? 'copied' : ''}`}
-                                    title="Copy locator"
-                                    aria-label={
-                                      copiedLocator === loc.strategy ? 'Copied' : 'Copy locator'
-                                    }
-                                  >
-                                    {copiedLocator === loc.strategy ? (
-                                      <Check size={12} />
-                                    ) : (
-                                      <Copy size={12} />
-                                    )}
-                                  </button>
+                                  {/* Words, not four bare icons: people couldn't
+                                      tell what each one did. Verify and Tap stay
+                                      visible but disabled without a session; the
+                                      note above the list says why, once. */}
+                                  <div className="omni-locator-actions">
+                                    <Button
+                                      type="button"
+                                      variant={
+                                        activeLocatorTest === loc.strategy ? 'tonal' : 'secondary'
+                                      }
+                                      size="sm"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        runLocatorTest(loc.strategy, loc.value);
+                                      }}
+                                      title="Match against this capture and outline the result on the phone"
+                                      aria-label="Test locator"
+                                    >
+                                      <Crosshair size={12} aria-hidden="true" />
+                                      Test
+                                    </Button>
+                                    <Button
+                                      type="button"
+                                      variant="secondary"
+                                      size="sm"
+                                      disabled={
+                                        !appiumSession?.sessionId || verifying === loc.strategy
+                                      }
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        runVerify(loc.strategy, loc.value, 'none');
+                                      }}
+                                      title="Ask the Appium driver whether it finds this element"
+                                      aria-label="Verify with Appium"
+                                    >
+                                      {verifying === loc.strategy ? (
+                                        <RotateCw
+                                          size={12}
+                                          className="animate-spin"
+                                          aria-hidden="true"
+                                        />
+                                      ) : (
+                                        <ShieldCheck size={12} aria-hidden="true" />
+                                      )}
+                                      Verify
+                                    </Button>
+                                    <Button
+                                      type="button"
+                                      variant="secondary"
+                                      size="sm"
+                                      disabled={
+                                        !appiumSession?.sessionId || verifying === loc.strategy
+                                      }
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        runVerify(loc.strategy, loc.value, 'tap');
+                                      }}
+                                      title="Find it with Appium and tap it on the phone"
+                                      aria-label="Find and tap with Appium"
+                                    >
+                                      <Zap size={12} aria-hidden="true" />
+                                      Tap
+                                    </Button>
+                                    <Button
+                                      type="button"
+                                      variant="secondary"
+                                      size="sm"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        copyToClipboard(loc.value, loc.strategy);
+                                      }}
+                                      title="Copy the locator's value"
+                                      aria-label={
+                                        copiedLocator === loc.strategy ? 'Copied' : 'Copy locator'
+                                      }
+                                    >
+                                      {copiedLocator === loc.strategy ? (
+                                        <Check size={12} aria-hidden="true" />
+                                      ) : (
+                                        <Copy size={12} aria-hidden="true" />
+                                      )}
+                                      {copiedLocator === loc.strategy ? 'Copied' : 'Copy'}
+                                    </Button>
+                                  </div>
                                 </div>
                               </div>
                             );
