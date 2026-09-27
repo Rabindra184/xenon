@@ -6,6 +6,90 @@ This project follows [Semantic Versioning](https://semver.org/). Releases are
 published to npm automatically when `package.json`'s `version` changes on `main`
 (see `.github/workflows/npm-publish.yml`).
 
+## 1.28.0
+
+Minor release. Omni-Vision is rebuilt around a compact element tree you can
+use from the keyboard, beside a details pane you can resize, and its "AI
+Insight" tab becomes **Checks**. Device control now lets go of a phone when
+you close its tab, so tests no longer queue behind a page nobody is viewing.
+
+### Added
+
+- **Checks**, replacing "AI Insight" (#331). Nothing in that tab was AI. It
+  gives seven results for the selected element: unique locator, stable
+  locator, interactive, enabled, has size, on screen, and accessible name.
+  Each passes, warns or fails with a one-line reason. A locator that isn't
+  unique comes with one that is, if one exists.
+- **A notice when a capture may be out of date** (#331). The tree shows
+  "Captured 12 s ago". After any input to the device, it says "The screen
+  may have changed since this capture." and offers **Refresh**, and the
+  highlights on the device dim.
+- **A resizable split** between the tree and the details (#332). Drag the
+  divider, or focus it and use ← → Home End. Double-click resets it, and
+  the browser remembers where you left it.
+- **An element path in Info** (#332). It lists the element's ancestors,
+  and each one selects that ancestor.
+- **A search match count** (#332), which screen readers announce.
+
+### Changed
+
+- **A compact element tree** (#332).
+  - Rows are 26 px high.
+  - A run of plain wrapper elements shares one row, such as "hierarchy ›
+    FrameLayout › … › launcher", and each part still selects its own node.
+  - Names are short: a resource id is shown without its package.
+  - Each row has a role icon.
+
+  On a 66-element Android home screen, a fully expanded tree now has 45
+  rows instead of 66 and 10 levels instead of 19. Names cut off went from 48
+  to 12.
+- **The tree works from the keyboard** (#332). It is one tab stop, with ↑ ↓
+  → ← Home End to move and Enter or Space to select. Screen readers hear it
+  as a tree.
+- **The selected element is always shown** (#332). Selecting it on the
+  device, in search, from the path, or again after a Refresh opens its
+  branch and scrolls to it. Refresh keeps the element selected with its new
+  values, and keeps your Code gen locator.
+- **The locator buttons have labels** (#332): **Test**, **Verify**,
+  **Tap** and **Copy**.
+  - Without an Appium session on the device, one note explains why Verify
+    and Tap are unavailable.
+  - The session is checked again with every capture.
+- Code gen wraps long lines instead of scrolling sideways, and the element
+  count and source moved to the capture line (#332).
+
+### Fixed
+
+- **Closing device control's tab left the phone held** (#333). Closing the
+  tab, reloading or typing another address kept the live-preview hold, so
+  Appium sessions for that phone queued for 5 minutes and then failed with
+  "Device is busy".
+  - The page now releases the phone as it goes away.
+  - On the server, a hold that nothing released (a crashed browser, a
+    sleeping laptop, a lost network) is released 10 minutes after its last
+    viewer left. With H.264 preview it was never released before, and with
+    MJPEG the check ran hourly; it now runs every minute.
+  - Neither releases while anyone is watching, over either transport, or
+    while a recording runs.
+- **The Test locator button never outlined its match on the device** in
+  device control (#332).
+- **After a Refresh, Info showed the old capture's element** (#332).
+- **A slow capture could replace a newer one** (#331), for example the
+  previous device's.
+- **Search hid matches inside collapsed branches** (#331).
+- **"Interactable" was claimed for any enabled container** (#331).
+- **The health monitor's "stream still running" check never worked**
+  (#334). It looked up the stream services by a name that TypeDI does not
+  register, so a busy device whose Appium session had been lost could be
+  reclaimed while a stream was still running on it.
+
+### Notes
+
+- Two tabs showing the same phone share one hold, so closing either
+  releases it. Leaving device control through the app already did this.
+- On iOS, closing the tab releases the phone, but the server-side release
+  of an abandoned hold is Android-only for now.
+
 ## 1.27.0
 
 Minor release. Device control's Actions tab is redesigned around apps: you
