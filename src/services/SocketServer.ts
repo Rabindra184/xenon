@@ -343,12 +343,6 @@ export class SocketServer {
       this.io.to('nodes').emit(event, data);
     }
   }
-
-  public broadcast(event: string, data: any) {
-    if (this.io) {
-      this.io.emit(event, data);
-    }
-  }
 }
 
 /** A socket with no identity (never expected) is a member of no team: it sees only the shared pool. */

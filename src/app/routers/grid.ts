@@ -23,6 +23,7 @@ import { Container } from 'typedi';
 import { IPluginArgs } from '../../interfaces/IPluginArgs';
 import { IDevice } from '../../interfaces/IDevice';
 import { prisma } from '../../prisma';
+import { DeviceTeamResolver } from '../../services/device-access/DeviceTeamResolver';
 
 const store = DeviceStoreFactory.getStore();
 const pendingStore = DeviceStoreFactory.getPendingSessionStore();
@@ -363,6 +364,8 @@ async function assignDeviceToTeam(request: Request, response: Response) {
   for (const row of rows) {
     await store.updateDevice(row.udid, row.host, { teamId: row.teamId } as Partial<IDevice>);
   }
+  // The live dashboard events follow the new team now, not after the cache's TTL.
+  Container.get(DeviceTeamResolver).note(udid, teamId || null);
   response.json({ ok: true, updated: result.count });
 }
 

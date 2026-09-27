@@ -25,7 +25,10 @@ describe('DashboardEventManager.afterSessionCommand — regression hook', () => 
 
   let onHealRecordedStub: sinon.SinonStub;
   let sessionLogCreateStub: sinon.SinonStub;
-  let socketStub: { emitToDashboard: sinon.SinonStub };
+  let socketStub: {
+    emitToDashboard: sinon.SinonStub;
+    emitToDashboardForDevices: sinon.SinonStub;
+  };
 
   beforeEach(() => {
     // Stub the prototype so any `Container.get(SelectorStateService)` instance
@@ -49,9 +52,12 @@ describe('DashboardEventManager.afterSessionCommand — regression hook', () => 
     };
     sinon.stub(SESSION_MANAGER, 'getSession').returns(fakeSession);
 
-    // Replace the SocketServer singleton with a stub so `emitToDashboard` is
-    // a recordable no-op rather than touching real socket.io infrastructure.
-    socketStub = { emitToDashboard: sinon.stub() };
+    // Replace the SocketServer singleton with a stub so the emits are
+    // recordable no-ops rather than touching real socket.io infrastructure.
+    socketStub = {
+      emitToDashboard: sinon.stub(),
+      emitToDashboardForDevices: sinon.stub().resolves(),
+    };
     Container.set(SocketServer, socketStub);
   });
 

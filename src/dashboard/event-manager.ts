@@ -32,6 +32,7 @@ import { MetricsService } from '../services/MetricsService';
 import { SocketEvents } from '../enums/SocketEvents';
 import { healingTierLabel } from '../services/healing/types';
 import { SelectorStateService } from '../services/SelectorStateService';
+import { RecordingStore } from '../services/recording/recording-store';
 import { Service } from 'typedi';
 
 @Service()
@@ -128,11 +129,15 @@ export class DashboardEventManager {
     });
 
     // Emit session started event
-    Container.get(SocketServer).emitToDashboard(SocketEvents.SESSION_STARTED, {
-      ...createData,
-      status: 'running', // Principal Polish: Ensure frontend gets status
-      build_name: buildName,
-    });
+    void Container.get(SocketServer).emitToDashboardForDevices(
+      SocketEvents.SESSION_STARTED,
+      {
+        ...createData,
+        status: 'running', // Principal Polish: Ensure frontend gets status
+        build_name: buildName,
+      },
+      { udid: device.udid },
+    );
 
     // Increment Metrics
     Container.get(MetricsService).incrementSessionStart();
@@ -312,11 +317,15 @@ export class DashboardEventManager {
 
         // 🟢 Socket Events must happen AFTER DB update and MUST include a status
         // to ensure the UI row changes from 'RUNNING' to its final state.
-        Container.get(SocketServer).emitToDashboard(SocketEvents.SESSION_STOPPED, {
-          id: sessionId,
-          status: updateData.status || sessionEntry.status || SessionStatus.SUCCESS,
-          failure_reason: updateData.failure_reason || sessionEntry.failure_reason,
-        });
+        void Container.get(SocketServer).emitToDashboardForDevices(
+          SocketEvents.SESSION_STOPPED,
+          {
+            id: sessionId,
+            status: updateData.status || sessionEntry.status || SessionStatus.SUCCESS,
+            failure_reason: updateData.failure_reason || sessionEntry.failure_reason,
+          },
+          { udid: sessionEntry.device_udid },
+        );
 
         // Principal Analytics: Increment Metrics AFTER emission
         if (updateData.status === SessionStatus.SUCCESS) {
@@ -532,31 +541,40 @@ export class DashboardEventManager {
           data: logEntry as SessionLog,
         });
 
-        // Emit command log event to dashboard
-        Container.get(SocketServer).emitToDashboard(SocketEvents.SESSION_COMMAND, {
-          session_id: session.getId(),
-          ...logEntry,
-        });
+        // Emit command log event to dashboard. One per command: the phone's
+        // team comes from DeviceTeamResolver's cache, not a query each time.
+        const device = session.getDevice();
+        void Container.get(SocketServer).emitToDashboardForDevices(
+          SocketEvents.SESSION_COMMAND,
+          {
+            session_id: session.getId(),
+            ...logEntry,
+          },
+          { udid: device?.udid },
+        );
 
         // Heal event broadcast — match the shape returned by GET /healing/events
         // so the Overview activity feed and Settings list can consume both
         // sources interchangeably without per-source field translation.
         if (logEntry.is_healed) {
-          const device = session.getDevice();
-          Container.get(SocketServer).emitToDashboard(SocketEvents.HEALING_EVENT, {
-            id: persistedLog.id,
-            sessionId: session.getId(),
-            deviceUdid: device?.udid ?? null,
-            deviceName: device?.name ?? null,
-            devicePlatform: device?.platform ?? null,
-            commandName: logEntry.command_name ?? null,
-            originalSelector: logEntry.original_selector ?? null,
-            healedSelector: logEntry.healed_selector ?? null,
-            confidence: logEntry.healing_confidence ?? null,
-            tier: logEntry.healing_tier ?? null,
-            isSuccess: logEntry.is_success ?? null,
-            createdAt: persistedLog.createdAt.toISOString(),
-          });
+          void Container.get(SocketServer).emitToDashboardForDevices(
+            SocketEvents.HEALING_EVENT,
+            {
+              id: persistedLog.id,
+              sessionId: session.getId(),
+              deviceUdid: device?.udid ?? null,
+              deviceName: device?.name ?? null,
+              devicePlatform: device?.platform ?? null,
+              commandName: logEntry.command_name ?? null,
+              originalSelector: logEntry.original_selector ?? null,
+              healedSelector: logEntry.healed_selector ?? null,
+              confidence: logEntry.healing_confidence ?? null,
+              tier: logEntry.healing_tier ?? null,
+              isSuccess: logEntry.is_success ?? null,
+              createdAt: persistedLog.createdAt.toISOString(),
+            },
+            { udid: device?.udid },
+          );
         }
 
         // Regression hook — fire-and-forget. Never block heal write on state lookup.
@@ -864,13 +882,18 @@ export class DashboardEventManager {
 
   // ─── Recording (free-form mosaic) events ─────────────────────────────────
   // Emitted by RecordingOrchestrator. Distinct namespace from SESSION_*; the
-  // dashboard listens to both independently. No existing emitters changed.
+  // dashboard listens to both independently. Team-scoped: a group's started
+  // and stopped events reach each dashboard cut down to the phones it can see.
   public emitRecordingStarted(payload: {
     groupId: string;
     recordings: Array<{ id: string; udid: string }>;
     startedAt: Date;
   }): void {
-    Container.get(SocketServer).emitToDashboard(SocketEvents.RECORDING_STARTED, payload);
+    void Container.get(SocketServer).emitToDashboardForDevices(
+      SocketEvents.RECORDING_STARTED,
+      payload,
+      recordingsScope(payload),
+    );
   }
 
   public emitRecordingStopped(payload: {
@@ -883,15 +906,41 @@ export class DashboardEventManager {
       sizeBytes?: number;
     }>;
   }): void {
-    Container.get(SocketServer).emitToDashboard(SocketEvents.RECORDING_STOPPED, payload);
+    void Container.get(SocketServer).emitToDashboardForDevices(
+      SocketEvents.RECORDING_STOPPED,
+      payload,
+      recordingsScope(payload),
+    );
   }
 
   public emitRecordingBookmark(payload: { groupId: string; bookmark: unknown }): void {
-    Container.get(SocketServer).emitToDashboard(SocketEvents.RECORDING_BOOKMARK_ADDED, payload);
+    this.emitForRecording(SocketEvents.RECORDING_BOOKMARK_ADDED, payload, payload.bookmark);
   }
 
   public emitRecordingAnnotation(payload: { groupId: string; annotation: unknown }): void {
-    Container.get(SocketServer).emitToDashboard(SocketEvents.RECORDING_ANNOTATION_ADDED, payload);
+    this.emitForRecording(SocketEvents.RECORDING_ANNOTATION_ADDED, payload, payload.annotation);
+  }
+
+  /**
+   * A mark is one phone's event: scoped by its recording's device, looked up
+   * from the mark's `recording_id` (marks are occasional, so no cache). A
+   * failed or empty lookup sends it with no udid, which reaches admins only
+   * (fail closed).
+   */
+  private emitForRecording(event: string, payload: unknown, mark: unknown): void {
+    const recordingId = (mark as { recording_id?: unknown } | null)?.recording_id;
+    const udid: Promise<string | undefined> =
+      typeof recordingId === 'string'
+        ? Container.get(RecordingStore)
+            .findVideo(recordingId)
+            .then(
+              (r) => r?.device_udid,
+              () => undefined,
+            )
+        : Promise.resolve(undefined);
+    void udid.then((u) =>
+      Container.get(SocketServer).emitToDashboardForDevices(event, payload, { udid: u }),
+    );
   }
 
   public emitRecordingFailed(payload: {
@@ -900,8 +949,23 @@ export class DashboardEventManager {
     udid: string;
     reason: string;
   }): void {
-    Container.get(SocketServer).emitToDashboard(SocketEvents.RECORDING_FAILED, payload);
+    void Container.get(SocketServer).emitToDashboardForDevices(
+      SocketEvents.RECORDING_FAILED,
+      payload,
+      { udid: payload.udid },
+    );
   }
+}
+
+/** A group event's phones, and how to cut its payload down to the visible ones. */
+function recordingsScope<T extends { recordings: Array<{ udid: string }> }>(payload: T) {
+  return {
+    udids: payload.recordings.map((r) => r.udid),
+    strip: (data: T, visible: string[]): T => ({
+      ...data,
+      recordings: data.recordings.filter((r) => visible.includes(r.udid)),
+    }),
+  };
 }
 
 export const DASHBORD_EVENT_MANAGER = Container.get(DashboardEventManager);

@@ -13,6 +13,7 @@ import { SocketServer } from '../services/SocketServer';
 import { prisma } from '../prisma';
 import { isManualLock, resolveBlockSessionId } from '../services/recording/manualLock';
 import { isDeviceVisible } from '../services/device-access/deviceVisibility';
+import { DeviceTeamResolver } from '../services/device-access/DeviceTeamResolver';
 
 // Use a Proxy to ensure we're always using the latest store from the factory,
 // which is critical for test isolation when the factory cache is cleared.
@@ -22,12 +23,28 @@ const store: IDeviceStore = new Proxy({} as IDeviceStore, {
   },
 });
 
+/**
+ * The scope of a device event (team-scoped dashboard events). With the row's
+ * own `teamId` the socket layer needs no lookup; a row without the field
+ * falls back to DeviceTeamResolver.
+ */
+function deviceScope(udid: string, teamId: string | null | undefined) {
+  return teamId === undefined ? { udid } : { udid, teamId };
+}
+
 export async function removeDevice(devices: { udid: string; host: string }[]) {
   for (const device of devices) {
     log.info(`Removing device ${device.udid} from host ${device.host}`);
+    // Read the phone's team while its row still exists, so the removal
+    // reaches the dashboards that could see it (an unknown phone fails closed).
+    const team = await Container.get(DeviceTeamResolver).resolve(device.udid);
     await store.removeDevices({ udid: device.udid, host: device.host });
     Container.get(NotificationService).dispatchEvent('device_offline', device);
-    Container.get(SocketServer).emitToDashboard('device_removed', device);
+    void Container.get(SocketServer).emitToDashboardForDevices(
+      'device_removed',
+      device,
+      deviceScope(device.udid, team.known ? team.teamId : undefined),
+    );
   }
 }
 
@@ -54,7 +71,11 @@ export async function addNewDevice(
   // Notify for new devices
   for (const device of added) {
     Container.get(NotificationService).dispatchEvent('device_new', device);
-    Container.get(SocketServer).emitToDashboard('device_added', device);
+    void Container.get(SocketServer).emitToDashboardForDevices(
+      'device_added',
+      device,
+      deviceScope(device.udid, device.teamId),
+    );
   }
 
   log.debug(`Sync: Added ${added.length} new devices to store`);
@@ -207,12 +228,16 @@ export async function updateDeviceProgress(
   log.debug(`[${udid}] progress: ${progress}`);
   await store.updateDevice(udid, host, { sessionProgress: progress, ...extra });
   // Emit progress update via socket
-  Container.get(SocketServer).emitToDashboard('device_progress', {
-    udid,
-    host,
-    progress,
-    ...extra,
-  });
+  void Container.get(SocketServer).emitToDashboardForDevices(
+    'device_progress',
+    {
+      udid,
+      host,
+      progress,
+      ...extra,
+    },
+    { udid },
+  );
 }
 
 export async function updateCmdExecutedTime(sessionId: string) {
@@ -254,11 +279,15 @@ export async function blockDevice(udid: string, host: string, sessionId?: string
     sessionProgress: '',
     session_id: effectiveSessionId ?? (null as any),
   });
-  Container.get(SocketServer).emitToDashboard('device_blocked', {
-    udid,
-    host,
-    session_id: effectiveSessionId ?? undefined,
-  });
+  void Container.get(SocketServer).emitToDashboardForDevices(
+    'device_blocked',
+    {
+      udid,
+      host,
+      session_id: effectiveSessionId ?? undefined,
+    },
+    { udid },
+  );
 }
 
 export async function unblockDevice(udid: string, host?: string) {
@@ -300,10 +329,14 @@ export async function unblockDeviceMatchingFilter(filter: object) {
         } as Partial<IDevice>);
 
         log.debug(`Unblocked device ${device.udid}`);
-        Container.get(SocketServer).emitToDashboard('device_unblocked', {
-          udid: device.udid,
-          host: device.host,
-        });
+        void Container.get(SocketServer).emitToDashboardForDevices(
+          'device_unblocked',
+          {
+            udid: device.udid,
+            host: device.host,
+          },
+          deviceScope(device.udid, device.teamId),
+        );
       }),
     ).catch((error) => {
       log.error(`Unable to unblock device: ${error}`);

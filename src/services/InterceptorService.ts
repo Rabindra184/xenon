@@ -113,7 +113,7 @@ export class InterceptorService {
         // staying out of the dashboard.
         if (!filter.accepts(entry.host)) return;
         buffer.push(entry);
-        this.emit({ type: 'request', sessionId, payload: entry });
+        this.emit({ type: 'request', sessionId, payload: entry }, device.udid);
       },
     );
 
@@ -144,7 +144,7 @@ export class InterceptorService {
     };
     this.states.set(sessionId, state);
 
-    this.emit({ type: 'session_started', sessionId, port, host });
+    this.emit({ type: 'session_started', sessionId, port, host }, device.udid);
     this.logger.info(
       `[${sessionId}] interceptor active on ${host}:${port} (device ${device.udid}, mode=${installMode}, transport=${routing.transport})`,
     );
@@ -198,7 +198,7 @@ export class InterceptorService {
     }
 
     state.buffer.clear();
-    this.emit({ type: 'session_stopped', sessionId });
+    this.emit({ type: 'session_stopped', sessionId }, state.device.udid);
     this.logger.info(`[${sessionId}] interceptor stopped`);
   }
 
@@ -237,7 +237,8 @@ export class InterceptorService {
     return state;
   }
 
-  private emit(evt: InterceptorEvent): void {
+  /** `udid` is the session's phone: the dashboard events reach only the teams that see it. */
+  private emit(evt: InterceptorEvent, udid: string): void {
     for (const l of this.listeners) {
       try {
         l(evt);
@@ -245,24 +246,33 @@ export class InterceptorService {
         this.logger.warn(`Interceptor listener error: ${err.message}`);
       }
     }
-    this.broadcast(evt);
+    this.broadcast(evt, udid);
   }
 
-  private broadcast(evt: InterceptorEvent): void {
+  private broadcast(evt: InterceptorEvent, udid: string): void {
     try {
       const socket = Container.get(SocketServer);
+      const scope = { udid };
       if (evt.type === 'request') {
-        socket.emitToDashboard(SocketEvents.INTERCEPTOR_REQUEST, evt.payload);
+        void socket.emitToDashboardForDevices(SocketEvents.INTERCEPTOR_REQUEST, evt.payload, scope);
       } else if (evt.type === 'session_started') {
-        socket.emitToDashboard(SocketEvents.INTERCEPTOR_SESSION_STARTED, {
-          sessionId: evt.sessionId,
-          host: evt.host,
-          port: evt.port,
-        });
+        void socket.emitToDashboardForDevices(
+          SocketEvents.INTERCEPTOR_SESSION_STARTED,
+          {
+            sessionId: evt.sessionId,
+            host: evt.host,
+            port: evt.port,
+          },
+          scope,
+        );
       } else if (evt.type === 'session_stopped') {
-        socket.emitToDashboard(SocketEvents.INTERCEPTOR_SESSION_STOPPED, {
-          sessionId: evt.sessionId,
-        });
+        void socket.emitToDashboardForDevices(
+          SocketEvents.INTERCEPTOR_SESSION_STOPPED,
+          {
+            sessionId: evt.sessionId,
+          },
+          scope,
+        );
       }
     } catch (err: any) {
       /* socket server may not be initialized yet — non-fatal */
