@@ -20,6 +20,7 @@ import {
 } from '../../services/recording/recordingSummary';
 import * as recordingFiles from '../../services/recording/recordingFiles';
 import { roleGuard } from '../../middleware/roleGuard';
+import { mutationScopeGuard } from '../../middleware/scopeGuard';
 import { resolveActor } from '../../services/device-access/actor';
 import * as deviceService from '../../data-service/device-service';
 import { prisma } from '../../prisma';
@@ -420,7 +421,10 @@ router.get('/recordings/:groupId', async (req: Request, res: Response) => {
   }
 });
 
-router.delete('/recordings/:groupId', async (req: Request, res: Response) => {
+// Irreversible, so an API key needs `devices`, as on /control: owning the
+// recording, or an admin role, is not enough for a read-only key.
+const devicesScope = mutationScopeGuard(['devices']);
+router.delete('/recordings/:groupId', devicesScope, async (req: Request, res: Response) => {
   const { groupId } = req.params;
   try {
     const store = Container.get(RecordingStore);

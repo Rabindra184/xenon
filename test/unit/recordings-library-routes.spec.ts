@@ -41,17 +41,25 @@ function rec(over: any = {}) {
   };
 }
 
-function buildApp(caller: { userId: string; role?: Role; teamIds?: string[] }) {
+interface Caller {
+  userId: string;
+  role?: Role;
+  teamIds?: string[];
+  /** An API key's own scopes; without them, a cookie session's (scopesForRole). */
+  scopes?: string;
+}
+
+function buildApp(caller: Caller) {
   const app = express();
   app.use(express.json());
   const api = express.Router();
   api.use((req, _res, next) => {
     const role = caller.role ?? 'MEMBER';
     (req as any).auth = {
-      kind: 'user-session',
+      kind: caller.scopes === undefined ? 'user-session' : 'api-key',
       userId: caller.userId,
       role,
-      scopes: scopesForRole(role),
+      scopes: caller.scopes ?? scopesForRole(role),
       teamIds: caller.teamIds,
       rateLimit: 100,
     };
@@ -385,6 +393,25 @@ describe('recordings library routes', () => {
       expect(nonOwnerRes.status).to.equal(409);
       expect(nonOwnerRes.body.error).to.equal('recording_in_progress');
       expect(store.deleteGroupRows.called).to.equal(false);
+    });
+
+    it('needs the devices scope: a read-only API key is refused, a member’s session is not', async () => {
+      rows = [rec()];
+      // The owner's own key, and a SUPER_ADMIN's: role alone must not let a
+      // read-only key delete.
+      for (const key of [
+        { ...alice, scopes: 'read' },
+        { userId: 'usr_root', role: 'SUPER_ADMIN' as Role, scopes: 'read,sessions' },
+      ]) {
+        const res = await del(key);
+        expect(res.status, JSON.stringify(res.body)).to.equal(403);
+        expect(res.body.error).to.equal('insufficient scope');
+      }
+      expect(store.deleteGroupRows.called).to.equal(false);
+
+      expect((await del({ ...alice, scopes: 'read,devices' })).status).to.equal(204);
+      rows = [rec()];
+      expect((await del(alice)).status, 'cookie session, scopesForRole(MEMBER)').to.equal(204);
     });
 
     it('answers 404 for a group the caller cannot see, or that is gone', async () => {
