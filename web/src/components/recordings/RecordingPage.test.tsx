@@ -215,11 +215,12 @@ describe('RecordingPage', () => {
     expect(muted).toHaveBeenCalledWith(true);
   });
 
-  it('notes a phone that joined later, one that failed, and a video that is gone', async () => {
+  it('notes a phone that starts later, one that failed, and a video that is gone', async () => {
     renderPage();
     await loaded();
 
-    expect(within(tile('iPhone 17')).getByText('Joined at 0:42')).toBeInTheDocument();
+    expect(within(tile('iPhone 17')).getByText('Starts at 0:42')).toBeInTheDocument();
+    expect(within(tile('Galaxy S9+')).queryByText(/Starts at/)).toBeNull();
 
     const pixel = tile('Pixel');
     expect(within(pixel).getByText('Recording failed: no frames')).toBeInTheDocument();
@@ -234,7 +235,7 @@ describe('RecordingPage', () => {
     expect(within(tile('Galaxy S9+')).getByText('Video no longer available')).toBeInTheDocument();
   });
 
-  it('says nothing about joining for a phone less than a second behind', async () => {
+  it('says nothing about starting for a phone less than a second behind', async () => {
     // Groups without timing.json get small offsets from spawn order alone.
     api.getRecording.mockResolvedValue(
       detail({
@@ -248,8 +249,28 @@ describe('RecordingPage', () => {
     renderPage();
     await loaded();
 
-    expect(within(tile('iPhone 17')).queryByText(/Joined at/)).toBeNull();
-    expect(within(tile('Pixel')).getByText('Joined at 0:01')).toBeInTheDocument();
+    expect(within(tile('iPhone 17')).queryByText(/Starts at/)).toBeNull();
+    expect(within(tile('Pixel')).getByText('Starts at 0:01')).toBeInTheDocument();
+  });
+
+  it('counts from where the timeline starts, when a phone was recording before t=0', async () => {
+    // On the timeline (0 at the earliest frame) these are 0, 0.5 s and 15 s.
+    api.getRecording.mockResolvedValue(
+      detail({
+        durationMs: 60000,
+        phones: [
+          { ...summary().phones[0], offsetMs: -13000, durationMs: 60000 },
+          { ...summary().phones[1], offsetMs: -12500, durationMs: 40000 },
+          { ...summary().phones[2], status: 'STOPPED', offsetMs: 2000, durationMs: 30000 },
+        ],
+      }),
+    );
+    renderPage();
+    await loaded();
+
+    expect(within(tile('Galaxy S9+')).queryByText(/Starts at/)).toBeNull();
+    expect(within(tile('iPhone 17')).queryByText(/Starts at/)).toBeNull();
+    expect(within(tile('Pixel')).getByText('Starts at 0:15')).toBeInTheDocument();
   });
 
   it('draws each phone’s marks only while they are on screen, and hides them on request', async () => {

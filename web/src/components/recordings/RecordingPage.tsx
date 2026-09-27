@@ -37,10 +37,12 @@ import './recordings.css';
 const noop = () => undefined;
 const STOP_FIRST = 'Stop the recording on Live devices first.';
 /**
- * Below this, a phone's offset is spawn order, not a late join: legacy groups
- * without timing.json put phones a few hundred ms apart.
+ * A phone this close to where the timeline starts gets no "Starts at" note:
+ * its offset is spawn order, not a later start. Legacy groups without
+ * timing.json put phones a few hundred ms apart. Offsets are on the timeline
+ * (`onTimeline`), so 0 is the earliest frame.
  */
-const JOINED_NOTE_MS = 1000;
+const START_NOTE_MS = 1000;
 
 /**
  * Focus is somewhere keys mean something else. The timeline (`input[type="range"]`)
@@ -80,8 +82,8 @@ function PlaybackTile({
   let note: string | null = null;
   if (failed) note = `Recording failed: ${phone.failReason ?? 'unknown reason'}`;
   else if (broken) note = 'Video no longer available';
-  else if (phase === 'before' && phone.offsetMs >= JOINED_NOTE_MS) {
-    note = `Joined at ${formatClock(phone.offsetMs)}`;
+  else if (phase === 'before' && phone.offsetMs >= START_NOTE_MS) {
+    note = `Starts at ${formatClock(phone.offsetMs)}`;
   }
   return (
     <figure className="rec-tile theme-dark" aria-label={phone.name}>
