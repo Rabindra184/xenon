@@ -40,6 +40,7 @@ import {
 } from '../XenonCapabilityManager';
 import { JwtKeyService } from './token/JwtKeyService';
 import { resolveSessionIdentity } from './session/sessionIdentity';
+import { capsWithLeaseToken, takeLeaseToken } from './lease/leaseSessionCaps';
 import { CircuitBreaker } from '../data-service/CircuitBreaker';
 import { addProxyHandler } from '../proxy/wd-command-proxy';
 import { DeviceStoreFactory } from '../data-service/device-store';
@@ -73,6 +74,11 @@ export class SessionLifecycleService {
       this.logger.warn('Rejecting new session: hub is draining for shutdown');
       throw new Error('Hub is shutting down; please retry against a different node');
     }
+
+    // The lease token is a bearer secret. Take it out of the caps before
+    // anything reads them — the pending-session row, the driver, the Session
+    // row, the dashboard — and hand it only to the lease check.
+    const leaseToken = takeLeaseToken(caps);
 
     const authResult = await this.authorizeSessionRequest(caps);
 
@@ -138,6 +144,12 @@ export class SessionLifecycleService {
           pluginArgs.deviceAvailabilityQueryIntervalMs,
           pluginArgs,
           authResult.scoped ? authResult.callerTeamIds : undefined,
+          {
+            isAdmin: authResult.isAdmin,
+            apiKeyId: authResult.apiKeyId,
+            userId: authResult.userId,
+            leaseToken,
+          },
         );
       } catch (err) {
         await removePendingSession(pendingSessionId);
@@ -158,7 +170,14 @@ export class SessionLifecycleService {
       if (isRemoteOrCloudSession) {
         this.logger.debug(`📱 Forwarding session request to ${device.host}`);
         await updateDeviceProgress(device.udid, device.host, 'Forwarding to remote node...');
-        session = await this.forwardSessionRequest(device, caps);
+        // A peer Xenon node re-runs createSession, lease check included, so it
+        // needs the proof this hub accepted; it strips the token itself. A
+        // cloud provider is not a Xenon node and never sees it.
+        const isPeerNode = !device.cloud && !!device.nodeId;
+        session = await this.forwardSessionRequest(
+          device,
+          isPeerNode ? capsWithLeaseToken(caps, leaseToken) : caps,
+        );
       } else {
         this.logger.debug('📱 Creating session on the same node');
         await this.handleLocalWDAProvisioning(device, caps);
@@ -226,11 +245,15 @@ export class SessionLifecycleService {
   // array when the apiKey is narrowed to one team. The widening to a set is
   // for Phase 4A's multi-team membership; today an apiKey can bind to at
   // most one team, so this is always 0- or 1-element.
+  //
+  // `isAdmin` decides whether the session may use a lease it did not create.
+  // It is not `!scoped`: a credential-less session is unscoped too.
   private async authorizeSessionRequest(caps: ISessionCapability): Promise<{
     apiKeyId: string | null;
     userId: string | null;
     callerTeamIds: string[] | undefined;
     scoped: boolean;
+    isAdmin: boolean;
   }> {
     const { config: xenonConfig } = await import('../config');
     // `scoped` tells the allocator whether to restrict device candidates by
@@ -238,7 +261,14 @@ export class SessionLifecycleService {
     // true = filter to { null, ...callerTeamIds }; when callerTeamIds is
     // empty, only the shared pool is visible.
     if (xenonConfig.authDisabled === true) {
-      return { apiKeyId: null, userId: null, callerTeamIds: undefined, scoped: false };
+      // Every caller is a synthetic SUPER_ADMIN here, as in authMiddleware.
+      return {
+        apiKeyId: null,
+        userId: null,
+        callerTeamIds: undefined,
+        scoped: false,
+        isAdmin: true,
+      };
     }
 
     const { ApiKeyService } = await import('./ApiKeyService');
@@ -277,7 +307,12 @@ export class SessionLifecycleService {
           'Session created without valid credentials. Pass `df:options.accessKey` + `df:options.token`.',
         );
       }
-      return { ...identity, callerTeamIds: undefined, scoped: false };
+      return {
+        ...identity,
+        callerTeamIds: undefined,
+        scoped: false,
+        isAdmin: await this.hasAdminRole(identity.userId),
+      };
     }
     if (!svc.hasScope(row, ['sessions'])) {
       this.logger.error('Rejecting session: credentials lack the `sessions` scope');
@@ -287,6 +322,7 @@ export class SessionLifecycleService {
     }
 
     const isAdmin = svc.hasScope(row, ['admin']);
+    const leaseAdmin = isAdmin || (await this.hasAdminRole(row.userId));
     // Empty array (apiKey not bound to a team) preserves the previous
     // shared-pool-only filter for member-tier callers; single-element
     // array preserves the previous team-binding narrow.
@@ -307,10 +343,33 @@ export class SessionLifecycleService {
         userId: row.userId,
         callerTeamIds: [requestedTeam],
         scoped: !isAdmin,
+        isAdmin: leaseAdmin,
       };
     }
 
-    return { apiKeyId: row.id, userId: row.userId, callerTeamIds, scoped: !isAdmin };
+    return {
+      apiKeyId: row.id,
+      userId: row.userId,
+      callerTeamIds,
+      scoped: !isAdmin,
+      isAdmin: leaseAdmin,
+    };
+  }
+
+  // A live role lookup, as authMiddleware does for every REST request. Only an
+  // active ADMIN or SUPER_ADMIN counts; a failed lookup is not an admin.
+  private async hasAdminRole(userId: string | null): Promise<boolean> {
+    if (!userId) return false;
+    try {
+      const { UserService } = await import('./UserService');
+      const user = await Container.get(UserService).findById(userId);
+      return (
+        !!user && user.status === 'ACTIVE' && (user.role === 'ADMIN' || user.role === 'SUPER_ADMIN')
+      );
+    } catch (err: any) {
+      this.logger.warn(`Could not read the role of user ${userId}: ${err?.message ?? err}`);
+      return false;
+    }
   }
 
   private async handleLocalWDAProvisioning(device: IDevice, caps: ISessionCapability) {

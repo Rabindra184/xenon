@@ -4,6 +4,7 @@ import { DeviceStoreFactory } from '../../data-service/device-store';
 import { PortAllocatorClient } from '../../services/ports/PortAllocatorClient';
 import { generateToken, hashToken, verifyToken } from './leaseToken';
 import { buildCapabilityBag, AllocatedPorts } from './buildCapabilityBag';
+import { withLeaseToken } from './leaseSessionCaps';
 import { PortPurpose } from '../ports/PortAllocatorService';
 import log from '../../logger';
 
@@ -21,6 +22,27 @@ export interface CreateLeaseRequest {
   callerTeamIds?: string[];
   buildId?: string;
   reason?: string;
+}
+
+/**
+ * What an Appium session presents when it names a lease in
+ * `xenon:options.leaseId`. Any one of these proves it may use the lease.
+ */
+export interface LeaseSessionProof {
+  /** Auth is disabled, or the credential has the ADMIN/SUPER_ADMIN role or the admin scope. */
+  isAdmin: boolean;
+  /** ApiKey row id of a verified df:options pair. */
+  apiKeyId: string | null;
+  /** User id from a verified df:options pair or xenon:options.sessionToken. */
+  userId: string | null;
+  /** The cleartext xenon:options.leaseToken, if the session sent one. */
+  leaseToken: string | null;
+}
+
+export interface ResolvedLease {
+  deviceUdid: string;
+  deviceHost: string;
+  capabilityBag: any;
 }
 
 export interface NodePairAuthProvider {
@@ -210,7 +232,9 @@ export class LeaseService {
       expiresAt,
       heartbeatSeconds,
       allocatedPorts: ports,
-      appiumCapabilities: bag,
+      // The stored bag has no token; this copy carries it, so a client that
+      // passes appiumCapabilities through unchanged proves it holds the lease.
+      appiumCapabilities: withLeaseToken(bag, token),
     };
   }
 
@@ -270,17 +294,50 @@ export class LeaseService {
   }
 
   /**
-   * Resolve a lease for the Appium-session-create code path. No token check —
-   * the SDK passes leaseId in caps, not the token (the token never travels
-   * through W3C session-create).
+   * Resolve an active lease, with no check of who is asking. Session create
+   * must use authorizeSessionUse instead: a lease id is not a secret.
    */
-  async resolve(leaseId: string): Promise<{ deviceUdid: string; deviceHost: string; capabilityBag: any } | null> {
+  async resolve(leaseId: string): Promise<ResolvedLease | null> {
+    const lease = await this.findUsableLease(leaseId);
+    return lease ? toResolved(lease) : null;
+  }
+
+  /**
+   * Resolve a lease for an Appium session that named it, if the session
+   * proves it may use it: it is an admin, it presents the lease token (the
+   * comparison heartbeat uses), or its identity is the lease's creator.
+   * `actorId` is the creating API key's id or the creating user's id,
+   * depending on how the lease was made, so either may match.
+   *
+   * Returns null when the lease is missing, inactive or expired, or when the
+   * proof fails — deliberately the same answer, so a caller cannot tell "not
+   * yours" from "not active".
+   */
+  async authorizeSessionUse(
+    leaseId: string,
+    proof: LeaseSessionProof,
+  ): Promise<ResolvedLease | null> {
+    const lease = await this.findUsableLease(leaseId);
+    if (!lease) return null;
+    const actorId: string | null = lease.actorId ?? null;
+    const holds =
+      proof.isAdmin ||
+      (!!proof.leaseToken && verifyToken(proof.leaseToken, lease.tokenHash)) ||
+      (!!actorId && (actorId === proof.apiKeyId || actorId === proof.userId));
+    return holds ? toResolved(lease) : null;
+  }
+
+  private async findUsableLease(leaseId: string) {
     const lease = await this.db.lease.findUnique({ where: { id: leaseId } });
     if (!lease || lease.status !== 'active' || lease.expiresAt < Date.now()) return null;
-    return {
-      deviceUdid: lease.deviceUdid,
-      deviceHost: lease.deviceHost,
-      capabilityBag: JSON.parse(lease.capabilityBag),
-    };
+    return lease;
   }
+}
+
+function toResolved(lease: any): ResolvedLease {
+  return {
+    deviceUdid: lease.deviceUdid,
+    deviceHost: lease.deviceHost,
+    capabilityBag: JSON.parse(lease.capabilityBag),
+  };
 }

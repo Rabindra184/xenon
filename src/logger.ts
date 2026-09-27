@@ -28,6 +28,9 @@ const SENSITIVE_KEY_PATTERNS = [
   'auth',
   'credentials',
   'secretkey',
+  // 'token' already matches it; named so it survives any narrowing of that
+  // pattern. A lease token gives its holder the lease's device.
+  'leasetoken',
 ];
 
 const REDACTED = '***REDACTED***';

@@ -43,6 +43,7 @@ import { IPluginArgs } from './interfaces/IPluginArgs';
 import { DeviceStoreFactory } from './data-service/device-store';
 import { IPendingSessionStore } from './data-service/device-store.interface';
 import { v4 as uuidv4 } from 'uuid';
+import type { LeaseSessionProof } from './services/lease/LeaseService';
 
 // Use a Proxy to ensure we're always using the latest store from the factory,
 // which is critical for test isolation when the factory cache is cleared.
@@ -103,10 +104,20 @@ export function isDeviceConfigPathAbsolute(path: string): boolean | undefined {
   }
 }
 
+// What a caller that passes no proof has: nothing. A lease then needs its token.
+const NO_LEASE_PROOF: LeaseSessionProof = {
+  isAdmin: false,
+  apiKeyId: null,
+  userId: null,
+  leaseToken: null,
+};
+
 /**
  * For given capability, wait untill a free device is available from the database
  * and update the capability json with required device informations
  * @param capability
+ * @param leaseProof who the session is, and the lease token it sent; only a
+ *   session naming a lease in `xenon:options.leaseId` reads it
  * @returns
  */
 export async function allocateDeviceForSession(
@@ -115,6 +126,7 @@ export async function allocateDeviceForSession(
   deviceQueryIntervalMs: number,
   pluginArgs: IPluginArgs,
   callerTeamIds?: string[],
+  leaseProof: LeaseSessionProof = NO_LEASE_PROOF,
 ): Promise<IDevice> {
   const firstMatch = Object.assign({}, capability.firstMatch?.[0] ?? {}, capability.alwaysMatch);
 
@@ -125,11 +137,14 @@ export async function allocateDeviceForSession(
   const xenonOpts = (firstMatch['xenon:options'] ?? {}) as Record<string, unknown>;
   const leaseIdCap = typeof xenonOpts.leaseId === 'string' ? xenonOpts.leaseId : undefined;
   if (leaseIdCap) {
+    // Every refusal reads the same, so a caller can't tell "not yours" from
+    // "not active".
+    const notActive = () => new Error(`lease ${leaseIdCap} is not active`);
     const { LeaseService } = await import('./services/lease/LeaseService');
     const { Container } = await import('typedi');
-    const resolved = await Container.get(LeaseService).resolve(leaseIdCap);
+    const resolved = await Container.get(LeaseService).authorizeSessionUse(leaseIdCap, leaseProof);
     if (!resolved) {
-      throw new Error(`lease ${leaseIdCap} is not active`);
+      throw notActive();
     }
     const leaseStore = DeviceStoreFactory.getStore();
     const leasedDevice = await leaseStore.findDevice({
@@ -140,6 +155,19 @@ export async function allocateDeviceForSession(
       throw new Error(
         `lease ${leaseIdCap} references missing device ${resolved.deviceUdid}@${resolved.deviceHost}`,
       );
+    }
+    // This branch skips the callerTeamIds filter below, so apply the same rule
+    // here: a scoped caller sees shared devices and its own teams' only. It
+    // holds even for the token or the lease's creator — the device may have
+    // moved team since the lease was taken.
+    const teamId = leasedDevice.teamId ?? null;
+    if (
+      callerTeamIds !== undefined &&
+      !leaseProof.isAdmin &&
+      teamId !== null &&
+      !callerTeamIds.includes(teamId)
+    ) {
+      throw notActive();
     }
     return leasedDevice;
   }
