@@ -29,7 +29,7 @@ import { ClipboardUnsupportedError } from '../../device-managers/clipboardErrors
 import { mutationScopeGuard } from '../../middleware/scopeGuard';
 import { roleGuard } from '../../middleware/roleGuard';
 import { deviceAccessGuard } from '../../middleware/deviceAccessGuard';
-import { deviceTeamGuard } from '../../middleware/deviceTeamGuard';
+import { deviceTeamGuard, restoreHiddenDeviceUrl } from '../../middleware/deviceTeamGuard';
 import { HIDDEN_DEVICE_UDID } from '../../middleware/controlDevice';
 import {
   formatManualLock,
@@ -1259,7 +1259,9 @@ router.post('/:udid/test-locator', async (req: Request, res: Response) => {
 });
 
 function register(parentRouter: Router) {
-  parentRouter.use('/control', router);
+  // restoreHiddenDeviceUrl runs only if the router falls through, and gives
+  // the layers after /control the real req.url back; see deviceTeamGuard.
+  parentRouter.use('/control', router, restoreHiddenDeviceUrl);
 }
 
 export default {

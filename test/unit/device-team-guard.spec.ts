@@ -2,7 +2,11 @@ import 'reflect-metadata';
 import { expect } from 'chai';
 import express from 'express';
 import request from 'supertest';
-import { deviceTeamGuard, DeviceTeamGuardDeps } from '../../src/middleware/deviceTeamGuard';
+import {
+  deviceTeamGuard,
+  DeviceTeamGuardDeps,
+  restoreHiddenDeviceUrl,
+} from '../../src/middleware/deviceTeamGuard';
 import { HIDDEN_DEVICE_UDID } from '../../src/middleware/controlDevice';
 import { isDeviceVisible } from '../../src/services/device-access/deviceVisibility';
 
@@ -181,6 +185,57 @@ describe('deviceTeamGuard', () => {
     app.use('/control', router);
     await request(app).get(`/control/${PHONE_B}/screenshot?x=1`);
     expect(originalUrl).to.equal(`/control/${PHONE_B}/screenshot?x=1`);
+  });
+
+  describe('restoreHiddenDeviceUrl, mounted after the router at the parent', () => {
+    // As control.ts's register() mounts it: after the router, at the parent,
+    // so it runs only once the router has fallen through and can never come
+    // before a route.
+    function parentApp(caller: Caller) {
+      const seenByRoute: string[] = [];
+      const app = express();
+      app.use((req, _res, next) => {
+        (req as any).auth = { userId: 'usr_caller', teamIds: caller.teamIds };
+        next();
+      });
+      const router = express.Router();
+      router.use(deviceTeamGuard({ findDevice: async (u) => DEVICES[u] ?? null }));
+      router.get('/:udid/screenshot', (req, res) => {
+        seenByRoute.push(req.params.udid);
+        res.status(404).send('Device not found');
+      });
+      app.use('/control', router, restoreHiddenDeviceUrl);
+      app.use((req, res) => res.status(404).json({ url: req.url, path: req.path }));
+      return { app, seenByRoute };
+    }
+
+    it('gives a later layer the real req.url after the router falls through', async () => {
+      const res = await request(parentApp(ALICE).app).get(`/control/${PHONE_B}/bogus?x=1`);
+      expect(res.body).to.deep.equal({
+        url: `/control/${PHONE_B}/bogus?x=1`,
+        path: `/control/${PHONE_B}/bogus`,
+      });
+    });
+
+    it('answers a hidden phone and an unknown udid alike, even where a layer echoes req.url', async () => {
+      const { app } = parentApp(ALICE);
+      const hidden = await request(app).get(`/control/${PHONE_B}/bogus`);
+      const unknown = await request(app).get(`/control/${UNKNOWN}/bogus`);
+      expect(observed(hidden, PHONE_B)).to.deep.equal(observed(unknown, UNKNOWN));
+      expect(hidden.text).to.not.include(HIDDEN_DEVICE_UDID);
+    });
+
+    it('still hands a routed request the placeholder, not the real udid', async () => {
+      const { app, seenByRoute } = parentApp(ALICE);
+      const res = await request(app).get(`/control/${PHONE_B}/screenshot`);
+      expect(res.text).to.equal('Device not found');
+      expect(seenByRoute).to.deep.equal([HIDDEN_DEVICE_UDID]);
+    });
+
+    it('leaves a request it did not rewrite alone', async () => {
+      const res = await request(parentApp(ALICE).app).get(`/control/${PHONE_A}/bogus`);
+      expect(res.body.url).to.equal(`/control/${PHONE_A}/bogus`);
+    });
   });
 
   it('gives a member in no team the shared pool only', async () => {

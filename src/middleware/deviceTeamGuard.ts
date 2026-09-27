@@ -15,6 +15,13 @@ export interface DeviceTeamGuardDeps {
   findDevice?: FindControlDevice;
 }
 
+/** What the guard rewrote, for restoreHiddenDeviceUrl to put back. */
+const REWRITE = 'xenonHiddenDeviceRewrite';
+interface Rewrite {
+  original: string;
+  rewritten: string;
+}
+
 /**
  * Keep every /control request away from a phone outside the caller's teams.
  *
@@ -70,7 +77,29 @@ export function deviceTeamGuard(deps: DeviceTeamGuardDeps = {}) {
       `Device hidden by team: ${auth.userId} -> ${req.method} ${req.originalUrl} ` +
         `on ${udid} (device team ${device.teamId})`,
     );
-    req.url = replaceControlUdid(req.url, HIDDEN_DEVICE_UDID);
+    const rewrite: Rewrite = {
+      original: req.url,
+      rewritten: replaceControlUdid(req.url, HIDDEN_DEVICE_UDID),
+    };
+    res.locals[REWRITE] = rewrite;
+    req.url = rewrite.rewritten;
     return next();
   };
+}
+
+/**
+ * Put back the `req.url` deviceTeamGuard rewrote, once the control router has
+ * fallen through. Express 4 doesn't restore `req.url` when a mounted router
+ * exits, so without this every layer after /control would see the placeholder.
+ *
+ * Mount it after the router, at the parent:
+ * `parent.use('/control', router, restoreHiddenDeviceUrl)`. There it runs only
+ * after the router has passed the request on, so it can never come before a
+ * control route. Never as a trailing `router.use` inside the router: a route
+ * registered after that would receive the hidden phone's real udid.
+ */
+export function restoreHiddenDeviceUrl(req: Request, res: Response, next: NextFunction) {
+  const rewrite = res.locals[REWRITE] as Rewrite | undefined;
+  if (rewrite && req.url === rewrite.rewritten) req.url = rewrite.original;
+  next();
 }

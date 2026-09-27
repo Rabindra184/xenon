@@ -154,12 +154,19 @@ describe('team boundary on /control (integration)', function () {
   });
 
   /**
-   * The /xenon/api stack as src/app/index.ts builds it, as far as /control
-   * goes: cors, auth, the control router, and the JSON 404 for anything no
-   * route handled. `tail: 'express'` drops that last one, leaving Express's
-   * own "Cannot GET …" as the answer.
+   * How a request no control route handled gets answered:
+   * - `api`: the JSON 404 src/app/index.ts puts after every router;
+   * - `express`: Express's own "Cannot GET …";
+   * - `echo-url`: a later layer that answers with `req.url` itself, the
+   *   careless kind the placeholder must not reach.
    */
-  function buildApp(tail: 'api' | 'express' = 'api') {
+  type Tail = 'api' | 'express' | 'echo-url';
+
+  /**
+   * The /xenon/api stack as src/app/index.ts builds it, as far as /control
+   * goes: cors, auth, the control router, then `tail`.
+   */
+  function buildApp(tail: Tail = 'api') {
     const app = express();
     app.use(express.json());
     const apiRouter = express.Router();
@@ -174,17 +181,16 @@ describe('team boundary on /control (integration)', function () {
         });
       });
     }
+    if (tail === 'echo-url') {
+      apiRouter.use((req, res) => {
+        res.status(404).json({ url: req.url, path: req.path });
+      });
+    }
     app.use('/xenon/api', apiRouter);
     return app;
   }
 
-  function send(
-    who: SeededUser,
-    method: string,
-    udid: string,
-    action: string,
-    tail: 'api' | 'express' = 'api',
-  ) {
+  function send(who: SeededUser, method: string, udid: string, action: string, tail: Tail = 'api') {
     const url = `/xenon/api/control/${encodeURIComponent(udid)}/${action}`;
     const req = (request(buildApp(tail)) as any)[method](url) as request.Test;
     return req.set('Cookie', who.cookie).set('Host', HOST_HEADER);
@@ -201,7 +207,7 @@ describe('team boundary on /control (integration)', function () {
     };
   }
 
-  async function expectSameAnswer(method: string, action: string, tail: 'api' | 'express') {
+  async function expectSameAnswer(method: string, action: string, tail: Tail) {
     const hidden = await send(alice, method, TEAM_B_UDID, action, tail);
     const unknown = await send(alice, method, UNKNOWN_UDID, action, tail);
     expect(observed(hidden, TEAM_B_UDID)).to.deep.equal(observed(unknown, UNKNOWN_UDID));
@@ -267,6 +273,18 @@ describe('team boundary on /control (integration)', function () {
     expect((await ticket(sa, TEAM_B_UDID)).status).to.equal(200);
   });
 
+  // The guard swaps a hidden phone's udid for a placeholder in req.url, and
+  // Express 4 doesn't put req.url back when a mounted router falls through.
+  // register() restores it after the router, so a later layer sees the real
+  // path, never the placeholder.
+  it('gives a layer after the control router the real req.url back', async () => {
+    const res = await send(alice, 'get', TEAM_B_UDID, 'bogus', 'echo-url');
+    expect(res.body).to.deep.equal({
+      url: `/control/${TEAM_B_UDID}/bogus`,
+      path: `/control/${TEAM_B_UDID}/bogus`,
+    });
+  });
+
   it('reads every control route from the router', () => {
     expect(CONTROL_ROUTES.length).to.be.at.least(28);
     expect(CONTROL_ROUTES).to.deep.include({ method: 'post', action: 'tap' });
@@ -287,8 +305,13 @@ describe('team boundary on /control (integration)', function () {
       }
     });
 
-    for (const tail of ['api', 'express'] as const) {
-      describe(`where no route handles the request (${tail === 'api' ? "the API's JSON 404" : "Express's own 404"})`, () => {
+    const TAIL_LABEL: Record<Tail, string> = {
+      api: "the API's JSON 404",
+      express: "Express's own 404",
+      'echo-url': 'a later layer that echoes req.url',
+    };
+    for (const tail of ['api', 'express', 'echo-url'] as const) {
+      describe(`where no route handles the request (${TAIL_LABEL[tail]})`, () => {
         for (const [method, action] of [
           ['get', 'bogus'],
           ['post', 'bogus'],
