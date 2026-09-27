@@ -404,12 +404,44 @@ gone; ports are always allocated server-side now).
 > exception. Every refusal is the same error:
 > `lease <id> is not active, or this session did not prove it holds it — pass
 > xenon:options.leaseToken from the lease response, or create the session
-> with the credentials that created the lease`. It reads the same for an
+> with the credentials that created the lease; and the phone must be one your
+> teams can see`. It reads the same for an
 > expired lease on purpose, so a client must not re-acquire in a loop on it.
 > `createSession` removes the token from the capabilities before the pending
 > row, the driver or the Session row sees them, and forwards it only to a
 > peer Xenon node. That node re-runs the check, so upgrade nodes before the
-> hub.
+> hub. Appium's own request log needs a filter; see below.
+
+#### Keeping the lease token out of Appium's own log
+
+Appium logs the `POST /session` body before any plugin sees it: on the `-->`
+request line and on the "Calling AppiumDriver.createSession() with args"
+line. Xenon can't strip the token from those, so add an Appium log filter.
+Appium cuts both lines at 1024 characters (`MAX_LOG_BODY_LENGTH`), and the
+cut can land inside the token, leaving no closing quote. The rule therefore
+matches the token's hex digits rather than a quoted string.
+
+For `--log-filters <file>`, the file holds:
+
+```json
+[{"pattern": "(leaseToken\\\\?[\"']?\\s*:\\s*\\\\?[\"']?)[0-9a-fA-F]+", "flags": "g", "replacer": "$1**LEASE TOKEN**"}]
+```
+
+Xenon Control starts Appium with `--config`, so there it goes in the config
+file:
+
+```yaml
+server:
+  log-filters:
+    - pattern: '(leaseToken\\?["'']?\s*:\s*\\?["'']?)[0-9a-fA-F]+'
+      flags: g
+      replacer: '$1**LEASE TOKEN**'
+```
+
+`test/unit/lease/lease-token-log-filter.spec.ts` reads both blocks from this
+file and runs them through Appium's own filter. It covers the full body, the
+colourised body, the createSession args line, a `util.inspect` form,
+doubly-escaped JSON, and bodies Appium cut inside the token.
 
 When the Kotlin SDK acquires a lease and then opens an Appium session,
 the W3C session-create POST carries `appium:capabilities` that include

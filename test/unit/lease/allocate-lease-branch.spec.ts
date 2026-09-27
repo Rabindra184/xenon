@@ -20,7 +20,7 @@ const TOKEN = 'f'.repeat(64);
 const REFUSED =
   'lease lse_1 is not active, or this session did not prove it holds it — pass ' +
   'xenon:options.leaseToken from the lease response, or create the session with the ' +
-  'credentials that created the lease';
+  'credentials that created the lease; and the phone must be one your teams can see';
 const NOBODY = { canOverride: false, apiKeyId: null, userId: null, leaseToken: null };
 
 const leaseCaps = () => ({

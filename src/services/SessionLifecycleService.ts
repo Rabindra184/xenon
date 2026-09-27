@@ -139,6 +139,10 @@ export class SessionLifecycleService {
       }
     }
 
+    // Only a session that names a lease pays for looking up how it may use one.
+    // Before the pending row is written, so a failure here leaves none behind.
+    const leaseAccess = leaseIdOf(caps) ? await authResult.leaseAccess() : undefined;
+
     const firstMatch =
       Array.isArray(caps.firstMatch) && caps.firstMatch.length > 0 ? caps.firstMatch[0] : {};
 
@@ -147,9 +151,6 @@ export class SessionLifecycleService {
       capability_id: pendingSessionId,
       createdAt: new Date().getTime(),
     });
-
-    // Only a session that names a lease pays for looking up how it may use one.
-    const leaseAccess = leaseIdOf(caps) ? await authResult.leaseAccess() : undefined;
 
     const lockName = this.getLockName(caps);
     this.logger.debug(`📱 Acquiring lock: ${lockName}`);

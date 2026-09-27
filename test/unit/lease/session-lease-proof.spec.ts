@@ -29,7 +29,7 @@ const TOKEN = 'f'.repeat(64);
 const REFUSED =
   'lease lse_1 is not active, or this session did not prove it holds it — pass ' +
   'xenon:options.leaseToken from the lease response, or create the session with the ' +
-  'credentials that created the lease';
+  'credentials that created the lease; and the phone must be one your teams can see';
 
 const sessionCaps = (
   xenonOptions: Record<string, unknown>,
@@ -206,6 +206,20 @@ describe('createSession — a lease-bound session proves it holds the lease', ()
       lease.actorId = 'usr_other';
       expect(await allowed(sessionCaps({}, key('ak_team_a')))).to.equal(true);
     });
+  });
+
+  it('leaves no pending-session row when looking up lease access throws', async () => {
+    // Every row added must be removed again on a failed create.
+    const rows = new Set<string>();
+    (pendingSessions.addNewPendingSession as sinon.SinonStub).callsFake(async (c: any) => {
+      rows.add(c.capability_id);
+    });
+    (pendingSessions.removePendingSession as sinon.SinonStub).callsFake(async (id: string) => {
+      rows.delete(id);
+    });
+    sinon.stub(svc as any, 'lookUpLeaseAccess').rejects(new Error('lookup blew up'));
+    expect(await refusal(sessionCaps({}, ownerKey))).to.equal('lookup blew up');
+    expect([...rows]).to.deep.equal([]);
   });
 
   it('a session that names no lease reads no user and no team for it', async () => {

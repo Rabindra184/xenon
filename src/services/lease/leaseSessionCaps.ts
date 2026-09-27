@@ -45,14 +45,14 @@ export function leaseIdOf(caps: ISessionCapability): string | undefined {
 /**
  * The one answer to a session that may not use the lease it names, whether
  * the lease is gone, is someone else's, or is on a phone the caller can't
- * see. It says how to prove you hold a lease without saying which case
- * applied, so a caller can't use it to learn about leases that aren't theirs.
+ * see. It names every condition without saying which one failed, so a caller
+ * can't use it to learn about leases that aren't theirs.
  */
 export function leaseRefusalMessage(leaseId: string): string {
   return (
     `lease ${leaseId} is not active, or this session did not prove it holds it — ` +
     'pass xenon:options.leaseToken from the lease response, or create the session ' +
-    'with the credentials that created the lease'
+    'with the credentials that created the lease; and the phone must be one your teams can see'
   );
 }
 
