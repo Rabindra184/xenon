@@ -23,6 +23,7 @@ const STATE_CHANGING = new Set(['POST', 'PUT', 'DELETE', 'PATCH']);
 export const UNGUARDED_CONTROL_MUTATIONS: readonly string[] = [
   'stream/start', // own conflict handling — see app/routers/streamStartConflict.ts
   'stream/stop', // richer check already: self | legacy | admin, plus orphan release
+  'stream/leave', // the same check as stream/stop
   'stream/ticket', // mints a viewing credential; viewing is a read
 ];
 

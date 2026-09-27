@@ -60,6 +60,7 @@ function appWith(opts: {
   );
   router.post('/:udid/stream/start', (_req, res) => res.json({ reached: true }));
   router.post('/:udid/stream/stop', (_req, res) => res.json({ reached: true }));
+  router.post('/:udid/stream/leave', (_req, res) => res.json({ reached: true }));
   router.post('/:udid/stream/ticket', (_req, res) => res.json({ reached: true }));
   app.use('/control', router);
   return app;
@@ -177,9 +178,9 @@ describe('deviceAccessGuard', () => {
     expect(res.status).to.equal(200);
   });
 
-  it('skips stream/start, stream/stop and stream/ticket', async () => {
+  it('skips stream/start, stream/stop, stream/leave and stream/ticket', async () => {
     const app = appWith({ actorUserId: BOB });
-    for (const p of ['stream/start', 'stream/stop', 'stream/ticket']) {
+    for (const p of ['stream/start', 'stream/stop', 'stream/leave', 'stream/ticket']) {
       const res = await request(app).post(`/control/${UDID}/${p}`);
       expect(res.status, p).to.equal(200);
     }

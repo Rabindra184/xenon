@@ -35,6 +35,7 @@ import {
   isManualLock,
 } from '../../services/recording/manualLock';
 import { decideStreamStartConflict } from './streamStartConflict';
+import { LeaveScheduler, type LeaveDeps } from './streamLeave';
 import { SessionOwnerResolver } from '../../services/device-access/SessionOwnerResolver';
 import { resolveActor } from '../../services/device-access/actor';
 import {
@@ -575,6 +576,9 @@ const MJPEG_PROXY_CACHE: Map<string, any> = new Map();
  */
 router.post('/:udid/stream/start', async (req: Request, res: Response) => {
   const { udid } = req.params;
+  // Someone is about to watch: a page that just left (a reload, or another tab
+  // closing) must not stop the stream this page is starting.
+  previewLeaves.cancel(udid);
   const device = await getDeviceInfo(udid);
   if (!device) return res.status(404).send('Device not found');
 
@@ -740,6 +744,88 @@ router.post('/:udid/stream/ticket', async (req: Request, res: Response) => {
 /**
  * Stop stream endpoint
  */
+/**
+ * Stop a device's preview on every transport, drop its MJPEG proxy, and
+ * release its live-preview hold if `release` allows it. Always releases a
+ * manual lock it may, even when no in-memory session survived a restart (an
+ * orphaned busy flag). Shared by stream/stop and a settled stream/leave.
+ */
+async function stopPreview(udid: string, device: IDevice, release: boolean): Promise<void> {
+  if (device.platform === 'ios' || device.platform === 'tvos') {
+    await Container.get(IOSStreamService).stopStream(udid);
+  } else {
+    await Container.get(AndroidStreamService).stopStream(udid);
+    await Container.get(AndroidH264StreamService).stop(udid);
+  }
+
+  const existingProxy = MJPEG_PROXY_CACHE.get(udid);
+  if (existingProxy) {
+    existingProxy.stop();
+    MJPEG_PROXY_CACHE.delete(udid);
+  }
+
+  if (isManualLock(device.session_id) && release) {
+    try {
+      await unblockDevice(udid, device.host);
+    } catch {
+      /* best-effort lock release */
+    }
+  }
+}
+
+/** What a leave checks after its grace, and what it stops. Exported for tests. */
+export const previewLeaveDeps: LeaveDeps = {
+  async viewers(udid) {
+    const device = await getDeviceInfo(udid);
+    if (!device) return 0;
+    if (device.platform === 'ios' || device.platform === 'tvos') {
+      return Container.get(IOSStreamService).getStreamStatus(udid)?.viewerCount ?? 0;
+    }
+    const h264 = Container.get(AndroidH264StreamService).getMultiplexer(udid)?.clientCount ?? 0;
+    const mjpeg = Container.get(AndroidStreamService).getStreamStatus(udid)?.viewerCount ?? 0;
+    return h264 + mjpeg;
+  },
+  isRecording: (udid) => Container.get(RecordingStore).isRecording(udid),
+  async stop(udid) {
+    const device = await getDeviceInfo(udid);
+    if (!device) return;
+    // The leaver was allowed to release when it left; only a preview hold is
+    // ever released here, never an Appium session's lock.
+    await stopPreview(udid, device, isManualLock(device.session_id));
+  },
+};
+
+export const previewLeaves = new LeaveScheduler(previewLeaveDeps);
+
+/**
+ * A page stopped watching the device (navigated away, closed, reloaded).
+ *
+ * Unlike stream/stop, this does not stop anything at once: the hold belongs to
+ * the user and the device, and another tab may still be watching. After a
+ * short grace the preview is stopped and the hold released only if nobody is
+ * watching and nothing is recording. Same ownership rule as stream/stop.
+ */
+router.post('/:udid/stream/leave', async (req: Request, res: Response) => {
+  const { udid } = req.params;
+  const device = await getDeviceInfo(udid);
+  if (!device) return res.status(404).send('Device not found');
+  const actor = resolveActor(req);
+  const lockInfo = inspectManualLock(device.session_id, actor.userId, udid);
+  const mayRelease =
+    isSelfManualLock(device.session_id, udid, actor.userId, actor.apiKeyId) ||
+    !!lockInfo?.legacy ||
+    actor.isAdmin;
+  if (lockInfo && !mayRelease) {
+    return res.status(403).json({
+      success: false,
+      error: 'lock_owned_by_another_user',
+      message: 'This device is being controlled by another user.',
+    });
+  }
+  previewLeaves.leave(udid);
+  return res.status(202).send({ success: true, pending: true });
+});
+
 router.post('/:udid/stream/stop', async (req: Request, res: Response) => {
   const { udid } = req.params;
   const device = await getDeviceInfo(udid);
@@ -795,30 +881,8 @@ router.post('/:udid/stream/stop', async (req: Request, res: Response) => {
   }
 
   try {
-    if (device.platform === 'ios' || device.platform === 'tvos') {
-      await Container.get(IOSStreamService).stopStream(udid);
-    } else {
-      await Container.get(AndroidStreamService).stopStream(udid);
-      await Container.get(AndroidH264StreamService).stop(udid);
-    }
-
-    // Clear and stop MJPEG proxy
-    const existingProxy = MJPEG_PROXY_CACHE.get(udid);
-    if (existingProxy) {
-      existingProxy.stop();
-      MJPEG_PROXY_CACHE.delete(udid);
-    }
-
-    // Always release an owned/legacy/admin manual lock after stop — even when
-    // no in-memory session survived a process restart (orphaned busy flag).
-    if (isManualLock(device.session_id) && mayRelease) {
-      try {
-        await unblockDevice(udid, device.host);
-      } catch {
-        /* best-effort lock release */
-      }
-    }
-
+    previewLeaves.cancel(udid);
+    await stopPreview(udid, device, mayRelease);
     log.info(`Stream stopped for ${udid}`);
     return res.status(200).send({ success: true });
   } catch (err: any) {
