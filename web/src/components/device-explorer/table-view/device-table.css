@@ -29,17 +29,36 @@
 
 /* Row height comes from cell padding, not a min-height on the row: two lines
    of text (about 34px) plus 5px above and below land a row at about 44px.
-   The header keeps 8px. */
+   The header keeps 8px. The Device cell is a `<th scope="row">` (rowheader),
+   not a `<td>`, so it's included in these selectors explicitly rather than
+   picked up by `tbody td`. */
 .devtable.tbl thead th,
-.devtable.tbl tbody td {
+.devtable.tbl tbody td,
+.devtable.tbl tbody th.devtable-rowheader {
   padding: 8px 12px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.devtable.tbl tbody td {
+.devtable.tbl tbody td,
+.devtable.tbl tbody th.devtable-rowheader {
   padding-top: 5px;
   padding-bottom: 5px;
+}
+
+/* A row header looks like the other cells: normal weight, left-aligned,
+   the same colour, border and vertical centring as a <td> — only its
+   scope="row" is different, so a screen reader names the row when it
+   reaches the row's repeated Control / Reserve / More buttons. */
+.devtable.tbl tbody th.devtable-rowheader {
+  font-weight: 400;
+  text-align: left;
+  vertical-align: middle;
+  color: var(--text);
+  border-bottom: 1px solid var(--border);
+}
+.devtable.tbl tbody tr:last-child th.devtable-rowheader {
+  border-bottom: none;
 }
 
 /* The rows run edge to edge, but the first and last columns line up with the
@@ -53,16 +72,27 @@
   padding-right: 20px;
 }
 
-/* The Actions cell holds buttons, not text: it must not truncate them. */
+/* The Actions cell holds buttons, not text: it must not truncate them. It
+   stays a plain table cell (`display: flex` here took it out of table
+   layout, so the box no longer stretched to the row's height and the row's
+   divider stepped at this column); the flex row lives on the inner div
+   instead. */
 .devtable.tbl tbody td.devtable-actions {
   white-space: normal;
   overflow: visible;
   text-overflow: clip;
+  vertical-align: middle;
 }
 
+/* `--de2-sticky-h` is the measured height of the page's own sticky title +
+   toolbar group (`.de2-sticky-group` in device-explorer.css), set by a
+   ResizeObserver in DeviceExplorer. Without it, this header (also sticky at
+   top: 0 in the same scroll container) would scroll underneath that group
+   instead of stopping below it. It only needs to clear the rows here, well
+   under the sticky group's z-index of 15. */
 .devtable.tbl thead th {
   position: sticky;
-  top: 0;
+  top: var(--de2-sticky-h, 0px);
   background: var(--surface);
   z-index: 1;
 }
@@ -83,8 +113,15 @@
   font-size: 11px;
 }
 
-.devtable-row.is-offline {
-  opacity: 0.6;
+/* An offline row shows its last-known details, same as the card's .dc2-dim:
+   fade only the status dot and the tags, and mute the title line, rather
+   than fading every word (which measured under AA contrast). */
+.devtable-row.is-offline .devtable-status-dot,
+.devtable-row.is-offline .devtable-tag {
+  opacity: 0.55;
+}
+.devtable-row.is-offline .devtable-title {
+  color: var(--text-muted);
 }
 
 .devtable-sort {
@@ -111,7 +148,7 @@
   font-size: 11px;
 }
 
-.devtable-actions {
+.devtable-actions-inner {
   display: flex;
   align-items: center;
   gap: 6px;

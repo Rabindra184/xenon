@@ -1,6 +1,6 @@
 import * as React from 'react';
-import { fireEvent, render, screen, within } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { IDevice } from '../../../interfaces/IDevice';
 
 const MEMBER = { userId: 'me', email: 'me@acme.com', name: 'Me', role: 'MEMBER', teams: [] };
@@ -11,6 +11,7 @@ const api = vi.hoisted(() => ({
   releaseReservation: vi.fn(),
   blockDevice: vi.fn(),
   unblockDevice: vi.fn(),
+  setDeviceTeam: vi.fn().mockResolvedValue(undefined),
 }));
 vi.mock('../../../api-service', () => ({ default: api }));
 
@@ -93,26 +94,35 @@ describe('DeviceTable', () => {
     table({ devices: [...list, device({ udid: 'D', host: 'http://node-b:4723' })] });
     // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
     const gamma = rows().find((r) => r.textContent?.includes('Gamma'))!;
+    // The Device cell is a rowheader, not a cell: getAllByRole('cell') no
+    // longer includes it, so Platform is cells[0], not cells[1].
     const cells = within(gamma).getAllByRole('cell');
-    expect(cells[2]).toHaveAttribute('title', 'iOS 17.0');
-    expect(cells[4]).toHaveAttribute('title', 'QA');
-    expect(cells[6]).toHaveAttribute('title', 'http://127.0.0.1:4723');
+    expect(cells[1]).toHaveAttribute('title', 'iOS 17.0');
+    expect(cells[3]).toHaveAttribute('title', 'QA');
+    expect(cells[5]).toHaveAttribute('title', 'http://127.0.0.1:4723');
     // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
     const alpha = rows().find((r) => r.textContent?.includes('Alpha'))!;
-    expect(within(alpha).getAllByRole('cell')[4]).toHaveAttribute('title', 'Shared');
+    expect(within(alpha).getAllByRole('cell')[3]).toHaveAttribute('title', 'Shared');
+  });
+
+  it('gives the Device cell a title with the name and UDID, while it is not being edited', () => {
+    table();
+    // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+    const gamma = rows().find((r) => r.textContent?.includes('Gamma'))!;
+    expect(within(gamma).getByRole('rowheader')).toHaveAttribute('title', 'Gamma\nC');
   });
 
   it('truncates the Status and Device cells one line at a time', () => {
     table();
     // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
     const gamma = rows().find((r) => r.textContent?.includes('Gamma'))!;
-    const cells = within(gamma).getAllByRole('cell');
     // The Device cell's title line and subtitle line are separate elements,
     // each carrying the truncation class, not one block truncated as a whole.
-    const subtitle = cells[1].querySelector('.devtable-muted');
+    const rowheader = within(gamma).getByRole('rowheader');
+    const subtitle = rowheader.querySelector('.devtable-muted');
     expect(subtitle).not.toBeNull();
     expect(subtitle).toHaveClass('devtable-line');
-    const titleLine = cells[1].querySelector('.devtable-line:not(.devtable-muted)');
+    const titleLine = rowheader.querySelector('.devtable-line:not(.devtable-muted)');
     expect(titleLine).not.toBeNull();
     expect(titleLine).not.toBe(subtitle);
   });
@@ -136,7 +146,7 @@ describe('DeviceTable', () => {
 
   it('orders rows by the sort (offline last by status)', () => {
     table();
-    expect(rows().map((r) => within(r).getAllByRole('cell')[1].textContent)).toEqual([
+    expect(rows().map((r) => within(r).getByRole('rowheader').textContent)).toEqual([
       expect.stringContaining('Alpha'),
       expect.stringContaining('Gamma'),
       expect.stringContaining('Beta'),
@@ -149,14 +159,14 @@ describe('DeviceTable', () => {
     const gamma = rows().find((r) => r.textContent?.includes('Gamma'))!;
     const cells = within(gamma).getAllByRole('cell');
     expect(cells[0]).toHaveTextContent('Ready');
-    expect(cells[2]).toHaveTextContent('iOS 17.0');
-    expect(cells[3]).toHaveTextContent('Real');
-    expect(cells[4]).toHaveTextContent('QA');
-    expect(cells[5]).toHaveTextContent('#a');
-    expect(cells[5]).toHaveTextContent('+1');
+    expect(cells[1]).toHaveTextContent('iOS 17.0');
+    expect(cells[2]).toHaveTextContent('Real');
+    expect(cells[3]).toHaveTextContent('QA');
+    expect(cells[4]).toHaveTextContent('#a');
+    expect(cells[4]).toHaveTextContent('+1');
     // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
     const alpha = rows().find((r) => r.textContent?.includes('Alpha'))!;
-    expect(within(alpha).getAllByRole('cell')[4]).toHaveTextContent('Shared');
+    expect(within(alpha).getAllByRole('cell')[3]).toHaveTextContent('Shared');
   });
 
   it('gives each row the card’s actions, with the reason on a disabled Control', () => {
@@ -180,5 +190,40 @@ describe('DeviceTable', () => {
     // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
     const beta = rows().find((r) => r.textContent?.includes('Beta'))!;
     expect(beta).toHaveClass('is-offline');
+  });
+
+  // The row's own Team-cell branch: not covered by device-card.test.tsx or
+  // any live check, and its onDone handler is duplicated from the card.
+  describe('assigning a team from a row, as an admin', () => {
+    afterEach(() => {
+      auth.me = null;
+    });
+
+    it('shows the TeamPicker in the row’s Team cell after Assign team…', () => {
+      auth.me = { ...MEMBER, role: 'ADMIN' };
+      table();
+      // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+      const alpha = rows().find((r) => r.textContent?.includes('Alpha'))!;
+      fireEvent.click(within(alpha).getByRole('button', { name: 'More actions' }));
+      // The menu renders through a portal, so it isn't inside the row.
+      fireEvent.click(screen.getByRole('menuitem', { name: 'Assign team…' }));
+      expect(within(alpha).getByRole('combobox', { name: 'Team' })).toBeInTheDocument();
+    });
+
+    it('assigns the picked team and reloads', async () => {
+      auth.me = { ...MEMBER, role: 'ADMIN' };
+      const reloadDevices = vi.fn();
+      table({ reloadDevices });
+      // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+      const alpha = rows().find((r) => r.textContent?.includes('Alpha'))!;
+      fireEvent.click(within(alpha).getByRole('button', { name: 'More actions' }));
+      fireEvent.click(screen.getByRole('menuitem', { name: 'Assign team…' }));
+      fireEvent.change(within(alpha).getByRole('combobox', { name: 'Team' }), {
+        target: { value: 't1' },
+      });
+      expect(api.setDeviceTeam).toHaveBeenCalledWith('A', 't1');
+      await waitFor(() => expect(reloadDevices).toHaveBeenCalled());
+      expect(within(alpha).queryByRole('combobox', { name: 'Team' })).toBeNull();
+    });
   });
 });

@@ -87,7 +87,7 @@ const DeviceRow: React.FC<{
     <TR className={`devtable-row${kind === 'offline' ? ' is-offline' : ''}`}>
       <TD>
         <div className="devtable-line">
-          <StatusDot kind={kind} /> {STATE_LABEL[kind]}
+          <StatusDot kind={kind} className="devtable-status-dot" /> {STATE_LABEL[kind]}
         </div>
         {activity && (
           <div className="devtable-muted devtable-line" title={activity}>
@@ -95,15 +95,15 @@ const DeviceRow: React.FC<{
           </div>
         )}
       </TD>
-      <TD title={`${title}\n${device.udid}`}>
-        <div className="devtable-line">{title}</div>
+      <TH scope="row" className="devtable-rowheader" title={`${title}\n${device.udid}`}>
+        <div className="devtable-title devtable-line">{title}</div>
         <div className="devtable-muted devtable-line" title={subtitle}>
           {subtitle}
         </div>
-      </TD>
+      </TH>
       <TD title={platformText}>{platformText}</TD>
       <TD>{isVirtual(device) ? 'Virtual' : 'Real'}</TD>
-      <TD title={teamName ?? 'Shared'}>
+      <TD title={actions.editingTeam ? undefined : (teamName ?? 'Shared')}>
         {actions.editingTeam ? (
           <TeamPicker
             udid={device.udid}
@@ -128,18 +128,20 @@ const DeviceRow: React.FC<{
       </TD>
       {showHost && <TD title={device.host}>{device.host}</TD>}
       <TD className="devtable-actions" title={control.enabled ? undefined : control.reason}>
-        <DeviceControlButtons
-          device={device}
-          actions={actions}
-          navigate={navigate}
-          reasonId={reasonId}
-        />
-        {!control.enabled && (
-          <span id={reasonId} className="sr-only">
-            {control.reason}
-          </span>
-        )}
-        <DeviceMoreMenu device={device} actions={actions} />
+        <div className="devtable-actions-inner">
+          <DeviceControlButtons
+            device={device}
+            actions={actions}
+            navigate={navigate}
+            reasonId={reasonId}
+          />
+          {!control.enabled && (
+            <span id={reasonId} className="sr-only">
+              {control.reason}
+            </span>
+          )}
+          <DeviceMoreMenu device={device} actions={actions} />
+        </div>
       </TD>
       {actions.dialogs}
     </TR>
