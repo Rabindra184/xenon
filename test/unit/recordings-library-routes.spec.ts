@@ -13,6 +13,10 @@ import * as deviceService from '../../src/data-service/device-service';
 import * as recordingFiles from '../../src/services/recording/recordingFiles';
 import { scopesForRole } from '../../src/middleware/authMiddleware';
 import { PluginContext } from '../../src/PluginContext';
+import {
+  compositeOutputPath,
+  compositeLayoutPath,
+} from '../../src/services/recording/RecordingOrchestrator';
 import { useArtifactStore } from '../helpers/artifact-store';
 
 type Role = 'MEMBER' | 'ADMIN' | 'SUPER_ADMIN';
@@ -354,6 +358,58 @@ describe('recordings library routes', () => {
       expect(res.status, JSON.stringify(res.body)).to.equal(200);
       expect(res.body.bookmarks.map((b: any) => b.id)).to.deep.equal(['b1', 'b2']);
       expect(res.body.annotations.map((a: any) => a.id)).to.deep.equal(['a1', 'a2']);
+    });
+  });
+
+  // The Download menu offers "Side-by-side video" only when this is true, and
+  // composite.mp4 serves only a caller who sees every phone in its cells.
+  describe('hasComposite', () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'rec-lib-composite-'));
+    useArtifactStore(root);
+    after(() => fs.rmSync(root, { recursive: true, force: true }));
+
+    beforeEach(() => {
+      rows = [rec(), rec({ id: 'r2', device_udid: 'U2' })];
+      const file = compositeOutputPath('g1');
+      fs.mkdirSync(path.dirname(file), { recursive: true });
+      fs.writeFileSync(file, 'composite');
+      fs.writeFileSync(
+        compositeLayoutPath('g1'),
+        JSON.stringify({
+          version: 1,
+          cellW: 360,
+          cellH: 640,
+          cols: 2,
+          rows: 1,
+          cells: [
+            { index: 0, udid: 'U1', recordingId: 'r1' },
+            { index: 1, udid: 'U2', recordingId: 'r2' },
+          ],
+        }),
+      );
+    });
+
+    /** hasComposite as the list, then the detail, reports it. */
+    const reported = async (who: Caller) => {
+      const list = await request(buildApp(who)).get('/xenon/api/recordings');
+      const detail = await request(buildApp(who)).get('/xenon/api/recordings/g1');
+      expect(list.status, JSON.stringify(list.body)).to.equal(200);
+      expect(detail.status, JSON.stringify(detail.body)).to.equal(200);
+      return [list.body.recordings[0].hasComposite, detail.body.summary.hasComposite];
+    };
+
+    it('is false for a member who sees one of the two phones', async () => {
+      visible = new Set(['U1']);
+      expect(await reported(bob)).to.deep.equal([false, false]);
+    });
+
+    it('is true for a member who sees both phones the layout lists', async () => {
+      expect(await reported(bob)).to.deep.equal([true, true]);
+    });
+
+    it('is true for an admin', async () => {
+      visible = new Set();
+      expect(await reported(admin)).to.deep.equal([true, true]);
     });
   });
 

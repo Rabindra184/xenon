@@ -7,7 +7,7 @@ import {
   RecordingError,
   compositeOutputPath,
 } from '../../services/recording/RecordingOrchestrator';
-import { ProofBundleService } from '../../services/recording/proof-bundle';
+import { ProofBundleService, type RecordingFilter } from '../../services/recording/proof-bundle';
 import { AnnotationRenderService } from '../../services/recording/annotation-render';
 import { RecordingStore } from '../../services/recording/recording-store';
 import { DOWNLOAD_OPTIONS } from './apps';
@@ -36,6 +36,8 @@ import log from '../../logger';
 
 type AuthLike = { teamIds?: string[] };
 const authOf = (req: Request) => (req as Request & { auth?: AuthLike }).auth;
+/** An admin: no team filter, so every row is visible. */
+const seesEverything = (req: Request) => authOf(req)?.teamIds === undefined;
 
 interface GroupRow {
   group_id: string;
@@ -67,8 +69,8 @@ function groupOwner(rows: GroupRow[]): string | undefined {
  *   from the owner.
  */
 async function visibleRows<T extends GroupRow>(req: Request, rows: T[]): Promise<T[]> {
+  if (seesEverything(req)) return rows;
   const teamIds = authOf(req)?.teamIds;
-  if (teamIds === undefined) return rows;
   const seen = new Set(await deviceService.filterRowsByVisibleDevice(rows, teamIds, 'device_udid'));
   const userId = resolveActor(req).userId;
   const byGroup = new Map<string, T[]>();
@@ -104,8 +106,8 @@ async function visibleRows<T extends GroupRow>(req: Request, rows: T[]): Promise
 async function visibleRecordings(req: Request, groupId: string) {
   const rows = await Container.get(RecordingStore).listGroup(groupId);
   const visible = await visibleRows(req, rows);
-  const admin = authOf(req)?.teamIds === undefined;
-  return { rows, all: rows.length, ids: admin ? undefined : visible.map((r) => r.id) };
+  const ids = seesEverything(req) ? undefined : visible.map((r) => r.id);
+  return { rows, all: rows.length, ids };
 }
 type Visible = Awaited<ReturnType<typeof visibleRecordings>>;
 const seesNone = (v: Visible) => v.all === 0 || (v.ids !== undefined && v.ids.length === 0);
@@ -145,8 +147,35 @@ function toSummaryRow(r: any): SummaryRow {
   };
 }
 
-async function summaryContext(rows: any[]): Promise<SummaryContext> {
+/**
+ * Per group, the recordings the caller sees (from {@link visibleRows}), as
+ * `ProofBundleService` takes them: undefined, meaning every one, for an admin.
+ */
+function visibleIdsByGroup(
+  req: Request,
+  visible: Array<{ id: string; group_id: string }>,
+): (groupId: string) => RecordingFilter {
+  if (seesEverything(req)) return () => undefined;
+  const byGroup = new Map<string, string[]>();
+  visible.forEach((r) => {
+    const list = byGroup.get(r.group_id);
+    if (list) list.push(r.id);
+    else byGroup.set(r.group_id, [r.id]);
+  });
+  return (groupId) => byGroup.get(groupId) ?? [];
+}
+
+/**
+ * What the summaries need beyond the rows. `only` is the caller's visible
+ * recordings per group: the Side-by-side download is offered only to a caller
+ * `composite.mp4` would serve, one who sees every phone in its cells.
+ */
+async function summaryContext(
+  rows: any[],
+  only: (groupId: string) => RecordingFilter,
+): Promise<SummaryContext> {
   const store = Container.get(RecordingStore);
+  const bundle = Container.get(ProofBundleService);
   const udids = Array.from(new Set(rows.map((r) => r.device_udid as string)));
   const users = Array.from(
     new Set(rows.map((r) => r.started_by as string | null).filter((u): u is string => !!u)),
@@ -159,7 +188,8 @@ async function summaryContext(rows: any[]): Promise<SummaryContext> {
     devices: await store.deviceNames(udids),
     users: names,
     retention: retention(),
-    hasComposite: (g) => fs.existsSync(compositeOutputPath(g)),
+    hasComposite: (g) =>
+      fs.existsSync(compositeOutputPath(g)) && bundle.compositeAllowed(g, only(g)),
   };
 }
 
@@ -173,7 +203,7 @@ router.get('/recordings', async (req: Request, res: Response) => {
   try {
     const rows = await Container.get(RecordingStore).libraryRows();
     const visible = await visibleRows(req, rows);
-    const ctx = await summaryContext(visible);
+    const ctx = await summaryContext(visible, visibleIdsByGroup(req, visible));
     const page = buildLibrary(visible.map(toSummaryRow), ctx, parsed.filter, {
       limit: parsed.limit,
       cursor: parsed.cursor,
@@ -392,7 +422,7 @@ router.get('/recordings/:groupId', async (req: Request, res: Response) => {
     if (visibleRecs.length === 0) return res.status(404).json({ error: 'not_found' });
     const summary = summarizeGroup(
       visibleRecs.map(toSummaryRow),
-      await summaryContext(visibleRecs),
+      await summaryContext(visibleRecs, visibleIdsByGroup(req, visibleRecs)),
     );
     const bookmarks = visibleRecs
       .reduce<any[]>(
