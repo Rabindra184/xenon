@@ -36,6 +36,7 @@ import { useDisplayState } from './useDisplayState';
 import { useReleaseOnPageHide } from '../../hooks/useReleaseOnPageHide';
 import LogcatView from './logcat/LogcatView';
 import { deviceTitle } from '../device-card/device-card/deviceIdentity';
+import { nameDevice, titleForPath } from '../../lib/document-title';
 import { ActionsPanel } from './actions/ActionsPanel';
 
 interface DeviceControlProps {
@@ -81,6 +82,13 @@ export default function DeviceControl({ device, onClose, titleId }: DeviceContro
   const noteDeviceAction = useCallback(() => setDeviceActionAt(Date.now()), []);
   // The name its Devices card shows, for the header and every message.
   const deviceName = deviceTitle(currentDevice);
+
+  // The route's title only knows the UDID ("381103b720057ece · Device"); name
+  // the tab after the device, as the header does.
+  useEffect(() => {
+    nameDevice(currentDevice.udid, deviceName);
+    document.title = titleForPath(location.pathname);
+  }, [currentDevice.udid, deviceName, location.pathname]);
   const [streamLoaded, setStreamLoaded] = useState(false);
   const [streamFailed, setStreamFailed] = useState(false);
   const MAX_STREAM_RETRIES = 10; // ~20s at the 2s retry cadence

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { titleForPath } from './document-title';
+import { nameDevice, titleForPath } from './document-title';
 
 describe('titleForPath', () => {
   it.each([
@@ -16,5 +16,15 @@ describe('titleForPath', () => {
     ['/something-unknown', 'Xenon'],
   ])('%s → %s', (path, title) => {
     expect(titleForPath(path)).toBe(title);
+  });
+});
+
+describe('a device control tab', () => {
+  // It read "381103b720057ece · Device", which says nothing in a row of tabs.
+  it('is named after the device once its name is known', () => {
+    expect(titleForPath('/devices/U-9/control/actions')).toBe('U-9 · Device · Xenon');
+    nameDevice('U-9', 'Galaxy S9+');
+    expect(titleForPath('/devices/U-9/control/actions')).toBe('Galaxy S9+ · Device · Xenon');
+    expect(titleForPath('/devices/U-9/control/omni')).toBe('Galaxy S9+ · Device · Xenon');
   });
 });
