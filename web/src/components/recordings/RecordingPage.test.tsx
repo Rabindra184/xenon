@@ -33,6 +33,7 @@ const pb = vi.hoisted(() => ({
   pause: vi.fn(),
   toggle: vi.fn(),
   seek: vi.fn(),
+  bind: vi.fn(() => () => undefined),
 }));
 vi.mock('./useSyncedPlayback', () => ({
   useSyncedPlayback: () => ({
@@ -41,7 +42,7 @@ vi.mock('./useSyncedPlayback', () => ({
     pause: pb.pause,
     toggle: pb.toggle,
     seek: pb.seek,
-    bind: () => () => undefined,
+    bind: pb.bind,
   }),
 }));
 
@@ -179,6 +180,7 @@ describe('RecordingPage', () => {
     pb.pause.mockReset();
     pb.toggle.mockReset();
     pb.seek.mockReset();
+    pb.bind.mockClear(); // mockClear, not mockReset: keep the noop-returning implementation.
     api.getRecording.mockReset();
     api.getRecording.mockResolvedValue(detail());
     api.deleteRecording.mockReset();
@@ -207,6 +209,9 @@ describe('RecordingPage', () => {
     tiles.forEach((t) =>
       expect(within(t).getByText(t.getAttribute('aria-label') as string)).toBeInTheDocument(),
     );
+    // The stub above only hides jsdom's synchronous volumechange; a late-joining
+    // phone can only autoplay while muted, so assert the setter actually saw it.
+    expect(muted).toHaveBeenCalledWith(true);
   });
 
   it('notes a phone that joined later, one that failed, and a video that is gone', async () => {
@@ -288,12 +293,87 @@ describe('RecordingPage', () => {
     fireEvent.keyDown(document.body, { key: 'ArrowLeft' });
     expect(pb.seek).toHaveBeenLastCalledWith(5000);
 
+    // A focused Play button handles its own Space (a click); the page must not
+    // toggle a second time on top of it.
     pb.toggle.mockReset();
-    fireEvent.keyDown(timeline, { key: ' ' });
     const play = screen.getByRole('button', { name: 'Play' });
     play.focus();
     fireEvent.keyDown(play, { key: ' ' });
     expect(pb.toggle).not.toHaveBeenCalled();
+
+    // The timeline is a range input, but Space and the arrows are the transport's
+    // shortcuts, not native range behaviour: focusing it (by click or drag) must
+    // not disable them. preventDefault on the arrows also stops the range's own
+    // 100ms step from double-applying.
+    pb.toggle.mockReset();
+    pb.seek.mockReset();
+    fireEvent.keyDown(timeline, { key: ' ' });
+    expect(pb.toggle).toHaveBeenCalledTimes(1);
+    fireEvent.keyDown(timeline, { key: 'ArrowRight' });
+    expect(pb.seek).toHaveBeenLastCalledWith(15000);
+  });
+
+  it('ignores a held Space so it cannot flicker play and pause', async () => {
+    renderPage();
+    await loaded();
+
+    fireEvent.keyDown(document.body, { key: ' ', repeat: true });
+    expect(pb.toggle).not.toHaveBeenCalled();
+  });
+
+  it('still ignores Space typed into an unrelated text field', async () => {
+    renderPage();
+    await loaded();
+
+    const input = document.createElement('input');
+    input.type = 'text';
+    document.body.appendChild(input);
+    try {
+      fireEvent.keyDown(input, { key: ' ' });
+      expect(pb.toggle).not.toHaveBeenCalled();
+    } finally {
+      document.body.removeChild(input);
+    }
+  });
+
+  it('ignores a keydown held with Meta or Ctrl', async () => {
+    pb.state.timeMs = 10000;
+    renderPage();
+    await loaded();
+
+    fireEvent.keyDown(document.body, { key: ' ', metaKey: true });
+    fireEvent.keyDown(document.body, { key: 'ArrowRight', ctrlKey: true });
+    expect(pb.toggle).not.toHaveBeenCalled();
+    expect(pb.seek).not.toHaveBeenCalled();
+  });
+
+  it('ignores Space while the download menu has focus', async () => {
+    renderPage();
+    await loaded();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Download' }));
+    const menu = await screen.findByRole('menu');
+    fireEvent.keyDown(menu, { key: ' ' });
+    expect(pb.toggle).not.toHaveBeenCalled();
+  });
+
+  it('ignores Space while the delete dialog has focus', async () => {
+    renderPage();
+    await loaded();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Delete' }));
+    const dialog = screen.getByRole('dialog', { name: 'Delete this recording?' });
+    fireEvent.keyDown(dialog, { key: ' ' });
+    expect(pb.toggle).not.toHaveBeenCalled();
+  });
+
+  it('binds every playable phone with its offset and duration, never the failed one', async () => {
+    renderPage();
+    await loaded();
+
+    expect(pb.bind).toHaveBeenCalledWith('r1', { offsetMs: 0, durationMs: 252000 });
+    expect(pb.bind).toHaveBeenCalledWith('r2', { offsetMs: 42000, durationMs: 200000 });
+    expect(pb.bind).not.toHaveBeenCalledWith('r3', expect.anything());
   });
 
   it('shows Buffering… while a phone catches up, and Pause while playing', async () => {
@@ -346,6 +426,29 @@ describe('RecordingPage', () => {
     await waitFor(() => expect(screen.getByTestId('where')).toHaveTextContent('/recordings'));
     expect(api.deleteRecording).toHaveBeenCalledWith('g1');
     expect(toast).toHaveBeenCalledWith('Recording deleted', 'success');
+  });
+
+  it('disables Cancel and ignores Escape while a delete is in flight', async () => {
+    let resolveDelete: (() => void) | undefined;
+    api.deleteRecording.mockImplementation(
+      () =>
+        new Promise<void>((resolve) => {
+          resolveDelete = resolve;
+        }),
+    );
+    renderPage();
+    await loaded();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Delete' }));
+    const dialog = screen.getByRole('dialog', { name: 'Delete this recording?' });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Delete' }));
+
+    expect(within(dialog).getByRole('button', { name: 'Cancel' })).toBeDisabled();
+    fireEvent.keyDown(dialog, { key: 'Escape' });
+    expect(screen.getByRole('dialog', { name: 'Delete this recording?' })).toBeInTheDocument();
+
+    resolveDelete?.();
+    await waitFor(() => expect(screen.getByTestId('where')).toHaveTextContent('/recordings'));
   });
 
   it('keeps the dialog open with the reason when the server refuses', async () => {

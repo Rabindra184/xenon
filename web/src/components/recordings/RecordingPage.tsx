@@ -36,12 +36,16 @@ import './recordings.css';
 const noop = () => undefined;
 const STOP_FIRST = 'Stop the recording on Live devices first.';
 
-/** Focus is somewhere keys mean something else. */
+/**
+ * Focus is somewhere keys mean something else. The timeline (`input[type="range"]`)
+ * and the Annotations checkbox are excluded: the transport's own Space/←/→ handling
+ * should still apply to them, not a native text-entry escape hatch.
+ */
 function typingTarget(el: EventTarget | null): boolean {
   const node = el as HTMLElement | null;
   if (!node || !node.closest) return false;
   return !!node.closest(
-    'input, select, textarea, [contenteditable="true"], [role="dialog"], [role="menu"]',
+    'input:not([type="range"]):not([type="checkbox"]), select, textarea, [contenteditable="true"], [role="dialog"], [role="menu"]',
   );
 }
 
@@ -161,6 +165,7 @@ export default function RecordingPage() {
   React.useEffect(() => {
     let live = true;
     setFailure(null);
+    setDetail(null);
     getRecording(groupId)
       .then((d) => live && setDetail(d))
       .catch((e) => {
@@ -177,6 +182,19 @@ export default function RecordingPage() {
 
   const duration = detail?.summary.durationMs ?? 0;
   const pb = useSyncedPlayback(duration);
+  // The keyboard listener below is attached once per loaded recording (see its own
+  // deps), not on every render, so it reads the latest playback handle through this
+  // ref rather than closing over a `pb` that would otherwise go stale.
+  const pbRef = React.useRef(pb);
+  pbRef.current = pb;
+
+  const mountedRef = React.useRef(true);
+  React.useEffect(
+    () => () => {
+      mountedRef.current = false;
+    },
+    [],
+  );
 
   React.useEffect(() => {
     if (!detail || detail.summary.status === 'recording') return undefined;
@@ -186,20 +204,28 @@ export default function RecordingPage() {
       // Space on a focused button or link is that control's own click; handling
       // it here too would toggle twice.
       if (e.key === ' ' && (e.target as HTMLElement | null)?.closest?.('button, a, label')) return;
+      if (e.key === ' ' && e.repeat) {
+        // A held Space auto-repeats every ~30-90ms after the OS delay; without this
+        // guard every repeat toggles play/pause again, flickering and ending in
+        // whichever state the last repeat happened to land on.
+        e.preventDefault();
+        return;
+      }
+      const live = pbRef.current;
       if (e.key === ' ') {
         e.preventDefault();
-        pb.toggle();
+        live.toggle();
       } else if (e.key === 'ArrowRight') {
         e.preventDefault();
-        pb.seek(clampTime(pb.timeMs + SKIP_MS, duration));
+        live.seek(clampTime(live.timeMs + SKIP_MS, duration));
       } else if (e.key === 'ArrowLeft') {
         e.preventDefault();
-        pb.seek(clampTime(pb.timeMs - SKIP_MS, duration));
+        live.seek(clampTime(live.timeMs - SKIP_MS, duration));
       }
     };
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
-  }, [detail, pb, duration]);
+  }, [detail, duration]);
 
   if (failure) {
     return failure.missing ? (
@@ -252,13 +278,21 @@ export default function RecordingPage() {
     try {
       await deleteRecording(groupId);
     } catch (e) {
-      setDeleting(false);
-      setDeleteError(deleteErrorMessage(e));
+      // The page may have unmounted while the request was in flight (route change,
+      // or the dialog outliving the component in some other way); don't set state
+      // on an unmounted component.
+      if (mountedRef.current) {
+        setDeleting(false);
+        setDeleteError(deleteErrorMessage(e));
+      }
       return;
     }
-    // Navigating unmounts this page, so no state is set after it.
-    toast('Recording deleted', 'success');
-    navigate('/recordings');
+    // Navigating unmounts this page, so no state is set after it. Only navigate
+    // (and toast) if the page is still around to have asked for the delete.
+    if (mountedRef.current) {
+      toast('Recording deleted', 'success');
+      navigate('/recordings');
+    }
   };
 
   return (
@@ -282,7 +316,10 @@ export default function RecordingPage() {
                   disabled={running}
                   aria-describedby={running ? 'rec-delete-reason' : undefined}
                   title={running ? STOP_FIRST : undefined}
-                  onClick={() => setConfirming(true)}
+                  onClick={() => {
+                    setDeleteError(null);
+                    setConfirming(true);
+                  }}
                 >
                   <Trash2 size={14} aria-hidden="true" />
                   Delete
@@ -363,11 +400,12 @@ export default function RecordingPage() {
                   />
                 ))}
               </div>
-              {pb.waiting && (
-                <span role="status" className="rec-waiting">
-                  Buffering…
-                </span>
-              )}
+              {/* Mounted at all times so a screen reader has an existing live region to
+                  pick up the change — a status element created already-populated is
+                  often not announced. */}
+              <span role="status" className="rec-waiting">
+                {pb.waiting ? 'Buffering…' : ''}
+              </span>
               {summary.annotationCount > 0 && (
                 <label className="rec-toggle">
                   <input
@@ -408,10 +446,15 @@ export default function RecordingPage() {
       <Modal
         open={confirming}
         title="Delete this recording?"
-        onClose={closeConfirm}
+        onClose={() => {
+          // Ignore Escape and the × while a delete is in flight; the request
+          // can't be cancelled once it's sent.
+          if (deleting) return;
+          closeConfirm();
+        }}
         footer={
           <>
-            <Button variant="secondary" onClick={closeConfirm}>
+            <Button variant="secondary" onClick={closeConfirm} disabled={deleting}>
               Cancel
             </Button>
             <Button variant="danger" onClick={confirmDelete} disabled={deleting}>
