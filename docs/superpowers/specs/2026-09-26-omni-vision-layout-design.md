@@ -61,7 +61,8 @@ Decisions made in brainstorming:
   - resets to 0.4 on double-click;
   - is 12 px wide, the same as the gap it replaces, and all of it is the hit
     area; the cursor is `col-resize`;
-  - at rest shows a 4×28 px grip in `--border-strong`, centred vertically; on
+  - at rest shows a 4×28 px grip in `--text-dim` (first `--border-strong`,
+    raised for 3:1 non-text contrast), centred vertically; on
     hover or drag a full-height 2 px line in `--border-strong` appears and the
     grip turns `--text-muted`; on keyboard focus (`:focus-visible`) the line
     is `--color-focus-ring`.
