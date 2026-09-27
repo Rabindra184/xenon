@@ -494,16 +494,23 @@ router.delete('/recordings/:groupId', devicesScope, async (req: Request, res: Re
         message: 'Only the person who recorded it, or an admin, can delete it.',
       });
     }
+    // Only what the caller can see: a phone on another team stays with that
+    // team, and so does the composite, which shows it, until no row of the
+    // group is left. An admin sees every row, so deletes the whole group.
     // Rows first: if removing a file fails, no row points at it and the
     // orphan sweep reclaims it; the reverse would leave rows with no videos.
-    await store.deleteGroupRows(groupId);
+    await store.deleteGroupRows(
+      groupId,
+      visible.map((r) => r.id),
+    );
+    const left = (await store.listGroup(groupId)).length;
     const removed = recordingFiles.removeRecordingFiles(
-      recs.map((r) => r.file_path),
-      path.dirname(compositeOutputPath(groupId)),
+      visible.map((r) => r.file_path),
+      left === 0 ? path.dirname(compositeOutputPath(groupId)) : null,
       config.recordingsAssetsPath,
     );
     recLog.info(
-      `Deleted recording ${groupId} (${recs.length} video(s), ${removed.length} dir(s)) for ${actor.userId}`,
+      `Deleted ${visible.length} of ${recs.length} video(s) of recording ${groupId} (${removed.length} dir(s), ${left} left) for ${actor.userId}`,
     );
     return res.status(204).end();
   } catch (e: any) {

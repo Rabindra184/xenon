@@ -216,6 +216,34 @@ describe('RecordingStore (Prisma round-trip)', () => {
     expect(await prisma.annotation.count({ where: { recording_id: 'test-del-2' } })).to.equal(0);
   });
 
+  it('deleteGroupRows with ids removes only those rows of the group', async () => {
+    for (const [id, groupId] of [
+      ['test-part-1', 'test-g-part'],
+      ['test-part-2', 'test-g-part'],
+      ['test-part-3', 'test-g-part-other'],
+    ]) {
+      await store.create({
+        id,
+        groupId,
+        deviceUdid: id.toUpperCase(),
+        deviceHost: '127.0.0.1',
+        filePath: `/tmp/${id}.mp4`,
+        sessionId: null,
+        deviceSnapshot: null,
+      });
+    }
+    await store.addBookmark('test-part-1', 'x', 1);
+    // An id from another group is not this group's to delete.
+    expect(await store.deleteGroupRows('test-g-part', ['test-part-1', 'test-part-3'])).to.equal(1);
+    expect((await store.listGroup('test-g-part')).map((r) => r.id)).to.deep.equal(['test-part-2']);
+    expect((await store.listGroup('test-g-part-other')).map((r) => r.id)).to.deep.equal([
+      'test-part-3',
+    ]);
+    expect(await prisma.bookmark.count({ where: { recording_id: 'test-part-1' } })).to.equal(0);
+    expect(await store.deleteGroupRows('test-g-part', [])).to.equal(0);
+    expect(await store.deleteGroupRows('test-g-part')).to.equal(1);
+  });
+
   it('names users by name, then email', async () => {
     const names = await store.userNames([]);
     expect(names.size).to.equal(0);

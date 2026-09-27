@@ -149,9 +149,14 @@ export class RecordingStore {
     });
   }
 
-  /** Delete a group's rows; bookmarks and annotations cascade. Returns how many went. */
-  async deleteGroupRows(groupId: string): Promise<number> {
-    const out = await prisma.recording.deleteMany({ where: { group_id: groupId } });
+  /**
+   * Delete a group's rows, or only those of `ids` that are in the group;
+   * bookmarks and annotations cascade. Returns how many went.
+   */
+  async deleteGroupRows(groupId: string, ids?: string[]): Promise<number> {
+    const out = await prisma.recording.deleteMany({
+      where: { group_id: groupId, ...(ids ? { id: { in: ids } } : {}) },
+    });
     return out.count;
   }
 

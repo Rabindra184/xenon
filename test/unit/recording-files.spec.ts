@@ -41,6 +41,14 @@ describe('recording file removal', () => {
     expect(fs.existsSync(path.join(base, '_groups'))).to.equal(true);
   });
 
+  it('leaves the composite directory alone without a group directory', () => {
+    const v1 = make('r1', 'video', 'r1.mp4');
+    const composite = make('_groups', 'g1', 'composite.mp4');
+    const removed = removeRecordingFiles([v1], null, base);
+    expect(removed).to.deep.equal([path.join(base, 'r1')]);
+    expect(fs.existsSync(composite)).to.equal(true);
+  });
+
   it('refuses anything outside the recordings tree, the tree itself and _groups itself', () => {
     const outside = fs.mkdtempSync(path.join(os.tmpdir(), 'rec-outside-'));
     try {

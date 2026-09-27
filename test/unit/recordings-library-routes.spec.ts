@@ -146,10 +146,10 @@ describe('recordings library routes', () => {
       libraryRows: async () => rows,
       listGroup: async (g: string) => rows.filter((r) => r.group_id === g),
       findById: async (id: string) => rows.find((r) => r.id === id) ?? null,
-      deleteGroupRows: sinon.stub().callsFake(async (g: string) => {
-        const n = rows.filter((r) => r.group_id === g).length;
-        rows = rows.filter((r) => r.group_id !== g);
-        return n;
+      deleteGroupRows: sinon.stub().callsFake(async (g: string, ids?: string[]) => {
+        const gone = rows.filter((r) => r.group_id === g && (!ids || ids.includes(r.id)));
+        rows = rows.filter((r) => !gone.includes(r));
+        return gone.length;
       }),
       deviceNames: async (udids: string[]) =>
         new Map(Array.from(devices).filter(([u]) => udids.includes(u))),
@@ -485,6 +485,42 @@ describe('recordings library routes', () => {
       expect((await del({ ...alice, scopes: 'read,devices' })).status).to.equal(204);
       rows = [rec()];
       expect((await del(alice)).status, 'cookie session, scopesForRole(MEMBER)').to.equal(204);
+    });
+
+    // A group can mix teams' phones. Deleting it removes what the caller can
+    // see; another team's phone stays theirs, and so does the composite,
+    // which shows it, until no row of the group is left.
+    describe('a group with a phone on another team', () => {
+      beforeEach(() => {
+        devices.set('OTHER', { name: 'Team B phone', platform: 'android' });
+        visible = new Set(['U1']);
+        rows = [
+          rec(),
+          rec({ id: 'r2', device_udid: 'OTHER', file_path: '/nonexistent/r2/video/r2.mp4' }),
+        ];
+      });
+
+      it('lets the owner delete only their phone: its row and files, not the composite', async () => {
+        const res = await del(alice);
+        expect(res.status, JSON.stringify(res.body)).to.equal(204);
+        expect(store.deleteGroupRows.calledOnceWith('g1', ['r1'])).to.equal(true);
+        expect(rows.map((r) => r.id)).to.deep.equal(['r2']);
+        expect(remove.calledOnce).to.equal(true);
+        expect(remove.firstCall.args[0]).to.deep.equal(['/nonexistent/r1/video/r1.mp4']);
+        expect(remove.firstCall.args[1], 'the composite directory stays').to.equal(null);
+      });
+
+      it('lets an admin delete all of it, with the composite directory', async () => {
+        const res = await del(admin);
+        expect(res.status, JSON.stringify(res.body)).to.equal(204);
+        expect(store.deleteGroupRows.calledOnceWith('g1', ['r1', 'r2'])).to.equal(true);
+        expect(rows).to.deep.equal([]);
+        expect(remove.firstCall.args[0]).to.deep.equal([
+          '/nonexistent/r1/video/r1.mp4',
+          '/nonexistent/r2/video/r2.mp4',
+        ]);
+        expect(remove.firstCall.args[1]).to.match(/_groups[\\/]g1$/);
+      });
     });
 
     it('answers 404 for a group the caller cannot see, or that is gone', async () => {

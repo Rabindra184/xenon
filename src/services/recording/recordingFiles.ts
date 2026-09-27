@@ -12,15 +12,16 @@ export function recordingDirOf(videoFilePath: string): string {
 }
 
 /**
- * Remove a deleted group's files: each phone's recording directory and the
- * group's composite directory. Refuses anything that is not strictly inside
- * `base`, and the `_groups` parent itself. Best effort — a directory that
- * can't be removed is left for CleanupService's orphan sweep, which will find
- * no row pointing into it. Returns the directories removed.
+ * Remove deleted recordings' files: each phone's recording directory, and the
+ * group's composite directory when `groupDir` is given (null while rows of the
+ * group remain). Refuses anything that is not strictly inside `base`, and the
+ * `_groups` parent itself. Best effort — a directory that can't be removed is
+ * left for CleanupService's orphan sweep, which will find no row pointing into
+ * it. Returns the directories removed.
  */
 export function removeRecordingFiles(
   filePaths: string[],
-  groupDir: string,
+  groupDir: string | null,
   base: string,
 ): string[] {
   const root = path.resolve(base);
@@ -28,7 +29,7 @@ export function removeRecordingFiles(
   const targets = filePaths
     .filter(Boolean)
     .map(recordingDirOf)
-    .concat(groupDir)
+    .concat(groupDir === null ? [] : [groupDir])
     .map((d) => path.resolve(d));
   const removed: string[] = [];
   Array.from(new Set(targets)).forEach((dir) => {
