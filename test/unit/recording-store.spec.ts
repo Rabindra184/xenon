@@ -300,6 +300,39 @@ describe('RecordingStore (Prisma round-trip)', () => {
     expect(live[0].annotations.map((a) => a.color)).to.deep.equal(['red']);
   });
 
+  it('findVideo reads one recording without its bookmarks and marks', async () => {
+    await store.create({
+      id: 'test-video-1',
+      groupId: 'test-g-video',
+      deviceUdid: 'U-VIDEO',
+      deviceHost: '127.0.0.1',
+      filePath: '/tmp/test-video-1.mp4',
+      sessionId: null,
+      deviceSnapshot: null,
+      startedBy: 'usr_a',
+    });
+    await store.addBookmark('test-video-1', 'x', 1);
+    const rec = await store.findVideo('test-video-1');
+    expect(Object.keys(rec ?? {}).sort()).to.deep.equal([
+      'device_udid',
+      'file_path',
+      'group_id',
+      'id',
+      'started_at',
+      'started_by',
+      'status',
+    ]);
+    expect(rec).to.deep.include({
+      id: 'test-video-1',
+      group_id: 'test-g-video',
+      device_udid: 'U-VIDEO',
+      file_path: '/tmp/test-video-1.mp4',
+      status: 'RECORDING',
+      started_by: 'usr_a',
+    });
+    expect(await store.findVideo('test-video-none')).to.equal(null);
+  });
+
   it('names users by name, then email', async () => {
     const names = await store.userNames([]);
     expect(names.size).to.equal(0);

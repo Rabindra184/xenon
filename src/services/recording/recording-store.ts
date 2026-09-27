@@ -104,6 +104,26 @@ export class RecordingStore {
     });
   }
 
+  /**
+   * One recording without its bookmarks and marks: what serving its video,
+   * and deciding who may see it, needs. The player reads it on every Range
+   * request.
+   */
+  async findVideo(id: string) {
+    return prisma.recording.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        group_id: true,
+        device_udid: true,
+        file_path: true,
+        status: true,
+        started_at: true,
+        started_by: true,
+      },
+    });
+  }
+
   async findById(id: string) {
     return prisma.recording.findUnique({
       where: { id },

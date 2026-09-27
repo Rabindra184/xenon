@@ -161,6 +161,12 @@ describe('recordings library routes', () => {
           })),
       ),
       findById: sinon.spy(async (id: string) => rows.find((r) => r.id === id) ?? null),
+      findVideo: sinon.spy(async (id: string) => {
+        const r = rows.find((x) => x.id === id);
+        if (!r) return null;
+        const { group_id, device_udid, file_path, status, started_at, started_by } = r;
+        return { id, group_id, device_udid, file_path, status, started_at, started_by };
+      }),
       listActiveWithMarks: async () => rows.filter((r) => r.status === 'RECORDING'),
       deleteGroupRows: sinon.stub().callsFake(async (g: string, ids?: string[]) => {
         const gone = rows.filter((r) => r.group_id === g && (!ids || ids.includes(r.id)));
@@ -746,6 +752,9 @@ describe('recordings library routes', () => {
       expect(res.status).to.equal(200);
       expect(res.headers['content-type']).to.match(/video\/mp4/);
       expect(res.body.toString()).to.equal('annotated-r2');
+      // The renderer reads the marks; the route needs only the row.
+      expect(store.findVideo.calledWith('r2')).to.equal(true);
+      expect(store.findById.called).to.equal(false);
     });
 
     it('answers 404 for a recording from another group, even to an admin', async () => {
@@ -803,13 +812,14 @@ describe('recordings library routes', () => {
         request(buildApp(who)).get(`/xenon/api/recordings/g1/source.mp4?recordingId=${id}`);
 
       expect((await get(bob, 'r1')).status).to.equal(404); // r1's file doesn't exist
-      expect(store.findById.calledWith('r1')).to.equal(true);
+      expect(store.findVideo.calledWith('r1')).to.equal(true);
       expect(store.listGroupStarts.called, 'a visible phone needs no owner').to.equal(false);
 
       expect((await get(alice, 'r2')).status).to.equal(200); // her unplugged phone
       expect(store.listGroupStarts.calledOnceWith('g1')).to.equal(true);
       expect((await get(bob, 'r2')).status).to.equal(404);
       expect(store.listGroup.called, 'never the group with its marks').to.equal(false);
+      expect(store.findById.called, 'nor the recording with its marks').to.equal(false);
     });
 
     it('serves it as an attachment for download', async () => {

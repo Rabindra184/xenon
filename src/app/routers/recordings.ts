@@ -683,11 +683,11 @@ export async function sourceMp4Handler(req: Request, res: Response) {
   if (!recordingId) return res.status(400).json({ error: 'recordingId query param is required' });
   try {
     const store = Container.get(RecordingStore);
-    const rec: any = await store.findById(recordingId);
+    const rec = await store.findVideo(recordingId);
     if (!rec || rec.group_id !== req.params.groupId)
       return res.status(404).json({ error: 'not_found' });
-    // One recording, not the whole group with its marks: the player asks for
-    // a range many times. The group is read, leanly, only to name its owner.
+    // One recording without its marks, not the whole group: the player asks
+    // for a range many times. The group is read, leanly, only to name its owner.
     const visible = await visibleRows(req, [rec], () => store.listGroupStarts(rec.group_id));
     if (visible.length === 0) return res.status(404).json({ error: 'not_found' });
     if (!rec.file_path || !fs.existsSync(rec.file_path)) {
@@ -756,7 +756,7 @@ router.get('/recordings/:groupId/exports/annotated.mp4', async (req: Request, re
   }
   try {
     const store = Container.get(RecordingStore);
-    const rec: any = await store.findById(recordingId);
+    const rec = await store.findVideo(recordingId);
     if (!rec || rec.group_id !== req.params.groupId) {
       return res.status(404).json({ error: 'not_found' });
     }
