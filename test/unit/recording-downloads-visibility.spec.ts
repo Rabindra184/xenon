@@ -384,6 +384,13 @@ describe('recording downloads serve only the phones the caller can see', () => {
       expect(await zipNames(videos.body)).to.deep.equal(['U-A.mp4']);
     });
 
+    it('gets no unplugged phone that someone else added, and no composite', async () => {
+      rows = [owned('r-a', 'U-A'), { ...row('r-b', 'U-B'), started_by: 'usr_other' }];
+      existing = ['U-A'];
+      expect((await get(MEMBER, 'video.mp4?udid=U-B')).status).to.equal(404);
+      expect((await get(MEMBER, 'composite.mp4')).status).to.equal(404);
+    });
+
     it('gets a phone that was unplugged, and then the composite', async () => {
       existing = ['U-A'];
       const b = await get(MEMBER, 'video.mp4?udid=U-B');

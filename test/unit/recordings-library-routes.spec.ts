@@ -624,23 +624,41 @@ describe('recordings library routes', () => {
 
     it('is the person who started it, not someone who added a phone later', async () => {
       // The earliest row with a started_by names the owner (alice); a row with
-      // none is skipped, and bob only added the phone that is now unplugged.
+      // none is skipped, and bob only added r3, later. Only the owner sees
+      // her own unplugged phone, so seeing r2 is what proves who owns it.
       rows = [
         rec({ id: 'rn', started_by: null, started_at: new Date(T0 - 500) }),
         rec({ id: 'r0' }),
-        unplugged({ started_by: 'usr_bob' }),
+        unplugged(),
+        rec({ id: 'r3', started_by: 'usr_bob', started_at: new Date(T0 + 900) }),
       ];
       const asAlice = await request(buildApp(alice)).get('/xenon/api/recordings/g1');
       expect(asAlice.body.summary.phones.map((p: any) => p.recordingId).sort()).to.deep.equal([
         'r0',
         'r2',
+        'r3',
         'rn',
       ]);
       const asBob = await request(buildApp(bob)).get('/xenon/api/recordings/g1');
       expect(asBob.body.summary.phones.map((p: any) => p.recordingId).sort()).to.deep.equal([
         'r0',
+        'r3',
         'rn',
       ]);
+    });
+
+    // The exemption covers the phones the owner recorded. One someone else
+    // added follows the team rule like any other, unplugged or not.
+    it('does not show the owner an unplugged phone someone else added', async () => {
+      const file = path.join(dir, 'r2.mp4');
+      fs.writeFileSync(file, 'x');
+      rows = [rec(), unplugged({ started_by: 'usr_bob', file_path: file })];
+      const detail = await request(buildApp(alice)).get('/xenon/api/recordings/g1');
+      expect(detail.body.summary.phones.map((p: any) => p.recordingId)).to.deep.equal(['r1']);
+      const src = await request(buildApp(alice)).get(
+        '/xenon/api/recordings/g1/source.mp4?recordingId=r2',
+      );
+      expect(src.status).to.equal(404);
     });
 
     // The exemption is for a phone that is gone, not for one that moved to

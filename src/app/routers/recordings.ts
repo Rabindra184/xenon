@@ -62,11 +62,12 @@ function byGroupId<T extends { group_id: string }>(rows: T[]): Map<string, T[]> 
  *
  * - Admins see every row.
  * - Everyone else sees the rows on phones they can see.
- * - The owner of a group also sees its rows on a phone that has no Device row
- *   any more: a phone's row is deleted when it is unplugged, and a missing row
- *   reads as invisible, which would otherwise hide their own recording from
- *   them. A phone that still exists but is on another team stays hidden, even
- *   from the owner.
+ * - The owner of a group also sees the rows they started themselves on a
+ *   phone that has no Device row any more: a phone's row is deleted when it is
+ *   unplugged, and a missing row reads as invisible, which would otherwise
+ *   hide their own recording from them. A phone that still exists but is on
+ *   another team stays hidden, even from the owner, and so does a phone
+ *   someone else added to their group (add-device checks no team).
  *
  * The owner is decided on every row of a group. `groupRows` supplies them
  * when `rows` is not whole groups; it is read only if some row is hidden.
@@ -86,7 +87,7 @@ async function visibleRows<T extends GroupRow>(
   byGroupId(await groupRows()).forEach((list, groupId) => {
     if (groupOwner(list) === userId) owned.add(groupId);
   });
-  const mine = hidden.filter((r) => owned.has(r.group_id));
+  const mine = hidden.filter((r) => owned.has(r.group_id) && r.started_by === userId);
   if (mine.length > 0) {
     const udids = Array.from(new Set(mine.map((r) => r.device_udid)));
     const existing = await Container.get(RecordingStore).deviceNames(udids);
