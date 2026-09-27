@@ -40,14 +40,12 @@ async function visibleRecordings(groupId: string, teamIds: string[] | undefined)
 type Visible = Awaited<ReturnType<typeof visibleRecordings>>;
 const seesNone = (v: Visible) => v.all === 0 || (v.ids !== undefined && v.ids.length === 0);
 
-/** Headers `send` may already have set for the file, wrong on a JSON error. */
-const JSON_ERROR_STRIPS = [
-  'Content-Disposition',
-  'Content-Type',
-  'ETag',
-  'Last-Modified',
-  'Cache-Control',
-];
+/**
+ * Headers `send` may already have set for the file, wrong on a JSON error.
+ * Not Cache-Control: `send` never sets one over the API-wide `no-store`
+ * (src/app/index.ts), so removing it would remove the app's own policy.
+ */
+const JSON_ERROR_STRIPS = ['Content-Disposition', 'Content-Type', 'ETag', 'Last-Modified'];
 
 const recLog = log.scope('RecordingsRouter');
 const router = Router();
@@ -370,7 +368,7 @@ router.get('/recordings/:groupId/video.mp4', async (req: Request, res: Response)
         return;
       }
       // Nothing was sent yet: answer JSON, not an empty "attachment", and
-      // without the file's validators and caching, which describe the video.
+      // without the file's validators, which describe the video.
       for (const h of JSON_ERROR_STRIPS) res.removeHeader(h);
       const status = err.status ?? err.statusCode;
       if (status === 404) {

@@ -39,11 +39,17 @@ const A_BYTES = 'AAAA-video-of-phone-a';
 const B_BYTES = 'BBBB-video-of-phone-b';
 const C_BYTES = 'CCCC-video-of-phone-c';
 const COMPOSITE_BYTES = 'MMMM-composite-of-a-and-b';
+/** What src/app/index.ts sets on every /xenon/api response. */
+const API_CACHE_CONTROL = 'no-store, no-cache, must-revalidate, proxy-revalidate';
 
 function buildApp(caller: Caller) {
   const app = express();
   app.use(express.json());
   const apiRouter = express.Router();
+  apiRouter.use((_req, res, next) => {
+    res.setHeader('Cache-Control', API_CACHE_CONTROL);
+    next();
+  });
   apiRouter.use((req, _res, next) => {
     (req as any).auth = {
       kind: 'user-session',
@@ -404,7 +410,9 @@ describe('recording downloads serve only the phones the caller can see', () => {
       expect(res.headers['content-range']).to.equal(`bytes */${A_BYTES.length}`);
       // Express tags the JSON body itself; it must not reuse the video's tag.
       expect(res.headers.etag).to.not.equal(fileEtag);
-      expect(res.headers).to.not.have.any.keys('last-modified', 'cache-control');
+      expect(res.headers).to.not.have.any.keys('last-modified');
+      // The API's no-store survives: it is the app's policy, not the file's.
+      expect(res.headers['cache-control']).to.equal(API_CACHE_CONTROL);
       // A JSON error is never an attachment. The old hand-set headers made it one.
       expect(res.headers['content-disposition']).to.equal(undefined);
       expect(res.json()).to.deep.equal({ error: 'range_not_satisfiable' });
@@ -419,6 +427,7 @@ describe('recording downloads serve only the phones the caller can see', () => {
       const res = await get(MEMBER, 'video.mp4?udid=U-A');
       expect(res.status).to.equal(404);
       expect(res.headers['content-type']).to.match(/^application\/json/);
+      expect(res.headers['cache-control']).to.equal(API_CACHE_CONTROL);
       expect(res.headers['content-disposition']).to.equal(undefined);
       expect(res.json()).to.deep.equal({ error: 'video_not_found' });
     });
