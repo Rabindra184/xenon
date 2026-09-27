@@ -1,4 +1,4 @@
-import type { GroupAnnotation } from '../../api-service/recordings';
+import type { GroupAnnotation, RecordingDetail } from '../../api-service/recordings';
 import type { AnnotationShape, OverlayAnnotation } from '../mosaic/recording-group-store';
 
 /** Every phone follows one clock; a video further off it than this is moved back. */
@@ -48,6 +48,38 @@ export function positionPct(ms: number, durationMs: number): number {
 
 export function clampTime(ms: number, durationMs: number): number {
   return Math.min(Math.max(0, ms), Math.max(0, durationMs));
+}
+
+/**
+ * Where the timeline starts, in group time: at the earliest frame. A phone
+ * already recording when the group reached t=0 starts before it.
+ */
+export function timelineOriginMs(phones: Array<{ offsetMs: number }>): number {
+  return Math.min(0, ...phones.map((p) => p.offsetMs));
+}
+
+/**
+ * The recording in timeline time, 0 at the earliest frame: offsets, bookmarks
+ * and marks all move by the same amount, so each phone's video time (timeline
+ * time minus its offset) is unchanged. The server's durationMs already spans
+ * the timeline.
+ */
+export function onTimeline(d: RecordingDetail): RecordingDetail {
+  const origin = timelineOriginMs(d.summary.phones);
+  if (origin === 0) return d;
+  return {
+    ...d,
+    summary: {
+      ...d.summary,
+      phones: d.summary.phones.map((p) => ({ ...p, offsetMs: p.offsetMs - origin })),
+    },
+    bookmarks: d.bookmarks.map((b) => ({ ...b, timecodeMs: b.timecodeMs - origin })),
+    annotations: d.annotations.map((a) => ({
+      ...a,
+      timecodeMs: a.timecodeMs - origin,
+      endTimecodeMs: a.endTimecodeMs === null ? null : a.endTimecodeMs - origin,
+    })),
+  };
 }
 
 /** Marks on screen at a group time: from their time until their end, or to the end. */

@@ -23,6 +23,7 @@ import { formatWhen } from './RecordingsPage';
 import {
   clampTime,
   formatClock,
+  onTimeline,
   positionPct,
   SKIP_MS,
   tilePhase,
@@ -167,7 +168,8 @@ export default function RecordingPage() {
     setFailure(null);
     setDetail(null);
     getRecording(groupId)
-      .then((d) => live && setDetail(d))
+      // Every time on the page is timeline time from here on: 0 at the earliest frame.
+      .then((d) => live && setDetail(onTimeline(d)))
       .catch((e) => {
         if (!live) return;
         setFailure({

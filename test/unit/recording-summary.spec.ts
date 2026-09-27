@@ -66,8 +66,36 @@ describe('recording summaries', () => {
       ['Galaxy S9+', -1000],
       ['iPhone 17', 42_000],
     ]);
-    // max(-1000 + 61000, 42000 + 20000)
-    expect(s.durationMs).to.equal(62_000);
+    // The timeline runs from the earliest frame (-1000) to the latest end:
+    // max(-1000 + 61000, 42000 + 20000) - (-1000)
+    expect(s.durationMs).to.equal(63_000);
+  });
+
+  it('fits the whole of a phone that started well before t=0 into the length', () => {
+    // A two-phone start where the iPhone took 13.7 s to connect: the S9+ was
+    // already recording, so its video starts 13.7 s before the group's t=0.
+    const s = summarizeGroup(
+      [
+        row({
+          duration_ms: 30_000,
+          timing: { version: 1, spawnedAtMs: T0 - 13_700, groupT0Ms: T0 },
+        }),
+        row({
+          id: 'r2',
+          device_udid: 'U2',
+          duration_ms: 16_000,
+          timing: { version: 1, spawnedAtMs: T0 - 756, groupT0Ms: T0 },
+        }),
+      ],
+      ctx,
+    );
+    // Offsets stay on the group's t=0, which marks and bookmarks count from.
+    expect(s.phones.map((p) => p.offsetMs)).to.deep.equal([-13_700, -756]);
+    expect(s.durationMs).to.equal(30_000);
+    const origin = Math.min(0, ...s.phones.map((p) => p.offsetMs));
+    s.phones.forEach((p) =>
+      expect(p.offsetMs - origin + (p.durationMs as number)).to.be.at.most(s.durationMs as number),
+    );
   });
 
   it('falls back to started_at when a recording has no timing file', () => {

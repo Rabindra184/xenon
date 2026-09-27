@@ -367,6 +367,44 @@ describe('RecordingPage', () => {
     expect(pb.toggle).not.toHaveBeenCalled();
   });
 
+  it('starts the timeline at the earliest frame, so a phone that began before t=0 plays in full', async () => {
+    // The S9+ was recording 13 s before the iPhone connected and the group's
+    // t=0. Server: durationMs = max(-13000 + 30000, 0 + 16000) - (-13000).
+    const base = detail();
+    api.getRecording.mockResolvedValue({
+      ...base,
+      summary: summary({
+        durationMs: 30000,
+        phones: [
+          { ...summary().phones[0], offsetMs: -13000, durationMs: 30000 },
+          { ...summary().phones[1], offsetMs: 0, durationMs: 16000 },
+        ],
+      }),
+      bookmarks: [{ id: 'b1', recordingId: 'r1', timecodeMs: 6000, label: 'Checkout', note: null }],
+      annotations: [{ ...base.annotations[0], timecodeMs: 1000, endTimecodeMs: 5000 }],
+    });
+    pb.state.timeMs = 15000; // group time 2000: inside the mark's 1000-5000
+    renderPage();
+    await loaded();
+
+    const timeline = screen.getByRole('slider', { name: 'Timeline' });
+    expect(timeline).toHaveAttribute('min', '0');
+    expect(timeline).toHaveAttribute('max', '30000');
+    // Shifted by 13 s: the S9+'s first frame is at 0, its last at the max.
+    expect(pb.bind).toHaveBeenCalledWith('r1', { offsetMs: 0, durationMs: 30000 });
+    expect(pb.bind).toHaveBeenCalledWith('r2', { offsetMs: 13000, durationMs: 16000 });
+    expect(within(tile('Galaxy S9+')).getByTestId('overlay')).toHaveAttribute('data-count', '1');
+
+    // The bookmark at group time 6000 sits at 19000 on the timeline.
+    fireEvent.click(screen.getByRole('button', { name: 'Bookmark: Checkout, 0:19' }));
+    expect(pb.seek).toHaveBeenLastCalledWith(19000);
+    pb.seek.mockReset();
+    const list = screen.getByRole('region', { name: 'Bookmarks' });
+    expect(within(list).getByText('0:19 · Galaxy S9+')).toBeInTheDocument();
+    fireEvent.click(within(list).getByRole('button', { name: /Checkout/ }));
+    expect(pb.seek).toHaveBeenLastCalledWith(19000);
+  });
+
   it('binds every playable phone with its offset and duration, never the failed one', async () => {
     renderPage();
     await loaded();

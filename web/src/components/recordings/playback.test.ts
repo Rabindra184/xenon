@@ -1,11 +1,14 @@
 import { describe, expect, it } from 'vitest';
+import type { RecordingDetail } from '../../api-service/recordings';
 import {
   clampTime,
   formatClock,
   needsResync,
+  onTimeline,
   PAUSED_RESYNC_MS,
   positionPct,
   tilePhase,
+  timelineOriginMs,
   toOverlay,
   videoTimeMs,
   visibleAt,
@@ -54,6 +57,33 @@ describe('playback rules', () => {
     expect(visibleAt(marks, 1000).map((m) => m.id)).toEqual(['a']);
     expect(visibleAt(marks, 2500).map((m) => m.id)).toEqual(['a', 'b']);
     expect(visibleAt(marks, 3000).map((m) => m.id)).toEqual(['b']);
+  });
+
+  it('starts the timeline at the earliest frame, moving every time by the same amount', () => {
+    expect(timelineOriginMs([{ offsetMs: 500 }, { offsetMs: 42_000 }])).toBe(0);
+    expect(timelineOriginMs([{ offsetMs: -13_000 }, { offsetMs: -756 }])).toBe(-13_000);
+
+    const phone = { offsetMs: -13_000 } as RecordingDetail['summary']['phones'][number];
+    const mark = {
+      timecodeMs: 1000,
+      endTimecodeMs: 5000,
+    } as RecordingDetail['annotations'][number];
+    const d = {
+      groupId: 'g1',
+      summary: { phones: [phone, { ...phone, offsetMs: 0 }] },
+      bookmarks: [{ timecodeMs: 6000 }],
+      annotations: [mark, { ...mark, endTimecodeMs: null }],
+    } as unknown as RecordingDetail;
+    const t = onTimeline(d);
+    expect(t.summary.phones.map((p) => p.offsetMs)).toEqual([0, 13_000]);
+    expect(t.bookmarks.map((b) => b.timecodeMs)).toEqual([19_000]);
+    expect(t.annotations.map((a) => [a.timecodeMs, a.endTimecodeMs])).toEqual([
+      [14_000, 18_000],
+      [14_000, null],
+    ]);
+    // Nothing started before t=0: the same detail, untouched.
+    const late = { ...d, summary: { phones: [{ ...phone, offsetMs: 0 }] } } as RecordingDetail;
+    expect(onTimeline(late)).toBe(late);
   });
 
   it('turns a stored mark into an overlay mark, skipping bad geometry', () => {

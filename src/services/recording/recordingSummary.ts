@@ -28,6 +28,10 @@ export interface RecordingSummary {
   /** The group's t=0: the moment marks and bookmarks count from. */
   startedAt: string;
   endedAt: string | null;
+  /**
+   * The timeline's length: from the earliest frame (a phone's negative
+   * offset, or t=0) to the latest end.
+   */
   durationMs: number | null;
   status: GroupStatus;
   phones: PhoneSummary[];
@@ -137,6 +141,8 @@ export function summarizeGroup(rows: SummaryRow[], ctx: SummaryContext): Recordi
     })
     .sort((a, b) => a.offsetMs - b.offsetMs || a.name.localeCompare(b.name));
 
+  // A phone already recording when the group reached t=0 starts before it.
+  const originMs = Math.min(0, ...phones.map((p) => p.offsetMs));
   const ends = phones
     .filter((p) => p.durationMs !== null)
     .map((p) => p.offsetMs + (p.durationMs as number));
@@ -154,7 +160,7 @@ export function summarizeGroup(rows: SummaryRow[], ctx: SummaryContext): Recordi
       status === 'recording' || endedAts.length === 0
         ? null
         : new Date(Math.max(...endedAts)).toISOString(),
-    durationMs: status === 'recording' || ends.length === 0 ? null : Math.max(0, ...ends),
+    durationMs: status === 'recording' || ends.length === 0 ? null : Math.max(...ends) - originMs,
     status,
     phones,
     startedBy: owner ? { id: owner, name: ctx.users.get(owner) ?? 'Unknown user' } : null,
