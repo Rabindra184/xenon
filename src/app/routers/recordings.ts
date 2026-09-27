@@ -10,6 +10,7 @@ import {
 import { ProofBundleService } from '../../services/recording/proof-bundle';
 import { AnnotationRenderService } from '../../services/recording/annotation-render';
 import { RecordingStore } from '../../services/recording/recording-store';
+import { DOWNLOAD_OPTIONS } from './apps';
 import {
   summarizeGroup,
   buildLibrary,
@@ -376,6 +377,7 @@ router.get('/recordings/:groupId', async (req: Request, res: Response) => {
       annotations,
     });
   } catch (e: any) {
+    recLog.error(`GET /recordings/:groupId failed: ${e?.message}`);
     return res.status(500).json({ error: 'internal', message: e?.message });
   }
 });
@@ -516,11 +518,49 @@ router.get('/recordings/:groupId/video.mp4', async (req: Request, res: Response)
 });
 
 /**
+ * `send` (which backs `sendFile`) reports a failure through this callback
+ * with the real HTTP status on `err.status` — 404 when the file vanished
+ * between our `existsSync` check and the stat (a concurrent DELETE, or the
+ * cleanup sweep), 416 for an unsatisfiable Range — and by the time it calls
+ * back it has usually already set `Content-Type: video/mp4`, `Content-Range`
+ * and `ETag`. Left alone, every one of those became a 500 that still carried
+ * `Content-Type: video/mp4` on a JSON body.
+ */
+function handleSendFileError(req: Request, res: Response, err: any): void {
+  if (!err) return;
+  // The client is already gone: writing to the socket would throw, and
+  // there is nobody left to read a response anyway.
+  if (err.code === 'ECONNABORTED' || req.aborted) return;
+  if (res.headersSent) {
+    recLog.warn(`source.mp4 sendFile error after headers were sent: ${err.message}`);
+    if (!res.destroyed) res.destroy();
+    return;
+  }
+  recLog.error(`source.mp4 sendFile failed: ${err.message}`);
+  // send already set the video Content-Type (and possibly Content-Range /
+  // Content-Disposition); res.json only sets Content-Type when unset.
+  res.removeHeader('Content-Type');
+  const status = err.status ?? err.statusCode;
+  if (status === 404) {
+    res.status(404).json({ error: 'video_not_found' });
+  } else if (status === 416) {
+    res.status(416).json({ error: 'range_not_satisfiable' });
+  } else {
+    res.status(500).json({ error: 'internal' });
+  }
+}
+
+/**
  * The clean video, for the recording page's player: no burned-in marks (the
  * page draws them), and Range support so it can seek. `download=1` makes it
  * an attachment — the per-phone "Video" download.
+ *
+ * Exported (rather than an inline handler) so a test can call it directly
+ * with a fake `res` and assert on the options handed to `sendFile`, the way
+ * `apps.ts`'s `downloadApp` does — a supertest run stays on this repo's
+ * Express 4 dev-dependency, which can't reproduce the Express 5 bug below.
  */
-router.get('/recordings/:groupId/source.mp4', async (req: Request, res: Response) => {
+export async function sourceMp4Handler(req: Request, res: Response) {
   const recordingId = typeof req.query.recordingId === 'string' ? req.query.recordingId : '';
   if (!recordingId) return res.status(400).json({ error: 'recordingId query param is required' });
   try {
@@ -542,17 +582,26 @@ router.get('/recordings/:groupId/source.mp4', async (req: Request, res: Response
     }
     return res.sendFile(
       path.resolve(rec.file_path),
-      { headers: { 'Content-Type': 'video/mp4' } },
-      (err) => {
-        if (err && !res.headersSent)
-          res.status(500).json({ error: 'internal', message: err.message });
+      {
+        // Recordings live under `~/.cache/xenon/...` (config.ts), and `.cache`
+        // is a dot-segment. Appium 3's Express 5 `send` 1.2.x defaults
+        // `dotfiles` to `ignore` and refuses any path with a dot segment
+        // ANYWHERE in it, unlike Express 4's `send` 0.19, which only looked at
+        // the last segment — so every real recording 500'd. `DOWNLOAD_OPTIONS`
+        // (`apps.ts`) is safe here for the same reason it is there: the path
+        // comes from the DB row `findById` looked up, never from the request.
+        ...DOWNLOAD_OPTIONS,
+        headers: { 'Content-Type': 'video/mp4' },
       },
+      (err: any) => handleSendFileError(req, res, err),
     );
   } catch (e: any) {
     recLog.error(`source.mp4 failed: ${e?.message}`);
     return res.status(500).json({ error: 'internal', message: e?.message });
   }
-});
+}
+
+router.get('/recordings/:groupId/source.mp4', sourceMp4Handler);
 
 router.get('/recordings/:groupId/bundle.zip', async (req: Request, res: Response) => {
   // Phase 4A: 404 if none of the group's devices are visible to the caller.

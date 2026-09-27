@@ -7,7 +7,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import { Container } from 'typedi';
-import RecordingsRouter from '../../src/app/routers/recordings';
+import RecordingsRouter, { sourceMp4Handler } from '../../src/app/routers/recordings';
 import { RecordingStore } from '../../src/services/recording/recording-store';
 import * as deviceService from '../../src/data-service/device-service';
 import * as recordingFiles from '../../src/services/recording/recordingFiles';
@@ -59,6 +59,61 @@ function buildApp(caller: { userId: string; role?: Role; teamIds?: string[] }) {
   RecordingsRouter.register(api);
   app.use('/xenon/api', api);
   return app;
+}
+
+/**
+ * A `req` shaped enough for `sourceMp4Handler` called directly (bypassing
+ * Express/roleGuard entirely, like `apps-download.spec.ts` calls `downloadApp`).
+ */
+function fakeSourceReq(overrides: any = {}) {
+  return {
+    params: { groupId: 'g1' },
+    query: { recordingId: 'r1' },
+    auth: { teamIds: undefined },
+    aborted: false,
+    ...overrides,
+  };
+}
+
+interface SourceResCapture {
+  statusCode?: number;
+  json: sinon.SinonSpy;
+  setHeader: sinon.SinonSpy;
+  removeHeader: sinon.SinonSpy;
+  destroy: sinon.SinonSpy;
+}
+
+/**
+ * A fake `res` whose `sendFile` each test overrides. Kept separate from
+ * `buildApp`'s real Express response because the repo dev-depends on
+ * Express 4 — a supertest run can't reproduce the Express-5 `dotfiles` bug
+ * (see DOWNLOAD_OPTIONS in `apps.ts`), and can't synchronously drive
+ * `sendFile`'s error callback either.
+ */
+function fakeSourceRes(): { res: any; cap: SourceResCapture } {
+  const cap: SourceResCapture = {
+    json: sinon.spy(),
+    setHeader: sinon.spy(),
+    removeHeader: sinon.spy(),
+    destroy: sinon.spy(),
+  };
+  const res: any = {
+    headersSent: false,
+    destroyed: false,
+    status(code: number) {
+      cap.statusCode = code;
+      return res;
+    },
+    json: (body: unknown) => cap.json(body),
+    setHeader: (...args: unknown[]) => cap.setHeader(...args),
+    removeHeader: (...args: unknown[]) => cap.removeHeader(...args),
+    destroy: (...args: unknown[]) => {
+      res.destroyed = true;
+      return cap.destroy(...args);
+    },
+    sendFile: sinon.spy(),
+  };
+  return { res, cap };
 }
 
 describe('recordings library routes', () => {
@@ -224,11 +279,20 @@ describe('recordings library routes', () => {
       expect((await del(admin)).status).to.equal(204);
     });
 
-    it('refuses a running recording with 409, even to its owner', async () => {
+    it('refuses a running recording with 409 before the ownership check, for owner and non-owner alike', async () => {
       rows = [rec({ status: 'RECORDING', ended_at: null, duration_ms: null })];
-      const res = await del(alice);
-      expect(res.status).to.equal(409);
-      expect(res.body.error).to.equal('recording_in_progress');
+      const ownerRes = await del(alice);
+      expect(ownerRes.status).to.equal(409);
+      expect(ownerRes.body.error).to.equal('recording_in_progress');
+      expect(store.deleteGroupRows.called).to.equal(false);
+
+      // bob is not the owner (alice is, per `rec()`'s default started_by) and
+      // would get 403 not_owner once the recording is stopped — getting 409
+      // here instead is what proves the 409 check runs first.
+      const nonOwnerRes = await del(bob);
+      expect(nonOwnerRes.status).to.equal(409);
+      expect(nonOwnerRes.body.error).to.equal('recording_in_progress');
+      expect(store.deleteGroupRows.called).to.equal(false);
     });
 
     it('answers 404 for a group the caller cannot see, or that is gone', async () => {
@@ -284,6 +348,93 @@ describe('recordings library routes', () => {
       expect((await get('?recordingId=rx')).status).to.equal(404);
       expect((await get('?recordingId=rh')).status).to.equal(404);
       expect((await get('?recordingId=r1')).status).to.equal(404);
+    });
+
+    // These call sourceMp4Handler directly rather than through supertest.
+    // The repo dev-depends on Express 4, where `send` only looks at a path's
+    // last segment, so a supertest run on it can't reproduce the Express 5
+    // `dotfiles` bug (see DOWNLOAD_OPTIONS in apps.ts) — nor can it drive
+    // sendFile's error callback synchronously with a chosen error.
+    describe('sourceMp4Handler internals', () => {
+      it('passes dotfiles: allow to sendFile (RED without it: Express 5 500s on the ~/.cache path)', async () => {
+        const file = path.join(dir, 'r1.mp4');
+        fs.writeFileSync(file, Buffer.from('0123456789'));
+        rows = [rec({ file_path: file })];
+        const { res } = fakeSourceRes();
+
+        await sourceMp4Handler(fakeSourceReq() as any, res);
+
+        expect(res.sendFile.calledOnce, 'sendFile was called').to.equal(true);
+        const [sentPath, opts] = res.sendFile.firstCall.args;
+        expect(sentPath).to.equal(path.resolve(file));
+        expect(opts).to.include({ dotfiles: 'allow' });
+      });
+
+      it('answers 404 video_not_found, not 500, when the file vanishes between the existsSync check and the stat', async () => {
+        const file = path.join(dir, 'r1.mp4');
+        fs.writeFileSync(file, Buffer.from('data'));
+        rows = [rec({ file_path: file })];
+        const { res, cap } = fakeSourceRes();
+        const err: any = new Error('ENOENT: no such file or directory');
+        err.status = 404;
+        res.sendFile = sinon.spy((_p: string, _o: any, cb: (e: any) => void) => cb(err));
+
+        await sourceMp4Handler(fakeSourceReq() as any, res);
+
+        expect(cap.statusCode).to.equal(404);
+        expect(cap.json.firstCall.args[0]).to.deep.equal({ error: 'video_not_found' });
+        // send already set Content-Type: video/mp4; it must not survive onto
+        // this JSON error body.
+        expect(cap.removeHeader.calledWith('Content-Type')).to.equal(true);
+      });
+
+      it('maps a 416 from a Range request to range_not_satisfiable', async () => {
+        const file = path.join(dir, 'r1.mp4');
+        fs.writeFileSync(file, Buffer.from('data'));
+        rows = [rec({ file_path: file })];
+        const { res, cap } = fakeSourceRes();
+        const err: any = new Error('Range Not Satisfiable');
+        err.status = 416;
+        res.sendFile = sinon.spy((_p: string, _o: any, cb: (e: any) => void) => cb(err));
+
+        await sourceMp4Handler(fakeSourceReq() as any, res);
+
+        expect(cap.statusCode).to.equal(416);
+        expect(cap.json.firstCall.args[0]).to.deep.equal({ error: 'range_not_satisfiable' });
+      });
+
+      it('ignores a client abort rather than writing to a dead socket', async () => {
+        const file = path.join(dir, 'r1.mp4');
+        fs.writeFileSync(file, Buffer.from('data'));
+        rows = [rec({ file_path: file })];
+        const { res, cap } = fakeSourceRes();
+        const err: any = new Error('aborted');
+        err.code = 'ECONNABORTED';
+        res.sendFile = sinon.spy((_p: string, _o: any, cb: (e: any) => void) => cb(err));
+
+        await sourceMp4Handler(fakeSourceReq() as any, res);
+
+        expect(cap.json.called, 'no response body is written').to.equal(false);
+        expect(cap.statusCode, 'no status is set').to.equal(undefined);
+        expect(cap.destroy.called, 'the response is left alone').to.equal(false);
+      });
+
+      it('logs and destroys the response, without a JSON body, when the error arrives after headers were already sent', async () => {
+        const file = path.join(dir, 'r1.mp4');
+        fs.writeFileSync(file, Buffer.from('data'));
+        rows = [rec({ file_path: file })];
+        const { res, cap } = fakeSourceRes();
+        const err: any = new Error('mid-stream failure');
+        res.sendFile = sinon.spy((_p: string, _o: any, cb: (e: any) => void) => {
+          res.headersSent = true;
+          cb(err);
+        });
+
+        await sourceMp4Handler(fakeSourceReq() as any, res);
+
+        expect(cap.json.called, 'headers are already sent; no JSON body follows').to.equal(false);
+        expect(cap.destroy.calledOnce).to.equal(true);
+      });
     });
   });
 });
