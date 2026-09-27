@@ -144,8 +144,19 @@ describe('recordings library routes', () => {
     devices = new Map([['U1', { name: 'Galaxy S9+', platform: 'android' }]]);
     store = {
       libraryRows: async () => rows,
-      listGroup: async (g: string) => rows.filter((r) => r.group_id === g),
-      findById: async (id: string) => rows.find((r) => r.id === id) ?? null,
+      listGroup: sinon.spy(async (g: string) => rows.filter((r) => r.group_id === g)),
+      listGroupStarts: sinon.spy(async (g: string) =>
+        rows
+          .filter((r) => r.group_id === g)
+          .map(({ id, group_id, device_udid, started_at, started_by }) => ({
+            id,
+            group_id,
+            device_udid,
+            started_at,
+            started_by,
+          })),
+      ),
+      findById: sinon.spy(async (id: string) => rows.find((r) => r.id === id) ?? null),
       deleteGroupRows: sinon.stub().callsFake(async (g: string, ids?: string[]) => {
         const gone = rows.filter((r) => r.group_id === g && (!ids || ids.includes(r.id)));
         rows = rows.filter((r) => !gone.includes(r));
@@ -677,6 +688,26 @@ describe('recordings library routes', () => {
       expect(res.headers['content-type']).to.match(/video\/mp4/);
       expect(res.body.toString()).to.equal('2345');
       expect(res.headers['content-disposition']).to.equal(undefined);
+    });
+
+    // The player asks for byte ranges all through playback: each request
+    // reads the one recording, not the group with every bookmark and mark.
+    it('reads only the one recording, and the group leanly only for its owner', async () => {
+      const file = path.join(dir, 'r2.mp4');
+      fs.writeFileSync(file, 'x');
+      visible = new Set(['U1']);
+      rows = [rec(), rec({ id: 'r2', device_udid: 'GONE', file_path: file })];
+      const get = (who: Caller, id: string) =>
+        request(buildApp(who)).get(`/xenon/api/recordings/g1/source.mp4?recordingId=${id}`);
+
+      expect((await get(bob, 'r1')).status).to.equal(404); // r1's file doesn't exist
+      expect(store.findById.calledWith('r1')).to.equal(true);
+      expect(store.listGroupStarts.called, 'a visible phone needs no owner').to.equal(false);
+
+      expect((await get(alice, 'r2')).status).to.equal(200); // her unplugged phone
+      expect(store.listGroupStarts.calledOnceWith('g1')).to.equal(true);
+      expect((await get(bob, 'r2')).status).to.equal(404);
+      expect(store.listGroup.called, 'never the group with its marks').to.equal(false);
     });
 
     it('serves it as an attachment for download', async () => {

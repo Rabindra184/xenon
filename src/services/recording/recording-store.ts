@@ -84,6 +84,18 @@ export class RecordingStore {
     });
   }
 
+  /**
+   * A group's rows without their bookmarks and marks: which phone, when and by
+   * whom. Enough to decide the group's owner, and cheap enough for every
+   * Range request of a video.
+   */
+  async listGroupStarts(groupId: string) {
+    return prisma.recording.findMany({
+      where: { group_id: groupId },
+      select: { id: true, group_id: true, device_udid: true, started_at: true, started_by: true },
+    });
+  }
+
   async findById(id: string) {
     return prisma.recording.findUnique({
       where: { id },

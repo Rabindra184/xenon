@@ -244,6 +244,38 @@ describe('RecordingStore (Prisma round-trip)', () => {
     expect(await store.deleteGroupRows('test-g-part')).to.equal(1);
   });
 
+  it('listGroupStarts reads who started each row of a group, and nothing more', async () => {
+    for (const [id, startedBy] of [
+      ['test-starts-1', 'usr_a'],
+      ['test-starts-2', null],
+    ]) {
+      await store.create({
+        id: id as string,
+        groupId: 'test-g-starts',
+        deviceUdid: (id as string).toUpperCase(),
+        deviceHost: '127.0.0.1',
+        filePath: `/tmp/${id}.mp4`,
+        sessionId: null,
+        deviceSnapshot: null,
+        startedBy,
+      });
+    }
+    await store.addBookmark('test-starts-1', 'x', 1);
+    const rows = (await store.listGroupStarts('test-g-starts')).sort((a, b) =>
+      a.id.localeCompare(b.id),
+    );
+    expect(rows.map((r) => Object.keys(r).sort())).to.deep.equal([
+      ['device_udid', 'group_id', 'id', 'started_at', 'started_by'],
+      ['device_udid', 'group_id', 'id', 'started_at', 'started_by'],
+    ]);
+    expect(rows.map((r) => [r.id, r.device_udid, r.started_by])).to.deep.equal([
+      ['test-starts-1', 'TEST-STARTS-1', 'usr_a'],
+      ['test-starts-2', 'TEST-STARTS-2', null],
+    ]);
+    expect(rows[0].started_at).to.be.instanceOf(Date);
+    expect(await store.listGroupStarts('test-g-none')).to.deep.equal([]);
+  });
+
   it('names users by name, then email', async () => {
     const names = await store.userNames([]);
     expect(names.size).to.equal(0);

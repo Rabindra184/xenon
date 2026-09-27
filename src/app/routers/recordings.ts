@@ -68,21 +68,30 @@ function byGroupId<T extends { group_id: string }>(rows: T[]): Map<string, T[]> 
  *   reads as invisible, which would otherwise hide their own recording from
  *   them. A phone that still exists but is on another team stays hidden, even
  *   from the owner.
+ *
+ * The owner is decided on every row of a group. `groupRows` supplies them
+ * when `rows` is not whole groups; it is read only if some row is hidden.
  */
-async function visibleRows<T extends GroupRow>(req: Request, rows: T[]): Promise<T[]> {
+async function visibleRows<T extends GroupRow>(
+  req: Request,
+  rows: T[],
+  groupRows: () => Promise<GroupRow[]> = async () => rows,
+): Promise<T[]> {
   if (seesEverything(req)) return rows;
   const teamIds = authOf(req)?.teamIds;
   const seen = new Set(await deviceService.filterRowsByVisibleDevice(rows, teamIds, 'device_udid'));
   const userId = resolveActor(req).userId;
+  const hidden = rows.filter((r) => !seen.has(r));
+  if (hidden.length === 0 || !userId) return rows.filter((r) => seen.has(r));
   const owned = new Set<string>();
-  byGroupId(rows).forEach((list, groupId) => {
-    if (userId && groupOwner(list) === userId) owned.add(groupId);
+  byGroupId(await groupRows()).forEach((list, groupId) => {
+    if (groupOwner(list) === userId) owned.add(groupId);
   });
-  const hidden = rows.filter((r) => !seen.has(r) && owned.has(r.group_id));
-  if (hidden.length > 0) {
-    const udids = Array.from(new Set(hidden.map((r) => r.device_udid)));
+  const mine = hidden.filter((r) => owned.has(r.group_id));
+  if (mine.length > 0) {
+    const udids = Array.from(new Set(mine.map((r) => r.device_udid)));
     const existing = await Container.get(RecordingStore).deviceNames(udids);
-    hidden.filter((r) => !existing.has(r.device_udid)).forEach((r) => seen.add(r));
+    mine.filter((r) => !existing.has(r.device_udid)).forEach((r) => seen.add(r));
   }
   return rows.filter((r) => seen.has(r));
 }
@@ -495,7 +504,7 @@ router.delete('/recordings/:groupId', devicesScope, async (req: Request, res: Re
       groupId,
       visible.map((r) => r.id),
     );
-    const left = (await store.listGroup(groupId)).length;
+    const left = (await store.listGroupStarts(groupId)).length;
     const removed = recordingFiles.removeRecordingFiles(
       visible.map((r) => r.file_path),
       left === 0 ? path.dirname(compositeOutputPath(groupId)) : null,
@@ -665,9 +674,10 @@ export async function sourceMp4Handler(req: Request, res: Response) {
     const rec: any = await store.findById(recordingId);
     if (!rec || rec.group_id !== req.params.groupId)
       return res.status(404).json({ error: 'not_found' });
-    // Judged against the whole group, since its owner sees every phone in it.
-    const visible = await visibleRows(req, await store.listGroup(rec.group_id));
-    if (!visible.some((r) => r.id === rec.id)) return res.status(404).json({ error: 'not_found' });
+    // One recording, not the whole group with its marks: the player asks for
+    // a range many times. The group is read, leanly, only to name its owner.
+    const visible = await visibleRows(req, [rec], () => store.listGroupStarts(rec.group_id));
+    if (visible.length === 0) return res.status(404).json({ error: 'not_found' });
     if (!rec.file_path || !fs.existsSync(rec.file_path)) {
       return res.status(404).json({ error: 'video_not_found' });
     }
