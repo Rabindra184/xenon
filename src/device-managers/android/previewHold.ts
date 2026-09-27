@@ -31,20 +31,25 @@ export function mayReleasePreviewHold(use: PreviewHoldUse): boolean {
  * stream service may drop it while the other has viewers, and a recording
  * holds the device the same way.
  *
- * The services are looked up by their registered names rather than imported:
- * both of them call this, and importing them here would make the imports
- * circular.
+ * The services are required here, when called, rather than imported: both of
+ * them call this, and importing them at the top would make the imports
+ * circular. They are looked up by class: TypeDI 0.10 ignores
+ * `@Service({ name })`, so a lookup by that name throws in the server.
  */
 export async function releaseIdlePreviewHold(udid: string): Promise<boolean> {
   try {
     const device = await DeviceStoreFactory.getStore().findDevice({ udid });
     if (!device) return false;
-    const h264 = Container.get<{
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const H264Service = require('./AndroidH264StreamService').default;
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const MjpegService = require('./AndroidStreamService').default;
+    const h264 = Container.get(H264Service) as {
       getMultiplexer(udid: string): { clientCount: number } | undefined;
-    }>('AndroidH264StreamService');
-    const mjpeg = Container.get<{
+    };
+    const mjpeg = Container.get(MjpegService) as {
       getStreamStatus(udid: string): { viewerCount: number } | undefined;
-    }>('AndroidStreamService');
+    };
     const use: PreviewHoldUse = {
       sessionId: device.session_id,
       h264Clients: h264.getMultiplexer(udid)?.clientCount ?? 0,

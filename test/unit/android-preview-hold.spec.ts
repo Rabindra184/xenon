@@ -29,12 +29,14 @@ describe('Android live-preview hold', () => {
     } as any);
     const real = Container.get.bind(Container);
     sinon.stub(Container, 'get').callsFake((token: any) => {
-      if (token === 'AndroidH264StreamService') {
+      // By class: TypeDI 0.10 ignores @Service({ name }), so a lookup by name
+      // throws in the running server even though a name stub here would pass.
+      if (token === AndroidH264StreamService) {
         return {
           getMultiplexer: () => (use.h264Clients ? { clientCount: use.h264Clients } : undefined),
         } as any;
       }
-      if (token === 'AndroidStreamService') {
+      if (token === AndroidStreamService) {
         return { getStreamStatus: () => ({ viewerCount: use.mjpegViewers }) } as any;
       }
       if (token === RecordingStore) return { isRecording: async () => use.recording } as any;
