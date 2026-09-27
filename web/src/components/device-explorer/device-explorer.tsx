@@ -60,6 +60,9 @@ export class DeviceExplorer extends React.Component<IDeviceExplorerProps, IDevic
   private socketCleanups: (() => void)[] = [];
   private refreshTimeout: NodeJS.Timeout | null = null;
   private searchRef = React.createRef<HTMLInputElement>();
+  private containerRef = React.createRef<HTMLDivElement>();
+  private stickyGroupRef = React.createRef<HTMLDivElement>();
+  private stickyObserver: ResizeObserver | null = null;
 
   constructor(props: any) {
     super(props);
@@ -86,6 +89,7 @@ export class DeviceExplorer extends React.Component<IDeviceExplorerProps, IDevic
     });
     this.socketCleanups.push(unblockedCleanup, blockedCleanup);
     document.addEventListener('keydown', this.onSlash);
+    this.observeStickyGroup();
   }
 
   componentWillUnmount() {
@@ -99,7 +103,24 @@ export class DeviceExplorer extends React.Component<IDeviceExplorerProps, IDevic
     }
     this.socketCleanups.forEach((cleanup) => cleanup());
     document.removeEventListener('keydown', this.onSlash);
+    this.stickyObserver?.disconnect();
   }
+
+  // The table's sticky header shares the scroll container with the page's
+  // own sticky title + toolbar (`.de2-sticky-group`), which sits above it.
+  // Measuring that group's height and exposing it as `--de2-sticky-h` lets
+  // the table header's `top` clear it instead of scrolling underneath.
+  // jsdom has no ResizeObserver, so this is a no-op in tests.
+  observeStickyGroup = () => {
+    if (typeof ResizeObserver === 'undefined') return;
+    const group = this.stickyGroupRef.current;
+    const container = this.containerRef.current;
+    if (!group || !container) return;
+    this.stickyObserver = new ResizeObserver(() => {
+      container.style.setProperty('--de2-sticky-h', `${group.offsetHeight}px`);
+    });
+    this.stickyObserver.observe(group);
+  };
 
   // "/" jumps to search, as in most list tools. Not while typing, not with
   // Ctrl/Alt/Cmd, and not while a device is open: device control sends keys
@@ -182,8 +203,8 @@ export class DeviceExplorer extends React.Component<IDeviceExplorerProps, IDevic
     const closeTo = `/devices${this.props.locationSearch}`;
 
     return (
-      <div className="device-explorer-container">
-        <div className="de2-sticky-group">
+      <div className="device-explorer-container" ref={this.containerRef}>
+        <div className="de2-sticky-group" ref={this.stickyGroupRef}>
           <PageHeader
             icon={AndroidIcon}
             title="Devices"
