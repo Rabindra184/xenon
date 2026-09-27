@@ -17,9 +17,12 @@ export interface SortContext {
 export const DEFAULT_SORT: DeviceSort = { key: 'status', dir: 'asc' };
 const KEYS: SortKey[] = ['status', 'device', 'platform', 'type', 'team', 'host'];
 
-// Case-insensitive, and numeric-aware so "9" sorts before "10".
-const text = (a: string, b: string) =>
-  a.localeCompare(b, undefined, { sensitivity: 'base', numeric: true });
+// Case-insensitive, and numeric-aware so "9" sorts before "10". A shared
+// collator, not `a.localeCompare(b, ...)` per call: the options object makes
+// `localeCompare` rebuild its collation every time, and this runs on every
+// render (the 10s poll, every search keystroke, every toast).
+const collator = new Intl.Collator(undefined, { sensitivity: 'base', numeric: true });
+const text = (a: string, b: string) => collator.compare(a, b);
 
 function compareBy(a: IDevice, b: IDevice, key: SortKey, ctx: SortContext): number {
   switch (key) {
