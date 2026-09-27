@@ -314,7 +314,12 @@ Every method and action is checked, with no exception list.
   unknown-udid answer with the same number of lookups: the ownership guard,
   each handler's own 404 body, and Express's 404 and automatic OPTIONS reply
   for requests no route handles. `req.originalUrl` is untouched, so an answer
-  that echoes the path echoes the real one, never the placeholder.
+  that echoes the path echoes the real one, never the placeholder. Express 4
+  doesn't restore `req.url` when a router falls through, so `register()`
+  mounts `restoreHiddenDeviceUrl` after the router, at the parent, to put it
+  back; never as a trailing `router.use`, where a later route would get the
+  real hidden udid. Layers after `/control` should still read
+  `req.originalUrl` when they need the requested path.
   `test/integration/team-visibility-control.spec.ts` reads the routes from the
   router's own stack and holds all of them, plus unrouted actions, the wrong
   method and OPTIONS, to identical answers. That is also why `stream/ticket`
@@ -324,11 +329,12 @@ Every method and action is checked, with no exception list.
 - **One lookup for both guards.** Both parse the udid and look the device up
   through `src/middleware/controlDevice.ts`, memoized on `res.locals`, so a
   member's request costs one query across the two.
-- **The stream-ticket path is unscoped.** `GET /control/:udid/stream?ticket=`
-  (and the H.264 and logcat WebSockets) authenticate by ticket with
-  `teamIds: undefined`, so the team guard passes them. They are covered only
-  because minting (`POST stream/ticket`) is guarded. A second route that
-  accepts tickets, or a second way to mint one, needs its own team check.
+- **Tickets are team-checked only when minted.** `GET /control/:udid/stream?ticket=`
+  authenticates by ticket with `teamIds: undefined`, so the team guard passes
+  it. The H.264 and logcat WebSockets redeem tickets outside Express and never
+  reach the guard at all. What covers all three is that minting a ticket
+  (`POST stream/ticket`) is team-checked. A second route that accepts tickets,
+  or a second way to mint one, needs its own team check.
 - Reservations apply the same rule, and so do SDK leases: `LeaseService.create`
   matches with the caller's `callerTeamIds`, never a team list from the
   client's `filters`.

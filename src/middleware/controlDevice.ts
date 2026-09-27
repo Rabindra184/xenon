@@ -74,7 +74,12 @@ export function readControlUdid(req: Request, res: Response, who: string): strin
 /**
  * The device for `udid`, looked up at most once per request. A lookup that
  * throws rejects for every caller, and each guard answers that with its own
- * 503. The hidden-device udid resolves to null without a lookup: for an
+ * 503.
+ *
+ * The memo is keyed by udid only, not by `findDevice`: the first call's
+ * lookup serves the whole request, and a later call with a different
+ * `findDevice` gets that first result. Both guards use the same store lookup
+ * in production, so this only matters to a test that injects two. The hidden-device udid resolves to null without a lookup: for an
  * unknown udid the second guard gets the first guard's memoized result, so
  * both paths cost the same single query.
  */
