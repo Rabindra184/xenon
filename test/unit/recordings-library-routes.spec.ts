@@ -12,6 +12,7 @@ import { RecordingStore } from '../../src/services/recording/recording-store';
 import * as deviceService from '../../src/data-service/device-service';
 import * as recordingFiles from '../../src/services/recording/recordingFiles';
 import { scopesForRole } from '../../src/middleware/authMiddleware';
+import { PluginContext } from '../../src/PluginContext';
 import { useArtifactStore } from '../helpers/artifact-store';
 
 type Role = 'MEMBER' | 'ADMIN' | 'SUPER_ADMIN';
@@ -192,6 +193,50 @@ describe('recordings library routes', () => {
       expect(res.status).to.equal(400);
       expect(res.body.error).to.equal('since must be an ISO time');
     });
+
+    it('carries facets: phones, people, unknownCount and when', async () => {
+      // buildLibrary buckets "when" off the real Date.now(), which the route
+      // does not let the caller override — so, unlike T0 elsewhere in this
+      // file, these ages are relative to test-run time, not a fixed instant.
+      const now = Date.now();
+      rows = [
+        rec({ id: 'a', group_id: 'g1', started_at: new Date(now - 1000) }),
+        rec({
+          id: 'b',
+          group_id: 'g2',
+          device_udid: 'U2',
+          started_by: null,
+          started_at: new Date(now - 40 * 24 * 60 * 60 * 1000),
+        }),
+      ];
+      const res = await request(buildApp(alice)).get('/xenon/api/recordings');
+      expect(res.status, JSON.stringify(res.body)).to.equal(200);
+      expect(res.body.facets.phones).to.deep.equal([
+        { udid: 'U1', name: 'Galaxy S9+', count: 1 },
+        { udid: 'U2', name: 'U2', count: 1 },
+      ]);
+      expect(res.body.facets.people).to.deep.equal([{ id: 'usr_alice', name: 'Alice', count: 1 }]);
+      expect(res.body.facets.unknownCount).to.equal(1);
+      expect(res.body.facets.when).to.deep.equal({ any: 2, '24h': 1, '7d': 1, '30d': 1 });
+    });
+
+    it('reads retention from non-default plugin settings', async () => {
+      const ctx = Container.get(PluginContext);
+      const original = ctx.pluginArgs;
+      ctx.pluginArgs = {
+        ...original,
+        recordingCleanupDays: 7,
+        recordingCleanupMaxCount: 20,
+      };
+      try {
+        rows = [rec()];
+        const res = await request(buildApp(alice)).get('/xenon/api/recordings');
+        expect(res.status, JSON.stringify(res.body)).to.equal(200);
+        expect(res.body.retention).to.deep.equal({ days: 7, maxCount: 20 });
+      } finally {
+        ctx.pluginArgs = original;
+      }
+    });
   });
 
   describe('GET /recordings/:groupId', () => {
@@ -237,6 +282,53 @@ describe('recordings library routes', () => {
       );
       rows = [rec({ device_udid: 'HIDDEN' })];
       expect((await request(buildApp(alice)).get('/xenon/api/recordings/g1')).status).to.equal(404);
+    });
+
+    it('sorts bookmarks and marks by timecode across every recording in the group', async () => {
+      rows = [
+        rec({
+          id: 'r1',
+          device_udid: 'U1',
+          bookmarks: [
+            { id: 'b2', recording_id: 'r1', timecode_ms: 9000, label: 'Late', note: null },
+          ],
+          annotations: [
+            {
+              id: 'a2',
+              recording_id: 'r1',
+              timecode_ms: 8000,
+              end_timecode_ms: null,
+              shape: 'RECT',
+              geometry: '{}',
+              color: 'red',
+              text: null,
+            },
+          ],
+        }),
+        rec({
+          id: 'r2',
+          device_udid: 'U2',
+          bookmarks: [
+            { id: 'b1', recording_id: 'r2', timecode_ms: 1000, label: 'Early', note: null },
+          ],
+          annotations: [
+            {
+              id: 'a1',
+              recording_id: 'r2',
+              timecode_ms: 500,
+              end_timecode_ms: null,
+              shape: 'RECT',
+              geometry: '{}',
+              color: 'blue',
+              text: null,
+            },
+          ],
+        }),
+      ];
+      const res = await request(buildApp(alice)).get('/xenon/api/recordings/g1');
+      expect(res.status, JSON.stringify(res.body)).to.equal(200);
+      expect(res.body.bookmarks.map((b: any) => b.id)).to.deep.equal(['b1', 'b2']);
+      expect(res.body.annotations.map((a: any) => a.id)).to.deep.equal(['a1', 'a2']);
     });
   });
 
