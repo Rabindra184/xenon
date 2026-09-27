@@ -43,6 +43,9 @@ import { IPluginArgs } from './interfaces/IPluginArgs';
 import { DeviceStoreFactory } from './data-service/device-store';
 import { IPendingSessionStore } from './data-service/device-store.interface';
 import { v4 as uuidv4 } from 'uuid';
+import type { LeaseSessionProof } from './services/lease/LeaseService';
+import { leaseIdOf, leaseRefusalMessage } from './services/lease/leaseSessionCaps';
+import { isDeviceVisible } from './services/device-access/deviceVisibility';
 
 // Use a Proxy to ensure we're always using the latest store from the factory,
 // which is critical for test isolation when the factory cache is cleared.
@@ -103,10 +106,20 @@ export function isDeviceConfigPathAbsolute(path: string): boolean | undefined {
   }
 }
 
+// What a caller that passes no proof has: nothing. A lease then needs its token.
+const NO_LEASE_PROOF: LeaseSessionProof = {
+  canOverride: false,
+  apiKeyId: null,
+  userId: null,
+  leaseToken: null,
+};
+
 /**
  * For given capability, wait untill a free device is available from the database
  * and update the capability json with required device informations
  * @param capability
+ * @param leaseProof who the session is, and the lease token it sent; only a
+ *   session naming a lease in `xenon:options.leaseId` reads it
  * @returns
  */
 export async function allocateDeviceForSession(
@@ -115,6 +128,7 @@ export async function allocateDeviceForSession(
   deviceQueryIntervalMs: number,
   pluginArgs: IPluginArgs,
   callerTeamIds?: string[],
+  leaseProof: LeaseSessionProof = NO_LEASE_PROOF,
 ): Promise<IDevice> {
   const firstMatch = Object.assign({}, capability.firstMatch?.[0] ?? {}, capability.alwaysMatch);
 
@@ -122,25 +136,13 @@ export async function allocateDeviceForSession(
   // passes its id through caps. Resolve directly; skip findAndLockDevice
   // (device is already locked) and skip port allocation in XenonCapabilityManager
   // (ports are already in firstMatch).
-  const xenonOpts = (firstMatch['xenon:options'] ?? {}) as Record<string, unknown>;
-  const leaseIdCap = typeof xenonOpts.leaseId === 'string' ? xenonOpts.leaseId : undefined;
+  const leaseIdCap = leaseIdOf(capability);
   if (leaseIdCap) {
-    const { LeaseService } = await import('./services/lease/LeaseService');
-    const { Container } = await import('typedi');
-    const resolved = await Container.get(LeaseService).resolve(leaseIdCap);
-    if (!resolved) {
-      throw new Error(`lease ${leaseIdCap} is not active`);
-    }
-    const leaseStore = DeviceStoreFactory.getStore();
-    const leasedDevice = await leaseStore.findDevice({
-      udid: resolved.deviceUdid,
-      host: resolved.deviceHost,
-    });
-    if (!leasedDevice) {
-      throw new Error(
-        `lease ${leaseIdCap} references missing device ${resolved.deviceUdid}@${resolved.deviceHost}`,
-      );
-    }
+    const leasedDevice = await findLeasedDevice(leaseIdCap, leaseProof, callerTeamIds);
+    // One answer, from this one place, whether the lease is gone, someone
+    // else's, or on a phone the caller can't see: nothing in the error, its
+    // text or its stack tells them apart.
+    if (!leasedDevice) throw new Error(leaseRefusalMessage(leaseIdCap));
     return leasedDevice;
   }
 
@@ -250,6 +252,35 @@ export async function allocateDeviceForSession(
       `Device allocation failed unexpectedly for filters: ${JSON.stringify(filters)}`,
     );
   }
+}
+
+/**
+ * The device a lease-bound session may use, or null when it may not: the lease
+ * is missing, inactive or expired, the session did not prove it holds it, or
+ * the phone is one the caller's teams can't see. The last holds even for the
+ * token or the lease's creator — the phone may have moved team since — and
+ * has no admin exception: `callerTeamIds` undefined is how an admin is
+ * unscoped.
+ */
+async function findLeasedDevice(
+  leaseId: string,
+  proof: LeaseSessionProof,
+  callerTeamIds: string[] | undefined,
+): Promise<IDevice | null> {
+  const { LeaseService } = await import('./services/lease/LeaseService');
+  const resolved = await Container.get(LeaseService).authorizeSessionUse(leaseId, proof);
+  if (!resolved) return null;
+  const leasedDevice = await DeviceStoreFactory.getStore().findDevice({
+    udid: resolved.deviceUdid,
+    host: resolved.deviceHost,
+  });
+  if (!leasedDevice) {
+    // Only a session that proved it holds the lease gets this far.
+    throw new Error(
+      `lease ${leaseId} references missing device ${resolved.deviceUdid}@${resolved.deviceHost}`,
+    );
+  }
+  return isDeviceVisible(leasedDevice.teamId, callerTeamIds) ? leasedDevice : null;
 }
 
 /**

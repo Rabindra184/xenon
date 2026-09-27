@@ -201,14 +201,15 @@ describe('LeaseService', () => {
     expect(thrown).to.be.instanceOf(LeaseTokenMismatch);
   });
 
-  it('resolve returns null when lease has aged past expiresAt', async () => {
+  it('authorizeSessionUse returns null when lease has aged past expiresAt', async () => {
     prismaStub.lease.findUnique.resolves({
       id: 'lse_test', status: 'active',
       deviceUdid: 'u1', deviceHost: 'h1',
       expiresAt: Date.now() - 1_000,  // already expired wall-clock
       capabilityBag: '{}',
     });
-    const out = await svc.resolve('lse_test');
+    const anyone = { canOverride: true, apiKeyId: null, userId: null, leaseToken: null };
+    const out = await svc.authorizeSessionUse('lse_test', anyone);
     expect(out).to.equal(null);
   });
 });

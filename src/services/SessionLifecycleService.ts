@@ -40,6 +40,9 @@ import {
 } from '../XenonCapabilityManager';
 import { JwtKeyService } from './token/JwtKeyService';
 import { resolveSessionIdentity } from './session/sessionIdentity';
+import { capsWithLeaseToken, leaseIdOf, takeLeaseToken } from './lease/leaseSessionCaps';
+import { canOverrideLease } from './device-access/leaseOverride';
+import { computeTeamIds } from './device-access/callerTeamIds';
 import { CircuitBreaker } from '../data-service/CircuitBreaker';
 import { addProxyHandler } from '../proxy/wd-command-proxy';
 import { DeviceStoreFactory } from '../data-service/device-store';
@@ -54,6 +57,19 @@ import { SessionStatus } from '../types/SessionStatus';
 import SessionType from '../enums/SessionType';
 import AsyncLock from 'async-lock';
 import { errors as appiumErrors } from '@appium/base-driver';
+
+/** How a session that names a lease is judged. See leaseAccessFor. */
+export interface LeaseAccess {
+  /** May use a lease someone else created: canOverrideLease. */
+  canOverride: boolean;
+  /** The teams whose phones it can see, as REST computes them. undefined = unscoped. */
+  teamIds: string[] | undefined;
+}
+
+type LeaseCredential =
+  | { kind: 'api-key'; scopes: string; userId: string; teamId: string | null }
+  | { kind: 'session-token'; userId: string; teamId: string | null }
+  | { kind: 'none' };
 
 const commandsQueueGuard = new AsyncLock();
 // Serializes concurrent deleteSession cleanup for the same sessionId so
@@ -73,6 +89,11 @@ export class SessionLifecycleService {
       this.logger.warn('Rejecting new session: hub is draining for shutdown');
       throw new Error('Hub is shutting down; please retry against a different node');
     }
+
+    // The lease token is a bearer secret. Take it out of the caps before
+    // anything reads them — the pending-session row, the driver, the Session
+    // row, the dashboard — and hand it only to the lease check.
+    const leaseToken = takeLeaseToken(caps);
 
     const authResult = await this.authorizeSessionRequest(caps);
 
@@ -118,6 +139,10 @@ export class SessionLifecycleService {
       }
     }
 
+    // Only a session that names a lease pays for looking up how it may use one.
+    // Before the pending row is written, so a failure here leaves none behind.
+    const leaseAccess = leaseIdOf(caps) ? await authResult.leaseAccess() : undefined;
+
     const firstMatch =
       Array.isArray(caps.firstMatch) && caps.firstMatch.length > 0 ? caps.firstMatch[0] : {};
 
@@ -137,7 +162,20 @@ export class SessionLifecycleService {
           pluginArgs.deviceAvailabilityTimeoutMs,
           pluginArgs.deviceAvailabilityQueryIntervalMs,
           pluginArgs,
-          authResult.scoped ? authResult.callerTeamIds : undefined,
+          // The leased phone is held to the REST team rule, so a phone a caller
+          // could lease is one their session can use; any other allocation
+          // keeps the session's own scoping.
+          leaseAccess
+            ? leaseAccess.teamIds
+            : authResult.scoped
+              ? authResult.callerTeamIds
+              : undefined,
+          {
+            canOverride: leaseAccess?.canOverride ?? false,
+            apiKeyId: authResult.apiKeyId,
+            userId: authResult.userId,
+            leaseToken,
+          },
         );
       } catch (err) {
         await removePendingSession(pendingSessionId);
@@ -158,7 +196,14 @@ export class SessionLifecycleService {
       if (isRemoteOrCloudSession) {
         this.logger.debug(`📱 Forwarding session request to ${device.host}`);
         await updateDeviceProgress(device.udid, device.host, 'Forwarding to remote node...');
-        session = await this.forwardSessionRequest(device, caps);
+        // A peer Xenon node re-runs createSession, lease check included, so it
+        // needs the proof this hub accepted; it strips the token itself. A
+        // cloud provider is not a Xenon node and never sees it.
+        const isPeerNode = !device.cloud && !!device.nodeId;
+        session = await this.forwardSessionRequest(
+          device,
+          isPeerNode ? capsWithLeaseToken(caps, leaseToken) : caps,
+        );
       } else {
         this.logger.debug('📱 Creating session on the same node');
         await this.handleLocalWDAProvisioning(device, caps);
@@ -226,11 +271,16 @@ export class SessionLifecycleService {
   // array when the apiKey is narrowed to one team. The widening to a set is
   // for Phase 4A's multi-team membership; today an apiKey can bind to at
   // most one team, so this is always 0- or 1-element.
+  //
+  // `leaseAccess` says how the session is judged if it names a lease. It is a
+  // function so the lookups behind it run only for such a session. Whether it
+  // may override is not `!scoped`: a credential-less session is unscoped too.
   private async authorizeSessionRequest(caps: ISessionCapability): Promise<{
     apiKeyId: string | null;
     userId: string | null;
     callerTeamIds: string[] | undefined;
     scoped: boolean;
+    leaseAccess: () => Promise<LeaseAccess>;
   }> {
     const { config: xenonConfig } = await import('../config');
     // `scoped` tells the allocator whether to restrict device candidates by
@@ -238,7 +288,17 @@ export class SessionLifecycleService {
     // true = filter to { null, ...callerTeamIds }; when callerTeamIds is
     // empty, only the shared pool is visible.
     if (xenonConfig.authDisabled === true) {
-      return { apiKeyId: null, userId: null, callerTeamIds: undefined, scoped: false };
+      // Every caller is a synthetic SUPER_ADMIN here, as in authMiddleware.
+      return {
+        apiKeyId: null,
+        userId: null,
+        callerTeamIds: undefined,
+        scoped: false,
+        leaseAccess: async () => ({
+          canOverride: canOverrideLease({ kind: 'auth-disabled' }),
+          teamIds: undefined,
+        }),
+      };
     }
 
     const { ApiKeyService } = await import('./ApiKeyService');
@@ -267,17 +327,35 @@ export class SessionLifecycleService {
       // so read it for attribution even when the gate is off — otherwise the
       // ownership guard fails closed on a session whose owner we actually know.
       // Enforcement is assertSessionTokenGate's job and is unchanged.
+      // The token's teamId claim narrows it the way a key's team does; kept
+      // from the one verify rather than verifying again.
+      let tokenTeamId: string | null = null;
       const identity = await resolveSessionIdentity({
         row: null,
         sessionToken: extractSessionToken(caps),
-        verify: (t) => Container.get(JwtKeyService).verify(t, { audience: 'xenon-session' }),
+        verify: async (t) => {
+          const payload = await Container.get(JwtKeyService).verify(t, {
+            audience: 'xenon-session',
+          });
+          tokenTeamId = typeof payload?.teamId === 'string' ? payload.teamId : null;
+          return payload;
+        },
       });
       if (!identity.userId) {
         this.logger.warn(
           'Session created without valid credentials. Pass `df:options.accessKey` + `df:options.token`.',
         );
       }
-      return { ...identity, callerTeamIds: undefined, scoped: false };
+      return {
+        ...identity,
+        callerTeamIds: undefined,
+        scoped: false,
+        leaseAccess: this.leaseAccessFor(
+          identity.userId
+            ? { kind: 'session-token', userId: identity.userId, teamId: tokenTeamId }
+            : { kind: 'none' },
+        ),
+      };
     }
     if (!svc.hasScope(row, ['sessions'])) {
       this.logger.error('Rejecting session: credentials lack the `sessions` scope');
@@ -287,6 +365,12 @@ export class SessionLifecycleService {
     }
 
     const isAdmin = svc.hasScope(row, ['admin']);
+    const leaseAccess = this.leaseAccessFor({
+      kind: 'api-key',
+      scopes: row.scopes,
+      userId: row.userId,
+      teamId: row.teamId ?? null,
+    });
     // Empty array (apiKey not bound to a team) preserves the previous
     // shared-pool-only filter for member-tier callers; single-element
     // array preserves the previous team-binding narrow.
@@ -307,10 +391,60 @@ export class SessionLifecycleService {
         userId: row.userId,
         callerTeamIds: [requestedTeam],
         scoped: !isAdmin,
+        leaseAccess,
       };
     }
 
-    return { apiKeyId: row.id, userId: row.userId, callerTeamIds, scoped: !isAdmin };
+    return {
+      apiKeyId: row.id,
+      userId: row.userId,
+      callerTeamIds,
+      scoped: !isAdmin,
+      leaseAccess,
+    };
+  }
+
+  // How a session that names a lease is judged, looked up at most once and
+  // only when asked. Who may override follows canOverrideLease; which phones
+  // it can see follows REST's computeTeamIds. Both need the owner's live role,
+  // as authMiddleware reads it for every REST request.
+  private leaseAccessFor(credential: LeaseCredential): () => Promise<LeaseAccess> {
+    let looked: Promise<LeaseAccess> | undefined;
+    return () => {
+      if (!looked) looked = this.lookUpLeaseAccess(credential);
+      return looked;
+    };
+  }
+
+  private async lookUpLeaseAccess(credential: LeaseCredential): Promise<LeaseAccess> {
+    // No credentials: the lease token is the only way in. Unscoped, as a
+    // credential-less session is for any other allocation.
+    if (credential.kind === 'none') {
+      return { canOverride: canOverrideLease({ kind: 'none' }), teamIds: undefined };
+    }
+    try {
+      const { UserService } = await import('./UserService');
+      const found = await Container.get(UserService).findById(credential.userId);
+      const user = found && found.status === 'ACTIVE' ? found : null;
+      const canOverride = canOverrideLease(
+        credential.kind === 'api-key'
+          ? { kind: 'api-key', scopes: credential.scopes, user }
+          : { kind: 'session-token', user },
+      );
+      const role = user?.role === 'SUPER_ADMIN' || user?.role === 'ADMIN' ? user.role : 'MEMBER';
+      const teamIds = await computeTeamIds({
+        role,
+        userId: credential.userId,
+        apiKeyTeamId: credential.teamId,
+      });
+      return { canOverride, teamIds };
+    } catch (err: any) {
+      // Fail closed: no override, and the shared pool only.
+      this.logger.warn(
+        `Could not look up how user ${credential.userId} may use a lease: ${err?.message ?? err}`,
+      );
+      return { canOverride: false, teamIds: [] };
+    }
   }
 
   private async handleLocalWDAProvisioning(device: IDevice, caps: ISessionCapability) {
