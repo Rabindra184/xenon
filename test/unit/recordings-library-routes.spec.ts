@@ -129,12 +129,15 @@ describe('recordings library routes', () => {
   useArtifactStore();
   let rows: any[];
   let visible: Set<string>;
+  /** Phones that still have a Device row, with what to call them. */
+  let devices: Map<string, { name: string; platform: string | null }>;
   let store: any;
   let remove: sinon.SinonStub;
 
   beforeEach(() => {
     rows = [];
     visible = new Set(['U1', 'U2']);
+    devices = new Map([['U1', { name: 'Galaxy S9+', platform: 'android' }]]);
     store = {
       libraryRows: async () => rows,
       listGroup: async (g: string) => rows.filter((r) => r.group_id === g),
@@ -144,7 +147,8 @@ describe('recordings library routes', () => {
         rows = rows.filter((r) => r.group_id !== g);
         return n;
       }),
-      deviceNames: async () => new Map([['U1', { name: 'Galaxy S9+', platform: 'android' }]]),
+      deviceNames: async (udids: string[]) =>
+        new Map(Array.from(devices).filter(([u]) => udids.includes(u))),
       userNames: async () => new Map([['usr_alice', 'Alice']]),
     };
     Container.set(RecordingStore, store);
@@ -500,6 +504,25 @@ describe('recordings library routes', () => {
         'r0',
         'rn',
       ]);
+    });
+
+    // The exemption is for a phone that is gone, not for one that moved to
+    // another team: that phone still exists, and its team decides.
+    it('does not show the owner a phone that still exists on another team', async () => {
+      const file = path.join(dir, 'r2.mp4');
+      fs.writeFileSync(file, 'x');
+      devices.set('OTHER', { name: 'Team B phone', platform: 'android' });
+      rows = [rec(), rec({ id: 'r2', device_udid: 'OTHER', file_path: file })];
+      const list = await request(buildApp(alice)).get('/xenon/api/recordings');
+      expect(list.status, JSON.stringify(list.body)).to.equal(200);
+      expect(list.body.recordings[0].phones.map((p: any) => p.udid)).to.deep.equal(['U1']);
+      const detail = await request(buildApp(alice)).get('/xenon/api/recordings/g1');
+      expect(detail.body.summary.phones.map((p: any) => p.udid)).to.deep.equal(['U1']);
+      expect(detail.body.recordings.map((r: any) => r.id)).to.deep.equal(['r1']);
+      const src = await request(buildApp(alice)).get(
+        '/xenon/api/recordings/g1/source.mp4?recordingId=r2',
+      );
+      expect(src.status).to.equal(404);
     });
 
     it('does not open it to another member: 404 everywhere', async () => {
