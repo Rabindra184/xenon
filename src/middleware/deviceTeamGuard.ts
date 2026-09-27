@@ -4,40 +4,36 @@ import { isDeviceVisible } from '../services/device-access/deviceVisibility';
 import { ownershipUnavailableBody } from '../services/device-access/deviceAccessPolicy';
 import {
   FindControlDevice,
-  controlAction,
+  HIDDEN_DEVICE_UDID,
   findControlDeviceInStore,
   lookupControlDevice,
   readControlUdid,
+  replaceControlUdid,
 } from './controlDevice';
-
-/**
- * The 404 a /control handler gives an unknown udid, where it is not the
- * plain-text default. A hidden phone must answer byte for byte like a missing
- * one, or the difference tells a member that another team owns that udid.
- * test/integration/team-visibility-control.spec.ts holds every route to this.
- */
-export const NOT_FOUND_BODY_BY_ACTION: ReadonlyMap<string, unknown> = new Map([
-  ['display', { status: 'error', message: 'Device not found' }],
-  ['appium-session', { status: 'error', message: 'Device not found' }],
-]);
-const DEFAULT_NOT_FOUND_BODY = 'Device not found';
 
 export interface DeviceTeamGuardDeps {
   findDevice?: FindControlDevice;
 }
 
 /**
- * Refuse any /control request against a phone outside the caller's teams.
+ * Keep every /control request away from a phone outside the caller's teams.
  *
  * Teams are a device boundary: a member may use the shared pool and their own
  * teams' phones, nothing else. Every method and every action goes through
- * here — reads, mutations, and the stream actions the ownership guard skips —
- * with no exception list, so a route added later is covered by default.
+ * here, including requests no route handles, with no exception list, so a
+ * route added later is covered by default.
  *
- * A phone the caller can't see gets the handler's own "unknown device" 404,
- * never a 403 or 409: nothing may reveal that another team's phone exists.
- * Mounted before deviceAccessGuard for the same reason: that guard's 409 names
- * the holder, which would confirm the phone exists and say who is using it.
+ * A hidden phone must look exactly like one that doesn't exist, on every
+ * request. So the guard doesn't answer it: it swaps the udid in `req.url` for
+ * HIDDEN_DEVICE_UDID and lets the request go on. Every later layer then gives
+ * its unknown-udid answer, down to the byte and the number of lookups: the
+ * ownership guard, each handler's own 404 body, and Express's 404 and
+ * automatic OPTIONS reply. `req.originalUrl` is untouched, so an answer that
+ * echoes the path ("Cannot GET …", the API's JSON 404) echoes the real one,
+ * exactly as it would for an unknown udid, and never shows the placeholder.
+ *
+ * Mounted before deviceAccessGuard, whose 409 names the holder: that would
+ * confirm the phone exists and say who has it.
  */
 export function deviceTeamGuard(deps: DeviceTeamGuardDeps = {}) {
   const findDevice = deps.findDevice ?? findControlDeviceInStore;
@@ -55,7 +51,6 @@ export function deviceTeamGuard(deps: DeviceTeamGuardDeps = {}) {
     if (udid === null) return; // 400 already sent
     if (!udid) return next();
 
-    // Shared with deviceAccessGuard: one lookup per request for both guards.
     let device;
     try {
       device = await lookupControlDevice(res, udid, findDevice);
@@ -65,17 +60,17 @@ export function deviceTeamGuard(deps: DeviceTeamGuardDeps = {}) {
       log.error(`deviceTeamGuard: device lookup failed for ${udid}: ${e?.message ?? e}`);
       return res.status(503).json(ownershipUnavailableBody());
     }
-    // Unknown device: the handler's own 404 is the answer, and the hidden case
-    // below imitates it.
-    if (!device) return next();
-    if (isDeviceVisible(device.teamId, teamIds)) return next();
+    // Unknown device: nothing to hide, and the handler answers it.
+    if (!device || isDeviceVisible(device.teamId, teamIds)) return next();
 
-    log.warn(
+    // Debug, not warn: a dashboard tile left open on a phone that has since
+    // moved to another team polls stream/status every few seconds, and each
+    // poll lands here. It is the expected answer, not an incident.
+    log.debug(
       `Device hidden by team: ${auth.userId} -> ${req.method} ${req.originalUrl} ` +
         `on ${udid} (device team ${device.teamId})`,
     );
-    return res
-      .status(404)
-      .send(NOT_FOUND_BODY_BY_ACTION.get(controlAction(req)) ?? DEFAULT_NOT_FOUND_BODY);
+    req.url = replaceControlUdid(req.url, HIDDEN_DEVICE_UDID);
+    return next();
   };
 }

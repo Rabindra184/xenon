@@ -30,6 +30,7 @@ import { mutationScopeGuard } from '../../middleware/scopeGuard';
 import { roleGuard } from '../../middleware/roleGuard';
 import { deviceAccessGuard } from '../../middleware/deviceAccessGuard';
 import { deviceTeamGuard } from '../../middleware/deviceTeamGuard';
+import { HIDDEN_DEVICE_UDID } from '../../middleware/controlDevice';
 import {
   formatManualLock,
   inspectManualLock,
@@ -64,9 +65,10 @@ router.use(roleGuard('MEMBER'));
 // open to any authenticated key.
 router.use(mutationScopeGuard(['devices']));
 
-// Teams: a phone outside the caller's teams answers every request, read or
-// write, with the same 404 as an unknown udid. Before the ownership guard,
-// whose 409 would name the holder of a phone the caller must not know exists.
+// Teams: a phone outside the caller's teams is handed on as a udid no device
+// has, so every request, routed or not, gets exactly its unknown-udid answer.
+// Before the ownership guard, whose 409 would name the holder of a phone the
+// caller must not know exists.
 router.use(deviceTeamGuard());
 
 // Ownership: refuse mutations against a device held by another user or by
@@ -106,7 +108,10 @@ function buildProxyUrl(deviceHost: string, req: Request): string | null {
 }
 
 async function getDeviceInfo(udid: string) {
-  return await DeviceStoreFactory.getStore().findDevice({ udid });
+  const device = await DeviceStoreFactory.getStore().findDevice({ udid });
+  // deviceTeamGuard's stand-in for a hidden phone is never a device. Still
+  // query first, so a hidden phone costs the same query as an unknown udid.
+  return udid === HIDDEN_DEVICE_UDID ? null : device;
 }
 
 /**
@@ -731,9 +736,8 @@ router.post('/:udid/stream/ticket', async (req: Request, res: Response) => {
   // #216/#217 trusts that it is.
   const actor = resolveActor(req);
   if (!actor.userId) return res.status(401).json({ error: 'unauthenticated' });
-  // No ticket for a udid that isn't a device. deviceTeamGuard answers another
-  // team's phone with this same 404; if this minted for an unknown udid, the
-  // two answers would differ and tell a member which udids another team has.
+  // No ticket for a udid that isn't a device. Another team's phone arrives
+  // here as one (see deviceTeamGuard) and gets this same 404.
   const device = await getDeviceInfo(req.params.udid);
   if (!device) return res.status(404).send('Device not found');
   // Carry the two other things `evaluateDeviceAccess` needs alongside the user
@@ -1145,8 +1149,9 @@ router.get('/:udid/omni-scan', async (req: Request, res: Response) => {
  */
 router.get('/:udid/inspector/snapshot', async (req: Request, res: Response) => {
   const { udid } = req.params;
-  // The same 404 as every other route here, which deviceTeamGuard gives
-  // another team's phone. The service's own "not found" was a 500.
+  // The same 404 as every other route here for an unknown udid, which is
+  // also what another team's phone reaches here as. The service's own "not
+  // found" was a 500.
   if (!(await getDeviceInfo(udid))) return res.status(404).send('Device not found');
   try {
     const inspectorService = Container.get(InspectorService);

@@ -1,6 +1,7 @@
 import 'reflect-metadata';
 import { expect } from 'chai';
 import express from 'express';
+import cors from 'cors';
 import request from 'supertest';
 import fs from 'fs';
 import os from 'os';
@@ -8,6 +9,7 @@ import path from 'path';
 import { Container } from 'typedi';
 import { authMiddleware } from '../../src/middleware/authMiddleware';
 import ControlRouter from '../../src/app/routers/control';
+import { HIDDEN_DEVICE_UDID } from '../../src/middleware/controlDevice';
 import { TeamService } from '../../src/services/TeamService';
 import { JwtKeyService } from '../../src/services/token/JwtKeyService';
 import { XenonManager } from '../../src/device-managers';
@@ -37,37 +39,35 @@ class IOSDeviceManager {
   }
 }
 
-/** Every route in src/app/routers/control.ts. */
-const CONTROL_ROUTES: Array<{ method: 'get' | 'post'; action: string }> = [
-  { method: 'post', action: 'tap' },
-  { method: 'post', action: 'swipe' },
-  { method: 'post', action: 'text' },
-  { method: 'post', action: 'keyevent' },
-  { method: 'get', action: 'screenshot' },
-  { method: 'get', action: 'clipboard' },
-  { method: 'post', action: 'clipboard' },
-  { method: 'post', action: 'touchAndHold' },
-  { method: 'post', action: 'lock' },
-  { method: 'post', action: 'unlock' },
-  { method: 'get', action: 'display' },
-  { method: 'post', action: 'install' },
-  { method: 'post', action: 'install-repository-app' },
-  { method: 'post', action: 'upload-install' },
-  { method: 'post', action: 'uninstall' },
-  { method: 'get', action: 'apps' },
-  { method: 'get', action: 'logs' },
-  { method: 'post', action: 'stream/start' },
-  { method: 'post', action: 'stream/ticket' },
-  { method: 'post', action: 'stream/leave' },
-  { method: 'post', action: 'stream/stop' },
-  { method: 'get', action: 'stream/status' },
-  { method: 'get', action: 'stream' },
-  { method: 'post', action: 'shell' },
-  { method: 'get', action: 'omni-scan' },
-  { method: 'get', action: 'inspector/snapshot' },
-  { method: 'get', action: 'appium-session' },
-  { method: 'post', action: 'test-locator' },
-];
+/**
+ * Every route the control router has, read from the router itself, so a route
+ * added later is held to the same rule without anyone updating a list.
+ */
+function controlRoutes(): Array<{ method: string; action: string }> {
+  const parent = express.Router();
+  ControlRouter.register(parent);
+  const mounted = (parent as any).stack.find((layer: any) => layer.handle?.stack);
+  const routes: Array<{ method: string; action: string }> = [];
+  for (const layer of mounted.handle.stack) {
+    if (!layer.route) continue;
+    const path: string = layer.route.path;
+    // Every /control route addresses a device by its first segment. One that
+    // doesn't would sit outside the team guard's reasoning, so fail loudly.
+    if (!path.startsWith('/:udid/')) throw new Error(`control route without a udid: ${path}`);
+    for (const method of Object.keys(layer.route.methods)) {
+      if (method !== '_all') routes.push({ method, action: path.slice('/:udid/'.length) });
+    }
+  }
+  return routes;
+}
+
+const CONTROL_ROUTES = controlRoutes();
+
+/** The actions, each with the methods its routes accept. */
+const METHODS_BY_ACTION = CONTROL_ROUTES.reduce((acc, { method, action }) => {
+  acc.set(action, [...(acc.get(action) ?? []), method]);
+  return acc;
+}, new Map<string, string[]>());
 
 /** Register `value` under `id` for this suite; returns what puts the old one back. */
 function swapService(id: any, value: unknown): () => void {
@@ -94,7 +94,9 @@ describe('team boundary on /control (integration)', function () {
   const SHARED_UDID = `tb-shared-${stamp}`;
   const TEAM_A_UDID = `tb-team-a-${stamp}`;
   const TEAM_B_UDID = `tb-team-b-${stamp}`;
-  const UNKNOWN_UDID = `tb-unknown-${stamp}`;
+  // The same length as TEAM_B_UDID, so an answer that echoes the path (Express's
+  // "Cannot GET …") has the same length for both.
+  const UNKNOWN_UDID = `tb-nobody-${stamp}`;
   // The tap handler proxies to the device's host unless it is this server, so
   // every device lives "here" and each request says it is addressed here.
   const DEVICE_HOST = 'http://127.0.0.1:4723';
@@ -151,20 +153,62 @@ describe('team boundary on /control (integration)', function () {
     fs.rmSync(keyDir, { recursive: true, force: true });
   });
 
-  function buildApp() {
+  /**
+   * The /xenon/api stack as src/app/index.ts builds it, as far as /control
+   * goes: cors, auth, the control router, and the JSON 404 for anything no
+   * route handled. `tail: 'express'` drops that last one, leaving Express's
+   * own "Cannot GET …" as the answer.
+   */
+  function buildApp(tail: 'api' | 'express' = 'api') {
     const app = express();
     app.use(express.json());
     const apiRouter = express.Router();
+    apiRouter.use(cors({ origin: false }));
     apiRouter.use(authMiddleware);
     ControlRouter.register(apiRouter);
+    if (tail === 'api') {
+      apiRouter.use('*', (req, res) => {
+        res.status(404).json({
+          error: true,
+          message: `API endpoint ${req.method} ${req.originalUrl} not found`,
+        });
+      });
+    }
     app.use('/xenon/api', apiRouter);
     return app;
   }
 
-  function send(who: SeededUser, method: 'get' | 'post', udid: string, action: string) {
+  function send(
+    who: SeededUser,
+    method: string,
+    udid: string,
+    action: string,
+    tail: 'api' | 'express' = 'api',
+  ) {
     const url = `/xenon/api/control/${encodeURIComponent(udid)}/${action}`;
-    const req = method === 'get' ? request(buildApp()).get(url) : request(buildApp()).post(url);
+    const req = (request(buildApp(tail)) as any)[method](url) as request.Test;
     return req.set('Cookie', who.cookie).set('Host', HOST_HEADER);
+  }
+
+  /** What a caller can observe of an answer, with the requested udid masked out. */
+  function observed(res: request.Response, udid: string) {
+    return {
+      status: res.status,
+      body: (res.text ?? '').split(udid).join('<udid>'),
+      contentType: res.headers['content-type'],
+      contentLength: res.headers['content-length'],
+      allow: res.headers['allow'],
+    };
+  }
+
+  async function expectSameAnswer(method: string, action: string, tail: 'api' | 'express') {
+    const hidden = await send(alice, method, TEAM_B_UDID, action, tail);
+    const unknown = await send(alice, method, UNKNOWN_UDID, action, tail);
+    expect(observed(hidden, TEAM_B_UDID)).to.deep.equal(observed(unknown, UNKNOWN_UDID));
+    // The guard's placeholder never reaches the caller, in a body or a header.
+    expect(hidden.text ?? '', 'body').to.not.include(HIDDEN_DEVICE_UDID);
+    expect(JSON.stringify(hidden.headers), 'headers').to.not.include(HIDDEN_DEVICE_UDID);
+    return hidden;
   }
 
   const screenshot = (who: SeededUser, udid: string) => send(who, 'get', udid, 'screenshot');
@@ -223,21 +267,57 @@ describe('team boundary on /control (integration)', function () {
     expect((await ticket(sa, TEAM_B_UDID)).status).to.equal(200);
   });
 
+  it('reads every control route from the router', () => {
+    expect(CONTROL_ROUTES.length).to.be.at.least(28);
+    expect(CONTROL_ROUTES).to.deep.include({ method: 'post', action: 'tap' });
+    expect(CONTROL_ROUTES).to.deep.include({ method: 'get', action: 'inspector/snapshot' });
+  });
+
   // The point of answering 404 is that nothing tells a member another team
-  // has this phone. Hold every route to that: another team's phone has to get
-  // the same status, content type and body as a udid that does not exist.
+  // has this phone. Hold every request to that: another team's phone has to
+  // get the same status, body, content type, length and Allow header as a
+  // udid that does not exist, whether a route handles the request or not.
   describe("another team's phone answers exactly like an unknown udid", () => {
-    for (const { method, action } of CONTROL_ROUTES) {
-      it(`${method.toUpperCase()} ${action}`, async () => {
-        const hidden = await send(alice, method, TEAM_B_UDID, action);
-        const unknown = await send(alice, method, UNKNOWN_UDID, action);
-        expect(hidden.status, 'status').to.equal(404);
-        expect(hidden.status, 'status').to.equal(unknown.status);
-        expect(hidden.headers['content-type'], 'content-type').to.equal(
-          unknown.headers['content-type'],
-        );
-        expect(hidden.text, 'body').to.equal(unknown.text);
+    describe('on every route', () => {
+      for (const { method, action } of CONTROL_ROUTES) {
+        it(`${method.toUpperCase()} ${action}`, async () => {
+          const res = await expectSameAnswer(method, action, 'api');
+          expect(res.status, 'status').to.equal(404);
+        });
+      }
+    });
+
+    for (const tail of ['api', 'express'] as const) {
+      describe(`where no route handles the request (${tail === 'api' ? "the API's JSON 404" : "Express's own 404"})`, () => {
+        for (const [method, action] of [
+          ['get', 'bogus'],
+          ['post', 'bogus'],
+          ['post', 'stream/bogus'],
+          ['get', ''],
+        ]) {
+          it(`${method.toUpperCase()} ${action || '(no action)'}`, async () => {
+            await expectSameAnswer(method, action, tail);
+          });
+        }
+
+        for (const [action, methods] of METHODS_BY_ACTION) {
+          const wrong = methods.includes('get') ? 'post' : 'get';
+          if (methods.includes(wrong)) continue;
+          it(`${wrong.toUpperCase()} ${action} (the wrong method)`, async () => {
+            await expectSameAnswer(wrong, action, tail);
+          });
+        }
       });
     }
+
+    describe('OPTIONS', () => {
+      for (const [action, methods] of METHODS_BY_ACTION) {
+        it(`OPTIONS ${action}`, async () => {
+          const res = await expectSameAnswer('options', action, 'api');
+          expect(res.headers['allow'], 'allow').to.be.a('string');
+          for (const m of methods) expect(res.headers['allow']).to.include(m.toUpperCase());
+        });
+      }
+    });
   });
 });

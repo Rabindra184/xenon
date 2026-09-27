@@ -12,6 +12,15 @@ import { DeviceStoreFactory } from '../data-service/device-store';
  * The handlers still do their own lookup.
  */
 
+/**
+ * The udid deviceTeamGuard puts in place of a phone the caller may not see,
+ * so everything after it answers exactly as it would for an unknown udid.
+ * Lowercase letters and underscores only, so it needs no percent-encoding.
+ * No lookup through this module or control.ts's getDeviceInfo ever returns a
+ * device for it, whatever the store holds.
+ */
+export const HIDDEN_DEVICE_UDID = '__xenon_hidden_device__';
+
 /** What the guards read from a device row. */
 export interface ControlDevice {
   teamId?: string | null;
@@ -65,13 +74,16 @@ export function readControlUdid(req: Request, res: Response, who: string): strin
 /**
  * The device for `udid`, looked up at most once per request. A lookup that
  * throws rejects for every caller, and each guard answers that with its own
- * 503.
+ * 503. The hidden-device udid resolves to null without a lookup: for an
+ * unknown udid the second guard gets the first guard's memoized result, so
+ * both paths cost the same single query.
  */
 export function lookupControlDevice(
   res: Response,
   udid: string,
   findDevice: FindControlDevice,
 ): Promise<ControlDevice | null | undefined> {
+  if (udid === HIDDEN_DEVICE_UDID) return Promise.resolve(null);
   const memo = res.locals[LOOKUP] as
     | { udid: string; device: Promise<ControlDevice | null | undefined> }
     | undefined;
@@ -79,4 +91,19 @@ export function lookupControlDevice(
   const device = Promise.resolve().then(() => findDevice(udid));
   res.locals[LOOKUP] = { udid, device };
   return device;
+}
+
+/**
+ * `url` with its first path segment (the udid, inside the /control router)
+ * replaced by `udid`. The query string is kept.
+ */
+export function replaceControlUdid(url: string, udid: string): string {
+  const q = url.indexOf('?');
+  const path = q < 0 ? url : url.slice(0, q);
+  const query = q < 0 ? '' : url.slice(q);
+  const parts = path.split('/');
+  const i = parts.findIndex((p) => p.length > 0);
+  if (i < 0) return url;
+  parts[i] = udid;
+  return parts.join('/') + query;
 }
