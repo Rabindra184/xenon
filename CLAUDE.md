@@ -300,6 +300,22 @@ interactive, so "watch the test I started" works.
   because "busy" differs at start time: an orphaned manual lock with no live
   stream is reclaimed rather than refused.
 
+**Team guard** (`src/middleware/deviceTeamGuard.ts`) runs just before it. Teams
+are a device boundary: a member may use a shared-pool phone (`teamId` null) or
+one of their teams' phones, nothing else. The rule is `isDeviceVisible`
+(`src/services/device-access/deviceVisibility.ts`), and its only input is
+`req.auth.teamIds`: `undefined` means admin or auth disabled, never
+`resolveActor().isAdmin`, so the guard and the device list always agree.
+Every method and action is checked, with no exception list. A hidden phone
+gets the handler's own unknown-device `404` (`'Device not found'`, or the JSON
+body `display` and `appium-session` use), never a 403 or 409, so nothing
+reveals that another team's phone exists.
+`test/integration/team-visibility-control.spec.ts` holds every route to that,
+which is why `stream/ticket` and `inspector/snapshot` now 404 an unknown udid
+too. It runs first because the ownership guard's 409 names the holder, which
+would confirm the phone exists and say who has it. Reservations apply the same
+rule.
+
 ### Session attribution
 
 A session's owner is resolved by `SessionOwnerResolver.ownerOf`, which prefers
