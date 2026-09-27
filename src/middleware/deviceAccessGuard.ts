@@ -2,8 +2,13 @@
 import type { Request, Response, NextFunction } from 'express';
 import { Container } from 'typedi';
 import log from '../logger';
-import { DeviceStoreFactory } from '../data-service/device-store';
 import { isManualLock } from '../services/recording/manualLock';
+import {
+  controlAction,
+  findControlDeviceInStore,
+  lookupControlDevice,
+  readControlUdid,
+} from './controlDevice';
 import { SessionOwnerResolver } from '../services/device-access/SessionOwnerResolver';
 import {
   evaluateDeviceAccess,
@@ -66,8 +71,7 @@ export interface DeviceAccessGuardDeps {
  * handlers and was remembered in none of them.
  */
 export function deviceAccessGuard(deps: DeviceAccessGuardDeps = {}) {
-  const findDevice =
-    deps.findDevice ?? ((udid: string) => DeviceStoreFactory.getStore().findDevice({ udid }));
+  const findDevice = deps.findDevice ?? findControlDeviceInStore;
   const resolveSessionOwner =
     deps.resolveSessionOwner ?? ((sid: string) => Container.get(SessionOwnerResolver).ownerOf(sid));
   const describeHolder =
@@ -76,13 +80,11 @@ export function deviceAccessGuard(deps: DeviceAccessGuardDeps = {}) {
   const unavailable = (res: Response) => res.status(503).json(ownershipUnavailableBody());
 
   return async function (req: Request, res: Response, next: NextFunction) {
-    // Router-level middleware has no req.params, so read the path directly.
-    // Inside the /control router req.path is `/<udid>/<action…>`.
-    // Express routes case-insensitively; match the lists the same way so e.g.
-    // `Stream/Start` still reaches stream/start's own richer handling, and
-    // `Clipboard` cannot slip past the read check below.
-    const parts = req.path.split('/').filter(Boolean);
-    const action = parts.slice(1).join('/').toLowerCase();
+    // Router-level middleware has no req.params; controlAction reads the path.
+    // It lowercases, as Express routes case-insensitively: `Stream/Start`
+    // still reaches stream/start's own richer handling, and `Clipboard`
+    // cannot slip past the read check below.
+    const action = controlAction(req);
 
     // Decide whether this request is in scope BEFORE touching the udid, so an
     // ordinary read (screenshot, stream, logs, page source) short-circuits here
@@ -92,16 +94,10 @@ export function deviceAccessGuard(deps: DeviceAccessGuardDeps = {}) {
       : req.method === 'GET' && OWNERSHIP_CHECKED_READS.includes(action);
     if (!action || !inScope) return next();
 
-    let udid: string;
-    try {
-      udid = decodeURIComponent(parts[0] ?? '');
-    } catch (e: any) {
-      // A udid segment that can't be percent-decoded is a malformed request,
-      // not a server fault — respond here so it can't fall through unhandled
-      // (Express 4 doesn't catch rejections thrown by async middleware).
-      log.warn(`deviceAccessGuard: malformed udid segment in ${req.path}: ${e?.message ?? e}`);
-      return res.status(400).json({ success: false, error: 'invalid_udid' });
-    }
+    // A udid segment that can't be percent-decoded is a malformed request,
+    // not a server fault: readControlUdid has already answered 400.
+    const udid = readControlUdid(req, res, 'deviceAccessGuard');
+    if (udid === null) return;
     if (!udid) return next();
 
     const actor = resolveActor(req);
@@ -109,9 +105,10 @@ export function deviceAccessGuard(deps: DeviceAccessGuardDeps = {}) {
       return res.status(401).json({ success: false, error: 'unauthenticated' });
     }
 
+    // Shared with deviceTeamGuard: one lookup per request for both guards.
     let device;
     try {
-      device = await findDevice(udid);
+      device = await lookupControlDevice(res, udid, findDevice);
     } catch (e: any) {
       // An authorization guard that cannot determine ownership must not allow
       // the request through: the handler runs its own separate device lookup,

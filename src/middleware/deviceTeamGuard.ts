@@ -1,8 +1,14 @@
 import type { Request, Response, NextFunction } from 'express';
 import log from '../logger';
-import { DeviceStoreFactory } from '../data-service/device-store';
 import { isDeviceVisible } from '../services/device-access/deviceVisibility';
 import { ownershipUnavailableBody } from '../services/device-access/deviceAccessPolicy';
+import {
+  FindControlDevice,
+  controlAction,
+  findControlDeviceInStore,
+  lookupControlDevice,
+  readControlUdid,
+} from './controlDevice';
 
 /**
  * The 404 a /control handler gives an unknown udid, where it is not the
@@ -17,7 +23,7 @@ export const NOT_FOUND_BODY_BY_ACTION: ReadonlyMap<string, unknown> = new Map([
 const DEFAULT_NOT_FOUND_BODY = 'Device not found';
 
 export interface DeviceTeamGuardDeps {
-  findDevice?: (udid: string) => Promise<{ teamId?: string | null } | null | undefined>;
+  findDevice?: FindControlDevice;
 }
 
 /**
@@ -34,8 +40,7 @@ export interface DeviceTeamGuardDeps {
  * the holder, which would confirm the phone exists and say who is using it.
  */
 export function deviceTeamGuard(deps: DeviceTeamGuardDeps = {}) {
-  const findDevice =
-    deps.findDevice ?? ((udid: string) => DeviceStoreFactory.getStore().findDevice({ udid }));
+  const findDevice = deps.findDevice ?? findControlDeviceInStore;
 
   return async function (req: Request, res: Response, next: NextFunction) {
     const auth = (req as Request & { auth?: { userId?: string; teamIds?: string[] } }).auth;
@@ -46,23 +51,14 @@ export function deviceTeamGuard(deps: DeviceTeamGuardDeps = {}) {
     const teamIds = auth.teamIds;
     if (teamIds === undefined) return next();
 
-    // Router-level middleware has no req.params. Inside the /control router
-    // req.path is `/<udid>/<action…>`.
-    const parts = req.path.split('/').filter(Boolean);
-    let udid: string;
-    try {
-      udid = decodeURIComponent(parts[0] ?? '');
-    } catch (e: any) {
-      // Express 4 doesn't catch a rejection from async middleware: answer
-      // here or the request hangs.
-      log.warn(`deviceTeamGuard: malformed udid segment in ${req.path}: ${e?.message ?? e}`);
-      return res.status(400).json({ success: false, error: 'invalid_udid' });
-    }
+    const udid = readControlUdid(req, res, 'deviceTeamGuard');
+    if (udid === null) return; // 400 already sent
     if (!udid) return next();
 
+    // Shared with deviceAccessGuard: one lookup per request for both guards.
     let device;
     try {
-      device = await findDevice(udid);
+      device = await lookupControlDevice(res, udid, findDevice);
     } catch (e: any) {
       // Fail closed. The handler does its own lookup, so letting this through
       // would skip the team check whenever only this lookup had a hiccup.
@@ -78,7 +74,8 @@ export function deviceTeamGuard(deps: DeviceTeamGuardDeps = {}) {
       `Device hidden by team: ${auth.userId} -> ${req.method} ${req.originalUrl} ` +
         `on ${udid} (device team ${device.teamId})`,
     );
-    const action = parts.slice(1).join('/').toLowerCase();
-    return res.status(404).send(NOT_FOUND_BODY_BY_ACTION.get(action) ?? DEFAULT_NOT_FOUND_BODY);
+    return res
+      .status(404)
+      .send(NOT_FOUND_BODY_BY_ACTION.get(controlAction(req)) ?? DEFAULT_NOT_FOUND_BODY);
   };
 }
