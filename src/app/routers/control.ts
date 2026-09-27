@@ -738,7 +738,16 @@ router.post('/:udid/stream/ticket', async (req: Request, res: Response) => {
   if (!actor.userId) return res.status(401).json({ error: 'unauthenticated' });
   // No ticket for a udid that isn't a device. Another team's phone arrives
   // here as one (see deviceTeamGuard) and gets this same 404.
-  const device = await getDeviceInfo(req.params.udid);
+  let device;
+  try {
+    device = await getDeviceInfo(req.params.udid);
+  } catch (e: any) {
+    // Express 4 doesn't catch a rejected async handler: answer, don't hang.
+    // originalUrl, not the udid param: for a hidden phone the param is the
+    // guard's placeholder, which means nothing to whoever reads the log.
+    log.error(`Device lookup failed for ${req.method} ${req.originalUrl}: ${e?.message ?? e}`);
+    return res.status(503).json(ownershipUnavailableBody());
+  }
   if (!device) return res.status(404).send('Device not found');
   // Carry the two other things `evaluateDeviceAccess` needs alongside the user
   // id. A ticket consumer (the logcat WS) has no Express request to run
@@ -1152,7 +1161,15 @@ router.get('/:udid/inspector/snapshot', async (req: Request, res: Response) => {
   // The same 404 as every other route here for an unknown udid, which is
   // also what another team's phone reaches here as. The service's own "not
   // found" was a 500.
-  if (!(await getDeviceInfo(udid))) return res.status(404).send('Device not found');
+  let device;
+  try {
+    device = await getDeviceInfo(udid);
+  } catch (e: any) {
+    // Express 4 doesn't catch a rejected async handler: answer, don't hang.
+    log.error(`Device lookup failed for ${req.method} ${req.originalUrl}: ${e?.message ?? e}`);
+    return res.status(503).json(ownershipUnavailableBody());
+  }
+  if (!device) return res.status(404).send('Device not found');
   try {
     const inspectorService = Container.get(InspectorService);
     const snapshot = await inspectorService.getSnapshot(udid);
