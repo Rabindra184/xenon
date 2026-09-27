@@ -8,6 +8,7 @@ import path from 'path';
 import { SocketServer } from '../../src/services/SocketServer';
 import { JwtKeyService } from '../../src/services/token/JwtKeyService';
 import { ApiKeyService } from '../../src/services/ApiKeyService';
+import { UserSessionService } from '../../src/services/UserSessionService';
 import { prisma } from '../../src/prisma';
 import { config as xenonConfig } from '../../src/config';
 import { saveRegistrations } from '../helpers/container-registration';
@@ -132,13 +133,15 @@ describe('SocketServer — authenticate() identity', () => {
   beforeEach(async () => {
     authDisabled = xenonConfig.authDisabled;
     xenonConfig.authDisabled = false;
-    restore = saveRegistrations(JwtKeyService, ApiKeyService);
+    restore = saveRegistrations(JwtKeyService, ApiKeyService, UserSessionService);
     dir = fs.mkdtempSync(path.join(os.tmpdir(), 'xenon-socket-identity-'));
     keySvc = new JwtKeyService();
     await keySvc.init(dir);
     Container.set(JwtKeyService, keySvc);
     apiKeys = { verifyPair: sinon.stub().resolves(null), verify: sinon.stub().resolves(null) };
     Container.set(ApiKeyService, apiKeys as any);
+    // No cookie here is a /login session, so the raw-key tests reach their path.
+    Container.set(UserSessionService, { resolve: sinon.stub().resolves(null) } as any);
     server = new SocketServer();
   });
 

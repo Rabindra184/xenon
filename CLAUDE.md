@@ -408,6 +408,11 @@ REST endpoints under `/xenon/api` (documented at `/xenon/api-docs`). All state c
 `socket.data.identity` (`{ principal, userId, role, teamIds }`), with
 `teamIds` from the same `computeTeamIds` REST uses. It is fixed at connect,
 so a membership change applies when the dashboard reconnects (on reload).
+The handshake accepts what REST accepts: a bearer JWT, an `(accessKey,
+token)` pair (nodes), or the `xenon_dashboard_session` cookie, tried as a
+`UserSession` id (`/login`) first and a raw API key second. Until 1.29.0 the
+socket tried only the raw key, so every dashboard signed in through `/login`
+was refused and got no live events.
 Any event about a phone goes through
 `SocketServer.emitToDashboardForDevices(event, data, scope)`, which sends it
 only to the dashboard sockets whose caller passes `isDeviceVisible`:
