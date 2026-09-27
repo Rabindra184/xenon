@@ -9,6 +9,7 @@ import type { IDevice } from '../../interfaces/IDevice';
 const api = vi.hoisted(() => ({
   startStream: vi.fn(),
   stopStream: vi.fn(),
+  leaveStream: vi.fn(),
   getDevices: vi.fn(),
   listApps: vi.fn(),
 }));
@@ -57,6 +58,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   api.startStream.mockResolvedValue({});
   api.stopStream.mockResolvedValue({});
+  api.leaveStream.mockResolvedValue({});
   api.getDevices.mockResolvedValue([]);
   api.listApps.mockResolvedValue([]);
 });
@@ -69,7 +71,18 @@ describe('DeviceControl — releasing the device', () => {
     open(S9);
     await waitFor(() => expect(api.startStream).toHaveBeenCalledTimes(1));
     window.dispatchEvent(new Event('pagehide'));
-    expect(api.stopStream).toHaveBeenCalledWith('381103b720057ece');
+    expect(api.leaveStream).toHaveBeenCalledWith('381103b720057ece');
+  });
+
+  // The hold belongs to the user and the device, not to this tab: stopping
+  // outright froze every other tab on the device. Leaving lets the server
+  // stop only once nobody is watching.
+  it('leaves rather than stops, so another tab on the device keeps working', async () => {
+    const { unmount } = open(S9);
+    await waitFor(() => expect(api.startStream).toHaveBeenCalledTimes(1));
+    unmount();
+    expect(api.leaveStream).toHaveBeenCalledWith('381103b720057ece');
+    expect(api.stopStream).not.toHaveBeenCalled();
   });
 
   it('takes the device back when the page returns from the back/forward cache', async () => {

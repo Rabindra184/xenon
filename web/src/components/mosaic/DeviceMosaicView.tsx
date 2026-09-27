@@ -294,11 +294,12 @@ export default function DeviceMosaicView() {
   const onRemoveTile = async (udid: string) => {
     // Optimistic: drop the tile immediately so the user sees the change.
     dispatch({ type: 'REMOVE_TILE', udid });
-    // Best-effort release: tells the backend to stop the iOS stream and
-    // unblock the device. If this fails (network, device gone), the
-    // watchdog's idle-timeout still releases it eventually.
+    // Best-effort release: the backend stops the stream and unblocks the
+    // device once nobody else is watching it (a device control tab, another
+    // tile). If this fails (network, device gone), the watchdog's
+    // idle-timeout still releases it eventually.
     try {
-      await fetch(`/xenon/api/control/${encodeURIComponent(udid)}/stream/stop`, {
+      await fetch(`/xenon/api/control/${encodeURIComponent(udid)}/stream/leave`, {
         method: 'POST',
       });
     } catch {
@@ -356,7 +357,8 @@ export default function DeviceMosaicView() {
   // that doesn't land.
   const releaseAll = () => {
     for (const tile of state.tiles) {
-      const url = `/xenon/api/control/${encodeURIComponent(tile.udid)}/stream/stop`;
+      // Leave, not stop: a device also open in another tab stays held for it.
+      const url = `/xenon/api/control/${encodeURIComponent(tile.udid)}/stream/leave`;
       // sendBeacon doesn't send JSON content-type; the route accepts an empty
       // body so this is safe.
       try {

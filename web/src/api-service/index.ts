@@ -250,6 +250,15 @@ export default class XenonApiService {
     return apiClient.makePOSTRequest(`/control/${udid}/stream/stop`, {}, {}, { keepalive: true });
   }
 
+  /**
+   * This page stopped watching the device. The server stops the preview and
+   * releases the hold only once nobody else is watching (another tab, a
+   * mosaic tile); stopStream stops it at once for everyone.
+   */
+  public static leaveStream(udid: string) {
+    return apiClient.makePOSTRequest(`/control/${udid}/stream/leave`, {}, {}, { keepalive: true });
+  }
+
   public static uninstallApp(udid: string, bundleId: string) {
     return apiClient.makePOSTRequest(`/control/${udid}/uninstall`, {}, { bundleId });
   }

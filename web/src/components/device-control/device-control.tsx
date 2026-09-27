@@ -126,7 +126,7 @@ export default function DeviceControl({ device, onClose, titleId }: DeviceContro
   const [streamEpoch, setStreamEpoch] = useState(0);
   useReleaseOnPageHide(
     () => {
-      XenonApiService.stopStream(currentDevice.udid).catch(() => {});
+      XenonApiService.leaveStream(currentDevice.udid).catch(() => {});
     },
     () => setStreamEpoch((n) => n + 1),
   );
@@ -154,8 +154,9 @@ export default function DeviceControl({ device, onClose, titleId }: DeviceContro
     };
     startAutoStream();
     return () => {
-      // Principal cleanup: Stop the stream when user leaves Control view
-      XenonApiService.stopStream(currentDevice.udid).catch(() => { });
+      // Leave, not stop: another tab on this device may still be watching,
+      // and the server stops the preview only once nobody is.
+      XenonApiService.leaveStream(currentDevice.udid).catch(() => { });
     };
   }, [device.udid, streamEpoch]); // Once per udid, and again after a cache restore
 
