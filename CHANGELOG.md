@@ -6,6 +6,45 @@ This project follows [Semantic Versioning](https://semver.org/). Releases are
 published to npm automatically when `package.json`'s `version` changes on `main`
 (see `.github/workflows/npm-publish.yml`).
 
+## 1.28.1
+
+Patch release. A phone open in two tabs keeps its live preview when one tab
+closes, and an iPhone left in an abandoned preview is released like an
+Android phone. Device control's tab is named after the phone.
+
+### Fixed
+
+- **Closing one of two tabs on the same phone froze the other** (#337).
+  Leaving device control, or removing a Live devices tile, stopped the
+  preview and released the phone at once, even while another tab was
+  watching it. A test could then take the phone.
+  - Leaving now asks the server to let go, and the server waits 3 seconds.
+    It stops the preview and releases the phone only if nobody is still
+    watching and no recording is running.
+  - A reload keeps its stream, because the new page starts it again within
+    those 3 seconds.
+  - **Stop** still stops the preview for everyone.
+- **An abandoned iPhone preview was never released** (#338). A crashed
+  browser, a sleeping laptop or a lost network held the iPhone until someone
+  released it by hand or restarted the server. The server now checks every
+  minute and releases a preview that nobody has watched for 10 minutes,
+  as it does on Android since 1.28.0. It keeps a preview that an Appium
+  session or a recording relies on.
+- **Device control's tab read "381103b720057ece · Device"** (#336). It now
+  reads "Galaxy S9+ · Device", the name its header shows.
+- **Android offered "Write to device" for the clipboard** (#336), which
+  only ever failed: Android lets Xenon read the clipboard, not write it.
+  The button is gone on Android, and a note under the field says why. iOS
+  keeps writing.
+- **The Omni-Vision divider's grip was hard to see** (#336): 1.66:1 against
+  the page in dark and 1.34:1 in light. It is now 5.70:1 and 5.39:1.
+
+### Notes
+
+- `POST /xenon/api/control/:udid/stream/leave` is new. It has the same
+  ownership rule as `stream/stop` and answers 202.
+- No database or configuration changes.
+
 ## 1.28.0
 
 Minor release. Omni-Vision is rebuilt around a compact element tree you can
