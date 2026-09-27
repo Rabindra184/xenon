@@ -75,6 +75,9 @@ const SELECTOR_DETAIL_VALUE = 'onboarding_carousel_primary_cta';
 const ROUTES = [
   '/xenon/overview',
   '/xenon/devices',
+  // The table view of the same page, with the same wide mock (two hosts, so
+  // the Host column shows too).
+  '/xenon/devices?view=table',
   '/xenon/builds',
   `/xenon/builds/${BUILD_ID}`,
   '/xenon/apps',
@@ -712,6 +715,7 @@ const ROUTE_DATA_MOCKS: Record<string, Setup> = {
     );
   },
 };
+ROUTE_DATA_MOCKS['/xenon/devices?view=table'] = ROUTE_DATA_MOCKS['/xenon/devices'];
 
 const ROUTE_CONTENT_CHECKS: Record<string, Setup> = {
   '/xenon/overview': async (page) => {
@@ -728,6 +732,14 @@ const ROUTE_CONTENT_CHECKS: Record<string, Setup> = {
       .locator('section', { hasText: 'Recent activity' })
       .locator('div.divide-y > div');
     await expect(activityRows).not.toHaveCount(0);
+  },
+
+  '/xenon/devices?view=table': async (page) => {
+    // Rows, not the empty state: an empty table has nothing to overflow.
+    await expect(page.locator('table.devtable tbody tr')).not.toHaveCount(0);
+    await expect(page.getByRole('columnheader', { name: /Host/ })).toBeVisible();
+    await expect(page.getByRole('tablist', { name: 'View' })).toBeVisible();
+    await expect(page.getByRole('tablist', { name: 'Status' })).toBeVisible();
   },
 
   '/xenon/devices': async (page) => {
