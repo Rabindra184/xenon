@@ -29,6 +29,7 @@ import { ClipboardUnsupportedError } from '../../device-managers/clipboardErrors
 import { mutationScopeGuard } from '../../middleware/scopeGuard';
 import { roleGuard } from '../../middleware/roleGuard';
 import { deviceAccessGuard } from '../../middleware/deviceAccessGuard';
+import { deviceTeamGuard } from '../../middleware/deviceTeamGuard';
 import {
   formatManualLock,
   inspectManualLock,
@@ -62,6 +63,11 @@ router.use(roleGuard('MEMBER'));
 // requires devices scope. Read endpoints (screenshots, page source) stay
 // open to any authenticated key.
 router.use(mutationScopeGuard(['devices']));
+
+// Teams: a phone outside the caller's teams answers every request, read or
+// write, with the same 404 as an unknown udid. Before the ownership guard,
+// whose 409 would name the holder of a phone the caller must not know exists.
+router.use(deviceTeamGuard());
 
 // Ownership: refuse mutations against a device held by another user or by
 // another user's Appium session. Mounted here so every current and future
@@ -725,6 +731,11 @@ router.post('/:udid/stream/ticket', async (req: Request, res: Response) => {
   // #216/#217 trusts that it is.
   const actor = resolveActor(req);
   if (!actor.userId) return res.status(401).json({ error: 'unauthenticated' });
+  // No ticket for a udid that isn't a device. deviceTeamGuard answers another
+  // team's phone with this same 404; if this minted for an unknown udid, the
+  // two answers would differ and tell a member which udids another team has.
+  const device = await getDeviceInfo(req.params.udid);
+  if (!device) return res.status(404).send('Device not found');
   // Carry the two other things `evaluateDeviceAccess` needs alongside the user
   // id. A ticket consumer (the logcat WS) has no Express request to run
   // resolveActor against, and re-deriving them from a User row at redeem time
@@ -736,9 +747,7 @@ router.post('/:udid/stream/ticket', async (req: Request, res: Response) => {
   });
   res.json({ ticket, expiresIn: 60 });
   // The H.264 preview attaches here on a reload; see screenSizeDeps.
-  void getDeviceInfo(req.params.udid)
-    .then((device) => device && fillMissingScreenSize(device, screenSizeDeps))
-    .catch(() => undefined);
+  void fillMissingScreenSize(device, screenSizeDeps);
 });
 
 /**
@@ -1136,6 +1145,9 @@ router.get('/:udid/omni-scan', async (req: Request, res: Response) => {
  */
 router.get('/:udid/inspector/snapshot', async (req: Request, res: Response) => {
   const { udid } = req.params;
+  // The same 404 as every other route here, which deviceTeamGuard gives
+  // another team's phone. The service's own "not found" was a 500.
+  if (!(await getDeviceInfo(udid))) return res.status(404).send('Device not found');
   try {
     const inspectorService = Container.get(InspectorService);
     const snapshot = await inspectorService.getSnapshot(udid);
