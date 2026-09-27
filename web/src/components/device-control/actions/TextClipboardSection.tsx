@@ -13,6 +13,10 @@ interface Props {
 
 /** Typing into the phone's focused field, and its clipboard both ways. */
 export function TextClipboardSection({ udid, platform }: Props) {
+  // Appium Settings, which Xenon reaches the Android clipboard through, can
+  // only read it: the server answers a write with 501, so the button only
+  // ever produced that error.
+  const canWrite = platform !== 'android';
   const { toast } = useToast();
   const [text, setText] = React.useState('');
   const [sending, setSending] = React.useState(false);
@@ -116,7 +120,12 @@ export function TextClipboardSection({ udid, platform }: Props) {
           ref={clipRef}
           type="text"
           className="type-input-field compact"
-          placeholder="Read the device clipboard, or type text to write"
+          placeholder={
+            canWrite
+              ? 'Read the device clipboard, or type text to write'
+              : 'Read the device clipboard'
+          }
+          aria-describedby={canWrite ? undefined : 'actions-clipboard-hint'}
           value={clip}
           onChange={(e) => setClip(e.target.value)}
         />
@@ -124,10 +133,12 @@ export function TextClipboardSection({ udid, platform }: Props) {
           {busy === 'read' && <Loader2 className="animate-spin" size={13} aria-hidden="true" />}
           Read
         </Button>
-        <Button variant="secondary" size="md" onClick={write} disabled={!clip || busy !== null}>
-          {busy === 'write' && <Loader2 className="animate-spin" size={13} aria-hidden="true" />}
-          Write to device
-        </Button>
+        {canWrite && (
+          <Button variant="secondary" size="md" onClick={write} disabled={!clip || busy !== null}>
+            {busy === 'write' && <Loader2 className="animate-spin" size={13} aria-hidden="true" />}
+            Write to device
+          </Button>
+        )}
         <Button
           variant="ghost"
           size="icon"
@@ -139,6 +150,11 @@ export function TextClipboardSection({ udid, platform }: Props) {
           {copied ? <Check size={14} aria-hidden="true" /> : <Copy size={14} aria-hidden="true" />}
         </Button>
       </div>
+      {!canWrite && (
+        <p id="actions-clipboard-hint" className="actions-field-hint">
+          Android lets Xenon read the clipboard, not write it.
+        </p>
+      )}
       <p className="actions-status" role="status">
         {status}
       </p>

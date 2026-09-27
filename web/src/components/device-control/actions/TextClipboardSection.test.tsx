@@ -78,8 +78,20 @@ describe('Clipboard', () => {
     );
   });
 
+  // Appium Settings can only read the clipboard, so on Android the server
+  // answers a write with 501. The button only ever produced that error.
+  it('offers no write on Android, and says why', () => {
+    render$('android');
+    expect(screen.queryByRole('button', { name: 'Write to device' })).toBeNull();
+    const field = screen.getByRole('textbox', { name: 'Clipboard' });
+    expect(field).toHaveAttribute('placeholder', 'Read the device clipboard');
+    expect(field).toHaveAccessibleDescription(
+      'Android lets Xenon read the clipboard, not write it.',
+    );
+  });
+
   it('writes the field to the device, only when there is text', async () => {
-    render$();
+    render$('ios');
     const write = screen.getByRole('button', { name: 'Write to device' });
     expect(write).toBeDisabled();
     fireEvent.change(screen.getByRole('textbox', { name: 'Clipboard' }), {
@@ -92,7 +104,7 @@ describe('Clipboard', () => {
 
   it('says why writing failed', async () => {
     api.setClipboard.mockRejectedValue(new Error('denied'));
-    render$();
+    render$('ios');
     fireEvent.change(screen.getByRole('textbox', { name: 'Clipboard' }), {
       target: { value: 'x' },
     });
