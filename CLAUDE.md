@@ -314,7 +314,8 @@ reveals that another team's phone exists.
 which is why `stream/ticket` and `inspector/snapshot` now 404 an unknown udid
 too. It runs first because the ownership guard's 409 names the holder, which
 would confirm the phone exists and say who has it. Reservations apply the same
-rule.
+rule, and so do SDK leases: `LeaseService.create` matches with the caller's
+`callerTeamIds`, never a team list from the client's `filters`.
 
 ### Session attribution
 

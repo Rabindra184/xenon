@@ -36,6 +36,9 @@ export function makeRouter(opts: MakeRouterOpts = {}): Router {
         heartbeatSeconds: typeof heartbeatSeconds === 'number' ? heartbeatSeconds : 30,
         actorId: apiKey?.id ?? auth?.userId ?? 'anonymous',
         teamId: apiKey?.teamId ?? auth?.teamId ?? null,
+        // Teams are a device boundary: a member's lease lands only on a phone
+        // they can see. undefined (admin, auth disabled) is unscoped.
+        callerTeamIds: auth?.teamIds,
         buildId,
         reason,
       });
