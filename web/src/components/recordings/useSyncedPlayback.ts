@@ -1,5 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { clampTime, needsResync, tilePhase, videoTimeMs } from './playback';
+import {
+  clampTime,
+  needsResync,
+  PAUSED_RESYNC_MS,
+  RESYNC_MS,
+  tilePhase,
+  videoTimeMs,
+} from './playback';
 
 export interface SyncTarget {
   offsetMs: number;
@@ -32,6 +39,19 @@ const browserClock: PlaybackClock = {
 /** The transport re-renders this often while playing, not every frame. */
 const RENDER_EVERY_MS = 100;
 const HAVE_FUTURE_DATA = 3;
+/** This close to the end of its own file, a video counts as finished. */
+const END_SLACK_S = 0.05;
+
+/**
+ * The video has played out its own file. The stored duration_ms can run ~40 ms
+ * past the length the browser reads, so the group clock may still say
+ * "playing" over a video that has ended — and play() on an ended video
+ * rewinds it to 0. A finished video is held at its end, never played, and
+ * never waited for: it has nothing left to buffer.
+ */
+function finished(el: HTMLVideoElement): boolean {
+  return el.ended || (Number.isFinite(el.duration) && el.currentTime >= el.duration - END_SLACK_S);
+}
 
 /**
  * One clock for every phone's <video>. The clock is the truth; videos follow
@@ -66,15 +86,19 @@ export function useSyncedPlayback(
       const target = targets.current.get(id);
       if (!target || el.error) return;
       const phase = tilePhase(t, target.offsetMs, target.durationMs);
-      const wantMs =
+      let wantMs =
         phase === 'before'
           ? 0
           : phase === 'after'
             ? (target.durationMs as number)
             : videoTimeMs(t, target.offsetMs);
-      if (needsResync(el.currentTime * 1000, wantMs)) el.currentTime = wantMs / 1000;
+      // Never past the file's own end, which can come before the stored one.
+      if (Number.isFinite(el.duration)) wantMs = Math.min(wantMs, el.duration * 1000);
+      // Playing, small drift is left alone; paused, a seek lands exactly.
+      const tolerance = advancing ? RESYNC_MS : PAUSED_RESYNC_MS;
+      if (needsResync(el.currentTime * 1000, wantMs, tolerance)) el.currentTime = wantMs / 1000;
       if (advancing && phase === 'playing') {
-        if (el.paused) el.play()?.catch(() => undefined);
+        if (el.paused && !finished(el)) el.play()?.catch(() => undefined);
       } else if (!el.paused) {
         el.pause();
       }
@@ -87,6 +111,7 @@ export function useSyncedPlayback(
       return (
         !!target &&
         !el.error &&
+        !finished(el) &&
         tilePhase(t, target.offsetMs, target.durationMs) === 'playing' &&
         el.readyState < HAVE_FUTURE_DATA
       );

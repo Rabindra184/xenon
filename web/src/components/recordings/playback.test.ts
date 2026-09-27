@@ -3,6 +3,7 @@ import {
   clampTime,
   formatClock,
   needsResync,
+  PAUSED_RESYNC_MS,
   positionPct,
   tilePhase,
   toOverlay,
@@ -28,10 +29,12 @@ describe('playback rules', () => {
     expect(videoTimeMs(0, -1000)).toBe(1000);
   });
 
-  it('resyncs only past 250 ms of drift', () => {
+  it('resyncs only past 250 ms of drift, or past one frame when paused', () => {
     expect(needsResync(1000, 1250)).toBe(false);
     expect(needsResync(1000, 1251)).toBe(true);
     expect(needsResync(1300, 1000)).toBe(true);
+    expect(needsResync(1000, 1020, PAUSED_RESYNC_MS)).toBe(false);
+    expect(needsResync(1000, 1021, PAUSED_RESYNC_MS)).toBe(true);
   });
 
   it('positions a time on the timeline, clamped', () => {

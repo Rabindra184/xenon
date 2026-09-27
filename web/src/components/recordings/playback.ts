@@ -3,6 +3,8 @@ import type { AnnotationShape, OverlayAnnotation } from '../mosaic/recording-gro
 
 /** Every phone follows one clock; a video further off it than this is moved back. */
 export const RESYNC_MS = 250;
+/** While nothing plays, a seek lands exactly: within one frame. */
+export const PAUSED_RESYNC_MS = 20;
 /** ← and → skip this far. */
 export const SKIP_MS = 5000;
 
@@ -31,8 +33,12 @@ export function videoTimeMs(groupMs: number, offsetMs: number): number {
   return groupMs - offsetMs;
 }
 
-export function needsResync(actualMs: number, expectedMs: number): boolean {
-  return Math.abs(actualMs - expectedMs) > RESYNC_MS;
+export function needsResync(
+  actualMs: number,
+  expectedMs: number,
+  toleranceMs: number = RESYNC_MS,
+): boolean {
+  return Math.abs(actualMs - expectedMs) > toleranceMs;
 }
 
 export function positionPct(ms: number, durationMs: number): number {

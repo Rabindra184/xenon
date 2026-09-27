@@ -28,20 +28,34 @@ function fakeClock() {
 }
 
 function fakeVideo(over: Partial<HTMLVideoElement> = {}) {
+  let time = 0;
   const v: any = {
-    currentTime: 0,
     paused: true,
+    ended: false,
+    // What a browser reports before it has read the file's length.
+    duration: NaN,
     readyState: 4,
     error: null,
+    get currentTime() {
+      return time;
+    },
+    // As in a browser, seeking back from the end means it is no longer ended.
+    set currentTime(t: number) {
+      time = t;
+      if (Number.isFinite(this.duration) && t < this.duration) this.ended = false;
+    },
+    // As in a browser (HTML "play()" steps), play() on an ended video rewinds it to 0.
     play: vi.fn(function (this: any) {
+      if (this.ended) this.currentTime = 0;
       this.paused = false;
       return Promise.resolve();
     }),
     pause: vi.fn(function (this: any) {
       this.paused = true;
     }),
-    ...over,
   };
+  // Assigned rather than spread, so a currentTime override goes through the setter.
+  Object.assign(v, over);
   // Not re-bound: the hook only ever calls these as el.play()/el.pause(), so `this`
   // is already `v`. Function.prototype.bind() returns a plain wrapper without the
   // vi.fn() mock's `.mock` bookkeeping, which makes toHaveBeenCalled() throw.
@@ -193,6 +207,79 @@ describe('useSyncedPlayback', () => {
     act(() => p().seek(99_999));
     expect(p().timeMs).toBe(60_000);
     expect(b.currentTime).toBeCloseTo(30); // finished: held at its end
+  });
+
+  describe('a video whose file ends before its stored length', () => {
+    // duration_ms can read ~40 ms longer than the file the browser plays: here
+    // the file is 16.92 s and the stored length 16.96 s, so for 40 ms the group
+    // clock says "playing" over a video that has already ended.
+    function playedToItsEnd() {
+      const { p, step } = setup(30_000);
+      const short = fakeVideo({ duration: 16.92 } as Partial<HTMLVideoElement>);
+      const long = fakeVideo();
+      act(() => {
+        p().bind('short', { offsetMs: 0, durationMs: 16_960 })(short);
+        p().bind('long', { offsetMs: 0, durationMs: 30_000 })(long);
+      });
+      act(() => p().play());
+      step(16_900);
+      // The browser plays the last frames out and stops at the file's own end.
+      Object.assign(short, { currentTime: 16.92, ended: true, paused: true });
+      short.play.mockClear();
+      return { p, step, short, long };
+    }
+
+    it('is not restarted while the group clock is still inside its stored length', () => {
+      const { p, step, short, long } = playedToItsEnd();
+      step(30); // group 16 930 ms: inside 16 960, past the file's 16 920
+      expect(short.play).not.toHaveBeenCalled();
+      expect(short.currentTime).toBeCloseTo(16.92);
+      expect(long.paused).toBe(false);
+      expect(p().playing).toBe(true);
+    });
+
+    it('does not make the others wait, even when it reports no future data', () => {
+      const { p, step, short } = playedToItsEnd();
+      // Chromium reports HAVE_ENOUGH_DATA at the end; other browsers HAVE_CURRENT_DATA.
+      (short as any).readyState = 2;
+      step(30);
+      expect(p().waiting).toBe(false);
+      step(1000);
+      expect(p().waiting).toBe(false);
+      expect(p().timeMs).toBeGreaterThan(17_000);
+    });
+
+    it('is not restarted by Play after a paused seek to just before its end', () => {
+      const { p, short } = playedToItsEnd();
+      act(() => p().pause());
+      act(() => p().seek(16_930));
+      act(() => p().play());
+      expect(short.play).not.toHaveBeenCalled();
+      expect(short.currentTime).toBeCloseTo(16.92);
+    });
+
+    it('plays again after a seek back into it', () => {
+      const { p, short } = playedToItsEnd();
+      act(() => p().pause());
+      act(() => p().seek(5000));
+      expect(short.currentTime).toBeCloseTo(5);
+      expect(short.ended).toBe(false);
+      act(() => p().play());
+      expect(short.play).toHaveBeenCalled();
+      expect(short.currentTime).toBeCloseTo(5);
+    });
+  });
+
+  it('lands a paused seek exactly, not just within the 250 ms playing tolerance', () => {
+    const { p } = setup(60_000);
+    const v = fakeVideo();
+    act(() => p().bind('a', { offsetMs: 0, durationMs: 60_000 })(v));
+    act(() => p().seek(10_000));
+    expect(v.currentTime).toBeCloseTo(10);
+    act(() => p().seek(10_100)); // 100 ms on: under 250, over one frame
+    expect(v.currentTime).toBeCloseTo(10.1);
+    act(() => p().seek(10_110)); // within one frame (20 ms): left alone
+    expect(v.currentTime).toBeCloseTo(10.1);
   });
 
   it('gives the same ref callback for the same phone', () => {
