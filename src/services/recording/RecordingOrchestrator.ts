@@ -789,13 +789,22 @@ export class RecordingOrchestrator {
     return a;
   }
 
-  /** "Clear marks" for the whole group, which is what the button does. */
-  async clearAnnotations(groupId: string, timecodeMs: number): Promise<{ cleared: number }> {
+  /**
+   * "Clear marks": closes the open marks of the group's recordings. With
+   * `onlyRecordingIds`, only of those among them: the phones the caller can
+   * see, since a group can hold another team's phone. Undefined means the
+   * whole group, which is what the button does for an admin.
+   */
+  async clearAnnotations(
+    groupId: string,
+    timecodeMs: number,
+    onlyRecordingIds?: string[],
+  ): Promise<{ cleared: number }> {
     const rows = await this.store.listGroup(groupId);
-    const cleared = await this.store.clearAnnotations(
-      rows.map((r: any) => r.id),
-      timecodeMs,
-    );
+    const ids = rows
+      .map((r: any) => r.id as string)
+      .filter((id) => !onlyRecordingIds || onlyRecordingIds.includes(id));
+    const cleared = await this.store.clearAnnotations(ids, timecodeMs);
     return { cleared };
   }
 

@@ -67,7 +67,7 @@ function byGroupId<T extends { group_id: string }>(rows: T[]): Map<string, T[]> 
  *   unplugged, and a missing row reads as invisible, which would otherwise
  *   hide their own recording from them. A phone that still exists but is on
  *   another team stays hidden, even from the owner, and so does a phone
- *   someone else added to their group (add-device checks no team).
+ *   someone else added to their group (an admin may add any phone).
  *
  * The owner is decided on every row of a group. `groupRows` supplies them
  * when `rows` is not whole groups; it is read only if some row is hidden.
@@ -156,6 +156,42 @@ async function visibleIdsIn(req: Request, groupId: string): Promise<RecordingFil
   if (seesEverything(req)) return undefined;
   const rows = await Container.get(RecordingStore).listGroupStarts(groupId);
   return (await visibleRows(req, rows)).map((r) => r.id);
+}
+
+/*
+ * The write routes answer what they won't do for a caller with a generic 404
+ * `not_found`, as the reads do: a 403 would tell them the phone or the group
+ * exists. An admin writes as before, with no lookup.
+ */
+
+/**
+ * Whether the caller can see every one of `udids`. A udid with no Device row
+ * is not visible: to a member, an unknown phone and another team's look alike.
+ */
+async function seesEveryDevice(req: Request, udids: string[]): Promise<boolean> {
+  if (seesEverything(req)) return true;
+  const asked = udids.map((udid) => ({ udid }));
+  const seen = await deviceService.filterRowsByVisibleDevice(asked, authOf(req)?.teamIds, 'udid');
+  return seen.length === asked.length;
+}
+
+/** A group with no row the caller can see, or with no rows at all. Never for an admin. */
+async function groupHidden(req: Request, groupId: string): Promise<boolean> {
+  const ids = await visibleIdsIn(req, groupId);
+  return ids !== undefined && ids.length === 0;
+}
+
+/**
+ * Whether the caller may mark `recordingId` through `groupId`: it exists, is
+ * in that group, and is on a phone they can see ({@link visibleRows}, so the
+ * owner of an unplugged phone still can).
+ */
+async function canMark(req: Request, groupId: string, recordingId: string): Promise<boolean> {
+  if (seesEverything(req)) return true;
+  const store = Container.get(RecordingStore);
+  const rec = await store.findVideo(recordingId);
+  if (!rec || rec.group_id !== groupId) return false;
+  return (await visibleRows(req, [rec], () => store.listGroupStarts(groupId))).length > 0;
 }
 
 /**
@@ -248,6 +284,8 @@ router.post('/recordings', async (req: Request, res: Response) => {
   const actorId = resolveActor(req).userId;
   if (!actorId) return res.status(401).json({ error: 'unauthenticated' });
   try {
+    // All or nothing, like the busy check: no part of a group is started.
+    if (!(await seesEveryDevice(req, udids))) return res.status(404).json({ error: 'not_found' });
     const out = await Container.get(RecordingOrchestrator).start({
       udids,
       sessionId,
@@ -286,6 +324,9 @@ router.post('/recordings/:groupId/add-device', async (req: Request, res: Respons
   const actorId = resolveActor(req).userId;
   if (!actorId) return res.status(401).json({ error: 'unauthenticated' });
   try {
+    if ((await groupHidden(req, req.params.groupId)) || !(await seesEveryDevice(req, [udid]))) {
+      return res.status(404).json({ error: 'not_found' });
+    }
     const out = await Container.get(RecordingOrchestrator).addDevice(
       req.params.groupId,
       udid,
@@ -316,6 +357,11 @@ router.post('/recordings/:groupId/add-device', async (req: Request, res: Respons
 
 router.post('/recordings/:groupId/stop', async (req: Request, res: Response) => {
   try {
+    // Seeing one phone of the group is enough: stopping is group-wide, since
+    // the composite is one ffmpeg over every phone.
+    if (await groupHidden(req, req.params.groupId)) {
+      return res.status(404).json({ error: 'not_found' });
+    }
     const out = await Container.get(RecordingOrchestrator).stop(req.params.groupId);
     res.json(out);
   } catch (e: any) {
@@ -332,6 +378,9 @@ router.post('/recordings/:groupId/bookmark', async (req: Request, res: Response)
       .json({ error: 'recordingId (string), timecodeMs (number) and label (string) are required' });
   }
   try {
+    if (!(await canMark(req, req.params.groupId, recordingId))) {
+      return res.status(404).json({ error: 'not_found' });
+    }
     const out = await Container.get(RecordingOrchestrator).addBookmark(
       req.params.groupId,
       recordingId,
@@ -362,6 +411,9 @@ router.post('/recordings/:groupId/annotation', async (req: Request, res: Respons
   const image = decodeAnnotationImage(req.body?.image);
   if (image && !image.ok) return res.status(400).json({ error: image.error });
   try {
+    if (!(await canMark(req, req.params.groupId, recordingId))) {
+      return res.status(404).json({ error: 'not_found' });
+    }
     const out = await Container.get(RecordingOrchestrator).addAnnotation(
       req.params.groupId,
       recordingId,
@@ -413,13 +465,14 @@ router.get('/recordings/active', async (req: Request, res: Response) => {
 router.post('/recordings/:groupId/annotations/clear', async (req: Request, res: Response) => {
   const parsed = parseClearBody(req.body);
   if (!parsed.ok) return res.status(400).json({ error: parsed.error });
-  if (seesNone(await visibleRecordings(req, req.params.groupId))) {
-    return res.status(404).json({ error: 'not_found' });
-  }
+  const v = await visibleRecordings(req, req.params.groupId);
+  if (seesNone(v)) return res.status(404).json({ error: 'not_found' });
   try {
+    // Only the marks on phones the caller sees; all of them for an admin.
     const out = await Container.get(RecordingOrchestrator).clearAnnotations(
       req.params.groupId,
       parsed.timecodeMs,
+      v.ids,
     );
     return res.json(out);
   } catch (e: any) {
