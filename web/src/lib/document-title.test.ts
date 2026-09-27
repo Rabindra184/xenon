@@ -17,6 +17,11 @@ describe('titleForPath', () => {
   ])('%s → %s', (path, title) => {
     expect(titleForPath(path)).toBe(title);
   });
+
+  it('titles the recordings pages', () => {
+    expect(titleForPath('/recordings')).toBe('Recordings · Xenon');
+    expect(titleForPath('/recordings/abc-123')).toBe('Recording · Xenon');
+  });
 });
 
 describe('a device control tab', () => {

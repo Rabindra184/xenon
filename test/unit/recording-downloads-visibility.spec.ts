@@ -106,6 +106,8 @@ describe('recording downloads serve only the phones the caller can see', () => {
   let composite: string;
   /** Udids the member's team can see; an admin sees everything. */
   let memberSees: string[];
+  /** Udids that still have a Device row: an unplugged phone's is deleted. */
+  let existing: string[];
   /** The group's rows as the store returns them now. */
   let rows: any[];
   let listGroup: sinon.SinonSpy;
@@ -164,6 +166,7 @@ describe('recording downloads serve only the phones the caller can see', () => {
 
   beforeEach(() => {
     memberSees = ['U-A'];
+    existing = ['U-A', 'U-B', 'U-C'];
     rows = [row('r-a', 'U-A'), row('r-b', 'U-B')];
     writeLayout([
       ['r-a', 'U-A'],
@@ -176,6 +179,10 @@ describe('recording downloads serve only the phones the caller can see', () => {
     const store = {
       listGroup,
       findById: async (id: string) => rows.find((r) => r.id === id) ?? null,
+      deviceNames: async (udids: string[]) =>
+        new Map(
+          udids.filter((u) => existing.includes(u)).map((u) => [u, { name: u, platform: null }]),
+        ),
     };
     Container.set(RecordingStore, store as any);
     Container.set(ProofBundleService, new ProofBundleService(store as any));
@@ -358,6 +365,40 @@ describe('recording downloads serve only the phones the caller can see', () => {
       expect((await get(MEMBER, 'composite.mp4')).status).to.equal(404);
       const videos = await get(MEMBER, 'videos.zip');
       expect(await zipNames(videos.body)).to.deep.equal(['U-A.mp4', 'U-B.mp4']);
+    });
+  });
+
+  // The person who recorded a group also sees its phones that were unplugged
+  // since (their Device row is gone), and nothing more: a phone that moved to
+  // another team is still that team's, and so is the composite showing it.
+  describe('the member who recorded the group', () => {
+    const owned = (id: string, udid: string) => ({ ...row(id, udid), started_by: MEMBER.userId });
+    beforeEach(() => {
+      rows = [owned('r-a', 'U-A'), owned('r-b', 'U-B')];
+    });
+
+    it('gets no phone that is on another team, and no composite showing it', async () => {
+      expect((await get(MEMBER, 'video.mp4?udid=U-B')).status).to.equal(404);
+      expect((await get(MEMBER, 'composite.mp4')).status).to.equal(404);
+      const videos = await get(MEMBER, 'videos.zip');
+      expect(await zipNames(videos.body)).to.deep.equal(['U-A.mp4']);
+    });
+
+    it('gets no unplugged phone that someone else added, and no composite', async () => {
+      rows = [owned('r-a', 'U-A'), { ...row('r-b', 'U-B'), started_by: 'usr_other' }];
+      existing = ['U-A'];
+      expect((await get(MEMBER, 'video.mp4?udid=U-B')).status).to.equal(404);
+      expect((await get(MEMBER, 'composite.mp4')).status).to.equal(404);
+    });
+
+    it('gets a phone that was unplugged, and then the composite', async () => {
+      existing = ['U-A'];
+      const b = await get(MEMBER, 'video.mp4?udid=U-B');
+      expect(b.status).to.equal(200);
+      expect(b.body.toString('utf8')).to.equal(B_BYTES);
+      expect((await get(MEMBER, 'composite.mp4')).status).to.equal(200);
+      const videos = await get(MEMBER, 'videos.zip');
+      expect(await zipNames(videos.body)).to.deep.equal(['U-A.mp4', 'U-B.mp4', 'composite.mp4']);
     });
   });
 

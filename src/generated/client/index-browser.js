@@ -407,7 +407,8 @@ exports.Prisma.RecordingScalarFieldEnum = {
   duration_ms: 'duration_ms',
   size_bytes: 'size_bytes',
   device_snapshot: 'device_snapshot',
-  fail_reason: 'fail_reason'
+  fail_reason: 'fail_reason',
+  started_by: 'started_by'
 };
 
 exports.Prisma.BookmarkScalarFieldEnum = {

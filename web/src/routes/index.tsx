@@ -42,6 +42,8 @@ const SelectorDetailPage = lazy(
 const DeviceMosaicView = lazy(() => import('../components/mosaic/DeviceMosaicView'));
 const ProfilePage = lazy(() => import('../pages/profile/profile-page'));
 const UsersPage = lazy(() => import('../pages/users'));
+const RecordingsPage = lazy(() => import('../components/recordings/RecordingsPage'));
+const RecordingPage = lazy(() => import('../components/recordings/RecordingPage'));
 
 const LoadingFallback = () => (
   <div className="flex items-center justify-center gap-2 h-full text-xs text-[var(--text-dim)]">
@@ -81,6 +83,8 @@ export const AppRoutes: React.FC = () => (
         <Route path="/selector-health" element={<SelectorHealthPage />} />
         <Route path="/selector-health/detail" element={<SelectorDetailPage />} />
         <Route path="/devices/live" element={<DeviceMosaicView />} />
+        <Route path="/recordings" element={<RecordingsPage />} />
+        <Route path="/recordings/:groupId" element={<RecordingPage />} />
         <Route path="/runbooks/:category" element={<RunbookPage />} />
         <Route path="/profile" element={<ProfilePage />} />
         <Route path="*" element={<Navigate to="/overview" replace />} />

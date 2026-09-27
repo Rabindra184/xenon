@@ -1,5 +1,6 @@
 import * as React from 'react';
-import { Circle, Download, Square } from 'lucide-react';
+import { Link } from 'react-router-dom';
+import { Circle, Download, Film, Square } from 'lucide-react';
 import { SegmentedControl } from '../ui/SegmentedControl';
 import { formatElapsed, useMosaic } from './recording-group-store';
 import {
@@ -370,6 +371,15 @@ export function RecordingControls({ selectedUdids, onClearMarks }: Props) {
           <Download {...icon} />
           Side-by-side
         </a>
+      )}
+      {showDownload && state.groupId && (
+        <Link
+          to={`/recordings/${encodeURIComponent(state.groupId)}`}
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm rounded border border-[var(--border)] hover:bg-[var(--surface-2)]"
+        >
+          <Film {...icon} />
+          Open in Recordings
+        </Link>
       )}
     </div>
   );

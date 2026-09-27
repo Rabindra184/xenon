@@ -326,6 +326,7 @@ export class RecordingOrchestrator {
           filePath,
           sessionId: sessionId ?? null,
           deviceSnapshot: null,
+          startedBy: actorId,
         });
         await this.videoPipeline.startRecording({
           sessionId: id,
@@ -886,6 +887,7 @@ export class RecordingOrchestrator {
         filePath,
         sessionId: null,
         deviceSnapshot: null,
+        startedBy: actorId,
       });
       await this.videoPipeline.startRecording({
         sessionId: recordingId,

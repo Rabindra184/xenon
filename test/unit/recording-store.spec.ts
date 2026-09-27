@@ -140,4 +140,201 @@ describe('RecordingStore (Prisma round-trip)', () => {
   it('clearAnnotations with no recordings is a no-op', async () => {
     expect(await store.clearAnnotations([], 5000)).to.equal(0);
   });
+
+  it('keeps who started a recording, and null when nobody is known', async () => {
+    const a = await store.create({
+      id: 'test-rec-by-1',
+      groupId: 'test-g-by',
+      deviceUdid: 'TEST-BY1',
+      deviceHost: '127.0.0.1',
+      filePath: '/tmp/by1.mp4',
+      sessionId: null,
+      deviceSnapshot: null,
+      startedBy: 'usr_alice',
+    });
+    const b = await store.create({
+      id: 'test-rec-by-2',
+      groupId: 'test-g-by',
+      deviceUdid: 'TEST-BY2',
+      deviceHost: '127.0.0.1',
+      filePath: '/tmp/by2.mp4',
+      sessionId: null,
+      deviceSnapshot: null,
+    });
+    expect(a.started_by).to.equal('usr_alice');
+    expect(b.started_by).to.equal(null);
+  });
+
+  it('libraryRows carries bookmark labels and a mark count', async () => {
+    await store.create({
+      id: 'test-lib-1',
+      groupId: 'test-g-lib',
+      deviceUdid: 'TEST-L1',
+      deviceHost: '127.0.0.1',
+      filePath: '/tmp/l1.mp4',
+      sessionId: null,
+      deviceSnapshot: null,
+      startedBy: 'usr_a',
+    });
+    await store.addBookmark('test-lib-1', 'Login', 1000);
+    await store.addAnnotation('test-lib-1', {
+      timecodeMs: 5,
+      shape: 'RECT',
+      geometry: '{}',
+      color: 'red',
+    });
+    const rows = await store.libraryRows();
+    const r = rows.find((x) => x.id === 'test-lib-1');
+    if (!r) throw new Error('expected test-lib-1 in libraryRows()');
+    expect(r.bookmarks.map((b) => b.label)).to.deep.equal(['Login']);
+    expect(r._count.annotations).to.equal(1);
+    expect(r.started_by).to.equal('usr_a');
+  });
+
+  it('deleteGroupRows removes the group’s rows, and their bookmarks and marks with them', async () => {
+    for (const id of ['test-del-1', 'test-del-2']) {
+      await store.create({
+        id,
+        groupId: 'test-g-del',
+        deviceUdid: id.toUpperCase(),
+        deviceHost: '127.0.0.1',
+        filePath: `/tmp/${id}.mp4`,
+        sessionId: null,
+        deviceSnapshot: null,
+      });
+    }
+    await store.addBookmark('test-del-1', 'x', 1);
+    await store.addAnnotation('test-del-2', {
+      timecodeMs: 1,
+      shape: 'RECT',
+      geometry: '{}',
+      color: 'red',
+    });
+    expect(await store.deleteGroupRows('test-g-del')).to.equal(2);
+    expect(await store.listGroup('test-g-del')).to.deep.equal([]);
+    expect(await prisma.bookmark.count({ where: { recording_id: 'test-del-1' } })).to.equal(0);
+    expect(await prisma.annotation.count({ where: { recording_id: 'test-del-2' } })).to.equal(0);
+  });
+
+  it('deleteGroupRows with ids removes only those rows of the group', async () => {
+    for (const [id, groupId] of [
+      ['test-part-1', 'test-g-part'],
+      ['test-part-2', 'test-g-part'],
+      ['test-part-3', 'test-g-part-other'],
+    ]) {
+      await store.create({
+        id,
+        groupId,
+        deviceUdid: id.toUpperCase(),
+        deviceHost: '127.0.0.1',
+        filePath: `/tmp/${id}.mp4`,
+        sessionId: null,
+        deviceSnapshot: null,
+      });
+    }
+    await store.addBookmark('test-part-1', 'x', 1);
+    // An id from another group is not this group's to delete.
+    expect(await store.deleteGroupRows('test-g-part', ['test-part-1', 'test-part-3'])).to.equal(1);
+    expect((await store.listGroup('test-g-part')).map((r) => r.id)).to.deep.equal(['test-part-2']);
+    expect((await store.listGroup('test-g-part-other')).map((r) => r.id)).to.deep.equal([
+      'test-part-3',
+    ]);
+    expect(await prisma.bookmark.count({ where: { recording_id: 'test-part-1' } })).to.equal(0);
+    expect(await store.deleteGroupRows('test-g-part', [])).to.equal(0);
+    expect(await store.deleteGroupRows('test-g-part')).to.equal(1);
+  });
+
+  it('listGroupStarts reads who started each row of a group, and nothing more', async () => {
+    for (const [id, startedBy] of [
+      ['test-starts-1', 'usr_a'],
+      ['test-starts-2', null],
+    ]) {
+      await store.create({
+        id: id as string,
+        groupId: 'test-g-starts',
+        deviceUdid: (id as string).toUpperCase(),
+        deviceHost: '127.0.0.1',
+        filePath: `/tmp/${id}.mp4`,
+        sessionId: null,
+        deviceSnapshot: null,
+        startedBy,
+      });
+    }
+    await store.addBookmark('test-starts-1', 'x', 1);
+    const rows = (await store.listGroupStarts('test-g-starts')).sort((a, b) =>
+      a.id.localeCompare(b.id),
+    );
+    expect(rows.map((r) => Object.keys(r).sort())).to.deep.equal([
+      ['device_udid', 'group_id', 'id', 'started_at', 'started_by'],
+      ['device_udid', 'group_id', 'id', 'started_at', 'started_by'],
+    ]);
+    expect(rows.map((r) => [r.id, r.device_udid, r.started_by])).to.deep.equal([
+      ['test-starts-1', 'TEST-STARTS-1', 'usr_a'],
+      ['test-starts-2', 'TEST-STARTS-2', null],
+    ]);
+    expect(rows[0].started_at).to.be.instanceOf(Date);
+    expect(await store.listGroupStarts('test-g-none')).to.deep.equal([]);
+  });
+
+  it('listActiveWithMarks reads the in-progress recordings with their marks', async () => {
+    for (const id of ['test-live-1', 'test-live-2']) {
+      await store.create({
+        id,
+        groupId: 'test-g-live',
+        deviceUdid: id.toUpperCase(),
+        deviceHost: '127.0.0.1',
+        filePath: `/tmp/${id}.mp4`,
+        sessionId: null,
+        deviceSnapshot: null,
+      });
+    }
+    await store.finalize('test-live-2', { status: 'STOPPED' });
+    await store.addAnnotation('test-live-1', {
+      timecodeMs: 1,
+      shape: 'RECT',
+      geometry: '{}',
+      color: 'red',
+    });
+    const live = (await store.listActiveWithMarks()).filter((r) => r.group_id === 'test-g-live');
+    expect(live.map((r) => r.id)).to.deep.equal(['test-live-1']);
+    expect(live[0].annotations.map((a) => a.color)).to.deep.equal(['red']);
+  });
+
+  it('findVideo reads one recording without its bookmarks and marks', async () => {
+    await store.create({
+      id: 'test-video-1',
+      groupId: 'test-g-video',
+      deviceUdid: 'U-VIDEO',
+      deviceHost: '127.0.0.1',
+      filePath: '/tmp/test-video-1.mp4',
+      sessionId: null,
+      deviceSnapshot: null,
+      startedBy: 'usr_a',
+    });
+    await store.addBookmark('test-video-1', 'x', 1);
+    const rec = await store.findVideo('test-video-1');
+    expect(Object.keys(rec ?? {}).sort()).to.deep.equal([
+      'device_udid',
+      'file_path',
+      'group_id',
+      'id',
+      'started_at',
+      'started_by',
+      'status',
+    ]);
+    expect(rec).to.deep.include({
+      id: 'test-video-1',
+      group_id: 'test-g-video',
+      device_udid: 'U-VIDEO',
+      file_path: '/tmp/test-video-1.mp4',
+      status: 'RECORDING',
+      started_by: 'usr_a',
+    });
+    expect(await store.findVideo('test-video-none')).to.equal(null);
+  });
+
+  it('names users by name, then email', async () => {
+    const names = await store.userNames([]);
+    expect(names.size).to.equal(0);
+  });
 });

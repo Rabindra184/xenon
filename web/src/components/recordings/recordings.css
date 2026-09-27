@@ -1,0 +1,256 @@
+.rec-page {
+  display: flex;
+  flex-direction: column;
+  min-height: 100%;
+}
+
+.rec-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 20px;
+  border-bottom: 1px solid var(--border);
+}
+
+.rec-search {
+  width: 280px;
+}
+
+.rec-table.tbl {
+  width: 100%;
+}
+.rec-table.tbl th:first-child,
+.rec-table.tbl td:first-child {
+  padding-left: 20px;
+}
+.rec-table.tbl th:last-child,
+.rec-table.tbl td:last-child {
+  padding-right: 20px;
+}
+
+.rec-row {
+  cursor: pointer;
+}
+.rec-row:hover td {
+  background: var(--surface-2);
+}
+
+.rec-num {
+  font-variant-numeric: tabular-nums;
+}
+
+.rec-link {
+  color: var(--text);
+  text-decoration: none;
+}
+.rec-link:hover {
+  text-decoration: underline;
+}
+.rec-link:focus-visible {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
+.rec-more {
+  display: flex;
+  justify-content: center;
+  padding: 16px;
+}
+
+.rec-footnote {
+  margin-top: auto;
+  padding: 16px 20px;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+/* The recording page: every phone's video in sync, over one transport. */
+
+.rec-backbar {
+  padding: 12px 24px 0;
+  font-size: 13px;
+}
+.rec-backbar .rec-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-muted);
+}
+
+.rec-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 16px;
+  padding: 16px 20px 20px;
+}
+.rec-body--with-list {
+  grid-template-columns: minmax(0, 1fr) 260px;
+}
+
+.rec-player {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+}
+
+.rec-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 12px;
+}
+
+/* A dark island: it paints its own opaque background in every theme. */
+.rec-tile {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+.rec-tile-name {
+  padding: 6px 10px;
+  font-size: 12px;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* isolation keeps the marks canvas's z-index inside the tile. */
+.rec-tile-screen {
+  position: relative;
+  isolation: isolate;
+  height: min(56vh, 520px);
+  background: var(--bg);
+}
+.rec-tile-video {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  display: block;
+}
+/* Above the marks canvas (z-index 25), so a note is never drawn over. */
+.rec-tile-note {
+  position: absolute;
+  inset: 0;
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  text-align: center;
+  font-size: 13px;
+  color: var(--text);
+  background: rgb(var(--rgb-black) / calc(0.55 * var(--shadow-k)));
+}
+
+/* Sticky, so the controls stay on screen when five or more phones wrap the
+   grid to two rows. Opaque, so tiles scroll under it; z-index 10 is the top
+   of page content, below the app header's 15 and 20. */
+.rec-transport {
+  position: sticky;
+  bottom: 0;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 0;
+  background: var(--bg);
+  border-top: 1px solid var(--border);
+}
+.rec-clock {
+  font-size: 12px;
+  color: var(--text-muted);
+  min-width: 96px;
+}
+.rec-timeline {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+}
+.rec-range {
+  width: 100%;
+  accent-color: var(--color-accent);
+}
+.rec-mark {
+  position: absolute;
+  top: -10px;
+  width: 10px;
+  height: 10px;
+  padding: 0;
+  transform: translateX(-50%) rotate(45deg);
+  border: 1px solid var(--bg);
+  background: var(--color-highlight);
+  cursor: pointer;
+}
+.rec-mark:focus-visible {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: 2px;
+}
+.rec-waiting {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+.rec-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.rec-bookmarks {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 12px;
+  align-self: start;
+}
+.rec-bookmarks-title {
+  font-size: 13px;
+  font-weight: 600;
+  margin: 0 0 8px;
+}
+.rec-bookmark-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.rec-bookmark {
+  width: 100%;
+  text-align: left;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px 8px;
+  border-radius: var(--radius-md);
+  background: transparent;
+  border: 0;
+  color: var(--text);
+  cursor: pointer;
+}
+.rec-bookmark:hover {
+  background: var(--surface-2);
+}
+.rec-bookmark:focus-visible {
+  outline: 2px solid var(--color-focus-ring);
+}
+.rec-bookmark-label {
+  font-size: 13px;
+}
+.rec-bookmark-meta {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+.rec-error {
+  color: var(--color-danger);
+  margin-top: 8px;
+}

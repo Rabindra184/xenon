@@ -78,6 +78,8 @@ const ROUTES = [
   // The table view of the same page, with the same wide mock (two hosts, so
   // the Host column shows too).
   '/xenon/devices?view=table',
+  '/xenon/recordings',
+  '/xenon/recordings/g-mock-1',
   '/xenon/builds',
   `/xenon/builds/${BUILD_ID}`,
   '/xenon/apps',
@@ -142,6 +144,93 @@ test.beforeEach(async ({ page }) => {
 // overflow assertions remain the whole test. Purely additive: nothing about
 // the existing control-route flow changes.
 type Setup = (page: Page) => Promise<void>;
+
+// Recordings: deliberately wide payloads — five phones with >60-char names, a
+// >60-char "recorded by", a dozen long bookmark labels — so the library table
+// and the recording page's grid, transport and bookmark list are stressed.
+const LONG = (s: string) => `${s} — Engineering Lab, Desk 14, Rack B (shared regression pool)`;
+function recSummary(groupId: string, over: Record<string, unknown> = {}) {
+  const phones = [0, 1, 2, 3, 4].map((i) => ({
+    recordingId: `${groupId}-r${i}`,
+    udid: `UDID-${i}-00008110-00084CE80E51401E`,
+    name: LONG(`Phone ${i}`),
+    platform: i % 2 ? 'ios' : 'android',
+    status: i === 4 ? 'FAILED' : 'STOPPED',
+    offsetMs: i === 3 ? 42_000 : -1000,
+    durationMs: i === 4 ? null : 252_000,
+    failReason: i === 4 ? 'ffmpeg exited before the first frame arrived from the device' : null,
+    annotationCount: i === 0 ? 2 : 0,
+  }));
+  return {
+    groupId,
+    startedAt: '2026-09-27T10:00:00.000Z',
+    endedAt: '2026-09-27T10:04:12.000Z',
+    durationMs: 294_000,
+    status: 'done',
+    phones,
+    startedBy: { id: 'usr_long', name: LONG('Priya Raghunathan-Venkatasubramanian') },
+    bookmarkCount: 12,
+    annotationCount: 2,
+    keptUntil: '2026-10-27T10:00:00.000Z',
+    sizeBytes: 44_000_000,
+    hasComposite: true,
+    ...over,
+  };
+}
+const REC_LIST = {
+  recordings: [
+    recSummary('g-mock-1'),
+    recSummary('g-mock-2', { status: 'recording', endedAt: null, durationMs: null }),
+    recSummary('g-mock-3', { status: 'failed', startedBy: null }),
+  ],
+  nextCursor: '1790000000000_g-mock-3',
+  total: 57,
+  facets: {
+    phones: [0, 1, 2, 3, 4].map((i) => ({ udid: `UDID-${i}`, name: LONG(`Phone ${i}`), count: 9 })),
+    people: [{ id: 'usr_long', name: LONG('Priya Raghunathan-Venkatasubramanian'), count: 40 }],
+    unknownCount: 17,
+    when: { any: 57, '24h': 3, '7d': 20, '30d': 57 },
+  },
+  retention: { days: 30, maxCount: 100 },
+};
+const REC_DETAIL = {
+  groupId: 'g-mock-1',
+  summary: recSummary('g-mock-1'),
+  bookmarks: Array.from({ length: 12 }, (_, i) => ({
+    id: `b${i}`,
+    recordingId: `g-mock-1-r${i % 4}`,
+    timecodeMs: 5000 + i * 20_000,
+    label: `Checkout button did not respond after the third tap on the payment sheet (${i})`,
+    note: null,
+  })),
+  annotations: [
+    {
+      id: 'a1',
+      recordingId: 'g-mock-1-r0',
+      timecodeMs: 0,
+      endTimecodeMs: null,
+      shape: 'RECT',
+      geometry: '{"x":0.1,"y":0.1,"w":0.3,"h":0.2}',
+      color: 'red',
+      text: null,
+    },
+  ],
+};
+async function mockRecordings(page: Page): Promise<void> {
+  // One matcher for the list (with a query string) and the detail: a glob's
+  // `*` doesn't cross `/`, so `recordings*` would miss /recordings/<id>.
+  await page.route(
+    (url) => url.pathname.startsWith('/xenon/api/recordings'),
+    (route) => {
+      const u = new URL(route.request().url());
+      if (u.pathname.endsWith('.mp4') || u.pathname.endsWith('.zip')) return route.abort();
+      if (u.pathname === '/xenon/api/recordings') return route.fulfill({ json: REC_LIST });
+      if (u.pathname === '/xenon/api/recordings/g-mock-1')
+        return route.fulfill({ json: REC_DETAIL });
+      return route.fulfill({ status: 404, json: { error: 'not_found' } });
+    },
+  );
+}
 
 const ROUTE_DATA_MOCKS: Record<string, Setup> = {
   '/xenon/overview': async (page) => {
@@ -716,6 +805,8 @@ const ROUTE_DATA_MOCKS: Record<string, Setup> = {
   },
 };
 ROUTE_DATA_MOCKS['/xenon/devices?view=table'] = ROUTE_DATA_MOCKS['/xenon/devices'];
+ROUTE_DATA_MOCKS['/xenon/recordings'] = mockRecordings;
+ROUTE_DATA_MOCKS['/xenon/recordings/g-mock-1'] = mockRecordings;
 
 const ROUTE_CONTENT_CHECKS: Record<string, Setup> = {
   '/xenon/overview': async (page) => {
@@ -732,6 +823,18 @@ const ROUTE_CONTENT_CHECKS: Record<string, Setup> = {
       .locator('section', { hasText: 'Recent activity' })
       .locator('div.divide-y > div');
     await expect(activityRows).not.toHaveCount(0);
+  },
+
+  '/xenon/recordings': async (page) => {
+    // Rows, not an empty state: an empty table has nothing to overflow.
+    await expect(page.locator('table.rec-table tbody tr')).toHaveCount(3);
+    await expect(page.getByRole('button', { name: 'Load more' })).toBeVisible();
+  },
+
+  '/xenon/recordings/g-mock-1': async (page) => {
+    await expect(page.locator('.rec-tile')).toHaveCount(5);
+    await expect(page.locator('.rec-bookmark')).toHaveCount(12);
+    await expect(page.getByRole('slider', { name: 'Timeline' })).toBeVisible();
   },
 
   '/xenon/devices?view=table': async (page) => {

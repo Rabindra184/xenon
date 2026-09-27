@@ -8,6 +8,7 @@ const EXACT: Record<string, string> = {
   '/overview': 'Overview',
   '/devices': 'Devices',
   '/devices/live': 'Live devices',
+  '/recordings': 'Recordings',
   '/apps': 'Apps',
   '/builds': 'Sessions',
   '/selector-health': 'Selector health',
@@ -51,6 +52,7 @@ export function titleForPath(pathname: string): string {
       page = `${deviceNames.get(udid) || udid} · Device`;
     } else if (/^\/builds\/[^/]+\/sessions\//.test(path)) page = 'Session';
     else if (/^\/builds\/[^/]+$/.test(path)) page = 'Sessions';
+    else if (/^\/recordings\/[^/]+$/.test(path)) page = 'Recording';
     else if ((m = path.match(/^\/runbooks\/([^/]+)/)))
       page = `Runbook · ${decodeURIComponent(m[1])}`;
     else if (path.startsWith('/reset-password/')) page = 'Reset password';
