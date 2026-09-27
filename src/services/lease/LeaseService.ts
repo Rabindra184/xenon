@@ -29,8 +29,8 @@ export interface CreateLeaseRequest {
  * `xenon:options.leaseId`. Any one of these proves it may use the lease.
  */
 export interface LeaseSessionProof {
-  /** Auth is disabled, or the credential has the ADMIN/SUPER_ADMIN role or the admin scope. */
-  isAdmin: boolean;
+  /** May use a lease someone else created: see canOverrideLease (device-access/leaseOverride.ts). */
+  canOverride: boolean;
   /** ApiKey row id of a verified df:options pair. */
   apiKeyId: string | null;
   /** User id from a verified df:options pair or xenon:options.sessionToken. */
@@ -201,7 +201,7 @@ export class LeaseService {
     // Step 4: build the cap bag now that we have lease.id, persist + return.
     // If this update fails (rare, transient DB error), roll the lease back so
     // we don't leave a zombie row with capabilityBag='' that would crash on
-    // any later JSON.parse in resolve().
+    // any later JSON.parse in authorizeSessionUse().
     const bag = buildCapabilityBag(device, ports, lease.id, req.buildId);
     try {
       await this.db.lease.update({
@@ -294,18 +294,11 @@ export class LeaseService {
   }
 
   /**
-   * Resolve an active lease, with no check of who is asking. Session create
-   * must use authorizeSessionUse instead: a lease id is not a secret.
-   */
-  async resolve(leaseId: string): Promise<ResolvedLease | null> {
-    const lease = await this.findUsableLease(leaseId);
-    return lease ? toResolved(lease) : null;
-  }
-
-  /**
    * Resolve a lease for an Appium session that named it, if the session
-   * proves it may use it: it is an admin, it presents the lease token (the
-   * comparison heartbeat uses), or its identity is the lease's creator.
+   * proves it may use it: it may override (canOverrideLease), it presents the
+   * lease token (the comparison heartbeat uses), or its identity is the
+   * lease's creator. There is deliberately no resolver without the proof: a
+   * lease id is not a secret.
    * `actorId` is the creating API key's id or the creating user's id,
    * depending on how the lease was made, so either may match.
    *
@@ -321,7 +314,7 @@ export class LeaseService {
     if (!lease) return null;
     const actorId: string | null = lease.actorId ?? null;
     const holds =
-      proof.isAdmin ||
+      proof.canOverride ||
       (!!proof.leaseToken && verifyToken(proof.leaseToken, lease.tokenHash)) ||
       (!!actorId && (actorId === proof.apiKeyId || actorId === proof.userId));
     return holds ? toResolved(lease) : null;

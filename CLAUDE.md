@@ -375,7 +375,14 @@ or enforce credentials with `XENON_REQUIRE_SESSION_TOKEN`.
 Device leases: programmatic clients (SDK, MCP tools) claim devices via
 `POST /xenon/api/sdk/leases` (`src/services/lease/LeaseService.ts`) — token-bound
 claims with TTL + heartbeat, swept by `LeaseOrphanSweeper`, resolved at
-allocation via the `xenon:options.leaseId` capability. Prefer leases over
+allocation via the `xenon:options.leaseId` capability. A lease id is not a
+secret, so the session must also prove it holds the lease
+(`LeaseService.authorizeSessionUse`): the lease token as
+`xenon:options.leaseToken`, the creating credential, or an override
+(`canOverrideLease`, which follows `resolveActor`). The phone must also be
+visible to the caller's REST teams. Every refusal is one message from one
+throw site in `allocateDeviceForSession`. `createSession` strips the token
+before anything else reads the capabilities. Prefer leases over
 manual locks for anything non-interactive. Hub-issued JWTs: `POST /auth/token`
 mints RS256 tokens (`JwtKeyService`), `authMiddleware` accepts them as
 `Authorization: Bearer`, JWKS at `/auth/jwks.json`; single-use stream tickets

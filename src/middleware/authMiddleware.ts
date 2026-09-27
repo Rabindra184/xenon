@@ -7,7 +7,7 @@ import { UserService } from '../services/UserService';
 import { JwtKeyService } from '../services/token/JwtKeyService';
 import { StreamTicketService } from '../services/token/StreamTicketService';
 import { config } from '../config';
-import { prisma } from '../prisma';
+import { computeTeamIds } from '../services/device-access/callerTeamIds';
 
 const SESSION_COOKIE = 'xenon_dashboard_session';
 const SESSION_TTL_MS = 24 * 60 * 60 * 1000;
@@ -51,24 +51,6 @@ function readCookie(req: Request, name: string): string | undefined {
     }
   }
   return undefined;
-}
-
-// Compute the request-scoped team-id set. Returns undefined for admin-tier
-// callers (unscoped). For member-tier callers without a narrowing apiKey,
-// fetches TeamMember rows. For member-tier callers with a team-narrowed
-// apiKey, returns just [apiKey.teamId] (the token's narrow always wins).
-async function computeTeamIds(opts: {
-  role: 'SUPER_ADMIN' | 'ADMIN' | 'MEMBER';
-  userId: string;
-  apiKeyTeamId?: string | null;
-}): Promise<string[] | undefined> {
-  if (opts.role === 'SUPER_ADMIN' || opts.role === 'ADMIN') return undefined;
-  if (opts.apiKeyTeamId) return [opts.apiKeyTeamId];
-  const rows = await prisma.teamMember.findMany({
-    where: { userId: opts.userId },
-    select: { teamId: true },
-  });
-  return rows.map((r: { teamId: string }) => r.teamId);
 }
 
 export async function authMiddleware(req: Request, res: Response, next: NextFunction) {

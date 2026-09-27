@@ -11,19 +11,25 @@ import { hashToken } from '../../../src/services/lease/leaseToken';
 import { DeviceStoreFactory } from '../../../src/data-service/device-store';
 import * as pendingSessions from '../../../src/data-service/pending-sessions-service';
 import * as deviceService from '../../../src/data-service/device-service';
+import * as deviceUtils from '../../../src/device-utils';
 import { DefaultPluginArgs } from '../../../src/interfaces/IPluginArgs';
 import { config } from '../../../src/config';
 import { redactSecrets } from '../../../src/logger';
 import { RequestLogService } from '../../../src/services/RequestLogService';
 import { EVENT_BUS } from '../../../src/services/EventBus';
-import { overrideService, restoreServices } from '../../helpers/service-override';
+import { JwtKeyService } from '../../../src/services/token/JwtKeyService';
+import { prisma } from '../../../src/prisma';
+import { saveRegistrations } from '../../helpers/container-registration';
 
 // createSession end to end, from the capabilities a client sends to the
 // device it gets: the caller's identity has to reach the lease check, and the
 // lease token has to stop there.
 
 const TOKEN = 'f'.repeat(64);
-const NOT_ACTIVE = 'lease lse_1 is not active';
+const REFUSED =
+  'lease lse_1 is not active, or this session did not prove it holds it — pass ' +
+  'xenon:options.leaseToken from the lease response, or create the session with the ' +
+  'credentials that created the lease';
 
 const sessionCaps = (
   xenonOptions: Record<string, unknown>,
@@ -38,13 +44,32 @@ const sessionCaps = (
   firstMatch: [{}],
 });
 
-const ownerKey = { 'df:options': { accessKey: 'ak_owner', token: 'tk_owner' } };
-const otherKey = { 'df:options': { accessKey: 'ak_other', token: 'tk_other' } };
+const key = (accessKey: string) => ({ 'df:options': { accessKey, token: 'tk' } });
+const ownerKey = key('ak_owner');
+const otherKey = key('ak_other');
+// A session token names its user in `sub`; the fake verifier echoes it back.
+const sessionToken = (sub: string) => ({ sessionToken: `jwt:${sub}` });
 
 const keys: Record<string, any> = {
   ak_owner: { id: 'key_owner', userId: 'usr_owner', scopes: 'sessions', teamId: null },
   ak_other: { id: 'key_other', userId: 'usr_other', scopes: 'sessions', teamId: null },
   ak_team_a: { id: 'key_team_a', userId: 'usr_other', scopes: 'sessions', teamId: 'team_a' },
+  // What profile.ts lets an ADMIN mint: never the admin scope.
+  ak_admin_narrow: {
+    id: 'key_admin_narrow',
+    userId: 'usr_admin',
+    scopes: 'devices,sessions,read',
+    teamId: null,
+  },
+  ak_admin_scoped: { id: 'key_admin_scoped', userId: 'usr_admin', scopes: 'admin', teamId: null },
+  ak_super: { id: 'key_super', userId: 'usr_super', scopes: 'sessions', teamId: null },
+};
+
+const roles: Record<string, string> = {
+  usr_owner: 'MEMBER',
+  usr_other: 'MEMBER',
+  usr_admin: 'ADMIN',
+  usr_super: 'SUPER_ADMIN',
 };
 
 describe('createSession — a lease-bound session proves it holds the lease', () => {
@@ -58,6 +83,8 @@ describe('createSession — a lease-bound session proves it holds the lease', ()
   let pendingCopy: any;
   let finalCaps: any;
   let forwardedCaps: any;
+  let restore: () => void;
+  let teamRows: sinon.SinonStub;
 
   // Stands in for the driver: `next` is how Appium hands these same caps on.
   const create = async (caps: any) => {
@@ -67,6 +94,11 @@ describe('createSession — a lease-bound session proves it holds the lease', ()
     });
     await svc.createSession(next, {}, caps);
     return caps;
+  };
+
+  const allowed = async (caps: any) => {
+    await create(caps);
+    return driverCaps !== undefined;
   };
 
   const refusal = async (caps: any) => {
@@ -102,19 +134,23 @@ describe('createSession — a lease-bound session proves it holds the lease', ()
 
     const db = { lease: { findUnique: sinon.stub().callsFake(async () => lease) } };
     const noAuth = { nodePairAuth: async () => ({ accessKey: '', token: '' }) };
-    overrideService(LeaseService, new LeaseService(db, {}, {}, noAuth));
-    overrideService(ApiKeyService, {
+    restore = saveRegistrations(LeaseService, ApiKeyService, UserService, JwtKeyService);
+    Container.set(LeaseService, new LeaseService(db, {}, {}, noAuth));
+    Container.set(ApiKeyService, {
       verifyPair: sinon.stub().callsFake(async (ak: string) => keys[ak] ?? null),
       hasScope: (row: any, req: string[]) => {
         const owned = row.scopes.split(',');
         return owned.includes('admin') || req.some((s) => owned.includes(s));
       },
-    });
-    overrideService(UserService, {
-      findById: sinon
-        .stub()
-        .callsFake(async (id: string) => ({ id, role: 'MEMBER', status: 'ACTIVE' })),
-    });
+    } as any);
+    Container.set(UserService, {
+      findById: async (id: string) =>
+        roles[id] ? { id, role: roles[id], status: 'ACTIVE' } : null,
+    } as any);
+    Container.set(JwtKeyService, {
+      verify: async (t: string) => ({ sub: t.replace(/^jwt:/, ''), teamId: null }),
+    } as any);
+    teamRows = sinon.stub(prisma.teamMember, 'findMany').resolves([] as any);
 
     sinon.stub(DeviceStoreFactory, 'getStore').returns({
       findDevice: sinon.stub().callsFake(async () => device),
@@ -141,7 +177,7 @@ describe('createSession — a lease-bound session proves it holds the lease', ()
     config.authDisabled = authDisabledBefore;
     Object.assign(context, savedContext);
     sinon.restore();
-    restoreServices();
+    restore();
   });
 
   describe('who gets the device', () => {
@@ -160,19 +196,82 @@ describe('createSession — a lease-bound session proves it holds the lease', ()
       await create(sessionCaps({}));
       expect(driverCaps).to.not.equal(undefined);
     });
+
+    it('the user who created the lease, through a session token', async () => {
+      lease.actorId = 'usr_owner'; // a bearer- or cookie-created lease records the user
+      expect(await allowed(sessionCaps(sessionToken('usr_owner')))).to.equal(true);
+    });
+
+    it('any key of the user who created the lease', async () => {
+      lease.actorId = 'usr_other';
+      expect(await allowed(sessionCaps({}, key('ak_team_a')))).to.equal(true);
+    });
+  });
+
+  it('a session that names no lease reads no user and no team for it', async () => {
+    const findById = sinon.spy(Container.get(UserService), 'findById');
+    sinon.stub(deviceUtils, 'allocateDeviceForSession').resolves(device);
+    const caps: any = sessionCaps({}, ownerKey);
+    delete caps.alwaysMatch['xenon:options'];
+    await create(caps);
+    expect(findById.called).to.equal(false);
+    expect(teamRows.called).to.equal(false);
+  });
+
+  describe('taking over a lease someone else created', () => {
+    it("is refused to an ADMIN's key without the admin scope", async () => {
+      expect(await refusal(sessionCaps({}, key('ak_admin_narrow')))).to.equal(REFUSED);
+    });
+
+    it("is allowed to that ADMIN's key with the admin scope", async () => {
+      expect(await allowed(sessionCaps({}, key('ak_admin_scoped')))).to.equal(true);
+    });
+
+    it("is allowed to a SUPER_ADMIN's key", async () => {
+      expect(await allowed(sessionCaps({}, key('ak_super')))).to.equal(true);
+    });
+
+    it('is allowed to an ADMIN presenting a session token, as on the dashboard', async () => {
+      expect(await allowed(sessionCaps(sessionToken('usr_admin')))).to.equal(true);
+    });
+
+    it('is refused to a member presenting a session token', async () => {
+      expect(await refusal(sessionCaps(sessionToken('usr_other')))).to.equal(REFUSED);
+    });
+  });
+
+  describe("the leased phone must be one the caller's teams can see, as on REST", () => {
+    beforeEach(() => {
+      device.teamId = 'team_b';
+    });
+
+    it("allows the owner when they are in the phone's team", async () => {
+      teamRows.resolves([{ teamId: 'team_b' }] as any);
+      expect(await allowed(sessionCaps({}, ownerKey))).to.equal(true);
+    });
+
+    it('refuses the owner once they are not', async () => {
+      teamRows.resolves([{ teamId: 'team_a' }] as any);
+      expect(await refusal(sessionCaps({}, ownerKey))).to.equal(REFUSED);
+    });
+
+    it("allows an ADMIN's own lease on any team's phone, since REST let them take it", async () => {
+      lease.actorId = 'key_admin_narrow';
+      expect(await allowed(sessionCaps({}, key('ak_admin_narrow')))).to.equal(true);
+    });
   });
 
   describe('who is refused', () => {
     it('a caller with no credentials and no token', async () => {
-      expect(await refusal(sessionCaps({}))).to.equal(NOT_ACTIVE);
+      expect(await refusal(sessionCaps({}))).to.equal(REFUSED);
     });
 
     it('a caller with a wrong token', async () => {
-      expect(await refusal(sessionCaps({ leaseToken: 'e'.repeat(64) }))).to.equal(NOT_ACTIVE);
+      expect(await refusal(sessionCaps({ leaseToken: 'e'.repeat(64) }))).to.equal(REFUSED);
     });
 
     it('a different API key', async () => {
-      expect(await refusal(sessionCaps({}, otherKey))).to.equal(NOT_ACTIVE);
+      expect(await refusal(sessionCaps({}, otherKey))).to.equal(REFUSED);
     });
 
     it('a team-bound key with the right token, when the device is in another team', async () => {
@@ -181,7 +280,7 @@ describe('createSession — a lease-bound session proves it holds the lease', ()
         { leaseToken: TOKEN },
         { 'df:options': { accessKey: 'ak_team_a', token: 'tk' } },
       );
-      expect(await refusal(caps)).to.equal(NOT_ACTIVE);
+      expect(await refusal(caps)).to.equal(REFUSED);
     });
   });
 
@@ -202,6 +301,14 @@ describe('createSession — a lease-bound session proves it holds the lease', ()
       caps.firstMatch = [{ 'xenon:options': { leaseToken: TOKEN } }];
       await create(caps);
       expect(JSON.stringify(driverCaps)).to.not.include(TOKEN);
+    });
+
+    it('counts only beside the lease id: in firstMatch while leaseId is in alwaysMatch, it is stripped but not honoured', async () => {
+      const caps: any = sessionCaps({});
+      caps.firstMatch = [{ 'xenon:options': { leaseToken: TOKEN } }];
+      expect(await refusal(caps)).to.equal(REFUSED);
+      expect(JSON.stringify(caps)).to.not.include(TOKEN);
+      expect(JSON.stringify(pendingCopy)).to.not.include(TOKEN);
     });
 
     describe('when the device is on another node', () => {

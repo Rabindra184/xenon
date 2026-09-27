@@ -11,7 +11,7 @@ import { hashToken } from '../../../src/services/lease/leaseToken';
 // the client once and never stored.
 
 const TOKEN = 'f'.repeat(64);
-const NOBODY = { isAdmin: false, apiKeyId: null, userId: null, leaseToken: null };
+const NOBODY = { canOverride: false, apiKeyId: null, userId: null, leaseToken: null };
 
 function leaseRow(overrides: Record<string, unknown> = {}) {
   return {
@@ -89,11 +89,9 @@ describe('LeaseService — who may use a lease for a session', () => {
     });
   });
 
-  describe('resolve', () => {
-    it('returns null for a lease that is no longer active', async () => {
-      db.lease.findUnique.resolves(leaseRow({ status: 'released' }));
-      expect(await svc.resolve('lse_1')).to.equal(null);
-    });
+  it('has no resolver that skips the proof', () => {
+    // An unauthenticated resolve() invited the original bug back.
+    expect((svc as any).resolve).to.equal(undefined);
   });
 
   describe('authorizeSessionUse', () => {
@@ -116,8 +114,8 @@ describe('LeaseService — who may use a lease for a session', () => {
       expect(out).to.include(device);
     });
 
-    it('lets an admin use any lease', async () => {
-      const out = await svc.authorizeSessionUse('lse_1', { ...NOBODY, isAdmin: true });
+    it('lets a caller allowed to override use any lease', async () => {
+      const out = await svc.authorizeSessionUse('lse_1', { ...NOBODY, canOverride: true });
       expect(out).to.include(device);
     });
 
@@ -140,7 +138,12 @@ describe('LeaseService — who may use a lease for a session', () => {
     });
 
     it('refuses an inactive or expired lease even to its owner, a token holder or an admin', async () => {
-      const everyProof = { isAdmin: true, apiKeyId: 'key_owner', userId: null, leaseToken: TOKEN };
+      const everyProof = {
+        canOverride: true,
+        apiKeyId: 'key_owner',
+        userId: null,
+        leaseToken: TOKEN,
+      };
       db.lease.findUnique.resolves(leaseRow({ status: 'released' }));
       expect(await svc.authorizeSessionUse('lse_1', everyProof)).to.equal(null);
       db.lease.findUnique.resolves(leaseRow({ expiresAt: Date.now() - 1 }));
