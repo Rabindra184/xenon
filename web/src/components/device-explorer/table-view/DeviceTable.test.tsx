@@ -79,6 +79,44 @@ describe('DeviceTable', () => {
     expect(screen.getByRole('columnheader', { name: /Host/ })).toBeInTheDocument();
   });
 
+  it('sorts by Host when its header button is clicked', () => {
+    const onSortChange = vi.fn();
+    table({
+      devices: [...list, device({ udid: 'D', host: 'http://node-b:4723' })],
+      onSortChange,
+    });
+    fireEvent.click(screen.getByRole('button', { name: /Host/ }));
+    expect(onSortChange).toHaveBeenCalledWith({ key: 'host', dir: 'asc' });
+  });
+
+  it('gives the Platform, Team and Host cells a title with their full text', () => {
+    table({ devices: [...list, device({ udid: 'D', host: 'http://node-b:4723' })] });
+    // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+    const gamma = rows().find((r) => r.textContent?.includes('Gamma'))!;
+    const cells = within(gamma).getAllByRole('cell');
+    expect(cells[2]).toHaveAttribute('title', 'iOS 17.0');
+    expect(cells[4]).toHaveAttribute('title', 'QA');
+    expect(cells[6]).toHaveAttribute('title', 'http://127.0.0.1:4723');
+    // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+    const alpha = rows().find((r) => r.textContent?.includes('Alpha'))!;
+    expect(within(alpha).getAllByRole('cell')[4]).toHaveAttribute('title', 'Shared');
+  });
+
+  it('truncates the Status and Device cells one line at a time', () => {
+    table();
+    // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+    const gamma = rows().find((r) => r.textContent?.includes('Gamma'))!;
+    const cells = within(gamma).getAllByRole('cell');
+    // The Device cell's title line and subtitle line are separate elements,
+    // each carrying the truncation class, not one block truncated as a whole.
+    const subtitle = cells[1].querySelector('.devtable-muted');
+    expect(subtitle).not.toBeNull();
+    expect(subtitle).toHaveClass('devtable-line');
+    const titleLine = cells[1].querySelector('.devtable-line:not(.devtable-muted)');
+    expect(titleLine).not.toBeNull();
+    expect(titleLine).not.toBe(subtitle);
+  });
+
   it('marks the sorted column and reverses it on a second click', () => {
     const onSortChange = vi.fn();
     table({ onSortChange });

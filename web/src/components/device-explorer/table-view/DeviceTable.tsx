@@ -77,27 +77,33 @@ const DeviceRow: React.FC<{
   const actions = useDeviceActions(device, reloadDevices);
   const { kind, activity, control } = actions;
   const title = deviceTitle(device);
+  const subtitle = deviceSubtitle(device);
   const teamName = deviceTeamName(device, teams);
+  const platformText = `${platformLabel(device.platform)} ${device.sdk ?? ''}`;
   const tags = device.tags ?? [];
   const reasonId = `devtable-reason-${device.udid}`;
 
   return (
     <TR className={`devtable-row${kind === 'offline' ? ' is-offline' : ''}`}>
       <TD>
-        <StatusDot kind={kind} /> {STATE_LABEL[kind]}
+        <div className="devtable-line">
+          <StatusDot kind={kind} /> {STATE_LABEL[kind]}
+        </div>
         {activity && (
-          <div className="devtable-muted" title={activity}>
+          <div className="devtable-muted devtable-line" title={activity}>
             {activity}
           </div>
         )}
       </TD>
       <TD title={`${title}\n${device.udid}`}>
-        {title}
-        <div className="devtable-muted">{deviceSubtitle(device)}</div>
+        <div className="devtable-line">{title}</div>
+        <div className="devtable-muted devtable-line" title={subtitle}>
+          {subtitle}
+        </div>
       </TD>
-      <TD>{`${platformLabel(device.platform)} ${device.sdk ?? ''}`}</TD>
+      <TD title={platformText}>{platformText}</TD>
       <TD>{isVirtual(device) ? 'Virtual' : 'Real'}</TD>
-      <TD>
+      <TD title={teamName ?? 'Shared'}>
         {actions.editingTeam ? (
           <TeamPicker
             udid={device.udid}
@@ -120,7 +126,7 @@ const DeviceRow: React.FC<{
         ))}
         {tags.length > 2 && <span className="devtable-tag">+{tags.length - 2}</span>}
       </TD>
-      {showHost && <TD>{device.host}</TD>}
+      {showHost && <TD title={device.host}>{device.host}</TD>}
       <TD className="devtable-actions" title={control.enabled ? undefined : control.reason}>
         <DeviceControlButtons
           device={device}
@@ -133,7 +139,7 @@ const DeviceRow: React.FC<{
             {control.reason}
           </span>
         )}
-        <DeviceMoreMenu device={device} actions={actions} triggerClassName="devtable-more" />
+        <DeviceMoreMenu device={device} actions={actions} />
       </TD>
       {actions.dialogs}
     </TR>

@@ -13,6 +13,7 @@ import { useToast } from '../../ui/toast';
 import { formatAppiumServerUrl, formatSessionCapabilitiesJson } from './sessionConnection';
 import { deviceNetworkIp } from './formatDeviceNetworkAddress';
 import { activityLabel, controlAvailability, deviceState, type DeviceState } from './deviceState';
+import './device-actions.css';
 
 export interface DeviceActionsState {
   kind: DeviceState;
@@ -206,8 +207,7 @@ export const DeviceControlButtons: React.FC<{
 export const DeviceMoreMenu: React.FC<{
   device: IDevice;
   actions: DeviceActionsState;
-  triggerClassName?: string;
-}> = ({ device, actions, triggerClassName }) => {
+}> = ({ device, actions }) => {
   const [menuOpen, setMenuOpen] = React.useState(false);
   const moreRef = React.useRef<HTMLButtonElement>(null);
   const { isAdmin, serverUrl, ip, copy } = actions;
@@ -217,7 +217,7 @@ export const DeviceMoreMenu: React.FC<{
       <button
         ref={moreRef}
         type="button"
-        className={triggerClassName ?? 'dc2-more'}
+        className="dc2-more"
         onClick={() => setMenuOpen((o) => !o)}
         aria-label="More actions"
       >

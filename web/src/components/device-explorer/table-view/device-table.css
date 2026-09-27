@@ -52,6 +52,17 @@
   z-index: 1;
 }
 
+/* text-overflow isn't inherited, and a <td> stacking two lines (Status,
+   Device) puts each line in its own nested block box — the cell's own
+   ellipsis rule above doesn't reach into them. Each line gets its own
+   overflow/text-overflow/white-space instead, same as the card's
+   .dc2-title / .dc2-subtitle precedent. */
+.devtable-line {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .devtable-muted {
   color: var(--text-muted);
   font-size: 11px;
@@ -89,26 +100,4 @@
   display: flex;
   align-items: center;
   gap: 6px;
-}
-
-/* Matches .dc2-more's look with the table's own class, same tokens. */
-.devtable-more {
-  flex: none;
-  background: transparent;
-  border: 1px solid var(--border);
-  color: var(--text-muted);
-  border-radius: var(--radius-md);
-  width: 28px;
-  height: 28px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  transition:
-    background var(--motion-fast),
-    color var(--motion-fast);
-}
-.devtable-more:hover {
-  background: var(--surface-2);
-  color: var(--text);
 }
