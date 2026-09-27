@@ -7,7 +7,8 @@ import { Container } from 'typedi';
 import { CircuitBreaker } from './CircuitBreaker';
 
 import { NotificationService } from '../services/NotificationService';
-import { IDeviceStore } from './device-store.interface';
+import { AddDevicesOptions, IDeviceStore } from './device-store.interface';
+import { discoveryChanges } from './deviceFieldOwners';
 import { SocketServer } from '../services/SocketServer';
 import { prisma } from '../prisma';
 import { isManualLock, resolveBlockSessionId } from '../services/recording/manualLock';
@@ -37,14 +38,18 @@ export async function removeDevicesByHost(host: string) {
   await store.removeDevices({ host });
 }
 
-export async function addNewDevice(devices: IDevice[], host?: string): Promise<IDevice[]> {
+export async function addNewDevice(
+  devices: IDevice[],
+  host?: string,
+  options: AddDevicesOptions = {},
+): Promise<IDevice[]> {
   const normalizedDevices = devices.map((device) => {
     const d = { ...device };
     if (d.host === undefined && host !== undefined) d.host = host;
     return Object.assign({ userBlocked: false, offline: false }, d);
   });
 
-  const added = await store.addDevices(normalizedDevices);
+  const added = await store.addDevices(normalizedDevices, options);
 
   // Notify for new devices
   for (const device of added) {
@@ -54,6 +59,32 @@ export async function addNewDevice(devices: IDevice[], host?: string): Promise<I
 
   log.debug(`Sync: Added ${added.length} new devices to store`);
   return added;
+}
+
+/**
+ * Writes one discovery pass. `known` is the device list the pass started from.
+ * A phone not in it is added. A phone in it gets only the discovery columns
+ * the pass changed (discoveryChanges): discovery hands its copy of the row
+ * back, and writing an unchanged value would undo a hold, a lock, a team
+ * change or a port written while it ran.
+ */
+export async function syncDiscoveredDevices(
+  discovered: IDevice[],
+  known: IDevice[],
+  host: string,
+): Promise<void> {
+  const knownByKey = new Map(known.map((d) => [`${d.udid}@${d.host}`, d]));
+  const fresh: IDevice[] = [];
+  for (const device of discovered) {
+    const was = knownByKey.get(`${device.udid}@${device.host ?? host}`);
+    if (!was) {
+      fresh.push(device);
+      continue;
+    }
+    const changes = discoveryChanges(device, was);
+    if (Object.keys(changes).length > 0) await store.updateDevice(was.udid, was.host, changes);
+  }
+  if (fresh.length > 0) await addNewDevice(fresh, host);
 }
 
 export async function setSimulatorState(devices: Array<IDevice>) {

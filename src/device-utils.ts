@@ -16,7 +16,6 @@ import { IDevice } from './interfaces/IDevice';
 import { Container } from 'typedi';
 import { XenonManager } from './device-managers';
 import {
-  addNewDevice,
   blockDevice,
   cleanExpiredReservations,
   getAllDevices,
@@ -25,6 +24,7 @@ import {
   isDeviceReserved,
   removeDevice,
   setSimulatorState,
+  syncDiscoveredDevices,
   unblockDevice,
   updatedAllocatedDevice,
 } from './data-service/device-service';
@@ -471,10 +471,8 @@ export async function updateDeviceList(
   const allExistingDevices = await getAllDevices();
   const devices: IDevice[] = await getDeviceManager().getDevices(allExistingDevices);
 
-  if (devices.length > 0) {
-    // first thing first. Update device list in local list
-    await addNewDevice(devices, host);
-  }
+  // first thing first. Update device list in local list
+  await syncDiscoveredDevices(devices, allExistingDevices, host);
 
   // Prune any devices that are in our local DB for this host but NO LONGER discovered.
   // This automatically cleans up disconnected Android devices safely, or filtered
