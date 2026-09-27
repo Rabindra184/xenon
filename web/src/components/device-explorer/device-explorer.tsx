@@ -3,6 +3,7 @@ import { RefreshCw, Search, Smartphone as AndroidIcon } from 'lucide-react';
 import { PageHeader } from '../ui/page-header';
 import { useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import CardView from './card-view/card-view';
+import DeviceTableWrapper from './table-view/DeviceTable';
 import './device-explorer.css';
 import XenonApiService from '../../api-service';
 import DeviceControl from '../device-control/device-control';
@@ -25,6 +26,8 @@ import {
   type StatusFilter,
   type TypeFilter,
 } from './deviceFilters';
+import { loadView, parseView, saveView, viewToParams, type DeviceView } from './deviceView';
+import { parseSort, sortToParams, type DeviceSort } from './deviceSort';
 import { FilterMenu, type FilterOption } from './FilterMenu';
 
 interface IDeviceExplorerState {
@@ -42,6 +45,12 @@ interface IDeviceExplorerProps {
   /** Read from the link, so a reload or a shared link shows the same view. */
   filters: DeviceFilters;
   onFiltersChange: (filters: DeviceFilters) => void;
+  /** Cards or table; read from the link, so a reload or a shared link shows the same view. */
+  view: DeviceView;
+  onViewChange: (view: DeviceView) => void;
+  /** Table sort; read from the link, ignored by the card view. */
+  sort: DeviceSort;
+  onSortChange: (sort: DeviceSort) => void;
   /** The current query string, kept when a device is closed. */
   locationSearch: string;
 }
@@ -249,6 +258,16 @@ export class DeviceExplorer extends React.Component<IDeviceExplorerProps, IDevic
                 </Button>
               )}
               <div className="de2-result">
+                <SegmentedControl<DeviceView>
+                  size="sm"
+                  label="View"
+                  value={this.props.view}
+                  onChange={this.props.onViewChange}
+                  segments={[
+                    { value: 'cards', label: 'Cards' },
+                    { value: 'table', label: 'Table' },
+                  ]}
+                />
                 {this.state.loaded && (
                   <span aria-live="polite">
                     {resultLabel(devices.length, this.state.devices.length)}
@@ -269,7 +288,16 @@ export class DeviceExplorer extends React.Component<IDeviceExplorerProps, IDevic
         </div>
 
         {devices.length > 0 ? (
-          <CardView devices={devices} reloadDevices={() => this.fetchDevices()} />
+          this.props.view === 'table' ? (
+            <DeviceTableWrapper
+              devices={devices}
+              reloadDevices={() => this.fetchDevices()}
+              sort={this.props.sort}
+              onSortChange={this.props.onSortChange}
+            />
+          ) : (
+            <CardView devices={devices} reloadDevices={() => this.fetchDevices()} />
+          )
         ) : (
           <div className="device-explorer-empty stagger-1">
             <div className="device-explorer-empty-icon">
@@ -333,14 +361,30 @@ export default function DeviceExplorerWrapper() {
   const location = useLocation();
   const [searchParams, setSearchParams] = useSearchParams();
   const { on } = useSocket();
+  const filters = parseFilters(searchParams);
+  const view = parseView(searchParams, loadView());
+  const sort = parseSort(searchParams);
+  const write = (f: DeviceFilters, v: DeviceView, s: DeviceSort) => {
+    const params = filtersToParams(f);
+    viewToParams(params, v);
+    sortToParams(params, s);
+    // Replace, so Back leaves the page instead of replaying every keystroke.
+    setSearchParams(params, { replace: true });
+  };
   return (
     <DeviceExplorer
       params={params}
       navigate={navigate}
       onSocketEvent={on}
-      filters={parseFilters(searchParams)}
-      // Replace, so Back leaves the page instead of replaying every keystroke.
-      onFiltersChange={(next) => setSearchParams(filtersToParams(next), { replace: true })}
+      filters={filters}
+      onFiltersChange={(next) => write(next, view, sort)}
+      view={view}
+      onViewChange={(v) => {
+        saveView(v);
+        write(filters, v, sort);
+      }}
+      sort={sort}
+      onSortChange={(s) => write(filters, view, s)}
       locationSearch={location.search}
     />
   );

@@ -3,6 +3,7 @@ import { fireEvent, render, screen, within } from '@testing-library/react';
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
 import { describe, expect, it, vi } from 'vitest';
 import type { IDevice } from '../../interfaces/IDevice';
+import { VIEW_KEY } from './deviceView';
 
 vi.mock('../../hooks/useSocket', () => ({ useSocket: () => ({ on: () => () => {} }) }));
 vi.mock('../../auth/auth-context', () => ({
@@ -169,5 +170,58 @@ describe('Devices page filters', () => {
     expect(where()).toBe('/devices/U-IOS/control?platform=ios');
     fireEvent.click(await screen.findByRole('button', { name: 'Close device' }));
     expect(where()).toBe('/devices?platform=ios');
+  });
+});
+
+describe('Devices page view', () => {
+  beforeEach(() => {
+    window.localStorage.clear();
+  });
+  afterEach(() => {
+    window.localStorage.clear();
+  });
+
+  it('defaults to cards', async () => {
+    renderAt('/devices');
+    await screen.findByText('Galaxy S9+');
+    expect(screen.queryByRole('table')).toBeNull();
+  });
+
+  it('switches to the table, writes the link and remembers the choice', async () => {
+    renderAt('/devices');
+    await screen.findByText('Galaxy S9+');
+    const view = screen.getByRole('tablist', { name: 'View' });
+    fireEvent.click(within(view).getByRole('tab', { name: 'Table' }));
+    expect(screen.getByRole('table', { name: 'Devices, 3 shown' })).toBeInTheDocument();
+    expect(where()).toBe('/devices?view=table');
+    expect(window.localStorage.getItem(VIEW_KEY)).toBe('table');
+  });
+
+  it('opens the table from the link', async () => {
+    renderAt('/devices?view=table');
+    expect(await screen.findByRole('table', { name: 'Devices, 3 shown' })).toBeInTheDocument();
+  });
+
+  it('opens the table from a stored preference with no URL param', async () => {
+    window.localStorage.setItem(VIEW_KEY, 'table');
+    renderAt('/devices');
+    expect(await screen.findByRole('table', { name: 'Devices, 3 shown' })).toBeInTheDocument();
+  });
+
+  it('sorting a column keeps the table view in the link', async () => {
+    renderAt('/devices?view=table');
+    const table = await screen.findByRole('table', { name: 'Devices, 3 shown' });
+    fireEvent.click(within(table).getByRole('button', { name: 'Device' }));
+    expect(where()).toBe('/devices?view=table&sort=device');
+  });
+
+  it('changing a filter keeps the view and sort in the link', async () => {
+    renderAt('/devices?view=table&sort=device');
+    await screen.findByRole('table', { name: 'Devices, 3 shown' });
+    // The table also has a "Platform" sort button; the filter trigger is the
+    // one with aria-expanded (from aria-haspopup="menu").
+    fireEvent.click(screen.getByRole('button', { name: 'Platform', expanded: false }));
+    fireEvent.click(await screen.findByRole('menuitemradio', { name: /Android/ }));
+    expect(where()).toBe('/devices?platform=android&view=table&sort=device');
   });
 });
