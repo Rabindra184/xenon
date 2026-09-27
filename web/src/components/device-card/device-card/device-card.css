@@ -164,27 +164,6 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.dc2-more {
-  flex: none;
-  background: transparent;
-  border: 1px solid var(--border);
-  color: var(--text-muted);
-  border-radius: var(--radius-md);
-  width: 28px;
-  height: 28px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  transition:
-    background var(--motion-fast),
-    color var(--motion-fast);
-}
-.dc2-more:hover {
-  background: var(--surface-2);
-  color: var(--text);
-}
-
 .dc2-health {
   display: flex;
   gap: 6px;

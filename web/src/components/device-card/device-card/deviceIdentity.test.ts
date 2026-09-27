@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   deviceFormFactor,
   deviceSubtitle,
+  deviceTeamName,
   deviceTitle,
   type IdentityInput,
 } from './deviceIdentity';
@@ -48,5 +49,15 @@ describe('deviceFormFactor', () => {
   it('uses the reported form factor, a phone when unknown', () => {
     expect(deviceFormFactor(d({ formFactor: 'tablet' }))).toBe('tablet');
     expect(deviceFormFactor(d())).toBe('phone');
+  });
+});
+
+describe('deviceTeamName', () => {
+  it("names a device's team from the map, then its own name, then an id prefix", () => {
+    const teams = new Map([['t1', 'QA']]);
+    expect(deviceTeamName({ teamId: 't1', teamName: 'Old' }, teams)).toBe('QA');
+    expect(deviceTeamName({ teamId: 't2', teamName: 'Mobile' }, teams)).toBe('Mobile');
+    expect(deviceTeamName({ teamId: 'abcdef123', teamName: null }, teams)).toBe('Team abcdef');
+    expect(deviceTeamName({ teamId: null, teamName: null }, teams)).toBeNull();
   });
 });

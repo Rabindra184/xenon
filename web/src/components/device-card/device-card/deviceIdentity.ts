@@ -33,3 +33,12 @@ export function deviceSubtitle(d: IdentityInput): string {
 export function deviceFormFactor(d: IdentityInput): 'phone' | 'tablet' | 'tv' {
   return d.formFactor === 'tablet' || d.formFactor === 'tv' ? d.formFactor : 'phone';
 }
+
+/** The team a device belongs to, as the card names it, or null for the shared pool. */
+export function deviceTeamName(
+  d: Pick<IDevice, 'teamId' | 'teamName'>,
+  teams?: Map<string, string>,
+): string | null {
+  if (!d.teamId) return null;
+  return teams?.get(d.teamId) ?? d.teamName ?? `Team ${d.teamId.slice(0, 6)}`;
+}

@@ -15,6 +15,15 @@ export type DeviceState = 'ready' | 'busy' | 'reserved' | 'maintenance' | 'offli
 /** Filter order on the Devices page. */
 export const DEVICE_STATES: DeviceState[] = ['ready', 'busy', 'reserved', 'maintenance', 'offline'];
 
+/** Human label for each state, shared by the card's band and the table view. */
+export const STATE_LABEL: Record<DeviceState, string> = {
+  ready: 'Ready',
+  busy: 'Busy',
+  reserved: 'Reserved',
+  maintenance: 'Maintenance',
+  offline: 'Offline',
+};
+
 export interface DeviceStateInput {
   udid: string;
   offline: boolean;
