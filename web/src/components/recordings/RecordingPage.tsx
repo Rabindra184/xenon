@@ -19,7 +19,7 @@ import { Popover } from '../ui/Popover';
 import { Menu, MenuItem } from '../ui/Menu';
 import { useToast } from '../ui/toast';
 import { AnnotationOverlay } from '../mosaic/AnnotationOverlay';
-import { formatWhen } from './RecordingsPage';
+import { formatWhen } from './recordingFormat';
 import {
   clampTime,
   formatClock,
@@ -36,6 +36,11 @@ import './recordings.css';
 
 const noop = () => undefined;
 const STOP_FIRST = 'Stop the recording on Live devices first.';
+/**
+ * Below this, a phone's offset is spawn order, not a late join: legacy groups
+ * without timing.json put phones a few hundred ms apart.
+ */
+const JOINED_NOTE_MS = 1000;
 
 /**
  * Focus is somewhere keys mean something else. The timeline (`input[type="range"]`)
@@ -75,7 +80,9 @@ function PlaybackTile({
   let note: string | null = null;
   if (failed) note = `Recording failed: ${phone.failReason ?? 'unknown reason'}`;
   else if (broken) note = 'Video no longer available';
-  else if (phase === 'before') note = `Joined at ${formatClock(phone.offsetMs)}`;
+  else if (phase === 'before' && phone.offsetMs >= JOINED_NOTE_MS) {
+    note = `Joined at ${formatClock(phone.offsetMs)}`;
+  }
   return (
     <figure className="rec-tile theme-dark" aria-label={phone.name}>
       <figcaption className="rec-tile-name" title={phone.name}>
@@ -191,12 +198,13 @@ export default function RecordingPage() {
   pbRef.current = pb;
 
   const mountedRef = React.useRef(true);
-  React.useEffect(
-    () => () => {
+  React.useEffect(() => {
+    // Set here too, not only at creation, so a remount (StrictMode) can't leave it false.
+    mountedRef.current = true;
+    return () => {
       mountedRef.current = false;
-    },
-    [],
-  );
+    };
+  }, []);
 
   React.useEffect(() => {
     if (!detail || detail.summary.status === 'recording') return undefined;
@@ -289,12 +297,11 @@ export default function RecordingPage() {
       }
       return;
     }
-    // Navigating unmounts this page, so no state is set after it. Only navigate
-    // (and toast) if the page is still around to have asked for the delete.
-    if (mountedRef.current) {
-      toast('Recording deleted', 'success');
-      navigate('/recordings');
-    }
+    // The toast is app-level, so it is said even if the page was left meanwhile.
+    // Navigating unmounts this page, so no state is set after it; and only
+    // navigate if the page is still around to have asked for the delete.
+    toast('Recording deleted', 'success');
+    if (mountedRef.current) navigate('/recordings');
   };
 
   return (

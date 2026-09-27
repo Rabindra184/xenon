@@ -228,6 +228,41 @@ describe('RecordingsPage', () => {
     expect(screen.getByText('Galaxy S9+, iPhone 17 +1')).toBeInTheDocument();
   });
 
+  it('hides Load more while a new filter loads, so its old cursor cannot be sent', async () => {
+    listRecordings.mockResolvedValueOnce(response({ nextCursor: 'c1' }));
+    renderAt('/recordings');
+    await screen.findByText('Galaxy S9+, iPhone 17 +1');
+    expect(screen.getByRole('button', { name: 'Load more' })).toBeInTheDocument();
+
+    let resolveFirst!: (value: LibraryResponse) => void;
+    listRecordings.mockImplementationOnce(
+      () =>
+        new Promise<LibraryResponse>((resolve) => {
+          resolveFirst = resolve;
+        }),
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Phone' }));
+    fireEvent.click(await screen.findByRole('menuitemradio', { name: /Galaxy/ }));
+
+    // The old page is still on screen, but its cursor belongs to the old filter.
+    expect(screen.getByText('Galaxy S9+, iPhone 17 +1')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Load more' })).toBeNull();
+
+    await waitFor(() => expect(listRecordings).toHaveBeenCalledTimes(2));
+    expect(screen.queryByRole('button', { name: 'Load more' })).toBeNull();
+    await act(async () => {
+      resolveFirst(response({ recordings: [g2], nextCursor: 'c2', total: 3 }));
+    });
+
+    listRecordings.mockResolvedValueOnce(response({ recordings: [], nextCursor: null }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Load more' }));
+    await waitFor(() =>
+      expect(listRecordings).toHaveBeenLastCalledWith(
+        expect.objectContaining({ udid: 'U1', cursor: 'c2' }),
+      ),
+    );
+  });
+
   it('shows an error with Retry, which refetches', async () => {
     listRecordings.mockRejectedValueOnce(new Error('network down'));
     renderAt('/recordings');

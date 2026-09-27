@@ -65,7 +65,7 @@ vi.mock('./recordingActions', async () => ({
 }));
 
 import RecordingPage from './RecordingPage';
-import { formatWhen } from './RecordingsPage';
+import { formatWhen } from './recordingFormat';
 import { downloadItems } from './recordingActions';
 
 const ALICE = { userId: 'usr_alice', role: 'MEMBER' };
@@ -175,6 +175,7 @@ describe('RecordingPage', () => {
   afterAll(() => muted.mockRestore());
 
   beforeEach(() => {
+    muted.mockClear();
     pb.state = { timeMs: 0, playing: false, waiting: false };
     pb.play.mockReset();
     pb.pause.mockReset();
@@ -231,6 +232,24 @@ describe('RecordingPage', () => {
 
     fireEvent.error(video);
     expect(within(tile('Galaxy S9+')).getByText('Video no longer available')).toBeInTheDocument();
+  });
+
+  it('says nothing about joining for a phone less than a second behind', async () => {
+    // Groups without timing.json get small offsets from spawn order alone.
+    api.getRecording.mockResolvedValue(
+      detail({
+        phones: [
+          summary().phones[0],
+          { ...summary().phones[1], offsetMs: 514 },
+          { ...summary().phones[2], status: 'STOPPED', offsetMs: 1000, durationMs: 60000 },
+        ],
+      }),
+    );
+    renderPage();
+    await loaded();
+
+    expect(within(tile('iPhone 17')).queryByText(/Joined at/)).toBeNull();
+    expect(within(tile('Pixel')).getByText('Joined at 0:01')).toBeInTheDocument();
   });
 
   it('draws each phone’s marks only while they are on screen, and hides them on request', async () => {
@@ -487,6 +506,33 @@ describe('RecordingPage', () => {
 
     resolveDelete?.();
     await waitFor(() => expect(screen.getByTestId('where')).toHaveTextContent('/recordings'));
+  });
+
+  it('still says the recording was deleted when the page was left meanwhile', async () => {
+    let resolveDelete: (() => void) | undefined;
+    api.deleteRecording.mockImplementation(
+      () =>
+        new Promise<void>((resolve) => {
+          resolveDelete = resolve;
+        }),
+    );
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    try {
+      const r = renderPage();
+      await loaded();
+      fireEvent.click(screen.getByRole('button', { name: 'Delete' }));
+      const dialog = screen.getByRole('dialog', { name: 'Delete this recording?' });
+      fireEvent.click(within(dialog).getByRole('button', { name: 'Delete' }));
+      r.unmount();
+
+      resolveDelete?.();
+      // The toast is app-level: it outlives the page.
+      await waitFor(() => expect(toast).toHaveBeenCalledWith('Recording deleted', 'success'));
+      // The page's own state is not touched after it is gone.
+      expect(errors.mock.calls.some((args) => String(args[0]).includes('unmounted'))).toBe(false);
+    } finally {
+      errors.mockRestore();
+    }
   });
 
   it('keeps the dialog open with the reason when the server refuses', async () => {

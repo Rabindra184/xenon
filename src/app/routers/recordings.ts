@@ -25,6 +25,7 @@ import { resolveActor } from '../../services/device-access/actor';
 import * as deviceService from '../../data-service/device-service';
 import { prisma } from '../../prisma';
 import { parseClearBody, parseLibraryQuery } from './recordingRequests';
+import { AUTH_DISABLED_USER_ID } from './profileIdentity';
 import { decodeAnnotationImage } from '../../services/recording/annotationImage';
 import { selectOwnActiveGroups } from '../../services/recording/activeRecordings';
 import { readRecordingTiming } from '../../services/recording/recordingTiming';
@@ -135,9 +136,13 @@ async function summaryContext(rows: any[]): Promise<SummaryContext> {
   const users = Array.from(
     new Set(rows.map((r) => r.started_by as string | null).filter((u): u is string => !!u)),
   );
+  const names = await store.userNames(users);
+  // An auth-disabled server records everyone as this synthetic user, which
+  // has no User row to name it.
+  if (users.includes(AUTH_DISABLED_USER_ID)) names.set(AUTH_DISABLED_USER_ID, 'Auth disabled');
   return {
     devices: await store.deviceNames(udids),
-    users: await store.userNames(users),
+    users: names,
     retention: retention(),
     hasComposite: (g) => fs.existsSync(compositeOutputPath(g)),
   };

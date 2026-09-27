@@ -228,6 +228,19 @@ describe('recordings library routes', () => {
       expect(res.body.facets.when).to.deep.equal({ any: 2, '24h': 1, '7d': 1, '30d': 1 });
     });
 
+    it('names the synthetic user of an auth-disabled server "Auth disabled"', async () => {
+      rows = [rec({ started_by: 'auth-disabled' })];
+      const res = await request(buildApp(admin)).get('/xenon/api/recordings');
+      expect(res.status, JSON.stringify(res.body)).to.equal(200);
+      expect(res.body.recordings[0].startedBy).to.deep.equal({
+        id: 'auth-disabled',
+        name: 'Auth disabled',
+      });
+      expect(res.body.facets.people).to.deep.equal([
+        { id: 'auth-disabled', name: 'Auth disabled', count: 1 },
+      ]);
+    });
+
     it('reads retention from non-default plugin settings', async () => {
       const ctx = Container.get(PluginContext);
       const original = ctx.pluginArgs;

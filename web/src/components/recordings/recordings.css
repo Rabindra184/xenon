@@ -148,10 +148,19 @@
   background: rgb(var(--rgb-black) / calc(0.55 * var(--shadow-k)));
 }
 
+/* Sticky, so the controls stay on screen when five or more phones wrap the
+   grid to two rows. Opaque, so tiles scroll under it; z-index 10 is the top
+   of page content, below the app header's 15 and 20. */
 .rec-transport {
+  position: sticky;
+  bottom: 0;
+  z-index: 10;
   display: flex;
   align-items: center;
   gap: 12px;
+  padding: 12px 0;
+  background: var(--bg);
+  border-top: 1px solid var(--border);
 }
 .rec-clock {
   font-size: 12px;

@@ -13,6 +13,7 @@ import {
   type RecordingSummary,
 } from '../../api-service/recordings';
 import { formatClock } from './playback';
+import { formatWhen } from './recordingFormat';
 import {
   isLibraryFiltered,
   libraryFiltersToParams,
@@ -38,10 +39,6 @@ export function phoneNames(s: RecordingSummary): { text: string; title: string }
   };
 }
 
-export function formatWhen(iso: string): string {
-  return new Date(iso).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
-}
-
 const hrefFor = (s: RecordingSummary) =>
   s.status === 'recording' ? '/devices/live' : `/recordings/${encodeURIComponent(s.groupId)}`;
 
@@ -51,6 +48,9 @@ export default function RecordingsPage() {
   const filters = parseLibraryFilters(params);
   const queryKey = libraryFiltersToParams(filters).toString();
   const [data, setData] = React.useState<LibraryResponse | null>(null);
+  // The filters `data` was fetched for. Until a new filter's first page
+  // arrives, `data.nextCursor` belongs to the old one and must not be sent.
+  const [dataKey, setDataKey] = React.useState<string | null>(null);
   const [rows, setRows] = React.useState<RecordingSummary[]>([]);
   const [error, setError] = React.useState<string | null>(null);
   const [loadingMore, setLoadingMore] = React.useState(false);
@@ -77,6 +77,7 @@ export default function RecordingsPage() {
           setData(res);
           setRows(res.recordings);
           setError(null);
+          setDataKey(queryKey);
         })
         .catch((e) => {
           if (!mounted.current || id !== request.current) return;
@@ -90,15 +91,17 @@ export default function RecordingsPage() {
     // queryKey is the filters; reloadKey is Retry.
   }, [queryKey, reloadKey]);
 
+  const nextCursor = dataKey === queryKey ? (data?.nextCursor ?? null) : null;
+
   const loadMore = async () => {
-    if (!data?.nextCursor) return;
+    if (!nextCursor) return;
     const id = request.current;
     setLoadingMore(true);
     try {
       const res = await listRecordings({
         ...libraryQuery(filters, Date.now()),
         limit: PAGE_SIZE,
-        cursor: data.nextCursor,
+        cursor: nextCursor,
       });
       if (!mounted.current || id !== request.current) return;
       setData(res);
@@ -253,7 +256,7 @@ export default function RecordingsPage() {
               })}
             </TBody>
           </Table>
-          {data.nextCursor && (
+          {nextCursor && (
             <div className="rec-more">
               <Button variant="secondary" onClick={loadMore} disabled={loadingMore}>
                 Load more
