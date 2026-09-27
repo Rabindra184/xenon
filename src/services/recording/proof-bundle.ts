@@ -13,6 +13,13 @@ export function safeVideoFileStem(udid: string): string {
 }
 
 /**
+ * Which of a group's recordings a download may carry. `undefined` means every
+ * one of them (an admin); otherwise only the listed recording ids, which the
+ * route has already filtered to the devices the caller can see.
+ */
+export type RecordingFilter = string[] | undefined;
+
+/**
  * Builds a self-contained zip for one recording group: manifest, README,
  * per-device subdirs with video.mp4, bookmarks.json, annotations.json,
  * device.json. Reuses archiver — same dependency the existing bug-report
@@ -28,9 +35,9 @@ export class ProofBundleService {
    * Returns an Archiver instance the caller pipes into a writable stream
    * (e.g., the HTTP response). The archive is finalized inside `populate`.
    */
-  streamBundleZip(groupId: string): Archiver {
+  streamBundleZip(groupId: string, onlyRecordingIds?: RecordingFilter): Archiver {
     const archive = archiver('zip', { zlib: { level: 6 } });
-    this.populate(archive, groupId).catch((err) => archive.emit('error', err));
+    this.populate(archive, groupId, onlyRecordingIds).catch((err) => archive.emit('error', err));
     return archive;
   }
 
@@ -39,8 +46,8 @@ export class ProofBundleService {
    * `composite.mp4` when the mosaic composite exists. No manifest / JSON extras.
    * Throws Error('no_videos') when nothing playable exists.
    */
-  async buildVideosZip(groupId: string): Promise<Archiver> {
-    const entries = await this.collectVideoEntries(groupId);
+  async buildVideosZip(groupId: string, onlyRecordingIds?: RecordingFilter): Promise<Archiver> {
+    const entries = await this.collectVideoEntries(groupId, onlyRecordingIds);
     if (entries.length === 0) {
       throw Object.assign(new Error('no_videos'), { code: 'no_videos' as const });
     }
@@ -53,10 +60,28 @@ export class ProofBundleService {
   }
 
   /** @deprecated Prefer {@link buildVideosZip} — kept for call-site clarity. */
-  streamVideosZip(groupId: string): Archiver {
+  streamVideosZip(groupId: string, onlyRecordingIds?: RecordingFilter): Archiver {
     const archive = archiver('zip', { zlib: { level: 6 } });
-    this.populateVideosOnly(archive, groupId).catch((err) => archive.emit('error', err));
+    this.populateVideosOnly(archive, groupId, onlyRecordingIds).catch((err) =>
+      archive.emit('error', err),
+    );
     return archive;
+  }
+
+  /**
+   * The group's recordings narrowed to `only`, and whether the composite may
+   * go with them. The composite shows every phone of the group in one frame,
+   * so it goes only with a filter that covers every recording.
+   */
+  private async listVisible(
+    groupId: string,
+    only: RecordingFilter,
+  ): Promise<{ recordings: any[]; withComposite: boolean }> {
+    const all = (await this.store.listGroup(groupId)) as any[];
+    if (only === undefined) return { recordings: all, withComposite: true };
+    const allowed = new Set(only);
+    const recordings = all.filter((r) => allowed.has(r.id));
+    return { recordings, withComposite: recordings.length === all.length };
   }
 
   /**
@@ -86,11 +111,12 @@ export class ProofBundleService {
 
   private async collectVideoEntries(
     groupId: string,
+    only?: RecordingFilter,
   ): Promise<Array<{ filePath: string; name: string }>> {
-    const recordings = (await this.store.listGroup(groupId)) as any[];
+    const { recordings, withComposite } = await this.listVisible(groupId, only);
     const entries: Array<{ filePath: string; name: string }> = [];
 
-    const composite = await this.resolveCompositeFile(groupId);
+    const composite = withComposite ? await this.resolveCompositeFile(groupId) : null;
     if (composite) entries.push({ filePath: composite, name: 'composite.mp4' });
 
     for (const r of recordings) {
@@ -119,17 +145,19 @@ export class ProofBundleService {
   }
 
   /**
-   * Resolve a playable on-disk mp4 for download.
+   * Resolve a playable on-disk mp4 for download, among the recordings
+   * `onlyRecordingIds` allows (every one when undefined).
    * - With `udid`: that device's recording in the group.
-   * - Without: the sole playable recording if the group has exactly one file;
-   *   otherwise null (caller should use videos.zip).
+   * - Without: the sole playable recording if exactly one allowed recording
+   *   has a file; otherwise null (caller should use videos.zip).
    * When the recording has annotations, returns the burned-in annotated file.
    */
   async resolveVideoFile(
     groupId: string,
     udid?: string,
+    onlyRecordingIds?: RecordingFilter,
   ): Promise<{ filePath: string; downloadName: string; recordingId?: string } | null> {
-    const recordings = (await this.store.listGroup(groupId)) as any[];
+    const { recordings } = await this.listVisible(groupId, onlyRecordingIds);
     const playable = recordings.filter((r) => {
       try {
         return r.file_path && fs.existsSync(r.file_path) && fs.statSync(r.file_path).size > 0;
@@ -167,8 +195,12 @@ export class ProofBundleService {
     };
   }
 
-  private async populateVideosOnly(archive: Archiver, groupId: string): Promise<void> {
-    const entries = await this.collectVideoEntries(groupId);
+  private async populateVideosOnly(
+    archive: Archiver,
+    groupId: string,
+    only?: RecordingFilter,
+  ): Promise<void> {
+    const entries = await this.collectVideoEntries(groupId, only);
     if (entries.length === 0) {
       archive.emit('error', new Error('no_videos'));
       return;
@@ -179,8 +211,12 @@ export class ProofBundleService {
     await archive.finalize();
   }
 
-  private async populate(archive: Archiver, groupId: string): Promise<void> {
-    const recordings = await this.store.listGroup(groupId);
+  private async populate(
+    archive: Archiver,
+    groupId: string,
+    only?: RecordingFilter,
+  ): Promise<void> {
+    const { recordings, withComposite } = await this.listVisible(groupId, only);
 
     const manifest = {
       groupId,
@@ -200,8 +236,9 @@ export class ProofBundleService {
       name: 'README.md',
     });
 
-    // Mosaic-wide composite mp4 (only present for multi-device groups).
-    const composite = await this.resolveCompositeFile(groupId);
+    // Mosaic-wide composite mp4 (only present for multi-device groups), and
+    // only for a caller who may see every device in it.
+    const composite = withComposite ? await this.resolveCompositeFile(groupId) : null;
     if (composite) archive.file(composite, { name: 'composite.mp4' });
 
     for (const r of recordings as any[]) {

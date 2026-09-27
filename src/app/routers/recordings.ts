@@ -11,7 +11,7 @@ import { AnnotationRenderService } from '../../services/recording/annotation-ren
 import { RecordingStore } from '../../services/recording/recording-store';
 import { roleGuard } from '../../middleware/roleGuard';
 import { resolveActor } from '../../services/device-access/actor';
-import { filterRowsByVisibleDevice } from '../../data-service/device-service';
+import * as deviceService from '../../data-service/device-service';
 import { prisma } from '../../prisma';
 import { parseClearBody } from './recordingRequests';
 import { decodeAnnotationImage } from '../../services/recording/annotationImage';
@@ -20,24 +20,30 @@ import { readRecordingTiming } from '../../services/recording/recordingTiming';
 import { DeviceStoreFactory } from '../../data-service/device-store';
 import log from '../../logger';
 
-// Phase 4A: a recording group is visible if at least one of its rows runs on
-// a device the caller can see. Used by GET /recordings/:groupId and the
-// binary endpoints (composite mp4, bundle zip). Returns:
-//   true  → admin (no filter) or at least one row is visible to caller
-//   false → none of the group's rows are on a visible device → 404
-async function isGroupVisibleToAuth(
+/**
+ * The group's recordings this caller may see. `ids` is undefined for an
+ * admin (no filter). `all` counts the group's rows, so a caller who sees only
+ * some phones can be told apart from one who sees them all.
+ *
+ * A group can mix teams' phones (an admin recorded several teams at once, or a
+ * phone moved team afterwards), so a download must carry only these rows:
+ * seeing one phone of a group is not seeing the group.
+ */
+async function visibleRecordings(
   groupId: string,
   teamIds: string[] | undefined,
-): Promise<boolean> {
-  if (teamIds === undefined) return true;
-  const rows = await prisma.recording.findMany({
-    where: { group_id: groupId },
-    select: { device_udid: true },
-  });
-  if (rows.length === 0) return false;
-  const visible = await filterRowsByVisibleDevice(rows, teamIds, 'device_udid');
-  return visible.length > 0;
+): Promise<{ all: number; ids: string[] | undefined }> {
+  const rows = (await Container.get(RecordingStore).listGroup(groupId)).map((r) => ({
+    id: r.id,
+    device_udid: r.device_udid,
+  }));
+  if (teamIds === undefined) return { all: rows.length, ids: undefined };
+  const visible = await deviceService.filterRowsByVisibleDevice(rows, teamIds, 'device_udid');
+  return { all: rows.length, ids: visible.map((r) => r.id) };
 }
+type Visible = { all: number; ids?: string[] };
+const seesNone = (v: Visible) => v.all === 0 || (v.ids !== undefined && v.ids.length === 0);
+const seesAll = (v: Visible) => v.ids === undefined || v.ids.length === v.all;
 
 const recLog = log.scope('RecordingsRouter');
 const router = Router();
@@ -225,7 +231,7 @@ router.post('/recordings/:groupId/annotations/clear', async (req: Request, res: 
   const parsed = parseClearBody(req.body);
   if (!parsed.ok) return res.status(400).json({ error: parsed.error });
   const auth = (req as Request & { auth?: { teamIds?: string[] } }).auth;
-  if (!(await isGroupVisibleToAuth(req.params.groupId, auth?.teamIds))) {
+  if (seesNone(await visibleRecordings(req.params.groupId, auth?.teamIds))) {
     return res.status(404).json({ error: 'not_found' });
   }
   try {
@@ -246,7 +252,7 @@ router.get('/recordings/:groupId', async (req: Request, res: Response) => {
     // Phase 4A: filter the per-device rows to those whose device is visible
     // to the caller. 404 the whole group if none are visible.
     const auth = (req as Request & { auth?: { teamIds?: string[] } }).auth;
-    const visibleRecs = await filterRowsByVisibleDevice(
+    const visibleRecs = await deviceService.filterRowsByVisibleDevice(
       recs,
       auth?.teamIds,
       'device_udid',
@@ -262,12 +268,13 @@ router.get('/recordings/:groupId', async (req: Request, res: Response) => {
 
 /**
  * Stream the mosaic-wide composite mp4 for a group. 404s when no composite
- * exists (single-device groups skip composite by design).
+ * exists (single-device groups skip composite by design), and for a caller
+ * who cannot see every device in the group: the composite shows them all.
  */
 router.get('/recordings/:groupId/composite.mp4', async (req: Request, res: Response) => {
-  // Phase 4A: 404 if none of the group's devices are visible to the caller.
   const auth = (req as Request & { auth?: { teamIds?: string[] } }).auth;
-  if (!(await isGroupVisibleToAuth(req.params.groupId, auth?.teamIds))) {
+  const v = await visibleRecordings(req.params.groupId, auth?.teamIds);
+  if (seesNone(v) || !seesAll(v)) {
     return res.status(404).json({ error: 'composite_not_found' });
   }
   // With the devices' marks burned in when that works, otherwise raw.
@@ -288,11 +295,15 @@ router.get('/recordings/:groupId/composite.mp4', async (req: Request, res: Respo
  */
 router.get('/recordings/:groupId/videos.zip', async (req: Request, res: Response) => {
   const auth = (req as Request & { auth?: { teamIds?: string[] } }).auth;
-  if (!(await isGroupVisibleToAuth(req.params.groupId, auth?.teamIds))) {
+  const v = await visibleRecordings(req.params.groupId, auth?.teamIds);
+  if (seesNone(v)) {
     return res.status(404).json({ error: 'not_found' });
   }
   try {
-    const archive = await Container.get(ProofBundleService).buildVideosZip(req.params.groupId);
+    const archive = await Container.get(ProofBundleService).buildVideosZip(
+      req.params.groupId,
+      v.ids,
+    );
     res.setHeader('Content-Type', 'application/zip');
     res.setHeader(
       'Content-Disposition',
@@ -318,11 +329,13 @@ router.get('/recordings/:groupId/videos.zip', async (req: Request, res: Response
 
 /**
  * Direct mp4 download. Optional `?udid=` selects a device in a multi-device
- * group; without it, works when the group has exactly one playable video.
+ * group; without it, works when the caller can see exactly one playable
+ * video in the group. Only devices the caller can see are ever served.
  */
 router.get('/recordings/:groupId/video.mp4', async (req: Request, res: Response) => {
   const auth = (req as Request & { auth?: { teamIds?: string[] } }).auth;
-  if (!(await isGroupVisibleToAuth(req.params.groupId, auth?.teamIds))) {
+  const v = await visibleRecordings(req.params.groupId, auth?.teamIds);
+  if (seesNone(v)) {
     return res.status(404).json({ error: 'not_found' });
   }
   const udid = typeof req.query.udid === 'string' ? req.query.udid : undefined;
@@ -330,6 +343,7 @@ router.get('/recordings/:groupId/video.mp4', async (req: Request, res: Response)
     const hit = await Container.get(ProofBundleService).resolveVideoFile(
       req.params.groupId,
       udid,
+      v.ids,
     );
     if (!hit) {
       return res.status(404).json({
@@ -350,9 +364,11 @@ router.get('/recordings/:groupId/video.mp4', async (req: Request, res: Response)
 });
 
 router.get('/recordings/:groupId/bundle.zip', async (req: Request, res: Response) => {
-  // Phase 4A: 404 if none of the group's devices are visible to the caller.
+  // 404 if none of the group's devices are visible to the caller; otherwise
+  // the bundle carries only the devices they can see.
   const auth = (req as Request & { auth?: { teamIds?: string[] } }).auth;
-  if (!(await isGroupVisibleToAuth(req.params.groupId, auth?.teamIds))) {
+  const v = await visibleRecordings(req.params.groupId, auth?.teamIds);
+  if (seesNone(v)) {
     return res.status(404).json({ error: 'not_found' });
   }
   res.setHeader('Content-Type', 'application/zip');
@@ -360,7 +376,7 @@ router.get('/recordings/:groupId/bundle.zip', async (req: Request, res: Response
     'Content-Disposition',
     `attachment; filename="proof-${req.params.groupId}.zip"`,
   );
-  const archive = Container.get(ProofBundleService).streamBundleZip(req.params.groupId);
+  const archive = Container.get(ProofBundleService).streamBundleZip(req.params.groupId, v.ids);
   archive.on('error', (err) => {
     recLog.error(`bundle stream error: ${err.message}`);
     if (!res.headersSent) {
