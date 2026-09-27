@@ -30,10 +30,15 @@ describe('team filter SQL shape (Phase 4A)', () => {
     expect(captured.value?.teamId).to.equal(null);
   });
 
-  it('callerTeamIds === ["t1", "t2"] → teamId IN (null, t1, t2)', async () => {
+  // Not `teamId: { in: [null, 't1', 't2'] }`: Prisma rejects a null inside
+  // `in`, so that shape threw on every real query. This test used to pin it,
+  // which is how the bug survived; test/integration/team-visibility-leases.spec.ts
+  // runs the real query.
+  it('callerTeamIds === ["t1", "t2"] → teamId IS NULL OR teamId IN (t1, t2)', async () => {
     const captured = captureWhere();
     const { PrismaDeviceStore } = await import('../../src/data-service/prisma-store');
     await new PrismaDeviceStore().getDevices({ callerTeamIds: ['t1', 't2'] } as any);
-    expect(captured.value?.teamId).to.deep.equal({ in: [null, 't1', 't2'] });
+    expect(captured.value?.teamId).to.equal(undefined);
+    expect(captured.value?.OR).to.deep.equal([{ teamId: null }, { teamId: { in: ['t1', 't2'] } }]);
   });
 });

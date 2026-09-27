@@ -133,7 +133,9 @@ export class PrismaDeviceStore implements IDeviceStore {
       if (ids.length === 0) {
         where.teamId = null;
       } else {
-        where.teamId = { in: [null, ...ids] };
+        // Prisma rejects a null inside `in` ("Expected Null, provided (Null,
+        // String)"), so the shared pool is a branch of its own.
+        where.OR = [{ teamId: null }, { teamId: { in: ids } }];
       }
     }
 
