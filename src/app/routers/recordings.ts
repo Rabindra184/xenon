@@ -54,6 +54,52 @@ async function isGroupVisibleToAuth(
 type AuthLike = { teamIds?: string[] };
 const authOf = (req: Request) => (req as Request & { auth?: AuthLike }).auth;
 
+interface GroupRow {
+  group_id: string;
+  device_udid: string;
+  started_at: Date | string;
+  started_by?: string | null;
+}
+
+/** Who owns a group: the earliest row with a `started_by`, i.e. whoever started it. */
+function groupOwner(rows: GroupRow[]): string | undefined {
+  return (
+    rows
+      .slice()
+      .sort((a, b) => new Date(a.started_at).getTime() - new Date(b.started_at).getTime())
+      .find((r) => r.started_by)?.started_by ?? undefined
+  );
+}
+
+/**
+ * The rows of one or more groups the caller may see. Admins see every row.
+ * The owner of a group sees every row of it: a phone's Device row is deleted
+ * when it is unplugged, and a missing row reads as invisible, which would
+ * otherwise hide their own recording from them. Anyone else sees the rows on
+ * phones they can see. Every library route decides visibility here.
+ */
+async function visibleRows<T extends GroupRow>(req: Request, rows: T[]): Promise<T[]> {
+  const userId = resolveActor(req).userId;
+  const byGroup = new Map<string, T[]>();
+  rows.forEach((r) => {
+    const list = byGroup.get(r.group_id);
+    if (list) list.push(r);
+    else byGroup.set(r.group_id, [r]);
+  });
+  const owned = new Set<string>();
+  byGroup.forEach((list, groupId) => {
+    if (userId && groupOwner(list) === userId) owned.add(groupId);
+  });
+  const seen = new Set(
+    await deviceService.filterRowsByVisibleDevice(
+      rows.filter((r) => !owned.has(r.group_id)),
+      authOf(req)?.teamIds,
+      'device_udid',
+    ),
+  );
+  return rows.filter((r) => owned.has(r.group_id) || seen.has(r));
+}
+
 /** CleanupService's defaults, so the page's footnote says what the sweep does. */
 function retention(): Retention {
   const a = Container.get(PluginContext).pluginArgs ?? {};
@@ -105,11 +151,7 @@ router.get('/recordings', async (req: Request, res: Response) => {
   if (!parsed.ok) return res.status(400).json({ error: parsed.error });
   try {
     const rows = await Container.get(RecordingStore).libraryRows();
-    const visible = await deviceService.filterRowsByVisibleDevice(
-      rows,
-      authOf(req)?.teamIds,
-      'device_udid',
-    );
+    const visible = await visibleRows(req, rows);
     const ctx = await summaryContext(visible);
     const page = buildLibrary(visible.map(toSummaryRow), ctx, parsed.filter, {
       limit: parsed.limit,
@@ -326,11 +368,7 @@ router.post('/recordings/:groupId/annotations/clear', async (req: Request, res: 
 router.get('/recordings/:groupId', async (req: Request, res: Response) => {
   try {
     const recs = await Container.get(RecordingStore).listGroup(req.params.groupId);
-    const visibleRecs = await deviceService.filterRowsByVisibleDevice(
-      recs,
-      authOf(req)?.teamIds,
-      'device_udid',
-    );
+    const visibleRecs = await visibleRows(req, recs);
     if (visibleRecs.length === 0) return res.status(404).json({ error: 'not_found' });
     const summary = summarizeGroup(
       visibleRecs.map(toSummaryRow),
@@ -387,11 +425,7 @@ router.delete('/recordings/:groupId', async (req: Request, res: Response) => {
   try {
     const store = Container.get(RecordingStore);
     const recs: any[] = await store.listGroup(groupId);
-    const visible = await deviceService.filterRowsByVisibleDevice(
-      recs,
-      authOf(req)?.teamIds,
-      'device_udid',
-    );
+    const visible = await visibleRows(req, recs);
     if (visible.length === 0) return res.status(404).json({ error: 'not_found' });
     if (recs.some((r) => r.status === 'RECORDING')) {
       return res.status(409).json({
@@ -399,10 +433,7 @@ router.delete('/recordings/:groupId', async (req: Request, res: Response) => {
         message: 'Stop the recording on Live devices before deleting it.',
       });
     }
-    const owner = recs
-      .slice()
-      .sort((a, b) => new Date(a.started_at).getTime() - new Date(b.started_at).getTime())
-      .find((r) => r.started_by)?.started_by;
+    const owner = groupOwner(recs);
     const actor = resolveActor(req);
     if (!actor.isAdmin && (!owner || owner !== actor.userId)) {
       return res.status(403).json({
@@ -564,15 +595,13 @@ export async function sourceMp4Handler(req: Request, res: Response) {
   const recordingId = typeof req.query.recordingId === 'string' ? req.query.recordingId : '';
   if (!recordingId) return res.status(400).json({ error: 'recordingId query param is required' });
   try {
-    const rec: any = await Container.get(RecordingStore).findById(recordingId);
+    const store = Container.get(RecordingStore);
+    const rec: any = await store.findById(recordingId);
     if (!rec || rec.group_id !== req.params.groupId)
       return res.status(404).json({ error: 'not_found' });
-    const visible = await deviceService.filterRowsByVisibleDevice(
-      [rec],
-      authOf(req)?.teamIds,
-      'device_udid',
-    );
-    if (visible.length === 0) return res.status(404).json({ error: 'not_found' });
+    // Judged against the whole group, since its owner sees every phone in it.
+    const visible = await visibleRows(req, await store.listGroup(rec.group_id));
+    if (!visible.some((r) => r.id === rec.id)) return res.status(404).json({ error: 'not_found' });
     if (!rec.file_path || !fs.existsSync(rec.file_path)) {
       return res.status(404).json({ error: 'video_not_found' });
     }

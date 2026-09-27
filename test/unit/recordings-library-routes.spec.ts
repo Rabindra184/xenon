@@ -162,7 +162,7 @@ describe('recordings library routes', () => {
       rows = [
         rec({ id: 'a', group_id: 'g1' }),
         rec({ id: 'b', group_id: 'g2', started_at: new Date(T0 + 1000) }),
-        rec({ id: 'c', group_id: 'g3', device_udid: 'HIDDEN' }),
+        rec({ id: 'c', group_id: 'g3', device_udid: 'HIDDEN', started_by: 'usr_carol' }),
       ];
       const res = await request(buildApp(alice)).get('/xenon/api/recordings');
       expect(res.status, JSON.stringify(res.body)).to.equal(200);
@@ -281,7 +281,7 @@ describe('recordings library routes', () => {
         404,
       );
       rows = [rec({ device_udid: 'HIDDEN' })];
-      expect((await request(buildApp(alice)).get('/xenon/api/recordings/g1')).status).to.equal(404);
+      expect((await request(buildApp(bob)).get('/xenon/api/recordings/g1')).status).to.equal(404);
     });
 
     it('sorts bookmarks and marks by timecode across every recording in the group', async () => {
@@ -389,9 +389,94 @@ describe('recordings library routes', () => {
 
     it('answers 404 for a group the caller cannot see, or that is gone', async () => {
       rows = [rec({ device_udid: 'HIDDEN' })];
-      expect((await del(alice)).status).to.equal(404);
+      expect((await del(bob)).status).to.equal(404);
       rows = [];
       expect((await del(admin)).status).to.equal(404);
+    });
+  });
+
+  // A phone's Device row is deleted when it is unplugged, and a missing row
+  // reads as invisible to every non-admin. The person who recorded a group
+  // must still see all of it; nobody else gains anything.
+  describe('the owner, after a phone was unplugged', () => {
+    let dir: string;
+    beforeEach(() => {
+      dir = fs.mkdtempSync(path.join(os.tmpdir(), 'rec-owner-'));
+      visible = new Set(['U1']); // GONE has no Device row any more
+    });
+    afterEach(() => fs.rmSync(dir, { recursive: true, force: true }));
+
+    const unplugged = (over: any = {}) =>
+      rec({ id: 'r2', device_udid: 'GONE', started_at: new Date(T0 + 500), ...over });
+
+    it('still lists it, and opens it with every phone', async () => {
+      rows = [rec({ group_id: 'gone', id: 'solo', device_udid: 'GONE' }), rec(), unplugged()];
+      const list = await request(buildApp(alice)).get('/xenon/api/recordings');
+      expect(list.status, JSON.stringify(list.body)).to.equal(200);
+      expect(list.body.recordings.map((s: any) => s.groupId).sort()).to.deep.equal(['g1', 'gone']);
+      const g1 = list.body.recordings.find((s: any) => s.groupId === 'g1');
+      expect(g1.phones.map((p: any) => p.udid)).to.deep.equal(['U1', 'GONE']);
+
+      const detail = await request(buildApp(alice)).get('/xenon/api/recordings/gone');
+      expect(detail.status, JSON.stringify(detail.body)).to.equal(200);
+      expect(detail.body.summary.phones.map((p: any) => p.udid)).to.deep.equal(['GONE']);
+      const both = await request(buildApp(alice)).get('/xenon/api/recordings/g1');
+      expect(both.body.summary.phones.map((p: any) => p.udid)).to.deep.equal(['U1', 'GONE']);
+    });
+
+    it('can still delete it', async () => {
+      rows = [rec({ device_udid: 'GONE' })];
+      const res = await request(buildApp(alice)).delete('/xenon/api/recordings/g1');
+      expect(res.status, JSON.stringify(res.body)).to.equal(204);
+      expect(store.deleteGroupRows.calledOnceWith('g1')).to.equal(true);
+    });
+
+    it('can still play its video', async () => {
+      const file = path.join(dir, 'r2.mp4');
+      fs.writeFileSync(file, 'x');
+      rows = [rec(), unplugged({ file_path: file })];
+      const res = await request(buildApp(alice)).get(
+        '/xenon/api/recordings/g1/source.mp4?recordingId=r2',
+      );
+      expect(res.status, JSON.stringify(res.body)).to.equal(200);
+    });
+
+    it('is the person who started it, not someone who added a phone later', async () => {
+      // The earliest row with a started_by names the owner (alice); a row with
+      // none is skipped, and bob only added the phone that is now unplugged.
+      rows = [
+        rec({ id: 'rn', started_by: null, started_at: new Date(T0 - 500) }),
+        rec({ id: 'r0' }),
+        unplugged({ started_by: 'usr_bob' }),
+      ];
+      const asAlice = await request(buildApp(alice)).get('/xenon/api/recordings/g1');
+      expect(asAlice.body.summary.phones.map((p: any) => p.recordingId).sort()).to.deep.equal([
+        'r0',
+        'r2',
+        'rn',
+      ]);
+      const asBob = await request(buildApp(bob)).get('/xenon/api/recordings/g1');
+      expect(asBob.body.summary.phones.map((p: any) => p.recordingId).sort()).to.deep.equal([
+        'r0',
+        'rn',
+      ]);
+    });
+
+    it('does not open it to another member: 404 everywhere', async () => {
+      const file = path.join(dir, 'r1.mp4');
+      fs.writeFileSync(file, 'x');
+      rows = [rec({ device_udid: 'GONE', file_path: file })];
+      const list = await request(buildApp(bob)).get('/xenon/api/recordings');
+      expect(list.body.recordings).to.deep.equal([]);
+      expect((await request(buildApp(bob)).get('/xenon/api/recordings/g1')).status).to.equal(404);
+      expect(
+        (await request(buildApp(bob)).get('/xenon/api/recordings/g1/source.mp4?recordingId=r1'))
+          .status,
+      ).to.equal(404);
+      expect((await request(buildApp(bob)).delete('/xenon/api/recordings/g1')).status).to.equal(
+        404,
+      );
+      expect(store.deleteGroupRows.called).to.equal(false);
     });
   });
 
@@ -435,7 +520,7 @@ describe('recordings library routes', () => {
     it('answers 400 without a recording, and 404 for another group, an invisible phone or a missing file', async () => {
       rows = [rec(), rec({ id: 'rx', group_id: 'g2' }), rec({ id: 'rh', device_udid: 'HIDDEN' })];
       const get = (q: string) =>
-        request(buildApp(alice)).get(`/xenon/api/recordings/g1/source.mp4${q}`);
+        request(buildApp(bob)).get(`/xenon/api/recordings/g1/source.mp4${q}`);
       expect((await get('')).status).to.equal(400);
       expect((await get('?recordingId=rx')).status).to.equal(404);
       expect((await get('?recordingId=rh')).status).to.equal(404);
