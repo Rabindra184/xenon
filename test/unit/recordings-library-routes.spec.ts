@@ -519,6 +519,27 @@ describe('recordings library routes', () => {
       expect(store.deleteGroupRows.called).to.equal(false);
     });
 
+    // DELETE removes only the rows the caller sees, but a phone still
+    // recording blocks it wherever it is, including on another team.
+    it('refuses with 409 while a phone the caller cannot see is recording', async () => {
+      devices.set('OTHER', { name: 'Team B phone', platform: 'android' });
+      visible = new Set(['U1']);
+      rows = [
+        rec(),
+        rec({
+          id: 'r2',
+          device_udid: 'OTHER',
+          status: 'RECORDING',
+          ended_at: null,
+          duration_ms: null,
+        }),
+      ];
+      const res = await del(alice);
+      expect(res.status, JSON.stringify(res.body)).to.equal(409);
+      expect(res.body.error).to.equal('recording_in_progress');
+      expect(store.deleteGroupRows.called).to.equal(false);
+    });
+
     it('needs the devices scope: a read-only API key is refused, a member’s session is not', async () => {
       rows = [rec()];
       // The owner's own key, and a SUPER_ADMIN's: role alone must not let a
@@ -806,12 +827,17 @@ describe('recordings library routes', () => {
     it('reads only the one recording, and the group leanly only for its owner', async () => {
       const file = path.join(dir, 'r2.mp4');
       fs.writeFileSync(file, 'x');
+      const visibleFile = path.join(dir, 'r1.mp4');
+      fs.writeFileSync(visibleFile, 'x');
       visible = new Set(['U1']);
-      rows = [rec(), rec({ id: 'r2', device_udid: 'GONE', file_path: file })];
+      rows = [
+        rec({ file_path: visibleFile }),
+        rec({ id: 'r2', device_udid: 'GONE', file_path: file }),
+      ];
       const get = (who: Caller, id: string) =>
         request(buildApp(who)).get(`/xenon/api/recordings/g1/source.mp4?recordingId=${id}`);
 
-      expect((await get(bob, 'r1')).status).to.equal(404); // r1's file doesn't exist
+      expect((await get(bob, 'r1')).status).to.equal(200);
       expect(store.findVideo.calledWith('r1')).to.equal(true);
       expect(store.listGroupStarts.called, 'a visible phone needs no owner').to.equal(false);
 
@@ -820,6 +846,24 @@ describe('recordings library routes', () => {
       expect((await get(bob, 'r2')).status).to.equal(404);
       expect(store.listGroup.called, 'never the group with its marks').to.equal(false);
       expect(store.findById.called, 'nor the recording with its marks').to.equal(false);
+    });
+
+    // `send` sets the file's type, validators and our attachment header before
+    // it finds the range unsatisfiable; none of them may reach the JSON.
+    it('answers an unsatisfiable Range with 416 JSON, the size, and no file headers', async () => {
+      const file = path.join(dir, 'r1.mp4');
+      fs.writeFileSync(file, Buffer.from('0123456789'));
+      rows = [rec({ file_path: file })];
+      const url = '/xenon/api/recordings/g1/source.mp4?recordingId=r1&download=1';
+      const fileEtag = (await request(buildApp(alice)).get(url)).headers.etag;
+      expect(fileEtag, "the file's own ETag").to.be.a('string');
+      const res = await request(buildApp(alice)).get(url).set('Range', 'bytes=9999-10000');
+      expect(res.status).to.equal(416);
+      expect(res.headers['content-type']).to.match(/^application\/json/);
+      expect(res.headers['content-range']).to.equal('bytes */10');
+      expect(res.headers.etag).to.not.equal(fileEtag);
+      expect(res.headers).to.not.have.any.keys('last-modified', 'content-disposition');
+      expect(res.body).to.deep.equal({ error: 'range_not_satisfiable' });
     });
 
     it('serves it as an attachment for download', async () => {
@@ -888,12 +932,22 @@ describe('recordings library routes', () => {
         const { res, cap } = fakeSourceRes();
         const err: any = new Error('Range Not Satisfiable');
         err.status = 416;
+        err.headers = { 'Content-Range': 'bytes */4' };
         res.sendFile = sinon.spy((_p: string, _o: any, cb: (e: any) => void) => cb(err));
 
         await sourceMp4Handler(fakeSourceReq() as any, res);
 
         expect(cap.statusCode).to.equal(416);
         expect(cap.json.firstCall.args[0]).to.deep.equal({ error: 'range_not_satisfiable' });
+        expect(cap.setHeader.calledWith('Content-Range', 'bytes */4')).to.equal(true);
+        const removed = cap.removeHeader.getCalls().map((c) => c.args[0]);
+        expect(removed).to.include.members([
+          'Content-Disposition',
+          'Content-Type',
+          'ETag',
+          'Last-Modified',
+        ]);
+        expect(removed).to.not.include('Cache-Control');
       });
 
       it('ignores a client abort rather than writing to a dead socket', async () => {
