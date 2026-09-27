@@ -49,6 +49,11 @@ export function useSyncedPlayback(
   const s = useRef({ baseMs: 0, since: null as number | null, running: false, waiting: false });
   const frame = useRef<number | null>(null);
   const lastRender = useRef(-Infinity);
+  // durationMs can change between the render that scheduled a pending tick and the
+  // tick itself firing; keep the live value in a ref like every other run-spanning
+  // piece of state here, so tick/play/seek never act on a stale duration.
+  const durationRef = useRef(durationMs);
+  durationRef.current = durationMs;
   const [view, setView] = useState({ timeMs: 0, playing: false, waiting: false });
 
   const current = () =>
@@ -76,22 +81,16 @@ export function useSyncedPlayback(
     });
   };
 
-  const stalledAt = (t: number) => {
-    let stalled = false;
-    els.current.forEach((el, id) => {
-      if (stalled) return;
+  const stalledAt = (t: number) =>
+    Array.from(els.current.entries()).some(([id, el]) => {
       const target = targets.current.get(id);
-      if (
-        target &&
+      return (
+        !!target &&
         !el.error &&
         tilePhase(t, target.offsetMs, target.durationMs) === 'playing' &&
         el.readyState < HAVE_FUTURE_DATA
-      ) {
-        stalled = true;
-      }
+      );
     });
-    return stalled;
-  };
 
   const render = (force: boolean) => {
     const now = clock.now();
@@ -110,9 +109,14 @@ export function useSyncedPlayback(
     const st = s.current;
     if (!st.running) return;
     const t = current();
-    if (t >= durationMs) {
-      Object.assign(st, { baseMs: durationMs, since: null, running: false, waiting: false });
-      drive(durationMs, false);
+    if (t >= durationRef.current) {
+      Object.assign(st, {
+        baseMs: durationRef.current,
+        since: null,
+        running: false,
+        waiting: false,
+      });
+      drive(durationRef.current, false);
       render(true);
       return;
     }
@@ -132,7 +136,7 @@ export function useSyncedPlayback(
 
   const play = () => {
     const st = s.current;
-    if (current() >= durationMs) st.baseMs = 0;
+    if (current() >= durationRef.current) st.baseMs = 0;
     else st.baseMs = current();
     Object.assign(st, { since: clock.now(), running: true, waiting: false });
     drive(st.baseMs, true);
@@ -151,7 +155,7 @@ export function useSyncedPlayback(
 
   const seek = (ms: number) => {
     const st = s.current;
-    const t = clampTime(ms, durationMs);
+    const t = clampTime(ms, durationRef.current);
     st.baseMs = t;
     st.since = st.running && !st.waiting ? clock.now() : null;
     drive(t, st.running && !st.waiting);

@@ -63,6 +63,20 @@ function setup(duration = 60_000) {
   return { p, step };
 }
 
+/** Like setup(), but lets the test change `duration` on a live re-render. */
+function setupRerenderable(duration = 60_000) {
+  const { clock, step } = fakeClock();
+  const api: { current: SyncedPlayback | null } = { current: null };
+  function Harness({ duration }: { duration: number }) {
+    api.current = useSyncedPlayback(duration, clock);
+    return null;
+  }
+  const { rerender } = render(<Harness duration={duration} />);
+  const p = () => api.current as SyncedPlayback;
+  const setDuration = (next: number) => act(() => rerender(<Harness duration={next} />));
+  return { p, step, setDuration };
+}
+
 describe('useSyncedPlayback', () => {
   it('plays each phone at its own time, and holds a late one at 0 until it joins', () => {
     const { p, step } = setup();
@@ -148,6 +162,20 @@ describe('useSyncedPlayback', () => {
     act(() => p().play());
     expect(p().timeMs).toBe(0);
     expect(p().playing).toBe(true);
+  });
+
+  it('keeps playing through a duration change until the new end, not the stale one', () => {
+    const { p, step, setDuration } = setupRerenderable(10_000);
+    const v = fakeVideo();
+    act(() => p().bind('a', { offsetMs: 0, durationMs: 10_000 })(v));
+    act(() => p().play());
+    setDuration(20_000);
+    step(10_000);
+    expect(p().playing).toBe(true);
+    expect(p().timeMs).toBe(10_000);
+    step(10_000);
+    expect(p().playing).toBe(false);
+    expect(p().timeMs).toBe(20_000);
   });
 
   it('seeks every video while paused, clamped to the recording', () => {
