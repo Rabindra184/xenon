@@ -9,6 +9,7 @@ import { RecordingOrchestrator } from '../../src/services/recording/RecordingOrc
 import { RecordingStore } from '../../src/services/recording/recording-store';
 import * as deviceService from '../../src/data-service/device-service';
 import { scopesForRole } from '../../src/middleware/authMiddleware';
+import { saveRegistrations } from '../helpers/container-registration';
 
 type Role = 'MEMBER' | 'ADMIN' | 'SUPER_ADMIN';
 const T0 = Date.parse('2026-09-20T10:00:00.000Z');
@@ -77,8 +78,10 @@ describe('recording write routes: team visibility', () => {
   let store: any;
   let orch: Record<string, sinon.SinonStub>;
   let filter: sinon.SinonStub;
+  let restoreRegistrations: () => void;
 
   beforeEach(() => {
+    restoreRegistrations = saveRegistrations(RecordingStore, RecordingOrchestrator);
     rows = [
       rec({ id: 'r1', device_udid: 'U1' }),
       rec({
@@ -137,9 +140,7 @@ describe('recording write routes: team visibility', () => {
 
   afterEach(() => {
     sinon.restore();
-    // Back to the real, lazily built services for whatever runs next.
-    Container.set({ id: RecordingStore, type: RecordingStore } as any);
-    Container.set({ id: RecordingOrchestrator, type: RecordingOrchestrator } as any);
+    restoreRegistrations();
   });
 
   const alice = { userId: 'usr_alice', teamIds: ['t1'] };

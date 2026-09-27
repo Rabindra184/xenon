@@ -22,6 +22,7 @@ import {
   compositeLayoutPath,
 } from '../../src/services/recording/RecordingOrchestrator';
 import { useArtifactStore } from '../helpers/artifact-store';
+import { saveRegistrations } from '../helpers/container-registration';
 
 type Role = 'MEMBER' | 'ADMIN' | 'SUPER_ADMIN';
 const T0 = Date.parse('2026-09-20T10:00:00.000Z');
@@ -141,8 +142,10 @@ describe('recordings library routes', () => {
   let devices: Map<string, { name: string; platform: string | null }>;
   let store: any;
   let remove: sinon.SinonStub;
+  let restoreRegistrations: () => void;
 
   beforeEach(() => {
+    restoreRegistrations = saveRegistrations(RecordingStore);
     rows = [];
     visible = new Set(['U1', 'U2']);
     devices = new Map([['U1', { name: 'Galaxy S9+', platform: 'android' }]]);
@@ -188,7 +191,9 @@ describe('recordings library routes', () => {
 
   afterEach(() => {
     sinon.restore();
-    Container.remove(RecordingStore);
+    // Put back what was registered, never remove it: removing a @Service()
+    // class unregisters it for every spec that runs after this one.
+    restoreRegistrations();
   });
 
   const alice = { userId: 'usr_alice', teamIds: ['t1'] };
@@ -745,16 +750,16 @@ describe('recordings library routes', () => {
 
   describe('GET /recordings/:groupId/exports/annotated.mp4', () => {
     let render: sinon.SinonSpy;
+    let restoreRender: () => void;
     beforeEach(() => {
+      restoreRender = saveRegistrations(AnnotationRenderService);
       render = sinon.spy(async (id: string) => ({
         stream: Readable.from([Buffer.from(`annotated-${id}`)]),
         cleanup: () => undefined,
       }));
       Container.set(AnnotationRenderService, { renderForRecording: render } as any);
     });
-    afterEach(() => {
-      Container.set({ id: AnnotationRenderService, type: AnnotationRenderService } as any);
-    });
+    afterEach(() => restoreRender());
 
     const get = (who: Caller, id: string) =>
       request(buildApp(who))
