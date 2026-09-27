@@ -134,8 +134,10 @@ export class PrismaDeviceStore implements IDeviceStore {
         where.teamId = null;
       } else {
         // Prisma rejects a null inside `in` ("Expected Null, provided (Null,
-        // String)"), so the shared pool is a branch of its own.
-        where.OR = [{ teamId: null }, { teamId: { in: ids } }];
+        // String)"), so the shared pool is a branch of its own. Appended to
+        // AND rather than taking the top-level OR, which a later filter could
+        // overwrite and so widen the match past the caller's teams.
+        where.AND = [...(where.AND ?? []), { OR: [{ teamId: null }, { teamId: { in: ids } }] }];
       }
     }
 
