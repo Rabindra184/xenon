@@ -6,6 +6,164 @@ This project follows [Semantic Versioning](https://semver.org/). Releases are
 published to npm automatically when `package.json`'s `version` changes on `main`
 (see `.github/workflows/npm-publish.yml`).
 
+## 1.29.0
+
+Minor release. Teams are now a device boundary everywhere a phone can be
+reached: device control, reservations, leases, recordings and the dashboard's
+live events. Past recordings get a library where you can find, replay in sync,
+download and delete them, and the Devices page gets a sortable table view.
+Also fixes a device sync that could free a phone in use, and dashboards
+signed in through `/login` now get live events. Includes a database migration
+that is applied automatically at startup. **Read "Changed — operator action
+may be needed" before upgrading.**
+
+### Changed — operator action may be needed
+
+- **Members can use only shared phones and their own teams' phones** (#345,
+  #347). This covers device control, previews and stream tickets,
+  reservations, SDK leases, recordings and live dashboard events.
+  - **Anyone using a team's phone without being on that team loses access
+    until an admin adds them on the Teams page.**
+  - A phone they can't see looks exactly like one that doesn't exist.
+  - Admins and servers with auth disabled are unchanged.
+- **A session that names a lease must prove it holds it** (#346). A lease id
+  alone no longer gets its phone. A session that sets
+  `xenon:options.leaseId` must do one of these:
+  - **Pass the lease token.** Pass the lease-create response's
+    `appiumCapabilities` through unchanged: they now include
+    `xenon:options.leaseToken`. A client that builds its own capabilities adds
+    the `leaseToken` it already holds for heartbeat, next to `leaseId`.
+  - **Use the credentials that created the lease.** A lease created with an
+    access-key pair is matched only by that key's `df:options` pair. One
+    created with a bearer token or the dashboard is matched by any of that
+    user's keys, or by a `xenon:options.sessionToken` for that user.
+  - **Be allowed to override:** a SUPER_ADMIN, an `admin`-scoped key, or an
+    ADMIN or SUPER_ADMIN session token. An ADMIN's ordinary key may not.
+
+  The phone must also be one your teams can see, and servers with auth
+  disabled are unchanged. A refused session fails with one message, `lease
+  <id> is not active, or this session did not prove it holds it …`. It reads
+  the same for an expired lease on purpose. **Don't re-acquire in a loop on
+  this error**: each new lease holds a phone until its TTL runs out.
+- **Hub and node fleets: upgrade nodes before the hub** (#346). A new hub
+  forwards the lease token to the node that runs the session, and only a new
+  node strips it before the driver sees it.
+- **Add a log filter for the lease token** (#346). Appium logs the raw `POST
+  /session` body before Xenon sees it. It cuts that body at 1024 characters,
+  and the cut can land inside the token, so the rule matches the token's hex
+  digits. With `--log-filters <file>`:
+
+  ```json
+  [{"pattern": "(leaseToken\\\\?[\"']?\\s*:\\s*\\\\?[\"']?)[0-9a-fA-F]+", "flags": "g", "replacer": "$1**LEASE TOKEN**"}]
+  ```
+
+  With an Appium config file (`--config`, which is how Xenon Control starts
+  Appium):
+
+  ```yaml
+  server:
+    log-filters:
+      - pattern: '(leaseToken\\?["'']?\s*:\s*\\?["'']?)[0-9a-fA-F]+'
+        flags: g
+        replacer: '$1**LEASE TOKEN**'
+  ```
+- **Database migration: one nullable column, `Recording.started_by`** (#342).
+  `runMigrations` applies it at startup, and older rows stay null ("recorded
+  by" is unknown for them). If you run with `XENON_AUTO_MIGRATE=false`, apply
+  `20260927120000_recording_started_by` yourself before starting this
+  version.
+
+### Added
+
+- **A Recordings library** (#342). Past Live devices recordings used to be
+  reachable only from the download bar right after Stop.
+  - **`/recordings`** lists every recording you can see: when, phones,
+    length, who recorded it, bookmarks and status. You can filter by phone,
+    recorder and time, or search phone names and bookmark labels. The filters
+    are kept in the link.
+  - **A recording's page** plays every phone side by side on one clock, with
+    Space to play or pause, a timeline you can drag, and ← → to skip 5 s.
+    - A phone that started later shows "Starts at 0:12".
+    - Bookmarks are marked on the timeline.
+    - Annotations are drawn on their phone at their time.
+  - **Download** gives all videos, the side-by-side video, the proof bundle,
+    or one phone's video with or without its annotations.
+  - **Delete** is for the recording's owner or an admin.
+  - Live devices offers **Open in Recordings** after Stop.
+- **A table view on the Devices page** (#340), beside the cards. It has
+  sortable columns (Status, Device, Platform, Type, Team, and Host when there
+  is more than one host) and the card's own Control, Reserve and More
+  actions. The view and the sort are remembered and carried in the link
+  (`?view=table`).
+
+### Security
+
+- **Recordings exposed other teams' phones** (#341, #343, #344). In a
+  recording mixing teams, a member could download another team's phone's
+  video, zips, proof bundle and side-by-side video. They could also start,
+  stop, bookmark or annotate recordings of phones they can't see, and clear
+  their marks. Stop's response listed every phone in the group. Every
+  recording route now follows one team rule and answers a hidden phone or
+  group with a plain 404.
+- **Device control, reservations and SDK leases ignored teams** (#345). A
+  member could tap, type, install, read the screen, clipboard and logs,
+  preview, reserve or lease another team's phone whenever nobody held it.
+- **A lease id alone claimed its phone** (#346). Anyone who knew an active
+  lease's id could start a session on its phone. The token that proves a
+  lease never reaches the driver, the Session row, the dashboard or Xenon's
+  logs.
+- **Every dashboard received every team's live events** (#347): phones,
+  session commands, healing, intercepted network traffic, recordings and bug
+  reports. Bug reports also reached nodes. Each event now goes only to
+  dashboards whose user can see that phone. Selector and node events, which
+  aren't one phone's data, are unchanged.
+
+### Fixed
+
+- **A device sync could free a phone in use** (#348). Every 30 s by default,
+  the sync read each phone, spent seconds in adb and the iOS tools, then
+  wrote the whole row back. That undid anything written in between:
+  - a live preview's hold, after which Stop had nothing to release;
+  - a new session's lock, so a second session could get the same phone;
+  - a team change;
+  - a stream's port.
+
+  iOS simulators came back free from every sync, even mid-session. The sync
+  now writes only what discovery changed. In a timed test on the lab, a
+  preview started inside a sync lost its hold 2 times in 3 before this fix
+  and 0 times in 3 after.
+- **The "New device" webhook fired for every phone on every sync** (#348),
+  and the dashboard got a `device_added` for each. Both now fire only for a
+  phone that is actually new.
+- **Dashboards signed in through `/login` got no live events** (#349). The
+  socket accepted only the older raw-key cookie, so with auth enabled the
+  header stayed on "Connecting…". Pages that rely on live events alone,
+  such as session activity, healing, network capture and selector health,
+  never updated. Only the Devices page, which also polls, looked right.
+- **Team-scoped Appium sessions failed on every real server** (#345). The
+  Prisma store's team filter put `null` inside an `in` list, which Prisma
+  rejects. This broke device allocation for a team-bound API key or
+  `xenon:team`.
+- **A recording's `video.mp4` ignored `Range`** (#341). It advertised
+  `Accept-Ranges` but always sent the whole file.
+
+### Notes
+
+- New endpoints:
+  - `GET /xenon/api/recordings`;
+  - `DELETE /xenon/api/recordings/:groupId`;
+  - `GET /xenon/api/recordings/:groupId/source.mp4`.
+
+  `GET /xenon/api/recordings/:groupId` adds a `summary`. The lease-create
+  response's `appiumCapabilities` add `xenon:options.leaseToken`.
+- An admin asking for a recording group with no rows now gets 404 from
+  `video.mp4`, `videos.zip`, `bundle.zip` and `annotations/clear`. Before,
+  this was an empty 200 or a 500.
+- Members don't get the side-by-side video of recordings made before 1.22.1,
+  which have no layout file to check. Admins still do.
+- A live event's team scope is fixed when the dashboard connects. A
+  membership change applies after a reload.
+
 ## 1.28.1
 
 Patch release. A phone open in two tabs keeps its live preview when one tab
