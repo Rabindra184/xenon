@@ -71,6 +71,27 @@ export interface SummaryContext {
   users: Map<string, string>;
   retention: Retention;
   hasComposite: (groupId: string) => boolean;
+  /**
+   * Every row of a group, including phones the caller can't see, which the
+   * owner is decided on: the rows summarized may be only the visible ones,
+   * and a member who added a phone to someone else's group must not read as
+   * its owner. Without it, the rows summarized.
+   */
+  groupRows?: (groupId: string) => OwnerRow[];
+}
+
+export type OwnerRow = { started_at: Date | string; started_by?: string | null };
+
+/**
+ * Who owns a group: whoever started it, i.e. the earliest row with a
+ * `started_by`. A phone added later doesn't make its adder the owner. The one
+ * owner rule: the recordings router uses it for visibility and delete.
+ */
+export function groupOwner(rows: OwnerRow[]): string | null {
+  const byStart = rows
+    .slice()
+    .sort((a, b) => new Date(a.started_at).getTime() - new Date(b.started_at).getTime());
+  return byStart.find((r) => r.started_by)?.started_by ?? null;
 }
 
 export interface LibraryFilter {
@@ -151,7 +172,7 @@ export function summarizeGroup(rows: SummaryRow[], ctx: SummaryContext): Recordi
     .map((r) => r.ended_at)
     .filter((d): d is Date => d !== null)
     .map((d) => d.getTime());
-  const owner = byStart.find((r) => r.started_by)?.started_by ?? null;
+  const owner = groupOwner(ctx.groupRows?.(first.group_id) ?? rows);
   const days = status === 'failed' ? ctx.retention.failedDays : ctx.retention.days;
 
   return {

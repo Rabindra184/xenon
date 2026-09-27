@@ -617,6 +617,24 @@ describe('recordings library routes', () => {
       expect(src.status).to.equal(404);
     });
 
+    // The Delete button shows for the group's owner. A member who only added
+    // a phone to someone else's group sees just that phone, but is not it.
+    it('is named as its owner to a member who only sees the phone they added', async () => {
+      devices.set('HIDDEN', { name: 'Team B phone', platform: 'android' });
+      rows = [
+        rec({ device_udid: 'HIDDEN' }),
+        rec({ id: 'r2', started_by: 'usr_bob', started_at: new Date(T0 + 500) }),
+      ];
+      const list = await request(buildApp(bob)).get('/xenon/api/recordings');
+      expect(list.body.recordings[0].phones.map((p: any) => p.recordingId)).to.deep.equal(['r2']);
+      expect(list.body.recordings[0].startedBy).to.deep.equal({ id: 'usr_alice', name: 'Alice' });
+      const detail = await request(buildApp(bob)).get('/xenon/api/recordings/g1');
+      expect(detail.body.summary.startedBy).to.deep.equal({ id: 'usr_alice', name: 'Alice' });
+      expect((await request(buildApp(bob)).delete('/xenon/api/recordings/g1')).status).to.equal(
+        403,
+      );
+    });
+
     it('does not open it to another member: 404 everywhere', async () => {
       const file = path.join(dir, 'r1.mp4');
       fs.writeFileSync(file, 'x');

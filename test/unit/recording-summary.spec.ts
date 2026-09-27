@@ -2,6 +2,7 @@ import { expect } from 'chai';
 import {
   buildLibrary,
   cursorOf,
+  groupOwner,
   groupStatus,
   summarizeGroup,
   type SummaryContext,
@@ -151,6 +152,29 @@ describe('recording summaries', () => {
     expect(s.phones[0].platform).to.equal(null);
     expect(s.startedBy).to.deep.equal({ id: 'usr_deleted', name: 'Unknown user' });
     expect(summarizeGroup([row({ started_by: null })], ctx).startedBy).to.equal(null);
+  });
+
+  it('owns a group to whoever started it: the earliest row with a started_by', () => {
+    const first = row({ id: 'r0', started_by: null, started_at: new Date(T0 - 5000) });
+    const alice = row({ started_by: 'usr_alice', started_at: new Date(T0) });
+    const bob = row({ id: 'r2', started_by: 'usr_bob', started_at: new Date(T0 + 9000) });
+    expect(groupOwner([bob, alice, first])).to.equal('usr_alice');
+    expect(groupOwner([first])).to.equal(null);
+  });
+
+  it('names the owner from every row of the group, not only the ones it summarizes', () => {
+    // A member who only added a phone to alice's group sees just that phone;
+    // alice started it, and only she (or an admin) may delete it.
+    const alice = row({ id: 'r1', started_by: 'usr_alice' });
+    const added = row({
+      id: 'r2',
+      device_udid: 'U2',
+      started_by: 'usr_bob',
+      started_at: new Date(T0 + 9000),
+    });
+    const s = summarizeGroup([added], { ...ctx, groupRows: () => [alice, added] });
+    expect(s.phones.map((p) => p.recordingId)).to.deep.equal(['r2']);
+    expect(s.startedBy).to.deep.equal({ id: 'usr_alice', name: 'Alice' });
   });
 
   it('has no end or length while recording', () => {

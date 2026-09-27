@@ -14,6 +14,7 @@ import { DOWNLOAD_OPTIONS } from './apps';
 import {
   summarizeGroup,
   buildLibrary,
+  groupOwner,
   type SummaryRow,
   type SummaryContext,
   type Retention,
@@ -46,14 +47,14 @@ interface GroupRow {
   started_by?: string | null;
 }
 
-/** Who owns a group: the earliest row with a `started_by`, i.e. whoever started it. */
-function groupOwner(rows: GroupRow[]): string | undefined {
-  return (
-    rows
-      .slice()
-      .sort((a, b) => new Date(a.started_at).getTime() - new Date(b.started_at).getTime())
-      .find((r) => r.started_by)?.started_by ?? undefined
-  );
+function byGroupId<T extends { group_id: string }>(rows: T[]): Map<string, T[]> {
+  const out = new Map<string, T[]>();
+  rows.forEach((r) => {
+    const list = out.get(r.group_id);
+    if (list) list.push(r);
+    else out.set(r.group_id, [r]);
+  });
+  return out;
 }
 
 /**
@@ -73,14 +74,8 @@ async function visibleRows<T extends GroupRow>(req: Request, rows: T[]): Promise
   const teamIds = authOf(req)?.teamIds;
   const seen = new Set(await deviceService.filterRowsByVisibleDevice(rows, teamIds, 'device_udid'));
   const userId = resolveActor(req).userId;
-  const byGroup = new Map<string, T[]>();
-  rows.forEach((r) => {
-    const list = byGroup.get(r.group_id);
-    if (list) list.push(r);
-    else byGroup.set(r.group_id, [r]);
-  });
   const owned = new Set<string>();
-  byGroup.forEach((list, groupId) => {
+  byGroupId(rows).forEach((list, groupId) => {
     if (userId && groupOwner(list) === userId) owned.add(groupId);
   });
   const hidden = rows.filter((r) => !seen.has(r) && owned.has(r.group_id));
@@ -156,30 +151,26 @@ function visibleIdsByGroup(
   visible: Array<{ id: string; group_id: string }>,
 ): (groupId: string) => RecordingFilter {
   if (seesEverything(req)) return () => undefined;
-  const byGroup = new Map<string, string[]>();
-  visible.forEach((r) => {
-    const list = byGroup.get(r.group_id);
-    if (list) list.push(r.id);
-    else byGroup.set(r.group_id, [r.id]);
-  });
-  return (groupId) => byGroup.get(groupId) ?? [];
+  const byGroup = byGroupId(visible);
+  return (groupId) => (byGroup.get(groupId) ?? []).map((r) => r.id);
 }
 
 /**
- * What the summaries need beyond the rows. `only` is the caller's visible
- * recordings per group: the Side-by-side download is offered only to a caller
- * `composite.mp4` would serve, one who sees every phone in its cells.
+ * What the summaries need beyond the visible rows. `all` is every row of the
+ * same groups, visible or not: the owner is decided on all of them. The
+ * Side-by-side download is offered only to a caller `composite.mp4` would
+ * serve, one who sees every phone in its cells.
  */
-async function summaryContext(
-  rows: any[],
-  only: (groupId: string) => RecordingFilter,
-): Promise<SummaryContext> {
+async function summaryContext(req: Request, all: any[], visible: any[]): Promise<SummaryContext> {
   const store = Container.get(RecordingStore);
   const bundle = Container.get(ProofBundleService);
-  const udids = Array.from(new Set(rows.map((r) => r.device_udid as string)));
-  const users = Array.from(
-    new Set(rows.map((r) => r.started_by as string | null).filter((u): u is string => !!u)),
-  );
+  const only = visibleIdsByGroup(req, visible);
+  const byGroup = byGroupId(all);
+  const groupRows = (g: string) => byGroup.get(g) ?? [];
+  const udids = Array.from(new Set(visible.map((r) => r.device_udid as string)));
+  const groups = Array.from(new Set(visible.map((r) => r.group_id as string)));
+  const owners = groups.map((g) => groupOwner(groupRows(g)));
+  const users = Array.from(new Set(owners.filter((u): u is string => !!u)));
   const names = await store.userNames(users);
   // An auth-disabled server records everyone as this synthetic user, which
   // has no User row to name it.
@@ -190,6 +181,7 @@ async function summaryContext(
     retention: retention(),
     hasComposite: (g) =>
       fs.existsSync(compositeOutputPath(g)) && bundle.compositeAllowed(g, only(g)),
+    groupRows,
   };
 }
 
@@ -203,7 +195,7 @@ router.get('/recordings', async (req: Request, res: Response) => {
   try {
     const rows = await Container.get(RecordingStore).libraryRows();
     const visible = await visibleRows(req, rows);
-    const ctx = await summaryContext(visible, visibleIdsByGroup(req, visible));
+    const ctx = await summaryContext(req, rows, visible);
     const page = buildLibrary(visible.map(toSummaryRow), ctx, parsed.filter, {
       limit: parsed.limit,
       cursor: parsed.cursor,
@@ -422,7 +414,7 @@ router.get('/recordings/:groupId', async (req: Request, res: Response) => {
     if (visibleRecs.length === 0) return res.status(404).json({ error: 'not_found' });
     const summary = summarizeGroup(
       visibleRecs.map(toSummaryRow),
-      await summaryContext(visibleRecs, visibleIdsByGroup(req, visibleRecs)),
+      await summaryContext(req, recs, visibleRecs),
     );
     const bookmarks = visibleRecs
       .reduce<any[]>(
