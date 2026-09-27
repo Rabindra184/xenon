@@ -29,8 +29,8 @@ export interface RecordingSummary {
   startedAt: string;
   endedAt: string | null;
   /**
-   * The timeline's length: from the earliest frame (a phone's negative
-   * offset, or t=0) to the latest end.
+   * The timeline's length: from the earliest frame (the negative offset of a
+   * phone with a video, or t=0) to the latest end.
    */
   durationMs: number | null;
   status: GroupStatus;
@@ -142,10 +142,11 @@ export function summarizeGroup(rows: SummaryRow[], ctx: SummaryContext): Recordi
     .sort((a, b) => a.offsetMs - b.offsetMs || a.name.localeCompare(b.name));
 
   // A phone already recording when the group reached t=0 starts before it.
-  const originMs = Math.min(0, ...phones.map((p) => p.offsetMs));
-  const ends = phones
-    .filter((p) => p.durationMs !== null)
-    .map((p) => p.offsetMs + (p.durationMs as number));
+  // Only phones with a video count: a failed one that spawned first would
+  // open the timeline on nothing.
+  const played = phones.filter((p) => p.durationMs !== null);
+  const originMs = Math.min(0, ...played.map((p) => p.offsetMs));
+  const ends = played.map((p) => p.offsetMs + (p.durationMs as number));
   const endedAts = rows
     .map((r) => r.ended_at)
     .filter((d): d is Date => d !== null)

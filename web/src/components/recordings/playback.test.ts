@@ -59,9 +59,20 @@ describe('playback rules', () => {
     expect(visibleAt(marks, 3000).map((m) => m.id)).toEqual(['b']);
   });
 
+  it('starts the timeline at the earliest phone with a video, not at a failed one', () => {
+    expect(
+      timelineOriginMs([
+        { offsetMs: -5000, durationMs: null },
+        { offsetMs: -1000, durationMs: 20_000 },
+      ]),
+    ).toBe(-1000);
+    expect(timelineOriginMs([{ offsetMs: -5000, durationMs: null }])).toBe(0);
+  });
+
   it('starts the timeline at the earliest frame, moving every time by the same amount', () => {
-    expect(timelineOriginMs([{ offsetMs: 500 }, { offsetMs: 42_000 }])).toBe(0);
-    expect(timelineOriginMs([{ offsetMs: -13_000 }, { offsetMs: -756 }])).toBe(-13_000);
+    const at = (offsetMs: number) => ({ offsetMs, durationMs: 10_000 });
+    expect(timelineOriginMs([at(500), at(42_000)])).toBe(0);
+    expect(timelineOriginMs([at(-13_000), at(-756)])).toBe(-13_000);
 
     const phone = { offsetMs: -13_000 } as RecordingDetail['summary']['phones'][number];
     const mark = {

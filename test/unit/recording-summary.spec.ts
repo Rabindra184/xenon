@@ -98,6 +98,28 @@ describe('recording summaries', () => {
     );
   });
 
+  it('starts the timeline at the earliest phone with a video, not at a failed one', () => {
+    // The failed phone spawned first but has no video: counting it would open
+    // the timeline on 5 s of nothing.
+    const s = summarizeGroup(
+      [
+        row({
+          id: 'rf',
+          device_udid: 'U2',
+          status: 'FAILED',
+          duration_ms: null,
+          fail_reason: 'ffmpeg_exit',
+          timing: { version: 1, spawnedAtMs: T0 - 5000, groupT0Ms: T0 },
+        }),
+        row({ duration_ms: 20_000 }),
+      ],
+      ctx,
+    );
+    expect(s.phones.map((p) => p.offsetMs)).to.deep.equal([-5000, -1000]);
+    // From the S9+'s first frame (-1000) to its end (19 000).
+    expect(s.durationMs).to.equal(20_000);
+  });
+
   it('falls back to started_at when a recording has no timing file', () => {
     const s = summarizeGroup(
       [

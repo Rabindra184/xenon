@@ -52,10 +52,14 @@ export function clampTime(ms: number, durationMs: number): number {
 
 /**
  * Where the timeline starts, in group time: at the earliest frame. A phone
- * already recording when the group reached t=0 starts before it.
+ * already recording when the group reached t=0 starts before it. Only phones
+ * with a video count, as on the server: a failed one that spawned first would
+ * open the timeline on nothing.
  */
-export function timelineOriginMs(phones: Array<{ offsetMs: number }>): number {
-  return Math.min(0, ...phones.map((p) => p.offsetMs));
+export function timelineOriginMs(
+  phones: Array<{ offsetMs: number; durationMs: number | null }>,
+): number {
+  return Math.min(0, ...phones.filter((p) => p.durationMs !== null).map((p) => p.offsetMs));
 }
 
 /**
