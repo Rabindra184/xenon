@@ -27,15 +27,30 @@
   width: 220px;
 }
 
-/* Row height is a function of cell padding, not an explicit min-height on
-   the row itself: 8px top/bottom padding plus ~28px of line-boxed content
-   lands close to 44px without fighting the table's own layout. */
+/* Row height comes from cell padding, not a min-height on the row: two lines
+   of text (about 34px) plus 5px above and below land a row at about 44px.
+   The header keeps 8px. */
 .devtable.tbl thead th,
 .devtable.tbl tbody td {
   padding: 8px 12px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+.devtable.tbl tbody td {
+  padding-top: 5px;
+  padding-bottom: 5px;
+}
+
+/* The rows run edge to edge, but the first and last columns line up with the
+   toolbar's 20px gutter above them. */
+.devtable.tbl th:first-child,
+.devtable.tbl td:first-child {
+  padding-left: 20px;
+}
+.devtable.tbl th:last-child,
+.devtable.tbl td:last-child {
+  padding-right: 20px;
 }
 
 /* The Actions cell holds buttons, not text: it must not truncate them. */
