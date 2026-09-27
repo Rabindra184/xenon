@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { IDevice } from '../../interfaces/IDevice';
@@ -59,6 +59,26 @@ beforeEach(() => {
   api.stopStream.mockResolvedValue({});
   api.getDevices.mockResolvedValue([]);
   api.listApps.mockResolvedValue([]);
+});
+
+describe('DeviceControl — releasing the device', () => {
+  // Only leaving through the app released it. Closing the tab, reloading or
+  // typing another address left the phone held, so tests queued for it and
+  // failed "Device is busy".
+  it('releases the device when the page is hidden', async () => {
+    open(S9);
+    await waitFor(() => expect(api.startStream).toHaveBeenCalledTimes(1));
+    window.dispatchEvent(new Event('pagehide'));
+    expect(api.stopStream).toHaveBeenCalledWith('381103b720057ece');
+  });
+
+  it('takes the device back when the page returns from the back/forward cache', async () => {
+    open(S9);
+    await waitFor(() => expect(api.startStream).toHaveBeenCalledTimes(1));
+    window.dispatchEvent(new Event('pagehide'));
+    window.dispatchEvent(Object.assign(new Event('pageshow'), { persisted: true }));
+    await waitFor(() => expect(api.startStream).toHaveBeenCalledTimes(2));
+  });
 });
 
 describe('DeviceControl header', () => {
