@@ -126,16 +126,19 @@ export class HealthMonitorService {
           let hasActiveManualStream = false;
           try {
             if (['ios', 'tvos'].includes(device.platform)) {
-              await import('./ios/IOSStreamService');
-              const iosStream = Container.get<any>('IOSStreamService');
+              // By class: TypeDI 0.10 ignores @Service({ name }), so a lookup
+              // by name always threw here and this check never saw a stream.
+              const { default: IOSStreamService } = await import('./ios/IOSStreamService');
+              const iosStream = Container.get(IOSStreamService);
               const streamStatus = iosStream.getStreamStatus(device.udid);
               hasActiveManualStream = !!(
                 streamStatus &&
                 (streamStatus.status === 'running' || streamStatus.status === 'starting')
               );
             } else if (device.platform === 'android') {
-              await import('./android/AndroidStreamService');
-              const androidStream = Container.get<any>('AndroidStreamService');
+              const { default: AndroidStreamService } =
+                await import('./android/AndroidStreamService');
+              const androidStream = Container.get(AndroidStreamService);
               const streamStatus = androidStream.getStreamStatus(device.udid);
               hasActiveManualStream = !!(
                 streamStatus &&
@@ -185,13 +188,12 @@ export class HealthMonitorService {
               let hasStreamNow = false;
               try {
                 if (['ios', 'tvos'].includes(device.platform)) {
-                  hasStreamNow = !!Container.get<any>('IOSStreamService').getStreamStatus(
-                    device.udid,
-                  );
+                  const { default: IOSStreamService } = await import('./ios/IOSStreamService');
+                  hasStreamNow = !!Container.get(IOSStreamService).getStreamStatus(device.udid);
                 } else if (device.platform === 'android') {
-                  hasStreamNow = !!Container.get<any>('AndroidStreamService').getStreamStatus(
-                    device.udid,
-                  );
+                  const { default: AndroidStreamService } =
+                    await import('./android/AndroidStreamService');
+                  hasStreamNow = !!Container.get(AndroidStreamService).getStreamStatus(device.udid);
                 }
               } catch (e) {
                 /* ignore */
