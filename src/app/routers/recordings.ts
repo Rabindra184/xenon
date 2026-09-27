@@ -364,6 +364,14 @@ router.post('/recordings/:groupId/stop', async (req: Request, res: Response) => 
       return res.status(404).json({ error: 'not_found' });
     }
     const out = await Container.get(RecordingOrchestrator).stop(req.params.groupId);
+    // Stopping is group-wide regardless of who can see what; only the
+    // response is scoped, and only after stop() has already run so a
+    // visibility lookup can never block it.
+    const ids = await visibleIdsIn(req, req.params.groupId);
+    if (ids !== undefined) {
+      const visible = new Set(ids);
+      out.recordings = out.recordings.filter((r) => visible.has(r.id));
+    }
     res.json(out);
   } catch (e: any) {
     recLog.error(`POST /recordings/:groupId/stop failed: ${e?.message}`);
