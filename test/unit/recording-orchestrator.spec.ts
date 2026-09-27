@@ -431,3 +431,33 @@ describe('RecordingOrchestrator.addBookmark / addAnnotation', () => {
     expect(eventMgr.emitRecordingAnnotation.callCount).to.equal(1);
   });
 });
+
+// A member's "Clear marks" must not close the marks on another team's phone
+// in the same group: the route passes the recordings the caller can see.
+describe('RecordingOrchestrator.clearAnnotations', () => {
+  const group = () => ({
+    listGroup: sinon.stub().resolves([{ id: 'r1' }, { id: 'r2' }]),
+    clearAnnotations: sinon.stub().resolves(1),
+  });
+
+  it('closes the marks of every recording in the group when given no ids', async () => {
+    const store = group();
+    const { orch } = makeOrch({ store });
+    expect(await orch.clearAnnotations('g1', 5000)).to.deep.equal({ cleared: 1 });
+    expect(store.clearAnnotations.firstCall.args).to.deep.equal([['r1', 'r2'], 5000]);
+  });
+
+  it('closes only the listed recordings’ marks, and only those in the group', async () => {
+    const store = group();
+    const { orch } = makeOrch({ store });
+    await orch.clearAnnotations('g1', 5000, ['r1', 'r-elsewhere']);
+    expect(store.clearAnnotations.firstCall.args).to.deep.equal([['r1'], 5000]);
+  });
+
+  it('closes nothing for an empty list', async () => {
+    const store = group();
+    const { orch } = makeOrch({ store });
+    await orch.clearAnnotations('g1', 5000, []);
+    expect(store.clearAnnotations.firstCall.args).to.deep.equal([[], 5000]);
+  });
+});

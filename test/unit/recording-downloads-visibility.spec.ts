@@ -19,6 +19,7 @@ import {
 } from '../../src/services/recording/RecordingOrchestrator';
 import { scopesForRole } from '../../src/middleware/authMiddleware';
 import { useArtifactStore } from '../helpers/artifact-store';
+import { saveRegistrations } from '../helpers/container-registration';
 
 /**
  * A recording group can mix phones from several teams: an admin records
@@ -111,6 +112,7 @@ describe('recording downloads serve only the phones the caller can see', () => {
   /** The group's rows as the store returns them now. */
   let rows: any[];
   let listGroup: sinon.SinonSpy;
+  let restoreRegistrations: () => void;
 
   /**
    * composite.json, as the orchestrator writes it when the composite starts:
@@ -165,6 +167,11 @@ describe('recording downloads serve only the phones the caller can see', () => {
   });
 
   beforeEach(() => {
+    restoreRegistrations = saveRegistrations(
+      RecordingStore,
+      ProofBundleService,
+      AnnotationRenderService,
+    );
     memberSees = ['U-A'];
     existing = ['U-A', 'U-B', 'U-C'];
     rows = [row('r-a', 'U-A'), row('r-b', 'U-B')];
@@ -200,12 +207,10 @@ describe('recording downloads serve only the phones the caller can see', () => {
 
   afterEach(() => {
     sinon.restore();
-    // Put each service back to its fresh @Service() registration. A blanket
-    // Container.reset() would also wipe the ARTIFACT_STORE that
+    // Put back what each service was registered as before this test. A
+    // blanket Container.reset() would also wipe the ARTIFACT_STORE that
     // useArtifactStore() registers once for this whole describe.
-    for (const svc of [RecordingStore, ProofBundleService, AnnotationRenderService]) {
-      Container.set({ id: svc, type: svc } as any);
-    }
+    restoreRegistrations();
   });
 
   after(() => fs.rmSync(root, { recursive: true, force: true }));

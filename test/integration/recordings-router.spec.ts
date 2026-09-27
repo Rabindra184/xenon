@@ -10,6 +10,7 @@ import {
   RecordingOrchestrator,
   RecordingError,
 } from '../../src/services/recording/RecordingOrchestrator';
+import { RecordingStore } from '../../src/services/recording/recording-store';
 
 interface Caller {
   userId?: string;
@@ -54,6 +55,18 @@ function makeApp(caller: Caller = {}) {
 
 describe('Recordings router (integration)', () => {
   afterEach(() => sinon.restore());
+
+  /** A mark is written only on a recording of the group in the URL. */
+  const recordingInGroup = (id: string, groupId: string) =>
+    sinon.stub(Container.get(RecordingStore), 'findVideo').resolves({
+      id,
+      group_id: groupId,
+      device_udid: 'U1',
+      file_path: `/nonexistent/${id}.mp4`,
+      status: 'RECORDING',
+      started_at: new Date(),
+      started_by: 'u1',
+    });
 
   it('POST /recordings: 202 happy path', async () => {
     sinon.stub(Container.get(RecordingOrchestrator), 'start').resolves({
@@ -116,6 +129,7 @@ describe('Recordings router (integration)', () => {
   });
 
   it('POST /recordings/:groupId/bookmark: 201 + 400 validation', async () => {
+    recordingInGroup('r-1', 'g-1');
     sinon
       .stub(Container.get(RecordingOrchestrator), 'addBookmark')
       .resolves({ id: 'bm-1', label: 'bug here' } as any);
@@ -234,6 +248,7 @@ describe('Recordings router (integration)', () => {
   });
 
   it('POST /recordings/:groupId/annotation: 201 + 400 validation', async () => {
+    recordingInGroup('r-1', 'g-1');
     sinon
       .stub(Container.get(RecordingOrchestrator), 'addAnnotation')
       .resolves({ id: 'an-1' } as any);
