@@ -9,11 +9,44 @@ import { JwtKeyService } from './token/JwtKeyService';
 import { prisma } from '../prisma';
 import { EventLogService } from './EventLogService';
 import { SocketEvents, XENON_PROTOCOL_VERSION, HandshakeData } from '../enums/SocketEvents';
+import { computeTeamIds } from './device-access/callerTeamIds';
+import {
+  DeviceTeam,
+  DeviceTeamResolver,
+  canSeeDeviceTeam,
+} from './device-access/DeviceTeamResolver';
 
 // Socket principals mirror the two REST auth paths. 'auth-disabled' is a
 // deliberate passthrough so XENON_AUTH_DISABLED=true still lets the dashboard
 // and nodes connect (matches apiKeyMiddleware behavior).
 type Principal = 'dashboard' | 'node' | 'auth-disabled';
+type Role = 'SUPER_ADMIN' | 'ADMIN' | 'MEMBER';
+
+/**
+ * Who a socket is, fixed at connect and kept on `socket.data.identity`.
+ * `teamIds` is computed as REST computes `req.auth.teamIds`: undefined for an
+ * admin or an auth-disabled server (sees every device). A membership change
+ * applies when the client reconnects, which a dashboard does on reload.
+ */
+export interface SocketIdentity {
+  principal: Principal;
+  userId: string;
+  role: Role;
+  teamIds: string[] | undefined;
+}
+
+/**
+ * The phones a dashboard event is about.
+ * - `{ udid }`: one phone, whose team comes from DeviceTeamResolver.
+ * - `{ udid, teamId }`: one phone whose device row is in hand; its own team
+ *   is used, with no lookup, and refreshes the resolver.
+ * - `{ udids, strip }`: several phones in one payload. Each socket gets
+ *   `strip(data, visibleUdids)`, or `data` untouched when it sees them all,
+ *   or nothing when it sees none. `strip` must not mutate `data`.
+ */
+export type DeviceEventScope =
+  | { udid: string | null | undefined; teamId?: string | null }
+  | { udids: string[]; strip: (data: any, visibleUdids: string[]) => any };
 
 const SESSION_COOKIE = 'xenon_dashboard_session';
 
@@ -47,8 +80,9 @@ export class SocketServer {
 
     this.io.use(async (socket, next) => {
       try {
-        const principal = await this.authenticate(socket);
-        socket.data.principal = principal;
+        const identity = await this.authenticate(socket);
+        socket.data.identity = identity;
+        socket.data.principal = identity.principal;
         next();
       } catch (err: any) {
         log.warn(`[SocketServer] Handshake rejected for ${socket.id}: ${err.message}`);
@@ -130,8 +164,15 @@ export class SocketServer {
     return principal === role;
   }
 
-  private async authenticate(socket: Socket): Promise<Principal> {
-    if (xenonConfig.authDisabled === true) return 'auth-disabled';
+  private async authenticate(socket: Socket): Promise<SocketIdentity> {
+    if (xenonConfig.authDisabled === true) {
+      return {
+        principal: 'auth-disabled',
+        userId: 'auth-disabled',
+        role: 'SUPER_ADMIN',
+        teamIds: undefined,
+      };
+    }
 
     const auth = (socket.handshake.auth || {}) as Record<string, any>;
     const headers = socket.handshake.headers || {};
@@ -149,10 +190,10 @@ export class SocketServer {
       }
       const owner = await prisma.user.findUnique({
         where: { id: String(payload.sub) },
-        select: { status: true },
+        select: { status: true, role: true },
       });
       if (!owner || owner.status !== 'ACTIVE') throw new Error('inactive user');
-      return 'dashboard';
+      return this.identify('dashboard', String(payload.sub), owner.role, payload.teamId);
     }
 
     // Node path: per-node (accessKey, token) pair. Resolves to a real
@@ -169,10 +210,10 @@ export class SocketServer {
       if (!row) throw new Error('invalid (accessKey, token) pair');
       const owner = await prisma.user.findUnique({
         where: { id: row.userId },
-        select: { status: true },
+        select: { status: true, role: true },
       });
       if (!owner || owner.status !== 'ACTIVE') throw new Error('inactive user');
-      return 'node';
+      return this.identify('node', row.userId, owner.role, row.teamId);
     }
 
     // Dashboard path: session cookie set by /auth/login.
@@ -186,14 +227,115 @@ export class SocketServer {
     if (!row) {
       throw new Error('invalid or revoked dashboard session');
     }
-    return 'dashboard';
+    // The key owner's role decides the team scope, and an inactive owner is
+    // refused here as REST refuses them.
+    const owner = await prisma.user.findUnique({
+      where: { id: row.userId },
+      select: { status: true, role: true },
+    });
+    if (!owner || owner.status !== 'ACTIVE') throw new Error('inactive user');
+    return this.identify('dashboard', row.userId, owner.role, row.teamId);
   }
 
+  private async identify(
+    principal: Principal,
+    userId: string,
+    role: string,
+    apiKeyTeamId: unknown,
+  ): Promise<SocketIdentity> {
+    const r = role as Role;
+    const teamIds = await computeTeamIds({
+      role: r,
+      userId,
+      apiKeyTeamId: typeof apiKeyTeamId === 'string' ? apiKeyTeamId : null,
+    });
+    return { principal, userId, role: r, teamIds };
+  }
+
+  /** Unscoped: every dashboard socket. For events that aren't one phone's data (selectors, nodes). */
   public emitToDashboard(event: string, data: any) {
     if (this.io) {
       this.io.to('dashboard').emit(event, data);
     }
     Container.get(EventLogService).appendSafe({ type: event, payload: data });
+  }
+
+  /**
+   * A dashboard event about one or more phones: each dashboard socket gets it
+   * only if its caller can see the phone ({@link DeviceEventScope}), by the
+   * same team rule as REST. The event log records it once, unscoped.
+   *
+   * Delivery is asynchronous while a scoped socket is connected, since a
+   * phone's team may need a (cached) lookup; the returned promise settles
+   * when it's done and never rejects. With no socket, or only unscoped ones
+   * (an auth-disabled server), it broadcasts to the room as emitToDashboard
+   * does, with no lookup.
+   */
+  public emitToDashboardForDevices(
+    event: string,
+    data: any,
+    scope: DeviceEventScope,
+  ): Promise<void> {
+    Container.get(EventLogService).appendSafe({ type: event, payload: data });
+    const resolver = Container.get(DeviceTeamResolver);
+    if ('teamId' in scope && scope.udid && scope.teamId !== undefined) {
+      resolver.note(scope.udid, scope.teamId);
+    }
+
+    const sockets = this.dashboardSockets();
+    if (sockets.length === 0) return Promise.resolve();
+    if (sockets.every((s) => teamIdsOf(s) === undefined)) {
+      this.io?.to('dashboard').emit(event, data);
+      return Promise.resolve();
+    }
+
+    if ('udids' in scope) {
+      return Promise.all(scope.udids.map((udid) => resolver.resolve(udid)))
+        .then((teams) => {
+          for (const socket of this.dashboardSockets()) {
+            const teamIds = teamIdsOf(socket);
+            if (teamIds === undefined) {
+              socket.emit(event, data);
+              continue;
+            }
+            const visible = scope.udids.filter((_, i) => canSeeDeviceTeam(teams[i], teamIds));
+            if (visible.length === 0) continue;
+            socket.emit(
+              event,
+              visible.length === scope.udids.length ? data : scope.strip(data, visible),
+            );
+          }
+        })
+        .catch((err: any) =>
+          log.warn(`[SocketServer] ${event} not delivered: ${err?.message ?? err}`),
+        );
+    }
+
+    const team: Promise<DeviceTeam> =
+      scope.teamId !== undefined
+        ? Promise.resolve({ known: true, teamId: scope.teamId })
+        : resolver.resolve(scope.udid);
+    return team
+      .then((t) => {
+        for (const socket of this.dashboardSockets()) {
+          if (canSeeDeviceTeam(t, teamIdsOf(socket))) socket.emit(event, data);
+        }
+      })
+      .catch((err: any) =>
+        log.warn(`[SocketServer] ${event} not delivered: ${err?.message ?? err}`),
+      );
+  }
+
+  /** The sockets in this server's local 'dashboard' room. */
+  private dashboardSockets(): Socket[] {
+    const ids = this.io?.sockets.adapter.rooms.get('dashboard');
+    if (!this.io || !ids) return [];
+    const out: Socket[] = [];
+    for (const id of ids) {
+      const socket = this.io.sockets.sockets.get(id);
+      if (socket) out.push(socket);
+    }
+    return out;
   }
 
   public emitToNodes(event: string, data: any) {
@@ -207,4 +349,10 @@ export class SocketServer {
       this.io.emit(event, data);
     }
   }
+}
+
+/** A socket with no identity (never expected) is a member of no team: it sees only the shared pool. */
+function teamIdsOf(socket: Socket): string[] | undefined {
+  const identity = socket.data?.identity as SocketIdentity | undefined;
+  return identity ? identity.teamIds : [];
 }
