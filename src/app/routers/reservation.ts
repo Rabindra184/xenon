@@ -5,10 +5,12 @@ import {
   getReservedDevices,
   getDevice,
   isDeviceReserved,
+  filterRowsByVisibleDevice,
 } from '../../data-service/device-service';
 import log from '../../logger';
 import { mutationScopeGuard } from '../../middleware/scopeGuard';
 import { roleGuard } from '../../middleware/roleGuard';
+import { isDeviceVisible } from '../../services/device-access/deviceVisibility';
 
 const router = express.Router();
 
@@ -33,6 +35,21 @@ router.use(roleGuard('MEMBER'));
 // GET listings remain open to any authenticated key.
 router.use(mutationScopeGuard(['devices']));
 
+/**
+ * The device a reservation route acts on, or undefined when the caller may not
+ * see it. Teams are a device boundary: another team's phone takes the same 404
+ * as a udid that doesn't exist, so the answer never says that it exists.
+ */
+async function findVisibleDevice(req: express.Request, udid: string) {
+  const device = await getDevice({ udid: [udid] });
+  return device && isDeviceVisible(device.teamId, teamIdsOf(req)) ? device : undefined;
+}
+
+/** The caller's teams; undefined for an admin or an auth-disabled server. */
+function teamIdsOf(req: express.Request): string[] | undefined {
+  return (req as express.Request & { auth?: { teamIds?: string[] } }).auth?.teamIds;
+}
+
 // Duration options in milliseconds
 const DURATION_OPTIONS: Record<string, number> = {
   '1h': 60 * 60 * 1000,
@@ -45,9 +62,14 @@ const DURATION_OPTIONS: Record<string, number> = {
  * GET /api/reservation
  * List all currently reserved devices
  */
-router.get('/', async (_req, res) => {
+router.get('/', async (req, res) => {
   try {
-    const reservedDevices = await getReservedDevices();
+    // Only reservations on phones the caller can see; admins see them all.
+    const reservedDevices = await filterRowsByVisibleDevice(
+      await getReservedDevices(),
+      teamIdsOf(req),
+      'udid',
+    );
     res.json({
       success: true,
       reservations: reservedDevices.map((device) => ({
@@ -113,7 +135,7 @@ router.post('/', async (req, res) => {
     }
 
     // Check if device exists
-    const device = await getDevice({ udid: [udid] });
+    const device = await findVisibleDevice(req, udid);
     if (!device) {
       return res.status(404).json({ success: false, error: 'Device not found' });
     }
@@ -166,7 +188,7 @@ router.delete('/:udid/:host', async (req, res) => {
     const { udid } = req.params;
     const host = decodeURIComponent(req.params.host);
 
-    const device = await getDevice({ udid: [udid] });
+    const device = await findVisibleDevice(req, udid);
     if (!device) {
       return res.status(404).json({ success: false, error: 'Device not found' });
     }
@@ -198,7 +220,7 @@ router.post('/:udid/:host/extend', async (req, res) => {
     const host = decodeURIComponent(req.params.host);
     const { duration } = req.body;
 
-    const device = await getDevice({ udid: [udid] });
+    const device = await findVisibleDevice(req, udid);
     if (!device) {
       return res.status(404).json({ success: false, error: 'Device not found' });
     }

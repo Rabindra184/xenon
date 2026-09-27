@@ -11,6 +11,7 @@ import { IDeviceStore } from './device-store.interface';
 import { SocketServer } from '../services/SocketServer';
 import { prisma } from '../prisma';
 import { isManualLock, resolveBlockSessionId } from '../services/recording/manualLock';
+import { isDeviceVisible } from '../services/device-access/deviceVisibility';
 
 // Use a Proxy to ensure we're always using the latest store from the factory,
 // which is critical for test isolation when the factory cache is cleared.
@@ -119,11 +120,7 @@ export async function filterRowsByVisibleDevice<T>(
     select: { udid: true, teamId: true },
   });
   const visibleUdids = new Set(
-    devices
-      .filter(
-        (d) => d.teamId === null || (d.teamId !== null && teamIds.includes(d.teamId)),
-      )
-      .map((d) => d.udid),
+    devices.filter((d) => isDeviceVisible(d.teamId, teamIds)).map((d) => d.udid),
   );
   return rows.filter((r) => visibleUdids.has(String(r[udidField])));
 }
