@@ -466,9 +466,9 @@ router.get('/recordings/active', async (req: Request, res: Response) => {
 router.post('/recordings/:groupId/annotations/clear', async (req: Request, res: Response) => {
   const parsed = parseClearBody(req.body);
   if (!parsed.ok) return res.status(400).json({ error: parsed.error });
-  const v = await visibleRecordings(req, req.params.groupId);
-  if (seesNone(v)) return res.status(404).json({ error: 'not_found' });
   try {
+    const v = await visibleRecordings(req, req.params.groupId);
+    if (seesNone(v)) return res.status(404).json({ error: 'not_found' });
     // Only the marks on phones the caller sees; all of them for an admin.
     const out = await Container.get(RecordingOrchestrator).clearAnnotations(
       req.params.groupId,
