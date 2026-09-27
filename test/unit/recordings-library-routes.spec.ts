@@ -6,9 +6,11 @@ import request from 'supertest';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
+import { Readable } from 'stream';
 import { Container } from 'typedi';
 import RecordingsRouter, { sourceMp4Handler } from '../../src/app/routers/recordings';
 import { RecordingStore } from '../../src/services/recording/recording-store';
+import { AnnotationRenderService } from '../../src/services/recording/annotation-render';
 import * as deviceService from '../../src/data-service/device-service';
 import * as recordingFiles from '../../src/services/recording/recordingFiles';
 import { scopesForRole } from '../../src/middleware/authMiddleware';
@@ -661,6 +663,56 @@ describe('recordings library routes', () => {
         404,
       );
       expect(store.deleteGroupRows.called).to.equal(false);
+    });
+  });
+
+  describe('GET /recordings/:groupId/exports/annotated.mp4', () => {
+    let render: sinon.SinonSpy;
+    beforeEach(() => {
+      render = sinon.spy(async (id: string) => ({
+        stream: Readable.from([Buffer.from(`annotated-${id}`)]),
+        cleanup: () => undefined,
+      }));
+      Container.set(AnnotationRenderService, { renderForRecording: render } as any);
+    });
+    afterEach(() => {
+      Container.set({ id: AnnotationRenderService, type: AnnotationRenderService } as any);
+    });
+
+    const get = (who: Caller, id: string) =>
+      request(buildApp(who))
+        .get(`/xenon/api/recordings/g1/exports/annotated.mp4?recordingId=${id}`)
+        .buffer(true)
+        .parse((r, cb) => {
+          const chunks: Buffer[] = [];
+          r.on('data', (c: Buffer) => chunks.push(c));
+          r.on('end', () => cb(null, Buffer.concat(chunks)));
+        });
+
+    it('gives the owner the annotated video of their unplugged phone', async () => {
+      visible = new Set(['U1']);
+      rows = [rec(), rec({ id: 'r2', device_udid: 'GONE' })];
+      const res = await get(alice, 'r2');
+      expect(res.status).to.equal(200);
+      expect(res.headers['content-type']).to.match(/video\/mp4/);
+      expect(res.body.toString()).to.equal('annotated-r2');
+    });
+
+    it('answers 404 for a recording from another group, even to an admin', async () => {
+      rows = [rec(), rec({ id: 'rx', group_id: 'g2' })];
+      const res = await get(admin, 'rx');
+      expect(res.status).to.equal(404);
+      expect(JSON.parse(res.body.toString())).to.deep.equal({ error: 'not_found' });
+      expect(render.called).to.equal(false);
+    });
+
+    it('answers 404 to a member for a phone on another team, and for no such recording', async () => {
+      devices.set('OTHER', { name: 'Team B phone', platform: 'android' });
+      visible = new Set(['U1']);
+      rows = [rec({ device_udid: 'OTHER' })];
+      expect((await get(bob, 'r1')).status).to.equal(404);
+      expect((await get(admin, 'nope')).status).to.equal(404);
+      expect(render.called).to.equal(false);
     });
   });
 

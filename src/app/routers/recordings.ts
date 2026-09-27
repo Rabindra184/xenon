@@ -736,42 +736,31 @@ router.get('/recordings/:groupId/bundle.zip', async (req: Request, res: Response
   archive.pipe(res);
 });
 
-router.get(
-  '/recordings/:groupId/exports/annotated.mp4',
-  async (req: Request, res: Response) => {
-    const recordingId = String(req.query.recordingId ?? '');
-    if (!recordingId) {
-      return res.status(400).json({ error: 'recordingId query param is required' });
+/** One phone's video with its marks burned in: the Download menu's "video with annotations". */
+router.get('/recordings/:groupId/exports/annotated.mp4', async (req: Request, res: Response) => {
+  const recordingId = String(req.query.recordingId ?? '');
+  if (!recordingId) {
+    return res.status(400).json({ error: 'recordingId query param is required' });
+  }
+  try {
+    const store = Container.get(RecordingStore);
+    const rec: any = await store.findById(recordingId);
+    if (!rec || rec.group_id !== req.params.groupId) {
+      return res.status(404).json({ error: 'not_found' });
     }
-    // Phase 4A: 404 if the recording's device is not visible to the caller.
-    const auth = (req as Request & { auth?: { teamIds?: string[] } }).auth;
-    if (auth?.teamIds !== undefined) {
-      const rec = await prisma.recording.findUnique({
-        where: { id: recordingId },
-        select: { device_udid: true },
-      });
-      if (!rec) return res.status(404).json({ error: 'not_found' });
-      const dev = await prisma.device.findFirst({
-        where: { udid: rec.device_udid },
-        select: { teamId: true },
-      });
-      const visible = dev && (dev.teamId === null || auth.teamIds.includes(dev.teamId));
-      if (!visible) return res.status(404).json({ error: 'not_found' });
-    }
-    try {
-      const { stream, cleanup } = await Container.get(
-        AnnotationRenderService,
-      ).renderForRecording(recordingId);
-      res.setHeader('Content-Type', 'video/mp4');
-      stream.pipe(res);
-      res.on('close', cleanup);
-      stream.on('end', cleanup);
-    } catch (e: any) {
-      recLog.error(`annotated.mp4 render failed: ${e?.message}`);
-      res.status(500).json({ error: 'render_failed', message: e?.message });
-    }
-  },
-);
+    const visible = await visibleRows(req, [rec], () => store.listGroupStarts(rec.group_id));
+    if (visible.length === 0) return res.status(404).json({ error: 'not_found' });
+    const { stream, cleanup } =
+      await Container.get(AnnotationRenderService).renderForRecording(recordingId);
+    res.setHeader('Content-Type', 'video/mp4');
+    stream.pipe(res);
+    res.on('close', cleanup);
+    stream.on('end', cleanup);
+  } catch (e: any) {
+    recLog.error(`annotated.mp4 render failed: ${e?.message}`);
+    res.status(500).json({ error: 'render_failed', message: e?.message });
+  }
+});
 
 function register(parentRouter: Router) {
   parentRouter.use('/', router);
