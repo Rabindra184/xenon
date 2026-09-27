@@ -94,8 +94,11 @@ export function useSyncedPlayback(
             : videoTimeMs(t, target.offsetMs);
       // Never past the file's own end, which can come before the stored one.
       if (Number.isFinite(el.duration)) wantMs = Math.min(wantMs, el.duration * 1000);
-      // Playing, small drift is left alone; paused, a seek lands exactly.
-      const tolerance = advancing ? RESYNC_MS : PAUSED_RESYNC_MS;
+      // Paused by the user, a seek lands exactly. Playing, or held for a
+      // stall, small drift is left alone: a healthy video trails the clock by
+      // its play latency, and re-seeking it drops its readyState, which can
+      // lengthen the stall.
+      const tolerance = s.current.running ? RESYNC_MS : PAUSED_RESYNC_MS;
       if (needsResync(el.currentTime * 1000, wantMs, tolerance)) el.currentTime = wantMs / 1000;
       if (advancing && phase === 'playing') {
         if (el.paused && !finished(el)) el.play()?.catch(() => undefined);

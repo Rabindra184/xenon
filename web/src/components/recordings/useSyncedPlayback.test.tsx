@@ -282,6 +282,32 @@ describe('useSyncedPlayback', () => {
     expect(v.currentTime).toBeCloseTo(10.1);
   });
 
+  // A stall holds the clock, but nobody paused: a healthy video that trails
+  // the clock by its play latency is left where it is, since re-seeking it
+  // drops its readyState and can lengthen the stall. A pause lands exactly.
+  it('leaves a healthy video alone while a stall holds the clock, and lands a pause exactly', () => {
+    const { p, step } = setup();
+    const a = fakeVideo();
+    const b = fakeVideo();
+    act(() => {
+      p().bind('a', { offsetMs: 0, durationMs: 60_000 })(a);
+      p().bind('b', { offsetMs: 0, durationMs: 60_000 })(b);
+    });
+    act(() => p().play());
+    step(2000);
+    // At 3000 ms: a plays 35 ms behind the clock, b runs out of data.
+    a.currentTime = 2.965;
+    b.currentTime = 3;
+    (b as any).readyState = 2;
+    step(1000);
+    expect(p().waiting).toBe(true);
+    expect(a.currentTime).toBeCloseTo(2.965, 3);
+    step(500);
+    expect(a.currentTime).toBeCloseTo(2.965, 3);
+    act(() => p().pause());
+    expect(a.currentTime).toBeCloseTo(3, 3);
+  });
+
   it('gives the same ref callback for the same phone', () => {
     const { p } = setup();
     expect(p().bind('a', { offsetMs: 0, durationMs: 1 })).toBe(
