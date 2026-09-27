@@ -10,6 +10,8 @@ export interface CreateRecordingInput {
   filePath: string;
   sessionId: string | null;
   deviceSnapshot: string | null;
+  /** Who started it (User.id). */
+  startedBy?: string | null;
 }
 
 export interface FinalizeInput {
@@ -31,6 +33,7 @@ export class RecordingStore {
         file_path: input.filePath,
         session_id: input.sessionId ?? undefined,
         device_snapshot: input.deviceSnapshot ?? undefined,
+        started_by: input.startedBy ?? undefined,
         started_at: new Date(),
         status: 'RECORDING',
       },

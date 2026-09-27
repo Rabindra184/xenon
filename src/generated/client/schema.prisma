@@ -345,6 +345,8 @@ model Recording {
   size_bytes      Int?
   device_snapshot String?
   fail_reason     String?
+  /// The user who started the recording (User.id); null on rows from before 1.29.
+  started_by      String?
   bookmarks       Bookmark[]
   annotations     Annotation[]
   Session         Session?     @relation(fields: [session_id], references: [id])

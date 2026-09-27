@@ -217,6 +217,7 @@ describe('RecordingOrchestrator.start', () => {
         spawnedAtMs: 9000,
         groupT0Ms: 2350,
       });
+      expect(store.create.lastCall.args[0].startedBy).to.equal('actor-1');
     } finally {
       for (const id of ['rec-existing', out.recording.id]) {
         fs.rmSync(path.dirname(recordingTimingPath(videoOf(id))), { recursive: true, force: true });
@@ -230,6 +231,10 @@ describe('RecordingOrchestrator.start', () => {
     expect(out.recordings).to.have.length(2);
     expect(out.compositeEnabled).to.equal(true);
     expect(store.create.callCount).to.equal(2);
+    expect(store.create.getCalls().map((c: any) => c.args[0].startedBy)).to.deep.equal([
+      'actor-1',
+      'actor-1',
+    ]);
     expect((ensureMjpegPortFn as any).callCount).to.equal(2);
     expect(videoPipeline.startRecording.callCount).to.equal(2);
     expect(videoPipeline.startRecording.firstCall.args[0].mjpegPort).to.equal(9100);

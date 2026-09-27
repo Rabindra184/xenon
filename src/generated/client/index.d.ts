@@ -20953,6 +20953,7 @@ export namespace Prisma {
     size_bytes: number | null
     device_snapshot: string | null
     fail_reason: string | null
+    started_by: string | null
   }
 
   export type RecordingMaxAggregateOutputType = {
@@ -20969,6 +20970,7 @@ export namespace Prisma {
     size_bytes: number | null
     device_snapshot: string | null
     fail_reason: string | null
+    started_by: string | null
   }
 
   export type RecordingCountAggregateOutputType = {
@@ -20985,6 +20987,7 @@ export namespace Prisma {
     size_bytes: number
     device_snapshot: number
     fail_reason: number
+    started_by: number
     _all: number
   }
 
@@ -21013,6 +21016,7 @@ export namespace Prisma {
     size_bytes?: true
     device_snapshot?: true
     fail_reason?: true
+    started_by?: true
   }
 
   export type RecordingMaxAggregateInputType = {
@@ -21029,6 +21033,7 @@ export namespace Prisma {
     size_bytes?: true
     device_snapshot?: true
     fail_reason?: true
+    started_by?: true
   }
 
   export type RecordingCountAggregateInputType = {
@@ -21045,6 +21050,7 @@ export namespace Prisma {
     size_bytes?: true
     device_snapshot?: true
     fail_reason?: true
+    started_by?: true
     _all?: true
   }
 
@@ -21148,6 +21154,7 @@ export namespace Prisma {
     size_bytes: number | null
     device_snapshot: string | null
     fail_reason: string | null
+    started_by: string | null
     _count: RecordingCountAggregateOutputType | null
     _avg: RecordingAvgAggregateOutputType | null
     _sum: RecordingSumAggregateOutputType | null
@@ -21183,6 +21190,7 @@ export namespace Prisma {
     size_bytes?: boolean
     device_snapshot?: boolean
     fail_reason?: boolean
+    started_by?: boolean
     bookmarks?: boolean | Recording$bookmarksArgs<ExtArgs>
     annotations?: boolean | Recording$annotationsArgs<ExtArgs>
     Session?: boolean | Recording$SessionArgs<ExtArgs>
@@ -21203,6 +21211,7 @@ export namespace Prisma {
     size_bytes?: boolean
     device_snapshot?: boolean
     fail_reason?: boolean
+    started_by?: boolean
     Session?: boolean | Recording$SessionArgs<ExtArgs>
   }, ExtArgs["result"]["recording"]>
 
@@ -21220,6 +21229,7 @@ export namespace Prisma {
     size_bytes?: boolean
     device_snapshot?: boolean
     fail_reason?: boolean
+    started_by?: boolean
   }
 
   export type RecordingInclude<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
@@ -21253,6 +21263,10 @@ export namespace Prisma {
       size_bytes: number | null
       device_snapshot: string | null
       fail_reason: string | null
+      /**
+       * The user who started the recording (User.id); null on rows from before 1.29.
+       */
+      started_by: string | null
     }, ExtArgs["result"]["recording"]>
     composites: {}
   }
@@ -21662,6 +21676,7 @@ export namespace Prisma {
     readonly size_bytes: FieldRef<"Recording", 'Int'>
     readonly device_snapshot: FieldRef<"Recording", 'String'>
     readonly fail_reason: FieldRef<"Recording", 'String'>
+    readonly started_by: FieldRef<"Recording", 'String'>
   }
     
 
@@ -30056,7 +30071,8 @@ export namespace Prisma {
     duration_ms: 'duration_ms',
     size_bytes: 'size_bytes',
     device_snapshot: 'device_snapshot',
-    fail_reason: 'fail_reason'
+    fail_reason: 'fail_reason',
+    started_by: 'started_by'
   };
 
   export type RecordingScalarFieldEnum = (typeof RecordingScalarFieldEnum)[keyof typeof RecordingScalarFieldEnum]
@@ -31887,6 +31903,7 @@ export namespace Prisma {
     size_bytes?: IntNullableFilter<"Recording"> | number | null
     device_snapshot?: StringNullableFilter<"Recording"> | string | null
     fail_reason?: StringNullableFilter<"Recording"> | string | null
+    started_by?: StringNullableFilter<"Recording"> | string | null
     bookmarks?: BookmarkListRelationFilter
     annotations?: AnnotationListRelationFilter
     Session?: XOR<SessionNullableRelationFilter, SessionWhereInput> | null
@@ -31906,6 +31923,7 @@ export namespace Prisma {
     size_bytes?: SortOrderInput | SortOrder
     device_snapshot?: SortOrderInput | SortOrder
     fail_reason?: SortOrderInput | SortOrder
+    started_by?: SortOrderInput | SortOrder
     bookmarks?: BookmarkOrderByRelationAggregateInput
     annotations?: AnnotationOrderByRelationAggregateInput
     Session?: SessionOrderByWithRelationInput
@@ -31928,6 +31946,7 @@ export namespace Prisma {
     size_bytes?: IntNullableFilter<"Recording"> | number | null
     device_snapshot?: StringNullableFilter<"Recording"> | string | null
     fail_reason?: StringNullableFilter<"Recording"> | string | null
+    started_by?: StringNullableFilter<"Recording"> | string | null
     bookmarks?: BookmarkListRelationFilter
     annotations?: AnnotationListRelationFilter
     Session?: XOR<SessionNullableRelationFilter, SessionWhereInput> | null
@@ -31947,6 +31966,7 @@ export namespace Prisma {
     size_bytes?: SortOrderInput | SortOrder
     device_snapshot?: SortOrderInput | SortOrder
     fail_reason?: SortOrderInput | SortOrder
+    started_by?: SortOrderInput | SortOrder
     _count?: RecordingCountOrderByAggregateInput
     _avg?: RecordingAvgOrderByAggregateInput
     _max?: RecordingMaxOrderByAggregateInput
@@ -31971,6 +31991,7 @@ export namespace Prisma {
     size_bytes?: IntNullableWithAggregatesFilter<"Recording"> | number | null
     device_snapshot?: StringNullableWithAggregatesFilter<"Recording"> | string | null
     fail_reason?: StringNullableWithAggregatesFilter<"Recording"> | string | null
+    started_by?: StringNullableWithAggregatesFilter<"Recording"> | string | null
   }
 
   export type BookmarkWhereInput = {
@@ -34443,6 +34464,7 @@ export namespace Prisma {
     size_bytes?: number | null
     device_snapshot?: string | null
     fail_reason?: string | null
+    started_by?: string | null
     bookmarks?: BookmarkCreateNestedManyWithoutRecordingInput
     annotations?: AnnotationCreateNestedManyWithoutRecordingInput
     Session?: SessionCreateNestedOneWithoutRecordingInput
@@ -34462,6 +34484,7 @@ export namespace Prisma {
     size_bytes?: number | null
     device_snapshot?: string | null
     fail_reason?: string | null
+    started_by?: string | null
     bookmarks?: BookmarkUncheckedCreateNestedManyWithoutRecordingInput
     annotations?: AnnotationUncheckedCreateNestedManyWithoutRecordingInput
   }
@@ -34479,6 +34502,7 @@ export namespace Prisma {
     size_bytes?: NullableIntFieldUpdateOperationsInput | number | null
     device_snapshot?: NullableStringFieldUpdateOperationsInput | string | null
     fail_reason?: NullableStringFieldUpdateOperationsInput | string | null
+    started_by?: NullableStringFieldUpdateOperationsInput | string | null
     bookmarks?: BookmarkUpdateManyWithoutRecordingNestedInput
     annotations?: AnnotationUpdateManyWithoutRecordingNestedInput
     Session?: SessionUpdateOneWithoutRecordingNestedInput
@@ -34498,6 +34522,7 @@ export namespace Prisma {
     size_bytes?: NullableIntFieldUpdateOperationsInput | number | null
     device_snapshot?: NullableStringFieldUpdateOperationsInput | string | null
     fail_reason?: NullableStringFieldUpdateOperationsInput | string | null
+    started_by?: NullableStringFieldUpdateOperationsInput | string | null
     bookmarks?: BookmarkUncheckedUpdateManyWithoutRecordingNestedInput
     annotations?: AnnotationUncheckedUpdateManyWithoutRecordingNestedInput
   }
@@ -34516,6 +34541,7 @@ export namespace Prisma {
     size_bytes?: number | null
     device_snapshot?: string | null
     fail_reason?: string | null
+    started_by?: string | null
   }
 
   export type RecordingUpdateManyMutationInput = {
@@ -34531,6 +34557,7 @@ export namespace Prisma {
     size_bytes?: NullableIntFieldUpdateOperationsInput | number | null
     device_snapshot?: NullableStringFieldUpdateOperationsInput | string | null
     fail_reason?: NullableStringFieldUpdateOperationsInput | string | null
+    started_by?: NullableStringFieldUpdateOperationsInput | string | null
   }
 
   export type RecordingUncheckedUpdateManyInput = {
@@ -34547,6 +34574,7 @@ export namespace Prisma {
     size_bytes?: NullableIntFieldUpdateOperationsInput | number | null
     device_snapshot?: NullableStringFieldUpdateOperationsInput | string | null
     fail_reason?: NullableStringFieldUpdateOperationsInput | string | null
+    started_by?: NullableStringFieldUpdateOperationsInput | string | null
   }
 
   export type BookmarkCreateInput = {
@@ -36455,6 +36483,7 @@ export namespace Prisma {
     size_bytes?: SortOrder
     device_snapshot?: SortOrder
     fail_reason?: SortOrder
+    started_by?: SortOrder
   }
 
   export type RecordingAvgOrderByAggregateInput = {
@@ -36476,6 +36505,7 @@ export namespace Prisma {
     size_bytes?: SortOrder
     device_snapshot?: SortOrder
     fail_reason?: SortOrder
+    started_by?: SortOrder
   }
 
   export type RecordingMinOrderByAggregateInput = {
@@ -36492,6 +36522,7 @@ export namespace Prisma {
     size_bytes?: SortOrder
     device_snapshot?: SortOrder
     fail_reason?: SortOrder
+    started_by?: SortOrder
   }
 
   export type RecordingSumOrderByAggregateInput = {
@@ -38167,6 +38198,7 @@ export namespace Prisma {
     size_bytes?: number | null
     device_snapshot?: string | null
     fail_reason?: string | null
+    started_by?: string | null
     bookmarks?: BookmarkCreateNestedManyWithoutRecordingInput
     annotations?: AnnotationCreateNestedManyWithoutRecordingInput
   }
@@ -38184,6 +38216,7 @@ export namespace Prisma {
     size_bytes?: number | null
     device_snapshot?: string | null
     fail_reason?: string | null
+    started_by?: string | null
     bookmarks?: BookmarkUncheckedCreateNestedManyWithoutRecordingInput
     annotations?: AnnotationUncheckedCreateNestedManyWithoutRecordingInput
   }
@@ -38363,6 +38396,7 @@ export namespace Prisma {
     size_bytes?: IntNullableFilter<"Recording"> | number | null
     device_snapshot?: StringNullableFilter<"Recording"> | string | null
     fail_reason?: StringNullableFilter<"Recording"> | string | null
+    started_by?: StringNullableFilter<"Recording"> | string | null
   }
 
   export type SessionCreateWithoutSessionLogInput = {
@@ -39647,6 +39681,7 @@ export namespace Prisma {
     size_bytes?: number | null
     device_snapshot?: string | null
     fail_reason?: string | null
+    started_by?: string | null
     annotations?: AnnotationCreateNestedManyWithoutRecordingInput
     Session?: SessionCreateNestedOneWithoutRecordingInput
   }
@@ -39665,6 +39700,7 @@ export namespace Prisma {
     size_bytes?: number | null
     device_snapshot?: string | null
     fail_reason?: string | null
+    started_by?: string | null
     annotations?: AnnotationUncheckedCreateNestedManyWithoutRecordingInput
   }
 
@@ -39697,6 +39733,7 @@ export namespace Prisma {
     size_bytes?: NullableIntFieldUpdateOperationsInput | number | null
     device_snapshot?: NullableStringFieldUpdateOperationsInput | string | null
     fail_reason?: NullableStringFieldUpdateOperationsInput | string | null
+    started_by?: NullableStringFieldUpdateOperationsInput | string | null
     annotations?: AnnotationUpdateManyWithoutRecordingNestedInput
     Session?: SessionUpdateOneWithoutRecordingNestedInput
   }
@@ -39715,6 +39752,7 @@ export namespace Prisma {
     size_bytes?: NullableIntFieldUpdateOperationsInput | number | null
     device_snapshot?: NullableStringFieldUpdateOperationsInput | string | null
     fail_reason?: NullableStringFieldUpdateOperationsInput | string | null
+    started_by?: NullableStringFieldUpdateOperationsInput | string | null
     annotations?: AnnotationUncheckedUpdateManyWithoutRecordingNestedInput
   }
 
@@ -39731,6 +39769,7 @@ export namespace Prisma {
     size_bytes?: number | null
     device_snapshot?: string | null
     fail_reason?: string | null
+    started_by?: string | null
     bookmarks?: BookmarkCreateNestedManyWithoutRecordingInput
     Session?: SessionCreateNestedOneWithoutRecordingInput
   }
@@ -39749,6 +39788,7 @@ export namespace Prisma {
     size_bytes?: number | null
     device_snapshot?: string | null
     fail_reason?: string | null
+    started_by?: string | null
     bookmarks?: BookmarkUncheckedCreateNestedManyWithoutRecordingInput
   }
 
@@ -39781,6 +39821,7 @@ export namespace Prisma {
     size_bytes?: NullableIntFieldUpdateOperationsInput | number | null
     device_snapshot?: NullableStringFieldUpdateOperationsInput | string | null
     fail_reason?: NullableStringFieldUpdateOperationsInput | string | null
+    started_by?: NullableStringFieldUpdateOperationsInput | string | null
     bookmarks?: BookmarkUpdateManyWithoutRecordingNestedInput
     Session?: SessionUpdateOneWithoutRecordingNestedInput
   }
@@ -39799,6 +39840,7 @@ export namespace Prisma {
     size_bytes?: NullableIntFieldUpdateOperationsInput | number | null
     device_snapshot?: NullableStringFieldUpdateOperationsInput | string | null
     fail_reason?: NullableStringFieldUpdateOperationsInput | string | null
+    started_by?: NullableStringFieldUpdateOperationsInput | string | null
     bookmarks?: BookmarkUncheckedUpdateManyWithoutRecordingNestedInput
   }
 
@@ -40500,6 +40542,7 @@ export namespace Prisma {
     size_bytes?: number | null
     device_snapshot?: string | null
     fail_reason?: string | null
+    started_by?: string | null
   }
 
   export type LogUpdateWithoutSessionInput = {
@@ -40658,6 +40701,7 @@ export namespace Prisma {
     size_bytes?: NullableIntFieldUpdateOperationsInput | number | null
     device_snapshot?: NullableStringFieldUpdateOperationsInput | string | null
     fail_reason?: NullableStringFieldUpdateOperationsInput | string | null
+    started_by?: NullableStringFieldUpdateOperationsInput | string | null
     bookmarks?: BookmarkUpdateManyWithoutRecordingNestedInput
     annotations?: AnnotationUpdateManyWithoutRecordingNestedInput
   }
@@ -40675,6 +40719,7 @@ export namespace Prisma {
     size_bytes?: NullableIntFieldUpdateOperationsInput | number | null
     device_snapshot?: NullableStringFieldUpdateOperationsInput | string | null
     fail_reason?: NullableStringFieldUpdateOperationsInput | string | null
+    started_by?: NullableStringFieldUpdateOperationsInput | string | null
     bookmarks?: BookmarkUncheckedUpdateManyWithoutRecordingNestedInput
     annotations?: AnnotationUncheckedUpdateManyWithoutRecordingNestedInput
   }
@@ -40692,6 +40737,7 @@ export namespace Prisma {
     size_bytes?: NullableIntFieldUpdateOperationsInput | number | null
     device_snapshot?: NullableStringFieldUpdateOperationsInput | string | null
     fail_reason?: NullableStringFieldUpdateOperationsInput | string | null
+    started_by?: NullableStringFieldUpdateOperationsInput | string | null
   }
 
   export type DeviceCreateManyTeamInput = {

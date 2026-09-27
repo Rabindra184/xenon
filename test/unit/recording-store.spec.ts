@@ -140,4 +140,28 @@ describe('RecordingStore (Prisma round-trip)', () => {
   it('clearAnnotations with no recordings is a no-op', async () => {
     expect(await store.clearAnnotations([], 5000)).to.equal(0);
   });
+
+  it('keeps who started a recording, and null when nobody is known', async () => {
+    const a = await store.create({
+      id: 'test-rec-by-1',
+      groupId: 'test-g-by',
+      deviceUdid: 'TEST-BY1',
+      deviceHost: '127.0.0.1',
+      filePath: '/tmp/by1.mp4',
+      sessionId: null,
+      deviceSnapshot: null,
+      startedBy: 'usr_alice',
+    });
+    const b = await store.create({
+      id: 'test-rec-by-2',
+      groupId: 'test-g-by',
+      deviceUdid: 'TEST-BY2',
+      deviceHost: '127.0.0.1',
+      filePath: '/tmp/by2.mp4',
+      sessionId: null,
+      deviceSnapshot: null,
+    });
+    expect(a.started_by).to.equal('usr_alice');
+    expect(b.started_by).to.equal(null);
+  });
 });
