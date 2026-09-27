@@ -1,0 +1,176 @@
+import * as React from 'react';
+import { act, render } from '@testing-library/react';
+import { describe, expect, it, vi } from 'vitest';
+import { useSyncedPlayback, type PlaybackClock, type SyncedPlayback } from './useSyncedPlayback';
+
+function fakeClock() {
+  let now = 0;
+  let pending: (() => void) | null = null;
+  const clock: PlaybackClock = {
+    now: () => now,
+    schedule: (cb) => {
+      pending = cb;
+      return 1;
+    },
+    cancel: () => {
+      pending = null;
+    },
+  };
+  /** Advance time and run one frame. */
+  const step = (ms: number) =>
+    act(() => {
+      now += ms;
+      const cb = pending;
+      pending = null;
+      cb?.();
+    });
+  return { clock, step };
+}
+
+function fakeVideo(over: Partial<HTMLVideoElement> = {}) {
+  const v: any = {
+    currentTime: 0,
+    paused: true,
+    readyState: 4,
+    error: null,
+    play: vi.fn(function (this: any) {
+      this.paused = false;
+      return Promise.resolve();
+    }),
+    pause: vi.fn(function (this: any) {
+      this.paused = true;
+    }),
+    ...over,
+  };
+  // Not re-bound: the hook only ever calls these as el.play()/el.pause(), so `this`
+  // is already `v`. Function.prototype.bind() returns a plain wrapper without the
+  // vi.fn() mock's `.mock` bookkeeping, which makes toHaveBeenCalled() throw.
+  return v as HTMLVideoElement & {
+    play: ReturnType<typeof vi.fn>;
+    pause: ReturnType<typeof vi.fn>;
+  };
+}
+
+function setup(duration = 60_000) {
+  const { clock, step } = fakeClock();
+  const api: { current: SyncedPlayback | null } = { current: null };
+  function Harness() {
+    api.current = useSyncedPlayback(duration, clock);
+    return null;
+  }
+  render(<Harness />);
+  const p = () => api.current as SyncedPlayback;
+  return { p, step };
+}
+
+describe('useSyncedPlayback', () => {
+  it('plays each phone at its own time, and holds a late one at 0 until it joins', () => {
+    const { p, step } = setup();
+    const early = fakeVideo();
+    const late = fakeVideo();
+    act(() => {
+      p().bind('a', { offsetMs: -1000, durationMs: 61_000 })(early);
+      p().bind('b', { offsetMs: 10_000, durationMs: 20_000 })(late);
+    });
+    act(() => p().play());
+    expect(early.currentTime).toBeCloseTo(1);
+    expect(early.paused).toBe(false);
+    expect(late.paused).toBe(true);
+    step(5000);
+    expect(late.paused).toBe(true);
+    expect(late.currentTime).toBe(0);
+    step(6000);
+    expect(late.paused).toBe(false);
+    expect(p().playing).toBe(true);
+  });
+
+  it('pulls back a video that drifted past 250 ms, and leaves a small drift alone', () => {
+    const { p, step } = setup();
+    const v = fakeVideo();
+    act(() => p().bind('a', { offsetMs: 0, durationMs: 60_000 })(v));
+    act(() => p().play());
+    step(10_000);
+    v.currentTime = 10.2; // 200 ms ahead of 10.0 s
+    step(0);
+    expect(v.currentTime).toBeCloseTo(10.2);
+    v.currentTime = 11; // 1 s ahead
+    step(0);
+    expect(v.currentTime).toBeCloseTo(10);
+  });
+
+  it('waits for a stalled video, pausing the rest, then carries on from the same time', () => {
+    const { p, step } = setup();
+    const a = fakeVideo();
+    const b = fakeVideo();
+    act(() => {
+      p().bind('a', { offsetMs: 0, durationMs: 60_000 })(a);
+      p().bind('b', { offsetMs: 0, durationMs: 60_000 })(b);
+    });
+    act(() => p().play());
+    step(2000);
+    (b as any).readyState = 2;
+    step(1000);
+    expect(p().waiting).toBe(true);
+    expect(a.paused).toBe(true);
+    const held = p().timeMs;
+    step(5000);
+    expect(p().timeMs).toBe(held);
+    (b as any).readyState = 4;
+    step(0);
+    step(1000);
+    expect(p().waiting).toBe(false);
+    expect(a.paused).toBe(false);
+    expect(p().timeMs).toBeGreaterThan(held);
+  });
+
+  it('ignores a video that failed to load', () => {
+    const { p, step } = setup();
+    const ok = fakeVideo();
+    const broken = fakeVideo({ readyState: 0, error: {} as MediaError });
+    act(() => {
+      p().bind('a', { offsetMs: 0, durationMs: 60_000 })(ok);
+      p().bind('b', { offsetMs: 0, durationMs: 60_000 })(broken);
+    });
+    act(() => p().play());
+    step(1000);
+    expect(p().waiting).toBe(false);
+    expect(broken.play).not.toHaveBeenCalled();
+  });
+
+  it('stops at the end, and plays again from the start', () => {
+    const { p, step } = setup(10_000);
+    const v = fakeVideo();
+    act(() => p().bind('a', { offsetMs: 0, durationMs: 10_000 })(v));
+    act(() => p().play());
+    step(12_000);
+    expect(p().playing).toBe(false);
+    expect(p().timeMs).toBe(10_000);
+    act(() => p().play());
+    expect(p().timeMs).toBe(0);
+    expect(p().playing).toBe(true);
+  });
+
+  it('seeks every video while paused, clamped to the recording', () => {
+    const { p } = setup(60_000);
+    const a = fakeVideo();
+    const b = fakeVideo();
+    act(() => {
+      p().bind('a', { offsetMs: 0, durationMs: 60_000 })(a);
+      p().bind('b', { offsetMs: 20_000, durationMs: 30_000 })(b);
+    });
+    act(() => p().seek(30_000));
+    expect(a.currentTime).toBeCloseTo(30);
+    expect(b.currentTime).toBeCloseTo(10);
+    expect(a.paused).toBe(true);
+    act(() => p().seek(99_999));
+    expect(p().timeMs).toBe(60_000);
+    expect(b.currentTime).toBeCloseTo(30); // finished: held at its end
+  });
+
+  it('gives the same ref callback for the same phone', () => {
+    const { p } = setup();
+    expect(p().bind('a', { offsetMs: 0, durationMs: 1 })).toBe(
+      p().bind('a', { offsetMs: 0, durationMs: 1 }),
+    );
+  });
+});
