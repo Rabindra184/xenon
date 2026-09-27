@@ -1,0 +1,289 @@
+import 'reflect-metadata';
+import { expect } from 'chai';
+import sinon from 'sinon';
+import express from 'express';
+import request from 'supertest';
+import * as fs from 'fs';
+import * as os from 'os';
+import * as path from 'path';
+import { Container } from 'typedi';
+import RecordingsRouter from '../../src/app/routers/recordings';
+import { RecordingStore } from '../../src/services/recording/recording-store';
+import * as deviceService from '../../src/data-service/device-service';
+import * as recordingFiles from '../../src/services/recording/recordingFiles';
+import { scopesForRole } from '../../src/middleware/authMiddleware';
+import { useArtifactStore } from '../helpers/artifact-store';
+
+type Role = 'MEMBER' | 'ADMIN' | 'SUPER_ADMIN';
+const T0 = Date.parse('2026-09-20T10:00:00.000Z');
+
+function rec(over: any = {}) {
+  return {
+    id: 'r1',
+    group_id: 'g1',
+    device_udid: 'U1',
+    device_host: '127.0.0.1',
+    session_id: null,
+    status: 'STOPPED',
+    started_at: new Date(T0),
+    ended_at: new Date(T0 + 60_000),
+    duration_ms: 60_000,
+    size_bytes: 10,
+    fail_reason: null,
+    started_by: 'usr_alice',
+    file_path: '/nonexistent/r1/video/r1.mp4',
+    device_snapshot: null,
+    bookmarks: [],
+    annotations: [],
+    _count: { annotations: 0 },
+    ...over,
+  };
+}
+
+function buildApp(caller: { userId: string; role?: Role; teamIds?: string[] }) {
+  const app = express();
+  app.use(express.json());
+  const api = express.Router();
+  api.use((req, _res, next) => {
+    const role = caller.role ?? 'MEMBER';
+    (req as any).auth = {
+      kind: 'user-session',
+      userId: caller.userId,
+      role,
+      scopes: scopesForRole(role),
+      teamIds: caller.teamIds,
+      rateLimit: 100,
+    };
+    next();
+  });
+  RecordingsRouter.register(api);
+  app.use('/xenon/api', api);
+  return app;
+}
+
+describe('recordings library routes', () => {
+  useArtifactStore();
+  let rows: any[];
+  let visible: Set<string>;
+  let store: any;
+  let remove: sinon.SinonStub;
+
+  beforeEach(() => {
+    rows = [];
+    visible = new Set(['U1', 'U2']);
+    store = {
+      libraryRows: async () => rows,
+      listGroup: async (g: string) => rows.filter((r) => r.group_id === g),
+      findById: async (id: string) => rows.find((r) => r.id === id) ?? null,
+      deleteGroupRows: sinon.stub().callsFake(async (g: string) => {
+        const n = rows.filter((r) => r.group_id === g).length;
+        rows = rows.filter((r) => r.group_id !== g);
+        return n;
+      }),
+      deviceNames: async () => new Map([['U1', { name: 'Galaxy S9+', platform: 'android' }]]),
+      userNames: async () => new Map([['usr_alice', 'Alice']]),
+    };
+    Container.set(RecordingStore, store);
+    sinon
+      .stub(deviceService, 'filterRowsByVisibleDevice')
+      .callsFake(async (list: any[], teamIds: any) =>
+        teamIds === undefined ? list : list.filter((r) => visible.has(r.device_udid)),
+      );
+    remove = sinon.stub(recordingFiles, 'removeRecordingFiles').returns([]);
+  });
+
+  afterEach(() => {
+    sinon.restore();
+    Container.remove(RecordingStore);
+  });
+
+  const alice = { userId: 'usr_alice', teamIds: ['t1'] };
+  const bob = { userId: 'usr_bob', teamIds: ['t1'] };
+  const admin = { userId: 'usr_root', role: 'ADMIN' as Role };
+
+  describe('GET /recordings', () => {
+    it('lists visible groups, newest first, with retention', async () => {
+      rows = [
+        rec({ id: 'a', group_id: 'g1' }),
+        rec({ id: 'b', group_id: 'g2', started_at: new Date(T0 + 1000) }),
+        rec({ id: 'c', group_id: 'g3', device_udid: 'HIDDEN' }),
+      ];
+      const res = await request(buildApp(alice)).get('/xenon/api/recordings');
+      expect(res.status, JSON.stringify(res.body)).to.equal(200);
+      expect(res.body.recordings.map((s: any) => s.groupId)).to.deep.equal(['g2', 'g1']);
+      expect(res.body.recordings[0].phones[0].name).to.equal('Galaxy S9+');
+      expect(res.body.recordings[0].startedBy).to.deep.equal({ id: 'usr_alice', name: 'Alice' });
+      expect(res.body.total).to.equal(2);
+      expect(res.body.retention).to.deep.equal({ days: 30, maxCount: 100 });
+    });
+
+    it('passes the filters and the page through', async () => {
+      rows = [
+        rec({ id: 'a', group_id: 'g1' }),
+        rec({ id: 'b', group_id: 'g2', device_udid: 'U2', started_at: new Date(T0 + 1000) }),
+      ];
+      const one = await request(buildApp(alice)).get('/xenon/api/recordings?limit=1');
+      expect(one.body.recordings.map((s: any) => s.groupId)).to.deep.equal(['g2']);
+      const two = await request(buildApp(alice)).get(
+        `/xenon/api/recordings?limit=1&cursor=${encodeURIComponent(one.body.nextCursor)}`,
+      );
+      expect(two.body.recordings.map((s: any) => s.groupId)).to.deep.equal(['g1']);
+      const byPhone = await request(buildApp(alice)).get('/xenon/api/recordings?udid=U2');
+      expect(byPhone.body.recordings.map((s: any) => s.groupId)).to.deep.equal(['g2']);
+    });
+
+    it('answers 400 for a bad query', async () => {
+      const res = await request(buildApp(alice)).get('/xenon/api/recordings?since=nope');
+      expect(res.status).to.equal(400);
+      expect(res.body.error).to.equal('since must be an ISO time');
+    });
+  });
+
+  describe('GET /recordings/:groupId', () => {
+    it('adds the summary, and bookmarks and marks with their recording', async () => {
+      rows = [
+        rec({
+          bookmarks: [
+            { id: 'b1', recording_id: 'r1', timecode_ms: 4000, label: 'Pay', note: null },
+          ],
+          annotations: [
+            {
+              id: 'a1',
+              recording_id: 'r1',
+              timecode_ms: 2000,
+              end_timecode_ms: 3000,
+              shape: 'RECT',
+              geometry: '{"x":0.1,"y":0.1,"w":0.2,"h":0.2}',
+              color: 'red',
+              text: null,
+            },
+          ],
+        }),
+      ];
+      const res = await request(buildApp(alice)).get('/xenon/api/recordings/g1');
+      expect(res.status).to.equal(200);
+      expect(res.body.summary.groupId).to.equal('g1');
+      expect(res.body.recordings).to.have.length(1);
+      expect(res.body.bookmarks).to.deep.equal([
+        { id: 'b1', recordingId: 'r1', timecodeMs: 4000, label: 'Pay', note: null },
+      ]);
+      expect(res.body.annotations[0]).to.deep.include({
+        id: 'a1',
+        recordingId: 'r1',
+        timecodeMs: 2000,
+        endTimecodeMs: 3000,
+        shape: 'RECT',
+      });
+    });
+
+    it('answers 404 for a group that does not exist or is not visible', async () => {
+      expect((await request(buildApp(admin)).get('/xenon/api/recordings/nope')).status).to.equal(
+        404,
+      );
+      rows = [rec({ device_udid: 'HIDDEN' })];
+      expect((await request(buildApp(alice)).get('/xenon/api/recordings/g1')).status).to.equal(404);
+    });
+  });
+
+  describe('DELETE /recordings/:groupId', () => {
+    const del = (who: any) => request(buildApp(who)).delete('/xenon/api/recordings/g1');
+
+    it('lets the person who recorded it delete it: rows, then files', async () => {
+      rows = [
+        rec(),
+        rec({ id: 'r2', device_udid: 'U2', file_path: '/nonexistent/r2/video/r2.mp4' }),
+      ];
+      const res = await del(alice);
+      expect(res.status, JSON.stringify(res.body)).to.equal(204);
+      expect(store.deleteGroupRows.calledOnceWith('g1')).to.equal(true);
+      expect(remove.calledOnce).to.equal(true);
+      expect(remove.firstCall.args[0]).to.deep.equal([
+        '/nonexistent/r1/video/r1.mp4',
+        '/nonexistent/r2/video/r2.mp4',
+      ]);
+      expect(remove.firstCall.args[1]).to.match(/_groups[\\/]g1$/);
+      expect(store.deleteGroupRows.calledBefore(remove)).to.equal(true);
+    });
+
+    it('lets an admin delete anyone’s', async () => {
+      rows = [rec()];
+      expect((await del(admin)).status).to.equal(204);
+    });
+
+    it('refuses someone else with 403 not_owner', async () => {
+      rows = [rec()];
+      const res = await del(bob);
+      expect(res.status).to.equal(403);
+      expect(res.body.error).to.equal('not_owner');
+      expect(store.deleteGroupRows.called).to.equal(false);
+    });
+
+    it('keeps a recording with no known owner for admins', async () => {
+      rows = [rec({ started_by: null })];
+      expect((await del(alice)).status).to.equal(403);
+      expect((await del(admin)).status).to.equal(204);
+    });
+
+    it('refuses a running recording with 409, even to its owner', async () => {
+      rows = [rec({ status: 'RECORDING', ended_at: null, duration_ms: null })];
+      const res = await del(alice);
+      expect(res.status).to.equal(409);
+      expect(res.body.error).to.equal('recording_in_progress');
+    });
+
+    it('answers 404 for a group the caller cannot see, or that is gone', async () => {
+      rows = [rec({ device_udid: 'HIDDEN' })];
+      expect((await del(alice)).status).to.equal(404);
+      rows = [];
+      expect((await del(admin)).status).to.equal(404);
+    });
+  });
+
+  describe('GET /recordings/:groupId/source.mp4', () => {
+    let dir: string;
+    beforeEach(() => {
+      dir = fs.mkdtempSync(path.join(os.tmpdir(), 'rec-src-'));
+    });
+    afterEach(() => fs.rmSync(dir, { recursive: true, force: true }));
+
+    it('streams the clean video with range support', async () => {
+      const file = path.join(dir, 'r1.mp4');
+      fs.writeFileSync(file, Buffer.from('0123456789'));
+      rows = [rec({ file_path: file })];
+      const res = await request(buildApp(alice))
+        .get('/xenon/api/recordings/g1/source.mp4?recordingId=r1')
+        .set('Range', 'bytes=2-5')
+        .buffer(true)
+        .parse((r, cb) => {
+          const chunks: Buffer[] = [];
+          r.on('data', (c: Buffer) => chunks.push(c));
+          r.on('end', () => cb(null, Buffer.concat(chunks)));
+        });
+      expect(res.status).to.equal(206);
+      expect(res.headers['content-type']).to.match(/video\/mp4/);
+      expect(res.body.toString()).to.equal('2345');
+      expect(res.headers['content-disposition']).to.equal(undefined);
+    });
+
+    it('serves it as an attachment for download', async () => {
+      const file = path.join(dir, 'r1.mp4');
+      fs.writeFileSync(file, 'x');
+      rows = [rec({ file_path: file })];
+      const res = await request(buildApp(alice)).get(
+        '/xenon/api/recordings/g1/source.mp4?recordingId=r1&download=1',
+      );
+      expect(res.status).to.equal(200);
+      expect(res.headers['content-disposition']).to.match(/attachment; filename="U1\.mp4"/);
+    });
+
+    it('answers 400 without a recording, and 404 for another group, an invisible phone or a missing file', async () => {
+      rows = [rec(), rec({ id: 'rx', group_id: 'g2' }), rec({ id: 'rh', device_udid: 'HIDDEN' })];
+      const get = (q: string) =>
+        request(buildApp(alice)).get(`/xenon/api/recordings/g1/source.mp4${q}`);
+      expect((await get('')).status).to.equal(400);
+      expect((await get('?recordingId=rx')).status).to.equal(404);
+      expect((await get('?recordingId=rh')).status).to.equal(404);
+      expect((await get('?recordingId=r1')).status).to.equal(404);
+    });
+  });
+});

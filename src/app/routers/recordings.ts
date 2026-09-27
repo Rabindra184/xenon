@@ -1,6 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { Container } from 'typedi';
 import * as fs from 'fs';
+import * as path from 'path';
 import {
   RecordingOrchestrator,
   RecordingError,
@@ -9,15 +10,25 @@ import {
 import { ProofBundleService } from '../../services/recording/proof-bundle';
 import { AnnotationRenderService } from '../../services/recording/annotation-render';
 import { RecordingStore } from '../../services/recording/recording-store';
+import {
+  summarizeGroup,
+  buildLibrary,
+  type SummaryRow,
+  type SummaryContext,
+  type Retention,
+} from '../../services/recording/recordingSummary';
+import * as recordingFiles from '../../services/recording/recordingFiles';
 import { roleGuard } from '../../middleware/roleGuard';
 import { resolveActor } from '../../services/device-access/actor';
-import { filterRowsByVisibleDevice } from '../../data-service/device-service';
+import * as deviceService from '../../data-service/device-service';
 import { prisma } from '../../prisma';
-import { parseClearBody } from './recordingRequests';
+import { parseClearBody, parseLibraryQuery } from './recordingRequests';
 import { decodeAnnotationImage } from '../../services/recording/annotationImage';
 import { selectOwnActiveGroups } from '../../services/recording/activeRecordings';
 import { readRecordingTiming } from '../../services/recording/recordingTiming';
 import { DeviceStoreFactory } from '../../data-service/device-store';
+import { PluginContext } from '../../PluginContext';
+import { config } from '../../config';
 import log from '../../logger';
 
 // Phase 4A: a recording group is visible if at least one of its rows runs on
@@ -35,13 +46,84 @@ async function isGroupVisibleToAuth(
     select: { device_udid: true },
   });
   if (rows.length === 0) return false;
-  const visible = await filterRowsByVisibleDevice(rows, teamIds, 'device_udid');
+  const visible = await deviceService.filterRowsByVisibleDevice(rows, teamIds, 'device_udid');
   return visible.length > 0;
+}
+
+type AuthLike = { teamIds?: string[] };
+const authOf = (req: Request) => (req as Request & { auth?: AuthLike }).auth;
+
+/** CleanupService's defaults, so the page's footnote says what the sweep does. */
+function retention(): Retention {
+  const a = Container.get(PluginContext).pluginArgs ?? {};
+  return {
+    days: a.recordingCleanupDays ?? 30,
+    failedDays: a.recordingFailedCleanupDays ?? 2,
+    maxCount: a.recordingCleanupMaxCount ?? 100,
+  };
+}
+
+function toSummaryRow(r: any): SummaryRow {
+  return {
+    id: r.id,
+    group_id: r.group_id,
+    device_udid: r.device_udid,
+    status: r.status,
+    started_at: new Date(r.started_at),
+    ended_at: r.ended_at ? new Date(r.ended_at) : null,
+    duration_ms: r.duration_ms ?? null,
+    size_bytes: r.size_bytes ?? null,
+    fail_reason: r.fail_reason ?? null,
+    started_by: r.started_by ?? null,
+    timing: r.file_path ? readRecordingTiming(r.file_path) : undefined,
+    bookmarkLabels: (r.bookmarks ?? []).map((b: { label: string }) => b.label),
+    annotationCount: r._count?.annotations ?? (r.annotations ?? []).length,
+  };
+}
+
+async function summaryContext(rows: any[]): Promise<SummaryContext> {
+  const store = Container.get(RecordingStore);
+  const udids = Array.from(new Set(rows.map((r) => r.device_udid as string)));
+  const users = Array.from(
+    new Set(rows.map((r) => r.started_by as string | null).filter((u): u is string => !!u)),
+  );
+  return {
+    devices: await store.deviceNames(udids),
+    users: await store.userNames(users),
+    retention: retention(),
+    hasComposite: (g) => fs.existsSync(compositeOutputPath(g)),
+  };
 }
 
 const recLog = log.scope('RecordingsRouter');
 const router = Router();
 router.use(roleGuard('MEMBER'));
+
+router.get('/recordings', async (req: Request, res: Response) => {
+  const parsed = parseLibraryQuery(req.query as Record<string, unknown>);
+  if (!parsed.ok) return res.status(400).json({ error: parsed.error });
+  try {
+    const rows = await Container.get(RecordingStore).libraryRows();
+    const visible = await deviceService.filterRowsByVisibleDevice(
+      rows,
+      authOf(req)?.teamIds,
+      'device_udid',
+    );
+    const ctx = await summaryContext(visible);
+    const page = buildLibrary(visible.map(toSummaryRow), ctx, parsed.filter, {
+      limit: parsed.limit,
+      cursor: parsed.cursor,
+      now: Date.now(),
+    });
+    return res.json({
+      ...page,
+      retention: { days: ctx.retention.days, maxCount: ctx.retention.maxCount },
+    });
+  } catch (e: any) {
+    recLog.error(`GET /recordings failed: ${e?.message}`);
+    return res.status(500).json({ error: 'internal', message: e?.message });
+  }
+});
 
 router.post('/recordings', async (req: Request, res: Response) => {
   const { udids, sessionId, note } = req.body ?? {};
@@ -243,20 +325,104 @@ router.post('/recordings/:groupId/annotations/clear', async (req: Request, res: 
 router.get('/recordings/:groupId', async (req: Request, res: Response) => {
   try {
     const recs = await Container.get(RecordingStore).listGroup(req.params.groupId);
-    // Phase 4A: filter the per-device rows to those whose device is visible
-    // to the caller. 404 the whole group if none are visible.
-    const auth = (req as Request & { auth?: { teamIds?: string[] } }).auth;
-    const visibleRecs = await filterRowsByVisibleDevice(
+    const visibleRecs = await deviceService.filterRowsByVisibleDevice(
       recs,
-      auth?.teamIds,
+      authOf(req)?.teamIds,
       'device_udid',
     );
-    if (auth?.teamIds !== undefined && visibleRecs.length === 0) {
-      return res.status(404).json({ error: 'not_found' });
-    }
-    res.json({ groupId: req.params.groupId, recordings: visibleRecs });
+    if (visibleRecs.length === 0) return res.status(404).json({ error: 'not_found' });
+    const summary = summarizeGroup(
+      visibleRecs.map(toSummaryRow),
+      await summaryContext(visibleRecs),
+    );
+    const bookmarks = visibleRecs
+      .reduce<any[]>(
+        (acc, r: any) =>
+          acc.concat(
+            (r.bookmarks ?? []).map((b: any) => ({
+              id: b.id,
+              recordingId: r.id,
+              timecodeMs: b.timecode_ms,
+              label: b.label,
+              note: b.note ?? null,
+            })),
+          ),
+        [],
+      )
+      .sort((a, b) => a.timecodeMs - b.timecodeMs);
+    const annotations = visibleRecs
+      .reduce<any[]>(
+        (acc, r: any) =>
+          acc.concat(
+            (r.annotations ?? []).map((a: any) => ({
+              id: a.id,
+              recordingId: r.id,
+              timecodeMs: a.timecode_ms,
+              endTimecodeMs: a.end_timecode_ms ?? null,
+              shape: a.shape,
+              geometry: a.geometry,
+              color: a.color,
+              text: a.text ?? null,
+            })),
+          ),
+        [],
+      )
+      .sort((a, b) => a.timecodeMs - b.timecodeMs);
+    return res.json({
+      groupId: req.params.groupId,
+      recordings: visibleRecs,
+      summary,
+      bookmarks,
+      annotations,
+    });
   } catch (e: any) {
-    res.status(500).json({ error: 'internal', message: e?.message });
+    return res.status(500).json({ error: 'internal', message: e?.message });
+  }
+});
+
+router.delete('/recordings/:groupId', async (req: Request, res: Response) => {
+  const { groupId } = req.params;
+  try {
+    const store = Container.get(RecordingStore);
+    const recs: any[] = await store.listGroup(groupId);
+    const visible = await deviceService.filterRowsByVisibleDevice(
+      recs,
+      authOf(req)?.teamIds,
+      'device_udid',
+    );
+    if (visible.length === 0) return res.status(404).json({ error: 'not_found' });
+    if (recs.some((r) => r.status === 'RECORDING')) {
+      return res.status(409).json({
+        error: 'recording_in_progress',
+        message: 'Stop the recording on Live devices before deleting it.',
+      });
+    }
+    const owner = recs
+      .slice()
+      .sort((a, b) => new Date(a.started_at).getTime() - new Date(b.started_at).getTime())
+      .find((r) => r.started_by)?.started_by;
+    const actor = resolveActor(req);
+    if (!actor.isAdmin && (!owner || owner !== actor.userId)) {
+      return res.status(403).json({
+        error: 'not_owner',
+        message: 'Only the person who recorded it, or an admin, can delete it.',
+      });
+    }
+    // Rows first: if removing a file fails, no row points at it and the
+    // orphan sweep reclaims it; the reverse would leave rows with no videos.
+    await store.deleteGroupRows(groupId);
+    const removed = recordingFiles.removeRecordingFiles(
+      recs.map((r) => r.file_path),
+      path.dirname(compositeOutputPath(groupId)),
+      config.recordingsAssetsPath,
+    );
+    recLog.info(
+      `Deleted recording ${groupId} (${recs.length} video(s), ${removed.length} dir(s)) for ${actor.userId}`,
+    );
+    return res.status(204).end();
+  } catch (e: any) {
+    recLog.error(`DELETE /recordings/:groupId failed: ${e?.message}`);
+    return res.status(500).json({ error: 'internal', message: e?.message });
   }
 });
 
@@ -345,6 +511,45 @@ router.get('/recordings/:groupId/video.mp4', async (req: Request, res: Response)
     fs.createReadStream(hit.filePath).pipe(res);
   } catch (e: any) {
     recLog.error(`video.mp4 failed: ${e?.message}`);
+    return res.status(500).json({ error: 'internal', message: e?.message });
+  }
+});
+
+/**
+ * The clean video, for the recording page's player: no burned-in marks (the
+ * page draws them), and Range support so it can seek. `download=1` makes it
+ * an attachment — the per-phone "Video" download.
+ */
+router.get('/recordings/:groupId/source.mp4', async (req: Request, res: Response) => {
+  const recordingId = typeof req.query.recordingId === 'string' ? req.query.recordingId : '';
+  if (!recordingId) return res.status(400).json({ error: 'recordingId query param is required' });
+  try {
+    const rec: any = await Container.get(RecordingStore).findById(recordingId);
+    if (!rec || rec.group_id !== req.params.groupId)
+      return res.status(404).json({ error: 'not_found' });
+    const visible = await deviceService.filterRowsByVisibleDevice(
+      [rec],
+      authOf(req)?.teamIds,
+      'device_udid',
+    );
+    if (visible.length === 0) return res.status(404).json({ error: 'not_found' });
+    if (!rec.file_path || !fs.existsSync(rec.file_path)) {
+      return res.status(404).json({ error: 'video_not_found' });
+    }
+    if (req.query.download === '1') {
+      const stem = String(rec.device_udid).replace(/[^A-Za-z0-9._-]/g, '_');
+      res.setHeader('Content-Disposition', `attachment; filename="${stem}.mp4"`);
+    }
+    return res.sendFile(
+      path.resolve(rec.file_path),
+      { headers: { 'Content-Type': 'video/mp4' } },
+      (err) => {
+        if (err && !res.headersSent)
+          res.status(500).json({ error: 'internal', message: err.message });
+      },
+    );
+  } catch (e: any) {
+    recLog.error(`source.mp4 failed: ${e?.message}`);
     return res.status(500).json({ error: 'internal', message: e?.message });
   }
 });
