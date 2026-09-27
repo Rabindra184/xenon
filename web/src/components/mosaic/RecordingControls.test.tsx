@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { act, fireEvent, render, screen } from '@testing-library/react';
+import { MemoryRouter } from 'react-router-dom';
 import { RecordingControls } from './RecordingControls';
 
 vi.mock('../../api-service/recordings', async (importOriginal) => ({
@@ -54,10 +55,31 @@ function stopped(): MosaicState {
 
 function mount(state: MosaicState, dispatch = vi.fn()) {
   return render(
-    <MosaicContext.Provider value={{ state, dispatch }}>
-      <RecordingControls selectedUdids={['u1']} onClearMarks={vi.fn()} />
-    </MosaicContext.Provider>,
+    <MemoryRouter>
+      <MosaicContext.Provider value={{ state, dispatch }}>
+        <RecordingControls selectedUdids={['u1']} onClearMarks={vi.fn()} />
+      </MosaicContext.Provider>
+    </MemoryRouter>,
   );
+}
+
+function stoppedWithGroup(groupId: string): MosaicState {
+  let s = mosaicReducer(initialMosaicState, {
+    type: 'ADD_TILE',
+    tile: { udid: 'u1', mjpegPort: 0 },
+  });
+  s = mosaicReducer(s, {
+    type: 'START_RECORDING',
+    groupId,
+    startedAt: Date.now(),
+    tileIds: { u1: 'r1' },
+  });
+  s = mosaicReducer(s, {
+    type: 'STOP_RECORDING',
+    downloadableVideoCount: 1,
+    compositeEnabled: false,
+  });
+  return s;
 }
 
 // Names only: the REC timer's text changes every second and is not a button.
@@ -112,6 +134,12 @@ describe('RecordingControls labels', () => {
   it('labels the download link in words', () => {
     const { container } = mount(stopped());
     expect(container.querySelector('a[download]')?.textContent?.trim()).toBe('Download video');
+  });
+
+  it('links to the Recordings page once the download buttons show', () => {
+    mount(stoppedWithGroup('g1'));
+    const link = screen.getByRole('link', { name: 'Open in Recordings' });
+    expect(link.getAttribute('href')).toBe('/recordings/g1');
   });
 
   // A greyed-out Record button sat beside the timer for the whole recording.
