@@ -3,7 +3,6 @@ import http from 'http';
 import sharp from 'sharp';
 import log from '../../logger';
 import { DeviceStoreFactory } from '../../data-service/device-store';
-import { unblockDevice } from '../../data-service/device-service';
 import { deviceLock } from './DeviceLockManager';
 import { Service, Container } from 'typedi';
 import { ResourceIsolationService } from '../../services/ResourceIsolationService';
@@ -11,6 +10,7 @@ import { PortAllocator } from '../../services/PortAllocator';
 import { resolveFfmpegPath } from '../../helpers/ffmpegPath';
 import { SingleFlight } from '../../helpers/singleFlight';
 import { decideAndroidStreamReuse, CaptureHealth } from './androidStreamReuse';
+import { releaseIdlePreviewHold } from './previewHold';
 
 // JPEG quality for the in-process sharp encoder (0-100). ~78 approximates the
 // old ffmpeg `-q:v 8` (mjpeg quantizer scale) — the low-lag/quality knob.
@@ -59,7 +59,9 @@ class AndroidStreamService {
           }
         }
       }
-    }, 3600000);
+      // Every minute, not every hour: an hourly check left an abandoned
+      // preview hold in place for up to 70 minutes. The loop is in memory.
+    }, 60_000);
   }
 
   /**
@@ -405,21 +407,11 @@ class AndroidStreamService {
         session.server.close();
         session.server = null;
       }
-      // Principal Fix: Only release the device lock if THIS STREAM SERVICE owns it.
-      // If an Appium automation session owns the lock, don't touch it.
-      try {
-        const device = await DeviceStoreFactory.getStore().findDevice({ udid });
-        if (device && device.session_id?.startsWith('manual_')) {
-          log.info(`[${udid}] Stream Stop: Releasing manual control lock.`);
-          await unblockDevice(udid, device.host);
-        } else if (device && device.busy) {
-          log.info(
-            `[${udid}] Stream Stop: Device busy with session ${device.session_id}. NOT releasing lock.`,
-          );
-        }
-      } catch (e) {
-        /* Ignore unblocking failure on stop */
-      }
+      // Release the live-preview hold only if nothing else uses the device:
+      // one hold covers both transports, so an idle MJPEG stream must not drop
+      // it under someone watching over H.264, nor under a recording. An
+      // Appium session's lock is never a preview hold and is never touched.
+      await releaseIdlePreviewHold(udid);
 
       // Release the mjpeg port lease this stream acquired in startStream, so the
       // allocator can reuse the port immediately instead of waiting out the lease

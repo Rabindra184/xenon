@@ -6,6 +6,7 @@ import { H264Multiplexer, H264Packet } from './H264Multiplexer';
 import { H264NalParser } from './h264NalParser';
 import { H264Source, resolveAndroidH264 } from '../../app/routers/androidH264Config';
 import { PluginContext } from '../../PluginContext';
+import { releaseIdlePreviewHold } from './previewHold';
 
 interface H264Session {
   status: 'running' | 'stopped';
@@ -56,7 +57,11 @@ class AndroidH264StreamService {
           s.emptyAt = now;
         } else if (now - s.emptyAt > IDLE_TIMEOUT_MS) {
           log.info(`[${udid}] Stopping idle H.264 stream (no viewers for ${IDLE_TIMEOUT_MS}ms)`);
-          this.stop(udid);
+          // The stream went, but the live-preview hold stayed: with H.264
+          // preview, a tab closed without releasing kept the device busy for
+          // good. stop() itself must not release (a recording starting calls
+          // it); an idle stop does, if nothing else uses the device.
+          void this.stop(udid).then(() => releaseIdlePreviewHold(udid));
         }
       }
     }, 60_000);
