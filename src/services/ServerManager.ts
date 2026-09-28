@@ -41,6 +41,7 @@ import {
 } from '../device-utils';
 import { createRouter } from '../app';
 import { registerProxyMiddlware } from '../proxy/wd-command-proxy';
+import { registerCommandAuth } from '../app/registerCommandAuth';
 import { ADB } from 'appium-adb';
 import ChromeDriverManager from '../device-managers/ChromeDriverManager';
 import AndroidDeviceManager from '../device-managers/AndroidDeviceManager';
@@ -359,6 +360,12 @@ export class ServerManager {
 
   private registerRoutes(expressApp: any, cliArgs: ServerArgs, pluginArgs: IPluginArgs) {
     expressApp.use('/xenon', createRouter(pluginArgs));
+    // Per-command auth (XENON_REQUIRE_COMMAND_AUTH) goes in front of Appium's
+    // routes, and is placed before the proxy middleware so that, where the
+    // proxy is also spliced ahead of the routes, a hub checks a command before
+    // forwarding it to a node. Throws when the setting is on and it cannot be
+    // placed, rather than serve session commands unchecked.
+    registerCommandAuth(expressApp, cliArgs);
     registerProxyMiddlware(expressApp, cliArgs);
   }
 
