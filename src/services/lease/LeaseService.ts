@@ -257,12 +257,24 @@ export class LeaseService {
     return lease;
   }
 
-  async heartbeat(leaseId: string, token: string): Promise<{ heartbeatedAt: number; expiresAt: number }> {
+  /**
+   * The lease, as loadActiveLease, if it also hasn't passed its expiresAt.
+   * The sweeper marks leases by missed heartbeats, not by expiresAt, so a
+   * lapsed lease can still read 'active'. It is gone all the same: heartbeat
+   * must not keep it and extend must not revive it. Release still takes it,
+   * so its holder can hand the device back early.
+   */
+  private async loadLiveLease(leaseId: string, token: string) {
     const lease = await this.loadActiveLease(leaseId, token);
-    const now = Date.now();
-    if (lease.expiresAt < now) {
+    if (lease.expiresAt < Date.now()) {
       throw new LeaseGone(`lease ${leaseId} expired at ${lease.expiresAt}`);
     }
+    return lease;
+  }
+
+  async heartbeat(leaseId: string, token: string): Promise<{ heartbeatedAt: number; expiresAt: number }> {
+    const lease = await this.loadLiveLease(leaseId, token);
+    const now = Date.now();
     // Guarded by status='active' so a concurrent sweeper expiration is observed.
     const result = await this.db.lease.updateMany({
       where: { id: leaseId, status: 'active' },
@@ -275,7 +287,7 @@ export class LeaseService {
   }
 
   async extend(leaseId: string, token: string, additionalMs: number): Promise<{ expiresAt: number }> {
-    const lease = await this.loadActiveLease(leaseId, token);
+    const lease = await this.loadLiveLease(leaseId, token);
     const now = Date.now();
     const createdAtMs = typeof lease.createdAt === 'number' ? lease.createdAt : new Date(lease.createdAt).getTime();
     const ceiling = createdAtMs + MAX_LEASE_MS;

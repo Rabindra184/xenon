@@ -178,6 +178,32 @@ describe('LeaseService', () => {
     expect(prismaStub.lease.updateMany.firstCall.args[0].where.status).to.equal('active');
   });
 
+  // The sweeper marks a lease by missed heartbeats, not by expiresAt, so a
+  // lease can be past expiresAt and still 'active'. Heartbeat already
+  // refuses it; extend must too, or it hands the holder the lease back.
+  for (const op of ['heartbeat', 'extend'] as const) {
+    it(`${op} refuses a lease past its expiresAt that the sweeper hasn't marked, and writes nothing`, async () => {
+      const { hashToken } = await import('../../../src/services/lease/leaseToken');
+      const { LeaseGone } = await import('../../../src/services/lease/LeaseService');
+      const tok = 'd'.repeat(64);
+      const expiresAt = Date.now() - 1_000;
+      prismaStub.lease.findUnique.resolves({
+        id: 'lse_test',
+        tokenHash: hashToken(tok),
+        status: 'active',
+        expiresAt,
+        createdAt: new Date(Date.now() - 60_000),
+      });
+      const call =
+        op === 'extend' ? svc.extend('lse_test', tok, 60_000) : svc.heartbeat('lse_test', tok);
+      let thrown: any = null;
+      await call.catch((e: unknown) => (thrown = e));
+      expect(thrown).to.be.instanceOf(LeaseGone);
+      expect(thrown.message).to.equal(`lease lse_test expired at ${expiresAt}`);
+      expect(prismaStub.lease.updateMany.called).to.equal(false);
+    });
+  }
+
   it('release sets status=released and cascades PortLease delete', async () => {
     const { hashToken } = await import('../../../src/services/lease/leaseToken');
     const tok = 'c'.repeat(64);

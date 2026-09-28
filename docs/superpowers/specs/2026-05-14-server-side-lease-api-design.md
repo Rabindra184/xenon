@@ -296,7 +296,10 @@ PortLease rows expire on their own TTL) cover the rollback.
   hit `expiresAt` and 410 Gone.
 - **Extend**: bumps `expiresAt = min(now + durationMs, createdAt +
   MAX_LEASE_MS)` where `MAX_LEASE_MS = 24 * 60 * 60 * 1000`. Also bumps
-  `lastHeartbeatAt = now` (implicit liveness signal).
+  `lastHeartbeatAt = now` (implicit liveness signal). A lease already past
+  `expiresAt` can't be extended: its holder gets 410 Gone, as for a
+  heartbeat, even before the sweeper marks it (through 2.0.0, extend
+  revived it).
 - **Release** (`DELETE`): sets `status='released'`, cascades:
   `prisma.portLease.deleteMany({ where: { leaseId } })`,
   `DeviceStore.unlockDevice(deviceUdid, deviceHost)`. Idempotent —

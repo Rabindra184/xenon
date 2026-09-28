@@ -158,9 +158,18 @@ describe('lease token routes reveal nothing without the token', () => {
     });
   }
 
-  it('heartbeat: the right token on a lease past its expiry, not yet swept, gets 410', async () => {
-    expect((await call('heartbeat', 'lse_lapsed', TOKEN)).status).to.equal(410);
-  });
+  // Neither may keep a lapsed lease alive: extend used to push its expiresAt
+  // out again and reset its heartbeat clock, so the sweeper never took it.
+  for (const op of ['heartbeat', 'extend'] as const) {
+    it(`${op}: the right token on a lease past its expiry, not yet swept, gets 410 and changes nothing`, async () => {
+      const r = await call(op, 'lse_lapsed', TOKEN);
+      expect({ status: r.status, error: r.body.error }).to.deep.equal({
+        status: 410,
+        error: 'gone',
+      });
+      expect(db.lease.updateMany.called).to.equal(false);
+    });
+  }
 
   it('an unknown id still costs one token comparison, against one fixed hash', async () => {
     const verify = sinon.spy(leaseToken, 'verifyToken');
