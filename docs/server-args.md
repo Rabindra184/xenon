@@ -65,8 +65,175 @@ These are read directly from the process environment and complement (or override
 | `XENON_AUTO_MIGRATE` | When `true` (default), the hub auto-applies pending schema changes on startup. Set `false` for ops who run migrations externally via CI. See [retention.md](retention.md) and `prisma/migrations/`. |
 | `XENON_HUB_ACCESS_KEY` | Node→hub outbound: access key the node sends in `x-xenon-access-key`. Required alongside `XENON_HUB_TOKEN`. See `docs/node-provisioning.md`. |
 | `XENON_HUB_TOKEN` | Node→hub outbound: API token the node sends in `x-xenon-token`. Required alongside `XENON_HUB_ACCESS_KEY`. |
+| `XENON_REQUIRE_SESSION_TOKEN` | When `true` (also `1`, `yes`, `on`), createSession is refused unless it carries the session's credentials (`xe:options.accessKey` + `xe:options.token`, or `xe:options.sessionToken`). Off by default. Set it on the hub. |
+| `XENON_REQUIRE_COMMAND_AUTH` | When `true` (also `1`, `yes`, `on`), every WebDriver request under `<basePath>/session/:sessionId` must carry the caller's credentials, and only the session's owner or an admin may send it. Off by default; ignored when auth is disabled. Set it on the hub. See [Per-command authentication](#per-command-authentication). |
 
 Prefer environment variables over CLI flags for secrets so they do not end up in shell history or config files.
+
+## Per-command authentication
+
+Xenon checks credentials when a session is created. Without this setting, every
+later command (`<basePath>/session/<id>/...`) is authorized by the session id
+alone, so anyone who learns a session id can drive that session.
+
+`XENON_REQUIRE_COMMAND_AUTH=true` closes that. Every request under
+`<basePath>/session/:sessionId`, for every method (including `DELETE`), must
+carry one of the credentials the REST API accepts:
+
+- the header pair `x-xenon-access-key` + `x-xenon-token`, or
+- `Authorization: Bearer <jwt>`, a token minted by `POST /xenon/api/auth/token`
+  with audience `xenon-rest` (1 hour) or `xenon-mcp`.
+
+The caller must be the session's owner, or an admin: a `SUPER_ADMIN`, or a
+credential with the `admin` scope. An `ADMIN` user's ordinary key is not
+enough. Creating a session (`POST <basePath>/session`) and requests outside a
+session (`/status`, `/xenon/api/...`) are not affected. The dashboard cookie is
+not accepted here.
+
+### Give every session an owner
+
+A session's owner is whoever created it, as named by the session's credentials
+(`xe:options.accessKey` + `xe:options.token`, or `xe:options.sessionToken`).
+Headers on the createSession request don't set the owner. A session created
+without credentials has no owner, and with this setting on only an admin can
+use it, including the person who started it. Either make every client send
+those capabilities, or turn on `XENON_REQUIRE_SESSION_TOKEN` as well so a
+session without them is never created.
+
+### Refusals
+
+A refused command gets exactly what WebDriver answers for a session that doesn't
+exist, so a caller can't tell a session they may not use from a missing one:
+
+```
+HTTP/1.1 404 Not Found
+Content-Type: application/json; charset=utf-8
+
+{"value":{"error":"invalid session id","message":"A session is either terminated or not started","stacktrace":""}}
+```
+
+Each refusal is logged as a `warn` with the session id and the caller's user id,
+or `no credentials` / `invalid credentials`. The credential itself is never
+logged. If Xenon can't check the credential or look up the session's owner (for
+example, the database is unavailable), the command gets `503` with a WebDriver
+`unknown error` body. It is never let through.
+
+A verified credential is remembered for 30 seconds. A key that is revoked or
+expired, or a user who is deactivated or demoted, stops working for commands
+within 30 seconds. The REST API and createSession see the change at once.
+
+### Sending the headers from a client
+
+Send the headers on every request. Most clients do this with a single
+connection-level setting. In each example, the capabilities give the session
+its owner and the headers prove who is calling.
+
+WebdriverIO (`headers` option):
+
+```js
+import { remote } from 'webdriverio';
+
+const credentials = { accessKey: process.env.XENON_ACCESS_KEY, token: process.env.XENON_TOKEN };
+
+const driver = await remote({
+  hostname: 'xenon-hub.example.com',
+  port: 4723,
+  path: '/wd/hub',
+  headers: {
+    'x-xenon-access-key': credentials.accessKey,
+    'x-xenon-token': credentials.token,
+  },
+  capabilities: {
+    platformName: 'Android',
+    'appium:automationName': 'UiAutomator2',
+    'xe:options': credentials,
+  },
+});
+```
+
+Appium Java client (a `Filter` on `AppiumClientConfig`):
+
+```java
+import io.appium.java_client.AppiumClientConfig;
+import io.appium.java_client.android.AndroidDriver;
+import io.appium.java_client.android.options.UiAutomator2Options;
+import java.net.URL;
+import java.util.Map;
+import org.openqa.selenium.remote.http.Filter;
+
+String accessKey = System.getenv("XENON_ACCESS_KEY");
+String token = System.getenv("XENON_TOKEN");
+
+Filter xenonAuth = next -> req -> {
+  req.addHeader("x-xenon-access-key", accessKey);
+  req.addHeader("x-xenon-token", token);
+  return next.execute(req);
+};
+
+AppiumClientConfig config = AppiumClientConfig.defaultConfig()
+    .baseUrl(new URL("http://xenon-hub.example.com:4723/wd/hub"))
+    .withFilter(xenonAuth);
+
+UiAutomator2Options options = new UiAutomator2Options();
+options.setCapability("xe:options", Map.of("accessKey", accessKey, "token", token));
+
+AndroidDriver driver = new AndroidDriver(config, options);
+```
+
+Appium Python client (`extra_headers` on `AppiumClientConfig`, which passes it
+to Selenium's `ClientConfig`; Selenium 4.27 or later):
+
+```python
+import os
+from appium import webdriver
+from appium.options.android import UiAutomator2Options
+from appium.webdriver.client_config import AppiumClientConfig
+
+access_key = os.environ["XENON_ACCESS_KEY"]
+token = os.environ["XENON_TOKEN"]
+
+client_config = AppiumClientConfig(
+    remote_server_addr="http://xenon-hub.example.com:4723/wd/hub",
+    extra_headers={"x-xenon-access-key": access_key, "x-xenon-token": token},
+)
+
+options = UiAutomator2Options()
+options.set_capability("xe:options", {"accessKey": access_key, "token": token})
+
+driver = webdriver.Remote(
+    client_config.remote_server_addr, options=options, client_config=client_config
+)
+```
+
+curl:
+
+```bash
+curl -H "x-xenon-access-key: $XENON_ACCESS_KEY" -H "x-xenon-token: $XENON_TOKEN" \
+  "http://xenon-hub.example.com:4723/wd/hub/session/$SESSION_ID/url"
+
+# or with a token from POST /xenon/api/auth/token
+curl -H "Authorization: Bearer $XENON_JWT" \
+  "http://xenon-hub.example.com:4723/wd/hub/session/$SESSION_ID/url"
+```
+
+A `xenon-rest` token lasts an hour, so a run that may outlive it should use the
+key pair. `GET /xenon/api/capabilities` reports `features.commandAuth: true`
+when the setting is on, so a client can check before it starts.
+
+### Hub and nodes
+
+Enable it on the hub, where clients connect. Don't enable it on nodes: a node
+checks credentials against its own database, so it would refuse the commands
+the hub forwards. Keep each node's Appium port reachable only from the hub.
+
+### What it doesn't cover
+
+- WebSocket connections to a session (`<basePath>/bidi/<id>` for WebDriver BiDi,
+  `<basePath>/ws/...` for log broadcasts) are not checked.
+- `GET <basePath>/appium/sessions` still lists the running sessions. With this
+  setting on, knowing a session's id is no longer enough to use it.
+- The server refuses to start if it can't place the check in front of Appium's
+  own routes, rather than run without it.
 
 ## CLI flags
 

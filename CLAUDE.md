@@ -389,6 +389,44 @@ pass `df:options` credentials, have them present a `xenon:options.sessionToken`
 instead (minted by `POST /xenon/api/auth/token` with `audience: 'xenon-mcp'`),
 or enforce credentials with `XENON_REQUIRE_SESSION_TOKEN`.
 
+**Per-command auth** (`XENON_REQUIRE_COMMAND_AUTH`, off by default, never with
+auth disabled; `src/middleware/commandAuth.ts`). Without it only createSession
+checks credentials, and any later `<basePath>/session/:id/...` request is
+authorized by the session id alone. With it on, every request under
+`<basePath>/session/:sessionId` (all methods; `POST <basePath>/session` is not
+under it) must carry the credentials REST accepts, the `x-xenon-*` pair or a
+Bearer JWT (`xenon-rest`/`xenon-mcp`), verified by the helpers authMiddleware
+uses (`verifyCredential.ts`). The caller must be the session's owner
+(`SessionOwnerResolver.ownerOf`) or an override admin by `canOverrideLease`'s
+rule; a Bearer token is judged by its `scopes` claim like a key, so an ADMIN's
+ordinary key can't mint an override. A refusal is WebDriver's unknown-session
+answer (404 `invalid session id`, empty `stacktrace`), so nobody can tell a
+session they may not use from a missing one. An ownerless session is refused
+to all but override admins. A failed lookup is `503 unknown error`, never an
+allow. Verified identities are cached 30 s by SHA-256 of the secret; revocation
+is not pushed, it takes up to 30 s (`commandCaller.ts` says why).
+
+- **It must run before Appium's routes.** Appium adds them before any plugin's
+  `updateServer`, so a plain `app.use` never sees a command.
+  `insertBeforeRoutes` splices the layer ahead of the first route, on
+  `app._router` (Express 4) or `app.router` (Express 5, what Appium 3 runs).
+  If it can't, the server refuses to start while the setting is on.
+  `registerProxyMiddlware` still has the `_router`-only version and falls back
+  to `app.use` on Appium 3, which is why `/wd-internal/...` answers
+  `unknown command` today. If that is fixed, the rewrite runs after command
+  auth, and `/wd-internal/session/<id>/...` becomes a way around it. Xenon's
+  own loopback calls through `RemoteSession` (the heartbeat's `timeouts`
+  probe among them) use that path without credentials. Authenticate them in
+  the same change.
+- **Xenon's one credential-less call on the public path is refused.**
+  `LocalSession.stopVideoRecording` falls back to HTTP on
+  `<basePath>/session/<id>/...` when the in-process driver call fails; with
+  the setting on that fallback gets the unknown-session answer.
+- **Not covered:** session WebSockets (`<basePath>/bidi/<id>`,
+  `<basePath>/ws/...`) upgrade outside Express.
+- Enable it on the hub. A node verifies against its own database, so it would
+  refuse the commands a hub forwards.
+
 Device leases: programmatic clients (SDK, MCP tools) claim devices via
 `POST /xenon/api/sdk/leases` (`src/services/lease/LeaseService.ts`) — token-bound
 claims with TTL + heartbeat, swept by `LeaseOrphanSweeper`, resolved at
