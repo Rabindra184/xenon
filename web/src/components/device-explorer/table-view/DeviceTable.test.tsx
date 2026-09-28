@@ -60,6 +60,15 @@ const table = (over: Partial<React.ComponentProps<typeof DeviceTable>> = {}) =>
   );
 const rows = () => screen.getAllByRole('row').slice(1); // minus the header row
 
+/** The element and its ancestors that carry an opacity below 1. */
+const fadedAncestors = (el: Element) => {
+  const out: Element[] = [];
+  for (let n: Element | null = el; n; n = n.parentElement) {
+    if (Number(getComputedStyle(n).opacity || 1) < 1) out.push(n);
+  }
+  return out;
+};
+
 describe('DeviceTable', () => {
   it('has the columns in order and a caption with the count', () => {
     table();
@@ -190,6 +199,22 @@ describe('DeviceTable', () => {
     // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
     const beta = rows().find((r) => r.textContent?.includes('Beta'))!;
     expect(beta).toHaveClass('is-offline');
+  });
+
+  // Faded to 0.55 the tags measured 3.2:1 (dark) and 2.6:1 (light). They take
+  // the card's offline tag colour instead; the status dot still fades.
+  it('keeps an offline row’s tags readable while its status dot fades', () => {
+    const { container } = table({
+      devices: [device({ udid: 'B', name: 'Beta', offline: true, tags: ['a', 'b', 'c'] })],
+    });
+    const tags = Array.from(container.querySelectorAll('.devtable-row.is-offline .devtable-tag'));
+    expect(tags.map((t) => t.textContent)).toEqual(['#a', '#b', '+1']);
+    for (const tag of tags) {
+      expect(fadedAncestors(tag)).toEqual([]);
+      expect(getComputedStyle(tag).color).toBe('var(--status-offline-tag)');
+    }
+    // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+    expect(fadedAncestors(container.querySelector('.devtable-status-dot')!)).not.toEqual([]);
   });
 
   // The row's own Team-cell branch: not covered by device-card.test.tsx or

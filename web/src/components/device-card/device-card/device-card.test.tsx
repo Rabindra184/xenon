@@ -33,6 +33,15 @@ const card = (over: Partial<IDevice> = {}) =>
 
 const control = () => screen.getByRole('button', { name: 'Control' }) as HTMLButtonElement;
 
+/** The element and its ancestors that carry an opacity below 1. */
+const fadedAncestors = (el: Element) => {
+  const out: Element[] = [];
+  for (let n: Element | null = el; n; n = n.parentElement) {
+    if (Number(getComputedStyle(n).opacity || 1) < 1) out.push(n);
+  }
+  return out;
+};
+
 describe('DeviceCard', () => {
   it('labels a device in maintenance as maintenance, not error', () => {
     const { container } = card({ userBlocked: true });
@@ -109,6 +118,27 @@ describe('DeviceCard', () => {
   it('dims an offline device’s details', () => {
     const { container } = card({ offline: true });
     expect(container.querySelector('.dc2-body')).toHaveClass('dc2-dim');
+  });
+
+  // Faded with the rest of the meta row, the tags measured 2.5:1 (dark) and
+  // 2.3:1 (light). They take the shared offline tag colour instead, and the
+  // team pill beside them still fades.
+  it('keeps an offline device’s tags readable while its team pill fades', () => {
+    const { container } = render(
+      <DeviceCard
+        device={device({ offline: true, teamId: 't1', tags: ['nightly', 'smoke', 'golden'] })}
+        reloadDevices={vi.fn()}
+        navigate={vi.fn()}
+        teams={new Map([['t1', 'QA']])}
+      />,
+    );
+    const tags = Array.from(container.querySelectorAll('.dc2-tag'));
+    expect(tags.map((t) => t.textContent)).toEqual(['#nightly', '#smoke', '+1']);
+    for (const tag of tags) {
+      expect(fadedAncestors(tag)).toEqual([]);
+      expect(getComputedStyle(tag).color).toBe('var(--status-offline-tag)');
+    }
+    expect(fadedAncestors(screen.getByText('QA'))).not.toEqual([]);
   });
 
   // They were on nearly every card, so they said nothing.

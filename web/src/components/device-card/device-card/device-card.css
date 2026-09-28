@@ -88,9 +88,11 @@
   padding: 12px;
 }
 /* An offline device's details are its last known ones. The picture and the
-   badges fade; the words stay readable (fading them too measured 2.6:1). */
+   badges fade; the words stay readable (fading them too measured 2.6:1).
+   The tags are words too: faded with the badges they measured 2.5:1, so
+   they are left out of the fade and take the offline tag colour below. */
 .dc2-dim .dc2-icon,
-.dc2-dim .dc2-meta {
+.dc2-dim .dc2-meta > :not(.dc2-tag) {
   opacity: 0.55;
 }
 .dc2-dim .dc2-title {
@@ -143,6 +145,9 @@
 .dc2-tag {
   color: var(--text-dim);
   font-size: 11px;
+}
+.dc2-dim .dc2-tag {
+  color: var(--status-offline-tag);
 }
 
 .dc2-foot {

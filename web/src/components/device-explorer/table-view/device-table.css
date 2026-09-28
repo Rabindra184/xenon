@@ -114,10 +114,11 @@
 }
 
 /* An offline row shows its last-known details, same as the card's .dc2-dim:
-   fade only the status dot and the tags, and mute the title line, rather
-   than fading every word (which measured under AA contrast). */
-.devtable-row.is-offline .devtable-status-dot,
-.devtable-row.is-offline .devtable-tag {
+   fade only the status dot, and mute the title line and the tags, rather
+   than fading every word (which measured under AA contrast). The tags
+   faded to 0.55 measured 3.2:1; they take the card's offline tag colour
+   (below, after the base .devtable-tag rule). */
+.devtable-row.is-offline .devtable-status-dot {
   opacity: 0.55;
 }
 .devtable-row.is-offline .devtable-title {
@@ -146,6 +147,9 @@
   margin-right: 4px;
   color: var(--text-muted);
   font-size: 11px;
+}
+.devtable-row.is-offline .devtable-tag {
+  color: var(--status-offline-tag);
 }
 
 .devtable-actions-inner {
