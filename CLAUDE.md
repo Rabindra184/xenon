@@ -338,6 +338,14 @@ Every method and action is checked, with no exception list.
 - Reservations apply the same rule, and so do SDK leases: `LeaseService.create`
   matches with the caller's `callerTeamIds`, never a team list from the
   client's `filters`.
+- So do Appium sessions. A credentialed session (key pair or session token)
+  is allocated phones, and resolves uploaded apps, by REST's `computeTeamIds`
+  for its owner: a member's teams, narrowed by the key's or token's own team,
+  unscoped for an ADMIN or SUPER_ADMIN owner or an admin-scoped key. The owner
+  is looked up once per session (`leaseAccessFor`, memoized) and shared with
+  the lease check. Until 1.30 a key saw only its own team binding, so a
+  member's ordinary key never reached their team's phones, and a session
+  token saw every team's. A session with no credentials stays unscoped.
 
 **Session data follows the session's phone**
 (`src/services/device-access/sessionVisibility.ts`). `canSeeSession` decides one

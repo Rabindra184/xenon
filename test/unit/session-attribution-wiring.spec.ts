@@ -197,13 +197,13 @@ describe('authorizeSessionRequest — leaseAccess', () => {
     restore();
   });
 
-  it('reads nothing until a lease asks', async () => {
+  it('looks the owner up once per session, however often a lease asks', async () => {
     withKey(keyRow('sessions'), user('MEMBER'));
     const res = await invoke(svc, pairCaps());
-    expect(findUser.called).to.equal(false);
-    expect(teamRows.called).to.equal(false);
+    await res.leaseAccess();
     await res.leaseAccess();
     expect(findUser.calledOnceWith('usr_alice')).to.equal(true);
+    expect(teamRows.calledOnce).to.equal(true);
   });
 
   describe('canOverride', () => {
@@ -275,6 +275,91 @@ describe('authorizeSessionRequest — leaseAccess', () => {
     it("is a session token's team claim when it has one", async () => {
       withSessionToken(user('MEMBER'), 'team_b');
       expect((await access(tokenCaps())).teamIds).to.deep.equal(['team_b']);
+    });
+  });
+
+  // Every session is allocated phones, and resolves uploaded apps, by the same
+  // rule REST lists them by, whether or not it names a lease. A member's key
+  // used to see only its own team binding, so a member with an ordinary key
+  // never got their team's phones, and a session token saw every team's.
+  describe("a session's own teams, as REST computes them", () => {
+    const scope = async (caps: any) => {
+      const res = await invoke(svc, caps);
+      return { callerTeamIds: res.callerTeamIds, scoped: res.scoped };
+    };
+
+    it("is a member's teams for an ordinary key", async () => {
+      withKey(keyRow('sessions'), user('MEMBER'));
+      teamRows.resolves([{ teamId: 'team_a' }, { teamId: 'team_b' }] as any);
+      expect(await scope(pairCaps())).to.deep.equal({
+        callerTeamIds: ['team_a', 'team_b'],
+        scoped: true,
+      });
+    });
+
+    it('is only the shared pool for a member in no team', async () => {
+      withKey(keyRow('sessions'), user('MEMBER'));
+      expect(await scope(pairCaps())).to.deep.equal({ callerTeamIds: [], scoped: true });
+    });
+
+    it("is the key's team when the key is narrowed", async () => {
+      withKey(keyRow('sessions', 'team_a'), user('MEMBER'));
+      teamRows.resolves([{ teamId: 'team_a' }, { teamId: 'team_b' }] as any);
+      expect(await scope(pairCaps())).to.deep.equal({ callerTeamIds: ['team_a'], scoped: true });
+    });
+
+    it('is unscoped for an ADMIN owner, as REST is, and for an admin-scoped key', async () => {
+      withKey(keyRow('sessions'), user('ADMIN'));
+      expect(await scope(pairCaps())).to.deep.equal({ callerTeamIds: undefined, scoped: false });
+      withKey(keyRow('admin,sessions'), user('MEMBER'));
+      expect((await scope(pairCaps())).scoped).to.equal(false);
+    });
+
+    it("is a session token's user's teams, not every team's", async () => {
+      withSessionToken(user('MEMBER'));
+      teamRows.resolves([{ teamId: 'team_a' }] as any);
+      expect(await scope(tokenCaps())).to.deep.equal({ callerTeamIds: ['team_a'], scoped: true });
+    });
+
+    it("is a session token's team claim when it has one", async () => {
+      withSessionToken(user('MEMBER'), 'team_b');
+      expect(await scope(tokenCaps())).to.deep.equal({ callerTeamIds: ['team_b'], scoped: true });
+    });
+
+    it('lets xenon:team pick any team the member is in, and no other', async () => {
+      withKey(keyRow('sessions'), user('MEMBER'));
+      teamRows.resolves([{ teamId: 'team_a' }, { teamId: 'team_b' }] as any);
+      const caps = () =>
+        capsWith({ 'xe:options': { accessKey: 'ak', token: 'tk' }, 'xenon:team': 'team_b' });
+      expect(await scope(caps())).to.deep.equal({ callerTeamIds: ['team_b'], scoped: true });
+      const other = capsWith({
+        'xe:options': { accessKey: 'ak', token: 'tk' },
+        'xenon:team': 'team_c',
+      });
+      let error: Error | undefined;
+      try {
+        await invoke(svc, other);
+      } catch (e: any) {
+        error = e;
+      }
+      expect(error?.message).to.match(/not allowed/);
+    });
+
+    it('falls back to the shared pool when the lookup fails', async () => {
+      withKey(keyRow('sessions'), null);
+      Container.set(UserService, { findById: sinon.stub().rejects(new Error('db down')) } as any);
+      expect(await scope(pairCaps())).to.deep.equal({ callerTeamIds: [], scoped: true });
+    });
+
+    it('stays unscoped, with no lookup, for a session with no credentials', async () => {
+      Container.set(ApiKeyService, {
+        verifyPair: sinon.stub().resolves(null),
+        hasScope: () => false,
+      } as any);
+      findUser = sinon.stub();
+      Container.set(UserService, { findById: findUser } as any);
+      expect(await scope(capsWith({}))).to.deep.equal({ callerTeamIds: undefined, scoped: false });
+      expect(findUser.called).to.equal(false);
     });
   });
 });

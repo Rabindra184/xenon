@@ -157,10 +157,10 @@ describe('createSession records who asked on the pending-session row', () => {
       expect(pendingRow[REQUESTER]).to.deep.equal({ userId: 'usr_member', teamId: null });
     });
 
-    it('with no user or team lookup', async () => {
+    it('from the one user and team lookup the session is scoped by, with none of its own', async () => {
       await create(withKey('ak_member'));
-      expect(findById.called).to.equal(false);
-      expect(teamRows.called).to.equal(false);
+      expect(findById.calledOnce).to.equal(true);
+      expect(teamRows.calledOnce).to.equal(true);
     });
   });
 

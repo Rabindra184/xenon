@@ -132,8 +132,9 @@ export class SessionLifecycleService {
       throw err;
     }
 
-    // Only a session that names a lease pays for looking up how it may use one.
-    // Before the pending row is written, so a failure here leaves none behind.
+    // How a session that names a lease may use it. The lookup behind it ran
+    // once, in authorizeSessionRequest, for any credentialed session. Before
+    // the pending row is written, so a failure here leaves none behind.
     const leaseAccess = leaseIdOf(caps) ? await authResult.leaseAccess() : undefined;
 
     // The teams this session sees: the phones it may be allocated and the
@@ -336,12 +337,12 @@ export class SessionLifecycleService {
   // rejected. Respects the global `authDisabled` flag.
   //
   // Returns the caller's { apiKeyId, callerTeamIds } so allocation can filter
-  // devices by team. `apiKeyId` is null when auth is disabled or no key was
-  // presented (back-compat path); `callerTeamIds` is an empty array when the
-  // caller has no team (sees the shared pool only) and a single-element
-  // array when the apiKey is narrowed to one team. The widening to a set is
-  // for Phase 4A's multi-team membership; today an apiKey can bind to at
-  // most one team, so this is always 0- or 1-element.
+  // devices, and app resolution uploaded apps, by team. `apiKeyId` is null
+  // when auth is disabled or no key was presented (back-compat path).
+  // `callerTeamIds` is REST's computeTeamIds for the caller: undefined for an
+  // ADMIN or SUPER_ADMIN owner (and an admin-scoped key), the key's or the
+  // session token's team when it is narrowed to one, and otherwise the
+  // member's teams, empty when they are in none (the shared pool only).
   //
   // `leaseAccess` says how the session is judged if it names a lease. It is a
   // function so the lookups behind it run only for such a session. Whether it
@@ -426,15 +427,19 @@ export class SessionLifecycleService {
             '`xe:options.token`, or `xe:options.sessionToken`.',
         );
       }
+      const leaseAccess = this.leaseAccessFor(
+        identity.userId
+          ? { kind: 'session-token', userId: identity.userId, teamId: tokenTeamId }
+          : { kind: 'none' },
+      );
+      // A token's user is scoped as REST scopes them. No credentials at all
+      // stays unscoped (the back-compat path), with no lookup.
+      const callerTeamIds = identity.userId ? (await leaseAccess()).teamIds : undefined;
       return {
         ...identity,
-        callerTeamIds: undefined,
-        scoped: false,
-        leaseAccess: this.leaseAccessFor(
-          identity.userId
-            ? { kind: 'session-token', userId: identity.userId, teamId: tokenTeamId }
-            : { kind: 'none' },
-        ),
+        callerTeamIds,
+        scoped: callerTeamIds !== undefined,
+        leaseAccess,
         requester: {
           userId: identity.userId,
           teamId: identity.userId ? tokenTeamId : null,
@@ -455,16 +460,16 @@ export class SessionLifecycleService {
       userId: row.userId,
       teamId: row.teamId ?? null,
     });
-    // Empty array (apiKey not bound to a team) preserves the previous
-    // shared-pool-only filter for member-tier callers; single-element
-    // array preserves the previous team-binding narrow.
-    const callerTeamIds: string[] = row.teamId ? [row.teamId] : [];
+    // The phones and apps this session may use: REST's rule
+    // (computeTeamIds on the owner's live role, narrowed by the key's team),
+    // looked up once through leaseAccess. An admin-scoped key is unscoped.
+    const callerTeamIds = isAdmin ? undefined : (await leaseAccess()).teamIds;
 
     const requestedTeam = extractTeamCap(caps);
     if (requestedTeam) {
-      if (!isAdmin && !callerTeamIds.includes(requestedTeam)) {
+      if (callerTeamIds !== undefined && !callerTeamIds.includes(requestedTeam)) {
         this.logger.error(
-          `Rejecting session: xenon:team=${requestedTeam} but caller key is bound to team ${row.teamId ?? '(none)'}`,
+          `Rejecting session: xenon:team=${requestedTeam} is not one of the caller's teams (${callerTeamIds.join(', ') || 'shared pool only'})`,
         );
         throw new appiumErrors.InvalidArgumentError(
           `xenon:team '${requestedTeam}' is not allowed for this API key`,
@@ -484,7 +489,7 @@ export class SessionLifecycleService {
       apiKeyId: row.id,
       userId: row.userId,
       callerTeamIds,
-      scoped: !isAdmin,
+      scoped: callerTeamIds !== undefined,
       leaseAccess,
       requester: { userId: row.userId, teamId: row.teamId ?? null },
     };
