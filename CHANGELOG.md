@@ -6,6 +6,84 @@ This project follows [Semantic Versioning](https://semver.org/). Releases are
 published to npm automatically when `package.json`'s `version` changes on `main`
 (see `.github/workflows/npm-publish.yml`).
 
+## 1.29.1
+
+Security patch. Session files (videos, screenshots, performance traces) could
+be downloaded with no login at all, and several session routes still served
+other teams' data. Session files now need a login and a team check. As a side
+effect, the dashboard's session videos and screenshots load again. **Upgrade
+promptly, and read "Changed — operator action may be needed".**
+
+### Security
+
+- **Session files were served with no login** (#351). `/xenon/session-recordings/`
+  served the session folder straight from disk, outside the API's
+  authentication. Anyone who could reach the server and knew an id could
+  download:
+  - a session's video, screenshots and performance trace;
+  - its network capture, given the file name;
+  - by default, a Live devices recording, which is stored under the same
+    folder.
+
+  The route is removed. Session files are served only by `GET
+  /xenon/api/session/:sessionId/asset/:kind/:file`, which needs a login and
+  the session's team.
+- **Other teams' sessions were readable** (#351). A member could:
+  - read another team's session log, device log, debug log, live video and
+    profiling;
+  - download a bug report (video, logs, network capture and summary) for any
+    session;
+  - see other teams' session ids and phones in healing events, the healing
+    selector timeline and the internal request log.
+
+  These now follow the session's phone, with the same rule as 1.29.0. A
+  session on a phone you can't see answers exactly like one that doesn't
+  exist.
+
+### Changed — operator action may be needed
+
+- **Anything that downloads `/xenon/session-recordings/...` directly must
+  switch** to `GET /xenon/api/session/:sessionId/asset/:kind/:file`, with
+  credentials. `kind` is `screenshots`, `video` or `performance`, and `file`
+  is the file name, as stored in the session's `video_recording`,
+  `performance_trace` or a log's `screenshot`: `<sessionId>/<kind>/<file>`.
+  The route supports `Range`.
+- **`GET /xenon/api/logs/requests` and `GET /xenon/api/node/status` are
+  admin-only**, like `/processes`. The first lists every internal HTTP call,
+  including text typed on remote phones and forwarded session ids. The second
+  lists every attached phone. Neither the dashboard nor Xenon Control calls
+  them.
+
+### Fixed
+
+- **Session videos and screenshots never loaded in the dashboard** (#351).
+  Their links pointed at `/xenon/assets/`, which serves only the web app's own
+  files. They now use the new route. On the lab, a session's Recording card
+  that failed to load now plays.
+- **A member's own session disappeared when its phone was unplugged** (#351).
+  Its owner now still sees it in the list and can open it, as with
+  recordings. Nobody else can.
+- **A build shared by name across teams counted every team's sessions**
+  (#351). A member now sees only their own sessions in its counts, and the
+  session list's 500-row limit counts only sessions they can see.
+- **The active recordings list included phones the caller can't see** (#351),
+  when an admin added one to the group or a phone moved team. They're left
+  out, with their marks.
+
+### Notes
+
+- A member's Selector Health summary counts heals from their own sessions
+  only. Resolved and pending counts stay fleet-wide, because selector state
+  has no team.
+- Found by the same audit and not yet changed:
+  - Appium commands are checked by session id alone, so anyone who has a
+    session id can drive that session. Closing the id leaks above reduces the
+    exposure.
+  - `/cliArgs` shows the stored Appium arguments to any logged-in user.
+  - Uploaded apps have no team.
+  - The queue lists other teams' pending requests.
+- No database or configuration changes.
+
 ## 1.29.0
 
 Minor release. Teams are now a device boundary everywhere a phone can be
