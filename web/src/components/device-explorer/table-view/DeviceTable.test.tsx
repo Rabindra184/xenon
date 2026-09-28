@@ -89,6 +89,29 @@ describe('DeviceTable', () => {
     expect(screen.getByRole('columnheader', { name: /Host/ })).toBeInTheDocument();
   });
 
+  // A filter can narrow the list to one host while the rows are still sorted
+  // by it. Hiding the column then left no header saying how the rows are
+  // ordered, so Host stays while it is the sort.
+  it('keeps Host, marked as the sort, while sorting by it with one host', () => {
+    table({ sort: { key: 'host', dir: 'desc' } });
+    expect(screen.getByRole('columnheader', { name: /Host/ })).toHaveAttribute(
+      'aria-sort',
+      'descending',
+    );
+    expect(screen.getByRole('columnheader', { name: /Status/ })).toHaveAttribute(
+      'aria-sort',
+      'none',
+    );
+    // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+    const alpha = rows().find((r) => r.textContent?.includes('Alpha'))!;
+    expect(within(alpha).getAllByRole('cell')[5]).toHaveAttribute('title', 'http://127.0.0.1:4723');
+  });
+
+  it('drops Host again with one host once another column is the sort', () => {
+    table({ sort: { key: 'device', dir: 'asc' } });
+    expect(screen.queryByRole('columnheader', { name: /Host/ })).toBeNull();
+  });
+
   it('sorts by Host when its header button is clicked', () => {
     const onSortChange = vi.fn();
     table({
