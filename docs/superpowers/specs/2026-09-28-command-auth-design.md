@@ -68,14 +68,52 @@ normalisation against base-driver's `normalizeBasePath`.
 - **One public-path call without credentials.** `LocalSession.stopVideoRecording`
   falls back to HTTP on `<basePath>/session/<id>/...` when the in-process driver
   call fails. With the setting on, that fallback is refused.
-- **WebSockets.** `<basePath>/bidi/<id>` (WebDriver BiDi) and `<basePath>/ws/...`
-  upgrade outside Express and are not checked.
 - **Scopes.** An owner's key is allowed whatever its scopes, as the approved
   design says. Requiring `sessions` (as createSession does) would be stricter,
   but `xenon-mcp` tokens carry a down-mapped scope set and need checking first.
-- **Session listing.** `GET <basePath>/appium/sessions` is not a session command
-  and still lists ids and capabilities. Whether those capabilities include a
-  session's credentials is worth checking separately.
+- **The umbrella BiDi socket.** `<basePath>/bidi` (no session id) attaches to
+  Appium's own driver, not to a session, and is not guarded.
+- **Upgrades on the lab's Node.** On Node < 22.21, Xenon's own `upgrade`
+  listeners (h264, logcat, socket.io) mean Node never hands an upgrade to
+  Appium's Express handler. So BiDi and driver sockets get no answer at all,
+  with the setting on or off. The guard only adds a prompt `404` for callers
+  who may not use the session. Not fixed here.
+- **Xenon's own sockets on newer Node.** On Node >= 22.21 / 24.9, Appium's
+  `upgrade` listener runs first and destroys every upgrade it has no mapping
+  for. That includes `/xenon/api/control/:udid/stream/h264`, `/logcat` and
+  socket.io's websocket transport ("Did not match the websocket upgrade
+  request ... to any known route", seen on a real boot with Node 22.23). This
+  is independent of this setting. Not fixed here.
+
+## Addendum: the session listing and session WebSockets
+
+**Date:** 2026-09-29. Both surfaces follow the setting and are untouched with
+it off.
+
+### Session listing
+
+| Question | Decision |
+|---|---|
+| Which routes? | `GET <basePath>/appium/sessions` (base-driver `getAppiumSessions`), the only listing route in Appium 3.1.1 and 3.2.0; there is no `GET /sessions`. Appium serves it only with the `session_discovery` insecure feature. HEAD is filtered too, since its Content-Length would give away the list's size. |
+| Who sees what? | Credentials are read and verified exactly as for a command. An override admin sees Appium's answer untouched. A verified caller sees the entries whose owner is them. No credentials, or credentials that don't verify, get `{"value":[]}`, the same answer as an idle server. |
+| How? | `sessionListingFilter.ts`, spliced ahead of the routes on `<basePath>/appium/sessions` like the command check. It wraps `res.json` before `next()` and removes entries from Appium's own answer; it never builds a listing. An answer that is not a listing (an error) passes through. An entry without an id is dropped. |
+| Owner lookup | `SessionOwnerResolver.ownersOf(ids)`: one `session.findMany` for the listed ids, plus one `apiKey.findMany` only for rows that predate `user_id`. ownerOf's rule, and ownerOf's positive-only cache. |
+| Why at answer time, not before `next()`? | The listed ids are known only then. Precomputing "the caller's live sessions" has no reliable live signal: `xenon: setSessionStatus` sets `status` on a running session. Without a status filter it is every session the user ever ran. |
+| Failures | A credential check that cannot run: 503 before the route runs. An owner lookup that fails: 503 instead of the listing. |
+| Logging | `warn` when a list is emptied (caller `no credentials` / `invalid credentials`, count withheld). `info` when one is filtered (caller, `N of M sessions shown`). |
+
+### Session WebSockets
+
+| Question | Decision |
+|---|---|
+| Which paths? | `<basePath>/bidi/<id>` (Appium's main registers `<basePath>/bidi` and `<basePath>/bidi/:sessionId`), and `/ws/session/<id>/...`, base-driver's `DEFAULT_WS_PATHNAME_PREFIX` convention (UiAutomator2 logcat, XCUITest syslog), with or without the base path. |
+| How does Appium take upgrades? | base-driver `server()`: if `http.Server#shouldUpgradeCallback` exists (Node >= 22.21 / 24.9), `configureHttp` adds an `upgrade` listener before plugin updaters run. It destroys any upgrade it can't map. Otherwise `configureServer` adds `handleUpgrade` as an Express middleware ahead of the routes. Node reaches that middleware only while the server has no `upgrade` listener. |
+| How does the guard get in front? | Two hooks, both from `registerSessionUpgradeGuard`. First, it wraps `httpServer.emit` for `upgrade`. A session upgrade is held back from every listener until the check allows it, then emitted unchanged. Second, it puts a middleware at index 0 of the Express stack (`insertAtStart`), which holds the request and calls `next()` only when allowed. Just prepending a listener isn't enough: the check is async, and Appium's listener would run synchronously right after it. Wrapping `emit` covers listeners added before and after `updateServer`, so Appium never gets a socket that was refused. |
+| Which session ids? | As Appium reads them: the WHATWG-normalised pathname (dot segments, `%2e%2e`, absolute form), matched case-insensitively with an optional trailing slash, and BiDi's second read of the raw URL (`/bidi/([^/]+)$`, query included). Each is also decoded. The caller must own every id. An id with no session has no owner and is refused. |
+| Refusal | `HTTP/1.1 404 Not Found`, `Connection: close`, `Content-Length: 0`, written on the raw socket, which is then closed. It's the same for an unknown session. A check that can't run gets the same answer with `503`. |
+| Robustness | Node detaches its socket error handler before emitting `upgrade`. The guard therefore holds its own until it hands the socket on, or a client reset during the check would crash the process (mutation-tested). A socket the client drops mid-check is never handed on. |
+| Untouched | The umbrella `<basePath>/bidi`, `/xenon/...` (ticketed h264/logcat), socket.io, non-WebSocket upgrades, ordinary HTTP to the same paths, and everything when the setting is off or auth is disabled. |
+| Can't install? | No http.Server, or no router to splice into: logged, and with the setting on Appium refuses to start. |
 
 ## Tests
 
@@ -92,3 +130,18 @@ normalisation against base-driver's `normalizeBasePath`.
   a server updater.
 - A real boot of Appium 3.1.1 with this build on port 4725, auth enabled, with
   the setting on and then off.
+- `test/unit/session-listing-auth.spec.ts`: every listing decision on both
+  Express shapes, one owner query per listing, error passthrough, 503s.
+- `test/unit/session-owner-resolver.spec.ts`: `ownersOf` (one query, the
+  legacy key hop, the shared positive-only cache).
+- `test/unit/session-upgrade-guard.spec.ts`: the id classifier, and a real
+  http.Server with a real WebSocket client and base-driver's own
+  `tryHandleWebSocketUpgrade` / `handleUpgrade`, in both dispatch modes and
+  next to Xenon-style listeners (refusal bytes, owner/admin/other, driver
+  sockets, umbrella, setting off, 503s, a client reset mid-check).
+- `test/unit/command-auth-appium-server.spec.ts` also runs the listing and a
+  BiDi upgrade through base-driver's `server()`, natively and with its
+  upgrade-listener mode forced.
+- A real boot of Appium 3.2.0 on port 4725 (Node 22.19 and Node 22.23),
+  setting on and off: the unauthenticated listing is `{"value":[]}` with the
+  `warn` line, and session upgrades get the raw 404.

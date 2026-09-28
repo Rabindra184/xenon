@@ -66,7 +66,7 @@ These are read directly from the process environment and complement (or override
 | `XENON_HUB_ACCESS_KEY` | Node→hub outbound: access key the node sends in `x-xenon-access-key`. Required alongside `XENON_HUB_TOKEN`. See `docs/node-provisioning.md`. |
 | `XENON_HUB_TOKEN` | Node→hub outbound: API token the node sends in `x-xenon-token`. Required alongside `XENON_HUB_ACCESS_KEY`. |
 | `XENON_REQUIRE_SESSION_TOKEN` | When `true` (also `1`, `yes`, `on`), createSession is refused unless it carries the session's credentials (`xe:options.accessKey` + `xe:options.token`, or `xe:options.sessionToken`). Off by default. Set it on the hub. |
-| `XENON_REQUIRE_COMMAND_AUTH` | When `true` (also `1`, `yes`, `on`), every WebDriver request under `<basePath>/session/:sessionId` must carry the caller's credentials, and only the session's owner or an admin may send it. Off by default; ignored when auth is disabled. Set it on the hub. See [Per-command authentication](#per-command-authentication). |
+| `XENON_REQUIRE_COMMAND_AUTH` | When `true` (also `1`, `yes`, `on`), every WebDriver request under `<basePath>/session/:sessionId` must carry the caller's credentials, and only the session's owner or an admin may send it. The same applies to session WebSockets (`<basePath>/bidi/<id>`, `/ws/session/<id>/...`), and `GET <basePath>/appium/sessions` lists only the caller's sessions. Off by default; ignored when auth is disabled. Set it on the hub. See [Per-command authentication](#per-command-authentication). |
 
 Prefer environment variables over CLI flags for secrets so they do not end up in shell history or config files.
 
@@ -121,6 +121,46 @@ example, the database is unavailable), the command gets `503` with a WebDriver
 A verified credential is remembered for 30 seconds. A key that is revoked or
 expired, or a user who is deactivated or demoted, stops working for commands
 within 30 seconds. The REST API and createSession see the change at once.
+
+### The session list
+
+`GET <basePath>/appium/sessions` lists every live session's id and
+capabilities. Appium serves it only when the `session_discovery` insecure
+feature is enabled (for example `--allow-insecure '*:session_discovery'`, which
+Appium Inspector's "attach to session" needs). With this setting on, the list
+depends on who asks:
+
+- an admin (as above) sees every session;
+- any other caller with valid credentials sees only the sessions they own;
+- a caller with no credentials, or credentials that don't verify, gets an
+  empty list, `{"value":[]}`, the same answer as a server with no sessions.
+
+If Appium answers with an error (for example, `session_discovery` is not
+enabled), that answer is passed on unchanged. If Xenon can't check the
+credential or look up the owners, the request gets `503`, never the full
+list. An emptied list is logged as a `warn`, and a filtered one as an `info`
+line with how many sessions were shown.
+
+### Session WebSockets
+
+Some session traffic is a WebSocket, not a WebDriver request: WebDriver BiDi
+(`<basePath>/bidi/<sessionId>`), and the sockets drivers open for a session,
+such as UiAutomator2's logcat and XCUITest's syslog broadcasts
+(`/ws/session/<sessionId>/...`). With this setting on, the upgrade request must
+carry the same headers as a command, from the session's owner or an admin.
+Otherwise it gets a bare `404 Not Found` with no body, and the connection is
+closed before Appium sees it. The answer is the same whether or not the session
+exists. If the check can't run, the answer is `503`. Refusals are logged as a
+`warn`, like commands.
+
+Other WebSockets are not affected: the BiDi socket without a session id
+(`<basePath>/bidi`), socket.io, and the dashboard's live-preview and log
+streams, which use their own single-use tickets.
+
+The client must send the headers on the upgrade request itself. Check that
+yours does, since some send connection-level headers only on HTTP commands.
+Browsers can't set headers on a WebSocket, so a browser page can't use these
+sockets with this setting on.
 
 ### Sending the headers from a client
 

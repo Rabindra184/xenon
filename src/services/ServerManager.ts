@@ -43,7 +43,11 @@ import {
 import { localDeviceHosts, LocalDeviceHosts } from '../device-managers/localDeviceHosts';
 import { createRouter } from '../app';
 import { registerProxyMiddlware } from '../proxy/wd-command-proxy';
-import { registerCommandAuth } from '../app/registerCommandAuth';
+import {
+  commandAuthDeps,
+  registerCommandAuth,
+  registerSessionUpgradeGuard,
+} from '../app/registerCommandAuth';
 import { ADB } from 'appium-adb';
 import ChromeDriverManager from '../device-managers/ChromeDriverManager';
 import AndroidDeviceManager from '../device-managers/AndroidDeviceManager';
@@ -107,7 +111,7 @@ export class ServerManager {
     await this.syncDatabaseAndAIConfig(pluginArgs);
     await this.initializeCoreSubsystems(pluginArgs, cliArgs.port);
 
-    this.registerRoutes(expressApp, cliArgs, pluginArgs);
+    this.registerRoutes(expressApp, httpServer, cliArgs, pluginArgs);
     await this.bootEmulators(pluginArgs);
     this.registerDependenciesInContainer(pluginArgs, cliArgs, nodeId);
 
@@ -360,14 +364,24 @@ export class ServerManager {
     Container.set(ARTIFACT_STORE, new FsArtifactStore(xenonConfig.recordingsAssetsPath));
   }
 
-  private registerRoutes(expressApp: any, cliArgs: ServerArgs, pluginArgs: IPluginArgs) {
+  private registerRoutes(
+    expressApp: any,
+    httpServer: any,
+    cliArgs: ServerArgs,
+    pluginArgs: IPluginArgs,
+  ) {
     expressApp.use('/xenon', createRouter(pluginArgs));
     // Per-command auth (XENON_REQUIRE_COMMAND_AUTH) goes in front of Appium's
     // routes, and is placed before the proxy middleware so that, where the
     // proxy is also spliced ahead of the routes, a hub checks a command before
-    // forwarding it to a node. Throws when the setting is on and it cannot be
-    // placed, rather than serve session commands unchecked.
-    registerCommandAuth(expressApp, cliArgs);
+    // forwarding it to a node. It also filters Appium's session listing and
+    // guards session WebSockets (BiDi, driver /ws/session/...), which upgrade
+    // outside the routes. One set of deps, so all three share a credential
+    // cache. Each throws when the setting is on and it cannot be installed,
+    // rather than serve sessions unchecked.
+    const commandAuth = commandAuthDeps();
+    registerCommandAuth(expressApp, cliArgs, commandAuth);
+    registerSessionUpgradeGuard(httpServer, expressApp, cliArgs, commandAuth);
     registerProxyMiddlware(expressApp, cliArgs);
   }
 

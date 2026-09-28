@@ -480,8 +480,42 @@ is not pushed, it takes up to 30 s (`commandCaller.ts` says why).
   `LocalSession.stopVideoRecording` falls back to HTTP on
   `<basePath>/session/<id>/...` when the in-process driver call fails; with
   the setting on that fallback gets the unknown-session answer.
-- **Not covered:** session WebSockets (`<basePath>/bidi/<id>`,
-  `<basePath>/ws/...`) upgrade outside Express.
+- **The session listing is filtered** (`sessionListingFilter.ts`).
+  `GET <basePath>/appium/sessions` is Appium 3's only listing route (no
+  `GET /sessions`; Appium also gates it behind the `session_discovery`
+  insecure feature). The same credentials are read: an override admin gets
+  Appium's list untouched, a verified caller only the sessions they own,
+  anyone else `{"value":[]}`, which is what an idle server answers. It wraps
+  `res.json` and removes entries; Appium still builds the list. Owners are
+  looked up when the list is answered, with one `SessionOwnerResolver.ownersOf`
+  query for all listed ids (ownerOf's rule, shared cache). They can't be
+  precomputed before `next()`: `xenon: setSessionStatus` changes a live
+  session's status, so there is no reliable "live" filter. Error answers pass
+  through. A failed credential check or owner lookup is 503.
+- **Session WebSockets are guarded** (`sessionUpgradeGuard.ts`).
+  `<basePath>/bidi/<id>` and drivers' `/ws/session/<id>/...` (with or without
+  the base path) need the owner's or an override admin's credentials, in the
+  same headers. A refusal is a bare `404` written on the raw socket, which is
+  then closed, identical whether the session exists or not. A failed check is
+  a `503`. The umbrella `<basePath>/bidi`, Xenon's ticketed `/xenon/...`
+  sockets and socket.io are never touched. Appium takes upgrades one of two
+  ways. On Node >= 22.21 / 24.9 it uses an `upgrade` listener, added before
+  `updateServer`. On older Node it uses an Express middleware, which Node
+  reaches only while the server has no `upgrade` listener. The check is
+  async, so the guard wraps `httpServer.emit` for `upgrade`. It holds a
+  session upgrade back from every listener until it's allowed, then
+  re-emits it unchanged. It also puts a middleware at index 0 of the Express
+  stack (`insertAtStart`). Session ids are read the way Appium reads them:
+  WHATWG-normalised pathname, case-insensitive, plus BiDi's second read of
+  the raw URL, each decoded too. The caller must own every one.
+- **Two pre-existing upgrade bugs, not fixed here.** On Node < 22.21 (the lab's
+  22.19), Xenon's own h264/logcat `upgrade` listeners mean Node never hands an
+  upgrade to Appium's Express handler. So BiDi and driver sockets get no
+  answer at all, setting on or off. With the setting on, the guard only adds a
+  fast 404 for non-owners. On Node >= 22.21, Appium's listener runs first and
+  `socket.destroy()`s every upgrade it doesn't know. That includes Xenon's
+  h264 and logcat sockets and socket.io's websocket transport (seen on a real
+  boot). H.264 falls back to MJPEG, and socket.io to polling.
 - Enable it on the hub. A node verifies against its own database, so it would
   refuse the commands a hub forwards.
 
