@@ -26,16 +26,16 @@ export interface CreateLeaseRequest {
 
 /**
  * What an Appium session presents when it names a lease in
- * `xenon:options.leaseId`. Any one of these proves it may use the lease.
+ * `xe:options.leaseId`. Any one of these proves it may use the lease.
  */
 export interface LeaseSessionProof {
   /** May use a lease someone else created: see canOverrideLease (device-access/leaseOverride.ts). */
   canOverride: boolean;
-  /** ApiKey row id of a verified df:options pair. */
+  /** ApiKey row id of a verified xe:options.{accessKey,token} pair. */
   apiKeyId: string | null;
-  /** User id from a verified df:options pair or xenon:options.sessionToken. */
+  /** User id from a verified xe:options pair or xe:options.sessionToken. */
   userId: string | null;
-  /** The cleartext xenon:options.leaseToken, if the session sent one. */
+  /** The cleartext xe:options.leaseToken, if the session sent one. */
   leaseToken: string | null;
 }
 

@@ -59,8 +59,8 @@ All capability shapes below are accepted:
 'xe:interceptorIncludeHosts': ['**.api.example.com']
 'xe:interceptorExcludeHosts': ['*.tracking.com']
 
-// 4. Nested under xenon:options (W3C-friendly)
-'xenon:options': {
+// 4. Nested under xe:options (W3C-friendly; xenon:options is an alias)
+'xe:options': {
   interceptor: { enabled: true, /* ... */ }
 }
 ```

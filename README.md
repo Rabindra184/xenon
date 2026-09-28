@@ -186,6 +186,10 @@ See [docs/server-args.md](docs/server-args.md) for all available options.
 
 Xenon uses the `xe:` prefix for its custom capabilities. You can also use `xenon:` as an alternative.
 
+### `xe:options`: credentials, leases and nested options
+
+`xe:options` is Xenon's capability namespace. It holds the session's credentials (`accessKey` + `token`, or `sessionToken`), a lease (`leaseId` + `leaseToken`, which the lease-create response's `appiumCapabilities` already carry), and options such as `healingTiers`. `xenon:options` is still accepted as an alias; when both are sent, `xe:options` wins field by field. `df:options` is not read. See [Teams](#teams-device-access-control) for an example.
+
 ### Session & Build Tracking
 
 | Capability | Description | Example |
@@ -493,16 +497,21 @@ Tokens carry one or more scopes; the user's role controls which scopes they can 
 
 Scopes govern *which verbs* a token can call; **teams** govern *which devices* it can reach. A user bound to a team sees the team's devices plus the shared pool (`teamId = null`). `admin`-scope tokens bypass team filtering.
 
-Test clients pass the access key via the `xenon:accessKey` capability:
+Test clients authenticate a session with the access key and a token (with the `sessions` scope) in `xe:options`, Xenon's capability namespace:
 
 ```js
 const caps = {
   platformName: 'iOS',
   'appium:automationName': 'XCUITest',
-  'xenon:accessKey': process.env.XENON_CI_KEY,   // user with team membership
+  'xe:options': {
+    accessKey: process.env.XENON_ACCESS_KEY,   // user with team membership
+    token: process.env.XENON_TOKEN,
+  },
   // optional: 'xenon:team': '<team-id>' to pin allocation (admins only for cross-team)
 };
 ```
+
+A client that holds a hub-minted session token (`POST /xenon/api/auth/token`) sends `'xe:options': { sessionToken }` instead. `xenon:options` is still accepted as an alias (when both are sent, `xe:options` wins field by field); `df:options` is not read. Xenon takes these credentials out of the capabilities before the driver, the queue or the session record sees them.
 
 See [docs/teams.md](docs/teams.md) for creating teams, assigning devices, and the full error taxonomy.
 

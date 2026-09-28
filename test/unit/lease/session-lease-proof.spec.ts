@@ -28,7 +28,7 @@ import { saveRegistrations } from '../../helpers/container-registration';
 const TOKEN = 'f'.repeat(64);
 const REFUSED =
   'lease lse_1 is not active, or this session did not prove it holds it — pass ' +
-  'xenon:options.leaseToken from the lease response, or create the session with the ' +
+  'xe:options.leaseToken from the lease response, or create the session with the ' +
   'credentials that created the lease; and the phone must be one your teams can see';
 
 const sessionCaps = (
@@ -38,13 +38,14 @@ const sessionCaps = (
   alwaysMatch: {
     platformName: 'Android',
     'appium:automationName': 'UiAutomator2',
-    'xenon:options': { leaseId: 'lse_1', ...xenonOptions },
+    'xe:options': { leaseId: 'lse_1', ...xenonOptions },
     ...extra,
   },
   firstMatch: [{}],
 });
 
-const key = (accessKey: string) => ({ 'df:options': { accessKey, token: 'tk' } });
+// A key pair travels beside the lease id, in xe:options.
+const key = (accessKey: string) => ({ accessKey, token: 'tk' });
 const ownerKey = key('ak_owner');
 const otherKey = key('ak_other');
 // A session token names its user in `sub`; the fake verifier echoes it back.
@@ -182,13 +183,21 @@ describe('createSession — a lease-bound session proves it holds the lease', ()
 
   describe('who gets the device', () => {
     it('the key that created the lease, with no token', async () => {
-      await create(sessionCaps({}, ownerKey));
+      await create(sessionCaps(ownerKey));
       expect(driverCaps).to.not.equal(undefined);
     });
 
     it('any caller presenting the lease token', async () => {
       await create(sessionCaps({ leaseToken: TOKEN }));
       expect(driverCaps).to.not.equal(undefined);
+    });
+
+    it('a session naming the lease in the xenon:options alias, as before', async () => {
+      const caps: any = sessionCaps({});
+      delete caps.alwaysMatch['xe:options'];
+      caps.alwaysMatch['xenon:options'] = { leaseId: 'lse_1', leaseToken: TOKEN };
+      await create(caps);
+      expect(driverCaps.alwaysMatch['xenon:options']).to.deep.equal({ leaseId: 'lse_1' });
     });
 
     it('with auth disabled, a session that sends only the lease id, as before', async () => {
@@ -204,7 +213,7 @@ describe('createSession — a lease-bound session proves it holds the lease', ()
 
     it('any key of the user who created the lease', async () => {
       lease.actorId = 'usr_other';
-      expect(await allowed(sessionCaps({}, key('ak_team_a')))).to.equal(true);
+      expect(await allowed(sessionCaps(key('ak_team_a')))).to.equal(true);
     });
   });
 
@@ -218,15 +227,15 @@ describe('createSession — a lease-bound session proves it holds the lease', ()
       rows.delete(id);
     });
     sinon.stub(svc as any, 'lookUpLeaseAccess').rejects(new Error('lookup blew up'));
-    expect(await refusal(sessionCaps({}, ownerKey))).to.equal('lookup blew up');
+    expect(await refusal(sessionCaps(ownerKey))).to.equal('lookup blew up');
     expect([...rows]).to.deep.equal([]);
   });
 
   it('a session that names no lease reads no user and no team for it', async () => {
     const findById = sinon.spy(Container.get(UserService), 'findById');
     sinon.stub(deviceUtils, 'allocateDeviceForSession').resolves(device);
-    const caps: any = sessionCaps({}, ownerKey);
-    delete caps.alwaysMatch['xenon:options'];
+    const caps: any = sessionCaps(ownerKey);
+    delete caps.alwaysMatch['xe:options'].leaseId;
     await create(caps);
     expect(findById.called).to.equal(false);
     expect(teamRows.called).to.equal(false);
@@ -234,15 +243,15 @@ describe('createSession — a lease-bound session proves it holds the lease', ()
 
   describe('taking over a lease someone else created', () => {
     it("is refused to an ADMIN's key without the admin scope", async () => {
-      expect(await refusal(sessionCaps({}, key('ak_admin_narrow')))).to.equal(REFUSED);
+      expect(await refusal(sessionCaps(key('ak_admin_narrow')))).to.equal(REFUSED);
     });
 
     it("is allowed to that ADMIN's key with the admin scope", async () => {
-      expect(await allowed(sessionCaps({}, key('ak_admin_scoped')))).to.equal(true);
+      expect(await allowed(sessionCaps(key('ak_admin_scoped')))).to.equal(true);
     });
 
     it("is allowed to a SUPER_ADMIN's key", async () => {
-      expect(await allowed(sessionCaps({}, key('ak_super')))).to.equal(true);
+      expect(await allowed(sessionCaps(key('ak_super')))).to.equal(true);
     });
 
     it('is allowed to an ADMIN presenting a session token, as on the dashboard', async () => {
@@ -261,17 +270,17 @@ describe('createSession — a lease-bound session proves it holds the lease', ()
 
     it("allows the owner when they are in the phone's team", async () => {
       teamRows.resolves([{ teamId: 'team_b' }] as any);
-      expect(await allowed(sessionCaps({}, ownerKey))).to.equal(true);
+      expect(await allowed(sessionCaps(ownerKey))).to.equal(true);
     });
 
     it('refuses the owner once they are not', async () => {
       teamRows.resolves([{ teamId: 'team_a' }] as any);
-      expect(await refusal(sessionCaps({}, ownerKey))).to.equal(REFUSED);
+      expect(await refusal(sessionCaps(ownerKey))).to.equal(REFUSED);
     });
 
     it("allows an ADMIN's own lease on any team's phone, since REST let them take it", async () => {
       lease.actorId = 'key_admin_narrow';
-      expect(await allowed(sessionCaps({}, key('ak_admin_narrow')))).to.equal(true);
+      expect(await allowed(sessionCaps(key('ak_admin_narrow')))).to.equal(true);
     });
   });
 
@@ -285,15 +294,12 @@ describe('createSession — a lease-bound session proves it holds the lease', ()
     });
 
     it('a different API key', async () => {
-      expect(await refusal(sessionCaps({}, otherKey))).to.equal(REFUSED);
+      expect(await refusal(sessionCaps(otherKey))).to.equal(REFUSED);
     });
 
     it('a team-bound key with the right token, when the device is in another team', async () => {
       device.teamId = 'team_b';
-      const caps = sessionCaps(
-        { leaseToken: TOKEN },
-        { 'df:options': { accessKey: 'ak_team_a', token: 'tk' } },
-      );
+      const caps = sessionCaps({ leaseToken: TOKEN, ...key('ak_team_a') });
       expect(await refusal(caps)).to.equal(REFUSED);
     });
   });
@@ -306,20 +312,20 @@ describe('createSession — a lease-bound session proves it holds the lease', ()
         expect(JSON.stringify(seen)).to.not.include(TOKEN);
       }
       // The lease id is not a secret and still travels.
-      expect(driverCaps.alwaysMatch['xenon:options'].leaseId).to.equal('lse_1');
-      expect(finalCaps.desired['xenon:options'].leaseId).to.equal('lse_1');
+      expect(driverCaps.alwaysMatch['xe:options'].leaseId).to.equal('lse_1');
+      expect(finalCaps.desired['xe:options'].leaseId).to.equal('lse_1');
     });
 
     it('is taken from every capability bucket, not only the one it is read from', async () => {
       const caps: any = sessionCaps({ leaseToken: TOKEN });
-      caps.firstMatch = [{ 'xenon:options': { leaseToken: TOKEN } }];
+      caps.firstMatch = [{ 'xe:options': { leaseToken: TOKEN } }];
       await create(caps);
       expect(JSON.stringify(driverCaps)).to.not.include(TOKEN);
     });
 
     it('counts only beside the lease id: in firstMatch while leaseId is in alwaysMatch, it is stripped but not honoured', async () => {
       const caps: any = sessionCaps({});
-      caps.firstMatch = [{ 'xenon:options': { leaseToken: TOKEN } }];
+      caps.firstMatch = [{ 'xe:options': { leaseToken: TOKEN } }];
       expect(await refusal(caps)).to.equal(REFUSED);
       expect(JSON.stringify(caps)).to.not.include(TOKEN);
       expect(JSON.stringify(pendingCopy)).to.not.include(TOKEN);
@@ -339,7 +345,7 @@ describe('createSession — a lease-bound session proves it holds the lease', ()
       it('forwards the token to a peer Xenon node, which runs the same check', async () => {
         device.nodeId = 'node-peer';
         await create(sessionCaps({ leaseToken: TOKEN }));
-        expect(forwardedCaps.alwaysMatch['xenon:options'].leaseToken).to.equal(TOKEN);
+        expect(forwardedCaps.alwaysMatch['xe:options'].leaseToken).to.equal(TOKEN);
         expect(JSON.stringify(finalCaps)).to.not.include(TOKEN);
         expect(JSON.stringify(pendingCopy)).to.not.include(TOKEN);
       });
@@ -358,8 +364,8 @@ describe('the lease token is redacted wherever it can still be logged', () => {
   afterEach(() => sinon.restore());
 
   it('by the structured logger', () => {
-    const out: any = redactSecrets({ 'xenon:options': { leaseId: 'lse_1', leaseToken: TOKEN } });
-    expect(out['xenon:options'].leaseId).to.equal('lse_1');
+    const out: any = redactSecrets({ 'xe:options': { leaseId: 'lse_1', leaseToken: TOKEN } });
+    expect(out['xe:options'].leaseId).to.equal('lse_1');
     expect(JSON.stringify(out)).to.not.include(TOKEN);
   });
 

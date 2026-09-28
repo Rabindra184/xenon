@@ -119,7 +119,7 @@ const NO_LEASE_PROOF: LeaseSessionProof = {
  * and update the capability json with required device informations
  * @param capability
  * @param leaseProof who the session is, and the lease token it sent; only a
- *   session naming a lease in `xenon:options.leaseId` reads it
+ *   session naming a lease in `xe:options.leaseId` reads it
  * @returns
  */
 export async function allocateDeviceForSession(

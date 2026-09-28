@@ -36,7 +36,7 @@ describe('sessionTokenGate', () => {
     await assertSessionTokenGate({ enabled: false, hasValidKeyPair: false, token: null, verify });
   });
 
-  it('enabled gate passes with a valid df:options key pair (SDK back-compat)', async () => {
+  it('enabled gate passes with a valid xe:options key pair', async () => {
     await assertSessionTokenGate({ enabled: true, hasValidKeyPair: true, token: null, verify });
   });
 
@@ -49,7 +49,11 @@ describe('sessionTokenGate', () => {
       await assertSessionTokenGate({ enabled: true, hasValidKeyPair: false, token: null, verify });
       throw new Error('should have thrown');
     } catch (e: any) {
-      expect(e.message).to.include('xenon:options.sessionToken');
+      // It names the one documented form, and nothing Xenon no longer reads.
+      expect(e.message).to.include('xe:options.accessKey');
+      expect(e.message).to.include('xe:options.token');
+      expect(e.message).to.include('xe:options.sessionToken');
+      expect(e.message).to.not.include('df:options');
     }
   });
 
@@ -60,6 +64,7 @@ describe('sessionTokenGate', () => {
       throw new Error('should have thrown');
     } catch (e: any) {
       expect(e.message).to.include('invalid');
+      expect(e.message).to.include('xe:options.sessionToken');
     }
   });
 

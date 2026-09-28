@@ -2,10 +2,11 @@
  * Session-token capability gate (spec §3 Xenon item 6, risk R9).
  *
  * Appium's WebDriver port has no native auth. When XENON_REQUIRE_SESSION_TOKEN
- * is on, createSession must present EITHER a valid df:options access-key/token
- * pair (existing SDK path) OR a valid short-lived `xenon:options.sessionToken`
- * JWT (aud 'xenon-session', minted by POST /xenon/api/auth/token alongside
- * xenon-mcp tokens). Off by default — enabling is a deployment decision made
+ * is on, createSession must present EITHER a valid `xe:options.accessKey` +
+ * `xe:options.token` pair (existing SDK path) OR a valid short-lived
+ * `xe:options.sessionToken` JWT (aud 'xenon-session', minted by
+ * POST /xenon/api/auth/token alongside xenon-mcp tokens). `xenon:options` is
+ * read as an alias. Off by default — enabling is a deployment decision made
  * together with network-isolating the Appium port (hosted-mcp deploy doc).
  *
  * Node note: enforcement requires the signing key material (JwtKeyService).
@@ -36,15 +37,16 @@ export async function assertSessionTokenGate(opts: {
   if (!opts.enabled || opts.hasValidKeyPair) return;
   if (!opts.token) {
     throw new Error(
-      'session rejected: XENON_REQUIRE_SESSION_TOKEN is enabled and neither ' +
-        'df:options credentials nor a xenon:options.sessionToken capability were provided',
+      'session rejected: XENON_REQUIRE_SESSION_TOKEN is enabled and the session presented ' +
+        'no valid credentials — pass `xe:options.accessKey` + `xe:options.token`, ' +
+        'or `xe:options.sessionToken`',
     );
   }
   try {
     await opts.verify(opts.token);
   } catch {
     throw new Error(
-      'session rejected: xenon:options.sessionToken is invalid or expired ' +
+      'session rejected: xe:options.sessionToken is invalid or expired ' +
         '(expected a hub-minted JWT with audience xenon-session)',
     );
   }

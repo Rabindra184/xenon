@@ -10,16 +10,16 @@
  * already-verified key row and a `verify` function for the token.
  */
 export interface SessionIdentity {
-  /** ApiKey row id, when the caller presented a df:options pair. */
+  /** ApiKey row id, when the caller presented an xe:options key pair. */
   apiKeyId: string | null;
   /** User id — the human. Populated from either credential path. */
   userId: string | null;
 }
 
 export interface SessionIdentityInput {
-  /** A df:options.{accessKey,token} pair already verified by ApiKeyService. */
+  /** An xe:options.{accessKey,token} pair already verified by ApiKeyService. */
   row: { id: string; userId: string } | null;
-  /** The raw xenon:options.sessionToken capability, if the caller sent one. */
+  /** The raw xe:options.sessionToken capability, if the caller sent one. */
   sessionToken: string | null;
   /** JwtKeyService.verify bound to audience 'xenon-session'. */
   verify: (token: string) => Promise<{ sub?: unknown }>;

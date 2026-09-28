@@ -40,10 +40,10 @@ export abstract class XenonSession {
   public stoppedAt?: number;
   public healthState: SessionHealthState = SessionHealthState.HEALTHY;
   // Phase 2 audit: which API key created this session (null when auth is
-  // disabled or the client didn't present xenon:accessKey).
+  // disabled or the client didn't present an xe:options.accessKey + token pair).
   public apiKeyId: string | null = null;
   // The human who created this session, resolved from either the API-key
-  // pair or a bare xenon:options.sessionToken (see resolveSessionIdentity).
+  // pair or a bare xe:options.sessionToken (see resolveSessionIdentity).
   // Null when auth is disabled or the caller couldn't be attributed.
   public userId: string | null = null;
 

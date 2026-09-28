@@ -159,7 +159,8 @@ Body: {
     "appium:systemPort"?, "appium:chromedriverPort"?,
     "appium:wdaLocalPort"?, "appium:mjpegServerPort"?,
     "appium:newCommandTimeout",
-    "xenon:options": { leaseId, buildId, leaseToken }  // leaseToken: response only, see §4.8
+    "xe:options": { leaseId, buildId, leaseToken }  // leaseToken: response only, see §4.8
+                                                    // (xenon:options through 1.29.x; still read as an alias)
   },
   control: {
     streamUrl, controlBaseUrl, dashboardUrl
@@ -398,26 +399,27 @@ gone; ports are always allocated server-side now).
 > - auth is disabled;
 > - it may override: a SUPER_ADMIN or `admin`-scoped key, or an ADMIN or
 >   SUPER_ADMIN session token (`canOverrideLease`, following `resolveActor`);
-> - it presents the lease token as `xenon:options.leaseToken`, in the same
->   capability bucket as `leaseId`. The create response's `appiumCapabilities`
->   carry it; the stored `capabilityBag` never does;
+> - it presents the lease token as `xe:options.leaseToken`, beside `leaseId`
+>   (read from the same merged options, `xenon:options` as an alias). The
+>   create response's `appiumCapabilities` carry it; the stored
+>   `capabilityBag` never does;
 > - its identity is the lease's creator. A lease created with an access-key
->   pair records that key, so only that key's `df:options` pair matches. A
->   lease created with a bearer JWT or the dashboard cookie records the user,
->   so any of that user's keys, or a `xenon:options.sessionToken` for them,
->   matches.
+>   pair records that key, so only that key's `xe:options.{accessKey,token}`
+>   pair matches. A lease created with a bearer JWT or the dashboard cookie
+>   records the user, so any of that user's keys, or an
+>   `xe:options.sessionToken` for them, matches.
 >
 > The phone must also be one the caller's teams can see, computed as REST
 > computes them (`computeTeamIds`, `isDeviceVisible`), with no admin
 > exception. Every refusal is the same error:
 > `lease <id> is not active, or this session did not prove it holds it — pass
-> xenon:options.leaseToken from the lease response, or create the session
+> xe:options.leaseToken from the lease response, or create the session
 > with the credentials that created the lease; and the phone must be one your
 > teams can see`. It reads the same for an
 > expired lease on purpose, so a client must not re-acquire in a loop on it.
-> `createSession` removes the token from the capabilities before the pending
-> row, the driver or the Session row sees them, and forwards it only to a
-> peer Xenon node. That node re-runs the check, so upgrade nodes before the
+> `createSession` removes the token, with the session's other credentials,
+> from the capabilities before the pending row, the driver or the Session row
+> sees them, and forwards them only to a peer Xenon node. That node re-runs the check, so upgrade nodes before the
 > hub. Appium's own request log needs a filter; see below.
 
 #### Keeping the lease token out of Appium's own log
@@ -453,11 +455,11 @@ doubly-escaped JSON, and bodies Appium cut inside the token.
 
 When the Kotlin SDK acquires a lease and then opens an Appium session,
 the W3C session-create POST carries `appium:capabilities` that include
-`xenon:options.leaseId`. The `CommandInterceptor` (in `handleInContext`)
+`xe:options.leaseId`. The `CommandInterceptor` (in `handleInContext`)
 recognizes the leaseId and routes:
 
 ```
-if firstMatch['xenon:options']?.leaseId:
+if firstMatch['xe:options']?.leaseId:
   lease = await LeaseService.resolve(leaseId, /* no token — server trusts session-create flow */)
   if !lease or lease.status != 'active':
     throw 400 { lease_not_active }
@@ -487,7 +489,7 @@ lease-issued ports flow through unchanged.
 | `GET /xenon/api/sdk/leases` | API key + `MEMBER` role (team-visibility filtered) |
 | `GET /xenon/api/sdk/version` | API key + `MEMBER` role |
 | `POST /xenon/api/ports/allocate` | Node-pair token (hub → node only; not exposed to external clients via Express routing — registered only on internal mount) |
-| Appium `POST /session` naming `xenon:options.leaseId` | Proof of holding the lease: see the note at the top of §4.8 |
+| Appium `POST /session` naming `xe:options.leaseId` | Proof of holding the lease: see the note at the top of §4.8 |
 
 The `x-xenon-lease-token` requirement is in addition to the API-key
 auth, not instead of. Two parallel workers sharing one API key still

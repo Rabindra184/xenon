@@ -26,6 +26,9 @@ describe('lease token routes reveal nothing without the token', () => {
   const TOKEN = 'r'.repeat(64);
   const WRONG = 'w'.repeat(64);
   const now = Date.now();
+  // Built when the file loads, which in a full run can be well over a minute
+  // before these tests run: a live lease must outlast the whole run.
+  const LIVE_MS = 60 * 60_000;
 
   const base = {
     tokenHash: leaseToken.hashToken(TOKEN),
@@ -35,10 +38,10 @@ describe('lease token routes reveal nothing without the token', () => {
     heartbeatSeconds: 30,
   };
   const LEASES: Record<string, any> = {
-    lse_active: { ...base, id: 'lse_active', status: 'active', expiresAt: now + 60_000 },
+    lse_active: { ...base, id: 'lse_active', status: 'active', expiresAt: now + LIVE_MS },
     // Marked by the sweeper.
     lse_expired: { ...base, id: 'lse_expired', status: 'expired', expiresAt: now - 60_000 },
-    lse_released: { ...base, id: 'lse_released', status: 'released', expiresAt: now + 60_000 },
+    lse_released: { ...base, id: 'lse_released', status: 'released', expiresAt: now + LIVE_MS },
     // Past expiresAt, not yet swept.
     lse_lapsed: { ...base, id: 'lse_lapsed', status: 'active', expiresAt: now - 1_000 },
   };

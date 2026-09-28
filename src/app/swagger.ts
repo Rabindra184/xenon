@@ -29,6 +29,9 @@ Xenon's high-performance API provides programmatic access to the core orchestrat
 ### Authentication
 Every endpoint authenticates with the per-user \`(x-xenon-access-key, x-xenon-token)\` pair. Each token carries one or more scopes — \`read\`, \`sessions\`, \`devices\`, or \`admin\` (admin always satisfies any scope check). Mint tokens at \`/profile\` → **API Tokens**; the access key is shown at the top of that page and is rotatable. Browser dashboards may use the \`xenon_dashboard_session\` cookie set by \`POST /api/auth/login\`.
 
+### Appium sessions
+Appium's own \`POST /session\` is not under this API. A session authenticates with capabilities in \`xe:options\`, Xenon's capability namespace: \`accessKey\` + \`token\` (a token with the \`sessions\` scope), or a \`sessionToken\` minted by \`POST /api/auth/token\`. A leased device is named by \`leaseId\` + \`leaseToken\`, which the lease-create response's \`appiumCapabilities\` already carry. \`xenon:options\` is read as an alias (\`xe:options\` wins field by field); \`df:options\` is not read. Xenon removes the credentials before the driver or any stored record sees them.
+
 ### Rate limiting
 Every authenticated response carries \`X-RateLimit-Limit\`, \`X-RateLimit-Remaining\`, and \`X-RateLimit-Reset\` headers. Requests beyond the configured budget receive \`429 Too Many Requests\`.
         `,

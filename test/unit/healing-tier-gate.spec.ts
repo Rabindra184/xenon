@@ -4,12 +4,13 @@ import {
   HealingOrchestrator,
   filterProvidersByTier,
   coerceHealingTiersCap,
+  healingTiersFromCaps,
 } from '../../src/services/healing/HealingOrchestrator';
 import { HealEtalonService } from '../../src/services/healing/HealEtalonService';
 import { HealedLocatorGenerator } from '../../src/services/healing/HealedLocatorGenerator';
 import { HealingProvider, HealingTier } from '../../src/services/healing/types';
 
-// §2.7 healing-tier capability gate: xenon:options.healingTiers restricts which
+// §2.7 healing-tier capability gate: xe:options.healingTiers restricts which
 // self-healing providers may be dispatched. Tier index mapping used by the gate
 // (array-position based, NOT the internal HealingTier enum): 1=Resilio,
 // 2=Fuzzy XML, 3=OCR, 4=Visual AI, 5=LLM (index i -> tier i+1). Tier 0 (native
@@ -79,6 +80,35 @@ describe('filterProvidersByTier (§2.7 healing-tier gate)', () => {
 
     it('explicitly-empty [] also → undefined (run all; the cap restricts, it cannot disable)', () => {
       expect(coerceHealingTiersCap([])).to.equal(undefined);
+    });
+  });
+
+  // What CommandInterceptor hands attemptHealing, read from the session's
+  // capabilities.
+  describe('healingTiersFromCaps', () => {
+    it('reads xe:options.healingTiers', () => {
+      expect(healingTiersFromCaps({ 'xe:options': { healingTiers: [1, 2] } })).to.deep.equal([
+        1, 2,
+      ]);
+    });
+
+    it('still reads the xenon:options alias', () => {
+      expect(healingTiersFromCaps({ 'xenon:options': { healingTiers: [3] } })).to.deep.equal([3]);
+    });
+
+    it('prefers xe:options when both set it', () => {
+      expect(
+        healingTiersFromCaps({
+          'xenon:options': { healingTiers: [5] },
+          'xe:options': { healingTiers: [1] },
+        }),
+      ).to.deep.equal([1]);
+    });
+
+    it('fails open with no capabilities or a malformed value', () => {
+      expect(healingTiersFromCaps(undefined)).to.equal(undefined);
+      expect(healingTiersFromCaps({})).to.equal(undefined);
+      expect(healingTiersFromCaps({ 'xe:options': { healingTiers: ['1'] } })).to.equal(undefined);
     });
   });
 });

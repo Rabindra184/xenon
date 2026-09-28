@@ -43,7 +43,7 @@ function sessionBody(padding = 0) {
       alwaysMatch: {
         platformName: 'Android',
         'appium:padding': 'x'.repeat(padding),
-        'xenon:options': { leaseId: 'lse_1', leaseToken: TOKEN },
+        'xe:options': { leaseId: 'lse_1', leaseToken: TOKEN },
       },
       firstMatch: [{}],
     },

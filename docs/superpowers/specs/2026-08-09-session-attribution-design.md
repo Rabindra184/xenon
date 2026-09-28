@@ -3,6 +3,10 @@
 **Date:** 2026-08-09
 **Status:** approved, ready for planning
 **Follows:** the device ownership guard (#216–#221, released as 1.13.0)
+**Since 1.30:** the credentials below are read from `xe:options` (with
+`xenon:options` as an alias, `xe:options` winning field by field). The key
+pair was read from `df:options` when this was written; `df:options`
+is no longer read at all.
 
 ## Problem
 
@@ -21,13 +25,13 @@ produces the value. There are four cases:
 | Case | Today | Verdict |
 |---|---|---|
 | `authDisabled` | `apiKeyId: null` (line 235-237) | Correct. Every caller is a synthetic SUPER_ADMIN, so the guard bypasses and attribution is moot. This is why the measured lab shows all-null. |
-| Valid `df:options.{accessKey,token}` pair | `apiKeyId: row.id` (line 292) | Works. |
-| Valid `xenon:options.sessionToken` | `apiKeyId: null` (line 264) | **Bug.** |
+| Valid `xe:options.{accessKey,token}` pair | `apiKeyId: row.id` (line 292) | Works. |
+| Valid `xe:options.sessionToken` | `apiKeyId: null` (line 264) | **Bug.** |
 | No credentials at all | warn, allowed, `apiKeyId: null` (line 260-265) | Out of scope — see below. |
 
 ### The bug
 
-`assertSessionTokenGate` verifies the `xenon:options.sessionToken` JWT and then
+`assertSessionTokenGate` verifies the `xe:options.sessionToken` JWT and then
 **discards the payload**. That token is minted at `src/app/routers/auth.ts:73`
 as:
 
@@ -98,8 +102,8 @@ export interface SessionIdentity {
 }
 
 export async function resolveSessionIdentity(input: {
-  row: { id: string; userId: string } | null;   // verified df:options pair
-  sessionToken: string | null;                   // xenon:options.sessionToken
+  row: { id: string; userId: string } | null;   // verified xe:options pair
+  sessionToken: string | null;                   // xe:options.sessionToken
   verify: (token: string) => Promise<{ sub?: unknown }>;
 }): Promise<SessionIdentity>;
 ```
@@ -144,7 +148,7 @@ not been written yet.
 createSession caps
   └─ authorizeSessionRequest()
        ├─ authDisabled            → { apiKeyId: null, userId: null }
-       ├─ verifyPair(df:options)  → row
+       ├─ verifyPair(xe:options)  → row
        ├─ assertSessionTokenGate() ....... unchanged; admits or throws
        └─ resolveSessionIdentity({ row, sessionToken, verify })
             → { apiKeyId, userId }
@@ -177,7 +181,7 @@ alter allocation, which is a separate concern from attribution.
 
 | Spec | Covers |
 |---|---|
-| `test/unit/session-identity.spec.ts` | `resolveSessionIdentity` truth table: df:options pair populates both; valid token populates userId only; invalid token ignored; missing/empty/non-string `sub` ignored; neither → both null; a valid pair wins over a token. |
+| `test/unit/session-identity.spec.ts` | `resolveSessionIdentity` truth table: xe:options pair populates both; valid token populates userId only; invalid token ignored; missing/empty/non-string `sub` ignored; neither → both null; a valid pair wins over a token. |
 | `test/unit/session-owner-resolver.spec.ts` (extend) | Prefers `user_id`; falls back to `api_key_id → ApiKey.userId` for legacy rows; null when neither resolves; positive-only caching still holds for the new path. |
 | `test/unit/session-attribution-wiring.spec.ts` | `authorizeSessionRequest` returns the identity for each of the four cases, and `authDisabled` short-circuits to `{ null, null }`. |
 
@@ -198,9 +202,9 @@ the 1.12.0 `schema.json` change did.
 **End-to-end check with auth enabled**, on an isolated server (the local lab
 runs `authDisabled: true`, under which none of this is observable):
 
-1. Create a session with a valid `df:options` pair → row has both `api_key_id`
+1. Create a session with a valid `xe:options` pair → row has both `api_key_id`
    and `user_id`.
-2. Create a session with only a `xenon:options.sessionToken`, gate **off** →
+2. Create a session with only a `xe:options.sessionToken`, gate **off** →
    row has `user_id`, `api_key_id` null.
 3. That session's owner can interact with the device through `/control`
    (the previously-broken own-session path) → 200.

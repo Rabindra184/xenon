@@ -23,7 +23,7 @@ function leaseRow(overrides: Record<string, unknown> = {}) {
     teamId: null,
     status: 'active',
     expiresAt: Date.now() + 60_000,
-    capabilityBag: JSON.stringify({ 'xenon:options': { leaseId: 'lse_1' } }),
+    capabilityBag: JSON.stringify({ 'xe:options': { leaseId: 'lse_1' } }),
     ...overrides,
   };
 }
@@ -77,11 +77,11 @@ describe('LeaseService — who may use a lease for a session', () => {
         teamId: null,
       });
 
-      expect(out.appiumCapabilities['xenon:options'].leaseId).to.equal('lse_1');
-      expect(out.appiumCapabilities['xenon:options'].leaseToken).to.equal(out.leaseToken);
+      expect(out.appiumCapabilities['xe:options'].leaseId).to.equal('lse_1');
+      expect(out.appiumCapabilities['xe:options'].leaseToken).to.equal(out.leaseToken);
 
       const stored = db.lease.update.firstCall.args[0].data.capabilityBag as string;
-      expect(JSON.parse(stored)['xenon:options']).to.deep.equal({ leaseId: 'lse_1' });
+      expect(JSON.parse(stored)['xe:options']).to.deep.equal({ leaseId: 'lse_1' });
       expect(stored).to.not.include(out.leaseToken);
       // Only the hash is stored anywhere.
       const created = JSON.stringify(db.lease.create.firstCall.args[0].data);

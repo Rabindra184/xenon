@@ -1494,8 +1494,9 @@
  *       a phone she can see, or that she made, or that came from one of her
  *       teams; the rest are counted in the summary's `otherCount`. A request
  *       queued by a server that didn't record its requester is only counted.
- *       Credentials the client sent (`df:options.token`,
- *       `xenon:options.sessionToken`, any secret-named key) read
+ *       createSession removes the credentials in `xe:options` before it
+ *       queues a request. Any secret-named key a row still holds (one
+ *       queued by an older server, or sent under another name) reads
  *       `***REDACTED***`, for every caller.
  *     tags: [Grid]
  *     responses:

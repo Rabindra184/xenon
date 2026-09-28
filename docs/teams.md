@@ -105,12 +105,15 @@ curl -X DELETE http://host:4723/xenon/api/teams/<team-id>/members/<key-id> \
 
 ## Using teams from a test client
 
-Test clients authenticate at session-create time via two capabilities:
+Test clients authenticate at session-create time with their credentials in `xe:options`, Xenon's capability namespace, and may name a team:
 
 | Capability | Required? | Purpose |
 |---|---|---|
-| `xenon:accessKey` | Recommended (not yet required) | The API key whose scopes/team govern this session. |
+| `xe:options.accessKey` + `xe:options.token` | Recommended (required when `XENON_REQUIRE_SESSION_TOKEN` is on, unless a session token is sent) | The API key whose scopes/team govern this session, and a token for it with the `sessions` scope. |
+| `xe:options.sessionToken` | Alternative to the pair | A hub-minted JWT from `POST /xenon/api/auth/token`; identifies the user and their team. |
 | `xenon:team` | Optional | Forces the allocator to pick from this team's devices. |
+
+`xenon:options` is still accepted as an alias for `xe:options`; when a session sends both, `xe:options` wins field by field. `df:options` is not read. Xenon removes the credentials from the capabilities before the driver, the queue or the stored session sees them.
 
 ### Typical CI setup
 
@@ -119,7 +122,10 @@ Test clients authenticate at session-create time via two capabilities:
 const caps = {
   platformName: 'Android',
   'appium:automationName': 'UiAutomator2',
-  'xenon:accessKey': process.env.ANDROID_QA_KEY,
+  'xe:options': {
+    accessKey: process.env.ANDROID_QA_KEY,
+    token: process.env.ANDROID_QA_TOKEN,
+  },
   // xenon:team is optional — the allocator already restricts alice to her
   // team + shared pool. Setting it only narrows further.
 };
@@ -131,20 +137,21 @@ An `admin`-scoped key can create sessions in any team by setting the cap:
 
 ```js
 const caps = {
-  'xenon:accessKey': process.env.ADMIN_KEY,
+  'xe:options': { accessKey: process.env.ADMIN_KEY, token: process.env.ADMIN_TOKEN },
   'xenon:team': '3acef541-…',        // pick from this team's devices
 };
 ```
 
 ### Back-compat
 
-A session request with **no** `xenon:accessKey` still succeeds today (a WARN is logged). This is temporary to avoid breaking pre-v1.4 test clients. A future major release will require the capability.
+A session request with **no** credentials still succeeds today (a WARN is logged) unless `XENON_REQUIRE_SESSION_TOKEN` is on. It stays unattributed, so the device ownership guard denies every non-admin on that device, including whoever started the run. Set `XENON_REQUIRE_SESSION_TOKEN` to refuse such sessions.
 
 ### Error cases
 
 | Condition | HTTP | Response body |
 |---|---|---|
-| `xenon:accessKey` invalid / revoked / lacks `sessions` scope | `400` | `invalid argument — xenon:accessKey is invalid, revoked, or lacks the sessions scope` |
+| `xe:options` key pair lacks the `sessions` scope | `400` | `invalid argument — credentials are invalid, revoked, or lack the sessions scope` |
+| No valid credentials (none, an invalid or revoked pair, or only `df:options`) while `XENON_REQUIRE_SESSION_TOKEN` is on | `400` | ``invalid argument — session rejected: XENON_REQUIRE_SESSION_TOKEN is enabled and the session presented no valid credentials — pass `xe:options.accessKey` + `xe:options.token`, or `xe:options.sessionToken` `` |
 | `xenon:team` value is a team the key isn't in (non-admin) | `400` | `invalid argument — xenon:team '<id>' is not allowed for this API key` |
 | No device matches caps + caller's team | `500` | `No device matching request` (standard allocator timeout) |
 

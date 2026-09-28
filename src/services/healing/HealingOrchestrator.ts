@@ -10,9 +10,10 @@ import { HealEtalonService } from './HealEtalonService';
 import { ResilioTreeHealingProvider } from './ResilioTreeHealingProvider';
 import { HEALING_METRICS } from './HealingMetrics';
 import { ATTR } from '../telemetry/attributes';
+import { xenonOptionsIn } from '../session/xenonOptions';
 
 // §2.7 healing-tier capability gate. The tier numbering here is the
-// externally-facing capability contract (xenon:options.healingTiers),
+// externally-facing capability contract (xe:options.healingTiers),
 // which is array-position based: providers[i] is tier i+1 (1=Resilio,
 // 2=Fuzzy XML, 3=OCR, 4=Visual AI, 5=LLM). Tier 0 is the original/native
 // selector — it's implicit and never appears in the providers array, so
@@ -29,7 +30,7 @@ export function filterProvidersByTier(
   return providers.filter((_, index) => allowed.has(index + 1));
 }
 
-// Coerce the raw xenon:options.healingTiers capability value into the
+// Coerce the raw xe:options.healingTiers capability value into the
 // allowedTiers argument for attemptHealing. Fail-open contract (Phase 2a
 // review fix): a malformed cap must RUN ALL tiers, never silently disable
 // healing. Pre-fix, an all-non-numeric array (e.g. ["1","2"]) filtered to []
@@ -41,6 +42,13 @@ export function filterProvidersByTier(
 export function coerceHealingTiersCap(raw: unknown): number[] | undefined {
   const nums = Array.isArray(raw) ? raw.filter((t: any) => typeof t === 'number') : undefined;
   return nums && nums.length === 0 ? undefined : nums;
+}
+
+// The allowedTiers a session asked for, read from its capabilities (one flat
+// map, e.g. the session response): xe:options.healingTiers, or the
+// xenon:options alias's, coerced as above.
+export function healingTiersFromCaps(caps: unknown): number[] | undefined {
+  return coerceHealingTiersCap(xenonOptionsIn(caps).healingTiers);
 }
 
 @Service()
@@ -100,7 +108,7 @@ export class HealingOrchestrator {
     }
 
     // Tiered Execution: Try providers in order of cost/complexity.
-    // §2.7: when the session's xenon:options.healingTiers capability is set,
+    // §2.7: when the session's xe:options.healingTiers capability is set,
     // restrict dispatch to the allowed tier indices; absent -> unchanged.
     const activeProviders = filterProvidersByTier(this.providers, allowedTiers);
     for (const provider of activeProviders) {

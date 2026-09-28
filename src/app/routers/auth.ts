@@ -68,7 +68,7 @@ export async function issueToken(
       { audience, ttlSeconds: expiresIn },
     );
     // Session-token capability (spec §3 item 6 / R9): a sibling credential the
-    // client injects as `xenon:options.sessionToken` so the Appium createSession
+    // client injects as `xe:options.sessionToken` so the Appium createSession
     // interceptor can refuse tokenless direct-connect sessions when the gate is on.
     const sessionToken = await svc.sign(
       { sub: auth.userId, teamId: auth.teamId ?? null },

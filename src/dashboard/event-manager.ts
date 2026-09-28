@@ -2,7 +2,7 @@ import { Request, Response } from 'express';
 import { SESSION_MANAGER } from '../sessions/SessionManager';
 import { IDevice } from '../interfaces/IDevice';
 import { prisma } from '../prisma';
-import log from '../logger';
+import log, { redactSecrets } from '../logger';
 import {
   getOrCreateNewBuild,
   getSessionById,
@@ -34,6 +34,25 @@ import { healingTierLabel } from '../services/healing/types';
 import { SelectorStateService } from '../services/SelectorStateService';
 import { RecordingStore } from '../services/recording/recording-store';
 import { Service } from 'typedi';
+
+/**
+ * What a Session row keeps of the capabilities the driver returned. The row
+ * is served to the dashboard and the session API, so any secret-named value
+ * is redacted. createSession already takes Xenon's own credentials out of
+ * xe:options and xenon:options before the driver sees them; this also covers
+ * a token a client put where Xenon doesn't read it, which the driver hands
+ * back in its response. The response itself is not changed.
+ */
+export function storedSessionCapabilities(sessionResponse: Record<string, any>): {
+  desired_capabilities: string;
+  session_capabilities: string;
+} {
+  const redacted = redactSecrets(sessionResponse);
+  return {
+    desired_capabilities: JSON.stringify(redacted.desired || {}),
+    session_capabilities: JSON.stringify(_.omit(redacted, 'desired')),
+  };
+}
 
 @Service()
 export class DashboardEventManager {
@@ -107,8 +126,7 @@ export class DashboardEventManager {
       id: session.getId(),
       build: build.id ? { connect: { id: build.id } } : undefined,
       name: capabilities[XENON_CAPABILITIES.SESSION_NAME] || undefined,
-      desired_capabilities: JSON.stringify(sessionResponse.desired || {}),
-      session_capabilities: JSON.stringify(_.omit(sessionResponse, 'desired')),
+      ...storedSessionCapabilities(sessionResponse),
       node_id: device.nodeId || '',
       has_live_video: session.getLiveVideoUrl() !== null,
       video_recording_enabled: capabilities[XENON_CAPABILITIES.VIDEO_RECORDING] === true,
