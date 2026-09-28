@@ -12,6 +12,7 @@ import {
 import log from '../logger';
 import { attachH264Ws } from '../app/ws/h264StreamWs';
 import { attachLogcatWs } from '../app/ws/logcatWs';
+import { upgradeRouterFor } from '../app/ws/upgradeRouter';
 import { StreamTicketService } from './token/StreamTicketService';
 import AndroidH264StreamService from '../device-managers/android/AndroidH264StreamService';
 import { LogcatStreamService } from '../device-managers/android/LogcatStreamService';
@@ -124,7 +125,7 @@ export class ServerManager {
     await this.setupMaintenanceCrons(pluginArgs, localHosts);
 
     // Live H.264 preview WebSocket (Android; feature-flagged in the frontend).
-    // Only claims /stream/h264 — socket.io keeps its own upgrades. Ticket-auth'd.
+    // A route of the upgrade router: only /stream/h264 upgrades reach it. Ticket-auth'd.
     if (httpServer) {
       attachH264Ws(httpServer, {
         redeem: (ticket, udid) => Container.get(StreamTicketService).redeem(ticket, udid),
@@ -135,8 +136,8 @@ export class ServerManager {
       });
 
       // Continuous logcat WebSocket (Android; replaces the 3s dump-poll).
-      // Only claims /logcat — socket.io and the h264 WS keep their own
-      // upgrades. Ticket-auth'd like h264, plus an ownership check h264
+      // A route of the upgrade router: only /logcat upgrades reach it.
+      // Ticket-auth'd like h264, plus an ownership check h264
       // doesn't need: logcat routinely carries auth tokens and PII from
       // whatever app is under test, so it's an ownership-checked read, not
       // an open one — see docs/superpowers/specs/2026-08-09-logcat-stream-design.md
@@ -382,6 +383,19 @@ export class ServerManager {
     const commandAuth = commandAuthDeps();
     registerCommandAuth(expressApp, cliArgs, commandAuth);
     registerSessionUpgradeGuard(httpServer, expressApp, cliArgs, commandAuth);
+    // One owner per WebSocket upgrade (upgradeRouter.ts): Xenon's H.264,
+    // logcat and socket.io paths go to Xenon, everything else to Appium behind
+    // the session guard. Installed after the guard, so the guard never sees
+    // Xenon's sockets, and before socket.io and the H.264 / logcat sockets
+    // attach to it below. Without it, which side got an upgrade depended on
+    // the Node version, and each version broke one side.
+    if (httpServer) {
+      const router = upgradeRouterFor(httpServer);
+      this.logger.info(
+        "WebSocket upgrades: Xenon's own paths go to Xenon; every other path goes to " +
+          `${router.describeAppiumPath()}.`,
+      );
+    }
     registerProxyMiddlware(expressApp, cliArgs);
   }
 

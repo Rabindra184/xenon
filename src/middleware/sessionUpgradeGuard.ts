@@ -1,7 +1,7 @@
 import type { IncomingMessage } from 'http';
 import type { Duplex } from 'stream';
 import type { NextFunction, Request, RequestHandler, Response } from 'express';
-import { normalizeBasePath } from '../app/appiumBasePath';
+import { appiumPathname, normalizeBasePath } from '../app/appiumBasePath';
 import { CommandAuthDeps, decideSessionAccess, summarize } from './commandAuth';
 
 /**
@@ -67,20 +67,6 @@ export const UPGRADE_UNAVAILABLE_RESPONSE =
 
 function escapeRegExp(text: string): string {
   return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-}
-
-/**
- * The pathname Appium matches an upgrade against, computed as
- * base-driver's tryHandleWebSocketUpgrade does: WHATWG URL parsing, which
- * resolves dot segments (also `%2e%2e`) and drops the query and an absolute
- * form's host.
- */
-function appiumPathname(url: string): string {
-  try {
-    return new URL(url, 'http://localhost').pathname;
-  } catch {
-    return url;
-  }
 }
 
 function decoded(segment: string): string {

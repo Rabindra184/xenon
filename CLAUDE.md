@@ -217,6 +217,57 @@ Sizing lives in one place per constant: `IDLE_TIMEOUT_MS` 30s, `IDLE_POLL_MS`
 2s, `REPLAY_BUFFER_SIZE` 2000, client buffer 5000, `DEFAULT_TTL_MS` 10s,
 `PS_TIMEOUT_MS` 5s.
 
+### WebSocket upgrades (`src/app/ws/upgradeRouter.ts`)
+
+Xenon's WebSockets share Appium's http.Server with Appium's own. Xenon has
+H.264 (`/xenon/api/control/:udid/stream/h264`), logcat (`.../logcat`) and
+socket.io (`/socket.io/`). Appium has BiDi (`<basePath>/bidi[/<id>]`) and
+whatever drivers add (`/ws/session/<id>/...`). The upgrade router gives each
+upgrade exactly one handler. Before it, which side worked depended on the
+Node version:
+
+- **Node >= 22.21 / 24.9:** Appium's `upgrade` listener (base-driver
+  `configureHttp`, added before any plugin) ran first and `socket.destroy()`ed
+  every path it had no handler for, Xenon's included. H.264 fell back to MJPEG
+  and socket.io to polling.
+- **Node < 22.21 (the lab's 22.19, all of Node 20):** Appium takes upgrades in
+  an Express middleware, which Node reaches only while the server has no
+  `upgrade` listener. Xenon's listeners were always there, so BiDi and driver
+  sockets got no answer. On a hub, engine.io's listener ended them after 1 s.
+
+How it works:
+
+- **It wraps `emit('upgrade')`**, as the session guard does. An upgrade to a
+  Xenon route goes to that route alone, and no listener sees it. Everything
+  else is emitted unchanged, through the guard, to the listeners.
+  `registerRoutes` installs it right after the guard.
+- **On Node < 22.21 it adds the listener Appium would have added**
+  (`appiumUpgradeListener`). The test is base-driver's own: the server has no
+  `shouldUpgradeCallback`. That listener is also what makes an old Node emit
+  `upgrade` at all. It ports base-driver's `tryHandleWebSocketUpgrade` over
+  the public `webSocketsMapping`, and destroys what matches nothing. The port
+  handles literal and `:param` patterns, the only kinds Appium and drivers
+  register, and `upgrade-router.spec.ts` checks it against Appium's own
+  function case by case. A pattern in other path-to-regexp syntax is skipped,
+  with one warning.
+- **socket.io is adopted.** engine.io attaches by adding its own `upgrade`
+  listener, which would also see every other upgrade and end it after 1 s.
+  `adopt` takes the listener it added off the server and calls it only for
+  `/socket.io/`, using engine.io's own test (a prefix of the raw URL).
+- **A new WebSocket goes through `upgradeRouterFor(server).add(...)`**, never
+  `server.on('upgrade')`. A listener sees every upgrade. On Node < 22.21 its
+  presence alone hides every upgrade from Appium's Express middleware.
+- **A throw is contained.** An exception out of an `upgrade` listener ends
+  the process. Xenon's path parsers throw on a malformed `%` escape in a udid.
+  So does Appium's own dispatch for one in a BiDi session id, because
+  path-to-regexp decodes parameters. The router catches either, destroys the
+  socket and logs.
+- **Limit on Node < 22.21:** any `upgrade` listener makes Node treat every
+  `Connection: Upgrade` request as an upgrade. A non-WebSocket one
+  (`Upgrade: h2c`) is destroyed rather than served as plain HTTP. It hung
+  before this change. Node >= 22.21 serves it as HTTP, because Appium's callback
+  only claims `websocket`.
+
 ### Process shutdown (`src/index.ts`)
 
 `cleanup()` runs on SIGINT/SIGTERM and is **not reliable on SIGTERM**: Appium's
@@ -508,14 +559,13 @@ is not pushed, it takes up to 30 s (`commandCaller.ts` says why).
   stack (`insertAtStart`). Session ids are read the way Appium reads them:
   WHATWG-normalised pathname, case-insensitive, plus BiDi's second read of
   the raw URL, each decoded too. The caller must own every one.
-- **Two pre-existing upgrade bugs, not fixed here.** On Node < 22.21 (the lab's
-  22.19), Xenon's own h264/logcat `upgrade` listeners mean Node never hands an
-  upgrade to Appium's Express handler. So BiDi and driver sockets get no
-  answer at all, setting on or off. With the setting on, the guard only adds a
-  fast 404 for non-owners. On Node >= 22.21, Appium's listener runs first and
-  `socket.destroy()`s every upgrade it doesn't know. That includes Xenon's
-  h264 and logcat sockets and socket.io's websocket transport (seen on a real
-  boot). H.264 falls back to MJPEG, and socket.io to polling.
+- **Which handler an upgrade reaches is the upgrade router's job** (see
+  "WebSocket upgrades" below). It sits in front of the guard's `emit`
+  wrapper and passes it everything that isn't Xenon's, so the guard stands
+  in front of Appium's listener on every Node. Because the router always
+  keeps an `upgrade` listener, Node < 22.21 no longer hands any upgrade to
+  Express, and the guard's Express middleware is a backstop that isn't
+  reached.
 - Enable it on the hub. A node verifies against its own database, so it would
   refuse the commands a hub forwards.
 
@@ -772,6 +822,7 @@ npm run build:copy` (from the repo root) regenerates and copies it.
 | `src/device-managers/android/LogcatMultiplexer.ts` | One upstream → many clients, 2000-record replay, **per-client** drop accounting with a visible synthetic marker |
 | `src/device-managers/android/LogcatStreamService.ts` | One `adb logcat -v threadtime -T 2000` child per device; idle watchdog, `killAllSync()` for the exit hook |
 | `src/app/ws/logcatWs.ts` | Ticket + `evaluateDeviceAccess` at connect time; 1008 denies, 1012 on upstream death |
+| `src/app/ws/upgradeRouter.ts` | One handler per WebSocket upgrade: Xenon's routes (H.264, logcat, adopted socket.io) first, everything else to Appium's listener, or Xenon's copy of it on Node < 22.21 |
 | `src/services/device-access/ticketActorAccess.ts` | `makeTicketActorAuthorizer` — the WS's ownership decision, extracted so it is tested directly rather than through a copy in a spec |
 | `web/src/components/device-control/logcat/logcatFilter.ts` | Pure filter grammar (`level:` minimum, `tag:`, `package:`, text, ANDed) plus `setLevelTerm` so the dropdown and the text box share one query |
 | `web/src/components/device-control/logcat/useLogcatStream.ts` | Mints a ticket per connect, batches frames (React 17 does not auto-batch outside events), resets the buffer on reconnect **except** after 1012 |

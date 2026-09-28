@@ -11,3 +11,17 @@ export function normalizeBasePath(basePath: unknown): string {
   if (normalized !== '' && !normalized.startsWith('/')) normalized = `/${normalized}`;
   return normalized;
 }
+
+/**
+ * The pathname Appium matches an upgrade against, computed as
+ * base-driver's tryHandleWebSocketUpgrade does: WHATWG URL parsing, which
+ * resolves dot segments (also `%2e%2e`) and drops the query and an absolute
+ * form's host.
+ */
+export function appiumPathname(url: string): string {
+  try {
+    return new URL(url, 'http://localhost').pathname;
+  } catch {
+    return url;
+  }
+}

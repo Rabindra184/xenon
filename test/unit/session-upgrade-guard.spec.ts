@@ -506,10 +506,12 @@ describe('session WebSockets under per-command auth', () => {
   }
 
   describe("next to Xenon's own upgrade listeners (Appium's Express middleware unreachable)", () => {
-    // What the lab runs on Node < 22.21: Appium's upgrade middleware plus
-    // Xenon's h264 and logcat listeners. With any `upgrade` listener present,
-    // Node never hands an upgrade to Express, so Appium's handler is not
-    // reached at all; the guard's job here is only to refuse.
+    // What the lab ran on Node < 22.21 before the upgrade router: Appium's
+    // upgrade middleware plus Xenon's h264 and logcat listeners. With any
+    // `upgrade` listener present, Node never hands an upgrade to Express, so
+    // Appium's handler is not reached at all; the guard's job here is only to
+    // refuse. The router's own wiring is in upgrade-router.spec.ts and
+    // ws-upgrade-routing-appium-server.spec.ts.
     let server: http.Server | undefined;
     let port: number;
     let seenByListeners: Array<{ url: string; alive: boolean }>;
