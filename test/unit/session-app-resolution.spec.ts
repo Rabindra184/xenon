@@ -47,7 +47,7 @@ const caps = (app: string, accessKey?: string) => ({
     platformName: 'Android',
     'appium:automationName': 'UiAutomator2',
     'appium:app': app,
-    ...(accessKey ? { 'df:options': { accessKey, token: 'tk' } } : {}),
+    ...(accessKey ? { 'xe:options': { accessKey, token: 'tk' } } : {}),
   },
   firstMatch: [{}],
 });
@@ -170,10 +170,16 @@ describe('createSession — an app named by id follows the team rule', () => {
   });
 
   it("leaves another team's app exactly as an unknown id: untouched, and no ticket minted", async () => {
+    // What the client sent, less the credentials createSession takes out.
+    const asSent = (app: string) => {
+      const sent: any = caps(app, 'ak_team_a');
+      sent.alwaysMatch['xe:options'] = {};
+      return sent;
+    };
     const hidden = await create(caps('app-b', 'ak_team_a'));
     const unknown = await create(caps('no-such-app', 'ak_team_a'));
-    expect(hidden).to.deep.equal(caps('app-b', 'ak_team_a'));
-    expect(unknown).to.deep.equal(caps('no-such-app', 'ak_team_a'));
+    expect(hidden).to.deep.equal(asSent('app-b'));
+    expect(unknown).to.deep.equal(asSent('no-such-app'));
     expect(mint.called).to.equal(false);
   });
 
@@ -199,7 +205,7 @@ describe('createSession — an app named by id follows the team rule', () => {
     const c: any = {
       alwaysMatch: {
         platformName: 'Android',
-        'df:options': { accessKey: 'ak_team_a', token: 'tk' },
+        'xe:options': { accessKey: 'ak_team_a', token: 'tk' },
       },
       firstMatch: [{ 'appium:app': 'app-a' }],
     };
@@ -249,6 +255,55 @@ describe('createSession — an app named by id follows the team rule', () => {
     expect(c.alwaysMatch['appium:app']).to.equal(
       'http://127.0.0.1:4726/xenon/api/apps/app-a/download',
     );
+  });
+
+  // The app ticket and the session's credentials are both bearer secrets, and
+  // are handled apart: the credentials are taken out before anything reads
+  // the caps, the ticket is put in only for the driver. Neither may end up in
+  // what Xenon stores.
+  describe('beside the credential strip', () => {
+    const PLAIN = 'http://127.0.0.1:4726/xenon/api/apps/app-a/download';
+
+    it('the driver gets the ticket and no credentials; what is stored gets neither', async () => {
+      const c = caps('app-a', 'ak_team_a');
+      await create(c);
+      expect(URL_RE.test(driverCaps.alwaysMatch['appium:app'])).to.equal(true);
+      expect(driverCaps.alwaysMatch['xe:options']).to.deep.equal({});
+      for (const [where, seen] of Object.entries({ pendingCopy, finalCaps, sent: c })) {
+        const text = JSON.stringify(seen);
+        expect(text, where).to.include(PLAIN);
+        expect(text, where).to.not.include('ticket=');
+        expect(text, where).to.not.match(/"token"|"accessKey"/);
+      }
+    });
+
+    it('a peer node gets the ticket and the credentials; the hub keeps neither', async () => {
+      allocate.resolves({
+        udid: 'u2',
+        host: 'http://10.0.0.2:4723',
+        platform: 'android',
+        nodeId: 'node-2',
+      } as any);
+      let forwarded: any;
+      sinon.stub(svc, 'forwardSessionRequest').callsFake(async (_d: any, fc: any) => {
+        forwarded = JSON.parse(JSON.stringify(fc));
+        return { value: ['sess-2', { platformName: 'Android' }] } as any;
+      });
+      sinon.stub(svc as any, 'finalizeSession').resolves();
+      const c = caps('app-a', 'ak_team_a');
+      await svc.createSession(sinon.stub(), {}, c);
+      expect(parseAppUrl(forwarded.alwaysMatch['appium:app']).appId).to.equal('app-a');
+      expect(forwarded.alwaysMatch['xe:options']).to.deep.equal({
+        accessKey: 'ak_team_a',
+        token: 'tk',
+      });
+      for (const [where, seen] of Object.entries({ pendingCopy, sent: c })) {
+        const text = JSON.stringify(seen);
+        expect(text, where).to.include(PLAIN);
+        expect(text, where).to.not.include('ticket=');
+        expect(text, where).to.not.match(/"token"|"accessKey"/);
+      }
+    });
   });
 
   it('fails the session and releases its phone when a ticket cannot be minted', async () => {
