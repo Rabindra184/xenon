@@ -156,7 +156,10 @@ export function DeviceTable({
   navigate,
   teams,
 }: Props) {
-  const showHost = new Set(devices.map((d) => d.host)).size > 1;
+  // Host shows only when there is more than one, or while it is the sort: a
+  // filter can leave one host, and hiding the sorted column then left no
+  // header saying how the rows are ordered.
+  const showHost = new Set(devices.map((d) => d.host)).size > 1 || sort.key === 'host';
   const sorted = sortDevices(devices, sort, { now: Date.now(), teams });
 
   return (

@@ -225,6 +225,29 @@ describe('Devices page view', () => {
     expect(where()).toBe('/devices?platform=android&view=table&sort=device');
   });
 
+  // Host shows only with more than one host. A filter that leaves one host
+  // used to hide the column the rows were sorted by, so no header said how
+  // they were ordered.
+  it('keeps the Host column, marked as the sort, when a filter leaves one host', async () => {
+    const s9 = DEVICES[0];
+    const host = s9.host;
+    s9.host = 'http://node-b:4723';
+    try {
+      renderAt('/devices?view=table&sort=host');
+      await screen.findByRole('table', { name: 'Devices, 3 shown' });
+      fireEvent.click(screen.getByRole('button', { name: 'Platform', expanded: false }));
+      fireEvent.click(await screen.findByRole('menuitemradio', { name: /iOS/ }));
+      const table = screen.getByRole('table', { name: 'Devices, 2 shown' });
+      expect(within(table).getByRole('columnheader', { name: /Host/ })).toHaveAttribute(
+        'aria-sort',
+        'ascending',
+      );
+      expect(where()).toBe('/devices?platform=ios&view=table&sort=host');
+    } finally {
+      s9.host = host;
+    }
+  });
+
   // A `?view=cards` link has to beat a stored `table`, or the first filter
   // change drops it and the page flips to the table underneath the user.
   it('keeps a cards link over a stored table when a filter changes', async () => {

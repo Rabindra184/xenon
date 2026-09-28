@@ -60,6 +60,15 @@ const table = (over: Partial<React.ComponentProps<typeof DeviceTable>> = {}) =>
   );
 const rows = () => screen.getAllByRole('row').slice(1); // minus the header row
 
+/** The element and its ancestors that carry an opacity below 1. */
+const fadedAncestors = (el: Element) => {
+  const out: Element[] = [];
+  for (let n: Element | null = el; n; n = n.parentElement) {
+    if (Number(getComputedStyle(n).opacity || 1) < 1) out.push(n);
+  }
+  return out;
+};
+
 describe('DeviceTable', () => {
   it('has the columns in order and a caption with the count', () => {
     table();
@@ -78,6 +87,29 @@ describe('DeviceTable', () => {
   it('shows Host only when devices come from more than one host', () => {
     table({ devices: [...list, device({ udid: 'D', host: 'http://node-b:4723' })] });
     expect(screen.getByRole('columnheader', { name: /Host/ })).toBeInTheDocument();
+  });
+
+  // A filter can narrow the list to one host while the rows are still sorted
+  // by it. Hiding the column then left no header saying how the rows are
+  // ordered, so Host stays while it is the sort.
+  it('keeps Host, marked as the sort, while sorting by it with one host', () => {
+    table({ sort: { key: 'host', dir: 'desc' } });
+    expect(screen.getByRole('columnheader', { name: /Host/ })).toHaveAttribute(
+      'aria-sort',
+      'descending',
+    );
+    expect(screen.getByRole('columnheader', { name: /Status/ })).toHaveAttribute(
+      'aria-sort',
+      'none',
+    );
+    // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+    const alpha = rows().find((r) => r.textContent?.includes('Alpha'))!;
+    expect(within(alpha).getAllByRole('cell')[5]).toHaveAttribute('title', 'http://127.0.0.1:4723');
+  });
+
+  it('drops Host again with one host once another column is the sort', () => {
+    table({ sort: { key: 'device', dir: 'asc' } });
+    expect(screen.queryByRole('columnheader', { name: /Host/ })).toBeNull();
   });
 
   it('sorts by Host when its header button is clicked', () => {
@@ -190,6 +222,22 @@ describe('DeviceTable', () => {
     // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
     const beta = rows().find((r) => r.textContent?.includes('Beta'))!;
     expect(beta).toHaveClass('is-offline');
+  });
+
+  // Faded to 0.55 the tags measured 3.2:1 (dark) and 2.6:1 (light). They take
+  // the card's offline tag colour instead; the status dot still fades.
+  it('keeps an offline row’s tags readable while its status dot fades', () => {
+    const { container } = table({
+      devices: [device({ udid: 'B', name: 'Beta', offline: true, tags: ['a', 'b', 'c'] })],
+    });
+    const tags = Array.from(container.querySelectorAll('.devtable-row.is-offline .devtable-tag'));
+    expect(tags.map((t) => t.textContent)).toEqual(['#a', '#b', '+1']);
+    for (const tag of tags) {
+      expect(fadedAncestors(tag)).toEqual([]);
+      expect(getComputedStyle(tag).color).toBe('var(--status-offline-tag)');
+    }
+    // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+    expect(fadedAncestors(container.querySelector('.devtable-status-dot')!)).not.toEqual([]);
   });
 
   // The row's own Team-cell branch: not covered by device-card.test.tsx or
