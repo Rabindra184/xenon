@@ -297,7 +297,7 @@ async function nodeAdbStatusOnOtherHost(
 }
 
 async function nodeAdbStatusOnThisHost(
-  request: Request<void>,
+  request: Request,
   response: Response<{ udid: string; host: string; state: string; platform: string }[]>,
 ) {
   const devices = await getDevicesFromDeviceManager();
@@ -458,13 +458,21 @@ function register(router: Router, pluginArgs: IPluginArgs) {
   router.get('/queue/summary', getQueueSummary);
   router.get('/sessions/active', getActiveSessions);
 
-  // debugging / observability
-  router.get('/logs/requests', getRequestLogs);
+  // debugging / observability. Admin-only, like /processes: the log holds
+  // every internal HTTP call, including control proxied to other nodes'
+  // phones (with what was typed) and forwarded new sessions (their ids).
+  router.get('/logs/requests', roleGuard('ADMIN'), scopeGuard(['admin']), getRequestLogs);
 
-  // node related routes
+  // node related routes. The status reads list every attached phone, so
+  // they are admin-only too.
   router.get('/node', getNodes);
-  router.get('/node/status', nodeAdbStatusOnThisHost);
-  router.get('/node/:host/status', _.curry(nodeAdbStatusOnOtherHost)(pluginArgs.bindHostOrIp));
+  router.get('/node/status', roleGuard('ADMIN'), scopeGuard(['admin']), nodeAdbStatusOnThisHost);
+  router.get(
+    '/node/:host/status',
+    roleGuard('ADMIN'),
+    scopeGuard(['admin']),
+    _.curry(nodeAdbStatusOnOtherHost)(pluginArgs.bindHostOrIp),
+  );
 
   // node status
   router.get(

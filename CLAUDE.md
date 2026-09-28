@@ -339,6 +339,23 @@ Every method and action is checked, with no exception list.
   matches with the caller's `callerTeamIds`, never a team list from the
   client's `filters`.
 
+**Session data follows the session's phone**
+(`src/services/device-access/sessionVisibility.ts`). `canSeeSession` decides one
+session: admin, or a visible phone, or, when the phone has no Device row
+(unplugged), the session's owner. `visibleSessionWhere` is the same rule as a
+Prisma `where`, so a list's `take` and a count are the caller's. Combine it
+under `AND`, never by spreading, or one `OR` overwrites the other.
+
+- `isValidSession` guards every `/session/:sessionId/*` route with it, and a
+  hidden session gets the unknown-id body byte for byte. Bug reports, the
+  session list, builds and the healing reads use it too.
+- Session files (`<sessionId>/<kind>/<file>` under `sessionAssetsPath`) are
+  served only by `GET /session/:sessionId/asset/:kind/:file`, for
+  `screenshots`, `video` and `performance`. Never serve that folder with
+  `express.static` or any mount outside `apiRouter`: it also holds interceptor
+  captures and, by default, every recording. Until 1.29.1,
+  `/xenon/session-recordings` served it with no login at all.
+
 ### Session attribution
 
 A session's owner is resolved by `SessionOwnerResolver.ownerOf`, which prefers

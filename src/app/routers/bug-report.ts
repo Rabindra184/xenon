@@ -12,6 +12,8 @@ import { roleGuard } from '../../middleware/roleGuard';
 import log from '../../logger';
 import { SocketServer } from '../../services/SocketServer';
 import { SocketEvents } from '../../enums/SocketEvents';
+import { prisma } from '../../prisma';
+import { canSeeSession, SessionCaller } from '../../services/device-access/sessionVisibility';
 
 const router = Router();
 router.use(roleGuard('MEMBER'));
@@ -45,6 +47,17 @@ router.post('/sessions/:sessionId/bug-report', async (req: Request, res: Respons
       });
     }
     windowSec = parsed;
+  }
+
+  // Another team's session gets the service's own unknown-session answer,
+  // and nothing is assembled for it.
+  const session = await prisma.session.findUnique({
+    where: { id: sessionId },
+    select: { device_udid: true, user_id: true },
+  });
+  const auth = (req as Request & { auth?: SessionCaller }).auth;
+  if (session && !(await canSeeSession(session, auth))) {
+    return res.status(404).json({ error: `Session ${sessionId} not found` });
   }
 
   const svc = Container.get(BugReportService);
