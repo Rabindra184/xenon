@@ -43,6 +43,7 @@ import { resolveSessionIdentity } from './session/sessionIdentity';
 import { capsWithLeaseToken, leaseIdOf, takeLeaseToken } from './lease/leaseSessionCaps';
 import { canOverrideLease } from './device-access/leaseOverride';
 import { computeTeamIds } from './device-access/callerTeamIds';
+import { PendingRequester, REQUESTER_KEY } from './device-access/queueVisibility';
 import { CircuitBreaker } from '../data-service/CircuitBreaker';
 import { addProxyHandler } from '../proxy/wd-command-proxy';
 import { DeviceStoreFactory } from '../data-service/device-store';
@@ -150,6 +151,9 @@ export class SessionLifecycleService {
       ...Object.assign({}, firstMatch, caps.alwaysMatch),
       capability_id: pendingSessionId,
       createdAt: new Date().getTime(),
+      // Who asked, for the queue's team scoping (queueVisibility). On this row
+      // only, never in `caps`, and last so a client can't supply its own.
+      [REQUESTER_KEY]: authResult.requester,
     });
 
     const lockName = this.getLockName(caps);
@@ -275,12 +279,16 @@ export class SessionLifecycleService {
   // `leaseAccess` says how the session is judged if it names a lease. It is a
   // function so the lookups behind it run only for such a session. Whether it
   // may override is not `!scoped`: a credential-less session is unscoped too.
+  //
+  // `requester` is who asked, for the queue: the user and the one team the
+  // credential is narrowed to, from what is in hand here, with no lookup.
   private async authorizeSessionRequest(caps: ISessionCapability): Promise<{
     apiKeyId: string | null;
     userId: string | null;
     callerTeamIds: string[] | undefined;
     scoped: boolean;
     leaseAccess: () => Promise<LeaseAccess>;
+    requester: PendingRequester;
   }> {
     const { config: xenonConfig } = await import('../config');
     // `scoped` tells the allocator whether to restrict device candidates by
@@ -298,6 +306,7 @@ export class SessionLifecycleService {
           canOverride: canOverrideLease({ kind: 'auth-disabled' }),
           teamIds: undefined,
         }),
+        requester: { userId: null, teamId: null },
       };
     }
 
@@ -355,6 +364,10 @@ export class SessionLifecycleService {
             ? { kind: 'session-token', userId: identity.userId, teamId: tokenTeamId }
             : { kind: 'none' },
         ),
+        requester: {
+          userId: identity.userId,
+          teamId: identity.userId ? tokenTeamId : null,
+        },
       };
     }
     if (!svc.hasScope(row, ['sessions'])) {
@@ -392,6 +405,7 @@ export class SessionLifecycleService {
         callerTeamIds: [requestedTeam],
         scoped: !isAdmin,
         leaseAccess,
+        requester: { userId: row.userId, teamId: requestedTeam },
       };
     }
 
@@ -401,6 +415,7 @@ export class SessionLifecycleService {
       callerTeamIds,
       scoped: !isAdmin,
       leaseAccess,
+      requester: { userId: row.userId, teamId: row.teamId ?? null },
     };
   }
 

@@ -15,9 +15,13 @@ import {
   filterRowsByVisibleDevice,
   enrichDevicesWithTeamNames,
 } from '../../data-service/device-service';
+import {
+  partitionPendingForCaller,
+  withoutRequester,
+} from '../../services/device-access/queueVisibility';
 import { scopeGuard } from '../../middleware/scopeGuard';
 import { roleGuard } from '../../middleware/roleGuard';
-import log from '../../logger';
+import log, { redactSecrets } from '../../logger';
 import { XenonManager } from '../../device-managers';
 import { Container } from 'typedi';
 import { IPluginArgs } from '../../interfaces/IPluginArgs';
@@ -166,38 +170,26 @@ async function unBlockDevice(request: Request, response: Response) {
   response.status(200).send({ success: true });
 }
 
-// Phase 4A: Pending sessions hold a JSON-decoded capability bag, not a row
-// from the Session model — they may carry `appium:udid` if the test runner
-// targeted a specific device, but most queue items are platform-only.
-// Strategy: rows with `appium:udid` get visibility-filtered against that
-// udid; rows without one pass through (the capability could still match any
-// device the caller can see, and there's no row-level ownership to enforce).
-async function filterPendingByVisibleDevice(
-  rows: any[],
-  teamIds: string[] | undefined,
-): Promise<any[]> {
-  if (teamIds === undefined) return rows;
-  const targeted = rows.filter((r) => typeof r['appium:udid'] === 'string' && r['appium:udid']);
-  const untargeted = rows.filter(
-    (r) => !(typeof r['appium:udid'] === 'string' && r['appium:udid']),
-  );
-  if (targeted.length === 0) return untargeted;
-  const visibleTargeted = await filterRowsByVisibleDevice(targeted, teamIds, 'appium:udid' as any);
-  return [...untargeted, ...visibleTargeted];
-}
+// The session queue is team-scoped: "own teams + a count". A member sees in
+// detail the waiting requests partitionPendingForCaller shows her (naming a
+// phone she can see, or hers, or her team's); the rest only as a number,
+// summary.otherCount. The length is the whole queue for every caller, as the
+// summary's total always was. No row leaves with its requester.
+type QueueCaller = { userId?: string; teamIds?: string[] };
+const queueCaller = (request: unknown) => (request as Request & { auth?: QueueCaller }).auth;
 
 async function getQueuedSessionLength(request: Request<void>, response: Response<number>) {
-  const auth = (request as unknown as Request & { auth?: { teamIds?: string[] } }).auth;
   const all = await pendingStore.getAllPendingSessions();
-  const visible = await filterPendingByVisibleDevice(all, auth?.teamIds);
-  response.json(visible.length);
+  response.json(all.length);
 }
 
 async function getQueuedSessionRequests(request: Request<void>, response: Response<unknown[]>) {
-  const auth = (request as unknown as Request & { auth?: { teamIds?: string[] } }).auth;
   const all = await pendingStore.getAllPendingSessions();
-  const visible = await filterPendingByVisibleDevice(all, auth?.teamIds);
-  response.json(visible);
+  const { visible } = await partitionPendingForCaller(all, queueCaller(request));
+  // A row is the capabilities the client sent, so it can hold the key and
+  // token that signed it (df:options, xenon:options.sessionToken). Those are
+  // nobody else's to read, a teammate's or an admin's.
+  response.json(visible.map((row) => redactSecrets(withoutRequester(row))));
 }
 
 async function getNodes(request: Request, response: Response<string[]>) {
@@ -219,39 +211,28 @@ async function getNodes(request: Request, response: Response<string[]>) {
 }
 
 async function getQueueStatusById(request: Request<{ capability_id: string }>, response: Response) {
+  const notFound = () => response.status(404).json({ error: 'Pending session not found' });
+  // A request the caller may not see answers exactly as an unknown id.
+  const caller = queueCaller(request);
+  if (caller?.teamIds !== undefined) {
+    const all = await pendingStore.getAllPendingSessions();
+    const target = all.find((s) => s.capability_id === request.params.capability_id);
+    if (!target) return notFound();
+    const { visible } = await partitionPendingForCaller([target], caller);
+    if (visible.length === 0) return notFound();
+  }
   const status = await Container.get(QueueService).getQueueStatus(request.params.capability_id);
-  if (!status) {
-    return response.status(404).json({ error: 'Pending session not found' });
-  }
-  // 404 the row if the underlying pending capability targets a device the
-  // caller can't see. Capability-only (no `appium:udid`) requests stay
-  // visible — there's no per-device ownership on them.
-  const auth = (request as Request & { auth?: { teamIds?: string[] } }).auth;
-  if (auth?.teamIds !== undefined) {
-    const allPending = await pendingStore.getAllPendingSessions();
-    const target = allPending.find((s) => s.capability_id === request.params.capability_id);
-    const targetUdid = target && typeof target['appium:udid'] === 'string' ? target['appium:udid'] : undefined;
-    if (targetUdid) {
-      const dev = await prisma.device.findFirst({
-        where: { udid: targetUdid },
-        select: { teamId: true },
-      });
-      const visible =
-        dev && (dev.teamId === null || auth.teamIds.includes(dev.teamId));
-      if (!visible) {
-        return response.status(404).json({ error: 'Pending session not found' });
-      }
-    }
-  }
+  if (!status) return notFound();
   response.json(status);
 }
 
 async function getQueueSummary(request: Request, response: Response) {
-  // Global counters / per-platform aggregates only — no per-device or
-  // per-host breakdown. Admins and members see the same number; the team
-  // filter doesn't apply directly.
-  const summary = await Container.get(QueueService).getQueueSummary();
-  response.json(summary);
+  // Counts only. `total` is the whole queue, like /queue/length; `otherCount`
+  // is how many of those the caller doesn't get in detail from /queue.
+  const all = await pendingStore.getAllPendingSessions();
+  const { otherCount } = await partitionPendingForCaller(all, queueCaller(request));
+  const summary = await Container.get(QueueService).getQueueSummary(all);
+  response.json({ ...summary, otherCount });
 }
 
 async function nodeAdbStatusOnOtherHost(
