@@ -6,6 +6,196 @@ This project follows [Semantic Versioning](https://semver.org/). Releases are
 published to npm automatically when `package.json`'s `version` changes on `main`
 (see `.github/workflows/npm-publish.yml`).
 
+## 2.0.0
+
+Major release. **Xenon's session capabilities move to `xe:options`, and
+`df:options` is no longer read.** Update every test client before you
+upgrade.
+
+Session credentials no longer reach the Appium driver or anything Xenon
+stores. Appium sessions now follow the same team rules as the rest of Xenon.
+Uploaded apps belong to teams. An opt-in setting checks the caller on every
+Appium command.
+
+Includes a database migration, applied automatically at startup. **Read
+"Changed — operator action may be needed" before upgrading.**
+
+### Changed — operator action may be needed
+
+- **Session capabilities move to `xe:options`** (#361). It is Xenon's one
+  capability namespace:
+  - credentials: `accessKey` + `token`, or `sessionToken`;
+  - a lease: `leaseId`, `leaseToken`;
+  - Xenon's other options: `healingTiers`, `interceptor`, `name`, and so on.
+
+  `xenon:options` is still read as an alias. When a session sends both,
+  `xe:options` wins field by field.
+- **`df:options` is not read at all,** and neither are `xenon:df:options` or
+  `appium:df:options`. It came from appium-device-farm and isn't Xenon's.
+  - A session that sends its credentials only there counts as having no
+    credentials. It's admitted with a warning but has no owner, so the device
+    ownership guard denies its phone to every non-admin, including whoever
+    started it.
+  - With `XENON_REQUIRE_SESSION_TOKEN` on, it's refused with "pass
+    `xe:options.accessKey` + `xe:options.token`, or `xe:options.sessionToken`".
+  - The flat `xenon:accessKey` capability shown in older docs was never read.
+    The `access_key` spelling is no longer read either.
+
+  Before:
+
+  ```js
+  'df:options': { accessKey: process.env.XENON_ACCESS_KEY, token: process.env.XENON_TOKEN },
+  'xenon:options': { healingTiers: [1, 2] },
+  ```
+
+  After (WebdriverIO):
+
+  ```js
+  'xe:options': {
+    accessKey: process.env.XENON_ACCESS_KEY,
+    token: process.env.XENON_TOKEN,
+    healingTiers: [1, 2],
+  },
+  ```
+
+  Java: `options.setCapability("xe:options", Map.of("accessKey", accessKey, "token", token));`.
+  Python: `options.set_capability("xe:options", {"accessKey": access_key, "token": token})`.
+  A client that uses a session token sends `"xe:options": {"sessionToken": ...}`.
+- **The lease-create response** now carries `xe:options: { leaseId, leaseToken }`
+  (#361). Clients that pass `appiumCapabilities` through unchanged need
+  nothing.
+- **Upgrade nodes before the hub** (#361). An older node reads only
+  `df:options` and `xenon:options`, so a client on `xe:options` would lose
+  attribution and its lease there.
+- **Rotate API tokens that clients sent in `df:options`,** if you keep Session
+  rows, queue history or debug logs from earlier releases (#361). Until now
+  those tokens, and session JWTs sent in `xenon:options.sessionToken`, reached
+  the driver and were stored and logged. Old rows are not rewritten.
+- **Keep tokens out of Appium's own request log.** Appium logs the `POST
+  /session` body before any plugin runs. This rule redacts `token`,
+  `sessionToken` and `leaseToken` values, including in a body Appium cuts off
+  inside the token. It replaces the lease-only rule from 1.29.0. With
+  `--log-filters <file>`:
+
+  ```json
+  [{"pattern": "([Tt]oken\\\\?[\"']?\\s*:\\s*\\\\?[\"']?)[A-Za-z0-9._~+/=-]+", "flags": "g", "replacer": "$1**REDACTED**"}]
+  ```
+
+  With an Appium config file (`--config`, which is how Xenon Control starts
+  Appium):
+
+  ```yaml
+  server:
+    log-filters:
+      - pattern: '([Tt]oken\\?["'']?\s*:\s*\\?["'']?)[A-Za-z0-9._~+/=-]+'
+        flags: g
+        replacer: '$1**REDACTED**'
+  ```
+- **Members' Appium sessions follow their teams** (#362). A session with a
+  key pair or a session token is allocated phones, and resolves uploaded
+  apps, by the same rule as REST. What that means per caller:
+  - a member gets their teams' phones plus the shared pool;
+  - a key or token narrowed to one team gets that team;
+  - an ADMIN or SUPER_ADMIN owner, or an admin-scoped key, gets every phone.
+
+  Until now, a member's ordinary key reached shared phones only, and a session
+  token reached every team's phones. `xenon:team` may now pick any team the
+  caller is in.
+- **Uploaded apps belong to a team** (#360).
+  - Upload stays admin-only and takes an optional team; the default is
+    shared. `PUT /xenon/api/apps/:id/team` moves an app.
+  - Members see shared apps and their teams' apps. A session names an app by
+    id only if its owner can see it. Installing an app on a phone applies the
+    same rule.
+  - Existing apps stay shared.
+  - A team that still owns apps can't be deleted.
+- **Database migration: one nullable column, `App.teamId`** (#360).
+  `runMigrations` applies it at startup. If you run with
+  `XENON_AUTO_MIGRATE=false`, apply `20260928120000_app_team` yourself before
+  starting this version.
+- **A CI gate using a member's API key now counts only that key's teams**
+  (#356). A build whose sessions ran on phones the key can't see gets
+  `violationCount: 0` from `/healing/hotspots/violations`. For a lab-wide
+  gate, use an admin-scoped key.
+- **`GET /xenon/api/cliArgs` is admin-only, and redacts secret-looking
+  values** (#358).
+
+### Added
+
+- **Opt-in per-command auth for Appium sessions** (#359). With
+  `XENON_REQUIRE_COMMAND_AUTH=true`, every request under
+  `/wd/hub/session/:sessionId` must carry credentials: the `x-xenon-access-key`
+  + `x-xenon-token` header pair or a bearer token. The caller must be the
+  session's owner or an admin.
+  - A refusal is WebDriver's own "invalid session id" 404, so it can't be told
+    apart from a session that doesn't exist.
+  - A session with no owner is refused to everyone but admins.
+  - Off by default. It never applies with auth disabled.
+  - Pair it with credentials at session creation, and have clients send the
+    headers on every request. `docs/server-args.md` shows how for WebdriverIO,
+    Java, Python and curl.
+- **A session's app is downloaded with a single-use link** (#360). When a
+  session names an uploaded app by id, the driver downloads it with a ticket
+  bound to that app, valid for 10 minutes. With auth on, the driver's
+  credential-less download used to be refused, so a session naming an app
+  failed.
+
+### Security
+
+- **Session credentials reached the driver and storage** (#361). An API token,
+  a session JWT or a lease token sent in the capabilities reached:
+  - the Appium driver;
+  - the pending-session queue;
+  - the Session row's stored capabilities;
+  - a debug log line.
+
+  Xenon now removes `accessKey`, `token`, `sessionToken` and `leaseToken` from
+  the capabilities before anything else reads them. A peer Xenon node gets
+  them back on the copy forwarded to it, and removes them itself; a cloud
+  provider never does. A Session row also redacts any secret-named value the
+  driver hands back.
+- **The session queue showed other users' API tokens** (#357). `GET /queue`
+  returned each waiting request's raw capabilities, credentials included, to
+  any member. Credentials are now redacted for every caller.
+- **Members saw other teams' data in:**
+  - the session queue (#357). A member now sees their own and their teams'
+    waiting requests, plus a count of the rest;
+  - Selector Health's hotspots, CI violations and selector list, and a muted
+    selector's last-healed time (#356).
+- **A member's session token could reach another team's phone** (#362).
+- **Lease heartbeat, extend and release revealed whether a lease was active**
+  (#358). Any caller whose token doesn't verify now gets the same 403
+  `token_mismatch`, whatever the lease's state. Only the token's holder learns
+  that it's gone.
+
+### Fixed
+
+- **The annotated export misplaced a late phone's marks** (#354). A phone
+  added more than 5 minutes into a recording had its annotations burned in at
+  the wrong time, usually stuck at the end. They now land where the Recordings
+  page shows them.
+- **An offline device's tags were below readable contrast** (#355): about
+  2.3–3.2:1. They now measure 5.0–5.8:1 in both themes, on the card and in the
+  table.
+- **The Devices table hid its sorted column** (#355). Filtering down to one
+  host while sorting by Host left no header showing the sort. The column now
+  stays while it's the sort.
+- **Three test specs depended on the order they ran in** (#353).
+
+### Known issues
+
+- **Sessions through a hub fail on Appium 3.** The node creates the session,
+  then Appium crashes on the hub while attaching plugins to a session with no
+  local driver. The client gets a 500, and the node keeps the session open on
+  the phone until it times out. A hub also forwards later commands through a
+  proxy that Appium 3 places after its own routes, so they wouldn't reach the
+  node either. Single-server setups are unaffected.
+- **A hub treats a node's phones as stale when both run on the same
+  machine,** because the stale-device filter compares the IP address and
+  ignores the port.
+- **The late-phone export fix (#354) is covered by unit tests only.** It
+  hasn't been checked on a device yet.
+
 ## 1.29.1
 
 Security patch. Session files (videos, screenshots, performance traces) could
