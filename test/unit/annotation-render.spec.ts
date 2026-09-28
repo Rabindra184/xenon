@@ -18,7 +18,10 @@ import {
   compositeOutputPath,
 } from '../../src/services/recording/RecordingOrchestrator';
 import { useArtifactStore } from '../helpers/artifact-store';
-import { writeRecordingTiming } from '../../src/services/recording/recordingTiming';
+import {
+  recordingTimingPath,
+  writeRecordingTiming,
+} from '../../src/services/recording/recordingTiming';
 
 describe('AnnotationRenderService.buildFilterParts', () => {
   const svc = new AnnotationRenderService({} as any);
@@ -636,5 +639,100 @@ describe('AnnotationRenderService — marks on a device video that started befor
 
   it('leaves marks alone when the video has no timing record (older recordings)', async () => {
     expect(await render(false)).to.deep.equal([1000, 3000]);
+  });
+});
+
+describe('AnnotationRenderService — marks on a phone added to a running group', () => {
+  // POST /recordings/:groupId/add-device spawns the phone's ffmpeg minutes
+  // after the group's t=0, and its marks are stamped in group time. The
+  // Recordings page shows a mark at group time T at T - offset in that phone's
+  // video. The annotated export has to burn it in at the same place.
+  const MIN = 60_000;
+  const T0 = Date.parse('2026-09-28T10:00:00Z');
+  const box = JSON.stringify({ x: 0.1, y: 0.1, w: 0.2, h: 0.2 });
+  // Both marks run 7:30-7:35 in group time.
+  const AT_0_30 = "enable='gte(t\\,30)*lt(t\\,35)'";
+  // Unshifted, 7:30 is past this 60 s video, so the start is pinned near EOF.
+  const UNSHIFTED = "enable='gte(t\\,59.5)*lt(t\\,455)'";
+  // The box mark is a wash and a border, the image mark one overlay.
+  const all = (w: string) => [w, w, w];
+  let dir: string;
+  beforeEach(() => {
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), 'late-phone-'));
+  });
+  afterEach(() => {
+    sinon.restore();
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+
+  /**
+   * Export the late phone's video and return every `enable=` window in the
+   * filter graph handed to ffmpeg. The group ran from T0 to 8:00; this phone
+   * joined at 7:00 and recorded 60 s. `timing` is the raw timing.json.
+   */
+  const exportWindows = async (timing: string | undefined): Promise<string[]> => {
+    // Fresh each call: no timing.json or cached render left from the last one.
+    fs.rmSync(path.join(dir, 'rec-late'), { recursive: true, force: true });
+    const video = path.join(dir, 'rec-late', 'video', 'rec-late.mp4');
+    fs.mkdirSync(path.dirname(video), { recursive: true });
+    fs.writeFileSync(video, 'x'.repeat(2048));
+    if (timing !== undefined) fs.writeFileSync(recordingTimingPath(video), timing);
+    // One mark drawn in the preview (an image overlay), one from an API client (a drawbox).
+    const image = annotationImagePath(video, 'm-img');
+    fs.mkdirSync(path.dirname(image), { recursive: true });
+    fs.writeFileSync(image, 'png');
+    const window = { timecode_ms: 7 * MIN + 30_000, end_timecode_ms: 7 * MIN + 35_000 };
+    const late = {
+      id: 'rec-late',
+      group_id: 'g',
+      file_path: video,
+      started_at: new Date(T0 + 7 * MIN),
+      ended_at: new Date(T0 + 8 * MIN),
+      annotations: [
+        { id: 'm-img', shape: 'RECT', geometry: box, ...window },
+        { id: 'm-box', shape: 'RECT', geometry: box, ...window },
+      ],
+    };
+    const first = {
+      id: 'rec-first',
+      group_id: 'g',
+      file_path: path.join(dir, 'rec-first', 'video', 'rec-first.mp4'),
+      started_at: new Date(T0 - 1200),
+      ended_at: new Date(T0 + 8 * MIN),
+      annotations: [],
+    };
+    const store = { findById: async () => late, listGroup: async () => [first, late] };
+    const svc = new AnnotationRenderService(store as any);
+    sinon.stub(svc as any, 'probeDurationSec').resolves(60);
+    const runGraph = sinon.stub(svc as any, 'runGraph').resolves();
+    await svc.resolvePlayablePath('rec-late');
+    const plan = runGraph.firstCall.args[2] as { graph: string; inputs: string[] };
+    expect(plan.inputs).to.deep.equal([image]);
+    return plan.graph.match(/enable='[^']*'/g) ?? [];
+  };
+  const timingJson = (spawnedAtMs: number, groupT0Ms: number) =>
+    JSON.stringify({ version: 1, spawnedAtMs, groupT0Ms });
+
+  it('burns a mark at group time 7:30 in at 0:30 of a phone that joined at 7:00', async () => {
+    const windows = await exportWindows(timingJson(T0 + 7 * MIN, T0));
+    expect(windows).to.deep.equal(all(AT_0_30));
+  });
+
+  it('leaves marks unshifted without a timing record, as before', async () => {
+    expect(await exportWindows(undefined)).to.deep.equal(all(UNSHIFTED));
+  });
+
+  it('leaves marks unshifted when the timing record is unreadable', async () => {
+    expect(await exportWindows('{"version":1,"spawnedAt')).to.deep.equal(all(UNSHIFTED));
+    expect(await exportWindows(timingJson(Number.NaN, T0))).to.deep.equal(all(UNSHIFTED));
+  });
+
+  it('leaves marks unshifted when the timing record claims an impossible start', async () => {
+    // Joined 56 years after a t=0 at the epoch: long after the group ended.
+    expect(await exportWindows(timingJson(T0 + 7 * MIN, 0))).to.deep.equal(all(UNSHIFTED));
+    // Joined after the group's last phone stopped.
+    expect(await exportWindows(timingJson(T0 + 9 * MIN, T0))).to.deep.equal(all(UNSHIFTED));
+    // Started an hour before t=0: far more than a start-up's pre-roll.
+    expect(await exportWindows(timingJson(T0 - 60 * MIN, T0))).to.deep.equal(all(UNSHIFTED));
   });
 });
