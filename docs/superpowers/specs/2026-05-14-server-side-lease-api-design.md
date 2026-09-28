@@ -422,19 +422,25 @@ gone; ports are always allocated server-side now).
 > sees them, and forwards them only to a peer Xenon node. That node re-runs the check, so upgrade nodes before the
 > hub. Appium's own request log needs a filter; see below.
 
-#### Keeping the lease token out of Appium's own log
+#### Keeping tokens and passwords out of Appium's own log
 
-Appium logs the `POST /session` body before any plugin sees it: on the `-->`
-request line and on the "Calling AppiumDriver.createSession() with args"
-line. Xenon can't strip the token from those, so add an Appium log filter.
-Appium cuts both lines at 1024 characters (`MAX_LOG_BODY_LENGTH`), and the
-cut can land inside the token, leaving no closing quote. The rule therefore
-matches the token's hex digits rather than a quoted string.
+Appium logs every request body before any plugin sees it, on the `[HTTP] -->`
+request line. For `POST /session` it logs the capabilities again on the
+"Calling AppiumDriver.createSession() with args" line. Xenon can't strip
+secrets from those lines, so add Appium log filters. Appium cuts both lines at
+1024 characters (`MAX_LOG_BODY_LENGTH`), and the cut can land inside a secret,
+leaving no closing quote.
 
-For `--log-filters <file>`, the file holds:
+The first rule redacts `token`, `sessionToken` and `leaseToken` values: the
+API token of an `xe:options.{accessKey,token}` pair, a session JWT and the
+lease token. It matches the characters a token is made of rather than a quoted
+string, so a token the cut ends inside is still redacted. It is the rule the
+2.0.0 CHANGELOG publishes, and it replaces the lease-only rule from 1.29.0.
+It leaves the access key, which names a key without proving it. For
+`--log-filters <file>`, the file holds:
 
 ```json
-[{"pattern": "(leaseToken\\\\?[\"']?\\s*:\\s*\\\\?[\"']?)[0-9a-fA-F]+", "flags": "g", "replacer": "$1**LEASE TOKEN**"}]
+[{"pattern": "([Tt]oken\\\\?[\"']?\\s*:\\s*\\\\?[\"']?)[A-Za-z0-9._~+/=-]+", "flags": "g", "replacer": "$1**REDACTED**"}]
 ```
 
 Xenon Control starts Appium with `--config`, so there it goes in the config
@@ -443,15 +449,44 @@ file:
 ```yaml
 server:
   log-filters:
-    - pattern: '(leaseToken\\?["'']?\s*:\s*\\?["'']?)[0-9a-fA-F]+'
+    - pattern: '([Tt]oken\\?["'']?\s*:\s*\\?["'']?)[A-Za-z0-9._~+/=-]+'
       flags: g
-      replacer: '$1**LEASE TOKEN**'
+      replacer: '$1**REDACTED**'
 ```
 
-`test/unit/lease/lease-token-log-filter.spec.ts` reads both blocks from this
-file and runs them through Appium's own filter. It covers the full body, the
-colourised body, the createSession args line, a `util.inspect` form,
-doubly-escaped JSON, and bodies Appium cut inside the token.
+The second rule redacts `password` values, `newPassword` and `oldPassword`
+included. The dashboard's sign-in, `POST /xenon/api/auth/login`, sends
+`{"email": ..., "password": ...}`, and Appium logs that body on its
+`[HTTP] -->` line like any other. A password can hold any character, so this
+rule can't match it by its characters. It reads the quoted string instead,
+escapes and all, and stops at the closing quote, so the rest of the line is
+kept. A body cut inside the password has no closing quote, and the rule takes
+the rest of it. Put its object in the same `--log-filters` array as the token
+rule's:
+
+```json
+[{"pattern": "([Pp]assword\\\\?[\"']?\\s*:\\s*(\\\\?)([\"'`]))(?:\\2\\\\(?:\\2[\\s\\S]|[^\\\\])|(?!\\3)[^\\\\\\x00-\\x1f])*", "flags": "g", "replacer": "$1**REDACTED**"}]
+```
+
+and its entry in the same `log-filters` list in the config file:
+
+```yaml
+server:
+  log-filters:
+    - pattern: '([Pp]assword\\?["'']?\s*:\s*(\\?)(["''`]))(?:\2\\(?:\2[\s\S]|[^\\])|(?!\3)[^\\\x00-\x1f])*'
+      flags: g
+      replacer: '$1**REDACTED**'
+```
+
+`test/unit/lease/lease-token-log-filter.spec.ts` reads these blocks from this
+file and runs them through Appium's own filter, each rule alone and both
+together. For each kind of token it covers the JSON body, the `[HTTP]`
+request line plain and coloured, the createSession args line, `util.inspect`
+output, doubly-escaped JSON, and bodies Appium cut 1, 10 and 30 characters
+into the token. It runs the same forms of the login body over passwords
+holding quotes, backslashes, control characters and text that reads like the
+next field, and checks that exactly the password is replaced. It also checks
+the token rule here is the CHANGELOG's, character for character.
 
 When the Kotlin SDK acquires a lease and then opens an Appium session,
 the W3C session-create POST carries `appium:capabilities` that include
