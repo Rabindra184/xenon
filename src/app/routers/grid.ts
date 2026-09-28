@@ -21,7 +21,7 @@ import {
 } from '../../services/device-access/queueVisibility';
 import { scopeGuard } from '../../middleware/scopeGuard';
 import { roleGuard } from '../../middleware/roleGuard';
-import log from '../../logger';
+import log, { redactSecrets } from '../../logger';
 import { XenonManager } from '../../device-managers';
 import { Container } from 'typedi';
 import { IPluginArgs } from '../../interfaces/IPluginArgs';
@@ -186,7 +186,10 @@ async function getQueuedSessionLength(request: Request<void>, response: Response
 async function getQueuedSessionRequests(request: Request<void>, response: Response<unknown[]>) {
   const all = await pendingStore.getAllPendingSessions();
   const { visible } = await partitionPendingForCaller(all, queueCaller(request));
-  response.json(visible.map(withoutRequester));
+  // A row is the capabilities the client sent, so it can hold the key and
+  // token that signed it (df:options, xenon:options.sessionToken). Those are
+  // nobody else's to read, a teammate's or an admin's.
+  response.json(visible.map((row) => redactSecrets(withoutRequester(row))));
 }
 
 async function getNodes(request: Request, response: Response<string[]>) {

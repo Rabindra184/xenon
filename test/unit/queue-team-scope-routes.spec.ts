@@ -56,9 +56,11 @@ const ROWS = [
     'xenon:build': 'bob-targeted',
     [REQUESTER]: { userId: 'bob', teamId: null },
   }),
-  // Untargeted, from Alice's teammate.
+  // Untargeted, from Alice's teammate, who signed it in two ways.
   row('untargeted-a', 3, {
     'xenon:build': 'amy-smoke',
+    'df:options': { accessKey: 'ak_amy', token: 'amy-api-token' },
+    'xenon:options': { sessionToken: 'amy.session.jwt', sessionName: 'amy-login' },
     [REQUESTER]: { userId: 'amy', teamId: null },
   }),
   // Untargeted, from team B: the leak. Every member used to get this one.
@@ -196,5 +198,26 @@ describe('the session queue is team-scoped: own teams + a count', () => {
       const r = await request(admin()).get('/queue/status/untargeted-b');
       expect(r.status).to.equal(200);
     });
+  });
+
+  // The row is the capabilities the client sent, credentials included. A
+  // teammate's request is Alice's to see; the key that signed it is not, and
+  // nor is it an admin's.
+  describe('credentials in a waiting request', () => {
+    for (const [who, caller] of [
+      ['a teammate', alice],
+      ['an admin', admin],
+    ] as const) {
+      it(`are never returned to ${who}`, async () => {
+        const r = await request(caller()).get('/queue');
+        const shown = r.body.find((x: any) => x.capability_id === 'untargeted-a');
+        expect(shown, 'the request itself is shown').to.not.equal(undefined);
+        expect(JSON.stringify(r.body)).to.not.include('amy-api-token');
+        expect(JSON.stringify(r.body)).to.not.include('amy.session.jwt');
+        // What isn't a secret still reads as before.
+        expect(shown['df:options'].accessKey).to.equal('ak_amy');
+        expect(shown['xenon:options'].sessionName).to.equal('amy-login');
+      });
+    }
   });
 });
