@@ -130,7 +130,7 @@ export class AnnotationRenderService {
     // per-device video needs this: the composite starts at t=0.
     const annotations = shiftAnnotations(
       (rec.annotations ?? []) as AnnotationRow[],
-      markShiftMs(readRecordingTiming(rec.file_path)),
+      await this.markShiftFor(rec),
     );
     if (annotations.length === 0) {
       return { filePath: rec.file_path, annotated: false };
@@ -149,6 +149,36 @@ export class AnnotationRenderService {
       );
     }
     return { filePath: outPath, annotated: true };
+  }
+
+  /**
+   * {@link markShiftMs} for one recording. A phone that joined after t=0 is
+   * checked against the group's span, since it cannot have started after the
+   * group ended. One that started before t=0 needs no lookup.
+   */
+  private async markShiftFor(rec: { file_path: string; group_id: string }): Promise<number> {
+    const timing = readRecordingTiming(rec.file_path);
+    if (!timing || timing.spawnedAtMs <= timing.groupT0Ms) return markShiftMs(timing);
+    return markShiftMs(timing, await this.groupSpanMs(rec.group_id));
+  }
+
+  /**
+   * Wall-clock ms from the group's first start to its last end, or to now while
+   * a phone still records. Read from the rows, not timing.json, so a corrupt
+   * t=0 cannot vouch for itself. Undefined when the rows can't be read.
+   */
+  private async groupSpanMs(groupId: string): Promise<number | undefined> {
+    try {
+      const rows = (await this.store.listGroup(groupId)) as any[];
+      const now = Date.now();
+      const first = Math.min(...rows.map((r) => new Date(r.started_at).getTime()));
+      const last = Math.max(
+        ...rows.map((r) => (r.ended_at ? new Date(r.ended_at).getTime() : now)),
+      );
+      return Number.isFinite(last - first) ? last - first : undefined;
+    } catch {
+      return undefined;
+    }
   }
 
   /**

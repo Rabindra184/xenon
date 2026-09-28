@@ -8,6 +8,7 @@ import {
   type SummaryContext,
   type SummaryRow,
 } from '../../src/services/recording/recordingSummary';
+import { MAX_PREROLL_MS } from '../../src/services/recording/recordingTiming';
 
 const T0 = Date.parse('2026-09-20T10:00:00.000Z');
 const DAY = 86_400_000;
@@ -144,6 +145,33 @@ describe('recording summaries', () => {
       ctx,
     );
     expect(s.phones[0].offsetMs).to.equal(0);
+  });
+
+  // The annotated export (markShiftMs) places marks by the same offsets.
+  it('puts a phone added 7 minutes in at 7 minutes, however late that is', () => {
+    const late = row({
+      id: 'r2',
+      device_udid: 'U2',
+      started_at: new Date(T0 + 7 * 60_000),
+      timing: { version: 1, spawnedAtMs: T0 + 7 * 60_000, groupT0Ms: T0 },
+    });
+    const s = summarizeGroup([row(), late], ctx);
+    expect(s.phones.map((p) => p.offsetMs)).to.deep.equal([-1000, 7 * 60_000]);
+  });
+
+  it('allows the same pre-roll before t=0 as the annotated export', () => {
+    const early = (ms: number) =>
+      summarizeGroup(
+        [
+          row({
+            timing: { version: 1, spawnedAtMs: T0 - ms, groupT0Ms: T0 },
+            started_at: new Date(T0),
+          }),
+        ],
+        ctx,
+      ).phones[0].offsetMs;
+    expect(early(MAX_PREROLL_MS)).to.equal(-MAX_PREROLL_MS);
+    expect(early(MAX_PREROLL_MS + 1)).to.equal(0);
   });
 
   it('names phones and people, falling back to the UDID and Unknown user', () => {

@@ -18,8 +18,12 @@ export interface RecordingTiming {
   groupT0Ms: number;
 }
 
-/** Beyond this the file is corrupt, not a real start-up gap. */
-const MAX_SHIFT_MS = 5 * 60 * 1000;
+/**
+ * A video starts at most a few seconds before t=0 (each phone's ffmpeg spawn,
+ * then the composite's settle). A timing file claiming more is corrupt. The
+ * Recordings page (recordingSummary.ts) applies the same bound.
+ */
+export const MAX_PREROLL_MS = 5 * 60 * 1000;
 
 /** `<recordings>/<id>/timing.json`, removed with the recording's directory. */
 export function recordingTimingPath(videoFilePath: string): string {
@@ -50,12 +54,19 @@ export function readRecordingTiming(videoFilePath: string): RecordingTiming | un
 
 /**
  * How far to move a mark in this recording's own video: a mark at timecode T
- * happened T + (t0 - spawn) into it. Negative for a device added after t=0.
+ * happened T + (t0 - spawn) into it. Negative for a device added after t=0,
+ * by however long after: add-device works until the group stops.
+ *
+ * 0, as with no timing, when the record is impossible: a start more than
+ * MAX_PREROLL_MS before t=0, or one after the group ended, when the caller
+ * knows the group's span.
  */
-export function markShiftMs(timing: RecordingTiming | undefined): number {
+export function markShiftMs(timing: RecordingTiming | undefined, groupSpanMs?: number): number {
   if (!timing) return 0;
   const shift = Math.round(timing.groupT0Ms - timing.spawnedAtMs);
-  return Math.abs(shift) > MAX_SHIFT_MS ? 0 : shift;
+  if (shift > MAX_PREROLL_MS) return 0;
+  if (groupSpanMs !== undefined && -shift > groupSpanMs) return 0;
+  return shift;
 }
 
 export function shiftAnnotations<T extends AnnotationRow>(annotations: T[], shiftMs: number): T[] {
