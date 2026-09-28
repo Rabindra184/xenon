@@ -5,6 +5,7 @@ import { ApiKeyService } from '../services/ApiKeyService';
 import { UserSessionService } from '../services/UserSessionService';
 import { UserService } from '../services/UserService';
 import { StreamTicketService } from '../services/token/StreamTicketService';
+import { AppDownloadTicketService } from '../services/token/AppDownloadTicketService';
 import { config } from '../config';
 import { computeTeamIds } from '../services/device-access/callerTeamIds';
 import { verifyBearerCredential, verifyKeyPairCredential } from './verifyCredential';
@@ -227,6 +228,33 @@ export async function authMiddleware(req: Request, res: Response, next: NextFunc
         scopes: 'read',
         rateLimit: 300,
         teamIds: undefined,
+      };
+      return next();
+    } catch {
+      return res.status(401).json({ error: 'invalid ticket' });
+    }
+  }
+
+  // Path 4: single-use app download ticket — ONLY for GET /apps/:id/download.
+  // An Appium driver downloads a session's app itself and sends no
+  // credentials; SessionLifecycleService puts a ticket in the URL after
+  // checking the session's creator may see the app. The ticket carries no
+  // identity, so req.auth is an unprivileged member bound to that one app
+  // (appId), and teamIds undefined because the team check happened at mint.
+  // Every failure is the same 401 whichever app the URL names: a ticket is
+  // not a way to learn whether some other app exists.
+  const appMatch = req.method === 'GET' && /^\/apps\/([^/]+)\/download$/.exec(req.path);
+  if (typeof ticket === 'string' && appMatch) {
+    try {
+      await Container.get(AppDownloadTicketService).redeem(ticket, appMatch[1]);
+      req.auth = {
+        kind: 'app-ticket',
+        userId: 'app-ticket',
+        role: 'MEMBER',
+        scopes: 'read',
+        rateLimit: 300,
+        teamIds: undefined,
+        appId: appMatch[1],
       };
       return next();
     } catch {

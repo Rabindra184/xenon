@@ -49,6 +49,7 @@ describe('TeamService (User-keyed)', () => {
   it('delete() blocks when team has devices OR active members', async () => {
     sinon.stub(prisma.device, 'count').resolves(1);
     sinon.stub(prisma.teamMember, 'count').resolves(0);
+    sinon.stub(prisma.app, 'count').resolves(0);
     let err: Error | undefined;
     try {
       await new TeamService().delete('t1');
@@ -58,9 +59,30 @@ describe('TeamService (User-keyed)', () => {
     expect(err?.message).to.match(/Reassign them before deleting/);
   });
 
+  // A deleted team's apps would fall back to the shared pool (App.teamId is
+  // onDelete: SetNull), which would publish them to every member. Refused,
+  // as for its phones: the admin moves them first.
+  it('delete() blocks while the team still owns apps', async () => {
+    sinon.stub(prisma.device, 'count').resolves(0);
+    sinon.stub(prisma.teamMember, 'count').resolves(0);
+    const apps = sinon.stub(prisma.app, 'count').resolves(2);
+    const teamDel = sinon.stub(prisma.team, 'delete').resolves({} as any);
+    let err: Error | undefined;
+    try {
+      await new TeamService().delete('t1');
+    } catch (e) {
+      err = e as Error;
+    }
+    expect(apps.firstCall.args[0]).to.deep.equal({ where: { teamId: 't1' } });
+    expect(err?.message).to.match(/2 app\(s\)/);
+    expect(err?.message).to.match(/Reassign them before deleting/);
+    expect(teamDel.called).to.equal(false);
+  });
+
   it('delete() drops FK on revoked apiKeys then deletes the team', async () => {
     sinon.stub(prisma.device, 'count').resolves(0);
     sinon.stub(prisma.teamMember, 'count').resolves(0);
+    sinon.stub(prisma.app, 'count').resolves(0);
     const apiKeyUpdate = sinon.stub(prisma.apiKey, 'updateMany').resolves({ count: 0 } as any);
     const teamDel = sinon.stub(prisma.team, 'delete').resolves({} as any);
     await new TeamService().delete('t1');

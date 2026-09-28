@@ -3085,12 +3085,14 @@ export namespace Prisma {
     devices: number
     apiKeys: number
     members: number
+    apps: number
   }
 
   export type TeamCountOutputTypeSelect<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
     devices?: boolean | TeamCountOutputTypeCountDevicesArgs
     apiKeys?: boolean | TeamCountOutputTypeCountApiKeysArgs
     members?: boolean | TeamCountOutputTypeCountMembersArgs
+    apps?: boolean | TeamCountOutputTypeCountAppsArgs
   }
 
   // Custom InputTypes
@@ -3123,6 +3125,13 @@ export namespace Prisma {
    */
   export type TeamCountOutputTypeCountMembersArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
     where?: TeamMemberWhereInput
+  }
+
+  /**
+   * TeamCountOutputType without action
+   */
+  export type TeamCountOutputTypeCountAppsArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    where?: AppWhereInput
   }
 
 
@@ -8774,6 +8783,7 @@ export namespace Prisma {
     md5: string | null
     createdAt: Date | null
     updatedAt: Date | null
+    teamId: string | null
   }
 
   export type AppMaxAggregateOutputType = {
@@ -8789,6 +8799,7 @@ export namespace Prisma {
     md5: string | null
     createdAt: Date | null
     updatedAt: Date | null
+    teamId: string | null
   }
 
   export type AppCountAggregateOutputType = {
@@ -8804,6 +8815,7 @@ export namespace Prisma {
     md5: number
     createdAt: number
     updatedAt: number
+    teamId: number
     _all: number
   }
 
@@ -8829,6 +8841,7 @@ export namespace Prisma {
     md5?: true
     createdAt?: true
     updatedAt?: true
+    teamId?: true
   }
 
   export type AppMaxAggregateInputType = {
@@ -8844,6 +8857,7 @@ export namespace Prisma {
     md5?: true
     createdAt?: true
     updatedAt?: true
+    teamId?: true
   }
 
   export type AppCountAggregateInputType = {
@@ -8859,6 +8873,7 @@ export namespace Prisma {
     md5?: true
     createdAt?: true
     updatedAt?: true
+    teamId?: true
     _all?: true
   }
 
@@ -8961,6 +8976,7 @@ export namespace Prisma {
     md5: string | null
     createdAt: Date
     updatedAt: Date
+    teamId: string | null
     _count: AppCountAggregateOutputType | null
     _avg: AppAvgAggregateOutputType | null
     _sum: AppSumAggregateOutputType | null
@@ -8995,6 +9011,8 @@ export namespace Prisma {
     md5?: boolean
     createdAt?: boolean
     updatedAt?: boolean
+    teamId?: boolean
+    team?: boolean | App$teamArgs<ExtArgs>
   }, ExtArgs["result"]["app"]>
 
   export type AppSelectCreateManyAndReturn<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = $Extensions.GetSelect<{
@@ -9010,6 +9028,8 @@ export namespace Prisma {
     md5?: boolean
     createdAt?: boolean
     updatedAt?: boolean
+    teamId?: boolean
+    team?: boolean | App$teamArgs<ExtArgs>
   }, ExtArgs["result"]["app"]>
 
   export type AppSelectScalar = {
@@ -9025,12 +9045,21 @@ export namespace Prisma {
     md5?: boolean
     createdAt?: boolean
     updatedAt?: boolean
+    teamId?: boolean
   }
 
+  export type AppInclude<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    team?: boolean | App$teamArgs<ExtArgs>
+  }
+  export type AppIncludeCreateManyAndReturn<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    team?: boolean | App$teamArgs<ExtArgs>
+  }
 
   export type $AppPayload<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
     name: "App"
-    objects: {}
+    objects: {
+      team: Prisma.$TeamPayload<ExtArgs> | null
+    }
     scalars: $Extensions.GetPayloadResult<{
       id: string
       name: string
@@ -9044,6 +9073,7 @@ export namespace Prisma {
       md5: string | null
       createdAt: Date
       updatedAt: Date
+      teamId: string | null
     }, ExtArgs["result"]["app"]>
     composites: {}
   }
@@ -9408,6 +9438,7 @@ export namespace Prisma {
    */
   export interface Prisma__AppClient<T, Null = never, ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> extends Prisma.PrismaPromise<T> {
     readonly [Symbol.toStringTag]: "PrismaPromise"
+    team<T extends App$teamArgs<ExtArgs> = {}>(args?: Subset<T, App$teamArgs<ExtArgs>>): Prisma__TeamClient<$Result.GetResult<Prisma.$TeamPayload<ExtArgs>, T, "findUniqueOrThrow"> | null, null, ExtArgs>
     /**
      * Attaches callbacks for the resolution and/or rejection of the Promise.
      * @param onfulfilled The callback to execute when the Promise is resolved.
@@ -9449,6 +9480,7 @@ export namespace Prisma {
     readonly md5: FieldRef<"App", 'String'>
     readonly createdAt: FieldRef<"App", 'DateTime'>
     readonly updatedAt: FieldRef<"App", 'DateTime'>
+    readonly teamId: FieldRef<"App", 'String'>
   }
     
 
@@ -9461,6 +9493,10 @@ export namespace Prisma {
      * Select specific fields to fetch from the App
      */
     select?: AppSelect<ExtArgs> | null
+    /**
+     * Choose, which related nodes to fetch as well
+     */
+    include?: AppInclude<ExtArgs> | null
     /**
      * Filter, which App to fetch.
      */
@@ -9476,6 +9512,10 @@ export namespace Prisma {
      */
     select?: AppSelect<ExtArgs> | null
     /**
+     * Choose, which related nodes to fetch as well
+     */
+    include?: AppInclude<ExtArgs> | null
+    /**
      * Filter, which App to fetch.
      */
     where: AppWhereUniqueInput
@@ -9489,6 +9529,10 @@ export namespace Prisma {
      * Select specific fields to fetch from the App
      */
     select?: AppSelect<ExtArgs> | null
+    /**
+     * Choose, which related nodes to fetch as well
+     */
+    include?: AppInclude<ExtArgs> | null
     /**
      * Filter, which App to fetch.
      */
@@ -9534,6 +9578,10 @@ export namespace Prisma {
      */
     select?: AppSelect<ExtArgs> | null
     /**
+     * Choose, which related nodes to fetch as well
+     */
+    include?: AppInclude<ExtArgs> | null
+    /**
      * Filter, which App to fetch.
      */
     where?: AppWhereInput
@@ -9578,6 +9626,10 @@ export namespace Prisma {
      */
     select?: AppSelect<ExtArgs> | null
     /**
+     * Choose, which related nodes to fetch as well
+     */
+    include?: AppInclude<ExtArgs> | null
+    /**
      * Filter, which Apps to fetch.
      */
     where?: AppWhereInput
@@ -9617,6 +9669,10 @@ export namespace Prisma {
      */
     select?: AppSelect<ExtArgs> | null
     /**
+     * Choose, which related nodes to fetch as well
+     */
+    include?: AppInclude<ExtArgs> | null
+    /**
      * The data needed to create a App.
      */
     data: XOR<AppCreateInput, AppUncheckedCreateInput>
@@ -9644,6 +9700,10 @@ export namespace Prisma {
      * The data used to create many Apps.
      */
     data: AppCreateManyInput | AppCreateManyInput[]
+    /**
+     * Choose, which related nodes to fetch as well
+     */
+    include?: AppIncludeCreateManyAndReturn<ExtArgs> | null
   }
 
   /**
@@ -9654,6 +9714,10 @@ export namespace Prisma {
      * Select specific fields to fetch from the App
      */
     select?: AppSelect<ExtArgs> | null
+    /**
+     * Choose, which related nodes to fetch as well
+     */
+    include?: AppInclude<ExtArgs> | null
     /**
      * The data needed to update a App.
      */
@@ -9687,6 +9751,10 @@ export namespace Prisma {
      */
     select?: AppSelect<ExtArgs> | null
     /**
+     * Choose, which related nodes to fetch as well
+     */
+    include?: AppInclude<ExtArgs> | null
+    /**
      * The filter to search for the App to update in case it exists.
      */
     where: AppWhereUniqueInput
@@ -9709,6 +9777,10 @@ export namespace Prisma {
      */
     select?: AppSelect<ExtArgs> | null
     /**
+     * Choose, which related nodes to fetch as well
+     */
+    include?: AppInclude<ExtArgs> | null
+    /**
      * Filter which App to delete.
      */
     where: AppWhereUniqueInput
@@ -9725,6 +9797,21 @@ export namespace Prisma {
   }
 
   /**
+   * App.team
+   */
+  export type App$teamArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the Team
+     */
+    select?: TeamSelect<ExtArgs> | null
+    /**
+     * Choose, which related nodes to fetch as well
+     */
+    include?: TeamInclude<ExtArgs> | null
+    where?: TeamWhereInput
+  }
+
+  /**
    * App without action
    */
   export type AppDefaultArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
@@ -9732,6 +9819,10 @@ export namespace Prisma {
      * Select specific fields to fetch from the App
      */
     select?: AppSelect<ExtArgs> | null
+    /**
+     * Choose, which related nodes to fetch as well
+     */
+    include?: AppInclude<ExtArgs> | null
   }
 
 
@@ -19076,6 +19167,7 @@ export namespace Prisma {
     devices?: boolean | Team$devicesArgs<ExtArgs>
     apiKeys?: boolean | Team$apiKeysArgs<ExtArgs>
     members?: boolean | Team$membersArgs<ExtArgs>
+    apps?: boolean | Team$appsArgs<ExtArgs>
     _count?: boolean | TeamCountOutputTypeDefaultArgs<ExtArgs>
   }, ExtArgs["result"]["team"]>
 
@@ -19095,6 +19187,7 @@ export namespace Prisma {
     devices?: boolean | Team$devicesArgs<ExtArgs>
     apiKeys?: boolean | Team$apiKeysArgs<ExtArgs>
     members?: boolean | Team$membersArgs<ExtArgs>
+    apps?: boolean | Team$appsArgs<ExtArgs>
     _count?: boolean | TeamCountOutputTypeDefaultArgs<ExtArgs>
   }
   export type TeamIncludeCreateManyAndReturn<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {}
@@ -19105,6 +19198,7 @@ export namespace Prisma {
       devices: Prisma.$DevicePayload<ExtArgs>[]
       apiKeys: Prisma.$ApiKeyPayload<ExtArgs>[]
       members: Prisma.$TeamMemberPayload<ExtArgs>[]
+      apps: Prisma.$AppPayload<ExtArgs>[]
     }
     scalars: $Extensions.GetPayloadResult<{
       id: string
@@ -19477,6 +19571,7 @@ export namespace Prisma {
     devices<T extends Team$devicesArgs<ExtArgs> = {}>(args?: Subset<T, Team$devicesArgs<ExtArgs>>): Prisma.PrismaPromise<$Result.GetResult<Prisma.$DevicePayload<ExtArgs>, T, "findMany"> | Null>
     apiKeys<T extends Team$apiKeysArgs<ExtArgs> = {}>(args?: Subset<T, Team$apiKeysArgs<ExtArgs>>): Prisma.PrismaPromise<$Result.GetResult<Prisma.$ApiKeyPayload<ExtArgs>, T, "findMany"> | Null>
     members<T extends Team$membersArgs<ExtArgs> = {}>(args?: Subset<T, Team$membersArgs<ExtArgs>>): Prisma.PrismaPromise<$Result.GetResult<Prisma.$TeamMemberPayload<ExtArgs>, T, "findMany"> | Null>
+    apps<T extends Team$appsArgs<ExtArgs> = {}>(args?: Subset<T, Team$appsArgs<ExtArgs>>): Prisma.PrismaPromise<$Result.GetResult<Prisma.$AppPayload<ExtArgs>, T, "findMany"> | Null>
     /**
      * Attaches callbacks for the resolution and/or rejection of the Promise.
      * @param onfulfilled The callback to execute when the Promise is resolved.
@@ -19878,6 +19973,26 @@ export namespace Prisma {
     take?: number
     skip?: number
     distinct?: TeamMemberScalarFieldEnum | TeamMemberScalarFieldEnum[]
+  }
+
+  /**
+   * Team.apps
+   */
+  export type Team$appsArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the App
+     */
+    select?: AppSelect<ExtArgs> | null
+    /**
+     * Choose, which related nodes to fetch as well
+     */
+    include?: AppInclude<ExtArgs> | null
+    where?: AppWhereInput
+    orderBy?: AppOrderByWithRelationInput | AppOrderByWithRelationInput[]
+    cursor?: AppWhereUniqueInput
+    take?: number
+    skip?: number
+    distinct?: AppScalarFieldEnum | AppScalarFieldEnum[]
   }
 
   /**
@@ -29851,7 +29966,8 @@ export namespace Prisma {
     platform: 'platform',
     md5: 'md5',
     createdAt: 'createdAt',
-    updatedAt: 'updatedAt'
+    updatedAt: 'updatedAt',
+    teamId: 'teamId'
   };
 
   export type AppScalarFieldEnum = (typeof AppScalarFieldEnum)[keyof typeof AppScalarFieldEnum]
@@ -30807,6 +30923,8 @@ export namespace Prisma {
     md5?: StringNullableFilter<"App"> | string | null
     createdAt?: DateTimeFilter<"App"> | Date | string
     updatedAt?: DateTimeFilter<"App"> | Date | string
+    teamId?: StringNullableFilter<"App"> | string | null
+    team?: XOR<TeamNullableRelationFilter, TeamWhereInput> | null
   }
 
   export type AppOrderByWithRelationInput = {
@@ -30822,6 +30940,8 @@ export namespace Prisma {
     md5?: SortOrderInput | SortOrder
     createdAt?: SortOrder
     updatedAt?: SortOrder
+    teamId?: SortOrderInput | SortOrder
+    team?: TeamOrderByWithRelationInput
   }
 
   export type AppWhereUniqueInput = Prisma.AtLeast<{
@@ -30840,6 +30960,8 @@ export namespace Prisma {
     platform?: StringNullableFilter<"App"> | string | null
     createdAt?: DateTimeFilter<"App"> | Date | string
     updatedAt?: DateTimeFilter<"App"> | Date | string
+    teamId?: StringNullableFilter<"App"> | string | null
+    team?: XOR<TeamNullableRelationFilter, TeamWhereInput> | null
   }, "id" | "md5">
 
   export type AppOrderByWithAggregationInput = {
@@ -30855,6 +30977,7 @@ export namespace Prisma {
     md5?: SortOrderInput | SortOrder
     createdAt?: SortOrder
     updatedAt?: SortOrder
+    teamId?: SortOrderInput | SortOrder
     _count?: AppCountOrderByAggregateInput
     _avg?: AppAvgOrderByAggregateInput
     _max?: AppMaxOrderByAggregateInput
@@ -30878,6 +31001,7 @@ export namespace Prisma {
     md5?: StringNullableWithAggregatesFilter<"App"> | string | null
     createdAt?: DateTimeWithAggregatesFilter<"App"> | Date | string
     updatedAt?: DateTimeWithAggregatesFilter<"App"> | Date | string
+    teamId?: StringNullableWithAggregatesFilter<"App"> | string | null
   }
 
   export type DeviceWhereInput = {
@@ -31745,6 +31869,7 @@ export namespace Prisma {
     devices?: DeviceListRelationFilter
     apiKeys?: ApiKeyListRelationFilter
     members?: TeamMemberListRelationFilter
+    apps?: AppListRelationFilter
   }
 
   export type TeamOrderByWithRelationInput = {
@@ -31754,6 +31879,7 @@ export namespace Prisma {
     devices?: DeviceOrderByRelationAggregateInput
     apiKeys?: ApiKeyOrderByRelationAggregateInput
     members?: TeamMemberOrderByRelationAggregateInput
+    apps?: AppOrderByRelationAggregateInput
   }
 
   export type TeamWhereUniqueInput = Prisma.AtLeast<{
@@ -31766,6 +31892,7 @@ export namespace Prisma {
     devices?: DeviceListRelationFilter
     apiKeys?: ApiKeyListRelationFilter
     members?: TeamMemberListRelationFilter
+    apps?: AppListRelationFilter
   }, "id" | "name">
 
   export type TeamOrderByWithAggregationInput = {
@@ -33180,6 +33307,7 @@ export namespace Prisma {
     md5?: string | null
     createdAt?: Date | string
     updatedAt?: Date | string
+    team?: TeamCreateNestedOneWithoutAppsInput
   }
 
   export type AppUncheckedCreateInput = {
@@ -33195,6 +33323,7 @@ export namespace Prisma {
     md5?: string | null
     createdAt?: Date | string
     updatedAt?: Date | string
+    teamId?: string | null
   }
 
   export type AppUpdateInput = {
@@ -33210,6 +33339,7 @@ export namespace Prisma {
     md5?: NullableStringFieldUpdateOperationsInput | string | null
     createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
     updatedAt?: DateTimeFieldUpdateOperationsInput | Date | string
+    team?: TeamUpdateOneWithoutAppsNestedInput
   }
 
   export type AppUncheckedUpdateInput = {
@@ -33225,6 +33355,7 @@ export namespace Prisma {
     md5?: NullableStringFieldUpdateOperationsInput | string | null
     createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
     updatedAt?: DateTimeFieldUpdateOperationsInput | Date | string
+    teamId?: NullableStringFieldUpdateOperationsInput | string | null
   }
 
   export type AppCreateManyInput = {
@@ -33240,6 +33371,7 @@ export namespace Prisma {
     md5?: string | null
     createdAt?: Date | string
     updatedAt?: Date | string
+    teamId?: string | null
   }
 
   export type AppUpdateManyMutationInput = {
@@ -33270,6 +33402,7 @@ export namespace Prisma {
     md5?: NullableStringFieldUpdateOperationsInput | string | null
     createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
     updatedAt?: DateTimeFieldUpdateOperationsInput | Date | string
+    teamId?: NullableStringFieldUpdateOperationsInput | string | null
   }
 
   export type DeviceCreateInput = {
@@ -34285,6 +34418,7 @@ export namespace Prisma {
     devices?: DeviceCreateNestedManyWithoutTeamInput
     apiKeys?: ApiKeyCreateNestedManyWithoutTeamInput
     members?: TeamMemberCreateNestedManyWithoutTeamInput
+    apps?: AppCreateNestedManyWithoutTeamInput
   }
 
   export type TeamUncheckedCreateInput = {
@@ -34294,6 +34428,7 @@ export namespace Prisma {
     devices?: DeviceUncheckedCreateNestedManyWithoutTeamInput
     apiKeys?: ApiKeyUncheckedCreateNestedManyWithoutTeamInput
     members?: TeamMemberUncheckedCreateNestedManyWithoutTeamInput
+    apps?: AppUncheckedCreateNestedManyWithoutTeamInput
   }
 
   export type TeamUpdateInput = {
@@ -34303,6 +34438,7 @@ export namespace Prisma {
     devices?: DeviceUpdateManyWithoutTeamNestedInput
     apiKeys?: ApiKeyUpdateManyWithoutTeamNestedInput
     members?: TeamMemberUpdateManyWithoutTeamNestedInput
+    apps?: AppUpdateManyWithoutTeamNestedInput
   }
 
   export type TeamUncheckedUpdateInput = {
@@ -34312,6 +34448,7 @@ export namespace Prisma {
     devices?: DeviceUncheckedUpdateManyWithoutTeamNestedInput
     apiKeys?: ApiKeyUncheckedUpdateManyWithoutTeamNestedInput
     members?: TeamMemberUncheckedUpdateManyWithoutTeamNestedInput
+    apps?: AppUncheckedUpdateManyWithoutTeamNestedInput
   }
 
   export type TeamCreateManyInput = {
@@ -35712,6 +35849,11 @@ export namespace Prisma {
     _max?: NestedIntFilter<$PrismaModel>
   }
 
+  export type TeamNullableRelationFilter = {
+    is?: TeamWhereInput | null
+    isNot?: TeamWhereInput | null
+  }
+
   export type AppCountOrderByAggregateInput = {
     id?: SortOrder
     name?: SortOrder
@@ -35725,6 +35867,7 @@ export namespace Prisma {
     md5?: SortOrder
     createdAt?: SortOrder
     updatedAt?: SortOrder
+    teamId?: SortOrder
   }
 
   export type AppAvgOrderByAggregateInput = {
@@ -35744,6 +35887,7 @@ export namespace Prisma {
     md5?: SortOrder
     createdAt?: SortOrder
     updatedAt?: SortOrder
+    teamId?: SortOrder
   }
 
   export type AppMinOrderByAggregateInput = {
@@ -35759,6 +35903,7 @@ export namespace Prisma {
     md5?: SortOrder
     createdAt?: SortOrder
     updatedAt?: SortOrder
+    teamId?: SortOrder
   }
 
   export type AppSumOrderByAggregateInput = {
@@ -35774,11 +35919,6 @@ export namespace Prisma {
     gt?: number | FloatFieldRefInput<$PrismaModel>
     gte?: number | FloatFieldRefInput<$PrismaModel>
     not?: NestedFloatFilter<$PrismaModel> | number
-  }
-
-  export type TeamNullableRelationFilter = {
-    is?: TeamWhereInput | null
-    isNot?: TeamWhereInput | null
   }
 
   export type DeviceUdidHostCompoundUniqueInput = {
@@ -36348,6 +36488,12 @@ export namespace Prisma {
     none?: TeamMemberWhereInput
   }
 
+  export type AppListRelationFilter = {
+    every?: AppWhereInput
+    some?: AppWhereInput
+    none?: AppWhereInput
+  }
+
   export type DeviceOrderByRelationAggregateInput = {
     _count?: SortOrder
   }
@@ -36357,6 +36503,10 @@ export namespace Prisma {
   }
 
   export type TeamMemberOrderByRelationAggregateInput = {
+    _count?: SortOrder
+  }
+
+  export type AppOrderByRelationAggregateInput = {
     _count?: SortOrder
   }
 
@@ -37130,6 +37280,22 @@ export namespace Prisma {
     divide?: number
   }
 
+  export type TeamCreateNestedOneWithoutAppsInput = {
+    create?: XOR<TeamCreateWithoutAppsInput, TeamUncheckedCreateWithoutAppsInput>
+    connectOrCreate?: TeamCreateOrConnectWithoutAppsInput
+    connect?: TeamWhereUniqueInput
+  }
+
+  export type TeamUpdateOneWithoutAppsNestedInput = {
+    create?: XOR<TeamCreateWithoutAppsInput, TeamUncheckedCreateWithoutAppsInput>
+    connectOrCreate?: TeamCreateOrConnectWithoutAppsInput
+    upsert?: TeamUpsertWithoutAppsInput
+    disconnect?: TeamWhereInput | boolean
+    delete?: TeamWhereInput | boolean
+    connect?: TeamWhereUniqueInput
+    update?: XOR<XOR<TeamUpdateToOneWithWhereWithoutAppsInput, TeamUpdateWithoutAppsInput>, TeamUncheckedUpdateWithoutAppsInput>
+  }
+
   export type TeamCreateNestedOneWithoutDevicesInput = {
     create?: XOR<TeamCreateWithoutDevicesInput, TeamUncheckedCreateWithoutDevicesInput>
     connectOrCreate?: TeamCreateOrConnectWithoutDevicesInput
@@ -37205,6 +37371,13 @@ export namespace Prisma {
     connect?: TeamMemberWhereUniqueInput | TeamMemberWhereUniqueInput[]
   }
 
+  export type AppCreateNestedManyWithoutTeamInput = {
+    create?: XOR<AppCreateWithoutTeamInput, AppUncheckedCreateWithoutTeamInput> | AppCreateWithoutTeamInput[] | AppUncheckedCreateWithoutTeamInput[]
+    connectOrCreate?: AppCreateOrConnectWithoutTeamInput | AppCreateOrConnectWithoutTeamInput[]
+    createMany?: AppCreateManyTeamInputEnvelope
+    connect?: AppWhereUniqueInput | AppWhereUniqueInput[]
+  }
+
   export type DeviceUncheckedCreateNestedManyWithoutTeamInput = {
     create?: XOR<DeviceCreateWithoutTeamInput, DeviceUncheckedCreateWithoutTeamInput> | DeviceCreateWithoutTeamInput[] | DeviceUncheckedCreateWithoutTeamInput[]
     connectOrCreate?: DeviceCreateOrConnectWithoutTeamInput | DeviceCreateOrConnectWithoutTeamInput[]
@@ -37224,6 +37397,13 @@ export namespace Prisma {
     connectOrCreate?: TeamMemberCreateOrConnectWithoutTeamInput | TeamMemberCreateOrConnectWithoutTeamInput[]
     createMany?: TeamMemberCreateManyTeamInputEnvelope
     connect?: TeamMemberWhereUniqueInput | TeamMemberWhereUniqueInput[]
+  }
+
+  export type AppUncheckedCreateNestedManyWithoutTeamInput = {
+    create?: XOR<AppCreateWithoutTeamInput, AppUncheckedCreateWithoutTeamInput> | AppCreateWithoutTeamInput[] | AppUncheckedCreateWithoutTeamInput[]
+    connectOrCreate?: AppCreateOrConnectWithoutTeamInput | AppCreateOrConnectWithoutTeamInput[]
+    createMany?: AppCreateManyTeamInputEnvelope
+    connect?: AppWhereUniqueInput | AppWhereUniqueInput[]
   }
 
   export type DeviceUpdateManyWithoutTeamNestedInput = {
@@ -37268,6 +37448,20 @@ export namespace Prisma {
     deleteMany?: TeamMemberScalarWhereInput | TeamMemberScalarWhereInput[]
   }
 
+  export type AppUpdateManyWithoutTeamNestedInput = {
+    create?: XOR<AppCreateWithoutTeamInput, AppUncheckedCreateWithoutTeamInput> | AppCreateWithoutTeamInput[] | AppUncheckedCreateWithoutTeamInput[]
+    connectOrCreate?: AppCreateOrConnectWithoutTeamInput | AppCreateOrConnectWithoutTeamInput[]
+    upsert?: AppUpsertWithWhereUniqueWithoutTeamInput | AppUpsertWithWhereUniqueWithoutTeamInput[]
+    createMany?: AppCreateManyTeamInputEnvelope
+    set?: AppWhereUniqueInput | AppWhereUniqueInput[]
+    disconnect?: AppWhereUniqueInput | AppWhereUniqueInput[]
+    delete?: AppWhereUniqueInput | AppWhereUniqueInput[]
+    connect?: AppWhereUniqueInput | AppWhereUniqueInput[]
+    update?: AppUpdateWithWhereUniqueWithoutTeamInput | AppUpdateWithWhereUniqueWithoutTeamInput[]
+    updateMany?: AppUpdateManyWithWhereWithoutTeamInput | AppUpdateManyWithWhereWithoutTeamInput[]
+    deleteMany?: AppScalarWhereInput | AppScalarWhereInput[]
+  }
+
   export type DeviceUncheckedUpdateManyWithoutTeamNestedInput = {
     create?: XOR<DeviceCreateWithoutTeamInput, DeviceUncheckedCreateWithoutTeamInput> | DeviceCreateWithoutTeamInput[] | DeviceUncheckedCreateWithoutTeamInput[]
     connectOrCreate?: DeviceCreateOrConnectWithoutTeamInput | DeviceCreateOrConnectWithoutTeamInput[]
@@ -37308,6 +37502,20 @@ export namespace Prisma {
     update?: TeamMemberUpdateWithWhereUniqueWithoutTeamInput | TeamMemberUpdateWithWhereUniqueWithoutTeamInput[]
     updateMany?: TeamMemberUpdateManyWithWhereWithoutTeamInput | TeamMemberUpdateManyWithWhereWithoutTeamInput[]
     deleteMany?: TeamMemberScalarWhereInput | TeamMemberScalarWhereInput[]
+  }
+
+  export type AppUncheckedUpdateManyWithoutTeamNestedInput = {
+    create?: XOR<AppCreateWithoutTeamInput, AppUncheckedCreateWithoutTeamInput> | AppCreateWithoutTeamInput[] | AppUncheckedCreateWithoutTeamInput[]
+    connectOrCreate?: AppCreateOrConnectWithoutTeamInput | AppCreateOrConnectWithoutTeamInput[]
+    upsert?: AppUpsertWithWhereUniqueWithoutTeamInput | AppUpsertWithWhereUniqueWithoutTeamInput[]
+    createMany?: AppCreateManyTeamInputEnvelope
+    set?: AppWhereUniqueInput | AppWhereUniqueInput[]
+    disconnect?: AppWhereUniqueInput | AppWhereUniqueInput[]
+    delete?: AppWhereUniqueInput | AppWhereUniqueInput[]
+    connect?: AppWhereUniqueInput | AppWhereUniqueInput[]
+    update?: AppUpdateWithWhereUniqueWithoutTeamInput | AppUpdateWithWhereUniqueWithoutTeamInput[]
+    updateMany?: AppUpdateManyWithWhereWithoutTeamInput | AppUpdateManyWithWhereWithoutTeamInput[]
+    deleteMany?: AppScalarWhereInput | AppScalarWhereInput[]
   }
 
   export type BookmarkCreateNestedManyWithoutRecordingInput = {
@@ -38891,12 +39099,65 @@ export namespace Prisma {
     Recording?: RecordingUncheckedUpdateManyWithoutSessionNestedInput
   }
 
+  export type TeamCreateWithoutAppsInput = {
+    id?: string
+    name: string
+    createdAt?: Date | string
+    devices?: DeviceCreateNestedManyWithoutTeamInput
+    apiKeys?: ApiKeyCreateNestedManyWithoutTeamInput
+    members?: TeamMemberCreateNestedManyWithoutTeamInput
+  }
+
+  export type TeamUncheckedCreateWithoutAppsInput = {
+    id?: string
+    name: string
+    createdAt?: Date | string
+    devices?: DeviceUncheckedCreateNestedManyWithoutTeamInput
+    apiKeys?: ApiKeyUncheckedCreateNestedManyWithoutTeamInput
+    members?: TeamMemberUncheckedCreateNestedManyWithoutTeamInput
+  }
+
+  export type TeamCreateOrConnectWithoutAppsInput = {
+    where: TeamWhereUniqueInput
+    create: XOR<TeamCreateWithoutAppsInput, TeamUncheckedCreateWithoutAppsInput>
+  }
+
+  export type TeamUpsertWithoutAppsInput = {
+    update: XOR<TeamUpdateWithoutAppsInput, TeamUncheckedUpdateWithoutAppsInput>
+    create: XOR<TeamCreateWithoutAppsInput, TeamUncheckedCreateWithoutAppsInput>
+    where?: TeamWhereInput
+  }
+
+  export type TeamUpdateToOneWithWhereWithoutAppsInput = {
+    where?: TeamWhereInput
+    data: XOR<TeamUpdateWithoutAppsInput, TeamUncheckedUpdateWithoutAppsInput>
+  }
+
+  export type TeamUpdateWithoutAppsInput = {
+    id?: StringFieldUpdateOperationsInput | string
+    name?: StringFieldUpdateOperationsInput | string
+    createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
+    devices?: DeviceUpdateManyWithoutTeamNestedInput
+    apiKeys?: ApiKeyUpdateManyWithoutTeamNestedInput
+    members?: TeamMemberUpdateManyWithoutTeamNestedInput
+  }
+
+  export type TeamUncheckedUpdateWithoutAppsInput = {
+    id?: StringFieldUpdateOperationsInput | string
+    name?: StringFieldUpdateOperationsInput | string
+    createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
+    devices?: DeviceUncheckedUpdateManyWithoutTeamNestedInput
+    apiKeys?: ApiKeyUncheckedUpdateManyWithoutTeamNestedInput
+    members?: TeamMemberUncheckedUpdateManyWithoutTeamNestedInput
+  }
+
   export type TeamCreateWithoutDevicesInput = {
     id?: string
     name: string
     createdAt?: Date | string
     apiKeys?: ApiKeyCreateNestedManyWithoutTeamInput
     members?: TeamMemberCreateNestedManyWithoutTeamInput
+    apps?: AppCreateNestedManyWithoutTeamInput
   }
 
   export type TeamUncheckedCreateWithoutDevicesInput = {
@@ -38905,6 +39166,7 @@ export namespace Prisma {
     createdAt?: Date | string
     apiKeys?: ApiKeyUncheckedCreateNestedManyWithoutTeamInput
     members?: TeamMemberUncheckedCreateNestedManyWithoutTeamInput
+    apps?: AppUncheckedCreateNestedManyWithoutTeamInput
   }
 
   export type TeamCreateOrConnectWithoutDevicesInput = {
@@ -38929,6 +39191,7 @@ export namespace Prisma {
     createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
     apiKeys?: ApiKeyUpdateManyWithoutTeamNestedInput
     members?: TeamMemberUpdateManyWithoutTeamNestedInput
+    apps?: AppUpdateManyWithoutTeamNestedInput
   }
 
   export type TeamUncheckedUpdateWithoutDevicesInput = {
@@ -38937,6 +39200,7 @@ export namespace Prisma {
     createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
     apiKeys?: ApiKeyUncheckedUpdateManyWithoutTeamNestedInput
     members?: TeamMemberUncheckedUpdateManyWithoutTeamNestedInput
+    apps?: AppUncheckedUpdateManyWithoutTeamNestedInput
   }
 
   export type TeamCreateWithoutApiKeysInput = {
@@ -38945,6 +39209,7 @@ export namespace Prisma {
     createdAt?: Date | string
     devices?: DeviceCreateNestedManyWithoutTeamInput
     members?: TeamMemberCreateNestedManyWithoutTeamInput
+    apps?: AppCreateNestedManyWithoutTeamInput
   }
 
   export type TeamUncheckedCreateWithoutApiKeysInput = {
@@ -38953,6 +39218,7 @@ export namespace Prisma {
     createdAt?: Date | string
     devices?: DeviceUncheckedCreateNestedManyWithoutTeamInput
     members?: TeamMemberUncheckedCreateNestedManyWithoutTeamInput
+    apps?: AppUncheckedCreateNestedManyWithoutTeamInput
   }
 
   export type TeamCreateOrConnectWithoutApiKeysInput = {
@@ -39016,6 +39282,7 @@ export namespace Prisma {
     createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
     devices?: DeviceUpdateManyWithoutTeamNestedInput
     members?: TeamMemberUpdateManyWithoutTeamNestedInput
+    apps?: AppUpdateManyWithoutTeamNestedInput
   }
 
   export type TeamUncheckedUpdateWithoutApiKeysInput = {
@@ -39024,6 +39291,7 @@ export namespace Prisma {
     createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
     devices?: DeviceUncheckedUpdateManyWithoutTeamNestedInput
     members?: TeamMemberUncheckedUpdateManyWithoutTeamNestedInput
+    apps?: AppUncheckedUpdateManyWithoutTeamNestedInput
   }
 
   export type UserUpsertWithoutApiKeysInput = {
@@ -39250,6 +39518,45 @@ export namespace Prisma {
     data: TeamMemberCreateManyTeamInput | TeamMemberCreateManyTeamInput[]
   }
 
+  export type AppCreateWithoutTeamInput = {
+    id?: string
+    name: string
+    filename: string
+    filepath: string
+    mimetype: string
+    size: number
+    packageName?: string | null
+    version?: string | null
+    platform?: string | null
+    md5?: string | null
+    createdAt?: Date | string
+    updatedAt?: Date | string
+  }
+
+  export type AppUncheckedCreateWithoutTeamInput = {
+    id?: string
+    name: string
+    filename: string
+    filepath: string
+    mimetype: string
+    size: number
+    packageName?: string | null
+    version?: string | null
+    platform?: string | null
+    md5?: string | null
+    createdAt?: Date | string
+    updatedAt?: Date | string
+  }
+
+  export type AppCreateOrConnectWithoutTeamInput = {
+    where: AppWhereUniqueInput
+    create: XOR<AppCreateWithoutTeamInput, AppUncheckedCreateWithoutTeamInput>
+  }
+
+  export type AppCreateManyTeamInputEnvelope = {
+    data: AppCreateManyTeamInput | AppCreateManyTeamInput[]
+  }
+
   export type DeviceUpsertWithWhereUniqueWithoutTeamInput = {
     where: DeviceWhereUniqueInput
     update: XOR<DeviceUpdateWithoutTeamInput, DeviceUncheckedUpdateWithoutTeamInput>
@@ -39384,6 +39691,41 @@ export namespace Prisma {
     teamId?: StringFilter<"TeamMember"> | string
     userId?: StringFilter<"TeamMember"> | string
     createdAt?: DateTimeFilter<"TeamMember"> | Date | string
+  }
+
+  export type AppUpsertWithWhereUniqueWithoutTeamInput = {
+    where: AppWhereUniqueInput
+    update: XOR<AppUpdateWithoutTeamInput, AppUncheckedUpdateWithoutTeamInput>
+    create: XOR<AppCreateWithoutTeamInput, AppUncheckedCreateWithoutTeamInput>
+  }
+
+  export type AppUpdateWithWhereUniqueWithoutTeamInput = {
+    where: AppWhereUniqueInput
+    data: XOR<AppUpdateWithoutTeamInput, AppUncheckedUpdateWithoutTeamInput>
+  }
+
+  export type AppUpdateManyWithWhereWithoutTeamInput = {
+    where: AppScalarWhereInput
+    data: XOR<AppUpdateManyMutationInput, AppUncheckedUpdateManyWithoutTeamInput>
+  }
+
+  export type AppScalarWhereInput = {
+    AND?: AppScalarWhereInput | AppScalarWhereInput[]
+    OR?: AppScalarWhereInput[]
+    NOT?: AppScalarWhereInput | AppScalarWhereInput[]
+    id?: StringFilter<"App"> | string
+    name?: StringFilter<"App"> | string
+    filename?: StringFilter<"App"> | string
+    filepath?: StringFilter<"App"> | string
+    mimetype?: StringFilter<"App"> | string
+    size?: IntFilter<"App"> | number
+    packageName?: StringNullableFilter<"App"> | string | null
+    version?: StringNullableFilter<"App"> | string | null
+    platform?: StringNullableFilter<"App"> | string | null
+    md5?: StringNullableFilter<"App"> | string | null
+    createdAt?: DateTimeFilter<"App"> | Date | string
+    updatedAt?: DateTimeFilter<"App"> | Date | string
+    teamId?: StringNullableFilter<"App"> | string | null
   }
 
   export type BookmarkCreateWithoutRecordingInput = {
@@ -40215,6 +40557,7 @@ export namespace Prisma {
     createdAt?: Date | string
     devices?: DeviceCreateNestedManyWithoutTeamInput
     apiKeys?: ApiKeyCreateNestedManyWithoutTeamInput
+    apps?: AppCreateNestedManyWithoutTeamInput
   }
 
   export type TeamUncheckedCreateWithoutMembersInput = {
@@ -40223,6 +40566,7 @@ export namespace Prisma {
     createdAt?: Date | string
     devices?: DeviceUncheckedCreateNestedManyWithoutTeamInput
     apiKeys?: ApiKeyUncheckedCreateNestedManyWithoutTeamInput
+    apps?: AppUncheckedCreateNestedManyWithoutTeamInput
   }
 
   export type TeamCreateOrConnectWithoutMembersInput = {
@@ -40286,6 +40630,7 @@ export namespace Prisma {
     createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
     devices?: DeviceUpdateManyWithoutTeamNestedInput
     apiKeys?: ApiKeyUpdateManyWithoutTeamNestedInput
+    apps?: AppUpdateManyWithoutTeamNestedInput
   }
 
   export type TeamUncheckedUpdateWithoutMembersInput = {
@@ -40294,6 +40639,7 @@ export namespace Prisma {
     createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
     devices?: DeviceUncheckedUpdateManyWithoutTeamNestedInput
     apiKeys?: ApiKeyUncheckedUpdateManyWithoutTeamNestedInput
+    apps?: AppUncheckedUpdateManyWithoutTeamNestedInput
   }
 
   export type UserUpsertWithoutTeamMembershipsInput = {
@@ -40816,6 +41162,21 @@ export namespace Prisma {
     createdAt?: Date | string
   }
 
+  export type AppCreateManyTeamInput = {
+    id?: string
+    name: string
+    filename: string
+    filepath: string
+    mimetype: string
+    size: number
+    packageName?: string | null
+    version?: string | null
+    platform?: string | null
+    md5?: string | null
+    createdAt?: Date | string
+    updatedAt?: Date | string
+  }
+
   export type DeviceUpdateWithoutTeamInput = {
     udid?: StringFieldUpdateOperationsInput | string
     host?: StringFieldUpdateOperationsInput | string
@@ -41042,6 +41403,51 @@ export namespace Prisma {
   export type TeamMemberUncheckedUpdateManyWithoutTeamInput = {
     userId?: StringFieldUpdateOperationsInput | string
     createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
+  }
+
+  export type AppUpdateWithoutTeamInput = {
+    id?: StringFieldUpdateOperationsInput | string
+    name?: StringFieldUpdateOperationsInput | string
+    filename?: StringFieldUpdateOperationsInput | string
+    filepath?: StringFieldUpdateOperationsInput | string
+    mimetype?: StringFieldUpdateOperationsInput | string
+    size?: IntFieldUpdateOperationsInput | number
+    packageName?: NullableStringFieldUpdateOperationsInput | string | null
+    version?: NullableStringFieldUpdateOperationsInput | string | null
+    platform?: NullableStringFieldUpdateOperationsInput | string | null
+    md5?: NullableStringFieldUpdateOperationsInput | string | null
+    createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
+    updatedAt?: DateTimeFieldUpdateOperationsInput | Date | string
+  }
+
+  export type AppUncheckedUpdateWithoutTeamInput = {
+    id?: StringFieldUpdateOperationsInput | string
+    name?: StringFieldUpdateOperationsInput | string
+    filename?: StringFieldUpdateOperationsInput | string
+    filepath?: StringFieldUpdateOperationsInput | string
+    mimetype?: StringFieldUpdateOperationsInput | string
+    size?: IntFieldUpdateOperationsInput | number
+    packageName?: NullableStringFieldUpdateOperationsInput | string | null
+    version?: NullableStringFieldUpdateOperationsInput | string | null
+    platform?: NullableStringFieldUpdateOperationsInput | string | null
+    md5?: NullableStringFieldUpdateOperationsInput | string | null
+    createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
+    updatedAt?: DateTimeFieldUpdateOperationsInput | Date | string
+  }
+
+  export type AppUncheckedUpdateManyWithoutTeamInput = {
+    id?: StringFieldUpdateOperationsInput | string
+    name?: StringFieldUpdateOperationsInput | string
+    filename?: StringFieldUpdateOperationsInput | string
+    filepath?: StringFieldUpdateOperationsInput | string
+    mimetype?: StringFieldUpdateOperationsInput | string
+    size?: IntFieldUpdateOperationsInput | number
+    packageName?: NullableStringFieldUpdateOperationsInput | string | null
+    version?: NullableStringFieldUpdateOperationsInput | string | null
+    platform?: NullableStringFieldUpdateOperationsInput | string | null
+    md5?: NullableStringFieldUpdateOperationsInput | string | null
+    createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
+    updatedAt?: DateTimeFieldUpdateOperationsInput | Date | string
   }
 
   export type BookmarkCreateManyRecordingInput = {

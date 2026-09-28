@@ -5,7 +5,7 @@ declare global {
   namespace Express {
     interface Request {
       auth?: {
-        kind: 'user-session' | 'api-key' | 'bearer' | 'stream-ticket';
+        kind: 'user-session' | 'api-key' | 'bearer' | 'stream-ticket' | 'app-ticket';
         userId: string;
         role: UserRole;
         scopes: string;
@@ -19,6 +19,8 @@ declare global {
         // admin-tier api-key callers (unscoped). Empty array means "no team
         // memberships" (member sees only shared-pool devices).
         teamIds?: string[];
+        // kind 'app-ticket' only: the one app the redeemed ticket may download.
+        appId?: string;
       };
       // BACK-COMPAT: existing call sites still read `req.apiKey`. Keep this
       // until every reference has been migrated to req.auth.

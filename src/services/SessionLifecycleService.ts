@@ -44,6 +44,13 @@ import { capsWithLeaseToken, leaseIdOf, takeLeaseToken } from './lease/leaseSess
 import { canOverrideLease } from './device-access/leaseOverride';
 import { computeTeamIds } from './device-access/callerTeamIds';
 import { PendingRequester, REQUESTER_KEY } from './device-access/queueVisibility';
+import { canSeeApp } from './device-access/appVisibility';
+import {
+  appDownloadUrl,
+  setAppCapability,
+  withAppCapability,
+  withTicket,
+} from './session/appCapability';
 import { CircuitBreaker } from '../data-service/CircuitBreaker';
 import { addProxyHandler } from '../proxy/wd-command-proxy';
 import { DeviceStoreFactory } from '../data-service/device-store';
@@ -120,29 +127,25 @@ export class SessionLifecycleService {
       throw err;
     }
 
-    const app = strippedRequiredCaps['app'] || strippedFirstMatchCaps['app'];
-    if (app && typeof app === 'string' && !app.includes('/') && !app.includes('\\')) {
-      const { APP_SERVICE } = await import('../dashboard/services/app-service');
-      const appDetails = await APP_SERVICE.getAppById(app);
-      if (appDetails) {
-        const appUrl = `http://${pluginArgs.bindHostOrIp}:${context.port}/xenon/api/apps/${appDetails.id}/download`;
-        this.logger.info(`📱 Resolved app ID ${app} to ${appUrl}`);
-        if (requiredCaps['app']) requiredCaps['app'] = appUrl;
-        if (allFirstMatchCaps[0]['app']) allFirstMatchCaps[0]['app'] = appUrl;
-
-        if (caps.alwaysMatch && caps.alwaysMatch['app']) caps.alwaysMatch['app'] = appUrl;
-        if (caps.alwaysMatch && caps.alwaysMatch['appium:app'])
-          caps.alwaysMatch['appium:app'] = appUrl;
-        if (caps.firstMatch && caps.firstMatch[0]) {
-          if (caps.firstMatch[0]['app']) caps.firstMatch[0]['app'] = appUrl;
-          if (caps.firstMatch[0]['appium:app']) caps.firstMatch[0]['appium:app'] = appUrl;
-        }
-      }
-    }
-
     // Only a session that names a lease pays for looking up how it may use one.
     // Before the pending row is written, so a failure here leaves none behind.
     const leaseAccess = leaseIdOf(caps) ? await authResult.leaseAccess() : undefined;
+
+    // The teams this session sees: the phones it may be allocated and the
+    // uploaded apps it may name by id, by one rule. A leased phone is held to
+    // the REST team rule, so a phone a caller could lease is one their
+    // session can use; any other allocation keeps the session's own scoping.
+    const sessionTeamIds = leaseAccess
+      ? leaseAccess.teamIds
+      : authResult.scoped
+        ? authResult.callerTeamIds
+        : undefined;
+
+    const app = strippedRequiredCaps['app'] || strippedFirstMatchCaps['app'];
+    const appDownload =
+      app && typeof app === 'string' && !app.includes('/') && !app.includes('\\')
+        ? await this.resolveAppId(caps, app, sessionTeamIds, pluginArgs.bindHostOrIp, context.port)
+        : undefined;
 
     const firstMatch =
       Array.isArray(caps.firstMatch) && caps.firstMatch.length > 0 ? caps.firstMatch[0] : {};
@@ -166,14 +169,7 @@ export class SessionLifecycleService {
           pluginArgs.deviceAvailabilityTimeoutMs,
           pluginArgs.deviceAvailabilityQueryIntervalMs,
           pluginArgs,
-          // The leased phone is held to the REST team rule, so a phone a caller
-          // could lease is one their session can use; any other allocation
-          // keeps the session's own scoping.
-          leaseAccess
-            ? leaseAccess.teamIds
-            : authResult.scoped
-              ? authResult.callerTeamIds
-              : undefined,
+          sessionTeamIds,
           {
             canOverride: leaseAccess?.canOverride ?? false,
             apiKeyId: authResult.apiKeyId,
@@ -204,16 +200,28 @@ export class SessionLifecycleService {
         // needs the proof this hub accepted; it strips the token itself. A
         // cloud provider is not a Xenon node and never sees it.
         const isPeerNode = !device.cloud && !!device.nodeId;
+        const forwardCaps = isPeerNode ? capsWithLeaseToken(caps, leaseToken) : caps;
+        // The node's driver downloads the app from this hub, so the copy it
+        // is sent carries the ticket; `caps` keeps the plain URL.
         session = await this.forwardSessionRequest(
           device,
-          isPeerNode ? capsWithLeaseToken(caps, leaseToken) : caps,
+          appDownload
+            ? withAppCapability(forwardCaps, await this.driverAppUrl(appDownload))
+            : forwardCaps,
         );
       } else {
         this.logger.debug('📱 Creating session on the same node');
         await this.handleLocalWDAProvisioning(device, caps);
 
         await updateDeviceProgress(device.udid, device.host, 'Finalizing session bootstrap...');
-        session = await next();
+        // The driver reads these same caps and downloads the app while it
+        // starts, so the ticket is in them for this call only.
+        if (appDownload) setAppCapability(caps, await this.driverAppUrl(appDownload));
+        try {
+          session = await next();
+        } finally {
+          if (appDownload) setAppCapability(caps, appDownload.url);
+        }
       }
     } catch (err: any) {
       // A THROWN error from the driver's createSession (next()) or the remote
@@ -260,6 +268,57 @@ export class SessionLifecycleService {
     }
 
     return session;
+  }
+
+  /**
+   * Resolves an uploaded-app id the session names to its plain download URL,
+   * written into `caps` in place, when the session may see the app (by
+   * `teamIds`, as its phone is allocated). An unknown app and one on a team
+   * the session can't see are treated alike: `caps` is left as the client
+   * sent it, so the driver fails the session the same way for both, as it
+   * always has for an unknown id.
+   */
+  private async resolveAppId(
+    caps: ISessionCapability,
+    appId: string,
+    teamIds: string[] | undefined,
+    host: string,
+    port: number,
+  ): Promise<{ appId: string; url: string } | undefined> {
+    const { APP_SERVICE } = await import('../dashboard/services/app-service');
+    const found = await APP_SERVICE.getAppById(appId);
+    if (!found || !canSeeApp(found, teamIds)) {
+      this.logger.info(
+        `📱 App id ${appId} is not an app this session can see; passing it to the driver as given`,
+      );
+      return undefined;
+    }
+    const url = appDownloadUrl(host, port, found.id);
+    this.logger.info(`📱 Resolved app ID ${appId} to ${url}`);
+    setAppCapability(caps, url);
+    return { appId: found.id, url };
+  }
+
+  /**
+   * The app URL to hand the driver: with auth on, the plain URL plus a
+   * single-use ticket for that app, minted now so it is live only while the
+   * driver starts. Xenon never logs or stores it; Appium's own request log
+   * and the driver print the URL, by which time the ticket is spent.
+   */
+  private async driverAppUrl(appDownload: { appId: string; url: string }): Promise<string> {
+    const { config: xenonConfig } = await import('../config');
+    // Auth off: the route needs no login, and a stable URL lets the driver
+    // reuse its cached download.
+    if (xenonConfig.authDisabled === true) return appDownload.url;
+    try {
+      const { AppDownloadTicketService } = await import('./token/AppDownloadTicketService');
+      const ticket = await Container.get(AppDownloadTicketService).mint(appDownload.appId);
+      return withTicket(appDownload.url, ticket);
+    } catch (err: any) {
+      throw new Error(
+        `Cannot prepare the download of app ${appDownload.appId}: ${err?.message ?? err}`,
+      );
+    }
   }
 
   // Verify a WebDriver session request against an API key supplied via the

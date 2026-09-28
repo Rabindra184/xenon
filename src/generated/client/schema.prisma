@@ -131,6 +131,12 @@ model App {
   md5         String?  @unique
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+  // The team whose members may list, download and run this app. Null is the
+  // shared pool, which everyone sees: the device team rule (isDeviceVisible).
+  teamId      String?
+  team        Team?    @relation(fields: [teamId], references: [id], onDelete: SetNull)
+
+  @@index([teamId])
 }
 
 model Device {
@@ -308,6 +314,7 @@ model Team {
   devices   Device[]
   apiKeys   ApiKey[]
   members   TeamMember[]
+  apps      App[]
 }
 
 model SelectorState {
