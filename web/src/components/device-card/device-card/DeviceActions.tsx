@@ -43,7 +43,9 @@ export const TeamPicker: React.FC<{
   currentTeamId: string | null;
   teams: Map<string, string>;
   onDone: (changed: boolean) => void;
-}> = ({ udid, currentTeamId, teams, onDone }) => {
+  /** Added to the Select's own classes, for a caller that styles it in context. */
+  className?: string;
+}> = ({ udid, currentTeamId, teams, onDone, className }) => {
   const { toast } = useToast();
   const [busy, setBusy] = React.useState(false);
 
@@ -64,6 +66,7 @@ export const TeamPicker: React.FC<{
   return (
     <Select
       selectSize="sm"
+      className={className}
       autoFocus
       aria-label="Team"
       disabled={busy}

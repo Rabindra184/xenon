@@ -239,6 +239,29 @@ describe('DeviceCard', () => {
       expect(screen.getByRole('combobox', { name: 'Team' })).toBeInTheDocument();
     });
 
+    // The picker takes the team pill's place in the meta row, so an offline
+    // card faded it with the picture: its value measured 3.79:1 in light and
+    // it looked like a disabled Select (which is opacity 0.5). It is a control
+    // the admin is using, not a last-known detail, so it isn't faded at all.
+    it('leaves the team picker on an offline card unfaded', () => {
+      auth.me = { ...MEMBER, role: 'ADMIN' };
+      const { container } = render(
+        <DeviceCard
+          device={device({ offline: true, teamId: 't1' })}
+          reloadDevices={vi.fn()}
+          navigate={vi.fn()}
+          teams={new Map([['t1', 'QA']])}
+        />,
+      );
+      fireEvent.click(screen.getByRole('button', { name: 'More actions' }));
+      fireEvent.click(screen.getByRole('menuitem', { name: 'Assign team…' }));
+      const picker = screen.getByRole('combobox', { name: 'Team' });
+      expect(picker).toHaveClass('select-base', 'dc2-team-picker');
+      expect(fadedAncestors(picker)).toEqual([]);
+      // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+      expect(fadedAncestors(container.querySelector('.dc2-icon')!)).not.toEqual([]);
+    });
+
     // The old Network row only ever showed a valid IPv4, never a MAC address.
     it('offers Copy IP address only for a valid address', () => {
       card({ ip: 'a4:83:e7:12:34:56' });
