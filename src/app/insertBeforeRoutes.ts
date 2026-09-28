@@ -60,7 +60,15 @@ export function routerStackOf(app: any): any[] | undefined {
   return findRouter(app)?.router.stack;
 }
 
-export function insertBeforeRoutes(app: any, path: string, handler: RequestHandler): InsertResult {
+/**
+ * Let `app.use()` build one layer, then move it to `positionOf(stack)` (the
+ * stack without the new layer).
+ */
+function spliceNewLayer(
+  app: any,
+  use: () => void,
+  positionOf: (stack: any[]) => number,
+): InsertResult {
   const found = findRouter(app);
   if (!found) {
     return {
@@ -71,7 +79,7 @@ export function insertBeforeRoutes(app: any, path: string, handler: RequestHandl
 
   const { stack } = found.router;
   const lengthBefore = stack.length;
-  app.use(path, handler);
+  use();
   const added = stack.splice(lengthBefore);
   if (added.length !== 1) {
     // app.use() added its layer somewhere other than the stack we found, or
@@ -84,8 +92,33 @@ export function insertBeforeRoutes(app: any, path: string, handler: RequestHandl
     };
   }
 
-  const firstRoute = stack.findIndex((layer: any) => !!layer.route);
-  const index = firstRoute === -1 ? stack.length : firstRoute;
+  const index = positionOf(stack);
   stack.splice(index, 0, added[0]);
   return { placed: true, shape: found.shape, index };
+}
+
+export function insertBeforeRoutes(app: any, path: string, handler: RequestHandler): InsertResult {
+  return spliceNewLayer(
+    app,
+    () => app.use(path, handler),
+    (stack) => {
+      const firstRoute = stack.findIndex((layer: any) => !!layer.route);
+      return firstRoute === -1 ? stack.length : firstRoute;
+    },
+  );
+}
+
+/**
+ * Put a path-less middleware at the very front of the router stack, ahead of
+ * middleware as well as routes. For a check that must run before one of
+ * Appium's own middlewares (its WebSocket `handleUpgrade`), which sit ahead of
+ * the routes. On Express 4 that is also ahead of `query` and `expressInit`, so
+ * the handler must use only Node's own request and response API.
+ */
+export function insertAtStart(app: any, handler: RequestHandler): InsertResult {
+  return spliceNewLayer(
+    app,
+    () => app.use(handler),
+    () => 0,
+  );
 }

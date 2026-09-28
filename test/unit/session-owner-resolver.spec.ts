@@ -147,3 +147,119 @@ describe('SessionOwnerResolver.displayName', () => {
     expect(db.calls.user).to.equal(1);
   });
 });
+
+// Prisma-shaped findMany delegates over fixed tables, recording each query so
+// "one query for the whole list" is observable.
+function tableDb(opts: {
+  sessions: Array<{ id: string; api_key_id: string | null; user_id: string | null }>;
+  apiKeys?: Array<{ id: string; userId: string }>;
+}) {
+  const queries: Array<{ table: string; ids: string[] }> = [];
+  const pick = <T extends { id: string }>(rows: T[], where: any) =>
+    rows.filter((row) => (where.id.in as string[]).includes(row.id));
+  return {
+    queries,
+    session: {
+      findUnique: async (): Promise<unknown> => {
+        throw new Error('ownersOf must not look sessions up one by one');
+      },
+      findMany: async ({ where }: any): Promise<unknown[]> => {
+        queries.push({ table: 'session', ids: [...where.id.in] });
+        return pick(opts.sessions, where);
+      },
+    },
+    apiKey: {
+      findUnique: async (): Promise<unknown> => {
+        throw new Error('ownersOf must not look keys up one by one');
+      },
+      findMany: async ({ where }: any): Promise<unknown[]> => {
+        queries.push({ table: 'apiKey', ids: [...where.id.in] });
+        return pick(opts.apiKeys ?? [], where);
+      },
+    },
+  };
+}
+
+describe('SessionOwnerResolver.ownersOf', () => {
+  it("resolves every session's owner with one query, by ownerOf's rule", async () => {
+    const db = tableDb({
+      sessions: [
+        { id: 's1', api_key_id: 'k1', user_id: 'usr_direct' },
+        { id: 's2', api_key_id: null, user_id: null },
+      ],
+    });
+    const r = new SessionOwnerResolver(db);
+    const owners = await r.ownersOf(['s1', 's2', 's-missing']);
+    expect([...owners.entries()]).to.deep.equal([
+      ['s1', 'usr_direct'],
+      ['s2', null],
+      ['s-missing', null],
+    ]);
+    expect(db.queries).to.deep.equal([{ table: 'session', ids: ['s1', 's2', 's-missing'] }]);
+  });
+
+  it('takes the ApiKey hop in one more query, only for rows written before user_id', async () => {
+    const db = tableDb({
+      sessions: [
+        { id: 's1', api_key_id: 'k1', user_id: null },
+        { id: 's2', api_key_id: 'k2', user_id: null },
+        { id: 's3', api_key_id: 'k1', user_id: 'usr_direct' },
+      ],
+      apiKeys: [
+        { id: 'k1', userId: 'usr_legacy_1' },
+        { id: 'k2', userId: 'usr_legacy_2' },
+      ],
+    });
+    const r = new SessionOwnerResolver(db);
+    const owners = await r.ownersOf(['s1', 's2', 's3']);
+    expect(owners.get('s1')).to.equal('usr_legacy_1');
+    expect(owners.get('s2')).to.equal('usr_legacy_2');
+    expect(owners.get('s3')).to.equal('usr_direct');
+    expect(db.queries).to.have.length(2);
+    expect(db.queries[1].table).to.equal('apiKey');
+    expect(db.queries[1].ids).to.have.members(['k1', 'k2']);
+  });
+
+  it('agrees with ownerOf and shares its cache of resolved owners', async () => {
+    const db = tableDb({ sessions: [{ id: 's1', api_key_id: null, user_id: 'usr_a' }] });
+    const r = new SessionOwnerResolver(db);
+    expect((await r.ownersOf(['s1'])).get('s1')).to.equal('usr_a');
+    // Resolved above, so ownerOf answers from the cache; its findUnique would throw.
+    expect(await r.ownerOf('s1')).to.equal('usr_a');
+    // And a cached owner is not queried again.
+    await r.ownersOf(['s1']);
+    expect(db.queries).to.have.length(1);
+  });
+
+  it('does not cache an unresolved owner', async () => {
+    const db = tableDb({ sessions: [] });
+    const r = new SessionOwnerResolver(db);
+    await r.ownersOf(['s1']);
+    await r.ownersOf(['s1']);
+    expect(db.queries).to.have.length(2);
+  });
+
+  it('makes no query for an empty list, and asks for a repeated id once', async () => {
+    const db = tableDb({ sessions: [{ id: 's1', api_key_id: null, user_id: 'usr_a' }] });
+    const r = new SessionOwnerResolver(db);
+    expect((await r.ownersOf([])).size).to.equal(0);
+    expect(db.queries).to.deep.equal([]);
+    await r.ownersOf(['s1', 's1']);
+    expect(db.queries).to.deep.equal([{ table: 'session', ids: ['s1'] }]);
+  });
+
+  it('lets a failed query reject, so the caller can fail closed', async () => {
+    const db = tableDb({ sessions: [] });
+    db.session.findMany = async (): Promise<unknown[]> => {
+      throw new Error('database is locked');
+    };
+    const r = new SessionOwnerResolver(db);
+    let caught: unknown;
+    try {
+      await r.ownersOf(['s1']);
+    } catch (err) {
+      caught = err;
+    }
+    expect((caught as Error)?.message).to.equal('database is locked');
+  });
+});

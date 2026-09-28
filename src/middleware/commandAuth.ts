@@ -1,4 +1,5 @@
 import type { NextFunction, Request, RequestHandler, Response } from 'express';
+import type { IncomingHttpHeaders } from 'http';
 import { envSwitchOn } from '../services/sessionTokenGate';
 import { CallerVerdict, PresentedCredential, readPresentedCredential } from './commandCaller';
 
@@ -74,16 +75,35 @@ export interface CommandAuthDeps {
   };
   /** SessionOwnerResolver.ownerOf: the session's owning user id, or null. */
   ownerOf: (sessionId: string) => Promise<string | null>;
+  /**
+   * SessionOwnerResolver.ownersOf: every listed session's owner (null when
+   * none is on record) in one query. Filters Appium's session listing.
+   */
+  ownersOf: (sessionIds: string[]) => Promise<Map<string, string | null>>;
   logger: CommandAuthLogger;
 }
 
-type Decision =
+export type SessionAccessDecision =
   | { allow: true }
   | { allow: false; caller: string; reason: string }
   | { unavailable: true; stage: string; error: unknown };
 
-async function decide(req: Request, sessionId: string, deps: CommandAuthDeps): Promise<Decision> {
-  const credential = readPresentedCredential(req.headers);
+/**
+ * May the caller presenting these headers use every one of these sessions?
+ *
+ * The one decision behind per-command auth, shared by the WebDriver command
+ * middleware and the session WebSocket guard (sessionUpgradeGuard.ts): an
+ * override admin may use any session, anyone else only sessions they own. A
+ * WebSocket path can name its session more than one way, so it passes every id
+ * Appium might use, and the caller must own each. Never throws: a check that
+ * could not run comes back `unavailable`.
+ */
+export async function decideSessionAccess(
+  headers: IncomingHttpHeaders,
+  sessionIds: readonly string[],
+  deps: Pick<CommandAuthDeps, 'verifier' | 'ownerOf'>,
+): Promise<SessionAccessDecision> {
+  const credential = readPresentedCredential(headers);
   if (credential.kind === 'none') {
     // Nobody without credentials can be an owner or an admin: no lookups.
     return { allow: false, caller: 'no credentials', reason: 'no credentials presented' };
@@ -102,25 +122,27 @@ async function decide(req: Request, sessionId: string, deps: CommandAuthDeps): P
   const { caller } = verdict;
   if (caller.overrideAdmin) return { allow: true };
 
-  let owner: string | null;
-  try {
-    owner = await deps.ownerOf(sessionId);
-  } catch (error) {
-    return { unavailable: true, stage: 'owner lookup', error };
-  }
-  if (!owner) {
-    // Created without credentials, or no such session. Either way nobody but
-    // an override admin may drive it.
-    return { allow: false, caller: caller.userId, reason: 'no owner on record for this session' };
-  }
-  if (owner !== caller.userId) {
-    return { allow: false, caller: caller.userId, reason: 'not the session owner' };
+  for (const sessionId of sessionIds) {
+    let owner: string | null;
+    try {
+      owner = await deps.ownerOf(sessionId);
+    } catch (error) {
+      return { unavailable: true, stage: 'owner lookup', error };
+    }
+    if (!owner) {
+      // Created without credentials, or no such session. Either way nobody but
+      // an override admin may drive it.
+      return { allow: false, caller: caller.userId, reason: 'no owner on record for this session' };
+    }
+    if (owner !== caller.userId) {
+      return { allow: false, caller: caller.userId, reason: 'not the session owner' };
+    }
   }
   return { allow: true };
 }
 
 /** The first line of an error's message, so a database error's query dump stays out of the log. */
-function summarize(error: unknown): string {
+export function summarize(error: unknown): string {
   const message = error instanceof Error ? error.message : String(error);
   const line = message
     .split('\n')
@@ -136,7 +158,7 @@ export function createCommandAuthMiddleware(deps: CommandAuthDeps): RequestHandl
     const sessionId = String(req.params?.sessionId ?? '');
     const where = `${req.method} ${String(req.originalUrl ?? req.url).split('?')[0]}`;
 
-    decide(req, sessionId, deps)
+    decideSessionAccess(req.headers, [sessionId], deps)
       .then((decision) => {
         if ('unavailable' in decision) {
           deps.logger.error(
