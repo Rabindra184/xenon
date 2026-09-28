@@ -4,10 +4,10 @@ import { Container } from 'typedi';
 import { ApiKeyService } from '../services/ApiKeyService';
 import { UserSessionService } from '../services/UserSessionService';
 import { UserService } from '../services/UserService';
-import { JwtKeyService } from '../services/token/JwtKeyService';
 import { StreamTicketService } from '../services/token/StreamTicketService';
 import { config } from '../config';
 import { computeTeamIds } from '../services/device-access/callerTeamIds';
+import { verifyBearerCredential, verifyKeyPairCredential } from './verifyCredential';
 
 const SESSION_COOKIE = 'xenon_dashboard_session';
 const SESSION_TTL_MS = 24 * 60 * 60 * 1000;
@@ -71,14 +71,14 @@ export async function authMiddleware(req: Request, res: Response, next: NextFunc
   const userSessionSvc = Container.get(UserSessionService);
   const userSvc = Container.get(UserService);
 
-  // Path 1: header (accessKey, token) pair
+  // Path 1: header (accessKey, token) pair. verifyKeyPairCredential is shared
+  // with the WebDriver per-command check (commandAuth.ts).
   const headerAccessKey = req.headers['x-xenon-access-key'] as string | undefined;
   const headerToken = req.headers['x-xenon-token'] as string | undefined;
   if (headerAccessKey && headerToken) {
-    const row = await apiKeySvc.verifyPair(headerAccessKey, headerToken);
-    if (!row || !row.userId) return res.status(401).json({ error: 'invalid credentials' });
-    const user = await userSvc.findById(row.userId);
-    if (!user || user.status !== 'ACTIVE') return res.status(401).json({ error: 'invalid credentials' });
+    const verified = await verifyKeyPairCredential(headerAccessKey, headerToken);
+    if (!verified) return res.status(401).json({ error: 'invalid credentials' });
+    const { row, user } = verified;
     const teamIds = await computeTeamIds({
       role: user.role as any,
       userId: user.id,
@@ -99,45 +99,27 @@ export async function authMiddleware(req: Request, res: Response, next: NextFunc
   }
 
   // Path 1.5: Authorization: Bearer <hub-issued JWT> (audience xenon-rest or
-  // xenon-mcp). xenon-mcp tokens are the gateway-injected `authToken` the MCP
-  // plugin's tools present when calling this same REST surface, so both
-  // audiences must verify here.
-  //
-  // JwtKeyService.verify()'s current signature is `{ audience: string }`
-  // (single audience) — it does not accept an audience array, so we try each
-  // accepted audience in turn rather than widening that shared service's
-  // signature. jose's own jwtVerify does accept `string | string[]`; if
-  // JwtKeyService.verify is ever widened to expose that, this loop can
-  // collapse into a single call with `{ audience: ACCEPTED_BEARER_AUDIENCES }`.
+  // xenon-mcp; see ACCEPTED_BEARER_AUDIENCES in verifyCredential.ts, shared
+  // with the WebDriver per-command check).
   //
   // Live user lookup on every request → revocation is instant on the REST
   // surface even though the token itself is stateless (spec §7.1).
   // Accepting the xenon-mcp audience here (not just xenon-rest) lets the MCP plugin's tools
   // call REST with the gateway-injected authToken. Tradeoff (spec §7.1): mcp tokens carry a
   // 12-24h TTL vs xenon-rest's 1h, so a stolen active-user mcp token has REST access for its
-  // full TTL. Mitigated — not eliminated — by the per-request live-user lookup below (a
+  // full TTL. Mitigated — not eliminated — by the per-request live-user lookup (a
   // disabled/revoked account is rejected on the next call regardless of the token's remaining life).
-  const ACCEPTED_BEARER_AUDIENCES = ['xenon-rest', 'xenon-mcp'] as const;
+  //
+  // Any failure here, including one where the token could not be checked at
+  // all, answers 401.
   const authHeader = req.headers['authorization'];
   if (typeof authHeader === 'string' && authHeader.startsWith('Bearer ')) {
     try {
-      const bearer = authHeader.slice(7);
-      let payload: Awaited<ReturnType<JwtKeyService['verify']>> | undefined;
-      for (const audience of ACCEPTED_BEARER_AUDIENCES) {
-        try {
-          payload = await Container.get(JwtKeyService).verify(bearer, { audience });
-          break;
-        } catch {
-          // try next accepted audience
-        }
-      }
-      if (!payload) {
+      const verified = await verifyBearerCredential(authHeader.slice(7));
+      if (!verified) {
         return res.status(401).json({ error: 'invalid token' });
       }
-      const user = await userSvc.findById(String(payload.sub));
-      if (!user || user.status !== 'ACTIVE') {
-        return res.status(401).json({ error: 'invalid token' });
-      }
+      const { payload, user } = verified;
       const teamIds = await computeTeamIds({
         role: user.role as any,
         userId: user.id,

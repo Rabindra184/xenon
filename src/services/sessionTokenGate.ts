@@ -14,8 +14,17 @@
  * (JWKS-based verify without the private key) is a ledgered follow-up.
  */
 
+/**
+ * How the XENON_REQUIRE_* switches read their env var: 1/true/yes/on, in any
+ * case, is on; anything else, including unset, is off. Shared so
+ * XENON_REQUIRE_COMMAND_AUTH (commandAuth.ts) parses exactly like this gate.
+ */
+export function envSwitchOn(value: string | undefined): boolean {
+  return /^(1|true|yes|on)$/i.test(value ?? '');
+}
+
 export function sessionTokenGateEnabled(env: NodeJS.ProcessEnv = process.env): boolean {
-  return /^(1|true|yes|on)$/i.test(env.XENON_REQUIRE_SESSION_TOKEN ?? '');
+  return envSwitchOn(env.XENON_REQUIRE_SESSION_TOKEN);
 }
 
 export async function assertSessionTokenGate(opts: {

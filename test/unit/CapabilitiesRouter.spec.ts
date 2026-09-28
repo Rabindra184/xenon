@@ -14,6 +14,7 @@ describe('capabilities payload', () => {
       projects: true,
       mcpScopedTokens: true,
       sessionTokenGate: false,
+      commandAuth: false,
     });
   });
 
@@ -29,6 +30,15 @@ describe('capabilities payload', () => {
       expect(buildCapabilities().features.sessionTokenGate).to.equal(true);
     } finally {
       delete process.env.XENON_REQUIRE_SESSION_TOKEN;
+    }
+  });
+
+  it('commandAuth reflects XENON_REQUIRE_COMMAND_AUTH', () => {
+    process.env.XENON_REQUIRE_COMMAND_AUTH = 'true';
+    try {
+      expect(buildCapabilities().features.commandAuth).to.equal(true);
+    } finally {
+      delete process.env.XENON_REQUIRE_COMMAND_AUTH;
     }
   });
 });
