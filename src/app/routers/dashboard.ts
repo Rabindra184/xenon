@@ -591,6 +591,11 @@ export async function aggregateHotspots(
   // then merge them into each hotspot. The default `status=active` filter
   // hides muted/pending/resolved selectors so the live list, CI gate, and
   // webhook digest all see only "still actively breaking" selectors.
+  //
+  // The state is looked up only for selectors already in this (scoped) list,
+  // but the row is lab-wide and not scoped: `status`, `regression_count`,
+  // `clean_builds_count`, `last_event_at`, `resolved_at` and the
+  // `*_by_api_key` ids move with any team's heals, builds and admin actions.
   let stateMap = new Map<string, any>();
   if (topHotspots.length > 0) {
     const states = await prisma.selectorState.findMany({
@@ -894,7 +899,8 @@ export async function getSelectorHealth(request: Request, response: Response) {
       // LocatorEtalon.selector is unique, so a lookup by selector alone
       // already pins the row; the strategy check guards against treating a
       // stale/unrelated etalon (selector reused under a different strategy)
-      // as a match for this hotspot's (selector, strategy) tuple.
+      // as a match for this hotspot's (selector, strategy) tuple. Shared, not
+      // scoped: one etalon per selector, refreshed by any team's session.
       const etalon = await etalonService.getSignature(h.originalSelector);
       if (etalon && etalon.strategy === h.originalStrategy) {
         out.etalonAge = now - etalon.lastSeen;
@@ -965,6 +971,11 @@ export async function postSelectorStateAction(request: Request, response: Respon
 // hotspot aggregator) so muted-but-no-recent-heal entries still surface.
 // Each row is enriched with `last_healed_at` from the most recent healed
 // SessionLog row for that tuple (null if never healed).
+//
+// The mute is lab-wide state, so every caller gets the same rows and
+// `muted_at`, `muted_by_api_key` and `regression_count`. `last_healed_at` is
+// heal data, so it is the latest heal among the sessions the caller may see:
+// null for a selector only another team has healed.
 export async function getMutedSelectors(request: Request, response: Response) {
   const limit = Math.min(
     Math.max(parseInt(String(request.query.limit ?? '50'), 10) || 50, 1),
@@ -980,6 +991,7 @@ export async function getMutedSelectors(request: Request, response: Response) {
   });
   const total = await prisma.selectorState.count({ where: { status: 'muted' } });
 
+  const scope = await visibleLogScope(request);
   const enriched = await Promise.all(
     muted.map(async (s) => {
       const last = await prisma.sessionLog.findFirst({
@@ -987,6 +999,7 @@ export async function getMutedSelectors(request: Request, response: Response) {
           original_strategy: s.original_strategy,
           original_selector: s.original_selector,
           is_healed: true,
+          ...scope,
         },
         orderBy: { createdAt: 'desc' },
         select: { createdAt: true },
@@ -1008,7 +1021,8 @@ export async function getMutedSelectors(request: Request, response: Response) {
 // Single-tuple state lookup. Strategy and value arrive URL-encoded since
 // XPath selectors contain `/` and `[`. Returns `{ state: null }` when no
 // row exists (intentional — null is meaningful: the selector is implicitly
-// active).
+// active). The raw SelectorState row only, with no heal-derived field, so it
+// answers the same for every caller: the row is lab-wide state.
 export async function getSelectorStateByTuple(request: Request, response: Response) {
   const strategy = decodeURIComponent(request.params.strategy ?? '');
   const value = decodeURIComponent(request.params.value ?? '');
@@ -1187,7 +1201,8 @@ function register(router: Router) {
   // shows up in the live hotspot list, the CI gate, and the digest); the two
   // reads inherit the existing dashboard auth. Both reads stay global, not
   // team-scoped: a selector's mute or fix is one lab-wide row with no team
-  // column, shared by every team whose tests use that selector.
+  // column, shared by every team whose tests use that selector. The one
+  // heal-derived field, the muted list's `last_healed_at`, is the caller's.
   router.post('/healing/selector/state', roleGuard('ADMIN'), scopeGuard(['admin']), postSelectorStateAction);
   router.get('/healing/state/muted', getMutedSelectors);
   router.get('/healing/state/:strategy/:value', getSelectorStateByTuple);

@@ -134,4 +134,41 @@ describe('Selector Health reads — scoped to the caller’s sessions', () => {
       }
     });
   }
+
+  describe('/healing/state/muted: the mute is shared, the last heal is the caller’s', () => {
+    let findFirst: sinon.SinonStub;
+
+    beforeEach(() => {
+      (prisma.selectorState.findMany as sinon.SinonStub).resolves([
+        {
+          original_strategy: 'xpath',
+          original_selector: '//muted',
+          status: 'muted',
+          muted_at: new Date(),
+          muted_by_api_key: '',
+          regression_count: 0,
+        },
+      ]);
+      sinon.stub(prisma.selectorState, 'count').resolves(1);
+      findFirst = sinon.stub(prisma.sessionLog, 'findFirst').resolves(null);
+    });
+
+    it('a member: the last heal among the sessions they may see', async () => {
+      const r = await request(app(member)).get('/healing/state/muted');
+      expect(r.status).to.equal(200);
+      expect(r.body.muted).to.have.length(1);
+      expect(findFirst.firstCall.args[0].where).to.deep.equal({
+        original_strategy: 'xpath',
+        original_selector: '//muted',
+        is_healed: true,
+        session: { is: memberWhere },
+      });
+    });
+
+    it('an admin: the last heal on any session', async () => {
+      const r = await request(app(admin)).get('/healing/state/muted');
+      expect(r.status).to.equal(200);
+      expect(findFirst.firstCall.args[0].where).to.not.have.property('session');
+    });
+  });
 });
