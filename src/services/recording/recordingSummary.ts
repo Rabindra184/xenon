@@ -1,4 +1,4 @@
-import type { RecordingTiming } from './recordingTiming';
+import { MAX_PREROLL_MS, type RecordingTiming } from './recordingTiming';
 
 /**
  * The recordings library's view of a recording: a group (the rows sharing a
@@ -119,13 +119,13 @@ export interface LibraryPage {
 }
 
 const DAY_MS = 24 * 60 * 60 * 1000;
-/**
- * A video starts at most a few seconds before t=0 (each phone's ffmpeg spawn,
- * then the composite's settle). A timing file claiming more is corrupt.
- */
-const MAX_PREROLL_MS = 5 * 60 * 1000;
 const FAILED_STATUSES = ['FAILED', 'DISCARDED'];
 
+/**
+ * Where a phone's video starts on the group's timeline. Any time after t=0
+ * (add-device), but at most MAX_PREROLL_MS before it, the same rule as the
+ * annotated export's markShiftMs.
+ */
 function timingOffset(t: RecordingTiming | undefined): number | undefined {
   if (!t) return undefined;
   const off = Math.round(t.spawnedAtMs - t.groupT0Ms);
