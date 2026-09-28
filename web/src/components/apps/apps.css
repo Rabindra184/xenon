@@ -15,7 +15,7 @@
 
 .registry-table-header {
   display: grid;
-  grid-template-columns: 3fr 1fr 1fr 1.5fr 1.5fr;
+  grid-template-columns: 3fr 1fr 1fr 1fr 1.5fr 2fr;
   padding: 12px 24px;
   border-bottom: 2px solid var(--border);
   color: var(--text-dim);
@@ -32,7 +32,7 @@
 /* --- High-Density Artifact Row --- */
 .artifact-row {
   display: grid;
-  grid-template-columns: 3fr 1fr 1fr 1.5fr 1.5fr;
+  grid-template-columns: 3fr 1fr 1fr 1fr 1.5fr 2fr;
   align-items: center;
   padding: 12px 24px;
   background: rgb(var(--rgb-well) / calc(0.1 * var(--well-k)));
@@ -123,6 +123,23 @@
 .col-timestamp {
   font-size: 11px;
   color: var(--text-dim);
+}
+
+/* A long team name ellipsizes rather than widening its grid track. */
+.col-team {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.app-move-name {
+  margin: 0 0 var(--space-3);
+  font-weight: 700;
+  color: var(--text);
+  overflow-wrap: anywhere;
 }
 
 .col-actions {

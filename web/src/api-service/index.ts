@@ -290,13 +290,29 @@ export default class XenonApiService {
     return apiClient.makeGETRequest('/apps');
   }
 
-  public static uploadApp(file: File) {
+  /** Uploads an app into `teamId`'s team, or shared when it is null. */
+  public static uploadApp(file: File, teamId: string | null = null) {
     const formData = new FormData();
     formData.append('app', file);
+    if (teamId) formData.append('teamId', teamId);
     return fetch('/xenon/api/apps/upload', {
       method: 'POST',
       body: formData,
     }).then((res) => res.json());
+  }
+
+  /** Admin-only: moves an app to a team, or back to the shared pool with null. */
+  public static async setAppTeam(id: string, teamId: string | null): Promise<void> {
+    const r = await fetch(`/xenon/api/apps/${encodeURIComponent(id)}/team`, {
+      method: 'PUT',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ teamId }),
+    });
+    if (!r.ok) {
+      const body = await r.json().catch(() => ({}));
+      throw new Error(body.error || `setAppTeam failed (${r.status})`);
+    }
   }
 
   public static deleteApp(id: string) {
