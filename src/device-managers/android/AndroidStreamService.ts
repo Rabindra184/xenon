@@ -312,7 +312,7 @@ class AndroidStreamService {
             } catch {
               /* ignore */
             }
-            await portAllocator.release(mjpegPort).catch(() => undefined);
+            await portAllocator.release(mjpegPort, udid).catch(() => undefined);
             await portAllocator.blockPort(mjpegPort, 'mjpeg').catch(() => undefined);
           }
         }
@@ -393,7 +393,7 @@ class AndroidStreamService {
     // Only drop our own entry — never evict a newer session for this udid.
     if (this.sessions.get(udid) === session) this.sessions.delete(udid);
     try {
-      await Container.get(PortAllocator).release(session.mjpegPort);
+      await Container.get(PortAllocator).release(session.mjpegPort, udid);
     } catch (e) {
       log.warn(`[${udid}] Failed to release mjpeg port lease while restarting stream: ${e}`);
     }
@@ -419,7 +419,7 @@ class AndroidStreamService {
       // 'mjpeg' lease is released here — the device-level 'system' port (leased
       // by AndroidDeviceManager) belongs to the device lifecycle, not the stream.
       try {
-        await Container.get(PortAllocator).release(session.mjpegPort);
+        await Container.get(PortAllocator).release(session.mjpegPort, udid);
       } catch (e) {
         log.warn(`[${udid}] Failed to release mjpeg port lease on stop: ${e}`);
       }

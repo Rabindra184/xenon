@@ -19,6 +19,15 @@ const DEFAULT_RANGES: Required<PortRanges> = {
   proxy: [11100, 11199],
 };
 
+/** Loopback and wildcard, in both families. See isOsFree. */
+const PROBE_HOSTS = ['127.0.0.1', '::1', '0.0.0.0', '::'];
+
+/**
+ * Bind errors meaning the host can't use that address at all (IPv6 disabled),
+ * not that something holds the port. Any other error still counts as in use.
+ */
+const ADDRESS_UNAVAILABLE = new Set(['EADDRNOTAVAIL', 'EAFNOSUPPORT']);
+
 export class PortRangeExhaustedError extends Error {
   constructor(purpose: PortPurpose) {
     super(`Port range for purpose '${purpose}' is exhausted`);
@@ -167,8 +176,44 @@ export class PortAllocator {
       .catch(() => undefined);
   }
 
-  async release(port: number): Promise<void> {
-    await prisma.portLease.delete({ where: { port } }).catch(() => undefined);
+  /**
+   * Lease a port `udid` is already serving on. acquire() would refuse it,
+   * because its OS probe sees the listener, and that listener is the device's
+   * own: iOS attaching to the WDA an Appium session forwards is the case. The
+   * lease is what keeps the port from being handed to another device once the
+   * listener closes.
+   *
+   * Returns false, and leaves the row alone, when another udid holds an
+   * unexpired lease on the port.
+   */
+  async claim(
+    purpose: PortPurpose,
+    udid: string,
+    port: number,
+    opts: { ttlMs?: number } = {},
+  ): Promise<boolean> {
+    const now = Date.now();
+    const ttlMs = opts.ttlMs ?? 60 * 60 * 1000;
+    const held = await prisma.portLease.findUnique({ where: { port } });
+    if (held && held.leasedToUdid !== udid && held.expiresAt >= now) return false;
+    const lease = { purpose, leasedToUdid: udid, leasedAt: now, expiresAt: now + ttlMs };
+    await prisma.portLease.upsert({
+      where: { port },
+      create: { port, ...lease },
+      update: lease,
+    });
+    return true;
+  }
+
+  /**
+   * Release `port` if `udid` holds it. A port number alone doesn't say whose
+   * lease it is: a stale session releasing "its" port used to delete whatever
+   * lease held that number by then, including another device's live one.
+   */
+  async release(port: number, udid: string): Promise<void> {
+    await prisma.portLease
+      .deleteMany({ where: { port, leasedToUdid: udid } })
+      .catch(() => undefined);
   }
 
   /**
@@ -192,20 +237,38 @@ export class PortAllocator {
     await prisma.portLease.deleteMany({ where: { expiresAt: { lt: Date.now() } } });
   }
 
-  protected isOsFree(port: number): Promise<boolean> {
+  /**
+   * Whether nothing listens on `port` on any local address.
+   *
+   * One bind can't tell. On macOS a bind to 127.0.0.1 succeeds beside a
+   * wildcard listener, and the more specific socket then takes every
+   * 127.0.0.1 connection. iproxy listens on the IPv6 wildcard, so a
+   * 127.0.0.1-only probe called an iPhone's 9100 free, the S9+'s MJPEG server
+   * bound 127.0.0.1:9100 over it, and the iPhone's recording showed the S9+.
+   *
+   * Each listener shape fails at least one of these binds (checked on macOS
+   * with Node's default SO_REUSEADDR): 127.0.0.1 → 127.0.0.1, ::1 → ::1,
+   * 0.0.0.0 → 0.0.0.0, dual-stack :: → 0.0.0.0 and ::, v6-only :: → ::.
+   */
+  protected async isOsFree(port: number): Promise<boolean> {
+    let probed = 0;
+    // One at a time: probes in flight together can fail on each other (a
+    // 0.0.0.0 bind fails beside a :: one).
+    for (const host of PROBE_HOSTS) {
+      const code = await this.bindProbe(port, host);
+      if (code === null) probed++;
+      else if (!ADDRESS_UNAVAILABLE.has(code)) return false;
+    }
+    return probed > 0;
+  }
+
+  /** Bind `host:port` and close it again. Resolves null on success, else the error code. */
+  protected bindProbe(port: number, host: string): Promise<string | null> {
     return new Promise((resolve) => {
       const server = net.createServer();
-      let settled = false;
-      const done = (ok: boolean) => {
-        if (settled) return;
-        settled = true;
-        server.removeAllListeners();
-        if (ok) server.close(() => resolve(true));
-        else resolve(false);
-      };
-      server.once('error', () => done(false));
-      server.once('listening', () => done(true));
-      server.listen(port, '127.0.0.1');
+      server.once('error', (err: NodeJS.ErrnoException) => resolve(err.code ?? 'UNKNOWN'));
+      server.once('listening', () => server.close(() => resolve(null)));
+      server.listen(port, host);
     });
   }
 }

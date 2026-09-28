@@ -647,7 +647,15 @@ class IOSStreamService {
         const device = await DeviceStoreFactory.getStore().findDevice({ udid });
         if (!device) throw new Error(`Device ${udid} not found`);
 
-        // Always resolve stream ports through the PortAllocator — never a value
+        // Tear down this udid's previous session BEFORE acquiring ports, never
+        // after. acquire() hands a udid back its own existing leases, so a
+        // failed start's session names the very port numbers this start is
+        // about to get. Stopped after acquiring, its release() deleted this
+        // start's leases: the stream ran on unleased ports, and the allocator
+        // gave its 9100 to the S9+. A no-op when there is no previous session.
+        await this.stopStream(udid);
+
+        // Resolve stream ports through the PortAllocator — never a value
         // persisted on the Device row. A stale persisted mjpegServerPort (e.g.
         // 9100) bypassed the allocator and could collide with another device's
         // live lease on the same port (the Android stream leases 9100 too),
@@ -655,14 +663,34 @@ class IOSStreamService {
         // guarantee a non-colliding port; the lease is refreshed by the watchdog
         // and released in stopStream().
         const portAllocator = Container.get(PortAllocator);
-        const wdaPort = await portAllocator.acquire('wda', udid, { ttlMs: this.STREAM_PORT_TTL_MS });
-        const mjpegPort = await portAllocator.acquire('mjpeg', udid, {
-          ttlMs: this.STREAM_PORT_TTL_MS,
-        });
+        const ttl = { ttlMs: this.STREAM_PORT_TTL_MS };
 
-        // Principal Discovery: Check if WDA is already up (e.g. from an active Appium session)
-        // If yes, and it belongs to our device, we simply attach to it instead of killing it.
-        const alreadyUp = await this.isWDARunning(wdaPort, udid);
+        // Principal Discovery: attach to the WDA an Appium session runs on this
+        // device instead of launching a second one over it. The one exception
+        // to the rule above: that session's forwarder listens on the Device
+        // row's wdaLocalPort (iOSCapabilities hands it to Appium), and acquire()
+        // can't find it, because it refuses any port with a live listener, this
+        // device's own included. Only while an Appium session holds the device:
+        // WDA's /status carries no udid, so outside one an answer on a stale
+        // row's port may be another phone's WDA.
+        const appiumWdaPort =
+          device.busy && device.session_id && !isManualLock(device.session_id)
+            ? device.wdaLocalPort
+            : undefined;
+        const alreadyUp = !!appiumWdaPort && (await this.isWDARunning(appiumWdaPort, udid));
+        let wdaPort: number;
+        if (appiumWdaPort && alreadyUp) {
+          wdaPort = appiumWdaPort;
+          if (!(await portAllocator.claim('wda', udid, wdaPort, ttl))) {
+            log.warn(
+              `[${udid}] WDA port ${wdaPort} is leased to another device; attaching unleased`,
+            );
+          }
+        } else {
+          wdaPort = await portAllocator.acquire('wda', udid, ttl);
+        }
+        const mjpegPort = await portAllocator.acquire('mjpeg', udid, ttl);
+
         if (alreadyUp) {
           log.info(`[${udid}] WDA already responding on port ${wdaPort}. Attaching to existing tunnel...`);
 
@@ -722,7 +750,7 @@ class IOSStreamService {
         }
 
         // Perform aggressive cleanup of any existing processes for THIS device/ports
-        await this.stopStream(udid);
+        // (the previous session was already stopped, before the ports were acquired)
         await this.killStaleProcesses(udid, wdaPort, mjpegPort);
 
         const session: StreamSession = {
@@ -1068,8 +1096,8 @@ class IOSStreamService {
     // devices — they were held for the lifetime of this stream.
     try {
       const portAllocator = Container.get(PortAllocator);
-      await portAllocator.release(session.wdaPort);
-      await portAllocator.release(session.mjpegPort);
+      await portAllocator.release(session.wdaPort, udid);
+      await portAllocator.release(session.mjpegPort, udid);
     } catch (e) {
       log.warn(`Failed to release port leases for ${udid}: ${e}`);
     }
