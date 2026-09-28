@@ -34,6 +34,7 @@ import { deviceLock } from './android/DeviceLockManager';
 import AndroidStreamService from './android/AndroidStreamService';
 import { ANDROID_IDENTITY_COMMAND, parseAndroidIdentity } from './android/androidIdentity';
 import { EMPTY_IDENTITY, type DeviceIdentity } from './deviceIdentity';
+import { androidDeviceHost, parseAdbRemote } from './localDeviceHosts';
 interface ExtendedADB extends ADB {
   adbHost?: string;
   adbPort?: number;
@@ -152,8 +153,12 @@ export default class AndroidDeviceManager implements IDeviceManager {
                 ? this.pluginArgs.bindHostOrIp
                 : adbInstance.adbRemoteHost;
 
+            // This server's own row for the phone: the exact host deviceInfo
+            // would write. A node on this machine shares the IP, so its row
+            // for the same phone must not be taken for ours.
+            const ownHost = androidDeviceHost(this.pluginArgs, this.hostPort, adbInstance);
             const existingDevice = existingDeviceDetails.find(
-              (dev) => dev.udid === device.udid && dev.host.includes(this.pluginArgs.bindHostOrIp),
+              (dev) => dev.udid === device.udid && dev.host === ownHost,
             );
 
             if (existingDevice) {
@@ -233,14 +238,7 @@ export default class AndroidDeviceManager implements IDeviceManager {
     // Optional: a device that can't say still registers, as before.
     const identity = await this.getIdentity(adbInstance, device.udid, realDevice);
 
-    let host;
-    if (adbInstance.adbHost != null) {
-      host = `http://${adbInstance.adbHost}:${adbInstance.adbPort}`;
-    } else if (pluginArgs.remoteMachineProxyIP !== undefined) {
-      host = `http://${pluginArgs.remoteMachineProxyIP}:${hostPort}`;
-    } else {
-      host = `http://${pluginArgs.bindHostOrIp}:${hostPort}`;
-    }
+    const host = androidDeviceHost(pluginArgs, hostPort, adbInstance);
     return {
       adbRemoteHost: adbInstance.adbRemoteHost ?? undefined,
       adbPort: adbInstance.adbPort,
@@ -471,9 +469,7 @@ export default class AndroidDeviceManager implements IDeviceManager {
     const adbRemote = pluginArgs.adbRemote;
     if (adbRemote !== undefined && adbRemote.length > 0) {
       const promises = adbRemote.map(async (value: string) => {
-        const adbRemoteValue = value.split(':');
-        const adbHost = adbRemoteValue[0];
-        const adbPort = parseInt(adbRemoteValue[1]) || 5037;
+        const { adbHost, adbPort } = parseAdbRemote(value);
         const cloneAdb = originalADB.clone({
           remoteAdbHost: adbHost,
           adbPort,
@@ -577,9 +573,12 @@ export default class AndroidDeviceManager implements IDeviceManager {
   }
 
   private async onDeviceRemoved(device: DeviceWithPath, pluginArgs: IPluginArgs) {
+    // The host onDeviceAdded files the phone under (deviceInfo with the local
+    // adb). Exact: a bare IP is matched as a substring by the store and by
+    // the hub, and would also take another server's row with this udid.
     const clonedDevice: DeviceUpdate = {
       udid: device['id'],
-      host: pluginArgs.bindHostOrIp,
+      host: androidDeviceHost(pluginArgs, this.hostPort),
       state: device.type,
     };
     if (pluginArgs.hub != undefined) {

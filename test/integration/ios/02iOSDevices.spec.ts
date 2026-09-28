@@ -9,6 +9,7 @@ import {
   allocateDeviceForSession,
   initializeStorage,
 } from '../../../src/device-utils';
+import { localDeviceHosts } from '../../../src/device-managers/localDeviceHosts';
 import { XenonDatabase } from '../../../src/data-service/db';
 import { DefaultPluginArgs } from '../../../src/interfaces/IPluginArgs';
 import { unblockDeviceMatchingFilter } from '../../../src/data-service/device-service';
@@ -35,7 +36,7 @@ describe('IOS Test', () => {
         d.plugin['xenon'].iosDeviceType = 'real';
       });
     const deviceManager = createTestXenonManager(pluginArgs);
-    await updateDeviceList(pluginArgs.bindHostOrIp);
+    await updateDeviceList(localDeviceHosts(pluginArgs, 4723));
     const capabilities = {
       alwaysMatch: {
         platformName: 'iOS',
@@ -59,7 +60,7 @@ describe('IOS Test', () => {
   it('Should throw error if the IPA does not match with device type real', async () => {
     await initializeStorage();
     const deviceManager = createTestXenonManager(pluginArgs);
-    await updateDeviceList(pluginArgs.bindHostOrIp);
+    await updateDeviceList(localDeviceHosts(pluginArgs, 4723));
     const capabilities = {
       alwaysMatch: {
         platformName: 'iOS',

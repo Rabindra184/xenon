@@ -9,6 +9,7 @@ import {
   initializeStorage,
   cleanPendingSessions,
 } from '../../src/device-utils';
+import { localDeviceHosts } from '../../src/device-managers/localDeviceHosts';
 import { DefaultPluginArgs } from '../../src/interfaces/IPluginArgs';
 import ip from 'ip';
 import waitUntil from 'async-wait-until';
@@ -42,7 +43,7 @@ describe('Android Test', () => {
     await initializeStorage();
     await deviceManager.getDevices();
     const hub = pluginArgs.hub;
-    await updateDeviceList(pluginArgs.bindHostOrIp, hub);
+    await updateDeviceList(localDeviceHosts(pluginArgs, 4723), hub);
     await cleanPendingSessions(0);
     await unblockDeviceMatchingFilter({});
 
@@ -66,7 +67,7 @@ describe('Android Test', () => {
   it.skip('Allocate second free device and verify both the device state is busy in db', async () => {
     await initializeStorage();
     deviceManager = createTestXenonManager(Object.assign({}, pluginArgs, { platform: 'android' }));
-    await updateDeviceList(pluginArgs.bindHostOrIp);
+    await updateDeviceList(localDeviceHosts(pluginArgs, 4723));
     const capabilities = {
       alwaysMatch: {
         platformName: 'android',
@@ -80,7 +81,7 @@ describe('Android Test', () => {
     // wait until there are two devices and both are not offline
     let devices: IDevice[];
     waitUntil(async () => {
-      await updateDeviceList(pluginArgs.bindHostOrIp);
+      await updateDeviceList(localDeviceHosts(pluginArgs, 4723));
       devices = await deviceManager.getDevices();
 
       return devices.length === 2 && devices.every((device: IDevice) => !device.offline);
@@ -95,7 +96,7 @@ describe('Android Test', () => {
     await initializeStorage();
     deviceManager = createTestXenonManager(pluginArgs);
     const hub = pluginArgs.hub;
-    await updateDeviceList(pluginArgs.bindHostOrIp, hub);
+    await updateDeviceList(localDeviceHosts(pluginArgs, 4723), hub);
     const capabilities = {
       alwaysMatch: {
         platformName: 'android',
