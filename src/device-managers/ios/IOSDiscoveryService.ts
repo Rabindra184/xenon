@@ -20,6 +20,7 @@ import { config as xenonConfig } from '../../config';
 import { addNewDevice, removeDevice } from '../../data-service/device-service';
 import { IosTracker } from '../iOSTracker';
 import { resolveAdvertisedBindHost, sanitizeDeviceNetworkIp } from '../../helpers/networkAddresses';
+import { iosRealDeviceHost, iosSimulatorHost } from '../localDeviceHosts';
 
 /**
  * Should this simulator be given wda/mjpeg ports the moment we notice it?
@@ -126,9 +127,7 @@ export class IOSDiscoveryService {
     const store = DeviceStoreFactory.getStore();
     const storeDevice = await store.findDevice({ udid });
 
-    const host = this.pluginArgs.remoteMachineProxyIP
-      ? String(this.pluginArgs.remoteMachineProxyIP)
-      : `http://${this.pluginArgs.bindHostOrIp}:${this.hostPort}`;
+    const host = iosRealDeviceHost(this.pluginArgs, this.hostPort);
 
     // A real device is going to want these, so ask now — but not at the cost
     // of the whole discovery pass. See tryAcquire: an exhausted range used to
@@ -255,7 +254,7 @@ export class IOSDiscoveryService {
             | 'android'
             | 'tvos',
           deviceType: 'simulator',
-          host: `http://${this.pluginArgs.bindHostOrIp}:${this.hostPort}`,
+          host: iosSimulatorHost(this.pluginArgs, this.hostPort),
           ip: nodeLanIp,
           totalUtilizationTimeMilliSec: await getUtilizationTime(d.udid),
           sessionStartTime: 0,
@@ -313,7 +312,9 @@ export class IOSDiscoveryService {
     });
 
     tracker.on('detached', async (udid: string) => {
-      const deviceRemoved = [{ udid, host: this.pluginArgs.bindHostOrIp as string }];
+      // The host 'attached' filed it under (getDeviceInfo), exact: a bare IP
+      // is matched as a substring and takes other servers' rows with it.
+      const deviceRemoved = [{ udid, host: iosRealDeviceHost(this.pluginArgs, this.hostPort) }];
       if (this.pluginArgs.hub) {
         await new NodeDevices(this.pluginArgs.hub, {
           tlsRejectUnauthorized: this.pluginArgs.tlsRejectUnauthorized,

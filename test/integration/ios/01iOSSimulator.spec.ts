@@ -9,6 +9,7 @@ import {
   initializeStorage,
   cleanPendingSessions,
 } from '../../../src/device-utils';
+import { localDeviceHosts } from '../../../src/device-managers/localDeviceHosts';
 import { XenonDatabase } from '../../../src/data-service/db';
 
 import Simctl from 'node-simctl';
@@ -47,7 +48,7 @@ async function initDeviceFarm(iosDeviceType: string) {
   );
   expect(deviceManager.getMaxSessionCount()).to.be.eql(1);
   const hub = pluginArgs.hub;
-  await updateDeviceList(pluginArgs.bindHostOrIp, hub);
+  await updateDeviceList(localDeviceHosts(pluginArgs, 4723), hub);
   await markSimulatorsAsBooted();
   await unblockDeviceMatchingFilter({});
   await cleanPendingSessions(0);
@@ -158,7 +159,7 @@ describe('IOS Simulator Test', () => {
     await initializeStorage();
     const deviceManager = createTestXenonManager(pluginArgs);
     const hub = pluginArgs.hub;
-    await updateDeviceList(pluginArgs.bindHostOrIp, hub);
+    await updateDeviceList(localDeviceHosts(pluginArgs, 4723), hub);
     await markSimulatorsAsBooted();
     await unblockDeviceMatchingFilter({});
     await cleanPendingSessions(0);
@@ -189,7 +190,7 @@ describe('IOS Simulator Test', () => {
     await initializeStorage();
     const deviceManager = createTestXenonManager(pluginArgs);
     const hub = pluginArgs.hub;
-    await updateDeviceList(pluginArgs.bindHostOrIp, hub);
+    await updateDeviceList(localDeviceHosts(pluginArgs, 4723), hub);
     await markSimulatorsAsBooted();
     await unblockDeviceMatchingFilter({});
     await cleanPendingSessions(0);
@@ -222,7 +223,7 @@ describe('IOS Simulator Test', () => {
       await initializeStorage();
       const deviceManager = createTestXenonManager(pluginArgs);
       const hub = pluginArgs.hub;
-      await updateDeviceList(pluginArgs.bindHostOrIp, hub);
+      await updateDeviceList(localDeviceHosts(pluginArgs, 4723), hub);
       await markSimulatorsAsBooted();
       await unblockDeviceMatchingFilter({});
       await cleanPendingSessions(0);
@@ -277,7 +278,7 @@ describe('Boot simulator test', async () => {
     await initializeStorage();
     const deviceManager = createTestXenonManager(pluginArgs);
     const hub = pluginArgs.hub;
-    await updateDeviceList(pluginArgs.bindHostOrIp, hub);
+    await updateDeviceList(localDeviceHosts(pluginArgs, 4723), hub);
     const capabilities = {
       alwaysMatch: {
         platformName: 'iOS',

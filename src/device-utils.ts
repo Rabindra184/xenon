@@ -38,6 +38,7 @@ import AndroidDeviceManager from './device-managers/AndroidDeviceManager';
 import IOSDeviceManager from './device-managers/IOSDeviceManager';
 import { IOSDiscoveryService } from './device-managers/ios/IOSDiscoveryService';
 import NodeDevices from './device-managers/NodeDevices';
+import { isLocalDeviceHost, LocalDeviceHosts } from './device-managers/localDeviceHosts';
 import { config as xenonConfig } from './config';
 import { IPluginArgs } from './interfaces/IPluginArgs';
 import { DeviceStoreFactory } from './data-service/device-store';
@@ -464,7 +465,7 @@ export async function getBusyDevicesCount() {
 }
 
 export async function updateDeviceList(
-  host: string,
+  local: LocalDeviceHosts,
   hubArgument?: string,
   tlsRejectUnauthorized?: boolean,
 ): Promise<IDevice[]> {
@@ -472,14 +473,16 @@ export async function updateDeviceList(
   const devices: IDevice[] = await getDeviceManager().getDevices(allExistingDevices);
 
   // first thing first. Update device list in local list
-  await syncDiscoveredDevices(devices, allExistingDevices, host);
+  await syncDiscoveredDevices(devices, allExistingDevices, local.origin);
 
-  // Prune any devices that are in our local DB for this host but NO LONGER discovered.
-  // This automatically cleans up disconnected Android devices safely, or filtered
-  // iOS simulators (e.g. when booted-simulators is turned on and a simulator shuts down)
+  // Prune this server's own phones that discovery no longer reports: an
+  // unplugged Android phone, or a simulator filtered out (e.g. booted-simulators
+  // is on and it shut down). Only its own, by exact host: a hub keeps its
+  // nodes' phones in the same table, and a node on the same machine differs
+  // from the hub only by port (see localDeviceHosts).
   const discoveredUdids = new Set(devices.map((d) => d.udid));
   const staleLocalDevices = allExistingDevices.filter(
-    (d) => (d.host === host || d.host.includes(`//${host}:`) || d.host.includes(`//${host}/`)) && !discoveredUdids.has(d.udid),
+    (d) => isLocalDeviceHost(local, d.host) && !discoveredUdids.has(d.udid),
   );
 
   if (staleLocalDevices.length > 0) {
@@ -525,23 +528,24 @@ export async function refreshSimulatorState(pluginArgs: IPluginArgs, hostPort: n
 
 export async function setupCronCheckStaleDevices(
   intervalMs: number,
-  currentHost: string,
+  local: LocalDeviceHosts,
   tlsRejectUnauthorized?: boolean,
 ) {
   setInterval(async () => {
-    await removeStaleDevices(currentHost, tlsRejectUnauthorized);
+    await removeStaleDevices(local, tlsRejectUnauthorized);
   }, intervalMs);
 }
 
 /**
  * Remove devices where the host is not alive nor defined.
- * @param currentHost current host ip address
+ * @param local the hosts this server files its own phones under
  */
-export async function removeStaleDevices(currentHost: string, tlsRejectUnauthorized?: boolean) {
+export async function removeStaleDevices(local: LocalDeviceHosts, tlsRejectUnauthorized?: boolean) {
   const allDevices = await getAllDevices();
   const nodeDevices = allDevices.filter((device) => {
-    // devices that's not from this node ip address
-    return device.host !== undefined && !device.host.includes(currentHost);
+    // Phones another server drives. By exact host: a node on this machine
+    // shares the IP, and an IP can be a prefix of another's.
+    return device.host !== undefined && !isLocalDeviceHost(local, device.host);
   });
 
   const devicesWithNoHost = nodeDevices.filter((device) => {
@@ -662,7 +666,7 @@ export async function setupCronReleaseBlockedDevices(
 }
 
 export async function setupCronUpdateDeviceList(
-  host: string,
+  local: LocalDeviceHosts,
   hubArgument: string,
   intervalMs: number,
   tlsRejectUnauthorized?: boolean,
@@ -675,21 +679,42 @@ export async function setupCronUpdateDeviceList(
   );
 
   cronTimerToUpdateDevices = setInterval(async () => {
-    await updateDeviceList(host, hubArgument, tlsRejectUnauthorized);
+    await updateDeviceList(local, hubArgument, tlsRejectUnauthorized);
   }, intervalMs);
+}
+
+/**
+ * Tells the hub this node is leaving, once for each host its phones are filed
+ * under, and the hub drops every phone with that host. Only hosts the hub
+ * matches exactly: it matches anything that isn't a URL as a substring, which
+ * is how the node's bare IP also took the hub's own phones on the same machine.
+ */
+export async function unregisterNodeFromHub(
+  hubArgument: string,
+  local: LocalDeviceHosts,
+  tlsRejectUnauthorized?: boolean,
+) {
+  const hub = new NodeDevices(hubArgument, {
+    tlsRejectUnauthorized,
+    hubAccessKey: xenonConfig.hubAccessKey,
+    hubToken: xenonConfig.hubToken,
+  });
+  for (const host of local.hosts) {
+    if (/^https?:\/\//.test(host)) await hub.unRegisterNode(host);
+  }
 }
 
 /**
  * Principal discovery: Periodically poll for local devices to prune stales/offlines.
  * Critical for standalone Hubs where setupCronUpdateDeviceList isn't called.
  */
-export async function setupCronLocalDiscovery(host: string, intervalMs: number) {
+export async function setupCronLocalDiscovery(local: LocalDeviceHosts, intervalMs: number) {
   if (timer) {
     clearInterval(timer);
   }
   log.info(`Local device discovery poll started every ${intervalMs} ms`);
   timer = setInterval(async () => {
-    await updateDeviceList(host);
+    await updateDeviceList(local);
   }, intervalMs);
 }
 

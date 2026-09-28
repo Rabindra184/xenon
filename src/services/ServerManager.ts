@@ -37,8 +37,10 @@ import {
   setupCronSelectorVerification,
   setupCronUpdateDeviceList,
   removeStaleDevices,
+  unregisterNodeFromHub,
   updateDeviceList,
 } from '../device-utils';
+import { localDeviceHosts, LocalDeviceHosts } from '../device-managers/localDeviceHosts';
 import { createRouter } from '../app';
 import { registerProxyMiddlware } from '../proxy/wd-command-proxy';
 import { registerCommandAuth } from '../app/registerCommandAuth';
@@ -48,7 +50,6 @@ import AndroidDeviceManager from '../device-managers/AndroidDeviceManager';
 import IOSDeviceManager from '../device-managers/IOSDeviceManager';
 import { XenonManager } from '../device-managers';
 import { addCLIArgs } from '../data-service/pluginArgs';
-import NodeDevices from '../device-managers/NodeDevices';
 import { config as xenonConfig, updateConfig, resolveAuthDisabled } from '../config';
 import { SocketServer } from './SocketServer';
 import { SocketClient } from './SocketClient';
@@ -110,8 +111,13 @@ export class ServerManager {
     await this.bootEmulators(pluginArgs);
     this.registerDependenciesInContainer(pluginArgs, cliArgs, nodeId);
 
-    await this.setupHubOrNode(pluginArgs, cliArgs, httpServer, nodeId);
-    await this.setupMaintenanceCrons(pluginArgs);
+    // The hosts this server files its own phones under. Every "is this phone
+    // mine?" below compares against these exactly: a node on this machine
+    // shares the IP and differs only by port.
+    const localHosts = localDeviceHosts(pluginArgs, cliArgs.port);
+
+    await this.setupHubOrNode(pluginArgs, cliArgs, httpServer, localHosts);
+    await this.setupMaintenanceCrons(pluginArgs, localHosts);
 
     // Live H.264 preview WebSocket (Android; feature-flagged in the frontend).
     // Only claims /stream/h264 — socket.io keeps its own upgrades. Ticket-auth'd.
@@ -225,14 +231,10 @@ export class ServerManager {
     await cleanupZombieSessions(recoveredSessionIds);
 
     // Initial device discovery poll to start managers and trackers
-    await updateDeviceList(
-      pluginArgs.bindHostOrIp as string,
-      pluginArgs.hub,
-      pluginArgs.tlsRejectUnauthorized,
-    );
+    await updateDeviceList(localHosts, pluginArgs.hub, pluginArgs.tlsRejectUnauthorized);
 
     // remove stale devices
-    await removeStaleDevices(pluginArgs.bindHostOrIp as string, pluginArgs.tlsRejectUnauthorized);
+    await removeStaleDevices(localHosts, pluginArgs.tlsRejectUnauthorized);
 
     this.logger.info(
       `🚀 Xenon will be served at http://${pluginArgs.bindHostOrIp}:${cliArgs.port}/xenon with id ${nodeId}`,
@@ -412,13 +414,13 @@ export class ServerManager {
     pluginArgs: IPluginArgs,
     cliArgs: ServerArgs,
     httpServer: any,
-    nodeId: string,
+    localHosts: LocalDeviceHosts,
   ) {
     const hubArgument = pluginArgs.hub;
     if (hubArgument !== undefined) {
       this.logger.info(`📡 I'm a node and my hub is ${hubArgument}`);
       await setupCronUpdateDeviceList(
-        pluginArgs.bindHostOrIp as string,
+        localHosts,
         hubArgument,
         pluginArgs.sendNodeDevicesToHubIntervalMs as number,
         pluginArgs.tlsRejectUnauthorized,
@@ -429,11 +431,7 @@ export class ServerManager {
         process.once(signal, async () => {
           log.info(`Received ${signal}, unregistering node from hub...`);
           try {
-            await new NodeDevices(hubArgument, {
-              tlsRejectUnauthorized: pluginArgs.tlsRejectUnauthorized,
-              hubAccessKey: xenonConfig.hubAccessKey,
-              hubToken: xenonConfig.hubToken,
-            }).unRegisterNode(pluginArgs.bindHostOrIp as string);
+            await unregisterNodeFromHub(hubArgument, localHosts, pluginArgs.tlsRejectUnauthorized);
           } catch (err) {
             log.error(`Error during node unregistration: ${err}`);
           }
@@ -454,7 +452,7 @@ export class ServerManager {
       (async () => {
         const { setupCronLocalDiscovery } = await import('../device-utils');
         await setupCronLocalDiscovery(
-          pluginArgs.bindHostOrIp as string,
+          localHosts,
           pluginArgs.sendNodeDevicesToHubIntervalMs as number,
         );
       })();
@@ -467,12 +465,12 @@ export class ServerManager {
     }
   }
 
-  private async setupMaintenanceCrons(pluginArgs: IPluginArgs) {
+  private async setupMaintenanceCrons(pluginArgs: IPluginArgs, localHosts: LocalDeviceHosts) {
     if (!pluginArgs.cloud?.cloudName) {
       // 1. Check for stale nodes
       await setupCronCheckStaleDevices(
         pluginArgs.checkStaleDevicesIntervalMs as number,
-        pluginArgs.bindHostOrIp as string,
+        localHosts,
         pluginArgs.tlsRejectUnauthorized,
       );
       // 2. Release blocked devices
