@@ -39,7 +39,7 @@ const caps = (extra: Record<string, unknown> = {}) => ({
   firstMatch: [{}],
 });
 const withKey = (accessKey: string, extra: Record<string, unknown> = {}) =>
-  caps({ 'df:options': { accessKey, token: 'tk' }, ...extra });
+  caps({ 'xe:options': { accessKey, token: 'tk' }, ...extra });
 
 describe('createSession records who asked on the pending-session row', () => {
   let svc: SessionLifecycleService;
@@ -134,7 +134,7 @@ describe('createSession records who asked on the pending-session row', () => {
     });
 
     it("a session token's subject and its teamId claim", async () => {
-      await create(caps({ 'xenon:options': { sessionToken: 'jwt:usr_token@team_t' } }));
+      await create(caps({ 'xe:options': { sessionToken: 'jwt:usr_token@team_t' } }));
       expect(pendingRow[REQUESTER]).to.deep.equal({ userId: 'usr_token', teamId: 'team_t' });
     });
 

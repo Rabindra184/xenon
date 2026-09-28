@@ -11,7 +11,7 @@ import { prisma } from '../../../src/prisma';
 /**
  * An SDK lease is inside the team boundary: a member's lease lands only on a
  * phone they can see, whatever the filter names. Otherwise the lease's
- * `xenon:options.leaseId` would carry them past the team check Appium session
+ * `xe:options.leaseId` would carry them past the team check Appium session
  * allocation makes.
  *
  * The router, LeaseService and the device store's match are all real here.

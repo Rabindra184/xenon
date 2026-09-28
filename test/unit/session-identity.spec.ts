@@ -5,7 +5,7 @@ import { resolveSessionIdentity } from '../../src/services/session/sessionIdenti
 // Session.user_id (preferred) or Session.api_key_id -> ApiKey.userId. When
 // neither is set the guard fails closed and denies EVERYONE non-admin —
 // including the engineer who started the run. Before this change, a session
-// authenticated by a xenon:options.sessionToken was verified and then had its
+// authenticated by an xe:options.sessionToken was verified and then had its
 // identity discarded, so exactly that happened.
 
 const KEY_ROW = { id: 'key_abc', userId: 'usr_alice' };
@@ -17,7 +17,7 @@ const verifyThrows = async () => {
 };
 
 describe('resolveSessionIdentity', () => {
-  it('populates both ids from a verified df:options key pair', async () => {
+  it('populates both ids from a verified xe:options key pair', async () => {
     const id = await resolveSessionIdentity({
       row: KEY_ROW,
       sessionToken: null,

@@ -51,7 +51,9 @@ describe('LeaseService', () => {
     expect(out.leaseToken).to.match(/^[0-9a-f]{64}$/);
     expect(out.allocatedPorts).to.deep.equal({ systemPort: 9001, chromedriverPort: 9002, mjpegServerPort: 9003 });
     expect(out.appiumCapabilities['appium:udid']).to.equal('u1');
-    expect(out.appiumCapabilities['xenon:options'].leaseId).to.equal('lse_test');
+    expect(out.appiumCapabilities['xe:options'].leaseId).to.equal('lse_test');
+    // Only the namespace Xenon documents.
+    expect(out.appiumCapabilities).to.not.have.property('xenon:options');
     expect(storeStub.findAndLockDevice.calledOnce).to.equal(true);
     expect(portClientStub.allocate.calledOnce).to.equal(true);
     expect(prismaStub.lease.create.calledOnce).to.equal(true);

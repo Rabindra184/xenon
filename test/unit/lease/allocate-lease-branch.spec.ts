@@ -19,12 +19,12 @@ const TOKEN = 'f'.repeat(64);
 // which case applied.
 const REFUSED =
   'lease lse_1 is not active, or this session did not prove it holds it — pass ' +
-  'xenon:options.leaseToken from the lease response, or create the session with the ' +
+  'xe:options.leaseToken from the lease response, or create the session with the ' +
   'credentials that created the lease; and the phone must be one your teams can see';
 const NOBODY = { canOverride: false, apiKeyId: null, userId: null, leaseToken: null };
 
 const leaseCaps = () => ({
-  alwaysMatch: { platformName: 'android', 'xenon:options': { leaseId: 'lse_1' } },
+  alwaysMatch: { platformName: 'android', 'xe:options': { leaseId: 'lse_1' } },
   firstMatch: [{}],
 });
 

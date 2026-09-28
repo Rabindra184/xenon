@@ -5,6 +5,7 @@ import { IDevice } from './interfaces/IDevice';
 import { Container } from 'typedi';
 import { PortAllocator } from './services/PortAllocator';
 import log from './logger';
+import { stringOption, xenonOptionsIn, xenonOptionsOf } from './services/session/xenonOptions';
 
 export enum XENON_CAPABILITIES {
   BUILD_NAME = 'build',
@@ -17,7 +18,6 @@ export enum XENON_CAPABILITIES {
   SCREENSHOT_ON_FAILURE = 'screenshot_on_failure',
   SCREENSHOT_ON_FAIL = 'screenshotOnFailure', // camelCase alias
 
-  XENON_OPTIONS = 'xenon:options',
   SAVE_DEVICE_LOGS = 'saveDeviceLogs',
   SAVE_LOGS = 'save_device_logs', // snake_case alias
 
@@ -196,57 +196,36 @@ export function extractTeamCap(caps: ISessionCapability): string | undefined {
   return undefined;
 }
 
-export function extractAccessKeyCap(caps: ISessionCapability): string | undefined {
-  const merged = Object.assign({}, caps.firstMatch?.[0] || {}, caps.alwaysMatch || {});
-  const prefixes = ['xenon:', 'xe:', 'appium:', ''];
-  const names = ['accessKey', 'access_key'];
-  for (const prefix of prefixes) {
-    for (const name of names) {
-      const v = merged[prefix ? `${prefix}${name}` : name];
-      if (typeof v === 'string' && v.length > 0) return v;
-    }
-  }
-  return undefined;
-}
-
-// Returns the (accessKey, token) pair from df:options.{accessKey,token} or
-// equivalently df:options.{access_key,token}. Returns undefined if either
-// piece is missing — callers fall back to extractAccessKeyCap (legacy).
+// Returns the API-key pair from xe:options.{accessKey,token} (or the
+// xenon:options alias; xe:options wins field by field). Returns undefined if
+// either piece is missing. This is the only key-pair credential a session can
+// present; there is no flat `xenon:accessKey`.
 export function extractAccessKeyTokenPair(
   caps: ISessionCapability,
 ): { accessKey: string; token: string } | undefined {
-  const merged = Object.assign({}, caps.firstMatch?.[0] || {}, caps.alwaysMatch || {});
-  const dfOptions =
-    merged['df:options'] ?? merged['xenon:df:options'] ?? merged['appium:df:options'];
-  if (!dfOptions || typeof dfOptions !== 'object') return undefined;
-  const accessKey = (dfOptions as any).accessKey ?? (dfOptions as any).access_key;
-  const token = (dfOptions as any).token;
-  if (typeof accessKey !== 'string' || typeof token !== 'string') return undefined;
-  if (!accessKey || !token) return undefined;
-  return { accessKey, token };
+  const options = xenonOptionsOf(caps);
+  const accessKey = stringOption(options, 'accessKey');
+  const token = stringOption(options, 'token');
+  return accessKey && token ? { accessKey, token } : undefined;
 }
 
-// Returns the xenon:options.sessionToken JWT (hub-minted, aud 'xenon-session'),
-// used by the opt-in session-token gate (spec §3 item 6, risk R9). Returns
-// null if absent — callers combine this with the df:options access-key/token
-// pair to decide whether createSession is authorized.
+// Returns the xe:options.sessionToken JWT (hub-minted, aud 'xenon-session'),
+// or the xenon:options alias's, used by the opt-in session-token gate (spec
+// §3 item 6, risk R9). Returns null if absent — callers combine this with the
+// access-key/token pair to decide whether createSession is authorized.
 export function extractSessionToken(caps: ISessionCapability): string | null {
-  const read = (obj: unknown): string | null => {
-    const xo = (obj as Record<string, unknown> | undefined)?.['xenon:options'];
-    const t = xo && typeof xo === 'object' ? (xo as Record<string, unknown>).sessionToken : undefined;
-    return typeof t === 'string' && t.length > 0 ? t : null;
-  };
-  const fm = Array.isArray(caps?.firstMatch) ? caps.firstMatch[0] : undefined;
-  return read(caps?.alwaysMatch) ?? read(fm);
+  return stringOption(xenonOptionsOf(caps), 'sessionToken') ?? null;
 }
 
 export function getXenonCapabilities(caps: ISessionCapability) {
   const mergedCapabilites = Object.assign({}, caps.firstMatch?.[0] ?? {}, caps.alwaysMatch);
+  const xenonOptions = xenonOptionsIn(mergedCapabilites);
 
   const getAnyCap = (snake: string, camel: string) => {
     // Strict prefix resolution: xe:, appium:, no-prefix — snake_case + camelCase fallbacks.
-    // Also accept the namespaced `xenon:options.<name>` form, which is how other Appium
-    // plugins document nested options and what most users naturally try first.
+    // Also accept the namespaced `xe:options.<name>` form (or its `xenon:options` alias),
+    // which is how other Appium plugins document nested options and what most users
+    // naturally try first.
     const prefixes = ['xe:', 'appium:', ''];
     const names = [snake, camel];
 
@@ -257,11 +236,8 @@ export function getXenonCapabilities(caps: ISessionCapability) {
       }
     }
 
-    const xenonOptions = mergedCapabilites[XENON_CAPABILITIES.XENON_OPTIONS];
-    if (xenonOptions && typeof xenonOptions === 'object') {
-      for (const name of names) {
-        if (xenonOptions[name] !== undefined) return xenonOptions[name];
-      }
+    for (const name of names) {
+      if (xenonOptions[name] !== undefined) return xenonOptions[name];
     }
     return undefined;
   };

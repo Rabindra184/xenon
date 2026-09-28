@@ -9,11 +9,14 @@ import { UserService } from '../../src/services/UserService';
 import { config } from '../../src/config';
 import { prisma } from '../../src/prisma';
 import { saveRegistrations } from '../helpers/container-registration';
+import { takeSessionCredentials } from '../../src/services/session/sessionCredentials';
 
 // authorizeSessionRequest is private; these drive it directly because it is
 // the single place a session's identity is decided, and getting it wrong
-// silently denies the caller their own device later.
-const invoke = (svc: any, caps: any) => svc.authorizeSessionRequest(caps);
+// silently denies the caller their own device later. It is handed the
+// credentials createSession took out of the caps, as createSession does.
+const invoke = (svc: any, caps: any) =>
+  svc.authorizeSessionRequest(caps, takeSessionCredentials(caps));
 
 const capsWith = (obj: Record<string, unknown>) => ({
   alwaysMatch: obj,
@@ -36,7 +39,7 @@ describe('authorizeSessionRequest — identity', () => {
     Container.reset();
   });
 
-  it('returns both ids for a valid df:options pair', async () => {
+  it('returns both ids for a valid xe:options pair', async () => {
     Container.set(ApiKeyService, {
       verifyPair: sinon.stub().resolves({
         id: 'key_abc',
@@ -47,10 +50,51 @@ describe('authorizeSessionRequest — identity', () => {
       hasScope: (row: any, req: string[]) => req.every((r) => row.scopes.includes(r)),
     } as any);
 
-    const res = await invoke(svc, capsWith({ 'df:options': { accessKey: 'ak', token: 'tk' } }));
+    const res = await invoke(svc, capsWith({ 'xe:options': { accessKey: 'ak', token: 'tk' } }));
 
     expect(res.apiKeyId).to.equal('key_abc');
     expect(res.userId).to.equal('usr_alice');
+  });
+
+  it('still reads the pair from the xenon:options alias', async () => {
+    const verifyPair = sinon.stub().resolves({
+      id: 'key_abc',
+      userId: 'usr_alice',
+      scopes: 'sessions',
+      teamId: null,
+    });
+    Container.set(ApiKeyService, {
+      verifyPair,
+      hasScope: (row: any, req: string[]) => req.every((r) => row.scopes.includes(r)),
+    } as any);
+
+    const res = await invoke(
+      svc,
+      capsWith({
+        'xenon:options': { accessKey: 'ak', token: 'tk_old' },
+        'xe:options': { token: 'tk' },
+      }),
+    );
+
+    // xe:options wins field by field: its token, the alias's access key.
+    expect(verifyPair.calledOnceWith('ak', 'tk')).to.equal(true);
+    expect(res.userId).to.equal('usr_alice');
+  });
+
+  it('leaves a session sending only df:options unattributed, and never verifies it', async () => {
+    const verifyPair = sinon.stub().resolves({
+      id: 'key_abc',
+      userId: 'usr_alice',
+      scopes: 'sessions',
+      teamId: null,
+    });
+    Container.set(ApiKeyService, { verifyPair, hasScope: () => true } as any);
+
+    const res = await invoke(svc, capsWith({ 'df:options': { accessKey: 'ak', token: 'tk' } }));
+
+    expect(verifyPair.called).to.equal(false);
+    expect(res.apiKeyId).to.equal(null);
+    expect(res.userId).to.equal(null);
   });
 
   it('attributes a session-token caller even with the gate off', async () => {
@@ -62,7 +106,7 @@ describe('authorizeSessionRequest — identity', () => {
       verify: sinon.stub().resolves({ sub: 'usr_carol' }),
     } as any);
 
-    const res = await invoke(svc, capsWith({ 'xenon:options': { sessionToken: 'tok' } }));
+    const res = await invoke(svc, capsWith({ 'xe:options': { sessionToken: 'tok' } }));
 
     expect(res.apiKeyId).to.equal(null);
     expect(res.userId).to.equal('usr_carol');
@@ -83,7 +127,7 @@ describe('authorizeSessionRequest — identity', () => {
   it('short-circuits to unattributed when auth is disabled', async () => {
     config.authDisabled = true;
 
-    const res = await invoke(svc, capsWith({ 'df:options': { accessKey: 'ak', token: 'tk' } }));
+    const res = await invoke(svc, capsWith({ 'xe:options': { accessKey: 'ak', token: 'tk' } }));
 
     expect(res.apiKeyId).to.equal(null);
     expect(res.userId).to.equal(null);
@@ -134,8 +178,9 @@ describe('authorizeSessionRequest — leaseAccess', () => {
     Container.set(UserService, { findById: findUser } as any);
   };
 
-  const pairCaps = capsWith({ 'df:options': { accessKey: 'ak', token: 'tk' } });
-  const tokenCaps = capsWith({ 'xenon:options': { sessionToken: 'tok' } });
+  // Fresh each time: taking the credentials strips them from the caps.
+  const pairCaps = () => capsWith({ 'xe:options': { accessKey: 'ak', token: 'tk' } });
+  const tokenCaps = () => capsWith({ 'xe:options': { sessionToken: 'tok' } });
   const access = async (caps: any) => (await invoke(svc, caps)).leaseAccess();
 
   beforeEach(() => {
@@ -154,7 +199,7 @@ describe('authorizeSessionRequest — leaseAccess', () => {
 
   it('reads nothing until a lease asks', async () => {
     withKey(keyRow('sessions'), user('MEMBER'));
-    const res = await invoke(svc, pairCaps);
+    const res = await invoke(svc, pairCaps());
     expect(findUser.called).to.equal(false);
     expect(teamRows.called).to.equal(false);
     await res.leaseAccess();
@@ -164,28 +209,28 @@ describe('authorizeSessionRequest — leaseAccess', () => {
   describe('canOverride', () => {
     it("is false for an ADMIN's key without the admin scope", async () => {
       withKey(keyRow('devices,sessions,read'), user('ADMIN'));
-      expect((await access(pairCaps)).canOverride).to.equal(false);
+      expect((await access(pairCaps())).canOverride).to.equal(false);
     });
 
     it("is true for the same ADMIN's key with the admin scope, and for a SUPER_ADMIN's key", async () => {
       withKey(keyRow('admin,sessions'), user('ADMIN'));
-      expect((await access(pairCaps)).canOverride).to.equal(true);
+      expect((await access(pairCaps())).canOverride).to.equal(true);
       withKey(keyRow('sessions'), user('SUPER_ADMIN'));
-      expect((await access(pairCaps)).canOverride).to.equal(true);
+      expect((await access(pairCaps())).canOverride).to.equal(true);
     });
 
     it("is false for a member's key, and for an admin whose account is not active", async () => {
       withKey(keyRow('sessions'), user('MEMBER'));
-      expect((await access(pairCaps)).canOverride).to.equal(false);
+      expect((await access(pairCaps())).canOverride).to.equal(false);
       withKey(keyRow('admin'), user('SUPER_ADMIN', 'INACTIVE'));
-      expect((await access(pairCaps)).canOverride).to.equal(false);
+      expect((await access(pairCaps())).canOverride).to.equal(false);
     });
 
     it('follows the role of a session-token caller, ADMIN included', async () => {
       withSessionToken(user('ADMIN'));
-      expect((await access(tokenCaps)).canOverride).to.equal(true);
+      expect((await access(tokenCaps())).canOverride).to.equal(true);
       withSessionToken(user('MEMBER'));
-      expect((await access(tokenCaps)).canOverride).to.equal(false);
+      expect((await access(tokenCaps())).canOverride).to.equal(false);
     });
 
     it('is false for a credential-less session, even though it is unscoped', async () => {
@@ -201,7 +246,7 @@ describe('authorizeSessionRequest — leaseAccess', () => {
     it('is false when the lookup fails, and the teams fall back to the shared pool', async () => {
       withKey(keyRow('admin'), null);
       Container.set(UserService, { findById: sinon.stub().rejects(new Error('db down')) } as any);
-      expect(await access(pairCaps)).to.deep.equal({ canOverride: false, teamIds: [] });
+      expect(await access(pairCaps())).to.deep.equal({ canOverride: false, teamIds: [] });
     });
 
     it('is true when auth is disabled, where every caller is an admin', async () => {
@@ -213,23 +258,23 @@ describe('authorizeSessionRequest — leaseAccess', () => {
   describe('teamIds, as REST computes them', () => {
     it('is unscoped for an ADMIN or SUPER_ADMIN owner, whatever the key', async () => {
       withKey(keyRow('sessions', 'team_a'), user('ADMIN'));
-      expect((await access(pairCaps)).teamIds).to.equal(undefined);
+      expect((await access(pairCaps())).teamIds).to.equal(undefined);
     });
 
     it("is the key's team when the key is narrowed", async () => {
       withKey(keyRow('sessions', 'team_a'), user('MEMBER'));
-      expect((await access(pairCaps)).teamIds).to.deep.equal(['team_a']);
+      expect((await access(pairCaps())).teamIds).to.deep.equal(['team_a']);
     });
 
     it("is the member's teams otherwise", async () => {
       withKey(keyRow('sessions'), user('MEMBER'));
       teamRows.resolves([{ teamId: 'team_a' }, { teamId: 'team_b' }] as any);
-      expect((await access(pairCaps)).teamIds).to.deep.equal(['team_a', 'team_b']);
+      expect((await access(pairCaps())).teamIds).to.deep.equal(['team_a', 'team_b']);
     });
 
     it("is a session token's team claim when it has one", async () => {
       withSessionToken(user('MEMBER'), 'team_b');
-      expect((await access(tokenCaps)).teamIds).to.deep.equal(['team_b']);
+      expect((await access(tokenCaps())).teamIds).to.deep.equal(['team_b']);
     });
   });
 });

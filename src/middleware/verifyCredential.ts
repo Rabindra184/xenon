@@ -22,7 +22,7 @@ import { JwtKeyService } from '../services/token/JwtKeyService';
 /**
  * xenon-mcp tokens are the gateway-injected `authToken` the MCP plugin's tools
  * present when calling the REST surface, so both audiences verify.
- * A xenon-session token (the `xenon:options.sessionToken` capability) is not
+ * A xenon-session token (the `xe:options.sessionToken` capability) is not
  * among them: it proves who created a session, and REST does not accept it.
  */
 export const ACCEPTED_BEARER_AUDIENCES = ['xenon-rest', 'xenon-mcp'] as const;

@@ -5,7 +5,7 @@ import { DASHBORD_EVENT_MANAGER } from '../dashboard/event-manager';
 import { SESSION_MANAGER } from '../sessions/SessionManager';
 import {
   HealingOrchestrator,
-  coerceHealingTiersCap,
+  healingTiersFromCaps,
 } from '../services/healing/HealingOrchestrator';
 import { HealEtalonService } from '../services/healing/HealEtalonService';
 import { OmniVisionService } from '../services/omni-vision/OmniVisionService';
@@ -331,17 +331,17 @@ export class CommandInterceptor {
         (pluginArgs.enableSelfHealing as boolean) !== false
       ) {
         // §2.7 healing-tier capability gate: a session created with
-        // xenon:options.healingTiers restricts self-healing to those tier
-        // indices (1=Resilio, 2=Fuzzy XML, 3=OCR, 4=Visual AI, 5=LLM).
+        // xe:options.healingTiers (or the xenon:options alias) restricts
+        // self-healing to those tier indices (1=Resilio, 2=Fuzzy XML, 3=OCR,
+        // 4=Visual AI, 5=LLM).
         // Every optional hop is guarded — a missing/unrecoverable session,
         // capability, or malformed value all fall back to "run all tiers"
         // (fail open). coerceHealingTiersCap enforces that: an all-non-numeric
         // array (e.g. ["1","2"]) or an empty [] coerces to undefined instead
         // of [] — pre-fix, [] silently disabled healing entirely.
-        const rawHealingTiers = SESSION_MANAGER.getSession(sessionId)?.getCapabilities()?.[
-          'xenon:options'
-        ]?.healingTiers;
-        const allowedHealingTiers = coerceHealingTiersCap(rawHealingTiers);
+        const allowedHealingTiers = healingTiersFromCaps(
+          SESSION_MANAGER.getSession(sessionId)?.getCapabilities(),
+        );
 
         const healed = await Container.get(HealingOrchestrator).attemptHealing(
           sessionId,

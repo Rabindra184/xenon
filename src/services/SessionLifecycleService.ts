@@ -32,15 +32,18 @@ import { IDevice } from '../interfaces/IDevice';
 import { TracingService } from './TracingService';
 import { PortAllocator } from './PortAllocator';
 import {
-  extractAccessKeyTokenPair,
-  extractSessionToken,
   extractTeamCap,
   getXenonCapabilities,
   XENON_CAPABILITIES,
 } from '../XenonCapabilityManager';
 import { JwtKeyService } from './token/JwtKeyService';
 import { resolveSessionIdentity } from './session/sessionIdentity';
-import { capsWithLeaseToken, leaseIdOf, takeLeaseToken } from './lease/leaseSessionCaps';
+import { leaseIdOf } from './lease/leaseSessionCaps';
+import {
+  SessionCredentials,
+  capsWithCredentials,
+  takeSessionCredentials,
+} from './session/sessionCredentials';
 import { canOverrideLease } from './device-access/leaseOverride';
 import { computeTeamIds } from './device-access/callerTeamIds';
 import { PendingRequester, REQUESTER_KEY } from './device-access/queueVisibility';
@@ -98,12 +101,14 @@ export class SessionLifecycleService {
       throw new Error('Hub is shutting down; please retry against a different node');
     }
 
-    // The lease token is a bearer secret. Take it out of the caps before
-    // anything reads them — the pending-session row, the driver, the Session
-    // row, the dashboard — and hand it only to the lease check.
-    const leaseToken = takeLeaseToken(caps);
+    // The credentials in xe:options (the access key and token, the session
+    // token, the lease token) are bearer secrets. Take them out of the caps
+    // before anything reads them — the pending-session row, allocation, the
+    // driver, the Session row, the dashboard, the logs — and hand them only to
+    // the checks that need them.
+    const credentials = takeSessionCredentials(caps);
 
-    const authResult = await this.authorizeSessionRequest(caps);
+    const authResult = await this.authorizeSessionRequest(caps, credentials);
 
     const context = Container.get(PluginContext);
     const pluginArgs = context.pluginArgs;
@@ -174,7 +179,7 @@ export class SessionLifecycleService {
             canOverride: leaseAccess?.canOverride ?? false,
             apiKeyId: authResult.apiKeyId,
             userId: authResult.userId,
-            leaseToken,
+            leaseToken: credentials.leaseToken,
           },
         );
       } catch (err) {
@@ -196,11 +201,12 @@ export class SessionLifecycleService {
       if (isRemoteOrCloudSession) {
         this.logger.debug(`📱 Forwarding session request to ${device.host}`);
         await updateDeviceProgress(device.udid, device.host, 'Forwarding to remote node...');
-        // A peer Xenon node re-runs createSession, lease check included, so it
-        // needs the proof this hub accepted; it strips the token itself. A
-        // cloud provider is not a Xenon node and never sees it.
+        // A peer Xenon node re-runs createSession — authentication,
+        // attribution, the session-token gate and the lease check — so it
+        // needs the credentials this hub read; it strips them itself. A cloud
+        // provider is not a Xenon node and never sees them.
         const isPeerNode = !device.cloud && !!device.nodeId;
-        const forwardCaps = isPeerNode ? capsWithLeaseToken(caps, leaseToken) : caps;
+        const forwardCaps = isPeerNode ? capsWithCredentials(caps, credentials) : caps;
         // The node's driver downloads the app from this hub, so the copy it
         // is sent carries the ticket; `caps` keeps the plain URL.
         session = await this.forwardSessionRequest(
@@ -321,11 +327,13 @@ export class SessionLifecycleService {
     }
   }
 
-  // Verify a WebDriver session request against an API key supplied via the
-  // `xenon:accessKey` capability. Today this is best-effort: if no cap is
+  // Verify a WebDriver session request against the credentials createSession
+  // took out of `xe:options` (or its `xenon:options` alias): an access-key +
+  // token pair, or a session token. Today this is best-effort: if none is
   // supplied we log a warning and let the request through to avoid breaking
-  // pre-existing test clients. A supplied key that is invalid / revoked / has
-  // insufficient scope is rejected. Respects the global `authDisabled` flag.
+  // pre-existing test clients, unless XENON_REQUIRE_SESSION_TOKEN is on. A
+  // supplied key that is invalid / revoked / has insufficient scope is
+  // rejected. Respects the global `authDisabled` flag.
   //
   // Returns the caller's { apiKeyId, callerTeamIds } so allocation can filter
   // devices by team. `apiKeyId` is null when auth is disabled or no key was
@@ -341,7 +349,10 @@ export class SessionLifecycleService {
   //
   // `requester` is who asked, for the queue: the user and the one team the
   // credential is narrowed to, from what is in hand here, with no lookup.
-  private async authorizeSessionRequest(caps: ISessionCapability): Promise<{
+  private async authorizeSessionRequest(
+    caps: ISessionCapability,
+    credentials: SessionCredentials,
+  ): Promise<{
     apiKeyId: string | null;
     userId: string | null;
     callerTeamIds: string[] | undefined;
@@ -372,8 +383,8 @@ export class SessionLifecycleService {
     const { ApiKeyService } = await import('./ApiKeyService');
     const svc = Container.get(ApiKeyService);
 
-    // df:options.{accessKey, token} pair — the only supported credential shape.
-    const pair = extractAccessKeyTokenPair(caps);
+    // xe:options.{accessKey, token} — the only key-pair credential shape.
+    const pair = credentials.pair;
     const row = pair ? await svc.verifyPair(pair.accessKey, pair.token) : null;
 
     const { assertSessionTokenGate, sessionTokenGateEnabled } = await import('./sessionTokenGate');
@@ -381,7 +392,7 @@ export class SessionLifecycleService {
       await assertSessionTokenGate({
         enabled: sessionTokenGateEnabled(),
         hasValidKeyPair: !!row,
-        token: extractSessionToken(caps),
+        token: credentials.sessionToken,
         verify: (t) =>
           Container.get(JwtKeyService).verify(t, { audience: 'xenon-session' }),
       });
@@ -391,7 +402,7 @@ export class SessionLifecycleService {
     }
 
     if (!row) {
-      // No key pair. A xenon:options.sessionToken still identifies the caller,
+      // No key pair. An xe:options.sessionToken still identifies the caller,
       // so read it for attribution even when the gate is off — otherwise the
       // ownership guard fails closed on a session whose owner we actually know.
       // Enforcement is assertSessionTokenGate's job and is unchanged.
@@ -400,7 +411,7 @@ export class SessionLifecycleService {
       let tokenTeamId: string | null = null;
       const identity = await resolveSessionIdentity({
         row: null,
-        sessionToken: extractSessionToken(caps),
+        sessionToken: credentials.sessionToken,
         verify: async (t) => {
           const payload = await Container.get(JwtKeyService).verify(t, {
             audience: 'xenon-session',
@@ -411,7 +422,8 @@ export class SessionLifecycleService {
       });
       if (!identity.userId) {
         this.logger.warn(
-          'Session created without valid credentials. Pass `df:options.accessKey` + `df:options.token`.',
+          'Session created without valid credentials. Pass `xe:options.accessKey` + ' +
+            '`xe:options.token`, or `xe:options.sessionToken`.',
         );
       }
       return {

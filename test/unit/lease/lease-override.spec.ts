@@ -7,7 +7,7 @@ import { canOverrideLease } from '../../../src/services/device-access/leaseOverr
 const user = (role: string) => ({ role });
 
 describe('canOverrideLease — who may use a lease they did not create', () => {
-  describe('an API key (df:options pair)', () => {
+  describe('an API key (xe:options pair)', () => {
     it("is refused for an ADMIN's key without the admin scope", () => {
       expect(
         canOverrideLease({ kind: 'api-key', scopes: 'devices,sessions,read', user: user('ADMIN') }),

@@ -23,7 +23,8 @@ describe('buildCapabilityBag', () => {
     expect(bag['appium:chromedriverPort']).to.equal(9515);
     expect(bag['appium:mjpegServerPort']).to.equal(7811);
     expect(bag['appium:newCommandTimeout']).to.equal(120);
-    expect(bag['xenon:options']).to.deep.equal({ leaseId: 'lse_abc' });
+    expect(bag['xe:options']).to.deep.equal({ leaseId: 'lse_abc' });
+    expect(bag).to.not.have.property('xenon:options');
   });
 
   it('emits iOS caps with wdaLocalPort + mjpegServerPort only', () => {
@@ -34,6 +35,6 @@ describe('buildCapabilityBag', () => {
     expect(bag['appium:automationName']).to.equal('XCUITest');
     expect(bag['appium:wdaLocalPort']).to.equal(8100);
     expect(bag['appium:systemPort']).to.equal(undefined);
-    expect(bag['xenon:options']).to.deep.equal({ leaseId: 'lse_def', buildId: 'b-1' });
+    expect(bag['xe:options']).to.deep.equal({ leaseId: 'lse_def', buildId: 'b-1' });
   });
 });

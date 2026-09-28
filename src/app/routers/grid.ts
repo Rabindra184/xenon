@@ -186,8 +186,9 @@ async function getQueuedSessionLength(request: Request<void>, response: Response
 async function getQueuedSessionRequests(request: Request<void>, response: Response<unknown[]>) {
   const all = await pendingStore.getAllPendingSessions();
   const { visible } = await partitionPendingForCaller(all, queueCaller(request));
-  // A row is the capabilities the client sent, so it can hold the key and
-  // token that signed it (df:options, xenon:options.sessionToken). Those are
+  // A row is the capabilities the client sent. createSession takes the
+  // credentials out of xe:options before writing it, but a row queued by an
+  // older server can still hold the key and token that signed it. Those are
   // nobody else's to read, a teammate's or an admin's.
   response.json(visible.map((row) => redactSecrets(withoutRequester(row))));
 }

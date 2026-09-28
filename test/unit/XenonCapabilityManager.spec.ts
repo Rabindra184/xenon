@@ -21,7 +21,12 @@ describe('XenonCapabilityManager.getXenonCapabilities — interceptor activation
     expect(out[XENON_CAPABILITIES.INTERCEPTOR_ENABLED]).to.equal(true);
   });
 
-  it('activates via nested `xenon:options.interceptor` cap', () => {
+  it('activates via nested `xe:options.interceptor` cap', () => {
+    const out = getXenonCapabilities(caps({ 'xe:options': { interceptor: { enabled: true } } }));
+    expect(out[XENON_CAPABILITIES.INTERCEPTOR_ENABLED]).to.equal(true);
+  });
+
+  it('activates via the `xenon:options.interceptor` alias', () => {
     const out = getXenonCapabilities(caps({ 'xenon:options': { interceptor: { enabled: true } } }));
     expect(out[XENON_CAPABILITIES.INTERCEPTOR_ENABLED]).to.equal(true);
   });
@@ -42,6 +47,18 @@ describe('XenonCapabilityManager.getXenonCapabilities — interceptor activation
   it('activates via flat alias inside `xenon:options` (interceptorEnabled)', () => {
     const out = getXenonCapabilities(caps({ 'xenon:options': { interceptorEnabled: true } }));
     expect(out[XENON_CAPABILITIES.INTERCEPTOR_ENABLED]).to.equal(true);
+  });
+
+  it('lets xe:options win over xenon:options field by field', () => {
+    const out = getXenonCapabilities(
+      caps(
+        { 'xenon:options': { interceptorEnabled: true, name: 'old-name', build: 'nightly' } },
+        { 'xe:options': { interceptorEnabled: false, name: 'new-name' } },
+      ),
+    );
+    expect(out[XENON_CAPABILITIES.INTERCEPTOR_ENABLED]).to.equal(false);
+    expect(out[XENON_CAPABILITIES.SESSION_NAME]).to.equal('new-name');
+    expect(out[XENON_CAPABILITIES.BUILD_NAME]).to.equal('nightly');
   });
 
   it('treats no interceptor cap as disabled', () => {

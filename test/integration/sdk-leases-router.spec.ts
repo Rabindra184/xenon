@@ -45,7 +45,7 @@ describe('POST /xenon/api/sdk/leases', () => {
       expiresAt: Date.now() + 60_000,
       heartbeatSeconds: 30,
       allocatedPorts: { systemPort: 9001 },
-      appiumCapabilities: { 'appium:udid': 'u1', 'xenon:options': { leaseId: 'lse_1' } },
+      appiumCapabilities: { 'appium:udid': 'u1', 'xe:options': { leaseId: 'lse_1' } },
     });
     const res = await request(app)
       .post('/xenon/api/sdk/leases')

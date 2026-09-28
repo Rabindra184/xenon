@@ -59,7 +59,7 @@ const ROWS = [
   // Untargeted, from Alice's teammate, who signed it in two ways.
   row('untargeted-a', 3, {
     'xenon:build': 'amy-smoke',
-    'df:options': { accessKey: 'ak_amy', token: 'amy-api-token' },
+    'xe:options': { accessKey: 'ak_amy', token: 'amy-api-token' },
     'xenon:options': { sessionToken: 'amy.session.jwt', sessionName: 'amy-login' },
     [REQUESTER]: { userId: 'amy', teamId: null },
   }),
@@ -200,9 +200,10 @@ describe('the session queue is team-scoped: own teams + a count', () => {
     });
   });
 
-  // The row is the capabilities the client sent, credentials included. A
-  // teammate's request is Alice's to see; the key that signed it is not, and
-  // nor is it an admin's.
+  // createSession takes the credentials out before it writes the row, but a
+  // row written by an older release is the capabilities the client sent,
+  // credentials included. A teammate's request is Alice's to see; the key
+  // that signed it is not, and nor is it an admin's.
   describe('credentials in a waiting request', () => {
     for (const [who, caller] of [
       ['a teammate', alice],
@@ -215,7 +216,7 @@ describe('the session queue is team-scoped: own teams + a count', () => {
         expect(JSON.stringify(r.body)).to.not.include('amy-api-token');
         expect(JSON.stringify(r.body)).to.not.include('amy.session.jwt');
         // What isn't a secret still reads as before.
-        expect(shown['df:options'].accessKey).to.equal('ak_amy');
+        expect(shown['xe:options'].accessKey).to.equal('ak_amy');
         expect(shown['xenon:options'].sessionName).to.equal('amy-login');
       });
     }

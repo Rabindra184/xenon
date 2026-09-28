@@ -1,4 +1,5 @@
 import { IDevice } from '../../interfaces/IDevice';
+import { XE_OPTIONS } from '../session/xenonOptions';
 
 export interface AllocatedPorts {
   systemPort?: number;
@@ -31,8 +32,10 @@ export function buildCapabilityBag(
   }
   if (ports.mjpegServerPort) bag['appium:mjpegServerPort'] = ports.mjpegServerPort;
 
+  // Xenon's own options, in the namespace Xenon documents. The lease token is
+  // added to the create response only (withLeaseToken), never to this bag.
   const xenonOptions: Record<string, any> = { leaseId };
   if (buildId) xenonOptions.buildId = buildId;
-  bag['xenon:options'] = xenonOptions;
+  bag[XE_OPTIONS] = xenonOptions;
   return bag;
 }
