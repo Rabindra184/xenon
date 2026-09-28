@@ -223,7 +223,8 @@ exports.Prisma.AppScalarFieldEnum = {
   platform: 'platform',
   md5: 'md5',
   createdAt: 'createdAt',
-  updatedAt: 'updatedAt'
+  updatedAt: 'updatedAt',
+  teamId: 'teamId'
 };
 
 exports.Prisma.DeviceScalarFieldEnum = {

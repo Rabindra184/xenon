@@ -356,6 +356,31 @@ under `AND`, never by spreading, or one `OR` overwrites the other.
   captures and, by default, every recording. Until 1.29.1,
   `/xenon/session-recordings` served it with no login at all.
 
+**Uploaded apps have a team** (`App.teamId`, null = shared), and follow the
+device rule on it: `canSeeApp` / `visibleAppWhere`
+(`src/services/device-access/appVisibility.ts`). The list, download, delete
+and `/control/:udid/install-repository-app` give a hidden app the unknown-id
+answer. Upload (optional `teamId`) and `PUT /apps/:id/team` are admin-only.
+Re-uploading stored bytes (md5 is unique) returns the existing app in its own
+team. `TeamService.delete` refuses a team that still owns apps, since
+`onDelete: SetNull` would share them with everyone.
+
+- A session naming an app by id resolves it with the same `sessionTeamIds`
+  its phone is allocated with. A hidden app is left in the caps untouched,
+  exactly as an unknown id is.
+- The driver downloads the app with no credentials, so it gets
+  `?ticket=` from `AppDownloadTicketService`: audience `xenon-app-download`
+  (never a stream ticket, nor the reverse), bound to one app id, single-use,
+  10 minutes. `authMiddleware` accepts it only on `GET /apps/:id/download`
+  and answers every ticket failure `401 invalid ticket`. It is minted just
+  before `next()` / the node forward and Xenon never writes it to the pending
+  row, the Session row or its own logs: the stored caps keep the plain URL.
+  Appium's `[HTTP]` request log and the driver's "Using downloadable app"
+  line do print it, as they print stream tickets; by then it is spent, or
+  dies within 10 minutes. With auth disabled there is no ticket.
+- Both ticket kinds share `SingleUseLedger` for replay: a `jti` is kept until
+  the token's `exp` plus `verify()`'s 60 s tolerance.
+
 ### Session attribution
 
 A session's owner is resolved by `SessionOwnerResolver.ownerOf`, which prefers
@@ -688,6 +713,8 @@ npm run build:copy` (from the repo root) regenerates and copies it.
 | `src/middleware/controlDevice.ts` | The one udid parser and per-request memoized device lookup both `/control` guards share; defines `HIDDEN_DEVICE_UDID` |
 | `src/services/device-access/DeviceTeamResolver.ts` | udid → team for the live events, 5 s TTL cache, 2 s lookup timeout; `canSeeDeviceTeam` fails closed on an unknown phone |
 | `src/services/device-access/deviceVisibility.ts` | Pure `isDeviceVisible(deviceTeamId, teamIds)` — the team rule; `teamIds === undefined` is the only admin |
+| `src/services/device-access/appVisibility.ts` | `canSeeApp` / `visibleAppWhere` — uploaded apps follow the device team rule on `App.teamId` |
+| `src/services/token/AppDownloadTicketService.ts` | Single-use, app-bound, 10-minute `?ticket=` for the driver's credential-less app download; audience `xenon-app-download` |
 | `src/services/device-access/deviceAccessPolicy.ts` | Pure access decision + deny bodies + the shared `isSelfManualLock` / `isOwnSession` primitives |
 | `src/services/device-access/SessionOwnerResolver.ts` | Session owner: prefers `Session.user_id`, falls back to `api_key_id → ApiKey.userId`. Caches **positive results only** — a null may mean the row isn't written yet, and caching it would deny the owner for the life of the process |
 | `src/services/session/sessionIdentity.ts` | Pure `resolveSessionIdentity` — derives `{ apiKeyId, userId }` from the presented credential; ignores an unverifiable token rather than rejecting it |

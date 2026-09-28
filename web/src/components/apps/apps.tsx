@@ -17,6 +17,7 @@ import {
   X,
   Package,
   AppWindow,
+  ArrowRightLeft,
 } from 'lucide-react';
 import XenonApiService from '../../api-service';
 import { formatDateTime } from '../../utils/time';
@@ -27,6 +28,12 @@ import { Badge } from '../ui/badge';
 import { Button } from '../ui/button';
 import { PageHeader } from '../ui/page-header';
 import { Select } from '../ui/select';
+import { useAuth } from '../../auth/auth-context';
+import { MoveAppDialog, TeamOption, UploadAppDialog } from './AppTeamDialogs';
+
+/** An app's team for the Team column: its name, or Shared for the shared pool. */
+const teamLabel = (app: any): string =>
+  app.team?.name ?? (app.teamId ? String(app.teamId).slice(0, 8) : 'Shared');
 
 const Apps: React.FC = () => {
   const { toast, removeToast } = useToast();
@@ -44,6 +51,13 @@ const Apps: React.FC = () => {
   const [deployingAppId, setDeployingAppId] = useState<string | null>(null);
   const [selectedUDID, setSelectedUDID] = useState<string>('');
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const { me } = useAuth();
+  // Uploading and moving apps between teams are admin-only on the server.
+  const isAdmin = me?.role === 'ADMIN' || me?.role === 'SUPER_ADMIN';
+  const [teams, setTeams] = useState<TeamOption[]>([]);
+  const [uploadOpen, setUploadOpen] = useState(false);
+  const [uploadTeamId, setUploadTeamId] = useState('');
+  const [movingApp, setMovingApp] = useState<any | null>(null);
 
   const fetchApps = useCallback(async () => {
     setLoading(true);
@@ -73,13 +87,41 @@ const Apps: React.FC = () => {
     return () => clearInterval(interval);
   }, [fetchApps, fetchDevices]);
 
+  // The team list is admin-only; members read team names off each app.
+  useEffect(() => {
+    if (!isAdmin) return;
+    XenonApiService.listTeams()
+      .then(setTeams)
+      .catch(() => setTeams([]));
+  }, [isAdmin]);
+
+  // Admins pick a team first; everyone else goes straight to the file picker.
+  const startUpload = () => {
+    if (isAdmin) {
+      setUploadTeamId('');
+      setUploadOpen(true);
+    } else {
+      fileInputRef.current?.click();
+    }
+  };
+
+  const handleMove = async (teamId: string | null) => {
+    if (!movingApp) return;
+    await XenonApiService.setAppTeam(movingApp.id, teamId);
+    toast(teamId ? 'App moved to team' : 'App shared with everyone', 'success');
+    setMovingApp(null);
+    await fetchApps();
+  };
+
   const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
+    const teamId = isAdmin && uploadTeamId ? uploadTeamId : null;
+    setUploadOpen(false);
     setUploadLoading(true);
     try {
-      await XenonApiService.uploadApp(file);
+      await XenonApiService.uploadApp(file, teamId);
       await fetchApps();
     } catch (err) {
       console.error('Upload failed', err);
@@ -249,12 +291,7 @@ const Apps: React.FC = () => {
             onChange={handleUpload}
             hidden
           />
-          <Button
-            size="sm"
-            variant="primary"
-            onClick={() => fileInputRef.current?.click()}
-            disabled={uploadLoading}
-          >
+          <Button size="sm" variant="primary" onClick={startUpload} disabled={uploadLoading}>
             <Upload size={14} className="mr-1" />
             Upload app
           </Button>
@@ -274,6 +311,7 @@ const Apps: React.FC = () => {
                 <div>Artifact bundle</div>
                 <div>Version</div>
                 <div>Size</div>
+                <div>Team</div>
                 <div>Registry date</div>
                 <div style={{ textAlign: 'right' }}>Management</div>
               </div>
@@ -337,6 +375,9 @@ const Apps: React.FC = () => {
 
                     <div className="col-version">{app.version || 'v1.0.0'}</div>
                     <div className="col-size">{formatSize(app.size)}</div>
+                    <div className="col-team" title={teamLabel(app)}>
+                      {teamLabel(app)}
+                    </div>
                     <div className="col-timestamp">{formatDate(app.createdAt)}</div>
 
                     <div className="col-actions">
@@ -403,6 +444,16 @@ const Apps: React.FC = () => {
                       >
                         <Download size={14} />
                       </button>
+                      {isAdmin && (
+                        <button
+                          className="utility-icon-btn"
+                          aria-label={`Move ${app.name} to team`}
+                          title="Move to team"
+                          onClick={() => setMovingApp(app)}
+                        >
+                          <ArrowRightLeft size={14} />
+                        </button>
+                      )}
                       <button
                         className="utility-icon-btn danger"
                         onClick={() => handleDelete(app.id, app.name)}
@@ -464,7 +515,7 @@ const Apps: React.FC = () => {
                   <button
                     type="button"
                     className="upload-trigger-massive"
-                    onClick={() => fileInputRef.current?.click()}
+                    onClick={startUpload}
                     disabled={uploadLoading}
                   >
                     <span className="massive-upload-content">
@@ -478,6 +529,21 @@ const Apps: React.FC = () => {
           </>
         )}
       </main>
+
+      <UploadAppDialog
+        open={uploadOpen}
+        teams={teams}
+        teamId={uploadTeamId}
+        onTeamChange={setUploadTeamId}
+        onChooseFile={() => fileInputRef.current?.click()}
+        onClose={() => setUploadOpen(false)}
+      />
+      <MoveAppDialog
+        app={movingApp}
+        teams={teams}
+        onMove={handleMove}
+        onClose={() => setMovingApp(null)}
+      />
 
       {uploadLoading && (
         <div className="upload-overlay-technical">

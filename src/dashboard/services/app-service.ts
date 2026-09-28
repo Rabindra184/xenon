@@ -6,6 +6,7 @@ import { ADB } from 'appium-adb';
 import log from '../../logger';
 import { v4 as uuidv4 } from 'uuid';
 import crypto from 'crypto';
+import { visibleAppWhere } from '../../services/device-access/appVisibility';
 
 export class AppService {
   constructor() {
@@ -20,8 +21,14 @@ export class AppService {
     }
   }
 
-  async getApps() {
+  /**
+   * The apps a caller may see (`teamIds` as on req.auth: undefined is an
+   * admin), newest first, each with its team's name for the Team column.
+   */
+  async getApps(teamIds?: string[]) {
     return await prisma.app.findMany({
+      where: visibleAppWhere(teamIds),
+      include: { team: { select: { id: true, name: true } } },
       orderBy: { createdAt: 'desc' },
     });
   }
@@ -58,7 +65,20 @@ export class AppService {
     }
   }
 
-  async uploadApp(file: any) {
+  /** Moves an app to a team, or to the shared pool with null. Returns rows changed (0 or 1). */
+  async setAppTeam(id: string, teamId: string | null): Promise<number> {
+    const result = await prisma.app.updateMany({ where: { id }, data: { teamId } });
+    return result.count;
+  }
+
+  /**
+   * Stores an uploaded app in `teamId`'s team, or shared when null.
+   *
+   * The same bytes (by md5, which is unique) are stored once: re-uploading
+   * them returns the existing app unchanged, in whatever team it is already
+   * in. An admin who wants it elsewhere moves it with PUT /apps/:id/team.
+   */
+  async uploadApp(file: any, teamId: string | null = null) {
     await this.ensureAppDir();
 
     // Calculate MD5 to check for duplicates
@@ -108,6 +128,7 @@ export class AppService {
         version,
         platform,
         md5,
+        teamId,
       },
     });
   }

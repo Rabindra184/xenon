@@ -27,13 +27,16 @@ export class TeamService {
   }
 
   async delete(id: string): Promise<void> {
-    const [devices, members] = await Promise.all([
+    // Apps too: App.teamId is onDelete SetNull, so deleting a team that owns
+    // apps would quietly share them with every member.
+    const [devices, members, apps] = await Promise.all([
       prisma.device.count({ where: { teamId: id } }),
       prisma.teamMember.count({ where: { teamId: id } }),
+      prisma.app.count({ where: { teamId: id } }),
     ]);
-    if (devices > 0 || members > 0) {
+    if (devices > 0 || members > 0 || apps > 0) {
       throw new Error(
-        `Team still has ${devices} device(s) and ${members} member(s). Reassign them before deleting.`,
+        `Team still has ${devices} device(s), ${members} member(s) and ${apps} app(s). Reassign them before deleting.`,
       );
     }
     // Clear teamId on any (revoked) ApiKey rows so the FK doesn't block delete.

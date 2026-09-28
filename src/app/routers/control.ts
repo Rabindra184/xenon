@@ -20,6 +20,7 @@ import fs from 'fs-extra';
 import { OmniVisionService } from '../../services/omni-vision/OmniVisionService';
 import { InspectorService } from '../../services/InspectorService';
 import { StreamTicketService } from '../../services/token/StreamTicketService';
+import { canSeeApp } from '../../services/device-access/appVisibility';
 import { PluginContext } from '../../PluginContext';
 import { resolveStreamType } from './streamType';
 import { resolveIosMjpegPort } from './iosStreamPort';
@@ -472,7 +473,11 @@ router.post('/:udid/install-repository-app', async (req: Request, res: Response)
   try {
     const { APP_SERVICE } = await import('../../dashboard/services/app-service');
     const app = await APP_SERVICE.getAppById(appId);
-    if (!app) return res.status(404).send('App not found in repository');
+    // Installing hands over the binary as a download does: another team's
+    // app answers as an unknown one.
+    if (!canSeeApp(app, req.auth?.teamIds)) {
+      return res.status(404).send('App not found in repository');
+    }
 
     const manager = await getDeviceManagerForPlatform(device.platform);
     if (manager && manager.installApp) {

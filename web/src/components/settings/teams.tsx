@@ -309,7 +309,7 @@ const DeleteTeamButton: React.FC<{ team: TeamRow; onDeleted: () => void }> = ({
   const [busy, setBusy] = useState(false);
   const handle = async (e: React.MouseEvent) => {
     e.stopPropagation();
-    if (!window.confirm(`Delete team "${team.name}"? It must have no devices and no members.`))
+    if (!window.confirm(`Delete team "${team.name}"? It must have no devices, members or apps.`))
       return;
     setBusy(true);
     try {
