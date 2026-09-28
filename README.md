@@ -506,8 +506,9 @@ const caps = {
   'xe:options': {
     accessKey: process.env.XENON_ACCESS_KEY,   // user with team membership
     token: process.env.XENON_TOKEN,
+    // optional: team: '<team-id>' to pin allocation to one of your teams
+    // (any team for an admin)
   },
-  // optional: 'xenon:team': '<team-id>' to pin allocation (admins only for cross-team)
 };
 ```
 

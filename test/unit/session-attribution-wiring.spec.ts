@@ -345,6 +345,27 @@ describe('authorizeSessionRequest — leaseAccess', () => {
       expect(error?.message).to.match(/not allowed/);
     });
 
+    it('reads the team from xe:options.team, over a flat cap, and still checks it', async () => {
+      withKey(keyRow('sessions'), user('MEMBER'));
+      teamRows.resolves([{ teamId: 'team_a' }, { teamId: 'team_b' }] as any);
+      const caps = (team: string) =>
+        capsWith({
+          'xe:options': { accessKey: 'ak', token: 'tk', team },
+          'xenon:team': 'team_a',
+        });
+      expect(await scope(caps('team_b'))).to.deep.equal({
+        callerTeamIds: ['team_b'],
+        scoped: true,
+      });
+      let error: Error | undefined;
+      try {
+        await invoke(svc, caps('team_c'));
+      } catch (e: any) {
+        error = e;
+      }
+      expect(error?.message).to.equal("xe:options.team 'team_c' is not allowed for this API key");
+    });
+
     it('falls back to the shared pool when the lookup fails', async () => {
       withKey(keyRow('sessions'), null);
       Container.set(UserService, { findById: sinon.stub().rejects(new Error('db down')) } as any);

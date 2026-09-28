@@ -5,7 +5,12 @@ import { IDevice } from './interfaces/IDevice';
 import { Container } from 'typedi';
 import { PortAllocator } from './services/PortAllocator';
 import log from './logger';
-import { stringOption, xenonOptionsIn, xenonOptionsOf } from './services/session/xenonOptions';
+import {
+  mergedFirstMatch,
+  stringOption,
+  xenonOptionsIn,
+  xenonOptionsOf,
+} from './services/session/xenonOptions';
 
 export enum XENON_CAPABILITIES {
   BUILD_NAME = 'build',
@@ -183,8 +188,21 @@ export async function iOSCapabilities(
   deleteMatch.forEach((value) => deleteAlwaysMatch(caps, value));
 }
 
+/**
+ * The team a session asks to be placed in, or undefined. Documented as
+ * `xe:options.team` (`teamId` is read too), with `xenon:options` as the
+ * alias, through xenonOptionsOf like every other Xenon option. The flat caps
+ * older clients send (`xenon:team`, `xe:teamId`, ...) still work; an options
+ * field wins over them. `df:` is never read.
+ *
+ * The merge is field by field, so if a request spells it `team` in one
+ * namespace and `teamId` in the other, `team` wins.
+ */
 export function extractTeamCap(caps: ISessionCapability): string | undefined {
-  const merged = Object.assign({}, caps.firstMatch?.[0] || {}, caps.alwaysMatch || {});
+  const options = xenonOptionsOf(caps);
+  const fromOptions = stringOption(options, 'team') ?? stringOption(options, 'teamId');
+  if (fromOptions) return fromOptions;
+  const merged = mergedFirstMatch(caps);
   const prefixes = ['xenon:', 'xe:', 'appium:', ''];
   const names = ['teamId', 'team_id', 'team'];
   for (const prefix of prefixes) {

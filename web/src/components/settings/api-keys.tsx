@@ -446,7 +446,7 @@ export const ApiKeys: React.FC = () => {
             description={
               <>
                 Keys without a team can only reach shared-pool devices. Admins can override at
-                session time via <code>xenon:team</code>.
+                session time via <code>xe:options.team</code>.
               </>
             }
             htmlFor="apikey-team"

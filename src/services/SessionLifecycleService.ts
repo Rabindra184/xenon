@@ -469,10 +469,10 @@ export class SessionLifecycleService {
     if (requestedTeam) {
       if (callerTeamIds !== undefined && !callerTeamIds.includes(requestedTeam)) {
         this.logger.error(
-          `Rejecting session: xenon:team=${requestedTeam} is not one of the caller's teams (${callerTeamIds.join(', ') || 'shared pool only'})`,
+          `Rejecting session: xe:options.team=${requestedTeam} is not one of the caller's teams (${callerTeamIds.join(', ') || 'shared pool only'})`,
         );
         throw new appiumErrors.InvalidArgumentError(
-          `xenon:team '${requestedTeam}' is not allowed for this API key`,
+          `xe:options.team '${requestedTeam}' is not allowed for this API key`,
         );
       }
       return {

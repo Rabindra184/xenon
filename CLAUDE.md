@@ -407,13 +407,17 @@ derives both from whichever credential `createSession` presented:
 | `authDisabled` | null | null — every caller is a synthetic SUPER_ADMIN |
 
 **`xe:options` is Xenon's capability namespace.** Credentials, the lease and
-Xenon's other options (`healingTiers`, `interceptor`, ...) all live there.
-`xenon:options` is still read as an alias; when a session sends both,
+Xenon's other options (`healingTiers`, `interceptor`, `team`, ...) all live
+there. `xenon:options` is still read as an alias; when a session sends both,
 `xe:options` wins field by field. That rule lives in one place,
 `xenonOptionsOf` / `xenonOptionsIn` (`src/services/session/xenonOptions.ts`),
 and every reader goes through it — don't read either namespace directly.
 `df:options` (from appium-device-farm) is **not read at all**: a session that
 sends only `df:options` is treated exactly like one with no credentials.
+
+The team a key-pair session asks for is `xe:options.team` (or `teamId`),
+read by `extractTeamCap`. The flat caps older clients send (`xenon:team`,
+`xe:teamId`, ...) still work, and the options field wins over them.
 
 **Credentials never reach the driver or storage.** `createSession` calls
 `takeSessionCredentials` (`src/services/session/sessionCredentials.ts`)
