@@ -48,9 +48,10 @@
   --status-reserved-fg: var(--blue);
   --status-error-fg: var(--red);
   --status-offline-fg: var(--text-muted);
-  /* An offline device's tags, on its card and its table row. Muted, but
-     still text: the dim step clears 4.5:1 on --bg, --surface and
-     --surface-2 in both themes. Fading them to 0.55 measured 2.3-3.2:1. */
+  /* An offline device's tags, on its card and its table row, and its card's
+     team name. Muted, but still text: the dim step clears 4.5:1 on --bg,
+     --surface and --surface-2, and on the team pill's faded tint, in both
+     themes. Fading them to 0.55 measured 2.3-3.2:1. */
   --status-offline-tag: var(--text-dim);
 
   /* Status — background */

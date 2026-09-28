@@ -90,9 +90,10 @@
 /* An offline device's details are its last known ones. The picture and the
    badges fade; the words stay readable (fading them too measured 2.6:1).
    The tags are words too: faded with the badges they measured 2.5:1, so
-   they are left out of the fade and take the offline tag colour below. */
+   they are left out of the fade and take the offline tag colour below.
+   So is the team's name: its pill is left out too (see .dc2-team below). */
 .dc2-dim .dc2-icon,
-.dc2-dim .dc2-meta > :not(.dc2-tag) {
+.dc2-dim .dc2-meta > :not(.dc2-tag):not(.dc2-team) {
   opacity: 0.55;
 }
 .dc2-dim .dc2-title {
@@ -148,6 +149,15 @@
 }
 .dc2-dim .dc2-tag {
   color: var(--status-offline-tag);
+}
+/* An opacity fades a pill's name with its chrome: at 0.55 the team's name
+   measured 2.95:1 (dark) and 2.32:1 (light). Only the chrome fades now, by
+   the same 0.55 (the accent pill's tint and border at 55% strength), and the
+   name takes the offline tag colour: 4.9:1 and 5.3:1 on the faded tint. */
+.dc2-dim .dc2-team {
+  color: var(--status-offline-tag);
+  background-color: color-mix(in srgb, var(--accent-subtle) 55%, transparent);
+  border-color: color-mix(in srgb, var(--accent-border) 55%, transparent);
 }
 
 .dc2-foot {

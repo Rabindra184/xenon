@@ -121,9 +121,8 @@ describe('DeviceCard', () => {
   });
 
   // Faded with the rest of the meta row, the tags measured 2.5:1 (dark) and
-  // 2.3:1 (light). They take the shared offline tag colour instead, and the
-  // team pill beside them still fades.
-  it('keeps an offline device’s tags readable while its team pill fades', () => {
+  // 2.3:1 (light). They take the shared offline tag colour instead.
+  it('keeps an offline device’s tags readable', () => {
     const { container } = render(
       <DeviceCard
         device={device({ offline: true, teamId: 't1', tags: ['nightly', 'smoke', 'golden'] })}
@@ -138,7 +137,41 @@ describe('DeviceCard', () => {
       expect(fadedAncestors(tag)).toEqual([]);
       expect(getComputedStyle(tag).color).toBe('var(--status-offline-tag)');
     }
-    expect(fadedAncestors(screen.getByText('QA'))).not.toEqual([]);
+  });
+
+  // Faded with the picture, the team's name measured 2.95:1 (dark) and
+  // 2.32:1 (light). The pill leaves the opacity fade and takes the offline tag
+  // colour; its tint is faded in device-card.css instead, and the picture
+  // still fades.
+  it('keeps an offline device’s team name readable while its picture fades', () => {
+    const { container } = render(
+      <DeviceCard
+        device={device({ offline: true, teamId: 't1' })}
+        reloadDevices={vi.fn()}
+        navigate={vi.fn()}
+        teams={new Map([['t1', 'QA']])}
+      />,
+    );
+    const pill = screen.getByText('QA');
+    expect(pill).toHaveClass('pill', 'pill-accent', 'dc2-team');
+    expect(fadedAncestors(pill)).toEqual([]);
+    expect(getComputedStyle(pill).color).toBe('var(--status-offline-tag)');
+    // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+    expect(fadedAncestors(container.querySelector('.dc2-icon')!)).not.toEqual([]);
+  });
+
+  it('leaves an online device’s team pill in the accent colour', () => {
+    render(
+      <DeviceCard
+        device={device({ teamId: 't1' })}
+        reloadDevices={vi.fn()}
+        navigate={vi.fn()}
+        teams={new Map([['t1', 'QA']])}
+      />,
+    );
+    const pill = screen.getByText('QA');
+    expect(fadedAncestors(pill)).toEqual([]);
+    expect(getComputedStyle(pill).color).toBe('var(--color-accent)');
   });
 
   // They were on nearly every card, so they said nothing.

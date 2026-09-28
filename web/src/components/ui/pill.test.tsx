@@ -11,4 +11,12 @@ describe('Pill', () => {
     render(<Pill tone="accent">a</Pill>);
     expect(screen.getByText('a')).toHaveClass('pill-accent');
   });
+  it('adds a caller’s class beside its own', () => {
+    render(
+      <Pill tone="accent" className="dc2-team">
+        a
+      </Pill>,
+    );
+    expect(screen.getByText('a')).toHaveClass('pill', 'pill-accent', 'dc2-team');
+  });
 });
