@@ -176,21 +176,26 @@ GET /xenon/api/sdk/leases/:leaseId
 POST /xenon/api/sdk/leases/:leaseId/heartbeat
 Header: x-xenon-lease-token: <cleartext>
 200 { heartbeatedAt, expiresAt }
-403 token mismatch
-410 Gone — lease expired or released
+403 { error: "token_mismatch" } — unknown id or wrong token, whatever the lease's state
+410 Gone — lease expired or released (only to the token's holder)
 
 POST /xenon/api/sdk/leases/:leaseId/extend
 Header: x-xenon-lease-token: <cleartext>
 Body: { durationMs: number }
 200 { expiresAt }
-403 token mismatch
-410 Gone
+403 { error: "token_mismatch" } — unknown id or wrong token, whatever the lease's state
+410 Gone (only to the token's holder)
 
 DELETE /xenon/api/sdk/leases/:leaseId
 Header: x-xenon-lease-token: <cleartext>
 204
-403 token mismatch
-404 if already released/expired (idempotent — release is best-effort)
+403 { error: "token_mismatch" } — unknown id or wrong token, whatever the lease's state
+404 if already released/expired (only to the token's holder; idempotent — release is best-effort)
+
+// The token is checked before the lease's state. A caller who can't prove
+// the lease gets the same 403 for an active, expired, released or unknown
+// lease, so a lease id alone reveals nothing (through 1.29.1, a 410/404 told
+// anyone with the devices scope that an id existed and was no longer active).
 
 GET /xenon/api/sdk/leases?actor=&buildId=&status=
 200 [ ...lease summaries... ]      // team-visibility filtered
@@ -281,7 +286,10 @@ PortLease rows expire on their own TTL) cover the rollback.
 - **Token validation**: middleware
   `verifyLeaseToken(req, res, next)` reads `x-xenon-lease-token`,
   looks up the lease by `:leaseId` path param, constant-time-compares
-  `sha256(headerToken) === lease.tokenHash`. 403 on mismatch.
+  `sha256(headerToken) === lease.tokenHash`. 403 on mismatch. The
+  comparison comes before the status check, and an unknown id is
+  compared against a dummy hash, so unknown, inactive and active leases
+  all answer a wrong token with the same 403.
 - **Heartbeat**: bumps `lastHeartbeatAt = now`. Does **not** extend
   `expiresAt`. A worker that only heartbeats but doesn't extend will
   hit `expiresAt` and 410 Gone.

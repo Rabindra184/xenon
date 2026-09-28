@@ -1767,12 +1767,15 @@
  * /api/cliArgs:
  *   get:
  *     summary: Get CLI arguments
- *     description: Get the current CLI arguments used to start the plugin
+ *     description: |
+ *       Get the current CLI arguments used to start the plugin, with
+ *       secret-looking values redacted. Requires the ADMIN role and `admin` scope.
  *     tags: [Configuration]
  *     responses:
  *       200:
  *         description: CLI arguments
  *       401: { $ref: '#/components/responses/Unauthorized' }
+ *       403: { $ref: '#/components/responses/Forbidden' }
  *       429: { $ref: '#/components/responses/RateLimited' }
  */
 
@@ -2186,9 +2189,10 @@ export {};
  *     summary: Read the plugin CLI arguments in effect
  *     description: |
  *       Returns the resolved plugin arguments (host, hub URL, platform, intervals, etc.)
- *       this process was started with. Sensitive fields (database URLs) are
- *       redacted by the logger but the raw object is returned over the wire to
- *       authenticated callers — do not expose this endpoint to untrusted networks.
+ *       this process was started with. Requires the ADMIN role and `admin` scope.
+ *       Values are redacted the way the logger redacts them: any key that looks
+ *       secret (database URL, API key, token, password, auth…) reads
+ *       `***REDACTED***`, and so do provider-key-shaped strings.
  *     tags: [Health & Ops]
  *     responses:
  *       200:
@@ -2197,6 +2201,7 @@ export {};
  *           application/json:
  *             schema: { type: object, additionalProperties: true }
  *       401: { $ref: '#/components/responses/Unauthorized' }
+ *       403: { $ref: '#/components/responses/Forbidden' }
  *       429: { $ref: '#/components/responses/RateLimited' }
  */
 
