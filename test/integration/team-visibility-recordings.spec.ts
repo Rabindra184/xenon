@@ -8,9 +8,13 @@ import { Container } from 'typedi';
 import { TeamService } from '../../src/services/TeamService';
 import { prisma } from '../../src/prisma';
 import { seedUser, SeededUser } from '../helpers/seedUser';
+import { useArtifactStore } from '../helpers/artifact-store';
 
 describe('team visibility on /recordings reads (integration)', function () {
   this.timeout(60_000);
+  // GET /recordings/:groupId resolves ARTIFACT_STORE from the container, which
+  // ServerManager registers at boot. Without it every allowed read is a 500.
+  useArtifactStore();
   let sa: SeededUser;
   let aliceMember: SeededUser;
   let teamA: { id: string };

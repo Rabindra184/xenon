@@ -8,6 +8,7 @@ import { SESSION_MANAGER } from '../../src/sessions/SessionManager';
 import { SelectorStateService } from '../../src/services/SelectorStateService';
 import { SocketServer } from '../../src/services/SocketServer';
 import { prisma } from '../../src/prisma';
+import { saveRegistrations } from '../helpers/container-registration';
 
 /**
  * Regression-hook tests for `DashboardEventManager.afterSessionCommand`.
@@ -29,8 +30,14 @@ describe('DashboardEventManager.afterSessionCommand — regression hook', () => 
     emitToDashboard: sinon.SinonStub;
     emitToDashboardForDevices: sinon.SinonStub;
   };
+  let restoreRegistrations: () => void;
 
   beforeEach(() => {
+    // SocketServer is a @Service(), so removing it afterwards would unregister
+    // it for every spec that runs later in this process. Put back whatever was
+    // registered before instead.
+    restoreRegistrations = saveRegistrations(SocketServer);
+
     // Stub the prototype so any `Container.get(SelectorStateService)` instance
     // (including the singleton the production code resolves) routes through us.
     onHealRecordedStub = sinon
@@ -63,7 +70,7 @@ describe('DashboardEventManager.afterSessionCommand — regression hook', () => 
 
   afterEach(() => {
     sinon.restore();
-    Container.remove(SocketServer);
+    restoreRegistrations();
   });
 
   it('calls SelectorStateService.onHealRecorded when is_healed=true and strategy+selector are present', async () => {

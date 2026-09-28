@@ -23,6 +23,7 @@ import {
 import { JwtKeyService } from '../../src/services/token/JwtKeyService';
 import { StreamTicketService } from '../../src/services/token/StreamTicketService';
 import log from '../../src/logger';
+import { saveRegistrations } from '../helpers/container-registration';
 
 const rec = (message: string, ts = 1): LogcatRecord => ({
   ts,
@@ -646,8 +647,13 @@ describe('attachLogcatWs ownership — wired through makeTicketActorAuthorizer',
 describe('attachLogcatWs with the real StreamTicketService', () => {
   let dir: string;
   let ticketSvc: StreamTicketService;
+  let restoreRegistrations: () => void;
 
   beforeEach(async () => {
+    // JwtKeyService is a @Service(), so removing it afterwards would unregister
+    // it for every spec that runs later in this process. Put back whatever was
+    // registered before instead.
+    restoreRegistrations = saveRegistrations(JwtKeyService);
     dir = fs.mkdtempSync(path.join(os.tmpdir(), 'xenon-logcat-ws-ticket-'));
     const keys = new JwtKeyService();
     await keys.init(dir);
@@ -656,10 +662,7 @@ describe('attachLogcatWs with the real StreamTicketService', () => {
   });
 
   afterEach(() => {
-    // Remove only what this block set. Container.reset() wipes the process-wide
-    // TypeDI container, which is a cross-file hazard the moment this spec
-    // shares a mocha process with anything that registers a singleton.
-    Container.remove(JwtKeyService);
+    restoreRegistrations();
     fs.rmSync(dir, { recursive: true, force: true });
   });
 
