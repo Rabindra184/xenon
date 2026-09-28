@@ -361,7 +361,14 @@ async function getHealingHotspots(request: Request, response: Response) {
       : null;
   const status = (request.query.status as string | undefined) ?? 'active';
 
-  const agg = await aggregateHotspots({ windowDays, limit, tier, platform, status });
+  const agg = await aggregateHotspots({
+    windowDays,
+    limit,
+    tier,
+    platform,
+    status,
+    sessionWhere: await visibleSessionWhere(authOf(request)),
+  });
 
   return response.status(200).json({
     windowDays,
@@ -429,6 +436,12 @@ interface HotspotQueryOptions {
   buildId?: string | null;
   minHealCount?: number;
   status?: string;
+  /**
+   * Count only heals from sessions matching this Session `where`: the
+   * caller's visibleSessionWhere. Combined with the platform and build filter
+   * under `AND`. Omitted means every session: an admin, or the digest.
+   */
+  sessionWhere?: Record<string, unknown>;
 }
 
 export async function aggregateHotspots(
@@ -443,12 +456,18 @@ export async function aggregateHotspots(
     original_selector: { not: null },
   };
   if (opts.tier) where.healing_tier = opts.tier;
+  // The platform and build filter, and the caller's sessions, under AND: the
+  // caller's rule is an OR, and a spread would let one OR overwrite another.
+  const sessionFilters: Array<Record<string, unknown>> = [];
   if (opts.platform || opts.buildId) {
-    where.session = {
+    sessionFilters.push({
       ...(opts.platform ? { device_platform: opts.platform } : {}),
       ...(opts.buildId ? { build_id: opts.buildId } : {}),
-    };
+    });
   }
+  if (opts.sessionWhere) sessionFilters.push(opts.sessionWhere);
+  if (sessionFilters.length === 1) where.session = sessionFilters[0];
+  else if (sessionFilters.length > 1) where.session = { AND: sessionFilters };
 
   const rows = await prisma.sessionLog.findMany({
     where,
@@ -630,6 +649,7 @@ async function getHealingViolations(request: Request, response: Response) {
     platform,
     buildId,
     minHealCount,
+    sessionWhere: await visibleSessionWhere(authOf(request)),
   });
 
   return response.status(200).json({
@@ -665,6 +685,8 @@ async function sendHealingDigest(request: Request, response: Response) {
     ? Math.min(Math.max(minHealCountRaw, 1), 1000)
     : 2;
 
+  // Every team's heals, on purpose: admin-only, and the digest goes to the
+  // lab's webhooks rather than back to one caller.
   const agg = await aggregateHotspots({ windowDays, limit, minHealCount });
   const payload = {
     windowDays,
@@ -837,6 +859,7 @@ export async function getSelectorHealth(request: Request, response: Response) {
     windowDays: 365,
     limit: 1000,
     status: 'all',
+    sessionWhere: await visibleSessionWhere(authOf(request)),
   });
 
   let rows = agg.hotspots;
@@ -1149,6 +1172,8 @@ function register(router: Router) {
   router.get('/session/:sessionId/logs/debug', getDebugLogs);
   router.get('/session/:sessionId/profiling', getProfilingData);
   router.get('/session/:sessionId/asset/:kind/:file', getSessionAsset);
+  // The healing reads count only heals from sessions the caller may see
+  // (visibleSessionWhere); the digest below counts every team's.
   router.get('/healing/events', getRecentHealingEvents);
   router.get('/healing/summary', getHealingSummary);
   router.get('/healing/hotspots', getHealingHotspots);
@@ -1160,7 +1185,9 @@ function register(router: Router) {
   router.post('/healing/digest/send', roleGuard('ADMIN'), scopeGuard(['admin']), sendHealingDigest);
   // SelectorState lifecycle: state mutations require admin (they affect what
   // shows up in the live hotspot list, the CI gate, and the digest); the two
-  // reads inherit the existing dashboard auth.
+  // reads inherit the existing dashboard auth. Both reads stay global, not
+  // team-scoped: a selector's mute or fix is one lab-wide row with no team
+  // column, shared by every team whose tests use that selector.
   router.post('/healing/selector/state', roleGuard('ADMIN'), scopeGuard(['admin']), postSelectorStateAction);
   router.get('/healing/state/muted', getMutedSelectors);
   router.get('/healing/state/:strategy/:value', getSelectorStateByTuple);

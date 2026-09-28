@@ -39,6 +39,10 @@ describe('team visibility on session data (integration)', function () {
     otherGone: `ts-s-other-gone-${stamp}`,
   };
   const SELECTOR = `//ts-selector-${stamp}`;
+  // Selector Health: HOT is healed on the shared, team-A and team-B phones and
+  // on both sessions whose phone is gone; HOT_B only on team B's phone.
+  const HOT = `//ts-hot-${stamp}`;
+  const HOT_B = `//ts-hot-b-${stamp}`;
   let mixedBuild: { id: string };
   let teamBBuild: { id: string };
 
@@ -88,7 +92,7 @@ describe('team visibility on session data (integration)', function () {
     await session(S.ownGone, U.gone, null, alice.user.id);
     await session(S.otherGone, U.gone, null, sa.user.id);
 
-    const heal = (session_id: string) =>
+    const heal = (session_id: string, selector = SELECTOR) =>
       prisma.sessionLog.create({
         data: {
           session_id,
@@ -98,13 +102,16 @@ describe('team visibility on session data (integration)', function () {
           response: '{}',
           command_name: 'findElement',
           is_healed: true,
-          original_selector: SELECTOR,
-          healed_selector: `${SELECTOR}-healed`,
+          original_strategy: 'xpath',
+          original_selector: selector,
+          healed_selector: `${selector}-healed`,
           healing_tier: 'Fuzzy XML',
         },
       });
     await heal(S.a);
     await heal(S.b);
+    for (const id of [S.shared, S.a, `${S.b}-2`, S.ownGone, S.otherGone]) await heal(id, HOT);
+    await heal(`${S.b}-2`, HOT_B);
   });
 
   after(async () => {
@@ -194,6 +201,61 @@ describe('team visibility on session data (integration)', function () {
     const mine = (await asAlice('/healing/summary')).body.current.totalHeals;
     const all = (await asSa('/healing/summary')).body.current.totalHeals;
     expect(all - mine).to.be.at.least(1);
+  });
+
+  describe('Selector Health: heals from the caller’s sessions only', () => {
+    const find = (rows: any[], selector: string) =>
+      rows.find((r: any) => (r.originalSelector ?? r.selector) === selector);
+
+    it('hotspots', async () => {
+      const mine = (await asAlice('/healing/hotspots?limit=100')).body;
+      expect(find(mine.hotspots, HOT)).to.include({ healCount: 3, sessionCount: 3 });
+      expect(find(mine.hotspots, HOT_B)).to.equal(undefined);
+
+      const all = (await asSa('/healing/hotspots?limit=100')).body;
+      expect(find(all.hotspots, HOT)).to.include({ healCount: 5, sessionCount: 5 });
+      expect(find(all.hotspots, HOT_B)).to.include({ healCount: 1 });
+      expect(all.totalScanned - mine.totalScanned).to.be.at.least(4);
+    });
+
+    it('violations, with and without a build filter', async () => {
+      const v = async (as: typeof asAlice, query = '') =>
+        (await as(`/healing/hotspots/violations?minHealCount=1${query}`)).body.violations;
+
+      expect(find(await v(asAlice), HOT)).to.include({ healCount: 3 });
+      expect(find(await v(asAlice), HOT_B)).to.equal(undefined);
+      expect(find(await v(asSa), HOT)).to.include({ healCount: 5 });
+      expect(find(await v(asSa), HOT_B)).to.include({ healCount: 1 });
+
+      // Team B's build: none of it for the member, both heals for an admin.
+      const bBuild = `&build=${teamBBuild.id}`;
+      expect(find(await v(asAlice, bBuild), HOT)).to.equal(undefined);
+      expect(find(await v(asAlice, bBuild), HOT_B)).to.equal(undefined);
+      expect(find(await v(asSa, bBuild), HOT)).to.include({ healCount: 1 });
+      expect(find(await v(asSa, bBuild), HOT_B)).to.include({ healCount: 1 });
+
+      // The build shared by both teams: the build and platform filters still
+      // hold for the member alongside the team rule.
+      const mixed = `&build=${mixedBuild.id}&platform=android`;
+      expect(find(await v(asAlice, mixed), HOT)).to.include({ healCount: 1 });
+      expect(find(await v(asAlice, mixed), SELECTOR)).to.include({ healCount: 1 });
+      expect(find(await v(asSa, mixed), SELECTOR)).to.include({ healCount: 2 });
+    });
+
+    it('selector list', async () => {
+      const q = (s: string) => `/healing/selector-health?selector=${encodeURIComponent(s)}`;
+      const hot = (await asAlice(q(HOT))).body;
+      expect(hot).to.have.length(1);
+      expect(hot[0]).to.include({ healCount: 3 });
+      expect((await asAlice(q(HOT_B))).body).to.deep.equal([]);
+      expect((await asSa(q(HOT))).body[0]).to.include({ healCount: 5 });
+      expect((await asSa(q(HOT_B))).body[0]).to.include({ healCount: 1 });
+
+      const list = (await asAlice('/healing/selector-health?limit=200')).body;
+      const selectors = list.map((r: any) => r.selector);
+      expect(selectors).to.include(HOT);
+      expect(selectors).to.not.include(HOT_B);
+    });
   });
 
   it("refuses a bug report for another team's session as for an unknown one", async () => {
