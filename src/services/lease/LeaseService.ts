@@ -104,6 +104,10 @@ function clientFilters(filters: CreateLeaseRequest['filters']): Record<string, u
   return out;
 }
 
+// What a token for an unknown lease id is compared against: a real hash's
+// length, of a random token nobody holds.
+const UNKNOWN_LEASE_TOKEN_HASH = hashToken(generateToken());
+
 const MAX_LEASE_MS = 24 * 60 * 60 * 1000;
 const MIN_DURATION_MS = 60_000;
 const MIN_HEARTBEAT_SECONDS = 10;
@@ -238,11 +242,18 @@ export class LeaseService {
     };
   }
 
+  /**
+   * The lease, if `token` proves it and it is still active. The token is
+   * checked first: a caller who can't prove the lease (unknown id, wrong
+   * token) always gets LeaseTokenMismatch, whatever state the lease is in.
+   * Only the token's holder learns it is gone. An unknown id is compared
+   * against a dummy hash, so it costs the same as a wrong token.
+   */
   private async loadActiveLease(leaseId: string, token: string) {
     const lease = await this.db.lease.findUnique({ where: { id: leaseId } });
-    if (!lease) throw new LeaseGone(`no lease ${leaseId}`);
+    const proven = verifyToken(token, lease ? lease.tokenHash : UNKNOWN_LEASE_TOKEN_HASH);
+    if (!lease || !proven) throw new LeaseTokenMismatch();
     if (lease.status !== 'active') throw new LeaseGone(`lease ${leaseId} is ${lease.status}`);
-    if (!verifyToken(token, lease.tokenHash)) throw new LeaseTokenMismatch();
     return lease;
   }
 
