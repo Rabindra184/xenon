@@ -72,6 +72,7 @@ export const DeviceCard: React.FC<Props> = ({ device, reloadDevices, navigate, t
           <HealthBadges device={device} />
           {actions.editingTeam ? (
             <TeamPicker
+              className="dc2-team-picker"
               udid={device.udid}
               currentTeamId={device.teamId ?? null}
               teams={teams ?? new Map()}
@@ -82,7 +83,7 @@ export const DeviceCard: React.FC<Props> = ({ device, reloadDevices, navigate, t
             />
           ) : (
             teamName && (
-              <Pill tone="accent" title={`Team: ${teamName}`}>
+              <Pill tone="accent" className="dc2-team" title={`Team: ${teamName}`}>
                 {teamName}
               </Pill>
             )

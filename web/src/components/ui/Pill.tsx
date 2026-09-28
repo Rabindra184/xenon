@@ -17,10 +17,12 @@ export interface PillProps {
   tone?: PillTone;
   children: React.ReactNode;
   title?: string;
+  /** Added after the tone class, for a caller that restyles the pill in context. */
+  className?: string;
 }
 
-export const Pill: React.FC<PillProps> = ({ tone = 'neutral', children, title }) => (
-  <span className={`pill pill-${tone}`} title={title}>
+export const Pill: React.FC<PillProps> = ({ tone = 'neutral', children, title, className }) => (
+  <span className={`pill pill-${tone}${className ? ` ${className}` : ''}`} title={title}>
     {children}
   </span>
 );
