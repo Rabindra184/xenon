@@ -31,6 +31,11 @@ const SENSITIVE_KEY_PATTERNS = [
   // 'token' already matches it; named so it survives any narrowing of that
   // pattern. A lease token gives its holder the lease's device.
   'leasetoken',
+  // accessKey, access_key and the x-xenon-access-key header (underscores
+  // and hyphens are stripped before matching). Half of a credential pair: it
+  // names the key a leaked token would complete. RequestLogService already
+  // hides it through its own 'key' pattern.
+  'accesskey',
 ];
 
 const REDACTED = '***REDACTED***';

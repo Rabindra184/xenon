@@ -46,6 +46,9 @@ describe('/users router', () => {
     expect(r.status).to.equal(201);
     expect(r.body.id).to.equal('new-user');
     expect(r.body.temporaryPassword).to.match(/^[A-Za-z0-9_-]{12,}$/);
+    // The admin hands the new user their key; the logger's redaction of
+    // accessKey must not reach a response.
+    expect(r.body.accessKey).to.equal('xen_NEW0000NEW00');
   });
 
   it('POST /users — ADMIN cannot create an ADMIN', async () => {

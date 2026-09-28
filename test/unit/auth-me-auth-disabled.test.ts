@@ -73,6 +73,9 @@ describe('GET /auth/me with authDisabled', () => {
 
     expect(res.status).to.equal(200);
     expect(res.body.authDisabled).to.equal(false);
+    // The caller's own key, unredacted: the logger's accessKey redaction
+    // never touches a response.
+    expect(res.body.accessKey).to.equal('ak');
   });
 
   it('still 401s when auth is enabled and the user does not exist', async () => {

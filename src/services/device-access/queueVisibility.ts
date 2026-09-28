@@ -16,7 +16,7 @@ export interface PendingRequester {
   userId: string | null;
   /**
    * The one team the credential is narrowed to (a team-bound key, a session
-   * token's teamId claim, or `xenon:team`). Null means the user's own teams,
+   * token's teamId claim, or `xe:options.team`). Null means the user's own teams,
    * read when the queue is, as computeTeamIds reads them for REST.
    */
   teamId: string | null;

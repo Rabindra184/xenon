@@ -215,8 +215,9 @@ describe('the session queue is team-scoped: own teams + a count', () => {
         expect(shown, 'the request itself is shown').to.not.equal(undefined);
         expect(JSON.stringify(r.body)).to.not.include('amy-api-token');
         expect(JSON.stringify(r.body)).to.not.include('amy.session.jwt');
-        // What isn't a secret still reads as before.
-        expect(shown['xe:options'].accessKey).to.equal('ak_amy');
+        // Nor the access key: half of the pair, and it names Amy's key.
+        expect(JSON.stringify(r.body)).to.not.include('ak_amy');
+        // What isn't a credential still reads as before.
         expect(shown['xenon:options'].sessionName).to.equal('amy-login');
       });
     }

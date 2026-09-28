@@ -118,7 +118,7 @@ describe('queue visibility', () => {
     });
 
     it('a credential narrowed to her team, whatever teams its user is in', async () => {
-      // A team-bound key, a session token's teamId claim, or xenon:team.
+      // A team-bound key, a session token's teamId claim, or xe:options.team.
       expect(await seen([req({ userId: 'bob', teamId: 'team-a' })], alice)).to.deep.equal([true]);
     });
 
