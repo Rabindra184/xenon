@@ -231,14 +231,23 @@ describe('createSession — a lease-bound session proves it holds the lease', ()
     expect([...rows]).to.deep.equal([]);
   });
 
-  it('a session that names no lease reads no user and no team for it', async () => {
+  // Every credentialed session is scoped by its owner's teams, as REST is, so
+  // the owner is looked up whether or not a lease is named: once, and shared
+  // with the lease check when there is one.
+  it('a session that names no lease reads its user and teams once, to scope it', async () => {
     const findById = sinon.spy(Container.get(UserService), 'findById');
     sinon.stub(deviceUtils, 'allocateDeviceForSession').resolves(device);
     const caps: any = sessionCaps(ownerKey);
     delete caps.alwaysMatch['xe:options'].leaseId;
     await create(caps);
-    expect(findById.called).to.equal(false);
-    expect(teamRows.called).to.equal(false);
+    expect(findById.calledOnce).to.equal(true);
+    expect(teamRows.calledOnce).to.equal(true);
+  });
+
+  it('a session that names a lease reads them once too, for the scope and the lease', async () => {
+    const findById = sinon.spy(Container.get(UserService), 'findById');
+    await allowed(sessionCaps(ownerKey));
+    expect(findById.calledOnce).to.equal(true);
   });
 
   describe('taking over a lease someone else created', () => {
