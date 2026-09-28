@@ -233,7 +233,8 @@ export const ApiKeys: React.FC = () => {
         subtitle={
           <>
             Issue scoped credentials for humans (dashboard login) and machines (CI, WebDriver
-            clients via <code>xenon:accessKey</code>). Keys are shown only once at creation —
+            clients via <code>xe:options.accessKey</code> + <code>xe:options.token</code>). Keys
+            are shown only once at creation —
             copy the value before closing the dialog.
           </>
         }
@@ -407,7 +408,8 @@ export const ApiKeys: React.FC = () => {
             description={
               <>
                 <code>admin</code> grants full access including API-key management.{' '}
-                <code>sessions</code> is required for WebDriver <code>xenon:accessKey</code>.
+                <code>sessions</code> is required for WebDriver sessions (
+                <code>xe:options.accessKey</code> + <code>xe:options.token</code>).
               </>
             }
           >

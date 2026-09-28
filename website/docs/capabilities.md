@@ -21,6 +21,27 @@ Xenon uses the `xe:` prefix for its custom capabilities. `xenon:` and `appium:` 
 | `xe:max_thermal_status` | Maximum allowed thermal status (`Normal`, `Fair`, `Serious`, `Critical`) | - |
 | `xe:interceptor` | Network interceptor config object (`{ enabled, mocks, includeHosts, excludeHosts, ... }`). See [Network Interceptor](./network-interceptor). | - |
 
+### `xe:options`: credentials, leases and nested options
+
+`xe:options` is Xenon's capability namespace. It carries the session's credentials and lease, and also accepts these capabilities by their plain name: `name`, `build`, `record_video`, `screenshot_on_failure`, `screenshot_on_every_command`, `save_device_logs`, `network_profile` and `interceptor`.
+
+| Field | Description |
+|-------|-------------|
+| `accessKey` + `token` | Authenticate the session with your access key and a token that has the `sessions` scope. |
+| `sessionToken` | Or authenticate with a hub-minted session token (`POST /xenon/api/auth/token`). |
+| `leaseId` + `leaseToken` | Use a device leased through `POST /xenon/api/sdk/leases`. The lease response's `appiumCapabilities` already contains both. |
+| `healingTiers` | Restrict self-healing to these tiers, e.g. `[1, 2]` (1 = Resilio, 2 = Fuzzy XML, 3 = OCR, 4 = Visual AI, 5 = LLM). |
+
+```js
+'xe:options': {
+  accessKey: process.env.XENON_ACCESS_KEY,
+  token: process.env.XENON_TOKEN,
+  healingTiers: [1, 2],
+}
+```
+
+`xenon:options` is still accepted as an alias. When a session sends both, `xe:options` wins field by field. `df:options` is not read. Xenon removes `accessKey`, `token`, `sessionToken` and `leaseToken` from the capabilities before the driver, the queue or the stored session sees them.
+
 > [!TIP]
 > **AI Analysis Tip**: For the most accurate AI diagnoses, ensure `xe:screenshot_on_failure` and `xe:save_device_logs` are set to `true`. This provides the multimodal context (visuals + logs) the AI needs to identify the root cause.
 

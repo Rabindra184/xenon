@@ -393,10 +393,30 @@ derives both from whichever credential `createSession` presented:
 
 | Credential | `api_key_id` | `user_id` |
 |---|---|---|
-| `df:options.{accessKey,token}` pair | ApiKey row id | `ApiKey.userId` |
-| `xenon:options.sessionToken` (JWT `sub`) | null | the token's subject |
+| `xe:options.{accessKey,token}` pair | ApiKey row id | `ApiKey.userId` |
+| `xe:options.sessionToken` (JWT `sub`) | null | the token's subject |
 | neither | null | null |
 | `authDisabled` | null | null — every caller is a synthetic SUPER_ADMIN |
+
+**`xe:options` is Xenon's capability namespace.** Credentials, the lease and
+Xenon's other options (`healingTiers`, `interceptor`, ...) all live there.
+`xenon:options` is still read as an alias; when a session sends both,
+`xe:options` wins field by field. That rule lives in one place,
+`xenonOptionsOf` / `xenonOptionsIn` (`src/services/session/xenonOptions.ts`),
+and every reader goes through it — don't read either namespace directly.
+`df:options` (from appium-device-farm) is **not read at all**: a session that
+sends only `df:options` is treated exactly like one with no credentials.
+
+**Credentials never reach the driver or storage.** `createSession` calls
+`takeSessionCredentials` (`src/services/session/sessionCredentials.ts`)
+first: it reads `accessKey`, `token`, `sessionToken` and `leaseToken`, then
+deletes those four fields from both namespaces in alwaysMatch and every
+firstMatch entry, in place, before the pending-session row, allocation, the
+driver, the Session row or any log sees the caps. Everything else, `leaseId`
+included, stays. A peer Xenon node re-runs `createSession` (auth, gate,
+attribution, lease check), so the forwarded copy gets the credentials back via
+`capsWithCredentials`; the node strips them again. A cloud provider never gets
+them.
 
 **Attribution is decoupled from enforcement.** A session token is read for
 identity whenever one is present, whether or not
@@ -410,9 +430,10 @@ is stateless so the second verify is harmless.
 admitted (`SessionLifecycleService` warns, it does not reject) and stays
 unattributable, so the fail-closed rule denies everyone non-admin on that
 device — including the engineer who started the run. If your clients cannot
-pass `df:options` credentials, have them present a `xenon:options.sessionToken`
-instead (minted by `POST /xenon/api/auth/token` with `audience: 'xenon-mcp'`),
-or enforce credentials with `XENON_REQUIRE_SESSION_TOKEN`.
+pass `xe:options.accessKey` + `xe:options.token`, have them present an
+`xe:options.sessionToken` instead (minted by `POST /xenon/api/auth/token` with
+`audience: 'xenon-mcp'`), or enforce credentials with
+`XENON_REQUIRE_SESSION_TOKEN`.
 
 **Per-command auth** (`XENON_REQUIRE_COMMAND_AUTH`, off by default, never with
 auth disabled; `src/middleware/commandAuth.ts`). Without it only createSession
@@ -455,14 +476,17 @@ is not pushed, it takes up to 30 s (`commandCaller.ts` says why).
 Device leases: programmatic clients (SDK, MCP tools) claim devices via
 `POST /xenon/api/sdk/leases` (`src/services/lease/LeaseService.ts`) — token-bound
 claims with TTL + heartbeat, swept by `LeaseOrphanSweeper`, resolved at
-allocation via the `xenon:options.leaseId` capability. A lease id is not a
+allocation via the `xe:options.leaseId` capability. A lease id is not a
 secret, so the session must also prove it holds the lease
 (`LeaseService.authorizeSessionUse`): the lease token as
-`xenon:options.leaseToken`, the creating credential, or an override
+`xe:options.leaseToken`, the creating credential, or an override
 (`canOverrideLease`, which follows `resolveActor`). The phone must also be
 visible to the caller's REST teams. Every refusal is one message from one
-throw site in `allocateDeviceForSession`. `createSession` strips the token
-before anything else reads the capabilities. Prefer leases over
+throw site in `allocateDeviceForSession`. `createSession` strips the token,
+with the session's other credentials, before anything else reads the
+capabilities; the lease-create response's `appiumCapabilities` carry
+`xe:options.{leaseId,leaseToken}`, and the persisted `capabilityBag` never
+holds the token. Prefer leases over
 manual locks for anything non-interactive. Hub-issued JWTs: `POST /auth/token`
 mints RS256 tokens (`JwtKeyService`), `authMiddleware` accepts them as
 `Authorization: Bearer`, JWKS at `/auth/jwks.json`; single-use stream tickets
@@ -718,6 +742,8 @@ npm run build:copy` (from the repo root) regenerates and copies it.
 | `src/services/device-access/deviceAccessPolicy.ts` | Pure access decision + deny bodies + the shared `isSelfManualLock` / `isOwnSession` primitives |
 | `src/services/device-access/SessionOwnerResolver.ts` | Session owner: prefers `Session.user_id`, falls back to `api_key_id → ApiKey.userId`. Caches **positive results only** — a null may mean the row isn't written yet, and caching it would deny the owner for the life of the process |
 | `src/services/session/sessionIdentity.ts` | Pure `resolveSessionIdentity` — derives `{ apiKeyId, userId }` from the presented credential; ignores an unverifiable token rather than rejecting it |
+| `src/services/session/xenonOptions.ts` | The one precedence rule for Xenon's options: `xe:options` over the `xenon:options` alias, field by field. Every reader of either namespace goes through `xenonOptionsOf` / `xenonOptionsIn` |
+| `src/services/session/sessionCredentials.ts` | `takeSessionCredentials` reads the four secrets and strips them from every bucket in place, first thing in `createSession`; `capsWithCredentials` puts them back on the copy forwarded to a peer Xenon node |
 | `src/services/device-access/actor.ts` | `resolveActor(req)` — the one place an identity is derived from a request |
 | `src/app/routers/streamStartConflict.ts` | `stream/start`'s own conflict decision (proceed / reclaim orphan / deny) |
 | `web/src/App.tsx` | Frontend root component and routing |
