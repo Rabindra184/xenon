@@ -8,7 +8,7 @@ import cors from 'cors';
 import AsyncLock from 'async-lock';
 import crypto from 'crypto';
 import { InternalHttpClient } from '../InternalHttpClient';
-import log from '../logger';
+import log, { redactSecrets } from '../logger';
 import { sessionContext } from '../logging/sessionContext';
 
 import DashboardRouter from './routers/dashboard';
@@ -34,6 +34,8 @@ import { capabilitiesRouter } from './routers/capabilities';
 import { projectsRouter } from './routers/projects';
 import { auditRouter } from './routers/audit';
 import { authMiddleware } from '../middleware/authMiddleware';
+import { roleGuard } from '../middleware/roleGuard';
+import { scopeGuard } from '../middleware/scopeGuard';
 import { rateLimitMiddleware } from '../middleware/rateLimitMiddleware';
 import { csrfMiddleware } from '../middleware/csrfMiddleware';
 import { IPluginArgs } from '../interfaces/IPluginArgs';
@@ -248,9 +250,11 @@ function createRouter(pluginArgs: IPluginArgs) {
   // authenticated as a service identity (roleGuard(MEMBER) + admin scope).
   apiRouter.use('/audit', auditRouter());
 
-  // Exposes plugin CLI args (may include host, hub URL, etc.) — auth-gated.
-  apiRouter.get('/cliArgs', async (_req, res) => {
-    res.json(await getCLIArgs());
+  // The stored Appium arguments: a database URL with its password, AI and
+  // cloud provider keys, the hub URL. Admin-only, like /processes, and
+  // redacted the way the startup log redacts them.
+  apiRouter.get('/cliArgs', roleGuard('ADMIN'), scopeGuard(['admin']), async (_req, res) => {
+    res.json(redactSecrets(await getCLIArgs()));
   });
 
   // Prometheus-style metrics — auth-gated to avoid operational recon.
