@@ -1467,7 +1467,10 @@
  * /api/queue/length:
  *   get:
  *     summary: Get queue length
- *     description: Get the number of pending session requests in the queue
+ *     description: |
+ *       The number of pending session requests in the whole queue. Every
+ *       caller gets the same number, including requests they can't see in
+ *       detail from `GET /api/queue`; it equals `total` in the summary.
  *     tags: [Grid]
  *     responses:
  *       200:
@@ -1485,7 +1488,12 @@
  * /api/queue:
  *   get:
  *     summary: Get queued session requests
- *     description: Get all pending session requests in the queue
+ *     description: |
+ *       The pending session requests the caller may see in detail. An admin
+ *       sees all of them. A member sees a request that names (`appium:udid`)
+ *       a phone she can see, or that she made, or that came from one of her
+ *       teams; the rest are counted in the summary's `otherCount`. A request
+ *       queued by a server that didn't record its requester is only counted.
  *     tags: [Grid]
  *     responses:
  *       200:
@@ -1505,11 +1513,28 @@
  * /api/queue/summary:
  *   get:
  *     summary: Get queue summary
- *     description: Get a summary of queued session requests
+ *     description: |
+ *       Counts only. `total` and `byPlatform` cover the whole queue, as
+ *       `GET /api/queue/length` does; `otherCount` is how many of them the
+ *       caller doesn't get in detail from `GET /api/queue` (0 for an admin).
  *     tags: [Grid]
  *     responses:
  *       200:
  *         description: Queue summary
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 total: { type: integer }
+ *                 otherCount: { type: integer }
+ *                 byPlatform:
+ *                   type: object
+ *                   additionalProperties:
+ *                     type: object
+ *                     properties:
+ *                       count: { type: integer }
+ *                       avgDurationMs: { type: integer }
  *       401: { $ref: '#/components/responses/Unauthorized' }
  *       429: { $ref: '#/components/responses/RateLimited' }
  */
@@ -2876,7 +2901,8 @@ export {};
  *     description: |
  *       Returns the queue position and ETA for a pending session keyed by the
  *       capability id you submitted. 404 if the request has already been
- *       allocated or expired.
+ *       allocated or expired, or is one the caller can't see in
+ *       `GET /api/queue`: the same answer as for an unknown id.
  *     tags: [Grid]
  *     parameters:
  *       - in: path

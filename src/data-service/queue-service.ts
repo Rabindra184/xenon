@@ -117,11 +117,12 @@ export class QueueService {
   }
 
   /**
-   * Returns a high-level summary of the entire queue
+   * Returns a high-level summary of the entire queue. Pass the pending rows
+   * already read, so a caller's other counts come from the same read.
    */
-  async getQueueSummary() {
+  async getQueueSummary(pending?: any[]) {
     log.info('[QueueService] Calculating global queue summary');
-    const allPending = await this.pendingStore.getAllPendingSessions();
+    const allPending = pending ?? (await this.pendingStore.getAllPendingSessions());
     const platforms = [
       ...new Set(
         allPending.map((s) =>
