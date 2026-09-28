@@ -1,4 +1,5 @@
 import { expect } from 'chai';
+import sinon from 'sinon';
 import { MitmProxyHost } from '../../../src/services/interceptor/MitmProxyHost';
 import { MockEngine } from '../../../src/services/interceptor/MockEngine';
 import { CapturedRequest } from '../../../src/services/interceptor/types';
@@ -340,16 +341,24 @@ describe('MitmProxyHost.handleProxyError ring edge cases', () => {
 
   // Tied to RECENT_CONNECT_TTL_MS in the source. If that constant changes, update here.
   it('honors the TTL boundary: entry exactly at the cutoff is still attributed', () => {
-    const { host, emitted } = makeHost();
-    (host as any).recentConnects.push({
-      host: 'edge.example.com',
-      // strict `>` in the source means equal-to-TTL is still attributable
-      ts: Date.now() - 30_000,
-      consumed: false,
-    });
-    host.handleProxyError(null, new Error('x'), 'HTTPS_CLIENT_ERROR');
-    expect(emitted).to.have.length(1);
-    expect(emitted[0].host).to.equal('edge.example.com');
+    // Freeze the clock: the source reads Date.now() again, and one millisecond
+    // passing in between (it does, under the full suite's load) puts the entry
+    // past the cutoff.
+    const clock = sinon.useFakeTimers({ now: Date.now(), toFake: ['Date'] });
+    try {
+      const { host, emitted } = makeHost();
+      (host as any).recentConnects.push({
+        host: 'edge.example.com',
+        // strict `>` in the source means equal-to-TTL is still attributable
+        ts: Date.now() - 30_000,
+        consumed: false,
+      });
+      host.handleProxyError(null, new Error('x'), 'HTTPS_CLIENT_ERROR');
+      expect(emitted).to.have.length(1);
+      expect(emitted[0].host).to.equal('edge.example.com');
+    } finally {
+      clock.restore();
+    }
   });
 
   it('honors the TTL boundary: entry one ms past the cutoff is skipped', () => {
