@@ -1,6 +1,8 @@
-import type { Server } from 'http';
+import type { IncomingMessage, Server } from 'http';
+import type { Duplex } from 'stream';
 import { WebSocketServer, WebSocket } from 'ws';
 import log from '../../logger';
+import { upgradeRouterFor } from './upgradeRouter';
 import type { LogcatMultiplexer } from '../../device-managers/android/LogcatMultiplexer';
 import type { LogcatRecord } from '../../services/logcat/logcatParse';
 import { iosLevelsToLetters } from '../../services/logcat/ostraceParse';
@@ -90,8 +92,9 @@ export interface LogcatWsDeps {
 
 /**
  * Attach the logcat WebSocket upgrade handler to the plugin's HTTP server.
- * Only claims `/xenon/api/control/:udid/logcat` — other upgrades (socket.io,
- * the h264 stream) are left for their own listeners.
+ * Only claims `/xenon/api/control/:udid/logcat` (with a ticket), as a route of
+ * the server's upgrade router, so no other handler sees these sockets and this
+ * one sees no others (upgradeRouter.ts).
  *
  * Authentication mirrors `attachH264Ws`: a single-use, udid-bound stream
  * ticket. Authorization does not — device logs routinely carry auth tokens,
@@ -106,9 +109,16 @@ export function attachLogcatWs(server: Server, deps: LogcatWsDeps): void {
   const wss = new WebSocketServer({ noServer: true });
   const maxBuffered = deps.maxBufferedBytes ?? 4 * 1024 * 1024;
 
-  server.on('upgrade', (req, socket, head) => {
-    const parsed = req.url ? parseLogcatWsPath(req.url) : null;
-    if (!parsed) return; // not our path — let other upgrade listeners handle it
+  upgradeRouterFor(server).add({
+    name: 'logcat',
+    matches: (req) => !!req.url && parseLogcatWsPath(req.url) !== null,
+    handle: upgrade,
+  });
+
+  function upgrade(req: IncomingMessage, socket: Duplex, head: Buffer): void {
+    const parsed = parseLogcatWsPath(req.url as string) as NonNullable<
+      ReturnType<typeof parseLogcatWsPath>
+    >;
 
     wss.handleUpgrade(req, socket as any, head, async (ws: WebSocket) => {
       // Register cleanup BEFORE the awaits below. redeem + authorize +
@@ -322,5 +332,5 @@ export function attachLogcatWs(server: Server, deps: LogcatWsDeps): void {
       };
       log.info(`[${parsed.udid}] logcat WS client connected`);
     });
-  });
+  }
 }

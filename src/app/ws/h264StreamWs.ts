@@ -1,6 +1,8 @@
-import type { Server } from 'http';
+import type { IncomingMessage, Server } from 'http';
+import type { Duplex } from 'stream';
 import { WebSocketServer, WebSocket } from 'ws';
 import log from '../../logger';
+import { upgradeRouterFor } from './upgradeRouter';
 import type { H264Packet } from '../../device-managers/android/H264Multiplexer';
 import type { H264Multiplexer } from '../../device-managers/android/H264Multiplexer';
 
@@ -42,17 +44,23 @@ export interface H264WsDeps {
 
 /**
  * Attach the h264 WebSocket upgrade handler to the plugin's HTTP server. Only
- * claims `/xenon/api/control/:udid/stream/h264` — other upgrades (e.g.
- * socket.io) are left for their own listeners. Every connection must redeem a
- * valid stream ticket before any video flows.
+ * claims `/xenon/api/control/:udid/stream/h264` (with a ticket), as a route of
+ * the server's upgrade router, so no other handler sees these sockets and this
+ * one sees no others (upgradeRouter.ts). Every connection must redeem a valid
+ * stream ticket before any video flows.
  */
 export function attachH264Ws(server: Server, deps: H264WsDeps): void {
   const wss = new WebSocketServer({ noServer: true });
   const maxBuffered = deps.maxBufferedBytes ?? 4 * 1024 * 1024;
 
-  server.on('upgrade', (req, socket, head) => {
-    const parsed = req.url ? parseH264WsPath(req.url) : null;
-    if (!parsed) return; // not our path — let other upgrade listeners handle it
+  upgradeRouterFor(server).add({
+    name: 'H.264 live preview',
+    matches: (req) => !!req.url && parseH264WsPath(req.url) !== null,
+    handle: upgrade,
+  });
+
+  function upgrade(req: IncomingMessage, socket: Duplex, head: Buffer): void {
+    const parsed = parseH264WsPath(req.url as string) as { udid: string; ticket: string };
 
     wss.handleUpgrade(req, socket as any, head, async (ws) => {
       // Register cleanup BEFORE the awaits below. redeem + startStream can take
@@ -104,5 +112,5 @@ export function attachH264Ws(server: Server, deps: H264WsDeps): void {
       });
       log.info(`[${parsed.udid}] H.264 WS client connected`);
     });
-  });
+  }
 }

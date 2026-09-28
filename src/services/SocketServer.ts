@@ -16,6 +16,10 @@ import {
   DeviceTeamResolver,
   canSeeDeviceTeam,
 } from './device-access/DeviceTeamResolver';
+import { upgradeRouterFor } from '../app/ws/upgradeRouter';
+
+/** socket.io's default path, which the dashboard and nodes connect to. */
+const SOCKET_IO_PATH = '/socket.io';
 
 // Socket principals mirror the two REST auth paths. 'auth-disabled' is a
 // deliberate passthrough so XENON_AUTH_DISABLED=true still lets the dashboard
@@ -71,15 +75,26 @@ export class SocketServer {
   private readonly deliveries = new Map<string, Promise<void>>();
 
   public initialize(server: HTTPServer) {
-    this.io = new SocketIOServer(server, {
-      // Same-origin only. Browsers on a different origin are blocked at the
-      // handshake; server-to-server node connections send no Origin header
-      // and are unaffected. Matches the apiRouter cors({origin:false}) policy.
-      cors: {
-        origin: false,
-        methods: ['GET', 'POST'],
-      },
-    });
+    // socket.io (engine.io) takes its websocket transport by adding its own
+    // `upgrade` listener, which would also see every other upgrade and end
+    // the ones it doesn't own after 1 s. The upgrade router moves that
+    // listener behind socket.io's path, engine.io's own test (a prefix match
+    // on the raw URL), so it sees only its own upgrades (upgradeRouter.ts).
+    this.io = upgradeRouterFor(server).adopt(
+      'socket.io',
+      (req) => String(req.url ?? '').startsWith(`${SOCKET_IO_PATH}/`),
+      () =>
+        new SocketIOServer(server, {
+          path: SOCKET_IO_PATH,
+          // Same-origin only. Browsers on a different origin are blocked at the
+          // handshake; server-to-server node connections send no Origin header
+          // and are unaffected. Matches the apiRouter cors({origin:false}) policy.
+          cors: {
+            origin: false,
+            methods: ['GET', 'POST'],
+          },
+        }),
+    );
 
     this.io.use(async (socket, next) => {
       try {
