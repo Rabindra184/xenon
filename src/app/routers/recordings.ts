@@ -441,7 +441,9 @@ router.post('/recordings/:groupId/annotation', async (req: Request, res: Respons
 router.get('/recordings/active', async (req: Request, res: Response) => {
   try {
     const actor = resolveActor(req);
-    const rows = await Container.get(RecordingStore).listActiveWithMarks();
+    // A group the caller holds a phone of can hold phones they can't see (an
+    // admin added them, or a phone moved team): leave those out, and their marks.
+    const rows = await visibleRows(req, await Container.get(RecordingStore).listActiveWithMarks());
     const locks = new Map<string, string | null>();
     for (const udid of new Set(rows.map((r) => r.device_udid))) {
       const d = await DeviceStoreFactory.getStore().findDevice({ udid });

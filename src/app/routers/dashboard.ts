@@ -12,13 +12,32 @@ import {
   SelectorStateService,
   SelectorStateConflictError,
 } from '../../services/SelectorStateService';
-import { filterRowsByVisibleDevice } from '../../data-service/device-service';
+import path from 'path';
+import { config } from '../../config';
+import {
+  canSeeSession,
+  SessionCaller,
+  visibleSessionWhere,
+} from '../../services/device-access/sessionVisibility';
 import { HealEtalonService } from '../../services/healing/HealEtalonService';
 import log from '../../logger';
 
 const MJPEG_PROXY_CACHE: Map<string, any> = new Map();
 
-//session guard
+const authOf = (request: Request) => (request as Request & { auth?: SessionCaller }).auth;
+
+/**
+ * Only the healed logs of sessions the caller may see (visibleSessionWhere),
+ * as a SessionLog `where` fragment; empty for an admin.
+ */
+async function visibleLogScope(request: Request) {
+  const where = await visibleSessionWhere(authOf(request));
+  return where ? { session: { is: where } } : {};
+}
+
+// Session guard, on every /session/:sessionId route: the session must exist
+// and be one the caller may see (canSeeSession). Another team's session gets
+// exactly the unknown-id answer, so it can't be told apart from none.
 async function isValidSession(request: Request, response: Response, next: NextFunction) {
   const sessionId = request.params.sessionId;
 
@@ -27,7 +46,7 @@ async function isValidSession(request: Request, response: Response, next: NextFu
       id: sessionId,
     },
   });
-  if (!session) {
+  if (!session || !(await canSeeSession(session, authOf(request)))) {
     return response.status(404).send({
       error: true,
       message: `Session with id ${sessionId} not found`,
@@ -65,29 +84,30 @@ async function getSessions(request: Request, response: Response) {
     ];
   }
 
+  // The team rule is part of the query, so `take` counts the caller's sessions.
+  const visible = await visibleSessionWhere(authOf(request));
   const sessions = await prisma.session.findMany({
     orderBy: {
       createdAt: 'desc',
     },
-    where,
+    where: visible ? { AND: [where, visible] } : where,
     take: 500,
   });
-  // Phase 4A: filter to sessions whose underlying device is visible.
-  const auth = (request as Request & { auth?: { teamIds?: string[] } }).auth;
-  const visible = await filterRowsByVisibleDevice(sessions, auth?.teamIds, 'device_udid');
-  return response.status(200).json(visible);
+  return response.status(200).json(sessions);
 }
 
 async function getBuilds(request: Request, response: Response) {
+  // A build is listed if the caller may see at least one of its sessions, and
+  // its counts are over those sessions only: builds are shared by name, so
+  // one build can hold several teams' sessions. Admins get every session.
+  const visible = await visibleSessionWhere(authOf(request));
   const builds = await prisma.build.findMany({
     orderBy: {
       createdAt: 'desc',
     },
     include: {
-      _count: {
-        select: { sessions: true },
-      },
       sessions: {
+        ...(visible ? { where: visible } : {}),
         select: {
           status: true,
           device_udid: true,
@@ -95,29 +115,13 @@ async function getBuilds(request: Request, response: Response) {
       },
     },
   });
-
-  // Phase 4A: a build is visible if at least one of its sessions runs on a
-  // device the caller can see. Admins (teamIds undefined) skip the filter.
-  const auth = (request as Request & { auth?: { teamIds?: string[] } }).auth;
-  let visibleBuilds = builds;
-  if (auth?.teamIds !== undefined) {
-    const filtered = await Promise.all(
-      builds.map(async (b) => {
-        const visibleSessions = await filterRowsByVisibleDevice(
-          b.sessions,
-          auth.teamIds,
-          'device_udid',
-        );
-        return { build: b, hasVisible: visibleSessions.length > 0 };
-      }),
-    );
-    visibleBuilds = filtered.filter((x) => x.hasVisible).map((x) => x.build);
-  }
+  const visibleBuilds = visible ? builds.filter((b) => b.sessions.length > 0) : builds;
 
   // Principal formatting: Add a flat summary object for the frontend
   const formattedBuilds = visibleBuilds.map((b) => ({
     ...b,
-    sessionCount: b._count.sessions,
+    _count: { sessions: b.sessions.length },
+    sessionCount: b.sessions.length,
     passedCount: b.sessions.filter((s) => ['success', 'passed'].includes(s.status)).length,
     failedCount: b.sessions.filter((s) => s.status === 'failed').length,
     runningCount: b.sessions.filter((s) => s.status === 'running').length,
@@ -132,20 +136,9 @@ async function getSessionById(request: Request, response: Response) {
   const session = await prisma.session.findUnique({
     where: { id: sessionId },
   });
+  // isValidSession has already refused an unknown or hidden session.
   if (!session) {
     return response.status(404).json({ error: true, message: 'Session not found' });
-  }
-  // Phase 4A: 404 if the session's device is not visible to the caller.
-  const auth = (request as Request & { auth?: { teamIds?: string[] } }).auth;
-  if (auth?.teamIds !== undefined) {
-    const dev = await prisma.device.findFirst({
-      where: { udid: session.device_udid },
-      select: { teamId: true },
-    });
-    const visible = dev && (dev.teamId === null || auth.teamIds.includes(dev.teamId));
-    if (!visible) {
-      return response.status(404).json({ error: true, message: 'Session not found' });
-    }
   }
   return response.status(200).json(session);
 }
@@ -205,9 +198,11 @@ export async function getRecentHealingEvents(request: Request, response: Respons
   const limit = Number.isFinite(limitRaw) ? Math.min(Math.max(limitRaw, 1), 200) : 50;
   const sessionId = (request.query.sessionId as string) || undefined;
 
+  // Another team's session, even by ?sessionId=, reads as one with no heals.
+  const scope = await visibleLogScope(request);
   const [rows, todayCount] = await Promise.all([
     prisma.sessionLog.findMany({
-      where: { is_healed: true, ...(sessionId ? { session_id: sessionId } : {}) },
+      where: { is_healed: true, ...(sessionId ? { session_id: sessionId } : {}), ...scope },
       orderBy: { createdAt: 'desc' },
       take: limit,
       include: {
@@ -222,7 +217,7 @@ export async function getRecentHealingEvents(request: Request, response: Respons
       },
     }),
     prisma.sessionLog.count({
-      where: { is_healed: true, createdAt: { gte: startOfTodayUtc() } },
+      where: { is_healed: true, createdAt: { gte: startOfTodayUtc() }, ...scope },
     }),
   ]);
 
@@ -281,12 +276,16 @@ async function getHealingSummary(request: Request, response: Response) {
   const priorSince = new Date(since);
   priorSince.setDate(priorSince.getDate() - windowDays);
 
+  // Heal counts are over the caller's sessions. resolvedCount and pendingCount
+  // come from SelectorState, which has no team, so they stay fleet-wide.
+  const scope = await visibleLogScope(request);
   const [currentRows, priorRows] = await Promise.all([
     prisma.sessionLog.findMany({
       where: {
         is_healed: true,
         createdAt: { gte: since, lte: now },
         original_selector: { not: null },
+        ...scope,
       },
       select: {
         session_id: true,
@@ -299,6 +298,7 @@ async function getHealingSummary(request: Request, response: Response) {
         is_healed: true,
         createdAt: { gte: priorSince, lt: since },
         original_selector: { not: null },
+        ...scope,
       },
       select: {
         session_id: true,
@@ -707,11 +707,14 @@ async function getHealingSelectorDetail(request: Request, response: Response) {
   const since = new Date();
   since.setDate(since.getDate() - windowDays);
 
+  // Only the caller's sessions: a selector healed only on phones they can't
+  // see reads as one with no heals.
   const rows = await prisma.sessionLog.findMany({
     where: {
       is_healed: true,
       original_selector: value,
       createdAt: { gte: since },
+      ...(await visibleLogScope(request)),
     },
     orderBy: { createdAt: 'desc' },
     take: 1000,
@@ -997,6 +1000,36 @@ export async function getSelectorStateByTuple(request: Request, response: Respon
   return response.json({ state: row });
 }
 
+/** The session folders the dashboard shows (asset-manager.ts). Interceptor captures and recordings have their own rules. */
+const SESSION_ASSET_KINDS = new Set(['screenshots', 'video', 'performance']);
+/** One file name, no path and no leading dot. */
+const SESSION_ASSET_FILE = /^[A-Za-z0-9_-][A-Za-z0-9._-]*$/;
+
+/**
+ * A session's stored screenshot, video or performance trace, stored as
+ * `<sessionId>/<kind>/<file>` under sessionAssetsPath. Behind isValidSession,
+ * so the caller must be able to see the session. Supports Range, for video
+ * seeking. This replaced an express.static mount outside the API's login.
+ */
+async function getSessionAsset(request: Request, response: Response) {
+  const { sessionId, kind, file } = request.params as Record<string, string>;
+  const notFound = () =>
+    response.status(404).json({ error: true, message: 'Session asset not found' });
+  if (!SESSION_ASSET_KINDS.has(kind) || !SESSION_ASSET_FILE.test(file)) return notFound();
+  response.sendFile(
+    file,
+    {
+      root: path.join(config.sessionAssetsPath, sessionId, kind),
+      headers: { 'Cache-Control': 'private, max-age=300' },
+    },
+    (err?: any) => {
+      if (!err || response.headersSent) return;
+      if (err.status === 416 || err.statusCode === 416) return response.status(416).end();
+      notFound();
+    },
+  );
+}
+
 async function getProfilingData(request: Request, response: Response) {
   const sessionId = request.params.sessionId;
 
@@ -1115,6 +1148,7 @@ function register(router: Router) {
   router.get('/session/:sessionId/logs/device', getDeviceLogs);
   router.get('/session/:sessionId/logs/debug', getDebugLogs);
   router.get('/session/:sessionId/profiling', getProfilingData);
+  router.get('/session/:sessionId/asset/:kind/:file', getSessionAsset);
   router.get('/healing/events', getRecentHealingEvents);
   router.get('/healing/summary', getHealingSummary);
   router.get('/healing/hotspots', getHealingHotspots);

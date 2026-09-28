@@ -8,7 +8,6 @@ import cors from 'cors';
 import AsyncLock from 'async-lock';
 import crypto from 'crypto';
 import { InternalHttpClient } from '../InternalHttpClient';
-import { config } from '../config';
 import log from '../logger';
 import { sessionContext } from '../logging/sessionContext';
 
@@ -201,8 +200,10 @@ router.use((req, res, next) => {
 
 staticFilesRouter.use(express.static(publicPath, { index: false }));
 router.use('/api', apiRouter);
-// Principal Fix: Rename collision route from /assets to /session-recordings to avoid conflict with dashboard's /assets folder
-router.use('/session-recordings', express.static(config.sessionAssetsPath));
+// Session files are served by GET /api/session/:sessionId/asset/:kind/:file,
+// behind the login and the session's team check. They used to be an
+// express.static mount here, outside the login, which also served every
+// recording and interceptor capture stored under the same folder.
 router.use(staticFilesRouter);
 
 function createRouter(pluginArgs: IPluginArgs) {

@@ -188,11 +188,16 @@ export default class XenonApiService {
     );
   }
 
+  /**
+   * A session file, stored as `<sessionId>/<kind>/<file>`, served behind the
+   * login and the session's team check. Anything else links nowhere.
+   */
   public static getAssetUrl(assetPath?: string | null) {
-    if (!assetPath) {
-      return '';
-    }
-    return `/xenon/assets/${assetPath.replace(/^\//, '')}`;
+    const parts = (assetPath ?? '').replace(/^[\\/]+/, '').split(/[\\/]/);
+    if (parts.length !== 3 || parts.some((p) => !p)) return '';
+    const [sessionId, kind, file] = parts;
+    if (!['screenshots', 'video', 'performance'].includes(kind)) return '';
+    return `/xenon/api/session/${encodeURIComponent(sessionId)}/asset/${kind}/${encodeURIComponent(file)}`;
   }
 
   /* Control Endpoints */

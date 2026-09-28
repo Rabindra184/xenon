@@ -467,6 +467,34 @@ describe('recordings library routes', () => {
       it('is true when the caller sees every phone in it', async () => {
         expect(await enabled(alice)).to.deep.equal([['g1', true]]);
       });
+
+      it('lists only the phones the caller can see, and their marks', async () => {
+        devices.set('U2', { name: 'Team B phone', platform: 'android' });
+        visible = new Set(['U1']);
+        rows = rows.map((r) => ({
+          ...r,
+          annotations: [{ id: `a-${r.id}`, t_ms: 1, kind: 'rect', color: '#f00', payload: '{}' }],
+        }));
+        const res = await request(buildApp(alice)).get('/xenon/api/recordings/active');
+        expect(res.status, JSON.stringify(res.body)).to.equal(200);
+        const [group] = res.body.groups;
+        expect(group.recordings.map((r: any) => r.udid)).to.deep.equal(['U1']);
+        expect(JSON.stringify(group.annotations)).to.not.include('a-r2');
+      });
+
+      it('still lists every phone to an admin', async () => {
+        devices.set('U2', { name: 'Team B phone', platform: 'android' });
+        visible = new Set(['U1']);
+        sinon.restore();
+        sinon.stub(DeviceStoreFactory, 'getStore').returns({
+          findDevice: async ({ udid }: { udid: string }) => ({
+            session_id: formatManualLock('usr_root', udid),
+          }),
+        } as any);
+        const res = await request(buildApp(admin)).get('/xenon/api/recordings/active');
+        expect(res.status, JSON.stringify(res.body)).to.equal(200);
+        expect(res.body.groups[0].recordings.map((r: any) => r.udid)).to.deep.equal(['U1', 'U2']);
+      });
     });
   });
 

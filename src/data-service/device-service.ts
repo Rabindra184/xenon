@@ -171,7 +171,8 @@ export async function filterRowsByVisibleDevice<T>(
   const udids = Array.from(
     new Set(rows.map((r) => String(r[udidField])).filter(Boolean)),
   );
-  if (udids.length === 0) return rows;
+  // A row with no udid has no phone to be visible through (fail closed).
+  if (udids.length === 0) return [];
   const devices = await prisma.device.findMany({
     where: { udid: { in: udids } },
     select: { udid: true, teamId: true },
