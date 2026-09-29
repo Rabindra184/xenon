@@ -66,7 +66,8 @@ import { LocalSession } from '../sessions/LocalSession';
 import { CloudSession } from '../sessions/CloudSession';
 import { RemoteSession } from '../sessions/RemoteSession';
 import { SESSION_MANAGER } from '../sessions/SessionManager';
-import { DASHBORD_EVENT_MANAGER } from '../dashboard/event-manager';
+import { DASHBORD_EVENT_MANAGER, storedSessionCapabilities } from '../dashboard/event-manager';
+import { prisma } from '../prisma';
 import { updateSessionDetails } from '../dashboard/services/session-service';
 import { SessionStatus } from '../types/SessionStatus';
 import SessionType from '../enums/SessionType';
@@ -1025,7 +1026,49 @@ export class SessionLifecycleService {
       SESSION_MANAGER.addSession(session.getId(), session);
       if (this.isHub(context.pluginArgs) && isDashboardEnabled && shouldSaveLogs) {
         await DASHBORD_EVENT_MANAGER.onSessionStarted(caps, session, device);
+      } else if (routedElsewhere) {
+        await this.recordRoutedSession(caps, session, device);
       }
+    }
+  }
+
+  /**
+   * The row a hub keeps for a session it routes to a node or a cloud when the
+   * dashboard's own (onSessionStarted) isn't written: with the dashboard off,
+   * and for every cloud session. After a restart the hub finds where the
+   * session runs, and who owns it, only from this row (SessionLocator,
+   * recoverActiveSessions, SessionOwnerResolver): without it every node
+   * session was sent to the hub's own Appium, which had no such session.
+   *
+   * Only what routing and ownership need: no profiling, logs or dashboard
+   * event. onSessionStopped closes it like any other row. A local session's
+   * row is still the dashboard's alone. A failed write is logged, not
+   * thrown: the session exists, and is routed from memory until a restart.
+   */
+  private async recordRoutedSession(caps: any, session: XenonSession, device: IDevice) {
+    try {
+      await prisma.session.create({
+        data: {
+          id: session.getId(),
+          name: caps[XENON_CAPABILITIES.SESSION_NAME] || undefined,
+          ...storedSessionCapabilities(_.assign({}, session.getCapabilities())),
+          node_id: device.nodeId || '',
+          has_live_video: false,
+          video_recording_enabled: caps[XENON_CAPABILITIES.VIDEO_RECORDING] === true,
+          device_udid: device.udid || '',
+          device_platform: device.platform || '',
+          device_version: device.sdk || '',
+          device_name: device.name,
+          status: 'running',
+          api_key_id: session.apiKeyId ?? null,
+          user_id: session.userId ?? null,
+        },
+      });
+    } catch (err: any) {
+      this.logger.warn(
+        `Could not record session ${session.getId()} on ${device.udid}: ${err?.message ?? err}. ` +
+          'It is routed from memory, and a restart of this hub loses it.',
+      );
     }
   }
 

@@ -188,6 +188,10 @@ export class SessionManager {
             this.log.info(`🌐 Recovered RemoteSession ${dbSession.id} on node ${device.nodeId}`);
           }
 
+          // Its owner, as the row recorded it.
+          recoveredSession.apiKeyId = dbSession.api_key_id ?? null;
+          recoveredSession.userId = dbSession.user_id ?? null;
+
           // Add to in-memory map
           this.addSession(dbSession.id, recoveredSession);
           recoveredCount++;

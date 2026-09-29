@@ -244,7 +244,16 @@ new-command timeout.
 own phones (`devicesClearedAtBoot`); its nodes' rows stay, so
 `recoverActiveSessions` rebuilds their `RemoteSession`s (under each node's own
 base path) and the gateway routes them again. Before the gateway every row was
-wiped at boot, so every remote session was marked failed on restart. A
+wiped at boot, so every remote session was marked failed on restart.
+That needs the session's own row, which names its phone and owner. The
+dashboard's row (`onSessionStarted`) is written only with the dashboard on,
+and never for a cloud session, so a session the hub routes to a node or a
+cloud otherwise gets a minimal one (`recordRoutedSession`: phone, node,
+capabilities, `api_key_id`, `user_id`; no profiling, logs or event). The
+dashboard setting still decides alone whether a local session has a row.
+Until then a dashboard-off hub lost every node session on restart: its
+commands went to the hub's own Appium. Recovery also restores the session's
+owner (`apiKeyId`, `userId`) from the row. A
 graceful shutdown (SIGTERM) drains only the hub's own local sessions
 (`ShutdownCoordinator`); until 2.1 it also finalized node and cloud sessions,
 releasing the phone and closing the row on the hub while the node kept the
