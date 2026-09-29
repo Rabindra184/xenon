@@ -44,6 +44,7 @@ import { setupSwagger } from './swagger';
 import { Container } from 'typedi';
 import { PluginContext } from '../PluginContext';
 import { webdriverInfoHandler } from '../gateway/nodeWebDriverUrl';
+import { registerNodeSessionStatus } from '../gateway/nodeSessionStatus';
 
 const dashboardPluginUrl: any = null;
 
@@ -228,6 +229,11 @@ function createRouter(pluginArgs: IPluginArgs) {
     '/webdriver',
     webdriverInfoHandler(() => Container.get(PluginContext).nodeBasePath),
   );
+
+  // On a node: whether a session exists, for the hub's heartbeat, answered
+  // without sending the session a command. No login (the hub holds no
+  // credentials for the node); it takes the hub's session token instead.
+  registerNodeSessionStatus(apiRouter, pluginArgs);
 
   // Dashboard login: unauthenticated (rate-limited internally via separate IP logic)
   apiRouter.use('/auth', authPublicRouter()); // login, logout — unauthenticated

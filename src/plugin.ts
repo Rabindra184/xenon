@@ -31,6 +31,7 @@ import { DefaultPluginArgs, IPluginArgs } from './interfaces/IPluginArgs';
 import { ServerArgs } from '@appium/types';
 import { IDeviceFilterOptions } from './interfaces/IDeviceFilterOptions';
 import NodeDevices from './device-managers/NodeDevices';
+import { AppiumUmbrella } from './sessions/appiumUmbrella';
 import { config as xenonConfig } from './config';
 import { SESSION_MANAGER } from './sessions/SessionManager';
 import { DASHBORD_EVENT_MANAGER } from './dashboard/event-manager';
@@ -226,6 +227,9 @@ class XenonPlugin extends BasePlugin {
     if (caps && (!Array.isArray(caps.firstMatch) || caps.firstMatch.length === 0)) {
       caps.firstMatch = [{}];
     }
+    // The umbrella: where a node answers the hub's "does this session exist"
+    // without sending the session a command (gateway/nodeSessionStatus.ts).
+    Container.get(AppiumUmbrella).note(driver);
     const lifecycle = Container.get(SessionLifecycleService);
 
     // The session gateway allocated this request's phone in front of Appium's

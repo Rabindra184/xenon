@@ -715,8 +715,22 @@ is not pushed, it takes up to 30 s (`commandCaller.ts` says why).
   asks the in-process umbrella (`sessionExists`). Any command sent to the
   session, `timeouts` included, restarts the driver's new-command timeout and
   Xenon's idle clock, so a 30 s probe would keep an abandoned session and its
-  phone alive for ever. A `RemoteSession`'s probe still goes to the node, with
-  the hub's token.
+  phone alive for ever.
+- **Neither does a hub's heartbeat on a node's session.** `RemoteSession`
+  asks the node's `GET /xenon/api/node/sessions/<id>`
+  (`src/gateway/nodeSessionStatus.ts`), which reads the node's umbrella
+  (`AppiumUmbrella`, noted by `XenonPlugin.createSession`, the one place a
+  plugin is handed it) and runs no command: `200 { value: { sessionId,
+  exists } }`. Only a node mounts it, ahead of the login. It asks what a
+  command to the session asks: with per-command auth on it needs the hub's
+  session token for that session and answers anyone else with the
+  unknown-session body (`503` when the JWKS can't be fetched); with it off,
+  nothing, so a hub that can't sign doesn't see its node sessions as gone. Every
+  answer carries `x-xenon-node-sessions`, so an older node (a 404 or a 401
+  from its login, without the header) is recognised: the hub falls back to
+  the old `GET .../timeouts` probe for it, logs that once per node
+  (`NodeSessionProbeSupport`) and asks again after 10 minutes. A cloud
+  session keeps the WebDriver probe.
 - **The session listing is filtered** (`sessionListingFilter.ts`).
   `GET <basePath>/appium/sessions` is Appium 3's only listing route (no
   `GET /sessions`; Appium also gates it behind the `session_discovery`
@@ -1018,6 +1032,8 @@ npm run build:copy` (from the repo root) regenerates and copies it.
 | `src/gateway/internalCall.ts` | `/wd-internal` + the per-process secret header; one `next()` call site so a refused call answers exactly like an unknown route |
 | `src/gateway/hubSessionToken.ts` | Hub-signed `x-xenon-hub-token` JWTs, verified by the node against the hub's JWKS: `xenon-node` per session for commands, `xenon-node-create` per create (owner, phone, node) |
 | `src/gateway/sessionLocator.ts` | Where a session runs: `SESSION_MANAGER`, then the open Session row and its phone's row; never its own routing table |
+| `src/gateway/nodeSessionStatus.ts` | A node's `GET /xenon/api/node/sessions/:id` (hub token, no command, answered from the umbrella) and the hub's memory of which nodes lack it |
+| `src/sessions/appiumUmbrella.ts` | Appium's umbrella as `createSession` last saw it; `hasSession` reads `sessionExists` without running a command |
 | `src/gateway/nodeWebDriverUrl.ts` | A node's own base path from its public `GET /xenon/api/webdriver`, cached; the hub's is the fallback |
 | `src/services/recording/RecordingOrchestrator.ts` | Per-device + composite recording lifecycle |
 | `src/services/recording/manualLock.ts` | `manual_<actorId>_<udid>` lock format helpers |

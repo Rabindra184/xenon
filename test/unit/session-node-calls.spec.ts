@@ -9,6 +9,7 @@ import { LocalSession } from '../../src/sessions/LocalSession';
 import { HealthErrorType } from '../../src/sessions/XenonSession';
 import { HUB_TOKEN_HEADER, HubSessionTokenIssuer } from '../../src/gateway/hubSessionToken';
 import { INTERNAL_CALL_HEADER, internalCallHeaders } from '../../src/gateway/internalCall';
+import { NodeSessionProbeSupport } from '../../src/gateway/nodeSessionStatus';
 import { saveRegistrations } from '../helpers/container-registration';
 import { loopbackServers } from '../helpers/loopbackServer';
 
@@ -42,7 +43,10 @@ describe('session calls to the server that runs the session', () => {
     const server = await loopback.serve(app);
     port = (server.address() as any).port;
 
-    restore = saveRegistrations(HubSessionTokenIssuer);
+    restore = saveRegistrations(HubSessionTokenIssuer, NodeSessionProbeSupport);
+    const probes = new NodeSessionProbeSupport();
+    probes.logger = { warn: () => undefined };
+    Container.set(NodeSessionProbeSupport, probes);
     const issuer = new HubSessionTokenIssuer();
     issuer.useSigner({ sign: async (claims: any) => `hub-token-for-${claims.sid}` });
     Container.set(HubSessionTokenIssuer, issuer);
@@ -84,6 +88,9 @@ describe('session calls to the server that runs the session', () => {
         'POST /node-base/session/s-1/appium/stop_recording_screen',
         'POST /node-base/session/s-1/execute/sync',
         'POST /node-base/session/s-1/execute/sync',
+        // This node has no session-status route (no NODE_SESSION_STATUS_HEADER
+        // on its answer), so the heartbeat falls back to the WebDriver probe.
+        'GET /xenon/api/node/sessions/s-1',
         'GET /node-base/session/s-1/timeouts',
       ]);
       for (const r of seen) expect(r.headers[HUB_TOKEN_HEADER]).to.equal('hub-token-for-s-1');
