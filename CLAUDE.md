@@ -281,6 +281,25 @@ Independent of Appium sessions, each platform has a stream service that brings u
 - **iOS**: `IOSStreamService` shells `go-ios` to start a tunnel (iOS 17+), launches WebDriverAgent via `runwda`, and forwards local ports `wdaPort:8100` and `mjpegPort:9100` with `iproxy`. WDA's MJPEG server is enabled via `/appium/settings`. Stream sessions are tracked in `this.sessions` with a watchdog that idles out streams after 10 min of zero viewers (unless the device is busy with an Appium session).
 - **Android**: `AndroidStreamService` uses ADB + a built-in capture pipeline (MJPEG). A faster, flagged **H.264 live-preview** path also exists — see "Android H.264 live preview (scrcpy)" below.
 
+**go-ios tunnels and Appium sessions.** go-ios's tunnel process listens on
+60105 (its tunnel-info API) and 60106 (the first phone's userspace tunnel). On
+iOS 17+ a WDA that go-ios launched (`runwda`) reaches the phone through it.
+The xcuitest driver never uses go-ios, but an Appium session allocated while a
+stream runs drives the stream's WDA (`iOSCapabilities` sets
+`webDriverAgentUrl`), so that session depends on the stream's WDA, forwarder
+and tunnel. Two rules follow:
+
+- `cleanupOrphanTunnels` (the udid reap plus the kill -9 of whatever listens
+  on 60105/60106) never runs while an Appium session holds the phone
+  (`heldByAppiumSession`: busy, non-manual `session_id`), or when its row
+  can't be read. The sweep waits for the next stop or start after the
+  session; a restart reaps every go-ios process at boot.
+- A viewer's stop (`stream/stop`, `stream/leave`, via
+  `stopStream(udid, { forViewer: true })`) stops nothing while an Appium
+  session holds the phone and the stream launched its own WDA. The session's
+  teardown (`stopIdleStreamForDevice`) or the idle watchdog stops it later.
+  Restarts and shutdown still stop it.
+
 `UniversalMjpegProxy` (`src/helpers/UniversalMjpegProxy.ts`) multiplexes a single upstream MJPEG to many browser clients. It speaks both standard HTTP MJPEG and a raw-socket fallback for WDA's headerless variant, drops lagging clients (>4 MB kernel backlog) to prevent OOM, and uses bounded retries with exponential backoff (max 10 attempts, 500ms→10s).
 
 The browser-facing URL is always `/xenon/api/control/:udid/stream` (proxy URL). Hitting it auto-starts the underlying stream service if the device is iOS — the GET handler dedupes concurrent starts via `IOSStreamService.startPromises`.

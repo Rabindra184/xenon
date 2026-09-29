@@ -83,6 +83,25 @@ export function shouldStopIdleIosStream(use: {
   return !use.sessionId || isManualLock(use.sessionId);
 }
 
+/**
+ * Whether a live Appium session holds the phone: busy under a session id that
+ * isn't a live-preview hold. A claim still waiting for its session id isn't
+ * one yet.
+ */
+export function heldByAppiumSession(
+  device: { busy?: boolean | null; session_id?: string | null } | null | undefined,
+): boolean {
+  return !!device?.busy && !!device.session_id && !isManualLock(device.session_id);
+}
+
+/**
+ * The ports go-ios's tunnel process listens on: its tunnel-info API
+ * (`GO_IOS_AGENT_PORT`, default 60105) and the first phone's userspace tunnel
+ * (API port + 1). On iOS 17+ every go-ios command that talks to the phone,
+ * `runwda` included, goes through that process.
+ */
+const GO_IOS_AGENT_PORTS = [60105, 60106];
+
 @Service({ name: 'IOSStreamService' })
 class IOSStreamService {
   private sessions: Map<string, StreamSession> = new Map();
@@ -336,10 +355,18 @@ class IOSStreamService {
   }
 
   /**
-   * Kill any orphan tunnel processes that might be left from previous runs
-   * This is critical for preventing 'address already in use' errors
+   * Kill go-ios tunnel processes left over from earlier runs, so a new tunnel
+   * can bind the agent's ports ('address already in use' otherwise).
+   *
+   * Never while an Appium session holds the phone. That session may be
+   * driving a WDA go-ios launched (iOSCapabilities points a session at the
+   * stream's WDA whenever a stream runs), and on iOS 17+ that WDA reaches the
+   * phone through the tunnel listening on these ports. Nothing here can tell
+   * that tunnel from an orphan, so the sweep waits for the next stop or start
+   * after the session ends; a restart reaps every go-ios process at boot.
    */
   private async cleanupOrphanTunnels(udid: string): Promise<void> {
+    if (await this.appiumSessionMayUse(udid, 'go-ios tunnels')) return;
     log.debug(`Cleaning up orphan tunnels for ${udid}...`);
 
     // Reap the tunnel process *group* for this udid so the self-forking go-ios
@@ -348,9 +375,8 @@ class IOSStreamService {
     // second device's tunnel is left untouched. See ./tunnelProcess.
     await reapTunnelsForUdid(udid, execPromise);
 
-    // Check common go-ios agent ports (60105, 60106) and kill if bound
-    const agentPorts = [60105, 60106];
-    for (const port of agentPorts) {
+    // Whatever still listens on the go-ios agent's ports.
+    for (const port of GO_IOS_AGENT_PORTS) {
       try {
         const { stdout } = await execPromise(`lsof -ti :${port}`);
         const pids = stdout.trim().split('\n');
@@ -367,6 +393,24 @@ class IOSStreamService {
 
     // Small delay to ensure OS releases sockets
     await new Promise((resolve) => setTimeout(resolve, 500));
+  }
+
+  /**
+   * Whether an Appium session may be using what the caller is about to kill:
+   * one holds the phone, or the phone's row can't be read, in which case
+   * nothing is known and nothing is killed.
+   */
+  private async appiumSessionMayUse(udid: string, what: string): Promise<boolean> {
+    try {
+      const device = await DeviceStoreFactory.getStore().findDevice({ udid });
+      if (!heldByAppiumSession(device)) return false;
+      log.info(
+        `[${udid}] Leaving ${what} alone: Appium session ${device?.session_id} holds the device and may be using them`,
+      );
+    } catch (e: any) {
+      log.warn(`[${udid}] Leaving ${what} alone: could not read the device: ${e?.message ?? e}`);
+    }
+    return true;
   }
 
   /**
@@ -673,10 +717,7 @@ class IOSStreamService {
         // device's own included. Only while an Appium session holds the device:
         // WDA's /status carries no udid, so outside one an answer on a stale
         // row's port may be another phone's WDA.
-        const appiumWdaPort =
-          device.busy && device.session_id && !isManualLock(device.session_id)
-            ? device.wdaLocalPort
-            : undefined;
+        const appiumWdaPort = heldByAppiumSession(device) ? device.wdaLocalPort : undefined;
         const alreadyUp = !!appiumWdaPort && (await this.isWDARunning(appiumWdaPort, udid));
         let wdaPort: number;
         if (appiumWdaPort && alreadyUp) {
@@ -1055,9 +1096,28 @@ class IOSStreamService {
     await new Promise((resolve) => setTimeout(resolve, 500));
   }
 
-  public async stopStream(udid: string): Promise<void> {
+  /**
+   * Stop this udid's stream: its processes, a live-preview hold, the go-ios
+   * orphan sweep (see cleanupOrphanTunnels) and its port leases.
+   *
+   * `forViewer` means the caller is only done watching (stream/stop,
+   * stream/leave). While an Appium session holds the phone and this stream
+   * launched its own WDA, nothing is stopped: a session allocated while the
+   * stream ran drives that WDA, through this stream's forwarder and go-ios
+   * tunnel. The session's teardown stops it (EventManager
+   * stopIdleStreamForDevice), or the idle watchdog once the session has
+   * ended. A restart never passes it: the WDA already failed its health check.
+   */
+  public async stopStream(udid: string, opts: { forViewer?: boolean } = {}): Promise<void> {
     const session = this.sessions.get(udid);
     if (!session) return;
+    if (
+      opts.forViewer &&
+      session.wdaProcess &&
+      (await this.appiumSessionMayUse(udid, "the stream's WDA and go-ios tunnel"))
+    ) {
+      return;
+    }
 
     // Kill sidecar processes. The go-ios tunnel is detached (its own process
     // group), so reap the whole group — a plain p.kill() would leave the

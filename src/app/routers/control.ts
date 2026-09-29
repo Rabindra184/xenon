@@ -779,7 +779,9 @@ router.post('/:udid/stream/ticket', async (req: Request, res: Response) => {
  */
 async function stopPreview(udid: string, device: IDevice, release: boolean): Promise<void> {
   if (device.platform === 'ios' || device.platform === 'tvos') {
-    await Container.get(IOSStreamService).stopStream(udid);
+    // A viewer's stop: an Appium session on the phone may be driving this
+    // stream's WDA, and then the stream stays (see IOSStreamService.stopStream).
+    await Container.get(IOSStreamService).stopStream(udid, { forViewer: true });
   } else {
     await Container.get(AndroidStreamService).stopStream(udid);
     await Container.get(AndroidH264StreamService).stop(udid);
