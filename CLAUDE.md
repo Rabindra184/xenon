@@ -632,6 +632,15 @@ A session's owner is resolved by `SessionOwnerResolver.ownerOf`, which prefers
 rows written before 1.13.1. Two columns because two id spaces: `api_key_id` is
 the `ApiKey` row that created the session, `user_id` is the human.
 
+A live session this server drives is looked up in memory first
+(`LiveSessionOwners`, `src/services/device-access/LiveSessionOwners.ts`):
+`finalizeSession` records its owner and its end forgets it (`deleteSession`,
+`onUnexpectedShutdown`, shutdown). A node writes no Session row for a session
+the hub created, so until then its `/control` guard, logcat WebSocket and
+session listing found no owner and, failing closed, refused the phone to
+everyone but admins, the owner the hub's create token named included. The
+same went for any server with the dashboard off.
+
 `resolveSessionIdentity` (`src/services/session/sessionIdentity.ts`, pure)
 derives both from whichever credential `createSession` presented:
 
@@ -1056,6 +1065,7 @@ npm run build:copy` (from the repo root) regenerates and copies it.
 | `src/services/token/AppDownloadTicketService.ts` | Single-use, app-bound, 10-minute `?ticket=` for the driver's credential-less app download; audience `xenon-app-download` |
 | `src/services/device-access/deviceAccessPolicy.ts` | Pure access decision + deny bodies + the shared `isSelfManualLock` / `isOwnSession` primitives |
 | `src/services/device-access/SessionOwnerResolver.ts` | Session owner: prefers `Session.user_id`, falls back to `api_key_id → ApiKey.userId`. Caches **positive results only** — a null may mean the row isn't written yet, and caching it would deny the owner for the life of the process |
+| `src/services/device-access/LiveSessionOwners.ts` | Owners of the sessions this server drives, while they run; read by `SessionOwnerResolver` before the database, so a node knows who owns the hub's sessions |
 | `src/services/session/sessionIdentity.ts` | Pure `resolveSessionIdentity` — derives `{ apiKeyId, userId }` from the presented credential; ignores an unverifiable token rather than rejecting it |
 | `src/services/session/xenonOptions.ts` | The one precedence rule for Xenon's options: `xe:options` over the `xenon:options` alias, field by field. Every reader of either namespace goes through `xenonOptionsOf` / `xenonOptionsIn` |
 | `src/services/session/sessionCredentials.ts` | `takeSessionCredentials` reads the four secrets and strips them from every bucket in place, first thing in `prepareSession`; nothing puts them back |

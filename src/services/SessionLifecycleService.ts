@@ -46,6 +46,7 @@ import { canOverrideLease } from './device-access/leaseOverride';
 import { computeTeamIds } from './device-access/callerTeamIds';
 import { PendingRequester, REQUESTER_KEY } from './device-access/queueVisibility';
 import { canSeeApp } from './device-access/appVisibility';
+import { LiveSessionOwners } from './device-access/LiveSessionOwners';
 import {
   appDownloadUrl,
   setAppCapability,
@@ -925,6 +926,11 @@ export class SessionLifecycleService {
     );
     sessionInstance.apiKeyId = apiKeyId;
     sessionInstance.userId = userId;
+    // A session this server drives: its owner is known while it runs, row or
+    // not (a node writes none for the hub's sessions; LiveSessionOwners).
+    if (sessionInstance instanceof LocalSession) {
+      Container.get(LiveSessionOwners).record(sessionId, userId);
+    }
 
     await this.applyPostSessionLogic(sessionInstance, xenonCapabilities, freshDevice);
   }
@@ -1274,6 +1280,7 @@ export class SessionLifecycleService {
       return null;
     } finally {
       if (sessionId) {
+        Container.get(LiveSessionOwners).forget(sessionId);
         await sessionCleanupLock.acquire(sessionId, async () => {
           const session = SESSION_MANAGER.getSession(sessionId);
           if (!session) {
@@ -1408,6 +1415,7 @@ export class SessionLifecycleService {
       }
 
       SESSION_MANAGER.removeSession(sessionId);
+      Container.get(LiveSessionOwners).forget(sessionId);
     });
   }
 

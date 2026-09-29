@@ -32,6 +32,7 @@ import { ServerArgs } from '@appium/types';
 import { IDeviceFilterOptions } from './interfaces/IDeviceFilterOptions';
 import NodeDevices from './device-managers/NodeDevices';
 import { AppiumUmbrella } from './sessions/appiumUmbrella';
+import { LiveSessionOwners } from './services/device-access/LiveSessionOwners';
 import { config as xenonConfig } from './config';
 import { SESSION_MANAGER } from './sessions/SessionManager';
 import { DASHBORD_EVENT_MANAGER } from './dashboard/event-manager';
@@ -133,6 +134,7 @@ class XenonPlugin extends BasePlugin {
 
   async onUnexpectedShutdown(driver: any, _cause: any) {
     const sessionId = driver.sessionId;
+    Container.get(LiveSessionOwners).forget(sessionId);
     const deviceFilter = {
       session_id: sessionId ? sessionId : undefined,
       udid: driver.caps && driver.caps.udid ? driver.caps.udid : undefined,
