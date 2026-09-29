@@ -3,6 +3,7 @@ import { prisma } from '../prisma';
 import log from '../logger';
 import { DASHBORD_EVENT_MANAGER } from '../dashboard/event-manager';
 import { SessionStatus } from '../types/SessionStatus';
+import { releaseSessionDevices } from '../data-service/device-service';
 
 export interface SweepOptions {
   heartbeatIntervalMs: number;
@@ -53,25 +54,17 @@ export class OrphanSweeper {
 
     for (const s of stale) {
       try {
-        await prisma.$transaction([
-          prisma.session.update({
-            where: { id: s.id },
-            data: {
-              status: 'failed',
-              failure_reason: 'Session heartbeat timeout',
-              endTime: new Date(),
-            },
-          }),
-          prisma.device.updateMany({
-            where: { udid: s.device_udid },
-            data: {
-              busy: false,
-              session_id: null,
-              owningSessionId: null,
-              lockedAt: null,
-            },
-          }),
-        ]);
+        await prisma.session.update({
+          where: { id: s.id },
+          data: {
+            status: 'failed',
+            failure_reason: 'Session heartbeat timeout',
+            endTime: new Date(),
+          },
+        });
+        // This session's claim only, not every row with its udid: the phone
+        // may be another session's by now (deviceClaims.ts).
+        await releaseSessionDevices(s.id);
 
         // Event emit stays outside the transaction (side-effect with own error boundary)
         await DASHBORD_EVENT_MANAGER.onSessionStopped(

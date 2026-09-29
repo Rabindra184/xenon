@@ -162,7 +162,7 @@ describe('createSession — a lease-bound session proves it holds the lease', ()
     });
     sinon.stub(pendingSessions, 'removePendingSession').resolves();
     sinon.stub(deviceService, 'updateDeviceProgress').resolves();
-    sinon.stub(deviceService, 'updatedAllocatedDevice').resolves();
+    sinon.stub(deviceService, 'claimDeviceForSession').resolves(true);
 
     svc = new SessionLifecycleService();
     // Everything past finalizeSession's own bookkeeping is out of scope here;

@@ -1,11 +1,15 @@
 import { IDevice } from '../interfaces/IDevice';
 import { IDeviceFilterOptions } from '../interfaces/IDeviceFilterOptions';
 import {
+  AddDevicesOptions,
   IDeviceStore,
   IPendingSessionStore,
   ICLIArgsStore,
   IHealEtalonStore,
+  LockOptions,
 } from './device-store.interface';
+import { pickNodeReportFields } from './deviceFieldOwners';
+import { CLAIM_RESET, ClaimRef, holdsClaim, isUnheld } from './deviceClaims';
 
 import log from '../logger';
 import semver from 'semver';
@@ -148,21 +152,40 @@ class LokiDeviceStore implements IDeviceStore {
       });
   }
 
-  async updateDevices(
-    filter: Partial<IDevice>,
-    updateFn: (device: IDevice) => void,
-  ): Promise<void> {
-    (await XenonDatabase.DeviceModel).chain().find(filter).update(updateFn);
+  async touchSession(sessionId: string, at: number): Promise<void> {
+    (await XenonDatabase.DeviceModel)
+      .chain()
+      .find({ session_id: sessionId })
+      .update((device: IDevice) => {
+        device.lastCmdExecutedAt = at;
+      });
   }
 
-  async addDevices(devices: IDevice[]): Promise<IDevice[]> {
+  async addDevices(devices: IDevice[], options: AddDevicesOptions = {}): Promise<IDevice[]> {
     const deviceModel = await XenonDatabase.DeviceModel;
     const added: IDevice[] = [];
 
     for (const device of devices) {
       const existing = deviceModel.findOne({ udid: device.udid, host: device.host });
+      // A node's report (PrismaDeviceStore.addNodeReport has the rule).
+      const nodeBusy = device.busy === true;
+      if (existing && options.nodeReport) {
+        Object.assign(existing, pickNodeReportFields(device as any), { nodeBusy });
+        if (nodeBusy) existing.busy = true;
+        else if (isUnheld(existing)) existing.busy = false;
+        deviceModel.update(existing);
+        continue;
+      }
       if (!existing) {
-        const cleanDevice = { ...device };
+        const cleanDevice = options.nodeReport
+          ? ({
+              ...pickNodeReportFields(device as any),
+              udid: device.udid,
+              host: device.host,
+              busy: nodeBusy,
+              nodeBusy,
+            } as IDevice)
+          : { ...device };
         if (cleanDevice.host === undefined) cleanDevice.host = 'Local';
         if (cleanDevice.userBlocked === undefined) cleanDevice.userBlocked = false;
         if (cleanDevice.busy === undefined) cleanDevice.busy = false;
@@ -203,7 +226,10 @@ class LokiDeviceStore implements IDeviceStore {
     return (await XenonDatabase.DeviceModel).find(filter);
   }
 
-  async findAndLockDevice(filterOptions: IDeviceFilterOptions): Promise<IDevice | null> {
+  async findAndLockDevice(
+    filterOptions: IDeviceFilterOptions,
+    options: LockOptions = {},
+  ): Promise<IDevice | null> {
     // Phase 2: exclude devices held by an active lease.
     const activeLeases = await prisma.lease.findMany({
       where: { status: 'active' },
@@ -220,10 +246,48 @@ class LokiDeviceStore implements IDeviceStore {
       (d) => !d.busy && !d.userBlocked && !blockedKeys.has(`${d.udid}@${d.host}`),
     );
     if (available) {
-      await this.updateDevice(available.udid, available.host, { busy: true });
+      await this.updateDevice(available.udid, available.host, {
+        busy: true,
+        ...(options.claim ? { claimedAt: Date.now(), claimSessionId: null } : {}),
+      });
       return available;
     }
     return null;
+  }
+
+  async claimForSession(
+    udid: string,
+    host: string,
+    claimedAt: number | null | undefined,
+    sessionId: string,
+    update: Partial<IDevice>,
+  ): Promise<boolean> {
+    const model = await XenonDatabase.DeviceModel;
+    const device: IDevice | null = model.findOne({ udid, host });
+    if (!device || device.claimSessionId != null) return false;
+    if (device.claimedAt != null && device.claimedAt !== claimedAt) return false;
+    Object.assign(device, update, {
+      busy: true,
+      claimSessionId: sessionId,
+      claimedAt: claimedAt ?? Date.now(),
+    });
+    model.update(device);
+    return true;
+  }
+
+  async releaseClaim(
+    udid: string,
+    host: string,
+    ref: ClaimRef,
+    update: Partial<IDevice>,
+  ): Promise<boolean> {
+    const model = await XenonDatabase.DeviceModel;
+    const device: IDevice | null = model.findOne({ udid, host });
+    if (!device || !holdsClaim(device, ref)) return false;
+    Object.assign(device, update, CLAIM_RESET);
+    if (isUnheld(device)) device.busy = false;
+    model.update(device);
+    return true;
   }
 
   async resetMetrics(): Promise<void> {

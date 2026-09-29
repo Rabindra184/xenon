@@ -60,6 +60,12 @@ export interface IDevice {
   manufacturer?: string | null;
   formFactor?: 'phone' | 'tablet' | 'tv' | null;
 
+  // This server's claim for a session, and on a hub what the phone's node
+  // last reported. See src/data-service/deviceClaims.ts.
+  claimSessionId?: string | null;
+  claimedAt?: number | null;
+  nodeBusy?: boolean | null;
+
   // Phase 2: team ownership (null = shared pool). See docs/teams.md.
   teamId?: string | null;
   /** Resolved on read from Team.name; omitted when unassigned or unknown. */

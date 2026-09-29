@@ -282,7 +282,10 @@ exports.Prisma.DeviceScalarFieldEnum = {
   cpuArchitecture: 'cpuArchitecture',
   owningSessionId: 'owningSessionId',
   lockedAt: 'lockedAt',
-  teamId: 'teamId'
+  teamId: 'teamId',
+  claimSessionId: 'claimSessionId',
+  claimedAt: 'claimedAt',
+  nodeBusy: 'nodeBusy'
 };
 
 exports.Prisma.PendingSessionScalarFieldEnum = {

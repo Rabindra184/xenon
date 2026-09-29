@@ -76,7 +76,7 @@ describe('createSession — an app named by id follows the team rule', () => {
   let restore: () => void;
   let pendingCopy: any;
   let finalCaps: any;
-  let unblock: sinon.SinonStub;
+  let release: sinon.SinonStub;
 
   const create = async (c: any) => {
     const next = sinon.stub().callsFake(async () => {
@@ -126,8 +126,8 @@ describe('createSession — an app named by id follows the team rule', () => {
     });
     sinon.stub(pendingSessions, 'removePendingSession').resolves();
     sinon.stub(deviceService, 'updateDeviceProgress').resolves();
-    sinon.stub(deviceService, 'updatedAllocatedDevice').resolves();
-    unblock = sinon.stub(deviceService, 'unblockDevice').resolves();
+    sinon.stub(deviceService, 'claimDeviceForSession').resolves(true);
+    release = sinon.stub(deviceService, 'releasePendingClaim').resolves(true);
 
     svc = new SessionLifecycleService();
     sinon.stub(svc as any, 'createSessionInstance').callsFake((...args: any[]) => {
@@ -320,6 +320,7 @@ describe('createSession — an app named by id follows the team rule', () => {
     }
     expect(String(err?.message)).to.match(/app-a.*JWT key service not initialized/);
     expect(driverCaps, 'the driver was never started').to.equal(undefined);
-    expect(unblock.calledOnceWith('u1', 'h1')).to.equal(true);
+    expect(release.calledOnce).to.equal(true);
+    expect(release.firstCall.args[0]).to.include({ udid: 'u1', host: 'h1' });
   });
 });
