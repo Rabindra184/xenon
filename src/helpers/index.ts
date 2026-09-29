@@ -192,7 +192,11 @@ export async function isXenonRunning(
 ): Promise<boolean> {
   try {
     const client = InternalHttpClient.getClient(tlsRejectUnauthorized);
-    await client.get(`${host}/xenon/api/status`);
+    // /health is the one /xenon/api route with no login. The hub probes its
+    // nodes, and a node its hub, without credentials, so a login-only route
+    // (/status) called a server with auth on dead: the hub pruned its node's
+    // phones, and the node never registered with its hub.
+    await client.get(`${host}/xenon/api/health`);
     return true;
   } catch (error: any) {
     log.info(`Xenon is not running at ${host}. Error: ${error}`);
