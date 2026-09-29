@@ -729,14 +729,17 @@ export async function setupCronUpdateDeviceList(
 
 /**
  * Tells the hub this node is leaving, once for each host its phones are filed
- * under, and the hub drops every phone with that host. Only hosts the hub
- * matches exactly: it matches anything that isn't a URL as a substring, which
- * is how the node's bare IP also took the hub's own phones on the same machine.
+ * under, with the node's id: the hub drops the phones this node reported
+ * (by `nodeId`, else by exact host) and never another server's. Only URL
+ * hosts are sent: a hub before that rule matched anything that isn't a URL as
+ * a substring, which is how the node's bare IP also took the hub's own phones
+ * on the same machine.
  */
 export async function unregisterNodeFromHub(
   hubArgument: string,
   local: LocalDeviceHosts,
   tlsRejectUnauthorized?: boolean,
+  nodeId?: string,
 ) {
   const hub = new NodeDevices(hubArgument, {
     tlsRejectUnauthorized,
@@ -744,7 +747,7 @@ export async function unregisterNodeFromHub(
     hubToken: xenonConfig.hubToken,
   });
   for (const host of local.hosts) {
-    if (/^https?:\/\//.test(host)) await hub.unRegisterNode(host);
+    if (/^https?:\/\//.test(host)) await hub.unRegisterNode(host, nodeId);
   }
 }
 

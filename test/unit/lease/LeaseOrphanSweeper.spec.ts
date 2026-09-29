@@ -17,7 +17,7 @@ describe('LeaseOrphanSweeper', () => {
       },
       portLease: { deleteMany: sinon.stub().resolves({ count: 0 }) },
     };
-    storeStub = { updateDevice: sinon.stub().resolves() };
+    storeStub = { releaseLeaseLock: sinon.stub().resolves(true) };
     const { LeaseOrphanSweeper } = await import('../../../src/services/lease/LeaseOrphanSweeper');
     sweeper = new LeaseOrphanSweeper(prismaStub, storeStub);
   });
@@ -32,7 +32,7 @@ describe('LeaseOrphanSweeper', () => {
     expect(prismaStub.lease.update.firstCall.args[0].where.id).to.equal('lse_1');
     expect(prismaStub.lease.update.firstCall.args[0].data.status).to.equal('expired');
     expect(prismaStub.portLease.deleteMany.calledWith({ where: { leaseId: 'lse_1' } })).to.equal(true);
-    expect(storeStub.updateDevice.calledWith('u1', 'h1', { busy: false })).to.equal(true);
+    expect(storeStub.releaseLeaseLock.calledOnceWith('u1', 'h1')).to.equal(true);
   });
 
   it('no-op when no stale leases', async () => {

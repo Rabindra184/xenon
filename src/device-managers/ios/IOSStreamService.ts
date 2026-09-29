@@ -20,6 +20,7 @@ import { cachePath } from '../../helpers';
 import { SingleFlight } from '../../helpers/singleFlight';
 import { PortAllocator } from '../../services/PortAllocator';
 import { DeviceStoreFactory } from '../../data-service/device-store';
+import { findOwnDevice } from '../ownDeviceRow';
 import {
   classifyTunnelStderr,
   isMissingWdaError,
@@ -83,6 +84,28 @@ export function shouldStopIdleIosStream(use: {
   return !use.sessionId || isManualLock(use.sessionId);
 }
 
+/**
+ * Whether a live Appium session holds the phone: busy under a session id that
+ * isn't a live-preview hold. A claim still waiting for its session id isn't
+ * one yet.
+ */
+export function heldByAppiumSession(
+  device: { busy?: boolean | null; session_id?: string | null } | null | undefined,
+): boolean {
+  return !!device?.busy && !!device.session_id && !isManualLock(device.session_id);
+}
+
+/**
+ * The ports go-ios's tunnel process listens on: its tunnel-info API
+ * (`GO_IOS_AGENT_PORT`, default 60105) and the first phone's userspace tunnel
+ * (API port + 1). On iOS 17+ every go-ios command that talks to the phone,
+ * `runwda` included, goes through that process.
+ */
+const GO_IOS_AGENT_PORTS = [60105, 60106];
+
+/** A start refused a restart because an Appium session holds the phone. */
+export class StreamRestartRefused extends Error {}
+
 @Service({ name: 'IOSStreamService' })
 class IOSStreamService {
   private sessions: Map<string, StreamSession> = new Map();
@@ -140,7 +163,7 @@ class IOSStreamService {
             );
             try {
               // Get device state to check for Session Shield
-              const device = await DeviceStoreFactory.getStore().findDevice({ udid });
+              const device = await findOwnDevice(udid);
               if (device && device.busy) {
                 log.info(`🛡️ [Watchdog] Skipping heal for ${udid} as it has an active session.`);
                 continue;
@@ -175,7 +198,7 @@ class IOSStreamService {
       const idleMs = now - session.lastViewerAt;
       if (session.viewerCount > 0 || idleMs <= IOS_IDLE_STOP_MS) continue;
       try {
-        const device = await DeviceStoreFactory.getStore().findDevice({ udid });
+        const device = await findOwnDevice(udid);
         const recording = await Container.get(RecordingStore).isRecording(udid);
         const stop = shouldStopIdleIosStream({
           idleMs,
@@ -336,10 +359,18 @@ class IOSStreamService {
   }
 
   /**
-   * Kill any orphan tunnel processes that might be left from previous runs
-   * This is critical for preventing 'address already in use' errors
+   * Kill go-ios tunnel processes left over from earlier runs, so a new tunnel
+   * can bind the agent's ports ('address already in use' otherwise).
+   *
+   * Never while an Appium session holds the phone. That session may be
+   * driving a WDA go-ios launched (iOSCapabilities points a session at the
+   * stream's WDA whenever a stream runs), and on iOS 17+ that WDA reaches the
+   * phone through the tunnel listening on these ports. Nothing here can tell
+   * that tunnel from an orphan, so the sweep waits for the next stop or start
+   * after the session ends; a restart reaps every go-ios process at boot.
    */
   private async cleanupOrphanTunnels(udid: string): Promise<void> {
+    if (await this.appiumSessionMayUse(udid, 'go-ios tunnels')) return;
     log.debug(`Cleaning up orphan tunnels for ${udid}...`);
 
     // Reap the tunnel process *group* for this udid so the self-forking go-ios
@@ -348,9 +379,8 @@ class IOSStreamService {
     // second device's tunnel is left untouched. See ./tunnelProcess.
     await reapTunnelsForUdid(udid, execPromise);
 
-    // Check common go-ios agent ports (60105, 60106) and kill if bound
-    const agentPorts = [60105, 60106];
-    for (const port of agentPorts) {
+    // Whatever still listens on the go-ios agent's ports.
+    for (const port of GO_IOS_AGENT_PORTS) {
       try {
         const { stdout } = await execPromise(`lsof -ti :${port}`);
         const pids = stdout.trim().split('\n');
@@ -370,15 +400,60 @@ class IOSStreamService {
   }
 
   /**
+   * Whether an Appium session may be using what the caller is about to kill:
+   * one holds the phone, or the phone's row can't be read, in which case
+   * nothing is known and nothing is killed.
+   */
+  private async appiumSessionMayUse(udid: string, what: string): Promise<boolean> {
+    try {
+      const device = await findOwnDevice(udid);
+      if (!heldByAppiumSession(device)) return false;
+      log.info(
+        `[${udid}] Leaving ${what} alone: Appium session ${device?.session_id} holds the device and may be using them`,
+      );
+    } catch (e: any) {
+      log.warn(`[${udid}] Leaving ${what} alone: could not read the device: ${e?.message ?? e}`);
+    }
+    return true;
+  }
+
+  /**
+   * Throw StreamRestartRefused when an Appium session holds the phone, as the
+   * watchdog's heal already skips a busy device. A restart would kill the WDA
+   * and go-ios tunnel the session may be driving, or, on a stream attached to
+   * the session's own WDA, launch a second WDA over it. A WDA that is only
+   * slow to answer /status (a long command) would be killed for nothing. The
+   * stream is left as it is; it can restart once the session ends. A row that
+   * can't be read refuses too.
+   */
+  private async refuseRestartUnderAppiumSession(udid: string): Promise<void> {
+    let device;
+    try {
+      device = await findOwnDevice(udid);
+    } catch (e: any) {
+      throw new StreamRestartRefused(
+        `Stream for ${udid} is not answering, and the device can't be read to check for an Appium session (${e?.message ?? e}): not restarting it.`,
+      );
+    }
+    if (!heldByAppiumSession(device)) return;
+    throw new StreamRestartRefused(
+      `Stream for ${udid} is not answering, but Appium session ${device?.session_id} holds the device: not restarting the WDA and go-ios tunnel it may be driving. The stream can restart once the session ends.`,
+    );
+  }
+
+  /**
    * Check if WDA is already running and responding
    * Principal Resilience: Retries transient connection errors (ECONNRESET) up to 2 times
    * with exponential backoff, as these often indicate WDA is restarting or tunnel is reconnecting.
+   *
+   * It says whether *a* WDA answers on the port, never whose. WDA names no
+   * phone: /status carries os, ios.ip, build and device (the form factor),
+   * and /wda/device/info's `uuid` is identifierForVendor, not the UDID. So it
+   * takes no udid. A caller that must know the phone relies on the port
+   * being one it already knows belongs to it: its own stream's leased port,
+   * or the Device row's port while an Appium session holds that phone.
    */
-  public async isWDARunning(
-    wdaPort: number,
-    udid?: string,
-    retries = 2,
-  ): Promise<boolean> {
+  public async isWDARunning(wdaPort: number, retries = 2): Promise<boolean> {
     const axios = (await import('axios')).default;
     const host = '127.0.0.1'; // Force IPv4 for local tunnels
     const maxRetries = retries;
@@ -391,15 +466,6 @@ class IOSStreamService {
           httpAgent: new http.Agent({ keepAlive: false }),
           validateStatus: (status) => status === 200,
         });
-
-        // Principal Resilience: Verify the UDID if provided to ensure we're talking to the right device
-        const remoteUdid = response.data?.value?.ios?.udid;
-        if (udid && remoteUdid && remoteUdid !== udid) {
-          log.warn(
-            `[WDA] Port ${wdaPort} is used by a DIFFERENT device: ${remoteUdid} (expected ${udid})`,
-          );
-          return false;
-        }
 
         const isReady = response.data?.value?.ready === true;
         if (!isReady) {
@@ -472,7 +538,7 @@ class IOSStreamService {
         `🛡️ [${udid}] [Watchdog] Tunnel processes are dead. Attempting tunnel-only recovery...`,
       );
 
-      const device = await DeviceStoreFactory.getStore().findDevice({ udid });
+      const device = await findOwnDevice(udid);
       if (device && device.ip) {
         // Double check if WDA is alive via network IP
         const isWdaAccessibleViaNetwork = await this.isWDARunningOnHost(device.ip, 8100);
@@ -494,7 +560,7 @@ class IOSStreamService {
         `🛡️ [${udid}] [Watchdog] WDA tunnel on port ${session.wdaPort} is unresponsive. checking network...`,
       );
 
-      const device = await DeviceStoreFactory.getStore().findDevice({ udid });
+      const device = await findOwnDevice(udid);
       if (device && device.ip) {
         const isWdaAccessibleViaNetwork = await this.isWDARunningOnHost(device.ip, 8100);
         if (isWdaAccessibleViaNetwork) {
@@ -587,6 +653,8 @@ class IOSStreamService {
         log.debug(`[${udid}] Stream already running and healthy, reusing existing session`);
         return { wdaPort: existingSession.wdaPort, mjpegPort: existingSession.mjpegPort };
       }
+      // Never under a live Appium session (see refuseRestartUnderAppiumSession).
+      await this.refuseRestartUnderAppiumSession(udid);
       // Stream exists but unhealthy - check cooldown before recovery
       if (!this.canAttemptRecovery(udid)) {
         const lastAttempt = this.recoveryCooldowns.get(udid);
@@ -629,6 +697,7 @@ class IOSStreamService {
             log.debug(`[${udid}] Stream already running and healthy, reusing existing session`);
             return { wdaPort: existingSession.wdaPort, mjpegPort: existingSession.mjpegPort };
           }
+          await this.refuseRestartUnderAppiumSession(udid);
           // Stream exists but unhealthy - check cooldown before recovery
           if (!this.canAttemptRecovery(udid)) {
             const lastAttempt = this.recoveryCooldowns.get(udid);
@@ -644,7 +713,7 @@ class IOSStreamService {
           this.markRecoveryAttempt(udid);
         }
 
-        const device = await DeviceStoreFactory.getStore().findDevice({ udid });
+        const device = await findOwnDevice(udid);
         if (!device) throw new Error(`Device ${udid} not found`);
 
         // Tear down this udid's previous session BEFORE acquiring ports, never
@@ -671,13 +740,11 @@ class IOSStreamService {
         // row's wdaLocalPort (iOSCapabilities hands it to Appium), and acquire()
         // can't find it, because it refuses any port with a live listener, this
         // device's own included. Only while an Appium session holds the device:
-        // WDA's /status carries no udid, so outside one an answer on a stale
+        // WDA names no phone (see isWDARunning), so that session is the only
+        // evidence the port is this phone's. Outside one, an answer on a stale
         // row's port may be another phone's WDA.
-        const appiumWdaPort =
-          device.busy && device.session_id && !isManualLock(device.session_id)
-            ? device.wdaLocalPort
-            : undefined;
-        const alreadyUp = !!appiumWdaPort && (await this.isWDARunning(appiumWdaPort, udid));
+        const appiumWdaPort = heldByAppiumSession(device) ? device.wdaLocalPort : undefined;
+        const alreadyUp = !!appiumWdaPort && (await this.isWDARunning(appiumWdaPort));
         let wdaPort: number;
         if (appiumWdaPort && alreadyUp) {
           wdaPort = appiumWdaPort;
@@ -919,7 +986,7 @@ class IOSStreamService {
             }
 
             // Update device info in store
-            const device = await DeviceStoreFactory.getStore().findDevice({ udid });
+            const device = await findOwnDevice(udid);
             if (device) {
               const updateData: any = {
                 wdaLocalPort: wdaPort,
@@ -975,6 +1042,8 @@ class IOSStreamService {
         }
         throw new Error(`WDA failed to start within ${timeout / 1000}s. Check logs.`);
       } catch (error: any) {
+        // Not a failed start: the running stream is left exactly as it was.
+        if (error instanceof StreamRestartRefused) throw error;
         const session = this.sessions.get(udid);
         if (session) {
           session.status = 'error';
@@ -1055,9 +1124,28 @@ class IOSStreamService {
     await new Promise((resolve) => setTimeout(resolve, 500));
   }
 
-  public async stopStream(udid: string): Promise<void> {
+  /**
+   * Stop this udid's stream: its processes, a live-preview hold, the go-ios
+   * orphan sweep (see cleanupOrphanTunnels) and its port leases.
+   *
+   * `forViewer` means the caller is only done watching (stream/stop,
+   * stream/leave). While an Appium session holds the phone and this stream
+   * launched its own WDA, nothing is stopped: a session allocated while the
+   * stream ran drives that WDA, through this stream's forwarder and go-ios
+   * tunnel. The session's teardown stops it (EventManager
+   * stopIdleStreamForDevice), or the idle watchdog once the session has
+   * ended. A restart never passes it: the WDA already failed its health check.
+   */
+  public async stopStream(udid: string, opts: { forViewer?: boolean } = {}): Promise<void> {
     const session = this.sessions.get(udid);
     if (!session) return;
+    if (
+      opts.forViewer &&
+      session.wdaProcess &&
+      (await this.appiumSessionMayUse(udid, "the stream's WDA and go-ios tunnel"))
+    ) {
+      return;
+    }
 
     // Kill sidecar processes. The go-ios tunnel is detached (its own process
     // group), so reap the whole group — a plain p.kill() would leave the
@@ -1076,7 +1164,7 @@ class IOSStreamService {
     // The lock could belong to an Appium automation session (session_id is a real UUID).
     // We should only unblock if it's a manual control lock (session_id starts with 'manual_').
     try {
-      const device = await DeviceStoreFactory.getStore().findDevice({ udid });
+      const device = await findOwnDevice(udid);
       if (device && device.session_id?.startsWith('manual_')) {
         log.info(`Stream Stop: Releasing manual control lock for ${udid}`);
         await unblockDevice(udid, device.host);

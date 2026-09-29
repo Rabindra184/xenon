@@ -264,9 +264,13 @@ export class PrismaDeviceStore implements IDeviceStore {
     return row;
   }
 
-  async removeDevices(filter: Partial<IDevice>): Promise<void> {
+  async removeDevices(
+    filter: Partial<IDevice>,
+    options: { exactHost?: boolean } = {},
+  ): Promise<void> {
     // Principal Fix: Support partial host matching (e.g., "192.168.0.100" should match "http://192.168.0.100:4723")
     // This is necessary because the device tracker passes the raw IP, not the full URL.
+    // `exactHost` turns it off, for a caller that names rows by their own host.
     const whereClause: any = {};
 
     if (filter.udid) {
@@ -275,7 +279,11 @@ export class PrismaDeviceStore implements IDeviceStore {
 
     if (filter.host) {
       // Use Prisma's `contains` for partial matching if host doesn't look like a full URL
-      if (filter.host.startsWith('http://') || filter.host.startsWith('https://')) {
+      if (
+        options.exactHost ||
+        filter.host.startsWith('http://') ||
+        filter.host.startsWith('https://')
+      ) {
         whereClause.host = filter.host;
       } else {
         whereClause.host = { contains: filter.host };
@@ -395,6 +403,14 @@ export class PrismaDeviceStore implements IDeviceStore {
       data: { busy: false },
     });
     return true;
+  }
+
+  async releaseLeaseLock(udid: string, host: string): Promise<boolean> {
+    const cleared = await this.prisma.device.updateMany({
+      where: { udid, host, busy: true, ...UNHELD },
+      data: { busy: false },
+    });
+    return cleared.count > 0;
   }
 
   async resetMetrics(): Promise<void> {

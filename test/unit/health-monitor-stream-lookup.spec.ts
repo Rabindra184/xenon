@@ -8,6 +8,7 @@ import { DeviceStoreFactory } from '../../src/data-service/device-store';
 import { SESSION_MANAGER } from '../../src/sessions/SessionManager';
 import AndroidStreamService from '../../src/device-managers/android/AndroidStreamService';
 import IOSStreamService from '../../src/device-managers/ios/IOSStreamService';
+import { PluginContext } from '../../src/PluginContext';
 
 // Named like the real managers: the monitor picks one by constructor.name.
 class AndroidDeviceManager {
@@ -17,12 +18,16 @@ class IOSDeviceManager {
   checkHealth = async () => ({ healthStatus: 'Healthy' });
 }
 
+const THIS_SERVER = 'this-server-node-id';
+
 // A device busy with an Appium session this process no longer knows about,
 // which is the case the monitor reclaims, unless a stream is still running.
 function lostSessionDevice(platform: 'android' | 'ios') {
   return {
     udid: `${platform}-1`,
     host: 'http://127.0.0.1:4723',
+    // This server's own phone: the monitor checks no other server's.
+    nodeId: THIS_SERVER,
     platform,
     busy: true,
     session_id: 'appium-session-not-in-memory',
@@ -39,7 +44,11 @@ describe('HealthMonitorService — stream lookups', () => {
   const reclaimed = () =>
     updateDevice.getCalls().some((c) => c.args[2]?.busy === false && !c.args[2]?.session_id);
 
+  let nodeIdBefore: string;
+
   beforeEach(() => {
+    nodeIdBefore = Container.get(PluginContext).nodeId;
+    Container.get(PluginContext).nodeId = THIS_SERVER;
     sinon.stub(process, 'kill');
     updateDevice = sinon.spy(async () => undefined);
     sinon.stub(DeviceStoreFactory, 'getStore').returns({
@@ -65,7 +74,10 @@ describe('HealthMonitorService — stream lookups', () => {
     });
   });
 
-  afterEach(() => sinon.restore());
+  afterEach(() => {
+    sinon.restore();
+    Container.get(PluginContext).nodeId = nodeIdBefore;
+  });
 
   const run = () => (new HealthMonitorService({} as any) as any).checkAllDevices();
 

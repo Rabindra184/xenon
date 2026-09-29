@@ -33,7 +33,11 @@ export interface IDeviceStore {
   updateDevice(udid: string, host: string, updateData: Partial<IDevice>): Promise<void>;
   /** Adds the phones the store doesn't have and returns only those. */
   addDevices(devices: IDevice[], options?: AddDevicesOptions): Promise<IDevice[]>;
-  removeDevices(filter: Partial<IDevice>): Promise<void>;
+  /**
+   * Delete the phones matching `filter`. The Prisma store matches a host that
+   * isn't a URL as a substring, unless `exactHost` is set.
+   */
+  removeDevices(filter: Partial<IDevice>, options?: { exactHost?: boolean }): Promise<void>;
   /** Delete every phone, or only those filed under these hosts. */
   clearStorage(onlyHosts?: readonly string[]): Promise<void>;
   findDevice(filter: Partial<IDevice>): Promise<IDevice | null>;
@@ -65,6 +69,14 @@ export interface IDeviceStore {
     ref: ClaimRef,
     update: Partial<IDevice>,
   ): Promise<boolean>;
+  /**
+   * Take away a lease's lock (a lease locks with `busy` alone): clear `busy`
+   * where nothing else holds the phone (UNHELD in deviceClaims.ts), in one
+   * conditional update, as releaseClaim's second step. A session still on the
+   * phone keeps it busy, and its own release frees it later. True when `busy`
+   * was cleared.
+   */
+  releaseLeaseLock(udid: string, host: string): Promise<boolean>;
   /** Mark the phones of a session as just used, without reading them first. */
   touchSession(sessionId: string, at: number): Promise<void>;
   resetMetrics(): Promise<void>;

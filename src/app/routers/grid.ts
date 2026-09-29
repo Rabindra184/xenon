@@ -8,8 +8,8 @@ import {
   addNewDevice,
   userBlockDevice,
   getDevice,
-  removeDevice,
-  removeDevicesByHost,
+  NodeRemoval,
+  removeNodeDevices,
   userUnblockDevice,
   updateDeviceTags,
   filterRowsByVisibleDevice,
@@ -28,6 +28,8 @@ import { IPluginArgs } from '../../interfaces/IPluginArgs';
 import { IDevice } from '../../interfaces/IDevice';
 import { prisma } from '../../prisma';
 import { DeviceTeamResolver } from '../../services/device-access/DeviceTeamResolver';
+import { PluginContext } from '../../PluginContext';
+import { isOwnDevice, localDeviceHosts } from '../../device-managers/localDeviceHosts';
 
 const store = DeviceStoreFactory.getStore();
 const pendingStore = DeviceStoreFactory.getPendingSessionStore();
@@ -113,6 +115,22 @@ async function getDeviceByPlatform(request: Request, response: Response) {
   return response.status(200).send(await enrichDevicesWithTeamNames(devices));
 }
 
+/** A removal a node asked for, from what it sent: strings only. */
+function nodeRemoval(host: unknown, nodeId: unknown, udid?: string): NodeRemoval {
+  return {
+    udid,
+    host: typeof host === 'string' && host !== '' ? host : undefined,
+    nodeId: typeof nodeId === 'string' && nodeId !== '' ? nodeId : undefined,
+  };
+}
+
+/** Whether a row is one of this server's own phones, which no node may remove. */
+function isThisServersOwn(): (device: IDevice) => boolean {
+  const context = Container.get(PluginContext);
+  const local = localDeviceHosts(context.pluginArgs, context.port);
+  return (device) => isOwnDevice(local, context.nodeId, device);
+}
+
 async function registerNode(request: Request, response: Response) {
   const requestBody = request.body;
   const { type } = request.query;
@@ -126,12 +144,14 @@ async function registerNode(request: Request, response: Response) {
       log.info(`Added new devices: ${JSON.stringify(addedDevices)}`);
     }
   } else if (type === 'remove') {
-    await removeDevice(requestBody);
+    // One phone each, by udid: an entry without one names no phone.
+    const removals = (Array.isArray(requestBody) ? requestBody : [])
+      .filter((entry: any) => typeof entry?.udid === 'string' && entry.udid !== '')
+      .map((entry: any) => nodeRemoval(entry.host, entry.nodeId, entry.udid));
+    await removeNodeDevices(removals, isThisServersOwn());
   } else if (type === 'unregister') {
-    const { host } = request.query;
-    if (host) {
-      await removeDevicesByHost(host as string);
-    }
+    const { host, nodeId } = request.query;
+    await removeNodeDevices([nodeRemoval(host, nodeId)], isThisServersOwn());
   }
   response.status(200).send({
     success: true,

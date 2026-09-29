@@ -1,6 +1,6 @@
 import { Container } from 'typedi';
 import log from '../../logger';
-import { DeviceStoreFactory } from '../../data-service/device-store';
+import { findOwnDevice } from '../ownDeviceRow';
 import { unblockDevice } from '../../data-service/device-service';
 import { isManualLock } from '../../services/recording/manualLock';
 import { RecordingStore } from '../../services/recording/recording-store';
@@ -38,7 +38,7 @@ export function mayReleasePreviewHold(use: PreviewHoldUse): boolean {
  */
 export async function releaseIdlePreviewHold(udid: string): Promise<boolean> {
   try {
-    const device = await DeviceStoreFactory.getStore().findDevice({ udid });
+    const device = await findOwnDevice(udid);
     if (!device) return false;
     // eslint-disable-next-line @typescript-eslint/no-var-requires
     const H264Service = require('./AndroidH264StreamService').default;

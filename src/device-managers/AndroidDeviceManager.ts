@@ -580,6 +580,7 @@ export default class AndroidDeviceManager implements IDeviceManager {
       udid: device['id'],
       host: androidDeviceHost(pluginArgs, this.hostPort),
       state: device.type,
+      nodeId: this.nodeId,
     };
     if (pluginArgs.hub != undefined) {
       const nodeDevices = new NodeDevices(pluginArgs.hub, {

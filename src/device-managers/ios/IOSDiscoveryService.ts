@@ -97,9 +97,15 @@ export class IOSDiscoveryService {
       console.log('[POISON PILL] REAL fetchLocalIOSDevices CALLED IN TEST MODE!');
     }
     const devices = await this.getConnectedDevices();
+    // This server's own row for a phone: the exact host getDeviceInfo files
+    // it under. A node on this machine sees the same iPhone and shares the
+    // IP, so its row for the udid must not be taken for ours.
+    const ownHost = iosRealDeviceHost(this.pluginArgs, this.hostPort);
     const deviceProcessingPromises = devices.map(async (udid: string) => {
       try {
-        const existingDevice = existingDeviceDetails.find((device) => device.udid === udid);
+        const existingDevice = existingDeviceDetails.find(
+          (device) => device.udid === udid && device.host === ownHost,
+        );
         if (existingDevice) {
           const networkIp = await this.fetchRealDeviceNetworkIp(udid);
           return {
@@ -125,9 +131,10 @@ export class IOSDiscoveryService {
 
   async getDeviceInfo(udid: string): Promise<IDevice> {
     const store = DeviceStoreFactory.getStore();
-    const storeDevice = await store.findDevice({ udid });
-
     const host = iosRealDeviceHost(this.pluginArgs, this.hostPort);
+    // Our own row only (udid AND host): it is spread over the result below,
+    // and another server's row would hand us its host, ports and busy state.
+    const storeDevice = await store.findDevice({ udid, host });
 
     // A real device is going to want these, so ask now — but not at the cost
     // of the whole discovery pass. See tryAcquire: an exhausted range used to
@@ -230,9 +237,11 @@ export class IOSDiscoveryService {
 
     const store = DeviceStoreFactory.getStore();
     const nodeLanIp = this.resolveNodeLanIp();
+    // A node on this Mac lists the same simulators; only our own row's ports.
+    const simHost = iosSimulatorHost(this.pluginArgs, this.hostPort);
     return await Promise.all(
       simulators.map(async (d) => {
-        const storeDevice = await store.findDevice({ udid: d.udid });
+        const storeDevice = await store.findDevice({ udid: d.udid, host: simHost });
         const willRunWda = simulatorNeedsPortNow(d.state);
         return {
           ...d,
@@ -254,7 +263,7 @@ export class IOSDiscoveryService {
             | 'android'
             | 'tvos',
           deviceType: 'simulator',
-          host: iosSimulatorHost(this.pluginArgs, this.hostPort),
+          host: simHost,
           ip: nodeLanIp,
           totalUtilizationTimeMilliSec: await getUtilizationTime(d.udid),
           sessionStartTime: 0,
@@ -314,7 +323,9 @@ export class IOSDiscoveryService {
     tracker.on('detached', async (udid: string) => {
       // The host 'attached' filed it under (getDeviceInfo), exact: a bare IP
       // is matched as a substring and takes other servers' rows with it.
-      const deviceRemoved = [{ udid, host: iosRealDeviceHost(this.pluginArgs, this.hostPort) }];
+      const deviceRemoved = [
+        { udid, host: iosRealDeviceHost(this.pluginArgs, this.hostPort), nodeId: this.nodeId },
+      ];
       if (this.pluginArgs.hub) {
         await new NodeDevices(this.pluginArgs.hub, {
           tlsRejectUnauthorized: this.pluginArgs.tlsRejectUnauthorized,
