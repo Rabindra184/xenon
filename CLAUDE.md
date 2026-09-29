@@ -300,6 +300,13 @@ and tunnel. Two rules follow:
   teardown (`stopIdleStreamForDevice`) or the idle watchdog stops it later.
   Restarts and shutdown still stop it.
 
+**WDA names no phone.** `/status` has `os`, `ios.ip`, `build` and `device`
+(the form factor); `/wda/device/info`'s `uuid` is `identifierForVendor`, not
+the UDID. So `isWDARunning(port, retries)` says whether *a* WDA answers,
+never whose, and takes no udid. A caller relies on knowing the port is the
+phone's: its own stream's lease, or the Device row's `wdaLocalPort` while an
+Appium session holds that phone (the attach branch).
+
 `UniversalMjpegProxy` (`src/helpers/UniversalMjpegProxy.ts`) multiplexes a single upstream MJPEG to many browser clients. It speaks both standard HTTP MJPEG and a raw-socket fallback for WDA's headerless variant, drops lagging clients (>4 MB kernel backlog) to prevent OOM, and uses bounded retries with exponential backoff (max 10 attempts, 500ms→10s).
 
 The browser-facing URL is always `/xenon/api/control/:udid/stream` (proxy URL). Hitting it auto-starts the underlying stream service if the device is iOS — the GET handler dedupes concurrent starts via `IOSStreamService.startPromises`.

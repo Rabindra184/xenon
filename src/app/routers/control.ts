@@ -1014,8 +1014,9 @@ router.get('/:udid/stream', async (req: Request, res: Response) => {
         getSession: (id) => iosStreamService.getStreamStatus(id),
         // Single attempt (retries = 0): a healthy WDA answers in milliseconds,
         // so this costs nothing on the happy path and stays bounded by the
-        // 2.5s /status timeout when WDA is dead.
-        isWdaHealthy: (wdaPort, id) => iosStreamService.isWDARunning(wdaPort, id, 0),
+        // 2.5s /status timeout when WDA is dead. No udid: WDA names no phone
+        // (see isWDARunning). The port is this phone's stream's own lease.
+        isWdaHealthy: (wdaPort) => iosStreamService.isWDARunning(wdaPort, 0),
         startStream: async (id) => {
           log.info(
             `Stream for iOS device ${id} requested (Status: ${

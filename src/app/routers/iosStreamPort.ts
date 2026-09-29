@@ -22,7 +22,11 @@ export interface IosStreamSessionView {
 
 export interface IosStreamPortDeps {
   getSession: (udid: string) => IosStreamSessionView | undefined;
-  /** Liveness probe against WDA's /status on the session's forwarded port. */
+  /**
+   * Liveness probe against WDA's /status on the session's forwarded port. The
+   * udid is for logging only: WDA names no phone, so the probe can't confirm
+   * it. The port is this phone's own stream's.
+   */
   isWdaHealthy: (wdaPort: number, udid: string) => Promise<boolean>;
   startStream: (udid: string) => Promise<{ mjpegPort: number }>;
 }

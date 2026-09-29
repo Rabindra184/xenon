@@ -417,12 +417,15 @@ class IOSStreamService {
    * Check if WDA is already running and responding
    * Principal Resilience: Retries transient connection errors (ECONNRESET) up to 2 times
    * with exponential backoff, as these often indicate WDA is restarting or tunnel is reconnecting.
+   *
+   * It says whether *a* WDA answers on the port, never whose. WDA names no
+   * phone: /status carries os, ios.ip, build and device (the form factor),
+   * and /wda/device/info's `uuid` is identifierForVendor, not the UDID. So it
+   * takes no udid. A caller that must know the phone relies on the port
+   * being one it already knows belongs to it: its own stream's leased port,
+   * or the Device row's port while an Appium session holds that phone.
    */
-  public async isWDARunning(
-    wdaPort: number,
-    udid?: string,
-    retries = 2,
-  ): Promise<boolean> {
+  public async isWDARunning(wdaPort: number, retries = 2): Promise<boolean> {
     const axios = (await import('axios')).default;
     const host = '127.0.0.1'; // Force IPv4 for local tunnels
     const maxRetries = retries;
@@ -435,15 +438,6 @@ class IOSStreamService {
           httpAgent: new http.Agent({ keepAlive: false }),
           validateStatus: (status) => status === 200,
         });
-
-        // Principal Resilience: Verify the UDID if provided to ensure we're talking to the right device
-        const remoteUdid = response.data?.value?.ios?.udid;
-        if (udid && remoteUdid && remoteUdid !== udid) {
-          log.warn(
-            `[WDA] Port ${wdaPort} is used by a DIFFERENT device: ${remoteUdid} (expected ${udid})`,
-          );
-          return false;
-        }
 
         const isReady = response.data?.value?.ready === true;
         if (!isReady) {
@@ -715,10 +709,11 @@ class IOSStreamService {
         // row's wdaLocalPort (iOSCapabilities hands it to Appium), and acquire()
         // can't find it, because it refuses any port with a live listener, this
         // device's own included. Only while an Appium session holds the device:
-        // WDA's /status carries no udid, so outside one an answer on a stale
+        // WDA names no phone (see isWDARunning), so that session is the only
+        // evidence the port is this phone's. Outside one, an answer on a stale
         // row's port may be another phone's WDA.
         const appiumWdaPort = heldByAppiumSession(device) ? device.wdaLocalPort : undefined;
-        const alreadyUp = !!appiumWdaPort && (await this.isWDARunning(appiumWdaPort, udid));
+        const alreadyUp = !!appiumWdaPort && (await this.isWDARunning(appiumWdaPort));
         let wdaPort: number;
         if (appiumWdaPort && alreadyUp) {
           wdaPort = appiumWdaPort;
