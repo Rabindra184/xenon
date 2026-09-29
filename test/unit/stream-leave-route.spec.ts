@@ -2,7 +2,7 @@ import 'reflect-metadata';
 import { expect } from 'chai';
 import sinon from 'sinon';
 import express from 'express';
-import request from 'supertest';
+import request from '../helpers/loopbackRequest';
 import { Container } from 'typedi';
 import ControlRouter, { previewLeaveDeps, previewLeaves } from '../../src/app/routers/control';
 import { DeviceStoreFactory } from '../../src/data-service/device-store';

@@ -2,7 +2,7 @@ import { expect } from 'chai';
 import path from 'path';
 import sinon from 'sinon';
 import express4 from 'express';
-import request from 'supertest';
+import request from '../helpers/loopbackRequest';
 import {
   COMMAND_AUTH_UNAVAILABLE_BODY,
   UNKNOWN_SESSION_BODY,

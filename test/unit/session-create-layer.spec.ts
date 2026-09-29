@@ -1,7 +1,7 @@
 import { expect } from 'chai';
 import express from 'express';
 import sinon from 'sinon';
-import request from 'supertest';
+import request from '../helpers/loopbackRequest';
 import { errors } from '@appium/base-driver';
 import { createSessionCreateLayer } from '../../src/gateway/sessionCreate';
 import { currentCreateHandoff } from '../../src/gateway/createHandoff';

@@ -1,7 +1,7 @@
 import { expect } from 'chai';
 import path from 'path';
 import express4 from 'express';
-import request from 'supertest';
+import request from '../helpers/loopbackRequest';
 import { insertBeforeRoutes, routerStackOf } from '../../src/app/insertBeforeRoutes';
 import { loopbackServers } from '../helpers/loopbackServer';
 
