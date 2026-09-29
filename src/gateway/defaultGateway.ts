@@ -16,14 +16,22 @@ import { HubSessionTokenIssuer, HubSessionTokenVerifier } from './hubSessionToke
 import { nodeWebDriverUrl } from './nodeWebDriverUrl';
 import { SessionLocator, sessionRowsFrom } from './sessionLocator';
 import { DashboardHooks, createHubRouting } from './sessionGateway';
+import type { HubGrantCheck, SessionCreateDeps } from './sessionCreate';
 
 /**
  * The session gateway as a Xenon server runs it: the production wiring of
- * sessionGateway.ts, sessionLocator.ts and hubSessionToken.ts.
+ * sessionGateway.ts, sessionCreate.ts, sessionLocator.ts and hubSessionToken.ts.
  */
 
 const latencyOf = (sessionId: string) =>
   Container.get(NetworkConditioningService).getLatency(sessionId);
+
+/** `POST <basePath>/session` in the gateway, with the server's SessionLifecycleService. */
+const createWith = (hubGrants?: HubGrantCheck): SessionCreateDeps => ({
+  lifecycle: () => Container.get(SessionLifecycleService),
+  hubGrants,
+  logger: log.scope('SessionGateway'),
+});
 
 const dashboardHooks: DashboardHooks = {
   before: (sessionId, command, req, res) =>
@@ -73,12 +81,16 @@ export function hubGatewayOptions(config: HubGatewayConfig): SessionGatewayOptio
     logger: log.scope('SessionGateway'),
   });
 
-  return { routing, latencyOf };
+  return { routing, latencyOf, create: createWith() };
 }
 
-/** A node: the hub's session token is accepted in place of the client's credentials. */
+/**
+ * A node: the hub's session token is accepted in place of the client's
+ * credentials, and its create token is a create's credential.
+ */
 export function nodeGatewayOptions(hubUrl: string): SessionGatewayOptions {
-  return { hubTokens: new HubSessionTokenVerifier(hubUrl), latencyOf };
+  const hub = new HubSessionTokenVerifier(hubUrl);
+  return { hubTokens: hub, latencyOf, create: createWith(hub) };
 }
 
 /** The gateway for this server: a node when it has a hub, a hub otherwise. */

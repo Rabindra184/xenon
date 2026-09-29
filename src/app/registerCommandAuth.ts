@@ -8,6 +8,7 @@ import { createSessionListingFilter } from '../middleware/sessionListingFilter';
 import { createSessionUpgradeGuard, guardUpgradeEvents } from '../middleware/sessionUpgradeGuard';
 import { createInternalCallLayer } from '../gateway/internalCall';
 import { createSessionGatewayLayer, SessionGatewayDeps } from '../gateway/sessionGateway';
+import { createSessionCreateLayer, SessionCreateDeps } from '../gateway/sessionCreate';
 import { normalizeBasePath } from './appiumBasePath';
 import { insertAtStart, insertBeforeRoutes, InsertResult } from './insertBeforeRoutes';
 
@@ -52,24 +53,35 @@ const refuseToStart = (what: string) =>
   );
 
 /** What a server adds to the session gateway beyond per-command auth. */
-export type SessionGatewayOptions = Omit<SessionGatewayDeps, 'auth'>;
+export type SessionGatewayOptions = Omit<SessionGatewayDeps, 'auth'> & {
+  /** `POST <basePath>/session` in the gateway (gateway/sessionCreate.ts). */
+  create?: SessionCreateDeps;
+};
+
+/** The create route (`POST <basePath>/session`), where the create layer is mounted. */
+export function sessionCreatePath(basePath: unknown): string {
+  return `${normalizeBasePath(basePath)}/session`;
+}
 
 /**
  * Install the session gateway (gateway/sessionGateway.ts) and the
  * session-listing filter (sessionListingFilter.ts) ahead of Appium's routes.
  * Called from ServerManager.registerRoutes, which Appium runs after adding
- * them. The gateway is two adjacent layers:
+ * them. The gateway is three adjacent layers:
  *
  * 1. the internal-call layer (gateway/internalCall.ts), path-less, which turns
  *    Xenon's own `<basePath>/wd-internal/...` calls, when they carry this
  *    process's secret, into the plain session command;
- * 2. the session layer at `<basePath>/session/:sessionId`: per-command auth,
+ * 2. with `options.create`, the create layer at `<basePath>/session`
+ *    (gateway/sessionCreate.ts), which allocates the phone for
+ *    `POST <basePath>/session` and creates a remote phone's session itself;
+ * 3. the session layer at `<basePath>/session/:sessionId`: per-command auth,
  *    then, on a hub, forwarding of the sessions other servers run.
  *
- * The first comes first, so the session layer sees an internal call by its
- * real path and knows it for one. It is path-less because Express puts a mount
- * path back onto the URL when a mounted layer calls next(), which would undo
- * the strip. The second is mounted, so its path matching is the router's own.
+ * The first comes first, so the others see an internal call by its real path
+ * and know it for one. It is path-less because Express puts a mount path back
+ * onto the URL when a mounted layer calls next(), which would undo the strip.
+ * The others are mounted, so their path matching is the router's own.
  *
  * All of it is always installed and reads the setting per request, so a
  * server with per-command auth off pays one env check per session command and
@@ -88,12 +100,25 @@ export function registerSessionGateway(
 ): InsertResult {
   const active = deps.enabled() && !deps.authDisabled();
   const basePath = normalizeBasePath(cliArgs?.basePath);
+  const { create, ...gateway } = options;
 
   const path = sessionCommandPath(basePath);
   const internal = insertBeforeRoutes(app, '/', createInternalCallLayer(basePath));
-  const result = internal.placed
-    ? insertBeforeRoutes(app, path, createSessionGatewayLayer({ ...options, auth: deps }))
-    : internal;
+  const created =
+    internal.placed && create
+      ? insertBeforeRoutes(
+          app,
+          sessionCreatePath(basePath),
+          createSessionCreateLayer({
+            ...create,
+            authDisabled: deps.authDisabled,
+            logger: create.logger ?? deps.logger,
+          }),
+        )
+      : internal;
+  const result = created.placed
+    ? insertBeforeRoutes(app, path, createSessionGatewayLayer({ ...gateway, auth: deps }))
+    : created;
   if (!result.placed) {
     deps.logger.error(
       `Per-command auth could not be placed ahead of Appium's routes for ${path}: ${result.reason}.`,

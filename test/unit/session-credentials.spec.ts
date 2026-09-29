@@ -1,7 +1,6 @@
 import { expect } from 'chai';
 import {
   SECRET_OPTION_FIELDS,
-  capsWithCredentials,
   takeSessionCredentials,
 } from '../../src/services/session/sessionCredentials';
 
@@ -119,59 +118,5 @@ describe('takeSessionCredentials', () => {
     expect(() =>
       takeSessionCredentials({ alwaysMatch: null, firstMatch: 'x' } as any),
     ).to.not.throw();
-  });
-});
-
-describe('capsWithCredentials — the copy a peer Xenon node gets', () => {
-  // A peer node re-runs createSession: it authenticates and attributes the
-  // session and checks the lease itself, so it needs what the hub read. It
-  // takes the credentials out again before its own driver sees them.
-  const take = (caps: any) => ({ caps, credentials: takeSessionCredentials(caps) });
-
-  it('puts every credential back, so the node reads the same ones the hub did', () => {
-    const { caps, credentials } = take({
-      alwaysMatch: {
-        'xenon:options': { leaseId: 'lse_1', accessKey: 'ak_old', token: 'tk_old' },
-        'xe:options': { token: SECRETS.token, sessionToken: SECRETS.sessionToken },
-      },
-      firstMatch: [{}],
-    });
-    const forwarded = capsWithCredentials(caps, credentials);
-    expect(takeSessionCredentials(JSON.parse(JSON.stringify(forwarded)))).to.deep.equal(
-      credentials,
-    );
-  });
-
-  it('writes them into the namespace that wins, in the bucket it is in', () => {
-    const { caps, credentials } = take({
-      alwaysMatch: { 'xenon:options': { leaseId: 'lse_1', leaseToken: SECRETS.leaseToken } },
-      firstMatch: [{ 'xe:options': { accessKey: SECRETS.accessKey, token: SECRETS.token } }],
-    });
-    const forwarded: any = capsWithCredentials(caps, credentials);
-    expect(forwarded.firstMatch[0]['xe:options']).to.deep.equal({
-      accessKey: SECRETS.accessKey,
-      token: SECRETS.token,
-      leaseToken: SECRETS.leaseToken,
-    });
-    expect(forwarded.alwaysMatch['xenon:options']).to.deep.equal({ leaseId: 'lse_1' });
-  });
-
-  it('does not modify the caps it copies', () => {
-    const { caps, credentials } = take({
-      alwaysMatch: { 'xe:options': { leaseId: 'lse_1', ...SECRETS } },
-      firstMatch: [{}],
-    });
-    const before = JSON.stringify(caps);
-    capsWithCredentials(caps, credentials);
-    expect(JSON.stringify(caps)).to.equal(before);
-    expect(leaks(caps)).to.deep.equal([]);
-  });
-
-  it('returns the caps unchanged when there is nothing to put back', () => {
-    const { caps, credentials } = take({
-      alwaysMatch: { 'xe:options': { leaseId: 'lse_1' } },
-      firstMatch: [{}],
-    });
-    expect(capsWithCredentials(caps, credentials)).to.equal(caps);
   });
 });

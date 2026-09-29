@@ -39,11 +39,9 @@ import {
 import { JwtKeyService } from './token/JwtKeyService';
 import { resolveSessionIdentity } from './session/sessionIdentity';
 import { leaseIdOf } from './lease/leaseSessionCaps';
-import {
-  SessionCredentials,
-  capsWithCredentials,
-  takeSessionCredentials,
-} from './session/sessionCredentials';
+import { SessionCredentials, takeSessionCredentials } from './session/sessionCredentials';
+import { capsForNode } from './session/nodeCreateCaps';
+import { mergedFirstMatch } from './session/xenonOptions';
 import { canOverrideLease } from './device-access/leaseOverride';
 import { computeTeamIds } from './device-access/callerTeamIds';
 import { PendingRequester, REQUESTER_KEY } from './device-access/queueVisibility';
@@ -56,7 +54,11 @@ import {
 } from './session/appCapability';
 import { CircuitBreaker } from '../data-service/CircuitBreaker';
 import { nodeWebDriverUrl } from '../gateway/nodeWebDriverUrl';
-import { HubSessionTokenIssuer } from '../gateway/hubSessionToken';
+import {
+  HUB_TOKEN_HEADER,
+  HubCreateGrant,
+  HubSessionTokenIssuer,
+} from '../gateway/hubSessionToken';
 import { DeviceStoreFactory } from '../data-service/device-store';
 import { XenonSession, XenonSessionOptions } from '../sessions/XenonSession';
 import { LocalSession } from '../sessions/LocalSession';
@@ -83,6 +85,35 @@ type LeaseCredential =
   | { kind: 'session-token'; userId: string; teamId: string | null }
   | { kind: 'none' };
 
+/** Who a new session is for, and what it may use. See authorizeSessionRequest. */
+interface AuthorizedSession {
+  apiKeyId: string | null;
+  userId: string | null;
+  callerTeamIds: string[] | undefined;
+  scoped: boolean;
+  leaseAccess: () => Promise<LeaseAccess>;
+  requester: PendingRequester;
+}
+
+/**
+ * A phone allocated for a new session, between prepareSession and its
+ * completion (completeLocalSession / completeRemoteSession) or release
+ * (releaseAllocation).
+ */
+export interface SessionAllocation {
+  /** The capabilities it was allocated for, with the credentials already taken out. */
+  caps: ISessionCapability;
+  device: IDevice;
+  /** Another server drives the phone: a Xenon node, or a cloud provider. */
+  remote: boolean;
+  /** The pending-session row, removed when the session is created or refused. */
+  pendingSessionId: string;
+  apiKeyId: string | null;
+  userId: string | null;
+  /** An uploaded app the session names by id, resolved to its download URL. */
+  appDownload?: { appId: string; url: string };
+}
+
 const commandsQueueGuard = new AsyncLock();
 // Serializes concurrent deleteSession cleanup for the same sessionId so
 // that onSessionStopped events don't fire twice if two clients race.
@@ -92,7 +123,59 @@ const sessionCleanupLock = new AsyncLock();
 export class SessionLifecycleService {
   private logger = log.scope('SessionLifecycleService');
 
-  async createSession(next: () => any, driver: any, caps: ISessionCapability) {
+  /**
+   * Create a session in one call: prepare it (allocate a phone), then
+   * complete it here through `next` (a phone this server drives) or on the
+   * phone's node (one another server drives).
+   *
+   * The session gateway runs the same steps with Appium's route between them
+   * (gateway/sessionCreate.ts): it prepares, answers a remote phone itself,
+   * and hands a local phone's allocation to XenonPlugin.createSession, which
+   * completes it. The plugin calls this only for a create that did not come
+   * through the gateway, with `localOnly`: a phone on another server is then
+   * given back and refused, since answering for Appium without its driver is
+   * what made Appium's umbrella fail (a 500 while the node kept the session).
+   */
+  async createSession(
+    next: () => any,
+    driver: any,
+    caps: ISessionCapability,
+    opts: { localOnly?: boolean } = {},
+  ) {
+    const allocation = await this.prepareSession(caps);
+    if (!allocation.remote) return this.completeLocalSession(allocation, next, driver, caps);
+    if (opts.localOnly) {
+      await this.releaseAllocation(allocation);
+      throw new appiumErrors.SessionNotCreatedError(
+        `Device ${allocation.device.udid} is driven by another server ` +
+          `(${allocation.device.host}). Xenon creates sessions there in its session gateway, ` +
+          'which did not handle this request; the device was released.',
+      );
+    }
+    return this.completeRemoteSession(allocation);
+  }
+
+  /**
+   * The first half of a create: everything up to and including allocating a
+   * phone. It takes the credentials out of `caps` (in place) before anything
+   * reads them, checks them (or the hub's grant), validates the capabilities,
+   * resolves an uploaded app, writes the pending-session row and allocates.
+   * Throws to refuse, leaving no pending row and no busy phone.
+   *
+   * `hubGrant` is the verified grant of a create the hub forwarded (a node
+   * only; gateway/sessionCreate.ts). Each instance has its own database, so a
+   * node can't check the client's key: the hub checked it, applied the team
+   * rule and the session-token gate, and resolved any lease. The grant is
+   * then the session's credential: it names the owner, and the one phone on
+   * this node the create may have.
+   *
+   * What it returns must be completed (completeLocalSession /
+   * completeRemoteSession) or released (releaseAllocation).
+   */
+  async prepareSession(
+    caps: ISessionCapability,
+    opts: { hubGrant?: HubCreateGrant } = {},
+  ): Promise<SessionAllocation> {
     // Fail fast during graceful shutdown so clients get a clear error instead
     // of their request hanging until the process dies. Lazy import to avoid
     // a cycle (ShutdownCoordinator -> SessionLifecycleService -> this file).
@@ -109,7 +192,11 @@ export class SessionLifecycleService {
     // the checks that need them.
     const credentials = takeSessionCredentials(caps);
 
-    const authResult = await this.authorizeSessionRequest(caps, credentials);
+    const { hubGrant } = opts;
+    if (hubGrant) this.assertGrantNamesCapsPhone(caps, hubGrant);
+    const authResult = hubGrant
+      ? this.authorizeHubGrant(hubGrant)
+      : await this.authorizeSessionRequest(caps, credentials);
 
     const context = Container.get(PluginContext);
     const pluginArgs = context.pluginArgs;
@@ -192,74 +279,159 @@ export class SessionLifecycleService {
 
     await updateDeviceProgress(device.udid, device.host, 'Allocating node resources...');
 
-    let session: CreateSessionResponseInternal | W3CNewSessionResponseError | Error;
-    const isRemoteOrCloudSession = !device.nodeId || device.nodeId !== context.nodeId;
-
     this.logger.debug(
       `device.host: ${device.host} and pluginArgs.bindHostOrIp: ${pluginArgs.bindHostOrIp}`,
     );
 
-    try {
-      if (isRemoteOrCloudSession) {
-        this.logger.debug(`📱 Forwarding session request to ${device.host}`);
-        await updateDeviceProgress(device.udid, device.host, 'Forwarding to remote node...');
-        // A peer Xenon node re-runs createSession — authentication,
-        // attribution, the session-token gate and the lease check — so it
-        // needs the credentials this hub read; it strips them itself. A cloud
-        // provider is not a Xenon node and never sees them.
-        const isPeerNode = !device.cloud && !!device.nodeId;
-        const forwardCaps = isPeerNode ? capsWithCredentials(caps, credentials) : caps;
-        // The node's driver downloads the app from this hub, so the copy it
-        // is sent carries the ticket; `caps` keeps the plain URL.
-        session = await this.forwardSessionRequest(
-          device,
-          appDownload
-            ? withAppCapability(forwardCaps, await this.driverAppUrl(appDownload))
-            : forwardCaps,
-        );
-      } else {
-        this.logger.debug('📱 Creating session on the same node');
-        await this.handleLocalWDAProvisioning(device, caps);
+    const allocation: SessionAllocation = {
+      caps,
+      device,
+      remote: !device.nodeId || device.nodeId !== context.nodeId,
+      pendingSessionId,
+      apiKeyId: authResult.apiKeyId,
+      userId: authResult.userId,
+      appDownload,
+    };
 
-        await updateDeviceProgress(device.udid, device.host, 'Finalizing session bootstrap...');
-        // The driver reads these same caps and downloads the app while it
-        // starts, so the ticket is in them for this call only.
-        if (appDownload) setAppCapability(caps, await this.driverAppUrl(appDownload));
-        try {
-          session = await next();
-        } finally {
-          if (appDownload) setAppCapability(caps, appDownload.url);
-        }
-      }
-    } catch (err: any) {
-      // A THROWN error from the driver's createSession (next()) or the remote
-      // forward leaves the device locked: allocateDeviceForSession already set
-      // busy=true, and on the throw path neither finalizeSession nor
-      // handleSessionFailure runs — so without this the device gets stuck busy
-      // with no session. Release it, then rethrow the original error.
-      // (handleSessionFailure below covers the separate case where next()
-      // RETURNS a W3C error object rather than throwing.)
+    // The grant opens one phone, on this node. A token taken to another node
+    // (an emulator's udid repeats across machines), or naming a phone this
+    // node does not drive, is refused, and the phone given back.
+    if (
+      hubGrant &&
+      (allocation.remote || device.udid !== hubGrant.udid || device.host !== hubGrant.host)
+    ) {
+      await this.releaseAllocation(allocation);
       this.logger.error(
-        `❌ Session creation failed for device ${device.udid}: ${err?.message ?? err}. Unblocking device.`,
+        `❌ Rejecting session: the hub's token is for ${hubGrant.udid} at ${hubGrant.host}, ` +
+          `and this node allocated ${device.udid} at ${device.host}`,
       );
-      try {
-        await removePendingSession(pendingSessionId);
-        await unblockDevice(device.udid, device.host);
-        await updateDeviceProgress(device.udid, device.host, '');
-        if (isRemoteOrCloudSession) {
-          (Container.get(CircuitBreaker) as CircuitBreaker).recordFailure(device.host);
-        }
-      } catch (cleanupErr: any) {
-        this.logger.warn(
-          `Cleanup after failed session creation had issues: ${cleanupErr?.message ?? cleanupErr}`,
-        );
-      }
+      throw new appiumErrors.InvalidArgumentError(
+        "session rejected: the hub's token for this session names another device",
+      );
+    }
+    return allocation;
+  }
+
+  /**
+   * Complete a create on the phone's node (or cloud provider), and record the
+   * session here. On failure the phone is released and the error thrown.
+   */
+  async completeRemoteSession(
+    allocation: SessionAllocation,
+  ): Promise<CreateSessionResponseInternal | W3CNewSessionResponseError | Error> {
+    const { device, caps, appDownload } = allocation;
+    let session: CreateSessionResponseInternal | W3CNewSessionResponseError | Error;
+    try {
+      this.logger.debug(`📱 Forwarding session request to ${device.host}`);
+      await updateDeviceProgress(device.udid, device.host, 'Forwarding to remote node...');
+      // A peer Xenon node gets a create that stands on its own (capsForNode:
+      // no credentials, no lease id, the phone pinned), with the hub's token
+      // naming the owner this hub verified, since it can't check the client's
+      // key in its own database. A cloud provider is not a Xenon node: it
+      // gets the caps without the credentials, and no token.
+      const isPeerNode = !device.cloud && !!device.nodeId;
+      const forwardCaps = isPeerNode ? capsForNode(caps, device.udid) : caps;
+      const hubToken = isPeerNode
+        ? await Container.get(HubSessionTokenIssuer).createTokenFor({
+            userId: allocation.userId,
+            udid: device.udid,
+            host: device.host,
+          })
+        : null;
+      // The node's driver downloads the app from this hub, so the copy it
+      // is sent carries the ticket; `caps` keeps the plain URL.
+      session = await this.forwardSessionRequest(
+        device,
+        appDownload
+          ? withAppCapability(forwardCaps, await this.driverAppUrl(appDownload))
+          : forwardCaps,
+        hubToken,
+      );
+    } catch (err: any) {
+      await this.failedCreate(allocation, err);
       throw err;
     }
+    return this.finishCreate(allocation, session, undefined);
+  }
 
+  /**
+   * Complete a create on a phone this server drives: `next` is Appium's own
+   * createSession, and `caps` the capabilities its driver reads. On failure
+   * the phone is released and the error thrown.
+   */
+  async completeLocalSession(
+    allocation: SessionAllocation,
+    next: () => any,
+    driver: any,
+    caps: ISessionCapability,
+  ) {
+    const { device, appDownload } = allocation;
+    let session: CreateSessionResponseInternal | W3CNewSessionResponseError | Error;
+    try {
+      this.logger.debug('📱 Creating session on the same node');
+      await this.handleLocalWDAProvisioning(device, caps);
+
+      await updateDeviceProgress(device.udid, device.host, 'Finalizing session bootstrap...');
+      // The driver reads these same caps and downloads the app while it
+      // starts, so the ticket is in them for this call only.
+      if (appDownload) setAppCapability(caps, await this.driverAppUrl(appDownload));
+      try {
+        session = await next();
+      } finally {
+        if (appDownload) setAppCapability(caps, appDownload.url);
+      }
+    } catch (err: any) {
+      await this.failedCreate(allocation, err);
+      throw err;
+    }
+    return this.finishCreate({ ...allocation, caps }, session, driver);
+  }
+
+  /**
+   * Give back a phone allocated for a session that was never created: its
+   * pending-session row goes and the phone is free again. Never throws.
+   */
+  async releaseAllocation(allocation: SessionAllocation): Promise<void> {
+    const { device } = allocation;
+    try {
+      await removePendingSession(allocation.pendingSessionId);
+      await unblockDevice(device.udid, device.host);
+      await updateDeviceProgress(device.udid, device.host, '');
+    } catch (cleanupErr: any) {
+      this.logger.warn(
+        `Cleanup after failed session creation had issues: ${cleanupErr?.message ?? cleanupErr}`,
+      );
+    }
+  }
+
+  // A THROWN error from the driver's createSession (next()) or the remote
+  // forward leaves the device locked: allocation already set busy=true, and
+  // on the throw path neither finalizeSession nor handleSessionFailure runs,
+  // so without this the device gets stuck busy with no session. (finishCreate
+  // covers the separate case where next() RETURNS a W3C error object rather
+  // than throwing.)
+  private async failedCreate(allocation: SessionAllocation, err: any): Promise<void> {
+    const { device } = allocation;
+    this.logger.error(
+      `❌ Session creation failed for device ${device.udid}: ${err?.message ?? err}. Unblocking device.`,
+    );
+    await this.releaseAllocation(allocation);
+    if (allocation.remote) {
+      (Container.get(CircuitBreaker) as CircuitBreaker).recordFailure(device.host);
+    }
+  }
+
+  private async finishCreate(
+    allocation: SessionAllocation,
+    session: CreateSessionResponseInternal | W3CNewSessionResponseError | Error,
+    driver: any,
+  ) {
+    const { device, caps, remote } = allocation;
     this.logger.debug('📱 Session response: ', JSON.stringify(session));
-    this.logger.debug(`📱 Removing pending session with capability_id: ${pendingSessionId}`);
-    await removePendingSession(pendingSessionId);
+    this.logger.debug(
+      `📱 Removing pending session with capability_id: ${allocation.pendingSessionId}`,
+    );
+    await removePendingSession(allocation.pendingSessionId);
 
     if (this.isCreateSessionResponseInternal(session)) {
       await this.finalizeSession(
@@ -267,15 +439,48 @@ export class SessionLifecycleService {
         device,
         caps,
         driver,
-        isRemoteOrCloudSession,
-        authResult.apiKeyId,
-        authResult.userId,
+        remote,
+        allocation.apiKeyId,
+        allocation.userId,
       );
     } else {
-      await this.handleSessionFailure(session, device, isRemoteOrCloudSession);
+      await this.handleSessionFailure(session, device, remote);
     }
 
     return session;
+  }
+
+  /**
+   * A grant is for the phone the hub pinned in the caps it forwarded
+   * (capsForNode). Caps that name another one, or a list to pick from, are
+   * not a create the hub sent: refused before anything is allocated.
+   */
+  private assertGrantNamesCapsPhone(caps: ISessionCapability, grant: HubCreateGrant): void {
+    const merged = mergedFirstMatch(caps);
+    if (merged['appium:udid'] === grant.udid && merged['appium:udids'] === undefined) return;
+    this.logger.error(
+      `❌ Rejecting session: the hub's token is for ${grant.udid}, and the capabilities name ` +
+        `${merged['appium:udids'] ?? merged['appium:udid'] ?? 'no device'}`,
+    );
+    throw new appiumErrors.InvalidArgumentError(
+      "session rejected: the hub's token for this session names another device",
+    );
+  }
+
+  /**
+   * The session's identity when the hub forwarded the create with its grant:
+   * the owner the hub verified, unscoped (the hub applied the team rule), and
+   * no lease override (the hub resolved the lease).
+   */
+  private authorizeHubGrant(grant: HubCreateGrant): AuthorizedSession {
+    return {
+      apiKeyId: null,
+      userId: grant.userId,
+      callerTeamIds: undefined,
+      scoped: false,
+      leaseAccess: async () => ({ canOverride: false, teamIds: undefined }),
+      requester: { userId: grant.userId, teamId: null },
+    };
   }
 
   /**
@@ -354,14 +559,7 @@ export class SessionLifecycleService {
   private async authorizeSessionRequest(
     caps: ISessionCapability,
     credentials: SessionCredentials,
-  ): Promise<{
-    apiKeyId: string | null;
-    userId: string | null;
-    callerTeamIds: string[] | undefined;
-    scoped: boolean;
-    leaseAccess: () => Promise<LeaseAccess>;
-    requester: PendingRequester;
-  }> {
+  ): Promise<AuthorizedSession> {
     const { config: xenonConfig } = await import('../config');
     // `scoped` tells the allocator whether to restrict device candidates by
     // team. False = see everything (admin, authDisabled, back-compat path);
@@ -826,17 +1024,25 @@ export class SessionLifecycleService {
     this.throwProperError(session, device.host);
   }
 
+  /**
+   * POST the create to the phone's node (or cloud provider). `hubToken` is
+   * this hub's create token for a peer Xenon node (HubSessionTokenIssuer),
+   * sent as `x-xenon-hub-token`; nothing else of the client's goes with it.
+   */
   async forwardSessionRequest(
     device: IDevice,
     caps: ISessionCapability,
+    hubToken: string | null = null,
   ): Promise<CreateSessionResponseInternal | Error> {
     const context = Container.get(PluginContext);
     const remoteUrl = `${await nodeWebDriverUrl(device, context.nodeBasePath)}/session`;
 
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (hubToken) headers[HUB_TOKEN_HEADER] = hubToken;
     const config: AxiosRequestConfig = {
       method: 'post',
       url: remoteUrl,
-      headers: { 'Content-Type': 'application/json' },
+      headers,
       data: { capabilities: caps },
     };
 
@@ -943,6 +1149,10 @@ export class SessionLifecycleService {
       Object.prototype.hasOwnProperty.call(session, 'error')
     ) {
       let errorMessage = (session as W3CNewSessionResponseError).error;
+      // Appium answers a refused create as `{ error: <Error> }`. Rethrow it, so
+      // the client gets Appium's reason and status; JSON.stringify of an Error
+      // is `{}`.
+      if ((errorMessage as unknown) instanceof Error) throw errorMessage;
       if (typeof errorMessage === 'object') {
         errorMessage = JSON.stringify(errorMessage);
       }

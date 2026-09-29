@@ -18,6 +18,7 @@ import { redactSecrets } from '../../../src/logger';
 import { RequestLogService } from '../../../src/services/RequestLogService';
 import { EVENT_BUS } from '../../../src/services/EventBus';
 import { JwtKeyService } from '../../../src/services/token/JwtKeyService';
+import { HubSessionTokenIssuer } from '../../../src/gateway/hubSessionToken';
 import { prisma } from '../../../src/prisma';
 import { saveRegistrations } from '../../helpers/container-registration';
 
@@ -349,12 +350,16 @@ describe('createSession — a lease-bound session proves it holds the lease', ()
           forwardedCaps = JSON.parse(JSON.stringify(c));
           return { protocol: 'W3C', value: ['sess-1', {}, 'W3C'] } as any;
         });
+        // The hub's token needs its signing key, which this spec has no use for.
+        sinon.stub(HubSessionTokenIssuer.prototype, 'createTokenFor').resolves('HUB-TOKEN');
       });
 
-      it('forwards the token to a peer Xenon node, which runs the same check', async () => {
+      it('forwards neither the lease id nor its token to a peer Xenon node: the hub resolved the lease to its phone', async () => {
         device.nodeId = 'node-peer';
         await create(sessionCaps({ leaseToken: TOKEN }));
-        expect(forwardedCaps.alwaysMatch['xe:options'].leaseToken).to.equal(TOKEN);
+        expect(JSON.stringify(forwardedCaps)).to.not.include(TOKEN);
+        expect(JSON.stringify(forwardedCaps)).to.not.include('lse_1');
+        expect(forwardedCaps.alwaysMatch['appium:udid']).to.equal('u1');
         expect(JSON.stringify(finalCaps)).to.not.include(TOKEN);
         expect(JSON.stringify(pendingCopy)).to.not.include(TOKEN);
       });

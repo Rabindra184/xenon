@@ -4,8 +4,10 @@ import sinon from 'sinon';
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
+import * as jose from 'jose';
 import { Container } from 'typedi';
 import { SessionLifecycleService } from '../../src/services/SessionLifecycleService';
+import { HUB_CREATE_AUDIENCE } from '../../src/gateway/hubSessionToken';
 import { PluginContext } from '../../src/PluginContext';
 import { ApiKeyService } from '../../src/services/ApiKeyService';
 import { UserService } from '../../src/services/UserService';
@@ -277,7 +279,7 @@ describe('createSession — an app named by id follows the team rule', () => {
       }
     });
 
-    it('a peer node gets the ticket and the credentials; the hub keeps neither', async () => {
+    it('a peer node gets the ticket and the hub’s token, never the credentials; the hub keeps neither', async () => {
       allocate.resolves({
         udid: 'u2',
         host: 'http://10.0.0.2:4723',
@@ -285,18 +287,19 @@ describe('createSession — an app named by id follows the team rule', () => {
         nodeId: 'node-2',
       } as any);
       let forwarded: any;
-      sinon.stub(svc, 'forwardSessionRequest').callsFake(async (_d: any, fc: any) => {
+      let hubToken: any;
+      sinon.stub(svc, 'forwardSessionRequest').callsFake(async (_d: any, fc: any, t: any) => {
         forwarded = JSON.parse(JSON.stringify(fc));
+        hubToken = t;
         return { value: ['sess-2', { platformName: 'Android' }] } as any;
       });
       sinon.stub(svc as any, 'finalizeSession').resolves();
       const c = caps('app-a', 'ak_team_a');
       await svc.createSession(sinon.stub(), {}, c);
       expect(parseAppUrl(forwarded.alwaysMatch['appium:app']).appId).to.equal('app-a');
-      expect(forwarded.alwaysMatch['xe:options']).to.deep.equal({
-        accessKey: 'ak_team_a',
-        token: 'tk',
-      });
+      expect(forwarded.alwaysMatch['xe:options']).to.deep.equal({});
+      expect(JSON.stringify(forwarded)).to.not.match(/"token"|"accessKey"/);
+      expect(jose.decodeJwt(hubToken)).to.include({ aud: HUB_CREATE_AUDIENCE, udid: 'u2' });
       for (const [where, seen] of Object.entries({ pendingCopy, sent: c })) {
         const text = JSON.stringify(seen);
         expect(text, where).to.include(PLAIN);
