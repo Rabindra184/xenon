@@ -233,7 +233,11 @@ provider never gets either.
 own phones (`devicesClearedAtBoot`); its nodes' rows stay, so
 `recoverActiveSessions` rebuilds their `RemoteSession`s (under each node's own
 base path) and the gateway routes them again. Before the gateway every row was
-wiped at boot, so every remote session was marked failed on restart.
+wiped at boot, so every remote session was marked failed on restart. A
+graceful shutdown (SIGTERM) drains only the hub's own local sessions
+(`ShutdownCoordinator`); until 2.1 it also finalized node and cloud sessions,
+releasing the phone and closing the row on the hub while the node kept the
+session running, unreachable, until its idle timeout.
 
 **Not supported:** BiDi and session WebSockets through the hub; the
 `webSocketUrl` a session returns points at the node, so nodes must not sit on

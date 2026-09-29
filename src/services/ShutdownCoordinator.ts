@@ -2,6 +2,7 @@ import { Service, Container } from 'typedi';
 import log from '../logger';
 import { SESSION_MANAGER } from '../sessions/SessionManager';
 import { SessionLifecycleService } from './SessionLifecycleService';
+import SessionType from '../enums/SessionType';
 
 // Graceful shutdown phase that runs BEFORE the existing infrastructure
 // teardown in index.ts:cleanup(). Active sessions get a bounded chance to
@@ -32,7 +33,14 @@ export class ShutdownCoordinator {
     }
     this.draining = true;
 
-    const sessions = SESSION_MANAGER.getAllSessions();
+    // Only this server's own sessions: they die with the process. A node's or
+    // a cloud provider's session keeps running there, and the restarted hub
+    // routes it again from its database (SessionManager.recoverActiveSessions).
+    // Finalizing it here released the phone and closed the row, so recovery
+    // found nothing, and the node held a session no client could reach.
+    const sessions = SESSION_MANAGER.getAllSessions().filter(
+      (session) => session.getType() === SessionType.LOCAL,
+    );
     if (sessions.length === 0) {
       this.logger.info('No active sessions to drain');
       return { attempted: 0, completed: 0 };
