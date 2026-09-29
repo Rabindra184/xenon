@@ -323,7 +323,9 @@ export class IOSDiscoveryService {
     tracker.on('detached', async (udid: string) => {
       // The host 'attached' filed it under (getDeviceInfo), exact: a bare IP
       // is matched as a substring and takes other servers' rows with it.
-      const deviceRemoved = [{ udid, host: iosRealDeviceHost(this.pluginArgs, this.hostPort) }];
+      const deviceRemoved = [
+        { udid, host: iosRealDeviceHost(this.pluginArgs, this.hostPort), nodeId: this.nodeId },
+      ];
       if (this.pluginArgs.hub) {
         await new NodeDevices(this.pluginArgs.hub, {
           tlsRejectUnauthorized: this.pluginArgs.tlsRejectUnauthorized,

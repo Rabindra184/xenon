@@ -65,12 +65,17 @@ export default class NodeDevices {
     }
   }
 
-  async unRegisterNode(host: string) {
+  /**
+   * Ask the hub to forget this node's phones filed under `host`. With the
+   * node's id the hub takes every phone this node reported, whatever its
+   * host; it never takes another server's (grid.ts, removeNodeDevices).
+   */
+  async unRegisterNode(host: string, nodeId?: string) {
     log.info(`Unregistering node ${this.host}/xenon/api/register`);
     try {
       const client = InternalHttpClient.getClient(this.tlsRejectUnauthorized);
       await client.post(`${this.host}/xenon/api/register`, [], {
-        params: { type: 'unregister', host },
+        params: { type: 'unregister', host, ...(nodeId ? { nodeId } : {}) },
         headers: this.nodeHeaders(),
       });
       log.info(`Unregistered node ${host} from hub`);

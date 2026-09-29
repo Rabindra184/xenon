@@ -202,6 +202,7 @@ class LokiDeviceStore implements IDeviceStore {
     return added;
   }
 
+  // Loki's find() matches a host exactly already, so `exactHost` changes nothing here.
   async removeDevices(filter: Partial<IDevice>): Promise<void> {
     (await XenonDatabase.DeviceModel).chain().find(filter).remove();
   }

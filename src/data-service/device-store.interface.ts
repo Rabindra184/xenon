@@ -33,7 +33,11 @@ export interface IDeviceStore {
   updateDevice(udid: string, host: string, updateData: Partial<IDevice>): Promise<void>;
   /** Adds the phones the store doesn't have and returns only those. */
   addDevices(devices: IDevice[], options?: AddDevicesOptions): Promise<IDevice[]>;
-  removeDevices(filter: Partial<IDevice>): Promise<void>;
+  /**
+   * Delete the phones matching `filter`. The Prisma store matches a host that
+   * isn't a URL as a substring, unless `exactHost` is set.
+   */
+  removeDevices(filter: Partial<IDevice>, options?: { exactHost?: boolean }): Promise<void>;
   /** Delete every phone, or only those filed under these hosts. */
   clearStorage(onlyHosts?: readonly string[]): Promise<void>;
   findDevice(filter: Partial<IDevice>): Promise<IDevice | null>;

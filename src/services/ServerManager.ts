@@ -475,7 +475,12 @@ export class ServerManager {
         process.once(signal, async () => {
           log.info(`Received ${signal}, unregistering node from hub...`);
           try {
-            await unregisterNodeFromHub(hubArgument, localHosts, pluginArgs.tlsRejectUnauthorized);
+            await unregisterNodeFromHub(
+              hubArgument,
+              localHosts,
+              pluginArgs.tlsRejectUnauthorized,
+              Container.get(PluginContext).nodeId,
+            );
           } catch (err) {
             log.error(`Error during node unregistration: ${err}`);
           }

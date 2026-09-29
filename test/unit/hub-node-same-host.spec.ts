@@ -6,7 +6,7 @@ import { Container } from 'typedi';
 import { prisma } from '../../src/prisma';
 import { PrismaDeviceStore } from '../../src/data-service/prisma-store';
 import { DeviceStoreFactory } from '../../src/data-service/device-store';
-import { removeDevicesByHost } from '../../src/data-service/device-service';
+import { removeNodeDevices } from '../../src/data-service/device-service';
 import {
   removeStaleDevices,
   unregisterNodeFromHub,
@@ -291,7 +291,9 @@ describe('A hub and a node on one machine keep to their own phones', () => {
     const hubReceives = () =>
       sinon
         .stub(NodeDevices.prototype, 'unRegisterNode')
-        .callsFake(async (host: string) => removeDevicesByHost(host));
+        .callsFake(async (host: string, nodeId?: string) => {
+          await removeNodeDevices([{ host, nodeId }], (d) => d.host === HUB);
+        });
 
     it("removes only the node's phones from the hub", async () => {
       seed([phone('hub-phone', HUB), phone('node-phone', NODE)]);

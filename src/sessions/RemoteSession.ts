@@ -4,6 +4,11 @@ import log from '../logger';
 import SessionType from '../enums/SessionType';
 import { HUB_TOKEN_HEADER, HubSessionTokenIssuer } from '../gateway/hubSessionToken';
 import {
+  NODE_SESSION_STATUS_HEADER,
+  NODE_SESSION_STATUS_PATH,
+  NodeSessionProbeSupport,
+} from '../gateway/nodeSessionStatus';
+import {
   HealthErrorType,
   SessionHealthResult,
   XenonSession,
@@ -224,6 +229,14 @@ export class RemoteSession extends XenonSession {
     }
   }
 
+  /**
+   * Whether the node still has this session. The node is asked with its
+   * session-status route (gateway/nodeSessionStatus.ts), which reads Appium's
+   * umbrella and runs no command: a WebDriver probe every ~30 s restarted the
+   * node driver's new-command timeout and Xenon's idle clock there, so an
+   * abandoned session and its phone were kept alive for ever. A node without
+   * the route (an older Xenon) is probed the old way, and the hub says so once.
+   */
   async checkHealth(): Promise<SessionHealthResult> {
     if (!this.sessionId) {
       return {
@@ -232,7 +245,74 @@ export class RemoteSession extends XenonSession {
         message: 'No session ID assigned',
       };
     }
+    return (await this.askNodeForSession()) ?? this.probeWithCommand();
+  }
 
+  /**
+   * The node's answer at its session-status route, or null when it has no
+   * such route and the WebDriver probe has to do.
+   */
+  protected async askNodeForSession(): Promise<SessionHealthResult | null> {
+    let origin: string;
+    try {
+      origin = new URL(this.baseUrl).origin;
+    } catch {
+      return null;
+    }
+    const support = Container.get(NodeSessionProbeSupport);
+    if (!support.shouldAsk(origin)) return null;
+
+    let response: AxiosResponse;
+    try {
+      response = await this.call({
+        method: 'get',
+        url: `${origin}${NODE_SESSION_STATUS_PATH}/${encodeURIComponent(this.sessionId)}`,
+        timeout: 5000,
+        validateStatus: () => true,
+      });
+    } catch (err: any) {
+      const unreachable = err?.code === 'ECONNREFUSED' || err?.code === 'ETIMEDOUT';
+      return {
+        isHealthy: false,
+        errorType: unreachable ? HealthErrorType.SERVER_UNREACHABLE : HealthErrorType.TIMEOUT,
+        message: `Node session status failed: ${err?.code ?? err?.message ?? err}`,
+      };
+    }
+
+    if (!response.headers?.[NODE_SESSION_STATUS_HEADER]) {
+      support.unsupported(origin, response.status);
+      return null;
+    }
+    const exists = response.data?.value?.exists;
+    if (response.status === 200 && typeof exists === 'boolean') {
+      if (exists) return { isHealthy: true, errorType: HealthErrorType.NONE, statusCode: 200 };
+      return {
+        isHealthy: false,
+        errorType: HealthErrorType.SESSION_NOT_FOUND,
+        message: 'The node no longer has this session',
+        statusCode: 404,
+      };
+    }
+    // The node refused the hub's token for it, as the WebDriver probe's
+    // unknown-session answer would.
+    if (response.status === 404) {
+      return {
+        isHealthy: false,
+        errorType: HealthErrorType.SESSION_NOT_FOUND,
+        message: "The node refused the hub's token for this session",
+        statusCode: 404,
+      };
+    }
+    return {
+      isHealthy: false,
+      errorType: HealthErrorType.DRIVER_ERROR,
+      message: `Node session status answered ${response.status}`,
+      statusCode: response.status,
+    };
+  }
+
+  /** The probe for a node without the session-status route: a WebDriver command. */
+  protected async probeWithCommand(): Promise<SessionHealthResult> {
     // Identify the root Appium URL (strip /wd-internal if present)
     const appiumUrl = this.baseUrl.replace(/\/wd-internal$/, '');
 

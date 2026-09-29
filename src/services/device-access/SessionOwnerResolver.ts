@@ -1,5 +1,6 @@
-import { Service } from 'typedi';
+import { Container, Service } from 'typedi';
 import { prisma as defaultPrisma } from '../../prisma';
+import { LiveSessionOwners } from './LiveSessionOwners';
 
 /** Bound so a long-lived server cannot accumulate entries without limit. */
 const MAX_CACHE_ENTRIES = 500;
@@ -16,11 +17,17 @@ const MAX_CACHE_ENTRIES = 500;
  * given session id, so a resolved owner cannot go stale — but a *negative*
  * result can simply mean the Session row has not been written yet, and caching
  * that would deny the owner their own device for the life of the process.
+ *
+ * A live session this server drives is looked up in memory first
+ * (LiveSessionOwners): a node writes no row for a session the hub created, and
+ * a server with the dashboard off writes none at all.
  */
 @Service()
 export class SessionOwnerResolver {
   private ownerCache = new Map<string, string>();
   private nameCache = new Map<string, string>();
+  /** The owners of this server's live sessions. A field, not a constructor parameter: TypeDI. */
+  liveOwners: () => Pick<LiveSessionOwners, 'ownerOf'> = () => Container.get(LiveSessionOwners);
 
   constructor(private readonly db: any = defaultPrisma) {}
 
@@ -28,6 +35,12 @@ export class SessionOwnerResolver {
     if (!sessionId) return null;
     const cached = this.ownerCache.get(sessionId);
     if (cached) return cached;
+
+    const live = this.liveOwners().ownerOf(sessionId);
+    if (live) {
+      this.remember(this.ownerCache, sessionId, live);
+      return live;
+    }
 
     const session = await this.db.session.findUnique({
       where: { id: sessionId },
@@ -67,9 +80,11 @@ export class SessionOwnerResolver {
     const resolved = new Map<string, string | null>();
     const missing: string[] = [];
     for (const id of ids) {
-      const cached = id ? this.ownerCache.get(id) : undefined;
-      if (cached) resolved.set(id, cached);
-      else if (id) missing.push(id);
+      const cached = id ? (this.ownerCache.get(id) ?? this.liveOwners().ownerOf(id)) : undefined;
+      if (cached) {
+        resolved.set(id, cached);
+        this.remember(this.ownerCache, id, cached);
+      } else if (id) missing.push(id);
       else resolved.set(id, null);
     }
 
