@@ -291,6 +291,15 @@ read-then-write:
   `remoteMachineProxyIP` included) and go with the node. A hub's own sync
   never prunes a row carrying another node's id (`isOwnDevice`: by `nodeId`,
   else by exact host).
+- A node's request to forget phones (`POST /register`, `type=remove` for
+  one phone by udid, `type=unregister&host=` when it shuts down) goes through
+  `removeNodeDevices`: only that node's rows, by the `nodeId` it sends (a
+  node now sends it on both), else by exact host, and never one of the hub's
+  own (`isOwnDevice`). A `remove` with no udid, or no host and no id, takes
+  nothing. The store used to match a host that isn't a URL as a substring and
+  a host-less remove by udid alone, so an older node's bare IP deleted every
+  row on that machine, the hub's own included. `removeDevices(filter,
+  { exactHost: true })` turns the substring match off.
 - The health monitor (`HealthMonitorService`) checks only this server's own
   phones, by the same `isOwnDevice`. It used to run the hub's adb against
   every row: each node phone came back unhealthy, was written over the node's

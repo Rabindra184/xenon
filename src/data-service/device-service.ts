@@ -33,7 +33,10 @@ function deviceScope(udid: string, teamId: string | null | undefined) {
   return teamId === undefined ? { udid } : { udid, teamId };
 }
 
-export async function removeDevice(devices: { udid: string; host: string }[]) {
+export async function removeDevice(
+  devices: { udid: string; host: string }[],
+  options: { exactHost?: boolean } = {},
+) {
   for (const device of devices) {
     log.info(`Removing device ${device.udid} from host ${device.host}`);
     const socket = Container.get(SocketServer);
@@ -44,7 +47,7 @@ export async function removeDevice(devices: { udid: string; host: string }[]) {
     const team = socket.hasScopedDashboard()
       ? await Container.get(DeviceTeamResolver).resolve(device.udid)
       : undefined;
-    await store.removeDevices({ udid: device.udid, host: device.host });
+    await store.removeDevices({ udid: device.udid, host: device.host }, options);
     Container.get(NotificationService).dispatchEvent('device_offline', device);
     void socket.emitToDashboardForDevices(
       'device_removed',
@@ -54,11 +57,47 @@ export async function removeDevice(devices: { udid: string; host: string }[]) {
   }
 }
 
-export async function removeDevicesByHost(host: string) {
-  log.info(`Removing all devices from host ${host}`);
-  // We can't easily dispatch events here without fetching first,
-  // but for now we'll stick to single device removal alerting
-  await store.removeDevices({ host });
+/** What a node asks the hub to forget: one phone (`udid`), or all it has (no udid). */
+export interface NodeRemoval {
+  udid?: string;
+  host?: string;
+  /** The node's id, as its reports carry it. */
+  nodeId?: string;
+}
+
+/**
+ * The phones a node asks the hub to forget (`POST /register`, `type=remove`
+ * for one phone, `type=unregister` when it shuts down). Only that node's: the
+ * rows its `nodeId` names when it sends one, else those filed under exactly
+ * its `host`, and never one of this server's own (`isOwn`). A udid-less
+ * `remove` names no phone and takes nothing.
+ *
+ * The store matched a host that isn't a URL as a substring, and a remove with
+ * no host by udid alone, so a node (an older one sends a bare IP) could delete
+ * the hub's own phones, or another node's. Returns how many rows went.
+ */
+export async function removeNodeDevices(
+  removals: NodeRemoval[],
+  isOwn: (device: IDevice) => boolean,
+): Promise<number> {
+  const all = await store.getAllDevices();
+  const gone = new Map<string, { udid: string; host: string }>();
+  for (const removal of removals) {
+    if (!removal.nodeId && !removal.host) continue;
+    for (const device of all) {
+      if (isOwn(device)) continue;
+      if (removal.udid !== undefined && device.udid !== removal.udid) continue;
+      const theirs = removal.nodeId
+        ? device.nodeId === removal.nodeId
+        : device.host === removal.host;
+      if (theirs) gone.set(`${device.udid}\u0000${device.host}`, device);
+    }
+  }
+  await removeDevice(
+    [...gone.values()].map((d) => ({ udid: d.udid, host: d.host })),
+    { exactHost: true },
+  );
+  return gone.size;
 }
 
 export async function addNewDevice(
