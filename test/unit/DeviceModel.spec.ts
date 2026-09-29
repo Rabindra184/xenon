@@ -9,21 +9,23 @@ import {
   removeDevice,
   setSimulatorState,
 } from '../../src/data-service/device-service';
-import sinon from 'sinon';
 import { IDevice } from '../../src/interfaces/IDevice';
+import { resetTestContainer } from '../helpers/test-container';
+import { useLokiStores } from '../helpers/loki-stores';
 chai.should();
-const sandbox = sinon.createSandbox();
 
-import { createTestAndroidManager, resetTestContainer } from '../helpers/test-container';
+describe('Model Test', () => {
+  // The in-memory store this spec is about. Run on its own, without the
+  // NODE_ENV=test that test:all sets, it used the Prisma store instead: the
+  // developer's own database, whose tables it wrote to.
+  useLokiStores();
 
-describe('Model Test', async () => {
   before('Add device collection', async () => {
     await resetTestContainer();
     expect((await XenonDatabase.DeviceModel).chain().find().data().length).to.be.equal(0);
     expect(deviceMock.length).to.be.greaterThanOrEqual(1);
     // console.log(`deviceMock length: ${deviceMock.length}`);
     (await XenonDatabase.DeviceModel).insert(deviceMock);
-    (await XenonDatabase.db).saveDatabase();
     // console.log(`result: ${result}`);
     // console.log(`device model length: ${deviceModel.find().length}`);
     (await XenonDatabase.DeviceModel)
@@ -33,9 +35,7 @@ describe('Model Test', async () => {
       .length.should.be.equal(deviceMock.length);
   });
 
-  after('clean', () => {
-    sandbox.restore();
-  });
+  after('clean', () => resetTestContainer());
 
   it('Should remove device from old pool when new poll call does not have the device', async () => {
     const findDevice = (await XenonDatabase.DeviceModel)

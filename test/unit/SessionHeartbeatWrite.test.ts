@@ -1,21 +1,22 @@
 import 'reflect-metadata';
 import { expect } from 'chai';
 import sinon from 'sinon';
-import { getPrismaClient } from '../../src/prisma';
 import { setupTestContainer, resetTestContainer } from '../helpers/test-container';
+import { useScratchDatabase } from '../helpers/scratch-database';
 import { SESSION_MANAGER } from '../../src/sessions/SessionManager';
 import { SessionHeartbeatService } from '../../src/services/SessionHeartbeatService';
 
 describe('SessionHeartbeatService write path', () => {
+  // Its own migrated database. It used the server's client directly, so it
+  // wrote this row to the developer's ~/.cache/xenon/xenon.db.
+  const scratch = useScratchDatabase();
   const TEST_SESSION_ID = 'test-heartbeat-sess-001';
-  let prismaClient: ReturnType<typeof getPrismaClient>;
 
   before(async () => {
     setupTestContainer();
-    prismaClient = getPrismaClient();
 
     // Create a minimal session row for the test
-    await prismaClient.session.upsert({
+    await scratch.db.session.upsert({
       where: { id: TEST_SESSION_ID },
       create: {
         id: TEST_SESSION_ID,
@@ -40,8 +41,6 @@ describe('SessionHeartbeatService write path', () => {
   });
 
   after(async () => {
-    // Cleanup test session
-    await prismaClient.session.deleteMany({ where: { id: TEST_SESSION_ID } });
     await resetTestContainer();
   });
 
@@ -67,7 +66,7 @@ describe('SessionHeartbeatService write path', () => {
     await (svc as any).checkAllSessions();
 
     // Verify the session was updated with heartbeat fields in the DB
-    const updated = await prismaClient.session.findUnique({
+    const updated = await scratch.db.session.findUnique({
       where: { id: TEST_SESSION_ID },
       select: { last_heartbeat_at: true, heartbeat_pid: true, heartbeat_host: true },
     });

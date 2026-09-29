@@ -4,18 +4,35 @@ import { PluginContext } from '../../src/PluginContext';
 import { DefaultPluginArgs, IPluginArgs } from '../../src/interfaces/IPluginArgs';
 import { v4 as uuidv4 } from 'uuid';
 import { XenonDatabase } from '../../src/data-service/db';
-import { DeviceStoreFactory } from '../../src/data-service/device-store';
 import AndroidDeviceManager from '../../src/device-managers/AndroidDeviceManager';
 import IOSDeviceManager from '../../src/device-managers/IOSDeviceManager';
 import { XenonManager } from '../../src/device-managers';
-import sinon from 'sinon';
 import { IOSDiscoveryService } from '../../src/device-managers/ios/IOSDiscoveryService';
-
-const sandbox = sinon.createSandbox();
+import { saveRegistrations } from './container-registration';
 
 /**
- * Test utility to initialize the TypeDI Container with a PluginContext
- * configured for testing purposes.
+ * The classes setupTestContainer() builds. Each call makes new ones, with its
+ * own PluginContext; the ones already registered are put back by
+ * resetTestContainer().
+ */
+const BUILT: Array<new (...args: any[]) => unknown> = [
+  PluginContext,
+  IOSDiscoveryService,
+  AndroidDeviceManager,
+  IOSDeviceManager,
+  XenonManager,
+];
+
+/** What each setupTestContainer() call not yet undone replaced, newest last. */
+const undo: Array<() => void> = [];
+
+/**
+ * Registers a PluginContext configured for testing, and the device managers
+ * built with it. Undo it with resetTestContainer() in the same `describe`.
+ *
+ * Only the ids it builds are replaced. It used to Container.reset(), which
+ * discarded every singleton in the process, including the ones other specs
+ * and the server's own modules had built and still held.
  */
 export function setupTestContainer(overrides?: Partial<IPluginArgs>): {
   context: PluginContext;
@@ -25,8 +42,9 @@ export function setupTestContainer(overrides?: Partial<IPluginArgs>): {
   nodeId: string;
   port: number;
 } {
-  // Reset container to ensure clean state between tests
-  Container.reset();
+  undo.push(saveRegistrations('LocalStorage', ...BUILT));
+  // Unbuilt again, so the Container.get() calls below make new instances.
+  for (const id of BUILT) Container.set({ id, type: id });
 
   const nodeId = uuidv4();
   const port = 4723;
@@ -84,30 +102,15 @@ export function createTestXenonManager(pluginArgs?: Partial<IPluginArgs>): Xenon
   return xenonManager;
 }
 
+/**
+ * Puts back every registration the setupTestContainer() calls since the last
+ * reset replaced, newest first, and empties the in-memory device database.
+ *
+ * It changes nothing else. It used to stub device discovery on the
+ * AndroidDeviceManager and IOSDiscoveryService prototypes and never restore
+ * the stubs, so every spec that ran later got no devices from discovery.
+ */
 export async function resetTestContainer() {
-  sandbox.restore();
-  Container.reset();
-
-  // Stub discovery methods to prevent background pollution
-  sandbox.stub(AndroidDeviceManager.prototype, 'getDevices').resolves([]);
-  sandbox.stub(IOSDiscoveryService.prototype, 'getDevices').resolves([]);
-
-  // @ts-ignore - Stubbing internal methods to be extra safe
-  sandbox.stub(AndroidDeviceManager.prototype, 'fetchAndroidDevices').resolves([]);
-  // @ts-ignore
-  sandbox.stub(IOSDiscoveryService.prototype, 'fetchLocalIOSDevices').resolves([]);
-  // @ts-ignore
-  sandbox.stub(IOSDiscoveryService.prototype, 'fetchLocalSimulators').resolves([]);
-
-  // Clear DeviceStoreFactory static caches to prevent cross-test pollution
-  // @ts-ignore - Accessing private static members for test cleanup
-  DeviceStoreFactory._deviceStore = undefined;
-  // @ts-ignore
-  DeviceStoreFactory._pendingSessionStore = undefined;
-  // @ts-ignore
-  DeviceStoreFactory._cliArgsStore = undefined;
-  // @ts-ignore
-  DeviceStoreFactory._healEtalonStore = undefined;
-
+  for (const restore of undo.splice(0).reverse()) restore();
   await XenonDatabase.reset();
 }

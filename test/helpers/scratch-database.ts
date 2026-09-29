@@ -31,6 +31,9 @@ const MODELS = [
   'teamMember',
   'eventLog',
   'project',
+  'recording',
+  'bookmark',
+  'annotation',
 ] as const;
 
 export interface ScratchDatabase {

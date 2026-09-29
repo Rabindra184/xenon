@@ -5,8 +5,12 @@ import { expect } from 'chai';
 import { IDeviceFilterOptions } from '../../src/interfaces/IDeviceFilterOptions';
 import semver from 'semver';
 import { resetTestContainer, setupTestContainer } from '../helpers/test-container';
+import { useLokiStores } from '../helpers/loki-stores';
 
 describe('Get device', () => {
+  // The in-memory store, also when this file runs on its own.
+  useLokiStores();
+
   before('Set devices in memory', async () => {
     await resetTestContainer();
     await setupTestContainer();
@@ -117,6 +121,8 @@ describe('Get device', () => {
       });
     }
   });
+
+  after(() => resetTestContainer());
 
   it('Get android device based on filter with minSDK', async () => {
     const filterOptions = {
