@@ -774,7 +774,11 @@ is not pushed, it takes up to 30 s (`commandCaller.ts` says why).
 
 Device leases: programmatic clients (SDK, MCP tools) claim devices via
 `POST /xenon/api/sdk/leases` (`src/services/lease/LeaseService.ts`) — token-bound
-claims with TTL + heartbeat, swept by `LeaseOrphanSweeper`, resolved at
+claims with TTL + heartbeat, swept by `LeaseOrphanSweeper` (every 30 s: a lease
+ends after three missed heartbeats or at `expiresAt`, whichever comes first;
+either way it is marked `expired`, its port leases deleted and the phone
+unblocked. Heartbeat, extend and `authorizeSessionUse` already refuse a lease
+past `expiresAt`), resolved at
 allocation via the `xe:options.leaseId` capability. A lease id is not a
 secret, so the session must also prove it holds the lease
 (`LeaseService.authorizeSessionUse`): the lease token as
