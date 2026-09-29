@@ -84,7 +84,11 @@ export default class IOSDeviceManager implements IDeviceManager {
       result.screenWidth = String(streamStatus.screenWidth);
       result.screenHeight = String(streamStatus.screenHeight);
     } else {
-      const storeDevice = await DeviceStoreFactory.getStore().findDevice({ udid: device.udid });
+      // This phone's own row: another server's for the same udid is not it.
+      const storeDevice = await DeviceStoreFactory.getStore().findDevice({
+        udid: device.udid,
+        host: device.host,
+      });
       if (storeDevice?.screenWidth) {
         result.screenWidth = storeDevice.screenWidth;
         result.screenHeight = storeDevice.screenHeight;

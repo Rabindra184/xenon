@@ -823,7 +823,9 @@ router.post('/:udid/stream/ticket', async (req: Request, res: Response) => {
  */
 async function stopPreview(udid: string, device: IDevice, release: boolean): Promise<void> {
   if (device.platform === 'ios' || device.platform === 'tvos') {
-    await Container.get(IOSStreamService).stopStream(udid);
+    // A viewer's stop: an Appium session on the phone may be driving this
+    // stream's WDA, and then the stream stays (see IOSStreamService.stopStream).
+    await Container.get(IOSStreamService).stopStream(udid, { forViewer: true });
   } else {
     await Container.get(AndroidStreamService).stopStream(udid);
     await Container.get(AndroidH264StreamService).stop(udid);
@@ -1056,8 +1058,9 @@ router.get('/:udid/stream', async (req: Request, res: Response) => {
         getSession: (id) => iosStreamService.getStreamStatus(id),
         // Single attempt (retries = 0): a healthy WDA answers in milliseconds,
         // so this costs nothing on the happy path and stays bounded by the
-        // 2.5s /status timeout when WDA is dead.
-        isWdaHealthy: (wdaPort, id) => iosStreamService.isWDARunning(wdaPort, id, 0),
+        // 2.5s /status timeout when WDA is dead. No udid: WDA names no phone
+        // (see isWDARunning). The port is this phone's stream's own lease.
+        isWdaHealthy: (wdaPort) => iosStreamService.isWDARunning(wdaPort, 0),
         startStream: async (id) => {
           log.info(
             `Stream for iOS device ${id} requested (Status: ${

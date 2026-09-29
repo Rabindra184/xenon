@@ -1,7 +1,7 @@
 import { spawn, ChildProcess } from 'child_process';
 import { Service, Container } from 'typedi';
 import log from '../../logger';
-import { DeviceStoreFactory } from '../../data-service/device-store';
+import { findOwnDevice } from '../ownDeviceRow';
 import { H264Multiplexer, H264Packet } from './H264Multiplexer';
 import { H264NalParser } from './h264NalParser';
 import { H264Source, resolveAndroidH264 } from '../../app/routers/androidH264Config';
@@ -220,7 +220,7 @@ class AndroidH264StreamService {
     onPacket: (p: H264Packet) => void,
   ): Promise<{ kill: () => void }> {
     const { ScrcpyServerSession, scrcpyMaxSizeFromDims } = await import('./ScrcpyServerSession');
-    const device = await DeviceStoreFactory.getStore().findDevice({ udid });
+    const device = await findOwnDevice(udid);
     const maxSize = scrcpyMaxSizeFromDims(Number(device?.screenWidth), Number(device?.screenHeight));
     const parser = new H264NalParser();
     const session = new ScrcpyServerSession(udid);
@@ -354,7 +354,7 @@ class AndroidH264StreamService {
    */
   private async resolveCaptureSize(udid: string): Promise<string> {
     try {
-      const device = await DeviceStoreFactory.getStore().findDevice({ udid });
+      const device = await findOwnDevice(udid);
       const sw = Number(device?.screenWidth);
       const sh = Number(device?.screenHeight);
       if (Number.isFinite(sw) && Number.isFinite(sh) && sw > 0 && sh > 0) {

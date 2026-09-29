@@ -333,10 +333,26 @@ read-then-write:
   every row: each node phone came back unhealthy, was written over the node's
   report and "recovered", and a busy one whose session the hub didn't hold in
   memory was reclaimed. A node checks its own.
+- Discovery reuses a row only when it is its own: same udid and the exact
+  host its discovery files the phone under (`androidDeviceHost`,
+  `iosRealDeviceHost`, `iosSimulatorHost`). That holds for Android, iOS
+  phones (the sync, an attach's `getDeviceInfo`) and simulators. A node on
+  the same Mac sees the same iPhone and simulators; until 2.1 iOS matched by
+  udid alone and took the node's row, host, ports and busy state included.
+- The stream services (`IOSStreamService`, `AndroidStreamService`,
+  `AndroidH264StreamService`, `previewHold.ts`) find a phone's row the same
+  way: `findOwnDevice(udid)` (`src/device-managers/ownDeviceRow.ts`) looks up
+  the udid under each of this server's own hosts (`localDeviceHosts`), never
+  by udid alone. They used to take the node's row for a shared udid, so they
+  could release the node's preview hold or read the node's session as the
+  phone's.
 
 A server with no nodes never sets `nodeBusy`, so its `busy` is its claim, as
 before. A lease still locks with `busy` alone (allocation also skips a phone
-under an active lease), and a manual hold still writes `session_id`.
+under an active lease), and a manual hold still writes `session_id`. Ending a
+lease clears `busy` by the same rule, one conditional update where `UNHELD`
+(`releaseLeaseLock`, both stores), so it never frees a phone a session or a
+hold still has.
 
 **Not supported:** BiDi and session WebSockets through the hub; the
 `webSocketUrl` a session returns points at the node, so nodes must not sit on
@@ -348,6 +364,41 @@ Independent of Appium sessions, each platform has a stream service that brings u
 
 - **iOS**: `IOSStreamService` shells `go-ios` to start a tunnel (iOS 17+), launches WebDriverAgent via `runwda`, and forwards local ports `wdaPort:8100` and `mjpegPort:9100` with `iproxy`. WDA's MJPEG server is enabled via `/appium/settings`. Stream sessions are tracked in `this.sessions` with a watchdog that idles out streams after 10 min of zero viewers (unless the device is busy with an Appium session).
 - **Android**: `AndroidStreamService` uses ADB + a built-in capture pipeline (MJPEG). A faster, flagged **H.264 live-preview** path also exists — see "Android H.264 live preview (scrcpy)" below.
+
+**go-ios tunnels and Appium sessions.** go-ios's tunnel process listens on
+60105 (its tunnel-info API) and 60106 (the first phone's userspace tunnel). On
+iOS 17+ a WDA that go-ios launched (`runwda`) reaches the phone through it.
+The xcuitest driver never uses go-ios, but an Appium session allocated while a
+stream runs drives the stream's WDA (`iOSCapabilities` sets
+`webDriverAgentUrl`), so that session depends on the stream's WDA, forwarder
+and tunnel. Two rules follow:
+
+- `cleanupOrphanTunnels` (the udid reap plus the kill -9 of whatever listens
+  on 60105/60106) never runs while an Appium session holds the phone
+  (`heldByAppiumSession`: busy, non-manual `session_id`), or when its row
+  can't be read. The sweep waits for the next stop or start after the
+  session; a restart reaps every go-ios process at boot.
+- A viewer's stop (`stream/stop`, `stream/leave`, via
+  `stopStream(udid, { forViewer: true })`) stops nothing while an Appium
+  session holds the phone and the stream launched its own WDA. The session's
+  teardown (`stopIdleStreamForDevice`) or the idle watchdog stops it later.
+  Shutdown still stops it.
+- A start never restarts a running stream whose WDA doesn't answer while an
+  Appium session holds the phone, as the watchdog's heal already skips a busy
+  device. `startStream` throws `StreamRestartRefused`, naming the session,
+  and leaves the stream as it was (not marked `error`, no cooldown). A restart
+  would kill the WDA and tunnel the session may be driving, or launch a
+  second WDA over the session's own. A WDA that is only slow to answer
+  `/status`, during a long command, used to be killed this way when someone
+  opened the preview. With no session on the phone, a restart still recovers
+  a dead WDA.
+
+**WDA names no phone.** `/status` has `os`, `ios.ip`, `build` and `device`
+(the form factor); `/wda/device/info`'s `uuid` is `identifierForVendor`, not
+the UDID. So `isWDARunning(port, retries)` says whether *a* WDA answers,
+never whose, and takes no udid. A caller relies on knowing the port is the
+phone's: its own stream's lease, or the Device row's `wdaLocalPort` while an
+Appium session holds that phone (the attach branch).
 
 `UniversalMjpegProxy` (`src/helpers/UniversalMjpegProxy.ts`) multiplexes a single upstream MJPEG to many browser clients. It speaks both standard HTTP MJPEG and a raw-socket fallback for WDA's headerless variant, drops lagging clients (>4 MB kernel backlog) to prevent OOM, and uses bounded retries with exponential backoff (max 10 attempts, 500ms→10s).
 
@@ -839,7 +890,16 @@ is not pushed, it takes up to 30 s (`commandCaller.ts` says why).
 
 Device leases: programmatic clients (SDK, MCP tools) claim devices via
 `POST /xenon/api/sdk/leases` (`src/services/lease/LeaseService.ts`) — token-bound
-claims with TTL + heartbeat, swept by `LeaseOrphanSweeper`, resolved at
+claims with TTL + heartbeat, swept by `LeaseOrphanSweeper` (every 30 s: a lease
+ends after three missed heartbeats or at `expiresAt`, whichever comes first;
+either way it is marked `expired` and its port leases deleted. Heartbeat,
+extend and `authorizeSessionUse` already refuse a lease past `expiresAt`).
+Ending a lease, by a reap or its holder's release, takes off only the lease's
+lock (`releaseLeaseLock`): `busy` is cleared only where the phone is `UNHELD`
+(see "Busy on a hub"). A session created on the lease claims the phone, so a
+session that outlives its lease keeps it, and its own release frees it. Until
+2.1 the reap wrote `busy: false` outright and handed such a phone to a second
+session mid-run. Leases are resolved at
 allocation via the `xe:options.leaseId` capability. A lease id is not a
 secret, so the session must also prove it holds the lease
 (`LeaseService.authorizeSessionUse`): the lease token as

@@ -291,6 +291,15 @@ class LokiDeviceStore implements IDeviceStore {
     return true;
   }
 
+  async releaseLeaseLock(udid: string, host: string): Promise<boolean> {
+    const model = await XenonDatabase.DeviceModel;
+    const device: IDevice | null = model.findOne({ udid, host });
+    if (!device?.busy || !isUnheld(device)) return false;
+    device.busy = false;
+    model.update(device);
+    return true;
+  }
+
   async resetMetrics(): Promise<void> {
     (await XenonDatabase.DeviceModel)
       .chain()

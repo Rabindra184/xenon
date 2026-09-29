@@ -62,7 +62,10 @@ describe('lease token routes reveal nothing without the token', () => {
       },
       portLease: { deleteMany: sinon.stub().resolves({ count: 0 }) },
     };
-    store = { updateDevice: sinon.stub().resolves() };
+    store = {
+      updateDevice: sinon.stub().resolves(),
+      releaseLeaseLock: sinon.stub().resolves(true),
+    };
     const svc = new LeaseService(
       db,
       store,
@@ -142,6 +145,7 @@ describe('lease token routes reveal nothing without the token', () => {
         expect(db.lease.updateMany.called).to.equal(false);
         expect(db.portLease.deleteMany.called).to.equal(false);
         expect(store.updateDevice.called).to.equal(false);
+        expect(store.releaseLeaseLock.called).to.equal(false);
       });
 
       it(`the right token on an expired lease gets ${GONE[op]}`, async () => {
