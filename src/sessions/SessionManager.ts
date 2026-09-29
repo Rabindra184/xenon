@@ -1,3 +1,4 @@
+import os from 'os';
 import { Service } from 'typedi';
 import { prisma } from '../prisma';
 import log from '../logger';
@@ -194,6 +195,7 @@ export class SessionManager {
 
           // Add to in-memory map
           this.addSession(dbSession.id, recoveredSession);
+          await this.adoptHeartbeat(dbSession.id);
           recoveredCount++;
         } catch (sessionErr: any) {
           this.log.error(`❌ Failed to recover session ${dbSession.id}: ${sessionErr.message}`);
@@ -210,6 +212,35 @@ export class SessionManager {
     } catch (err: any) {
       this.log.error(`❌ Session recovery error: ${err.message}`);
       return 0;
+    }
+  }
+
+  /**
+   * A recovered session is this process's from now on: its row's heartbeat
+   * is stamped with this process, now. The row still carried the heartbeat
+   * of the process that ran before the restart, so after an outage longer
+   * than 3 heartbeat intervals the orphan sweep (OrphanSweeper, at boot and
+   * on every interval) took it for an orphan: it failed the session recovery
+   * had just rebuilt and freed its phone, while the node kept the session.
+   *
+   * Stamping, rather than handing the sweeps a list of ids to skip, makes the
+   * row say what is true, so every reader of it agrees: both sweeps, and the
+   * heartbeat's own check for rows nobody updates. From here the heartbeat
+   * keeps it fresh, and ends the session if its node no longer has it. A
+   * failed write is logged; the heartbeat's next write repairs it.
+   */
+  private async adoptHeartbeat(sessionId: string): Promise<void> {
+    try {
+      await prisma.session.update({
+        where: { id: sessionId },
+        data: {
+          last_heartbeat_at: new Date(),
+          heartbeat_pid: process.pid,
+          heartbeat_host: os.hostname(),
+        },
+      });
+    } catch (err: any) {
+      this.log.warn(`Could not stamp recovered session ${sessionId}'s heartbeat: ${err.message}`);
     }
   }
 

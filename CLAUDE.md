@@ -259,7 +259,13 @@ capabilities, `api_key_id`, `user_id`; no profiling, logs or event). The
 dashboard setting still decides alone whether a local session has a row.
 Until then a dashboard-off hub lost every node session on restart: its
 commands went to the hub's own Appium. Recovery also restores the session's
-owner (`apiKeyId`, `userId`) from the row. A
+owner (`apiKeyId`, `userId`) from the row, and stamps the row's heartbeat
+with this process (`adoptHeartbeat`). The row still carried the old
+process's heartbeat, so after an outage longer than 3 heartbeat intervals
+(~90 s) the orphan sweep, at boot and on every interval, took every
+recovered session for an orphan: it failed the session and freed its phone
+while the node kept it. From then on the heartbeat keeps the row fresh and
+ends the session if its node no longer has it. A
 graceful shutdown (SIGTERM) drains only the hub's own local sessions
 (`ShutdownCoordinator`); until 2.1 it also finalized node and cloud sessions,
 releasing the phone and closing the row on the hub while the node kept the
