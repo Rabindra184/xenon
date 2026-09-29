@@ -265,6 +265,12 @@ read-then-write:
   `remoteMachineProxyIP` included) and go with the node. A hub's own sync
   never prunes a row carrying another node's id (`isOwnDevice`: by `nodeId`,
   else by exact host).
+- Discovery reuses a row only when it is its own: same udid and the exact
+  host its discovery files the phone under (`androidDeviceHost`,
+  `iosRealDeviceHost`, `iosSimulatorHost`). That holds for Android, iOS
+  phones (the sync, an attach's `getDeviceInfo`) and simulators. A node on
+  the same Mac sees the same iPhone and simulators; until 2.1 iOS matched by
+  udid alone and took the node's row, host, ports and busy state included.
 
 A server with no nodes never sets `nodeBusy`, so its `busy` is its claim, as
 before. A lease still locks with `busy` alone (allocation also skips a phone
