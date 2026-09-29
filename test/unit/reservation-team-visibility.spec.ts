@@ -2,7 +2,7 @@ import 'reflect-metadata';
 import { expect } from 'chai';
 import sinon from 'sinon';
 import express from 'express';
-import request from 'supertest';
+import request from '../helpers/loopbackRequest';
 import reservationRouter from '../../src/app/routers/reservation';
 import * as deviceService from '../../src/data-service/device-service';
 import { prisma } from '../../src/prisma';

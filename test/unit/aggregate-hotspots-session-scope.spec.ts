@@ -2,7 +2,7 @@ import 'reflect-metadata';
 import { expect } from 'chai';
 import sinon from 'sinon';
 import express from 'express';
-import request from 'supertest';
+import request from '../helpers/loopbackRequest';
 import { prisma } from '../../src/prisma';
 import DashboardRouter, { aggregateHotspots } from '../../src/app/routers/dashboard';
 

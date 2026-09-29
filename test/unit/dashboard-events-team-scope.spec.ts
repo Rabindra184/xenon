@@ -5,7 +5,7 @@ import fs from 'fs';
 import os from 'os';
 import path from 'path';
 import express from 'express';
-import request from 'supertest';
+import request from '../helpers/loopbackRequest';
 import { Container } from 'typedi';
 import { SocketServer } from '../../src/services/SocketServer';
 import { SocketEvents } from '../../src/enums/SocketEvents';

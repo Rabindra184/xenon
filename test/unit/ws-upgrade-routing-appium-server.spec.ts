@@ -4,7 +4,7 @@ import http from 'http';
 import net from 'net';
 import path from 'path';
 import sinon from 'sinon';
-import request from 'supertest';
+import request from '../helpers/loopbackRequest';
 import WebSocket, { WebSocketServer } from 'ws';
 import { io as connectClient, Socket as ClientSocket } from 'socket.io-client';
 import { CommandCallerVerifier } from '../../src/middleware/commandCaller';

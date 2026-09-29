@@ -1,7 +1,7 @@
 import 'reflect-metadata';
 import { expect } from 'chai';
 import express from 'express';
-import request from 'supertest';
+import request from '../helpers/loopbackRequest';
 import { Container } from 'typedi';
 import { config } from '../../src/config';
 import { createRouter } from '../../src/app/index';

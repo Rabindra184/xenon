@@ -2,7 +2,7 @@ import 'reflect-metadata';
 import { expect } from 'chai';
 import sinon from 'sinon';
 import express from 'express';
-import request from 'supertest';
+import request from '../../helpers/loopbackRequest';
 import { makeRouter } from '../../../src/app/routers/sdk-leases';
 import { LeaseService } from '../../../src/services/lease/LeaseService';
 import { DeviceStoreFactory } from '../../../src/data-service/device-store';

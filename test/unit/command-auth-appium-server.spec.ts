@@ -2,7 +2,7 @@ import { expect } from 'chai';
 import http from 'http';
 import path from 'path';
 import sinon from 'sinon';
-import request from 'supertest';
+import request from '../helpers/loopbackRequest';
 import WebSocket, { WebSocketServer } from 'ws';
 import { CommandCallerVerifier } from '../../src/middleware/commandCaller';
 import { UNKNOWN_SESSION_BODY } from '../../src/middleware/commandAuth';

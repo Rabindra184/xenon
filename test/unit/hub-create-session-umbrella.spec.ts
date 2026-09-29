@@ -2,7 +2,7 @@ import 'reflect-metadata';
 import { expect } from 'chai';
 import http from 'http';
 import sinon from 'sinon';
-import request from 'supertest';
+import request from '../helpers/loopbackRequest';
 import { Container } from 'typedi';
 import { XenonPlugin } from '../../src/plugin';
 import log from '../../src/logger';
