@@ -17,11 +17,27 @@ import { JwtKeyService } from '../services/token/JwtKeyService';
  *
  * The audience is `xenon-node`, which /auth/token will not mint, and the token
  * names its session (`sid`), so a token for one session opens no other.
+ *
+ * A create has no session yet, so it carries a token of its own kind:
+ * audience `xenon-node-create`, naming the owner the hub verified (`sub`,
+ * absent when the create is unattributed), the phone the hub allocated
+ * (`udid`) and that phone's node (`host`, the phone row's host). A separate
+ * audience rather than a claim on the `xenon-node` token, so neither kind can
+ * be taken for the other whatever claims a verifier reads: jose refuses the
+ * other kind's audience before any claim is looked at. The node treats a valid
+ * one as the session's credential (sessionCreate.ts).
  */
 
 export const HUB_TOKEN_HEADER = 'x-xenon-hub-token';
 export const HUB_TOKEN_AUDIENCE = 'xenon-node';
 export const HUB_TOKEN_TTL_SECONDS = 300;
+export const HUB_CREATE_AUDIENCE = 'xenon-node-create';
+/**
+ * Long enough to cover the forward and its retries (InternalHttpClient
+ * retries a create on a timeout or a 5xx), short enough that a copied token
+ * is soon worthless. It opens one phone, on one node.
+ */
+export const HUB_CREATE_TTL_SECONDS = 120;
 /** A cached token is re-minted once it has less than this left. */
 const RENEW_BEFORE_EXPIRY_MS = 60_000;
 const MAX_CACHED_TOKENS = 1_000;
@@ -35,7 +51,17 @@ export interface TokenSigner {
   ): Promise<string>;
 }
 
-/** Hub side: mints, and reuses, the token for a session. */
+/** What a hub's create token grants: this owner, on this phone, on this node. */
+export interface HubCreateGrant {
+  /** The owner the hub verified; null for an unattributed create. */
+  userId: string | null;
+  /** The phone the hub allocated. */
+  udid: string;
+  /** Its node, as the phone row's host names it. */
+  host: string;
+}
+
+/** Hub side: mints a session's token (reused while it lasts) and a create's (fresh each time). */
 @Service()
 export class HubSessionTokenIssuer {
   private readonly logger = log.scope('HubSessionToken');
@@ -67,13 +93,7 @@ export class HubSessionTokenIssuer {
         { audience: HUB_TOKEN_AUDIENCE, ttlSeconds: HUB_TOKEN_TTL_SECONDS },
       );
     } catch (err: any) {
-      if (!this.warned) {
-        this.warned = true;
-        this.logger.warn(
-          `Cannot sign session tokens for nodes (${err?.message ?? err}). Calls to nodes go ` +
-            'without one, and a node with XENON_REQUIRE_COMMAND_AUTH on will refuse them.',
-        );
-      }
+      this.warnCannotSign(err);
       return null;
     }
 
@@ -91,6 +111,34 @@ export class HubSessionTokenIssuer {
 
   forget(sessionId: string): void {
     this.cache.delete(sessionId);
+  }
+
+  /**
+   * The token for a create the hub forwards to the phone's node, or null when
+   * this server cannot sign. Minted fresh for each create, never cached.
+   */
+  async createTokenFor(grant: HubCreateGrant): Promise<string | null> {
+    const claims: Record<string, unknown> = { udid: grant.udid, host: grant.host };
+    if (grant.userId) claims.sub = grant.userId;
+    try {
+      return await this.signer().sign(claims, {
+        audience: HUB_CREATE_AUDIENCE,
+        ttlSeconds: HUB_CREATE_TTL_SECONDS,
+      });
+    } catch (err: any) {
+      this.warnCannotSign(err);
+      return null;
+    }
+  }
+
+  private warnCannotSign(err: any): void {
+    if (this.warned) return;
+    this.warned = true;
+    this.logger.warn(
+      `Cannot sign session tokens for nodes (${err?.message ?? err}). Calls to nodes go ` +
+        'without one, and a node with XENON_REQUIRE_COMMAND_AUTH or ' +
+        'XENON_REQUIRE_SESSION_TOKEN on will refuse them.',
+    );
   }
 }
 
@@ -153,5 +201,32 @@ export class HubSessionTokenVerifier {
       if (isVerdict(err)) return false;
       throw new HubTokenUnavailableError(err?.message ?? String(err));
     }
+  }
+
+  /**
+   * The grant in a hub's create token, or null for any token that is not one
+   * (forged, expired, another audience's, missing the phone or its node).
+   * Throws HubTokenUnavailableError when the hub's keys cannot be fetched.
+   */
+  async verifyCreate(token: string): Promise<HubCreateGrant | null> {
+    let payload: jose.JWTPayload;
+    try {
+      ({ payload } = await jose.jwtVerify(token, this.keys, {
+        audience: HUB_CREATE_AUDIENCE,
+        algorithms: ['RS256'],
+        clockTolerance: CLOCK_TOLERANCE_SECONDS,
+      }));
+    } catch (err: any) {
+      if (isVerdict(err)) return null;
+      throw new HubTokenUnavailableError(err?.message ?? String(err));
+    }
+    const nonEmpty = (value: unknown): value is string =>
+      typeof value === 'string' && value.length > 0;
+    if (!nonEmpty(payload.udid) || !nonEmpty(payload.host)) return null;
+    return {
+      userId: nonEmpty(payload.sub) ? payload.sub : null,
+      udid: payload.udid,
+      host: payload.host,
+    };
   }
 }

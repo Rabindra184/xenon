@@ -118,11 +118,13 @@ team rules, reservations and blocks for node phones. Appium 3 only, every 3.x.
 `defaultGateway.ts`) stands in front of Appium's routes, spliced with
 `insertBeforeRoutes` on both Express shapes. It replaced
 `registerProxyMiddlware`, which on Express 5 landed after the routes, so no
-command ever reached a node. Two adjacent layers:
+command ever reached a node. Three adjacent layers:
 
 1. `xenonInternalCalls` (path-less): Xenon's own `<basePath>/wd-internal/...`
    calls. See Per-command auth below.
-2. `xenonSessionGateway` at `<basePath>/session/:sessionId` (mounted, so its
+2. `xenonSessionCreate` at `<basePath>/session` (`sessionCreate.ts`): `POST`
+   of exactly that path. See "Creating a session" below.
+3. `xenonSessionGateway` at `<basePath>/session/:sessionId` (mounted, so its
    path matching is the router's own, letter case included): per-command auth
    once for local and remote sessions alike, then on a hub:
    - **Where a session runs** is `SessionLocator` (`sessionLocator.ts`):
@@ -152,30 +154,86 @@ server answers `GET /xenon/api/webdriver` (`{ basePath }`, no login) and the
 hub's `NodeBasePathResolver` asks before creating or routing a session (60 s
 cache; a node that doesn't answer is assumed to share the hub's base path).
 
-**The hub's token** (`hubSessionToken.ts`). Auth is enforced at the hub. Every
-hub call about a session (forwarded commands, and `RemoteSession`'s own
-screenshot, source, recording and heartbeat calls) carries
-`x-xenon-hub-token`: an RS256 JWT from the hub's `JwtKeyService`, audience
-`xenon-node` (which `/auth/token` won't mint), claim `sid`, 5 minutes, reused
-until a minute before expiry. A node with per-command auth on accepts it in
-place of credentials after verifying it against the hub's
-`/xenon/api/auth/jwks.json`; a forged, expired or other session's token gets
-the unknown-session answer, and a JWKS that can't be fetched is `503`. A cloud
-provider never gets one.
+**Creating a session** happens in the gateway, before Appium's route. Every
+Xenon server does it this way, a standalone one included. The create layer
+takes the credentials out, checks them, validates the capabilities, writes
+the pending-session row and allocates the phone
+(`SessionLifecycleService.prepareSession`). Then it depends on the phone:
+
+- **Another server's phone** (a node's, or a cloud provider's): the session
+  is created there (`completeRemoteSession`) and the hub answers the client
+  itself, as Appium answers a new session. Appium's umbrella driver never
+  sees it. When it used to (the plugin answering the create without calling
+  `next()`), Appium >= 2.15 promoted the plugin to a session it didn't have
+  and threw in `generateDriverLogPrefix(undefined)`, answering 500 while the
+  node kept the session. Base-driver 10.2.1 fixed the throw, but the umbrella
+  still kept the promoted plugin for ever. That is why nothing depends on
+  Appium's fix, and why the `updateLogPrefix = null` stopgap is gone.
+- **This server's own phone**: the allocation goes to
+  `XenonPlugin.createSession` through the request's `AsyncLocalStorage`
+  context (`createHandoff.ts`), so it isn't allocated twice. The plugin takes
+  it (`completeLocalSession`) and calls `next()`. From then on the plugin
+  releases the phone if the create fails, including when Appium finds no
+  driver or refuses the capabilities, since in Appium 3 both happen inside
+  `next()`. If the request ends without the plugin taking it (another plugin
+  refused the create first, or the client left), the gateway gives the phone
+  back on the response's `close`. A client that leaves while its phone is
+  still being found gets it released when it turns up, and Appium never runs.
+- Refusals are answered as Appium answers the same error thrown from the
+  plugin (`getResponseForW3CError`). A body without a `capabilities` object
+  goes straight to Appium, as before.
+- If the create layer isn't installed, the plugin allocates for itself
+  (`createSession(..., { localOnly: true })`, with a warning). It refuses and
+  releases another server's phone rather than answer for Appium.
+
+**What a node is sent** (`capsForNode`, `nodeCreateCaps.ts`) stands on its
+own, whatever the node's auth settings. It carries no credentials and no
+lease id: the hub resolved the lease in its own database. The phone the hub
+allocated is pinned as `alwaysMatch['appium:udid']`, with no other
+`appium:udid` and no `appium:udids`. A lease-bound allocation never wrote the
+udid into the caps, and a `udids` list would let the node pick another
+phone. Before this the hub put the client's credentials back
+(`capsWithCredentials`) for the node to re-check. It couldn't: the node's
+database doesn't have the hub's keys, leases or teams.
+
+**The hub's tokens** (`hubSessionToken.ts`), sent as `x-xenon-hub-token`.
+Auth is enforced at the hub. Both are RS256 JWTs from the hub's
+`JwtKeyService`, verified by the node against the hub's
+`/xenon/api/auth/jwks.json`. `/auth/token` mints neither audience. A cloud
+provider never gets either.
+
+- **A session's** (audience `xenon-node`, claim `sid`, 5 minutes, reused
+  until a minute before expiry) goes with every hub call about a session:
+  forwarded commands, and `RemoteSession`'s own screenshot, source,
+  recording and heartbeat calls. A node with per-command auth on accepts it
+  in place of credentials. A forged, expired or other session's token gets
+  the unknown-session answer, and a JWKS that can't be fetched is `503`.
+- **A create's** (audience `xenon-node-create`, 2 minutes, fresh per create)
+  names the owner the hub verified (`sub`, absent for an unattributed
+  create), the phone (`udid`) and its node (`host`, the phone row's host).
+  It has its own audience, not a claim on the session token. That way jose
+  refuses the other kind before any claim is read, so neither kind can open
+  what the other does. On a node with auth enabled it is the session's
+  credential:
+  - it attributes the session (the node's `XenonSession.userId`);
+  - it passes `XENON_REQUIRE_SESSION_TOKEN`;
+  - the client's own credentials are neither checked nor needed;
+  - the session is unscoped, since the hub applied the team rule.
+
+  The node may allocate only that phone, on itself. Caps that name another
+  phone are refused before allocation. An allocated phone that is another
+  node's (an emulator's udid repeats across machines) is refused and released.
+  A forged, expired or session token is refused (`400 invalid argument`,
+  "session rejected"), and a JWKS that can't be fetched is `503`. With auth
+  disabled on the node the token isn't checked, as no credential is. The
+  token isn't single-use: `InternalHttpClient` retries a create on a timeout
+  or a 5xx with the same headers.
 
 **A hub restart** leaves node sessions running. At boot a hub clears only its
 own phones (`devicesClearedAtBoot`); its nodes' rows stay, so
 `recoverActiveSessions` rebuilds their `RemoteSession`s (under each node's own
 base path) and the gateway routes them again. Before the gateway every row was
 wiped at boot, so every remote session was marked failed on restart.
-
-**The createSession bridge (stopgap, PR 2 removes it).** A remote-bound
-createSession never reaches Appium's own createSession, and Appium >= 2.15 on
-base-driver < 10.2.1 then throws in `generateDriverLogPrefix(undefined)` while
-promoting plugins (a 500 while the node keeps the session). `XenonPlugin`'s
-instance that answered such a createSession sets `updateLogPrefix = null`, as
-appium-device-farm does, so the promotion skips it. The promoted plugin
-instance is never released (one small object per remote session).
 
 **Not supported:** BiDi and session WebSockets through the hub; the
 `webSocketUrl` a session returns points at the node, so nodes must not sit on
@@ -527,6 +585,7 @@ derives both from whichever credential `createSession` presented:
 |---|---|---|
 | `xe:options.{accessKey,token}` pair | ApiKey row id | `ApiKey.userId` |
 | `xe:options.sessionToken` (JWT `sub`) | null | the token's subject |
+| on a node, the hub's create token (`x-xenon-hub-token`, `sub`) | null | the owner the hub verified |
 | neither | null | null |
 | `authDisabled` | null | null — every caller is a synthetic SUPER_ADMIN |
 
@@ -543,16 +602,16 @@ The team a key-pair session asks for is `xe:options.team` (or `teamId`),
 read by `extractTeamCap`. The flat caps older clients send (`xenon:team`,
 `xe:teamId`, ...) still work, and the options field wins over them.
 
-**Credentials never reach the driver or storage.** `createSession` calls
+**Credentials never reach the driver or storage.** `prepareSession` (the
+first step of every create, run by the session gateway) calls
 `takeSessionCredentials` (`src/services/session/sessionCredentials.ts`)
 first: it reads `accessKey`, `token`, `sessionToken` and `leaseToken`, then
 deletes those four fields from both namespaces in alwaysMatch and every
 firstMatch entry, in place, before the pending-session row, allocation, the
 driver, the Session row or any log sees the caps. Everything else, `leaseId`
-included, stays. A peer Xenon node re-runs `createSession` (auth, gate,
-attribution, lease check), so the forwarded copy gets the credentials back via
-`capsWithCredentials`; the node strips them again. A cloud provider never gets
-them.
+included, stays. They never leave the server they were sent to. A hub
+forwarding a create to its node sends `capsForNode` and its own create token
+instead (see Hub-Node Topology). A cloud provider gets neither.
 
 **Attribution is decoupled from enforcement.** A session token is read for
 identity whenever one is present, whether or not
@@ -912,7 +971,7 @@ npm run build:copy` (from the repo root) regenerates and copies it.
 | `web/src/components/device-control/logcat/useLogcatStream.ts` | Mints a ticket per connect, batches frames (React 17 does not auto-batch outside events), resets the buffer on reconnect **except** after 1012 |
 | `src/gateway/sessionGateway.ts` | The session layer in front of Appium's routes: internal calls skip auth, per-command auth (or the hub token on a node), then a hub forwards remote sessions; remote DELETE runs the lifecycle |
 | `src/gateway/internalCall.ts` | `/wd-internal` + the per-process secret header; one `next()` call site so a refused call answers exactly like an unknown route |
-| `src/gateway/hubSessionToken.ts` | Hub-signed, session-scoped `xenon-node` JWT (`x-xenon-hub-token`); the node verifies it against the hub's JWKS |
+| `src/gateway/hubSessionToken.ts` | Hub-signed `x-xenon-hub-token` JWTs, verified by the node against the hub's JWKS: `xenon-node` per session for commands, `xenon-node-create` per create (owner, phone, node) |
 | `src/gateway/sessionLocator.ts` | Where a session runs: `SESSION_MANAGER`, then the open Session row and its phone's row; never its own routing table |
 | `src/gateway/nodeWebDriverUrl.ts` | A node's own base path from its public `GET /xenon/api/webdriver`, cached; the hub's is the fallback |
 | `src/services/recording/RecordingOrchestrator.ts` | Per-device + composite recording lifecycle |
@@ -929,7 +988,10 @@ npm run build:copy` (from the repo root) regenerates and copies it.
 | `src/services/device-access/SessionOwnerResolver.ts` | Session owner: prefers `Session.user_id`, falls back to `api_key_id → ApiKey.userId`. Caches **positive results only** — a null may mean the row isn't written yet, and caching it would deny the owner for the life of the process |
 | `src/services/session/sessionIdentity.ts` | Pure `resolveSessionIdentity` — derives `{ apiKeyId, userId }` from the presented credential; ignores an unverifiable token rather than rejecting it |
 | `src/services/session/xenonOptions.ts` | The one precedence rule for Xenon's options: `xe:options` over the `xenon:options` alias, field by field. Every reader of either namespace goes through `xenonOptionsOf` / `xenonOptionsIn` |
-| `src/services/session/sessionCredentials.ts` | `takeSessionCredentials` reads the four secrets and strips them from every bucket in place, first thing in `createSession`; `capsWithCredentials` puts them back on the copy forwarded to a peer Xenon node |
+| `src/services/session/sessionCredentials.ts` | `takeSessionCredentials` reads the four secrets and strips them from every bucket in place, first thing in `prepareSession`; nothing puts them back |
+| `src/services/session/nodeCreateCaps.ts` | `capsForNode`: the copy of a create a hub sends a node. No credentials, no lease id, the allocated phone pinned in `alwaysMatch` |
+| `src/gateway/sessionCreate.ts` | `POST <basePath>/session` in the gateway: allocates, creates another server's phone's session and answers it, hands a local phone to the plugin; on a node, checks the hub's create token |
+| `src/gateway/createHandoff.ts` | The allocation on its way from the gateway to `XenonPlugin.createSession`, through `AsyncLocalStorage`; taken once, or given back when the request ends |
 | `src/services/device-access/actor.ts` | `resolveActor(req)` — the one place an identity is derived from a request |
 | `src/app/routers/streamStartConflict.ts` | `stream/start`'s own conflict decision (proceed / reclaim orphan / deny) |
 | `web/src/App.tsx` | Frontend root component and routing |

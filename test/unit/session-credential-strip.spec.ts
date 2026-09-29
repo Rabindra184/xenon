@@ -7,6 +7,7 @@ import { PluginContext } from '../../src/PluginContext';
 import { ApiKeyService } from '../../src/services/ApiKeyService';
 import { UserService } from '../../src/services/UserService';
 import { JwtKeyService } from '../../src/services/token/JwtKeyService';
+import { HubSessionTokenIssuer } from '../../src/gateway/hubSessionToken';
 import * as pendingSessions from '../../src/data-service/pending-sessions-service';
 import * as deviceService from '../../src/data-service/device-service';
 import * as deviceUtils from '../../src/device-utils';
@@ -87,7 +88,7 @@ describe('createSession — credentials never reach the driver or storage', () =
     context.nodeId = 'node-hub';
     device = { udid: 'u1', host: 'h1', platform: 'android', nodeId: 'node-hub', teamId: null };
 
-    restore = saveRegistrations(ApiKeyService, UserService, JwtKeyService);
+    restore = saveRegistrations(ApiKeyService, UserService, JwtKeyService, HubSessionTokenIssuer);
     Container.set(ApiKeyService, {
       verifyPair: sinon
         .stub()
@@ -224,34 +225,42 @@ describe('createSession — credentials never reach the driver or storage', () =
   });
 
   describe('when the device is on another node', () => {
+    let grants: sinon.SinonStub;
+
     beforeEach(() => {
       sinon.stub(svc as any, 'finalizeSession').callsFake(async (...args: any[]) => {
         seen.sessionResponse = { desired: JSON.parse(JSON.stringify(args[2])) };
       });
-      sinon.stub(svc, 'forwardSessionRequest').callsFake(async (_d: any, c: any) => {
+      sinon.stub(svc, 'forwardSessionRequest').callsFake(async (_d: any, c: any, t: any) => {
         seen.forwarded = JSON.parse(JSON.stringify(c));
+        seen.hubToken = t;
         return { protocol: 'W3C', value: ['sess-1', {}, 'W3C'] } as any;
       });
+      grants = sinon.stub().resolves('HUB-CREATE-TOKEN');
+      Container.set(HubSessionTokenIssuer, {
+        createTokenFor: grants,
+        forget: () => undefined,
+      } as any);
     });
 
-    it('a peer Xenon node gets them, since it authenticates the session itself', async () => {
+    it('a peer Xenon node never gets them: it gets the hub’s token for the verified owner', async () => {
       device.nodeId = 'node-peer';
       await create(caps({ 'xe:options': { accessKey: KEY, token: TOKEN, sessionToken: JWT } }));
-      expect(seen.forwarded.alwaysMatch['xe:options']).to.deep.equal({
-        accessKey: KEY,
-        token: TOKEN,
-        sessionToken: JWT,
-      });
+      expect(leaked(seen.forwarded), 'forwarded').to.deep.equal([]);
+      expect(seen.hubToken).to.equal('HUB-CREATE-TOKEN');
+      expect(grants.firstCall.args[0]).to.deep.equal({ userId: 'usr_key', udid: 'u1', host: 'h1' });
       for (const where of ['pending', 'sent', 'sessionResponse']) {
         expect(leaked(seen[where]), where).to.deep.equal([]);
       }
     });
 
-    it('a cloud provider never does', async () => {
+    it('a cloud provider gets neither', async () => {
       device.nodeId = undefined;
       device.cloud = true;
       await create(caps({ 'xe:options': { accessKey: KEY, token: TOKEN, sessionToken: JWT } }));
       expect(leaked(seen.forwarded)).to.deep.equal([]);
+      expect(seen.hubToken).to.equal(null);
+      expect(grants.called).to.equal(false);
     });
   });
 });

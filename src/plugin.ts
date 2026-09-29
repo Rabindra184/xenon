@@ -24,7 +24,8 @@ import { AICommandService } from './services/AICommandService';
 import { VisionAssertionService } from './services/omni-vision/VisionAssertionService';
 import { TracingService } from './services/TracingService';
 import { CommandInterceptor } from './interceptors/CommandInterceptor';
-import { SessionLifecycleService } from './services/SessionLifecycleService';
+import { SessionAllocation, SessionLifecycleService } from './services/SessionLifecycleService';
+import { currentCreateHandoff } from './gateway/createHandoff';
 import { ServerManager } from './services/ServerManager';
 import { DefaultPluginArgs, IPluginArgs } from './interfaces/IPluginArgs';
 import { ServerArgs } from '@appium/types';
@@ -222,28 +223,25 @@ class XenonPlugin extends BasePlugin {
     if (caps && (!Array.isArray(caps.firstMatch) || caps.firstMatch.length === 0)) {
       caps.firstMatch = [{}];
     }
-    let reachedDriver = false;
-    const result = await Container.get(SessionLifecycleService).createSession(
-      () => {
-        reachedDriver = true;
-        return next();
-      },
-      driver,
-      caps,
+    const lifecycle = Container.get(SessionLifecycleService);
+
+    // The session gateway allocated this request's phone in front of Appium's
+    // route (gateway/sessionCreate.ts) and handed it here through the
+    // request's async context. It only ever hands over a phone this server
+    // drives: it creates a node's session itself and answers it, so Appium
+    // never has to hold a session it has no driver for.
+    const handoff = currentCreateHandoff<SessionAllocation>();
+    if (handoff) return await lifecycle.completeLocalSession(handoff.take(), next, driver, caps);
+
+    // A create that did not come through the gateway (it could not be placed
+    // ahead of Appium's routes). A phone this server drives is still created
+    // here; one on another server is refused, since answering for Appium
+    // without calling next() is what broke its umbrella driver.
+    this.xenonLog.warn(
+      "createSession reached the plugin without the session gateway's allocation; allocating " +
+        'here. Sessions on phones other servers drive need the session gateway, and are refused.',
     );
-    // STOPGAP, removed by PR 2 (createSession in the session gateway).
-    // A session created on another server (a node's phone, a cloud) never
-    // reaches Appium's own createSession, so the umbrella has no driver for
-    // it. Appium >= 2.15 then promotes this plugin to the new session id and
-    // builds its log prefix from `this.sessions[id]`, which is undefined:
-    // `generateDriverLogPrefix(undefined)` throws, and the client gets a 500
-    // while the node keeps the session. Fixed upstream in base-driver 10.2.1
-    // (Appium 3.2.1); appium-device-farm works around it the same way, by
-    // removing this instance's `updateLogPrefix`, which the promotion loop
-    // skips when it is not a function. Only for such a session, so a local
-    // session's plugin keeps its per-session log prefix.
-    if (!reachedDriver) (this as unknown as { updateLogPrefix: unknown }).updateLogPrefix = null;
-    return result;
+    return await lifecycle.createSession(next, driver, caps, { localOnly: true });
   }
 
   async deleteSession(next: () => any, driver: any, sessionId?: string | null) {

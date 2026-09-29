@@ -9,6 +9,8 @@ import * as jose from 'jose';
 import { Container } from 'typedi';
 import { JwtKeyService } from '../../src/services/token/JwtKeyService';
 import {
+  HUB_CREATE_AUDIENCE,
+  HUB_CREATE_TTL_SECONDS,
   HUB_TOKEN_AUDIENCE,
   HUB_TOKEN_TTL_SECONDS,
   HubSessionTokenIssuer,
@@ -171,6 +173,103 @@ describe('hub session tokens', () => {
         thrown = err;
       }
       expect(thrown).to.be.instanceOf(HubTokenUnavailableError);
+    });
+  });
+
+  describe('the token for a create (hub → node)', () => {
+    const grant = { userId: 'alice', udid: 'phone-1', host: 'http://10.0.0.5:4725' };
+
+    it('names the owner, the phone and its node, audience xenon-node-create, for two minutes', async () => {
+      const token = (await new HubSessionTokenIssuer().createTokenFor(grant)) as string;
+      const claims = jose.decodeJwt(token);
+      expect(claims.aud).to.equal(HUB_CREATE_AUDIENCE);
+      expect(claims).to.include({ sub: 'alice', udid: 'phone-1', host: 'http://10.0.0.5:4725' });
+      expect(claims.sid, 'no session yet').to.equal(undefined);
+      expect((claims.exp as number) - (claims.iat as number)).to.equal(HUB_CREATE_TTL_SECONDS);
+    });
+
+    it('carries no owner for an unattributed create', async () => {
+      const token = (await new HubSessionTokenIssuer().createTokenFor({
+        ...grant,
+        userId: null,
+      })) as string;
+      expect(jose.decodeJwt(token).sub).to.equal(undefined);
+      expect(await new HubSessionTokenVerifier(hubUrl).verifyCreate(token)).to.deep.equal({
+        ...grant,
+        userId: null,
+      });
+    });
+
+    it('is minted fresh for every create', async () => {
+      const issuer = new HubSessionTokenIssuer();
+      const sign = sinon.spy(hubKeys, 'sign');
+      await issuer.createTokenFor(grant);
+      await issuer.createTokenFor(grant);
+      expect(sign.callCount).to.equal(2);
+    });
+
+    it('answers null when this server cannot sign', async () => {
+      Container.set(JwtKeyService, new JwtKeyService()); // never initialised
+      const issuer = new HubSessionTokenIssuer();
+      sinon.stub((issuer as any).logger, 'warn');
+      expect(await issuer.createTokenFor(grant)).to.equal(null);
+    });
+
+    it('the node reads the grant back from it', async () => {
+      const token = (await new HubSessionTokenIssuer().createTokenFor(grant)) as string;
+      expect(await new HubSessionTokenVerifier(hubUrl).verifyCreate(token)).to.deep.equal(grant);
+    });
+
+    it('is no command token, and a command token is no create token', async () => {
+      const issuer = new HubSessionTokenIssuer();
+      const verifier = new HubSessionTokenVerifier(hubUrl);
+      const create = (await issuer.createTokenFor(grant)) as string;
+      const command = (await issuer.tokenFor('s-1')) as string;
+      expect(await verifier.verify(create, 's-1')).to.equal(false);
+      expect(await verifier.verifyCreate(command)).to.equal(null);
+    });
+
+    it('refuses a forged, an expired, or an incomplete one', async () => {
+      const verifier = new HubSessionTokenVerifier(hubUrl);
+      const forger = await keyService();
+      const claims = { sub: 'alice', udid: 'phone-1', host: grant.host };
+      const tokens = [
+        await forger.sign(claims, { audience: HUB_CREATE_AUDIENCE, ttlSeconds: 120 }),
+        await hubKeys.sign(claims, { audience: HUB_CREATE_AUDIENCE, ttlSeconds: -3600 }),
+        await hubKeys.sign(
+          { sub: 'alice', host: grant.host },
+          { audience: HUB_CREATE_AUDIENCE, ttlSeconds: 120 },
+        ),
+        await hubKeys.sign(
+          { sub: 'alice', udid: 'phone-1' },
+          { audience: HUB_CREATE_AUDIENCE, ttlSeconds: 120 },
+        ),
+        await hubKeys.sign(claims, { audience: 'xenon-rest', ttlSeconds: 120 }),
+        'not-a-jwt',
+      ];
+      for (const token of tokens) expect(await verifier.verifyCreate(token)).to.equal(null);
+    });
+
+    it('throws HubTokenUnavailableError when the hub’s keys cannot be fetched', async () => {
+      const token = (await new HubSessionTokenIssuer().createTokenFor(grant)) as string;
+      await loopback.closeAll();
+      let thrown: unknown;
+      try {
+        await new HubSessionTokenVerifier(hubUrl).verifyCreate(token);
+      } catch (err) {
+        thrown = err;
+      }
+      expect(thrown).to.be.instanceOf(HubTokenUnavailableError);
+    });
+
+    it('is an audience /auth/token will not mint for a user', () => {
+      const source = fs.readFileSync(
+        path.resolve(__dirname, '../../src/app/routers/auth.ts'),
+        'utf8',
+      );
+      const mintable = /MINTABLE_AUDIENCES = \[([^\]]*)\]/.exec(source)?.[1] ?? '';
+      expect(mintable).to.include('xenon-rest');
+      expect(mintable).not.to.include(HUB_CREATE_AUDIENCE);
     });
   });
 });
