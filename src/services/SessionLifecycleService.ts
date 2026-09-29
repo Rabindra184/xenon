@@ -1149,6 +1149,10 @@ export class SessionLifecycleService {
       Object.prototype.hasOwnProperty.call(session, 'error')
     ) {
       let errorMessage = (session as W3CNewSessionResponseError).error;
+      // Appium answers a refused create as `{ error: <Error> }`. Rethrow it, so
+      // the client gets Appium's reason and status; JSON.stringify of an Error
+      // is `{}`.
+      if ((errorMessage as unknown) instanceof Error) throw errorMessage;
       if (typeof errorMessage === 'object') {
         errorMessage = JSON.stringify(errorMessage);
       }
