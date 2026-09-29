@@ -13,6 +13,8 @@ import IOSStreamService from '../../src/device-managers/ios/IOSStreamService';
 import AndroidStreamService from '../../src/device-managers/android/AndroidStreamService';
 import AndroidH264StreamService from '../../src/device-managers/android/AndroidH264StreamService';
 import { scopesForRole } from '../../src/middleware/authMiddleware';
+import { saveRegistrations } from '../helpers/container-registration';
+import { loopbackServers } from '../helpers/loopbackServer';
 
 /**
  * POST /control/:udid/stream/stop must not stop the stream under a live
@@ -52,8 +54,19 @@ describe('POST /control/:udid/stream/stop — a device being recorded', () => {
   let androidStop: sinon.SinonStub;
   let h264Stop: sinon.SinonStub;
   let active: { id: string; groupId: string } | null;
+  let restoreContainer: () => void;
+  // Served on 127.0.0.1: request(app) listens on every address and connects
+  // to 127.0.0.1, where another process's listener on that port can answer.
+  const loopback = loopbackServers();
 
   beforeEach(() => {
+    restoreContainer = saveRegistrations(
+      ApiKeyService,
+      AndroidStreamService,
+      AndroidH264StreamService,
+      IOSStreamService,
+      RecordingStore,
+    );
     active = { id: 'rec-1', groupId: 'grp-1' };
     sinon.stub(DeviceStoreFactory, 'getStore').returns({
       findDevice: async () => ({
@@ -74,13 +87,14 @@ describe('POST /control/:udid/stream/stop — a device being recorded', () => {
     Container.set(RecordingStore, { activeRecordingFor: async () => active } as any);
   });
 
-  afterEach(() => {
+  afterEach(async () => {
     sinon.restore();
-    Container.reset();
+    restoreContainer();
+    await loopback.closeAll();
   });
 
-  const stop = (caller: { userId: string; role?: 'MEMBER' | 'ADMIN' | 'SUPER_ADMIN' }) =>
-    request(buildApp(caller)).post(`/xenon/api/control/${UDID}/stream/stop`);
+  const stop = async (caller: { userId: string; role?: 'MEMBER' | 'ADMIN' | 'SUPER_ADMIN' }) =>
+    request(await loopback.serve(buildApp(caller))).post(`/xenon/api/control/${UDID}/stream/stop`);
 
   it('refuses the owner with 409 and names the recording to stop instead', async () => {
     const res = await stop({ userId: ALICE });

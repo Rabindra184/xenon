@@ -15,6 +15,8 @@ import { UserService } from '../../src/services/UserService';
 import { ApiKeyService } from '../../src/services/ApiKeyService';
 import { UserSessionService } from '../../src/services/UserSessionService';
 import { DeviceStoreFactory } from '../../src/data-service/device-store';
+import { saveRegistrations } from '../helpers/container-registration';
+import { loopbackServers } from '../helpers/loopbackServer';
 
 /**
  * `req.auth.userId` must always hold a User id.
@@ -68,7 +70,19 @@ describe('stream/ticket carries the user identity, not the credential', () => {
     return app;
   }
 
+  let restoreContainer: () => void;
+  // Served on 127.0.0.1: request(app) listens on every address and connects
+  // to 127.0.0.1, where another process's listener on that port can answer.
+  const loopback = loopbackServers();
+
   beforeEach(async () => {
+    restoreContainer = saveRegistrations(
+      JwtKeyService,
+      StreamTicketService,
+      UserService,
+      ApiKeyService,
+      UserSessionService,
+    );
     dir = fs.mkdtempSync(path.join(os.tmpdir(), 'xenon-ticket-identity-'));
     const keySvc = new JwtKeyService();
     await keySvc.init(dir);
@@ -91,14 +105,17 @@ describe('stream/ticket carries the user identity, not the credential', () => {
     } as any);
   });
 
-  afterEach(() => {
+  afterEach(async () => {
     sinon.restore();
-    Container.reset();
+    restoreContainer();
+    await loopback.closeAll();
     fs.rmSync(dir, { recursive: true, force: true });
   });
 
-  const mint = (caller: { userId?: string; apiKeyId?: string }) =>
-    request(buildApp(caller)).post(`/xenon/api/control/${UDID}/stream/ticket`);
+  const mint = async (caller: { userId?: string; apiKeyId?: string }) =>
+    request(await loopback.serve(buildApp(caller))).post(
+      `/xenon/api/control/${UDID}/stream/ticket`,
+    );
 
   it('mints with the userId even when a different apiKey id is present', async () => {
     const res = await mint({ userId: ALICE_USER, apiKeyId: ALICE_KEY });
@@ -150,7 +167,7 @@ describe('stream/ticket carries the user identity, not the credential', () => {
   // two must match: minting for any udid would mark the ones that 404 as
   // phones another team owns.
   it("404s a udid that isn't a device, and mints nothing", async () => {
-    const res = await request(buildApp({ userId: ALICE_USER })).post(
+    const res = await request(await loopback.serve(buildApp({ userId: ALICE_USER }))).post(
       '/xenon/api/control/NO-SUCH-DEVICE/stream/ticket',
     );
     expect(res.status).to.equal(404);

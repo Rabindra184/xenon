@@ -132,7 +132,10 @@ async function harness(over: {
   };
   if (over.maxBufferedBytes !== undefined) deps.maxBufferedBytes = over.maxBufferedBytes;
   attachLogcatWs(server, deps);
-  await new Promise<void>((r) => server.listen(0, r));
+  // 127.0.0.1, where the client connects. A listener on every address can
+  // share its port with another process's 127.0.0.1 listener, which then
+  // answers the handshake instead ("Unexpected server response: 501").
+  await new Promise<void>((r) => server.listen(0, '127.0.0.1', r));
   const port = (server.address() as AddressInfo).port;
   return {
     port,
