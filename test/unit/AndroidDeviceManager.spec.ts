@@ -5,12 +5,16 @@ import { DeviceWithPath } from '@devicefarmer/adbkit';
 import Adb from '@devicefarmer/adbkit';
 import { ADB as AppiumADB } from 'appium-adb';
 import { expect } from 'chai';
-import { createTestAndroidManager } from '../helpers/test-container';
+import { createTestAndroidManager, resetTestContainer } from '../helpers/test-container';
+import { useScratchDatabase } from '../helpers/scratch-database';
 import { getAdbOriginal } from './GetAdbOriginal';
 
 const sandbox = sinon.createSandbox();
 
 describe('Android Device Manager', () => {
+  // deviceInfo() leases the phone's ports through Prisma. Without a database
+  // of its own that was the developer's ~/.cache/xenon/xenon.db.
+  useScratchDatabase();
   let adb: any;
   beforeEach(async () => {
     sandbox.restore();
@@ -27,8 +31,9 @@ describe('Android Device Manager', () => {
     } as any);
   });
 
-  afterEach(function () {
+  afterEach(async function () {
     sandbox.restore();
+    await resetTestContainer();
   });
 
   it('Android Device List to have added state', async () => {

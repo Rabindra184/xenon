@@ -2,7 +2,7 @@ import { expect } from 'chai';
 import path from 'path';
 import sinon from 'sinon';
 import express4 from 'express';
-import request from 'supertest';
+import request from '../helpers/loopbackRequest';
 import { CommandCallerVerifier } from '../../src/middleware/commandCaller';
 import { registerCommandAuth } from '../../src/app/registerCommandAuth';
 import { routerStackOf } from '../../src/app/insertBeforeRoutes';

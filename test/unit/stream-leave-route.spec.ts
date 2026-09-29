@@ -2,7 +2,7 @@ import 'reflect-metadata';
 import { expect } from 'chai';
 import sinon from 'sinon';
 import express from 'express';
-import request from 'supertest';
+import request from '../helpers/loopbackRequest';
 import { Container } from 'typedi';
 import ControlRouter, { previewLeaveDeps, previewLeaves } from '../../src/app/routers/control';
 import { DeviceStoreFactory } from '../../src/data-service/device-store';
@@ -13,6 +13,8 @@ import IOSStreamService from '../../src/device-managers/ios/IOSStreamService';
 import AndroidStreamService from '../../src/device-managers/android/AndroidStreamService';
 import AndroidH264StreamService from '../../src/device-managers/android/AndroidH264StreamService';
 import { scopesForRole } from '../../src/middleware/authMiddleware';
+import { saveRegistrations } from '../helpers/container-registration';
+import { loopbackServers } from '../helpers/loopbackServer';
 
 const UDID = 'DEV-1';
 const ALICE = 'usr_alice';
@@ -46,8 +48,19 @@ describe('POST /control/:udid/stream/leave', () => {
   let h264Clients: number;
   let mjpegViewers: number;
   let iosViewers: number;
+  let restoreContainer: () => void;
+  // Served on 127.0.0.1: request(app) listens on every address and connects
+  // to 127.0.0.1, where another process's listener on that port can answer.
+  const loopback = loopbackServers();
 
   beforeEach(() => {
+    restoreContainer = saveRegistrations(
+      ApiKeyService,
+      AndroidStreamService,
+      AndroidH264StreamService,
+      IOSStreamService,
+      RecordingStore,
+    );
     deviceRow = {
       udid: UDID,
       host: '127.0.0.1',
@@ -84,15 +97,18 @@ describe('POST /control/:udid/stream/leave', () => {
     } as any);
   });
 
-  afterEach(() => {
+  afterEach(async () => {
     sinon.restore();
-    Container.reset();
+    restoreContainer();
+    await loopback.closeAll();
   });
 
   describe('the route', () => {
     it('schedules the leave for the holder and answers at once', async () => {
       const leave = sinon.stub(previewLeaves, 'leave');
-      const res = await request(buildApp(ALICE)).post(`/xenon/api/control/${UDID}/stream/leave`);
+      const res = await request(await loopback.serve(buildApp(ALICE))).post(
+        `/xenon/api/control/${UDID}/stream/leave`,
+      );
       expect(res.status, JSON.stringify(res.body)).to.equal(202);
       expect(leave.calledOnceWith(UDID)).to.equal(true);
       // Nothing is stopped yet: that waits for the grace and the viewer count.
@@ -101,7 +117,9 @@ describe('POST /control/:udid/stream/leave', () => {
 
     it('refuses someone else’s hold', async () => {
       const leave = sinon.stub(previewLeaves, 'leave');
-      const res = await request(buildApp(BOB)).post(`/xenon/api/control/${UDID}/stream/leave`);
+      const res = await request(await loopback.serve(buildApp(BOB))).post(
+        `/xenon/api/control/${UDID}/stream/leave`,
+      );
       expect(res.status).to.equal(403);
       expect(leave.called).to.equal(false);
     });
@@ -109,7 +127,9 @@ describe('POST /control/:udid/stream/leave', () => {
     // A reload leaves and then starts again; the start must win.
     it('stream/start cancels a pending leave', async () => {
       const cancel = sinon.stub(previewLeaves, 'cancel');
-      await request(buildApp(ALICE)).post(`/xenon/api/control/${UDID}/stream/start`);
+      await request(await loopback.serve(buildApp(ALICE))).post(
+        `/xenon/api/control/${UDID}/stream/start`,
+      );
       expect(cancel.calledWith(UDID)).to.equal(true);
     });
   });

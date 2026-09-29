@@ -2,7 +2,7 @@ import 'reflect-metadata';
 import { expect } from 'chai';
 import sinon from 'sinon';
 import express from 'express';
-import request from 'supertest';
+import request from '../helpers/loopbackRequest';
 import { Container } from 'typedi';
 import ControlRouter from '../../src/app/routers/control';
 import { DeviceStoreFactory } from '../../src/data-service/device-store';
@@ -10,6 +10,8 @@ import { ApiKeyService } from '../../src/services/ApiKeyService';
 import { XenonManager } from '../../src/device-managers';
 import { ClipboardUnsupportedError } from '../../src/device-managers/clipboardErrors';
 import { scopesForRole } from '../../src/middleware/authMiddleware';
+import { saveRegistrations } from '../helpers/container-registration';
+import { loopbackServers } from '../helpers/loopbackServer';
 
 /**
  * GET/POST /control/:udid/clipboard answered 200 whatever happened on the
@@ -46,8 +48,15 @@ function buildApp() {
 
 describe('GET/POST /control/:udid/clipboard', () => {
   let manager: AndroidDeviceManager;
+  let restoreContainer: () => void;
+  // Served on 127.0.0.1, not by request(app): that listens on every address
+  // and connects to 127.0.0.1, where another process's listener on the same
+  // port answers instead (a stray 501 or a socket hang-up in a full run).
+  const loopback = loopbackServers();
+  const app = async () => loopback.serve(buildApp());
 
   beforeEach(() => {
+    restoreContainer = saveRegistrations(ApiKeyService, XenonManager);
     manager = new AndroidDeviceManager();
     sinon.stub(DeviceStoreFactory, 'getStore').returns({
       findDevice: async () => ({
@@ -62,21 +71,22 @@ describe('GET/POST /control/:udid/clipboard', () => {
     Container.set(XenonManager, { deviceInstances: async () => [manager] } as any);
   });
 
-  afterEach(() => {
+  afterEach(async () => {
     sinon.restore();
-    Container.reset();
+    restoreContainer();
+    await loopback.closeAll();
   });
 
   it('returns the clipboard text', async () => {
     manager.getClipboard.resolves('xenonread');
-    const res = await request(buildApp()).get(`/xenon/api/control/${UDID}/clipboard`);
+    const res = await request(await app()).get(`/xenon/api/control/${UDID}/clipboard`);
     expect(res.status).to.equal(200);
     expect(res.body).to.deep.equal({ content: 'xenonread' });
   });
 
   it('says why a read failed, with a 500', async () => {
     manager.getClipboard.rejects(new Error('Appium Settings didn’t return the clipboard.'));
-    const res = await request(buildApp()).get(`/xenon/api/control/${UDID}/clipboard`);
+    const res = await request(await app()).get(`/xenon/api/control/${UDID}/clipboard`);
     expect(res.status).to.equal(500);
     expect(res.body.error).to.match(/Appium Settings/);
   });
@@ -87,7 +97,7 @@ describe('GET/POST /control/:udid/clipboard', () => {
     manager.setClipboard.rejects(
       new ClipboardUnsupportedError('Appium Settings can only read it.'),
     );
-    const res = await request(buildApp())
+    const res = await request(await app())
       .post(`/xenon/api/control/${UDID}/clipboard`)
       .send({ content: 'x' });
     expect(res.status).to.equal(501);
@@ -96,7 +106,7 @@ describe('GET/POST /control/:udid/clipboard', () => {
 
   it('still answers 500 for any other write failure', async () => {
     manager.setClipboard.rejects(new Error('WDA is not running'));
-    const res = await request(buildApp())
+    const res = await request(await app())
       .post(`/xenon/api/control/${UDID}/clipboard`)
       .send({ content: 'x' });
     expect(res.status).to.equal(500);

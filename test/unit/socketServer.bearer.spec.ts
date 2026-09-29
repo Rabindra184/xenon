@@ -29,8 +29,10 @@ describe('SocketServer — authenticate() bearer path', () => {
   let keySvc: JwtKeyService;
   let server: SocketServer;
   let authenticate: (socket: any) => Promise<{ principal: string }>;
+  let restoreContainer: () => void;
 
   beforeEach(async () => {
+    restoreContainer = saveRegistrations(JwtKeyService, ApiKeyService);
     dir = fs.mkdtempSync(path.join(os.tmpdir(), 'xenon-socket-bearer-'));
     keySvc = new JwtKeyService();
     await keySvc.init(dir);
@@ -45,7 +47,7 @@ describe('SocketServer — authenticate() bearer path', () => {
 
   afterEach(() => {
     sinon.restore();
-    Container.reset();
+    restoreContainer();
     fs.rmSync(dir, { recursive: true, force: true });
   });
 

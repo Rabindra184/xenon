@@ -17,6 +17,8 @@ import {
   setupTestContainer,
   resetTestContainer,
 } from '../helpers/test-container';
+import { useLokiStores } from '../helpers/loki-stores';
+import { useScratchDatabase } from '../helpers/scratch-database';
 
 chai.should();
 chai.use(sinonChai);
@@ -24,6 +26,11 @@ const expect = chai.expect;
 const sandbox = sinon.createSandbox();
 
 describe('Device Utils', () => {
+  // The in-memory device store, also when this file runs on its own, and a
+  // database of its own for what allocation reads through Prisma. It passed
+  // only against the developer's ~/.cache/xenon/xenon.db, which has the tables.
+  useLokiStores();
+  useScratchDatabase();
   const hub1Device = {
     systemPort: 56205,
     sdk: '10',
@@ -130,6 +137,8 @@ describe('Device Utils', () => {
     await resetTestContainer();
     await setupTestContainer();
   });
+
+  after(() => resetTestContainer());
 
   it('Allocate devices for session with host filter', async () => {
     (await XenonDatabase.DeviceModel).removeDataOnly();

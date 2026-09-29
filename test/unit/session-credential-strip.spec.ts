@@ -13,7 +13,9 @@ import * as deviceService from '../../src/data-service/device-service';
 import * as deviceUtils from '../../src/device-utils';
 import { DefaultPluginArgs } from '../../src/interfaces/IPluginArgs';
 import { config } from '../../src/config';
+import { prisma } from '../../src/prisma';
 import { saveRegistrations } from '../helpers/container-registration';
+import { useLokiStores } from '../helpers/loki-stores';
 
 /**
  * createSession end to end: the credentials a session presents in
@@ -45,6 +47,10 @@ const caps = (always: Record<string, unknown>, firstMatch: Record<string, unknow
 const leaked = (value: unknown) => SECRETS.filter((s) => JSON.stringify(value ?? null).includes(s));
 
 describe('createSession — credentials never reach the driver or storage', () => {
+  // The in-memory stores, also when this file runs on its own: without
+  // NODE_ENV=test the factory handed out the Prisma stores, which are the
+  // developer's ~/.cache/xenon/xenon.db.
+  useLokiStores();
   let svc: SessionLifecycleService;
   let device: any;
   let context: PluginContext;
@@ -104,6 +110,9 @@ describe('createSession — credentials never reach the driver or storage', () =
         return { sub: t.slice('jwt:'.length), teamId: null };
       },
     } as any);
+
+    // The owner's teams: none, and not read from the developer's database.
+    sinon.stub(prisma.teamMember, 'findMany').resolves([] as any);
 
     seen = {};
     sinon.stub(pendingSessions, 'addNewPendingSession').callsFake(async (c: any) => {

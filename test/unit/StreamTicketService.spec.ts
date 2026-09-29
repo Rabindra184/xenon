@@ -8,12 +8,15 @@ import { randomUUID } from 'crypto';
 import { Container } from 'typedi';
 import { JwtKeyService } from '../../src/services/token/JwtKeyService';
 import { StreamTicketService } from '../../src/services/token/StreamTicketService';
+import { saveRegistrations } from '../helpers/container-registration';
 
 describe('StreamTicketService', () => {
   let dir: string;
   let svc: StreamTicketService;
+  let restoreContainer: () => void;
 
   beforeEach(async () => {
+    restoreContainer = saveRegistrations(JwtKeyService);
     dir = fs.mkdtempSync(path.join(os.tmpdir(), 'xenon-ticket-'));
     const keys = new JwtKeyService();
     await keys.init(dir);
@@ -21,7 +24,7 @@ describe('StreamTicketService', () => {
     svc = new StreamTicketService();
   });
   afterEach(() => {
-    Container.reset();
+    restoreContainer();
     fs.rmSync(dir, { recursive: true, force: true });
   });
 

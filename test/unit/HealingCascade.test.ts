@@ -1,3 +1,4 @@
+import 'reflect-metadata';
 import { expect } from 'chai';
 import { HealingOrchestrator } from '../../src/services/healing/HealingOrchestrator';
 import { HealingTier } from '../../src/services/healing/types';
@@ -6,6 +7,7 @@ import { HealEtalonService } from '../../src/services/healing/HealEtalonService'
 import { FuzzyXmlHealingProvider } from '../../src/services/healing/FuzzyXmlHealingProvider';
 import { OcrHealingProvider } from '../../src/services/healing/OcrHealingProvider';
 import { HealedLocatorGenerator } from '../../src/services/healing/HealedLocatorGenerator';
+import { saveRegistrations } from '../helpers/container-registration';
 
 // Mock Tesseract
 const TesseractMock = {
@@ -30,9 +32,10 @@ describe('Healing Orchestrator - Cascade Strategy', () => {
   let orchestrator: HealingOrchestrator;
   let mockEtalonService: any;
   let mockGenerator: any;
+  let restoreContainer: () => void;
 
   beforeEach(() => {
-    Container.reset();
+    restoreContainer = saveRegistrations(HealEtalonService, HealedLocatorGenerator);
 
     mockEtalonService = {
       getSignature: async () => null,
@@ -45,6 +48,8 @@ describe('Healing Orchestrator - Cascade Strategy', () => {
 
     orchestrator = new HealingOrchestrator(mockEtalonService as HealEtalonService);
   });
+
+  afterEach(() => restoreContainer());
 
   it('should cascade to OCR (Tier 3) when Fuzzy XML (Tier 2) fails to find a high-confidence match', async () => {
     // 1. Setup a page source that has NO matching text or buttons for "Login"

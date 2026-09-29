@@ -1,15 +1,23 @@
 import 'reflect-metadata';
 import { cleanPendingSessions, getDeviceFiltersFromCapability } from '../../src/device-utils';
 import { expect } from 'chai';
-import { addCLIArgs } from '../../src/data-service/pluginArgs';
 import { serverCliArgs } from '../integration/cliArgs';
 import { XenonDatabase } from '../../src/data-service/db';
 import { DefaultPluginArgs } from '../../src/interfaces/IPluginArgs';
+import { useLokiStores } from '../helpers/loki-stores';
 
 const pluginArgs = DefaultPluginArgs;
 
 describe('Device filter tests', () => {
+  // The in-memory stores, also when this file runs on its own: without
+  // NODE_ENV=test the factory handed out the Prisma stores, which are the
+  // developer's ~/.cache/xenon/xenon.db.
+  useLokiStores();
+
   it('Get Device filters for real device', async () => {
+    // Imported here, not at the top: the module keeps the store it gets when
+    // it loads, and only here is that the in-memory one on a file run alone.
+    const { addCLIArgs } = await import('../../src/data-service/pluginArgs');
     await addCLIArgs(serverCliArgs);
     (await XenonDatabase.CLIArgs)
       .chain()
@@ -105,7 +113,9 @@ describe('Device filter tests', () => {
   });
 });
 
-describe('Pending sessions', async () => {
+describe('Pending sessions', () => {
+  useLokiStores();
+
   beforeEach(async () => {
     (await XenonDatabase.PendingSessionsModel).removeDataOnly();
   });

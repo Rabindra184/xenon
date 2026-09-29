@@ -82,6 +82,9 @@ describe('authMiddleware', () => {
       role: 'MEMBER',
       status: 'ACTIVE',
     } as any);
+    // A member's teams are looked up; without this the lookup read the
+    // developer's own database.
+    sinon.stub(prisma.teamMember, 'findMany').resolves([] as any);
     const req: any = { headers: { cookie: 'xenon_dashboard_session=legacy-key-id' } };
     let called = false;
     await authMiddleware(req, mkRes() as any, () => {

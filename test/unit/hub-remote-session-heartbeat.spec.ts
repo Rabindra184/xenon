@@ -6,7 +6,7 @@ import http from 'http';
 import os from 'os';
 import path from 'path';
 import sinon from 'sinon';
-import request from 'supertest';
+import request from '../helpers/loopbackRequest';
 import { Container } from 'typedi';
 import { XenonPlugin } from '../../src/plugin';
 import { commandAuthDeps, registerSessionGateway } from '../../src/app/registerCommandAuth';

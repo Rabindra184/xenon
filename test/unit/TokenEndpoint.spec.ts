@@ -8,10 +8,13 @@ import path from 'path';
 import { JwtKeyService } from '../../src/services/token/JwtKeyService';
 import { issueToken } from '../../src/app/routers/auth';
 import { McpScopeError } from '../../src/services/token/mcpScopes';
+import { saveRegistrations } from '../helpers/container-registration';
 
 describe('POST /auth/token handler (issueToken)', () => {
   let dir: string;
+  let restoreContainer: () => void;
   beforeEach(async () => {
+    restoreContainer = saveRegistrations(JwtKeyService);
     dir = fs.mkdtempSync(path.join(os.tmpdir(), 'xenon-tok-'));
     const svc = new JwtKeyService();
     await svc.init(dir);
@@ -19,7 +22,7 @@ describe('POST /auth/token handler (issueToken)', () => {
   });
   afterEach(() => {
     fs.rmSync(dir, { recursive: true, force: true });
-    Container.reset();
+    restoreContainer();
   });
 
   const auth = {
@@ -62,9 +65,22 @@ describe('POST /auth/token handler (issueToken)', () => {
 describe('issueToken (xenon-mcp granular claims)', () => {
   const auth = { userId: 'u1', role: 'MEMBER', scopes: 'devices,sessions,read', teamId: 't1' };
 
+  let dir: string;
+  let restoreContainer: () => void;
+
+  // Its own key service, not the process-wide one: init() would give the
+  // shared singleton this suite's temporary keys for every later spec.
   before(async () => {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'jwtkeys-'));
-    await Container.get(JwtKeyService).init(dir);
+    restoreContainer = saveRegistrations(JwtKeyService);
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), 'jwtkeys-'));
+    const svc = new JwtKeyService();
+    await svc.init(dir);
+    Container.set(JwtKeyService, svc);
+  });
+
+  after(() => {
+    restoreContainer();
+    fs.rmSync(dir, { recursive: true, force: true });
   });
 
   async function decode(token: string): Promise<jose.JWTPayload> {

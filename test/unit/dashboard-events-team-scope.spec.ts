@@ -5,7 +5,7 @@ import fs from 'fs';
 import os from 'os';
 import path from 'path';
 import express from 'express';
-import request from 'supertest';
+import request from '../helpers/loopbackRequest';
 import { Container } from 'typedi';
 import { SocketServer } from '../../src/services/SocketServer';
 import { SocketEvents } from '../../src/enums/SocketEvents';
@@ -381,6 +381,9 @@ describe('Dashboard events name their phone (team-scoped call sites)', () => {
       entries: [{ name: 'a.txt', source: { kind: 'buffer', data: Buffer.from('hi') } }],
       cleanup: async () => {},
     } as any);
+    // The route looks the session up first. No row: it assembles as before.
+    // Unstubbed, that read the developer's database, and hung without it.
+    sinon.stub(prisma.session, 'findUnique').resolves(null);
     const app = express();
     app.use((req: any, _res, next) => {
       req.auth = {

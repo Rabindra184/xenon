@@ -2,7 +2,7 @@ import 'reflect-metadata';
 import { expect } from 'chai';
 import sinon from 'sinon';
 import express from 'express';
-import request from 'supertest';
+import request from '../helpers/loopbackRequest';
 import { Container } from 'typedi';
 import fs from 'fs';
 import os from 'os';
@@ -15,6 +15,8 @@ import { DeviceStoreFactory } from '../../src/data-service/device-store';
 import { UserService } from '../../src/services/UserService';
 import { ApiKeyService } from '../../src/services/ApiKeyService';
 import { UserSessionService } from '../../src/services/UserSessionService';
+import { saveRegistrations } from '../helpers/container-registration';
+import { loopbackServers } from '../helpers/loopbackServer';
 
 function fakeRes() {
   const res: any = { statusCode: 200 };
@@ -34,8 +36,16 @@ describe('authMiddleware — stream-ticket branch', () => {
   let dir: string;
   let keySvc: JwtKeyService;
   let ticketSvc: StreamTicketService;
+  let restoreContainer: () => void;
 
   beforeEach(async () => {
+    restoreContainer = saveRegistrations(
+      JwtKeyService,
+      StreamTicketService,
+      UserService,
+      ApiKeyService,
+      UserSessionService,
+    );
     dir = fs.mkdtempSync(path.join(os.tmpdir(), 'xenon-authmw-ticket-'));
     keySvc = new JwtKeyService();
     await keySvc.init(dir);
@@ -51,7 +61,7 @@ describe('authMiddleware — stream-ticket branch', () => {
   });
   afterEach(() => {
     sinon.restore();
-    Container.reset();
+    restoreContainer();
     fs.rmSync(dir, { recursive: true, force: true });
   });
 
@@ -192,8 +202,19 @@ describe('authMiddleware — stream-ticket branch (real mount-order, supertest)'
   let dir: string;
   let app: express.Express;
   let ticketSvc: StreamTicketService;
+  let restoreContainer: () => void;
+  // Served on 127.0.0.1: request(app) listens on every address and connects
+  // to 127.0.0.1, where another process's listener on that port can answer.
+  const loopback = loopbackServers();
 
   beforeEach(async () => {
+    restoreContainer = saveRegistrations(
+      JwtKeyService,
+      StreamTicketService,
+      UserService,
+      ApiKeyService,
+      UserSessionService,
+    );
     dir = fs.mkdtempSync(path.join(os.tmpdir(), 'xenon-authmw-mount-'));
     const keySvc = new JwtKeyService();
     await keySvc.init(dir);
@@ -223,15 +244,18 @@ describe('authMiddleware — stream-ticket branch (real mount-order, supertest)'
     app = express();
     app.use('/xenon/api', apiRouter);
   });
-  afterEach(() => {
+  afterEach(async () => {
     sinon.restore();
-    Container.reset();
+    restoreContainer();
+    await loopback.closeAll();
     fs.rmSync(dir, { recursive: true, force: true });
   });
 
   it('a valid ticket on GET /xenon/api/control/:udid/stream reaches the route (past 401)', async () => {
     const ticket = await ticketSvc.mint('UDID-1', 'actor-1');
-    const res = await request(app).get('/xenon/api/control/UDID-1/stream').query({ ticket });
+    const res = await request(await loopback.serve(app))
+      .get('/xenon/api/control/UDID-1/stream')
+      .query({ ticket });
     // The ticket branch fired: request cleared auth and hit the handler's
     // device lookup (404), rather than being rejected at the middleware (401).
     expect(res.status).to.not.equal(401);
@@ -239,7 +263,7 @@ describe('authMiddleware — stream-ticket branch (real mount-order, supertest)'
   });
 
   it('the SAME request without a ticket is rejected 401 (proves the guard is non-vacuous)', async () => {
-    const res = await request(app).get('/xenon/api/control/UDID-1/stream');
+    const res = await request(await loopback.serve(app)).get('/xenon/api/control/UDID-1/stream');
     expect(res.status).to.equal(401);
     expect(res.body).to.deep.equal({ error: 'unauthenticated' });
   });

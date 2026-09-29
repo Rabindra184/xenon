@@ -2,7 +2,7 @@ import 'reflect-metadata';
 import { expect } from 'chai';
 import sinon from 'sinon';
 import express from 'express';
-import request from 'supertest';
+import request from '../helpers/loopbackRequest';
 import { Container } from 'typedi';
 import ControlRouter from '../../src/app/routers/control';
 import { DeviceStoreFactory } from '../../src/data-service/device-store';
@@ -13,6 +13,8 @@ import IOSStreamService from '../../src/device-managers/ios/IOSStreamService';
 import AndroidStreamService from '../../src/device-managers/android/AndroidStreamService';
 import AndroidH264StreamService from '../../src/device-managers/android/AndroidH264StreamService';
 import { scopesForRole } from '../../src/middleware/authMiddleware';
+import { saveRegistrations } from '../helpers/container-registration';
+import { loopbackServers } from '../helpers/loopbackServer';
 
 /**
  * Round-trip guard for POST /control/:udid/stream/stop.
@@ -86,6 +88,10 @@ describe('POST /control/:udid/stream/stop — lock ownership round-trip', () => 
   let androidStop: sinon.SinonStub;
   let h264Stop: sinon.SinonStub;
   let deviceRow: any;
+  let restoreContainer: () => void;
+  // Served on 127.0.0.1: request(app) listens on every address and connects
+  // to 127.0.0.1, where another process's listener on that port can answer.
+  const loopback = loopbackServers();
 
   function setLock(sessionId: string | null) {
     deviceRow = {
@@ -98,6 +104,13 @@ describe('POST /control/:udid/stream/stop — lock ownership round-trip', () => 
   }
 
   beforeEach(() => {
+    restoreContainer = saveRegistrations(
+      ApiKeyService,
+      AndroidStreamService,
+      AndroidH264StreamService,
+      IOSStreamService,
+      RecordingStore,
+    );
     setLock(`manual_${ALICE}_${UDID}`);
     sinon.stub(DeviceStoreFactory, 'getStore').returns({
       findDevice: async () => deviceRow,
@@ -113,13 +126,14 @@ describe('POST /control/:udid/stream/stop — lock ownership round-trip', () => 
     Container.set(RecordingStore, { activeRecordingFor: async () => null } as any);
   });
 
-  afterEach(() => {
+  afterEach(async () => {
     sinon.restore();
-    Container.reset();
+    restoreContainer();
+    await loopback.closeAll();
   });
 
-  const stop = (caller: Caller) =>
-    request(buildApp(caller)).post(`/xenon/api/control/${UDID}/stream/stop`);
+  const stop = async (caller: Caller) =>
+    request(await loopback.serve(buildApp(caller))).post(`/xenon/api/control/${UDID}/stream/stop`);
 
   it('CRITICAL: the header-pair caller who started the stream can stop it', async () => {
     // Exactly what stream/start wrote for this caller: manual_<userId>_<udid>.

@@ -1,7 +1,7 @@
 import 'reflect-metadata';
 import { expect } from 'chai';
 import express from 'express';
-import request from 'supertest';
+import request from '../helpers/loopbackRequest';
 import GridRouter from '../../src/app/routers/grid';
 import { scopesForRole } from '../../src/middleware/authMiddleware';
 

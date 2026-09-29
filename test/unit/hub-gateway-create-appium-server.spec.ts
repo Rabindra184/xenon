@@ -5,7 +5,7 @@ import http from 'http';
 import os from 'os';
 import path from 'path';
 import sinon from 'sinon';
-import request from 'supertest';
+import request from '../helpers/loopbackRequest';
 import * as jose from 'jose';
 import { Container } from 'typedi';
 import { errors as xenonErrors } from '@appium/base-driver';

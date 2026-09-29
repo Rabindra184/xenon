@@ -26,17 +26,24 @@ const capsWith = (obj: Record<string, unknown>) => ({
 describe('authorizeSessionRequest — identity', () => {
   let svc: any;
   let authDisabledBefore: boolean;
+  let restore: () => void;
 
   beforeEach(() => {
     authDisabledBefore = config.authDisabled;
     config.authDisabled = false;
-    svc = Container.get(SessionLifecycleService);
+    restore = saveRegistrations(ApiKeyService, JwtKeyService, UserService);
+    // No such user and no teams, as the developer's database answered for
+    // these ids: the real lookups read that database. Nothing here is about
+    // the owner's teams.
+    Container.set(UserService, { findById: async () => null } as any);
+    sinon.stub(prisma.teamMember, 'findMany').resolves([] as any);
+    svc = new SessionLifecycleService();
   });
 
   afterEach(() => {
     config.authDisabled = authDisabledBefore;
     sinon.restore();
-    Container.reset();
+    restore();
   });
 
   it('returns both ids for a valid xe:options pair', async () => {

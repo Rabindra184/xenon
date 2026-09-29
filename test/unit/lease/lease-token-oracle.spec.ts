@@ -3,7 +3,7 @@ import http from 'http';
 import { expect } from 'chai';
 import sinon from 'sinon';
 import express from 'express';
-import request from 'supertest';
+import request from '../../helpers/loopbackRequest';
 import { makeRouter } from '../../../src/app/routers/sdk-leases';
 import { LeaseService } from '../../../src/services/lease/LeaseService';
 import * as leaseToken from '../../../src/services/lease/leaseToken';

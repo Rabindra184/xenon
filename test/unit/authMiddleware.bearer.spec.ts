@@ -11,6 +11,7 @@ import { UserService } from '../../src/services/UserService';
 import { ApiKeyService } from '../../src/services/ApiKeyService';
 import { UserSessionService } from '../../src/services/UserSessionService';
 import { prisma } from '../../src/prisma';
+import { saveRegistrations } from '../helpers/container-registration';
 
 function fakeRes() {
   const res: any = { statusCode: 200 };
@@ -24,8 +25,15 @@ describe('authMiddleware — Bearer branch', () => {
   let dir: string;
   let keySvc: JwtKeyService;
   const user = { id: 'u1', role: 'MEMBER', status: 'ACTIVE' };
+  let restoreContainer: () => void;
 
   beforeEach(async () => {
+    restoreContainer = saveRegistrations(
+      JwtKeyService,
+      UserService,
+      ApiKeyService,
+      UserSessionService,
+    );
     dir = fs.mkdtempSync(path.join(os.tmpdir(), 'xenon-bearer-'));
     keySvc = new JwtKeyService();
     await keySvc.init(dir);
@@ -37,7 +45,7 @@ describe('authMiddleware — Bearer branch', () => {
   });
   afterEach(() => {
     sinon.restore();
-    Container.reset();
+    restoreContainer();
     fs.rmSync(dir, { recursive: true, force: true });
   });
 

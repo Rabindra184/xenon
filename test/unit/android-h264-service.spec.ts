@@ -3,6 +3,7 @@ import { expect } from 'chai';
 import { Container } from 'typedi';
 import AndroidH264StreamService from '../../src/device-managers/android/AndroidH264StreamService';
 import { PluginContext } from '../../src/PluginContext';
+import { saveRegistrations } from '../helpers/container-registration';
 
 // Lifecycle/state only — the capture seam (openCapture) is stubbed so the test
 // drives packet flow without a real device or screenrecord process.
@@ -19,9 +20,14 @@ describe('AndroidH264StreamService', () => {
   // known default before each test (streaming undefined → source 'scrcpy'); the
   // WS-source tests override it in-test. Set (not remove) so TypeDI never hits a
   // ServiceNotFoundError on the next Container.get.
+  // The context is put back after each test: left behind, the plain object
+  // was every later spec's PluginContext, with no setContext().
+  let restoreContainer: () => void;
   beforeEach(() => {
+    restoreContainer = saveRegistrations(PluginContext);
     Container.set(PluginContext, { pluginArgs: {} });
   });
+  afterEach(() => restoreContainer());
 
   it('start() creates a multiplexer, seeds it with the config packet, and resolves', async () => {
     const svc = make();

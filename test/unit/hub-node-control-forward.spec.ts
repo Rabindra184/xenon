@@ -5,7 +5,7 @@ import os from 'os';
 import path from 'path';
 import sinon from 'sinon';
 import express from 'express';
-import request from 'supertest';
+import request from '../helpers/loopbackRequest';
 import * as jose from 'jose';
 import { Container } from 'typedi';
 import ControlRouter from '../../src/app/routers/control';

@@ -5,15 +5,18 @@ import { Container } from 'typedi';
 import { OmniVisionService } from '../../src/services/omni-vision/OmniVisionService';
 import Tesseract from 'tesseract.js';
 import { AI_SERVICE } from '../../src/services/AIService';
+import { saveRegistrations } from '../helpers/container-registration';
 
 describe('OmniVisionService Unit Tests', () => {
   let omniService: OmniVisionService;
   let mockDriver: any;
+  let restoreContainer: () => void;
 
   beforeEach(() => {
-    // Reset container to ensure clean state
-    Container.reset();
-    omniService = Container.get(OmniVisionService);
+    // A fresh service for each test, registered only until it ends.
+    restoreContainer = saveRegistrations(OmniVisionService);
+    omniService = new OmniVisionService();
+    Container.set(OmniVisionService, omniService);
     mockDriver = {
       getScreenshot: sinon.stub().resolves('mock_screenshot_base64'),
       sessionId: 'test_session',
@@ -22,6 +25,7 @@ describe('OmniVisionService Unit Tests', () => {
 
   afterEach(() => {
     sinon.restore();
+    restoreContainer();
   });
 
   const createMockWorker = () => ({

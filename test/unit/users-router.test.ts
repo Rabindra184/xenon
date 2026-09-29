@@ -2,7 +2,7 @@ import 'reflect-metadata';
 import { expect } from 'chai';
 import sinon from 'sinon';
 import express from 'express';
-import request from 'supertest';
+import request from '../helpers/loopbackRequest';
 import { usersRouter } from '../../src/app/routers/users';
 import { Container } from 'typedi';
 import { UserService } from '../../src/services/UserService';
