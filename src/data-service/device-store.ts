@@ -183,8 +183,16 @@ class LokiDeviceStore implements IDeviceStore {
     (await XenonDatabase.DeviceModel).chain().find(filter).remove();
   }
 
-  async clearStorage(): Promise<void> {
-    (await XenonDatabase.DeviceModel).removeDataOnly();
+  async clearStorage(onlyHosts?: readonly string[]): Promise<void> {
+    const model = await XenonDatabase.DeviceModel;
+    if (onlyHosts) {
+      model
+        .chain()
+        .find({ host: { $in: [...onlyHosts] } } as any)
+        .remove();
+    } else {
+      model.removeDataOnly();
+    }
   }
 
   async findDevice(filter: Partial<IDevice>): Promise<IDevice | null> {

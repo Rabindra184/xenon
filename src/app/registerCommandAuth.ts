@@ -2,14 +2,12 @@ import { Container } from 'typedi';
 import log from '../logger';
 import { config } from '../config';
 import { SessionOwnerResolver } from '../services/device-access/SessionOwnerResolver';
-import {
-  CommandAuthDeps,
-  commandAuthEnabled,
-  createCommandAuthMiddleware,
-} from '../middleware/commandAuth';
+import { CommandAuthDeps, commandAuthEnabled } from '../middleware/commandAuth';
 import { CommandCallerVerifier } from '../middleware/commandCaller';
 import { createSessionListingFilter } from '../middleware/sessionListingFilter';
 import { createSessionUpgradeGuard, guardUpgradeEvents } from '../middleware/sessionUpgradeGuard';
+import { createInternalCallLayer } from '../gateway/internalCall';
+import { createSessionGatewayLayer, SessionGatewayDeps } from '../gateway/sessionGateway';
 import { normalizeBasePath } from './appiumBasePath';
 import { insertAtStart, insertBeforeRoutes, InsertResult } from './insertBeforeRoutes';
 
@@ -53,30 +51,49 @@ const refuseToStart = (what: string) =>
       'serve sessions unchecked.',
   );
 
+/** What a server adds to the session gateway beyond per-command auth. */
+export type SessionGatewayOptions = Omit<SessionGatewayDeps, 'auth'>;
+
 /**
- * Install per-command auth (commandAuth.ts) and the session-listing filter
- * (sessionListingFilter.ts) ahead of Appium's routes. Called from
- * ServerManager.registerRoutes, which Appium runs after adding them.
+ * Install the session gateway (gateway/sessionGateway.ts) and the
+ * session-listing filter (sessionListingFilter.ts) ahead of Appium's routes.
+ * Called from ServerManager.registerRoutes, which Appium runs after adding
+ * them. The gateway is two adjacent layers:
  *
- * Both are always installed and read the setting per request, so a server
- * with the setting off pays one env check per session command or listing and
- * does no lookups. If either cannot be placed ahead of the routes the error is
- * logged, and with the setting on (and auth enabled) the server refuses to
- * start: an operator who asked for the check must not get a server that
- * silently serves session commands without it.
+ * 1. the internal-call layer (gateway/internalCall.ts), path-less, which turns
+ *    Xenon's own `<basePath>/wd-internal/...` calls, when they carry this
+ *    process's secret, into the plain session command;
+ * 2. the session layer at `<basePath>/session/:sessionId`: per-command auth,
+ *    then, on a hub, forwarding of the sessions other servers run.
  *
- * Returns where the session-command check was placed.
+ * The first comes first, so the session layer sees an internal call by its
+ * real path and knows it for one. It is path-less because Express puts a mount
+ * path back onto the URL when a mounted layer calls next(), which would undo
+ * the strip. The second is mounted, so its path matching is the router's own.
+ *
+ * All of it is always installed and reads the setting per request, so a
+ * server with per-command auth off pays one env check per session command and
+ * does no lookups for it. If a layer cannot be placed ahead of the routes the
+ * error is logged, and with the setting on (and auth enabled) the server
+ * refuses to start: an operator who asked for the check must not get a server
+ * that silently serves session commands without it.
+ *
+ * Returns where the session layer was placed.
  */
-export function registerCommandAuth(
+export function registerSessionGateway(
   app: any,
   cliArgs: { basePath?: unknown },
-  overrides: Partial<CommandAuthDeps> = {},
+  deps: CommandAuthDeps,
+  options: SessionGatewayOptions = {},
 ): InsertResult {
-  const deps = commandAuthDeps(overrides);
   const active = deps.enabled() && !deps.authDisabled();
+  const basePath = normalizeBasePath(cliArgs?.basePath);
 
-  const path = sessionCommandPath(cliArgs?.basePath);
-  const result = insertBeforeRoutes(app, path, createCommandAuthMiddleware(deps));
+  const path = sessionCommandPath(basePath);
+  const internal = insertBeforeRoutes(app, '/', createInternalCallLayer(basePath));
+  const result = internal.placed
+    ? insertBeforeRoutes(app, path, createSessionGatewayLayer({ ...options, auth: deps }))
+    : internal;
   if (!result.placed) {
     deps.logger.error(
       `Per-command auth could not be placed ahead of Appium's routes for ${path}: ${result.reason}.`,
@@ -112,6 +129,18 @@ export function registerCommandAuth(
           '(XENON_REQUIRE_COMMAND_AUTH not set, or auth disabled).',
   );
   return result;
+}
+
+/**
+ * Per-command auth (commandAuth.ts) and the session-listing filter, through the
+ * session gateway with no routing: a server that runs every session itself.
+ */
+export function registerCommandAuth(
+  app: any,
+  cliArgs: { basePath?: unknown },
+  overrides: Partial<CommandAuthDeps> = {},
+): InsertResult {
+  return registerSessionGateway(app, cliArgs, commandAuthDeps(overrides));
 }
 
 /**

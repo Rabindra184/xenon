@@ -81,3 +81,22 @@ export function isLocalDeviceHost(
 ): boolean {
   return host != null && local.hosts.has(host);
 }
+
+/**
+ * Which phones a server forgets when it starts: the hosts to clear, or
+ * undefined for every phone.
+ *
+ * A hub keeps its nodes' phones. Their sessions keep running on the nodes
+ * while the hub restarts, and the hub finds where to route them from those
+ * rows (SessionManager.recoverActiveSessions, gateway/sessionLocator.ts). A
+ * node that died meanwhile is pruned by removeStaleDevices, and a live one's
+ * next report refreshes its rows. A hub's own phones are cleared as before:
+ * discovery adds back the attached ones, and their sessions died with it.
+ * A node clears everything, as it always has.
+ */
+export function devicesClearedAtBoot(
+  args: Pick<IPluginArgs, 'hub'>,
+  local: LocalDeviceHosts,
+): string[] | undefined {
+  return args.hub === undefined ? [...local.hosts] : undefined;
+}

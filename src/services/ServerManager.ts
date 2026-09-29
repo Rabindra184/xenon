@@ -41,14 +41,19 @@ import {
   unregisterNodeFromHub,
   updateDeviceList,
 } from '../device-utils';
-import { localDeviceHosts, LocalDeviceHosts } from '../device-managers/localDeviceHosts';
+import {
+  devicesClearedAtBoot,
+  isLocalDeviceHost,
+  localDeviceHosts,
+  LocalDeviceHosts,
+} from '../device-managers/localDeviceHosts';
 import { createRouter } from '../app';
-import { registerProxyMiddlware } from '../proxy/wd-command-proxy';
 import {
   commandAuthDeps,
-  registerCommandAuth,
+  registerSessionGateway,
   registerSessionUpgradeGuard,
 } from '../app/registerCommandAuth';
+import { gatewayOptionsFor } from '../gateway/defaultGateway';
 import { ADB } from 'appium-adb';
 import ChromeDriverManager from '../device-managers/ChromeDriverManager';
 import AndroidDeviceManager from '../device-managers/AndroidDeviceManager';
@@ -187,6 +192,7 @@ export class ServerManager {
     const recoveredCount = await sessionManager.recoverActiveSessions(
       nodeId,
       XenonPlugin.nodeBasePath,
+      (host) => isLocalDeviceHost(localHosts, host),
     );
 
     const recoveredSessionIds = sessionManager.getAllSessions().map((s) => s.getId());
@@ -329,7 +335,10 @@ export class ServerManager {
     await initializeStorage();
     const { runMigrations } = await import('../scripts/run-migrations');
     await runMigrations();
-    await DeviceStoreFactory.getStore().clearStorage();
+    // A hub keeps its nodes' phones: the sessions on them outlive its restart.
+    await DeviceStoreFactory.getStore().clearStorage(
+      devicesClearedAtBoot(pluginArgs, localDeviceHosts(pluginArgs, port)),
+    );
 
     const { bootstrapIdentity } = await import('./identity/bootstrap');
     await bootstrapIdentity();
@@ -372,16 +381,24 @@ export class ServerManager {
     pluginArgs: IPluginArgs,
   ) {
     expressApp.use('/xenon', createRouter(pluginArgs));
-    // Per-command auth (XENON_REQUIRE_COMMAND_AUTH) goes in front of Appium's
-    // routes, and is placed before the proxy middleware so that, where the
-    // proxy is also spliced ahead of the routes, a hub checks a command before
-    // forwarding it to a node. It also filters Appium's session listing and
-    // guards session WebSockets (BiDi, driver /ws/session/...), which upgrade
-    // outside the routes. One set of deps, so all three share a credential
-    // cache. Each throws when the setting is on and it cannot be installed,
-    // rather than serve sessions unchecked.
+    // The session gateway goes in front of Appium's routes: Xenon's own
+    // /wd-internal calls (with the per-process secret), per-command auth
+    // (XENON_REQUIRE_COMMAND_AUTH), then, on a hub, forwarding of the sessions
+    // nodes run, so a hub checks a command before forwarding it and Appium's
+    // umbrella never sees a remote session. A node accepts the hub's session
+    // token in place of the client's credentials. With it go the filter on
+    // Appium's session listing and the guard on session WebSockets (BiDi,
+    // driver /ws/session/...), which upgrade outside the routes. One set of
+    // deps, so all three share a credential cache. Each throws when the
+    // setting is on and it cannot be installed, rather than serve sessions
+    // unchecked.
     const commandAuth = commandAuthDeps();
-    registerCommandAuth(expressApp, cliArgs, commandAuth);
+    registerSessionGateway(
+      expressApp,
+      cliArgs,
+      commandAuth,
+      gatewayOptionsFor(pluginArgs, cliArgs, () => Container.get(PluginContext).nodeId),
+    );
     registerSessionUpgradeGuard(httpServer, expressApp, cliArgs, commandAuth);
     // One owner per WebSocket upgrade (upgradeRouter.ts): Xenon's H.264,
     // logcat and socket.io paths go to Xenon, everything else to Appium behind
@@ -396,7 +413,6 @@ export class ServerManager {
           `${router.describeAppiumPath()}.`,
       );
     }
-    registerProxyMiddlware(expressApp, cliArgs);
   }
 
   private async bootEmulators(pluginArgs: IPluginArgs) {

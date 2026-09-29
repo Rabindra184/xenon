@@ -6,7 +6,7 @@ import { CloudSession } from './CloudSession';
 import { XenonSession } from './XenonSession';
 import { IDevice } from '../interfaces/IDevice';
 import { DeviceStoreFactory } from '../data-service/device-store';
-import { nodeUrl } from '../helpers';
+import { nodeWebDriverUrl } from '../gateway/nodeWebDriverUrl';
 import { getXenonCapabilities } from '../XenonCapabilityManager';
 
 /**
@@ -69,7 +69,11 @@ export class SessionManager {
    * - Sessions on REMOTE nodes are recovered as RemoteSessions.
    * - Sessions on CLOUD providers are recovered as CloudSessions.
    */
-  async recoverActiveSessions(currentNodeId: string, nodeBasePath: string): Promise<number> {
+  async recoverActiveSessions(
+    currentNodeId: string,
+    nodeBasePath: string,
+    isLocalHost: (host: string) => boolean = () => false,
+  ): Promise<number> {
     this.log.info('🔄 Attempting to recover active sessions from database...');
 
     try {
@@ -107,9 +111,14 @@ export class SessionManager {
             continue;
           }
 
-          // Check if this session was on THE CURRENT NODE (LocalSession)
+          // Check if this session was on THE CURRENT NODE (LocalSession). The
+          // node id is new on every boot, so a phone this server drives is
+          // also known by its host; otherwise a local session from before the
+          // restart would be rebuilt as a remote one pointing back at this hub.
           const isLocalSession =
-            dbSession.node_id === currentNodeId || device.nodeId === currentNodeId;
+            dbSession.node_id === currentNodeId ||
+            device.nodeId === currentNodeId ||
+            (!device.cloud && isLocalHost(device.host));
 
           if (isLocalSession) {
             // LocalSessions cannot be recovered - the Appium driver is gone
@@ -151,7 +160,8 @@ export class SessionManager {
             firstMatch: [{}],
           });
 
-          const baseUrl = nodeUrl(device, nodeBasePath);
+          // The node's own base path, which need not be this hub's.
+          const baseUrl = await nodeWebDriverUrl(device, nodeBasePath);
 
           // Create the appropriate session type
           let recoveredSession: XenonSession;

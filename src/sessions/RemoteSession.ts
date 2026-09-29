@@ -1,6 +1,8 @@
-import axios from 'axios';
+import axios, { AxiosRequestConfig, AxiosResponse } from 'axios';
+import { Container } from 'typedi';
 import log from '../logger';
 import SessionType from '../enums/SessionType';
+import { HUB_TOKEN_HEADER, HubSessionTokenIssuer } from '../gateway/hubSessionToken';
 import {
   HealthErrorType,
   SessionHealthResult,
@@ -29,8 +31,32 @@ export class RemoteSession extends XenonSession {
     return SessionType.REMOTE;
   }
 
-  getScreenShot(): Promise<string> {
+  /** The WebDriver base URL of the server that runs this session. */
+  getWebDriverUrl(): string {
+    return this.baseUrl;
+  }
+
+  /**
+   * What every call about this session carries. A node gets the hub's token
+   * for this session, which it accepts in place of the client's credentials
+   * when its own per-command auth is on (the hub checked those).
+   */
+  protected async callOptions(): Promise<AxiosRequestConfig> {
+    const token = await Container.get(HubSessionTokenIssuer).tokenFor(this.sessionId);
+    return token ? { headers: { [HUB_TOKEN_HEADER]: token } } : {};
+  }
+
+  protected async call(config: AxiosRequestConfig): Promise<AxiosResponse> {
+    const options = await this.callOptions();
     return axios({
+      ...config,
+      ...options,
+      headers: { ...(config.headers ?? {}), ...(options.headers ?? {}) },
+    });
+  }
+
+  getScreenShot(): Promise<string> {
+    return this.call({
       method: 'get',
       url: `${this.baseUrl}/session/${this.sessionId}/screenshot`,
     }).then((response) => (response.data ? response.data.value : ''));
@@ -40,7 +66,7 @@ export class RemoteSession extends XenonSession {
     // Generous timeout on purpose: serialising a deep hierarchy on a slow
     // real device is seconds, not milliseconds, and a truncated read here
     // reads to the caller as "this screen has no elements".
-    const response = await axios({
+    const response = await this.call({
       method: 'get',
       url: `${this.baseUrl}/session/${this.sessionId}/source`,
       timeout: 60000,
@@ -53,7 +79,7 @@ export class RemoteSession extends XenonSession {
       `[RemoteSession] stopVideoRecording called for session ${this.sessionId}. isVideoAvailable: ${this.isVideoAvailable}`,
     );
     try {
-      const response = await axios({
+      const response = await this.call({
         method: 'post',
         url: `${this.baseUrl}/session/${this.sessionId}/appium/stop_recording_screen`,
         data: {},
@@ -69,7 +95,7 @@ export class RemoteSession extends XenonSession {
       );
       // Even if there's an error, try to get the video data
       try {
-        const retryResponse = await axios({
+        const retryResponse = await this.call({
           method: 'post',
           url: `${this.baseUrl}/session/${this.sessionId}/appium/stop_recording_screen`,
           data: {},
@@ -89,7 +115,7 @@ export class RemoteSession extends XenonSession {
   async stopPerformanceRecording(): Promise<string | null> {
     log.info(`[RemoteSession] stopPerformanceRecording called for session ${this.sessionId}`);
     try {
-      const response = await axios({
+      const response = await this.call({
         method: 'post',
         url: `${this.baseUrl}/session/${this.sessionId}/execute/sync`,
         data: {
@@ -111,7 +137,7 @@ export class RemoteSession extends XenonSession {
   async startPerformanceRecording(): Promise<void> {
     log.info(`[RemoteSession] startPerformanceRecording called for session ${this.sessionId}`);
     try {
-      await axios({
+      await this.call({
         method: 'post',
         url: `${this.baseUrl}/session/${this.sessionId}/execute/sync`,
         data: {
@@ -159,7 +185,7 @@ export class RemoteSession extends XenonSession {
 
     log.info(`[RemoteSession] Starting recording with resolution: ${resolution}, size: ${size}`);
 
-    return axios({
+    return this.call({
       method: 'post',
       url: `${this.baseUrl}/session/${this.sessionId}/appium/start_recording_screen`,
       data: {
@@ -213,7 +239,7 @@ export class RemoteSession extends XenonSession {
     try {
       // 1️⃣ Safe, read-only, lightweight probe: GET /session/{id}/timeouts
       // This is a W3C standard command that all Appium drivers should register.
-      const response = await axios({
+      const response = await this.call({
         method: 'get',
         url: `${this.baseUrl}/session/${this.sessionId}/timeouts`,
         timeout: 5000,
