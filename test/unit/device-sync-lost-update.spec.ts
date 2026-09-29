@@ -262,16 +262,16 @@ describe('Device sync keeps writes made while it ran (lost update)', () => {
     expect(emits.filter(([e]) => e === 'device_added')).to.have.length(0);
   });
 
-  it("the hub stores a node's own report of its phones as sent", async () => {
+  it("the hub takes a node's report of its phone busy as the node's, not a session of its own", async () => {
     seed([{ ...S9, host: 'http://10.0.0.2:4723' }]);
 
     await addNewDevice(
       [{ ...S9, host: 'http://10.0.0.2:4723', busy: true, session_id: 'node-sess' } as IDevice],
       undefined,
-      { mirror: true },
+      { nodeReport: true },
     );
 
-    expect(table.row('s9')).to.include({ busy: true, session_id: 'node-sess' });
+    expect(table.row('s9')).to.include({ busy: true, nodeBusy: true, session_id: null });
     expect(emits.filter(([e]) => e === 'device_added')).to.have.length(0);
   });
 });

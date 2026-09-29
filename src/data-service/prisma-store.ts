@@ -6,6 +6,7 @@ import {
   IPendingSessionStore,
   ICLIArgsStore,
   IHealEtalonStore,
+  LockOptions,
 } from './device-store.interface';
 import { PrismaService } from './prisma-service';
 import { Device, PrismaClient, PendingSession, CLIArgs, LocatorEtalon } from '../generated/client';
@@ -13,7 +14,8 @@ import { Container } from 'typedi';
 import * as semver from 'semver';
 import log from '../logger';
 import { pickDeviceColumns } from './deviceColumns';
-import { pickDiscoveryFields } from './deviceFieldOwners';
+import { pickDiscoveryFields, pickNodeReportFields } from './deviceFieldOwners';
+import { CLAIM_RESET, ClaimRef, claimWhere, UNHELD } from './deviceClaims';
 
 /** Logged once per key, so a chatty node doesn't flood the log. */
 const droppedDeviceKeys = new Set<string>();
@@ -63,6 +65,7 @@ export class PrismaDeviceStore implements IDeviceStore {
       storageFree: device.storageFree ?? undefined,
       sessionProgress: device.sessionProgress ?? '',
       totalHealedCount: device.totalHealedCount ?? 0,
+      nodeBusy: device.nodeBusy ?? false,
     } as IDevice;
   }
 
@@ -203,19 +206,11 @@ export class PrismaDeviceStore implements IDeviceStore {
     log.debug(`[PrismaStore] Update device ${udid} at ${host}: ${result.count} records affected`);
   }
 
-  async updateDevices(
-    filter: Partial<IDevice>,
-    updateFn: (device: IDevice) => void,
-  ): Promise<void> {
-    const devices = await this.prisma.device.findMany({ where: filter as any });
-    for (const d of devices) {
-      const idv = this.toIDevice(d);
-      updateFn(idv);
-      await this.prisma.device.update({
-        where: { udid_host: { udid: d.udid, host: d.host } },
-        data: this.fromIDevice(idv),
-      });
-    }
+  async touchSession(sessionId: string, at: number): Promise<void> {
+    await this.prisma.device.updateMany({
+      where: { session_id: sessionId },
+      data: { lastCmdExecutedAt: at },
+    });
   }
 
   async addDevices(devices: IDevice[], options: AddDevicesOptions = {}): Promise<IDevice[]> {
@@ -229,17 +224,44 @@ export class PrismaDeviceStore implements IDeviceStore {
     );
     const added: IDevice[] = [];
     for (const device of devices) {
-      const data = this.fromIDevice(device);
-      // Use upsert to avoid race conditions and unique constraint errors. A
-      // phone already here gets only its discovery columns (AddDevicesOptions).
-      const d = await this.prisma.device.upsert({
-        where: { udid_host: { udid: device.udid, host: device.host } },
-        update: options.mirror ? data : pickDiscoveryFields(data),
-        create: data,
-      });
+      const d = options.nodeReport
+        ? await this.addNodeReport(device)
+        : await this.prisma.device.upsert({
+            // Use upsert to avoid race conditions and unique constraint errors. A
+            // phone already here gets only its discovery columns (AddDevicesOptions).
+            where: { udid_host: { udid: device.udid, host: device.host } },
+            update: pickDiscoveryFields(this.fromIDevice(device)),
+            create: this.fromIDevice(device),
+          });
       if (!known.has(`${device.udid}@${device.host}`)) added.push(this.toIDevice(d));
     }
     return added;
+  }
+
+  /**
+   * A node's report of one phone (AddDevicesOptions.nodeReport). The node's
+   * `busy` goes to `nodeBusy`. Busy there makes the phone busy here; free
+   * there frees it only where this hub holds no claim, in one conditional
+   * update, so a report the node sent before the hub claimed the phone can't
+   * undo the claim.
+   */
+  private async addNodeReport(device: IDevice): Promise<Device> {
+    const { udid, host } = device;
+    const nodeBusy = device.busy === true;
+    const reported = { ...pickNodeReportFields(this.fromIDevice(device)), nodeBusy };
+    const row = await this.prisma.device.upsert({
+      where: { udid_host: { udid, host } },
+      update: nodeBusy ? { ...reported, busy: true } : reported,
+      create: { ...reported, udid, host, busy: nodeBusy },
+    });
+    if (nodeBusy) return row;
+    // Nothing of the hub's may hold it either: a claim, or a hold such as a
+    // preview or a recording (session_id), exactly as a release checks.
+    await this.prisma.device.updateMany({
+      where: { udid, host, busy: true, ...UNHELD },
+      data: { busy: false },
+    });
+    return row;
   }
 
   async removeDevices(filter: Partial<IDevice>): Promise<void> {
@@ -279,7 +301,10 @@ export class PrismaDeviceStore implements IDeviceStore {
     return devices.map((d) => this.toIDevice(d));
   }
 
-  async findAndLockDevice(filterOptions: IDeviceFilterOptions): Promise<IDevice | null> {
+  async findAndLockDevice(
+    filterOptions: IDeviceFilterOptions,
+    options: LockOptions = {},
+  ): Promise<IDevice | null> {
     // Phase 2: exclude devices held by an active lease.
     const activeLeases = await this.prisma.lease.findMany({
       where: { status: 'active' },
@@ -300,6 +325,7 @@ export class PrismaDeviceStore implements IDeviceStore {
         continue;
       }
 
+      const now = Date.now();
       const result = await this.prisma.device.updateMany({
         where: {
           udid: device.udid,
@@ -309,8 +335,10 @@ export class PrismaDeviceStore implements IDeviceStore {
         },
         data: {
           busy: true,
-          lastCmdExecutedAt: Date.now(),
-          sessionStartTime: Date.now(),
+          lastCmdExecutedAt: now,
+          sessionStartTime: now,
+          // A pending claim: the session's id comes when it exists.
+          ...(options.claim ? { claimedAt: now, claimSessionId: null } : {}),
         },
       });
 
@@ -325,6 +353,48 @@ export class PrismaDeviceStore implements IDeviceStore {
     }
 
     return null;
+  }
+
+  async claimForSession(
+    udid: string,
+    host: string,
+    claimedAt: number | null | undefined,
+    sessionId: string,
+    update: Partial<IDevice>,
+  ): Promise<boolean> {
+    // The pending claim this phone was allocated with, or none left at all
+    // (released while the session was created, and not taken since).
+    const ours = claimedAt == null ? [{ claimedAt: null }] : [{ claimedAt }, { claimedAt: null }];
+    const result = await this.prisma.device.updateMany({
+      where: { udid, host, claimSessionId: null, OR: ours },
+      data: {
+        ...this.fromIDevice(update),
+        busy: true,
+        claimSessionId: sessionId,
+        claimedAt: claimedAt ?? Date.now(),
+      },
+    });
+    return result.count > 0;
+  }
+
+  async releaseClaim(
+    udid: string,
+    host: string,
+    ref: ClaimRef,
+    update: Partial<IDevice>,
+  ): Promise<boolean> {
+    const ended = await this.prisma.device.updateMany({
+      where: { udid, host, ...claimWhere(ref) },
+      data: { ...this.fromIDevice(update), ...CLAIM_RESET },
+    });
+    if (ended.count === 0) return false;
+    // Not `busy: false` with the step above: a node reporting the phone busy,
+    // or a hold taken since, keeps it busy.
+    await this.prisma.device.updateMany({
+      where: { udid, host, busy: true, ...UNHELD },
+      data: { busy: false },
+    });
+    return true;
   }
 
   async resetMetrics(): Promise<void> {

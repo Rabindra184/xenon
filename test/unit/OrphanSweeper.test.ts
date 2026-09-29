@@ -1,13 +1,19 @@
 import 'reflect-metadata';
 import { expect } from 'chai';
 import sinon from 'sinon';
-import { getPrismaClient } from '../../src/prisma';
 import { setupTestContainer, resetTestContainer } from '../helpers/test-container';
+import { useScratchDatabase } from '../helpers/scratch-database';
+import { DeviceStoreFactory } from '../../src/data-service/device-store';
+import { PrismaDeviceStore } from '../../src/data-service/prisma-store';
 import { DASHBORD_EVENT_MANAGER } from '../../src/dashboard/event-manager';
 import { SessionStatus } from '../../src/types/SessionStatus';
 
 describe('OrphanSweeper', () => {
-  let prismaClient: ReturnType<typeof getPrismaClient>;
+  // Its own migrated database, never the developer's ~/.cache/xenon/xenon.db:
+  // that file's schema is whatever the last local migrate left, so a new
+  // column failed this spec there and nowhere else.
+  const scratch = useScratchDatabase();
+  let savedStore: unknown;
 
   const STALE_SESSION_ID = 'orphan-stale-sess-001';
   const STALE_UDID = 'udid-orphan-1';
@@ -16,11 +22,12 @@ describe('OrphanSweeper', () => {
 
   before(async () => {
     setupTestContainer();
-    prismaClient = getPrismaClient();
+    savedStore = (DeviceStoreFactory as any)._deviceStore;
+    (DeviceStoreFactory as any)._deviceStore = new PrismaDeviceStore();
 
     // Create a stale session (last_heartbeat_at is old / null with old updatedAt)
     const oldDate = new Date(Date.now() - 5 * 60 * 1000); // 5 minutes ago
-    await prismaClient.session.upsert({
+    await scratch.db.session.upsert({
       where: { id: STALE_SESSION_ID },
       create: {
         id: STALE_SESSION_ID,
@@ -45,7 +52,7 @@ describe('OrphanSweeper', () => {
     });
 
     // Create a device for the stale session
-    await prismaClient.device.upsert({
+    await scratch.db.device.upsert({
       where: { udid_host: { udid: STALE_UDID, host: 'http://localhost:4723' } },
       create: {
         udid: STALE_UDID,
@@ -64,10 +71,7 @@ describe('OrphanSweeper', () => {
   });
 
   after(async () => {
-    await prismaClient.session.deleteMany({
-      where: { id: { in: [STALE_SESSION_ID, FRESH_SESSION_ID] } },
-    });
-    await prismaClient.device.deleteMany({ where: { udid: STALE_UDID } });
+    (DeviceStoreFactory as any)._deviceStore = savedStore;
     await resetTestContainer();
   });
 
@@ -85,14 +89,14 @@ describe('OrphanSweeper', () => {
     const sweeper = new OrphanSweeper();
     await sweeper.sweep({ heartbeatIntervalMs: 30_000 });
 
-    const session = await prismaClient.session.findUnique({
+    const session = await scratch.db.session.findUnique({
       where: { id: STALE_SESSION_ID },
       select: { status: true, failure_reason: true },
     });
     expect(session!.status).to.equal('failed');
     expect(session!.failure_reason).to.match(/heartbeat timeout/i);
 
-    const device = await prismaClient.device.findFirst({
+    const device = await scratch.db.device.findFirst({
       where: { udid: STALE_UDID },
       select: { busy: true, owningSessionId: true },
     });
@@ -110,7 +114,7 @@ describe('OrphanSweeper', () => {
 
   it('leaves fresh sessions alone', async () => {
     // Create a fresh session (heartbeat just now)
-    await prismaClient.session.upsert({
+    await scratch.db.session.upsert({
       where: { id: FRESH_SESSION_ID },
       create: {
         id: FRESH_SESSION_ID,
@@ -138,7 +142,7 @@ describe('OrphanSweeper', () => {
     const sweeper = new OrphanSweeper();
     await sweeper.sweep({ heartbeatIntervalMs: 30_000 });
 
-    const session = await prismaClient.session.findUnique({
+    const session = await scratch.db.session.findUnique({
       where: { id: FRESH_SESSION_ID },
       select: { status: true },
     });

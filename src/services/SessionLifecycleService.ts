@@ -12,9 +12,9 @@ import { InternalHttpClient } from '../InternalHttpClient';
 import { PluginContext } from '../PluginContext';
 import { CapabilityValidator } from '../validators/CapabilityValidator';
 import {
-  unblockDevice,
-  unblockDeviceMatchingFilter,
-  updatedAllocatedDevice,
+  claimDeviceForSession,
+  releasePendingClaim,
+  releaseSessionDevices,
   updateDeviceProgress,
 } from '../data-service/device-service';
 import {
@@ -389,13 +389,15 @@ export class SessionLifecycleService {
 
   /**
    * Give back a phone allocated for a session that was never created: its
-   * pending-session row goes and the phone is free again. Never throws.
+   * pending-session row goes and the phone is free again. Only the claim this
+   * allocation took is released: if it timed out and the phone went on to
+   * another session, that session keeps it. Never throws.
    */
   async releaseAllocation(allocation: SessionAllocation): Promise<void> {
     const { device } = allocation;
     try {
       await removePendingSession(allocation.pendingSessionId);
-      await unblockDevice(device.udid, device.host);
+      await releasePendingClaim(device);
       await updateDeviceProgress(device.udid, device.host, '');
     } catch (cleanupErr: any) {
       this.logger.warn(
@@ -883,8 +885,8 @@ export class SessionLifecycleService {
       });
     }
 
-    await updatedAllocatedDevice(device, {
-      busy: true,
+    // The session takes over the pending claim its phone was allocated with.
+    await claimDeviceForSession(device, sessionId, {
       session_id: sessionId,
       lastCmdExecutedAt: new Date().getTime(),
       sessionStartTime: new Date().getTime(),
@@ -1016,7 +1018,7 @@ export class SessionLifecycleService {
   }
 
   private async handleSessionFailure(session: any, device: IDevice, isRemote: boolean) {
-    await unblockDevice(device.udid, device.host);
+    await releasePendingClaim(device);
     await updateDeviceProgress(device.udid, device.host, '');
     if (isRemote) {
       (Container.get(CircuitBreaker) as CircuitBreaker).recordFailure(device.host);
@@ -1182,7 +1184,7 @@ export class SessionLifecycleService {
     // which releases ports and archives video twice.
     if (sessionId) {
       await sessionCleanupLock.acquire(sessionId, async () => {
-        await unblockDeviceMatchingFilter({ session_id: sessionId as any });
+        await releaseSessionDevices(sessionId);
         this.logger.info(`📱 Unblocking the device that is blocked for session ${sessionId}`);
 
         const session = SESSION_MANAGER.getSession(sessionId);
@@ -1325,7 +1327,7 @@ export class SessionLifecycleService {
   public async stopSessionForShutdown(sessionId: string, reason: string): Promise<void> {
     await sessionCleanupLock.acquire(sessionId, async () => {
       try {
-        await unblockDeviceMatchingFilter({ session_id: sessionId as any });
+        await releaseSessionDevices(sessionId);
       } catch (err: any) {
         this.logger.warn(`[shutdown] unblock failed for ${sessionId}: ${err.message}`);
       }

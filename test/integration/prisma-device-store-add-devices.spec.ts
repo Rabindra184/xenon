@@ -80,11 +80,22 @@ describe('PrismaDeviceStore.addDevices (integration)', function () {
     expect(await row(KNOWN)).to.include({ busy: true });
   });
 
-  it('with mirror, writes every column the node sent', async () => {
-    await store.addDevices([phone(KNOWN, { busy: false, session_id: 'node-sess' })], {
-      mirror: true,
+  it("as a node's report, records the node's busy apart and never writes the session", async () => {
+    await prisma.device.updateMany({
+      where: { udid: KNOWN, host: HOST },
+      data: { claimSessionId: 'sess-1', claimedAt: 41 },
     });
 
-    expect(await row(KNOWN)).to.include({ busy: false, session_id: 'node-sess' });
+    await store.addDevices([phone(KNOWN, { busy: false, session_id: 'node-sess', sdk: '11' })], {
+      nodeReport: true,
+    });
+
+    expect(await row(KNOWN)).to.include({
+      sdk: '11',
+      nodeBusy: false,
+      busy: true,
+      session_id: 'sess-1',
+      claimSessionId: 'sess-1',
+    });
   });
 });

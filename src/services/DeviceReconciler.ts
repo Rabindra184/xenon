@@ -2,7 +2,7 @@ import { Service } from 'typedi';
 import log from '../logger';
 import { DeviceStoreFactory } from '../data-service/device-store';
 import { SESSION_MANAGER } from '../sessions/SessionManager';
-import { unblockDevice } from '../data-service/device-service';
+import { releaseSessionDevice } from '../data-service/device-service';
 
 // Closes a gap left by OrphanSweeper (which operates on prisma.session + the
 // Prisma device table via a heartbeat cutoff) and releaseBlockedDevices
@@ -63,8 +63,11 @@ export class DeviceReconciler {
 
     for (const device of orphans) {
       try {
-        await unblockDevice(device.udid, device.host);
-        this.orphansFreed++;
+        // Keyed on the session read above: if it ended meanwhile and the
+        // phone went to another session, that one keeps it.
+        if (await releaseSessionDevice(device.udid, device.host, device.session_id as string)) {
+          this.orphansFreed++;
+        }
       } catch (err: any) {
         this.logger.error(`Failed to unblock ghost device ${device.udid}: ${err.message}`);
       }

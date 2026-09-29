@@ -22,12 +22,16 @@ import {
   getDevice,
   getDevices,
   isDeviceReserved,
+  releasePendingClaim,
+  releaseSessionDevice,
   removeDevice,
   setSimulatorState,
   syncDiscoveredDevices,
   unblockDevice,
   updatedAllocatedDevice,
 } from './data-service/device-service';
+import { isPendingClaim, pendingClaimExpired } from './data-service/deviceClaims';
+import { PluginContext } from './PluginContext';
 import log from './logger';
 import DevicePlatform from './enums/Platform';
 import _ from 'lodash';
@@ -38,7 +42,7 @@ import AndroidDeviceManager from './device-managers/AndroidDeviceManager';
 import IOSDeviceManager from './device-managers/IOSDeviceManager';
 import { IOSDiscoveryService } from './device-managers/ios/IOSDiscoveryService';
 import NodeDevices from './device-managers/NodeDevices';
-import { isLocalDeviceHost, LocalDeviceHosts } from './device-managers/localDeviceHosts';
+import { isOwnDevice, LocalDeviceHosts } from './device-managers/localDeviceHosts';
 import { config as xenonConfig } from './config';
 import { IPluginArgs } from './interfaces/IPluginArgs';
 import { DeviceStoreFactory } from './data-service/device-store';
@@ -179,8 +183,12 @@ export async function allocateDeviceForSession(
         const availableCandidate = matchingDevices.find((d) => !isDeviceReserved(d));
         if (availableCandidate) {
           // Principal Intelligence: Multi-node consistent locking
-          // Attempt to atomically claim this specific device
-          device = await store.findAndLockDevice({ ...filters, udid: [availableCandidate.udid] });
+          // Attempt to atomically claim this specific device: busy, with a
+          // pending claim for the session being created (deviceClaims.ts).
+          device = await store.findAndLockDevice(
+            { ...filters, udid: [availableCandidate.udid] },
+            { claim: true },
+          );
           return device !== null;
         }
 
@@ -227,7 +235,7 @@ export async function allocateDeviceForSession(
           log.error(
             `❌ [Allocation] Device ${lockedDevice.udid} failed pre-session health check. Unblocking.`,
           );
-          await unblockDevice(lockedDevice.udid, lockedDevice.host);
+          await releasePendingClaim(lockedDevice);
           throw new Error(
             `Device ${lockedDevice.udid} is unhealthy and could not be autonomously recovered.`,
           );
@@ -477,12 +485,13 @@ export async function updateDeviceList(
 
   // Prune this server's own phones that discovery no longer reports: an
   // unplugged Android phone, or a simulator filtered out (e.g. booted-simulators
-  // is on and it shut down). Only its own, by exact host: a hub keeps its
-  // nodes' phones in the same table, and a node on the same machine differs
-  // from the hub only by port (see localDeviceHosts).
+  // is on and it shut down). Only its own (isOwnDevice: by nodeId, or else by
+  // exact host): a hub keeps its nodes' phones in the same table, and a node
+  // on the same machine differs from the hub only by port.
+  const nodeId = Container.get(PluginContext).nodeId;
   const discoveredUdids = new Set(devices.map((d) => d.udid));
   const staleLocalDevices = allExistingDevices.filter(
-    (d) => isLocalDeviceHost(local, d.host) && !discoveredUdids.has(d.udid),
+    (d) => isOwnDevice(local, nodeId, d) && !discoveredUdids.has(d.udid),
   );
 
   if (staleLocalDevices.length > 0) {
@@ -542,10 +551,11 @@ export async function setupCronCheckStaleDevices(
  */
 export async function removeStaleDevices(local: LocalDeviceHosts, tlsRejectUnauthorized?: boolean) {
   const allDevices = await getAllDevices();
+  const nodeId = Container.get(PluginContext).nodeId;
   const nodeDevices = allDevices.filter((device) => {
-    // Phones another server drives. By exact host: a node on this machine
-    // shares the IP, and an IP can be a prefix of another's.
-    return device.host !== undefined && !isLocalDeviceHost(local, device.host);
+    // Phones another server drives: by nodeId, or else by exact host (a node
+    // on this machine shares the IP, and an IP can be a prefix of another's).
+    return device.host !== undefined && !isOwnDevice(local, nodeId, device);
   });
 
   const devicesWithNoHost = nodeDevices.filter((device) => {
@@ -575,8 +585,19 @@ export async function removeStaleDevices(local: LocalDeviceHosts, tlsRejectUnaut
   const allAliveHosts = [...aliveHosts, ...aliveCloudHosts]
     .filter((item) => item.status === 'fulfilled' && item.value.alive)
     .map((item) => item.value.host);
+  // A node's phones carry its nodeId, and live as long as the node does:
+  // while any host of that node answers, its phone filed under a host that
+  // can't be probed (an iPhone under a bare remoteMachineProxyIP) stays.
+  const liveNodeIds = new Set(
+    nodeDevices
+      .filter((device) => device.nodeId && allAliveHosts.includes(device.host))
+      .map((device) => device.nodeId),
+  );
   // stale devices are devices that's not alive
-  const staleDevices = nodeDevices.filter((device) => !allAliveHosts.includes(device.host));
+  const staleDevices = nodeDevices.filter(
+    (device) =>
+      !allAliveHosts.includes(device.host) && !(device.nodeId && liveNodeIds.has(device.nodeId)),
+  );
   await removeDevice(staleDevices.map((device) => ({ udid: device.udid, host: device.host })));
   if (staleDevices.length > 0) {
     log.debug(
@@ -610,13 +631,29 @@ export async function releaseBlockedDevices(newCommandTimeout: number) {
 
   log.debug(`Found ${busyDevices.length} device candidates to be released`);
 
-  busyDevices.forEach(function (device) {
+  for (const device of busyDevices) {
     // need to keep this to make typescript happy. good thing tho.
     if (device.lastCmdExecutedAt == undefined) {
-      return;
+      continue;
     }
 
     const currentEpoch = new Date().getTime();
+    // A claim whose session is still being created is not idle: a first
+    // driver install can outlast the new-command timeout. It has its own
+    // timeout, for a create that never finished (deviceClaims.ts).
+    if (isPendingClaim(device)) {
+      if (pendingClaimExpired(device, currentEpoch)) {
+        log.warn(
+          `Releasing ${device.udid} at ${device.host}: its session was never created ` +
+            `(claimed ${Math.round((currentEpoch - (device.claimedAt as number)) / 1000)} seconds ago)`,
+        );
+        await releasePendingClaim(device).catch((err) =>
+          log.error(`Unable to release ${device.udid}: ${err}`),
+        );
+      }
+      continue;
+    }
+
     const timeoutSeconds =
       device.newCommandTimeout != undefined ? device.newCommandTimeout : newCommandTimeout;
     const timeSinceLastCmdExecuted = (currentEpoch - device.lastCmdExecutedAt) / 1000;
@@ -647,9 +684,16 @@ export async function releaseBlockedDevices(newCommandTimeout: number) {
         log.warn(`🕒 Session ${sessionId} timed out on device ${device.udid}`);
       }
 
-      unblockDevice(device.udid, device.host);
+      // Keyed on the session read here, so a release that loses the race to
+      // the session's own end (and the phone's next claim) frees nothing.
+      const claimant = device.claimSessionId ?? device.session_id;
+      await (
+        claimant
+          ? releaseSessionDevice(device.udid, device.host, claimant)
+          : unblockDevice(device.udid, device.host)
+      ).catch((err) => log.error(`Unable to release ${device.udid}: ${err}`));
     }
-  });
+  }
 }
 
 export async function setupCronReleaseBlockedDevices(

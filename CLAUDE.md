@@ -239,10 +239,40 @@ graceful shutdown (SIGTERM) drains only the hub's own local sessions
 releasing the phone and closing the row on the hub while the node kept the
 session running, unreachable, until its idle timeout.
 
+**Busy on a hub** (`src/data-service/deviceClaims.ts`). A node's phone is
+busy on the hub for one of two reasons, each in its own columns so neither
+erases the other: the hub's **claim** (`claimedAt` when allocation took it,
+`claimSessionId` once the session exists; a claim with no session id yet is
+*pending*) and the node's **report** (`nodeBusy`). `busy` is claim OR report.
+Every write that can clear `busy` is one conditional update, never a
+read-then-write:
+
+- A node's report (`POST /xenon/api/register?type=add`, the
+  `nodeReport` path) writes only what the node observes
+  (`pickNodeReportFields`) plus `nodeBusy`. Team, tags, reservation, block,
+  `session_id` and the claim are the hub's and are never taken from it. A
+  report of "free" clears `busy` only where nothing of the hub's holds the
+  phone (`UNHELD`: no claim, and no hold such as a preview or recording in
+  `session_id`), so a report sent before the hub's claim can't undo it.
+- A release names the claim it ends (`ClaimRef`: a session id, or a pending
+  claim's `claimedAt`), so a stale release for an ended session can't free a
+  phone another session has claimed since. It clears `busy` only where the
+  phone is then `UNHELD`, so a node still reporting it busy keeps it busy.
+- A pending claim isn't idle at the new-command timeout; the idle sweeper
+  frees it only after `PENDING_CLAIM_TIMEOUT_MS` (10 min).
+- Stale cleanup keys a node's phones on its `nodeId`: they stay while any
+  host of that node answers (an iPhone filed under an unprobeable
+  `remoteMachineProxyIP` included) and go with the node. A hub's own sync
+  never prunes a row carrying another node's id (`isOwnDevice`: by `nodeId`,
+  else by exact host).
+
+A server with no nodes never sets `nodeBusy`, so its `busy` is its claim, as
+before. A lease still locks with `busy` alone (allocation also skips a phone
+under an active lease), and a manual hold still writes `session_id`.
+
 **Not supported:** BiDi and session WebSockets through the hub; the
 `webSocketUrl` a session returns points at the node, so nodes must not sit on
-untrusted networks. The hub/node busy race (a node's report overwriting the
-hub's claim and hub-owned columns) is still open.
+untrusted networks.
 
 ### Device Streaming (`src/device-managers/{ios,android}/*StreamService.ts`)
 

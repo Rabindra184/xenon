@@ -8,6 +8,7 @@ import { IPluginArgs } from '../interfaces/IPluginArgs';
 import { WebConfigService } from '../data-service/web-config-service';
 import { SESSION_MANAGER } from '../sessions/SessionManager';
 import { EVENT_BUS } from '../services/EventBus';
+import { isPendingClaim, pendingClaimExpired } from '../data-service/deviceClaims';
 
 @Service()
 export class HealthMonitorService {
@@ -119,6 +120,15 @@ export class HealthMonitorService {
         // A device is a Zombie if it's marked busy in DB but NOT found in Hub's session map
         // AND not currently streaming to a manual viewer.
         if (device.busy) {
+          // Not a zombie: a session still being created on it (its session is
+          // in no map yet; the claim has its own timeout), or, on a hub, a
+          // node reporting it busy there (deviceClaims.ts).
+          if (
+            (isPendingClaim(device) && !pendingClaimExpired(device, Date.now())) ||
+            device.nodeBusy
+          ) {
+            continue;
+          }
           const hasActiveSession = SESSION_MANAGER.isValidSession(device.session_id || '');
           const isManualStream = device.session_id?.startsWith('manual_');
 

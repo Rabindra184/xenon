@@ -117,9 +117,11 @@ async function registerNode(request: Request, response: Response) {
   const requestBody = request.body;
   const { type } = request.query;
   if (type === 'add') {
-    // A node's own report of its phones: it is their source of truth, so the
-    // hub writes every column (AddDevicesOptions.mirror).
-    const addedDevices = await addNewDevice(requestBody, undefined, { mirror: true });
+    // A node's report of its phones (AddDevicesOptions.nodeReport): what the
+    // node observes of them, and whether they are busy there (`nodeBusy`).
+    // It never frees a phone this hub has claimed for a session, nor changes
+    // the settings this hub owns for it: team, tags, reservation, block.
+    const addedDevices = await addNewDevice(requestBody, undefined, { nodeReport: true });
     if (addedDevices.length > 0) {
       log.info(`Added new devices: ${JSON.stringify(addedDevices)}`);
     }

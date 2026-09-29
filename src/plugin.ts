@@ -10,7 +10,7 @@ import BasePlugin from '@appium/base-plugin';
 import { IDevice } from './interfaces/IDevice';
 import { ISessionCapability } from './interfaces/ISessionCapability';
 import AsyncLock from 'async-lock';
-import { unblockDeviceMatchingFilter } from './data-service/device-service';
+import { releaseSessionDevices, unblockDeviceMatchingFilter } from './data-service/device-service';
 import { Container } from 'typedi';
 import log, { XenonLogger } from './logger';
 import { resolveAdvertisedBindHost, shouldAutoResolveBindHost } from './helpers/networkAddresses';
@@ -143,6 +143,9 @@ class XenonPlugin extends BasePlugin {
         hubAccessKey: xenonConfig.hubAccessKey,
         hubToken: xenonConfig.hubToken,
       }).unblockDevice(deviceFilter as any);
+    } else if (sessionId) {
+      // Keyed on the session: its phone may be another session's by now.
+      await releaseSessionDevices(sessionId);
     } else {
       await unblockDeviceMatchingFilter(deviceFilter);
     }

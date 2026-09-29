@@ -34,6 +34,9 @@ export function fakeDeviceTable(seed: Row[]) {
     sessionProgress: '',
     sessionStartTime: 0,
     totalUtilizationTimeMilliSec: 0,
+    claimSessionId: null,
+    claimedAt: null,
+    nodeBusy: false,
   });
   for (const r of seed) rows.set(key(r.udid, r.host), { ...defaults(), ...r });
 

@@ -232,9 +232,10 @@ export class DashboardEventManager {
         // Principal Resource Management: Unblock device immediately
         const device = this.sessionToDevice.get(sessionId);
         if (device) {
-          const { unblockDevice } = await import('../data-service/device-service');
+          const { releaseSessionDevice } = await import('../data-service/device-service');
           try {
-            await unblockDevice(device.udid, device.host);
+            // This session's claim only: the phone may have gone on to another.
+            await releaseSessionDevice(device.udid, device.host, sessionId);
             log.info(`🔓 [${sessionId}] Device ${device.udid} released.`);
           } catch (unblockErr: any) {
             const msg = unblockErr?.message ?? String(unblockErr);
@@ -247,9 +248,9 @@ export class DashboardEventManager {
           // after the device is released (only if nobody is watching — see method).
           await this.stopIdleStreamForDevice(device);
         } else {
-          const { unblockDeviceMatchingFilter } = await import('../data-service/device-service');
+          const { releaseSessionDevices } = await import('../data-service/device-service');
           try {
-            await unblockDeviceMatchingFilter({ session_id: sessionId });
+            await releaseSessionDevices(sessionId);
             log.info(`🔓 [${sessionId}] Device released via session_id fallback.`);
           } catch (unblockErr: any) {
             const msg = unblockErr?.message ?? String(unblockErr);
@@ -268,9 +269,9 @@ export class DashboardEventManager {
       } else {
         log.warn(`⚠️ Session ${sessionId} not found in SESSION_MANAGER`);
         // Fallback: If session not in manager, attempt to unblock by session_id in store
-        const { unblockDeviceMatchingFilter } = await import('../data-service/device-service');
+        const { releaseSessionDevices } = await import('../data-service/device-service');
         try {
-          await unblockDeviceMatchingFilter({ session_id: sessionId });
+          await releaseSessionDevices(sessionId);
           log.info(`🔓 [${sessionId}] Orphaned device released via session_id fallback.`);
         } catch (unblockErr: any) {
           const msg = unblockErr?.message ?? String(unblockErr);

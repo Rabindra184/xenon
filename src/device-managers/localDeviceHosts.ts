@@ -83,6 +83,24 @@ export function isLocalDeviceHost(
 }
 
 /**
+ * Whether a phone's row is this server's own, for stale cleanup. A row names
+ * the server process that found it (`nodeId`, new on every boot; a node's
+ * report carries the node's), so that decides: another server's phone is
+ * never pruned as this one's, even under a host this server also files
+ * phones under (a shared remoteMachineProxyIP or adb server), and is
+ * host-checked as the other server's. A row with no nodeId falls back to its
+ * host.
+ */
+export function isOwnDevice(
+  local: LocalDeviceHosts,
+  nodeId: string,
+  device: { host?: string | null; nodeId?: string | null },
+): boolean {
+  if (device.nodeId) return device.nodeId === nodeId;
+  return isLocalDeviceHost(local, device.host);
+}
+
+/**
  * Which phones a server forgets when it starts: the hosts to clear, or
  * undefined for every phone.
  *

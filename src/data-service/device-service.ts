@@ -9,6 +9,7 @@ import { CircuitBreaker } from './CircuitBreaker';
 import { NotificationService } from '../services/NotificationService';
 import { AddDevicesOptions, IDeviceStore } from './device-store.interface';
 import { discoveryChanges } from './deviceFieldOwners';
+import { CLAIM_RESET, ClaimRef } from './deviceClaims';
 import { SocketServer } from '../services/SocketServer';
 import { prisma } from '../prisma';
 import { isManualLock, resolveBlockSessionId } from '../services/recording/manualLock';
@@ -225,6 +226,33 @@ export async function updatedAllocatedDevice(device: IDevice, updateData: Partia
   await store.updateDevice(device.udid, device.host, updateData);
 }
 
+/**
+ * Put a created session on the claim its phone was allocated with
+ * (`device.claimedAt`), writing `updateData` with it. False, and nothing
+ * written, when another session holds the phone now: its claim is not
+ * overwritten.
+ */
+export async function claimDeviceForSession(
+  device: IDevice,
+  sessionId: string,
+  updateData: Partial<IDevice>,
+): Promise<boolean> {
+  const claimed = await store.claimForSession(
+    device.udid,
+    device.host,
+    device.claimedAt,
+    sessionId,
+    updateData,
+  );
+  if (!claimed) {
+    log.error(
+      `Session ${sessionId} was created on ${device.udid} at ${device.host}, but another ` +
+        'session has claimed the device since. Leaving that claim in place.',
+    );
+  }
+  return claimed;
+}
+
 export async function updateDeviceProgress(
   udid: string,
   host: string,
@@ -247,9 +275,9 @@ export async function updateDeviceProgress(
 }
 
 export async function updateCmdExecutedTime(sessionId: string) {
-  await store.updateDevices({ session_id: sessionId }, (device: IDevice) => {
-    device.lastCmdExecutedAt = new Date().getTime();
-  });
+  // One conditional write. Reading the row and writing all of it back would
+  // put back a claim released, or a node's report taken, in between.
+  await store.touchSession(sessionId, new Date().getTime());
 }
 
 /**
@@ -296,58 +324,117 @@ export async function blockDevice(udid: string, host: string, sessionId?: string
   );
 }
 
+/**
+ * Free a phone whatever holds it: a manual hold (a preview, a recording) or
+ * an admin's release. A session's phone is released with
+ * releaseSessionDevices / releaseSessionDevice / releasePendingClaim instead,
+ * keyed on its claim.
+ *
+ * With a host, only that row. A hub also stores its nodes' phones, and a node
+ * on the same machine lists the same udid under its own host: matching the
+ * udid alone freed that row too, with a session on it.
+ */
 export async function unblockDevice(udid: string, host?: string) {
-  // Prefer udid-only: device.host can be `http://IP:port` while callers pass
-  // `127.0.0.1` / bindHostOrIp, and a host mismatch silently no-ops (0 rows).
-  // UDID uniquely identifies a device in this store.
-  const byUdid = await store.getDevices({ udid } as IDeviceFilterOptions);
-  if (byUdid.length > 0) {
-    await unblockDeviceMatchingFilter({ udid });
-    return;
-  }
-  if (host) {
-    await unblockDeviceMatchingFilter({ udid, host });
+  const devices = await store.findDevices(host === undefined ? { udid } : { udid, host });
+  await forceRelease(devices);
+}
+
+/** unblockDevice for every phone matching `filter` (getDevices' filter). */
+export async function unblockDeviceMatchingFilter(filter: object) {
+  await forceRelease(await store.getDevices(filter as IDeviceFilterOptions));
+}
+
+async function forceRelease(devices: IDevice[]) {
+  await Promise.all(
+    devices.map(async (device) => {
+      const totalUtilization = utilizationAfter(device);
+      await setUtilizationTime(device.udid, totalUtilization);
+      await store.updateDevice(device.udid, device.host, {
+        ...CLAIM_RESET,
+        busy: false,
+        totalUtilizationTimeMilliSec: totalUtilization,
+      } as unknown as Partial<IDevice>);
+      log.debug(`Unblocked device ${device.udid}`);
+      emitUnblocked(device);
+    }),
+  ).catch((error) => {
+    log.error(`Unable to unblock device: ${error}`);
+  });
+}
+
+/**
+ * End a session's claim on its phone, keyed on the session's id: a release
+ * for a session that has ended, arriving after its phone went to another one,
+ * matches nothing. The phone stays busy while its node still reports it busy
+ * (deviceClaims.ts). Never throws.
+ */
+export async function releaseSessionDevices(sessionId: string): Promise<void> {
+  try {
+    const rows = new Map<string, IDevice>();
+    for (const device of [
+      ...(await store.findDevices({ claimSessionId: sessionId })),
+      ...(await store.findDevices({ session_id: sessionId })),
+    ]) {
+      rows.set(`${device.udid}@${device.host}`, device);
+    }
+    await Promise.all([...rows.values()].map((device) => releaseClaimOn(device, { sessionId })));
+  } catch (error) {
+    log.error(`Unable to release the device of session ${sessionId}: ${error}`);
   }
 }
 
-export async function unblockDeviceMatchingFilter(filter: object) {
-  const devices = await store.getDevices(filter as IDeviceFilterOptions);
+/** releaseSessionDevices for one phone. */
+export async function releaseSessionDevice(
+  udid: string,
+  host: string,
+  sessionId: string,
+): Promise<boolean> {
+  const device = await store.findDevice({ udid, host });
+  return device ? releaseClaimOn(device, { sessionId }) : false;
+}
 
-  if (devices.length > 0) {
-    await Promise.all(
-      devices.map(async (device) => {
-        const sessionStart = device.sessionStartTime;
-        const currentTime = new Date().getTime();
-        let utilization = currentTime - sessionStart;
-        if (sessionStart === 0) utilization = 0;
+/**
+ * Give back a phone allocated for a session that was never created: the
+ * pending claim it was allocated with (`claimedAt`, as the allocation read
+ * it). If that claim has gone (timed out, and the phone taken since) nothing
+ * is written.
+ */
+export async function releasePendingClaim(
+  allocated: Pick<IDevice, 'udid' | 'host' | 'claimedAt'>,
+): Promise<boolean> {
+  const device = await store.findDevice({ udid: allocated.udid, host: allocated.host });
+  return device ? releaseClaimOn(device, { claimedAt: allocated.claimedAt ?? null }) : false;
+}
 
-        const totalUtilization = device.totalUtilizationTimeMilliSec + utilization;
-        await setUtilizationTime(device.udid, totalUtilization);
-
-        await store.updateDevice(device.udid, device.host, {
-          session_id: null as any,
-          busy: false,
-          lastCmdExecutedAt: null as any,
-          sessionStartTime: 0,
-          totalUtilizationTimeMilliSec: totalUtilization,
-          newCommandTimeout: null as any,
-          sessionProgress: '',
-        } as Partial<IDevice>);
-
-        log.debug(`Unblocked device ${device.udid}`);
-        void Container.get(SocketServer).emitToDashboardForDevices(
-          'device_unblocked',
-          {
-            udid: device.udid,
-            host: device.host,
-          },
-          deviceScope(device.udid, device.teamId),
-        );
-      }),
-    ).catch((error) => {
-      log.error(`Unable to unblock device: ${error}`);
-    });
+async function releaseClaimOn(device: IDevice, ref: ClaimRef): Promise<boolean> {
+  const totalUtilization = utilizationAfter(device);
+  const released = await store.releaseClaim(device.udid, device.host, ref, {
+    totalUtilizationTimeMilliSec: totalUtilization,
+  });
+  if (!released) {
+    log.info(
+      `Not releasing ${device.udid} at ${device.host}: it no longer holds ${JSON.stringify(ref)}`,
+    );
+    return false;
   }
+  await setUtilizationTime(device.udid, totalUtilization);
+  log.debug(`Released ${JSON.stringify(ref)} on ${device.udid}`);
+  emitUnblocked(device);
+  return true;
+}
+
+/** The phone's total use once the session on it now ends. */
+function utilizationAfter(device: IDevice): number {
+  const started = device.sessionStartTime;
+  return (device.totalUtilizationTimeMilliSec ?? 0) + (started ? Date.now() - started : 0);
+}
+
+function emitUnblocked(device: IDevice) {
+  void Container.get(SocketServer).emitToDashboardForDevices(
+    'device_unblocked',
+    { udid: device.udid, host: device.host },
+    deviceScope(device.udid, device.teamId),
+  );
 }
 
 /**

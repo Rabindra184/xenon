@@ -196,10 +196,19 @@ model Device {
   lockedAt                     Float?   @map("locked_at")
   teamId                       String?
   team                         Team?    @relation(fields: [teamId], references: [id])
+  // This server's claim on the phone for a session: when it was taken, and
+  // the session's id once the session exists (null while it is created).
+  // See src/data-service/deviceClaims.ts.
+  claimSessionId               String?
+  claimedAt                    Float?
+  // On a hub, what the phone's node last reported: busy there. `busy` is the
+  // claim OR this. Always false for a phone this server drives.
+  nodeBusy                     Boolean? @default(false)
 
   @@id([udid, host])
   @@index([owningSessionId])
   @@index([teamId])
+  @@index([claimSessionId])
 }
 
 model PendingSession {
