@@ -1,9 +1,15 @@
+import type { AxiosRequestConfig } from 'axios';
 import SessionType from '../enums/SessionType';
 import { RemoteSession } from './RemoteSession';
 
 export class CloudSession extends RemoteSession {
   getType(): SessionType {
     return SessionType.CLOUD;
+  }
+
+  /** A cloud provider is not a Xenon node: it never gets the hub's session token. */
+  protected async callOptions(): Promise<AxiosRequestConfig> {
+    return {};
   }
 
   async getScreenShot(): Promise<string> {

@@ -24,7 +24,8 @@ export interface IDeviceStore {
   /** Adds the phones the store doesn't have and returns only those. */
   addDevices(devices: IDevice[], options?: AddDevicesOptions): Promise<IDevice[]>;
   removeDevices(filter: Partial<IDevice>): Promise<void>;
-  clearStorage(): Promise<void>;
+  /** Delete every phone, or only those filed under these hosts. */
+  clearStorage(onlyHosts?: readonly string[]): Promise<void>;
   findDevice(filter: Partial<IDevice>): Promise<IDevice | null>;
   findDevices(filter: Partial<IDevice>): Promise<IDevice[]>;
   findAndLockDevice(filterOptions: IDeviceFilterOptions): Promise<IDevice | null>;

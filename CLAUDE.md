@@ -107,7 +107,80 @@ State machine: `requested → allocated → running → finished`. Each transiti
 
 ### Hub-Node Topology
 
-A Xenon hub instance can orchestrate remote Xenon node instances. `NodeDevices.ts` handles node registration; `RemoteSession.ts` forwards commands to the appropriate node.
+A Xenon hub instance can orchestrate remote Xenon node instances. Each has its
+own database; a node reports its phones to the hub over HTTP (`NodeDevices.ts`,
+`POST /xenon/api/register`). Sessions on a node's phone go **through the hub
+only**: creating one directly on a node is unsupported, because the hub owns
+team rules, reservations and blocks for node phones. Appium 3 only, every 3.x.
+
+**The session gateway** (`src/gateway/`, placed by `registerSessionGateway` in
+`src/app/registerCommandAuth.ts`, wired by `gatewayOptionsFor` in
+`defaultGateway.ts`) stands in front of Appium's routes, spliced with
+`insertBeforeRoutes` on both Express shapes. It replaced
+`registerProxyMiddlware`, which on Express 5 landed after the routes, so no
+command ever reached a node. Two adjacent layers:
+
+1. `xenonInternalCalls` (path-less): Xenon's own `<basePath>/wd-internal/...`
+   calls. See Per-command auth below.
+2. `xenonSessionGateway` at `<basePath>/session/:sessionId` (mounted, so its
+   path matching is the router's own, letter case included): per-command auth
+   once for local and remote sessions alike, then on a hub:
+   - **Where a session runs** is `SessionLocator` (`sessionLocator.ts`):
+     `SESSION_MANAGER` first, then the open Session row and its phone's row. It
+     is never a routing table of its own. Every session a hub routes to a node
+     or cloud is registered in `SESSION_MANAGER`, whatever the dashboard and
+     video settings. A remote session whose phone is this server's own (a
+     local one from before a restart) is never sent back to this server, and a
+     request carrying a hub token is never forwarded again.
+   - **Forwarding** (`forwardToNode.ts`) sends the command under the node's
+     own base path, drops the client's credentials and cookies, adds the hub
+     token, and streams the node's status, headers and body back. No retry: a
+     WebDriver command isn't safe to repeat. Appium's umbrella never sees a
+     remote session's command, so a pure hub needs no driver for the node's
+     routes. The dashboard's before/after command hooks run for registered
+     remote sessions when the hub's dashboard is on.
+   - **DELETE `<basePath>/session/<id>`** runs
+     `SessionLifecycleService.deleteSession` with the forward as its driver
+     step, so the node's video is archived while the session exists, then the
+     phone is unblocked, the dashboard closed and `SESSION_MANAGER` cleaned.
+     DELETE of a sub-resource (`/cookie`) is an ordinary command.
+   - Network-conditioning latency is added for local sessions only; the node
+     adds it for its own.
+
+**Base paths may differ.** A phone's `host` is only the node's origin, so each
+server answers `GET /xenon/api/webdriver` (`{ basePath }`, no login) and the
+hub's `NodeBasePathResolver` asks before creating or routing a session (60 s
+cache; a node that doesn't answer is assumed to share the hub's base path).
+
+**The hub's token** (`hubSessionToken.ts`). Auth is enforced at the hub. Every
+hub call about a session (forwarded commands, and `RemoteSession`'s own
+screenshot, source, recording and heartbeat calls) carries
+`x-xenon-hub-token`: an RS256 JWT from the hub's `JwtKeyService`, audience
+`xenon-node` (which `/auth/token` won't mint), claim `sid`, 5 minutes, reused
+until a minute before expiry. A node with per-command auth on accepts it in
+place of credentials after verifying it against the hub's
+`/xenon/api/auth/jwks.json`; a forged, expired or other session's token gets
+the unknown-session answer, and a JWKS that can't be fetched is `503`. A cloud
+provider never gets one.
+
+**A hub restart** leaves node sessions running. At boot a hub clears only its
+own phones (`devicesClearedAtBoot`); its nodes' rows stay, so
+`recoverActiveSessions` rebuilds their `RemoteSession`s (under each node's own
+base path) and the gateway routes them again. Before the gateway every row was
+wiped at boot, so every remote session was marked failed on restart.
+
+**The createSession bridge (stopgap, PR 2 removes it).** A remote-bound
+createSession never reaches Appium's own createSession, and Appium >= 2.15 on
+base-driver < 10.2.1 then throws in `generateDriverLogPrefix(undefined)` while
+promoting plugins (a 500 while the node keeps the session). `XenonPlugin`'s
+instance that answered such a createSession sets `updateLogPrefix = null`, as
+appium-device-farm does, so the promotion skips it. The promoted plugin
+instance is never released (one small object per remote session).
+
+**Not supported:** BiDi and session WebSockets through the hub; the
+`webSocketUrl` a session returns points at the node, so nodes must not sit on
+untrusted networks. The hub/node busy race (a node's report overwriting the
+hub's claim and hub-owned columns) is still open.
 
 ### Device Streaming (`src/device-managers/{ios,android}/*StreamService.ts`)
 
@@ -519,18 +592,27 @@ is not pushed, it takes up to 30 s (`commandCaller.ts` says why).
   `updateServer`, so a plain `app.use` never sees a command.
   `insertBeforeRoutes` splices the layer ahead of the first route, on
   `app._router` (Express 4) or `app.router` (Express 5, what Appium 3 runs).
-  If it can't, the server refuses to start while the setting is on.
-  `registerProxyMiddlware` still has the `_router`-only version and falls back
-  to `app.use` on Appium 3, which is why `/wd-internal/...` answers
-  `unknown command` today. If that is fixed, the rewrite runs after command
-  auth, and `/wd-internal/session/<id>/...` becomes a way around it. Xenon's
-  own loopback calls through `RemoteSession` (the heartbeat's `timeouts`
-  probe among them) use that path without credentials. Authenticate them in
-  the same change.
-- **Xenon's one credential-less call on the public path is refused.**
-  `LocalSession.stopVideoRecording` falls back to HTTP on
-  `<basePath>/session/<id>/...` when the in-process driver call fails; with
-  the setting on that fallback gets the unknown-session answer.
+  If it can't, the server refuses to start while the setting is on. It runs
+  inside the session gateway (see Hub-Node Topology), so it is checked once,
+  before a hub forwards anything to a node.
+- **`/wd-internal` needs the per-process secret** (`src/gateway/internalCall.ts`).
+  Xenon's own loopback calls (`LocalSession`'s HTTP fallbacks for page source,
+  screen recording and perf recording) go to
+  `<basePath>/wd-internal/session/<id>/...` with `x-xenon-internal`, a secret
+  made once per process, never through an HTTP proxy. The path-less
+  internal-call layer, ahead of the session layer, accepts a call only with
+  both: it strips `/wd-internal`, removes the header, and marks the request so
+  the session layer skips per-command auth. Without the secret, or with any
+  other spelling of the marker, the request is left as it came and gets
+  Appium's unknown-route answer, byte for byte (there is one `next()` call site,
+  because Appium's 404 carries a stack trace). The path alone used to be the
+  marker, which would have been a way around this check.
+- **A local session's heartbeat doesn't use HTTP.** `LocalSession.checkHealth`
+  asks the in-process umbrella (`sessionExists`). Any command sent to the
+  session, `timeouts` included, restarts the driver's new-command timeout and
+  Xenon's idle clock, so a 30 s probe would keep an abandoned session and its
+  phone alive for ever. A `RemoteSession`'s probe still goes to the node, with
+  the hub's token.
 - **The session listing is filtered** (`sessionListingFilter.ts`).
   `GET <basePath>/appium/sessions` is Appium 3's only listing route (no
   `GET /sessions`; Appium also gates it behind the `session_discovery`
@@ -566,8 +648,10 @@ is not pushed, it takes up to 30 s (`commandCaller.ts` says why).
   keeps an `upgrade` listener, Node < 22.21 no longer hands any upgrade to
   Express, and the guard's Express middleware is a backstop that isn't
   reached.
-- Enable it on the hub. A node verifies against its own database, so it would
-  refuse the commands a hub forwards.
+- Enable it on the hub, where the owners are on record. A node with it on
+  accepts the hub's session token in place of credentials (see Hub-Node
+  Topology), and refuses everything else, since its own database knows no
+  owners for hub-created sessions.
 
 Device leases: programmatic clients (SDK, MCP tools) claim devices via
 `POST /xenon/api/sdk/leases` (`src/services/lease/LeaseService.ts`) — token-bound
@@ -826,6 +910,11 @@ npm run build:copy` (from the repo root) regenerates and copies it.
 | `src/services/device-access/ticketActorAccess.ts` | `makeTicketActorAuthorizer` — the WS's ownership decision, extracted so it is tested directly rather than through a copy in a spec |
 | `web/src/components/device-control/logcat/logcatFilter.ts` | Pure filter grammar (`level:` minimum, `tag:`, `package:`, text, ANDed) plus `setLevelTerm` so the dropdown and the text box share one query |
 | `web/src/components/device-control/logcat/useLogcatStream.ts` | Mints a ticket per connect, batches frames (React 17 does not auto-batch outside events), resets the buffer on reconnect **except** after 1012 |
+| `src/gateway/sessionGateway.ts` | The session layer in front of Appium's routes: internal calls skip auth, per-command auth (or the hub token on a node), then a hub forwards remote sessions; remote DELETE runs the lifecycle |
+| `src/gateway/internalCall.ts` | `/wd-internal` + the per-process secret header; one `next()` call site so a refused call answers exactly like an unknown route |
+| `src/gateway/hubSessionToken.ts` | Hub-signed, session-scoped `xenon-node` JWT (`x-xenon-hub-token`); the node verifies it against the hub's JWKS |
+| `src/gateway/sessionLocator.ts` | Where a session runs: `SESSION_MANAGER`, then the open Session row and its phone's row; never its own routing table |
+| `src/gateway/nodeWebDriverUrl.ts` | A node's own base path from its public `GET /xenon/api/webdriver`, cached; the hub's is the fallback |
 | `src/services/recording/RecordingOrchestrator.ts` | Per-device + composite recording lifecycle |
 | `src/services/recording/manualLock.ts` | `manual_<actorId>_<udid>` lock format helpers |
 | `src/middleware/authMiddleware.ts` | Populates `req.auth` (and `req.apiKey` on API-key paths) from the header pair or session cookie; `scopesForRole` maps a cookie role to its scopes |

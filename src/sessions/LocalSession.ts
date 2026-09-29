@@ -2,7 +2,8 @@ import AndroidDeviceManager from '../device-managers/AndroidDeviceManager';
 import log from '../logger';
 import { exec } from 'teen_process';
 import SessionType from '../enums/SessionType';
-import { XenonSessionOptions } from './XenonSession';
+import type { AxiosRequestConfig } from 'axios';
+import { HealthErrorType, SessionHealthResult, XenonSessionOptions } from './XenonSession';
 import { RemoteSession } from './RemoteSession';
 import { Container } from 'typedi';
 import { XenonManager } from '../device-managers';
@@ -10,19 +11,7 @@ import { XENON_CAPABILITIES } from '../XenonCapabilityManager';
 import { VideoPipelineService } from '../services/VideoPipelineService';
 import AndroidStreamService from '../device-managers/android/AndroidStreamService';
 import IOSStreamService from '../device-managers/ios/IOSStreamService';
-
-function constructBasePath(path: string) {
-  if (!path || path == '') {
-    return '/wd-internal';
-  }
-  if (!path.startsWith('/')) {
-    path = `/${path}`;
-  }
-  if (path.endsWith('/')) {
-    path = path.substr(0, path.length - 2);
-  }
-  return `${path}/wd-internal`;
-}
+import { internalCallBaseUrl, internalCallHeaders } from '../gateway/internalCall';
 
 export type LocalSessionOptions = XenonSessionOptions & {
   driver: any;
@@ -30,19 +19,53 @@ export type LocalSessionOptions = XenonSessionOptions & {
 
 export class LocalSession extends RemoteSession {
   protected driver: any;
-  private appiumBaseUrl: string;
 
   constructor(options: LocalSessionOptions) {
     const { address, port, basePath } = options.driver.opts || options.driver;
-    super({
-      ...options,
-      baseUrl: `http://${address}:${port}${constructBasePath(basePath)}`,
-    });
+    // The inherited HTTP calls loop back to this server's own
+    // `<basePath>/wd-internal`, which the session gateway accepts only with
+    // this process's secret (gateway/internalCall.ts).
+    super({ ...options, baseUrl: internalCallBaseUrl(address, port, basePath) });
     this.driver = options.driver;
-    // Store the proper Appium base URL for video recording commands.
-    // Principal Intelligence: Map 0.0.0.0 to 127.0.0.1 for internal loopack safety.
-    const safeAddress = address === '0.0.0.0' ? '127.0.0.1' : address;
-    this.appiumBaseUrl = `http://${safeAddress}:${port}${basePath || ''}`;
+  }
+
+  /**
+   * A loopback call carries the per-process secret, and never goes through an
+   * HTTP proxy from the environment, which would receive the secret.
+   */
+  protected async callOptions(): Promise<AxiosRequestConfig> {
+    return { headers: internalCallHeaders(), proxy: false };
+  }
+
+  /**
+   * Whether Appium still has this session, asked of the in-process driver.
+   *
+   * Not an HTTP probe: any command sent to the session, `timeouts` included,
+   * restarts the driver's new-command timeout and Xenon's own idle clock, so a
+   * heartbeat every 30 s would keep a session its client abandoned (and its
+   * phone) alive for ever. The umbrella drops a session from its map when it
+   * is deleted, times out, or its driver shuts down unexpectedly.
+   */
+  async checkHealth(): Promise<SessionHealthResult> {
+    if (!this.sessionId) {
+      return {
+        isHealthy: false,
+        errorType: HealthErrorType.NONE,
+        message: 'No session ID assigned',
+      };
+    }
+    const umbrella = this.driver;
+    const exists =
+      typeof umbrella?.sessionExists === 'function'
+        ? !!umbrella.sessionExists(this.sessionId)
+        : !!umbrella?.sessions?.[this.sessionId];
+    if (exists) return { isHealthy: true, errorType: HealthErrorType.NONE };
+    return {
+      isHealthy: false,
+      errorType: HealthErrorType.SESSION_NOT_FOUND,
+      message: 'Appium no longer has this session',
+      statusCode: 404,
+    };
   }
 
   /**
@@ -260,7 +283,7 @@ export class LocalSession extends RemoteSession {
     return Container.get(VideoPipelineService).isRecording(this.sessionId);
   }
 
-  // Override to use proper Appium URL for video commands
+  // The in-process pipeline or driver first; the loopback call last.
   async stopVideoRecording(driver?: any): Promise<string | null> {
     const videoPipeline = Container.get(VideoPipelineService);
     if (videoPipeline.isRecording(this.sessionId)) {
@@ -296,13 +319,9 @@ export class LocalSession extends RemoteSession {
       );
     }
 
-    const originalBaseUrl = (this as any).baseUrl;
-    (this as any).baseUrl = this.appiumBaseUrl;
-    try {
-      return await super.stopVideoRecording();
-    } finally {
-      (this as any).baseUrl = originalBaseUrl;
-    }
+    // Over HTTP to this server's own /wd-internal, with the secret: the public
+    // session path would need the owner's credentials under per-command auth.
+    return await super.stopVideoRecording();
   }
 
   getLiveVideoUrl() {

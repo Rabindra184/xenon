@@ -55,7 +55,8 @@ import {
   withTicket,
 } from './session/appCapability';
 import { CircuitBreaker } from '../data-service/CircuitBreaker';
-import { addProxyHandler } from '../proxy/wd-command-proxy';
+import { nodeWebDriverUrl } from '../gateway/nodeWebDriverUrl';
+import { HubSessionTokenIssuer } from '../gateway/hubSessionToken';
 import { DeviceStoreFactory } from '../data-service/device-store';
 import { XenonSession, XenonSessionOptions } from '../sessions/XenonSession';
 import { LocalSession } from '../sessions/LocalSession';
@@ -692,9 +693,12 @@ export class SessionLifecycleService {
       sessionProgress: 'Session Active',
     });
 
+    // Where the session gateway sends this session's commands: the node's own
+    // base path, which need not be this hub's.
+    let webDriverUrl: string | undefined;
     if (isRemote) {
       (Container.get(CircuitBreaker) as CircuitBreaker).recordSuccess(device.host);
-      addProxyHandler(sessionId, device.host);
+      webDriverUrl = await nodeWebDriverUrl(device, context.nodeBasePath);
     }
 
     const freshDevice = await this.getFreshDevice(device);
@@ -704,6 +708,7 @@ export class SessionLifecycleService {
       sessionResponse,
       xenonCapabilities,
       driver,
+      webDriverUrl,
     );
     sessionInstance.apiKeyId = apiKeyId;
     sessionInstance.userId = userId;
@@ -728,6 +733,7 @@ export class SessionLifecycleService {
     response: any,
     caps: any,
     driver: any,
+    webDriverUrl?: string,
   ): XenonSession {
     const context = Container.get(PluginContext);
     const sessionOptions: XenonSessionOptions = {
@@ -736,7 +742,7 @@ export class SessionLifecycleService {
       sessionResponse: response,
       xenonOption: caps,
     };
-    const nodeWebdriverUrl = nodeUrl(device, context.nodeBasePath);
+    const nodeWebdriverUrl = webDriverUrl ?? nodeUrl(device, context.nodeBasePath);
 
     if (device.nodeId === context.nodeId) {
       return new LocalSession({ ...sessionOptions, driver });
@@ -795,9 +801,17 @@ export class SessionLifecycleService {
       }
     }
 
-    if ((isDashboardEnabled && shouldSaveLogs) || (isVideoRecordingEnabled && shouldSaveLogs)) {
+    // A session another server runs is always registered, whatever the
+    // dashboard and video settings: SESSION_MANAGER is where the session
+    // gateway finds it to forward its commands.
+    const routedElsewhere = session.getType() !== SessionType.LOCAL;
+    if (
+      routedElsewhere ||
+      (isDashboardEnabled && shouldSaveLogs) ||
+      (isVideoRecordingEnabled && shouldSaveLogs)
+    ) {
       SESSION_MANAGER.addSession(session.getId(), session);
-      if (this.isHub(context.pluginArgs) && isDashboardEnabled) {
+      if (this.isHub(context.pluginArgs) && isDashboardEnabled && shouldSaveLogs) {
         await DASHBORD_EVENT_MANAGER.onSessionStarted(caps, session, device);
       }
     }
@@ -817,7 +831,7 @@ export class SessionLifecycleService {
     caps: ISessionCapability,
   ): Promise<CreateSessionResponseInternal | Error> {
     const context = Container.get(PluginContext);
-    const remoteUrl = `${nodeUrl(device, context.nodeBasePath)}/session`;
+    const remoteUrl = `${await nodeWebDriverUrl(device, context.nodeBasePath)}/session`;
 
     const config: AxiosRequestConfig = {
       method: 'post',
@@ -1018,6 +1032,7 @@ export class SessionLifecycleService {
 
           await DASHBORD_EVENT_MANAGER.onSessionStopped(sessionId, status, reason);
           SESSION_MANAGER.removeSession(sessionId);
+          Container.get(HubSessionTokenIssuer).forget(sessionId);
 
           try {
             const { getSessionById } = await import('../dashboard/services/session-service');

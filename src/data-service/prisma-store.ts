@@ -263,8 +263,10 @@ export class PrismaDeviceStore implements IDeviceStore {
     await this.prisma.device.deleteMany({ where: whereClause });
   }
 
-  async clearStorage(): Promise<void> {
-    await this.prisma.device.deleteMany();
+  async clearStorage(onlyHosts?: readonly string[]): Promise<void> {
+    await this.prisma.device.deleteMany(
+      onlyHosts ? { where: { host: { in: [...onlyHosts] } } } : undefined,
+    );
   }
 
   async findDevice(filter: Partial<IDevice>): Promise<IDevice | null> {

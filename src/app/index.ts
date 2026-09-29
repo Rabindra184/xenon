@@ -42,6 +42,8 @@ import { IPluginArgs } from '../interfaces/IPluginArgs';
 import fileUpload from 'express-fileupload';
 import { setupSwagger } from './swagger';
 import { Container } from 'typedi';
+import { PluginContext } from '../PluginContext';
+import { webdriverInfoHandler } from '../gateway/nodeWebDriverUrl';
 
 const dashboardPluginUrl: any = null;
 
@@ -217,6 +219,15 @@ function createRouter(pluginArgs: IPluginArgs) {
 
   // Health endpoint: no auth, no rate limit
   apiRouter.get('/health', (_req, res) => res.json({ ok: true }));
+
+  // Where this server's WebDriver API lives: a hub asks a node before sending
+  // it a session or a command (gateway/nodeWebDriverUrl.ts). No login: the
+  // hub holds no credentials for the node, and the base path is in every
+  // client's URL anyway.
+  apiRouter.get(
+    '/webdriver',
+    webdriverInfoHandler(() => Container.get(PluginContext).nodeBasePath),
+  );
 
   // Dashboard login: unauthenticated (rate-limited internally via separate IP logic)
   apiRouter.use('/auth', authPublicRouter()); // login, logout — unauthenticated
