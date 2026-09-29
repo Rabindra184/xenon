@@ -222,7 +222,28 @@ class XenonPlugin extends BasePlugin {
     if (caps && (!Array.isArray(caps.firstMatch) || caps.firstMatch.length === 0)) {
       caps.firstMatch = [{}];
     }
-    return await Container.get(SessionLifecycleService).createSession(next, driver, caps);
+    let reachedDriver = false;
+    const result = await Container.get(SessionLifecycleService).createSession(
+      () => {
+        reachedDriver = true;
+        return next();
+      },
+      driver,
+      caps,
+    );
+    // STOPGAP, removed by PR 2 (createSession in the session gateway).
+    // A session created on another server (a node's phone, a cloud) never
+    // reaches Appium's own createSession, so the umbrella has no driver for
+    // it. Appium >= 2.15 then promotes this plugin to the new session id and
+    // builds its log prefix from `this.sessions[id]`, which is undefined:
+    // `generateDriverLogPrefix(undefined)` throws, and the client gets a 500
+    // while the node keeps the session. Fixed upstream in base-driver 10.2.1
+    // (Appium 3.2.1); appium-device-farm works around it the same way, by
+    // removing this instance's `updateLogPrefix`, which the promotion loop
+    // skips when it is not a function. Only for such a session, so a local
+    // session's plugin keeps its per-session log prefix.
+    if (!reachedDriver) (this as unknown as { updateLogPrefix: unknown }).updateLogPrefix = null;
+    return result;
   }
 
   async deleteSession(next: () => any, driver: any, sessionId?: string | null) {
