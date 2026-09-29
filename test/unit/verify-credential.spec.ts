@@ -13,6 +13,7 @@ import {
   verifyBearerCredential,
   verifyKeyPairCredential,
 } from '../../src/middleware/verifyCredential';
+import { saveRegistrations } from '../helpers/container-registration';
 
 /**
  * The credential checks authMiddleware applies to the header pair and to a
@@ -27,8 +28,10 @@ describe('verifyCredential', () => {
   let dir: string;
   let keys: JwtKeyService;
   const active = { id: 'u1', role: 'MEMBER', status: 'ACTIVE' };
+  let restoreContainer: () => void;
 
   beforeEach(async () => {
+    restoreContainer = saveRegistrations(JwtKeyService, UserService, ApiKeyService);
     dir = fs.mkdtempSync(path.join(os.tmpdir(), 'xenon-verify-cred-'));
     keys = new JwtKeyService();
     await keys.init(dir);
@@ -39,7 +42,7 @@ describe('verifyCredential', () => {
 
   afterEach(() => {
     sinon.restore();
-    Container.reset();
+    restoreContainer();
     fs.rmSync(dir, { recursive: true, force: true });
   });
 

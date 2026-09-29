@@ -1,3 +1,4 @@
+import 'reflect-metadata';
 import { expect } from 'chai';
 import { Container } from 'typedi';
 import {
@@ -9,6 +10,7 @@ import {
 import { HealEtalonService } from '../../src/services/healing/HealEtalonService';
 import { HealedLocatorGenerator } from '../../src/services/healing/HealedLocatorGenerator';
 import { HealingProvider, HealingTier } from '../../src/services/healing/types';
+import { saveRegistrations } from '../helpers/container-registration';
 
 // §2.7 healing-tier capability gate: xe:options.healingTiers restricts which
 // self-healing providers may be dispatched. Tier index mapping used by the gate
@@ -117,9 +119,10 @@ describe('HealingOrchestrator.attemptHealing allowedTiers dispatch gate', () => 
   let orchestrator: HealingOrchestrator;
   let mockEtalonService: any;
   const dispatched: string[] = [];
+  let restoreContainer: () => void;
 
   beforeEach(() => {
-    Container.reset();
+    restoreContainer = saveRegistrations(HealEtalonService, HealedLocatorGenerator);
     dispatched.length = 0;
 
     mockEtalonService = {
@@ -140,6 +143,8 @@ describe('HealingOrchestrator.attemptHealing allowedTiers dispatch gate', () => 
       };
     });
   });
+
+  afterEach(() => restoreContainer());
 
   const mockDriver = {
     getPageSource: async () => '<xml/>',
