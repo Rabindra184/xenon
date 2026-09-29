@@ -271,6 +271,13 @@ read-then-write:
   phones (the sync, an attach's `getDeviceInfo`) and simulators. A node on
   the same Mac sees the same iPhone and simulators; until 2.1 iOS matched by
   udid alone and took the node's row, host, ports and busy state included.
+- The stream services (`IOSStreamService`, `AndroidStreamService`,
+  `AndroidH264StreamService`, `previewHold.ts`) find a phone's row the same
+  way: `findOwnDevice(udid)` (`src/device-managers/ownDeviceRow.ts`) looks up
+  the udid under each of this server's own hosts (`localDeviceHosts`), never
+  by udid alone. They used to take the node's row for a shared udid, so they
+  could release the node's preview hold or read the node's session as the
+  phone's.
 
 A server with no nodes never sets `nodeBusy`, so its `busy` is its claim, as
 before. A lease still locks with `busy` alone (allocation also skips a phone

@@ -20,6 +20,7 @@ import { cachePath } from '../../helpers';
 import { SingleFlight } from '../../helpers/singleFlight';
 import { PortAllocator } from '../../services/PortAllocator';
 import { DeviceStoreFactory } from '../../data-service/device-store';
+import { findOwnDevice } from '../ownDeviceRow';
 import {
   classifyTunnelStderr,
   isMissingWdaError,
@@ -162,7 +163,7 @@ class IOSStreamService {
             );
             try {
               // Get device state to check for Session Shield
-              const device = await DeviceStoreFactory.getStore().findDevice({ udid });
+              const device = await findOwnDevice(udid);
               if (device && device.busy) {
                 log.info(`🛡️ [Watchdog] Skipping heal for ${udid} as it has an active session.`);
                 continue;
@@ -197,7 +198,7 @@ class IOSStreamService {
       const idleMs = now - session.lastViewerAt;
       if (session.viewerCount > 0 || idleMs <= IOS_IDLE_STOP_MS) continue;
       try {
-        const device = await DeviceStoreFactory.getStore().findDevice({ udid });
+        const device = await findOwnDevice(udid);
         const recording = await Container.get(RecordingStore).isRecording(udid);
         const stop = shouldStopIdleIosStream({
           idleMs,
@@ -405,7 +406,7 @@ class IOSStreamService {
    */
   private async appiumSessionMayUse(udid: string, what: string): Promise<boolean> {
     try {
-      const device = await DeviceStoreFactory.getStore().findDevice({ udid });
+      const device = await findOwnDevice(udid);
       if (!heldByAppiumSession(device)) return false;
       log.info(
         `[${udid}] Leaving ${what} alone: Appium session ${device?.session_id} holds the device and may be using them`,
@@ -428,7 +429,7 @@ class IOSStreamService {
   private async refuseRestartUnderAppiumSession(udid: string): Promise<void> {
     let device;
     try {
-      device = await DeviceStoreFactory.getStore().findDevice({ udid });
+      device = await findOwnDevice(udid);
     } catch (e: any) {
       throw new StreamRestartRefused(
         `Stream for ${udid} is not answering, and the device can't be read to check for an Appium session (${e?.message ?? e}): not restarting it.`,
@@ -537,7 +538,7 @@ class IOSStreamService {
         `🛡️ [${udid}] [Watchdog] Tunnel processes are dead. Attempting tunnel-only recovery...`,
       );
 
-      const device = await DeviceStoreFactory.getStore().findDevice({ udid });
+      const device = await findOwnDevice(udid);
       if (device && device.ip) {
         // Double check if WDA is alive via network IP
         const isWdaAccessibleViaNetwork = await this.isWDARunningOnHost(device.ip, 8100);
@@ -559,7 +560,7 @@ class IOSStreamService {
         `🛡️ [${udid}] [Watchdog] WDA tunnel on port ${session.wdaPort} is unresponsive. checking network...`,
       );
 
-      const device = await DeviceStoreFactory.getStore().findDevice({ udid });
+      const device = await findOwnDevice(udid);
       if (device && device.ip) {
         const isWdaAccessibleViaNetwork = await this.isWDARunningOnHost(device.ip, 8100);
         if (isWdaAccessibleViaNetwork) {
@@ -712,7 +713,7 @@ class IOSStreamService {
           this.markRecoveryAttempt(udid);
         }
 
-        const device = await DeviceStoreFactory.getStore().findDevice({ udid });
+        const device = await findOwnDevice(udid);
         if (!device) throw new Error(`Device ${udid} not found`);
 
         // Tear down this udid's previous session BEFORE acquiring ports, never
@@ -985,7 +986,7 @@ class IOSStreamService {
             }
 
             // Update device info in store
-            const device = await DeviceStoreFactory.getStore().findDevice({ udid });
+            const device = await findOwnDevice(udid);
             if (device) {
               const updateData: any = {
                 wdaLocalPort: wdaPort,
@@ -1163,7 +1164,7 @@ class IOSStreamService {
     // The lock could belong to an Appium automation session (session_id is a real UUID).
     // We should only unblock if it's a manual control lock (session_id starts with 'manual_').
     try {
-      const device = await DeviceStoreFactory.getStore().findDevice({ udid });
+      const device = await findOwnDevice(udid);
       if (device && device.session_id?.startsWith('manual_')) {
         log.info(`Stream Stop: Releasing manual control lock for ${udid}`);
         await unblockDevice(udid, device.host);

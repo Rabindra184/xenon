@@ -3,6 +3,7 @@ import http from 'http';
 import sharp from 'sharp';
 import log from '../../logger';
 import { DeviceStoreFactory } from '../../data-service/device-store';
+import { findOwnDevice } from '../ownDeviceRow';
 import { deviceLock } from './DeviceLockManager';
 import { Service, Container } from 'typedi';
 import { ResourceIsolationService } from '../../services/ResourceIsolationService';
@@ -266,7 +267,7 @@ class AndroidStreamService {
           await this.disposeSession(udid, existing);
         }
 
-        const device = await DeviceStoreFactory.getStore().findDevice({ udid });
+        const device = await findOwnDevice(udid);
         if (!device) throw new Error(`Device ${udid} not found in DB`);
 
         // Resolve the real adb binary once, up front, so the capture loop never
@@ -349,7 +350,7 @@ class AndroidStreamService {
         }
 
         // Update device info in store to ensure other services (like VideoPipeline) can find the port
-        const updatedDevice = await DeviceStoreFactory.getStore().findDevice({ udid });
+        const updatedDevice = await findOwnDevice(udid);
         if (updatedDevice) {
           await DeviceStoreFactory.getStore().updateDevice(udid, updatedDevice.host, {
             mjpegServerPort: mjpegPort,
