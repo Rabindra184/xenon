@@ -5,7 +5,14 @@ declare global {
   namespace Express {
     interface Request {
       auth?: {
-        kind: 'user-session' | 'api-key' | 'bearer' | 'stream-ticket' | 'app-ticket';
+        kind:
+          | 'user-session'
+          | 'api-key'
+          | 'bearer'
+          | 'stream-ticket'
+          | 'app-ticket'
+          // On a node: the hub's signed device-control call (hubSessionToken.ts).
+          | 'hub-control';
         userId: string;
         role: UserRole;
         scopes: string;

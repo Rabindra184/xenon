@@ -203,10 +203,10 @@ phone. Before this the hub put the client's credentials back
 database doesn't have the hub's keys, leases or teams.
 
 **The hub's tokens** (`hubSessionToken.ts`), sent as `x-xenon-hub-token`.
-Auth is enforced at the hub. Both are RS256 JWTs from the hub's
+Auth is enforced at the hub. All three are RS256 JWTs from the hub's
 `JwtKeyService`, verified by the node against the hub's
-`/xenon/api/auth/jwks.json`. `/auth/token` mints neither audience. A cloud
-provider never gets either.
+`/xenon/api/auth/jwks.json`. `/auth/token` mints none of their audiences. A
+cloud provider never gets one.
 
 - **A session's** (audience `xenon-node`, claim `sid`, 5 minutes, reused
   until a minute before expiry) goes with every hub call about a session:
@@ -235,6 +235,28 @@ provider never gets either.
   is. The token is single-use: each has its own `jti`, which the node's
   verifier keeps in a `SingleUseLedger` until it expires. A token with no
   `jti` (from an older hub) is accepted without that check.
+
+- **A device-control call's** (audience `xenon-node-control`, 1 minute,
+  fresh per call). The hub forwards five `/control` actions on a node's
+  phone to its node: `tap`, `swipe`, `text`, `keyevent`, `touchAndHold`
+  (`forwardControl` in `control.ts`); the others act on this server only.
+  They went with no credential, so an auth-enabled node refused every one
+  (its CSRF check, then its login). The token names the hub user (`sub`),
+  whether they are an admin (`adm`), the phone (`udid`) and its node
+  (`host`), and is sent as `x-xenon-hub-token`. The hub's own guards
+  (role, team, ownership) have run by then.
+  - On a node, `authMiddleware` accepts it only for `/control/<udid>/...` on
+    the phone it names, whose `host` is one of the node's own
+    (`localDeviceHosts`). It sets `req.auth` to kind `hub-control`: that
+    user, `ADMIN` or `MEMBER` with `scopesForRole`, and `teamIds`
+    undefined, since the hub applied the team rule.
+  - The node's ownership guard then judges that user against the session's
+    owner (`LiveSessionOwners`).
+  - Anywhere else the header is no credential. A bad token is `401`, and a
+    JWKS that can't be fetched is `503`.
+  - `csrfMiddleware` passes the header like the key pair: a browser can't set
+    it cross-origin. A server that isn't a node ignores the token, and a
+    cloud provider never gets one.
 
 **A create is sent once.** `forwardSessionRequest` posts it with
 `retry: false` (`InternalRequestConfig`) and `REMOTE_CREATE_TIMEOUT_MS` (8 min,
@@ -1074,7 +1096,7 @@ npm run build:copy` (from the repo root) regenerates and copies it.
 | `web/src/components/device-control/logcat/useLogcatStream.ts` | Mints a ticket per connect, batches frames (React 17 does not auto-batch outside events), resets the buffer on reconnect **except** after 1012 |
 | `src/gateway/sessionGateway.ts` | The session layer in front of Appium's routes: internal calls skip auth, per-command auth (or the hub token on a node), then a hub forwards remote sessions; remote DELETE runs the lifecycle |
 | `src/gateway/internalCall.ts` | `/wd-internal` + the per-process secret header; one `next()` call site so a refused call answers exactly like an unknown route |
-| `src/gateway/hubSessionToken.ts` | Hub-signed `x-xenon-hub-token` JWTs, verified by the node against the hub's JWKS: `xenon-node` per session for commands, `xenon-node-create` per create (owner, phone, node) |
+| `src/gateway/hubSessionToken.ts` | Hub-signed `x-xenon-hub-token` JWTs, verified by the node against the hub's JWKS: `xenon-node` per session for commands, `xenon-node-create` per create (owner, phone, node), `xenon-node-control` per forwarded `/control` call (user, admin, phone, node) |
 | `src/gateway/sessionLocator.ts` | Where a session runs: `SESSION_MANAGER`, then the open Session row and its phone's row; never its own routing table |
 | `src/gateway/nodeSessionStatus.ts` | A node's `GET /xenon/api/node/sessions/:id` (hub token, no command, answered from the umbrella) and the hub's memory of which nodes lack it |
 | `src/sessions/appiumUmbrella.ts` | Appium's umbrella as `createSession` last saw it; `hasSession` reads `sessionExists` without running a command |

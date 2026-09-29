@@ -45,8 +45,9 @@ export function csrfMiddleware(req: Request, res: Response, next: NextFunction) 
   if (xenonConfig.authDisabled === true) return next();
   if (!STATE_CHANGING_METHODS.has(req.method)) return next();
 
-  // Header-based auth: safe by construction (see block comment above).
-  if (req.headers['x-xenon-access-key']) {
+  // Header-based auth: safe by construction (see block comment above). A
+  // hub's signed call to its node (x-xenon-hub-token) is one too.
+  if (req.headers['x-xenon-access-key'] || req.headers['x-xenon-hub-token']) {
     return next();
   }
 

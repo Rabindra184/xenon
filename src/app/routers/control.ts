@@ -41,6 +41,7 @@ import { decideStreamStartConflict } from './streamStartConflict';
 import { LeaveScheduler, type LeaveDeps } from './streamLeave';
 import { SessionOwnerResolver } from '../../services/device-access/SessionOwnerResolver';
 import { resolveActor } from '../../services/device-access/actor';
+import { HUB_TOKEN_HEADER, HubSessionTokenIssuer } from '../../gateway/hubSessionToken';
 import {
   denyBody,
   isSelfManualLock,
@@ -108,6 +109,33 @@ function buildProxyUrl(deviceHost: string, req: Request): string | null {
   return `${origin}${forwardPath}`;
 }
 
+/**
+ * Forward a control action on another server's phone to that server, signed
+ * for the caller: the hub's control token (hubSessionToken.ts) names the
+ * user, whether they are an admin, the phone and its node. This hub already
+ * checked them (the guards above); a node with auth enabled accepts the token
+ * for /control on that phone and runs its own ownership guard with that user.
+ * Sent with no credential at all, it was refused by every such node. A cloud
+ * provider never gets a hub token.
+ */
+async function forwardControl(device: IDevice, req: Request, target: string): Promise<void> {
+  const actor = resolveActor(req);
+  const token =
+    !device.cloud && actor.userId
+      ? await Container.get(HubSessionTokenIssuer).controlTokenFor({
+          userId: actor.userId,
+          isAdmin: actor.isAdmin,
+          udid: device.udid,
+          host: device.host,
+        })
+      : null;
+  await InternalHttpClient.post(
+    target,
+    req.body,
+    token ? { headers: { [HUB_TOKEN_HEADER]: token } } : undefined,
+  );
+}
+
 async function getDeviceInfo(udid: string) {
   const device = await DeviceStoreFactory.getStore().findDevice({ udid });
   // deviceTeamGuard's stand-in for a hidden phone is never a device. Still
@@ -151,7 +179,7 @@ router.post('/:udid/tap', async (req: Request, res: Response) => {
     if (!target) return res.status(400).send({ error: 'Unsafe device host' });
     log.info(`Proxying tap for ${udid} to ${target}`);
     try {
-      await InternalHttpClient.post(target, req.body);
+      await forwardControl(device, req, target);
       return res.status(200).send({ success: true });
     } catch (err: any) {
       return res.status(err.response?.status || 500).send(err.response?.data || err.message);
@@ -194,7 +222,7 @@ router.post('/:udid/swipe', async (req: Request, res: Response) => {
     if (!target) return res.status(400).send({ error: 'Unsafe device host' });
     log.info(`Proxying swipe for ${udid} to ${target}`);
     try {
-      await InternalHttpClient.post(target, req.body);
+      await forwardControl(device, req, target);
       return res.status(200).send({ success: true });
     } catch (err: any) {
       return res.status(err.response?.status || 500).send(err.response?.data || err.message);
@@ -225,7 +253,7 @@ router.post('/:udid/text', async (req: Request, res: Response) => {
     if (!target) return res.status(400).send({ error: 'Unsafe device host' });
     log.info(`Proxying typeText for ${udid} to ${target}`);
     try {
-      await InternalHttpClient.post(target, req.body);
+      await forwardControl(device, req, target);
       return res.status(200).send({ success: true });
     } catch (err: any) {
       return res.status(err.response?.status || 500).send(err.response?.data || err.message);
@@ -256,7 +284,7 @@ router.post('/:udid/keyevent', async (req: Request, res: Response) => {
     if (!target) return res.status(400).send({ error: 'Unsafe device host' });
     log.info(`Proxying keyevent for ${udid} to ${target}`);
     try {
-      await InternalHttpClient.post(target, req.body);
+      await forwardControl(device, req, target);
       return res.status(200).send({ success: true });
     } catch (err: any) {
       return res.status(err.response?.status || 500).send(err.response?.data || err.message);
@@ -363,7 +391,7 @@ router.post('/:udid/touchAndHold', async (req: Request, res: Response) => {
     if (!target) return res.status(400).send({ error: 'Unsafe device host' });
     log.info(`Proxying touchAndHold for ${udid} to ${target}`);
     try {
-      await InternalHttpClient.post(target, req.body);
+      await forwardControl(device, req, target);
       return res.status(200).send({ success: true });
     } catch (err: any) {
       return res.status(err.response?.status || 500).send(err.response?.data || err.message);
