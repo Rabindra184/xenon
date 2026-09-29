@@ -9,6 +9,13 @@ import { AppDownloadTicketService } from '../services/token/AppDownloadTicketSer
 import { config } from '../config';
 import { computeTeamIds } from '../services/device-access/callerTeamIds';
 import { verifyBearerCredential, verifyKeyPairCredential } from './verifyCredential';
+import { PluginContext } from '../PluginContext';
+import {
+  HUB_TOKEN_HEADER,
+  HubSessionTokenVerifier,
+  HubTokenUnavailableError,
+} from '../gateway/hubSessionToken';
+import { isLocalDeviceHost, localDeviceHosts } from '../device-managers/localDeviceHosts';
 
 const SESSION_COOKIE = 'xenon_dashboard_session';
 const SESSION_TTL_MS = 24 * 60 * 60 * 1000;
@@ -54,6 +61,67 @@ function readCookie(req: Request, name: string): string | undefined {
   return undefined;
 }
 
+/** One verifier per hub URL, so its fetched key set is reused. */
+const hubVerifiers = new Map<string, HubSessionTokenVerifier>();
+
+function hubVerifierFor(hub: string): HubSessionTokenVerifier {
+  let verifier = hubVerifiers.get(hub);
+  if (!verifier) {
+    verifier = new HubSessionTokenVerifier(hub);
+    hubVerifiers.set(hub, verifier);
+  }
+  return verifier;
+}
+
+type HubControlCaller = NonNullable<Request['auth']> | 'refused' | 'unavailable' | undefined;
+
+/**
+ * On a node: the caller a hub's signed device-control call names, for
+ * `/control/<udid>/...` on the phone the token names, of this node. The hub
+ * checked the caller, the team rule and ownership before forwarding; the
+ * node's own ownership guard then judges that user again. undefined when the
+ * request isn't one (no hub token, not a node, not /control): the other
+ * credential paths decide it. 'refused' for a token that isn't a valid grant
+ * for this phone of this node; 'unavailable' when the hub's keys can't be
+ * fetched.
+ */
+async function hubControlCallerOf(req: Request): Promise<HubControlCaller> {
+  const presented = req.headers[HUB_TOKEN_HEADER];
+  if (typeof presented !== 'string') return undefined;
+  const context = Container.get(PluginContext);
+  const hub = context.pluginArgs?.hub;
+  if (hub === undefined) return undefined;
+  const match = /^\/control\/([^/]+)(?:\/|$)/.exec(req.path);
+  if (!match) return undefined;
+
+  let udid: string;
+  try {
+    udid = decodeURIComponent(match[1]);
+  } catch {
+    return 'refused';
+  }
+  let grant;
+  try {
+    grant = await hubVerifierFor(hub).verifyControl(presented);
+  } catch (err) {
+    return err instanceof HubTokenUnavailableError ? 'unavailable' : 'refused';
+  }
+  if (!grant || grant.udid !== udid) return 'refused';
+  if (!isLocalDeviceHost(localDeviceHosts(context.pluginArgs, context.port), grant.host)) {
+    return 'refused';
+  }
+  const role = grant.isAdmin ? 'ADMIN' : 'MEMBER';
+  return {
+    kind: 'hub-control',
+    userId: grant.userId,
+    role,
+    scopes: scopesForRole(role),
+    rateLimit: 300,
+    // The hub applied the team rule: the node's rows carry the hub's teams.
+    teamIds: undefined,
+  };
+}
+
 export async function authMiddleware(req: Request, res: Response, next: NextFunction) {
   if (config.authDisabled === true) {
     req.auth = {
@@ -65,6 +133,19 @@ export async function authMiddleware(req: Request, res: Response, next: NextFunc
       teamIds: undefined,
     };
     req.apiKey = { id: 'auth-disabled', scopes: 'admin', rateLimit: 100_000 };
+    return next();
+  }
+
+  // Path 0: on a node, the hub's signed device-control call
+  // (x-xenon-hub-token, audience xenon-node-control), for /control on the
+  // phone it names only. Anywhere else the header is not a credential.
+  const hubControl = await hubControlCallerOf(req);
+  if (hubControl === 'refused') return res.status(401).json({ error: 'invalid hub token' });
+  if (hubControl === 'unavailable') {
+    return res.status(503).json({ error: "the hub's token could not be checked" });
+  }
+  if (hubControl) {
+    req.auth = hubControl;
     return next();
   }
 

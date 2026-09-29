@@ -7,7 +7,7 @@ import type { IDevice } from '../../interfaces/IDevice';
 import { XenonManager } from '../../device-managers';
 import { Container } from 'typedi';
 import log from '../../logger';
-import { InternalHttpClient } from '../../InternalHttpClient';
+import { InternalHttpClient, InternalRequestConfig } from '../../InternalHttpClient';
 import { blockDevice, unblockDevice } from '../../data-service/device-service';
 import { UniversalMjpegProxy, shouldRecreateMjpegProxy } from '../../helpers/UniversalMjpegProxy';
 import { DisplayStateService } from '../../services/DisplayStateService';
@@ -22,6 +22,7 @@ import { InspectorService } from '../../services/InspectorService';
 import { StreamTicketService } from '../../services/token/StreamTicketService';
 import { canSeeApp } from '../../services/device-access/appVisibility';
 import { PluginContext } from '../../PluginContext';
+import { isOwnDevice, localDeviceHosts } from '../../device-managers/localDeviceHosts';
 import { resolveStreamType } from './streamType';
 import { resolveIosMjpegPort } from './iosStreamPort';
 import { resolveAndroidH264 } from './androidH264Config';
@@ -41,6 +42,7 @@ import { decideStreamStartConflict } from './streamStartConflict';
 import { LeaveScheduler, type LeaveDeps } from './streamLeave';
 import { SessionOwnerResolver } from '../../services/device-access/SessionOwnerResolver';
 import { resolveActor } from '../../services/device-access/actor';
+import { HUB_TOKEN_HEADER, HubSessionTokenIssuer } from '../../gateway/hubSessionToken';
 import {
   denyBody,
   isSelfManualLock,
@@ -108,6 +110,48 @@ function buildProxyUrl(deviceHost: string, req: Request): string | null {
   return `${origin}${forwardPath}`;
 }
 
+/**
+ * Forward a control action on another server's phone to that server, signed
+ * for the caller: the hub's control token (hubSessionToken.ts) names the
+ * user, whether they are an admin, the phone and its node. This hub already
+ * checked them (the guards above); a node with auth enabled accepts the token
+ * for /control on that phone and runs its own ownership guard with that user.
+ * Sent with no credential at all, it was refused by every such node. A cloud
+ * provider never gets a hub token.
+ */
+async function forwardControl(device: IDevice, req: Request, target: string): Promise<void> {
+  const actor = resolveActor(req);
+  const token =
+    !device.cloud && actor.userId
+      ? await Container.get(HubSessionTokenIssuer).controlTokenFor({
+          userId: actor.userId,
+          isAdmin: actor.isAdmin,
+          udid: device.udid,
+          host: device.host,
+        })
+      : null;
+  // Sent once: a retry after a slow node's timeout or 5xx could land the
+  // same tap twice.
+  const config: InternalRequestConfig = {
+    ...(token ? { headers: { [HUB_TOKEN_HEADER]: token } } : {}),
+    retry: false,
+  };
+  await InternalHttpClient.post(target, req.body, config);
+}
+
+/**
+ * A phone another server drives, whose /control actions are forwarded there.
+ * Decided by the phone's own row (its nodeId, else its exact host against this
+ * server's own hosts), never by the Host header the caller used: a substring
+ * match on that header forwarded a lab's own phone back to itself, with no
+ * login, whenever the lab was reached as `localhost`.
+ */
+function isOtherServersPhone(device: IDevice): boolean {
+  if (!device.host) return false;
+  const context = Container.get(PluginContext);
+  return !isOwnDevice(localDeviceHosts(context.pluginArgs, context.port), context.nodeId, device);
+}
+
 async function getDeviceInfo(udid: string) {
   const device = await DeviceStoreFactory.getStore().findDevice({ udid });
   // deviceTeamGuard's stand-in for a hidden phone is never a device. Still
@@ -146,12 +190,12 @@ router.post('/:udid/tap', async (req: Request, res: Response) => {
   if (!device) return res.status(404).send('Device not found');
 
   const manager = await getDeviceManagerForPlatform(device.platform);
-  if (device.host && !device.host.includes(req.get('host') || '')) {
+  if (isOtherServersPhone(device)) {
     const target = buildProxyUrl(device.host, req);
     if (!target) return res.status(400).send({ error: 'Unsafe device host' });
     log.info(`Proxying tap for ${udid} to ${target}`);
     try {
-      await InternalHttpClient.post(target, req.body);
+      await forwardControl(device, req, target);
       return res.status(200).send({ success: true });
     } catch (err: any) {
       return res.status(err.response?.status || 500).send(err.response?.data || err.message);
@@ -189,12 +233,12 @@ router.post('/:udid/swipe', async (req: Request, res: Response) => {
   if (!device) return res.status(404).send('Device not found');
 
   const manager = await getDeviceManagerForPlatform(device.platform);
-  if (device.host && !device.host.includes(req.get('host') || '')) {
+  if (isOtherServersPhone(device)) {
     const target = buildProxyUrl(device.host, req);
     if (!target) return res.status(400).send({ error: 'Unsafe device host' });
     log.info(`Proxying swipe for ${udid} to ${target}`);
     try {
-      await InternalHttpClient.post(target, req.body);
+      await forwardControl(device, req, target);
       return res.status(200).send({ success: true });
     } catch (err: any) {
       return res.status(err.response?.status || 500).send(err.response?.data || err.message);
@@ -220,12 +264,12 @@ router.post('/:udid/text', async (req: Request, res: Response) => {
   if (!device) return res.status(404).send('Device not found');
 
   const manager = await getDeviceManagerForPlatform(device.platform);
-  if (device.host && !device.host.includes(req.get('host') || '')) {
+  if (isOtherServersPhone(device)) {
     const target = buildProxyUrl(device.host, req);
     if (!target) return res.status(400).send({ error: 'Unsafe device host' });
     log.info(`Proxying typeText for ${udid} to ${target}`);
     try {
-      await InternalHttpClient.post(target, req.body);
+      await forwardControl(device, req, target);
       return res.status(200).send({ success: true });
     } catch (err: any) {
       return res.status(err.response?.status || 500).send(err.response?.data || err.message);
@@ -251,12 +295,12 @@ router.post('/:udid/keyevent', async (req: Request, res: Response) => {
   if (!device) return res.status(404).send('Device not found');
 
   const manager = await getDeviceManagerForPlatform(device.platform);
-  if (device.host && !device.host.includes(req.get('host') || '')) {
+  if (isOtherServersPhone(device)) {
     const target = buildProxyUrl(device.host, req);
     if (!target) return res.status(400).send({ error: 'Unsafe device host' });
     log.info(`Proxying keyevent for ${udid} to ${target}`);
     try {
-      await InternalHttpClient.post(target, req.body);
+      await forwardControl(device, req, target);
       return res.status(200).send({ success: true });
     } catch (err: any) {
       return res.status(err.response?.status || 500).send(err.response?.data || err.message);
@@ -358,12 +402,12 @@ router.post('/:udid/touchAndHold', async (req: Request, res: Response) => {
   if (!device) return res.status(404).send('Device not found');
 
   const manager = await getDeviceManagerForPlatform(device.platform);
-  if (device.host && !device.host.includes(req.get('host') || '')) {
+  if (isOtherServersPhone(device)) {
     const target = buildProxyUrl(device.host, req);
     if (!target) return res.status(400).send({ error: 'Unsafe device host' });
     log.info(`Proxying touchAndHold for ${udid} to ${target}`);
     try {
-      await InternalHttpClient.post(target, req.body);
+      await forwardControl(device, req, target);
       return res.status(200).send({ success: true });
     } catch (err: any) {
       return res.status(err.response?.status || 500).send(err.response?.data || err.message);

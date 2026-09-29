@@ -110,8 +110,14 @@ State machine: `requested → allocated → running → finished`. Each transiti
 A Xenon hub instance can orchestrate remote Xenon node instances. Each has its
 own database; a node reports its phones to the hub over HTTP (`NodeDevices.ts`,
 `POST /xenon/api/register`). Sessions on a node's phone go **through the hub
-only**: creating one directly on a node is unsupported, because the hub owns
-team rules, reservations and blocks for node phones. Appium 3 only, every 3.x.
+only**, because the hub owns team rules, reservations and blocks for node
+phones, and enforces auth. A node with auth enabled refuses any create without
+the hub's verified create token (`assertCreateCameFromHub` in `prepareSession`,
+so it holds on the plugin's no-gateway path too): `session not created`,
+"Create sessions through the hub", naming the hub. A node with auth disabled
+checks no credential, the hub's token included, so a direct create there looks
+like the hub's and still works, as it did (local development against one
+node). Appium 3 only, every 3.x.
 
 **The session gateway** (`src/gateway/`, placed by `registerSessionGateway` in
 `src/app/registerCommandAuth.ts`, wired by `gatewayOptionsFor` in
@@ -197,10 +203,10 @@ phone. Before this the hub put the client's credentials back
 database doesn't have the hub's keys, leases or teams.
 
 **The hub's tokens** (`hubSessionToken.ts`), sent as `x-xenon-hub-token`.
-Auth is enforced at the hub. Both are RS256 JWTs from the hub's
+Auth is enforced at the hub. All three are RS256 JWTs from the hub's
 `JwtKeyService`, verified by the node against the hub's
-`/xenon/api/auth/jwks.json`. `/auth/token` mints neither audience. A cloud
-provider never gets either.
+`/xenon/api/auth/jwks.json`. `/auth/token` mints none of their audiences. A
+cloud provider never gets one.
 
 - **A session's** (audience `xenon-node`, claim `sid`, 5 minutes, reused
   until a minute before expiry) goes with every hub call about a session:
@@ -223,17 +229,65 @@ provider never gets either.
   The node may allocate only that phone, on itself. Caps that name another
   phone are refused before allocation. An allocated phone that is another
   node's (an emulator's udid repeats across machines) is refused and released.
-  A forged, expired or session token is refused (`400 invalid argument`,
-  "session rejected"), and a JWKS that can't be fetched is `503`. With auth
-  disabled on the node the token isn't checked, as no credential is. The
-  token isn't single-use: `InternalHttpClient` retries a create on a timeout
-  or a 5xx with the same headers.
+  A forged, expired, already used or session token is refused (`400 invalid
+  argument`, "session rejected"), and a JWKS that can't be fetched is `503`.
+  With auth disabled on the node the token isn't checked, as no credential
+  is. The token is single-use: each has its own `jti`, which the node's
+  verifier keeps in a `SingleUseLedger` until it expires. A token with no
+  `jti` (from an older hub) is accepted without that check.
+
+- **A device-control call's** (audience `xenon-node-control`, 1 minute,
+  fresh per call). The hub forwards five `/control` actions on a node's
+  phone to its node: `tap`, `swipe`, `text`, `keyevent`, `touchAndHold`
+  (`forwardControl` in `control.ts`); the others act on this server only.
+  They went with no credential, so an auth-enabled node refused every one
+  (its CSRF check, then its login). The token names the hub user (`sub`),
+  whether they are an admin (`adm`), the phone (`udid`) and its node
+  (`host`), and is sent as `x-xenon-hub-token`. The hub's own guards
+  (role, team, ownership) have run by then.
+  - On a node, `authMiddleware` accepts it only for `/control/<udid>/...` on
+    the phone it names, whose `host` is one of the node's own
+    (`localDeviceHosts`). It sets `req.auth` to kind `hub-control`: that
+    user, `ADMIN` or `MEMBER` with `scopesForRole`, and `teamIds`
+    undefined, since the hub applied the team rule.
+  - The node's ownership guard then judges that user against the session's
+    owner (`LiveSessionOwners`).
+  - Anywhere else the header is no credential. A bad token is `401`, and a
+    JWKS that can't be fetched is `503`.
+  - `csrfMiddleware` passes the header like the key pair: a browser can't set
+    it cross-origin. A server that isn't a node ignores the token, and a
+    cloud provider never gets one.
+
+**A create is sent once.** `forwardSessionRequest` posts it with
+`retry: false` (`InternalRequestConfig`) and `REMOTE_CREATE_TIMEOUT_MS` (8 min,
+two under `PENDING_CLAIM_TIMEOUT_MS`, so the idle sweeper can't free a phone
+whose create the hub is still waiting for). `InternalHttpClient` otherwise
+retries a request on a 5xx or its 30 s timeout, and a slow first UiAutomator2
+install then started a second session on the node, holding the phone with
+nobody to end it. A create that outlasts the 8 minutes, or whose answer is
+lost, can still leave its session on the node until the node's own
+new-command timeout.
 
 **A hub restart** leaves node sessions running. At boot a hub clears only its
 own phones (`devicesClearedAtBoot`); its nodes' rows stay, so
 `recoverActiveSessions` rebuilds their `RemoteSession`s (under each node's own
 base path) and the gateway routes them again. Before the gateway every row was
-wiped at boot, so every remote session was marked failed on restart. A
+wiped at boot, so every remote session was marked failed on restart.
+That needs the session's own row, which names its phone and owner. The
+dashboard's row (`onSessionStarted`) is written only with the dashboard on,
+and never for a cloud session, so a session the hub routes to a node or a
+cloud otherwise gets a minimal one (`recordRoutedSession`: phone, node,
+capabilities, `api_key_id`, `user_id`; no profiling, logs or event). The
+dashboard setting still decides alone whether a local session has a row.
+Until then a dashboard-off hub lost every node session on restart: its
+commands went to the hub's own Appium. Recovery also restores the session's
+owner (`apiKeyId`, `userId`) from the row, and stamps the row's heartbeat
+with this process (`adoptHeartbeat`). The row still carried the old
+process's heartbeat, so after an outage longer than 3 heartbeat intervals
+(~90 s) the orphan sweep, at boot and on every interval, took every
+recovered session for an orphan: it failed the session and freed its phone
+while the node kept it. From then on the heartbeat keeps the row fresh and
+ends the session if its node no longer has it. A
 graceful shutdown (SIGTERM) drains only the hub's own local sessions
 (`ShutdownCoordinator`); until 2.1 it also finalized node and cloud sessions,
 releasing the phone and closing the row on the hub while the node kept the
@@ -265,6 +319,20 @@ read-then-write:
   `remoteMachineProxyIP` included) and go with the node. A hub's own sync
   never prunes a row carrying another node's id (`isOwnDevice`: by `nodeId`,
   else by exact host).
+- A node's request to forget phones (`POST /register`, `type=remove` for
+  one phone by udid, `type=unregister&host=` when it shuts down) goes through
+  `removeNodeDevices`: only that node's rows, by the `nodeId` it sends (a
+  node now sends it on both), else by exact host, and never one of the hub's
+  own (`isOwnDevice`). A `remove` with no udid, or no host and no id, takes
+  nothing. The store used to match a host that isn't a URL as a substring and
+  a host-less remove by udid alone, so an older node's bare IP deleted every
+  row on that machine, the hub's own included. `removeDevices(filter,
+  { exactHost: true })` turns the substring match off.
+- The health monitor (`HealthMonitorService`) checks only this server's own
+  phones, by the same `isOwnDevice`. It used to run the hub's adb against
+  every row: each node phone came back unhealthy, was written over the node's
+  report and "recovered", and a busy one whose session the hub didn't hold in
+  memory was reclaimed. A node checks its own.
 
 A server with no nodes never sets `nodeBusy`, so its `busy` is its claim, as
 before. A lease still locks with `busy` alone (allocation also skips a phone
@@ -612,6 +680,15 @@ A session's owner is resolved by `SessionOwnerResolver.ownerOf`, which prefers
 rows written before 1.13.1. Two columns because two id spaces: `api_key_id` is
 the `ApiKey` row that created the session, `user_id` is the human.
 
+A live session this server drives is looked up in memory first
+(`LiveSessionOwners`, `src/services/device-access/LiveSessionOwners.ts`):
+`finalizeSession` records its owner and its end forgets it (`deleteSession`,
+`onUnexpectedShutdown`, shutdown). A node writes no Session row for a session
+the hub created, so until then its `/control` guard, logcat WebSocket and
+session listing found no owner and, failing closed, refused the phone to
+everyone but admins, the owner the hub's create token named included. The
+same went for any server with the dashboard off.
+
 `resolveSessionIdentity` (`src/services/session/sessionIdentity.ts`, pure)
 derives both from whichever credential `createSession` presented:
 
@@ -704,8 +781,22 @@ is not pushed, it takes up to 30 s (`commandCaller.ts` says why).
   asks the in-process umbrella (`sessionExists`). Any command sent to the
   session, `timeouts` included, restarts the driver's new-command timeout and
   Xenon's idle clock, so a 30 s probe would keep an abandoned session and its
-  phone alive for ever. A `RemoteSession`'s probe still goes to the node, with
-  the hub's token.
+  phone alive for ever.
+- **Neither does a hub's heartbeat on a node's session.** `RemoteSession`
+  asks the node's `GET /xenon/api/node/sessions/<id>`
+  (`src/gateway/nodeSessionStatus.ts`), which reads the node's umbrella
+  (`AppiumUmbrella`, noted by `XenonPlugin.createSession`, the one place a
+  plugin is handed it) and runs no command: `200 { value: { sessionId,
+  exists } }`. Only a node mounts it, ahead of the login. It asks what a
+  command to the session asks: with per-command auth on it needs the hub's
+  session token for that session and answers anyone else with the
+  unknown-session body (`503` when the JWKS can't be fetched); with it off,
+  nothing, so a hub that can't sign doesn't see its node sessions as gone. Every
+  answer carries `x-xenon-node-sessions`, so an older node (a 404 or a 401
+  from its login, without the header) is recognised: the hub falls back to
+  the old `GET .../timeouts` probe for it, logs that once per node
+  (`NodeSessionProbeSupport`) and asks again after 10 minutes. A cloud
+  session keeps the WebDriver probe.
 - **The session listing is filtered** (`sessionListingFilter.ts`).
   `GET <basePath>/appium/sessions` is Appium 3's only listing route (no
   `GET /sessions`; Appium also gates it behind the `session_discovery`
@@ -1005,8 +1096,10 @@ npm run build:copy` (from the repo root) regenerates and copies it.
 | `web/src/components/device-control/logcat/useLogcatStream.ts` | Mints a ticket per connect, batches frames (React 17 does not auto-batch outside events), resets the buffer on reconnect **except** after 1012 |
 | `src/gateway/sessionGateway.ts` | The session layer in front of Appium's routes: internal calls skip auth, per-command auth (or the hub token on a node), then a hub forwards remote sessions; remote DELETE runs the lifecycle |
 | `src/gateway/internalCall.ts` | `/wd-internal` + the per-process secret header; one `next()` call site so a refused call answers exactly like an unknown route |
-| `src/gateway/hubSessionToken.ts` | Hub-signed `x-xenon-hub-token` JWTs, verified by the node against the hub's JWKS: `xenon-node` per session for commands, `xenon-node-create` per create (owner, phone, node) |
+| `src/gateway/hubSessionToken.ts` | Hub-signed `x-xenon-hub-token` JWTs, verified by the node against the hub's JWKS: `xenon-node` per session for commands, `xenon-node-create` per create (owner, phone, node), `xenon-node-control` per forwarded `/control` call (user, admin, phone, node) |
 | `src/gateway/sessionLocator.ts` | Where a session runs: `SESSION_MANAGER`, then the open Session row and its phone's row; never its own routing table |
+| `src/gateway/nodeSessionStatus.ts` | A node's `GET /xenon/api/node/sessions/:id` (hub token, no command, answered from the umbrella) and the hub's memory of which nodes lack it |
+| `src/sessions/appiumUmbrella.ts` | Appium's umbrella as `createSession` last saw it; `hasSession` reads `sessionExists` without running a command |
 | `src/gateway/nodeWebDriverUrl.ts` | A node's own base path from its public `GET /xenon/api/webdriver`, cached; the hub's is the fallback |
 | `src/services/recording/RecordingOrchestrator.ts` | Per-device + composite recording lifecycle |
 | `src/services/recording/manualLock.ts` | `manual_<actorId>_<udid>` lock format helpers |
@@ -1020,6 +1113,7 @@ npm run build:copy` (from the repo root) regenerates and copies it.
 | `src/services/token/AppDownloadTicketService.ts` | Single-use, app-bound, 10-minute `?ticket=` for the driver's credential-less app download; audience `xenon-app-download` |
 | `src/services/device-access/deviceAccessPolicy.ts` | Pure access decision + deny bodies + the shared `isSelfManualLock` / `isOwnSession` primitives |
 | `src/services/device-access/SessionOwnerResolver.ts` | Session owner: prefers `Session.user_id`, falls back to `api_key_id → ApiKey.userId`. Caches **positive results only** — a null may mean the row isn't written yet, and caching it would deny the owner for the life of the process |
+| `src/services/device-access/LiveSessionOwners.ts` | Owners of the sessions this server drives, while they run; read by `SessionOwnerResolver` before the database, so a node knows who owns the hub's sessions |
 | `src/services/session/sessionIdentity.ts` | Pure `resolveSessionIdentity` — derives `{ apiKeyId, userId }` from the presented credential; ignores an unverifiable token rather than rejecting it |
 | `src/services/session/xenonOptions.ts` | The one precedence rule for Xenon's options: `xe:options` over the `xenon:options` alias, field by field. Every reader of either namespace goes through `xenonOptionsOf` / `xenonOptionsIn` |
 | `src/services/session/sessionCredentials.ts` | `takeSessionCredentials` reads the four secrets and strips them from every bucket in place, first thing in `prepareSession`; nothing puts them back |

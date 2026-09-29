@@ -8,7 +8,7 @@ import http from 'http';
 import https from 'https';
 import log from '../logger';
 import { stripAppiumPrefixes, nodeUrl } from '../helpers';
-import { InternalHttpClient } from '../InternalHttpClient';
+import { InternalHttpClient, InternalRequestConfig } from '../InternalHttpClient';
 import { PluginContext } from '../PluginContext';
 import { CapabilityValidator } from '../validators/CapabilityValidator';
 import {
@@ -46,6 +46,7 @@ import { canOverrideLease } from './device-access/leaseOverride';
 import { computeTeamIds } from './device-access/callerTeamIds';
 import { PendingRequester, REQUESTER_KEY } from './device-access/queueVisibility';
 import { canSeeApp } from './device-access/appVisibility';
+import { LiveSessionOwners } from './device-access/LiveSessionOwners';
 import {
   appDownloadUrl,
   setAppCapability,
@@ -60,12 +61,14 @@ import {
   HubSessionTokenIssuer,
 } from '../gateway/hubSessionToken';
 import { DeviceStoreFactory } from '../data-service/device-store';
+import { PENDING_CLAIM_TIMEOUT_MS } from '../data-service/deviceClaims';
 import { XenonSession, XenonSessionOptions } from '../sessions/XenonSession';
 import { LocalSession } from '../sessions/LocalSession';
 import { CloudSession } from '../sessions/CloudSession';
 import { RemoteSession } from '../sessions/RemoteSession';
 import { SESSION_MANAGER } from '../sessions/SessionManager';
-import { DASHBORD_EVENT_MANAGER } from '../dashboard/event-manager';
+import { DASHBORD_EVENT_MANAGER, storedSessionCapabilities } from '../dashboard/event-manager';
+import { prisma } from '../prisma';
 import { updateSessionDetails } from '../dashboard/services/session-service';
 import { SessionStatus } from '../types/SessionStatus';
 import SessionType from '../enums/SessionType';
@@ -113,6 +116,17 @@ export interface SessionAllocation {
   /** An uploaded app the session names by id, resolved to its download URL. */
   appDownload?: { appId: string; url: string };
 }
+
+/**
+ * How long the hub waits for a node (or cloud provider) to create a session.
+ * A create is sent once (InternalRequestConfig `retry: false`): the node may
+ * still be creating when an ordinary request would give up, and a second
+ * create starts a second session holding the phone. A first UiAutomator2 or
+ * WebDriverAgent install takes minutes. It ends before the phone's pending
+ * claim can expire (PENDING_CLAIM_TIMEOUT_MS), so the idle sweeper never frees
+ * a phone whose create the hub is still waiting for.
+ */
+export const REMOTE_CREATE_TIMEOUT_MS = PENDING_CLAIM_TIMEOUT_MS - 2 * 60_000;
 
 const commandsQueueGuard = new AsyncLock();
 // Serializes concurrent deleteSession cleanup for the same sessionId so
@@ -193,6 +207,7 @@ export class SessionLifecycleService {
     const credentials = takeSessionCredentials(caps);
 
     const { hubGrant } = opts;
+    await this.assertCreateCameFromHub(hubGrant);
     if (hubGrant) this.assertGrantNamesCapsPhone(caps, hubGrant);
     const authResult = hubGrant
       ? this.authorizeHubGrant(hubGrant)
@@ -450,6 +465,34 @@ export class SessionLifecycleService {
     }
 
     return session;
+  }
+
+  /**
+   * Sessions on a node's phones go through its hub, which owns their team
+   * rules, reservations and blocks and is where auth is enforced. So a node
+   * (a server with `hub`) refuses a create that doesn't carry the hub's
+   * verified grant: one sent to the node directly, or one that reached the
+   * plugin without the session gateway, which is where the grant is checked.
+   *
+   * Only with auth enabled. With auth disabled a node checks no credential,
+   * the hub's token included (sessionCreate.ts), so a create from the hub and
+   * one sent directly look alike, and refusing would protect nothing while
+   * breaking what such a node is used for: running a driver on it directly
+   * during local development. It works there as it always has.
+   */
+  private async assertCreateCameFromHub(hubGrant: HubCreateGrant | undefined): Promise<void> {
+    const { hub } = Container.get(PluginContext).pluginArgs;
+    if (hub === undefined || hubGrant) return;
+    const { config: xenonConfig } = await import('../config');
+    if (xenonConfig.authDisabled === true) return;
+    this.logger.warn(
+      `Refusing a session created directly on this node: it carries no grant from the hub (${hub}).`,
+    );
+    throw new appiumErrors.SessionNotCreatedError(
+      `This server is a node of the Xenon hub at ${hub}. Create sessions through the hub: ` +
+        'it applies the team rules, reservations and blocks for this node’s devices, and a ' +
+        'node refuses a session that does not come from it.',
+    );
   }
 
   /**
@@ -912,6 +955,11 @@ export class SessionLifecycleService {
     );
     sessionInstance.apiKeyId = apiKeyId;
     sessionInstance.userId = userId;
+    // A session this server drives: its owner is known while it runs, row or
+    // not (a node writes none for the hub's sessions; LiveSessionOwners).
+    if (sessionInstance instanceof LocalSession) {
+      Container.get(LiveSessionOwners).record(sessionId, userId);
+    }
 
     await this.applyPostSessionLogic(sessionInstance, xenonCapabilities, freshDevice);
   }
@@ -1013,7 +1061,49 @@ export class SessionLifecycleService {
       SESSION_MANAGER.addSession(session.getId(), session);
       if (this.isHub(context.pluginArgs) && isDashboardEnabled && shouldSaveLogs) {
         await DASHBORD_EVENT_MANAGER.onSessionStarted(caps, session, device);
+      } else if (routedElsewhere) {
+        await this.recordRoutedSession(caps, session, device);
       }
+    }
+  }
+
+  /**
+   * The row a hub keeps for a session it routes to a node or a cloud when the
+   * dashboard's own (onSessionStarted) isn't written: with the dashboard off,
+   * and for every cloud session. After a restart the hub finds where the
+   * session runs, and who owns it, only from this row (SessionLocator,
+   * recoverActiveSessions, SessionOwnerResolver): without it every node
+   * session was sent to the hub's own Appium, which had no such session.
+   *
+   * Only what routing and ownership need: no profiling, logs or dashboard
+   * event. onSessionStopped closes it like any other row. A local session's
+   * row is still the dashboard's alone. A failed write is logged, not
+   * thrown: the session exists, and is routed from memory until a restart.
+   */
+  private async recordRoutedSession(caps: any, session: XenonSession, device: IDevice) {
+    try {
+      await prisma.session.create({
+        data: {
+          id: session.getId(),
+          name: caps[XENON_CAPABILITIES.SESSION_NAME] || undefined,
+          ...storedSessionCapabilities(_.assign({}, session.getCapabilities())),
+          node_id: device.nodeId || '',
+          has_live_video: false,
+          video_recording_enabled: caps[XENON_CAPABILITIES.VIDEO_RECORDING] === true,
+          device_udid: device.udid || '',
+          device_platform: device.platform || '',
+          device_version: device.sdk || '',
+          device_name: device.name,
+          status: 'running',
+          api_key_id: session.apiKeyId ?? null,
+          user_id: session.userId ?? null,
+        },
+      });
+    } catch (err: any) {
+      this.logger.warn(
+        `Could not record session ${session.getId()} on ${device.udid}: ${err?.message ?? err}. ` +
+          'It is routed from memory, and a restart of this hub loses it.',
+      );
     }
   }
 
@@ -1041,11 +1131,14 @@ export class SessionLifecycleService {
 
     const headers: Record<string, string> = { 'Content-Type': 'application/json' };
     if (hubToken) headers[HUB_TOKEN_HEADER] = hubToken;
-    const config: AxiosRequestConfig = {
+    // Sent once, with a create's timeout (REMOTE_CREATE_TIMEOUT_MS).
+    const config: InternalRequestConfig = {
       method: 'post',
       url: remoteUrl,
       headers,
       data: { capabilities: caps },
+      timeout: REMOTE_CREATE_TIMEOUT_MS,
+      retry: false,
     };
 
     if (context.pluginArgs.proxy) {
@@ -1216,6 +1309,7 @@ export class SessionLifecycleService {
       return null;
     } finally {
       if (sessionId) {
+        Container.get(LiveSessionOwners).forget(sessionId);
         await sessionCleanupLock.acquire(sessionId, async () => {
           const session = SESSION_MANAGER.getSession(sessionId);
           if (!session) {
@@ -1350,6 +1444,7 @@ export class SessionLifecycleService {
       }
 
       SESSION_MANAGER.removeSession(sessionId);
+      Container.get(LiveSessionOwners).forget(sessionId);
     });
   }
 

@@ -119,7 +119,7 @@ export function createSessionCreateLayer(deps: SessionCreateLayerDeps): RequestH
       res,
       new errors.InvalidArgumentError(
         "session rejected: the hub's token for this session is not valid " +
-          '(forged, expired, or not a create token)',
+          '(forged, expired, already used, or not a create token)',
       ),
     );
     return false;
