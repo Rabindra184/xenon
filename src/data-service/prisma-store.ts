@@ -397,6 +397,14 @@ export class PrismaDeviceStore implements IDeviceStore {
     return true;
   }
 
+  async releaseLeaseLock(udid: string, host: string): Promise<boolean> {
+    const cleared = await this.prisma.device.updateMany({
+      where: { udid, host, busy: true, ...UNHELD },
+      data: { busy: false },
+    });
+    return cleared.count > 0;
+  }
+
   async resetMetrics(): Promise<void> {
     await this.prisma.device.updateMany({
       data: {

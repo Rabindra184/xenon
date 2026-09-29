@@ -274,7 +274,10 @@ read-then-write:
 
 A server with no nodes never sets `nodeBusy`, so its `busy` is its claim, as
 before. A lease still locks with `busy` alone (allocation also skips a phone
-under an active lease), and a manual hold still writes `session_id`.
+under an active lease), and a manual hold still writes `session_id`. Ending a
+lease clears `busy` by the same rule, one conditional update where `UNHELD`
+(`releaseLeaseLock`, both stores), so it never frees a phone a session or a
+hold still has.
 
 **Not supported:** BiDi and session WebSockets through the hub; the
 `webSocketUrl` a session returns points at the node, so nodes must not sit on
@@ -782,9 +785,14 @@ Device leases: programmatic clients (SDK, MCP tools) claim devices via
 `POST /xenon/api/sdk/leases` (`src/services/lease/LeaseService.ts`) — token-bound
 claims with TTL + heartbeat, swept by `LeaseOrphanSweeper` (every 30 s: a lease
 ends after three missed heartbeats or at `expiresAt`, whichever comes first;
-either way it is marked `expired`, its port leases deleted and the phone
-unblocked. Heartbeat, extend and `authorizeSessionUse` already refuse a lease
-past `expiresAt`), resolved at
+either way it is marked `expired` and its port leases deleted. Heartbeat,
+extend and `authorizeSessionUse` already refuse a lease past `expiresAt`).
+Ending a lease, by a reap or its holder's release, takes off only the lease's
+lock (`releaseLeaseLock`): `busy` is cleared only where the phone is `UNHELD`
+(see "Busy on a hub"). A session created on the lease claims the phone, so a
+session that outlives its lease keeps it, and its own release frees it. Until
+2.1 the reap wrote `busy: false` outright and handed such a phone to a second
+session mid-run. Leases are resolved at
 allocation via the `xe:options.leaseId` capability. A lease id is not a
 secret, so the session must also prove it holds the lease
 (`LeaseService.authorizeSessionUse`): the lease token as

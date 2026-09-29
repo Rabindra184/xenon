@@ -312,7 +312,8 @@ export class LeaseService {
     // idempotent and safe — port rows may already be gone, device may already
     // be unlocked. We treat that as a successful release.
     await this.db.portLease.deleteMany({ where: { leaseId } });
-    await this.store.updateDevice(lease.deviceUdid, lease.deviceHost, { busy: false });
+    // Only the lease's lock: a session still on the phone keeps it busy.
+    await this.store.releaseLeaseLock(lease.deviceUdid, lease.deviceHost);
     void result;
   }
 

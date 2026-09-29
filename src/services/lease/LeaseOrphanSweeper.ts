@@ -52,9 +52,14 @@ export class LeaseOrphanSweeper {
       try {
         await this.db.lease.update({ where: { id: lease.id }, data: { status: 'expired' } });
         await this.db.portLease.deleteMany({ where: { leaseId: lease.id } });
-        await this.store.updateDevice(lease.deviceUdid, lease.deviceHost, { busy: false });
+        // Only the lease's lock: a session that outlived its lease keeps the
+        // phone, and its own release frees it.
+        const freed = await this.store.releaseLeaseLock(lease.deviceUdid, lease.deviceHost);
+        const device = `${lease.deviceUdid}@${lease.deviceHost}`;
         this.logger.info(
-          `reaped lease ${lease.id} (${reason}); device ${lease.deviceUdid}@${lease.deviceHost} unblocked`,
+          `reaped lease ${lease.id} (${reason}); device ${device} ${
+            freed ? 'unblocked' : 'still held (a session or a hold), left busy'
+          }`,
         );
       } catch (err) {
         this.logger.warn(`failed to reap lease ${lease.id}: ${(err as Error).message}`);

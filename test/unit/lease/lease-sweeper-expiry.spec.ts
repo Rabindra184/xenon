@@ -14,7 +14,7 @@ import { useScratchDatabase } from '../../helpers/scratch-database';
  */
 describe('LeaseOrphanSweeper: a lease ends at expiresAt (scratch DB)', () => {
   const scratch = useScratchDatabase();
-  let updateDevice: sinon.SinonStub;
+  let releaseLeaseLock: sinon.SinonStub;
   let sweeper: LeaseOrphanSweeper;
   let now: number;
 
@@ -57,8 +57,8 @@ describe('LeaseOrphanSweeper: a lease ends at expiresAt (scratch DB)', () => {
     await scratch.db.portLease.deleteMany({});
     await scratch.db.lease.deleteMany({});
     now = Date.now();
-    updateDevice = sinon.stub().resolves();
-    sweeper = new LeaseOrphanSweeper(scratch.db, { updateDevice });
+    releaseLeaseLock = sinon.stub().resolves(true);
+    sweeper = new LeaseOrphanSweeper(scratch.db, { releaseLeaseLock });
   });
 
   it('reaps a lease past expiresAt whose client is still heartbeating, like a missed-heartbeat reap', async () => {
@@ -69,9 +69,7 @@ describe('LeaseOrphanSweeper: a lease ends at expiresAt (scratch DB)', () => {
 
     expect(await statusOf('ended')).to.equal('expired');
     expect(await portsOf('ended'), 'its ports are freed').to.deep.equal([]);
-    expect(
-      updateDevice.calledOnceWith('udid-ended', 'http://127.0.0.1:4723', { busy: false }),
-    ).to.equal(true);
+    expect(releaseLeaseLock.calledOnceWith('udid-ended', 'http://127.0.0.1:4723')).to.equal(true);
   });
 
   it('leaves a heartbeating lease alone until expiresAt', async () => {
@@ -82,7 +80,7 @@ describe('LeaseOrphanSweeper: a lease ends at expiresAt (scratch DB)', () => {
 
     expect(await statusOf('live')).to.equal('active');
     expect(await portsOf('live')).to.deep.equal([28302]);
-    expect(updateDevice.called).to.equal(false);
+    expect(releaseLeaseLock.called).to.equal(false);
   });
 
   it('still reaps on missed heartbeats before expiresAt', async () => {
@@ -91,9 +89,7 @@ describe('LeaseOrphanSweeper: a lease ends at expiresAt (scratch DB)', () => {
     await sweeper.sweep();
 
     expect(await statusOf('silent')).to.equal('expired');
-    expect(
-      updateDevice.calledOnceWith('udid-silent', 'http://127.0.0.1:4723', { busy: false }),
-    ).to.equal(true);
+    expect(releaseLeaseLock.calledOnceWith('udid-silent', 'http://127.0.0.1:4723')).to.equal(true);
   });
 
   it('never touches a lease that was released', async () => {
@@ -103,6 +99,6 @@ describe('LeaseOrphanSweeper: a lease ends at expiresAt (scratch DB)', () => {
     await sweeper.sweep();
 
     expect(await statusOf('gone')).to.equal('released');
-    expect(updateDevice.called).to.equal(false);
+    expect(releaseLeaseLock.called).to.equal(false);
   });
 });

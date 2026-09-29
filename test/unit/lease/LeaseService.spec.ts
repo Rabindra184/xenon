@@ -27,6 +27,7 @@ describe('LeaseService', () => {
         udid: 'u1', host: 'h1', platform: 'android', sdk: '14', name: 'Pixel 7', teamId: null,
       }),
       updateDevice: sinon.stub().resolves(),
+      releaseLeaseLock: sinon.stub().resolves(true),
       getDevices: sinon.stub().resolves([]),
     };
     portClientStub = {
@@ -215,7 +216,9 @@ describe('LeaseService', () => {
     expect(prismaStub.lease.updateMany.firstCall.args[0].data.status).to.equal('released');
     expect(prismaStub.lease.updateMany.firstCall.args[0].where.status).to.equal('active');
     expect(prismaStub.portLease.deleteMany.firstCall.args[0].where.leaseId).to.equal('lse_test');
-    expect(storeStub.updateDevice.calledWith('u1', 'h1', { busy: false })).to.equal(true);
+    // Only the lease's lock (a session on the phone keeps it busy).
+    expect(storeStub.releaseLeaseLock.calledWith('u1', 'h1')).to.equal(true);
+    expect(storeStub.updateDevice.called).to.equal(false);
   });
 
   it('rejects operations with mismatched token', async () => {

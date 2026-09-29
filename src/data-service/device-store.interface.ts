@@ -65,6 +65,14 @@ export interface IDeviceStore {
     ref: ClaimRef,
     update: Partial<IDevice>,
   ): Promise<boolean>;
+  /**
+   * Take away a lease's lock (a lease locks with `busy` alone): clear `busy`
+   * where nothing else holds the phone (UNHELD in deviceClaims.ts), in one
+   * conditional update, as releaseClaim's second step. A session still on the
+   * phone keeps it busy, and its own release frees it later. True when `busy`
+   * was cleared.
+   */
+  releaseLeaseLock(udid: string, host: string): Promise<boolean>;
   /** Mark the phones of a session as just used, without reading them first. */
   touchSession(sessionId: string, at: number): Promise<void>;
   resetMetrics(): Promise<void>;
