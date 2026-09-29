@@ -307,7 +307,16 @@ and tunnel. Two rules follow:
   `stopStream(udid, { forViewer: true })`) stops nothing while an Appium
   session holds the phone and the stream launched its own WDA. The session's
   teardown (`stopIdleStreamForDevice`) or the idle watchdog stops it later.
-  Restarts and shutdown still stop it.
+  Shutdown still stops it.
+- A start never restarts a running stream whose WDA doesn't answer while an
+  Appium session holds the phone, as the watchdog's heal already skips a busy
+  device. `startStream` throws `StreamRestartRefused`, naming the session,
+  and leaves the stream as it was (not marked `error`, no cooldown). A restart
+  would kill the WDA and tunnel the session may be driving, or launch a
+  second WDA over the session's own. A WDA that is only slow to answer
+  `/status`, during a long command, used to be killed this way when someone
+  opened the preview. With no session on the phone, a restart still recovers
+  a dead WDA.
 
 **WDA names no phone.** `/status` has `os`, `ios.ip`, `build` and `device`
 (the form factor); `/wda/device/info`'s `uuid` is `identifierForVendor`, not

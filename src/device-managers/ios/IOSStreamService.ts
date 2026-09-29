@@ -102,6 +102,9 @@ export function heldByAppiumSession(
  */
 const GO_IOS_AGENT_PORTS = [60105, 60106];
 
+/** A start refused a restart because an Appium session holds the phone. */
+export class StreamRestartRefused extends Error {}
+
 @Service({ name: 'IOSStreamService' })
 class IOSStreamService {
   private sessions: Map<string, StreamSession> = new Map();
@@ -414,6 +417,30 @@ class IOSStreamService {
   }
 
   /**
+   * Throw StreamRestartRefused when an Appium session holds the phone, as the
+   * watchdog's heal already skips a busy device. A restart would kill the WDA
+   * and go-ios tunnel the session may be driving, or, on a stream attached to
+   * the session's own WDA, launch a second WDA over it. A WDA that is only
+   * slow to answer /status (a long command) would be killed for nothing. The
+   * stream is left as it is; it can restart once the session ends. A row that
+   * can't be read refuses too.
+   */
+  private async refuseRestartUnderAppiumSession(udid: string): Promise<void> {
+    let device;
+    try {
+      device = await DeviceStoreFactory.getStore().findDevice({ udid });
+    } catch (e: any) {
+      throw new StreamRestartRefused(
+        `Stream for ${udid} is not answering, and the device can't be read to check for an Appium session (${e?.message ?? e}): not restarting it.`,
+      );
+    }
+    if (!heldByAppiumSession(device)) return;
+    throw new StreamRestartRefused(
+      `Stream for ${udid} is not answering, but Appium session ${device?.session_id} holds the device: not restarting the WDA and go-ios tunnel it may be driving. The stream can restart once the session ends.`,
+    );
+  }
+
+  /**
    * Check if WDA is already running and responding
    * Principal Resilience: Retries transient connection errors (ECONNRESET) up to 2 times
    * with exponential backoff, as these often indicate WDA is restarting or tunnel is reconnecting.
@@ -625,6 +652,8 @@ class IOSStreamService {
         log.debug(`[${udid}] Stream already running and healthy, reusing existing session`);
         return { wdaPort: existingSession.wdaPort, mjpegPort: existingSession.mjpegPort };
       }
+      // Never under a live Appium session (see refuseRestartUnderAppiumSession).
+      await this.refuseRestartUnderAppiumSession(udid);
       // Stream exists but unhealthy - check cooldown before recovery
       if (!this.canAttemptRecovery(udid)) {
         const lastAttempt = this.recoveryCooldowns.get(udid);
@@ -667,6 +696,7 @@ class IOSStreamService {
             log.debug(`[${udid}] Stream already running and healthy, reusing existing session`);
             return { wdaPort: existingSession.wdaPort, mjpegPort: existingSession.mjpegPort };
           }
+          await this.refuseRestartUnderAppiumSession(udid);
           // Stream exists but unhealthy - check cooldown before recovery
           if (!this.canAttemptRecovery(udid)) {
             const lastAttempt = this.recoveryCooldowns.get(udid);
@@ -1011,6 +1041,8 @@ class IOSStreamService {
         }
         throw new Error(`WDA failed to start within ${timeout / 1000}s. Check logs.`);
       } catch (error: any) {
+        // Not a failed start: the running stream is left exactly as it was.
+        if (error instanceof StreamRestartRefused) throw error;
         const session = this.sessions.get(udid);
         if (session) {
           session.status = 'error';

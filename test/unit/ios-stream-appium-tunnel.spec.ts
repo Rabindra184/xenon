@@ -252,6 +252,64 @@ describe('go-ios tunnels under a live Appium session (fake exec, fake processes)
     });
   });
 
+  describe('a start over a running stream whose WDA does not answer', () => {
+    beforeEach(() => {
+      // WDA doesn't answer /status: busy with a long command, or dead.
+      svc.isWDARunning = async () => false;
+      // A restart that gets past the stop fails right after: no go-ios here.
+      svc.isGoIOSAvailable = async () => false;
+    });
+
+    it('never restarts it while an Appium session holds the phone, and says why', async () => {
+      const stream = ownStream();
+
+      const err = await svc.startStream(IPHONE).then(
+        () => null,
+        (e: Error) => e,
+      );
+
+      expect(err?.message).to.match(/Appium session .* holds the device/);
+      expect(stream.wdaProcess.killed, 'the WDA the session may be driving').to.equal(false);
+      expect(stream.forwardWDAProcess.killed).to.equal(false);
+      expect(kill.called, 'no process group is signalled (the tunnel)').to.equal(false);
+      expect(commands, 'nothing is exec’d').to.deep.equal([]);
+      expect(svc.getStreamStatus(IPHONE)?.status, 'the stream is left as it was').to.equal(
+        'running',
+      );
+      expect(svc.recoveryCooldowns.has(IPHONE), 'no failed start to cool down from').to.equal(
+        false,
+      );
+    });
+
+    it("never restarts one attached to the session's own WDA either", async () => {
+      // A restart would launch a second WebDriverAgent over the session's.
+      const stream = attachedStream();
+
+      const err = await svc.startStream(IPHONE).then(
+        () => null,
+        (e: Error) => e,
+      );
+
+      expect(err?.message).to.match(/Appium session .* holds the device/);
+      expect(stream.forwardMJPEGProcess.killed).to.equal(false);
+      expect(svc.getStreamStatus(IPHONE)).to.equal(stream);
+    });
+
+    it('still restarts it when no session holds the phone, to recover a dead WDA', async () => {
+      Object.assign(device, { busy: false, session_id: null });
+      const stream = ownStream();
+
+      const err = await svc.startStream(IPHONE).then(
+        () => null,
+        (e: Error) => e,
+      );
+
+      expect(stream.wdaProcess.killed, 'the dead stream is stopped').to.equal(true);
+      expect(kill.calledWith(-TUNNEL_PID, 'SIGKILL')).to.equal(true);
+      expect(err?.message, 'and a new start is attempted').to.equal('go-ios not available');
+    });
+  });
+
   it("leaves go-ios processes alone when the phone's row can't be read", async () => {
     attachedStream();
     findDevice.rejects(new Error('database is locked'));
