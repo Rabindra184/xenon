@@ -64,6 +64,8 @@ describe('the hub’s device control on a node’s phone', () => {
   let hubUrl: string;
   let hubApp: express.Express;
   let nodeOrigin: string;
+  let nodePort: number;
+  let nodeArgs: any;
 
   beforeEach(async () => {
     dirs = [fs.mkdtempSync(path.join(os.tmpdir(), 'xenon-control-keys-'))];
@@ -96,6 +98,18 @@ describe('the hub’s device control on a node’s phone', () => {
     hub.get('/xenon/api/auth/jwks.json', (_req, res) => res.json(hubKeys.jwks()));
     hubUrl = `http://127.0.0.1:${((await loopback.serve(hub)).address() as any).port}`;
     hubApp = express();
+    // One process plays both servers, and PluginContext is a singleton: each
+    // app takes its own identity per request, so the hub's forward decision
+    // (the phone's nodeId against this server's) sees the hub, not the node.
+    hubApp.use((_req, _res, next) => {
+      context.setContext(
+        { ...DefaultPluginArgs, bindHostOrIp: '127.0.0.1' } as any,
+        1,
+        'hub-1',
+        '',
+      );
+      next();
+    });
     hubApp.use(express.json());
     hubApp.use((req: any, _res, next) => {
       const user = String(req.headers['x-test-user'] ?? '');
@@ -116,6 +130,10 @@ describe('the hub’s device control on a node’s phone', () => {
 
     // The node: its CSRF check, its login and its /control, as ServerManager mounts them.
     const node = express();
+    node.use((_req, _res, next) => {
+      context.setContext(nodeArgs, nodePort, 'node-1', '');
+      next();
+    });
     node.use(express.json());
     const nodeApi = express.Router();
     nodeApi.use(csrfMiddleware);
@@ -123,14 +141,10 @@ describe('the hub’s device control on a node’s phone', () => {
     nodeApi.get('/whoami', (req: any, res) => res.json(req.auth));
     ControlRouter.register(nodeApi);
     node.use('/xenon/api', nodeApi);
-    const nodePort = ((await loopback.serve(node)).address() as any).port;
+    nodePort = ((await loopback.serve(node)).address() as any).port;
     nodeOrigin = `http://127.0.0.1:${nodePort}`;
-    context.setContext(
-      { ...DefaultPluginArgs, hub: hubUrl, bindHostOrIp: '127.0.0.1' } as any,
-      nodePort,
-      'node-1',
-      '',
-    );
+    nodeArgs = { ...DefaultPluginArgs, hub: hubUrl, bindHostOrIp: '127.0.0.1' } as any;
+    context.setContext(nodeArgs, nodePort, 'node-1', '');
 
     await scratch.db.device.deleteMany({});
     // alice's session runs on the node's phone.
@@ -259,7 +273,7 @@ describe('the hub’s device control on a node’s phone', () => {
 
     it('cannot be checked while the hub’s keys cannot be fetched: 503', async () => {
       const token = await controlToken();
-      context.pluginArgs = { ...context.pluginArgs, hub: 'http://127.0.0.1:1' } as any;
+      nodeArgs = { ...nodeArgs, hub: 'http://127.0.0.1:1' };
       const res = await toNode('post', '/xenon/api/control/phone-1/tap', token);
       expect(res.status).to.equal(503);
       expect(manager.taps).to.deep.equal([]);
@@ -267,7 +281,7 @@ describe('the hub’s device control on a node’s phone', () => {
 
     it('a server that is not a node ignores it', async () => {
       const token = await controlToken();
-      context.pluginArgs = { ...context.pluginArgs, hub: undefined } as any;
+      nodeArgs = { ...nodeArgs, hub: undefined };
       const res = await toNode('post', '/xenon/api/control/phone-1/tap', token);
       expect(res.status).to.not.equal(200);
       expect(manager.taps).to.deep.equal([]);
