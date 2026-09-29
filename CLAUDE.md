@@ -110,8 +110,14 @@ State machine: `requested → allocated → running → finished`. Each transiti
 A Xenon hub instance can orchestrate remote Xenon node instances. Each has its
 own database; a node reports its phones to the hub over HTTP (`NodeDevices.ts`,
 `POST /xenon/api/register`). Sessions on a node's phone go **through the hub
-only**: creating one directly on a node is unsupported, because the hub owns
-team rules, reservations and blocks for node phones. Appium 3 only, every 3.x.
+only**, because the hub owns team rules, reservations and blocks for node
+phones, and enforces auth. A node with auth enabled refuses any create without
+the hub's verified create token (`assertCreateCameFromHub` in `prepareSession`,
+so it holds on the plugin's no-gateway path too): `session not created`,
+"Create sessions through the hub", naming the hub. A node with auth disabled
+checks no credential, the hub's token included, so a direct create there looks
+like the hub's and still works, as it did (local development against one
+node). Appium 3 only, every 3.x.
 
 **The session gateway** (`src/gateway/`, placed by `registerSessionGateway` in
 `src/app/registerCommandAuth.ts`, wired by `gatewayOptionsFor` in

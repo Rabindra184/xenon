@@ -207,6 +207,7 @@ export class SessionLifecycleService {
     const credentials = takeSessionCredentials(caps);
 
     const { hubGrant } = opts;
+    await this.assertCreateCameFromHub(hubGrant);
     if (hubGrant) this.assertGrantNamesCapsPhone(caps, hubGrant);
     const authResult = hubGrant
       ? this.authorizeHubGrant(hubGrant)
@@ -464,6 +465,34 @@ export class SessionLifecycleService {
     }
 
     return session;
+  }
+
+  /**
+   * Sessions on a node's phones go through its hub, which owns their team
+   * rules, reservations and blocks and is where auth is enforced. So a node
+   * (a server with `hub`) refuses a create that doesn't carry the hub's
+   * verified grant: one sent to the node directly, or one that reached the
+   * plugin without the session gateway, which is where the grant is checked.
+   *
+   * Only with auth enabled. With auth disabled a node checks no credential,
+   * the hub's token included (sessionCreate.ts), so a create from the hub and
+   * one sent directly look alike, and refusing would protect nothing while
+   * breaking what such a node is used for: running a driver on it directly
+   * during local development. It works there as it always has.
+   */
+  private async assertCreateCameFromHub(hubGrant: HubCreateGrant | undefined): Promise<void> {
+    const { hub } = Container.get(PluginContext).pluginArgs;
+    if (hub === undefined || hubGrant) return;
+    const { config: xenonConfig } = await import('../config');
+    if (xenonConfig.authDisabled === true) return;
+    this.logger.warn(
+      `Refusing a session created directly on this node: it carries no grant from the hub (${hub}).`,
+    );
+    throw new appiumErrors.SessionNotCreatedError(
+      `This server is a node of the Xenon hub at ${hub}. Create sessions through the hub: ` +
+        'it applies the team rules, reservations and blocks for this node’s devices, and a ' +
+        'node refuses a session that does not come from it.',
+    );
   }
 
   /**

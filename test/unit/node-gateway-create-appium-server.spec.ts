@@ -23,6 +23,7 @@ import { XenonManager } from '../../src/device-managers';
 import { DeviceStoreFactory } from '../../src/data-service/device-store';
 import { PrismaDeviceStore, PrismaPendingSessionStore } from '../../src/data-service/prisma-store';
 import { SESSION_MANAGER } from '../../src/sessions/SessionManager';
+import { SessionLifecycleService } from '../../src/services/SessionLifecycleService';
 import { config } from '../../src/config';
 import { saveRegistrations } from '../helpers/container-registration';
 import { useScratchDatabase } from '../helpers/scratch-database';
@@ -279,10 +280,11 @@ describe('a create the hub forwards, on the node, in Appium 3’s own server()',
     });
 
     it('a create with no credentials at all is refused, and nothing is allocated', async () => {
+      // Before the gate is asked: on a node, only the hub's creates are taken.
       const res = await create(undefined);
-      expect(res.status).to.equal(400);
-      expect(res.body.value.error).to.equal('invalid argument');
-      expect(res.body.value.message).to.include('XENON_REQUIRE_SESSION_TOKEN');
+      expect(res.status).to.equal(500);
+      expect(res.body.value.error).to.equal('session not created');
+      expect(res.body.value.message).to.include('through the hub');
       await expectNothingCreated();
     });
 
@@ -357,6 +359,43 @@ describe('a create the hub forwards, on the node, in Appium 3’s own server()',
       expect(res.status).to.equal(503);
       expect(res.body.value.error).to.equal('unknown error');
       await expectNothingCreated();
+    });
+  });
+
+  describe('a create that did not come from the hub', () => {
+    const direct = () =>
+      create(
+        undefined,
+        forwarded({
+          'xe:options': { accessKey: 'ak-node', token: 'node-secret', recordVideo: false },
+        }),
+      );
+
+    it('is refused, saying to create sessions through the hub, and nothing is allocated', async () => {
+      const res = await direct();
+      expect(res.status).to.equal(500);
+      expect(res.body.value.error).to.equal('session not created');
+      expect(res.body.value.message).to.include('through the hub');
+      expect(res.body.value.message).to.include(hubUrl);
+      await expectNothingCreated();
+    });
+
+    it('is refused when it reaches the plugin without the gateway too', async () => {
+      const lifecycle = new SessionLifecycleService();
+      const caps = forwarded().capabilities as any;
+      let refused: any;
+      await lifecycle
+        .createSession(() => ({}), umbrella, caps, { localOnly: true })
+        .catch((error) => (refused = error));
+      expect(refused?.message).to.include('through the hub');
+      await expectNothingCreated();
+    });
+
+    it('still works on a node with auth disabled, as it did (local development)', async () => {
+      nodeAuthDisabled = true;
+      config.authDisabled = true;
+      const res = await direct();
+      expect(res.status, JSON.stringify(res.body)).to.equal(200);
     });
   });
 
