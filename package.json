@@ -89,7 +89,6 @@
     "get-port": "^5.1.1",
     "http-mitm-proxy": "^1.1.0",
     "http-proxy-agent": "7.0.0",
-    "http-proxy-middleware": "^3.0.0-beta.1",
     "https-proxy-agent": "7.0.2",
     "ip": "^1.1.8",
     "jose": "^5.10.0",
