@@ -1,7 +1,9 @@
+import { randomUUID } from 'crypto';
 import { Container, Service } from 'typedi';
 import * as jose from 'jose';
 import log from '../logger';
 import { JwtKeyService } from '../services/token/JwtKeyService';
+import { SingleUseLedger } from '../services/token/singleUseLedger';
 
 /**
  * The credential a hub's calls to a node carry.
@@ -26,6 +28,12 @@ import { JwtKeyService } from '../services/token/JwtKeyService';
  * be taken for the other whatever claims a verifier reads: jose refuses the
  * other kind's audience before any claim is looked at. The node treats a valid
  * one as the session's credential (sessionCreate.ts).
+ *
+ * A create token is single-use. The hub sends a create once (it is not safe
+ * to repeat), and each token has its own id (`jti`), which the node's
+ * verifier remembers until the token expires: the same token again is
+ * refused. A token with no id, from a hub before this rule, is accepted as
+ * before, without that check.
  */
 
 export const HUB_TOKEN_HEADER = 'x-xenon-hub-token';
@@ -33,9 +41,9 @@ export const HUB_TOKEN_AUDIENCE = 'xenon-node';
 export const HUB_TOKEN_TTL_SECONDS = 300;
 export const HUB_CREATE_AUDIENCE = 'xenon-node-create';
 /**
- * Long enough to cover the forward and its retries (InternalHttpClient
- * retries a create on a timeout or a 5xx), short enough that a copied token
- * is soon worthless. It opens one phone, on one node.
+ * Long enough for the create to reach the node, which checks the token as the
+ * request arrives; short enough that a copied token is soon worthless. It
+ * opens one phone, on one node, once.
  */
 export const HUB_CREATE_TTL_SECONDS = 120;
 /** A cached token is re-minted once it has less than this left. */
@@ -47,7 +55,7 @@ const CLOCK_TOLERANCE_SECONDS = 60;
 export interface TokenSigner {
   sign(
     claims: Record<string, unknown>,
-    opts: { audience: string; ttlSeconds: number },
+    opts: { audience: string; ttlSeconds: number; jti?: string },
   ): Promise<string>;
 }
 
@@ -115,7 +123,8 @@ export class HubSessionTokenIssuer {
 
   /**
    * The token for a create the hub forwards to the phone's node, or null when
-   * this server cannot sign. Minted fresh for each create, never cached.
+   * this server cannot sign. Minted fresh for each create, never cached, with
+   * an id of its own: the node takes it once.
    */
   async createTokenFor(grant: HubCreateGrant): Promise<string | null> {
     const claims: Record<string, unknown> = { udid: grant.udid, host: grant.host };
@@ -124,6 +133,7 @@ export class HubSessionTokenIssuer {
       return await this.signer().sign(claims, {
         audience: HUB_CREATE_AUDIENCE,
         ttlSeconds: HUB_CREATE_TTL_SECONDS,
+        jti: randomUUID(),
       });
     } catch (err: any) {
       this.warnCannotSign(err);
@@ -178,6 +188,8 @@ function isVerdict(err: unknown): boolean {
  */
 export class HubSessionTokenVerifier {
   private readonly keys: jose.JWTVerifyGetKey;
+  /** The create tokens already taken, by id, until each one expires. */
+  private readonly usedCreates = new SingleUseLedger(HUB_CREATE_TTL_SECONDS);
 
   constructor(hubUrl: string, keys?: jose.JWTVerifyGetKey) {
     this.keys =
@@ -205,8 +217,9 @@ export class HubSessionTokenVerifier {
 
   /**
    * The grant in a hub's create token, or null for any token that is not one
-   * (forged, expired, another audience's, missing the phone or its node).
-   * Throws HubTokenUnavailableError when the hub's keys cannot be fetched.
+   * (forged, expired, another audience's, missing the phone or its node, or
+   * already taken: a create token is taken once). Throws
+   * HubTokenUnavailableError when the hub's keys cannot be fetched.
    */
   async verifyCreate(token: string): Promise<HubCreateGrant | null> {
     let payload: jose.JWTPayload;
@@ -223,6 +236,13 @@ export class HubSessionTokenVerifier {
     const nonEmpty = (value: unknown): value is string =>
       typeof value === 'string' && value.length > 0;
     if (!nonEmpty(payload.udid) || !nonEmpty(payload.host)) return null;
+    if (nonEmpty(payload.jti)) {
+      try {
+        this.usedCreates.consume(payload);
+      } catch {
+        return null;
+      }
+    }
     return {
       userId: nonEmpty(payload.sub) ? payload.sub : null,
       udid: payload.udid,

@@ -5,11 +5,22 @@ import log from './logger';
 import { Container } from 'typedi';
 
 /**
+ * A request that must not be sent twice sets `retry: false`: it fails with its
+ * first error instead of being retried. A session create is one. The node may
+ * still be creating the session when the hub's request times out or a 5xx
+ * comes back, and a retry starts another one, holding the phone.
+ */
+export interface InternalRequestConfig extends AxiosRequestConfig {
+  retry?: false;
+}
+
+/**
  * InternalHttpClient - Centralized HTTP client for all internal communication.
  *
  * Features:
  * - Keep-alive connections for performance
- * - Automatic retry with exponential backoff
+ * - Automatic retry with exponential backoff, except for a request that sets
+ *   `retry: false` (InternalRequestConfig)
  * - Request/response logging for debugging
  * - Correlation ID tracking
  */
@@ -170,6 +181,10 @@ export class InternalHttpClient {
             `[HTTP ←] ${config?.method?.toUpperCase()} ${config?.url} ` +
               `[${status || 'ERR'}] ${duration}ms - ${error.message}`,
           );
+        }
+
+        if (config.retry === false) {
+          return Promise.reject(error);
         }
 
         const decision = InternalHttpClient.classifyRetry(error);

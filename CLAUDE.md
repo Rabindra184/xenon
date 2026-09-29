@@ -223,11 +223,22 @@ provider never gets either.
   The node may allocate only that phone, on itself. Caps that name another
   phone are refused before allocation. An allocated phone that is another
   node's (an emulator's udid repeats across machines) is refused and released.
-  A forged, expired or session token is refused (`400 invalid argument`,
-  "session rejected"), and a JWKS that can't be fetched is `503`. With auth
-  disabled on the node the token isn't checked, as no credential is. The
-  token isn't single-use: `InternalHttpClient` retries a create on a timeout
-  or a 5xx with the same headers.
+  A forged, expired, already used or session token is refused (`400 invalid
+  argument`, "session rejected"), and a JWKS that can't be fetched is `503`.
+  With auth disabled on the node the token isn't checked, as no credential
+  is. The token is single-use: each has its own `jti`, which the node's
+  verifier keeps in a `SingleUseLedger` until it expires. A token with no
+  `jti` (from an older hub) is accepted without that check.
+
+**A create is sent once.** `forwardSessionRequest` posts it with
+`retry: false` (`InternalRequestConfig`) and `REMOTE_CREATE_TIMEOUT_MS` (8 min,
+two under `PENDING_CLAIM_TIMEOUT_MS`, so the idle sweeper can't free a phone
+whose create the hub is still waiting for). `InternalHttpClient` otherwise
+retries a request on a 5xx or its 30 s timeout, and a slow first UiAutomator2
+install then started a second session on the node, holding the phone with
+nobody to end it. A create that outlasts the 8 minutes, or whose answer is
+lost, can still leave its session on the node until the node's own
+new-command timeout.
 
 **A hub restart** leaves node sessions running. At boot a hub clears only its
 own phones (`devicesClearedAtBoot`); its nodes' rows stay, so

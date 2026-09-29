@@ -8,7 +8,7 @@ import http from 'http';
 import https from 'https';
 import log from '../logger';
 import { stripAppiumPrefixes, nodeUrl } from '../helpers';
-import { InternalHttpClient } from '../InternalHttpClient';
+import { InternalHttpClient, InternalRequestConfig } from '../InternalHttpClient';
 import { PluginContext } from '../PluginContext';
 import { CapabilityValidator } from '../validators/CapabilityValidator';
 import {
@@ -60,6 +60,7 @@ import {
   HubSessionTokenIssuer,
 } from '../gateway/hubSessionToken';
 import { DeviceStoreFactory } from '../data-service/device-store';
+import { PENDING_CLAIM_TIMEOUT_MS } from '../data-service/deviceClaims';
 import { XenonSession, XenonSessionOptions } from '../sessions/XenonSession';
 import { LocalSession } from '../sessions/LocalSession';
 import { CloudSession } from '../sessions/CloudSession';
@@ -113,6 +114,17 @@ export interface SessionAllocation {
   /** An uploaded app the session names by id, resolved to its download URL. */
   appDownload?: { appId: string; url: string };
 }
+
+/**
+ * How long the hub waits for a node (or cloud provider) to create a session.
+ * A create is sent once (InternalRequestConfig `retry: false`): the node may
+ * still be creating when an ordinary request would give up, and a second
+ * create starts a second session holding the phone. A first UiAutomator2 or
+ * WebDriverAgent install takes minutes. It ends before the phone's pending
+ * claim can expire (PENDING_CLAIM_TIMEOUT_MS), so the idle sweeper never frees
+ * a phone whose create the hub is still waiting for.
+ */
+export const REMOTE_CREATE_TIMEOUT_MS = PENDING_CLAIM_TIMEOUT_MS - 2 * 60_000;
 
 const commandsQueueGuard = new AsyncLock();
 // Serializes concurrent deleteSession cleanup for the same sessionId so
@@ -1041,11 +1053,14 @@ export class SessionLifecycleService {
 
     const headers: Record<string, string> = { 'Content-Type': 'application/json' };
     if (hubToken) headers[HUB_TOKEN_HEADER] = hubToken;
-    const config: AxiosRequestConfig = {
+    // Sent once, with a create's timeout (REMOTE_CREATE_TIMEOUT_MS).
+    const config: InternalRequestConfig = {
       method: 'post',
       url: remoteUrl,
       headers,
       data: { capabilities: caps },
+      timeout: REMOTE_CREATE_TIMEOUT_MS,
+      retry: false,
     };
 
     if (context.pluginArgs.proxy) {

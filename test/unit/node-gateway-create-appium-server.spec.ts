@@ -320,6 +320,20 @@ describe('a create the hub forwards, on the node, in Appium 3’s own server()',
       await expectNothingCreated();
     });
 
+    it('is refused the second time: a create token is taken once', async () => {
+      const token = await hubToken();
+      const first = await create(token);
+      expect(first.status, JSON.stringify(first.body)).to.equal(200);
+      const ended = await request(nodeOrigin).delete(`/node/session/${first.body.value.sessionId}`);
+      expect(ended.status, JSON.stringify(ended.body)).to.equal(200);
+
+      const again = await create(token);
+      expect(again.status).to.equal(400);
+      expect(again.body.value.error).to.equal('invalid argument');
+      expect(again.body.value.message).to.include('session rejected');
+      await expectNothingCreated();
+    });
+
     it('is refused when the capabilities name another phone than the grant', async () => {
       const res = await create(await hubToken(), forwarded({ 'appium:udid': 'phone-2' }));
       expect(res.status).to.equal(400);
