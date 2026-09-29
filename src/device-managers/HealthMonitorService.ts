@@ -9,6 +9,8 @@ import { WebConfigService } from '../data-service/web-config-service';
 import { SESSION_MANAGER } from '../sessions/SessionManager';
 import { EVENT_BUS } from '../services/EventBus';
 import { isPendingClaim, pendingClaimExpired } from '../data-service/deviceClaims';
+import { PluginContext } from '../PluginContext';
+import { isOwnDevice, localDeviceHosts } from './localDeviceHosts';
 
 @Service()
 export class HealthMonitorService {
@@ -111,10 +113,15 @@ export class HealthMonitorService {
       const devices = await store.getAllDevices();
       const manager = Container.get(XenonManager);
       const instances = await manager.deviceInstances();
+      const context = Container.get(PluginContext);
+      const local = localDeviceHosts(context.pluginArgs, context.port);
 
       for (const device of devices) {
-        // Only check devices managed by this node
-        if (device.cloud) continue;
+        // Only this server's own phones. A hub keeps its nodes' phones in the
+        // same table; its adb can't reach them, so each came back unhealthy,
+        // was written over the node's report, "recovered" and, when busy with
+        // a session not in this hub's memory, reclaimed. Their node checks them.
+        if (device.cloud || !isOwnDevice(local, context.nodeId, device)) continue;
 
         // Principal Intelligence: Health monitor must detect "Zombie Busy" devices.
         // A device is a Zombie if it's marked busy in DB but NOT found in Hub's session map

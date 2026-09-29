@@ -291,6 +291,11 @@ read-then-write:
   `remoteMachineProxyIP` included) and go with the node. A hub's own sync
   never prunes a row carrying another node's id (`isOwnDevice`: by `nodeId`,
   else by exact host).
+- The health monitor (`HealthMonitorService`) checks only this server's own
+  phones, by the same `isOwnDevice`. It used to run the hub's adb against
+  every row: each node phone came back unhealthy, was written over the node's
+  report and "recovered", and a busy one whose session the hub didn't hold in
+  memory was reclaimed. A node checks its own.
 
 A server with no nodes never sets `nodeBusy`, so its `busy` is its claim, as
 before. A lease still locks with `busy` alone (allocation also skips a phone
