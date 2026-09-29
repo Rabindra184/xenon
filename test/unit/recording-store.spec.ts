@@ -2,14 +2,20 @@ import 'reflect-metadata';
 import { expect } from 'chai';
 import { RecordingStore } from '../../src/services/recording/recording-store';
 import { prisma } from '../../src/prisma';
+import { useScratchDatabase } from '../helpers/scratch-database';
 
 describe('RecordingStore (Prisma round-trip)', () => {
+  // Its own migrated database: the round trip wrote these rows to the
+  // developer's ~/.cache/xenon/xenon.db, and failed where it lacked the tables.
+  const scratch = useScratchDatabase();
   const store = new RecordingStore();
 
+  // Through the scratch client itself: the helper's own afterEach, which
+  // runs first, has already put `prisma` back on the server's database.
   afterEach(async () => {
-    await prisma.annotation.deleteMany({ where: { recording_id: { contains: 'test-' } } });
-    await prisma.bookmark.deleteMany({ where: { recording_id: { contains: 'test-' } } });
-    await prisma.recording.deleteMany({ where: { group_id: { startsWith: 'test-' } } });
+    await scratch.db.annotation.deleteMany({ where: { recording_id: { contains: 'test-' } } });
+    await scratch.db.bookmark.deleteMany({ where: { recording_id: { contains: 'test-' } } });
+    await scratch.db.recording.deleteMany({ where: { group_id: { startsWith: 'test-' } } });
   });
 
   it('creates a recording row with status=RECORDING', async () => {

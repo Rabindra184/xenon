@@ -12,6 +12,7 @@ import SessionType from '../../src/enums/SessionType';
 import { NodeBasePathResolver, webdriverInfoHandler } from '../../src/gateway/nodeWebDriverUrl';
 import { saveRegistrations } from '../helpers/container-registration';
 import { loopbackServers } from '../helpers/loopbackServer';
+import { useLokiStores } from '../helpers/loki-stores';
 
 /**
  * A session the hub creates on a node's phone (today's createSession path,
@@ -21,6 +22,10 @@ import { loopbackServers } from '../helpers/loopbackServer';
  *   settings, because that is where the session gateway finds it.
  */
 describe('a session the hub creates on a node', () => {
+  // The in-memory stores, also when this file runs on its own: without
+  // NODE_ENV=test the factory handed out the Prisma stores, which are the
+  // developer's ~/.cache/xenon/xenon.db.
+  useLokiStores();
   const loopback = loopbackServers();
   let nodeOrigin: string;
   let created: Array<{ url: string; body: any }>;

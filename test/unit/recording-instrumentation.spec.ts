@@ -7,6 +7,7 @@ import path from 'path';
 import { metrics, trace } from '@opentelemetry/api';
 import { METRIC } from '../../src/services/telemetry/attributes';
 import { useArtifactStore } from '../helpers/artifact-store';
+import { useLokiStores } from '../helpers/loki-stores';
 
 // Stub metrics + trace BEFORE the module loads so the module-level
 // ensureOtelInstruments() picks up our mocks. Inline import after stubbing.
@@ -45,6 +46,10 @@ function makeMockSpan() {
 }
 
 describe('RecordingOrchestrator instrumentation', () => {
+  // The in-memory stores, also when this file runs on its own: without
+  // NODE_ENV=test the factory handed out the Prisma stores, which are the
+  // developer's ~/.cache/xenon/xenon.db.
+  useLokiStores();
   // RecordingOrchestrator resolves ARTIFACT_STORE from the container at runtime.
   useArtifactStore();
   let getMeterStub: sinon.SinonStub;

@@ -14,6 +14,7 @@ import { DefaultPluginArgs } from '../../src/interfaces/IPluginArgs';
 import { config } from '../../src/config';
 import { prisma } from '../../src/prisma';
 import { saveRegistrations } from '../helpers/container-registration';
+import { useLokiStores } from '../helpers/loki-stores';
 
 /**
  * createSession writes who asked onto the pending-session row, so the queue
@@ -42,6 +43,10 @@ const withKey = (accessKey: string, extra: Record<string, unknown> = {}) =>
   caps({ 'xe:options': { accessKey, token: 'tk' }, ...extra });
 
 describe('createSession records who asked on the pending-session row', () => {
+  // The in-memory stores, also when this file runs on its own: without
+  // NODE_ENV=test the factory handed out the Prisma stores, which are the
+  // developer's ~/.cache/xenon/xenon.db.
+  useLokiStores();
   let svc: SessionLifecycleService;
   let device: any;
   let context: PluginContext;

@@ -7,6 +7,7 @@ import path from 'path';
 import { RecordingOrchestrator } from '../../src/services/recording/RecordingOrchestrator';
 import { ConcurrencyGate } from '../../src/services/recording/concurrency-gate';
 import { useArtifactStore } from '../helpers/artifact-store';
+import { useLokiStores } from '../helpers/loki-stores';
 
 // Issue #203. When the ffmpeg process for a recording exits on its own nothing
 // told the orchestrator, so the row sat at RECORDING — no ended_at, no duration,
@@ -86,6 +87,10 @@ function makeOrch(row: any, overrides: any = {}) {
 }
 
 describe('RecordingOrchestrator: ffmpeg exiting on its own', () => {
+  // The in-memory stores, also when this file runs on its own: without
+  // NODE_ENV=test the factory handed out the Prisma stores, which are the
+  // developer's ~/.cache/xenon/xenon.db.
+  useLokiStores();
 
   // compositeOutputPath and per-device paths resolve through ArtifactStore.
   useArtifactStore();
