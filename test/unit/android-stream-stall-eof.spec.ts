@@ -24,9 +24,15 @@ function makeService() {
 
 describe('Android MJPEG server: a stalled capture ends client responses', () => {
   let server: http.Server | undefined;
+  // Stopped after each test. close() leaves an open response streaming, and a
+  // test whose client never ends left its writeFrame loop writing a frame
+  // every 60ms for the rest of the run.
+  const sessions: any[] = [];
 
   afterEach(() => {
+    for (const session of sessions.splice(0)) session.status = 'stopped';
     try {
+      server?.closeAllConnections();
       server?.close();
     } catch {
       /* ignore */
@@ -58,6 +64,7 @@ describe('Android MJPEG server: a stalled capture ends client responses', () => 
       viewerCount: 0,
       captureHealth: new CaptureHealth(),
     };
+    sessions.push(session);
     const now = Date.now();
     session.captureHealth.recordFailure(now - CAPTURE_STALL_MS * 2, now);
 
@@ -91,6 +98,7 @@ describe('Android MJPEG server: a stalled capture ends client responses', () => 
       viewerCount: 0,
       captureHealth: new CaptureHealth(),
     };
+    sessions.push(session);
 
     // Port 0 → the OS picks a free one, so this never collides with a real lease.
     server = await svc.createAndListenMjpegServer(session, 0);
@@ -141,6 +149,7 @@ describe('Android MJPEG server: a stalled capture ends client responses', () => 
       viewerCount: 0,
       captureHealth: new CaptureHealth(),
     };
+    sessions.push(session);
 
     server = await svc.createAndListenMjpegServer(session, 0);
     const port = (server!.address() as any).port;
