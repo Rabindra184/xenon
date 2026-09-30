@@ -39,7 +39,7 @@ npx mocha test/unit/recording-orchestrator.spec.ts -g "happy path"
 
 Tests that import `CommandInterceptor` or anything that pulls in `SessionManager` need `import 'reflect-metadata'` at the top — TypeDI Container.get is invoked at module-load time and will throw `_a.getMetadata is not a function` without it.
 
-`npm run test:all` runs the whole unit suite in one process and should be green on Node 20 and 22. Every spec must also pass on its own (`npx mocha <file>`). Most breakage here came from a spec that only worked because another one ran first:
+`npm run test:all` runs the whole unit suite in one process and should be green on Node 20 and 22. It points `DATABASE_URL` at a freshly migrated scratch file (`test/setup/scratch-default-database.js`), so specs that write in passing never reach `~/.cache/xenon/xenon.db`; a plain `npx mocha <file>` doesn't load it. Every spec must also pass on its own (`npx mocha <file>`). Most breakage here came from a spec that only worked because another one ran first:
 
 - Import what you use (`reflect-metadata`, `chai.should()`). Don't rely on another spec having loaded it.
 - Never declare `before`/`beforeEach`/`after`/`afterEach` at the top of a file. Mocha attaches those to the root suite, so they run around every test in the process. Put them inside your `describe`. Register `ARTIFACT_STORE` with `useArtifactStore()` from `test/helpers/artifact-store.ts`, which restores what was there before.
