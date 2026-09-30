@@ -89,6 +89,7 @@ const OWNER: Record<DeviceColumn, 'key' | 'discovery' | 'observed' | 'report' | 
   storageFree: 'observed',
 
   nodeBusy: 'report',
+  nodeHold: 'report',
 };
 
 /** The columns a sync may write to a phone it already knows. */
@@ -103,7 +104,8 @@ export function pickDiscoveryFields<T extends Record<string, unknown>>(data: T):
 
 /**
  * The columns a hub takes from a node's report of a phone: what the node
- * observes of it. Not `nodeBusy`, which the hub sets from the report's `busy`.
+ * observes of it. Not `nodeBusy` and `nodeHold`, which the hub sets from the
+ * report's `busy` and `session_id` (deviceClaims.ts nodeHoldOf).
  */
 export const NODE_REPORT_FIELDS: ReadonlySet<string> = new Set(
   (Object.keys(OWNER) as DeviceColumn[]).filter(

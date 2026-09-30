@@ -204,6 +204,10 @@ model Device {
   // On a hub, what the phone's node last reported: busy there. `busy` is the
   // claim OR this. Always false for a phone this server drives.
   nodeBusy                     Boolean? @default(false)
+  // On a hub, who holds the phone there: the preview hold (manual_<user>_<udid>)
+  // in the node's report of its session_id, else null. Shown, never judged:
+  // the node decides access. Always null for a phone this server drives.
+  nodeHold                     String?
 
   @@id([udid, host])
   @@index([owningSessionId])

@@ -84,6 +84,15 @@ describe('activityLabel', () => {
     expect(activityLabel(theirs, member, NOW)).toBe('Live control by another user');
   });
 
+  // On a hub, a node's phone is held by the node's preview hold (nodeHold);
+  // session_id is the hub's own and stays empty.
+  it('says who holds live control of a node’s phone', () => {
+    const mine = dev({ busy: true, nodeHold: 'manual_me_U1' });
+    const theirs = dev({ busy: true, nodeHold: 'manual_u42_U1' });
+    expect(activityLabel(mine, member, NOW)).toBe('Live control by you');
+    expect(activityLabel(theirs, member, NOW)).toBe('Live control by another user');
+  });
+
   // The band already says "Reserved", and an ellipsis cuts the end: the time
   // left comes first so a long name is what gets cut.
   it('says how long is left on a reservation, then who holds it', () => {

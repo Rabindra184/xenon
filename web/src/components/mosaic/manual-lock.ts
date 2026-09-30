@@ -1,3 +1,7 @@
+import { holdOf } from '../../lib/deviceHold';
+
+export { holdOf };
+
 /**
  * Manual-lock ownership, client side.
  *
@@ -18,6 +22,21 @@ interface RehydratableRow {
   udid: string;
   busy?: boolean;
   session_id?: string | null;
+  nodeHold?: string | null;
+}
+
+/**
+ * Why a device is busy, for the picker. A manual lock is ours when its actor
+ * is our userId; a legacy `manual_<udid>` (no actor) is treated as foreign.
+ */
+export function busyReason(row: RehydratableRow, myUserId: string | null): string | undefined {
+  if (!row.busy) return undefined;
+  const hold = holdOf(row);
+  if (!hold) return 'unknown';
+  if (hold.startsWith('manual_')) {
+    return isSelfManualLock(hold, row.udid, myUserId) ? 'manual_self' : 'manual_other';
+  }
+  return 'automation';
 }
 
 /**
@@ -30,5 +49,5 @@ interface RehydratableRow {
  */
 export function isRehydratableTile(row: RehydratableRow, myUserId: string | null): boolean {
   if (!row.busy) return false;
-  return isSelfManualLock(row.session_id, row.udid, myUserId);
+  return isSelfManualLock(holdOf(row), row.udid, myUserId);
 }

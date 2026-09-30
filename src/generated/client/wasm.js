@@ -285,7 +285,8 @@ exports.Prisma.DeviceScalarFieldEnum = {
   teamId: 'teamId',
   claimSessionId: 'claimSessionId',
   claimedAt: 'claimedAt',
-  nodeBusy: 'nodeBusy'
+  nodeBusy: 'nodeBusy',
+  nodeHold: 'nodeHold'
 };
 
 exports.Prisma.PendingSessionScalarFieldEnum = {

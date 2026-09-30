@@ -331,11 +331,25 @@ to the node (`heldHere`, see "Device access guard"). Two things are the
 hub's own:
 
 - **Busy at once.** After the node answers a forwarded stream/start with a
-  2xx, the hub sets `nodeBusy` and `busy` on its row (`markNodeBusy`, both
-  stores). The node's report says the same only up to
-  `sendNodeDevicesToHubIntervalMs` later, and until then the hub could
-  allocate the phone to a session the node would refuse. The next report
-  replaces `nodeBusy` as usual.
+  2xx, the hub sets `nodeBusy` and `busy` on its row, and `nodeHold` to the
+  caller's hold (`markNodeBusy`, both stores). The node's report says the
+  same only up to `sendNodeDevicesToHubIntervalMs` later, and until then
+  the hub could allocate the phone to a session the node would refuse. The
+  next report replaces `nodeBusy` and `nodeHold` as usual.
+- **Who holds it** (`nodeHold`, a `report` column). The node's report is
+  its own row, `session_id` included; the hub keeps a preview hold from it
+  (`manual_<user>_<udid>`, `nodeHoldOf` in `deviceClaims.ts`) apart from its
+  own `session_id`, and a session the node runs is not a hold. Nodes of any
+  2.x version send it. The dashboard reads `session_id`, else `nodeHold`
+  (`web/src/lib/deviceHold.ts` `holdOf`), so the picker, the device cards
+  and a reload's tile restore treat a node phone's preview like a local
+  one. It is shown, never judged: access stays the node's, so a value up to
+  one report stale changes a label and nothing else.
+- **Named refusals.** A node's 409 (`device_held_by_another_user`,
+  `device_in_use_by_session`) names the holder by id only, since its
+  database has no rows for the hub's users. The gate fills in the name
+  (`SessionOwnerResolver.displayName`, denyBody's wording) before relaying
+  it, and passes anything else on unchanged.
 - **The sockets** (`src/app/ws/nodeSocketRelay.ts`). The H.264 and logcat
   WebSockets redeem the hub's ticket, and logcat runs the hub's ownership
   check. For another server's phone `openNodeSocket` then asks the node for
@@ -356,10 +370,8 @@ hub's own:
     `1008`, which stops the logs pane with the reason. A node that can't be
     reached is `1011`, and the players retry.
 
-Not yet for another server's phone: the hub doesn't show who holds a node
-phone's preview (the node's report carries no `session_id`), so mosaic
-tiles for node phones aren't restored after a reload. Recording a node's
-phone from the hub still runs on the hub's own tools.
+Not yet for another server's phone: recording a node's phone from the hub
+still runs on the hub's own tools.
 
 Through 2.1 only the five input actions were forwarded. The rest ran on the
 hub against a phone it doesn't have: they failed, or with hub and node on

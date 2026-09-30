@@ -6,9 +6,20 @@ import { PluginContext } from '../../PluginContext';
 import { isOwnDevice, localDeviceHosts } from '../../device-managers/localDeviceHosts';
 import { resolveActor } from '../../services/device-access/actor';
 import { HUB_TOKEN_HEADER, HubSessionTokenIssuer } from '../../gateway/hubSessionToken';
-import { relayAnswer, sendToNode } from '../../gateway/forwardToNode';
+import {
+  readAnswer,
+  relayAnswer,
+  sendAnswer,
+  sendToNode,
+  type NodeAnswer,
+} from '../../gateway/forwardToNode';
+import { formatManualLock } from '../../services/recording/manualLock';
+import { SessionOwnerResolver } from '../../services/device-access/SessionOwnerResolver';
 import { DeviceStoreFactory } from '../../data-service/device-store';
-import { ownershipUnavailableBody } from '../../services/device-access/deviceAccessPolicy';
+import {
+  denyBody,
+  ownershipUnavailableBody,
+} from '../../services/device-access/deviceAccessPolicy';
 import {
   controlAction,
   findControlDeviceInStore,
@@ -160,18 +171,34 @@ function refuse(res: Response, error: string, message: string) {
   return res.status(501).json({ success: false, error, message });
 }
 
+interface ControlGrant {
+  userId: string;
+  isAdmin: boolean;
+  udid: string;
+  host: string;
+}
+
 export interface NodePhoneControlDeps {
   findDevice?: FindControlDevice;
   timeoutMs?: number;
-  markNodeBusy?: (udid: string, host: string) => Promise<void>;
+  markNodeBusy?: (udid: string, host: string, hold?: string) => Promise<void>;
+  /** A user's name, for a node's refusal that names the holder by id only. */
+  describeHolder?: (userId: string) => Promise<string | null>;
+  controlToken?: (grant: ControlGrant) => Promise<string | null>;
 }
 
 export function nodePhoneControl(deps: NodePhoneControlDeps = {}) {
   const findDevice = deps.findDevice ?? findControlDeviceInStore;
-  const timeoutMs = deps.timeoutMs ?? NODE_CONTROL_TIMEOUT_MS;
-  const markNodeBusy =
-    deps.markNodeBusy ??
-    ((udid: string, host: string) => DeviceStoreFactory.getStore().markNodeBusy(udid, host));
+  const forwardDeps: ForwardDeps = {
+    timeoutMs: deps.timeoutMs ?? NODE_CONTROL_TIMEOUT_MS,
+    markNodeBusy:
+      deps.markNodeBusy ??
+      ((udid, host, hold) => DeviceStoreFactory.getStore().markNodeBusy(udid, host, hold)),
+    describeHolder:
+      deps.describeHolder ?? ((id) => Container.get(SessionOwnerResolver).displayName(id)),
+    controlToken:
+      deps.controlToken ?? ((grant) => Container.get(HubSessionTokenIssuer).controlTokenFor(grant)),
+  };
 
   return async function (req: Request, res: Response, next: NextFunction) {
     const action = controlAction(req);
@@ -210,7 +237,7 @@ export function nodePhoneControl(deps: NodePhoneControlDeps = {}) {
         `This phone is on node ${node}, and the hub doesn't pass ${action} on to nodes yet.`,
       );
     }
-    return forward(req, res, { udid, device, node, timeoutMs, markNodeBusy });
+    return forward(req, res, { udid, device, node }, forwardDeps);
   };
 }
 
@@ -228,12 +255,15 @@ interface ForwardTarget {
   udid: string;
   device: ControlDevice;
   node: string;
-  timeoutMs: number;
-  markNodeBusy: (udid: string, host: string) => Promise<void>;
 }
 
-async function forward(req: Request, res: Response, target: ForwardTarget) {
-  const { udid, device, node, timeoutMs } = target;
+type ForwardDeps = Required<
+  Pick<NodePhoneControlDeps, 'timeoutMs' | 'markNodeBusy' | 'describeHolder' | 'controlToken'>
+>;
+
+async function forward(req: Request, res: Response, target: ForwardTarget, deps: ForwardDeps) {
+  const { udid, device, node } = target;
+  const { timeoutMs } = deps;
   const url = nodeControlUrl(device.host as string, req);
   if (!url) return res.status(400).json({ error: 'Unsafe device host' });
 
@@ -245,7 +275,7 @@ async function forward(req: Request, res: Response, target: ForwardTarget) {
   // Null when this server can't sign (it warns once): the call goes without,
   // which a node with auth disabled accepts and one with auth enabled refuses.
   const token = actor.userId
-    ? await Container.get(HubSessionTokenIssuer).controlTokenFor({
+    ? await deps.controlToken({
         userId: actor.userId,
         isAdmin: actor.isAdmin,
         udid,
@@ -286,10 +316,16 @@ async function forward(req: Request, res: Response, target: ForwardTarget) {
     if (req.method === 'POST' && controlAction(req) === 'stream/start' && status < 300) {
       // The node holds the phone for the preview now, and says so in its
       // next report, up to an interval away. Until then this server could
-      // hand the phone to a session the node would refuse.
-      await target.markNodeBusy(udid, device.host as string).catch((e: any) => {
+      // hand the phone to a session the node would refuse, and would show
+      // no holder. The node writes the same hold for the same user.
+      const hold = actor.userId ? formatManualLock(actor.userId, udid) : undefined;
+      await deps.markNodeBusy(udid, device.host as string, hold).catch((e: any) => {
         log.warn(`nodePhoneControl: could not mark ${udid} busy for its node: ${e?.message ?? e}`);
       });
+    }
+    if (status === 409) {
+      await relayRefusal(await readAnswer(upstream), res, deps.describeHolder);
+      return;
     }
     await relayAnswer(upstream, res, false);
   } catch (e: any) {
@@ -313,4 +349,32 @@ async function forward(req: Request, res: Response, target: ForwardTarget) {
     clearTimeout(timer);
     res.off('close', onClose);
   }
+}
+
+const HOLDER_REFUSALS = new Set(['device_held_by_another_user', 'device_in_use_by_session']);
+
+/**
+ * A node's 409, with the holder's name filled in when the node could only
+ * give their id: its database has no rows for this server's users, so it
+ * says "another user". The wording is denyBody's, as for this server's own
+ * refusals. Anything else is passed on as it came.
+ */
+async function relayRefusal(
+  answer: NodeAnswer,
+  res: Response,
+  describeHolder: (userId: string) => Promise<string | null>,
+): Promise<void> {
+  let refusal: any;
+  try {
+    refusal = JSON.parse(answer.body.toString('utf8'));
+  } catch {
+    return sendAnswer(res, answer);
+  }
+  const holderId = refusal?.holder?.userId;
+  if (!HOLDER_REFUSALS.has(refusal?.error) || typeof holderId !== 'string' || refusal.holder.name) {
+    return sendAnswer(res, answer);
+  }
+  const name = await describeHolder(holderId).catch(() => null);
+  if (!name) return sendAnswer(res, answer);
+  res.status(409).json({ ...refusal, ...denyBody(refusal.error, holderId, name) });
 }

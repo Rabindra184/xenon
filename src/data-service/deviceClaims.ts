@@ -1,4 +1,5 @@
 import { IDevice } from '../interfaces/IDevice';
+import { isManualLock } from '../services/recording/manualLock';
 
 /**
  * Why a phone is busy, on the server that allocates it.
@@ -107,6 +108,19 @@ export const UNHELD = { ...NO_CLAIM, session_id: null, nodeBusy: false } as cons
 
 export function isUnheld(device: IDevice): boolean {
   return hasNoClaim(device) && device.session_id == null && device.nodeBusy !== true;
+}
+
+/**
+ * Who holds a node's phone there, from the node's report of it: its
+ * `session_id` when that is a preview hold (`manual_<user>_<udid>`), else
+ * null. A session the node runs is not a hold. The hub keeps it as
+ * `nodeHold`, apart from its own `session_id`, and shows it; the node decides
+ * access, so a stale value can change a label and nothing else.
+ */
+export function nodeHoldOf(reportedSessionId: unknown): string | null {
+  return typeof reportedSessionId === 'string' && isManualLock(reportedSessionId)
+    ? reportedSessionId
+    : null;
 }
 
 /** The row fields heldHere reads. */

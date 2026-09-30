@@ -9935,6 +9935,7 @@ export namespace Prisma {
     claimSessionId: string | null
     claimedAt: number | null
     nodeBusy: boolean | null
+    nodeHold: string | null
   }
 
   export type DeviceMaxAggregateOutputType = {
@@ -9996,6 +9997,7 @@ export namespace Prisma {
     claimSessionId: string | null
     claimedAt: number | null
     nodeBusy: boolean | null
+    nodeHold: string | null
   }
 
   export type DeviceCountAggregateOutputType = {
@@ -10057,6 +10059,7 @@ export namespace Prisma {
     claimSessionId: number
     claimedAt: number
     nodeBusy: number
+    nodeHold: number
     _all: number
   }
 
@@ -10158,6 +10161,7 @@ export namespace Prisma {
     claimSessionId?: true
     claimedAt?: true
     nodeBusy?: true
+    nodeHold?: true
   }
 
   export type DeviceMaxAggregateInputType = {
@@ -10219,6 +10223,7 @@ export namespace Prisma {
     claimSessionId?: true
     claimedAt?: true
     nodeBusy?: true
+    nodeHold?: true
   }
 
   export type DeviceCountAggregateInputType = {
@@ -10280,6 +10285,7 @@ export namespace Prisma {
     claimSessionId?: true
     claimedAt?: true
     nodeBusy?: true
+    nodeHold?: true
     _all?: true
   }
 
@@ -10428,6 +10434,7 @@ export namespace Prisma {
     claimSessionId: string | null
     claimedAt: number | null
     nodeBusy: boolean | null
+    nodeHold: string | null
     _count: DeviceCountAggregateOutputType | null
     _avg: DeviceAvgAggregateOutputType | null
     _sum: DeviceSumAggregateOutputType | null
@@ -10508,6 +10515,7 @@ export namespace Prisma {
     claimSessionId?: boolean
     claimedAt?: boolean
     nodeBusy?: boolean
+    nodeHold?: boolean
     team?: boolean | Device$teamArgs<ExtArgs>
   }, ExtArgs["result"]["device"]>
 
@@ -10570,6 +10578,7 @@ export namespace Prisma {
     claimSessionId?: boolean
     claimedAt?: boolean
     nodeBusy?: boolean
+    nodeHold?: boolean
     team?: boolean | Device$teamArgs<ExtArgs>
   }, ExtArgs["result"]["device"]>
 
@@ -10632,6 +10641,7 @@ export namespace Prisma {
     claimSessionId?: boolean
     claimedAt?: boolean
     nodeBusy?: boolean
+    nodeHold?: boolean
   }
 
   export type DeviceInclude<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
@@ -10705,6 +10715,7 @@ export namespace Prisma {
       claimSessionId: string | null
       claimedAt: number | null
       nodeBusy: boolean | null
+      nodeHold: string | null
     }, ExtArgs["result"]["device"]>
     composites: {}
   }
@@ -11157,6 +11168,7 @@ export namespace Prisma {
     readonly claimSessionId: FieldRef<"Device", 'String'>
     readonly claimedAt: FieldRef<"Device", 'Float'>
     readonly nodeBusy: FieldRef<"Device", 'Boolean'>
+    readonly nodeHold: FieldRef<"Device", 'String'>
   }
     
 
@@ -30071,7 +30083,8 @@ export namespace Prisma {
     teamId: 'teamId',
     claimSessionId: 'claimSessionId',
     claimedAt: 'claimedAt',
-    nodeBusy: 'nodeBusy'
+    nodeBusy: 'nodeBusy',
+    nodeHold: 'nodeHold'
   };
 
   export type DeviceScalarFieldEnum = (typeof DeviceScalarFieldEnum)[keyof typeof DeviceScalarFieldEnum]
@@ -31109,6 +31122,7 @@ export namespace Prisma {
     claimSessionId?: StringNullableFilter<"Device"> | string | null
     claimedAt?: FloatNullableFilter<"Device"> | number | null
     nodeBusy?: BoolNullableFilter<"Device"> | boolean | null
+    nodeHold?: StringNullableFilter<"Device"> | string | null
     team?: XOR<TeamNullableRelationFilter, TeamWhereInput> | null
   }
 
@@ -31171,6 +31185,7 @@ export namespace Prisma {
     claimSessionId?: SortOrderInput | SortOrder
     claimedAt?: SortOrderInput | SortOrder
     nodeBusy?: SortOrderInput | SortOrder
+    nodeHold?: SortOrderInput | SortOrder
     team?: TeamOrderByWithRelationInput
   }
 
@@ -31237,6 +31252,7 @@ export namespace Prisma {
     claimSessionId?: StringNullableFilter<"Device"> | string | null
     claimedAt?: FloatNullableFilter<"Device"> | number | null
     nodeBusy?: BoolNullableFilter<"Device"> | boolean | null
+    nodeHold?: StringNullableFilter<"Device"> | string | null
     team?: XOR<TeamNullableRelationFilter, TeamWhereInput> | null
   }, "udid_host">
 
@@ -31299,6 +31315,7 @@ export namespace Prisma {
     claimSessionId?: SortOrderInput | SortOrder
     claimedAt?: SortOrderInput | SortOrder
     nodeBusy?: SortOrderInput | SortOrder
+    nodeHold?: SortOrderInput | SortOrder
     _count?: DeviceCountOrderByAggregateInput
     _avg?: DeviceAvgOrderByAggregateInput
     _max?: DeviceMaxOrderByAggregateInput
@@ -31368,6 +31385,7 @@ export namespace Prisma {
     claimSessionId?: StringNullableWithAggregatesFilter<"Device"> | string | null
     claimedAt?: FloatNullableWithAggregatesFilter<"Device"> | number | null
     nodeBusy?: BoolNullableWithAggregatesFilter<"Device"> | boolean | null
+    nodeHold?: StringNullableWithAggregatesFilter<"Device"> | string | null
   }
 
   export type PendingSessionWhereInput = {
@@ -33521,6 +33539,7 @@ export namespace Prisma {
     claimSessionId?: string | null
     claimedAt?: number | null
     nodeBusy?: boolean | null
+    nodeHold?: string | null
     team?: TeamCreateNestedOneWithoutDevicesInput
   }
 
@@ -33583,6 +33602,7 @@ export namespace Prisma {
     claimSessionId?: string | null
     claimedAt?: number | null
     nodeBusy?: boolean | null
+    nodeHold?: string | null
   }
 
   export type DeviceUpdateInput = {
@@ -33643,6 +33663,7 @@ export namespace Prisma {
     claimSessionId?: NullableStringFieldUpdateOperationsInput | string | null
     claimedAt?: NullableFloatFieldUpdateOperationsInput | number | null
     nodeBusy?: NullableBoolFieldUpdateOperationsInput | boolean | null
+    nodeHold?: NullableStringFieldUpdateOperationsInput | string | null
     team?: TeamUpdateOneWithoutDevicesNestedInput
   }
 
@@ -33705,6 +33726,7 @@ export namespace Prisma {
     claimSessionId?: NullableStringFieldUpdateOperationsInput | string | null
     claimedAt?: NullableFloatFieldUpdateOperationsInput | number | null
     nodeBusy?: NullableBoolFieldUpdateOperationsInput | boolean | null
+    nodeHold?: NullableStringFieldUpdateOperationsInput | string | null
   }
 
   export type DeviceCreateManyInput = {
@@ -33766,6 +33788,7 @@ export namespace Prisma {
     claimSessionId?: string | null
     claimedAt?: number | null
     nodeBusy?: boolean | null
+    nodeHold?: string | null
   }
 
   export type DeviceUpdateManyMutationInput = {
@@ -33826,6 +33849,7 @@ export namespace Prisma {
     claimSessionId?: NullableStringFieldUpdateOperationsInput | string | null
     claimedAt?: NullableFloatFieldUpdateOperationsInput | number | null
     nodeBusy?: NullableBoolFieldUpdateOperationsInput | boolean | null
+    nodeHold?: NullableStringFieldUpdateOperationsInput | string | null
   }
 
   export type DeviceUncheckedUpdateManyInput = {
@@ -33887,6 +33911,7 @@ export namespace Prisma {
     claimSessionId?: NullableStringFieldUpdateOperationsInput | string | null
     claimedAt?: NullableFloatFieldUpdateOperationsInput | number | null
     nodeBusy?: NullableBoolFieldUpdateOperationsInput | boolean | null
+    nodeHold?: NullableStringFieldUpdateOperationsInput | string | null
   }
 
   export type PendingSessionCreateInput = {
@@ -36064,6 +36089,7 @@ export namespace Prisma {
     claimSessionId?: SortOrder
     claimedAt?: SortOrder
     nodeBusy?: SortOrder
+    nodeHold?: SortOrder
   }
 
   export type DeviceAvgOrderByAggregateInput = {
@@ -36144,6 +36170,7 @@ export namespace Prisma {
     claimSessionId?: SortOrder
     claimedAt?: SortOrder
     nodeBusy?: SortOrder
+    nodeHold?: SortOrder
   }
 
   export type DeviceMinOrderByAggregateInput = {
@@ -36205,6 +36232,7 @@ export namespace Prisma {
     claimSessionId?: SortOrder
     claimedAt?: SortOrder
     nodeBusy?: SortOrder
+    nodeHold?: SortOrder
   }
 
   export type DeviceSumOrderByAggregateInput = {
@@ -39487,6 +39515,7 @@ export namespace Prisma {
     claimSessionId?: string | null
     claimedAt?: number | null
     nodeBusy?: boolean | null
+    nodeHold?: string | null
   }
 
   export type DeviceUncheckedCreateWithoutTeamInput = {
@@ -39547,6 +39576,7 @@ export namespace Prisma {
     claimSessionId?: string | null
     claimedAt?: number | null
     nodeBusy?: boolean | null
+    nodeHold?: string | null
   }
 
   export type DeviceCreateOrConnectWithoutTeamInput = {
@@ -39731,6 +39761,7 @@ export namespace Prisma {
     claimSessionId?: StringNullableFilter<"Device"> | string | null
     claimedAt?: FloatNullableFilter<"Device"> | number | null
     nodeBusy?: BoolNullableFilter<"Device"> | boolean | null
+    nodeHold?: StringNullableFilter<"Device"> | string | null
   }
 
   export type ApiKeyUpsertWithWhereUniqueWithoutTeamInput = {
@@ -41243,6 +41274,7 @@ export namespace Prisma {
     claimSessionId?: string | null
     claimedAt?: number | null
     nodeBusy?: boolean | null
+    nodeHold?: string | null
   }
 
   export type ApiKeyCreateManyTeamInput = {
@@ -41337,6 +41369,7 @@ export namespace Prisma {
     claimSessionId?: NullableStringFieldUpdateOperationsInput | string | null
     claimedAt?: NullableFloatFieldUpdateOperationsInput | number | null
     nodeBusy?: NullableBoolFieldUpdateOperationsInput | boolean | null
+    nodeHold?: NullableStringFieldUpdateOperationsInput | string | null
   }
 
   export type DeviceUncheckedUpdateWithoutTeamInput = {
@@ -41397,6 +41430,7 @@ export namespace Prisma {
     claimSessionId?: NullableStringFieldUpdateOperationsInput | string | null
     claimedAt?: NullableFloatFieldUpdateOperationsInput | number | null
     nodeBusy?: NullableBoolFieldUpdateOperationsInput | boolean | null
+    nodeHold?: NullableStringFieldUpdateOperationsInput | string | null
   }
 
   export type DeviceUncheckedUpdateManyWithoutTeamInput = {
@@ -41457,6 +41491,7 @@ export namespace Prisma {
     claimSessionId?: NullableStringFieldUpdateOperationsInput | string | null
     claimedAt?: NullableFloatFieldUpdateOperationsInput | number | null
     nodeBusy?: NullableBoolFieldUpdateOperationsInput | boolean | null
+    nodeHold?: NullableStringFieldUpdateOperationsInput | string | null
   }
 
   export type ApiKeyUpdateWithoutTeamInput = {
