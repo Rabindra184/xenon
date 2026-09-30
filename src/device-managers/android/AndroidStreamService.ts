@@ -50,6 +50,8 @@ class AndroidStreamService {
   }
 
   private startWatchdog() {
+    // unref()ed below: the server's listener keeps the process alive; this only
+    // needs to fire while it runs.
     setInterval(async () => {
       const now = Date.now();
       for (const [udid, session] of this.sessions.entries()) {
@@ -62,7 +64,7 @@ class AndroidStreamService {
       }
       // Every minute, not every hour: an hourly check left an abandoned
       // preview hold in place for up to 70 minutes. The loop is in memory.
-    }, 60_000);
+    }, 60_000).unref();
   }
 
   /**

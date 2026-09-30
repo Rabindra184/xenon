@@ -47,6 +47,8 @@ class AndroidH264StreamService {
   }
 
   private startWatchdog() {
+    // unref()ed below: the server's listener keeps the process alive; this only
+    // needs to fire while it runs.
     setInterval(() => {
       const now = Date.now();
       for (const [udid, s] of this.sessions.entries()) {
@@ -64,7 +66,7 @@ class AndroidH264StreamService {
           void this.stop(udid).then(() => releaseIdlePreviewHold(udid));
         }
       }
-    }, 60_000);
+    }, 60_000).unref();
   }
 
   getMultiplexer(udid: string): H264Multiplexer | undefined {
@@ -104,7 +106,12 @@ class AndroidH264StreamService {
         session.capture = await this.openCapture(udid, onPacket, source);
         // Give the first keyframe/config a moment so callers get a ready stream,
         // but never block start-up indefinitely.
-        await Promise.race([firstConfig, new Promise((r) => setTimeout(r, 3000))]);
+        let cap: NodeJS.Timeout | undefined;
+        try {
+          await Promise.race([firstConfig, new Promise((r) => (cap = setTimeout(r, 3000)))]);
+        } finally {
+          clearTimeout(cap);
+        }
         return mux;
       } catch (e) {
         // Don't leave a zombie 'running' session with no capture — later

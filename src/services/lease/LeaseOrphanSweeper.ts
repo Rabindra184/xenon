@@ -17,9 +17,11 @@ interface SweptLease {
  * heartbeating held the phone for up to 3 x heartbeatSeconds past the end.
  */
 export function leaseReapReason(lease: SweptLease, now: number): string | null {
+  // The end time first: past it, heartbeats are refused, so a lease that
+  // expired has missed its heartbeats too by the next sweep.
+  if (lease.expiresAt < now) return `expired at ${new Date(lease.expiresAt).toISOString()}`;
   const thresholdMs = (lease.heartbeatSeconds ?? 30) * 1000 * 3;
   if (lease.lastHeartbeatAt + thresholdMs < now) return 'missed heartbeats';
-  if (lease.expiresAt < now) return `expired at ${new Date(lease.expiresAt).toISOString()}`;
   return null;
 }
 
