@@ -45,6 +45,23 @@ interface ExtendedADB extends ADB {
 import { PluginContext } from '../PluginContext';
 import { Service } from 'typedi';
 
+/**
+ * Whether a server set to `androidDeviceType` serves this phone: real phones,
+ * emulators ('simulated'), or both, and with `bootedEmulators` only the
+ * emulators that are up. Discovery and a plugged phone (onDeviceAdded) both
+ * ask this, so a phone the server excludes is never added by either.
+ */
+export function includesAndroidDevice(
+  device: { deviceType?: string; state?: string },
+  androidDeviceType: DeviceTypeToInclude | undefined,
+  bootedEmulators?: boolean,
+): boolean {
+  if (androidDeviceType === 'real') return device.deviceType === 'real';
+  if (androidDeviceType === 'simulated' && device.deviceType !== 'emulator') return false;
+  if (bootedEmulators && device.deviceType === 'emulator') return device.state === 'device';
+  return true;
+}
+
 @Service()
 export default class AndroidDeviceManager implements IDeviceManager {
   private log = log.scope('AndroidManager');
@@ -100,31 +117,13 @@ export default class AndroidDeviceManager implements IDeviceManager {
         log.info(`Found ${devices.length} android devices`);
       }
 
-      if (deviceTypes.androidDeviceType === 'real') {
-        return devices.filter((device) => {
-          console.log(`Filtering device ${device.udid}, type: ${device.deviceType}, expected real`);
-          return device.deviceType === 'real';
-        });
-      } else if (deviceTypes.androidDeviceType === 'simulated') {
-        const simulated = devices.filter((device) => {
-          return device.deviceType === 'emulator';
-        });
-        if (this.pluginArgs.bootedEmulators) {
-          return simulated.filter((device) => device.state === 'device');
-        }
-        return simulated;
-        // return both real and simulated (emulated) devices
-      } else {
-        if (this.pluginArgs.bootedEmulators) {
-          return devices.filter((device) => {
-            if (device.deviceType === 'emulator') {
-              return device.state === 'device';
-            }
-            return true;
-          });
-        }
-        return devices;
-      }
+      return devices.filter((device) =>
+        includesAndroidDevice(
+          device,
+          deviceTypes.androidDeviceType,
+          this.pluginArgs.bootedEmulators,
+        ),
+      );
     } catch (e: unknown) {
       log.error(
         `Error while getting android devices. Error: ${e instanceof Error ? e.message : e}`,
@@ -509,6 +508,28 @@ export default class AndroidDeviceManager implements IDeviceManager {
       }
 
       this.cancelAbort(newDevice.udid);
+
+      // Discovery's rule, before anything is leased or written: a phone of a
+      // kind this server doesn't serve was listed (and could be allocated)
+      // until the next sync pruned it. A phone that can't say goes on to
+      // deviceInfo, which needs the same property and skips it.
+      const realDevice = await this.isRealDevice(originalADB, newDevice.udid).catch(
+        () => undefined,
+      );
+      if (
+        realDevice !== undefined &&
+        !includesAndroidDevice(
+          { deviceType: realDevice ? 'real' : 'emulator', state: newDevice.state },
+          this.pluginArgs.androidDeviceType,
+          this.pluginArgs.bootedEmulators,
+        )
+      ) {
+        log.info(
+          `Device ${newDevice.udid} is ${realDevice ? 'a real phone' : 'an emulator'}, and androidDeviceType is ${this.pluginArgs.androidDeviceType}. Ignoring`,
+        );
+        return;
+      }
+
       const trackedDevice = await this.deviceInfo(
         newDevice,
         originalADB,

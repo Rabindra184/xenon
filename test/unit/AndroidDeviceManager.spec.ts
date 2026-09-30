@@ -1,6 +1,8 @@
 import 'reflect-metadata';
 import sinon from 'sinon';
-import AndroidDeviceManager from '../../src/device-managers/AndroidDeviceManager';
+import AndroidDeviceManager, {
+  includesAndroidDevice,
+} from '../../src/device-managers/AndroidDeviceManager';
 import { DeviceWithPath } from '@devicefarmer/adbkit';
 import Adb from '@devicefarmer/adbkit';
 import { ADB as AppiumADB } from 'appium-adb';
@@ -192,6 +194,34 @@ describe('Android Device Manager', () => {
     expect(devices[0]).to.have.property('udid', 'emulator-7777');
   });
 
+  // A phone adb reports as plugged (and every phone connected when the server
+  // starts) went through onDeviceAdded with no androidDeviceType check: a
+  // hub set to emulators only listed a real phone until its next sync pruned
+  // it, and could hand it to a session meanwhile.
+  describe('a plugged phone', () => {
+    const plug = async (androidDeviceType: 'real' | 'simulated' | 'both', real: boolean) => {
+      const manager = createTestAndroidManager({ platform: 'android', androidDeviceType });
+      sandbox.stub(manager, 'waitBootComplete').resolves(true);
+      sandbox.stub(manager, 'isRealDevice' as any).resolves(real);
+      // Stands for the rest of the add: the port lease, the row, the hub.
+      const deviceInfo = sandbox.stub(manager, 'deviceInfo' as any).resolves(undefined);
+      await manager.onDeviceAdded(adb, { id: 'plugged-1', type: 'device' } as any);
+      return deviceInfo.called;
+    };
+
+    it('is ignored when the server doesn’t serve its kind', async () => {
+      expect(await plug('simulated', true), 'a real phone, emulators only').to.equal(false);
+      expect(await plug('real', false), 'an emulator, real phones only').to.equal(false);
+    });
+
+    it('is added when the server serves its kind', async () => {
+      expect(await plug('simulated', false)).to.equal(true);
+      expect(await plug('real', true)).to.equal(true);
+      expect(await plug('both', true)).to.equal(true);
+      expect(await plug('both', false)).to.equal(true);
+    });
+  });
+
   it('should handle device never completing boot', async () => {
     const androidDevices = createTestAndroidManager({ platform: 'android' });
     // @ts-expect-error - Accessing private member for testing
@@ -211,5 +241,31 @@ describe('Android Device Manager', () => {
         host: 'Local',
       } as any as DeviceWithPath);
     }).to.not.throw();
+  });
+});
+
+// The one rule discovery and a plugged phone both apply.
+describe('includesAndroidDevice', () => {
+  const real = { deviceType: 'real', state: 'device' };
+  const emulator = { deviceType: 'emulator', state: 'device' };
+  const offlineEmulator = { deviceType: 'emulator', state: 'offline' };
+
+  it('real: real phones only', () => {
+    expect(includesAndroidDevice(real, 'real')).to.equal(true);
+    expect(includesAndroidDevice(emulator, 'real')).to.equal(false);
+  });
+
+  it('simulated: emulators only, booted ones when bootedEmulators is on', () => {
+    expect(includesAndroidDevice(real, 'simulated')).to.equal(false);
+    expect(includesAndroidDevice(emulator, 'simulated')).to.equal(true);
+    expect(includesAndroidDevice(offlineEmulator, 'simulated')).to.equal(true);
+    expect(includesAndroidDevice(offlineEmulator, 'simulated', true)).to.equal(false);
+  });
+
+  it('both: everything, emulators booted when bootedEmulators is on', () => {
+    expect(includesAndroidDevice(real, 'both')).to.equal(true);
+    expect(includesAndroidDevice(emulator, 'both', true)).to.equal(true);
+    expect(includesAndroidDevice(offlineEmulator, 'both', true)).to.equal(false);
+    expect(includesAndroidDevice({ ...real, state: 'offline' }, 'both', true)).to.equal(true);
   });
 });
