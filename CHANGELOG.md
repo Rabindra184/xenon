@@ -6,6 +6,132 @@ This project follows [Semantic Versioning](https://semver.org/). Releases are
 published to npm automatically when `package.json`'s `version` changes on `main`
 (see `.github/workflows/npm-publish.yml`).
 
+## 2.1.0
+
+**Hubs and nodes work on Appium 3.** A session through a hub is created,
+driven and ended on its node, with auth enforced at the hub. Node sessions
+survive a hub restart, a hub's device control reaches its nodes' phones, and
+a node's reports no longer undo the hub's claim on a phone. Xenon's and
+Appium's WebSockets now both work on every supported Node version.
+
+Includes a database migration, applied automatically at startup. **Read
+"Changed — operator action may be needed" before upgrading.**
+
+### Changed — operator action may be needed
+
+- **Database migration: three columns on `Device`** (#375): `claimSessionId`,
+  `claimedAt` and `nodeBusy`. They let a hub keep its own claim on a node's
+  phone apart from the node's report. `runMigrations` applies it at startup.
+  If you run with `XENON_AUTO_MIGRATE=false`, apply
+  `20260929120000_device_claims` yourself before starting this version.
+- **Upgrade a hub and its nodes together if the nodes have auth on**
+  (#373, #377). The hub no longer forwards a client's credentials to a node.
+  It sends its own short-lived, signed token, which the node checks against
+  the hub's public keys. So a 2.1 node with auth on refuses a create from an
+  older hub, and an older node with auth on refuses a 2.1 hub's creates. A
+  node with auth off is unaffected.
+- **Create sessions on a node's phones through the hub** (#377). A node with
+  auth on now refuses a session that didn't come from its hub, with "Create
+  sessions through the hub", naming the hub. A node with auth off still
+  accepts one, for local development.
+- **Leases end at `expiresAt`** (#378). A client that kept heartbeating could
+  hold its phone up to 15 minutes past the lease's end; the sweeper now ends
+  the lease then. A session running on the lease keeps its phone until the
+  session itself ends.
+- **Keep passwords out of Appium's own request log** (#366). Appium logs the
+  `[HTTP] -->` body of every request before any plugin runs, the dashboard's
+  sign-in (`POST /xenon/api/auth/login`) included. Add this rule next to
+  2.0.0's token rule, in the same list. With `--log-filters <file>`:
+
+  ```json
+  [{"pattern": "([Pp]assword\\\\?[\"']?\\s*:\\s*(\\\\?)([\"'`]))(?:\\2\\\\(?:\\2[\\s\\S]|[^\\\\])|(?!\\3)[^\\\\\\x00-\\x1f])*", "flags": "g", "replacer": "$1**REDACTED**"}]
+  ```
+
+  With an Appium config file (`--config`, which is how Xenon Control starts
+  Appium):
+
+  ```yaml
+  server:
+    log-filters:
+      - pattern: '([Pp]assword\\?["'']?\s*:\s*(\\?)(["''`]))(?:\2\\(?:\2[\s\S]|[^\\])|(?!\3)[^\\\x00-\x1f])*'
+        flags: g
+        replacer: '$1**REDACTED**'
+  ```
+- **With `XENON_REQUIRE_COMMAND_AUTH` on, the session listing and session
+  WebSockets are checked too** (#367). `GET /wd/hub/appium/sessions` lists
+  only the caller's own sessions (an admin sees all). BiDi and drivers'
+  `/ws/session/<id>/...` sockets need the owner's or an admin's credentials.
+  Enable it on the hub; a node accepts the hub's token in its place.
+
+### Added
+
+- **A session gateway in front of Appium's routes** (#371, #373). On a hub,
+  a session on a node's phone is created on the node and answered by the
+  hub, and its commands and its end go to the node. Before, Appium 3 answered
+  the create with a 500 while the node kept the session, and no later command
+  reached the node. Every hub call to a node carries a short-lived token the
+  hub signs, for that one session, create or device-control call.
+- **Node sessions survive a hub restart** (#374, #377): a SIGTERM restart,
+  an outage longer than 90 seconds, and a hub with the dashboard off.
+- **The hub's device control reaches its nodes' phones with auth on** (#377):
+  tap, swipe, text, key events and long press.
+- **Hub and node health checks work with auth on** (#372). Each side used to
+  call the other dead, so the hub dropped the node's phones and the node
+  never registered.
+
+### Security
+
+- **Xenon's internal loopback calls need a per-process secret** (#371).
+  The `/wd-internal` path alone used to mark a call as Xenon's own, which would
+  have been a way around per-command auth.
+- **A client's credentials never leave the hub** (#373). They used to be
+  forwarded to the node.
+- **An API key's access key is redacted** in stored capabilities and logs, and
+  the token log rule covers every token field (#366).
+
+### Fixed
+
+- **An iPhone's live preview or recording could show another phone's
+  screen** (#368). After a failed start and a retry, the iPhone's stream and
+  an Android stream could end up on the same local port.
+- **WebSockets depended on the Node version** (#369). On Node 22.21 and later,
+  Appium closed Xenon's live-preview, logcat and dashboard sockets, so preview
+  fell back to MJPEG and live events to polling. Before 22.21, BiDi and
+  drivers' log sockets got no answer. A WebSocket URL with a malformed `%`
+  escape could also crash the server.
+- **A node's report could undo the hub's claim on its phone** (#375), letting
+  a second session take a phone that was in use. It also reset the team, tags,
+  reservation and block the hub had set for the phone.
+- **A node's shutdown could remove the hub's own phones** (#377), and the hub
+  ran its health checks against its nodes' phones.
+- **A create through a hub could run twice** on a slow node, and the hub's
+  health check kept abandoned node sessions alive (#377).
+- **A refused session create answered "Error: {}"** instead of Appium's
+  reason (#373).
+- **A live preview could kill a running test session's WebDriverAgent or
+  tunnel on the iPhone** (#378): when it started, restarted or was stopped
+  while a session was using the phone.
+- **Ending a lease freed a phone a session was still using** (#378).
+- **A lab reached as `localhost` forwarded taps on its own phones to itself,
+  and refused them with auth on** (#377).
+- **A hub on the same machine as a node dropped the node's phones** (#365).
+- **`extend` ignored a lease's `expiresAt`, and `xe:options.team` wasn't
+  read** (#366).
+- **An offline device's team name and team picker were hard to read** (#364).
+- **The test suite no longer depends on file order, other suites running at
+  the same time, or the developer's local database** (#370, #376, #379).
+
+### Known issues
+
+- **Most device-control actions on a node's phone still run on the hub's own
+  machine:** screenshot, clipboard, app install, shell, live preview and
+  logs. Tap, swipe, text, key events and long press reach the node.
+- **BiDi and session WebSockets aren't routed through a hub.** A session's
+  `webSocketUrl` points at the node, so nodes must not sit on untrusted
+  networks.
+- **Only one iOS 17+ iPhone per Mac can stream at a time**, because every
+  go-ios tunnel binds the same port.
+
 ## 2.0.0
 
 Major release. **Xenon's session capabilities move to `xe:options`, and
