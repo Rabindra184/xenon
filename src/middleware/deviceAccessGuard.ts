@@ -16,6 +16,7 @@ import {
   ownershipUnavailableBody,
 } from '../services/device-access/deviceAccessPolicy';
 import { resolveActor } from '../services/device-access/actor';
+import { heldHere, type HoldRow } from '../data-service/deviceClaims';
 
 const STATE_CHANGING = new Set(['POST', 'PUT', 'DELETE', 'PATCH']);
 
@@ -55,9 +56,7 @@ export const UNGUARDED_CONTROL_MUTATIONS: readonly string[] = [
 export const OWNERSHIP_CHECKED_READS: readonly string[] = ['clipboard', 'logs'];
 
 export interface DeviceAccessGuardDeps {
-  findDevice?: (
-    udid: string,
-  ) => Promise<{ busy?: boolean; session_id?: string | null } | null | undefined>;
+  findDevice?: (udid: string) => Promise<HoldRow | null | undefined>;
   resolveSessionOwner?: (sessionId: string) => Promise<string | null>;
   describeHolder?: (holderId: string) => Promise<string | null>;
 }
@@ -139,7 +138,9 @@ export function deviceAccessGuard(deps: DeviceAccessGuardDeps = {}) {
 
     const decision = evaluateDeviceAccess({
       udid,
-      busy: !!device.busy,
+      // Not device.busy: a node's phone busy only by its node's report is
+      // the node's to judge (heldHere).
+      busy: heldHere(device),
       sessionId: device.session_id,
       sessionOwnerUserId,
       actorUserId: actor.userId,

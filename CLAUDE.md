@@ -326,7 +326,9 @@ The node runs the live preview by its own rules, with the hub's user from
 the control token. It takes the preview hold on its own row, refuses a
 second user, counts viewers (one hub connection per viewer, so its counts
 stay true) and releases the phone when nobody watches. The hub keeps none of
-that. Two things are the hub's own:
+that, and its ownership guard leaves a phone busy only by the node's report
+to the node (`heldHere`, see "Device access guard"). Two things are the
+hub's own:
 
 - **Busy at once.** After the node answers a forwarded stream/start with a
   2xx, the hub sets `nodeBusy` and `busy` on its row (`markNodeBusy`, both
@@ -698,6 +700,13 @@ interactive, so "watch the test I started" works.
   foreign → deny; otherwise compare the Appium session's owner
   (`Session.api_key_id → ApiKey.userId`, memoized positive-only by
   `SessionOwnerResolver`). An unattributable session **denies** — fail closed.
+  "Busy" there is `heldHere` (`deviceClaims.ts`), not the `busy` column, in
+  this guard and the logcat socket's authorizer alike. A hub's row for a
+  node's phone that is busy only by the node's report (`nodeBusy`, no claim,
+  nothing in `session_id`) has no holder on record here, and failing closed
+  on it refused every non-admin, the node preview's own holder included.
+  That phone is the node's to judge: its guard knows the holder and runs on
+  every call the hub forwards.
 - Denials are `409` with `device_held_by_another_user` /
   `device_in_use_by_session`, a message naming the holder, and a `warn` log. If
   ownership cannot be determined at all (store or resolver throws) it is `503
