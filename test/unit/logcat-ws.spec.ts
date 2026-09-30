@@ -487,6 +487,18 @@ describe('makeTicketActorAuthorizer', () => {
     return { fn, calls };
   };
 
+  it('leaves a node’s phone busy only by its node’s report to the node', async () => {
+    // The hub relays this socket from the node, whose own check knows the
+    // holder (deviceAccessGuard's spec says why).
+    const { fn } = authorizer({ busy: true, nodeBusy: true, session_id: null } as any, ALICE);
+    expect(await fn(UDID, { actorId: BOB })).to.equal(true);
+    const routed = authorizer(
+      { busy: true, nodeBusy: true, session_id: 'appium-1', claimSessionId: 'appium-1' } as any,
+      ALICE,
+    );
+    expect(await routed.fn(UDID, { actorId: BOB })).to.equal(false);
+  });
+
   it('denies a device the store cannot resolve', async () => {
     // Fail-closed, and deliberately unlike deviceAccessGuard's fall-through:
     // there is no 404 behind this call, and getAdbForDevice happily runs

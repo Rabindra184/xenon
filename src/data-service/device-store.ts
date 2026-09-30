@@ -300,6 +300,15 @@ class LokiDeviceStore implements IDeviceStore {
     return true;
   }
 
+  async markNodeBusy(udid: string, host: string): Promise<void> {
+    const model = await XenonDatabase.DeviceModel;
+    const device: IDevice | null = model.findOne({ udid, host });
+    if (!device) return;
+    device.nodeBusy = true;
+    device.busy = true;
+    model.update(device);
+  }
+
   async resetMetrics(): Promise<void> {
     (await XenonDatabase.DeviceModel)
       .chain()

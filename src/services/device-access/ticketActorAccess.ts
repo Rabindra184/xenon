@@ -1,12 +1,10 @@
 import { isManualLock } from '../recording/manualLock';
 import { evaluateDeviceAccess } from './deviceAccessPolicy';
 import type { StreamTicketActor } from '../token/StreamTicketService';
+import { heldHere, type HoldRow } from '../../data-service/deviceClaims';
 
-/** The two device-row fields an ownership decision reads. */
-export interface DeviceOwnershipRow {
-  busy?: boolean;
-  session_id?: string | null;
-}
+/** The device-row fields an ownership decision reads. */
+export type DeviceOwnershipRow = HoldRow;
 
 export interface DeviceOwnershipLookups {
   /** Resolve the device row, or null/undefined when the store doesn't know it. */
@@ -61,7 +59,8 @@ export function makeTicketActorAuthorizer(deps: DeviceOwnershipLookups) {
 
     return evaluateDeviceAccess({
       udid,
-      busy: !!device.busy,
+      // heldHere, as deviceAccessGuard reads it.
+      busy: heldHere(device),
       sessionId: device.session_id,
       sessionOwnerUserId,
       // The ticket's actorId is a User id — see StreamTicketService.

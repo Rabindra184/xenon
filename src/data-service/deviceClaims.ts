@@ -109,6 +109,31 @@ export function isUnheld(device: IDevice): boolean {
   return hasNoClaim(device) && device.session_id == null && device.nodeBusy !== true;
 }
 
+/** The row fields heldHere reads. */
+export interface HoldRow {
+  busy?: boolean;
+  nodeBusy?: boolean | null;
+  session_id?: string | null;
+  claimedAt?: number | null;
+  claimSessionId?: string | null;
+}
+
+/**
+ * Busy for a reason this server has on record: its claim, a session or hold
+ * in `session_id`, or plain `busy` on a phone of its own. False for a node's
+ * phone busy only by the node's report (`nodeBusy`), a preview the node
+ * holds say: this server knows no holder for it, and the node, which does,
+ * judges every call forwarded there with its own guard. An ownership check
+ * reads this, not `busy`, or it fails closed on every such phone, refusing
+ * the preview's own holder. A server with no nodes never has nodeBusy, so
+ * for it this is `busy`.
+ */
+export function heldHere(device: HoldRow): boolean {
+  if (!device.busy) return false;
+  if (device.nodeBusy !== true) return true;
+  return device.session_id != null || device.claimedAt != null || device.claimSessionId != null;
+}
+
 /** What ending a claim resets: the claim, and the session's bookkeeping. */
 export const CLAIM_RESET = {
   ...NO_CLAIM,

@@ -413,6 +413,13 @@ export class PrismaDeviceStore implements IDeviceStore {
     return cleared.count > 0;
   }
 
+  async markNodeBusy(udid: string, host: string): Promise<void> {
+    await this.prisma.device.updateMany({
+      where: { udid, host },
+      data: { nodeBusy: true, busy: true },
+    });
+  }
+
   async resetMetrics(): Promise<void> {
     await this.prisma.device.updateMany({
       data: {

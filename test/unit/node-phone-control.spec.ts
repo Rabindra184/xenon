@@ -75,6 +75,67 @@ describe('nodePhoneControl', () => {
     await request(app()).post('/xenon/api/control/p/tap').send({}).expect(299);
   });
 
+  it('a stream outlives the timeout once the node has answered', async () => {
+    const node = express();
+    node.get('/xenon/api/control/p/stream', (_req, res) => {
+      // Text, so the test's client doesn't try to parse it; an MJPEG
+      // answer is relayed the same way.
+      res.writeHead(200, { 'content-type': 'text/plain' });
+      res.write('frame one;');
+      setTimeout(() => res.end('frame two;'), 400);
+    });
+    const origin = `http://127.0.0.1:${((await loopback.serve(node)).address() as any).port}`;
+    findDevice = async () => ({ udid: 'p', host: origin, nodeId: 'node-1' });
+
+    const res = await request(app(150)).get('/xenon/api/control/p/stream');
+
+    expect(res.status).to.equal(200);
+    expect(res.text).to.equal('frame one;frame two;');
+  });
+
+  it('sends the node none of the caller’s ticket, and the rest of the query', async () => {
+    const node = express();
+    const seen: string[] = [];
+    node.use((req, res) => {
+      seen.push(req.originalUrl);
+      res.json({ status: 'stopped' });
+    });
+    const origin = `http://127.0.0.1:${((await loopback.serve(node)).address() as any).port}`;
+    findDevice = async () => ({ udid: 'p', host: origin, nodeId: 'node-1' });
+
+    await request(app()).get('/xenon/api/control/p/stream/status?ticket=spent&t=1&r=2').expect(200);
+
+    expect(seen).to.deep.equal(['/xenon/api/control/p/stream/status?t=1&r=2']);
+  });
+
+  it('marks the phone busy for its node once the node has started a preview, and only then', async () => {
+    let answer = 200;
+    const node = express();
+    node.use((_req, res) => res.status(answer).json({}));
+    const origin = `http://127.0.0.1:${((await loopback.serve(node)).address() as any).port}`;
+    findDevice = async () => ({ udid: 'p', host: origin, nodeId: 'node-1' });
+    const marked: string[] = [];
+    const a = express();
+    a.use(express.json());
+    a.use(
+      '/xenon/api/control',
+      nodePhoneControl({
+        findDevice: (udid) => findDevice(udid),
+        markNodeBusy: async (udid, host) => {
+          marked.push(`${udid}@${host}`);
+        },
+      }),
+    );
+
+    await request(a).post('/xenon/api/control/p/stream/start').send({}).expect(200);
+    answer = 409;
+    await request(a).post('/xenon/api/control/p/stream/start').send({}).expect(409);
+    answer = 200;
+    await request(a).get('/xenon/api/control/p/stream/status').expect(200);
+
+    expect(marked).to.deep.equal([`p@${origin}`]);
+  });
+
   it('refuses a host it must never call', async () => {
     findDevice = async () => ({ udid: 'p', host: 'http://169.254.169.254', nodeId: 'node-1' });
     const res = await request(app()).get('/xenon/api/control/p/screenshot');

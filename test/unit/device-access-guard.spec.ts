@@ -315,3 +315,53 @@ describe('deviceAccessGuard', () => {
     expect(res.body.reached).to.equal(true);
   });
 });
+
+/**
+ * On a hub, a node's phone is busy when its node reports it busy (nodeBusy):
+ * a preview the node holds, say. The hub has no holder on record for that:
+ * no session and no hold of its own. Failing closed on "busy, owner unknown"
+ * refused every non-admin, the preview's own holder included, so the hub
+ * leaves that decision to the node, whose own guard knows the holder and
+ * judges every call the hub forwards. What the hub holds itself (a claim, a
+ * session, a hold) it still judges.
+ */
+describe('deviceAccessGuard on a node’s phone', () => {
+  const nodePhone = (row: Record<string, unknown>) =>
+    appWith({ actorUserId: BOB, findDeviceImpl: async () => row as any, sessionOwner: ALICE });
+
+  it('leaves a phone busy only by its node’s report to the node', async () => {
+    const app = nodePhone({ busy: true, nodeBusy: true, session_id: null });
+    const tap = await request(app).post(`/control/${UDID}/tap`);
+    expect(tap.status).to.equal(200);
+    expect(tap.body.reached).to.equal(true);
+    const logs = await request(app).get(`/control/${UDID}/logs`);
+    expect(logs.status).to.equal(200);
+  });
+
+  it('still judges a session this server routed to the node', async () => {
+    const tap = await request(
+      nodePhone({
+        busy: true,
+        nodeBusy: true,
+        session_id: 'appium-1',
+        claimSessionId: 'appium-1',
+      }),
+    ).post(`/control/${UDID}/tap`);
+    expect(tap.status).to.equal(409);
+    expect(tap.body.error).to.equal('device_in_use_by_session');
+  });
+
+  it('still refuses while this server’s own create for the phone is pending', async () => {
+    const tap = await request(
+      nodePhone({ busy: true, nodeBusy: true, session_id: null, claimedAt: 1790000000000 }),
+    ).post(`/control/${UDID}/tap`);
+    expect(tap.status).to.equal(409);
+  });
+
+  it('still refuses this server’s own phone busy with no holder on record', async () => {
+    const tap = await request(nodePhone({ busy: true, session_id: null })).post(
+      `/control/${UDID}/tap`,
+    );
+    expect(tap.status).to.equal(409);
+  });
+});

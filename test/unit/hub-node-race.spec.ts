@@ -433,6 +433,34 @@ describe('The hub/node busy race', function () {
     });
   });
 
+  describe('a preview the node has just started', () => {
+    it('is busy on the hub at once, and the node’s next report settles it', async () => {
+      await scratch.db.device.create({ data: nodePhone('s9') as any });
+
+      // The node answered a forwarded stream/start: it holds the phone now,
+      // though its last report said free.
+      await DeviceStoreFactory.getStore().markNodeBusy('s9', NODE);
+      expect(await row('s9')).to.include({ busy: true, nodeBusy: true, session_id: null });
+      let session: unknown;
+      try {
+        session = await allocateDeviceForSession(caps('s9'), 200, 50, pluginArgs);
+      } catch (err) {
+        session = err;
+      }
+      expect(session, 'not handed to a session').to.be.an('error');
+
+      // The preview ended, and the node says so.
+      await report(nodePhone('s9', { busy: false }));
+      expect(await row('s9')).to.include({ busy: false, nodeBusy: false });
+    });
+
+    it('touches no other server’s row for the same udid', async () => {
+      await scratch.db.device.create({ data: nodePhone('s9') as any });
+      await DeviceStoreFactory.getStore().markNodeBusy('s9', 'http://10.9.9.9:4725');
+      expect(await row('s9')).to.include({ busy: false, nodeBusy: false });
+    });
+  });
+
   describe('a standalone server', () => {
     it('allocates, runs and frees its own phone as before', async () => {
       await scratch.db.device.create({

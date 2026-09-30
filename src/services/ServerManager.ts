@@ -12,6 +12,7 @@ import {
 import log from '../logger';
 import { attachH264Ws } from '../app/ws/h264StreamWs';
 import { attachLogcatWs } from '../app/ws/logcatWs';
+import { openNodeSocket } from '../app/ws/nodeSocketRelay';
 import { upgradeRouterFor } from '../app/ws/upgradeRouter';
 import { StreamTicketService } from './token/StreamTicketService';
 import AndroidH264StreamService from '../device-managers/android/AndroidH264StreamService';
@@ -138,6 +139,8 @@ export class ServerManager {
         // streaming.androidH264 config itself, so this WS auto-start honours a
         // { source: 'screenrecord' } rollback just like the REST stream/start.
         startStream: (udid) => Container.get(AndroidH264StreamService).start(udid),
+        // A node's phone is streamed by its node and relayed from here.
+        nodeSocket: (udid, actor) => openNodeSocket({ udid, actor, path: 'stream/h264' }),
       });
 
       // Continuous logcat WebSocket (Android; replaces the 3s dump-poll).
@@ -183,6 +186,17 @@ export class ServerManager {
           // server-side level filter applies.
           return { mux: await Container.get(LogcatStreamService).start(udid) };
         },
+        // A node's phone: its node streams the log, with the same filter.
+        nodeSocket: (udid, actor, filter) =>
+          openNodeSocket({
+            udid,
+            actor,
+            path: 'logcat',
+            query: new URLSearchParams({
+              ...(filter.levels?.length ? { levels: filter.levels.join(',') } : {}),
+              ...(filter.process ? { process: filter.process } : {}),
+            }),
+          }),
       });
     }
 

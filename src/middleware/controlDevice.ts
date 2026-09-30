@@ -26,6 +26,10 @@ export interface ControlDevice {
   teamId?: string | null;
   busy?: boolean;
   session_id?: string | null;
+  /** Why it is busy on a hub (deviceClaims.ts heldHere). */
+  nodeBusy?: boolean | null;
+  claimedAt?: number | null;
+  claimSessionId?: string | null;
   /** Which server has the phone (nodePhoneControl). */
   udid?: string;
   host?: string | null;
