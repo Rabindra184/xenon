@@ -6,6 +6,82 @@ This project follows [Semantic Versioning](https://semver.org/). Releases are
 published to npm automatically when `package.json`'s `version` changes on `main`
 (see `.github/workflows/npm-publish.yml`).
 
+## 2.2.0
+
+**A hub's dashboard works on its nodes' phones.** Device control of a
+node's phone now runs on the node: screenshots, clipboard, installed apps,
+shell, logs, the inspector, and the live preview and live logs, relayed
+through the hub. What the hub can't pass on yet, it refuses with a message
+naming the node, instead of running it on the hub's own machine.
+
+No database migration. Only the hub needs this version: a 2.2 hub works with
+2.1 nodes, which need no change (checked on a phone with a 2.1.0 node).
+
+### Changed — operator action may be needed
+
+- **A node phone's live preview goes through the hub** (#383). Each viewer
+  is one connection from the hub to the node, so plan for the hub's
+  bandwidth: an MJPEG viewer is roughly 1–3 MB/s, H.264 much less. The node
+  still holds the phone for the preview, refuses a second user and releases
+  it when nobody watches, as it does for its own dashboard.
+- **Actions the hub doesn't pass on to a node are refused** (#382) with
+  `501 not_available_through_hub`, and the dashboard shows the reason:
+  uploading an app, installing from the app library, `install` by path, and
+  Omni-Vision. They used to run on the hub's own machine. That failed, or,
+  with hub and node on one machine, worked by accident on the hub's adb.
+- **A cloud provider's phone gets `501 not_available_for_cloud_phone`** for
+  device control (#382), and nothing is sent to the provider.
+
+### Added
+
+- **Device control of a node's phone runs on the node** (#382): tap, swipe,
+  text, key events, long press, screenshot, clipboard, lock and unlock,
+  screen state, installed apps, uninstall, logs, shell and the inspector
+  snapshot. The node's answer comes back unchanged. A node that can't be
+  reached is `502`, and one that doesn't start answering in 60 s is `504`.
+- **Live preview and live logs of a node's phone through the hub** (#383):
+  device control's preview (MJPEG), the Live Devices tiles (H.264) and the
+  Debug Logs tab. The viewer's ticket is the hub's, issued after its team
+  check. The hub relays the node's stream with the node's own close codes,
+  and a viewer that falls behind slows the node's stream rather than the
+  hub's memory.
+- **A node's phone shows as busy on the hub as soon as its preview starts**
+  (#383), not a report interval (30 s) later, so the hub doesn't hand it to
+  a session meanwhile.
+
+### Security
+
+- **Nothing is sent to a cloud provider for device control** (#382). The
+  five input actions used to be sent to the provider's host, typed text
+  included.
+
+### Fixed
+
+- **A server set to emulators only (or real phones only) listed a phone of
+  the other kind for about 30 s after it was plugged in** (#384), and every
+  such phone connected at startup, and could hand it to a session. A plugged
+  phone now follows `androidDeviceType` as discovery does.
+- **The lease sweeper logged an expired lease as "missed heartbeats"** (#381);
+  it now says when the lease expired.
+- **The unit test suite wrote to `~/.cache/xenon/xenon.db`** (#381), the
+  database a developer's own server uses; it now runs against a throwaway
+  one.
+
+### Known issues
+
+- **The hub doesn't show who holds a node phone's preview.** The picker
+  shows such a phone as busy even to its holder until the preview ends, and
+  Live Devices tiles for node phones aren't restored after a reload.
+- **Recording a node's phone from the hub doesn't work yet:** it runs on
+  the hub's own machine.
+- **Uploads, installing from the app library and Omni-Vision are refused
+  for a node's phone** (see above).
+- **BiDi and session WebSockets aren't routed through a hub.** A session's
+  `webSocketUrl` points at the node, so nodes must not sit on untrusted
+  networks.
+- **Only one iOS 17+ iPhone per Mac can stream at a time**, because every
+  go-ios tunnel binds the same port.
+
 ## 2.1.0
 
 **Hubs and nodes work on Appium 3.** A session through a hub is created,
