@@ -77,6 +77,13 @@ export interface IDeviceStore {
    * was cleared.
    */
   releaseLeaseLock(udid: string, host: string): Promise<boolean>;
+  /**
+   * On a hub: the phone's node has just taken it (it answered a forwarded
+   * stream/start), which its own report says only up to an interval later.
+   * Sets `nodeBusy`, and `busy` with it, as that report would; clears
+   * nothing. The node's next report replaces `nodeBusy` as usual.
+   */
+  markNodeBusy(udid: string, host: string): Promise<void>;
   /** Mark the phones of a session as just used, without reading them first. */
   touchSession(sessionId: string, at: number): Promise<void>;
   resetMetrics(): Promise<void>;

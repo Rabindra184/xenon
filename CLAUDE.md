@@ -302,22 +302,62 @@ any handler runs:
 
 - `NODE_FORWARDED_CONTROL` (tap, swipe, text, keyevent, touchAndHold,
   screenshot, clipboard read and write, lock, unlock, display, uninstall,
-  apps, logs, shell, inspector/snapshot) goes to the phone's node once, with
-  the control token and none of the caller's headers. The node's status,
-  headers and body are relayed unchanged. An unreachable node is `502
-  node_unreachable`, and one silent for 60 s is `504 node_timeout`.
-- `ANSWERED_HERE` (`appium-session`) runs here: the session is routed
-  through this server.
+  apps, logs, shell, inspector/snapshot, and the live preview's
+  stream/start, stream/status, stream/leave, stream/stop and `GET stream`)
+  goes to the phone's node once, with the control token and none of the
+  caller's headers, and without a `ticket` query parameter. The node's
+  status, headers and body are relayed unchanged. An unreachable node is
+  `502 node_unreachable`, and one that hasn't started answering in 60 s is
+  `504 node_timeout`. Once it has, the answer runs as long as it runs: the
+  MJPEG `GET stream` lasts as long as its viewer.
+- `ANSWERED_HERE` runs here. `appium-session`: the session is routed
+  through this server. `stream/ticket`: the viewer's ticket is this
+  server's, minted after its team check.
 - Everything else is `501 not_available_through_hub`, naming the node, and
-  the dashboard toasts that message. This covers the live views (stream/*,
-  which also mints the tickets the H.264 and logcat sockets need), the two
-  uploads, `install` (a path on one machine) and Omni (this server's AI
-  settings). A new `/control` action is refused for another server's phone
-  until it is added to a list.
+  the dashboard toasts that message: the two uploads, `install` (a path on
+  one machine) and Omni (this server's AI settings). A new `/control`
+  action is refused for another server's phone until it is added to a list.
 - A cloud provider's phone gets `501 not_available_for_cloud_phone` for
   all but `appium-session`, and nothing is sent to the provider. Before
   this, the five forwarded actions went to the provider's host, typed text
   included.
+
+The node runs the live preview by its own rules, with the hub's user from
+the control token. It takes the preview hold on its own row, refuses a
+second user, counts viewers (one hub connection per viewer, so its counts
+stay true) and releases the phone when nobody watches. The hub keeps none of
+that. Two things are the hub's own:
+
+- **Busy at once.** After the node answers a forwarded stream/start with a
+  2xx, the hub sets `nodeBusy` and `busy` on its row (`markNodeBusy`, both
+  stores). The node's report says the same only up to
+  `sendNodeDevicesToHubIntervalMs` later, and until then the hub could
+  allocate the phone to a session the node would refuse. The next report
+  replaces `nodeBusy` as usual.
+- **The sockets** (`src/app/ws/nodeSocketRelay.ts`). The H.264 and logcat
+  WebSockets redeem the hub's ticket, and logcat runs the hub's ownership
+  check. For another server's phone `openNodeSocket` then asks the node for
+  a ticket of its own (`POST stream/ticket` with the control token) and
+  opens the same socket there, logcat's `levels` and `process` included.
+  `relaySocket` passes messages both ways unchanged and the node's close
+  code and reason to the viewer; a dropped node connection is `1011`. The
+  node keeps its multiplexer, replay, drop markers and idle release.
+  - The node's socket is handed over paused and resumed once the relay
+    listens: the node sends H.264's config packet and logcat's replay the
+    moment it opens, and a message with no listener is lost. That made the
+    preview never decode.
+  - While 4 MB sent to the viewer are unwritten, reading from the node
+    pauses. The node then sees a slow viewer and applies its own rule
+    (dropped H.264 frames, logcat's visible "lines dropped" record). The
+    hub never drops or buffers without bound.
+  - A cloud phone or a node that refuses the ticket closes the viewer with
+    `1008`, which stops the logs pane with the reason. A node that can't be
+    reached is `1011`, and the players retry.
+
+Not yet for another server's phone: the hub doesn't show who holds a node
+phone's preview (the node's report carries no `session_id`), so mosaic
+tiles for node phones aren't restored after a reload. Recording a node's
+phone from the hub still runs on the hub's own tools.
 
 Through 2.1 only the five input actions were forwarded. The rest ran on the
 hub against a phone it doesn't have: they failed, or with hub and node on
@@ -1189,6 +1229,7 @@ npm run build:copy` (from the repo root) regenerates and copies it.
 | `src/gateway/sessionGateway.ts` | The session layer in front of Appium's routes: internal calls skip auth, per-command auth (or the hub token on a node), then a hub forwards remote sessions; remote DELETE runs the lifecycle |
 | `src/gateway/internalCall.ts` | `/wd-internal` + the per-process secret header; one `next()` call site so a refused call answers exactly like an unknown route |
 | `src/gateway/hubSessionToken.ts` | Hub-signed `x-xenon-hub-token` JWTs, verified by the node against the hub's JWKS: `xenon-node` per session for commands, `xenon-node-create` per create (owner, phone, node), `xenon-node-control` per forwarded `/control` call (user, admin, phone, node) |
+| `src/app/ws/nodeSocketRelay.ts` | The H.264 and logcat sockets for another server's phone: a node ticket, the node's socket opened paused, relayed both ways with its close codes and end-to-end backpressure |
 | `src/app/routers/nodePhoneControl.ts` | The gate in front of `/control`'s handlers for another server's phone: forward (`NODE_FORWARDED_CONTROL`), answer here (`ANSWERED_HERE`) or refuse with 501; a new action is refused until listed |
 | `src/gateway/sessionLocator.ts` | Where a session runs: `SESSION_MANAGER`, then the open Session row and its phone's row; never its own routing table |
 | `src/gateway/nodeSessionStatus.ts` | A node's `GET /xenon/api/node/sessions/:id` (hub token, no command, answered from the umbrella) and the hub's memory of which nodes lack it |

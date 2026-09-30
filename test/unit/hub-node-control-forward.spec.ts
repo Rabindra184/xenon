@@ -30,6 +30,9 @@ import { saveRegistrations } from '../helpers/container-registration';
 import { useScratchDatabase } from '../helpers/scratch-database';
 import { loopbackServers } from '../helpers/loopbackServer';
 import { InspectorService } from '../../src/services/InspectorService';
+import http from 'http';
+import AndroidStreamService from '../../src/device-managers/android/AndroidStreamService';
+import AndroidH264StreamService from '../../src/device-managers/android/AndroidH264StreamService';
 
 /**
  * A hub forwards five of its /control actions on a node's phone (tap, swipe,
@@ -104,7 +107,12 @@ describe('the hub’s device control on a node’s phone', () => {
   let nodeOrigin: string;
   let nodePort: number;
   let nodeArgs: any;
-  let nodeRequests: { method: string; path: string; headers: Record<string, unknown> }[];
+  let nodeRequests: {
+    method: string;
+    path: string;
+    url: string;
+    headers: Record<string, unknown>;
+  }[];
 
   beforeEach(async () => {
     dirs = [fs.mkdtempSync(path.join(os.tmpdir(), 'xenon-control-keys-'))];
@@ -178,7 +186,12 @@ describe('the hub’s device control on a node’s phone', () => {
     // The node: its CSRF check, its login and its /control, as ServerManager mounts them.
     const node = express();
     node.use((req, _res, next) => {
-      nodeRequests.push({ method: req.method, path: req.path, headers: { ...req.headers } });
+      nodeRequests.push({
+        method: req.method,
+        path: req.path,
+        url: req.originalUrl,
+        headers: { ...req.headers },
+      });
       next();
     });
     node.use((_req, _res, next) => {
@@ -385,17 +398,11 @@ describe('the hub’s device control on a node’s phone', () => {
       expect(nodeSaw('appium-session')).to.have.length(0);
     });
 
-    // Not passed on yet: live views and uploads need a relayed connection,
-    // an app from the hub's library isn't on the node, and a path is a path
-    // on one machine. Omni's AI settings are the hub's. Anything added
-    // later is refused the same way until it is on the list.
+    // Not passed on yet: uploads need a relayed body, an app from the hub's
+    // library isn't on the node, and a path is a path on one machine.
+    // Omni's AI settings are the hub's. Anything added later is refused the
+    // same way until it is on the list.
     const REFUSED: [method: 'get' | 'post', action: string, body?: Record<string, unknown>][] = [
-      ['post', 'stream/start'],
-      ['post', 'stream/ticket'],
-      ['post', 'stream/stop'],
-      ['post', 'stream/leave'],
-      ['get', 'stream/status'],
-      ['get', 'stream'],
       ['post', 'install', { appPath: '/tmp/app.apk' }],
       ['post', 'install-repository-app', { appId: 'app-1' }],
       ['post', 'upload-install'],
@@ -403,6 +410,109 @@ describe('the hub’s device control on a node’s phone', () => {
       ['post', 'test-locator', { strategy: '-custom:ai-text', selector: 'OK' }],
       ['post', 'an-action-added-later'],
     ];
+
+    describe('the live preview', () => {
+      // phone-2 is free: a preview holds it on the node.
+      const preview = (method: 'get' | 'post', action: string) => {
+        const req = request(hubApp)[method](`/xenon/api/control/phone-2/${action}`);
+        req.set('x-test-user', 'alice');
+        return method === 'post' ? req.send({}) : req;
+      };
+      const nodeSawPreview = (action: string) =>
+        nodeRequests.filter((r) => r.path === `/xenon/api/control/phone-2/${action}`);
+      let started: string[];
+      let stopped: string[];
+      let mjpegPort: number;
+
+      beforeEach(async () => {
+        started = [];
+        stopped = [];
+        // The camera the node's MJPEG fan-out reads: a frame every 50 ms.
+        const camera = express();
+        camera.get('/', (_req, res) => {
+          res.writeHead(200, { 'content-type': 'multipart/x-mixed-replace; boundary=f' });
+          const timer = setInterval(() => res.write('--f\r\nFAKE-JPEG-FRAME\r\n'), 50);
+          res.on('close', () => clearInterval(timer));
+        });
+        mjpegPort = ((await loopback.serve(camera)).address() as any).port;
+        const mjpeg = Container.get(AndroidStreamService);
+        const h264 = Container.get(AndroidH264StreamService);
+        const where = () => Container.get(PluginContext).nodeId;
+        sinon.stub(mjpeg, 'startStream').callsFake(async (udid: string) => {
+          started.push(`${where()}:${udid}`);
+          return { mjpegPort };
+        });
+        sinon.stub(mjpeg, 'stopStream').callsFake(async (udid: string) => {
+          stopped.push(`${where()}:${udid}`);
+        });
+        sinon.stub(mjpeg, 'getStreamStatus').returns(undefined as any);
+        sinon.stub(mjpeg, 'updateViewerCount');
+        sinon.stub(h264, 'stop').resolves();
+        sinon.stub(h264, 'getMultiplexer').returns(undefined);
+      });
+
+      it('starts on the node, which holds the phone, and the hub marks it busy for the node at once', async () => {
+        const res = await preview('post', 'stream/start');
+        expect(res.status, JSON.stringify(res.body)).to.equal(200);
+        expect(res.body).to.include({ success: true, type: 'mjpeg' });
+        expect(started).to.deep.equal(['node-1:phone-2']);
+        const row = await scratch.db.device.findFirst({ where: { udid: 'phone-2' } });
+        expect(row?.session_id).to.equal('manual_alice_phone-2');
+        expect(row?.nodeBusy).to.equal(true);
+        expect(row?.busy).to.equal(true);
+      });
+
+      it('status, leave and stop are the node’s answers', async () => {
+        await preview('post', 'stream/start').expect(200);
+        const status = await preview('get', 'stream/status');
+        expect(status.status).to.equal(200);
+        expect(status.body).to.include({ udid: 'phone-2', status: 'stopped' });
+        await preview('post', 'stream/leave').expect(202);
+        await preview('post', 'stream/stop').expect(200);
+        expect(stopped).to.deep.equal(['node-1:phone-2']);
+        for (const action of ['stream/status', 'stream/leave', 'stream/stop']) {
+          expect(nodeSawPreview(action), action).to.have.length(1);
+        }
+      });
+
+      it('mints the viewer’s ticket here, where the team check ran', async () => {
+        const res = await preview('post', 'stream/ticket');
+        expect(res.status).to.equal(200);
+        expect(res.body.ticket).to.be.a('string');
+        expect(nodeSawPreview('stream/ticket')).to.have.length(0);
+      });
+
+      it('relays the node’s MJPEG stream to the viewer, without the viewer’s ticket', async () => {
+        const hubPort = ((await loopback.serve(hubApp)).address() as any).port;
+        const got = await new Promise<{ type: string; body: string }>((resolve, reject) => {
+          const req = http.get(
+            {
+              host: '127.0.0.1',
+              port: hubPort,
+              path: '/xenon/api/control/phone-2/stream?ticket=spent&t=1',
+              headers: { 'x-test-user': 'alice' },
+            },
+            (res) => {
+              let body = '';
+              res.on('data', (chunk) => {
+                body += chunk.toString();
+                if (body.split('FAKE-JPEG-FRAME').length > 3) {
+                  req.destroy();
+                  resolve({ type: String(res.headers['content-type']), body });
+                }
+              });
+            },
+          );
+          req.on('error', (e: any) => (e.code === 'ECONNRESET' ? undefined : reject(e)));
+        });
+        expect(got.type).to.include('multipart/x-mixed-replace');
+        expect(started).to.deep.equal(['node-1:phone-2']);
+        expect(nodeSawPreview('stream').map((r) => r.url)).to.deep.equal([
+          '/xenon/api/control/phone-2/stream?t=1',
+        ]);
+        await preview('post', 'stream/stop').expect(200);
+      });
+    });
 
     it('refuses the rest, naming the node, and runs none of it on the hub', async () => {
       for (const [method, action, body] of REFUSED) {

@@ -3,6 +3,7 @@ import type { Duplex } from 'stream';
 import { WebSocketServer, WebSocket } from 'ws';
 import log from '../../logger';
 import { upgradeRouterFor } from './upgradeRouter';
+import { NodeSocketRefused, relaySocket } from './nodeSocketRelay';
 import type { H264Packet } from '../../device-managers/android/H264Multiplexer';
 import type { H264Multiplexer } from '../../device-managers/android/H264Multiplexer';
 
@@ -35,11 +36,19 @@ export function parseH264WsPath(url: string): { udid: string; ticket: string } |
 
 export interface H264WsDeps {
   /** Redeem a single-use stream ticket; throws if invalid. */
-  redeem: (ticket: string, udid: string) => Promise<{ actorId: string }>;
+  redeem: (ticket: string, udid: string) => Promise<{ actorId: string; isAdmin?: boolean }>;
   /** Start (or reuse) the device's H.264 stream and return its multiplexer. */
   startStream: (udid: string) => Promise<H264Multiplexer>;
   /** Drop a frame when the socket's kernel backlog exceeds this (OOM guard). */
   maxBufferedBytes?: number;
+  /**
+   * For another server's phone, its node's socket, open (nodeSocketRelay.ts);
+   * null for this server's own phone. Throws NodeSocketRefused for a refusal.
+   */
+  nodeSocket?: (
+    udid: string,
+    actor: { actorId: string; isAdmin?: boolean },
+  ) => Promise<WebSocket | null>;
 }
 
 /**
@@ -76,8 +85,9 @@ export function attachH264Ws(server: Server, deps: H264WsDeps): void {
       ws.on('close', onClose);
       ws.on('error', onClose);
 
+      let actor: { actorId: string; isAdmin?: boolean };
       try {
-        await deps.redeem(parsed.ticket, parsed.udid);
+        actor = await deps.redeem(parsed.ticket, parsed.udid);
       } catch {
         try {
           ws.close(1008, 'unauthorized');
@@ -87,6 +97,27 @@ export function attachH264Ws(server: Server, deps: H264WsDeps): void {
         return;
       }
       if (closed) return; // disconnected during redeem
+
+      // Another server's phone: its node streams it, relayed from here.
+      let upstream: WebSocket | null = null;
+      try {
+        upstream = (await deps.nodeSocket?.(parsed.udid, actor)) ?? null;
+      } catch (e: any) {
+        const refused = e instanceof NodeSocketRefused;
+        log.warn(`[${parsed.udid}] H.264 WS from its node failed: ${e?.message ?? e}`);
+        try {
+          ws.close(refused ? 1008 : 1011, refused ? 'refused by the node' : 'node unreachable');
+        } catch {
+          /* noop */
+        }
+        return;
+      }
+      if (upstream) {
+        if (closed) return void upstream.terminate();
+        relaySocket(ws, upstream, maxBuffered);
+        log.info(`[${parsed.udid}] H.264 WS client connected, relayed from its node`);
+        return;
+      }
 
       let mux;
       try {

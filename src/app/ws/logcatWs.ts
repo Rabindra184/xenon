@@ -3,6 +3,7 @@ import type { Duplex } from 'stream';
 import { WebSocketServer, WebSocket } from 'ws';
 import log from '../../logger';
 import { upgradeRouterFor } from './upgradeRouter';
+import { NodeSocketRefused, relaySocket } from './nodeSocketRelay';
 import type { LogcatMultiplexer } from '../../device-managers/android/LogcatMultiplexer';
 import type { LogcatRecord } from '../../services/logcat/logcatParse';
 import { iosLevelsToLetters } from '../../services/logcat/ostraceParse';
@@ -88,6 +89,17 @@ export interface LogcatWsDeps {
   ) => Promise<{ mux: LogcatMultiplexer; levels?: string[] }>;
   /** Drop a record when the socket's kernel backlog exceeds this (OOM guard). */
   maxBufferedBytes?: number;
+  /**
+   * For another server's phone, its node's socket, open, with the client's
+   * filter (nodeSocketRelay.ts); null for this server's own phone. Asked only
+   * after `authorize` allowed the actor here; the node checks them again.
+   * Throws NodeSocketRefused for a refusal.
+   */
+  nodeSocket?: (
+    udid: string,
+    actor: LogcatWsActor,
+    filter: LogStreamFilter,
+  ) => Promise<WebSocket | null>;
 }
 
 /**
@@ -193,6 +205,32 @@ export function attachLogcatWs(server: Server, deps: LogcatWsDeps): void {
         return;
       }
       if (closed) return; // disconnected during authorize
+
+      // Another server's phone: its node streams the log, relayed from here.
+      // The node keeps the replay, the drop markers and the close codes.
+      let upstream: WebSocket | null = null;
+      try {
+        upstream =
+          (await deps.nodeSocket?.(parsed.udid, actor, {
+            levels: parsed.levels,
+            process: parsed.process,
+          })) ?? null;
+      } catch (e: any) {
+        const refused = e instanceof NodeSocketRefused;
+        log.warn(`[${parsed.udid}] logcat WS from its node failed: ${e?.message ?? e}`);
+        try {
+          ws.close(refused ? 1008 : 1011, refused ? 'refused by the node' : 'node unreachable');
+        } catch {
+          /* noop */
+        }
+        return;
+      }
+      if (upstream) {
+        if (closed) return void upstream.terminate();
+        relaySocket(ws, upstream, maxBuffered);
+        log.info(`[${parsed.udid}] logcat WS client connected, relayed from its node`);
+        return;
+      }
 
       let mux: LogcatMultiplexer;
       let effectiveLevels: string[] | undefined;

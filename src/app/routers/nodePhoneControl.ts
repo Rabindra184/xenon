@@ -7,6 +7,7 @@ import { isOwnDevice, localDeviceHosts } from '../../device-managers/localDevice
 import { resolveActor } from '../../services/device-access/actor';
 import { HUB_TOKEN_HEADER, HubSessionTokenIssuer } from '../../gateway/hubSessionToken';
 import { relayAnswer, sendToNode } from '../../gateway/forwardToNode';
+import { DeviceStoreFactory } from '../../data-service/device-store';
 import { ownershipUnavailableBody } from '../../services/device-access/deviceAccessPolicy';
 import {
   controlAction,
@@ -30,7 +31,9 @@ import {
 
 /**
  * Sent on to the phone's node, and the node's answer relayed unchanged. Each
- * is one request and one reply, about the phone alone.
+ * is about the phone alone. The preview's are too: the node holds the phone
+ * for the preview, counts its viewers and releases it, by its own rules and
+ * with the hub's user, so none of that is kept here.
  */
 export const NODE_FORWARDED_CONTROL: readonly string[] = [
   'POST tap',
@@ -49,18 +52,26 @@ export const NODE_FORWARDED_CONTROL: readonly string[] = [
   'GET logs',
   'POST shell',
   'GET inspector/snapshot',
+  'POST stream/start',
+  'GET stream/status',
+  'POST stream/leave',
+  'POST stream/stop',
+  // The MJPEG stream itself: relayed for as long as the viewer watches.
+  'GET stream',
 ];
 
 /**
- * Answered by this server's own handler: the session runs through this
- * server, which routes its commands, so its id and base path are this
- * server's.
+ * Answered by this server's own handler.
+ * - appium-session: the session runs through this server, which routes its
+ *   commands, so its id and base path are this server's.
+ * - stream/ticket: the viewer's ticket is this server's, minted after its
+ *   team check. The stream it opens is relayed from the node: GET stream
+ *   above, and the H.264 and logcat sockets (src/app/ws/nodeSocketRelay.ts),
+ *   which get a ticket of the node's own.
  */
-export const ANSWERED_HERE: readonly string[] = ['GET appium-session'];
+export const ANSWERED_HERE: readonly string[] = ['GET appium-session', 'POST stream/ticket'];
 
 // Not on either list, and why, so nobody adds them as a plain forward:
-// - the live views (stream/*, and the H.264 and logcat sockets that
-//   stream/ticket opens) need a relayed stream, not one reply;
 // - upload-install is a multipart upload;
 // - install-repository-app installs a file from this server's app library,
 //   which the node doesn't have;
@@ -68,7 +79,11 @@ export const ANSWERED_HERE: readonly string[] = ['GET appium-session'];
 // - omni-scan and test-locator run this server's AI settings on a
 //   screenshot.
 
-/** A node that hasn't answered in this long is treated as gone. */
+/**
+ * A node that hasn't started answering in this long is treated as gone. Once
+ * it has, the answer may take as long as it takes: a stream lasts as long as
+ * its viewer.
+ */
 export const NODE_CONTROL_TIMEOUT_MS = 60_000;
 
 // Cloud metadata endpoints — never proxy to these regardless of caller.
@@ -81,12 +96,11 @@ const FORBIDDEN_PROXY_HOSTS = new Set([
 ]);
 
 /**
- * The node's own URL for this request, from the phone's reported host.
- * Strips any path, query, or fragment the host string carried, blocks
- * cloud-metadata targets, and refuses non-http(s) schemes. Null if the host
- * is unsafe.
+ * The node's origin from the phone's reported host: scheme, host and port
+ * only, dropping any path, query or fragment the host string carried. Null
+ * for a cloud-metadata target or a scheme other than http(s).
  */
-export function nodeControlUrl(deviceHost: string, req: Request): string | null {
+export function safeNodeOrigin(deviceHost: string): string | null {
   let parsed: URL;
   try {
     parsed = new URL(deviceHost);
@@ -95,11 +109,30 @@ export function nodeControlUrl(deviceHost: string, req: Request): string | null 
   }
   if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return null;
   if (FORBIDDEN_PROXY_HOSTS.has(parsed.hostname)) return null;
+  return `${parsed.protocol}//${parsed.host}`;
+}
 
-  // Only keep scheme + host + port; discard any attacker-baked path/query/fragment.
-  const origin = `${parsed.protocol}//${parsed.host}`;
+/** The node's own URL for this request, or null if the host is unsafe. */
+export function nodeControlUrl(deviceHost: string, req: Request): string | null {
+  const origin = safeNodeOrigin(deviceHost);
+  if (!origin) return null;
   const forwardPath = req.originalUrl.startsWith('/') ? req.originalUrl : `/${req.originalUrl}`;
-  return `${origin}${forwardPath}`;
+  return `${origin}${withoutTicket(forwardPath)}`;
+}
+
+/**
+ * The path without a `ticket` query parameter. A viewer's ticket is this
+ * server's, already spent here, and not the node's business: the node gets
+ * the hub's token instead.
+ */
+function withoutTicket(path: string): string {
+  const q = path.indexOf('?');
+  if (q < 0) return path;
+  const params = new URLSearchParams(path.slice(q + 1));
+  if (!params.has('ticket')) return path;
+  params.delete('ticket');
+  const query = params.toString();
+  return query ? `${path.slice(0, q)}?${query}` : path.slice(0, q);
 }
 
 /**
@@ -130,11 +163,15 @@ function refuse(res: Response, error: string, message: string) {
 export interface NodePhoneControlDeps {
   findDevice?: FindControlDevice;
   timeoutMs?: number;
+  markNodeBusy?: (udid: string, host: string) => Promise<void>;
 }
 
 export function nodePhoneControl(deps: NodePhoneControlDeps = {}) {
   const findDevice = deps.findDevice ?? findControlDeviceInStore;
   const timeoutMs = deps.timeoutMs ?? NODE_CONTROL_TIMEOUT_MS;
+  const markNodeBusy =
+    deps.markNodeBusy ??
+    ((udid: string, host: string) => DeviceStoreFactory.getStore().markNodeBusy(udid, host));
 
   return async function (req: Request, res: Response, next: NextFunction) {
     const action = controlAction(req);
@@ -173,7 +210,7 @@ export function nodePhoneControl(deps: NodePhoneControlDeps = {}) {
         `This phone is on node ${node}, and the hub doesn't pass ${action} on to nodes yet.`,
       );
     }
-    return forward(req, res, udid, device, node, timeoutMs);
+    return forward(req, res, { udid, device, node, timeoutMs, markNodeBusy });
   };
 }
 
@@ -187,16 +224,18 @@ export function nodePhoneControl(deps: NodePhoneControlDeps = {}) {
  * node's business. Sent once: a retry after a slow node's timeout or 5xx
  * could land the same tap twice.
  */
-async function forward(
-  req: Request,
-  res: Response,
-  udid: string,
-  device: ControlDevice,
-  node: string,
-  timeoutMs: number,
-) {
-  const target = nodeControlUrl(device.host as string, req);
-  if (!target) return res.status(400).json({ error: 'Unsafe device host' });
+interface ForwardTarget {
+  udid: string;
+  device: ControlDevice;
+  node: string;
+  timeoutMs: number;
+  markNodeBusy: (udid: string, host: string) => Promise<void>;
+}
+
+async function forward(req: Request, res: Response, target: ForwardTarget) {
+  const { udid, device, node, timeoutMs } = target;
+  const url = nodeControlUrl(device.host as string, req);
+  if (!url) return res.status(400).json({ error: 'Unsafe device host' });
 
   const actor = resolveActor(req);
   const headers: OutgoingHttpHeaders = {
@@ -235,12 +274,23 @@ async function forward(
   log.debug(`Forwarding ${req.method} ${controlAction(req)} for ${udid} to node ${node}`);
   try {
     const upstream = await sendToNode({
-      url: target,
+      url,
       method: req.method,
       headers,
       body,
       signal: controller.signal,
     });
+    // The node has answered: from here the answer takes as long as it takes.
+    clearTimeout(timer);
+    const status = upstream.statusCode ?? 502;
+    if (req.method === 'POST' && controlAction(req) === 'stream/start' && status < 300) {
+      // The node holds the phone for the preview now, and says so in its
+      // next report, up to an interval away. Until then this server could
+      // hand the phone to a session the node would refuse.
+      await target.markNodeBusy(udid, device.host as string).catch((e: any) => {
+        log.warn(`nodePhoneControl: could not mark ${udid} busy for its node: ${e?.message ?? e}`);
+      });
+    }
     await relayAnswer(upstream, res, false);
   } catch (e: any) {
     if (res.headersSent || res.destroyed) {
