@@ -14,6 +14,13 @@ export function setApiToastEmitter(fn: ToastFn | null): void {
 
 const DEVICE_CONFLICT_CODES = new Set(['device_held_by_another_user', 'device_in_use_by_session']);
 
+// A hub's refusals for a node's or a cloud provider's phone, for an action it
+// doesn't pass on (src/app/routers/nodePhoneControl.ts).
+const REMOTE_PHONE_REFUSALS = new Set([
+  'not_available_through_hub',
+  'not_available_for_cloud_phone',
+]);
+
 /**
  * True when a response body says the device is held by someone else.
  *
@@ -30,12 +37,13 @@ export function isDeviceConflictBody(body: unknown): boolean {
 }
 
 // A held device usually produces a burst of denials (a swipe is several
-// gestures, a keystroke run is one call per character). Show each distinct
-// message at most once per interval so the toast stack stays readable.
+// gestures, a keystroke run is one call per character), and so does a phone
+// the hub can't run an action on. Show each distinct message at most once per
+// interval so the toast stack stays readable.
 const CONFLICT_TOAST_INTERVAL_MS = 5000;
 const lastConflictToastAt = new Map<string, number>();
 
-function notifyDeviceConflict(message: string): void {
+function notifyThrottled(message: string): void {
   if (!toastEmitter) return;
   const now = Date.now();
   const last = lastConflictToastAt.get(message) ?? 0;
@@ -88,8 +96,18 @@ async function parseResponse(res: Response, rejectErrors: boolean): Promise<any>
       .json()
       .catch(() => ({}) as any);
     if (isDeviceConflictBody(body)) {
-      notifyDeviceConflict(body.message || 'This device is in use by another user.');
+      notifyThrottled(body.message || 'This device is in use by another user.');
     }
+  }
+  // 501 from /control on a hub: the phone is another server's and the hub
+  // doesn't pass this action on yet. Without the reason a refused preview
+  // just stays blank.
+  if (res.status === 501) {
+    const body = await res
+      .clone()
+      .json()
+      .catch(() => ({}) as any);
+    if (REMOTE_PHONE_REFUSALS.has(body?.error) && body.message) notifyThrottled(body.message);
   }
   // 204 and 205 carry no body by definition, and `res.json()` throws
   // `Unexpected end of JSON input` on an empty one.

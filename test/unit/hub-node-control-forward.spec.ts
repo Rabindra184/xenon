@@ -29,6 +29,7 @@ import { config } from '../../src/config';
 import { saveRegistrations } from '../helpers/container-registration';
 import { useScratchDatabase } from '../helpers/scratch-database';
 import { loopbackServers } from '../helpers/loopbackServer';
+import { InspectorService } from '../../src/services/InspectorService';
 
 /**
  * A hub forwards five of its /control actions on a node's phone (tap, swipe,
@@ -45,11 +46,48 @@ import { loopbackServers } from '../helpers/loopbackServer';
  */
 
 // Named like the real manager: /control picks one by constructor.name.
+// Hub and node share this process, so each call records the server it ran
+// on: an action the hub ran on its own would show up as `hub-1:...`.
 class AndroidDeviceManager {
   taps: string[] = [];
+  calls: string[] = [];
+  failLogs = false;
+  private at(name: string) {
+    this.calls.push(`${Container.get(PluginContext).nodeId}:${name}`);
+  }
   tap = async (udid: string) => {
     this.taps.push(udid);
   };
+  getScreenshot = async () => {
+    this.at('getScreenshot');
+    return 'A'.repeat(200);
+  };
+  getClipboard = async () => {
+    this.at('getClipboard');
+    return 'copied';
+  };
+  setClipboard = async () => this.at('setClipboard');
+  lock = async () => this.at('lock');
+  unlock = async () => this.at('unlock');
+  getDisplayState = async () => {
+    this.at('getDisplayState');
+    return 'on';
+  };
+  uninstallApp = async () => this.at('uninstallApp');
+  listApps = async () => {
+    this.at('listApps');
+    return [{ bundleId: 'com.example' }];
+  };
+  getLogs = async () => {
+    this.at('getLogs');
+    if (this.failLogs) throw new Error('logcat failed on the node');
+    return 'a log line';
+  };
+  executeShell = async () => {
+    this.at('executeShell');
+    return 'uid=2000(shell)';
+  };
+  installApp = async () => this.at('installApp');
 }
 
 describe('the hub’s device control on a node’s phone', () => {
@@ -66,6 +104,7 @@ describe('the hub’s device control on a node’s phone', () => {
   let nodeOrigin: string;
   let nodePort: number;
   let nodeArgs: any;
+  let nodeRequests: { method: string; path: string; headers: Record<string, unknown> }[];
 
   beforeEach(async () => {
     dirs = [fs.mkdtempSync(path.join(os.tmpdir(), 'xenon-control-keys-'))];
@@ -77,6 +116,7 @@ describe('the hub’s device control on a node’s phone', () => {
       XenonManager,
       SessionOwnerResolver,
       LiveSessionOwners,
+      InspectorService,
     );
     Container.set(JwtKeyService, hubKeys);
     Container.set(HubSessionTokenIssuer, new HubSessionTokenIssuer());
@@ -84,6 +124,13 @@ describe('the hub’s device control on a node’s phone', () => {
     Container.set(LiveSessionOwners, new LiveSessionOwners());
     manager = new AndroidDeviceManager();
     Container.set(XenonManager, { deviceInstances: async () => [manager] } as any);
+    Container.set(InspectorService, {
+      getSnapshot: async () => {
+        manager.calls.push(`${Container.get(PluginContext).nodeId}:getSnapshot`);
+        return { source: '<hierarchy/>' };
+      },
+    } as any);
+    nodeRequests = [];
     context = Container.get(PluginContext);
     saved = {
       context: { ...context },
@@ -130,6 +177,10 @@ describe('the hub’s device control on a node’s phone', () => {
 
     // The node: its CSRF check, its login and its /control, as ServerManager mounts them.
     const node = express();
+    node.use((req, _res, next) => {
+      nodeRequests.push({ method: req.method, path: req.path, headers: { ...req.headers } });
+      next();
+    });
     node.use((_req, _res, next) => {
       context.setContext(nodeArgs, nodePort, 'node-1', '');
       next();
@@ -226,6 +277,195 @@ describe('the hub’s device control on a node’s phone', () => {
       { audience: HUB_CONTROL_AUDIENCE },
     ).catch((error) => (refused = error));
     expect(refused?.message).to.include('unsupported audience');
+  });
+
+  describe('which actions reach the node', () => {
+    const asAlice = (method: 'get' | 'post', action: string, body?: Record<string, unknown>) => {
+      const req = request(hubApp)[method](`/xenon/api/control/phone-1/${action}`);
+      req.set('x-test-user', 'alice');
+      return method === 'post' ? req.send(body ?? {}) : req;
+    };
+    const nodeSaw = (action: string) =>
+      nodeRequests.filter((r) => r.path === `/xenon/api/control/phone-1/${action}`);
+
+    // Each runs on the node and answers with the node's own reply.
+    const FORWARDED: {
+      method: 'get' | 'post';
+      action: string;
+      send?: Record<string, unknown>;
+      call: string;
+      reply: unknown;
+    }[] = [
+      {
+        method: 'get',
+        action: 'screenshot',
+        call: 'getScreenshot',
+        reply: { screenshot: 'A'.repeat(200) },
+      },
+      { method: 'get', action: 'clipboard', call: 'getClipboard', reply: { content: 'copied' } },
+      {
+        method: 'post',
+        action: 'clipboard',
+        send: { content: 'x' },
+        call: 'setClipboard',
+        reply: { success: true },
+      },
+      { method: 'post', action: 'lock', call: 'lock', reply: { success: true } },
+      { method: 'post', action: 'unlock', call: 'unlock', reply: { success: true } },
+      { method: 'get', action: 'display', call: 'getDisplayState', reply: { state: 'on' } },
+      {
+        method: 'post',
+        action: 'uninstall',
+        send: { bundleId: 'com.example' },
+        call: 'uninstallApp',
+        reply: { success: true },
+      },
+      { method: 'get', action: 'apps', call: 'listApps', reply: [{ bundleId: 'com.example' }] },
+      { method: 'get', action: 'logs', call: 'getLogs', reply: { logs: 'a log line' } },
+      {
+        method: 'post',
+        action: 'shell',
+        send: { command: 'id' },
+        call: 'executeShell',
+        reply: { output: 'uid=2000(shell)' },
+      },
+      {
+        method: 'get',
+        action: 'inspector/snapshot',
+        call: 'getSnapshot',
+        reply: { source: '<hierarchy/>' },
+      },
+    ];
+
+    for (const { method, action, send, call, reply } of FORWARDED) {
+      it(`${method.toUpperCase()} ${action} runs on the node and answers with the node's reply`, async () => {
+        const res = await asAlice(method, action, send);
+        expect(res.status, JSON.stringify(res.body)).to.equal(200);
+        expect(res.body).to.deep.equal(reply);
+        expect(manager.calls).to.deep.equal([`node-1:${call}`]);
+        expect(nodeSaw(action)).to.have.length(1);
+      });
+    }
+
+    it('relays the node’s own error answer unchanged, sent once', async () => {
+      manager.failLogs = true;
+      const res = await asAlice('get', 'logs');
+      expect(res.status).to.equal(500);
+      expect(res.body).to.deep.equal({ error: 'logcat failed on the node' });
+      expect(nodeSaw('logs')).to.have.length(1);
+    });
+
+    it('sends the node none of the caller’s credentials, only its own token', async () => {
+      await request(hubApp)
+        .post('/xenon/api/control/phone-1/lock')
+        .set('x-test-user', 'alice')
+        .set('cookie', 'xenon_dashboard_session=secret-session')
+        .set('authorization', 'Bearer secret-jwt')
+        .set('x-xenon-access-key', 'secret-key')
+        .set('x-xenon-token', 'secret-token')
+        .send({})
+        .expect(200);
+      const [sent] = nodeSaw('lock');
+      for (const name of [
+        'cookie',
+        'authorization',
+        'x-xenon-access-key',
+        'x-xenon-token',
+        'x-test-user',
+      ]) {
+        expect(sent.headers, name).to.not.have.property(name);
+      }
+      expect(sent.headers[HUB_TOKEN_HEADER]).to.be.a('string');
+    });
+
+    it('answers appium-session itself: the session is routed through the hub', async () => {
+      const res = await asAlice('get', 'appium-session');
+      expect(res.status).to.equal(200);
+      expect(res.body).to.include({ status: 'success', sessionId: 's-1' });
+      expect(nodeSaw('appium-session')).to.have.length(0);
+    });
+
+    // Not passed on yet: live views and uploads need a relayed connection,
+    // an app from the hub's library isn't on the node, and a path is a path
+    // on one machine. Omni's AI settings are the hub's. Anything added
+    // later is refused the same way until it is on the list.
+    const REFUSED: [method: 'get' | 'post', action: string, body?: Record<string, unknown>][] = [
+      ['post', 'stream/start'],
+      ['post', 'stream/ticket'],
+      ['post', 'stream/stop'],
+      ['post', 'stream/leave'],
+      ['get', 'stream/status'],
+      ['get', 'stream'],
+      ['post', 'install', { appPath: '/tmp/app.apk' }],
+      ['post', 'install-repository-app', { appId: 'app-1' }],
+      ['post', 'upload-install'],
+      ['get', 'omni-scan'],
+      ['post', 'test-locator', { strategy: '-custom:ai-text', selector: 'OK' }],
+      ['post', 'an-action-added-later'],
+    ];
+
+    it('refuses the rest, naming the node, and runs none of it on the hub', async () => {
+      for (const [method, action, body] of REFUSED) {
+        const res = await asAlice(method, action, body);
+        expect(res.status, `${method} ${action}`).to.equal(501);
+        expect(res.body.error, `${method} ${action}`).to.equal('not_available_through_hub');
+        expect(res.body.message, `${method} ${action}`).to.include(nodeOrigin);
+      }
+      expect(nodeRequests).to.have.length(0);
+      expect(manager.calls).to.deep.equal([]);
+    });
+
+    it('sends nothing to a cloud provider’s phone', async () => {
+      const provider = express();
+      let reached = 0;
+      provider.use((_req, res) => {
+        reached++;
+        res.status(200).json({});
+      });
+      const providerOrigin = `http://127.0.0.1:${((await loopback.serve(provider)).address() as any).port}`;
+      await scratch.db.device.create({
+        data: {
+          udid: 'cloud-1',
+          host: providerOrigin,
+          platform: 'android',
+          name: 'cloud-1',
+          cloud: JSON.stringify({ cloudName: 'example-cloud' }),
+        } as any,
+      });
+      for (const [method, action, body] of [
+        ['post', 'tap', { x: 1, y: 2 }],
+        ['get', 'screenshot'],
+        ['post', 'text', { text: 'a secret' }],
+      ] as const) {
+        const req = request(hubApp)
+          [method](`/xenon/api/control/cloud-1/${action}`)
+          .set('x-test-user', 'alice');
+        const res = await (method === 'post' ? req.send(body ?? {}) : req);
+        expect(res.status, action).to.equal(501);
+        expect(res.body.error, action).to.equal('not_available_for_cloud_phone');
+      }
+      expect(reached).to.equal(0);
+      expect(manager.taps).to.deep.equal([]);
+    });
+
+    it('a node that can’t be reached: 502, naming the node', async () => {
+      await scratch.db.device.create({
+        data: {
+          udid: 'gone-1',
+          host: 'http://127.0.0.1:1',
+          nodeId: 'node-2',
+          platform: 'android',
+          name: 'gone-1',
+        } as any,
+      });
+      const res = await request(hubApp)
+        .get('/xenon/api/control/gone-1/screenshot')
+        .set('x-test-user', 'alice');
+      expect(res.status).to.equal(502);
+      expect(res.body.error).to.equal('node_unreachable');
+      expect(res.body.message).to.include('http://127.0.0.1:1');
+      expect(manager.calls).to.deep.equal([]);
+    });
   });
 
   describe('on the node', () => {

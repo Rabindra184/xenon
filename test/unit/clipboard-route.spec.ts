@@ -12,6 +12,7 @@ import { ClipboardUnsupportedError } from '../../src/device-managers/clipboardEr
 import { scopesForRole } from '../../src/middleware/authMiddleware';
 import { saveRegistrations } from '../helpers/container-registration';
 import { loopbackServers } from '../helpers/loopbackServer';
+import { OWN_NODE_ID, useOwnNodeId } from '../helpers/own-node-id';
 
 /**
  * GET/POST /control/:udid/clipboard answered 200 whatever happened on the
@@ -47,6 +48,9 @@ function buildApp() {
 }
 
 describe('GET/POST /control/:udid/clipboard', () => {
+  // The fake rows are this server's own phones.
+  useOwnNodeId();
+
   let manager: AndroidDeviceManager;
   let restoreContainer: () => void;
   // Served on 127.0.0.1, not by request(app): that listens on every address
@@ -62,6 +66,7 @@ describe('GET/POST /control/:udid/clipboard', () => {
       findDevice: async () => ({
         udid: UDID,
         host: '127.0.0.1',
+        nodeId: OWN_NODE_ID,
         platform: 'android',
         busy: false,
         session_id: null,

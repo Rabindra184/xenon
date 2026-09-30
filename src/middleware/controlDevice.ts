@@ -26,6 +26,11 @@ export interface ControlDevice {
   teamId?: string | null;
   busy?: boolean;
   session_id?: string | null;
+  /** Which server has the phone (nodePhoneControl). */
+  udid?: string;
+  host?: string | null;
+  nodeId?: string | null;
+  cloud?: unknown;
 }
 
 export type FindControlDevice = (udid: string) => Promise<ControlDevice | null | undefined>;

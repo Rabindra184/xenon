@@ -15,6 +15,7 @@ import AndroidH264StreamService from '../../src/device-managers/android/AndroidH
 import { scopesForRole } from '../../src/middleware/authMiddleware';
 import { saveRegistrations } from '../helpers/container-registration';
 import { loopbackServers } from '../helpers/loopbackServer';
+import { OWN_NODE_ID, useOwnNodeId } from '../helpers/own-node-id';
 
 /**
  * Round-trip guard for POST /control/:udid/stream/stop.
@@ -84,6 +85,9 @@ function buildApp(caller: Caller) {
 }
 
 describe('POST /control/:udid/stream/stop — lock ownership round-trip', () => {
+  // The fake rows are this server's own phones.
+  useOwnNodeId();
+
   let unblock: sinon.SinonStub;
   let androidStop: sinon.SinonStub;
   let h264Stop: sinon.SinonStub;
@@ -97,6 +101,7 @@ describe('POST /control/:udid/stream/stop — lock ownership round-trip', () => 
     deviceRow = {
       udid: UDID,
       host: '127.0.0.1',
+      nodeId: OWN_NODE_ID,
       platform: 'android',
       busy: sessionId !== null,
       session_id: sessionId,

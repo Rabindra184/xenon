@@ -7,11 +7,11 @@ import { Container } from 'typedi';
 import ControlRouter from '../../src/app/routers/control';
 import { DeviceStoreFactory } from '../../src/data-service/device-store';
 import { XenonManager } from '../../src/device-managers';
-import { InternalHttpClient } from '../../src/InternalHttpClient';
 import { PluginContext } from '../../src/PluginContext';
 import { DefaultPluginArgs } from '../../src/interfaces/IPluginArgs';
 import { scopesForRole } from '../../src/middleware/authMiddleware';
 import { saveRegistrations } from '../helpers/container-registration';
+import { loopbackServers } from '../helpers/loopbackServer';
 
 /**
  * Whether a /control action is forwarded to another server is decided by the
@@ -53,8 +53,8 @@ function buildApp() {
 }
 
 describe('/control forwards only another server’s phone', () => {
+  const loopback = loopbackServers();
   let manager: AndroidDeviceManager;
-  let post: sinon.SinonStub;
   let restore: () => void;
   let context: PluginContext;
   let savedContext: Partial<PluginContext>;
@@ -75,13 +75,13 @@ describe('/control forwards only another server’s phone', () => {
     sinon
       .stub(DeviceStoreFactory, 'getStore')
       .returns({ findDevice: async () => ({ ...device }) } as any);
-    post = sinon.stub(InternalHttpClient, 'post').resolves({ data: {} } as any);
   });
 
-  afterEach(() => {
+  afterEach(async () => {
     Object.assign(context, savedContext);
     sinon.restore();
     restore();
+    await loopback.closeAll();
   });
 
   const tap = (udid: string, hostHeader: string) =>
@@ -97,25 +97,23 @@ describe('/control forwards only another server’s phone', () => {
 
     expect(res.status, JSON.stringify(res.body)).to.equal(200);
     expect(manager.taps).to.deep.equal(['own-1']);
-    expect(post.called, 'never forwarded to itself').to.equal(false);
   });
 
-  it('forwards a node’s phone once, never retried', async () => {
-    device = {
-      udid: 'node-phone',
-      host: 'http://10.0.0.9:4725',
-      nodeId: 'node-9',
-      platform: 'android',
-    };
+  it('forwards a node’s phone once, never retried, and relays its answer', async () => {
+    const node = express();
+    const hits: string[] = [];
+    node.use((req, res) => {
+      hits.push(req.originalUrl);
+      res.status(503).json({ error: 'node busy' });
+    });
+    const nodeOrigin = `http://127.0.0.1:${((await loopback.serve(node)).address() as any).port}`;
+    device = { udid: 'node-phone', host: nodeOrigin, nodeId: 'node-9', platform: 'android' };
 
     const res = await tap('node-phone', '192.168.0.104:4723');
 
-    expect(res.status, JSON.stringify(res.body)).to.equal(200);
+    expect(res.status).to.equal(503);
+    expect(res.body).to.deep.equal({ error: 'node busy' });
     expect(manager.taps).to.deep.equal([]);
-    expect(post.calledOnce).to.equal(true);
-    expect(post.firstCall.args[0]).to.equal(
-      'http://10.0.0.9:4725/xenon/api/control/node-phone/tap',
-    );
-    expect(post.firstCall.args[2]).to.include({ retry: false });
+    expect(hits).to.deep.equal(['/xenon/api/control/node-phone/tap']);
   });
 });

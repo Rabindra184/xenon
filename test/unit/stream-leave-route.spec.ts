@@ -15,6 +15,7 @@ import AndroidH264StreamService from '../../src/device-managers/android/AndroidH
 import { scopesForRole } from '../../src/middleware/authMiddleware';
 import { saveRegistrations } from '../helpers/container-registration';
 import { loopbackServers } from '../helpers/loopbackServer';
+import { OWN_NODE_ID, useOwnNodeId } from '../helpers/own-node-id';
 
 const UDID = 'DEV-1';
 const ALICE = 'usr_alice';
@@ -40,6 +41,9 @@ function buildApp(userId: string) {
 }
 
 describe('POST /control/:udid/stream/leave', () => {
+  // The fake rows are this server's own phones.
+  useOwnNodeId();
+
   let deviceRow: any;
   let unblock: sinon.SinonStub;
   let androidStop: sinon.SinonStub;
@@ -64,6 +68,7 @@ describe('POST /control/:udid/stream/leave', () => {
     deviceRow = {
       udid: UDID,
       host: '127.0.0.1',
+      nodeId: OWN_NODE_ID,
       platform: 'android',
       busy: true,
       session_id: `manual_${ALICE}_${UDID}`,

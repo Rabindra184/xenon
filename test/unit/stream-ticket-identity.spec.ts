@@ -17,6 +17,7 @@ import { UserSessionService } from '../../src/services/UserSessionService';
 import { DeviceStoreFactory } from '../../src/data-service/device-store';
 import { saveRegistrations } from '../helpers/container-registration';
 import { loopbackServers } from '../helpers/loopbackServer';
+import { OWN_NODE_ID, useOwnNodeId } from '../helpers/own-node-id';
 
 /**
  * `req.auth.userId` must always hold a User id.
@@ -39,6 +40,9 @@ const ALICE_USER = 'usr_alice';
 const ALICE_KEY = 'key_abc';
 
 describe('stream/ticket carries the user identity, not the credential', () => {
+  // The fake rows are this server's own phones.
+  useOwnNodeId();
+
   let dir: string;
   let ticketSvc: StreamTicketService;
 
@@ -100,7 +104,14 @@ describe('stream/ticket carries the user identity, not the credential', () => {
     sinon.stub(DeviceStoreFactory, 'getStore').returns({
       findDevice: async ({ udid }: { udid: string }) =>
         udid === UDID
-          ? { udid, host: 'h', platform: 'android', screenWidth: '1080', screenHeight: '1920' }
+          ? {
+              udid,
+              host: 'h',
+              nodeId: OWN_NODE_ID,
+              platform: 'android',
+              screenWidth: '1080',
+              screenHeight: '1920',
+            }
           : null,
     } as any);
   });

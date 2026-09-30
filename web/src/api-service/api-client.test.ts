@@ -89,6 +89,45 @@ describe('api-client device-conflict toast', () => {
     expect(toast).not.toHaveBeenCalled();
   });
 
+  // A hub refuses, for a node's or a cloud provider's phone, what it doesn't
+  // pass on yet (live preview first of all). Without a toast the preview just
+  // stays blank.
+  it('toasts the server’s reason for an action a hub can’t run on a remote phone', async () => {
+    const message =
+      "This phone is on node http://10.0.0.9:4725, and the hub doesn't pass stream/start on to nodes yet.";
+    stubFetch(501, { success: false, error: 'not_available_through_hub', message });
+
+    const start = () =>
+      apiClient.makePOSTRequest(
+        '/control/some-udid/stream/start',
+        {},
+        {},
+        {},
+        { resolveErrors: true },
+      );
+    await start();
+    await start();
+
+    expect(toast).toHaveBeenCalledTimes(1);
+    expect(toast).toHaveBeenCalledWith(message, 'error');
+
+    stubFetch(501, {
+      success: false,
+      error: 'not_available_for_cloud_phone',
+      message: "This phone is a cloud provider's. Device control isn't available for it here.",
+    });
+    await apiClient.makeGETRequest('/control/cloud-udid/screenshot');
+    expect(toast).toHaveBeenCalledTimes(2);
+  });
+
+  it('does not toast a 501 that isn’t one of those refusals', async () => {
+    stubFetch(501, { error: 'The clipboard on Android is read-only.' });
+
+    await apiClient.makeGETRequest('/control/some-udid/clipboard');
+
+    expect(toast).not.toHaveBeenCalled();
+  });
+
   it('still toasts on 403 as before (no regression)', async () => {
     stubFetch(403, { error: 'forbidden' });
 
