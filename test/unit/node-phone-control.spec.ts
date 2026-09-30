@@ -108,7 +108,7 @@ describe('nodePhoneControl', () => {
     expect(seen).to.deep.equal(['/xenon/api/control/p/stream/status?t=1&r=2']);
   });
 
-  it('marks the phone busy for its node once the node has started a preview, and only then', async () => {
+  it('marks the phone busy for its node, held by the caller, once the node has started a preview', async () => {
     let answer = 200;
     const node = express();
     node.use((_req, res) => res.status(answer).json({}));
@@ -117,12 +117,17 @@ describe('nodePhoneControl', () => {
     const marked: string[] = [];
     const a = express();
     a.use(express.json());
+    a.use((req: any, _res, next) => {
+      req.auth = { kind: 'user-session', userId: 'alice', role: 'MEMBER', scopes: 'devices' };
+      next();
+    });
     a.use(
       '/xenon/api/control',
       nodePhoneControl({
         findDevice: (udid) => findDevice(udid),
-        markNodeBusy: async (udid, host) => {
-          marked.push(`${udid}@${host}`);
+        controlToken: async () => null,
+        markNodeBusy: async (udid, host, hold) => {
+          marked.push(`${udid}@${host} ${hold}`);
         },
       }),
     );
@@ -133,7 +138,61 @@ describe('nodePhoneControl', () => {
     answer = 200;
     await request(a).get('/xenon/api/control/p/stream/status').expect(200);
 
-    expect(marked).to.deep.equal([`p@${origin}`]);
+    // The hold the node writes for the same user (formatManualLock).
+    expect(marked).to.deep.equal([`p@${origin} manual_alice_p`]);
+  });
+
+  describe('a node’s refusal because someone holds the phone', () => {
+    // The node knows the holder's id but not their name: its database has
+    // no rows for the hub's users. The hub has, and fills it in.
+    const refusal = (holder: Record<string, unknown>) => ({
+      success: false,
+      error: 'device_held_by_another_user',
+      message:
+        'Device is being controlled by another user. Ask them to release it, or use an admin key to force-release.',
+      holder,
+    });
+    const through = async (body: unknown, names: Record<string, string>) => {
+      const node = express();
+      node.use((_req, res) => res.status(409).json(body));
+      const origin = `http://127.0.0.1:${((await loopback.serve(node)).address() as any).port}`;
+      findDevice = async () => ({ udid: 'p', host: origin, nodeId: 'node-1' });
+      const a = express();
+      a.use(express.json());
+      a.use(
+        '/xenon/api/control',
+        nodePhoneControl({
+          findDevice: (udid) => findDevice(udid),
+          describeHolder: async (id) => names[id] ?? null,
+        }),
+      );
+      return request(a).post('/xenon/api/control/p/tap').send({ x: 1, y: 2 });
+    };
+
+    it('names the holder the node could not', async () => {
+      const res = await through(refusal({ userId: 'bob' }), { bob: 'bob@example.com' });
+      expect(res.status).to.equal(409);
+      expect(res.body.error).to.equal('device_held_by_another_user');
+      expect(res.body.message).to.include('bob@example.com');
+      expect(res.body.holder).to.deep.equal({ userId: 'bob', name: 'bob@example.com' });
+    });
+
+    it('passes it on unchanged when this server doesn’t know the holder either', async () => {
+      const body = refusal({ userId: 'someone-of-the-node' });
+      const res = await through(body, {});
+      expect(res.status).to.equal(409);
+      expect(res.body).to.deep.equal(body);
+    });
+
+    it('passes on any other 409 unchanged', async () => {
+      const body = {
+        success: false,
+        error: 'device_recording',
+        message: 'Stop the recording first.',
+      };
+      const res = await through(body, { bob: 'bob@example.com' });
+      expect(res.body).to.deep.equal(body);
+    });
   });
 
   it('refuses a host it must never call', async () => {

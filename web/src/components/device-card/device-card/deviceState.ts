@@ -1,5 +1,6 @@
 import prettyMilliseconds from 'pretty-ms';
 import { formatReservationRemaining } from './reservationTime';
+import { holdOf } from '../../../lib/deviceHold';
 
 /**
  * One state per device, used by the card and by the Devices filters alike.
@@ -30,6 +31,8 @@ export interface DeviceStateInput {
   userBlocked: boolean;
   busy: boolean;
   session_id?: string | null;
+  /** On a hub: the preview hold a node's phone's node reports. */
+  nodeHold?: string | null;
   reservedBy?: string;
   reservedUntil?: number;
   sessionStartTime?: number;
@@ -57,8 +60,10 @@ type Holder = 'session' | 'self' | 'other' | null;
  * legacy `manual_<udid>` names no one, so it counts as someone else's.
  */
 function holder(d: DeviceStateInput, viewer: Viewer | null): Holder {
-  if (!d.busy || !d.session_id) return null;
-  const id = String(d.session_id);
+  // session_id, else a node's preview hold on a hub (holdOf).
+  const hold = holdOf(d);
+  if (!d.busy || !hold) return null;
+  const id = String(hold);
   if (!id.startsWith('manual_')) return 'session';
   return viewer?.userId && id === `manual_${viewer.userId}_${d.udid}` ? 'self' : 'other';
 }

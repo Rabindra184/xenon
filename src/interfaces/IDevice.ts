@@ -65,6 +65,8 @@ export interface IDevice {
   claimSessionId?: string | null;
   claimedAt?: number | null;
   nodeBusy?: boolean | null;
+  /** On a hub: who holds the phone on its node (a preview hold), from the node's report. */
+  nodeHold?: string | null;
 
   // Phase 2: team ownership (null = shared pool). See docs/teams.md.
   teamId?: string | null;

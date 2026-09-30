@@ -9,7 +9,7 @@ import {
   LockOptions,
 } from './device-store.interface';
 import { pickNodeReportFields } from './deviceFieldOwners';
-import { CLAIM_RESET, ClaimRef, holdsClaim, isUnheld } from './deviceClaims';
+import { CLAIM_RESET, ClaimRef, holdsClaim, isUnheld, nodeHoldOf } from './deviceClaims';
 
 import log from '../logger';
 import semver from 'semver';
@@ -169,8 +169,9 @@ class LokiDeviceStore implements IDeviceStore {
       const existing = deviceModel.findOne({ udid: device.udid, host: device.host });
       // A node's report (PrismaDeviceStore.addNodeReport has the rule).
       const nodeBusy = device.busy === true;
+      const nodeHold = nodeHoldOf(device.session_id);
       if (existing && options.nodeReport) {
-        Object.assign(existing, pickNodeReportFields(device as any), { nodeBusy });
+        Object.assign(existing, pickNodeReportFields(device as any), { nodeBusy, nodeHold });
         if (nodeBusy) existing.busy = true;
         else if (isUnheld(existing)) existing.busy = false;
         deviceModel.update(existing);
@@ -184,6 +185,7 @@ class LokiDeviceStore implements IDeviceStore {
               host: device.host,
               busy: nodeBusy,
               nodeBusy,
+              nodeHold,
             } as IDevice)
           : { ...device };
         if (cleanDevice.host === undefined) cleanDevice.host = 'Local';
@@ -300,12 +302,13 @@ class LokiDeviceStore implements IDeviceStore {
     return true;
   }
 
-  async markNodeBusy(udid: string, host: string): Promise<void> {
+  async markNodeBusy(udid: string, host: string, hold?: string): Promise<void> {
     const model = await XenonDatabase.DeviceModel;
     const device: IDevice | null = model.findOne({ udid, host });
     if (!device) return;
     device.nodeBusy = true;
     device.busy = true;
+    if (hold) device.nodeHold = hold;
     model.update(device);
   }
 

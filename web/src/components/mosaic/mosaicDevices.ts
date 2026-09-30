@@ -9,6 +9,8 @@ export interface DeviceRow {
   platform?: string;
   busy?: boolean;
   session_id?: string;
+  /** On a hub: the preview hold a node's phone's node reports. */
+  nodeHold?: string | null;
   mjpegServerPort?: number;
   screenWidth?: string | number;
   screenHeight?: string | number;

@@ -25,7 +25,7 @@ import {
 import { idleWatchEnabled, planRestore, releaseMessage, restoreMessage } from './idleRestore';
 import XenonApiService from '../../api-service';
 import { isDeviceConflictBody } from '../../api-service/api-client';
-import { isRehydratableTile, isSelfManualLock } from './manual-lock';
+import { busyReason, isRehydratableTile } from './manual-lock';
 import { addAnnotation, clearAnnotations, getActiveRecordings } from '../../api-service/recordings';
 import { createWriteQueue } from './writeQueue';
 import { useIdleDetector } from '../../hooks/useIdleDetector';
@@ -38,22 +38,6 @@ import { PageTitle } from '../ui/page-header';
 const IDLE_TOTAL_MS = 5 * 60 * 1000;
 const IDLE_WARNING_SEC = 30;
 
-/**
- * A manual lock is `manual_<actorId>_<udid>`. If our userId matches the
- * actor portion, this is *our* lock. Legacy `manual_<udid>` (no actor)
- * is treated as foreign — we can't prove ownership.
- */
-function inferReason(d: DeviceRow, myUserId: string | null): string | undefined {
-  if (!d.busy) return undefined;
-  if (!d.session_id) return 'unknown';
-  if (d.session_id.startsWith('manual_')) {
-    return isSelfManualLock(d.session_id, d.udid, myUserId)
-      ? 'manual_self'
-      : 'manual_other';
-  }
-  return 'automation';
-}
-
 function asPickerDevice(d: DeviceRow, myUserId: string | null): PickerDevice {
   return {
     udid: d.udid,
@@ -62,7 +46,7 @@ function asPickerDevice(d: DeviceRow, myUserId: string | null): PickerDevice {
     altName: d.name,
     platform: d.platform,
     busy: d.busy,
-    busyReason: inferReason(d, myUserId),
+    busyReason: busyReason(d, myUserId),
     mjpegServerPort: d.mjpegServerPort,
     offline: !!d.offline,
   };

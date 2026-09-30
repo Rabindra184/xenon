@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { isRehydratableTile, isSelfManualLock } from './manual-lock';
+import { busyReason, holdOf, isRehydratableTile, isSelfManualLock } from './manual-lock';
 
 const UDID = 'DEV-1';
 const ME = 'usr_me';
@@ -63,5 +63,31 @@ describe('isRehydratableTile', () => {
 
   it('tolerates a missing session_id', () => {
     expect(isRehydratableTile(row({ session_id: undefined }), ME)).toBe(false);
+  });
+});
+
+// On a hub, a node's phone is held by the node's own preview hold, which the
+// hub keeps as nodeHold: session_id is the hub's, and stays empty for it.
+describe('a node’s phone on a hub', () => {
+  const mine = { udid: UDID, busy: true, session_id: null, nodeHold: `manual_${ME}_${UDID}` };
+  const theirs = { ...mine, nodeHold: `manual_${OTHER}_${UDID}` };
+
+  it('holdOf reads session_id first, then nodeHold', () => {
+    expect(holdOf(mine)).toBe(`manual_${ME}_${UDID}`);
+    expect(holdOf({ ...mine, session_id: 'hub-session-1' })).toBe('hub-session-1');
+    expect(holdOf({})).toBe(null);
+  });
+
+  it('is re-adopted after a reload when I hold it', () => {
+    expect(isRehydratableTile(mine, ME)).toBe(true);
+    expect(isRehydratableTile(theirs, ME)).toBe(false);
+  });
+
+  it('shows in the picker as held by me or by someone else', () => {
+    expect(busyReason(mine, ME)).toBe('manual_self');
+    expect(busyReason(theirs, ME)).toBe('manual_other');
+    expect(busyReason({ udid: UDID, busy: true, session_id: 'appium-1' }, ME)).toBe('automation');
+    expect(busyReason({ udid: UDID, busy: true }, ME)).toBe('unknown');
+    expect(busyReason({ udid: UDID, busy: false }, ME)).toBe(undefined);
   });
 });

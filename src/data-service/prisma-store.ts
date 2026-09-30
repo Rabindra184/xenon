@@ -15,7 +15,7 @@ import * as semver from 'semver';
 import log from '../logger';
 import { pickDeviceColumns } from './deviceColumns';
 import { pickDiscoveryFields, pickNodeReportFields } from './deviceFieldOwners';
-import { CLAIM_RESET, ClaimRef, claimWhere, UNHELD } from './deviceClaims';
+import { CLAIM_RESET, ClaimRef, claimWhere, nodeHoldOf, UNHELD } from './deviceClaims';
 
 /** Logged once per key, so a chatty node doesn't flood the log. */
 const droppedDeviceKeys = new Set<string>();
@@ -248,7 +248,11 @@ export class PrismaDeviceStore implements IDeviceStore {
   private async addNodeReport(device: IDevice): Promise<Device> {
     const { udid, host } = device;
     const nodeBusy = device.busy === true;
-    const reported = { ...pickNodeReportFields(this.fromIDevice(device)), nodeBusy };
+    const reported = {
+      ...pickNodeReportFields(this.fromIDevice(device)),
+      nodeBusy,
+      nodeHold: nodeHoldOf(device.session_id),
+    };
     const row = await this.prisma.device.upsert({
       where: { udid_host: { udid, host } },
       update: nodeBusy ? { ...reported, busy: true } : reported,
@@ -413,10 +417,10 @@ export class PrismaDeviceStore implements IDeviceStore {
     return cleared.count > 0;
   }
 
-  async markNodeBusy(udid: string, host: string): Promise<void> {
+  async markNodeBusy(udid: string, host: string, hold?: string): Promise<void> {
     await this.prisma.device.updateMany({
       where: { udid, host },
-      data: { nodeBusy: true, busy: true },
+      data: { nodeBusy: true, busy: true, ...(hold ? { nodeHold: hold } : {}) },
     });
   }
 

@@ -439,8 +439,13 @@ describe('The hub/node busy race', function () {
 
       // The node answered a forwarded stream/start: it holds the phone now,
       // though its last report said free.
-      await DeviceStoreFactory.getStore().markNodeBusy('s9', NODE);
-      expect(await row('s9')).to.include({ busy: true, nodeBusy: true, session_id: null });
+      await DeviceStoreFactory.getStore().markNodeBusy('s9', NODE, 'manual_u1_s9');
+      expect(await row('s9')).to.include({
+        busy: true,
+        nodeBusy: true,
+        nodeHold: 'manual_u1_s9',
+        session_id: null,
+      });
       let session: unknown;
       try {
         session = await allocateDeviceForSession(caps('s9'), 200, 50, pluginArgs);
@@ -451,13 +456,39 @@ describe('The hub/node busy race', function () {
 
       // The preview ended, and the node says so.
       await report(nodePhone('s9', { busy: false }));
-      expect(await row('s9')).to.include({ busy: false, nodeBusy: false });
+      expect(await row('s9')).to.include({ busy: false, nodeBusy: false, nodeHold: null });
     });
 
     it('touches no other server’s row for the same udid', async () => {
       await scratch.db.device.create({ data: nodePhone('s9') as any });
       await DeviceStoreFactory.getStore().markNodeBusy('s9', 'http://10.9.9.9:4725');
       expect(await row('s9')).to.include({ busy: false, nodeBusy: false });
+    });
+  });
+
+  // The node's report is its own row, session_id included. A preview's hold
+  // there (manual_<user>_<udid>) is who holds the phone, which the hub shows
+  // (nodeHold); session_id itself stays the hub's.
+  describe('who holds a node’s phone', () => {
+    it('is the node’s preview hold, from its report, until the node lets the phone go', async () => {
+      await scratch.db.device.create({ data: nodePhone('s9') as any });
+
+      await report(nodePhone('s9', { busy: true, session_id: 'manual_u1_s9' }));
+      expect(await row('s9')).to.include({ nodeHold: 'manual_u1_s9', session_id: null });
+
+      await report(nodePhone('s9', { busy: false, session_id: null }));
+      expect(await row('s9')).to.include({ nodeHold: null, busy: false });
+    });
+
+    it('is not a session the node runs', async () => {
+      await scratch.db.device.create({ data: nodePhone('s9') as any });
+      await report(nodePhone('s9', { busy: true, session_id: 'appium-9' }));
+      expect(await row('s9')).to.include({ nodeHold: null, nodeBusy: true, session_id: null });
+    });
+
+    it('is taken from the report of a phone the hub didn’t know yet', async () => {
+      await report(nodePhone('s9', { busy: true, session_id: 'manual_u1_s9' }));
+      expect(await row('s9')).to.include({ nodeHold: 'manual_u1_s9', busy: true });
     });
   });
 
