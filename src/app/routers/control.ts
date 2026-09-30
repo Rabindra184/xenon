@@ -15,6 +15,7 @@ import IOSStreamService from '../../device-managers/ios/IOSStreamService';
 import AndroidStreamService from '../../device-managers/android/AndroidStreamService';
 import AndroidH264StreamService from '../../device-managers/android/AndroidH264StreamService';
 import path from 'path';
+import fileUpload from 'express-fileupload';
 import os from 'os';
 import fs from 'fs-extra';
 import { OmniVisionService } from '../../services/omni-vision/OmniVisionService';
@@ -409,39 +410,74 @@ router.post('/:udid/install-repository-app', async (req: Request, res: Response)
   }
 });
 
-router.post('/:udid/upload-install', async (req: Request, res: Response) => {
+/** Where upload-install writes an uploaded app while it is installed. */
+const UPLOAD_DIR = path.join(os.tmpdir(), 'xenon-uploads');
+
+/** The largest app upload-install takes: room for a large iOS app. */
+export const UPLOAD_INSTALL_MAX_BYTES = 4 * 1024 ** 3;
+
+/**
+ * upload-install's own multipart parser. /control had none (only /apps
+ * mounts one), so every upload was answered "No files were uploaded." The
+ * file goes to a temporary file rather than memory, and one past the limit
+ * is answered 413.
+ */
+const uploadParser = fileUpload({
+  useTempFiles: true,
+  tempFileDir: UPLOAD_DIR,
+  limits: { fileSize: UPLOAD_INSTALL_MAX_BYTES },
+  abortOnLimit: true,
+});
+
+/**
+ * The name an upload is saved under: the client's name, cut to its last
+ * path segment and to safe characters, keeping its extension, which the
+ * installers read. busboy already cuts the name to its last segment (its
+ * `preservePath` is off); this holds if a parser ever keeps paths.
+ */
+export function uploadName(clientName: unknown): string {
+  const base = path
+    .basename(String(clientName ?? ''))
+    .replace(/[^\w.-]+/g, '_')
+    .replace(/^\.+/, '');
+  return `${Date.now()}-${base || 'app'}`;
+}
+
+router.post('/:udid/upload-install', uploadParser, async (req: Request, res: Response) => {
   const { udid } = req.params;
-  const device = await getDeviceInfo(udid);
-  if (!device) return res.status(404).send('Device not found');
+  const appFile = req.files?.app as fileUpload.UploadedFile | undefined;
+  const appPath = appFile ? path.join(UPLOAD_DIR, uploadName(appFile.name)) : undefined;
 
-  if (!req.files || Object.keys(req.files).length === 0) {
-    return res.status(400).send('No files were uploaded.');
-  }
+  const answer = await (async (): Promise<{ status: number; body: unknown }> => {
+    const device = await getDeviceInfo(udid);
+    if (!device) return { status: 404, body: 'Device not found' };
+    if (!req.files || Object.keys(req.files).length === 0) {
+      return { status: 400, body: 'No files were uploaded.' };
+    }
+    if (!appFile || !appPath) return { status: 400, body: 'File "app" is required' };
 
-  const appFile = req.files.app as any;
-  if (!appFile) return res.status(400).send('File "app" is required');
-
-  const tmpDir = path.join(os.tmpdir(), 'xenon-uploads');
-  if (!fs.existsSync(tmpDir)) fs.mkdirSync(tmpDir, { recursive: true });
-
-  const appPath = path.join(tmpDir, `${Date.now()}-${appFile.name}`);
-
-  try {
     await appFile.mv(appPath);
     const manager = await getDeviceManagerForPlatform(device.platform);
-    if (manager && manager.installApp) {
-      await manager.installApp(udid, appPath);
-      // Clean up after installation
-      setTimeout(() => fs.remove(appPath).catch(() => {}), 10000);
-      return res
-        .status(200)
-        .send({ success: true, message: `App ${appFile.name} installed successfully` });
+    if (!manager?.installApp) {
+      return { status: 400, body: 'Manager not found or installApp not supported' };
     }
-    res.status(400).send('Manager not found or installApp not supported');
-  } catch (err: any) {
+    await manager.installApp(udid, appPath);
+    return {
+      status: 200,
+      body: { success: true, message: `App ${appFile.name} installed successfully` },
+    };
+  })().catch((err: any) => {
     log.error(`Installation failed for ${udid}: ${err.message}`);
-    res.status(500).send({ error: err.message });
+    return { status: 500, body: { error: err.message } };
+  });
+
+  // The install has finished with the file, whether it worked or not (both
+  // installers wait for their process). Removed before answering, so nothing
+  // is left behind once the caller has the answer.
+  for (const file of [appPath, appFile?.tempFilePath]) {
+    if (file) await fs.remove(file).catch(() => undefined);
   }
+  res.status(answer.status).send(answer.body);
 });
 
 router.post('/:udid/uninstall', async (req: Request, res: Response) => {
