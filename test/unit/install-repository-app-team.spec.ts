@@ -11,6 +11,7 @@ import { XenonManager } from '../../src/device-managers';
 import { APP_SERVICE } from '../../src/dashboard/services/app-service';
 import { scopesForRole } from '../../src/middleware/authMiddleware';
 import { saveRegistrations } from '../helpers/container-registration';
+import { OWN_NODE_ID, useOwnNodeId } from '../helpers/own-node-id';
 
 /**
  * Installing an uploaded app onto a phone hands over its binary as surely as
@@ -52,6 +53,9 @@ function buildApp(teamIds: string[] | undefined) {
 }
 
 describe('POST /control/:udid/install-repository-app follows the app team rule', () => {
+  // The fake rows are this server's own phones.
+  useOwnNodeId();
+
   let manager: AndroidDeviceManager;
   let restore: () => void;
 
@@ -63,6 +67,7 @@ describe('POST /control/:udid/install-repository-app follows the app team rule',
       findDevice: async () => ({
         udid: UDID,
         host: '127.0.0.1',
+        nodeId: OWN_NODE_ID,
         platform: 'android',
         busy: false,
         session_id: null,

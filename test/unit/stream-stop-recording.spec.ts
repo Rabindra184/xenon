@@ -15,6 +15,7 @@ import AndroidH264StreamService from '../../src/device-managers/android/AndroidH
 import { scopesForRole } from '../../src/middleware/authMiddleware';
 import { saveRegistrations } from '../helpers/container-registration';
 import { loopbackServers } from '../helpers/loopbackServer';
+import { OWN_NODE_ID, useOwnNodeId } from '../helpers/own-node-id';
 
 /**
  * POST /control/:udid/stream/stop must not stop the stream under a live
@@ -50,6 +51,9 @@ function buildApp(caller: { userId: string; role?: 'MEMBER' | 'ADMIN' | 'SUPER_A
 }
 
 describe('POST /control/:udid/stream/stop — a device being recorded', () => {
+  // The fake rows are this server's own phones.
+  useOwnNodeId();
+
   let unblock: sinon.SinonStub;
   let androidStop: sinon.SinonStub;
   let h264Stop: sinon.SinonStub;
@@ -72,6 +76,7 @@ describe('POST /control/:udid/stream/stop — a device being recorded', () => {
       findDevice: async () => ({
         udid: UDID,
         host: '127.0.0.1',
+        nodeId: OWN_NODE_ID,
         platform: 'android',
         busy: true,
         session_id: `manual_${ALICE}_${UDID}`,

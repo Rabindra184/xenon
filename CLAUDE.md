@@ -237,11 +237,11 @@ cloud provider never gets one.
   `jti` (from an older hub) is accepted without that check.
 
 - **A device-control call's** (audience `xenon-node-control`, 1 minute,
-  fresh per call). The hub forwards five `/control` actions on a node's
-  phone to its node: `tap`, `swipe`, `text`, `keyevent`, `touchAndHold`
-  (`forwardControl` in `control.ts`); the others act on this server only.
-  They went with no credential, so an auth-enabled node refused every one
-  (its CSRF check, then its login). The token names the hub user (`sub`),
+  fresh per call). It goes with each `/control` action the hub forwards on
+  a node's phone (see "Device control on another server's phone" below).
+  Forwarded actions used to go with no credential, so an auth-enabled node
+  refused every one (its CSRF check, then its login). The token names the
+  hub user (`sub`),
   whether they are an admin (`adm`), the phone (`udid`) and its node
   (`host`), and is sent as `x-xenon-hub-token`. The hub's own guards
   (role, team, ownership) have run by then.
@@ -292,6 +292,38 @@ graceful shutdown (SIGTERM) drains only the hub's own local sessions
 (`ShutdownCoordinator`); until 2.1 it also finalized node and cloud sessions,
 releasing the phone and closing the row on the hub while the node kept the
 session running, unreachable, until its idle timeout.
+
+**Device control on another server's phone**
+(`src/app/routers/nodePhoneControl.ts`). `control.ts`'s handlers act with
+this server's own adb and go-ios. A gate mounted after the team and ownership
+guards decides every `/control` request for a phone whose row is another
+server's (`isOtherServersPhone`: its `nodeId`, else its exact host), before
+any handler runs:
+
+- `NODE_FORWARDED_CONTROL` (tap, swipe, text, keyevent, touchAndHold,
+  screenshot, clipboard read and write, lock, unlock, display, uninstall,
+  apps, logs, shell, inspector/snapshot) goes to the phone's node once, with
+  the control token and none of the caller's headers. The node's status,
+  headers and body are relayed unchanged. An unreachable node is `502
+  node_unreachable`, and one silent for 60 s is `504 node_timeout`.
+- `ANSWERED_HERE` (`appium-session`) runs here: the session is routed
+  through this server.
+- Everything else is `501 not_available_through_hub`, naming the node, and
+  the dashboard toasts that message. This covers the live views (stream/*,
+  which also mints the tickets the H.264 and logcat sockets need), the two
+  uploads, `install` (a path on one machine) and Omni (this server's AI
+  settings). A new `/control` action is refused for another server's phone
+  until it is added to a list.
+- A cloud provider's phone gets `501 not_available_for_cloud_phone` for
+  all but `appium-session`, and nothing is sent to the provider. Before
+  this, the five forwarded actions went to the provider's host, typed text
+  included.
+
+Through 2.1 only the five input actions were forwarded. The rest ran on the
+hub against a phone it doesn't have: they failed, or with hub and node on
+one machine, worked on the hub's own adb by accident. Spec fixtures that
+stand for this server's phones carry its node id (`useOwnNodeId`,
+`test/helpers/own-node-id.ts`).
 
 **Busy on a hub** (`src/data-service/deviceClaims.ts`). A node's phone is
 busy on the hub for one of two reasons, each in its own columns so neither
@@ -1157,6 +1189,7 @@ npm run build:copy` (from the repo root) regenerates and copies it.
 | `src/gateway/sessionGateway.ts` | The session layer in front of Appium's routes: internal calls skip auth, per-command auth (or the hub token on a node), then a hub forwards remote sessions; remote DELETE runs the lifecycle |
 | `src/gateway/internalCall.ts` | `/wd-internal` + the per-process secret header; one `next()` call site so a refused call answers exactly like an unknown route |
 | `src/gateway/hubSessionToken.ts` | Hub-signed `x-xenon-hub-token` JWTs, verified by the node against the hub's JWKS: `xenon-node` per session for commands, `xenon-node-create` per create (owner, phone, node), `xenon-node-control` per forwarded `/control` call (user, admin, phone, node) |
+| `src/app/routers/nodePhoneControl.ts` | The gate in front of `/control`'s handlers for another server's phone: forward (`NODE_FORWARDED_CONTROL`), answer here (`ANSWERED_HERE`) or refuse with 501; a new action is refused until listed |
 | `src/gateway/sessionLocator.ts` | Where a session runs: `SESSION_MANAGER`, then the open Session row and its phone's row; never its own routing table |
 | `src/gateway/nodeSessionStatus.ts` | A node's `GET /xenon/api/node/sessions/:id` (hub token, no command, answered from the umbrella) and the hub's memory of which nodes lack it |
 | `src/sessions/appiumUmbrella.ts` | Appium's umbrella as `createSession` last saw it; `hasSession` reads `sessionExists` without running a command |
