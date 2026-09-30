@@ -129,7 +129,9 @@ class IOSStreamService {
   private startWatchdog() {
     // Every minute, and cheap: an unwatched preview's hold was held for good,
     // because the only idle check ran hourly and kept every busy device.
-    setInterval(() => void this.sweepIdle(), 60_000);
+    // unref()ed: the server's listener keeps the process alive; these only
+    // need to fire while it runs.
+    setInterval(() => void this.sweepIdle(), 60_000).unref();
     // Hourly: port leases and the stream health check, which probes WDA.
     setInterval(async () => {
       for (const [udid, session] of this.sessions.entries()) {
@@ -183,7 +185,7 @@ class IOSStreamService {
           }
         }
       }
-    }, 3600000); // 1hr interval for background stability
+    }, 3600000).unref(); // 1hr interval for background stability
   }
 
   /**

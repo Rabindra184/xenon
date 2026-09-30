@@ -1,7 +1,10 @@
 import 'reflect-metadata';
 import { expect } from 'chai';
 import sinon from 'sinon';
-import { LeaseOrphanSweeper } from '../../../src/services/lease/LeaseOrphanSweeper';
+import {
+  LeaseOrphanSweeper,
+  leaseReapReason,
+} from '../../../src/services/lease/LeaseOrphanSweeper';
 import { useScratchDatabase } from '../../helpers/scratch-database';
 
 /**
@@ -100,5 +103,28 @@ describe('LeaseOrphanSweeper: a lease ends at expiresAt (scratch DB)', () => {
 
     expect(await statusOf('gone')).to.equal('released');
     expect(releaseLeaseLock.called).to.equal(false);
+  });
+});
+
+describe('leaseReapReason', () => {
+  // Past expiresAt, heartbeat and extend refuse the lease (410), so by the next
+  // sweep its heartbeats are missed too. The end time is the cause; the lab's
+  // log said "missed heartbeats" for every such lease.
+  it('names the end time for a lease past expiresAt, even when its heartbeats are missed too', () => {
+    const now = Date.now();
+    const reason = leaseReapReason(
+      { heartbeatSeconds: 10, lastHeartbeatAt: now - 60_000, expiresAt: now - 1_000 },
+      now,
+    );
+    expect(reason).to.match(/^expired at /);
+  });
+
+  it('names missed heartbeats for a lease before its end time', () => {
+    const now = Date.now();
+    const reason = leaseReapReason(
+      { heartbeatSeconds: 10, lastHeartbeatAt: now - 60_000, expiresAt: now + 60_000 },
+      now,
+    );
+    expect(reason).to.equal('missed heartbeats');
   });
 });

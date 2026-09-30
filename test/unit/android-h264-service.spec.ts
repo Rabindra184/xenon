@@ -1,5 +1,6 @@
 import 'reflect-metadata';
 import { expect } from 'chai';
+import sinon from 'sinon';
 import { Container } from 'typedi';
 import AndroidH264StreamService from '../../src/device-managers/android/AndroidH264StreamService';
 import { PluginContext } from '../../src/PluginContext';
@@ -38,6 +39,23 @@ describe('AndroidH264StreamService', () => {
     const mux = await svc.start('udid-x');
     expect(mux).to.equal(svc.getMultiplexer('udid-x'));
     expect(mux.clientCount).to.equal(0);
+  });
+
+  it('start() leaves no timer behind once the config packet arrives', async () => {
+    const clock = sinon.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    try {
+      const svc = make();
+      svc.openCapture = async (_udid: string, onPacket: any) => {
+        onPacket({ type: 'config', data: Buffer.from([0]), ptsMs: 0 });
+        return { kill: () => undefined };
+      };
+      await svc.start('udid-t');
+      // The 3 s wait is only a cap: a start that got its config in time must
+      // not leave it pending for the process to wait out.
+      expect(clock.countTimers()).to.equal(0);
+    } finally {
+      clock.restore();
+    }
   });
 
   it('start() is idempotent per udid (concurrent starts share one capture)', async () => {
