@@ -6,6 +6,47 @@ This project follows [Semantic Versioning](https://semver.org/). Releases are
 published to npm automatically when `package.json`'s `version` changes on `main`
 (see `.github/workflows/npm-publish.yml`).
 
+## 2.7.0
+
+**The Sessions list pages through every session.** It used to stop at the
+newest 500 sessions of a period or build, while the summary above it counted
+them all. It now shows the newest 200, with **Show 200 more** for the next
+page, and says how many are loaded of how many there are.
+
+No database migration, and no configuration to change.
+
+### Added
+
+- **Paging on the Sessions list** (#401).
+  - The newest 200 sessions are refreshed every 3 s.
+  - **Show 200 more** loads the next page, once.
+  - Rows loaded this way stay listed while new sessions arrive: nothing is
+    skipped or repeated.
+  - Under the table: "Showing the newest 400 of 2,340 sessions".
+- **`GET /xenon/api/session` takes `limit` and a page cursor** (#401).
+  - `limit`: 1 to 2000, default 500 as before. A larger limit gets 2000.
+  - `before` and `beforeId`: the last row of the page before.
+  - Sessions are now ordered by `createdAt`, then by `id`, so pages
+    continue exactly where they stopped.
+  - A `limit` or `before` it can't read is refused with `400`
+    (`invalid_limit`, `invalid_before`).
+
+### Changed
+
+- **CI runs on Node 22** (#401). Node 20 reached end of life in April 2026.
+
+### Known issues
+
+- **A running session in an older, already loaded page keeps the status
+  it had when loaded**, until the period or build is changed.
+- **Install by path is refused for a node's phone**: a path names a file on
+  one machine.
+- **BiDi and session WebSockets aren't routed through a hub.** A session's
+  `webSocketUrl` points at the node, so nodes must not sit on untrusted
+  networks.
+- **Only one iOS 17+ iPhone per Mac can stream at a time**, because every
+  go-ios tunnel binds the same port.
+
 ## 2.6.2
 
 **Copy a build's failed tests.** A build's page had a **Retry failed**
