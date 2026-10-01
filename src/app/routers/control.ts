@@ -225,7 +225,15 @@ router.get('/:udid/screenshot', async (req: Request, res: Response) => {
 
   const manager = await getDeviceManagerForPlatform(device.platform);
   if (manager && manager.getScreenshot) {
-    const base64 = await manager.getScreenshot(udid);
+    let base64: string;
+    try {
+      base64 = await manager.getScreenshot(udid);
+    } catch (err: any) {
+      // Answered: Express 4 doesn't catch a rejected async handler, and an
+      // iPhone with no live preview (no WDA, no tunnel) left this unanswered.
+      log.error(`Screenshot capture failed for ${udid}: ${err?.message ?? err}`);
+      return res.status(502).send({ error: `Screenshot capture failed: ${err?.message ?? err}` });
+    }
 
     // CRITICAL: Validate screenshot is not empty before returning success
     if (base64 && base64.length > 100) {
