@@ -9,8 +9,8 @@ jobs:
   drift-check:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v6
         with:
           node-version: '20'
           cache: 'npm'
@@ -36,12 +36,15 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           fetch-depth: 2
 
+      # Not v7 yet: v7 stops exporting a placeholder NODE_AUTH_TOKEN, and the
+      # npm install below runs with registry-url's .npmrc but no token. That
+      # needs one run of this job (main only) to confirm before moving.
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: '20'
           registry-url: 'https://registry.npmjs.org'
