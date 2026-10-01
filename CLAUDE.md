@@ -462,19 +462,41 @@ untrusted networks.
 
 Independent of Appium sessions, each platform has a stream service that brings up an MJPEG feed for live preview / recording:
 
-- **iOS**: `IOSStreamService` shells `go-ios` to start a tunnel (iOS 17+), launches WebDriverAgent via `runwda`, and forwards local ports `wdaPort:8100` and `mjpegPort:9100` with `iproxy`. WDA's MJPEG server is enabled via `/appium/settings`. Stream sessions are tracked in `this.sessions` with a watchdog that idles out streams after 10 min of zero viewers (unless the device is busy with an Appium session).
+- **iOS**: `IOSStreamService` starts the phone's own go-ios tunnel (iOS 17+, `IOSTunnels`, see below), launches WebDriverAgent via `runwda`, and forwards local ports `wdaPort:8100` and `mjpegPort:9100` with `iproxy`. WDA's MJPEG server is enabled via `/appium/settings`. Stream sessions are tracked in `this.sessions` with a watchdog that idles out streams after 10 min of zero viewers (unless the device is busy with an Appium session).
 - **Android**: `AndroidStreamService` uses ADB + a built-in capture pipeline (MJPEG). A faster, flagged **H.264 live-preview** path also exists — see "Android H.264 live preview (scrcpy)" below.
 
-**go-ios tunnels and Appium sessions.** go-ios's tunnel process listens on
-60105 (its tunnel-info API) and 60106 (the first phone's userspace tunnel). On
-iOS 17+ a WDA that go-ios launched (`runwda`) reaches the phone through it.
-The xcuitest driver never uses go-ios, but an Appium session allocated while a
-stream runs drives the stream's WDA (`iOSCapabilities` sets
-`webDriverAgentUrl`), so that session depends on the stream's WDA, forwarder
-and tunnel. Two rules follow:
+**A go-ios tunnel per iPhone** (`src/device-managers/ios/IOSTunnels.ts`). On
+iOS 17+ the go-ios commands Xenon runs against a phone (`runwda`, `ostrace`,
+`syslog`, `screenshot`) reach it through a go-ios tunnel. Each phone gets
+its own: `tunnel start --udid <phone> --userspace --tunnel-info-port <P>`, a
+per-device agent on a pair of ports leased from the `tunnel` range
+(12100–12199, `PortAllocator.acquirePair`). P is its tunnel-info API, and
+go-ios derives P + 1 for the phone's traffic.
 
-- `cleanupOrphanTunnels` (the udid reap plus the kill -9 of whatever listens
-  on 60105/60106) never runs while an Appium session holds the phone
+- **Finding it.** A command finds its phone's tunnel through
+  `GO_IOS_AGENT_PORT` (`IOSTunnels.envFor`). A phone with no tunnel gets the
+  plain environment.
+- **Starting it.** A start waits up to 20 s for `GET :P/tunnel/<udid>` to
+  answer 200, then goes on with a warning. A tunnel that exits before then
+  fails the start.
+- **Losing it.** A tunnel that exits later, on an unplug, gives its ports
+  back, and the next start gets a new pair.
+- **Who drives it.** The stream's start and stop. At boot, Xenon reaps go-ios
+  and then drops every `tunnel` lease.
+- **Why.** Through 2.7 every tunnel took go-ios's default ports, 60105 and
+  60106. A second iPhone's stream kill -9'd whatever listened there, which was
+  the first iPhone's live tunnel, so only one iOS 17+ iPhone per Mac could
+  stream. Nothing is killed by port any more.
+
+**go-ios tunnels and Appium sessions.** The xcuitest driver never uses
+go-ios. But an Appium session allocated while a stream runs drives the
+stream's WDA (`iOSCapabilities` sets `webDriverAgentUrl`), and on iOS 17+
+that WDA reaches the phone through the phone's tunnel. So that session
+depends on the stream's WDA, forwarder and tunnel. Three rules follow:
+
+- `cleanupOrphanTunnels` (the phone's own tunnel through `IOSTunnels.stop`,
+  then a reap of that phone's untracked go-ios processes) never runs while an
+  Appium session holds the phone
   (`heldByAppiumSession`: busy, non-manual `session_id`), or when its row
   can't be read. The sweep waits for the next stop or start after the
   session; a restart reaps every go-ios process at boot.
@@ -1263,6 +1285,7 @@ npm run build:copy` (from the repo root) regenerates and copies it.
 | `src/device-managers/AndroidDeviceManager.ts` | ADB device discovery & control |
 | `src/device-managers/IOSDeviceManager.ts` | simctl + ios-device control |
 | `src/device-managers/ios/IOSStreamService.ts` | go-ios + WDA + iproxy lifecycle for live MJPEG |
+| `src/device-managers/ios/IOSTunnels.ts` | One go-ios tunnel per iOS 17+ phone, on a port pair leased from the `tunnel` range; `envFor` gives a go-ios command its phone's `GO_IOS_AGENT_PORT` |
 | `src/helpers/UniversalMjpegProxy.ts` | One-upstream-to-many-clients MJPEG fan-out with backpressure |
 | `src/device-managers/android/ScrcpyServerSession.ts` | scrcpy-server lifecycle (push jar + `app_process` + `adb forward` + first-byte-gated connect) for the Android H.264 source |
 | `src/app/routers/androidH264Config.ts` | Normalizes the `streaming.androidH264` flag union (`bool \| { source }`) to `{ enabled, source }` |
