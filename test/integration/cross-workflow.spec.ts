@@ -7,6 +7,7 @@ import {
 } from '../../src/services/recording/RecordingOrchestrator';
 import { ConcurrencyGate } from '../../src/services/recording/concurrency-gate';
 import * as deviceStoreModule from '../../src/data-service/device-store';
+import { useArtifactStore } from '../helpers/artifact-store';
 
 /**
  * The six scenarios from the spec's cross-workflow risk matrix
@@ -32,6 +33,13 @@ function makeOrch(overrides: any = {}) {
     };
   const blockDeviceFn = overrides.blockDeviceFn ?? sinon.stub().resolves();
   const unblockDeviceFn = overrides.unblockDeviceFn ?? sinon.stub().resolves();
+  // Each phone is this server's own, read from a live MJPEG port: the real
+  // ones would look the phone up and start its stream.
+  const nodeSourceFn = overrides.nodeSourceFn ?? sinon.stub().resolves(null);
+  const ensureMjpegPortFn = overrides.ensureMjpegPortFn ?? sinon.stub().resolves(9100);
+  // Where a stopped recording hands its phone: the preview's leave path,
+  // which releases the hold once nobody watches it.
+  const leaveDeviceFn = overrides.leaveDeviceFn ?? sinon.stub();
   const eventMgr =
     overrides.eventMgr ?? {
       emitRecordingStarted: sinon.stub(),
@@ -48,11 +56,27 @@ function makeOrch(overrides: any = {}) {
     blockDeviceFn,
     eventMgr: eventMgr as any,
     unblockDeviceFn,
+    nodeSourceFn,
+    ensureMjpegPortFn,
+    leaveDeviceFn,
   });
-  return { orch, busyPrecheck, store, gate, videoPipeline, blockDeviceFn, unblockDeviceFn, eventMgr };
+  return {
+    orch,
+    busyPrecheck,
+    store,
+    gate,
+    videoPipeline,
+    blockDeviceFn,
+    unblockDeviceFn,
+    leaveDeviceFn,
+    eventMgr,
+  };
 }
 
 describe('Cross-workflow integration: manual + automation safety (6 scenarios)', () => {
+  // start() resolves each recording's file through the ArtifactStore, as the
+  // server registers it at boot.
+  useArtifactStore();
   let factoryStub: sinon.SinonStub;
   beforeEach(() => {
     factoryStub = sinon
@@ -114,8 +138,8 @@ describe('Cross-workflow integration: manual + automation safety (6 scenarios)',
     expect(new Set(passedSessionIds).size).to.equal(2);
   });
 
-  it('4. ffmpeg stop throws (simulated device unplug) — Recording marked FAILED, manual block released', async () => {
-    const { orch, store, unblockDeviceFn, videoPipeline } = makeOrch({
+  it('4. ffmpeg stop throws (simulated device unplug) — Recording marked FAILED, phone handed on to release its block', async () => {
+    const { orch, store, leaveDeviceFn } = makeOrch({
       store: {
         listGroup: sinon.stub().resolves([
           {
@@ -136,7 +160,7 @@ describe('Cross-workflow integration: manual + automation safety (6 scenarios)',
     await orch.stop('grp-X');
     const finalizeArgs = store.finalize.firstCall.args[1];
     expect(finalizeArgs.status).to.equal('FAILED');
-    expect(unblockDeviceFn.calledWith('U1', '127.0.0.1')).to.equal(true);
+    expect(leaveDeviceFn.calledOnceWith('U1')).to.equal(true);
   });
 
   it('5. server restart with orphan RECORDING row — recoverOnBoot marks FAILED + releases block', async () => {

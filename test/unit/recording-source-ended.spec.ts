@@ -69,6 +69,8 @@ function makeOrch(row: any, overrides: any = {}) {
     emitRecordingAnnotation: sinon.stub(),
   };
   const unblockDeviceFn = sinon.stub().resolves();
+  // Where an ended recording hands its phone: the preview's leave path.
+  const leaveDeviceFn = sinon.stub();
   // Never spawn ffmpeg from a unit test; individual cases override this.
   const probeDurationMsFn =
     overrides.probeDurationMsFn ?? sinon.stub().resolves(undefined as number | undefined);
@@ -82,8 +84,18 @@ function makeOrch(row: any, overrides: any = {}) {
     blockDeviceFn: sinon.stub().resolves(),
     unblockDeviceFn,
     ensureMjpegPortFn: sinon.stub().resolves(9100),
+    leaveDeviceFn,
   });
-  return { orch, store, gate, videoPipeline, eventMgr, unblockDeviceFn, probeDurationMsFn };
+  return {
+    orch,
+    store,
+    gate,
+    videoPipeline,
+    eventMgr,
+    unblockDeviceFn,
+    leaveDeviceFn,
+    probeDurationMsFn,
+  };
 }
 
 describe('RecordingOrchestrator: ffmpeg exiting on its own', () => {
@@ -135,15 +147,16 @@ describe('RecordingOrchestrator: ffmpeg exiting on its own', () => {
     expect(store.finalize.firstCall.args[1].failReason).to.equal('empty_or_corrupt_mp4');
   });
 
-  it('releases the gate slot and the device lock', async () => {
+  it('releases the gate slot and hands the phone on to release its hold', async () => {
     const row = makeRow();
-    const { orch, gate, unblockDeviceFn } = makeOrch(row);
+    const { orch, gate, leaveDeviceFn } = makeOrch(row);
     gate.tryAcquire(['rec-1']);
 
     await orch.handleSourceEnded('rec-1', 0);
 
     expect(gate.tryAcquire(['rec-1']), 'slot must be free again').to.be.true;
-    expect(unblockDeviceFn.called, 'manual lock released').to.be.true;
+    expect(leaveDeviceFn.calledOnceWith(row.device_udid), 'phone handed to the leave path').to.be
+      .true;
   });
 
   it('does nothing when the row was already finalized', async () => {
