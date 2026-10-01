@@ -6,6 +6,71 @@ This project follows [Semantic Versioning](https://semver.org/). Releases are
 published to npm automatically when `package.json`'s `version` changes on `main`
 (see `.github/workflows/npm-publish.yml`).
 
+## 2.5.0
+
+**The Sessions page opens on every session, with a summary.**
+- **Every session, newest first:** the page no longer starts empty until a
+  build is picked. It lists the chosen period's sessions across all builds.
+- **Summary on top:** pass rate and its change from the period before,
+  failures, what's running now, and median and p90 duration.
+- **Names first:** rows show the test's name, its build, the device, where
+  it ran and who ran it. Failures are marked, with the reason inline.
+- **Builds column:** it now filters the table, and each build has an
+  outcome bar.
+
+No database migration, and no configuration to change.
+
+### Changed — operator action may be needed
+
+- **`GET /xenon/api/build` counts `error` and `timeout` sessions as failed,
+  and `ended` as passed** (#393). This is the same verdict the session rows
+  use. `failedCount` used to count only `failed`, and `passedCount` only
+  `success` and `passed`, so a client reading those counts may see them
+  change for the same builds.
+- **The session detail page says Passed, not Success**, matching the list.
+
+### Added
+
+- **The Sessions page redesign** (#393).
+  - `/builds` opens on all sessions of the period, which defaults to the
+    last 7 days and is chosen in the page header.
+  - The summary strip shows a chosen build's own numbers.
+  - The builds column comes first with "All sessions", and each build shows
+    a pass/fail bar. A build sent with no name reads "Build · Sep 29,
+    07:30" instead of "Default Build".
+  - An unnamed session shows its app (package, bundle id or file name). The
+    page shows how to name tests and runs with the `xe:options.name` and
+    `xe:options.build` capabilities.
+  - Search covers what the rows show, the owner and node included.
+  - Rows open with Enter or Space as well as a click.
+- **`GET /xenon/api/session?since=<ISO date>`** lists only the sessions
+  created since then. Each listed session also carries:
+  - `owner`: `{ name, email }`, or null;
+  - `ranOn`: `here`, a node's host, or null when that isn't known.
+  A `since` that isn't a date is refused with `400 invalid_since`.
+- **`GET /xenon/api/session-summary?since=&buildId=`**:
+  - counts by outcome for the period and for the period of the same length
+    before it;
+  - median and p90 duration of the sessions that ended;
+  - what runs now.
+
+  It covers only the sessions the caller may see.
+
+### Known issues
+
+- **The session list still returns at most the newest 500 sessions.** When
+  it stops there, the count says "(the newest)". The summary counts the
+  whole period.
+- **"Retry failed" is still a placeholder.**
+- **The session detail page hasn't been redesigned yet.**
+- **Install by path is refused for a node's phone**: a path names a file on
+  one machine.
+- **BiDi and session WebSockets aren't routed through a hub.** A session's
+  `webSocketUrl` points at the node, so nodes must not sit on untrusted
+  networks.
+- **Only one iOS 17+ iPhone per Mac can stream at a time**, because every
+  go-ios tunnel binds the same port.
+
 ## 2.4.0
 
 **A hub records its nodes' phones.** Recording a node's phone, alone or
