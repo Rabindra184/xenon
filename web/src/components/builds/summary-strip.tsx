@@ -1,6 +1,7 @@
 import React from 'react';
 import type { ISessionSummary } from '../../interfaces/ISessionSummary';
 import { compactDuration, passRate, passRateDelta } from './derive';
+import { StatTile as Tile, type StatTone } from '../ui/stat-tile';
 
 interface Props {
   /** null until the first answer: every tile shows a dash. */
@@ -9,29 +10,7 @@ interface Props {
   periodLabel: string | null;
 }
 
-type Tone = 'neutral' | 'good' | 'bad';
-
-const toneCls: Record<Tone, string> = {
-  neutral: 'text-[var(--text-muted)]',
-  good: 'text-[var(--color-success)]',
-  bad: 'text-[var(--color-danger)]',
-};
-
-const Tile: React.FC<{
-  label: string;
-  value: React.ReactNode;
-  valueCls?: string;
-  note?: React.ReactNode;
-  noteTone?: Tone;
-}> = ({ label, value, valueCls = 'text-[var(--text)]', note, noteTone = 'neutral' }) => (
-  <div className="min-w-0 rounded-lg border border-[var(--border)] bg-[var(--surface)] px-4 py-3">
-    <div className="text-xs text-[var(--text-muted)]">{label}</div>
-    <div className={`mt-1 text-2xl font-semibold tabular-nums leading-tight ${valueCls}`}>
-      {value}
-    </div>
-    <div className={`mt-0.5 text-[11px] truncate ${toneCls[noteTone]}`}>{note ?? ' '}</div>
-  </div>
-);
+type Tone = StatTone;
 
 /** A change in points, as people write it: "+2 pts", "−14 pts", "No change". */
 function deltaText(points: number, periodLabel: string): { text: string; tone: Tone } {

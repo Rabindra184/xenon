@@ -4,6 +4,9 @@ import { parseCapabilities, humanizeCapabilityValue } from './derive';
 
 type Tab = 'desired' | 'session';
 
+// What the client asked for, and what the driver ran with.
+const TAB_LABEL: Record<Tab, string> = { desired: 'Requested', session: 'Actual' };
+
 interface Props {
   session: ISession;
 }
@@ -31,20 +34,25 @@ export const CapabilitiesCard: React.FC<Props> = ({ session }) => {
                 : 'border-transparent text-[var(--text-muted)] hover:text-[var(--text)]'
             }`}
           >
-            {t}
+            {TAB_LABEL[t]}
           </button>
         ))}
       </header>
 
       {entries.length === 0 ? (
         <div className="px-3 py-6 text-center text-xs text-[var(--text-dim)]">
-          No {tab} capabilities reported for this session.
+          No {TAB_LABEL[tab].toLowerCase()} capabilities recorded for this session.
         </div>
       ) : (
         <dl className="divide-y divide-[var(--border)]">
           {entries.map(([k, v]) => (
-            <div key={k} className="flex items-baseline justify-between gap-3 px-3 py-2">
-              <dt className="text-xs text-[var(--text-muted)] truncate shrink-0 max-w-[45%]">{k}</dt>
+            // Names wrap rather than being cut: appium:wdaConnectionTimeout
+            // and appium:wdaLaunchTimeout differ only at the end.
+            <div
+              key={k}
+              className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)] items-baseline gap-3 px-3 py-2"
+            >
+              <dt className="text-xs text-[var(--text-muted)] break-all">{k}</dt>
               <dd className="font-mono text-xs text-[var(--text)] truncate text-right min-w-0" title={humanizeCapabilityValue(v, 500)}>
                 {humanizeCapabilityValue(v)}
               </dd>

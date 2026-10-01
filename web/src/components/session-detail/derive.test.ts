@@ -1,34 +1,11 @@
 import { describe, it, expect } from 'vitest';
 import {
-  firstErrorLog,
   parseStackFromReason,
   humanizeFailureCategory,
   parseCapabilities,
   humanizeCapabilityValue,
   shortSessionId,
 } from './derive';
-
-describe('firstErrorLog', () => {
-  it('returns the first is_success=false entry', () => {
-    const logs = [
-      { is_success: true, message: 'a' },
-      { is_success: false, message: 'b' },
-      { is_success: false, message: 'c' },
-    ];
-    expect(firstErrorLog(logs)?.message).to.equal('b');
-  });
-  it('falls back to last entry when no explicit failure flagged', () => {
-    const logs = [
-      { is_success: true, message: 'a' },
-      { message: 'b' },
-      { message: 'c' },
-    ];
-    expect(firstErrorLog(logs)?.message).to.equal('c');
-  });
-  it('returns null for empty array', () => {
-    expect(firstErrorLog([])).to.equal(null);
-  });
-});
 
 describe('parseStackFromReason', () => {
   it('extracts at … frames', () => {

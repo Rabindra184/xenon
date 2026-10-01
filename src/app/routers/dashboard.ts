@@ -182,7 +182,9 @@ async function getSessionById(request: Request, response: Response) {
   if (!session) {
     return response.status(404).json({ error: true, message: 'Session not found' });
   }
-  return response.status(200).json(session);
+  // Who ran it and where, as the list says (describeSessions).
+  const [described] = await describeSessions([session]);
+  return response.status(200).json(described);
 }
 
 async function getSessionLogs(request: Request, response: Response) {
