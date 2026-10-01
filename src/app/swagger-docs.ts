@@ -82,10 +82,29 @@
  *           type: string
  *           format: date-time
  *         description: Only sessions created at or after this time. A value that is not a date is refused (400 invalid_since).
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           minimum: 1
+ *           maximum: 2000
+ *           default: 500
+ *         description: Sessions per answer. A larger limit is answered with 2000; one that is not a whole number from 1 is refused (400 invalid_limit).
+ *       - in: query
+ *         name: before
+ *         schema:
+ *           type: string
+ *           format: date-time
+ *         description: The next page. The createdAt of the last session of the page before; with beforeId, its id. Sessions are ordered newest first by createdAt, then by id, so a page continues exactly where the one before stopped. A value that is not a date is refused (400 invalid_before).
+ *       - in: query
+ *         name: beforeId
+ *         schema:
+ *           type: string
+ *         description: The id of the last session of the page before (see before).
  *     responses:
  *       200:
  *         description: >-
- *           The newest 500 matching sessions, newest first. Each also carries
+ *           Up to `limit` matching sessions, newest first. Each also carries
  *           `owner` ({ name, email } of who ran it, or null) and `ranOn`
  *           ('here' for this server, a node's host, or null when not known).
  *         content:
