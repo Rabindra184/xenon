@@ -10,7 +10,7 @@ import { SessionTable } from './session-table';
 import { SummaryStrip } from './summary-strip';
 import {
   buildDisplayName,
-  buildStatusCounts,
+  failedTestsReport,
   filterSessions,
   TIME_FILTER_LABEL,
   type StatusKey,
@@ -96,10 +96,24 @@ export const BuildsPage: React.FC = () => {
     [data.builds],
   );
   const selectedBuild = data.builds.find((b) => b.id === selectedBuildId) || null;
-  const counts = buildStatusCounts(data.sessions);
 
-  const onRetryFailed = () => {
-    toast('Bulk retry lands in a future release.', 'info');
+  const failedReport = failedTestsReport(
+    selectedBuild ? buildDisplayName(selectedBuild) : 'this build',
+    data.sessions,
+    selectedIds,
+  );
+
+  const onCopyFailed = async () => {
+    if (failedReport.count === 0) return;
+    try {
+      await navigator.clipboard.writeText(failedReport.text);
+      toast(
+        `Copied ${failedReport.count} failed test${failedReport.count === 1 ? '' : 's'}`,
+        'success',
+      );
+    } catch {
+      toast('Clipboard unavailable', 'error');
+    }
   };
 
   const onExport = async (fmt: 'json' | 'csv') => {
@@ -215,9 +229,8 @@ export const BuildsPage: React.FC = () => {
             <>
               <BuildsHeader
                 build={selectedBuild}
-                failedCount={counts.failed}
-                selectedCount={selectedIds.size}
-                onRetryFailed={onRetryFailed}
+                failedToCopy={failedReport.count}
+                onCopyFailed={onCopyFailed}
                 onExport={onExport}
               />
               {filterBar}
