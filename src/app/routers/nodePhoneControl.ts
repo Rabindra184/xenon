@@ -19,6 +19,7 @@ import {
 import { formatManualLock } from '../../services/recording/manualLock';
 import { SessionOwnerResolver } from '../../services/device-access/SessionOwnerResolver';
 import { DeviceStoreFactory } from '../../data-service/device-store';
+import { RecordingStore } from '../../services/recording/recording-store';
 import {
   denyBody,
   ownershipUnavailableBody,
@@ -211,10 +212,15 @@ export interface NodePhoneControlDeps {
   /** A user's name, for a node's refusal that names the holder by id only. */
   describeHolder?: (userId: string) => Promise<string | null>;
   controlToken?: (grant: ControlGrant) => Promise<string | null>;
+  /** This server's recording of the phone, if one is running. */
+  activeRecordingFor?: (udid: string) => Promise<{ groupId: string } | null>;
 }
 
 export function nodePhoneControl(deps: NodePhoneControlDeps = {}) {
   const findDevice = deps.findDevice ?? findControlDeviceInStore;
+  const activeRecordingFor =
+    deps.activeRecordingFor ??
+    ((udid: string) => Container.get(RecordingStore).activeRecordingFor(udid));
   const forwardDeps: ForwardDeps = {
     timeoutMs: deps.timeoutMs ?? NODE_CONTROL_TIMEOUT_MS,
     installTimeoutMs: deps.installTimeoutMs ?? NODE_INSTALL_TIMEOUT_MS,
@@ -263,6 +269,25 @@ export function nodePhoneControl(deps: NodePhoneControlDeps = {}) {
         'not_available_through_hub',
         `This phone is on node ${node}, and the hub doesn't pass ${action} on to nodes yet.`,
       );
+    }
+    if (key === 'POST stream/stop') {
+      // This server may be recording the phone from the node's stream
+      // (nodeRecordingSource.ts). The node doesn't know, and stopping its
+      // stream would cut the recording short: refused as /control refuses a
+      // stop for its own phones being recorded.
+      const recording = await activeRecordingFor(udid).catch((e: any) => {
+        log.error(`nodePhoneControl: recording lookup failed for ${udid}: ${e?.message ?? e}`);
+        return undefined;
+      });
+      if (recording === undefined) return res.status(503).json(ownershipUnavailableBody());
+      if (recording) {
+        return res.status(409).json({
+          success: false,
+          error: 'device_recording',
+          message: 'This device is being recorded. Stop the recording first.',
+          groupId: recording.groupId,
+        });
+      }
     }
     return forward(req, res, { udid, device, node }, forwardDeps);
   };

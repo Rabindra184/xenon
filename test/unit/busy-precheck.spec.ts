@@ -112,6 +112,41 @@ describe('BusyPrecheck', () => {
     expect(out[0]).to.deep.include({ udid: 'U1', reason: 'manual_other', blockId: 'manual_U1' });
   });
 
+  // On a hub, a node's phone held by a preview has the holder in nodeHold,
+  // from the node's report; session_id is the hub's own and stays empty.
+  // Read as unknown, the user's own preview kept them from recording it.
+  it('reads a node phone’s preview hold from nodeHold: mine to take over, another user’s not', async () => {
+    const pc = precheck(
+      withDevices({
+        MINE: {
+          udid: 'MINE',
+          busy: true,
+          nodeBusy: true,
+          session_id: null,
+          nodeHold: 'manual_alice_MINE',
+        },
+        THEIRS: {
+          udid: 'THEIRS',
+          busy: true,
+          nodeBusy: true,
+          session_id: null,
+          nodeHold: 'manual_bob_THEIRS',
+        },
+        NODE_SESSION: {
+          udid: 'NODE_SESSION',
+          busy: true,
+          nodeBusy: true,
+          session_id: null,
+          nodeHold: null,
+        },
+      }),
+    );
+    expect(await pc.findBusy(['MINE', 'THEIRS', 'NODE_SESSION'], 'alice')).to.deep.equal([
+      { udid: 'THEIRS', reason: 'manual_other', blockId: 'manual_bob_THEIRS' },
+      { udid: 'NODE_SESSION', reason: 'unknown' },
+    ]);
+  });
+
   it('returns reason=unknown for missing devices', async () => {
     const pc = precheck(withDevices({}));
     const out = await pc.findBusy(['MISSING']);

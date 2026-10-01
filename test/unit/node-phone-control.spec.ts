@@ -245,6 +245,38 @@ describe('nodePhoneControl', () => {
     }
   });
 
+  // The node doesn't know this server is recording its phone, so it would stop
+  // the stream the recording reads; /control refuses a local phone's the same way.
+  it('refuses to stop a node phone’s preview while this server records it', async () => {
+    const node = express();
+    const hits: string[] = [];
+    node.use((req, res) => {
+      hits.push(req.path);
+      res.json({ success: true });
+    });
+    const origin = `http://127.0.0.1:${((await loopback.serve(node)).address() as any).port}`;
+    findDevice = async () => ({ udid: 'p', host: origin, nodeId: 'node-1' });
+    let recording: { groupId: string } | null = { groupId: 'g-1' };
+    const a = express();
+    a.use(express.json());
+    a.use(
+      '/xenon/api/control',
+      nodePhoneControl({
+        findDevice: (udid) => findDevice(udid),
+        activeRecordingFor: async () => recording,
+      }),
+    );
+
+    const refused = await request(a).post('/xenon/api/control/p/stream/stop').send({});
+    expect(refused.status).to.equal(409);
+    expect(refused.body).to.include({ error: 'device_recording', groupId: 'g-1' });
+    expect(hits).to.deep.equal([]);
+
+    recording = null;
+    await request(a).post('/xenon/api/control/p/stream/stop').send({}).expect(200);
+    expect(hits).to.deep.equal(['/xenon/api/control/p/stream/stop']);
+  });
+
   it('refuses a host it must never call', async () => {
     findDevice = async () => ({ udid: 'p', host: 'http://169.254.169.254', nodeId: 'node-1' });
     const res = await request(app()).get('/xenon/api/control/p/screenshot');
