@@ -6,6 +6,77 @@ This project follows [Semantic Versioning](https://semver.org/). Releases are
 published to npm automatically when `package.json`'s `version` changes on `main`
 (see `.github/workflows/npm-publish.yml`).
 
+## 2.3.0
+
+**Device control works on a hub's node phones, end to end.** Installing apps,
+by upload or from the app library, and Omni-Vision now go through the hub.
+The hub shows who holds a node phone's preview and names them when it
+refuses someone. Every device-control action works on a node's phone apart
+from install by path and recording. Checked on an Android phone and an
+iPhone, through a hub and an auth-enabled node. Device control's **Upload
+file** also works now, on every server.
+
+Includes a database migration, applied automatically at startup. **Read
+"Changed — operator action may be needed" before upgrading.**
+
+### Changed — operator action may be needed
+
+- **Database migration: one column on `Device`** (#386): `nodeHold`, who
+  holds a node's phone, from the node's report. `runMigrations` applies it
+  at startup. If you run with `XENON_AUTO_MIGRATE=false`, apply
+  `20261001120000_device_node_hold` yourself before starting this version.
+- **Installing apps on a node's phone through a hub needs the node on 2.3**
+  (#387, #388). An older node's own upload-install received no file, so the
+  install fails there, with that node's error. Everything else in device
+  control works with 2.1 and 2.2 nodes.
+- **Uploads for install are limited to 4 GB** (#387) and written to a
+  temporary file, not held in memory. A larger upload is answered `413`.
+
+### Added
+
+- **Install apps on a node's phone through the hub** (#388).
+  - Upload and install: the hub streams the upload to the node without
+    storing it.
+  - Install from the app library: the hub checks the app's team as before,
+    then sends the file from its library to the node.
+  - The node gets 15 minutes to answer an install.
+- **Omni-Vision on a node's phone through the hub** (#388): the scan and
+  locator testing run on the hub, with the hub's AI settings, on a
+  screenshot from the node.
+- **Who holds a node phone's preview** (#386).
+  - The device picker, the device cards ("Live control by you") and a
+    reload's tile restore treat it like a local preview.
+  - The hub fills the holder's name into a node's refusal, where the node
+    could only say "another user".
+  - Nodes of any 2.x version already report the holder.
+
+### Fixed
+
+- **Device control's Upload file never installed anything** (#387): every
+  upload was answered "No files were uploaded." The uploaded file is now
+  removed after the install, whether it worked or not.
+- **An Android install that took longer than 20 seconds was reported as
+  failed** (#388) though it had worked; adb's library stopped the command at
+  its default limit. Installs now get 10 minutes.
+- **A failed screenshot was never answered** (#389). On an iPhone with no
+  live preview, the Screenshot tab spun forever; it now gets an error with
+  the reason.
+
+### Known issues
+
+- **Recording a node's phone from the hub doesn't work yet:** it runs on the
+  hub's own machine.
+- **Install by path is refused for a node's phone**: a path names a file on
+  one machine.
+- **Installing an app on an iPhone through a hub wasn't checked on a phone**
+  (no test app to install). It takes the same path to the node as Android,
+  which was checked, and then the node's `ideviceinstaller`.
+- **BiDi and session WebSockets aren't routed through a hub.** A session's
+  `webSocketUrl` points at the node, so nodes must not sit on untrusted
+  networks.
+- **Only one iOS 17+ iPhone per Mac can stream at a time**, because every
+  go-ios tunnel binds the same port.
+
 ## 2.2.0
 
 **A hub's dashboard works on its nodes' phones.** Device control of a
