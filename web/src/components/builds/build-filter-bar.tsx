@@ -13,6 +13,8 @@ interface Props {
   onSearchChange: (v: string) => void;
   totalMatching: number;
   totalUnfiltered: number;
+  /** The server's list stopped at its limit: these are the newest only. */
+  capped?: boolean;
 }
 
 export const BuildFilterBar: React.FC<Props> = ({
@@ -23,13 +25,14 @@ export const BuildFilterBar: React.FC<Props> = ({
   onSearchChange,
   totalMatching,
   totalUnfiltered,
+  capped = false,
 }) => {
   const counts = buildStatusCounts(sessions);
   return (
     <div className="bg-[var(--surface)]">
       <div className="flex items-center gap-1.5 px-4 pt-3 pb-2">
         <FilterPill
-          label="ALL"
+          label="All"
           count={counts.all}
           active={active === 'all'}
           onClick={() => onChange('all')}
@@ -37,21 +40,21 @@ export const BuildFilterBar: React.FC<Props> = ({
           bullet={false}
         />
         <FilterPill
-          label="PASSED"
+          label="Passed"
           count={counts.passed}
           active={active === 'passed'}
           onClick={() => onChange('passed')}
           tone="green"
         />
         <FilterPill
-          label="FAILED"
+          label="Failed"
           count={counts.failed}
           active={active === 'failed'}
           onClick={() => onChange('failed')}
           tone="red"
         />
         <FilterPill
-          label="RUNNING"
+          label="Running"
           count={counts.running}
           active={active === 'running'}
           onClick={() => onChange('running')}
@@ -65,12 +68,13 @@ export const BuildFilterBar: React.FC<Props> = ({
             type="text"
             value={search}
             onChange={(e) => onSearchChange(e.target.value)}
-            placeholder="Search sessions by ID, name, or device…"
+            placeholder="Search tests, devices, people…"
+            aria-label="Search sessions"
             className="w-full h-8 pl-8 pr-2 text-xs"
           />
         </div>
-        <span className="text-[10px] font-mono text-[var(--text-dim)] whitespace-nowrap">
-          {totalMatching} of {totalUnfiltered} sessions
+        <span className="text-[11px] text-[var(--text-dim)] tabular-nums whitespace-nowrap">
+          {totalMatching} of {totalUnfiltered} sessions{capped ? ' (the newest)' : ''}
         </span>
       </div>
     </div>

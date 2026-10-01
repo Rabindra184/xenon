@@ -3,8 +3,22 @@ import XenonApiService from '../../api-service';
 import { useSocket } from '../../hooks/useSocket';
 import type { IBuild } from '../../interfaces/IBuild';
 import type { ISession } from '../../interfaces/ISession';
+import { sinceFor, type TimeFilter } from './derive';
 
 const REFRESH_INTERVAL_MS = 3000;
+
+/** The server returns at most this many sessions, newest first (GET /session). */
+export const SESSION_LIST_LIMIT = 500;
+
+export interface BuildsDataOptions {
+  /**
+   * Load sessions too: the selected build's, or, with none selected, every
+   * build's since the start of `timeFilter`. Off for a page that needs only
+   * the builds (the session detail page names its build from them).
+   */
+  withSessions?: boolean;
+  timeFilter?: TimeFilter;
+}
 
 export interface UseBuildsData {
   builds: IBuild[];
@@ -13,28 +27,34 @@ export interface UseBuildsData {
   loading: boolean;
   error: string | null;
   selectBuild: (id: string | null) => void;
-  searchQuery: string;
-  setSearchQuery: (q: string) => void;
   refresh: () => void;
 }
 
-export function useBuildsData(): UseBuildsData {
+export function useBuildsData(options: BuildsDataOptions = {}): UseBuildsData {
+  const { withSessions = false, timeFilter = 'all' } = options;
   const [builds, setBuilds] = useState<IBuild[]>([]);
   const [sessions, setSessions] = useState<ISession[]>([]);
   const [selectedBuildId, setSelectedBuildId] = useState<string | null>(null);
-  const [searchQuery, setSearchQuery] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const alive = useRef(true);
   const { on: onSocketEvent } = useSocket();
 
+  const loadSessions = useCallback((): Promise<ISession[]> => {
+    if (!withSessions) return Promise.resolve([]);
+    if (selectedBuildId) {
+      return XenonApiService.getSessions({ buildId: selectedBuildId }) as Promise<ISession[]>;
+    }
+    // The period's start moves with the clock, so it is taken on every fetch.
+    const since = sinceFor(timeFilter, Date.now()) ?? undefined;
+    return XenonApiService.getSessions({ since }) as Promise<ISession[]>;
+  }, [withSessions, selectedBuildId, timeFilter]);
+
   const fetchData = useCallback(async () => {
     try {
       const [buildList, sessionList] = await Promise.all([
         XenonApiService.getBuilds() as Promise<IBuild[]>,
-        selectedBuildId
-          ? (XenonApiService.getSessions({ buildId: selectedBuildId, query: searchQuery }) as Promise<ISession[]>)
-          : Promise.resolve([] as ISession[]),
+        loadSessions(),
       ]);
       if (!alive.current) return;
       setBuilds(Array.isArray(buildList) ? buildList : []);
@@ -46,7 +66,7 @@ export function useBuildsData(): UseBuildsData {
     } finally {
       if (alive.current) setLoading(false);
     }
-  }, [selectedBuildId, searchQuery]);
+  }, [loadSessions]);
 
   useEffect(() => {
     alive.current = true;
@@ -78,8 +98,6 @@ export function useBuildsData(): UseBuildsData {
     loading,
     error,
     selectBuild: setSelectedBuildId,
-    searchQuery,
-    setSearchQuery,
     refresh: fetchData,
   };
 }

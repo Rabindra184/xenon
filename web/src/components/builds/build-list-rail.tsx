@@ -1,141 +1,146 @@
-import React from 'react';
-import { Search, Clock } from 'lucide-react';
+import React, { useState } from 'react';
+import { Search, Layers } from 'lucide-react';
 import type { IBuild } from '../../interfaces/IBuild';
-import { formatAbsoluteTime, shortId } from './derive';
-import { CountBadge } from '../ui/count-badge';
-import { StatusSummaryCard } from '../ui/status-summary-card';
+import {
+  buildDisplayName,
+  formatMonthDayTime,
+  isUnnamedBuild,
+  PERIOD_MS,
+  TIME_FILTER_LABEL,
+  type TimeFilter,
+} from './derive';
 import { Input } from '../ui/input';
-import { Select } from '../ui/select';
-
-export type TimeFilter = 'all' | '24h' | '7d' | '30d';
 
 interface Props {
   builds: IBuild[];
+  /** null: All sessions. */
   selectedBuildId: string | null;
-  onSelect: (id: string) => void;
-  search: string;
-  onSearchChange: (v: string) => void;
+  onSelect: (id: string | null) => void;
+  /** Builds started in this period are listed. */
   timeFilter: TimeFilter;
-  onTimeFilterChange: (v: TimeFilter) => void;
 }
 
-const TIME_LABEL: Record<TimeFilter, string> = {
-  all: 'All time',
-  '24h': 'Last 24 hours',
-  '7d': 'Last 7 days',
-  '30d': 'Last 30 days',
+const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;
+
+/** A build's sessions by outcome, as one thin bar. */
+const OutcomeBar: React.FC<{ build: IBuild }> = ({ build }) => {
+  const { passedCount: passed, failedCount: failed, runningCount: running, sessionCount } = build;
+  const other = Math.max(0, sessionCount - passed - failed - running);
+  if (sessionCount === 0) return null;
+  const parts = [
+    passed > 0 && `${passed} passed`,
+    failed > 0 && `${failed} failed`,
+    running > 0 && `${running} running`,
+    other > 0 && `${other} without a verdict`,
+  ].filter(Boolean);
+  return (
+    <div
+      role="img"
+      aria-label={parts.join(', ')}
+      title={parts.join(', ')}
+      className="mt-2 flex h-1 w-full gap-px overflow-hidden rounded-full bg-[rgb(var(--rgb-fg)/0.08)]"
+    >
+      {passed > 0 && <span className="bg-[var(--color-success)]" style={{ flexGrow: passed }} />}
+      {failed > 0 && <span className="bg-[var(--color-danger)]" style={{ flexGrow: failed }} />}
+      {running > 0 && <span className="bg-[var(--color-warning)]" style={{ flexGrow: running }} />}
+      {other > 0 && <span style={{ flexGrow: other }} />}
+    </div>
+  );
 };
 
-export const BuildListRail: React.FC<Props> = ({
-  builds,
-  selectedBuildId,
-  onSelect,
-  search,
-  onSearchChange,
-  timeFilter,
-  onTimeFilterChange,
-}) => {
+const RailItem: React.FC<{
+  active: boolean;
+  onClick: () => void;
+  children: React.ReactNode;
+}> = ({ active, onClick, children }) => (
+  <button
+    type="button"
+    onClick={onClick}
+    aria-current={active ? 'true' : undefined}
+    className={`w-full text-left relative px-4 py-2.5 transition-colors ${
+      active ? 'bg-[var(--surface-2)]' : 'hover:bg-[rgb(var(--rgb-fg)/0.04)]'
+    }`}
+  >
+    {active && (
+      <span className="absolute left-0 top-2 bottom-2 w-[3px] rounded-r bg-[var(--color-accent)]" />
+    )}
+    {children}
+  </button>
+);
+
+/**
+ * The builds column: All sessions first, then the period's builds, newest
+ * first, each with its session count and outcomes. Choosing one filters the
+ * table; it is never a required first click.
+ */
+export const BuildListRail: React.FC<Props> = ({ builds, selectedBuildId, onSelect, timeFilter }) => {
+  const [search, setSearch] = useState('');
+  const q = search.trim().toLowerCase();
+  const now = Date.now();
+
   const visible = builds.filter((b) => {
-    const name = (b.name ?? '') + ' ' + b.id;
-    if (search && !name.toLowerCase().includes(search.toLowerCase())) return false;
+    if (q && !`${buildDisplayName(b)} ${b.name ?? ''} ${b.id}`.toLowerCase().includes(q)) return false;
     if (timeFilter !== 'all') {
-      const cutoff: Record<Exclude<TimeFilter, 'all'>, number> = {
-        '24h': 86_400_000,
-        '7d': 7 * 86_400_000,
-        '30d': 30 * 86_400_000,
-      };
       const t = Date.parse(String(b.createdAt));
-      if (!Number.isFinite(t) || Date.now() - t > cutoff[timeFilter as Exclude<TimeFilter, 'all'>]) return false;
+      if (!Number.isFinite(t) || now - t > PERIOD_MS[timeFilter]) return false;
     }
     return true;
   });
-
-  const hasActiveFilter = search.trim().length > 0 || timeFilter !== 'all';
-
-  // Status summary across visible builds (aggregates per-build counts that
-  // the backend already provides on IBuild).
-  const summary = visible.reduce(
-    (acc, b) => {
-      acc.passed += b.passedCount || 0;
-      acc.failed += b.failedCount || 0;
-      acc.running += b.runningCount || 0;
-      return acc;
-    },
-    { passed: 0, failed: 0, running: 0 },
-  );
+  const filtered = q.length > 0 || timeFilter !== 'all';
 
   return (
-    <aside className="w-[280px] shrink-0 border-r border-[var(--border)] bg-[var(--surface)] flex flex-col">
-      {/* Search + time filter */}
-      <div className="p-3 space-y-2 border-b border-[var(--border)]">
+    <aside className="w-[280px] shrink-0 border-r border-[var(--border)] bg-[var(--surface)] flex flex-col min-h-0">
+      <div className="p-3 border-b border-[var(--border)]">
         <div className="relative">
           <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-[var(--text-dim)]" />
           <Input
             type="text"
             value={search}
-            onChange={(e) => onSearchChange(e.target.value)}
+            onChange={(e) => setSearch(e.target.value)}
             placeholder="Find builds…"
+            aria-label="Find builds"
             className="w-full h-8 pl-8 pr-2 text-xs"
           />
         </div>
-        <Select
-          value={timeFilter}
-          onChange={(e) => onTimeFilterChange(e.target.value as TimeFilter)}
-          selectSize="sm"
-          className="w-full text-xs text-[var(--text-muted)]"
-        >
-          {(Object.keys(TIME_LABEL) as TimeFilter[]).map((k) => (
-            <option key={k} value={k}>{TIME_LABEL[k]}</option>
-          ))}
-        </Select>
       </div>
 
-      {/* Status summary strip */}
-      <div className="p-3 flex items-stretch gap-2 border-b border-[var(--border)]">
-        <StatusSummaryCard kind="passed"  value={summary.passed} />
-        <StatusSummaryCard kind="failed"  value={summary.failed} />
-        <StatusSummaryCard kind="running" value={summary.running} />
-      </div>
+      <nav aria-label="Builds" className="flex-1 overflow-y-auto py-1">
+        <RailItem active={selectedBuildId === null} onClick={() => onSelect(null)}>
+          <div className="flex items-center gap-2 text-[13px] font-medium text-[var(--text)]">
+            <Layers className="h-3.5 w-3.5 text-[var(--text-dim)]" aria-hidden="true" />
+            All sessions
+          </div>
+          <div className="mt-0.5 text-[11px] text-[var(--text-muted)]">
+            {TIME_FILTER_LABEL[timeFilter]}, every build
+          </div>
+        </RailItem>
 
-      {/* Build cards */}
-      <div className="flex-1 overflow-y-auto">
+        <div className="px-4 pt-3 pb-1 text-[11px] font-medium text-[var(--text-dim)]">Builds</div>
+
         {visible.length === 0 && (
-          <div className="px-4 py-8 text-center text-xs text-[var(--text-dim)]">
-            {hasActiveFilter
-              ? 'No builds match.'
-              : 'No builds yet — sessions will appear here after your first test run.'}
+          <div className="px-4 py-6 text-xs text-[var(--text-dim)]">
+            {filtered ? 'No builds match.' : 'No builds yet. They appear here after your first test run.'}
           </div>
         )}
         {visible.map((b) => {
-          const active = b.id === selectedBuildId;
+          const unnamed = isUnnamedBuild(b);
+          const meta = unnamed
+            ? plural(b.sessionCount, 'session')
+            : `${formatMonthDayTime(b.createdAt)} · ${plural(b.sessionCount, 'session')}`;
           return (
-            <button
-              key={b.id}
-              type="button"
-              onClick={() => onSelect(b.id)}
-              className={`w-full text-left relative px-4 py-3 border-b border-[var(--border)] transition-colors ${active ? 'bg-[var(--surface-2)]' : 'hover:bg-[var(--surface-2)]/60'}`}
-            >
-              {active && <span className="absolute left-0 top-2 bottom-2 w-[3px] rounded-r bg-[var(--color-accent)]" />}
-              <div className="text-xs font-semibold text-[var(--text)] truncate">
-                {b.name || 'Unnamed build'}
+            <RailItem key={b.id} active={b.id === selectedBuildId} onClick={() => onSelect(b.id)}>
+              <div
+                className={`text-[13px] font-medium truncate ${unnamed ? 'text-[var(--text-muted)]' : 'text-[var(--text)]'}`}
+                title={b.name || undefined}
+              >
+                {buildDisplayName(b)}
               </div>
-              <div className="mt-1 flex items-center gap-1 font-mono text-[9px] text-[var(--text-dim)]">
-                <Clock className="h-3 w-3" />
-                {formatAbsoluteTime(b.createdAt)}
-              </div>
-              <div className="mt-1.5 flex items-center gap-1.5">
-                {b.passedCount  > 0 && <CountBadge value={b.passedCount}  tone="green" label={`${b.passedCount} passed`} />}
-                {b.failedCount  > 0 && <CountBadge value={b.failedCount}  tone="red"   label={`${b.failedCount} failed`} />}
-                {b.runningCount > 0 && <CountBadge value={b.runningCount} tone="amber" label={`${b.runningCount} running`} />}
-                {b.sessionCount === 0 && (
-                  <span className="text-[10px] font-mono text-[var(--text-dim)]">empty</span>
-                )}
-              </div>
-              <div className="mt-1 font-mono text-[9px] text-[var(--text-dim)] truncate">{shortId(b.id, 10, 4)}</div>
-            </button>
+              <div className="mt-0.5 text-[11px] text-[var(--text-muted)] tabular-nums">{meta}</div>
+              <OutcomeBar build={b} />
+            </RailItem>
           );
         })}
-      </div>
+      </nav>
     </aside>
   );
 };

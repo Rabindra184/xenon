@@ -6,7 +6,8 @@ import { BugReportButton } from '../bug-report/BugReportButton';
 
 interface Props {
   buildId: string;
-  buildName: string;
+  /** null when the build isn't known (gone, or a session with none): no build crumb. */
+  buildName: string | null;
   sessionId: string;
 }
 
@@ -25,22 +26,24 @@ export const BreadcrumbHeader: React.FC<Props> = ({ buildId, buildName, sessionI
   return (
     <header className="flex items-center gap-2 px-4 py-3 border-b border-[var(--border)] bg-[var(--surface)]">
       <Link
-        to={`/builds/${buildId}`}
+        to="/builds"
         className="inline-flex items-center gap-1.5 text-xs text-[var(--text-muted)] hover:text-[var(--text)] transition-colors"
       >
         <ArrowLeft className="h-3.5 w-3.5" />
-        Builds
+        Sessions
       </Link>
       <ChevronRight className="h-3 w-3 text-[var(--text-dim)]" />
-      <Link
-        to={`/builds/${buildId}`}
-        className="text-[11px] text-[var(--color-accent)] hover:underline"
-      >
-        {buildName}
-      </Link>
-      <ChevronRight className="h-3 w-3 text-[var(--text-dim)]" />
-      <span className="text-[11px] text-[var(--text-dim)]">Sessions</span>
-      <ChevronRight className="h-3 w-3 text-[var(--text-dim)]" />
+      {buildName && (
+        <>
+          <Link
+            to={`/builds/${buildId}`}
+            className="text-[11px] text-[var(--color-accent)] hover:underline"
+          >
+            {buildName}
+          </Link>
+          <ChevronRight className="h-3 w-3 text-[var(--text-dim)]" />
+        </>
+      )}
       <span className="font-mono text-xs text-[var(--text)]" title={sessionId}>
         #{sessionId}
       </span>
