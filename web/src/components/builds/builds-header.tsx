@@ -53,7 +53,9 @@ export const BuildsHeader: React.FC<Props> = ({
           <span className="tabular-nums">Started {formatMonthDayTime(build.createdAt)}</span>
         </div>
         {/* h2: the page's h1 is "Sessions" in the PageHeader above. */}
-        <h2 className="mt-0.5 text-sm font-semibold text-[var(--text)]">{buildDisplayName(build)}</h2>
+        <h2 className="mt-0.5 text-sm font-semibold text-[var(--text)]">
+          {buildDisplayName(build)}
+        </h2>
       </div>
 
       <div className="flex items-center gap-2" ref={wrap}>

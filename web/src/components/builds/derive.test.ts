@@ -228,24 +228,36 @@ describe('humanizeFailureCategory', () => {
 
 describe('appFromCapabilities', () => {
   it('prefers the package or bundle id the driver resolved', () => {
-    expect(appFromCapabilities('{"appium:appPackage":"com.android.settings","appium:app":"/tmp/x.apk"}')).toBe(
-      'com.android.settings',
+    expect(
+      appFromCapabilities('{"appium:appPackage":"com.android.settings","appium:app":"/tmp/x.apk"}'),
+    ).toBe('com.android.settings');
+    expect(appFromCapabilities('{"bundleId":"com.apple.Preferences"}')).toBe(
+      'com.apple.Preferences',
     );
-    expect(appFromCapabilities('{"bundleId":"com.apple.Preferences"}')).toBe('com.apple.Preferences');
   });
   it('names an app file by its file name, without the path or query', () => {
-    expect(appFromCapabilities('{"appium:app":"/Users/ci/builds/checkout-1.4.2.apk"}')).toBe('checkout-1.4.2.apk');
-    expect(appFromCapabilities('{"appium:app":"https://cdn.example.com/a/Shop.ipa?sig=abc#x"}')).toBe('Shop.ipa');
+    expect(appFromCapabilities('{"appium:app":"/Users/ci/builds/checkout-1.4.2.apk"}')).toBe(
+      'checkout-1.4.2.apk',
+    );
+    expect(
+      appFromCapabilities('{"appium:app":"https://cdn.example.com/a/Shop.ipa?sig=abc#x"}'),
+    ).toBe('Shop.ipa');
     expect(appFromCapabilities('{"appium:app":"C:\\\\apps\\\\Shop.apk"}')).toBe('Shop.apk');
   });
   it("ignores a library app's download URL, which names no app", () => {
-    expect(appFromCapabilities('{"appium:app":"http://hub:4723/xenon/api/apps/a-1/download"}')).toBe(null);
+    expect(
+      appFromCapabilities('{"appium:app":"http://hub:4723/xenon/api/apps/a-1/download"}'),
+    ).toBe(null);
   });
   it('reads W3C capabilities too', () => {
     expect(
-      appFromCapabilities('{"alwaysMatch":{"platformName":"iOS"},"firstMatch":[{"appium:bundleId":"com.x.y"}]}'),
+      appFromCapabilities(
+        '{"alwaysMatch":{"platformName":"iOS"},"firstMatch":[{"appium:bundleId":"com.x.y"}]}',
+      ),
     ).toBe('com.x.y');
-    expect(appFromCapabilities('{"capabilities":{"alwaysMatch":{"appium:appPackage":"com.a"}}}')).toBe('com.a');
+    expect(
+      appFromCapabilities('{"capabilities":{"alwaysMatch":{"appium:appPackage":"com.a"}}}'),
+    ).toBe('com.a');
   });
   it('falls back to a browser name', () => {
     expect(appFromCapabilities('{"browserName":"Chrome"}')).toBe('Chrome');
@@ -275,7 +287,10 @@ describe('sessionDisplayName', () => {
       } as any),
     ).toEqual({ text: 'com.example.shop', source: 'app' });
     expect(
-      sessionDisplayName({ ...base, desired_capabilities: '{"appium:app":"/tmp/shop.apk"}' } as any),
+      sessionDisplayName({
+        ...base,
+        desired_capabilities: '{"appium:app":"/tmp/shop.apk"}',
+      } as any),
     ).toEqual({ text: 'shop.apk', source: 'app' });
   });
   it('then a short id', () => {
@@ -289,7 +304,9 @@ describe('buildDisplayName', () => {
     expect(buildDisplayName({ name: 'Nightly smoke', createdAt: at })).toBe('Nightly smoke');
   });
   it('names an unnamed build, or the default one, by when it started', () => {
-    expect(buildDisplayName({ name: 'Default Build', createdAt: at })).toBe('Build · Sep 29, 07:30');
+    expect(buildDisplayName({ name: 'Default Build', createdAt: at })).toBe(
+      'Build · Sep 29, 07:30',
+    );
     expect(buildDisplayName({ name: '  ', createdAt: at })).toBe('Build · Sep 29, 07:30');
     expect(buildDisplayName({ name: null, createdAt: at })).toBe('Build · Sep 29, 07:30');
   });
@@ -332,7 +349,9 @@ describe('formatStartTime', () => {
     expect(formatStartTime(new Date(2026, 8, 29, 7, 5).toISOString(), now)).toBe('Sep 29, 07:05');
   });
   it('adds the year for another year', () => {
-    expect(formatStartTime(new Date(2025, 11, 31, 23, 59).toISOString(), now)).toBe('Dec 31, 2025 23:59');
+    expect(formatStartTime(new Date(2025, 11, 31, 23, 59).toISOString(), now)).toBe(
+      'Dec 31, 2025 23:59',
+    );
   });
   it('is a dash for nothing', () => {
     expect(formatStartTime(null, now)).toBe('—');

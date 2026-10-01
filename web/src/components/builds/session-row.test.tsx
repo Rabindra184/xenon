@@ -78,7 +78,10 @@ describe('SessionRow', () => {
 
   it('falls back to the app for an unnamed session, and says how to name it', () => {
     renderRow({
-      session: session({ name: null, session_capabilities: '{"appium:appPackage":"com.example.shop"}' }),
+      session: session({
+        name: null,
+        session_capabilities: '{"appium:appPackage":"com.example.shop"}',
+      }),
     });
     const title = screen.getByText('com.example.shop');
     expect(title.getAttribute('title')).toMatch(/xe:options\.name/);

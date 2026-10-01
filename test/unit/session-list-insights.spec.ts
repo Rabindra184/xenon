@@ -28,7 +28,12 @@ describe('Sessions page data', () => {
   beforeEach(async () => {
     context = Container.get(PluginContext);
     saved = { ...context };
-    context.setContext({ ...DefaultPluginArgs, bindHostOrIp: '127.0.0.1' } as any, 4723, 'hub-1', '');
+    context.setContext(
+      { ...DefaultPluginArgs, bindHostOrIp: '127.0.0.1' } as any,
+      4723,
+      'hub-1',
+      '',
+    );
     now = Date.now();
     caller = ADMIN;
     for (const model of ['session', 'build', 'apiKey', 'user', 'device'] as const) {
@@ -111,25 +116,63 @@ describe('Sessions page data', () => {
       const owner = Object.fromEntries(res.body.map((s: any) => [s.id, s.owner]));
       expect(owner['by-user']).to.deep.equal({ name: 'Priya Shah', email: 'priya@example.com' });
       // No name on record: the email stands in for it.
-      expect(owner['by-key']).to.deep.equal({ name: 'alex@example.com', email: 'alex@example.com' });
+      expect(owner['by-key']).to.deep.equal({
+        name: 'alex@example.com',
+        email: 'alex@example.com',
+      });
       expect(owner['gone-user']).to.equal(null);
       expect(owner['nobody']).to.equal(null);
     });
 
     it('says where each session ran: here, a node by its host, or not known', async () => {
       await scratch.db.device.create({
-        data: { udid: 'own-phone', host: 'http://127.0.0.1:4723', nodeId: 'hub-1', platform: 'android' } as any,
+        data: {
+          udid: 'own-phone',
+          host: 'http://127.0.0.1:4723',
+          nodeId: 'hub-1',
+          platform: 'android',
+        } as any,
       });
       await scratch.db.device.create({
-        data: { udid: 'node-phone', host: 'http://10.0.0.9:4725', nodeId: 'node-2', platform: 'ios' } as any,
+        data: {
+          udid: 'node-phone',
+          host: 'http://10.0.0.9:4725',
+          nodeId: 'node-2',
+          platform: 'ios',
+        } as any,
       });
-      await session({ id: 'this-boot', node_id: 'hub-1', device_udid: 'own-phone', createdAt: ago(5 * MIN) });
+      await session({
+        id: 'this-boot',
+        node_id: 'hub-1',
+        device_udid: 'own-phone',
+        createdAt: ago(5 * MIN),
+      });
       // Node ids are new on every boot, so an older session of this server's
       // own phone carries an id nothing matches any more; its phone's row says.
-      await session({ id: 'last-boot', node_id: 'old-boot', device_udid: 'own-phone', createdAt: ago(4 * MIN) });
-      await session({ id: 'on-node', node_id: 'node-2', device_udid: 'node-phone', createdAt: ago(3 * MIN) });
-      await session({ id: 'node-restarted', node_id: 'node-2-old', device_udid: 'node-phone', createdAt: ago(2 * MIN) });
-      await session({ id: 'phone-gone', node_id: 'node-9', device_udid: 'unplugged', createdAt: ago(1 * MIN) });
+      await session({
+        id: 'last-boot',
+        node_id: 'old-boot',
+        device_udid: 'own-phone',
+        createdAt: ago(4 * MIN),
+      });
+      await session({
+        id: 'on-node',
+        node_id: 'node-2',
+        device_udid: 'node-phone',
+        createdAt: ago(3 * MIN),
+      });
+      await session({
+        id: 'node-restarted',
+        node_id: 'node-2-old',
+        device_udid: 'node-phone',
+        createdAt: ago(2 * MIN),
+      });
+      await session({
+        id: 'phone-gone',
+        node_id: 'node-9',
+        device_udid: 'unplugged',
+        createdAt: ago(1 * MIN),
+      });
 
       const res = await request(app()).get('/session');
 
@@ -145,10 +188,20 @@ describe('Sessions page data', () => {
 
     it('does not guess when the same udid is on more than one server', async () => {
       await scratch.db.device.create({
-        data: { udid: 'emulator-5554', host: 'http://127.0.0.1:4723', nodeId: 'hub-1', platform: 'android' } as any,
+        data: {
+          udid: 'emulator-5554',
+          host: 'http://127.0.0.1:4723',
+          nodeId: 'hub-1',
+          platform: 'android',
+        } as any,
       });
       await scratch.db.device.create({
-        data: { udid: 'emulator-5554', host: 'http://10.0.0.9:4725', nodeId: 'node-2', platform: 'android' } as any,
+        data: {
+          udid: 'emulator-5554',
+          host: 'http://10.0.0.9:4725',
+          nodeId: 'node-2',
+          platform: 'android',
+        } as any,
       });
       await session({ id: 'which', node_id: 'old-boot', device_udid: 'emulator-5554' });
 
@@ -168,7 +221,8 @@ describe('Sessions page data', () => {
           device_udid: udid,
           createdAt: ago(minutesAgo * MIN),
           startTime: ago(minutesAgo * MIN),
-          endTime: durationS === undefined ? null : new Date(now - minutesAgo * MIN + durationS * 1000),
+          endTime:
+            durationS === undefined ? null : new Date(now - minutesAgo * MIN + durationS * 1000),
         });
       // The period: the last hour.
       await inPeriod('success', 50, 10);
@@ -186,9 +240,7 @@ describe('Sessions page data', () => {
       // Older than both, still running: running now, but in neither period.
       await inPeriod('running', 300, undefined, 'phone-1');
 
-      const res = await request(app()).get(
-        `/session-summary?since=${ago(HOUR).toISOString()}`,
-      );
+      const res = await request(app()).get(`/session-summary?since=${ago(HOUR).toISOString()}`);
 
       expect(res.status).to.equal(200);
       expect(res.body.since).to.equal(ago(HOUR).toISOString());
@@ -209,7 +261,12 @@ describe('Sessions page data', () => {
     it('covers one build, with no period before it, when asked for a build', async () => {
       const mine = await scratch.db.build.create({ data: { name: 'mine' } });
       const other = await scratch.db.build.create({ data: { name: 'other' } });
-      await session({ build_id: mine.id, status: 'success', startTime: ago(2 * MIN), endTime: ago(MIN) });
+      await session({
+        build_id: mine.id,
+        status: 'success',
+        startTime: ago(2 * MIN),
+        endTime: ago(MIN),
+      });
       await session({ build_id: mine.id, status: 'running' });
       await session({ build_id: other.id, status: 'failed' });
       await session({ build_id: other.id, status: 'running', device_udid: 'phone-9' });
@@ -239,15 +296,32 @@ describe('Sessions page data', () => {
     it('counts only the sessions the caller may see', async () => {
       const team = await scratch.db.team.create({ data: { name: 'b-team' } });
       await scratch.db.device.create({
-        data: { udid: 'shared', host: 'http://127.0.0.1:4723', nodeId: 'hub-1', platform: 'android' } as any,
+        data: {
+          udid: 'shared',
+          host: 'http://127.0.0.1:4723',
+          nodeId: 'hub-1',
+          platform: 'android',
+        } as any,
       });
       await scratch.db.device.create({
-        data: { udid: 'team-b', host: 'http://127.0.0.1:4723', nodeId: 'hub-1', platform: 'android', teamId: team.id } as any,
+        data: {
+          udid: 'team-b',
+          host: 'http://127.0.0.1:4723',
+          nodeId: 'hub-1',
+          platform: 'android',
+          teamId: team.id,
+        } as any,
       });
       await session({ device_udid: 'shared', status: 'success' });
       await session({ device_udid: 'team-b', status: 'failed' });
       await session({ device_udid: 'team-b', status: 'running' });
-      caller = { kind: 'user-session', userId: 'member-1', role: 'MEMBER', scopes: 'sessions', teamIds: [] };
+      caller = {
+        kind: 'user-session',
+        userId: 'member-1',
+        role: 'MEMBER',
+        scopes: 'sessions',
+        teamIds: [],
+      };
 
       const res = await request(app()).get('/session-summary');
 
@@ -266,7 +340,16 @@ describe('Sessions page data', () => {
     // The page's pass/fail bar and the session rows must agree on a verdict.
     it('counts every failing status as failed and every passing one as passed', async () => {
       const build = await scratch.db.build.create({ data: { name: 'nightly' } });
-      for (const status of ['success', 'passed', 'ended', 'failed', 'error', 'timeout', 'running', 'unmarked']) {
+      for (const status of [
+        'success',
+        'passed',
+        'ended',
+        'failed',
+        'error',
+        'timeout',
+        'running',
+        'unmarked',
+      ]) {
         await session({ build_id: build.id, status });
       }
 

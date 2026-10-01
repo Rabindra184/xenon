@@ -45,7 +45,9 @@ export default class XenonApiService {
     return apiClient.makeGETRequest(url);
   }
 
-  public static getSessionSummary(options: { since?: string | null; buildId?: string | null } = {}) {
+  public static getSessionSummary(
+    options: { since?: string | null; buildId?: string | null } = {},
+  ) {
     let url = `/session-summary?t=${Date.now()}`;
     if (options.since) url += `&since=${encodeURIComponent(options.since)}`;
     if (options.buildId) url += `&buildId=${encodeURIComponent(options.buildId)}`;

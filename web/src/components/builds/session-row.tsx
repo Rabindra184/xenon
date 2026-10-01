@@ -55,8 +55,7 @@ const STATUS: Record<StatusBucket, { label?: string; Icon: LucideIcon; cls: stri
   other: { Icon: CircleDashed, cls: 'text-[var(--text-dim)]' },
 };
 
-const NAME_HINT =
-  'Unnamed session. Set xe:options.name in its capabilities to name it.';
+const NAME_HINT = 'Unnamed session. Set xe:options.name in its capabilities to name it.';
 
 export const SessionRow: React.FC<Props> = ({
   session,
@@ -72,9 +71,13 @@ export const SessionRow: React.FC<Props> = ({
   const failed = bucket === 'failed';
   const title = sessionDisplayName(session);
   const reason = failed ? session.failure_reason?.trim() : '';
-  const os = [platformLabel(session), session.device_version].filter((p) => p && p !== '—').join(' ');
+  const os = [platformLabel(session), session.device_version]
+    .filter((p) => p && p !== '—')
+    .join(' ');
   const device = [deviceNameOrFallback(session), os].filter(Boolean).join(' · ');
   const where = [ranOnLabel(session.ranOn), session.owner?.name].filter(Boolean).join(' · ');
+  // A failure's red edge goes on the row's first cell, whichever that is.
+  const edge = failed ? 'shadow-[inset_3px_0_0_var(--color-danger)]' : '';
 
   return (
     <tr
@@ -87,7 +90,7 @@ export const SessionRow: React.FC<Props> = ({
       }`}
     >
       {showSelection && (
-        <td className="pl-4 pr-2 py-3 align-top" onClick={(e) => e.stopPropagation()}>
+        <td className={`pl-4 pr-2 py-3 align-top ${edge}`} onClick={(e) => e.stopPropagation()}>
           <input
             type="checkbox"
             checked={selected}
@@ -96,11 +99,7 @@ export const SessionRow: React.FC<Props> = ({
           />
         </td>
       )}
-      <td
-        className={`px-4 py-3 align-top ${
-          failed ? 'shadow-[inset_3px_0_0_var(--color-danger)]' : ''
-        }`}
-      >
+      <td className={`px-4 py-3 align-top ${showSelection ? '' : edge}`}>
         <span className={`inline-flex items-center gap-1.5 text-xs font-medium ${status.cls}`}>
           <status.Icon
             className={`h-3.5 w-3.5 shrink-0 ${bucket === 'running' ? 'animate-spin' : ''}`}
@@ -141,7 +140,10 @@ export const SessionRow: React.FC<Props> = ({
         {where && (
           <div
             className="mt-0.5 text-[11px] text-[var(--text-muted)] truncate"
-            title={[session.ranOn === 'here' ? null : `Node ${session.node_id}`, session.owner?.email]
+            title={[
+              session.ranOn === 'here' ? null : `Node ${session.node_id}`,
+              session.owner?.email,
+            ]
               .filter(Boolean)
               .join('\n')}
           >

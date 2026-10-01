@@ -201,7 +201,8 @@ export function sessionDisplayName(
 ): { text: string; source: 'name' | 'app' | 'id' } {
   const name = s.name?.trim();
   if (name) return { text: name, source: 'name' };
-  const app = appFromCapabilities(s.session_capabilities) ?? appFromCapabilities(s.desired_capabilities);
+  const app =
+    appFromCapabilities(s.session_capabilities) ?? appFromCapabilities(s.desired_capabilities);
   if (app) return { text: app, source: 'app' };
   return { text: `Session ${s.id.slice(0, 8)}`, source: 'id' };
 }

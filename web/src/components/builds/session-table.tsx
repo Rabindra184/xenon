@@ -65,8 +65,8 @@ export const SessionTable: React.FC<Props> = ({
         viewport (guarded by web/test/viewport/overflow.spec.ts on /builds and
         /builds/:buildId). table-fixed makes the column widths authoritative, so
         `truncate` actually constrains the cell. The predictable columns get
-        fixed widths; Test and Device share the remainder (responsive across
-        1280-1440).
+        fixed widths, Device included, so Test, the column people read, takes
+        the remainder (responsive across 1280-1440).
       */}
       <table className="w-full text-left table-fixed">
         <thead className="sticky top-0 bg-[var(--surface)] border-b border-[var(--border)] z-10">
@@ -86,7 +86,7 @@ export const SessionTable: React.FC<Props> = ({
             )}
             <th className={`${th} pl-4 w-[112px]`}>Status</th>
             <th className={th}>Test</th>
-            <th className={th}>Device</th>
+            <th className={`${th} w-[240px]`}>Device</th>
             <th className={`${th} w-[124px]`}>Started</th>
             <th className={`${th} w-[84px] text-right`}>Duration</th>
             <th className="w-[40px]">

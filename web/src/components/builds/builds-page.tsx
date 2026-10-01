@@ -174,13 +174,8 @@ export const BuildsPage: React.FC = () => {
             />
           ) : allMode ? (
             <>
-              <header className="px-4 py-3 border-b border-[var(--border)] bg-[var(--surface)]">
-                {/* h2: the page's h1 is "Sessions" in the PageHeader above. */}
-                <h2 className="text-sm font-semibold text-[var(--text)]">All sessions</h2>
-                <p className="mt-0.5 text-[11px] text-[var(--text-dim)]">
-                  {TIME_FILTER_LABEL[timeFilter]}, across every build
-                </p>
-              </header>
+              {/* The rail's selected "All sessions" names this view; no header of its own. */}
+              <h2 className="sr-only">All sessions</h2>
               {filterBar}
               <SessionTable
                 sessions={data.sessions}

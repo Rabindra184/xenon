@@ -73,13 +73,19 @@ const RailItem: React.FC<{
  * first, each with its session count and outcomes. Choosing one filters the
  * table; it is never a required first click.
  */
-export const BuildListRail: React.FC<Props> = ({ builds, selectedBuildId, onSelect, timeFilter }) => {
+export const BuildListRail: React.FC<Props> = ({
+  builds,
+  selectedBuildId,
+  onSelect,
+  timeFilter,
+}) => {
   const [search, setSearch] = useState('');
   const q = search.trim().toLowerCase();
   const now = Date.now();
 
   const visible = builds.filter((b) => {
-    if (q && !`${buildDisplayName(b)} ${b.name ?? ''} ${b.id}`.toLowerCase().includes(q)) return false;
+    if (q && !`${buildDisplayName(b)} ${b.name ?? ''} ${b.id}`.toLowerCase().includes(q))
+      return false;
     if (timeFilter !== 'all') {
       const t = Date.parse(String(b.createdAt));
       if (!Number.isFinite(t) || now - t > PERIOD_MS[timeFilter]) return false;
@@ -119,7 +125,9 @@ export const BuildListRail: React.FC<Props> = ({ builds, selectedBuildId, onSele
 
         {visible.length === 0 && (
           <div className="px-4 py-6 text-xs text-[var(--text-dim)]">
-            {filtered ? 'No builds match.' : 'No builds yet. They appear here after your first test run.'}
+            {filtered
+              ? 'No builds match.'
+              : 'No builds yet. They appear here after your first test run.'}
           </div>
         )}
         {visible.map((b) => {

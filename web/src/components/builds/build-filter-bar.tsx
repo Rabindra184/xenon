@@ -29,8 +29,9 @@ export const BuildFilterBar: React.FC<Props> = ({
 }) => {
   const counts = buildStatusCounts(sessions);
   return (
-    <div className="bg-[var(--surface)]">
-      <div className="flex items-center gap-1.5 px-4 pt-3 pb-2">
+    // One row: the table keeps as much of the height as it can.
+    <div className="flex items-center gap-3 px-4 py-2.5 border-b border-[var(--border)] bg-[var(--surface)]">
+      <div role="group" aria-label="Status" className="flex items-center gap-1.5">
         <FilterPill
           label="All"
           count={counts.all}
@@ -61,21 +62,19 @@ export const BuildFilterBar: React.FC<Props> = ({
           tone="amber"
         />
       </div>
-      <div className="flex items-center gap-4 px-4 pb-3 border-b border-[var(--border)]">
-        <div className="relative flex-1 max-w-xl">
-          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-[var(--text-dim)]" />
-          <Input
-            type="text"
-            value={search}
-            onChange={(e) => onSearchChange(e.target.value)}
-            placeholder="Search tests, devices, people…"
-            aria-label="Search sessions"
-            className="w-full h-8 pl-8 pr-2 text-xs"
-          />
-        </div>
-        <span className="text-[11px] text-[var(--text-dim)] tabular-nums whitespace-nowrap">
-          {totalMatching} of {totalUnfiltered} sessions{capped ? ' (the newest)' : ''}
-        </span>
+      <span className="ml-auto text-[11px] text-[var(--text-dim)] tabular-nums whitespace-nowrap">
+        {totalMatching} of {totalUnfiltered} sessions{capped ? ' (the newest)' : ''}
+      </span>
+      <div className="relative w-64 shrink-0">
+        <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-[var(--text-dim)]" />
+        <Input
+          type="text"
+          value={search}
+          onChange={(e) => onSearchChange(e.target.value)}
+          placeholder="Search tests, devices, people…"
+          aria-label="Search sessions"
+          className="w-full h-8 pl-8 pr-2 text-xs"
+        />
       </div>
     </div>
   );
