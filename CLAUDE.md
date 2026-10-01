@@ -549,6 +549,10 @@ Live recordings are independent of Appium "session video" — the mosaic page ca
 - `ConcurrencyGate` enforces a server-wide `maxConcurrentRecordings` cap.
 - `ProofBundleService` streams a zip with manifest, README, per-device `video.mp4`/`bookmarks.json`/`annotations.json`/`device.json`, and the composite mp4 if present.
 - `recoverOnBoot()` marks any orphan `RECORDING` rows from a previous process as `FAILED` with `fail_reason=server_restart` and releases their manual blocks.
+- **When a recording ends, its phone leaves like a preview** (`leaveDeviceFn`, the router's `previewLeaves`). After a 3 s grace, which also lets the recording's own ffmpeg connection drop, the preview is stopped and the hold released, unless someone watches the phone or another recording reads it.
+  - Never decide by whether the phone's stream runs: a recording starts the stream itself when none runs (`ensureMjpegForRecording`).
+  - Through 2.6 it did decide that way, and kept a phone nobody watched held until the stream's idle watchdog, ten minutes later.
+  - A node's phone has no stream here; its hold goes at once.
 - **Another server's phone** (a node's, on a hub) is read from a loopback relay instead of a local stream service (`nodeRecordingSource.ts`, the orchestrator's `nodeSourceFn`).
   - Every connection to the relay gets the node's `GET /control/<udid>/stream`, signed afresh with the control token for the recording's user. ffmpeg reconnects on any hiccup, and the token lasts a minute.
   - ffmpeg's arguments, the composite, the proof bundle and the marks are unchanged: the relay is just another loopback MJPEG port, like this server's own phones'.
