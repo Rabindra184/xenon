@@ -6,6 +6,50 @@ This project follows [Semantic Versioning](https://semver.org/). Releases are
 published to npm automatically when `package.json`'s `version` changes on `main`
 (see `.github/workflows/npm-publish.yml`).
 
+## 2.4.0
+
+**A hub records its nodes' phones.** Recording a node's phone, alone or
+with others (across nodes too), now runs on the hub from the node's stream.
+Per-phone videos, the combined video, marks and proof bundles work as they
+do for the hub's own phones. With this, every device-control action works on
+a node's phone except install by path.
+
+No database migration. Only the hub needs this version: nodes on 2.1 or
+later serve the stream it records.
+
+### Changed — operator action may be needed
+
+- **Recording a node's phone uses the hub's network while it runs** (#391):
+  roughly 1–3 MB/s per phone, between the hub and the node. If the node
+  restarts mid-recording, that phone's recording ends; the rest of the group
+  carries on.
+- **While the hub records a node's phone, stopping its preview is refused**
+  (`409 device_recording`), as it is for the hub's own phones.
+
+### Added
+
+- **Record a node's phone from the hub** (#391).
+  - The hub reads the node's stream through a relay on its own loopback, so
+    the recording pipeline is unchanged.
+  - The node's stream is signed again for each connection.
+  - The recording starts once the phone's stream is live, as for a local
+    phone, so marks line up.
+  - You can record a node phone you're previewing.
+  - A cloud provider's phone can't be recorded.
+
+### Known issues
+
+- **Install by path is refused for a node's phone**: a path names a file on
+  one machine.
+- **Installing an app on an iPhone through a hub wasn't checked on a phone**
+  (no test app to install). It takes the same path to the node as Android,
+  which was checked.
+- **BiDi and session WebSockets aren't routed through a hub.** A session's
+  `webSocketUrl` points at the node, so nodes must not sit on untrusted
+  networks.
+- **Only one iOS 17+ iPhone per Mac can stream at a time**, because every
+  go-ios tunnel binds the same port.
+
 ## 2.3.0
 
 **Device control works on a hub's node phones, end to end.** Installing apps,
