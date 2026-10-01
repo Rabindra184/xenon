@@ -6,9 +6,9 @@ of this written spec.
 
 ## Why
 
-On iOS 17 and later, every go-ios command that talks to a phone (`runwda`,
-`syslog`, `screenshot`) goes through a go-ios tunnel, found through that
-tunnel's info API. Today:
+On iOS 17 and later, the go-ios commands Xenon runs against a phone's services
+(`runwda`, `syslog`, `screenshot`) go through a go-ios tunnel, which they find
+through that tunnel's info API. Today:
 
 1. **Every phone's tunnel takes the same ports.** `IOSStreamService.ensureTunnel`
    starts `ios tunnel start --udid <phone> --userspace` with no info port. go-ios
@@ -63,7 +63,8 @@ udid.
   tunnel's port. Otherwise:
   1. It reaps that phone's own leftover tunnel processes (`reapTunnelsForUdid`),
      unless an Appium session holds the phone (see Cleanup).
-  2. It leases a pair: `PortAllocator.acquirePair('tunnel', udid, ttl)`.
+  2. It leases a pair: `PortAllocator.acquirePair('tunnel', udid, { ttlMs })`,
+     with the stream ports' `STREAM_PORT_TTL_MS` (1.5 h).
   3. It starts `ios tunnel start --udid <udid> --userspace --tunnel-info-port <P>`,
      detached so it leads its own process group (`tunnelSpawnOptions`), and
      tracks it in `ProcessRegistry` as today.
@@ -74,21 +75,26 @@ udid.
   tunnel runs.
 - **`envFor(udid): NodeJS.ProcessEnv`.** `process.env` with
   `ENABLE_GO_IOS_AGENT=yes` and, when the phone has a tunnel,
-  `GO_IOS_AGENT_PORT=<P>`. Every go-ios spawn for a phone uses it.
+  `GO_IOS_AGENT_PORT=<P>`. The commands that need a tunnel (below) use it.
 - **`stop(udid)`.** Kills the phone's tunnel process group
   (`killProcessGroup`), releases its pair and forgets it.
 - **A tunnel that exits on its own** (phone unplugged, go-ios crash): its exit
   handler releases the pair and forgets it. The next `ensure` starts a new one.
-- **`touch(udid, ttl)`.** Extends the pair's lease. The stream watchdog calls
-  it each tick, as it does for the WDA and MJPEG ports.
+- **`touch(udid)`.** Extends the pair's lease by `STREAM_PORT_TTL_MS`. The
+  stream watchdog calls it each tick, as it does for the WDA and MJPEG ports.
 
-### `PortAllocator.acquirePair(purpose, udid, ttl)` (new)
+### `PortAllocator` (two new methods)
 
-It leases two adjacent ports, an even P and P + 1, both in the purpose's range,
-both free in the lease table and at the OS (the same `isOsFree` probe
-`acquire` uses). It skips a pair if either port is taken and releases a
-half-taken pair. The new `tunnel` purpose has the range `[12100, 12199]`.
-`release` and `touch` work on each port as they do now.
+- **`acquirePair(purpose, udid, { pid?, ttlMs? }): Promise<number>`** leases
+  two adjacent ports and returns P, the lower. P is even, and P and P + 1 are
+  both in the purpose's range and both free in the lease table and at the OS
+  (the same `isOsFree` probe `acquire` uses). It skips a pair if either port is
+  taken, releases a half-taken pair, and throws `PortRangeExhaustedError` when
+  no pair is left.
+- **`releasePurpose(purpose)`** deletes every lease of that purpose.
+
+The new `tunnel` purpose has the range `[12100, 12199]`. `release` and `touch`
+work on each port of a pair as they do now.
 
 ### The commands that need a tunnel
 
@@ -120,14 +126,16 @@ behave as today.
   own WDA.
 - **Boot:** it still reaps every process running the bundled go-ios binary,
   since a fresh server owns no tunnels. That also clears a single-port tunnel
-  left by an earlier Xenon. It then deletes this server's `tunnel` leases.
+  left by an earlier Xenon. It then deletes this server's `tunnel` leases
+  (`releasePurpose('tunnel')`).
 - **Shutdown:** unchanged. `ProcessRegistry` SIGKILLs the tunnel's process
   group on exit.
 
 ### Two Xenon servers on one Mac
 
-Each has its own lease table. The OS probe in `acquirePair` stops them taking
-the same pair, and nothing uses go-ios's fixed default ports any more.
+Each has its own lease table. The OS probe in `acquirePair` keeps each off the
+pairs the other's tunnels hold (one start-up race is under Risks), and nothing
+uses go-ios's fixed default ports any more.
 
 ## Out of scope
 
@@ -154,7 +162,8 @@ faked:**
 - **`PortAllocator.acquirePair`:**
   - it takes an even P and P + 1;
   - it skips a pair whose second port is leased or held at the OS;
-  - it throws when the range is exhausted.
+  - it throws when the range is exhausted;
+  - `releasePurpose` deletes only that purpose's leases.
 - **`runwda`, `syslog` and `screenshot`:** each runs with its own phone's `GO_IOS_AGENT_PORT`, and with today's environment when there is no tunnel.
 - **Regression:** the full unit suite and the existing iOS stream specs.
 
@@ -183,6 +192,10 @@ since the scratch server's boot reap would end that stream.
 
 - **A port held outside Xenon** can make `acquirePair` skip a pair. With a
   50-pair range, that only matters past about 50 phones.
+- **Two servers on one Mac can probe the same free pair at the same moment.**
+  The loser's go-ios can't bind and exits, which releases its pair, and its
+  readiness wait ends in the usual warning. That stream start fails, and the
+  next start leases a new pair.
 - **The 20 s readiness wait** may be short for a first pairing, which shows a
   trust prompt on the phone. A timeout only warns, as today, and the start goes
   on.
