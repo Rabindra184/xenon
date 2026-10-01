@@ -5,6 +5,7 @@ import log from '../../logger';
 import { Container, Service } from 'typedi';
 import { ProcessRegistry } from '../../services/ProcessRegistry';
 import IOSStreamService from './IOSStreamService';
+import { IOSTunnels } from './IOSTunnels';
 import { IDevice } from '../../interfaces/IDevice';
 import { DeviceStoreFactory } from '../../data-service/device-store';
 import { exec, execFile, spawn } from 'child_process';
@@ -420,7 +421,8 @@ export class WDAClient {
       try {
         const p = path.join(os.tmpdir(), `screenshot-${udid}.png`);
         await execFilePromise(s.goIOSPath, ['screenshot', '--udid', udid, '--output', p], {
-          env: { ...process.env, ENABLE_GO_IOS_AGENT: 'yes' },
+          // This phone's own go-ios tunnel on iOS 17+ (see IOSTunnels).
+          env: Container.get(IOSTunnels).envFor(udid),
         });
         const b = await fs.readFile(p);
         await fs.remove(p);
@@ -817,7 +819,8 @@ export class WDAClient {
     this.log.info(`[LogStream] Starting persistent syslog for ${udid}: ${command} ${args.join(' ')}`);
 
     const proc = spawn(command, args, {
-      env: { ...process.env, ENABLE_GO_IOS_AGENT: 'yes' },
+      // This phone's own go-ios tunnel on iOS 17+ (see IOSTunnels).
+      env: Container.get(IOSTunnels).envFor(udid),
       stdio: ['ignore', 'pipe', 'pipe'],
     });
     Container.get(ProcessRegistry).track({ kind: 'log-tailer', udid, process: proc });

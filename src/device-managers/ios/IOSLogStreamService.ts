@@ -9,6 +9,7 @@ import { LogcatMultiplexer } from '../android/LogcatMultiplexer';
 import { parseOstraceLine } from '../../services/logcat/ostraceParse';
 import type { ChildProcessLike } from '../android/LogcatStreamService';
 import { IDLE_TIMEOUT_MS, IDLE_POLL_MS } from '../android/LogcatStreamService';
+import { IOSTunnels } from './IOSTunnels';
 
 /**
  * Which slice of os_trace to stream. These are pushed down to `go-ios ostrace`
@@ -279,7 +280,9 @@ export class IOSLogStreamService {
     // altered case — returned 0 lines, while `--level` alone returned 48,195
     // and `--pid` returned 58,960 for that same process.
 
-    const proc = this.spawnProcess(goIOS, args);
+    // On iOS 17+ ostrace reaches the phone through the phone's own go-ios
+    // tunnel, found through GO_IOS_AGENT_PORT (see IOSTunnels).
+    const proc = this.spawnProcess(goIOS, args, Container.get(IOSTunnels).envFor(udid));
     // A ChildProcess emitting 'error' with no listener crashes the process.
     proc.on('error', (e) => log.warn(`[${udid}] ostrace process error: ${e.message}`));
     proc.stderr?.on('data', (d: Buffer) => log.debug(`[${udid}] ostrace: ${d.toString().trim()}`));
@@ -297,8 +300,8 @@ export class IOSLogStreamService {
     return Container.get(IOSStreamService).goIOSPath;
   }
 
-  protected spawnProcess(command: string, args: string[]): ChildProcess {
-    return spawn(command, args);
+  protected spawnProcess(command: string, args: string[], env: NodeJS.ProcessEnv): ChildProcess {
+    return spawn(command, args, { env });
   }
 
   /**
