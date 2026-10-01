@@ -20,6 +20,13 @@ import {
   visibleSessionWhere,
 } from '../../services/device-access/sessionVisibility';
 import { HealEtalonService } from '../../services/healing/HealEtalonService';
+import {
+  describeSessions,
+  InvalidSinceError,
+  parseSince,
+  sessionOutcome,
+  summarizeSessions,
+} from './sessionInsights';
 import log from '../../logger';
 
 const MJPEG_PROXY_CACHE: Map<string, any> = new Map();
@@ -56,10 +63,28 @@ async function isValidSession(request: Request, response: Response, next: NextFu
   }
 }
 
+// A `since` that isn't a date is refused, rather than ignored into a list
+// of every session.
+function sinceOf(request: Request, response: Response): Date | null | undefined {
+  try {
+    return parseSince(request.query.since);
+  } catch (err) {
+    if (!(err instanceof InvalidSinceError)) throw err;
+    response.status(400).json({ error: 'invalid_since', message: err.message });
+    return undefined;
+  }
+}
+
 async function getSessions(request: Request, response: Response) {
   const { buildId, query, status, platform } = request.query;
+  const since = sinceOf(request, response);
+  if (since === undefined) return;
 
   const where: any = {};
+
+  if (since) {
+    where.createdAt = { gte: since };
+  }
 
   if (buildId) {
     where.build_id = buildId as string;
@@ -93,7 +118,24 @@ async function getSessions(request: Request, response: Response) {
     where: visible ? { AND: [where, visible] } : where,
     take: 500,
   });
-  return response.status(200).json(sessions);
+  return response.status(200).json(await describeSessions(sessions));
+}
+
+// The Sessions page's summary strip: the period since `since` (all time
+// without it) and the one before it, over the sessions the caller may see,
+// of one build when `buildId` is given.
+async function getSessionSummary(request: Request, response: Response) {
+  const since = sinceOf(request, response);
+  if (since === undefined) return;
+  const { buildId } = request.query;
+  const visible = await visibleSessionWhere(authOf(request));
+  const scope: Record<string, unknown> = {
+    AND: [
+      ...(visible ? [visible] : []),
+      ...(typeof buildId === 'string' && buildId ? [{ build_id: buildId }] : []),
+    ],
+  };
+  return response.status(200).json(await summarizeSessions(scope, since));
 }
 
 async function getBuilds(request: Request, response: Response) {
@@ -122,9 +164,9 @@ async function getBuilds(request: Request, response: Response) {
     ...b,
     _count: { sessions: b.sessions.length },
     sessionCount: b.sessions.length,
-    passedCount: b.sessions.filter((s) => ['success', 'passed'].includes(s.status)).length,
-    failedCount: b.sessions.filter((s) => s.status === 'failed').length,
-    runningCount: b.sessions.filter((s) => s.status === 'running').length,
+    passedCount: b.sessions.filter((s) => sessionOutcome(s.status) === 'passed').length,
+    failedCount: b.sessions.filter((s) => sessionOutcome(s.status) === 'failed').length,
+    runningCount: b.sessions.filter((s) => sessionOutcome(s.status) === 'running').length,
     sessions: undefined, // remove raw sessions for payload efficiency
   }));
 
@@ -1177,6 +1219,7 @@ function register(router: Router) {
   router.use(roleGuard('MEMBER'));
 
   router.get('/session', getSessions);
+  router.get('/session-summary', getSessionSummary);
   router.get('/session/:sessionId', getSessionById);
   router.get('/build', getBuilds);
   buildExportModule.register(router);

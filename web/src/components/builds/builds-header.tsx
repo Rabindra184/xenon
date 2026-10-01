@@ -2,6 +2,7 @@ import React from 'react';
 import { RefreshCcw, Download } from 'lucide-react';
 import type { IBuild } from '../../interfaces/IBuild';
 import { Button } from '../ui/button';
+import { buildDisplayName, formatMonthDayTime } from './derive';
 
 function shortBuildId(id: string): string {
   // Use the leading 8 chars (uppercased) matching the reference "BUILD #A70AC97A" look.
@@ -48,10 +49,12 @@ export const BuildsHeader: React.FC<Props> = ({
           <span className="font-mono text-[var(--color-accent)]" title={build.id}>
             #{shortBuildId(build.id)}
           </span>
+          <span aria-hidden="true">·</span>
+          <span className="tabular-nums">Started {formatMonthDayTime(build.createdAt)}</span>
         </div>
         {/* h2: the page's h1 is "Sessions" in the PageHeader above. */}
         <h2 className="mt-0.5 text-sm font-semibold text-[var(--text)]">
-          {build.name || 'Unnamed build'}
+          {buildDisplayName(build)}
         </h2>
       </div>
 

@@ -1,21 +1,39 @@
 import React from 'react';
-import { ChevronRight, Smartphone, Tv, Tablet, Monitor } from 'lucide-react';
+import {
+  ChevronRight,
+  Smartphone,
+  Tv,
+  Tablet,
+  Monitor,
+  CheckCircle2,
+  XCircle,
+  Loader2,
+  CircleDashed,
+  type LucideIcon,
+} from 'lucide-react';
 import type { ISession } from '../../interfaces/ISession';
 import {
   formatAbsoluteTime,
-  humanDuration,
+  formatStartTime,
+  compactDuration,
   deviceNameOrFallback,
   platformLabel,
-  osVersionLabel,
-  shortId,
   sessionDurationMs,
   sessionStatusBucket,
+  sessionDisplayName,
+  ranOnLabel,
+  type StatusBucket,
 } from './derive';
-import { StatusPillOutline, type StatusTone } from '../ui/status-pill-outline';
 import { sentenceCase } from '../../lib/labels';
 
 interface Props {
   session: ISession;
+  /** The session's build, as the builds column names it. */
+  buildName?: string | null;
+  /** Show the build under the test name (the all-sessions view). */
+  showBuild: boolean;
+  /** Show a selection checkbox (a build's view, for export). */
+  showSelection: boolean;
   selected: boolean;
   onToggleSelect: () => void;
   onOpen: () => void;
@@ -23,80 +41,137 @@ interface Props {
 
 function DeviceIcon({ platform }: { platform?: string }) {
   const p = (platform || '').toLowerCase();
-  if (p.includes('tv')) return <Tv className="h-3.5 w-3.5" />;
-  if (p.includes('pad') || p.includes('tablet')) return <Tablet className="h-3.5 w-3.5" />;
-  if (p.includes('android') || p.includes('ios')) return <Smartphone className="h-3.5 w-3.5" />;
-  return <Monitor className="h-3.5 w-3.5" />;
+  const cls = 'h-3.5 w-3.5 shrink-0 text-[var(--text-dim)]';
+  if (p.includes('tv')) return <Tv className={cls} />;
+  if (p.includes('pad') || p.includes('tablet')) return <Tablet className={cls} />;
+  if (p.includes('android') || p.includes('ios')) return <Smartphone className={cls} />;
+  return <Monitor className={cls} />;
 }
 
-function statusToPill(status: string): { label: string; tone: StatusTone } {
-  switch (sessionStatusBucket(status)) {
-    case 'running': return { label: 'Running', tone: 'running' };
-    case 'failed':  return { label: 'Failed',  tone: 'failed'  };
-    case 'passed':  return { label: 'Passed',  tone: 'passed'  };
-    default:        return { label: sentenceCase(status), tone: 'offline' };
-  }
-}
+const STATUS: Record<StatusBucket, { label?: string; Icon: LucideIcon; cls: string }> = {
+  passed: { label: 'Passed', Icon: CheckCircle2, cls: 'text-[var(--color-success)]' },
+  failed: { label: 'Failed', Icon: XCircle, cls: 'text-[var(--color-danger)]' },
+  running: { label: 'Running', Icon: Loader2, cls: 'text-[var(--color-warning)]' },
+  other: { Icon: CircleDashed, cls: 'text-[var(--text-dim)]' },
+};
 
-export const SessionRow: React.FC<Props> = ({ session, selected, onToggleSelect, onOpen }) => {
-  const failed = sessionStatusBucket(session.status) === 'failed';
-  const pill = statusToPill(session.status);
-  const deviceName = deviceNameOrFallback(session);
-  const subtitleTop = failed && session.failure_reason
-    ? session.failure_reason
-    : (session.name ?? '');
+const NAME_HINT = 'Unnamed session. Set xe:options.name in its capabilities to name it.';
+
+export const SessionRow: React.FC<Props> = ({
+  session,
+  buildName,
+  showBuild,
+  showSelection,
+  selected,
+  onToggleSelect,
+  onOpen,
+}) => {
+  const bucket = sessionStatusBucket(session.status);
+  const status = STATUS[bucket];
+  const failed = bucket === 'failed';
+  const title = sessionDisplayName(session);
+  const reason = failed ? session.failure_reason?.trim() : '';
+  const os = [platformLabel(session), session.device_version]
+    .filter((p) => p && p !== '—')
+    .join(' ');
+  const device = [deviceNameOrFallback(session), os].filter(Boolean).join(' · ');
+  const where = [ranOnLabel(session.ranOn), session.owner?.name].filter(Boolean).join(' · ');
+  // A failure's red edge goes on the row's first cell, whichever that is.
+  const edge = failed ? 'shadow-[inset_3px_0_0_var(--color-danger)]' : '';
 
   return (
     <tr
       onClick={onOpen}
-      className="group border-b border-[var(--border)] hover:bg-[var(--surface-2)] cursor-pointer transition-colors align-top"
+      // Rows open from the keyboard too; a key typed in the checkbox is its own.
+      tabIndex={0}
+      onKeyDown={(e) => {
+        if (e.target !== e.currentTarget || (e.key !== 'Enter' && e.key !== ' ')) return;
+        e.preventDefault();
+        onOpen();
+      }}
+      data-outcome={bucket}
+      className={`group border-b border-[var(--border)] cursor-pointer transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-[var(--color-focus-ring)] ${
+        failed
+          ? 'bg-[rgb(var(--rgb-red)/0.04)] hover:bg-[rgb(var(--rgb-red)/0.08)]'
+          : 'hover:bg-[var(--surface-2)]'
+      }`}
     >
-      <td className="px-3 py-3" onClick={(e) => e.stopPropagation()}>
-        <input
-          type="checkbox"
-          checked={selected}
-          onChange={onToggleSelect}
-          aria-label={`Select session ${session.id}`}
-        />
+      {showSelection && (
+        <td className={`pl-4 pr-2 py-3 align-top ${edge}`} onClick={(e) => e.stopPropagation()}>
+          <input
+            type="checkbox"
+            checked={selected}
+            onChange={onToggleSelect}
+            aria-label={`Select session ${title.text}`}
+          />
+        </td>
+      )}
+      <td className={`px-4 py-3 align-top ${showSelection ? '' : edge}`}>
+        <span className={`inline-flex items-center gap-1.5 text-xs font-medium ${status.cls}`}>
+          <status.Icon
+            className={`h-3.5 w-3.5 shrink-0 ${bucket === 'running' ? 'animate-spin' : ''}`}
+            aria-hidden="true"
+          />
+          {status.label ?? sentenceCase(session.status || 'unknown')}
+        </span>
       </td>
-      <td className="px-3 py-3">
-        <div className="font-mono text-xs text-[var(--color-accent)]" title={session.id}>
-          #{shortId(session.id, 14, 4)}
+      <td className="px-3 py-3 align-top min-w-0">
+        <div
+          className={`text-[13px] font-medium truncate ${
+            title.source === 'name' ? 'text-[var(--text)]' : 'text-[var(--text-muted)]'
+          }`}
+          title={title.source === 'name' ? title.text : `${title.text}\n${NAME_HINT}`}
+        >
+          {title.text}
         </div>
-        {subtitleTop && (
-          <div className="mt-0.5 text-[11px] text-[var(--text-muted)] truncate max-w-[420px]" title={subtitleTop}>
-            {subtitleTop}
+        {reason ? (
+          <div className="mt-0.5 text-[11px] text-[var(--color-danger)] truncate" title={reason}>
+            {reason}
           </div>
+        ) : (
+          showBuild &&
+          buildName && (
+            <div className="mt-0.5 text-[11px] text-[var(--text-muted)] truncate" title={buildName}>
+              {buildName}
+            </div>
+          )
         )}
       </td>
-      <td className="px-3 py-3">
-        <div className="flex items-center gap-1.5 text-xs text-[var(--text)]">
+      <td className="px-3 py-3 align-top min-w-0">
+        <div className="flex items-center gap-1.5 text-[13px] text-[var(--text)] min-w-0">
           <DeviceIcon platform={session.device_platform} />
-          <span className="truncate max-w-[160px]">{deviceName}</span>
+          <span className="truncate" title={session.device_udid}>
+            {device}
+          </span>
         </div>
-        {session.node_id && (
-          <div className="mt-0.5 font-mono text-[10px] text-[var(--text-dim)]">
-            node-{session.node_id}
+        {where && (
+          <div
+            className="mt-0.5 text-[11px] text-[var(--text-muted)] truncate"
+            title={[
+              session.ranOn === 'here' ? null : `Node ${session.node_id}`,
+              session.owner?.email,
+            ]
+              .filter(Boolean)
+              .join('\n')}
+          >
+            {where}
           </div>
         )}
       </td>
-      <td className="px-3 py-3">
-        <div className="text-xs text-[var(--text)]">{platformLabel(session)}</div>
-        {session.device_version && (
-          <div className="mt-0.5 font-mono text-[10px] text-[var(--text-dim)]">{osVersionLabel(session)}</div>
-        )}
+      <td
+        className="px-3 py-3 align-top text-xs text-[var(--text-muted)] tabular-nums whitespace-nowrap"
+        title={formatAbsoluteTime(session.startTime)}
+      >
+        {formatStartTime(session.startTime)}
       </td>
-      <td className="px-3 py-3">
-        <StatusPillOutline label={pill.label} tone={pill.tone} />
+      <td className="px-3 py-3 align-top text-xs text-[var(--text)] tabular-nums whitespace-nowrap text-right">
+        {compactDuration(sessionDurationMs(session))}
       </td>
-      <td className="px-3 py-3 font-mono text-[11px] text-[var(--text-muted)] whitespace-nowrap">
-        {formatAbsoluteTime(session.startTime)}
-      </td>
-      <td className="px-3 py-3 font-mono text-[11px] text-[var(--text-muted)] whitespace-nowrap text-right">
-        {humanDuration(sessionDurationMs(session))}
-      </td>
-      <td className="px-3 py-3 text-right">
-        <ChevronRight className="inline h-4 w-4 text-[var(--text-dim)] group-hover:text-[var(--text)]" />
+      <td className="pr-4 pl-1 py-3 align-top text-right">
+        <ChevronRight
+          className="inline h-4 w-4 text-[var(--text-dim)] group-hover:text-[var(--text)]"
+          aria-hidden="true"
+        />
       </td>
     </tr>
   );

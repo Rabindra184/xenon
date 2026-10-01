@@ -17,6 +17,8 @@ import {
   sessionDurationMs,
   deviceNameOrFallback,
   osVersionLabel,
+  buildDisplayName,
+  sessionStatusBucket,
 } from '../builds/derive';
 import { humanizeFailureCategory } from './derive';
 import { Copy } from 'lucide-react';
@@ -24,12 +26,21 @@ import { useToast } from '../ui/toast';
 import type { MetadataRow } from './metadata-card';
 import { sentenceCase } from '../../lib/labels';
 
+// The list's vocabulary (sessionStatusBucket): a stored 'success' reads Passed
+// here too, and 'error' or 'timeout' Failed.
 function statusTone(status: string | null | undefined): { label: string; tone: StatusTone } {
-  if (status === 'running') return { label: 'Running', tone: 'running' };
-  if (status === 'failed') return { label: 'Failed', tone: 'failed' };
-  if (status === 'ended' || status === 'passed') return { label: 'Passed', tone: 'passed' };
-  const s = typeof status === 'string' ? status : '';
-  return { label: sentenceCase(s || 'unknown'), tone: 'offline' };
+  switch (sessionStatusBucket(status)) {
+    case 'running':
+      return { label: 'Running', tone: 'running' };
+    case 'failed':
+      return { label: 'Failed', tone: 'failed' };
+    case 'passed':
+      return { label: 'Passed', tone: 'passed' };
+    default: {
+      const s = typeof status === 'string' ? status : '';
+      return { label: sentenceCase(s || 'unknown'), tone: 'offline' };
+    }
+  }
 }
 
 export const SessionDetailPage: React.FC = () => {
@@ -40,10 +51,11 @@ export const SessionDetailPage: React.FC = () => {
   const builds = useBuildsData();
   const detail = useSessionDetail(sessionId || null);
 
-  const buildName = useMemo(() => {
-    const match = builds.builds.find((b) => b.id === buildId);
-    return match?.name || 'Build';
-  }, [builds.builds, buildId]);
+  const build = useMemo(
+    () => builds.builds.find((b) => b.id === buildId) ?? null,
+    [builds.builds, buildId],
+  );
+  const buildName = build ? buildDisplayName(build) : 'Build';
 
   // Phase 4A: when the underlying GET returns a "not found" payload (the
   // session is on a team-scoped device the caller can't see, or it really
@@ -68,7 +80,11 @@ export const SessionDetailPage: React.FC = () => {
   if (detail.error || !detail.session) {
     return (
       <div className="p-6 space-y-2">
-        <BreadcrumbHeader buildId={buildId} buildName={buildName} sessionId={sessionId} />
+        <BreadcrumbHeader
+          buildId={buildId}
+          buildName={build ? buildName : null}
+          sessionId={sessionId}
+        />
         <div className="mt-6 rounded-md border border-[var(--red)]/30 bg-[var(--surface)] p-4 text-xs text-[var(--red)]">
           {detail.error || 'Session not found.'}
         </div>
@@ -152,7 +168,7 @@ export const SessionDetailPage: React.FC = () => {
 
   return (
     <div className="flex flex-col h-full min-h-0">
-      <BreadcrumbHeader buildId={buildId} buildName={buildName} sessionId={s.id} />
+      <BreadcrumbHeader buildId={buildId} buildName={build ? buildName : null} sessionId={s.id} />
 
       <div className="flex-1 overflow-y-auto overflow-x-hidden">
         <div className="px-4 py-4 space-y-4">

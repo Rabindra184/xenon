@@ -24,4 +24,9 @@ export interface ISession {
   performance_trace?: string | null;
   createdAt: string;
   updatedAt: string;
+
+  /** Who ran it, from GET /session: null when no owner is on record. */
+  owner?: { name: string; email: string } | null;
+  /** Where it ran, from GET /session: 'here', a node's host, or null when unknown. */
+  ranOn?: string | null;
 }

@@ -68,6 +68,87 @@ const WIDTHS = [1280, 1281, 1399, 1400, 1440];
 // session table silently never mounts (see use-builds-data.ts:
 // `data.builds.find((b) => b.id === data.selectedBuildId)`).
 const BUILD_ID = 'build-9f3c2a71-8e4d-4b6a-a1c2-0d5e6f7a8b9c-nightly-regression';
+
+// The Sessions page's rows, shared by /builds (all sessions) and
+// /builds/:buildId: a long test name, failure reason, device name, owner and
+// node host, so every column has something wide to truncate.
+const WIDE_SESSIONS = [
+  {
+    id: 'a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d',
+    build_id: BUILD_ID,
+    name: 'com.example.app.tests.checkout.LongRunningCheckoutFlowWithCouponAndGiftCardEdgeCaseTest#shouldApplyStackedDiscounts',
+    status: 'failed',
+    desired_capabilities: '{}',
+    session_capabilities: '{}',
+    // Real node_id is always a uuidv4() (src/services/ServerManager.ts:
+    // `const nodeId = uuidv4()`), never an arbitrary-length operator
+    // string — a realistic-but-still-nontrivial UUID, not an
+    // artificially inflated one, is the representative stressor here.
+    node_id: '9d7f3570-fe26-4cbf-8c42-69881b4c2377',
+    has_live_video: false,
+    startTime: '2026-07-16T23:40:11.000Z',
+    endTime: '2026-07-16T23:52:47.000Z',
+    failure_reason:
+      "NoSuchElementException: An element could not be located on the page using the given search parameters (//android.widget.Button[@resource-id='com.example:id/checkout_confirm']) after 6-tier self-healing escalation exhausted",
+    failure_category: 'selector_not_found',
+    device_udid: 'emulator-5554-a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6',
+    device_platform: 'android',
+    device_version: '14.0',
+    device_name: 'Google Pixel 8 Pro (Android 14, API 34, arm64) - Lab Rack B Slot 12',
+    createdAt: '2026-07-16T23:40:11.000Z',
+    updatedAt: '2026-07-16T23:52:47.000Z',
+    // Who ran it and where (GET /session): a long name, and a node's host.
+    owner: {
+      name: 'Bartholomew Montgomery-Fitzwilliam (QA Automation, Payments Platform)',
+      email: 'bartholomew.montgomery-fitzwilliam@payments-platform.example.com',
+    },
+    ranOn: 'lab-mac-mini-rack-b-slot-12.internal.example.com:4725',
+  },
+  {
+    id: 'f9e8d7c6-b5a4-4938-2716-0f5e4d3c2b1a',
+    build_id: BUILD_ID,
+    name: 'com.example.app.tests.login.SmokeTest#loginHappyPath',
+    status: 'running',
+    desired_capabilities: '{}',
+    session_capabilities: '{}',
+    node_id: 'node-02',
+    has_live_video: true,
+    startTime: '2026-07-16T23:58:00.000Z',
+    endTime: null,
+    device_udid: '00008120-000A1B2C3D4E5F26',
+    device_platform: 'ios',
+    device_version: '17.5.1',
+    device_name: 'iPhone 15 Pro Max (iOS 17.5.1) - Lab Rack A',
+    createdAt: '2026-07-16T23:58:00.000Z',
+    updatedAt: '2026-07-16T23:58:00.000Z',
+    owner: null,
+    ranOn: 'here',
+  },
+];
+
+// GET /session-summary: four-digit counts in every tile.
+const WIDE_SUMMARY = {
+  since: '2026-07-09T23:59:59.000Z',
+  current: {
+    total: 9999,
+    passed: 9312,
+    failed: 642,
+    running: 45,
+    medianMs: 4_123_000,
+    p90Ms: 36_000_000,
+  },
+  previous: { total: 8888, passed: 8000, failed: 888, running: 0 },
+  runningNow: { sessions: 1234, devices: 567 },
+};
+
+// The list and the summary. `session*` matches session-summary too, so the
+// summary's route is added last: Playwright tries the newest route first.
+async function mockSessionsAndSummary(page: Page) {
+  await page.route('**/xenon/api/session*', (route) => route.fulfill({ json: WIDE_SESSIONS }));
+  await page.route('**/xenon/api/session-summary*', (route) =>
+    route.fulfill({ json: WIDE_SUMMARY }),
+  );
+}
 // selector-health/detail returns early (renders nothing) with no ?value= param
 // (selector-detail-page.tsx: `const value = params.get('value') ?? ''`).
 const SELECTOR_DETAIL_VALUE = 'onboarding_carousel_primary_cta';
@@ -435,6 +516,8 @@ const ROUTE_DATA_MOCKS: Record<string, Setup> = {
         ],
       }),
     );
+    // /builds opens on every session of the period, under the summary strip.
+    await mockSessionsAndSummary(page);
   },
 
   [`/xenon/builds/${BUILD_ID}`]: async (page) => {
@@ -457,55 +540,7 @@ const ROUTE_DATA_MOCKS: Record<string, Setup> = {
         ],
       }),
     );
-    await page.route('**/xenon/api/session*', (route) =>
-      route.fulfill({
-        json: [
-          {
-            id: 'a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d',
-            build_id: BUILD_ID,
-            name: 'com.example.app.tests.checkout.LongRunningCheckoutFlowWithCouponAndGiftCardEdgeCaseTest#shouldApplyStackedDiscounts',
-            status: 'failed',
-            desired_capabilities: '{}',
-            session_capabilities: '{}',
-            // Real node_id is always a uuidv4() (src/services/ServerManager.ts:
-            // `const nodeId = uuidv4()`), never an arbitrary-length operator
-            // string — a realistic-but-still-nontrivial UUID, not an
-            // artificially inflated one, is the representative stressor here.
-            node_id: '9d7f3570-fe26-4cbf-8c42-69881b4c2377',
-            has_live_video: false,
-            startTime: '2026-07-16T23:40:11.000Z',
-            endTime: '2026-07-16T23:52:47.000Z',
-            failure_reason:
-              "NoSuchElementException: An element could not be located on the page using the given search parameters (//android.widget.Button[@resource-id='com.example:id/checkout_confirm']) after 6-tier self-healing escalation exhausted",
-            failure_category: 'selector_not_found',
-            device_udid: 'emulator-5554-a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6',
-            device_platform: 'android',
-            device_version: '14.0',
-            device_name: 'Google Pixel 8 Pro (Android 14, API 34, arm64) - Lab Rack B Slot 12',
-            createdAt: '2026-07-16T23:40:11.000Z',
-            updatedAt: '2026-07-16T23:52:47.000Z',
-          },
-          {
-            id: 'f9e8d7c6-b5a4-4938-2716-0f5e4d3c2b1a',
-            build_id: BUILD_ID,
-            name: 'com.example.app.tests.login.SmokeTest#loginHappyPath',
-            status: 'running',
-            desired_capabilities: '{}',
-            session_capabilities: '{}',
-            node_id: 'node-02',
-            has_live_video: true,
-            startTime: '2026-07-16T23:58:00.000Z',
-            endTime: null,
-            device_udid: '00008120-000A1B2C3D4E5F26',
-            device_platform: 'ios',
-            device_version: '17.5.1',
-            device_name: 'iPhone 15 Pro Max (iOS 17.5.1) - Lab Rack A',
-            createdAt: '2026-07-16T23:58:00.000Z',
-            updatedAt: '2026-07-16T23:58:00.000Z',
-          },
-        ],
-      }),
-    );
+    await mockSessionsAndSummary(page);
   },
 
   '/xenon/apps': async (page) => {
@@ -859,6 +894,9 @@ const ROUTE_CONTENT_CHECKS: Record<string, Setup> = {
     // The route mock seeds builds, so the rail must render at least one
     // build-row button (an empty rail would make the overflow check vacuous).
     await expect(page.locator('aside.w-\\[280px\\] button[type="button"]')).not.toHaveCount(0);
+    // It lands on all sessions: the table and the summary strip must mount.
+    await expect(page.locator('section.flex-1 table tbody tr')).not.toHaveCount(0);
+    await expect(page.getByText('Median duration')).toBeVisible();
   },
 
   [`/xenon/builds/${BUILD_ID}`]: async (page) => {

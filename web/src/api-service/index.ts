@@ -31,14 +31,26 @@ export default class XenonApiService {
       query?: string;
       status?: string;
       platform?: string;
+      /** ISO start of the period: only sessions created since then. */
+      since?: string;
     } = {},
   ) {
     const ts = Date.now();
     let url = `/session?t=${ts}`;
     if (options.buildId) url += `&buildId=${encodeURIComponent(options.buildId)}`;
+    if (options.since) url += `&since=${encodeURIComponent(options.since)}`;
     if (options.query) url += `&query=${encodeURIComponent(options.query)}`;
     if (options.status) url += `&status=${encodeURIComponent(options.status)}`;
     if (options.platform) url += `&platform=${encodeURIComponent(options.platform)}`;
+    return apiClient.makeGETRequest(url);
+  }
+
+  public static getSessionSummary(
+    options: { since?: string | null; buildId?: string | null } = {},
+  ) {
+    let url = `/session-summary?t=${Date.now()}`;
+    if (options.since) url += `&since=${encodeURIComponent(options.since)}`;
+    if (options.buildId) url += `&buildId=${encodeURIComponent(options.buildId)}`;
     return apiClient.makeGETRequest(url);
   }
 

@@ -805,7 +805,8 @@ under `AND`, never by spreading, or one `OR` overwrites the other.
 
 - `isValidSession` guards every `/session/:sessionId/*` route with it, and a
   hidden session gets the unknown-id body byte for byte. Bug reports, the
-  session list, builds and the healing reads use it too.
+  session list, its summary (`/session-summary`), builds and the healing
+  reads use it too.
 - Session files (`<sessionId>/<kind>/<file>` under `sessionAssetsPath`) are
   served only by `GET /session/:sessionId/asset/:kind/:file`, for
   `screenshots`, `video` and `performance`. Never serve that folder with
