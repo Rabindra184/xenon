@@ -1,6 +1,7 @@
 import http from 'http';
 import https from 'https';
 import type { IncomingHttpHeaders, IncomingMessage, OutgoingHttpHeaders } from 'http';
+import type { Readable } from 'stream';
 import type { Response } from 'express';
 import { HttpsProxyAgent } from 'https-proxy-agent';
 import { HttpProxyAgent } from 'http-proxy-agent';
@@ -64,7 +65,8 @@ export interface NodeRequest {
   url: string;
   method: string;
   headers: OutgoingHttpHeaders;
-  body?: Buffer;
+  /** Sent whole, or streamed (an upload), with its length in `headers` if known. */
+  body?: Buffer | Readable;
   signal?: AbortSignal;
 }
 
@@ -77,7 +79,8 @@ export function sendToNode(request: NodeRequest): Promise<IncomingMessage> {
   const url = new URL(request.url);
   const lib = url.protocol === 'https:' ? https : http;
   const headers: OutgoingHttpHeaders = { ...request.headers };
-  if (request.body) headers['content-length'] = request.body.length;
+  const body = request.body;
+  if (Buffer.isBuffer(body)) headers['content-length'] = body.length;
   return new Promise((resolve, reject) => {
     const outgoing = lib.request(
       url,
@@ -85,7 +88,12 @@ export function sendToNode(request: NodeRequest): Promise<IncomingMessage> {
       resolve,
     );
     outgoing.on('error', reject);
-    outgoing.end(request.body);
+    if (body && !Buffer.isBuffer(body)) {
+      body.on('error', (err) => outgoing.destroy(err));
+      body.pipe(outgoing);
+    } else {
+      outgoing.end(body);
+    }
   });
 }
 

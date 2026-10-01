@@ -39,7 +39,12 @@ import {
   isManualLock,
 } from '../../services/recording/manualLock';
 import { decideStreamStartConflict } from './streamStartConflict';
-import { nodePhoneControl } from './nodePhoneControl';
+import {
+  installFileOnNode,
+  isOtherServersPhone,
+  nodePhoneControl,
+  screenshotFromNode,
+} from './nodePhoneControl';
 import { LeaveScheduler, type LeaveDeps } from './streamLeave';
 import { SessionOwnerResolver } from '../../services/device-access/SessionOwnerResolver';
 import { resolveActor } from '../../services/device-access/actor';
@@ -395,11 +400,17 @@ router.post('/:udid/install-repository-app', async (req: Request, res: Response)
       return res.status(404).send('App not found in repository');
     }
 
+    // A node's phone: the app is in this server's library, not the node's,
+    // so the file goes to the node's own upload-install.
+    if (isOtherServersPhone(device)) {
+      return await installFileOnNode(req, res, udid, device, {
+        path: app.filepath,
+        name: app.filename || path.basename(app.filepath),
+      });
+    }
+
     const manager = await getDeviceManagerForPlatform(device.platform);
     if (manager && manager.installApp) {
-      // If it's a local file, pass the path.
-      // In a distributed setup, the node would ideally download it.
-      // For now, we assume hub-node shared storage or hub-local execution.
       await manager.installApp(udid, app.filepath);
       return res.status(200).send({ success: true, message: `Installed ${app.name}` });
     }
@@ -1073,6 +1084,34 @@ router.post('/:udid/shell', async (req: Request, res: Response) => {
 });
 
 /**
+ * Where Omni-Vision reads the screen from, for the stand-in driver it is
+ * given: this server's device manager, or, for a node's phone, the node
+ * (screenshotFromNode). Omni itself runs here either way, with this
+ * server's AI settings. Null when this server has no manager for the phone.
+ */
+async function omniScreen(
+  req: Request,
+  udid: string,
+  device: IDevice,
+): Promise<{ getScreenshot: () => Promise<string>; getPageSource: () => Promise<string> } | null> {
+  if (isOtherServersPhone(device)) {
+    return {
+      getScreenshot: () => screenshotFromNode(req, udid, device),
+      getPageSource: async () => '',
+    };
+  }
+  const manager = await getDeviceManagerForPlatform(device.platform);
+  if (!manager) return null;
+  return {
+    getScreenshot: async () => {
+      if (manager.getScreenshot) return await manager.getScreenshot(udid);
+      throw new Error('Screenshot not supported for this device');
+    },
+    getPageSource: async () => (manager.getPageSource ? await manager.getPageSource(udid) : ''),
+  };
+}
+
+/**
  * Omni-Scan for manual control (No Appium Session)
  */
 router.get('/:udid/omni-scan', async (req: Request, res: Response) => {
@@ -1080,30 +1119,12 @@ router.get('/:udid/omni-scan', async (req: Request, res: Response) => {
   const device = await getDeviceInfo(udid);
   if (!device) return res.status(404).send('Device not found');
 
-  const manager = await getDeviceManagerForPlatform(device.platform);
-  if (!manager) return res.status(400).send('Manager not found');
+  const screen = await omniScreen(req, udid, device);
+  if (!screen) return res.status(400).send('Manager not found');
 
   try {
     const omniService = Container.get(OmniVisionService);
-
-    // Create a Mock Driver that OmniVisionService can use
-    const mockDriver = {
-      sessionId: `manual_${udid}`,
-      getScreenshot: async () => {
-        if (manager.getScreenshot) {
-          return await manager.getScreenshot(udid);
-        }
-        throw new Error('Screenshot not supported for this device');
-      },
-      // OmniVision might need page source for some analysis later
-      getPageSource: async () => {
-        if (manager.getPageSource) {
-          return await manager.getPageSource(udid);
-        }
-        return '';
-      },
-    };
-
+    const mockDriver = { sessionId: `manual_${udid}`, ...screen };
     const result = await omniService.analyzeScreen(mockDriver);
     return res.status(200).send({ status: 'success', value: result });
   } catch (err: any) {
@@ -1182,21 +1203,12 @@ router.post('/:udid/test-locator', async (req: Request, res: Response) => {
   const device = await getDeviceInfo(udid);
   if (!device) return res.status(404).send('Device not found');
 
-  const manager = await getDeviceManagerForPlatform(device.platform);
-  if (!manager) return res.status(400).send('Manager not found');
+  const screen = await omniScreen(req, udid, device);
+  if (!screen) return res.status(400).send('Manager not found');
 
   try {
     const omniService = Container.get(OmniVisionService);
-
-    const mockDriver = {
-      sessionId: `manual_${udid}`,
-      getScreenshot: async () => {
-        if (manager.getScreenshot) {
-          return await manager.getScreenshot(udid);
-        }
-        throw new Error('Screenshot not supported for this device');
-      },
-    };
+    const mockDriver = { sessionId: `manual_${udid}`, getScreenshot: screen.getScreenshot };
 
     let value: any[] = [];
     if (strategy === '-custom:ai-text') {

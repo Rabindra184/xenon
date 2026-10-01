@@ -30,6 +30,7 @@ import { saveRegistrations } from '../helpers/container-registration';
 import { useScratchDatabase } from '../helpers/scratch-database';
 import { loopbackServers } from '../helpers/loopbackServer';
 import { InspectorService } from '../../src/services/InspectorService';
+import { OmniVisionService } from '../../src/services/omni-vision/OmniVisionService';
 import http from 'http';
 import AndroidStreamService from '../../src/device-managers/android/AndroidStreamService';
 import AndroidH264StreamService from '../../src/device-managers/android/AndroidH264StreamService';
@@ -90,7 +91,11 @@ class AndroidDeviceManager {
     this.at('executeShell');
     return 'uid=2000(shell)';
   };
-  installApp = async () => this.at('installApp');
+  installedBytes: string[] = [];
+  installApp = async (_udid: string, appPath: string) => {
+    this.at('installApp');
+    this.installedBytes.push(fs.readFileSync(appPath, 'utf8'));
+  };
 }
 
 describe('the hub’s device control on a node’s phone', () => {
@@ -125,6 +130,7 @@ describe('the hub’s device control on a node’s phone', () => {
       SessionOwnerResolver,
       LiveSessionOwners,
       InspectorService,
+      OmniVisionService,
     );
     Container.set(JwtKeyService, hubKeys);
     Container.set(HubSessionTokenIssuer, new HubSessionTokenIssuer());
@@ -398,16 +404,10 @@ describe('the hub’s device control on a node’s phone', () => {
       expect(nodeSaw('appium-session')).to.have.length(0);
     });
 
-    // Not passed on yet: uploads need a relayed body, an app from the hub's
-    // library isn't on the node, and a path is a path on one machine.
-    // Omni's AI settings are the hub's. Anything added later is refused the
-    // same way until it is on the list.
+    // Not passed on: a path is a path on one machine. Anything added later is
+    // refused the same way until it is on a list.
     const REFUSED: [method: 'get' | 'post', action: string, body?: Record<string, unknown>][] = [
       ['post', 'install', { appPath: '/tmp/app.apk' }],
-      ['post', 'install-repository-app', { appId: 'app-1' }],
-      ['post', 'upload-install'],
-      ['get', 'omni-scan'],
-      ['post', 'test-locator', { strategy: '-custom:ai-text', selector: 'OK' }],
       ['post', 'an-action-added-later'],
     ];
 
@@ -511,6 +511,70 @@ describe('the hub’s device control on a node’s phone', () => {
           '/xenon/api/control/phone-2/stream?t=1',
         ]);
         await preview('post', 'stream/stop').expect(200);
+      });
+    });
+
+    describe('apps and Omni-Vision', () => {
+      it('installs an upload on the node, streamed through the hub', async () => {
+        const res = await request(hubApp)
+          .post('/xenon/api/control/phone-1/upload-install')
+          .set('x-test-user', 'alice')
+          .attach('app', Buffer.from('uploaded-apk'), 'build-42.apk');
+        expect(res.status, res.text).to.equal(200);
+        expect(res.body.success).to.equal(true);
+        expect(manager.calls).to.deep.equal(['node-1:installApp']);
+        expect(manager.installedBytes).to.deep.equal(['uploaded-apk']);
+      });
+
+      it('installs an app from the hub’s library on the node, sending the file there', async () => {
+        const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'xenon-library-'));
+        dirs.push(dir);
+        const file = path.join(dir, 'stored-app');
+        fs.writeFileSync(file, 'library-apk');
+        const app = await scratch.db.app.create({
+          data: {
+            name: 'Library App',
+            filename: 'library-app.apk',
+            filepath: file,
+            mimetype: 'application/vnd.android.package-archive',
+            size: 11,
+          },
+        });
+
+        const res = await asAlice('post', 'install-repository-app', { appId: app.id });
+
+        expect(res.status, res.text).to.equal(200);
+        expect(manager.calls).to.deep.equal(['node-1:installApp']);
+        expect(manager.installedBytes).to.deep.equal(['library-apk']);
+        const upload = nodeSaw('upload-install');
+        expect(upload).to.have.length(1);
+        expect(String(upload[0].headers['content-type'])).to.match(/^multipart\/form-data/);
+      });
+
+      it('runs Omni-Vision here, on the node’s screenshot', async () => {
+        const seen: string[] = [];
+        Container.set(OmniVisionService, {
+          analyzeScreen: async (driver: any) => {
+            seen.push(`scan:${(await driver.getScreenshot()).length}`);
+            return { elements: [] };
+          },
+          findByText: async (driver: any, text: string) => {
+            seen.push(`text:${text}:${(await driver.getScreenshot()).length}`);
+            return [{ text }];
+          },
+        } as any);
+
+        const scan = await asAlice('get', 'omni-scan');
+        expect(scan.status, scan.text).to.equal(200);
+        const locator = await asAlice('post', 'test-locator', {
+          strategy: '-custom:ai-text',
+          selector: 'Sign in',
+        });
+        expect(locator.status, locator.text).to.equal(200);
+        expect(locator.body.value).to.deep.equal([{ text: 'Sign in' }]);
+
+        expect(seen).to.deep.equal(['scan:200', 'text:Sign in:200']);
+        expect(manager.calls).to.deep.equal(['node-1:getScreenshot', 'node-1:getScreenshot']);
       });
     });
 
