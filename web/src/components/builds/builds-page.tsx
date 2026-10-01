@@ -30,13 +30,18 @@ const PERIOD_WORDS: Record<Exclude<TimeFilter, 'all'>, string> = {
   '30d': '30 days',
 };
 
+const NAMING_EXAMPLE = `"xe:options": {
+  "name": "Checkout happy path",
+  "build": "Nightly smoke"
+}`;
+
 const NamingHint: React.FC = () => (
-  <p className="mt-3 max-w-md mx-auto text-xs text-[var(--text-muted)]">
-    Name each test and group a run in its capabilities:{' '}
-    <code className="font-mono text-[var(--text)]">
-      {'"xe:options": { "name": "Checkout happy path", "build": "Nightly smoke" }'}
-    </code>
-  </p>
+  <div className="text-xs text-[var(--text-muted)]">
+    <p>Name each test, and group a run, in its capabilities:</p>
+    <pre className="mt-2 inline-block rounded-md border border-[var(--border)] bg-[var(--surface-2)] px-3 py-2 text-left font-mono text-[11px] text-[var(--text)]">
+      {NAMING_EXAMPLE}
+    </pre>
+  </div>
 );
 
 export const BuildsPage: React.FC = () => {
@@ -190,7 +195,7 @@ export const BuildsPage: React.FC = () => {
                 onOpenRow={handleOpenRow}
                 empty={
                   data.loading ? null : (
-                    <div className="px-6 py-12 text-center">
+                    <div className="px-6 py-6">
                       <EmptyState
                         icon={<ListChecks className="h-5 w-5" />}
                         title={
@@ -199,8 +204,8 @@ export const BuildsPage: React.FC = () => {
                             : `No sessions in the ${TIME_FILTER_LABEL[timeFilter].toLowerCase()}`
                         }
                         description="Sessions appear here as your tests run."
+                        action={<NamingHint />}
                       />
-                      <NamingHint />
                     </div>
                   )
                 }

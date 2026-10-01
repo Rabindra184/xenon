@@ -92,7 +92,11 @@ export const BuildListRail: React.FC<Props> = ({
     }
     return true;
   });
-  const filtered = q.length > 0 || timeFilter !== 'all';
+  const emptyText = q
+    ? 'No builds match.'
+    : timeFilter !== 'all'
+      ? `No builds in the ${TIME_FILTER_LABEL[timeFilter].toLowerCase()}.`
+      : 'No builds yet. They appear here after your first test run.';
 
   return (
     <aside className="w-[280px] shrink-0 border-r border-[var(--border)] bg-[var(--surface)] flex flex-col min-h-0">
@@ -110,7 +114,9 @@ export const BuildListRail: React.FC<Props> = ({
         </div>
       </div>
 
-      <nav aria-label="Builds" className="flex-1 overflow-y-auto py-1">
+      {/* A group, not a <nav>: the app shell is the one <aside> holding a <nav>
+          (web/test/viewport/overflow.spec.ts and the control sweep find it so). */}
+      <div role="group" aria-label="Builds" className="flex-1 overflow-y-auto py-1">
         <RailItem active={selectedBuildId === null} onClick={() => onSelect(null)}>
           <div className="flex items-center gap-2 text-[13px] font-medium text-[var(--text)]">
             <Layers className="h-3.5 w-3.5 text-[var(--text-dim)]" aria-hidden="true" />
@@ -124,11 +130,7 @@ export const BuildListRail: React.FC<Props> = ({
         <div className="px-4 pt-3 pb-1 text-[11px] font-medium text-[var(--text-dim)]">Builds</div>
 
         {visible.length === 0 && (
-          <div className="px-4 py-6 text-xs text-[var(--text-dim)]">
-            {filtered
-              ? 'No builds match.'
-              : 'No builds yet. They appear here after your first test run.'}
-          </div>
+          <div className="px-4 py-6 text-xs text-[var(--text-dim)]">{emptyText}</div>
         )}
         {visible.map((b) => {
           const unnamed = isUnnamedBuild(b);
@@ -148,7 +150,7 @@ export const BuildListRail: React.FC<Props> = ({
             </RailItem>
           );
         })}
-      </nav>
+      </div>
     </aside>
   );
 };
