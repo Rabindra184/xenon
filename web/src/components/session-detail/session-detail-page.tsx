@@ -3,45 +3,18 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { useBuildsData } from '../builds/use-builds-data';
 import { useSessionDetail } from './use-session-detail';
 import { BreadcrumbHeader } from './breadcrumb-header';
-import { MetadataGrid } from './metadata-grid';
+import { OutcomeHeader, sessionStatusView } from './outcome-header';
+import { OutcomeTiles } from './outcome-tiles';
 import { FailureSummary } from './failure-summary';
+import { HealingPanel } from './healing-panel';
 import { RecordingCard } from './recording-card';
+import { DetailsCard } from './details-card';
 import { CapabilitiesCard } from './capabilities-card';
 import { LogViewer } from './log-viewer';
 import { NetworkPanel } from './network-panel';
-import { StatusPillOutline, type StatusTone } from '../ui/status-pill-outline';
-import {
-  formatAbsoluteTime,
-  humanDuration,
-  platformLabel,
-  sessionDurationMs,
-  deviceNameOrFallback,
-  osVersionLabel,
-  buildDisplayName,
-  sessionStatusBucket,
-} from '../builds/derive';
-import { humanizeFailureCategory } from './derive';
-import { Copy } from 'lucide-react';
+import { humanDuration, sessionDurationMs, buildDisplayName } from '../builds/derive';
+import type { CommandLog } from './commands';
 import { useToast } from '../ui/toast';
-import type { MetadataRow } from './metadata-card';
-import { sentenceCase } from '../../lib/labels';
-
-// The list's vocabulary (sessionStatusBucket): a stored 'success' reads Passed
-// here too, and 'error' or 'timeout' Failed.
-function statusTone(status: string | null | undefined): { label: string; tone: StatusTone } {
-  switch (sessionStatusBucket(status)) {
-    case 'running':
-      return { label: 'Running', tone: 'running' };
-    case 'failed':
-      return { label: 'Failed', tone: 'failed' };
-    case 'passed':
-      return { label: 'Passed', tone: 'passed' };
-    default: {
-      const s = typeof status === 'string' ? status : '';
-      return { label: sentenceCase(s || 'unknown'), tone: 'offline' };
-    }
-  }
-}
 
 export const SessionDetailPage: React.FC = () => {
   const { buildId = '', sessionId = '' } = useParams<{ buildId: string; sessionId: string }>();
@@ -63,18 +36,13 @@ export const SessionDetailPage: React.FC = () => {
   // an error card. Effect runs once notFound transitions true.
   useEffect(() => {
     if (!detail.loading && detail.notFound) {
-      toast(
-        'Session not available — it may belong to a team you are not on.',
-        'info',
-      );
+      toast('Session not available — it may belong to a team you are not on.', 'info');
       navigate('/builds', { replace: true });
     }
   }, [detail.loading, detail.notFound, navigate, toast]);
 
   if (detail.loading) {
-    return (
-      <div className="p-6 text-xs text-[var(--text-dim)]">Loading session…</div>
-    );
+    return <div className="p-6 text-xs text-[var(--text-dim)]">Loading session…</div>;
   }
 
   if (detail.error || !detail.session) {
@@ -93,98 +61,31 @@ export const SessionDetailPage: React.FC = () => {
   }
 
   const s = detail.session;
-  const pill = statusTone(s.status);
-  const durationText = humanDuration(sessionDurationMs(s));
-  const allLogs = [...detail.sessionLogs, ...detail.deviceLogs, ...detail.debugLogs];
-
-  const copySessionIdValue = async () => {
-    try {
-      await navigator.clipboard.writeText(s.id);
-      toast('Session ID copied', 'success');
-    } catch {
-      toast('Clipboard unavailable', 'error');
-    }
-  };
-
-  const identityRows: MetadataRow[] = [
-    { label: 'Device', value: deviceNameOrFallback(s) },
-    { label: 'Node ID', value: s.node_id || '—', mono: true },
-    { label: 'Platform', value: platformLabel(s) },
-    { label: 'OS version', value: s.device_version ? osVersionLabel(s) : '—', mono: true },
-  ];
-
-  const runRows: MetadataRow[] = [
-    {
-      label: 'Session ID',
-      value: (
-        <span className="inline-flex items-center gap-1">
-          <span className="truncate" title={s.id}>{s.id}</span>
-          <button
-            type="button"
-            onClick={copySessionIdValue}
-            aria-label="Copy session ID"
-            className="p-0.5 rounded text-[var(--text-dim)] hover:text-[var(--text)]"
-          >
-            <Copy className="h-3 w-3" />
-          </button>
-        </span>
-      ),
-      mono: true,
-    },
-    { label: 'Start time', value: formatAbsoluteTime(s.startTime), mono: true },
-    { label: 'Duration', value: durationText, mono: true },
-  ];
-
-  const failed = s.status === 'failed';
-  const resultRows: MetadataRow[] = [
-    {
-      label: 'Status',
-      value: <StatusPillOutline label={pill.label} tone={pill.tone} />,
-    },
-  ];
-  if (failed && s.failure_category) {
-    const cat = humanizeFailureCategory(s.failure_category);
-    resultRows.push({
-      label: 'Category',
-      value: (
-        <a
-          href={`/xenon/runbooks/${encodeURIComponent(s.failure_category.toLowerCase())}`}
-          target="_blank"
-          rel="noreferrer"
-          className="text-[var(--red)] hover:underline"
-        >
-          {cat}
-        </a>
-      ),
-    });
-  }
-  if (failed && s.failure_reason) {
-    resultRows.push({
-      label: 'Failure reason',
-      value: s.failure_reason,
-      tone: 'red',
-    });
-  }
+  const commands = detail.sessionLogs as CommandLog[];
+  const failed = sessionStatusView(s.status).bucket === 'failed';
 
   return (
     <div className="flex flex-col h-full min-h-0">
       <BreadcrumbHeader buildId={buildId} buildName={build ? buildName : null} sessionId={s.id} />
+      <OutcomeHeader session={s} />
 
       <div className="flex-1 overflow-y-auto overflow-x-hidden">
         <div className="px-4 py-4 space-y-4">
-          <MetadataGrid identity={identityRows} run={runRows} result={resultRows} />
+          <OutcomeTiles session={s} commands={commands} />
 
           {failed && (
             <FailureSummary
               session={s}
               buildName={buildName}
               buildId={buildId}
-              allLogs={allLogs}
-              durationText={durationText}
+              commands={commands}
+              durationText={humanDuration(sessionDurationMs(s))}
             />
           )}
 
-          <div className="grid grid-cols-1 lg:grid-cols-[1fr_340px] gap-4">
+          <HealingPanel commands={commands} />
+
+          <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_340px] gap-4">
             <div className="min-w-0">
               <LogViewer
                 sessionLogs={detail.sessionLogs}
@@ -194,8 +95,9 @@ export const SessionDetailPage: React.FC = () => {
               />
             </div>
 
-            <div className="flex flex-col gap-4">
+            <div className="flex flex-col gap-4 min-w-0">
               <RecordingCard session={s} />
+              <DetailsCard session={s} buildName={build ? buildName : null} />
               <CapabilitiesCard session={s} />
             </div>
           </div>

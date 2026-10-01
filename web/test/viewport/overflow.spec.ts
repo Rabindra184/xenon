@@ -149,6 +149,108 @@ async function mockSessionsAndSummary(page: Page) {
     route.fulfill({ json: WIDE_SUMMARY }),
   );
 }
+
+// The session detail page's data for WIDE_SESSIONS[0], a failed session:
+// its command log has a heal with long selectors on both sides and a failed
+// command with a long error, and its AI analysis is a long paragraph.
+const WIDE_SESSION_ID = 'a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d';
+const LONG_XPATH =
+  "//android.widget.FrameLayout[@resource-id='com.example.app.checkout:id/bottom_sheet_container_primary']/android.widget.LinearLayout[3]/android.widget.Button[@text='Confirm and pay with stacked discounts']";
+const WIDE_COMMANDS = [
+  {
+    id: 'cmd-3',
+    session_id: WIDE_SESSION_ID,
+    command_name: 'findElement',
+    title: 'Find Element',
+    subtitle: LONG_XPATH,
+    url: '/x',
+    method: 'POST',
+    response: JSON.stringify({
+      value: {
+        error: 'no such element',
+        message: `An element could not be located on the page using the given search parameters (${LONG_XPATH}) after 6-tier self-healing escalation exhausted`,
+      },
+    }),
+    is_success: false,
+    is_error: true,
+    duration: 84_123,
+    createdAt: '2026-07-16T23:52:40.000Z',
+    updatedAt: '2026-07-16T23:52:40.000Z',
+  },
+  {
+    id: 'cmd-2',
+    session_id: WIDE_SESSION_ID,
+    command_name: 'findElementsByAccessibilityIdWithRetry',
+    title: 'Find Elements By Accessibility Id With Retry',
+    subtitle: 'checkout_confirm_button_primary_cta_with_coupon_and_gift_card',
+    url: '/x',
+    method: 'POST',
+    response: '{"value":[]}',
+    is_success: true,
+    is_healed: true,
+    original_strategy: 'xpath',
+    original_selector: LONG_XPATH,
+    healed_strategy: 'xpath',
+    healed_selector: `${LONG_XPATH}[@enabled='true']`,
+    healing_tier: 'Fuzzy XML',
+    healing_confidence: 0.874,
+    duration: 2300,
+    createdAt: '2026-07-16T23:45:00.000Z',
+    updatedAt: '2026-07-16T23:45:00.000Z',
+  },
+  {
+    id: 'cmd-1',
+    session_id: WIDE_SESSION_ID,
+    command_name: 'getPageSource',
+    title: 'Get Page Source',
+    url: '/x',
+    method: 'GET',
+    response: '{"value":"<hierarchy/>"}',
+    is_success: true,
+    duration: 1100,
+    createdAt: '2026-07-16T23:40:30.000Z',
+    updatedAt: '2026-07-16T23:40:30.000Z',
+  },
+];
+
+async function mockSessionDetail(page: Page) {
+  await page.route('**/xenon/api/build', (route) =>
+    route.fulfill({
+      json: [
+        {
+          id: BUILD_ID,
+          name: 'nightly-regression-suite-android-emulator-api34-shard-07-of-12',
+          createdAt: '2026-07-16T23:59:59.000Z',
+          updatedAt: '2026-07-16T23:59:59.000Z',
+          sessionCount: 2,
+          passedCount: 0,
+          failedCount: 1,
+          runningCount: 1,
+        },
+      ],
+    }),
+  );
+  // Device and debug logs, profiling: empty. The interceptor answers as it
+  // does for a session that didn't enable it.
+  await page.route(`**/xenon/api/session/${WIDE_SESSION_ID}/**`, (route) =>
+    route.fulfill({ json: [] }),
+  );
+  await page.route('**/xenon/api/interceptor/**', (route) =>
+    route.fulfill({ status: 404, json: { error: 'interceptor not enabled' } }),
+  );
+  await page.route(`**/xenon/api/session/${WIDE_SESSION_ID}/session_log*`, (route) =>
+    route.fulfill({ json: WIDE_COMMANDS }),
+  );
+  await page.route(`**/xenon/api/session/${WIDE_SESSION_ID}`, (route) =>
+    route.fulfill({
+      json: {
+        ...WIDE_SESSIONS[0],
+        ai_analysis: `Root Cause: the **Confirm** button moved into a \`BottomSheet\` in this build, so ${LONG_XPATH} no longer matches anything on the checkout screen. Healing found candidates but none above the confidence threshold.`,
+        tags: 'checkout,payments,regression,nightly,android-14,coupon-and-gift-card-edge-cases',
+      },
+    }),
+  );
+}
 // selector-health/detail returns early (renders nothing) with no ?value= param
 // (selector-detail-page.tsx: `const value = params.get('value') ?? ''`).
 const SELECTOR_DETAIL_VALUE = 'onboarding_carousel_primary_cta';
@@ -163,6 +265,8 @@ const ROUTES = [
   '/xenon/recordings/g-mock-1',
   '/xenon/builds',
   `/xenon/builds/${BUILD_ID}`,
+  // A failed, healed session's page: the widest one the detail page has.
+  `/xenon/builds/${BUILD_ID}/sessions/${WIDE_SESSION_ID}`,
   '/xenon/apps',
   '/xenon/selector-health',
   `/xenon/selector-health/detail?value=${SELECTOR_DETAIL_VALUE}`,
@@ -842,6 +946,7 @@ const ROUTE_DATA_MOCKS: Record<string, Setup> = {
 ROUTE_DATA_MOCKS['/xenon/devices?view=table'] = ROUTE_DATA_MOCKS['/xenon/devices'];
 ROUTE_DATA_MOCKS['/xenon/recordings'] = mockRecordings;
 ROUTE_DATA_MOCKS['/xenon/recordings/g-mock-1'] = mockRecordings;
+ROUTE_DATA_MOCKS[`/xenon/builds/${BUILD_ID}/sessions/${WIDE_SESSION_ID}`] = mockSessionDetail;
 
 const ROUTE_CONTENT_CHECKS: Record<string, Setup> = {
   '/xenon/overview': async (page) => {
@@ -902,6 +1007,14 @@ const ROUTE_CONTENT_CHECKS: Record<string, Setup> = {
   [`/xenon/builds/${BUILD_ID}`]: async (page) => {
     // Empty session mock -> 'No sessions in this build yet.' with no <table>.
     await expect(page.locator('section.flex-1 table tbody tr')).not.toHaveCount(0);
+  },
+
+  [`/xenon/builds/${BUILD_ID}/sessions/${WIDE_SESSION_ID}`]: async (page) => {
+    // The outcome tiles, the failure panel and the healing table must mount,
+    // or the session wasn't found and the page is an error card.
+    await expect(page.getByText('Why it failed')).toBeVisible();
+    await expect(page.getByText('Slowest command')).toBeVisible();
+    await expect(page.locator('section:has(h2:text("Self-healing")) tbody tr')).toHaveCount(1);
   },
 
   '/xenon/apps': async (page) => {

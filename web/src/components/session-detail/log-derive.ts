@@ -4,7 +4,12 @@
 
 import type { LogLike } from './derive';
 
-export type LogTabKey = 'text' | 'performance' | 'evidence' | 'device' | 'debug' | 'profiling';
+export type LogTabKey = 'commands' | 'timeline' | 'screenshots' | 'device' | 'debug' | 'profiling';
+
+/** A tab's count, short: 2674 reads "2.7k". */
+export function formatTabCount(n: number): string {
+  return n >= 1000 ? `${(n / 1000).toFixed(1).replace(/\.0$/, '')}k` : String(n);
+}
 
 export interface LogRowKindStyle {
   /** A 1-2 word event/method label shown in the row. */
@@ -37,10 +42,12 @@ export function logTimestamp(log: LogLike): string {
  * Decide the dot tone + label for a given log row.
  */
 export function logRowKind(log: LogLike): LogRowKindStyle {
-  // Healed (auto-recovery applied)
-  if ((log as any).healed === true) return { label: String((log as any).command_name || 'healed'), tone: 'amber' };
+  // Healed (auto-recovery applied): SessionLog.is_healed.
+  if ((log as any).is_healed === true)
+    return { label: String((log as any).command_name || 'healed'), tone: 'amber' };
   // Explicit failure
-  if (log.is_success === false) return { label: String(log.command_name || (log as any).title || 'error'), tone: 'red' };
+  if (log.is_success === false || (log as any).is_error === true)
+    return { label: String(log.command_name || (log as any).title || 'error'), tone: 'red' };
   // Explicit success
   if (log.is_success === true) return { label: String(log.command_name || (log as any).title || 'ok'), tone: 'green' };
   // session_started / session_stopped style
@@ -134,5 +141,5 @@ export function logDisplaySubtitle(log: LogLike): string | null {
  */
 export function filterErrorsOnly(logs: LogLike[], on: boolean): LogLike[] {
   if (!on) return logs;
-  return logs.filter((l) => l.is_success === false);
+  return logs.filter((l) => l.is_success === false || (l as any).is_error === true);
 }

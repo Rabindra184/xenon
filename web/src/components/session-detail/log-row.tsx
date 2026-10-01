@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { ChevronRight, Copy } from 'lucide-react';
 import type { LogLike } from './derive';
 import { logTimestamp, logRowKind, logDisplayTitle, logDisplaySubtitle } from './log-derive';
+import { formatCommandDuration } from './commands';
 import { JsonBlock } from './json-block';
 import { useToast } from '../ui/toast';
 
@@ -63,6 +64,11 @@ export const LogRow: React.FC<Props> = ({ log }) => {
             </span>
           )}
         </span>
+        {typeof (log as any).duration === 'number' && (
+          <span className="text-[11px] tabular-nums text-[var(--text-muted)] shrink-0">
+            {formatCommandDuration((log as any).duration)}
+          </span>
+        )}
         <span
           role="button"
           tabIndex={0}

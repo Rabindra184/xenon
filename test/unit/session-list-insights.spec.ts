@@ -211,6 +211,34 @@ describe('Sessions page data', () => {
     });
   });
 
+  describe('GET /session/:id', () => {
+    // The detail page's header names who ran the session and where, as its row does.
+    it('says who ran the session and where, as the list does', async () => {
+      await user('u-priya', 'Priya Shah', 'priya@example.com');
+      await scratch.db.device.create({
+        data: {
+          udid: 'node-phone',
+          host: 'http://10.0.0.9:4725',
+          nodeId: 'node-2',
+          platform: 'ios',
+        } as any,
+      });
+      await session({
+        id: 'one',
+        user_id: 'u-priya',
+        node_id: 'node-2',
+        device_udid: 'node-phone',
+      });
+
+      const res = await request(app()).get('/session/one');
+
+      expect(res.status).to.equal(200);
+      expect(res.body.id).to.equal('one');
+      expect(res.body.owner).to.deep.equal({ name: 'Priya Shah', email: 'priya@example.com' });
+      expect(res.body.ranOn).to.equal('10.0.0.9:4725');
+    });
+  });
+
   describe('GET /session-summary', () => {
     it('summarizes the period and the one before it, of the same length', async () => {
       const build = await scratch.db.build.create({ data: { name: 'nightly' } });

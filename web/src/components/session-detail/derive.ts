@@ -11,20 +11,6 @@ export interface LogLike {
 }
 
 /**
- * Find the earliest log entry we want to surface as the "first error" in the
- * failure summary. Preference order:
- *   1. The first entry with is_success === false.
- *   2. The last entry overall (typically session_stopped).
- *   3. null when there are no logs.
- */
-export function firstErrorLog(logs: LogLike[]): LogLike | null {
-  if (!logs || logs.length === 0) return null;
-  const firstFailure = logs.find((l) => l.is_success === false);
-  if (firstFailure) return firstFailure;
-  return logs[logs.length - 1] ?? null;
-}
-
-/**
  * Extract `at …` stack frames from a failure_reason string. Returns up to
  * `max` frames; empty array when no frames are detectable.
  */

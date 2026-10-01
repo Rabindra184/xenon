@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import XenonApiService from '../../api-service';
 import type { ISession } from '../../interfaces/ISession';
 import type { LogLike } from './derive';
@@ -15,6 +15,15 @@ export interface UseSessionDetail {
   refresh: () => void;
 }
 
+/** How often a running session's page asks for its status and commands. */
+export const LIVE_REFRESH_MS = 4000;
+
+const isSession = (s: unknown): s is ISession =>
+  !!s &&
+  typeof s === 'object' &&
+  typeof (s as any).id === 'string' &&
+  typeof (s as any).status === 'string';
+
 export function useSessionDetail(sessionId: string | null): UseSessionDetail {
   const [session, setSession] = useState<ISession | null>(null);
   const [sessionLogs, setSessionLogs] = useState<LogLike[]>([]);
@@ -25,6 +34,9 @@ export function useSessionDetail(sessionId: string | null): UseSessionDetail {
   const [error, setError] = useState<string | null>(null);
   const [notFound, setNotFound] = useState(false);
   const [refreshTick, setRefreshTick] = useState(0);
+  // The session the page has shown: a reload of the same one keeps it on
+  // screen instead of going back to the loading state.
+  const shownId = useRef<string | null>(null);
 
   useEffect(() => {
     if (!sessionId) {
@@ -38,7 +50,7 @@ export function useSessionDetail(sessionId: string | null): UseSessionDetail {
       return;
     }
     let alive = true;
-    setLoading(true);
+    if (shownId.current !== sessionId) setLoading(true);
     Promise.all([
       XenonApiService.getSession(sessionId),
       XenonApiService.getSessionLogs(sessionId),
@@ -52,9 +64,8 @@ export function useSessionDetail(sessionId: string | null): UseSessionDetail {
         // throw on non-2xx — it returns the parsed JSON, which can look like
         // { error: true, message: '…' }). A real session always has both an
         // id and a status string.
-        const valid =
-          s && typeof s === 'object' && typeof (s as any).id === 'string' && typeof (s as any).status === 'string';
-        setSession(valid ? (s as ISession) : null);
+        const valid = isSession(s);
+        setSession(valid ? s : null);
         if (!valid) {
           // Phase 4A: when the dashboard's team filter hides a session, the
           // backend responds with `{ error: true, message: 'Session not found' }`
@@ -68,6 +79,7 @@ export function useSessionDetail(sessionId: string | null): UseSessionDetail {
           );
           setError(typeof (s as any)?.message === 'string' ? (s as any).message : 'Session not found');
         } else {
+          shownId.current = sessionId;
           setNotFound(false);
           setError(null);
         }
@@ -87,6 +99,32 @@ export function useSessionDetail(sessionId: string | null): UseSessionDetail {
       alive = false;
     };
   }, [sessionId, refreshTick]);
+
+  // While the session runs, follow its status and its commands. The device
+  // and debug logs are large, so they are fetched again once, when it ends.
+  const running = session?.status === 'running';
+  useEffect(() => {
+    if (!sessionId || !running) return;
+    let alive = true;
+    const id = setInterval(async () => {
+      try {
+        const [s, sl] = await Promise.all([
+          XenonApiService.getSession(sessionId),
+          XenonApiService.getSessionLogs(sessionId),
+        ]);
+        if (!alive || !isSession(s)) return;
+        setSession(s);
+        if (Array.isArray(sl)) setSessionLogs(sl as LogLike[]);
+        if (s.status !== 'running') setRefreshTick((t) => t + 1);
+      } catch {
+        // The next tick asks again.
+      }
+    }, LIVE_REFRESH_MS);
+    return () => {
+      alive = false;
+      clearInterval(id);
+    };
+  }, [sessionId, running]);
 
   return {
     session,

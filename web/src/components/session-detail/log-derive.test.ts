@@ -5,6 +5,7 @@ import {
   prettyJson,
   tokenizeJson,
   filterErrorsOnly,
+  formatTabCount,
   logDisplayTitle,
   logDisplaySubtitle,
 } from './log-derive';
@@ -25,8 +26,9 @@ describe('logTimestamp', () => {
 });
 
 describe('logRowKind', () => {
+  // SessionLog.is_healed is the field the server writes (event-manager.ts).
   it('marks healed rows amber', () => {
-    expect(logRowKind({ healed: true } as any).tone).to.equal('amber');
+    expect(logRowKind({ is_healed: true, is_success: true } as any).tone).to.equal('amber');
   });
   it('marks failed rows red', () => {
     expect(logRowKind({ is_success: false, command_name: 'click' }).tone).to.equal('red');
@@ -93,6 +95,10 @@ describe('filterErrorsOnly', () => {
     const logs = [{ is_success: true }, { is_success: false }, {}] as any;
     expect(filterErrorsOnly(logs, true)).to.have.lengthOf(1);
   });
+  it('keeps an is_error row too', () => {
+    const logs = [{ is_success: true }, { is_error: true }] as any;
+    expect(filterErrorsOnly(logs, true)).to.have.lengthOf(1);
+  });
 });
 
 describe('log display derivation', () => {
@@ -117,5 +123,13 @@ describe('log display derivation', () => {
   it('exposes the subtitle when present', () => {
     expect(logDisplaySubtitle(dbRow as any)).toBe('accessibility id: btn_place_order');
     expect(logDisplaySubtitle({} as any)).toBeNull();
+  });
+});
+
+describe('formatTabCount', () => {
+  it('keeps a tab short', () => {
+    expect(formatTabCount(48)).to.equal('48');
+    expect(formatTabCount(2674)).to.equal('2.7k');
+    expect(formatTabCount(3000)).to.equal('3k');
   });
 });
