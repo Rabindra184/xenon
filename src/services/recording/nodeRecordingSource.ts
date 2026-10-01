@@ -3,7 +3,8 @@ import type { AddressInfo } from 'net';
 import { Container } from 'typedi';
 import log from '../../logger';
 import { HUB_TOKEN_HEADER, HubSessionTokenIssuer } from '../../gateway/hubSessionToken';
-import { sendToNode } from '../../gateway/forwardToNode';
+import type { OutgoingHttpHeaders } from 'http';
+import { readAnswer, sendToNode } from '../../gateway/forwardToNode';
 import { isOtherServersPhone, safeNodeOrigin } from '../../app/routers/nodePhoneControl';
 import {
   findControlDeviceInStore,
@@ -32,7 +33,15 @@ interface ControlGrant {
 export interface NodeRecordingDeps {
   findDevice?: FindControlDevice;
   controlToken?: (grant: ControlGrant) => Promise<string | null>;
+  /** How long the node's stream has to send its first frame. */
+  readyTimeoutMs?: number;
 }
+
+/**
+ * How long a node's phone has to start streaming: an iPhone's WebDriverAgent
+ * and tunnel take tens of seconds on a cold start.
+ */
+export const NODE_STREAM_READY_TIMEOUT_MS = 90_000;
 
 const defaultControlToken = (grant: ControlGrant) =>
   Container.get(HubSessionTokenIssuer).controlTokenFor(grant);
@@ -56,20 +65,29 @@ export async function openNodeMjpegRelay(
   if (!origin) throw new Error(`Unsafe device host for ${udid}`);
   const controlToken = deps.controlToken ?? defaultControlToken;
   const url = `${origin}/xenon/api/control/${encodeURIComponent(udid)}/stream`;
+  const headers = async () => {
+    const token = await controlToken({ userId: actorId, isAdmin: false, udid, host });
+    return {
+      accept: '*/*',
+      'accept-encoding': 'identity',
+      ...(token ? { [HUB_TOKEN_HEADER]: token } : {}),
+    };
+  };
+
+  // As local recording starts the phone's stream before ffmpeg, the node's
+  // must be sending frames before the port is handed out. Its GET stream
+  // starts the stream; an iPhone's takes seconds. Otherwise the video began
+  // late, and every mark on it, timed from ffmpeg's start, was off by that.
+  await untilStreaming(url, await headers(), deps.readyTimeoutMs ?? NODE_STREAM_READY_TIMEOUT_MS);
 
   const server = http.createServer(async (_req, res) => {
     const controller = new AbortController();
     res.on('close', () => controller.abort());
     try {
-      const token = await controlToken({ userId: actorId, isAdmin: false, udid, host });
       const upstream = await sendToNode({
         url,
         method: 'GET',
-        headers: {
-          accept: '*/*',
-          'accept-encoding': 'identity',
-          ...(token ? { [HUB_TOKEN_HEADER]: token } : {}),
-        },
+        headers: await headers(),
         signal: controller.signal,
       });
       const type = upstream.headers['content-type'];
@@ -104,6 +122,49 @@ export async function openNodeMjpegRelay(
         server.close(() => resolve());
       }),
   };
+}
+
+/**
+ * Resolves once the node's stream sends its first bytes; throws when the node
+ * refuses it, ends it first, or sends nothing within `timeoutMs`.
+ */
+async function untilStreaming(
+  url: string,
+  headers: OutgoingHttpHeaders,
+  timeoutMs: number,
+): Promise<void> {
+  const controller = new AbortController();
+  let timedOut = false;
+  const timer = setTimeout(() => {
+    timedOut = true;
+    controller.abort();
+  }, timeoutMs);
+  try {
+    const upstream = await sendToNode({ url, method: 'GET', headers, signal: controller.signal });
+    if ((upstream.statusCode ?? 502) !== 200) {
+      const answer = await readAnswer(upstream);
+      throw new Error(
+        `the node answered ${answer.status} for the stream: ${answer.body.toString('utf8').slice(0, 200)}`,
+      );
+    }
+    await new Promise<void>((resolve, reject) => {
+      upstream.once('data', () => resolve());
+      upstream.once('end', () =>
+        reject(new Error("the node's stream ended before its first frame")),
+      );
+      upstream.once('error', reject);
+    });
+  } catch (err: any) {
+    if (timedOut) {
+      throw new Error(
+        `the node's stream sent no first frame within ${Math.round(timeoutMs / 1000)} s`,
+      );
+    }
+    throw err;
+  } finally {
+    clearTimeout(timer);
+    controller.abort();
+  }
 }
 
 /**

@@ -38,7 +38,7 @@ describe('nodeRecordingSource', () => {
   });
 
   /** A node serving GET /control/p/stream, recording each request's token. */
-  async function fakeNode(status = 200) {
+  async function fakeNode(status = 200, firstFrameAfterMs = 0) {
     const seen: { token?: string; closed: boolean }[] = [];
     const app = express();
     app.get('/xenon/api/control/p/stream', (req, res) => {
@@ -47,8 +47,14 @@ describe('nodeRecordingSource', () => {
       req.on('close', () => (call.closed = true));
       if (status !== 200) return res.status(status).json({ error: 'node says no' });
       res.writeHead(200, { 'content-type': 'multipart/x-mixed-replace; boundary=f' });
-      const timer = setInterval(() => res.write('--f\r\nFRAME\r\n'), 30);
-      res.on('close', () => clearInterval(timer));
+      let timer: NodeJS.Timeout | undefined;
+      const wait = setTimeout(() => {
+        timer = setInterval(() => res.write('--f\r\nFRAME\r\n'), 30);
+      }, firstFrameAfterMs);
+      res.on('close', () => {
+        clearTimeout(wait);
+        if (timer) clearInterval(timer);
+      });
     });
     const origin = `http://127.0.0.1:${((await loopback.serve(app)).address() as any).port}`;
     return { origin, seen };
@@ -86,7 +92,13 @@ describe('nodeRecordingSource', () => {
     expect(first.status).to.equal(200);
     expect(first.type).to.include('multipart/x-mixed-replace');
     expect(second.body).to.include('FRAME');
-    expect(node.seen.map((s) => s.token)).to.deep.equal(['token-1-alice-p', 'token-2-alice-p']);
+    // The first is the relay making sure the node is streaming before it
+    // hands out the port.
+    expect(node.seen.map((s) => s.token)).to.deep.equal([
+      'token-1-alice-p',
+      'token-2-alice-p',
+      'token-3-alice-p',
+    ]);
   });
 
   it('hangs up on the node when the reader goes, and stops listening when closed', async () => {
@@ -97,7 +109,7 @@ describe('nodeRecordingSource', () => {
     );
     await read(relay.port);
     await new Promise((r) => setTimeout(r, 100));
-    expect(node.seen[0].closed, 'the node’s request ends with the reader').to.equal(true);
+    expect(node.seen[1].closed, 'the node’s request ends with the reader').to.equal(true);
 
     await relay.close();
     const refused = await new Promise<string>((resolve) => {
@@ -108,15 +120,37 @@ describe('nodeRecordingSource', () => {
     expect(refused).to.equal('ECONNREFUSED');
   });
 
-  it('passes on the node’s refusal, so the recording ends rather than hangs', async () => {
-    const node = await fakeNode(409);
+  // Local recording starts the phone's stream before ffmpeg (ensureMjpegForRecording).
+  // Handed the port at once, ffmpeg started before the node's stream was up
+  // (an iPhone's WebDriverAgent takes seconds): the video began late, and
+  // every mark on it, timed from ffmpeg's start, was off by as much.
+  it('opens once the node is streaming, not before', async () => {
+    const node = await fakeNode(200, 400);
+    const t0 = Date.now();
     const relay = await openNodeMjpegRelay(
       { udid: 'p', host: node.origin, actorId: 'alice' },
       { controlToken: async () => null },
     );
     closers.push(() => relay.close());
-    const res = await read(relay.port);
-    expect(res.status).to.equal(409);
+    expect(Date.now() - t0).to.be.at.least(350);
+  });
+
+  it('fails to open when the node refuses the stream, or never sends a frame', async () => {
+    const refusing = await fakeNode(409);
+    let error: any;
+    await openNodeMjpegRelay(
+      { udid: 'p', host: refusing.origin, actorId: 'alice' },
+      { controlToken: async () => null },
+    ).catch((e) => (error = e));
+    expect(error?.message).to.include('409');
+
+    const silent = await fakeNode(200, 60_000);
+    error = undefined;
+    await openNodeMjpegRelay(
+      { udid: 'p', host: silent.origin, actorId: 'alice' },
+      { controlToken: async () => null, readyTimeoutMs: 200 },
+    ).catch((e) => (error = e));
+    expect(error?.message).to.match(/first frame/);
   });
 
   describe('recordingSourceFor', () => {
