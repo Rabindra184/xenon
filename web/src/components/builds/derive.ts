@@ -303,3 +303,36 @@ export function ranOnLabel(ranOn: string | null | undefined): string | null {
   if (!ranOn) return null;
   return ranOn === 'here' ? 'This server' : ranOn;
 }
+
+/**
+ * The failed tests of a build as text to paste into a CI re-run or a ticket:
+ * each failed session, oldest first, with its test, why it failed (the
+ * reason's first line), its phone and its id. With a selection, only the
+ * failed sessions among it. The server can't re-run a client's tests, so
+ * this is what the build's page offers instead.
+ */
+export function failedTestsReport(
+  buildName: string,
+  sessions: ISession[],
+  selected?: ReadonlySet<string>,
+): { count: number; text: string } {
+  const scope =
+    selected && selected.size > 0 ? sessions.filter((s) => selected.has(s.id)) : sessions;
+  const failed = scope.filter((s) => sessionStatusBucket(s.status) === 'failed').reverse();
+  if (failed.length === 0) return { count: 0, text: '' };
+  const of =
+    selected && selected.size > 0
+      ? `${scope.length} selected session${scope.length === 1 ? '' : 's'}`
+      : `${scope.length} session${scope.length === 1 ? '' : 's'}`;
+  const lines = [`Failed tests in ${buildName}: ${failed.length} of ${of}`, ''];
+  for (const s of failed) {
+    const reason = s.failure_reason?.split('\n')[0]?.trim() || 'No reason recorded';
+    const os = [platformLabel(s), s.device_version].filter((p) => p && p !== '—').join(' ');
+    lines.push(
+      `- ${sessionDisplayName(s).text}`,
+      `  ${reason}`,
+      `  ${[deviceNameOrFallback(s), os, `session ${s.id}`].filter(Boolean).join(' · ')}`,
+    );
+  }
+  return { count: failed.length, text: lines.join('\n') };
+}

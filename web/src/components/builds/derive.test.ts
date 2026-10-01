@@ -20,6 +20,7 @@ import {
   passRate,
   passRateDelta,
   ranOnLabel,
+  failedTestsReport,
 } from './derive';
 
 describe('sessionStatusBucket', () => {
@@ -404,5 +405,77 @@ describe('filterSessions search', () => {
       expect(filterSessions([s], 'all', q), q).toHaveLength(1);
     }
     expect(filterSessions([s], 'all', 'nothing-like-it')).toHaveLength(0);
+  });
+});
+
+describe('failedTestsReport', () => {
+  const s = (over: Record<string, unknown>) =>
+    ({
+      id: 'x',
+      status: 'success',
+      name: 'A test',
+      desired_capabilities: '{}',
+      session_capabilities: '{}',
+      device_name: 'Galaxy S9+',
+      device_platform: 'android',
+      device_version: '10',
+      ...over,
+    }) as any;
+  // As GET /session lists them: newest first.
+  const sessions = [
+    s({
+      id: 's-4',
+      name: 'Sign out',
+      status: 'timeout',
+      failure_reason: 'Session timed out after 60 s\nat x',
+    }),
+    s({ id: 's-3', name: 'Checkout', status: 'success' }),
+    s({
+      id: 's-2',
+      name: null,
+      status: 'error',
+      failure_reason: null,
+      device_name: 'iPhone 15',
+      device_platform: 'ios',
+      device_version: '26.0',
+      session_capabilities: '{"appium:bundleId":"com.example.shop"}',
+    }),
+    s({
+      id: 's-1',
+      name: 'Apply coupon',
+      status: 'failed',
+      failure_reason: 'AssertionError: expected 10%',
+    }),
+  ];
+
+  it("lists the build's failed tests, oldest first, with why, where and which session", () => {
+    expect(failedTestsReport('Nightly smoke', sessions)).toEqual({
+      count: 3,
+      text: [
+        'Failed tests in Nightly smoke: 3 of 4 sessions',
+        '',
+        '- Apply coupon',
+        '  AssertionError: expected 10%',
+        '  Galaxy S9+ · Android 10 · session s-1',
+        '- com.example.shop',
+        '  No reason recorded',
+        '  iPhone 15 · iOS 26.0 · session s-2',
+        '- Sign out',
+        '  Session timed out after 60 s',
+        '  Galaxy S9+ · Android 10 · session s-4',
+      ].join('\n'),
+    });
+  });
+
+  it('keeps to the selected sessions when some are selected', () => {
+    const out = failedTestsReport('Nightly smoke', sessions, new Set(['s-3', 's-4']));
+    expect(out.count).toBe(1);
+    expect(out.text.split('\n')[0]).toBe('Failed tests in Nightly smoke: 1 of 2 selected sessions');
+    expect(out.text).toContain('- Sign out');
+    expect(out.text).not.toContain('Apply coupon');
+  });
+
+  it('has nothing to copy when nothing failed', () => {
+    expect(failedTestsReport('Nightly smoke', [sessions[1]])).toEqual({ count: 0, text: '' });
   });
 });

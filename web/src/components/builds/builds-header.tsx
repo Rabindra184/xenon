@@ -1,5 +1,5 @@
 import React from 'react';
-import { RefreshCcw, Download } from 'lucide-react';
+import { ClipboardList, Download } from 'lucide-react';
 import type { IBuild } from '../../interfaces/IBuild';
 import { Button } from '../ui/button';
 import { buildDisplayName, formatMonthDayTime } from './derive';
@@ -12,20 +12,13 @@ function shortBuildId(id: string): string {
 
 interface Props {
   build: IBuild;
-  failedCount: number;
-  selectedCount: number;
-  onRetryFailed: () => void;
+  /** Failed tests the copy would cover: the selection's, else the build's. */
+  failedToCopy: number;
+  onCopyFailed: () => void;
   onExport: (format: 'json' | 'csv') => void;
 }
 
-export const BuildsHeader: React.FC<Props> = ({
-  build,
-  failedCount,
-  selectedCount,
-  onRetryFailed,
-  onExport,
-}) => {
-  const canRetry = failedCount > 0 || selectedCount > 0;
+export const BuildsHeader: React.FC<Props> = ({ build, failedToCopy, onCopyFailed, onExport }) => {
   const [exportOpen, setExportOpen] = React.useState(false);
   const wrap = React.useRef<HTMLDivElement>(null);
 
@@ -37,9 +30,12 @@ export const BuildsHeader: React.FC<Props> = ({
     return () => document.removeEventListener('mousedown', h);
   }, []);
 
-  const retryTooltip = canRetry
-    ? `Retry ${selectedCount || failedCount} session${(selectedCount || failedCount) === 1 ? '' : 's'}`
-    : 'No failed sessions to retry';
+  // The server can't re-run a client's tests, so the page hands them over
+  // instead: names, reasons and sessions, ready for a CI re-run or a ticket.
+  const copyTooltip =
+    failedToCopy > 0
+      ? `Copy the ${failedToCopy} failed test${failedToCopy === 1 ? '' : 's'}, with why each failed, for a re-run or a ticket`
+      : 'No failed tests to copy';
 
   return (
     <header className="flex items-start justify-between gap-4 px-4 py-3 border-b border-[var(--border)] bg-[var(--surface)]">
@@ -63,13 +59,13 @@ export const BuildsHeader: React.FC<Props> = ({
           type="button"
           variant="secondary"
           size="sm"
-          onClick={onRetryFailed}
-          disabled={!canRetry}
-          title={retryTooltip}
+          onClick={onCopyFailed}
+          disabled={failedToCopy === 0}
+          title={copyTooltip}
           className="gap-1.5"
         >
-          <RefreshCcw className="h-3.5 w-3.5" />
-          Retry failed
+          <ClipboardList className="h-3.5 w-3.5" />
+          Copy failed tests
         </Button>
 
         <div className="relative">
