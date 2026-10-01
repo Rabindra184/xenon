@@ -6,6 +6,38 @@ This project follows [Semantic Versioning](https://semver.org/). Releases are
 published to npm automatically when `package.json`'s `version` changes on `main`
 (see `.github/workflows/npm-publish.yml`).
 
+## 2.6.1
+
+**A phone is free again seconds after its recording ends.** A recording
+that started the phone's stream itself left the phone held for about ten
+minutes after it stopped: any recording made without a preview open. That
+was 642 s on the lab's S9+, and nobody else could use the phone meanwhile.
+
+No database migration, and no configuration to change.
+
+### Fixed
+
+- **A recording lets go of its phone when it ends** (#397). The phone now
+  goes the way a closed preview does: after a 3 s grace, its stream stops
+  and its hold is released, unless someone is watching it or another
+  recording reads it.
+  - A phone with a preview open keeps its hold until that preview closes.
+  - A node's phone is released at once, as before.
+  - Before, the hold was kept whenever the phone's stream was running,
+    taken for a preview's. But a recording starts that stream itself.
+
+### Known issues
+
+- **The session list still returns at most the newest 500 sessions.**
+- **"Retry failed" is still a placeholder.**
+- **Install by path is refused for a node's phone**: a path names a file on
+  one machine.
+- **BiDi and session WebSockets aren't routed through a hub.** A session's
+  `webSocketUrl` points at the node, so nodes must not sit on untrusted
+  networks.
+- **Only one iOS 17+ iPhone per Mac can stream at a time**, because every
+  go-ios tunnel binds the same port.
+
 ## 2.6.0
 
 **A session's page leads with how it ended and why.** The page now opens
