@@ -8,8 +8,10 @@ import sinon from 'sinon';
 import { Container } from 'typedi';
 import {
   IOSTunnels,
+  TUNNEL_CHECK_MS,
   TUNNEL_LEASE_TTL_MS,
   TUNNEL_READY_TIMEOUT_MS,
+  TunnelState,
   iosVersionOf,
 } from '../../src/device-managers/ios/IOSTunnels';
 import { ProcessRegistry } from '../../src/services/ProcessRegistry';
@@ -18,6 +20,11 @@ import { ProcessRegistry } from '../../src/services/ProcessRegistry';
  * Each iOS 17+ phone gets its own go-ios tunnel, an isolated per-device agent
  * on its own pair of leased ports. Through 2.7 every tunnel took go-ios's
  * default 60105/60106, so a second iPhone's stream killed the first's.
+ *
+ * go-ios keeps a per-device agent running when its phone is unplugged, and
+ * starts the replugged phone's tunnel on its next traffic port, P + 2: the
+ * next phone's pair. So a tunnel that loses its phone, or moves its traffic
+ * port, is stopped.
  *
  * go-ios, the allocator, HTTP and timers are fakes here, except in the last
  * block, which runs the real seams against a local HTTP server and a stubbed
@@ -65,7 +72,8 @@ class TestTunnels extends IOSTunnels {
   spawned: { udid: string; args: string[]; proc: FakeProcess }[] = [];
   killed: (number | undefined)[] = [];
   sleeps: number[] = [];
-  answers: (port: number, udid: string) => boolean = () => true;
+  /** Each tunnel-info poll: true is the phone's tunnel on P + 1, false a 404. */
+  answers: (port: number, udid: string) => boolean | TunnelState = () => true;
   ports = fakeAllocator();
   private nextPid = 7000;
 
@@ -79,8 +87,11 @@ class TestTunnels extends IOSTunnels {
     this.spawned.push({ udid, args, proc });
     return proc;
   }
-  protected async tunnelAnswers(port: number, udid: string): Promise<boolean> {
-    return this.answers(port, udid);
+  protected async tunnelInfo(port: number, udid: string): Promise<TunnelState> {
+    const answer = this.answers(port, udid);
+    if (answer === true) return { state: 'up', userspacePort: port + 1 };
+    if (answer === false) return { state: 'gone' };
+    return answer;
   }
   protected async sleep(ms: number): Promise<void> {
     this.sleeps.push(ms);
@@ -105,7 +116,11 @@ describe('IOSTunnels: a go-ios tunnel per iPhone', () => {
     t.versions.set(PHONE_B, 18.1);
   });
 
-  afterEach(() => sinon.restore());
+  afterEach(async () => {
+    await t.stop(PHONE_A);
+    await t.stop(PHONE_B);
+    sinon.restore();
+  });
 
   it('starts no tunnel for a phone below iOS 17', async () => {
     t.versions.set('old-iphone', 16.7);
@@ -174,6 +189,21 @@ describe('IOSTunnels: a go-ios tunnel per iPhone', () => {
     expect([...t.ports.leased.keys()]).to.deep.equal([]);
   });
 
+  it('fails the start when the tunnel comes up on another traffic port, and stops it', async () => {
+    t.answers = () => ({ state: 'up', userspacePort: 12102 });
+
+    const err = await t.ensure(PHONE_A).then(
+      () => null,
+      (e: Error) => e,
+    );
+    await settle();
+
+    expect(err?.message).to.match(/12102/);
+    expect(t.killed).to.deep.equal([t.spawned[0].proc.pid]);
+    expect(t.portFor(PHONE_A)).to.equal(undefined);
+    expect([...t.ports.leased.keys()]).to.deep.equal([]);
+  });
+
   it('gives a second phone its own pair, and leaves the first alone', async () => {
     await t.ensure(PHONE_A);
 
@@ -213,10 +243,10 @@ describe('IOSTunnels: a go-ios tunnel per iPhone', () => {
     expect(t.ports.release.called).to.equal(false);
   });
 
-  it('lets a tunnel that exits on its own go, and starts a new one next time', async () => {
+  it('lets a tunnel whose process exits go, and starts a new one next time', async () => {
     await t.ensure(PHONE_A);
 
-    t.spawned[0].proc.exit(0); // the phone was unplugged
+    t.spawned[0].proc.exit(2); // go-ios crashed
     await settle();
 
     expect(t.portFor(PHONE_A)).to.equal(undefined);
@@ -266,6 +296,87 @@ describe('IOSTunnels: a go-ios tunnel per iPhone', () => {
   });
 });
 
+describe('IOSTunnels: a phone that goes away (go-ios keeps its agent running)', () => {
+  let t: TestTunnels;
+
+  beforeEach(async () => {
+    sinon.stub(process, 'kill');
+    t = new TestTunnels();
+    t.versions.set(PHONE_A, 17.4);
+    t.versions.set(PHONE_B, 18.1);
+    await t.ensure(PHONE_A);
+    await t.ensure(PHONE_B);
+  });
+
+  afterEach(async () => {
+    await t.stop(PHONE_A);
+    await t.stop(PHONE_B);
+    sinon.restore();
+  });
+
+  it("stops the tunnel of a phone that went away, gives its ports back, and leaves the other phone's", async () => {
+    t.answers = (_port, udid) => udid !== PHONE_A; // A's agent: 404 for A
+
+    await t.checkTunnels();
+
+    expect(t.killed).to.deep.equal([t.spawned[0].proc.pid]);
+    expect(t.portFor(PHONE_A)).to.equal(undefined);
+    expect(t.portFor(PHONE_B)).to.equal(12102);
+    expect([...t.ports.leased.keys()]).to.deep.equal([12102, 12103]);
+  });
+
+  it('stops a tunnel that came back on another traffic port (a replug)', async () => {
+    t.answers = (port, udid) =>
+      udid === PHONE_A ? { state: 'up', userspacePort: port + 2 } : true;
+
+    await t.checkTunnels();
+
+    expect(t.killed).to.deep.equal([t.spawned[0].proc.pid]);
+    expect(t.portFor(PHONE_A)).to.equal(undefined);
+    expect(t.portFor(PHONE_B)).to.equal(12102);
+  });
+
+  it("leaves a tunnel alone when its agent doesn't answer (busy, not gone)", async () => {
+    t.answers = () => ({ state: 'unknown' });
+
+    await t.checkTunnels();
+
+    expect(t.killed).to.deep.equal([]);
+    expect(t.portFor(PHONE_A)).to.equal(12100);
+  });
+
+  it('leaves a tunnel that never came up alone while it answers 404', async () => {
+    t.versions.set('slow-iphone', 17.0);
+    t.answers = (_port, udid) => udid !== 'slow-iphone'; // never ready: the start goes on after 20 s
+    await t.ensure('slow-iphone');
+
+    await t.checkTunnels();
+
+    expect(t.killed).to.deep.equal([]);
+    expect(t.portFor('slow-iphone')).to.equal(12104);
+    await t.stop('slow-iphone');
+  });
+
+  it('checks every 5 s while a tunnel runs, and stops checking when none does', async () => {
+    await t.stop(PHONE_A);
+    await t.stop(PHONE_B);
+    const clock = sinon.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
+    try {
+      const check = sinon.stub(t, 'checkTunnels').resolves();
+      await t.ensure(PHONE_A);
+
+      clock.tick(TUNNEL_CHECK_MS);
+      expect(check.callCount).to.equal(1);
+
+      await t.stop(PHONE_A);
+      clock.tick(TUNNEL_CHECK_MS * 3);
+      expect(check.callCount, 'no tunnel, no checks').to.equal(1);
+    } finally {
+      clock.restore();
+    }
+  });
+});
+
 describe('iosVersionOf', () => {
   it('reads the version ios info reports', () => {
     expect(iosVersionOf({ ProductVersion: '17.2.1' })).to.equal(17.2);
@@ -277,11 +388,20 @@ describe('iosVersionOf', () => {
 describe('IOSTunnels: its real seams', () => {
   afterEach(() => sinon.restore());
 
-  it('a tunnel answers for a phone only when its API returns 200 for that phone', async () => {
+  it("reads the phone's tunnel from its agent: up with its traffic port, gone on 404, unknown when unreachable", async () => {
     const server = http.createServer((req, res) => {
       if (req.url === `/tunnel/${PHONE_A}`) {
         res.writeHead(200, { 'content-type': 'application/json' });
-        res.end(JSON.stringify({ Udid: PHONE_A, UserspaceTUN: true, UserspaceTUNPort: 12101 }));
+        // go-ios 1.2.1's answer, as the lab's agent gave it
+        res.end(
+          JSON.stringify({
+            address: 'fd51:c966:7c74::1',
+            rsdPort: 53752,
+            udid: PHONE_A,
+            userspaceTun: true,
+            userspaceTunPort: 12101,
+          }),
+        );
       } else {
         res.writeHead(404);
         res.end();
@@ -292,12 +412,19 @@ describe('IOSTunnels: its real seams', () => {
     const t: any = new IOSTunnels();
 
     try {
-      expect(await t.tunnelAnswers(port, PHONE_A)).to.equal(true);
-      expect(await t.tunnelAnswers(port, PHONE_B), 'another phone: 404').to.equal(false);
+      expect(await t.tunnelInfo(port, PHONE_A)).to.deep.equal({
+        state: 'up',
+        userspacePort: 12101,
+      });
+      expect(await t.tunnelInfo(port, PHONE_B), 'another phone: 404').to.deep.equal({
+        state: 'gone',
+      });
     } finally {
       await new Promise((resolve) => server.close(() => resolve(undefined)));
     }
-    expect(await t.tunnelAnswers(port, PHONE_A), 'nothing listening').to.equal(false);
+    expect(await t.tunnelInfo(port, PHONE_A), 'nothing listening').to.deep.equal({
+      state: 'unknown',
+    });
   });
 
   it('spawns the tunnel detached, with the agent setting, and tracks it', () => {

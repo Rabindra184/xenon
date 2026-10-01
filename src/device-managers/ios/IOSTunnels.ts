@@ -12,6 +12,13 @@
  * which go-ios derives for the phone's traffic. A command finds its phone's
  * tunnel through GO_IOS_AGENT_PORT, set by {@link IOSTunnels.envFor}.
  *
+ * go-ios does not end an agent when its phone is unplugged. The agent only
+ * drops the phone's tunnel, and on the replug starts a new one on its next
+ * traffic port, P + 2, then P + 3: the next phone's leased pair. So a tunnel
+ * whose phone went away, or whose traffic port moved, is stopped
+ * ({@link IOSTunnels.checkTunnels}, every few seconds), and the phone's next
+ * stream start makes a new one on a fresh pair.
+ *
  * This is mechanism only. When a tunnel may be stopped (never under a live
  * Appium session) is IOSStreamService's decision.
  */
@@ -39,6 +46,18 @@ export const TUNNEL_READY_POLL_MS = 500;
  * every hour, the tunnel's through {@link IOSTunnels.touch}.
  */
 export const TUNNEL_LEASE_TTL_MS = 90 * 60 * 1000;
+/** How often running tunnels are checked for a phone that went away. */
+export const TUNNEL_CHECK_MS = 5_000;
+
+/**
+ * What a tunnel's agent says about its phone: `up` (with the traffic port it
+ * listens on, when the answer names one), `gone` (404: no tunnel for the
+ * phone), or `unknown` (no answer, or one that says neither).
+ */
+export type TunnelState =
+  | { state: 'up'; userspacePort?: number }
+  | { state: 'gone' }
+  | { state: 'unknown' };
 
 /** The iOS version `ios info` reports, as a number: 17.2 for "17.2.1" or "iOS 17.2", 0 for none. */
 export function iosVersionOf(info: {
@@ -53,12 +72,21 @@ export function iosVersionOf(info: {
 interface Tunnel {
   port: number;
   process: ChildProcess;
+  /** Its agent has answered for the phone on P + 1 at least once. */
+  ready: boolean;
+}
+
+/** An answer that puts the phone's traffic anywhere but its leased P + 1. */
+function moved(info: TunnelState, port: number): info is { state: 'up'; userspacePort: number } {
+  return info.state === 'up' && info.userspacePort !== undefined && info.userspacePort !== port + 1;
 }
 
 @Service()
 export class IOSTunnels {
   private log = log.scope('IOSTunnels');
   private tunnels = new Map<string, Tunnel>();
+  private watcher?: ReturnType<typeof setInterval>;
+  private checking = false;
   public goIOSPath = path.join(cachePath('goIOS'), 'ios');
 
   /**
@@ -100,13 +128,16 @@ export class IOSTunnels {
       await this.releasePair(port, udid);
       throw e;
     }
-    const tunnel: Tunnel = { port, process: proc };
+    const tunnel: Tunnel = { port, process: proc, ready: false };
     this.tunnels.set(udid, tunnel);
-    // A tunnel that ends on its own (phone unplugged, go-ios crash) gives its
-    // ports back, and the phone's next start gets a new one.
+    this.watch();
+    // A tunnel whose process ends (go-ios crashed, or something killed it)
+    // gives its ports back, and the phone's next start gets a new one. An
+    // unplug doesn't end it: see checkTunnels.
     const ended = () => {
       if (this.tunnels.get(udid) !== tunnel) return;
       this.tunnels.delete(udid);
+      this.unwatchIfIdle();
       void this.releasePair(port, udid);
     };
     proc.once('exit', ended);
@@ -127,7 +158,17 @@ export class IOSTunnels {
           `The go-ios tunnel for ${udid} exited before it was ready (exit code ${proc.exitCode})`,
         );
       }
-      if (await this.tunnelAnswers(port, udid)) {
+      const info = await this.tunnelInfo(port, udid);
+      if (moved(info, port)) {
+        // A first attempt failed and go-ios retried on its next port, which
+        // may be another phone's.
+        await this.stop(udid);
+        throw new Error(
+          `The go-ios tunnel for ${udid} came up on port ${info.userspacePort}, not its leased ${port + 1}, so it was stopped`,
+        );
+      }
+      if (info.state === 'up') {
+        tunnel.ready = true;
         this.log.info(`[${udid}] go-ios tunnel ready on ${port}`);
         return port;
       }
@@ -161,8 +202,58 @@ export class IOSTunnels {
     const tunnel = this.tunnels.get(udid);
     if (!tunnel) return;
     this.tunnels.delete(udid);
+    this.unwatchIfIdle();
     this.killGroup(tunnel.process.pid);
     await this.releasePair(tunnel.port, udid);
+  }
+
+  /**
+   * Stop each tunnel whose phone has gone, and give its ports back. go-ios
+   * keeps a per-device agent running when its phone is unplugged and, on the
+   * replug, starts the tunnel on its next traffic port: the next phone's
+   * pair. So a tunnel that had its phone and now answers 404, or that answers
+   * on a traffic port other than P + 1, is stopped. Either way the phone's
+   * stream has already lost it, and its next start makes a new one.
+   *
+   * An agent that doesn't answer is left alone: a busy agent isn't a gone
+   * phone, and one whose process died is handled by its exit.
+   */
+  async checkTunnels(): Promise<void> {
+    if (this.checking) return;
+    this.checking = true;
+    try {
+      for (const [udid, tunnel] of [...this.tunnels]) {
+        const info = await this.tunnelInfo(tunnel.port, udid);
+        if (this.tunnels.get(udid) !== tunnel) continue;
+        if (moved(info, tunnel.port)) {
+          this.log.warn(
+            `[${udid}] go-ios moved the phone's tunnel from port ${tunnel.port + 1} to ${info.userspacePort} (it reconnected); stopping it`,
+          );
+        } else if (info.state === 'gone' && tunnel.ready) {
+          this.log.warn(
+            `[${udid}] go-ios tunnel on ${tunnel.port} lost its phone (unplugged?); stopping it and freeing its ports`,
+          );
+        } else {
+          if (info.state === 'up') tunnel.ready = true;
+          continue;
+        }
+        await this.stop(udid);
+      }
+    } finally {
+      this.checking = false;
+    }
+  }
+
+  private watch(): void {
+    if (this.watcher) return;
+    this.watcher = setInterval(() => void this.checkTunnels(), TUNNEL_CHECK_MS);
+    this.watcher.unref?.();
+  }
+
+  private unwatchIfIdle(): void {
+    if (this.tunnels.size > 0 || !this.watcher) return;
+    clearInterval(this.watcher);
+    this.watcher = undefined;
   }
 
   /** Keep the phone's tunnel ports leased. The stream watchdog calls this hourly. */
@@ -241,10 +332,11 @@ export class IOSTunnels {
   }
 
   /**
-   * Whether the tunnel on `port` has the phone: go-ios's API answers
-   * `GET /tunnel/<udid>` with 200 once it does, and 404 until then.
+   * What the tunnel's agent on `port` says about the phone. go-ios answers
+   * `GET /tunnel/<udid>` with 404 until it has the phone's tunnel, then 200
+   * with the tunnel, `userspaceTunPort` included.
    */
-  protected tunnelAnswers(port: number, udid: string): Promise<boolean> {
+  protected tunnelInfo(port: number, udid: string): Promise<TunnelState> {
     return new Promise((resolve) => {
       const req = http.get(
         {
@@ -255,12 +347,29 @@ export class IOSTunnels {
           agent: false,
         },
         (res) => {
-          res.resume();
-          resolve(res.statusCode === 200);
+          if (res.statusCode !== 200) {
+            res.resume();
+            resolve(res.statusCode === 404 ? { state: 'gone' } : { state: 'unknown' });
+            return;
+          }
+          let body = '';
+          res.setEncoding('utf8');
+          res.on('data', (chunk: string) => (body += chunk));
+          res.on('end', () => {
+            let userspacePort: number | undefined;
+            try {
+              const value = JSON.parse(body)?.userspaceTunPort;
+              if (typeof value === 'number') userspacePort = value;
+            } catch {
+              // A 200 without JSON still says the tunnel is up.
+            }
+            resolve({ state: 'up', userspacePort });
+          });
+          res.on('error', () => resolve({ state: 'unknown' }));
         },
       );
       req.on('timeout', () => req.destroy());
-      req.on('error', () => resolve(false));
+      req.on('error', () => resolve({ state: 'unknown' }));
     });
   }
 

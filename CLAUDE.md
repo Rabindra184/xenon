@@ -479,8 +479,14 @@ go-ios derives P + 1 for the phone's traffic.
 - **Starting it.** A start waits up to 20 s for `GET :P/tunnel/<udid>` to
   answer 200, then goes on with a warning. A tunnel that exits before then
   fails the start.
-- **Losing it.** A tunnel that exits later, on an unplug, gives its ports
-  back, and the next start gets a new pair.
+- **Losing it.** go-ios does not end an agent when its phone is unplugged.
+  The agent drops the phone's tunnel, and on the replug starts a new one on
+  its next traffic port, P + 2, then P + 3: the next phone's leased pair.
+  So `IOSTunnels.checkTunnels` (every 5 s) stops a tunnel whose agent
+  answers 404 for its phone after it was ready, or names a traffic port
+  other than P + 1, and gives its ports back. A start refuses a tunnel that
+  comes up on another port the same way. The phone's next start gets a new
+  pair. A tunnel whose process exits (a crash) gives its ports back too.
 - **Who drives it.** The stream's start and stop. At boot, Xenon reaps go-ios
   and then drops every `tunnel` lease.
 - **Why.** Through 2.7 every tunnel took go-ios's default ports, 60105 and

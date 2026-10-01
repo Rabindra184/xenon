@@ -2277,10 +2277,11 @@ grep -aq 'listener started' $LOG && echo "up on :4726 (pid $(lsof -tiTCP:4726 -s
   5. The first phone comes back on a tunnel, possibly on a different pair.
 
 - [ ] **Step 7: Unplug one phone**
-  1. Ask the user to unplug the first phone.
-  2. The second phone's tile keeps streaming, and its tunnel pid is unchanged.
-  3. Within a minute, the first phone's tunnel process is gone and its two `tunnel` leases are deleted (the Step 4 `sqlite3` query).
-  4. Ask the user to plug it back in, then add its tile again. It should stream again.
+  1. Remove the first phone's tile first, so no viewer restarts its stream: the check is that the tunnel itself is stopped. Record `pgrep -fl "ios tunnel start"` and `$GOIOS tunnel ls --tunnel-info-port P` for both phones.
+  2. Ask the user to unplug the first phone.
+  3. The second phone's tile keeps streaming, and its tunnel pid is unchanged.
+  4. Within about 10 s, `checkTunnels` stops the first phone's agent (the log says it "lost its phone"), and its two `tunnel` leases are deleted (the Step 4 `sqlite3` query). go-ios alone would have kept the agent running.
+  5. Ask the user to plug it back in, then add its tile again. It streams again on a new agent whose `tunnel ls` shows its traffic on P + 1.
 
 - [ ] **Step 8: An Appium session on one phone while the other previews**
   1. From the browser pane on the :4726 dashboard, use `javascript_tool` to send `fetch('/session', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ capabilities: { alwaysMatch: { platformName: 'iOS', 'appium:automationName': 'XCUITest', 'appium:udid': '<first udid>' } } }) })`.

@@ -80,8 +80,17 @@ udid.
   decision.
 - **`stop(udid)`.** Kills the phone's tunnel process group
   (`killProcessGroup`), releases its pair and forgets it.
-- **A tunnel that exits on its own** (phone unplugged, go-ios crash): its exit
-  handler releases the pair and forgets it. The next `ensure` starts a new one.
+- **A tunnel whose process exits** (a go-ios crash): its exit handler releases
+  the pair and forgets it. The next `ensure` starts a new one.
+- **A phone that goes away** (added after the final review). go-ios does not
+  end an agent on an unplug: it drops the phone's tunnel and, on the replug,
+  starts a new one on its next traffic port, P + 2 (`basePort + portOffset`,
+  and the offset grows with every attempt), which is the next phone's pair.
+  So `checkTunnels`, every 5 s, reads each agent's `GET /tunnel/<udid>`, and
+  stops the tunnel and releases its pair when the agent answers 404 after
+  the tunnel was ready, or names a `userspaceTunPort` other than P + 1.
+  `ensure` refuses a tunnel that comes up on another port the same way. An
+  agent that doesn't answer is left alone.
 - **`touch(udid)`.** Extends the pair's lease by `STREAM_PORT_TTL_MS`. The
   stream watchdog calls it each tick, as it does for the WDA and MJPEG ports.
 
@@ -165,7 +174,8 @@ faked:**
   - a second phone gets a different pair;
   - a live tunnel is reused;
   - `stop` kills only that phone's group and releases its pair;
-  - a tunnel that exits on its own releases its pair;
+  - a tunnel whose process exits releases its pair;
+  - a tunnel that loses its phone, or moves its traffic port, is stopped, and one that doesn't answer is left alone;
   - `envFor` sets `GO_IOS_AGENT_PORT` only while the phone has a tunnel.
 - **Cleanup:** the per-phone sweep never touches another phone's processes or ports, and it is skipped while an Appium session holds the phone.
 - **Boot:** it drops the `tunnel` leases.
