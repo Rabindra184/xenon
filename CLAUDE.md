@@ -381,8 +381,11 @@ hub's own:
     `1008`, which stops the logs pane with the reason. A node that can't be
     reached is `1011`, and the players retry.
 
-Not yet for another server's phone: recording a node's phone from the hub
-still runs on the hub's own tools.
+**Recording a node's phone** runs on the hub, from the node's stream. See
+"Recording Subsystem" below. While the hub records it, the gate refuses that
+phone's `stream/stop` with `409 device_recording`, as `/control` refuses one
+for its own phones being recorded. The node doesn't know about the hub's
+recording, and stopping its stream would cut the recording short.
 
 Through 2.1 only the five input actions were forwarded. The rest ran on the
 hub against a phone it doesn't have: they failed, or with hub and node on
@@ -546,6 +549,13 @@ Live recordings are independent of Appium "session video" — the mosaic page ca
 - `ConcurrencyGate` enforces a server-wide `maxConcurrentRecordings` cap.
 - `ProofBundleService` streams a zip with manifest, README, per-device `video.mp4`/`bookmarks.json`/`annotations.json`/`device.json`, and the composite mp4 if present.
 - `recoverOnBoot()` marks any orphan `RECORDING` rows from a previous process as `FAILED` with `fail_reason=server_restart` and releases their manual blocks.
+- **Another server's phone** (a node's, on a hub) is read from a loopback relay instead of a local stream service (`nodeRecordingSource.ts`, the orchestrator's `nodeSourceFn`).
+  - Every connection to the relay gets the node's `GET /control/<udid>/stream`, signed afresh with the control token for the recording's user. ffmpeg reconnects on any hiccup, and the token lasts a minute.
+  - ffmpeg's arguments, the composite, the proof bundle and the marks are unchanged: the relay is just another loopback MJPEG port, like this server's own phones'.
+  - The node counts the relay's connections as viewers, so its idle release leaves the stream running.
+  - The relay closes when its recording is finalized, after the group's composite has stopped.
+  - A cloud provider's phone is refused, and a node that refuses the stream ends that phone's recording.
+  - The busy precheck reads a node phone's preview hold from `nodeHold`, so the holder may record the phone they're previewing.
 
 `VideoPipelineService` is hardware-accelerated (`h264_videotoolbox` on Mac, `libx264` elsewhere) and writes fragmented mp4 (`frag_keyframe+empty_moov+default_base_moof`) for instant playback / crash resiliency.
 

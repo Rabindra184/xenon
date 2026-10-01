@@ -81,7 +81,10 @@ export class BusyPrecheck {
         continue;
       }
       if (!device.busy) continue;
-      const blockId: string | undefined = device.session_id ?? undefined;
+      // This server's own hold, else, on a hub, a node phone's preview hold
+      // its node reports (nodeHold): session_id is the hub's and stays empty
+      // for it, which read as unknown and refused the holder their own phone.
+      const blockId: string | undefined = device.session_id ?? device.nodeHold ?? undefined;
       const lock = inspectManualLock(blockId, actorId, udid);
       // Single source of truth for "is this lock mine" — the same helper
       // /control's guard, stream/start and stream/stop use. Checking only

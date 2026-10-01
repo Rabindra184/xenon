@@ -14,6 +14,7 @@ import {
 } from '../../data-service/device-service';
 import { DeviceStoreFactory } from '../../data-service/device-store';
 import { formatManualLock } from './manualLock';
+import { recordingSourceFor, type RecordingSource } from './nodeRecordingSource';
 import { ensureMjpegForRecording } from './ensureMjpegForRecording';
 import { probeVideoDurationMs } from './probeDuration';
 import { annotationImagePath } from './annotationImage';
@@ -140,6 +141,12 @@ export interface OrchestratorDeps {
    */
   ensureMjpegPortFn?: (udid: string) => Promise<number>;
   /**
+   * For another server's phone (a node's, on a hub), a loopback relay to its
+   * node's stream, read in place of ensureMjpegPortFn's port; null for this
+   * server's own phone. See nodeRecordingSource.ts.
+   */
+  nodeSourceFn?: (udid: string, actorId: string) => Promise<RecordingSource | null>;
+  /**
    * Reads how long the finished mp4 actually is. Injected in unit tests so
    * finalizing a recording never spawns ffmpeg.
    */
@@ -154,12 +161,18 @@ export class RecordingOrchestrator {
   public unblockDeviceFn: UnblockDeviceFn;
   public blockDeviceFn: BlockDeviceFn;
   public ensureMjpegPortFn: (udid: string) => Promise<number>;
+  public nodeSourceFn: (udid: string, actorId: string) => Promise<RecordingSource | null>;
   public probeDurationMsFn: (filePath: string) => Promise<number | undefined>;
   public now: () => number;
   private readonly _deps: Required<
     Omit<
       OrchestratorDeps,
-      'blockDeviceFn' | 'unblockDeviceFn' | 'ensureMjpegPortFn' | 'probeDurationMsFn' | 'now'
+      | 'blockDeviceFn'
+      | 'unblockDeviceFn'
+      | 'ensureMjpegPortFn'
+      | 'nodeSourceFn'
+      | 'probeDurationMsFn'
+      | 'now'
     >
   >;
   /**
@@ -168,6 +181,8 @@ export class RecordingOrchestrator {
    * this keeps exactly one of them doing it.
    */
   private readonly finalizing = new Set<string>();
+  /** The relays node phones' recordings read, by recording id, until finalized. */
+  private readonly nodeSources = new Map<string, RecordingSource>();
 
   constructor(deps: OrchestratorDeps = {}) {
     this._deps = {
@@ -180,6 +195,7 @@ export class RecordingOrchestrator {
     this.blockDeviceFn = deps.blockDeviceFn ?? defaultBlockDevice;
     this.unblockDeviceFn = deps.unblockDeviceFn ?? defaultUnblockDevice;
     this.ensureMjpegPortFn = deps.ensureMjpegPortFn ?? ensureMjpegForRecording;
+    this.nodeSourceFn = deps.nodeSourceFn ?? ((udid, actorId) => recordingSourceFor(udid, actorId));
     this.probeDurationMsFn = deps.probeDurationMsFn ?? probeVideoDurationMs;
     this.now = deps.now ?? Date.now;
   }
@@ -316,7 +332,7 @@ export class RecordingOrchestrator {
         `${id}.mp4`,
       );
       try {
-        const mjpegPort = await this.ensureMjpegPortFn(udid);
+        const mjpegPort = await this.sourcePort(id, udid, actorId);
         mjpegPorts[udid] = mjpegPort;
         await this.store.create({
           id,
@@ -342,6 +358,7 @@ export class RecordingOrchestrator {
         recordings.push({ id, udid, status: 'RECORDING' });
       } catch (err: any) {
         recLog.error(`Failed to start recording for ${udid}: ${err?.message}`);
+        await this.closeNodeSource(id);
         // Mark this one failed but continue with the rest of the group.
         try {
           await this.store.finalize(id, {
@@ -448,6 +465,8 @@ export class RecordingOrchestrator {
       status = 'FAILED';
       failReason = err?.message ?? 'ffmpeg_stop_failed';
     }
+    // Its ffmpeg is done reading; a group's composite stops before this.
+    await this.closeNodeSource(r.id);
     // How long the video actually is, not how long the session was open. Those
     // agree only while capture keeps up: a recording whose device died at 26s
     // and was stopped 5 minutes later reported 5m36s for a 35s file (#204).
@@ -887,7 +906,7 @@ export class RecordingOrchestrator {
       `${recordingId}.mp4`,
     );
     try {
-      const mjpegPort = await this.ensureMjpegPortFn(udid);
+      const mjpegPort = await this.sourcePort(recordingId, udid, actorId);
       await this.store.create({
         id: recordingId,
         groupId,
@@ -910,6 +929,7 @@ export class RecordingOrchestrator {
       if (groupT0Ms !== undefined) this.recordTiming(filePath, spawnedAtMs, groupT0Ms);
     } catch (err: any) {
       recLog.error(`Failed to add device ${udid} to group ${groupId}: ${err?.message}`);
+      await this.closeNodeSource(recordingId);
       this.gate.release(recordingId);
       await this.tryUnblock(udid, host);
       try {
@@ -1012,6 +1032,27 @@ export class RecordingOrchestrator {
     } catch (err: any) {
       recLog.warn(`recoverOnBoot manual-lock sweep failed: ${err?.message}`);
     }
+  }
+
+  /**
+   * The loopback port a recording reads: this server's own phone's MJPEG
+   * stream, or, for another server's phone, a relay to its node's, kept until
+   * the recording is finalized (nodeRecordingSource.ts).
+   */
+  private async sourcePort(recordingId: string, udid: string, actorId: string): Promise<number> {
+    const relay = await this.nodeSourceFn(udid, actorId);
+    if (!relay) return this.ensureMjpegPortFn(udid);
+    this.nodeSources.set(recordingId, relay);
+    return relay.port;
+  }
+
+  private async closeNodeSource(recordingId: string): Promise<void> {
+    const relay = this.nodeSources.get(recordingId);
+    if (!relay) return;
+    this.nodeSources.delete(recordingId);
+    await relay.close().catch((err: any) => {
+      recLog.warn(`Closing the node relay of ${recordingId} failed: ${err?.message ?? err}`);
+    });
   }
 
   private async tryUnblock(udid: string, host: string): Promise<void> {

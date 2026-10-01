@@ -46,6 +46,8 @@ function makeOrch(overrides: any = {}) {
   const unblockDeviceFn = overrides.unblockDeviceFn ?? sinon.stub().resolves();
   const ensureMjpegPortFn =
     overrides.ensureMjpegPortFn ?? sinon.stub().callsFake(async () => 9100);
+  // This server's own phones, unless a test says otherwise.
+  const nodeSourceFn = overrides.nodeSourceFn ?? sinon.stub().resolves(null);
   const eventMgr =
     overrides.eventMgr ?? {
       emitRecordingStarted: sinon.stub(),
@@ -63,6 +65,7 @@ function makeOrch(overrides: any = {}) {
     eventMgr: eventMgr as any,
     unblockDeviceFn,
     ensureMjpegPortFn,
+    nodeSourceFn,
     now: overrides.now,
   });
   return {
@@ -75,8 +78,103 @@ function makeOrch(overrides: any = {}) {
     unblockDeviceFn,
     eventMgr,
     ensureMjpegPortFn,
+    nodeSourceFn,
   };
 }
+
+// On a hub, a node's phone is recorded from a loopback relay to its node's
+// stream (nodeRecordingSource.ts); this server's own phones as before.
+describe('RecordingOrchestrator: a node’s phone', () => {
+  useArtifactStore();
+  beforeEach(() => {
+    sinon.stub(deviceStoreModule.DeviceStoreFactory, 'getStore').returns({
+      findDevice: sinon
+        .stub()
+        .callsFake(async ({ udid }: any) => ({ udid, host: 'h', busy: false })),
+    } as any);
+  });
+  afterEach(() => sinon.restore());
+
+  /** A store that keeps what create() was given, as listGroup's rows. */
+  function rowStore() {
+    const rows: any[] = [];
+    return {
+      rows,
+      create: sinon.stub().callsFake(async (i: any) => {
+        rows.push({
+          id: i.id,
+          group_id: i.groupId,
+          device_udid: i.deviceUdid,
+          device_host: i.deviceHost,
+          file_path: i.filePath,
+          started_at: new Date().toISOString(),
+          status: 'RECORDING',
+        });
+        return i;
+      }),
+      finalize: sinon.stub().resolves({}),
+      listActive: sinon.stub().resolves([]),
+      listGroup: sinon.stub().callsFake(async () => rows),
+    };
+  }
+
+  const relayFor = (udid: string, port: number) => {
+    const close = sinon.stub().resolves();
+    const fn = sinon.stub().callsFake(async (u: string) => (u === udid ? { port, close } : null));
+    return { fn, close };
+  };
+
+  it('records it from its relay’s port, and this server’s own phone from its own stream', async () => {
+    const relay = relayFor('N1', 5555);
+    const { orch, videoPipeline, ensureMjpegPortFn } = makeOrch({ nodeSourceFn: relay.fn });
+
+    await orch.start({ udids: ['N1', 'L1'], actorId: 'alice' });
+
+    const ports = videoPipeline.startRecording
+      .getCalls()
+      .map((c: any) => [c.args[0].udid, c.args[0].mjpegPort]);
+    expect(ports).to.deep.equal([
+      ['N1', 5555],
+      ['L1', 9100],
+    ]);
+    expect((ensureMjpegPortFn as any).getCalls().map((c: any) => c.args[0])).to.deep.equal(['L1']);
+    expect(relay.fn.getCalls().map((c: any) => c.args)).to.deep.equal([
+      ['N1', 'alice'],
+      ['L1', 'alice'],
+    ]);
+    const composite = videoPipeline.startComposite.firstCall.args[0].inputs.map(
+      (i: any) => i.mjpegPort,
+    );
+    expect(composite).to.deep.equal([5555, 9100]);
+  });
+
+  it('closes the relay once the recording has stopped', async () => {
+    const relay = relayFor('N1', 5555);
+    const store = rowStore();
+    const { orch } = makeOrch({ nodeSourceFn: relay.fn, store });
+
+    const { groupId } = await orch.start({ udids: ['N1'], actorId: 'alice' });
+    expect(relay.close.called).to.equal(false);
+    await orch.stop(groupId);
+
+    expect(relay.close.calledOnce).to.equal(true);
+  });
+
+  it('closes the relay when that phone’s recording can’t start', async () => {
+    const relay = relayFor('N1', 5555);
+    const videoPipeline = {
+      startRecording: sinon.stub().rejects(new Error('ffmpeg would not start')),
+      stopRecording: sinon.stub().resolves('/tmp/x.mp4'),
+      startComposite: sinon.stub().resolves(),
+      stopComposite: sinon.stub().resolves(null),
+    };
+    const { orch } = makeOrch({ nodeSourceFn: relay.fn, videoPipeline });
+
+    await orch.start({ udids: ['N1'], actorId: 'alice' });
+
+    expect(relay.close.calledOnce).to.equal(true);
+  });
+});
 
 describe('RecordingOrchestrator.start', () => {
 
