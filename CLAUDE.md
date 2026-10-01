@@ -1176,9 +1176,11 @@ manager reaps `Device` rows for unattached hardware (`removeStaleDevices`), so a
 seeded row is deleted before the page loads. Run it with `npm run test:viewport`
 against a running server (dashboard enabled, auth disabled).
 
-Coverage boundary — all 15 routes in the matrix are now **hermetic**. The 11
-data-heavy routes (overview, devices, builds, builds/:buildId, apps,
-selector-health, selector-health/detail, teams, users, api-keys, notifications)
+Coverage boundary — all 19 routes in the matrix are now **hermetic**. The 15
+data-heavy routes (overview, devices, devices?view=table, recordings,
+recordings/:groupId, builds, builds/:buildId, a failed and healed session's
+page, apps, selector-health, selector-health/detail, teams, users, api-keys,
+notifications)
 route-mock their data endpoints via `ROUTE_DATA_MOCKS` with deliberately
 wide/hostile payloads — multiple rows plus a >100-char session subtitle, an
 >80-char selector XPath, a long bundle id, and long team/user names/emails — and

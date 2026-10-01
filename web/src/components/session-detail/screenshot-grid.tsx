@@ -32,7 +32,7 @@ export const ScreenshotGrid: React.FC<Props> = ({ commands }) => {
               href={url}
               target="_blank"
               rel="noreferrer"
-              className={`block rounded-md border overflow-hidden bg-[rgb(var(--rgb-fg)/0.03)] hover:border-[var(--border-strong)] ${
+              className={`block rounded-md border overflow-hidden hover:border-[var(--border-strong)] ${
                 s.failed ? 'border-[var(--color-danger)]' : 'border-[var(--border)]'
               }`}
             >
@@ -40,7 +40,9 @@ export const ScreenshotGrid: React.FC<Props> = ({ commands }) => {
                 src={url}
                 alt={`${s.command} at ${time}`}
                 loading="lazy"
-                className="block w-full aspect-[9/16] object-contain"
+                // The tint is the image's alone: under the caption it would
+                // take the red of a failed command's name below 4.5:1.
+                className="block w-full aspect-[9/16] object-contain bg-[rgb(var(--rgb-fg)/0.03)]"
               />
               <span className="flex items-center justify-between gap-2 px-2 py-1 text-[11px]">
                 <span
