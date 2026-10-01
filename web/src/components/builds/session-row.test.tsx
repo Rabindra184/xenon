@@ -94,6 +94,21 @@ describe('SessionRow', () => {
     expect(onOpen).toHaveBeenCalledOnce();
   });
 
+  it('opens from the keyboard too', () => {
+    const { onOpen } = renderRow();
+    const row = screen.getByRole('row');
+    expect(row).toHaveAttribute('tabindex', '0');
+    fireEvent.keyDown(row, { key: 'Enter' });
+    fireEvent.keyDown(row, { key: ' ' });
+    expect(onOpen).toHaveBeenCalledTimes(2);
+  });
+
+  it('leaves keys typed in its checkbox alone', () => {
+    const { onOpen } = renderRow({ showSelection: true });
+    fireEvent.keyDown(screen.getByRole('checkbox'), { key: ' ' });
+    expect(onOpen).not.toHaveBeenCalled();
+  });
+
   it('has a checkbox that does not open the row', () => {
     const onToggleSelect = vi.fn();
     const { onOpen } = renderRow({ showSelection: true, onToggleSelect });

@@ -76,15 +76,86 @@
  *         schema:
  *           type: string
  *         description: Search by session ID, name, device UDID, or device name
+ *       - in: query
+ *         name: since
+ *         schema:
+ *           type: string
+ *           format: date-time
+ *         description: Only sessions created at or after this time. A value that is not a date is refused (400 invalid_since).
  *     responses:
  *       200:
- *         description: List of sessions
+ *         description: >-
+ *           The newest 500 matching sessions, newest first. Each also carries
+ *           `owner` ({ name, email } of who ran it, or null) and `ranOn`
+ *           ('here' for this server, a node's host, or null when not known).
  *         content:
  *           application/json:
  *             schema:
  *               type: array
  *               items:
  *                 $ref: '#/components/schemas/Session'
+ *       400:
+ *         description: since is not a date
+ *       401: { $ref: '#/components/responses/Unauthorized' }
+ *       429: { $ref: '#/components/responses/RateLimited' }
+ */
+
+/**
+ * @swagger
+ * /api/session-summary:
+ *   get:
+ *     summary: Summarize sessions over a period
+ *     description: >-
+ *       The Sessions page's summary: counts by outcome, median and p90
+ *       duration of the sessions that ended, the counts of the period of the
+ *       same length before it, and what runs now. Over the sessions the
+ *       caller may see. error and timeout count as failed; ended as passed.
+ *     tags: [Sessions]
+ *     parameters:
+ *       - in: query
+ *         name: since
+ *         schema:
+ *           type: string
+ *           format: date-time
+ *         description: Start of the period. Without it the period is all time and `previous` is null.
+ *       - in: query
+ *         name: buildId
+ *         schema:
+ *           type: string
+ *         description: Only this build's sessions
+ *     responses:
+ *       200:
+ *         description: The summary
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 since: { type: string, format: date-time, nullable: true }
+ *                 current:
+ *                   type: object
+ *                   properties:
+ *                     total: { type: integer }
+ *                     passed: { type: integer }
+ *                     failed: { type: integer }
+ *                     running: { type: integer }
+ *                     medianMs: { type: integer, nullable: true }
+ *                     p90Ms: { type: integer, nullable: true }
+ *                 previous:
+ *                   type: object
+ *                   nullable: true
+ *                   properties:
+ *                     total: { type: integer }
+ *                     passed: { type: integer }
+ *                     failed: { type: integer }
+ *                     running: { type: integer }
+ *                 runningNow:
+ *                   type: object
+ *                   properties:
+ *                     sessions: { type: integer }
+ *                     devices: { type: integer }
+ *       400:
+ *         description: since is not a date
  *       401: { $ref: '#/components/responses/Unauthorized' }
  *       429: { $ref: '#/components/responses/RateLimited' }
  */

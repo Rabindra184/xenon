@@ -82,8 +82,15 @@ export const SessionRow: React.FC<Props> = ({
   return (
     <tr
       onClick={onOpen}
+      // Rows open from the keyboard too; a key typed in the checkbox is its own.
+      tabIndex={0}
+      onKeyDown={(e) => {
+        if (e.target !== e.currentTarget || (e.key !== 'Enter' && e.key !== ' ')) return;
+        e.preventDefault();
+        onOpen();
+      }}
       data-outcome={bucket}
-      className={`group border-b border-[var(--border)] cursor-pointer transition-colors ${
+      className={`group border-b border-[var(--border)] cursor-pointer transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-[var(--color-focus-ring)] ${
         failed
           ? 'bg-[rgb(var(--rgb-red)/0.04)] hover:bg-[rgb(var(--rgb-red)/0.08)]'
           : 'hover:bg-[var(--surface-2)]'
