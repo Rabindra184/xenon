@@ -1,6 +1,7 @@
 import 'reflect-metadata';
 import sinon from 'sinon';
 import AndroidDeviceManager, {
+  ANDROID_INSTALL_TIMEOUT_MS,
   includesAndroidDevice,
 } from '../../src/device-managers/AndroidDeviceManager';
 import { DeviceWithPath } from '@devicefarmer/adbkit';
@@ -192,6 +193,21 @@ describe('Android Device Manager', () => {
     // check that emulator-7777 is returned and emulator-9999 is not
     expect(devices.length).to.be.equal(1);
     expect(devices[0]).to.have.property('udid', 'emulator-7777');
+  });
+
+  // adb install answers when the phone has installed the app, and appium-adb
+  // cut every adbExec at 20 s (adbExecTimeout): an install that took longer
+  // was reported as failed though it had worked.
+  it('gives adb install as long as an install takes, not adbExec’s 20 s', async () => {
+    const manager = createTestAndroidManager({ platform: 'android' });
+    const adbExec = sandbox.stub().resolves('Success');
+    sandbox.stub(manager, 'getAdb' as any).resolves({ adbInstance: { adbExec } });
+
+    await manager.installApp('p1', '/tmp/app.apk');
+
+    expect(adbExec.firstCall.args[0]).to.deep.equal(['-s', 'p1', 'install', '-r', '/tmp/app.apk']);
+    expect(adbExec.firstCall.args[1]).to.deep.equal({ timeout: ANDROID_INSTALL_TIMEOUT_MS });
+    expect(ANDROID_INSTALL_TIMEOUT_MS).to.be.at.least(5 * 60_000);
   });
 
   // A phone adb reports as plugged (and every phone connected when the server
