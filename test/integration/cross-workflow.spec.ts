@@ -7,6 +7,7 @@ import {
 } from '../../src/services/recording/RecordingOrchestrator';
 import { ConcurrencyGate } from '../../src/services/recording/concurrency-gate';
 import * as deviceStoreModule from '../../src/data-service/device-store';
+import { useArtifactStore } from '../helpers/artifact-store';
 
 /**
  * The six scenarios from the spec's cross-workflow risk matrix
@@ -32,6 +33,10 @@ function makeOrch(overrides: any = {}) {
     };
   const blockDeviceFn = overrides.blockDeviceFn ?? sinon.stub().resolves();
   const unblockDeviceFn = overrides.unblockDeviceFn ?? sinon.stub().resolves();
+  // Each phone is this server's own, read from a live MJPEG port: the real
+  // ones would look the phone up and start its stream.
+  const nodeSourceFn = overrides.nodeSourceFn ?? sinon.stub().resolves(null);
+  const ensureMjpegPortFn = overrides.ensureMjpegPortFn ?? sinon.stub().resolves(9100);
   // Where a stopped recording hands its phone: the preview's leave path,
   // which releases the hold once nobody watches it.
   const leaveDeviceFn = overrides.leaveDeviceFn ?? sinon.stub();
@@ -51,6 +56,8 @@ function makeOrch(overrides: any = {}) {
     blockDeviceFn,
     eventMgr: eventMgr as any,
     unblockDeviceFn,
+    nodeSourceFn,
+    ensureMjpegPortFn,
     leaveDeviceFn,
   });
   return {
@@ -67,6 +74,9 @@ function makeOrch(overrides: any = {}) {
 }
 
 describe('Cross-workflow integration: manual + automation safety (6 scenarios)', () => {
+  // start() resolves each recording's file through the ArtifactStore, as the
+  // server registers it at boot.
+  useArtifactStore();
   let factoryStub: sinon.SinonStub;
   beforeEach(() => {
     factoryStub = sinon
