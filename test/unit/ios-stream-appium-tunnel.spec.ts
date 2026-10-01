@@ -7,6 +7,7 @@ import tcpPortUsed from 'tcp-port-used';
 import { Container } from 'typedi';
 import { promisify } from 'util';
 import IOSStreamService from '../../src/device-managers/ios/IOSStreamService';
+import { IOSTunnels } from '../../src/device-managers/ios/IOSTunnels';
 import { SingleFlight } from '../../src/helpers/singleFlight';
 import { PortAllocator } from '../../src/services/PortAllocator';
 import { ProcessRegistry } from '../../src/services/ProcessRegistry';
@@ -15,24 +16,27 @@ import * as deviceService from '../../src/data-service/device-service';
 import { previewLeaveDeps } from '../../src/app/routers/control';
 
 /**
- * go-ios's tunnel process serves its tunnel-info API on 60105 and the first
- * phone's userspace tunnel on 60106. On iOS 17+ a WDA that go-ios launched
- * (`runwda`) reaches the phone through it, and an Appium session rides such a
- * WDA whenever it was allocated while a stream ran: iOSCapabilities points
- * `webDriverAgentUrl` at the stream's WDA.
+ * Each iOS 17+ phone has its own go-ios tunnel (IOSTunnels) on its own pair of
+ * leased ports. On iOS 17+ a WDA that go-ios launched (`runwda`) reaches the
+ * phone through it, and an Appium session rides such a WDA whenever it was
+ * allocated while a stream ran: iOSCapabilities points `webDriverAgentUrl` at
+ * the stream's WDA.
  *
- * The stream service's orphan sweep kill -9'd whatever listened on those
- * ports, and a viewer's stop killed the stream's own WDA and tunnel, with a
- * live Appium session on the phone either way.
+ * So no go-ios cleanup runs, and a viewer's stop stops nothing, while an
+ * Appium session holds the phone. And nothing is killed by port any more:
+ * through 2.7 the orphan sweep kill -9'd whatever listened on go-ios's default
+ * ports, 60105 and 60106, which was another iPhone's live tunnel.
  *
  * Nothing real runs here. Every `exec` goes to a fake `execFile` (exec calls
  * `module.exports.execFile`, promisified or not), `process.kill` is stubbed,
- * and processes are fakes.
+ * IOSTunnels is a fake, and processes are fakes.
  */
 
 const IPHONE = 'test-iphone-00008150-tunnel';
-const TUNNEL_PID = 424242;
-const AGENT_LISTENER_PID = '515151';
+const OTHER_IPHONE = 'test-iphone-00008110-other';
+const TUNNEL_PORT = 12100;
+/** Another iPhone's tunnel, on go-ios's default ports, as `lsof` would name it. */
+const DEFAULT_PORT_LISTENER = '515151';
 
 class FakeProcess extends EventEmitter {
   exitCode: number | null = null;
@@ -66,27 +70,40 @@ describe('go-ios tunnels under a live Appium session (fake exec, fake processes)
   let findDevice: sinon.SinonStub;
   let commands: string[];
   let kill: sinon.SinonStub;
-  let allocator: { claim: sinon.SinonStub; acquire: sinon.SinonStub; release: sinon.SinonStub };
+  let allocator: {
+    claim: sinon.SinonStub;
+    acquire: sinon.SinonStub;
+    release: sinon.SinonStub;
+    touch: sinon.SinonStub;
+    releasePurpose: sinon.SinonStub;
+  };
+  let tunnels: {
+    ensure: sinon.SinonStub;
+    envFor: sinon.SinonStub;
+    stop: sinon.SinonStub;
+    touch: sinon.SinonStub;
+  };
   let svc: any;
 
   const killed = () => commands.filter((c) => /^kill\b|^pkill\b/.test(c));
   const swept = () => commands.filter((c) => /^lsof\b|^pgrep\b/.test(c));
+  const defaultPorts = () => commands.filter((c) => /6010[56]/.test(c));
 
   /** A stream that launched its own WDA, forwarders and go-ios tunnel. */
-  function ownStream() {
+  function ownStream(udid = IPHONE) {
     const s = {
-      udid: IPHONE,
+      udid,
       wdaProcess: new FakeProcess(),
       forwardWDAProcess: new FakeProcess(),
       forwardMJPEGProcess: new FakeProcess(),
-      tunnelProcess: new FakeProcess(TUNNEL_PID),
+      tunnelPort: TUNNEL_PORT,
       wdaPort: 28101,
       mjpegPort: 29101,
       status: 'running',
       lastViewerAt: Date.now(),
       viewerCount: 0,
     };
-    svc.sessions.set(IPHONE, s);
+    svc.sessions.set(udid, s);
     return s;
   }
 
@@ -97,7 +114,7 @@ describe('go-ios tunnels under a live Appium session (fake exec, fake processes)
       wdaProcess: null,
       forwardWDAProcess: null,
       forwardMJPEGProcess: new FakeProcess(),
-      tunnelProcess: null,
+      tunnelPort: null,
       wdaPort: 28123,
       mjpegPort: 29101,
       status: 'running',
@@ -118,11 +135,12 @@ describe('go-ios tunnels under a live Appium session (fake exec, fake processes)
       wdaLocalPort: 28123,
     };
     commands = [];
-    // Refuse everything real. lsof names the go-ios agent's listener, pgrep a
-    // tunnel for this udid; both exit 1 with nothing to report otherwise.
+    // Refuse everything real. lsof names a listener on go-ios's default ports
+    // (another iPhone's tunnel), which must never be killed; pgrep finds no
+    // tunnel for this udid. Both exit 1 with nothing to report otherwise.
     sinon.stub(childProcess, 'execFile').callsFake(((cmd: string, _opts: any, cb: any) => {
       commands.push(cmd);
-      const stdout = /^lsof -ti :6010[56]$/.test(cmd) ? `${AGENT_LISTENER_PID}\n` : '';
+      const stdout = /^lsof -ti :6010[56]$/.test(cmd) ? `${DEFAULT_PORT_LISTENER}\n` : '';
       const nothingFound = /^(lsof|pgrep)\b/.test(cmd) && !stdout;
       const done = typeof cb === 'function' ? cb : () => undefined;
       process.nextTick(() =>
@@ -147,12 +165,21 @@ describe('go-ios tunnels under a live Appium session (fake exec, fake processes)
       claim: sinon.stub().resolves(true),
       acquire: sinon.stub().resolves(29102),
       release: sinon.stub().resolves(),
+      touch: sinon.stub().resolves(),
+      releasePurpose: sinon.stub().resolves(),
+    };
+    tunnels = {
+      ensure: sinon.stub().resolves(null),
+      envFor: sinon.stub().callsFake(() => ({ ...process.env, ENABLE_GO_IOS_AGENT: 'yes' })),
+      stop: sinon.stub().resolves(),
+      touch: sinon.stub().resolves(),
     };
     svc = iosService();
     const real = Container.get.bind(Container);
     sinon.stub(Container, 'get').callsFake((token: any) => {
       if (token === IOSStreamService) return svc;
       if (token === PortAllocator) return allocator;
+      if (token === IOSTunnels) return tunnels;
       if (token === ProcessRegistry) return { track: () => undefined };
       return real(token);
     });
@@ -174,7 +201,8 @@ describe('go-ios tunnels under a live Appium session (fake exec, fake processes)
 
       expect(stream.wdaProcess.killed, 'the WDA the session may be driving').to.equal(false);
       expect(stream.forwardWDAProcess.killed, "that WDA's forwarder").to.equal(false);
-      expect(kill.called, 'no process group is signalled (the tunnel)').to.equal(false);
+      expect(tunnels.stop.called, "the phone's tunnel").to.equal(false);
+      expect(kill.called, 'no process group is signalled').to.equal(false);
       expect(killed(), 'no kill is run').to.deep.equal([]);
       expect(svc.getStreamStatus(IPHONE), 'the stream stays, for the session teardown').to.equal(
         stream,
@@ -182,13 +210,14 @@ describe('go-ios tunnels under a live Appium session (fake exec, fake processes)
       expect(allocator.release.called, 'its ports stay leased').to.equal(false);
     });
 
-    it('sweeps no go-ios port when the stream is attached to the Appium session’s own WDA', async () => {
+    it("stops no tunnel for a stream attached to the Appium session's own WDA", async () => {
       const stream = attachedStream();
 
       await previewLeaveDeps.stop(IPHONE);
 
       expect(swept(), 'no lsof/pgrep for go-ios processes').to.deep.equal([]);
-      expect(killed(), 'no kill -9 of the go-ios listener').to.deep.equal([]);
+      expect(killed()).to.deep.equal([]);
+      expect(tunnels.stop.called, 'it started no tunnel').to.equal(false);
       expect(kill.called).to.equal(false);
       expect(stream.forwardMJPEGProcess.killed, 'its own MJPEG forwarder still goes').to.equal(
         true,
@@ -196,7 +225,7 @@ describe('go-ios tunnels under a live Appium session (fake exec, fake processes)
       expect(svc.getStreamStatus(IPHONE)).to.equal(undefined);
     });
 
-    it('still stops everything and sweeps real orphans once no Appium session holds the phone', async () => {
+    it("stops the stream's tunnel and this phone's leftovers, and nothing by port, once no Appium session holds the phone", async () => {
       Object.assign(device, { busy: false, session_id: null });
       const stream = ownStream();
 
@@ -205,11 +234,11 @@ describe('go-ios tunnels under a live Appium session (fake exec, fake processes)
       expect(stream.wdaProcess.killed).to.equal(true);
       expect(stream.forwardWDAProcess.killed).to.equal(true);
       expect(stream.forwardMJPEGProcess.killed).to.equal(true);
-      expect(kill.calledWith(-TUNNEL_PID, 'SIGKILL'), "the stream's tunnel group").to.equal(true);
+      expect(tunnels.stop.calledWith(IPHONE), "the stream's tunnel").to.equal(true);
+      expect(tunnels.stop.alwaysCalledWith(IPHONE), 'and no other phone’s').to.equal(true);
       expect(commands).to.include(`pgrep -f "ios tunnel.*${IPHONE}"`);
-      expect(commands).to.include('lsof -ti :60105');
-      expect(commands).to.include('lsof -ti :60106');
-      expect(killed()).to.include(`kill -9 ${AGENT_LISTENER_PID}`);
+      expect(defaultPorts(), 'nothing on 60105/60106 is looked at').to.deep.equal([]);
+      expect(killed(), "another iPhone's tunnel is never kill -9'd").to.deep.equal([]);
       expect(svc.getStreamStatus(IPHONE)).to.equal(undefined);
     });
 
@@ -220,7 +249,21 @@ describe('go-ios tunnels under a live Appium session (fake exec, fake processes)
       await previewLeaveDeps.stop(IPHONE);
 
       expect(stream.wdaProcess.killed).to.equal(true);
-      expect(killed()).to.include(`kill -9 ${AGENT_LISTENER_PID}`);
+      expect(tunnels.stop.calledWith(IPHONE)).to.equal(true);
+    });
+
+    it("stopping one iPhone's stream leaves another iPhone's tunnel alone", async () => {
+      Object.assign(device, { busy: false, session_id: null });
+      ownStream(IPHONE);
+      const other = ownStream(OTHER_IPHONE);
+
+      await svc.stopStream(IPHONE);
+
+      expect(tunnels.stop.calledWith(OTHER_IPHONE)).to.equal(false);
+      expect(other.wdaProcess.killed).to.equal(false);
+      expect(svc.getStreamStatus(OTHER_IPHONE)).to.equal(other);
+      expect(commands.some((c) => c.includes(OTHER_IPHONE))).to.equal(false);
+      expect(defaultPorts()).to.deep.equal([]);
     });
   });
 
@@ -232,7 +275,7 @@ describe('go-ios tunnels under a live Appium session (fake exec, fake processes)
         wdaProcess: null,
         forwardWDAProcess: null,
         forwardMJPEGProcess: null,
-        tunnelProcess: null,
+        tunnelPort: null,
         wdaPort: 28101,
         mjpegPort: 29101,
         status: 'error',
@@ -247,8 +290,10 @@ describe('go-ios tunnels under a live Appium session (fake exec, fake processes)
 
       expect(wdaPort, 'attached to the session’s WDA').to.equal(device.wdaLocalPort);
       expect(swept(), 'no lsof/pgrep for go-ios processes').to.deep.equal([]);
-      expect(killed(), 'no kill -9 of the go-ios listener').to.deep.equal([]);
+      expect(killed()).to.deep.equal([]);
       expect(kill.called).to.equal(false);
+      expect(tunnels.ensure.called, 'no tunnel of its own').to.equal(false);
+      expect(tunnels.stop.called).to.equal(false);
     });
   });
 
@@ -271,7 +316,8 @@ describe('go-ios tunnels under a live Appium session (fake exec, fake processes)
       expect(err?.message).to.match(/Appium session .* holds the device/);
       expect(stream.wdaProcess.killed, 'the WDA the session may be driving').to.equal(false);
       expect(stream.forwardWDAProcess.killed).to.equal(false);
-      expect(kill.called, 'no process group is signalled (the tunnel)').to.equal(false);
+      expect(tunnels.stop.called, "the phone's tunnel").to.equal(false);
+      expect(kill.called).to.equal(false);
       expect(commands, 'nothing is exec’d').to.deep.equal([]);
       expect(svc.getStreamStatus(IPHONE)?.status, 'the stream is left as it was').to.equal(
         'running',
@@ -305,8 +351,74 @@ describe('go-ios tunnels under a live Appium session (fake exec, fake processes)
       );
 
       expect(stream.wdaProcess.killed, 'the dead stream is stopped').to.equal(true);
-      expect(kill.calledWith(-TUNNEL_PID, 'SIGKILL')).to.equal(true);
+      expect(tunnels.stop.calledWith(IPHONE), 'with its tunnel').to.equal(true);
       expect(err?.message, 'and a new start is attempted').to.equal('go-ios not available');
+    });
+  });
+
+  describe('a start after a failed start', () => {
+    it("stops the failed start's tunnel before starting again", async () => {
+      Object.assign(device, { busy: false, session_id: null });
+      // The failed start brought its tunnel up, then WDA never answered.
+      svc.sessions.set(IPHONE, {
+        udid: IPHONE,
+        wdaProcess: null,
+        forwardWDAProcess: null,
+        forwardMJPEGProcess: null,
+        tunnelPort: TUNNEL_PORT,
+        wdaPort: 28101,
+        mjpegPort: 29101,
+        status: 'error',
+        lastViewerAt: Date.now(),
+        viewerCount: 0,
+      });
+      svc.isGoIOSAvailable = async () => false;
+
+      const err = await svc.startStream(IPHONE).then(
+        () => null,
+        (e: Error) => e,
+      );
+
+      expect(err?.message).to.equal('go-ios not available');
+      expect(tunnels.stop.calledWith(IPHONE), "the failed start's tunnel").to.equal(true);
+      expect(tunnels.stop.alwaysCalledWith(IPHONE)).to.equal(true);
+      expect(defaultPorts()).to.deep.equal([]);
+    });
+  });
+
+  describe('boot', () => {
+    it('reaps every go-ios process, then drops every tunnel port lease', async () => {
+      await svc.reapOrphanTunnels();
+
+      expect(commands).to.include('pgrep -f "/nonexistent/go-ios"');
+      expect(allocator.releasePurpose.calledOnceWithExactly('tunnel')).to.equal(true);
+    });
+  });
+
+  describe('the hourly watchdog', () => {
+    it("keeps a running stream's tunnel ports leased", async () => {
+      const clock = sinon.useFakeTimers({ toFake: ['setInterval'] });
+      try {
+        sinon.stub(IOSStreamService.prototype as any, 'isStreamResponsive').resolves(true);
+        const watched: any = new IOSStreamService();
+        watched.sessions.set(IPHONE, {
+          udid: IPHONE,
+          status: 'running',
+          tunnelPort: TUNNEL_PORT,
+          wdaPort: 28101,
+          mjpegPort: 29101,
+          lastViewerAt: Date.now(),
+          viewerCount: 1,
+        });
+
+        await clock.tickAsync(60 * 60 * 1000);
+        await new Promise((resolve) => setImmediate(resolve)); // let the tick's awaits finish
+
+        expect(allocator.touch.calledWith(28101), 'its WDA port, as before').to.equal(true);
+        expect(tunnels.touch.calledWith(IPHONE), 'and its tunnel').to.equal(true);
+      } finally {
+        clock.restore();
+      }
     });
   });
 
@@ -319,5 +431,6 @@ describe('go-ios tunnels under a live Appium session (fake exec, fake processes)
     expect(swept()).to.deep.equal([]);
     expect(killed()).to.deep.equal([]);
     expect(kill.called).to.equal(false);
+    expect(tunnels.stop.called).to.equal(false);
   });
 });

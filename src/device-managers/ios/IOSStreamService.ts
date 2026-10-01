@@ -22,19 +22,14 @@ import { PortAllocator } from '../../services/PortAllocator';
 import { DeviceStoreFactory } from '../../data-service/device-store';
 import { findOwnDevice } from '../ownDeviceRow';
 import {
-  classifyTunnelStderr,
   isMissingWdaError,
   isOwnStreamProcess,
   isWdaLaunchFailure,
   missingWdaMessage,
   wdaLaunchFailureMessage,
 } from './iosStreamDiagnostics';
-import {
-  killProcessGroup,
-  reapAllOrphanTunnels,
-  reapTunnelsForUdid,
-  tunnelSpawnOptions,
-} from './tunnelProcess';
+import { reapAllOrphanTunnels, reapTunnelsForUdid } from './tunnelProcess';
+import { IOSTunnels } from './IOSTunnels';
 
 import { unblockDevice } from '../../data-service/device-service';
 import { isManualLock } from '../../services/recording/manualLock';
@@ -52,7 +47,8 @@ interface StreamSession {
   wdaProcess: ChildProcess | null;
   forwardWDAProcess: ChildProcess | null;
   forwardMJPEGProcess: ChildProcess | null;
-  tunnelProcess: ChildProcess | null;
+  /** The phone's go-ios tunnel-info port, when this stream's start ensured one (iOS 17+). */
+  tunnelPort: number | null;
   wdaPort: number;
   mjpegPort: number;
   sessionId?: string; // WDA Session ID for keyboard/interaction operations
@@ -95,14 +91,6 @@ export function heldByAppiumSession(
   return !!device?.busy && !!device.session_id && !isManualLock(device.session_id);
 }
 
-/**
- * The ports go-ios's tunnel process listens on: its tunnel-info API
- * (`GO_IOS_AGENT_PORT`, default 60105) and the first phone's userspace tunnel
- * (API port + 1). On iOS 17+ every go-ios command that talks to the phone,
- * `runwda` included, goes through that process.
- */
-const GO_IOS_AGENT_PORTS = [60105, 60106];
-
 /** A start refused a restart because an Appium session holds the phone. */
 export class StreamRestartRefused extends Error {}
 
@@ -142,6 +130,7 @@ class IOSStreamService {
             const portAllocator = Container.get(PortAllocator);
             await portAllocator.touch(session.wdaPort, this.STREAM_PORT_TTL_MS);
             await portAllocator.touch(session.mjpegPort, this.STREAM_PORT_TTL_MS);
+            await this.tunnels().touch(udid);
           } catch {
             /* best-effort lease refresh */
           }
@@ -262,118 +251,25 @@ class IOSStreamService {
   }
 
   /**
-   * Check if tunnel is needed (iOS 17+) and ensure it's running
-   */
-  public async ensureTunnel(udid: string): Promise<ChildProcess | null> {
-    try {
-      const { stdout } = await execPromise(`"${this.goIOSPath}" info --udid ${udid}`, {
-        env: { ...process.env, ENABLE_GO_IOS_AGENT: 'yes' },
-      });
-      const info = JSON.parse(stdout);
-      const versionStr = String(
-        info.ProductVersion || info.HumanReadableProductVersionString || '0',
-      );
-      // Extract the first numeric sequence (e.g., "15.8.6" or "iOS 17.2")
-      const versionMatch = versionStr.match(/(\d+\.?\d*)/);
-      const version = versionMatch ? parseFloat(versionMatch[0]) : 0;
-
-      if (version >= 17) {
-        log.info(`iOS ${version} detected for ${udid} (Raw: "${versionStr}"). Starting tunnel...`);
-
-        // Check if already running in our session tracker
-        const existing = [...this.sessions.values()].find(
-          (s) => s.udid === udid && s.tunnelProcess && s.tunnelProcess.exitCode === null,
-        );
-        if (existing && existing.tunnelProcess) return existing.tunnelProcess;
-
-        // CRITICAL: Kill any orphan tunnel processes before starting new one
-        // This prevents 'address already in use' errors from stale processes
-        await this.cleanupOrphanTunnels(udid);
-
-        const isolationService = Container.get(ResourceIsolationService);
-        const { command, args } = isolationService.wrapSpawn(
-          this.goIOSPath,
-          ['tunnel', 'start', '--udid', udid, '--userspace'],
-          'Performance', // Performance mode for critical tunnel stability
-        );
-
-        // detached: the go-ios tunnel leads its own process group so its
-        // self-forking agent children are reaped as a group on cleanup instead
-        // of orphaning into a runaway respawn storm. See ./tunnelProcess.
-        const tunnelProcess = spawn(
-          command,
-          args,
-          tunnelSpawnOptions({ ...process.env, ENABLE_GO_IOS_AGENT: 'yes' }),
-        );
-        Container.get(ProcessRegistry).track({ kind: 'other', udid, process: tunnelProcess });
-
-        tunnelProcess.stdout?.on('data', (data) => log.debug(`Tunnel [${udid}]: ${data}`));
-        // go-ios repeatedly warns about any connected pre-iOS-17 device (which
-        // needs no tunnel). Log that once — attributed to the real target udid,
-        // not this tunnel's owner — and suppress the rest to avoid log spam.
-        const loggedUnsupported = new Set<string>();
-        tunnelProcess.stderr?.on('data', (data) => {
-          const text = String(data);
-          const { unsupported, udid: targetUdid } = classifyTunnelStderr(text);
-          if (unsupported) {
-            const key = targetUdid ?? 'unknown';
-            if (!loggedUnsupported.has(key)) {
-              loggedUnsupported.add(key);
-              log.debug(
-                `Tunnel [${udid}]: device ${key} is pre-iOS 17 and needs no tunnel; suppressing repeated go-ios warnings`,
-              );
-            }
-            return;
-          }
-          log.debug(`Tunnel Err [${udid}]: ${text}`);
-        });
-
-        // Wait for tunnel to establish by checking the go-ios agent port
-        log.info('Waiting for tunnel agent on port 60105 to be ready...');
-        let tunnelReady = false;
-        const tunnelTimeout = 15000;
-        const subStartTime = Date.now();
-        while (Date.now() - subStartTime < tunnelTimeout) {
-          try {
-            tunnelReady = await tcpPortUsed.check(60105, '127.0.0.1');
-            if (tunnelReady) break;
-          } catch (e) {
-            /* ignore */
-          }
-          await new Promise((resolve) => setTimeout(resolve, 1000));
-        }
-
-        if (!tunnelReady) {
-          log.warn(
-            `Tunnel agent port 60105 not ready after ${tunnelTimeout / 1000}s, proceeding anyway...`,
-          );
-        } else {
-          log.info('Tunnel agent is ready. Settling for 2s...');
-          await new Promise((resolve) => setTimeout(resolve, 2000));
-          log.info('Tunnel agent settled.');
-        }
-        return tunnelProcess;
-      }
-    } catch (error) {
-      log.warn(`Failed to check version or start tunnel for ${udid}: ${error}`);
-    }
-    return null;
-  }
-
-  /**
-   * Kill go-ios tunnel processes left over from earlier runs, so a new tunnel
-   * can bind the agent's ports ('address already in use' otherwise).
+   * Clear this phone's go-ios leftovers before a start: the tunnel IOSTunnels
+   * tracks for it, then any untracked go-ios process for it from an earlier
+   * run. Never another phone's. Each phone's tunnel has its own ports, so
+   * nothing is killed by port. Through 2.7 this also kill -9'd whatever
+   * listened on go-ios's default ports, 60105 and 60106, which was another
+   * iPhone's live tunnel.
    *
    * Never while an Appium session holds the phone. That session may be
    * driving a WDA go-ios launched (iOSCapabilities points a session at the
    * stream's WDA whenever a stream runs), and on iOS 17+ that WDA reaches the
-   * phone through the tunnel listening on these ports. Nothing here can tell
-   * that tunnel from an orphan, so the sweep waits for the next stop or start
-   * after the session ends; a restart reaps every go-ios process at boot.
+   * phone through the phone's tunnel. Nothing here can tell that tunnel from
+   * an orphan, so the sweep waits for the next stop or start after the
+   * session ends; a restart reaps every go-ios process at boot.
    */
   private async cleanupOrphanTunnels(udid: string): Promise<void> {
     if (await this.appiumSessionMayUse(udid, 'go-ios tunnels')) return;
     log.debug(`Cleaning up orphan tunnels for ${udid}...`);
+
+    await this.tunnels().stop(udid);
 
     // Reap the tunnel process *group* for this udid so the self-forking go-ios
     // agent children (whose argv carries no udid, so a udid-scoped pkill can't
@@ -381,24 +277,12 @@ class IOSStreamService {
     // second device's tunnel is left untouched. See ./tunnelProcess.
     await reapTunnelsForUdid(udid, execPromise);
 
-    // Whatever still listens on the go-ios agent's ports.
-    for (const port of GO_IOS_AGENT_PORTS) {
-      try {
-        const { stdout } = await execPromise(`lsof -ti :${port}`);
-        const pids = stdout.trim().split('\n');
-        for (const pid of pids) {
-          if (pid) {
-            log.debug(`Killing orphan process ${pid} on go-ios agent port ${port}`);
-            await execPromise(`kill -9 ${pid}`);
-          }
-        }
-      } catch (err) {
-        /* ignore - lsof returns 1 if no port found */
-      }
-    }
-
     // Small delay to ensure OS releases sockets
     await new Promise((resolve) => setTimeout(resolve, 500));
+  }
+
+  private tunnels(): IOSTunnels {
+    return Container.get(IOSTunnels);
   }
 
   /**
@@ -802,7 +686,7 @@ class IOSStreamService {
             wdaProcess: null,
             forwardWDAProcess: null,
             forwardMJPEGProcess,
-            tunnelProcess: null,
+            tunnelPort: null,
             wdaPort,
             mjpegPort,
             status: 'running',
@@ -827,7 +711,7 @@ class IOSStreamService {
           wdaProcess: null,
           forwardWDAProcess: null,
           forwardMJPEGProcess: null,
-          tunnelProcess: null,
+          tunnelPort: null,
           wdaPort,
           mjpegPort,
           status: 'starting',
@@ -864,8 +748,8 @@ class IOSStreamService {
           }
         }
 
-        // 2. Ensure tunnel for iOS 17+
-        session.tunnelProcess = await this.ensureTunnel(udid);
+        // 2. The phone's own go-ios tunnel, for iOS 17+ (see IOSTunnels)
+        session.tunnelPort = await this.tunnels().ensure(udid);
 
         // 2. Start Port Forwarding using iproxy (more reliable on Mac)
         log.info(`Forwarding ${udid}: ${wdaPort}->8100, ${mjpegPort}->9100 using iproxy`);
@@ -921,7 +805,9 @@ class IOSStreamService {
         ); // WDA deserves Performance mode
 
         session.wdaProcess = spawn(wdaSpawn.command, wdaSpawn.args, {
-          env: { ...process.env, ENABLE_GO_IOS_AGENT: 'yes' },
+          // GO_IOS_AGENT_PORT: runwda reaches this phone through its own
+          // tunnel, not go-ios's default 60105.
+          env: this.tunnels().envFor(udid),
         });
         Container.get(ProcessRegistry).track({ kind: 'wda', udid, process: session.wdaProcess });
 
@@ -1149,9 +1035,7 @@ class IOSStreamService {
       return;
     }
 
-    // Kill sidecar processes. The go-ios tunnel is detached (its own process
-    // group), so reap the whole group — a plain p.kill() would leave the
-    // self-forking agent children behind to respawn. See ./tunnelProcess.
+    // Kill sidecar processes.
     [session.wdaProcess, session.forwardWDAProcess, session.forwardMJPEGProcess].forEach((p) => {
       if (p)
         try {
@@ -1160,7 +1044,9 @@ class IOSStreamService {
           // ignore
         }
     });
-    killProcessGroup(session.tunnelProcess?.pid);
+    // This stream's go-ios tunnel: its whole process group and its port pair.
+    // A stream attached to an Appium session's WDA started none.
+    if (session.tunnelPort != null) await this.tunnels().stop(udid);
 
     // Principal Fix: Only release the device lock if THIS STREAM SERVICE owns it.
     // The lock could belong to an Appium automation session (session_id is a real UUID).
@@ -1304,6 +1190,13 @@ class IOSStreamService {
       }
     } catch (err: any) {
       log.warn(`[IOSStreamService] Orphan tunnel reap failed: ${err?.message ?? err}`);
+    }
+    // Every go-ios process is gone, so no tunnel holds its ports. A lease left
+    // by an earlier run would otherwise keep its pair for up to 1.5 hours.
+    try {
+      await Container.get(PortAllocator).releasePurpose('tunnel');
+    } catch (err: any) {
+      log.warn(`[IOSStreamService] Releasing tunnel port leases failed: ${err?.message ?? err}`);
     }
   }
 

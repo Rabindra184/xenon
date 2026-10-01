@@ -9,6 +9,7 @@ import path from 'path';
 import sinon from 'sinon';
 import { Container } from 'typedi';
 import IOSStreamService from '../../src/device-managers/ios/IOSStreamService';
+import { IOSTunnels } from '../../src/device-managers/ios/IOSTunnels';
 import AndroidStreamService from '../../src/device-managers/android/AndroidStreamService';
 import { SingleFlight } from '../../src/helpers/singleFlight';
 import { PortAllocator } from '../../src/services/PortAllocator';
@@ -48,6 +49,7 @@ class FakeProcess extends EventEmitter {
     readonly command: string,
     readonly args: string[],
     readonly server?: net.Server,
+    readonly opts?: { env?: NodeJS.ProcessEnv },
   ) {
     super();
   }
@@ -97,6 +99,12 @@ describe('iOS stream port leases (fake processes, real sockets, scratch DB)', ()
   let appiumWdaPorts: Set<number>;
   let ios: any;
   let android: any;
+  let tunnels: {
+    ensure: sinon.SinonStub;
+    envFor: sinon.SinonStub;
+    stop: sinon.SinonStub;
+    touch: sinon.SinonStub;
+  };
 
   beforeEach(() => {
     allocator = new PortAllocator();
@@ -113,10 +121,17 @@ describe('iOS stream port leases (fake processes, real sockets, scratch DB)', ()
     extraServers = [];
     appiumWdaPorts = new Set();
 
+    tunnels = {
+      ensure: sinon.stub().resolves(null),
+      envFor: sinon.stub().callsFake(() => ({ ...process.env, ENABLE_GO_IOS_AGENT: 'yes' })),
+      stop: sinon.stub().resolves(),
+      touch: sinon.stub().resolves(),
+    };
     sinon.stub(process, 'kill');
     const real = Container.get.bind(Container);
     sinon.stub(Container, 'get').callsFake((token: any) => {
       if (token === PortAllocator) return allocator;
+      if (token === IOSTunnels) return tunnels as any;
       if (token === ProcessRegistry) return { track: () => undefined } as any;
       return real(token);
     });
@@ -125,12 +140,12 @@ describe('iOS stream port leases (fake processes, real sockets, scratch DB)', ()
       updateDevice: async (udid: string, _host: string, data: any) =>
         Object.assign(devices.get(udid), data),
     } as any);
-    sinon.stub(childProcess, 'spawn').callsFake(((command: string, args: string[]) => {
+    sinon.stub(childProcess, 'spawn').callsFake(((command: string, args: string[], opts?: any) => {
       let server: net.Server | undefined;
       if (command === 'iproxy') {
         server = listenNow(Number(args[args.length - 1].split(':')[0]));
       }
-      const proc = new FakeProcess(command, args, server);
+      const proc = new FakeProcess(command, args, server, opts);
       spawned.push(proc);
       return proc;
     }) as any);
@@ -153,7 +168,6 @@ describe('iOS stream port leases (fake processes, real sockets, scratch DB)', ()
     });
     sinon.stub(ios, 'cleanupOrphanTunnels').resolves();
     sinon.stub(ios, 'killStaleProcesses').resolves();
-    sinon.stub(ios, 'ensureTunnel').resolves(null);
     sinon.stub(ios, 'detectWDABundleId').resolves('com.test.WebDriverAgentRunner.xctrunner');
     sinon.stub(ios, 'updateWDASettings').resolves();
     sinon.stub(ios, 'createWDASession').resolves(null);
@@ -214,6 +228,25 @@ describe('iOS stream port leases (fake processes, real sockets, scratch DB)', ()
     expect(mjpeg?.purpose).to.equal('mjpeg');
   });
 
+  it("runs the iPhone's WDA through the iPhone's own go-ios tunnel", async () => {
+    tunnels.ensure.resolves(12100);
+    tunnels.envFor.callsFake((udid: string) => ({
+      ...process.env,
+      ENABLE_GO_IOS_AGENT: 'yes',
+      ...(udid === IPHONE ? { GO_IOS_AGENT_PORT: '12100' } : {}),
+    }));
+    sinon.stub(ios, 'isGoIOSAvailable').resolves(true);
+
+    await ios.startStream(IPHONE);
+
+    expect(tunnels.ensure.calledWith(IPHONE)).to.equal(true);
+    expect(ios.getStreamStatus(IPHONE)?.tunnelPort).to.equal(12100);
+    const runwda = spawned.find((p) => p.command === ios.goIOSPath && p.args[0] === 'runwda');
+    expect(runwda?.opts?.env?.GO_IOS_AGENT_PORT, "runwda finds this phone's tunnel").to.equal(
+      '12100',
+    );
+  });
+
   it('stopping a stale iOS session never deletes a lease another device holds', async () => {
     // The S9+ has since been leased the port the stale iPhone session names.
     const now = Date.now();
@@ -231,7 +264,7 @@ describe('iOS stream port leases (fake processes, real sockets, scratch DB)', ()
       wdaProcess: null,
       forwardWDAProcess: null,
       forwardMJPEGProcess: null,
-      tunnelProcess: null,
+      tunnelPort: null,
       wdaPort: scratch.base + 50,
       mjpegPort: scratch.base,
       status: 'error',
