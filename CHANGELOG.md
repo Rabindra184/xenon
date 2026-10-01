@@ -6,6 +6,42 @@ This project follows [Semantic Versioning](https://semver.org/). Releases are
 published to npm automatically when `package.json`'s `version` changes on `main`
 (see `.github/workflows/npm-publish.yml`).
 
+## 2.6.2
+
+**Copy a build's failed tests.** A build's page had a **Retry failed**
+button that did nothing but say retry would come later. The server can't
+re-run a client's tests, so the button now copies them instead, ready to
+paste into a CI re-run or a ticket.
+
+No database migration, and no configuration to change.
+
+### Changed
+
+- **"Retry failed" is now "Copy failed tests"** (#399). It copies each
+  failed session (failed, error or timeout), oldest first, with:
+  - its test;
+  - the first line of why it failed;
+  - its phone and its session id;
+  - a header with the counts.
+
+  With sessions selected, it copies the failed ones among them. When
+  nothing failed, it is disabled and says so.
+- **CI runs off the actions GitHub runs on deprecated Node 20.**
+  `actions/checkout` is on v7 and `actions/setup-node` on v6, both Node 24.
+  `setup-node` stays below v7 until the publish job's `npm install` is
+  confirmed without v7's placeholder token.
+
+### Known issues
+
+- **The session list still returns at most the newest 500 sessions.**
+- **Install by path is refused for a node's phone**: a path names a file on
+  one machine.
+- **BiDi and session WebSockets aren't routed through a hub.** A session's
+  `webSocketUrl` points at the node, so nodes must not sit on untrusted
+  networks.
+- **Only one iOS 17+ iPhone per Mac can stream at a time**, because every
+  go-ios tunnel binds the same port.
+
 ## 2.6.1
 
 **A phone is free again seconds after its recording ends.** A recording
