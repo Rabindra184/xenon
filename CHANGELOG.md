@@ -6,6 +6,78 @@ This project follows [Semantic Versioning](https://semver.org/). Releases are
 published to npm automatically when `package.json`'s `version` changes on `main`
 (see `.github/workflows/npm-publish.yml`).
 
+## 2.6.0
+
+**A session's page leads with how it ended and why.** The page now opens
+with the result and the test's name, then the phone, where it ran, who ran
+it, when and for how long. Four tiles follow: the result, the commands, the
+self-healing and the slowest command.
+
+The page also shows:
+- the reason a failed session failed, with the first failed command's own
+  error and the AI analysis the server had stored but never shown;
+- every selector self-healing fixed;
+- a timeline of the commands and the screenshots they kept, in place of the
+  two placeholder tabs.
+
+A running session's page follows it live.
+
+No database migration, and no configuration to change.
+
+### Changed
+
+- **The failure panel shows for `error` and `timeout` sessions too**, not
+  only `failed` ones (#395).
+- **Capabilities are labelled Requested and Actual** (they were "desired"
+  and "session"), and long names wrap instead of being cut.
+- **The breadcrumb shows a short session id.** The full id, with a copy
+  button, is in the new Details card.
+
+### Added
+
+- **The session page's outcome header and tiles** (#395). The tiles share
+  their look with the Sessions page's summary strip.
+- **Why it failed:** the reason, the first failed command and its error,
+  and the AI analysis.
+  - Only `**bold**` and `` `code` `` are rendered in the analysis, never
+    HTML, and a long analysis folds behind "Show all".
+  - Copy includes the analysis.
+- **Self-healing panel**, when something was healed: each selector the test
+  asked for, what it healed to, the tier and the confidence.
+- **Timeline and Screenshots tabs.**
+  - Timeline places every command on one time axis, failed ones red and
+    healed ones amber.
+  - Screenshots shows the images commands kept, each opening full size.
+  - Every command row shows its duration.
+  - An empty tab is dimmed instead of showing "0".
+- **Details card:** session id, build, UDID, platform, where it ran, who ran
+  it, start and end, tags, and the iOS performance trace's download when the
+  session kept one.
+- **Live updates:**
+  - A running session's page asks for its status and commands every 4 s.
+  - When the session ends, the page loads its device and debug logs once
+    more.
+- **`GET /xenon/api/session/:id` carries `owner` and `ranOn`**, as the
+  session list does since 2.5.0.
+
+### Fixed
+
+- **Healed commands are marked in the command list again.** The row read a
+  `healed` field the server never writes; the server writes `is_healed`.
+- **"Errors only" also keeps commands marked `is_error`.**
+
+### Known issues
+
+- **The session list still returns at most the newest 500 sessions.**
+- **"Retry failed" is still a placeholder.**
+- **Install by path is refused for a node's phone**: a path names a file on
+  one machine.
+- **BiDi and session WebSockets aren't routed through a hub.** A session's
+  `webSocketUrl` points at the node, so nodes must not sit on untrusted
+  networks.
+- **Only one iOS 17+ iPhone per Mac can stream at a time**, because every
+  go-ios tunnel binds the same port.
+
 ## 2.5.0
 
 **The Sessions page opens on every session, with a summary.**
