@@ -48,6 +48,8 @@ function makeOrch(overrides: any = {}) {
     overrides.ensureMjpegPortFn ?? sinon.stub().callsFake(async () => 9100);
   // This server's own phones, unless a test says otherwise.
   const nodeSourceFn = overrides.nodeSourceFn ?? sinon.stub().resolves(null);
+  // Where a stopped recording hands its phone: the preview's leave path.
+  const leaveDeviceFn = overrides.leaveDeviceFn ?? sinon.stub();
   const eventMgr =
     overrides.eventMgr ?? {
       emitRecordingStarted: sinon.stub(),
@@ -66,6 +68,7 @@ function makeOrch(overrides: any = {}) {
     unblockDeviceFn,
     ensureMjpegPortFn,
     nodeSourceFn,
+    leaveDeviceFn,
     now: overrides.now,
   });
   return {
@@ -79,6 +82,7 @@ function makeOrch(overrides: any = {}) {
     eventMgr,
     ensureMjpegPortFn,
     nodeSourceFn,
+    leaveDeviceFn,
   };
 }
 
@@ -158,6 +162,20 @@ describe('RecordingOrchestrator: a node’s phone', () => {
     await orch.stop(groupId);
 
     expect(relay.close.calledOnce).to.equal(true);
+  });
+
+  // This server runs no stream of a node's phone, so nobody here can be
+  // watching it: its hold goes as soon as the recording is finalized.
+  it('releases a node phone’s hold at once, not through the leave path', async () => {
+    const relay = relayFor('N1', 5555);
+    const store = rowStore();
+    const { orch, unblockDeviceFn, leaveDeviceFn } = makeOrch({ nodeSourceFn: relay.fn, store });
+
+    const { groupId } = await orch.start({ udids: ['N1'], actorId: 'alice' });
+    await orch.stop(groupId);
+
+    expect(unblockDeviceFn.calledWith('N1', 'h')).to.equal(true);
+    expect(leaveDeviceFn.called).to.equal(false);
   });
 
   it('closes the relay when that phone’s recording can’t start', async () => {
@@ -365,7 +383,7 @@ describe('RecordingOrchestrator.stop', () => {
 
   // compositeOutputPath and per-device paths resolve through ArtifactStore.
   useArtifactStore();
-  it('finalizes, releases gate, releases blocks, emits stopped', async () => {
+  it('finalizes, releases gate, hands each phone to the leave path, emits stopped', async () => {
     const store = {
       listGroup: sinon.stub().resolves([
         {
@@ -393,16 +411,63 @@ describe('RecordingOrchestrator.stop', () => {
     };
     const unblockDeviceFn = sinon.stub().resolves();
     const eventMgr = { emitRecordingStopped: sinon.stub() };
-    const { orch } = makeOrch({ store, gate, videoPipeline, unblockDeviceFn, eventMgr });
+    const { orch, leaveDeviceFn } = makeOrch({
+      store,
+      gate,
+      videoPipeline,
+      unblockDeviceFn,
+      eventMgr,
+    });
     await orch.stop('grp-1');
     expect(videoPipeline.stopRecording.callCount).to.equal(2);
     expect(store.finalize.callCount).to.equal(2);
     expect(gate.release.callCount).to.equal(2);
-    expect(unblockDeviceFn.callCount).to.equal(2);
+    // The leave path releases each hold once nobody watches the phone; the
+    // recording doesn't release it itself.
+    expect(leaveDeviceFn.getCalls().map((c: any) => c.args[0])).to.deep.equal(['U1', 'U2']);
+    expect(unblockDeviceFn.called).to.equal(false);
     expect(eventMgr.emitRecordingStopped.callCount).to.equal(1);
   });
 
-  it('marks FAILED when ffmpeg stop throws but still releases the block', async () => {
+  // A recording starts its phone's stream when none runs
+  // (ensureMjpegForRecording). Taking that running stream for a preview kept
+  // the phone held until the stream's idle watchdog, ten minutes later.
+  it('hands the phone to the leave path even while its stream runs', async () => {
+    const { default: AndroidStreamService } =
+      await import('../../src/device-managers/android/AndroidStreamService');
+    const had = Container.has(AndroidStreamService as any);
+    const previous = had ? Container.get(AndroidStreamService as any) : undefined;
+    Container.set(AndroidStreamService as any, {
+      getStreamStatus: () => ({ status: 'running', viewerCount: 0 }),
+    });
+    try {
+      const store = {
+        listGroup: sinon.stub().resolves([
+          {
+            id: 'r1',
+            device_udid: 'U1',
+            device_host: '127.0.0.1',
+            file_path: '/nonexistent/r1.mp4',
+            started_at: new Date(Date.now() - 5000),
+          },
+        ]),
+        finalize: sinon.stub().resolves({}),
+      };
+      const videoPipeline = {
+        startRecording: sinon.stub(),
+        stopRecording: sinon.stub().resolves('/tmp/x.mp4'),
+        stopComposite: sinon.stub().resolves(null),
+      };
+      const { orch, leaveDeviceFn } = makeOrch({ store, videoPipeline });
+      await orch.stop('grp-1');
+      expect(leaveDeviceFn.calledOnceWith('U1')).to.equal(true);
+    } finally {
+      if (had) Container.set(AndroidStreamService as any, previous);
+      else Container.remove(AndroidStreamService as any);
+    }
+  });
+
+  it('marks FAILED when ffmpeg stop throws but still hands the phone on', async () => {
     const store = {
       listGroup: sinon.stub().resolves([
         {
@@ -420,11 +485,10 @@ describe('RecordingOrchestrator.stop', () => {
       stopRecording: sinon.stub().rejects(new Error('ffmpeg died')),
       stopComposite: sinon.stub().resolves(null),
     };
-    const unblockDeviceFn = sinon.stub().resolves();
-    const { orch } = makeOrch({ store, videoPipeline, unblockDeviceFn });
+    const { orch, leaveDeviceFn } = makeOrch({ store, videoPipeline });
     await orch.stop('grp-1');
     expect(store.finalize.firstCall.args[1].status).to.equal('FAILED');
-    expect(unblockDeviceFn.calledWith('U1', '127.0.0.1')).to.equal(true);
+    expect(leaveDeviceFn.calledOnceWith('U1')).to.equal(true);
   });
 });
 

@@ -32,6 +32,9 @@ function makeOrch(overrides: any = {}) {
     };
   const blockDeviceFn = overrides.blockDeviceFn ?? sinon.stub().resolves();
   const unblockDeviceFn = overrides.unblockDeviceFn ?? sinon.stub().resolves();
+  // Where a stopped recording hands its phone: the preview's leave path,
+  // which releases the hold once nobody watches it.
+  const leaveDeviceFn = overrides.leaveDeviceFn ?? sinon.stub();
   const eventMgr =
     overrides.eventMgr ?? {
       emitRecordingStarted: sinon.stub(),
@@ -48,8 +51,19 @@ function makeOrch(overrides: any = {}) {
     blockDeviceFn,
     eventMgr: eventMgr as any,
     unblockDeviceFn,
+    leaveDeviceFn,
   });
-  return { orch, busyPrecheck, store, gate, videoPipeline, blockDeviceFn, unblockDeviceFn, eventMgr };
+  return {
+    orch,
+    busyPrecheck,
+    store,
+    gate,
+    videoPipeline,
+    blockDeviceFn,
+    unblockDeviceFn,
+    leaveDeviceFn,
+    eventMgr,
+  };
 }
 
 describe('Cross-workflow integration: manual + automation safety (6 scenarios)', () => {
@@ -114,8 +128,8 @@ describe('Cross-workflow integration: manual + automation safety (6 scenarios)',
     expect(new Set(passedSessionIds).size).to.equal(2);
   });
 
-  it('4. ffmpeg stop throws (simulated device unplug) — Recording marked FAILED, manual block released', async () => {
-    const { orch, store, unblockDeviceFn, videoPipeline } = makeOrch({
+  it('4. ffmpeg stop throws (simulated device unplug) — Recording marked FAILED, phone handed on to release its block', async () => {
+    const { orch, store, leaveDeviceFn } = makeOrch({
       store: {
         listGroup: sinon.stub().resolves([
           {
@@ -136,7 +150,7 @@ describe('Cross-workflow integration: manual + automation safety (6 scenarios)',
     await orch.stop('grp-X');
     const finalizeArgs = store.finalize.firstCall.args[1];
     expect(finalizeArgs.status).to.equal('FAILED');
-    expect(unblockDeviceFn.calledWith('U1', '127.0.0.1')).to.equal(true);
+    expect(leaveDeviceFn.calledOnceWith('U1')).to.equal(true);
   });
 
   it('5. server restart with orphan RECORDING row — recoverOnBoot marks FAILED + releases block', async () => {

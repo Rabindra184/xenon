@@ -127,6 +127,20 @@ export interface UnblockDeviceFn {
   (udid: string, host: string): Promise<void>;
 }
 
+/**
+ * The live preview's leave path, as a page that stops watching uses it: after
+ * a short grace, the phone's preview is stopped and its hold released unless
+ * someone watches it or another recording reads it. Imported when called:
+ * control.ts is a router, loaded long after this service.
+ */
+function leaveDevice(udid: string): void {
+  void import('../../app/routers/control')
+    .then(({ previewLeaves }) => previewLeaves.leave(udid))
+    .catch((err: any) => {
+      recLog.warn(`Could not hand ${udid} to the preview's leave path: ${err?.message ?? err}`);
+    });
+}
+
 export interface OrchestratorDeps {
   busyPrecheck?: BusyPrecheck;
   store?: RecordingStore;
@@ -151,6 +165,12 @@ export interface OrchestratorDeps {
    * finalizing a recording never spawns ffmpeg.
    */
   probeDurationMsFn?: (filePath: string) => Promise<number | undefined>;
+  /**
+   * Hands a phone whose recording has ended to the live preview's leave path
+   * (control.ts previewLeaves), which releases its hold once nobody watches
+   * it. Injected in unit tests.
+   */
+  leaveDeviceFn?: (udid: string) => void;
   /** Wall clock for recording timings. Injected in unit tests. */
   now?: () => number;
 }
@@ -163,6 +183,7 @@ export class RecordingOrchestrator {
   public ensureMjpegPortFn: (udid: string) => Promise<number>;
   public nodeSourceFn: (udid: string, actorId: string) => Promise<RecordingSource | null>;
   public probeDurationMsFn: (filePath: string) => Promise<number | undefined>;
+  public leaveDeviceFn: (udid: string) => void;
   public now: () => number;
   private readonly _deps: Required<
     Omit<
@@ -172,6 +193,7 @@ export class RecordingOrchestrator {
       | 'ensureMjpegPortFn'
       | 'nodeSourceFn'
       | 'probeDurationMsFn'
+      | 'leaveDeviceFn'
       | 'now'
     >
   >;
@@ -197,6 +219,7 @@ export class RecordingOrchestrator {
     this.ensureMjpegPortFn = deps.ensureMjpegPortFn ?? ensureMjpegForRecording;
     this.nodeSourceFn = deps.nodeSourceFn ?? ((udid, actorId) => recordingSourceFor(udid, actorId));
     this.probeDurationMsFn = deps.probeDurationMsFn ?? probeVideoDurationMs;
+    this.leaveDeviceFn = deps.leaveDeviceFn ?? leaveDevice;
     this.now = deps.now ?? Date.now;
   }
 
@@ -466,6 +489,7 @@ export class RecordingOrchestrator {
       failReason = err?.message ?? 'ffmpeg_stop_failed';
     }
     // Its ffmpeg is done reading; a group's composite stops before this.
+    const fromNode = this.nodeSources.has(r.id);
     await this.closeNodeSource(r.id);
     // How long the video actually is, not how long the session was open. Those
     // agree only while capture keeps up: a recording whose device died at 26s
@@ -510,7 +534,7 @@ export class RecordingOrchestrator {
       recLog.warn(`finalize failed for ${r.id}: ${err?.message}`);
     }
     this.gate.release(r.id);
-    await this.releaseLockIfNotInheritedFromMosaic(r.device_udid, r.device_host ?? '127.0.0.1');
+    await this.letGoOfDevice(r.device_udid, r.device_host ?? '127.0.0.1', fromNode);
     if (durationMs !== undefined) {
       durationHistogram.record(durationMs, {
         outcome: status === 'STOPPED' ? OUTCOME.SUCCESS : OUTCOME.FAILURE,
@@ -712,56 +736,26 @@ export class RecordingOrchestrator {
   }
 
   /**
-   * Stop-time unblock that respects the mosaic preview. If the mosaic's
-   * stream service is still actively streaming this device (its lock value
-   * is `manual_${udid}` — same string the orchestrator wrote, but conceptually
-   * owned by the mosaic), we leave the lock in place so the preview keeps
-   * working and so automation doesn't grab the device underneath it.
+   * Let go of a phone whose recording has ended.
+   *
+   * This server's own phone goes to the live preview's leave path, as a page
+   * that stops watching it does. After a short grace, which also lets this
+   * recording's own ffmpeg connection drop, its preview is stopped and its
+   * hold released, unless someone watches it or another recording reads it.
+   * Whether its stream is running says nothing: the recording starts the
+   * stream itself when none runs (ensureMjpegForRecording). Taking that
+   * stream for a preview's kept the phone held, with nobody watching, until
+   * the stream's idle watchdog ten minutes later.
+   *
+   * A node's phone has no stream on this server, so nobody here watches it:
+   * its hold goes at once.
    */
-  private async releaseLockIfNotInheritedFromMosaic(udid: string, host: string): Promise<void> {
-    let mosaicStreamRunning = false;
-    try {
-      // Lazy import — keeps the orchestrator usable in tests that don't
-      // wire stream services into the DI container.
-      const { default: IOSStreamService } =
-        await import('../../device-managers/ios/IOSStreamService');
-      const ios = Container.get(IOSStreamService);
-      const iosSession = ios.getStreamStatus(udid);
-      if (iosSession?.status === 'running') mosaicStreamRunning = true;
-    } catch {
-      /* ignore — service may not be registered in this context */
-    }
-    if (!mosaicStreamRunning) {
-      try {
-        const { default: AndroidStreamService } =
-          await import('../../device-managers/android/AndroidStreamService');
-        const android = Container.get(AndroidStreamService);
-        const aSession = android.getStreamStatus(udid);
-        if (aSession?.status === 'running') mosaicStreamRunning = true;
-      } catch {
-        /* ignore */
-      }
-    }
-    // H.264 preview (androidH264) has no MJPEG session — check it too or we
-    // drop the mosaic lock underneath a live WebCodecs tile.
-    if (!mosaicStreamRunning) {
-      try {
-        const { default: AndroidH264StreamService } =
-          await import('../../device-managers/android/AndroidH264StreamService');
-        if (Container.get(AndroidH264StreamService).getMultiplexer(udid)) {
-          mosaicStreamRunning = true;
-        }
-      } catch {
-        /* ignore */
-      }
-    }
-    if (mosaicStreamRunning) {
-      recLog.info(
-        `Recording stop: keeping manual lock on ${udid} because the mosaic preview is still active.`,
-      );
+  private async letGoOfDevice(udid: string, host: string, fromNode: boolean): Promise<void> {
+    if (fromNode) {
+      await this.tryUnblock(udid, host);
       return;
     }
-    await this.tryUnblock(udid, host);
+    this.leaveDeviceFn(udid);
   }
 
   async addBookmark(
