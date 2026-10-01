@@ -13,8 +13,6 @@ interface Props {
   onSearchChange: (v: string) => void;
   totalMatching: number;
   totalUnfiltered: number;
-  /** The server's list stopped at its limit: these are the newest only. */
-  capped?: boolean;
 }
 
 export const BuildFilterBar: React.FC<Props> = ({
@@ -25,7 +23,6 @@ export const BuildFilterBar: React.FC<Props> = ({
   onSearchChange,
   totalMatching,
   totalUnfiltered,
-  capped = false,
 }) => {
   const counts = buildStatusCounts(sessions);
   return (
@@ -63,7 +60,7 @@ export const BuildFilterBar: React.FC<Props> = ({
         />
       </div>
       <span className="ml-auto text-[11px] text-[var(--text-dim)] tabular-nums whitespace-nowrap">
-        {totalMatching} of {totalUnfiltered} sessions{capped ? ' (the newest)' : ''}
+        {totalMatching} of {totalUnfiltered} sessions
       </span>
       <div className="relative w-64 shrink-0">
         <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-[var(--text-dim)]" />

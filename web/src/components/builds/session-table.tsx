@@ -3,6 +3,8 @@ import type { ISession } from '../../interfaces/ISession';
 import type { StatusKey } from './derive';
 import { filterSessions } from './derive';
 import { SessionRow } from './session-row';
+import { SESSION_PAGE_SIZE } from './use-builds-data';
+import { Button } from '../ui/button';
 
 interface Props {
   sessions: ISession[];
@@ -20,6 +22,12 @@ interface Props {
   onOpenRow: (s: ISession) => void;
   /** Shown when there are no sessions at all, before any filter. */
   empty: React.ReactNode;
+  /** Older sessions may exist beyond the loaded ones. */
+  hasMore: boolean;
+  loadingMore: boolean;
+  onShowMore: () => void;
+  /** All the sessions in scope, loaded or not (the summary's count); null when not known yet. */
+  total: number | null;
 }
 
 const th = 'px-3 py-2 text-[11px] font-medium text-[var(--text-dim)]';
@@ -36,6 +44,10 @@ export const SessionTable: React.FC<Props> = ({
   onToggleSelectAll,
   onOpenRow,
   empty,
+  hasMore,
+  loadingMore,
+  onShowMore,
+  total,
 }) => {
   const filtered = useMemo(
     () => filterSessions(sessions, statusFilter, searchQuery),
@@ -109,6 +121,24 @@ export const SessionTable: React.FC<Props> = ({
           ))}
         </tbody>
       </table>
+      {hasMore && (
+        <div className="flex items-center justify-between gap-3 px-4 py-3 border-b border-[var(--border)]">
+          <span className="text-[11px] text-[var(--text-dim)] tabular-nums">
+            {total === null
+              ? `Showing the newest ${sessions.length.toLocaleString('en-US')} sessions`
+              : `Showing the newest ${sessions.length.toLocaleString('en-US')} of ${total.toLocaleString('en-US')} sessions`}
+          </span>
+          <Button
+            type="button"
+            variant="secondary"
+            size="sm"
+            onClick={onShowMore}
+            disabled={loadingMore}
+          >
+            {loadingMore ? 'Loading…' : `Show ${SESSION_PAGE_SIZE} more`}
+          </Button>
+        </div>
+      )}
       {anyUnnamed && (
         <p className="px-4 py-3 text-[11px] text-[var(--text-dim)]">
           Unnamed sessions show their app. Name a test with{' '}

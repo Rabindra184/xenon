@@ -21,8 +21,10 @@ import {
 } from '../../services/device-access/sessionVisibility';
 import { HealEtalonService } from '../../services/healing/HealEtalonService';
 import {
+  cursorWhere,
   describeSessions,
-  InvalidSinceError,
+  InvalidQueryError,
+  parseLimit,
   parseSince,
   sessionOutcome,
   summarizeSessions,
@@ -63,22 +65,32 @@ async function isValidSession(request: Request, response: Response, next: NextFu
   }
 }
 
-// A `since` that isn't a date is refused, rather than ignored into a list
-// of every session.
-function sinceOf(request: Request, response: Response): Date | null | undefined {
+// A query parameter that can't be read is refused, rather than ignored into
+// a list of every session. Undefined when it was refused.
+function readQuery<T>(response: Response, read: () => T): T | undefined {
   try {
-    return parseSince(request.query.since);
+    return read();
   } catch (err) {
-    if (!(err instanceof InvalidSinceError)) throw err;
-    response.status(400).json({ error: 'invalid_since', message: err.message });
+    if (!(err instanceof InvalidQueryError)) throw err;
+    response.status(400).json({ error: err.code, message: err.message });
     return undefined;
   }
+}
+
+function sinceOf(request: Request, response: Response): Date | null | undefined {
+  return readQuery(response, () => parseSince(request.query.since));
 }
 
 async function getSessions(request: Request, response: Response) {
   const { buildId, query, status, platform } = request.query;
   const since = sinceOf(request, response);
   if (since === undefined) return;
+  const limit = readQuery(response, () => parseLimit(request.query.limit));
+  if (limit === undefined) return;
+  const cursor = readQuery(response, () =>
+    cursorWhere(request.query.before, request.query.beforeId),
+  );
+  if (cursor === undefined) return;
 
   const where: any = {};
 
@@ -111,12 +123,13 @@ async function getSessions(request: Request, response: Response) {
 
   // The team rule is part of the query, so `take` counts the caller's sessions.
   const visible = await visibleSessionWhere(authOf(request));
+  const and = [where, ...(cursor ? [cursor] : []), ...(visible ? [visible] : [])];
   const sessions = await prisma.session.findMany({
-    orderBy: {
-      createdAt: 'desc',
-    },
-    where: visible ? { AND: [where, visible] } : where,
-    take: 500,
+    // Newest first; the id orders rows created in the same millisecond, so a
+    // page's cursor (its last row) continues exactly where it stopped.
+    orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+    where: and.length === 1 ? where : { AND: and },
+    take: limit,
   });
   return response.status(200).json(await describeSessions(sessions));
 }

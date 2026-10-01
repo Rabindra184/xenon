@@ -81,6 +81,53 @@ describe('Sessions page data', () => {
     });
 
   describe('GET /session', () => {
+    // Pages, newest first: limit, and a cursor at the last row of the page
+    // before (before = its createdAt, beforeId = its id). The id breaks ties,
+    // so rows created in the same millisecond are neither skipped nor repeated.
+    describe('paging', () => {
+      const t = (min: number) => new Date(now - min * MIN);
+      const ids = (res: any) => res.body.map((r: any) => r.id);
+      beforeEach(async () => {
+        await session({ id: 'a', createdAt: t(1) });
+        await session({ id: 'b', createdAt: t(2) });
+        await session({ id: 'c', createdAt: t(2) });
+        await session({ id: 'd', createdAt: t(3) });
+      });
+
+      it('keeps to the limit, newest first, the id breaking ties', async () => {
+        expect(ids(await request(app()).get('/session?limit=2'))).to.deep.equal(['a', 'c']);
+      });
+
+      it('continues after the cursor, neither skipping nor repeating a row', async () => {
+        const res = await request(app()).get(
+          `/session?limit=2&before=${t(2).toISOString()}&beforeId=c`,
+        );
+        expect(ids(res)).to.deep.equal(['b', 'd']);
+      });
+
+      it('takes a cursor with no id as everything older than its time', async () => {
+        const res = await request(app()).get(`/session?before=${t(2).toISOString()}`);
+        expect(ids(res)).to.deep.equal(['d']);
+      });
+
+      it('refuses a limit or a cursor it cannot read', async () => {
+        for (const q of ['limit=abc', 'limit=0', 'limit=-5', 'limit=2.5']) {
+          const res = await request(app()).get(`/session?${q}`);
+          expect(res.status, q).to.equal(400);
+          expect(res.body.error, q).to.equal('invalid_limit');
+        }
+        const res = await request(app()).get('/session?before=soon');
+        expect(res.status).to.equal(400);
+        expect(res.body.error).to.equal('invalid_before');
+      });
+
+      it('answers a limit over the most with the most, not an error', async () => {
+        const res = await request(app()).get('/session?limit=999999');
+        expect(res.status).to.equal(200);
+        expect(ids(res)).to.deep.equal(['a', 'c', 'b', 'd']);
+      });
+    });
+
     it('keeps the sessions created since the given time, newest first', async () => {
       await session({ id: 'old', createdAt: ago(3 * HOUR) });
       await session({ id: 'recent', createdAt: ago(30 * MIN) });
