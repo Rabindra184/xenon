@@ -1,7 +1,7 @@
 import React, { useState, useCallback, useMemo } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { MonitorPlay, ListChecks } from 'lucide-react';
-import { SESSION_LIST_LIMIT, useBuildsData } from './use-builds-data';
+import { useBuildsData } from './use-builds-data';
 import { useSessionSummary } from './use-session-summary';
 import { BuildListRail } from './build-list-rail';
 import { BuildFilterBar } from './build-filter-bar';
@@ -150,7 +150,6 @@ export const BuildsPage: React.FC = () => {
       onSearchChange={setSessionSearch}
       totalMatching={filterSessions(data.sessions, statusFilter, sessionSearch).length}
       totalUnfiltered={data.sessions.length}
-      capped={data.sessions.length >= SESSION_LIST_LIMIT}
     />
   );
 
@@ -207,6 +206,10 @@ export const BuildsPage: React.FC = () => {
                 onToggleSelect={toggleSelect}
                 onToggleSelectAll={toggleSelectAll}
                 onOpenRow={handleOpenRow}
+                hasMore={data.hasMore}
+                loadingMore={data.loadingMore}
+                onShowMore={data.showMore}
+                total={summary?.current.total ?? null}
                 empty={
                   data.loading ? null : (
                     <div className="px-6 py-6">
@@ -245,6 +248,10 @@ export const BuildsPage: React.FC = () => {
                 onToggleSelect={toggleSelect}
                 onToggleSelectAll={toggleSelectAll}
                 onOpenRow={handleOpenRow}
+                hasMore={data.hasMore}
+                loadingMore={data.loadingMore}
+                onShowMore={data.showMore}
+                total={summary?.current.total ?? null}
                 empty={
                   <div className="px-6 py-12 text-center text-xs text-[var(--text-dim)]">
                     No sessions in this build yet. Trigger one from your test runner.

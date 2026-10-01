@@ -33,12 +33,20 @@ export default class XenonApiService {
       platform?: string;
       /** ISO start of the period: only sessions created since then. */
       since?: string;
+      /** Rows per answer, newest first (the server's default is 500, its most 2000). */
+      limit?: number;
+      /** The next page: after this row's createdAt and id. */
+      before?: string;
+      beforeId?: string;
     } = {},
   ) {
     const ts = Date.now();
     let url = `/session?t=${ts}`;
     if (options.buildId) url += `&buildId=${encodeURIComponent(options.buildId)}`;
     if (options.since) url += `&since=${encodeURIComponent(options.since)}`;
+    if (options.limit) url += `&limit=${options.limit}`;
+    if (options.before) url += `&before=${encodeURIComponent(options.before)}`;
+    if (options.beforeId) url += `&beforeId=${encodeURIComponent(options.beforeId)}`;
     if (options.query) url += `&query=${encodeURIComponent(options.query)}`;
     if (options.status) url += `&status=${encodeURIComponent(options.status)}`;
     if (options.platform) url += `&platform=${encodeURIComponent(options.platform)}`;

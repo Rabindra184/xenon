@@ -33,18 +33,57 @@ export function sessionOutcome(status: string | null | undefined): SessionOutcom
   }
 }
 
-export class InvalidSinceError extends Error {
-  constructor() {
-    super('since must be an ISO 8601 date');
+/** A query parameter that can't be read: answered 400 with `code`. */
+export class InvalidQueryError extends Error {
+  constructor(
+    readonly code: string,
+    message: string,
+  ) {
+    super(message);
   }
 }
 
-/** The `since` query parameter: null when absent; a date, or InvalidSinceError. */
-export function parseSince(raw: unknown): Date | null {
+function parseDate(raw: unknown, name: string): Date | null {
   if (raw === undefined || raw === '') return null;
   const at = typeof raw === 'string' ? Date.parse(raw) : NaN;
-  if (!Number.isFinite(at)) throw new InvalidSinceError();
+  if (!Number.isFinite(at)) {
+    throw new InvalidQueryError(`invalid_${name}`, `${name} must be an ISO 8601 date`);
+  }
   return new Date(at);
+}
+
+/** The `since` query parameter: null when absent; a date, or InvalidQueryError. */
+export function parseSince(raw: unknown): Date | null {
+  return parseDate(raw, 'since');
+}
+
+/** GET /session's page size when none is asked for, as before paging. */
+export const SESSION_PAGE_DEFAULT = 500;
+/** The most rows one GET /session answers; a larger limit gets this many. */
+export const SESSION_PAGE_MAX = 2000;
+
+/** The `limit` query parameter: a whole number from 1, at most SESSION_PAGE_MAX. */
+export function parseLimit(raw: unknown): number {
+  if (raw === undefined || raw === '') return SESSION_PAGE_DEFAULT;
+  const n = typeof raw === 'string' && /^\d+$/.test(raw) ? Number(raw) : NaN;
+  if (!Number.isInteger(n) || n < 1) {
+    throw new InvalidQueryError('invalid_limit', 'limit must be a whole number from 1');
+  }
+  return Math.min(n, SESSION_PAGE_MAX);
+}
+
+/**
+ * Where the next page starts: after the last row of the page before, given
+ * as its `createdAt` (`before`) and `id` (`beforeId`). Pages go newest first
+ * by createdAt then id, so rows created in the same millisecond are neither
+ * skipped nor repeated. Without `beforeId`, everything older than `before`.
+ * Null when there is no cursor.
+ */
+export function cursorWhere(before: unknown, beforeId: unknown): Record<string, unknown> | null {
+  const at = parseDate(before, 'before');
+  if (!at) return null;
+  if (typeof beforeId !== 'string' || !beforeId) return { createdAt: { lt: at } };
+  return { OR: [{ createdAt: { lt: at } }, { createdAt: at, id: { lt: beforeId } }] };
 }
 
 export interface SessionOwner {
