@@ -195,6 +195,56 @@ describe('nodePhoneControl', () => {
     });
   });
 
+  it('streams an upload to the node as it came, and waits as long as an install takes', async () => {
+    const node = express();
+    let got: { type?: string; body: string } | undefined;
+    node.post('/xenon/api/control/p/upload-install', (req, res) => {
+      const chunks: Buffer[] = [];
+      req.on('data', (c: Buffer) => chunks.push(c));
+      req.on('end', () => {
+        got = { type: req.headers['content-type'], body: Buffer.concat(chunks).toString() };
+        // Past the ordinary limit: an install answers when it is done.
+        setTimeout(() => res.json({ success: true }), 400);
+      });
+    });
+    const origin = `http://127.0.0.1:${((await loopback.serve(node)).address() as any).port}`;
+    findDevice = async () => ({ udid: 'p', host: origin, nodeId: 'node-1' });
+    const a = express();
+    a.use(express.json());
+    a.use(
+      '/xenon/api/control',
+      nodePhoneControl({
+        findDevice: (udid) => findDevice(udid),
+        timeoutMs: 150,
+        installTimeoutMs: 5_000,
+      }),
+    );
+
+    const res = await request(a)
+      .post('/xenon/api/control/p/upload-install')
+      .attach('app', Buffer.from('apk-bytes'), 'build-42.apk');
+
+    expect(res.status, res.text).to.equal(200);
+    expect(got?.type).to.match(/^multipart\/form-data; boundary=/);
+    expect(got?.body).to.include('filename="build-42.apk"');
+    expect(got?.body).to.include('apk-bytes');
+  });
+
+  it('leaves the library install and Omni to this server for a node’s phone, not a cloud one', async () => {
+    for (const [method, action] of [
+      ['post', 'install-repository-app'],
+      ['get', 'omni-scan'],
+      ['post', 'test-locator'],
+    ] as const) {
+      findDevice = async () => ({ udid: 'p', host: 'http://10.0.0.9:4725', nodeId: 'node-1' });
+      await request(app())[method](`/xenon/api/control/p/${action}`).expect(299);
+      findDevice = async () => ({ udid: 'p', host: 'http://10.0.0.9:4725', cloud: '{"x":1}' });
+      const cloud = await request(app())[method](`/xenon/api/control/p/${action}`);
+      expect(cloud.status, action).to.equal(501);
+      expect(cloud.body.error, action).to.equal('not_available_for_cloud_phone');
+    }
+  });
+
   it('refuses a host it must never call', async () => {
     findDevice = async () => ({ udid: 'p', host: 'http://169.254.169.254', nodeId: 'node-1' });
     const res = await request(app()).get('/xenon/api/control/p/screenshot');

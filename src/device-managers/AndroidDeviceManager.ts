@@ -46,6 +46,14 @@ import { PluginContext } from '../PluginContext';
 import { Service } from 'typedi';
 
 /**
+ * How long `adb install` may take. It answers when the phone has installed
+ * the app, which for a large app on a slow phone is minutes; appium-adb's
+ * own limit (adbExecTimeout, 20 s) reported such installs as failed though
+ * they had worked. Within the 15 minutes a hub gives a node's install.
+ */
+export const ANDROID_INSTALL_TIMEOUT_MS = 10 * 60_000;
+
+/**
  * Whether a server set to `androidDeviceType` serves this phone: real phones,
  * emulators ('simulated'), or both, and with `bootedEmulators` only the
  * emulators that are up. Discovery and a plugged phone (onDeviceAdded) both
@@ -842,7 +850,9 @@ export default class AndroidDeviceManager implements IDeviceManager {
   async installApp(udid: string, appPath: string): Promise<void> {
     const { adbInstance } = await this.getAdb();
     if (!adbInstance) throw new Error('ADB is not available');
-    await adbInstance.adbExec(['-s', udid, 'install', '-r', appPath]);
+    await adbInstance.adbExec(['-s', udid, 'install', '-r', appPath], {
+      timeout: ANDROID_INSTALL_TIMEOUT_MS,
+    });
   }
 
   async uninstallApp(udid: string, bundleId: string): Promise<void> {

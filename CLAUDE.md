@@ -302,25 +302,36 @@ any handler runs:
 
 - `NODE_FORWARDED_CONTROL` (tap, swipe, text, keyevent, touchAndHold,
   screenshot, clipboard read and write, lock, unlock, display, uninstall,
-  apps, logs, shell, inspector/snapshot, and the live preview's
-  stream/start, stream/status, stream/leave, stream/stop and `GET stream`)
-  goes to the phone's node once, with the control token and none of the
-  caller's headers, and without a `ticket` query parameter. The node's
-  status, headers and body are relayed unchanged. An unreachable node is
-  `502 node_unreachable`, and one that hasn't started answering in 60 s is
-  `504 node_timeout`. Once it has, the answer runs as long as it runs: the
-  MJPEG `GET stream` lasts as long as its viewer.
+  apps, logs, shell, inspector/snapshot, `upload-install`, and the live
+  preview's stream/start, stream/status, stream/leave, stream/stop and
+  `GET stream`) goes to the phone's node once, with the control token and
+  none of the caller's headers, and without a `ticket` query parameter. An
+  upload (a multipart body) is streamed on as it came: the route's own
+  parser runs after the gate, so nothing on this server reads it. The
+  node's status, headers and body are relayed unchanged. An unreachable node
+  is `502 node_unreachable`, and one that hasn't started answering in 60 s
+  (15 min for an install, `NODE_INSTALL_TIMEOUT_MS`: the node answers when
+  the install is done) is `504 node_timeout`. Once it has, the answer runs
+  as long as it runs: the MJPEG `GET stream` lasts as long as its viewer.
 - `ANSWERED_HERE` runs here. `appium-session`: the session is routed
   through this server. `stream/ticket`: the viewer's ticket is this
   server's, minted after its team check.
+- `ANSWERED_HERE_FOR_NODES` runs here for a node's phone, and does the rest
+  through the node. `install-repository-app`: the app is in this server's
+  library and checked against the caller's teams here (`canSeeApp`), then
+  sent to the node's `upload-install` as a multipart upload streamed from
+  disk (`installFileOnNode`). `omni-scan` and `test-locator`: Omni-Vision
+  runs here, with this server's AI settings, on the node's screenshot
+  (`screenshotFromNode`). A node's own `upload-install` received no file
+  until #387, so an install on a 2.2 or older node fails there.
 - Everything else is `501 not_available_through_hub`, naming the node, and
-  the dashboard toasts that message: the two uploads, `install` (a path on
-  one machine) and Omni (this server's AI settings). A new `/control`
-  action is refused for another server's phone until it is added to a list.
+  the dashboard toasts that message: `install` (a path on one machine). A
+  new `/control` action is refused for another server's phone until it is
+  added to a list.
 - A cloud provider's phone gets `501 not_available_for_cloud_phone` for
-  all but `appium-session`, and nothing is sent to the provider. Before
-  this, the five forwarded actions went to the provider's host, typed text
-  included.
+  all but `appium-session` and `stream/ticket`, and nothing is sent to the
+  provider. Before this, the five forwarded actions went to the provider's
+  host, typed text included.
 
 The node runs the live preview by its own rules, with the hub's user from
 the control token. It takes the preview hold on its own row, refuses a
