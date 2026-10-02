@@ -71,8 +71,10 @@ little exists doesn't work.
    `sessionMetrics: false`, turns it off. It is not `required` and has a
    default, so older configs still validate.
 7. **This server's own sessions only.** The hub's session page has never
-   read a node session's data from the node. A node session's figures are on
-   the node's dashboard, as its logs are.
+   read a node session's data from the node. (Corrected after the final
+   review: a node never samples either, since only a hub or standalone server
+   runs `EventManager.onSessionStarted`. A node's phones get no figures, and
+   the hub's panel shows such a session as not recorded.)
 
 ## Design
 

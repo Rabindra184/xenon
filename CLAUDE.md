@@ -628,8 +628,14 @@ appears there) and saved nothing; iOS had only the Instruments trace download.
   for the session. go-ios 1.2.1 gives device CPU only: `cpu_total_load` is
   summed over cores and divided by `enabled_cpus`.
 - `GET /session/:id/metrics` (`metricsBody.ts`) says what the platform can
-  record (`series`) beside the samples. A node session's figures are on the
-  node's dashboard.
+  record (`series`) beside the samples and, for a running session, whether
+  this server samples it (`recording`: sampling, stopped after giving up, or
+  off). The panel says "isn't recorded" rather than "Collecting…" for one it
+  doesn't.
+- **A node's phones get no figures.** Only a hub or standalone server runs
+  `EventManager.onSessionStarted` (`SessionLifecycleService`, `isHub`), so a
+  node never samples, and the hub doesn't sample another server's phone
+  (`isOwnDevice`). The hub's panel shows such a session as not recorded.
 - The charts are SVG (`line-chart.tsx`), at most 600 points per line, in
   role-token colours.
 
