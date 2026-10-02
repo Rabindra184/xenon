@@ -69,11 +69,45 @@ export function iosVersionOf(info: {
   return match ? parseFloat(match[0]) : 0;
 }
 
+/** The longest go-ios reason kept for an error message. */
+const REASON_MAX = 200;
+
+/**
+ * The last error or warning in a chunk of go-ios's stderr, for an error
+ * message. go-ios logs JSON lines: an ERROR or WARN line gives its `msg` and
+ * `error`, an INFO line gives nothing, and a line that isn't JSON (a panic)
+ * is kept as it is.
+ */
+export function goIosReason(text: string): string | undefined {
+  let reason: string | undefined;
+  for (const raw of text.split('\n')) {
+    const line = raw.trim();
+    if (!line) continue;
+    let entry: any;
+    try {
+      entry = JSON.parse(line);
+    } catch {
+      entry = undefined;
+    }
+    if (entry && typeof entry === 'object') {
+      const level = String(entry.level ?? '').toUpperCase();
+      if ((level === 'ERROR' || level === 'WARN') && entry.msg) {
+        reason = entry.error ? `${entry.msg}: ${entry.error}` : String(entry.msg);
+      }
+    } else {
+      reason = line;
+    }
+  }
+  return reason?.slice(0, REASON_MAX);
+}
+
 interface Tunnel {
   port: number;
   process: ChildProcess;
   /** Its agent has answered for the phone on P + 1 at least once. */
   ready: boolean;
+  /** go-ios's last error or warning, for the error when the tunnel fails. */
+  reason?: string;
 }
 
 /** An answer that puts the phone's traffic anywhere but its leased P + 1. */
@@ -145,7 +179,7 @@ export class IOSTunnels {
       this.log.warn(`[${udid}] go-ios tunnel failed: ${err.message}`);
       ended();
     });
-    this.logOutput(udid, proc);
+    this.logOutput(udid, tunnel);
 
     this.log.info(
       `[${udid}] iOS ${version}: starting a go-ios tunnel on ${port} (traffic on ${port + 1})`,
@@ -155,7 +189,8 @@ export class IOSTunnels {
       if (poll > 0) await this.sleep(TUNNEL_READY_POLL_MS);
       if (this.tunnels.get(udid) !== tunnel) {
         throw new Error(
-          `The go-ios tunnel for ${udid} exited before it was ready (exit code ${proc.exitCode})`,
+          `The go-ios tunnel for ${udid} exited before it was ready (exit code ${proc.exitCode})` +
+            (tunnel.reason ? `: ${tunnel.reason}` : ''),
         );
       }
       const info = await this.tunnelInfo(port, udid);
@@ -279,9 +314,11 @@ export class IOSTunnels {
 
   /**
    * go-ios's output, at debug. Its repeated warning about a connected
-   * pre-iOS 17 phone (which needs no tunnel) is logged once per phone.
+   * pre-iOS 17 phone (which needs no tunnel) is logged once per phone. Its
+   * last error or warning is kept, for the error if the tunnel fails.
    */
-  private logOutput(udid: string, proc: ChildProcess): void {
+  private logOutput(udid: string, tunnel: Tunnel): void {
+    const proc = tunnel.process;
     proc.stdout?.on('data', (data) => this.log.debug(`Tunnel [${udid}]: ${data}`));
     const loggedUnsupported = new Set<string>();
     proc.stderr?.on('data', (data) => {
@@ -297,6 +334,7 @@ export class IOSTunnels {
         }
         return;
       }
+      tunnel.reason = goIosReason(text) ?? tunnel.reason;
       this.log.debug(`Tunnel Err [${udid}]: ${text}`);
     });
   }

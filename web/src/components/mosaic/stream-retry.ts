@@ -53,6 +53,18 @@ export function describeStreamFailure(input: { lastError?: string; status?: stri
   if (/unsupported ios version|manualpairingtunnelstart/.test(err)) {
     return 'This device’s iOS version is not supported for live streaming on this host.';
   }
+  // The iPhone's own go-ios tunnel (IOSTunnels). These used to fall into the
+  // generic tunnel rule below, which asks for a reconnect that doesn't help.
+  if (/port range for purpose 'tunnel' is exhausted/.test(err)) {
+    return 'No free tunnel ports on this host (12100–12199 are in use). Stop another iPhone’s preview, then retry.';
+  }
+  if (/go-ios tunnel .* exited before it was ready/.test(err)) {
+    const why = /exited before it was ready \([^)]*\): (.+)$/.exec(input.lastError || '')?.[1];
+    return `The device tunnel stopped while starting${why ? ` (go-ios: ${why.trim()})` : ''}. Retry; if it keeps failing, unlock the iPhone and check it trusts this Mac.`;
+  }
+  if (/go-ios tunnel .* came up on port/.test(err)) {
+    return 'The device tunnel started on an unexpected port and was stopped. Retry.';
+  }
   if (/econnrefused|econnreset|connection reset|tunnel/.test(err)) {
     return 'Lost the connection to the device tunnel. Reconnect the device, then retry.';
   }

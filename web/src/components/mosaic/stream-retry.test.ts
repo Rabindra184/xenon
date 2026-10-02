@@ -59,6 +59,44 @@ describe('describeStreamFailure', () => {
     );
   });
 
+  it('explains a tunnel port range that is used up', () => {
+    expect(
+      describeStreamFailure({ lastError: "Port range for purpose 'tunnel' is exhausted" }),
+    ).to.equal(
+      'No free tunnel ports on this host (12100–12199 are in use). Stop another iPhone’s preview, then retry.',
+    );
+  });
+
+  it("explains a tunnel that stopped while starting, in go-ios's words", () => {
+    expect(
+      describeStreamFailure({
+        lastError:
+          'The go-ios tunnel for U1 exited before it was ready (exit code 1): failed to start tunnel: listen tcp 127.0.0.1:12101: bind: address already in use',
+      }),
+    ).to.equal(
+      'The device tunnel stopped while starting (go-ios: failed to start tunnel: listen tcp 127.0.0.1:12101: bind: address already in use). Retry; if it keeps failing, unlock the iPhone and check it trusts this Mac.',
+    );
+  });
+
+  it('explains a tunnel that stopped while starting, when go-ios gave no reason', () => {
+    expect(
+      describeStreamFailure({
+        lastError: 'The go-ios tunnel for U1 exited before it was ready (exit code null)',
+      }),
+    ).to.equal(
+      'The device tunnel stopped while starting. Retry; if it keeps failing, unlock the iPhone and check it trusts this Mac.',
+    );
+  });
+
+  it('explains a tunnel that came up on another port', () => {
+    expect(
+      describeStreamFailure({
+        lastError:
+          'The go-ios tunnel for U1 came up on port 12103, not its leased 12101, so it was stopped',
+      }),
+    ).to.equal('The device tunnel started on an unexpected port and was stopped. Retry.');
+  });
+
   it('passes through an unrecognized backend error verbatim', () => {
     expect(describeStreamFailure({ lastError: 'something weird happened' })).to.equal(
       'something weird happened',
