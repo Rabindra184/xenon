@@ -72,6 +72,32 @@ export function parseLimit(raw: unknown): number {
   return Math.min(n, SESSION_PAGE_MAX);
 }
 
+/** The most ids one GET /session takes. */
+export const SESSION_IDS_MAX = 200;
+
+/**
+ * The `ids` query parameter: null when absent; else the comma-separated
+ * session ids, 1 to SESSION_IDS_MAX of them, or InvalidQueryError. The
+ * Sessions page re-reads older rows still running by id.
+ */
+export function parseIds(raw: unknown): string[] | null {
+  if (raw === undefined) return null;
+  const ids =
+    typeof raw === 'string'
+      ? raw
+          .split(',')
+          .map((id) => id.trim())
+          .filter(Boolean)
+      : [];
+  if (ids.length === 0 || ids.length > SESSION_IDS_MAX) {
+    throw new InvalidQueryError(
+      'invalid_ids',
+      `ids must list 1 to ${SESSION_IDS_MAX} session ids, separated by commas`,
+    );
+  }
+  return ids;
+}
+
 /**
  * Where the next page starts: after the last row of the page before, given
  * as its `createdAt` (`before`) and `id` (`beforeId`). Pages go newest first

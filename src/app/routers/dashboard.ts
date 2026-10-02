@@ -24,6 +24,7 @@ import {
   cursorWhere,
   describeSessions,
   InvalidQueryError,
+  parseIds,
   parseLimit,
   parseSince,
   sessionOutcome,
@@ -91,8 +92,14 @@ async function getSessions(request: Request, response: Response) {
     cursorWhere(request.query.before, request.query.beforeId),
   );
   if (cursor === undefined) return;
+  const ids = readQuery(response, () => parseIds(request.query.ids));
+  if (ids === undefined) return;
 
   const where: any = {};
+
+  if (ids) {
+    where.id = { in: ids };
+  }
 
   if (since) {
     where.createdAt = { gte: since };

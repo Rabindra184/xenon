@@ -3,7 +3,7 @@ import XenonApiService from '../../api-service';
 import { useSocket } from '../../hooks/useSocket';
 import type { IBuild } from '../../interfaces/IBuild';
 import type { ISession } from '../../interfaces/ISession';
-import { sinceFor, type TimeFilter } from './derive';
+import { sessionStatusBucket, sinceFor, type TimeFilter } from './derive';
 
 const REFRESH_INTERVAL_MS = 3000;
 
@@ -18,6 +18,12 @@ export const SESSION_PAGE_SIZE = 200;
  * sessions arrive is still loaded. GET /session's own most.
  */
 export const SESSION_POLL_MAX = 2000;
+/**
+ * The most older rows a poll re-reads by id (GET /session's own most). Older
+ * pages aren't polled, so a session that was running when its page was
+ * loaded is re-read until it has finished.
+ */
+export const SESSION_IDS_MAX = 200;
 
 const byNewest = (a: ISession, b: ISession) =>
   a.createdAt === b.createdAt ? (a.id < b.id ? 1 : -1) : a.createdAt < b.createdAt ? 1 : -1;
@@ -99,14 +105,30 @@ export function useBuildsData(options: BuildsDataOptions = {}): UseBuildsData {
       if (Array.isArray(page)) setHasMore(page.length === SESSION_PAGE_SIZE);
       return page;
     }
-    // Everything from the older pages' newest row up, within the scope.
+    // Everything from the older pages' newest row up, within the scope, and
+    // the older rows still running, by id.
     const { since, ...rest } = scope();
     const floor = older[0].createdAt;
-    return (await XenonApiService.getSessions({
-      ...rest,
-      since: since && since > floor ? since : floor,
-      limit: SESSION_POLL_MAX,
-    })) as ISession[];
+    const running = older
+      .filter((s) => sessionStatusBucket(s.status) === 'running')
+      .slice(0, SESSION_IDS_MAX)
+      .map((s) => s.id);
+    const [newer, rows] = await Promise.all([
+      XenonApiService.getSessions({
+        ...rest,
+        since: since && since > floor ? since : floor,
+        limit: SESSION_POLL_MAX,
+      }) as Promise<ISession[]>,
+      running.length
+        ? (XenonApiService.getSessions({ ids: running }) as Promise<ISession[]>)
+        : Promise.resolve([] as ISession[]),
+    ]);
+    if (alive.current && Array.isArray(rows) && rows.length) {
+      const fresh = new Map(rows.map((s) => [s.id, s]));
+      tailRef.current = tailRef.current.map((s) => fresh.get(s.id) ?? s);
+      setTail(tailRef.current);
+    }
+    return newer;
   }, [withSessions, scope]);
 
   const fetchData = useCallback(async () => {
