@@ -17,8 +17,6 @@ import { SessionStatus } from '../types/SessionStatus';
 import { SessionLog, Session, Prisma } from '../generated/client';
 import { XenonSession } from '../sessions/XenonSession';
 import { services as iosDeviceServices } from 'appium-ios-device';
-import { AndroidAppProfiler } from '../profiling/AndroidAppProfiler';
-import { ADB } from 'appium-adb';
 import { config } from '../config';
 import { takeScreenshot } from '../helpers';
 import { Container } from 'typedi';
@@ -33,6 +31,7 @@ import { SocketEvents } from '../enums/SocketEvents';
 import { healingTierLabel } from '../services/healing/types';
 import { SelectorStateService } from '../services/SelectorStateService';
 import { RecordingStore } from '../services/recording/recording-store';
+import { SessionMetricsService } from '../services/metrics/SessionMetricsService';
 import { Service } from 'typedi';
 
 /**
@@ -64,8 +63,6 @@ export class DashboardEventManager {
   private sessionToUdid: Map<string, string> = new Map();
   // Map session ID to device info
   private sessionToDevice: Map<string, IDevice> = new Map();
-  // Store app profilers for Android sessions
-  private appProfilers: Map<string, AndroidAppProfiler> = new Map();
   // Track last log line for each session (for device logs)
   private lastLogLine: Map<string, number> = new Map();
   // Track start time for each command to calculate duration
@@ -88,12 +85,10 @@ export class DashboardEventManager {
     // create directory to store screenshots, videos and log files for the session
     prepareDirectory(session.getId());
 
-    // Initialize app profiling for Android sessions
-    const { is_profiling_available, device_info } = await this.startAppProfiling(
-      session.getId(),
-      device,
-      session.getCapabilities(),
-    );
+    // CPU and memory for the session page's Performance panel; sampling
+    // starts once the session's row exists, since the samples point at it.
+    const metrics = Container.get(SessionMetricsService);
+    const sampled = metrics.appliesTo(device);
 
     // If iOS real device, start performance recording (Time Profiler)
     // Note: This only works on real devices with XCUITest driver 4.5+
@@ -130,8 +125,7 @@ export class DashboardEventManager {
       node_id: device.nodeId || '',
       has_live_video: session.getLiveVideoUrl() !== null,
       video_recording_enabled: capabilities[XENON_CAPABILITIES.VIDEO_RECORDING] === true,
-      is_profiling_available: is_profiling_available || isIosProfilingStarted,
-      device_info: device_info ? JSON.stringify(device_info) : null,
+      is_profiling_available: sampled || isIosProfilingStarted,
       device_udid: device.udid || '',
       device_platform: device.platform || '',
       device_version: device.sdk || '',
@@ -145,6 +139,13 @@ export class DashboardEventManager {
     await prisma.session.create({
       data: createData,
     });
+    if (sampled) {
+      metrics.start({
+        sessionId: session.getId(),
+        device,
+        capabilities: session.getCapabilities(),
+      });
+    }
 
     // Emit session started event
     void Container.get(SocketServer).emitToDashboardForDevices(
@@ -199,6 +200,8 @@ export class DashboardEventManager {
 
     try {
       log.info(`🟢 onSessionStopped called for session ${sessionId}`);
+      // However the session ended, in memory or not, its sampler stops here.
+      await Container.get(SessionMetricsService).stop(sessionId);
 
       // Video recording is now handled in plugin.ts deleteSession() before the session is deleted
       // This ensures we can call stop_recording_screen while the session is still active
@@ -207,9 +210,6 @@ export class DashboardEventManager {
       const session: XenonSession | undefined = SESSION_MANAGER.getSession(sessionId);
       if (session) {
         log.info(`Session ${sessionId} found in SESSION_MANAGER`);
-
-        // Save Android profiling data before cleanup
-        await this.saveAppProfilingData(sessionId);
 
         // iOS profiling is now handled in plugin.ts deleteSession() before the session is deleted
         // This ensures we can call mobile: stopPerfRecord while the driver is still alive
@@ -789,113 +789,6 @@ export class DashboardEventManager {
       }
     } catch (error: any) {
       log.error(`Error saving device logs: ${error.message}`);
-    }
-  }
-
-  private async startAppProfiling(
-    sessionId: string,
-    device: IDevice,
-    sessionCapabilities: any,
-  ): Promise<{ is_profiling_available: boolean; device_info?: any }> {
-    // Only support Android profiling
-    if (device.platform.toLowerCase() !== 'android') {
-      return { is_profiling_available: false };
-    }
-
-    // Check if we have an app package
-    const appPackage =
-      sessionCapabilities?.appPackage || sessionCapabilities?.['appium:appPackage'];
-    if (!appPackage) {
-      log.info(`[Profiling] No app package found for session ${sessionId}, skipping profiling`);
-      return { is_profiling_available: false };
-    }
-
-    try {
-      // Principal Intelligence: Use the Properly configured ADB from the manager
-      // instead of a naked instance, to avoid 'defaultArgs not iterable' crashes.
-      const deviceManager = Container.get(XenonManager);
-      const androidManager = (await deviceManager.deviceInstances()).find(
-        (m) => m instanceof AndroidDeviceManager,
-      ) as AndroidDeviceManager;
-
-      let adb: ADB;
-      if (androidManager) {
-        adb = await androidManager.getAdbForDevice(device.udid);
-      } else {
-        adb = await ADB.createADB({});
-      }
-
-      // Create app profiler
-      const profiler = new AndroidAppProfiler({
-        adb,
-        deviceUDID: device.udid,
-        appPackage,
-      });
-
-      // Get device info and start capture
-      const device_info = await profiler.getDeviceInfo();
-      await profiler.startCapture();
-
-      // Store profiler for this session
-      this.appProfilers.set(sessionId, profiler);
-
-      log.info(`[Profiling] Started app profiling for session ${sessionId}`);
-      return {
-        is_profiling_available: true,
-        device_info,
-      };
-    } catch (err: any) {
-      log.error(
-        `[Profiling] Error initializing app profiler for session ${sessionId}: ${err.message}`,
-      );
-      return { is_profiling_available: false };
-    }
-  }
-
-  private async saveAppProfilingData(sessionId: string): Promise<void> {
-    const profiler = this.appProfilers.get(sessionId);
-    if (!profiler) {
-      return;
-    }
-
-    try {
-      // Stop capture
-      await profiler.stopCapture();
-
-      // Get logs
-      const logs = profiler.getLogs();
-      if (logs.length === 0) {
-        log.info(`[Profiling] No profiling data to save for session ${sessionId}`);
-        return;
-      }
-
-      // Save to database
-      const profilingEntries = logs.map((log) => ({
-        session_id: sessionId,
-        cpu: log.cpu,
-        memory: log.memory,
-        total_cpu_used: log.total_cpu_used.toString(),
-        total_memory_used: log.total_memory_used.toString(),
-        raw_cpu_log: log.raw_cpu_log,
-        raw_memory_log: log.raw_memory_log,
-        timestamp: new Date(log.timestamp),
-      }));
-
-      // Batch insert profiling data
-      for (const entry of profilingEntries) {
-        await prisma.profiling.create({
-          data: entry,
-        });
-      }
-
-      log.info(
-        `[Profiling] Saved ${profilingEntries.length} profiling entries for session ${sessionId}`,
-      );
-    } catch (err: any) {
-      log.error(`[Profiling] Error saving profiling data for session ${sessionId}: ${err.message}`);
-    } finally {
-      // Clean up profiler
-      this.appProfilers.delete(sessionId);
     }
   }
 
