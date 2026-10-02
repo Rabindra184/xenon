@@ -381,62 +381,65 @@ const Apps: React.FC = () => {
                     <div className="col-timestamp">{formatDate(app.createdAt)}</div>
 
                     <div className="col-actions">
-                      <button
-                        className={`instant-deploy-trigger ${
-                          deployingAppId === app.id && 'active'
-                        }`}
-                        onClick={() => {
-                          if (deployingAppId === app.id) {
-                            setDeployingAppId(null);
-                            setSelectedUDID('');
-                          } else {
-                            setDeployingAppId(app.id);
-                          }
-                        }}
-                      >
-                        {deployingAppId === app.id ? (
-                          <>
-                            <X size={12} /> CANCEL
-                          </>
-                        ) : (
-                          <>
-                            <Zap size={12} /> Deploy
-                          </>
-                        )}
-                      </button>
-
-                      {deployingAppId === app.id && (
-                        <div className="deployment-flyout">
-                          {availableDevices.length > 0 ? (
-                            <div className="deploy-actions-group">
-                              <Select
-                                selectSize="sm"
-                                className="min-w-[280px]"
-                                autoFocus
-                                value={selectedUDID}
-                                onChange={(e) => setSelectedUDID(e.target.value)}
-                              >
-                                <option value="">SELECT TARGET...</option>
-                                {availableDevices.map((d) => (
-                                  <option key={d.udid} value={d.udid}>
-                                    {d.name} ({d.udid})
-                                  </option>
-                                ))}
-                              </Select>
-                              <button
-                                className="confirm-deploy-btn"
-                                disabled={!selectedUDID}
-                                onClick={() => handleInstall(app.id, selectedUDID)}
-                                title="Confirm deployment"
-                              >
-                                <Rocket size={14} />
-                              </button>
-                            </div>
+                      {/* The picker opens to the button's left, wherever the columns put it. */}
+                      <div className="deploy-anchor">
+                        <button
+                          className={`instant-deploy-trigger ${
+                            deployingAppId === app.id && 'active'
+                          }`}
+                          onClick={() => {
+                            if (deployingAppId === app.id) {
+                              setDeployingAppId(null);
+                              setSelectedUDID('');
+                            } else {
+                              setDeployingAppId(app.id);
+                            }
+                          }}
+                        >
+                          {deployingAppId === app.id ? (
+                            <>
+                              <X size={12} /> CANCEL
+                            </>
                           ) : (
-                            <div className="target-device-select empty">NO TARGETS</div>
+                            <>
+                              <Zap size={12} /> Deploy
+                            </>
                           )}
-                        </div>
-                      )}
+                        </button>
+
+                        {deployingAppId === app.id && (
+                          <div className="deployment-flyout">
+                            {availableDevices.length > 0 ? (
+                              <div className="deploy-actions-group">
+                                <Select
+                                  selectSize="sm"
+                                  className="min-w-[280px]"
+                                  autoFocus
+                                  value={selectedUDID}
+                                  onChange={(e) => setSelectedUDID(e.target.value)}
+                                >
+                                  <option value="">SELECT TARGET...</option>
+                                  {availableDevices.map((d) => (
+                                    <option key={d.udid} value={d.udid}>
+                                      {d.name} ({d.udid})
+                                    </option>
+                                  ))}
+                                </Select>
+                                <button
+                                  className="confirm-deploy-btn"
+                                  disabled={!selectedUDID}
+                                  onClick={() => handleInstall(app.id, selectedUDID)}
+                                  title="Confirm deployment"
+                                >
+                                  <Rocket size={14} />
+                                </button>
+                              </div>
+                            ) : (
+                              <div className="target-device-select empty">NO TARGETS</div>
+                            )}
+                          </div>
+                        )}
+                      </div>
 
                       <button
                         className="utility-icon-btn"

@@ -273,11 +273,20 @@
 }
 
 /* --- Flyout Deployment --- */
+/* The Deploy button and its picker. The picker is placed against the button,
+   to its left: placed against the row (180px from its right edge) it covered
+   the button, which reads CANCEL while the picker is open, once a column was
+   added. */
+.deploy-anchor {
+  position: relative;
+  display: flex;
+}
+
 .deployment-flyout {
   position: absolute;
   top: 50%;
   padding: 6px;
-  right: 180px;
+  right: calc(100% + 8px);
   transform: translateY(-50%);
   background: var(--surface);
   border: 1px solid var(--color-accent);
