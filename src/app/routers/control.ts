@@ -963,6 +963,14 @@ router.get('/:udid/stream/status', async (req: Request, res: Response) => {
  */
 router.get('/:udid/stream', async (req: Request, res: Response) => {
   const { udid } = req.params;
+  // Note a hang-up from the start. Starting the stream below can take
+  // seconds, and the viewer is counted only after it. A browser that left in
+  // the meantime had already fired `close`, so its viewer was counted and
+  // never uncounted, holding the phone's preview for nobody.
+  let hungUp = false;
+  res.once('close', () => {
+    hungUp = true;
+  });
   const device = await getDeviceInfo(udid);
   if (!device) return res.status(404).send('Device not found');
   // The MJPEG preview attaches here on a reload; see screenSizeDeps.
@@ -1017,6 +1025,9 @@ router.get('/:udid/stream', async (req: Request, res: Response) => {
       return res.status(503).send({ error: 'Android stream failed', message: err.message });
     }
   }
+
+  // Nobody is left to serve: count no viewer and open no proxy.
+  if (hungUp) return;
 
   if (!mjpegPort) {
     return res.status(404).send({
