@@ -6,6 +6,52 @@ This project follows [Semantic Versioning](https://semver.org/). Releases are
 published to npm automatically when `package.json`'s `version` changes on `main`
 (see `.github/workflows/npm-publish.yml`).
 
+## 2.8.0
+
+**Several iOS 17+ iPhones stream at once on one Mac.** Until now only one
+could preview or record at a time. Every iPhone's go-ios tunnel took the same
+ports, 60105 and 60106. A second iPhone's stream start killed whatever listened
+there, which was the first iPhone's live tunnel.
+
+No database migration, and no configuration to change. Xenon now uses local
+ports 12100–12199 for these tunnels, two per streaming iPhone, and no longer
+uses 60105 or 60106.
+
+### Fixed
+
+- **A second iPhone's stream no longer takes down the first one's** (#403).
+  Each iOS 17+ iPhone gets its own go-ios tunnel on its own leased pair of
+  ports.
+  - go-ios commands about a phone find that phone's own tunnel:
+    WebDriverAgent's launch, the live logs pane, the logs request and
+    screenshots.
+  - Starting, stopping or restarting one iPhone's stream leaves every other
+    iPhone's tunnel and stream alone.
+  - Nothing is killed by port any more. A stream start clears only its own
+    phone's leftovers, and still none while an Appium session holds the
+    phone.
+- **An unplugged iPhone's tunnel is stopped within seconds** (#403). go-ios
+  keeps a tunnel running when its phone is unplugged, and restarts it one port
+  up on the replug, where it would land on the next phone's ports. Xenon
+  checks each tunnel every 5 s. It stops one whose phone has gone or whose
+  port has moved, and frees its ports. The phone's next start gets a fresh
+  tunnel.
+
+### Known issues
+
+- **Screenshots and logs don't open a tunnel for an iPhone that isn't
+  streaming.** On iOS 17+ they work while its preview, recording or Appium
+  session runs.
+- **A stream start whose WebDriverAgent fails leaves that phone's tunnel
+  running** until the phone's next start or stop.
+- **A running session in an older, already loaded page keeps the status
+  it had when loaded**, until the period or build is changed.
+- **Install by path is refused for a node's phone**: a path names a file on
+  one machine.
+- **BiDi and session WebSockets aren't routed through a hub.** A session's
+  `webSocketUrl` points at the node, so nodes must not sit on untrusted
+  networks.
+
 ## 2.7.0
 
 **The Sessions list pages through every session.** It used to stop at the
