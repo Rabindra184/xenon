@@ -468,42 +468,6 @@ export default class XenonApiService {
     return { status: res.status, body };
   }
 
-  public static getHealingHotspots(
-    options: {
-      windowDays?: number;
-      limit?: number;
-      tier?: string;
-      platform?: string;
-      // 'active' (default) hides muted/pending/resolved selectors. 'all'
-      // returns every hotspot regardless of state — used by detail-page
-      // lookups, never by the live tab list.
-      status?: 'active' | 'pending' | 'resolved' | 'muted' | 'all';
-    } = {},
-  ) {
-    const { windowDays = 30, limit = 20, tier, platform, status = 'active' } = options;
-    let url = `/healing/hotspots?windowDays=${windowDays}&limit=${limit}&status=${status}&t=${Date.now()}`;
-    if (tier) url += `&tier=${encodeURIComponent(tier)}`;
-    if (platform) url += `&platform=${encodeURIComponent(platform)}`;
-    return apiClient.makeGETRequest(url);
-  }
-
-  // Muted-selectors list — sourced directly from SelectorState (not the
-  // aggregator) so muted-but-no-recent-heal rows still surface.
-  public static getMutedSelectors(options: { limit?: number; offset?: number } = {}) {
-    const { limit = 50, offset = 0 } = options;
-    return apiClient.makeGETRequest(
-      `/healing/state/muted?limit=${limit}&offset=${offset}&t=${Date.now()}`,
-    );
-  }
-
-  // Single-tuple state lookup. Returns `{ state: ISelectorState | null }`;
-  // null is meaningful (selector is implicitly active).
-  public static getSelectorState(strategy: string, value: string) {
-    return apiClient.makeGETRequest(
-      `/healing/state/${encodeURIComponent(strategy)}/${encodeURIComponent(value)}?t=${Date.now()}`,
-    );
-  }
-
   // Fire a selector lifecycle action. Bypasses `apiClient.makePOSTRequest`
   // because callers need access to the response status (409 is a real
   // outcome here — e.g. mark_fixed on a muted selector) and the body's
@@ -527,12 +491,6 @@ export default class XenonApiService {
       throw error;
     }
     return res.json();
-  }
-
-  public static getHealingSelectorDetail(originalSelector: string, windowDays = 30) {
-    return apiClient.makeGETRequest(
-      `/healing/selector?value=${encodeURIComponent(originalSelector)}&windowDays=${windowDays}&t=${Date.now()}`,
-    );
   }
 
   public static sendHealingDigest(
