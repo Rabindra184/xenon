@@ -99,3 +99,20 @@ export function legacyDetailTarget(params: URLSearchParams): string {
 
 /** One key per selector, the server's own: strategy and value. */
 export const selectorKey = (s: OpenSelector): string => `${s.strategy}\u0000${s.selector}`;
+
+/**
+ * Where the note about fixed selectors that broke again leads: "To fix", in
+ * the period and order already chosen, with no search or filter that could
+ * hide them, and the selector open when there is only one.
+ */
+export function brokeAgainView(selectors: OpenSelector[]): Partial<SelectorHealthView> {
+  const keys = new Set(selectors.map(selectorKey));
+  return {
+    tab: 'fix',
+    q: '',
+    platform: '',
+    method: '',
+    page: 1,
+    open: keys.size === 1 ? selectors[0] : null,
+  };
+}

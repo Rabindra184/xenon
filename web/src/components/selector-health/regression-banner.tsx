@@ -1,11 +1,10 @@
 import React, { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { RefreshCw, X } from 'lucide-react';
 import { useSocket } from '../../hooks/useSocket';
 import { Button } from '../ui/button';
+import { OpenSelector } from './view-state';
 
-interface BrokeAgain {
-  selector: string;
+interface BrokeAgain extends OpenSelector {
   receivedAt: number;
 }
 
@@ -15,23 +14,30 @@ const AGGREGATE_WINDOW_MS = 5 * 60_000;
 
 /**
  * A live note when a selector someone marked fixed heals again (the
- * `selector_regressed` event). It goes after 30 s, or on dismiss.
+ * `selector_regressed` event). It goes after 30 s, on dismiss, or when its
+ * button hands the selectors to `onShow`.
  */
-export function RegressionBanner() {
+export function RegressionBanner({ onShow }: { onShow: (selectors: OpenSelector[]) => void }) {
   const { on } = useSocket();
-  const navigate = useNavigate();
   const [events, setEvents] = useState<BrokeAgain[]>([]);
 
   useEffect(() => {
-    const unsub = on('selector_regressed', (data: { original_selector?: string } | undefined) => {
-      setEvents((curr) => {
-        const cutoff = Date.now() - AGGREGATE_WINDOW_MS;
-        return [
-          ...curr.filter((x) => x.receivedAt >= cutoff),
-          { selector: data?.original_selector ?? '', receivedAt: Date.now() },
-        ];
-      });
-    });
+    const unsub = on(
+      'selector_regressed',
+      (data: { original_strategy?: string; original_selector?: string } | undefined) => {
+        setEvents((curr) => {
+          const cutoff = Date.now() - AGGREGATE_WINDOW_MS;
+          return [
+            ...curr.filter((x) => x.receivedAt >= cutoff),
+            {
+              strategy: data?.original_strategy ?? '',
+              selector: data?.original_selector ?? '',
+              receivedAt: Date.now(),
+            },
+          ];
+        });
+      },
+    );
     return () => {
       if (unsub) unsub();
     };
@@ -67,7 +73,7 @@ export function RegressionBanner() {
         variant="secondary"
         size="sm"
         onClick={() => {
-          navigate('/selector-health');
+          onShow(events.map(({ strategy, selector }) => ({ strategy, selector })));
           setEvents([]);
         }}
       >

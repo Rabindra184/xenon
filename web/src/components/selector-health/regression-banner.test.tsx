@@ -4,7 +4,6 @@ import { act, fireEvent, render, screen } from '@testing-library/react';
 
 const h = vi.hoisted(() => ({
   handlers: new Map<string, (data: unknown) => void>(),
-  navigate: vi.fn(),
 }));
 vi.mock('../../hooks/useSocket', () => ({
   useSocket: () => ({
@@ -14,16 +13,13 @@ vi.mock('../../hooks/useSocket', () => ({
     },
   }),
 }));
-vi.mock('react-router-dom', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('react-router-dom')>()),
-  useNavigate: () => h.navigate,
-}));
 
 import { RegressionBanner } from './regression-banner';
 
 describe('RegressionBanner', () => {
-  it('says a fixed selector broke again, and leads to the selectors to fix', () => {
-    render(<RegressionBanner />);
+  it('says a fixed selector broke again, and leads to it among the selectors to fix', () => {
+    const onShow = vi.fn();
+    render(<RegressionBanner onShow={onShow} />);
     act(() =>
       h.handlers.get('selector_regressed')?.({
         original_strategy: 'xpath',
@@ -33,11 +29,12 @@ describe('RegressionBanner', () => {
     expect(screen.getByRole('alert').textContent).toContain('A selector you fixed broke again');
     expect(screen.getByRole('alert').textContent).toContain('//a');
     fireEvent.click(screen.getByRole('button', { name: 'Show selectors to fix' }));
-    expect(h.navigate).toHaveBeenCalledWith('/selector-health');
+    expect(onShow).toHaveBeenCalledWith([{ strategy: 'xpath', selector: '//a' }]);
+    expect(screen.queryByRole('alert')).toBeNull();
   });
 
   it('counts several at once', () => {
-    render(<RegressionBanner />);
+    render(<RegressionBanner onShow={() => undefined} />);
     act(() => {
       h.handlers.get('selector_regressed')?.({
         original_strategy: 'xpath',

@@ -19,6 +19,7 @@ import {
   PERIODS,
   PeriodDays,
   SelectorHealthView,
+  brokeAgainView,
   readView,
   selectorKey,
   writeView,
@@ -228,7 +229,7 @@ const SelectorHealthPage: React.FC = () => {
         }
       />
       <div className="space-y-4 px-6 pb-8 pt-4">
-        <RegressionBanner />
+        <RegressionBanner onShow={(selectors) => setView(brokeAgainView(selectors))} />
         <SummaryStrip summary={summary} days={view.days} />
         <TrendChart
           trend={summary ? (summary.trend ?? []) : null}
