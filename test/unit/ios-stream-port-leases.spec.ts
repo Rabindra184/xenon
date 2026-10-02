@@ -99,6 +99,8 @@ describe('iOS stream port leases (fake processes, real sockets, scratch DB)', ()
   let appiumWdaPorts: Set<number>;
   let ios: any;
   let android: any;
+  /** The stream's runwda exits at once, as when WebDriverAgent fails to launch. */
+  let runwdaExits: boolean;
   let tunnels: {
     ensure: sinon.SinonStub;
     envFor: sinon.SinonStub;
@@ -121,6 +123,7 @@ describe('iOS stream port leases (fake processes, real sockets, scratch DB)', ()
     extraServers = [];
     appiumWdaPorts = new Set();
 
+    runwdaExits = false;
     tunnels = {
       ensure: sinon.stub().resolves(null),
       envFor: sinon.stub().callsFake(() => ({ ...process.env, ENABLE_GO_IOS_AGENT: 'yes' })),
@@ -146,6 +149,7 @@ describe('iOS stream port leases (fake processes, real sockets, scratch DB)', ()
         server = listenNow(Number(args[args.length - 1].split(':')[0]));
       }
       const proc = new FakeProcess(command, args, server, opts);
+      if (runwdaExits && args[0] === 'runwda') proc.exitCode = 1;
       spawned.push(proc);
       return proc;
     }) as any);
@@ -245,6 +249,38 @@ describe('iOS stream port leases (fake processes, real sockets, scratch DB)', ()
     expect(runwda?.opts?.env?.GO_IOS_AGENT_PORT, "runwda finds this phone's tunnel").to.equal(
       '12100',
     );
+  });
+
+  describe("a start whose WebDriverAgent fails after the iPhone's tunnel came up", () => {
+    beforeEach(() => {
+      tunnels.ensure.resolves(12100);
+      runwdaExits = true;
+      sinon.stub(ios, 'isGoIOSAvailable').resolves(true);
+    });
+
+    it('stops that tunnel, so it neither lingers nor holds its ports', async () => {
+      const err = await ios.startStream(IPHONE).then(
+        () => null,
+        (e: Error) => e,
+      );
+
+      expect(err?.message).to.match(/WDA process exited/);
+      expect(tunnels.stop.calledWith(IPHONE)).to.equal(true);
+      expect(ios.getStreamStatus(IPHONE)?.status).to.equal('error');
+      expect(ios.getStreamStatus(IPHONE)?.tunnelPort).to.equal(null);
+    });
+
+    it('leaves it running while an Appium session holds the iPhone', async () => {
+      Object.assign(devices.get(IPHONE), { busy: true, session_id: '7f0c5a52-appium-session' });
+
+      const err = await ios.startStream(IPHONE).then(
+        () => null,
+        (e: Error) => e,
+      );
+
+      expect(err?.message).to.match(/WDA process exited/);
+      expect(tunnels.stop.called).to.equal(false);
+    });
   });
 
   it('stopping a stale iOS session never deletes a lease another device holds', async () => {

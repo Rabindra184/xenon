@@ -12,6 +12,7 @@ import {
   TUNNEL_LEASE_TTL_MS,
   TUNNEL_READY_TIMEOUT_MS,
   TunnelState,
+  goIosReason,
   iosVersionOf,
 } from '../../src/device-managers/ios/IOSTunnels';
 import { ProcessRegistry } from '../../src/services/ProcessRegistry';
@@ -187,6 +188,31 @@ describe('IOSTunnels: a go-ios tunnel per iPhone', () => {
     expect(err?.message).to.match(/exited before it was ready/);
     expect(t.portFor(PHONE_A)).to.equal(undefined);
     expect([...t.ports.leased.keys()]).to.deep.equal([]);
+  });
+
+  it("says why the tunnel exited before it was ready, in go-ios's words", async () => {
+    t.answers = () => {
+      const proc = t.spawned[0].proc;
+      proc.stderr.emit(
+        'data',
+        Buffer.from(
+          '{"level":"INFO","msg":"Using userspace networking"}\n' +
+            '{"level":"ERROR","msg":"failed to start tunnel","error":"listen tcp 127.0.0.1:12101: bind: address already in use"}\n',
+        ),
+      );
+      proc.exit(1);
+      return false;
+    };
+
+    const err = await t.ensure(PHONE_A).then(
+      () => null,
+      (e: Error) => e,
+    );
+
+    expect(err?.message).to.equal(
+      `The go-ios tunnel for ${PHONE_A} exited before it was ready (exit code 1): ` +
+        'failed to start tunnel: listen tcp 127.0.0.1:12101: bind: address already in use',
+    );
   });
 
   it('fails the start when the tunnel comes up on another traffic port, and stops it', async () => {
@@ -374,6 +400,26 @@ describe('IOSTunnels: a phone that goes away (go-ios keeps its agent running)', 
     } finally {
       clock.restore();
     }
+  });
+});
+
+describe('goIosReason', () => {
+  it("reads go-ios's last error or warning", () => {
+    expect(goIosReason('{"level":"INFO","msg":"Tunnel server started"}\n')).to.equal(undefined);
+    expect(goIosReason('{"level":"WARN","msg":"failed to get tunnel info","udid":"X"}')).to.equal(
+      'failed to get tunnel info',
+    );
+    expect(
+      goIosReason(
+        '{"level":"ERROR","msg":"first"}\n{"level":"ERROR","msg":"failed to start tunnel","error":"EOF"}\n',
+      ),
+    ).to.equal('failed to start tunnel: EOF');
+  });
+
+  it('keeps a line that is not JSON, trimmed and at most 200 characters', () => {
+    expect(goIosReason('  panic: runtime error  \n')).to.equal('panic: runtime error');
+    expect(goIosReason('x'.repeat(500))).to.have.length(200);
+    expect(goIosReason('\n  \n')).to.equal(undefined);
   });
 });
 

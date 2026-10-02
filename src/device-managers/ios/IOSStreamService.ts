@@ -937,6 +937,16 @@ class IOSStreamService {
           session.status = 'error';
           session.lastError = error.message;
         }
+        // A start that got its tunnel up and then failed (WDA didn't launch)
+        // stops that tunnel, so it doesn't run on, holding its ports, until
+        // the phone's next start. Not while an Appium session may use it.
+        if (
+          session?.tunnelPort != null &&
+          !(await this.appiumSessionMayUse(udid, "the failed start's go-ios tunnel"))
+        ) {
+          await this.tunnels().stop(udid);
+          session.tunnelPort = null;
+        }
         // Back off before the next attempt so a polling client can't drive a
         // restart loop against a device that keeps failing to start.
         this.markRecoveryAttempt(udid);
