@@ -559,3 +559,18 @@ describe('OmniInspector — breadcrumb', () => {
     expect(within(nav).getAllByRole('button')).toHaveLength(2);
   });
 });
+
+describe('OmniInspector — live stream', () => {
+  // A browser keeps a removed MJPEG <img>'s connection open, and the server
+  // counts it as a viewer of the device.
+  it('closes the live stream when it leaves the page', async () => {
+    const { unmount } = render(
+      <OmniInspector udid="U1" streamUrl="/xenon/api/control/U1/stream?t=1" />,
+    );
+    const img = await screen.findByAltText('Live Device Stream');
+
+    unmount();
+
+    expect(img.hasAttribute('src')).toBe(false);
+  });
+});

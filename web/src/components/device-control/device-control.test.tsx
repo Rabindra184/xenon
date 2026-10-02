@@ -85,6 +85,19 @@ describe('DeviceControl — releasing the device', () => {
     expect(api.stopStream).not.toHaveBeenCalled();
   });
 
+  // A browser keeps a removed MJPEG <img>'s connection open, and the server
+  // counts every open connection as a viewer, so the leave above was
+  // outvoted by this page's own stream and the phone stayed held.
+  it('closes its stream when the page closes', async () => {
+    const { unmount } = open(S9);
+    const img = await screen.findByAltText('Device Stream');
+    expect(img.getAttribute('src')).toContain('/stream?');
+
+    unmount();
+
+    expect(img.hasAttribute('src')).toBe(false);
+  });
+
   it('takes the device back when the page returns from the back/forward cache', async () => {
     open(S9);
     await waitFor(() => expect(api.startStream).toHaveBeenCalledTimes(1));

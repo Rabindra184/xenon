@@ -121,6 +121,32 @@ describe('DeviceTile reconnects an MJPEG stream that ended', () => {
     expect(streamSrc(view)).not.toBe(before);
   });
 
+  it("drops the old stream's src when it reconnects, so its connection closes", async () => {
+    const view = renderLiveTile();
+    await wait(5000);
+    const old = view.container.querySelector('img') as HTMLImageElement;
+
+    statusAnswer = mjpeg({ status: 'stopped' });
+    await wait(5000);
+
+    const current = view.container.querySelector('img') as HTMLImageElement;
+    expect(current).not.toBe(old);
+    expect(old.hasAttribute('src')).toBe(false);
+    expect(current.getAttribute('src')).toContain('/stream?t=');
+  });
+
+  it("drops its stream's src when the tile is closed", () => {
+    // A browser keeps a removed MJPEG <img>'s connection open, and the server
+    // counts it as a viewer: a closed tile kept the device's preview and hold
+    // for "2 other viewer(s)" (seen on the lab, 2026-10-01).
+    const view = renderLiveTile();
+    const img = view.container.querySelector('img') as HTMLImageElement;
+
+    view.unmount();
+
+    expect(img.hasAttribute('src')).toBe(false);
+  });
+
   it('leaves a healthy stream alone', async () => {
     const view = renderLiveTile();
     const before = streamSrc(view);

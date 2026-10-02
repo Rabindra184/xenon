@@ -38,6 +38,7 @@ import LogcatView from './logcat/LogcatView';
 import { deviceTitle } from '../device-card/device-card/deviceIdentity';
 import { nameDevice, titleForPath } from '../../lib/document-title';
 import { ActionsPanel } from './actions/ActionsPanel';
+import { MjpegImage } from '../ui/mjpeg-image';
 
 interface DeviceControlProps {
   device: IDevice;
@@ -595,7 +596,9 @@ export default function DeviceControl({ device, onClose, titleId }: DeviceContro
                 )
               )}
               {!streamFailed && (
-                <img
+                // MjpegImage closes the stream when the page or a failure
+                // removes it; a plain <img> left it open, counted as a viewer.
+                <MjpegImage
                   src={getStreamUrl()}
                   alt="Device Stream"
                   className="device-stream-image"

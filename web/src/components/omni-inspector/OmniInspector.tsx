@@ -35,6 +35,7 @@ import './omni-inspector.css';
 import React from 'react';
 import { Select } from '../ui/select';
 import { Button } from '../ui/button';
+import { MjpegImage } from '../ui/mjpeg-image';
 import { analyzeElement, ROLE_ICON, type RoleKey } from './elementRole';
 import { initialExpanded, matchSet, pathTo, visibleRows } from './treeRows';
 import ElementTree from './ElementTree';
@@ -918,7 +919,7 @@ const OmniInspector: React.FC<OmniInspectorProps> = ({
                 onMouseDown={handleMouseDown}
                 onMouseUp={handleMouseUp}
               >
-                <img
+                <MjpegImage
                   ref={streamRef}
                   src={streamUrl!}
                   onLoad={onStreamLoad}
