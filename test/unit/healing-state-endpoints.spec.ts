@@ -216,6 +216,18 @@ describe('POST /healing/selector/state — postSelectorStateAction', () => {
     await postSelectorStateAction(req, res);
     expect(markFixedStub.firstCall.args[0].userId).to.equal('u-9');
   });
+  it('answers 500, rather than hanging, when the visibility check fails', async () => {
+    sinon.stub(prisma.device, 'findMany').resolves([]);
+    sinon.stub(prisma.sessionLog, 'findFirst').rejects(new Error('database is locked'));
+    const { req, res, statusStub, jsonStub } = mockReqRes({
+      body: { original_strategy: 'xpath', original_selector: '//x', action: 'mute' },
+    });
+    req.auth = { userId: 'u-9', role: 'MEMBER', scopes: 'sessions', teamIds: ['team-a'] };
+    await postSelectorStateAction(req, res);
+    expect(statusStub.calledWith(500)).to.be.true;
+    expect(jsonStub.firstCall.args[0]).to.deep.equal({ error: 'internal' });
+    expect(muteStub.called).to.be.false;
+  });
 });
 
 describe('GET /healing/state/muted — getMutedSelectors', () => {

@@ -1019,15 +1019,6 @@ export async function postSelectorStateAction(request: Request, response: Respon
     });
   }
 
-  const scope = (await visibleSessionWhere(authOf(request))) as
-    | Prisma.SessionWhereInput
-    | undefined;
-  if (
-    !(await canSeeSelector({ strategy: original_strategy, selector: original_selector }, scope))
-  ) {
-    return response.status(404).json(SELECTOR_NOT_FOUND);
-  }
-
   const muteReason = action === 'mute' && typeof reason === 'string' ? reason.trim() : '';
   const ctx = {
     strategy: original_strategy,
@@ -1039,6 +1030,16 @@ export async function postSelectorStateAction(request: Request, response: Respon
   const service = Container.get(SelectorStateService);
 
   try {
+    // Inside the try: a failed lookup answers 500 rather than leaving the
+    // request open (Express 4 doesn't catch a rejected handler).
+    const scope = (await visibleSessionWhere(authOf(request))) as
+      | Prisma.SessionWhereInput
+      | undefined;
+    if (
+      !(await canSeeSelector({ strategy: original_strategy, selector: original_selector }, scope))
+    ) {
+      return response.status(404).json(SELECTOR_NOT_FOUND);
+    }
     let row;
     switch (action as SelectorAction) {
       case 'mark_fixed':
