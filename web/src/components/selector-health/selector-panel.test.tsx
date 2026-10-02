@@ -87,7 +87,11 @@ const pending: ISelectorStateView = {
   brokeAgain: 0,
 };
 
-function renderPanel(over: Partial<ISelectorDetailResponse> = {}, status = 200) {
+function renderPanel(
+  over: Partial<ISelectorDetailResponse> = {},
+  status = 200,
+  target = { strategy: 'xpath', selector: '//a' },
+) {
   vi.spyOn(XenonApiService, 'getSelectorPanel').mockResolvedValue({
     status,
     body: status === 200 ? { ...DETAIL, ...over } : null,
@@ -97,7 +101,7 @@ function renderPanel(over: Partial<ISelectorDetailResponse> = {}, status = 200) 
   render(
     <MemoryRouter>
       <SelectorPanel
-        target={{ strategy: 'xpath', selector: '//a' }}
+        target={target}
         days={30}
         tz={0}
         refreshKey={0}
@@ -219,5 +223,16 @@ describe('SelectorPanel', () => {
       devices: [],
     });
     expect(await screen.findByText('No heals in the last 30 days.')).toBeTruthy();
+  });
+  it('says no changes are recorded, not that nobody changed it', async () => {
+    renderPanel({ activity: [], state: pending });
+    expect(await screen.findByText('No changes recorded yet.')).toBeTruthy();
+    expect(screen.queryByText(/Nobody has/)).toBeNull();
+  });
+
+  it('offers no Mark fixed for a selector recorded with no type, since it could never be verified', async () => {
+    renderPanel({ strategy: '' }, 200, { strategy: '', selector: '//a' });
+    expect(await screen.findByRole('button', { name: 'Mute…' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Mark fixed' })).toBeNull();
   });
 });

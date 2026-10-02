@@ -38,6 +38,8 @@ interface Props {
   selectedKey: string | null;
   onView: (patch: Partial<SelectorHealthView>) => void;
   onOpen: (s: OpenSelector) => void;
+  /** The last request failed. */
+  error?: boolean;
 }
 
 interface Column {
@@ -235,6 +237,7 @@ export const SelectorList: React.FC<Props> = ({
   selectedKey,
   onView,
   onOpen,
+  error,
 }) => {
   const [q, setQ] = useState(view.q);
   useEffect(() => setQ(view.q), [view.q]);
@@ -245,10 +248,13 @@ export const SelectorList: React.FC<Props> = ({
   }, [q, view.q, onView]);
 
   const cols = columns(view.tab, compact, view.days);
-  const items = data?.items ?? [];
-  const total = data?.total ?? 0;
-  const page = data?.page ?? view.page;
-  const size = data?.pageSize ?? 50;
+  // Rows only under their own tab's columns: after a tab switch the previous
+  // tab's answer stays in hand until the new one arrives.
+  const current = data && data.tab === view.tab ? data : null;
+  const items = current?.items ?? [];
+  const total = current?.total ?? 0;
+  const page = current?.page ?? view.page;
+  const size = current?.pageSize ?? 50;
   const lastPage = Math.max(1, Math.ceil(total / size));
   const from = total === 0 ? 0 : (page - 1) * size + 1;
   const to = Math.min(total, page * size);
@@ -354,9 +360,11 @@ export const SelectorList: React.FC<Props> = ({
         )}
       </div>
 
-      {loading && !data ? (
+      {!current ? (
         <div className="px-4 py-10 text-center text-xs text-[var(--text-dim)]">
-          Loading selectors…
+          {error && !loading
+            ? "Couldn't load selectors. Try again in a moment."
+            : 'Loading selectors…'}
         </div>
       ) : items.length === 0 ? (
         <EmptyState title={empty.title} description={empty.description} />

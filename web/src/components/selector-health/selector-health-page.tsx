@@ -53,6 +53,8 @@ const SelectorHealthPage: React.FC = () => {
 
   const [summary, setSummary] = useState<IHealingSummaryResponse | null>(null);
   const [list, setList] = useState<ISelectorListResponse | null>(null);
+  const [listFailed, setListFailed] = useState(false);
+  const [summaryFailed, setSummaryFailed] = useState(false);
   const [loading, setLoading] = useState(true);
   const [refreshKey, setRefreshKey] = useState(0);
   const [sending, setSending] = useState(false);
@@ -67,10 +69,13 @@ const SelectorHealthPage: React.FC = () => {
     let alive = true;
     XenonApiService.getHealingSummary(view.days, tz)
       .then((s: IHealingSummaryResponse) => {
-        if (alive) setSummary(s ?? null);
+        if (!alive) return;
+        setSummary(s ?? null);
+        setSummaryFailed(false);
       })
       .catch(() => {
-        if (alive) setSummary(null);
+        // Keep what is shown; say so only when there is nothing to show.
+        if (alive) setSummaryFailed(true);
       });
     return () => {
       alive = false;
@@ -90,10 +95,14 @@ const SelectorHealthPage: React.FC = () => {
       page: view.page,
     })
       .then((r: ISelectorListResponse) => {
-        if (alive) setList(r ?? null);
+        if (!alive) return;
+        setList(r ?? null);
+        setListFailed(false);
       })
       .catch(() => {
-        if (alive) setList(null);
+        // A failed refresh keeps the selectors in hand: an empty list would
+        // read as "nothing to fix".
+        if (alive) setListFailed(true);
       })
       .finally(() => {
         if (alive) setLoading(false);
@@ -221,7 +230,11 @@ const SelectorHealthPage: React.FC = () => {
       <div className="space-y-4 px-6 pb-8 pt-4">
         <RegressionBanner />
         <SummaryStrip summary={summary} days={view.days} />
-        <TrendChart trend={summary ? (summary.trend ?? []) : null} days={view.days} />
+        <TrendChart
+          trend={summary ? (summary.trend ?? []) : null}
+          days={view.days}
+          failed={summaryFailed && !summary}
+        />
         <div className="flex items-start gap-4">
           <div className="min-w-0 flex-1">
             <SelectorList
@@ -232,6 +245,7 @@ const SelectorHealthPage: React.FC = () => {
               selectedKey={view.open ? selectorKey(view.open) : null}
               onView={setView}
               onOpen={open}
+              error={listFailed}
             />
           </div>
           {view.open && (

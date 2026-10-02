@@ -11,6 +11,8 @@ interface Props {
   /** null while the summary loads. */
   trend: IHealingTrendDay[] | null;
   days: number;
+  /** The summary didn't load: say so, rather than loading for ever. */
+  failed?: boolean;
 }
 
 const Legend: React.FC<{ color: string; label: string; total: number }> = ({
@@ -26,7 +28,7 @@ const Legend: React.FC<{ color: string; label: string; total: number }> = ({
 );
 
 /** Heals per day over the period, with a second line for the heals that used AI. */
-export const TrendChart: React.FC<Props> = ({ trend, days }) => {
+export const TrendChart: React.FC<Props> = ({ trend, days, failed }) => {
   const list = useMemo(() => trend ?? [], [trend]);
   const start = list[0]?.t ?? 0;
   const total = list.reduce((s, d) => s + d.heals, 0);
@@ -42,7 +44,13 @@ export const TrendChart: React.FC<Props> = ({ trend, days }) => {
   const peak = list.reduce((m, d) => Math.max(m, d.heals), 0);
 
   let body: React.ReactNode;
-  if (trend === null) {
+  if (trend === null && failed) {
+    body = (
+      <div className="text-xs text-[var(--text-dim)]">
+        Couldn&apos;t load heals per day. Try again in a moment.
+      </div>
+    );
+  } else if (trend === null) {
     body = <div className="text-xs text-[var(--text-dim)]">Loading…</div>;
   } else if (total === 0) {
     body = <div className="text-xs text-[var(--text-dim)]">No heals in the last {days} days.</div>;

@@ -220,4 +220,15 @@ describe('SelectorList', () => {
     renderList({ view: view({ q: 'zzz' }), data: data({ items: [], total: 0 }) });
     expect(screen.getByText('No selectors match “zzz”')).toBeTruthy();
   });
+  it("shows another tab's rows only under that tab's columns", () => {
+    renderList({ view: view({ tab: 'muted' }), data: data({ tab: 'fix' }), loading: true });
+    expect(screen.queryByText(HOT)).toBeNull();
+    expect(screen.getByText('Loading selectors…')).toBeTruthy();
+  });
+
+  it("says it couldn't load the selectors", () => {
+    renderList({ data: null, error: true });
+    expect(screen.getByText(/Couldn't load selectors/)).toBeTruthy();
+    expect(screen.queryByText(/Nothing to fix/)).toBeNull();
+  });
 });

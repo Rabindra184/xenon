@@ -110,9 +110,7 @@ const Breakdown: React.FC<{
 const ActivityList: React.FC<{ activity: ISelectorActivity[] }> = ({ activity }) => (
   <Section title="Activity">
     {activity.length === 0 ? (
-      <p className="text-xs text-[var(--text-muted)]">
-        Nobody has marked this selector fixed or muted it.
-      </p>
+      <p className="text-xs text-[var(--text-muted)]">No changes recorded yet.</p>
     ) : (
       <ul>
         {activity.map((a, i) => (
@@ -252,7 +250,8 @@ export const SelectorPanel: React.FC<Props> = ({
         </code>
         {detail?.canAct && (
           <div className="mt-3 flex flex-wrap gap-2">
-            {status === 'active' && (
+            {/* A selector recorded with no type can't be verified: new runs record one. */}
+            {status === 'active' && target.strategy !== '' && (
               <Button size="sm" onClick={() => setDialog('mark_fixed')}>
                 Mark fixed
               </Button>

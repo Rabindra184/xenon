@@ -126,10 +126,14 @@ let panelSpy: MockInstance<
   Parameters<Api['getSelectorPanel']>,
   ReturnType<Api['getSelectorPanel']>
 >;
+let summarySpy: MockInstance<
+  Parameters<Api['getHealingSummary']>,
+  ReturnType<Api['getHealingSummary']>
+>;
 
 describe('SelectorHealthPage', () => {
   beforeEach(() => {
-    vi.spyOn(XenonApiService, 'getHealingSummary').mockResolvedValue(SUMMARY);
+    summarySpy = vi.spyOn(XenonApiService, 'getHealingSummary').mockResolvedValue(SUMMARY);
     listSpy = vi.spyOn(XenonApiService, 'getHealingSelectors').mockResolvedValue(LIST);
     panelSpy = vi
       .spyOn(XenonApiService, 'getSelectorPanel')
@@ -223,5 +227,30 @@ describe('SelectorHealthPage', () => {
     await screen.findByRole('complementary', { name: 'Selector details' });
     await screen.findAllByText(A);
     expect(document.body.textContent ?? '').not.toMatch(JARGON);
+  });
+  it("says it couldn't load the selectors, never that there is nothing to fix", async () => {
+    listSpy.mockRejectedValue(new Error('database is locked'));
+    renderPage();
+    expect(await screen.findByText(/Couldn't load selectors/)).toBeTruthy();
+    expect(screen.queryByText(/Nothing to fix/)).toBeNull();
+  });
+
+  it('keeps the selectors it has when a refresh fails', async () => {
+    vi.spyOn(XenonApiService, 'postSelectorStateAction').mockResolvedValue({ state: null });
+    renderPage(`/selector-health?strategy=xpath&selector=${encodeURIComponent(A)}`);
+    await screen.findAllByText(B);
+    listSpy.mockRejectedValue(new Error('database is locked'));
+    fireEvent.click(await screen.findByRole('button', { name: 'Mute…' }));
+    fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Mute' }));
+    await waitFor(() => expect(listSpy.mock.calls.length).toBeGreaterThan(1));
+    await new Promise((r) => setTimeout(r, 50));
+    expect(screen.getAllByText(B).length).toBeGreaterThan(0);
+    expect(screen.queryByText(/Nothing to fix/)).toBeNull();
+  });
+
+  it("says the trend couldn't load when the summary fails", async () => {
+    summarySpy.mockRejectedValue(new Error('boom'));
+    renderPage();
+    expect(await screen.findByText(/Couldn't load heals per day/)).toBeTruthy();
   });
 });

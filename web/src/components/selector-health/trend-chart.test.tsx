@@ -43,4 +43,9 @@ describe('TrendChart', () => {
     render(<TrendChart trend={[{ t: t0, heals: 0, aiHeals: 0 }]} days={7} />);
     expect(screen.getByText('No heals in the last 7 days.')).toBeTruthy();
   });
+  it("says it couldn't load, rather than loading for ever", () => {
+    render(<TrendChart trend={null} days={30} failed />);
+    expect(screen.getByText("Couldn't load heals per day. Try again in a moment.")).toBeTruthy();
+    expect(screen.queryByText('Loading…')).toBeNull();
+  });
 });
