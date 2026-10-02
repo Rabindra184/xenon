@@ -8,6 +8,8 @@ export interface ChartSeries {
   color: string;
   values: Array<number | null>;
   dashed?: boolean;
+  /** A label per point, shown in the tooltip in place of `label` (the app of each sample). */
+  pointLabels?: Array<string | null>;
 }
 
 export interface LineChartProps {
@@ -192,7 +194,9 @@ export const LineChart: React.FC<LineChartProps> = ({
               return (
                 <div key={s.key} className="flex items-center gap-1.5 tabular-nums">
                   <span className="inline-block h-0.5 w-3" style={{ background: s.color }} />
-                  <span className="text-[var(--text-muted)]">{s.label}</span>
+                  <span className="text-[var(--text-muted)]">
+                    {s.pointLabels?.[hover] ?? s.label}
+                  </span>
                   <span className="ml-auto pl-3">
                     {v === null || v === undefined ? '—' : formatValue(v)}
                   </span>

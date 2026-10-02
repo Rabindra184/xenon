@@ -66,6 +66,42 @@ describe('LineChart', () => {
     ).toHaveLength(2);
   });
 
+  it("names the hovered point's own label when the series has one per point", () => {
+    render(
+      <LineChart
+        ariaLabel="App memory over the session"
+        times={[0, 2000]}
+        series={[
+          {
+            key: 'app',
+            label: 'Foreground app',
+            color: 'var(--color-accent)',
+            values: [100, 200],
+            pointLabels: ['com.a.one', 'com.b.two'],
+          },
+        ]}
+        formatValue={(v) => `${v} MB`}
+      />,
+    );
+    const box = screen.getByTestId('line-chart');
+    box.getBoundingClientRect = () =>
+      ({
+        left: 0,
+        width: 400,
+        top: 0,
+        height: 140,
+        right: 400,
+        bottom: 140,
+        x: 0,
+        y: 0,
+        toJSON: () => ({}),
+      }) as DOMRect;
+
+    fireEvent.mouseMove(box, { clientX: 400 });
+
+    expect(screen.getByRole('tooltip').textContent).toContain('com.b.two200 MB');
+  });
+
   it("shows each line's value at the hovered time, and hides it on leaving", () => {
     render(
       <LineChart

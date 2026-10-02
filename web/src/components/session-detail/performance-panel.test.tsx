@@ -95,6 +95,20 @@ describe('PerformancePanel', () => {
     expect(screen.getByRole('img', { name: 'CPU over the session' })).toBeTruthy();
   });
 
+  it('labels a line that followed several foreground apps as such, and breaks it between them', async () => {
+    const m = android(4);
+    m.appId = 'com.b.two';
+    m.samples = m.samples.map((s, i) => ({ ...s, app: i < 2 ? 'com.a.one' : 'com.b.two' }));
+    answer(m);
+    render(<PerformancePanel sessionId="s1" running={false} hasTrace={false} />);
+
+    const memory = await screen.findByRole('img', { name: 'App memory over the session' });
+    expect(screen.getAllByText('Foreground app').length).toBeGreaterThan(0);
+    expect(screen.queryByText('com.b.two')).toBeNull();
+    const d = memory.querySelector('path[data-series="appMem"]')?.getAttribute('d') ?? '';
+    expect(d.match(/M/g)).toHaveLength(2);
+  });
+
   it('says it is collecting while a running session has under two samples', async () => {
     answer(android(1));
     render(<PerformancePanel sessionId="s1" running hasTrace={false} />);

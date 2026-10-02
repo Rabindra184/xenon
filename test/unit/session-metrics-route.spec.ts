@@ -60,7 +60,16 @@ describe('session metrics: the response', () => {
       deviceMemTotalMb: 5620.8,
       appCpu: 5,
       appMemMb: 300,
+      app: 'com.acme.shop',
     });
+  });
+
+  it("names each sample's app, since the foreground app can change", () => {
+    const body = sessionMetricsBody('android', [
+      row(0, { app_id: 'com.a.one' }),
+      row(2000, { app_id: 'com.b.two' }),
+    ]);
+    expect(body.samples.map((s) => s.app)).to.deep.equal(['com.a.one', 'com.b.two']);
   });
 });
 

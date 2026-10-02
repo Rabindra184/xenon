@@ -109,7 +109,14 @@ export const PerformancePanel: React.FC<Props> = ({ sessionId, running, hasTrace
 
   const samples = metrics?.samples ?? [];
   const times = useMemo(() => samples.map((s) => s.t - (samples[0]?.t ?? 0)), [samples]);
-  const appLabel = metrics?.appId ?? 'App';
+  // Without appPackage the app is the foreground one, which can change: a
+  // line that followed several apps is the foreground app's, each point
+  // names its own, and the line breaks where the app changed.
+  const apps = new Set(samples.map((s) => s.app).filter((a): a is string => !!a));
+  const appLabel =
+    apps.size > 1 ? 'Foreground app' : (Array.from(apps)[0] ?? metrics?.appId ?? 'App');
+  const appOf = samples.map((s) => s.app ?? null);
+  const changed = (i: number) => i > 0 && !!appOf[i] && !!appOf[i - 1] && appOf[i] !== appOf[i - 1];
 
   const cpu: ChartSeries[] = [];
   // The app's memory has its own chart: beside the device's gigabytes its
@@ -130,7 +137,8 @@ export const PerformancePanel: React.FC<Props> = ({ sessionId, running, hasTrace
         key: 'appCpu',
         label: appLabel,
         color: APP,
-        values: samples.map((s) => s.appCpu),
+        values: samples.map((s, i) => (changed(i) ? null : s.appCpu)),
+        pointLabels: appOf,
       });
     }
     if (metrics.series.appMem) {
@@ -138,7 +146,8 @@ export const PerformancePanel: React.FC<Props> = ({ sessionId, running, hasTrace
         key: 'appMem',
         label: appLabel,
         color: APP,
-        values: samples.map((s) => s.appMemMb),
+        values: samples.map((s, i) => (changed(i) ? null : s.appMemMb)),
+        pointLabels: appOf,
       });
     }
     if (metrics.series.deviceMem) {

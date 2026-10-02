@@ -31,6 +31,8 @@ export interface SessionMetricsBody {
     deviceMemTotalMb: number | null;
     appCpu: number | null;
     appMemMb: number | null;
+    /** The app this sample's app figures are for: the foreground app can change. */
+    app: string | null;
   }>;
 }
 
@@ -66,6 +68,7 @@ export function sessionMetricsBody(
       deviceMemTotalMb: r.device_mem_total,
       appCpu: r.app_cpu_pct,
       appMemMb: r.app_mem_mb,
+      app: r.app_id,
     })),
   };
 }

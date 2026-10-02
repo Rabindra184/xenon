@@ -5,6 +5,8 @@ export interface MetricPoint {
   deviceMemTotalMb: number | null;
   appCpu: number | null;
   appMemMb: number | null;
+  /** The app this sample's app figures are for; absent from older answers. */
+  app?: string | null;
 }
 
 export interface SessionMetrics {
