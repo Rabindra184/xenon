@@ -6,6 +6,34 @@ This project follows [Semantic Versioning](https://semver.org/). Releases are
 published to npm automatically when `package.json`'s `version` changes on `main`
 (see `.github/workflows/npm-publish.yml`).
 
+## 2.8.3
+
+**A finished session stops showing "running" on the Sessions list, and an
+iPhone's tunnel failures say what went wrong.**
+
+No database migration, and no configuration to change.
+
+### Fixed
+
+- **A finished session in an older page of the Sessions list stops showing
+  "running"** (#410). Older pages, loaded with **Show 200 more**, were fetched
+  once, so a session running then kept showing "running" until the period or
+  build was changed. This was a known issue since 2.7.0.
+  - Each refresh now re-reads, by id, the older rows still running.
+  - `GET /xenon/api/session` takes `ids`: up to 200 session ids,
+    comma-separated, under the usual team-visibility rule. Otherwise it is
+    `400 invalid_ids`.
+- **A failed iPhone stream start stops its go-ios tunnel** (#409). A start
+  whose tunnel came up and whose WebDriverAgent then failed left the tunnel
+  running, holding its two ports, until the phone's next start. It is now
+  stopped, except while an Appium session may be using it.
+- **An iPhone tunnel failure says what went wrong** (#409). The dashboard
+  showed "Lost the connection to the device tunnel. Reconnect the device,
+  then retry." for every one. It now says when:
+  - no tunnel ports are left;
+  - the tunnel stopped while starting, with go-ios's own reason;
+  - the tunnel came up on an unexpected port.
+
 ## 2.8.2
 
 **An Android phone with H.264 preview is released when its tile closes.**
