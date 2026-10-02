@@ -411,6 +411,16 @@ exports.Prisma.SelectorStateScalarFieldEnum = {
   updatedAt: 'updatedAt'
 };
 
+exports.Prisma.SelectorEventScalarFieldEnum = {
+  id: 'id',
+  original_strategy: 'original_strategy',
+  original_selector: 'original_selector',
+  action: 'action',
+  user_id: 'user_id',
+  reason: 'reason',
+  createdAt: 'createdAt'
+};
+
 exports.Prisma.RecordingScalarFieldEnum = {
   id: 'id',
   group_id: 'group_id',
@@ -535,6 +545,7 @@ exports.Prisma.ModelName = {
   ApiKey: 'ApiKey',
   Team: 'Team',
   SelectorState: 'SelectorState',
+  SelectorEvent: 'SelectorEvent',
   Recording: 'Recording',
   Bookmark: 'Bookmark',
   Annotation: 'Annotation',

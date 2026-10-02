@@ -370,6 +370,21 @@ model SelectorState {
   @@index([fixed_at])
 }
 
+// What happened to a selector, and who did it: one row per status change.
+// No relation to SelectorState (unmute and cancel can delete that row; the
+// history stays) or to User (a deleted user's actions stay, without a name).
+model SelectorEvent {
+  id                String   @id @default(uuid())
+  original_strategy String
+  original_selector String
+  action            String
+  user_id           String?
+  reason            String?
+  createdAt         DateTime @default(now())
+
+  @@index([original_strategy, original_selector, createdAt])
+}
+
 model Recording {
   id              String       @id @default(uuid())
   group_id        String
