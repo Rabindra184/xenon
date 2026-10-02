@@ -1,6 +1,6 @@
 import React from 'react';
 import { afterEach, describe, it, expect, vi } from 'vitest';
-import { act, render, screen } from '@testing-library/react';
+import { act, render, screen, waitFor } from '@testing-library/react';
 import XenonApiService from '../../api-service';
 import { METRICS_REFRESH_MS, PerformancePanel, memoryAxisMax } from './performance-panel';
 
@@ -61,22 +61,22 @@ describe('PerformancePanel', () => {
 
     expect(await screen.findByRole('img', { name: 'CPU over the session' })).toBeTruthy();
     expect(screen.queryByRole('img', { name: /memory over the session/ })).toBeNull();
-    expect(screen.getByText(/iPhone: device CPU only/)).toBeTruthy();
-    expect(screen.getByText(/Instruments trace is under Details/)).toBeTruthy();
+    expect(screen.getByText(/On iPhones, only the device's overall CPU is recorded/)).toBeTruthy();
+    expect(screen.getByText(/download the Performance trace under Details/)).toBeTruthy();
   });
 
   it('says why an ended session has no figures', async () => {
     answer({ ...android(0) });
     render(<PerformancePanel sessionId="s1" running={false} hasTrace={false} />);
 
-    expect(await screen.findByText('No performance figures for this session')).toBeTruthy();
+    expect(await screen.findByText('No performance data for this session')).toBeTruthy();
   });
 
   it('treats an answer that is not the metrics shape as no figures', async () => {
     answer([]);
     render(<PerformancePanel sessionId="s1" running={false} hasTrace={false} />);
 
-    expect(await screen.findByText('No performance figures for this session')).toBeTruthy();
+    expect(await screen.findByText('No performance data for this session')).toBeTruthy();
   });
 
   it('says a running session nothing samples is not recorded, instead of collecting', async () => {
@@ -91,7 +91,9 @@ describe('PerformancePanel', () => {
     answer({ ...android(5), recording: 'stopped' });
     render(<PerformancePanel sessionId="s1" running hasTrace={false} />);
 
-    expect(await screen.findByText(/Recording stopped: the phone stopped answering/)).toBeTruthy();
+    expect(
+      await screen.findByText(/Recording stopped: the device stopped responding/),
+    ).toBeTruthy();
     expect(screen.getByRole('img', { name: 'CPU over the session' })).toBeTruthy();
   });
 
@@ -114,6 +116,27 @@ describe('PerformancePanel', () => {
     render(<PerformancePanel sessionId="s1" running hasTrace={false} />);
 
     expect(await screen.findByText(/Collecting/)).toBeTruthy();
+  });
+
+  // The panel is read by testers, not by whoever runs the server: no tool
+  // names, setting keys or server topology in anything it says.
+  it.each([
+    ['an Android chart', android(5), false, true],
+    ['an iPhone chart', ios(5), false, true],
+    ['an ended session with nothing recorded', android(0), false, false],
+    ['a running session nothing samples', { ...android(0), recording: 'off' }, true, false],
+    ['a stopped recording', { ...android(5), recording: 'stopped' }, true, false],
+    ['a session still collecting', android(1), true, false],
+  ])('says nothing technical for %s', async (_state, body, running, hasTrace) => {
+    answer(body);
+    const { container } = render(
+      <PerformancePanel sessionId="s1" running={running} hasTrace={hasTrace} />,
+    );
+    await waitFor(() => expect(screen.queryByText('Loading performance…')).toBeNull());
+
+    expect(container.textContent).not.toMatch(
+      /go-ios|sysmontap|\badb\b|Instruments|sessionMetrics|another server|Xenon records/i,
+    );
   });
 
   it('asks again every 10 s while the session runs', async () => {

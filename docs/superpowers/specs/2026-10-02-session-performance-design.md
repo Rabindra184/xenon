@@ -191,7 +191,10 @@ page can tell "not recorded on this platform" from "no samples yet".
 - **States:**
   - no samples, and no recordable series (a simulator, another server's
     phone, an older session, or the setting off): one line saying which;
-  - iOS: "iPhone: device CPU only", with the trace download noted;
+  - iOS: "On iPhones, only the device's overall CPU is recorded", pointing
+    to the Performance trace download under Details;
+  - the panel's wording is for testers: no tool names (go-ios, adb), setting
+    keys or server topology;
   - fewer than two samples: a "collecting…" note instead of a chart.
 - **Code split.** The chart is its own small component (`line-chart.tsx`),
   so Selector Health's trend chart can reuse it later.

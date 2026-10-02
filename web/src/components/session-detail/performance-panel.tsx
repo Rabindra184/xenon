@@ -169,7 +169,7 @@ export const PerformancePanel: React.FC<Props> = ({ sessionId, running, hasTrace
 
   const notRecorded = running && metrics?.recording === 'off';
   const stopped = metrics?.recording === 'stopped';
-  const stoppedNote = 'Recording stopped: the phone stopped answering.';
+  const stoppedNote = 'Recording stopped: the device stopped responding.';
 
   let body: React.ReactNode;
   if (!loaded) {
@@ -178,14 +178,14 @@ export const PerformancePanel: React.FC<Props> = ({ sessionId, running, hasTrace
     body = (
       <EmptyState
         title="Performance isn't recorded for this session"
-        description="Xenon records CPU and memory for sessions on its own Android phones and iPhones. This one runs on a simulator or on another server's phone, or sessionMetrics is turned off."
+        description="CPU and memory are recorded for Android devices and iPhones connected to this server. This session runs on an iOS simulator or on a device connected to another machine, or recording is turned off."
       />
     );
   } else if (samples.length === 0 && !running) {
     body = (
       <EmptyState
-        title="No performance figures for this session"
-        description="Xenon records CPU and memory for sessions on its own Android phones and iPhones (an iPhone: device CPU only). This session ran on a simulator, on another server's phone, before Xenon recorded them, or with sessionMetrics turned off."
+        title="No performance data for this session"
+        description="CPU and memory are recorded for Android devices and iPhones connected to this server. This session ran on an iOS simulator or on a device connected to another machine, before recording was available, or with recording turned off."
       />
     );
   } else if (samples.length < 2) {
@@ -202,14 +202,12 @@ export const PerformancePanel: React.FC<Props> = ({ sessionId, running, hasTrace
     body = (
       <div className="space-y-4">
         {stopped && (
-          <p className="text-xs text-[var(--color-warning)]">
-            {stoppedNote} The figures end there.
-          </p>
+          <p className="text-xs text-[var(--color-warning)]">{stoppedNote} The data ends there.</p>
         )}
         {metrics?.platform === 'ios' && (
           <p className="text-xs text-[var(--text-dim)]">
-            iPhone: device CPU only. go-ios can't read an iPhone's memory or one app's figures.
-            {hasTrace ? ' The Instruments trace is under Details.' : ''}
+            On iPhones, only the device's overall CPU is recorded.
+            {hasTrace ? ' For more detail, download the Performance trace under Details.' : ''}
           </p>
         )}
         {cpu.length > 0 && (
