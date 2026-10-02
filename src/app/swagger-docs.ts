@@ -3116,6 +3116,10 @@ export {};
  *       - in: query
  *         name: windowDays
  *         schema: { type: integer, minimum: 1, maximum: 365, default: 30 }
+ *       - in: query
+ *         name: tz
+ *         schema: { type: integer, minimum: -840, maximum: 840, default: 0 }
+ *         description: "The caller's offset from UTC in minutes (east positive), so `trend` days are theirs"
  *     responses:
  *       200:
  *         description: KPI summary
@@ -3132,11 +3136,21 @@ export {};
  *                     distinctSelectors: { type: integer }
  *                     sessionsTouched: { type: integer }
  *                     byTier: { type: object, additionalProperties: { type: integer } }
+ *                     timeSpentMs: { type: integer, description: 'Total duration of the commands that needed healing' }
  *                 prior:
  *                   type: object
  *                   description: 'Same shape as `current` for the immediately preceding window'
  *                 resolvedCount: { type: integer }
  *                 pendingCount: { type: integer }
+ *                 trend:
+ *                   type: array
+ *                   description: 'Heals per day of the period, in the caller''s time zone, days with none included'
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       t: { type: integer, description: 'When the day began, epoch ms' }
+ *                       heals: { type: integer }
+ *                       aiHeals: { type: integer, description: 'Heals by Visual AI or an LLM' }
  *       401: { $ref: '#/components/responses/Unauthorized' }
  *       429: { $ref: '#/components/responses/RateLimited' }
  */

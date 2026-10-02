@@ -21,6 +21,7 @@ import {
 } from '../../services/device-access/sessionVisibility';
 import { HealEtalonService } from '../../services/healing/HealEtalonService';
 import { sessionMetricsBody } from '../../services/metrics/metricsBody';
+import { dailyHeals, parseTzOffset } from '../../services/selector-health/healingTrend';
 import { SessionMetricsService } from '../../services/metrics/SessionMetricsService';
 import {
   cursorWhere,
@@ -315,6 +316,7 @@ function parseWindowDays(raw: unknown, fallback = 30): number {
 // so the page can show "are we getting healthier?" deltas.
 async function getHealingSummary(request: Request, response: Response) {
   const windowDays = parseWindowDays(request.query.windowDays);
+  const tz = parseTzOffset(request.query.tz);
   const now = new Date();
   const since = new Date(now);
   since.setDate(since.getDate() - windowDays);
@@ -336,6 +338,8 @@ async function getHealingSummary(request: Request, response: Response) {
         session_id: true,
         original_selector: true,
         healing_tier: true,
+        createdAt: true,
+        duration: true,
       },
     }),
     prisma.sessionLog.findMany({
@@ -349,6 +353,8 @@ async function getHealingSummary(request: Request, response: Response) {
         session_id: true,
         original_selector: true,
         healing_tier: true,
+        createdAt: true,
+        duration: true,
       },
     }),
   ]);
@@ -357,8 +363,10 @@ async function getHealingSummary(request: Request, response: Response) {
     const sessions = new Set<string>();
     const selectors = new Set<string>();
     const byTier: Record<string, number> = {};
+    let timeSpentMs = 0;
     for (const r of rows) {
       sessions.add(r.session_id);
+      timeSpentMs += r.duration ?? 0;
       if (r.original_selector) selectors.add(r.original_selector);
       const tier = r.healing_tier || 'Unknown';
       byTier[tier] = (byTier[tier] || 0) + 1;
@@ -368,6 +376,8 @@ async function getHealingSummary(request: Request, response: Response) {
       distinctSelectors: selectors.size,
       sessionsTouched: sessions.size,
       byTier,
+      // The commands that needed healing, start to end: what healing cost the run.
+      timeSpentMs,
     };
   };
 
@@ -390,6 +400,12 @@ async function getHealingSummary(request: Request, response: Response) {
     prior,
     resolvedCount,
     pendingCount,
+    trend: dailyHeals(
+      currentRows.map((r) => ({ at: r.createdAt, method: r.healing_tier })),
+      since,
+      now,
+      tz,
+    ),
   });
 }
 
