@@ -3184,6 +3184,30 @@ export {};
 
 /**
  * @swagger
+ * /api/healing/selectors/detail:
+ *   get:
+ *     summary: Everything the Selector Health side panel shows for one selector
+ *     description: |
+ *       Its heals in the period (suggested fixes with their share, methods and
+ *       confidence; heals per day; platforms, builds and devices; the latest 20
+ *       heals), its status, the latest 50 status changes with who made them,
+ *       and whether the caller may act. A selector no session the caller can
+ *       see has healed answers 404, exactly as an unknown one.
+ *     tags: [Selector Health]
+ *     parameters:
+ *       - { in: query, name: selector, required: true, schema: { type: string } }
+ *       - { in: query, name: strategy, schema: { type: string }, description: "Empty for heals recorded with no strategy" }
+ *       - { in: query, name: days, schema: { type: integer, minimum: 1, maximum: 365, default: 30 } }
+ *       - { in: query, name: tz, schema: { type: integer, minimum: -840, maximum: 840, default: 0 } }
+ *     responses:
+ *       200: { description: 'The panel for one selector' }
+ *       400: { description: 'No selector given' }
+ *       404: { description: '`{ error: "not_found", message: "Selector not found" }`' }
+ *       401: { $ref: '#/components/responses/Unauthorized' }
+ */
+
+/**
+ * @swagger
  * /api/healing/digest/send:
  *   post:
  *     summary: On-demand selector-health digest webhook
