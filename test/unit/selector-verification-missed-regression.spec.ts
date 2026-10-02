@@ -98,7 +98,8 @@ describe('SelectorVerificationJob catches a heal the live check missed', functio
   it('sends a selector being verified back to fix, rather than promoting it', async () => {
     await state('//pending/broke', 'pending');
     // Three clean builds since it was marked fixed, and one that healed.
-    for (const b of ['mr-b1', 'mr-b2', 'mr-b3']) await find(b, '//pending/broke', false, now - HOUR);
+    for (const b of ['mr-b1', 'mr-b2', 'mr-b3'])
+      await find(b, '//pending/broke', false, now - HOUR);
     await find('mr-b4', '//pending/broke', true, now - 2 * HOUR);
 
     await run();
@@ -127,7 +128,8 @@ describe('SelectorVerificationJob catches a heal the live check missed', functio
     await state('//resolved/clean', 'resolved');
     await find('mr-b1', '//pending/clean', true, fixedAt.getTime() - HOUR);
     await find('mr-b1', '//resolved/clean', true, fixedAt.getTime() - HOUR);
-    for (const b of ['mr-b1', 'mr-b2', 'mr-b3']) await find(b, '//pending/clean', false, now - HOUR);
+    for (const b of ['mr-b1', 'mr-b2', 'mr-b3'])
+      await find(b, '//pending/clean', false, now - HOUR);
 
     await run();
 

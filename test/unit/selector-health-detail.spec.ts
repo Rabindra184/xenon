@@ -180,11 +180,15 @@ describe('GET /healing/selectors/detail (real queries)', function () {
     const heals = (prisma.sessionLog.findMany as unknown as SinonStub).args.map((a) => a[0]);
     expect(heals).to.have.length(1);
     expect(heals[0].select).to.not.have.property('session');
-    const sessions = await Promise.all((prisma.session.findMany as unknown as SinonStub).returnValues);
-    expect(sessions.flat().map((x: { id: string }) => x.id).sort()).to.deep.equal([
-      'sh-s-a-1',
-      'sh-s-shared-1',
-    ]);
+    const sessions = await Promise.all(
+      (prisma.session.findMany as unknown as SinonStub).returnValues,
+    );
+    expect(
+      sessions
+        .flat()
+        .map((x: { id: string }) => x.id)
+        .sort(),
+    ).to.deep.equal(['sh-s-a-1', 'sh-s-shared-1']);
     const b = res.body;
     expect(b).to.deep.include({ heals: 45, sessions: 2, timeSpentMs: 4500 });
     expect(b.firstHealedAt).to.equal(new Date(now - 45 * HOUR).toISOString());

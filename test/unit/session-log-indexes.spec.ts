@@ -57,9 +57,9 @@ describe('SessionLog is read through an index', function () {
     ['"To fix"', ADMIN, '/healing/selectors?tab=fix&days=365'],
     ['"To fix" with a search', ADMIN, '/healing/selectors?tab=fix&days=30&q=confirm'],
     ['"To fix" on one platform', ADMIN, '/healing/selectors?tab=fix&days=30&platform=android'],
-    ["a member's \"To fix\"", MEMBER_A, '/healing/selectors?tab=fix&days=30'],
+    ['a member\'s "To fix"', MEMBER_A, '/healing/selectors?tab=fix&days=30'],
     ['"Fixed"', ADMIN, '/healing/selectors?tab=fixed&days=30'],
-    ["a member's \"Fixed\"", MEMBER_A, '/healing/selectors?tab=fixed&days=30'],
+    ['a member\'s "Fixed"', MEMBER_A, '/healing/selectors?tab=fixed&days=30'],
     [
       'the panel',
       ADMIN,
@@ -77,7 +77,6 @@ describe('SessionLog is read through an index', function () {
     it(`reads ${name} without a scan`, async () => {
       const steps = await sessionLogSteps(scratch, get(auth, path));
       expect(steps, 'no SessionLog statement was captured').to.not.be.empty;
-      if (process.env.SHOW_PLANS) console.log(name, steps);
       expect(scans(steps), steps.join('\n')).to.deep.equal([]);
     });
   }

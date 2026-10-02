@@ -55,7 +55,7 @@ The verifier runs as a cron job (default: every 15 minutes) and only counts buil
 - happened after the user clicked **Mark fixed** (`fixed_at`),
 - belong to a session with a `build_id` set — **ad-hoc local runs do not advance verification**.
 
-Three distinct clean `build_id`s are needed for promotion. The threshold is fixed in v1 (no capability to tune it).
+Three distinct clean `build_id`s are needed for promotion. The threshold is fixed in v1 (no capability to tune it). A heal since **Mark fixed** ends verification instead, however many clean builds there were: the selector goes back to To fix (see below).
 
 ### Regression detection
 
@@ -64,7 +64,9 @@ A regression is detected on the heal write path. Whenever a successful heal is p
 1. The state flips to `Active`.
 2. `regression_count` is incremented.
 3. A `selector_regressed` event is emitted to the dashboard.
-4. The regression banner appears at the top of the page (auto-dismisses after 30 s; multiple regressions in a 5-min window collapse into one banner).
+4. The regression banner appears at the top of the page (auto-dismisses after 30 s; multiple regressions in a 5-min window collapse into one banner). Its **Show selectors to fix** opens To fix in the period and order already chosen, without any search or filter, and opens the selector when only one broke.
+
+The verifier checks as well, on every run: a `Pending` or `Resolved` selector with a heal since it was marked fixed goes back the same way. That covers a heal whose own check failed, for instance on a busy database.
 
 Muted selectors do **not** generate regression events — silencing is silencing.
 
@@ -169,7 +171,7 @@ The verifier emits two more events on its own schedule:
 - `selector_progress` — `clean_builds_count` ticked up but threshold not yet reached.
 - `selector_resolved` — promoted to `Resolved`.
 
-And on the heal write path:
+And on the heal write path, or on the verifier's next run when that missed it:
 
 - `selector_regressed` — fired when a Pending or Resolved selector heals again.
 

@@ -59,9 +59,7 @@ export interface ScratchDatabase {
  * With `captureQueries`, `queries` holds the SQL each test ran, so a spec can
  * ask SQLite how it reads a table (`EXPLAIN QUERY PLAN`).
  */
-export function useScratchDatabase(
-  options: { captureQueries?: boolean } = {},
-): ScratchDatabase {
+export function useScratchDatabase(options: { captureQueries?: boolean } = {}): ScratchDatabase {
   const ctx = { queries: [] } as unknown as ScratchDatabase;
   const sandbox = sinon.createSandbox();
   let dbPath = '';
