@@ -19,6 +19,8 @@ export interface LineChartProps {
   /** Top of the y axis; the data's own maximum, rounded up, when absent. */
   yMax?: number;
   formatValue: (v: number) => string;
+  /** The tooltip's time label; elapsed time from the first sample when absent. */
+  formatTime?: (t: number) => string;
   ariaLabel: string;
   height?: number;
 }
@@ -116,6 +118,7 @@ export const LineChart: React.FC<LineChartProps> = ({
   series,
   yMax,
   formatValue,
+  formatTime,
   ariaLabel,
   height = 140,
 }) => {
@@ -209,7 +212,9 @@ export const LineChart: React.FC<LineChartProps> = ({
                 : { left: `${hoverPct}%`, marginLeft: 8 }
             }
           >
-            <div className="tabular-nums text-[var(--text-dim)]">{formatElapsed(times[hover])}</div>
+            <div className="tabular-nums text-[var(--text-dim)]">
+              {(formatTime ?? formatElapsed)(times[hover])}
+            </div>
             {series.map((s) => {
               const v = s.values[hover];
               return (

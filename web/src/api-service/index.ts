@@ -1,4 +1,5 @@
 import apiClient from './api-client';
+import { ISelectorDetailResponse } from '../interfaces/IHealingEvent';
 
 export default class XenonApiService {
   public static getDevices() {
@@ -411,10 +412,60 @@ export default class XenonApiService {
     return apiClient.makeGETRequest(`/healing/events?limit=${limit}&t=${Date.now()}`);
   }
 
-  public static getHealingSummary(windowDays = 30) {
+  /** `tz`: the browser's offset from UTC in minutes, so the trend's days are the viewer's. */
+  public static getHealingSummary(windowDays = 30, tz = 0) {
     return apiClient.makeGETRequest(
-      `/healing/summary?windowDays=${windowDays}&t=${Date.now()}`,
+      `/healing/summary?windowDays=${windowDays}&tz=${tz}&t=${Date.now()}`,
     );
+  }
+
+  /** One tab of Selector Health's list. */
+  public static getHealingSelectors(query: {
+    tab: string;
+    days: number;
+    q?: string;
+    platform?: string;
+    method?: string;
+    sort?: string;
+    page?: number;
+    pageSize?: number;
+  }) {
+    const p = new URLSearchParams({
+      tab: query.tab,
+      days: String(query.days),
+      sort: query.sort ?? 'heals',
+      page: String(query.page ?? 1),
+      pageSize: String(query.pageSize ?? 50),
+      t: String(Date.now()),
+    });
+    if (query.q) p.set('q', query.q);
+    if (query.platform) p.set('platform', query.platform);
+    if (query.method) p.set('method', query.method);
+    return apiClient.makeGETRequest(`/healing/selectors?${p.toString()}`);
+  }
+
+  /**
+   * Everything the side panel shows for one selector. Bypasses `apiClient`
+   * so the caller sees a 404 (a selector it can't see) as such.
+   */
+  public static async getSelectorPanel(
+    strategy: string,
+    selector: string,
+    days: number,
+    tz: number,
+  ): Promise<{ status: number; body: ISelectorDetailResponse | null }> {
+    const p = new URLSearchParams({
+      strategy,
+      selector,
+      days: String(days),
+      tz: String(tz),
+      t: String(Date.now()),
+    });
+    const res = await fetch(`/xenon/api/healing/selectors/detail?${p.toString()}`, {
+      credentials: 'include',
+    });
+    const body = await res.json().catch(() => null);
+    return { status: res.status, body };
   }
 
   public static getHealingHotspots(
@@ -461,6 +512,7 @@ export default class XenonApiService {
     original_strategy: string;
     original_selector: string;
     action: 'mark_fixed' | 'mute' | 'unmute' | 'cancel_verification';
+    reason?: string;
   }) {
     const res = await fetch('/xenon/api/healing/selector/state', {
       method: 'POST',

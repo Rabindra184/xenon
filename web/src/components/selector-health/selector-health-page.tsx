@@ -63,14 +63,6 @@ function formatRelative(iso: string): string {
   return `${day}d ago`;
 }
 
-function formatCost(usd: number): string {
-  if (usd === 0) return '$0';
-  if (usd < 0.01) return '<$0.01';
-  if (usd < 1) return `$${usd.toFixed(2)}`;
-  if (usd < 100) return `$${usd.toFixed(2)}`;
-  return `$${Math.round(usd)}`;
-}
-
 function severityClass(count: number): string {
   if (count >= 10) return 'severe';
   if (count >= 5) return 'warn';
@@ -145,7 +137,6 @@ const KPI_HINTS = {
   brittle: 'Distinct selectors that needed at least one heal in the window. Lower is better.',
   totalHeals: "Number of times Xenon's self-heal kicked in within the selected window.",
   llm: 'Heals that escalated all the way to an LLM. The most expensive tier — keep this small.',
-  cost: 'Estimated dollar spend on LLM heals in the window.',
 } as const;
 
 const KpiStrip: React.FC<{ summary: IHealingSummaryResponse | null; loading: boolean }> = ({
@@ -157,14 +148,14 @@ const KpiStrip: React.FC<{ summary: IHealingSummaryResponse | null; loading: boo
     distinctSelectors: 0,
     sessionsTouched: 0,
     byTier: {},
-    estCostUsd: 0,
+    timeSpentMs: 0,
   };
   const prior: IHealingPeriodAggregate = summary?.prior ?? {
     totalHeals: 0,
     distinctSelectors: 0,
     sessionsTouched: 0,
     byTier: {},
-    estCostUsd: 0,
+    timeSpentMs: 0,
   };
   const llmHeals = cur.byTier?.LLM ?? 0;
   const llmShare = cur.totalHeals > 0 ? Math.round((llmHeals / cur.totalHeals) * 100) : 0;
@@ -201,20 +192,6 @@ const KpiStrip: React.FC<{ summary: IHealingSummaryResponse | null; loading: boo
         value={loading ? '—' : llmHeals.toLocaleString()}
         sub={`${llmShare}% of total`}
         tone={llmShare > 30 ? 'critical' : llmShare > 10 ? 'warn' : 'neutral'}
-      />
-      <KpiTile
-        label="Est. cost"
-        hint={KPI_HINTS.cost}
-        value={loading ? '—' : formatCost(cur.estCostUsd)}
-        sub="this window"
-        delta={
-          !loading && (
-            <Delta
-              current={Math.round(cur.estCostUsd * 100)}
-              prior={Math.round(prior.estCostUsd * 100)}
-            />
-          )
-        }
       />
       <KpiTile
         label="Resolved"

@@ -40,12 +40,6 @@ function formatRelative(iso: string): string {
   return `${day}d ago`;
 }
 
-function formatCost(usd: number): string {
-  if (usd === 0) return '$0';
-  if (usd < 0.01) return '<$0.01';
-  return `$${usd.toFixed(2)}`;
-}
-
 const SelectorDetailPage: React.FC = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
@@ -345,10 +339,6 @@ const SelectorDetailPage: React.FC = () => {
               <div className="sh-detail-stat">
                 <span className="sh-detail-stat__label">Sessions</span>
                 <span className="sh-detail-stat__value">{detail.sessionCount}</span>
-              </div>
-              <div className="sh-detail-stat">
-                <span className="sh-detail-stat__label">Est. cost</span>
-                <span className="sh-detail-stat__value">{formatCost(detail.estCostUsd)}</span>
               </div>
               <div className="sh-detail-stat">
                 <span className="sh-detail-stat__label">Tiers used</span>
