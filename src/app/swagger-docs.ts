@@ -3132,7 +3132,6 @@ export {};
  *                     distinctSelectors: { type: integer }
  *                     sessionsTouched: { type: integer }
  *                     byTier: { type: object, additionalProperties: { type: integer } }
- *                     estCostUsd: { type: number }
  *                 prior:
  *                   type: object
  *                   description: 'Same shape as `current` for the immediately preceding window'

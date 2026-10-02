@@ -121,7 +121,6 @@ export class NotificationService {
         // formatting end-to-end.
         const totalHeals = payload.totalHeals ?? 0;
         const distinctSelectors = payload.distinctSelectors ?? 0;
-        const estCostUsd = payload.estCostUsd ?? 0;
         const windowDays = payload.windowDays ?? 30;
         const top: Array<any> = Array.isArray(payload.hotspots) ? payload.hotspots : [];
         const lines = top
@@ -132,7 +131,7 @@ export class NotificationService {
               (h.suggestedRewrite ? `\n   ↳ rewrite: \`${h.suggestedRewrite}\`` : ''),
           )
           .join('\n');
-        const summary = `🩺 *Selector Health digest* — last ${windowDays}d\n${totalHeals} heals across ${distinctSelectors} selectors · est. $${estCostUsd.toFixed(2)}`;
+        const summary = `🩺 *Selector Health digest* — last ${windowDays}d\n${totalHeals} heals across ${distinctSelectors} selectors`;
         const body = {
           text: summary,
           attachments: [

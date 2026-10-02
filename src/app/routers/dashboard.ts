@@ -305,27 +305,6 @@ export async function getRecentHealingEvents(request: Request, response: Respons
   return response.status(200).json({ events, todayCount });
 }
 
-// Rough per-heal cost estimates in USD. Local tiers are effectively free
-// (CPU/inference cost only); LLM is the headline number testers should
-// optimize against. Surfaced so engineering managers can quantify suite
-// hygiene work without reading raw billing data.
-const TIER_COST_USD: Record<string, number> = {
-  Native: 0,
-  Resilio: 0,
-  'Fuzzy XML': 0,
-  OCR: 0.0005,
-  'Visual AI': 0.002,
-  LLM: 0.04,
-};
-
-function estimateCost(byTier: Record<string, number>): number {
-  let sum = 0;
-  for (const [tier, count] of Object.entries(byTier)) {
-    sum += (TIER_COST_USD[tier] ?? 0) * count;
-  }
-  return sum;
-}
-
 function parseWindowDays(raw: unknown, fallback = 30): number {
   const n = parseInt(typeof raw === 'string' ? raw : '', 10);
   if (!Number.isFinite(n)) return fallback;
@@ -389,7 +368,6 @@ async function getHealingSummary(request: Request, response: Response) {
       distinctSelectors: selectors.size,
       sessionsTouched: sessions.size,
       byTier,
-      estCostUsd: estimateCost(byTier),
     };
   };
 
@@ -490,7 +468,6 @@ interface HotspotAggregation {
   distinctSelectors: number;
   sessionsTouched: number;
   byTier: Record<string, number>;
-  estCostUsd: number;
   hotspots: HotspotRow[];
 }
 
@@ -691,7 +668,6 @@ export async function aggregateHotspots(
     distinctSelectors: buckets.size,
     sessionsTouched: sessionsTouched.size,
     byTier,
-    estCostUsd: estimateCost(byTier),
     hotspots,
   };
 }
@@ -730,7 +706,6 @@ async function getHealingViolations(request: Request, response: Response) {
     violationCount: agg.hotspots.length,
     totalHeals: agg.totalHeals,
     distinctSelectors: agg.distinctSelectors,
-    estCostUsd: agg.estCostUsd,
     violations: agg.hotspots,
   });
 }
@@ -763,7 +738,6 @@ async function sendHealingDigest(request: Request, response: Response) {
     windowDays,
     totalHeals: agg.totalHeals,
     distinctSelectors: agg.distinctSelectors,
-    estCostUsd: agg.estCostUsd,
     hotspots: agg.hotspots,
   };
 
@@ -888,7 +862,6 @@ async function getHealingSelectorDetail(request: Request, response: Response) {
     windowDays,
     healCount: rows.length,
     sessionCount: sessions.size,
-    estCostUsd: estimateCost(byTier),
     byTier,
     byPlatform,
     byBuild: Object.entries(byBuild)
