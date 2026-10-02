@@ -267,6 +267,9 @@ class IOSStreamService {
    */
   private async cleanupOrphanTunnels(udid: string): Promise<void> {
     if (await this.appiumSessionMayUse(udid, 'go-ios tunnels')) return;
+    // A tunnel opened for screenshots is live and tracked, not a leftover:
+    // the start's ensure takes it over (IOSTunnels.borrow).
+    if (this.tunnels().isOnDemand(udid)) return;
     log.debug(`Cleaning up orphan tunnels for ${udid}...`);
 
     await this.tunnels().stop(udid);
