@@ -393,9 +393,10 @@ class IOSStreamService {
   }
 
   /**
-   * Comprehensive process-level and endpoint-level health check.
-   * Principal Intelligence: Differentiates between 'Process dead' and 'Network unreachable'.
-   * If only the tunnel is dead but WDA is alive via IP, it will trigger a tunnel restart.
+   * Comprehensive process-level and endpoint-level health check: WDA and its
+   * forwarders are running, and WDA answers on the stream's own port. Only
+   * that port: WDA names no phone, so nothing that answers elsewhere (a
+   * simulator's address is this Mac's own) is known to be this phone's.
    */
   public async isStreamResponsive(udid: string): Promise<boolean> {
     const session = this.sessions.get(udid);
@@ -414,94 +415,18 @@ class IOSStreamService {
     }
 
     if (!isWdaIproxyAlive || !isMjpegIproxyAlive) {
-      log.warn(
-        `🛡️ [${udid}] [Watchdog] Tunnel processes are dead. Attempting tunnel-only recovery...`,
-      );
-
-      const device = await findOwnDevice(udid);
-      if (device && device.ip) {
-        // Double check if WDA is alive via network IP
-        const isWdaAccessibleViaNetwork = await this.isWDARunningOnHost(device.ip, 8100);
-        if (isWdaAccessibleViaNetwork) {
-          log.info(
-            `🛡️ [${udid}] [Watchdog] WDA is alive on network ${device.ip}. Restarting tunnels...`,
-          );
-          await this.restartTunnelsOnly(session);
-          return true; // We healed it!
-        }
-      }
-      return false; // Cannot heal without network access or if WDA is also dead
+      log.warn(`🛡️ [${udid}] [Watchdog] Port forwarder processes are dead.`);
+      return false;
     }
 
     // 2. Network Check: verify endpoint is responding via tunnel
     const isRespondingViaTunnel = await this.isWDARunning(session.wdaPort);
     if (!isRespondingViaTunnel) {
-      log.warn(
-        `🛡️ [${udid}] [Watchdog] WDA tunnel on port ${session.wdaPort} is unresponsive. checking network...`,
-      );
-
-      const device = await findOwnDevice(udid);
-      if (device && device.ip) {
-        const isWdaAccessibleViaNetwork = await this.isWDARunningOnHost(device.ip, 8100);
-        if (isWdaAccessibleViaNetwork) {
-          log.info(
-            `🛡️ [${udid}] [Watchdog] WDA is alive on network but tunnel is hung. Restarting tunnels...`,
-          );
-          await this.restartTunnelsOnly(session);
-          return true;
-        }
-      }
+      log.warn(`🛡️ [${udid}] [Watchdog] WDA on port ${session.wdaPort} is unresponsive.`);
       return false;
     }
 
     return true;
-  }
-
-  /**
-   * Check if WDA is running on a specific host/port
-   */
-  private async isWDARunningOnHost(host: string, port: number): Promise<boolean> {
-    const axios = (await import('axios')).default;
-    try {
-      const response = await axios.get(`http://${host}:${port}/status`, {
-        timeout: 3000,
-        validateStatus: (status) => status === 200,
-      });
-      return response.data?.value?.ready === true;
-    } catch (e) {
-      return false;
-    }
-  }
-
-  /**
-   * Restarts only the iproxy tunnels without stopping WDA
-   */
-  private async restartTunnelsOnly(session: StreamSession): Promise<void> {
-    const udid = session.udid;
-    const isolationService = Container.get(ResourceIsolationService);
-
-    // 1. Kill old tunnels
-    if (session.forwardWDAProcess) session.forwardWDAProcess.kill('SIGKILL');
-    if (session.forwardMJPEGProcess) session.forwardMJPEGProcess.kill('SIGKILL');
-
-    // 2. Start new tunnels
-    const wdaIproxy = isolationService.wrapSpawn(
-      'iproxy',
-      ['-u', udid, `${session.wdaPort}:8100`],
-      'Performance',
-    );
-    const mjpegIproxy = isolationService.wrapSpawn(
-      'iproxy',
-      ['-u', udid, `${session.mjpegPort}:9100`],
-      'Performance',
-    );
-
-    session.forwardWDAProcess = spawn(wdaIproxy.command, wdaIproxy.args);
-    Container.get(ProcessRegistry).track({ kind: 'other', udid, process: session.forwardWDAProcess });
-    session.forwardMJPEGProcess = spawn(mjpegIproxy.command, mjpegIproxy.args);
-    Container.get(ProcessRegistry).track({ kind: 'ios-mjpeg', udid, process: session.forwardMJPEGProcess });
-
-    log.info(`🛡️ [${udid}] [Watchdog] Tunnels restarted successfully.`);
   }
 
   /**

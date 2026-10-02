@@ -68,7 +68,6 @@ describe("iOS discovery takes only its own host's row for a udid", () => {
     });
     (svc as any).trackingInitialized = true; // no usbmux listener
     sinon.stub(svc, 'getConnectedDevices').resolves(connected);
-    sinon.stub(svc as any, 'fetchRealDeviceNetworkIp').resolves(''); // no go-ios
     return svc;
   }
 
