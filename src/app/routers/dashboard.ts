@@ -7,6 +7,10 @@ import { Container } from 'typedi';
 import { scopeGuard } from '../../middleware/scopeGuard';
 import { roleGuard } from '../../middleware/roleGuard';
 import buildExportModule from './build-export';
+import selectorHealthRoutes from './selector-health';
+import type { Prisma } from '../../generated/client';
+import { resolveActor } from '../../services/device-access/actor';
+import { SELECTOR_NOT_FOUND, canSeeSelector } from '../../services/selector-health/access';
 import { NotificationService } from '../../services/NotificationService';
 import {
   SelectorStateService,
@@ -21,6 +25,7 @@ import {
 } from '../../services/device-access/sessionVisibility';
 import { HealEtalonService } from '../../services/healing/HealEtalonService';
 import { sessionMetricsBody } from '../../services/metrics/metricsBody';
+import { dailyHeals, parseTzOffset } from '../../services/selector-health/healingTrend';
 import { SessionMetricsService } from '../../services/metrics/SessionMetricsService';
 import {
   cursorWhere,
@@ -305,27 +310,6 @@ export async function getRecentHealingEvents(request: Request, response: Respons
   return response.status(200).json({ events, todayCount });
 }
 
-// Rough per-heal cost estimates in USD. Local tiers are effectively free
-// (CPU/inference cost only); LLM is the headline number testers should
-// optimize against. Surfaced so engineering managers can quantify suite
-// hygiene work without reading raw billing data.
-const TIER_COST_USD: Record<string, number> = {
-  Native: 0,
-  Resilio: 0,
-  'Fuzzy XML': 0,
-  OCR: 0.0005,
-  'Visual AI': 0.002,
-  LLM: 0.04,
-};
-
-function estimateCost(byTier: Record<string, number>): number {
-  let sum = 0;
-  for (const [tier, count] of Object.entries(byTier)) {
-    sum += (TIER_COST_USD[tier] ?? 0) * count;
-  }
-  return sum;
-}
-
 function parseWindowDays(raw: unknown, fallback = 30): number {
   const n = parseInt(typeof raw === 'string' ? raw : '', 10);
   if (!Number.isFinite(n)) return fallback;
@@ -336,6 +320,7 @@ function parseWindowDays(raw: unknown, fallback = 30): number {
 // so the page can show "are we getting healthier?" deltas.
 async function getHealingSummary(request: Request, response: Response) {
   const windowDays = parseWindowDays(request.query.windowDays);
+  const tz = parseTzOffset(request.query.tz);
   const now = new Date();
   const since = new Date(now);
   since.setDate(since.getDate() - windowDays);
@@ -357,6 +342,8 @@ async function getHealingSummary(request: Request, response: Response) {
         session_id: true,
         original_selector: true,
         healing_tier: true,
+        createdAt: true,
+        duration: true,
       },
     }),
     prisma.sessionLog.findMany({
@@ -370,6 +357,8 @@ async function getHealingSummary(request: Request, response: Response) {
         session_id: true,
         original_selector: true,
         healing_tier: true,
+        createdAt: true,
+        duration: true,
       },
     }),
   ]);
@@ -378,8 +367,10 @@ async function getHealingSummary(request: Request, response: Response) {
     const sessions = new Set<string>();
     const selectors = new Set<string>();
     const byTier: Record<string, number> = {};
+    let timeSpentMs = 0;
     for (const r of rows) {
       sessions.add(r.session_id);
+      timeSpentMs += r.duration ?? 0;
       if (r.original_selector) selectors.add(r.original_selector);
       const tier = r.healing_tier || 'Unknown';
       byTier[tier] = (byTier[tier] || 0) + 1;
@@ -389,7 +380,8 @@ async function getHealingSummary(request: Request, response: Response) {
       distinctSelectors: selectors.size,
       sessionsTouched: sessions.size,
       byTier,
-      estCostUsd: estimateCost(byTier),
+      // The commands that needed healing, start to end: what healing cost the run.
+      timeSpentMs,
     };
   };
 
@@ -412,6 +404,12 @@ async function getHealingSummary(request: Request, response: Response) {
     prior,
     resolvedCount,
     pendingCount,
+    trend: dailyHeals(
+      currentRows.map((r) => ({ at: r.createdAt, method: r.healing_tier })),
+      since,
+      now,
+      tz,
+    ),
   });
 }
 
@@ -490,7 +488,6 @@ interface HotspotAggregation {
   distinctSelectors: number;
   sessionsTouched: number;
   byTier: Record<string, number>;
-  estCostUsd: number;
   hotspots: HotspotRow[];
 }
 
@@ -691,7 +688,6 @@ export async function aggregateHotspots(
     distinctSelectors: buckets.size,
     sessionsTouched: sessionsTouched.size,
     byTier,
-    estCostUsd: estimateCost(byTier),
     hotspots,
   };
 }
@@ -730,7 +726,6 @@ async function getHealingViolations(request: Request, response: Response) {
     violationCount: agg.hotspots.length,
     totalHeals: agg.totalHeals,
     distinctSelectors: agg.distinctSelectors,
-    estCostUsd: agg.estCostUsd,
     violations: agg.hotspots,
   });
 }
@@ -763,7 +758,6 @@ async function sendHealingDigest(request: Request, response: Response) {
     windowDays,
     totalHeals: agg.totalHeals,
     distinctSelectors: agg.distinctSelectors,
-    estCostUsd: agg.estCostUsd,
     hotspots: agg.hotspots,
   };
 
@@ -888,7 +882,6 @@ async function getHealingSelectorDetail(request: Request, response: Response) {
     windowDays,
     healCount: rows.length,
     sessionCount: sessions.size,
-    estCostUsd: estimateCost(byTier),
     byTier,
     byPlatform,
     byBuild: Object.entries(byBuild)
@@ -981,18 +974,32 @@ export async function getSelectorHealth(request: Request, response: Response) {
 
 // SelectorState lifecycle action endpoint — mark fixed / mute / unmute /
 // cancel verification. The action vocabulary is closed (any value not in
-// VALID_ACTIONS rejects with 400). A SelectorStateConflictError surfaces as
-// 409 with `currentStatus`; anything else logs and surfaces as 500.
+// VALID_ACTIONS rejects with 400). A member may act on a selector they can
+// see (healed in a session they can see); any other answers 404, as an
+// unknown one. The person acting is recorded (SelectorEvent), with the
+// reason for a mute. A SelectorStateConflictError surfaces as 409 with
+// `currentStatus`; anything else logs and surfaces as 500.
 const VALID_SELECTOR_ACTIONS = ['mark_fixed', 'mute', 'unmute', 'cancel_verification'] as const;
 type SelectorAction = (typeof VALID_SELECTOR_ACTIONS)[number];
 
+/** The longest reason a mute may give. */
+export const MUTE_REASON_MAX = 500;
+
 export async function postSelectorStateAction(request: Request, response: Response) {
-  const { original_strategy, original_selector, action } = (request.body ?? {}) as {
-    original_strategy?: string;
-    original_selector?: string;
-    action?: string;
+  const { original_strategy, original_selector, action, reason } = (request.body ?? {}) as {
+    original_strategy?: unknown;
+    original_selector?: unknown;
+    action?: unknown;
+    reason?: unknown;
   };
-  if (!original_strategy || !original_selector || !action) {
+  // The strategy may be '': heals recorded before strategies were.
+  if (
+    typeof original_strategy !== 'string' ||
+    typeof original_selector !== 'string' ||
+    !original_selector ||
+    typeof action !== 'string' ||
+    !action
+  ) {
     return response.status(400).json({
       error: 'original_strategy, original_selector, and action are required',
     });
@@ -1002,12 +1009,37 @@ export async function postSelectorStateAction(request: Request, response: Respon
       error: `action must be one of ${VALID_SELECTOR_ACTIONS.join(', ')}`,
     });
   }
+  if (
+    reason !== undefined &&
+    reason !== null &&
+    (typeof reason !== 'string' || reason.length > MUTE_REASON_MAX)
+  ) {
+    return response.status(400).json({
+      error: `reason must be text of at most ${MUTE_REASON_MAX} characters`,
+    });
+  }
 
-  const apiKeyId = request.apiKey?.id ?? '';
-  const ctx = { strategy: original_strategy, selector: original_selector, apiKeyId };
+  const muteReason = action === 'mute' && typeof reason === 'string' ? reason.trim() : '';
+  const ctx = {
+    strategy: original_strategy,
+    selector: original_selector,
+    apiKeyId: request.apiKey?.id ?? '',
+    userId: resolveActor(request).userId ?? null,
+    reason: muteReason || null,
+  };
   const service = Container.get(SelectorStateService);
 
   try {
+    // Inside the try: a failed lookup answers 500 rather than leaving the
+    // request open (Express 4 doesn't catch a rejected handler).
+    const scope = (await visibleSessionWhere(authOf(request))) as
+      | Prisma.SessionWhereInput
+      | undefined;
+    if (
+      !(await canSeeSelector({ strategy: original_strategy, selector: original_selector }, scope))
+    ) {
+      return response.status(404).json(SELECTOR_NOT_FOUND);
+    }
     let row;
     switch (action as SelectorAction) {
       case 'mark_fixed':
@@ -1282,16 +1314,23 @@ function register(router: Router) {
   router.get('/healing/hotspots/violations', getHealingViolations);
   router.get('/healing/selector', getHealingSelectorDetail);
   router.get('/healing/selector-health', getSelectorHealth);
+  // The Selector Health page's list and panel (selector-health.ts).
+  selectorHealthRoutes.register(router);
   // Outbound notification — admin only since it can fan out to every
   // configured webhook (Slack channels, etc.).
   router.post('/healing/digest/send', roleGuard('ADMIN'), scopeGuard(['admin']), sendHealingDigest);
-  // SelectorState lifecycle: state mutations require admin (they affect what
-  // shows up in the live hotspot list, the CI gate, and the digest); the two
-  // reads inherit the existing dashboard auth. Both reads stay global, not
-  // team-scoped: a selector's mute or fix is one lab-wide row with no team
-  // column, shared by every team whose tests use that selector. The one
-  // heal-derived field, the muted list's `last_healed_at`, is the caller's.
-  router.post('/healing/selector/state', roleGuard('ADMIN'), scopeGuard(['admin']), postSelectorStateAction);
+  // SelectorState lifecycle: members act on selectors they can see (the
+  // handler checks, and records who acted); the `sessions` scope is needed,
+  // which `admin` implies. The two reads stay global, not team-scoped: a
+  // selector's mute or fix is one lab-wide row with no team column, shared
+  // by every team whose tests use that selector. The one heal-derived field,
+  // the muted list's `last_healed_at`, is the caller's.
+  router.post(
+    '/healing/selector/state',
+    roleGuard('MEMBER'),
+    scopeGuard(['sessions']),
+    postSelectorStateAction,
+  );
   router.get('/healing/state/muted', getMutedSelectors);
   router.get('/healing/state/:strategy/:value', getSelectorStateByTuple);
   router.get('/config', getGlobalConfig);

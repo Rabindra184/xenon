@@ -104,6 +104,11 @@ export type Team = $Result.DefaultSelection<Prisma.$TeamPayload>
  */
 export type SelectorState = $Result.DefaultSelection<Prisma.$SelectorStatePayload>
 /**
+ * Model SelectorEvent
+ * 
+ */
+export type SelectorEvent = $Result.DefaultSelection<Prisma.$SelectorEventPayload>
+/**
  * Model Recording
  * 
  */
@@ -451,6 +456,16 @@ export class PrismaClient<
     * ```
     */
   get selectorState(): Prisma.SelectorStateDelegate<ExtArgs>;
+
+  /**
+   * `prisma.selectorEvent`: Exposes CRUD operations for the **SelectorEvent** model.
+    * Example usage:
+    * ```ts
+    * // Fetch zero or more SelectorEvents
+    * const selectorEvents = await prisma.selectorEvent.findMany()
+    * ```
+    */
+  get selectorEvent(): Prisma.SelectorEventDelegate<ExtArgs>;
 
   /**
    * `prisma.recording`: Exposes CRUD operations for the **Recording** model.
@@ -1000,6 +1015,7 @@ export namespace Prisma {
     ApiKey: 'ApiKey',
     Team: 'Team',
     SelectorState: 'SelectorState',
+    SelectorEvent: 'SelectorEvent',
     Recording: 'Recording',
     Bookmark: 'Bookmark',
     Annotation: 'Annotation',
@@ -1024,7 +1040,7 @@ export namespace Prisma {
 
   export type TypeMap<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs, ClientOptions = {}> = {
     meta: {
-      modelProps: "build" | "session" | "sessionLog" | "log" | "profiling" | "sessionMetric" | "app" | "device" | "pendingSession" | "cLIArgs" | "webhookConfig" | "webConfig" | "locatorEtalon" | "portLease" | "lease" | "apiKey" | "team" | "selectorState" | "recording" | "bookmark" | "annotation" | "user" | "userSession" | "passwordResetToken" | "teamMember" | "eventLog" | "project"
+      modelProps: "build" | "session" | "sessionLog" | "log" | "profiling" | "sessionMetric" | "app" | "device" | "pendingSession" | "cLIArgs" | "webhookConfig" | "webConfig" | "locatorEtalon" | "portLease" | "lease" | "apiKey" | "team" | "selectorState" | "selectorEvent" | "recording" | "bookmark" | "annotation" | "user" | "userSession" | "passwordResetToken" | "teamMember" | "eventLog" | "project"
       txIsolationLevel: Prisma.TransactionIsolationLevel
     }
     model: {
@@ -2285,6 +2301,76 @@ export namespace Prisma {
           count: {
             args: Prisma.SelectorStateCountArgs<ExtArgs>
             result: $Utils.Optional<SelectorStateCountAggregateOutputType> | number
+          }
+        }
+      }
+      SelectorEvent: {
+        payload: Prisma.$SelectorEventPayload<ExtArgs>
+        fields: Prisma.SelectorEventFieldRefs
+        operations: {
+          findUnique: {
+            args: Prisma.SelectorEventFindUniqueArgs<ExtArgs>
+            result: $Utils.PayloadToResult<Prisma.$SelectorEventPayload> | null
+          }
+          findUniqueOrThrow: {
+            args: Prisma.SelectorEventFindUniqueOrThrowArgs<ExtArgs>
+            result: $Utils.PayloadToResult<Prisma.$SelectorEventPayload>
+          }
+          findFirst: {
+            args: Prisma.SelectorEventFindFirstArgs<ExtArgs>
+            result: $Utils.PayloadToResult<Prisma.$SelectorEventPayload> | null
+          }
+          findFirstOrThrow: {
+            args: Prisma.SelectorEventFindFirstOrThrowArgs<ExtArgs>
+            result: $Utils.PayloadToResult<Prisma.$SelectorEventPayload>
+          }
+          findMany: {
+            args: Prisma.SelectorEventFindManyArgs<ExtArgs>
+            result: $Utils.PayloadToResult<Prisma.$SelectorEventPayload>[]
+          }
+          create: {
+            args: Prisma.SelectorEventCreateArgs<ExtArgs>
+            result: $Utils.PayloadToResult<Prisma.$SelectorEventPayload>
+          }
+          createMany: {
+            args: Prisma.SelectorEventCreateManyArgs<ExtArgs>
+            result: BatchPayload
+          }
+          createManyAndReturn: {
+            args: Prisma.SelectorEventCreateManyAndReturnArgs<ExtArgs>
+            result: $Utils.PayloadToResult<Prisma.$SelectorEventPayload>[]
+          }
+          delete: {
+            args: Prisma.SelectorEventDeleteArgs<ExtArgs>
+            result: $Utils.PayloadToResult<Prisma.$SelectorEventPayload>
+          }
+          update: {
+            args: Prisma.SelectorEventUpdateArgs<ExtArgs>
+            result: $Utils.PayloadToResult<Prisma.$SelectorEventPayload>
+          }
+          deleteMany: {
+            args: Prisma.SelectorEventDeleteManyArgs<ExtArgs>
+            result: BatchPayload
+          }
+          updateMany: {
+            args: Prisma.SelectorEventUpdateManyArgs<ExtArgs>
+            result: BatchPayload
+          }
+          upsert: {
+            args: Prisma.SelectorEventUpsertArgs<ExtArgs>
+            result: $Utils.PayloadToResult<Prisma.$SelectorEventPayload>
+          }
+          aggregate: {
+            args: Prisma.SelectorEventAggregateArgs<ExtArgs>
+            result: $Utils.Optional<AggregateSelectorEvent>
+          }
+          groupBy: {
+            args: Prisma.SelectorEventGroupByArgs<ExtArgs>
+            result: $Utils.Optional<SelectorEventGroupByOutputType>[]
+          }
+          count: {
+            args: Prisma.SelectorEventCountArgs<ExtArgs>
+            result: $Utils.Optional<SelectorEventCountAggregateOutputType> | number
           }
         }
       }
@@ -22247,6 +22333,906 @@ export namespace Prisma {
 
 
   /**
+   * Model SelectorEvent
+   */
+
+  export type AggregateSelectorEvent = {
+    _count: SelectorEventCountAggregateOutputType | null
+    _min: SelectorEventMinAggregateOutputType | null
+    _max: SelectorEventMaxAggregateOutputType | null
+  }
+
+  export type SelectorEventMinAggregateOutputType = {
+    id: string | null
+    original_strategy: string | null
+    original_selector: string | null
+    action: string | null
+    user_id: string | null
+    reason: string | null
+    createdAt: Date | null
+  }
+
+  export type SelectorEventMaxAggregateOutputType = {
+    id: string | null
+    original_strategy: string | null
+    original_selector: string | null
+    action: string | null
+    user_id: string | null
+    reason: string | null
+    createdAt: Date | null
+  }
+
+  export type SelectorEventCountAggregateOutputType = {
+    id: number
+    original_strategy: number
+    original_selector: number
+    action: number
+    user_id: number
+    reason: number
+    createdAt: number
+    _all: number
+  }
+
+
+  export type SelectorEventMinAggregateInputType = {
+    id?: true
+    original_strategy?: true
+    original_selector?: true
+    action?: true
+    user_id?: true
+    reason?: true
+    createdAt?: true
+  }
+
+  export type SelectorEventMaxAggregateInputType = {
+    id?: true
+    original_strategy?: true
+    original_selector?: true
+    action?: true
+    user_id?: true
+    reason?: true
+    createdAt?: true
+  }
+
+  export type SelectorEventCountAggregateInputType = {
+    id?: true
+    original_strategy?: true
+    original_selector?: true
+    action?: true
+    user_id?: true
+    reason?: true
+    createdAt?: true
+    _all?: true
+  }
+
+  export type SelectorEventAggregateArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Filter which SelectorEvent to aggregate.
+     */
+    where?: SelectorEventWhereInput
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/sorting Sorting Docs}
+     * 
+     * Determine the order of SelectorEvents to fetch.
+     */
+    orderBy?: SelectorEventOrderByWithRelationInput | SelectorEventOrderByWithRelationInput[]
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination#cursor-based-pagination Cursor Docs}
+     * 
+     * Sets the start position
+     */
+    cursor?: SelectorEventWhereUniqueInput
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination Pagination Docs}
+     * 
+     * Take `±n` SelectorEvents from the position of the cursor.
+     */
+    take?: number
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination Pagination Docs}
+     * 
+     * Skip the first `n` SelectorEvents.
+     */
+    skip?: number
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/aggregations Aggregation Docs}
+     * 
+     * Count returned SelectorEvents
+    **/
+    _count?: true | SelectorEventCountAggregateInputType
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/aggregations Aggregation Docs}
+     * 
+     * Select which fields to find the minimum value
+    **/
+    _min?: SelectorEventMinAggregateInputType
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/aggregations Aggregation Docs}
+     * 
+     * Select which fields to find the maximum value
+    **/
+    _max?: SelectorEventMaxAggregateInputType
+  }
+
+  export type GetSelectorEventAggregateType<T extends SelectorEventAggregateArgs> = {
+        [P in keyof T & keyof AggregateSelectorEvent]: P extends '_count' | 'count'
+      ? T[P] extends true
+        ? number
+        : GetScalarType<T[P], AggregateSelectorEvent[P]>
+      : GetScalarType<T[P], AggregateSelectorEvent[P]>
+  }
+
+
+
+
+  export type SelectorEventGroupByArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    where?: SelectorEventWhereInput
+    orderBy?: SelectorEventOrderByWithAggregationInput | SelectorEventOrderByWithAggregationInput[]
+    by: SelectorEventScalarFieldEnum[] | SelectorEventScalarFieldEnum
+    having?: SelectorEventScalarWhereWithAggregatesInput
+    take?: number
+    skip?: number
+    _count?: SelectorEventCountAggregateInputType | true
+    _min?: SelectorEventMinAggregateInputType
+    _max?: SelectorEventMaxAggregateInputType
+  }
+
+  export type SelectorEventGroupByOutputType = {
+    id: string
+    original_strategy: string
+    original_selector: string
+    action: string
+    user_id: string | null
+    reason: string | null
+    createdAt: Date
+    _count: SelectorEventCountAggregateOutputType | null
+    _min: SelectorEventMinAggregateOutputType | null
+    _max: SelectorEventMaxAggregateOutputType | null
+  }
+
+  type GetSelectorEventGroupByPayload<T extends SelectorEventGroupByArgs> = Prisma.PrismaPromise<
+    Array<
+      PickEnumerable<SelectorEventGroupByOutputType, T['by']> &
+        {
+          [P in ((keyof T) & (keyof SelectorEventGroupByOutputType))]: P extends '_count'
+            ? T[P] extends boolean
+              ? number
+              : GetScalarType<T[P], SelectorEventGroupByOutputType[P]>
+            : GetScalarType<T[P], SelectorEventGroupByOutputType[P]>
+        }
+      >
+    >
+
+
+  export type SelectorEventSelect<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = $Extensions.GetSelect<{
+    id?: boolean
+    original_strategy?: boolean
+    original_selector?: boolean
+    action?: boolean
+    user_id?: boolean
+    reason?: boolean
+    createdAt?: boolean
+  }, ExtArgs["result"]["selectorEvent"]>
+
+  export type SelectorEventSelectCreateManyAndReturn<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = $Extensions.GetSelect<{
+    id?: boolean
+    original_strategy?: boolean
+    original_selector?: boolean
+    action?: boolean
+    user_id?: boolean
+    reason?: boolean
+    createdAt?: boolean
+  }, ExtArgs["result"]["selectorEvent"]>
+
+  export type SelectorEventSelectScalar = {
+    id?: boolean
+    original_strategy?: boolean
+    original_selector?: boolean
+    action?: boolean
+    user_id?: boolean
+    reason?: boolean
+    createdAt?: boolean
+  }
+
+
+  export type $SelectorEventPayload<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    name: "SelectorEvent"
+    objects: {}
+    scalars: $Extensions.GetPayloadResult<{
+      id: string
+      original_strategy: string
+      original_selector: string
+      action: string
+      user_id: string | null
+      reason: string | null
+      createdAt: Date
+    }, ExtArgs["result"]["selectorEvent"]>
+    composites: {}
+  }
+
+  type SelectorEventGetPayload<S extends boolean | null | undefined | SelectorEventDefaultArgs> = $Result.GetResult<Prisma.$SelectorEventPayload, S>
+
+  type SelectorEventCountArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = 
+    Omit<SelectorEventFindManyArgs, 'select' | 'include' | 'distinct'> & {
+      select?: SelectorEventCountAggregateInputType | true
+    }
+
+  export interface SelectorEventDelegate<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> {
+    [K: symbol]: { types: Prisma.TypeMap<ExtArgs>['model']['SelectorEvent'], meta: { name: 'SelectorEvent' } }
+    /**
+     * Find zero or one SelectorEvent that matches the filter.
+     * @param {SelectorEventFindUniqueArgs} args - Arguments to find a SelectorEvent
+     * @example
+     * // Get one SelectorEvent
+     * const selectorEvent = await prisma.selectorEvent.findUnique({
+     *   where: {
+     *     // ... provide filter here
+     *   }
+     * })
+     */
+    findUnique<T extends SelectorEventFindUniqueArgs>(args: SelectSubset<T, SelectorEventFindUniqueArgs<ExtArgs>>): Prisma__SelectorEventClient<$Result.GetResult<Prisma.$SelectorEventPayload<ExtArgs>, T, "findUnique"> | null, null, ExtArgs>
+
+    /**
+     * Find one SelectorEvent that matches the filter or throw an error with `error.code='P2025'` 
+     * if no matches were found.
+     * @param {SelectorEventFindUniqueOrThrowArgs} args - Arguments to find a SelectorEvent
+     * @example
+     * // Get one SelectorEvent
+     * const selectorEvent = await prisma.selectorEvent.findUniqueOrThrow({
+     *   where: {
+     *     // ... provide filter here
+     *   }
+     * })
+     */
+    findUniqueOrThrow<T extends SelectorEventFindUniqueOrThrowArgs>(args: SelectSubset<T, SelectorEventFindUniqueOrThrowArgs<ExtArgs>>): Prisma__SelectorEventClient<$Result.GetResult<Prisma.$SelectorEventPayload<ExtArgs>, T, "findUniqueOrThrow">, never, ExtArgs>
+
+    /**
+     * Find the first SelectorEvent that matches the filter.
+     * Note, that providing `undefined` is treated as the value not being there.
+     * Read more here: https://pris.ly/d/null-undefined
+     * @param {SelectorEventFindFirstArgs} args - Arguments to find a SelectorEvent
+     * @example
+     * // Get one SelectorEvent
+     * const selectorEvent = await prisma.selectorEvent.findFirst({
+     *   where: {
+     *     // ... provide filter here
+     *   }
+     * })
+     */
+    findFirst<T extends SelectorEventFindFirstArgs>(args?: SelectSubset<T, SelectorEventFindFirstArgs<ExtArgs>>): Prisma__SelectorEventClient<$Result.GetResult<Prisma.$SelectorEventPayload<ExtArgs>, T, "findFirst"> | null, null, ExtArgs>
+
+    /**
+     * Find the first SelectorEvent that matches the filter or
+     * throw `PrismaKnownClientError` with `P2025` code if no matches were found.
+     * Note, that providing `undefined` is treated as the value not being there.
+     * Read more here: https://pris.ly/d/null-undefined
+     * @param {SelectorEventFindFirstOrThrowArgs} args - Arguments to find a SelectorEvent
+     * @example
+     * // Get one SelectorEvent
+     * const selectorEvent = await prisma.selectorEvent.findFirstOrThrow({
+     *   where: {
+     *     // ... provide filter here
+     *   }
+     * })
+     */
+    findFirstOrThrow<T extends SelectorEventFindFirstOrThrowArgs>(args?: SelectSubset<T, SelectorEventFindFirstOrThrowArgs<ExtArgs>>): Prisma__SelectorEventClient<$Result.GetResult<Prisma.$SelectorEventPayload<ExtArgs>, T, "findFirstOrThrow">, never, ExtArgs>
+
+    /**
+     * Find zero or more SelectorEvents that matches the filter.
+     * Note, that providing `undefined` is treated as the value not being there.
+     * Read more here: https://pris.ly/d/null-undefined
+     * @param {SelectorEventFindManyArgs} args - Arguments to filter and select certain fields only.
+     * @example
+     * // Get all SelectorEvents
+     * const selectorEvents = await prisma.selectorEvent.findMany()
+     * 
+     * // Get first 10 SelectorEvents
+     * const selectorEvents = await prisma.selectorEvent.findMany({ take: 10 })
+     * 
+     * // Only select the `id`
+     * const selectorEventWithIdOnly = await prisma.selectorEvent.findMany({ select: { id: true } })
+     * 
+     */
+    findMany<T extends SelectorEventFindManyArgs>(args?: SelectSubset<T, SelectorEventFindManyArgs<ExtArgs>>): Prisma.PrismaPromise<$Result.GetResult<Prisma.$SelectorEventPayload<ExtArgs>, T, "findMany">>
+
+    /**
+     * Create a SelectorEvent.
+     * @param {SelectorEventCreateArgs} args - Arguments to create a SelectorEvent.
+     * @example
+     * // Create one SelectorEvent
+     * const SelectorEvent = await prisma.selectorEvent.create({
+     *   data: {
+     *     // ... data to create a SelectorEvent
+     *   }
+     * })
+     * 
+     */
+    create<T extends SelectorEventCreateArgs>(args: SelectSubset<T, SelectorEventCreateArgs<ExtArgs>>): Prisma__SelectorEventClient<$Result.GetResult<Prisma.$SelectorEventPayload<ExtArgs>, T, "create">, never, ExtArgs>
+
+    /**
+     * Create many SelectorEvents.
+     * @param {SelectorEventCreateManyArgs} args - Arguments to create many SelectorEvents.
+     * @example
+     * // Create many SelectorEvents
+     * const selectorEvent = await prisma.selectorEvent.createMany({
+     *   data: [
+     *     // ... provide data here
+     *   ]
+     * })
+     *     
+     */
+    createMany<T extends SelectorEventCreateManyArgs>(args?: SelectSubset<T, SelectorEventCreateManyArgs<ExtArgs>>): Prisma.PrismaPromise<BatchPayload>
+
+    /**
+     * Create many SelectorEvents and returns the data saved in the database.
+     * @param {SelectorEventCreateManyAndReturnArgs} args - Arguments to create many SelectorEvents.
+     * @example
+     * // Create many SelectorEvents
+     * const selectorEvent = await prisma.selectorEvent.createManyAndReturn({
+     *   data: [
+     *     // ... provide data here
+     *   ]
+     * })
+     * 
+     * // Create many SelectorEvents and only return the `id`
+     * const selectorEventWithIdOnly = await prisma.selectorEvent.createManyAndReturn({ 
+     *   select: { id: true },
+     *   data: [
+     *     // ... provide data here
+     *   ]
+     * })
+     * Note, that providing `undefined` is treated as the value not being there.
+     * Read more here: https://pris.ly/d/null-undefined
+     * 
+     */
+    createManyAndReturn<T extends SelectorEventCreateManyAndReturnArgs>(args?: SelectSubset<T, SelectorEventCreateManyAndReturnArgs<ExtArgs>>): Prisma.PrismaPromise<$Result.GetResult<Prisma.$SelectorEventPayload<ExtArgs>, T, "createManyAndReturn">>
+
+    /**
+     * Delete a SelectorEvent.
+     * @param {SelectorEventDeleteArgs} args - Arguments to delete one SelectorEvent.
+     * @example
+     * // Delete one SelectorEvent
+     * const SelectorEvent = await prisma.selectorEvent.delete({
+     *   where: {
+     *     // ... filter to delete one SelectorEvent
+     *   }
+     * })
+     * 
+     */
+    delete<T extends SelectorEventDeleteArgs>(args: SelectSubset<T, SelectorEventDeleteArgs<ExtArgs>>): Prisma__SelectorEventClient<$Result.GetResult<Prisma.$SelectorEventPayload<ExtArgs>, T, "delete">, never, ExtArgs>
+
+    /**
+     * Update one SelectorEvent.
+     * @param {SelectorEventUpdateArgs} args - Arguments to update one SelectorEvent.
+     * @example
+     * // Update one SelectorEvent
+     * const selectorEvent = await prisma.selectorEvent.update({
+     *   where: {
+     *     // ... provide filter here
+     *   },
+     *   data: {
+     *     // ... provide data here
+     *   }
+     * })
+     * 
+     */
+    update<T extends SelectorEventUpdateArgs>(args: SelectSubset<T, SelectorEventUpdateArgs<ExtArgs>>): Prisma__SelectorEventClient<$Result.GetResult<Prisma.$SelectorEventPayload<ExtArgs>, T, "update">, never, ExtArgs>
+
+    /**
+     * Delete zero or more SelectorEvents.
+     * @param {SelectorEventDeleteManyArgs} args - Arguments to filter SelectorEvents to delete.
+     * @example
+     * // Delete a few SelectorEvents
+     * const { count } = await prisma.selectorEvent.deleteMany({
+     *   where: {
+     *     // ... provide filter here
+     *   }
+     * })
+     * 
+     */
+    deleteMany<T extends SelectorEventDeleteManyArgs>(args?: SelectSubset<T, SelectorEventDeleteManyArgs<ExtArgs>>): Prisma.PrismaPromise<BatchPayload>
+
+    /**
+     * Update zero or more SelectorEvents.
+     * Note, that providing `undefined` is treated as the value not being there.
+     * Read more here: https://pris.ly/d/null-undefined
+     * @param {SelectorEventUpdateManyArgs} args - Arguments to update one or more rows.
+     * @example
+     * // Update many SelectorEvents
+     * const selectorEvent = await prisma.selectorEvent.updateMany({
+     *   where: {
+     *     // ... provide filter here
+     *   },
+     *   data: {
+     *     // ... provide data here
+     *   }
+     * })
+     * 
+     */
+    updateMany<T extends SelectorEventUpdateManyArgs>(args: SelectSubset<T, SelectorEventUpdateManyArgs<ExtArgs>>): Prisma.PrismaPromise<BatchPayload>
+
+    /**
+     * Create or update one SelectorEvent.
+     * @param {SelectorEventUpsertArgs} args - Arguments to update or create a SelectorEvent.
+     * @example
+     * // Update or create a SelectorEvent
+     * const selectorEvent = await prisma.selectorEvent.upsert({
+     *   create: {
+     *     // ... data to create a SelectorEvent
+     *   },
+     *   update: {
+     *     // ... in case it already exists, update
+     *   },
+     *   where: {
+     *     // ... the filter for the SelectorEvent we want to update
+     *   }
+     * })
+     */
+    upsert<T extends SelectorEventUpsertArgs>(args: SelectSubset<T, SelectorEventUpsertArgs<ExtArgs>>): Prisma__SelectorEventClient<$Result.GetResult<Prisma.$SelectorEventPayload<ExtArgs>, T, "upsert">, never, ExtArgs>
+
+
+    /**
+     * Count the number of SelectorEvents.
+     * Note, that providing `undefined` is treated as the value not being there.
+     * Read more here: https://pris.ly/d/null-undefined
+     * @param {SelectorEventCountArgs} args - Arguments to filter SelectorEvents to count.
+     * @example
+     * // Count the number of SelectorEvents
+     * const count = await prisma.selectorEvent.count({
+     *   where: {
+     *     // ... the filter for the SelectorEvents we want to count
+     *   }
+     * })
+    **/
+    count<T extends SelectorEventCountArgs>(
+      args?: Subset<T, SelectorEventCountArgs>,
+    ): Prisma.PrismaPromise<
+      T extends $Utils.Record<'select', any>
+        ? T['select'] extends true
+          ? number
+          : GetScalarType<T['select'], SelectorEventCountAggregateOutputType>
+        : number
+    >
+
+    /**
+     * Allows you to perform aggregations operations on a SelectorEvent.
+     * Note, that providing `undefined` is treated as the value not being there.
+     * Read more here: https://pris.ly/d/null-undefined
+     * @param {SelectorEventAggregateArgs} args - Select which aggregations you would like to apply and on what fields.
+     * @example
+     * // Ordered by age ascending
+     * // Where email contains prisma.io
+     * // Limited to the 10 users
+     * const aggregations = await prisma.user.aggregate({
+     *   _avg: {
+     *     age: true,
+     *   },
+     *   where: {
+     *     email: {
+     *       contains: "prisma.io",
+     *     },
+     *   },
+     *   orderBy: {
+     *     age: "asc",
+     *   },
+     *   take: 10,
+     * })
+    **/
+    aggregate<T extends SelectorEventAggregateArgs>(args: Subset<T, SelectorEventAggregateArgs>): Prisma.PrismaPromise<GetSelectorEventAggregateType<T>>
+
+    /**
+     * Group by SelectorEvent.
+     * Note, that providing `undefined` is treated as the value not being there.
+     * Read more here: https://pris.ly/d/null-undefined
+     * @param {SelectorEventGroupByArgs} args - Group by arguments.
+     * @example
+     * // Group by city, order by createdAt, get count
+     * const result = await prisma.user.groupBy({
+     *   by: ['city', 'createdAt'],
+     *   orderBy: {
+     *     createdAt: true
+     *   },
+     *   _count: {
+     *     _all: true
+     *   },
+     * })
+     * 
+    **/
+    groupBy<
+      T extends SelectorEventGroupByArgs,
+      HasSelectOrTake extends Or<
+        Extends<'skip', Keys<T>>,
+        Extends<'take', Keys<T>>
+      >,
+      OrderByArg extends True extends HasSelectOrTake
+        ? { orderBy: SelectorEventGroupByArgs['orderBy'] }
+        : { orderBy?: SelectorEventGroupByArgs['orderBy'] },
+      OrderFields extends ExcludeUnderscoreKeys<Keys<MaybeTupleToUnion<T['orderBy']>>>,
+      ByFields extends MaybeTupleToUnion<T['by']>,
+      ByValid extends Has<ByFields, OrderFields>,
+      HavingFields extends GetHavingFields<T['having']>,
+      HavingValid extends Has<ByFields, HavingFields>,
+      ByEmpty extends T['by'] extends never[] ? True : False,
+      InputErrors extends ByEmpty extends True
+      ? `Error: "by" must not be empty.`
+      : HavingValid extends False
+      ? {
+          [P in HavingFields]: P extends ByFields
+            ? never
+            : P extends string
+            ? `Error: Field "${P}" used in "having" needs to be provided in "by".`
+            : [
+                Error,
+                'Field ',
+                P,
+                ` in "having" needs to be provided in "by"`,
+              ]
+        }[HavingFields]
+      : 'take' extends Keys<T>
+      ? 'orderBy' extends Keys<T>
+        ? ByValid extends True
+          ? {}
+          : {
+              [P in OrderFields]: P extends ByFields
+                ? never
+                : `Error: Field "${P}" in "orderBy" needs to be provided in "by"`
+            }[OrderFields]
+        : 'Error: If you provide "take", you also need to provide "orderBy"'
+      : 'skip' extends Keys<T>
+      ? 'orderBy' extends Keys<T>
+        ? ByValid extends True
+          ? {}
+          : {
+              [P in OrderFields]: P extends ByFields
+                ? never
+                : `Error: Field "${P}" in "orderBy" needs to be provided in "by"`
+            }[OrderFields]
+        : 'Error: If you provide "skip", you also need to provide "orderBy"'
+      : ByValid extends True
+      ? {}
+      : {
+          [P in OrderFields]: P extends ByFields
+            ? never
+            : `Error: Field "${P}" in "orderBy" needs to be provided in "by"`
+        }[OrderFields]
+    >(args: SubsetIntersection<T, SelectorEventGroupByArgs, OrderByArg> & InputErrors): {} extends InputErrors ? GetSelectorEventGroupByPayload<T> : Prisma.PrismaPromise<InputErrors>
+  /**
+   * Fields of the SelectorEvent model
+   */
+  readonly fields: SelectorEventFieldRefs;
+  }
+
+  /**
+   * The delegate class that acts as a "Promise-like" for SelectorEvent.
+   * Why is this prefixed with `Prisma__`?
+   * Because we want to prevent naming conflicts as mentioned in
+   * https://github.com/prisma/prisma-client-js/issues/707
+   */
+  export interface Prisma__SelectorEventClient<T, Null = never, ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> extends Prisma.PrismaPromise<T> {
+    readonly [Symbol.toStringTag]: "PrismaPromise"
+    /**
+     * Attaches callbacks for the resolution and/or rejection of the Promise.
+     * @param onfulfilled The callback to execute when the Promise is resolved.
+     * @param onrejected The callback to execute when the Promise is rejected.
+     * @returns A Promise for the completion of which ever callback is executed.
+     */
+    then<TResult1 = T, TResult2 = never>(onfulfilled?: ((value: T) => TResult1 | PromiseLike<TResult1>) | undefined | null, onrejected?: ((reason: any) => TResult2 | PromiseLike<TResult2>) | undefined | null): $Utils.JsPromise<TResult1 | TResult2>
+    /**
+     * Attaches a callback for only the rejection of the Promise.
+     * @param onrejected The callback to execute when the Promise is rejected.
+     * @returns A Promise for the completion of the callback.
+     */
+    catch<TResult = never>(onrejected?: ((reason: any) => TResult | PromiseLike<TResult>) | undefined | null): $Utils.JsPromise<T | TResult>
+    /**
+     * Attaches a callback that is invoked when the Promise is settled (fulfilled or rejected). The
+     * resolved value cannot be modified from the callback.
+     * @param onfinally The callback to execute when the Promise is settled (fulfilled or rejected).
+     * @returns A Promise for the completion of the callback.
+     */
+    finally(onfinally?: (() => void) | undefined | null): $Utils.JsPromise<T>
+  }
+
+
+
+
+  /**
+   * Fields of the SelectorEvent model
+   */ 
+  interface SelectorEventFieldRefs {
+    readonly id: FieldRef<"SelectorEvent", 'String'>
+    readonly original_strategy: FieldRef<"SelectorEvent", 'String'>
+    readonly original_selector: FieldRef<"SelectorEvent", 'String'>
+    readonly action: FieldRef<"SelectorEvent", 'String'>
+    readonly user_id: FieldRef<"SelectorEvent", 'String'>
+    readonly reason: FieldRef<"SelectorEvent", 'String'>
+    readonly createdAt: FieldRef<"SelectorEvent", 'DateTime'>
+  }
+    
+
+  // Custom InputTypes
+  /**
+   * SelectorEvent findUnique
+   */
+  export type SelectorEventFindUniqueArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the SelectorEvent
+     */
+    select?: SelectorEventSelect<ExtArgs> | null
+    /**
+     * Filter, which SelectorEvent to fetch.
+     */
+    where: SelectorEventWhereUniqueInput
+  }
+
+  /**
+   * SelectorEvent findUniqueOrThrow
+   */
+  export type SelectorEventFindUniqueOrThrowArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the SelectorEvent
+     */
+    select?: SelectorEventSelect<ExtArgs> | null
+    /**
+     * Filter, which SelectorEvent to fetch.
+     */
+    where: SelectorEventWhereUniqueInput
+  }
+
+  /**
+   * SelectorEvent findFirst
+   */
+  export type SelectorEventFindFirstArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the SelectorEvent
+     */
+    select?: SelectorEventSelect<ExtArgs> | null
+    /**
+     * Filter, which SelectorEvent to fetch.
+     */
+    where?: SelectorEventWhereInput
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/sorting Sorting Docs}
+     * 
+     * Determine the order of SelectorEvents to fetch.
+     */
+    orderBy?: SelectorEventOrderByWithRelationInput | SelectorEventOrderByWithRelationInput[]
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination#cursor-based-pagination Cursor Docs}
+     * 
+     * Sets the position for searching for SelectorEvents.
+     */
+    cursor?: SelectorEventWhereUniqueInput
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination Pagination Docs}
+     * 
+     * Take `±n` SelectorEvents from the position of the cursor.
+     */
+    take?: number
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination Pagination Docs}
+     * 
+     * Skip the first `n` SelectorEvents.
+     */
+    skip?: number
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/distinct Distinct Docs}
+     * 
+     * Filter by unique combinations of SelectorEvents.
+     */
+    distinct?: SelectorEventScalarFieldEnum | SelectorEventScalarFieldEnum[]
+  }
+
+  /**
+   * SelectorEvent findFirstOrThrow
+   */
+  export type SelectorEventFindFirstOrThrowArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the SelectorEvent
+     */
+    select?: SelectorEventSelect<ExtArgs> | null
+    /**
+     * Filter, which SelectorEvent to fetch.
+     */
+    where?: SelectorEventWhereInput
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/sorting Sorting Docs}
+     * 
+     * Determine the order of SelectorEvents to fetch.
+     */
+    orderBy?: SelectorEventOrderByWithRelationInput | SelectorEventOrderByWithRelationInput[]
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination#cursor-based-pagination Cursor Docs}
+     * 
+     * Sets the position for searching for SelectorEvents.
+     */
+    cursor?: SelectorEventWhereUniqueInput
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination Pagination Docs}
+     * 
+     * Take `±n` SelectorEvents from the position of the cursor.
+     */
+    take?: number
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination Pagination Docs}
+     * 
+     * Skip the first `n` SelectorEvents.
+     */
+    skip?: number
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/distinct Distinct Docs}
+     * 
+     * Filter by unique combinations of SelectorEvents.
+     */
+    distinct?: SelectorEventScalarFieldEnum | SelectorEventScalarFieldEnum[]
+  }
+
+  /**
+   * SelectorEvent findMany
+   */
+  export type SelectorEventFindManyArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the SelectorEvent
+     */
+    select?: SelectorEventSelect<ExtArgs> | null
+    /**
+     * Filter, which SelectorEvents to fetch.
+     */
+    where?: SelectorEventWhereInput
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/sorting Sorting Docs}
+     * 
+     * Determine the order of SelectorEvents to fetch.
+     */
+    orderBy?: SelectorEventOrderByWithRelationInput | SelectorEventOrderByWithRelationInput[]
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination#cursor-based-pagination Cursor Docs}
+     * 
+     * Sets the position for listing SelectorEvents.
+     */
+    cursor?: SelectorEventWhereUniqueInput
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination Pagination Docs}
+     * 
+     * Take `±n` SelectorEvents from the position of the cursor.
+     */
+    take?: number
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination Pagination Docs}
+     * 
+     * Skip the first `n` SelectorEvents.
+     */
+    skip?: number
+    distinct?: SelectorEventScalarFieldEnum | SelectorEventScalarFieldEnum[]
+  }
+
+  /**
+   * SelectorEvent create
+   */
+  export type SelectorEventCreateArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the SelectorEvent
+     */
+    select?: SelectorEventSelect<ExtArgs> | null
+    /**
+     * The data needed to create a SelectorEvent.
+     */
+    data: XOR<SelectorEventCreateInput, SelectorEventUncheckedCreateInput>
+  }
+
+  /**
+   * SelectorEvent createMany
+   */
+  export type SelectorEventCreateManyArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * The data used to create many SelectorEvents.
+     */
+    data: SelectorEventCreateManyInput | SelectorEventCreateManyInput[]
+  }
+
+  /**
+   * SelectorEvent createManyAndReturn
+   */
+  export type SelectorEventCreateManyAndReturnArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the SelectorEvent
+     */
+    select?: SelectorEventSelectCreateManyAndReturn<ExtArgs> | null
+    /**
+     * The data used to create many SelectorEvents.
+     */
+    data: SelectorEventCreateManyInput | SelectorEventCreateManyInput[]
+  }
+
+  /**
+   * SelectorEvent update
+   */
+  export type SelectorEventUpdateArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the SelectorEvent
+     */
+    select?: SelectorEventSelect<ExtArgs> | null
+    /**
+     * The data needed to update a SelectorEvent.
+     */
+    data: XOR<SelectorEventUpdateInput, SelectorEventUncheckedUpdateInput>
+    /**
+     * Choose, which SelectorEvent to update.
+     */
+    where: SelectorEventWhereUniqueInput
+  }
+
+  /**
+   * SelectorEvent updateMany
+   */
+  export type SelectorEventUpdateManyArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * The data used to update SelectorEvents.
+     */
+    data: XOR<SelectorEventUpdateManyMutationInput, SelectorEventUncheckedUpdateManyInput>
+    /**
+     * Filter which SelectorEvents to update
+     */
+    where?: SelectorEventWhereInput
+  }
+
+  /**
+   * SelectorEvent upsert
+   */
+  export type SelectorEventUpsertArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the SelectorEvent
+     */
+    select?: SelectorEventSelect<ExtArgs> | null
+    /**
+     * The filter to search for the SelectorEvent to update in case it exists.
+     */
+    where: SelectorEventWhereUniqueInput
+    /**
+     * In case the SelectorEvent found by the `where` argument doesn't exist, create a new SelectorEvent with this data.
+     */
+    create: XOR<SelectorEventCreateInput, SelectorEventUncheckedCreateInput>
+    /**
+     * In case the SelectorEvent was found with the provided `where` argument, update it with this data.
+     */
+    update: XOR<SelectorEventUpdateInput, SelectorEventUncheckedUpdateInput>
+  }
+
+  /**
+   * SelectorEvent delete
+   */
+  export type SelectorEventDeleteArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the SelectorEvent
+     */
+    select?: SelectorEventSelect<ExtArgs> | null
+    /**
+     * Filter which SelectorEvent to delete.
+     */
+    where: SelectorEventWhereUniqueInput
+  }
+
+  /**
+   * SelectorEvent deleteMany
+   */
+  export type SelectorEventDeleteManyArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Filter which SelectorEvents to delete
+     */
+    where?: SelectorEventWhereInput
+  }
+
+  /**
+   * SelectorEvent without action
+   */
+  export type SelectorEventDefaultArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the SelectorEvent
+     */
+    select?: SelectorEventSelect<ExtArgs> | null
+  }
+
+
+  /**
    * Model Recording
    */
 
@@ -31407,6 +32393,19 @@ export namespace Prisma {
   export type SelectorStateScalarFieldEnum = (typeof SelectorStateScalarFieldEnum)[keyof typeof SelectorStateScalarFieldEnum]
 
 
+  export const SelectorEventScalarFieldEnum: {
+    id: 'id',
+    original_strategy: 'original_strategy',
+    original_selector: 'original_selector',
+    action: 'action',
+    user_id: 'user_id',
+    reason: 'reason',
+    createdAt: 'createdAt'
+  };
+
+  export type SelectorEventScalarFieldEnum = (typeof SelectorEventScalarFieldEnum)[keyof typeof SelectorEventScalarFieldEnum]
+
+
   export const RecordingScalarFieldEnum: {
     id: 'id',
     group_id: 'group_id',
@@ -33344,6 +34343,68 @@ export namespace Prisma {
     last_event_at?: DateTimeWithAggregatesFilter<"SelectorState"> | Date | string
     createdAt?: DateTimeWithAggregatesFilter<"SelectorState"> | Date | string
     updatedAt?: DateTimeWithAggregatesFilter<"SelectorState"> | Date | string
+  }
+
+  export type SelectorEventWhereInput = {
+    AND?: SelectorEventWhereInput | SelectorEventWhereInput[]
+    OR?: SelectorEventWhereInput[]
+    NOT?: SelectorEventWhereInput | SelectorEventWhereInput[]
+    id?: StringFilter<"SelectorEvent"> | string
+    original_strategy?: StringFilter<"SelectorEvent"> | string
+    original_selector?: StringFilter<"SelectorEvent"> | string
+    action?: StringFilter<"SelectorEvent"> | string
+    user_id?: StringNullableFilter<"SelectorEvent"> | string | null
+    reason?: StringNullableFilter<"SelectorEvent"> | string | null
+    createdAt?: DateTimeFilter<"SelectorEvent"> | Date | string
+  }
+
+  export type SelectorEventOrderByWithRelationInput = {
+    id?: SortOrder
+    original_strategy?: SortOrder
+    original_selector?: SortOrder
+    action?: SortOrder
+    user_id?: SortOrderInput | SortOrder
+    reason?: SortOrderInput | SortOrder
+    createdAt?: SortOrder
+  }
+
+  export type SelectorEventWhereUniqueInput = Prisma.AtLeast<{
+    id?: string
+    AND?: SelectorEventWhereInput | SelectorEventWhereInput[]
+    OR?: SelectorEventWhereInput[]
+    NOT?: SelectorEventWhereInput | SelectorEventWhereInput[]
+    original_strategy?: StringFilter<"SelectorEvent"> | string
+    original_selector?: StringFilter<"SelectorEvent"> | string
+    action?: StringFilter<"SelectorEvent"> | string
+    user_id?: StringNullableFilter<"SelectorEvent"> | string | null
+    reason?: StringNullableFilter<"SelectorEvent"> | string | null
+    createdAt?: DateTimeFilter<"SelectorEvent"> | Date | string
+  }, "id">
+
+  export type SelectorEventOrderByWithAggregationInput = {
+    id?: SortOrder
+    original_strategy?: SortOrder
+    original_selector?: SortOrder
+    action?: SortOrder
+    user_id?: SortOrderInput | SortOrder
+    reason?: SortOrderInput | SortOrder
+    createdAt?: SortOrder
+    _count?: SelectorEventCountOrderByAggregateInput
+    _max?: SelectorEventMaxOrderByAggregateInput
+    _min?: SelectorEventMinOrderByAggregateInput
+  }
+
+  export type SelectorEventScalarWhereWithAggregatesInput = {
+    AND?: SelectorEventScalarWhereWithAggregatesInput | SelectorEventScalarWhereWithAggregatesInput[]
+    OR?: SelectorEventScalarWhereWithAggregatesInput[]
+    NOT?: SelectorEventScalarWhereWithAggregatesInput | SelectorEventScalarWhereWithAggregatesInput[]
+    id?: StringWithAggregatesFilter<"SelectorEvent"> | string
+    original_strategy?: StringWithAggregatesFilter<"SelectorEvent"> | string
+    original_selector?: StringWithAggregatesFilter<"SelectorEvent"> | string
+    action?: StringWithAggregatesFilter<"SelectorEvent"> | string
+    user_id?: StringNullableWithAggregatesFilter<"SelectorEvent"> | string | null
+    reason?: StringNullableWithAggregatesFilter<"SelectorEvent"> | string | null
+    createdAt?: DateTimeWithAggregatesFilter<"SelectorEvent"> | Date | string
   }
 
   export type RecordingWhereInput = {
@@ -36033,6 +37094,76 @@ export namespace Prisma {
     updatedAt?: DateTimeFieldUpdateOperationsInput | Date | string
   }
 
+  export type SelectorEventCreateInput = {
+    id?: string
+    original_strategy: string
+    original_selector: string
+    action: string
+    user_id?: string | null
+    reason?: string | null
+    createdAt?: Date | string
+  }
+
+  export type SelectorEventUncheckedCreateInput = {
+    id?: string
+    original_strategy: string
+    original_selector: string
+    action: string
+    user_id?: string | null
+    reason?: string | null
+    createdAt?: Date | string
+  }
+
+  export type SelectorEventUpdateInput = {
+    id?: StringFieldUpdateOperationsInput | string
+    original_strategy?: StringFieldUpdateOperationsInput | string
+    original_selector?: StringFieldUpdateOperationsInput | string
+    action?: StringFieldUpdateOperationsInput | string
+    user_id?: NullableStringFieldUpdateOperationsInput | string | null
+    reason?: NullableStringFieldUpdateOperationsInput | string | null
+    createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
+  }
+
+  export type SelectorEventUncheckedUpdateInput = {
+    id?: StringFieldUpdateOperationsInput | string
+    original_strategy?: StringFieldUpdateOperationsInput | string
+    original_selector?: StringFieldUpdateOperationsInput | string
+    action?: StringFieldUpdateOperationsInput | string
+    user_id?: NullableStringFieldUpdateOperationsInput | string | null
+    reason?: NullableStringFieldUpdateOperationsInput | string | null
+    createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
+  }
+
+  export type SelectorEventCreateManyInput = {
+    id?: string
+    original_strategy: string
+    original_selector: string
+    action: string
+    user_id?: string | null
+    reason?: string | null
+    createdAt?: Date | string
+  }
+
+  export type SelectorEventUpdateManyMutationInput = {
+    id?: StringFieldUpdateOperationsInput | string
+    original_strategy?: StringFieldUpdateOperationsInput | string
+    original_selector?: StringFieldUpdateOperationsInput | string
+    action?: StringFieldUpdateOperationsInput | string
+    user_id?: NullableStringFieldUpdateOperationsInput | string | null
+    reason?: NullableStringFieldUpdateOperationsInput | string | null
+    createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
+  }
+
+  export type SelectorEventUncheckedUpdateManyInput = {
+    id?: StringFieldUpdateOperationsInput | string
+    original_strategy?: StringFieldUpdateOperationsInput | string
+    original_selector?: StringFieldUpdateOperationsInput | string
+    action?: StringFieldUpdateOperationsInput | string
+    user_id?: NullableStringFieldUpdateOperationsInput | string | null
+    reason?: NullableStringFieldUpdateOperationsInput | string | null
+    createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
+  }
+
   export type RecordingCreateInput = {
     id?: string
     group_id: string
@@ -38117,6 +39248,36 @@ export namespace Prisma {
   export type SelectorStateSumOrderByAggregateInput = {
     regression_count?: SortOrder
     clean_builds_count?: SortOrder
+  }
+
+  export type SelectorEventCountOrderByAggregateInput = {
+    id?: SortOrder
+    original_strategy?: SortOrder
+    original_selector?: SortOrder
+    action?: SortOrder
+    user_id?: SortOrder
+    reason?: SortOrder
+    createdAt?: SortOrder
+  }
+
+  export type SelectorEventMaxOrderByAggregateInput = {
+    id?: SortOrder
+    original_strategy?: SortOrder
+    original_selector?: SortOrder
+    action?: SortOrder
+    user_id?: SortOrder
+    reason?: SortOrder
+    createdAt?: SortOrder
+  }
+
+  export type SelectorEventMinOrderByAggregateInput = {
+    id?: SortOrder
+    original_strategy?: SortOrder
+    original_selector?: SortOrder
+    action?: SortOrder
+    user_id?: SortOrder
+    reason?: SortOrder
+    createdAt?: SortOrder
   }
 
   export type BookmarkListRelationFilter = {
@@ -43672,6 +44833,10 @@ export namespace Prisma {
      * @deprecated Use SelectorStateDefaultArgs instead
      */
     export type SelectorStateArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = SelectorStateDefaultArgs<ExtArgs>
+    /**
+     * @deprecated Use SelectorEventDefaultArgs instead
+     */
+    export type SelectorEventArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = SelectorEventDefaultArgs<ExtArgs>
     /**
      * @deprecated Use RecordingDefaultArgs instead
      */

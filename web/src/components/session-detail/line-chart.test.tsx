@@ -140,4 +140,33 @@ describe('LineChart', () => {
     fireEvent.mouseLeave(box);
     expect(screen.queryByRole('tooltip')).toBeNull();
   });
+
+  it('names the hovered point with formatTime when given', () => {
+    render(
+      <LineChart
+        ariaLabel="Heals per day"
+        times={[0, 86_400_000]}
+        series={[{ key: 'h', label: 'Heals', color: 'var(--color-info)', values: [1, 2] }]}
+        formatValue={(v) => String(v)}
+        formatTime={(t) => `day ${t / 86_400_000}`}
+      />,
+    );
+    const box = screen.getByTestId('line-chart');
+    box.getBoundingClientRect = () =>
+      ({
+        left: 0,
+        width: 400,
+        top: 0,
+        height: 140,
+        right: 400,
+        bottom: 140,
+        x: 0,
+        y: 0,
+        toJSON: () => ({}),
+      }) as DOMRect;
+
+    fireEvent.mouseMove(box, { clientX: 400 });
+
+    expect(screen.getByRole('tooltip').textContent).toContain('day 1');
+  });
 });

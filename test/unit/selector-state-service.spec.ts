@@ -13,14 +13,18 @@ import { SocketEvents } from '../../src/enums/SocketEvents';
  * the resolved value explicitly.
  */
 function buildPrismaStub() {
-  return {
+  const stub: any = {
     selectorState: {
       findUnique: sinon.stub(),
       upsert: sinon.stub(),
       update: sinon.stub(),
       delete: sinon.stub(),
     },
+    selectorEvent: { create: sinon.stub().resolves({}) },
   };
+  // A transaction runs its callback against the same tables, as Prisma's does.
+  stub.$transaction = sinon.stub().callsFake((fn: (tx: unknown) => Promise<unknown>) => fn(stub));
+  return stub;
 }
 
 function buildSocketStub() {
@@ -511,6 +515,104 @@ describe('SelectorStateService', () => {
 
       const result = await svc.getState(STRATEGY, SELECTOR);
       expect(result).to.equal(null);
+    });
+  });
+
+  describe('what each change records', () => {
+    const ctx = { strategy: STRATEGY, selector: SELECTOR, apiKeyId: API_KEY_ID, userId: 'user-1' };
+    const recorded = () => prismaStub.selectorEvent.create.firstCall.args[0].data;
+
+    it('records who marked it fixed, in the same transaction as the status', async () => {
+      prismaStub.selectorState.findUnique.resolves(null);
+      prismaStub.selectorState.upsert.resolves(
+        makeRow({ status: 'pending', fixed_at: new Date() }),
+      );
+
+      await svc.markFixed(ctx);
+
+      expect(prismaStub.$transaction.calledOnce).to.equal(true);
+      expect(recorded()).to.deep.equal({
+        original_strategy: STRATEGY,
+        original_selector: SELECTOR,
+        action: 'marked_fixed',
+        user_id: 'user-1',
+        reason: null,
+      });
+      expect(prismaStub.selectorEvent.create.calledAfter(prismaStub.selectorState.upsert)).to.equal(
+        true,
+      );
+    });
+
+    it('fails the change, and tells nobody, when its record cannot be written', async () => {
+      prismaStub.selectorState.findUnique.resolves(null);
+      prismaStub.selectorState.upsert.resolves(makeRow({ status: 'pending' }));
+      prismaStub.selectorEvent.create.rejects(new Error('disk full'));
+
+      let thrown: unknown;
+      try {
+        await svc.markFixed(ctx);
+      } catch (e) {
+        thrown = e;
+      }
+      expect((thrown as Error).message).to.equal('disk full');
+      expect(socketStub.emitToDashboard.called).to.equal(false);
+    });
+
+    it('records the mute with its reason', async () => {
+      prismaStub.selectorState.upsert.resolves(makeRow({ status: 'muted', muted_at: new Date() }));
+
+      await svc.mute({ ...ctx, reason: 'Screen being redesigned' });
+
+      expect(recorded()).to.include({
+        action: 'muted',
+        user_id: 'user-1',
+        reason: 'Screen being redesigned',
+      });
+    });
+
+    it('records an unmute, and nothing for a selector that is not muted', async () => {
+      prismaStub.selectorState.findUnique.resolves(
+        makeRow({ status: 'muted', muted_at: new Date() }),
+      );
+      prismaStub.selectorState.delete.resolves(makeRow());
+      await svc.unmute(ctx);
+      expect(recorded()).to.include({ action: 'unmuted', user_id: 'user-1' });
+
+      prismaStub.selectorEvent.create.resetHistory();
+      prismaStub.selectorState.findUnique.resolves(makeRow({ status: 'active' }));
+      await svc.unmute(ctx);
+      expect(prismaStub.selectorEvent.create.called).to.equal(false);
+    });
+
+    it('records a cancelled verification', async () => {
+      prismaStub.selectorState.findUnique.resolves(
+        makeRow({ status: 'pending', fixed_at: new Date() }),
+      );
+      prismaStub.selectorState.delete.resolves(makeRow());
+
+      await svc.cancelVerification(ctx);
+
+      expect(recorded()).to.include({ action: 'verification_cancelled', user_id: 'user-1' });
+    });
+
+    it('records a selector breaking again, with nobody as its person', async () => {
+      prismaStub.selectorState.findUnique.resolves(
+        makeRow({ status: 'resolved', resolved_at: new Date() }),
+      );
+      prismaStub.selectorState.update.resolves(makeRow({ status: 'active', regression_count: 1 }));
+
+      await svc.onHealRecorded({ strategy: STRATEGY, selector: SELECTOR, sessionId: SESSION_ID });
+
+      expect(recorded()).to.include({ action: 'broke_again', user_id: null, reason: null });
+    });
+
+    it('records nothing for a heal on a selector with no status', async () => {
+      prismaStub.selectorState.findUnique.resolves(null);
+
+      await svc.onHealRecorded({ strategy: STRATEGY, selector: SELECTOR, sessionId: SESSION_ID });
+
+      expect(prismaStub.$transaction.called).to.equal(false);
+      expect(prismaStub.selectorEvent.create.called).to.equal(false);
     });
   });
 });

@@ -36,8 +36,8 @@ const Teams = lazy(() =>
 const SelectorHealthPage = lazy(
   () => import('../components/selector-health/selector-health-page'),
 );
-const SelectorDetailPage = lazy(
-  () => import('../components/selector-health/selector-detail-page'),
+const SelectorDetailRedirect = lazy(
+  () => import('../components/selector-health/selector-detail-redirect'),
 );
 const DeviceMosaicView = lazy(() => import('../components/mosaic/DeviceMosaicView'));
 const ProfilePage = lazy(() => import('../pages/profile/profile-page'));
@@ -81,7 +81,7 @@ export const AppRoutes: React.FC = () => (
         <Route path="/teams" element={<Teams />} />
         <Route path="/users" element={<UsersPage />} />
         <Route path="/selector-health" element={<SelectorHealthPage />} />
-        <Route path="/selector-health/detail" element={<SelectorDetailPage />} />
+        <Route path="/selector-health/detail" element={<SelectorDetailRedirect />} />
         <Route path="/devices/live" element={<DeviceMosaicView />} />
         <Route path="/recordings" element={<RecordingsPage />} />
         <Route path="/recordings/:groupId" element={<RecordingPage />} />

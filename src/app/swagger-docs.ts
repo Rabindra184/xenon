@@ -2076,11 +2076,15 @@ export {};
  *   post:
  *     summary: Apply a lifecycle action to a selector
  *     description: |
- *       Mutates the SelectorState row for a (strategy, selector) tuple.
- *       Actions are bounded — `mark_fixed`, `mute`, `unmute`,
- *       `cancel_verification`. Returns 409 with `currentStatus` if the
- *       action is incompatible with the row's current state (e.g.
- *       mark_fixed on a muted selector).
+ *       Mutates the SelectorState row for a (strategy, selector) tuple and
+ *       records the change, with the person, in SelectorEvent. Actions are
+ *       bounded — `mark_fixed`, `mute`, `unmute`, `cancel_verification`.
+ *       Members and admins may act on a selector healed in a session they
+ *       can see; any other answers 404, as an unknown one. Needs the
+ *       `sessions` scope (`admin` implies it). `original_strategy` may be
+ *       empty, for heals recorded with no strategy. Returns 409 with
+ *       `currentStatus` if the action is incompatible with the row's
+ *       current state (e.g. mark_fixed on a muted selector).
  *     tags: [Selector Health]
  *     security:
  *       - apiKey: []
@@ -2101,13 +2105,16 @@ export {};
  *               action:
  *                 type: string
  *                 enum: [mark_fixed, mute, unmute, cancel_verification]
+ *               reason: { type: string, maxLength: 500, description: 'Why the selector is muted; mute only' }
  *     responses:
  *       200:
  *         description: Updated SelectorState row
  *       400:
- *         description: Missing fields or unknown action
+ *         description: Missing fields, unknown action, or a reason over 500 characters
  *       403:
- *         description: API key lacks `admin` scope
+ *         description: The caller lacks the `sessions` scope
+ *       404:
+ *         description: '`{ error: "not_found", message: "Selector not found" }`'
  *       409:
  *         description: Action conflicts with current state (returns currentStatus)
  *       401: { $ref: '#/components/responses/Unauthorized' }
@@ -3116,6 +3123,10 @@ export {};
  *       - in: query
  *         name: windowDays
  *         schema: { type: integer, minimum: 1, maximum: 365, default: 30 }
+ *       - in: query
+ *         name: tz
+ *         schema: { type: integer, minimum: -840, maximum: 840, default: 0 }
+ *         description: "The caller's offset from UTC in minutes (east positive), so `trend` days are theirs"
  *     responses:
  *       200:
  *         description: KPI summary
@@ -3132,14 +3143,74 @@ export {};
  *                     distinctSelectors: { type: integer }
  *                     sessionsTouched: { type: integer }
  *                     byTier: { type: object, additionalProperties: { type: integer } }
- *                     estCostUsd: { type: number }
+ *                     timeSpentMs: { type: integer, description: 'Total duration of the commands that needed healing' }
  *                 prior:
  *                   type: object
  *                   description: 'Same shape as `current` for the immediately preceding window'
  *                 resolvedCount: { type: integer }
  *                 pendingCount: { type: integer }
+ *                 trend:
+ *                   type: array
+ *                   description: 'Heals per day of the period, in the caller''s time zone, days with none included'
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       t: { type: integer, description: 'When the day began, epoch ms' }
+ *                       heals: { type: integer }
+ *                       aiHeals: { type: integer, description: 'Heals by Visual AI or an LLM' }
  *       401: { $ref: '#/components/responses/Unauthorized' }
  *       429: { $ref: '#/components/responses/RateLimited' }
+ */
+
+/**
+ * @swagger
+ * /api/healing/selectors:
+ *   get:
+ *     summary: One tab of the Selector Health list
+ *     description: |
+ *       `fix` groups the period's heals by selector and leaves out selectors
+ *       being verified, fixed or muted; the other tabs list the selectors with
+ *       that status (`fixed`: verified within the period). Only selectors
+ *       healed, at any time, in sessions the caller can see. `counts` follow
+ *       the period, not the search or filters. A page past the end answers the
+ *       last page.
+ *     tags: [Selector Health]
+ *     parameters:
+ *       - { in: query, name: tab, schema: { type: string, enum: [fix, verifying, fixed, muted], default: fix } }
+ *       - { in: query, name: days, schema: { type: integer, minimum: 1, maximum: 365, default: 30 } }
+ *       - { in: query, name: q, schema: { type: string }, description: 'Text in the selector, or (fix) in its suggested fix' }
+ *       - { in: query, name: platform, schema: { type: string }, description: 'fix only' }
+ *       - { in: query, name: method, schema: { type: string }, description: 'Healing method, e.g. LLM; fix only' }
+ *       - { in: query, name: sort, schema: { type: string, enum: [heals, recent, time], default: heals }, description: 'fix only' }
+ *       - { in: query, name: page, schema: { type: integer, minimum: 1, default: 1 } }
+ *       - { in: query, name: pageSize, schema: { type: integer, minimum: 1, maximum: 100, default: 50 } }
+ *     responses:
+ *       200: { description: '`{ tab, days, page, pageSize, total, counts, canAct, items }`' }
+ *       401: { $ref: '#/components/responses/Unauthorized' }
+ */
+
+/**
+ * @swagger
+ * /api/healing/selectors/detail:
+ *   get:
+ *     summary: Everything the Selector Health side panel shows for one selector
+ *     description: |
+ *       Its heals in the period (suggested fixes with their share, methods and
+ *       confidence; heals per day; platforms, builds and devices; the latest 20
+ *       heals), its status, the latest 50 status changes with who made them,
+ *       and whether the caller may act. A selector no session the caller can
+ *       see has healed answers 404, exactly as an unknown one.
+ *     tags: [Selector Health]
+ *     parameters:
+ *       - { in: query, name: selector, required: true, schema: { type: string } }
+ *       - { in: query, name: strategy, schema: { type: string }, description: "Empty for heals recorded with no strategy" }
+ *       - { in: query, name: days, schema: { type: integer, minimum: 1, maximum: 365, default: 30 } }
+ *       - { in: query, name: tz, schema: { type: integer, minimum: -840, maximum: 840, default: 0 } }
+ *     responses:
+ *       200: { description: 'The panel for one selector' }
+ *       400: { description: 'No selector given' }
+ *       404: { description: '`{ error: "not_found", message: "Selector not found" }`' }
+ *       401: { $ref: '#/components/responses/Unauthorized' }
  */
 
 /**

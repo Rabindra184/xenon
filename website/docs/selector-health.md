@@ -4,7 +4,7 @@ title: Selector Health
 
 # Selector Health
 
-Selector Health is the dashboard surface that turns Xenon's stream of self-healing events into something a team can actually act on. It tracks every selector that has ever been healed, lets you mark fixes, watches for regressions, and tells you which selectors are quietly costing you the most across CI.
+Selector Health is the dashboard surface that turns Xenon's stream of self-healing events into something a team can actually act on. It tracks every selector that has ever been healed, lets you mark fixes, watches for regressions, and tells you which selectors slow your runs the most across CI.
 
 If [Self-Healing](self-healing.md) is the engine that keeps tests passing through breakages, Selector Health is the cockpit that tells you which broken selectors are worth fixing in source — and proves the fixes actually held.
 
@@ -17,7 +17,8 @@ Self-healing buys time. Without a feedback loop, that time turns into permanent 
 - **Visibility** — every healed selector is ranked by frequency. The noisiest ones surface first.
 - **Verification** — when a developer fixes a selector in code, the dashboard watches subsequent CI builds and only marks it `Resolved` after multiple clean runs.
 - **Regression detection** — if a "fixed" selector heals again, it flips back to `Active` automatically and the dashboard surfaces a banner.
-- **Triage** — known-flaky or third-party selectors can be `Muted` so they stop polluting the hotspot list.
+- **Triage** — known-flaky or third-party selectors can be `Muted` so they stop polluting the list.
+- **Accountability** — every status change is recorded with the person who made it, and a mute can say why.
 
 ---
 
@@ -28,7 +29,7 @@ Every selector that has ever been healed has an implicit or explicit state. The 
 ```mermaid
 stateDiagram-v2
     [*] --> Active: first heal
-    Active --> Pending: Mark as Fixed
+    Active --> Pending: Mark fixed
     Pending --> Resolved: 3 clean CI builds
     Pending --> Active: Cancel verification
     Pending --> Active: regression (heal recorded)
@@ -41,17 +42,17 @@ stateDiagram-v2
 
 | State | Meaning |
 |---|---|
-| **Active** | The selector is being healed. This is the default for any selector with one or more heal events and no user action. |
-| **Pending** | A user clicked **Mark as Fixed**. Xenon is now watching CI builds for confirmation. The dashboard shows a `1/3 → 3/3` progress indicator. |
-| **Resolved** | The verifier saw at least **3 distinct CI builds** call `findElement` for this selector with no heal. Terminal state — until/unless a regression happens. |
-| **Muted** | A user has silenced this selector. It won't appear in Active hotspots and won't trigger alerts. Mocks and healing still run as normal. |
+| **Active** (tab: To fix) | The selector is being healed. This is the default for any selector with one or more heal events and no user action. |
+| **Pending** (tab: Being verified) | A user clicked **Mark fixed**. Xenon is now watching CI builds for confirmation. The dashboard shows "2 of 3 clean builds". |
+| **Resolved** (tab: Fixed) | The verifier saw at least **3 distinct CI builds** call `findElement` for this selector with no heal. Terminal state — until/unless a regression happens. |
+| **Muted** | A user has silenced this selector, for every team. It's left out of To fix, the CI gate and the digest. Healing still runs as normal. |
 
 ### Verification rules
 
 The verifier runs as a cron job (default: every 15 minutes) and only counts builds that:
 
 - ran `findElement` or `findElements` on the same `(strategy, selector)` tuple,
-- happened after the user clicked **Mark as Fixed** (`fixed_at`),
+- happened after the user clicked **Mark fixed** (`fixed_at`),
 - belong to a session with a `build_id` set — **ad-hoc local runs do not advance verification**.
 
 Three distinct clean `build_id`s are needed for promotion. The threshold is fixed in v1 (no capability to tune it).
@@ -71,42 +72,63 @@ Muted selectors do **not** generate regression events — silencing is silencing
 
 ## Dashboard
 
-Selector Health lives under the dashboard's main navigation. The page has three layers:
+Selector Health lives under the dashboard's main navigation. The period at the top (7, 30 or 90 days) sets everything on the page.
 
-### KPI strip
+### Summary and trend
 
-Five tiles across the top. The hero tile is **Brittle Selectors** — a count of unique selectors that have healed at least once in the active window, weighted by frequency. The remaining tiles cover total heals, sessions touched, resolved-in-window, and pending-verification.
+Four numbers, each compared in words with the period before ("2 fewer than the 30 days before"; fewer is green, more is red):
 
-Each KPI tile carries an info tooltip explaining the underlying query. Hover for the long form.
+| Number | Meaning |
+|---|---|
+| **Selectors that needed healing** | Distinct selectors healed at least once in the period. |
+| **Heals** | Heals in the period. |
+| **Sessions affected** | Sessions with at least one heal. |
+| **Time spent healing** | The total duration of the commands that needed healing: what healing added to your runs. |
+
+Below them, **Heals per day** draws all heals and the heals that used AI (Visual AI and LLM, the slowest and least certain), day by day in your browser's time zone.
 
 ### Tabs
 
-| Tab | Shows |
-|---|---|
-| **Active** (default) | Selectors that are being healed and have not been fixed, resolved, or muted. The triage list. |
-| **Pending** | Selectors awaiting verification — each row carries a `clean_builds_count / 3` progress chip. |
-| **Resolved** | Selectors that have completed verification. Tagged with a regression badge if they have ever regressed. |
-| **Muted** | Silenced selectors with `last_healed_at` and a one-click **Unmute** action. |
+| Tab | State | Shows |
+|---|---|---|
+| **To fix** (default) | Active | Selectors healed in the period that aren't being verified, fixed or muted: the selector in full, heals and sessions, when it last healed, the healing method used most, and the suggested fix with how often it matched. A selector that broke again after being fixed says so. |
+| **Being verified** | Pending | Progress ("2 of 3 clean builds"), and who marked it fixed and when. |
+| **Fixed** | Resolved | Selectors verified within the period, and when. |
+| **Muted** | Muted | Who muted each selector, when, and the reason they gave. |
 
-Tabs update live via Socket.io — fix a selector in one window, and the row moves between tabs in real time across every connected dashboard.
+Every tab shows its count. Search matches the selector, and on **To fix** its suggested fix too. **To fix** also filters by platform and healing method and sorts by most heals, most recent, or most time spent healing. Pages hold 50 selectors.
 
-### Row actions
+The tab, period, search, filters, sort, page and the open selector are kept in the page address, so a view or one selector can be bookmarked or shared. Old `/selector-health/detail?value=…&strategy=…` links open that selector's panel.
 
-Each Active or Pending row exposes:
+The page updates live as heals and status changes arrive.
+
+### Side panel
+
+Click a row (or press **Enter** on it) to open the selector in a panel beside the list. **↑** and **↓** move to the previous or next selector; **Esc** closes the panel. The panel shows:
+
+- the selector and its status, with the actions below;
+- **Suggested fix** — every replacement the healer landed on, most used first, with its share of heals, healing methods and average confidence, and **Copy as** in JavaScript, Java, Python, C# or Ruby (your last choice is remembered);
+- the selector's heals, sessions and time spent healing in the period, with a heals-per-day chart;
+- **Where it happens** — its platforms, builds and devices;
+- **Recent heals** — the latest 20, each linking to its session;
+- **Activity** — who marked it fixed, cancelled, muted (with the reason) or unmuted it, when it was verified, and when it broke again.
+
+### Actions
 
 | Action | Effect |
 |---|---|
-| **Mark as Fixed** | Transitions the selector to `Pending` and starts the 3-clean-build verification clock. |
-| **Mute** | Transitions to `Muted`. Stops appearing in Active. |
-| **Unmute** (Muted tab) | Lifts the mute. If the selector has no other history, the row is deleted entirely. |
-| **Cancel verification** (Pending tab) | Backs out of `Pending` without recording a fix. |
-| **Copy snippet** | Copies a healed-selector replacement snippet in your last-used language (JavaScript, Java, Python, C#, Ruby). The chevron lets you switch language; the choice is remembered in `localStorage`. |
+| **Mark fixed** | Asks for confirmation, then moves the selector to `Pending` and starts the 3-clean-build verification. Not offered for a selector recorded with no strategy (heals from before Xenon recorded one): new runs record a strategy, so it could never be verified. |
+| **Mute…** | Asks for an optional reason (up to 500 characters), then moves the selector to `Muted`. A mute is lab-wide: it leaves the selector out of every team's list, CI gate and digest. |
+| **Unmute** | Lifts the mute. If the selector has no other history, its row is deleted entirely. |
+| **Cancel verification** | Backs out of `Pending` without recording a fix; the clean builds start again from zero. |
+
+Members and admins can act, on selectors healed in a session they can see. Everyone sees only the selectors their teams' sessions healed; admins see all.
 
 ---
 
 ## REST API
 
-All endpoints are mounted under `/xenon/api`. Every mutation requires the `admin` scope (the same API-key scope used elsewhere in the dashboard).
+All endpoints are mounted under `/xenon/api`. Heal data counts only sessions the caller can see. A lifecycle action needs the `sessions` scope (`admin` implies it), and a member may act only on a selector healed in a session they can see; any other answers `404 { "error": "not_found", "message": "Selector not found" }`, exactly as an unknown selector does.
 
 ### `POST /healing/selector/state`
 
@@ -118,16 +140,19 @@ Drives every lifecycle transition.
 {
   "original_strategy": "xpath",
   "original_selector": "//android.widget.Button[@text='Login']",
-  "action": "mark_fixed"
+  "action": "mute",
+  "reason": "Login screen is being redesigned"
 }
 ```
 
-`action` must be one of `mark_fixed`, `mute`, `unmute`, `cancel_verification`.
+`action` must be one of `mark_fixed`, `mute`, `unmute`, `cancel_verification`. `original_strategy` may be empty for heals recorded with no strategy. `reason` is optional, kept for `mute` only, at most 500 characters. Each change is recorded with the person who made it, and shows in the selector's activity.
 
 **Responses:**
 
 - **`200`** — `{ "state": SelectorState }` or `{ "state": null }`. The row after the transition; `null` when the row was deleted (e.g. `cancel_verification` on a row with no other history).
-- **`400`** — Missing field, or `action` not in the enum.
+- **`400`** — Missing field, `action` not in the enum, or a `reason` over 500 characters.
+- **`403`** — The caller lacks the `sessions` scope.
+- **`404`** — The caller can't see this selector.
 - **`409`** — State conflict (e.g. `mark_fixed` on a muted selector). Body includes `currentStatus`.
 
 The endpoint emits a corresponding socket event so all connected dashboards update instantly:
@@ -147,6 +172,24 @@ The verifier emits two more events on its own schedule:
 And on the heal write path:
 
 - `selector_regressed` — fired when a Pending or Resolved selector heals again.
+
+### `GET /healing/selectors`
+
+One tab of the Selector Health list, the four tab counts, and whether the caller may act.
+
+| Param | Default | Notes |
+|---|---|---|
+| `tab` | `fix` | `fix`, `verifying`, `fixed` or `muted`. |
+| `days` | `30` | The period, 1–365. `fixed` lists selectors verified within it. |
+| `q` | — | Text in the selector, or (on `fix`) in its suggested fix. |
+| `platform`, `method`, `sort` | — | `fix` only. `sort` is `heals` (default), `recent` or `time`. |
+| `page`, `pageSize` | `1`, `50` | `pageSize` at most 100. A page past the end answers the last page. |
+
+Answers `{ tab, days, page, pageSize, total, counts, canAct, items }`. Counts follow the period, not the search or filters.
+
+### `GET /healing/selectors/detail`
+
+Everything the side panel shows for one selector: `?selector=…&strategy=…&days=…&tz=…`. `strategy` is empty for heals recorded with no strategy; `tz` is your offset from UTC in minutes. Answers `404` for a selector the caller can't see.
 
 ### `GET /healing/state/muted`
 
@@ -196,7 +239,7 @@ The Selector Health main view query.
 
 ### `GET /healing/summary`
 
-KPI aggregate query. Returns total heals, distinct selectors, sessions touched, by-tier breakdown, estimated cost, plus `resolvedCount` and `pendingCount` from the lifecycle table.
+Summary query. Returns total heals, distinct selectors, sessions touched, by-tier breakdown and time spent healing (`timeSpentMs`) for the period and the one before it, a day-by-day `trend` (heals and AI heals; pass `tz`, your offset from UTC in minutes), plus `resolvedCount` and `pendingCount` from the lifecycle table. Cost estimates (`estCostUsd`) are no longer returned, here or anywhere: they priced every heal the same, whatever model ran.
 
 ### `GET /healing/events`
 
@@ -222,7 +265,7 @@ Trigger an out-of-cycle send with `POST /healing/digest/send`. See [Notification
 
 ## Tips & gotchas
 
-**`Mark as Fixed` doesn't change the test code.**
+**`Mark fixed` doesn't change the test code.**
 It's a metadata action — Xenon assumes you've already pushed a code-side fix and just needs to verify it across enough CI builds. If you click it without actually fixing the selector, the verifier will keep ticking `clean_builds_count` based on whichever locator the test now uses. The selector won't re-enter the heal path until the next time something breaks for real.
 
 **`Resolved` is sticky.**

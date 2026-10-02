@@ -26,9 +26,22 @@ export interface SelectorTuple {
   selector: string;
 }
 
+/** What happened to a selector, as a SelectorEvent row records it. */
+export type SelectorEventAction =
+  | 'marked_fixed'
+  | 'verification_cancelled'
+  | 'verified'
+  | 'broke_again'
+  | 'muted'
+  | 'unmuted';
+
 export interface ActorContext extends SelectorTuple {
-  /** API key id of the user performing the action (audit trail). */
+  /** API key id of the caller, for the older `*_by_api_key` columns; '' for a dashboard user. */
   apiKeyId: string;
+  /** The person acting (`resolveActor(req).userId`), recorded on the SelectorEvent. */
+  userId?: string | null;
+  /** Why the selector is muted. Mute only. */
+  reason?: string | null;
 }
 
 export interface HealRecordedContext extends SelectorTuple {
@@ -47,8 +60,18 @@ interface SelectorStateDelegate {
   delete(args: any): Promise<SelectorState>;
 }
 
-interface PrismaLike {
+interface SelectorEventDelegate {
+  create(args: any): Promise<unknown>;
+}
+
+/** The tables one change writes, inside its transaction. */
+export interface SelectorWriteTx {
   selectorState: SelectorStateDelegate;
+  selectorEvent: SelectorEventDelegate;
+}
+
+interface PrismaLike extends SelectorWriteTx {
+  $transaction<T>(fn: (tx: SelectorWriteTx) => Promise<T>): Promise<T>;
 }
 
 interface SocketLike {
@@ -63,6 +86,24 @@ function whereTuple(strategy: string, selector: string) {
     original_strategy_original_selector: {
       original_strategy: strategy,
       original_selector: selector,
+    },
+  };
+}
+
+/** The SelectorEvent row for one change. */
+export function selectorEventData(
+  tuple: SelectorTuple,
+  action: SelectorEventAction,
+  userId?: string | null,
+  reason?: string | null,
+) {
+  return {
+    data: {
+      original_strategy: tuple.strategy,
+      original_selector: tuple.selector,
+      action,
+      user_id: userId ?? null,
+      reason: reason ?? null,
     },
   };
 }
@@ -94,7 +135,8 @@ function serialize(row: SelectorState) {
  * Owns SelectorState lifecycle transitions. Every transition is idempotent
  * where the spec allows, emits the corresponding `SELECTOR_*` socket event,
  * and uses lazy row creation — rows only exist once a user has taken an
- * action against the selector.
+ * action against the selector. Each change and its SelectorEvent are one
+ * transaction, so the status and its history can't disagree.
  *
  * The constructor accepts both prisma + socket as parameters (defaulting to
  * the real implementations) so tests can pass Sinon stubs without going
@@ -116,36 +158,40 @@ export class SelectorStateService {
    * selector is currently muted (would silently re-arm regressions).
    */
   async markFixed(ctx: ActorContext): Promise<SelectorState> {
-    const existing = await this.prisma.selectorState.findUnique({
-      where: whereTuple(ctx.strategy, ctx.selector),
-    });
-    if (existing && existing.status === 'muted') {
-      throw new SelectorStateConflictError(
-        `Cannot markFixed on a muted selector (${ctx.strategy}=${ctx.selector})`,
-        existing.status,
-      );
-    }
+    const row = await this.prisma.$transaction(async (tx) => {
+      const existing = await tx.selectorState.findUnique({
+        where: whereTuple(ctx.strategy, ctx.selector),
+      });
+      if (existing && existing.status === 'muted') {
+        throw new SelectorStateConflictError(
+          `Cannot markFixed on a muted selector (${ctx.strategy}=${ctx.selector})`,
+          existing.status,
+        );
+      }
 
-    const now = new Date();
-    const row = await this.prisma.selectorState.upsert({
-      where: whereTuple(ctx.strategy, ctx.selector),
-      create: {
-        original_strategy: ctx.strategy,
-        original_selector: ctx.selector,
-        status: 'pending',
-        fixed_at: now,
-        fixed_by_api_key: ctx.apiKeyId,
-        clean_builds_count: 0,
-        last_event_at: now,
-      },
-      update: {
-        status: 'pending',
-        fixed_at: now,
-        fixed_by_api_key: ctx.apiKeyId,
-        clean_builds_count: 0,
-        resolved_at: null,
-        last_event_at: now,
-      },
+      const now = new Date();
+      const upserted = await tx.selectorState.upsert({
+        where: whereTuple(ctx.strategy, ctx.selector),
+        create: {
+          original_strategy: ctx.strategy,
+          original_selector: ctx.selector,
+          status: 'pending',
+          fixed_at: now,
+          fixed_by_api_key: ctx.apiKeyId,
+          clean_builds_count: 0,
+          last_event_at: now,
+        },
+        update: {
+          status: 'pending',
+          fixed_at: now,
+          fixed_by_api_key: ctx.apiKeyId,
+          clean_builds_count: 0,
+          resolved_at: null,
+          last_event_at: now,
+        },
+      });
+      await tx.selectorEvent.create(selectorEventData(ctx, 'marked_fixed', ctx.userId));
+      return upserted;
     });
 
     scopedLog.info(
@@ -157,27 +203,31 @@ export class SelectorStateService {
 
   /**
    * Silence a selector. Idempotent — re-muting an already-muted selector
-   * just refreshes muted_at / muted_by_api_key.
+   * just refreshes muted_at / muted_by_api_key, and records the new reason.
    */
   async mute(ctx: ActorContext): Promise<SelectorState> {
-    const now = new Date();
-    const row = await this.prisma.selectorState.upsert({
-      where: whereTuple(ctx.strategy, ctx.selector),
-      create: {
-        original_strategy: ctx.strategy,
-        original_selector: ctx.selector,
-        status: 'muted',
-        muted_at: now,
-        muted_by_api_key: ctx.apiKeyId,
-        last_event_at: now,
-      },
-      update: {
-        // Preserve any prior fixed_at / resolved_at history (Pending → Muted spec).
-        status: 'muted',
-        muted_at: now,
-        muted_by_api_key: ctx.apiKeyId,
-        last_event_at: now,
-      },
+    const row = await this.prisma.$transaction(async (tx) => {
+      const now = new Date();
+      const upserted = await tx.selectorState.upsert({
+        where: whereTuple(ctx.strategy, ctx.selector),
+        create: {
+          original_strategy: ctx.strategy,
+          original_selector: ctx.selector,
+          status: 'muted',
+          muted_at: now,
+          muted_by_api_key: ctx.apiKeyId,
+          last_event_at: now,
+        },
+        update: {
+          // Preserve any prior fixed_at / resolved_at history (Pending → Muted spec).
+          status: 'muted',
+          muted_at: now,
+          muted_by_api_key: ctx.apiKeyId,
+          last_event_at: now,
+        },
+      });
+      await tx.selectorEvent.create(selectorEventData(ctx, 'muted', ctx.userId, ctx.reason));
+      return upserted;
     });
 
     scopedLog.info(`mute: ${ctx.strategy}=${ctx.selector} → muted (api_key=${ctx.apiKeyId})`);
@@ -196,39 +246,46 @@ export class SelectorStateService {
    *   - `resolved_at != null` (it has reached the resolved terminal state).
    *
    * Calling `unmute` on a row whose status is not `'muted'` (including a
-   * missing row) is a silent no-op: the existing row is returned unchanged
-   * and no socket event is emitted.
+   * missing row) is a silent no-op: the existing row is returned unchanged,
+   * nothing is recorded and no socket event is emitted.
    */
   async unmute(ctx: ActorContext): Promise<SelectorState | null> {
-    const existing = await this.prisma.selectorState.findUnique({
-      where: whereTuple(ctx.strategy, ctx.selector),
+    const outcome = await this.prisma.$transaction(async (tx) => {
+      const existing = await tx.selectorState.findUnique({
+        where: whereTuple(ctx.strategy, ctx.selector),
+      });
+      if (!existing || existing.status !== 'muted') {
+        return { changed: false, row: existing };
+      }
+
+      const hasOtherHistory =
+        existing.regression_count > 0 ||
+        existing.fixed_at !== null ||
+        existing.resolved_at !== null;
+
+      let result: SelectorState | null;
+      if (!hasOtherHistory) {
+        await tx.selectorState.delete({
+          where: whereTuple(ctx.strategy, ctx.selector),
+        });
+        result = null;
+      } else {
+        result = await tx.selectorState.update({
+          where: whereTuple(ctx.strategy, ctx.selector),
+          data: {
+            status: 'active',
+            muted_at: null,
+            muted_by_api_key: null,
+            last_event_at: new Date(),
+          },
+        });
+      }
+      await tx.selectorEvent.create(selectorEventData(ctx, 'unmuted', ctx.userId));
+      return { changed: true, row: result };
     });
-    if (!existing || existing.status !== 'muted') {
-      return existing;
-    }
+    if (!outcome.changed) return outcome.row;
 
-    const hasOtherHistory =
-      existing.regression_count > 0 || existing.fixed_at !== null || existing.resolved_at !== null;
-
-    let result: SelectorState | null;
-    if (!hasOtherHistory) {
-      await this.prisma.selectorState.delete({
-        where: whereTuple(ctx.strategy, ctx.selector),
-      });
-      result = null;
-    } else {
-      const now = new Date();
-      result = await this.prisma.selectorState.update({
-        where: whereTuple(ctx.strategy, ctx.selector),
-        data: {
-          status: 'active',
-          muted_at: null,
-          muted_by_api_key: null,
-          last_event_at: now,
-        },
-      });
-    }
-
+    const result = outcome.row;
     scopedLog.info(
       `unmute: ${ctx.strategy}=${ctx.selector} → ${result ? 'active' : 'deleted'} (api_key=${ctx.apiKeyId})`,
     );
@@ -253,37 +310,40 @@ export class SelectorStateService {
    * history was accumulated, removes the row entirely.
    */
   async cancelVerification(ctx: ActorContext): Promise<SelectorState | null> {
-    const existing = await this.prisma.selectorState.findUnique({
-      where: whereTuple(ctx.strategy, ctx.selector),
+    const result = await this.prisma.$transaction(async (tx) => {
+      const existing = await tx.selectorState.findUnique({
+        where: whereTuple(ctx.strategy, ctx.selector),
+      });
+      if (!existing || existing.status !== 'pending') {
+        throw new SelectorStateConflictError(
+          `cancelVerification requires status=pending (${ctx.strategy}=${ctx.selector})`,
+          existing ? existing.status : 'none',
+        );
+      }
+
+      const hasOtherHistory = existing.regression_count > 0 || existing.resolved_at !== null;
+
+      let row: SelectorState | null;
+      if (!hasOtherHistory) {
+        await tx.selectorState.delete({
+          where: whereTuple(ctx.strategy, ctx.selector),
+        });
+        row = null;
+      } else {
+        row = await tx.selectorState.update({
+          where: whereTuple(ctx.strategy, ctx.selector),
+          data: {
+            status: 'active',
+            fixed_at: null,
+            fixed_by_api_key: null,
+            clean_builds_count: 0,
+            last_event_at: new Date(),
+          },
+        });
+      }
+      await tx.selectorEvent.create(selectorEventData(ctx, 'verification_cancelled', ctx.userId));
+      return row;
     });
-    if (!existing || existing.status !== 'pending') {
-      throw new SelectorStateConflictError(
-        `cancelVerification requires status=pending (${ctx.strategy}=${ctx.selector})`,
-        existing ? existing.status : 'none',
-      );
-    }
-
-    const hasOtherHistory = existing.regression_count > 0 || existing.resolved_at !== null;
-
-    let result: SelectorState | null;
-    if (!hasOtherHistory) {
-      await this.prisma.selectorState.delete({
-        where: whereTuple(ctx.strategy, ctx.selector),
-      });
-      result = null;
-    } else {
-      const now = new Date();
-      result = await this.prisma.selectorState.update({
-        where: whereTuple(ctx.strategy, ctx.selector),
-        data: {
-          status: 'active',
-          fixed_at: null,
-          fixed_by_api_key: null,
-          clean_builds_count: 0,
-          last_event_at: now,
-        },
-      });
-    }
 
     scopedLog.info(
       `cancelVerification: ${ctx.strategy}=${ctx.selector} → ${result ? 'active' : 'deleted'} (api_key=${ctx.apiKeyId})`,
@@ -305,8 +365,8 @@ export class SelectorStateService {
    * Heal-write hook called from the heal write path when `is_healed=true` is
    * about to be persisted. If the (strategy, selector) row is in `'pending'`
    * or `'resolved'` state, transitions it back to `'active'`, increments
-   * `regression_count`, and emits `SELECTOR_REGRESSED`. No-op if the row is
-   * absent, muted, or already active.
+   * `regression_count`, records `broke_again`, and emits `SELECTOR_REGRESSED`.
+   * No-op if the row is absent, muted, or already active.
    *
    * Return value: provided for testing/integration scenarios. Production
    * callers in the heal write path (`event-manager.ts`) should treat this
@@ -314,6 +374,8 @@ export class SelectorStateService {
    * never blocks or breaks the heal write itself.
    */
   async onHealRecorded(ctx: HealRecordedContext): Promise<SelectorState | null> {
+    // Read outside a transaction: this runs on every heal, and almost every
+    // heal changes nothing.
     const existing = await this.prisma.selectorState.findUnique({
       where: whereTuple(ctx.strategy, ctx.selector),
     });
@@ -322,17 +384,20 @@ export class SelectorStateService {
       return existing;
     }
 
-    const now = new Date();
-    const row = await this.prisma.selectorState.update({
-      where: whereTuple(ctx.strategy, ctx.selector),
-      data: {
-        status: 'active',
-        fixed_at: null,
-        resolved_at: null,
-        regression_count: { increment: 1 },
-        clean_builds_count: 0,
-        last_event_at: now,
-      },
+    const row = await this.prisma.$transaction(async (tx) => {
+      const updated = await tx.selectorState.update({
+        where: whereTuple(ctx.strategy, ctx.selector),
+        data: {
+          status: 'active',
+          fixed_at: null,
+          resolved_at: null,
+          regression_count: { increment: 1 },
+          clean_builds_count: 0,
+          last_event_at: new Date(),
+        },
+      });
+      await tx.selectorEvent.create(selectorEventData(ctx, 'broke_again'));
+      return updated;
     });
 
     scopedLog.warn(

@@ -4,6 +4,7 @@ import { SocketServer } from './SocketServer';
 import { SocketEvents } from '../enums/SocketEvents';
 import logger from '../logger';
 import type { SelectorState } from '../generated/client';
+import { selectorEventData } from './SelectorStateService';
 
 const log = logger.scope('SelectorVerification');
 
@@ -19,9 +20,19 @@ interface PrismaSelectorStateDelegate {
   update(args: any): Promise<SelectorState>;
 }
 
-interface PrismaLike {
+interface PrismaSelectorEventDelegate {
+  create(args: any): Promise<unknown>;
+}
+
+/** The tables a promotion writes, inside its transaction. */
+interface VerifyTx {
   selectorState: PrismaSelectorStateDelegate;
+  selectorEvent: PrismaSelectorEventDelegate;
+}
+
+interface PrismaLike extends VerifyTx {
   $queryRaw<T = unknown>(strings: TemplateStringsArray, ...values: any[]): Promise<T>;
+  $transaction<T>(fn: (tx: VerifyTx) => Promise<T>): Promise<T>;
 }
 
 interface SocketLike {
@@ -113,14 +124,23 @@ export class SelectorVerificationJob {
 
   private async promoteToResolved(row: SelectorState): Promise<void> {
     const now = new Date();
-    const updated = await this.prisma.selectorState.update({
-      where: { id: row.id },
-      data: {
-        status: 'resolved',
-        resolved_at: now,
-        clean_builds_count: CLEAN_BUILDS_TO_RESOLVE,
-        last_event_at: now,
-      },
+    const updated = await this.prisma.$transaction(async (tx) => {
+      const promoted = await tx.selectorState.update({
+        where: { id: row.id },
+        data: {
+          status: 'resolved',
+          resolved_at: now,
+          clean_builds_count: CLEAN_BUILDS_TO_RESOLVE,
+          last_event_at: now,
+        },
+      });
+      await tx.selectorEvent.create(
+        selectorEventData(
+          { strategy: row.original_strategy, selector: row.original_selector },
+          'verified',
+        ),
+      );
+      return promoted;
     });
     log.info(
       `[${row.id}] promoted to resolved (${row.original_strategy}=${row.original_selector})`,
