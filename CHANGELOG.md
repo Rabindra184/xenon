@@ -6,6 +6,80 @@ This project follows [Semantic Versioning](https://semver.org/). Releases are
 published to npm automatically when `package.json`'s `version` changes on `main`
 (see `.github/workflows/npm-publish.yml`).
 
+## 2.10.0
+
+**CPU and memory for every session, and Selector Health rebuilt as a list
+with a side panel.**
+
+Two tables are added (`SessionMetric`, `SelectorEvent`); a SQLite server adds
+them itself at startup. Nothing to configure: an optional `sessionMetrics`
+setting (on by default) turns session sampling off.
+
+### Added
+
+- **A Performance panel on the session page** (#420). Every session on this
+  server's own phones records CPU and memory every 2 seconds, and the page
+  charts them as the session runs:
+  - Android phones and emulators: device CPU and memory, and the app's CPU
+    and memory (the session's `appPackage`, else the app in the foreground);
+  - iPhones: device CPU.
+
+  A node's phones get no figures, and the hub's panel says so. The figures
+  come from `GET /session/:id/metrics`.
+- **Selector Health as a list with a side panel** (#421).
+  - **Summary:** selectors that needed healing, heals, sessions affected, and
+    time spent healing, each compared with the period before, plus a
+    heals-per-day trend with the heals that used AI.
+  - **Tabs:** To fix, Being verified, Fixed and Muted, each with its count.
+    Selectors and suggested fixes show in full. Search, platform and
+    healing-method filters, three sorts, and pages of 50.
+  - **Panel:** the status and actions, every suggested fix with Copy as,
+    where the selector heals, its latest heals, and an Activity history of
+    who did what. ↑/↓ move between selectors.
+  - The view, including the open selector, is kept in the address. Old
+    `/selector-health/detail` links open the panel.
+- **`GET /healing/selectors` and `GET /healing/selectors/detail`** (#421),
+  the list and the panel. They show a caller only selectors healed in
+  sessions they can see; any other answers `404`, as an unknown one.
+- **`GET /healing/summary` adds `timeSpentMs` and `trend`** (#421), the
+  trend counted in the caller's time zone (`tz`).
+
+### Changed
+
+- **Members can mark selectors fixed and mute them** (#421).
+  `POST /healing/selector/state` now needs role `MEMBER` and the `sessions`
+  scope (was `ADMIN` and `admin`), on a selector healed in a session the
+  caller can see.
+  - A mute is lab-wide: it leaves the selector out of every team's list, CI
+    gate and digest.
+  - Every change is recorded with the person who made it and, for a mute,
+    an optional reason (`reason`, up to 500 characters).
+- **The Android app profiler is replaced by the session sampler** (#420). It
+  ran only with an `appPackage` and in practice saved nothing. The "System
+  profiling" tab still shows old sessions' rows.
+
+### Removed
+
+- **Cost estimates** (#421). `estCostUsd` is no longer in
+  `/healing/summary`, `/healing/hotspots`, `/healing/hotspots/violations` or
+  `/healing/selector`, and the digest drops its "est. $" line. A client that
+  reads the field now gets `undefined`. The figure priced every heal the same
+  whatever model ran, local ones included.
+
+### Fixed
+
+- **Selector Health's Pending and Resolved lists lost selectors** (#421). The
+  server cut the list to the top 50 by heals before splitting it by status,
+  and a fixed selector that stopped healing fell out of the period. Both tabs
+  now start from each selector's status.
+- **"To fix" stopped counting at 5,000 heals** (#421). It now counts in the
+  database, with no cap.
+- **The detail page never offered Mark fixed or Mute** (#421). The list
+  opened it without the selector's strategy.
+- **Selector actions from the dashboard were saved with no one as their
+  actor** (#421). They were recorded by API key, and a dashboard user has
+  none. They are now recorded by user.
+
 ## 2.9.2
 
 **Xenon reaches WebDriverAgent only through a phone's own forwarded port.**
