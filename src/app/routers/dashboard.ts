@@ -20,6 +20,8 @@ import {
   visibleSessionWhere,
 } from '../../services/device-access/sessionVisibility';
 import { HealEtalonService } from '../../services/healing/HealEtalonService';
+import { sessionMetricsBody } from '../../services/metrics/metricsBody';
+import { SessionMetricsService } from '../../services/metrics/SessionMetricsService';
 import {
   cursorWhere,
   describeSessions,
@@ -1145,6 +1147,26 @@ async function getProfilingData(request: Request, response: Response) {
   return response.status(200).json(profilingData);
 }
 
+/** A session's CPU and memory samples, for the Performance panel. */
+async function getSessionMetrics(request: Request, response: Response) {
+  const sessionId = request.params.sessionId;
+  const [session, rows] = await Promise.all([
+    prisma.session.findFirst({
+      where: { id: sessionId },
+      select: { device_platform: true, status: true },
+    }),
+    prisma.sessionMetric.findMany({ where: { session_id: sessionId }, orderBy: { at: 'asc' } }),
+  ]);
+  // A running session's page says whether it is sampled, not "Collecting…" for one nothing samples.
+  const recording =
+    session?.status === 'running'
+      ? Container.get(SessionMetricsService).recordingState(sessionId)
+      : null;
+  return response
+    .status(200)
+    .json(sessionMetricsBody(session?.device_platform ?? '', rows, recording));
+}
+
 async function streamLiveSessionVideo(request: Request, response: Response) {
   const sessionId = request.params.sessionId;
   const session = SESSION_MANAGER.getSession(sessionId);
@@ -1250,6 +1272,7 @@ function register(router: Router) {
   router.get('/session/:sessionId/logs/device', getDeviceLogs);
   router.get('/session/:sessionId/logs/debug', getDebugLogs);
   router.get('/session/:sessionId/profiling', getProfilingData);
+  router.get('/session/:sessionId/metrics', getSessionMetrics);
   router.get('/session/:sessionId/asset/:kind/:file', getSessionAsset);
   // The healing reads count only heals from sessions the caller may see
   // (visibleSessionWhere); the digest below counts every team's.

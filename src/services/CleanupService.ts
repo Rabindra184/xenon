@@ -333,6 +333,7 @@ export class CleanupService {
       prisma.sessionLog.deleteMany({ where: { session_id: sessionId } }),
       prisma.log.deleteMany({ where: { session_id: sessionId } }),
       prisma.profiling.deleteMany({ where: { session_id: sessionId } }),
+      prisma.sessionMetric.deleteMany({ where: { session_id: sessionId } }),
     ]);
   }
 

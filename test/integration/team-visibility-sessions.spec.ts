@@ -181,6 +181,7 @@ describe('team visibility on session data (integration)', function () {
       '/logs/device',
       '/logs/debug',
       '/profiling',
+      '/metrics',
       '/asset/video/x.mp4',
     ]) {
       const hidden = await asAlice(`/session/${S.b}${suffix}`);

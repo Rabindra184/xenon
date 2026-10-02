@@ -7,6 +7,7 @@ import { OutcomeHeader, sessionStatusView } from './outcome-header';
 import { OutcomeTiles } from './outcome-tiles';
 import { FailureSummary } from './failure-summary';
 import { HealingPanel } from './healing-panel';
+import { PerformancePanel } from './performance-panel';
 import { RecordingCard } from './recording-card';
 import { DetailsCard } from './details-card';
 import { CapabilitiesCard } from './capabilities-card';
@@ -84,6 +85,12 @@ export const SessionDetailPage: React.FC = () => {
           )}
 
           <HealingPanel commands={commands} />
+
+          <PerformancePanel
+            sessionId={s.id}
+            running={s.status === 'running'}
+            hasTrace={!!s.performance_trace}
+          />
 
           <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_340px] gap-4">
             <div className="min-w-0">

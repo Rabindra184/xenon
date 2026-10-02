@@ -199,6 +199,10 @@ export interface IPluginArgs {
   recordingsAssetsPath?: string;
   autowait?: AutowaitConfig;
   streaming?: StreamingConfig;
+  /**
+   * Record CPU and memory every 2 s for each session on this server's own phones (Android: the app under test and the device; iPhone: device CPU), shown in the session page's Performance panel. Needs the dashboard.
+   */
+  sessionMetrics?: boolean;
 }
 export interface SimulatorConfig {
   name: string;

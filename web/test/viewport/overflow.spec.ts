@@ -156,6 +156,23 @@ async function mockSessionsAndSummary(page: Page) {
 const WIDE_SESSION_ID = 'a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d';
 const LONG_XPATH =
   "//android.widget.FrameLayout[@resource-id='com.example.app.checkout:id/bottom_sheet_container_primary']/android.widget.LinearLayout[3]/android.widget.Button[@text='Confirm and pay with stacked discounts']";
+// A long package name and an hour-scale run: the Performance panel's legend
+// truncates, and its charts draw at most 600 points.
+const WIDE_METRICS = {
+  platform: 'android',
+  intervalMs: 2000,
+  appId: 'com.acme.enterprise.superapp.with.an.unusually.long.package.name.for.layout',
+  series: { deviceCpu: true, deviceMem: true, appCpu: true, appMem: true },
+  samples: Array.from({ length: 1800 }, (_, i) => ({
+    t: 1_790_000_000_000 + i * 2000,
+    deviceCpu: i === 0 ? null : 15 + (i % 30),
+    deviceMemMb: 2800 + (i % 200),
+    deviceMemTotalMb: 5620.8,
+    appCpu: i === 0 ? null : 4 + (i % 7),
+    appMemMb: 300 + (i % 50),
+  })),
+};
+
 const WIDE_COMMANDS = [
   {
     id: 'cmd-3',
@@ -234,6 +251,9 @@ async function mockSessionDetail(page: Page) {
   // does for a session that didn't enable it.
   await page.route(`**/xenon/api/session/${WIDE_SESSION_ID}/**`, (route) =>
     route.fulfill({ json: [] }),
+  );
+  await page.route(`**/xenon/api/session/${WIDE_SESSION_ID}/metrics*`, (route) =>
+    route.fulfill({ json: WIDE_METRICS }),
   );
   await page.route('**/xenon/api/interceptor/**', (route) =>
     route.fulfill({ status: 404, json: { error: 'interceptor not enabled' } }),
@@ -1015,6 +1035,7 @@ const ROUTE_CONTENT_CHECKS: Record<string, Setup> = {
     await expect(page.getByText('Why it failed')).toBeVisible();
     await expect(page.getByText('Slowest command')).toBeVisible();
     await expect(page.locator('section:has(h2:text("Self-healing")) tbody tr')).toHaveCount(1);
+    await expect(page.getByRole('img', { name: 'CPU over the session' })).toBeVisible();
   },
 
   '/xenon/apps': async (page) => {

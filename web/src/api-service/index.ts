@@ -85,6 +85,10 @@ export default class XenonApiService {
     return apiClient.makeGETRequest(`/session/${sessionId}/profiling`);
   }
 
+  public static getSessionMetrics(sessionId: string) {
+    return apiClient.makeGETRequest(`/session/${sessionId}/metrics`);
+  }
+
   public static omniScan(sessionId: string) {
     return apiClient.makeGETRequest(`/session/${sessionId}/xenon/omni-scan`);
   }

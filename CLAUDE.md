@@ -603,6 +603,42 @@ Live recordings are independent of Appium "session video" — the mosaic page ca
 
 `VideoPipelineService` is hardware-accelerated (`h264_videotoolbox` on Mac, `libx264` elsewhere) and writes fragmented mp4 (`frag_keyframe+empty_moov+default_base_moof`) for instant playback / crash resiliency.
 
+### Session performance (`src/services/metrics/`)
+
+CPU and memory every 2 s for each session on this server's own phones,
+charted in the session page's Performance panel. Through 2.9 the Android
+profiler ran only with an `appPackage`, read `top -m 20` (an idle app never
+appears there) and saved nothing; iOS had only the Instruments trace download.
+
+- `SessionMetricsService` starts a sampler in `EventManager.onSessionStarted`,
+  after the session's row is written (the samples point at it), and stops it
+  in `onSessionStopped` whether or not the session is still in memory. It
+  writes every 10 s (`SessionMetric`), keeps the newest 900 samples while
+  writes fail, and never fails a session: five failures in a row stop that
+  session's sampler. `sessionMetrics: false` turns it off.
+- **Android** (`AndroidMetricsSampler`): one `adb shell` call per sample
+  through the resolved adb, reading `/proc/stat`, `/proc/meminfo`, and the
+  app's `/proc/<pid>/stat` and `VmRSS`. CPU comes from the change since the
+  previous sample, as a share of the whole device; a new pid shows no app CPU
+  for one sample, never a spike. The app is `appPackage` if it is a package
+  name (it goes into a shell command; anything else is ignored), else the
+  foreground app, re-read every 10 s.
+- **iPhone** (`IOSMetricsSampler`): `ios sysmontap` through the phone's tunnel
+  (`IOSTunnels.borrow`, asked again every 30 s), tracked in `ProcessRegistry`
+  for the session. go-ios 1.2.1 gives device CPU only: `cpu_total_load` is
+  summed over cores and divided by `enabled_cpus`.
+- `GET /session/:id/metrics` (`metricsBody.ts`) says what the platform can
+  record (`series`) beside the samples and, for a running session, whether
+  this server samples it (`recording`: sampling, stopped after giving up, or
+  off). The panel says "isn't recorded" rather than "Collecting…" for one it
+  doesn't.
+- **A node's phones get no figures.** Only a hub or standalone server runs
+  `EventManager.onSessionStarted` (`SessionLifecycleService`, `isHub`), so a
+  node never samples, and the hub doesn't sample another server's phone
+  (`isOwnDevice`). The hub's panel shows such a session as not recorded.
+- The charts are SVG (`line-chart.tsx`), at most 600 points per line, in
+  role-token colours.
+
 ### Logcat Streaming (`src/services/logcat/`, `src/device-managers/android/Logcat*`)
 
 Android only. The Debug Logs tab streams a continuous `adb logcat` over a
@@ -1304,6 +1340,7 @@ npm run build:copy` (from the repo root) regenerates and copies it.
 | `src/device-managers/IOSDeviceManager.ts` | simctl + ios-device control |
 | `src/device-managers/ios/IOSStreamService.ts` | go-ios + WDA + iproxy lifecycle for live MJPEG |
 | `src/device-managers/ios/IOSTunnels.ts` | One go-ios tunnel per iOS 17+ phone, on a port pair leased from the `tunnel` range; `envFor` gives a go-ios command its phone's `GO_IOS_AGENT_PORT` |
+| `src/services/metrics/SessionMetricsService.ts` | A CPU and memory sampler per session on this server's phones, buffered and written every 10 s to `SessionMetric`; Android via `/proc`, iPhone via go-ios `sysmontap` |
 | `src/helpers/UniversalMjpegProxy.ts` | One-upstream-to-many-clients MJPEG fan-out with backpressure |
 | `src/device-managers/android/ScrcpyServerSession.ts` | scrcpy-server lifecycle (push jar + `app_process` + `adb forward` + first-byte-gated connect) for the Android H.264 source |
 | `src/app/routers/androidH264Config.ts` | Normalizes the `streaming.androidH264` flag union (`bool \| { source }`) to `{ enabled, source }` |

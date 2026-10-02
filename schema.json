@@ -281,6 +281,11 @@
         "streaming": {
             "type": "object",
             "description": "Live-streaming options. See StreamingConfig interface for details."
+        },
+        "sessionMetrics": {
+            "type": "boolean",
+            "default": true,
+            "description": "Record CPU and memory every 2 s for each session on this server's own phones (Android: the app under test and the device; iPhone: device CPU), shown in the session page's Performance panel. Needs the dashboard."
         }
     },
     "required": [
