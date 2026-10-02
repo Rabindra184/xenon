@@ -41,6 +41,8 @@ const MODELS = [
 export interface ScratchDatabase {
   /** The scratch database's own client, for seeding and reading rows. */
   db: PrismaClient;
+  /** Every SQL statement run since the test began, with its parameters, when asked for. */
+  queries: Array<{ query: string; params: string }>;
 }
 
 /**
@@ -53,9 +55,14 @@ export interface ScratchDatabase {
  * migrated once per suite; the stubs are made before each test and removed
  * after it, so a spec's own `sinon.restore()` can't leave the next test on
  * the real database. Tests empty the tables they use.
+ *
+ * With `captureQueries`, `queries` holds the SQL each test ran, so a spec can
+ * ask SQLite how it reads a table (`EXPLAIN QUERY PLAN`).
  */
-export function useScratchDatabase(): ScratchDatabase {
-  const ctx = {} as ScratchDatabase;
+export function useScratchDatabase(
+  options: { captureQueries?: boolean } = {},
+): ScratchDatabase {
+  const ctx = { queries: [] } as unknown as ScratchDatabase;
   const sandbox = sinon.createSandbox();
   let dbPath = '';
 
@@ -68,10 +75,20 @@ export function useScratchDatabase(): ScratchDatabase {
       env: { ...process.env, DATABASE_URL: url },
       stdio: 'pipe',
     });
-    ctx.db = new PrismaClient({ datasources: { db: { url } } });
+    if (options.captureQueries) {
+      const db = new PrismaClient({
+        datasources: { db: { url } },
+        log: [{ emit: 'event', level: 'query' }],
+      });
+      db.$on('query', (e) => ctx.queries.push({ query: e.query, params: e.params }));
+      ctx.db = db as unknown as PrismaClient;
+    } else {
+      ctx.db = new PrismaClient({ datasources: { db: { url } } });
+    }
   });
 
   beforeEach(() => {
+    ctx.queries.length = 0;
     for (const model of MODELS) {
       const wrapper = (prisma as any)[model] as Record<string, unknown>;
       const delegate = (ctx.db as any)[model];

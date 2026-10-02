@@ -91,6 +91,8 @@ model SessionLog {
   session            Session  @relation(fields: [session_id], references: [id])
 
   @@index([original_strategy, original_selector, createdAt])
+  @@index([is_healed, createdAt])
+  @@index([session_id, createdAt])
 }
 
 model Log {
