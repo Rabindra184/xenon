@@ -6,6 +6,34 @@ This project follows [Semantic Versioning](https://semver.org/). Releases are
 published to npm automatically when `package.json`'s `version` changes on `main`
 (see `.github/workflows/npm-publish.yml`).
 
+## 2.9.0
+
+**A screenshot works on an iPhone that isn't streaming.** On iOS 17 and
+later, go-ios reaches the screenshot service only through the phone's tunnel,
+and only a preview, recording or Appium-driven stream opened one. So
+`GET /xenon/api/control/:udid/screenshot` failed on an idle iPhone ("failed
+to get tunnel info"), which hit API and SDK clients. The dashboard was
+unaffected, since it starts a stream first.
+
+No database migration, and no configuration to change.
+
+### Added
+
+- **A screenshot opens the iPhone's tunnel when it has none** (#412).
+  - The first screenshot takes a few seconds longer while the tunnel starts.
+    Later ones reuse it.
+  - The tunnel stays while screenshots keep coming, and stops 2 minutes after
+    the last one, freeing its two ports.
+  - A preview or recording that starts meanwhile takes the tunnel over, and
+    closing it ends the tunnel.
+  - If the tunnel can't start, the screenshot's error gives go-ios's reason.
+  - Logs never needed this: they work without a tunnel.
+
+### Changed
+
+- **A phone's iOS version is cached for 10 minutes** (#412), so screenshots
+  on iPhones below iOS 17, and on simulators, don't each ask go-ios for it.
+
 ## 2.8.3
 
 **A finished session stops showing "running" on the Sessions list, and an
