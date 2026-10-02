@@ -479,6 +479,9 @@ go-ios derives P + 1 for the phone's traffic.
 - **Starting it.** A start waits up to 20 s for `GET :P/tunnel/<udid>` to
   answer 200, then goes on with a warning. A tunnel that exits before then
   fails the start.
+- **Its ports.** The pair belongs to the tunnel, which gives it back when it
+  stops. A session ending on the phone leaves it (`releaseForUdid` skips the
+  `tunnel` purpose), since the phone's stream and tunnel can outlive it.
 - **Losing it.** go-ios does not end an agent when its phone is unplugged.
   The agent drops the phone's tunnel, and on the replug starts a new one on
   its next traffic port, P + 2, then P + 3: the next phone's leased pair.

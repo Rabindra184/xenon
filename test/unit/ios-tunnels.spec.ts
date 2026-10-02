@@ -10,7 +10,7 @@ import {
   IOSTunnels,
   TUNNEL_BORROW_IDLE_MS,
   TUNNEL_CHECK_MS,
-  TUNNEL_LEASE_TTL_MS,
+  IOS_STREAM_LEASE_TTL_MS,
   TUNNEL_READY_TIMEOUT_MS,
   TunnelState,
   goIosReason,
@@ -103,6 +103,7 @@ class TestTunnels extends IOSTunnels {
   }
   protected async sleep(ms: number): Promise<void> {
     this.sleeps.push(ms);
+    this.clock += ms;
   }
   protected killGroup(pid: number | undefined): void {
     this.killed.push(pid);
@@ -148,7 +149,9 @@ describe('IOSTunnels: a go-ios tunnel per iPhone', () => {
 
     expect(port).to.equal(12100);
     expect(
-      t.ports.acquirePair.calledOnceWithExactly('tunnel', PHONE_A, { ttlMs: TUNNEL_LEASE_TTL_MS }),
+      t.ports.acquirePair.calledOnceWithExactly('tunnel', PHONE_A, {
+        ttlMs: IOS_STREAM_LEASE_TTL_MS,
+      }),
     ).to.equal(true);
     expect(t.spawned.map((s) => s.args)).to.deep.equal([
       ['tunnel', 'start', '--udid', PHONE_A, '--userspace', '--tunnel-info-port', '12100'],
@@ -178,6 +181,30 @@ describe('IOSTunnels: a go-ios tunnel per iPhone', () => {
     expect(await t.ensure(PHONE_A)).to.equal(12100);
     expect(t.sleeps.reduce((a, b) => a + b, 0)).to.equal(TUNNEL_READY_TIMEOUT_MS);
     expect(t.portFor(PHONE_A), 'still tracked').to.equal(12100);
+  });
+
+  it('goes on at the 20 s deadline when each check is slow to answer', async () => {
+    const started = t.clock;
+    t.answers = () => {
+      t.clock += 1000; // a check that runs into its 1 s timeout
+      return { state: 'unknown' };
+    };
+
+    expect(await t.ensure(PHONE_A)).to.equal(12100);
+    // At most the one check that was under way at the deadline.
+    expect(t.clock - started).to.be.at.most(TUNNEL_READY_TIMEOUT_MS + 1000);
+  });
+
+  it('outlives a second error from the tunnel process, and gives its ports back once', async () => {
+    await t.ensure(PHONE_A);
+    const proc = t.spawned[0].proc;
+
+    proc.emit('error', new Error('spawn EACCES'));
+    expect(() => proc.emit('error', new Error('kill ESRCH'))).not.to.throw();
+    await settle();
+
+    expect(t.portFor(PHONE_A)).to.equal(undefined);
+    expect(t.ports.release.callCount, 'P and P + 1, once each').to.equal(2);
   });
 
   it('fails the start when the tunnel exits before it is ready, and gives its ports back', async () => {
@@ -323,8 +350,8 @@ describe('IOSTunnels: a go-ios tunnel per iPhone', () => {
     await t.touch(PHONE_B); // no tunnel: nothing to touch
 
     expect(t.ports.touch.args).to.deep.equal([
-      [12100, TUNNEL_LEASE_TTL_MS],
-      [12101, TUNNEL_LEASE_TTL_MS],
+      [12100, IOS_STREAM_LEASE_TTL_MS],
+      [12101, IOS_STREAM_LEASE_TTL_MS],
     ]);
   });
 });

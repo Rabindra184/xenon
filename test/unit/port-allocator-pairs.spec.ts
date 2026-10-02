@@ -1,5 +1,7 @@
 import { expect } from 'chai';
 import net from 'net';
+import sinon from 'sinon';
+import { prisma } from '../../src/prisma';
 import { PortAllocator, PortRangeExhaustedError } from '../../src/services/PortAllocator';
 import { useScratchPortLeases } from '../helpers/scratch-port-leases';
 
@@ -69,6 +71,36 @@ describe('PortAllocator.acquirePair (go-ios tunnel ports)', () => {
     expect(await leasesOf('phone-b')).to.deep.equal([b + 2, b + 3]);
   });
 
+  it('gives two phones asking at once different pairs', async () => {
+    const b = scratch.base;
+    const a = allocator([b, b + 9]);
+
+    const [first, second] = await Promise.all([
+      a.acquirePair('tunnel', 'phone-a'),
+      a.acquirePair('tunnel', 'phone-b'),
+    ]);
+
+    expect(first).to.not.equal(second);
+    expect(await leasesOf('phone-a')).to.deep.equal([first, first + 1]);
+    expect(await leasesOf('phone-b')).to.deep.equal([second, second + 1]);
+  });
+
+  it('gives the first port back when the second is taken mid-pair, and moves on', async () => {
+    const b = scratch.base;
+    const create = prisma.portLease.create as unknown as sinon.SinonStub;
+    create.callsFake(async (args: any) => {
+      if (args.data.port === b + 1 && args.data.leasedToUdid === 'phone-a') {
+        // Another phone takes P + 1 after the free ports were read.
+        await leaseTo('phone-b', b + 1, 'tunnel');
+      }
+      return scratch.db.portLease.create(args);
+    });
+
+    expect(await allocator([b, b + 5]).acquirePair('tunnel', 'phone-a')).to.equal(b + 2);
+    expect(await leasesOf('phone-a')).to.deep.equal([b + 2, b + 3]);
+    expect(await leasesOf('phone-b')).to.deep.equal([b + 1]);
+  });
+
   it('skips a pair whose second port is leased, whatever for, and keeps none of it', async () => {
     const b = scratch.base;
     await leaseTo('another-device', b + 1, 'wda');
@@ -105,6 +137,17 @@ describe('PortAllocator.acquirePair (go-ios tunnel ports)', () => {
     expect(err).to.be.instanceOf(PortRangeExhaustedError);
     expect(err?.message).to.match(/tunnel/);
     expect(await leasesOf('phone-a')).to.deep.equal([]);
+  });
+
+  it("releaseForUdid, when a session ends, leaves the phone's tunnel pair to its tunnel", async () => {
+    const b = scratch.base;
+    const a = allocator([b, b + 5]);
+    await a.acquirePair('tunnel', 'phone-a');
+    await leaseTo('phone-a', b + 50, 'wda');
+
+    await a.releaseForUdid('phone-a');
+
+    expect(await leasesOf('phone-a')).to.deep.equal([b, b + 1]);
   });
 
   it("releasePurpose deletes only that purpose's leases", async () => {
