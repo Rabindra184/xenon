@@ -128,6 +128,69 @@ describe('Sessions page data', () => {
       });
     });
 
+    // The Sessions page re-reads, by id, the rows of its older pages that were
+    // still running when loaded. Those pages aren't polled, so a session that
+    // had finished kept showing "running" there.
+    describe('by id', () => {
+      const ids = (res: any) => res.body.map((r: any) => r.id);
+      beforeEach(async () => {
+        // A shared-pool phone, so a member may see these sessions too.
+        await scratch.db.device.create({
+          data: {
+            udid: 'phone-1',
+            host: 'http://127.0.0.1:4723',
+            nodeId: 'hub-1',
+            platform: 'android',
+          } as any,
+        });
+        await session({ id: 'a', createdAt: ago(1 * MIN) });
+        await session({ id: 'b', createdAt: ago(2 * MIN), status: 'running' });
+        await session({ id: 'c', createdAt: ago(3 * MIN) });
+      });
+
+      it('answers just the sessions asked for, newest first', async () => {
+        const res = await request(app()).get('/session?ids=c,b');
+        expect(res.status).to.equal(200);
+        expect(ids(res)).to.deep.equal(['b', 'c']);
+      });
+
+      it('leaves out an id it does not know', async () => {
+        expect(ids(await request(app()).get('/session?ids=b,nope'))).to.deep.equal(['b']);
+      });
+
+      it('refuses an empty list, or more than 200 ids', async () => {
+        const many = Array.from({ length: 201 }, (_, i) => `x${i}`).join(',');
+        for (const q of ['ids=', 'ids=,', `ids=${many}`]) {
+          const res = await request(app()).get(`/session?${q}`);
+          expect(res.status, q.slice(0, 12)).to.equal(400);
+          expect(res.body.error, q.slice(0, 12)).to.equal('invalid_ids');
+        }
+      });
+
+      it('answers only the sessions the caller may see', async () => {
+        const team = await scratch.db.team.create({ data: { name: 'by-id-team' } });
+        await scratch.db.device.create({
+          data: {
+            udid: 'team-b',
+            host: 'http://127.0.0.1:4723',
+            nodeId: 'hub-1',
+            platform: 'android',
+            teamId: team.id,
+          } as any,
+        });
+        await session({ id: 'hidden', device_udid: 'team-b', status: 'running' });
+        caller = {
+          kind: 'user-session',
+          userId: 'member-1',
+          role: 'MEMBER',
+          scopes: 'sessions',
+          teamIds: [],
+        };
+
+        expect(ids(await request(app()).get('/session?ids=b,hidden'))).to.deep.equal(['b']);
+      });
+    });
+
     it('keeps the sessions created since the given time, newest first', async () => {
       await session({ id: 'old', createdAt: ago(3 * HOUR) });
       await session({ id: 'recent', createdAt: ago(30 * MIN) });

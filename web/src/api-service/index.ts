@@ -38,6 +38,8 @@ export default class XenonApiService {
       /** The next page: after this row's createdAt and id. */
       before?: string;
       beforeId?: string;
+      /** Just these sessions (at most 200), newest first. */
+      ids?: string[];
     } = {},
   ) {
     const ts = Date.now();
@@ -50,6 +52,7 @@ export default class XenonApiService {
     if (options.query) url += `&query=${encodeURIComponent(options.query)}`;
     if (options.status) url += `&status=${encodeURIComponent(options.status)}`;
     if (options.platform) url += `&platform=${encodeURIComponent(options.platform)}`;
+    if (options.ids?.length) url += `&ids=${options.ids.map(encodeURIComponent).join(',')}`;
     return apiClient.makeGETRequest(url);
   }
 

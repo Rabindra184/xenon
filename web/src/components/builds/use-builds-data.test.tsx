@@ -20,7 +20,8 @@ const Probe: React.FC = () => {
   more = d.showMore;
   return (
     <div data-testid="probe">
-      {d.sessions.length} {d.hasMore ? 'more' : 'all'} {d.sessions[d.sessions.length - 1]?.id}
+      {d.sessions.length} {d.hasMore ? 'more' : 'all'} {d.sessions[d.sessions.length - 1]?.id}{' '}
+      {d.sessions.filter((s) => s.status === 'running').length} running
     </div>
   );
 };
@@ -39,13 +40,14 @@ describe('useBuildsData paging', () => {
     api.getBuilds.mockResolvedValue([]);
     api.getSessions.mockImplementation(async (o: any) => {
       let out = all;
+      if (o.ids) out = out.filter((r) => o.ids.includes(r.id));
       if (o.since) out = out.filter((r) => r.createdAt >= o.since);
       if (o.before) {
         out = out.filter(
           (r) => r.createdAt < o.before || (r.createdAt === o.before && r.id < o.beforeId),
         );
       }
-      return out.slice(0, o.limit);
+      return o.limit ? out.slice(0, o.limit) : out;
     });
   });
 
@@ -93,5 +95,37 @@ describe('useBuildsData paging', () => {
     const poll = api.getSessions.mock.calls.at(-1)[0];
     expect(poll).toMatchObject({ since: row(200).createdAt, limit: SESSION_POLL_MAX });
     expect(screen.getByTestId('probe')).toHaveTextContent('405 more s-0399');
+  });
+
+  // Older pages aren't polled. A session that was running when its page was
+  // loaded kept showing "running" there after it had finished.
+  it('re-reads an older row that was running, and shows it finished', async () => {
+    all = all.map((r) => (r.id === 's-0300' ? { ...r, status: 'running' } : r));
+    render(<Probe />);
+    await flush();
+    await act(() => more());
+    expect(screen.getByTestId('probe')).toHaveTextContent('400 more s-0399 1 running');
+
+    all = all.map((r) => (r.id === 's-0300' ? { ...r, status: 'failed' } : r));
+    await act(async () => {
+      vi.advanceTimersByTime(3000);
+    });
+    await flush();
+
+    const byId = api.getSessions.mock.calls.map((c) => c[0]).filter((o) => o.ids);
+    expect(byId.at(-1)).toEqual({ ids: ['s-0300'] });
+    expect(screen.getByTestId('probe')).toHaveTextContent('400 more s-0399 0 running');
+  });
+
+  it('asks for no rows by id when no older row is running', async () => {
+    render(<Probe />);
+    await flush();
+    await act(() => more());
+    await act(async () => {
+      vi.advanceTimersByTime(3000);
+    });
+    await flush();
+
+    expect(api.getSessions.mock.calls.some((c) => c[0].ids)).toBe(false);
   });
 });
