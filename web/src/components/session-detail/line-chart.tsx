@@ -52,14 +52,35 @@ export function nearestIndex(times: number[], t: number): number {
   return lo;
 }
 
-/** Evenly spread indexes, at most `max`, always including the first and the last. */
-export function sampleIndexes(n: number, max = MAX_POINTS): number[] {
+/**
+ * The indexes to draw for one series, at most `max`: the first and the last,
+ * and in each of about max / 3 buckets its lowest and highest point, plus a
+ * gap so a break in the line survives. Thinning to every n-th sample dropped
+ * the spikes the legend's peak still reported.
+ */
+export function peakIndexes(values: Array<number | null>, max = MAX_POINTS): number[] {
+  const n = values.length;
   if (n <= max) return Array.from({ length: n }, (_, i) => i);
-  const step = Math.ceil((n - 1) / (max - 1));
-  const out: number[] = [];
-  for (let i = 0; i < n - 1; i += step) out.push(i);
-  out.push(n - 1);
-  return out;
+  const buckets = Math.floor((max - 2) / 3);
+  const size = n / buckets;
+  const keep = new Set<number>([0, n - 1]);
+  for (let b = 0; b < buckets; b += 1) {
+    const to = Math.min(n, Math.floor((b + 1) * size));
+    let lo = -1;
+    let hi = -1;
+    let gap = -1;
+    for (let i = Math.floor(b * size); i < to; i += 1) {
+      const v = values[i];
+      if (v === null || v === undefined) {
+        if (gap < 0) gap = i;
+        continue;
+      }
+      if (lo < 0 || v < (values[lo] as number)) lo = i;
+      if (hi < 0 || v > (values[hi] as number)) hi = i;
+    }
+    for (const i of [lo, hi, gap]) if (i >= 0) keep.add(i);
+  }
+  return Array.from(keep).sort((a, b) => a - b);
 }
 
 const r2 = (n: number) => Math.round(n * 100) / 100;
@@ -107,7 +128,7 @@ export const LineChart: React.FC<LineChartProps> = ({
     for (const s of series) for (const v of s.values) if (v !== null && v > max) max = v;
     return niceMax(max);
   }, [series, yMax]);
-  const indexes = useMemo(() => sampleIndexes(times.length), [times.length]);
+  const indexes = useMemo(() => series.map((s) => peakIndexes(s.values)), [series]);
 
   const onMove = (e: React.MouseEvent<HTMLDivElement>) => {
     const r = box.current?.getBoundingClientRect();
@@ -153,11 +174,11 @@ export const LineChart: React.FC<LineChartProps> = ({
               vectorEffect="non-scaling-stroke"
             />
           ))}
-          {series.map((s) => (
+          {series.map((s, k) => (
             <path
               key={s.key}
               data-series={s.key}
-              d={linePath(s.values, times, indexes, tMax, top, VIEW_W, height)}
+              d={linePath(s.values, times, indexes[k], tMax, top, VIEW_W, height)}
               fill="none"
               stroke={s.color}
               strokeWidth={1.5}

@@ -1,14 +1,7 @@
 import React from 'react';
 import { describe, it, expect } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
-import {
-  LineChart,
-  MAX_POINTS,
-  linePath,
-  nearestIndex,
-  niceMax,
-  sampleIndexes,
-} from './line-chart';
+import { LineChart, MAX_POINTS, linePath, nearestIndex, niceMax, peakIndexes } from './line-chart';
 
 describe('line chart maths', () => {
   it('rounds the axis up to a round number', () => {
@@ -31,11 +24,23 @@ describe('line chart maths', () => {
   });
 
   it('draws a long session with at most 600 points, always ending at the last sample', () => {
-    expect(sampleIndexes(5)).toEqual([0, 1, 2, 3, 4]);
-    const idx = sampleIndexes(5000);
+    expect(peakIndexes([1, 2, 3, 4, 5])).toEqual([0, 1, 2, 3, 4]);
+    const idx = peakIndexes(Array.from({ length: 5000 }, () => 10));
     expect(idx.length).toBeLessThanOrEqual(MAX_POINTS);
     expect(idx[0]).toBe(0);
     expect(idx[idx.length - 1]).toBe(4999);
+  });
+
+  it('keeps a one-sample spike when it thins a long series', () => {
+    const values = Array.from({ length: 5000 }, (_, i) => (i === 2501 ? 100 : 10));
+    const idx = peakIndexes(values);
+    expect(idx.length).toBeLessThanOrEqual(MAX_POINTS);
+    expect(idx).toContain(2501);
+  });
+
+  it('keeps a break when it thins a long series', () => {
+    const values = Array.from({ length: 5000 }, (_, i) => (i >= 3000 && i < 3005 ? null : 10));
+    expect(peakIndexes(values).some((i) => values[i] === null)).toBe(true);
   });
 
   it('breaks a line where a value is missing', () => {
