@@ -6,6 +6,50 @@ This project follows [Semantic Versioning](https://semver.org/). Releases are
 published to npm automatically when `package.json`'s `version` changes on `main`
 (see `.github/workflows/npm-publish.yml`).
 
+## 2.9.1
+
+**Xenon's startup no longer kills its own iPhone detection, plus clean-ups to
+the iPhone tunnels.**
+
+No database migration, and no configuration to change.
+
+### Fixed
+
+- **Startup no longer kills Xenon's own go-ios calls** (#414). At boot Xenon
+  kills whatever a previous run left of go-ios (tunnels, WebDriverAgent
+  runners, log streams), matching every process running the go-ios binary.
+  It did this at the end of startup, after device detection had begun, so it
+  also killed the `ios info` call detection makes for each plugged-in
+  iPhone, logged as "Failed to fetch IP via go-ios" at every boot. That call
+  only looks up the phone's network address, which go-ios doesn't report for
+  recent iPhones anyway, so nothing visible was lost. The clean-up now runs
+  as soon as the database is ready, before anything starts go-ios.
+- **A second error from a tunnel process no longer crashes the server**
+  (#415). The tunnel listened for the process's `error` event once, so a
+  second one was thrown as unhandled.
+- **An iPhone tunnel's start waits at most 20 s** (#415). It counted 41
+  checks half a second apart, but each check can take up to 1 s, so a tunnel
+  that answered slowly could hold a stream start for about a minute.
+- **A session ending on an iPhone leaves its tunnel's ports** (#415). It
+  released every port lease the phone had, the tunnel's pair included, while
+  the phone's preview and tunnel could still be running. Those ports were
+  never handed out meanwhile, since a live listener blocks that. The tunnel
+  gives its pair back when it stops.
+
+### Changed
+
+- **One go-ios path and one port-lease time** for the tunnels, streams and
+  detection (#415), instead of a copy in each.
+- **CI uses `actions/setup-node@v7`** (#416). v7 no longer sets a placeholder
+  npm token for the publish job's install, which it doesn't need.
+
+### Known issues
+
+- **Two Xenon servers on one Mac kill each other's go-ios processes** when
+  either starts or stops, if the same user runs both (a hub and node side by
+  side). The startup and shutdown clean-ups find go-ios by its binary's path,
+  which both servers share.
+
 ## 2.9.0
 
 **A screenshot works on an iPhone that isn't streaming.** On iOS 17 and
