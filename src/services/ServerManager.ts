@@ -117,6 +117,8 @@ export class ServerManager {
 
     await this.syncDatabaseAndAIConfig(pluginArgs);
     await this.initializeCoreSubsystems(pluginArgs, cliArgs.port);
+    // Before anything below starts go-ios: the reap would kill it too.
+    await this.reapLeftoverGoIos();
 
     this.registerRoutes(expressApp, httpServer, cliArgs, pluginArgs);
     await this.bootEmulators(pluginArgs);
@@ -386,6 +388,24 @@ export class ServerManager {
     // concatenation it replaces.
     const { FsArtifactStore, ARTIFACT_STORE } = await import('./artifacts/ArtifactStore');
     Container.set(ARTIFACT_STORE, new FsArtifactStore(xenonConfig.recordingsAssetsPath));
+  }
+
+  /**
+   * Reap what a previous run (or a hard-killed one) left of go-ios: tunnels
+   * whose agents keep self-forking, WebDriverAgent runners and log streams.
+   * It kills every process running the go-ios binary, this process's own
+   * included, so it runs before anything here starts one. It used to run at
+   * the end of boot, after device detection had started, and killed the
+   * `ios info` call detection makes in the background for each plugged-in
+   * iPhone ("Failed to fetch IP via go-ios" at every boot).
+   */
+  private async reapLeftoverGoIos(): Promise<void> {
+    try {
+      const { default: IOSStreamService } = await import('../device-managers/ios/IOSStreamService');
+      await Container.get(IOSStreamService).reapOrphanTunnels();
+    } catch (err: any) {
+      this.logger.warn(`Reaping go-ios left by a previous run failed: ${err?.message}`);
+    }
   }
 
   private registerRoutes(

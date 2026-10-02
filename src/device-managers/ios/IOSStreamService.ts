@@ -1193,7 +1193,9 @@ class IOSStreamService {
    * server owns no legitimate tunnel — i.e. on fresh boot (orphans from a
    * previous run, or a hard-killed / crashed process whose graceful cleanup
    * never ran) or during full shutdown. This is the catch-all that stops the
-   * self-forking go-ios agent storm from surviving across restarts.
+   * self-forking go-ios agent storm from surviving across restarts. It kills
+   * this process's own go-ios calls too, so boot runs it before device
+   * detection starts (ServerManager.reapLeftoverGoIos).
    */
   public async reapOrphanTunnels(): Promise<void> {
     try {
