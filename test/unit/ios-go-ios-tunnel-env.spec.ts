@@ -33,12 +33,28 @@ case "$1" in
 esac
 `;
 
-/** IOSTunnels as if WITH_TUNNEL's tunnel ran on 12100 and NO_TUNNEL had none. */
+/** iOS 17+, not streaming: it has a tunnel only once one is opened for it. */
+const NEEDS_TUNNEL = 'test-iphone-idle-00008120';
+
+/**
+ * IOSTunnels as if WITH_TUNNEL's tunnel ran on 12100, NO_TUNNEL needed none
+ * (below iOS 17), and NEEDS_TUNNEL got one on 12102 once borrowed.
+ */
 const tunnels = {
+  borrowed: new Set<string>(),
+  borrowCalls: [] as string[],
+  borrowError: undefined as Error | undefined,
+  async borrow(udid: string): Promise<number | null> {
+    this.borrowCalls.push(udid);
+    if (this.borrowError) throw this.borrowError;
+    if (udid === NEEDS_TUNNEL) this.borrowed.add(udid);
+    return udid === WITH_TUNNEL ? 12100 : udid === NEEDS_TUNNEL ? 12102 : null;
+  },
   envFor(udid: string): NodeJS.ProcessEnv {
     const env: NodeJS.ProcessEnv = { ...process.env, ENABLE_GO_IOS_AGENT: 'yes' };
     delete env.GO_IOS_AGENT_PORT;
     if (udid === WITH_TUNNEL) env.GO_IOS_AGENT_PORT = '12100';
+    if (this.borrowed.has(udid)) env.GO_IOS_AGENT_PORT = '12102';
     return env;
   },
 };
@@ -56,6 +72,9 @@ describe("go-ios commands find their own phone's tunnel (GO_IOS_AGENT_PORT)", ()
   after(() => fs.rmSync(dir, { recursive: true, force: true }));
 
   beforeEach(() => {
+    tunnels.borrowed.clear();
+    tunnels.borrowCalls = [];
+    tunnels.borrowError = undefined;
     const real = Container.get.bind(Container);
     sinon.stub(Container, 'get').callsFake((token: any) => {
       if (token === IOSTunnels) return tunnels;
@@ -83,6 +102,30 @@ describe("go-ios commands find their own phone's tunnel (GO_IOS_AGENT_PORT)", ()
       const png = await new WDAClient().getScreenshot(NO_TUNNEL);
 
       expect(Buffer.from(png, 'base64').toString()).to.equal('port=');
+    });
+
+    // On iOS 17+ the screenshot service is reached only through the tunnel,
+    // and a phone that isn't streaming has none.
+    it("opens the phone's tunnel for a screenshot when it has none", async () => {
+      const png = await new WDAClient().getScreenshot(NEEDS_TUNNEL);
+
+      expect(tunnels.borrowCalls).to.deep.equal([NEEDS_TUNNEL]);
+      expect(Buffer.from(png, 'base64').toString()).to.equal('port=12102');
+    });
+
+    it("says why, when the tunnel can't start and WebDriverAgent can't answer either", async () => {
+      tunnels.borrowError = new Error(
+        'The go-ios tunnel for X exited before it was ready (exit code 1): failed to start tunnel: EOF',
+      );
+      const client = new WDAClient();
+      sinon.stub(client as any, 'sendWDACommand').rejects(new Error('connect ECONNREFUSED'));
+
+      const err = await client.getScreenshot(NEEDS_TUNNEL).then(
+        () => null,
+        (e: Error) => e,
+      );
+
+      expect(err?.message).to.match(/exited before it was ready .*failed to start tunnel: EOF/);
     });
   });
 

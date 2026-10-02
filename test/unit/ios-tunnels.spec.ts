@@ -8,6 +8,7 @@ import sinon from 'sinon';
 import { Container } from 'typedi';
 import {
   IOSTunnels,
+  TUNNEL_BORROW_IDLE_MS,
   TUNNEL_CHECK_MS,
   TUNNEL_LEASE_TTL_MS,
   TUNNEL_READY_TIMEOUT_MS,
@@ -76,9 +77,15 @@ class TestTunnels extends IOSTunnels {
   /** Each tunnel-info poll: true is the phone's tunnel on P + 1, false a 404. */
   answers: (port: number, udid: string) => boolean | TunnelState = () => true;
   ports = fakeAllocator();
+  clock = 1_000_000;
+  versionReads = 0;
   private nextPid = 7000;
 
+  protected now(): number {
+    return this.clock;
+  }
   protected async iosVersion(udid: string): Promise<number> {
+    this.versionReads += 1;
     const version = this.versions.get(udid);
     if (version === undefined) throw new Error(`no such phone: ${udid}`);
     return version;
@@ -400,6 +407,82 @@ describe('IOSTunnels: a phone that goes away (go-ios keeps its agent running)', 
     } finally {
       clock.restore();
     }
+  });
+});
+
+// A screenshot on iOS 17+ goes through the phone's tunnel, and a phone that
+// isn't streaming has none: one is opened for screenshots and kept while they
+// keep coming.
+describe('IOSTunnels: a tunnel opened for screenshots', () => {
+  let t: TestTunnels;
+
+  beforeEach(() => {
+    sinon.stub(process, 'kill');
+    t = new TestTunnels();
+    t.versions.set(PHONE_A, 17.4);
+  });
+
+  afterEach(async () => {
+    await t.stop(PHONE_A);
+    sinon.restore();
+  });
+
+  it('opens one when the phone has none, and the next screenshot reuses it', async () => {
+    expect(await t.borrow(PHONE_A)).to.equal(12100);
+    expect(await t.borrow(PHONE_A)).to.equal(12100);
+
+    expect(t.spawned.length).to.equal(1);
+    expect(t.envFor(PHONE_A).GO_IOS_AGENT_PORT).to.equal('12100');
+  });
+
+  it('stops it 2 minutes after the last screenshot, and gives its ports back', async () => {
+    await t.borrow(PHONE_A);
+    t.clock += TUNNEL_BORROW_IDLE_MS - 1000;
+    await t.borrow(PHONE_A); // another screenshot: the 2 minutes start again
+    t.clock += TUNNEL_BORROW_IDLE_MS - 1000;
+    await t.checkTunnels();
+    expect(t.portFor(PHONE_A), 'last used 119 s ago').to.equal(12100);
+
+    t.clock += 2000;
+    await t.checkTunnels();
+    await settle();
+
+    expect(t.portFor(PHONE_A)).to.equal(undefined);
+    expect(t.killed).to.deep.equal([t.spawned[0].proc.pid]);
+    expect([...t.ports.leased.keys()]).to.deep.equal([]);
+  });
+
+  it('never stops one a stream took over', async () => {
+    await t.borrow(PHONE_A);
+    expect(t.isOnDemand(PHONE_A)).to.equal(true);
+
+    expect(await t.ensure(PHONE_A), 'the stream takes it').to.equal(12100);
+    expect(t.isOnDemand(PHONE_A)).to.equal(false);
+    t.clock += 10 * TUNNEL_BORROW_IDLE_MS;
+    await t.checkTunnels();
+
+    expect(t.portFor(PHONE_A)).to.equal(12100);
+    expect(t.spawned.length).to.equal(1);
+  });
+
+  it("never stops a stream's own tunnel for being idle", async () => {
+    await t.ensure(PHONE_A);
+    await t.borrow(PHONE_A); // a screenshot while the stream runs
+    t.clock += 10 * TUNNEL_BORROW_IDLE_MS;
+    await t.checkTunnels();
+
+    expect(t.portFor(PHONE_A)).to.equal(12100);
+    expect(t.isOnDemand(PHONE_A)).to.equal(false);
+  });
+
+  it('opens none for a phone below iOS 17, and reads its version once', async () => {
+    t.versions.set('old-iphone', 16.7);
+
+    expect(await t.borrow('old-iphone')).to.equal(null);
+    expect(await t.borrow('old-iphone')).to.equal(null);
+
+    expect(t.versionReads).to.equal(1);
+    expect(t.spawned).to.deep.equal([]);
   });
 });
 

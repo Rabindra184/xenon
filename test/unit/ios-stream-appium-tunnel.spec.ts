@@ -82,6 +82,7 @@ describe('go-ios tunnels under a live Appium session (fake exec, fake processes)
     envFor: sinon.SinonStub;
     stop: sinon.SinonStub;
     touch: sinon.SinonStub;
+    isOnDemand: sinon.SinonStub;
   };
   let svc: any;
 
@@ -173,6 +174,7 @@ describe('go-ios tunnels under a live Appium session (fake exec, fake processes)
       envFor: sinon.stub().callsFake(() => ({ ...process.env, ENABLE_GO_IOS_AGENT: 'yes' })),
       stop: sinon.stub().resolves(),
       touch: sinon.stub().resolves(),
+      isOnDemand: sinon.stub().returns(false),
     };
     svc = iosService();
     const real = Container.get.bind(Container);
@@ -383,6 +385,18 @@ describe('go-ios tunnels under a live Appium session (fake exec, fake processes)
       expect(tunnels.stop.calledWith(IPHONE), "the failed start's tunnel").to.equal(true);
       expect(tunnels.stop.alwaysCalledWith(IPHONE)).to.equal(true);
       expect(defaultPorts()).to.deep.equal([]);
+    });
+  });
+
+  describe('a start on a phone whose tunnel was opened for screenshots', () => {
+    it('takes that tunnel over, neither stopping nor reaping it', async () => {
+      Object.assign(device, { busy: false, session_id: null });
+      tunnels.isOnDemand.withArgs(IPHONE).returns(true);
+
+      await svc.cleanupOrphanTunnels(IPHONE);
+
+      expect(tunnels.stop.called, 'the tracked tunnel').to.equal(false);
+      expect(swept(), 'no pgrep reap of its process').to.deep.equal([]);
     });
   });
 

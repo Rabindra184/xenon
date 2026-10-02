@@ -417,12 +417,20 @@ export class WDAClient {
 
   async getScreenshot(udid: string): Promise<string> {
     const s = Container.get(IOSStreamService);
+    let tunnelError: Error | undefined;
     if (await s.isGoIOSAvailable()) {
       try {
+        // On iOS 17+ go-ios reaches the screenshot service only through the
+        // phone's own tunnel, and a phone that isn't streaming has none: open
+        // one, kept while screenshots keep coming (see IOSTunnels.borrow).
+        const tunnels = Container.get(IOSTunnels);
+        await tunnels.borrow(udid).catch((e: Error) => {
+          tunnelError = e;
+          throw e;
+        });
         const p = path.join(os.tmpdir(), `screenshot-${udid}.png`);
         await execFilePromise(s.goIOSPath, ['screenshot', '--udid', udid, '--output', p], {
-          // This phone's own go-ios tunnel on iOS 17+ (see IOSTunnels).
-          env: Container.get(IOSTunnels).envFor(udid),
+          env: tunnels.envFor(udid),
         });
         const b = await fs.readFile(p);
         await fs.remove(p);
@@ -431,8 +439,13 @@ export class WDAClient {
         this.log.debug(`go-ios screenshot failed for ${udid}: ${e.message}\n${e.stack}`);
       }
     }
-    const res = await this.sendWDACommand(udid, 'get', '/screenshot');
-    return res.data?.value?.screenshot || res.data?.value || '';
+    try {
+      const res = await this.sendWDACommand(udid, 'get', '/screenshot');
+      return res.data?.value?.screenshot || res.data?.value || '';
+    } catch (e) {
+      // WebDriverAgent couldn't answer either; the tunnel's reason says more.
+      throw tunnelError ?? e;
+    }
   }
 
   async getClipboard(udid: string): Promise<string> {

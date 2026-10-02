@@ -48,6 +48,13 @@ export const TUNNEL_READY_POLL_MS = 500;
 export const TUNNEL_LEASE_TTL_MS = 90 * 60 * 1000;
 /** How often running tunnels are checked for a phone that went away. */
 export const TUNNEL_CHECK_MS = 5_000;
+/**
+ * How long a tunnel opened for screenshots stays after the last one: long
+ * enough that a client taking screenshots in a loop pays the start once.
+ */
+export const TUNNEL_BORROW_IDLE_MS = 2 * 60 * 1000;
+/** How long a phone's iOS version is trusted before `ios info` is asked again. */
+const VERSION_CACHE_MS = 10 * 60 * 1000;
 
 /**
  * What a tunnel's agent says about its phone: `up` (with the traffic port it
@@ -108,6 +115,12 @@ interface Tunnel {
   ready: boolean;
   /** go-ios's last error or warning, for the error when the tunnel fails. */
   reason?: string;
+  /** Resolves with the port once the tunnel is ready (or the wait is over). */
+  whenReady: Promise<number>;
+  /** A stream uses it: only the stream's stop ends it. */
+  streamOwned: boolean;
+  /** Opened for screenshots: kept until this time after the last one. */
+  borrowedUntil: number;
 }
 
 /** An answer that puts the phone's traffic anywhere but its leased P + 1. */
@@ -121,28 +134,47 @@ export class IOSTunnels {
   private tunnels = new Map<string, Tunnel>();
   private watcher?: ReturnType<typeof setInterval>;
   private checking = false;
+  private versionCache = new Map<string, { version: number; at: number }>();
   public goIOSPath = path.join(cachePath('goIOS'), 'ios');
 
   /**
-   * The phone's tunnel-info port, starting its tunnel if it has none. Null
-   * for a phone below iOS 17, or whose version can't be read: it needs no
-   * tunnel. Throws when no pair of ports is left, or when the tunnel exits
-   * before it is ready.
+   * The phone's tunnel-info port for its stream, starting its tunnel if it
+   * has none. A tunnel opened for screenshots is taken over: from then on
+   * only the stream's stop ends it. Null for a phone below iOS 17, or whose
+   * version can't be read: it needs no tunnel. Throws when no pair of ports
+   * is left, or when the tunnel exits before it is ready.
    */
   async ensure(udid: string): Promise<number | null> {
-    const running = this.portFor(udid);
-    if (running !== undefined) return running;
+    return this.open(udid, 'stream');
+  }
 
-    let version: number;
-    try {
-      version = await this.iosVersion(udid);
-    } catch (e: any) {
-      this.log.warn(
-        `[${udid}] Could not read the iOS version, so no go-ios tunnel: ${e?.message ?? e}`,
-      );
-      return null;
+  /**
+   * The phone's tunnel-info port for a screenshot, which on iOS 17+ is
+   * reached only through the tunnel. A phone that isn't streaming has none,
+   * so one is started; it stays while screenshots keep coming and stops
+   * {@link TUNNEL_BORROW_IDLE_MS} after the last one (checkTunnels). Null and
+   * throws as ensure.
+   */
+  async borrow(udid: string): Promise<number | null> {
+    return this.open(udid, 'screenshot');
+  }
+
+  /** Whether the phone's tunnel was opened for screenshots and no stream has taken it. */
+  isOnDemand(udid: string): boolean {
+    const tunnel = this.tunnels.get(udid);
+    return !!tunnel && tunnel.process.exitCode === null && !tunnel.streamOwned;
+  }
+
+  private async open(udid: string, use: 'stream' | 'screenshot'): Promise<number | null> {
+    const running = this.tunnels.get(udid);
+    if (running && running.process.exitCode === null) {
+      this.claim(running, use);
+      return running.whenReady;
     }
-    if (version < 17) return null;
+
+    // A screenshot also asks on a simulator, which has no version to read.
+    const version = await this.versionOf(udid, use === 'screenshot');
+    if (version === null || version < 17) return null;
 
     const port = await this.allocator().acquirePair('tunnel', udid, {
       ttlMs: TUNNEL_LEASE_TTL_MS,
@@ -162,7 +194,15 @@ export class IOSTunnels {
       await this.releasePair(port, udid);
       throw e;
     }
-    const tunnel: Tunnel = { port, process: proc, ready: false };
+    const tunnel: Tunnel = {
+      port,
+      process: proc,
+      ready: false,
+      whenReady: Promise.resolve(port),
+      streamOwned: false,
+      borrowedUntil: 0,
+    };
+    this.claim(tunnel, use);
     this.tunnels.set(udid, tunnel);
     this.watch();
     // A tunnel whose process ends (go-ios crashed, or something killed it)
@@ -182,8 +222,21 @@ export class IOSTunnels {
     this.logOutput(udid, tunnel);
 
     this.log.info(
-      `[${udid}] iOS ${version}: starting a go-ios tunnel on ${port} (traffic on ${port + 1})`,
+      `[${udid}] iOS ${version}: starting a go-ios tunnel on ${port} (traffic on ${port + 1})` +
+        (use === 'screenshot' ? ' for screenshots' : ''),
     );
+    // Whoever asks while it starts waits for the same start.
+    tunnel.whenReady = this.waitUntilReady(udid, tunnel);
+    return tunnel.whenReady;
+  }
+
+  private claim(tunnel: Tunnel, use: 'stream' | 'screenshot'): void {
+    if (use === 'stream') tunnel.streamOwned = true;
+    else tunnel.borrowedUntil = this.now() + TUNNEL_BORROW_IDLE_MS;
+  }
+
+  private async waitUntilReady(udid: string, tunnel: Tunnel): Promise<number> {
+    const { port, process: proc } = tunnel;
     const polls = TUNNEL_READY_TIMEOUT_MS / TUNNEL_READY_POLL_MS;
     for (let poll = 0; poll <= polls; poll++) {
       if (poll > 0) await this.sleep(TUNNEL_READY_POLL_MS);
@@ -212,6 +265,27 @@ export class IOSTunnels {
       `[${udid}] go-ios tunnel on ${port} not ready after ${TUNNEL_READY_TIMEOUT_MS / 1000}s, proceeding anyway`,
     );
     return port;
+  }
+
+  /**
+   * The phone's iOS version, from `ios info`, kept for VERSION_CACHE_MS: a
+   * screenshot on a phone below iOS 17 would otherwise ask every time. Null
+   * when it can't be read (not cached, so a phone still pairing is asked
+   * again); logged at debug when `quiet`.
+   */
+  private async versionOf(udid: string, quiet = false): Promise<number | null> {
+    const cached = this.versionCache.get(udid);
+    if (cached && this.now() - cached.at < VERSION_CACHE_MS) return cached.version;
+    try {
+      const version = await this.iosVersion(udid);
+      this.versionCache.set(udid, { version, at: this.now() });
+      return version;
+    } catch (e: any) {
+      const message = `[${udid}] Could not read the iOS version, so no go-ios tunnel: ${e?.message ?? e}`;
+      if (quiet) this.log.debug(message);
+      else this.log.warn(message);
+      return null;
+    }
   }
 
   /** The phone's tunnel-info port, while its tunnel runs. */
@@ -258,6 +332,13 @@ export class IOSTunnels {
     this.checking = true;
     try {
       for (const [udid, tunnel] of [...this.tunnels]) {
+        if (!tunnel.streamOwned && tunnel.borrowedUntil <= this.now()) {
+          this.log.info(
+            `[${udid}] go-ios tunnel on ${tunnel.port}, opened for screenshots, is idle; stopping it`,
+          );
+          await this.stop(udid);
+          continue;
+        }
         const info = await this.tunnelInfo(tunnel.port, udid);
         if (this.tunnels.get(udid) !== tunnel) continue;
         if (moved(info, tunnel.port)) {
@@ -409,6 +490,10 @@ export class IOSTunnels {
       req.on('timeout', () => req.destroy());
       req.on('error', () => resolve({ state: 'unknown' }));
     });
+  }
+
+  protected now(): number {
+    return Date.now();
   }
 
   protected sleep(ms: number): Promise<void> {
