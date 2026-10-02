@@ -79,6 +79,22 @@ describe('PerformancePanel', () => {
     expect(await screen.findByText('No performance figures for this session')).toBeTruthy();
   });
 
+  it('says a running session nothing samples is not recorded, instead of collecting', async () => {
+    answer({ ...android(0), recording: 'off' });
+    render(<PerformancePanel sessionId="s1" running hasTrace={false} />);
+
+    expect(await screen.findByText("Performance isn't recorded for this session")).toBeTruthy();
+    expect(screen.queryByText(/Collecting/)).toBeNull();
+  });
+
+  it('says when sampling stopped, and keeps the figures it has', async () => {
+    answer({ ...android(5), recording: 'stopped' });
+    render(<PerformancePanel sessionId="s1" running hasTrace={false} />);
+
+    expect(await screen.findByText(/Recording stopped: the phone stopped answering/)).toBeTruthy();
+    expect(screen.getByRole('img', { name: 'CPU over the session' })).toBeTruthy();
+  });
+
   it('says it is collecting while a running session has under two samples', async () => {
     answer(android(1));
     render(<PerformancePanel sessionId="s1" running hasTrace={false} />);

@@ -12,6 +12,8 @@ export interface SessionMetrics {
   intervalMs: number;
   appId: string | null;
   series: { deviceCpu: boolean; deviceMem: boolean; appCpu: boolean; appMem: boolean };
+  /** For a running session: whether it is being sampled. Null once it ended. */
+  recording: 'sampling' | 'stopped' | 'off' | null;
   samples: MetricPoint[];
 }
 
@@ -30,6 +32,10 @@ export function asSessionMetrics(body: unknown): SessionMetrics | null {
       appCpu: !!b.series.appCpu,
       appMem: !!b.series.appMem,
     },
+    recording:
+      b.recording === 'sampling' || b.recording === 'stopped' || b.recording === 'off'
+        ? b.recording
+        : null,
     samples: b.samples,
   };
 }

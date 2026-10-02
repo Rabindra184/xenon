@@ -27,6 +27,9 @@ export const TUNNEL_RENEW_MS = 30_000;
 /** Samples waiting for a write that keeps failing: the newest 30 minutes. */
 export const MAX_BUFFERED_SAMPLES = 900;
 
+/** Whether a running session is being sampled: still, no longer (it gave up), or not at all. */
+export type RecordingState = 'sampling' | 'stopped' | 'off';
+
 export interface SamplerHooks {
   onSample(sample: MetricSample): void;
   /** The sampler stopped itself after repeated failures. */

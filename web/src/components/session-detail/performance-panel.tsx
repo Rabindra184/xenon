@@ -158,9 +158,20 @@ export const PerformancePanel: React.FC<Props> = ({ sessionId, running, hasTrace
     }
   }
 
+  const notRecorded = running && metrics?.recording === 'off';
+  const stopped = metrics?.recording === 'stopped';
+  const stoppedNote = 'Recording stopped: the phone stopped answering.';
+
   let body: React.ReactNode;
   if (!loaded) {
     body = <div className="text-xs text-[var(--text-dim)]">Loading performance…</div>;
+  } else if (notRecorded) {
+    body = (
+      <EmptyState
+        title="Performance isn't recorded for this session"
+        description="Xenon records CPU and memory for sessions on its own Android phones and iPhones. This one runs on a simulator or on another server's phone, or sessionMetrics is turned off."
+      />
+    );
   } else if (samples.length === 0 && !running) {
     body = (
       <EmptyState
@@ -171,14 +182,21 @@ export const PerformancePanel: React.FC<Props> = ({ sessionId, running, hasTrace
   } else if (samples.length < 2) {
     body = (
       <div className="text-xs text-[var(--text-dim)]">
-        {running
-          ? 'Collecting… The first figures appear within 10 seconds.'
-          : 'Too few figures were recorded to draw a chart.'}
+        {stopped
+          ? stoppedNote
+          : running
+            ? 'Collecting… The first figures appear within 10 seconds.'
+            : 'Too few figures were recorded to draw a chart.'}
       </div>
     );
   } else {
     body = (
       <div className="space-y-4">
+        {stopped && (
+          <p className="text-xs text-[var(--color-warning)]">
+            {stoppedNote} The figures end there.
+          </p>
+        )}
         {metrics?.platform === 'ios' && (
           <p className="text-xs text-[var(--text-dim)]">
             iPhone: device CPU only. go-ios can't read an iPhone's memory or one app's figures.

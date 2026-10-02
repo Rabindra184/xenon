@@ -1,4 +1,4 @@
-import { SAMPLE_INTERVAL_MS } from './types';
+import { RecordingState, SAMPLE_INTERVAL_MS } from './types';
 
 export interface SessionMetricRow {
   at: number;
@@ -22,6 +22,8 @@ export interface SessionMetricsBody {
   intervalMs: number;
   appId: string | null;
   series: MetricSeries;
+  /** For a running session: whether it is being sampled. Null once it ended. */
+  recording: RecordingState | null;
   samples: Array<{
     t: number;
     deviceCpu: number | null;
@@ -44,7 +46,11 @@ export function seriesFor(platform: string): MetricSeries {
   };
 }
 
-export function sessionMetricsBody(platform: string, rows: SessionMetricRow[]): SessionMetricsBody {
+export function sessionMetricsBody(
+  platform: string,
+  rows: SessionMetricRow[],
+  recording: RecordingState | null = null,
+): SessionMetricsBody {
   const sorted = [...rows].sort((a, b) => a.at - b.at);
   const lastApp = [...sorted].reverse().find((r) => r.app_id);
   return {
@@ -52,6 +58,7 @@ export function sessionMetricsBody(platform: string, rows: SessionMetricRow[]): 
     intervalMs: SAMPLE_INTERVAL_MS,
     appId: lastApp?.app_id ?? null,
     series: seriesFor(platform),
+    recording,
     samples: sorted.map((r) => ({
       t: r.at,
       deviceCpu: r.device_cpu_pct,

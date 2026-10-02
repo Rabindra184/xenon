@@ -19,6 +19,7 @@ import {
   MAX_BUFFERED_SAMPLES,
   MetricSample,
   MetricsSampler,
+  RecordingState,
   SamplerHooks,
 } from './types';
 
@@ -39,6 +40,8 @@ interface Running {
   flushTimer: ReturnType<typeof setInterval>;
   /** Writes run one after another. */
   writing: Promise<void>;
+  /** The sampler stopped itself after repeated failures. */
+  gaveUp: boolean;
 }
 
 /**
@@ -69,8 +72,11 @@ export class SessionMetricsService {
     if (this.running.has(sessionId) || !this.appliesTo(device)) return;
     const hooks: SamplerHooks = {
       onSample: (s) => this.running.get(sessionId)?.buffer.push(s),
-      onGiveUp: (reason) =>
-        this.log.warn(`[${sessionId}] Stopped sampling ${device.udid}: ${reason}`),
+      onGiveUp: (reason) => {
+        const entry = this.running.get(sessionId);
+        if (entry) entry.gaveUp = true;
+        this.log.warn(`[${sessionId}] Stopped sampling ${device.udid}: ${reason}`);
+      },
     };
     let sampler: MetricsSampler;
     try {
@@ -81,9 +87,22 @@ export class SessionMetricsService {
     }
     const flushTimer = setInterval(() => void this.flush(sessionId), FLUSH_INTERVAL_MS);
     flushTimer.unref?.();
-    this.running.set(sessionId, { sampler, buffer: [], flushTimer, writing: Promise.resolve() });
+    this.running.set(sessionId, {
+      sampler,
+      buffer: [],
+      flushTimer,
+      writing: Promise.resolve(),
+      gaveUp: false,
+    });
     sampler.start();
     this.log.info(`[${sessionId}] Sampling CPU and memory on ${device.udid}`);
+  }
+
+  /** Whether this server is sampling a running session, stopped after giving up, or never did. */
+  recordingState(sessionId: string): RecordingState {
+    const entry = this.running.get(sessionId);
+    if (!entry) return 'off';
+    return entry.gaveUp ? 'stopped' : 'sampling';
   }
 
   /** Stops the session's sampler and writes what it buffered. Idempotent. */

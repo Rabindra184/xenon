@@ -155,6 +155,14 @@ describe('SessionMetricsService', () => {
     expect(m.samplers).to.have.length(1);
   });
 
+  it('says whether it is sampling a session, stopped after giving up, or not at all', () => {
+    expect(m.recordingState('s1')).to.equal('off');
+    m.start({ sessionId: 's1', device: phone(), capabilities: {} });
+    expect(m.recordingState('s1')).to.equal('sampling');
+    m.samplers[0].hooks.onGiveUp('device offline');
+    expect(m.recordingState('s1')).to.equal('stopped');
+  });
+
   it("doesn't start a sampler for a phone it doesn't apply to", () => {
     m.start({ sessionId: 's2', device: phone({ nodeId: 'node-2' }), capabilities: {} });
     expect(m.samplers).to.deep.equal([]);

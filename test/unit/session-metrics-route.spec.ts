@@ -39,6 +39,11 @@ describe('session metrics: the response', () => {
     });
   });
 
+  it('passes on whether a running session is being sampled, and nothing for an ended one', () => {
+    expect(sessionMetricsBody('android', [], 'off').recording).to.equal('off');
+    expect(sessionMetricsBody('android', []).recording).to.equal(null);
+  });
+
   it('answers samples in time order, named by the last app recorded', () => {
     const body = sessionMetricsBody('android', [
       row(4000, { app_id: null, app_cpu_pct: null, app_mem_mb: null }),
@@ -110,5 +115,26 @@ describe('GET /session/:sessionId/metrics', function () {
     expect(res.body.platform).to.equal('android');
     expect(res.body.samples.map((s: any) => s.t)).to.deep.equal([0, 2000]);
     expect(res.body.series.appMem).to.equal(true);
+  });
+
+  it('says a running session nothing samples is not recorded', async () => {
+    await scratch.db.session.create({
+      data: {
+        id: 'metrics-2',
+        status: 'running',
+        desired_capabilities: '{}',
+        session_capabilities: '{}',
+        node_id: 'n',
+        has_live_video: false,
+        device_udid: 'sim-1',
+        device_platform: 'ios',
+        device_version: '18.0',
+      },
+    });
+
+    const res = await request(app()).get('/session/metrics-2/metrics');
+
+    expect(res.status).to.equal(200);
+    expect(res.body.recording).to.equal('off');
   });
 });
