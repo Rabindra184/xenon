@@ -16,7 +16,6 @@ import fs from 'fs-extra';
 import tcpPortUsed from 'tcp-port-used';
 import { InternalHttpClient } from '../../InternalHttpClient';
 import log from '../../logger';
-import { cachePath } from '../../helpers';
 import { SingleFlight } from '../../helpers/singleFlight';
 import { PortAllocator } from '../../services/PortAllocator';
 import { DeviceStoreFactory } from '../../data-service/device-store';
@@ -29,7 +28,8 @@ import {
   wdaLaunchFailureMessage,
 } from './iosStreamDiagnostics';
 import { reapAllOrphanTunnels, reapTunnelsForUdid } from './tunnelProcess';
-import { IOSTunnels } from './IOSTunnels';
+import { IOSTunnels, IOS_STREAM_LEASE_TTL_MS } from './IOSTunnels';
+import { goIosBinaryPath } from './goIosBinary';
 
 import { unblockDevice } from '../../data-service/device-service';
 import { isManualLock } from '../../services/recording/manualLock';
@@ -100,14 +100,10 @@ class IOSStreamService {
   private startFlight = new SingleFlight<{ wdaPort: number; mjpegPort: number }>();
   private recoveryCooldowns: Map<string, number> = new Map(); // Track last recovery attempt time
   private readonly RECOVERY_COOLDOWN_MS = 30000; // 30s cooldown between recovery attempts
-  // Port-lease TTL for an active stream. Longer than the watchdog interval (1h),
-  // which refreshes it each tick, so a long-lived stream's port never expires
-  // and gets reallocated to another device; stopStream() releases it explicitly.
-  private readonly STREAM_PORT_TTL_MS = 90 * 60 * 1000; // 1.5h
   public goIOSPath: string;
 
   constructor() {
-    this.goIOSPath = this.getGoIOSPath();
+    this.goIOSPath = goIosBinaryPath();
     this.startWatchdog();
   }
 
@@ -128,8 +124,8 @@ class IOSStreamService {
           // its ports to another device mid-stream (TTL > this 1h interval).
           try {
             const portAllocator = Container.get(PortAllocator);
-            await portAllocator.touch(session.wdaPort, this.STREAM_PORT_TTL_MS);
-            await portAllocator.touch(session.mjpegPort, this.STREAM_PORT_TTL_MS);
+            await portAllocator.touch(session.wdaPort, IOS_STREAM_LEASE_TTL_MS);
+            await portAllocator.touch(session.mjpegPort, IOS_STREAM_LEASE_TTL_MS);
             await this.tunnels().touch(udid);
           } catch {
             /* best-effort lease refresh */
@@ -207,11 +203,6 @@ class IOSStreamService {
         log.warn(`[${udid}] [Watchdog] Idle check failed: ${e?.message ?? e}`);
       }
     }
-  }
-
-  private getGoIOSPath(): string {
-    const goIOSDir = cachePath('goIOS');
-    return path.join(goIOSDir, 'ios');
   }
 
   /**
@@ -621,7 +612,7 @@ class IOSStreamService {
         // guarantee a non-colliding port; the lease is refreshed by the watchdog
         // and released in stopStream().
         const portAllocator = Container.get(PortAllocator);
-        const ttl = { ttlMs: this.STREAM_PORT_TTL_MS };
+        const ttl = { ttlMs: IOS_STREAM_LEASE_TTL_MS };
 
         // Principal Discovery: attach to the WDA an Appium session runs on this
         // device instead of launching a second one over it. The one exception

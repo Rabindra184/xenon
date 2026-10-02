@@ -93,7 +93,7 @@ describe('PortAllocator', () => {
     expect(createStub.called, 'should allocate a replacement lease').to.be.true;
   });
 
-  it('releaseForUdid deletes all leases for that UDID', async () => {
+  it("releaseForUdid deletes that UDID's leases", async () => {
     deleteManyStub.resolves({ count: 2 } as any);
     const allocator = makeAllocator({ wda: [8100, 8102] });
     await allocator.releaseForUdid('udid-1');

@@ -78,7 +78,6 @@ function iosService(): any {
   svc.startFlight = new SingleFlight();
   svc.recoveryCooldowns = new Map();
   svc.RECOVERY_COOLDOWN_MS = 30_000;
-  svc.STREAM_PORT_TTL_MS = 90 * 60 * 1000;
   svc.goIOSPath = '/nonexistent/go-ios';
   return svc;
 }

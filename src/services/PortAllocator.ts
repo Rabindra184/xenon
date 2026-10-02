@@ -297,8 +297,15 @@ export class PortAllocator {
       .catch(() => undefined);
   }
 
+  /**
+   * Delete a phone's leases when a session on it ends. Not its go-ios
+   * tunnel's pair: the phone's stream, and so its tunnel, can outlive the
+   * session, and IOSTunnels gives the pair back when the tunnel stops.
+   */
   async releaseForUdid(udid: string): Promise<void> {
-    await prisma.portLease.deleteMany({ where: { leasedToUdid: udid } });
+    await prisma.portLease.deleteMany({
+      where: { leasedToUdid: udid, purpose: { not: 'tunnel' } },
+    });
   }
 
   async purgeExpired(): Promise<void> {

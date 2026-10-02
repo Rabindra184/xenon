@@ -2,11 +2,10 @@ import Simctl from 'node-simctl';
 import { flatten } from 'lodash';
 import { utilities as IOSUtils } from 'appium-ios-device';
 import { appleIdentity, simulatorIdentity } from './appleIdentity';
+import { goIosBinaryPath } from './goIosBinary';
 import { EMPTY_IDENTITY, nonNullIdentity } from '../deviceIdentity';
 import { IDevice } from '../../interfaces/IDevice';
-import { cachePath } from '../../helpers';
 import log from '../../logger';
-import path from 'path';
 import fs from 'fs-extra';
 import { getUtilizationTime } from '../../device-utils';
 import { DeviceStoreFactory } from '../../data-service/device-store';
@@ -281,8 +280,7 @@ export class IOSDiscoveryService {
   }
 
   private async fetchIpViaGoIos(udid: string): Promise<string> {
-    const goIOSDir = cachePath('goIOS');
-    const goIOSPath = path.join(goIOSDir, 'ios');
+    const goIOSPath = goIosBinaryPath();
     if (!fs.existsSync(goIOSPath)) return '';
 
     const { exec } = await import('child_process');

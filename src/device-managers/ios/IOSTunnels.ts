@@ -25,14 +25,13 @@
 import { Container, Service } from 'typedi';
 import { spawn, exec, type ChildProcess } from 'child_process';
 import http from 'http';
-import path from 'path';
 import { promisify } from 'util';
 import log from '../../logger';
-import { cachePath } from '../../helpers';
 import { PortAllocator } from '../../services/PortAllocator';
 import { ProcessRegistry } from '../../services/ProcessRegistry';
 import { ResourceIsolationService } from '../../services/ResourceIsolationService';
 import { classifyTunnelStderr } from './iosStreamDiagnostics';
+import { goIosBinaryPath } from './goIosBinary';
 import { killProcessGroup, tunnelSpawnOptions } from './tunnelProcess';
 
 const execPromise = promisify(exec);
@@ -41,11 +40,13 @@ const execPromise = promisify(exec);
 export const TUNNEL_READY_TIMEOUT_MS = 20_000;
 export const TUNNEL_READY_POLL_MS = 500;
 /**
- * A tunnel's port lease: the same as the stream's own ports
- * (IOSStreamService's STREAM_PORT_TTL_MS). The stream watchdog refreshes both
- * every hour, the tunnel's through {@link IOSTunnels.touch}.
+ * How long an iPhone stream's port leases last: its WDA and MJPEG ports
+ * (IOSStreamService) and its tunnel's pair. Longer than the stream watchdog's
+ * hourly tick, which refreshes them (the tunnel's through
+ * {@link IOSTunnels.touch}), so a long stream never loses its ports to another
+ * phone. Stopping the stream or the tunnel releases them.
  */
-export const TUNNEL_LEASE_TTL_MS = 90 * 60 * 1000;
+export const IOS_STREAM_LEASE_TTL_MS = 90 * 60 * 1000;
 /** How often running tunnels are checked for a phone that went away. */
 export const TUNNEL_CHECK_MS = 5_000;
 /**
@@ -135,7 +136,7 @@ export class IOSTunnels {
   private watcher?: ReturnType<typeof setInterval>;
   private checking = false;
   private versionCache = new Map<string, { version: number; at: number }>();
-  public goIOSPath = path.join(cachePath('goIOS'), 'ios');
+  public goIOSPath = goIosBinaryPath();
 
   /**
    * The phone's tunnel-info port for its stream, starting its tunnel if it
@@ -177,7 +178,7 @@ export class IOSTunnels {
     if (version === null || version < 17) return null;
 
     const port = await this.allocator().acquirePair('tunnel', udid, {
-      ttlMs: TUNNEL_LEASE_TTL_MS,
+      ttlMs: IOS_STREAM_LEASE_TTL_MS,
     });
     let proc: ChildProcess;
     try {
@@ -215,7 +216,9 @@ export class IOSTunnels {
       void this.releasePair(port, udid);
     };
     proc.once('exit', ended);
-    proc.once('error', (err: Error) => {
+    // `on`, not `once`: a second 'error' with no listener left would be
+    // thrown, and take the server down. ended() only acts once.
+    proc.on('error', (err: Error) => {
       this.log.warn(`[${udid}] go-ios tunnel failed: ${err.message}`);
       ended();
     });
@@ -237,9 +240,15 @@ export class IOSTunnels {
 
   private async waitUntilReady(udid: string, tunnel: Tunnel): Promise<number> {
     const { port, process: proc } = tunnel;
-    const polls = TUNNEL_READY_TIMEOUT_MS / TUNNEL_READY_POLL_MS;
-    for (let poll = 0; poll <= polls; poll++) {
-      if (poll > 0) await this.sleep(TUNNEL_READY_POLL_MS);
+    // By the clock, not a count of checks: each check can take up to its own
+    // 1 s timeout, which stretched 41 checks to about a minute.
+    const deadline = this.now() + TUNNEL_READY_TIMEOUT_MS;
+    for (let first = true; ; first = false) {
+      if (!first) {
+        const left = deadline - this.now();
+        if (left <= 0) break;
+        await this.sleep(Math.min(TUNNEL_READY_POLL_MS, left));
+      }
       if (this.tunnels.get(udid) !== tunnel) {
         throw new Error(
           `The go-ios tunnel for ${udid} exited before it was ready (exit code ${proc.exitCode})` +
@@ -377,8 +386,8 @@ export class IOSTunnels {
     const tunnel = this.tunnels.get(udid);
     if (!tunnel) return;
     const allocator = this.allocator();
-    await allocator.touch(tunnel.port, TUNNEL_LEASE_TTL_MS);
-    await allocator.touch(tunnel.port + 1, TUNNEL_LEASE_TTL_MS);
+    await allocator.touch(tunnel.port, IOS_STREAM_LEASE_TTL_MS);
+    await allocator.touch(tunnel.port + 1, IOS_STREAM_LEASE_TTL_MS);
   }
 
   private async releasePair(port: number, udid: string): Promise<void> {
