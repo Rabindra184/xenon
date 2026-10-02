@@ -1,12 +1,15 @@
 import 'reflect-metadata';
 import { expect } from 'chai';
+import type { SinonStub } from 'sinon';
 import request from 'supertest';
+import { prisma } from '../../src/prisma';
 import { useScratchDatabase } from '../helpers/scratch-database';
 import {
   ADMIN,
   BUILD,
   DAY,
   FIX,
+  HOUR,
   MEMBER_A,
   PHONE,
   READ_ONLY_A,
@@ -143,5 +146,64 @@ describe('GET /healing/selectors/detail (real queries)', function () {
   it('says a read-only caller cannot act', async () => {
     const b = (await detail(READ_ONLY_A, { strategy: 'xpath', selector: SEL.hot })).body;
     expect(b.canAct).to.equal(false);
+  });
+
+  it('reads each heal once without its session, and each session once', async () => {
+    // 45 heals of one selector: odd ones on the shared phone, even ones on
+    // team A's; two in three found the same fix.
+    const now = Date.now();
+    await scratch.db.sessionLog.createMany({
+      data: Array.from({ length: 45 }, (_, i) => ({
+        session_id: i % 2 ? 'sh-s-shared-1' : 'sh-s-a-1',
+        command_name: 'findElement',
+        url: '/element',
+        method: 'POST',
+        title: 'Find element',
+        response: '{}',
+        is_healed: true,
+        original_strategy: 'id',
+        original_selector: 'com.acme:id/many',
+        healed_strategy: 'id',
+        healed_selector: i % 3 ? 'com.acme:id/many_v2' : 'com.acme:id/many_v3',
+        healing_tier: i % 2 ? 'LLM' : 'Fuzzy XML',
+        healing_confidence: i % 3 ? 0.6 : null,
+        duration: 100,
+        createdAt: new Date(now - (i + 1) * HOUR),
+      })),
+    });
+
+    const res = await detail(ADMIN, { strategy: 'id', selector: 'com.acme:id/many', days: '30' });
+
+    expect(res.status).to.equal(200);
+    // Attaching the session to each heal took most of a second for a selector
+    // healed 50,000 times; the heals' sessions are read once each instead.
+    const heals = (prisma.sessionLog.findMany as unknown as SinonStub).args.map((a) => a[0]);
+    expect(heals).to.have.length(1);
+    expect(heals[0].select).to.not.have.property('session');
+    const sessions = await Promise.all((prisma.session.findMany as unknown as SinonStub).returnValues);
+    expect(sessions.flat().map((x: { id: string }) => x.id).sort()).to.deep.equal([
+      'sh-s-a-1',
+      'sh-s-shared-1',
+    ]);
+    const b = res.body;
+    expect(b).to.deep.include({ heals: 45, sessions: 2, timeSpentMs: 4500 });
+    expect(b.firstHealedAt).to.equal(new Date(now - 45 * HOUR).toISOString());
+    expect(b.lastHealedAt).to.equal(new Date(now - HOUR).toISOString());
+    expect(b.daily.reduce((s: number, d: { heals: number }) => s + d.heals, 0)).to.equal(45);
+    expect(b.recent).to.have.length(20);
+    expect(b.recent[0].at).to.equal(new Date(now - HOUR).toISOString());
+    expect(b.suggestions.map((x: Record<string, unknown>) => [x.selector, x.count])).to.deep.equal([
+      ['com.acme:id/many_v2', 30],
+      ['com.acme:id/many_v3', 15],
+    ]);
+    expect(b.suggestions[0].methods).to.have.members(['LLM', 'Fuzzy XML']);
+    expect(b.suggestions[0].averageConfidence).to.be.closeTo(0.6, 1e-9);
+    expect(b.suggestions[1].averageConfidence).to.equal(null);
+    expect(b.platforms).to.deep.equal([{ name: 'android', count: 45 }]);
+    expect(b.builds).to.deep.equal([{ id: BUILD.id, name: BUILD.name, count: 45 }]);
+    expect(b.devices).to.deep.equal([
+      { udid: PHONE.a, name: 'Team A Galaxy', count: 23 },
+      { udid: PHONE.shared, name: 'Shared Pixel', count: 22 },
+    ]);
   });
 });

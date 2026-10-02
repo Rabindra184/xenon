@@ -2,7 +2,7 @@ import { prisma } from '../../prisma';
 import { canSeeSelector } from './access';
 import { DAY_MS, dailyHeals, parseTzOffset } from './healingTrend';
 import { Person, peopleById } from './people';
-import { SessionScope, sessionScope, tupleWhere } from './selectorKeys';
+import { SessionScope, chunk, sessionScope, tupleWhere } from './selectorKeys';
 import { StateView, stateView } from './stateView';
 
 export interface SelectorDetailQuery {
@@ -86,6 +86,26 @@ const topCounts = <T extends { count: number }>(m: Map<string, T>): T[] =>
     .sort((a, b) => b.count - a.count)
     .slice(0, TOP);
 
+/** The sessions behind these ids, with their phone and build, by id. */
+async function sessionsById(ids: string[]) {
+  const parts = await Promise.all(
+    chunk(ids).map((part) =>
+      prisma.session.findMany({
+        where: { id: { in: part } },
+        select: {
+          id: true,
+          build_id: true,
+          device_udid: true,
+          device_name: true,
+          device_platform: true,
+          build: { select: { name: true } },
+        },
+      }),
+    ),
+  );
+  return new Map(parts.flat().map((s) => [s.id, s]));
+}
+
 /**
  * Everything the panel shows for one selector over the period, or null when
  * the caller may not see it (a member, and no session they can see healed
@@ -108,7 +128,10 @@ export async function selectorDetail(
         sessionScope(scope),
       ],
     },
-    orderBy: { createdAt: 'desc' },
+    orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+    // Each heal's own fields only. Attaching its session to every heal took
+    // most of a second for a selector healed 50,000 times in a year; each
+    // session is read once instead.
     select: {
       id: true,
       session_id: true,
@@ -118,17 +141,9 @@ export async function selectorDetail(
       healing_tier: true,
       healing_confidence: true,
       duration: true,
-      session: {
-        select: {
-          build_id: true,
-          device_udid: true,
-          device_name: true,
-          device_platform: true,
-          build: { select: { name: true } },
-        },
-      },
     },
   });
+  const sessionOf = await sessionsById(Array.from(new Set(rows.map((r) => r.session_id))));
 
   const sessions = new Set<string>();
   let timeSpentMs = 0;
@@ -157,16 +172,18 @@ export async function selectorDetail(
       }
       fixes.set(fixKey, f);
     }
-    const platform = r.session.device_platform || 'unknown';
+    const session = sessionOf.get(r.session_id);
+    if (!session) continue;
+    const platform = session.device_platform || 'unknown';
     bump(platforms, platform, () => ({ name: platform, count: 0 }));
-    const buildId = r.session.build_id ?? null;
+    const buildId = session.build_id ?? null;
     bump(builds, buildId ?? '', () => ({
       id: buildId,
-      name: r.session.build?.name || buildId || 'No build',
+      name: session.build?.name || buildId || 'No build',
       count: 0,
     }));
-    const udid = r.session.device_udid;
-    if (udid) bump(devices, udid, () => ({ udid, name: r.session.device_name || udid, count: 0 }));
+    const udid = session.device_udid;
+    if (udid) bump(devices, udid, () => ({ udid, name: session.device_name || udid, count: 0 }));
   }
 
   const [state, events] = await Promise.all([
@@ -216,17 +233,20 @@ export async function selectorDetail(
     platforms: topCounts(platforms),
     builds: topCounts(builds),
     devices: topCounts(devices),
-    recent: rows.slice(0, RECENT).map((r) => ({
-      id: r.id,
-      sessionId: r.session_id,
-      buildId: r.session.build_id ?? null,
-      at: r.createdAt.toISOString(),
-      device: r.session.device_name || r.session.device_udid || null,
-      platform: r.session.device_platform || null,
-      method: r.healing_tier ?? null,
-      confidence: r.healing_confidence ?? null,
-      healedSelector: r.healed_selector ?? null,
-    })),
+    recent: rows.slice(0, RECENT).map((r) => {
+      const session = sessionOf.get(r.session_id);
+      return {
+        id: r.id,
+        sessionId: r.session_id,
+        buildId: session?.build_id ?? null,
+        at: r.createdAt.toISOString(),
+        device: session?.device_name || session?.device_udid || null,
+        platform: session?.device_platform || null,
+        method: r.healing_tier ?? null,
+        confidence: r.healing_confidence ?? null,
+        healedSelector: r.healed_selector ?? null,
+      };
+    }),
     state: stateView(
       state,
       {
