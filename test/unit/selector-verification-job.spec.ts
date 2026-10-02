@@ -30,6 +30,9 @@ describe('SelectorVerificationJob.run', () => {
         update: sinon.stub().resolves({}),
       },
       selectorEvent: { create: sinon.stub().resolves({}) },
+      // No heal since any selector was marked fixed: see
+      // selector-verification-missed-regression.spec.ts for one.
+      sessionLog: { findFirst: sinon.stub().resolves(null) },
       $queryRaw: sinon.stub(),
     };
     prismaStub.$transaction = sinon

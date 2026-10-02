@@ -1,7 +1,7 @@
 import React from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { MockInstance } from 'vitest';
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
 import XenonApiService from '../../api-service';
 import {
@@ -14,9 +14,21 @@ import {
 const h = vi.hoisted(() => ({
   toast: vi.fn(),
   me: { role: 'MEMBER', userId: 'u-1' } as Record<string, unknown>,
+  listeners: new Map<string, Set<(data: unknown) => void>>(),
 }));
 vi.mock('../ui/toast', () => ({ useToast: () => ({ toast: h.toast }) }));
-vi.mock('../../hooks/useSocket', () => ({ useSocket: () => ({ on: () => () => undefined }) }));
+vi.mock('../../hooks/useSocket', () => ({
+  useSocket: () => ({
+    on: (event: string, fn: (data: unknown) => void) => {
+      const set = h.listeners.get(event) ?? new Set();
+      set.add(fn);
+      h.listeners.set(event, set);
+      return () => set.delete(fn);
+    },
+  }),
+}));
+const emit = (event: string, data: unknown) =>
+  act(() => h.listeners.get(event)?.forEach((fn) => fn(data)));
 vi.mock('../../auth/auth-context', () => ({ useAuth: () => ({ me: h.me }) }));
 
 import SelectorHealthPage from './selector-health-page';
@@ -215,6 +227,16 @@ describe('SelectorHealthPage', () => {
     await waitFor(() => expect(within(panel).getByText('Muted')).toBeTruthy());
     await waitFor(() => expect(screen.queryAllByRole('row')).toHaveLength(2));
     expect(within(screen.getAllByRole('row')[1]).queryByText(A)).toBeNull();
+  });
+
+  it('goes from a broke-again note to that selector, in the same period and order', async () => {
+    renderPage('/selector-health?tab=fixed&days=7&sort=time&q=cart&page=2');
+    await waitFor(() => expect(listSpy).toHaveBeenCalled());
+    emit('selector_regressed', { original_strategy: 'xpath', original_selector: A });
+    fireEvent.click(await screen.findByRole('button', { name: 'Show selectors to fix' }));
+    expect(screen.getByTestId('where').textContent).toBe(
+      `/selector-health?days=7&sort=time&strategy=xpath&selector=${encodeURIComponent(A)}`,
+    );
   });
 
   it('opens an old detail link in the panel', async () => {

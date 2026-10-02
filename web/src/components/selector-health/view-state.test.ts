@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   DEFAULT_VIEW,
   SelectorHealthView,
+  brokeAgainView,
   legacyDetailTarget,
   readView,
   writeView,
@@ -52,5 +53,31 @@ describe('the address holds the view', () => {
       '/selector-health?q=%2F%2Fa',
     );
     expect(legacyDetailTarget(new URLSearchParams(''))).toBe('/selector-health');
+  });
+
+  it('goes to what to fix for a selector that broke again, in the same period and order', () => {
+    const from: SelectorHealthView = {
+      tab: 'fixed',
+      days: 7,
+      q: 'cart',
+      platform: 'ios',
+      method: 'LLM',
+      sort: 'time',
+      page: 3,
+      open: { strategy: 'id', selector: 'com.acme:id/x' },
+    };
+    const a = { strategy: 'xpath', selector: '//a' };
+    expect({ ...from, ...brokeAgainView([a]) }).toEqual({
+      tab: 'fix',
+      days: 7,
+      q: '',
+      platform: '',
+      method: '',
+      sort: 'time',
+      page: 1,
+      open: a,
+    });
+    expect(brokeAgainView([a, a]).open).toEqual(a);
+    expect(brokeAgainView([a, { strategy: 'xpath', selector: '//b' }]).open).toBe(null);
   });
 });

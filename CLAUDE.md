@@ -117,7 +117,11 @@ open selector) lives in the address.
   are plain text. A page past the end answers the last page.
 - **Panel** (`GET /healing/selectors/detail`, `selectorDetail.ts`), always by
   strategy and value. A heal recorded with no strategy is strategy `''`
-  everywhere (`tupleWhere` matches null and `''`).
+  everywhere (`tupleWhere` matches null and `''`). It reads each heal's own
+  fields and each session once: attaching the session to every heal took
+  most of a second for a selector healed 50,000 times in a year. Counting
+  with `aggregate`/`groupBy` instead was measured slower for a member,
+  because every query re-checks which sessions they may see for every heal.
 - **Who sees what.** A selector is visible to a caller who can see at least
   one session where it healed, at any time (`access.ts`, by
   `visibleSessionWhere`); an admin or auth-disabled caller sees all. Hidden
@@ -129,6 +133,13 @@ open selector) lives in the address.
   (`SelectorStateService`, `SelectorVerificationJob`). The person is
   `resolveActor(req).userId`: a dashboard user has no API key, so the old
   `*_by_api_key` columns were empty for every dashboard action.
+- **Broke again.** A heal of a selector being verified or fixed sends it
+  back to "To fix" from the heal write path (`onHealRecorded`,
+  fire-and-forget). The verification job also looks, on every run, for a
+  heal since `fixed_at` on each such selector and makes the same change, so
+  a failed call can't leave it fixed. Through 2.10 the job counted only clean
+  builds, and promoted a selector with three of them however often it
+  healed in others.
 - **Summary** adds `timeSpentMs` (the healed commands' recorded durations)
   and `trend` (heals and AI heals per day, in the browser's `tz`).
 - **No cost.** The fixed per-heal prices (`TIER_COST_USD`) priced an LLM heal
@@ -1156,6 +1167,24 @@ Multi-device live preview + group recording surface. Uses a custom `useReducer` 
 ### Data Layer (`src/data-service/`)
 
 - **PrismaStore** — SQLite via Prisma ORM (models: Build, Session, SessionLog, Log, Profiling, App, Device)
+- **SessionLog** holds every command of every session, so every read of it
+  goes through an index: `(session_id, createdAt)` for a session's commands
+  (the session page, the failed-command check at each session end, cleanup),
+  `(is_healed, createdAt)` for the heals of a period, and
+  `(original_strategy, original_selector, createdAt)` for one selector's.
+  Through 2.10 only the last existed: the "To fix" list took 2.5 s on a
+  million commands and each session lookup read the whole table.
+- **Log** (a session's device and debug lines, hundreds a session) and
+  **Profiling** (written before 2.10 only) are read by session on every
+  session page and deleted by session in cleanup: `(session_id, log_type,
+  createdAt)` and `(session_id, timestamp)`. Through 2.10 neither had an
+  index, and cleaning up a build of 100 sessions took 97 s on 2.5 million
+  log lines (4 s now).
+- `session-log-indexes.spec.ts` runs the Selector Health and session reads,
+  and cleanup's deletes, and fails on any step SQLite plans as a scan of
+  these tables (`EXPLAIN QUERY PLAN`, via
+  `useScratchDatabase({ captureQueries: true })`). A new read by session
+  belongs in it.
 - **DeviceStore** — in-memory device cache synchronized with the database
 - **QueueService** — queues session requests when all devices are busy
 

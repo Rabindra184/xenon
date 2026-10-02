@@ -4,7 +4,8 @@ import { SocketServer } from './SocketServer';
 import { SocketEvents } from '../enums/SocketEvents';
 import logger from '../logger';
 import type { SelectorState } from '../generated/client';
-import { selectorEventData } from './SelectorStateService';
+import { SelectorStateService, selectorEventData } from './SelectorStateService';
+import { tupleWhere } from './selector-health/selectorKeys';
 
 const log = logger.scope('SelectorVerification');
 
@@ -17,7 +18,12 @@ const CLEAN_BUILDS_TO_RESOLVE = 3;
 
 interface PrismaSelectorStateDelegate {
   findMany(args: any): Promise<SelectorState[]>;
+  findUnique(args: any): Promise<SelectorState | null>;
   update(args: any): Promise<SelectorState>;
+}
+
+interface PrismaSessionLogDelegate {
+  findFirst(args: any): Promise<{ session_id: string } | null>;
 }
 
 interface PrismaSelectorEventDelegate {
@@ -31,6 +37,7 @@ interface VerifyTx {
 }
 
 interface PrismaLike extends VerifyTx {
+  sessionLog: PrismaSessionLogDelegate;
   $queryRaw<T = unknown>(strings: TemplateStringsArray, ...values: any[]): Promise<T>;
   $transaction<T>(fn: (tx: VerifyTx) => Promise<T>): Promise<T>;
 }
@@ -66,9 +73,9 @@ export class SelectorVerificationJob {
   }
 
   /**
-   * Process every row currently in `'pending'`. Each row is wrapped in its
-   * own try/catch so a query failure on one selector can't take down the
-   * remainder of the run.
+   * Process every row currently in `'pending'`, then look for a heal of every
+   * `'resolved'` one. Each row is wrapped in its own try/catch so a query
+   * failure on one selector can't take down the remainder of the run.
    */
   async run(): Promise<void> {
     const pending = await this.prisma.selectorState.findMany({
@@ -76,13 +83,56 @@ export class SelectorVerificationJob {
     });
     for (const row of pending) {
       try {
-        await this.processOne(row);
+        if (!(await this.brokeAgain(row))) await this.processOne(row);
       } catch (err: any) {
         log.error(
           `[${row.id}] processing failed (${row.original_strategy}=${row.original_selector}): ${err?.message ?? err}`,
         );
       }
     }
+    const resolved = await this.prisma.selectorState.findMany({
+      where: { status: 'resolved' },
+    });
+    for (const row of resolved) {
+      try {
+        await this.brokeAgain(row);
+      } catch (err: any) {
+        log.error(
+          `[${row.id}] heal check failed (${row.original_strategy}=${row.original_selector}): ${err?.message ?? err}`,
+        );
+      }
+    }
+  }
+
+  /**
+   * A heal since the selector was marked fixed means it broke again. The heal
+   * write path says so at once (`onHealRecorded`), but that call can fail and
+   * isn't tried again, and the clean-build count below doesn't look at healed
+   * builds: a selector with three clean builds was promoted however often it
+   * healed in others. So the job checks too, and makes the same change.
+   */
+  private async brokeAgain(row: SelectorState): Promise<boolean> {
+    if (!row.fixed_at) return false;
+    const heal = await this.prisma.sessionLog.findFirst({
+      where: {
+        AND: [
+          { is_healed: true, createdAt: { gte: row.fixed_at } },
+          tupleWhere(row.original_strategy, row.original_selector),
+        ],
+      },
+      orderBy: { createdAt: 'desc' },
+      select: { session_id: true },
+    });
+    if (!heal) return false;
+    log.warn(
+      `[${row.id}] healed again after being marked fixed, unnoticed when it healed (${row.original_strategy}=${row.original_selector}, session=${heal.session_id})`,
+    );
+    await new SelectorStateService(this.prisma as never, this.socket).onHealRecorded({
+      strategy: row.original_strategy,
+      selector: row.original_selector,
+      sessionId: heal.session_id,
+    });
+    return true;
   }
 
   private async processOne(row: SelectorState): Promise<void> {
