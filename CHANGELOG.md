@@ -6,6 +6,34 @@ This project follows [Semantic Versioning](https://semver.org/). Releases are
 published to npm automatically when `package.json`'s `version` changes on `main`
 (see `.github/workflows/npm-publish.yml`).
 
+## 2.8.1
+
+**Closing a preview releases the phone.** Closing a Live devices tile, or
+leaving device control, used to leave the phone held for about 10 minutes.
+The server logged "keeping the preview for 2 other viewer(s)", and Appium
+sessions for that phone queued behind the hold until the idle watchdog
+released it. Now the phone is released 3 s after the last view of it closes.
+
+No database migration, and no configuration to change.
+
+### Fixed
+
+- **A closed or reconnected stream view no longer counts as a viewer**
+  (#405). A browser keeps loading an MJPEG image after it leaves the page,
+  until it is garbage collected, and the server counts each open stream as
+  a viewer. Each tile close, and each tile reconnect (a recording start
+  causes one), left a viewer that wasn't there.
+  - The dashboard now closes the stream when its image goes: the Live
+    devices tile, the device-control screen and the inspector's live view.
+
+### Known issues
+
+- **An Android phone with H.264 preview can stay held after it was
+  recorded.** After a recording, its Android MJPEG viewer count can stay one
+  too high, so closing its tile doesn't release it. Stop its preview to
+  release it. iPhones, and Android phones without H.264 preview, are
+  released.
+
 ## 2.8.0
 
 **Several iOS 17+ iPhones stream at once on one Mac.** Until now only one
