@@ -7,6 +7,7 @@ import { Container } from 'typedi';
 import { scopeGuard } from '../../middleware/scopeGuard';
 import { roleGuard } from '../../middleware/roleGuard';
 import buildExportModule from './build-export';
+import selectorHealthRoutes from './selector-health';
 import { NotificationService } from '../../services/NotificationService';
 import {
   SelectorStateService,
@@ -1271,6 +1272,8 @@ function register(router: Router) {
   router.get('/healing/hotspots/violations', getHealingViolations);
   router.get('/healing/selector', getHealingSelectorDetail);
   router.get('/healing/selector-health', getSelectorHealth);
+  // The Selector Health page's list and panel (selector-health.ts).
+  selectorHealthRoutes.register(router);
   // Outbound notification — admin only since it can fan out to every
   // configured webhook (Slack channels, etc.).
   router.post('/healing/digest/send', roleGuard('ADMIN'), scopeGuard(['admin']), sendHealingDigest);

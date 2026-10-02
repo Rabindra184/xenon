@@ -3157,6 +3157,33 @@ export {};
 
 /**
  * @swagger
+ * /api/healing/selectors:
+ *   get:
+ *     summary: One tab of the Selector Health list
+ *     description: |
+ *       `fix` groups the period's heals by selector and leaves out selectors
+ *       being verified, fixed or muted; the other tabs list the selectors with
+ *       that status (`fixed`: verified within the period). Only selectors
+ *       healed, at any time, in sessions the caller can see. `counts` follow
+ *       the period, not the search or filters. A page past the end answers the
+ *       last page.
+ *     tags: [Selector Health]
+ *     parameters:
+ *       - { in: query, name: tab, schema: { type: string, enum: [fix, verifying, fixed, muted], default: fix } }
+ *       - { in: query, name: days, schema: { type: integer, minimum: 1, maximum: 365, default: 30 } }
+ *       - { in: query, name: q, schema: { type: string }, description: 'Text in the selector, or (fix) in its suggested fix' }
+ *       - { in: query, name: platform, schema: { type: string }, description: 'fix only' }
+ *       - { in: query, name: method, schema: { type: string }, description: 'Healing method, e.g. LLM; fix only' }
+ *       - { in: query, name: sort, schema: { type: string, enum: [heals, recent, time], default: heals }, description: 'fix only' }
+ *       - { in: query, name: page, schema: { type: integer, minimum: 1, default: 1 } }
+ *       - { in: query, name: pageSize, schema: { type: integer, minimum: 1, maximum: 100, default: 50 } }
+ *     responses:
+ *       200: { description: '`{ tab, days, page, pageSize, total, counts, canAct, items }`' }
+ *       401: { $ref: '#/components/responses/Unauthorized' }
+ */
+
+/**
+ * @swagger
  * /api/healing/digest/send:
  *   post:
  *     summary: On-demand selector-health digest webhook
