@@ -1,4 +1,5 @@
-import { spawn } from 'child_process';
+import { execFile, spawn } from 'child_process';
+import { promisify } from 'util';
 import { Container, Service } from 'typedi';
 import log from '../../logger';
 import { prisma } from '../../prisma';
@@ -20,6 +21,11 @@ import {
   MetricsSampler,
   SamplerHooks,
 } from './types';
+
+const execFileAsync = promisify(execFile);
+
+/** One adb call of a sample; one that hangs this long is a failed sample. */
+const ADB_TIMEOUT_MS = 5_000;
 
 export interface MetricsStart {
   sessionId: string;
@@ -144,14 +150,15 @@ export class SessionMetricsService {
     hooks: SamplerHooks,
   ): MetricsSampler {
     if (String(device.platform).toLowerCase() === 'android') {
-      let adb: Promise<{ shell(command: string): Promise<unknown> }> | undefined;
+      let adb: Promise<{ path: string; base: string[] }> | undefined;
       return new AndroidMetricsSampler({
         appPackage: appPackageOf(capabilities),
         hooks,
         shell: async (command) => {
-          if (!adb) adb = this.adbFor(device.udid);
+          if (!adb) adb = this.adbCommand(device.udid);
           try {
-            return String(await (await adb).shell(command));
+            const { path, base } = await adb;
+            return await this.execAdb(path, [...base, 'shell', command]);
           } catch (err) {
             adb = undefined; // looked up again next time
             throw err;
@@ -179,12 +186,32 @@ export class SessionMetricsService {
     });
   }
 
-  private async adbFor(udid: string): Promise<{ shell(command: string): Promise<unknown> }> {
+  /**
+   * The resolved adb, and the arguments that reach this phone: the host's,
+   * then `-s <udid>`. The shared appium-adb instance names no device (its
+   * `shell()` adds `-s` only after `setDeviceId`), so with several phones on
+   * one adb server a plain `adb shell` fails.
+   */
+  protected async adbCommand(udid: string): Promise<{ path: string; base: string[] }> {
     const managers = await Container.get(XenonManager).deviceInstances();
     const android = managers.find((m) => m instanceof AndroidDeviceManager) as
       | AndroidDeviceManager
       | undefined;
     if (!android) throw new Error('no Android device manager');
-    return android.getAdbForDevice(udid);
+    const adb = (await android.getAdbForDevice(udid)) as unknown as {
+      executable?: { path?: string };
+      adbHost?: string;
+      adbPort?: number;
+    };
+    const path = adb?.executable?.path;
+    if (!path) throw new Error(`adb executable path not resolved for ${udid}`);
+    const hostArgs =
+      adb.adbHost && adb.adbPort ? ['-H', adb.adbHost, '-P', String(adb.adbPort)] : [];
+    return { path, base: [...hostArgs, '-s', udid] };
+  }
+
+  protected async execAdb(path: string, args: string[]): Promise<string> {
+    const { stdout } = await execFileAsync(path, args, { timeout: ADB_TIMEOUT_MS });
+    return stdout;
   }
 }

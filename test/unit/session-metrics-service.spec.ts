@@ -5,6 +5,7 @@ import { SessionMetricsService } from '../../src/services/metrics/SessionMetrics
 import {
   FLUSH_INTERVAL_MS,
   MAX_BUFFERED_SAMPLES,
+  SAMPLE_INTERVAL_MS,
   MetricSample,
   MetricsSampler,
   SamplerHooks,
@@ -157,5 +158,54 @@ describe('SessionMetricsService', () => {
   it("doesn't start a sampler for a phone it doesn't apply to", () => {
     m.start({ sessionId: 's2', device: phone({ nodeId: 'node-2' }), capabilities: {} });
     expect(m.samplers).to.deep.equal([]);
+  });
+});
+
+/** The real Android wiring, down to the adb process it runs. */
+class WiredMetrics extends SessionMetricsService {
+  calls: string[][] = [];
+  protected context(): any {
+    return { pluginArgs: { bindHostOrIp: '127.0.0.1' }, port: 4723, nodeId: 'node-1' };
+  }
+  protected async writeSamples(): Promise<void> {
+    // nothing stored
+  }
+  protected async adbCommand(udid: string): Promise<{ path: string; base: string[] }> {
+    return { path: '/sdk/platform-tools/adb', base: ['-P', '5037', '-s', udid] };
+  }
+  protected async execAdb(path: string, args: string[]): Promise<string> {
+    this.calls.push([path, ...args]);
+    return args.includes('dumpsys activity activities')
+      ? ''
+      : 'cpu  100 0 0 50 0 0 0 0 0 0\nMemTotal: 1024 kB\nMemAvailable: 512 kB\n';
+  }
+}
+
+describe("SessionMetricsService: the Android sampler's adb calls", () => {
+  let clock: sinon.SinonFakeTimers;
+
+  beforeEach(() => {
+    clock = sinon.useFakeTimers({ now: 1_000_000 });
+  });
+  afterEach(() => clock.restore());
+
+  it('names the phone in every adb call, so a server with several phones reaches the right one', async () => {
+    const m = new WiredMetrics();
+    m.start({ sessionId: 's-adb', device: phone(), capabilities: {} });
+    await clock.tickAsync(0);
+    await clock.tickAsync(SAMPLE_INTERVAL_MS);
+    await m.stop('s-adb');
+
+    expect(m.calls.length).to.be.greaterThan(1);
+    for (const call of m.calls) {
+      expect(call.slice(0, 6)).to.deep.equal([
+        '/sdk/platform-tools/adb',
+        '-P',
+        '5037',
+        '-s',
+        'phone-1',
+        'shell',
+      ]);
+    }
   });
 });
