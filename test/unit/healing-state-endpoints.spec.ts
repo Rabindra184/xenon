@@ -59,6 +59,8 @@ describe('POST /healing/selector/state — postSelectorStateAction', () => {
       strategy: 'xpath',
       selector: '//x',
       apiKeyId: 'apikey-1',
+      userId: null,
+      reason: null,
     });
     expect(jsonStub.calledOnce).to.be.true;
     expect(jsonStub.firstCall.args[0].state.status).to.equal('pending');
@@ -152,6 +154,67 @@ describe('POST /healing/selector/state — postSelectorStateAction', () => {
 
     expect(statusStub.calledWith(500)).to.be.true;
     expect(jsonStub.firstCall.args[0]).to.have.property('error', 'internal');
+  });
+
+  it('passes the mute reason on, trimmed', async () => {
+    muteStub.resolves({ status: 'muted' } as any);
+    const { req, res } = mockReqRes({
+      body: {
+        original_strategy: 'xpath',
+        original_selector: '//x',
+        action: 'mute',
+        reason: '  Redesign  ',
+      },
+    });
+    await postSelectorStateAction(req, res);
+    expect(muteStub.firstCall.args[0].reason).to.equal('Redesign');
+  });
+
+  it('keeps a reason only for a mute', async () => {
+    markFixedStub.resolves({ status: 'pending' } as any);
+    const { req, res } = mockReqRes({
+      body: {
+        original_strategy: 'xpath',
+        original_selector: '//x',
+        action: 'mark_fixed',
+        reason: 'why',
+      },
+    });
+    await postSelectorStateAction(req, res);
+    expect(markFixedStub.firstCall.args[0].reason).to.equal(null);
+  });
+
+  it('refuses a reason longer than 500 characters', async () => {
+    const { req, res, statusStub } = mockReqRes({
+      body: {
+        original_strategy: 'xpath',
+        original_selector: '//x',
+        action: 'mute',
+        reason: 'x'.repeat(501),
+      },
+    });
+    await postSelectorStateAction(req, res);
+    expect(statusStub.calledWith(400)).to.be.true;
+    expect(muteStub.called).to.be.false;
+  });
+
+  it('accepts a selector recorded with no strategy', async () => {
+    markFixedStub.resolves({ status: 'pending' } as any);
+    const { req, res } = mockReqRes({
+      body: { original_strategy: '', original_selector: '//x', action: 'mark_fixed' },
+    });
+    await postSelectorStateAction(req, res);
+    expect(markFixedStub.firstCall.args[0].strategy).to.equal('');
+  });
+
+  it('records the person acting, not their key', async () => {
+    markFixedStub.resolves({ status: 'pending' } as any);
+    const { req, res } = mockReqRes({
+      body: { original_strategy: 'xpath', original_selector: '//x', action: 'mark_fixed' },
+    });
+    req.auth = { userId: 'u-9', role: 'ADMIN', scopes: 'admin', teamIds: undefined };
+    await postSelectorStateAction(req, res);
+    expect(markFixedStub.firstCall.args[0].userId).to.equal('u-9');
   });
 });
 

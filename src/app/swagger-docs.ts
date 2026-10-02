@@ -2076,11 +2076,15 @@ export {};
  *   post:
  *     summary: Apply a lifecycle action to a selector
  *     description: |
- *       Mutates the SelectorState row for a (strategy, selector) tuple.
- *       Actions are bounded — `mark_fixed`, `mute`, `unmute`,
- *       `cancel_verification`. Returns 409 with `currentStatus` if the
- *       action is incompatible with the row's current state (e.g.
- *       mark_fixed on a muted selector).
+ *       Mutates the SelectorState row for a (strategy, selector) tuple and
+ *       records the change, with the person, in SelectorEvent. Actions are
+ *       bounded — `mark_fixed`, `mute`, `unmute`, `cancel_verification`.
+ *       Members and admins may act on a selector healed in a session they
+ *       can see; any other answers 404, as an unknown one. Needs the
+ *       `sessions` scope (`admin` implies it). `original_strategy` may be
+ *       empty, for heals recorded with no strategy. Returns 409 with
+ *       `currentStatus` if the action is incompatible with the row's
+ *       current state (e.g. mark_fixed on a muted selector).
  *     tags: [Selector Health]
  *     security:
  *       - apiKey: []
@@ -2101,13 +2105,16 @@ export {};
  *               action:
  *                 type: string
  *                 enum: [mark_fixed, mute, unmute, cancel_verification]
+ *               reason: { type: string, maxLength: 500, description: 'Why the selector is muted; mute only' }
  *     responses:
  *       200:
  *         description: Updated SelectorState row
  *       400:
- *         description: Missing fields or unknown action
+ *         description: Missing fields, unknown action, or a reason over 500 characters
  *       403:
- *         description: API key lacks `admin` scope
+ *         description: The caller lacks the `sessions` scope
+ *       404:
+ *         description: '`{ error: "not_found", message: "Selector not found" }`'
  *       409:
  *         description: Action conflicts with current state (returns currentStatus)
  *       401: { $ref: '#/components/responses/Unauthorized' }

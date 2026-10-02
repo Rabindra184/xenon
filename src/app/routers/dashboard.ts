@@ -8,6 +8,9 @@ import { scopeGuard } from '../../middleware/scopeGuard';
 import { roleGuard } from '../../middleware/roleGuard';
 import buildExportModule from './build-export';
 import selectorHealthRoutes from './selector-health';
+import type { Prisma } from '../../generated/client';
+import { resolveActor } from '../../services/device-access/actor';
+import { SELECTOR_NOT_FOUND, canSeeSelector } from '../../services/selector-health/access';
 import { NotificationService } from '../../services/NotificationService';
 import {
   SelectorStateService,
@@ -971,18 +974,32 @@ export async function getSelectorHealth(request: Request, response: Response) {
 
 // SelectorState lifecycle action endpoint — mark fixed / mute / unmute /
 // cancel verification. The action vocabulary is closed (any value not in
-// VALID_ACTIONS rejects with 400). A SelectorStateConflictError surfaces as
-// 409 with `currentStatus`; anything else logs and surfaces as 500.
+// VALID_ACTIONS rejects with 400). A member may act on a selector they can
+// see (healed in a session they can see); any other answers 404, as an
+// unknown one. The person acting is recorded (SelectorEvent), with the
+// reason for a mute. A SelectorStateConflictError surfaces as 409 with
+// `currentStatus`; anything else logs and surfaces as 500.
 const VALID_SELECTOR_ACTIONS = ['mark_fixed', 'mute', 'unmute', 'cancel_verification'] as const;
 type SelectorAction = (typeof VALID_SELECTOR_ACTIONS)[number];
 
+/** The longest reason a mute may give. */
+export const MUTE_REASON_MAX = 500;
+
 export async function postSelectorStateAction(request: Request, response: Response) {
-  const { original_strategy, original_selector, action } = (request.body ?? {}) as {
-    original_strategy?: string;
-    original_selector?: string;
-    action?: string;
+  const { original_strategy, original_selector, action, reason } = (request.body ?? {}) as {
+    original_strategy?: unknown;
+    original_selector?: unknown;
+    action?: unknown;
+    reason?: unknown;
   };
-  if (!original_strategy || !original_selector || !action) {
+  // The strategy may be '': heals recorded before strategies were.
+  if (
+    typeof original_strategy !== 'string' ||
+    typeof original_selector !== 'string' ||
+    !original_selector ||
+    typeof action !== 'string' ||
+    !action
+  ) {
     return response.status(400).json({
       error: 'original_strategy, original_selector, and action are required',
     });
@@ -992,9 +1009,33 @@ export async function postSelectorStateAction(request: Request, response: Respon
       error: `action must be one of ${VALID_SELECTOR_ACTIONS.join(', ')}`,
     });
   }
+  if (
+    reason !== undefined &&
+    reason !== null &&
+    (typeof reason !== 'string' || reason.length > MUTE_REASON_MAX)
+  ) {
+    return response.status(400).json({
+      error: `reason must be text of at most ${MUTE_REASON_MAX} characters`,
+    });
+  }
 
-  const apiKeyId = request.apiKey?.id ?? '';
-  const ctx = { strategy: original_strategy, selector: original_selector, apiKeyId };
+  const scope = (await visibleSessionWhere(authOf(request))) as
+    | Prisma.SessionWhereInput
+    | undefined;
+  if (
+    !(await canSeeSelector({ strategy: original_strategy, selector: original_selector }, scope))
+  ) {
+    return response.status(404).json(SELECTOR_NOT_FOUND);
+  }
+
+  const muteReason = action === 'mute' && typeof reason === 'string' ? reason.trim() : '';
+  const ctx = {
+    strategy: original_strategy,
+    selector: original_selector,
+    apiKeyId: request.apiKey?.id ?? '',
+    userId: resolveActor(request).userId ?? null,
+    reason: muteReason || null,
+  };
   const service = Container.get(SelectorStateService);
 
   try {
@@ -1277,13 +1318,18 @@ function register(router: Router) {
   // Outbound notification — admin only since it can fan out to every
   // configured webhook (Slack channels, etc.).
   router.post('/healing/digest/send', roleGuard('ADMIN'), scopeGuard(['admin']), sendHealingDigest);
-  // SelectorState lifecycle: state mutations require admin (they affect what
-  // shows up in the live hotspot list, the CI gate, and the digest); the two
-  // reads inherit the existing dashboard auth. Both reads stay global, not
-  // team-scoped: a selector's mute or fix is one lab-wide row with no team
-  // column, shared by every team whose tests use that selector. The one
-  // heal-derived field, the muted list's `last_healed_at`, is the caller's.
-  router.post('/healing/selector/state', roleGuard('ADMIN'), scopeGuard(['admin']), postSelectorStateAction);
+  // SelectorState lifecycle: members act on selectors they can see (the
+  // handler checks, and records who acted); the `sessions` scope is needed,
+  // which `admin` implies. The two reads stay global, not team-scoped: a
+  // selector's mute or fix is one lab-wide row with no team column, shared
+  // by every team whose tests use that selector. The one heal-derived field,
+  // the muted list's `last_healed_at`, is the caller's.
+  router.post(
+    '/healing/selector/state',
+    roleGuard('MEMBER'),
+    scopeGuard(['sessions']),
+    postSelectorStateAction,
+  );
   router.get('/healing/state/muted', getMutedSelectors);
   router.get('/healing/state/:strategy/:value', getSelectorStateByTuple);
   router.get('/config', getGlobalConfig);
