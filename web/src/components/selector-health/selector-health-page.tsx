@@ -622,7 +622,7 @@ const SelectorHealthPage: React.FC = () => {
                   <div className="sh-td sh-td--actions">
                     {h.suggestedRewrite && (
                       <CopyButton
-                        hotspot={h}
+                        strategy={h.suggestedStrategy ?? h.originalStrategy ?? ''} value={h.suggestedRewrite ?? ''}
                         onCopied={(lang) => {
                           setCopiedKey(copyKey);
                           setTimeout(

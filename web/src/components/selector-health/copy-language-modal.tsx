@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Copy, Check, ChevronDown } from 'lucide-react';
 import { Modal } from '../ui/Modal';
 import { Language, snippet } from '../../utils/snippet-generator';
-import { IHealingHotspot } from '../../interfaces/IHealingEvent';
+import { Button } from '../ui/button';
 
 const LANG_OPTIONS: Array<{ value: Language; short: string; label: string }> = [
   { value: 'javascript', short: 'JS', label: 'JavaScript (WebdriverIO)' },
@@ -79,26 +79,20 @@ export function CopyLanguageModal({
       width={520}
       footer={
         <>
-          <button type="button" className="sh-action-btn" onClick={onClose}>
+          <Button variant="secondary" onClick={onClose}>
             Cancel
-          </button>
-          <button
-            type="button"
-            className="sh-action-btn sh-action-btn--primary"
-            onClick={handleCopy}
-          >
-            Copy as {shortLabel(lang)}
-          </button>
+          </Button>
+          <Button onClick={handleCopy}>Copy as {shortLabel(lang)}</Button>
         </>
       }
     >
-      <p className="sh-copy-modal__hint">
+      <p className="mb-3 text-xs text-[var(--text-muted)]">
         Snippets will be copied in this language until you change it.
       </p>
-      <ul className="sh-copy-modal__lang-list">
+      <ul className="mb-3 space-y-1">
         {LANG_OPTIONS.map((opt) => (
           <li key={opt.value}>
-            <label className="sh-copy-modal__lang-row">
+            <label className="flex items-center gap-2 text-sm text-[var(--text)]">
               <input
                 type="radio"
                 name="copy-lang"
@@ -111,11 +105,11 @@ export function CopyLanguageModal({
           </li>
         ))}
       </ul>
-      <div className="sh-copy-modal__preview-label">Preview</div>
-      <pre className="sh-copy-modal__preview">
+      <div className="mb-1 text-[11px] font-semibold text-[var(--text-dim)]">Preview</div>
+      <pre className="mb-3 overflow-x-auto rounded-md border border-[var(--border)] bg-[var(--surface-sunken)] p-3 font-mono text-[11px] text-[var(--text)]">
         <code>{code}</code>
       </pre>
-      <label className="sh-copy-modal__remember">
+      <label className="flex items-center gap-2 text-xs text-[var(--text-muted)]">
         <input
           type="checkbox"
           checked={remember}
@@ -128,24 +122,22 @@ export function CopyLanguageModal({
 }
 
 interface ButtonProps {
-  hotspot: IHealingHotspot;
+  /** The fix's strategy, e.g. "xpath". */
+  strategy: string;
+  /** The fix's selector. */
+  value: string;
   onCopied: (lang: Language) => void;
 }
 
 // Two-mode copy button: a stored language enables a direct one-click copy
-// (and shows the language hint as the label); the chevron always opens the
+// (and shows the language as the label); the chevron always opens the
 // modal so users can switch language anytime. First-time use opens the
 // modal automatically because there's no stored language to bias toward.
-export function CopyButton({ hotspot, onCopied }: ButtonProps) {
+export function CopyButton({ strategy, value, onCopied }: ButtonProps) {
   const [modalOpen, setModalOpen] = useState(false);
   const [justCopied, setJustCopied] = useState(false);
   const stored = getStoredLanguage();
-
-  // Prefer the suggested strategy (this is the strategy the healer landed
-  // on); fall back to the original. xenon:visual heals produce a comment
-  // placeholder rather than a snippet — see snippet-generator.
-  const strategy = hotspot.suggestedStrategy ?? hotspot.originalStrategy ?? '';
-  const value = hotspot.suggestedRewrite ?? '';
+  // A Visual AI heal is a place on screen, not a selector: there's no code to copy.
   const isVisual = strategy === 'xenon:visual';
 
   const directCopy = async () => {
@@ -153,9 +145,8 @@ export function CopyButton({ hotspot, onCopied }: ButtonProps) {
       setModalOpen(true);
       return;
     }
-    const code = snippet(stored, strategy, value);
     try {
-      await navigator.clipboard.writeText(code);
+      await navigator.clipboard.writeText(snippet(stored, strategy, value));
     } catch {
       /* no clipboard permission */
     }
@@ -164,30 +155,30 @@ export function CopyButton({ hotspot, onCopied }: ButtonProps) {
     setTimeout(() => setJustCopied(false), 1500);
   };
 
+  const label = stored ? `Copy as ${shortLabel(stored)}` : 'Copy as code';
   return (
-    <span className="sh-copy-group">
-      <button
+    <span className="inline-flex shrink-0">
+      <Button
         type="button"
-        className={`sh-action-btn sh-copy-btn ${justCopied ? 'sh-copy-btn--copied' : ''}`}
+        variant="secondary"
+        size="sm"
+        className="rounded-r-none"
         onClick={(e) => {
           e.stopPropagation();
-          directCopy();
+          void directCopy();
         }}
         disabled={isVisual && !value}
-        title={
-          isVisual
-            ? 'Visual AI heals are coordinate-based — no portable Appium snippet'
-            : stored
-              ? `Copy as ${shortLabel(stored)}`
-              : 'Pick a language and copy'
-        }
+        aria-label={label}
+        title={isVisual ? 'Found by its place on screen: there is no selector to copy' : label}
       >
-        {justCopied ? <Check size={11} /> : <Copy size={11} />}
-        {stored && !justCopied && <span className="sh-copy-btn__lang">{shortLabel(stored)}</span>}
-      </button>
-      <button
+        {justCopied ? <Check size={12} /> : <Copy size={12} />}
+        <span>{justCopied ? 'Copied' : stored ? label : 'Copy as…'}</span>
+      </Button>
+      <Button
         type="button"
-        className="sh-action-btn sh-copy-chevron"
+        variant="secondary"
+        size="sm"
+        className="rounded-l-none border-l-0 px-1.5"
         onClick={(e) => {
           e.stopPropagation();
           setModalOpen(true);
@@ -195,8 +186,8 @@ export function CopyButton({ hotspot, onCopied }: ButtonProps) {
         title="Choose copy language"
         aria-label="Choose copy language"
       >
-        <ChevronDown size={11} />
-      </button>
+        <ChevronDown size={12} />
+      </Button>
       <CopyLanguageModal
         open={modalOpen}
         initialLang={stored ?? undefined}
