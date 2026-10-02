@@ -6,6 +6,28 @@ This project follows [Semantic Versioning](https://semver.org/). Releases are
 published to npm automatically when `package.json`'s `version` changes on `main`
 (see `.github/workflows/npm-publish.yml`).
 
+## 2.8.2
+
+**An Android phone with H.264 preview is released when its tile closes.**
+In 2.8.1, closing such a tile left the phone held, with "1 other viewer(s)"
+and nothing connected. The same phantom viewer also blocked Android's idle
+release, so the hold lasted until someone stopped the preview.
+
+No database migration, and no configuration to change.
+
+### Fixed
+
+- **A viewer who hangs up while the stream starts is no longer counted**
+  (#407).
+  - The stream request counted its viewer only once the stream had started,
+    which takes seconds on a cold start, and only then listened for the
+    browser leaving. A browser that left during that wait was counted for
+    good.
+  - An Android tile with H.264 preview did this every time: it drops its
+    MJPEG warm-up as soon as H.264 is ready. An iPhone tile closed during its
+    start did the same.
+  - 2.8.1's known issue tied this to recordings; it happened without one.
+
 ## 2.8.1
 
 **Closing a preview releases the phone.** Closing a Live devices tile, or
