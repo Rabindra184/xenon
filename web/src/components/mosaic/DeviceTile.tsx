@@ -14,6 +14,7 @@ import {
 } from './stream-retry';
 import WsH264Player from './WsH264Player';
 import { pickStreamPlayer } from './pickStreamPlayer';
+import { MjpegImage } from '../ui/mjpeg-image';
 
 interface Props {
   udid: string;
@@ -474,7 +475,9 @@ export function DeviceTile({
             }}
           />
         ) : (
-          <img
+          // MjpegImage closes the stream when a reconnect or a closed tile
+          // removes it; a plain <img> left it open, counted as a viewer.
+          <MjpegImage
             key={retryKey}
             src={proxyUrl}
             alt={displayName}
