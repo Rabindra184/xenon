@@ -488,7 +488,11 @@ go-ios derives P + 1 for the phone's traffic.
   comes up on another port the same way. The phone's next start gets a new
   pair. A tunnel whose process exits (a crash) gives its ports back too.
 - **Who drives it.** The stream's start and stop. At boot, Xenon reaps go-ios
-  and then drops every `tunnel` lease.
+  and then drops every `tunnel` lease. The reap kills every process running
+  the go-ios binary, this server's own included, so it runs as soon as the
+  database is ready, before device detection starts
+  (`ServerManager.reapLeftoverGoIos`). Run last, it killed the `ios info`
+  call detection makes in the background for each plugged-in iPhone.
 - **Why.** Through 2.7 every tunnel took go-ios's default ports, 60105 and
   60106. A second iPhone's stream kill -9'd whatever listened there, which was
   the first iPhone's live tunnel, so only one iOS 17+ iPhone per Mac could

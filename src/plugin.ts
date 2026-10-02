@@ -205,16 +205,8 @@ class XenonPlugin extends BasePlugin {
     } catch (err: any) {
       log.warn(`[plugin] RecordingOrchestrator.recoverOnBoot failed: ${err?.message}`);
     }
-
-    // Reap orphan go-ios tunnels left by a previous run or a hard-killed/crashed
-    // process. A fresh server owns no tunnels, so any surviving go-ios agents are
-    // orphans that would otherwise keep self-forking into a runaway process storm.
-    try {
-      const { default: IOSStreamService } = await import('./device-managers/ios/IOSStreamService');
-      await Container.get(IOSStreamService).reapOrphanTunnels();
-    } catch (err: any) {
-      log.warn(`[plugin] IOSStreamService.reapOrphanTunnels failed: ${err?.message}`);
-    }
+    // Leftover go-ios is reaped by ServerManager.updateServer, before device
+    // detection starts: here, the reap killed detection's own go-ios calls.
   }
 
   async createSession(
