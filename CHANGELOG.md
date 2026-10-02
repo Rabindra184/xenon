@@ -6,6 +6,31 @@ This project follows [Semantic Versioning](https://semver.org/). Releases are
 published to npm automatically when `package.json`'s `version` changes on `main`
 (see `.github/workflows/npm-publish.yml`).
 
+## 2.9.2
+
+**Xenon reaches WebDriverAgent only through a phone's own forwarded port.**
+
+No database migration, and no configuration to change.
+
+### Fixed
+
+- **A simulator's WebDriverAgent commands can no longer reach an iPhone**
+  (#418). When a command to WebDriverAgent failed, `WDAClient` retried it at
+  the device's network address, port 8100. A simulator's address is this
+  Mac's own, where 8100 can be an iPhone's forwarded WebDriverAgent, so a
+  failing simulator could send taps and typing to an iPhone. The stream
+  watchdog likewise took whatever answered there as the device's
+  WebDriverAgent being alive. Both fallbacks are removed. A dead or hung
+  forward is now "not responsive" and gets the watchdog's normal restart,
+  as it always did on a real iPhone.
+
+### Removed
+
+- **The iPhone network-address lookup** (#418). Detection ran `ios info` on
+  every iPhone at every pass to read an address go-ios never reports, so the
+  address was always empty. Real iPhones behave as before, with one go-ios
+  call fewer per phone per detection pass.
+
 ## 2.9.1
 
 **Xenon's startup no longer kills its own iPhone detection, plus clean-ups to
