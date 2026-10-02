@@ -1174,9 +1174,17 @@ Multi-device live preview + group recording surface. Uses a custom `useReducer` 
   `(original_strategy, original_selector, createdAt)` for one selector's.
   Through 2.10 only the last existed: the "To fix" list took 2.5 s on a
   million commands and each session lookup read the whole table.
-  `session-log-indexes.spec.ts` runs the Selector Health and session reads
-  and fails on any step SQLite plans as a scan (`EXPLAIN QUERY PLAN`, via
-  `useScratchDatabase({ captureQueries: true })`).
+- **Log** (a session's device and debug lines, hundreds a session) and
+  **Profiling** (written before 2.10 only) are read by session on every
+  session page and deleted by session in cleanup: `(session_id, log_type,
+  createdAt)` and `(session_id, timestamp)`. Through 2.10 neither had an
+  index, and cleaning up a build of 100 sessions took 97 s on 2.5 million
+  log lines (4 s now).
+- `session-log-indexes.spec.ts` runs the Selector Health and session reads,
+  and cleanup's deletes, and fails on any step SQLite plans as a scan of
+  these tables (`EXPLAIN QUERY PLAN`, via
+  `useScratchDatabase({ captureQueries: true })`). A new read by session
+  belongs in it.
 - **DeviceStore** — in-memory device cache synchronized with the database
 - **QueueService** — queues session requests when all devices are busy
 

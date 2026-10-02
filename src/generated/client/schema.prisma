@@ -104,6 +104,8 @@ model Log {
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
   session    Session  @relation(fields: [session_id], references: [id])
+
+  @@index([session_id, log_type, createdAt])
 }
 
 model Profiling {
@@ -119,6 +121,8 @@ model Profiling {
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
   session           Session  @relation(fields: [session_id], references: [id])
+
+  @@index([session_id, timestamp])
 }
 
 /// CPU and memory sampled every 2 s while a session runs (SessionMetricsService).
