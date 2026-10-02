@@ -2,7 +2,7 @@ import React from 'react';
 import { afterEach, describe, it, expect, vi } from 'vitest';
 import { act, render, screen } from '@testing-library/react';
 import XenonApiService from '../../api-service';
-import { METRICS_REFRESH_MS, PerformancePanel } from './performance-panel';
+import { METRICS_REFRESH_MS, PerformancePanel, memoryAxisMax } from './performance-panel';
 
 const android = (n: number) => ({
   platform: 'android',
@@ -28,6 +28,14 @@ const ios = (n: number) => ({
 const answer = (body: unknown) =>
   vi.spyOn(XenonApiService, 'getSessionMetrics').mockResolvedValue(body as any);
 
+describe('memoryAxisMax', () => {
+  it('rounds to MB below a gigabyte and to whole GB above', () => {
+    expect(memoryAxisMax(0)).toBe(1);
+    expect(memoryAxisMax(232)).toBe(250);
+    expect(memoryAxisMax(5620.8)).toBe(6144);
+  });
+});
+
 describe('PerformancePanel', () => {
   afterEach(() => {
     vi.restoreAllMocks();
@@ -39,7 +47,10 @@ describe('PerformancePanel', () => {
     render(<PerformancePanel sessionId="s1" running={false} hasTrace={false} />);
 
     expect(await screen.findByRole('img', { name: 'CPU over the session' })).toBeTruthy();
-    expect(screen.getByRole('img', { name: 'Memory over the session' })).toBeTruthy();
+    // The app's memory gets its own chart: beside the device's gigabytes its
+    // line would lie flat along the bottom.
+    expect(screen.getByRole('img', { name: 'App memory over the session' })).toBeTruthy();
+    expect(screen.getByRole('img', { name: 'Device memory over the session' })).toBeTruthy();
     expect(screen.getAllByText('com.acme.shop').length).toBeGreaterThan(0);
     expect(screen.getByText(/peak 304 MB/)).toBeTruthy();
   });
@@ -49,7 +60,7 @@ describe('PerformancePanel', () => {
     render(<PerformancePanel sessionId="s1" running={false} hasTrace />);
 
     expect(await screen.findByRole('img', { name: 'CPU over the session' })).toBeTruthy();
-    expect(screen.queryByRole('img', { name: 'Memory over the session' })).toBeNull();
+    expect(screen.queryByRole('img', { name: /memory over the session/ })).toBeNull();
     expect(screen.getByText(/iPhone: device CPU only/)).toBeTruthy();
     expect(screen.getByText(/Instruments trace is under Details/)).toBeTruthy();
   });

@@ -3,7 +3,7 @@ import { Activity } from 'lucide-react';
 import { Card } from '../ui/Card';
 import { EmptyState } from '../ui/EmptyState';
 import XenonApiService from '../../api-service';
-import { ChartSeries, LineChart } from './line-chart';
+import { ChartSeries, LineChart, niceMax } from './line-chart';
 import { SessionMetrics, asSessionMetrics, formatMb, formatPct, stats } from './performance';
 
 /** How often a running session's figures are asked for: one write's worth. */
@@ -12,6 +12,17 @@ export const METRICS_REFRESH_MS = 10_000;
 const DEVICE = 'var(--color-info)';
 const APP = 'var(--color-accent)';
 const TOTAL = 'var(--border-strong)';
+
+/** The top of a memory axis: a round number of MB below a gigabyte, of GB above. */
+export function memoryAxisMax(maxMb: number): number {
+  return maxMb >= 1024 ? niceMax(maxMb / 1024) * 1024 : niceMax(maxMb);
+}
+
+const peakOf = (series: ChartSeries[]): number => {
+  let max = 0;
+  for (const s of series) for (const v of s.values) if (v !== null && v > max) max = v;
+  return max;
+};
 
 interface Props {
   sessionId: string;
@@ -101,7 +112,10 @@ export const PerformancePanel: React.FC<Props> = ({ sessionId, running, hasTrace
   const appLabel = metrics?.appId ?? 'App';
 
   const cpu: ChartSeries[] = [];
-  const mem: ChartSeries[] = [];
+  // The app's memory has its own chart: beside the device's gigabytes its
+  // line would lie flat along the bottom.
+  const appMem: ChartSeries[] = [];
+  const deviceMem: ChartSeries[] = [];
   if (metrics) {
     if (metrics.series.deviceCpu) {
       cpu.push({
@@ -120,7 +134,7 @@ export const PerformancePanel: React.FC<Props> = ({ sessionId, running, hasTrace
       });
     }
     if (metrics.series.appMem) {
-      mem.push({
+      appMem.push({
         key: 'appMem',
         label: appLabel,
         color: APP,
@@ -128,13 +142,13 @@ export const PerformancePanel: React.FC<Props> = ({ sessionId, running, hasTrace
       });
     }
     if (metrics.series.deviceMem) {
-      mem.push({
+      deviceMem.push({
         key: 'deviceMem',
         label: 'Device used',
         color: DEVICE,
         values: samples.map((s) => s.deviceMemMb),
       });
-      mem.push({
+      deviceMem.push({
         key: 'deviceTotal',
         label: 'Device total',
         color: TOTAL,
@@ -181,13 +195,24 @@ export const PerformancePanel: React.FC<Props> = ({ sessionId, running, hasTrace
             ariaLabel="CPU over the session"
           />
         )}
-        {mem.length > 0 && (
+        {appMem.length > 0 && (
           <ChartBlock
-            title="Memory"
-            series={mem}
+            title="App memory"
+            series={appMem}
             times={times}
+            yMax={memoryAxisMax(peakOf(appMem))}
             format={formatMb}
-            ariaLabel="Memory over the session"
+            ariaLabel="App memory over the session"
+          />
+        )}
+        {deviceMem.length > 0 && (
+          <ChartBlock
+            title="Device memory"
+            series={deviceMem}
+            times={times}
+            yMax={memoryAxisMax(peakOf(deviceMem))}
+            format={formatMb}
+            ariaLabel="Device memory over the session"
           />
         )}
       </div>
