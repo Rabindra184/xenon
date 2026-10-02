@@ -1301,7 +1301,7 @@ route-mock their data endpoints via `ROUTE_DATA_MOCKS` with deliberately
 wide/hostile payloads — multiple rows plus a >100-char session subtitle, an
 >80-char selector XPath, a long bundle id, and long team/user names/emails — and
 a paired `ROUTE_CONTENT_CHECKS` assertion proves the route's real rows/grid
-actually mounted (e.g. `.sh-table__row` or `table tbody tr` `not.toHaveCount(0)`)
+actually mounted (e.g. `section[aria-label="Selectors"] tbody tr` or `table tbody tr` `not.toHaveCount(0)`)
 rather than an `<EmptyState>` placeholder, before the overflow scan runs — a
 table with zero rows has nothing to overflow, so without this a broken mock
 would pass vacuously. The device-control route keeps its own dedicated device

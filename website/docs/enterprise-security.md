@@ -40,9 +40,9 @@ Tokens carry one or more scopes:
 | Scope | Grants |
 |---|---|
 | `read` | All `GET` endpoints — dashboard polling, log pulls, metric scrapes. |
-| `sessions` | Session lifecycle mutations (cancel, set status, attach evidence). |
+| `sessions` | Session lifecycle mutations (cancel, set status, attach evidence), and Selector Health actions (mark fixed, mute, unmute, cancel verification). |
 | `devices` | Device control mutations (block, unblock, reset, reservation, hub-node `/register` and `/unblock`). |
-| `admin` | Super-scope. Includes everything above plus user / team / API-key management, config writes, healing-state writes, digest webhooks. |
+| `admin` | Super-scope. Includes everything above plus user / team / API-key management, config writes, digest webhooks. |
 
 `admin` always satisfies a scope check. Mutation-only guards let `GET` traffic through with any authenticated token but require the listed scope for `POST`/`PUT`/`PATCH`/`DELETE` on the same resource.
 
@@ -70,7 +70,7 @@ The matrix below is what the live router code enforces. Two guards stack: `roleG
 | `/grid/queue/*`, `/grid/sessions/active` | `GET` | `MEMBER` | _none_ | Same team filter applies. |
 | `/grid/node`, `/grid/node/:host/status` | `GET` | `MEMBER` | _none_ | |
 | `/dashboard/session`, `/dashboard/session/:id`, `/dashboard/build` | `GET` | `MEMBER` | _none_ | |
-| `/dashboard/healing/*` (events, summary, hotspots, selector, state) | `GET` | `MEMBER` | _none_ | |
+| `/dashboard/healing/*` (events, summary, hotspots, selector, selectors, selectors/detail, state) | `GET` | `MEMBER` | _none_ | Heal data counts only sessions the caller can see. `selectors` and `selectors/detail` list only selectors healed in such a session; any other answers `404`, exactly as an unknown one. |
 | `/control/:udid/screenshot`, `/control/:udid/clipboard`, `/control/:udid/apps`, `/control/:udid/logs` | `GET` | `MEMBER` | _none_ | Mutations on `/control` need `devices` (see below). |
 | `/apps`, `/apps/:id/download` | `GET` | `MEMBER` | _none_ | |
 | `/recordings/:groupId`, `/recordings/:groupId/composite.mp4`, `/recordings/:groupId/bundle.zip` | `GET` | `MEMBER` | _none_ | |
@@ -86,6 +86,12 @@ The matrix below is what the live router code enforces. Two guards stack: `roleG
 | `/control/:udid/clipboard` | `POST` | `MEMBER` | `devices` | |
 | `/reservation`, `/reservation/:udid/:host`, `/reservation/:udid/:host/extend` | `POST` / `DELETE` | `MEMBER` | `devices` | |
 | `/recordings`, `/recordings/:groupId/{add-device,stop,bookmark,annotation}` | `POST` | `MEMBER` | _none_ | Recording control is per-user; no scope guard. |
+
+### Selector Health lifecycle — `sessions` scope
+
+| Endpoint | Method | Min role | Scope | Notes |
+|---|---|---|---|---|
+| `/dashboard/healing/selector/state` | `POST` | `MEMBER` | `sessions` | Mark fixed, mute, unmute, cancel verification, on a selector healed in a session the caller can see (`404` otherwise, as for an unknown one). A selector's status is lab-wide: a mute leaves it out of every team's list, CI gate (`/dashboard/healing/hotspots/violations`) and digest. Every change is recorded with the person who made it and, for a mute, an optional reason (up to 500 characters), shown in the selector's activity. |
 
 ### Device administration — `ADMIN` + `devices`
 
@@ -111,7 +117,6 @@ The matrix below is what the live router code enforces. Two guards stack: `roleG
 | `/apikeys`, `/apikeys/:id` | all | `ADMIN` | `admin` | Programmatic API-key management (separate from per-user `/profile/tokens`). |
 | `/grid/device/:udid/team` | `PUT` | `ADMIN` | `admin` | Cross-team device reassignment. |
 | `/dashboard/healing/digest/send` | `POST` | `ADMIN` | `admin` | |
-| `/dashboard/healing/selector/state` | `POST` | `ADMIN` | `admin` | Mark-fixed / mute / etc. |
 | `/webhook`, `/webhook/:id`, `/webhook/test` | all | `ADMIN` | `admin` | |
 | `/processes` | `GET` | `ADMIN` | `admin` | Live process snapshot for ops debugging. |
 | `/interceptor/*` | all | `ADMIN` | _router-level role-only_ | Per-session HTTP interceptor + HAR + mocks. |
