@@ -10,7 +10,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@v7
         with:
           node-version: '22'
           cache: 'npm'
@@ -40,11 +40,13 @@ jobs:
         with:
           fetch-depth: 2
 
-      # Not v7 yet: v7 stops exporting a placeholder NODE_AUTH_TOKEN, and the
-      # npm install below runs with registry-url's .npmrc but no token. That
-      # needs one run of this job (main only) to confirm before moving.
+      # v7 no longer exports a placeholder NODE_AUTH_TOKEN. The npm install
+      # below runs with registry-url's .npmrc and no token: npm 10 sends the
+      # unset ${NODE_AUTH_TOKEN} as literal text, which the registry ignores
+      # for public packages, as it ignored the placeholder. Publish sets the
+      # real token itself.
       - name: Setup Node.js
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@v7
         with:
           node-version: '22'
           registry-url: 'https://registry.npmjs.org'
