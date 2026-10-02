@@ -29,8 +29,12 @@ describe('SelectorVerificationJob.run', () => {
         findMany: sinon.stub(),
         update: sinon.stub().resolves({}),
       },
+      selectorEvent: { create: sinon.stub().resolves({}) },
       $queryRaw: sinon.stub(),
     };
+    prismaStub.$transaction = sinon
+      .stub()
+      .callsFake((fn: (tx: unknown) => Promise<unknown>) => fn(prismaStub));
     socketStub = { emitToDashboard: sinon.stub() };
     job = new SelectorVerificationJob(prismaStub, socketStub);
   });
@@ -213,5 +217,42 @@ describe('SelectorVerificationJob.run', () => {
     await job.run();
 
     expect(prismaStub.$queryRaw.called).to.be.false;
+  });
+
+  it('records the verification, with nobody as its person', async () => {
+    prismaStub.selectorState.findMany.resolves([
+      {
+        id: 'r-1',
+        original_strategy: 'xpath',
+        original_selector: '//x',
+        status: 'pending',
+        fixed_at: new Date('2026-04-20T00:00:00Z'),
+        clean_builds_count: 2,
+      },
+    ]);
+    prismaStub.$queryRaw.resolves([
+      { build_id: 'b-1', healed: 0 },
+      { build_id: 'b-2', healed: 0 },
+      { build_id: 'b-3', healed: 0 },
+    ]);
+    prismaStub.selectorState.update.resolves({
+      id: 'r-1',
+      original_strategy: 'xpath',
+      original_selector: '//x',
+      status: 'resolved',
+      clean_builds_count: 3,
+      resolved_at: new Date(),
+    });
+
+    await job.run();
+
+    expect(prismaStub.selectorEvent.create.calledOnce).to.equal(true);
+    expect(prismaStub.selectorEvent.create.firstCall.args[0].data).to.deep.equal({
+      original_strategy: 'xpath',
+      original_selector: '//x',
+      action: 'verified',
+      user_id: null,
+      reason: null,
+    });
   });
 });
