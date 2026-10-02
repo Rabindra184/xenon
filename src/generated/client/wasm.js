@@ -211,6 +211,18 @@ exports.Prisma.ProfilingScalarFieldEnum = {
   updatedAt: 'updatedAt'
 };
 
+exports.Prisma.SessionMetricScalarFieldEnum = {
+  id: 'id',
+  session_id: 'session_id',
+  at: 'at',
+  device_cpu_pct: 'device_cpu_pct',
+  device_mem_mb: 'device_mem_mb',
+  device_mem_total: 'device_mem_total',
+  app_cpu_pct: 'app_cpu_pct',
+  app_mem_mb: 'app_mem_mb',
+  app_id: 'app_id'
+};
+
 exports.Prisma.AppScalarFieldEnum = {
   id: 'id',
   name: 'name',
@@ -510,6 +522,7 @@ exports.Prisma.ModelName = {
   SessionLog: 'SessionLog',
   Log: 'Log',
   Profiling: 'Profiling',
+  SessionMetric: 'SessionMetric',
   App: 'App',
   Device: 'Device',
   PendingSession: 'PendingSession',

@@ -39,6 +39,11 @@ export type Log = $Result.DefaultSelection<Prisma.$LogPayload>
  */
 export type Profiling = $Result.DefaultSelection<Prisma.$ProfilingPayload>
 /**
+ * Model SessionMetric
+ * CPU and memory sampled every 2 s while a session runs (SessionMetricsService).
+ */
+export type SessionMetric = $Result.DefaultSelection<Prisma.$SessionMetricPayload>
+/**
  * Model App
  * 
  */
@@ -316,6 +321,16 @@ export class PrismaClient<
     * ```
     */
   get profiling(): Prisma.ProfilingDelegate<ExtArgs>;
+
+  /**
+   * `prisma.sessionMetric`: Exposes CRUD operations for the **SessionMetric** model.
+    * Example usage:
+    * ```ts
+    * // Fetch zero or more SessionMetrics
+    * const sessionMetrics = await prisma.sessionMetric.findMany()
+    * ```
+    */
+  get sessionMetric(): Prisma.SessionMetricDelegate<ExtArgs>;
 
   /**
    * `prisma.app`: Exposes CRUD operations for the **App** model.
@@ -972,6 +987,7 @@ export namespace Prisma {
     SessionLog: 'SessionLog',
     Log: 'Log',
     Profiling: 'Profiling',
+    SessionMetric: 'SessionMetric',
     App: 'App',
     Device: 'Device',
     PendingSession: 'PendingSession',
@@ -1008,7 +1024,7 @@ export namespace Prisma {
 
   export type TypeMap<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs, ClientOptions = {}> = {
     meta: {
-      modelProps: "build" | "session" | "sessionLog" | "log" | "profiling" | "app" | "device" | "pendingSession" | "cLIArgs" | "webhookConfig" | "webConfig" | "locatorEtalon" | "portLease" | "lease" | "apiKey" | "team" | "selectorState" | "recording" | "bookmark" | "annotation" | "user" | "userSession" | "passwordResetToken" | "teamMember" | "eventLog" | "project"
+      modelProps: "build" | "session" | "sessionLog" | "log" | "profiling" | "sessionMetric" | "app" | "device" | "pendingSession" | "cLIArgs" | "webhookConfig" | "webConfig" | "locatorEtalon" | "portLease" | "lease" | "apiKey" | "team" | "selectorState" | "recording" | "bookmark" | "annotation" | "user" | "userSession" | "passwordResetToken" | "teamMember" | "eventLog" | "project"
       txIsolationLevel: Prisma.TransactionIsolationLevel
     }
     model: {
@@ -1359,6 +1375,76 @@ export namespace Prisma {
           count: {
             args: Prisma.ProfilingCountArgs<ExtArgs>
             result: $Utils.Optional<ProfilingCountAggregateOutputType> | number
+          }
+        }
+      }
+      SessionMetric: {
+        payload: Prisma.$SessionMetricPayload<ExtArgs>
+        fields: Prisma.SessionMetricFieldRefs
+        operations: {
+          findUnique: {
+            args: Prisma.SessionMetricFindUniqueArgs<ExtArgs>
+            result: $Utils.PayloadToResult<Prisma.$SessionMetricPayload> | null
+          }
+          findUniqueOrThrow: {
+            args: Prisma.SessionMetricFindUniqueOrThrowArgs<ExtArgs>
+            result: $Utils.PayloadToResult<Prisma.$SessionMetricPayload>
+          }
+          findFirst: {
+            args: Prisma.SessionMetricFindFirstArgs<ExtArgs>
+            result: $Utils.PayloadToResult<Prisma.$SessionMetricPayload> | null
+          }
+          findFirstOrThrow: {
+            args: Prisma.SessionMetricFindFirstOrThrowArgs<ExtArgs>
+            result: $Utils.PayloadToResult<Prisma.$SessionMetricPayload>
+          }
+          findMany: {
+            args: Prisma.SessionMetricFindManyArgs<ExtArgs>
+            result: $Utils.PayloadToResult<Prisma.$SessionMetricPayload>[]
+          }
+          create: {
+            args: Prisma.SessionMetricCreateArgs<ExtArgs>
+            result: $Utils.PayloadToResult<Prisma.$SessionMetricPayload>
+          }
+          createMany: {
+            args: Prisma.SessionMetricCreateManyArgs<ExtArgs>
+            result: BatchPayload
+          }
+          createManyAndReturn: {
+            args: Prisma.SessionMetricCreateManyAndReturnArgs<ExtArgs>
+            result: $Utils.PayloadToResult<Prisma.$SessionMetricPayload>[]
+          }
+          delete: {
+            args: Prisma.SessionMetricDeleteArgs<ExtArgs>
+            result: $Utils.PayloadToResult<Prisma.$SessionMetricPayload>
+          }
+          update: {
+            args: Prisma.SessionMetricUpdateArgs<ExtArgs>
+            result: $Utils.PayloadToResult<Prisma.$SessionMetricPayload>
+          }
+          deleteMany: {
+            args: Prisma.SessionMetricDeleteManyArgs<ExtArgs>
+            result: BatchPayload
+          }
+          updateMany: {
+            args: Prisma.SessionMetricUpdateManyArgs<ExtArgs>
+            result: BatchPayload
+          }
+          upsert: {
+            args: Prisma.SessionMetricUpsertArgs<ExtArgs>
+            result: $Utils.PayloadToResult<Prisma.$SessionMetricPayload>
+          }
+          aggregate: {
+            args: Prisma.SessionMetricAggregateArgs<ExtArgs>
+            result: $Utils.Optional<AggregateSessionMetric>
+          }
+          groupBy: {
+            args: Prisma.SessionMetricGroupByArgs<ExtArgs>
+            result: $Utils.Optional<SessionMetricGroupByOutputType>[]
+          }
+          count: {
+            args: Prisma.SessionMetricCountArgs<ExtArgs>
+            result: $Utils.Optional<SessionMetricCountAggregateOutputType> | number
           }
         }
       }
@@ -3026,6 +3112,7 @@ export namespace Prisma {
   export type SessionCountOutputType = {
     Log: number
     Profiling: number
+    SessionMetric: number
     SessionLog: number
     Recording: number
   }
@@ -3033,6 +3120,7 @@ export namespace Prisma {
   export type SessionCountOutputTypeSelect<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
     Log?: boolean | SessionCountOutputTypeCountLogArgs
     Profiling?: boolean | SessionCountOutputTypeCountProfilingArgs
+    SessionMetric?: boolean | SessionCountOutputTypeCountSessionMetricArgs
     SessionLog?: boolean | SessionCountOutputTypeCountSessionLogArgs
     Recording?: boolean | SessionCountOutputTypeCountRecordingArgs
   }
@@ -3060,6 +3148,13 @@ export namespace Prisma {
    */
   export type SessionCountOutputTypeCountProfilingArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
     where?: ProfilingWhereInput
+  }
+
+  /**
+   * SessionCountOutputType without action
+   */
+  export type SessionCountOutputTypeCountSessionMetricArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    where?: SessionMetricWhereInput
   }
 
   /**
@@ -4579,6 +4674,7 @@ export namespace Prisma {
     user_id?: boolean
     Log?: boolean | Session$LogArgs<ExtArgs>
     Profiling?: boolean | Session$ProfilingArgs<ExtArgs>
+    SessionMetric?: boolean | Session$SessionMetricArgs<ExtArgs>
     build?: boolean | Session$buildArgs<ExtArgs>
     SessionLog?: boolean | Session$SessionLogArgs<ExtArgs>
     Recording?: boolean | Session$RecordingArgs<ExtArgs>
@@ -4657,6 +4753,7 @@ export namespace Prisma {
   export type SessionInclude<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
     Log?: boolean | Session$LogArgs<ExtArgs>
     Profiling?: boolean | Session$ProfilingArgs<ExtArgs>
+    SessionMetric?: boolean | Session$SessionMetricArgs<ExtArgs>
     build?: boolean | Session$buildArgs<ExtArgs>
     SessionLog?: boolean | Session$SessionLogArgs<ExtArgs>
     Recording?: boolean | Session$RecordingArgs<ExtArgs>
@@ -4671,6 +4768,7 @@ export namespace Prisma {
     objects: {
       Log: Prisma.$LogPayload<ExtArgs>[]
       Profiling: Prisma.$ProfilingPayload<ExtArgs>[]
+      SessionMetric: Prisma.$SessionMetricPayload<ExtArgs>[]
       build: Prisma.$BuildPayload<ExtArgs> | null
       SessionLog: Prisma.$SessionLogPayload<ExtArgs>[]
       Recording: Prisma.$RecordingPayload<ExtArgs>[]
@@ -5073,6 +5171,7 @@ export namespace Prisma {
     readonly [Symbol.toStringTag]: "PrismaPromise"
     Log<T extends Session$LogArgs<ExtArgs> = {}>(args?: Subset<T, Session$LogArgs<ExtArgs>>): Prisma.PrismaPromise<$Result.GetResult<Prisma.$LogPayload<ExtArgs>, T, "findMany"> | Null>
     Profiling<T extends Session$ProfilingArgs<ExtArgs> = {}>(args?: Subset<T, Session$ProfilingArgs<ExtArgs>>): Prisma.PrismaPromise<$Result.GetResult<Prisma.$ProfilingPayload<ExtArgs>, T, "findMany"> | Null>
+    SessionMetric<T extends Session$SessionMetricArgs<ExtArgs> = {}>(args?: Subset<T, Session$SessionMetricArgs<ExtArgs>>): Prisma.PrismaPromise<$Result.GetResult<Prisma.$SessionMetricPayload<ExtArgs>, T, "findMany"> | Null>
     build<T extends Session$buildArgs<ExtArgs> = {}>(args?: Subset<T, Session$buildArgs<ExtArgs>>): Prisma__BuildClient<$Result.GetResult<Prisma.$BuildPayload<ExtArgs>, T, "findUniqueOrThrow"> | null, null, ExtArgs>
     SessionLog<T extends Session$SessionLogArgs<ExtArgs> = {}>(args?: Subset<T, Session$SessionLogArgs<ExtArgs>>): Prisma.PrismaPromise<$Result.GetResult<Prisma.$SessionLogPayload<ExtArgs>, T, "findMany"> | Null>
     Recording<T extends Session$RecordingArgs<ExtArgs> = {}>(args?: Subset<T, Session$RecordingArgs<ExtArgs>>): Prisma.PrismaPromise<$Result.GetResult<Prisma.$RecordingPayload<ExtArgs>, T, "findMany"> | Null>
@@ -5489,6 +5588,26 @@ export namespace Prisma {
     take?: number
     skip?: number
     distinct?: ProfilingScalarFieldEnum | ProfilingScalarFieldEnum[]
+  }
+
+  /**
+   * Session.SessionMetric
+   */
+  export type Session$SessionMetricArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the SessionMetric
+     */
+    select?: SessionMetricSelect<ExtArgs> | null
+    /**
+     * Choose, which related nodes to fetch as well
+     */
+    include?: SessionMetricInclude<ExtArgs> | null
+    where?: SessionMetricWhereInput
+    orderBy?: SessionMetricOrderByWithRelationInput | SessionMetricOrderByWithRelationInput[]
+    cursor?: SessionMetricWhereUniqueInput
+    take?: number
+    skip?: number
+    distinct?: SessionMetricScalarFieldEnum | SessionMetricScalarFieldEnum[]
   }
 
   /**
@@ -8747,6 +8866,1049 @@ export namespace Prisma {
      * Choose, which related nodes to fetch as well
      */
     include?: ProfilingInclude<ExtArgs> | null
+  }
+
+
+  /**
+   * Model SessionMetric
+   */
+
+  export type AggregateSessionMetric = {
+    _count: SessionMetricCountAggregateOutputType | null
+    _avg: SessionMetricAvgAggregateOutputType | null
+    _sum: SessionMetricSumAggregateOutputType | null
+    _min: SessionMetricMinAggregateOutputType | null
+    _max: SessionMetricMaxAggregateOutputType | null
+  }
+
+  export type SessionMetricAvgAggregateOutputType = {
+    id: number | null
+    at: number | null
+    device_cpu_pct: number | null
+    device_mem_mb: number | null
+    device_mem_total: number | null
+    app_cpu_pct: number | null
+    app_mem_mb: number | null
+  }
+
+  export type SessionMetricSumAggregateOutputType = {
+    id: number | null
+    at: number | null
+    device_cpu_pct: number | null
+    device_mem_mb: number | null
+    device_mem_total: number | null
+    app_cpu_pct: number | null
+    app_mem_mb: number | null
+  }
+
+  export type SessionMetricMinAggregateOutputType = {
+    id: number | null
+    session_id: string | null
+    at: number | null
+    device_cpu_pct: number | null
+    device_mem_mb: number | null
+    device_mem_total: number | null
+    app_cpu_pct: number | null
+    app_mem_mb: number | null
+    app_id: string | null
+  }
+
+  export type SessionMetricMaxAggregateOutputType = {
+    id: number | null
+    session_id: string | null
+    at: number | null
+    device_cpu_pct: number | null
+    device_mem_mb: number | null
+    device_mem_total: number | null
+    app_cpu_pct: number | null
+    app_mem_mb: number | null
+    app_id: string | null
+  }
+
+  export type SessionMetricCountAggregateOutputType = {
+    id: number
+    session_id: number
+    at: number
+    device_cpu_pct: number
+    device_mem_mb: number
+    device_mem_total: number
+    app_cpu_pct: number
+    app_mem_mb: number
+    app_id: number
+    _all: number
+  }
+
+
+  export type SessionMetricAvgAggregateInputType = {
+    id?: true
+    at?: true
+    device_cpu_pct?: true
+    device_mem_mb?: true
+    device_mem_total?: true
+    app_cpu_pct?: true
+    app_mem_mb?: true
+  }
+
+  export type SessionMetricSumAggregateInputType = {
+    id?: true
+    at?: true
+    device_cpu_pct?: true
+    device_mem_mb?: true
+    device_mem_total?: true
+    app_cpu_pct?: true
+    app_mem_mb?: true
+  }
+
+  export type SessionMetricMinAggregateInputType = {
+    id?: true
+    session_id?: true
+    at?: true
+    device_cpu_pct?: true
+    device_mem_mb?: true
+    device_mem_total?: true
+    app_cpu_pct?: true
+    app_mem_mb?: true
+    app_id?: true
+  }
+
+  export type SessionMetricMaxAggregateInputType = {
+    id?: true
+    session_id?: true
+    at?: true
+    device_cpu_pct?: true
+    device_mem_mb?: true
+    device_mem_total?: true
+    app_cpu_pct?: true
+    app_mem_mb?: true
+    app_id?: true
+  }
+
+  export type SessionMetricCountAggregateInputType = {
+    id?: true
+    session_id?: true
+    at?: true
+    device_cpu_pct?: true
+    device_mem_mb?: true
+    device_mem_total?: true
+    app_cpu_pct?: true
+    app_mem_mb?: true
+    app_id?: true
+    _all?: true
+  }
+
+  export type SessionMetricAggregateArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Filter which SessionMetric to aggregate.
+     */
+    where?: SessionMetricWhereInput
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/sorting Sorting Docs}
+     * 
+     * Determine the order of SessionMetrics to fetch.
+     */
+    orderBy?: SessionMetricOrderByWithRelationInput | SessionMetricOrderByWithRelationInput[]
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination#cursor-based-pagination Cursor Docs}
+     * 
+     * Sets the start position
+     */
+    cursor?: SessionMetricWhereUniqueInput
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination Pagination Docs}
+     * 
+     * Take `±n` SessionMetrics from the position of the cursor.
+     */
+    take?: number
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination Pagination Docs}
+     * 
+     * Skip the first `n` SessionMetrics.
+     */
+    skip?: number
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/aggregations Aggregation Docs}
+     * 
+     * Count returned SessionMetrics
+    **/
+    _count?: true | SessionMetricCountAggregateInputType
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/aggregations Aggregation Docs}
+     * 
+     * Select which fields to average
+    **/
+    _avg?: SessionMetricAvgAggregateInputType
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/aggregations Aggregation Docs}
+     * 
+     * Select which fields to sum
+    **/
+    _sum?: SessionMetricSumAggregateInputType
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/aggregations Aggregation Docs}
+     * 
+     * Select which fields to find the minimum value
+    **/
+    _min?: SessionMetricMinAggregateInputType
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/aggregations Aggregation Docs}
+     * 
+     * Select which fields to find the maximum value
+    **/
+    _max?: SessionMetricMaxAggregateInputType
+  }
+
+  export type GetSessionMetricAggregateType<T extends SessionMetricAggregateArgs> = {
+        [P in keyof T & keyof AggregateSessionMetric]: P extends '_count' | 'count'
+      ? T[P] extends true
+        ? number
+        : GetScalarType<T[P], AggregateSessionMetric[P]>
+      : GetScalarType<T[P], AggregateSessionMetric[P]>
+  }
+
+
+
+
+  export type SessionMetricGroupByArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    where?: SessionMetricWhereInput
+    orderBy?: SessionMetricOrderByWithAggregationInput | SessionMetricOrderByWithAggregationInput[]
+    by: SessionMetricScalarFieldEnum[] | SessionMetricScalarFieldEnum
+    having?: SessionMetricScalarWhereWithAggregatesInput
+    take?: number
+    skip?: number
+    _count?: SessionMetricCountAggregateInputType | true
+    _avg?: SessionMetricAvgAggregateInputType
+    _sum?: SessionMetricSumAggregateInputType
+    _min?: SessionMetricMinAggregateInputType
+    _max?: SessionMetricMaxAggregateInputType
+  }
+
+  export type SessionMetricGroupByOutputType = {
+    id: number
+    session_id: string
+    at: number
+    device_cpu_pct: number | null
+    device_mem_mb: number | null
+    device_mem_total: number | null
+    app_cpu_pct: number | null
+    app_mem_mb: number | null
+    app_id: string | null
+    _count: SessionMetricCountAggregateOutputType | null
+    _avg: SessionMetricAvgAggregateOutputType | null
+    _sum: SessionMetricSumAggregateOutputType | null
+    _min: SessionMetricMinAggregateOutputType | null
+    _max: SessionMetricMaxAggregateOutputType | null
+  }
+
+  type GetSessionMetricGroupByPayload<T extends SessionMetricGroupByArgs> = Prisma.PrismaPromise<
+    Array<
+      PickEnumerable<SessionMetricGroupByOutputType, T['by']> &
+        {
+          [P in ((keyof T) & (keyof SessionMetricGroupByOutputType))]: P extends '_count'
+            ? T[P] extends boolean
+              ? number
+              : GetScalarType<T[P], SessionMetricGroupByOutputType[P]>
+            : GetScalarType<T[P], SessionMetricGroupByOutputType[P]>
+        }
+      >
+    >
+
+
+  export type SessionMetricSelect<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = $Extensions.GetSelect<{
+    id?: boolean
+    session_id?: boolean
+    at?: boolean
+    device_cpu_pct?: boolean
+    device_mem_mb?: boolean
+    device_mem_total?: boolean
+    app_cpu_pct?: boolean
+    app_mem_mb?: boolean
+    app_id?: boolean
+    session?: boolean | SessionDefaultArgs<ExtArgs>
+  }, ExtArgs["result"]["sessionMetric"]>
+
+  export type SessionMetricSelectCreateManyAndReturn<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = $Extensions.GetSelect<{
+    id?: boolean
+    session_id?: boolean
+    at?: boolean
+    device_cpu_pct?: boolean
+    device_mem_mb?: boolean
+    device_mem_total?: boolean
+    app_cpu_pct?: boolean
+    app_mem_mb?: boolean
+    app_id?: boolean
+    session?: boolean | SessionDefaultArgs<ExtArgs>
+  }, ExtArgs["result"]["sessionMetric"]>
+
+  export type SessionMetricSelectScalar = {
+    id?: boolean
+    session_id?: boolean
+    at?: boolean
+    device_cpu_pct?: boolean
+    device_mem_mb?: boolean
+    device_mem_total?: boolean
+    app_cpu_pct?: boolean
+    app_mem_mb?: boolean
+    app_id?: boolean
+  }
+
+  export type SessionMetricInclude<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    session?: boolean | SessionDefaultArgs<ExtArgs>
+  }
+  export type SessionMetricIncludeCreateManyAndReturn<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    session?: boolean | SessionDefaultArgs<ExtArgs>
+  }
+
+  export type $SessionMetricPayload<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    name: "SessionMetric"
+    objects: {
+      session: Prisma.$SessionPayload<ExtArgs>
+    }
+    scalars: $Extensions.GetPayloadResult<{
+      id: number
+      session_id: string
+      /**
+       * epoch ms
+       */
+      at: number
+      device_cpu_pct: number | null
+      device_mem_mb: number | null
+      device_mem_total: number | null
+      app_cpu_pct: number | null
+      app_mem_mb: number | null
+      /**
+       * The package the app figures are for (Android), else null.
+       */
+      app_id: string | null
+    }, ExtArgs["result"]["sessionMetric"]>
+    composites: {}
+  }
+
+  type SessionMetricGetPayload<S extends boolean | null | undefined | SessionMetricDefaultArgs> = $Result.GetResult<Prisma.$SessionMetricPayload, S>
+
+  type SessionMetricCountArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = 
+    Omit<SessionMetricFindManyArgs, 'select' | 'include' | 'distinct'> & {
+      select?: SessionMetricCountAggregateInputType | true
+    }
+
+  export interface SessionMetricDelegate<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> {
+    [K: symbol]: { types: Prisma.TypeMap<ExtArgs>['model']['SessionMetric'], meta: { name: 'SessionMetric' } }
+    /**
+     * Find zero or one SessionMetric that matches the filter.
+     * @param {SessionMetricFindUniqueArgs} args - Arguments to find a SessionMetric
+     * @example
+     * // Get one SessionMetric
+     * const sessionMetric = await prisma.sessionMetric.findUnique({
+     *   where: {
+     *     // ... provide filter here
+     *   }
+     * })
+     */
+    findUnique<T extends SessionMetricFindUniqueArgs>(args: SelectSubset<T, SessionMetricFindUniqueArgs<ExtArgs>>): Prisma__SessionMetricClient<$Result.GetResult<Prisma.$SessionMetricPayload<ExtArgs>, T, "findUnique"> | null, null, ExtArgs>
+
+    /**
+     * Find one SessionMetric that matches the filter or throw an error with `error.code='P2025'` 
+     * if no matches were found.
+     * @param {SessionMetricFindUniqueOrThrowArgs} args - Arguments to find a SessionMetric
+     * @example
+     * // Get one SessionMetric
+     * const sessionMetric = await prisma.sessionMetric.findUniqueOrThrow({
+     *   where: {
+     *     // ... provide filter here
+     *   }
+     * })
+     */
+    findUniqueOrThrow<T extends SessionMetricFindUniqueOrThrowArgs>(args: SelectSubset<T, SessionMetricFindUniqueOrThrowArgs<ExtArgs>>): Prisma__SessionMetricClient<$Result.GetResult<Prisma.$SessionMetricPayload<ExtArgs>, T, "findUniqueOrThrow">, never, ExtArgs>
+
+    /**
+     * Find the first SessionMetric that matches the filter.
+     * Note, that providing `undefined` is treated as the value not being there.
+     * Read more here: https://pris.ly/d/null-undefined
+     * @param {SessionMetricFindFirstArgs} args - Arguments to find a SessionMetric
+     * @example
+     * // Get one SessionMetric
+     * const sessionMetric = await prisma.sessionMetric.findFirst({
+     *   where: {
+     *     // ... provide filter here
+     *   }
+     * })
+     */
+    findFirst<T extends SessionMetricFindFirstArgs>(args?: SelectSubset<T, SessionMetricFindFirstArgs<ExtArgs>>): Prisma__SessionMetricClient<$Result.GetResult<Prisma.$SessionMetricPayload<ExtArgs>, T, "findFirst"> | null, null, ExtArgs>
+
+    /**
+     * Find the first SessionMetric that matches the filter or
+     * throw `PrismaKnownClientError` with `P2025` code if no matches were found.
+     * Note, that providing `undefined` is treated as the value not being there.
+     * Read more here: https://pris.ly/d/null-undefined
+     * @param {SessionMetricFindFirstOrThrowArgs} args - Arguments to find a SessionMetric
+     * @example
+     * // Get one SessionMetric
+     * const sessionMetric = await prisma.sessionMetric.findFirstOrThrow({
+     *   where: {
+     *     // ... provide filter here
+     *   }
+     * })
+     */
+    findFirstOrThrow<T extends SessionMetricFindFirstOrThrowArgs>(args?: SelectSubset<T, SessionMetricFindFirstOrThrowArgs<ExtArgs>>): Prisma__SessionMetricClient<$Result.GetResult<Prisma.$SessionMetricPayload<ExtArgs>, T, "findFirstOrThrow">, never, ExtArgs>
+
+    /**
+     * Find zero or more SessionMetrics that matches the filter.
+     * Note, that providing `undefined` is treated as the value not being there.
+     * Read more here: https://pris.ly/d/null-undefined
+     * @param {SessionMetricFindManyArgs} args - Arguments to filter and select certain fields only.
+     * @example
+     * // Get all SessionMetrics
+     * const sessionMetrics = await prisma.sessionMetric.findMany()
+     * 
+     * // Get first 10 SessionMetrics
+     * const sessionMetrics = await prisma.sessionMetric.findMany({ take: 10 })
+     * 
+     * // Only select the `id`
+     * const sessionMetricWithIdOnly = await prisma.sessionMetric.findMany({ select: { id: true } })
+     * 
+     */
+    findMany<T extends SessionMetricFindManyArgs>(args?: SelectSubset<T, SessionMetricFindManyArgs<ExtArgs>>): Prisma.PrismaPromise<$Result.GetResult<Prisma.$SessionMetricPayload<ExtArgs>, T, "findMany">>
+
+    /**
+     * Create a SessionMetric.
+     * @param {SessionMetricCreateArgs} args - Arguments to create a SessionMetric.
+     * @example
+     * // Create one SessionMetric
+     * const SessionMetric = await prisma.sessionMetric.create({
+     *   data: {
+     *     // ... data to create a SessionMetric
+     *   }
+     * })
+     * 
+     */
+    create<T extends SessionMetricCreateArgs>(args: SelectSubset<T, SessionMetricCreateArgs<ExtArgs>>): Prisma__SessionMetricClient<$Result.GetResult<Prisma.$SessionMetricPayload<ExtArgs>, T, "create">, never, ExtArgs>
+
+    /**
+     * Create many SessionMetrics.
+     * @param {SessionMetricCreateManyArgs} args - Arguments to create many SessionMetrics.
+     * @example
+     * // Create many SessionMetrics
+     * const sessionMetric = await prisma.sessionMetric.createMany({
+     *   data: [
+     *     // ... provide data here
+     *   ]
+     * })
+     *     
+     */
+    createMany<T extends SessionMetricCreateManyArgs>(args?: SelectSubset<T, SessionMetricCreateManyArgs<ExtArgs>>): Prisma.PrismaPromise<BatchPayload>
+
+    /**
+     * Create many SessionMetrics and returns the data saved in the database.
+     * @param {SessionMetricCreateManyAndReturnArgs} args - Arguments to create many SessionMetrics.
+     * @example
+     * // Create many SessionMetrics
+     * const sessionMetric = await prisma.sessionMetric.createManyAndReturn({
+     *   data: [
+     *     // ... provide data here
+     *   ]
+     * })
+     * 
+     * // Create many SessionMetrics and only return the `id`
+     * const sessionMetricWithIdOnly = await prisma.sessionMetric.createManyAndReturn({ 
+     *   select: { id: true },
+     *   data: [
+     *     // ... provide data here
+     *   ]
+     * })
+     * Note, that providing `undefined` is treated as the value not being there.
+     * Read more here: https://pris.ly/d/null-undefined
+     * 
+     */
+    createManyAndReturn<T extends SessionMetricCreateManyAndReturnArgs>(args?: SelectSubset<T, SessionMetricCreateManyAndReturnArgs<ExtArgs>>): Prisma.PrismaPromise<$Result.GetResult<Prisma.$SessionMetricPayload<ExtArgs>, T, "createManyAndReturn">>
+
+    /**
+     * Delete a SessionMetric.
+     * @param {SessionMetricDeleteArgs} args - Arguments to delete one SessionMetric.
+     * @example
+     * // Delete one SessionMetric
+     * const SessionMetric = await prisma.sessionMetric.delete({
+     *   where: {
+     *     // ... filter to delete one SessionMetric
+     *   }
+     * })
+     * 
+     */
+    delete<T extends SessionMetricDeleteArgs>(args: SelectSubset<T, SessionMetricDeleteArgs<ExtArgs>>): Prisma__SessionMetricClient<$Result.GetResult<Prisma.$SessionMetricPayload<ExtArgs>, T, "delete">, never, ExtArgs>
+
+    /**
+     * Update one SessionMetric.
+     * @param {SessionMetricUpdateArgs} args - Arguments to update one SessionMetric.
+     * @example
+     * // Update one SessionMetric
+     * const sessionMetric = await prisma.sessionMetric.update({
+     *   where: {
+     *     // ... provide filter here
+     *   },
+     *   data: {
+     *     // ... provide data here
+     *   }
+     * })
+     * 
+     */
+    update<T extends SessionMetricUpdateArgs>(args: SelectSubset<T, SessionMetricUpdateArgs<ExtArgs>>): Prisma__SessionMetricClient<$Result.GetResult<Prisma.$SessionMetricPayload<ExtArgs>, T, "update">, never, ExtArgs>
+
+    /**
+     * Delete zero or more SessionMetrics.
+     * @param {SessionMetricDeleteManyArgs} args - Arguments to filter SessionMetrics to delete.
+     * @example
+     * // Delete a few SessionMetrics
+     * const { count } = await prisma.sessionMetric.deleteMany({
+     *   where: {
+     *     // ... provide filter here
+     *   }
+     * })
+     * 
+     */
+    deleteMany<T extends SessionMetricDeleteManyArgs>(args?: SelectSubset<T, SessionMetricDeleteManyArgs<ExtArgs>>): Prisma.PrismaPromise<BatchPayload>
+
+    /**
+     * Update zero or more SessionMetrics.
+     * Note, that providing `undefined` is treated as the value not being there.
+     * Read more here: https://pris.ly/d/null-undefined
+     * @param {SessionMetricUpdateManyArgs} args - Arguments to update one or more rows.
+     * @example
+     * // Update many SessionMetrics
+     * const sessionMetric = await prisma.sessionMetric.updateMany({
+     *   where: {
+     *     // ... provide filter here
+     *   },
+     *   data: {
+     *     // ... provide data here
+     *   }
+     * })
+     * 
+     */
+    updateMany<T extends SessionMetricUpdateManyArgs>(args: SelectSubset<T, SessionMetricUpdateManyArgs<ExtArgs>>): Prisma.PrismaPromise<BatchPayload>
+
+    /**
+     * Create or update one SessionMetric.
+     * @param {SessionMetricUpsertArgs} args - Arguments to update or create a SessionMetric.
+     * @example
+     * // Update or create a SessionMetric
+     * const sessionMetric = await prisma.sessionMetric.upsert({
+     *   create: {
+     *     // ... data to create a SessionMetric
+     *   },
+     *   update: {
+     *     // ... in case it already exists, update
+     *   },
+     *   where: {
+     *     // ... the filter for the SessionMetric we want to update
+     *   }
+     * })
+     */
+    upsert<T extends SessionMetricUpsertArgs>(args: SelectSubset<T, SessionMetricUpsertArgs<ExtArgs>>): Prisma__SessionMetricClient<$Result.GetResult<Prisma.$SessionMetricPayload<ExtArgs>, T, "upsert">, never, ExtArgs>
+
+
+    /**
+     * Count the number of SessionMetrics.
+     * Note, that providing `undefined` is treated as the value not being there.
+     * Read more here: https://pris.ly/d/null-undefined
+     * @param {SessionMetricCountArgs} args - Arguments to filter SessionMetrics to count.
+     * @example
+     * // Count the number of SessionMetrics
+     * const count = await prisma.sessionMetric.count({
+     *   where: {
+     *     // ... the filter for the SessionMetrics we want to count
+     *   }
+     * })
+    **/
+    count<T extends SessionMetricCountArgs>(
+      args?: Subset<T, SessionMetricCountArgs>,
+    ): Prisma.PrismaPromise<
+      T extends $Utils.Record<'select', any>
+        ? T['select'] extends true
+          ? number
+          : GetScalarType<T['select'], SessionMetricCountAggregateOutputType>
+        : number
+    >
+
+    /**
+     * Allows you to perform aggregations operations on a SessionMetric.
+     * Note, that providing `undefined` is treated as the value not being there.
+     * Read more here: https://pris.ly/d/null-undefined
+     * @param {SessionMetricAggregateArgs} args - Select which aggregations you would like to apply and on what fields.
+     * @example
+     * // Ordered by age ascending
+     * // Where email contains prisma.io
+     * // Limited to the 10 users
+     * const aggregations = await prisma.user.aggregate({
+     *   _avg: {
+     *     age: true,
+     *   },
+     *   where: {
+     *     email: {
+     *       contains: "prisma.io",
+     *     },
+     *   },
+     *   orderBy: {
+     *     age: "asc",
+     *   },
+     *   take: 10,
+     * })
+    **/
+    aggregate<T extends SessionMetricAggregateArgs>(args: Subset<T, SessionMetricAggregateArgs>): Prisma.PrismaPromise<GetSessionMetricAggregateType<T>>
+
+    /**
+     * Group by SessionMetric.
+     * Note, that providing `undefined` is treated as the value not being there.
+     * Read more here: https://pris.ly/d/null-undefined
+     * @param {SessionMetricGroupByArgs} args - Group by arguments.
+     * @example
+     * // Group by city, order by createdAt, get count
+     * const result = await prisma.user.groupBy({
+     *   by: ['city', 'createdAt'],
+     *   orderBy: {
+     *     createdAt: true
+     *   },
+     *   _count: {
+     *     _all: true
+     *   },
+     * })
+     * 
+    **/
+    groupBy<
+      T extends SessionMetricGroupByArgs,
+      HasSelectOrTake extends Or<
+        Extends<'skip', Keys<T>>,
+        Extends<'take', Keys<T>>
+      >,
+      OrderByArg extends True extends HasSelectOrTake
+        ? { orderBy: SessionMetricGroupByArgs['orderBy'] }
+        : { orderBy?: SessionMetricGroupByArgs['orderBy'] },
+      OrderFields extends ExcludeUnderscoreKeys<Keys<MaybeTupleToUnion<T['orderBy']>>>,
+      ByFields extends MaybeTupleToUnion<T['by']>,
+      ByValid extends Has<ByFields, OrderFields>,
+      HavingFields extends GetHavingFields<T['having']>,
+      HavingValid extends Has<ByFields, HavingFields>,
+      ByEmpty extends T['by'] extends never[] ? True : False,
+      InputErrors extends ByEmpty extends True
+      ? `Error: "by" must not be empty.`
+      : HavingValid extends False
+      ? {
+          [P in HavingFields]: P extends ByFields
+            ? never
+            : P extends string
+            ? `Error: Field "${P}" used in "having" needs to be provided in "by".`
+            : [
+                Error,
+                'Field ',
+                P,
+                ` in "having" needs to be provided in "by"`,
+              ]
+        }[HavingFields]
+      : 'take' extends Keys<T>
+      ? 'orderBy' extends Keys<T>
+        ? ByValid extends True
+          ? {}
+          : {
+              [P in OrderFields]: P extends ByFields
+                ? never
+                : `Error: Field "${P}" in "orderBy" needs to be provided in "by"`
+            }[OrderFields]
+        : 'Error: If you provide "take", you also need to provide "orderBy"'
+      : 'skip' extends Keys<T>
+      ? 'orderBy' extends Keys<T>
+        ? ByValid extends True
+          ? {}
+          : {
+              [P in OrderFields]: P extends ByFields
+                ? never
+                : `Error: Field "${P}" in "orderBy" needs to be provided in "by"`
+            }[OrderFields]
+        : 'Error: If you provide "skip", you also need to provide "orderBy"'
+      : ByValid extends True
+      ? {}
+      : {
+          [P in OrderFields]: P extends ByFields
+            ? never
+            : `Error: Field "${P}" in "orderBy" needs to be provided in "by"`
+        }[OrderFields]
+    >(args: SubsetIntersection<T, SessionMetricGroupByArgs, OrderByArg> & InputErrors): {} extends InputErrors ? GetSessionMetricGroupByPayload<T> : Prisma.PrismaPromise<InputErrors>
+  /**
+   * Fields of the SessionMetric model
+   */
+  readonly fields: SessionMetricFieldRefs;
+  }
+
+  /**
+   * The delegate class that acts as a "Promise-like" for SessionMetric.
+   * Why is this prefixed with `Prisma__`?
+   * Because we want to prevent naming conflicts as mentioned in
+   * https://github.com/prisma/prisma-client-js/issues/707
+   */
+  export interface Prisma__SessionMetricClient<T, Null = never, ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> extends Prisma.PrismaPromise<T> {
+    readonly [Symbol.toStringTag]: "PrismaPromise"
+    session<T extends SessionDefaultArgs<ExtArgs> = {}>(args?: Subset<T, SessionDefaultArgs<ExtArgs>>): Prisma__SessionClient<$Result.GetResult<Prisma.$SessionPayload<ExtArgs>, T, "findUniqueOrThrow"> | Null, Null, ExtArgs>
+    /**
+     * Attaches callbacks for the resolution and/or rejection of the Promise.
+     * @param onfulfilled The callback to execute when the Promise is resolved.
+     * @param onrejected The callback to execute when the Promise is rejected.
+     * @returns A Promise for the completion of which ever callback is executed.
+     */
+    then<TResult1 = T, TResult2 = never>(onfulfilled?: ((value: T) => TResult1 | PromiseLike<TResult1>) | undefined | null, onrejected?: ((reason: any) => TResult2 | PromiseLike<TResult2>) | undefined | null): $Utils.JsPromise<TResult1 | TResult2>
+    /**
+     * Attaches a callback for only the rejection of the Promise.
+     * @param onrejected The callback to execute when the Promise is rejected.
+     * @returns A Promise for the completion of the callback.
+     */
+    catch<TResult = never>(onrejected?: ((reason: any) => TResult | PromiseLike<TResult>) | undefined | null): $Utils.JsPromise<T | TResult>
+    /**
+     * Attaches a callback that is invoked when the Promise is settled (fulfilled or rejected). The
+     * resolved value cannot be modified from the callback.
+     * @param onfinally The callback to execute when the Promise is settled (fulfilled or rejected).
+     * @returns A Promise for the completion of the callback.
+     */
+    finally(onfinally?: (() => void) | undefined | null): $Utils.JsPromise<T>
+  }
+
+
+
+
+  /**
+   * Fields of the SessionMetric model
+   */ 
+  interface SessionMetricFieldRefs {
+    readonly id: FieldRef<"SessionMetric", 'Int'>
+    readonly session_id: FieldRef<"SessionMetric", 'String'>
+    readonly at: FieldRef<"SessionMetric", 'Float'>
+    readonly device_cpu_pct: FieldRef<"SessionMetric", 'Float'>
+    readonly device_mem_mb: FieldRef<"SessionMetric", 'Float'>
+    readonly device_mem_total: FieldRef<"SessionMetric", 'Float'>
+    readonly app_cpu_pct: FieldRef<"SessionMetric", 'Float'>
+    readonly app_mem_mb: FieldRef<"SessionMetric", 'Float'>
+    readonly app_id: FieldRef<"SessionMetric", 'String'>
+  }
+    
+
+  // Custom InputTypes
+  /**
+   * SessionMetric findUnique
+   */
+  export type SessionMetricFindUniqueArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the SessionMetric
+     */
+    select?: SessionMetricSelect<ExtArgs> | null
+    /**
+     * Choose, which related nodes to fetch as well
+     */
+    include?: SessionMetricInclude<ExtArgs> | null
+    /**
+     * Filter, which SessionMetric to fetch.
+     */
+    where: SessionMetricWhereUniqueInput
+  }
+
+  /**
+   * SessionMetric findUniqueOrThrow
+   */
+  export type SessionMetricFindUniqueOrThrowArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the SessionMetric
+     */
+    select?: SessionMetricSelect<ExtArgs> | null
+    /**
+     * Choose, which related nodes to fetch as well
+     */
+    include?: SessionMetricInclude<ExtArgs> | null
+    /**
+     * Filter, which SessionMetric to fetch.
+     */
+    where: SessionMetricWhereUniqueInput
+  }
+
+  /**
+   * SessionMetric findFirst
+   */
+  export type SessionMetricFindFirstArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the SessionMetric
+     */
+    select?: SessionMetricSelect<ExtArgs> | null
+    /**
+     * Choose, which related nodes to fetch as well
+     */
+    include?: SessionMetricInclude<ExtArgs> | null
+    /**
+     * Filter, which SessionMetric to fetch.
+     */
+    where?: SessionMetricWhereInput
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/sorting Sorting Docs}
+     * 
+     * Determine the order of SessionMetrics to fetch.
+     */
+    orderBy?: SessionMetricOrderByWithRelationInput | SessionMetricOrderByWithRelationInput[]
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination#cursor-based-pagination Cursor Docs}
+     * 
+     * Sets the position for searching for SessionMetrics.
+     */
+    cursor?: SessionMetricWhereUniqueInput
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination Pagination Docs}
+     * 
+     * Take `±n` SessionMetrics from the position of the cursor.
+     */
+    take?: number
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination Pagination Docs}
+     * 
+     * Skip the first `n` SessionMetrics.
+     */
+    skip?: number
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/distinct Distinct Docs}
+     * 
+     * Filter by unique combinations of SessionMetrics.
+     */
+    distinct?: SessionMetricScalarFieldEnum | SessionMetricScalarFieldEnum[]
+  }
+
+  /**
+   * SessionMetric findFirstOrThrow
+   */
+  export type SessionMetricFindFirstOrThrowArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the SessionMetric
+     */
+    select?: SessionMetricSelect<ExtArgs> | null
+    /**
+     * Choose, which related nodes to fetch as well
+     */
+    include?: SessionMetricInclude<ExtArgs> | null
+    /**
+     * Filter, which SessionMetric to fetch.
+     */
+    where?: SessionMetricWhereInput
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/sorting Sorting Docs}
+     * 
+     * Determine the order of SessionMetrics to fetch.
+     */
+    orderBy?: SessionMetricOrderByWithRelationInput | SessionMetricOrderByWithRelationInput[]
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination#cursor-based-pagination Cursor Docs}
+     * 
+     * Sets the position for searching for SessionMetrics.
+     */
+    cursor?: SessionMetricWhereUniqueInput
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination Pagination Docs}
+     * 
+     * Take `±n` SessionMetrics from the position of the cursor.
+     */
+    take?: number
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination Pagination Docs}
+     * 
+     * Skip the first `n` SessionMetrics.
+     */
+    skip?: number
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/distinct Distinct Docs}
+     * 
+     * Filter by unique combinations of SessionMetrics.
+     */
+    distinct?: SessionMetricScalarFieldEnum | SessionMetricScalarFieldEnum[]
+  }
+
+  /**
+   * SessionMetric findMany
+   */
+  export type SessionMetricFindManyArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the SessionMetric
+     */
+    select?: SessionMetricSelect<ExtArgs> | null
+    /**
+     * Choose, which related nodes to fetch as well
+     */
+    include?: SessionMetricInclude<ExtArgs> | null
+    /**
+     * Filter, which SessionMetrics to fetch.
+     */
+    where?: SessionMetricWhereInput
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/sorting Sorting Docs}
+     * 
+     * Determine the order of SessionMetrics to fetch.
+     */
+    orderBy?: SessionMetricOrderByWithRelationInput | SessionMetricOrderByWithRelationInput[]
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination#cursor-based-pagination Cursor Docs}
+     * 
+     * Sets the position for listing SessionMetrics.
+     */
+    cursor?: SessionMetricWhereUniqueInput
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination Pagination Docs}
+     * 
+     * Take `±n` SessionMetrics from the position of the cursor.
+     */
+    take?: number
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination Pagination Docs}
+     * 
+     * Skip the first `n` SessionMetrics.
+     */
+    skip?: number
+    distinct?: SessionMetricScalarFieldEnum | SessionMetricScalarFieldEnum[]
+  }
+
+  /**
+   * SessionMetric create
+   */
+  export type SessionMetricCreateArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the SessionMetric
+     */
+    select?: SessionMetricSelect<ExtArgs> | null
+    /**
+     * Choose, which related nodes to fetch as well
+     */
+    include?: SessionMetricInclude<ExtArgs> | null
+    /**
+     * The data needed to create a SessionMetric.
+     */
+    data: XOR<SessionMetricCreateInput, SessionMetricUncheckedCreateInput>
+  }
+
+  /**
+   * SessionMetric createMany
+   */
+  export type SessionMetricCreateManyArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * The data used to create many SessionMetrics.
+     */
+    data: SessionMetricCreateManyInput | SessionMetricCreateManyInput[]
+  }
+
+  /**
+   * SessionMetric createManyAndReturn
+   */
+  export type SessionMetricCreateManyAndReturnArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the SessionMetric
+     */
+    select?: SessionMetricSelectCreateManyAndReturn<ExtArgs> | null
+    /**
+     * The data used to create many SessionMetrics.
+     */
+    data: SessionMetricCreateManyInput | SessionMetricCreateManyInput[]
+    /**
+     * Choose, which related nodes to fetch as well
+     */
+    include?: SessionMetricIncludeCreateManyAndReturn<ExtArgs> | null
+  }
+
+  /**
+   * SessionMetric update
+   */
+  export type SessionMetricUpdateArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the SessionMetric
+     */
+    select?: SessionMetricSelect<ExtArgs> | null
+    /**
+     * Choose, which related nodes to fetch as well
+     */
+    include?: SessionMetricInclude<ExtArgs> | null
+    /**
+     * The data needed to update a SessionMetric.
+     */
+    data: XOR<SessionMetricUpdateInput, SessionMetricUncheckedUpdateInput>
+    /**
+     * Choose, which SessionMetric to update.
+     */
+    where: SessionMetricWhereUniqueInput
+  }
+
+  /**
+   * SessionMetric updateMany
+   */
+  export type SessionMetricUpdateManyArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * The data used to update SessionMetrics.
+     */
+    data: XOR<SessionMetricUpdateManyMutationInput, SessionMetricUncheckedUpdateManyInput>
+    /**
+     * Filter which SessionMetrics to update
+     */
+    where?: SessionMetricWhereInput
+  }
+
+  /**
+   * SessionMetric upsert
+   */
+  export type SessionMetricUpsertArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the SessionMetric
+     */
+    select?: SessionMetricSelect<ExtArgs> | null
+    /**
+     * Choose, which related nodes to fetch as well
+     */
+    include?: SessionMetricInclude<ExtArgs> | null
+    /**
+     * The filter to search for the SessionMetric to update in case it exists.
+     */
+    where: SessionMetricWhereUniqueInput
+    /**
+     * In case the SessionMetric found by the `where` argument doesn't exist, create a new SessionMetric with this data.
+     */
+    create: XOR<SessionMetricCreateInput, SessionMetricUncheckedCreateInput>
+    /**
+     * In case the SessionMetric was found with the provided `where` argument, update it with this data.
+     */
+    update: XOR<SessionMetricUpdateInput, SessionMetricUncheckedUpdateInput>
+  }
+
+  /**
+   * SessionMetric delete
+   */
+  export type SessionMetricDeleteArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the SessionMetric
+     */
+    select?: SessionMetricSelect<ExtArgs> | null
+    /**
+     * Choose, which related nodes to fetch as well
+     */
+    include?: SessionMetricInclude<ExtArgs> | null
+    /**
+     * Filter which SessionMetric to delete.
+     */
+    where: SessionMetricWhereUniqueInput
+  }
+
+  /**
+   * SessionMetric deleteMany
+   */
+  export type SessionMetricDeleteManyArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Filter which SessionMetrics to delete
+     */
+    where?: SessionMetricWhereInput
+  }
+
+  /**
+   * SessionMetric without action
+   */
+  export type SessionMetricDefaultArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the SessionMetric
+     */
+    select?: SessionMetricSelect<ExtArgs> | null
+    /**
+     * Choose, which related nodes to fetch as well
+     */
+    include?: SessionMetricInclude<ExtArgs> | null
   }
 
 
@@ -30006,6 +31168,21 @@ export namespace Prisma {
   export type ProfilingScalarFieldEnum = (typeof ProfilingScalarFieldEnum)[keyof typeof ProfilingScalarFieldEnum]
 
 
+  export const SessionMetricScalarFieldEnum: {
+    id: 'id',
+    session_id: 'session_id',
+    at: 'at',
+    device_cpu_pct: 'device_cpu_pct',
+    device_mem_mb: 'device_mem_mb',
+    device_mem_total: 'device_mem_total',
+    app_cpu_pct: 'app_cpu_pct',
+    app_mem_mb: 'app_mem_mb',
+    app_id: 'app_id'
+  };
+
+  export type SessionMetricScalarFieldEnum = (typeof SessionMetricScalarFieldEnum)[keyof typeof SessionMetricScalarFieldEnum]
+
+
   export const AppScalarFieldEnum: {
     id: 'id',
     name: 'name',
@@ -30497,6 +31674,7 @@ export namespace Prisma {
     user_id?: StringNullableFilter<"Session"> | string | null
     Log?: LogListRelationFilter
     Profiling?: ProfilingListRelationFilter
+    SessionMetric?: SessionMetricListRelationFilter
     build?: XOR<BuildNullableRelationFilter, BuildWhereInput> | null
     SessionLog?: SessionLogListRelationFilter
     Recording?: RecordingListRelationFilter
@@ -30536,6 +31714,7 @@ export namespace Prisma {
     user_id?: SortOrderInput | SortOrder
     Log?: LogOrderByRelationAggregateInput
     Profiling?: ProfilingOrderByRelationAggregateInput
+    SessionMetric?: SessionMetricOrderByRelationAggregateInput
     build?: BuildOrderByWithRelationInput
     SessionLog?: SessionLogOrderByRelationAggregateInput
     Recording?: RecordingOrderByRelationAggregateInput
@@ -30578,6 +31757,7 @@ export namespace Prisma {
     user_id?: StringNullableFilter<"Session"> | string | null
     Log?: LogListRelationFilter
     Profiling?: ProfilingListRelationFilter
+    SessionMetric?: SessionMetricListRelationFilter
     build?: XOR<BuildNullableRelationFilter, BuildWhereInput> | null
     SessionLog?: SessionLogListRelationFilter
     Recording?: RecordingListRelationFilter
@@ -30961,6 +32141,83 @@ export namespace Prisma {
     timestamp?: DateTimeWithAggregatesFilter<"Profiling"> | Date | string
     createdAt?: DateTimeWithAggregatesFilter<"Profiling"> | Date | string
     updatedAt?: DateTimeWithAggregatesFilter<"Profiling"> | Date | string
+  }
+
+  export type SessionMetricWhereInput = {
+    AND?: SessionMetricWhereInput | SessionMetricWhereInput[]
+    OR?: SessionMetricWhereInput[]
+    NOT?: SessionMetricWhereInput | SessionMetricWhereInput[]
+    id?: IntFilter<"SessionMetric"> | number
+    session_id?: StringFilter<"SessionMetric"> | string
+    at?: FloatFilter<"SessionMetric"> | number
+    device_cpu_pct?: FloatNullableFilter<"SessionMetric"> | number | null
+    device_mem_mb?: FloatNullableFilter<"SessionMetric"> | number | null
+    device_mem_total?: FloatNullableFilter<"SessionMetric"> | number | null
+    app_cpu_pct?: FloatNullableFilter<"SessionMetric"> | number | null
+    app_mem_mb?: FloatNullableFilter<"SessionMetric"> | number | null
+    app_id?: StringNullableFilter<"SessionMetric"> | string | null
+    session?: XOR<SessionRelationFilter, SessionWhereInput>
+  }
+
+  export type SessionMetricOrderByWithRelationInput = {
+    id?: SortOrder
+    session_id?: SortOrder
+    at?: SortOrder
+    device_cpu_pct?: SortOrderInput | SortOrder
+    device_mem_mb?: SortOrderInput | SortOrder
+    device_mem_total?: SortOrderInput | SortOrder
+    app_cpu_pct?: SortOrderInput | SortOrder
+    app_mem_mb?: SortOrderInput | SortOrder
+    app_id?: SortOrderInput | SortOrder
+    session?: SessionOrderByWithRelationInput
+  }
+
+  export type SessionMetricWhereUniqueInput = Prisma.AtLeast<{
+    id?: number
+    AND?: SessionMetricWhereInput | SessionMetricWhereInput[]
+    OR?: SessionMetricWhereInput[]
+    NOT?: SessionMetricWhereInput | SessionMetricWhereInput[]
+    session_id?: StringFilter<"SessionMetric"> | string
+    at?: FloatFilter<"SessionMetric"> | number
+    device_cpu_pct?: FloatNullableFilter<"SessionMetric"> | number | null
+    device_mem_mb?: FloatNullableFilter<"SessionMetric"> | number | null
+    device_mem_total?: FloatNullableFilter<"SessionMetric"> | number | null
+    app_cpu_pct?: FloatNullableFilter<"SessionMetric"> | number | null
+    app_mem_mb?: FloatNullableFilter<"SessionMetric"> | number | null
+    app_id?: StringNullableFilter<"SessionMetric"> | string | null
+    session?: XOR<SessionRelationFilter, SessionWhereInput>
+  }, "id">
+
+  export type SessionMetricOrderByWithAggregationInput = {
+    id?: SortOrder
+    session_id?: SortOrder
+    at?: SortOrder
+    device_cpu_pct?: SortOrderInput | SortOrder
+    device_mem_mb?: SortOrderInput | SortOrder
+    device_mem_total?: SortOrderInput | SortOrder
+    app_cpu_pct?: SortOrderInput | SortOrder
+    app_mem_mb?: SortOrderInput | SortOrder
+    app_id?: SortOrderInput | SortOrder
+    _count?: SessionMetricCountOrderByAggregateInput
+    _avg?: SessionMetricAvgOrderByAggregateInput
+    _max?: SessionMetricMaxOrderByAggregateInput
+    _min?: SessionMetricMinOrderByAggregateInput
+    _sum?: SessionMetricSumOrderByAggregateInput
+  }
+
+  export type SessionMetricScalarWhereWithAggregatesInput = {
+    AND?: SessionMetricScalarWhereWithAggregatesInput | SessionMetricScalarWhereWithAggregatesInput[]
+    OR?: SessionMetricScalarWhereWithAggregatesInput[]
+    NOT?: SessionMetricScalarWhereWithAggregatesInput | SessionMetricScalarWhereWithAggregatesInput[]
+    id?: IntWithAggregatesFilter<"SessionMetric"> | number
+    session_id?: StringWithAggregatesFilter<"SessionMetric"> | string
+    at?: FloatWithAggregatesFilter<"SessionMetric"> | number
+    device_cpu_pct?: FloatNullableWithAggregatesFilter<"SessionMetric"> | number | null
+    device_mem_mb?: FloatNullableWithAggregatesFilter<"SessionMetric"> | number | null
+    device_mem_total?: FloatNullableWithAggregatesFilter<"SessionMetric"> | number | null
+    app_cpu_pct?: FloatNullableWithAggregatesFilter<"SessionMetric"> | number | null
+    app_mem_mb?: FloatNullableWithAggregatesFilter<"SessionMetric"> | number | null
+    app_id?: StringNullableWithAggregatesFilter<"SessionMetric"> | string | null
   }
 
   export type AppWhereInput = {
@@ -32799,6 +34056,7 @@ export namespace Prisma {
     user_id?: string | null
     Log?: LogCreateNestedManyWithoutSessionInput
     Profiling?: ProfilingCreateNestedManyWithoutSessionInput
+    SessionMetric?: SessionMetricCreateNestedManyWithoutSessionInput
     build?: BuildCreateNestedOneWithoutSessionsInput
     SessionLog?: SessionLogCreateNestedManyWithoutSessionInput
     Recording?: RecordingCreateNestedManyWithoutSessionInput
@@ -32838,6 +34096,7 @@ export namespace Prisma {
     user_id?: string | null
     Log?: LogUncheckedCreateNestedManyWithoutSessionInput
     Profiling?: ProfilingUncheckedCreateNestedManyWithoutSessionInput
+    SessionMetric?: SessionMetricUncheckedCreateNestedManyWithoutSessionInput
     SessionLog?: SessionLogUncheckedCreateNestedManyWithoutSessionInput
     Recording?: RecordingUncheckedCreateNestedManyWithoutSessionInput
   }
@@ -32875,6 +34134,7 @@ export namespace Prisma {
     user_id?: NullableStringFieldUpdateOperationsInput | string | null
     Log?: LogUpdateManyWithoutSessionNestedInput
     Profiling?: ProfilingUpdateManyWithoutSessionNestedInput
+    SessionMetric?: SessionMetricUpdateManyWithoutSessionNestedInput
     build?: BuildUpdateOneWithoutSessionsNestedInput
     SessionLog?: SessionLogUpdateManyWithoutSessionNestedInput
     Recording?: RecordingUpdateManyWithoutSessionNestedInput
@@ -32914,6 +34174,7 @@ export namespace Prisma {
     user_id?: NullableStringFieldUpdateOperationsInput | string | null
     Log?: LogUncheckedUpdateManyWithoutSessionNestedInput
     Profiling?: ProfilingUncheckedUpdateManyWithoutSessionNestedInput
+    SessionMetric?: SessionMetricUncheckedUpdateManyWithoutSessionNestedInput
     SessionLog?: SessionLogUncheckedUpdateManyWithoutSessionNestedInput
     Recording?: RecordingUncheckedUpdateManyWithoutSessionNestedInput
   }
@@ -33368,6 +34629,86 @@ export namespace Prisma {
     timestamp?: DateTimeFieldUpdateOperationsInput | Date | string
     createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
     updatedAt?: DateTimeFieldUpdateOperationsInput | Date | string
+  }
+
+  export type SessionMetricCreateInput = {
+    at: number
+    device_cpu_pct?: number | null
+    device_mem_mb?: number | null
+    device_mem_total?: number | null
+    app_cpu_pct?: number | null
+    app_mem_mb?: number | null
+    app_id?: string | null
+    session: SessionCreateNestedOneWithoutSessionMetricInput
+  }
+
+  export type SessionMetricUncheckedCreateInput = {
+    id?: number
+    session_id: string
+    at: number
+    device_cpu_pct?: number | null
+    device_mem_mb?: number | null
+    device_mem_total?: number | null
+    app_cpu_pct?: number | null
+    app_mem_mb?: number | null
+    app_id?: string | null
+  }
+
+  export type SessionMetricUpdateInput = {
+    at?: FloatFieldUpdateOperationsInput | number
+    device_cpu_pct?: NullableFloatFieldUpdateOperationsInput | number | null
+    device_mem_mb?: NullableFloatFieldUpdateOperationsInput | number | null
+    device_mem_total?: NullableFloatFieldUpdateOperationsInput | number | null
+    app_cpu_pct?: NullableFloatFieldUpdateOperationsInput | number | null
+    app_mem_mb?: NullableFloatFieldUpdateOperationsInput | number | null
+    app_id?: NullableStringFieldUpdateOperationsInput | string | null
+    session?: SessionUpdateOneRequiredWithoutSessionMetricNestedInput
+  }
+
+  export type SessionMetricUncheckedUpdateInput = {
+    id?: IntFieldUpdateOperationsInput | number
+    session_id?: StringFieldUpdateOperationsInput | string
+    at?: FloatFieldUpdateOperationsInput | number
+    device_cpu_pct?: NullableFloatFieldUpdateOperationsInput | number | null
+    device_mem_mb?: NullableFloatFieldUpdateOperationsInput | number | null
+    device_mem_total?: NullableFloatFieldUpdateOperationsInput | number | null
+    app_cpu_pct?: NullableFloatFieldUpdateOperationsInput | number | null
+    app_mem_mb?: NullableFloatFieldUpdateOperationsInput | number | null
+    app_id?: NullableStringFieldUpdateOperationsInput | string | null
+  }
+
+  export type SessionMetricCreateManyInput = {
+    id?: number
+    session_id: string
+    at: number
+    device_cpu_pct?: number | null
+    device_mem_mb?: number | null
+    device_mem_total?: number | null
+    app_cpu_pct?: number | null
+    app_mem_mb?: number | null
+    app_id?: string | null
+  }
+
+  export type SessionMetricUpdateManyMutationInput = {
+    at?: FloatFieldUpdateOperationsInput | number
+    device_cpu_pct?: NullableFloatFieldUpdateOperationsInput | number | null
+    device_mem_mb?: NullableFloatFieldUpdateOperationsInput | number | null
+    device_mem_total?: NullableFloatFieldUpdateOperationsInput | number | null
+    app_cpu_pct?: NullableFloatFieldUpdateOperationsInput | number | null
+    app_mem_mb?: NullableFloatFieldUpdateOperationsInput | number | null
+    app_id?: NullableStringFieldUpdateOperationsInput | string | null
+  }
+
+  export type SessionMetricUncheckedUpdateManyInput = {
+    id?: IntFieldUpdateOperationsInput | number
+    session_id?: StringFieldUpdateOperationsInput | string
+    at?: FloatFieldUpdateOperationsInput | number
+    device_cpu_pct?: NullableFloatFieldUpdateOperationsInput | number | null
+    device_mem_mb?: NullableFloatFieldUpdateOperationsInput | number | null
+    device_mem_total?: NullableFloatFieldUpdateOperationsInput | number | null
+    app_cpu_pct?: NullableFloatFieldUpdateOperationsInput | number | null
+    app_mem_mb?: NullableFloatFieldUpdateOperationsInput | number | null
+    app_id?: NullableStringFieldUpdateOperationsInput | string | null
   }
 
   export type AppCreateInput = {
@@ -35529,6 +36870,12 @@ export namespace Prisma {
     none?: ProfilingWhereInput
   }
 
+  export type SessionMetricListRelationFilter = {
+    every?: SessionMetricWhereInput
+    some?: SessionMetricWhereInput
+    none?: SessionMetricWhereInput
+  }
+
   export type BuildNullableRelationFilter = {
     is?: BuildWhereInput | null
     isNot?: BuildWhereInput | null
@@ -35551,6 +36898,10 @@ export namespace Prisma {
   }
 
   export type ProfilingOrderByRelationAggregateInput = {
+    _count?: SortOrder
+  }
+
+  export type SessionMetricOrderByRelationAggregateInput = {
     _count?: SortOrder
   }
 
@@ -35953,6 +37304,89 @@ export namespace Prisma {
     _max?: NestedIntFilter<$PrismaModel>
   }
 
+  export type FloatFilter<$PrismaModel = never> = {
+    equals?: number | FloatFieldRefInput<$PrismaModel>
+    in?: number[]
+    notIn?: number[]
+    lt?: number | FloatFieldRefInput<$PrismaModel>
+    lte?: number | FloatFieldRefInput<$PrismaModel>
+    gt?: number | FloatFieldRefInput<$PrismaModel>
+    gte?: number | FloatFieldRefInput<$PrismaModel>
+    not?: NestedFloatFilter<$PrismaModel> | number
+  }
+
+  export type SessionMetricCountOrderByAggregateInput = {
+    id?: SortOrder
+    session_id?: SortOrder
+    at?: SortOrder
+    device_cpu_pct?: SortOrder
+    device_mem_mb?: SortOrder
+    device_mem_total?: SortOrder
+    app_cpu_pct?: SortOrder
+    app_mem_mb?: SortOrder
+    app_id?: SortOrder
+  }
+
+  export type SessionMetricAvgOrderByAggregateInput = {
+    id?: SortOrder
+    at?: SortOrder
+    device_cpu_pct?: SortOrder
+    device_mem_mb?: SortOrder
+    device_mem_total?: SortOrder
+    app_cpu_pct?: SortOrder
+    app_mem_mb?: SortOrder
+  }
+
+  export type SessionMetricMaxOrderByAggregateInput = {
+    id?: SortOrder
+    session_id?: SortOrder
+    at?: SortOrder
+    device_cpu_pct?: SortOrder
+    device_mem_mb?: SortOrder
+    device_mem_total?: SortOrder
+    app_cpu_pct?: SortOrder
+    app_mem_mb?: SortOrder
+    app_id?: SortOrder
+  }
+
+  export type SessionMetricMinOrderByAggregateInput = {
+    id?: SortOrder
+    session_id?: SortOrder
+    at?: SortOrder
+    device_cpu_pct?: SortOrder
+    device_mem_mb?: SortOrder
+    device_mem_total?: SortOrder
+    app_cpu_pct?: SortOrder
+    app_mem_mb?: SortOrder
+    app_id?: SortOrder
+  }
+
+  export type SessionMetricSumOrderByAggregateInput = {
+    id?: SortOrder
+    at?: SortOrder
+    device_cpu_pct?: SortOrder
+    device_mem_mb?: SortOrder
+    device_mem_total?: SortOrder
+    app_cpu_pct?: SortOrder
+    app_mem_mb?: SortOrder
+  }
+
+  export type FloatWithAggregatesFilter<$PrismaModel = never> = {
+    equals?: number | FloatFieldRefInput<$PrismaModel>
+    in?: number[]
+    notIn?: number[]
+    lt?: number | FloatFieldRefInput<$PrismaModel>
+    lte?: number | FloatFieldRefInput<$PrismaModel>
+    gt?: number | FloatFieldRefInput<$PrismaModel>
+    gte?: number | FloatFieldRefInput<$PrismaModel>
+    not?: NestedFloatWithAggregatesFilter<$PrismaModel> | number
+    _count?: NestedIntFilter<$PrismaModel>
+    _avg?: NestedFloatFilter<$PrismaModel>
+    _sum?: NestedFloatFilter<$PrismaModel>
+    _min?: NestedFloatFilter<$PrismaModel>
+    _max?: NestedFloatFilter<$PrismaModel>
+  }
+
   export type TeamNullableRelationFilter = {
     is?: TeamWhereInput | null
     isNot?: TeamWhereInput | null
@@ -36012,17 +37446,6 @@ export namespace Prisma {
 
   export type AppSumOrderByAggregateInput = {
     size?: SortOrder
-  }
-
-  export type FloatFilter<$PrismaModel = never> = {
-    equals?: number | FloatFieldRefInput<$PrismaModel>
-    in?: number[]
-    notIn?: number[]
-    lt?: number | FloatFieldRefInput<$PrismaModel>
-    lte?: number | FloatFieldRefInput<$PrismaModel>
-    gt?: number | FloatFieldRefInput<$PrismaModel>
-    gte?: number | FloatFieldRefInput<$PrismaModel>
-    not?: NestedFloatFilter<$PrismaModel> | number
   }
 
   export type DeviceUdidHostCompoundUniqueInput = {
@@ -36252,22 +37675,6 @@ export namespace Prisma {
     totalHealedCount?: SortOrder
     lockedAt?: SortOrder
     claimedAt?: SortOrder
-  }
-
-  export type FloatWithAggregatesFilter<$PrismaModel = never> = {
-    equals?: number | FloatFieldRefInput<$PrismaModel>
-    in?: number[]
-    notIn?: number[]
-    lt?: number | FloatFieldRefInput<$PrismaModel>
-    lte?: number | FloatFieldRefInput<$PrismaModel>
-    gt?: number | FloatFieldRefInput<$PrismaModel>
-    gte?: number | FloatFieldRefInput<$PrismaModel>
-    not?: NestedFloatWithAggregatesFilter<$PrismaModel> | number
-    _count?: NestedIntFilter<$PrismaModel>
-    _avg?: NestedFloatFilter<$PrismaModel>
-    _sum?: NestedFloatFilter<$PrismaModel>
-    _min?: NestedFloatFilter<$PrismaModel>
-    _max?: NestedFloatFilter<$PrismaModel>
   }
 
   export type PendingSessionCountOrderByAggregateInput = {
@@ -37150,6 +38557,13 @@ export namespace Prisma {
     connect?: ProfilingWhereUniqueInput | ProfilingWhereUniqueInput[]
   }
 
+  export type SessionMetricCreateNestedManyWithoutSessionInput = {
+    create?: XOR<SessionMetricCreateWithoutSessionInput, SessionMetricUncheckedCreateWithoutSessionInput> | SessionMetricCreateWithoutSessionInput[] | SessionMetricUncheckedCreateWithoutSessionInput[]
+    connectOrCreate?: SessionMetricCreateOrConnectWithoutSessionInput | SessionMetricCreateOrConnectWithoutSessionInput[]
+    createMany?: SessionMetricCreateManySessionInputEnvelope
+    connect?: SessionMetricWhereUniqueInput | SessionMetricWhereUniqueInput[]
+  }
+
   export type BuildCreateNestedOneWithoutSessionsInput = {
     create?: XOR<BuildCreateWithoutSessionsInput, BuildUncheckedCreateWithoutSessionsInput>
     connectOrCreate?: BuildCreateOrConnectWithoutSessionsInput
@@ -37182,6 +38596,13 @@ export namespace Prisma {
     connectOrCreate?: ProfilingCreateOrConnectWithoutSessionInput | ProfilingCreateOrConnectWithoutSessionInput[]
     createMany?: ProfilingCreateManySessionInputEnvelope
     connect?: ProfilingWhereUniqueInput | ProfilingWhereUniqueInput[]
+  }
+
+  export type SessionMetricUncheckedCreateNestedManyWithoutSessionInput = {
+    create?: XOR<SessionMetricCreateWithoutSessionInput, SessionMetricUncheckedCreateWithoutSessionInput> | SessionMetricCreateWithoutSessionInput[] | SessionMetricUncheckedCreateWithoutSessionInput[]
+    connectOrCreate?: SessionMetricCreateOrConnectWithoutSessionInput | SessionMetricCreateOrConnectWithoutSessionInput[]
+    createMany?: SessionMetricCreateManySessionInputEnvelope
+    connect?: SessionMetricWhereUniqueInput | SessionMetricWhereUniqueInput[]
   }
 
   export type SessionLogUncheckedCreateNestedManyWithoutSessionInput = {
@@ -37240,6 +38661,20 @@ export namespace Prisma {
     update?: ProfilingUpdateWithWhereUniqueWithoutSessionInput | ProfilingUpdateWithWhereUniqueWithoutSessionInput[]
     updateMany?: ProfilingUpdateManyWithWhereWithoutSessionInput | ProfilingUpdateManyWithWhereWithoutSessionInput[]
     deleteMany?: ProfilingScalarWhereInput | ProfilingScalarWhereInput[]
+  }
+
+  export type SessionMetricUpdateManyWithoutSessionNestedInput = {
+    create?: XOR<SessionMetricCreateWithoutSessionInput, SessionMetricUncheckedCreateWithoutSessionInput> | SessionMetricCreateWithoutSessionInput[] | SessionMetricUncheckedCreateWithoutSessionInput[]
+    connectOrCreate?: SessionMetricCreateOrConnectWithoutSessionInput | SessionMetricCreateOrConnectWithoutSessionInput[]
+    upsert?: SessionMetricUpsertWithWhereUniqueWithoutSessionInput | SessionMetricUpsertWithWhereUniqueWithoutSessionInput[]
+    createMany?: SessionMetricCreateManySessionInputEnvelope
+    set?: SessionMetricWhereUniqueInput | SessionMetricWhereUniqueInput[]
+    disconnect?: SessionMetricWhereUniqueInput | SessionMetricWhereUniqueInput[]
+    delete?: SessionMetricWhereUniqueInput | SessionMetricWhereUniqueInput[]
+    connect?: SessionMetricWhereUniqueInput | SessionMetricWhereUniqueInput[]
+    update?: SessionMetricUpdateWithWhereUniqueWithoutSessionInput | SessionMetricUpdateWithWhereUniqueWithoutSessionInput[]
+    updateMany?: SessionMetricUpdateManyWithWhereWithoutSessionInput | SessionMetricUpdateManyWithWhereWithoutSessionInput[]
+    deleteMany?: SessionMetricScalarWhereInput | SessionMetricScalarWhereInput[]
   }
 
   export type BuildUpdateOneWithoutSessionsNestedInput = {
@@ -37306,6 +38741,20 @@ export namespace Prisma {
     update?: ProfilingUpdateWithWhereUniqueWithoutSessionInput | ProfilingUpdateWithWhereUniqueWithoutSessionInput[]
     updateMany?: ProfilingUpdateManyWithWhereWithoutSessionInput | ProfilingUpdateManyWithWhereWithoutSessionInput[]
     deleteMany?: ProfilingScalarWhereInput | ProfilingScalarWhereInput[]
+  }
+
+  export type SessionMetricUncheckedUpdateManyWithoutSessionNestedInput = {
+    create?: XOR<SessionMetricCreateWithoutSessionInput, SessionMetricUncheckedCreateWithoutSessionInput> | SessionMetricCreateWithoutSessionInput[] | SessionMetricUncheckedCreateWithoutSessionInput[]
+    connectOrCreate?: SessionMetricCreateOrConnectWithoutSessionInput | SessionMetricCreateOrConnectWithoutSessionInput[]
+    upsert?: SessionMetricUpsertWithWhereUniqueWithoutSessionInput | SessionMetricUpsertWithWhereUniqueWithoutSessionInput[]
+    createMany?: SessionMetricCreateManySessionInputEnvelope
+    set?: SessionMetricWhereUniqueInput | SessionMetricWhereUniqueInput[]
+    disconnect?: SessionMetricWhereUniqueInput | SessionMetricWhereUniqueInput[]
+    delete?: SessionMetricWhereUniqueInput | SessionMetricWhereUniqueInput[]
+    connect?: SessionMetricWhereUniqueInput | SessionMetricWhereUniqueInput[]
+    update?: SessionMetricUpdateWithWhereUniqueWithoutSessionInput | SessionMetricUpdateWithWhereUniqueWithoutSessionInput[]
+    updateMany?: SessionMetricUpdateManyWithWhereWithoutSessionInput | SessionMetricUpdateManyWithWhereWithoutSessionInput[]
+    deleteMany?: SessionMetricScalarWhereInput | SessionMetricScalarWhereInput[]
   }
 
   export type SessionLogUncheckedUpdateManyWithoutSessionNestedInput = {
@@ -37398,6 +38847,28 @@ export namespace Prisma {
     divide?: number
   }
 
+  export type SessionCreateNestedOneWithoutSessionMetricInput = {
+    create?: XOR<SessionCreateWithoutSessionMetricInput, SessionUncheckedCreateWithoutSessionMetricInput>
+    connectOrCreate?: SessionCreateOrConnectWithoutSessionMetricInput
+    connect?: SessionWhereUniqueInput
+  }
+
+  export type FloatFieldUpdateOperationsInput = {
+    set?: number
+    increment?: number
+    decrement?: number
+    multiply?: number
+    divide?: number
+  }
+
+  export type SessionUpdateOneRequiredWithoutSessionMetricNestedInput = {
+    create?: XOR<SessionCreateWithoutSessionMetricInput, SessionUncheckedCreateWithoutSessionMetricInput>
+    connectOrCreate?: SessionCreateOrConnectWithoutSessionMetricInput
+    upsert?: SessionUpsertWithoutSessionMetricInput
+    connect?: SessionWhereUniqueInput
+    update?: XOR<XOR<SessionUpdateToOneWithWhereWithoutSessionMetricInput, SessionUpdateWithoutSessionMetricInput>, SessionUncheckedUpdateWithoutSessionMetricInput>
+  }
+
   export type TeamCreateNestedOneWithoutAppsInput = {
     create?: XOR<TeamCreateWithoutAppsInput, TeamUncheckedCreateWithoutAppsInput>
     connectOrCreate?: TeamCreateOrConnectWithoutAppsInput
@@ -37418,14 +38889,6 @@ export namespace Prisma {
     create?: XOR<TeamCreateWithoutDevicesInput, TeamUncheckedCreateWithoutDevicesInput>
     connectOrCreate?: TeamCreateOrConnectWithoutDevicesInput
     connect?: TeamWhereUniqueInput
-  }
-
-  export type FloatFieldUpdateOperationsInput = {
-    set?: number
-    increment?: number
-    decrement?: number
-    multiply?: number
-    divide?: number
   }
 
   export type TeamUpdateOneWithoutDevicesNestedInput = {
@@ -38267,6 +39730,7 @@ export namespace Prisma {
     user_id?: string | null
     Log?: LogCreateNestedManyWithoutSessionInput
     Profiling?: ProfilingCreateNestedManyWithoutSessionInput
+    SessionMetric?: SessionMetricCreateNestedManyWithoutSessionInput
     SessionLog?: SessionLogCreateNestedManyWithoutSessionInput
     Recording?: RecordingCreateNestedManyWithoutSessionInput
   }
@@ -38304,6 +39768,7 @@ export namespace Prisma {
     user_id?: string | null
     Log?: LogUncheckedCreateNestedManyWithoutSessionInput
     Profiling?: ProfilingUncheckedCreateNestedManyWithoutSessionInput
+    SessionMetric?: SessionMetricUncheckedCreateNestedManyWithoutSessionInput
     SessionLog?: SessionLogUncheckedCreateNestedManyWithoutSessionInput
     Recording?: RecordingUncheckedCreateNestedManyWithoutSessionInput
   }
@@ -38429,6 +39894,36 @@ export namespace Prisma {
 
   export type ProfilingCreateManySessionInputEnvelope = {
     data: ProfilingCreateManySessionInput | ProfilingCreateManySessionInput[]
+  }
+
+  export type SessionMetricCreateWithoutSessionInput = {
+    at: number
+    device_cpu_pct?: number | null
+    device_mem_mb?: number | null
+    device_mem_total?: number | null
+    app_cpu_pct?: number | null
+    app_mem_mb?: number | null
+    app_id?: string | null
+  }
+
+  export type SessionMetricUncheckedCreateWithoutSessionInput = {
+    id?: number
+    at: number
+    device_cpu_pct?: number | null
+    device_mem_mb?: number | null
+    device_mem_total?: number | null
+    app_cpu_pct?: number | null
+    app_mem_mb?: number | null
+    app_id?: string | null
+  }
+
+  export type SessionMetricCreateOrConnectWithoutSessionInput = {
+    where: SessionMetricWhereUniqueInput
+    create: XOR<SessionMetricCreateWithoutSessionInput, SessionMetricUncheckedCreateWithoutSessionInput>
+  }
+
+  export type SessionMetricCreateManySessionInputEnvelope = {
+    data: SessionMetricCreateManySessionInput | SessionMetricCreateManySessionInput[]
   }
 
   export type BuildCreateWithoutSessionsInput = {
@@ -38618,6 +40113,37 @@ export namespace Prisma {
     updatedAt?: DateTimeFilter<"Profiling"> | Date | string
   }
 
+  export type SessionMetricUpsertWithWhereUniqueWithoutSessionInput = {
+    where: SessionMetricWhereUniqueInput
+    update: XOR<SessionMetricUpdateWithoutSessionInput, SessionMetricUncheckedUpdateWithoutSessionInput>
+    create: XOR<SessionMetricCreateWithoutSessionInput, SessionMetricUncheckedCreateWithoutSessionInput>
+  }
+
+  export type SessionMetricUpdateWithWhereUniqueWithoutSessionInput = {
+    where: SessionMetricWhereUniqueInput
+    data: XOR<SessionMetricUpdateWithoutSessionInput, SessionMetricUncheckedUpdateWithoutSessionInput>
+  }
+
+  export type SessionMetricUpdateManyWithWhereWithoutSessionInput = {
+    where: SessionMetricScalarWhereInput
+    data: XOR<SessionMetricUpdateManyMutationInput, SessionMetricUncheckedUpdateManyWithoutSessionInput>
+  }
+
+  export type SessionMetricScalarWhereInput = {
+    AND?: SessionMetricScalarWhereInput | SessionMetricScalarWhereInput[]
+    OR?: SessionMetricScalarWhereInput[]
+    NOT?: SessionMetricScalarWhereInput | SessionMetricScalarWhereInput[]
+    id?: IntFilter<"SessionMetric"> | number
+    session_id?: StringFilter<"SessionMetric"> | string
+    at?: FloatFilter<"SessionMetric"> | number
+    device_cpu_pct?: FloatNullableFilter<"SessionMetric"> | number | null
+    device_mem_mb?: FloatNullableFilter<"SessionMetric"> | number | null
+    device_mem_total?: FloatNullableFilter<"SessionMetric"> | number | null
+    app_cpu_pct?: FloatNullableFilter<"SessionMetric"> | number | null
+    app_mem_mb?: FloatNullableFilter<"SessionMetric"> | number | null
+    app_id?: StringNullableFilter<"SessionMetric"> | string | null
+  }
+
   export type BuildUpsertWithoutSessionsInput = {
     update: XOR<BuildUpdateWithoutSessionsInput, BuildUncheckedUpdateWithoutSessionsInput>
     create: XOR<BuildCreateWithoutSessionsInput, BuildUncheckedCreateWithoutSessionsInput>
@@ -38758,6 +40284,7 @@ export namespace Prisma {
     user_id?: string | null
     Log?: LogCreateNestedManyWithoutSessionInput
     Profiling?: ProfilingCreateNestedManyWithoutSessionInput
+    SessionMetric?: SessionMetricCreateNestedManyWithoutSessionInput
     build?: BuildCreateNestedOneWithoutSessionsInput
     Recording?: RecordingCreateNestedManyWithoutSessionInput
   }
@@ -38796,6 +40323,7 @@ export namespace Prisma {
     user_id?: string | null
     Log?: LogUncheckedCreateNestedManyWithoutSessionInput
     Profiling?: ProfilingUncheckedCreateNestedManyWithoutSessionInput
+    SessionMetric?: SessionMetricUncheckedCreateNestedManyWithoutSessionInput
     Recording?: RecordingUncheckedCreateNestedManyWithoutSessionInput
   }
 
@@ -38848,6 +40376,7 @@ export namespace Prisma {
     user_id?: NullableStringFieldUpdateOperationsInput | string | null
     Log?: LogUpdateManyWithoutSessionNestedInput
     Profiling?: ProfilingUpdateManyWithoutSessionNestedInput
+    SessionMetric?: SessionMetricUpdateManyWithoutSessionNestedInput
     build?: BuildUpdateOneWithoutSessionsNestedInput
     Recording?: RecordingUpdateManyWithoutSessionNestedInput
   }
@@ -38886,6 +40415,7 @@ export namespace Prisma {
     user_id?: NullableStringFieldUpdateOperationsInput | string | null
     Log?: LogUncheckedUpdateManyWithoutSessionNestedInput
     Profiling?: ProfilingUncheckedUpdateManyWithoutSessionNestedInput
+    SessionMetric?: SessionMetricUncheckedUpdateManyWithoutSessionNestedInput
     Recording?: RecordingUncheckedUpdateManyWithoutSessionNestedInput
   }
 
@@ -38921,6 +40451,7 @@ export namespace Prisma {
     api_key_id?: string | null
     user_id?: string | null
     Profiling?: ProfilingCreateNestedManyWithoutSessionInput
+    SessionMetric?: SessionMetricCreateNestedManyWithoutSessionInput
     build?: BuildCreateNestedOneWithoutSessionsInput
     SessionLog?: SessionLogCreateNestedManyWithoutSessionInput
     Recording?: RecordingCreateNestedManyWithoutSessionInput
@@ -38959,6 +40490,7 @@ export namespace Prisma {
     api_key_id?: string | null
     user_id?: string | null
     Profiling?: ProfilingUncheckedCreateNestedManyWithoutSessionInput
+    SessionMetric?: SessionMetricUncheckedCreateNestedManyWithoutSessionInput
     SessionLog?: SessionLogUncheckedCreateNestedManyWithoutSessionInput
     Recording?: RecordingUncheckedCreateNestedManyWithoutSessionInput
   }
@@ -39011,6 +40543,7 @@ export namespace Prisma {
     api_key_id?: NullableStringFieldUpdateOperationsInput | string | null
     user_id?: NullableStringFieldUpdateOperationsInput | string | null
     Profiling?: ProfilingUpdateManyWithoutSessionNestedInput
+    SessionMetric?: SessionMetricUpdateManyWithoutSessionNestedInput
     build?: BuildUpdateOneWithoutSessionsNestedInput
     SessionLog?: SessionLogUpdateManyWithoutSessionNestedInput
     Recording?: RecordingUpdateManyWithoutSessionNestedInput
@@ -39049,6 +40582,7 @@ export namespace Prisma {
     api_key_id?: NullableStringFieldUpdateOperationsInput | string | null
     user_id?: NullableStringFieldUpdateOperationsInput | string | null
     Profiling?: ProfilingUncheckedUpdateManyWithoutSessionNestedInput
+    SessionMetric?: SessionMetricUncheckedUpdateManyWithoutSessionNestedInput
     SessionLog?: SessionLogUncheckedUpdateManyWithoutSessionNestedInput
     Recording?: RecordingUncheckedUpdateManyWithoutSessionNestedInput
   }
@@ -39085,6 +40619,7 @@ export namespace Prisma {
     api_key_id?: string | null
     user_id?: string | null
     Log?: LogCreateNestedManyWithoutSessionInput
+    SessionMetric?: SessionMetricCreateNestedManyWithoutSessionInput
     build?: BuildCreateNestedOneWithoutSessionsInput
     SessionLog?: SessionLogCreateNestedManyWithoutSessionInput
     Recording?: RecordingCreateNestedManyWithoutSessionInput
@@ -39123,6 +40658,7 @@ export namespace Prisma {
     api_key_id?: string | null
     user_id?: string | null
     Log?: LogUncheckedCreateNestedManyWithoutSessionInput
+    SessionMetric?: SessionMetricUncheckedCreateNestedManyWithoutSessionInput
     SessionLog?: SessionLogUncheckedCreateNestedManyWithoutSessionInput
     Recording?: RecordingUncheckedCreateNestedManyWithoutSessionInput
   }
@@ -39175,6 +40711,7 @@ export namespace Prisma {
     api_key_id?: NullableStringFieldUpdateOperationsInput | string | null
     user_id?: NullableStringFieldUpdateOperationsInput | string | null
     Log?: LogUpdateManyWithoutSessionNestedInput
+    SessionMetric?: SessionMetricUpdateManyWithoutSessionNestedInput
     build?: BuildUpdateOneWithoutSessionsNestedInput
     SessionLog?: SessionLogUpdateManyWithoutSessionNestedInput
     Recording?: RecordingUpdateManyWithoutSessionNestedInput
@@ -39213,6 +40750,175 @@ export namespace Prisma {
     api_key_id?: NullableStringFieldUpdateOperationsInput | string | null
     user_id?: NullableStringFieldUpdateOperationsInput | string | null
     Log?: LogUncheckedUpdateManyWithoutSessionNestedInput
+    SessionMetric?: SessionMetricUncheckedUpdateManyWithoutSessionNestedInput
+    SessionLog?: SessionLogUncheckedUpdateManyWithoutSessionNestedInput
+    Recording?: RecordingUncheckedUpdateManyWithoutSessionNestedInput
+  }
+
+  export type SessionCreateWithoutSessionMetricInput = {
+    id: string
+    name?: string | null
+    status?: string
+    desired_capabilities: string
+    session_capabilities: string
+    node_id: string
+    has_live_video: boolean
+    video_recording_enabled?: boolean
+    video_recording?: string | null
+    startTime?: Date | string
+    endTime?: Date | string | null
+    failure_reason?: string | null
+    is_profiling_available?: boolean
+    device_info?: string | null
+    device_udid: string
+    device_platform: string
+    device_version: string
+    device_name?: string | null
+    createdAt?: Date | string
+    updatedAt?: Date | string
+    performance_trace?: string | null
+    failure_category?: string | null
+    ai_analysis?: string | null
+    tags?: string | null
+    trace_id?: string | null
+    last_heartbeat_at?: Date | string | null
+    heartbeat_pid?: number | null
+    heartbeat_host?: string | null
+    api_key_id?: string | null
+    user_id?: string | null
+    Log?: LogCreateNestedManyWithoutSessionInput
+    Profiling?: ProfilingCreateNestedManyWithoutSessionInput
+    build?: BuildCreateNestedOneWithoutSessionsInput
+    SessionLog?: SessionLogCreateNestedManyWithoutSessionInput
+    Recording?: RecordingCreateNestedManyWithoutSessionInput
+  }
+
+  export type SessionUncheckedCreateWithoutSessionMetricInput = {
+    id: string
+    build_id?: string | null
+    name?: string | null
+    status?: string
+    desired_capabilities: string
+    session_capabilities: string
+    node_id: string
+    has_live_video: boolean
+    video_recording_enabled?: boolean
+    video_recording?: string | null
+    startTime?: Date | string
+    endTime?: Date | string | null
+    failure_reason?: string | null
+    is_profiling_available?: boolean
+    device_info?: string | null
+    device_udid: string
+    device_platform: string
+    device_version: string
+    device_name?: string | null
+    createdAt?: Date | string
+    updatedAt?: Date | string
+    performance_trace?: string | null
+    failure_category?: string | null
+    ai_analysis?: string | null
+    tags?: string | null
+    trace_id?: string | null
+    last_heartbeat_at?: Date | string | null
+    heartbeat_pid?: number | null
+    heartbeat_host?: string | null
+    api_key_id?: string | null
+    user_id?: string | null
+    Log?: LogUncheckedCreateNestedManyWithoutSessionInput
+    Profiling?: ProfilingUncheckedCreateNestedManyWithoutSessionInput
+    SessionLog?: SessionLogUncheckedCreateNestedManyWithoutSessionInput
+    Recording?: RecordingUncheckedCreateNestedManyWithoutSessionInput
+  }
+
+  export type SessionCreateOrConnectWithoutSessionMetricInput = {
+    where: SessionWhereUniqueInput
+    create: XOR<SessionCreateWithoutSessionMetricInput, SessionUncheckedCreateWithoutSessionMetricInput>
+  }
+
+  export type SessionUpsertWithoutSessionMetricInput = {
+    update: XOR<SessionUpdateWithoutSessionMetricInput, SessionUncheckedUpdateWithoutSessionMetricInput>
+    create: XOR<SessionCreateWithoutSessionMetricInput, SessionUncheckedCreateWithoutSessionMetricInput>
+    where?: SessionWhereInput
+  }
+
+  export type SessionUpdateToOneWithWhereWithoutSessionMetricInput = {
+    where?: SessionWhereInput
+    data: XOR<SessionUpdateWithoutSessionMetricInput, SessionUncheckedUpdateWithoutSessionMetricInput>
+  }
+
+  export type SessionUpdateWithoutSessionMetricInput = {
+    id?: StringFieldUpdateOperationsInput | string
+    name?: NullableStringFieldUpdateOperationsInput | string | null
+    status?: StringFieldUpdateOperationsInput | string
+    desired_capabilities?: StringFieldUpdateOperationsInput | string
+    session_capabilities?: StringFieldUpdateOperationsInput | string
+    node_id?: StringFieldUpdateOperationsInput | string
+    has_live_video?: BoolFieldUpdateOperationsInput | boolean
+    video_recording_enabled?: BoolFieldUpdateOperationsInput | boolean
+    video_recording?: NullableStringFieldUpdateOperationsInput | string | null
+    startTime?: DateTimeFieldUpdateOperationsInput | Date | string
+    endTime?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    failure_reason?: NullableStringFieldUpdateOperationsInput | string | null
+    is_profiling_available?: BoolFieldUpdateOperationsInput | boolean
+    device_info?: NullableStringFieldUpdateOperationsInput | string | null
+    device_udid?: StringFieldUpdateOperationsInput | string
+    device_platform?: StringFieldUpdateOperationsInput | string
+    device_version?: StringFieldUpdateOperationsInput | string
+    device_name?: NullableStringFieldUpdateOperationsInput | string | null
+    createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
+    updatedAt?: DateTimeFieldUpdateOperationsInput | Date | string
+    performance_trace?: NullableStringFieldUpdateOperationsInput | string | null
+    failure_category?: NullableStringFieldUpdateOperationsInput | string | null
+    ai_analysis?: NullableStringFieldUpdateOperationsInput | string | null
+    tags?: NullableStringFieldUpdateOperationsInput | string | null
+    trace_id?: NullableStringFieldUpdateOperationsInput | string | null
+    last_heartbeat_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    heartbeat_pid?: NullableIntFieldUpdateOperationsInput | number | null
+    heartbeat_host?: NullableStringFieldUpdateOperationsInput | string | null
+    api_key_id?: NullableStringFieldUpdateOperationsInput | string | null
+    user_id?: NullableStringFieldUpdateOperationsInput | string | null
+    Log?: LogUpdateManyWithoutSessionNestedInput
+    Profiling?: ProfilingUpdateManyWithoutSessionNestedInput
+    build?: BuildUpdateOneWithoutSessionsNestedInput
+    SessionLog?: SessionLogUpdateManyWithoutSessionNestedInput
+    Recording?: RecordingUpdateManyWithoutSessionNestedInput
+  }
+
+  export type SessionUncheckedUpdateWithoutSessionMetricInput = {
+    id?: StringFieldUpdateOperationsInput | string
+    build_id?: NullableStringFieldUpdateOperationsInput | string | null
+    name?: NullableStringFieldUpdateOperationsInput | string | null
+    status?: StringFieldUpdateOperationsInput | string
+    desired_capabilities?: StringFieldUpdateOperationsInput | string
+    session_capabilities?: StringFieldUpdateOperationsInput | string
+    node_id?: StringFieldUpdateOperationsInput | string
+    has_live_video?: BoolFieldUpdateOperationsInput | boolean
+    video_recording_enabled?: BoolFieldUpdateOperationsInput | boolean
+    video_recording?: NullableStringFieldUpdateOperationsInput | string | null
+    startTime?: DateTimeFieldUpdateOperationsInput | Date | string
+    endTime?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    failure_reason?: NullableStringFieldUpdateOperationsInput | string | null
+    is_profiling_available?: BoolFieldUpdateOperationsInput | boolean
+    device_info?: NullableStringFieldUpdateOperationsInput | string | null
+    device_udid?: StringFieldUpdateOperationsInput | string
+    device_platform?: StringFieldUpdateOperationsInput | string
+    device_version?: StringFieldUpdateOperationsInput | string
+    device_name?: NullableStringFieldUpdateOperationsInput | string | null
+    createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
+    updatedAt?: DateTimeFieldUpdateOperationsInput | Date | string
+    performance_trace?: NullableStringFieldUpdateOperationsInput | string | null
+    failure_category?: NullableStringFieldUpdateOperationsInput | string | null
+    ai_analysis?: NullableStringFieldUpdateOperationsInput | string | null
+    tags?: NullableStringFieldUpdateOperationsInput | string | null
+    trace_id?: NullableStringFieldUpdateOperationsInput | string | null
+    last_heartbeat_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    heartbeat_pid?: NullableIntFieldUpdateOperationsInput | number | null
+    heartbeat_host?: NullableStringFieldUpdateOperationsInput | string | null
+    api_key_id?: NullableStringFieldUpdateOperationsInput | string | null
+    user_id?: NullableStringFieldUpdateOperationsInput | string | null
+    Log?: LogUncheckedUpdateManyWithoutSessionNestedInput
+    Profiling?: ProfilingUncheckedUpdateManyWithoutSessionNestedInput
     SessionLog?: SessionLogUncheckedUpdateManyWithoutSessionNestedInput
     Recording?: RecordingUncheckedUpdateManyWithoutSessionNestedInput
   }
@@ -39949,6 +41655,7 @@ export namespace Prisma {
     user_id?: string | null
     Log?: LogCreateNestedManyWithoutSessionInput
     Profiling?: ProfilingCreateNestedManyWithoutSessionInput
+    SessionMetric?: SessionMetricCreateNestedManyWithoutSessionInput
     build?: BuildCreateNestedOneWithoutSessionsInput
     SessionLog?: SessionLogCreateNestedManyWithoutSessionInput
   }
@@ -39987,6 +41694,7 @@ export namespace Prisma {
     user_id?: string | null
     Log?: LogUncheckedCreateNestedManyWithoutSessionInput
     Profiling?: ProfilingUncheckedCreateNestedManyWithoutSessionInput
+    SessionMetric?: SessionMetricUncheckedCreateNestedManyWithoutSessionInput
     SessionLog?: SessionLogUncheckedCreateNestedManyWithoutSessionInput
   }
 
@@ -40099,6 +41807,7 @@ export namespace Prisma {
     user_id?: NullableStringFieldUpdateOperationsInput | string | null
     Log?: LogUpdateManyWithoutSessionNestedInput
     Profiling?: ProfilingUpdateManyWithoutSessionNestedInput
+    SessionMetric?: SessionMetricUpdateManyWithoutSessionNestedInput
     build?: BuildUpdateOneWithoutSessionsNestedInput
     SessionLog?: SessionLogUpdateManyWithoutSessionNestedInput
   }
@@ -40137,6 +41846,7 @@ export namespace Prisma {
     user_id?: NullableStringFieldUpdateOperationsInput | string | null
     Log?: LogUncheckedUpdateManyWithoutSessionNestedInput
     Profiling?: ProfilingUncheckedUpdateManyWithoutSessionNestedInput
+    SessionMetric?: SessionMetricUncheckedUpdateManyWithoutSessionNestedInput
     SessionLog?: SessionLogUncheckedUpdateManyWithoutSessionNestedInput
   }
 
@@ -40883,6 +42593,7 @@ export namespace Prisma {
     user_id?: NullableStringFieldUpdateOperationsInput | string | null
     Log?: LogUpdateManyWithoutSessionNestedInput
     Profiling?: ProfilingUpdateManyWithoutSessionNestedInput
+    SessionMetric?: SessionMetricUpdateManyWithoutSessionNestedInput
     SessionLog?: SessionLogUpdateManyWithoutSessionNestedInput
     Recording?: RecordingUpdateManyWithoutSessionNestedInput
   }
@@ -40920,6 +42631,7 @@ export namespace Prisma {
     user_id?: NullableStringFieldUpdateOperationsInput | string | null
     Log?: LogUncheckedUpdateManyWithoutSessionNestedInput
     Profiling?: ProfilingUncheckedUpdateManyWithoutSessionNestedInput
+    SessionMetric?: SessionMetricUncheckedUpdateManyWithoutSessionNestedInput
     SessionLog?: SessionLogUncheckedUpdateManyWithoutSessionNestedInput
     Recording?: RecordingUncheckedUpdateManyWithoutSessionNestedInput
   }
@@ -40977,6 +42689,17 @@ export namespace Prisma {
     timestamp: Date | string
     createdAt?: Date | string
     updatedAt?: Date | string
+  }
+
+  export type SessionMetricCreateManySessionInput = {
+    id?: number
+    at: number
+    device_cpu_pct?: number | null
+    device_mem_mb?: number | null
+    device_mem_total?: number | null
+    app_cpu_pct?: number | null
+    app_mem_mb?: number | null
+    app_id?: string | null
   }
 
   export type SessionLogCreateManySessionInput = {
@@ -41084,6 +42807,38 @@ export namespace Prisma {
     timestamp?: DateTimeFieldUpdateOperationsInput | Date | string
     createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
     updatedAt?: DateTimeFieldUpdateOperationsInput | Date | string
+  }
+
+  export type SessionMetricUpdateWithoutSessionInput = {
+    at?: FloatFieldUpdateOperationsInput | number
+    device_cpu_pct?: NullableFloatFieldUpdateOperationsInput | number | null
+    device_mem_mb?: NullableFloatFieldUpdateOperationsInput | number | null
+    device_mem_total?: NullableFloatFieldUpdateOperationsInput | number | null
+    app_cpu_pct?: NullableFloatFieldUpdateOperationsInput | number | null
+    app_mem_mb?: NullableFloatFieldUpdateOperationsInput | number | null
+    app_id?: NullableStringFieldUpdateOperationsInput | string | null
+  }
+
+  export type SessionMetricUncheckedUpdateWithoutSessionInput = {
+    id?: IntFieldUpdateOperationsInput | number
+    at?: FloatFieldUpdateOperationsInput | number
+    device_cpu_pct?: NullableFloatFieldUpdateOperationsInput | number | null
+    device_mem_mb?: NullableFloatFieldUpdateOperationsInput | number | null
+    device_mem_total?: NullableFloatFieldUpdateOperationsInput | number | null
+    app_cpu_pct?: NullableFloatFieldUpdateOperationsInput | number | null
+    app_mem_mb?: NullableFloatFieldUpdateOperationsInput | number | null
+    app_id?: NullableStringFieldUpdateOperationsInput | string | null
+  }
+
+  export type SessionMetricUncheckedUpdateManyWithoutSessionInput = {
+    id?: IntFieldUpdateOperationsInput | number
+    at?: FloatFieldUpdateOperationsInput | number
+    device_cpu_pct?: NullableFloatFieldUpdateOperationsInput | number | null
+    device_mem_mb?: NullableFloatFieldUpdateOperationsInput | number | null
+    device_mem_total?: NullableFloatFieldUpdateOperationsInput | number | null
+    app_cpu_pct?: NullableFloatFieldUpdateOperationsInput | number | null
+    app_mem_mb?: NullableFloatFieldUpdateOperationsInput | number | null
+    app_id?: NullableStringFieldUpdateOperationsInput | string | null
   }
 
   export type SessionLogUpdateWithoutSessionInput = {
@@ -41865,6 +43620,10 @@ export namespace Prisma {
      * @deprecated Use ProfilingDefaultArgs instead
      */
     export type ProfilingArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = ProfilingDefaultArgs<ExtArgs>
+    /**
+     * @deprecated Use SessionMetricDefaultArgs instead
+     */
+    export type SessionMetricArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = SessionMetricDefaultArgs<ExtArgs>
     /**
      * @deprecated Use AppDefaultArgs instead
      */

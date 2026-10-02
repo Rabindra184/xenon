@@ -34,6 +34,7 @@ const MODELS = [
   'recording',
   'bookmark',
   'annotation',
+  'sessionMetric',
 ] as const;
 
 export interface ScratchDatabase {

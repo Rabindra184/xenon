@@ -18,28 +18,28 @@ model Build {
 }
 
 model Session {
-  id                      String       @id
+  id                      String          @id
   build_id                String?
   name                    String?
-  status                  String       @default("running")
+  status                  String          @default("running")
   desired_capabilities    String
   session_capabilities    String
   node_id                 String
   has_live_video          Boolean
-  video_recording_enabled Boolean      @default(true)
+  video_recording_enabled Boolean         @default(true)
   video_recording         String?
-  startTime               DateTime     @default(now())
+  startTime               DateTime        @default(now())
   endTime                 DateTime?
   failure_reason          String?
-  is_profiling_available  Boolean      @default(false)
+  is_profiling_available  Boolean         @default(false)
   device_info             String?
   device_udid             String
   device_platform         String
   device_version          String
   device_name             String?
-  createdAt               DateTime     @default(now())
-  updatedAt               DateTime     @updatedAt
-  performance_trace       String?      @map("performance_trace")
+  createdAt               DateTime        @default(now())
+  updatedAt               DateTime        @updatedAt
+  performance_trace       String?         @map("performance_trace")
   failure_category        String?
   ai_analysis             String?
   tags                    String?
@@ -51,7 +51,8 @@ model Session {
   user_id                 String?
   Log                     Log[]
   Profiling               Profiling[]
-  build                   Build?       @relation(fields: [build_id], references: [id])
+  SessionMetric           SessionMetric[]
+  build                   Build?          @relation(fields: [build_id], references: [id])
   SessionLog              SessionLog[]
   Recording               Recording[]
 
@@ -116,6 +117,24 @@ model Profiling {
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
   session           Session  @relation(fields: [session_id], references: [id])
+}
+
+/// CPU and memory sampled every 2 s while a session runs (SessionMetricsService).
+model SessionMetric {
+  id               Int     @id @default(autoincrement())
+  session_id       String
+  /// epoch ms
+  at               Float
+  device_cpu_pct   Float?
+  device_mem_mb    Float?
+  device_mem_total Float?
+  app_cpu_pct      Float?
+  app_mem_mb       Float?
+  /// The package the app figures are for (Android), else null.
+  app_id           String?
+  session          Session @relation(fields: [session_id], references: [id], onDelete: Cascade)
+
+  @@index([session_id, at])
 }
 
 model App {
