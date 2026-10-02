@@ -2,7 +2,7 @@ import { test, expect, Page } from '@playwright/test';
 
 // COVERAGE BOUNDARY: every route below is now hermetic. The 11 data routes
 // (overview, devices, builds, builds/:buildId, apps, selector-health,
-// selector-health/detail, teams, users, api-keys, notifications) have their
+// selector-health with its panel open, teams, users, api-keys, notifications) have their
 // data endpoints route-mocked with deliberately WIDE/hostile payloads via
 // ROUTE_DATA_MOCKS, and a per-route ROUTE_CONTENT_CHECKS assertion proves the
 // route's canonical wide content actually mounted (not an empty-state div) —
@@ -271,9 +271,161 @@ async function mockSessionDetail(page: Page) {
     }),
   );
 }
-// selector-health/detail returns early (renders nothing) with no ?value= param
-// (selector-detail-page.tsx: `const value = params.get('value') ?? ''`).
-const SELECTOR_DETAIL_VALUE = 'onboarding_carousel_primary_cta';
+const SH_LONG_SELECTOR =
+  'new UiSelector().resourceId("com.acme.enterprise.superapp:id/onboarding_carousel_primary_cta_button_container").childSelector(new UiSelector().className("android.widget.TextView"))';
+const SH_LONG_FIX =
+  "//android.widget.Button[@content-desc='Get Started Now — Continue To Account Setup Wizard Step One']";
+const SH_SUMMARY = {
+  windowDays: 30,
+  current: {
+    totalHeals: 140,
+    distinctSelectors: 57,
+    sessionsTouched: 48,
+    byTier: { 'Visual AI': 90, LLM: 20, OCR: 30 },
+    timeSpentMs: 14 * 60_000,
+  },
+  prior: {
+    totalHeals: 100,
+    distinctSelectors: 40,
+    sessionsTouched: 30,
+    byTier: { LLM: 10 },
+    timeSpentMs: 9 * 60_000,
+  },
+  resolvedCount: 4,
+  pendingCount: 2,
+  trend: Array.from({ length: 31 }, (_, i) => ({
+    t: Date.UTC(2026, 8, 1) + i * 86_400_000,
+    heals: (i * 7) % 11,
+    aiHeals: i % 3,
+  })),
+};
+const SH_LIST = {
+  tab: 'fix',
+  days: 30,
+  page: 1,
+  pageSize: 50,
+  total: 2,
+  counts: { fix: 2, verifying: 2, fixed: 4, muted: 1 },
+  canAct: true,
+  items: [
+    {
+      strategy: '-android uiautomator',
+      selector: SH_LONG_SELECTOR,
+      heals: 137,
+      sessions: 48,
+      lastHealedAt: '2026-07-16T09:42:11.000Z',
+      timeSpentMs: 360_000,
+      topMethod: 'Visual AI',
+      suggestion: { selector: SH_LONG_FIX, strategy: 'xpath', share: 0.82 },
+      state: {
+        status: 'active',
+        cleanBuilds: 0,
+        fixedAt: null,
+        fixedBy: null,
+        resolvedAt: null,
+        mutedAt: null,
+        mutedBy: null,
+        muteReason: null,
+        brokeAgain: 2,
+      },
+    },
+    {
+      strategy: 'accessibility id',
+      selector:
+        'login_screen_username_text_field_with_an_extremely_long_accessibility_identifier_that_stresses_the_selector_column',
+      heals: 3,
+      sessions: 2,
+      lastHealedAt: '2026-07-15T23:59:00.000Z',
+      timeSpentMs: 4000,
+      topMethod: 'LLM',
+      suggestion: { selector: 'username', strategy: 'accessibility id', share: 0.5 },
+      state: null,
+    },
+  ],
+};
+const SH_DETAIL = {
+  strategy: '-android uiautomator',
+  selector: SH_LONG_SELECTOR,
+  days: 30,
+  heals: 137,
+  sessions: 48,
+  timeSpentMs: 360_000,
+  firstHealedAt: '2026-06-20T10:15:00.000Z',
+  lastHealedAt: '2026-07-16T09:42:11.000Z',
+  daily: Array.from({ length: 31 }, (_, i) => ({
+    t: Date.UTC(2026, 8, 1) + i * 86_400_000,
+    heals: (i * 5) % 9,
+  })),
+  suggestions: [
+    {
+      selector: SH_LONG_FIX,
+      strategy: 'xpath',
+      count: 112,
+      share: 0.82,
+      methods: ['Visual AI', 'OCR'],
+      averageConfidence: 0.91,
+    },
+    {
+      selector: 'confirm_order',
+      strategy: 'accessibility id',
+      count: 25,
+      share: 0.18,
+      methods: ['LLM'],
+      averageConfidence: 0.71,
+    },
+  ],
+  platforms: [{ name: 'android', count: 137 }],
+  builds: [
+    {
+      id: 'ci-nightly-regression-suite-2026-07-16-build-8842',
+      name: 'ci-nightly-regression-suite-2026-07-16-build-8842',
+      count: 90,
+    },
+    { id: null, name: 'No build', count: 47 },
+  ],
+  devices: [
+    {
+      udid: 'emulator-5554-pixel7pro-android14-arm64-node03',
+      name: 'Pixel 7 Pro (Android 14) — CI Farm Node 03 Slot A',
+      count: 137,
+    },
+  ],
+  recent: [
+    {
+      id: 'log_01HZY9X8Q7K3M2N4P5R6S7T8U9',
+      sessionId: 'a1b2c3d4-e5f6-7890-abcd-ef1234567890',
+      buildId: 'ci-nightly-regression-suite-2026-07-16-build-8842',
+      at: '2026-07-16T09:42:11.000Z',
+      device: 'Pixel 7 Pro (Android 14) — CI Farm Node 03 Slot A',
+      platform: 'android',
+      method: 'Visual AI',
+      confidence: 0.9137,
+      healedSelector: SH_LONG_FIX,
+    },
+  ],
+  state: SH_LIST.items[0].state,
+  activity: [
+    {
+      action: 'muted',
+      at: '2026-07-01T10:00:00.000Z',
+      by: { id: 'u', name: 'A very long display name for someone in the QA guild' },
+      reason:
+        'Onboarding carousel is being rebuilt for the 2026 brand refresh and this selector will change',
+    },
+  ],
+  canAct: true,
+};
+async function mockSelectorHealth(page: Page) {
+  await page.route('**/xenon/api/healing/summary*', (route) => route.fulfill({ json: SH_SUMMARY }));
+  await page.route(/\/xenon\/api\/healing\/selectors\?/, (route) =>
+    route.fulfill({ json: SH_LIST }),
+  );
+  await page.route(/\/xenon\/api\/healing\/selectors\/detail\?/, (route) =>
+    route.fulfill({ json: SH_DETAIL }),
+  );
+}
+// Selector Health with a selector open in its side panel.
+const SH_PANEL_ROUTE = `/xenon/selector-health?strategy=-android%20uiautomator&selector=${encodeURIComponent(SH_LONG_SELECTOR)}`;
 
 const ROUTES = [
   '/xenon/overview',
@@ -289,7 +441,7 @@ const ROUTES = [
   `/xenon/builds/${BUILD_ID}/sessions/${WIDE_SESSION_ID}`,
   '/xenon/apps',
   '/xenon/selector-health',
-  `/xenon/selector-health/detail?value=${SELECTOR_DETAIL_VALUE}`,
+  SH_PANEL_ROUTE,
   '/xenon/settings',
   '/xenon/teams',
   '/xenon/users',
@@ -706,136 +858,6 @@ const ROUTE_DATA_MOCKS: Record<string, Setup> = {
     );
   },
 
-  '/xenon/selector-health': async (page) => {
-    // Both are OBJECT envelopes; the wide 9-col grid iterates .hotspots.
-    // state:null keeps rows in the 'active' bucket (default tab — no ?tab
-    // param means tab='active', selector-health-page.tsx:245).
-    await page.route('**/xenon/api/healing/hotspots*', (route) =>
-      route.fulfill({
-        json: {
-          windowDays: 30,
-          totalScanned: 42,
-          filters: { tier: null, platform: null, status: 'active' },
-          hotspots: [
-            {
-              originalStrategy: '-android uiautomator',
-              originalSelector:
-                'new UiSelector().resourceId("com.acme.enterprise.superapp:id/onboarding_carousel_primary_cta_button_container").childSelector(new UiSelector().className("android.widget.TextView"))',
-              healCount: 137,
-              sessionCount: 48,
-              topTier: 'Visual AI',
-              suggestedRewrite:
-                "//android.widget.Button[@content-desc='Get Started Now — Continue To Account Setup Wizard Step One']",
-              suggestedStrategy: 'xpath',
-              suggestedRewriteShare: 0.82,
-              averageConfidence: 0.9137,
-              firstHealedAt: '2026-06-20T10:15:00.000Z',
-              lastHealedAt: '2026-07-16T09:42:11.000Z',
-              state: null,
-            },
-            {
-              originalStrategy: 'accessibility id',
-              originalSelector:
-                'login_screen_username_text_field_with_an_extremely_long_accessibility_identifier_that_stresses_the_selector_column',
-              healCount: 3,
-              sessionCount: 2,
-              topTier: 'LLM',
-              suggestedRewrite: '~username',
-              suggestedStrategy: 'accessibility id',
-              suggestedRewriteShare: 0.5,
-              averageConfidence: 0.42,
-              firstHealedAt: '2026-07-10T00:00:00.000Z',
-              lastHealedAt: '2026-07-15T23:59:00.000Z',
-              state: null,
-            },
-          ],
-        },
-      }),
-    );
-    await page.route('**/xenon/api/healing/summary*', (route) =>
-      route.fulfill({
-        json: {
-          windowDays: 30,
-          current: {
-            totalHeals: 140,
-            distinctSelectors: 57,
-            sessionsTouched: 48,
-            byTier: { 'Visual AI': 90, LLM: 20, OCR: 30 },
-            estCostUsd: 12.44,
-          },
-          prior: {
-            totalHeals: 100,
-            distinctSelectors: 40,
-            sessionsTouched: 30,
-            byTier: { LLM: 10 },
-            estCostUsd: 6.1,
-          },
-          resolvedCount: 4,
-          pendingCount: 2,
-        },
-      }),
-    );
-  },
-
-  [`/xenon/selector-health/detail?value=${SELECTOR_DETAIL_VALUE}`]: async (page) => {
-    // Flat object; the 7-col timeline grid iterates .timeline.
-    await page.route('**/xenon/api/healing/selector*', (route) =>
-      route.fulfill({
-        json: {
-          originalSelector:
-            'new UiSelector().resourceId("com.acme.enterprise.superapp:id/onboarding_carousel_primary_cta_button_container")',
-          windowDays: 30,
-          healCount: 2,
-          sessionCount: 2,
-          estCostUsd: 0.44,
-          byTier: { 'Visual AI': 1, LLM: 1 },
-          byPlatform: { android: 2 },
-          byBuild: [{ buildId: 'ci-nightly-regression-suite-2026-07-16-build-8842', count: 2 }],
-          alternates: [
-            {
-              healedSelector: "//android.widget.Button[@content-desc='Get Started Now']",
-              count: 2,
-              share: 1,
-              averageConfidence: 0.91,
-              tiers: ['Visual AI'],
-            },
-          ],
-          timeline: [
-            {
-              id: 'log_01HZY9X8Q7K3M2N4P5R6S7T8U9',
-              sessionId: 'a1b2c3d4-e5f6-7890-abcd-ef1234567890',
-              buildId: 'ci-nightly-regression-suite-2026-07-16-build-8842',
-              deviceUdid: 'emulator-5554-pixel7pro-android14-arm64-node03',
-              deviceName: 'Pixel 7 Pro (Android 14) — CI Farm Node 03 Slot A',
-              devicePlatform: 'android',
-              commandName: 'findElement',
-              healedSelector:
-                "//android.widget.Button[@content-desc='Get Started Now — Continue To Account Setup Wizard Step One Of Five']",
-              confidence: 0.9137,
-              tier: 'Visual AI',
-              isSuccess: true,
-              createdAt: '2026-07-16T09:42:11.000Z',
-            },
-            {
-              id: 'log_01HZY9X8Q7K3M2N4P5R6S7T8V0',
-              sessionId: 'b2c3d4e5-f6a7-8901-bcde-f23456789012',
-              buildId: 'ci-nightly-regression-suite-2026-07-15-build-8790',
-              deviceUdid: '00008120-000A1B2C3D4E5F6G',
-              deviceName: 'iPhone 15 Pro Max — Lab Rack 2',
-              devicePlatform: 'ios',
-              commandName: 'findElement',
-              healedSelector: '**/XCUIElementTypeButton[`label == "Get Started"`]',
-              confidence: 0.42,
-              tier: 'LLM',
-              isSuccess: true,
-              createdAt: '2026-07-15T18:03:00.000Z',
-            },
-          ],
-        },
-      }),
-    );
-  },
-
   '/xenon/teams': async (page) => {
     // Overrides the shared empty teams* mock with a populated bare array.
     await page.route('**/xenon/api/teams', (route) =>
@@ -967,6 +989,8 @@ ROUTE_DATA_MOCKS['/xenon/devices?view=table'] = ROUTE_DATA_MOCKS['/xenon/devices
 ROUTE_DATA_MOCKS['/xenon/recordings'] = mockRecordings;
 ROUTE_DATA_MOCKS['/xenon/recordings/g-mock-1'] = mockRecordings;
 ROUTE_DATA_MOCKS[`/xenon/builds/${BUILD_ID}/sessions/${WIDE_SESSION_ID}`] = mockSessionDetail;
+ROUTE_DATA_MOCKS['/xenon/selector-health'] = mockSelectorHealth;
+ROUTE_DATA_MOCKS[SH_PANEL_ROUTE] = mockSelectorHealth;
 
 const ROUTE_CONTENT_CHECKS: Record<string, Setup> = {
   '/xenon/overview': async (page) => {
@@ -1045,16 +1069,26 @@ const ROUTE_CONTENT_CHECKS: Record<string, Setup> = {
   },
 
   '/xenon/selector-health': async (page) => {
-    // .sh-table/.sh-table__head/.sh-table__row only mount when
-    // hotspots.length > 0; empty renders <EmptyState> instead.
-    await expect(page.locator('.sh-table__head')).toBeVisible();
-    await expect(page.locator('.sh-table__row')).not.toHaveCount(0);
+    // The list's rows and the trend only mount with data; an empty list is an
+    // <EmptyState> with nothing to overflow.
+    await expect(page.locator('section[aria-label="Selectors"] tbody tr')).not.toHaveCount(0);
+    await expect(page.getByRole('img', { name: 'Heals per day' })).toBeVisible();
+    // The search and the three dropdowns share one row: the kit's select is
+    // width: 100% and would otherwise stack each on a line of its own.
+    const tops = await page
+      .locator('section[aria-label="Selectors"] input[type="search"], section[aria-label="Selectors"] select')
+      .evaluateAll((els) => els.map((e) => Math.round(e.getBoundingClientRect().top)));
+    expect(tops).toHaveLength(4);
+    expect(new Set(tops).size).toBe(1);
   },
 
-  [`/xenon/selector-health/detail?value=${SELECTOR_DETAIL_VALUE}`]: async (page) => {
-    // The Timeline section + .sh-timeline__row only render when
-    // detail.timeline is non-empty.
-    await expect(page.locator('.sh-timeline__row')).not.toHaveCount(0);
+  [SH_PANEL_ROUTE]: async (page) => {
+    // The list narrowed beside the side panel, and the panel's fixes.
+    await expect(page.locator('section[aria-label="Selectors"] tbody tr')).not.toHaveCount(0);
+    await expect(page.locator('aside[aria-label="Selector details"]')).toBeVisible();
+    await expect(
+      page.locator('aside[aria-label="Selector details"] section[aria-label="Suggested fix"] li'),
+    ).toHaveCount(2);
   },
 
   '/xenon/teams': async (page) => {

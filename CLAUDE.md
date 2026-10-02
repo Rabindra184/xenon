@@ -101,6 +101,42 @@ When `findElement` fails, `HealingOrchestrator` tries six escalating strategies:
 
 Etalon signatures (element fingerprints) are stored in SQLite and reused across sessions for fast recovery without repeating AI calls.
 
+### Selector Health (`src/services/selector-health/`, `web/src/components/selector-health/`)
+
+The page that lists the selectors tests could only find with healing. A
+list with a side panel; the view (tab, period, search, filters, sort, page,
+open selector) lives in the address.
+
+- **List** (`GET /healing/selectors`, `selectorList.ts`). "To fix" groups
+  the period's heal rows by (strategy, selector) in the database
+  (`groupBy`), so no heal is left uncounted (the old hotspot scan stopped at
+  5,000 rows), and leaves out selectors being verified, fixed or muted. The
+  other tabs start from `SelectorState` rows of that status, so a fixed
+  selector that stopped healing stays listed. Counts follow the period, not
+  the search or filters. Search compares text in JavaScript: `%` and `_`
+  are plain text. A page past the end answers the last page.
+- **Panel** (`GET /healing/selectors/detail`, `selectorDetail.ts`), always by
+  strategy and value. A heal recorded with no strategy is strategy `''`
+  everywhere (`tupleWhere` matches null and `''`).
+- **Who sees what.** A selector is visible to a caller who can see at least
+  one session where it healed, at any time (`access.ts`, by
+  `visibleSessionWhere`); an admin or auth-disabled caller sees all. Hidden
+  answers `404 { error: 'not_found', message: 'Selector not found' }`, as an
+  unknown one. Status and activity stay one lab-wide row per selector.
+- **Actions** (`POST /healing/selector/state`): members and admins, with the
+  `sessions` scope, on visible selectors. Each status change writes a
+  `SelectorEvent` (who, what, optional mute reason) in the same transaction
+  (`SelectorStateService`, `SelectorVerificationJob`). The person is
+  `resolveActor(req).userId`: a dashboard user has no API key, so the old
+  `*_by_api_key` columns were empty for every dashboard action.
+- **Summary** adds `timeSpentMs` (the healed commands' recorded durations)
+  and `trend` (heals and AI heals per day, in the browser's `tz`).
+- **No cost.** The fixed per-heal prices (`TIER_COST_USD`) priced an LLM heal
+  the same on a local model as on a paid one, and charged for local OCR.
+  `estCostUsd` is gone from every answer and the digest.
+- **Wording** is for testers: no internal terms on screen
+  (`selector-health-page.test.tsx` checks).
+
 ### Session Lifecycle (`src/services/SessionLifecycleService.ts`)
 
 State machine: `requested → allocated → running → finished`. Each transition is persisted and broadcast to the dashboard. Local, remote (hub-node), and cloud sessions share a common interface.
@@ -1259,7 +1295,7 @@ against a running server (dashboard enabled, auth disabled).
 Coverage boundary — all 19 routes in the matrix are now **hermetic**. The 15
 data-heavy routes (overview, devices, devices?view=table, recordings,
 recordings/:groupId, builds, builds/:buildId, a failed and healed session's
-page, apps, selector-health, selector-health/detail, teams, users, api-keys,
+page, apps, selector-health, selector-health with its panel open, teams, users, api-keys,
 notifications)
 route-mock their data endpoints via `ROUTE_DATA_MOCKS` with deliberately
 wide/hostile payloads — multiple rows plus a >100-char session subtitle, an
@@ -1341,6 +1377,9 @@ npm run build:copy` (from the repo root) regenerates and copies it.
 | `src/device-managers/ios/IOSStreamService.ts` | go-ios + WDA + iproxy lifecycle for live MJPEG |
 | `src/device-managers/ios/IOSTunnels.ts` | One go-ios tunnel per iOS 17+ phone, on a port pair leased from the `tunnel` range; `envFor` gives a go-ios command its phone's `GO_IOS_AGENT_PORT` |
 | `src/services/metrics/SessionMetricsService.ts` | A CPU and memory sampler per session on this server's phones, buffered and written every 10 s to `SessionMetric`; Android via `/proc`, iPhone via go-ios `sysmontap` |
+| `src/services/selector-health/selectorList.ts` | The Selector Health list: "To fix" by `groupBy` over the period's heals, the other tabs from `SelectorState`, search, sort, paging and the four counts |
+| `src/services/selector-health/access.ts` | Who may see a selector (a visible session healed it) and who may act (`sessions` scope); `SELECTOR_NOT_FOUND` |
+| `web/src/components/selector-health/selector-panel.tsx` | The side panel: status and actions, suggested fixes with Copy as, numbers, where it heals, recent heals, activity |
 | `src/helpers/UniversalMjpegProxy.ts` | One-upstream-to-many-clients MJPEG fan-out with backpressure |
 | `src/device-managers/android/ScrcpyServerSession.ts` | scrcpy-server lifecycle (push jar + `app_process` + `adb forward` + first-byte-gated connect) for the Android H.264 source |
 | `src/app/routers/androidH264Config.ts` | Normalizes the `streaming.androidH264` flag union (`bool \| { source }`) to `{ enabled, source }` |

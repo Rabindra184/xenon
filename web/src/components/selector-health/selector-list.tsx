@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { Search } from 'lucide-react';
 import { EmptyState } from '../ui/EmptyState';
 import { Input } from '../ui/input';
 import { Select } from '../ui/select';
@@ -291,18 +292,26 @@ export const SelectorList: React.FC<Props> = ({
       </div>
 
       <div className="flex flex-wrap items-center gap-2 border-b border-[var(--border)] px-3 py-2.5">
-        <Input
-          type="search"
-          aria-label="Search"
-          value={q}
-          onChange={(e) => setQ(e.target.value)}
-          placeholder={view.tab === 'fix' ? 'Search selectors and fixes' : 'Search selectors'}
-          className="min-w-[220px] flex-1"
-        />
+        <div className="relative min-w-[220px] flex-1">
+          <Search
+            size={14}
+            aria-hidden="true"
+            className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--text-dim)]"
+          />
+          <Input
+            type="search"
+            aria-label="Search"
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            placeholder={view.tab === 'fix' ? 'Search selectors and fixes' : 'Search selectors'}
+            className="h-8 w-full pl-8 pr-2 text-xs"
+          />
+        </div>
         {view.tab === 'fix' && (
           <>
             <Select
               selectSize="sm"
+              className="!w-auto shrink-0"
               aria-label="Platform"
               value={view.platform}
               onChange={(e) => onView({ platform: e.target.value, page: 1 })}
@@ -316,6 +325,7 @@ export const SelectorList: React.FC<Props> = ({
             </Select>
             <Select
               selectSize="sm"
+              className="!w-auto shrink-0"
               aria-label="Healing method"
               value={view.method}
               onChange={(e) => onView({ method: e.target.value, page: 1 })}
@@ -329,6 +339,7 @@ export const SelectorList: React.FC<Props> = ({
             </Select>
             <Select
               selectSize="sm"
+              className="!w-auto shrink-0"
               aria-label="Sort"
               value={view.sort}
               onChange={(e) => onView({ sort: e.target.value as SelectorSort, page: 1 })}
