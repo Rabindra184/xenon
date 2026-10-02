@@ -533,7 +533,12 @@ depends on the stream's WDA, forwarder and tunnel. Three rules follow:
 the UDID. So `isWDARunning(port, retries)` says whether *a* WDA answers,
 never whose, and takes no udid. A caller relies on knowing the port is the
 phone's: its own stream's lease, or the Device row's `wdaLocalPort` while an
-Appium session holds that phone (the attach branch).
+Appium session holds that phone (the attach branch). So Xenon reaches WDA
+only on those ports on 127.0.0.1, never at a network address. Through 2.9,
+`WDAClient` and the stream watchdog fell back to `<device ip>:8100`. go-ios
+never reports an iPhone's address, so for iPhones that never ran. A
+simulator's address is this Mac's own, though, where 8100 can be an iPhone's
+WDA forward.
 
 `UniversalMjpegProxy` (`src/helpers/UniversalMjpegProxy.ts`) multiplexes a single upstream MJPEG to many browser clients. It speaks both standard HTTP MJPEG and a raw-socket fallback for WDA's headerless variant, drops lagging clients (>4 MB kernel backlog) to prevent OOM, and uses bounded retries with exponential backoff (max 10 attempts, 500ms→10s).
 

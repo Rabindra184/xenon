@@ -92,128 +92,95 @@ export class WDAClient {
     const prefixes = cached?.sessionId ? [`/session/${cached.sessionId}`] : ['', '/session/any'];
     let lastError: any;
 
-    // Principal Intelligence: Prioritize the host that worked last time.
-    // Usually localhost (tunnel) is fastest, but if it's lagging, network IP is a solid fallback.
-    const hosts = [];
-    if (cached?.host) {
-      hosts.push(cached.host);
-      if (cached.host === '127.0.0.1' && device.ip) hosts.push(device.ip);
-      if (cached.host !== '127.0.0.1') hosts.push('127.0.0.1');
-    } else {
-      hosts.push('127.0.0.1');
-      if (device.ip) hosts.push(device.ip);
-    }
+    // Only the phone's own forwarded port. WDA names no phone, so no address
+    // on the network is known to be this phone's: a simulator's is this
+    // Mac's own, where port 8100 can be an iPhone's WDA forward.
+    const targetHost = '127.0.0.1';
 
-    for (const targetHost of hosts) {
-      const isNetworkHost = targetHost !== '127.0.0.1';
-      const targetPort = isNetworkHost ? 8100 : port;
+    for (const prefix of prefixes) {
+      try {
+        const isSessionless =
+          !options?.useSessionPath &&
+          (['/status', '/health', '/wda/healthcheck'].includes(endpoint));
+        const url = `http://${targetHost}:${port}${isSessionless ? '' : prefix}${endpoint}`;
 
-      for (const prefix of prefixes) {
-        try {
-          const isSessionless =
-            !options?.useSessionPath &&
-            (['/status', '/health', '/wda/healthcheck'].includes(endpoint));
-          const url = `http://${targetHost}:${targetPort}${isSessionless ? '' : prefix}${endpoint}`;
+        // Principal Stability: Screenshots, activation, and script execution need longer timeouts.
+        // Heartbeats and Status checks should be snappy to fail-over quickly.
+        const isHeavyCommand =
+          endpoint.includes('screenshot') ||
+          endpoint.includes('source') ||
+          endpoint.includes('swipe') ||
+          endpoint.includes('touchAndHold') ||
+          endpoint.includes('activate') ||
+          endpoint.includes('execute') ||
+          endpoint.includes('actions');
+        const timeout = isHeavyCommand ? 30000 : 5000; // Snappy 5s timeout for standard commands
 
-          // Principal Stability: Screenshots, activation, and script execution need longer timeouts.
-          // Heartbeats and Status checks should be snappy to fail-over quickly.
-          const isHeavyCommand =
-            endpoint.includes('screenshot') ||
-            endpoint.includes('source') ||
-            endpoint.includes('swipe') ||
-            endpoint.includes('touchAndHold') ||
-            endpoint.includes('activate') ||
-            endpoint.includes('execute') ||
-            endpoint.includes('actions');
-          const timeout = isHeavyCommand ? 30000 : 5000; // Snappy 5s timeout for standard commands
+        const res =
+          method === 'post'
+            ? await axios.post(url, data || {}, { timeout })
+            : await axios.get(url, { timeout });
 
-          const res =
-            method === 'post'
-              ? await axios.post(url, data || {}, { timeout })
-              : await axios.get(url, { timeout });
+        // If we reached a host but it returned a logical error (e.g. 404 for session),
+        // we should update our cache and potentially stop retrying this host/prefix combo.
+        // However, for simplicity, we treat any successful HTTP response as "Host is alive".
 
-          // If we reached a host but it returned a logical error (e.g. 404 for session),
-          // we should update our cache and potentially stop retrying this host/prefix combo.
-          // However, for simplicity, we treat any successful HTTP response as "Host is alive".
+        const sid = res.data?.sessionId || res.data?.value?.sessionId;
+        if (sid && sid !== cached?.sessionId) {
+          this.log.debug(`[WDA] Detected new session ID: ${sid} via ${targetHost}`);
+          this.wdaConnectionCache.set(cacheKey, {
+            host: targetHost,
+            pathPrefix: `/session/${sid}`,
+            sessionId: sid,
+          });
+          Container.get(IOSStreamService).setWDASessionId(udid, sid);
+        }
+        return res;
+      } catch (err: any) {
+        lastError = err;
+        if (err.response) {
+          const status = err.response.status;
+          const errorMsg = JSON.stringify(err.response.data);
 
-          if (isNetworkHost && targetHost !== cached?.host) {
-            this.log.debug(`[WDA] Successful fallback to network IP ${targetHost} for ${udid}`);
-          }
+          this.log.info(
+            `[WDA] Command ${method.toUpperCase()} ${endpoint} failed (${status}): ${errorMsg}`,
+          );
 
-          const sid = res.data?.sessionId || res.data?.value?.sessionId;
-          if (sid && sid !== cached?.sessionId) {
-            this.log.debug(`[WDA] Detected new session ID: ${sid} via ${targetHost}`);
-            this.wdaConnectionCache.set(cacheKey, {
-              host: targetHost,
-              pathPrefix: `/session/${sid}`,
-              sessionId: sid,
-            });
-            Container.get(IOSStreamService).setWDASessionId(udid, sid);
-          }
-          return res;
-        } catch (err: any) {
-          lastError = err;
-          if (err.response) {
-            const status = err.response.status;
-            const errorMsg = JSON.stringify(err.response.data);
-
-            this.log.info(
-              `[WDA] Command ${method.toUpperCase()} ${endpoint} failed (${status}): ${errorMsg}`,
-            );
-
-            // Principal Resiliency: Multi-Phase Recovery
-            if (retryCount < 2) {
-              // Phase 1: Dead Session Recovery (404)
-              if (status === 404 && prefix.includes('/session/')) {
-                // Special Intelligence: Some WDA versions don't support /execute, /wda/homescreen, etc.
-                // We should NOT clear the session if these specific commands fail with 404,
-                // as they might just be unsupported features.
-                const NON_FATAL_ENDPOINTS = ['execute', 'homescreen', 'pressButton'];
-                if (NON_FATAL_ENDPOINTS.some((e) => endpoint.includes(e))) {
-                  this.log.debug(
-                    `[WDA] Command ${endpoint} failed with 404 (Unsupported or Logical Error). Skipping session reset.`,
-                  );
-                  throw err;
-                }
-
-                this.log.warn(
-                  `[WDA] Session ${cached?.sessionId} appears dead. Resetting and retrying...`,
+          // Principal Resiliency: Multi-Phase Recovery
+          if (retryCount < 2) {
+            // Phase 1: Dead Session Recovery (404)
+            if (status === 404 && prefix.includes('/session/')) {
+              // Special Intelligence: Some WDA versions don't support /execute, /wda/homescreen, etc.
+              // We should NOT clear the session if these specific commands fail with 404,
+              // as they might just be unsupported features.
+              const NON_FATAL_ENDPOINTS = ['execute', 'homescreen', 'pressButton'];
+              if (NON_FATAL_ENDPOINTS.some((e) => endpoint.includes(e))) {
+                this.log.debug(
+                  `[WDA] Command ${endpoint} failed with 404 (Unsupported or Logical Error). Skipping session reset.`,
                 );
-                this.wdaConnectionCache.delete(cacheKey);
-                Container.get(IOSStreamService).setWDASessionId(udid, '');
-                return this.performWDACommand(
-                  udid,
-                  method,
-                  endpoint,
-                  data,
-                  retryCount + 1,
-                  options,
-                );
+                throw err;
               }
 
-              // Phase 2: Transient State Recovery (500)
-              // This handles "Focused" errors, "Internal" errors, or transient locks during app switches.
-              if (status === 500) {
-                this.log.warn(
-                  `[WDA] Transient error (500) for ${udid}, retrying in 1s... (Reason: ${errorMsg})`,
-                );
-                await new Promise((r) => setTimeout(r, 1000));
-                return this.performWDACommand(
-                  udid,
-                  method,
-                  endpoint,
-                  data,
-                  retryCount + 1,
-                  options,
-                );
-              }
+              this.log.warn(
+                `[WDA] Session ${cached?.sessionId} appears dead. Resetting and retrying...`,
+              );
+              this.wdaConnectionCache.delete(cacheKey);
+              Container.get(IOSStreamService).setWDASessionId(udid, '');
+              return this.performWDACommand(udid, method, endpoint, data, retryCount + 1, options);
             }
 
-            throw err;
+            // Phase 2: Transient State Recovery (500)
+            // This handles "Focused" errors, "Internal" errors, or transient locks during app switches.
+            if (status === 500) {
+              this.log.warn(
+                `[WDA] Transient error (500) for ${udid}, retrying in 1s... (Reason: ${errorMsg})`,
+              );
+              await new Promise((r) => setTimeout(r, 1000));
+              return this.performWDACommand(udid, method, endpoint, data, retryCount + 1, options);
+            }
           }
 
-          // If network host fails, don't retry other prefixes if it's just a status check
-          if (isNetworkHost && ['/status', '/health'].includes(endpoint)) break;
+          throw err;
         }
       }
     }

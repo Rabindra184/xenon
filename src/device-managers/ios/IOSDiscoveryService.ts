@@ -2,11 +2,9 @@ import Simctl from 'node-simctl';
 import { flatten } from 'lodash';
 import { utilities as IOSUtils } from 'appium-ios-device';
 import { appleIdentity, simulatorIdentity } from './appleIdentity';
-import { goIosBinaryPath } from './goIosBinary';
 import { EMPTY_IDENTITY, nonNullIdentity } from '../deviceIdentity';
 import { IDevice } from '../../interfaces/IDevice';
 import log from '../../logger';
-import fs from 'fs-extra';
 import { getUtilizationTime } from '../../device-utils';
 import { DeviceStoreFactory } from '../../data-service/device-store';
 import { DeviceTypeToInclude, SimulatorConfig } from '../../interfaces/IPluginArgs';
@@ -106,11 +104,7 @@ export class IOSDiscoveryService {
           (device) => device.udid === udid && device.host === ownHost,
         );
         if (existingDevice) {
-          const networkIp = await this.fetchRealDeviceNetworkIp(udid);
-          return {
-            ...existingDevice,
-            ip: networkIp || sanitizeDeviceNetworkIp(existingDevice.ip) || '',
-          };
+          return { ...existingDevice, ip: sanitizeDeviceNetworkIp(existingDevice.ip) || '' };
         }
         return await this.getDeviceInfo(udid);
       } catch (e: any) {
@@ -146,7 +140,6 @@ export class IOSDiscoveryService {
 
     let sdk = 'Unknown';
     let name = 'iPhone';
-    const ipAddress = await this.fetchRealDeviceNetworkIp(udid);
 
     try {
       [sdk, name] = await Promise.all([IOSUtils.getOSVersion(udid), IOSUtils.getDeviceName(udid)]);
@@ -167,7 +160,10 @@ export class IOSDiscoveryService {
       udid,
       sdk,
       name,
-      ip: ipAddress,
+      // go-ios can't tell a phone's network address (its lockdown values
+      // carry none), and Xenon reaches a phone only through its forwarded
+      // ports, so nothing asks for it.
+      ip: '',
       busy: false,
       realDevice: true,
       deviceType: 'real',
@@ -273,29 +269,6 @@ export class IOSDiscoveryService {
 
   private resolveNodeLanIp(): string {
     return resolveAdvertisedBindHost(this.pluginArgs.bindHostOrIp);
-  }
-
-  private async fetchRealDeviceNetworkIp(udid: string): Promise<string> {
-    return sanitizeDeviceNetworkIp(await this.fetchIpViaGoIos(udid));
-  }
-
-  private async fetchIpViaGoIos(udid: string): Promise<string> {
-    const goIOSPath = goIosBinaryPath();
-    if (!fs.existsSync(goIOSPath)) return '';
-
-    const { exec } = await import('child_process');
-    const { promisify } = await import('util');
-    const execPromise = promisify(exec);
-    try {
-      const { stdout } = await execPromise(`"${goIOSPath}" info --udid ${udid}`, {
-        env: { ...process.env, ENABLE_GO_IOS_AGENT: 'yes' },
-      });
-      const info = JSON.parse(stdout);
-      return info.IPAddress || '';
-    } catch (e) {
-      log.debug(`Failed to fetch IP via go-ios for ${udid}: ${e}`);
-      return '';
-    }
   }
 
   trackIOSDevices() {
