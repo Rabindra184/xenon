@@ -3,13 +3,15 @@ import net from 'net';
 import { prisma } from '../prisma';
 import log from '../logger';
 
-export type PortPurpose = 'wda' | 'mjpeg' | 'system' | 'proxy';
+export type PortPurpose = 'wda' | 'mjpeg' | 'system' | 'proxy' | 'tunnel';
 
 export interface PortRanges {
   wda?: [number, number];
   mjpeg?: [number, number];
   system?: [number, number];
   proxy?: [number, number];
+  /** go-ios tunnels, leased in pairs (acquirePair). */
+  tunnel?: [number, number];
 }
 
 const DEFAULT_RANGES: Required<PortRanges> = {
@@ -17,6 +19,7 @@ const DEFAULT_RANGES: Required<PortRanges> = {
   mjpeg: [9100, 9199],
   system: [10100, 10199],
   proxy: [11100, 11199],
+  tunnel: [12100, 12199],
 };
 
 /** Loopback and wildcard, in both families. See isOsFree. */
@@ -147,6 +150,71 @@ export class PortAllocator {
       }
       throw err;
     }
+  }
+
+  /**
+   * Lease two adjacent ports, an even P and P + 1, and return P. A go-ios
+   * tunnel needs both: P for its tunnel-info API, and P + 1, which go-ios
+   * itself picks for the phone's traffic.
+   *
+   * Both must be free in the lease table, whatever purpose holds them, and at
+   * the OS. A half-taken pair is given back before the next one is tried.
+   */
+  async acquirePair(
+    purpose: PortPurpose,
+    udid: string,
+    opts: { pid?: number; ttlMs?: number } = {},
+  ): Promise<number> {
+    const [start, end] = this.ranges[purpose];
+    const ttlMs = opts.ttlMs ?? 60 * 60 * 1000;
+    const now = Date.now();
+
+    await prisma.portLease.deleteMany({ where: { expiresAt: { lt: now } } });
+
+    const active = await prisma.portLease.findMany({
+      where: { port: { gte: start, lte: end } },
+      select: { port: true },
+    });
+    const taken = new Set(active.map((l: { port: number }) => l.port));
+    const lease = {
+      purpose,
+      leasedToUdid: udid,
+      leasedToPid: opts.pid,
+      leasedAt: now,
+      expiresAt: now + ttlMs,
+    };
+
+    for (let port = start + (start % 2); port + 1 <= end; port += 2) {
+      if (taken.has(port) || taken.has(port + 1)) continue;
+      const leased: number[] = [];
+      try {
+        for (const p of [port, port + 1]) {
+          await prisma.portLease.create({ data: { port: p, ...lease } });
+          leased.push(p);
+        }
+      } catch (err: any) {
+        await this.releaseAll(leased, udid);
+        if (err.code === 'P2002') continue;
+        throw err;
+      }
+
+      if ((await this.isOsFree(port)) && (await this.isOsFree(port + 1))) {
+        this.log.debug(`Leased ports ${port}-${port + 1} (${purpose}) to ${udid}`);
+        return port;
+      }
+      await this.releaseAll(leased, udid);
+    }
+
+    throw new PortRangeExhaustedError(purpose);
+  }
+
+  /** Delete every lease of `purpose`. At boot, when nothing of this server holds one. */
+  async releasePurpose(purpose: PortPurpose): Promise<void> {
+    await prisma.portLease.deleteMany({ where: { purpose } });
+  }
+
+  private async releaseAll(ports: number[], udid: string): Promise<void> {
+    for (const port of ports) await this.release(port, udid);
   }
 
   /**

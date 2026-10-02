@@ -83,7 +83,7 @@ describe("stream services act on this server's own row for a udid", () => {
       wdaProcess: null,
       forwardWDAProcess: null,
       forwardMJPEGProcess: null,
-      tunnelProcess: null,
+      tunnelPort: null,
       wdaPort: 28101,
       mjpegPort: 29101,
       status: 'running',
