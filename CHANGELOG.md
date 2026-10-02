@@ -6,6 +6,44 @@ This project follows [Semantic Versioning](https://semver.org/). Releases are
 published to npm automatically when `package.json`'s `version` changes on `main`
 (see `.github/workflows/npm-publish.yml`).
 
+## 2.10.1
+
+**Selector Health and the session page stay fast on a busy lab, and a fixed
+selector that heals again always goes back to "To fix".**
+
+Four indexes are added, on the commands, device logs and profiling tables
+(#423). A server builds them itself at its next startup. On a database with
+a million commands and 2.5 million log lines that took about 4.5 s and made
+the file about a fifth larger. Nothing to configure.
+
+### Fixed
+
+- **Selector Health was slow on a busy lab** (#423). The commands table holds
+  every command of every session and had one index, on the selector. On a
+  million commands:
+  - the "To fix" list over a year: 1.8 s to 0.2 s;
+  - search: 0.9 s to 30 ms;
+  - the panel of a selector healed 50,000 times in a year: 1 s to 0.35 s.
+    It no longer attaches the session to every heal it reads.
+- **The session page and cleanup read whole tables** (#423). A session's
+  commands, device logs, debug logs and profiling had no index on their
+  session. With 2.5 million log lines:
+  - a session's device logs: 149 ms to 7 ms;
+  - cleaning up a build of 100 sessions: 97 s to 4 s.
+
+  The failed-command check at the end of every session is faster in the
+  same way.
+- **A fixed selector that healed again could stay fixed** (#423). The heal
+  sends it back to "To fix" at once, but that step could fail, and nothing
+  tried again. The verification job also counted only clean builds: a
+  selector with three of them was promoted to fixed however often it healed
+  in others. The job now checks for a heal since **Mark fixed** on every
+  selector being verified or fixed, and sends such a selector back.
+- **The "broke again" note reset the view** (#423). Its **Show selectors to
+  fix** went back to the default period and order. It now keeps both, clears
+  any search or filter that could hide the selector, and opens the selector
+  when only one broke.
+
 ## 2.10.0
 
 **CPU and memory for every session, and Selector Health rebuilt as a list
