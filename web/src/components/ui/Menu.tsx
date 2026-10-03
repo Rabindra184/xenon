@@ -9,8 +9,13 @@ export interface MenuItemProps {
   onClick: () => void;
   danger?: boolean;
   disabled?: boolean;
-  /** A single choice in a list (menuitemradio); true marks the chosen one. */
+  /**
+   * A single choice in a list (menuitemradio); true marks the chosen one.
+   * With `checkbox`, whether this on/off choice is on.
+   */
   checked?: boolean;
+  /** An independent on/off choice (menuitemcheckbox) rather than one of a list. */
+  checkbox?: boolean;
   /** A quieter second line under the label. */
   note?: string;
   /** Right-aligned content, such as a count. */
@@ -24,13 +29,14 @@ export const MenuItem: React.FC<MenuItemProps> = ({
   danger,
   disabled,
   checked,
+  checkbox,
   note,
   trailing,
 }) => (
   <RovingFocusGroup.Item asChild focusable={!disabled} active={false}>
     <button
       type="button"
-      role={checked === undefined ? 'menuitem' : 'menuitemradio'}
+      role={checked === undefined ? 'menuitem' : checkbox ? 'menuitemcheckbox' : 'menuitemradio'}
       aria-checked={checked}
       className={`menu-item${danger ? ' menu-item-danger' : ''}`}
       onClick={onClick}

@@ -122,4 +122,29 @@ describe('Menu', () => {
     expect(item).toHaveTextContent('Simulators and emulators');
     expect(item).toHaveTextContent('2');
   });
+
+  it('a checkbox item is an on/off choice of its own', () => {
+    render(
+      <Menu>
+        <MenuItem checkbox checked onClick={() => {}}>
+          Wrap long lines
+        </MenuItem>
+        <MenuItem checkbox checked={false} onClick={() => {}}>
+          Match case
+        </MenuItem>
+        <MenuItem checked onClick={() => {}}>
+          Newest first
+        </MenuItem>
+      </Menu>,
+    );
+    expect(screen.getByRole('menuitemcheckbox', { name: 'Wrap long lines' })).toHaveAttribute(
+      'aria-checked',
+      'true',
+    );
+    expect(screen.getByRole('menuitemcheckbox', { name: 'Match case' })).toHaveAttribute(
+      'aria-checked',
+      'false',
+    );
+    expect(screen.getByRole('menuitemradio', { name: 'Newest first' })).toBeInTheDocument();
+  });
 });
