@@ -85,6 +85,17 @@ describe('PerformancePanel', () => {
 
     expect(await screen.findByText("Performance isn't recorded for this session")).toBeTruthy();
     expect(screen.queryByText(/Collecting/)).toBeNull();
+    // A device on another machine is recorded now, unless that machine is older.
+    expect(screen.getByText(/on a machine that needs updating/)).toBeTruthy();
+    expect(screen.queryByText(/connected to this server|another machine/)).toBeNull();
+  });
+
+  it('says why an ended session has no figures, the same way', async () => {
+    answer(android(0));
+    render(<PerformancePanel sessionId="s1" running={false} hasTrace={false} />);
+
+    expect(await screen.findByText(/on a machine that needed updating/)).toBeTruthy();
+    expect(screen.queryByText(/connected to this server|another machine/)).toBeNull();
   });
 
   it('says when sampling stopped, and keeps the figures it has', async () => {

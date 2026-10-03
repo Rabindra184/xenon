@@ -178,14 +178,14 @@ export const PerformancePanel: React.FC<Props> = ({ sessionId, running, hasTrace
     body = (
       <EmptyState
         title="Performance isn't recorded for this session"
-        description="CPU and memory are recorded for Android devices and iPhones connected to this server. This session runs on an iOS simulator or on a device connected to another machine, or recording is turned off."
+        description="CPU and memory are recorded for Android devices and iPhones. This session runs on an iOS simulator or on a machine that needs updating, or recording is turned off."
       />
     );
   } else if (samples.length === 0 && !running) {
     body = (
       <EmptyState
         title="No performance data for this session"
-        description="CPU and memory are recorded for Android devices and iPhones connected to this server. This session ran on an iOS simulator or on a device connected to another machine, before recording was available, or with recording turned off."
+        description="CPU and memory are recorded for Android devices and iPhones. This session ran on an iOS simulator or on a machine that needed updating, before recording was available, or with recording turned off."
       />
     );
   } else if (samples.length < 2) {

@@ -101,7 +101,9 @@ export class NodeMetricsCollector implements MetricsSampler {
   }
 
   private finish(state: RecordingState): void {
-    this.current = state;
+    // Figures already collected stay on the page: "stopped", never "off",
+    // which the panel shows as "isn't recorded" in their place.
+    this.current = state === 'off' && this.after !== null ? 'stopped' : state;
     this.done = true;
     if (this.timer) clearInterval(this.timer);
   }

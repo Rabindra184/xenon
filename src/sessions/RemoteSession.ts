@@ -230,14 +230,6 @@ export class RemoteSession extends XenonSession {
     }
   }
 
-  /**
-   * Whether the node still has this session. The node is asked with its
-   * session-status route (gateway/nodeSessionStatus.ts), which reads Appium's
-   * umbrella and runs no command: a WebDriver probe every ~30 s restarted the
-   * node driver's new-command timeout and Xenon's idle clock there, so an
-   * abandoned session and its phone were kept alive for ever. A node without
-   * the route (an older Xenon) is probed the old way, and the hub says so once.
-   */
   /** The node's origin, where its own routes are; null for a base URL that isn't one. */
   nodeOrigin(): string | null {
     try {
@@ -265,6 +257,14 @@ export class RemoteSession extends XenonSession {
     }
   }
 
+  /**
+   * Whether the node still has this session. The node is asked with its
+   * session-status route (gateway/nodeSessionStatus.ts), which reads Appium's
+   * umbrella and runs no command: a WebDriver probe every ~30 s restarted the
+   * node driver's new-command timeout and Xenon's idle clock there, so an
+   * abandoned session and its phone were kept alive for ever. A node without
+   * the route (an older Xenon) is probed the old way, and the hub says so once.
+   */
   async checkHealth(): Promise<SessionHealthResult> {
     if (!this.sessionId) {
       return {

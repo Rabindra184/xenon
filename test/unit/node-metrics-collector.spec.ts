@@ -96,12 +96,12 @@ describe('NodeMetricsCollector: the hub collects a node session’s figures', ()
   });
 
   it('stops asking when the node says off, or that its sampler stopped', async () => {
-    for (const [state, expected] of [
-      ['off', 'off'],
-      ['stopped', 'stopped'],
+    for (const [state, ats, expected] of [
+      ['off', [], 'off'],
+      ['stopped', [7], 'stopped'],
     ] as const) {
       asked = [];
-      replies = [answer(state, [7])];
+      replies = [answer(state, [...ats])];
       const c = make();
       c.start();
       await clock.tickAsync(30_000);
@@ -131,6 +131,18 @@ describe('NodeMetricsCollector: the hub collects a node session’s figures', ()
     third.start();
     await clock.tickAsync(10_000);
     expect(asked).to.have.length(2);
+  });
+
+  it('keeps the figures it has when the node later says off or refuses: it says stopped', async () => {
+    for (const last of [answer('off', []), { kind: 'refused' } as NodeAsk]) {
+      asked = [];
+      replies = [answer('sampling', [1]), last];
+      const c = make();
+      c.start();
+      await clock.tickAsync(20_000);
+      expect(asked, last.kind).to.have.length(2);
+      expect(c.state(), last.kind).to.equal('stopped');
+    }
   });
 
   it("stops asking when the node refuses the hub's token", async () => {
@@ -200,6 +212,20 @@ describe("readNodeMetricsReply: what a node's answer means", () => {
       kind: 'answer',
       answer: { platform: 'ios', state: 'sampling', samples: [sample(1)] },
     });
+    // Without the header: an older node only for what an older node answers
+    // (its login's 401, an unknown route's 404, a catch-all's 2xx). A proxy's
+    // 502 or 503 in front of a new node is an outage, not an older node.
+    expect(readNodeMetricsReply(401, {}, {})).to.deep.equal({ kind: 'unsupported', status: 401 });
+    expect(readNodeMetricsReply(200, {}, '<html>')).to.deep.equal({
+      kind: 'unsupported',
+      status: 200,
+    });
+    for (const status of [500, 502, 503, 504]) {
+      expect(readNodeMetricsReply(status, {}, 'Bad Gateway'), String(status)).to.deep.equal({
+        kind: 'unavailable',
+        reason: `answered ${status}`,
+      });
+    }
     expect(readNodeMetricsReply(503, h, {})).to.deep.equal({
       kind: 'unavailable',
       reason: 'answered 503',

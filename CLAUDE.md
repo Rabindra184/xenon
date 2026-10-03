@@ -659,7 +659,8 @@ appears there) and saved nothing; iOS had only the Instruments trace download.
 
 - `SessionMetricsService` starts a sampler in `EventManager.onSessionStarted`,
   after the session's row is written (the samples point at it), and stops it
-  in `onSessionStopped` whether or not the session is still in memory. It
+  however the session ends (`deleteSession`, `onUnexpectedShutdown`,
+  `stopSessionForShutdown`, `onSessionStopped`), in memory or not. It
   writes every 10 s (`SessionMetric`), keeps the newest 900 samples while
   writes fail, and never fails a session: five failures in a row stop that
   session's sampler. `sessionMetrics: false` turns it off.

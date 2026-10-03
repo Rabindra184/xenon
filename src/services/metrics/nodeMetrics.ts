@@ -39,7 +39,15 @@ export function readNodeMetricsReply(
   headers: Record<string, unknown>,
   data: any,
 ): NodeAsk {
-  if (!headers?.[NODE_METRICS_HEADER]) return { kind: 'unsupported', status };
+  if (!headers?.[NODE_METRICS_HEADER]) {
+    // An older node answers its login's 401, an unknown route's 404, or a
+    // catch-all's 2xx. Anything else without the header (a proxy's 502 in
+    // front of a node) is an outage: ask again, never give the node up.
+    if (status === 401 || status === 404 || (status >= 200 && status < 300)) {
+      return { kind: 'unsupported', status };
+    }
+    return { kind: 'unavailable', reason: `answered ${status}` };
+  }
   if (status === 404) return { kind: 'refused' };
   const value = data?.value;
   if (status === 200 && value && STATES.includes(value.state) && Array.isArray(value.samples)) {
