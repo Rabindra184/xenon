@@ -22,7 +22,7 @@ export interface LogRowProps {
   find: string;
   caseSensitive: boolean;
   /** The virtualizer's measuring ref: rows vary in height once they wrap. */
-  measureRef: (el: Element | null) => void;
+  measureRef: (el: HTMLDivElement | null) => void;
 }
 
 /** Text with each Find match in a `<mark>`. */
