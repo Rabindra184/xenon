@@ -145,7 +145,6 @@ export class SessionMetricsService {
     return entry.sampler.state?.() ?? (entry.gaveUp ? 'stopped' : 'sampling');
   }
 
-
   /** Stops the session's sampler and writes what it buffered. Idempotent. */
   async stop(sessionId: string): Promise<void> {
     const entry = this.running.get(sessionId);
