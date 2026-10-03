@@ -35,3 +35,16 @@ export async function capturesZip(deviceName: string, captures: Zippable[]): Pro
   const zipped = zipSync(entries, { level: 0 });
   return new Blob([zipped], { type: 'application/zip' });
 }
+
+/** Hands the browser a file to save. */
+export function saveBlob(blob: Blob, filename: string): void {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  // Revoking in the same task can cancel a download that hasn't started.
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}

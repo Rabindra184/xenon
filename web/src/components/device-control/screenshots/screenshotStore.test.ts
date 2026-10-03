@@ -4,6 +4,7 @@ import {
   clearAllScreenshotStores,
   memoryStore,
   openScreenshotStore,
+  sharedScreenshotStore,
   type ScreenshotStore,
   type StoredCapture,
 } from './screenshotStore';
@@ -86,5 +87,12 @@ describe('screenshotStore', () => {
 
   it('clearAllScreenshotStores never throws without IndexedDB', async () => {
     await expect(clearAllScreenshotStores(undefined)).resolves.toBeUndefined();
+  });
+
+  it('shares one store across openings until sign-out clears it', async () => {
+    const first = await sharedScreenshotStore();
+    expect(await sharedScreenshotStore()).toBe(first);
+    await clearAllScreenshotStores(undefined);
+    expect(await sharedScreenshotStore()).not.toBe(first);
   });
 });

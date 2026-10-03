@@ -1,7 +1,7 @@
 # Device control: the Screenshot tab, redesigned
 
 Date: 2026-10-03
-Status: layout agreed in conversation; the user said "go" to the recommended
+Status: implemented. Layout agreed in conversation; the user said "go" to the recommended
 options (zip with `fflate`, ask before closing during a Logs recording). The
 rest follows the scope agreed earlier: "polish and power tools", browser only,
 approach B (the tab moves out of `device-control.tsx` into its own folder).
@@ -82,8 +82,8 @@ Seen live on the Galaxy S9+ at 1440 × 900, or read in `device-control.tsx`:
 - The grid is a `listbox`; each thumbnail an `option` with `aria-selected`.
   Arrow keys move the selection, Home / End go to the newest / oldest, Delete
   or Backspace deletes the selected capture.
-- Hover shows a small delete button, as today, now with a name ("Delete
-  Screenshot 12").
+- No delete button on the thumbnail: a button inside a listbox option isn't
+  allowed, and Delete is in the footer and on the Delete key.
 
 ### Preview
 
@@ -178,14 +178,18 @@ Every failure is a toast in plain words:
   `udid`. A record: `{ id, udid, n, takenAt, width, height, bytes, png: Blob,
   thumb: Blob, markedFrom?: number }`. Blobs, not base64: a third smaller and
   no string copies.
-- `n` is the phone's next number: one more than the highest kept, so it starts
-  at 1 again after Clear all.
+- `n` is the phone's next number: one more than the highest given out since
+  the tab opened (deleted ones held for Undo included, so a restored capture
+  never shares a number), or than the highest kept when it opens. After Clear
+  all it starts at 1 again on the next opening.
 - After each add, captures past the newest 50 for that phone are deleted.
 - Loading a phone reads its records by the `udid` index, newest first. Object
   URLs are made per record and revoked when it leaves or the tab unmounts.
 - **Sign-out** deletes the whole database (`clearAllScreenshotStores`, called
   from `auth-context`'s `signOut` before it redirects, best effort, never
   holding sign-out more than a second).
+- One store per page (`sharedScreenshotStore`): every device control opening
+  shares its connection; sign-out drops it.
 - `screenshotStore.ts` hides IndexedDB behind `{ list(udid), put(rec),
   delete(ids), clear(udid) }`, with a memory store used when IndexedDB is
   missing or refuses to open. Tests run the IndexedDB one against
@@ -245,9 +249,9 @@ Unit (vitest, jsdom), test first:
 - `InPlaceDialog`: a guard claims Esc; `useDialogClose` runs it.
 - `LogcatView`: closing while recording asks; Save and close downloads, closes.
 
-Build, `tsc --noEmit`, Prettier on changed files, the colour ratchet (it may
-only go down: `device-control.css`'s one literal goes if it is a screenshot
-rule).
+Build, `tsc --noEmit`, Prettier on changed files, the colour ratchet (no
+change: `device-control.css`'s one literal isn't a screenshot rule, and the new
+files have none).
 
 On the Mac later (no phones or server in the cloud): the viewport spec, the
 control sweep, the light/dark contrast probe, and real-phone checks on the

@@ -17,7 +17,9 @@ function Trigger({ onUndo }: { onUndo: () => void }) {
 }
 
 describe('toast action', () => {
-  afterEach(() => vi.useRealTimers());
+  afterEach(() => {
+    vi.useRealTimers();
+  });
 
   it('runs the action once and closes the toast', () => {
     const onUndo = vi.fn();

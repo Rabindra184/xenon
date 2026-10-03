@@ -142,6 +142,14 @@ export async function openScreenshotStore(
   }
 }
 
+let shared: Promise<ScreenshotStore> | null = null;
+
+/** One store for the page: every device control opening shares its connection. */
+export function sharedScreenshotStore(): Promise<ScreenshotStore> {
+  if (!shared) shared = openScreenshotStore();
+  return shared;
+}
+
 /**
  * Remove every phone's captures from this browser, for sign-out. Best effort
  * and bounded: sign-out must never wait on storage.
@@ -150,6 +158,7 @@ export async function clearAllScreenshotStores(
   idb: IDBFactory | undefined = browserIdb(),
   timeoutMs = 1000,
 ): Promise<void> {
+  shared = null;
   if (!idb) return;
   const deleted = new Promise<void>((resolve) => {
     try {

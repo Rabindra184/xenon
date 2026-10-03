@@ -5,7 +5,7 @@ import { useToast } from '../../ui/toast';
 import { failed } from '../actionMessages';
 import { captureLabel } from './captureMeta';
 import { base64ToBlob, makeThumbnail, pictureSize } from './imageTools';
-import { openScreenshotStore, type ScreenshotStore, type StoredCapture } from './screenshotStore';
+import { sharedScreenshotStore, type ScreenshotStore, type StoredCapture } from './screenshotStore';
 
 /** Kept per phone in this browser; the oldest goes when another is taken. */
 export const MAX_KEPT = 50;
@@ -43,7 +43,7 @@ function newestFirst(a: StoredCapture, b: StoredCapture): number {
  */
 export function useScreenshots(
   udid: string,
-  openStore: () => Promise<ScreenshotStore> = openScreenshotStore,
+  openStore: () => Promise<ScreenshotStore> = sharedScreenshotStore,
 ) {
   const { toast } = useToast();
   const [captures, setCaptures] = useState<Capture[]>([]);

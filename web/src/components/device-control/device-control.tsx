@@ -10,8 +10,6 @@ import {
   RotateCw,
   RectangleVertical,
   RectangleHorizontal,
-  Loader2,
-  Trash2,
   Terminal as TerminalIcon,
   Zap,
   ScrollText,
@@ -24,9 +22,6 @@ import {
   AlertTriangle,
   MoonStar,
 } from 'lucide-react';
-import { v4 as uuidv4 } from 'uuid';
-import { formatDateTime } from '../../utils/time';
-import { useToast } from '../ui/toast';
 import './device-control.css';
 import { Terminal } from '../terminal/terminal';
 import OmniInspector from '../omni-inspector/OmniInspector';
@@ -38,6 +33,8 @@ import LogcatView from './logcat/LogcatView';
 import { deviceTitle } from '../device-card/device-card/deviceIdentity';
 import { nameDevice, titleForPath } from '../../lib/document-title';
 import { ActionsPanel } from './actions/ActionsPanel';
+import { ScreenshotsPanel } from './screenshots/ScreenshotsPanel';
+import { useDialogClose } from '../ui/InPlaceDialog';
 import { MjpegImage } from '../ui/mjpeg-image';
 
 interface DeviceControlProps {
@@ -52,7 +49,8 @@ type TabType = 'actions' | 'screenshot' | 'logs' | 'terminal' | 'omni';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 
 export default function DeviceControl({ device, onClose, titleId }: DeviceControlProps) {
-  const { toast } = useToast();
+  // Through the dialog, so a tab that must ask first (a Logs recording) can.
+  const closeView = useDialogClose(onClose);
   const navigate = useNavigate();
   const { tab } = useParams();
   // The tab lives in the path; the query holds the Devices filters to return to.
@@ -69,11 +67,6 @@ export default function DeviceControl({ device, onClose, titleId }: DeviceContro
   // Only the Omni tab inspects; every other tab keeps the device interactive.
   const inspecting = activeTab === 'omni' && omniMode === 'inspect';
   const [isPortrait, setIsPortrait] = useState(true);
-  const [screenshots, setScreenshots] = useState<
-    { id: string; base64: string; timestamp: number }[]
-  >([]);
-  const [selectedScreenshotIndex, setSelectedScreenshotIndex] = useState<number | null>(null);
-  const [loading, setLoading] = useState(false);
   const [streamStarting, setStreamStarting] = useState(false);
   const [streamRetryCount, setStreamRetryCount] = useState(0);
   const [currentDevice, setCurrentDevice] = useState(device);
@@ -100,7 +93,7 @@ export default function DeviceControl({ device, onClose, titleId }: DeviceContro
   const displayState = useDisplayState(currentDevice?.udid, !streamFailed);
 
   const copyUdid = () => {
-    navigator.clipboard.writeText(currentDevice.udid).catch(() => { });
+    navigator.clipboard.writeText(currentDevice.udid).catch(() => {});
     setUdidCopied(true);
     setTimeout(() => setUdidCopied(false), 1500);
   };
@@ -157,7 +150,7 @@ export default function DeviceControl({ device, onClose, titleId }: DeviceContro
     return () => {
       // Leave, not stop: another tab on this device may still be watching,
       // and the server stops the preview only once nobody is.
-      XenonApiService.leaveStream(currentDevice.udid).catch(() => { });
+      XenonApiService.leaveStream(currentDevice.udid).catch(() => {});
     };
   }, [device.udid, streamEpoch]); // Once per udid, and again after a cache restore
 
@@ -439,54 +432,6 @@ export default function DeviceControl({ device, onClose, titleId }: DeviceContro
     }
   };
 
-  const takeScreenshot = async () => {
-    setLoading(true);
-    try {
-      const result = await XenonApiService.getScreenshot(currentDevice.udid);
-      if (result?.screenshot) {
-        const newScreenshot = {
-          id: uuidv4(),
-          base64: result.screenshot,
-          timestamp: Date.now(),
-        };
-        setScreenshots((prev) => [newScreenshot, ...prev]);
-        setSelectedScreenshotIndex(0);
-      }
-    } catch (error) {
-      console.error('Failed to take screenshot:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const deleteScreenshot = (id: string) => {
-    setScreenshots((prev) => {
-      const newScreenshots = prev.filter((s) => s.id !== id);
-      if (newScreenshots.length === 0) {
-        setSelectedScreenshotIndex(null);
-      } else if (
-        selectedScreenshotIndex !== null &&
-        selectedScreenshotIndex >= newScreenshots.length
-      ) {
-        setSelectedScreenshotIndex(0);
-      }
-      return newScreenshots;
-    });
-  };
-
-  const clearAllScreenshots = () => {
-    setScreenshots([]);
-    setSelectedScreenshotIndex(null);
-    toast('Cleared all captured evidence.', 'success');
-  };
-
-  const downloadScreenshot = (base64: string) => {
-    const link = document.createElement('a');
-    link.href = `data:image/png;base64,${base64}`;
-    link.download = `screenshot-${currentDevice.udid}-${Date.now()}.png`;
-    link.click();
-  };
-
   return (
     <div className="device-control-view">
       {/* Mission Control Scanline Overlay */}
@@ -501,7 +446,7 @@ export default function DeviceControl({ device, onClose, titleId }: DeviceContro
         }}
       ></div>
       <header className="control-view-top-bar">
-        <button className="back-to-devices-btn" onClick={onClose}>
+        <button className="back-to-devices-btn" onClick={closeView}>
           <ChevronLeft size={18} /> DEVICES
         </button>
         <div className="device-info-mini">
@@ -512,8 +457,9 @@ export default function DeviceControl({ device, onClose, titleId }: DeviceContro
           {currentDevice.reservedUntil && Date.now() < currentDevice.reservedUntil && (
             <span
               className="device-pill reserved-pill"
-              title={`Reserved by ${currentDevice.reservedBy}${currentDevice.reservationReason ? `: ${currentDevice.reservationReason}` : ''
-                }`}
+              title={`Reserved by ${currentDevice.reservedBy}${
+                currentDevice.reservationReason ? `: ${currentDevice.reservationReason}` : ''
+              }`}
             >
               Reserved by {currentDevice.reservedBy || 'someone'}
             </span>
@@ -551,8 +497,9 @@ export default function DeviceControl({ device, onClose, titleId }: DeviceContro
                 (canvasRef as React.MutableRefObject<HTMLDivElement | null>).current = el;
                 setCanvasEl(el);
               }}
-              className={`device-stream-canvas ${!isPortrait ? 'landscape' : ''} ${isCanvasFocused ? 'focused' : ''
-                } ${inspecting ? 'is-inspecting' : ''}`}
+              className={`device-stream-canvas ${!isPortrait ? 'landscape' : ''} ${
+                isCanvasFocused ? 'focused' : ''
+              } ${inspecting ? 'is-inspecting' : ''}`}
               style={{
                 width: canvasDimensions.width,
                 height: canvasDimensions.height,
@@ -790,8 +737,9 @@ export default function DeviceControl({ device, onClose, titleId }: DeviceContro
           </div>
 
           <div
-            className={`interactions-scroll-area ${activeTab === 'terminal' ? 'terminal-mode' : ''
-              } ${activeTab === 'screenshot' || activeTab === 'logs' ? 'screenshot-mode' : ''}`}
+            className={`interactions-scroll-area ${
+              activeTab === 'terminal' ? 'terminal-mode' : ''
+            } ${activeTab === 'screenshot' || activeTab === 'logs' ? 'screenshot-mode' : ''}`}
           >
             <div className="tab-content">
               {activeTab === 'omni' && (
@@ -820,119 +768,7 @@ export default function DeviceControl({ device, onClose, titleId }: DeviceContro
 
               {activeTab === 'screenshot' && (
                 <div className="action-card screenshot-card">
-                  {/* No card title here: the tab bar already says SCREENSHOT, so a
-                      "Captured Evidence" heading plus a hint restated the same thing
-                      twice. The Actions tab keeps its titles because they distinguish
-                      four cards from each other; this tab has one. */}
-                  {screenshots.length > 0 && (
-                    <header className="action-card-header">
-                      <button className="btn-text-only" onClick={clearAllScreenshots}>
-                        CLEAR ALL
-                      </button>
-                    </header>
-                  )}
-
-                  <div
-                    className={`screenshot-workspace ${screenshots.length === 0 ? 'is-empty' : ''}`}
-                  >
-                    {/* Gallery Sidebar */}
-                    <div className="screenshot-gallery-sidebar">
-                      <button
-                        className="btn-premium take-screenshot-btn"
-                        onClick={takeScreenshot}
-                        disabled={loading}
-                      >
-                        {loading ? (
-                          <Loader2 className="animate-spin" size={16} />
-                        ) : (
-                          <Camera size={16} />
-                        )}
-                        <span>{loading ? 'CAPTURING...' : 'NEW CAPTURE'}</span>
-                      </button>
-
-                      <div className="screenshot-thumbnails-list">
-                        {screenshots.length === 0 && !loading && (
-                          <div className="empty-gallery-state">
-                            <Camera size={20} className="empty-gallery-icon" />
-                            <p className="empty-gallery-title">No captures yet</p>
-                            <p className="empty-gallery-hint">
-                              Grab a screenshot of the device to begin analysis.
-                            </p>
-                          </div>
-                        )}
-                        {screenshots.map((s, idx) => (
-                          <div
-                            key={s.id}
-                            className={`screenshot-thumb-item ${selectedScreenshotIndex === idx ? 'active' : ''
-                              }`}
-                            onClick={() => setSelectedScreenshotIndex(idx)}
-                          >
-                            <img src={`data:image/png;base64,${s.base64}`} alt="Thumb" />
-                            <span className="thumb-time">
-                              {new Date(s.timestamp).toLocaleTimeString([], {
-                                hour: '2-digit',
-                                minute: '2-digit',
-                                second: '2-digit',
-                              })}
-                            </span>
-                            <button
-                              className="thumb-delete-btn"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                deleteScreenshot(s.id);
-                              }}
-                            >
-                              <Trash2 size={12} />
-                            </button>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-
-                    {/* Main Preview Area */}
-                    <div className="screenshot-main-preview">
-                      {selectedScreenshotIndex !== null && screenshots[selectedScreenshotIndex] ? (
-                        <div className="preview-container">
-                          <div className="preview-image-wrapper">
-                            <img
-                              src={`data:image/png;base64,${screenshots[selectedScreenshotIndex].base64}`}
-                              alt="Selected Evidence"
-                            />
-                          </div>
-                          <footer className="preview-footer">
-                            <div className="preview-meta">
-                              <span className="meta-label">ID:</span>
-                              <span className="meta-value">
-                                {screenshots[selectedScreenshotIndex].id.substring(0, 8)}
-                              </span>
-                              <span className="meta-divider">|</span>
-                              <span className="meta-value">
-                                {formatDateTime(screenshots[selectedScreenshotIndex].timestamp)}
-                              </span>
-                            </div>
-                            <div className="preview-actions">
-                              <button
-                                className="btn-premium btn-sm"
-                                onClick={() =>
-                                  downloadScreenshot(screenshots[selectedScreenshotIndex].base64)
-                                }
-                              >
-                                DOWNLOAD PNG
-                              </button>
-                              <button
-                                className="btn-destructive btn-sm"
-                                onClick={() =>
-                                  deleteScreenshot(screenshots[selectedScreenshotIndex].id)
-                                }
-                              >
-                                <Trash2 size={14} /> DELETE
-                              </button>
-                            </div>
-                          </footer>
-                        </div>
-                      ) : null}
-                    </div>
-                  </div>
+                  <ScreenshotsPanel udid={currentDevice.udid} deviceName={deviceName} />
                 </div>
               )}
 
@@ -948,8 +784,9 @@ export default function DeviceControl({ device, onClose, titleId }: DeviceContro
                     platform={
                       (currentDevice.platform || '').toLowerCase() as 'android' | 'ios' | 'tvos'
                     }
-                    prompt={`${(currentDevice.platform || '').toLowerCase() === 'ios' ? 'ios' : 'adb'
-                      } $`}
+                    prompt={`${
+                      (currentDevice.platform || '').toLowerCase() === 'ios' ? 'ios' : 'adb'
+                    } $`}
                     welcomeMessage={`Connected to ${deviceName} (${currentDevice.udid}).\nInternal Shell Environment.`}
                     onCommand={async (cmd) => {
                       const res = await XenonApiService.executeShell(currentDevice.udid, cmd);
@@ -963,15 +800,14 @@ export default function DeviceControl({ device, onClose, titleId }: DeviceContro
           </div>
         </div>
       </div>
-      {currentDevice.session_id &&
-        !String(currentDevice.session_id).startsWith('manual_') && (
-          <BugReportButton
-            sessionId={String(currentDevice.session_id)}
-            mode="slice"
-            windowSec={60}
-            variant="floating"
-          />
-        )}
+      {currentDevice.session_id && !String(currentDevice.session_id).startsWith('manual_') && (
+        <BugReportButton
+          sessionId={String(currentDevice.session_id)}
+          mode="slice"
+          windowSec={60}
+          variant="floating"
+        />
+      )}
     </div>
   );
 }
