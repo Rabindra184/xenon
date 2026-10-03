@@ -7,8 +7,11 @@ import {
   NodeAsk,
   NodeMetricsState,
   NodeMetricsSupport,
+  nodeMetricsSourceOf,
   readNodeMetricsReply,
 } from '../../src/services/metrics/nodeMetrics';
+import { RemoteSession } from '../../src/sessions/RemoteSession';
+import { CloudSession } from '../../src/sessions/CloudSession';
 import { MetricSample } from '../../src/services/metrics/types';
 
 const sample = (at: number): MetricSample => ({
@@ -170,6 +173,17 @@ describe('NodeMetricsCollector: the hub collects a node session’s figures', ()
     expect(c.state()).to.equal('sampling');
   });
 
+  it("doesn't wait on a last ask when the node already wasn't answering", async () => {
+    // A dark node's sessions are ended one after another by the heartbeat;
+    // each would wait up to 5 s more for an answer that won't come.
+    replies = [{ kind: 'unavailable', reason: 'ECONNREFUSED' }];
+    const c = make();
+    c.start();
+    await clock.tickAsync(10_000);
+    await c.stop();
+    expect(asked).to.have.length(1);
+  });
+
   it('finishes stopping when the node is unreachable', async () => {
     replies = [{ kind: 'unavailable', reason: 'timeout' }];
     const c = make();
@@ -198,6 +212,28 @@ describe('NodeMetricsCollector: the hub collects a node session’s figures', ()
 
 describe("readNodeMetricsReply: what a node's answer means", () => {
   const h = { [NODE_METRICS_HEADER]: '1' };
+  it('keeps only well-formed samples: one bad sample would block every later write', () => {
+    const bad = [
+      null,
+      'x',
+      { ...sample(5), at: '6' },
+      { ...sample(7), at: Number.NaN },
+      { ...sample(8), deviceCpuPct: '12' },
+      { ...sample(9), appId: 3 },
+    ];
+    const reply = readNodeMetricsReply(200, h, {
+      value: {
+        platform: 'android',
+        state: 'sampling',
+        samples: [sample(1), ...bad, { ...sample(2), extra: 1 }],
+      },
+    });
+    expect(reply).to.deep.equal({
+      kind: 'answer',
+      answer: { platform: 'android', state: 'sampling', samples: [sample(1), sample(2)] },
+    });
+  });
+
   it('reads each answer', () => {
     expect(readNodeMetricsReply(404, {}, undefined)).to.deep.equal({
       kind: 'unsupported',
@@ -234,5 +270,29 @@ describe("readNodeMetricsReply: what a node's answer means", () => {
       kind: 'unavailable',
       reason: 'answered 200',
     });
+  });
+});
+
+describe('nodeMetricsSourceOf: only a session a node runs is collected from', () => {
+  const options = (cloud?: string) => ({
+    sessionId: 's1',
+    device: { udid: 'p1', host: 'http://node:4723', platform: 'android', cloud } as any,
+    sessionResponse: {},
+    xenonOption: {},
+    baseUrl: 'http://node:4723/wd/hub',
+  });
+
+  it("takes a node's session, never a cloud provider's or this server's own", () => {
+    const remote = new RemoteSession(options());
+    expect(nodeMetricsSourceOf(remote)).to.equal(remote);
+    // Both inherit nodeMetrics from RemoteSession; neither runs on a node.
+    expect(nodeMetricsSourceOf(new CloudSession(options('browserstack')))).to.equal(undefined);
+    const local = Object.assign(Object.create(RemoteSession.prototype), {
+      getType: () => 'local',
+    });
+    expect(nodeMetricsSourceOf(local)).to.equal(undefined);
+    expect(nodeMetricsSourceOf({ nodeOrigin: () => 'x', nodeMetrics: async () => null })).to.equal(
+      undefined,
+    );
   });
 });

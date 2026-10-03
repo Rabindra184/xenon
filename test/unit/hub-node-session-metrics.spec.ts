@@ -34,6 +34,7 @@ import { AppiumUmbrella } from '../../src/sessions/appiumUmbrella';
 import { config } from '../../src/config';
 import { saveRegistrations } from '../helpers/container-registration';
 import { useScratchDatabase } from '../helpers/scratch-database';
+import { ADMIN, selectorHealthApp } from '../helpers/selector-health-fixture';
 import {
   FAKE_AUTOMATION,
   appiumBaseDriver,
@@ -63,31 +64,55 @@ class NodeSideMetrics extends SessionMetricsService {
   }
 }
 
+const hubContext = () => ({
+  pluginArgs: { ...DefaultPluginArgs, bindHostOrIp: '127.0.0.1' },
+  port: 4799,
+  nodeId: 'hub-1',
+});
+const fastCollector = (source: any, hooks: SamplerHooks, after: number | null) =>
+  new NodeMetricsCollector({
+    source,
+    hooks,
+    after,
+    support: Container.get(NodeMetricsSupport),
+    logger: quiet,
+    intervalMs: 50,
+  });
+
 /** The hub's sampler service: this hub's own phones are none, it asks the node every 50 ms. */
 class HubSideMetrics extends SessionMetricsService {
   written: number[] = [];
   protected context(): any {
-    return {
-      pluginArgs: { ...DefaultPluginArgs, bindHostOrIp: '127.0.0.1' },
-      port: 4799,
-      nodeId: 'hub-1',
-    };
+    return hubContext();
   }
   protected async writeSamples(_id: string, samples: MetricSample[]): Promise<void> {
     this.written.push(...samples.map((s) => s.at));
   }
   protected collectorFor(source: any, hooks: SamplerHooks, after: number | null): MetricsSampler {
-    return new NodeMetricsCollector({
-      source,
-      hooks,
-      after,
-      support: Container.get(NodeMetricsSupport),
-      logger: quiet,
-      intervalMs: 50,
-    });
+    return fastCollector(source, hooks, after);
   }
 }
 
+/** The same, writing to the hub's database every 100 ms, as the page reads it. */
+class HubStoringMetrics extends SessionMetricsService {
+  protected context(): any {
+    return hubContext();
+  }
+  protected flushIntervalMs(): number {
+    return 100;
+  }
+  protected collectorFor(source: any, hooks: SamplerHooks, after: number | null): MetricsSampler {
+    return fastCollector(source, hooks, after);
+  }
+}
+
+const untilAsync = async (ok: () => Promise<boolean>, ms = 5000) => {
+  const end = Date.now() + ms;
+  while (!(await ok())) {
+    if (Date.now() > end) throw new Error('timed out');
+    await new Promise((r) => setTimeout(r, 50));
+  }
+};
 const until = async (ok: () => boolean, ms = 5000) => {
   const end = Date.now() + ms;
   while (!ok()) {
@@ -332,6 +357,52 @@ describe('a hub collects a node session’s CPU and memory', function () {
 
     await hub.stop(sessionId);
     expect(hub.written).to.deep.equal([1000, 2000, 3000]);
+  });
+
+  it("shows a node session's figures on the hub's own metrics route while it runs", async () => {
+    await boot();
+    const sessionId = await nodeSession();
+    nodeMetrics.hooks[0].onSample(at(1000));
+    nodeMetrics.hooks[0].onSample(at(2000));
+    // The hub's row for the session, as onSessionStarted writes it.
+    await scratch.db.session.create({
+      data: {
+        id: sessionId,
+        device_udid: 'phone-1',
+        device_platform: 'android',
+        device_version: '14',
+        desired_capabilities: '{}',
+        session_capabilities: '{}',
+        node_id: NODE_ID,
+        has_live_video: false,
+        status: 'running',
+      },
+    });
+    const hub = new HubStoringMetrics();
+    const device = {
+      udid: 'phone-1',
+      host: nodeOrigin,
+      nodeId: NODE_ID,
+      platform: 'android',
+      realDevice: true,
+    } as any;
+    hub.start({ sessionId, device, capabilities: {}, source: hubSide(sessionId) });
+    // The route asks the server's own service whether the session is sampled.
+    Container.set(SessionMetricsService, hub);
+    try {
+      const page = selectorHealthApp(ADMIN);
+      let body: any;
+      await untilAsync(async () => {
+        body = (await request(page).get(`/session/${sessionId}/metrics`)).body;
+        return body?.samples?.length === 2;
+      });
+      expect(body.recording).to.equal('sampling');
+      expect(body.samples.map((x: { t: number }) => x.t)).to.deep.equal([1000, 2000]);
+      expect(body.samples[1]).to.include({ deviceCpu: 12, app: 'com.android.settings' });
+    } finally {
+      Container.set(SessionMetricsService, nodeMetrics);
+      await hub.stop(sessionId);
+    }
   });
 
   it("an older node's sessions say they aren't recorded", async () => {

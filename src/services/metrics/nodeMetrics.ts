@@ -1,5 +1,6 @@
 import { Service } from 'typedi';
 import log from '../../logger';
+import SessionType from '../../enums/SessionType';
 import type { MetricSample } from './types';
 
 /**
@@ -34,6 +35,25 @@ export type NodeAsk =
 
 const STATES: readonly NodeMetricsState[] = ['sampling', 'stopped', 'ended', 'off'];
 
+const figure = (v: unknown): v is number | null =>
+  v === null || (typeof v === 'number' && Number.isFinite(v));
+
+/**
+ * The sample, field by field, or null when it isn't one. A node is our own
+ * code, but one malformed sample would fail every later write of the
+ * session's figures (the batch goes back to the front of the buffer).
+ */
+function sampleOf(v: any): MetricSample | null {
+  if (!v || typeof v !== 'object') return null;
+  if (typeof v.at !== 'number' || !Number.isFinite(v.at)) return null;
+  const { deviceCpuPct, deviceMemMb, deviceMemTotalMb, appCpuPct, appMemMb, appId } = v;
+  if (![deviceCpuPct, deviceMemMb, deviceMemTotalMb, appCpuPct, appMemMb].every(figure)) {
+    return null;
+  }
+  if (appId !== null && typeof appId !== 'string') return null;
+  return { at: v.at, deviceCpuPct, deviceMemMb, deviceMemTotalMb, appCpuPct, appMemMb, appId };
+}
+
 export function readNodeMetricsReply(
   status: number,
   headers: Record<string, unknown>,
@@ -56,7 +76,9 @@ export function readNodeMetricsReply(
       answer: {
         platform: String(value.platform ?? ''),
         state: value.state,
-        samples: value.samples,
+        samples: (value.samples as unknown[])
+          .map(sampleOf)
+          .filter((x): x is MetricSample => x !== null),
       },
     };
   }
@@ -69,10 +91,17 @@ export interface NodeMetricsSource {
   nodeMetrics(after: number | null): Promise<NodeAsk>;
 }
 
-/** The session as a NodeMetricsSource, when it is one. */
+/**
+ * The session as a NodeMetricsSource, when it runs on a node. A cloud
+ * provider's session (CloudSession) and this server's own (LocalSession)
+ * inherit the methods from RemoteSession, so the type decides.
+ */
 export function nodeMetricsSourceOf(session: unknown): NodeMetricsSource | undefined {
-  const s = session as Partial<NodeMetricsSource> | null | undefined;
-  return s && typeof s.nodeMetrics === 'function' && typeof s.nodeOrigin === 'function'
+  const s = session as (Partial<NodeMetricsSource> & { getType?: () => string }) | null | undefined;
+  return s &&
+    s.getType?.() === SessionType.REMOTE &&
+    typeof s.nodeMetrics === 'function' &&
+    typeof s.nodeOrigin === 'function'
     ? (s as NodeMetricsSource)
     : undefined;
 }

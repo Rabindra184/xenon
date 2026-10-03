@@ -81,7 +81,8 @@ describe("a node's session metrics route", () => {
   it('reads anything but a time as no `after`', () => {
     expect(parseAfter('1500')).to.equal(1500);
     expect(parseAfter('1500.5')).to.equal(1500.5);
-    for (const bad of [undefined, '', 'abc', '-5', '1e3', ['1']]) {
+    // A 400-digit number is Infinity: it would drop every sample the node holds.
+    for (const bad of [undefined, '', 'abc', '-5', '1e3', ['1'], '9'.repeat(400)]) {
       expect(parseAfter(bad), String(bad)).to.equal(null);
     }
   });

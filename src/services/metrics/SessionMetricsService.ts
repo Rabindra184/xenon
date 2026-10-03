@@ -123,7 +123,7 @@ export class SessionMetricsService {
     store?.begin(sessionId, String(device.platform ?? ''));
     let flushTimer: ReturnType<typeof setInterval> | undefined;
     if (!held) {
-      flushTimer = setInterval(() => void this.flush(sessionId), FLUSH_INTERVAL_MS);
+      flushTimer = setInterval(() => void this.flush(sessionId), this.flushIntervalMs());
       flushTimer.unref?.();
     }
     this.running.set(sessionId, {
@@ -186,6 +186,11 @@ export class SessionMetricsService {
 
   protected context(): PluginContext {
     return Container.get(PluginContext);
+  }
+
+  /** How often samples are written: FLUSH_INTERVAL_MS. */
+  protected flushIntervalMs(): number {
+    return FLUSH_INTERVAL_MS;
   }
 
   /** A node (a server with `hub`) holds the figures for its hub instead of writing them. */
