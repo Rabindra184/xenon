@@ -202,3 +202,96 @@ describe('LogList: keeping the reading place', () => {
     expect(screen.queryByText('Older lines were dropped while paused')).toBeNull();
   });
 });
+
+describe('LogList: selecting and keys', () => {
+  let layout: FakeLayout;
+  beforeEach(() => {
+    layout = installFakeLayout({ viewportHeight: 400 });
+  });
+  afterEach(() => layout.restore());
+
+  const option = (seq: number) =>
+    document.querySelector(`[role="option"][data-seq="${seq}"]`) as HTMLElement;
+  const selectedSeqs = () =>
+    screen
+      .getAllByRole('option')
+      .filter((o) => o.getAttribute('aria-selected') === 'true')
+      .map((o) => Number(o.getAttribute('data-seq')));
+
+  it('selects on click, a range with Shift, and adds or removes one with Cmd or Ctrl', async () => {
+    render(<Harness records={lines(10)} following={false} />);
+    await settle();
+    fireEvent.click(option(3));
+    fireEvent.click(option(5), { shiftKey: true });
+    expect(selectedSeqs()).toEqual([3, 4, 5]);
+    fireEvent.click(option(4), { ctrlKey: true });
+    fireEvent.click(option(7), { metaKey: true });
+    expect(selectedSeqs()).toEqual([3, 5, 7]);
+  });
+
+  it('tells the parent which line was clicked', async () => {
+    const onSelect = vi.fn();
+    render(<Harness records={lines(10)} following={false} onSelect={onSelect} />);
+    await settle();
+    fireEvent.click(option(2));
+    expect(onSelect).toHaveBeenCalledWith(
+      expect.objectContaining({ active: 2 }),
+      expect.objectContaining({ seq: 2 }),
+      'click',
+    );
+  });
+
+  it('copies with Cmd or Ctrl+C when lines are selected', async () => {
+    const onCopy = vi.fn();
+    render(<Harness records={lines(10)} following={false} onCopy={onCopy} />);
+    await settle();
+    fireEvent.keyDown(list(), { key: 'c', metaKey: true });
+    expect(onCopy).not.toHaveBeenCalled();
+    fireEvent.click(option(1));
+    fireEvent.keyDown(list(), { key: 'c', metaKey: true });
+    fireEvent.keyDown(list(), { key: 'c', ctrlKey: true });
+    expect(onCopy).toHaveBeenCalledTimes(2);
+  });
+
+  it('leaves Cmd or Ctrl+C to the browser while text is selected', async () => {
+    const onCopy = vi.fn();
+    render(<Harness records={lines(10)} following={false} onCopy={onCopy} />);
+    await settle();
+    fireEvent.click(option(1));
+    const spy = vi
+      .spyOn(window, 'getSelection')
+      .mockReturnValue({ toString: () => 'line 1' } as Selection);
+    try {
+      fireEvent.keyDown(list(), { key: 'c', metaKey: true });
+      expect(onCopy).not.toHaveBeenCalled();
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it('moves the active line with the arrows, extends with Shift, and opens details with Enter', async () => {
+    const onOpenDetails = vi.fn();
+    render(<Harness records={lines(10)} following={false} onOpenDetails={onOpenDetails} />);
+    await settle();
+    fireEvent.keyDown(list(), { key: 'ArrowDown' });
+    fireEvent.keyDown(list(), { key: 'ArrowDown' });
+    expect(list()).toHaveAttribute('aria-activedescendant', option(1).id);
+    fireEvent.keyDown(list(), { key: 'ArrowDown', shiftKey: true });
+    expect(selectedSeqs()).toEqual([1, 2]);
+    fireEvent.keyDown(list(), { key: 'Enter' });
+    expect(onOpenDetails).toHaveBeenCalledWith(expect.objectContaining({ seq: 2 }));
+  });
+
+  it('pauses when the arrows leave the newest line, and End follows again', async () => {
+    const onPause = vi.fn();
+    const onFollow = vi.fn();
+    render(<Harness records={lines(10)} onPause={onPause} onFollow={onFollow} />);
+    await settle();
+    fireEvent.keyDown(list(), { key: 'ArrowUp' }); // the newest line: still following
+    expect(onPause).not.toHaveBeenCalled();
+    fireEvent.keyDown(list(), { key: 'ArrowUp' });
+    expect(onPause).toHaveBeenCalledTimes(1);
+    fireEvent.keyDown(list(), { key: 'End' });
+    expect(onFollow).toHaveBeenCalledTimes(1);
+  });
+});

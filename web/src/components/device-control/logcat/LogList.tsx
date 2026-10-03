@@ -4,14 +4,15 @@ import {
   useEffect,
   useImperativeHandle,
   useLayoutEffect,
+  useMemo,
   useRef,
   useState,
 } from 'react';
-import { elementScroll, useVirtualizer } from '@tanstack/react-virtual';
+import { defaultRangeExtractor, elementScroll, useVirtualizer } from '@tanstack/react-virtual';
 import { Button } from '../../ui/button';
 import { LogRow } from './LogRow';
 import { formatCount } from './logFormat';
-import type { LogSelection } from './logSelection';
+import { clickSelection, moveSelection, type LogSelection } from './logSelection';
 import type { BufferedLogcatRecord } from './useLogcatStream';
 
 /** Within this of the bottom the list follows; scrolling further up pauses it. */
@@ -102,12 +103,28 @@ export const LogList = forwardRef<LogListHandle, LogListProps>(function LogList(
 
   const wide = useWide(scrollerRef);
 
+  // The keyboard's line, by index. Always rendered (see rangeExtractor), so
+  // aria-activedescendant never names a row that doesn't exist.
+  const active = props.selection.active;
+  const activeIndex = useMemo(
+    () => (active === null ? -1 : records.findIndex((r) => r.seq === active)),
+    [records, active],
+  );
+
   const virtualizer = useVirtualizer<HTMLDivElement, HTMLDivElement>({
     count: records.length,
     getScrollElement: () => scrollerRef.current,
     estimateSize: () => (wide ? ONE_LINE_PX : TWO_LINE_PX),
     getItemKey: (i) => records[i].seq,
     overscan: 10,
+    rangeExtractor: (range) => {
+      const indexes = defaultRangeExtractor(range);
+      if (activeIndex >= 0 && indexes.indexOf(activeIndex) < 0) {
+        indexes.push(activeIndex);
+        indexes.sort((a, b) => a - b);
+      }
+      return indexes;
+    },
     anchorTo: following ? 'start' : 'end',
     scrollToFn: (offset, options, instance) => {
       const el = instance.scrollElement;
@@ -225,6 +242,59 @@ export const LogList = forwardRef<LogListHandle, LogListProps>(function LogList(
 
   const optionId = (seq: number) => `${listId}-${seq}`;
 
+  const onClick = (e: React.MouseEvent) => {
+    const row = (e.target as Element).closest('[data-seq]');
+    if (!row || !scrollerRef.current?.contains(row)) return;
+    // A click that ends a drag across text was selecting text, not a line.
+    if ((window.getSelection?.()?.toString() ?? '') !== '') return;
+    const seq = Number(row.getAttribute('data-seq'));
+    const next = clickSelection(
+      props.selection,
+      seq,
+      records.map((r) => r.seq),
+      { range: e.shiftKey, toggle: e.metaKey || e.ctrlKey },
+    );
+    props.onSelect(next, records.find((r) => r.seq === seq) ?? null, 'click');
+    if (e.shiftKey) scrollerRef.current?.focus({ preventScroll: true });
+  };
+
+  // Shift+click would extend the browser's text selection instead; that
+  // also skips the focus a click gives the list, so onClick gives it back.
+  const onMouseDown = (e: React.MouseEvent) => {
+    if (e.shiftKey) e.preventDefault();
+  };
+
+  const onKeyDown = (e: React.KeyboardEvent) => {
+    const mod = e.metaKey || e.ctrlKey;
+    if ((e.key === 'ArrowDown' || e.key === 'ArrowUp') && !mod && !e.altKey) {
+      e.preventDefault();
+      const order = records.map((r) => r.seq);
+      if (!order.length) return;
+      const next = moveSelection(props.selection, order, e.key === 'ArrowDown' ? 1 : -1, e.shiftKey);
+      const index = next.active === null ? -1 : order.indexOf(next.active);
+      props.onSelect(next, index >= 0 ? records[index] : null, 'key');
+      if (index < 0) return;
+      // Off the newest line, following would pull the list away from it.
+      if (index !== order.length - 1 && followingRef.current) props.onPause();
+      virtualizer.scrollToIndex(index, { align: 'auto' });
+    } else if (e.key === 'Enter' && !mod) {
+      const record = activeIndex >= 0 ? records[activeIndex] : undefined;
+      if (!record) return;
+      e.preventDefault();
+      props.onOpenDetails(record);
+    } else if (e.key === 'End' && !mod) {
+      e.preventDefault();
+      props.onFollow();
+      virtualizer.scrollToOffset(total);
+    } else if (mod && !e.altKey && (e.key === 'c' || e.key === 'C')) {
+      // Text the user selected is the browser's to copy.
+      if (!props.selection.selected.size) return;
+      if ((window.getSelection?.()?.toString() ?? '') !== '') return;
+      e.preventDefault();
+      props.onCopy();
+    }
+  };
+
   return (
     <div className="log-list-wrap">
       {dropped && !following && (
@@ -236,7 +306,11 @@ export const LogList = forwardRef<LogListHandle, LogListProps>(function LogList(
         aria-label="Log lines"
         aria-multiselectable="true"
         tabIndex={0}
+        aria-activedescendant={activeIndex >= 0 ? optionId(records[activeIndex].seq) : undefined}
         className={`log-list${wrap ? '' : ' is-nowrap'}`}
+        onClick={onClick}
+        onMouseDown={onMouseDown}
+        onKeyDown={onKeyDown}
       >
         <div className="log-list-sizer" style={{ height: total }}>
           {virtualizer.getVirtualItems().map((item) => {
