@@ -1110,7 +1110,9 @@ const ROUTE_CONTENT_CHECKS: Record<string, Setup> = {
     // The search and the three dropdowns share one row: the kit's select is
     // width: 100% and would otherwise stack each on a line of its own.
     const tops = await page
-      .locator('section[aria-label="Selectors"] input[type="search"], section[aria-label="Selectors"] select')
+      .locator(
+        'section[aria-label="Selectors"] input[type="search"], section[aria-label="Selectors"] select',
+      )
       .evaluateAll((els) => els.map((e) => Math.round(e.getBoundingClientRect().top)));
     expect(tops).toHaveLength(4);
     expect(new Set(tops).size).toBe(1);
@@ -1462,6 +1464,83 @@ test('no overflow on the Logs tab with a landscape phone at 1280px', async ({ pa
         .join('\n'),
   ).toEqual([]);
 });
+
+// The Screenshot tab's rail with a dozen captures, portrait and landscape mixed,
+// in both layouts: the two-column rail (794 px panel) and the strip a
+// landscape phone gives it (514 px). Landscape pictures once fed their height
+// back into the rail's grid rows, which squashed until thumbnails overlapped
+// and hid their numbers.
+for (const orientation of ['portrait', 'landscape'] as const) {
+  test(`the Screenshot tab's rail holds a dozen captures with a ${orientation} phone at 1280px`, async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 1280, height: 900 });
+    const painter = await page.context().newPage();
+    let n = 0;
+    await page.route('**/xenon/api/control/*/screenshot*', async (route) => {
+      n++;
+      const wide = n % 3 === 0;
+      await painter.setViewportSize(
+        wide ? { width: 740, height: 360 } : { width: 360, height: 740 },
+      );
+      await painter.setContent(
+        `<body style="margin:0;height:100vh;background:hsl(${(n * 67) % 360} 55% 45%)"></body>`,
+      );
+      route.fulfill({ json: { screenshot: (await painter.screenshot()).toString('base64') } });
+    });
+    await page.goto('/xenon/devices/MOCK-ANDROID-01/control/screenshot');
+    if (orientation === 'landscape') {
+      await page.locator('.footer-action-btn[aria-label="Landscape orientation"]').click();
+      await expect(page.locator('.device-stream-canvas.landscape')).toBeVisible();
+    }
+    await page.getByRole('button', { name: 'Take screenshot' }).click();
+    const thumbs = page.getByRole('listbox', { name: 'Screenshots' }).getByRole('option');
+    for (let i = 1; i <= 12; i++) {
+      await expect(thumbs).toHaveCount(i);
+      if (i < 12) await page.getByRole('button', { name: 'Take screenshot' }).click();
+    }
+    await painter.close();
+
+    const pane = await page.locator('.shots-root').boundingBox();
+    expect(pane?.width ?? 0, 'the panel width under test').toBeGreaterThan(0);
+    if (orientation === 'landscape') expect(pane!.width).toBeLessThan(720);
+    else expect(pane!.width).toBeGreaterThanOrEqual(720);
+
+    const problems = await page.evaluate(() => {
+      const out: string[] = [];
+      const vw = window.innerWidth;
+      const boxes = Array.from(document.querySelectorAll('[role="option"].shots-thumb')).map(
+        (t) => ({
+          b: t.getBoundingClientRect(),
+          l: t.querySelector('.shots-thumb-label')!.getBoundingClientRect(),
+          name: (t.getAttribute('aria-label') || '').split(',')[0],
+        }),
+      );
+      boxes.forEach((t, i) => {
+        if (t.l.top < t.b.top - 0.5 || t.l.bottom > t.b.bottom + 0.5)
+          out.push(`${t.name}: label outside`);
+        for (const u of boxes.slice(i + 1)) {
+          const apart =
+            t.b.right <= u.b.left ||
+            u.b.right <= t.b.left ||
+            t.b.bottom <= u.b.top ||
+            u.b.bottom <= t.b.top;
+          if (!apart) out.push(`${t.name} overlaps ${u.name}`);
+        }
+      });
+      for (const el of Array.from(document.querySelectorAll('.shots-root *'))) {
+        if (el.closest('.shots-list')) continue; // it scrolls; it is checked itself below
+        const r = el.getBoundingClientRect();
+        if (r.width > 0 && (r.right > vw + 1 || r.left < -1))
+          out.push(`${el.tagName}.${el.className} escapes`);
+      }
+      const list = document.querySelector('.shots-list')!.getBoundingClientRect();
+      if (list.right > vw + 1 || list.left < -1) out.push('the rail escapes the viewport');
+      return out;
+    });
+    expect(problems, problems.join('\n')).toEqual([]);
+  });
+}
 
 test('control page renders the Android toolbar (guards against a vacuous pass)', async ({
   page,
