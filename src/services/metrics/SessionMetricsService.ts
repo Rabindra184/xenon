@@ -94,10 +94,14 @@ export class SessionMetricsService {
     // figures for its hub to collect (GET /node/sessions/:id/metrics).
     const held = this.holdsForHub();
     const store = held ? this.nodeStore() : null;
+    // The entry's own buffer, not a lookup by session: `stop` removes the
+    // entry first, and the hub's collector gives its last samples while it
+    // stops (its last ask of the node).
+    const buffer: MetricSample[] = [];
     const hooks: SamplerHooks = {
       onSample: (s) => {
         if (store) store.add(sessionId, s);
-        else this.running.get(sessionId)?.buffer.push(s);
+        else buffer.push(s);
       },
       onGiveUp: (reason) => {
         const entry = this.running.get(sessionId);
@@ -124,7 +128,7 @@ export class SessionMetricsService {
     }
     this.running.set(sessionId, {
       sampler,
-      buffer: [],
+      buffer,
       flushTimer,
       writing: Promise.resolve(),
       gaveUp: false,

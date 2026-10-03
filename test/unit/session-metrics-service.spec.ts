@@ -252,6 +252,16 @@ describe('SessionMetricsService', () => {
     m.collectorState = 'off';
     expect(m.recordingState('s1')).to.equal('off');
   });
+
+  it('writes the samples a sampler gives while it stops: the collector asks the node one last time', async () => {
+    m.start({ sessionId: 's1', device: phone({ nodeId: 'node-2' }), capabilities: {}, source });
+    const last = m.samplers[0];
+    last.stop = async () => {
+      last.hooks.onSample(sample(99));
+    };
+    await m.stop('s1');
+    expect(m.written).to.deep.equal([{ sessionId: 's1', ats: [99] }]);
+  });
 });
 
 /** The real Android wiring, down to the adb process it runs. */
