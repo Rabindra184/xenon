@@ -109,4 +109,17 @@ describe('EventManager: CPU and memory sampling', () => {
 
     expect(metrics.stop.calledOnceWithExactly('s-metrics-2')).to.equal(true);
   });
+
+  it("hands the service a node's session, to collect its figures from the node", async () => {
+    const { session, device } = startSession();
+    const remote = Object.assign(session, {
+      nodeOrigin: () => 'http://node:4723',
+      nodeMetrics: async () => ({ kind: 'refused' }),
+    });
+
+    await DASHBORD_EVENT_MANAGER.onSessionStarted({}, remote as any, device as any);
+
+    expect(metrics.appliesTo.firstCall.args).to.deep.equal([device, remote]);
+    expect(metrics.start.firstCall.args[0].source).to.equal(remote);
+  });
 });
