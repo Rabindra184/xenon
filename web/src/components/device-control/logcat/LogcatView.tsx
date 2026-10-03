@@ -23,10 +23,6 @@ import { LogToolbar, type StreamStatus } from './LogToolbar';
 import { LevelBar } from './LevelBar';
 import { LogList, type LogListHandle } from './LogList';
 import { LogDetails } from './LogDetails';
-// This view renders four classes it does not own: `.type-input-field`,
-// `.btn-sm`, `.btn-premium` and `.dc-btn-secondary` (device-control.css).
-// Imported BEFORE ./logcat.css so its overrides still win.
-import '../device-control.css';
 import './logcat.css';
 
 interface Props {

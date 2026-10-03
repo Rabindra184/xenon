@@ -1,8 +1,9 @@
 import * as React from 'react';
-import { render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { IDevice } from '../../interfaces/IDevice';
+import { installFakeLayout, type FakeLayout } from './logcat/testing/fakeLayout';
 
 // Device control starts a stream and loads panels on mount; these tests need
 // the header and the Actions tab, so the rest is stubbed.
@@ -12,12 +13,36 @@ const api = vi.hoisted(() => ({
   leaveStream: vi.fn(),
   getDevices: vi.fn(),
   listApps: vi.fn(),
+  typeText: vi.fn(),
+  pressKey: vi.fn(),
 }));
 const toast = vi.hoisted(() => vi.fn(() => 'toast-id'));
 vi.mock('../../api-service', () => ({ default: api }));
 vi.mock('../ui/toast', () => ({ useToast: () => ({ toast, removeToast: vi.fn() }) }));
 vi.mock('./useDisplayState', () => ({ useDisplayState: () => 'on' }));
-vi.mock('./logcat/LogcatView', () => ({ default: () => null }));
+// The real Logs pane, on a stream that never opens a socket.
+const LOG_LINES = vi.hoisted(() =>
+  [0, 1, 2].map((seq) => ({
+    seq,
+    ts: Date.UTC(2026, 9, 3, 10, 0, seq),
+    pid: 1,
+    tid: 1,
+    level: 'I',
+    tag: 'Tag',
+    pkg: 'com.example',
+    message: `line ${seq}`,
+  })),
+);
+vi.mock('./logcat/useLogcatStream', () => ({
+  useLogcatStream: () => ({
+    records: LOG_LINES,
+    connected: true,
+    clear: () => {},
+    deniedReason: null,
+    exhausted: false,
+    retry: () => {},
+  }),
+}));
 vi.mock('../omni-inspector/OmniInspector', () => ({ default: () => null }));
 vi.mock('../bug-report/BugReportButton', () => ({ BugReportButton: () => null }));
 vi.mock('../terminal/terminal', () => ({
@@ -61,6 +86,8 @@ beforeEach(() => {
   api.leaveStream.mockResolvedValue({});
   api.getDevices.mockResolvedValue([]);
   api.listApps.mockResolvedValue([]);
+  api.typeText.mockResolvedValue({});
+  api.pressKey.mockResolvedValue({});
 });
 
 describe('DeviceControl — releasing the device', () => {
@@ -131,5 +158,40 @@ describe('DeviceControl header', () => {
     expect(screen.getByTestId('welcome')).toHaveTextContent(
       'Connected to Galaxy S9+ (381103b720057ece).',
     );
+  });
+});
+
+// Device control types into the phone only while the device screen has focus
+// (isCanvasFocused). The Logs pane has its own keys (/, arrows, Enter, Esc,
+// End, Cmd/Ctrl+C), none of which may reach the phone.
+describe('DeviceControl — the Logs pane keeps keys off the phone', () => {
+  let layout: FakeLayout;
+  beforeEach(() => {
+    layout = installFakeLayout();
+  });
+  afterEach(() => layout.restore());
+
+  it('sends no text and no key event for keys pressed in the Logs pane', async () => {
+    open(S9, 'logs');
+    const canvas = document.querySelector('.device-stream-canvas') as HTMLElement;
+    // The control: with the device screen focused, a key does reach the phone.
+    act(() => canvas.focus());
+    fireEvent.keyDown(window, { key: 'Enter' });
+    expect(api.pressKey).toHaveBeenCalledTimes(1);
+    api.pressKey.mockClear();
+
+    const list = screen.getByRole('listbox', { name: 'Log lines' });
+    act(() => list.focus());
+    ['a', 'Enter', 'Backspace', 'ArrowDown', 'ArrowUp', 'End', 'Escape'].forEach((key) =>
+      fireEvent.keyDown(list, { key }),
+    );
+    fireEvent.keyDown(list, { key: '/' }); // focuses the filter
+    const filter = screen.getByLabelText('Filter logs');
+    expect(document.activeElement).toBe(filter);
+    fireEvent.keyDown(filter, { key: 'x' });
+    fireEvent.keyDown(filter, { key: 'Enter' });
+    await new Promise((r) => setTimeout(r, 120)); // past the 50 ms typing buffer
+    expect(api.typeText).not.toHaveBeenCalled();
+    expect(api.pressKey).not.toHaveBeenCalled();
   });
 });
