@@ -1256,6 +1256,44 @@ for (const width of [1280, 1440]) {
   }
 }
 
+// Deploy opens a device picker beside the row's Deploy button, which then reads
+// CANCEL. The picker sat a fixed 180px from the row's right edge, and once the
+// Team column (#360) moved the button, it covered CANCEL: the control sweep
+// found nobody could close it.
+for (const width of [1280, 1440]) {
+  test(`the Deploy picker leaves Cancel clickable at ${width}px`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 900 });
+    await ROUTE_DATA_MOCKS['/xenon/apps'](page);
+    await page.goto('/xenon/apps');
+    await page.waitForLoadState('networkidle');
+    const row = page.locator('.artifact-row.android').first();
+    await row.getByRole('button', { name: /Deploy/ }).click();
+    await expect(row.locator('.deployment-flyout select')).toBeVisible();
+
+    const problems = await row.evaluate((r) => {
+      const out: string[] = [];
+      const toggle = r.querySelector('.instant-deploy-trigger') as HTMLElement;
+      const t = toggle.getBoundingClientRect();
+      const top = document.elementFromPoint(t.x + t.width / 2, t.y + t.height / 2);
+      if (!top || !(top === toggle || toggle.contains(top))) {
+        const what = top?.closest('button') ?? top;
+        out.push(
+          `CANCEL is covered by ${what?.tagName.toLowerCase()}.${what?.getAttribute('class')}`,
+        );
+      }
+      const f = (r.querySelector('.deployment-flyout') as HTMLElement).getBoundingClientRect();
+      if (f.left < 0 || f.right > window.innerWidth) {
+        out.push(`the picker is off screen: ${Math.round(f.left)}-${Math.round(f.right)}`);
+      }
+      return out;
+    });
+    expect(problems, `Deploy picker at ${width}px`).toEqual([]);
+
+    await row.getByRole('button', { name: /CANCEL/ }).click();
+    await expect(row.locator('.deployment-flyout')).toHaveCount(0);
+  });
+}
+
 // Landscape is pure client state (setIsPortrait(false)); no device command is
 // sent, so it runs against the mock. The portrait canvas is narrow and never
 // overflowed — the clip only appears in landscape, which the matrix above never
