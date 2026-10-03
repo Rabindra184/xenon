@@ -173,6 +173,17 @@ describe('NodeMetricsCollector: the hub collects a node session’s figures', ()
     expect(c.state()).to.equal('sampling');
   });
 
+  it("doesn't wait on a last ask when the node already wasn't answering", async () => {
+    // A dark node's sessions are ended one after another by the heartbeat;
+    // each would wait up to 5 s more for an answer that won't come.
+    replies = [{ kind: 'unavailable', reason: 'ECONNREFUSED' }];
+    const c = make();
+    c.start();
+    await clock.tickAsync(10_000);
+    await c.stop();
+    expect(asked).to.have.length(1);
+  });
+
   it('finishes stopping when the node is unreachable', async () => {
     replies = [{ kind: 'unavailable', reason: 'timeout' }];
     const c = make();

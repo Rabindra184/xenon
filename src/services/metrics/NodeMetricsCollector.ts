@@ -21,7 +21,7 @@ export interface NodeCollectorOptions {
  * sampler's, so SessionMetricsService buffers and writes them as its own.
  * Asks never overlap. An unreachable node is asked again; whether the
  * session is alive is the heartbeat's call. When the session ends it asks
- * once more, for the last seconds.
+ * once more, for the last seconds, unless the node wasn't answering.
  */
 export class NodeMetricsCollector implements MetricsSampler {
   private after: number | null;
@@ -52,7 +52,9 @@ export class NodeMetricsCollector implements MetricsSampler {
   async stop(): Promise<void> {
     if (this.timer) clearInterval(this.timer);
     if (this.asking) await this.asking;
-    if (!this.done) await this.ask();
+    // No last ask of a node that wasn't answering: ending each of a dark
+    // node's sessions would wait out another timeout for nothing.
+    if (!this.done && !this.outage) await this.ask();
     this.done = true;
   }
 
