@@ -289,6 +289,9 @@ export const LogList = forwardRef<LogListHandle, LogListProps>(function LogList(
       { range: e.shiftKey, toggle: e.metaKey || e.ctrlKey },
     );
     props.onSelect(next, records.find((r) => r.seq === seq) ?? null, 'click');
+    // Choosing a line is reading it: following would carry it off screen
+    // within a second, and a Shift+click would end on a newer line.
+    if (next.selected.size && followingRef.current) props.onPause();
     if (e.shiftKey) scrollerRef.current?.focus({ preventScroll: true });
   };
 

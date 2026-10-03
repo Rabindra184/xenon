@@ -256,6 +256,22 @@ describe('LogList: selecting and keys', () => {
     expect(selectedSeqs()).toEqual([3, 5, 7]);
   });
 
+  // A line clicked while following was carried off screen by the next lines
+  // within a second, and a Shift+click then ended on a newer line than the one
+  // the user saw. Choosing a line is reading it, so it stops following.
+  it('pauses following when a click selects a line, and not when it clears the last one', async () => {
+    const onPause = vi.fn();
+    render(<Harness records={lines(10)} following onPause={onPause} />);
+    await settle();
+    fireEvent.click(option(9));
+    expect(onPause).toHaveBeenCalledTimes(1);
+
+    onPause.mockClear();
+    fireEvent.click(option(9), { metaKey: true });
+    expect(selectedSeqs()).toEqual([]);
+    expect(onPause).not.toHaveBeenCalled();
+  });
+
   it('tells the parent which line was clicked', async () => {
     const onSelect = vi.fn();
     render(<Harness records={lines(10)} following={false} onSelect={onSelect} />);
