@@ -19,6 +19,13 @@ import type { BufferedLogcatRecord } from './useLogcatStream';
 export const FOLLOW_SLACK_PX = 24;
 /** How long after a wheel, touch, scroll key or scrollbar press a scroll is the user's. */
 export const USER_INTENT_MS = 1000;
+/**
+ * How long after the user's last wheel, touch or scroll key following holds
+ * still. A gentle trackpad scroll moves a few pixels per event; pulled back
+ * to the bottom on every update (20 a second), it would never get 24 px away
+ * and the stream would win. Held, its steps add up.
+ */
+export const FOLLOW_HOLD_MS = 250;
 
 const ONE_LINE_PX = 20;
 const TWO_LINE_PX = 38;
@@ -185,10 +192,17 @@ export const LogList = forwardRef<LogListHandle, LogListProps>(function LogList(
     if (following) setDropped(false);
   }, [following]);
 
+  // The user's last wheel, touch, scroll key or scrollbar press, and whether
+  // the scrollbar is held now. Read by the follow effect and the scroll rule.
+  const intentAt = useRef(0);
+  const pointerDown = useRef(false);
+
   // Follow: to the newest line on every update, and again when measuring
-  // changes the total height.
+  // changes the total height. Not mid-gesture (see FOLLOW_HOLD_MS): the next
+  // update after it catches up.
   useLayoutEffect(() => {
     if (!following || !records.length) return;
+    if (pointerDown.current || Date.now() - intentAt.current < FOLLOW_HOLD_MS) return;
     virtualizer.scrollToOffset(total);
   }, [following, lastSeq, records.length, total, virtualizer]);
 
@@ -199,20 +213,20 @@ export const LogList = forwardRef<LogListHandle, LogListProps>(function LogList(
   useEffect(() => {
     const el = scrollerRef.current;
     if (!el) return;
-    let intentAt = 0;
-    let pointerDown = false;
+    // Where the last scroll left the list, to tell a scroll down from up.
+    let lastTop = el.scrollTop;
     const intent = () => {
-      intentAt = Date.now();
+      intentAt.current = Date.now();
     };
     const onPointerDown = (e: Event) => {
       // The list itself, not a row: its scrollbar.
       if (e.target !== el) return;
-      pointerDown = true;
+      pointerDown.current = true;
       intent();
     };
     const onPointerUp = () => {
-      if (pointerDown) intent();
-      pointerDown = false;
+      if (pointerDown.current) intent();
+      pointerDown.current = false;
     };
     const onKeyDown = (e: KeyboardEvent) => {
       if (SCROLL_KEYS.indexOf(e.key) >= 0) intent();
@@ -220,12 +234,17 @@ export const LogList = forwardRef<LogListHandle, LogListProps>(function LogList(
     const onScroll = () => {
       noteFirstOnScreen.current();
       const scrollTop = el.scrollTop;
+      const down = scrollTop > lastTop;
+      lastTop = scrollTop;
       if (ownTarget.current !== null && Math.abs(scrollTop - ownTarget.current) < 2) return;
       ownTarget.current = null;
-      if (!pointerDown && Date.now() - intentAt > USER_INTENT_MS) return;
+      if (!pointerDown.current && Date.now() - intentAt.current > USER_INTENT_MS) return;
       const fromBottom = el.scrollHeight - el.clientHeight - scrollTop;
       if (followingRef.current && fromBottom > FOLLOW_SLACK_PX) callbacks.current.onPause();
-      else if (!followingRef.current && fromBottom <= FOLLOW_SLACK_PX) callbacks.current.onFollow();
+      // Back to the latest only by scrolling down to it: a nudge up near the
+      // bottom while paused is still a scroll away from it.
+      else if (!followingRef.current && down && fromBottom <= FOLLOW_SLACK_PX)
+        callbacks.current.onFollow();
     };
     const passive = { passive: true } as AddEventListenerOptions;
     el.addEventListener('wheel', intent, passive);

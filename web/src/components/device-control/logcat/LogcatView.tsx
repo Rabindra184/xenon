@@ -296,10 +296,14 @@ export default function LogcatView({ udid, platform }: Props) {
     setSelection(NO_SELECTION);
   }, [clear]);
 
-  // Keys anywhere in the pane. Not for a popover's own keys: the menu and the
-  // syntax help render outside the pane's DOM, and their Esc is theirs.
-  const onKeyDown = (e: React.KeyboardEvent) => {
-    if (!rootRef.current?.contains(e.target as Node)) return;
+  // Keys anywhere in the pane, on a native listener on the pane itself, not
+  // React's onKeyDown: React 17 runs that from the app's root, after device
+  // control's InPlaceDialog has seen the key, so an Esc the pane used would
+  // also close device control (and with it the buffer, any recording and the
+  // phone's hold). An Esc the pane uses is marked handled before the dialog
+  // sees it. A popover's own keys never arrive: the menu and the syntax help
+  // render outside the pane's DOM, and their Esc is theirs.
+  const onKeyDown = (e: KeyboardEvent) => {
     const mod = e.metaKey || e.ctrlKey;
     if (e.key === '/' && !mod && !isTyping(e.target as HTMLElement)) {
       e.preventDefault();
@@ -319,6 +323,15 @@ export default function LogcatView({ udid, platform }: Props) {
       }
     }
   };
+  const onKeyDownRef = useRef(onKeyDown);
+  onKeyDownRef.current = onKeyDown;
+  useEffect(() => {
+    const root = rootRef.current;
+    if (!root) return;
+    const listener = (e: KeyboardEvent) => onKeyDownRef.current(e);
+    root.addEventListener('keydown', listener);
+    return () => root.removeEventListener('keydown', listener);
+  }, [supported]);
 
   if (!supported) {
     return (
@@ -380,7 +393,7 @@ export default function LogcatView({ udid, platform }: Props) {
   );
 
   return (
-    <div className="logcat-root" ref={rootRef} onKeyDown={onKeyDown}>
+    <div className="logcat-root" ref={rootRef}>
       <LogToolbar
         status={status}
         statusDetail={deniedReason}

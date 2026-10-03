@@ -148,7 +148,7 @@ export function installFakeLayout(options: FakeLayoutOptions = {}): FakeLayout {
  * (clamped) and fires `scroll` at once.
  */
 export function userScroll(list: HTMLElement, top: number): void {
-  fireEvent.wheel(list);
+  fireEvent.wheel(list, { deltaY: top - list.scrollTop });
   const max = Math.max(0, list.scrollHeight - list.clientHeight);
   scrollTops.set(list, Math.max(0, Math.min(max, top)));
   fireEvent.scroll(list);

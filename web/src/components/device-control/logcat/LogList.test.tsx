@@ -126,6 +126,36 @@ describe('LogList: rows, following and pausing', () => {
     expect(onFollow).not.toHaveBeenCalled();
   });
 
+  // A gentle trackpad scroll moves a few pixels per event while lines keep
+  // arriving. Following must not pull each small step back to the bottom,
+  // or the 24 px are never crossed and the stream wins.
+  it('pauses on a slow scroll up while lines keep arriving', async () => {
+    const onPause = vi.fn();
+    let n = 500;
+    const { rerender } = render(<Harness records={lines(n)} onPause={onPause} />);
+    await settle();
+    for (let step = 0; step < 6; step++) {
+      userScroll(list(), list().scrollTop - 6);
+      n += 2;
+      rerender(<Harness records={lines(n)} onPause={onPause} />);
+      await settle();
+    }
+    expect(onPause).toHaveBeenCalled();
+  });
+
+  // Paused at the bottom (the Pause button, say), a small nudge up is still
+  // within 24 px: it is a scroll away from the latest, not back to it.
+  it('stays paused on a nudge up near the bottom', async () => {
+    const onFollow = vi.fn();
+    render(<Harness records={lines(500)} following={false} onFollow={onFollow} />);
+    await settle();
+    userScroll(list(), bottom());
+    expect(onFollow).toHaveBeenCalledTimes(1);
+    onFollow.mockClear();
+    userScroll(list(), bottom() - 10);
+    expect(onFollow).not.toHaveBeenCalled();
+  });
+
   it('follows again when the user scrolls back to the bottom', async () => {
     const onFollow = vi.fn();
     render(<Harness records={lines(500)} following={false} onFollow={onFollow} />);

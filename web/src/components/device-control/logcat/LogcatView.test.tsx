@@ -1,6 +1,7 @@
 import * as React from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from 'vitest';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { InPlaceDialog } from '../../ui/InPlaceDialog';
 import LogcatView from './LogcatView';
 import { formatLine } from './logcatRecording';
 import { tagColor } from './tagColor';
@@ -876,6 +877,30 @@ describe('LogcatView — acting on lines', () => {
     expect(document.querySelector('.log-row.is-active-hit mark.log-mark')).toHaveTextContent(
       'needle',
     );
+  });
+
+  // Device control is an InPlaceDialog, which closes on an Esc nobody
+  // handled. The pane's own Esc (close the panel, then clear the selection)
+  // must count as handled, or it closes device control with the buffer,
+  // any recording and the phone's hold.
+  it('Esc closes the panel and clears the selection without closing device control', () => {
+    const onClose = vi.fn();
+    mockStream.mockReturnValue(streamState({ records: [rec({ message: 'one' })] }));
+    render(
+      <InPlaceDialog labelledBy="dc-title" onClose={onClose}>
+        <h2 id="dc-title">Device control</h2>
+        <LogcatView udid="DEV-1" platform="android" />
+      </InPlaceDialog>,
+    );
+    fireEvent.click(row('one'));
+    fireEvent.keyDown(logLines(), { key: 'Escape' });
+    expect(screen.queryByRole('region', { name: 'Line details' })).toBeNull();
+    fireEvent.keyDown(logLines(), { key: 'Escape' });
+    expect(row('one')).toHaveAttribute('aria-selected', 'false');
+    expect(onClose).not.toHaveBeenCalled();
+    // With nothing left to close in the pane, Esc is device control's.
+    fireEvent.keyDown(logLines(), { key: 'Escape' });
+    expect(onClose).toHaveBeenCalledTimes(1);
   });
 
   it('shows the shared empty state for a platform with no live logs', () => {
