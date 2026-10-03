@@ -26,7 +26,15 @@ export interface LogRowProps {
 }
 
 /** Text with each Find match in a `<mark>`. */
-function Marked({ text, find, caseSensitive }: { text: string; find: string; caseSensitive: boolean }) {
+function Marked({
+  text,
+  find,
+  caseSensitive,
+}: {
+  text: string;
+  find: string;
+  caseSensitive: boolean;
+}) {
   if (!find) return <>{text}</>;
   const parts = splitMatches(text, find, caseSensitive);
   if (parts.length === 1 && !parts[0].hit) return <>{text}</>;

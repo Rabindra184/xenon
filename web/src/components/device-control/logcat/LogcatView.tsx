@@ -105,10 +105,7 @@ export default function LogcatView({ udid, platform }: Props) {
   // are pushed down to the device rather than applied only in the browser.
   // Android streams everything and filters here. Either way the records are
   // still filtered locally below, so the pane shows the same thing on both.
-  const sourceFilter = useMemo(
-    () => (isIOS ? iosSourceFilter(query) : undefined),
-    [isIOS, query],
-  );
+  const sourceFilter = useMemo(() => (isIOS ? iosSourceFilter(query) : undefined), [isIOS, query]);
   const { records, connected, clear, deniedReason, exhausted, retry } = useLogcatStream(
     udid,
     supported,

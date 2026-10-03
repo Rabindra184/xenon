@@ -54,7 +54,8 @@ const top = (el: HTMLElement) =>
 const firstOnScreen = () => {
   const scrollTop = list().scrollTop;
   const rows = screen.getAllByRole('option').sort((a, b) => top(a) - top(b));
-  const first = rows.find((r) => top(r) + r.offsetHeight > scrollTop)!;
+  const first = rows.find((r) => top(r) + r.offsetHeight > scrollTop);
+  if (!first) throw new Error('no row on screen');
   return { seq: first.getAttribute('data-seq'), offset: top(first) - scrollTop };
 };
 const bottom = () => list().scrollHeight - list().clientHeight;
@@ -137,9 +138,7 @@ describe('LogList: rows, following and pausing', () => {
 
   it('counts the new lines while paused, and Jump to latest follows', () => {
     const onFollow = vi.fn();
-    const { rerender } = render(
-      <Harness following={false} newLines={1342} onFollow={onFollow} />,
-    );
+    const { rerender } = render(<Harness following={false} newLines={1342} onFollow={onFollow} />);
     fireEvent.click(screen.getByRole('button', { name: '1,342 new lines · Jump to latest' }));
     expect(onFollow).toHaveBeenCalledTimes(1);
     rerender(<Harness following={false} newLines={1} onFollow={onFollow} />);
@@ -195,9 +194,7 @@ describe('LogList: keeping the reading place', () => {
     await settle();
     userScroll(list(), 200);
     await settle();
-    rerender(
-      <Harness records={all.filter((r) => r.seq >= 50)} oldestSeq={0} following={false} />,
-    );
+    rerender(<Harness records={all.filter((r) => r.seq >= 50)} oldestSeq={0} following={false} />);
     await settle();
     expect(screen.queryByText('Older lines were dropped while paused')).toBeNull();
   });
@@ -308,7 +305,7 @@ describe('LogList: reveal', () => {
     render(<Harness listRef={ref} records={lines(5000)} following={false} />);
     await settle();
     expect(screen.queryByText('line 4000')).toBeNull();
-    act(() => ref.current!.reveal(4000));
+    act(() => ref.current?.reveal(4000));
     await settle();
     expect(screen.getByText('line 4000')).toBeInTheDocument();
   });
@@ -331,7 +328,7 @@ describe('LogList: reveal', () => {
   it('can be focused by the parent', () => {
     const ref = React.createRef<LogListHandle>();
     render(<Harness listRef={ref} />);
-    act(() => ref.current!.focus());
+    act(() => ref.current?.focus());
     expect(document.activeElement).toBe(list());
   });
 });

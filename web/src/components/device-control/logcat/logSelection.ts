@@ -77,10 +77,15 @@ export function moveSelection(
   if (!order.length) return sel;
   const at = sel.active === null ? -1 : order.indexOf(sel.active);
   const index =
-    at < 0 ? (step === 1 ? 0 : order.length - 1) : Math.max(0, Math.min(order.length - 1, at + step));
+    at < 0
+      ? step === 1
+        ? 0
+        : order.length - 1
+      : Math.max(0, Math.min(order.length - 1, at + step));
   const seq = order[index];
   if (!extend) return only(seq);
-  const anchor = sel.anchor !== null && order.indexOf(sel.anchor) >= 0 ? sel.anchor : sel.active ?? seq;
+  const anchor =
+    sel.anchor !== null && order.indexOf(sel.anchor) >= 0 ? sel.anchor : (sel.active ?? seq);
   const seqs = run(order, anchor, seq) ?? [seq];
   return { selected: new Set(seqs), anchor, active: seq };
 }

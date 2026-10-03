@@ -53,7 +53,9 @@ export function LogDetails({
           {own ? 'Added by Xenon' : `${levelName(r.level, platform)} · ${r.tag}`}
         </h3>
       </header>
-      {own && <p className="log-details-note">Xenon added this line. It didn’t come from the phone.</p>}
+      {own && (
+        <p className="log-details-note">Xenon added this line. It didn’t come from the phone.</p>
+      )}
       <dl className="log-details-fields">
         <div>
           <dt>Time</dt>

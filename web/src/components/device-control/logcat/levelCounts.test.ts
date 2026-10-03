@@ -1,12 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { parseQuery } from './logcatFilter';
-import {
-  chosenLevel,
-  countLevels,
-  levelChoices,
-  levelName,
-  type LevelCounts,
-} from './levelCounts';
+import { chosenLevel, countLevels, levelChoices, levelName, type LevelCounts } from './levelCounts';
 
 const line = (level: string, tag = 'Tag', synthetic = false) => ({
   level,

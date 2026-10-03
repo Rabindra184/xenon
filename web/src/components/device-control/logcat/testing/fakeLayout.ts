@@ -93,7 +93,9 @@ export function installFakeLayout(options: FakeLayoutOptions = {}): FakeLayout {
       },
     });
 
-  getter('offsetHeight', (el) => (isList(el) ? viewportHeight : isRow(el) ? rowHeight(el) : undefined));
+  getter('offsetHeight', (el) =>
+    isList(el) ? viewportHeight : isRow(el) ? rowHeight(el) : undefined,
+  );
   getter('offsetWidth', (el) => (isList(el) || isRow(el) ? viewportWidth : undefined));
   getter('clientHeight', (el) => (isList(el) ? viewportHeight : undefined));
   getter('clientWidth', (el) => (isList(el) ? viewportWidth : undefined));
@@ -102,7 +104,7 @@ export function installFakeLayout(options: FakeLayoutOptions = {}): FakeLayout {
   Object.defineProperty(HTMLElement.prototype, 'scrollTop', {
     configurable: true,
     get(this: HTMLElement) {
-      return isList(this) ? scrollTops.get(this) ?? 0 : original('scrollTop', this);
+      return isList(this) ? (scrollTops.get(this) ?? 0) : original('scrollTop', this);
     },
     set(this: HTMLElement, value: number) {
       if (!isList(this)) {

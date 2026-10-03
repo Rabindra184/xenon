@@ -1406,7 +1406,7 @@ test('no overflow on the Logs tab with a landscape phone at 1280px', async ({ pa
   // The narrow pane really is under test.
   const pane = await page.locator('.logcat-root').boundingBox();
   expect(pane, 'the Logs pane must have a box').not.toBeNull();
-  expect(pane!.width).toBeLessThanOrEqual(480);
+  expect(pane?.width ?? Infinity).toBeLessThanOrEqual(480);
   await expect(
     page.getByRole('listbox', { name: 'Log lines' }).getByRole('option'),
   ).not.toHaveCount(0);
@@ -1425,7 +1425,7 @@ test('no overflow on the Logs tab with a landscape phone at 1280px', async ({ pa
   });
   expect(
     offenders,
-    `Logs tab elements escape the viewport with a landscape phone:\n` +
+    'Logs tab elements escape the viewport with a landscape phone:\n' +
       offenders
         .map(
           (o) =>

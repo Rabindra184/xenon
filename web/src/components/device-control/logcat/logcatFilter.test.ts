@@ -416,9 +416,7 @@ describe('withTerm', () => {
   });
 
   it('replaces a term already there, in its place, and drops repeats', () => {
-    expect(withTerm('tag:Old level:E tag:Older crash', 'tag', 'New')).toBe(
-      'tag:New level:E crash',
-    );
+    expect(withTerm('tag:Old level:E tag:Older crash', 'tag', 'New')).toBe('tag:New level:E crash');
   });
 
   it('replaces a quoted term', () => {

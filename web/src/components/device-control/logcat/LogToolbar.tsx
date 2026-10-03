@@ -209,12 +209,7 @@ export function LogToolbar(p: LogToolbarProps) {
       <span className="log-toolbar-divider" aria-hidden="true" />
 
       <div className="log-actions">
-        <Button
-          type="button"
-          variant="secondary"
-          size="sm"
-          onClick={p.onTogglePause}
-        >
+        <Button type="button" variant="secondary" size="sm" onClick={p.onTogglePause}>
           {p.following ? (
             <Pause size={13} aria-hidden="true" />
           ) : (

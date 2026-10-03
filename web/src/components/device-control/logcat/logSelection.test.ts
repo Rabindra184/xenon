@@ -4,8 +4,7 @@ import { NO_SELECTION, clickSelection, moveSelection, selectedLines } from './lo
 
 const order = [10, 11, 12, 13, 14];
 const plain = { range: false, toggle: false };
-const seqs = (s: { selected: ReadonlySet<number> }) =>
-  Array.from(s.selected).sort((a, b) => a - b);
+const seqs = (s: { selected: ReadonlySet<number> }) => Array.from(s.selected).sort((a, b) => a - b);
 const rec = (seq: number) => ({
   seq,
   ts: Date.UTC(2026, 9, 3, 10, 0, seq),
@@ -51,9 +50,9 @@ describe('clickSelection', () => {
   // The buffer drops its oldest lines; seqs don't move, so a range still works.
   it('still selects a range after the oldest lines were dropped', () => {
     const s = clickSelection(NO_SELECTION, 12, order, plain);
-    expect(
-      seqs(clickSelection(s, 14, [12, 13, 14, 15], { range: true, toggle: false })),
-    ).toEqual([12, 13, 14]);
+    expect(seqs(clickSelection(s, 14, [12, 13, 14, 15], { range: true, toggle: false }))).toEqual([
+      12, 13, 14,
+    ]);
   });
 });
 

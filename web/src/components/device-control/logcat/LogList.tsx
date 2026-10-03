@@ -285,7 +285,12 @@ export const LogList = forwardRef<LogListHandle, LogListProps>(function LogList(
       e.preventDefault();
       const order = records.map((r) => r.seq);
       if (!order.length) return;
-      const next = moveSelection(props.selection, order, e.key === 'ArrowDown' ? 1 : -1, e.shiftKey);
+      const next = moveSelection(
+        props.selection,
+        order,
+        e.key === 'ArrowDown' ? 1 : -1,
+        e.shiftKey,
+      );
       const index = next.active === null ? -1 : order.indexOf(next.active);
       props.onSelect(next, index >= 0 ? records[index] : null, 'key');
       if (index < 0) return;
