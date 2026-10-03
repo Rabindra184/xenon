@@ -26,9 +26,11 @@ export interface NodeSessionMetricsDeps extends HubAnswerDeps {
   read: (sessionId: string, after: number | null) => NodeMetricsAnswer;
 }
 
-/** `?after=`: a time in ms, else none. */
+/** `?after=`: a time in ms, else none. A number too long to be one (Infinity) is none. */
 export function parseAfter(raw: unknown): number | null {
-  return typeof raw === 'string' && /^\d+(\.\d+)?$/.test(raw) ? Number(raw) : null;
+  if (typeof raw !== 'string' || !/^\d+(\.\d+)?$/.test(raw)) return null;
+  const after = Number(raw);
+  return Number.isFinite(after) ? after : null;
 }
 
 export function nodeSessionMetricsHandler(deps: NodeSessionMetricsDeps): RequestHandler {
