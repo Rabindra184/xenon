@@ -6,6 +6,48 @@ This project follows [Semantic Versioning](https://semver.org/). Releases are
 published to npm automatically when `package.json`'s `version` changes on `main`
 (see `.github/workflows/npm-publish.yml`).
 
+## 2.11.0
+
+**CPU and memory for sessions on a node's phones, live on the hub's session
+page, and Deploy on the Apps page can be cancelled again.**
+
+No database migration, and nothing to configure.
+
+**Upgrade the hub and its nodes together.** The node samples its phones and
+the hub collects the figures, so both need 2.11.0. Until a node is upgraded,
+its sessions keep showing "Performance isn't recorded", and the hub logs that
+once for that node. An older hub never collects, and a 2.11.0 node frees what
+it held 10 minutes after each session ends.
+
+### Added
+
+- **The Performance panel for sessions on a node's phones** (#426). Until now
+  the hub's session page said "isn't recorded" for every such session.
+  - **The node** samples its own phones for the sessions the hub creates,
+    whatever its dashboard setting, and holds the figures in memory: the
+    newest 30 minutes per session.
+  - **The hub** collects them every 10 s, so the chart fills in as the test
+    runs. It asks once more when the session ends, so the last seconds are
+    kept. After a hub restart it carries on from the last figures it stored.
+  - The figures are the same as for the hub's own phones: device and app CPU
+    and memory on Android, device CPU on an iPhone.
+- **`GET /xenon/api/node/sessions/:id/metrics?after=`** on a node (#426),
+  beside the session-status route and under the same rule: the hub's session
+  token when per-command auth is on.
+
+### Changed
+
+- **The Performance panel's "isn't recorded" wording** (#426). It no longer
+  blames a device connected to another machine, since such a device is now
+  recorded unless its machine needs updating.
+
+### Fixed
+
+- **Deploy on the Apps page couldn't be cancelled** (#425). After **Deploy**,
+  the device picker opened on top of the button, which by then read
+  **CANCEL**, so the picker couldn't be closed. It now opens beside the
+  button. The control sweep found it.
+
 ## 2.10.1
 
 **Selector Health and the session page stay fast on a busy lab, and a fixed
