@@ -1,19 +1,33 @@
-import React, { createContext, useContext, useEffect, useState, useCallback, ReactNode } from 'react';
+import React, {
+  createContext,
+  useContext,
+  useEffect,
+  useState,
+  useCallback,
+  ReactNode,
+} from 'react';
 import './toast.css';
 import { X, CheckCircle, AlertCircle, Info, Loader2 } from 'lucide-react';
 import { setApiToastEmitter } from '../../api-service/api-client';
 
 type ToastType = 'success' | 'error' | 'info' | 'loading';
 
+/** A button in the toast, such as Undo. Clicking it runs `onClick` and closes the toast. */
+export interface ToastAction {
+  label: string;
+  onClick: () => void;
+}
+
 interface Toast {
   id: string;
   message: string;
   type: ToastType;
   duration?: number;
+  action?: ToastAction;
 }
 
 interface ToastContextType {
-  toast: (message: string, type?: ToastType, duration?: number) => string;
+  toast: (message: string, type?: ToastType, duration?: number, action?: ToastAction) => string;
   removeToast: (id: string) => void;
 }
 
@@ -35,9 +49,9 @@ export const ToastProvider: React.FC<{ children: ReactNode }> = ({ children }) =
   }, []);
 
   const toast = useCallback(
-    (message: string, type: ToastType = 'info', duration = 4000) => {
+    (message: string, type: ToastType = 'info', duration = 4000, action?: ToastAction) => {
       const id = Math.random().toString(36).substring(2, 9);
-      setToasts((prev) => [...prev, { id, message, type, duration }]);
+      setToasts((prev) => [...prev, { id, message, type, duration, action }]);
 
       if (type !== 'loading' && duration > 0) {
         setTimeout(() => {
@@ -72,6 +86,17 @@ export const ToastProvider: React.FC<{ children: ReactNode }> = ({ children }) =
               {t.type === 'loading' && <Loader2 size={18} className="animate-spin" />}
             </div>
             <div className="toast-message">{t.message}</div>
+            {t.action && (
+              <button
+                className="toast-action"
+                onClick={() => {
+                  removeToast(t.id);
+                  t.action?.onClick();
+                }}
+              >
+                {t.action.label}
+              </button>
+            )}
             <button
               className="toast-close"
               onClick={() => removeToast(t.id)}

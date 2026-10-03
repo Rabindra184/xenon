@@ -53,6 +53,27 @@
   flex-shrink: 0;
 }
 
+.toast-action {
+  flex-shrink: 0;
+  padding: 4px 10px;
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.toast-action:hover {
+  background: rgb(var(--rgb-fg) / 0.06);
+}
+
+.toast-action:focus-visible {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: 2px;
+}
+
 .toast-close {
   background: transparent;
   border: none;

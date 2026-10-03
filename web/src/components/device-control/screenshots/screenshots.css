@@ -1,0 +1,349 @@
+/* Device control's Screenshot tab (ScreenshotsPanel and its parts).
+
+   Role tokens only (web/src/tokens.css): no hex, no rgba(). The look follows
+   the Actions tab: sentence case, small secondary buttons, the well tint.
+
+   The column is flex: 1 between 450 and 1,200 px. Below a 720 px panel the
+   thumbnails are a strip above the preview; from 720 px they are a two-column
+   rail beside it: a container query on .shots-root, min-width only. */
+
+.shots-root {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  container: shots-pane / inline-size;
+}
+
+.shots-root .btn-base:focus-visible,
+.shots-thumb:focus-visible,
+.shots-color:focus-visible {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: 1px;
+}
+
+/* --- header ----------------------------------------------------------- */
+
+.shots-head {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border);
+}
+.shots-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  color: var(--text);
+  font-family: 'Inter', sans-serif;
+  font-size: 13px;
+  font-weight: 600;
+}
+.shots-title svg {
+  color: var(--color-accent);
+}
+.shots-kept {
+  color: var(--text-dim);
+  font-size: 12px;
+}
+.shots-actions-gap {
+  flex: 1;
+}
+
+/* --- body: strip above the preview, then a rail beside it ------------- */
+
+.shots-body {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+.shots-rail {
+  display: flex;
+  align-items: stretch;
+  gap: 10px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border);
+}
+.shots-take {
+  flex-shrink: 0;
+}
+.shots-list {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  min-width: 0;
+}
+.shots-list .shots-thumb {
+  width: 56px;
+  flex-shrink: 0;
+}
+
+@container shots-pane (min-width: 720px) {
+  .shots-body {
+    flex-direction: row;
+  }
+  .shots-rail {
+    flex-direction: column;
+    width: 196px;
+    flex-shrink: 0;
+    border-bottom: none;
+    border-right: 1px solid var(--border);
+  }
+  .shots-list {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    align-content: start;
+    overflow-x: hidden;
+    overflow-y: auto;
+    min-height: 0;
+    flex: 1;
+    padding: 2px;
+  }
+  .shots-list .shots-thumb {
+    width: auto;
+  }
+}
+
+/* --- thumbnails ------------------------------------------------------- */
+
+.shots-thumb {
+  position: relative;
+  aspect-ratio: 9 / 16;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  background: rgb(var(--rgb-well) / calc(0.4 * var(--well-k)));
+  cursor: pointer;
+}
+.shots-thumb:hover {
+  border-color: var(--border-strong);
+}
+.shots-thumb.is-active {
+  border-color: var(--color-accent);
+  box-shadow: 0 0 0 1px var(--color-accent);
+}
+.shots-thumb.is-compared {
+  border-color: var(--color-info);
+}
+.shots-thumb img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.shots-thumb.is-pending {
+  cursor: default;
+  animation: shots-pulse 1.2s ease-in-out infinite;
+}
+@keyframes shots-pulse {
+  50% {
+    opacity: 0.5;
+  }
+}
+.shots-thumb-label {
+  position: absolute;
+  inset: auto 0 0 0;
+  display: flex;
+  justify-content: space-between;
+  gap: 4px;
+  padding: 2px 5px;
+  background: var(--surface);
+  color: var(--text-muted);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px;
+  line-height: 14px;
+}
+.shots-thumb-n {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  color: var(--text);
+  font-weight: 600;
+}
+.shots-list .shots-thumb-time {
+  display: none;
+}
+@container shots-pane (min-width: 720px) {
+  .shots-list .shots-thumb-time {
+    display: inline;
+  }
+}
+.shots-thumb-side {
+  position: absolute;
+  top: 4px;
+  left: 4px;
+  min-width: 18px;
+  padding: 0 4px;
+  border-radius: var(--radius-sm);
+  background: var(--color-info);
+  color: var(--color-on-accent);
+  font-size: 11px;
+  font-weight: 700;
+  text-align: center;
+}
+
+/* --- preview ---------------------------------------------------------- */
+
+.shots-preview {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+}
+.shots-picture {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  padding: 16px;
+  background: rgb(var(--rgb-well) / calc(0.3 * var(--well-k)));
+}
+.shots-picture-frame {
+  position: relative;
+  width: 100%;
+  height: 100%;
+}
+.shots-picture-frame img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+.shots-picture-frame img.is-zoomable {
+  cursor: zoom-in;
+}
+.shots-picture.is-actual {
+  overflow: auto;
+}
+.shots-picture.is-actual .shots-picture-frame {
+  width: max-content;
+  height: auto;
+}
+.shots-picture.is-actual .shots-picture-frame img {
+  width: auto;
+  height: auto;
+  max-width: none;
+  cursor: zoom-out;
+}
+
+.shots-footer {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 14px;
+  border-top: 1px solid var(--border);
+}
+.shots-details {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+.shots-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.shots-shapes {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.shots-shapes .is-pressed {
+  border-color: var(--color-info);
+  background: var(--surface-2);
+}
+.shots-color {
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  cursor: pointer;
+}
+.shots-delete:hover:not(:disabled) {
+  color: var(--color-danger);
+}
+
+/* --- compare ---------------------------------------------------------- */
+
+.shots-compare {
+  display: grid;
+  grid-template-rows: 1fr 1fr;
+  gap: 1px;
+  flex: 1;
+  min-height: 0;
+  background: var(--border);
+}
+@container shots-pane (min-width: 720px) {
+  .shots-compare {
+    grid-template-rows: none;
+    grid-template-columns: 1fr 1fr;
+  }
+}
+.shots-compare-side {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  margin: 0;
+  background: var(--bg);
+}
+.shots-compare-side .shots-details {
+  padding: 8px 14px;
+  border-top: 1px solid var(--border);
+}
+.shots-compare-tag {
+  position: absolute;
+  z-index: 1;
+  top: 8px;
+  left: 8px;
+  min-width: 20px;
+  padding: 1px 6px;
+  border-radius: var(--radius-sm);
+  background: var(--color-info);
+  color: var(--color-on-accent);
+  font-size: 12px;
+  font-weight: 700;
+  text-align: center;
+}
+.shots-compare-empty {
+  margin: auto;
+  padding: 16px;
+  color: var(--text-muted);
+  font-size: 12px;
+  text-align: center;
+}
+
+/* --- empty ------------------------------------------------------------ */
+
+.shots-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  flex: 1;
+  padding: 24px;
+  color: var(--text-muted);
+  text-align: center;
+}
+.shots-empty-title {
+  margin: 0;
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 600;
+}
+.shots-empty-hint {
+  max-width: 320px;
+  margin: 0 0 8px;
+  font-size: 12px;
+  line-height: 1.5;
+}

@@ -1,6 +1,7 @@
 import * as React from 'react';
 import { createContext, useContext, useEffect, useState } from 'react';
 import { getMe, MePayload, logout as apiLogout } from '../api-service/auth';
+import { clearAllScreenshotStores } from '../components/device-control/screenshots/screenshotStore';
 import { clearSessionHint, markSignedIn } from './session-hint';
 
 interface AuthState {
@@ -28,7 +29,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   async function signOut() {
     clearSessionHint();
-    await apiLogout();
+    // Screenshots kept in this browser are the signed-in user's; bounded, so
+    // sign-out never waits on storage.
+    await Promise.all([apiLogout(), clearAllScreenshotStores()]);
     setMe(null);
     window.location.href = '/xenon/login';
   }
