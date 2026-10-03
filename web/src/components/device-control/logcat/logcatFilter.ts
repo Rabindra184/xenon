@@ -54,6 +54,12 @@ export interface LogcatQuery {
   pkg?: string;
   text?: string;
   /**
+   * `-tag:` / `-package:` values: a line whose tag or package contains any of
+   * them is hidden. Set only when at least one was given.
+   */
+  excludeTags?: string[];
+  excludePkgs?: string[];
+  /**
    * Whether `tag`/`pkg`/`text` above were left in their typed case.
    *
    * Carried on the query rather than passed separately to `matches` on
@@ -77,6 +83,8 @@ export interface ParseOptions {
  *   level:W                minimum level (V < D < I < W < E < F)
  *   tag:Wifi                case-insensitive substring on tag
  *   package:com.example     case-insensitive substring on pkg
+ *   -tag:chatty              hide lines whose tag contains it (any number)
+ *   -package:com.noisy       hide lines whose pkg contains it (any number)
  *   bare words               case-insensitive substring on message
  *
  * `key:` prefixes are matched case-insensitively; unrecognized `key:value`
@@ -134,9 +142,12 @@ export function parseQuery(raw: string, opts: ParseOptions = {}): LogcatQuery {
   for (const token of tokenize(raw)) {
     const [key, ...rest] = token.split(':');
     const value = rest.join(':');
-    if (value && key.toLowerCase() === 'level') q.minLevel = value.toUpperCase();
-    else if (value && key.toLowerCase() === 'tag') q.tag = norm(value);
-    else if (value && key.toLowerCase() === 'package') q.pkg = norm(value);
+    const k = key.toLowerCase();
+    if (value && k === 'level') q.minLevel = value.toUpperCase();
+    else if (value && k === 'tag') q.tag = norm(value);
+    else if (value && k === 'package') q.pkg = norm(value);
+    else if (value && k === '-tag') (q.excludeTags = q.excludeTags || []).push(norm(value));
+    else if (value && k === '-package') (q.excludePkgs = q.excludePkgs || []).push(norm(value));
     else words.push(token);
   }
   if (words.length) q.text = norm(words.join(' '));
@@ -163,6 +174,15 @@ export function matches(r: LogRecordLike, q: LogcatQuery): boolean {
   if (q.tag && !norm(r.tag).includes(q.tag)) return false;
   if (q.pkg && !norm(r.pkg ?? '').includes(q.pkg)) return false;
   if (q.text && !norm(r.message).includes(q.text)) return false;
+  if (q.excludeTags) {
+    const tag = norm(r.tag);
+    if (q.excludeTags.some((t) => tag.includes(t))) return false;
+  }
+  if (q.excludePkgs) {
+    // A line with no package has nothing to be excluded by.
+    const pkg = norm(r.pkg ?? '');
+    if (pkg && q.excludePkgs.some((p) => pkg.includes(p))) return false;
+  }
   return true;
 }
 

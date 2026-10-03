@@ -349,3 +349,55 @@ describe('quoted values', () => {
     expect(q.text).toBe('boom');
   });
 });
+
+describe('exclusions: -tag: and -package:', () => {
+  it('parses each exclusion, lowercased unless Match case is on', () => {
+    expect(parseQuery('-tag:Chatty -tag:Wifi -package:com.Foo')).toEqual({
+      excludeTags: ['chatty', 'wifi'],
+      excludePkgs: ['com.foo'],
+    });
+    expect(parseQuery('-tag:Chatty', { caseSensitive: true })).toEqual({
+      caseSensitive: true,
+      excludeTags: ['Chatty'],
+    });
+  });
+
+  it('reads a quoted value as one exclusion', () => {
+    expect(parseQuery('-package:"Food Truck" crash')).toEqual({
+      excludePkgs: ['food truck'],
+      text: 'crash',
+    });
+  });
+
+  it('keeps a word starting with - and no colon, or an exclusion with no value, as text', () => {
+    expect(parseQuery('-verbose')).toEqual({ text: '-verbose' });
+    expect(parseQuery('-tag:')).toEqual({ text: '-tag:' });
+  });
+
+  it('hides lines whose tag or package contains an excluded value', () => {
+    const q = parseQuery('-tag:chatty -package:com.noisy');
+    expect(matches(rec({ tag: 'chatty' }), q)).toBe(false);
+    expect(matches(rec({ tag: 'MyChattyTag' }), q)).toBe(false);
+    expect(matches(rec({ pkg: 'com.noisy.app' }), q)).toBe(false);
+    expect(matches(rec({ pkg: 'com.quiet' }), q)).toBe(true);
+    // No package: nothing to exclude it by.
+    expect(matches(rec({ pkg: undefined }), q)).toBe(true);
+  });
+
+  it('combines with the include terms', () => {
+    const q = parseQuery('tag:wifi -tag:wifiscanner');
+    expect(matches(rec({ tag: 'WifiService' }), q)).toBe(true);
+    expect(matches(rec({ tag: 'WifiScanner' }), q)).toBe(false);
+  });
+
+  it('follows Match case', () => {
+    const q = parseQuery('-tag:Wifi', { caseSensitive: true });
+    expect(matches(rec({ tag: 'wifi' }), q)).toBe(true);
+    expect(matches(rec({ tag: 'Wifi' }), q)).toBe(false);
+  });
+
+  it("never hides Xenon's own records", () => {
+    const q = parseQuery('-tag:xenon');
+    expect(matches(rec({ tag: 'xenon', level: 'W', synthetic: true }), q)).toBe(true);
+  });
+});
