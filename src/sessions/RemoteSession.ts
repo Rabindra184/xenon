@@ -246,7 +246,7 @@ export class RemoteSession extends XenonSession {
     try {
       const response = await this.call({
         method: 'get',
-        url: `${origin}/xenon/api/node/sessions/${encodeURIComponent(this.sessionId)}/metrics`,
+        url: `${origin}${NODE_SESSION_STATUS_PATH}/${encodeURIComponent(this.sessionId)}/metrics`,
         params: after === null ? undefined : { after },
         timeout: 5000,
         validateStatus: () => true,
