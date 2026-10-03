@@ -6,6 +6,30 @@ This project follows [Semantic Versioning](https://semver.org/). Releases are
 published to npm automatically when `package.json`'s `version` changes on `main`
 (see `.github/workflows/npm-publish.yml`).
 
+## 2.11.1
+
+**The hub's collection of a node session's CPU and memory, made sturdier.**
+
+No database migration, and nothing to configure. As for 2.11.0, upgrade the
+hub and its nodes together.
+
+### Fixed
+
+- **One malformed figure from a node could stop a session's chart** (#428).
+  A figure with no time, or a value that isn't a number, failed every later
+  write of the session's figures for up to 30 minutes. The hub now keeps
+  only well-formed figures.
+- **An absurdly long `?after=` dropped a session's figures on the node**
+  (#428). A 400-digit number read as Infinity on
+  `GET /xenon/api/node/sessions/:id/metrics`, and the node dropped
+  everything it held for the session. It now reads as no `after`.
+- **Ending the sessions of a node that went dark was slower than it needed
+  to be** (#428). Each waited up to 5 s more for a last answer about its
+  figures. A node that wasn't answering isn't asked again.
+- **Only sessions that run on a node are collected from** (#428). A cloud
+  provider's session and this server's own were kept out by a device check
+  alone; the session's type now decides.
+
 ## 2.11.0
 
 **CPU and memory for sessions on a node's phones, live on the hub's session
