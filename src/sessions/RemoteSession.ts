@@ -3,6 +3,7 @@ import { Container } from 'typedi';
 import log from '../logger';
 import SessionType from '../enums/SessionType';
 import { HUB_TOKEN_HEADER, HubSessionTokenIssuer } from '../gateway/hubSessionToken';
+import { NodeAsk, readNodeMetricsReply } from '../services/metrics/nodeMetrics';
 import {
   NODE_SESSION_STATUS_HEADER,
   NODE_SESSION_STATUS_PATH,
@@ -237,6 +238,33 @@ export class RemoteSession extends XenonSession {
    * abandoned session and its phone were kept alive for ever. A node without
    * the route (an older Xenon) is probed the old way, and the hub says so once.
    */
+  /** The node's origin, where its own routes are; null for a base URL that isn't one. */
+  nodeOrigin(): string | null {
+    try {
+      return new URL(this.baseUrl).origin;
+    } catch {
+      return null;
+    }
+  }
+
+  /** The node's CPU and memory for this session newer than `after` (NodeMetricsCollector). */
+  async nodeMetrics(after: number | null): Promise<NodeAsk> {
+    const origin = this.nodeOrigin();
+    if (!origin) return { kind: 'unavailable', reason: `no node origin in ${this.baseUrl}` };
+    try {
+      const response = await this.call({
+        method: 'get',
+        url: `${origin}/xenon/api/node/sessions/${encodeURIComponent(this.sessionId)}/metrics`,
+        params: after === null ? undefined : { after },
+        timeout: 5000,
+        validateStatus: () => true,
+      });
+      return readNodeMetricsReply(response.status, response.headers ?? {}, response.data);
+    } catch (err: any) {
+      return { kind: 'unavailable', reason: String(err?.code ?? err?.message ?? err) };
+    }
+  }
+
   async checkHealth(): Promise<SessionHealthResult> {
     if (!this.sessionId) {
       return {
