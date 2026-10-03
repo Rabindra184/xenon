@@ -482,9 +482,13 @@
   color: var(--text-muted);
 }
 
+/* Badge letters are 10 px, so they need 4.5:1. The rows are always a dark
+   island, where the role colours (#3b82f6, #ef4444) measured 3.8:1 and
+   3.1:1 on their own tints; the lighter stops pass (5.5:1, 8:1 on a selected
+   error row). */
 .log-row.lvl-I .log-badge {
   background: color-mix(in srgb, var(--color-info) 16%, transparent);
-  color: var(--color-info);
+  color: var(--blue-400);
 }
 
 .log-row.lvl-W .log-badge {
@@ -501,7 +505,7 @@
 .log-row.lvl-E .log-badge,
 .log-row.lvl-F .log-badge {
   background: color-mix(in srgb, var(--color-danger) 20%, transparent);
-  color: var(--color-danger);
+  color: var(--red-200);
 }
 
 /* Records Xenon injected (dropped lines, end of stream): visibly not device
