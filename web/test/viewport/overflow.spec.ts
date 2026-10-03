@@ -1392,9 +1392,9 @@ for (const width of [1280, 1440]) {
   });
 }
 
-// A landscape phone leaves the side panel at its 450 px floor: the Logs tab
-// there has two-line rows and a toolbar that may wrap, and nothing may leave
-// the viewport.
+// A landscape phone narrows the side panel (514 px at 1280): below the 720 px
+// switch the Logs tab has two-line rows and a toolbar that may wrap, and
+// nothing may leave the viewport.
 test('no overflow on the Logs tab with a landscape phone at 1280px', async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 900 });
   await mockLogStream(page);
@@ -1403,10 +1403,10 @@ test('no overflow on the Logs tab with a landscape phone at 1280px', async ({ pa
   await page.locator('.footer-action-btn[aria-label="Landscape orientation"]').click();
   await expect(page.locator('.device-stream-canvas.landscape')).toBeVisible();
 
-  // The narrow pane really is under test.
+  // The narrow pane really is under test: below the 720 px container switch.
   const pane = await page.locator('.logcat-root').boundingBox();
   expect(pane, 'the Logs pane must have a box').not.toBeNull();
-  expect(pane?.width ?? Infinity).toBeLessThanOrEqual(480);
+  expect(pane?.width ?? Infinity, 'the Logs pane must be in its two-line layout').toBeLessThan(720);
   await expect(
     page.getByRole('listbox', { name: 'Log lines' }).getByRole('option'),
   ).not.toHaveCount(0);
