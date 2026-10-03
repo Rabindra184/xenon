@@ -1,6 +1,6 @@
 import * as React from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen } from '@testing-library/react';
 import { LogList, type LogListHandle, type LogListProps } from './LogList';
 import { NO_SELECTION, type LogSelection } from './logSelection';
 import { installFakeLayout, settle, userScroll, type FakeLayout } from './testing/fakeLayout';
@@ -293,5 +293,45 @@ describe('LogList: selecting and keys', () => {
     expect(onPause).toHaveBeenCalledTimes(1);
     fireEvent.keyDown(list(), { key: 'End' });
     expect(onFollow).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('LogList: reveal', () => {
+  let layout: FakeLayout;
+  beforeEach(() => {
+    layout = installFakeLayout({ viewportHeight: 400 });
+  });
+  afterEach(() => layout.restore());
+
+  it('scrolls a line that is not rendered into view, for Find', async () => {
+    const ref = React.createRef<LogListHandle>();
+    render(<Harness listRef={ref} records={lines(5000)} following={false} />);
+    await settle();
+    expect(screen.queryByText('line 4000')).toBeNull();
+    act(() => ref.current!.reveal(4000));
+    await settle();
+    expect(screen.getByText('line 4000')).toBeInTheDocument();
+  });
+
+  it('measures its rows again when wrapping is turned off', async () => {
+    layout.restore();
+    layout = installFakeLayout({
+      viewportHeight: 400,
+      rowHeight: (row) => (row.closest('.is-nowrap') ? 20 : 40),
+    });
+    const sizer = () => list().firstElementChild as HTMLElement;
+    const { rerender } = render(<Harness records={lines(5)} following={false} />);
+    await settle();
+    expect(sizer().style.height).toBe('200px');
+    rerender(<Harness records={lines(5)} following={false} wrap={false} />);
+    await settle();
+    expect(sizer().style.height).toBe('100px');
+  });
+
+  it('can be focused by the parent', () => {
+    const ref = React.createRef<LogListHandle>();
+    render(<Harness listRef={ref} />);
+    act(() => ref.current!.focus());
+    expect(document.activeElement).toBe(list());
   });
 });

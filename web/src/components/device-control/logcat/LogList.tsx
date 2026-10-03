@@ -138,6 +138,21 @@ export const LogList = forwardRef<LogListHandle, LogListProps>(function LogList(
     },
   });
 
+  // Wrapping, or the switch between one- and two-line rows, changes every
+  // row's height: drop the measurements and measure the rendered rows again.
+  // (A ResizeObserver would catch the rendered rows, but not the cached
+  // sizes of rows off screen, nor a row whose size happens not to change.)
+  const measuredFor = useRef(`${wrap}|${wide}`);
+  useLayoutEffect(() => {
+    const mode = `${wrap}|${wide}`;
+    if (measuredFor.current === mode) return;
+    measuredFor.current = mode;
+    virtualizer.measure();
+    scrollerRef.current
+      ?.querySelectorAll<HTMLDivElement>('[data-index]')
+      .forEach((row) => virtualizer.measureElement(row));
+  }, [wrap, wide, virtualizer]);
+
   const total = virtualizer.getTotalSize();
   const lastSeq = records.length ? records[records.length - 1].seq : -1;
 
@@ -234,10 +249,10 @@ export const LogList = forwardRef<LogListHandle, LogListProps>(function LogList(
   useImperativeHandle(
     ref,
     () => ({
-      reveal: () => undefined,
-      focus: () => undefined,
+      reveal: (index: number) => virtualizer.scrollToIndex(index, { align: 'center' }),
+      focus: () => scrollerRef.current?.focus({ preventScroll: true }),
     }),
-    [],
+    [virtualizer],
   );
 
   const optionId = (seq: number) => `${listId}-${seq}`;
