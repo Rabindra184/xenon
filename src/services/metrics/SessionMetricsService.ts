@@ -14,6 +14,9 @@ import { ProcessRegistry } from '../ProcessRegistry';
 import { appPackageOf } from './androidMetrics';
 import { AndroidMetricsSampler } from './AndroidMetricsSampler';
 import { IOSMetricsSampler } from './IOSMetricsSampler';
+import { NodeMetricsStore } from './NodeMetricsStore';
+import { NodeMetricsCollector } from './NodeMetricsCollector';
+import { NodeMetricsSource, NodeMetricsSupport } from './nodeMetrics';
 import {
   FLUSH_INTERVAL_MS,
   MAX_BUFFERED_SAMPLES,
@@ -32,31 +35,41 @@ export interface MetricsStart {
   sessionId: string;
   device: IDevice;
   capabilities: Record<string, any>;
+  /** A session on a node's phone (a hub's RemoteSession): its figures are collected from the node. */
+  source?: NodeMetricsSource;
+  /** Collect only figures newer than this: resuming after a hub restart. */
+  after?: number | null;
 }
 
 interface Running {
   sampler: MetricsSampler;
   buffer: MetricSample[];
-  flushTimer: ReturnType<typeof setInterval>;
+  /** None on a node, which holds samples for its hub instead of writing them. */
+  flushTimer?: ReturnType<typeof setInterval>;
   /** Writes run one after another. */
   writing: Promise<void>;
   /** The sampler stopped itself after repeated failures. */
   gaveUp: boolean;
+  /** On a node: the samples go to the NodeMetricsStore. */
+  held: boolean;
 }
 
 /**
  * CPU and memory for the session page's Performance panel. A sampler per
  * session on this server's own phones, from EventManager's start (once the
  * session's row exists) to its stop; samples are written every
- * FLUSH_INTERVAL_MS. Sampling never fails a session.
+ * FLUSH_INTERVAL_MS. On a hub, a session on a node's phone gets a
+ * NodeMetricsCollector instead, which asks the node. On a node the samples
+ * are held for the hub (NodeMetricsStore), not written. Sampling never fails
+ * a session.
  */
 @Service()
 export class SessionMetricsService {
   private log = log.scope('SessionMetrics');
   private running = new Map<string, Running>();
 
-  /** Whether a session on this phone is sampled. */
-  appliesTo(device: IDevice | undefined): boolean {
+  /** Whether a session on this phone is sampled: this server's phone, or a node's through its session. */
+  appliesTo(device: IDevice | undefined, source?: NodeMetricsSource): boolean {
     if (!device) return false;
     const ctx = this.context();
     if (ctx.pluginArgs?.sessionMetrics === false) return false;
@@ -65,34 +78,61 @@ export class SessionMetricsService {
     if (platform !== 'android' && !(platform === 'ios' && device.realDevice === true)) {
       return false;
     }
+    if (this.ownPhone(device)) return true;
+    // A node's phone, on a hub: collected from the node. Never a cloud provider's.
+    return !!source && !device.cloud && !this.holdsForHub();
+  }
+
+  private ownPhone(device: IDevice): boolean {
+    const ctx = this.context();
     return isOwnDevice(localDeviceHosts(ctx.pluginArgs, ctx.port), ctx.nodeId, device);
   }
 
-  start({ sessionId, device, capabilities }: MetricsStart): void {
-    if (this.running.has(sessionId) || !this.appliesTo(device)) return;
+  start({ sessionId, device, capabilities, source, after }: MetricsStart): void {
+    if (this.running.has(sessionId) || !this.appliesTo(device, source)) return;
+    // A node has no Session row for the hub's sessions, so it holds the
+    // figures for its hub to collect (GET /node/sessions/:id/metrics).
+    const held = this.holdsForHub();
+    const store = held ? this.nodeStore() : null;
+    // The entry's own buffer, not a lookup by session: `stop` removes the
+    // entry first, and the hub's collector gives its last samples while it
+    // stops (its last ask of the node).
+    const buffer: MetricSample[] = [];
     const hooks: SamplerHooks = {
-      onSample: (s) => this.running.get(sessionId)?.buffer.push(s),
+      onSample: (s) => {
+        if (store) store.add(sessionId, s);
+        else buffer.push(s);
+      },
       onGiveUp: (reason) => {
         const entry = this.running.get(sessionId);
         if (entry) entry.gaveUp = true;
+        store?.gaveUp(sessionId);
         this.log.warn(`[${sessionId}] Stopped sampling ${device.udid}: ${reason}`);
       },
     };
     let sampler: MetricsSampler;
     try {
-      sampler = this.samplerFor(sessionId, device, capabilities, hooks);
+      sampler =
+        source && !this.ownPhone(device)
+          ? this.collectorFor(source, hooks, after ?? null)
+          : this.samplerFor(sessionId, device, capabilities, hooks);
     } catch (err: any) {
       this.log.warn(`[${sessionId}] Can't sample ${device.udid}: ${err?.message ?? err}`);
       return;
     }
-    const flushTimer = setInterval(() => void this.flush(sessionId), FLUSH_INTERVAL_MS);
-    flushTimer.unref?.();
+    store?.begin(sessionId, String(device.platform ?? ''));
+    let flushTimer: ReturnType<typeof setInterval> | undefined;
+    if (!held) {
+      flushTimer = setInterval(() => void this.flush(sessionId), FLUSH_INTERVAL_MS);
+      flushTimer.unref?.();
+    }
     this.running.set(sessionId, {
       sampler,
-      buffer: [],
+      buffer,
       flushTimer,
       writing: Promise.resolve(),
       gaveUp: false,
+      held,
     });
     sampler.start();
     this.log.info(`[${sessionId}] Sampling CPU and memory on ${device.udid}`);
@@ -102,7 +142,7 @@ export class SessionMetricsService {
   recordingState(sessionId: string): RecordingState {
     const entry = this.running.get(sessionId);
     if (!entry) return 'off';
-    return entry.gaveUp ? 'stopped' : 'sampling';
+    return entry.sampler.state?.() ?? (entry.gaveUp ? 'stopped' : 'sampling');
   }
 
   /** Stops the session's sampler and writes what it buffered. Idempotent. */
@@ -110,9 +150,10 @@ export class SessionMetricsService {
     const entry = this.running.get(sessionId);
     if (!entry) return;
     this.running.delete(sessionId);
-    clearInterval(entry.flushTimer);
+    if (entry.flushTimer) clearInterval(entry.flushTimer);
     await entry.sampler.stop().catch(() => undefined);
-    await this.write(sessionId, entry);
+    if (entry.held) this.nodeStore().end(sessionId);
+    else await this.write(sessionId, entry);
   }
 
   private async flush(sessionId: string): Promise<void> {
@@ -145,6 +186,29 @@ export class SessionMetricsService {
 
   protected context(): PluginContext {
     return Container.get(PluginContext);
+  }
+
+  /** A node (a server with `hub`) holds the figures for its hub instead of writing them. */
+  protected holdsForHub(): boolean {
+    return this.context().pluginArgs?.hub !== undefined;
+  }
+
+  protected nodeStore(): NodeMetricsStore {
+    return Container.get(NodeMetricsStore);
+  }
+
+  protected collectorFor(
+    source: NodeMetricsSource,
+    hooks: SamplerHooks,
+    after: number | null,
+  ): MetricsSampler {
+    return new NodeMetricsCollector({
+      source,
+      hooks,
+      after,
+      support: Container.get(NodeMetricsSupport),
+      logger: this.log,
+    });
   }
 
   protected async writeSamples(sessionId: string, samples: MetricSample[]): Promise<void> {

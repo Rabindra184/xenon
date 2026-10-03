@@ -32,6 +32,7 @@ import { healingTierLabel } from '../services/healing/types';
 import { SelectorStateService } from '../services/SelectorStateService';
 import { RecordingStore } from '../services/recording/recording-store';
 import { SessionMetricsService } from '../services/metrics/SessionMetricsService';
+import { nodeMetricsSourceOf } from '../services/metrics/nodeMetrics';
 import { Service } from 'typedi';
 
 /**
@@ -88,7 +89,8 @@ export class DashboardEventManager {
     // CPU and memory for the session page's Performance panel; sampling
     // starts once the session's row exists, since the samples point at it.
     const metrics = Container.get(SessionMetricsService);
-    const sampled = metrics.appliesTo(device);
+    const source = nodeMetricsSourceOf(session);
+    const sampled = metrics.appliesTo(device, source);
 
     // If iOS real device, start performance recording (Time Profiler)
     // Note: This only works on real devices with XCUITest driver 4.5+
@@ -144,6 +146,7 @@ export class DashboardEventManager {
         sessionId: session.getId(),
         device,
         capabilities: session.getCapabilities(),
+        ...(source ? { source } : {}),
       });
     }
 

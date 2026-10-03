@@ -39,6 +39,8 @@ export interface SamplerHooks {
 export interface MetricsSampler {
   start(): void;
   stop(): Promise<void>;
+  /** Whether it is sampling, when it decides that itself (the hub's collector). */
+  state?(): RecordingState;
 }
 
 export const round1 = (n: number): number => Math.round(n * 10) / 10;

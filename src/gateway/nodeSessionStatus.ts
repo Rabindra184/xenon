@@ -1,4 +1,4 @@
-import type { RequestHandler, Router } from 'express';
+import type { Request, RequestHandler, Response, Router } from 'express';
 import { Container, Service } from 'typedi';
 import log from '../logger';
 import { config } from '../config';
@@ -53,48 +53,66 @@ export const NODE_SESSION_STATUS_HEADER = 'x-xenon-node-sessions';
 /** How long a hub keeps using the old probe for a node without the route before asking again. */
 export const UNSUPPORTED_RECHECK_MS = 10 * 60_000;
 
-export interface NodeSessionStatusDeps {
+/** What a node needs to answer its hub about a session. */
+export interface HubAnswerDeps {
   /** The hub's session tokens, checked against its JWKS. */
   hubTokens: HubTokenCheck;
   /** Whether a command to a session needs a credential here: per-command auth on, auth enabled. */
   enforced: () => boolean;
+  logger: GatewayLogger;
+}
+
+export interface NodeSessionStatusDeps extends HubAnswerDeps {
   /** Whether Appium has the session (AppiumUmbrella.hasSession). */
   hasSession: (sessionId: string) => boolean;
-  logger: GatewayLogger;
+}
+
+/**
+ * Runs `answer` when the caller may know this session's state on the node:
+ * always with per-command auth off, else only with the hub's session token
+ * for it. Otherwise the unknown-session answer, or 503 when the token can't
+ * be checked. `what` names the route in the log.
+ */
+export function answerForHub(
+  deps: HubAnswerDeps,
+  req: Request,
+  res: Response,
+  sessionId: string,
+  what: string,
+  answer: () => void,
+): void {
+  if (!deps.enforced()) return answer();
+
+  const presented = req.headers[HUB_TOKEN_HEADER];
+  const token = typeof presented === 'string' ? presented : undefined;
+  if (token === undefined) {
+    res.status(UNKNOWN_SESSION_STATUS).json(UNKNOWN_SESSION_BODY);
+    return;
+  }
+  deps.hubTokens
+    .verify(token, sessionId)
+    .then((valid) => {
+      if (valid) return answer();
+      deps.logger.warn(`${what} for ${sessionId} refused: the hub token is not valid for it`);
+      res.status(UNKNOWN_SESSION_STATUS).json(UNKNOWN_SESSION_BODY);
+    })
+    .catch((error) => {
+      deps.logger.error(
+        `${what} for ${sessionId} unavailable: hub token check failed: ${summarize(error)}`,
+      );
+      if (!res.headersSent) {
+        res.status(COMMAND_AUTH_UNAVAILABLE_STATUS).json(COMMAND_AUTH_UNAVAILABLE_BODY);
+      }
+    });
 }
 
 export function nodeSessionStatusHandler(deps: NodeSessionStatusDeps): RequestHandler {
   return (req, res) => {
     res.setHeader(NODE_SESSION_STATUS_HEADER, '1');
     const sessionId = String(req.params?.sessionId ?? '');
-    const answer = () =>
-      res.status(200).json({ value: { sessionId, exists: deps.hasSession(sessionId) } });
-
-    if (!deps.enforced()) return answer();
-
-    const presented = req.headers[HUB_TOKEN_HEADER];
-    const token = typeof presented === 'string' ? presented : undefined;
-    if (token === undefined) {
-      res.status(UNKNOWN_SESSION_STATUS).json(UNKNOWN_SESSION_BODY);
-      return;
-    }
-    deps.hubTokens
-      .verify(token, sessionId)
-      .then((valid) => {
-        if (valid) return answer();
-        deps.logger.warn(
-          `Session status for ${sessionId} refused: the hub token is not valid for it`,
-        );
-        res.status(UNKNOWN_SESSION_STATUS).json(UNKNOWN_SESSION_BODY);
-      })
-      .catch((error) => {
-        deps.logger.error(
-          `Session status for ${sessionId} unavailable: hub token check failed: ${summarize(error)}`,
-        );
-        if (!res.headersSent) {
-          res.status(COMMAND_AUTH_UNAVAILABLE_STATUS).json(COMMAND_AUTH_UNAVAILABLE_BODY);
-        }
-      });
+    answerForHub(deps, req, res, sessionId, 'Session status', () =>
+      res.status(200).json({ value: { sessionId, exists: deps.hasSession(sessionId) } }),
+    );
   };
 }
 

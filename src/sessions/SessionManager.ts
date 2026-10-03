@@ -9,6 +9,7 @@ import { IDevice } from '../interfaces/IDevice';
 import { DeviceStoreFactory } from '../data-service/device-store';
 import { nodeWebDriverUrl } from '../gateway/nodeWebDriverUrl';
 import { getXenonCapabilities } from '../XenonCapabilityManager';
+import { nodeMetricsSourceOf } from '../services/metrics/nodeMetrics';
 
 /**
  * SessionManager with persistence and recovery capabilities.
@@ -196,6 +197,11 @@ export class SessionManager {
           // Add to in-memory map
           this.addSession(dbSession.id, recoveredSession);
           await this.adoptHeartbeat(dbSession.id);
+          // A node session whose figures the hub was collecting goes on from
+          // the newest sample stored here; the node's memory fills the gap.
+          if (!device.cloud && dbSession.is_profiling_available) {
+            await this.resumeNodeMetrics(dbSession.id, device, recoveredSession, sessionResponse);
+          }
           recoveredCount++;
         } catch (sessionErr: any) {
           this.log.error(`❌ Failed to recover session ${dbSession.id}: ${sessionErr.message}`);
@@ -212,6 +218,32 @@ export class SessionManager {
     } catch (err: any) {
       this.log.error(`❌ Session recovery error: ${err.message}`);
       return 0;
+    }
+  }
+
+  /** Goes on collecting a node session's figures after a hub restart, from the newest stored. */
+  private async resumeNodeMetrics(
+    sessionId: string,
+    device: IDevice,
+    session: XenonSession,
+    capabilities: Record<string, any>,
+  ): Promise<void> {
+    try {
+      const newest = await prisma.sessionMetric.aggregate({
+        where: { session_id: sessionId },
+        _max: { at: true },
+      });
+      // Loaded here: SessionMetricsService imports the device managers.
+      const { SessionMetricsService } = await import('../services/metrics/SessionMetricsService');
+      Container.get(SessionMetricsService).start({
+        sessionId,
+        device,
+        capabilities,
+        source: nodeMetricsSourceOf(session),
+        after: newest._max.at ?? null,
+      });
+    } catch (err: any) {
+      this.log.warn(`Session ${sessionId}: CPU and memory not resumed: ${err.message}`);
     }
   }
 

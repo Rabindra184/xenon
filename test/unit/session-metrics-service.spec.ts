@@ -23,12 +23,41 @@ class FakeSampler implements MetricsSampler {
   }
 }
 
+class FakeStore {
+  calls: string[] = [];
+  begin(id: string, platform: string) {
+    this.calls.push(`begin ${id} ${platform}`);
+  }
+  add(id: string, s: MetricSample) {
+    this.calls.push(`add ${id} ${s.at}`);
+  }
+  gaveUp(id: string) {
+    this.calls.push(`gaveUp ${id}`);
+  }
+  end(id: string) {
+    this.calls.push(`end ${id}`);
+  }
+}
+
 class TestMetrics extends SessionMetricsService {
   args: Record<string, unknown> = {};
   written: Array<{ sessionId: string; ats: number[] }> = [];
   failWrites = 0;
   samplers: FakeSampler[] = [];
   caps: unknown[] = [];
+  store = new FakeStore();
+  protected nodeStore(): any {
+    return this.store;
+  }
+  collected: Array<{ source: unknown; after: number | null }> = [];
+  collectorState = 'sampling';
+  protected collectorFor(source: any, hooks: SamplerHooks, after: number | null) {
+    this.collected.push({ source, after });
+    const f = new FakeSampler(hooks) as FakeSampler & { state: () => string };
+    f.state = () => this.collectorState;
+    this.samplers.push(f);
+    return f as any;
+  }
   protected context(): any {
     return {
       pluginArgs: { bindHostOrIp: '127.0.0.1', ...this.args },
@@ -166,6 +195,83 @@ describe('SessionMetricsService', () => {
   it("doesn't start a sampler for a phone it doesn't apply to", () => {
     m.start({ sessionId: 's2', device: phone({ nodeId: 'node-2' }), capabilities: {} });
     expect(m.samplers).to.deep.equal([]);
+  });
+
+  it('on a node, holds the figures for the hub instead of writing them', async () => {
+    m.args = { hub: 'http://hub:4723' };
+    m.start({ sessionId: 's1', device: phone(), capabilities: {} });
+    const hooks = m.samplers[0].hooks;
+    [1, 2].forEach((t) => hooks.onSample(sample(t)));
+    hooks.onGiveUp('adb gone');
+    await clock.tickAsync(FLUSH_INTERVAL_MS * 2);
+    await m.stop('s1');
+
+    expect(m.written).to.deep.equal([]);
+    expect(m.store.calls).to.deep.equal([
+      'begin s1 android',
+      'add s1 1',
+      'add s1 2',
+      'gaveUp s1',
+      'end s1',
+    ]);
+    expect(m.samplers[0].stopped).to.equal(true);
+  });
+
+  it('on a node with sessionMetrics off, holds nothing', () => {
+    m.args = { hub: 'http://hub:4723', sessionMetrics: false };
+    m.start({ sessionId: 's1', device: phone(), capabilities: {} });
+    expect(m.samplers).to.have.length(0);
+    expect(m.store.calls).to.deep.equal([]);
+  });
+
+  const source = {
+    nodeOrigin: () => 'http://node',
+    nodeMetrics: async () => ({ kind: 'refused' }),
+  } as any;
+
+  it("on a hub, collects a node's phone from the node, never a cloud phone or without a session", () => {
+    const nodePhone = phone({ nodeId: 'node-2', host: 'http://node:4723' });
+    expect(m.appliesTo(nodePhone, source)).to.equal(true);
+    expect(m.appliesTo(nodePhone)).to.equal(false);
+    expect(m.appliesTo({ ...nodePhone, cloud: 'browserstack' }, source)).to.equal(false);
+    expect(
+      m.appliesTo(phone({ nodeId: 'node-2', platform: 'ios', realDevice: false }), source),
+    ).to.equal(false);
+    m.args = { sessionMetrics: false };
+    expect(m.appliesTo(nodePhone, source)).to.equal(false);
+    m.args = { hub: 'http://hub:4723' };
+    expect(m.appliesTo(nodePhone, source)).to.equal(false);
+  });
+
+  it('collects from the node, from where it left off, and writes the figures as its own', async () => {
+    m.start({
+      sessionId: 's1',
+      device: phone({ nodeId: 'node-2' }),
+      capabilities: {},
+      source,
+      after: 40,
+    });
+    expect(m.collected).to.deep.equal([{ source, after: 40 }]);
+    m.samplers[0].hooks.onSample(sample(41));
+    await m.stop('s1');
+    expect(m.written).to.deep.equal([{ sessionId: 's1', ats: [41] }]);
+  });
+
+  it("says what the node says about a running session's sampling", () => {
+    m.start({ sessionId: 's1', device: phone({ nodeId: 'node-2' }), capabilities: {}, source });
+    expect(m.recordingState('s1')).to.equal('sampling');
+    m.collectorState = 'off';
+    expect(m.recordingState('s1')).to.equal('off');
+  });
+
+  it('writes the samples a sampler gives while it stops: the collector asks the node one last time', async () => {
+    m.start({ sessionId: 's1', device: phone({ nodeId: 'node-2' }), capabilities: {}, source });
+    const last = m.samplers[0];
+    last.stop = async () => {
+      last.hooks.onSample(sample(99));
+    };
+    await m.stop('s1');
+    expect(m.written).to.deep.equal([{ sessionId: 's1', ats: [99] }]);
   });
 });
 

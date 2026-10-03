@@ -45,6 +45,7 @@ import { Container } from 'typedi';
 import { PluginContext } from '../PluginContext';
 import { webdriverInfoHandler } from '../gateway/nodeWebDriverUrl';
 import { registerNodeSessionStatus } from '../gateway/nodeSessionStatus';
+import { registerNodeSessionMetrics } from '../gateway/nodeSessionMetrics';
 
 const dashboardPluginUrl: any = null;
 
@@ -234,6 +235,7 @@ function createRouter(pluginArgs: IPluginArgs) {
   // without sending the session a command. No login (the hub holds no
   // credentials for the node); it takes the hub's session token instead.
   registerNodeSessionStatus(apiRouter, pluginArgs);
+  registerNodeSessionMetrics(apiRouter, pluginArgs);
 
   // Dashboard login: unauthenticated (rate-limited internally via separate IP logic)
   apiRouter.use('/auth', authPublicRouter()); // login, logout — unauthenticated
