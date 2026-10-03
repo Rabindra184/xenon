@@ -47,6 +47,7 @@ import { computeTeamIds } from './device-access/callerTeamIds';
 import { PendingRequester, REQUESTER_KEY } from './device-access/queueVisibility';
 import { canSeeApp } from './device-access/appVisibility';
 import { LiveSessionOwners } from './device-access/LiveSessionOwners';
+import { SessionMetricsService } from './metrics/SessionMetricsService';
 import {
   appDownloadUrl,
   setAppCapability,
@@ -960,6 +961,16 @@ export class SessionLifecycleService {
     if (sessionInstance instanceof LocalSession) {
       Container.get(LiveSessionOwners).record(sessionId, userId);
     }
+    // A node samples its own phones for its hub, whatever its dashboard
+    // setting (the hub collects the figures). A hub and a standalone server
+    // start sampling in EventManager.onSessionStarted, once the row exists.
+    if (!this.isHub(context.pluginArgs) && sessionInstance instanceof LocalSession) {
+      Container.get(SessionMetricsService).start({
+        sessionId,
+        device: freshDevice,
+        capabilities: sessionResponse,
+      });
+    }
 
     await this.applyPostSessionLogic(sessionInstance, xenonCapabilities, freshDevice);
   }
@@ -1310,6 +1321,10 @@ export class SessionLifecycleService {
     } finally {
       if (sessionId) {
         Container.get(LiveSessionOwners).forget(sessionId);
+        // Before the lock's "still in memory?" check, which a dashboard-off
+        // node fails. On a node this ends the figures it holds for its hub;
+        // on a hub it collects a node session's last ones. Idempotent.
+        await Container.get(SessionMetricsService).stop(sessionId);
         await sessionCleanupLock.acquire(sessionId, async () => {
           const session = SESSION_MANAGER.getSession(sessionId);
           if (!session) {
@@ -1445,6 +1460,7 @@ export class SessionLifecycleService {
 
       SESSION_MANAGER.removeSession(sessionId);
       Container.get(LiveSessionOwners).forget(sessionId);
+      await Container.get(SessionMetricsService).stop(sessionId);
     });
   }
 

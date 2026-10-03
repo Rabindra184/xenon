@@ -23,12 +23,32 @@ class FakeSampler implements MetricsSampler {
   }
 }
 
+class FakeStore {
+  calls: string[] = [];
+  begin(id: string, platform: string) {
+    this.calls.push(`begin ${id} ${platform}`);
+  }
+  add(id: string, s: MetricSample) {
+    this.calls.push(`add ${id} ${s.at}`);
+  }
+  gaveUp(id: string) {
+    this.calls.push(`gaveUp ${id}`);
+  }
+  end(id: string) {
+    this.calls.push(`end ${id}`);
+  }
+}
+
 class TestMetrics extends SessionMetricsService {
   args: Record<string, unknown> = {};
   written: Array<{ sessionId: string; ats: number[] }> = [];
   failWrites = 0;
   samplers: FakeSampler[] = [];
   caps: unknown[] = [];
+  store = new FakeStore();
+  protected nodeStore(): any {
+    return this.store;
+  }
   protected context(): any {
     return {
       pluginArgs: { bindHostOrIp: '127.0.0.1', ...this.args },
@@ -166,6 +186,33 @@ describe('SessionMetricsService', () => {
   it("doesn't start a sampler for a phone it doesn't apply to", () => {
     m.start({ sessionId: 's2', device: phone({ nodeId: 'node-2' }), capabilities: {} });
     expect(m.samplers).to.deep.equal([]);
+  });
+
+  it('on a node, holds the figures for the hub instead of writing them', async () => {
+    m.args = { hub: 'http://hub:4723' };
+    m.start({ sessionId: 's1', device: phone(), capabilities: {} });
+    const hooks = m.samplers[0].hooks;
+    [1, 2].forEach((t) => hooks.onSample(sample(t)));
+    hooks.onGiveUp('adb gone');
+    await clock.tickAsync(FLUSH_INTERVAL_MS * 2);
+    await m.stop('s1');
+
+    expect(m.written).to.deep.equal([]);
+    expect(m.store.calls).to.deep.equal([
+      'begin s1 android',
+      'add s1 1',
+      'add s1 2',
+      'gaveUp s1',
+      'end s1',
+    ]);
+    expect(m.samplers[0].stopped).to.equal(true);
+  });
+
+  it('on a node with sessionMetrics off, holds nothing', () => {
+    m.args = { hub: 'http://hub:4723', sessionMetrics: false };
+    m.start({ sessionId: 's1', device: phone(), capabilities: {} });
+    expect(m.samplers).to.have.length(0);
+    expect(m.store.calls).to.deep.equal([]);
   });
 });
 

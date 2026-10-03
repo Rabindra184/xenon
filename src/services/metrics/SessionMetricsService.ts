@@ -14,6 +14,7 @@ import { ProcessRegistry } from '../ProcessRegistry';
 import { appPackageOf } from './androidMetrics';
 import { AndroidMetricsSampler } from './AndroidMetricsSampler';
 import { IOSMetricsSampler } from './IOSMetricsSampler';
+import { NodeMetricsStore } from './NodeMetricsStore';
 import {
   FLUSH_INTERVAL_MS,
   MAX_BUFFERED_SAMPLES,
@@ -37,11 +38,14 @@ export interface MetricsStart {
 interface Running {
   sampler: MetricsSampler;
   buffer: MetricSample[];
-  flushTimer: ReturnType<typeof setInterval>;
+  /** None on a node, which holds samples for its hub instead of writing them. */
+  flushTimer?: ReturnType<typeof setInterval>;
   /** Writes run one after another. */
   writing: Promise<void>;
   /** The sampler stopped itself after repeated failures. */
   gaveUp: boolean;
+  /** On a node: the samples go to the NodeMetricsStore. */
+  held: boolean;
 }
 
 /**
@@ -70,11 +74,19 @@ export class SessionMetricsService {
 
   start({ sessionId, device, capabilities }: MetricsStart): void {
     if (this.running.has(sessionId) || !this.appliesTo(device)) return;
+    // A node has no Session row for the hub's sessions, so it holds the
+    // figures for its hub to collect (GET /node/sessions/:id/metrics).
+    const held = this.holdsForHub();
+    const store = held ? this.nodeStore() : null;
     const hooks: SamplerHooks = {
-      onSample: (s) => this.running.get(sessionId)?.buffer.push(s),
+      onSample: (s) => {
+        if (store) store.add(sessionId, s);
+        else this.running.get(sessionId)?.buffer.push(s);
+      },
       onGiveUp: (reason) => {
         const entry = this.running.get(sessionId);
         if (entry) entry.gaveUp = true;
+        store?.gaveUp(sessionId);
         this.log.warn(`[${sessionId}] Stopped sampling ${device.udid}: ${reason}`);
       },
     };
@@ -85,14 +97,19 @@ export class SessionMetricsService {
       this.log.warn(`[${sessionId}] Can't sample ${device.udid}: ${err?.message ?? err}`);
       return;
     }
-    const flushTimer = setInterval(() => void this.flush(sessionId), FLUSH_INTERVAL_MS);
-    flushTimer.unref?.();
+    store?.begin(sessionId, String(device.platform ?? ''));
+    let flushTimer: ReturnType<typeof setInterval> | undefined;
+    if (!held) {
+      flushTimer = setInterval(() => void this.flush(sessionId), FLUSH_INTERVAL_MS);
+      flushTimer.unref?.();
+    }
     this.running.set(sessionId, {
       sampler,
       buffer: [],
       flushTimer,
       writing: Promise.resolve(),
       gaveUp: false,
+      held,
     });
     sampler.start();
     this.log.info(`[${sessionId}] Sampling CPU and memory on ${device.udid}`);
@@ -110,9 +127,10 @@ export class SessionMetricsService {
     const entry = this.running.get(sessionId);
     if (!entry) return;
     this.running.delete(sessionId);
-    clearInterval(entry.flushTimer);
+    if (entry.flushTimer) clearInterval(entry.flushTimer);
     await entry.sampler.stop().catch(() => undefined);
-    await this.write(sessionId, entry);
+    if (entry.held) this.nodeStore().end(sessionId);
+    else await this.write(sessionId, entry);
   }
 
   private async flush(sessionId: string): Promise<void> {
@@ -145,6 +163,15 @@ export class SessionMetricsService {
 
   protected context(): PluginContext {
     return Container.get(PluginContext);
+  }
+
+  /** A node (a server with `hub`) holds the figures for its hub instead of writing them. */
+  protected holdsForHub(): boolean {
+    return this.context().pluginArgs?.hub !== undefined;
+  }
+
+  protected nodeStore(): NodeMetricsStore {
+    return Container.get(NodeMetricsStore);
   }
 
   protected async writeSamples(sessionId: string, samples: MetricSample[]): Promise<void> {
