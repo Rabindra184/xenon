@@ -1,5 +1,6 @@
 import { Service } from 'typedi';
 import log from '../../logger';
+import SessionType from '../../enums/SessionType';
 import type { MetricSample } from './types';
 
 /**
@@ -90,10 +91,17 @@ export interface NodeMetricsSource {
   nodeMetrics(after: number | null): Promise<NodeAsk>;
 }
 
-/** The session as a NodeMetricsSource, when it is one. */
+/**
+ * The session as a NodeMetricsSource, when it runs on a node. A cloud
+ * provider's session (CloudSession) and this server's own (LocalSession)
+ * inherit the methods from RemoteSession, so the type decides.
+ */
 export function nodeMetricsSourceOf(session: unknown): NodeMetricsSource | undefined {
-  const s = session as Partial<NodeMetricsSource> | null | undefined;
-  return s && typeof s.nodeMetrics === 'function' && typeof s.nodeOrigin === 'function'
+  const s = session as (Partial<NodeMetricsSource> & { getType?: () => string }) | null | undefined;
+  return s &&
+    s.getType?.() === SessionType.REMOTE &&
+    typeof s.nodeMetrics === 'function' &&
+    typeof s.nodeOrigin === 'function'
     ? (s as NodeMetricsSource)
     : undefined;
 }

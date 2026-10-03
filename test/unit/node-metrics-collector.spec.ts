@@ -7,8 +7,11 @@ import {
   NodeAsk,
   NodeMetricsState,
   NodeMetricsSupport,
+  nodeMetricsSourceOf,
   readNodeMetricsReply,
 } from '../../src/services/metrics/nodeMetrics';
+import { RemoteSession } from '../../src/sessions/RemoteSession';
+import { CloudSession } from '../../src/sessions/CloudSession';
 import { MetricSample } from '../../src/services/metrics/types';
 
 const sample = (at: number): MetricSample => ({
@@ -256,5 +259,29 @@ describe("readNodeMetricsReply: what a node's answer means", () => {
       kind: 'unavailable',
       reason: 'answered 200',
     });
+  });
+});
+
+describe('nodeMetricsSourceOf: only a session a node runs is collected from', () => {
+  const options = (cloud?: string) => ({
+    sessionId: 's1',
+    device: { udid: 'p1', host: 'http://node:4723', platform: 'android', cloud } as any,
+    sessionResponse: {},
+    xenonOption: {},
+    baseUrl: 'http://node:4723/wd/hub',
+  });
+
+  it("takes a node's session, never a cloud provider's or this server's own", () => {
+    const remote = new RemoteSession(options());
+    expect(nodeMetricsSourceOf(remote)).to.equal(remote);
+    // Both inherit nodeMetrics from RemoteSession; neither runs on a node.
+    expect(nodeMetricsSourceOf(new CloudSession(options('browserstack')))).to.equal(undefined);
+    const local = Object.assign(Object.create(RemoteSession.prototype), {
+      getType: () => 'local',
+    });
+    expect(nodeMetricsSourceOf(local)).to.equal(undefined);
+    expect(nodeMetricsSourceOf({ nodeOrigin: () => 'x', nodeMetrics: async () => null })).to.equal(
+      undefined,
+    );
   });
 });
