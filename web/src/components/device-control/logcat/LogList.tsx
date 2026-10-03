@@ -124,6 +124,35 @@ export const LogList = forwardRef<LogListHandle, LogListProps>(function LogList(
   const total = virtualizer.getTotalSize();
   const lastSeq = records.length ? records[records.length - 1].seq : -1;
 
+  // The first line on screen, by seq, as of the last render or scroll. When
+  // the buffer drops it while paused, the virtualizer has nothing to anchor
+  // to: say so, and show the oldest line left, which is where it was.
+  const recordsRef = useRef(records);
+  recordsRef.current = records;
+  const firstOnScreen = useRef<number | null>(null);
+  const [dropped, setDropped] = useState(false);
+  const noteFirstOnScreen = useRef(() => {});
+  noteFirstOnScreen.current = () => {
+    const el = scrollerRef.current;
+    const shown = recordsRef.current;
+    const item = el && shown.length ? virtualizer.getVirtualItemForOffset(el.scrollTop) : undefined;
+    firstOnScreen.current = item && shown[item.index] ? shown[item.index].seq : null;
+  };
+
+  useLayoutEffect(() => {
+    const was = firstOnScreen.current;
+    const oldest = props.oldestSeq;
+    if (!followingRef.current && was !== null && oldest !== null && was < oldest) {
+      setDropped(true);
+      virtualizer.scrollToOffset(0);
+    }
+    noteFirstOnScreen.current();
+  }, [records, props.oldestSeq, virtualizer]);
+
+  useEffect(() => {
+    if (following) setDropped(false);
+  }, [following]);
+
   // Follow: to the newest line on every update, and again when measuring
   // changes the total height.
   useLayoutEffect(() => {
@@ -157,6 +186,7 @@ export const LogList = forwardRef<LogListHandle, LogListProps>(function LogList(
       if (SCROLL_KEYS.indexOf(e.key) >= 0) intent();
     };
     const onScroll = () => {
+      noteFirstOnScreen.current();
       const scrollTop = el.scrollTop;
       if (ownTarget.current !== null && Math.abs(scrollTop - ownTarget.current) < 2) return;
       ownTarget.current = null;
@@ -197,6 +227,9 @@ export const LogList = forwardRef<LogListHandle, LogListProps>(function LogList(
 
   return (
     <div className="log-list-wrap">
+      {dropped && !following && (
+        <div className="log-dropped-note">Older lines were dropped while paused</div>
+      )}
       <div
         ref={scrollerRef}
         role="listbox"

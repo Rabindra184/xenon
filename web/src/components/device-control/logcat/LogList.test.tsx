@@ -150,3 +150,55 @@ describe('LogList: rows, following and pausing', () => {
     expect(screen.queryByRole('button', { name: /Jump to latest/ })).toBeNull();
   });
 });
+
+describe('LogList: keeping the reading place', () => {
+  let layout: FakeLayout;
+  beforeEach(() => {
+    // Wrapped rows of mixed heights: every third line takes two lines.
+    layout = installFakeLayout({
+      viewportHeight: 400,
+      rowHeight: (row) => (Number(row.getAttribute('data-seq')) % 3 === 0 ? 40 : 20),
+    });
+  });
+  afterEach(() => layout.restore());
+
+  it('keeps the first line on screen where it was when the oldest lines are dropped', async () => {
+    const { rerender } = render(<Harness records={lines(1000)} following={false} />);
+    await settle();
+    userScroll(list(), 5000);
+    await settle();
+    const before = firstOnScreen();
+    rerender(<Harness records={lines(1000, 100)} following={false} />);
+    await settle();
+    expect(firstOnScreen()).toEqual(before);
+    expect(screen.queryByText('Older lines were dropped while paused')).toBeNull();
+  });
+
+  it('says so when the line being read has itself been dropped, and shows the oldest left', async () => {
+    const { rerender } = render(<Harness records={lines(1000)} following={false} />);
+    await settle();
+    userScroll(list(), 200);
+    await settle();
+    rerender(<Harness records={lines(1000, 500)} following={false} />);
+    await settle();
+    expect(screen.getByText('Older lines were dropped while paused')).toBeInTheDocument();
+    expect(firstOnScreen().seq).toBe('500');
+    rerender(<Harness records={lines(1000, 500)} following />);
+    await settle();
+    expect(screen.queryByText('Older lines were dropped while paused')).toBeNull();
+  });
+
+  // A filter hiding the line is not the buffer dropping it.
+  it('says nothing about dropped lines when the line is only filtered out', async () => {
+    const all = lines(1000);
+    const { rerender } = render(<Harness records={all} following={false} />);
+    await settle();
+    userScroll(list(), 200);
+    await settle();
+    rerender(
+      <Harness records={all.filter((r) => r.seq >= 50)} oldestSeq={0} following={false} />,
+    );
+    await settle();
+    expect(screen.queryByText('Older lines were dropped while paused')).toBeNull();
+  });
+});
