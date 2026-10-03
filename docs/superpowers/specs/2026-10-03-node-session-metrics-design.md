@@ -104,8 +104,9 @@ It answers `200`:
 ```
 
 - `samples` are those newer than `after` (all of them without `after`), in
-  the stored row shape: `at`, `device_cpu_pct`, `device_mem_mb`,
-  `device_mem_total`, `app_cpu_pct`, `app_mem_mb`, `app_id`.
+  the shape the samplers produce (`MetricSample`: `at`, `deviceCpuPct`,
+  `deviceMemMb`, `deviceMemTotalMb`, `appCpuPct`, `appMemMb`, `appId`), so
+  neither side converts them.
 - `state` is the entry's, or `off` for a session the node has no entry for: one
   it doesn't sample (sampling off, a simulator), or doesn't know.
 - Every answer carries `x-xenon-node-metrics: 1`, so a hub can tell a node
