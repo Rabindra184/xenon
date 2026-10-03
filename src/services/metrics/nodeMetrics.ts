@@ -34,6 +34,25 @@ export type NodeAsk =
 
 const STATES: readonly NodeMetricsState[] = ['sampling', 'stopped', 'ended', 'off'];
 
+const figure = (v: unknown): v is number | null =>
+  v === null || (typeof v === 'number' && Number.isFinite(v));
+
+/**
+ * The sample, field by field, or null when it isn't one. A node is our own
+ * code, but one malformed sample would fail every later write of the
+ * session's figures (the batch goes back to the front of the buffer).
+ */
+function sampleOf(v: any): MetricSample | null {
+  if (!v || typeof v !== 'object') return null;
+  if (typeof v.at !== 'number' || !Number.isFinite(v.at)) return null;
+  const { deviceCpuPct, deviceMemMb, deviceMemTotalMb, appCpuPct, appMemMb, appId } = v;
+  if (![deviceCpuPct, deviceMemMb, deviceMemTotalMb, appCpuPct, appMemMb].every(figure)) {
+    return null;
+  }
+  if (appId !== null && typeof appId !== 'string') return null;
+  return { at: v.at, deviceCpuPct, deviceMemMb, deviceMemTotalMb, appCpuPct, appMemMb, appId };
+}
+
 export function readNodeMetricsReply(
   status: number,
   headers: Record<string, unknown>,
@@ -56,7 +75,9 @@ export function readNodeMetricsReply(
       answer: {
         platform: String(value.platform ?? ''),
         state: value.state,
-        samples: value.samples,
+        samples: (value.samples as unknown[])
+          .map(sampleOf)
+          .filter((x): x is MetricSample => x !== null),
       },
     };
   }

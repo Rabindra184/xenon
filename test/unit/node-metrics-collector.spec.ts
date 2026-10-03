@@ -198,6 +198,28 @@ describe('NodeMetricsCollector: the hub collects a node session’s figures', ()
 
 describe("readNodeMetricsReply: what a node's answer means", () => {
   const h = { [NODE_METRICS_HEADER]: '1' };
+  it('keeps only well-formed samples: one bad sample would block every later write', () => {
+    const bad = [
+      null,
+      'x',
+      { ...sample(5), at: '6' },
+      { ...sample(7), at: Number.NaN },
+      { ...sample(8), deviceCpuPct: '12' },
+      { ...sample(9), appId: 3 },
+    ];
+    const reply = readNodeMetricsReply(200, h, {
+      value: {
+        platform: 'android',
+        state: 'sampling',
+        samples: [sample(1), ...bad, { ...sample(2), extra: 1 }],
+      },
+    });
+    expect(reply).to.deep.equal({
+      kind: 'answer',
+      answer: { platform: 'android', state: 'sampling', samples: [sample(1), sample(2)] },
+    });
+  });
+
   it('reads each answer', () => {
     expect(readNodeMetricsReply(404, {}, undefined)).to.deep.equal({
       kind: 'unsupported',
