@@ -679,10 +679,19 @@ appears there) and saved nothing; iOS had only the Instruments trace download.
   this server samples it (`recording`: sampling, stopped after giving up, or
   off). The panel says "isn't recorded" rather than "Collecting…" for one it
   doesn't.
-- **A node's phones get no figures.** Only a hub or standalone server runs
-  `EventManager.onSessionStarted` (`SessionLifecycleService`, `isHub`), so a
-  node never samples, and the hub doesn't sample another server's phone
-  (`isOwnDevice`). The hub's panel shows such a session as not recorded.
+- **A node's phones** (`NodeMetricsStore`, `NodeMetricsCollector`). A node
+  samples its own phones for the sessions its hub creates, whatever its
+  dashboard setting (`finalizeSession`), and holds the figures in memory: it
+  has no Session row for them. The newest 900 per session; what the hub has
+  collected is dropped; an ended session is kept 10 minutes. The node serves
+  them at `GET /xenon/api/node/sessions/:id/metrics?after=` (beside the
+  session-status route, ahead of the login, the same token rule). The hub
+  asks every 10 s through the session's `RemoteSession`, in place of a phone
+  sampler, so its buffer, writes and `recordingState` are the local ones,
+  and asks once more when the session ends. After a hub restart it resumes
+  from the newest sample it stored. An older node answers without
+  `x-xenon-node-metrics`: its sessions say "isn't recorded", logged once per
+  node, asked again after 10 minutes. Both sides need this release.
 - The charts are SVG (`line-chart.tsx`), at most 600 points per line, in
   role-token colours.
 
@@ -1090,6 +1099,10 @@ is not pushed, it takes up to 30 s (`commandCaller.ts` says why).
   the old `GET .../timeouts` probe for it, logs that once per node
   (`NodeSessionProbeSupport`) and asks again after 10 minutes. A cloud
   session keeps the WebDriver probe.
+  The node's `GET /xenon/api/node/sessions/<id>/metrics` (the hub's
+  collection of a session's CPU and memory, `nodeSessionMetrics.ts`) shares
+  this route's rule, through one check (`answerForHub`), and answers with
+  `x-xenon-node-metrics`.
 - **The session listing is filtered** (`sessionListingFilter.ts`).
   `GET <basePath>/appium/sessions` is Appium 3's only listing route (no
   `GET /sessions`; Appium also gates it behind the `session_discovery`
@@ -1406,6 +1419,8 @@ npm run build:copy` (from the repo root) regenerates and copies it.
 | `src/device-managers/ios/IOSStreamService.ts` | go-ios + WDA + iproxy lifecycle for live MJPEG |
 | `src/device-managers/ios/IOSTunnels.ts` | One go-ios tunnel per iOS 17+ phone, on a port pair leased from the `tunnel` range; `envFor` gives a go-ios command its phone's `GO_IOS_AGENT_PORT` |
 | `src/services/metrics/SessionMetricsService.ts` | A CPU and memory sampler per session on this server's phones, buffered and written every 10 s to `SessionMetric`; Android via `/proc`, iPhone via go-ios `sysmontap` |
+| `src/services/metrics/NodeMetricsStore.ts` | On a node: each sampled session's figures in memory for the hub to collect; dropped once collected, kept 10 minutes after the session ends |
+| `src/services/metrics/NodeMetricsCollector.ts` | On a hub: a session on a node's phone sampled by asking the node every 10 s; never two asks at once, a last ask at the end |
 | `src/services/selector-health/selectorList.ts` | The Selector Health list: "To fix" by `groupBy` over the period's heals, the other tabs from `SelectorState`, search, sort, paging and the four counts |
 | `src/services/selector-health/access.ts` | Who may see a selector (a visible session healed it) and who may act (`sessions` scope); `SELECTOR_NOT_FOUND` |
 | `web/src/components/selector-health/selector-panel.tsx` | The side panel: status and actions, suggested fixes with Copy as, numbers, where it heals, recent heals, activity |
