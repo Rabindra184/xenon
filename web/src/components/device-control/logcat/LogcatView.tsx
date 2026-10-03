@@ -1,24 +1,16 @@
 import * as React from 'react';
-import { memo, useCallback, useMemo, useRef, useState, useEffect } from 'react';
-import {
-  AlertTriangle,
-  ArrowDown,
-  ArrowUp,
-  CaseSensitive,
-  Circle,
-  Download,
-  RotateCw,
-  Square,
-  Trash2,
-  Wifi,
-  WrapText,
-  X,
-} from 'lucide-react';
-import { Select } from '../../ui/select';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { AlertTriangle, RotateCw } from 'lucide-react';
+import { Button } from '../../ui/button';
+import { EmptyState } from '../../ui/EmptyState';
+import { useToast } from '../../ui/toast';
+import { copyText } from '../actions/copyText';
 import { useLogcatStream, type BufferedLogcatRecord } from './useLogcatStream';
-import { matches, parseQuery, setLevelTerm, LEVEL_ORDER } from './logcatFilter';
+import { matches, parseQuery, setLevelTerm, withExclusion, withTerm } from './logcatFilter';
 import { iosSourceFilter } from './iosSourceFilter';
-import { tagColor } from './tagColor';
+import { countLevels, type LogPlatform } from './levelCounts';
+import { NO_SELECTION, selectedLines, type LogSelection } from './logSelection';
+import { formatCount } from './logFormat';
 import {
   appendToRecording,
   formatLine,
@@ -27,14 +19,10 @@ import {
   startRecording,
   type RecordingState,
 } from './logcatRecording';
-// This view renders four classes it does not own: `.type-input-field`,
-// `.btn-sm`, `.btn-premium` and `.dc-btn-secondary` (device-control.css). It
-// used to get them only because its parent happened to import
-// device-control.css — the view was one refactor away from rendering
-// unstyled, with nothing to point at. The sheet is already in the bundle and
-// Rollup dedupes a repeated module import, so this costs nothing.
-// Imported BEFORE ./logcat.css so its overrides still win.
-import '../device-control.css';
+import { LogToolbar, type StreamStatus } from './LogToolbar';
+import { LevelBar } from './LevelBar';
+import { LogList, type LogListHandle } from './LogList';
+import { LogDetails } from './LogDetails';
 import './logcat.css';
 
 interface Props {
@@ -43,34 +31,8 @@ interface Props {
 }
 
 /**
- * Level choices offered by the dropdown.
- *
- * 'V' is deliberately absent: V is the lowest level, so "V and above" selects
- * every record — which is what "All levels" already says, only twice. 'F' is
- * the highest, so "and above" would be a lie about a set with nothing above
- * it; it is labelled for what it is.
- */
-const LEVEL_OPTIONS = LEVEL_ORDER.filter((l) => l !== 'V').map((l) => ({
-  value: l as string,
-  label: l === 'F' ? 'F only' : `${l} and above`,
-}));
-
-/**
- * Built once, not per row. `new Date(ts).toLocaleTimeString(...)` constructs a
- * Date AND a fresh Intl formatter on every call; at a full 5000-record buffer
- * flushing every 50ms that is the single most expensive thing in the render
- * path. `Intl.DateTimeFormat#format` takes the epoch millis directly.
- */
-const TIME_FORMAT = new Intl.DateTimeFormat([], {
-  hour: '2-digit',
-  minute: '2-digit',
-  second: '2-digit',
-  hour12: false,
-});
-
-/**
  * Save text as a file. Both browser workarounds below were established by the
- * original EXPORT and are shared rather than duplicated for RECORD.
+ * original Export and are shared rather than duplicated for Record.
  */
 function download(text: string, filename: string): void {
   const url = URL.createObjectURL(new Blob([text], { type: 'text/plain' }));
@@ -89,88 +51,105 @@ function download(text: string, filename: string): void {
 }
 
 /**
- * One log row, memoized on the record. `visible` is a fresh array on every
- * flush, so without this the parent's re-render walks every row's render
- * function even when the row's own data is unchanged. With a stable `seq` key
- * (see BufferedLogcatRecord) React can also *move* a row's DOM node through a
- * front-trim instead of repatching every row after the trim point.
+ * Put text on the user's clipboard. The clipboard API exists only on secure
+ * origins, and a lab dashboard on plain http://<lan address> has none, so
+ * fall back to the old copy command, which works there inside a click or a
+ * key press. Focus goes back where it was.
  */
-const LogcatRow = memo(function LogcatRow({
-  record,
-  index,
-  isHit,
-  isActiveHit,
-}: {
-  record: BufferedLogcatRecord;
-  index: number;
-  isHit: boolean;
-  isActiveHit: boolean;
-}) {
-  return (
-    <div
-      data-row-index={index}
-      className={`logcat-row ${record.synthetic ? 'is-synthetic' : ''} ${
-        isHit ? 'is-hit' : ''
-      } ${isActiveHit ? 'is-active-hit' : ''}`}
-    >
-      <span className="logcat-time">{TIME_FORMAT.format(record.ts)}</span>
-      <span className="logcat-pid">
-        {record.pid}-{record.tid}
-      </span>
-      {/* Tag before package, matching Android Studio's column order: the tag
-          is the field you scan by, so it sits closest to the identifiers. */}
-      <span className="logcat-tag" title={record.tag} style={{ color: tagColor(record.tag) }}>
-        {record.tag}
-      </span>
-      <span className="logcat-pkg" title={record.pkg}>
-        {record.pkg ?? ''}
-      </span>
-      <span className={`logcat-level lvl-${record.level}`}>{record.level}</span>
-      <span className="logcat-msg">{record.message}</span>
-    </div>
-  );
-});
+async function copyToClipboard(text: string): Promise<boolean> {
+  if (await copyText(text)) return true;
+  if (typeof document.execCommand !== 'function') return false;
+  const before = document.activeElement as HTMLElement | null;
+  const area = document.createElement('textarea');
+  area.value = text;
+  area.setAttribute('readonly', '');
+  area.style.position = 'fixed';
+  area.style.opacity = '0';
+  document.body.appendChild(area);
+  try {
+    area.select();
+    return document.execCommand('copy');
+  } catch {
+    return false;
+  } finally {
+    document.body.removeChild(area);
+    before?.focus?.({ preventScroll: true });
+  }
+}
 
+const isTyping = (el: HTMLElement) =>
+  el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable;
+
+/**
+ * The device control Logs tab: the phone's live log, Android (logcat) and iOS
+ * (os_trace) alike.
+ *
+ * It owns the one source of truth, the filter text: the level bar writes its
+ * `level:` term into it and reads its pressed level back out of it, and the
+ * details panel's buttons write terms into it, so no control can disagree
+ * with the text box. It also owns the stream (`useLogcatStream`), recording,
+ * following and the selection, and puts the toolbar, the level bar, the list
+ * and the details panel together.
+ */
 export default function LogcatView({ udid, platform }: Props) {
   const os = (platform || '').toLowerCase();
   const isIOS = os === 'ios';
   const supported = os === 'android' || isIOS;
-  // The query string is the ONE source of truth for filtering. The level
-  // dropdown does not hold its own state: it writes a `level:` term into this
-  // string via setLevelTerm and reads its displayed value back out of it via
-  // parseQuery. Two independent states reconciled at filter time is what made
-  // the documented `level:` grammar unreachable from the text box (a falsy
-  // dropdown value made setLevelTerm strip the term the user had just typed)
-  // and let the two controls display contradicting levels.
+  const logPlatform: LogPlatform = isIOS ? 'ios' : 'android';
+  const { toast } = useToast();
+
   const [query, setQuery] = useState('');
 
   // On iOS the same query ALSO narrows the device-side stream: os_trace at
-  // Debug is 5,485 lines/sec device-wide, so the level dropdown and a
-  // `package:` term are pushed down to `go-ios ostrace` rather than applied
-  // only in the browser. Android is unchanged — it streams everything and
-  // filters here. Either way the records are still filtered locally below, so
-  // the pane shows the same thing on both platforms.
-  const sourceFilter = useMemo(
-    () => (isIOS ? iosSourceFilter(query) : undefined),
-    [isIOS, query],
-  );
+  // Debug is 5,485 lines/sec device-wide, so the level and a `package:` term
+  // are pushed down to the device rather than applied only in the browser.
+  // Android streams everything and filters here. Either way the records are
+  // still filtered locally below, so the pane shows the same thing on both.
+  const sourceFilter = useMemo(() => (isIOS ? iosSourceFilter(query) : undefined), [isIOS, query]);
   const { records, connected, clear, deniedReason, exhausted, retry } = useLogcatStream(
     udid,
     supported,
     sourceFilter,
   );
 
-  const [following, setFollowing] = useState(true);
   const [caseSensitive, setCaseSensitive] = useState(false);
   const [wrap, setWrap] = useState(true);
   // Find is deliberately NOT the filter. The filter hides non-matches; find
-  // keeps every row and walks between hits, which is what you want when the
+  // keeps every line and walks between hits, which is what you want when the
   // lines around a hit are the point. Android Studio has both for the same
   // reason.
   const [find, setFind] = useState('');
   const [hitIndex, setHitIndex] = useState(0);
-  const endRef = useRef<HTMLDivElement>(null);
-  const rowsRef = useRef<HTMLDivElement>(null);
+  const [selection, setSelection] = useState<LogSelection>(NO_SELECTION);
+  // The line the details panel shows, kept as a copy so the panel can go on
+  // showing it after the buffer drops it. Null when the panel is closed.
+  const [details, setDetails] = useState<BufferedLogcatRecord | null>(null);
+
+  const rootRef = useRef<HTMLDivElement>(null);
+  const filterRef = useRef<HTMLInputElement>(null);
+  const findRef = useRef<HTMLInputElement>(null);
+  const listRef = useRef<LogListHandle>(null);
+  const recordsRef = useRef(records);
+  recordsRef.current = records;
+
+  // Following, and the newest line of the buffer when it stopped: lines
+  // after that one are the pill's "new lines".
+  const [following, setFollowing] = useState(true);
+  const [pausedAfter, setPausedAfter] = useState<number | null>(null);
+  const followingRef = useRef(following);
+  followingRef.current = following;
+  const pause = useCallback(() => {
+    if (!followingRef.current) return;
+    followingRef.current = false;
+    const buffer = recordsRef.current;
+    setPausedAfter(buffer.length ? buffer[buffer.length - 1].seq : -1);
+    setFollowing(false);
+  }, []);
+  const follow = useCallback(() => {
+    followingRef.current = true;
+    setPausedAfter(null);
+    setFollowing(true);
+  }, []);
 
   // Recording. The state object is mutated in place by appendToRecording (it
   // grows to hundreds of thousands of lines; copying it per flush would be the
@@ -187,6 +166,7 @@ export default function LogcatView({ udid, platform }: Props) {
 
   const parsed = useMemo(() => parseQuery(query, { caseSensitive }), [query, caseSensitive]);
   const visible = useMemo(() => records.filter((r) => matches(r, parsed)), [records, parsed]);
+  const counts = useMemo(() => countLevels(records, parsed), [records, parsed]);
 
   // Positions within `visible`, not record ids: the list is what the user is
   // looking at and scrolling through, so a hit is a position in it.
@@ -205,37 +185,36 @@ export default function LogcatView({ udid, platform }: Props) {
   // must not keep yanking the user back to the first match while they are
   // stepping through.
   const activeHit = hits.length ? Math.min(hitIndex, hits.length - 1) : 0;
-  // Set, not Array#includes per row: at a 5000-row buffer the linear scan runs
-  // 5000 times per flush, 20 flushes a second.
+  // Set, not Array#includes per row.
   const hitSet = useMemo(() => new Set(hits), [hits]);
 
   const jump = useCallback(
-    (delta: number) => {
+    (delta: 1 | -1) => {
       if (!hits.length) return;
       const next = (activeHit + delta + hits.length) % hits.length;
       setHitIndex(next);
-      setFollowing(false); // stepping through history and auto-scrolling fight
-      rowsRef.current
-        ?.querySelector(`[data-row-index="${hits[next]}"]`)
-        ?.scrollIntoView({ block: 'center' });
+      pause(); // stepping through history and following fight
+      listRef.current?.reveal(hits[next]);
     },
-    [hits, activeHit],
+    [hits, activeHit, pause],
   );
 
-  // A level the dropdown cannot represent — a typo'd `level:X`, or `level:V`
-  // which filters nothing — shows as "All levels". That is not a disagreement:
-  // `matches` ignores an unrecognized level entirely, and V admits every
-  // record, so in both cases no level filtering is in effect and "All levels"
-  // is the honest reading of the query.
-  const levelValue = LEVEL_OPTIONS.some((o) => o.value === parsed.minLevel)
-    ? (parsed.minLevel as string)
-    : '';
+  const newLines = useMemo(() => {
+    if (pausedAfter === null) return 0;
+    let n = 0;
+    for (let i = visible.length - 1; i >= 0 && visible[i].seq > pausedAfter; i--) n++;
+    return n;
+  }, [visible, pausedAfter]);
 
   const onExport = useCallback(() => {
-    // The filtered view on purpose — EXPORT saves what you are looking at.
-    // RECORD is the one that captures unfiltered.
+    // The filtered view on purpose — Export saves what you are looking at.
+    // Record is the one that captures unfiltered.
+    if (!visible.length) {
+      toast('No lines to export', 'info');
+      return;
+    }
     download(visible.map(formatLine).join('\n'), `logcat-${udid}-${Date.now()}.txt`);
-  }, [visible, udid]);
+  }, [visible, udid, toast]);
 
   // Capture on arrival, from `records` (unfiltered) rather than `visible`: a
   // capture can always be filtered afterwards, never unfiltered.
@@ -264,7 +243,7 @@ export default function LogcatView({ udid, platform }: Props) {
     const state = recordingRef.current;
     if (!state) {
       // Start from the newest record already in the buffer, not from -1: the
-      // buffer holds history from before you pressed RECORD, and a recording
+      // buffer holds history from before you pressed Record, and a recording
       // is the window you asked for, not everything that happened to be open.
       lastSeqRef.current = records.length ? records[records.length - 1].seq : -1;
       recordingRef.current = startRecording(Date.now());
@@ -280,204 +259,227 @@ export default function LogcatView({ udid, platform }: Props) {
     download(text, recordingFilename(udid, state.startedAt));
   }, [records, udid]);
 
+  const copy = useCallback(
+    async (text: string, done: string) => {
+      if (await copyToClipboard(text)) toast(done, 'success');
+      else toast('Your browser blocked copying here.', 'error');
+    },
+    [toast],
+  );
+
+  // Only selected lines the filter shows are copied (and counted).
+  const selectedShown = useMemo(() => {
+    if (!selection.selected.size) return 0;
+    let n = 0;
+    for (let i = 0; i < visible.length; i++) if (selection.selected.has(visible[i].seq)) n++;
+    return n;
+  }, [visible, selection.selected]);
+
+  const copySelected = useCallback(() => {
+    const { text, count } = selectedLines(visible, selection.selected);
+    if (!count) return;
+    copy(text, `Copied ${formatCount(count)} line${count === 1 ? '' : 's'}`);
+  }, [visible, selection.selected, copy]);
+
+  const onSelect = useCallback(
+    (next: LogSelection, active: BufferedLogcatRecord | null, via: 'click' | 'key') => {
+      setSelection(next);
+      // A click opens the line; the arrows move an open panel along with them.
+      if (via === 'click') setDetails(active);
+      else setDetails((open) => (open && active ? active : open));
+    },
+    [],
+  );
+
+  const clearLines = useCallback(() => {
+    clear();
+    setSelection(NO_SELECTION);
+  }, [clear]);
+
+  // Keys anywhere in the pane, on a native listener on the pane itself, not
+  // React's onKeyDown: React 17 runs that from the app's root, after device
+  // control's InPlaceDialog has seen the key, so an Esc the pane used would
+  // also close device control (and with it the buffer, any recording and the
+  // phone's hold). An Esc the pane uses is marked handled before the dialog
+  // sees it. A popover's own keys never arrive: the menu and the syntax help
+  // render outside the pane's DOM, and their Esc is theirs.
+  const onKeyDown = (e: KeyboardEvent) => {
+    const mod = e.metaKey || e.ctrlKey;
+    if (e.key === '/' && !mod && !isTyping(e.target as HTMLElement)) {
+      e.preventDefault();
+      filterRef.current?.focus();
+    } else if (mod && !e.altKey && (e.key === 'f' || e.key === 'F')) {
+      // The browser's find can't see rows that aren't rendered; this one can.
+      e.preventDefault();
+      findRef.current?.focus();
+      findRef.current?.select();
+    } else if (e.key === 'Escape') {
+      if (details) {
+        e.preventDefault();
+        setDetails(null);
+      } else if (selection.selected.size) {
+        e.preventDefault();
+        setSelection(NO_SELECTION);
+      }
+    }
+  };
+  const onKeyDownRef = useRef(onKeyDown);
+  onKeyDownRef.current = onKeyDown;
   useEffect(() => {
-    if (following) endRef.current?.scrollIntoView({ block: 'end' });
-  }, [visible.length, following]);
+    const root = rootRef.current;
+    if (!root) return;
+    const listener = (e: KeyboardEvent) => onKeyDownRef.current(e);
+    root.addEventListener('keydown', listener);
+    return () => root.removeEventListener('keydown', listener);
+  }, [supported]);
 
   if (!supported) {
     return (
-      <div className="log-empty-state">
-        <p className="log-empty-title">Live logs are not available here</p>
-        <p className="log-empty-subtitle">
-          Streaming is wired up for Android (logcat) and iOS (os_trace), not for this
-          device&apos;s platform.
-        </p>
+      <div className="logcat-root">
+        <EmptyState
+          title="Live logs are not available here"
+          description="Live logs work on Android and iOS phones."
+        />
       </div>
     );
   }
 
-  const statusLabel = deniedReason
+  const status: StreamStatus = deniedReason
     ? 'Denied'
     : exhausted
       ? 'Offline'
       : connected
         ? 'Live'
         : 'Connecting';
-  const isErrorStatus = !connected && (!!deniedReason || exhausted);
+
+  const inBuffer =
+    !!details &&
+    records.length > 0 &&
+    details.seq >= records[0].seq &&
+    details.seq <= records[records.length - 1].seq;
+
+  let state: React.ReactNode = null;
+  if (!visible.length) {
+    if (records.length) {
+      state = (
+        <div className="log-state">
+          <p>
+            No lines match <code>{query}</code>
+          </p>
+          <Button type="button" variant="secondary" size="sm" onClick={() => setQuery('')}>
+            Clear filter
+          </Button>
+        </div>
+      );
+    } else if (status === 'Connecting') {
+      state = (
+        <div className="log-state">
+          <p>Waiting for the phone’s first log line…</p>
+        </div>
+      );
+    } else if (status === 'Live') {
+      state = (
+        <div className="log-state">
+          <p>Connected. Lines appear here as the phone logs them.</p>
+        </div>
+      );
+    }
+  }
+
+  const reconnect = (
+    <Button type="button" variant="secondary" size="sm" onClick={retry}>
+      <RotateCw size={13} aria-hidden="true" /> Reconnect
+    </Button>
+  );
 
   return (
-    <div className="logcat-root">
-      <div className="log-toolbar">
-        <div className="log-filter-group">
-          <div className="log-stat-pill" title={deniedReason ?? undefined}>
-            <span
-              className={`log-live-dot ${connected ? 'active' : ''} ${isErrorStatus ? 'is-error' : ''}`}
-            />
-            {statusLabel}
-          </div>
-          <div className="log-stat-pill logcat-count">
-            {visible.length} / {records.length}
-          </div>
-          <Select
-            selectSize="sm"
-            value={levelValue}
-            onChange={(e) => setQuery(setLevelTerm(query, e.target.value))}
-            aria-label="Minimum log level"
-          >
-            <option value="">All levels</option>
-            {LEVEL_OPTIONS.map((o) => (
-              <option key={o.value} value={o.value}>
-                {o.label}
-              </option>
-            ))}
-          </Select>
-          <div className="logcat-input-wrap">
-            <input
-              type="text"
-              className="type-input-field tiny logcat-query"
-              placeholder="tag:Wifi package:com.android.systemui free text"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              aria-label="Filter logs"
-            />
-            {query && (
-              <button
-                type="button"
-                className="logcat-input-btn"
-                onClick={() => setQuery('')}
-                aria-label="Clear filter"
-                title="Clear filter"
-              >
-                <X size={12} />
-              </button>
-            )}
-          </div>
-          <div className="logcat-input-wrap">
-            <input
-              type="text"
-              className="type-input-field tiny logcat-find"
-              placeholder="Find…"
-              value={find}
-              onChange={(e) => {
-                setFind(e.target.value);
-                setHitIndex(0);
-              }}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') {
-                  e.preventDefault();
-                  jump(e.shiftKey ? -1 : 1);
-                }
-              }}
-              aria-label="Find in logs"
-            />
-            {find && (
-              <span className="logcat-hit-count" aria-live="polite">
-                {hits.length ? `${activeHit + 1}/${hits.length}` : '0/0'}
-              </span>
-            )}
-          </div>
-          <button
-            type="button"
-            className="dc-btn-secondary btn-sm logcat-icon-btn"
-            onClick={() => jump(-1)}
-            disabled={!hits.length}
-            aria-label="Previous match"
-            title="Previous match (Shift+Enter)"
-          >
-            <ArrowUp size={14} />
-          </button>
-          <button
-            type="button"
-            className="dc-btn-secondary btn-sm logcat-icon-btn"
-            onClick={() => jump(1)}
-            disabled={!hits.length}
-            aria-label="Next match"
-            title="Next match (Enter)"
-          >
-            <ArrowDown size={14} />
-          </button>
-          <button
-            type="button"
-            className={`dc-btn-secondary btn-sm logcat-icon-btn ${caseSensitive ? 'active' : ''}`}
-            onClick={() => setCaseSensitive(!caseSensitive)}
-            aria-pressed={caseSensitive}
-            aria-label="Match case"
-            title="Match case"
-          >
-            <CaseSensitive size={15} />
-          </button>
-          <button
-            type="button"
-            className={`dc-btn-secondary btn-sm logcat-icon-btn ${wrap ? 'active' : ''}`}
-            onClick={() => setWrap(!wrap)}
-            aria-pressed={wrap}
-            aria-label="Soft wrap"
-            title="Soft wrap long messages"
-          >
-            <WrapText size={14} />
-          </button>
-        </div>
-        <div className="log-actions-group">
-          {(deniedReason || exhausted) && (
-            <button className="dc-btn-secondary btn-sm" onClick={retry}>
-              <RotateCw size={14} /> RECONNECT
-            </button>
-          )}
-          <button
-            className={`dc-btn-secondary btn-sm ${following ? 'active' : ''}`}
-            onClick={() => setFollowing(!following)}
-          >
-            <Wifi size={14} /> {following ? 'FREEZE' : 'FOLLOW'}
-          </button>
-          {/* Distinct from EXPORT: EXPORT saves the filtered view you are
-              looking at right now; RECORD captures the raw stream between an
-              explicit start and stop, independent of the filter and of the
-              5000-record display cap. */}
-          <button
-            className={`dc-btn-secondary btn-sm ${recording ? 'is-recording' : ''}`}
-            onClick={toggleRecording}
-            aria-pressed={recording}
-            title={
-              recording
-                ? 'Stop recording and download the capture'
-                : 'Record the raw log stream to a file'
-            }
-          >
-            {recording ? <Square size={12} /> : <Circle size={12} />}{' '}
-            {recording ? `STOP · ${recLines.toLocaleString()}` : 'RECORD'}
-          </button>
-          <button className="btn-premium btn-sm" disabled={visible.length === 0} onClick={onExport}>
-            <Download size={14} /> EXPORT
-          </button>
-          <button className="dc-btn-secondary btn-sm" onClick={clear}>
-            <Trash2 size={14} /> CLEAR
-          </button>
-        </div>
-      </div>
-
-      <div className={`logcat-rows theme-dark ${wrap ? '' : 'no-wrap'}`} ref={rowsRef}>
+    <div className="logcat-root" ref={rootRef}>
+      <LogToolbar
+        status={status}
+        statusDetail={deniedReason}
+        query={query}
+        onQueryChange={setQuery}
+        filterRef={filterRef}
+        find={find}
+        onFindChange={(f) => {
+          setFind(f);
+          setHitIndex(0);
+        }}
+        findRef={findRef}
+        hitCount={hits.length}
+        activeHit={activeHit}
+        onStep={jump}
+        following={following}
+        onTogglePause={following ? pause : follow}
+        recording={recording}
+        recordedLines={recLines}
+        onToggleRecording={toggleRecording}
+        onExport={onExport}
+        caseSensitive={caseSensitive}
+        onToggleCase={() => setCaseSensitive((on) => !on)}
+        wrap={wrap}
+        onToggleWrap={() => setWrap((on) => !on)}
+        canCopySelected={selectedShown > 0}
+        onCopySelected={copySelected}
+        onClearLines={clearLines}
+      />
+      <LevelBar
+        platform={logPlatform}
+        counts={counts}
+        minLevel={parsed.minLevel}
+        shown={visible.length}
+        total={records.length}
+        onChoose={(level) => setQuery(setLevelTerm(query, level))}
+      />
+      <div className="log-body theme-dark">
         {deniedReason && (
-          <div className="logcat-status-banner is-denied" role="alert">
-            <AlertTriangle size={14} />
+          <div className="log-banner is-denied" role="alert">
+            <AlertTriangle size={14} aria-hidden="true" />
             <span>Access denied — {deniedReason}</span>
+            {reconnect}
           </div>
         )}
         {!deniedReason && exhausted && (
-          <div className="logcat-status-banner is-exhausted" role="alert">
-            <AlertTriangle size={14} />
-            <span>Connection lost after repeated attempts. Use Reconnect above to try again.</span>
+          <div className="log-banner is-exhausted" role="alert">
+            <AlertTriangle size={14} aria-hidden="true" />
+            <span>Connection lost after repeated attempts. Use Reconnect to try again.</span>
+            {reconnect}
           </div>
         )}
-        {visible.map((r, i) => (
-          <LogcatRow
-            key={r.seq}
-            record={r}
-            index={i}
-            isHit={hitSet.has(i)}
-            isActiveHit={hits.length > 0 && hits[activeHit] === i}
+        <div className="log-main">
+          <LogList
+            ref={listRef}
+            records={visible}
+            oldestSeq={records.length ? records[0].seq : null}
+            wrap={wrap}
+            find={find}
+            caseSensitive={caseSensitive}
+            hits={hitSet}
+            activeHit={hits.length ? hits[activeHit] : null}
+            following={following}
+            newLines={newLines}
+            onPause={pause}
+            onFollow={follow}
+            selection={selection}
+            onSelect={onSelect}
+            onOpenDetails={setDetails}
+            onCopy={copySelected}
           />
-        ))}
-        <div ref={endRef} />
+          {state}
+        </div>
+        {details && (
+          <LogDetails
+            record={details}
+            platform={logPlatform}
+            inBuffer={inBuffer}
+            onCopyLine={() => copy(formatLine(details), 'Copied the line')}
+            onCopyMessage={() => copy(details.message, 'Copied the message')}
+            onShowOnlyTag={() => setQuery(withTerm(query, 'tag', details.tag))}
+            onHideTag={() => setQuery(withExclusion(query, 'tag', details.tag))}
+            onShowOnlyApp={() => setQuery(withTerm(query, 'package', details.pkg ?? ''))}
+            onClose={() => setDetails(null)}
+          />
+        )}
       </div>
     </div>
   );

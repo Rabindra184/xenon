@@ -427,6 +427,38 @@ async function mockSelectorHealth(page: Page) {
 // Selector Health with a selector open in its side panel.
 const SH_PANEL_ROUTE = `/xenon/selector-health?strategy=-android%20uiautomator&selector=${encodeURIComponent(SH_LONG_SELECTOR)}`;
 
+// Device control's Logs tab, fed a mocked live log: every level, some of
+// Xenon's own records, tags and packages past their column caps, and long
+// messages that wrap. The ticket and the socket are mocked, so nothing
+// reaches a phone.
+const LOGS_ROUTE = '/xenon/devices/MOCK-ANDROID-01/control/logs';
+const LOG_LEVELS = ['V', 'D', 'I', 'W', 'E', 'F'];
+const LOG_LONG_TAG = 'ActivityTaskManagerService.WindowContainerTransactionController';
+const LOG_LONG_PKG = 'com.acme.enterprise.superapp.debug.instrumentation.integration';
+const LOG_RECORDS = Array.from({ length: 400 }, (_, i) => ({
+  ts: Date.UTC(2026, 9, 3, 10, 0, 0) + i * 37,
+  pid: 1000 + (i % 7),
+  tid: 2000 + (i % 13),
+  level: LOG_LEVELS[i % LOG_LEVELS.length],
+  tag: i % 5 === 0 ? LOG_LONG_TAG : `Tag${i % 9}`,
+  pkg: i % 4 === 0 ? LOG_LONG_PKG : i % 4 === 1 ? undefined : 'com.android.systemui',
+  message:
+    i % 6 === 0
+      ? `Long message ${i}: ${'lorem ipsum dolor sit amet consectetur '.repeat(10)}`
+      : `Line ${i}`,
+  ...(i % 97 === 0
+    ? { synthetic: true, level: 'W', tag: 'xenon', message: '12 lines dropped (slow client)' }
+    : {}),
+}));
+async function mockLogStream(page: Page) {
+  await page.route('**/xenon/api/control/*/stream/ticket', (route) =>
+    route.fulfill({ json: { ticket: 'mock-ticket' } }),
+  );
+  await page.routeWebSocket(/\/logcat\?ticket=/, (ws) => {
+    for (const r of LOG_RECORDS) ws.send(JSON.stringify(r));
+  });
+}
+
 const ROUTES = [
   '/xenon/overview',
   '/xenon/devices',
@@ -450,6 +482,7 @@ const ROUTES = [
   '/xenon/notifications',
   '/xenon/ai-settings',
   '/xenon/devices/MOCK-ANDROID-01/control',
+  LOGS_ROUTE,
 ];
 
 test.beforeEach(async ({ page }) => {
@@ -991,6 +1024,7 @@ ROUTE_DATA_MOCKS['/xenon/recordings/g-mock-1'] = mockRecordings;
 ROUTE_DATA_MOCKS[`/xenon/builds/${BUILD_ID}/sessions/${WIDE_SESSION_ID}`] = mockSessionDetail;
 ROUTE_DATA_MOCKS['/xenon/selector-health'] = mockSelectorHealth;
 ROUTE_DATA_MOCKS[SH_PANEL_ROUTE] = mockSelectorHealth;
+ROUTE_DATA_MOCKS[LOGS_ROUTE] = mockLogStream;
 
 const ROUTE_CONTENT_CHECKS: Record<string, Setup> = {
   '/xenon/overview': async (page) => {
@@ -1111,6 +1145,14 @@ const ROUTE_CONTENT_CHECKS: Record<string, Setup> = {
     // (.webhook-list-grid > .webhook-row-card) can be vacuous.
     await expect(page.locator('.webhook-row-card')).not.toHaveCount(0);
   },
+};
+// The Logs tab: rows rendered from the mocked stream (an empty list has
+// nothing to overflow), and the level bar under the toolbar.
+ROUTE_CONTENT_CHECKS[LOGS_ROUTE] = async (page) => {
+  await expect(
+    page.getByRole('listbox', { name: 'Log lines' }).getByRole('option'),
+  ).not.toHaveCount(0);
+  await expect(page.getByRole('group', { name: 'Log levels' })).toBeVisible();
 };
 
 for (const width of WIDTHS) {
@@ -1349,6 +1391,77 @@ for (const width of [1280, 1440]) {
     ).toEqual([]);
   });
 }
+
+// A wrapped message makes its row several lines tall. The level badge belongs
+// to the first line, beside the time: centred, it dropped to the middle of the
+// row, where it reads as a level for nothing.
+test('the level badge sits on the first line of a wrapped log row', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await mockLogStream(page);
+  await page.goto(LOGS_ROUTE);
+  await page.waitForLoadState('networkidle');
+  await expect(
+    page.getByRole('listbox', { name: 'Log lines' }).getByRole('option'),
+  ).not.toHaveCount(0);
+
+  const rows = await page.evaluate(() =>
+    Array.from(document.querySelectorAll('.log-row'))
+      .map((row) => {
+        const time = row.querySelector('.log-time')?.getBoundingClientRect();
+        const badge = row.querySelector('.log-badge')?.getBoundingClientRect();
+        return {
+          height: row.getBoundingClientRect().height,
+          drift: time && badge ? Math.abs(badge.top - time.top) : null,
+        };
+      })
+      .filter((r) => r.height > 30 && r.drift !== null),
+  );
+  expect(rows.length, 'the mock must render wrapped rows').toBeGreaterThan(0);
+  for (const r of rows) expect(r.drift).toBeLessThanOrEqual(4);
+});
+
+// A landscape phone narrows the side panel (514 px at 1280): below the 720 px
+// switch the Logs tab has two-line rows and a toolbar that may wrap, and
+// nothing may leave the viewport.
+test('no overflow on the Logs tab with a landscape phone at 1280px', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await mockLogStream(page);
+  await page.goto(LOGS_ROUTE);
+  await page.waitForLoadState('networkidle');
+  await page.locator('.footer-action-btn[aria-label="Landscape orientation"]').click();
+  await expect(page.locator('.device-stream-canvas.landscape')).toBeVisible();
+
+  // The narrow pane really is under test: below the 720 px container switch.
+  const pane = await page.locator('.logcat-root').boundingBox();
+  expect(pane, 'the Logs pane must have a box').not.toBeNull();
+  expect(pane?.width ?? Infinity, 'the Logs pane must be in its two-line layout').toBeLessThan(720);
+  await expect(
+    page.getByRole('listbox', { name: 'Log lines' }).getByRole('option'),
+  ).not.toHaveCount(0);
+
+  const offenders = await page.evaluate(() => {
+    const vw = window.innerWidth;
+    return Array.from(document.querySelectorAll('body *'))
+      .map((el) => ({ el, r: el.getBoundingClientRect() }))
+      .filter((x) => x.r.width > 0 && (x.r.right > vw + 1 || x.r.left < -1))
+      .map((x) => ({
+        tag: (x.el as HTMLElement).tagName,
+        cls: ((x.el as HTMLElement).className || '').toString().slice(0, 60),
+        rightOverflowPx: x.r.right > vw + 1 ? Math.round(x.r.right - vw) : 0,
+        leftOverflowPx: x.r.left < -1 ? Math.round(-x.r.left) : 0,
+      }));
+  });
+  expect(
+    offenders,
+    'Logs tab elements escape the viewport with a landscape phone:\n' +
+      offenders
+        .map(
+          (o) =>
+            `  ${o.tag}.${o.cls} rightOverflow=${o.rightOverflowPx}px leftOverflow=${o.leftOverflowPx}px`,
+        )
+        .join('\n'),
+  ).toEqual([]);
+});
 
 test('control page renders the Android toolbar (guards against a vacuous pass)', async ({
   page,

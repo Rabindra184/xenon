@@ -1,7 +1,11 @@
-import { describe, expect, it, vi, beforeEach, afterEach, type MockInstance } from 'vitest';
-import { fireEvent, render, screen } from '@testing-library/react';
+import * as React from 'react';
+import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from 'vitest';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { InPlaceDialog } from '../../ui/InPlaceDialog';
 import LogcatView from './LogcatView';
+import { formatLine } from './logcatRecording';
 import { tagColor } from './tagColor';
+import { installFakeLayout, settle, type FakeLayout } from './testing/fakeLayout';
 
 /** jsdom reports style.color as rgb(); the palette is hex. */
 const toRgb = (hex: string) => {
@@ -10,10 +14,8 @@ const toRgb = (hex: string) => {
   return `rgb(${parseInt(m[1], 16)}, ${parseInt(m[2], 16)}, ${parseInt(m[3], 16)})`;
 };
 
-// jsdom does not implement scrollIntoView; LogcatView's follow-mode effect
-// calls it on every render, so every test needs a stub or the component
-// throws on mount.
-Element.prototype.scrollIntoView = vi.fn();
+const toast = vi.hoisted(() => vi.fn());
+vi.mock('../../ui/toast', () => ({ useToast: () => ({ toast, removeToast: vi.fn() }) }));
 
 // The hook owns the socket; the view's job is rendering and filtering.
 const mockStream = vi.fn();
@@ -46,12 +48,33 @@ const streamState = (over: Record<string, unknown> = {}) => ({
   ...over,
 });
 
-beforeEach(() => {
-  mockStream.mockReset();
-  mockStream.mockReturnValue(streamState());
-});
+const lastFilter = () => mockStream.mock.calls[mockStream.mock.calls.length - 1][2];
+const row = (text: string) => screen.getByText(text).closest('.log-row') as HTMLElement;
+const logLines = () => screen.getByRole('listbox', { name: 'Log lines' });
+const openMenu = () => fireEvent.click(screen.getByRole('button', { name: 'More options' }));
+const mount = (records: ReturnType<typeof rec>[]) => {
+  mockStream.mockReturnValue(streamState({ records }));
+  return render(<LogcatView udid="DEV-1" platform="android" />);
+};
+
+/**
+ * Every describe renders the list, which needs a layout jsdom doesn't have,
+ * and starts from a fresh stream mock.
+ */
+function useViewSetup() {
+  let layout: FakeLayout;
+  beforeEach(() => {
+    layout = installFakeLayout({ viewportHeight: 600 });
+    mockStream.mockReset();
+    mockStream.mockReturnValue(streamState());
+    toast.mockClear();
+  });
+  afterEach(() => layout.restore());
+}
 
 describe('LogcatView', () => {
+  useViewSetup();
+
   it('renders an unsupported state for a platform with no transport', () => {
     // These three cases asserted "Android only" until iOS gained os_trace.
     // tvOS is now the platform with nothing wired up.
@@ -74,7 +97,7 @@ describe('LogcatView', () => {
   it('opens a stream for an iOS device, narrowed at the source', () => {
     // os_trace at Debug is 5,485 lines/sec device-wide, so the level has to be
     // pushed down to the device or the pane is unreadable. Debug is absent
-    // until the dropdown asks for it.
+    // until the level bar asks for it.
     render(<LogcatView udid="DEV-1" platform="ios" />);
     const [, enabled, filter] = mockStream.mock.calls[mockStream.mock.calls.length - 1];
     expect(enabled).toBe(true);
@@ -82,30 +105,33 @@ describe('LogcatView', () => {
     expect(filter.levels).not.toContain('Debug');
   });
 
-  it('renders a record across its columns', () => {
+  // PID and TID left the row for the details panel.
+  it('renders a record across its columns, and its PID and TID in the details', () => {
     mockStream.mockReturnValue(streamState({ records: [rec()] }));
     render(<LogcatView udid="DEV-1" platform="android" />);
     expect(screen.getByText('Tile.WifiTile')).toBeTruthy();
     expect(screen.getByText('com.android.systemui')).toBeTruthy();
     expect(screen.getByText('handleUpdateState')).toBeTruthy();
-    expect(screen.getByText('1408-1408')).toBeTruthy();
+    fireEvent.click(row('handleUpdateState'));
+    const panel = screen.getByRole('region', { name: 'Line details' });
+    expect(within(panel).getAllByText('1408')).toHaveLength(2);
   });
 
-  it('shows LIVE when connected and CONNECTING when not', () => {
+  it('shows Live when connected and Connecting when not', () => {
     mockStream.mockReturnValue(streamState({ connected: false }));
     const { unmount } = render(<LogcatView udid="DEV-1" platform="android" />);
-    expect(screen.getByText('Connecting')).toBeTruthy();
+    expect(screen.getByRole('status')).toHaveTextContent('Connecting');
     unmount();
 
     mockStream.mockReturnValue(streamState({ connected: true }));
     render(<LogcatView udid="DEV-1" platform="android" />);
-    expect(screen.getByText('Live')).toBeTruthy();
+    expect(screen.getByRole('status')).toHaveTextContent('Live');
   });
 
-  it('shows the visible / total counts', () => {
+  it('shows the shown / total counts', () => {
     mockStream.mockReturnValue(streamState({ records: [rec(), rec({ tag: 'Other' })] }));
     render(<LogcatView udid="DEV-1" platform="android" />);
-    expect(screen.getByText('2 / 2')).toBeTruthy();
+    expect(screen.getByText('2 of 2 shown')).toBeTruthy();
   });
 
   it('marks synthetic records so they are not mistaken for device output', () => {
@@ -115,33 +141,35 @@ describe('LogcatView', () => {
       }),
     );
     const { container } = render(<LogcatView udid="DEV-1" platform="android" />);
-    expect(container.querySelector('.logcat-row.is-synthetic')).toBeTruthy();
+    expect(container.querySelector('.log-row.is-synthetic')).toBeTruthy();
   });
 
   // Correction 1: a 1008 (ownership/ticket) denial is terminal — the hook
   // surfaces it as `deniedReason` rather than silently retrying forever. The
   // view's job is to show that reason to the user, distinctly from the
-  // ordinary CONNECTING state.
-  it('surfaces the denial reason instead of showing CONNECTING', () => {
+  // ordinary Connecting state.
+  it('surfaces the denial reason instead of showing Connecting', () => {
     mockStream.mockReturnValue(
       streamState({ connected: false, deniedReason: 'device held by another user' }),
     );
     render(<LogcatView udid="DEV-1" platform="android" />);
-    expect(screen.getByText('Denied')).toBeTruthy();
+    expect(screen.getByRole('status')).toHaveTextContent('Denied');
     expect(screen.queryByText('Connecting')).toBeNull();
     expect(screen.getByText(/device held by another user/)).toBeTruthy();
   });
 
   // Correction 3: exhausting MAX_ATTEMPTS must be visible and recoverable —
-  // not an indefinite CONNECTING pill. A RECONNECT control must be present
-  // and must call the hook's retry().
+  // not an indefinite Connecting pill. A Reconnect control must be present
+  // (in the banner now) and must call the hook's retry().
   it('shows a terminal offline state with a manual reconnect once retries are exhausted', () => {
     const retry = vi.fn();
     mockStream.mockReturnValue(streamState({ connected: false, exhausted: true, retry }));
     render(<LogcatView udid="DEV-1" platform="android" />);
-    expect(screen.getByText('Offline')).toBeTruthy();
+    expect(screen.getByRole('status')).toHaveTextContent('Offline');
     expect(screen.queryByText('Connecting')).toBeNull();
-    const reconnectBtn = screen.getByRole('button', { name: /reconnect/i });
+    const reconnectBtn = within(screen.getByRole('alert')).getByRole('button', {
+      name: /reconnect/i,
+    });
     fireEvent.click(reconnectBtn);
     expect(retry).toHaveBeenCalledTimes(1);
   });
@@ -155,22 +183,11 @@ describe('LogcatView', () => {
     expect(screen.queryByRole('button', { name: /reconnect/i })).toBeNull();
   });
 
-  // REWRITTEN (was: "lets the level dropdown override a conflicting level:
-  // term typed in the search box"). That test asserted a contract built on
-  // two independent states — a `minLevel` the dropdown owned, reconciled with
-  // `query` only at filter time — under which the dropdown always won. The
-  // same design made `level:` unreachable from the text box (below), so it
-  // could not stay. The query string is now the single source of truth and
-  // the LAST control the user touched wins. The old test's actual regression
-  // guard — setLevelTerm rather than string concatenation, so exactly one
-  // `level:` term survives and parseQuery's last-token-wins cannot contradict
-  // the dropdown — is preserved in the agreement test below.
-
   // The documented `level:` grammar has to work from the text box. It did
-  // not: with the dropdown holding its own (empty) state, every filter pass
-  // ran setLevelTerm(query, '') — and a falsy level makes setLevelTerm STRIP
-  // the level term, so the one the user just typed was silently deleted.
-  it('applies a level: term typed into the filter box while the dropdown is on All levels', () => {
+  // not once: with the level control holding its own (empty) state, every
+  // filter pass ran setLevelTerm(query, '') — and a falsy level makes
+  // setLevelTerm STRIP the level term, so the one the user typed vanished.
+  it('applies a level: term typed into the filter box while the bar is on All', () => {
     mockStream.mockReturnValue(
       streamState({
         records: [
@@ -180,106 +197,115 @@ describe('LogcatView', () => {
       }),
     );
     render(<LogcatView udid="DEV-1" platform="android" />);
-    expect(screen.getByText('2 / 2')).toBeTruthy();
+    expect(screen.getByText('2 of 2 shown')).toBeTruthy();
 
     fireEvent.change(screen.getByLabelText('Filter logs'), { target: { value: 'level:E' } });
 
     expect(screen.queryByText('debug line')).toBeNull();
     expect(screen.getByText('error line')).toBeTruthy();
-    expect(screen.getByText('1 / 2')).toBeTruthy();
+    expect(screen.getByText('1 of 2 shown')).toBeTruthy();
   });
 
-  // "A level dropdown in the toolbar writes `level:` into the same query, so
-  // the control and the text box cannot disagree." Two states could, and did:
-  // box showing `level:E` while the dropdown showed W, W winning, no cue.
-  it('keeps the dropdown and the filter box in agreement, whichever one is used', () => {
+  // The level bar writes `level:` into the same query, so the bar and the
+  // text box cannot disagree. Two states could, and did: box showing
+  // `level:E` while the old dropdown showed W, W winning, no cue.
+  it('keeps the level bar and the filter box in agreement, whichever one is used', () => {
     mockStream.mockReturnValue(streamState({ records: [rec()] }));
     render(<LogcatView udid="DEV-1" platform="android" />);
     const box = screen.getByLabelText('Filter logs') as HTMLInputElement;
-    const dropdown = screen.getByLabelText('Minimum log level') as HTMLSelectElement;
+    const level = (name: RegExp) => screen.getByRole('button', { name });
 
-    // Typing moves the dropdown. parseQuery is last-token-wins, so the
-    // trailing level:D is the one in effect and the one displayed.
+    // Typing moves the bar. parseQuery is last-token-wins, so the trailing
+    // level:D is the one in effect and the one pressed.
     fireEvent.change(box, { target: { value: 'level:E tag:Tile level:D' } });
-    expect(dropdown.value).toBe('D');
+    expect(level(/^Debug and above/)).toHaveAttribute('aria-pressed', 'true');
 
-    // Using the dropdown rewrites the box: exactly ONE level term survives
-    // (both stray ones are replaced, not merely out-voted — this is the old
-    // test's setLevelTerm-not-concatenation guard), other terms untouched.
-    fireEvent.change(dropdown, { target: { value: 'W' } });
+    // Using the bar rewrites the box: exactly ONE level term survives (both
+    // stray ones are replaced, not merely out-voted), other terms untouched.
+    fireEvent.click(level(/^Warning and above/));
     expect(box.value).toBe('level:W tag:Tile');
-    expect(dropdown.value).toBe('W');
+    expect(level(/^Warning and above/)).toHaveAttribute('aria-pressed', 'true');
 
-    // Back to "All levels" removes the term rather than leaving a stale one.
-    fireEvent.change(dropdown, { target: { value: '' } });
+    // Choosing it again goes back to All, removing the term.
+    fireEvent.click(level(/^Warning and above/));
     expect(box.value).toBe('tag:Tile');
-    expect(dropdown.value).toBe('');
+    expect(level(/^All levels$/)).toHaveAttribute('aria-pressed', 'true');
+
+    // So does All.
+    fireEvent.click(level(/^Error and above/));
+    fireEvent.click(level(/^All levels$/));
+    expect(box.value).toBe('tag:Tile');
   });
 
-  // `level:V` selects every record (V is the lowest level) and a typo'd
-  // `level:X` is ignored outright by `matches`. In both cases no level
-  // filtering is in effect, so "All levels" is the honest reading of the
-  // query, not a disagreement with it.
-  it('shows All levels for a level term that filters nothing', () => {
+  // A typo'd `level:X` is ignored outright by `matches`: no level filtering
+  // is in effect, so All is the honest reading of the query. REWRITTEN half:
+  // `level:V` used to read as "All levels" too, because the dropdown had no
+  // V option; the bar has a Verbose button, and level:V presses it (it shows
+  // every line, which its count says).
+  it('presses All for a level term that filters nothing', () => {
     mockStream.mockReturnValue(streamState({ records: [rec()] }));
     render(<LogcatView udid="DEV-1" platform="android" />);
-    const dropdown = screen.getByLabelText('Minimum log level') as HTMLSelectElement;
+    const box = screen.getByLabelText('Filter logs');
 
-    fireEvent.change(screen.getByLabelText('Filter logs'), { target: { value: 'level:V' } });
-    expect(dropdown.value).toBe('');
-    fireEvent.change(screen.getByLabelText('Filter logs'), { target: { value: 'level:X' } });
-    expect(dropdown.value).toBe('');
+    fireEvent.change(box, { target: { value: 'level:X' } });
+    expect(screen.getByRole('button', { name: 'All levels' })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
+    fireEvent.change(box, { target: { value: 'level:V' } });
+    expect(screen.getByRole('button', { name: /^Verbose and above/ })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
   });
 
-  it('labels each level option for what it actually selects', () => {
+  it('names each level button for what it actually selects', () => {
+    mockStream.mockReturnValue(streamState({ records: [rec({ level: 'F' })] }));
     render(<LogcatView udid="DEV-1" platform="android" />);
-    const labels = Array.from(
-      screen.getByLabelText('Minimum log level').querySelectorAll('option'),
-    ).map((o) => o.textContent);
+    const labels = within(screen.getByRole('group', { name: 'Log levels' }))
+      .getAllByRole('button')
+      .map((b) => b.getAttribute('aria-label'));
 
-    // No "V and above": V is the lowest level, so it is "All levels" said
-    // twice. No "F and above": nothing is above F.
+    // F is the highest level: "Fatal only", not "and above".
     expect(labels).toEqual([
       'All levels',
-      'D and above',
-      'I and above',
-      'W and above',
-      'E and above',
-      'F only',
+      'Verbose and above, 0 verbose lines',
+      'Debug and above, 0 debug lines',
+      'Info and above, 0 info lines',
+      'Warning and above, 0 warning lines',
+      'Error and above, 0 error lines',
+      'Fatal only, 1 fatal line',
     ]);
   });
 
-  // Correction 4 (view half): FREEZE only pauses auto-scroll — the hook has
-  // no notion of "frozen" and keeps delivering records regardless. A record
-  // that arrives while frozen must still be in the DOM (off-screen is fine;
-  // dropped is not), and must not require an unfreeze to appear.
-  it('keeps rendering records that arrive while frozen — FREEZE only pauses auto-scroll', () => {
-    let currentRecords = [rec({ message: 'before-freeze' })];
+  // Correction 4 (view half): Pause only stops following — the hook has no
+  // notion of "paused" and keeps delivering records regardless. A record that
+  // arrives while paused must still be in the list (off-screen is fine;
+  // dropped is not), and must not require a resume to appear.
+  it('keeps rendering records that arrive while paused — Pause only stops following', () => {
+    let currentRecords = [rec({ message: 'before-pause' })];
     mockStream.mockImplementation(() => streamState({ records: currentRecords }));
     const { rerender } = render(<LogcatView udid="DEV-1" platform="android" />);
-    expect(screen.getByText('before-freeze')).toBeTruthy();
+    expect(screen.getByText('before-pause')).toBeTruthy();
 
-    fireEvent.click(screen.getByRole('button', { name: /freeze/i }));
-    expect(screen.getByRole('button', { name: /follow/i })).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Pause' }));
+    expect(screen.getByRole('button', { name: 'Resume' })).toBeTruthy();
 
-    // Simulate the hook delivering a new flushed batch while the view is
-    // frozen — re-render with the same props, as the real component would
-    // re-render when the mocked hook's return value changes.
-    currentRecords = [...currentRecords, rec({ message: 'arrived-while-frozen' })];
+    currentRecords = [...currentRecords, rec({ message: 'arrived-while-paused' })];
     rerender(<LogcatView udid="DEV-1" platform="android" />);
 
-    expect(screen.getByText('arrived-while-frozen')).toBeTruthy();
-    expect(screen.getByText('2 / 2')).toBeTruthy();
+    expect(screen.getByText('arrived-while-paused')).toBeTruthy();
+    expect(screen.getByText('2 of 2 shown')).toBeTruthy();
   });
 
-  // The pill alone says OFFLINE with no explanation of what happened or that
+  // The pill alone says Offline with no explanation of what happened or that
   // the state is recoverable. Deleting the banner outright used to leave the
   // whole suite green.
   it('explains the exhausted state in an assertive banner, not just the pill', () => {
     mockStream.mockReturnValue(streamState({ connected: false, exhausted: true }));
     const { container } = render(<LogcatView udid="DEV-1" platform="android" />);
 
-    const banner = container.querySelector('.logcat-status-banner.is-exhausted');
+    const banner = container.querySelector('.log-banner.is-exhausted');
     expect(banner).toBeTruthy();
     expect(banner?.textContent).toMatch(/Connection lost after repeated attempts/);
     // A pane the user may not be looking at just went dead — announce it.
@@ -291,12 +317,12 @@ describe('LogcatView', () => {
       streamState({ connected: false, deniedReason: 'device held by another user' }),
     );
     const { container } = render(<LogcatView udid="DEV-1" platform="android" />);
-    const banner = container.querySelector('.logcat-status-banner.is-denied');
+    const banner = container.querySelector('.log-banner.is-denied');
     expect(banner?.getAttribute('role')).toBe('alert');
   });
 
   // The `.is-error` dot was the only colour cue distinguishing "dead" from
-  // "still trying", and nothing asserted it — hardcoding isErrorStatus to
+  // "still trying", and nothing asserted it — hardcoding the error state to
   // false left the suite green.
   it('reddens the status dot in a terminal state only', () => {
     mockStream.mockReturnValue(streamState({ connected: true }));
@@ -321,7 +347,7 @@ describe('LogcatView', () => {
 
   // Rows are keyed on the ingest `seq`, not the array index: the hook's
   // buffer trims from the FRONT, so under index keys every trim shifts every
-  // index and React repatches all 5000 rows instead of dropping one.
+  // index and React repatches every row instead of dropping one.
   it('keeps a row DOM node across a front-trim of the buffer', () => {
     let current = [
       rec({ message: 'oldest' }),
@@ -330,17 +356,17 @@ describe('LogcatView', () => {
     ];
     mockStream.mockImplementation(() => streamState({ records: current }));
     const { rerender } = render(<LogcatView udid="DEV-1" platform="android" />);
-    const newestBefore = screen.getByText('newest').closest('.logcat-row');
+    const newestBefore = row('newest');
 
     current = current.slice(1); // the buffer overflowed; the oldest is gone
     rerender(<LogcatView udid="DEV-1" platform="android" />);
 
     // Under index keys 'newest' moves from index 2 to index 1 and React
     // rewrites the node that used to hold 'middle' — a different element.
-    expect(screen.getByText('newest').closest('.logcat-row')).toBe(newestBefore);
+    expect(row('newest')).toBe(newestBefore);
   });
 
-  it('keeps the EXPORT download alive: attached anchor, deferred revoke', () => {
+  it('keeps the Export download alive: attached anchor, deferred revoke', () => {
     vi.useFakeTimers();
     const revokeObjectURL = vi.fn();
     const createObjectURL = vi.fn(() => 'blob:logcat');
@@ -355,7 +381,7 @@ describe('LogcatView', () => {
     try {
       mockStream.mockReturnValue(streamState({ records: [rec()] }));
       render(<LogcatView udid="DEV-1" platform="android" />);
-      fireEvent.click(screen.getByRole('button', { name: /export/i }));
+      fireEvent.click(screen.getByRole('button', { name: 'Export shown lines' }));
 
       expect(clickSpy).toHaveBeenCalledTimes(1);
       // Firefox ignores a click on an anchor that is not in the document.
@@ -363,7 +389,7 @@ describe('LogcatView', () => {
       // Revoking in the same task can cancel a download that has not started
       // reading the blob yet (Firefox, Safari).
       expect(revokeObjectURL).not.toHaveBeenCalled();
-      vi.runAllTimers();
+      vi.runOnlyPendingTimers();
       expect(revokeObjectURL).toHaveBeenCalledWith('blob:logcat');
       // ...and the anchor is not left behind in the document.
       expect(document.querySelector('a[download]')).toBeNull();
@@ -378,18 +404,13 @@ describe('LogcatView', () => {
 
 /**
  * Android Studio parity controls: match-case, clear-filter, find with
- * prev/next, and the soft-wrap toggle.
+ * prev/next, and wrapping long lines.
  */
 describe('LogcatView — Android Studio parity controls', () => {
+  useViewSetup();
   beforeEach(() => {
     nextSeq = 0;
-    vi.clearAllMocks();
   });
-
-  const mount = (records: ReturnType<typeof rec>[]) => {
-    mockStream.mockReturnValue(streamState({ records }));
-    return render(<LogcatView udid="DEV-1" platform="android" />);
-  };
 
   it('clears the filter with the × button, and the button only exists when there is something to clear', () => {
     mount([rec()]);
@@ -413,15 +434,23 @@ describe('LogcatView — Android Studio parity controls', () => {
     // Insensitive by default -> matches.
     expect(screen.queryAllByText('WifiService').length).toBeGreaterThan(0);
 
-    const cc = screen.getByLabelText('Match case');
-    fireEvent.click(cc);
-    expect(cc.getAttribute('aria-pressed')).toBe('true');
+    openMenu();
+    fireEvent.click(screen.getByRole('menuitemcheckbox', { name: 'Match case' }));
+    openMenu();
+    expect(screen.getByRole('menuitemcheckbox', { name: 'Match case' })).toHaveAttribute(
+      'aria-checked',
+      'true',
+    );
     expect(screen.queryAllByText('WifiService')).toHaveLength(0);
 
     // Both directions: a one-way toggle would pass a test that only asserts
     // the narrowing.
-    fireEvent.click(cc);
-    expect(cc.getAttribute('aria-pressed')).toBe('false');
+    fireEvent.click(screen.getByRole('menuitemcheckbox', { name: 'Match case' }));
+    openMenu();
+    expect(screen.getByRole('menuitemcheckbox', { name: 'Match case' })).toHaveAttribute(
+      'aria-checked',
+      'false',
+    );
     expect(screen.queryAllByText('WifiService').length).toBeGreaterThan(0);
   });
 
@@ -467,27 +496,30 @@ describe('LogcatView — Android Studio parity controls', () => {
     expect(screen.getByText('1/2')).toBeTruthy();
   });
 
-  it('stepping to a hit turns follow off, so auto-scroll stops fighting the jump', () => {
+  it('stepping to a hit pauses, so following stops fighting the jump', () => {
     mount([rec({ message: 'alpha' }), rec({ message: 'alpha again' })]);
-    expect(screen.getByText('FREEZE')).toBeTruthy(); // following
+    expect(screen.getByRole('button', { name: 'Pause' })).toBeTruthy(); // following
 
     fireEvent.change(screen.getByLabelText('Find in logs'), { target: { value: 'alpha' } });
     fireEvent.click(screen.getByLabelText('Next match'));
 
-    expect(screen.getByText('FOLLOW')).toBeTruthy(); // no longer following
+    expect(screen.getByRole('button', { name: 'Resume' })).toBeTruthy(); // paused
   });
 
-  it('soft wrap is on by default and toggles the row container', () => {
-    const { container } = mount([rec()]);
-    const rows = container.querySelector('.logcat-rows')!;
-    const btn = screen.getByLabelText('Soft wrap');
+  it('wraps long lines by default, and the menu turns it off for the list', () => {
+    mount([rec()]);
+    openMenu();
+    const item = screen.getByRole('menuitemcheckbox', { name: 'Wrap long lines' });
+    expect(item).toHaveAttribute('aria-checked', 'true');
+    expect(logLines()).not.toHaveClass('is-nowrap');
 
-    expect(btn.getAttribute('aria-pressed')).toBe('true');
-    expect(rows.className).not.toContain('no-wrap');
-
-    fireEvent.click(btn);
-    expect(btn.getAttribute('aria-pressed')).toBe('false');
-    expect(rows.className).toContain('no-wrap');
+    fireEvent.click(item);
+    openMenu();
+    expect(screen.getByRole('menuitemcheckbox', { name: 'Wrap long lines' })).toHaveAttribute(
+      'aria-checked',
+      'false',
+    );
+    expect(logLines()).toHaveClass('is-nowrap');
   });
 
   // Asserts the view derives each tag's colour FROM THE TAG, which is the
@@ -500,7 +532,7 @@ describe('LogcatView — Android Studio parity controls', () => {
   it('colours each tag from the tag itself, not a single shared colour', () => {
     const tags = ['WifiService', 'QSClockBellTower', 'dalvikvm'];
     const { container } = mount(tags.map((t) => rec({ tag: t })));
-    const rendered = Array.from(container.querySelectorAll('.logcat-tag')).map(
+    const rendered = Array.from(container.querySelectorAll('.log-tag')).map(
       (e) => (e as HTMLElement).style.color,
     );
 
@@ -515,9 +547,10 @@ describe('LogcatView — Android Studio parity controls', () => {
 
 /**
  * Recording: capture the raw stream between an explicit start and stop, then
- * download it. Distinct from EXPORT, which saves the filtered view as-is.
+ * download it. Distinct from Export, which saves the filtered view as-is.
  */
 describe('LogcatView — recording', () => {
+  useViewSetup();
   let created: { href: string; download: string; clicked: boolean };
   let captured: string;
   let RealBlob: typeof Blob;
@@ -525,7 +558,6 @@ describe('LogcatView — recording', () => {
 
   beforeEach(() => {
     nextSeq = 0;
-    vi.clearAllMocks();
     // The download revokes its blob URL on a deferred timer. Fake timers keep
     // that call inside the test that caused it; see afterEach.
     vi.useFakeTimers();
@@ -569,11 +601,6 @@ describe('LogcatView — recording', () => {
     delete (URL as unknown as Record<string, unknown>).revokeObjectURL;
   });
 
-  const mount = (records: ReturnType<typeof rec>[]) => {
-    mockStream.mockReturnValue(streamState({ records }));
-    return render(<LogcatView udid="DEV-1" platform="android" />);
-  };
-
   const recordBtn = () => screen.getByRole('button', { name: /record|stop ·/i });
 
   it('starts and stops, and only downloads on stop', () => {
@@ -591,7 +618,7 @@ describe('LogcatView — recording', () => {
   });
 
   // The window is what you asked for. Buffered history from before you pressed
-  // RECORD is not part of it, or the file silently answers a different question.
+  // Record is not part of it, or the file silently answers a different question.
   it('captures only records that arrive after start, not the existing buffer', () => {
     const before = [rec({ message: 'OLD-LINE' })];
     const { rerender } = mount(before);
@@ -632,10 +659,7 @@ describe('LogcatView — recording', () => {
       streamState({ records: [...base, rec({ message: 'a' }), rec({ message: 'b' })] }),
     );
     rerender(<LogcatView udid="DEV-1" platform="android" />);
-    // Asserted on the visible label, not the accessible name: the button's
-    // accname comes from its `title` ("Stop recording and download the
-    // capture"), which deliberately does not carry the count.
-    expect(recordBtn().textContent).toContain('STOP · 2');
+    expect(recordBtn().textContent).toContain('Stop · 2 lines');
   });
 
   it('writes a header naming the window', () => {
@@ -674,5 +698,214 @@ describe('LogcatView — recording', () => {
 
     expect(captured).toContain('SECOND');
     expect(captured).not.toContain('FIRST');
+  });
+});
+
+/**
+ * The level bar's counts, the details panel, copying, the keys, the states
+ * and Find reaching any line.
+ */
+describe('LogcatView — acting on lines', () => {
+  useViewSetup();
+  let writeText: ReturnType<typeof vi.fn>;
+  beforeEach(() => {
+    nextSeq = 0;
+    writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true });
+  });
+  afterEach(() => {
+    Object.defineProperty(navigator, 'clipboard', { value: undefined, configurable: true });
+  });
+
+  it('counts the levels that pass the filter, minus its level term', () => {
+    mount([
+      rec({ level: 'E', tag: 'Wifi' }),
+      rec({ level: 'E', tag: 'Other' }),
+      rec({ level: 'D', tag: 'Wifi' }),
+    ]);
+    fireEvent.change(screen.getByLabelText('Filter logs'), {
+      target: { value: 'tag:wifi level:E' },
+    });
+    expect(screen.getByRole('button', { name: 'Error and above, 1 error line' })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
+    expect(screen.getByRole('button', { name: 'Debug and above, 1 debug line' })).toBeTruthy();
+  });
+
+  it('on iOS, choosing Debug turns Debug on at the device, and Show only this app narrows it there', () => {
+    mockStream.mockReturnValue(streamState({ records: [rec({ pkg: 'Food Truck' })] }));
+    render(<LogcatView udid="DEV-1" platform="ios" />);
+    fireEvent.click(screen.getByRole('button', { name: /^Debug and above/ }));
+    expect(lastFilter().levels).toContain('Debug');
+    fireEvent.click(row('handleUpdateState'));
+    fireEvent.click(screen.getByRole('button', { name: 'Show only this app' }));
+    expect(screen.getByLabelText('Filter logs')).toHaveValue('level:D package:"Food Truck"');
+    expect(lastFilter().process).toBe('Food Truck');
+  });
+
+  it('says there is nothing to export instead of saving an empty file', () => {
+    mount([rec({ tag: 'Wifi' })]);
+    fireEvent.change(screen.getByLabelText('Filter logs'), { target: { value: 'tag:nope' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Export shown lines' }));
+    expect(toast).toHaveBeenCalledWith('No lines to export', 'info');
+  });
+
+  it('opens a line in the panel and filters by its tag and app from there', () => {
+    mount([rec({ tag: 'Wifi', pkg: 'com.a' }), rec({ tag: 'chatty', pkg: 'com.b' })]);
+    fireEvent.click(row('chatty'));
+    const box = screen.getByLabelText('Filter logs');
+    // The panel keeps its line while the filter hides it.
+    fireEvent.change(box, { target: { value: 'tag:Old level:W' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Show only this tag' }));
+    expect(box).toHaveValue('tag:chatty level:W');
+    fireEvent.click(screen.getByRole('button', { name: 'Show only this app' }));
+    expect(box).toHaveValue('tag:chatty level:W package:com.b');
+    fireEvent.click(screen.getByRole('button', { name: 'Hide this tag' }));
+    expect(box).toHaveValue('tag:chatty level:W package:com.b -tag:chatty');
+  });
+
+  it('copies the selected lines with Cmd/Ctrl+C, in list order, as Export writes them', async () => {
+    const lines = [rec({ message: 'one' }), rec({ message: 'two' }), rec({ message: 'three' })];
+    mount(lines);
+    fireEvent.click(row('three'));
+    fireEvent.click(row('one'), { metaKey: true });
+    fireEvent.keyDown(logLines(), { key: 'c', metaKey: true });
+    await waitFor(() => expect(toast).toHaveBeenCalledWith('Copied 2 lines', 'success'));
+    expect(writeText).toHaveBeenCalledWith(`${formatLine(lines[0])}\n${formatLine(lines[2])}`);
+  });
+
+  it('offers Copy selected lines in the menu only with a selection', async () => {
+    mount([rec({ message: 'one' })]);
+    openMenu();
+    expect(screen.queryByRole('menuitem', { name: 'Copy selected lines' })).toBeNull();
+    fireEvent.keyDown(document.activeElement as HTMLElement, { key: 'Escape' });
+    fireEvent.click(row('one'));
+    openMenu();
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Copy selected lines' }));
+    await waitFor(() => expect(writeText).toHaveBeenCalledTimes(1));
+  });
+
+  it('copies a line and its message from the panel', async () => {
+    const line = rec({ message: 'boom' });
+    mount([line]);
+    fireEvent.click(row('boom'));
+    fireEvent.click(screen.getByRole('button', { name: 'Copy line' }));
+    await waitFor(() => expect(writeText).toHaveBeenLastCalledWith(formatLine(line)));
+    fireEvent.click(screen.getByRole('button', { name: 'Copy message' }));
+    await waitFor(() => expect(writeText).toHaveBeenLastCalledWith('boom'));
+    await waitFor(() => expect(toast).toHaveBeenCalledWith('Copied the message', 'success'));
+  });
+
+  it('Esc closes the panel, then clears the selection', () => {
+    mount([rec({ message: 'one' })]);
+    fireEvent.click(row('one'));
+    fireEvent.keyDown(logLines(), { key: 'Escape' });
+    expect(screen.queryByRole('region', { name: 'Line details' })).toBeNull();
+    expect(row('one')).toHaveAttribute('aria-selected', 'true');
+    fireEvent.keyDown(logLines(), { key: 'Escape' });
+    expect(row('one')).toHaveAttribute('aria-selected', 'false');
+  });
+
+  it('keeps the line in the panel after Clear lines, and says it left the buffer', () => {
+    const clear = vi.fn();
+    const line = rec({ message: 'kept' });
+    mockStream.mockReturnValue(streamState({ records: [line], clear }));
+    const { rerender } = render(<LogcatView udid="DEV-1" platform="android" />);
+    fireEvent.click(row('kept'));
+    openMenu();
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Clear lines' }));
+    expect(clear).toHaveBeenCalledTimes(1);
+    mockStream.mockReturnValue(streamState({ records: [], clear }));
+    rerender(<LogcatView udid="DEV-1" platform="android" />);
+    const panel = screen.getByRole('region', { name: 'Line details' });
+    expect(panel).toHaveTextContent('kept');
+    expect(panel).toHaveTextContent('This line has left the buffer');
+    expect(screen.getByText('0 of 0 shown')).toBeTruthy();
+  });
+
+  it('says what is happening when there are no lines', () => {
+    mockStream.mockReturnValue(streamState({ connected: false }));
+    const { rerender } = render(<LogcatView udid="DEV-1" platform="android" />);
+    expect(screen.getByText('Waiting for the phone’s first log line…')).toBeTruthy();
+    mockStream.mockReturnValue(streamState({ connected: true }));
+    rerender(<LogcatView udid="DEV-1" platform="android" />);
+    expect(screen.getByText('Connected. Lines appear here as the phone logs them.')).toBeTruthy();
+  });
+
+  it('says no lines match the filter, and Clear filter clears it', () => {
+    mount([rec()]);
+    fireEvent.change(screen.getByLabelText('Filter logs'), { target: { value: 'tag:nope' } });
+    const state = screen.getByText('tag:nope').closest('.log-state') as HTMLElement;
+    expect(state).toHaveTextContent('No lines match tag:nope');
+    fireEvent.click(within(state).getByRole('button', { name: 'Clear filter' }));
+    expect(screen.getByLabelText('Filter logs')).toHaveValue('');
+  });
+
+  it('/ focuses the filter and Cmd/Ctrl+F focuses Find, from inside the pane', () => {
+    mount([rec()]);
+    logLines().focus();
+    fireEvent.keyDown(logLines(), { key: '/' });
+    expect(document.activeElement).toBe(screen.getByLabelText('Filter logs'));
+    fireEvent.keyDown(document.activeElement as HTMLElement, { key: 'f', ctrlKey: true });
+    expect(document.activeElement).toBe(screen.getByLabelText('Find in logs'));
+    // Typing a slash into a field types a slash.
+    fireEvent.keyDown(document.activeElement as HTMLElement, { key: '/' });
+    expect(document.activeElement).toBe(screen.getByLabelText('Find in logs'));
+  });
+
+  it('Pause counts new lines in a pill, and Jump to latest follows again', () => {
+    let records = [rec({ message: 'a' })];
+    mockStream.mockImplementation(() => streamState({ records }));
+    const { rerender } = render(<LogcatView udid="DEV-1" platform="android" />);
+    fireEvent.click(screen.getByRole('button', { name: 'Pause' }));
+    records = [...records, rec({ message: 'b' }), rec({ message: 'c' })];
+    rerender(<LogcatView udid="DEV-1" platform="android" />);
+    fireEvent.click(screen.getByRole('button', { name: '2 new lines · Jump to latest' }));
+    expect(screen.getByRole('button', { name: 'Pause' })).toBeTruthy();
+  });
+
+  it('highlights the match in the row, and reaches a match that is not rendered', async () => {
+    const lines = Array.from({ length: 3000 }, (_, i) =>
+      rec({ message: i === 100 ? 'needle here' : `line ${i}` }),
+    );
+    mount(lines);
+    await settle();
+    fireEvent.change(screen.getByLabelText('Find in logs'), { target: { value: 'needle' } });
+    fireEvent.keyDown(screen.getByLabelText('Find in logs'), { key: 'Enter' });
+    await settle();
+    expect(document.querySelector('.log-row.is-active-hit mark.log-mark')).toHaveTextContent(
+      'needle',
+    );
+  });
+
+  // Device control is an InPlaceDialog, which closes on an Esc nobody
+  // handled. The pane's own Esc (close the panel, then clear the selection)
+  // must count as handled, or it closes device control with the buffer,
+  // any recording and the phone's hold.
+  it('Esc closes the panel and clears the selection without closing device control', () => {
+    const onClose = vi.fn();
+    mockStream.mockReturnValue(streamState({ records: [rec({ message: 'one' })] }));
+    render(
+      <InPlaceDialog labelledBy="dc-title" onClose={onClose}>
+        <h2 id="dc-title">Device control</h2>
+        <LogcatView udid="DEV-1" platform="android" />
+      </InPlaceDialog>,
+    );
+    fireEvent.click(row('one'));
+    fireEvent.keyDown(logLines(), { key: 'Escape' });
+    expect(screen.queryByRole('region', { name: 'Line details' })).toBeNull();
+    fireEvent.keyDown(logLines(), { key: 'Escape' });
+    expect(row('one')).toHaveAttribute('aria-selected', 'false');
+    expect(onClose).not.toHaveBeenCalled();
+    // With nothing left to close in the pane, Esc is device control's.
+    fireEvent.keyDown(logLines(), { key: 'Escape' });
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it('shows the shared empty state for a platform with no live logs', () => {
+    const { container } = render(<LogcatView udid="DEV-1" platform="tvos" />);
+    expect(container.querySelector('.empty-state')).toBeTruthy();
+    expect(screen.queryByText(/logcat|os_trace/i)).toBeNull();
   });
 });

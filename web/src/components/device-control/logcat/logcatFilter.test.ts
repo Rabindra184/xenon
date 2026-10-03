@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { matches, parseQuery, setLevelTerm, type LogRecordLike } from './logcatFilter';
+import {
+  matches,
+  parseQuery,
+  setLevelTerm,
+  withExclusion,
+  withTerm,
+  type LogRecordLike,
+} from './logcatFilter';
 
 const rec = (over: Partial<Parameters<typeof matches>[0]> = {}) => ({
   level: 'D',
@@ -347,5 +354,114 @@ describe('quoted values', () => {
     expect(q.tag).toBe('wifi');
     expect(q.pkg).toBe('com.example');
     expect(q.text).toBe('boom');
+  });
+});
+
+describe('exclusions: -tag: and -package:', () => {
+  it('parses each exclusion, lowercased unless Match case is on', () => {
+    expect(parseQuery('-tag:Chatty -tag:Wifi -package:com.Foo')).toEqual({
+      excludeTags: ['chatty', 'wifi'],
+      excludePkgs: ['com.foo'],
+    });
+    expect(parseQuery('-tag:Chatty', { caseSensitive: true })).toEqual({
+      caseSensitive: true,
+      excludeTags: ['Chatty'],
+    });
+  });
+
+  it('reads a quoted value as one exclusion', () => {
+    expect(parseQuery('-package:"Food Truck" crash')).toEqual({
+      excludePkgs: ['food truck'],
+      text: 'crash',
+    });
+  });
+
+  it('keeps a word starting with - and no colon, or an exclusion with no value, as text', () => {
+    expect(parseQuery('-verbose')).toEqual({ text: '-verbose' });
+    expect(parseQuery('-tag:')).toEqual({ text: '-tag:' });
+  });
+
+  it('hides lines whose tag or package contains an excluded value', () => {
+    const q = parseQuery('-tag:chatty -package:com.noisy');
+    expect(matches(rec({ tag: 'chatty' }), q)).toBe(false);
+    expect(matches(rec({ tag: 'MyChattyTag' }), q)).toBe(false);
+    expect(matches(rec({ pkg: 'com.noisy.app' }), q)).toBe(false);
+    expect(matches(rec({ pkg: 'com.quiet' }), q)).toBe(true);
+    // No package: nothing to exclude it by.
+    expect(matches(rec({ pkg: undefined }), q)).toBe(true);
+  });
+
+  it('combines with the include terms', () => {
+    const q = parseQuery('tag:wifi -tag:wifiscanner');
+    expect(matches(rec({ tag: 'WifiService' }), q)).toBe(true);
+    expect(matches(rec({ tag: 'WifiScanner' }), q)).toBe(false);
+  });
+
+  it('follows Match case', () => {
+    const q = parseQuery('-tag:Wifi', { caseSensitive: true });
+    expect(matches(rec({ tag: 'wifi' }), q)).toBe(true);
+    expect(matches(rec({ tag: 'Wifi' }), q)).toBe(false);
+  });
+
+  it("never hides Xenon's own records", () => {
+    const q = parseQuery('-tag:xenon');
+    expect(matches(rec({ tag: 'xenon', level: 'W', synthetic: true }), q)).toBe(true);
+  });
+});
+
+describe('withTerm', () => {
+  it('adds a term at the end', () => {
+    expect(withTerm('crash', 'tag', 'Wifi')).toBe('crash tag:Wifi');
+    expect(withTerm('', 'package', 'com.example')).toBe('package:com.example');
+  });
+
+  it('replaces a term already there, in its place, and drops repeats', () => {
+    expect(withTerm('tag:Old level:E tag:Older crash', 'tag', 'New')).toBe('tag:New level:E crash');
+  });
+
+  it('replaces a quoted term', () => {
+    expect(withTerm('package:"Food Truck" x', 'package', 'Maps')).toBe('package:Maps x');
+  });
+
+  it('quotes a value with spaces, which reads back as one term', () => {
+    const q = withTerm('', 'package', 'Food Truck');
+    expect(q).toBe('package:"Food Truck"');
+    expect(parseQuery(q).pkg).toBe('food truck');
+  });
+
+  it('leaves exclusions alone', () => {
+    expect(withTerm('-tag:chatty', 'tag', 'Wifi')).toBe('-tag:chatty tag:Wifi');
+  });
+
+  it('writes a value with a double quote so that it still matches its line', () => {
+    const tag = 'say "hi" there';
+    expect(matches(rec({ tag }), parseQuery(withTerm('', 'tag', tag)))).toBe(true);
+  });
+
+  it('does nothing for an empty value', () => {
+    expect(withTerm('x', 'tag', '')).toBe('x');
+  });
+});
+
+describe('withExclusion', () => {
+  it('adds an exclusion at the end, and several may be given', () => {
+    expect(withExclusion('tag:Wifi', 'tag', 'chatty')).toBe('tag:Wifi -tag:chatty');
+    expect(withExclusion('-tag:a', 'tag', 'b')).toBe('-tag:a -tag:b');
+  });
+
+  it('does not add the same exclusion twice', () => {
+    expect(withExclusion('-tag:chatty x', 'tag', 'chatty')).toBe('-tag:chatty x');
+    expect(withExclusion('-package:"Food Truck"', 'package', 'Food Truck')).toBe(
+      '-package:"Food Truck"',
+    );
+  });
+
+  it('quotes a value with spaces', () => {
+    expect(withExclusion('', 'package', 'Food Truck')).toBe('-package:"Food Truck"');
+  });
+
+  it('hides the line it was made from', () => {
+    const line = rec({ tag: 'My Tag' });
+    expect(matches(line, parseQuery(withExclusion('', 'tag', 'My Tag')))).toBe(false);
   });
 });

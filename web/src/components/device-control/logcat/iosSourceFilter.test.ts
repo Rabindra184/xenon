@@ -59,4 +59,14 @@ describe('iosSourceFilter', () => {
     // still happens in the browser over what arrived.
     expect(iosSourceFilter('crash')).to.deep.equal(iosSourceFilter(''));
   });
+
+  // Exclusions are applied in the browser only: the device is sent the
+  // levels and an included package, nothing else.
+  it('sends the device no exclusions', () => {
+    expect(iosSourceFilter('-package:Noisy -tag:chatty')).toEqual({
+      levels: ['Info', 'Default', 'Error', 'Fault'],
+      process: undefined,
+    });
+    expect(iosSourceFilter('package:Maps -package:Noisy').process).toBe('Maps');
+  });
 });

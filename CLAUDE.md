@@ -1435,7 +1435,8 @@ npm run build:copy` (from the repo root) regenerates and copies it.
 | `src/app/ws/logcatWs.ts` | Ticket + `evaluateDeviceAccess` at connect time; 1008 denies, 1012 on upstream death |
 | `src/app/ws/upgradeRouter.ts` | One handler per WebSocket upgrade: Xenon's routes (H.264, logcat, adopted socket.io) first, everything else to Appium's listener, or Xenon's copy of it on Node < 22.21 |
 | `src/services/device-access/ticketActorAccess.ts` | `makeTicketActorAuthorizer` — the WS's ownership decision, extracted so it is tested directly rather than through a copy in a spec |
-| `web/src/components/device-control/logcat/logcatFilter.ts` | Pure filter grammar (`level:` minimum, `tag:`, `package:`, text, ANDed) plus `setLevelTerm` so the dropdown and the text box share one query |
+| `web/src/components/device-control/logcat/logcatFilter.ts` | Pure filter grammar (`level:` minimum, `tag:`, `package:`, `-tag:` / `-package:` to hide, text, ANDed) plus `setLevelTerm`, `withTerm` and `withExclusion`, so the level bar, the details panel's buttons and the text box share one query |
+| `web/src/components/device-control/logcat/LogList.tsx` | The Logs tab's list: only the rows on screen exist (`@tanstack/react-virtual`); follows the newest line, pauses on a scroll up or a click, keeps the reading place by `seq` while old lines are dropped |
 | `web/src/components/device-control/logcat/useLogcatStream.ts` | Mints a ticket per connect, batches frames (React 17 does not auto-batch outside events), resets the buffer on reconnect **except** after 1012 |
 | `src/gateway/sessionGateway.ts` | The session layer in front of Appium's routes: internal calls skip auth, per-command auth (or the hub token on a node), then a hub forwards remote sessions; remote DELETE runs the lifecycle |
 | `src/gateway/internalCall.ts` | `/wd-internal` + the per-process secret header; one `next()` call site so a refused call answers exactly like an unknown route |

@@ -54,6 +54,12 @@ export interface LogcatQuery {
   pkg?: string;
   text?: string;
   /**
+   * `-tag:` / `-package:` values: a line whose tag or package contains any of
+   * them is hidden. Set only when at least one was given.
+   */
+  excludeTags?: string[];
+  excludePkgs?: string[];
+  /**
    * Whether `tag`/`pkg`/`text` above were left in their typed case.
    *
    * Carried on the query rather than passed separately to `matches` on
@@ -77,6 +83,8 @@ export interface ParseOptions {
  *   level:W                minimum level (V < D < I < W < E < F)
  *   tag:Wifi                case-insensitive substring on tag
  *   package:com.example     case-insensitive substring on pkg
+ *   -tag:chatty              hide lines whose tag contains it (any number)
+ *   -package:com.noisy       hide lines whose pkg contains it (any number)
  *   bare words               case-insensitive substring on message
  *
  * `key:` prefixes are matched case-insensitively; unrecognized `key:value`
@@ -134,9 +142,12 @@ export function parseQuery(raw: string, opts: ParseOptions = {}): LogcatQuery {
   for (const token of tokenize(raw)) {
     const [key, ...rest] = token.split(':');
     const value = rest.join(':');
-    if (value && key.toLowerCase() === 'level') q.minLevel = value.toUpperCase();
-    else if (value && key.toLowerCase() === 'tag') q.tag = norm(value);
-    else if (value && key.toLowerCase() === 'package') q.pkg = norm(value);
+    const k = key.toLowerCase();
+    if (value && k === 'level') q.minLevel = value.toUpperCase();
+    else if (value && k === 'tag') q.tag = norm(value);
+    else if (value && k === 'package') q.pkg = norm(value);
+    else if (value && k === '-tag') (q.excludeTags = q.excludeTags || []).push(norm(value));
+    else if (value && k === '-package') (q.excludePkgs = q.excludePkgs || []).push(norm(value));
     else words.push(token);
   }
   if (words.length) q.text = norm(words.join(' '));
@@ -163,7 +174,100 @@ export function matches(r: LogRecordLike, q: LogcatQuery): boolean {
   if (q.tag && !norm(r.tag).includes(q.tag)) return false;
   if (q.pkg && !norm(r.pkg ?? '').includes(q.pkg)) return false;
   if (q.text && !norm(r.message).includes(q.text)) return false;
+  if (q.excludeTags) {
+    const tag = norm(r.tag);
+    if (q.excludeTags.some((t) => tag.includes(t))) return false;
+  }
+  if (q.excludePkgs) {
+    // A line with no package has nothing to be excluded by.
+    const pkg = norm(r.pkg ?? '');
+    if (pkg && q.excludePkgs.some((p) => pkg.includes(p))) return false;
+  }
   return true;
+}
+
+export type TermKey = 'tag' | 'package';
+
+/**
+ * The query's terms as typed, quotes kept, so a rewrite puts back every term
+ * it doesn't touch exactly as the user wrote it. Splits where `tokenize` does.
+ */
+function rawTerms(query: string): string[] {
+  const out: string[] = [];
+  let cur = '';
+  let quoted = false;
+  for (const ch of query) {
+    if (ch === '"') quoted = !quoted;
+    if (!quoted && /\s/.test(ch)) {
+      if (cur) out.push(cur);
+      cur = '';
+      continue;
+    }
+    cur += ch;
+  }
+  if (cur) out.push(cur);
+  return out;
+}
+
+function termParts(raw: string): { key: string; value: string } {
+  const [key, ...rest] = raw.replace(/"/g, '').split(':');
+  return { key: key.toLowerCase(), value: rest.join(':') };
+}
+
+/**
+ * A value as a term writes it. The grammar has no escape for a double quote,
+ * so a value containing one keeps its longest quote-free run: the terms are
+ * substring matches, so that run still matches the line it came from. A value
+ * with whitespace is quoted, or it would read back as several terms.
+ */
+function termValue(value: string): string {
+  const piece = value
+    .split('"')
+    .map((p) => p.trim())
+    .reduce((a, b) => (b.length > a.length ? b : a), '');
+  return /\s/.test(piece) ? `"${piece}"` : piece;
+}
+
+/**
+ * Set the query's one `tag:` or `package:` include term to `value`: in the
+ * place of the first one already there (any later ones dropped, since the
+ * last would win), else at the end. Exclusions and every other term are left
+ * as typed. For the details panel's "Show only this tag / app".
+ */
+export function withTerm(query: string, key: TermKey, value: string): string {
+  const v = termValue(value);
+  if (!v) return query;
+  const term = `${key}:${v}`;
+  const out: string[] = [];
+  let placed = false;
+  for (const raw of rawTerms(query)) {
+    const t = termParts(raw);
+    if (t.key === key && t.value) {
+      if (!placed) out.push(term);
+      placed = true;
+      continue;
+    }
+    out.push(raw);
+  }
+  if (!placed) out.push(term);
+  return out.join(' ');
+}
+
+/**
+ * Add `-tag:value` or `-package:value` at the end, unless the same exclusion
+ * is already there. For the details panel's "Hide this tag".
+ */
+export function withExclusion(query: string, key: TermKey, value: string): string {
+  const v = termValue(value);
+  if (!v) return query;
+  const bare = v.replace(/"/g, '');
+  const terms = rawTerms(query);
+  const already = terms.some((raw) => {
+    const t = termParts(raw);
+    return t.key === `-${key}` && t.value === bare;
+  });
+  if (already) return query;
+  return [...terms, `-${key}:${v}`].join(' ');
 }
 
 /**
