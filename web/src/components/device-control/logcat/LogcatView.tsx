@@ -3,6 +3,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AlertTriangle, RotateCw } from 'lucide-react';
 import { Button } from '../../ui/button';
 import { EmptyState } from '../../ui/EmptyState';
+import { useCloseGuard, useDialogClose } from '../../ui/InPlaceDialog';
+import { Modal } from '../../ui/Modal';
 import { useToast } from '../../ui/toast';
 import { copyText } from '../actions/copyText';
 import { useLogcatStream, type BufferedLogcatRecord } from './useLogcatStream';
@@ -259,6 +261,25 @@ export default function LogcatView({ udid, platform }: Props) {
     download(text, recordingFilename(udid, state.startedAt));
   }, [records, udid]);
 
+  // Closing device control ends the tab and the recording with it, so while
+  // recording a close (Esc, Back to devices) asks first.
+  const [askClose, setAskClose] = useState(false);
+  const closeDialog = useDialogClose(() => undefined);
+  useCloseGuard(
+    recording
+      ? () => {
+          if (!recordingRef.current) return false;
+          setAskClose(true);
+          return true;
+        }
+      : null,
+  );
+  const saveAndClose = () => {
+    setAskClose(false);
+    if (recordingRef.current) toggleRecording();
+    closeDialog();
+  };
+
   const copy = useCallback(
     async (text: string, done: string) => {
       if (await copyToClipboard(text)) toast(done, 'success');
@@ -481,6 +502,26 @@ export default function LogcatView({ udid, platform }: Props) {
           />
         )}
       </div>
+      <Modal
+        open={askClose}
+        title="Stop recording?"
+        onClose={() => setAskClose(false)}
+        footer={
+          <>
+            <Button type="button" variant="secondary" onClick={() => setAskClose(false)} autoFocus>
+              Keep recording
+            </Button>
+            <Button type="button" onClick={saveAndClose}>
+              Save and close
+            </Button>
+          </>
+        }
+      >
+        <p>
+          {formatCount(recLines)} line{recLines === 1 ? '' : 's'} recorded so far. Closing device
+          control ends the recording. Save and close downloads it first.
+        </p>
+      </Modal>
     </div>
   );
 }

@@ -909,3 +909,62 @@ describe('LogcatView — acting on lines', () => {
     expect(screen.queryByText(/logcat|os_trace/i)).toBeNull();
   });
 });
+
+describe('LogcatView — closing device control while recording', () => {
+  useViewSetup();
+  let clickSpy: MockInstance;
+  beforeEach(() => {
+    (URL as unknown as Record<string, unknown>).createObjectURL = vi.fn(() => 'blob:rec');
+    (URL as unknown as Record<string, unknown>).revokeObjectURL = vi.fn();
+    clickSpy = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => undefined);
+  });
+  afterEach(() => {
+    clickSpy.mockRestore();
+    delete (URL as unknown as Record<string, unknown>).createObjectURL;
+    // The download revokes its URL a second later, after this test.
+    (URL as unknown as Record<string, unknown>).revokeObjectURL = () => undefined;
+  });
+
+  const mountInDialog = (onClose: () => void) => {
+    mockStream.mockReturnValue(streamState({ records: [rec()] }));
+    render(
+      <InPlaceDialog labelledBy="t" onClose={onClose}>
+        <h2 id="t">Phone</h2>
+        <LogcatView udid="DEV-1" platform="android" />
+      </InPlaceDialog>,
+    );
+  };
+
+  it('asks first, and Keep recording keeps device control open', async () => {
+    const onClose = vi.fn();
+    mountInDialog(onClose);
+    const record = screen.getByRole('button', { name: 'Record' });
+    fireEvent.click(record);
+    fireEvent.keyDown(screen.getByRole('button', { name: /^Stop/ }), { key: 'Escape' });
+    expect(await screen.findByRole('dialog', { name: 'Stop recording?' })).toBeInTheDocument();
+    expect(onClose).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: 'Keep recording' }));
+    await waitFor(() =>
+      expect(screen.queryByRole('dialog', { name: 'Stop recording?' })).not.toBeInTheDocument(),
+    );
+    expect(onClose).not.toHaveBeenCalled();
+    expect(clickSpy).not.toHaveBeenCalled();
+  });
+
+  it('Save and close downloads the recording, then closes', async () => {
+    const onClose = vi.fn();
+    mountInDialog(onClose);
+    fireEvent.click(screen.getByRole('button', { name: 'Record' }));
+    fireEvent.keyDown(screen.getByRole('button', { name: /^Stop/ }), { key: 'Escape' });
+    fireEvent.click(await screen.findByRole('button', { name: 'Save and close' }));
+    expect(clickSpy).toHaveBeenCalledTimes(1);
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it('closes at once when nothing is recording', () => {
+    const onClose = vi.fn();
+    mountInDialog(onClose);
+    fireEvent.keyDown(screen.getByRole('button', { name: 'Record' }), { key: 'Escape' });
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+});
