@@ -28,3 +28,5 @@ temp-appium/node/
 xenon.db
 xenon.db-journal
 selfIdentity.plist
+# Playwright MCP browser output (snapshots, console logs, screenshots)
+.playwright-mcp/
