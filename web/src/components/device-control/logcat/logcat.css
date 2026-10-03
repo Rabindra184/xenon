@@ -429,10 +429,12 @@
   font-variant-numeric: tabular-nums;
 }
 
-/* The letter stays on every row, so colour is never the only signal. */
+/* The letter stays on every row, so colour is never the only signal. It sits
+   on the first line: centred, it dropped to the middle of a wrapped message. */
 .log-badge {
   display: inline-flex;
-  align-self: center;
+  align-self: start;
+  margin-top: 1px;
   justify-content: center;
   width: 16px;
   height: 16px;

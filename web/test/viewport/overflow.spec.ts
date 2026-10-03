@@ -1392,6 +1392,34 @@ for (const width of [1280, 1440]) {
   });
 }
 
+// A wrapped message makes its row several lines tall. The level badge belongs
+// to the first line, beside the time: centred, it dropped to the middle of the
+// row, where it reads as a level for nothing.
+test('the level badge sits on the first line of a wrapped log row', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await mockLogStream(page);
+  await page.goto(LOGS_ROUTE);
+  await page.waitForLoadState('networkidle');
+  await expect(
+    page.getByRole('listbox', { name: 'Log lines' }).getByRole('option'),
+  ).not.toHaveCount(0);
+
+  const rows = await page.evaluate(() =>
+    Array.from(document.querySelectorAll('.log-row'))
+      .map((row) => {
+        const time = row.querySelector('.log-time')?.getBoundingClientRect();
+        const badge = row.querySelector('.log-badge')?.getBoundingClientRect();
+        return {
+          height: row.getBoundingClientRect().height,
+          drift: time && badge ? Math.abs(badge.top - time.top) : null,
+        };
+      })
+      .filter((r) => r.height > 30 && r.drift !== null),
+  );
+  expect(rows.length, 'the mock must render wrapped rows').toBeGreaterThan(0);
+  for (const r of rows) expect(r.drift).toBeLessThanOrEqual(4);
+});
+
 // A landscape phone narrows the side panel (514 px at 1280): below the 720 px
 // switch the Logs tab has two-line rows and a toolbar that may wrap, and
 // nothing may leave the viewport.
