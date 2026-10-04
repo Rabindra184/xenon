@@ -1,22 +1,21 @@
 import 'reflect-metadata';
 import { expect } from 'chai';
 import express from 'express';
-import request from 'supertest';
+import request from '../helpers/loopbackRequest';
 import { profileRouter } from '../../src/app/routers/profile';
 import { authMiddleware } from '../../src/middleware/authMiddleware';
 import { Container } from 'typedi';
 import { UserService } from '../../src/services/UserService';
 import { UserSessionService } from '../../src/services/UserSessionService';
-import { prisma } from '../../src/prisma';
+import { useScratchDatabase } from '../helpers/scratch-database';
 
 describe('profile/tokens (integration)', function () {
   this.timeout(30_000);
+  useScratchDatabase({ wholeSuite: true });
   let user: any;
   let cookie: string;
 
   before(async () => {
-    await prisma.userSession.deleteMany({ where: { user: { email: 'tokens-it@xenon.local' } } });
-    await prisma.user.deleteMany({ where: { email: 'tokens-it@xenon.local' } });
     user = await Container.get(UserService).createUser({
       email: 'tokens-it@xenon.local',
       name: 'Tokens IT',
@@ -25,11 +24,6 @@ describe('profile/tokens (integration)', function () {
     });
     const session = await Container.get(UserSessionService).create(user.id);
     cookie = `xenon_dashboard_session=${session.id}`;
-  });
-  after(async () => {
-    await prisma.apiKey.deleteMany({ where: { userId: user.id } });
-    await prisma.userSession.deleteMany({ where: { userId: user.id } });
-    await prisma.user.delete({ where: { id: user.id } });
   });
 
   it('creates and lists a token; rotating accessKey keeps the token valid', async () => {

@@ -1,11 +1,14 @@
 import 'reflect-metadata';
 import { expect } from 'chai';
 import express from 'express';
-import request from 'supertest';
+import request from '../helpers/loopbackRequest';
 import { authPublicRouter } from '../../src/app/routers/auth';
+import { useScratchDatabase } from '../helpers/scratch-database';
 
 describe('login rate limit', function () {
   this.timeout(15_000);
+  // Each attempt looks the email address up.
+  useScratchDatabase({ wholeSuite: true });
 
   it('5 bad logins from one IP → 6th returns 429 with Retry-After', async () => {
     const app = express();
