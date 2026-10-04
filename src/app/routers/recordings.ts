@@ -617,9 +617,15 @@ router.get('/recordings/:groupId/composite.mp4', async (req: Request, res: Respo
   if (!compositePath) {
     return res.status(404).json({ error: 'composite_not_found' });
   }
-  res.setHeader('Content-Type', 'video/mp4');
-  res.setHeader('Accept-Ranges', 'bytes');
-  fs.createReadStream(compositePath).pipe(res);
+  // sendFile, as source.mp4: it answers Range requests (206, 416) so a
+  // player can seek. A piped stream sent `Accept-Ranges: bytes` and then the
+  // whole file, with 200, whatever was asked. DOWNLOAD_OPTIONS lets the
+  // path under ~/.cache through on Express 5 (see sourceMp4Handler).
+  return res.sendFile(
+    path.resolve(compositePath),
+    { ...DOWNLOAD_OPTIONS, headers: { 'Content-Type': 'video/mp4' } },
+    (err: any) => handleSendError('composite.mp4', req, res, err),
+  );
 });
 
 /**

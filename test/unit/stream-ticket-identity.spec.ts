@@ -182,7 +182,7 @@ describe('stream/ticket carries the user identity, not the credential', () => {
       '/xenon/api/control/NO-SUCH-DEVICE/stream/ticket',
     );
     expect(res.status).to.equal(404);
-    expect(res.text).to.equal('Device not found');
+    expect(res.body).to.deep.equal({ error: 'not_found', message: 'Device not found' });
   });
 
   it('401s an unauthenticated mint', async () => {

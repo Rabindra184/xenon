@@ -41,23 +41,28 @@ async function deleteConfig(req: Request, res: Response) {
   try {
     await Container.get(NotificationService).deleteConfig(id);
     res.json({ success: true });
-  } catch (err) {
+  } catch (err: any) {
+    // Prisma's "record to delete does not exist".
+    if (err?.code === 'P2025') {
+      return res.status(404).json({ error: 'not_found', message: 'Webhook not found' });
+    }
     log.error(`Failed to delete webhook config: ${err}`);
     res.status(500).json({ error: 'Failed to delete configuration' });
   }
 }
 
+// Sends a sample event the way the webhook's real events go out (its type
+// and template), and says whether it was delivered.
 async function testWebhook(req: Request, res: Response) {
-  const { url, type } = req.body;
+  const { url, type, payloadTemplate } = req.body ?? {};
+  if (!url || typeof url !== 'string') {
+    return res.status(400).json({ error: 'url is required' });
+  }
   try {
-    await (Container.get(NotificationService) as any).sendSlackMessage(url, 'device_new', {
-      udid: 'test-device-udid',
-      name: 'Test Device',
-      host: '127.0.0.1',
-    });
+    await Container.get(NotificationService).sendTest(url, type || 'slack', payloadTemplate);
     res.json({ success: true });
-  } catch (err) {
-    res.status(500).json({ error: `Test failed: ${err}` });
+  } catch (err: any) {
+    res.status(502).json({ error: 'delivery_failed', message: err?.message ?? String(err) });
   }
 }
 

@@ -101,7 +101,10 @@ describe('POST /control/:udid/install-repository-app follows the app team rule',
     const hidden = await install(['team-a'], 'app-b');
     const unknown = await install(['team-a'], 'no-such-app');
     expect(hidden.status).to.equal(404);
-    expect(hidden.text).to.equal('App not found in repository');
+    expect(hidden.body).to.deep.equal({
+      error: 'not_found',
+      message: 'App not found in repository',
+    });
     expect(unknown.status).to.equal(hidden.status);
     expect(unknown.text).to.equal(hidden.text);
     expect(manager.installApp.called).to.equal(false);

@@ -18,6 +18,14 @@ import fs from 'fs-extra';
 const execFilePromise = promisify(execFile);
 const execPromise = promisify(exec);
 
+/** A key name the iPhone has no equivalent for. Device control answers 400. */
+export class UnsupportedKeyError extends Error {
+  constructor(key: string) {
+    super(`The key "${key}" isn't available on an iPhone.`);
+    this.name = 'UnsupportedKeyError';
+  }
+}
+
 @Service()
 export class WDAClient {
   private log = log.scope('WDAClient');
@@ -343,12 +351,11 @@ export class WDAClient {
       try {
         await this.sendWDACommand(udid, 'post', '/wda/pressButton', { name: buttonName });
       } catch (e: any) {
-        if (buttonName === 'home') {
-          // Fallback for extremely old WDA
-          await this.sendWDACommand(udid, 'post', '/wda/homescreen', {}).catch(() => { });
-        } else {
-          this.log.debug(`[WDA] Hardware button '${buttonName}' failed: ${e.message}`);
-        }
+        // Fallback for extremely old WDA. A failure is the caller's to see:
+        // it used to be swallowed, and control answered 200 for a button
+        // that was never pressed.
+        if (buttonName !== 'home') throw e;
+        await this.sendWDACommand(udid, 'post', '/wda/homescreen', {});
       }
       return;
     }
@@ -368,17 +375,21 @@ export class WDAClient {
         await this.sendWDACommand(udid, 'post', '/wda/keys', { value: [keyboardKeys[n]] });
       } catch (e: any) {
         this.log.debug(`[WDA] Special key '${n}' failed via /wda/keys: ${e.message}`);
-        // Fallback to /wda/type if keys fails
-        await this.sendWDACommand(udid, 'post', '/wda/type', { text: keyboardKeys[n] }).catch(() => { });
+        // Fallback to /wda/type if keys fails; if that fails too, say so.
+        await this.sendWDACommand(udid, 'post', '/wda/type', { text: keyboardKeys[n] });
       }
       return;
     }
 
-    // Default: try pressButton but catch errors (as many buttons aren't physical on iPhone)
+    // Anything else may be a button WDA knows by name. If WDA answered and
+    // refused it, the iPhone has no such key: say so rather than answer as if
+    // it was pressed. If WDA couldn't be reached, that is the failure.
     try {
       await this.sendWDACommand(udid, 'post', '/wda/pressButton', { name: n });
     } catch (e: any) {
       this.log.debug(`[WDA] Generic pressButton failed for '${n}': ${e.message}`);
+      if (e?.response) throw new UnsupportedKeyError(String(key));
+      throw e;
     }
   }
 
@@ -611,30 +622,22 @@ export class WDAClient {
     return value;
   }
 
+  // These three used to catch WDA's error and log it at debug level, so
+  // device control answered 200 for a clipboard write, lock or unlock that
+  // never happened. The error now reaches the route, which answers 500.
   async setClipboard(udid: string, content: string): Promise<void> {
-    try {
-      await this.sendWDACommand(udid, 'post', '/wda/setPasteboard', {
-        content: Buffer.from(content).toString('base64'),
-        contentType: 'plaintext',
-      });
-    } catch (e: any) {
-      this.log.debug(`Failed to set clipboard for ${udid}: ${e.message}\n${e.stack}`);
-    }
+    await this.sendWDACommand(udid, 'post', '/wda/setPasteboard', {
+      content: Buffer.from(content).toString('base64'),
+      contentType: 'plaintext',
+    });
   }
 
   async lock(udid: string): Promise<void> {
-    try {
-      await this.sendWDACommand(udid, 'post', '/wda/lock', {});
-    } catch (e: any) {
-      this.log.debug(`Failed to lock device ${udid}: ${e.message}\n${e.stack}`);
-    }
+    await this.sendWDACommand(udid, 'post', '/wda/lock', {});
   }
+
   async unlock(udid: string): Promise<void> {
-    try {
-      await this.sendWDACommand(udid, 'post', '/wda/unlock', {});
-    } catch (e: any) {
-      this.log.debug(`Failed to unlock device ${udid}: ${e.message}\n${e.stack}`);
-    }
+    await this.sendWDACommand(udid, 'post', '/wda/unlock', {});
   }
 
   /**

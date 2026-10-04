@@ -1106,8 +1106,11 @@ export default class AndroidDeviceManager implements IDeviceManager {
   }
 
   async getLogs(udid: string): Promise<string> {
+    // A failure throws. It used to come back as the log text itself, so
+    // device control answered 200 with the error as a "line", and the
+    // session log stored it as one.
     const { adbInstance } = await this.getAdb();
-    if (!adbInstance) return 'ADB is not available';
+    if (!adbInstance) throw new Error('ADB is not available');
     try {
       // Get last 500 lines of logcat
       return await adbInstance.adbExec([
@@ -1125,7 +1128,7 @@ export default class AndroidDeviceManager implements IDeviceManager {
       log.warn(
         `Failed to fetch Android logs for ${udid}: ${err instanceof Error ? err.message : err}`,
       );
-      return `Failed to fetch logs: ${err instanceof Error ? err.message : err}`;
+      throw err;
     }
   }
 

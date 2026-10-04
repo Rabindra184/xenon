@@ -215,13 +215,13 @@ describe('team boundary on /control (integration)', function () {
     it('gets 404 on screenshot', async () => {
       const res = await screenshot(alice, TEAM_B_UDID);
       expect(res.status).to.equal(404);
-      expect(res.text).to.equal('Device not found');
+      expect(res.body).to.deep.equal({ error: 'not_found', message: 'Device not found' });
     });
 
     it('gets 404 on tap', async () => {
       const res = await tap(alice, TEAM_B_UDID);
       expect(res.status).to.equal(404);
-      expect(res.text).to.equal('Device not found');
+      expect(res.body).to.deep.equal({ error: 'not_found', message: 'Device not found' });
     });
 
     it('gets 404 on stream/ticket, and no ticket', async () => {

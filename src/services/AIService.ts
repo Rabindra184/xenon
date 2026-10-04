@@ -336,12 +336,21 @@ Fix: Add a pre-emptive check for the location permission dialog or use the \`aut
   /**
    * Finds coordinates for an element based on a visual description (Tier 4)
    */
+  /**
+   * `throwOnError`: fail, rather than answer "not found", when no provider is
+   * configured or the call fails. Device control's "Test locator" asks for
+   * it; Appium's ai-icon findElement doesn't.
+   */
   public async visualFind(
     screenshotBase64: string,
     description: string,
+    opts: { throwOnError?: boolean } = {},
   ): Promise<{ x: number; y: number } | null> {
     this.initializeProvider();
-    if (!this.isEnabled()) return null;
+    if (!this.isEnabled()) {
+      if (opts.throwOnError) throw new Error('No AI provider is configured');
+      return null;
+    }
 
     const prompt = `
             Task: Find the center coordinates (X, Y) of the element described as: "${description}"
@@ -366,6 +375,7 @@ Fix: Add a pre-emptive check for the location permission dialog or use the \`aut
       } else {
         log.warn(`[AIService] visualFind failed: ${err.message}`);
       }
+      if (opts.throwOnError) throw err;
       return null;
     }
   }

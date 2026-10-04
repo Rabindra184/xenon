@@ -490,6 +490,89 @@ describe('RecordingOrchestrator.stop', () => {
     expect(store.finalize.firstCall.args[1].status).to.equal('FAILED');
     expect(leaveDeviceFn.calledOnceWith('U1')).to.equal(true);
   });
+
+  // A second stop, or a stop after one phone's source ended, finalized every
+  // row again: it overwrote ended_at, the duration and fail_reason
+  // (`source_ended` was lost), and let go of the phone a second time.
+  it('leaves phones whose recording already ended as they are', async () => {
+    const finished = {
+      id: 'r1',
+      device_udid: 'U1',
+      device_host: '127.0.0.1',
+      file_path: '/nonexistent/r1.mp4',
+      status: 'STOPPED',
+      duration_ms: 26_000,
+      size_bytes: 4_200_000,
+      fail_reason: 'source_ended',
+      started_at: new Date(Date.now() - 60_000),
+    };
+    const store = {
+      listGroup: sinon.stub().resolves([
+        finished,
+        {
+          id: 'r2',
+          device_udid: 'U2',
+          device_host: '127.0.0.1',
+          file_path: '/nonexistent/r2.mp4',
+          status: 'RECORDING',
+          started_at: new Date(Date.now() - 60_000),
+        },
+        {
+          id: 'r3',
+          device_udid: 'U3',
+          device_host: '127.0.0.1',
+          file_path: '/nonexistent/r3.mp4',
+          status: 'FAILED',
+          fail_reason: 'ffmpeg_stop_failed',
+          started_at: new Date(Date.now() - 60_000),
+        },
+      ]),
+      finalize: sinon.stub().resolves({}),
+    };
+    const videoPipeline = {
+      startRecording: sinon.stub(),
+      stopRecording: sinon.stub().resolves('/tmp/x.mp4'),
+      stopComposite: sinon.stub().resolves(null),
+    };
+    const { orch, leaveDeviceFn } = makeOrch({ store, videoPipeline });
+    const result = await orch.stop('grp-1');
+
+    expect(store.finalize.getCalls().map((c: any) => c.args[0])).to.deep.equal(['r2']);
+    expect(videoPipeline.stopRecording.getCalls().map((c: any) => c.args[0])).to.deep.equal(['r2']);
+    expect(leaveDeviceFn.getCalls().map((c: any) => c.args[0])).to.deep.equal(['U2']);
+    // The answer still names every phone, the finished ones as they were.
+    expect(result.recordings.map((r) => [r.id, r.status])).to.deep.equal([
+      ['r1', 'STOPPED'],
+      ['r2', 'FAILED'], // nothing on disk in this test, so it can't be STOPPED
+      ['r3', 'FAILED'],
+    ]);
+    expect(result.recordings[0]).to.include({ durationMs: 26_000, sizeBytes: 4_200_000 });
+  });
+
+  it('leaves a recording another path is finalizing right now to that path', async () => {
+    const store = {
+      listGroup: sinon.stub().resolves([
+        {
+          id: 'r1',
+          device_udid: 'U1',
+          device_host: '127.0.0.1',
+          file_path: '/nonexistent/r1.mp4',
+          status: 'RECORDING',
+          started_at: new Date(Date.now() - 1000),
+        },
+      ]),
+      finalize: sinon.stub().resolves({}),
+    };
+    const videoPipeline = {
+      startRecording: sinon.stub(),
+      stopRecording: sinon.stub().resolves('/tmp/x.mp4'),
+      stopComposite: sinon.stub().resolves(null),
+    };
+    const { orch } = makeOrch({ store, videoPipeline });
+    (orch as any).finalizing.add('r1'); // its source ended a moment ago
+    await orch.stop('grp-1');
+    expect(store.finalize.called).to.equal(false);
+  });
 });
 
 describe('RecordingOrchestrator.recoverOnBoot', () => {

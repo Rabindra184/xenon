@@ -10,6 +10,7 @@ import { Readable } from 'stream';
 import { Container } from 'typedi';
 import RecordingsRouter, { sourceMp4Handler } from '../../src/app/routers/recordings';
 import { RecordingStore } from '../../src/services/recording/recording-store';
+import { ProofBundleService } from '../../src/services/recording/proof-bundle';
 import { AnnotationRenderService } from '../../src/services/recording/annotation-render';
 import * as deviceService from '../../src/data-service/device-service';
 import * as recordingFiles from '../../src/services/recording/recordingFiles';
@@ -1142,6 +1143,46 @@ describe('recordings library routes', () => {
         expect(cap.json.called, 'headers are already sent; no JSON body follows').to.equal(false);
         expect(cap.destroy.calledOnce).to.equal(true);
       });
+    });
+  });
+
+  // composite.mp4 said `Accept-Ranges: bytes` and then sent the whole file,
+  // with 200, for every request: a player couldn't seek in a long composite.
+  describe('GET /recordings/:groupId/composite.mp4', () => {
+    let file: string;
+    beforeEach(() => {
+      rows = [rec({ id: 'a', group_id: 'g1' })];
+      file = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'xenon-composite-')), 'composite.mp4');
+      fs.writeFileSync(file, '0123456789');
+      const bundle = Container.get(ProofBundleService);
+      sinon.stub(bundle, 'compositeAllowed').returns(true);
+      sinon.stub(bundle, 'resolveCompositeFile').resolves(file);
+    });
+
+    it('sends the whole video without a Range', async () => {
+      const res = await request(buildApp(alice)).get('/xenon/api/recordings/g1/composite.mp4');
+      expect(res.status).to.equal(200);
+      expect(res.headers['content-type']).to.match(/^video\/mp4/);
+      expect(res.headers['accept-ranges']).to.equal('bytes');
+      expect(String(res.body)).to.equal('0123456789');
+    });
+
+    it('answers a Range with 206 and only those bytes', async () => {
+      const res = await request(buildApp(alice))
+        .get('/xenon/api/recordings/g1/composite.mp4')
+        .set('Range', 'bytes=2-5');
+      expect(res.status).to.equal(206);
+      expect(res.headers['content-range']).to.equal('bytes 2-5/10');
+      expect(String(res.body)).to.equal('2345');
+    });
+
+    it('answers a Range past the end with 416, as JSON', async () => {
+      const res = await request(buildApp(alice))
+        .get('/xenon/api/recordings/g1/composite.mp4')
+        .set('Range', 'bytes=50-60');
+      expect(res.status).to.equal(416);
+      expect(res.body).to.deep.equal({ error: 'range_not_satisfiable' });
+      expect(res.headers['content-range']).to.equal('bytes */10');
     });
   });
 });
