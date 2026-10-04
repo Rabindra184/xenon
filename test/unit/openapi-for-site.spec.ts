@@ -3,7 +3,8 @@ import { expect } from 'chai';
 // scripts/ is plain CommonJS that the export script also loads, so it is
 // required rather than imported.
 // eslint-disable-next-line @typescript-eslint/no-var-requires
-const { forSite, VERSION_TOKEN } = require('../../scripts/lib/openapi-for-site');
+const site = require('../../scripts/lib/openapi-for-site');
+const { forSite, VERSION_TOKEN, assertNoRawDocumentLink } = site;
 
 /**
  * The documentation site publishes the server's OpenAPI document. The spec
@@ -49,10 +50,49 @@ describe('openapi for the documentation site', () => {
     expect(spec).to.deep.equal(makeSpec());
   });
 
+  it('refuses an empty or missing version', () => {
+    expect(() => forSite(makeSpec(), '')).to.throw(/version/);
+    expect(() => forSite(makeSpec(), undefined)).to.throw(/version/);
+    expect(() => forSite(makeSpec(), 2.13)).to.throw(/version/);
+  });
+
   it('only touches the version inside info', () => {
     const spec: any = makeSpec();
     spec.paths['/api/version'] = { get: { example: { pluginVersion: version } } };
     const result = forSite(spec, version);
     expect(result.paths['/api/version'].get.example.pluginVersion).to.equal(version);
+  });
+
+  describe('the guard against a link to the raw document', () => {
+    const guarded = (description: string) => {
+      const spec = makeSpec();
+      spec.info.description = description;
+      return JSON.stringify(forSite(spec, version), null, 2);
+    };
+
+    it('passes the introduction as the server writes it, once forSite has rewritten the link', () => {
+      expect(() => assertNoRawDocumentLink(guarded(makeSpec().info.description))).to.not.throw();
+    });
+
+    it('catches the link when the introduction is reworded', () => {
+      const text = guarded('Download the [raw document](/xenon/api-docs.json).');
+      expect(() => assertNoRawDocumentLink(text)).to.throw(
+        /still links to \/xenon\/api-docs\.json[\s\S]*src\/app\/swagger\.ts/,
+      );
+    });
+
+    it('catches a link that has a space, an angle bracket or a fragment in its target', () => {
+      expect(() => assertNoRawDocumentLink('a [b]( /xenon/api-docs.json)')).to.throw();
+      expect(() => assertNoRawDocumentLink('a [b](</xenon/api-docs.json>)')).to.throw();
+      expect(() => assertNoRawDocumentLink('a [b](/xenon/api-docs.json#info "title")')).to.throw();
+    });
+
+    it('lets plain code and other links through', () => {
+      expect(() =>
+        assertNoRawDocumentLink(
+          'at `/xenon/api-docs.json` on your server, see [the profile](/xenon/profile)',
+        ),
+      ).to.not.throw();
+    });
   });
 });

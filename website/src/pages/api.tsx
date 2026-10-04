@@ -9,7 +9,7 @@ import Layout from '@theme/Layout';
 // scripts/generate.mjs writes to static/openapi.json. It is read-only; the site
 // has no server of its own to send a request to.
 //
-// Scalar is large (several MB of script and about 230 KB of CSS), so it is
+// Scalar is large (several MB of script and 229 KB of CSS), so it is
 // loaded here and nowhere else: the import()s below are chunks of their own
 // that only this page asks for, once the page is in the browser. Its CSS is kept
 // out of the site-wide styles.css by apiReferenceStylesOnlyOnItsPage in

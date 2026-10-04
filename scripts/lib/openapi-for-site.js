@@ -22,6 +22,10 @@ const VERSION_TOKEN = '__XENON_VERSION__';
 const RAW_DOCUMENT_LINK = '[`/xenon/api-docs.json`](/xenon/api-docs.json)';
 const RAW_DOCUMENT_ON_YOUR_SERVER = '`/xenon/api-docs.json` on your server';
 
+// Any Markdown link whose target is the raw document, however its text is
+// worded: forSite rewrites only the one exact sentence above.
+const RAW_DOCUMENT_LINK_PATTERN = /\]\(\s*<?\/xenon\/api-docs\.json[^)]*\)/;
+
 function replaceInStrings(value, from, to) {
   if (typeof value === 'string') return value.split(from).join(to);
   if (Array.isArray(value)) return value.map((item) => replaceInStrings(item, from, to));
@@ -39,6 +43,11 @@ function replaceInStrings(value, from, to) {
  * @returns {object} a copy for the site; `spec` is not changed
  */
 function forSite(spec, version) {
+  if (typeof version !== 'string' || version === '') {
+    throw new Error(
+      `forSite needs the version spec.info was built from, got ${JSON.stringify(version)}`,
+    );
+  }
   const copy = JSON.parse(JSON.stringify(spec));
   if (copy.info) {
     copy.info = replaceInStrings(copy.info, RAW_DOCUMENT_LINK, RAW_DOCUMENT_ON_YOUR_SERVER);
@@ -47,4 +56,24 @@ function forSite(spec, version) {
   return copy;
 }
 
-module.exports = { forSite, VERSION_TOKEN, RAW_DOCUMENT_LINK };
+/**
+ * Throws if the document still links to the raw document on the server it
+ * describes. On the documentation site that link leads to the docs host,
+ * where there is no such file. forSite rewrites the introduction's one known
+ * wording; this catches the introduction (or any description) being reworded.
+ *
+ * @param {string} text the document as JSON text, after forSite
+ */
+function assertNoRawDocumentLink(text) {
+  const match = RAW_DOCUMENT_LINK_PATTERN.exec(text);
+  if (!match) return;
+  const around = text.slice(Math.max(0, match.index - 40), match.index + match[0].length);
+  throw new Error(
+    `The OpenAPI document still links to /xenon/api-docs.json (…${around}), which would lead to ` +
+      'the documentation site, where there is no such file. In src/app/swagger.ts, write ' +
+      'the sentence as plain code, or change RAW_DOCUMENT_LINK in ' +
+      'scripts/lib/openapi-for-site.js to the new wording so forSite rewrites it.',
+  );
+}
+
+module.exports = { forSite, VERSION_TOKEN, assertNoRawDocumentLink };

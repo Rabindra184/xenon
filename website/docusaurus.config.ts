@@ -14,14 +14,29 @@ const { version } = JSON.parse(
 const repo = 'https://github.com/Rabindra184/xenon';
 
 // Docusaurus puts every stylesheet into one styles.css that each page loads, so
-// Scalar's 300 KB of CSS, imported by the API page only, would still reach all
+// Scalar's 229 KB of CSS, imported by the API page only, would still reach all
 // of them. This takes Scalar's out of that file: it then travels with the API
 // page's own chunk, which only /api asks for.
+//
+// It leans on how Docusaurus 3.10 splits CSS (a cache group named `styles`), so
+// both ends are checked: the group must still be there, and no styles.css in
+// the finished build may hold Scalar's rules. A change in Docusaurus then
+// fails the build instead of quietly adding 229 KB to every page.
 function apiReferenceStylesOnlyOnItsPage(): Plugin {
   return {
     name: 'api-reference-styles-only-on-its-page',
-    configureWebpack(_config, isServer) {
+    configureWebpack(config, isServer) {
       if (isServer) return {};
+      const groups = config.optimization?.splitChunks
+        ? (config.optimization.splitChunks.cacheGroups ?? {})
+        : {};
+      if (!('styles' in groups)) {
+        throw new Error(
+          "apiReferenceStylesOnlyOnItsPage: Docusaurus's webpack config has no 'styles' cache " +
+            "group any more, so Scalar's CSS can't be kept out of the site-wide styles.css. " +
+            'Update this plugin in docusaurus.config.ts.',
+        );
+      }
       return {
         optimization: {
           splitChunks: {
@@ -34,6 +49,26 @@ function apiReferenceStylesOnlyOnItsPage(): Plugin {
           },
         },
       };
+    },
+    async postBuild({ outDir }) {
+      const cssDir = path.join(outDir, 'assets', 'css');
+      const siteWide = fs.readdirSync(cssDir).filter((f) => /^styles\..*\.css$/.test(f));
+      if (siteWide.length === 0) {
+        throw new Error(`apiReferenceStylesOnlyOnItsPage: no styles.*.css in ${cssDir} to check.`);
+      }
+      for (const file of siteWide) {
+        const css = fs.readFileSync(path.join(cssDir, file), 'utf8');
+        // Scalar's own sheet names its root class and its CSS layers; the
+        // site's custom.css deliberately uses neither.
+        if (css.includes('.scalar-app') || css.includes('@layer scalar-')) {
+          throw new Error(
+            `apiReferenceStylesOnlyOnItsPage: ${file}, which every page loads, contains ` +
+              "Scalar's CSS. It should only be in the API page's own chunk. Check that this " +
+              'plugin still matches how Docusaurus splits CSS, and that nothing else imports ' +
+              '@scalar/api-reference-react/style.css.',
+          );
+        }
+      }
     },
   };
 }

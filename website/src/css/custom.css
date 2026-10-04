@@ -19,10 +19,9 @@
 }
 
 /* Palette, dark (the default). :root[data-theme] outweighs the :root block
-   above, so the order of the two doesn't matter. The production build's CSS
-   minifier merges rules that share a selector, and the API reference's
-   stylesheet has a :root rule of its own: merged with the light palette, it
-   moved that block below this one, and the whole site rendered light. */
+   above, so the two don't depend on their order in the built stylesheet. A
+   defensive bump: both would otherwise tie, and a minifier that merges rules
+   sharing a selector could reorder them. */
 :root[data-theme='dark'] {
   --xe-bg: #0e1013;
   --xe-surface: #15181d;
@@ -223,21 +222,21 @@ code {
   max-height: calc(((var(--full-height) - var(--refs-header-height)) - 60px) / 2);
 }
 
-:where(.scalar-app) ul,
-:where(.scalar-app) ol {
+:where(.scalar-api-reference) ul,
+:where(.scalar-api-reference) ol {
   margin: 0;
 }
 
-:where(.scalar-app) table {
+:where(.scalar-api-reference) table {
   border-collapse: initial;
   overflow: initial;
 }
 
 /* The documentation's own .markdown headings (a rule and extra space under h2)
    would otherwise reach the descriptions Scalar renders in .markdown too. */
-.scalar-app .markdown h1,
-.scalar-app .markdown h2,
-.scalar-app .markdown h3 {
+.scalar-api-reference .markdown h1,
+.scalar-api-reference .markdown h2,
+.scalar-api-reference .markdown h3 {
   margin-top: 1.5rem;
   padding-bottom: 0;
   border-bottom: 0;
