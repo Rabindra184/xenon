@@ -17,7 +17,7 @@ import {
 import { SettingCard } from '../ui/SettingCard';
 import { PageHeader } from '../ui/page-header';
 import { useToast } from '../ui/toast';
-import { describeSaveError } from '../../api-service/api-client';
+import { toastSaveError } from '../../api-service/api-client';
 
 interface AIConfig {
   aiProvider: string;
@@ -144,7 +144,7 @@ export const AISettings: React.FC = () => {
       toast('AI engine configuration saved.', 'success');
     } catch (error) {
       console.error('Failed to save AISettings', error);
-      toast(describeSaveError(error), 'error');
+      toastSaveError(toast, error);
     } finally {
       setSaving(false);
     }
