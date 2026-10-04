@@ -15,7 +15,7 @@ Omni-Vision finds things on the phone's screen by what is shown, not through the
 | Sends out | Nothing | The screenshot and your description |
 
 - **OCR's language data.** The first time OCR runs, the server downloads Tesseract's English language data from `cdn.jsdelivr.net` and saves it as `eng.traineddata` in the directory the Appium server was started from. Later runs read that file. A server with no internet access needs the file there before OCR can work.
-- **One screenshot at a time.** The locators and commands below read one screenshot at a time on each server, and others wait their turn, so OCR in many parallel sessions adds up.
+- **One OCR at a time.** The OCR in the locators and commands below reads one screenshot at a time on each server, and others wait their turn, so OCR in many parallel sessions adds up. AI vision doesn't wait in this queue.
 - **Without a provider,** AI vision finds nothing, and the commands that depend on it fail and say why. OCR works with no provider.
 
 ## Locator strategies
@@ -46,7 +46,7 @@ driver.find_element(by='-custom:ai-text', value='Sign in').click()
 - **`findElements`** with `-custom:ai-text` returns every match, in reading order, top to bottom and left to right, and `findElement` returns the first. With `-custom:ai-icon` there is at most one match: the provider names a point, and the element is a small box around it.
 - **Positions** are the phone's own coordinates. On an iPhone, which taps in points, Xenon converts what it found in the screenshot's pixels to points.
 - **No autowait.** These finds look once. [Autowait](./autowait.md) doesn't retry them, so wait for the screen yourself first.
-- **When nothing matches,** `findElements` returns an empty list. `findElement` fails with an `unknown error` whose message starts `NoSuchElement: AI Vision failed to find matching element`. It isn't the standard `no such element` error, so a client wait that retries only on that error stops at once. Before it reaches your test, [self-healing](./self-healing.md) takes its turn, as it does for any missing element.
+- **When nothing matches,** `findElements` returns an empty list. `findElement` fails with an `unknown error` whose message ends `Original error: NoSuchElement: AI Vision failed to find matching element`. It isn't the standard `no such element` error, so a client wait that retries only on that error stops at once. Before it reaches your test, [self-healing](./self-healing.md) takes its turn, as it does for any missing element.
 - **With no AI provider,** `-custom:ai-icon` finds nothing, as if nothing matched.
 
 ## What works on a virtual element
@@ -78,7 +78,7 @@ A test can also tap and check by what is on the screen with [execute commands](.
 | `analyzeScreen` (or `omniScan`) | OCR for the words, AI vision for its description of the screen |
 | `assertVisualState` | AI vision |
 
-`smartTap` with text looks for text the same way as `-custom:ai-text`, taps the most confident match unless you give an `index`, and taps in the phone's coordinates. [Execute commands](./execute-commands.md#on-screen-actions) gives each command's arguments and answers, and what each does when it can't look.
+`smartTap` with text looks for text the same way as `-custom:ai-text`, except that it also counts matches read with a confidence of 60% or less. It taps the most confident match unless you give an `index`, and taps in the phone's coordinates. [Execute commands](./execute-commands.md#on-screen-actions) gives each command's arguments and answers, and what each does when it can't look.
 
 ## Omni-Vision in device control
 

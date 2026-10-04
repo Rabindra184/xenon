@@ -129,7 +129,7 @@ A muted selector that heals stays muted.
 
 ## Over the API
 
-All routes are under `/xenon/api` and need a signed-in user (a member or above). Except for the digest, they count only the heals in sessions the caller can see. The page itself uses the first three. The [API reference](/api) has every parameter and field.
+All routes are under `/xenon/api` and need a signed-in user (a member or above). Except for the digest, they count only the heals in sessions the caller can see. The page itself uses the first four, and `POST /healing/digest/send` for **Send digest**. The [API reference](/api) has every parameter and field.
 
 | Route | What it answers |
 |---|---|

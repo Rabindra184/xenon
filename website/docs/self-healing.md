@@ -69,9 +69,9 @@ The LLM tier sends your AI provider your selector, its strategy, the first 10,00
 A fingerprint is what Xenon remembers about the element a selector found: its type, the identifying attributes it has (`content-desc`, `resource-id`, `text`, `name`, `id`, `hint`, `label`, `value`), and its position and size. Fuzzy XML uses it.
 
 - **Learnt from a find that worked.** After a `findElement` finds its element, Xenon records a fingerprint for that selector if it has none yet. It reads the element in the background, after the find has answered. A selector's first fingerprint is kept: later finds don't refresh it.
-- **Updated by a heal.** After a Resilio or Fuzzy XML heal with a confidence above 70%, Xenon replaces the fingerprint with the healed element's, as long as one of the XPaths it wrote for the element matches that element alone. Heals by OCR, Visual AI and the LLM don't change it.
+- **Written by a heal.** After a Resilio or Fuzzy XML heal with a confidence above 70%, Xenon writes the healed element's fingerprint for the selector, replacing any it had, as long as one of the XPaths it wrote for the element matches exactly one element on the screen. Heals by OCR, Visual AI and the LLM don't change it.
 - **One per selector.** The fingerprint is kept by the selector's text, in the server's database, and every session and team on the server shares it.
-- **Only where the dashboard runs.** Xenon learns on a server with the dashboard on, and never on a node. Turning healing off stops the learning as well.
+- **Where each happens.** Learning from a find that worked happens only on a server with the dashboard on, and never on a node. A heal writes its fingerprint on any server, a node or a server without the dashboard included. Turning healing off stops both.
 - **One at a time.** Each session learns one selector at a time. A find made while another is being learnt isn't learnt then; a later run of the same find is.
 
 ## The suggested fix
@@ -139,7 +139,13 @@ const capabilities = {
 };
 ```
 
-This session heals with Fuzzy XML and OCR only, so its screenshots and page source never go to your AI provider. A tier you leave out is skipped.
+This session heals with Fuzzy XML and OCR only, so its screenshots and page source don't go to your AI provider, as long as Xenon reads its `healingTiers` (see the caution below). A tier you leave out is skipped.
+
+:::caution[When healingTiers is ignored]
+
+Xenon reads `healingTiers` only on a server with the dashboard on, or for a session that records video, which every session does unless it sets `xe:record_video` to `false`. A session with video off, on a server without the dashboard, heals with every tier, so Visual AI and the LLM send its screenshots and page source to your AI provider. To be sure healing sends nothing, set up no AI provider on the server, or [turn healing off](#turn-healing-off).
+
+:::
 
 `healingTiers` only narrows healing. An empty list, or one with no numbers in it, runs every tier, and it can't turn healing on for a server where it is off. To stop healing, use the option or the switch above. [Capabilities](./capabilities.mdx#what-goes-in-xeoptions) lists the other fields of `xe:options`.
 
@@ -152,14 +158,14 @@ Only Visual AI and the LLM, and only when an AI provider is set up. Without one,
 | Visual AI | The screenshot, and a description made from your selector. |
 | LLM | Your selector and its strategy, the first 10,000 characters of the page source, and the screenshot. |
 
-The page source and the screenshot hold whatever the app shows, personal data included. When that matters, use a local Ollama model, leave the provider unset, or keep those sessions to the first tiers with `healingTiers`. [AI providers](./ai-providers.md) explains the setup, and what happens when a provider keeps failing.
+The page source and the screenshot hold whatever the app shows, personal data included. When that matters, use a local Ollama model, leave the provider unset, or turn healing off. Keeping those sessions to the first tiers with `healingTiers` works only where Xenon reads it; see [Choose tiers for one session](#choose-tiers-for-one-session). [AI providers](./ai-providers.md) explains the setup, and what happens when a provider keeps failing.
 
 ## On a hub
 
 A session on a node's phone heals on the node:
 
 - by the node's own switch and option, and with the node's AI provider;
-- without fingerprints learnt there, since a node doesn't learn them;
+- with the node's own fingerprints, which come only from its heals: a node doesn't learn them from finds that worked;
 - with nothing recorded. The node keeps no record of a session its hub created, and the hub sees only the element the node answered with. Such a heal shows neither on the session's page nor in Selector health.
 
 ## Related

@@ -7,7 +7,7 @@ Some of Xenon's features ask an AI model: two of the self-healing tiers, the fai
 
 ## Choose a provider
 
-Set the provider and its key in the environment of the Appium server, then start it:
+Set the provider and its key in the environment of the Appium server, then start it. The environment is the reliable place for them; [In the server's config file](#in-the-servers-config-file) says why.
 
 ```bash
 export XENON_AI_PROVIDER=anthropic
@@ -42,7 +42,7 @@ The model is the provider's own variable, else `XENON_AI_MODEL`, else the defaul
 
 ### In the server's config file
 
-The provider, the general model, the base URL and the keys can also be options in the config file:
+The provider, the general model, the base URL and the keys can also be options in the config file, within the limit the caution below explains:
 
 ```yaml
 server:
@@ -55,6 +55,12 @@ server:
 ```
 
 An option wins over its variable: `aiProvider` over `XENON_AI_PROVIDER`, `aiModel` over `XENON_AI_MODEL`, and `aiBaseUrl` over `XENON_AI_BASE_URL`. The keys have options too, `geminiApiKey`, `openaiApiKey` and `anthropicApiKey`, which win over the variables, but a key in a config file is easy to leak: keep keys in the environment. The provider's own model variable, such as `XENON_OLLAMA_MODEL`, still wins over `aiModel`. [Configuration](./configuration.md) lists the options.
+
+:::caution[Choose the provider in the environment]
+
+Xenon sets up its provider from the environment alone when Appium loads the plugin, before it reads these options. That provider is the one `XENON_AI_PROVIDER` names, Gemini when it isn't set, and it works only when the environment also has its key (Ollama needs none). Otherwise the AI healing tiers and failure analysis stay off, whatever the options or the **AI engine** page choose, until a test or the API uses a screen command that calls the provider, such as a `-custom:ai-icon` find, `visualTap` or `analyzeScreen`. So set the provider and its key with the environment variables above. The options and the page can then change a provider that is already working.
+
+:::
 
 ## What uses the provider
 
@@ -71,15 +77,15 @@ An option wins over its variable: `aiProvider` over `XENON_AI_PROVIDER`, `aiMode
 
 These never call it: the Resilio, Fuzzy XML and OCR healing tiers, text found with `-custom:ai-text` or `smartTap` with text, `uiInventory`, the [inspector](./inspector.md), and [Selector health](./selector-health.md).
 
-A screenshot or a page source holds whatever the app shows, personal data included, and Xenon sends it as it is. When that matters, run a model on a machine you control with Ollama, or leave the provider unset. A session can also keep its screenshots away from the healing tiers with [`healingTiers`](./self-healing.md#choose-tiers-for-one-session).
+A screenshot or a page source holds whatever the app shows, personal data included, and Xenon sends it as it is. When that matters, run a model on a machine you control with Ollama, or leave the provider unset. A session can also keep its screenshots away from the healing tiers with [`healingTiers`](./self-healing.md#choose-tiers-for-one-session), but only where Xenon reads it: on a server with the dashboard on, or for a session that records video. Elsewhere every tier runs.
 
 ## The AI engine page
 
 **AI engine** in the dashboard's sidebar shows the provider the server uses. Admins can open it. Only a super admin can save a change on it or test a connection.
 
-- **Provider registry** lists the four providers, each with its default model, and counts how many are set up, such as `2 / 4 configured`. A provider whose key is set shows **READY**, one without shows **Not set** and can't be chosen, and the one in use shows **Active**, or **Active — no key** when its key is missing. Ollama counts as set up when a model or base URL is set for it: `XENON_OLLAMA_MODEL`, `XENON_AI_MODEL` or `XENON_AI_BASE_URL`, or the `aiModel` or `aiBaseUrl` option.
-- **Choosing a provider:** click one that is **READY**, then **Save configuration**. Xenon uses it from its next AI call. The choice lasts until the server restarts, which goes back to the option or the environment. To keep a provider, set it there.
-- **Runtime configuration** shows the provider in use, its model and its base URL. They come from the environment and the options; the page doesn't change them.
+- **Provider registry** lists the four providers, Gemini, OpenAI and Anthropic each with its default model and Ollama as `Local / self-hosted — no API key required`, and counts how many are set up, such as `2 / 4 configured`. A provider whose key is set shows **READY**, one without shows **Not set** and can't be chosen, and the one selected shows **Active**, or **Active — no key** when its key is missing. Ollama counts as set up when a model or base URL is set for it: `XENON_OLLAMA_MODEL`, `XENON_AI_MODEL` or `XENON_AI_BASE_URL`, or the `aiModel` or `aiBaseUrl` option.
+- **Choosing a provider:** click one that is **READY**, then **Save configuration**. If the server had a working provider, Xenon uses the new one from its next AI call. If it had none, the AI healing tiers and failure analysis stay off; see the caution in [In the server's config file](#in-the-servers-config-file). The choice lasts until the server restarts, which goes back to the option or the environment. To keep a provider, set it in the environment.
+- **Runtime configuration** shows the provider selected on the page, even before you save it, with its model and its base URL. The model and the base URL come from the environment and the options; the page doesn't change them.
 - **Model Parameters** (**Temperature**, **Max tokens** and **Top P**) have no effect: Xenon doesn't send them to the provider, and doesn't keep them. Xenon sends none of these settings, except that it asks OpenAI and Anthropic for answers of at most 500 tokens.
 - **Test Connection** sends the provider selected on the page a one-line prompt with the server's key, and says whether it answered and how long it took. A Gemini key that is out of quota still connects, with a note saying so. Nothing is saved.
 
@@ -95,7 +101,7 @@ Ollama runs the model on a machine you choose, so nothing leaves your network.
 
 ## When the provider keeps failing
 
-After five failed calls in a row, Xenon stops calling that provider and model for 60 seconds. Failures that count are server errors, rate limits, timeouts and network errors. A request the provider refuses, such as one with a wrong key or an unknown model, doesn't count, and fails each time it is made.
+After five failed calls in a row, Xenon stops calling that provider and model for 60 seconds. Failures that count are server errors, timeouts and network errors, and, with OpenAI and Anthropic, rate limits. A request the provider refuses, such as one with a wrong key or an unknown model, doesn't count, and fails each time it is made.
 
 While the provider is skipped, or when a call fails, each feature goes on as if there were no provider: the AI healing tiers find nothing and the next tier runs, a failed session gets its category but no analysis, `analyzeScreen` answers with `ai_insights_error`, and `assertVisualState`, `visualTap` and `smartTap` with an icon fail and say why. See [Execute commands](./execute-commands.md#when-a-command-cant-look).
 

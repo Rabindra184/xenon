@@ -71,9 +71,9 @@ Click a locator to use it in **Code gen**. Each has four buttons:
 | **Tap** | Finds the element with the test's driver and taps it on the phone. It refuses when the locator matches more than one element. |
 | **Copy** | Copies the locator's value. |
 
-**Verify** and **Tap** need an Appium test running on the phone. Start the test first, then open the phone: while device control is open, its live preview holds the phone, and a new test can't start on it. With per-command authentication on (`XENON_REQUIRE_COMMAND_AUTH`), the driver refuses them: they reach Appium with your dashboard sign-in, which isn't a credential for a test's commands.
+**Verify** and **Tap** need an Appium test running on the phone. Start the test first, then open the phone: while device control is open, its live preview holds the phone, and a new test can't start on it. With per-command authentication on (`XENON_REQUIRE_COMMAND_AUTH`), Xenon refuses them as if the test's session didn't exist (`invalid session id`): they carry your dashboard sign-in, and per-command authentication accepts only an access key and token, or a bearer token, in the request's headers.
 
-On Android, the two `-android uiautomator` suggestions share one name, so **Test**'s result, the locator chosen for **Code gen**, and the choice in its list follow the first of them.
+On Android, the two `-android uiautomator` suggestions share one name. Clicking either row highlights both, and **Test** shows `preview unavailable` for both. Clicking the second row does put it into **Code gen**, but the **Locator** list there can't choose it: the list shows the first one's entry, and choosing that entry gives the first.
 
 ## Checks
 
@@ -102,7 +102,7 @@ On Android, the two `-android uiautomator` suggestions share one name, so **Test
 
 The test types into a field, scrolls a scrollable element in Java, and taps anything else. **Locator** chooses which suggestion it uses; it starts at `accessibility id` or `id` when the element has one. A locator a style can't express, such as `class name` in the two WebdriverIO styles, gives a comment saying so. The copy button on the code copies it.
 
-The code puts the locator's value between quotes as it is. In the Java and Python code, a value with double quotes in it, as the XPath and predicate suggestions have, needs those quotes escaped before the code compiles.
+The code puts the locator's value between quotes as it is. In the Java and Python code, a value with double quotes in it, as the XPath, predicate and class chain suggestions have, needs those quotes escaped before the code works. In the Java code, so do the `-android uiautomator` suggestions.
 
 ## Related
 
