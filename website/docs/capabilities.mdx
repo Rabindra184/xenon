@@ -162,7 +162,7 @@ Write them with the `xe:` prefix, as this page does.
 
 | Capability | Also accepted as | Default | What it does |
 |---|---|---|---|
-| `xe:build` | `xe:buildName` | `Default Build` | The build the session belongs to. Sessions with the same build name join one build while it stays active: a session that starts within 30 minutes of the build's last session joins it, and after a longer gap Xenon starts a new build with the same name. See [Name and group sessions](./sessions.md#name-and-group-sessions). |
+| `xe:build` | `xe:buildName` | `Default Build` | The build the session belongs to. Sessions with the same build name join one build while it stays active: a session that starts within 30 minutes of the start of the build's latest session joins it, and after a longer gap Xenon starts a new build with the same name. See [Name and group sessions](./sessions.md#name-and-group-sessions). |
 | `xe:name` | `xe:sessionName` | Not set | The session's name on the dashboard. |
 | `xe:record_video` | `xe:recordVideo` | `true` | Record the session's video. |
 | `xe:screenshot_on_failure` | `xe:screenshotOnFailure` | `true` | Take a screenshot when a command fails. |

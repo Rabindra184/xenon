@@ -51,13 +51,13 @@ In the API the category is the stored, upper-case name, such as `ELEMENT_NOT_FOU
 
 ## The AI analysis
 
-The AI analysis needs an AI provider. Xenon supports Gemini (the default), OpenAI, Anthropic and Ollama. Set the provider and its key in the environment of the Appium server, for example `XENON_AI_PROVIDER` and `XENON_GEMINI_API_KEY`. Ollama needs no key. Admins choose the active provider on the dashboard's **AI engine** page. [AI providers](./ai-providers.md) explains the setup, the models and their settings.
+The AI analysis needs an AI provider. Xenon supports Gemini (the default), OpenAI, Anthropic and Ollama. Set the provider and its key in the environment of the Appium server, for example `XENON_AI_PROVIDER` and `XENON_GEMINI_API_KEY`. Ollama needs no key. A super admin can switch to another provider on the dashboard's **AI engine** page, until the server restarts. [AI providers](./ai-providers.md) explains the setup, the models, their settings and that page.
 
 With no provider set up, no AI analysis is made and no request goes anywhere. The category is still saved.
 
 Xenon sends the provider one request for each failed session, asking it to say whether the failure was an app bug, a flaky selector, a system dialog or a problem with the infrastructure. It asks for a short summary that starts with `Root Cause:` and a specific fix, in Markdown. The text is saved with the session.
 
-When the provider keeps failing, Xenon stops asking it. After five failed calls in a row, which means server errors, rate limits or network failures, calls to that provider and model are skipped for 60 seconds. A session that fails during that time gets a category and no analysis.
+When the provider keeps failing, Xenon stops asking it. After five server errors or network failures in a row (with OpenAI and Anthropic, rate limits count too), calls to that provider and model are skipped for 60 seconds. A session that fails during that time gets a category and no analysis.
 
 ## What leaves the server
 
@@ -70,7 +70,7 @@ The request holds the session's id, the failure reason, the last 10 commands, th
 
 ## Where the results appear
 
-- **The session's page.** The **Result** tile shows the category, and **Why it failed** shows it beside its heading, with the **AI analysis** below the reason and the first failed command. A long analysis is cut short, and **Show all** opens the rest. The analysis shows paragraphs, **bold** text and `code`. **Copy** adds the analysis to the failure report it puts on the clipboard. **Open runbook** opens a guide for the category, when it has one. See [Sessions and builds](./sessions.md#result-and-why).
+- **The session's page.** The **Result** tile shows the category, and **Why it failed** shows it beside its heading, with the **AI analysis** below the reason and the first failed command. A long analysis is cut short, and **Show all** opens the rest. The analysis shows paragraphs, **bold** text and `code`. **Copy** adds the analysis to the failure report it puts on the clipboard. **Open runbook** opens a short guide for the category in a new tab. Only some categories have a guide of their own. The others open a general page, which says there is no runbook for that category. See [Sessions and builds](./sessions.md#result-and-why).
 - **A bug report.** The analysis is in the zip as `ai-summary.txt` and in its `README.md`. See [Bug reports](./sessions.md#bug-reports).
 - **A build's CSV export.** It has a `failure_category` column. It doesn't hold the analysis.
 - **The API.** A session's record has `failure_category` and `ai_analysis`.

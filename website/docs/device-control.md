@@ -92,7 +92,7 @@ It is open to anyone who can control the phone, so give that to people you would
 
 ### Omni-Vision
 
-Scans the screen with the AI provider and tries locators, and has an inspector for the screen's element tree. See [Omni-Vision](./omni-vision.md) and [Inspector](./inspector.md).
+Holds the [Inspector](./inspector.md), which reads the screen's element tree, suggests locators for an element and writes test code that uses one. It doesn't use the AI provider. Omni-Vision's own search of the screen, by text or by a description, is for tests and the API: see [Omni-Vision](./omni-vision.md).
 
 ## Holds: one person at a time
 

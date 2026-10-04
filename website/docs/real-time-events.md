@@ -120,13 +120,13 @@ All event payloads carry the `(strategy, selector)` tuple. See [Selector Health]
 | Event | Trigger |
 |---|---|
 | `healing_event` | A `findElement` was successfully healed (any tier) |
-| `selector_fixed` | User clicked **Mark as Fixed** — selector entered `Pending` |
-| `selector_progress` | Verifier counted one more clean CI build but the threshold isn't met |
-| `selector_resolved` | Verifier promoted a selector to `Resolved` after 3 clean builds |
-| `selector_regressed` | A `Pending` or `Resolved` selector healed again |
-| `selector_cancelled` | User backed out of `Pending` without recording a fix |
-| `selector_muted` | User muted a selector |
-| `selector_unmuted` | User unmuted a selector |
+| `selector_fixed` | A selector was marked fixed (**Mark fixed**): it moved to **Being verified** |
+| `selector_progress` | The verification's count of clean builds changed, still short of 3 |
+| `selector_resolved` | The verification moved a selector to **Fixed** after 3 clean builds |
+| `selector_regressed` | A selector **Being verified** or **Fixed** healed again and went back to **To fix** |
+| `selector_cancelled` | A selector's verification was cancelled (**Cancel verification**): it went back to **To fix** |
+| `selector_muted` | A selector was muted |
+| `selector_unmuted` | A selector was unmuted: it went back to **To fix** |
 
 ### Network interceptor
 

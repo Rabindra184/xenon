@@ -15,7 +15,7 @@ While a test runs, Xenon reads the phone's CPU and memory every 2 seconds and ch
 
 - **CPU** is a percentage of the whole device, from 0 to 100. The app's CPU is a share of the whole device too, not of one core.
 - **Memory** is in megabytes. The app's memory is what it holds in the phone's RAM.
-- The first reading has no CPU, because CPU needs the reading before it. The chart starts with the second.
+- On Android the first reading has no CPU, because CPU needs the reading before it. The chart starts with the second.
 - The card needs the server's dashboard turned on, because the figures belong to the session's record. See [Sessions and builds](./sessions.md#what-you-need).
 
 ### Which app Android reports
@@ -34,7 +34,7 @@ Xenon reads an iPhone's CPU with go-ios, for as long as the session runs. The fi
 ## How it is recorded
 
 - **Every 2 seconds** the server reads the phone. On Android that is one `adb` call per reading, plus a lookup of the foreground app every 10 seconds when the session has no `appium:appPackage`. On an iPhone it is a go-ios process that runs for the session.
-- **Every 10 seconds** the readings are written to the session's record, so a crash loses at most the last 10 seconds. A running session's page asks again every 10 seconds, so its newest figures can be up to 10 seconds behind.
+- **Every 10 seconds** the readings are written to the session's record, so a crash loses at most the last 10 seconds. A running session's page asks again every 10 seconds, so its newest figures can be about 20 seconds behind, and about 30 seconds for a session on a node's phone, which the hub collects every 10 seconds.
 - **A session never fails because of it.** A reading that fails is skipped. After five failures in a row, Xenon stops recording that session, and the card says "Recording stopped: the device stopped responding." The figures up to then stay on the card.
 - **The figures belong to the session.** The nightly cleanup deletes them with it. See [Data retention](./retention.md).
 
@@ -71,7 +71,7 @@ server:
       sessionMetrics: false
 ```
 
-Its flag is `--plugin-xenon-session-metrics`. See [Configuration](./configuration.md). After a restart, new sessions have no figures: a running session's card says "Performance isn't recorded", and an ended one's says "No performance data for this session". Sessions already recorded keep theirs.
+Set it in the config file, as above: the command-line flag `--plugin-xenon-session-metrics` can only turn it on. See [Configuration](./configuration.md#a-config-file). After a restart, new sessions have no figures: a running session's card says "Performance isn't recorded", and an ended one's says "No performance data for this session". Sessions already recorded keep theirs.
 
 ## Read the figures over the API
 
@@ -101,9 +101,9 @@ The answer, shortened to two readings:
 ```
 
 - `t` is the time of the reading, in milliseconds since 1970. `samples` are oldest first.
-- `series` says what the platform can record: an iPhone has `deviceCpu` only, and any other platform has none.
+- `series` goes by the platform alone, not by what this session has: `android` has all four, `ios` has `deviceCpu` only, even for an iOS simulator, and any other platform has none.
 - `recording` is set only while the session runs: `sampling`, `stopped` (Xenon gave up after repeated failures) or `off` (nothing records it). It is `null` once the session has ended.
-- A reading's figure is `null` when it isn't known, such as the CPU of the first reading.
+- A reading's figure is `null` when it isn't known, such as the CPU of an Android session's first reading.
 - Anyone who may see the session can call it. A session you can't see answers `404`, like an unknown one. See [Who sees which sessions](./sessions.md#who-sees-which-sessions).
 
 ## Related

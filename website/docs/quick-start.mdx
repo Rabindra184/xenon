@@ -38,7 +38,7 @@ appium server --use-plugins=xenon \
 
 When Xenon is ready, the log prints its address, such as `Xenon will be served at http://192.168.0.10:4723/xenon`.
 
-- `--plugin-xenon-enable-dashboard` serves the dashboard. Without it there is no dashboard, and sessions on this machine's own devices leave no record.
+- `--plugin-xenon-enable-dashboard` makes Xenon keep a record of the sessions on this machine's own devices. Without it the dashboard still opens, but those sessions leave no record and don't appear on its **Sessions** page.
 - Without `ANDROID_HOME` the log says `Neither ANDROID_HOME nor ANDROID_SDK_ROOT environment variable was exported`, and Xenon finds no Android devices.
 - For iPhones, Xenon needs its own copy of go-ios, which it uses to start WebDriverAgent, for the live preview and recordings, and for logs and CPU charts. [Installation and requirements](./installation.md#iphones-and-go-ios) shows how to get it.
 

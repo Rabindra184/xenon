@@ -7,9 +7,9 @@ Every test session Xenon runs leaves a record: its result, its commands, a video
 
 ## What you need
 
-- **The dashboard on.** Start the server with `--plugin-xenon-enable-dashboard`. Without it Xenon keeps no record of the sessions on its own phones, and there is no **Sessions** page. See the [Quick start](./quick-start.mdx#2-start-appium-with-xenon-and-its-dashboard).
+- **The dashboard on.** Start the server with `--plugin-xenon-enable-dashboard`. Without it Xenon keeps no record of the sessions on this server's own phones, so they don't appear on the **Sessions** page. See the [Quick start](./quick-start.mdx#2-start-appium-with-xenon-and-its-dashboard).
 - **On a hub,** the hub's own dashboard records the sessions that run on its nodes' phones. A node keeps no record of a session its hub created. See [Hub and nodes](./hub-and-nodes.md).
-- **Time.** The nightly cleanup deletes builds and sessions older than 30 days by default, and their videos and screenshots with them. See [Data retention](./retention.md).
+- **Time.** The nightly cleanup deletes builds and sessions older than 30 days by default, and their videos and screenshots with them. It also keeps only the newest 100 builds by default (`buildCleanupMaxCount`), so a busy lab can lose a build sooner than that. See [Data retention](./retention.md).
 
 Any signed-in user can open **Sessions** in the sidebar.
 
@@ -31,7 +31,7 @@ const capabilities = {
 ```
 
 - **`name`** is the test's name. It is the row's title in the **Test** column and the heading of the session's page. A session with no name shows, in grey, the app it ran: its package name or bundle id, else its app file's name, else the browser. With none of those it shows `Session` and the first eight characters of its id.
-- **`build`** groups sessions into a build. Sessions with the same build name join the same build while it stays active: a session that starts within 30 minutes of the build's last session joins it, and after a longer gap Xenon starts a new build with the same name. Sessions with no `build` go into a build called `Default Build`, which the dashboard shows by its start time, as `Build · Sep 29, 07:30`.
+- **`build`** groups sessions into a build. Sessions with the same build name join the same build while it stays active: a session that starts within 30 minutes of the start of the build's latest session joins it, and after a longer gap Xenon starts a new build with the same name. So a run whose sessions follow one another splits after a session that lasts longer than 30 minutes: the next session starts a new build. Sessions with no `build` go into a build called `Default Build`, which the dashboard shows by its start time, as `Build · Sep 29, 07:30`.
 - `xe:name` and `xe:build` work too, and so do the older spellings `xe:sessionName` and `xe:buildName`. [Capabilities](./capabilities.mdx#session-settings) lists them, with the other settings a session can carry.
 - The `accessKey` and `token` say who is running the test. The session's page then shows the person under **Run by**, and [who can see the session](#who-sees-which-sessions) depends on it.
 
@@ -58,7 +58,7 @@ The tiles follow what you choose below. With **All sessions** selected they cove
 
 ### Period
 
-The **Period** menu at the top right is **All time**, **Last 24 hours**, **Last 7 days** (the default) or **Last 30 days**. With **All sessions** selected, it sets the period of the tiles and of the list, and it chooses which builds the builds column lists. A build you open shows all its sessions, whatever the period.
+The period menu at the top right shows the period you have chosen: **All time**, **Last 24 hours**, **Last 7 days** (the default) or **Last 30 days**. With **All sessions** selected, it sets the period of the tiles and of the list, and it chooses which builds the builds column lists. A build you open shows all its sessions, whatever the period.
 
 ### Builds
 
@@ -108,11 +108,11 @@ For a failed session, a **Why it failed** card follows:
 - **AI analysis**, when an AI provider is set up. See [AI failure analysis](./failure-analysis.md).
 - **Stack trace**, when the reason holds one.
 
-**Copy** puts a short failure report on the clipboard, ready for a ticket: the session, build, device, duration, category, reason, first failed command and AI analysis. **Open runbook** opens a short guide for the failure category in a new tab. Only some categories have a guide of their own. The others open a general page.
+**Copy** puts a short failure report on the clipboard, ready for a ticket: the session, build, device, duration, category, reason, first failed command and AI analysis. **Open runbook** opens a short guide for the failure category in a new tab. Only some categories have a guide of their own. The others open a general page, which says there is no runbook for that category.
 
 ### Self-healing
 
-When self-healing fixed selectors in the session, a **Self-healing** card lists each one: when, the command, the selector the test **asked for**, what it **healed to**, the **tier** that found it and its **confidence**. Change the test to the selector it healed to, so the next run doesn't need healing. See [Self-healing](./self-healing.md) and [Selector health](./selector-health.md).
+When self-healing fixed selectors in the session, a **Self-healing** card lists each one: its **Time** and **Command**, the selector the test **Asked for**, what it **Healed to**, the **Tier** that found it and its **Confidence**. Change the test to the selector it healed to, so the next run doesn't need healing. See [Self-healing](./self-healing.md) and [Selector health](./selector-health.md).
 
 ### Performance
 
@@ -158,8 +158,8 @@ await driver.executeScript('xenon: setSessionStatus', [
 ```
 
 - `status` is `passed`, `success` (the same thing) or `failed`, in any case.
-- `reason` is optional. It appears under the test's name on the **Sessions** page and in **Why it failed**.
-- A status you set stays: Xenon doesn't change it when the session ends.
+- `reason` is optional. For a failed session, it appears under the test's name on the **Sessions** page and in **Why it failed**.
+- A status you set stays when the test ends the session: Xenon doesn't change it. When Xenon ends the session itself, because the driver crashed, the session stopped answering or sat idle too long, or the server shut down or restarted, it records **Failed** with its own reason instead.
 - The command never fails your test. It answers `{ recorded: true }`, or `{ recorded: false, message }` when nothing was saved. That happens when the server keeps no record of the session, because its dashboard is off or it is a node, and when `status` is none of the three values above.
 - On a hub with its dashboard on, the hub answers for a session on a node's phone and writes to its own record.
 
