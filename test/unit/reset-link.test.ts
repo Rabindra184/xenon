@@ -21,7 +21,8 @@ function usersApp(auth: any) {
   const app = express();
   app.use(express.json());
   app.use((req, _res, next) => {
-    (req as any).auth = auth;
+    // A dashboard admin's scopes: /users also needs the admin scope.
+    (req as any).auth = { scopes: 'admin,devices,sessions,read', ...auth };
     next();
   });
   app.use('/users', usersRouter());

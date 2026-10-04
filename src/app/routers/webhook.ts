@@ -70,7 +70,10 @@ function register(parentRouter: Router) {
   const webhookRouterInstance = Router();
   webhookRouterInstance.use(roleGuard('ADMIN'));
 
-  webhookRouterInstance.get('/', getConfigs);
+  // The list holds every webhook's URL, which is often its secret (Slack's
+  // are), so reading it needs the admin scope too. Through 2.12 an admin's
+  // `read`-only key could list them.
+  webhookRouterInstance.get('/', scopeGuard(['admin']), getConfigs);
   // Webhook mutations are admin-only: adding / removing / test-firing global
   // webhooks is a fleet-wide config change.
   webhookRouterInstance.post('/', scopeGuard(['admin']), addConfig);

@@ -293,7 +293,7 @@ function createRouter(pluginArgs: IPluginArgs) {
   ControlRouter.register(apiRouter);
   AppsRouter.register(apiRouter);
   webhookRouter.register(apiRouter);
-  ConfigRouter.register(apiRouter, pluginArgs);
+  ConfigRouter.register(apiRouter);
   InterceptorRouter.register(apiRouter);
   BugReportRouter.register(apiRouter);
   RecordingsRouter.register(apiRouter);

@@ -61,6 +61,51 @@ describe('profile router', () => {
     expect(r.body.error).to.match(/cannot widen/);
   });
 
+  it("POST /profile/tokens can't widen past the credential creating it", async () => {
+    const create = sinon
+      .stub(Container.get(ApiKeyService), 'create')
+      .resolves({ id: 'k3', raw: 'x' });
+    // An admin's read-only key: the role would allow devices, the key does not.
+    const app = appWithAuth({ userId: 'u1', role: 'ADMIN', scopes: 'read' });
+    const widened = await request(app)
+      .post('/profile/tokens')
+      .send({ name: 'CI', scopes: ['devices', 'read'] });
+    expect(widened.status).to.equal(400);
+    // The role's default (devices, sessions, read) is wider than the key too.
+    expect((await request(app).post('/profile/tokens').send({ name: 'CI' })).status).to.equal(400);
+    const narrow = await request(app)
+      .post('/profile/tokens')
+      .send({ name: 'CI', scopes: ['read'] });
+    expect(narrow.status).to.equal(201);
+    expect(create.calledOnce).to.equal(true);
+    expect(create.firstCall.args[0].scopes).to.deep.equal(['read']);
+  });
+
+  it('POST /profile/tokens lets a super admin ask for a narrower token', async () => {
+    const create = sinon
+      .stub(Container.get(ApiKeyService), 'create')
+      .resolves({ id: 'k4', raw: 'x' });
+    const app = appWithAuth({
+      userId: 'u1',
+      role: 'SUPER_ADMIN',
+      scopes: 'admin,devices,sessions,read',
+    });
+    const r = await request(app)
+      .post('/profile/tokens')
+      .send({ name: 'CI', scopes: ['devices'] });
+    expect(r.status).to.equal(201);
+    expect(create.firstCall.args[0].scopes).to.deep.equal(['devices']);
+  });
+
+  it('POST /profile/tokens refuses a scope that does not exist', async () => {
+    const app = appWithAuth({ userId: 'u1', role: 'SUPER_ADMIN', scopes: 'admin' });
+    const r = await request(app)
+      .post('/profile/tokens')
+      .send({ name: 'CI', scopes: ['root'] });
+    expect(r.status).to.equal(400);
+    expect(r.body.error).to.equal('scopes must be some of read, sessions, devices, admin');
+  });
+
   it('POST /profile/tokens accepts a future expiresAt and forwards it to the service', async () => {
     const create = sinon.stub(Container.get(ApiKeyService), 'create')
       .resolves({ id: 'k3', raw: 'rawsecret' });

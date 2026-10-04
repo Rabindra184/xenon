@@ -4,6 +4,13 @@ export interface BugReportOptions {
   sessionId: string;
   mode: BugReportMode;
   windowSec?: number;
+  /**
+   * Whether to add the session's network capture (`network.har`). It holds
+   * every request the app made, headers and bodies included, so it goes only
+   * to those who may read it on /interceptor: admins. Leaving it out is the
+   * default.
+   */
+  includeNetwork?: boolean;
 }
 
 export interface ResolvedWindow {

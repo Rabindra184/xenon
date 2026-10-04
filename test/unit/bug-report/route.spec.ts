@@ -73,6 +73,36 @@ describe('bug-report route', () => {
     expect(res.status).to.equal(200);
   });
 
+  for (const [role, included] of [
+    ['MEMBER', false],
+    ['ADMIN', true],
+    ['SUPER_ADMIN', true],
+  ] as const) {
+    it(`${included ? 'adds' : 'leaves out'} the network capture for a ${role}`, async () => {
+      const assemble = sinon.stub(BugReportService.prototype, 'assemble').resolves({
+        filename: 'bugreport-sess-1.zip',
+        manifest: { warnings: [] } as any,
+        entries: [{ name: 'a.txt', source: { kind: 'buffer', data: Buffer.from('hi') } }],
+        cleanup: async () => {},
+      });
+      const app = express();
+      app.use((req: any, _res, next) => {
+        req.auth = {
+          kind: 'user-session',
+          userId: 'u1',
+          role,
+          scopes: 'sessions,read',
+          teamIds: [],
+        };
+        next();
+      });
+      bugReportRouter.register(app as any);
+      const res = await request(app).post('/sessions/sess-1/bug-report?mode=full');
+      expect(res.status).to.equal(200);
+      expect(assemble.firstCall.args[0].includeNetwork).to.equal(included);
+    });
+  }
+
   it('401 when the caller is not signed in', async () => {
     const res = await request(makeApp({ signedIn: false })).post('/sessions/sess-1/bug-report?mode=full');
     expect(res.status).to.equal(401);

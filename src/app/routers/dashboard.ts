@@ -5,7 +5,7 @@ import { UniversalMjpegProxy, shouldRecreateMjpegProxy } from '../../helpers/Uni
 import { WebConfigService } from '../../data-service/web-config-service';
 import { Container } from 'typedi';
 import { scopeGuard } from '../../middleware/scopeGuard';
-import { roleGuard } from '../../middleware/roleGuard';
+import { roleGuard, superAdminGuard } from '../../middleware/roleGuard';
 import buildExportModule from './build-export';
 import selectorHealthRoutes from './selector-health';
 import type { Prisma } from '../../generated/client';
@@ -1292,6 +1292,8 @@ async function resetMetrics(request: Request, response: Response) {
   }
 }
 
+const changeSettingsGuard = superAdminGuard("Only a super admin can change the lab's settings.");
+
 function register(router: Router) {
   router.use('/session/:sessionId', isValidSession);
   router.use(roleGuard('MEMBER'));
@@ -1335,11 +1337,14 @@ function register(router: Router) {
   );
   router.get('/healing/state/muted', getMutedSelectors);
   router.get('/healing/state/:strategy/:value', getSelectorStateByTuple);
-  router.get('/config', getGlobalConfig);
-  // Config + destructive ops: admin-only. Read-only config stays open to any
-  // authenticated key so dashboards using 'read' scope can still populate.
-  router.post('/config', roleGuard('ADMIN'), scopeGuard(['admin']), updateGlobalConfig);
-  router.post('/config/reset-metrics', roleGuard('ADMIN'), scopeGuard(['admin']), resetMetrics);
+  // The lab's settings. Reading them needs ADMIN, as the pages that show
+  // them do; changing them needs SUPER_ADMIN and the admin scope. Through
+  // 2.12 any member could read them and any admin change them: the stricter
+  // guards in ConfigRouter were never reached, since these routes are
+  // registered first and answer.
+  router.get('/config', roleGuard('ADMIN'), getGlobalConfig);
+  router.post('/config', changeSettingsGuard, scopeGuard(['admin']), updateGlobalConfig);
+  router.post('/config/reset-metrics', changeSettingsGuard, scopeGuard(['admin']), resetMetrics);
 }
 
 export default {

@@ -645,11 +645,13 @@ paths:
         Creates an API token owned by the caller and returns its value **once**. Use it as
         `x-xenon-token` with your access key.
 
-        `scopes` may not go beyond what the caller's role allows: `MEMBER` may have `sessions` and
-        `read`; `ADMIN` may have `devices`, `sessions` and `read`; `SUPER_ADMIN` may have anything,
-        including `admin`. Without `scopes`, the token gets all of the role's allowance. The limit is
-        the role's, not the scopes of the credential making the request. The token has the default
-        rate limit (300 a minute) and no team binding.
+        `scopes` (some of `read`, `sessions`, `devices`, `admin`) may go beyond neither what the
+        caller's role allows nor the scopes of the credential making the request. The role allows:
+        `MEMBER`, `sessions` and `read`; `ADMIN`, `devices`, `sessions` and `read`; `SUPER_ADMIN`,
+        anything, `admin` included, or any narrower set. Without `scopes`, the token gets all of the
+        role's allowance, so a credential with fewer scopes must name them. Through 2.12 only the
+        role was checked, so an admin's `read`-only key could mint a wider token. The token has the
+        default rate limit (300 a minute) and no team binding.
 
         Any signed-in user may call it. Cookie callers need a same-host `Origin` or `Referer`.
       tags:
@@ -678,7 +680,9 @@ paths:
                 token: 3b9f1d7c2a8e4f6b0c5d9e1a7f3b2c8d4e6a0b9c1d7f5e3a2b8c4d6e0f1a9b7c
                 expiresAt: '2027-01-01T00:00:00.000Z'
         '400':
-          description: '`name` is missing, `expiresAt` is invalid or past, or a scope is beyond your role.'
+          description: >-
+            `name` is missing, `expiresAt` is invalid or past, a scope is unknown, or a scope is
+            beyond your role or the credential you are using.
           content:
             application/json:
               schema:
@@ -690,9 +694,12 @@ paths:
                 expiry:
                   value:
                     error: expiresAt must be in the future
+                unknown:
+                  value:
+                    error: scopes must be some of read, sessions, devices, admin
                 widen:
                   value:
-                    error: cannot widen scopes beyond your role
+                    error: cannot widen scopes beyond your role or the credential you are using
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
@@ -749,7 +756,10 @@ paths:
       summary: List user accounts
       description: |
         Needs role `ADMIN` or above. A `SUPER_ADMIN` sees every account; an `ADMIN` sees only
-        `MEMBER` accounts. Oldest first. No scope is checked beyond the role.
+        `MEMBER` accounts. Oldest first.
+
+        Every `/api/users` request also needs the `admin` scope, as `/api/apikeys` and `/api/teams`
+        do: an admin's `read`-only key or token can't manage accounts. Through 2.12 it could.
       tags:
         - Users
       responses:
@@ -1630,7 +1640,7 @@ components:
     IdentityCsrfRefused:
       description: |
         No same-host `Origin` or `Referer` on a state-changing request without an
-        `x-xenon-access-key` header.
+        `x-xenon-access-key` header or an `Authorization: Bearer` token.
       content:
         application/json:
           schema:

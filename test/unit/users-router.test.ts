@@ -12,7 +12,8 @@ function appWithAuth(auth: any) {
   const app = express();
   app.use(express.json());
   app.use((req, _res, next) => {
-    (req as any).auth = auth;
+    // A dashboard admin's scopes, unless the test names its own.
+    (req as any).auth = { scopes: 'admin,devices,sessions,read', ...auth };
     next();
   });
   app.use('/users', usersRouter());
@@ -21,6 +22,19 @@ function appWithAuth(auth: any) {
 
 describe('/users router', () => {
   afterEach(() => sinon.restore());
+
+  it("refuses an admin's key that lacks the admin scope", async () => {
+    const list = sinon.stub(Container.get(UserService), 'listUsers').resolves([] as any);
+    const create = sinon.stub(Container.get(UserService), 'createUser');
+    const app = appWithAuth({ userId: 'admin', role: 'ADMIN', scopes: 'read' });
+    expect((await request(app).get('/users')).status).to.equal(403);
+    const r = await request(app)
+      .post('/users')
+      .send({ email: 'new@x.local', name: 'New', role: 'MEMBER' });
+    expect(r.status).to.equal(403);
+    expect(list.called).to.equal(false);
+    expect(create.called).to.equal(false);
+  });
 
   it('GET /users returns the listUsers result, filtered by caller role', async () => {
     sinon.stub(Container.get(UserService), 'listUsers').resolves([{ id: 'u1' }] as any);

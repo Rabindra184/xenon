@@ -4,6 +4,7 @@ import { Container } from 'typedi';
 import crypto from 'crypto';
 import { UserService } from '../../services/UserService';
 import { roleGuard } from '../../middleware/roleGuard';
+import { scopeGuard } from '../../middleware/scopeGuard';
 import {
   canActOn,
   assertNotSelf,
@@ -30,6 +31,9 @@ function makeTempPassword(): string {
 export function usersRouter(): Router {
   const r = Router();
   r.use(roleGuard('ADMIN'));
+  // And the admin scope, as /apikeys and /teams ask: an admin's `read`-only
+  // key or token is not a grant to manage accounts. Through 2.12 it was.
+  r.use(scopeGuard(['admin']));
   const userSvc = Container.get(UserService);
 
   function getAuth(req: any) {

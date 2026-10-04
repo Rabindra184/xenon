@@ -63,7 +63,10 @@ router.post('/sessions/:sessionId/bug-report', async (req: Request, res: Respons
   const svc = Container.get(BugReportService);
   let bundle;
   try {
-    bundle = await svc.assemble({ sessionId, mode, windowSec });
+    // The network capture only for an admin, as /interceptor serves it.
+    // Through 2.12 any member who could see the session got it here.
+    const includeNetwork = auth?.role === 'ADMIN' || auth?.role === 'SUPER_ADMIN';
+    bundle = await svc.assemble({ sessionId, mode, windowSec, includeNetwork });
   } catch (err: any) {
     if (/not found/i.test(err.message)) {
       return res.status(404).json({ error: err.message });

@@ -43,8 +43,14 @@ export class BugReportService {
 
     const logs = await this.collectLogs(opts.sessionId, window.startedAt, window.endedAt);
 
-    const harText = collectHar(opts.sessionId, config.sessionAssetsPath);
-    if (!harText) warnings.push('no network capture for this session');
+    const harText = opts.includeNetwork
+      ? collectHar(opts.sessionId, config.sessionAssetsPath)
+      : null;
+    if (!opts.includeNetwork) {
+      warnings.push('network capture left out: only admins can download it');
+    } else if (!harText) {
+      warnings.push('no network capture for this session');
+    }
 
     const aiSummary = (session.ai_analysis as string | null) ?? null;
 

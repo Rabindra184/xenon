@@ -406,7 +406,6 @@ async function assignDeviceToTeam(request: Request, response: Response) {
 async function getActiveSessions(request: Request, response: Response) {
   const { SessionManager } = await import('../../sessions/SessionManager');
   const sessionManager = Container.get(SessionManager);
-  const stats = sessionManager.getStats();
   const sessions = sessionManager.getAllSessions().map((s) => ({
     id: s.getId(),
     type: s.getType(),
@@ -423,8 +422,16 @@ async function getActiveSessions(request: Request, response: Response) {
     'deviceUdid' as any,
   );
 
+  // The counts are of the sessions listed, so a member's describe only what
+  // they may see. Through 2.12 they counted every team's sessions.
+  const byType: Record<string, number> = { local: 0, remote: 0, cloud: 0 };
+  for (const session of visibleSessions) {
+    const type = String(session.type).toLowerCase();
+    byType[type] = (byType[type] || 0) + 1;
+  }
+
   response.json({
-    stats,
+    stats: { total: visibleSessions.length, byType },
     sessions: visibleSessions,
   });
 }
