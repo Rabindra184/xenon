@@ -8,6 +8,8 @@ import TabItem from '@theme/TabItem';
 
 This page takes you from nothing to a test running on a device and showing up on the dashboard, on one machine. You need Node.js, Appium 3 and, for Android, the Android SDK. [Installation and requirements](./installation.md) lists everything.
 
+You also need a device Xenon can use, connected or booted: an Android phone with USB debugging on, an Android emulator, an iPhone or an iOS simulator.
+
 ## 1. Install the plugin and a driver
 
 ```bash
@@ -20,6 +22,14 @@ Install the driver for the platform you test. Appium keeps both in its home fold
 
 ## 2. Start Appium with Xenon and its dashboard
 
+For Android, Xenon finds `adb` through `ANDROID_HOME` (or `ANDROID_SDK_ROOT`), so export it in the shell you start Appium from. On a Mac with Android Studio the SDK is usually here:
+
+```bash
+export ANDROID_HOME=~/Library/Android/sdk
+```
+
+Then start Appium:
+
 ```bash
 appium server --use-plugins=xenon \
   --plugin-xenon-platform=both \
@@ -29,8 +39,8 @@ appium server --use-plugins=xenon \
 When Xenon is ready, the log prints its address, such as `Xenon will be served at http://192.168.0.10:4723/xenon`.
 
 - `--plugin-xenon-enable-dashboard` serves the dashboard. Without it there is no dashboard, and sessions on this machine's own devices leave no record.
-- For Android, Xenon finds `adb` through `ANDROID_HOME` (or `ANDROID_SDK_ROOT`). Export it before you start, for example `export ANDROID_HOME=~/Library/Android/sdk`. Without it the log says `Neither ANDROID_HOME nor ANDROID_SDK_ROOT environment variable was exported`, and Xenon finds no Android devices.
-- For iPhones, Xenon needs its own copy of go-ios. [Installation and requirements](./installation.md#iphones-and-go-ios) shows how to get it.
+- Without `ANDROID_HOME` the log says `Neither ANDROID_HOME nor ANDROID_SDK_ROOT environment variable was exported`, and Xenon finds no Android devices.
+- For iPhones, Xenon needs its own copy of go-ios, which it uses to start WebDriverAgent, for the live preview and recordings, and for logs and CPU charts. [Installation and requirements](./installation.md#iphones-and-go-ios) shows how to get it.
 
 ## 3. Open the dashboard and sign in
 
@@ -82,6 +92,8 @@ const driver = await remote({ hostname: 'localhost', port: 4723, capabilities })
 // ...your test...
 await driver.deleteSession();
 ```
+
+The JavaScript sample is an ES module, so save it as `.mjs`: it uses `import` and top-level `await`.
 
 </TabItem>
 <TabItem value="java" label="Java">

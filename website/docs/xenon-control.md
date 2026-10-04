@@ -1,6 +1,6 @@
 ---
 title: Xenon Control for Mac
-description: A Mac app that configures and starts Appium with Xenon, with saved launch profiles, secrets kept in the Keychain and toolchain checks.
+description: A Mac app that configures and starts Appium with Xenon, with saved launch profiles, encrypted secrets and toolchain checks.
 ---
 
 Xenon Control is a Mac app that configures and starts the Appium server with Xenon, so you don't write flags or a config file by hand. Once the server is up it hands off to the dashboard, which stays the place for devices, sessions, users and everything else you do while the lab runs.
@@ -8,9 +8,9 @@ Xenon Control is a Mac app that configures and starts the Appium server with Xen
 ## What it does
 
 - **Starts and stops** the Appium server with Xenon, and streams its log live.
-- **Builds the settings form from Xenon's own option list.** Every option appears, grouped into sections, with its type, allowed values, default and description.
+- **Builds the settings form from Xenon's own option list.** The form groups the options into sections, with each one's type, allowed values, default and description. The list is a copy that comes with the app, so an option added to the plugin after the app was built isn't in the form.
 - **Saves launch profiles**, named sets of settings such as "Local Android" or "Hub". Profiles export to and import from JSON, so a lab can share a standard one. A profile never holds secrets, only the names of the secrets it uses.
-- **Keeps secrets in the macOS Keychain.** AI keys, a node's hub access key and token, the database URL and the SMTP URL are stored encrypted and handed to the server as environment variables at launch. They are never written to a file.
+- **Keeps secrets encrypted.** AI keys, a node's hub access key and token, the database URL and the SMTP URL are stored encrypted, with the key held in the macOS Keychain, and handed to the server as environment variables at launch. They are never stored in plain text, and never written into the config file the app generates.
 - **Checks the toolchain**: Node.js, Appium, the drivers, the Android SDK, Xcode and go-ios. A missing or too old Node.js or Appium, a port already in use, or a plugin that isn't installed blocks **Start**, and the **Health** tab says how to fix it.
 - **Sets Xenon up the first time**: one button installs the Xenon plugin and the Android and iOS drivers.
 - **Previews a launch.** Before you start, it shows the exact `appium` command, the `APPIUM_HOME` it uses, the names of the environment variables it sets (never their values) and the config file it generated. You can copy or save the file.
@@ -57,7 +57,7 @@ Tests connect to `http://localhost:` and the profile's port, followed by its bas
 
 ### Where Appium keeps its files
 
-A profile can name its own `APPIUM_HOME`. When it doesn't, the app uses the first home that already has the Xenon plugin: the one your shell sets, the app's own folder in `~/Library/Application Support/xenon-control/appium-home`, or `~/.appium`. If none has it, **Install plugin + drivers** installs into the app's own folder. The **APPIUM_HOME** button in the header opens the folder in use.
+Plugins and drivers live in an Appium home folder. Type a path in the profile's `APPIUM_HOME` field to choose one, or leave it blank and the app picks one. **Install plugin + drivers** installs into the folder you typed or, when the field is blank, into the app's own folder, `~/Library/Application Support/xenon-control/appium-home`. The **APPIUM_HOME** button in the header opens the folder in use, and **Start** stays off while the plugin isn't installed there. To be sure that setup and launch use the same folder, type it in.
 
 ## How it launches Xenon
 

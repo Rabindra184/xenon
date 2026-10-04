@@ -29,17 +29,17 @@ export ANDROID_HOME=~/Library/Android/sdk
 
 ### What comes with Xenon
 
-Installing the plugin brings its own ffmpeg, so you don't install one. Session video and the recordings from the dashboard use it. The one exception is the shortened video in a bug report, which is cut with an `ffmpeg` found on your `PATH`. Without one the bundle is still made, without the video, and its manifest lists the failure.
+Installing the plugin brings its own ffmpeg, so you don't install one. Session video, the recordings from the dashboard and the video in a bug report all use it. Xenon adds its folder to the `PATH` it runs with.
 
 ### iPhones and go-ios
 
-For real iPhones, Xenon runs its own copy of go-ios, version 1.2.1, from `~/.cache/xenon/goIOS/ios`. A go-ios on your `PATH` is not used. The plugin includes the script that downloads that version from go-ios's GitHub releases, but neither installing the plugin nor starting the server runs it. On a machine with iPhones, run it once:
+For real iPhones, Xenon runs its own copy of go-ios, version 1.2.1, from `~/.cache/xenon/goIOS/ios`. A go-ios on your `PATH` is not used. Xenon uses it to start WebDriverAgent on the iPhone, for the live preview and recordings, and for the iPhone's logs and CPU charts. Before it hands an iPhone to a session, Xenon checks that WebDriverAgent answers, and starts it through go-ios when it doesn't. The plugin includes the script that downloads that version from go-ios's GitHub releases, but neither installing the plugin nor starting the server runs it. On a machine with iPhones, run it once:
 
 ```bash
 node "${APPIUM_HOME:-$HOME/.appium}/node_modules/@xenon-device-management/xenon/lib/src/scripts/install-go-ios.js"
 ```
 
-It puts go-ios in that folder and records the version in `.go-ios-version`. Run it again after upgrading Xenon: it replaces an older copy with the version Xenon expects. Without it, an iPhone's live preview can't start, and the log says `go-ios binary not found`.
+It puts go-ios in that folder and records the version in `.go-ios-version`. Run it again after upgrading Xenon: it replaces an older copy with the version Xenon expects. Without it, an iPhone's live preview can't start and the log says `go-ios binary not found`.
 
 ## Install from npm
 
@@ -49,7 +49,7 @@ appium driver install uiautomator2      # Android
 appium driver install xcuitest          # iOS (macOS only)
 ```
 
-Appium keeps plugins and drivers in its home folder, `~/.appium` unless `APPIUM_HOME` says otherwise. The plugin goes into `node_modules/@xenon-device-management/xenon` inside it. The plugin and its dependencies take about 850 MB on disk on an Apple silicon Mac.
+Appium keeps plugins and drivers in its home folder, `~/.appium` unless `APPIUM_HOME` says otherwise. The plugin goes into `node_modules/@xenon-device-management/xenon` inside it. The plugin and its dependencies take several hundred MB on disk.
 
 ## Start Xenon
 
