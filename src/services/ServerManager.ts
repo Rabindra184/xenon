@@ -28,6 +28,7 @@ import { IPluginArgs, DefaultPluginArgs, EmulatorConfig } from '../interfaces/IP
 import { ConfigService } from '../data-service/config-service';
 import { PluginContext } from '../PluginContext';
 import { SelfHealingSwitch } from './settings/SelfHealingSwitch';
+import { AiEngineSettings } from './settings/aiEngineSettings';
 import { DeviceStoreFactory } from '../data-service/device-store';
 import {
   initializeStorage,
@@ -132,6 +133,9 @@ export class ServerManager {
     // The Settings page's AI self-healing toggle, which the command interceptor
     // reads from memory at every command: load it before a command can arrive.
     await Container.get(SelfHealingSwitch).load();
+    // The AI engine page's provider, model and base URL, over the startup
+    // options applied above (what a cleared value goes back to).
+    await Container.get(AiEngineSettings).load();
 
     this.registerRoutes(expressApp, httpServer, cliArgs, pluginArgs);
     await this.bootEmulators(pluginArgs);

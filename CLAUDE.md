@@ -152,6 +152,18 @@ a separate feature and doesn't read them.
   `SESSION_MANAGER`. Options used once at session start (the network
   capture, a network profile, video) are read from the request's caps there.
 
+**OCR's language data ships with the plugin** (`src/services/ocr/`). Every
+worker, Omni-Vision's and the OCR tier's, comes from `createOcrWorker()`:
+`langPath` is the vendored `eng.traineddata.gz` (copied into `lib/` by
+`build:copy`), `cacheMethod: 'none'`. Through 2.14 tesseract.js downloaded it
+from cdn.jsdelivr.net and cached it in the working directory, so an offline
+server's first OCR call never finished, and every later one waited on its lock.
+`createOcrWorker` checks the file's SHA-256 first: given data it can't load,
+tesseract.js 7 throws from its own message handler, and `src/index.ts` exits on
+an uncaught exception. A start that fails anyway is remembered for a minute
+(`OCR_START_RETRY_MS`): tesseract.js hands back no worker then, so its thread
+can't be ended. Never call `Tesseract.createWorker`/`recognize` directly.
+
 ### Selector Health (`src/services/selector-health/`, `web/src/components/selector-health/`)
 
 The page that lists the selectors tests could only find with healing. A
@@ -983,6 +995,22 @@ bug, so a new option is read somewhere, with a test that the option reaches it.
   them). `xe:options.healingTiers` only limits the tiers a session may use (see
   "6-Tier Self-Healing"): no session capability turns healing on where the
   switch has it off.
+- **The AI engine page** (`AiEngineSettings`,
+  `src/services/settings/aiEngineSettings.ts`): `aiProvider`, `aiModel`,
+  `aiBaseUrl` and the four per-provider models are `WebConfig` rows like the
+  others, refused with `400 invalid_setting` when they couldn't work. Every AI
+  call reads `config`, so the service writes the values in effect into it:
+  loaded at boot after `syncDatabaseAndAIConfig` (it keeps what `config` held
+  then as the startup values, which an empty saved value goes back to) and
+  after each `POST /config`. Through 2.14 that route wrote `config` directly and
+  saved nothing, so a restart undid the page's choice. A started-with provider
+  Xenon doesn't know is kept, never replaced by another (AIService then has no
+  provider). Keys are never saved or sent, and `GET /config` masks a user name,
+  password or query value in the base URL (`maskedBaseUrl`). The page's
+  Temperature, Max tokens and Top P never reached a provider and are gone. The
+  saved values reach every AI call only once `AIService.isEnabled()` re-reads
+  `config`: until then the healing tiers and failure analysis ask a provider set
+  up from older values.
 - **Option over environment variable** (`recordingConfigFrom` in `src/config.ts`,
   `ServerManager.applyRecordingOptions`; JSON logging in `XenonPlugin`'s
   constructor). Appium fills every default schema.json declares, so an option
@@ -1722,6 +1750,8 @@ npm run build:copy` (from the repo root) regenerates and copies it.
 | `schema.json` | All plugin CLI arguments (JSON Schema Draft 7) |
 | `prisma/schema.prisma` | Database schema; edit here then run `db:generate` |
 | `src/services/healing/HealingOrchestrator.ts` | 6-tier healing entry point |
+| `src/services/ocr/ocrData.ts` | `createOcrWorker()`: every OCR worker, from the English data vendored beside it, checked by SHA-256, cached nowhere |
+| `src/services/settings/aiEngineSettings.ts` | The AI engine page's provider, models and base URL: saved over the startup options, checked, written into `config` at boot and on each save |
 | `src/services/autowait/AutowaitService.ts` | Per-session implicit-wait config; runs before healing |
 | `src/dashboard/event-manager.ts` | WebSocket broadcast hub |
 | `src/device-managers/AndroidDeviceManager.ts` | ADB device discovery & control |
