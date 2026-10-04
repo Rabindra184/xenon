@@ -47,8 +47,9 @@ pick it up again after the restart.
     markdown: `# Timeout
 
 The failure reason or one of the session's last failed commands mentions a
-timeout. Usually a command or a wait ran out of time. A session that sat idle
-for too long, or that the server lost contact with, can end up here too.
+timeout. Usually a command or a wait ran out of time, or the test sent no
+command for longer than its \`newCommandTimeout\` and the session was ended.
+A session the server lost contact with ends up here too.
 
 ## Likely causes
 
