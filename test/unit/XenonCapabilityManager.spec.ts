@@ -61,9 +61,11 @@ describe('XenonCapabilityManager.getXenonCapabilities — interceptor activation
     expect(out[XENON_CAPABILITIES.BUILD_NAME]).to.equal('nightly');
   });
 
-  it('treats no interceptor cap as disabled', () => {
+  it("leaves no interceptor cap unset, for the server's `interceptor` option to decide", () => {
+    // Off unless the server's option turns it on: resolveInterceptorOptions,
+    // test/unit/phone-network/interceptor-options.spec.ts.
     const out = getXenonCapabilities(caps({}));
-    expect(out[XENON_CAPABILITIES.INTERCEPTOR_ENABLED]).to.equal(false);
+    expect(out[XENON_CAPABILITIES.INTERCEPTOR_ENABLED]).to.equal(undefined);
   });
 
   it('does not throw when firstMatch is missing entirely', () => {

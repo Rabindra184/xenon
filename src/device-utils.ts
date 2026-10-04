@@ -736,6 +736,8 @@ export async function releaseBlockedDevices(newCommandTimeout: number) {
       log.info(
         `Unblocking device ${device.udid} at host ${device.host} because it has been idle for ${timeSinceLastCmdExecuted} seconds`,
       );
+      // Before anything below can release the phone (onSessionStopped too).
+      await restoreIdleSessionNetwork(device.claimSessionId ?? device.session_id);
 
       // Principal Protection: If this device has an active dashboard session, stop it properly
       if (device.session_id) {
@@ -767,6 +769,21 @@ export async function releaseBlockedDevices(newCommandTimeout: number) {
           : unblockDevice(device.udid, device.host)
       ).catch((err) => log.error(`Unable to release ${device.udid}: ${err}`));
     }
+  }
+}
+
+/**
+ * The network an idle session changed on its phone (profile, interceptor
+ * proxy), put back before the idle release frees the phone. Imported lazily,
+ * as this module's other session services are. Never throws.
+ */
+async function restoreIdleSessionNetwork(sessionId: string | null | undefined): Promise<void> {
+  if (!sessionId) return;
+  try {
+    const { PhoneNetworkRestore } = await import('./services/network/PhoneNetworkRestore');
+    await Container.get(PhoneNetworkRestore).restoreSession(sessionId, 'idle timeout');
+  } catch (err) {
+    log.warn(`Could not put back the network of idle session ${sessionId}: ${err}`);
   }
 }
 

@@ -48,12 +48,19 @@ export interface InterceptorActiveStatus {
   active: boolean;
   requests?: CapturedRequest[];
   error?: string;
+  /**
+   * The caller's role can't read captured traffic: the interceptor routes are
+   * Admin-only (src/app/routers/interceptor.ts), since requests carry tokens
+   * and personal data.
+   */
+  forbidden?: boolean;
 }
 
 const API_BASE = '/xenon/api/interceptor';
 
 export async function fetchSessionRequests(sessionId: string): Promise<InterceptorActiveStatus> {
   const res = await fetch(`${API_BASE}/sessions/${encodeURIComponent(sessionId)}/requests`);
+  if (res.status === 403) return { active: false, forbidden: true };
   if (res.status === 404) {
     const body = await res.json().catch(() => ({}));
     return { active: false, error: body?.error };

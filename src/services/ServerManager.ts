@@ -46,10 +46,12 @@ import {
 } from '../device-utils';
 import {
   isLocalDeviceHost,
+  isOwnDevice,
   localDeviceHosts,
   LocalDeviceHosts,
 } from '../device-managers/localDeviceHosts';
 import { resetDevicesAtBoot } from '../data-service/deviceSettings';
+import { PhoneNetworkRestore } from './network/PhoneNetworkRestore';
 import { createRouter } from '../app';
 import {
   commandAuthDeps,
@@ -277,6 +279,10 @@ export class ServerManager {
     // remove stale devices
     await removeStaleDevices(localHosts, pluginArgs.tlsRejectUnauthorized);
 
+    // In the background: put back the network a previous run left changed on
+    // this server's phones (an Offline profile, an interceptor proxy).
+    void this.cleanUpPhoneNetworks(localHosts, nodeId);
+
     this.logger.info(
       `🚀 Xenon will be served at http://${pluginArgs.bindHostOrIp}:${cliArgs.port}/xenon with id ${nodeId}`,
     );
@@ -284,6 +290,26 @@ export class ServerManager {
     for (const url of listReachableBaseUrls(cliArgs.port)) {
       const note = url.includes('127.0.0.1') ? ' (only accessible from the same host)' : '';
       this.logger.info(`  ${url}${note}`);
+    }
+  }
+
+  /**
+   * What a previous run of this server left on its phones' network: the
+   * changes its ledger holds, and on this server's own Android phones a proxy
+   * that points at a capture port of this machine where nothing answers.
+   * Each change is logged. A phone not connected now is put back at its next
+   * session here, or at the next start.
+   */
+  private async cleanUpPhoneNetworks(localHosts: LocalDeviceHosts, nodeId: string) {
+    try {
+      const devices = await DeviceStoreFactory.getStore().getAllDevices();
+      const androids = devices
+        .filter((d) => d.platform?.toLowerCase() === 'android' && !d.cloud)
+        .filter((d) => isOwnDevice(localHosts, nodeId, d))
+        .map((d) => d.udid);
+      await Container.get(PhoneNetworkRestore).cleanUpAtBoot([...new Set(androids)]);
+    } catch (err: any) {
+      this.logger.warn(`Could not check the phones' network settings: ${err?.message ?? err}`);
     }
   }
 

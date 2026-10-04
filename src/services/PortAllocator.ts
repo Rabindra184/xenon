@@ -49,6 +49,12 @@ export class PortAllocator {
     this.ranges = { ...DEFAULT_RANGES, ...overrides };
   }
 
+  /** The ports leased for `purpose`, first and last included. */
+  rangeOf(purpose: PortPurpose): [number, number] {
+    const [start, end] = this.ranges[purpose];
+    return [start, end];
+  }
+
   async acquire(
     purpose: PortPurpose,
     udid: string,
