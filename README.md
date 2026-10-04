@@ -290,7 +290,7 @@ npm run dev          # migrate the database, build, install the plugin and start
 | Command | Does |
 |---|---|
 | `npm run build:all` | Build the plugin and the dashboard |
-| `npm run test:all` | Run the unit tests |
+| `npm run test:all` | Run the unit tests and the hermetic integration specs |
 | `npm run test:android`, `npm run test:ios` | Run the integration tests on real devices |
 | `npm run db:generate -- --name <change>` | Add a database migration after editing `prisma/schema.prisma` |
 
