@@ -1365,17 +1365,6 @@ export class SessionLifecycleService {
           await DASHBORD_EVENT_MANAGER.onSessionStopped(sessionId, status, reason);
           SESSION_MANAGER.removeSession(sessionId);
           Container.get(HubSessionTokenIssuer).forget(sessionId);
-
-          try {
-            const { getSessionById } = await import('../dashboard/services/session-service');
-            const sessionData = await getSessionById(sessionId);
-            if (sessionData && (sessionData.status === 'failed' || sessionData.failure_reason)) {
-              const { NotificationService } = await import('./NotificationService');
-              await Container.get(NotificationService).dispatchEvent('session_failed', sessionData);
-            }
-          } catch (err) {
-            /* ignore notification errors */
-          }
         });
       }
     }
@@ -1464,7 +1453,10 @@ export class SessionLifecycleService {
       }
 
       try {
-        await DASHBORD_EVENT_MANAGER.onSessionStopped(sessionId, SessionStatus.FAILED, reason);
+        // A shutdown fails the sessions it drains; no test caused it, so no webhook.
+        await DASHBORD_EVENT_MANAGER.onSessionStopped(sessionId, SessionStatus.FAILED, reason, {
+          notify: false,
+        });
       } catch (err: any) {
         this.logger.warn(`[shutdown] onSessionStopped failed for ${sessionId}: ${err.message}`);
       }

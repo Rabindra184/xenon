@@ -3,15 +3,25 @@ import log from '../logger';
 import { PrismaService } from '../data-service/prisma-service';
 import { WebhookConfig } from '../generated/client';
 import { Service } from 'typedi';
+import {
+  EventType,
+  WEBHOOK_EVENTS,
+  renderTemplate,
+  sessionFailedPayload,
+  SessionRow,
+} from './webhookEvents';
 
-export type EventType =
-  | 'device_offline'
-  | 'session_failed'
-  | 'device_new'
-  | 'selector_health_digest';
+// The payload of each event is documented in webhookEvents.ts.
+export type { EventType } from './webhookEvents';
+
+/** How many sessions' failure notices are remembered, so a session ending twice sends once. */
+const NOTIFIED_SESSIONS_KEPT = 2000;
 
 @Service()
 export class NotificationService {
+  /** Sessions whose failure was sent, oldest first (a Set keeps insertion order). */
+  private readonly notifiedSessions = new Set<string>();
+
   constructor(private prisma: PrismaService) {}
 
   async getConfigs(): Promise<WebhookConfig[]> {
@@ -57,35 +67,46 @@ export class NotificationService {
   }
 
   /**
-   * Sends a sample event to a webhook the way a real one would be sent, and
-   * fails if the delivery does: "Send test" used to say it worked whatever
-   * happened, and ignored the webhook's type.
+   * Tells the webhooks subscribed to `session_failed` that a session failed.
+   *
+   * Once per session however many times it ends: a driver crash and the
+   * client's own delete both end it, as do a heartbeat timeout and a delete.
+   * Remembered by id in memory, so a restart forgets it, which is harmless:
+   * a session does not end again after one.
    */
-  async sendTest(url: string, type = 'slack', payloadTemplate?: string | null): Promise<void> {
+  async notifySessionFailed(session: SessionRow): Promise<void> {
+    if (this.notifiedSessions.has(session.id)) return;
+    this.notifiedSessions.add(session.id);
+    if (this.notifiedSessions.size > NOTIFIED_SESSIONS_KEPT) {
+      const oldest = this.notifiedSessions.values().next().value as string;
+      this.notifiedSessions.delete(oldest);
+    }
+    await this.dispatchEvent('session_failed', sessionFailedPayload(session));
+  }
+
+  /**
+   * Sends a sample of `event` to a webhook the way a real one would be sent,
+   * and fails if the delivery does: "Send test" used to say it worked
+   * whatever happened, and ignored the webhook's type and template.
+   */
+  async sendTest(
+    url: string,
+    type = 'slack',
+    payloadTemplate?: string | null,
+    event: EventType = 'device_new',
+  ): Promise<void> {
     await this.sendToWebhook(
       { url, type, payloadTemplate: payloadTemplate ?? null } as WebhookConfig,
-      'device_new',
-      { udid: 'test-device-udid', name: 'Test Device', host: '127.0.0.1' },
+      event,
+      WEBHOOK_EVENTS[event].sample(),
     );
   }
 
   /** Delivers one event. Throws when the webhook refuses or can't be reached. */
   private async sendToWebhook(config: WebhookConfig, eventType: EventType, payload: any) {
-    // Principal Logic: Use custom template if defined
+    // A custom template, if there is one, replaces the built-in message.
     if (config.payloadTemplate) {
-      const substitutedBody = this.substituteTemplate(config.payloadTemplate, {
-        eventType,
-        ...payload,
-      });
-      // JSON if the template renders to JSON, otherwise sent as text. Only
-      // the parse may fall back: one catch around both used to post again,
-      // as text, when the JSON delivery itself failed.
-      let body: unknown;
-      try {
-        body = JSON.parse(substitutedBody);
-      } catch {
-        body = { text: substitutedBody };
-      }
+      const body = renderTemplate(config.payloadTemplate, { eventType, ...payload });
       await axios.post(config.url, body);
       return;
     }
@@ -98,18 +119,6 @@ export class NotificationService {
     }
   }
 
-  // Principal Logic: Recursive variable substitution with {{key}} support
-  private substituteTemplate(template: string, data: any): string {
-    return template.replace(/\{\{([^}]+)\}\}/g, (match, key) => {
-      const keys = key.trim().split('.');
-      let value = data;
-      for (const k of keys) {
-        value = value ? value[k] : undefined;
-      }
-      return value !== undefined ? String(value) : match;
-    });
-  }
-
   private async sendSlackMessage(url: string, eventType: EventType, payload: any) {
     let text = '';
     let color = '#36a64f'; // green
@@ -120,7 +129,10 @@ export class NotificationService {
         color = '#ff0000';
         break;
       case 'session_failed':
-        text = `❌ *Session Failed*: ${payload.sessionId}\nReason: ${payload.failureReason}`;
+        text =
+          `❌ *Session Failed*: ${payload.sessionId}\n` +
+          `Reason: ${payload.failureReason || 'no reason recorded'}\n` +
+          `Device: ${payload.deviceName || payload.udid} (${payload.udid})`;
         color = '#ff0000';
         break;
       case 'device_new':

@@ -46,7 +46,7 @@ export interface IPluginArgs {
    */
   skipChromeDownload: boolean;
   /**
-   * Maximum number of Appium sessions this node will run concurrently. Additional requests queue until a slot frees.
+   * Maximum number of Appium sessions this server runs at once. A new session waits until fewer are running or being started. A live preview, a recording, or an SDK lease that has no session on it does not use a slot; a session started on a leased phone does, but is never held back itself. On a hub the count includes its nodes' phones. A value below 1 means no limit.
    */
   maxSessions: number;
   cloud?: CloudConfig;

@@ -1,5 +1,6 @@
 import apiClient from './api-client';
 import { ISelectorDetailResponse } from '../interfaces/IHealingEvent';
+import { canDecodeH264 } from '../lib/webcodecs';
 
 export default class XenonApiService {
   public static getDevices() {
@@ -166,7 +167,7 @@ export default class XenonApiService {
   }
 
   public static async setDeviceTeam(udid: string, teamId: string | null): Promise<void> {
-    const r = await fetch(`/xenon/api/grid/device/${encodeURIComponent(udid)}/team`, {
+    const r = await fetch(`/xenon/api/device/${encodeURIComponent(udid)}/team`, {
       method: 'PUT',
       credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
@@ -273,10 +274,27 @@ export default class XenonApiService {
     return apiClient.makePOSTRequest(`/control/${udid}/install`, {}, { appPath });
   }
 
-  public static startStream(udid: string) {
+  /**
+   * Starts the preview and holds the device.
+   *
+   * `player: 'mjpeg'` says this page shows MJPEG, so an Android phone gets
+   * the MJPEG capture only: not an H.264 one the page cannot show, running
+   * beside the one its `<img>` starts. A browser that cannot decode H.264 (no
+   * WebCodecs, as on plain http) says it without being asked; a page that
+   * shows MJPEG for another reason (an Appium session's own video, an H.264
+   * player that failed) passes it.
+   */
+  public static startStream(udid: string, opts: { player?: 'mjpeg' } = {}) {
+    const player = opts.player ?? (canDecodeH264() ? undefined : 'mjpeg');
     // resolveErrors: DeviceMosaicView reads a 409 body (isDeviceConflictBody)
     // to roll back an optimistically added tile.
-    return apiClient.makePOSTRequest(`/control/${udid}/stream/start`, {}, {}, {}, { resolveErrors: true });
+    return apiClient.makePOSTRequest(
+      `/control/${udid}/stream/start`,
+      {},
+      player ? { player } : {},
+      {},
+      { resolveErrors: true },
+    );
   }
 
   public static stopStream(udid: string) {
@@ -385,8 +403,14 @@ export default class XenonApiService {
     return apiClient.makeDELETERequest(`/webhook/${id}`);
   }
 
-  public static testWebhook(url: string, type: string) {
-    return apiClient.makePOSTRequest('/webhook/test', {}, { url, type });
+  /** Sends a sample of `event` the way the webhook's real events go out. */
+  public static testWebhook(
+    url: string,
+    type: string,
+    payloadTemplate?: string,
+    event?: string,
+  ) {
+    return apiClient.makePOSTRequest('/webhook/test', {}, { url, type, payloadTemplate, event });
   }
 
   /* Global Config Endpoints */

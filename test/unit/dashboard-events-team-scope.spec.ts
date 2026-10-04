@@ -246,6 +246,8 @@ describe('Dashboard events name their phone (team-scoped call sites)', () => {
           delete teams[filter.udid];
         }),
         updateDevice: sinon.stub().resolves(),
+        // removeDevice reads the row for the device_offline webhook's name and platform.
+        findDevice: sinon.stub().resolves(null),
         getDevices: sinon.stub().resolves([
           {
             udid: 'phone-b',

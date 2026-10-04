@@ -31,6 +31,7 @@ import { SocketEvents } from '../enums/SocketEvents';
 import { healingTierLabel } from '../services/healing/types';
 import { SelectorStateService } from '../services/SelectorStateService';
 import { RecordingStore } from '../services/recording/recording-store';
+import { NotificationService } from '../services/NotificationService';
 import { SessionMetricsService } from '../services/metrics/SessionMetricsService';
 import { nodeMetricsSourceOf } from '../services/metrics/nodeMetrics';
 import { Service } from 'typedi';
@@ -190,7 +191,20 @@ export class DashboardEventManager {
     }
   }
 
-  async onSessionStopped(sessionId: string, status?: SessionStatus, failureReason?: string) {
+  /**
+   * Closes a session's record: its end time, its final status, the device's
+   * release. Every way a session ends comes here (the client's delete, an
+   * inactivity timeout, a driver crash, a heartbeat timeout, a shutdown), so
+   * this is where a failed one is announced to the `session_failed` webhooks.
+   * `notify: false` records the failure without announcing it: a server
+   * shutting down fails the sessions it drains, which no test caused.
+   */
+  async onSessionStopped(
+    sessionId: string,
+    status?: SessionStatus,
+    failureReason?: string,
+    options: { notify?: boolean } = {},
+  ) {
     // Idempotency Guard: If this session is already being stopped by another actor
     // (heartbeat, stream watchdog, plugin.deleteSession), skip to avoid double-cleanup.
     if (this.stoppingSessionIds.has(sessionId)) {
@@ -356,6 +370,13 @@ export class DashboardEventManager {
           Container.get(MetricsService).incrementSessionFailure();
         }
 
+        // Webhooks: not awaited, since a slow or dead webhook must not hold up
+        // the end of the session. The service sends once per session even
+        // though a session can end twice (a crash, then the client's delete).
+        if (updateData.status === SessionStatus.FAILED && options.notify !== false) {
+          this.announceFailure({ ...sessionEntry, ...updateData });
+        }
+
         // Principal Triage: If session failed, perform intelligent failure analysis
         if (updateData.status === SessionStatus.FAILED) {
           try {
@@ -372,6 +393,19 @@ export class DashboardEventManager {
       // Always release the idempotency lock so future cleanup calls
       // (e.g., manual recovery) can proceed if needed.
       this.stoppingSessionIds.delete(sessionId);
+    }
+  }
+
+  /** Starts the `session_failed` webhooks; never throws and never waits for them. */
+  private announceFailure(session: Session) {
+    try {
+      void Container.get(NotificationService)
+        .notifySessionFailed(session)
+        .catch((err: any) =>
+          log.warn(`session_failed webhook for ${session.id} not sent: ${err?.message ?? err}`),
+        );
+    } catch (err: any) {
+      log.warn(`session_failed webhook for ${session.id} not sent: ${err?.message ?? err}`);
     }
   }
 

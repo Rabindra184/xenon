@@ -36,6 +36,10 @@ import { ActionsPanel } from './actions/ActionsPanel';
 import { ScreenshotsPanel } from './screenshots/ScreenshotsPanel';
 import { useDialogClose } from '../ui/InPlaceDialog';
 import { MjpegImage } from '../ui/mjpeg-image';
+import WsH264Player from '../mosaic/WsH264Player';
+import { pickStreamPlayer } from '../mosaic/pickStreamPlayer';
+import { h264SocketUrl } from '../mosaic/h264Stream';
+import { canDecodeH264 } from '../../lib/webcodecs';
 import { useToast } from '../ui/toast';
 import { alreadyShown } from '../../api-service/api-client';
 import { failed } from './actionMessages';
@@ -48,6 +52,13 @@ interface DeviceControlProps {
 }
 
 type TabType = 'actions' | 'screenshot' | 'logs' | 'terminal' | 'omni';
+
+/**
+ * A device with an Appium session of its own is shown through that session's
+ * video; a preview hold (`manual_...`) is not a session.
+ */
+const showsSessionVideo = (d: Pick<IDevice, 'session_id'>) =>
+  !!d.session_id && !String(d.session_id).startsWith('manual_');
 
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 
@@ -94,6 +105,13 @@ export default function DeviceControl({ device, onClose, titleId }: DeviceContro
   }, [currentDevice.udid, deviceName, location.pathname]);
   const [streamLoaded, setStreamLoaded] = useState(false);
   const [streamFailed, setStreamFailed] = useState(false);
+  // The server says which capture runs when the stream starts. Nothing is
+  // opened before that: an <img> here is a GET /stream, which starts the
+  // screencap MJPEG loop, and beside an H.264 capture that makes two.
+  const [streamChosen, setStreamChosen] = useState(false);
+  // Set when the H.264 player shows the stream; null for MJPEG.
+  const [h264Url, setH264Url] = useState<string | null>(null);
+  const fallingBack = useRef(false);
   const MAX_STREAM_RETRIES = 10; // ~20s at the 2s retry cadence
   const [udidCopied, setUdidCopied] = useState(false);
   const [waking, setWaking] = useState(false);
@@ -134,14 +152,62 @@ export default function DeviceControl({ device, onClose, titleId }: DeviceContro
     () => setStreamEpoch((n) => n + 1),
   );
 
+  // This page shows MJPEG: tell the server, which ends any H.264 capture of the
+  // phone and starts the MJPEG one, so a phone is never captured twice.
+  const switchToMjpeg = useCallback(async () => {
+    try {
+      await XenonApiService.startStream(device.udid, { player: 'mjpeg' });
+    } catch (err) {
+      console.error('Switching the stream to MJPEG failed:', err);
+    }
+  }, [device.udid]);
+
+  // The H.264 player failed or never showed a frame: show MJPEG instead.
+  const fallBackToMjpeg = useCallback(async () => {
+    if (fallingBack.current) return; // an error and a close both report it
+    fallingBack.current = true;
+    console.warn('H.264 stream failed; falling back to MJPEG');
+    setStreamChosen(false); // open no <img> until the H.264 capture has ended
+    setH264Url(null);
+    setStreamLoaded(false);
+    await switchToMjpeg();
+    setStreamChosen(true);
+  }, [switchToMjpeg]);
+
   // Auto-start stream on mount
   useEffect(() => {
+    let cancelled = false;
+    fallingBack.current = false;
     const startAutoStream = async () => {
       try {
         setStreamStarting(true);
+        setStreamChosen(false);
+        setH264Url(null);
         // Principal Insight: Proactively warm up the stream for ALL platforms
-        // This ensures the custom MJPEG endpoint is serving before <img> attempts load
-        await XenonApiService.startStream(currentDevice.udid);
+        // This ensures the custom MJPEG endpoint is serving before <img> attempts load.
+        //
+        // A device with a session of its own shows that session's video (an
+        // <img>), so an H.264 capture would run for nothing: say MJPEG.
+        const ownSession = showsSessionVideo(currentDevice);
+        const started = await XenonApiService.startStream(
+          currentDevice.udid,
+          ownSession ? { player: 'mjpeg' } : undefined,
+        );
+
+        // The H.264 player only where the server started that capture and
+        // this browser can decode it. A browser that cannot said so above.
+        if (
+          !ownSession &&
+          started?.h264Path &&
+          pickStreamPlayer(currentDevice.platform, started.type, canDecodeH264()) === 'h264'
+        ) {
+          const url = await h264SocketUrl(currentDevice.udid, started.h264Path).catch(() => null);
+          if (!cancelled) {
+            if (url) setH264Url(url);
+            // No ticket: the server runs H.264 and this page cannot play it.
+            else await switchToMjpeg();
+          }
+        }
 
         // Refresh device info to get detected screen size and updated ports
         const devices = await XenonApiService.getDevices();
@@ -152,11 +218,15 @@ export default function DeviceControl({ device, onClose, titleId }: DeviceContro
       } catch (err) {
         console.error('Auto-start stream failed:', err);
       } finally {
-        setStreamStarting(false);
+        if (!cancelled) {
+          setStreamStarting(false);
+          setStreamChosen(true);
+        }
       }
     };
     startAutoStream();
     return () => {
+      cancelled = true;
       // Leave, not stop: another tab on this device may still be watching,
       // and the server stops the preview only once nobody is.
       XenonApiService.leaveStream(currentDevice.udid).catch(() => {});
@@ -305,7 +375,7 @@ export default function DeviceControl({ device, onClose, titleId }: DeviceContro
     // Principal Insight: Internal Virtual Sessions
     // Manual control sessions use ids like "manual_UDID". These are NOT in the database
     // and should use the dedicated /control endpoint.
-    if (currentDevice.session_id && !String(currentDevice.session_id).startsWith('manual_')) {
+    if (showsSessionVideo(currentDevice)) {
       return `/xenon/api/session/${currentDevice.session_id}/live_video?${retryPrefix}t=${streamTimestamp}`;
     }
     return `/xenon/api/control/${currentDevice.udid}/stream?${retryPrefix}t=${streamTimestamp}`;
@@ -319,12 +389,16 @@ export default function DeviceControl({ device, onClose, titleId }: DeviceContro
   }, [streamRetryCount]);
 
   // Watchdog: catches the never-fires-onLoad case (e.g. a hung connection that
-  // neither loads nor errors) so the UI doesn't wait forever.
+  // neither loads nor errors) so the UI doesn't wait forever. An H.264 player
+  // that shows no frame falls back to MJPEG, which gets a fresh 30 s.
   useEffect(() => {
     if (streamLoaded || streamFailed) return;
-    const t = setTimeout(() => setStreamFailed(true), 30000);
+    const t = setTimeout(() => {
+      if (h264Url) fallBackToMjpeg();
+      else setStreamFailed(true);
+    }, 30000);
     return () => clearTimeout(t);
-  }, [streamLoaded, streamFailed, streamRetryCount]);
+  }, [streamLoaded, streamFailed, streamRetryCount, h264Url, fallBackToMjpeg]);
 
   // Interaction handlers
   const handleMouseDown = useRef<{ x: number; y: number; time: number } | null>(null);
@@ -562,7 +636,16 @@ export default function DeviceControl({ device, onClose, titleId }: DeviceContro
                   </div>
                 )
               )}
-              {!streamFailed && (
+              {!streamFailed && h264Url && (
+                // The H.264 capture, decoded here. If it fails, MJPEG replaces it.
+                <WsH264Player
+                  wsUrl={h264Url}
+                  className="device-stream-image"
+                  onReady={() => setStreamLoaded(true)}
+                  onFatal={fallBackToMjpeg}
+                />
+              )}
+              {!streamFailed && !h264Url && streamChosen && (
                 // MjpegImage closes the stream when the page or a failure
                 // removes it; a plain <img> left it open, counted as a viewer.
                 <MjpegImage

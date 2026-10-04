@@ -446,21 +446,39 @@ paths:
       description: |
         Adds a webhook, active at once. When one of its `events` happens Xenon POSTs to `url`:
 
-        - with `payloadTemplate`: the template, with each `{{key}}` (or `{{a.b}}`) replaced from
-          the event (`eventType` plus the event's fields), sent as JSON if the result parses as
-          JSON, otherwise as `{ "text": "<result>" }`;
+        - with `payloadTemplate`: the template, with each `{{name}}` (or `{{a.b}}`, `{{list.0.b}}`)
+          replaced from the event (`eventType` plus the event's fields, below). A template that
+          is JSON as written is filled in string by string, so a value holding a quote or a line
+          break can't break it, and is sent as that JSON. Any other template is filled in as
+          text and sent as JSON if the result parses, otherwise as `{ "text": "<result>" }`. A
+          `{{name}}` the event doesn't have is left as written;
         - otherwise, `type: slack`: a Slack message with an attachment;
         - otherwise: `{ "event": "<event>", "payload": { ... } }`.
 
-        Each delivery is one POST, never retried. A template whose result isn't JSON is sent
-        once, as text. A webhook that refuses an event or can't be reached doesn't fail the
-        event: the failure is logged on the server and the other webhooks still get it. Use
-        `POST /api/webhook/test` to see whether a webhook accepts deliveries.
+        Each delivery is one POST, never retried. A webhook that refuses an event or can't be
+        reached doesn't fail the event: the failure is logged on the server and the other
+        webhooks still get it. Use `POST /api/webhook/test` to see whether a webhook accepts
+        deliveries.
 
-        Events are `device_offline`, `session_failed`, `device_new` and
-        `selector_health_digest`. Neither `url` nor the event names are checked. Needs the
-        `ADMIN` role and the `admin` scope. With the dashboard cookie the request must come from
-        the same host.
+        What each event carries (a device event also has the device's other fields, which may
+        change; only the names listed are promised):
+
+        - `device_offline`, `device_new`: `udid`, `name`, `host`, `platform`.
+        Sent when a device stops being reported, or is first detected.
+
+        - `session_failed`: `sessionId`, `sessionName`, `failureReason`, `udid`, `deviceName`,
+        `platform`, `osVersion`, `startTime`, `endTime` (ISO 8601; unknown values are empty
+        text). Sent once per session when it ends as failed: the test marked it failed, a command
+        failed, it timed out for inactivity, its driver crashed, or its heartbeat stopped. Not
+        when the server itself shuts down, not for a session already failed when the server
+        started, and not when the dashboard is off, since the session's record is what it is
+        built from.
+
+        - `selector_health_digest`: `windowDays`, `totalHeals`, `distinctSelectors` and
+        `hotspots`, a list of `healCount`, `originalSelector` and `suggestedRewrite`.
+
+        Neither `url` nor the event names are checked. Needs the `ADMIN` role and the `admin`
+        scope. With the dashboard cookie the request must come from the same host.
       tags:
         - Webhooks
       requestBody:
@@ -567,11 +585,12 @@ paths:
       operationId: testWebhook
       summary: Send a test message to a URL
       description: |
-        Sends a sample `device_new` event (a device named `Test Device`, udid
-        `test-device-udid`, host `127.0.0.1`) to `url` the way a webhook with this `type` and
-        `payloadTemplate` gets its real events (see `POST /api/webhook`): the filled-in
-        template if there is one, else a Slack message for `type: slack` (the default), else
-        `{ "event": "device_new", "payload": { ... } }`. No stored webhook is involved.
+        Sends a sample of `event` (`device_new` unless named; a device named `Test Device`, udid
+        `test-device-udid`, host `127.0.0.1`, or for `session_failed` a failed session on it) to
+        `url` the way a webhook with this `type` and `payloadTemplate` gets its real events (see
+        `POST /api/webhook`, which lists what each event carries): the filled-in template if
+        there is one, else a Slack message for `type: slack` (the default), else
+        `{ "event": "<event>", "payload": { ... } }`. No stored webhook is involved.
 
         Answers `200` when `url` accepted the delivery (a 2xx), and `502 delivery_failed`, with
         the reason, when it refused it or couldn't be reached. Needs the `ADMIN` role and the
@@ -606,6 +625,16 @@ paths:
                     The webhook's template, filled in from the sample event as a real event's
                     would be.
                   example: '{"text": "{{eventType}}: {{name}} ({{udid}})"}'
+                event:
+                  type: string
+                  default: device_new
+                  enum:
+                    - device_offline
+                    - session_failed
+                    - device_new
+                    - selector_health_digest
+                  description: Which event to send a sample of.
+                  example: session_failed
             example:
               url: https://hooks.slack.com/services/T000/B000/XXXXXXXX
               type: slack
@@ -619,13 +648,18 @@ paths:
               example:
                 success: true
         '400':
-          description: '`url` is missing or not a string.'
+          description: '`url` is missing or not a string, or `event` is not one of the four.'
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
-              example:
-                error: url is required
+              examples:
+                noUrl:
+                  value:
+                    error: url is required
+                badEvent:
+                  value:
+                    error: 'event must be one of: device_offline, session_failed, device_new, selector_health_digest'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
@@ -2497,7 +2531,9 @@ components:
           example: slack
         payloadTemplate:
           type: string
-          description: A body template with `{{key}}` placeholders, used in place of the default body.
+          description: >-
+            A body template with `{{name}}` placeholders, used in place of the default body (see
+            `POST /api/webhook` for the names each event has).
           example: '{"text":"{{eventType}} on {{udid}}"}'
     PlatformApp:
       type: object

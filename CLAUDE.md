@@ -509,6 +509,20 @@ lease clears `busy` by the same rule, one conditional update where `UNHELD`
 (`releaseLeaseLock`, both stores), so it never frees a phone a session or a
 hold still has.
 
+**`maxSessions`** (`allocateDeviceForSession`, `countsTowardMaxSessions` in
+`deviceClaims.ts`) limits Appium sessions, so it counts the phones running one
+or being given one: this server's claim (pending or with its session id), an
+Appium session's id in `session_id`, and a node's phone the node reports busy
+unless `nodeHold` says it is a preview. A live preview or recording
+(`manual_...`) and a lease with no session on it keep a phone busy without using
+a slot; a session started on a leased phone claims it, so it counts, though a
+lease-bound create is never held back itself (it returns before the check).
+The check is `>=`: through 2.13 it was `===` over every busy phone, so once the
+count was past the limit (three previews, an idle lease) nothing was held back.
+The count, the phone choice and its claim run under one in-process lock
+(`ALLOCATION_LOCK`), or parallel creates that all read "one slot left" would all
+claim and run past the limit. A value below 1 is no limit (`sessionCap`).
+
 Because `busy` is a lease's only lock, the readers that decide who may use a
 phone ask the lease table itself (a live lease: active, not past `expiresAt`;
 `src/services/lease/activeLeases.ts`), not `busy`:
@@ -666,8 +680,16 @@ keyframe-gated join, GOP replay for late joiners) → authenticated WebSocket
   prior 1.9.x path, kept as a code-level rollback. `adb screenrecord --output-format=h264`
   with a ~3-min cap (auto-restart) and a several-second cold start on a static screen.
 
-Selection: `resolveStreamType(platform, flagOn, recording)` (`streamType.ts`) — Android +
-flag on + not recording → `h264`, else `mjpeg`. `control.ts` `stream/start` starts the H.264
+Selection: `resolveStreamType(platform, flagOn, recording, clientCanPlayH264)` (`streamType.ts`) — Android +
+flag on + not recording + a page that can play it → `h264`, else `mjpeg`. **One capture runs per
+Android device**, so a page says what it shows: `stream/start` takes `{ player: 'mjpeg' }`, and
+`XenonApiService.startStream` sends it by itself in a browser with no WebCodecs (exposed only on
+https and localhost, so plain `http://hub:4723` has none). Device control passes it for an Appium
+session's own video, and again when its H.264 player fails or shows no frame in 30 s; the server then
+ends an H.264 capture still running for the phone before it starts the screencap one. Device control
+renders `WsH264Player` when the start answers `h264`, and opens no `<img>` until the start has
+answered: an `<img>` is a `GET /stream`, which starts the screencap loop (until 2.13 it did, beside
+scrcpy). `control.ts` `stream/start` starts the H.264
 service; a scrcpy start failure throws and the handler returns HTTP 500 (it does *not*
 downgrade the response to `mjpeg`). The effective MJPEG fallback is **player-level**:
 `WsH264Player`'s `onFatal` swaps a failed/dying H.264 stream to the MJPEG `<img>` (the same
@@ -912,6 +934,29 @@ a live preview meant to outlive it.
 `AndroidStreamService` is deliberately uncovered: its MJPEG capture spawns a
 short-lived `adb exec-out screencap` per frame rather than holding a long-lived
 child.
+
+### Webhooks (`src/services/NotificationService.ts`, `webhookEvents.ts`)
+
+`webhookEvents.ts` is the one documented payload per event (`WEBHOOK_EVENTS`:
+`when`, `variables`, `sample`). The built-in Slack text, the generic
+`{ event, payload }` body and a custom `{{name}}` template all read those names, and
+"Send test" delivers the chosen event's `sample()`. The dashboard's template chips come
+from `web/src/components/webhook-settings/webhookEventVariables.json`, which
+`webhook-payloads.spec.ts` keeps equal to the server's list. A `session_failed` payload is
+built from the Session row (`sessionFailedPayload`), never the row itself: it has the
+capabilities, the creating keys and the AI analysis. `renderTemplate` fills a template that is
+JSON as written string by string (a failure reason with a quote can't break it) and anything
+else as text.
+
+`session_failed` is sent from `EventManager.onSessionStopped`, where a session's final status is
+decided, so every end reaches it: the client's delete, an inactivity timeout, a driver crash
+(`onUnexpectedShutdown`), a heartbeat timeout (`OrphanSweeper`).
+`NotificationService.notifySessionFailed` sends it once per session id (in memory, bounded),
+since a session can end twice. A shutdown drain passes `{ notify: false }`, and the boot-time
+sweeps of sessions a crash orphaned write the row directly, so neither is sent. It needs the
+session's row, so a local session with the dashboard off sends none. Through 2.13 it was sent
+from the client's delete only, and as the raw row, which the Slack text and the dashboard's
+chips read as `undefined`.
 
 ### Network Interception (`src/services/interceptor/`, `InterceptorService.ts`)
 
@@ -1540,6 +1585,7 @@ npm run build:copy` (from the repo root) regenerates and copies it.
 | `src/services/metrics/SessionMetricsService.ts` | A CPU and memory sampler per session on this server's phones, buffered and written every 10 s to `SessionMetric`; Android via `/proc`, iPhone via go-ios `sysmontap` |
 | `src/services/metrics/NodeMetricsStore.ts` | On a node: each sampled session's figures in memory for the hub to collect; dropped once collected, kept 10 minutes after the session ends |
 | `src/services/metrics/NodeMetricsCollector.ts` | On a hub: a session on a node's phone sampled by asking the node every 10 s; never two asks at once, a last ask at the end |
+| `src/services/webhookEvents.ts` | What each webhook event carries (`WEBHOOK_EVENTS`), `sessionFailedPayload`, and `renderTemplate`; the Slack text, the generic body, a template and Send test all read it |
 | `src/services/selector-health/selectorList.ts` | The Selector Health list: "To fix" by `groupBy` over the period's heals, the other tabs from `SelectorState`, search, sort, paging and the four counts |
 | `src/services/selector-health/access.ts` | Who may see a selector (a visible session healed it) and who may act (`sessions` scope); `SELECTOR_NOT_FOUND` |
 | `web/src/components/selector-health/selector-panel.tsx` | The side panel: status and actions, suggested fixes with Copy as, numbers, where it heals, recent heals, activity |

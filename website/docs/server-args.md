@@ -119,7 +119,7 @@ Below is the definitive list of all Xenon configuration parameters.
 | :--- | :--- | :--- | :--- | :--- | :--- |
 | **Core Options** | | | | | |
 | `platform` | `--plugin-xenon-platform` | No | `android`, `ios`, `both` | `both` | Target platform for automation |
-| `maxSessions` | `--plugin-xenon-max-sessions` | No | Number | `8` | Maximum concurrent sessions |
+| `maxSessions` | `--plugin-xenon-max-sessions` | No | Number | `8` | Most Appium sessions running at once. A new session waits for a free slot. Live previews, recordings and idle SDK leases don't use a slot. A value below 1 means no limit |
 | `enableDashboard` | `--plugin-xenon-enable-dashboard` | No | Boolean | `false` | Enable the web dashboard interface |
 | `bindHostOrIp` | `--plugin-xenon-bind-host-or-ip` | No | String | Local IP | Internal binding address |
 | **Device Filters** | | | | | |
