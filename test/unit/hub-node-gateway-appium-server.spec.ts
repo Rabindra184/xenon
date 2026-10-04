@@ -96,6 +96,7 @@ function fakeDriver(name: string): FakeDriver {
         return { 'element-6066-11e4-a52e-4f735466cecf': `${name}-el` };
       }
       if (command === 'stopRecordingScreen') return 'node-video.mp4';
+      if (command === 'execute') return { ranOn: name, script: args[0] };
       if (command === 'deleteSession') {
         sessions.delete(args[0]);
         return null;
@@ -157,6 +158,9 @@ describe('the session gateway between a hub and a node, in Appium 3’s own serv
     Container.set(SessionOwnerResolver, new SessionOwnerResolver());
     savedStore = (DeviceStoreFactory as any)._deviceStore;
     (DeviceStoreFactory as any)._deviceStore = new PrismaDeviceStore();
+    // A dashboard-on hub logs each forwarded command against its session.
+    await scratch.db.sessionLog.deleteMany({});
+    await scratch.db.log.deleteMany({});
     await scratch.db.session.deleteMany({});
     await scratch.db.device.deleteMany({});
     nodeRequests = [];
@@ -422,6 +426,54 @@ describe('the session gateway between a hub and a node, in Appium 3’s own serv
       expect(res.status).to.equal(500);
       expect(res.body.value.error).to.equal('unknown error');
       expect(hub.commands).to.deep.equal([]);
+    });
+  });
+
+  describe('xenon: execute scripts for a node’s phone', () => {
+    // With the hub's dashboard on, its before-hook used to take every
+    // `xenon:`/`xe:` script as a dashboard command and answer `{ value: null }`
+    // itself, so autowait, Omni-Vision and network-capture scripts for a node's
+    // phone never reached the node.
+    const execute = (id: string, script: string, args: unknown[] = [{}]) =>
+      request(hubUrl).post(`/wd/hub/session/${id}/execute/sync`).send({ script, args });
+
+    it('forwards Xenon’s scripts other than session details to the node, which answers them', async () => {
+      await boot({ dashboard: true });
+      const { id } = await remoteSession();
+      const scripts = [
+        'xenon: setAutowaitProperties',
+        'xe: smartTap',
+        'xenon: assertVisualState',
+        'xenon: addMock',
+        'xenon: notACommand',
+      ];
+      for (const script of scripts) {
+        const res = await execute(id, script);
+        expect(res.status, script).to.equal(200);
+        expect(res.body.value, script).to.deep.equal({ ranOn: 'node', script });
+      }
+      expect(node.commands).to.deep.equal(scripts.map(() => 'execute'));
+      expect(hub.commands).to.deep.equal([]);
+    });
+
+    it('answers a session-details command on the hub, from its own record; the node never sees it', async () => {
+      await boot({ dashboard: true });
+      const { id } = await remoteSession();
+      const res = await execute(id, 'xenon: setSessionName', ['Checkout']);
+      expect(res.status).to.equal(200);
+      expect(res.body).to.deep.equal({ value: { recorded: true } });
+      expect(node.commands).to.deep.equal([]);
+      expect(hub.commands).to.deep.equal([]);
+      const row = await scratch.db.session.findUnique({ where: { id } });
+      expect(row?.name).to.equal('Checkout');
+    });
+
+    it('with the hub’s dashboard off, sends a session-details command on to the node', async () => {
+      await boot({ dashboard: false });
+      const { id } = await remoteSession();
+      const res = await execute(id, 'xenon: setSessionName', ['Checkout']);
+      expect(res.body.value).to.deep.equal({ ranOn: 'node', script: 'xenon: setSessionName' });
+      expect(node.commands).to.deep.equal(['execute']);
     });
   });
 

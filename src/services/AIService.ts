@@ -20,6 +20,48 @@ interface LLMProvider {
   analyze(prompt: string, screenshotBase64?: string): Promise<string>;
 }
 
+/** A provider's verdict on whether a condition holds on a screenshot. */
+export interface VisualVerdict {
+  result: boolean;
+  message: string;
+}
+
+/** What GeminiProvider answers, instead of throwing, when the provider is rate-limited (429). */
+const RATE_LIMITED = 'CONNECTION_OK_RATE_LIMITED';
+
+/**
+ * A provider's answer to the assertion prompt, `{ "result": true|false,
+ * "reason": "..." }`, read leniently (code fences, text around the JSON,
+ * `message` for `reason`, "true"/"false" as strings) but never guessed: null
+ * when it holds no true/false `result`.
+ */
+export function parseVisualVerdict(answer: string): VisualVerdict | null {
+  const text = answer.replace(/```(?:json)?/gi, '').trim();
+  const start = text.indexOf('{');
+  const end = text.lastIndexOf('}');
+  if (start === -1 || end <= start) return null;
+  let data: any;
+  try {
+    data = JSON.parse(text.slice(start, end + 1));
+  } catch {
+    return null;
+  }
+  const raw = data?.result;
+  const result =
+    raw === true || raw === 'true' ? true : raw === false || raw === 'false' ? false : null;
+  if (result === null) return null;
+  const reason =
+    typeof data.reason === 'string'
+      ? data.reason
+      : typeof data.message === 'string'
+        ? data.message
+        : '';
+  return {
+    result,
+    message: reason.trim() || (result ? 'The condition holds.' : 'The condition does not hold.'),
+  };
+}
+
 class GeminiProvider implements LLMProvider {
   private genAI: GoogleGenerativeAI;
   private modelName: string;
@@ -378,6 +420,71 @@ Fix: Add a pre-emptive check for the location permission dialog or use the \`aut
       if (opts.throwOnError) throw err;
       return null;
     }
+  }
+
+  /**
+   * Asks the provider whether `condition` holds on the screenshot
+   * (`xenon: assertVisualState`). Answers only with the provider's own
+   * verdict: with no provider, a failed call, a rate limit or an answer that
+   * isn't true or false it throws, saying the condition was not checked. A
+   * `false` there would pass a test asserting that something is absent.
+   */
+  public async assertVisual(screenshotBase64: string, condition: string): Promise<VisualVerdict> {
+    this.initializeProvider();
+    const notChecked = 'so the condition was not checked';
+    if (!this.provider) {
+      throw new Error(
+        `No AI provider is configured, ${notChecked}. Set XENON_AI_PROVIDER and the provider's key.`,
+      );
+    }
+
+    const prompt = `
+You are checking a screenshot of a mobile app for an automated test.
+
+Condition: ${JSON.stringify(condition)}
+
+Is the condition true of what the screenshot shows? Judge only what is visible on the screen.
+Answer with JSON only, exactly: {"result": true or false, "reason": "one sentence on what you see"}
+        `.trim();
+
+    let answer: string;
+    try {
+      answer = await this.callProvider(prompt, screenshotBase64);
+    } catch (err: any) {
+      throw new Error(`The AI provider failed, ${notChecked}: ${err?.message ?? err}`);
+    }
+    if (answer === RATE_LIMITED) {
+      throw new Error(`The AI provider is rate-limited, ${notChecked}. Try again later.`);
+    }
+    const verdict = parseVisualVerdict(answer);
+    if (!verdict) {
+      const said = answer.replace(/\s+/g, ' ').trim().slice(0, 200);
+      throw new Error(
+        `Xenon could not read the AI provider's answer as true or false, ${notChecked}. ` +
+          `It answered: ${JSON.stringify(said)}`,
+      );
+    }
+    return verdict;
+  }
+
+  /**
+   * A short description of the screen in the screenshot, for
+   * `xenon: analyzeScreen` and device control's Omni-Scan. Throws when there
+   * is no provider or the call fails, so the caller can say why there is none.
+   */
+  public async describeScreen(screenshotBase64: string): Promise<string> {
+    this.initializeProvider();
+    if (!this.provider) throw new Error('No AI provider is configured');
+
+    const prompt = `
+You are looking at a screenshot of a mobile app, for a software tester.
+Describe the screen in a few short sentences: which screen it is, its main elements and their state (for example filled in, empty, selected or disabled), and anything unexpected, such as an error message, a system dialog, a crash or a loading indicator.
+Describe only what is visible. Answer in plain text.
+        `.trim();
+
+    const answer = await this.callProvider(prompt, screenshotBase64);
+    if (answer === RATE_LIMITED) throw new Error('The AI provider is rate-limited');
+    return answer;
   }
 
   /**

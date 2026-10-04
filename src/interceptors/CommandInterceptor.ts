@@ -17,6 +17,7 @@ import { IPluginArgs } from '../interfaces/IPluginArgs';
 import { AutowaitService } from '../services/autowait/AutowaitService';
 import { waitFor } from '../services/autowait/waitFor';
 import { SelfHealingSwitch } from '../services/settings/SelfHealingSwitch';
+import { unknownXenonScriptMessage, xenonScriptName } from './xenonScripts';
 
 @Service()
 export class CommandInterceptor {
@@ -178,11 +179,15 @@ export class CommandInterceptor {
             this.log.info(
               `[Interceptor] Routing AI command: ${script} with payload: ${JSON.stringify(scriptArgs)}`,
             );
+            // The condition as a plain string (`execute(script, 'The cart is
+            // empty')`, which arrives as ['The cart is empty']) or as
+            // { instruction }. A plain string used to arrive as ''.
+            const first = Array.isArray(scriptArgs) ? scriptArgs[0] : scriptArgs;
             const instruction =
-              typeof scriptArgs === 'string'
-                ? scriptArgs
-                : typeof scriptArgs === 'object' && scriptArgs?.instruction
-                  ? scriptArgs.instruction
+              typeof first === 'string'
+                ? first
+                : typeof first === 'object' && typeof first?.instruction === 'string'
+                  ? first.instruction
                   : '';
             return await Container.get(AICommandService).assertVisualState(driver, instruction);
           }
@@ -217,19 +222,34 @@ export class CommandInterceptor {
           }
         }
 
+        // A session-details command (`xenon: setSessionName`, ...) is answered
+        // by the before-hook; its answer is what the test gets.
+        let answered: unknown = null;
         const shouldProceed = await DASHBORD_EVENT_MANAGER.beforeSessionCommand(
           sessionId,
           commandName,
           { body: { script: args[0], args: args[1] } } as any,
           {
-            status: () => ({ json: (d: any) => d }),
+            status: () => ({
+              json: (d: any) => {
+                answered = d?.value ?? null;
+                return d;
+              },
+            }),
             setHeader: () => {},
             getHeader: () => {},
           } as any,
         );
 
         if (shouldProceed === false) {
-          return null;
+          return answered;
+        }
+
+        // Every Xenon script this server has was answered above. Any other
+        // name used to be answered with null, as if it had worked.
+        if (commandName === 'execute' && xenonScriptName(args[0]) !== null) {
+          const { errors } = await import('@appium/base-driver');
+          throw new errors.UnknownCommandError(unknownXenonScriptMessage(args[0]));
         }
       }
 

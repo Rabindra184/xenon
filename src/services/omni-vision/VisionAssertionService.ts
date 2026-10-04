@@ -1,5 +1,6 @@
 import { Service } from 'typedi';
-import { AI_SERVICE } from '../AIService';
+import { errors } from '@appium/base-driver';
+import { AI_SERVICE, VisualVerdict } from '../AIService';
 import log from '../../logger';
 
 @Service()
@@ -7,43 +8,42 @@ export class VisionAssertionService {
   private logger = log.scope('VisionAssertion');
 
   /**
-   * Asserts a visual state using AI reasoning
+   * `xenon: assertVisualState`: whether `instruction`, a condition in plain
+   * words, holds on the device's screen now, as the AI provider judges it from
+   * a screenshot.
+   *
+   * Answers `{ result, message }` only with the provider's own verdict.
+   * Whenever there is none it fails, saying the condition was not checked: no
+   * condition, no screenshot, no AI provider, a failed or rate-limited call,
+   * or an answer that isn't true or false. It never answers `false` for "could
+   * not check": a test asserting that something is absent would pass. Through
+   * 2.13.2 it answered `{ result: true, message: 'Assertion placeholder' }` in
+   * all of those cases.
    */
-  async assertState(
-    driver: any,
-    instruction: string,
-  ): Promise<{ result: boolean; message: string }> {
-    this.logger.info(`Asserting visual state: "${instruction}"`);
-
-    try {
-      const screenshot = await driver.getScreenshot();
-
-      const prompt = `
-        You are a visual testing quality agent. 
-        Your task is to verify if the following condition is true based on the provided screenshot.
-        
-        Condition: "${instruction}"
-        
-        Response Format: JSON only, strictly { "result": boolean, "message": "detailed explanation of what you see" }.
-      `;
-
-      const response = await AI_SERVICE.visualFind(screenshot, prompt);
-
-      // Note: We use visualFind which calls analyze. We expect a JSON response.
-      // Since analyze returns raw text, we attempt to parse it.
-      if (response && (response as any).result !== undefined) {
-        return {
-          result: (response as any).result,
-          message: (response as any).message || 'Assertion evaluated successfully.',
-        };
-      }
-
-      // Fallback: If AI_SERVICE.visualFind was used literally, it might not return what we expect.
-      // Let's assume a more direct path if needed, but for now we'll stick to this pattern.
-      return { result: true, message: 'Assertion placeholder' };
-    } catch (err: any) {
-      this.logger.error(`Visual assertion failed: ${err.message}`);
-      return { result: false, message: `Error: ${err.message}` };
+  async assertState(driver: any, instruction: string): Promise<VisualVerdict> {
+    const condition = typeof instruction === 'string' ? instruction.trim() : '';
+    if (!condition) {
+      throw new errors.InvalidArgumentError(
+        'assertVisualState needs a condition to check, as a string or { instruction }, ' +
+          "for example 'The cart is empty'.",
+      );
     }
+    this.logger.info(`Asserting visual state: "${condition}"`);
+
+    let screenshot: string;
+    try {
+      screenshot = await driver.getScreenshot();
+    } catch (err: any) {
+      throw new Error(
+        `No screenshot could be taken, so the condition was not checked: ${err?.message ?? err}`,
+      );
+    }
+    if (!screenshot) {
+      throw new Error('No screenshot could be taken, so the condition was not checked.');
+    }
+
+    const verdict = await AI_SERVICE.assertVisual(screenshot, condition);
+    this.logger.info(`"${condition}": ${verdict.result} (${verdict.message})`);
+    return verdict;
   }
 }

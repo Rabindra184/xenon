@@ -204,6 +204,10 @@ await driver.execute('xenon: captureEvidence', { reason: 'Payment confirmed' });
 
 Also available: `setSessionName`, `addTag` and `debug`, and on Android with network capture on, `addMock`, `getRequests` and `exportHar`.
 
+The five that write to the dashboard (`setSessionStatus`, `captureEvidence`, `setSessionName`, `addTag`, `debug`) answer `{ recorded: true }`, or `{ recorded: false, message }` when nothing was saved, for example on a server whose dashboard is off; they never fail the test. A `xenon:` command Xenon doesn't have fails with `unknown command`.
+
+With an AI provider configured, `assertVisualState` answers `{ result, message }` with the provider's verdict on a screenshot, and fails when it couldn't check. `smartTap` finds text of several words, such as `Sign in`, and taps the right spot on iPhones too.
+
 For CI, a **lease** reserves a device before the test starts and hands back ready-made capabilities: `POST /xenon/api/sdk/leases`. See the [API reference](#api).
 
 ## Self-healing

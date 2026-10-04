@@ -311,6 +311,7 @@ describe('Dashboard events name their phone (team-scoped call sites)', () => {
   });
 
   it("xenon: setSessionStatus: the updated session's device", async () => {
+    sinon.stub(prisma.session, 'findUnique').resolves({ id: 's3', tags: null } as any);
     sinon.stub(prisma.session, 'update').resolves({ id: 's3', device_udid: 'phone-b' } as any);
     const res: any = { status: () => res, json: () => res };
     await new DashboardCommands().process(
@@ -321,7 +322,7 @@ describe('Dashboard events name their phone (team-scoped call sites)', () => {
       res,
     );
     const [call] = scoped(SocketEvents.SESSION_STOPPED);
-    expect(call.args[1]).to.deep.equal({ id: 's3', status: 'failed', failure_reason: undefined });
+    expect(call.args[1]).to.deep.equal({ id: 's3', status: 'failed', failure_reason: 'boom' });
     expect(call.args[2]).to.deep.equal({ udid: 'phone-b' });
   });
 

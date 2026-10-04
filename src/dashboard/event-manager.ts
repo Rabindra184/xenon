@@ -12,7 +12,7 @@ import { XENON_CAPABILITIES } from '../XenonCapabilityManager';
 import _ from 'lodash';
 import { safeParseJson } from '../helpers';
 import { prepareDirectory, savePerformanceTrace, saveScreenShot } from './asset-manager';
-import { dashboardCommands } from './commands';
+import { dashboardCommands, sessionDetailsCommandOf } from './commands';
 import { SessionStatus } from '../types/SessionStatus';
 import { SessionLog, Session, Prisma } from '../generated/client';
 import { XenonSession } from '../sessions/XenonSession';
@@ -422,17 +422,23 @@ export class DashboardEventManager {
       );
     }
 
-    // Principal Interception: Handle Xenon-specific commands regardless of session state in memory
+    // The session-details commands (`xenon: setSessionName`, ...) are answered
+    // here, from this server's record of the session, whether or not the
+    // session is in memory. Every other `xenon:` script goes on: to the
+    // plugin's CommandInterceptor on the server that drives the phone, which
+    // a hub reaches by forwarding it. Taking them all here answered a node
+    // phone's autowait, Omni-Vision and network-capture scripts with null on
+    // the hub, and they never reached the node.
     if (commandName === 'execute') {
       const script =
         request.body?.script || (Array.isArray(request.body) ? request.body[0] : undefined);
-      if (script && dashboardCommands.isDashboardCommand(script)) {
+      if (sessionDetailsCommandOf(script)) {
         log.info(`[EventManager] Intercepting Xenon command: ${script} for session ${sessionId}`);
         await dashboardCommands.process(sessionId, request, response);
         return false;
-      } else if (script && script.includes(':')) {
+      } else if (typeof script === 'string' && script.includes(':')) {
         log.debug(
-          `[EventManager] Custom command ${script} not handled by Xenon. Passing to driver.`,
+          `[EventManager] Script ${script} is not a session-details command; passing it on.`,
         );
       }
     }

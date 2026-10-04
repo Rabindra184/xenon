@@ -1646,14 +1646,14 @@ paths:
       operationId: scanDeviceScreen
       summary: Analyse the screen with OCR and AI
       description: >-
-        Screenshots the device, runs OCR over it (every word with its confidence and box) and asks
-        the configured AI provider for a qualitative read of the screen. No Appium session is
-        needed. Slow: allow tens of seconds.
+        Screenshots the device, runs OCR over it (every word with its confidence and box, in the
+        screenshot's pixels) and sends the screenshot to the configured AI provider for a short
+        description of the screen. No Appium session is needed. Slow: allow tens of seconds.
 
 
         If the analysis itself fails (an empty screenshot, OCR failing), the answer is `500` with
-        `{ status: 'error', message }`. If only the AI step fails, the answer is `200` and
-        `ai_insights` is `null`.
+        `{ status: 'error', message }`. If only the AI step fails, or no AI provider is
+        configured, the answer is `200`, `ai_insights` is `null` and `ai_insights_error` says why.
 
 
         Open to watchers. Needs the `MEMBER` role; any scope will do.
@@ -1690,10 +1690,27 @@ paths:
                               y0: 210
                               x1: 188
                               y1: 236
-                      ai_insights:
-                        summary: >-
-                          A sign-in form with email and password fields and a disabled Sign in
-                          button.
+                      ai_insights: >-
+                        A sign-in screen with empty email and password fields and a disabled Sign
+                        in button. No error or dialog is shown.
+                noProvider:
+                  summary: No AI provider configured
+                  value:
+                    status: success
+                    value:
+                      timestamp: '2026-10-04T14:05:22.118Z'
+                      ocr:
+                        text: Sign in
+                        words:
+                          - text: Sign
+                            confidence: 96.2
+                            bbox:
+                              x0: 142
+                              y0: 210
+                              x1: 188
+                              y1: 236
+                      ai_insights: null
+                      ai_insights_error: No AI provider is configured
         '400':
           description: This server has no device manager for the platform, or the udid is malformed.
           content:
@@ -1752,8 +1769,9 @@ paths:
         Runs one of Xenon's AI locator strategies against a fresh screenshot, as a test would with
         `findElement`, without an Appium session.
 
-        - `-custom:ai-text`: OCR; every word containing `selector` (case-insensitive, confidence
-        above 60%).
+        - `-custom:ai-text`: OCR; every place `selector` appears (case-insensitive), within a word
+        or across neighbouring words on one line, so `Sign in` matches; each match read with
+        confidence above 60%.
 
         - `-custom:ai-icon`: the configured AI provider looks for what `selector` describes; at most
         one match, a 40×40 box around the point it names.
@@ -2997,10 +3015,14 @@ components:
                           y1:
                             type: number
             ai_insights:
-              type: object
+              type: string
               nullable: true
-              additionalProperties: true
-              description: The AI provider's analysis; null if it was skipped or failed.
+              description: >-
+                The AI provider's description of the screen, in plain text; null when there is no
+                AI provider or its call failed.
+            ai_insights_error:
+              type: string
+              description: Why `ai_insights` is null. Present only then.
     ControlTestLocatorRequest:
       type: object
       required:
