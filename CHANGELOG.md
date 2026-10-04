@@ -6,6 +6,42 @@ This project follows [Semantic Versioning](https://semver.org/). Releases are
 published to npm automatically when `package.json`'s `version` changes on `main`
 (see `.github/workflows/npm-publish.yml`).
 
+## 2.13.1
+
+**iPhone control that does what it says: keys after the live preview
+restarts, clipboard writes that land, and refusals the dashboard shows.**
+
+No new database migration (2.13.0's is applied at startup unless
+`XENON_AUTO_MIGRATE=false`), and nothing to configure. The iPhone fixes take
+effect on the server the iPhone is plugged into: on a hub with nodes,
+upgrade the nodes for their phones.
+
+### Fixed
+
+- **iPhone keys stopped working after the live preview restarted** (#444).
+  Each preview starts its own WebDriverAgent session, and Xenon kept the
+  first one. After device control was closed and opened again, Home and the
+  volume buttons failed until a lock or a swipe happened to recover, and a
+  key the iPhone has could be reported as one it doesn't. Keys now go to
+  the current session, and to the one WebDriverAgent names when it refuses
+  an old one.
+- **The iPhone's Home fallback never worked** (#444). WebDriverAgent takes
+  its home-screen command only outside a session, and Xenon always sent it
+  inside one. The same call is used by the clipboard read.
+- **Writing an iPhone's clipboard reported success and changed nothing**
+  (#444). iOS ignores a clipboard write from an app in the background.
+  WebDriverAgent is now brought to the front for the write, the text is read
+  back before it counts, and the app that was in front, or the home screen,
+  is put back. A write takes about 3 s.
+- **The side buttons on device control said nothing when a press failed**
+  (#444). Home, Back, the app switcher, volume, lock and unlock now show why
+  in a toast. The failure only reached the browser's console.
+- **A refusal showed its code instead of its sentence** (#444): a member
+  releasing someone else's reservation saw `not_reservation_holder`.
+- **A refusal was shown twice** (#444): an admin saving Settings, AI engine
+  or Maintenance got "Only a super admin can change the lab's settings."
+  twice.
+
 ## 2.13.0
 
 **Tighter access rules, answers that say what really happened, device
