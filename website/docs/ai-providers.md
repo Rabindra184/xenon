@@ -54,13 +54,31 @@ server:
       aiBaseUrl: http://localhost:11434
 ```
 
-An option wins over its variable: `aiProvider` over `XENON_AI_PROVIDER`, `aiModel` over `XENON_AI_MODEL`, and `aiBaseUrl` over `XENON_AI_BASE_URL`. The keys have options too, `geminiApiKey`, `openaiApiKey` and `anthropicApiKey`, which win over the variables, but a key in a config file is easy to leak: keep keys in the environment. The provider's own model variable, such as `XENON_OLLAMA_MODEL`, still wins over `aiModel`. [Configuration](./configuration.md) lists the options.
+An option wins over its variable: `aiProvider` over `XENON_AI_PROVIDER`, `aiModel` over `XENON_AI_MODEL`, and `aiBaseUrl` over `XENON_AI_BASE_URL`. The keys have options too, `geminiApiKey`, `openaiApiKey` and `anthropicApiKey`, which win over the variables, but a key in a config file is easy to leak: keep keys in the environment. The provider's own model variable, such as `XENON_OLLAMA_MODEL`, still wins over `aiModel`. A provider chosen on the **AI engine** page, and a model or base URL saved while the server runs, win over both: see [Change them while the server runs](#change-them-while-the-server-runs). [Configuration](./configuration.md) lists the options.
 
 :::caution[Choose the provider in the environment]
 
 Xenon sets up its provider from the environment alone when Appium loads the plugin, before it reads these options. That provider is the one `XENON_AI_PROVIDER` names, Gemini when it isn't set, and it works only when the environment also has its key (Ollama needs none). Otherwise the AI healing tiers and failure analysis stay off, whatever the options or the **AI engine** page choose, until a test or the API uses a screen command that calls the provider, such as a `-custom:ai-icon` find, `visualTap` or `analyzeScreen`. So set the provider and its key with the environment variables above. The options and the page can then change a provider that is already working.
 
 :::
+
+### Change them while the server runs
+
+A super admin can change the provider, the models and the base URL without a restart: the provider on the [AI engine page](#the-ai-engine-page), and any of them with `POST /xenon/api/config`, called with a super admin's access key and token, with the `admin` scope ([Roles and scopes](./roles-and-scopes.md)). Its fields have the options' names, `aiProvider`, `aiModel` and `aiBaseUrl`, and one model field per provider, `geminiModel`, `openaiModel`, `anthropicModel` and `ollamaModel`:
+
+```bash
+curl -X POST http://localhost:4723/xenon/api/config \
+  -H 'content-type: application/json' \
+  -H "x-xenon-access-key: $XENON_ACCESS_KEY" -H "x-xenon-token: $XENON_TOKEN" \
+  -d '{"aiProvider": "ollama", "ollamaModel": "llava", "aiBaseUrl": "http://gpu-box.lab:11434"}'
+```
+
+- **Saved, and kept across restarts.** Xenon keeps each value in its database. It replaces the option and the environment variable, and applies from the next AI call. Through 2.14 a change lasted only until the server restarted.
+- **An empty value goes back** to the option or the variable, or to the provider's default when neither is set, for example `{"ollamaModel": ""}`.
+- **A provider's own model wins over `aiModel`,** saved or not, as the variables do.
+- **A value that can't work is refused,** with `400 invalid_setting` and the field's name, and nothing is saved: a provider other than the four, a model name with spaces or of more than 200 characters, or a base URL that isn't an `http` or `https` address or that holds a user name, password or query.
+- **Keys can't be set this way.** Xenon ignores a key sent here and never saves one.
+- **The values belong to the server they are saved on.** Saving them on a hub doesn't change a node's provider: see [On a hub](#on-a-hub).
 
 ## What uses the provider
 
@@ -77,16 +95,17 @@ Xenon sets up its provider from the environment alone when Appium loads the plug
 
 These never call it: the Resilio, Fuzzy XML and OCR healing tiers, text found with `-custom:ai-text` or `smartTap` with text, `uiInventory`, the [inspector](./inspector.md), and [Selector health](./selector-health.md).
 
+Xenon sets no temperature or top P on these calls, and asks OpenAI and Anthropic for answers of at most 500 tokens.
+
 A screenshot or a page source holds whatever the app shows, personal data included, and Xenon sends it as it is. When that matters, run a model on a machine you control with Ollama, or leave the provider unset. A session can also keep its screenshots away from the healing tiers with [`healingTiers`](./self-healing.md#choose-tiers-for-one-session), but only where Xenon reads it: on a server with the dashboard on, or for a session that records video. Elsewhere every tier runs.
 
 ## The AI engine page
 
 **AI engine** in the dashboard's sidebar shows the provider the server uses. Admins can open it. Only a super admin can save a change on it or test a connection.
 
-- **Provider registry** lists the four providers, Gemini, OpenAI and Anthropic each with its default model and Ollama as `Local / self-hosted — no API key required`, and counts how many are set up, such as `2 / 4 configured`. A provider whose key is set shows **READY**, one without shows **Not set** and can't be chosen, and the one selected shows **Active**, or **Active — no key** when its key is missing. Ollama counts as set up when a model or base URL is set for it: `XENON_OLLAMA_MODEL`, `XENON_AI_MODEL` or `XENON_AI_BASE_URL`, or the `aiModel` or `aiBaseUrl` option.
-- **Choosing a provider:** click one that is **READY**, then **Save configuration**. If the server had a working provider, Xenon uses the new one from its next AI call. If it had none, the AI healing tiers and failure analysis stay off; see the caution in [In the server's config file](#in-the-servers-config-file). The choice lasts until the server restarts, which goes back to the option or the environment. To keep a provider, set it in the environment.
-- **Runtime configuration** shows the provider selected on the page, even before you save it, with its model and its base URL. The model and the base URL come from the environment and the options; the page doesn't change them.
-- **Model Parameters** (**Temperature**, **Max tokens** and **Top P**) have no effect: Xenon doesn't send them to the provider, and doesn't keep them. Xenon sends none of these settings, except that it asks OpenAI and Anthropic for answers of at most 500 tokens.
+- **Provider registry** lists the four providers, Gemini, OpenAI and Anthropic each with its default model and Ollama as `Local / self-hosted — no API key required`, and counts how many are set up, such as `2 / 4 configured`. A provider whose key is set shows **READY**, one without shows **Not set** and can't be chosen, and the one selected shows **Active**, or **Active — no key** when its key is missing. Ollama counts as set up when a model or base URL is set for it: `XENON_OLLAMA_MODEL`, `XENON_AI_MODEL` or `XENON_AI_BASE_URL`, the `aiModel` or `aiBaseUrl` option, or a value saved while the server runs. Point at a provider that is **Not set** to see what the server needs: its key's variable, or for Ollama `XENON_OLLAMA_MODEL` or `XENON_AI_BASE_URL`.
+- **Choosing a provider:** click one that is **READY**, then **Save configuration**. If the server had a working provider, Xenon uses the new one from its next AI call. If it had none, the AI healing tiers and failure analysis stay off; see the caution in [In the server's config file](#in-the-servers-config-file). Xenon saves the choice: it replaces the provider the option or the environment names, and stays after a restart. The page has no way back to the server's own provider; send `{"aiProvider": ""}` to `POST /xenon/api/config` for that ([Change them while the server runs](#change-them-while-the-server-runs)).
+- **Runtime configuration** shows the provider selected on the page, even before you save it, with its model and, for OpenAI and Ollama, its base URL. Gemini and Anthropic use no base URL, so none is shown for them. **Default** beside the model means the server sets no model for that provider, and the provider's default, shown, is used. A user name, password or query value in the base URL shows as `***`. The model and the base URL come from the environment, the options and `POST /xenon/api/config`; the page doesn't change them.
 - **Test Connection** sends the provider selected on the page a one-line prompt with the server's key, and says whether it answered and how long it took. A Gemini key that is out of quota still connects, with a note saying so. Nothing is saved.
 
 The dashboard never asks for, stores or shows a key. The page only says whether each one is set.

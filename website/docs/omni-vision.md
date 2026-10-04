@@ -14,7 +14,7 @@ Omni-Vision finds things on the phone's screen by what is shown, not through the
 | Needs | Nothing | An AI provider set up for the server |
 | Sends out | Nothing | The screenshot and your description |
 
-- **OCR's language data.** The first time OCR runs, the server downloads Tesseract's English language data from `cdn.jsdelivr.net` and saves it as `eng.traineddata` in the directory the Appium server was started from. Later runs read that file. A server with no internet access needs the file there before OCR can work.
+- **OCR's language data.** Tesseract's English language data comes with the plugin, so OCR works on a server with no internet access, and nothing is downloaded or written outside the plugin's folder. Through 2.14 the server downloaded it from `cdn.jsdelivr.net` the first time OCR ran, and saved it as `eng.traineddata` in the directory the Appium server was started from. You can delete that file.
 - **One OCR at a time.** The OCR in the locators and commands below reads one screenshot at a time on each server, and others wait their turn, so OCR in many parallel sessions adds up. AI vision doesn't wait in this queue.
 - **Without a provider,** AI vision finds nothing, and the commands that depend on it fail and say why. OCR works with no provider.
 

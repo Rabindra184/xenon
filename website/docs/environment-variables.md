@@ -53,13 +53,13 @@ How Xenon reads the values:
 
 | Variable | Default | What it does |
 |---|---|---|
-| `XENON_AI_PROVIDER` | `gemini` | The provider for the AI healing tiers, Omni-Vision and failure analysis: `gemini`, `openai`, `anthropic` or `ollama`. The `aiProvider` option wins. |
+| `XENON_AI_PROVIDER` | `gemini` | The provider for the AI healing tiers, Omni-Vision and failure analysis: `gemini`, `openai`, `anthropic` or `ollama`. The `aiProvider` option wins, and a provider chosen on the **AI engine** page wins over both. |
 | `XENON_GEMINI_API_KEY`, or `GEMINI_API_KEY` | None | The Gemini key. The unprefixed name is read only when the `XENON_` one isn't set, and the `geminiApiKey` option wins over both. `GEMINI_API_KEY=mock` is a test value: failure analysis then answers with a fixed sample text and calls no provider. |
 | `XENON_OPENAI_API_KEY`, or `OPENAI_API_KEY` | None | The OpenAI key, or the key of another service that speaks the OpenAI API. Same order as above; the `openaiApiKey` option wins. |
 | `XENON_ANTHROPIC_API_KEY`, or `ANTHROPIC_API_KEY` | None | The Anthropic key. Same order; the `anthropicApiKey` option wins. |
-| `XENON_GEMINI_MODEL`, `XENON_OPENAI_MODEL`, `XENON_ANTHROPIC_MODEL`, `XENON_OLLAMA_MODEL` | The provider's default | The model for that provider. It wins over the `aiModel` option and `XENON_AI_MODEL`. Ollama's default, `llama3`, can't read screenshots: choose a vision model such as `llava`. |
-| `XENON_AI_MODEL` | The provider's default | The model for whichever provider is chosen, when that provider's own variable isn't set. The `aiModel` option wins. |
-| `XENON_AI_BASE_URL` | For Ollama, `http://localhost:11434` | The address of an Ollama server, or of another service that speaks the OpenAI API. The `aiBaseUrl` option wins. |
+| `XENON_GEMINI_MODEL`, `XENON_OPENAI_MODEL`, `XENON_ANTHROPIC_MODEL`, `XENON_OLLAMA_MODEL` | The provider's default | The model for that provider. It wins over the `aiModel` option and `XENON_AI_MODEL`, and a model saved for that provider through `POST /xenon/api/config` wins over it. Ollama's default, `llama3`, can't read screenshots: choose a vision model such as `llava`. |
+| `XENON_AI_MODEL` | The provider's default | The model for whichever provider is chosen, when that provider's own variable isn't set. The `aiModel` option wins, and an `aiModel` saved through `POST /xenon/api/config` wins over both. |
+| `XENON_AI_BASE_URL` | For Ollama, `http://localhost:11434` | The address of an Ollama server, or of another service that speaks the OpenAI API. The `aiBaseUrl` option wins, and a base URL saved through `POST /xenon/api/config` wins over both. |
 
 ## Hub, nodes and other servers
 

@@ -51,7 +51,7 @@ In the API the category is the stored, upper-case name, such as `ELEMENT_NOT_FOU
 
 ## The AI analysis
 
-The AI analysis needs an AI provider. Xenon supports Gemini (the default), OpenAI, Anthropic and Ollama. Set the provider and its key in the environment of the Appium server, for example `XENON_AI_PROVIDER` and `XENON_GEMINI_API_KEY`. Ollama needs no key. A super admin can switch to another provider on the dashboard's **AI engine** page, until the server restarts. [AI providers](./ai-providers.md) explains the setup, the models, their settings and that page.
+The AI analysis needs an AI provider. Xenon supports Gemini (the default), OpenAI, Anthropic and Ollama. Set the provider and its key in the environment of the Appium server, for example `XENON_AI_PROVIDER` and `XENON_GEMINI_API_KEY`. Ollama needs no key. A super admin can switch to another provider on the dashboard's **AI engine** page, and Xenon keeps the choice when the server restarts. [AI providers](./ai-providers.md) explains the setup, the models, their settings and that page.
 
 With no provider set up, no AI analysis is made and no request goes anywhere. The category is still saved.
 
