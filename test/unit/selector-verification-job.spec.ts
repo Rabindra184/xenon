@@ -56,9 +56,9 @@ describe('SelectorVerificationJob.run', () => {
       },
     ]);
     prismaStub.$queryRaw.resolves([
-      { build_id: 'b-1', healed: 0 },
-      { build_id: 'b-2', healed: 0 },
-      { build_id: 'b-3', healed: 0 },
+      { build_id: 'b-1', healed: 0, found: 1 },
+      { build_id: 'b-2', healed: 0, found: 1 },
+      { build_id: 'b-3', healed: 0, found: 1 },
     ]);
     prismaStub.selectorState.update.resolves({
       id: 'r-1',
@@ -93,8 +93,8 @@ describe('SelectorVerificationJob.run', () => {
       },
     ]);
     prismaStub.$queryRaw.resolves([
-      { build_id: 'b-1', healed: 0 },
-      { build_id: 'b-2', healed: 1 }, // not clean
+      { build_id: 'b-1', healed: 0, found: 1 },
+      { build_id: 'b-2', healed: 1, found: 1 }, // not clean
     ]);
     prismaStub.selectorState.update.resolves({
       id: 'r-1',
@@ -122,8 +122,8 @@ describe('SelectorVerificationJob.run', () => {
       },
     ]);
     prismaStub.$queryRaw.resolves([
-      { build_id: 'b-1', healed: 0 },
-      { build_id: 'b-2', healed: 1 },
+      { build_id: 'b-1', healed: 0, found: 1 },
+      { build_id: 'b-2', healed: 1, found: 1 },
     ]);
 
     await job.run();
@@ -189,9 +189,9 @@ describe('SelectorVerificationJob.run', () => {
     ]);
     prismaStub.$queryRaw.onFirstCall().rejects(new Error('boom'));
     prismaStub.$queryRaw.onSecondCall().resolves([
-      { build_id: 'b-1', healed: 0 },
-      { build_id: 'b-2', healed: 0 },
-      { build_id: 'b-3', healed: 0 },
+      { build_id: 'b-1', healed: 0, found: 1 },
+      { build_id: 'b-2', healed: 0, found: 1 },
+      { build_id: 'b-3', healed: 0, found: 1 },
     ]);
     prismaStub.selectorState.update.resolves({
       id: 'r-2',
@@ -234,9 +234,9 @@ describe('SelectorVerificationJob.run', () => {
       },
     ]);
     prismaStub.$queryRaw.resolves([
-      { build_id: 'b-1', healed: 0 },
-      { build_id: 'b-2', healed: 0 },
-      { build_id: 'b-3', healed: 0 },
+      { build_id: 'b-1', healed: 0, found: 1 },
+      { build_id: 'b-2', healed: 0, found: 1 },
+      { build_id: 'b-3', healed: 0, found: 1 },
     ]);
     prismaStub.selectorState.update.resolves({
       id: 'r-1',
