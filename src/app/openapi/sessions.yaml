@@ -1,8 +1,22 @@
 paths:
   /api/session:
     get:
-      summary: Get all sessions
-      description: Retrieve a list of sessions with optional filtering
+      operationId: listSessions
+      summary: List sessions
+      description: >-
+        Lists Appium sessions, newest first (by `createdAt`, then by `id`), each with who ran it
+        (`owner`) and where (`ranOn`). Only sessions the caller may see are listed: a member sees
+        the sessions on their teams' devices and the shared pool, plus their own sessions whose
+        device is no longer known; an admin sees all. The team rule is part of the query, so
+        `limit` counts the caller's sessions.
+
+
+        Page through the list with `before` and `beforeId`: pass the `createdAt` and `id` of the
+        last session of the previous page. A query parameter that can't be read is refused with
+        `400` rather than ignored.
+
+
+        Any signed-in user (role `MEMBER` or above) may call it.
       tags:
         - Sessions
       parameters:
@@ -10,87 +24,156 @@ paths:
           name: buildId
           schema:
             type: string
-          description: Filter by build ID
+          description: Only this build's sessions.
+          example: 9d2f4c1e-7a3b-4e8f-b6c5-2d1e0f9a8b7c
         - in: query
           name: status
           schema:
             type: string
-            enum:
-              - running
-              - success
-              - failed
-          description: Filter by session status
+          description: >-
+            Only sessions with exactly this stored status, for example `running`, `success`,
+            `passed`, `failed`, `error`, `timeout` or `ended`.
+          example: failed
         - in: query
           name: platform
           schema:
             type: string
-            enum:
-              - ios
-              - android
-          description: Filter by device platform
+          description: Only sessions on this platform, as stored (`android` or `ios`).
+          example: android
         - in: query
           name: query
           schema:
             type: string
-          description: Search by session ID, name, device UDID, or device name
+          description: >-
+            Text contained in the session's id, name, device udid, device name, failure category
+            or tags.
+          example: Pixel 7
+        - in: query
+          name: ids
+          schema:
+            type: string
+          description: >-
+            Only these sessions: 1 to 200 session ids separated by commas. An empty list or more
+            than 200 ids is refused (`400 invalid_ids`).
+          example: 6f1c2a8e-3b4d-4e5f-9a7b-1c2d3e4f5a6b,0b7e4d21-55c6-4c0b-8f0e-6a1d9c3b2e10
         - in: query
           name: since
           schema:
             type: string
             format: date-time
           description: >-
-            Only sessions created at or after this time. A value that is not a date is refused (400
-            invalid_since).
+            Only sessions created at or after this time (ISO 8601). A value that isn't a date is
+            refused (`400 invalid_since`).
+          example: '2026-10-01T00:00:00.000Z'
         - in: query
           name: limit
           schema:
             type: integer
             minimum: 1
-            maximum: 2000
             default: 500
           description: >-
-            Sessions per answer. A larger limit is answered with 2000; one that is not a whole
-            number from 1 is refused (400 invalid_limit).
+            Sessions per answer. A limit above 2000 is answered with 2000. A value that isn't a
+            whole number from 1 is refused (`400 invalid_limit`).
+          example: 100
         - in: query
           name: before
           schema:
             type: string
             format: date-time
           description: >-
-            The next page. The createdAt of the last session of the page before; with beforeId, its
-            id. Sessions are ordered newest first by createdAt, then by id, so a page continues
-            exactly where the one before stopped. A value that is not a date is refused (400
-            invalid_before).
+            Start of the next page: the `createdAt` of the last session of the previous page. A
+            value that isn't a date is refused (`400 invalid_before`).
+          example: '2026-10-03T14:22:05.120Z'
         - in: query
           name: beforeId
           schema:
             type: string
-          description: The id of the last session of the page before (see before).
+          description: >-
+            The `id` of the last session of the previous page, used with `before` so sessions
+            created in the same millisecond are neither skipped nor repeated. Without it, the page
+            holds everything older than `before`.
+          example: 6f1c2a8e-3b4d-4e5f-9a7b-1c2d3e4f5a6b
       responses:
         '200':
-          description: >-
-            Up to `limit` matching sessions, newest first. Each also carries `owner` ({ name, email
-            } of who ran it, or null) and `ranOn` ('here' for this server, a node's host, or null
-            when not known).
+          description: Up to `limit` sessions, newest first.
           content:
             application/json:
               schema:
                 type: array
                 items:
-                  $ref: '#/components/schemas/Session'
+                  $ref: '#/components/schemas/SessionsSessionRecord'
+              example:
+                - id: 6f1c2a8e-3b4d-4e5f-9a7b-1c2d3e4f5a6b
+                  build_id: 9d2f4c1e-7a3b-4e8f-b6c5-2d1e0f9a8b7c
+                  name: Checkout with saved card
+                  status: failed
+                  node_id: 3c9a1f20-8d4e-4b7a-a1c2-5e6f7a8b9c0d
+                  has_live_video: true
+                  video_recording_enabled: true
+                  video_recording: 6f1c2a8e-3b4d-4e5f-9a7b-1c2d3e4f5a6b.mp4
+                  startTime: '2026-10-03T14:20:11.004Z'
+                  endTime: '2026-10-03T14:22:05.120Z'
+                  failure_reason: 'NoSuchElementError: An element could not be located'
+                  failure_category: element_not_found
+                  device_udid: emulator-5554
+                  device_platform: android
+                  device_version: '14'
+                  device_name: Pixel 7
+                  createdAt: '2026-10-03T14:20:11.004Z'
+                  updatedAt: '2026-10-03T14:22:05.311Z'
+                  api_key_id: null
+                  user_id: 5b8e2c14-0f3a-4d6b-9e7c-1a2b3c4d5e6f
+                  owner:
+                    name: Priya Raman
+                    email: priya@example.com
+                  ranOn: here
         '400':
-          description: since is not a date
+          description: A query parameter can't be read.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                since:
+                  value:
+                    error: invalid_since
+                    message: since must be an ISO 8601 date
+                limit:
+                  value:
+                    error: invalid_limit
+                    message: limit must be a whole number from 1
+                before:
+                  value:
+                    error: invalid_before
+                    message: before must be an ISO 8601 date
+                ids:
+                  value:
+                    error: invalid_ids
+                    message: ids must list 1 to 200 session ids, separated by commas
         '401':
           $ref: '#/components/responses/Unauthorized'
         '429':
           $ref: '#/components/responses/RateLimited'
   /api/session-summary:
     get:
+      operationId: summarizeSessions
       summary: Summarize sessions over a period
       description: >-
-        The Sessions page's summary: counts by outcome, median and p90 duration of the sessions that
-        ended, the counts of the period of the same length before it, and what runs now. Over the
-        sessions the caller may see. error and timeout count as failed; ended as passed.
+        The Sessions page's summary strip, over the sessions the caller may see (and of one build
+        when `buildId` is given):
+
+        - `current`: the period from `since` to now, with counts by outcome and the median and
+        90th-percentile duration of the sessions in it that ended. Durations come from at most the
+        10,000 newest ended sessions of the period.
+
+        - `previous`: the period of the same length just before it, or null without `since`.
+
+        - `runningNow`: sessions running now and the distinct devices they run on.
+
+
+        Outcomes: `success`, `passed` and `ended` count as passed; `failed`, `error` and `timeout`
+        as failed; `running` as running. Any other status counts only in `total`. Any signed-in
+        user (role `MEMBER` or above) may call it.
       tags:
         - Sessions
       parameters:
@@ -99,193 +182,466 @@ paths:
           schema:
             type: string
             format: date-time
-          description: Start of the period. Without it the period is all time and `previous` is null.
+          description: >-
+            Start of the period. Without it the period is all time and `previous` is null. A value
+            that isn't a date is refused (`400 invalid_since`).
+          example: '2026-09-27T00:00:00.000Z'
         - in: query
           name: buildId
           schema:
             type: string
-          description: Only this build's sessions
+          description: Only this build's sessions.
+          example: 9d2f4c1e-7a3b-4e8f-b6c5-2d1e0f9a8b7c
       responses:
         '200':
-          description: The summary
+          description: The summary.
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  since:
-                    type: string
-                    format: date-time
-                    nullable: true
-                  current:
-                    type: object
-                    properties:
-                      total:
-                        type: integer
-                      passed:
-                        type: integer
-                      failed:
-                        type: integer
-                      running:
-                        type: integer
-                      medianMs:
-                        type: integer
-                        nullable: true
-                      p90Ms:
-                        type: integer
-                        nullable: true
-                  previous:
-                    type: object
-                    nullable: true
-                    properties:
-                      total:
-                        type: integer
-                      passed:
-                        type: integer
-                      failed:
-                        type: integer
-                      running:
-                        type: integer
-                  runningNow:
-                    type: object
-                    properties:
-                      sessions:
-                        type: integer
-                      devices:
-                        type: integer
+                $ref: '#/components/schemas/SessionsSummary'
+              example:
+                since: '2026-09-27T00:00:00.000Z'
+                current:
+                  total: 412
+                  passed: 371
+                  failed: 33
+                  running: 4
+                  medianMs: 94210
+                  p90Ms: 241880
+                previous:
+                  total: 388
+                  passed: 340
+                  failed: 45
+                  running: 0
+                runningNow:
+                  sessions: 4
+                  devices: 4
         '400':
-          description: since is not a date
+          description: '`since` is not a date.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: invalid_since
+                message: since must be an ISO 8601 date
         '401':
           $ref: '#/components/responses/Unauthorized'
         '429':
           $ref: '#/components/responses/RateLimited'
-  /api/build:
+  /api/session/{sessionId}:
     get:
-      summary: Get all builds
-      description: Retrieve a list of all test builds with session counts
+      operationId: getSession
+      summary: Get one session
+      description: >-
+        Returns one session's stored record, with who ran it (`owner`) and where (`ranOn`), as the
+        list gives it. A session the caller may not see answers exactly like an unknown id: `404`.
+        Any signed-in user (role `MEMBER` or above) may call it.
       tags:
-        - Builds
+        - Sessions
+      parameters:
+        - $ref: '#/components/parameters/SessionsSessionId'
       responses:
         '200':
-          description: List of builds
+          description: The session.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SessionsSessionRecord'
+              example:
+                id: 6f1c2a8e-3b4d-4e5f-9a7b-1c2d3e4f5a6b
+                build_id: 9d2f4c1e-7a3b-4e8f-b6c5-2d1e0f9a8b7c
+                name: Checkout with saved card
+                status: success
+                desired_capabilities: '{"platformName":"Android","appium:automationName":"UiAutomator2"}'
+                session_capabilities: '{"platformName":"Android","appium:udid":"emulator-5554"}'
+                node_id: 3c9a1f20-8d4e-4b7a-a1c2-5e6f7a8b9c0d
+                has_live_video: true
+                video_recording_enabled: true
+                video_recording: 6f1c2a8e-3b4d-4e5f-9a7b-1c2d3e4f5a6b.mp4
+                startTime: '2026-10-03T14:20:11.004Z'
+                endTime: '2026-10-03T14:21:45.214Z'
+                failure_reason: null
+                is_profiling_available: false
+                device_udid: emulator-5554
+                device_platform: android
+                device_version: '14'
+                device_name: Pixel 7
+                createdAt: '2026-10-03T14:20:11.004Z'
+                updatedAt: '2026-10-03T14:21:45.400Z'
+                user_id: 5b8e2c14-0f3a-4d6b-9e7c-1a2b3c4d5e6f
+                owner:
+                  name: Priya Raman
+                  email: priya@example.com
+                ranOn: here
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/SessionsSessionNotFound'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+  /api/session/{sessionId}/session_log:
+    get:
+      operationId: listSessionCommands
+      summary: List a session's commands
+      description: >-
+        Every Appium command the session ran, newest first, as stored: the WebDriver request and
+        response, its duration, whether it failed, and, for a `findElement` that needed
+        self-healing, the original and healed selectors, the healing method and its confidence.
+        The whole list in one answer. A session the caller may not see answers `404`, like an
+        unknown id. Any signed-in user (role `MEMBER` or above) may call it.
+      tags:
+        - Sessions
+      parameters:
+        - $ref: '#/components/parameters/SessionsSessionId'
+      responses:
+        '200':
+          description: The session's commands, newest first.
           content:
             application/json:
               schema:
                 type: array
                 items:
-                  $ref: '#/components/schemas/Build'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '429':
-          $ref: '#/components/responses/RateLimited'
-  /api/session/{sessionId}/session_log:
-    get:
-      summary: Get session logs
-      description: Retrieve Appium command logs for a session
-      tags:
-        - Sessions
-      parameters:
-        - in: path
-          name: sessionId
-          required: true
-          schema:
-            type: string
-          description: Session ID
-      responses:
-        '200':
-          description: Session logs
+                  $ref: '#/components/schemas/SessionsCommand'
+              example:
+                - id: a3c5e7f9-1b2d-4f6a-8c0e-2d4f6a8c0e1b
+                  session_id: 6f1c2a8e-3b4d-4e5f-9a7b-1c2d3e4f5a6b
+                  command_name: findElement
+                  url: /session/6f1c2a8e-3b4d-4e5f-9a7b-1c2d3e4f5a6b/element
+                  method: POST
+                  title: Find element
+                  subtitle: 'accessibility id: login-btn'
+                  body: '{"using":"accessibility id","value":"login-btn"}'
+                  response: '{"element-6066-11e4-a52e-4f735466cecf":"00000000-0000-0011-ffff-ffff0000001c"}'
+                  screenshot: null
+                  is_success: true
+                  is_error: false
+                  is_healed: true
+                  original_strategy: accessibility id
+                  original_selector: login-btn
+                  healed_strategy: xpath
+                  healed_selector: //android.widget.Button[@text="Log in"]
+                  healing_confidence: 0.92
+                  healing_tier: Fuzzy XML
+                  duration: 1840
+                  createdAt: '2026-10-03T14:20:31.512Z'
+                  updatedAt: '2026-10-03T14:20:31.512Z'
+                  span_id: null
+                  trace_id: null
         '401':
           $ref: '#/components/responses/Unauthorized'
         '404':
-          description: Session not found
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
+          $ref: '#/components/responses/SessionsSessionNotFound'
         '429':
           $ref: '#/components/responses/RateLimited'
   /api/session/{sessionId}/logs/device:
     get:
-      summary: Get device logs
-      description: Retrieve device-specific logs for a session
+      operationId: listSessionDeviceLogs
+      summary: List a session's device log lines
+      description: >-
+        The device log lines (logcat or syslog) stored for the session, oldest first. A session
+        the caller may not see answers `404`, like an unknown id. Any signed-in user (role
+        `MEMBER` or above) may call it.
       tags:
         - Sessions
       parameters:
-        - in: path
-          name: sessionId
-          required: true
-          schema:
-            type: string
-          description: Session ID
+        - $ref: '#/components/parameters/SessionsSessionId'
       responses:
         '200':
-          description: Device logs
+          description: The device log lines, oldest first.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/SessionsLogLine'
+              example:
+                - id: 1e2d3c4b-5a69-4788-97a6-b5c4d3e2f1a0
+                  session_id: 6f1c2a8e-3b4d-4e5f-9a7b-1c2d3e4f5a6b
+                  log_type: DEVICE
+                  message: '10-03 14:20:12.345  1234  1250 I ActivityManager: Start proc com.example.shop'
+                  timestamp: '2026-10-03T14:20:12.345Z'
+                  createdAt: '2026-10-03T14:20:12.401Z'
+                  updatedAt: '2026-10-03T14:20:12.401Z'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '404':
-          description: Session not found
+          $ref: '#/components/responses/SessionsSessionNotFound'
         '429':
           $ref: '#/components/responses/RateLimited'
   /api/session/{sessionId}/logs/debug:
     get:
-      summary: Get debug logs
-      description: Retrieve debug logs for a session
+      operationId: listSessionDebugLogs
+      summary: List a session's debug log lines
+      description: >-
+        Xenon's and the driver's debug log lines stored for the session, oldest first. A session
+        the caller may not see answers `404`, like an unknown id. Any signed-in user (role
+        `MEMBER` or above) may call it.
       tags:
         - Sessions
       parameters:
-        - in: path
-          name: sessionId
-          required: true
-          schema:
-            type: string
-          description: Session ID
+        - $ref: '#/components/parameters/SessionsSessionId'
       responses:
         '200':
-          description: Debug logs
+          description: The debug log lines, oldest first.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/SessionsLogLine'
+              example:
+                - id: 7c6b5a49-3827-4615-8f4e-3d2c1b0a9f8e
+                  session_id: 6f1c2a8e-3b4d-4e5f-9a7b-1c2d3e4f5a6b
+                  log_type: DEBUG
+                  message: '[HealingOrchestrator] findElement healed by Fuzzy XML (0.92)'
+                  timestamp: '2026-10-03T14:20:31.510Z'
+                  createdAt: '2026-10-03T14:20:31.512Z'
+                  updatedAt: '2026-10-03T14:20:31.512Z'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '404':
-          description: Session not found
+          $ref: '#/components/responses/SessionsSessionNotFound'
         '429':
           $ref: '#/components/responses/RateLimited'
   /api/session/{sessionId}/profiling:
     get:
-      summary: Get profiling data
-      description: Retrieve performance profiling data for a session
+      operationId: listSessionProfiling
+      summary: List a session's legacy profiling samples
+      description: >-
+        The older profiling samples (CPU and memory as text) stored for the session, oldest first.
+        Only sessions recorded before version 2.10 have any; newer sessions answer an empty list
+        and keep their figures in `GET /api/session/{sessionId}/metrics`. A session the caller may
+        not see answers `404`, like an unknown id. Any signed-in user (role `MEMBER` or above) may
+        call it.
       tags:
         - Sessions
       parameters:
-        - in: path
-          name: sessionId
-          required: true
-          schema:
-            type: string
-          description: Session ID
+        - $ref: '#/components/parameters/SessionsSessionId'
       responses:
         '200':
-          description: Profiling data
+          description: The profiling samples, oldest first; often empty.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/SessionsProfilingSample'
+              example:
+                - id: 1841
+                  session_id: 6f1c2a8e-3b4d-4e5f-9a7b-1c2d3e4f5a6b
+                  cpu: '12.5'
+                  memory: '184320'
+                  total_cpu_used: '38.0'
+                  total_memory_used: '5120000'
+                  raw_cpu_log: null
+                  raw_memory_log: null
+                  timestamp: '2026-10-03T14:20:15.000Z'
+                  createdAt: '2026-10-03T14:20:15.020Z'
+                  updatedAt: '2026-10-03T14:20:15.020Z'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '404':
-          description: Session not found
+          $ref: '#/components/responses/SessionsSessionNotFound'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+  /api/session/{sessionId}/metrics:
+    get:
+      operationId: getSessionMetrics
+      summary: Get a session's CPU and memory samples
+      description: >-
+        The CPU and memory samples recorded for the session every 2 seconds, oldest first, for the
+        session page's Performance panel.
+
+
+        - `series` says what the platform can record: Android has device CPU and memory and the
+        app's CPU and memory; an iPhone has device CPU only; any other platform nothing.
+
+        - `recording` is set only while the session runs: `sampling` (being sampled), `stopped`
+        (sampling gave up after repeated failures) or `off` (nothing samples it, for example with
+        session metrics turned off). It is null once the session has ended.
+
+        - `appId` is the app the newest app figures are for; each sample also names its own `app`,
+        since the foreground app can change.
+
+
+        Samples are written in batches every 10 seconds, so a running session's newest samples can
+        be up to 10 seconds behind. A session on a node's device is collected from the node by the
+        hub in the same way. A session the caller may not see answers `404`, like an unknown id.
+        Any signed-in user (role `MEMBER` or above) may call it.
+      tags:
+        - Sessions
+      parameters:
+        - $ref: '#/components/parameters/SessionsSessionId'
+      responses:
+        '200':
+          description: The samples, and what the platform records.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SessionsMetrics'
+              example:
+                platform: android
+                intervalMs: 2000
+                appId: com.example.shop
+                series:
+                  deviceCpu: true
+                  deviceMem: true
+                  appCpu: true
+                  appMem: true
+                recording: sampling
+                samples:
+                  - t: 1759501213000
+                    deviceCpu: 23.4
+                    deviceMemMb: 3120.5
+                    deviceMemTotalMb: 7680
+                    appCpu: 8.1
+                    appMemMb: 212.7
+                    app: com.example.shop
+                  - t: 1759501215000
+                    deviceCpu: 31.9
+                    deviceMemMb: 3134.2
+                    deviceMemTotalMb: 7680
+                    appCpu: 14.6
+                    appMemMb: 219.3
+                    app: com.example.shop
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/SessionsSessionNotFound'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+  /api/session/{sessionId}/asset/{kind}/{file}:
+    get:
+      operationId: getSessionAsset
+      summary: Download a session's screenshot, video or trace
+      description: >-
+        Serves one stored file of the session: a command screenshot (`screenshots`), the session
+        video (`video`, an mp4 named after the session id) or a performance trace (`performance`).
+        The content type follows the file's extension. `Range` requests are honoured, so a video
+        can be seeked; an unsatisfiable range answers `416` with no body. Answers carry
+        `Cache-Control: private, max-age=300`.
+
+
+        Session files are served only through this route. A session the caller may not see answers
+        `404`, like an unknown id. An unknown `kind`, a `file` that isn't a plain file name (no
+        path, no leading dot), or a missing file answers `404` too. Any signed-in user (role
+        `MEMBER` or above) may call it.
+      tags:
+        - Sessions
+      parameters:
+        - $ref: '#/components/parameters/SessionsSessionId'
+        - in: path
+          name: kind
+          required: true
+          schema:
+            type: string
+            enum:
+              - screenshots
+              - video
+              - performance
+          description: Which of the session's folders.
+          example: video
+        - in: path
+          name: file
+          required: true
+          schema:
+            type: string
+            pattern: '^[A-Za-z0-9_-][A-Za-z0-9._-]*$'
+          description: The file's name within that folder.
+          example: 6f1c2a8e-3b4d-4e5f-9a7b-1c2d3e4f5a6b.mp4
+        - in: header
+          name: Range
+          required: false
+          schema:
+            type: string
+          description: A byte range, for seeking in a video.
+          example: bytes=0-1048575
+      responses:
+        '200':
+          description: The whole file.
+          headers:
+            Accept-Ranges:
+              schema:
+                type: string
+                example: bytes
+            Cache-Control:
+              schema:
+                type: string
+                example: private, max-age=300
+          content:
+            video/mp4:
+              schema:
+                type: string
+                format: binary
+            image/png:
+              schema:
+                type: string
+                format: binary
+            application/zip:
+              schema:
+                type: string
+                format: binary
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+        '206':
+          description: The requested byte range.
+          headers:
+            Content-Range:
+              schema:
+                type: string
+                example: bytes 0-1048575/48211967
+          content:
+            video/mp4:
+              schema:
+                type: string
+                format: binary
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: >-
+            The session is unknown or hidden (the session's not-found answer), or the file isn't
+            there.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                file:
+                  value:
+                    error: true
+                    message: Session asset not found
+                session:
+                  value:
+                    error: true
+                    message: Session with id 6f1c2a8e-3b4d-4e5f-9a7b-1c2d3e4f5a6b not found
+        '416':
+          description: The requested range is outside the file. No body.
         '429':
           $ref: '#/components/responses/RateLimited'
   /api/session/{sessionId}/live_video:
     get:
-      summary: Stream live session video
-      description: Stream live MJPEG video feed for an active session
+      operationId: streamSessionLiveVideo
+      summary: Stream a running session's live video
+      description: >-
+        An MJPEG stream (`multipart/x-mixed-replace`) of a running session's screen, relayed from
+        the driver's MJPEG server. One upstream connection is shared by every viewer of the
+        session. It works only for a session this server is driving right now and whose driver
+        offers an MJPEG port; otherwise it answers `500`. `503` (plain text) means the upstream
+        didn't start sending in time.
+
+
+        A session the caller may not see answers `404`, like an unknown id. Any signed-in user
+        (role `MEMBER` or above) may call it.
       tags:
         - Sessions
       parameters:
-        - in: path
-          name: sessionId
-          required: true
-          schema:
-            type: string
-          description: Session ID
+        - $ref: '#/components/parameters/SessionsSessionId'
       responses:
         '200':
-          description: MJPEG stream
+          description: The MJPEG stream; it lasts as long as the viewer stays connected.
           content:
             multipart/x-mixed-replace:
               schema:
@@ -293,429 +649,386 @@ paths:
                 format: binary
         '401':
           $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/SessionsSessionNotFound'
         '429':
           $ref: '#/components/responses/RateLimited'
-  /api/session/{sessionId}/xenon/analyze:
-    post:
-      summary: Analyze current screen
-      description: Perform an AI-powered visual analysis of the current screen to identify elements and state.
-      tags:
-        - Sessions
-      parameters:
-        - in: path
-          name: sessionId
-          required: true
-          schema:
-            type: string
-          description: Session ID
-      responses:
-        '200':
-          description: Analysis results
+        '500':
+          description: The session isn't running here, or has no live video.
           content:
             application/json:
               schema:
-                type: object
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '404':
-          description: Session not found
-        '429':
-          $ref: '#/components/responses/RateLimited'
-  /api/session/{sessionId}/xenon/assert:
-    post:
-      summary: Assert visual state
-      description: Verify the visual state of the screen against a natural language instruction.
-      tags:
-        - Sessions
-      parameters:
-        - in: path
-          name: sessionId
-          required: true
-          schema:
-            type: string
-          description: Session ID
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required:
-                - instruction
-              properties:
-                instruction:
-                  type: string
-                  description: Natural language assertion (e.g., "The login button is visible")
-      responses:
-        '200':
-          description: Assertion results
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '404':
-          description: Session not found
-        '429':
-          $ref: '#/components/responses/RateLimited'
-  /api/session/{sessionId}/xenon/omni-scan:
-    get:
-      summary: Perform Omni-Scan
-      description: Capture a rich AI/OCR-driven scan of the current screen for advanced interaction.
-      tags:
-        - Sessions
-      parameters:
-        - in: path
-          name: sessionId
-          required: true
-          schema:
-            type: string
-          description: Session ID
-      responses:
-        '200':
-          description: Scan results
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '404':
-          description: Session not found
-        '429':
-          $ref: '#/components/responses/RateLimited'
-  /api/session/{sessionId}/xenon/omni-click:
-    post:
-      summary: Omni-Click (OCR-driven click)
-      description: Click on an element identified by its text using AI/OCR.
-      tags:
-        - Sessions
-      parameters:
-        - in: path
-          name: sessionId
-          required: true
-          schema:
-            type: string
-          description: Session ID
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required:
-                - text
-              properties:
-                text:
-                  type: string
-                  description: Text of the element to click
-                index:
-                  type: integer
-                  default: 0
-                takeANewScreenShot:
-                  type: boolean
-                  default: true
-      responses:
-        '200':
-          description: Click successful
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '404':
-          description: Session not found
-        '429':
-          $ref: '#/components/responses/RateLimited'
-  /api/session/{sessionId}/xenon/smart-tap:
-    post:
-      summary: Smart Tap (Alias of Omni-Click)
-      description: Xenon-native alias for performing an OCR-driven smart tap.
-      tags:
-        - Sessions
-      parameters:
-        - in: path
-          name: sessionId
-          required: true
-          schema:
-            type: string
-          description: Session ID
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required:
-                - text
-              properties:
-                text:
-                  type: string
-                  description: Text of the element to tap
-                index:
-                  type: integer
-                  default: 0
-                takeANewScreenShot:
-                  type: boolean
-                  default: true
-      responses:
-        '200':
-          description: Tap successful
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '404':
-          description: Session not found
-        '429':
-          $ref: '#/components/responses/RateLimited'
-  /api/session/{sessionId}/xenon/ui-inventory:
-    post:
-      summary: UI Inventory Export
-      description: Export rich UI metadata derived from AI/OCR analysis of the current screen.
-      tags:
-        - Sessions
-      parameters:
-        - in: path
-          name: sessionId
-          required: true
-          schema:
-            type: string
-          description: Session ID
-      requestBody:
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                takeANewScreenShot:
-                  type: boolean
-                  default: true
-                maxItems:
-                  type: integer
-                  default: 50
-      responses:
-        '200':
-          description: UI metadata exported
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '404':
-          description: Session not found
-        '429':
-          $ref: '#/components/responses/RateLimited'
+                $ref: '#/components/schemas/Error'
+              example:
+                error: true
+                message: Live video not available for session with id 6f1c2a8e-3b4d-4e5f-9a7b-1c2d3e4f5a6b
+        '503':
+          description: The upstream video source wasn't available in time.
+          content:
+            text/plain:
+              schema:
+                type: string
+              example: '[MjpegProxy] Source not available after timeout'
   /api/sessions/active:
     get:
-      summary: Get active sessions
-      description: Get statistics and list of currently active sessions in memory
+      operationId: listActiveSessions
+      summary: List the sessions this server is running
+      description: >-
+        The sessions this server holds in memory right now: its own local sessions, and on a hub
+        the sessions it routes to nodes (`remote`) or cloud providers (`cloud`). `sessions` is
+        filtered to the devices the caller may see; a session whose device has no row is left out
+        for a member. `stats` counts every session on the server, whatever the caller may see.
+        Any signed-in user (role `MEMBER` or above) may call it.
       tags:
         - Sessions
       responses:
         '200':
-          description: Active session information
+          description: The server's live sessions.
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  stats:
-                    type: object
-                    properties:
-                      total:
-                        type: number
-                        description: Total number of active sessions
-                      byType:
-                        type: object
-                        properties:
-                          local:
-                            type: number
-                          remote:
-                            type: number
-                          cloud:
-                            type: number
-                  sessions:
-                    type: array
-                    items:
-                      type: object
-                      properties:
-                        id:
-                          type: string
-                        type:
-                          type: string
-                          enum:
-                            - local
-                            - remote
-                            - cloud
-                        deviceUdid:
-                          type: string
-                        deviceName:
-                          type: string
-                        platform:
-                          type: string
+                $ref: '#/components/schemas/SessionsActiveList'
+              example:
+                stats:
+                  total: 3
+                  byType:
+                    local: 2
+                    remote: 1
+                    cloud: 0
+                sessions:
+                  - id: 6f1c2a8e-3b4d-4e5f-9a7b-1c2d3e4f5a6b
+                    type: local
+                    deviceUdid: emulator-5554
+                    deviceName: Pixel 7
+                    platform: android
+                  - id: 0b7e4d21-55c6-4c0b-8f0e-6a1d9c3b2e10
+                    type: remote
+                    deviceUdid: 00008110-00084CE80E51401E
+                    deviceName: iPhone 14 Pro
+                    platform: ios
         '401':
           $ref: '#/components/responses/Unauthorized'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+  /api/sessions/{sessionId}/bug-report:
+    post:
+      operationId: createSessionBugReport
+      summary: Download a bug report bundle for a session
+      description: >-
+        Builds a zip for a session and streams it as a download. The zip holds `manifest.json`
+        (session, device, capabilities, last command, the time window and any warnings),
+        `README.md` and `logs.txt`, plus `video.mp4`, `network.har` and `ai-summary.txt` when the
+        session has them.
+
+
+        - `mode=slice` covers only the last `windowSec` seconds of the session (5 to 600, default
+        60), video and logs included.
+
+        - `mode=full` covers the whole session; `windowSec` is ignored.
+
+
+        When the download finishes, dashboards that can see the session's device get a
+        `bug report generated` live event. A session the caller may not see answers `404`, like
+        an unknown one. Any signed-in user (role `MEMBER` or above) may call it. With the dashboard
+        cookie, the request needs a same-host `Origin` or `Referer`.
+      tags:
+        - Sessions
+      parameters:
+        - in: path
+          name: sessionId
+          required: true
+          schema:
+            type: string
+          description: The Appium session id.
+          example: 6f1c2a8e-3b4d-4e5f-9a7b-1c2d3e4f5a6b
+        - in: query
+          name: mode
+          required: true
+          schema:
+            type: string
+            enum:
+              - slice
+              - full
+          description: The last few seconds, or the whole session.
+          example: slice
+        - in: query
+          name: windowSec
+          required: false
+          schema:
+            type: number
+            minimum: 5
+            maximum: 600
+            default: 60
+          description: With `mode=slice`, how many seconds before the session's end to cover.
+          example: 120
+      responses:
+        '200':
+          description: >-
+            The zip, as an attachment named `bugreport-<sessionId>-<generatedAt>.zip`.
+          headers:
+            Content-Disposition:
+              schema:
+                type: string
+                example: attachment; filename="bugreport-6f1c2a8e-3b4d-4e5f-9a7b-1c2d3e4f5a6b-2026-10-03T14-30-02-114Z.zip"
+          content:
+            application/zip:
+              schema:
+                type: string
+                format: binary
+        '400':
+          description: '`mode` is missing or unknown, or `windowSec` is out of range.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                mode:
+                  value:
+                    error: mode must be "slice" or "full"
+                windowSec:
+                  value:
+                    error: windowSec must be between 5 and 600
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          description: The session is unknown, or one the caller may not see.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: Session 6f1c2a8e-3b4d-4e5f-9a7b-1c2d3e4f5a6b not found
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          description: The bundle couldn't be assembled.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: 'ENOENT: no such file or directory'
+  /api/build:
+    get:
+      operationId: listBuilds
+      summary: List builds
+      description: >-
+        Lists builds, newest first, with their session counts by outcome. Builds are shared by
+        name, so one build can hold several teams' sessions: a member sees a build only if at
+        least one of its sessions is visible to them, and its counts cover those sessions only.
+        An admin sees every build and every session. `success`, `passed` and `ended` count as
+        passed; `failed`, `error` and `timeout` as failed. Any signed-in user (role `MEMBER` or
+        above) may call it.
+      tags:
+        - Builds
+      responses:
+        '200':
+          description: The builds, newest first.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/SessionsBuildRecord'
+              example:
+                - id: 9d2f4c1e-7a3b-4e8f-b6c5-2d1e0f9a8b7c
+                  name: nightly-2026-10-03
+                  createdAt: '2026-10-03T02:00:04.881Z'
+                  updatedAt: '2026-10-03T02:00:04.881Z'
+                  _count:
+                    sessions: 48
+                  sessionCount: 48
+                  passedCount: 44
+                  failedCount: 3
+                  runningCount: 1
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+  /api/build/{buildId}/export:
+    post:
+      operationId: exportBuildSessions
+      summary: Export a build's sessions as JSON or CSV
+      description: >-
+        Downloads up to 5000 of the build's sessions, newest first, as a JSON array of stored
+        session records or as CSV with the columns `id`, `build_id`, `status`,
+        `failure_category`, `failure_reason`, `device_platform`, `device_version`, `device_name`,
+        `node_id`, `startTime`, `endTime` and `name` (dates in ISO 8601). Give `sessionIds` to
+        export only those sessions of the build.
+
+
+        A member gets only the sessions on devices of their teams or the shared pool; a session
+        whose device no longer has a row is left out. An unknown build, or one with no visible
+        sessions, gives an empty export rather than `404`. Any signed-in user (role `MEMBER` or
+        above) may call it. With the dashboard cookie, the request needs a same-host `Origin` or
+        `Referer`.
+      tags:
+        - Builds
+      parameters:
+        - in: path
+          name: buildId
+          required: true
+          schema:
+            type: string
+          description: The build's id.
+          example: 9d2f4c1e-7a3b-4e8f-b6c5-2d1e0f9a8b7c
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                format:
+                  type: string
+                  enum:
+                    - json
+                    - csv
+                  default: json
+                sessionIds:
+                  type: array
+                  maxItems: 5000
+                  items:
+                    type: string
+                  description: Only these sessions of the build. An empty list means all of them.
+            example:
+              format: csv
+              sessionIds:
+                - 6f1c2a8e-3b4d-4e5f-9a7b-1c2d3e4f5a6b
+                - 0b7e4d21-55c6-4c0b-8f0e-6a1d9c3b2e10
+      responses:
+        '200':
+          description: >-
+            The export, as an attachment named `build-<buildId>-sessions.json` or
+            `build-<buildId>-sessions.csv`.
+          headers:
+            Content-Disposition:
+              schema:
+                type: string
+                example: attachment; filename="build-9d2f4c1e-7a3b-4e8f-b6c5-2d1e0f9a8b7c-sessions.csv"
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Session'
+            text/csv:
+              schema:
+                type: string
+              example: |
+                id,build_id,status,failure_category,failure_reason,device_platform,device_version,device_name,node_id,startTime,endTime,name
+                6f1c2a8e-3b4d-4e5f-9a7b-1c2d3e4f5a6b,9d2f4c1e-7a3b-4e8f-b6c5-2d1e0f9a8b7c,failed,element_not_found,"NoSuchElementError: An element could not be located",android,14,Pixel 7,3c9a1f20-8d4e-4b7a-a1c2-5e6f7a8b9c0d,2026-10-03T14:20:11.004Z,2026-10-03T14:22:05.120Z,Checkout with saved card
+        '400':
+          description: '`format` is neither `json` nor `csv`.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: format must be 'json' or 'csv'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '413':
+          description: More than 5000 `sessionIds`.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: sessionIds too large (max 5000)
         '429':
           $ref: '#/components/responses/RateLimited'
   /api/logs/requests:
     get:
-      summary: Get HTTP request logs
-      description: Retrieve recent HTTP request logs for debugging hub-node communication
+      operationId: listInternalRequestLogs
+      summary: List Xenon's recent outgoing HTTP calls
+      description: >-
+        The newest of the last 500 HTTP calls this server made itself (to nodes, drivers and other
+        services), newest first, with statistics over all 500. Bodies have secrets redacted, long
+        strings and arrays truncated. The log holds every internal call, including device control
+        forwarded to nodes (with what was typed) and forwarded new sessions, so it needs role
+        `ADMIN` and the `admin` scope. It lives in memory and is lost on restart.
       tags:
-        - Observability
+        - Admin
       parameters:
         - in: query
           name: limit
           schema:
             type: integer
+            minimum: 1
             default: 50
-          description: Maximum number of logs to return
+          description: How many calls to return; the buffer holds at most 500.
+          example: 100
         - in: query
           name: method
           schema:
             type: string
-            enum:
-              - GET
-              - POST
-              - PUT
-              - DELETE
-          description: Filter by HTTP method
+          description: Only calls with exactly this method (case-sensitive), for example `POST`.
+          example: POST
         - in: query
           name: url
           schema:
             type: string
-          description: Filter by URL pattern (substring match)
+          description: Only calls whose URL contains this text.
+          example: /wd/hub/session
         - in: query
           name: hasError
           schema:
-            type: boolean
-          description: Filter by error status (true = only errors, false = only success)
+            type: string
+            enum:
+              - 'true'
+              - 'false'
+          description: '`true` for only failed calls, `false` for only calls without an error.'
+          example: 'true'
       responses:
         '200':
-          description: Request logs and statistics
+          description: The calls and the buffer's statistics.
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  stats:
-                    type: object
-                    properties:
-                      totalLogged:
-                        type: number
-                        description: Total requests in buffer
-                      errorCount:
-                        type: number
-                        description: Number of failed requests
-                      avgDurationMs:
-                        type: number
-                        description: Average request duration in milliseconds
-                      byMethod:
-                        type: object
-                        additionalProperties:
-                          type: number
-                      byStatusCode:
-                        type: object
-                        additionalProperties:
-                          type: number
-                  logs:
-                    type: array
-                    items:
-                      type: object
-                      properties:
-                        timestamp:
-                          type: string
-                          format: date-time
-                        direction:
-                          type: string
-                          enum:
-                            - outgoing
-                            - incoming
-                        method:
-                          type: string
-                        url:
-                          type: string
-                        statusCode:
-                          type: number
-                        durationMs:
-                          type: number
-                        error:
-                          type: string
-                          nullable: true
-                        requestBody:
-                          type: string
-                          description: Sanitized request body (sensitive data redacted)
-                        responseBody:
-                          type: string
-                          description: Truncated response body
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '429':
-          $ref: '#/components/responses/RateLimited'
-  /api/healing/selector/state:
-    post:
-      summary: Apply a lifecycle action to a selector
-      description: |
-        Mutates the SelectorState row for a (strategy, selector) tuple and
-        records the change, with the person, in SelectorEvent. Actions are
-        bounded — `mark_fixed`, `mute`, `unmute`, `cancel_verification`.
-        Members and admins may act on a selector healed in a session they
-        can see; any other answers 404, as an unknown one. Needs the
-        `sessions` scope (`admin` implies it). `original_strategy` may be
-        empty, for heals recorded with no strategy. Returns 409 with
-        `currentStatus` if the action is incompatible with the row's
-        current state (e.g. mark_fixed on a muted selector).
-      tags:
-        - Selector Health
-      security:
-        - apiKey: []
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required:
-                - original_strategy
-                - original_selector
-                - action
-              properties:
-                original_strategy:
-                  type: string
-                  example: accessibility id
-                original_selector:
-                  type: string
-                  example: login-btn
-                action:
-                  type: string
-                  enum:
-                    - mark_fixed
-                    - mute
-                    - unmute
-                    - cancel_verification
-                reason:
-                  type: string
-                  maxLength: 500
-                  description: Why the selector is muted; mute only
-      responses:
-        '200':
-          description: Updated SelectorState row
-        '400':
-          description: Missing fields, unknown action, or a reason over 500 characters
+                $ref: '#/components/schemas/SessionsRequestLogList'
+              example:
+                stats:
+                  totalLogged: 500
+                  errorCount: 7
+                  avgDurationMs: 84
+                  byMethod:
+                    GET: 311
+                    POST: 182
+                    DELETE: 7
+                  byStatusCode:
+                    '200': 486
+                    '404': 7
+                logs:
+                  - timestamp: '2026-10-03T14:30:02.114Z'
+                    direction: outgoing
+                    method: POST
+                    url: http://192.168.1.21:4723/wd/hub/session/0b7e4d21-55c6-4c0b-8f0e-6a1d9c3b2e10/element
+                    requestBody: '{"using":"accessibility id","value":"login-btn"}'
+                    responseBody: '{"value":{"error":"no such element"}}'
+                    statusCode: 404
+                    durationMs: 212
+                    error: Request failed with status code 404
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
-          description: The caller lacks the `sessions` scope
-        '404':
-          description: '`{ error: "not_found", message: "Selector not found" }`'
-        '409':
-          description: Action conflicts with current state (returns currentStatus)
+          $ref: '#/components/responses/Forbidden'
         '429':
           $ref: '#/components/responses/RateLimited'
-  /api/healing/state/muted:
+  /api/healing/events:
     get:
-      summary: List muted selectors
-      description: |
-        Returns muted selectors sourced directly from SelectorState
-        (not the hotspot aggregator), so silenced-but-not-recently-healed
-        rows still surface. Each row is enriched with the most recent
-        `is_healed=true` SessionLog timestamp for the tuple.
+      operationId: listRecentHealingEvents
+      summary: List recent self-healing events
+      description: >-
+        The newest heals (commands whose selector was found only through self-healing), newest
+        first, and `todayCount`, the number of heals since the start of the server's local day.
+        Only heals in sessions the caller may see count: another team's session, even named by
+        `sessionId`, reads as one with no heals. Any signed-in user (role `MEMBER` or above) may
+        call it.
       tags:
         - Selector Health
       parameters:
@@ -723,79 +1036,140 @@ paths:
           name: limit
           schema:
             type: integer
-            default: 50
+            minimum: 1
             maximum: 200
+            default: 50
+          description: How many heals to return; clamped to 1–200.
+          example: 20
         - in: query
-          name: offset
+          name: sessionId
           schema:
-            type: integer
-            default: 0
+            type: string
+          description: Only this session's heals. `todayCount` still counts all the caller's heals.
+          example: 6f1c2a8e-3b4d-4e5f-9a7b-1c2d3e4f5a6b
       responses:
         '200':
-          description: Paginated muted selectors
+          description: The heals, newest first.
           content:
             application/json:
               schema:
                 type: object
                 properties:
-                  muted:
+                  events:
                     type: array
-                  total:
+                    items:
+                      $ref: '#/components/schemas/SelectorHealthEvent'
+                  todayCount:
                     type: integer
-                  limit:
-                    type: integer
-                  offset:
-                    type: integer
+              example:
+                events:
+                  - id: a3c5e7f9-1b2d-4f6a-8c0e-2d4f6a8c0e1b
+                    sessionId: 6f1c2a8e-3b4d-4e5f-9a7b-1c2d3e4f5a6b
+                    deviceUdid: emulator-5554
+                    deviceName: Pixel 7
+                    devicePlatform: android
+                    commandName: findElement
+                    originalSelector: login-btn
+                    healedSelector: //android.widget.Button[@text="Log in"]
+                    confidence: 0.92
+                    tier: Fuzzy XML
+                    isSuccess: true
+                    createdAt: '2026-10-03T14:20:31.512Z'
+                todayCount: 17
         '401':
           $ref: '#/components/responses/Unauthorized'
         '429':
           $ref: '#/components/responses/RateLimited'
-  /api/healing/state/{strategy}/{value}:
+  /api/healing/summary:
     get:
-      summary: Look up SelectorState for a single tuple
-      description: |
-        URL-encoded strategy + value. Returns `{ state: null }` when no
-        row exists — null is meaningful (the selector is implicitly Active).
+      operationId: summarizeSelectorHealth
+      summary: Summarize heals over a period
+      description: >-
+        Selector Health's summary: heals in the last `windowDays` days (`current`) and in the
+        same number of days before that (`prior`), with distinct selectors, sessions touched,
+        heals per healing method and `timeSpentMs` (the recorded duration of the commands that
+        needed healing). `trend` gives heals and AI heals (Visual AI or LLM) per day of the
+        period in the caller's time zone, days with none included.
+
+
+        Heal counts cover only sessions the caller may see. `resolvedCount` (selectors verified
+        fixed in the period) and `pendingCount` (selectors being verified now) are lab-wide. Any
+        signed-in user (role `MEMBER` or above) may call it.
       tags:
         - Selector Health
       parameters:
-        - in: path
-          name: strategy
-          required: true
-          schema:
-            type: string
-        - in: path
-          name: value
-          required: true
-          schema:
-            type: string
+        - $ref: '#/components/parameters/SelectorHealthWindowDays'
+        - $ref: '#/components/parameters/SelectorHealthTz'
       responses:
         '200':
-          description: SelectorState row, or null
+          description: The summary.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SelectorHealthSummary'
+              example:
+                windowDays: 7
+                current:
+                  totalHeals: 126
+                  distinctSelectors: 14
+                  sessionsTouched: 58
+                  byTier:
+                    Resilio: 71
+                    Fuzzy XML: 38
+                    OCR: 9
+                    LLM: 8
+                  timeSpentMs: 412870
+                prior:
+                  totalHeals: 151
+                  distinctSelectors: 17
+                  sessionsTouched: 63
+                  byTier:
+                    Resilio: 80
+                    Fuzzy XML: 52
+                    LLM: 19
+                  timeSpentMs: 538114
+                resolvedCount: 3
+                pendingCount: 2
+                trend:
+                  - t: 1758931200000
+                    heals: 21
+                    aiHeals: 2
+                  - t: 1759017600000
+                    heals: 17
+                    aiHeals: 1
         '401':
           $ref: '#/components/responses/Unauthorized'
         '429':
           $ref: '#/components/responses/RateLimited'
   /api/healing/hotspots:
     get:
-      summary: List the most-healed selectors (with lifecycle filter)
-      description: |
-        Status filter is `active` (default), `pending`, `resolved`, `muted`,
-        or `all`. The default value transparently hides muted/pending/
-        resolved selectors from the live list, the CI gate, and the digest.
+      operationId: listHealingHotspots
+      summary: List the most-healed selectors
+      description: >-
+        The selectors healed most often in the last `windowDays` days, grouped by strategy and
+        selector, most heals first (then most recent), with the most common healed selector as a
+        suggested rewrite and the selector's lifecycle state. It reads at most the newest 5000
+        heals of the period (`totalScanned`), so on a busy lab the counts are of those. The
+        Selector Health page itself uses `GET /api/healing/selectors`, which counts every heal.
+
+
+        `status` filters by lifecycle state, after `limit` is applied: `active` (the default:
+        never marked, or active again) hides selectors being verified, fixed or muted. Any other
+        value is treated as `active`. Only heals in sessions the caller may see count; the `state`
+        row is lab-wide. Any signed-in user (role `MEMBER` or above) may call it.
       tags:
         - Selector Health
       parameters:
-        - in: query
-          name: windowDays
-          schema:
-            type: integer
-            default: 30
+        - $ref: '#/components/parameters/SelectorHealthWindowDays'
         - in: query
           name: limit
           schema:
             type: integer
-            default: 10
+            minimum: 1
+            maximum: 100
+            default: 20
+          description: How many selectors; clamped to 1–100.
+          example: 10
         - in: query
           name: status
           schema:
@@ -807,319 +1181,83 @@ paths:
               - muted
               - all
             default: active
+          description: >-
+            Lifecycle state: `pending` is being verified, `resolved` is verified fixed.
+          example: active
         - in: query
           name: tier
           schema:
             type: string
+          description: Only heals by this healing method, for example `LLM` or `Fuzzy XML`.
+          example: LLM
         - in: query
           name: platform
           schema:
             type: string
+          description: Only heals in sessions on this platform.
+          example: android
       responses:
         '200':
-          description: Hotspots with state overlay
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '429':
-          $ref: '#/components/responses/RateLimited'
-  /api/interceptor/sessions/{sessionId}/requests:
-    get:
-      summary: List intercepted HTTP requests for a session
-      description: |
-        Returns the full list of requests captured by the per-session interceptor.
-        If the session is still active, results are read live; otherwise the
-        archived `requests.json` from the session asset directory is replayed.
-        Returns 404 when neither a live interceptor nor an archive exists.
-      tags:
-        - Network Interceptor
-      parameters:
-        - in: path
-          name: sessionId
-          required: true
-          schema:
-            type: string
-      responses:
-        '200':
-          description: Request list
+          description: The hotspots.
           content:
             application/json:
               schema:
                 type: object
                 properties:
-                  requests:
-                    type: array
-                    items:
-                      type: object
-                      additionalProperties: true
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '404':
-          description: Interceptor inactive and no archive on disk
-        '429':
-          $ref: '#/components/responses/RateLimited'
-  /api/interceptor/sessions/{sessionId}/requests/{requestId}:
-    get:
-      summary: Get a single intercepted request with full body
-      description: |
-        Hydrates the request detail, including any response body that was
-        offloaded to disk (`bodyPath`). Use this from the dashboard's request
-        drawer or for HAR-equivalent single-record export.
-      tags:
-        - Network Interceptor
-      parameters:
-        - in: path
-          name: sessionId
-          required: true
-          schema:
-            type: string
-        - in: path
-          name: requestId
-          required: true
-          schema:
-            type: string
-      responses:
-        '200':
-          description: Single request entry
-          content:
-            application/json:
-              schema:
-                type: object
-                additionalProperties: true
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '404':
-          description: Request not found in live or archived state
-        '429':
-          $ref: '#/components/responses/RateLimited'
-  /api/interceptor/sessions/{sessionId}/har:
-    get:
-      summary: Export session traffic as a HAR file
-      description: |
-        Returns a HAR 1.2 archive (`application/json`, with `Content-Disposition:
-        attachment`). Falls back to the on-disk archive if the session has ended.
-      tags:
-        - Network Interceptor
-      parameters:
-        - in: path
-          name: sessionId
-          required: true
-          schema:
-            type: string
-      responses:
-        '200':
-          description: HAR file
-          content:
-            application/json:
-              schema:
-                type: object
-                additionalProperties: true
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '404':
-          description: No live interceptor and no archived HAR
-        '429':
-          $ref: '#/components/responses/RateLimited'
-  /api/interceptor/sessions/{sessionId}/mocks:
-    get:
-      summary: List mock rules for a session
-      description: Mock rules apply only while the session is live — there is no archive fallback.
-      tags:
-        - Network Interceptor
-      parameters:
-        - in: path
-          name: sessionId
-          required: true
-          schema:
-            type: string
-      responses:
-        '200':
-          description: Mock list
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  mocks:
-                    type: array
-                    items:
-                      type: object
-                      additionalProperties: true
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '404':
-          description: Interceptor not active for this session
-        '429':
-          $ref: '#/components/responses/RateLimited'
-    post:
-      summary: Add a mock rule
-      description: |
-        Mock rules match by URL pattern and method, then either return a static
-        response, rewrite the upstream response, or delay it. Only valid while
-        the target session is live.
-      tags:
-        - Network Interceptor
-      parameters:
-        - in: path
-          name: sessionId
-          required: true
-          schema:
-            type: string
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              additionalProperties: true
-      responses:
-        '201':
-          description: Mock created
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  id:
-                    type: string
-        '400':
-          description: Invalid mock rule
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '404':
-          description: Interceptor not active
-        '429':
-          $ref: '#/components/responses/RateLimited'
-    delete:
-      summary: Clear all mock rules for a session
-      tags:
-        - Network Interceptor
-      parameters:
-        - in: path
-          name: sessionId
-          required: true
-          schema:
-            type: string
-      responses:
-        '200':
-          description: Mocks cleared
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Success'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '404':
-          description: Interceptor not active
-        '429':
-          $ref: '#/components/responses/RateLimited'
-  /api/interceptor/sessions/{sessionId}/mocks/{mockId}:
-    delete:
-      summary: Remove a single mock rule
-      tags:
-        - Network Interceptor
-      parameters:
-        - in: path
-          name: sessionId
-          required: true
-          schema:
-            type: string
-        - in: path
-          name: mockId
-          required: true
-          schema:
-            type: string
-      responses:
-        '200':
-          description: Mock removed
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  removed:
-                    type: boolean
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '404':
-          description: Interceptor not active or mock not found
-        '429':
-          $ref: '#/components/responses/RateLimited'
-  /api/healing/events:
-    get:
-      summary: Recent healing events
-      description: |
-        Returns the most recent self-healing events along with a `todayCount`
-        used by the dashboard "today" badge. Newest first; clamped to 1–200.
-      tags:
-        - Selector Health
-      parameters:
-        - in: query
-          name: limit
-          schema:
-            type: integer
-            minimum: 1
-            maximum: 200
-            default: 50
-      responses:
-        '200':
-          description: Recent events
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  events:
-                    type: array
-                    items:
-                      type: object
-                      properties:
-                        id:
-                          type: string
-                        sessionId:
-                          type: string
-                        deviceUdid:
-                          type: string
-                        deviceName:
-                          type: string
-                        devicePlatform:
-                          type: string
-                          enum:
-                            - ios
-                            - android
-                        commandName:
-                          type: string
-                        originalSelector:
-                          type: string
-                        healedSelector:
-                          type: string
-                        confidence:
-                          type: number
-                        tier:
-                          type: string
-                        isSuccess:
-                          type: boolean
-                        createdAt:
-                          type: string
-                          format: date-time
-                  todayCount:
+                  windowDays:
                     type: integer
+                  totalScanned:
+                    type: integer
+                    description: Heals read, at most 5000.
+                  filters:
+                    type: object
+                    properties:
+                      tier:
+                        type: string
+                        nullable: true
+                      platform:
+                        type: string
+                        nullable: true
+                      status:
+                        type: string
+                  hotspots:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/SelectorHealthHotspot'
+              example:
+                windowDays: 30
+                totalScanned: 412
+                filters:
+                  tier: null
+                  platform: android
+                  status: active
+                hotspots:
+                  - originalStrategy: accessibility id
+                    originalSelector: login-btn
+                    healCount: 41
+                    sessionCount: 29
+                    topTier: Fuzzy XML
+                    suggestedRewrite: //android.widget.Button[@text="Log in"]
+                    suggestedStrategy: xpath
+                    suggestedRewriteShare: 0.88
+                    averageConfidence: 0.91
+                    firstHealedAt: '2026-09-05T08:12:44.019Z'
+                    lastHealedAt: '2026-10-03T14:20:31.512Z'
+                    state: null
         '401':
           $ref: '#/components/responses/Unauthorized'
         '429':
           $ref: '#/components/responses/RateLimited'
-  /api/healing/summary:
+  /api/healing/hotspots/violations:
     get:
-      summary: Selector-health KPI summary with prior-period comparison
-      description: |
-        Aggregates over `windowDays` (clamped 1–365, default 30) and emits a
-        parallel "prior" object covering the equivalent immediately-preceding
-        window — use the diff for week-over-week / month-over-month deltas.
+      operationId: listHealingViolations
+      summary: List selectors over a heal threshold, for CI
+      description: >-
+        For a CI gate: the active selectors (not being verified, fixed or muted) healed at least
+        `minHealCount` times in the last `windowDays` days, optionally in one build, most heals
+        first, at most 100. It always answers `200`; CI decides what `violationCount` means for
+        the build. It reads at most the newest 5000 heals of the period. Only heals in sessions the
+        caller may see count. Any signed-in user (role `MEMBER` or above) may call it.
       tags:
         - Selector Health
       parameters:
@@ -1129,18 +1267,39 @@ paths:
             type: integer
             minimum: 1
             maximum: 365
-            default: 30
+            default: 7
+          description: The period, in days back from now; clamped to 1–365.
+          example: 7
         - in: query
-          name: tz
+          name: minHealCount
           schema:
             type: integer
-            minimum: -840
-            maximum: 840
-            default: 0
-          description: The caller's offset from UTC in minutes (east positive), so `trend` days are theirs
+            minimum: 1
+            maximum: 1000
+            default: 5
+          description: The fewest heals that make a violation; clamped to 1–1000.
+          example: 3
+        - in: query
+          name: build
+          schema:
+            type: string
+          description: Only heals in this build's sessions (a build id).
+          example: 9d2f4c1e-7a3b-4e8f-b6c5-2d1e0f9a8b7c
+        - in: query
+          name: tier
+          schema:
+            type: string
+          description: Only heals by this healing method.
+          example: LLM
+        - in: query
+          name: platform
+          schema:
+            type: string
+          description: Only heals in sessions on this platform.
+          example: ios
       responses:
         '200':
-          description: KPI summary
+          description: The violations.
           content:
             application/json:
               schema:
@@ -1148,59 +1307,229 @@ paths:
                 properties:
                   windowDays:
                     type: integer
-                  current:
+                  minHealCount:
+                    type: integer
+                  filters:
                     type: object
                     properties:
-                      totalHeals:
-                        type: integer
-                      distinctSelectors:
-                        type: integer
-                      sessionsTouched:
-                        type: integer
-                      byTier:
-                        type: object
-                        additionalProperties:
-                          type: integer
-                      timeSpentMs:
-                        type: integer
-                        description: Total duration of the commands that needed healing
-                  prior:
-                    type: object
-                    description: Same shape as `current` for the immediately preceding window
-                  resolvedCount:
+                      tier:
+                        type: string
+                        nullable: true
+                      platform:
+                        type: string
+                        nullable: true
+                      buildId:
+                        type: string
+                        nullable: true
+                  violationCount:
                     type: integer
-                  pendingCount:
+                  totalHeals:
                     type: integer
-                  trend:
+                    description: Heals read in the period, at most 5000.
+                  distinctSelectors:
+                    type: integer
+                  violations:
                     type: array
-                    description: >-
-                      Heals per day of the period, in the caller's time zone, days with none
-                      included
                     items:
-                      type: object
-                      properties:
-                        t:
-                          type: integer
-                          description: When the day began, epoch ms
-                        heals:
-                          type: integer
-                        aiHeals:
-                          type: integer
-                          description: Heals by Visual AI or an LLM
+                      $ref: '#/components/schemas/SelectorHealthHotspot'
+              example:
+                windowDays: 7
+                minHealCount: 3
+                filters:
+                  tier: null
+                  platform: null
+                  buildId: 9d2f4c1e-7a3b-4e8f-b6c5-2d1e0f9a8b7c
+                violationCount: 1
+                totalHeals: 19
+                distinctSelectors: 4
+                violations:
+                  - originalStrategy: accessibility id
+                    originalSelector: login-btn
+                    healCount: 12
+                    sessionCount: 12
+                    topTier: Fuzzy XML
+                    suggestedRewrite: //android.widget.Button[@text="Log in"]
+                    suggestedStrategy: xpath
+                    suggestedRewriteShare: 1
+                    averageConfidence: 0.9
+                    firstHealedAt: '2026-10-03T02:04:10.338Z'
+                    lastHealedAt: '2026-10-03T02:41:55.002Z'
+                    state: null
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+  /api/healing/selector:
+    get:
+      operationId: getHealedSelectorBreakdown
+      summary: Break down one selector's heals
+      description: >-
+        For one selector value (any strategy): its newest heals in the last `windowDays` days (at
+        most 1000 read), the healed selectors it was replaced with and how often, and heal counts
+        by healing method, platform and build, with a timeline of the newest 100 heals. A selector
+        healed only in sessions the caller can't see reads as one with no heals (`healCount: 0`),
+        not `404`. The Selector Health side panel uses `GET /api/healing/selectors/detail`. Any
+        signed-in user (role `MEMBER` or above) may call it.
+      tags:
+        - Selector Health
+      parameters:
+        - in: query
+          name: value
+          required: true
+          schema:
+            type: string
+          description: The original selector, exactly.
+          example: login-btn
+        - $ref: '#/components/parameters/SelectorHealthWindowDays'
+      responses:
+        '200':
+          description: The breakdown.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SelectorHealthBreakdown'
+              example:
+                originalSelector: login-btn
+                windowDays: 30
+                healCount: 41
+                sessionCount: 29
+                byTier:
+                  Fuzzy XML: 36
+                  LLM: 5
+                byPlatform:
+                  android: 41
+                byBuild:
+                  - buildId: 9d2f4c1e-7a3b-4e8f-b6c5-2d1e0f9a8b7c
+                    count: 12
+                  - buildId: unattached
+                    count: 3
+                alternates:
+                  - healedSelector: //android.widget.Button[@text="Log in"]
+                    count: 36
+                    share: 0.878
+                    averageConfidence: 0.92
+                    tiers:
+                      - Fuzzy XML
+                timeline:
+                  - id: a3c5e7f9-1b2d-4f6a-8c0e-2d4f6a8c0e1b
+                    sessionId: 6f1c2a8e-3b4d-4e5f-9a7b-1c2d3e4f5a6b
+                    buildId: 9d2f4c1e-7a3b-4e8f-b6c5-2d1e0f9a8b7c
+                    deviceUdid: emulator-5554
+                    deviceName: Pixel 7
+                    devicePlatform: android
+                    commandName: findElement
+                    healedSelector: //android.widget.Button[@text="Log in"]
+                    confidence: 0.92
+                    tier: Fuzzy XML
+                    isSuccess: true
+                    createdAt: '2026-10-03T14:20:31.512Z'
+        '400':
+          description: '`value` is missing.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: true
+                message: value query param is required
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+  /api/healing/selector-health:
+    get:
+      operationId: listSelectorHealthFeed
+      summary: List selectors' heal counts and state, for tools
+      description: >-
+        A compact feed for external tools (such as an MCP plugin): selectors healed in the last 365
+        days, most heals first, whatever their lifecycle state, each with its state and, when the
+        selector's stored element fingerprint has the same strategy, `etalonAge` (milliseconds
+        since that fingerprint was last seen). Built from the 1000 most-healed selectors of the
+        newest 5000 heals, so a rarely healed selector may be missing; that is not an error. Only
+        heals in sessions the caller may see count. Any signed-in user (role `MEMBER` or above)
+        may call it.
+      tags:
+        - Selector Health
+      parameters:
+        - in: query
+          name: selector
+          schema:
+            type: string
+          description: Only this selector value, exactly.
+          example: login-btn
+        - in: query
+          name: limit
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+            default: 50
+          description: How many selectors; clamped to 1–200.
+          example: 25
+        - in: query
+          name: appId
+          schema:
+            type: string
+          description: Accepted for compatibility and ignored.
+          example: com.example.shop
+      responses:
+        '200':
+          description: The selectors.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/SelectorHealthFeedItem'
+              example:
+                - selector: login-btn
+                  strategy: accessibility id
+                  healCount: 41
+                  topTier: Fuzzy XML
+                  suggestedRewrite: //android.widget.Button[@text="Log in"]
+                  state:
+                    id: 2a4c6e80-1b3d-4f5a-9c7e-0d2f4a6c8e1b
+                    original_strategy: accessibility id
+                    original_selector: login-btn
+                    status: pending
+                    fixed_at: '2026-10-02T09:15:00.000Z'
+                    fixed_by_api_key: ''
+                    resolved_at: null
+                    muted_at: null
+                    muted_by_api_key: null
+                    regression_count: 0
+                    clean_builds_count: 1
+                    last_event_at: '2026-10-02T09:15:00.000Z'
+                    createdAt: '2026-10-02T09:15:00.000Z'
+                    updatedAt: '2026-10-03T02:45:12.000Z'
+                  lastHealedAt: '2026-10-03T14:20:31.512Z'
+                  etalonAge: 3600000
         '401':
           $ref: '#/components/responses/Unauthorized'
         '429':
           $ref: '#/components/responses/RateLimited'
   /api/healing/selectors:
     get:
-      summary: One tab of the Selector Health list
-      description: |
-        `fix` groups the period's heals by selector and leaves out selectors
-        being verified, fixed or muted; the other tabs list the selectors with
-        that status (`fixed`: verified within the period). Only selectors
-        healed, at any time, in sessions the caller can see. `counts` follow
-        the period, not the search or filters. A page past the end answers the
-        last page.
+      operationId: listSelectorHealth
+      summary: List one tab of Selector Health
+      description: >-
+        One page of the Selector Health list, the four tab counts, and whether the caller may act
+        (`canAct`: the `sessions` or `admin` scope).
+
+
+        - `fix` (To fix): the period's heals grouped by strategy and selector, every heal counted,
+        leaving out selectors being verified, fixed or muted. `platform`, `method` and `sort`
+        apply here only.
+
+        - `verifying`, `fixed` and `muted`: the selectors with that status, newest change first,
+        with their heals in the period. `fixed` lists those verified within the period.
+
+
+        Only selectors healed, at any time, in a session the caller may see are listed. `counts`
+        follow the period, not the search or filters. `q` is compared as plain text (`%` and `_`
+        have no special meaning) against the selector and, on `fix`, its suggested fix. A page
+        past the end answers the last page. A value that can't be read falls back to its default.
+        Any signed-in user (role `MEMBER` or above) may call it.
       tags:
         - Selector Health
       parameters:
@@ -1214,6 +1543,7 @@ paths:
               - fixed
               - muted
             default: fix
+          example: fix
         - in: query
           name: days
           schema:
@@ -1221,21 +1551,27 @@ paths:
             minimum: 1
             maximum: 365
             default: 30
+          description: The period, in days back from now; clamped to 1–365.
+          example: 30
         - in: query
           name: q
           schema:
             type: string
-          description: Text in the selector, or (fix) in its suggested fix
+            maxLength: 200
+          description: Text in the selector or, on `fix`, in its suggested fix; case-insensitive.
+          example: login
         - in: query
           name: platform
           schema:
             type: string
-          description: fix only
+          description: On `fix`, only heals in sessions on this platform.
+          example: android
         - in: query
           name: method
           schema:
             type: string
-          description: Healing method, e.g. LLM; fix only
+          description: On `fix`, only heals by this healing method.
+          example: LLM
         - in: query
           name: sort
           schema:
@@ -1245,13 +1581,16 @@ paths:
               - recent
               - time
             default: heals
-          description: fix only
+          description: On `fix`, most heals, most recent heal, or most time spent first.
+          example: heals
         - in: query
           name: page
           schema:
             type: integer
             minimum: 1
+            maximum: 100000
             default: 1
+          example: 1
         - in: query
           name: pageSize
           schema:
@@ -1259,20 +1598,66 @@ paths:
             minimum: 1
             maximum: 100
             default: 50
+          example: 50
       responses:
         '200':
-          description: '`{ tab, days, page, pageSize, total, counts, canAct, items }`'
+          description: The page.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SelectorHealthList'
+              example:
+                tab: fix
+                days: 30
+                page: 1
+                pageSize: 50
+                total: 1
+                counts:
+                  fix: 1
+                  verifying: 2
+                  fixed: 3
+                  muted: 1
+                items:
+                  - strategy: accessibility id
+                    selector: login-btn
+                    heals: 41
+                    sessions: 29
+                    lastHealedAt: '2026-10-03T14:20:31.512Z'
+                    timeSpentMs: 75440
+                    topMethod: Fuzzy XML
+                    suggestion:
+                      selector: //android.widget.Button[@text="Log in"]
+                      strategy: xpath
+                      share: 0.88
+                    state: null
+                canAct: true
         '401':
           $ref: '#/components/responses/Unauthorized'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          description: The list couldn't be read.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: internal
   /api/healing/selectors/detail:
     get:
-      summary: Everything the Selector Health side panel shows for one selector
-      description: |
-        Its heals in the period (suggested fixes with their share, methods and
-        confidence; heals per day; platforms, builds and devices; the latest 20
-        heals), its status, the latest 50 status changes with who made them,
-        and whether the caller may act. A selector no session the caller can
-        see has healed answers 404, exactly as an unknown one.
+      operationId: getSelectorHealthDetail
+      summary: Get one selector for the Selector Health panel
+      description: >-
+        Everything the side panel shows for one selector, by strategy and value, over the last
+        `days` days: heal and session counts, time spent, first and last heal, heals per day in
+        the caller's time zone, every suggested fix with its share, methods and average
+        confidence, the top 5 platforms, builds and devices, the 20 newest heals, the selector's
+        status, its 50 newest status changes with who made them, and `canAct`.
+
+
+        A heal recorded with no strategy has strategy `''`. Status and activity are lab-wide. A
+        selector that no session the caller may see has healed, at any time, answers `404`
+        exactly as an unknown one. Any signed-in user (role `MEMBER` or above) may call it.
       tags:
         - Selector Health
       parameters:
@@ -1281,11 +1666,17 @@ paths:
           required: true
           schema:
             type: string
+            maxLength: 4000
+          description: The original selector, exactly.
+          example: login-btn
         - in: query
           name: strategy
           schema:
             type: string
-          description: Empty for heals recorded with no strategy
+            maxLength: 200
+            default: ''
+          description: The original strategy; empty for heals recorded with no strategy.
+          example: accessibility id
         - in: query
           name: days
           schema:
@@ -1293,32 +1684,417 @@ paths:
             minimum: 1
             maximum: 365
             default: 30
-        - in: query
-          name: tz
-          schema:
-            type: integer
-            minimum: -840
-            maximum: 840
-            default: 0
+          description: The period, in days back from now; clamped to 1–365.
+          example: 30
+        - $ref: '#/components/parameters/SelectorHealthTz'
       responses:
         '200':
-          description: The panel for one selector
+          description: The panel's data.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SelectorHealthDetail'
+              example:
+                strategy: accessibility id
+                selector: login-btn
+                days: 30
+                heals: 41
+                sessions: 29
+                timeSpentMs: 75440
+                firstHealedAt: '2026-09-05T08:12:44.019Z'
+                lastHealedAt: '2026-10-03T14:20:31.512Z'
+                daily:
+                  - t: 1759449600000
+                    heals: 3
+                suggestions:
+                  - selector: //android.widget.Button[@text="Log in"]
+                    strategy: xpath
+                    count: 36
+                    share: 0.878
+                    methods:
+                      - Fuzzy XML
+                    averageConfidence: 0.92
+                platforms:
+                  - name: android
+                    count: 41
+                builds:
+                  - id: 9d2f4c1e-7a3b-4e8f-b6c5-2d1e0f9a8b7c
+                    name: nightly-2026-10-03
+                    count: 12
+                devices:
+                  - udid: emulator-5554
+                    name: Pixel 7
+                    count: 30
+                recent:
+                  - id: a3c5e7f9-1b2d-4f6a-8c0e-2d4f6a8c0e1b
+                    sessionId: 6f1c2a8e-3b4d-4e5f-9a7b-1c2d3e4f5a6b
+                    buildId: 9d2f4c1e-7a3b-4e8f-b6c5-2d1e0f9a8b7c
+                    at: '2026-10-03T14:20:31.512Z'
+                    device: Pixel 7
+                    platform: android
+                    method: Fuzzy XML
+                    confidence: 0.92
+                    healedSelector: //android.widget.Button[@text="Log in"]
+                state:
+                  status: pending
+                  cleanBuilds: 1
+                  fixedAt: '2026-10-02T09:15:00.000Z'
+                  fixedBy:
+                    id: 5b8e2c14-0f3a-4d6b-9e7c-1a2b3c4d5e6f
+                    name: Priya Raman
+                  resolvedAt: null
+                  mutedAt: null
+                  mutedBy: null
+                  muteReason: null
+                  brokeAgain: 0
+                activity:
+                  - action: marked_fixed
+                    at: '2026-10-02T09:15:00.000Z'
+                    by:
+                      id: 5b8e2c14-0f3a-4d6b-9e7c-1a2b3c4d5e6f
+                      name: Priya Raman
+                    reason: null
+                canAct: true
         '400':
-          description: No selector given
+          description: '`selector` is missing or longer than 4000 characters.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: bad_request
+                message: selector is required
         '401':
           $ref: '#/components/responses/Unauthorized'
         '404':
-          description: '`{ error: "not_found", message: "Selector not found" }`'
-  /api/healing/digest/send:
+          $ref: '#/components/responses/SelectorHealthNotFound'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          description: The selector couldn't be read.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: internal
+  /api/healing/selector/state:
     post:
-      summary: On-demand selector-health digest webhook
-      description: |
-        Manually fires the digest that the scheduler normally sends on a fixed
-        cadence. Useful for pre-release "is the selector landscape healthy
-        enough to ship?" gates. Requires `admin` scope.
+      operationId: changeSelectorState
+      summary: Mark a selector fixed, mute it or undo either
+      description: >-
+        Changes a selector's lab-wide status and records who did it (and, for a mute, why):
+
+        - `mark_fixed`: starts verification (status `pending`), resetting its clean-build count.
+        Refused with `409` on a muted selector.
+
+        - `mute`: status `muted`. Muting again refreshes the time and records the new reason.
+
+        - `unmute`: back to `active`, or the status row is removed when the selector has no other
+        history (`state: null`). On a selector that isn't muted it changes nothing and answers its
+        current row.
+
+        - `cancel_verification`: undoes `mark_fixed` while it is `pending`; refused with `409`
+        otherwise. The row is removed when there is no other history.
+
+
+        Dashboards are told of every change at once. Needs role `MEMBER` and the `sessions` scope
+        (`admin` has it). The selector must have healed in a session the caller may see;
+        otherwise `404`, as for an unknown one. With the dashboard cookie, the request needs a
+        same-host `Origin` or `Referer`.
       tags:
         - Selector Health
       requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - original_strategy
+                - original_selector
+                - action
+              properties:
+                original_strategy:
+                  type: string
+                  description: The strategy; may be empty for heals recorded with no strategy.
+                original_selector:
+                  type: string
+                  minLength: 1
+                action:
+                  type: string
+                  enum:
+                    - mark_fixed
+                    - mute
+                    - unmute
+                    - cancel_verification
+                reason:
+                  type: string
+                  nullable: true
+                  maxLength: 500
+                  description: Why it is muted. Kept for `mute` only, trimmed.
+            example:
+              original_strategy: accessibility id
+              original_selector: login-btn
+              action: mute
+              reason: Login screen is being redesigned; selector changes next sprint
+      responses:
+        '200':
+          description: >-
+            The selector's stored status row after the change, or null when it was removed.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  state:
+                    allOf:
+                      - $ref: '#/components/schemas/SelectorHealthStateRow'
+                    nullable: true
+              example:
+                state:
+                  id: 2a4c6e80-1b3d-4f5a-9c7e-0d2f4a6c8e1b
+                  original_strategy: accessibility id
+                  original_selector: login-btn
+                  status: muted
+                  fixed_at: null
+                  fixed_by_api_key: null
+                  resolved_at: null
+                  muted_at: '2026-10-04T09:02:41.330Z'
+                  muted_by_api_key: ''
+                  regression_count: 0
+                  clean_builds_count: 0
+                  last_event_at: '2026-10-04T09:02:41.330Z'
+                  createdAt: '2026-10-04T09:02:41.330Z'
+                  updatedAt: '2026-10-04T09:02:41.330Z'
+        '400':
+          description: A field is missing, the action is unknown, or the reason is too long.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                missing:
+                  value:
+                    error: original_strategy, original_selector, and action are required
+                action:
+                  value:
+                    error: action must be one of mark_fixed, mute, unmute, cancel_verification
+                reason:
+                  value:
+                    error: reason must be text of at most 500 characters
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/SelectorHealthNotFound'
+        '409':
+          description: The action doesn't fit the selector's current status.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: Cannot markFixed on a muted selector (accessibility id=login-btn)
+                currentStatus: muted
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          description: The change couldn't be saved.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: internal
+  /api/healing/state/muted:
+    get:
+      operationId: listMutedSelectors
+      summary: List muted selectors
+      description: >-
+        Every muted selector, most recently muted first, including those that haven't healed
+        lately. The mute is lab-wide, so every caller gets the same rows. `last_healed_at` is the
+        latest heal among the sessions the caller may see, null if none. Any signed-in user (role
+        `MEMBER` or above) may call it.
+      tags:
+        - Selector Health
+      parameters:
+        - in: query
+          name: limit
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+            default: 50
+          description: How many rows; clamped to 1–200.
+          example: 50
+        - in: query
+          name: offset
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+          description: How many rows to skip.
+          example: 0
+      responses:
+        '200':
+          description: One page of muted selectors.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  muted:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        original_strategy:
+                          type: string
+                        original_selector:
+                          type: string
+                        muted_at:
+                          type: string
+                          format: date-time
+                          nullable: true
+                        muted_by_api_key:
+                          type: string
+                          nullable: true
+                          description: >-
+                            The API key that muted it; empty when it was muted from the
+                            dashboard.
+                        last_healed_at:
+                          type: string
+                          format: date-time
+                          nullable: true
+                        regression_count:
+                          type: integer
+                          description: How often it healed again after being fixed.
+                  total:
+                    type: integer
+                  limit:
+                    type: integer
+                  offset:
+                    type: integer
+              example:
+                muted:
+                  - original_strategy: id
+                    original_selector: com.example.shop:id/promo_banner
+                    muted_at: '2026-10-01T11:40:12.004Z'
+                    muted_by_api_key: ''
+                    last_healed_at: '2026-10-03T13:58:20.771Z'
+                    regression_count: 0
+                total: 1
+                limit: 50
+                offset: 0
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+  /api/healing/state/{strategy}/{value}:
+    get:
+      operationId: getSelectorStateRow
+      summary: Get one selector's stored status
+      description: >-
+        The selector's stored status row, or `{ "state": null }` when it has none (the selector is
+        active). The row is lab-wide and answers the same for every caller; there is no `404`.
+
+
+        Encode both segments with `encodeURIComponent`. The server decodes each segment once more
+        after routing, so a strategy or selector containing `%` must be encoded twice (`%` as
+        `%2525`); a lone `%` after the first decoding leaves the request unanswered. A selector
+        recorded with an empty strategy can't be looked up here. Any signed-in user (role `MEMBER`
+        or above) may call it.
+      tags:
+        - Selector Health
+      parameters:
+        - in: path
+          name: strategy
+          required: true
+          schema:
+            type: string
+          description: The original strategy, URL-encoded.
+          example: accessibility%20id
+        - in: path
+          name: value
+          required: true
+          schema:
+            type: string
+          description: The original selector, URL-encoded.
+          example: login-btn
+      responses:
+        '200':
+          description: The row, or null.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  state:
+                    allOf:
+                      - $ref: '#/components/schemas/SelectorHealthStateRow'
+                    nullable: true
+              example:
+                state:
+                  id: 2a4c6e80-1b3d-4f5a-9c7e-0d2f4a6c8e1b
+                  original_strategy: accessibility id
+                  original_selector: login-btn
+                  status: resolved
+                  fixed_at: '2026-09-28T10:00:00.000Z'
+                  fixed_by_api_key: ''
+                  resolved_at: '2026-10-01T02:50:00.000Z'
+                  muted_at: null
+                  muted_by_api_key: null
+                  regression_count: 0
+                  clean_builds_count: 3
+                  last_event_at: '2026-10-01T02:50:00.000Z'
+                  createdAt: '2026-09-28T10:00:00.000Z'
+                  updatedAt: '2026-10-01T02:50:00.000Z'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+  /api/healing/digest/send:
+    post:
+      operationId: sendSelectorHealthDigest
+      summary: Send the selector health digest now
+      description: >-
+        Sends the selector health digest to every active webhook subscribed to the
+        `selector_health_digest` event: the most-healed active selectors of the last `windowDays`
+        days (healed at least `minHealCount` times), with total heals and distinct selectors. It
+        counts every team's heals, so it needs role `ADMIN` and the `admin` scope. Each setting
+        may be given in the JSON body or as a query parameter; the body wins. With the dashboard
+        cookie, the request needs a same-host `Origin` or `Referer`.
+      tags:
+        - Selector Health
+      parameters:
+        - in: query
+          name: windowDays
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 365
+            default: 7
+          example: 7
+        - in: query
+          name: limit
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 20
+            default: 5
+          example: 5
+        - in: query
+          name: minHealCount
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 1000
+            default: 2
+          example: 2
+      requestBody:
+        required: false
         content:
           application/json:
             schema:
@@ -1326,13 +2102,29 @@ paths:
               properties:
                 windowDays:
                   type: integer
+                  minimum: 1
+                  maximum: 365
+                  default: 7
+                  description: The period, in days back from now; clamped to 1–365.
                 limit:
                   type: integer
+                  minimum: 1
+                  maximum: 20
+                  default: 5
+                  description: How many selectors the digest lists; clamped to 1–20.
                 minHealCount:
                   type: integer
+                  minimum: 1
+                  maximum: 1000
+                  default: 2
+                  description: The fewest heals a listed selector has; clamped to 1–1000.
+            example:
+              windowDays: 7
+              limit: 5
+              minHealCount: 2
       responses:
         '200':
-          description: Digest dispatched
+          description: The digest was handed to the webhooks.
           content:
             application/json:
               schema:
@@ -1340,65 +2132,1641 @@ paths:
                 properties:
                   sent:
                     type: integer
-                    description: Number of webhook subscribers fired
+                    description: How many active webhooks subscribe to the digest.
                   windowDays:
                     type: integer
                   hotspotsIncluded:
                     type: integer
+              example:
+                sent: 2
+                windowDays: 7
+                hotspotsIncluded: 4
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
         '429':
           $ref: '#/components/responses/RateLimited'
-  /api/sessions/{sessionId}/bug-report:
-    post:
-      summary: Generate a bug-report bundle for a session
-      description: |
-        Streams a zip archive containing the session's video, logs, HAR, AI
-        summary, and a manifest.json. In `slice` mode the video is trimmed to
-        the last `windowSec` seconds (default 60). In `full` mode the entire
-        session is included verbatim.
+  /api/interceptor/sessions/{sessionId}/requests:
+    get:
+      operationId: listInterceptedRequests
+      summary: List a session's captured HTTP requests
+      description: >-
+        The HTTP requests the network interceptor captured for a session (Android, with the
+        interceptor enabled for the session). While the interceptor runs they come from memory;
+        after it stops, from the session's saved capture. `404` when there is neither. Needs role
+        `ADMIN`.
       tags:
-        - Sessions
+        - Network Interceptor
       parameters:
-        - in: path
-          name: sessionId
-          required: true
-          schema:
-            type: string
-        - in: query
-          name: mode
-          required: true
-          schema:
-            type: string
-            enum:
-              - slice
-              - full
-        - in: query
-          name: windowSec
-          required: false
-          schema:
-            type: integer
-            minimum: 5
-            maximum: 600
-            default: 60
-          description: Slice window length in seconds. Ignored when mode=full.
+        - $ref: '#/components/parameters/InterceptorSessionId'
       responses:
         '200':
-          description: zip archive
+          description: The captured requests.
           content:
-            application/zip:
+            application/json:
               schema:
-                type: string
-                format: binary
-        '400':
-          $ref: '#/components/responses/BadRequest'
+                type: object
+                properties:
+                  requests:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/InterceptorCapturedRequest'
+              example:
+                requests:
+                  - id: req-01J9Z4K7Q2
+                    sessionId: 6f1c2a8e-3b4d-4e5f-9a7b-1c2d3e4f5a6b
+                    ts: 1759501232118
+                    method: GET
+                    url: https://api.example.com/v2/cart
+                    host: api.example.com
+                    path: /v2/cart
+                    reqHeaders:
+                      accept: application/json
+                    reqBody: null
+                    resStatus: 200
+                    resHeaders:
+                      content-type: application/json
+                    resBody: '{"items":[],"total":0}'
+                    durationMs: 143
+                    mocked: false
+                    modified: false
+                    commandHint:
+                      commandName: click
+                      commandTs: 1759501231990
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
         '404':
-          $ref: '#/components/responses/NotFound'
+          $ref: '#/components/responses/InterceptorInactive'
         '429':
           $ref: '#/components/responses/RateLimited'
+        '500':
+          $ref: '#/components/responses/InterceptorFailed'
+  /api/interceptor/sessions/{sessionId}/requests/{requestId}:
+    get:
+      operationId: getInterceptedRequest
+      summary: Get one captured HTTP request
+      description: >-
+        One captured request with its bodies. While the interceptor runs, a response body that was
+        kept on disk is read back into `resBody`. A finished session's saved capture has no large
+        bodies (`resBody` null). Needs role `ADMIN`.
+      tags:
+        - Network Interceptor
+      parameters:
+        - $ref: '#/components/parameters/InterceptorSessionId'
+        - in: path
+          name: requestId
+          required: true
+          schema:
+            type: string
+          description: The captured request's `id`.
+          example: req-01J9Z4K7Q2
+      responses:
+        '200':
+          description: The request.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InterceptorCapturedRequest'
+              example:
+                id: req-01J9Z4K7Q2
+                sessionId: 6f1c2a8e-3b4d-4e5f-9a7b-1c2d3e4f5a6b
+                ts: 1759501232118
+                method: POST
+                url: https://api.example.com/v2/cart/items
+                host: api.example.com
+                path: /v2/cart/items
+                reqHeaders:
+                  content-type: application/json
+                reqBody: '{"sku":"SKU-1182","qty":1}'
+                resStatus: 503
+                resHeaders:
+                  content-type: application/json
+                resBody: '{"error":"maintenance"}'
+                durationMs: 1500
+                mocked: true
+                modified: false
+                mockId: mock-mg9x2k1a-1
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          description: No capture for the session, or no request with that id.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                inactive:
+                  value:
+                    error: interceptor inactive
+                    sessionId: 6f1c2a8e-3b4d-4e5f-9a7b-1c2d3e4f5a6b
+                request:
+                  value:
+                    error: not found
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          $ref: '#/components/responses/InterceptorFailed'
+  /api/interceptor/sessions/{sessionId}/har:
+    get:
+      operationId: exportInterceptedHar
+      summary: Download a session's traffic as HAR
+      description: >-
+        The session's captured traffic as a HAR 1.2 document, downloaded as
+        `<sessionId>.har` (`application/json`). Built from memory while the interceptor runs,
+        otherwise from the HAR saved when it stopped. Mocked and modified entries carry `_mocked`,
+        `_modified` and `_mockId`. Needs role `ADMIN`.
+      tags:
+        - Network Interceptor
+      parameters:
+        - $ref: '#/components/parameters/InterceptorSessionId'
+      responses:
+        '200':
+          description: The HAR document.
+          headers:
+            Content-Disposition:
+              schema:
+                type: string
+                example: attachment; filename="6f1c2a8e-3b4d-4e5f-9a7b-1c2d3e4f5a6b.har"
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  log:
+                    type: object
+                    properties:
+                      version:
+                        type: string
+                        example: '1.2'
+                      creator:
+                        type: object
+                        properties:
+                          name:
+                            type: string
+                          version:
+                            type: string
+                          comment:
+                            type: string
+                      entries:
+                        type: array
+                        items:
+                          type: object
+                          additionalProperties: true
+              example:
+                log:
+                  version: '1.2'
+                  creator:
+                    name: Xenon Interceptor
+                    version: '1.0'
+                    comment: session=6f1c2a8e-3b4d-4e5f-9a7b-1c2d3e4f5a6b
+                  entries:
+                    - startedDateTime: '2026-10-03T14:20:32.118Z'
+                      time: 143
+                      request:
+                        method: GET
+                        url: https://api.example.com/v2/cart
+                        httpVersion: HTTP/1.1
+                        headers:
+                          - name: accept
+                            value: application/json
+                        queryString: []
+                        cookies: []
+                        headersSize: -1
+                        bodySize: 0
+                      response:
+                        status: 200
+                        statusText: OK
+                        httpVersion: HTTP/1.1
+                        headers:
+                          - name: content-type
+                            value: application/json
+                        cookies: []
+                        content:
+                          size: 22
+                          mimeType: application/json
+                          text: '{"items":[],"total":0}'
+                        redirectURL: ''
+                        headersSize: -1
+                        bodySize: 22
+                      cache: {}
+                      timings:
+                        send: 0
+                        wait: 143
+                        receive: 0
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/InterceptorInactive'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          $ref: '#/components/responses/InterceptorFailed'
+  /api/interceptor/sessions/{sessionId}/mocks:
+    get:
+      operationId: listInterceptorMocks
+      summary: List a session's mock rules
+      description: >-
+        The mock rules of a session whose interceptor is running, in the order they were added (the
+        newest matching rule wins). A finished session has none: `404`. Needs role `ADMIN`.
+      tags:
+        - Network Interceptor
+      parameters:
+        - $ref: '#/components/parameters/InterceptorSessionId'
+      responses:
+        '200':
+          description: The mock rules.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  mocks:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/InterceptorMock'
+              example:
+                mocks:
+                  - id: mock-mg9x2k1a-1
+                    addedAt: 1759501100412
+                    match:
+                      url: https://api.example.com/v2/cart/**
+                      method: POST
+                    respondWith:
+                      status: 503
+                      headers:
+                        content-type: application/json
+                      body:
+                        error: maintenance
+                      delayMs: 1500
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/InterceptorInactive'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          $ref: '#/components/responses/InterceptorFailed'
+    post:
+      operationId: addInterceptorMock
+      summary: Add a mock rule to a running session
+      description: >-
+        Adds a mock rule to a session whose interceptor is running. A rule matches a request by
+        URL (exact, or a glob where `*` is any text without `/` and `**` any text) and optionally
+        by method, then rewrites the request, answers with `respondWith` without reaching the
+        server, or changes the real response (`rewriteResponse`). When several rules match, the
+        newest wins. Without an `id` one is generated. The body is stored as given and isn't
+        validated, so send a `match.url`. Needs role `ADMIN`. With the dashboard cookie, the
+        request needs a same-host `Origin` or `Referer`.
+      tags:
+        - Network Interceptor
+      parameters:
+        - $ref: '#/components/parameters/InterceptorSessionId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/InterceptorMockInput'
+            example:
+              match:
+                url: https://api.example.com/v2/cart/**
+                method: POST
+              respondWith:
+                status: 503
+                headers:
+                  content-type: application/json
+                body:
+                  error: maintenance
+                delayMs: 1500
+      responses:
+        '201':
+          description: The rule was added.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+              example:
+                id: mock-mg9x2k1a-1
+        '400':
+          description: The rule couldn't be added.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: Cannot read properties of undefined (reading 'url')
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/InterceptorInactive'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+    delete:
+      operationId: clearInterceptorMocks
+      summary: Remove all of a session's mock rules
+      description: >-
+        Removes every mock rule of a session whose interceptor is running. Needs role `ADMIN`.
+        With the dashboard cookie, the request needs a same-host `Origin` or `Referer`.
+      tags:
+        - Network Interceptor
+      parameters:
+        - $ref: '#/components/parameters/InterceptorSessionId'
+      responses:
+        '200':
+          description: The rules were removed.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+              example:
+                ok: true
+        '400':
+          description: The interceptor stopped while the request was handled.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: Interceptor not active for session 6f1c2a8e-3b4d-4e5f-9a7b-1c2d3e4f5a6b
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/InterceptorInactive'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+  /api/interceptor/sessions/{sessionId}/mocks/{mockId}:
+    delete:
+      operationId: removeInterceptorMock
+      summary: Remove one mock rule
+      description: >-
+        Removes one mock rule of a session whose interceptor is running. An unknown `mockId`
+        answers `200` with `removed: false`. Needs role `ADMIN`. With the dashboard cookie, the
+        request needs a same-host `Origin` or `Referer`.
+      tags:
+        - Network Interceptor
+      parameters:
+        - $ref: '#/components/parameters/InterceptorSessionId'
+        - in: path
+          name: mockId
+          required: true
+          schema:
+            type: string
+          description: The rule's `id`.
+          example: mock-mg9x2k1a-1
+      responses:
+        '200':
+          description: Whether a rule was removed.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  removed:
+                    type: boolean
+              example:
+                removed: true
+        '400':
+          description: The interceptor stopped while the request was handled.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: Interceptor not active for session 6f1c2a8e-3b4d-4e5f-9a7b-1c2d3e4f5a6b
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/InterceptorInactive'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+components:
+  parameters:
+    SessionsSessionId:
+      in: path
+      name: sessionId
+      required: true
+      schema:
+        type: string
+      description: The Appium session id.
+      example: 6f1c2a8e-3b4d-4e5f-9a7b-1c2d3e4f5a6b
+    InterceptorSessionId:
+      in: path
+      name: sessionId
+      required: true
+      schema:
+        type: string
+      description: The Appium session id.
+      example: 6f1c2a8e-3b4d-4e5f-9a7b-1c2d3e4f5a6b
+    SelectorHealthWindowDays:
+      in: query
+      name: windowDays
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 365
+        default: 30
+      description: The period, in days back from now; clamped to 1–365.
+      example: 7
+    SelectorHealthTz:
+      in: query
+      name: tz
+      schema:
+        type: integer
+        minimum: -840
+        maximum: 840
+        default: 0
+      description: >-
+        The caller's offset from UTC in minutes, east positive (the browser's
+        `-getTimezoneOffset()`), so days are the caller's. Anything else counts as 0.
+      example: 330
+  responses:
+    SessionsSessionNotFound:
+      description: The session is unknown, or one the caller may not see (the two answer the same).
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error: true
+            message: Session with id 6f1c2a8e-3b4d-4e5f-9a7b-1c2d3e4f5a6b not found
+    SelectorHealthNotFound:
+      description: >-
+        No session the caller may see has healed this selector, or it is unknown (the two answer
+        the same).
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error: not_found
+            message: Selector not found
+    InterceptorInactive:
+      description: The session's interceptor isn't running, and there is no saved capture to read.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error: interceptor inactive
+            sessionId: 6f1c2a8e-3b4d-4e5f-9a7b-1c2d3e4f5a6b
+    InterceptorFailed:
+      description: The capture couldn't be read.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error: 'EACCES: permission denied'
+  schemas:
+    SessionsSessionRecord:
+      description: >-
+        A session's stored record, with who ran it and where. Capabilities are stored as JSON
+        text, with credentials already removed.
+      allOf:
+        - $ref: '#/components/schemas/Session'
+        - type: object
+          properties:
+            desired_capabilities:
+              type: string
+              description: The capabilities the client asked for, as JSON text.
+            session_capabilities:
+              type: string
+              description: The capabilities the driver answered, as JSON text.
+            node_id:
+              type: string
+              description: The server that ran it, as of that server's boot.
+            has_live_video:
+              type: boolean
+            video_recording_enabled:
+              type: boolean
+            video_recording:
+              type: string
+              nullable: true
+            startTime:
+              type: string
+              format: date-time
+            endTime:
+              type: string
+              format: date-time
+              nullable: true
+            failure_reason:
+              type: string
+              nullable: true
+            failure_category:
+              type: string
+              nullable: true
+            is_profiling_available:
+              type: boolean
+            device_info:
+              type: string
+              nullable: true
+            device_version:
+              type: string
+            ai_analysis:
+              type: string
+              nullable: true
+            tags:
+              type: string
+              nullable: true
+            trace_id:
+              type: string
+              nullable: true
+            api_key_id:
+              type: string
+              nullable: true
+              description: The API key that created it, if any.
+            user_id:
+              type: string
+              nullable: true
+              description: The person who ran it, if known.
+            owner:
+              type: object
+              nullable: true
+              description: Who ran it, or null when that isn't known.
+              properties:
+                name:
+                  type: string
+                email:
+                  type: string
+            ranOn:
+              type: string
+              nullable: true
+              description: >-
+                `here` for this server, a node's host (`192.168.1.21:4723`) for another server's
+                device, or null when that isn't known any more.
+    SessionsSummary:
+      type: object
+      properties:
+        since:
+          type: string
+          format: date-time
+          nullable: true
+        current:
+          allOf:
+            - $ref: '#/components/schemas/SessionsPeriodCounts'
+            - type: object
+              properties:
+                medianMs:
+                  type: integer
+                  nullable: true
+                  description: Median duration of the period's ended sessions; null if none.
+                p90Ms:
+                  type: integer
+                  nullable: true
+                  description: 90th-percentile duration of the period's ended sessions.
+        previous:
+          allOf:
+            - $ref: '#/components/schemas/SessionsPeriodCounts'
+          nullable: true
+          description: The period of the same length before; null without `since`.
+        runningNow:
+          type: object
+          properties:
+            sessions:
+              type: integer
+            devices:
+              type: integer
+    SessionsPeriodCounts:
+      type: object
+      properties:
+        total:
+          type: integer
+        passed:
+          type: integer
+        failed:
+          type: integer
+        running:
+          type: integer
+    SessionsBuildRecord:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        _count:
+          type: object
+          properties:
+            sessions:
+              type: integer
+        sessionCount:
+          type: integer
+        passedCount:
+          type: integer
+        failedCount:
+          type: integer
+        runningCount:
+          type: integer
+    SessionsCommand:
+      type: object
+      description: One Appium command of a session, as stored.
+      properties:
+        id:
+          type: string
+        session_id:
+          type: string
+        command_name:
+          type: string
+          nullable: true
+        url:
+          type: string
+        method:
+          type: string
+        title:
+          type: string
+        subtitle:
+          type: string
+          nullable: true
+        body:
+          type: string
+          nullable: true
+          description: The request body, as JSON text.
+        response:
+          type: string
+          description: The response, as JSON text.
+        screenshot:
+          type: string
+          nullable: true
+          description: The screenshot's file name, served by the session asset route.
+        is_success:
+          type: boolean
+          nullable: true
+        is_error:
+          type: boolean
+        is_healed:
+          type: boolean
+        original_strategy:
+          type: string
+          nullable: true
+        original_selector:
+          type: string
+          nullable: true
+        healed_strategy:
+          type: string
+          nullable: true
+        healed_selector:
+          type: string
+          nullable: true
+        healing_confidence:
+          type: number
+          nullable: true
+        healing_tier:
+          type: string
+          nullable: true
+          description: The healing method that found it.
+        duration:
+          type: integer
+          nullable: true
+          description: Milliseconds.
+        span_id:
+          type: string
+          nullable: true
+        trace_id:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    SessionsLogLine:
+      type: object
+      properties:
+        id:
+          type: string
+        session_id:
+          type: string
+        log_type:
+          type: string
+          enum:
+            - DEVICE
+            - DEBUG
+        message:
+          type: string
+        timestamp:
+          type: string
+          format: date-time
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    SessionsProfilingSample:
+      type: object
+      properties:
+        id:
+          type: integer
+        session_id:
+          type: string
+        cpu:
+          type: string
+          nullable: true
+        memory:
+          type: string
+          nullable: true
+        total_cpu_used:
+          type: string
+          nullable: true
+        total_memory_used:
+          type: string
+          nullable: true
+        raw_cpu_log:
+          type: string
+          nullable: true
+        raw_memory_log:
+          type: string
+          nullable: true
+        timestamp:
+          type: string
+          format: date-time
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    SessionsMetrics:
+      type: object
+      properties:
+        platform:
+          type: string
+          description: The session's platform, lower case.
+        intervalMs:
+          type: integer
+          description: Time between samples.
+          example: 2000
+        appId:
+          type: string
+          nullable: true
+          description: The app of the newest sample that names one.
+        series:
+          type: object
+          description: What this platform can record.
+          properties:
+            deviceCpu:
+              type: boolean
+            deviceMem:
+              type: boolean
+            appCpu:
+              type: boolean
+            appMem:
+              type: boolean
+        recording:
+          type: string
+          nullable: true
+          enum:
+            - sampling
+            - stopped
+            - 'off'
+            - null
+          description: For a running session, whether it is being sampled; null once it ended.
+        samples:
+          type: array
+          items:
+            type: object
+            properties:
+              t:
+                type: number
+                description: Epoch milliseconds.
+              deviceCpu:
+                type: number
+                nullable: true
+                description: Percent of the whole device.
+              deviceMemMb:
+                type: number
+                nullable: true
+              deviceMemTotalMb:
+                type: number
+                nullable: true
+              appCpu:
+                type: number
+                nullable: true
+                description: Percent of the whole device.
+              appMemMb:
+                type: number
+                nullable: true
+              app:
+                type: string
+                nullable: true
+                description: The app the app figures are for.
+    SessionsActiveList:
+      type: object
+      properties:
+        stats:
+          type: object
+          description: Every session on this server, whatever the caller may see.
+          properties:
+            total:
+              type: integer
+            byType:
+              type: object
+              properties:
+                local:
+                  type: integer
+                remote:
+                  type: integer
+                cloud:
+                  type: integer
+        sessions:
+          type: array
+          items:
+            type: object
+            properties:
+              id:
+                type: string
+              type:
+                type: string
+                enum:
+                  - local
+                  - remote
+                  - cloud
+              deviceUdid:
+                type: string
+              deviceName:
+                type: string
+              platform:
+                type: string
+    SessionsRequestLogList:
+      type: object
+      properties:
+        stats:
+          type: object
+          description: Over the whole buffer (up to 500 calls), not just those returned.
+          properties:
+            totalLogged:
+              type: integer
+            errorCount:
+              type: integer
+            avgDurationMs:
+              type: integer
+            byMethod:
+              type: object
+              additionalProperties:
+                type: integer
+            byStatusCode:
+              type: object
+              additionalProperties:
+                type: integer
+        logs:
+          type: array
+          items:
+            type: object
+            properties:
+              timestamp:
+                type: string
+                format: date-time
+              direction:
+                type: string
+                enum:
+                  - outgoing
+                  - incoming
+              method:
+                type: string
+              url:
+                type: string
+              requestBody:
+                type: string
+                description: JSON text, secrets redacted, long values truncated.
+              responseBody:
+                type: string
+                description: JSON text, secrets redacted, long values truncated.
+              statusCode:
+                type: integer
+              durationMs:
+                type: integer
+              error:
+                type: string
+              source:
+                type: string
+              correlationId:
+                type: string
+    SelectorHealthEvent:
+      type: object
+      properties:
+        id:
+          type: string
+        sessionId:
+          type: string
+        deviceUdid:
+          type: string
+          nullable: true
+        deviceName:
+          type: string
+          nullable: true
+        devicePlatform:
+          type: string
+          nullable: true
+        commandName:
+          type: string
+          nullable: true
+        originalSelector:
+          type: string
+          nullable: true
+        healedSelector:
+          type: string
+          nullable: true
+        confidence:
+          type: number
+          nullable: true
+        tier:
+          type: string
+          nullable: true
+          description: The healing method.
+        isSuccess:
+          type: boolean
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+    SelectorHealthPeriod:
+      type: object
+      properties:
+        totalHeals:
+          type: integer
+        distinctSelectors:
+          type: integer
+        sessionsTouched:
+          type: integer
+        byTier:
+          type: object
+          description: Heals per healing method (`Unknown` when none was recorded).
+          additionalProperties:
+            type: integer
+        timeSpentMs:
+          type: integer
+          description: The recorded duration of the commands that needed healing.
+    SelectorHealthTrendDay:
+      type: object
+      properties:
+        t:
+          type: integer
+          description: When the caller's local day began, epoch milliseconds.
+        heals:
+          type: integer
+        aiHeals:
+          type: integer
+          description: Heals by Visual AI or an LLM.
+    SelectorHealthSummary:
+      type: object
+      properties:
+        windowDays:
+          type: integer
+        current:
+          $ref: '#/components/schemas/SelectorHealthPeriod'
+        prior:
+          $ref: '#/components/schemas/SelectorHealthPeriod'
+        resolvedCount:
+          type: integer
+          description: Selectors verified fixed in the period, lab-wide.
+        pendingCount:
+          type: integer
+          description: Selectors being verified now, lab-wide.
+        trend:
+          type: array
+          items:
+            $ref: '#/components/schemas/SelectorHealthTrendDay'
+    SelectorHealthStateRow:
+      type: object
+      description: >-
+        A selector's stored, lab-wide status row. `status` is `active`, `pending` (being
+        verified), `resolved` (verified fixed) or `muted`. The `*_by_api_key` fields name the API
+        key that acted, and are empty for dashboard actions; who acted is in the selector's
+        activity.
+      properties:
+        id:
+          type: string
+        original_strategy:
+          type: string
+        original_selector:
+          type: string
+        status:
+          type: string
+          enum:
+            - active
+            - pending
+            - resolved
+            - muted
+        fixed_at:
+          type: string
+          format: date-time
+          nullable: true
+        fixed_by_api_key:
+          type: string
+          nullable: true
+        resolved_at:
+          type: string
+          format: date-time
+          nullable: true
+        muted_at:
+          type: string
+          format: date-time
+          nullable: true
+        muted_by_api_key:
+          type: string
+          nullable: true
+        regression_count:
+          type: integer
+          description: How often it healed again after being fixed.
+        clean_builds_count:
+          type: integer
+        last_event_at:
+          type: string
+          format: date-time
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    SelectorHealthHotspot:
+      type: object
+      properties:
+        originalStrategy:
+          type: string
+          nullable: true
+        originalSelector:
+          type: string
+        healCount:
+          type: integer
+        sessionCount:
+          type: integer
+        topTier:
+          type: string
+          nullable: true
+          description: The healing method used most.
+        suggestedRewrite:
+          type: string
+          nullable: true
+          description: The healed selector found most often.
+        suggestedStrategy:
+          type: string
+          nullable: true
+        suggestedRewriteShare:
+          type: number
+          nullable: true
+          description: The share of heals that found `suggestedRewrite`, 0 to 1.
+        averageConfidence:
+          type: number
+          nullable: true
+        firstHealedAt:
+          type: string
+          format: date-time
+        lastHealedAt:
+          type: string
+          format: date-time
+        state:
+          allOf:
+            - $ref: '#/components/schemas/SelectorHealthStateRow'
+          nullable: true
+    SelectorHealthBreakdown:
+      type: object
+      properties:
+        originalSelector:
+          type: string
+        windowDays:
+          type: integer
+        healCount:
+          type: integer
+        sessionCount:
+          type: integer
+        byTier:
+          type: object
+          additionalProperties:
+            type: integer
+        byPlatform:
+          type: object
+          additionalProperties:
+            type: integer
+        byBuild:
+          type: array
+          description: Heals per build id; `unattached` for sessions with no build.
+          items:
+            type: object
+            properties:
+              buildId:
+                type: string
+              count:
+                type: integer
+        alternates:
+          type: array
+          items:
+            type: object
+            properties:
+              healedSelector:
+                type: string
+              count:
+                type: integer
+              share:
+                type: number
+              averageConfidence:
+                type: number
+                nullable: true
+              tiers:
+                type: array
+                items:
+                  type: string
+        timeline:
+          type: array
+          items:
+            type: object
+            properties:
+              id:
+                type: string
+              sessionId:
+                type: string
+              buildId:
+                type: string
+                nullable: true
+              deviceUdid:
+                type: string
+                nullable: true
+              deviceName:
+                type: string
+                nullable: true
+              devicePlatform:
+                type: string
+                nullable: true
+              commandName:
+                type: string
+                nullable: true
+              healedSelector:
+                type: string
+                nullable: true
+              confidence:
+                type: number
+                nullable: true
+              tier:
+                type: string
+                nullable: true
+              isSuccess:
+                type: boolean
+                nullable: true
+              createdAt:
+                type: string
+                format: date-time
+    SelectorHealthFeedItem:
+      type: object
+      properties:
+        selector:
+          type: string
+        strategy:
+          type: string
+          nullable: true
+        healCount:
+          type: integer
+        topTier:
+          type: string
+          nullable: true
+        suggestedRewrite:
+          type: string
+          nullable: true
+        state:
+          allOf:
+            - $ref: '#/components/schemas/SelectorHealthStateRow'
+          nullable: true
+        lastHealedAt:
+          type: string
+          format: date-time
+        etalonAge:
+          type: integer
+          description: >-
+            Milliseconds since the selector's stored fingerprint was last seen; absent when there
+            is none for this strategy.
+    SelectorHealthPerson:
+      type: object
+      description: Who did something. `name` is null for a deleted user, or with auth disabled.
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+          nullable: true
+    SelectorHealthStateView:
+      type: object
+      description: A selector's status as the dashboard shows it.
+      properties:
+        status:
+          type: string
+          enum:
+            - active
+            - pending
+            - resolved
+            - muted
+        cleanBuilds:
+          type: integer
+        fixedAt:
+          type: string
+          format: date-time
+          nullable: true
+        fixedBy:
+          allOf:
+            - $ref: '#/components/schemas/SelectorHealthPerson'
+          nullable: true
+        resolvedAt:
+          type: string
+          format: date-time
+          nullable: true
+        mutedAt:
+          type: string
+          format: date-time
+          nullable: true
+        mutedBy:
+          allOf:
+            - $ref: '#/components/schemas/SelectorHealthPerson'
+          nullable: true
+        muteReason:
+          type: string
+          nullable: true
+        brokeAgain:
+          type: integer
+          description: How often it healed again after being fixed.
+    SelectorHealthListItem:
+      type: object
+      properties:
+        strategy:
+          type: string
+          description: Empty for heals recorded with no strategy.
+        selector:
+          type: string
+        heals:
+          type: integer
+          description: Heals in the period.
+        sessions:
+          type: integer
+        lastHealedAt:
+          type: string
+          format: date-time
+          nullable: true
+        timeSpentMs:
+          type: integer
+        topMethod:
+          type: string
+          nullable: true
+        suggestion:
+          type: object
+          nullable: true
+          properties:
+            selector:
+              type: string
+            strategy:
+              type: string
+              nullable: true
+            share:
+              type: number
+              description: The share of the period's heals that found it, 0 to 1.
+        state:
+          allOf:
+            - $ref: '#/components/schemas/SelectorHealthStateView'
+          nullable: true
+    SelectorHealthList:
+      type: object
+      properties:
+        tab:
+          type: string
+          enum:
+            - fix
+            - verifying
+            - fixed
+            - muted
+        days:
+          type: integer
+        page:
+          type: integer
+          description: The page answered; the last page when the one asked for is past the end.
+        pageSize:
+          type: integer
+        total:
+          type: integer
+          description: Selectors in this tab after the search and filters.
+        counts:
+          type: object
+          description: Selectors in each tab for the period, before the search and filters.
+          properties:
+            fix:
+              type: integer
+            verifying:
+              type: integer
+            fixed:
+              type: integer
+            muted:
+              type: integer
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/SelectorHealthListItem'
+        canAct:
+          type: boolean
+          description: Whether the caller may mark fixed, mute, unmute and cancel.
+    SelectorHealthDetail:
+      type: object
+      properties:
+        strategy:
+          type: string
+        selector:
+          type: string
+        days:
+          type: integer
+        heals:
+          type: integer
+        sessions:
+          type: integer
+        timeSpentMs:
+          type: integer
+        firstHealedAt:
+          type: string
+          format: date-time
+          nullable: true
+        lastHealedAt:
+          type: string
+          format: date-time
+          nullable: true
+        daily:
+          type: array
+          items:
+            type: object
+            properties:
+              t:
+                type: integer
+                description: When the caller's local day began, epoch milliseconds.
+              heals:
+                type: integer
+        suggestions:
+          type: array
+          items:
+            type: object
+            properties:
+              selector:
+                type: string
+              strategy:
+                type: string
+                nullable: true
+              count:
+                type: integer
+              share:
+                type: number
+              methods:
+                type: array
+                items:
+                  type: string
+              averageConfidence:
+                type: number
+                nullable: true
+        platforms:
+          type: array
+          items:
+            type: object
+            properties:
+              name:
+                type: string
+              count:
+                type: integer
+        builds:
+          type: array
+          items:
+            type: object
+            properties:
+              id:
+                type: string
+                nullable: true
+              name:
+                type: string
+              count:
+                type: integer
+        devices:
+          type: array
+          items:
+            type: object
+            properties:
+              udid:
+                type: string
+              name:
+                type: string
+              count:
+                type: integer
+        recent:
+          type: array
+          items:
+            type: object
+            properties:
+              id:
+                type: string
+              sessionId:
+                type: string
+              buildId:
+                type: string
+                nullable: true
+              at:
+                type: string
+                format: date-time
+              device:
+                type: string
+                nullable: true
+              platform:
+                type: string
+                nullable: true
+              method:
+                type: string
+                nullable: true
+              confidence:
+                type: number
+                nullable: true
+              healedSelector:
+                type: string
+                nullable: true
+        state:
+          allOf:
+            - $ref: '#/components/schemas/SelectorHealthStateView'
+          nullable: true
+        activity:
+          type: array
+          items:
+            type: object
+            properties:
+              action:
+                type: string
+                example: marked_fixed
+              at:
+                type: string
+                format: date-time
+              by:
+                allOf:
+                  - $ref: '#/components/schemas/SelectorHealthPerson'
+                nullable: true
+              reason:
+                type: string
+                nullable: true
+        canAct:
+          type: boolean
+    InterceptorCapturedRequest:
+      type: object
+      properties:
+        id:
+          type: string
+        sessionId:
+          type: string
+        ts:
+          type: number
+          description: Epoch milliseconds.
+        method:
+          type: string
+        url:
+          type: string
+        host:
+          type: string
+        path:
+          type: string
+        reqHeaders:
+          type: object
+          additionalProperties:
+            type: string
+        reqBody:
+          type: string
+          nullable: true
+        resStatus:
+          type: integer
+          description: -1 when the request never completed.
+        resHeaders:
+          type: object
+          additionalProperties:
+            type: string
+        resBody:
+          type: string
+          nullable: true
+        bodyPath:
+          type: string
+        durationMs:
+          type: number
+        mocked:
+          type: boolean
+        modified:
+          type: boolean
+        mockId:
+          type: string
+        commandHint:
+          type: object
+          description: The Appium command that ran just before it.
+          properties:
+            commandName:
+              type: string
+            commandTs:
+              type: number
+        failed:
+          type: boolean
+        failureReason:
+          type: string
+        failureKind:
+          type: string
+          enum:
+            - HTTPS_CLIENT_ERROR
+            - HTTPS_SERVER_ERROR
+            - OPEN_HTTPS_SERVER_ERROR
+            - ON_CONNECT_ERROR
+            - PROXY_TO_SERVER_REQUEST_ERROR
+    InterceptorMockInput:
+      type: object
+      required:
+        - match
+      properties:
+        id:
+          type: string
+          description: Generated when absent.
+        match:
+          type: object
+          required:
+            - url
+          properties:
+            url:
+              type: string
+              description: The exact URL, or a glob (`*` within a path segment, `**` across them).
+            method:
+              type: string
+              description: Matched case-insensitively; any method when absent.
+        rewriteRequest:
+          type: object
+          properties:
+            url:
+              type: string
+            headers:
+              type: object
+              additionalProperties:
+                type: string
+            body:
+              oneOf:
+                - type: string
+                - type: object
+                  additionalProperties: true
+        respondWith:
+          type: object
+          required:
+            - status
+          properties:
+            status:
+              type: integer
+            headers:
+              type: object
+              additionalProperties:
+                type: string
+            body:
+              oneOf:
+                - type: string
+                - type: object
+                  additionalProperties: true
+            delayMs:
+              type: integer
+        rewriteResponse:
+          type: object
+          properties:
+            status:
+              type: integer
+            headers:
+              type: object
+              additionalProperties:
+                type: string
+            bodyTransform:
+              type: string
+              enum:
+                - jsonMerge
+                - replace
+            body:
+              oneOf:
+                - type: string
+                - type: object
+                  additionalProperties: true
+    InterceptorMock:
+      allOf:
+        - $ref: '#/components/schemas/InterceptorMockInput'
+        - type: object
+          properties:
+            addedAt:
+              type: number
+              description: Epoch milliseconds.
