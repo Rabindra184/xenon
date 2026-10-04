@@ -1,6 +1,7 @@
 const { compileFromFile } = require('json-schema-to-typescript');
 const fs = require('fs');
 const path = require('path');
+const { ALWAYS_PRESENT_PLUGIN_ARGS } = require('./lib/always-present-plugin-args');
 
 async function generate() {
     const schemaPath = path.join(__dirname, '../schema.json');
@@ -18,6 +19,11 @@ async function generate() {
         schema.properties.interceptor = { '$ref': '#/definitions/InterceptorConfig' };
         schema.properties.autowait = { '$ref': '#/definitions/AutowaitConfig' };
         schema.properties.streaming = { '$ref': '#/definitions/StreamingConfig' };
+
+        // Args Appium always fills from their defaults stay non-optional in
+        // IPluginArgs. schema.json itself has no `required` list: Appium would
+        // refuse any config file that left one out.
+        schema.required = ALWAYS_PRESENT_PLUGIN_ARGS;
 
         const { compile } = require('json-schema-to-typescript');
         const ts = await compile(schema, 'IPluginArgs', {
